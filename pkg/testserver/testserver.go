@@ -351,3 +351,29 @@ func WithCacheRotationThreshold(threshold uint64) testservice.InstrumentationFun
 		return nil
 	}
 }
+
+func WithBackupFilesystem(path, schedule string) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--backup-driver", "filesystem")
+		cfg.AppendArgs("--backup-path", path)
+		cfg.AppendArgs("--backup-schedule", schedule)
+
+		return nil
+	}
+}
+
+func WithBackupS3(bucket, region, endpoint, schedule string) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--backup-driver", "s3")
+		cfg.AppendArgs("--backup-s3-bucket", bucket)
+		cfg.AppendArgs("--backup-schedule", schedule)
+		if region != "" {
+			cfg.AppendArgs("--backup-s3-region", region)
+		}
+		if endpoint != "" {
+			cfg.AppendArgs("--backup-s3-endpoint", endpoint)
+		}
+
+		return nil
+	}
+}

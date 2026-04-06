@@ -886,11 +886,8 @@ func (s *Store) IterateColdKVPairs(startSeq, closeSeq uint64, fn func(key, value
 	}
 
 	for _, prefix := range ColdSequencePrefixes {
-		kb := NewKeyBuilder()
-		kb.PutByte(prefix).PutUint64(startSeq)
-		lowerBound := kb.Snapshot()
-		kb.PutByte(prefix).PutUint64(closeSeq + 1)
-		upperBound := kb.Build()
+		lowerBound := NewKeyBuilder().PutByte(prefix).PutUint64(startSeq).Build()
+		upperBound := NewKeyBuilder().PutByte(prefix).PutUint64(closeSeq + 1).Build()
 
 		err := iterateRawRange(db, lowerBound, upperBound, fn)
 		if err != nil {

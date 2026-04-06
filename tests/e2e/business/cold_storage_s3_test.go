@@ -1,6 +1,6 @@
 //go:build e2e && s3
 
-package coldstorage
+package business
 
 import (
 	"context"
@@ -24,16 +24,13 @@ import (
 )
 
 const (
-	minioAccessKey = "minioadmin"
-	minioSecretKey = "minioadmin"
-	s3Bucket       = "cold-storage-e2e"
-	s3Region       = "us-east-1"
+	coldMinioAccessKey = "minioadmin"
+	coldMinioSecretKey = "minioadmin"
+	coldS3Bucket       = "cold-storage-e2e"
+	coldS3Region       = "us-east-1"
+	coldHTTPPort       = 15500
+	coldGRPCPort       = 15600
 )
-
-// listAllPeriods collects all periods from the streaming RPC.
-func listAllPeriods(ctx context.Context, client servicepb.BucketServiceClient) ([]*commonpb.Period, error) {
-	return actions.ListAllPeriods(ctx, client)
-}
 
 var _ = Describe("Cold Storage S3", Ordered, func() {
 	var (
@@ -41,17 +38,12 @@ var _ = Describe("Cold Storage S3", Ordered, func() {
 		client servicepb.BucketServiceClient
 	)
 
-	const (
-		httpPort = 15500
-		grpcPort = 15600
-	)
-
 	BeforeAll(func() {
 		// Start MinIO container
 		container, err := testcontainers.Run(context.Background(), "minio/minio:latest",
 			testcontainers.WithEnv(map[string]string{
-				"MINIO_ROOT_USER":     minioAccessKey,
-				"MINIO_ROOT_PASSWORD": minioSecretKey,
+				"MINIO_ROOT_USER":     coldMinioAccessKey,
+				"MINIO_ROOT_PASSWORD": coldMinioSecretKey,
 			}),
 			testcontainers.WithCmd("server", "/data"),
 			testcontainers.WithExposedPorts("9000/tcp"),
@@ -67,9 +59,9 @@ var _ = Describe("Cold Storage S3", Ordered, func() {
 
 		// Create the S3 bucket
 		cfg, err := awsconfig.LoadDefaultConfig(context.Background(),
-			awsconfig.WithRegion(s3Region),
+			awsconfig.WithRegion(coldS3Region),
 			awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
-				minioAccessKey, minioSecretKey, "",
+				coldMinioAccessKey, coldMinioSecretKey, "",
 			)),
 		)
 		Expect(err).To(Succeed())
@@ -80,17 +72,17 @@ var _ = Describe("Cold Storage S3", Ordered, func() {
 		})
 
 		_, err = s3Client.CreateBucket(context.Background(), &s3.CreateBucketInput{
-			Bucket: aws.String(s3Bucket),
+			Bucket: aws.String(coldS3Bucket),
 		})
 		Expect(err).To(Succeed())
 
 		// Set AWS credentials for the ledger server process
-		GinkgoT().Setenv("AWS_ACCESS_KEY_ID", minioAccessKey)
-		GinkgoT().Setenv("AWS_SECRET_ACCESS_KEY", minioSecretKey)
+		GinkgoT().Setenv("AWS_ACCESS_KEY_ID", coldMinioAccessKey)
+		GinkgoT().Setenv("AWS_SECRET_ACCESS_KEY", coldMinioSecretKey)
 
 		// Start single-node ledger server with S3 cold storage
-		ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort,
-			testserver.WithColdStorageS3(s3Bucket, s3Region, endpoint),
+		ctx, client, _ = testutil.SetupSingleNode(coldHTTPPort, coldGRPCPort,
+			testserver.WithColdStorageS3(coldS3Bucket, coldS3Region, endpoint),
 		)
 	})
 
@@ -136,7 +128,7 @@ var _ = Describe("Cold Storage S3", Ordered, func() {
 		// Wait for the period to be sealed (CLOSED)
 		var closedPeriodID uint64
 		Eventually(func(g Gomega) {
-			periods, err := listAllPeriods(ctx, client)
+			periods, err := actions.ListAllPeriods(ctx, client)
 			g.Expect(err).To(Succeed())
 			g.Expect(len(periods)).To(BeNumerically(">=", 2))
 
@@ -161,7 +153,7 @@ var _ = Describe("Cold Storage S3", Ordered, func() {
 
 		// Wait for the period to become ARCHIVED
 		Eventually(func(g Gomega) {
-			periods, err := listAllPeriods(ctx, client)
+			periods, err := actions.ListAllPeriods(ctx, client)
 			g.Expect(err).To(Succeed())
 
 			for _, p := range periods {

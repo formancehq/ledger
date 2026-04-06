@@ -6,6 +6,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/formancehq/ledger-v3-poc/internal/infra/backup"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/coldstorage"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
@@ -58,6 +59,7 @@ type Config struct {
 	ReceiptSigningKey          string
 	ResponseSigningKeyFile     string
 	ColdStorageConfig          coldstorage.Config
+	BackupConfig               backup.Config
 	PoolConfig                 transport.PoolConfig
 	TLSConfig                  TLSConfig
 	AuthConfig                 AuthFlagConfig
