@@ -4,17 +4,293 @@ config:
   # Optional components
   ledger-monitoring:pyroscope-enabled: "true"
   ledger-monitoring:grafana:
-    file: values/acme/grafana.yaml
+    adminPassword: admin
+    datasources:
+      datasources.yaml:
+        apiVersion: 1
+        datasources:
+          - access: proxy
+            editable: true
+            isDefault: true
+            name: VictoriaMetrics
+            type: prometheus
+            url: http://vm-victoria-metrics-single-server:8428
+          - access: proxy
+            editable: true
+            name: Tempo
+            type: tempo
+            url: http://tempo:3200
+          - access: proxy
+            editable: true
+            name: Loki
+            type: loki
+            url: http://loki:3100
+          - access: proxy
+            editable: true
+            isDefault: false
+            name: Pyroscope
+            type: grafana-pyroscope-datasource
+            uid: pyroscope
+            url: http://pyroscope:4040
+    deploymentStrategy:
+      type: Recreate
+    grafana.ini:
+      server:
+        root_url: https://grafana-ledger-v3.dev.acme.frmnc.net
+        serve_from_sub_path: false
+      snapshots:
+        external_enabled: false
+    ingress:
+      enabled: true
+      annotations:
+        traefik.ingress.kubernetes.io/router.entrypoints: https-private
+        traefik.ingress.kubernetes.io/router.observability.tracing: "true"
+        traefik.ingress.kubernetes.io/router.tls: "true"
+      labels:
+        formance.com/ingress: traefik
+      hosts:
+        - grafana-ledger-v3.dev.acme.frmnc.net
+      path: /
+      pathType: Prefix
+    persistence:
+      accessModes:
+        - ReadWriteOnce
+      enabled: true
+      finalizers:
+        - kubernetes.io/pvc-protection
+      size: 5Gi
+      type: pvc
+    plugins:
+      - marcusolsson-json-datasource
+      - yesoreyeram-infinity-datasource
+      - pgillich-tree-panel
+      - grafana-pyroscope-app
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1024Mi
+      requests:
+        cpu: 1000m
+        memory: 1024Mi
+    service:
+      type: ClusterIP
+    sidecar:
+      dashboards:
+        enabled: true
+        label: grafana_dashboard
+        labelValue: "1"
+      datasources:
+        enabled: true
   ledger-monitoring:loki:
-    file: values/acme/loki.yaml
+    backend:
+      replicas: 0
+    deploymentMode: SingleBinary
+    loki:
+      auth_enabled: false
+      config: |
+        auth_enabled: false
+
+        server:
+          http_listen_port: 3100
+
+        common:
+          path_prefix: /var/loki
+          replication_factor: 1
+          ring:
+            kvstore:
+              store: inmemory
+          storage:
+            filesystem:
+              chunks_directory: /var/loki/chunks
+              rules_directory: /var/loki/rules
+
+        schema_config:
+          configs:
+            - from: 2024-04-01
+              store: tsdb
+              object_store: filesystem
+              schema: v13
+              index:
+                prefix: loki_index_
+                period: 24h
+
+        storage_config:
+          filesystem:
+            directory: /var/loki/chunks
+
+        limits_config:
+          allow_structured_metadata: true
+
+          otlp_config:
+            resource_attributes:
+              attributes_config:
+                - action: index_label
+                  attributes:
+                    - service.name
+                    - service.node_id
+
+        ruler:
+          enable_api: false
+      schemaConfig:
+        configs:
+          - from: "2024-04-01"
+            index:
+              period: 24h
+              prefix: loki_index_
+            object_store: filesystem
+            schema: v13
+            store: tsdb
+      storage:
+        bucketNames:
+          admin: loki-admin
+          chunks: loki-chunks
+          ruler: loki-ruler
+    persistence:
+      enabled: true
+      size: 10Gi
+    read:
+      replicas: 0
+    singleBinary:
+      replicas: 1
+    write:
+      replicas: 0
   ledger-monitoring:otlp:
-    file: values/acme/otlp.yaml
+    config:
+      exporters:
+        otlp/tempo:
+          endpoint: tempo:4317
+          tls:
+            insecure: true
+        otlphttp/logs:
+          endpoint: http://loki:3100/otlp
+          tls:
+            insecure: true
+        otlphttp/victoriametrics:
+          compression: gzip
+          encoding: proto
+          metrics_endpoint: http://vm-victoria-metrics-single-server:8428/opentelemetry/v1/metrics
+          tls:
+            insecure: true
+      processors:
+        batch: {}
+        filter/k6:
+          error_mode: ignore
+          metrics:
+            metric:
+              - 'resource.attributes["service.name"] != "k6-loadtest"'
+        filter/not_k6:
+          error_mode: ignore
+          metrics:
+            metric:
+              - 'resource.attributes["service.name"] == "k6-loadtest"'
+        metricstransform/k6_prefix:
+          transforms:
+            - include: '^(http_.*|grpc_.*|vus.*|iterations|iteration_duration|data_(sent|received)|checks|group_duration.*)$'
+              match_type: regexp
+              action: update
+              new_name: 'k6_$${0}'
+      receivers:
+        otlp:
+          protocols:
+            grpc: {}
+            http: {}
+      service:
+        pipelines:
+          logs:
+            exporters:
+              - otlphttp/logs
+            processors:
+              - batch
+            receivers:
+              - otlp
+          metrics:
+            exporters:
+              - otlphttp/victoriametrics
+            processors:
+              - filter/not_k6
+              - metricstransform/k6_prefix
+              - batch
+            receivers:
+              - otlp
+          metrics/k6:
+            receivers:
+              - otlp
+            processors:
+              - filter/k6
+              - metricstransform/k6_prefix
+              - batch
+            exporters:
+              - otlphttp/victoriametrics
+          traces:
+            exporters:
+              - otlp/tempo
+            processors:
+              - batch
+            receivers:
+              - otlp
+    image:
+      repository: otel/opentelemetry-collector-contrib
+    mode: deployment
+    ports:
+      otlp:
+        enabled: true
+      otlp-http:
+        enabled: true
   ledger-monitoring:tempo:
-    file: values/acme/tempo.yaml
+    persistence:
+      enabled: true
+      size: 10Gi
+    service:
+      type: ClusterIP
+    tempo:
+      storage:
+        trace:
+          backend: local
+          local:
+            path: /var/tempo/traces
+    traces:
+      otlp:
+        grpc:
+          enabled: true
+        http:
+          enabled: false
   ledger-monitoring:victoriametrics:
-    file: values/acme/victoriametrics.yaml
+    promscrape:
+      enabled: true
+    server:
+      persistentVolume:
+        enabled: true
+        size: 10Gi
+      resources:
+        limits:
+          cpu: 2000m
+          memory: 2048Mi
+        requests:
+          cpu: 2000m
+          memory: 2048Mi
+    service:
+      type: ClusterIP
   ledger-monitoring:pyroscope:
-    file: values/acme/pyroscope.yaml
+    pyroscope:
+      enabled: true
+      extraArgs:
+        log.level: info
+        compactor.blocks-retention-period: "720h"
+      resources:
+        limits:
+          cpu: 1000m
+          memory: 1024Mi
+        requests:
+          cpu: 1000m
+          memory: 1024Mi
+      persistence:
+        enabled: true
+        size: 50Gi
+    agent:
+      enabled: false
+    minio:
+      enabled: false
+    deploymentMode: monolithic
   ledger-monitoring:grafana-dnsEndpoint:
     annotations:
       service.beta.kubernetes.io/aws-load-balancer-internal: "true"

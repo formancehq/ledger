@@ -1,18 +1,13 @@
 API:
-* Checkpoint + exposed api to read at PIT
 * Clean HTTP layer / GRPC proxy
 
 Business:
 * Checkpoint when promoting ledger to be able to shutdown the mirrored ledger properly
 * Databricks sinks
 * Json filters as v2
-* Generate cluster id
 * Read only followers (learners ?)
 * 1password integration
 * Ledger v2 passthrough
-* Backup export s3
-* CRON job to trigger backups
-* Operator create buckets
 
 Docs:
 * Clean relying parties distinctions
