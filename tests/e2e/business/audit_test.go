@@ -103,8 +103,51 @@ var _ = Describe("Audit Log", Ordered, func() {
 		Expect(last.GetFailure().Message).NotTo(BeEmpty())
 	})
 
-	// TODO: "Should filter audit entries by ledger name" — requires adding a Ledger
-	// field to ListAuditEntriesRequest in the proto definition.
+	It("Should filter audit entries by ledger name", func() {
+		otherLedger := "audit-other-ledger"
+
+		// Create a second ledger
+		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+			Requests: []*servicepb.Request{actions.CreateLedgerAction(otherLedger, nil)},
+		})
+		Expect(err).To(Succeed())
+
+		// Create a transaction on the second ledger
+		_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+			Requests: []*servicepb.Request{
+				actions.CreateTransactionAction(otherLedger, []*commonpb.Posting{
+					actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
+				}, nil, nil),
+			},
+		})
+		Expect(err).To(Succeed())
+
+		// Filter by the original ledger — should not include the second ledger's entries
+		filtered, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
+			Ledger: ledgerName,
+		})
+		Expect(err).To(Succeed())
+
+		for _, entry := range filtered {
+			hasTargetLedger := false
+			for _, order := range entry.GetOrders() {
+				if apply := order.GetApply(); apply != nil && apply.GetLedger() == ledgerName {
+					hasTargetLedger = true
+				}
+				if cl := order.GetCreateLedger(); cl != nil && cl.GetName() == ledgerName {
+					hasTargetLedger = true
+				}
+			}
+			Expect(hasTargetLedger).To(BeTrue(), "filtered entry should target ledger %q", ledgerName)
+		}
+
+		// Filter by the other ledger — should include at least 2 entries (create + transaction)
+		otherFiltered, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
+			Ledger: otherLedger,
+		})
+		Expect(err).To(Succeed())
+		Expect(len(otherFiltered)).To(BeNumerically(">=", 2))
+	})
 
 	It("Should filter audit entries by failures only", func() {
 		// Create a successful transaction

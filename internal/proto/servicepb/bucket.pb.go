@@ -5362,8 +5362,10 @@ type ListAuditEntriesRequest struct {
 	// min_log_sequence requires the store to have applied at least this log sequence before reading.
 	// If the store has not caught up, the server returns FailedPrecondition.
 	MinLogSequence uint64 `protobuf:"varint,4,opt,name=min_log_sequence,json=minLogSequence,proto3" json:"min_log_sequence,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// ledger filters audit entries to only those containing orders targeting this ledger.
+	Ledger        string `protobuf:"bytes,5,opt,name=ledger,proto3" json:"ledger,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ListAuditEntriesRequest) Reset() {
@@ -5422,6 +5424,13 @@ func (x *ListAuditEntriesRequest) GetMinLogSequence() uint64 {
 		return x.MinLogSequence
 	}
 	return 0
+}
+
+func (x *ListAuditEntriesRequest) GetLedger() string {
+	if x != nil {
+		return x.Ledger
+	}
+	return ""
 }
 
 type GetAuditEntryRequest struct {
@@ -8336,12 +8345,13 @@ const file_bucket_proto_rawDesc = "" +
 	"\x12CheckStoreProgress\x12!\n" +
 	"\flogs_checked\x18\x01 \x01(\x04R\vlogsChecked\x12\x1d\n" +
 	"\n" +
-	"total_logs\x18\x02 \x01(\x04R\ttotalLogs\"\xc4\x01\n" +
+	"total_logs\x18\x02 \x01(\x04R\ttotalLogs\"\xdc\x01\n" +
 	"\x17ListAuditEntriesRequest\x12*\n" +
 	"\x0eafter_sequence\x18\x01 \x01(\x04H\x00R\rafterSequence\x88\x01\x01\x12#\n" +
 	"\rfailures_only\x18\x02 \x01(\bR\ffailuresOnly\x12\x1b\n" +
 	"\tpage_size\x18\x03 \x01(\rR\bpageSize\x12(\n" +
-	"\x10min_log_sequence\x18\x04 \x01(\x04R\x0eminLogSequenceB\x11\n" +
+	"\x10min_log_sequence\x18\x04 \x01(\x04R\x0eminLogSequence\x12\x16\n" +
+	"\x06ledger\x18\x05 \x01(\tR\x06ledgerB\x11\n" +
 	"\x0f_after_sequence\"2\n" +
 	"\x14GetAuditEntryRequest\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x04R\bsequence\"\xe9\x01\n" +

@@ -922,7 +922,7 @@ func stripLedgerFilter(f *commonpb.QueryFilter) *commonpb.QueryFilter {
 }
 
 // ListAuditEntries returns a cursor over audit entries, applying optional filters.
-func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32) (dal.Cursor[*auditpb.AuditEntry], error) {
+func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32, ledger string) (dal.Cursor[*auditpb.AuditEntry], error) {
 	handle := ctrl.store.NewReadHandle()
 
 	cursor, err := query.ReadAuditEntries(ctx, handle, afterSequence)
@@ -933,6 +933,12 @@ func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, afterSequen
 	}
 
 	var result = dal.NewClosingCursor(cursor, handle)
+
+	if ledger != "" {
+		result = dal.NewFilteredCursor(result, func(entry *auditpb.AuditEntry) bool {
+			return auditEntryTargetsLedger(entry, ledger)
+		})
+	}
 
 	if failuresOnly {
 		result = dal.NewFilteredCursor(result, func(entry *auditpb.AuditEntry) bool {
@@ -945,6 +951,26 @@ func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, afterSequen
 	}
 
 	return result, nil
+}
+
+// auditEntryTargetsLedger returns true if any order in the audit entry targets the given ledger.
+func auditEntryTargetsLedger(entry *auditpb.AuditEntry, ledger string) bool {
+	for _, order := range entry.GetOrders() {
+		switch {
+		case order.GetApply() != nil && order.GetApply().GetLedger() == ledger:
+			return true
+		case order.GetCreateLedger() != nil && order.GetCreateLedger().GetName() == ledger:
+			return true
+		case order.GetDeleteLedger() != nil && order.GetDeleteLedger().GetName() == ledger:
+			return true
+		case order.GetMirrorIngest() != nil && order.GetMirrorIngest().GetLedger() == ledger:
+			return true
+		case order.GetPromoteLedger() != nil && order.GetPromoteLedger().GetLedger() == ledger:
+			return true
+		}
+	}
+
+	return false
 }
 
 // GetLog returns a single system log by sequence number.

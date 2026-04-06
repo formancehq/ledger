@@ -355,7 +355,7 @@ func TestBufferedMultipleClosingPeriodsAfterMerge(t *testing.T) {
 
 	// After Merge, the machine should have both closing periods
 	batch := machine.dataStore.NewBatch()
-	err := buf.Merge(1, batch)
+	err := buf.Merge(1, batch, nil)
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 

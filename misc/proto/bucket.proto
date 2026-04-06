@@ -673,6 +673,8 @@ message ListAuditEntriesRequest {
   // min_log_sequence requires the store to have applied at least this log sequence before reading.
   // If the store has not caught up, the server returns FailedPrecondition.
   uint64 min_log_sequence = 4;
+  // ledger filters audit entries to only those containing orders targeting this ledger.
+  string ledger = 5;
 }
 
 message GetAuditEntryRequest {

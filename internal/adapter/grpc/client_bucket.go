@@ -137,11 +137,12 @@ func (g *BucketGrpcClient) GetLedgerByName(ctx context.Context, name string) (*c
 	})
 }
 
-func (g *BucketGrpcClient) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32) (dal.Cursor[*auditpb.AuditEntry], error) {
+func (g *BucketGrpcClient) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32, ledger string) (dal.Cursor[*auditpb.AuditEntry], error) {
 	req := &servicepb.ListAuditEntriesRequest{
 		AfterSequence: afterSequence,
 		FailuresOnly:  failuresOnly,
 		PageSize:      pageSize,
+		Ledger:        ledger,
 	}
 
 	stream, err := g.client.ListAuditEntries(ctx, req)
