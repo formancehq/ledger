@@ -3,7 +3,6 @@ API:
 
 Business:
 * Checkpoint when promoting ledger to be able to shutdown the mirrored ledger properly
-* Databricks sinks
 * Json filters as v2
 * Read only followers (learners ?)
 * 1password integration
@@ -18,29 +17,14 @@ Tests:
 * Convert K6 tests to GRPC
 * Read heavy with K6
 * Check schema eviction with time
-* Auto port discovery
-* Fetch all the production
 
 Refactor:
-* Check all commands match a log type payload
-* Clean protobuf
-* Prevent concurrent tests
 * store checks memory usage
 * estimate cache size
-* delete attributes on ledger deletion
-* Push grafana dashboard (use variable for datasources)
 
 Later:
-* Simple archival instead of delete (can be restored)
-* Store
-** UUID detection
 * Events
 ** Sync S3 + parquet
-* API
-** Explore Checkpoint + exposed api to read at PIT
-* Flow control
-* Ledgerctl
-** First usage detection and display
 * Filtering
 ** Account types instead of segment filtering
 * Numscript
