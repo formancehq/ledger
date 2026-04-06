@@ -504,7 +504,12 @@ func (w *Worker) reportError(message string) {
 
 	proposal := node.NewProposal(0, buf[:n])
 
+	// Lock the tracker to serialize the Increment with guarded proposals,
+	// preventing preload boundary mismatches in the FSM.
+	w.preloader.LockTracker()
 	_, err := w.proposer.Propose(proposal)
+	w.preloader.UnlockTracker()
+
 	if err != nil {
 		w.logger.WithFields(map[string]any{"error": err.Error()}).Errorf("Failed to report mirror error")
 

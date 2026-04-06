@@ -266,9 +266,11 @@ func Module() fx.Option {
 					snapshotFetcherProvider,
 				)
 			},
-			// Provide events.Proposer from the Raft node (used by event emitter to replicate cursor)
+			// Provide events.Proposer from the Raft node (used by event emitter to replicate cursor).
+			// Uses LockedProposer to serialize the tracker Increment with guarded proposals,
+			// preventing preload boundary mismatches in the FSM.
 			func(n *node.Node) events.Proposer {
-				return n
+				return node.NewLockedProposer(n)
 			},
 			func(cfg node.NodeConfig, meterProvider metric.MeterProvider) (*cache.Cache, error) {
 				return cache.New(cfg.RotationThreshold, meterProvider.Meter("cache"))

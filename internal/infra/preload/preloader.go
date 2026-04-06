@@ -104,6 +104,15 @@ func (p *Preloader) Loaders() *Loaders {
 	return p.loaders
 }
 
+// LockTracker acquires the IndexTracker's mutex. Used by non-guard callers
+// (mirror error reporting, admission barrier) that Propose without going
+// through AcquireProposalGuard, to serialize the tracker Increment with
+// guarded proposals.
+func (p *Preloader) LockTracker() { p.tracker.Lock() }
+
+// UnlockTracker releases the IndexTracker's mutex.
+func (p *Preloader) UnlockTracker() { p.tracker.Unlock() }
+
 // BuildPreloads resolves all preload needs optimistically without holding the
 // proposal lock. The returned PreloadBuild contains the PreloadSet for
 // marshalling and internal state for boundary validation.

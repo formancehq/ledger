@@ -32,7 +32,12 @@ func (p *NodeProposer) ProposeOrders(orders ...*raftcmdpb.Order) error {
 
 	proposal := node.NewProposal(cmd.GetId(), data)
 
+	// Lock the tracker to serialize the Increment with guarded proposals,
+	// preventing preload boundary mismatches in the FSM.
+	p.node.IndexTracker().Lock()
 	_, err = p.node.Propose(proposal)
+	p.node.IndexTracker().Unlock()
+
 	if err != nil {
 		return fmt.Errorf("proposing to raft: %w", err)
 	}

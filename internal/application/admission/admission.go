@@ -482,7 +482,13 @@ func (a *Admission) Barrier(ctx context.Context) error {
 	}
 
 	proposal := node.NewProposal(cmd.GetId(), proposalData)
+
+	// Lock the tracker to serialize the Increment with guarded proposals,
+	// preventing preload boundary mismatches in the FSM.
+	a.preloader.LockTracker()
 	fsmFuture, err := a.proposer.Propose(proposal)
+	a.preloader.UnlockTracker()
+
 	if err != nil {
 		return err
 	}
