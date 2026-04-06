@@ -72,17 +72,31 @@ func Scenarios() []string {
 // RunLoop picks random blocks and runs them in a loop.
 // It calls Setup once per group, then loops forever picking random blocks.
 func RunLoop(ctx context.Context, client servicepb.BucketServiceClient, groups []*scenario.BlockGroup) {
-	// Collect all blocks and run setups.
+	// Collect all blocks and run setups. Retry on Unavailable since the
+	// cluster may not have elected a leader yet at startup.
 	var allBlocks []*scenario.Block
 	for _, g := range groups {
 		if g.Setup != nil {
 			actions := g.Setup()
 			if len(actions) > 0 {
-				_, err := client.Apply(ctx, &servicepb.ApplyRequest{Requests: actions})
-				details := internal.Details{"error": err}
-				assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to setup scenario", details)
-				if err != nil && !isAlreadyExists(err) {
+				for {
+					if ctx.Err() != nil {
+						return
+					}
+
+					_, err := client.Apply(ctx, &servicepb.ApplyRequest{Requests: actions})
+					if err == nil || isAlreadyExists(err) {
+						break
+					}
+					if internal.IsUnavailable(err) {
+						log.Printf("scenario_blocks: setup unavailable, retrying: %v", err)
+						continue
+					}
+
+					assert.Sometimes(false, "should be able to setup scenario", internal.Details{"error": err})
 					log.Printf("scenario_blocks: setup failed: %v", err)
+
+					break
 				}
 			}
 		}
