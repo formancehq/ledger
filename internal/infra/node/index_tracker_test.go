@@ -46,4 +46,13 @@ func TestIndexTracker(t *testing.T) {
 		tracker.Decrement(1)
 		require.Equal(t, uint64(101), tracker.Next())
 	})
+
+	t.Run("RollbackIncrement reverses Increment without mutex", func(t *testing.T) {
+		t.Parallel()
+		tracker := NewIndexTracker(100)
+		tracker.Increment(1)
+		require.Equal(t, uint64(101), tracker.Next())
+		tracker.RollbackIncrement(1)
+		require.Equal(t, uint64(100), tracker.Next())
+	})
 }

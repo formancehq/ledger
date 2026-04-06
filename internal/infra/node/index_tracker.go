@@ -55,6 +55,14 @@ func (t *IndexTracker) Increment(n uint64) {
 	t.nextIndex.Add(n)
 }
 
+// RollbackIncrement reverses a previous Increment without acquiring the mutex.
+// Used by Propose when the proposeCh send fails (ErrProposalQueueFull) after
+// a pre-increment. The caller already holds the tracker's mutex (via the
+// proposal guard), so acquiring it again would deadlock.
+func (t *IndexTracker) RollbackIncrement(n uint64) {
+	t.nextIndex.Add(^(n - 1)) // atomic subtract via two's complement
+}
+
 // Decrement rolls back the tracker by n indices. Used when a proposal is
 // dropped by Raft (e.g. leadership lost) to compensate for the optimistic
 // Increment in Propose.

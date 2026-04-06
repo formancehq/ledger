@@ -1273,6 +1273,13 @@ func (node *Node) TransferLeader(ctx context.Context, transferee uint64) error {
 }
 
 // Propose implements the Proposer interface.
+//
+// Increment is performed BEFORE the channel send to prevent a race with
+// finishReady's Advance: after the proposeCh rendezvous, the readyLoop can
+// commit the entry and call Advance(lastCommitted+1) before the caller's
+// goroutine resumes. If Increment ran after the send, both Advance and
+// Increment would advance the tracker for the same entry, causing a permanent
+// +1 inflation that shifts preload boundaries.
 func (node *Node) Propose(proposal *Proposal) (*futures.Future[state.ApplyResult], error) {
 	// Create a separate future for Machine results.
 	// The proposal's embedded Future is for Raft consensus (resolved by rawNode.Propose).
@@ -1280,12 +1287,17 @@ func (node *Node) Propose(proposal *Proposal) (*futures.Future[state.ApplyResult
 	fsmFuture := futures.New[state.ApplyResult]()
 	node.applier.StoreFuture(proposal.commandID, fsmFuture)
 
+	// Pre-increment before the channel send. All callers hold the tracker's
+	// mutex, so this is serialized with other proposals and with Decrement.
+	node.indexTracker.Increment(1)
+
 	select {
 	case node.proposeCh <- proposal:
-		node.indexTracker.Increment(1)
-
 		return fsmFuture, nil
 	default:
+		// Roll back the pre-increment. Use RollbackIncrement (no mutex)
+		// because the caller already holds the tracker lock.
+		node.indexTracker.RollbackIncrement(1)
 		node.applier.DeleteFuture(proposal.commandID)
 
 		return nil, ErrProposalQueueFull
