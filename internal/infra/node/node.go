@@ -1002,14 +1002,31 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 		f.Resolve(struct{}{}, nil)
 	}
 
-	// Advance the IndexTracker to at least lastCommitted+1 so that followers
-	// have an accurate next-index prediction. Without this, proposals from
-	// other leaders are not counted and a follower that becomes leader would
-	// compute wrong cache generation boundaries in the preloader.
+	// Update the IndexTracker to reflect the latest committed index.
+	//
+	// When the node is the leader, Advance (monotonically increasing) is
+	// sufficient because every local log entry was counted by Increment.
+	//
+	// When the node is NOT the leader, the tracker may be inflated: proposals
+	// that were accepted by rawNode.Propose while leader but never committed
+	// (log truncated after leadership loss) leave permanent upward drift.
+	// Advance cannot correct this because it only increases. Instead, use
+	// Correct to force-set the tracker to lastCommitted+1. This is safe
+	// because admission is only routed to the leader, so a non-leader's
+	// proposeCh is always empty.
 	if len(rd.CommittedEntries) > 0 {
 		lastCommitted := rd.CommittedEntries[len(rd.CommittedEntries)-1].Index
 		before := node.indexTracker.Next()
-		node.indexTracker.Advance(lastCommitted + 1)
+
+		ss := node.lastSoftState.Load()
+		isLeader := ss != nil && ss.RaftState == raft.StateLeader
+
+		if isLeader {
+			node.indexTracker.Advance(lastCommitted + 1)
+		} else {
+			node.indexTracker.Correct(lastCommitted + 1)
+		}
+
 		after := node.indexTracker.Next()
 		if before != after {
 			node.logger.WithFields(map[string]any{
@@ -1017,7 +1034,8 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 				"trackerBefore":  before,
 				"trackerAfter":   after,
 				"committedCount": len(rd.CommittedEntries),
-			}).Infof("IndexTracker advanced in finishReady")
+				"isLeader":       isLeader,
+			}).Infof("IndexTracker updated in finishReady")
 		}
 	}
 

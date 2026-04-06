@@ -69,7 +69,7 @@ func (t *IndexTracker) Decrement(n uint64) {
 	t.nextIndex.Add(^(n - 1)) // atomic subtract via two's complement
 }
 
-// Advance sets the tracker to at least minNext. Used by processReady to
+// Advance sets the tracker to at least minNext. Used by finishReady to
 // catch up with all committed entries (including proposals from other leaders)
 // so that followers have an accurate index prediction if they become leader.
 //
@@ -86,4 +86,22 @@ func (t *IndexTracker) Advance(minNext uint64) {
 			return
 		}
 	}
+}
+
+// Correct unconditionally sets the tracker to exactly nextIndex.
+// Used by finishReady when the node is not the leader to correct tracker
+// inflation from proposals that were accepted by rawNode.Propose but never
+// committed (truncated after leadership loss).
+//
+// Safe to call without accounting for buffered proposals: admission is only
+// routed to the leader, so a non-leader's proposeCh is always empty.
+//
+// Acquires mu to serialize with the preloader's proposal guard, preventing
+// a correction from shifting the tracker across a generation boundary while
+// an admission goroutine is between AcquireProposalGuard and Propose.
+func (t *IndexTracker) Correct(nextIndex uint64) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.nextIndex.Store(nextIndex)
 }
