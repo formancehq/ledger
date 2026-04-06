@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/bloom"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
@@ -69,21 +68,7 @@ func New(dir string, logger logging.Logger, cfg Config) (*Store, error) {
 		BytesPerSync:                cfg.BytesPerSync,
 		MaxConcurrentCompactions:    func() int { return cfg.MaxConcurrentCompactions },
 		Cache:                       cache,
-		Levels: func() []pebble.LevelOptions {
-			levels := make([]pebble.LevelOptions, 7)
-			for i := range levels {
-				levels[i] = pebble.LevelOptions{
-					TargetFileSize: cfg.TargetFileSize,
-					FilterPolicy:   bloom.FilterPolicy(10),
-					Compression:    pebble.SnappyCompression,
-				}
-			}
-			for i := 4; i < 7; i++ {
-				levels[i].Compression = pebble.ZstdCompression
-			}
-
-			return levels
-		}(),
+		Levels: cfg.BuildLevels(),
 	}
 
 	db, err := pebble.Open(dbPath, opts)

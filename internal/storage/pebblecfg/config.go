@@ -1,5 +1,10 @@
 package pebblecfg
 
+import (
+	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/bloom"
+)
+
 // Config contains the common Pebble tunables shared by both the primary
 // DAL store and the read index store.
 type Config struct {
@@ -29,4 +34,21 @@ type Config struct {
 
 	// MaxConcurrentCompactions is the maximum number of concurrent compaction operations.
 	MaxConcurrentCompactions int `yaml:"maxConcurrentCompactions"`
+
+	// Compression is the per-level compression configuration (L0–L6).
+	// Default: L0–L3 Snappy, L4–L6 Zstd.
+	Compression LevelCompression `yaml:"compression"`
+}
+
+// BuildLevels constructs the []pebble.LevelOptions from this configuration.
+func (cfg Config) BuildLevels() []pebble.LevelOptions {
+	levels := make([]pebble.LevelOptions, NumLevels)
+	for i := range levels {
+		levels[i] = pebble.LevelOptions{
+			TargetFileSize: cfg.TargetFileSize,
+			FilterPolicy:   bloom.FilterPolicy(10),
+			Compression:    cfg.Compression[i].ToPebble(),
+		}
+	}
+	return levels
 }

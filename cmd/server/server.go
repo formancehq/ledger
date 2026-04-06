@@ -713,6 +713,7 @@ func registerPebbleFlags(cmd *cobra.Command, prefix string, defaults pebblecfg.C
 	cmd.Flags().Int64(p+"target-file-size", 0, fmt.Sprintf("Pebble SST file target size in bytes (default: %dMB)", defaults.TargetFileSize>>20))
 	cmd.Flags().Int(p+"bytes-per-sync", 0, fmt.Sprintf("Pebble bytes written before sync (default: %dKB)", defaults.BytesPerSync>>10))
 	cmd.Flags().Int(p+"max-concurrent-compactions", 0, fmt.Sprintf("Pebble max concurrent compactions (default: %d)", defaults.MaxConcurrentCompactions))
+	cmd.Flags().String(p+"compression", "", fmt.Sprintf("Pebble per-level compression L0-L6, comma-separated (none|snappy|zstd|default) (default: %s)", defaults.Compression))
 }
 
 // loadBasePebbleConfig loads the common Pebble config from flags with the given prefix.
@@ -743,6 +744,15 @@ func loadBasePebbleConfig(cmd *cobra.Command, prefix string, defaults pebblecfg.
 		return def
 	}
 
+	compression := defaults.Compression
+	if s, _ := cmd.Flags().GetString(p + "compression"); s != "" {
+		parsed, err := pebblecfg.ParseLevelCompression(s)
+		if err != nil {
+			panic(fmt.Sprintf("invalid %scompression flag: %v", p, err))
+		}
+		compression = parsed
+	}
+
 	return pebblecfg.Config{
 		MemTableSize:                getUint64(p+"memtable-size", defaults.MemTableSize),
 		MemTableStopWritesThreshold: getInt(p+"memtable-stop-writes-threshold", defaults.MemTableStopWritesThreshold),
@@ -753,6 +763,7 @@ func loadBasePebbleConfig(cmd *cobra.Command, prefix string, defaults pebblecfg.
 		TargetFileSize:              getInt64(p+"target-file-size", defaults.TargetFileSize),
 		BytesPerSync:                getInt(p+"bytes-per-sync", defaults.BytesPerSync),
 		MaxConcurrentCompactions:    getInt(p+"max-concurrent-compactions", defaults.MaxConcurrentCompactions),
+		Compression:                 compression,
 	}
 }
 

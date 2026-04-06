@@ -20,5 +20,6 @@ func DefaultConfig() Config {
 		TargetFileSize:              64 << 20,  // 64MB
 		BytesPerSync:                512 << 10, // 512KB
 		MaxConcurrentCompactions:    1,
+		Compression:                 pebblecfg.DefaultLevelCompression(),
 	}
 }
