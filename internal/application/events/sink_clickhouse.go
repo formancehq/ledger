@@ -28,6 +28,52 @@ func init() {
 
 const defaultClickHouseTable = "ledger_events"
 
+// clickhouseTransactionColumns defines the typed sub-columns for a transaction
+// inside the JSON column. Reused for both `transaction` and `revertTransaction`.
+const clickhouseTransactionColumns = `JSON(
+            id UInt64,
+            postings Array(JSON(
+                source String,
+                destination String,
+                amount UInt256,
+                asset String
+            )),
+            metadata Map(String, String),
+            reference Nullable(String),
+            timestamp DateTime64(6, 'UTC'),
+            reverted Bool,
+            insertedAt DateTime64(6, 'UTC')
+        )`
+
+// ClickHouseCreateTableDDL returns the CREATE TABLE statement for the events table
+// with a fully-typed JSON column matching the ledger v2 reference implementation.
+func ClickHouseCreateTableDDL(table string) string {
+	return fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
+    log_sequence UInt64,
+    type         LowCardinality(String),
+    ledger       LowCardinality(String),
+    date         DateTime64(6, 'UTC'),
+    data         JSON(
+        transaction %s,
+        accountMetadata Map(String, String),
+        revertedTransactionId Nullable(UInt64),
+        revertTransaction %s,
+        targetType Nullable(String),
+        targetId Variant(UInt64, String),
+        metadata Map(String, String),
+        key Nullable(String),
+        ledgerName Nullable(String),
+        signingKeyId Nullable(String),
+        publicKey Nullable(String),
+        requireSignatures Nullable(Bool),
+        sinkName Nullable(String),
+        hash Nullable(String),
+        idempotencyKey Nullable(String)
+    )
+) ENGINE = MergeTree()
+ORDER BY (ledger, log_sequence)`, table, clickhouseTransactionColumns, clickhouseTransactionColumns)
+}
+
 // clickhouseRequiredSettings are connection-level settings required for the
 // structured JSON column, following the ledger v2 reference implementation.
 // Uses "allow_experimental_*" names for ClickHouse 24.x compatibility;
@@ -100,7 +146,7 @@ func (s *ClickHouseSink) Publish(ctx context.Context, events []*eventspb.Event) 
 	}
 
 	for _, event := range events {
-		data, err := eventToClickHouseJSON(event)
+		data, err := eventToSinkJSON(event)
 		if err != nil {
 			return fmt.Errorf("serializing event seq=%d: %w", event.GetLogSequence(), err)
 		}

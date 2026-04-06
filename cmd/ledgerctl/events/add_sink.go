@@ -50,6 +50,11 @@ Examples:
   # Add an HTTP webhook sink with HMAC signature
   ledgerctl events add-sink --name webhook --http-endpoint https://example.com/webhooks/ledger --http-secret my-secret
 
+  # Add a Databricks sink
+  ledgerctl events add-sink --name analytics --databricks-host adb-123456.azuredatabricks.net \
+    --databricks-http-path /sql/1.0/warehouses/abc123 --databricks-token dapi... \
+    --databricks-catalog main --databricks-schema default
+
   # Add a NATS sink that only receives transaction events
   ledgerctl events add-sink --name txn-only --nats-url nats://localhost:4222 --nats-topic txns \
     --event-types COMMITTED_TRANSACTION,REVERTED_TRANSACTION`,
@@ -70,6 +75,13 @@ Examples:
 	cmd.Flags().String("kafka-sasl-password", "", "Kafka SASL password")
 	cmd.Flags().String("http-endpoint", "", "HTTP webhook endpoint URL")
 	cmd.Flags().String("http-secret", "", "HMAC-SHA256 secret for X-Webhook-Signature header")
+	cmd.Flags().String("databricks-host", "", "Databricks server hostname (e.g. adb-123456.azuredatabricks.net)")
+	cmd.Flags().String("databricks-http-path", "", "Databricks SQL Warehouse HTTP path")
+	cmd.Flags().String("databricks-token", "", "Databricks access token")
+	cmd.Flags().String("databricks-catalog", "", "Databricks Unity Catalog name")
+	cmd.Flags().String("databricks-schema", "", "Databricks schema name")
+	cmd.Flags().String("databricks-table", "ledger_events", "Databricks table name")
+	cmd.Flags().Int32("databricks-port", 443, "Databricks port number")
 	cmd.Flags().String("format", "json", "Event serialization format (json or protobuf)")
 	cmd.Flags().Int32("batch-size", 0, "Max events per batch (default: 64)")
 	cmd.Flags().Int64("batch-delay-ms", 0, "Max delay before flush in ms (default: 10)")
@@ -99,12 +111,20 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 		kafkaPass, _       = cmd.Flags().GetString("kafka-sasl-password")
 		httpEndpoint, _    = cmd.Flags().GetString("http-endpoint")
 		httpSecret, _      = cmd.Flags().GetString("http-secret")
+		dbHost, _          = cmd.Flags().GetString("databricks-host")
+		dbHTTPPath, _      = cmd.Flags().GetString("databricks-http-path")
+		dbToken, _         = cmd.Flags().GetString("databricks-token")
+		dbCatalog, _       = cmd.Flags().GetString("databricks-catalog")
+		dbSchema, _        = cmd.Flags().GetString("databricks-schema")
+		dbTable, _         = cmd.Flags().GetString("databricks-table")
+		dbPort, _          = cmd.Flags().GetInt32("databricks-port")
 	)
 
 	hasNATS := natsURL != "" || natsTopic != ""
 	hasCH := chDSN != ""
 	hasKafka := kafkaBrokersStr != "" || kafkaTopic != ""
 	hasHTTP := httpEndpoint != ""
+	hasDatabricks := dbHost != ""
 
 	sinkCount := 0
 	if hasNATS {
@@ -123,12 +143,16 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 		sinkCount++
 	}
 
+	if hasDatabricks {
+		sinkCount++
+	}
+
 	if sinkCount > 1 {
-		return errors.New("cannot specify multiple sink types; choose one of: NATS (--nats-url), ClickHouse (--ch-dsn), Kafka (--kafka-brokers), or HTTP (--http-endpoint)")
+		return errors.New("cannot specify multiple sink types; choose one of: NATS (--nats-url), ClickHouse (--ch-dsn), Kafka (--kafka-brokers), HTTP (--http-endpoint), or Databricks (--databricks-host)")
 	}
 
 	if sinkCount == 0 {
-		return errors.New("must specify a sink type: NATS (--nats-url and --nats-topic), ClickHouse (--ch-dsn), Kafka (--kafka-brokers and --kafka-topic), or HTTP (--http-endpoint)")
+		return errors.New("must specify a sink type: NATS (--nats-url and --nats-topic), ClickHouse (--ch-dsn), Kafka (--kafka-brokers and --kafka-topic), HTTP (--http-endpoint), or Databricks (--databricks-host)")
 	}
 
 	var (
@@ -202,6 +226,23 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 			},
 		}
 		sinkType = "HTTP"
+	case hasDatabricks:
+		if dbHTTPPath == "" || dbToken == "" || dbCatalog == "" || dbSchema == "" {
+			return errors.New("--databricks-host, --databricks-http-path, --databricks-token, --databricks-catalog, and --databricks-schema are all required for Databricks sinks")
+		}
+
+		config.Type = &commonpb.SinkConfig_Databricks{
+			Databricks: &commonpb.DatabricksSinkConfig{
+				ServerHostname: dbHost,
+				HttpPath:       dbHTTPPath,
+				Token:          dbToken,
+				Catalog:        dbCatalog,
+				Schema:         dbSchema,
+				Table:          dbTable,
+				Port:           dbPort,
+			},
+		}
+		sinkType = "Databricks"
 	}
 
 	client, conn, err := cmdutil.GetClient(cmd)
@@ -266,6 +307,12 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 		if httpSecret != "" {
 			pterm.Printf("Secret:   (set)\n")
 		}
+	case hasDatabricks:
+		pterm.Printf("Host:    %s\n", dbHost)
+		pterm.Printf("Path:    %s\n", dbHTTPPath)
+		pterm.Printf("Catalog: %s\n", dbCatalog)
+		pterm.Printf("Schema:  %s\n", dbSchema)
+		pterm.Printf("Table:   %s\n", dbTable)
 	}
 
 	pterm.Printf("Format: %s\n", format)

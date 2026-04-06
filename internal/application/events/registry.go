@@ -8,8 +8,8 @@ import (
 type sinkFactory func(*commonpb.SinkConfig, Format) (Sink, error)
 
 // sinkFactories maps sink type names to their factory functions.
-// Optional sinks (Kafka, NATS, ClickHouse) register themselves via init()
-// when their build tag is active.
+// Optional sinks (Kafka, NATS, ClickHouse, Databricks) register themselves
+// via init() when their build tag is active.
 var sinkFactories = map[string]sinkFactory{}
 
 // registerSinkFactory registers a factory for the given sink type name.
@@ -27,6 +27,8 @@ func sinkTypeName(sc *commonpb.SinkConfig) string {
 		return "nats"
 	case *commonpb.SinkConfig_Clickhouse:
 		return "clickhouse"
+	case *commonpb.SinkConfig_Databricks:
+		return "databricks"
 	case *commonpb.SinkConfig_Http:
 		return "http"
 	default:

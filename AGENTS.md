@@ -86,6 +86,7 @@ The default build (`go build .`) produces a **light binary** (~60 MB) without he
 | `kafka` | Kafka event sink | `IBM/sarama` |
 | `nats` | NATS JetStream event sink | `nats-io/nats.go`, `nats-io/nats-server` |
 | `clickhouse` | ClickHouse event sink | `ClickHouse/clickhouse-go` |
+| `databricks` | Databricks event sink | `databricks/databricks-sql-go` |
 | `s3` | S3 cold storage | `aws-sdk-go-v2` |
 | `pyroscope` | Pyroscope continuous profiling | `grafana/pyroscope-go` |
 

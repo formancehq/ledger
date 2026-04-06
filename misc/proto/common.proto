@@ -454,6 +454,7 @@ message SinkConfig {
     ClickHouseSinkConfig clickhouse = 6;
     KafkaSinkConfig kafka = 7;
     HttpSinkConfig http = 8;
+    DatabricksSinkConfig databricks = 10;
   }
   string format = 3;          // "json" or "protobuf" (default: "json")
   int32 batch_size = 4;       // Max events per batch (default: 64)
@@ -500,6 +501,17 @@ message KafkaSinkConfig {
 message HttpSinkConfig {
   string endpoint = 1;          // Target URL (e.g. "https://example.com/webhooks/ledger")
   string secret = 2;            // Optional HMAC-SHA256 secret for X-Webhook-Signature header
+}
+
+// DatabricksSinkConfig holds Databricks SQL Warehouse sink configuration.
+message DatabricksSinkConfig {
+  string server_hostname = 1;   // e.g. "adb-123456.azuredatabricks.net"
+  string http_path = 2;         // SQL Warehouse HTTP path (e.g. "/sql/1.0/warehouses/abc123")
+  string token = 3;             // Personal Access Token or OAuth token
+  string catalog = 4;           // Unity Catalog name (e.g. "main")
+  string schema = 5;            // Schema name (e.g. "default")
+  string table = 6;             // Table name (default: "ledger_events")
+  int32 port = 7;               // Port number (default: 443)
 }
 
 message CreateLedgerLog {

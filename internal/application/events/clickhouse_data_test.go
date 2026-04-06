@@ -23,11 +23,11 @@ func TestEventToClickHouseJSON_NilLog(t *testing.T) {
 		Log:         nil,
 	}
 
-	data, err := eventToClickHouseJSON(event)
+	data, err := eventToSinkJSON(event)
 	require.NoError(t, err)
 	require.NotEmpty(t, data)
 
-	var result clickhouseEventData
+	var result sinkEventData
 	require.NoError(t, json.Unmarshal(data, &result))
 	require.Nil(t, result.Hash)
 	require.Nil(t, result.IdempotencyKey)
@@ -49,10 +49,10 @@ func TestEventToClickHouseJSON_NilPayload(t *testing.T) {
 		},
 	}
 
-	data, err := eventToClickHouseJSON(event)
+	data, err := eventToSinkJSON(event)
 	require.NoError(t, err)
 
-	var result clickhouseEventData
+	var result sinkEventData
 	require.NoError(t, json.Unmarshal(data, &result))
 	require.NotNil(t, result.Hash)
 	require.Equal(t, hex.EncodeToString([]byte{0xde, 0xad, 0xbe, 0xef}), *result.Hash)
@@ -81,10 +81,10 @@ func TestEventToClickHouseJSON_CreateLedger(t *testing.T) {
 		},
 	}
 
-	data, err := eventToClickHouseJSON(event)
+	data, err := eventToSinkJSON(event)
 	require.NoError(t, err)
 
-	var result clickhouseEventData
+	var result sinkEventData
 	require.NoError(t, json.Unmarshal(data, &result))
 	require.NotNil(t, result.LedgerName)
 	require.Equal(t, "orders", *result.LedgerName)
@@ -111,10 +111,10 @@ func TestEventToClickHouseJSON_DeleteLedger(t *testing.T) {
 		},
 	}
 
-	data, err := eventToClickHouseJSON(event)
+	data, err := eventToSinkJSON(event)
 	require.NoError(t, err)
 
-	var result clickhouseEventData
+	var result sinkEventData
 	require.NoError(t, json.Unmarshal(data, &result))
 	require.NotNil(t, result.LedgerName)
 	require.Equal(t, "old-ledger", *result.LedgerName)
@@ -175,10 +175,10 @@ func TestEventToClickHouseJSON_CommittedTransaction(t *testing.T) {
 		},
 	}
 
-	data, err := eventToClickHouseJSON(event)
+	data, err := eventToSinkJSON(event)
 	require.NoError(t, err)
 
-	// Use map[string]any because clickhouseTime has no UnmarshalJSON
+	// Use map[string]any because sinkTime has no UnmarshalJSON
 	var result map[string]any
 	require.NoError(t, json.Unmarshal(data, &result))
 	require.NotNil(t, result["transaction"])
@@ -243,10 +243,9 @@ func TestEventToClickHouseJSON_RevertedTransaction(t *testing.T) {
 		},
 	}
 
-	data, err := eventToClickHouseJSON(event)
+	data, err := eventToSinkJSON(event)
 	require.NoError(t, err)
 
-	// Use map[string]any because clickhouseTime has no UnmarshalJSON
 	var result map[string]any
 	require.NoError(t, json.Unmarshal(data, &result))
 	require.Equal(t, float64(1), result["revertedTransactionId"])
@@ -294,10 +293,10 @@ func TestEventToClickHouseJSON_SavedMetadata_Account(t *testing.T) {
 		},
 	}
 
-	data, err := eventToClickHouseJSON(event)
+	data, err := eventToSinkJSON(event)
 	require.NoError(t, err)
 
-	var result clickhouseEventData
+	var result sinkEventData
 	require.NoError(t, json.Unmarshal(data, &result))
 	require.NotNil(t, result.TargetType)
 	require.Equal(t, "account", *result.TargetType)
@@ -341,10 +340,10 @@ func TestEventToClickHouseJSON_DeletedMetadata_Transaction(t *testing.T) {
 		},
 	}
 
-	data, err := eventToClickHouseJSON(event)
+	data, err := eventToSinkJSON(event)
 	require.NoError(t, err)
 
-	var result clickhouseEventData
+	var result sinkEventData
 	require.NoError(t, json.Unmarshal(data, &result))
 	require.NotNil(t, result.TargetType)
 	require.Equal(t, "transaction", *result.TargetType)
@@ -371,10 +370,10 @@ func TestEventToClickHouseJSON_RegisterSigningKey(t *testing.T) {
 		},
 	}
 
-	data, err := eventToClickHouseJSON(event)
+	data, err := eventToSinkJSON(event)
 	require.NoError(t, err)
 
-	var result clickhouseEventData
+	var result sinkEventData
 	require.NoError(t, json.Unmarshal(data, &result))
 	require.NotNil(t, result.SigningKeyID)
 	require.Equal(t, "key-001", *result.SigningKeyID)
@@ -400,10 +399,10 @@ func TestEventToClickHouseJSON_RevokeSigningKey(t *testing.T) {
 		},
 	}
 
-	data, err := eventToClickHouseJSON(event)
+	data, err := eventToSinkJSON(event)
 	require.NoError(t, err)
 
-	var result clickhouseEventData
+	var result sinkEventData
 	require.NoError(t, json.Unmarshal(data, &result))
 	require.NotNil(t, result.SigningKeyID)
 	require.Equal(t, "key-001", *result.SigningKeyID)
@@ -427,10 +426,10 @@ func TestEventToClickHouseJSON_SetSigningConfig(t *testing.T) {
 		},
 	}
 
-	data, err := eventToClickHouseJSON(event)
+	data, err := eventToSinkJSON(event)
 	require.NoError(t, err)
 
-	var result clickhouseEventData
+	var result sinkEventData
 	require.NoError(t, json.Unmarshal(data, &result))
 	require.NotNil(t, result.RequireSignatures)
 	require.True(t, *result.RequireSignatures)
@@ -456,10 +455,10 @@ func TestEventToClickHouseJSON_AddedEventsSink(t *testing.T) {
 		},
 	}
 
-	data, err := eventToClickHouseJSON(event)
+	data, err := eventToSinkJSON(event)
 	require.NoError(t, err)
 
-	var result clickhouseEventData
+	var result sinkEventData
 	require.NoError(t, json.Unmarshal(data, &result))
 	require.NotNil(t, result.SinkName)
 	require.Equal(t, "my-sink", *result.SinkName)
@@ -483,42 +482,42 @@ func TestEventToClickHouseJSON_RemovedEventsSink(t *testing.T) {
 		},
 	}
 
-	data, err := eventToClickHouseJSON(event)
+	data, err := eventToSinkJSON(event)
 	require.NoError(t, err)
 
-	var result clickhouseEventData
+	var result sinkEventData
 	require.NoError(t, json.Unmarshal(data, &result))
 	require.NotNil(t, result.SinkName)
 	require.Equal(t, "my-sink", *result.SinkName)
 }
 
-func TestPopulateApply_NilApply(t *testing.T) {
+func TestSinkPopulateApply_NilApply(t *testing.T) {
 	t.Parallel()
 
-	data := &clickhouseEventData{}
-	populateApply(data, nil)
+	data := &sinkEventData{}
+	sinkPopulateApply(data, nil)
 	require.Nil(t, data.Transaction)
 }
 
-func TestPopulateApply_NilLog(t *testing.T) {
+func TestSinkPopulateApply_NilLog(t *testing.T) {
 	t.Parallel()
 
-	data := &clickhouseEventData{}
-	populateApply(data, &commonpb.ApplyLedgerLog{Log: nil})
+	data := &sinkEventData{}
+	sinkPopulateApply(data, &commonpb.ApplyLedgerLog{Log: nil})
 	require.Nil(t, data.Transaction)
 }
 
-func TestPopulateApply_NilData(t *testing.T) {
+func TestSinkPopulateApply_NilData(t *testing.T) {
 	t.Parallel()
 
-	data := &clickhouseEventData{}
-	populateApply(data, &commonpb.ApplyLedgerLog{
+	data := &sinkEventData{}
+	sinkPopulateApply(data, &commonpb.ApplyLedgerLog{
 		Log: &commonpb.LedgerLog{Data: nil},
 	})
 	require.Nil(t, data.Transaction)
 }
 
-func TestPopulateApply_SchemaOperations(t *testing.T) {
+func TestSinkPopulateApply_SchemaOperations(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -577,26 +576,25 @@ func TestPopulateApply_SchemaOperations(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			data := &clickhouseEventData{}
-			populateApply(data, &commonpb.ApplyLedgerLog{
+			data := &sinkEventData{}
+			sinkPopulateApply(data, &commonpb.ApplyLedgerLog{
 				Log: &commonpb.LedgerLog{Data: tc.payload},
 			})
-			// Schema operations produce no ClickHouse-specific data
 			require.Nil(t, data.Transaction)
 			require.Nil(t, data.TargetType)
 		})
 	}
 }
 
-func TestConvertTarget_Nil(t *testing.T) {
+func TestSinkConvertTarget_Nil(t *testing.T) {
 	t.Parallel()
 
-	tt, id := convertTarget(nil)
+	tt, id := sinkConvertTarget(nil)
 	require.Nil(t, tt)
 	require.Nil(t, id)
 }
 
-func TestConvertTarget_Account(t *testing.T) {
+func TestSinkConvertTarget_Account(t *testing.T) {
 	t.Parallel()
 
 	target := &commonpb.Target{
@@ -605,13 +603,13 @@ func TestConvertTarget_Account(t *testing.T) {
 		},
 	}
 
-	tt, id := convertTarget(target)
+	tt, id := sinkConvertTarget(target)
 	require.NotNil(t, tt)
 	require.Equal(t, "account", *tt)
 	require.Equal(t, "user:123", id)
 }
 
-func TestConvertTarget_Transaction(t *testing.T) {
+func TestSinkConvertTarget_Transaction(t *testing.T) {
 	t.Parallel()
 
 	target := &commonpb.Target{
@@ -620,27 +618,27 @@ func TestConvertTarget_Transaction(t *testing.T) {
 		},
 	}
 
-	tt, id := convertTarget(target)
+	tt, id := sinkConvertTarget(target)
 	require.NotNil(t, tt)
 	require.Equal(t, "transaction", *tt)
 	require.Equal(t, uint64(42), id)
 }
 
-func TestConvertMetadataSet_Nil(t *testing.T) {
+func TestSinkConvertMetadataSet_Nil(t *testing.T) {
 	t.Parallel()
 
-	result := convertMetadataSet(nil)
+	result := sinkConvertMetadataSet(nil)
 	require.Nil(t, result)
 }
 
-func TestConvertMetadataSet_Empty(t *testing.T) {
+func TestSinkConvertMetadataSet_Empty(t *testing.T) {
 	t.Parallel()
 
-	result := convertMetadataSet(&commonpb.MetadataSet{})
+	result := sinkConvertMetadataSet(&commonpb.MetadataSet{})
 	require.Nil(t, result)
 }
 
-func TestConvertMetadataSet_WithValues(t *testing.T) {
+func TestSinkConvertMetadataSet_WithValues(t *testing.T) {
 	t.Parallel()
 
 	ms := &commonpb.MetadataSet{
@@ -650,7 +648,7 @@ func TestConvertMetadataSet_WithValues(t *testing.T) {
 		},
 	}
 
-	result := convertMetadataSet(ms)
+	result := sinkConvertMetadataSet(ms)
 	require.NotNil(t, result)
 	require.Equal(t, "active", result["status"])
 	// nil values are skipped
@@ -658,14 +656,14 @@ func TestConvertMetadataSet_WithValues(t *testing.T) {
 	require.False(t, hasEmpty)
 }
 
-func TestConvertAccountMetadataMap_Nil(t *testing.T) {
+func TestSinkConvertAccountMetadataMap_Nil(t *testing.T) {
 	t.Parallel()
 
-	result := convertAccountMetadataMap(nil)
+	result := sinkConvertAccountMetadataMap(nil)
 	require.Nil(t, result)
 }
 
-func TestConvertAccountMetadataMap_WithValues(t *testing.T) {
+func TestSinkConvertAccountMetadataMap_WithValues(t *testing.T) {
 	t.Parallel()
 
 	am := map[string]*commonpb.MetadataSet{
@@ -676,15 +674,15 @@ func TestConvertAccountMetadataMap_WithValues(t *testing.T) {
 		},
 	}
 
-	result := convertAccountMetadataMap(am)
+	result := sinkConvertAccountMetadataMap(am)
 	require.NotNil(t, result)
 	require.Equal(t, "Alice", result["user:123"]["name"])
 }
 
-func TestConvertTransaction_Nil(t *testing.T) {
+func TestSinkConvertTransaction_Nil(t *testing.T) {
 	t.Parallel()
 
-	result := convertTransaction(nil)
+	result := sinkConvertTransaction(nil)
 	require.Nil(t, result)
 }
 
@@ -697,25 +695,25 @@ func TestClickHouseCreateTableDDL(t *testing.T) {
 	require.Contains(t, ddl, "MergeTree()")
 }
 
-func TestClickhouseTime_MarshalJSON(t *testing.T) {
+func TestSinkTime_MarshalJSON(t *testing.T) {
 	t.Parallel()
 
 	// 2023-11-14 22:13:20 UTC (timestamp 1700000000)
 	ts := &commonpb.Timestamp{Data: 1700000000}
 	goTime := ts.AsTime().Time
-	ct := clickhouseTime(goTime)
+	ct := sinkTime(goTime)
 
 	data, err := ct.MarshalJSON()
 	require.NoError(t, err)
 	require.NotEmpty(t, data)
-	// Should be quoted string in ClickHouse datetime format
+	// Should be quoted string in sink datetime format
 	require.Contains(t, string(data), "\"")
 }
 
-func TestPopulateLedgerInfo_Nil(t *testing.T) {
+func TestSinkPopulateLedgerInfo_Nil(t *testing.T) {
 	t.Parallel()
 
-	data := &clickhouseEventData{}
-	populateLedgerInfo(data, nil)
+	data := &sinkEventData{}
+	sinkPopulateLedgerInfo(data, nil)
 	require.Nil(t, data.LedgerName)
 }

@@ -16,7 +16,7 @@ tidy:
     go mod tidy
 
 # All optional feature build tags
-all_tags := "kafka,nats,clickhouse,s3,pyroscope"
+all_tags := "kafka,nats,clickhouse,databricks,s3,pyroscope"
 
 # Build the server application (light: no optional deps)
 build:
