@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/v2"
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/protobuf/proto"
 
@@ -209,14 +209,19 @@ func NewStore(
 		Cache:                 pebble.NewCache(cfg.CacheSize),
 
 		// 3) Table sizes and compression (per-level, configurable).
-		Levels: cfg.BuildLevels(),
+		TargetFileSizes: cfg.BuildTargetFileSizes(),
+		Levels:          cfg.BuildLevels(),
 
 		// 4) Smooth IO during flush/compactions.
 		BytesPerSync:    cfg.BytesPerSync,
 		WALBytesPerSync: cfg.WALBytesPerSync,
 
 		// 5) Compaction concurrency: OK but not too high (otherwise you saturate IO).
-		MaxConcurrentCompactions: func() int { return cfg.MaxConcurrentCompactions },
+		CompactionConcurrencyRange: func() (int, int) {
+			n := cfg.MaxConcurrentCompactions
+
+			return n, n
+		},
 
 		// 6) WAL configuration
 		WALMinSyncInterval: func() time.Duration { return cfg.WALMinSyncInterval },
@@ -320,10 +325,10 @@ func NewStore(
 		m := db.Metrics()
 		logger.WithFields(map[string]any{
 			"duration":          time.Since(openStart).String(),
-			"l0FileCount":       m.Levels[0].NumFiles,
-			"l0Size":            m.Levels[0].Size,
-			"l1FileCount":       m.Levels[1].NumFiles,
-			"l1Size":            m.Levels[1].Size,
+			"l0FileCount":       m.Levels[0].TablesCount,
+			"l0Size":            m.Levels[0].TablesSize,
+			"l1FileCount":       m.Levels[1].TablesCount,
+			"l1Size":            m.Levels[1].TablesSize,
 			"memTableCount":     m.MemTable.Count,
 			"memTableSize":      m.MemTable.Size,
 			"compactionCount":   m.Compact.Count,

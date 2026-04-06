@@ -3,7 +3,7 @@ package pebblecfg
 import (
 	"testing"
 
-	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/v2/sstable/block"
 	"github.com/stretchr/testify/require"
 )
 
@@ -18,6 +18,10 @@ func TestParseCompression(t *testing.T) {
 		{"snappy", SnappyCompression},
 		{"zstd", ZstdCompression},
 		{"default", DefaultCompression},
+		{"fastest", FastestCompression},
+		{"fast", FastCompression},
+		{"balanced", BalancedCompression},
+		{"good", GoodCompression},
 		{"SNAPPY", SnappyCompression},
 		{" Zstd ", ZstdCompression},
 	}
@@ -57,10 +61,14 @@ func TestLevelCompressionString(t *testing.T) {
 func TestCompressionToPebble(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, pebble.NoCompression, NoCompression.ToPebble())
-	require.Equal(t, pebble.SnappyCompression, SnappyCompression.ToPebble())
-	require.Equal(t, pebble.ZstdCompression, ZstdCompression.ToPebble())
-	require.Equal(t, pebble.DefaultCompression, DefaultCompression.ToPebble())
+	require.Equal(t, block.NoCompression, NoCompression.ToPebble())
+	require.Equal(t, block.SnappyCompression, SnappyCompression.ToPebble())
+	require.Equal(t, block.ZstdCompression, ZstdCompression.ToPebble())
+	require.Equal(t, block.DefaultCompression, DefaultCompression.ToPebble())
+	require.Equal(t, block.FastestCompression, FastestCompression.ToPebble())
+	require.Equal(t, block.FastCompression, FastCompression.ToPebble())
+	require.Equal(t, block.BalancedCompression, BalancedCompression.ToPebble())
+	require.Equal(t, block.GoodCompression, GoodCompression.ToPebble())
 }
 
 func TestBuildLevels(t *testing.T) {
@@ -71,9 +79,8 @@ func TestBuildLevels(t *testing.T) {
 		Compression:    DefaultLevelCompression(),
 	}
 	levels := cfg.BuildLevels()
-	require.Len(t, levels, NumLevels)
-	require.Equal(t, pebble.SnappyCompression, levels[0].Compression)
-	require.Equal(t, pebble.SnappyCompression, levels[3].Compression)
-	require.Equal(t, pebble.ZstdCompression, levels[4].Compression)
-	require.Equal(t, pebble.ZstdCompression, levels[6].Compression)
+	require.Equal(t, block.SnappyCompression, levels[0].Compression())
+	require.Equal(t, block.SnappyCompression, levels[3].Compression())
+	require.Equal(t, block.ZstdCompression, levels[4].Compression())
+	require.Equal(t, block.ZstdCompression, levels[6].Compression())
 }

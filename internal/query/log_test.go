@@ -9,8 +9,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/cockroachdb/pebble/bloom"
-	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/v2/bloom"
+	"github.com/cockroachdb/pebble/v2/sstable"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 

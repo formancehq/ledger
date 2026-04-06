@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/v2"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
@@ -66,9 +66,14 @@ func New(dir string, logger logging.Logger, cfg Config) (*Store, error) {
 		L0StopWritesThreshold:       cfg.L0StopWritesThreshold,
 		LBaseMaxBytes:               cfg.LBaseMaxBytes,
 		BytesPerSync:                cfg.BytesPerSync,
-		MaxConcurrentCompactions:    func() int { return cfg.MaxConcurrentCompactions },
-		Cache:                       cache,
-		Levels: cfg.BuildLevels(),
+		CompactionConcurrencyRange: func() (int, int) {
+			n := cfg.MaxConcurrentCompactions
+
+			return n, n
+		},
+		Cache:           cache,
+		TargetFileSizes: cfg.BuildTargetFileSizes(),
+		Levels:          cfg.BuildLevels(),
 	}
 
 	db, err := pebble.Open(dbPath, opts)

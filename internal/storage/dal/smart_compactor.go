@@ -1,6 +1,7 @@
 package dal
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"sync"
@@ -155,7 +156,7 @@ func (c *SmartCompactor) compactSequenceRange(reason string, fromSeq, toSeq uint
 			startKey := sequenceKey(prefix, fromSeq)
 			endKey := sequenceKey(prefix, toSeq+1)
 
-			err := db.Compact(startKey, endKey, false)
+			err := db.Compact(context.Background(), startKey, endKey, false)
 			if err != nil {
 				c.logger.WithFields(map[string]any{
 					"reason":  reason,
@@ -206,7 +207,7 @@ func (c *SmartCompactor) Stop() {
 func (s *Store) CompactAll() error {
 	db := s.getDB()
 	for _, p := range allCompactPrefixes {
-		err := db.Compact([]byte{p.start}, []byte{p.end}, false)
+		err := db.Compact(context.Background(), []byte{p.start}, []byte{p.end}, false)
 		if err != nil {
 			return fmt.Errorf("compacting prefix %s: %w", p.name, err)
 		}
@@ -232,8 +233,8 @@ func (c *SmartCompactor) compactPrefixes(reason string, prefixes []compactPrefix
 	c.logger.WithFields(map[string]any{
 		"reason":      reason,
 		"prefixCount": len(prefixes),
-		"l0FileCount": m.Levels[0].NumFiles,
-		"l0Size":      m.Levels[0].Size,
+		"l0FileCount": m.Levels[0].TablesCount,
+		"l0Size":      m.Levels[0].TablesSize,
 	}).Infof("Starting prefix-by-prefix compaction")
 
 	c.compactWg.Go(func() {
@@ -256,7 +257,7 @@ func (c *SmartCompactor) compactPrefixes(reason string, prefixes []compactPrefix
 
 			prefixStart := time.Now()
 
-			err := db.Compact([]byte{p.start}, []byte{p.end}, false)
+			err := db.Compact(context.Background(), []byte{p.start}, []byte{p.end}, false)
 			if err != nil {
 				c.logger.WithFields(map[string]any{
 					"reason": reason,
@@ -278,8 +279,8 @@ func (c *SmartCompactor) compactPrefixes(reason string, prefixes []compactPrefix
 		c.logger.WithFields(map[string]any{
 			"reason":      reason,
 			"duration":    time.Since(overallStart).String(),
-			"l0FileCount": m2.Levels[0].NumFiles,
-			"l0Size":      m2.Levels[0].Size,
+			"l0FileCount": m2.Levels[0].TablesCount,
+			"l0Size":      m2.Levels[0].TablesSize,
 		}).Infof("All prefix compactions complete")
 	})
 }

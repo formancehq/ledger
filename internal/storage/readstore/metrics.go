@@ -51,7 +51,7 @@ func (s *Store) RegisterMetrics(m metric.Meter) (metric.Registration, error) {
 
 		// Per-level sizes.
 		for i, level := range metrics.Levels {
-			o.ObserveInt64(levelBytes, level.Size,
+			o.ObserveInt64(levelBytes, level.TablesSize,
 				metric.WithAttributes(attribute.Int("level", i)))
 		}
 

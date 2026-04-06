@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/zeebo/blake3"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"

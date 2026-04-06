@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 

@@ -3,7 +3,7 @@ package readstore
 import (
 	"fmt"
 
-	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/v2"
 )
 
 // ledgerScopedPrefixes lists all readstore prefix bytes that contain

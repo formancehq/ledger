@@ -1,8 +1,9 @@
 package pebblecfg
 
 import (
-	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/bloom"
+	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble/v2/bloom"
+	"github.com/cockroachdb/pebble/v2/sstable"
 )
 
 // Config contains the common Pebble tunables shared by both the primary
@@ -40,15 +41,28 @@ type Config struct {
 	Compression LevelCompression `yaml:"compression"`
 }
 
-// BuildLevels constructs the []pebble.LevelOptions from this configuration.
-func (cfg Config) BuildLevels() []pebble.LevelOptions {
-	levels := make([]pebble.LevelOptions, NumLevels)
+// BuildLevels constructs the [NumLevels]pebble.LevelOptions from this configuration.
+func (cfg Config) BuildLevels() [NumLevels]pebble.LevelOptions {
+	var levels [NumLevels]pebble.LevelOptions
 	for i := range levels {
+		profile := cfg.Compression[i].ToPebble()
 		levels[i] = pebble.LevelOptions{
-			TargetFileSize: cfg.TargetFileSize,
-			FilterPolicy:   bloom.FilterPolicy(10),
-			Compression:    cfg.Compression[i].ToPebble(),
+			FilterPolicy: bloom.FilterPolicy(10),
+			Compression: func() *sstable.CompressionProfile {
+				return profile
+			},
 		}
 	}
+
 	return levels
+}
+
+// BuildTargetFileSizes constructs the [NumLevels]int64 target file sizes.
+func (cfg Config) BuildTargetFileSizes() [NumLevels]int64 {
+	var sizes [NumLevels]int64
+	for i := range sizes {
+		sizes[i] = cfg.TargetFileSize
+	}
+
+	return sizes
 }

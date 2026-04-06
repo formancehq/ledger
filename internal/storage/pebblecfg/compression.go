@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/v2/sstable/block"
 )
 
-// Compression represents a Pebble block compression algorithm.
+// Compression represents a named Pebble block compression profile.
 type Compression int
 
 const (
@@ -15,13 +15,21 @@ const (
 	NoCompression
 	SnappyCompression
 	ZstdCompression
+	FastestCompression
+	FastCompression
+	BalancedCompression
+	GoodCompression
 )
 
 var compressionNames = map[Compression]string{
-	DefaultCompression: "default",
-	NoCompression:      "none",
-	SnappyCompression:  "snappy",
-	ZstdCompression:    "zstd",
+	DefaultCompression:  "default",
+	NoCompression:       "none",
+	SnappyCompression:   "snappy",
+	ZstdCompression:     "zstd",
+	FastestCompression:  "fastest",
+	FastCompression:     "fast",
+	BalancedCompression: "balanced",
+	GoodCompression:     "good",
 }
 
 var compressionValues = func() map[string]Compression {
@@ -29,6 +37,7 @@ var compressionValues = func() map[string]Compression {
 	for k, v := range compressionNames {
 		m[v] = k
 	}
+
 	return m
 }()
 
@@ -36,20 +45,29 @@ func (c Compression) String() string {
 	if name, ok := compressionNames[c]; ok {
 		return name
 	}
+
 	return fmt.Sprintf("unknown(%d)", int(c))
 }
 
-// ToPebble converts to the pebble.Compression type.
-func (c Compression) ToPebble() pebble.Compression {
+// ToPebble converts to a *block.CompressionProfile.
+func (c Compression) ToPebble() *block.CompressionProfile {
 	switch c {
 	case NoCompression:
-		return pebble.NoCompression
+		return block.NoCompression
 	case SnappyCompression:
-		return pebble.SnappyCompression
+		return block.SnappyCompression
 	case ZstdCompression:
-		return pebble.ZstdCompression
+		return block.ZstdCompression
+	case FastestCompression:
+		return block.FastestCompression
+	case FastCompression:
+		return block.FastCompression
+	case BalancedCompression:
+		return block.BalancedCompression
+	case GoodCompression:
+		return block.GoodCompression
 	default:
-		return pebble.DefaultCompression
+		return block.DefaultCompression
 	}
 }
 
@@ -58,10 +76,13 @@ func ParseCompression(s string) (Compression, error) {
 	if c, ok := compressionValues[strings.ToLower(strings.TrimSpace(s))]; ok {
 		return c, nil
 	}
-	return DefaultCompression, fmt.Errorf("unknown compression %q (valid: none, snappy, zstd, default)", s)
+
+	return DefaultCompression, fmt.Errorf(
+		"unknown compression %q (valid: none, snappy, zstd, fastest, fast, balanced, good, default)", s,
+	)
 }
 
-// LevelCompression holds the compression algorithm for each of the 7 Pebble levels (L0–L6).
+// LevelCompression holds the compression profile for each of the 7 Pebble levels (L0–L6).
 type LevelCompression [NumLevels]Compression
 
 // NumLevels is the number of Pebble LSM levels.
@@ -71,12 +92,13 @@ const NumLevels = 7
 // L0–L3 use Snappy, L4–L6 use Zstd.
 func DefaultLevelCompression() LevelCompression {
 	var lc LevelCompression
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		lc[i] = SnappyCompression
 	}
 	for i := 4; i < NumLevels; i++ {
 		lc[i] = ZstdCompression
 	}
+
 	return lc
 }
 
@@ -96,6 +118,7 @@ func ParseLevelCompression(s string) (LevelCompression, error) {
 	if len(parts) != NumLevels {
 		return LevelCompression{}, fmt.Errorf("expected %d comma-separated compression values, got %d", NumLevels, len(parts))
 	}
+
 	var lc LevelCompression
 	for i, p := range parts {
 		c, err := ParseCompression(p)

@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble/v2/vfs"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -162,7 +162,7 @@ func (r *ColdReader) openAndIngest(dbDir, sstPath string) (*pebble.DB, error) {
 		return nil, fmt.Errorf("opening Pebble DB: %w", err)
 	}
 
-	if err := db.Ingest([]string{sstPath}); err != nil {
+	if err := db.Ingest(context.Background(), []string{sstPath}); err != nil {
 		_ = db.Close()
 
 		return nil, fmt.Errorf("ingesting SST: %w", err)

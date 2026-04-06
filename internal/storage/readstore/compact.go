@@ -10,14 +10,14 @@ import (
 // Compact performs an online compaction of the Pebble read index.
 // Unlike Pebble, Pebble compaction is online and does not require closing
 // the database. Returns (sizeBefore, sizeAfter, err).
-func (s *Store) Compact(_ context.Context) (sizeBefore, sizeAfter int64, err error) {
+func (s *Store) Compact(ctx context.Context) (sizeBefore, sizeAfter int64, err error) {
 	dbPath := filepath.Join(s.dir, "readindex")
 
 	// Measure size before compaction.
 	sizeBefore = dirSize(dbPath)
 
 	// Compact the full key range.
-	err = s.db.Compact([]byte{0x00}, []byte{0xFF}, true)
+	err = s.db.Compact(ctx, []byte{0x00}, []byte{0xFF}, true)
 	if err != nil {
 		return sizeBefore, 0, fmt.Errorf("compacting read index: %w", err)
 	}

@@ -3,7 +3,7 @@ package dal
 import (
 	"io"
 
-	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/v2"
 )
 
 // PebbleReader provides read access for Pebble queries.

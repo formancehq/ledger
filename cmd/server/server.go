@@ -713,7 +713,7 @@ func registerPebbleFlags(cmd *cobra.Command, prefix string, defaults pebblecfg.C
 	cmd.Flags().Int64(p+"target-file-size", 0, fmt.Sprintf("Pebble SST file target size in bytes (default: %dMB)", defaults.TargetFileSize>>20))
 	cmd.Flags().Int(p+"bytes-per-sync", 0, fmt.Sprintf("Pebble bytes written before sync (default: %dKB)", defaults.BytesPerSync>>10))
 	cmd.Flags().Int(p+"max-concurrent-compactions", 0, fmt.Sprintf("Pebble max concurrent compactions (default: %d)", defaults.MaxConcurrentCompactions))
-	cmd.Flags().String(p+"compression", "", fmt.Sprintf("Pebble per-level compression L0-L6, comma-separated (none|snappy|zstd|default) (default: %s)", defaults.Compression))
+	cmd.Flags().String(p+"compression", "", fmt.Sprintf("Pebble per-level compression L0-L6, comma-separated (none|snappy|zstd|fastest|fast|balanced|good|default) (default: %s)", defaults.Compression))
 }
 
 // loadBasePebbleConfig loads the common Pebble config from flags with the given prefix.

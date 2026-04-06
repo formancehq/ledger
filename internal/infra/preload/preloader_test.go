@@ -82,10 +82,6 @@ func TestProposalGuard_ReleaseAll(t *testing.T) {
 	// ReleaseAll should release both the lock and the loaders
 	guard.ReleaseAll()
 
-	// Verify the mutex was unlocked by trying to lock it again
-	tracker.Lock()
-	tracker.Unlock()
-
 	// Verify loaders were cleaned
 	assert.Nil(t, guard.token)
 

@@ -9,7 +9,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
-	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/v2"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
 
@@ -1425,9 +1425,9 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		QueryCheckpointCreated:  queryCheckpointCreated,
 		QueryCheckpointDeleted:  queryCheckpointDeleted,
 		AccountMigrateRequests:  buffer.AccountMigrateRequests(),
-		volumeUpdates:    buffer.KeptVolumeUpdates(),
-		purgedVolumeKeys: buffer.PurgedVolumeKeys(),
-		createdLogs:      createdLogs,
+		volumeUpdates:           buffer.KeptVolumeUpdates(),
+		purgedVolumeKeys:        buffer.PurgedVolumeKeys(),
+		createdLogs:             createdLogs,
 	}, nil
 }
 

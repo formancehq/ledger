@@ -1,9 +1,5 @@
 set dotenv-load
 
-# Go sub-modules relative to project root
-# Go sub-modules that contain .go files (misc/devenv is Pulumi-only, no Go sources)
-go_submodules := "misc/benchmark-operator"
-
 pre-commit: generate generate-proto tidy lint
 pc: pre-commit
 
@@ -12,18 +8,12 @@ lint:
     set -euo pipefail
     echo "==> golangci-lint (.)"
     golangci-lint run --fix --build-tags it,local,{{all_tags}} --timeout 5m
-    for dir in {{go_submodules}}; do
-        echo "==> golangci-lint ($dir)"
-        (cd "$dir" && golangci-lint run --fix --timeout 5m)
-    done
 
 tidy:
     #!/usr/bin/env bash
     set -euo pipefail
-    for dir in . {{go_submodules}}; do
-        echo "==> go mod tidy ($dir)"
-        (cd "$dir" && go mod tidy)
-    done
+    echo "==> go mod tidy"
+    go mod tidy
 
 # All optional feature build tags
 all_tags := "kafka,nats,clickhouse,s3,pyroscope"
@@ -65,16 +55,7 @@ test-full:
     go test -race -tags "{{all_tags}}" ./... -timeout 20m
 
 # Run all tests across all modules (unit + integration + e2e)
-test-all: test test-submodules test-e2e test-scenarios
-
-# Run unit tests for all sub-modules
-test-submodules:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    for dir in {{go_submodules}}; do
-        echo "==> go test ($dir)"
-        (cd "$dir" && go test -race ./...)
-    done
+test-all: test test-e2e test-scenarios
 
 # Run end-to-end tests (light build)
 test-e2e:

@@ -8,7 +8,7 @@ import (
 	"math/big"
 	"os"
 
-	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/holiman/uint256"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"

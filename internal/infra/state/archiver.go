@@ -8,9 +8,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/cockroachdb/pebble/bloom"
-	"github.com/cockroachdb/pebble/objstorage"
-	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/v2/bloom"
+	"github.com/cockroachdb/pebble/v2/objstorage"
+	"github.com/cockroachdb/pebble/v2/sstable"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
