@@ -115,4 +115,7 @@ type InMemoryStore interface {
 
 	// Ledger cleanup
 	MarkLedgerForCleanup(ledger string)
+
+	// Numscript resolution
+	ResolveNumscriptText(contentHash []byte) (string, error)
 }

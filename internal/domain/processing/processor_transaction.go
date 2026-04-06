@@ -47,6 +47,17 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 		resolveMigratingVolumes(s, ledger, order, info)
 	}
 
+	// Resolve numscript text from cache for hash-only scripts
+	if script := order.GetScript(); script != nil &&
+		len(script.GetContentHash()) > 0 && script.GetPlain() == "" {
+		text, err := s.ResolveNumscriptText(script.GetContentHash())
+		if err != nil {
+			return nil, err
+		}
+
+		script.Plain = text
+	}
+
 	// Select the appropriate posting producer
 	var producer postingProducer
 	if order.GetScript() != nil && order.GetScript().GetPlain() != "" {

@@ -439,6 +439,9 @@ func (s *inMemoryStore) MarkLedgerForCleanup(ledger string) {
 	s.engine.pendingLedgerDeletions = append(s.engine.pendingLedgerDeletions, ledger)
 }
 func (s *inMemoryStore) AddAccountMigrateRequest(_, _, _, _ string) {}
+func (s *inMemoryStore) ResolveNumscriptText(_ []byte) (string, error) {
+	return "", fmt.Errorf("not implemented in test store")
+}
 
 // Helper functions for building orders
 
