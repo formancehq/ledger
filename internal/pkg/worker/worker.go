@@ -1,6 +1,11 @@
 package worker
 
-import "context"
+import (
+	"context"
+	"time"
+
+	"go.uber.org/fx"
+)
 
 // ContextFromStop returns a context.Context that is canceled when stop is closed.
 func ContextFromStop(stop <-chan struct{}) context.Context {
@@ -12,6 +17,58 @@ func ContextFromStop(stop <-chan struct{}) context.Context {
 	}()
 
 	return ctx
+}
+
+// DrainChannel reads items from ch and calls process for each one until stop
+// is closed. It is the standard loop for channel-based workers.
+func DrainChannel[T any](stop <-chan struct{}, ch <-chan T, process func(T)) {
+	for {
+		select {
+		case <-stop:
+			return
+		case req := <-ch:
+			process(req)
+		}
+	}
+}
+
+// RunTicker calls fn at the given interval until stop is closed. The ticker is
+// cleaned up when RunTicker returns.
+func RunTicker(stop <-chan struct{}, interval time.Duration, fn func()) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+			fn()
+		}
+	}
+}
+
+// Lifecycle is the interface for components with a simple Start/Stop lifecycle.
+type Lifecycle interface {
+	Start()
+	Stop()
+}
+
+// FxHook returns an fx.Hook that starts and stops a Lifecycle component.
+// It eliminates the boilerplate of wrapping Start/Stop in OnStart/OnStop closures.
+func FxHook(w Lifecycle) fx.Hook {
+	return fx.Hook{
+		OnStart: func(_ context.Context) error {
+			w.Start()
+
+			return nil
+		},
+		OnStop: func(_ context.Context) error {
+			w.Stop()
+
+			return nil
+		},
+	}
 }
 
 // Worker provides goroutine lifecycle management (start/stop) for background

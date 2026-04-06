@@ -3,7 +3,6 @@ package mirror
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -17,6 +16,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/preload"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/commands"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/vtmarshal"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -33,15 +33,6 @@ const (
 	backoffMultiplier = 2.0
 )
 
-// marshalBufPool holds reusable buffers for proto.MarshalToVT to avoid
-// repeated buffer growth allocations in the proposal hot path.
-var marshalBufPool = sync.Pool{
-	New: func() any {
-		b := make([]byte, 0, 4096)
-
-		return &b
-	},
-}
 
 // prefetchResult holds the result of a background log fetch started during
 // the previous batch's Raft wait. The cursor field is used to validate that
@@ -541,37 +532,7 @@ func (w *Worker) reportError(message string) {
 // marshalMirrorCommand marshals a proposal command into a newly allocated byte
 // slice using a pooled buffer. The returned slice is safe for Raft retention.
 func marshalMirrorCommand(cmd *raftcmdpb.Proposal) ([]byte, error) {
-	bufp, ok := marshalBufPool.Get().(*[]byte)
-	if !ok {
-		panic("marshalBufPool: unexpected type from sync.Pool")
-	}
-
-	size := cmd.SizeVT()
-
-	buf := *bufp
-	if cap(buf) < size {
-		buf = make([]byte, size)
-	} else {
-		buf = buf[:size]
-	}
-
-	n, err := cmd.MarshalToVT(buf)
-	if err != nil {
-		*bufp = buf
-		marshalBufPool.Put(bufp)
-
-		return nil, err
-	}
-
-	cmdData := buf[:n]
-
-	proposalData := make([]byte, len(cmdData))
-	copy(proposalData, cmdData)
-
-	*bufp = buf
-	marshalBufPool.Put(bufp)
-
-	return proposalData, nil
+	return vtmarshal.MarshalCopy(cmd)
 }
 
 // extractMirrorNeeds builds preload.Needs from a mirror proposal's orders.

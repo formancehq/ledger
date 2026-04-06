@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"sync/atomic"
 	"time"
 	"unicode/utf8"
@@ -27,6 +26,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/receipt"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/commands"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/vtmarshal"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/keystore"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
@@ -39,15 +39,6 @@ import (
 
 var tracer = otel.Tracer("admission")
 
-// marshalBufPool holds reusable buffers for proto.MarshalAppend to avoid
-// repeated buffer growth allocations in the proposal hot path.
-var marshalBufPool = sync.Pool{
-	New: func() any {
-		b := make([]byte, 0, 4096)
-
-		return &b
-	},
-}
 
 type Proposer interface {
 	Propose(*node.Proposal) (*futures.Future[state.ApplyResult], error)
@@ -507,37 +498,16 @@ func (a *Admission) Barrier(ctx context.Context) error {
 // marshalCommand marshals a proposal command into a newly allocated byte slice
 // using a pooled buffer. The returned slice is safe for Raft retention.
 func (a *Admission) marshalCommand(ctx context.Context, cmd *raftcmdpb.Proposal) ([]byte, error) {
-	ctx, marshalSpan := tracer.Start(ctx, "admission.marshal")
-	bufp := marshalBufPool.Get().(*[]byte)
-	size := cmd.SizeVT()
+	_, marshalSpan := tracer.Start(ctx, "admission.marshal")
+	defer marshalSpan.End()
 
-	buf := *bufp
-	if cap(buf) < size {
-		buf = make([]byte, size)
-	} else {
-		buf = buf[:size]
-	}
-
-	n, err := cmd.MarshalToVT(buf)
+	proposalData, err := vtmarshal.MarshalCopy(cmd)
 	if err != nil {
-		marshalSpan.End()
-
-		*bufp = buf
-		marshalBufPool.Put(bufp)
-
 		return nil, fmt.Errorf("marshaling command: %w", err)
 	}
 
-	cmdData := buf[:n]
-	a.commandSizeHistogram.Record(ctx, int64(len(cmdData)))
-
-	proposalData := make([]byte, len(cmdData))
-	copy(proposalData, cmdData)
-
-	*bufp = buf
-	marshalBufPool.Put(bufp)
+	a.commandSizeHistogram.Record(ctx, int64(len(proposalData)))
 	marshalSpan.SetAttributes(attribute.Int("command.size_bytes", len(proposalData)))
-	marshalSpan.End()
 
 	return proposalData, nil
 }
