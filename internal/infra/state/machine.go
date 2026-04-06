@@ -1255,47 +1255,8 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// Compute the effective date using the HLC to guarantee monotonicity
 	effectiveDate := fsm.hlcTimestamp(proposal.GetDate())
 
-	// Auto-bootstrap first period deterministically at first proposal
-	// TODO: Move at initialization maybe?
-	if fsm.Periods.CurrentOpenPeriod() == nil {
-		p := &commonpb.Period{
-			Id:            1,
-			Start:         effectiveDate,
-			Status:        commonpb.PeriodStatus_PERIOD_OPEN,
-			StartSequence: 1,
-		}
-		fsm.Periods.SetCurrentOpenPeriod(p)
-		fsm.Periods.SetNextPeriodID(2)
-
-		// Persist the bootstrapped period so it survives restarts
-		err := StorePeriod(batch, p)
-		if err != nil {
-			return nil, fmt.Errorf("storing bootstrapped period: %w", err)
-		}
-
-		err = StoreNextPeriodID(batch, fsm.Periods.NextPeriodID())
-		if err != nil {
-			return nil, fmt.Errorf("storing next period ID: %w", err)
-		}
-	}
-
-	// Resolve numscript text from dual-gen cache for hash-only scripts
-	// TODO: let the processor do that, needs to add the required accessor
-	for _, order := range proposal.GetOrders() {
-		if apply, ok := order.GetType().(*raftcmdpb.Order_Apply); ok {
-			if ct := apply.Apply.GetCreateTransaction(); ct != nil {
-				if script := ct.GetScript(); script != nil &&
-					len(script.GetContentHash()) > 0 && script.GetPlain() == "" {
-					id, _ := attributes.MakeKey(attributes.DefaultSeeds, script.GetContentHash())
-					entry, ok := fsm.Registry.Cache.NumscriptParsed.Get(id)
-					if !ok {
-						return nil, fmt.Errorf("numscript text not in cache for hash %x", script.GetContentHash())
-					}
-
-					script.Plain = entry.Data
-				}
-			}
-		}
+	if err := fsm.ensurePeriodBootstrapped(effectiveDate, batch); err != nil {
+		return nil, err
 	}
 
 	// Create buffer for this proposal
@@ -2321,6 +2282,34 @@ func (fsm *Machine) OnLeadershipAcquired() {
 	// Recover account types stuck in MIGRATING status: if the previous leader
 	// crashed mid-migration, the new leader retries automatically.
 	fsm.dispatchAccountMigrationRequests()
+}
+
+// ensurePeriodBootstrapped creates the first period deterministically at the
+// first proposal. The period start timestamp is derived from the proposal's
+// effective date so that all nodes produce the same deterministic state.
+func (fsm *Machine) ensurePeriodBootstrapped(effectiveDate *commonpb.Timestamp, batch *dal.Batch) error {
+	if fsm.Periods.CurrentOpenPeriod() != nil {
+		return nil
+	}
+
+	p := &commonpb.Period{
+		Id:            1,
+		Start:         effectiveDate,
+		Status:        commonpb.PeriodStatus_PERIOD_OPEN,
+		StartSequence: 1,
+	}
+	fsm.Periods.SetCurrentOpenPeriod(p)
+	fsm.Periods.SetNextPeriodID(2)
+
+	if err := StorePeriod(batch, p); err != nil {
+		return fmt.Errorf("storing bootstrapped period: %w", err)
+	}
+
+	if err := StoreNextPeriodID(batch, fsm.Periods.NextPeriodID()); err != nil {
+		return fmt.Errorf("storing next period ID: %w", err)
+	}
+
+	return nil
 }
 
 // AllPeriods returns all non-purged periods kept in memory.
