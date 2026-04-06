@@ -19,7 +19,12 @@ func (lt *LogType) Scan(src any) error {
 		return fmt.Errorf("LogType.Scan: expected string, got %T", src)
 	}
 
-	*lt = LogTypeFromString(s)
+	v, err := LogTypeFromString(s)
+	if err != nil {
+		return err
+	}
+
+	*lt = v
 
 	return nil
 }
@@ -36,7 +41,12 @@ func (lt *LogType) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	*lt = LogTypeFromString(s)
+	v, err := LogTypeFromString(s)
+	if err != nil {
+		return err
+	}
+
+	*lt = v
 
 	return nil
 }
@@ -64,27 +74,27 @@ func (lt LogType) String() string {
 	return ""
 }
 
-func LogTypeFromString(logType string) LogType {
+func LogTypeFromString(logType string) (LogType, error) {
 	switch logType {
 	case "SET_METADATA":
-		return SetMetadataLogType
+		return SetMetadataLogType, nil
 	case "NEW_TRANSACTION":
-		return NewTransactionLogType
+		return NewTransactionLogType, nil
 	case "REVERTED_TRANSACTION":
-		return RevertedTransactionLogType
+		return RevertedTransactionLogType, nil
 	case "DELETE_METADATA":
-		return DeleteMetadataLogType
+		return DeleteMetadataLogType, nil
 	case "SET_METADATA_FIELD_TYPE":
-		return SetMetadataFieldTypeLogType
+		return SetMetadataFieldTypeLogType, nil
 	case "REMOVED_METADATA_FIELD_TYPE":
-		return RemovedMetadataFieldTypeLogType
+		return RemovedMetadataFieldTypeLogType, nil
 	case "CONVERT_METADATA_BATCH":
-		return ConvertMetadataBatchLogType
+		return ConvertMetadataBatchLogType, nil
 	case "METADATA_CONVERSION_COMPLETE":
-		return MetadataConversionCompleteLogType
+		return MetadataConversionCompleteLogType, nil
 	}
 
-	panic("invalid log type")
+	return 0, fmt.Errorf("invalid log type: %q", logType)
 }
 
 // GetLogType extracts the log type from a LedgerLogPayload.

@@ -172,26 +172,13 @@ func FuzzLedgerLogUnmarshalJSON(f *testing.F) {
 	f.Add([]byte(`{"type":"METADATA_CONVERSION_COMPLETE","data":{}}`))
 	f.Add([]byte(`{"type":"NEW_TRANSACTION","data":{},"date":"2024-01-01T00:00:00Z","id":42}`))
 	// Edge cases
-	// NOTE: {"type":"UNKNOWN"} triggers a panic in LogTypeFromString (known bug).
-	// Seeds with unknown log types are excluded until the panic is replaced
-	// by a proper error return.
+	f.Add([]byte(`{"type":"UNKNOWN"}`))
 	f.Add([]byte(`{}`))
 	f.Add([]byte(`not json`))
 	f.Add([]byte(`null`))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		var log LedgerLog
-		// Known bug: LogTypeFromString panics on unknown log types.
-		// We recover here to allow fuzzing the rest of the deserialization.
-		// TODO: fix LogTypeFromString to return an error instead of panicking.
-		defer func() {
-			if r := recover(); r != nil {
-				if s, ok := r.(string); ok && s == "invalid log type" {
-					return // known bug, skip
-				}
-				t.Fatalf("unexpected panic: %v", r)
-			}
-		}()
 		_ = log.UnmarshalJSON(data)
 	})
 }
