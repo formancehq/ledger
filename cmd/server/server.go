@@ -153,15 +153,6 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().String("cold-storage-s3-endpoint", "", "Custom S3 endpoint (for MinIO)")
 	runCmd.Flags().String("cold-cache-dir", "", "Directory for cold storage read cache (default: <data-dir>/cold-cache). Use a separate volume to avoid filling the data disk.")
 
-	// Scheduled backup configuration
-	runCmd.Flags().String("backup-driver", "", "Backup storage driver (filesystem, s3; empty = disabled)")
-	runCmd.Flags().String("backup-schedule", "", "Cron expression for scheduled backups (e.g. '@every 1h', '0 */6 * * *')")
-	runCmd.Flags().String("backup-path", "", "Base path for filesystem backup storage (default: <data-dir>/backups)")
-	runCmd.Flags().String("backup-bucket-id", "", "Namespace prefix for backup files (default: cluster-id)")
-	runCmd.Flags().String("backup-s3-bucket", "", "S3 bucket name for backups (required when backup-driver=s3)")
-	runCmd.Flags().String("backup-s3-region", "", "AWS region for backup S3 bucket")
-	runCmd.Flags().String("backup-s3-endpoint", "", "Custom S3 endpoint for backups (for MinIO)")
-
 	// TLS configuration flags
 	runCmd.Flags().String("tls-cert-file", "", "Path to TLS certificate file (PEM)")
 	runCmd.Flags().String("tls-key-file", "", "Path to TLS private key file (PEM)")
@@ -321,8 +312,6 @@ func runServer(cmd *cobra.Command, _ []string) error {
 		appModule,
 		// Cold storage module (conditional on driver)
 		bootstrap.ColdStorageModule(cfg.ColdStorageConfig.Driver),
-		// Backup module (conditional on driver)
-		bootstrap.BackupModule(cfg.BackupConfig.Driver),
 	}
 
 	defer func() {
@@ -485,15 +474,6 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 	cfg.ColdStorageConfig.S3Region = getString("cold-storage-s3-region", "")
 	cfg.ColdStorageConfig.S3Endpoint = getString("cold-storage-s3-endpoint", "")
 	cfg.ColdStorageConfig.CacheDir = getString("cold-cache-dir", "")
-
-	// Backup configuration
-	cfg.BackupConfig.Driver = getString("backup-driver", "")
-	cfg.BackupConfig.Schedule = getString("backup-schedule", "")
-	cfg.BackupConfig.BasePath = getString("backup-path", "")
-	cfg.BackupConfig.BucketID = getString("backup-bucket-id", "")
-	cfg.BackupConfig.S3Bucket = getString("backup-s3-bucket", "")
-	cfg.BackupConfig.S3Region = getString("backup-s3-region", "")
-	cfg.BackupConfig.S3Endpoint = getString("backup-s3-endpoint", "")
 
 	// TLS configuration
 	tlsCert := getString("tls-cert-file", "")

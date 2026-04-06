@@ -8,35 +8,32 @@ import (
 	"io"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
 	"github.com/formancehq/ledger-v3-poc/internal/infra/coldstorage"
 )
 
 // S3Storage implements Storage using Amazon S3 (or S3-compatible stores like MinIO).
-// It uses the S3 upload manager for automatic multipart uploads on large files.
 type S3Storage struct {
-	client   *s3.Client
-	uploader *manager.Uploader
-	bucket   string
+	client *s3.Client
+	bucket string
 }
 
 // NewS3Storage creates a new S3Storage backed by the given S3 client and bucket.
 func NewS3Storage(client *s3.Client, bucket string) *S3Storage {
 	return &S3Storage{
-		client:   client,
-		uploader: manager.NewUploader(client),
-		bucket:   bucket,
+		client: client,
+		bucket: bucket,
 	}
 }
 
-func (s *S3Storage) PutFile(ctx context.Context, key string, data io.Reader, _ int64) error {
-	_, err := s.uploader.Upload(ctx, &s3.PutObjectInput{
-		Bucket:      aws.String(s.bucket),
-		Key:         aws.String(key),
-		Body:        data,
-		ContentType: aws.String("application/octet-stream"),
+func (s *S3Storage) PutFile(ctx context.Context, key string, data io.Reader, size int64) error {
+	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:        aws.String(s.bucket),
+		Key:           aws.String(key),
+		Body:          data,
+		ContentLength: aws.Int64(size),
+		ContentType:   aws.String("application/octet-stream"),
 	})
 	if err != nil {
 		return fmt.Errorf("s3 upload %s: %w", key, err)

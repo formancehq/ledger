@@ -8,16 +8,15 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/formancehq/ledger-v3-poc/internal/infra/backup"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/pkg/actions"
-	"github.com/formancehq/ledger-v3-poc/pkg/testserver"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 )
 
@@ -26,8 +25,8 @@ const (
 	fsBackupGRPCPort = 15800
 )
 
-// readBackupManifest reads the backup manifest from the filesystem.
-func readBackupManifest(backupPath string) (*backup.Manifest, error) {
+// readFSBackupManifest reads the backup manifest from the filesystem.
+func readFSBackupManifest(backupPath string) (*backup.Manifest, error) {
 	data, err := os.ReadFile(filepath.Join(backupPath, "test-cluster", "backups", "manifest.json"))
 	if err != nil {
 		return nil, err
@@ -41,27 +40,26 @@ func readBackupManifest(backupPath string) (*backup.Manifest, error) {
 	return &manifest, nil
 }
 
-// backupDataPath returns the path to the backup data directory.
-func backupDataPath(backupPath string) string {
+// fsBackupDataPath returns the path to the backup data directory.
+func fsBackupDataPath(backupPath string) string {
 	return filepath.Join(backupPath, "test-cluster", "backups", "data")
 }
 
 var _ = Describe("Filesystem Incremental Backup", Ordered, func() {
 	var (
-		ctx        context.Context
-		client     servicepb.BucketServiceClient
-		backupPath string
+		ctx           context.Context
+		client        servicepb.BucketServiceClient
+		clusterClient clusterpb.ClusterServiceClient
+		backupPath    string
 	)
 
 	BeforeAll(func() {
 		backupPath = GinkgoT().TempDir()
 
-		ctx, client, _ = testutil.SetupSingleNode(fsBackupHTTPPort, fsBackupGRPCPort,
-			testserver.WithBackupFilesystem(backupPath, "@every 3s"),
-		)
+		ctx, client, clusterClient = testutil.SetupSingleNode(fsBackupHTTPPort, fsBackupGRPCPort)
 	})
 
-	It("should create a backup with manifest after the first scheduled cycle", func() {
+	It("should create a backup with manifest after an explicit incremental backup", func() {
 		// Create a ledger with some data
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
@@ -82,17 +80,21 @@ var _ = Describe("Filesystem Incremental Backup", Ordered, func() {
 		})
 		Expect(err).To(Succeed())
 
-		// Wait for the first backup to complete (manifest appears)
-		var manifest *backup.Manifest
-		Eventually(func(g Gomega) {
-			var err error
-			manifest, err = readBackupManifest(backupPath)
-			g.Expect(err).To(Succeed())
-			g.Expect(manifest.Files).NotTo(BeEmpty())
-		}).Within(15 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
+		// Trigger incremental backup via gRPC
+		resp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
+			Driver:   "filesystem",
+			BasePath: backupPath,
+		})
+		Expect(err).To(Succeed())
+		Expect(resp.GetTotalFiles()).To(BeNumerically(">", 0))
+		Expect(resp.GetFilesUploaded()).To(BeNumerically(">", 0))
 
-		// Verify all files referenced in the manifest exist on disk
-		dataDir := backupDataPath(backupPath)
+		// Verify manifest exists and all referenced files exist on disk
+		manifest, err := readFSBackupManifest(backupPath)
+		Expect(err).To(Succeed())
+		Expect(manifest.Files).NotTo(BeEmpty())
+
+		dataDir := fsBackupDataPath(backupPath)
 		for filename := range manifest.Files {
 			path := filepath.Join(dataDir, filepath.FromSlash(filename))
 			_, err := os.Stat(path)
@@ -102,7 +104,7 @@ var _ = Describe("Filesystem Incremental Backup", Ordered, func() {
 
 	It("should perform an incremental backup after adding more data", func() {
 		// Read the manifest from the first backup
-		manifestBefore, err := readBackupManifest(backupPath)
+		manifestBefore, err := readFSBackupManifest(backupPath)
 		Expect(err).To(Succeed())
 
 		filesBefore := make(map[string]int64)
@@ -127,20 +129,22 @@ var _ = Describe("Filesystem Incremental Backup", Ordered, func() {
 			Expect(err).To(Succeed())
 		}
 
-		// Wait for the next backup cycle to update the manifest
-		Eventually(func(g Gomega) {
-			manifest, err := readBackupManifest(backupPath)
-			g.Expect(err).To(Succeed())
-			g.Expect(manifest.Timestamp).NotTo(Equal(timestampBefore),
-				"manifest timestamp should be updated after new backup")
-		}).Within(15 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
+		// Trigger another incremental backup
+		resp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
+			Driver:   "filesystem",
+			BasePath: backupPath,
+		})
+		Expect(err).To(Succeed())
+		Expect(resp.GetTotalFiles()).To(BeNumerically(">", 0))
 
 		// Read updated manifest
-		manifestAfter, err := readBackupManifest(backupPath)
+		manifestAfter, err := readFSBackupManifest(backupPath)
 		Expect(err).To(Succeed())
+		Expect(manifestAfter.Timestamp).NotTo(Equal(timestampBefore),
+			"manifest timestamp should be updated after new backup")
 
 		// Verify all files still exist
-		dataDir := backupDataPath(backupPath)
+		dataDir := fsBackupDataPath(backupPath)
 		for filename := range manifestAfter.Files {
 			path := filepath.Join(dataDir, filepath.FromSlash(filename))
 			_, err := os.Stat(path)

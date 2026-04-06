@@ -19,10 +19,10 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/formancehq/ledger-v3-poc/internal/infra/backup"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/pkg/actions"
-	"github.com/formancehq/ledger-v3-poc/pkg/testserver"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 )
 
@@ -74,9 +74,11 @@ func backupS3ObjectExists(ctx context.Context, client *s3.Client, key string) bo
 
 var _ = Describe("S3 Incremental Backup", Ordered, func() {
 	var (
-		ctx      context.Context
-		client   servicepb.BucketServiceClient
-		s3Client *s3.Client
+		ctx           context.Context
+		client        servicepb.BucketServiceClient
+		clusterClient clusterpb.ClusterServiceClient
+		s3Client      *s3.Client
+		minioEndpoint string
 	)
 
 	BeforeAll(func() {
@@ -95,7 +97,7 @@ var _ = Describe("S3 Incremental Backup", Ordered, func() {
 		Expect(err).To(Succeed())
 		DeferCleanup(func() { _ = container.Terminate(context.Background()) })
 
-		endpoint, err := container.Endpoint(context.Background(), "http")
+		minioEndpoint, err = container.Endpoint(context.Background(), "http")
 		Expect(err).To(Succeed())
 
 		// Create S3 client
@@ -108,7 +110,7 @@ var _ = Describe("S3 Incremental Backup", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		s3Client = s3.NewFromConfig(cfg, func(o *s3.Options) {
-			o.BaseEndpoint = aws.String(endpoint)
+			o.BaseEndpoint = aws.String(minioEndpoint)
 			o.UsePathStyle = true
 		})
 
@@ -122,10 +124,8 @@ var _ = Describe("S3 Incremental Backup", Ordered, func() {
 		GinkgoT().Setenv("AWS_ACCESS_KEY_ID", backupMinioAccessKey)
 		GinkgoT().Setenv("AWS_SECRET_ACCESS_KEY", backupMinioSecretKey)
 
-		// Start single-node ledger server with S3 backup
-		ctx, client, _ = testutil.SetupSingleNode(s3BackupHTTPPort2, s3BackupGRPCPort2,
-			testserver.WithBackupS3(backupS3Bucket, backupS3Region, endpoint, "@every 3s"),
-		)
+		// Start single-node ledger server (no backup config needed on server)
+		ctx, client, clusterClient = testutil.SetupSingleNode(s3BackupHTTPPort2, s3BackupGRPCPort2)
 	})
 
 	It("should create an incremental backup on S3", func() {
@@ -149,14 +149,21 @@ var _ = Describe("S3 Incremental Backup", Ordered, func() {
 		})
 		Expect(err).To(Succeed())
 
-		// Wait for the first backup manifest to appear on S3
-		var manifest *backup.Manifest
-		Eventually(func(g Gomega) {
-			var err error
-			manifest, err = readS3BackupManifest(ctx, s3Client)
-			g.Expect(err).To(Succeed())
-			g.Expect(manifest.Files).NotTo(BeEmpty())
-		}).Within(15 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
+		// Trigger incremental backup via gRPC
+		resp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
+			Driver:     "s3",
+			S3Bucket:   backupS3Bucket,
+			S3Region:   backupS3Region,
+			S3Endpoint: minioEndpoint,
+		})
+		Expect(err).To(Succeed())
+		Expect(resp.GetTotalFiles()).To(BeNumerically(">", 0))
+		Expect(resp.GetFilesUploaded()).To(BeNumerically(">", 0))
+
+		// Verify manifest exists on S3
+		manifest, err := readS3BackupManifest(ctx, s3Client)
+		Expect(err).To(Succeed())
+		Expect(manifest.Files).NotTo(BeEmpty())
 
 		// Verify all referenced files exist on S3
 		for filename := range manifest.Files {
@@ -186,17 +193,22 @@ var _ = Describe("S3 Incremental Backup", Ordered, func() {
 			Expect(err).To(Succeed())
 		}
 
-		// Wait for the manifest to be updated
-		Eventually(func(g Gomega) {
-			manifest, err := readS3BackupManifest(ctx, s3Client)
-			g.Expect(err).To(Succeed())
-			g.Expect(manifest.Timestamp).NotTo(Equal(timestampBefore))
-		}).Within(15 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
+		// Trigger another incremental backup
+		resp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
+			Driver:     "s3",
+			S3Bucket:   backupS3Bucket,
+			S3Region:   backupS3Region,
+			S3Endpoint: minioEndpoint,
+		})
+		Expect(err).To(Succeed())
+		Expect(resp.GetTotalFiles()).To(BeNumerically(">", 0))
 
-		// Verify all files in updated manifest exist on S3
+		// Verify manifest was updated
 		manifestAfter, err := readS3BackupManifest(ctx, s3Client)
 		Expect(err).To(Succeed())
+		Expect(manifestAfter.Timestamp).NotTo(Equal(timestampBefore))
 
+		// Verify all files in updated manifest exist on S3
 		for filename := range manifestAfter.Files {
 			key := backupS3DataPrefix + filename
 			Expect(backupS3ObjectExists(ctx, s3Client, key)).To(BeTrue(),

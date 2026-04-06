@@ -11,8 +11,6 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	"github.com/formancehq/ledger-v3-poc/internal/domain/processing"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
@@ -22,161 +20,49 @@ type Manifest struct {
 	Files     map[string]int64 `json:"files"` // filename -> size in bytes
 }
 
-// Manager runs scheduled incremental backups in the background.
-// Only the Raft leader performs backups. It follows the same cron-based
-// scheduling pattern as PeriodScheduler.
-type Manager struct {
-	logger   logging.Logger
-	store    *dal.Store
-	storage  Storage
-	bucketID string
-	schedule string
-	isLeader func() bool
-	w        worker.Worker
+// Result contains statistics from a backup run.
+type Result struct {
+	FilesUploaded int
+	FilesDeleted  int
+	TotalFiles    int
+	Duration      time.Duration
 }
 
-// NewManager creates a new backup Manager.
-func NewManager(
+// RunIncrementalBackup performs a single incremental backup cycle.
+// It creates a Pebble checkpoint, diffs against the previous manifest,
+// uploads new files, deletes stale ones, and writes an updated manifest.
+func RunIncrementalBackup(
+	ctx context.Context,
 	logger logging.Logger,
 	store *dal.Store,
 	storage Storage,
 	bucketID string,
-	schedule string,
-	isLeader func() bool,
-) *Manager {
-	return &Manager{
-		logger:   logger.WithFields(map[string]any{"cmp": "backup-manager"}),
-		store:    store,
-		storage:  storage,
-		bucketID: bucketID,
-		schedule: schedule,
-		isLeader: isLeader,
-		w:        worker.New(),
-	}
-}
-
-// Start launches the background backup scheduler goroutine.
-func (m *Manager) Start() {
-	m.w.Run(m.loop)
-}
-
-// Stop signals the background goroutine to stop and waits for it to finish.
-func (m *Manager) Stop() {
-	m.w.Stop()
-}
-
-func (m *Manager) manifestKey() string {
-	return m.bucketID + "/backups/manifest.json"
-}
-
-func (m *Manager) fileKey(filename string) string {
-	return m.bucketID + "/backups/data/" + filename
-}
-
-func (m *Manager) loop(stop <-chan struct{}) {
-	var timer *time.Timer
-
-	defer func() {
-		if timer != nil {
-			timer.Stop()
-		}
-	}()
-
-	resetTimer := func() <-chan time.Time {
-		if timer != nil {
-			timer.Stop()
-		}
-
-		if m.schedule == "" {
-			timer = nil
-
-			return nil
-		}
-
-		schedule, err := processing.CronParser.Parse(m.schedule)
-		if err != nil {
-			m.logger.WithFields(map[string]any{
-				"cron":  m.schedule,
-				"error": err,
-			}).Errorf("Invalid backup schedule cron expression, disabling scheduler")
-
-			timer = nil
-
-			return nil
-		}
-
-		nextFire := schedule.Next(time.Now())
-		delay := max(time.Until(nextFire), 0)
-
-		m.logger.WithFields(map[string]any{
-			"cron":     m.schedule,
-			"nextFire": nextFire.Format(time.RFC3339),
-		}).Infof("Backup scheduler armed")
-
-		timer = time.NewTimer(delay)
-
-		return timer.C
-	}
-
-	timerCh := resetTimer()
-
-	for {
-		select {
-		case <-stop:
-			return
-		case <-timerCh:
-			if m.isLeader() {
-				m.logger.Infof("Backup scheduler firing: starting incremental backup")
-
-				worker.RetryWithBackoff(stop, m.logger, func() error {
-					return m.runBackup(stop)
-				})
-			}
-
-			timerCh = resetTimer()
-		}
-	}
-}
-
-// runBackup performs a single incremental backup cycle.
-func (m *Manager) runBackup(stop <-chan struct{}) error {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go func() {
-		select {
-		case <-stop:
-			cancel()
-		case <-ctx.Done():
-		}
-	}()
-
-	if !m.isLeader() {
-		return worker.ErrNotLeader
-	}
-
+) (*Result, error) {
 	start := time.Now()
 
+	manifestKey := bucketID + "/backups/manifest.json"
+	fileKeyPrefix := bucketID + "/backups/data/"
+
 	// 1. Create temporary checkpoint (hard links, quasi-free)
-	checkpointPath, err := m.store.CreateTemporaryCheckpoint("backup")
+	checkpointPath, err := store.CreateTemporaryCheckpoint("backup")
 	if err != nil {
-		return fmt.Errorf("creating checkpoint: %w", err)
+		return nil, fmt.Errorf("creating checkpoint: %w", err)
 	}
 
 	defer func() {
-		_ = m.store.RemoveTemporaryCheckpoint("backup")
+		_ = store.RemoveTemporaryCheckpoint("backup")
 	}()
 
 	// 2. List files in checkpoint
 	localFiles, err := listCheckpointFiles(checkpointPath)
 	if err != nil {
-		return fmt.Errorf("listing checkpoint files: %w", err)
+		return nil, fmt.Errorf("listing checkpoint files: %w", err)
 	}
 
 	// 3. Read existing manifest (nil on first backup)
-	existingManifest, err := m.readManifest(ctx)
+	existingManifest, err := readManifest(ctx, storage, manifestKey)
 	if err != nil {
-		m.logger.Infof("No existing manifest found, performing full backup")
+		logger.Infof("No existing manifest found, performing full backup")
 
 		existingManifest = &Manifest{Files: make(map[string]int64)}
 	}
@@ -184,7 +70,7 @@ func (m *Manager) runBackup(stop <-chan struct{}) error {
 	// 4. Compute diff — SST files are immutable, so same name = same content
 	toUpload, toDelete := diffFiles(localFiles, existingManifest.Files)
 
-	m.logger.WithFields(map[string]any{
+	logger.WithFields(map[string]any{
 		"totalFiles": len(localFiles),
 		"toUpload":   len(toUpload),
 		"toDelete":   len(toDelete),
@@ -192,15 +78,15 @@ func (m *Manager) runBackup(stop <-chan struct{}) error {
 
 	// 5. Upload new/changed files
 	for _, filename := range toUpload {
-		if err := m.uploadFile(ctx, checkpointPath, filename); err != nil {
-			return err
+		if err := uploadFile(ctx, storage, checkpointPath, fileKeyPrefix+filename, filename); err != nil {
+			return nil, err
 		}
 	}
 
 	// 6. Delete stale files from backup storage
 	for _, filename := range toDelete {
-		if err := m.storage.DeleteFile(ctx, m.fileKey(filename)); err != nil {
-			m.logger.WithFields(map[string]any{
+		if err := storage.DeleteFile(ctx, fileKeyPrefix+filename); err != nil {
+			logger.WithFields(map[string]any{
 				"file":  filename,
 				"error": err,
 			}).Errorf("Failed to delete stale backup file (non-fatal)")
@@ -209,25 +95,32 @@ func (m *Manager) runBackup(stop <-chan struct{}) error {
 
 	// 7. Write updated manifest (last, for atomicity)
 	newManifest := &Manifest{
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
 		Files:     localFiles,
 	}
 
-	if err := m.writeManifest(ctx, newManifest); err != nil {
-		return fmt.Errorf("writing manifest: %w", err)
+	if err := writeManifest(ctx, storage, manifestKey, newManifest); err != nil {
+		return nil, fmt.Errorf("writing manifest: %w", err)
 	}
 
-	m.logger.WithFields(map[string]any{
-		"duration": time.Since(start).String(),
+	duration := time.Since(start)
+
+	logger.WithFields(map[string]any{
+		"duration": duration.String(),
 		"uploaded": len(toUpload),
 		"deleted":  len(toDelete),
 		"total":    len(localFiles),
 	}).Infof("Incremental backup completed")
 
-	return nil
+	return &Result{
+		FilesUploaded: len(toUpload),
+		FilesDeleted:  len(toDelete),
+		TotalFiles:    len(localFiles),
+		Duration:      duration,
+	}, nil
 }
 
-func (m *Manager) uploadFile(ctx context.Context, checkpointPath, filename string) error {
+func uploadFile(ctx context.Context, storage Storage, checkpointPath, key, filename string) error {
 	localPath := filepath.Join(checkpointPath, filepath.FromSlash(filename))
 
 	file, err := os.Open(localPath)
@@ -242,7 +135,7 @@ func (m *Manager) uploadFile(ctx context.Context, checkpointPath, filename strin
 		return fmt.Errorf("stat %s: %w", filename, err)
 	}
 
-	err = m.storage.PutFile(ctx, m.fileKey(filename), file, info.Size())
+	err = storage.PutFile(ctx, key, file, info.Size())
 	_ = file.Close()
 
 	if err != nil {
@@ -252,8 +145,8 @@ func (m *Manager) uploadFile(ctx context.Context, checkpointPath, filename strin
 	return nil
 }
 
-func (m *Manager) readManifest(ctx context.Context) (*Manifest, error) {
-	reader, err := m.storage.GetFile(ctx, m.manifestKey())
+func readManifest(ctx context.Context, storage Storage, key string) (*Manifest, error) {
+	reader, err := storage.GetFile(ctx, key)
 	if err != nil {
 		return nil, err
 	}
@@ -268,13 +161,13 @@ func (m *Manager) readManifest(ctx context.Context) (*Manifest, error) {
 	return &manifest, nil
 }
 
-func (m *Manager) writeManifest(ctx context.Context, manifest *Manifest) error {
+func writeManifest(ctx context.Context, storage Storage, key string, manifest *Manifest) error {
 	data, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshaling manifest: %w", err)
 	}
 
-	return m.storage.PutFile(ctx, m.manifestKey(), bytes.NewReader(data), int64(len(data)))
+	return storage.PutFile(ctx, key, bytes.NewReader(data), int64(len(data)))
 }
 
 // listCheckpointFiles walks the checkpoint directory and returns all files with their sizes.

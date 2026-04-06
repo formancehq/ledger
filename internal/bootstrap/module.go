@@ -36,7 +36,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/application/mirror"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/backup"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/coldstorage"
 	clusterhealth "github.com/formancehq/ledger-v3-poc/internal/infra/health"
@@ -172,74 +171,6 @@ func ColdStorageModule(coldStorageDriver string) fx.Option {
 			},
 			func(lc fx.Lifecycle, archiver *state.Archiver) {
 				lc.Append(worker.FxHook(archiver))
-			},
-		),
-	)
-}
-
-// BackupModule conditionally provides the backup Storage and Manager
-// when a backup driver is configured (driver != "").
-func BackupModule(backupDriver string) fx.Option {
-	if backupDriver == "" {
-		return fx.Options()
-	}
-
-	return fx.Options(
-		fx.Provide(
-			func(cfg Config, logger logging.Logger) (backup.Storage, error) {
-				switch cfg.BackupConfig.Driver {
-				case "s3":
-					if cfg.BackupConfig.S3Bucket == "" {
-						return nil, errors.New("--backup-s3-bucket is required when backup-driver=s3")
-					}
-
-					logger.WithFields(map[string]any{
-						"bucket":   cfg.BackupConfig.S3Bucket,
-						"region":   cfg.BackupConfig.S3Region,
-						"endpoint": cfg.BackupConfig.S3Endpoint,
-					}).Infof("Using S3 backup storage")
-
-					return backup.NewS3BackupStorage(
-						cfg.BackupConfig.S3Bucket,
-						cfg.BackupConfig.S3Region,
-						cfg.BackupConfig.S3Endpoint,
-					)
-				case "filesystem":
-					basePath := cfg.BackupConfig.BasePath
-					if basePath == "" {
-						basePath = filepath.Join(cfg.DataDir, "backups")
-					}
-
-					return backup.NewFilesystemStorage(basePath), nil
-				default:
-					return nil, fmt.Errorf("unknown backup driver: %s", cfg.BackupConfig.Driver)
-				}
-			},
-			func(
-				cfg Config,
-				logger logging.Logger,
-				store *dal.Store,
-				storage backup.Storage,
-				raftNode *node.Node,
-			) *backup.Manager {
-				bucketID := cfg.BackupConfig.BucketID
-				if bucketID == "" {
-					bucketID = cfg.ClusterID
-				}
-
-				return backup.NewManager(
-					logger,
-					store,
-					storage,
-					bucketID,
-					cfg.BackupConfig.Schedule,
-					raftNode.IsLeader,
-				)
-			},
-		),
-		fx.Invoke(
-			func(lc fx.Lifecycle, manager *backup.Manager) {
-				lc.Append(worker.FxHook(manager))
 			},
 		),
 	)
@@ -528,6 +459,7 @@ func Module() fx.Option {
 					cfg.RaftConfig.AdvertiseAddr,
 					cfg.ServiceAdvertiseAddr(),
 					authCfg,
+					cfg.ClusterID,
 				)
 			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``, ``, ``, ``, ``)),
 			fx.Annotate(func(n *node.Node, collector *diskusage.Collector, servicePool *transport.ConnectionPool, cfg Config, logger logging.Logger) *clusterhealth.HealthChecker {

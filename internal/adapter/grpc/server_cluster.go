@@ -17,6 +17,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/application/ctrl"
 	"github.com/formancehq/ledger-v3-poc/internal/application/indexbuilder"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/backup"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/diskusage"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
@@ -46,6 +47,7 @@ type ClusterServiceServerImpl struct {
 	localRaftAddr    string // This node's own Raft advertise address
 	localServiceAddr string // This node's own gRPC service address
 	authCfg          internalauth.AuthConfig
+	clusterID        string
 	backupMu         sync.Mutex
 }
 
@@ -63,6 +65,7 @@ func NewClusterServiceServer(
 	localRaftAddr string,
 	localServiceAddr string,
 	authCfg internalauth.AuthConfig,
+	clusterID string,
 ) clusterpb.ClusterServiceServer {
 	return &ClusterServiceServerImpl{
 		node:             node,
@@ -78,6 +81,7 @@ func NewClusterServiceServer(
 		localRaftAddr:    localRaftAddr,
 		localServiceAddr: localServiceAddr,
 		authCfg:          authCfg,
+		clusterID:        clusterID,
 	}
 }
 
@@ -707,6 +711,65 @@ func queryCheckpointToInfo(cp *raftcmdpb.QueryCheckpointState) *clusterpb.QueryC
 		MaxSequence:  cp.GetMaxSequence(),
 		CreatedAt:    cp.GetCreatedAt(),
 	}
+}
+
+func (impl *ClusterServiceServerImpl) IncrementalBackup(ctx context.Context, req *clusterpb.IncrementalBackupRequest) (*clusterpb.IncrementalBackupResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
+		return nil, err
+	}
+
+	// Forward to leader if not leader
+	if !impl.node.IsLeader() {
+		leaderID := impl.node.GetLeader()
+		if leaderID == 0 {
+			return nil, commonpb.ErrNoLeader
+		}
+
+		grpcConn := impl.servicePool.GetConnection(leaderID)
+		if grpcConn == nil {
+			return nil, commonpb.ErrNoLeader
+		}
+
+		client := clusterpb.NewClusterServiceClient(grpcConn)
+
+		return client.IncrementalBackup(ctx, req)
+	}
+
+	// Serialize backups (reuse the existing backupMu)
+	impl.backupMu.Lock()
+	defer impl.backupMu.Unlock()
+
+	if req.GetDriver() == "" {
+		return nil, errors.New("driver is required")
+	}
+
+	storage, err := backup.NewStorage(
+		req.GetDriver(),
+		req.GetBasePath(),
+		req.GetS3Bucket(),
+		req.GetS3Region(),
+		req.GetS3Endpoint(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating backup storage: %w", err)
+	}
+
+	bucketID := req.GetBucketId()
+	if bucketID == "" {
+		bucketID = impl.clusterID
+	}
+
+	result, err := backup.RunIncrementalBackup(ctx, impl.logger, impl.store, storage, bucketID)
+	if err != nil {
+		return nil, fmt.Errorf("incremental backup failed: %w", err)
+	}
+
+	return &clusterpb.IncrementalBackupResponse{
+		FilesUploaded: uint32(result.FilesUploaded),
+		FilesDeleted:  uint32(result.FilesDeleted),
+		TotalFiles:    uint32(result.TotalFiles),
+		DurationMs:    result.Duration.Milliseconds(),
+	}, nil
 }
 
 func RegisterClusterService(server *ggrpc.Server, clusterServiceServer clusterpb.ClusterServiceServer) {

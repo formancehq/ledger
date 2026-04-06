@@ -52,6 +52,11 @@ service ClusterService {
   // Node-local operation (not forwarded to leader).
   rpc CreateCheckpoint(CreateCheckpointRequest) returns (CreateCheckpointResponse);
 
+  // IncrementalBackup performs a one-shot incremental backup of the Pebble store.
+  // The caller specifies the storage destination (filesystem or S3) in the request.
+  // The request is forwarded to the leader.
+  rpc IncrementalBackup(IncrementalBackupRequest) returns (IncrementalBackupResponse);
+
   // CreateQueryCheckpoint creates a physical Pebble checkpoint via Raft consensus.
   // The checkpoint captures both the main store and read index, enabling
   // point-in-time queries on any node. Forwarded to leader.
@@ -224,6 +229,26 @@ message BackupResponse {
   uint64 content_size = 5;          // Total size of the archive in bytes (set on EOF)
   uint64 estimated_total_size = 6;  // Estimated total tar size in bytes (set on first chunk)
   string status_message = 7;        // Preparation phase status (shown before data streaming)
+}
+
+// ============================================================================
+// Incremental Backup Messages
+// ============================================================================
+
+message IncrementalBackupRequest {
+  string driver = 1;       // "filesystem" or "s3"
+  string base_path = 2;    // Filesystem driver base path
+  string bucket_id = 3;    // Namespace prefix for backup files (default: cluster-id)
+  string s3_bucket = 4;    // S3 bucket name (required when driver=s3)
+  string s3_region = 5;    // AWS region for backup S3 bucket
+  string s3_endpoint = 6;  // Custom S3 endpoint (for MinIO)
+}
+
+message IncrementalBackupResponse {
+  uint32 files_uploaded = 1;  // Number of new/changed files uploaded
+  uint32 files_deleted = 2;   // Number of stale files deleted
+  uint32 total_files = 3;     // Total files in the backup after this run
+  int64 duration_ms = 4;      // Wall-clock duration in milliseconds
 }
 
 // ============================================================================
