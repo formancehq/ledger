@@ -89,17 +89,19 @@ type LevelCompression [NumLevels]Compression
 const NumLevels = 7
 
 // DefaultLevelCompression returns the default per-level compression:
-// L0–L3 use Snappy, L4–L6 use Zstd.
+// L0–L3 use Fastest (minimal CPU on hot levels),
+// L4–L5 use Fast (good ratio/CPU trade-off),
+// L6 uses Balanced (best ratio for cold data without full zstd cost).
 func DefaultLevelCompression() LevelCompression {
-	var lc LevelCompression
-	for i := range 4 {
-		lc[i] = SnappyCompression
+	return LevelCompression{
+		FastestCompression,  // L0
+		FastestCompression,  // L1
+		FastestCompression,  // L2
+		FastestCompression,  // L3
+		FastCompression,     // L4
+		FastCompression,     // L5
+		BalancedCompression, // L6
 	}
-	for i := 4; i < NumLevels; i++ {
-		lc[i] = ZstdCompression
-	}
-
-	return lc
 }
 
 // String returns a comma-separated representation (e.g. "snappy,snappy,snappy,snappy,zstd,zstd,zstd").

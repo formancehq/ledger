@@ -55,7 +55,7 @@ func TestLevelCompressionString(t *testing.T) {
 	t.Parallel()
 
 	lc := DefaultLevelCompression()
-	require.Equal(t, "snappy,snappy,snappy,snappy,zstd,zstd,zstd", lc.String())
+	require.Equal(t, "fastest,fastest,fastest,fastest,fast,fast,balanced", lc.String())
 }
 
 func TestCompressionToPebble(t *testing.T) {
@@ -79,8 +79,8 @@ func TestBuildLevels(t *testing.T) {
 		Compression:    DefaultLevelCompression(),
 	}
 	levels := cfg.BuildLevels()
-	require.Equal(t, block.SnappyCompression, levels[0].Compression())
-	require.Equal(t, block.SnappyCompression, levels[3].Compression())
-	require.Equal(t, block.ZstdCompression, levels[4].Compression())
-	require.Equal(t, block.ZstdCompression, levels[6].Compression())
+	require.Equal(t, block.FastestCompression, levels[0].Compression())
+	require.Equal(t, block.FastestCompression, levels[3].Compression())
+	require.Equal(t, block.FastCompression, levels[4].Compression())
+	require.Equal(t, block.BalancedCompression, levels[6].Compression())
 }

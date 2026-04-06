@@ -56,10 +56,11 @@ func New(dir string, logger logging.Logger, cfg Config) (*Store, error) {
 	defer cache.Unref()
 
 	opts := &pebble.Options{
+		FormatMajorVersion: pebble.FormatNewest,
 		// The read index is a derived view rebuilt from the Raft log.
 		// We can safely disable WAL: on crash the index builder simply
 		// replays from its last progress cursor.
-		DisableWAL:                  true,
+		DisableWAL: true,
 		MemTableSize:                cfg.MemTableSize,
 		MemTableStopWritesThreshold: cfg.MemTableStopWritesThreshold,
 		L0CompactionThreshold:       cfg.L0CompactionThreshold,

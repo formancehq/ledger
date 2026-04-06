@@ -197,7 +197,8 @@ func NewStore(
 	stallState := NewWriteStallState()
 
 	opts := &pebble.Options{
-		EventListener: NewMetricsListener(meter, stallState),
+		FormatMajorVersion: pebble.FormatNewest,
+		EventListener:      NewMetricsListener(meter, stallState),
 		// 1) Absorb more writes before flush => fewer SST files, fewer compactions.
 		MemTableSize:                cfg.MemTableSize,
 		MemTableStopWritesThreshold: cfg.MemTableStopWritesThreshold,
@@ -226,6 +227,23 @@ func NewStore(
 		// 6) WAL configuration
 		WALMinSyncInterval: func() time.Duration { return cfg.WALMinSyncInterval },
 		DisableWAL:         cfg.DisableWAL,
+	}
+
+	// 7) Enable columnar blocks (required for value separation, also improves scans).
+	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
+
+	// 8) Value separation: store large values in blob files to reduce compaction IO.
+	if cfg.ValueSeparation.Enabled {
+		vs := cfg.ValueSeparation
+		opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
+			return pebble.ValueSeparationPolicy{
+				Enabled:               true,
+				MinimumSize:           vs.MinimumSize,
+				MaxBlobReferenceDepth: vs.MaxBlobReferenceDepth,
+				RewriteMinimumAge:     vs.RewriteMinimumAge,
+				TargetGarbageRatio:    vs.TargetGarbageRatio,
+			}
+		}
 	}
 
 	var (

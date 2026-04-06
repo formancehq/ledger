@@ -117,6 +117,13 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().Duration("pebble-wal-min-sync-interval", 0, "Pebble minimum interval between WAL syncs (default: 0, immediate sync)")
 	runCmd.Flags().Bool("pebble-disable-wal", false, "Pebble disable WAL (WARNING: risks data loss)")
 	runCmd.Flags().Uint64("pebble-incremental-compact-threshold", 0, "New log entries before triggering incremental compaction (default: 100000)")
+	// Value separation flags
+	runCmd.Flags().Bool("pebble-value-separation", false, "Enable value separation (large values stored in blob files)")
+	runCmd.Flags().Int("pebble-value-separation-min-size", 256, "Minimum value size in bytes for separation (default: 256)")
+	runCmd.Flags().Int("pebble-value-separation-max-depth", 4, "Max blob reference depth per SSTable (default: 4)")
+	runCmd.Flags().Duration("pebble-value-separation-rewrite-age", time.Hour, "Minimum blob file age before rewrite (default: 1h)")
+	runCmd.Flags().Float64("pebble-value-separation-garbage-ratio", 0.20, "Blob garbage ratio before rewrite (default: 0.20)")
+
 	runCmd.Flags().Uint64("cache-rotation-threshold", 1000, "Cache rotation threshold (0 = use default 1000)")
 	runCmd.Flags().Int("numscript-cache-size", 1024, "Maximum number of parsed Numscript programs to cache (LRU eviction)")
 	runCmd.Flags().Int("mirror-max-batch-size", 500, "Maximum allowed batch size for mirror sync (server-side cap on user-configured batch size)")
@@ -802,6 +809,19 @@ func loadPebbleConfig(cmd *cobra.Command) dal.Config {
 
 	if disableWAL, _ := cmd.Flags().GetBool("pebble-disable-wal"); disableWAL {
 		cfg.DisableWAL = true
+	}
+
+	// Value separation
+	if enabled, _ := cmd.Flags().GetBool("pebble-value-separation"); enabled {
+		cfg.ValueSeparation.Enabled = true
+	}
+
+	cfg.ValueSeparation.MinimumSize = getInt("pebble-value-separation-min-size", cfg.ValueSeparation.MinimumSize)
+	cfg.ValueSeparation.MaxBlobReferenceDepth = getInt("pebble-value-separation-max-depth", cfg.ValueSeparation.MaxBlobReferenceDepth)
+	cfg.ValueSeparation.RewriteMinimumAge = getDuration("pebble-value-separation-rewrite-age", cfg.ValueSeparation.RewriteMinimumAge)
+
+	if ratio, _ := cmd.Flags().GetFloat64("pebble-value-separation-garbage-ratio"); ratio != 0 {
+		cfg.ValueSeparation.TargetGarbageRatio = ratio
 	}
 
 	return cfg

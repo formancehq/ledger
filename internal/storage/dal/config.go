@@ -6,6 +6,38 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/pebblecfg"
 )
 
+// ValueSeparationConfig controls Pebble's value separation feature.
+// When enabled, large values are stored in external blob files instead of
+// inline in SSTables, reducing compaction IO for write-heavy workloads.
+type ValueSeparationConfig struct {
+	// Enabled controls whether value separation is active.
+	// Requires columnar blocks (automatically enabled when this is true).
+	// Default: false
+	Enabled bool `yaml:"enabled"`
+
+	// MinimumSize is the minimum value size (in bytes) to separate into a blob file.
+	// Values smaller than this are kept inline in the SSTable.
+	// Default: 256
+	MinimumSize int `yaml:"minimumSize"`
+
+	// MaxBlobReferenceDepth limits overlapping blob files referenced by a single SSTable.
+	// Lower values reduce read amplification at the cost of more rewrite compactions.
+	// Default: 4
+	MaxBlobReferenceDepth int `yaml:"maxBlobReferenceDepth"`
+
+	// RewriteMinimumAge is the minimum age of a blob file before it can be rewritten
+	// to reclaim space. Lower values reduce space amplification but increase write amp.
+	// Default: 1h
+	RewriteMinimumAge time.Duration `yaml:"rewriteMinimumAge"`
+
+	// TargetGarbageRatio is the fraction of unreferenced data in blob files
+	// before the DB rewrites them. Range [0, 1.0].
+	// 0.20 means rewrite when 20% of blob data is garbage.
+	// 1.0 disables blob rewriting entirely.
+	// Default: 0.20
+	TargetGarbageRatio float64 `yaml:"targetGarbageRatio"`
+}
+
 // Config contains all configurable options for Pebble storage.
 // All sizes are in bytes unless otherwise specified.
 type Config struct {
@@ -39,6 +71,9 @@ type Config struct {
 	// SmartCompactor triggers an incremental compaction of just the new range.
 	// Default: 100000
 	IncrementalCompactThreshold uint64 `yaml:"incrementalCompactThreshold"`
+
+	// ValueSeparation controls Pebble's value separation (blob files) feature.
+	ValueSeparation ValueSeparationConfig `yaml:"valueSeparation"`
 }
 
 // DefaultConfig returns the default Pebble configuration.
@@ -62,5 +97,12 @@ func DefaultConfig() Config {
 		DisableWAL:                  false,
 		MaxCheckpoints:              10,
 		IncrementalCompactThreshold: 100_000,
+		ValueSeparation: ValueSeparationConfig{
+			Enabled:               false,
+			MinimumSize:           256,
+			MaxBlobReferenceDepth: 4,
+			RewriteMinimumAge:     time.Hour,
+			TargetGarbageRatio:    0.20,
+		},
 	}
 }
