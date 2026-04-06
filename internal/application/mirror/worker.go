@@ -66,11 +66,13 @@ type Worker struct {
 	logger         logging.Logger
 	sourceLogCount uint64
 
-	notify       signal.Signal
-	w            worker.Worker
-	backoff      time.Duration // current backoff duration (0 = no backoff)
-	cursor       uint64        // last known cursor, avoids Pebble read per batch
-	cursorLoaded bool
+	notify         signal.Signal
+	w              worker.Worker
+	backoff        time.Duration // current backoff duration (0 = no backoff)
+	cursor         uint64        // last known cursor, avoids Pebble read per batch
+	nextTxID       uint64        // last known next transaction ID, avoids Pebble read per batch
+	cursorLoaded   bool
+	nextTxIDLoaded bool
 	prefetchCh   chan prefetchResult // pending prefetch from previous batch
 
 	// Metrics
@@ -318,17 +320,34 @@ func (w *Worker) processBatch() (bool, error) {
 
 	w.logsIngested.Add(ctx, int64(len(v2Logs)), attrs)
 
-	// TODO: read actual NextTransactionId from boundaries for gap detection
-	// For now, pass 1 and let the processor handle it
-	expectedNextTxID := uint64(1)
+	// Load NextTransactionId from boundaries only once; subsequent batches use the in-memory value
+	// updated by TranslateBatch.
+	if !w.nextTxIDLoaded {
+		boundaries, err := w.preloader.ReadBoundaries(w.ledgerName)
+		if err != nil {
+			return false, fmt.Errorf("reading boundaries: %w", err)
+		}
+
+		if boundaries != nil {
+			w.nextTxID = boundaries.GetNextTransactionId()
+		} else {
+			w.nextTxID = 1
+		}
+
+		w.nextTxIDLoaded = true
+	}
+
+	expectedNextTxID := w.nextTxID
 
 	// Translate v2 logs to v3 orders
 	translateStart := time.Now()
 
-	orders, _, _, err := v2.TranslateBatch(w.ledgerName, v2Logs, expectedNextLogID, expectedNextTxID)
+	orders, _, newNextTxID, err := v2.TranslateBatch(w.ledgerName, v2Logs, expectedNextLogID, expectedNextTxID)
 	if err != nil {
 		return false, err
 	}
+
+	w.nextTxID = newNextTxID
 
 	w.translateDuration.Record(ctx, time.Since(translateStart).Microseconds(), attrs)
 

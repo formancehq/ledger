@@ -104,6 +104,20 @@ func (p *Preloader) Loaders() *Loaders {
 	return p.loaders
 }
 
+// ReadBoundaries reads the current LedgerBoundaries for the given ledger
+// directly from Pebble (not from the cache overlay).
+func (p *Preloader) ReadBoundaries(ledgerName string) (*raftcmdpb.LedgerBoundaries, error) {
+	reader := p.store.NewReadHandle()
+	defer func() { _ = reader.Close() }()
+
+	boundaries, _, err := p.attrs.Boundary.ComputeValue(reader, ^uint64(0), []byte(ledgerName))
+	if err != nil {
+		return nil, err
+	}
+
+	return boundaries, nil
+}
+
 // LockTracker acquires the IndexTracker's mutex. Used by non-guard callers
 // (mirror error reporting, admission barrier) that Propose without going
 // through AcquireProposalGuard, to serialize the tracker Increment with
