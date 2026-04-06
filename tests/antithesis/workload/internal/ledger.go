@@ -6,7 +6,6 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
@@ -64,60 +63,3 @@ func GetRandomLedger(ctx context.Context, client servicepb.BucketServiceClient) 
 	}
 	return ledgers[random.GetRandom()%uint64(len(ledgers))], nil
 }
-
-// ListAccounts returns all account addresses for a given ledger.
-func ListAccounts(ctx context.Context, client servicepb.BucketServiceClient, ledger string) ([]string, error) {
-	stream, err := client.ListAccounts(ctx, &servicepb.ListAccountsRequest{Ledger: ledger})
-	if err != nil {
-		return nil, err
-	}
-	var addresses []string
-	for {
-		account, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		addresses = append(addresses, account.Address)
-	}
-	return addresses, nil
-}
-
-// ListTransactions returns all transactions for a ledger.
-func ListTransactions(ctx context.Context, client servicepb.BucketServiceClient, ledger string, pageSize uint32) ([]*commonpb.Transaction, error) {
-	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
-		Ledger:   ledger,
-		PageSize: pageSize,
-	})
-	if err != nil {
-		return nil, err
-	}
-	var txs []*commonpb.Transaction
-	for {
-		tx, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		txs = append(txs, tx)
-	}
-	return txs, nil
-}
-
-// GetLastTransactionID returns the ID of the most recent transaction in a ledger, or -1 if none.
-func GetLastTransactionID(ctx context.Context, client servicepb.BucketServiceClient, ledger string) (int64, error) {
-	txs, err := ListTransactions(ctx, client, ledger, 1)
-	assert.Sometimes(err == nil || IsUnavailable(err), "should be able to get the latest transaction", Details{"ledger": ledger})
-	if err != nil {
-		return -1, err
-	}
-	if len(txs) == 0 {
-		return -1, nil
-	}
-	return int64(txs[0].Id), nil
-}
-
