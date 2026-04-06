@@ -79,7 +79,6 @@ type Buffered struct {
 	NextQueryCheckpointID          uint64
 	LastLogHash                    []byte
 	Derived                        *DerivedRegistry
-	PendingLogs                    []*commonpb.Log
 	pendingSigningKeyUpdates       []signingKeyUpdate
 	pendingSigningConfigUpdate     *signingConfigUpdate
 	pendingMaintenanceModeUpdate   *maintenanceModeUpdate
@@ -129,7 +128,7 @@ type purgeRange struct {
 	closeSequence uint64
 }
 
-func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
+func (b *Buffered) Merge(index uint64, batch *dal.Batch, logs []*commonpb.Log) error {
 	// Process Ledger updates
 	ledgerUpdates, _, err := b.Derived.Ledgers.Merge(index)
 	if err != nil {
@@ -255,7 +254,7 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 		return fmt.Errorf("failed merging transaction attributes: %w", err)
 	}
 
-	err = AppendLogs(batch, b.PendingLogs...)
+	err = AppendLogs(batch, logs...)
 	if err != nil {
 		return fmt.Errorf("failed appending pending logs: %w", err)
 	}
@@ -420,7 +419,7 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	if len(b.pendingLedgerDeletions) > 0 {
 		deleteSequences := make(map[string]uint64, len(b.pendingLedgerDeletions))
 
-		for _, log := range b.PendingLogs {
+		for _, log := range logs {
 			if dl := log.GetPayload().GetDeleteLedger(); dl != nil && dl.GetInfo() != nil {
 				deleteSequences[dl.GetInfo().GetName()] = log.GetSequence()
 			}
@@ -450,7 +449,6 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 		}
 	}
 
-	b.PendingLogs = nil
 	b.fsm.nextSequenceID = b.NextSequenceID
 	b.fsm.nextQueryCheckpointID = b.NextQueryCheckpointID
 	b.fsm.lastLogHash = b.LastLogHash

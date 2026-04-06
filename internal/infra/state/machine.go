@@ -1339,9 +1339,6 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		}
 	}
 
-	// Add only created logs to buffer and merge
-	// TODO: buffer does not need to have PendingLogs property
-	buffer.PendingLogs = append(buffer.PendingLogs, createdLogs...)
 	configChanged := buffer.HasPendingSinkChanges()
 	mirrorConfigChanged := hasMirrorConfigChange(proposal)
 	hasArchiveRequests := len(buffer.pendingArchives) > 0
@@ -1351,7 +1348,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// SetAuditConfig(true) and SetAuditConfig(false) both record themselves.
 	auditBefore := fsm.sharedState.AuditEnabled()
 
-	if err := buffer.Merge(raftIndex, batch); err != nil {
+	if err := buffer.Merge(raftIndex, batch, createdLogs); err != nil {
 		return nil, err
 	}
 
