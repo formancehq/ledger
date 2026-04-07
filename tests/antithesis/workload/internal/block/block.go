@@ -79,6 +79,7 @@ func RunLoop(ctx context.Context, client servicepb.BucketServiceClient, groups [
 		if g.Setup != nil {
 			actions := g.Setup()
 			if len(actions) > 0 {
+				var setupErr error
 				for {
 					if ctx.Err() != nil {
 						return
@@ -93,11 +94,12 @@ func RunLoop(ctx context.Context, client servicepb.BucketServiceClient, groups [
 						continue
 					}
 
-					assert.Sometimes(false, "should be able to setup scenario", internal.Details{"error": err})
+					setupErr = err
 					log.Printf("scenario_blocks: setup failed: %v", err)
 
 					break
 				}
+				assert.Always(setupErr == nil, "should be able to setup scenario", internal.Details{"error": setupErr})
 			}
 		}
 		allBlocks = append(allBlocks, g.Blocks...)

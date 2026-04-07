@@ -319,6 +319,12 @@ func convertToGRPCError(err error) error {
 		return status.Error(codes.Unavailable, err.Error())
 	}
 
+	// Convert context deadline/cancellation from internal timeouts (e.g. proposeTimeout)
+	// to Unavailable so the client retry policy handles them.
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return status.Error(codes.Unavailable, err.Error())
+	}
+
 	// Convert Raft transient errors to Unavailable (client should retry).
 	// ErrProposalDropped: the leader lost leadership while processing the proposal.
 	// ErrNotLeader/ErrNodeSyncing: node cannot serve the request right now.

@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -479,6 +480,9 @@ func TestConvertToGRPCError_RaftTransientErrors(t *testing.T) {
 		{"proposal dropped", raft.ErrProposalDropped},
 		{"not leader", node.ErrNotLeader},
 		{"node syncing", node.ErrNodeSyncing},
+		{"context deadline exceeded", context.DeadlineExceeded},
+		{"context canceled", context.Canceled},
+		{"wrapped deadline exceeded", fmt.Errorf("applying raft requests: %w", context.DeadlineExceeded)},
 		{"wrapped proposal dropped", fmt.Errorf("applying raft requests: %w", raft.ErrProposalDropped)},
 	}
 
