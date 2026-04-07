@@ -1383,6 +1383,16 @@ func (node *Node) GetNodeID() uint64 {
 	return node.config.NodeID
 }
 
+// Logger returns the node's logger.
+func (node *Node) Logger() logging.Logger {
+	return node.logger
+}
+
+// LastPersistedIndex returns the FSM's last persisted Raft index.
+func (node *Node) LastPersistedIndex() uint64 {
+	return node.fsm.LastPersistedIndex()
+}
+
 // GetClusterState returns the current state of the Raft cluster.
 // The rawNode.Status() call is dispatched to the orchestrate goroutine
 // because rawNode is not thread-safe.

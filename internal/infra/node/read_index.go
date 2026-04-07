@@ -115,7 +115,13 @@ func (node *Node) ReadIndexAndWait(ctx context.Context) error {
 		return err
 	}
 
-	span.SetAttributes(attribute.Int64("commit_index", int64(commitIndex)))
+	persistedBefore := node.fsm.LastPersistedIndex()
+	span.SetAttributes(
+		attribute.Int64("commit_index", int64(commitIndex)),
+		attribute.Int64("persisted_before_wait", int64(persistedBefore)),
+		attribute.Int64("leader", int64(node.GetLeader())),
+		attribute.Int64("node_id", int64(node.config.NodeID)),
+	)
 
 	_, waitSpan := readIndexTracer.Start(ctx, "node.wait_for_applied",
 		trace.WithAttributes(attribute.Int64("target_index", int64(commitIndex))))
@@ -125,6 +131,8 @@ func (node *Node) ReadIndexAndWait(ctx context.Context) error {
 		return err
 	}
 
+	persistedAfter := node.fsm.LastPersistedIndex()
+	waitSpan.SetAttributes(attribute.Int64("persisted_after_wait", int64(persistedAfter)))
 	waitSpan.End()
 
 	if node.readIndexDurationHistogram != nil {

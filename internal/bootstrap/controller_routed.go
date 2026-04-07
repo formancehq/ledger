@@ -151,7 +151,20 @@ func (b *RoutedController) GetTransaction(ctx context.Context, ledgerName string
 		return nil, err
 	}
 
-	return c.GetTransaction(ctx, ledgerName, transactionID)
+	tx, err := c.GetTransaction(ctx, ledgerName, transactionID)
+	if errors.Is(err, &commonpb.NotFoundError{}) {
+		b.Node.Logger().WithFields(map[string]any{
+			"ledger":         ledgerName,
+			"transactionId":  transactionID,
+			"nodeId":         b.Node.GetNodeID(),
+			"leader":         b.Node.GetLeader(),
+			"isLeader":       b.Node.IsLeader(),
+			"persistedIndex": b.Node.LastPersistedIndex(),
+			"forwarded":      c != b.localController,
+		}).Errorf("GetTransaction returned NotFound for committed transaction")
+	}
+
+	return tx, err
 }
 
 func (b *RoutedController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Transaction], error) {
