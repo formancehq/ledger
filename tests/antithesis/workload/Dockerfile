@@ -5,7 +5,7 @@ ARG GOOS
 
 RUN apt-get update && apt-get install -y bash git gcc
 
-RUN go install github.com/antithesishq/antithesis-sdk-go/tools/antithesis-go-instrumentor@latest
+RUN go install github.com/antithesishq/antithesis-sdk-go/tools/antithesis-go-instrumentor@v0.6.0
 
 COPY go.* /src/
 COPY internal /src/internal
