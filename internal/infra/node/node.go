@@ -1281,7 +1281,12 @@ func (node *Node) TransferLeader(ctx context.Context, transferee uint64) error {
 // The send blocks until either the proposeCh has capacity or the context is
 // cancelled. This applies natural backpressure when the pipeline is full
 // instead of failing fast.
+const proposeTimeout = 10 * time.Millisecond
+
 func (node *Node) Propose(ctx context.Context, proposal *Proposal) (*futures.Future[state.ApplyResult], error) {
+	ctx, cancel := context.WithTimeout(ctx, proposeTimeout)
+	defer cancel()
+
 	// Create a separate future for Machine results.
 	// The proposal's embedded Future is for Raft consensus (resolved by rawNode.Propose).
 	// The fsmFuture is for Machine processing (resolved when entry is applied).
