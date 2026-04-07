@@ -184,7 +184,7 @@ func startClusterSealers(t *testing.T, cluster *Cluster) func() {
 			}
 
 			p := NewProposal(proposal.GetId(), cmdData)
-			if _, err := node.Propose(p); err != nil {
+			if _, err := node.Propose(context.Background(), p); err != nil {
 				// Expected on followers (DisableProposalForwarding)
 				t.Logf("Sealer node %d: propose SealPeriod failed (expected on followers): %v", clusterNode.ID, err)
 			}

@@ -24,7 +24,7 @@ import (
 
 // Proposer submits a Raft proposal and returns a future for the apply result.
 type Proposer interface {
-	Propose(proposal *node.Proposal) (*futures.Future[state.ApplyResult], error)
+	Propose(ctx context.Context, proposal *node.Proposal) (*futures.Future[state.ApplyResult], error)
 }
 
 // Manager manages the lifecycle of mirror workers based on the Raft-replicated

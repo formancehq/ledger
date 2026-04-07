@@ -24,7 +24,7 @@ import (
 
 // Proposer proposes commands to the Raft cluster.
 type Proposer interface {
-	Propose(proposal *node.Proposal) (*futures.Future[state.ApplyResult], error)
+	Propose(ctx context.Context, proposal *node.Proposal) (*futures.Future[state.ApplyResult], error)
 }
 
 // EmitterConfig holds configuration for the event emitter.
@@ -330,7 +330,7 @@ func (e *Emitter) proposeSinkUpdate(update *raftcmdpb.EventsSinkUpdate) error {
 		return err
 	}
 
-	future, err := e.proposer.Propose(node.NewProposal(cmdID, e.marshalBuf[:n]))
+	future, err := e.proposer.Propose(context.Background(), node.NewProposal(cmdID, e.marshalBuf[:n]))
 	if err != nil {
 		return err
 	}

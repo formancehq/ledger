@@ -321,11 +321,10 @@ func convertToGRPCError(err error) error {
 
 	// Convert Raft transient errors to Unavailable (client should retry).
 	// ErrProposalDropped: the leader lost leadership while processing the proposal.
-	// ErrNotLeader/ErrNodeSyncing/ErrProposalQueueFull: node cannot serve the request right now.
+	// ErrNotLeader/ErrNodeSyncing: node cannot serve the request right now.
 	if errors.Is(err, raft.ErrProposalDropped) ||
 		errors.Is(err, node.ErrNotLeader) ||
-		errors.Is(err, node.ErrNodeSyncing) ||
-		errors.Is(err, node.ErrProposalQueueFull) {
+		errors.Is(err, node.ErrNodeSyncing) {
 		return status.Error(codes.Unavailable, err.Error())
 	}
 

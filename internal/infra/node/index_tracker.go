@@ -56,9 +56,9 @@ func (t *IndexTracker) Increment(n uint64) {
 }
 
 // RollbackIncrement reverses a previous Increment without acquiring the mutex.
-// Used by Propose when the proposeCh send fails (ErrProposalQueueFull) after
-// a pre-increment. The caller already holds the tracker's mutex (via the
-// proposal guard), so acquiring it again would deadlock.
+// Used by Propose when the context is cancelled after a pre-increment. The
+// caller already holds the tracker's mutex (via the proposal guard), so
+// acquiring it again would deadlock.
 func (t *IndexTracker) RollbackIncrement(n uint64) {
 	t.nextIndex.Add(^(n - 1)) // atomic subtract via two's complement
 }

@@ -58,7 +58,7 @@ type directProposer struct {
 	store *dal.Store
 }
 
-func (p *directProposer) Propose(proposal *node.Proposal) (*futures.Future[state.ApplyResult], error) {
+func (p *directProposer) Propose(_ context.Context, proposal *node.Proposal) (*futures.Future[state.ApplyResult], error) {
 	cmd := &raftcmdpb.Proposal{}
 
 	err := cmd.UnmarshalVT(proposal.Data())

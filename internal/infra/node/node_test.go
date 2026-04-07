@@ -733,7 +733,7 @@ func proposeAndWait(node *Node, proposal *raftcmdpb.Proposal) ([]*commonpb.Log, 
 
 	p := NewProposal(proposal.GetId(), cmdData)
 
-	fsmFuture, err := node.Propose(p)
+	fsmFuture, err := node.Propose(context.Background(), p)
 	if err != nil {
 		return nil, fmt.Errorf("proposing command: %w", err)
 	}

@@ -36,9 +36,6 @@ const (
 )
 
 var (
-	// ErrProposalQueueFull is returned when the proposal queue is full.
-	ErrProposalQueueFull = errors.New("propose channel full")
-
 	// ErrNotLeader is returned when a leadership transfer is attempted on a non-leader node.
 	ErrNotLeader = errors.New("this node is not the leader")
 
@@ -1280,7 +1277,11 @@ func (node *Node) TransferLeader(ctx context.Context, transferee uint64) error {
 // goroutine resumes. If Increment ran after the send, both Advance and
 // Increment would advance the tracker for the same entry, causing a permanent
 // +1 inflation that shifts preload boundaries.
-func (node *Node) Propose(proposal *Proposal) (*futures.Future[state.ApplyResult], error) {
+//
+// The send blocks until either the proposeCh has capacity or the context is
+// cancelled. This applies natural backpressure when the pipeline is full
+// instead of failing fast.
+func (node *Node) Propose(ctx context.Context, proposal *Proposal) (*futures.Future[state.ApplyResult], error) {
 	// Create a separate future for Machine results.
 	// The proposal's embedded Future is for Raft consensus (resolved by rawNode.Propose).
 	// The fsmFuture is for Machine processing (resolved when entry is applied).
@@ -1294,13 +1295,13 @@ func (node *Node) Propose(proposal *Proposal) (*futures.Future[state.ApplyResult
 	select {
 	case node.proposeCh <- proposal:
 		return fsmFuture, nil
-	default:
+	case <-ctx.Done():
 		// Roll back the pre-increment. Use RollbackIncrement (no mutex)
 		// because the caller already holds the tracker lock.
 		node.indexTracker.RollbackIncrement(1)
 		node.applier.DeleteFuture(proposal.commandID)
 
-		return nil, ErrProposalQueueFull
+		return nil, ctx.Err()
 	}
 }
 

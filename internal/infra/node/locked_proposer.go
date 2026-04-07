@@ -1,6 +1,8 @@
 package node
 
 import (
+	"context"
+
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
 )
@@ -23,9 +25,9 @@ func NewLockedProposer(n *Node) *LockedProposer {
 // Propose acquires the IndexTracker lock, proposes to Raft, and releases the
 // lock. The Increment inside Node.Propose runs while the lock is held,
 // serializing it with the preloader's proposal guard.
-func (lp *LockedProposer) Propose(proposal *Proposal) (*futures.Future[state.ApplyResult], error) {
+func (lp *LockedProposer) Propose(ctx context.Context, proposal *Proposal) (*futures.Future[state.ApplyResult], error) {
 	lp.node.indexTracker.Lock()
 	defer lp.node.indexTracker.Unlock()
 
-	return lp.node.Propose(proposal)
+	return lp.node.Propose(ctx, proposal)
 }

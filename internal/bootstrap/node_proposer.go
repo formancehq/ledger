@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
@@ -35,7 +36,7 @@ func (p *NodeProposer) ProposeOrders(orders ...*raftcmdpb.Order) error {
 	// Lock the tracker to serialize the Increment with guarded proposals,
 	// preventing preload boundary mismatches in the FSM.
 	p.node.IndexTracker().Lock()
-	_, err = p.node.Propose(proposal)
+	_, err = p.node.Propose(context.Background(), proposal)
 	p.node.IndexTracker().Unlock()
 
 	if err != nil {

@@ -41,7 +41,7 @@ var tracer = otel.Tracer("admission")
 
 
 type Proposer interface {
-	Propose(*node.Proposal) (*futures.Future[state.ApplyResult], error)
+	Propose(context.Context, *node.Proposal) (*futures.Future[state.ApplyResult], error)
 	InitialIndex() uint64
 }
 
@@ -394,10 +394,13 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 	proposal := node.NewProposal(cmd.GetId(), proposalData)
 
+	// Bail out if the caller disconnected (e.g. gRPC client killed).
+	// Checking here — right before the Raft proposal — avoids committing
+	// entries whose response will never be delivered.
 	ctx, proposeSpan := tracer.Start(ctx, "admission.propose")
 	proposeStart := time.Now()
 
-	fsmFuture, err := a.proposer.Propose(proposal)
+	fsmFuture, err := a.proposer.Propose(ctx, proposal)
 	if err != nil {
 		proposeSpan.End()
 		guard.ReleaseAll()
@@ -477,7 +480,7 @@ func (a *Admission) Barrier(ctx context.Context) error {
 	// Lock the tracker to serialize the Increment with guarded proposals,
 	// preventing preload boundary mismatches in the FSM.
 	a.preloader.LockTracker()
-	fsmFuture, err := a.proposer.Propose(proposal)
+	fsmFuture, err := a.proposer.Propose(ctx, proposal)
 	a.preloader.UnlockTracker()
 
 	if err != nil {

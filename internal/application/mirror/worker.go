@@ -415,7 +415,7 @@ func (w *Worker) processBatch() (bool, error) {
 	proposeStart := time.Now()
 	proposal := node.NewProposal(cmd.GetId(), proposalData)
 
-	fsmFuture, err := w.proposer.Propose(proposal)
+	fsmFuture, err := w.proposer.Propose(ctx, proposal)
 	if err != nil {
 		guard.Release()
 
@@ -517,7 +517,7 @@ func (w *Worker) reportError(message string) {
 	// Lock the tracker to serialize the Increment with guarded proposals,
 	// preventing preload boundary mismatches in the FSM.
 	w.preloader.LockTracker()
-	_, err := w.proposer.Propose(proposal)
+	_, err := w.proposer.Propose(context.Background(), proposal)
 	w.preloader.UnlockTracker()
 
 	if err != nil {

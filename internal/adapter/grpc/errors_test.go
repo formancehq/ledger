@@ -479,7 +479,6 @@ func TestConvertToGRPCError_RaftTransientErrors(t *testing.T) {
 		{"proposal dropped", raft.ErrProposalDropped},
 		{"not leader", node.ErrNotLeader},
 		{"node syncing", node.ErrNodeSyncing},
-		{"proposal queue full", node.ErrProposalQueueFull},
 		{"wrapped proposal dropped", fmt.Errorf("applying raft requests: %w", raft.ErrProposalDropped)},
 	}
 
