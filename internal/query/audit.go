@@ -26,10 +26,7 @@ func ReadLastAuditSequence(reader dal.PebbleReader) (uint64, error) {
 		PutBytes(dal.MaxUint64Bytes)
 	upperBound := kb.Build()
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: lowerBound,
-		UpperBound: upperBound,
-	})
+	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {
 		return 0, fmt.Errorf("creating iterator: %w", err)
 	}
@@ -73,10 +70,7 @@ func ReadAuditEntries(ctx context.Context, reader dal.PebbleReader, afterSequenc
 		PutBytes(dal.MaxUint64Bytes)
 	upperBound := kb2.Build()
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: lowerBound,
-		UpperBound: upperBound,
-	})
+	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator for audit entries: %w", err)
 	}

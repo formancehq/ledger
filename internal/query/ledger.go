@@ -26,10 +26,7 @@ func ReadLedgers(ctx context.Context, reader dal.PebbleReader) (dal.Cursor[*comm
 	lowerBound := []byte{dal.KeyPrefixLedgerInfo}
 	upperBound := []byte{dal.KeyPrefixLedgerInfo + 1}
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: lowerBound,
-		UpperBound: upperBound,
-	})
+	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator for ledger info: %w", err)
 	}

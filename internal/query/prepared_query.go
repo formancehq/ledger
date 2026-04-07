@@ -64,10 +64,7 @@ func ReadPreparedQueries(ctx context.Context, reader dal.PebbleReader, ledger st
 	kb2.PutBytes([]byte{0xFF})
 	upperBound := kb2.Build()
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: lowerBound,
-		UpperBound: upperBound,
-	})
+	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator for prepared queries: %w", err)
 	}

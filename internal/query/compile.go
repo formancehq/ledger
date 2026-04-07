@@ -8,8 +8,6 @@ import (
 	"math"
 	"sort"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
@@ -1205,10 +1203,7 @@ func pebbleAccountExists(reader dal.PebbleReader, ledger, address string) (bool,
 	copy(upperBound, lowerBound)
 	upperBound[baseLen] = dal.CanonicalKeySepMetadata + 1 // 0x02
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: lowerBound,
-		UpperBound: upperBound,
-	})
+	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {
 		return false, err
 	}
@@ -1233,10 +1228,7 @@ func pebbleTxExists(reader dal.PebbleReader, ledger string, txID uint64) (bool, 
 
 	upperBound := readstore.IncrementBytes(prefix)
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: prefix,
-		UpperBound: upperBound,
-	})
+	iter, err := dal.NewBoundedIter(reader, prefix, upperBound)
 	if err != nil {
 		return false, err
 	}
@@ -1250,10 +1242,7 @@ func pebbleTxExists(reader dal.PebbleReader, ledger string, txID uint64) (bool, 
 func pebbleKeyExists(reader dal.PebbleReader, key []byte) (bool, error) {
 	upper := readstore.IncrementBytes(key)
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: key,
-		UpperBound: upper,
-	})
+	iter, err := dal.NewBoundedIter(reader, key, upper)
 	if err != nil {
 		return false, err
 	}

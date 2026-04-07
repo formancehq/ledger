@@ -42,6 +42,14 @@ func (s *Store) Get(key []byte) ([]byte, io.Closer, error) {
 	return s.getDB().Get(key)
 }
 
+// NewBoundedIter creates a Pebble iterator bounded by [lower, upper).
+func NewBoundedIter(reader PebbleReader, lower, upper []byte) (*pebble.Iterator, error) {
+	return reader.NewIter(&pebble.IterOptions{
+		LowerBound: lower,
+		UpperBound: upper,
+	})
+}
+
 // ClosingCursor wraps a cursor and closes additional resources on Close.
 type ClosingCursor[T any] struct {
 	inner  Cursor[T]

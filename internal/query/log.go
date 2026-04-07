@@ -29,10 +29,7 @@ func ReadLastLog(reader dal.PebbleReader) (*commonpb.Log, error) {
 		PutBytes(dal.MaxUint64Bytes)
 	upperBound := kb.Build()
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: lowerBound,
-		UpperBound: upperBound,
-	})
+	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator: %w", err)
 	}
@@ -186,10 +183,7 @@ func ReadLogsSinceRaw(_ context.Context, reader dal.PebbleReader, afterSequence 
 		PutBytes(dal.MaxUint64Bytes)
 	upperBound := kb2.Build()
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: lowerBound,
-		UpperBound: upperBound,
-	})
+	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {
 		return nil, fmt.Errorf("creating raw iterator for logs: %w", err)
 	}
@@ -217,10 +211,7 @@ func ReadLogsSince(ctx context.Context, reader dal.PebbleReader, afterSequence u
 		PutBytes(dal.MaxUint64Bytes)
 	upperBound := kb2.Build()
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: lowerBound,
-		UpperBound: upperBound,
-	})
+	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator for logs: %w", err)
 	}

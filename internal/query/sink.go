@@ -44,10 +44,7 @@ func ReadAllSinkStatuses(reader dal.PebbleReader) ([]*commonpb.SinkStatus, error
 	lowerBound := []byte{dal.KeyPrefixSinkStatus}
 	upperBound := []byte{dal.KeyPrefixSinkStatus + 1}
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: lowerBound,
-		UpperBound: upperBound,
-	})
+	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator for sink statuses: %w", err)
 	}
@@ -104,10 +101,7 @@ func ReadAllSinkConfigs(reader dal.PebbleReader) ([]*commonpb.SinkConfig, error)
 	lowerBound := []byte{dal.KeyPrefixEventsConfig}
 	upperBound := []byte{dal.KeyPrefixEventsConfig + 1}
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: lowerBound,
-		UpperBound: upperBound,
-	})
+	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator for sink configs: %w", err)
 	}

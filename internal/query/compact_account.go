@@ -47,10 +47,7 @@ func NewCompactAccountIterator(reader dal.PebbleReader, ledger string) (*Compact
 	copy(upperBound[1:], ledger)
 	upperBound[1+len(ledger)] = 0x01
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: lowerBound,
-		UpperBound: upperBound,
-	})
+	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {
 		return nil, fmt.Errorf("creating compact account iterator: %w", err)
 	}

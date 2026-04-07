@@ -339,30 +339,31 @@ func (c *Cache) initMetrics(m metric.Meter) error {
 	}
 
 	// Register callback to observe cache sizes
+	type namedCache struct {
+		name string
+		size func() uint64
+	}
+
+	caches := []namedCache{
+		{"volumes", c.Volumes.Size},
+		{"account_metadata", c.AccountMetadata.Size},
+		{"idempotency_keys", c.IdempotencyKeys.Size},
+		{"references", c.References.Size},
+		{"ledgers", c.Ledgers.Size},
+		{"boundaries", c.Boundaries.Size},
+		{"transactions", c.Transactions.Size},
+		{"sink_configs", c.SinkConfigs.Size},
+		{"numscript_versions", c.NumscriptVersions.Size},
+		{"numscript_entries", c.NumscriptEntries.Size},
+		{"numscript_parsed", c.NumscriptParsed.Size},
+	}
+
 	registration, err := m.RegisterCallback(
 		func(_ context.Context, o metric.Observer) error {
-			o.ObserveInt64(sizeGauge, int64(c.Volumes.Size()),
-				metric.WithAttributes(attribute.String("type", "volumes")))
-			o.ObserveInt64(sizeGauge, int64(c.AccountMetadata.Size()),
-				metric.WithAttributes(attribute.String("type", "account_metadata")))
-			o.ObserveInt64(sizeGauge, int64(c.IdempotencyKeys.Size()),
-				metric.WithAttributes(attribute.String("type", "idempotency_keys")))
-			o.ObserveInt64(sizeGauge, int64(c.References.Size()),
-				metric.WithAttributes(attribute.String("type", "references")))
-			o.ObserveInt64(sizeGauge, int64(c.Ledgers.Size()),
-				metric.WithAttributes(attribute.String("type", "ledgers")))
-			o.ObserveInt64(sizeGauge, int64(c.Boundaries.Size()),
-				metric.WithAttributes(attribute.String("type", "boundaries")))
-			o.ObserveInt64(sizeGauge, int64(c.Transactions.Size()),
-				metric.WithAttributes(attribute.String("type", "transactions")))
-			o.ObserveInt64(sizeGauge, int64(c.SinkConfigs.Size()),
-				metric.WithAttributes(attribute.String("type", "sink_configs")))
-			o.ObserveInt64(sizeGauge, int64(c.NumscriptVersions.Size()),
-				metric.WithAttributes(attribute.String("type", "numscript_versions")))
-			o.ObserveInt64(sizeGauge, int64(c.NumscriptEntries.Size()),
-				metric.WithAttributes(attribute.String("type", "numscript_entries")))
-			o.ObserveInt64(sizeGauge, int64(c.NumscriptParsed.Size()),
-				metric.WithAttributes(attribute.String("type", "numscript_parsed")))
+			for _, cache := range caches {
+				o.ObserveInt64(sizeGauge, int64(cache.size()),
+					metric.WithAttributes(attribute.String("type", cache.name)))
+			}
 
 			return nil
 		},

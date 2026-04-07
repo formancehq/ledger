@@ -155,10 +155,7 @@ func resolvePartialVersion(reader dal.PebbleReader, ledger, name string, major, 
 
 	upperBound := kb.Build()
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: lowerBound,
-		UpperBound: upperBound,
-	})
+	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator for partial version resolution: %w", err)
 	}
@@ -192,10 +189,7 @@ func ReadAllNumscripts(reader dal.PebbleReader, ledger string) ([]*commonpb.Nums
 	// Append 0xFF to create an upper bound past all names
 	upperBound := append(kb.Build(), 0xFF)
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: lowerBound,
-		UpperBound: upperBound,
-	})
+	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator for numscript latest versions: %w", err)
 	}

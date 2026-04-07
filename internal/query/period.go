@@ -20,10 +20,7 @@ func ReadPeriods(ctx context.Context, reader dal.PebbleReader) (dal.Cursor[*comm
 	lowerBound := []byte{dal.KeyPrefixPeriods}
 	upperBound := []byte{dal.KeyPrefixPeriods, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: lowerBound,
-		UpperBound: upperBound,
-	})
+	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator for periods: %w", err)
 	}

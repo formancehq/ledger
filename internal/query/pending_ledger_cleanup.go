@@ -4,18 +4,13 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // ReadPendingLedgerCleanups reads all pending ledger cleanup entries from Pebble.
 // Returns a map of ledger name -> delete log sequence number.
 func ReadPendingLedgerCleanups(reader dal.PebbleReader) (map[string]uint64, error) {
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: []byte{dal.KeyPrefixPendingLedgerCleanup},
-		UpperBound: []byte{dal.KeyPrefixPendingLedgerCleanup + 1},
-	})
+	iter, err := dal.NewBoundedIter(reader, []byte{dal.KeyPrefixPendingLedgerCleanup}, []byte{dal.KeyPrefixPendingLedgerCleanup + 1})
 	if err != nil {
 		return nil, fmt.Errorf("creating pending ledger cleanup iterator: %w", err)
 	}

@@ -60,10 +60,7 @@ func ListQueryCheckpoints(reader dal.PebbleReader) ([]*raftcmdpb.QueryCheckpoint
 	lowerBound := []byte{dal.KeyPrefixQueryCheckpoint}
 	upperBound := []byte{dal.KeyPrefixQueryCheckpoint + 1}
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: lowerBound,
-		UpperBound: upperBound,
-	})
+	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {
 		return nil, fmt.Errorf("creating query checkpoint iterator: %w", err)
 	}

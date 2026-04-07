@@ -9,131 +9,80 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
+type httpErrorMapping struct {
+	match      func(error) bool
+	statusCode int
+	errorCode  string
+	// headerFn optionally sets response headers before writing the error body.
+	headerFn func(http.ResponseWriter)
+}
+
+func matchAs[T error]() func(error) bool {
+	return func(err error) bool {
+		var target T
+		return errors.As(err, &target)
+	}
+}
+
+func matchIs(sentinel error) func(error) bool {
+	return func(err error) bool {
+		return errors.Is(err, sentinel)
+	}
+}
+
+var httpErrorMappings = []httpErrorMapping{
+	{matchIs(commonpb.ErrNoLeader), http.StatusServiceUnavailable, "NO_LEADER",
+		func(w http.ResponseWriter) { w.Header().Set("Retry-After", "1") }},
+
+	{matchAs[*commonpb.NotFoundError](), http.StatusNotFound, "NOT_FOUND", nil},
+	{matchAs[*domain.ErrLedgerAlreadyExists](), http.StatusConflict, "CONFLICT", nil},
+	{matchAs[*domain.ErrLedgerNotFound](), http.StatusNotFound, "NOT_FOUND", nil},
+	{matchAs[*domain.ErrLedgerDeleted](), http.StatusConflict, "LEDGER_DELETED", nil},
+	{matchAs[*domain.ErrLedgerInMirrorMode](), http.StatusConflict, "LEDGER_IN_MIRROR_MODE", nil},
+	{matchAs[*domain.ErrLedgerNotInMirrorMode](), http.StatusBadRequest, "LEDGER_NOT_IN_MIRROR_MODE", nil},
+	{matchAs[*domain.ErrTransactionReferenceConflict](), http.StatusConflict, "CONFLICT", nil},
+	{matchAs[*domain.ErrIdempotencyKeyConflict](), http.StatusConflict, "CONFLICT", nil},
+	{matchAs[*domain.ErrTransactionNotFound](), http.StatusNotFound, "NOT_FOUND", nil},
+	{matchAs[*domain.ErrTransactionAlreadyReverted](), http.StatusConflict, "CONFLICT", nil},
+	{matchAs[*domain.ErrInsufficientFunds](), http.StatusBadRequest, "INSUFFICIENT_FUNDS", nil},
+	{matchAs[*domain.ErrBalanceNotFound](), http.StatusBadRequest, "BALANCE_NOT_FOUND", nil},
+	{matchAs[*domain.ErrNumscriptParse](), http.StatusBadRequest, "SCRIPT_PARSE_ERROR", nil},
+	{matchAs[*domain.ErrNumscriptNotFound](), http.StatusNotFound, "NOT_FOUND", nil},
+	{matchAs[*domain.ErrNumscriptVersionAlreadyExists](), http.StatusConflict, "CONFLICT", nil},
+	{matchAs[*domain.ErrNumscriptInvalidVersion](), http.StatusBadRequest, "VALIDATION", nil},
+	{matchAs[*domain.ErrMetadataNotFound](), http.StatusNotFound, "NOT_FOUND", nil},
+	{matchAs[*domain.ErrPreparedQueryAlreadyExists](), http.StatusConflict, "CONFLICT", nil},
+	{matchAs[*domain.ErrPreparedQueryNotFound](), http.StatusNotFound, "NOT_FOUND", nil},
+	{matchAs[*domain.ErrAccountNotMatchingType](), http.StatusBadRequest, "ACCOUNT_NOT_MATCHING_TYPE", nil},
+	{matchAs[*domain.ErrAccountTypeNotFound](), http.StatusNotFound, "ACCOUNT_TYPE_NOT_FOUND", nil},
+	{matchAs[*domain.ErrAccountTypeAlreadyExists](), http.StatusConflict, "ACCOUNT_TYPE_ALREADY_EXISTS", nil},
+	{matchAs[*domain.ErrInvalidPattern](), http.StatusBadRequest, "INVALID_PATTERN", nil},
+	{matchAs[*domain.ErrAccountTypeHasAccounts](), http.StatusConflict, "ACCOUNT_TYPE_HAS_ACCOUNTS", nil},
+	{matchAs[*domain.ErrAccountTypeMigrationInProgress](), http.StatusConflict, "ACCOUNT_TYPE_MIGRATION_IN_PROGRESS", nil},
+	{matchAs[*domain.ErrAccountTypeMigrationNotCompatible](), http.StatusBadRequest, "ACCOUNT_TYPE_MIGRATION_NOT_COMPATIBLE", nil},
+
+	// Validation sentinel errors
+	{matchIs(domain.ErrNumscriptContentRequired), http.StatusBadRequest, "VALIDATION", nil},
+	{matchIs(domain.ErrTargetRequired), http.StatusBadRequest, "VALIDATION", nil},
+	{matchIs(domain.ErrMetadataKeyRequired), http.StatusBadRequest, "VALIDATION", nil},
+	{matchIs(domain.ErrScriptRequired), http.StatusBadRequest, "VALIDATION", nil},
+	{matchIs(admission.ErrIdempotencyKeyTooLong), http.StatusBadRequest, "VALIDATION", nil},
+	{matchIs(admission.ErrIdempotencyKeyInvalidUTF8), http.StatusBadRequest, "VALIDATION", nil},
+}
+
 // handleError handles errors and returns appropriate HTTP responses.
 func handleError(w http.ResponseWriter, r *http.Request, err error) {
-	var (
-		notFoundErr        *commonpb.NotFoundError
-		refConflict        *domain.ErrTransactionReferenceConflict
-		ikConflict         *domain.ErrIdempotencyKeyConflict
-		ledgerExists       *domain.ErrLedgerAlreadyExists
-		ledgerNotFound     *domain.ErrLedgerNotFound
-		ledgerDeleted      *domain.ErrLedgerDeleted
-		ledgerInMirror     *domain.ErrLedgerInMirrorMode
-		ledgerNotInMirror  *domain.ErrLedgerNotInMirrorMode
-		txNotFound         *domain.ErrTransactionNotFound
-		txReverted         *domain.ErrTransactionAlreadyReverted
-		insufficient       *domain.ErrInsufficientFunds
-		balNotFound        *domain.ErrBalanceNotFound
-		parseErr           *domain.ErrNumscriptParse
-		nsNotFound         *domain.ErrNumscriptNotFound
-		nsVersionExists    *domain.ErrNumscriptVersionAlreadyExists
-		nsInvalidVersion   *domain.ErrNumscriptInvalidVersion
-		metaNotFound       *domain.ErrMetadataNotFound
-		pqExists           *domain.ErrPreparedQueryAlreadyExists
-		pqNotFound         *domain.ErrPreparedQueryNotFound
-		acctNotMatching    *domain.ErrAccountNotMatchingType
-		acctTypeNotFound   *domain.ErrAccountTypeNotFound
-		acctTypeExists     *domain.ErrAccountTypeAlreadyExists
-		invalidPattern     *domain.ErrInvalidPattern
-		acctTypeHasAccts   *domain.ErrAccountTypeHasAccounts
-		migrationInProg    *domain.ErrAccountTypeMigrationInProgress
-		migrationNotCompat *domain.ErrAccountTypeMigrationNotCompatible
-	)
+	for _, m := range httpErrorMappings {
+		if m.match(err) {
+			if m.headerFn != nil {
+				m.headerFn(w)
+			}
 
-	switch {
-	case errors.Is(err, commonpb.ErrNoLeader):
-		w.Header().Set("Retry-After", "1")
-		writeErrorResponse(w, http.StatusServiceUnavailable, "NO_LEADER", err)
+			writeErrorResponse(w, m.statusCode, m.errorCode, err)
 
-	case errors.As(err, &notFoundErr):
-		writeErrorResponse(w, http.StatusNotFound, "NOT_FOUND", err)
-
-	case errors.As(err, &ledgerExists):
-		writeErrorResponse(w, http.StatusConflict, "CONFLICT", err)
-
-	case errors.As(err, &ledgerNotFound):
-		writeErrorResponse(w, http.StatusNotFound, "NOT_FOUND", err)
-
-	case errors.As(err, &ledgerDeleted):
-		writeErrorResponse(w, http.StatusConflict, "LEDGER_DELETED", err)
-
-	case errors.As(err, &ledgerInMirror):
-		writeErrorResponse(w, http.StatusConflict, "LEDGER_IN_MIRROR_MODE", err)
-
-	case errors.As(err, &ledgerNotInMirror):
-		writeErrorResponse(w, http.StatusBadRequest, "LEDGER_NOT_IN_MIRROR_MODE", err)
-
-	case errors.As(err, &refConflict):
-		writeErrorResponse(w, http.StatusConflict, "CONFLICT", err)
-
-	case errors.As(err, &ikConflict):
-		writeErrorResponse(w, http.StatusConflict, "CONFLICT", err)
-
-	case errors.As(err, &txNotFound):
-		writeErrorResponse(w, http.StatusNotFound, "NOT_FOUND", err)
-
-	case errors.As(err, &txReverted):
-		writeErrorResponse(w, http.StatusConflict, "CONFLICT", err)
-
-	case errors.As(err, &insufficient):
-		writeErrorResponse(w, http.StatusBadRequest, "INSUFFICIENT_FUNDS", err)
-
-	case errors.As(err, &balNotFound):
-		writeErrorResponse(w, http.StatusBadRequest, "BALANCE_NOT_FOUND", err)
-
-	case errors.As(err, &parseErr):
-		writeErrorResponse(w, http.StatusBadRequest, "SCRIPT_PARSE_ERROR", err)
-
-	case errors.As(err, &nsNotFound):
-		writeErrorResponse(w, http.StatusNotFound, "NOT_FOUND", err)
-
-	case errors.As(err, &nsVersionExists):
-		writeErrorResponse(w, http.StatusConflict, "CONFLICT", err)
-
-	case errors.Is(err, domain.ErrNumscriptContentRequired):
-		writeErrorResponse(w, http.StatusBadRequest, "VALIDATION", err)
-
-	case errors.As(err, &nsInvalidVersion):
-		writeErrorResponse(w, http.StatusBadRequest, "VALIDATION", err)
-
-	case errors.As(err, &metaNotFound):
-		writeErrorResponse(w, http.StatusNotFound, "NOT_FOUND", err)
-
-	case errors.As(err, &pqExists):
-		writeErrorResponse(w, http.StatusConflict, "CONFLICT", err)
-
-	case errors.As(err, &pqNotFound):
-		writeErrorResponse(w, http.StatusNotFound, "NOT_FOUND", err)
-
-	case errors.As(err, &acctNotMatching):
-		writeErrorResponse(w, http.StatusBadRequest, "ACCOUNT_NOT_MATCHING_TYPE", err)
-
-	case errors.As(err, &acctTypeNotFound):
-		writeErrorResponse(w, http.StatusNotFound, "ACCOUNT_TYPE_NOT_FOUND", err)
-
-	case errors.As(err, &acctTypeExists):
-		writeErrorResponse(w, http.StatusConflict, "ACCOUNT_TYPE_ALREADY_EXISTS", err)
-
-	case errors.As(err, &invalidPattern):
-		writeErrorResponse(w, http.StatusBadRequest, "INVALID_PATTERN", err)
-
-	case errors.As(err, &acctTypeHasAccts):
-		writeErrorResponse(w, http.StatusConflict, "ACCOUNT_TYPE_HAS_ACCOUNTS", err)
-
-	case errors.As(err, &migrationInProg):
-		writeErrorResponse(w, http.StatusConflict, "ACCOUNT_TYPE_MIGRATION_IN_PROGRESS", err)
-
-	case errors.As(err, &migrationNotCompat):
-		writeErrorResponse(w, http.StatusBadRequest, "ACCOUNT_TYPE_MIGRATION_NOT_COMPATIBLE", err)
-
-	case errors.Is(err, domain.ErrTargetRequired),
-		errors.Is(err, domain.ErrMetadataKeyRequired),
-		errors.Is(err, domain.ErrScriptRequired),
-		errors.Is(err, admission.ErrIdempotencyKeyTooLong),
-		errors.Is(err, admission.ErrIdempotencyKeyInvalidUTF8):
-		writeErrorResponse(w, http.StatusBadRequest, "VALIDATION", err)
-
-	default:
-		writeInternalServerError(w, r, err)
+			return
+		}
 	}
+
+	writeInternalServerError(w, r, err)
 }

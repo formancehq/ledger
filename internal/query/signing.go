@@ -27,10 +27,7 @@ func ReadSigningKeys(reader dal.PebbleReader) (map[string]SigningKeyEntry, error
 	lowerBound := []byte{dal.KeyPrefixSigningKey}
 	upperBound := []byte{dal.KeyPrefixSigningKey + 1}
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: lowerBound,
-		UpperBound: upperBound,
-	})
+	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator for signing keys: %w", err)
 	}
