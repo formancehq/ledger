@@ -1,7 +1,6 @@
 package ctrl
 
 import (
-	"encoding/binary"
 	"fmt"
 	"math/big"
 
@@ -175,12 +174,10 @@ func scanAccount(
 		entryCount++
 
 		if logger != nil {
-			raftIdx := binary.BigEndian.Uint64(key[len(key)-8:])
 			canonical := string(key[1 : len(key)-attributes.SuffixLen])
 			logger.WithFields(map[string]any{
 				"account":      address,
 				"attrType":     fmt.Sprintf("0x%02x", attrType),
-				"raftIndex":    raftIdx,
 				"canonicalKey": canonical,
 				"valueLen":     len(valueBytes),
 			}).Infof("scanAccount entry")
