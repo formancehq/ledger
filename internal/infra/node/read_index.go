@@ -85,6 +85,12 @@ func (node *Node) ReadIndex(ctx context.Context) (uint64, error) {
 	return commitIndex, nil
 }
 
+// ReadBarrierInfo holds diagnostic data from a ReadIndex+WaitForApplied cycle.
+type ReadBarrierInfo struct {
+	CommitIndex    uint64
+	PersistedAfter uint64
+}
+
 // ReadIndexAndWait performs a linearizable read barrier: it sends a ReadIndex request,
 // waits for the Raft quorum to confirm, then waits for the local FSM to catch up.
 // After this method returns, any subsequent read from the local store is guaranteed to
@@ -92,16 +98,16 @@ func (node *Node) ReadIndex(ctx context.Context) (uint64, error) {
 //
 // Returns ErrNodeSyncing if the node is still catching up with the cluster.
 // Callers (e.g. RoutedController) should forward the read to the leader in that case.
-func (node *Node) ReadIndexAndWait(ctx context.Context) error {
+func (node *Node) ReadIndexAndWait(ctx context.Context) (*ReadBarrierInfo, error) {
 	ctx, span := readIndexTracer.Start(ctx, "node.read_index_and_wait")
 	defer span.End()
 
 	if node.isSyncing() {
-		return ErrNodeSyncing
+		return nil, ErrNodeSyncing
 	}
 
 	if node.GetLeader() == 0 {
-		return commonpb.ErrNoLeader
+		return nil, commonpb.ErrNoLeader
 	}
 
 	start := time.Now()
@@ -112,7 +118,7 @@ func (node *Node) ReadIndexAndWait(ctx context.Context) error {
 	riSpan.End()
 
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	persistedBefore := node.fsm.LastPersistedIndex()
@@ -128,7 +134,7 @@ func (node *Node) ReadIndexAndWait(ctx context.Context) error {
 	if err := node.fsm.WaitForApplied(ctx, commitIndex); err != nil {
 		waitSpan.End()
 
-		return err
+		return nil, err
 	}
 
 	persistedAfter := node.fsm.LastPersistedIndex()
@@ -139,7 +145,10 @@ func (node *Node) ReadIndexAndWait(ctx context.Context) error {
 		node.readIndexDurationHistogram.Record(ctx, time.Since(start).Microseconds())
 	}
 
-	return nil
+	return &ReadBarrierInfo{
+		CommitIndex:    commitIndex,
+		PersistedAfter: persistedAfter,
+	}, nil
 }
 
 // failAllPendingReads resolves all pending ReadIndex requests with the given error.

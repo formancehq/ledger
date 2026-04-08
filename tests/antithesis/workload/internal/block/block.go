@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"math/big"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
@@ -142,41 +141,6 @@ func RunLoop(ctx context.Context, client servicepb.BucketServiceClient, groups [
 func isAlreadyExists(err error) bool {
 	st, ok := status.FromError(err)
 	return ok && st.Code() == codes.AlreadyExists
-}
-
-// CheckDoubleEntry verifies the double-entry invariant (sum of all balances = 0 per asset)
-// for a ledger and emits an Antithesis Always assertion.
-func CheckDoubleEntry(ctx context.Context, client servicepb.BucketServiceClient, ledger string, details internal.Details) {
-	stream, err := client.ListAccounts(ctx, &servicepb.ListAccountsRequest{Ledger: ledger})
-	if err != nil {
-		return
-	}
-
-	sums := make(map[string]*big.Int)
-	for {
-		account, err := stream.Recv()
-		if err != nil {
-			break
-		}
-		for asset, vol := range account.Volumes {
-			balance, _ := new(big.Int).SetString(vol.GetBalance(), 10)
-			if balance == nil {
-				balance = big.NewInt(0)
-			}
-			if sums[asset] == nil {
-				sums[asset] = big.NewInt(0)
-			}
-			sums[asset].Add(sums[asset], balance)
-		}
-	}
-
-	for asset, total := range sums {
-		assert.Always(
-			total.Cmp(big.NewInt(0)) == 0,
-			"double-entry: sum of balances should be 0",
-			details.With(internal.Details{"asset": asset, "sum": total.String()}),
-		)
-	}
 }
 
 // CheckPostCommitVolumes verifies volume consistency on a transaction response.

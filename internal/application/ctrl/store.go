@@ -1,10 +1,13 @@
 package ctrl
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math/big"
 
 	"github.com/cockroachdb/pebble/v2"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
@@ -107,12 +110,16 @@ func enforceAccountSchema(schema *commonpb.MetadataSchema, metadata []*commonpb.
 // for one account and returns an assembled Account. The scan range is
 // [0xF1][ledger]\x00[address]\x00 .. [0xF1][ledger]\x00[address]\x02, covering both
 // volume (\x00) and metadata (\x01) canonical key separators.
+//
+// When diagLogger is non-nil, each Pebble entry is logged with its raft index
+// and attribute type to help diagnose snapshot divergence issues.
 func scanAccount(
 	reader dal.PebbleReader,
 	attrs *attributes.Attributes,
 	ledger string,
 	address string,
 	schema *commonpb.MetadataSchema,
+	diagLogger ...logging.Logger,
 ) (*commonpb.Account, error) {
 	// Build bounds: [0xF1][ledger]\x00[address]\x00 .. [0xF1][ledger]\x00[address]\x02
 	baseLen := 1 + len(ledger) + 1 + len(address)
@@ -145,6 +152,13 @@ func scanAccount(
 	volAcc := attrs.Volume.NewAccumulator()
 	metaAcc := attrs.Metadata.NewAccumulator()
 
+	var logger logging.Logger
+	if len(diagLogger) > 0 {
+		logger = diagLogger[0]
+	}
+
+	entryCount := 0
+
 	for iter.First(); iter.Valid(); iter.Next() {
 		key := iter.Key()
 
@@ -156,6 +170,20 @@ func scanAccount(
 		attrType, ok := attributes.AttrTypeFromKey(key)
 		if !ok {
 			continue
+		}
+
+		entryCount++
+
+		if logger != nil {
+			raftIdx := binary.BigEndian.Uint64(key[len(key)-8:])
+			canonical := string(key[1 : len(key)-attributes.SuffixLen])
+			logger.WithFields(map[string]any{
+				"account":      address,
+				"attrType":     fmt.Sprintf("0x%02x", attrType),
+				"raftIndex":    raftIdx,
+				"canonicalKey": canonical,
+				"valueLen":     len(valueBytes),
+			}).Infof("scanAccount entry")
 		}
 
 		switch attrType {
@@ -174,5 +202,17 @@ func scanAccount(
 		return nil, err
 	}
 
-	return assembleAccount(address, volAcc.Flush(), metaAcc.Flush(), schema), nil
+	volEntries := volAcc.Flush()
+	metaEntries := metaAcc.Flush()
+
+	if logger != nil {
+		logger.WithFields(map[string]any{
+			"account":      address,
+			"totalEntries": entryCount,
+			"volEntries":   len(volEntries),
+			"metaEntries":  len(metaEntries),
+		}).Infof("scanAccount complete")
+	}
+
+	return assembleAccount(address, volEntries, metaEntries, schema), nil
 }

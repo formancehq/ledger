@@ -901,11 +901,12 @@ func (impl *BucketServiceServerImpl) ListNumscripts(req *servicepb.ListNumscript
 }
 
 func (impl *BucketServiceServerImpl) Barrier(ctx context.Context, _ *servicepb.BarrierRequest) (*servicepb.BarrierResponse, error) {
-	if err := impl.ctrl.Barrier(ctx); err != nil {
+	commitIndex, err := impl.ctrl.Barrier(ctx)
+	if err != nil {
 		return nil, err
 	}
 
-	return &servicepb.BarrierResponse{}, nil
+	return &servicepb.BarrierResponse{CommitIndex: commitIndex}, nil
 }
 
 func (impl *BucketServiceServerImpl) Discovery(_ context.Context, _ *servicepb.DiscoveryRequest) (*servicepb.DiscoveryResponse, error) {

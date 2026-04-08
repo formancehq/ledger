@@ -33,7 +33,7 @@ var tracer = otel.Tracer("ctrl")
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller_default.go -destination controller_default_generated_test.go -package ctrl . Admission
 type Admission interface {
 	Admit(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error)
-	Barrier(ctx context.Context) error
+	Barrier(ctx context.Context) (uint64, error)
 }
 
 // DefaultController is the default implementation of the Controller interface.
@@ -409,7 +409,7 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string
 
 	defer func() { _ = handle.Close() }()
 
-	return scanAccount(handle, ctrl.attrs, ledgerInfo.GetName(), address, ledgerInfo.GetMetadataSchema())
+	return scanAccount(handle, ctrl.attrs, ledgerInfo.GetName(), address, ledgerInfo.GetMetadataSchema(), ctrl.logger)
 }
 
 // GetLedgerStats returns aggregate statistics (account count, transaction count) for a ledger.
@@ -1048,7 +1048,7 @@ func (ctrl *DefaultController) ListPreparedQueries(ctx context.Context, ledger s
 func (ctrl *DefaultController) entityEnricher() *query.EntityEnricher {
 	return &query.EntityEnricher{
 		EnrichAccount: func(reader dal.PebbleReader, ledger, address string, schema *commonpb.MetadataSchema) (*commonpb.Account, error) {
-			return scanAccount(reader, ctrl.attrs, ledger, address, schema)
+			return scanAccount(reader, ctrl.attrs, ledger, address, schema, ctrl.logger)
 		},
 		EnrichTransaction: func(ctx context.Context, reader dal.PebbleReader, ledger string, txID uint64, schema *commonpb.MetadataSchema) (*commonpb.Transaction, error) {
 			return ctrl.buildTransaction(ctx, reader, ledger, txID, schema)
@@ -1092,7 +1092,8 @@ func (ctrl *DefaultController) ListNumscripts(_ context.Context, ledger string) 
 
 // Barrier proposes a no-op through Raft consensus. When it returns, all
 // previously proposed entries are guaranteed to have been applied.
-func (ctrl *DefaultController) Barrier(ctx context.Context) error {
+// Returns the Raft commit index at which the barrier was applied.
+func (ctrl *DefaultController) Barrier(ctx context.Context) (uint64, error) {
 	return ctrl.admission.Barrier(ctx)
 }
 

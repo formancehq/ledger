@@ -27,13 +27,14 @@ func NewLedgerGrpcClient(client servicepb.BucketServiceClient) *BucketGrpcClient
 }
 
 // Barrier forwards a barrier request via gRPC to the leader.
-func (g *BucketGrpcClient) Barrier(ctx context.Context) error {
-	_, err := g.client.Barrier(ctx, &servicepb.BarrierRequest{})
+// Returns the Raft commit index at which the barrier was applied.
+func (g *BucketGrpcClient) Barrier(ctx context.Context) (uint64, error) {
+	resp, err := g.client.Barrier(ctx, &servicepb.BarrierRequest{})
 	if err != nil {
-		return fmt.Errorf("gRPC Barrier call failed: %w", err)
+		return 0, fmt.Errorf("gRPC Barrier call failed: %w", err)
 	}
 
-	return nil
+	return resp.GetCommitIndex(), nil
 }
 
 // Apply forwards the requests via gRPC to the leader.

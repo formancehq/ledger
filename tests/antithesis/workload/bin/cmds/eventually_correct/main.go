@@ -25,18 +25,39 @@ func main() {
 	}
 	defer conn.Close()
 
-	// Barrier ensures all in-flight Raft proposals have been applied before
-	// we run consistency checks. Without this, proposals that were in-flight
-	// during fault injection may still be applied between our reads, causing
-	// false positives (e.g. ListAccounts and GetAccount seeing different states).
-	_, err = client.Barrier(ctx, &servicepb.BarrierRequest{})
-	assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to call barrier", internal.Details{
-		"error": err,
-	})
-	if err != nil {
-		return
+	// Double-barrier ensures quiescence: killed workload drivers may have
+	// in-flight Raft proposals that arrive after a single barrier. By calling
+	// Barrier twice and comparing commit indices, we confirm nothing was
+	// committed between the two calls — the cluster is truly idle.
+	var lastCommitIndex uint64
+	for attempt := 1; ; attempt++ {
+		resp, barrierErr := client.Barrier(ctx, &servicepb.BarrierRequest{})
+		if barrierErr != nil {
+			if internal.IsUnavailable(barrierErr) {
+				log.Printf("composer: barrier #%d unavailable, retrying: %s", attempt, barrierErr)
+				continue
+			}
+
+			assert.Unreachable("barrier returned unexpected error", internal.Details{
+				"error":   barrierErr,
+				"attempt": attempt,
+			})
+
+			return
+		}
+
+		currentIndex := resp.GetCommitIndex()
+		log.Printf("composer: barrier #%d completed, commitIndex=%d", attempt, currentIndex)
+
+		if currentIndex == lastCommitIndex {
+			log.Printf("composer: quiescence confirmed at commitIndex=%d after %d barriers", currentIndex, attempt)
+			break
+		}
+
+		lastCommitIndex = currentIndex
 	}
-	log.Println("composer: barrier completed, all proposals applied")
+
+	assert.Reachable("barrier quiescence achieved", nil)
 
 	ledgers, err := internal.ListLedgers(ctx, client)
 	assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to list ledgers", internal.Details{

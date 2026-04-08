@@ -519,7 +519,7 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 		// EventsSinkUpdates must still go through applyProposal so that
 		// cursor and status writes reach the Pebble batch.
 		if len(cmd.GetOrders()) == 0 && len(cmd.GetMirrorSyncUpdates()) == 0 && len(cmd.GetEventsSinkUpdates()) == 0 {
-			ret.Results = append(ret.Results, ApplyResult{ProposalID: cmd.GetId()})
+			ret.Results = append(ret.Results, ApplyResult{ProposalID: cmd.GetId(), AppliedIndex: entry.Index})
 
 			continue
 		}
@@ -528,6 +528,8 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 		if err != nil {
 			return nil, err
 		}
+
+		result.AppliedIndex = entry.Index
 
 		if result.ConfigChanged {
 			eventsConfigChanged = true
@@ -2380,6 +2382,7 @@ func SealRequestFromPeriod(period *commonpb.Period) *SealRequest {
 
 type ApplyResult struct {
 	ProposalID              uint64
+	AppliedIndex            uint64 // Raft index at which this entry was applied
 	Logs                    []*raftcmdpb.CreatedLogOrReference
 	Error                   error
 	CheckpointPath          string // Set by Node after checkpoint creation (ClosePeriod proposals)

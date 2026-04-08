@@ -988,4 +988,10 @@ message IteratorProfile {
 
 message BarrierRequest {}
 
-message BarrierResponse {}
+message BarrierResponse {
+  // The Raft commit index at which the barrier was applied.
+  // Callers can compare successive barrier responses to detect quiescence:
+  // if two barriers return the same commit_index, no proposals were committed
+  // between them.
+  uint64 commit_index = 1;
+}

@@ -7948,7 +7948,12 @@ func (*BarrierRequest) Descriptor() ([]byte, []int) {
 }
 
 type BarrierResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The Raft commit index at which the barrier was applied.
+	// Callers can compare successive barrier responses to detect quiescence:
+	// if two barriers return the same commit_index, no proposals were committed
+	// between them.
+	CommitIndex   uint64 `protobuf:"varint,1,opt,name=commit_index,json=commitIndex,proto3" json:"commit_index,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -7981,6 +7986,13 @@ func (x *BarrierResponse) ProtoReflect() protoreflect.Message {
 // Deprecated: Use BarrierResponse.ProtoReflect.Descriptor instead.
 func (*BarrierResponse) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{116}
+}
+
+func (x *BarrierResponse) GetCommitIndex() uint64 {
+	if x != nil {
+		return x.CommitIndex
+	}
+	return 0
 }
 
 var File_bucket_proto protoreflect.FileDescriptor
@@ -8534,8 +8546,9 @@ const file_bucket_proto_rawDesc = "" +
 	"\n" +
 	"seek_calls\x18\x05 \x01(\x03R\tseekCalls\x123\n" +
 	"\bchildren\x18\x06 \x03(\v2\x17.ledger.IteratorProfileR\bchildren\"\x10\n" +
-	"\x0eBarrierRequest\"\x11\n" +
-	"\x0fBarrierResponse*\xfb\x02\n" +
+	"\x0eBarrierRequest\"4\n" +
+	"\x0fBarrierResponse\x12!\n" +
+	"\fcommit_index\x18\x01 \x01(\x04R\vcommitIndex*\xfb\x02\n" +
 	"\x13CheckStoreErrorType\x12&\n" +
 	"\"CHECK_STORE_ERROR_TYPE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$CHECK_STORE_ERROR_TYPE_HASH_MISMATCH\x10\x01\x12'\n" +

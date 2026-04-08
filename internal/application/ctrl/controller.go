@@ -65,5 +65,6 @@ type Controller interface {
 
 	// Barrier proposes a no-op through Raft consensus. When it returns, all
 	// previously proposed entries are guaranteed to have been applied.
-	Barrier(ctx context.Context) error
+	// Returns the Raft commit index at which the barrier was applied.
+	Barrier(ctx context.Context) (uint64, error)
 }

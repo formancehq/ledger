@@ -47,7 +47,8 @@ func (b *RoutedController) getLeaderCtrl() (ctrl.Controller, error) {
 	return grpcadp.NewLedgerGrpcClient(servicepb.NewBucketServiceClient(grpcConn)), nil
 }
 
-// readCtrl returns the controller to use for a read operation.
+// readCtrl returns the controller to use for a read operation, along with
+// diagnostic barrier info (nil when the read is stale or forwarded).
 // The consistency level is determined from the context (set by the gRPC interceptor):
 //   - linearizable (default): ReadIndex+WaitForApplied barrier on the local node
 //   - stale: skip the barrier and read from the local store directly
@@ -55,7 +56,7 @@ func (b *RoutedController) getLeaderCtrl() (ctrl.Controller, error) {
 //
 // For linearizable reads, if the local node is still syncing the read is
 // transparently forwarded to the leader.
-func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, error) {
+func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, *node.ReadBarrierInfo, error) {
 	consistency := grpcadp.ConsistencyFromContext(ctx)
 
 	ctx, span := routerTracer.Start(ctx, "router.read_ctrl",
@@ -66,27 +67,31 @@ func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, error
 	case grpcadp.ConsistencyStale:
 		span.SetAttributes(attribute.String("route", "local_stale"))
 
-		return b.localController, nil
+		return b.localController, nil, nil
 	case grpcadp.ConsistencyLeader:
 		span.SetAttributes(attribute.String("route", "leader"))
 
-		return b.getLeaderCtrl()
+		c, err := b.getLeaderCtrl()
+
+		return c, nil, err
 	}
 
-	err := b.ReadIndexAndWait(ctx)
+	barrier, err := b.ReadIndexAndWait(ctx)
 	if err == nil {
 		span.SetAttributes(attribute.String("route", "local_linearizable"))
 
-		return b.localController, nil
+		return b.localController, barrier, nil
 	}
 
 	if errors.Is(err, node.ErrNodeSyncing) || errors.Is(err, node.ErrNotLeader) {
 		span.SetAttributes(attribute.String("route", "leader_fallback"))
 
-		return b.getLeaderCtrl()
+		c, leaderErr := b.getLeaderCtrl()
+
+		return c, nil, leaderErr
 	}
 
-	return nil, err
+	return nil, nil, err
 }
 
 func (b *RoutedController) IsHealthy() bool {
@@ -104,10 +109,10 @@ func (b *RoutedController) Apply(ctx context.Context, requests ...*servicepb.Req
 	return leaderCtrl.Apply(ctx, requests...)
 }
 
-func (b *RoutedController) Barrier(ctx context.Context) error {
+func (b *RoutedController) Barrier(ctx context.Context) (uint64, error) {
 	leaderCtrl, err := b.getLeaderCtrl()
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	return leaderCtrl.Barrier(ctx)
@@ -128,7 +133,7 @@ func (b *RoutedController) ListPeriods(ctx context.Context) (dal.Cursor[*commonp
 // --- Linearizable reads: ReadIndex + local read ---
 
 func (b *RoutedController) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
-	c, err := b.readCtrl(ctx)
+	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +142,7 @@ func (b *RoutedController) GetLedgerByName(ctx context.Context, name string) (*c
 }
 
 func (b *RoutedController) ListLedgers(ctx context.Context) (dal.Cursor[*commonpb.LedgerInfo], error) {
-	c, err := b.readCtrl(ctx)
+	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -146,14 +151,14 @@ func (b *RoutedController) ListLedgers(ctx context.Context) (dal.Cursor[*commonp
 }
 
 func (b *RoutedController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
-	c, err := b.readCtrl(ctx)
+	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	tx, err := c.GetTransaction(ctx, ledgerName, transactionID)
 	if errors.Is(err, &commonpb.NotFoundError{}) {
-		b.Node.Logger().WithFields(map[string]any{
+		fields := map[string]any{
 			"ledger":         ledgerName,
 			"transactionId":  transactionID,
 			"nodeId":         b.Node.GetNodeID(),
@@ -161,14 +166,20 @@ func (b *RoutedController) GetTransaction(ctx context.Context, ledgerName string
 			"isLeader":       b.Node.IsLeader(),
 			"persistedIndex": b.Node.LastPersistedIndex(),
 			"forwarded":      c != b.localController,
-		}).Errorf("GetTransaction returned NotFound for committed transaction")
+		}
+		if barrier != nil {
+			fields["barrierCommitIndex"] = barrier.CommitIndex
+			fields["barrierPersistedAfter"] = barrier.PersistedAfter
+		}
+
+		b.Node.Logger().WithFields(fields).Errorf("GetTransaction returned NotFound for committed transaction")
 	}
 
 	return tx, err
 }
 
 func (b *RoutedController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Transaction], error) {
-	c, err := b.readCtrl(ctx)
+	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +188,7 @@ func (b *RoutedController) ListTransactions(ctx context.Context, ledgerName stri
 }
 
 func (b *RoutedController) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (dal.Cursor[*commonpb.Log], error) {
-	c, err := b.readCtrl(ctx)
+	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +197,7 @@ func (b *RoutedController) ListLogs(ctx context.Context, afterSequence uint64, p
 }
 
 func (b *RoutedController) GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
-	c, err := b.readCtrl(ctx)
+	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +206,7 @@ func (b *RoutedController) GetLog(ctx context.Context, sequence uint64) (*common
 }
 
 func (b *RoutedController) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32, ledger string) (dal.Cursor[*auditpb.AuditEntry], error) {
-	c, err := b.readCtrl(ctx)
+	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +215,7 @@ func (b *RoutedController) ListAuditEntries(ctx context.Context, afterSequence *
 }
 
 func (b *RoutedController) GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error) {
-	c, err := b.readCtrl(ctx)
+	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -213,25 +224,48 @@ func (b *RoutedController) GetAuditEntry(ctx context.Context, sequence uint64) (
 }
 
 func (b *RoutedController) GetAccount(ctx context.Context, ledgerName string, address string) (*commonpb.Account, error) {
-	c, err := b.readCtrl(ctx)
+	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
+	}
+
+	if barrier != nil {
+		b.Node.Logger().WithFields(map[string]any{
+			"op":              "GetAccount",
+			"ledger":          ledgerName,
+			"address":         address,
+			"commitIndex":     barrier.CommitIndex,
+			"persistedAfter":  barrier.PersistedAfter,
+			"currentPersist":  b.Node.LastPersistedIndex(),
+			"nodeId":          b.Node.GetNodeID(),
+		}).Infof("read barrier for GetAccount")
 	}
 
 	return c.GetAccount(ctx, ledgerName, address)
 }
 
 func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Account], error) {
-	c, err := b.readCtrl(ctx)
+	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
+	}
+
+	if barrier != nil {
+		b.Node.Logger().WithFields(map[string]any{
+			"op":              "ListAccounts",
+			"ledger":          ledgerName,
+			"commitIndex":     barrier.CommitIndex,
+			"persistedAfter":  barrier.PersistedAfter,
+			"currentPersist":  b.Node.LastPersistedIndex(),
+			"nodeId":          b.Node.GetNodeID(),
+		}).Infof("read barrier for ListAccounts")
 	}
 
 	return c.ListAccounts(ctx, ledgerName, pageSize, afterAddress, filter, reverse)
 }
 
 func (b *RoutedController) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
-	c, err := b.readCtrl(ctx)
+	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -240,7 +274,7 @@ func (b *RoutedController) AggregateVolumes(ctx context.Context, ledgerName stri
 }
 
 func (b *RoutedController) ListSigningKeys(ctx context.Context) (dal.Cursor[*commonpb.SigningKey], error) {
-	c, err := b.readCtrl(ctx)
+	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +283,7 @@ func (b *RoutedController) ListSigningKeys(ctx context.Context) (dal.Cursor[*com
 }
 
 func (b *RoutedController) GetMetadataSchemaStatus(ctx context.Context, ledgerName string) (*servicepb.GetMetadataSchemaStatusResponse, error) {
-	c, err := b.readCtrl(ctx)
+	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -258,7 +292,7 @@ func (b *RoutedController) GetMetadataSchemaStatus(ctx context.Context, ledgerNa
 }
 
 func (b *RoutedController) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(processed, total uint64)) (*servicepb.AnalyzeAccountsResponse, error) {
-	c, err := b.readCtrl(ctx)
+	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +301,7 @@ func (b *RoutedController) AnalyzeAccounts(ctx context.Context, ledgerName strin
 }
 
 func (b *RoutedController) AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(processed, total uint64)) (*servicepb.AnalyzeTransactionsResponse, error) {
-	c, err := b.readCtrl(ctx)
+	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -286,7 +320,7 @@ func (b *RoutedController) ExecutePreparedQuery(ctx context.Context, req *servic
 }
 
 func (b *RoutedController) GetLedgerStats(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error) {
-	c, err := b.readCtrl(ctx)
+	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
