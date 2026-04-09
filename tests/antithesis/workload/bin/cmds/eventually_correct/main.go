@@ -289,6 +289,18 @@ func checkVolumesConsistent(ctx context.Context, client servicepb.BucketServiceC
 
 			checked = true
 		}
+
+		// Cross-check metadata: ListAccounts metadata should match GetAccount metadata.
+		// Only check if we successfully got the account above (getAcc from the last asset iteration).
+		if len(account.Volumes) > 0 {
+			getAcc, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
+				Ledger:  ledger,
+				Address: account.Address,
+			})
+			if err == nil {
+				crossCheckMetadata(account, getAcc, details)
+			}
+		}
 	}
 
 	if !checked {
@@ -299,4 +311,42 @@ func checkVolumesConsistent(ctx context.Context, client servicepb.BucketServiceC
 
 	assert.Reachable("can check all volumes for consistency", details)
 	log.Printf("composer: volumes_consistent: done for ledger %s", ledger)
+}
+
+// crossCheckMetadata verifies that metadata from ListAccounts matches GetAccount.
+func crossCheckMetadata(listAccount, getAccount *commonpb.Account, details internal.Details) {
+	listMeta := metadataToMap(listAccount.GetMetadata())
+	getMeta := metadataToMap(getAccount.GetMetadata())
+
+	for key, listVal := range listMeta {
+		getVal, ok := getMeta[key]
+		assert.AlwaysOrUnreachable(ok, "list metadata key should exist in getaccount", details.With(internal.Details{
+			"account": listAccount.Address,
+			"key":     key,
+		}))
+
+		if ok {
+			assert.AlwaysOrUnreachable(listVal == getVal, "list metadata value should match getaccount", details.With(internal.Details{
+				"account": listAccount.Address,
+				"key":     key,
+				"listVal": listVal,
+				"getVal":  getVal,
+			}))
+		}
+	}
+
+	assert.AlwaysOrUnreachable(len(listMeta) == len(getMeta), "metadata key count should match between list and get", details.With(internal.Details{
+		"account":  listAccount.Address,
+		"listKeys": len(listMeta),
+		"getKeys":  len(getMeta),
+	}))
+}
+
+func metadataToMap(ms *commonpb.MetadataSet) map[string]string {
+	result := make(map[string]string)
+	for _, m := range ms.GetMetadata() {
+		result[m.GetKey()] = m.GetValue().GetStringValue()
+	}
+
+	return result
 }
