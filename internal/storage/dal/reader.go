@@ -2,6 +2,7 @@ package dal
 
 import (
 	"io"
+	"sync"
 
 	"github.com/cockroachdb/pebble/v2"
 )
@@ -14,14 +15,21 @@ type PebbleReader interface {
 }
 
 // ReadHandle provides point-in-time read access to the store via a Pebble snapshot.
-// The caller must call Close() when done.
+// It holds dbMu.RLock for its lifetime to prevent RestoreCheckpoint/Close from
+// closing the DB while the snapshot is in use. The caller must call Close() when done.
 type ReadHandle struct {
 	snap *pebble.Snapshot
+	mu   *sync.RWMutex
 }
 
 // NewReadHandle creates a new ReadHandle backed by a Pebble snapshot.
+// It holds dbMu.RLock until Close() is called, preventing DB lifecycle
+// operations (RestoreCheckpoint, Close) from closing the DB while the
+// snapshot is in use.
 func (s *Store) NewReadHandle() *ReadHandle {
-	return &ReadHandle{snap: s.getDB().NewSnapshot()}
+	s.dbMu.RLock()
+
+	return &ReadHandle{snap: s.getDB().NewSnapshot(), mu: &s.dbMu}
 }
 
 func (h *ReadHandle) Get(key []byte) ([]byte, io.Closer, error) {
@@ -33,6 +41,8 @@ func (h *ReadHandle) NewIter(opts *pebble.IterOptions) (*pebble.Iterator, error)
 }
 
 func (h *ReadHandle) Close() error {
+	defer h.mu.RUnlock()
+
 	return h.snap.Close()
 }
 
