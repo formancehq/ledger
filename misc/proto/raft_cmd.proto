@@ -651,6 +651,5 @@ message ReversionBitsetEntry {
 message AttributeID {
   bytes id = 1;           // 16-byte U128 identifier
   fixed64 tag = 2;
-  uint64 base_index = 3;  // Raft index of the Pebble entry (for eager cleanup via point deletes)
 }
 

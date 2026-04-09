@@ -47,7 +47,7 @@ func TestSetAndComputeValue(t *testing.T) {
 	testValue := &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(1000)}
 
 	// Set at index 5
-	err := attrs.Volume.Set(batch, 5, testKey, testValue)
+	err := attrs.Volume.Set(batch, testKey, testValue)
 	require.NoError(t, err)
 
 	// Commit the batch
@@ -55,7 +55,7 @@ func TestSetAndComputeValue(t *testing.T) {
 	require.NoError(t, err)
 
 	// Compute value
-	result, _, err := attrs.Volume.ComputeValue(store, 100, testKey)
+	result, err := attrs.Volume.Get(store, testKey)
 	require.NoError(t, err)
 
 	// Verify the result
@@ -79,26 +79,26 @@ func TestComputeValueWithMultipleSets(t *testing.T) {
 	testKey := []byte("test-ledger\x00cumul-account\x00USD")
 
 	// Set at index 5: input = 1000
-	err := attrs.Volume.Set(batch, 5, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(1000)})
+	err := attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(1000)})
 	require.NoError(t, err)
 
 	// Set at index 10: input = 100
-	err = attrs.Volume.Set(batch, 10, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)})
+	err = attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)})
 	require.NoError(t, err)
 
 	// Set at index 15: input = 250
-	err = attrs.Volume.Set(batch, 15, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(250)})
+	err = attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(250)})
 	require.NoError(t, err)
 
 	// Set at index 20: input = 500
-	err = attrs.Volume.Set(batch, 20, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(500)})
+	err = attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(500)})
 	require.NoError(t, err)
 
 	err = batch.Commit()
 	require.NoError(t, err)
 
 	// ComputeValue should return the latest Set value (last-write-wins) = 500
-	result, _, err := attrs.Volume.ComputeValue(store, 100, testKey)
+	result, err := attrs.Volume.Get(store, testKey)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, int64(500), result.GetInput().ToBigInt().Int64())
@@ -114,15 +114,15 @@ func TestDeleteRemovesAllEntries(t *testing.T) {
 
 	// Set metadata values at two indexes
 	batch := store.NewBatch()
-	err := attrs.Metadata.Set(batch, 5, testKey, commonpb.NewStringValue("active"))
+	err := attrs.Metadata.Set(batch, testKey, commonpb.NewStringValue("active"))
 	require.NoError(t, err)
-	err = attrs.Metadata.Set(batch, 10, testKey, commonpb.NewStringValue("inactive"))
+	err = attrs.Metadata.Set(batch, testKey, commonpb.NewStringValue("inactive"))
 	require.NoError(t, err)
 	err = batch.Commit()
 	require.NoError(t, err)
 
 	// Verify data exists before deletion
-	result, _, err := attrs.Metadata.ComputeValue(store, ^uint64(0), testKey)
+	result, err := attrs.Metadata.Get(store, testKey)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, "inactive", commonpb.MetadataValueToString(result))
@@ -135,7 +135,7 @@ func TestDeleteRemovesAllEntries(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify data is gone
-	result, _, err = attrs.Metadata.ComputeValue(store, ^uint64(0), testKey)
+	result, err = attrs.Metadata.Get(store, testKey)
 	require.NoError(t, err)
 	require.Nil(t, result)
 
@@ -155,7 +155,7 @@ func TestDeleteThenReAdd(t *testing.T) {
 
 	// Set initial value
 	batch := store.NewBatch()
-	err := attrs.Metadata.Set(batch, 5, testKey, commonpb.NewStringValue("original"))
+	err := attrs.Metadata.Set(batch, testKey, commonpb.NewStringValue("original"))
 	require.NoError(t, err)
 	err = batch.Commit()
 	require.NoError(t, err)
@@ -169,13 +169,13 @@ func TestDeleteThenReAdd(t *testing.T) {
 
 	// Re-add with a new value
 	batch = store.NewBatch()
-	err = attrs.Metadata.Set(batch, 20, testKey, commonpb.NewStringValue("new-value"))
+	err = attrs.Metadata.Set(batch, testKey, commonpb.NewStringValue("new-value"))
 	require.NoError(t, err)
 	err = batch.Commit()
 	require.NoError(t, err)
 
 	// Verify new value is returned
-	result, _, err := attrs.Metadata.ComputeValue(store, ^uint64(0), testKey)
+	result, err := attrs.Metadata.Get(store, testKey)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, "new-value", commonpb.MetadataValueToString(result))
@@ -197,7 +197,7 @@ func TestDeleteNonExistentKey(t *testing.T) {
 	require.NoError(t, err)
 
 	// ComputeValue should still return nil
-	result, _, err := attrs.Metadata.ComputeValue(store, ^uint64(0), testKey)
+	result, err := attrs.Metadata.Get(store, testKey)
 	require.NoError(t, err)
 	require.Nil(t, result)
 }
@@ -215,17 +215,17 @@ func TestScanEntriesMultipleSets(t *testing.T) {
 	defer func() { _ = batch.Cancel() }()
 
 	// Set at index 5: input = 1000
-	err := attrs.Volume.Set(batch, 5, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(1000)})
+	err := attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(1000)})
 	require.NoError(t, err)
 
 	// Set at index 10
-	err = attrs.Volume.Set(batch, 10, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)})
+	err = attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)})
 	require.NoError(t, err)
 	// Set at index 15
-	err = attrs.Volume.Set(batch, 15, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(250)})
+	err = attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(250)})
 	require.NoError(t, err)
 	// Set at index 20
-	err = attrs.Volume.Set(batch, 20, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(500)})
+	err = attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(500)})
 	require.NoError(t, err)
 
 	err = batch.Commit()
@@ -235,9 +235,7 @@ func TestScanEntriesMultipleSets(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, scan)
 	require.True(t, scan.HasBase)
-	require.Equal(t, uint64(20), scan.LatestBaseIndex)
 	require.Equal(t, int64(500), scan.LatestBase.GetInput().ToBigInt().Int64())
-	require.Equal(t, 4, scan.TotalEntries)
 }
 
 func TestScanEntriesMultipleSetsNoPrior(t *testing.T) {
@@ -253,9 +251,9 @@ func TestScanEntriesMultipleSetsNoPrior(t *testing.T) {
 	defer func() { _ = batch.Cancel() }()
 
 	// Two sets, no prior data
-	err := attrs.Volume.Set(batch, 10, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)})
+	err := attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)})
 	require.NoError(t, err)
-	err = attrs.Volume.Set(batch, 20, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(200)})
+	err = attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(200)})
 	require.NoError(t, err)
 
 	err = batch.Commit()
@@ -265,9 +263,7 @@ func TestScanEntriesMultipleSetsNoPrior(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, scan)
 	require.True(t, scan.HasBase)
-	require.Equal(t, uint64(20), scan.LatestBaseIndex)
 	require.Equal(t, int64(200), scan.LatestBase.GetInput().ToBigInt().Int64())
-	require.Equal(t, 2, scan.TotalEntries)
 }
 
 func TestScanEntriesEmpty(t *testing.T) {
@@ -282,7 +278,6 @@ func TestScanEntriesEmpty(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, scan)
 	require.False(t, scan.HasBase)
-	require.Equal(t, 0, scan.TotalEntries)
 }
 
 func TestSetWithZeroValue(t *testing.T) {
@@ -306,7 +301,7 @@ func TestSetWithZeroValue(t *testing.T) {
 	testValue := &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(0)}
 
 	// Set at index 5
-	err := attrs.Volume.Set(batch, 5, testKey, testValue)
+	err := attrs.Volume.Set(batch, testKey, testValue)
 	require.NoError(t, err)
 
 	// Commit the batch
@@ -314,7 +309,7 @@ func TestSetWithZeroValue(t *testing.T) {
 	require.NoError(t, err)
 
 	// Compute value
-	result, _, err := attrs.Volume.ComputeValue(store, 100, testKey)
+	result, err := attrs.Volume.Get(store, testKey)
 	require.NoError(t, err)
 
 	// Verify the result

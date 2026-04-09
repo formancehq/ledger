@@ -127,11 +127,10 @@ func RunLoop(ctx context.Context, client servicepb.BucketServiceClient, groups [
 			assert.Reachable(fmt.Sprintf("block %s succeeded", b.Name), details)
 			CheckPostCommitVolumes(resp, details)
 		case errors.Is(err, scenario.ErrSkip):
-			assert.Sometimes(true, fmt.Sprintf("block %s precondition not met (skip)", b.Name), details)
 		case internal.IsUnavailable(err):
 			log.Printf("scenario_blocks: %s unavailable (transient): %v", b.Name, err)
 		default:
-			assert.Sometimes(false, fmt.Sprintf("block %s failed", b.Name), details.With(internal.Details{"error": err}))
+			assert.Unreachable(fmt.Sprintf("block %s failed", b.Name), details.With(internal.Details{"error": err}))
 			log.Printf("scenario_blocks: %s failed: %v", b.Name, err)
 		}
 	}

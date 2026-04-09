@@ -397,12 +397,10 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 	})
 
 	// ---------------------------------------------------------------
-	// Verify volumes in the Pebble store (via attributes.ComputeValue)
+	// Verify volumes in the Pebble store (via attributes.Get)
 	// ---------------------------------------------------------------
 	t.Run("store volumes are correct", func(t *testing.T) {
 		t.Parallel()
-
-		lastIndex := uint64(4)
 
 		for _, exp := range expectations {
 			key := domain.VolumeKey{
@@ -414,7 +412,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 			}
 			canonicalKey := key.Bytes()
 
-			pair, _, err := attrs.Volume.ComputeValue(dataStore, lastIndex, canonicalKey)
+			pair, err := attrs.Volume.Get(dataStore, canonicalKey)
 			require.NoError(t, err, "store volume read error for %s/%s", exp.account, exp.asset)
 
 			var gotInput, gotOutput int64
@@ -459,7 +457,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 			Asset:      "EUR",
 		}.Bytes()
 
-		pair, _, err := attrs.Volume.ComputeValue(dataStore, 4, canonicalKey)
+		pair, err := attrs.Volume.Get(dataStore, canonicalKey)
 		require.NoError(t, err)
 		require.NotNil(t, pair)
 		require.NotNil(t, pair.GetInput())
@@ -481,7 +479,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 			Asset:      "EUR",
 		}.Bytes()
 
-		pair, _, err := attrs.Volume.ComputeValue(dataStore, 4, canonicalKey)
+		pair, err := attrs.Volume.Get(dataStore, canonicalKey)
 		require.NoError(t, err)
 		require.NotNil(t, pair)
 		require.NotNil(t, pair.GetOutput())
@@ -503,7 +501,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 			Asset:      "EUR",
 		}.Bytes()
 
-		pair, _, err := attrs.Volume.ComputeValue(dataStore, 4, canonicalKey)
+		pair, err := attrs.Volume.Get(dataStore, canonicalKey)
 		require.NoError(t, err)
 		require.NotNil(t, pair)
 		require.NotNil(t, pair.GetInput())

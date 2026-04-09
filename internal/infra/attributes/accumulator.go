@@ -1,7 +1,6 @@
 package attributes
 
 import (
-	"encoding/binary"
 	"fmt"
 
 	"google.golang.org/protobuf/proto"
@@ -37,7 +36,6 @@ func (ab *accumulatorBase[V]) feed(pebbleKey, pebbleValue []byte) (matched bool,
 	}
 
 	canonical := string(pebbleKey[1 : len(pebbleKey)-SuffixLen])
-	_ = binary.BigEndian.Uint64(pebbleKey[len(pebbleKey)-8:]) // raftIndex (used for ordering, already sorted by Pebble)
 
 	if canonical != ab.currentCanonical {
 		// Return the previous canonical key's result before resetting.

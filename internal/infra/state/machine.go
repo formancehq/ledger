@@ -439,6 +439,20 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
 
+	persistedIdx := fsm.lastPersistedIndex.Load()
+	if persistedIdx != fsm.lastAppliedIndex {
+		fsm.logger.WithFields(map[string]any{
+			"lastPersistedIndex": persistedIdx,
+			"lastAppliedIndex":   fsm.lastAppliedIndex,
+			"snapshotIndex":      fsm.snapshotIndex,
+			"entryCount":         len(entries),
+			"firstEntryIndex":    entries[0].Index,
+			"gen0":               fsm.Registry.Cache.BaseIndex.Gen0,
+			"gen1":               fsm.Registry.Cache.BaseIndex.Gen1,
+			"currentGeneration":  fsm.Registry.Cache.CurrentGeneration(),
+		}).Errorf("ApplyEntries: lastPersistedIndex != lastAppliedIndex")
+	}
+
 	if fsm.snapshotIndex > fsm.lastAppliedIndex {
 		assert.Unreachable("node out of sync during apply", map[string]any{
 			"snapshotIndex":    fsm.snapshotIndex,
@@ -615,8 +629,20 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 		}
 	}
 
+	previousPersisted := fsm.lastPersistedIndex.Load()
 	fsm.lastPersistedIndex.Store(fsm.lastAppliedIndex)
 	fsm.appliedCond.Broadcast()
+
+	if fsm.lastAppliedIndex != previousPersisted+uint64(len(entries)) {
+		fsm.logger.WithFields(map[string]any{
+			"previousPersisted": previousPersisted,
+			"newPersisted":      fsm.lastAppliedIndex,
+			"entryCount":        len(entries),
+			"gen0":              fsm.Registry.Cache.BaseIndex.Gen0,
+			"gen1":              fsm.Registry.Cache.BaseIndex.Gen1,
+			"currentGeneration": fsm.Registry.Cache.CurrentGeneration(),
+		}).Infof("lastPersistedIndex updated (non-trivial jump)")
+	}
 
 	if needsArchiveDispatch {
 		fsm.dispatchArchiveRequests()

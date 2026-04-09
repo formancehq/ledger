@@ -96,11 +96,9 @@ func (b *Buffered) applyEphemeralPurge(
 	purged []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 ) error {
 	for _, update := range purged {
-		// Delete the current entry from Pebble if it was previously persisted.
-		if update.OldBaseIndex > 0 {
-			if err := b.attrs.Volume.DeleteAt(batch, update.OldBaseIndex, update.CanonicalKey); err != nil {
-				return err
-			}
+		// Delete the entry from Pebble.
+		if err := b.attrs.Volume.Delete(batch, update.CanonicalKey); err != nil {
+			return err
 		}
 
 		// Evict from the parent KeyStore so the cache doesn't keep stale zero-balance entries.

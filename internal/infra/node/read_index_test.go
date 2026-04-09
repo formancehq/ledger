@@ -33,7 +33,7 @@ func TestReadIndexOnLeader(t *testing.T) {
 	require.NoError(t, err)
 
 	// ReadIndex on leader should succeed
-	err = leader.Node.ReadIndexAndWait(ctx)
+	_, err = leader.Node.ReadIndexAndWait(ctx)
 	require.NoError(t, err)
 }
 
@@ -75,7 +75,7 @@ func TestReadIndexOnFollower(t *testing.T) {
 	}, 5*time.Second, 100*time.Millisecond)
 
 	// ReadIndex on follower should succeed
-	err = follower.Node.ReadIndexAndWait(ctx)
+	_, err = follower.Node.ReadIndexAndWait(ctx)
 	require.NoError(t, err)
 }
 
@@ -116,7 +116,7 @@ func TestReadIndexLinearizability(t *testing.T) {
 	// Immediately call ReadIndexAndWait on the follower.
 	// After it returns, ALL writes committed before the ReadIndex call
 	// must be visible in the follower's local store.
-	err = follower.Node.ReadIndexAndWait(ctx)
+	_, err = follower.Node.ReadIndexAndWait(ctx)
 	require.NoError(t, err)
 
 	// Verify all ledgers are visible on the follower after the read barrier
@@ -158,7 +158,7 @@ func TestReadIndexContextCancellation(t *testing.T) {
 	shortCtx, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
 	defer cancel()
 
-	err = follower.Node.ReadIndexAndWait(shortCtx)
+	_, err = follower.Node.ReadIndexAndWait(shortCtx)
 	require.Error(t, err)
 	// The disconnected follower may either:
 	// - lose track of the leader (heartbeat timeout) → ErrNoLeader

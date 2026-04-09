@@ -18,20 +18,17 @@ type compactor interface {
 }
 
 // typedCompactor wraps accumulatorBase to compact entries for a single attribute type.
-// When a canonical key boundary is crossed, it writes the computed value as an entry
-// at targetIndex into the batch.
+// When a canonical key boundary is crossed, it writes the computed value into the batch.
 type typedCompactor[V proto.Message] struct {
 	accumulatorBase[V]
 
-	batch       *dal.Batch
-	targetIndex uint64
+	batch *dal.Batch
 }
 
-func newCompactor[V proto.Message](attr *Attribute[V], batch *dal.Batch, targetIndex uint64) *typedCompactor[V] {
+func newCompactor[V proto.Message](attr *Attribute[V], batch *dal.Batch) *typedCompactor[V] {
 	return &typedCompactor[V]{
 		accumulatorBase: accumulatorBase[V]{attr: attr},
 		batch:           batch,
-		targetIndex:     targetIndex,
 	}
 }
 
@@ -49,7 +46,7 @@ func (c *typedCompactor[V]) Feed(pebbleKey, pebbleValue []byte) error {
 }
 
 func (c *typedCompactor[V]) writeCompacted(entry *ComputedEntry[V]) error {
-	return c.attr.Set(c.batch, c.targetIndex, entry.CanonicalKey, entry.Value)
+	return c.attr.Set(c.batch, entry.CanonicalKey, entry.Value)
 }
 
 func (c *typedCompactor[V]) Flush() error {
@@ -90,13 +87,13 @@ func CompactAllForBackup(s *dal.Store) error {
 
 	// Build dispatch table: attrType byte → compactor
 	dispatch := map[byte]compactor{
-		dal.AttributePrefixVolume:      newCompactor(attrs.Volume, batch, 0),
-		dal.AttributePrefixMetadata:    newCompactor(attrs.Metadata, batch, 0),
-		dal.AttributePrefixIdempotency: newCompactor(attrs.IdempotencyKeys, batch, 0),
-		dal.AttributePrefixReference:   newCompactor(attrs.References, batch, 0),
-		dal.AttributePrefixLedger:      newCompactor(attrs.Ledger, batch, 0),
-		dal.AttributePrefixBoundary:    newCompactor(attrs.Boundary, batch, 0),
-		dal.AttributePrefixTransaction: newCompactor(attrs.Transaction, batch, 0),
+		dal.AttributePrefixVolume:      newCompactor(attrs.Volume, batch),
+		dal.AttributePrefixMetadata:    newCompactor(attrs.Metadata, batch),
+		dal.AttributePrefixIdempotency: newCompactor(attrs.IdempotencyKeys, batch),
+		dal.AttributePrefixReference:   newCompactor(attrs.References, batch),
+		dal.AttributePrefixLedger:      newCompactor(attrs.Ledger, batch),
+		dal.AttributePrefixBoundary:    newCompactor(attrs.Boundary, batch),
+		dal.AttributePrefixTransaction: newCompactor(attrs.Transaction, batch),
 	}
 
 	// Single scan over the entire attribute range

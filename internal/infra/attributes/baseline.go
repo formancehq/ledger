@@ -1,7 +1,6 @@
 package attributes
 
 import (
-	"encoding/binary"
 	"fmt"
 	"os"
 	"time"
@@ -122,20 +121,18 @@ func writeBaselineAttr[V interface {
 			return fmt.Errorf("marshaling value: %w", marshalErr)
 		}
 
-		// Build Pebble key: [KeyPrefixAttributes][canonicalKey][attrType][raftIndex=0]
+		// Build Pebble key: [KeyPrefixAttributes][canonicalKey][attrType]
 		pLen := 2 + len(e.CanonicalKey) // 1 prefix + N canonical + 1 attrType
-		keyLen := pLen + 8              // + 8 raftIndex
 
-		if len(keyBuf) < keyLen {
-			keyBuf = make([]byte, keyLen)
+		if len(keyBuf) < pLen {
+			keyBuf = make([]byte, pLen)
 		}
 
 		keyBuf[0] = dal.KeyPrefixAttributes
 		copy(keyBuf[1:], e.CanonicalKey)
 		keyBuf[1+len(e.CanonicalKey)] = attr.prefix
-		binary.BigEndian.PutUint64(keyBuf[pLen:], 0)
 
-		if err := db.Set(keyBuf[:keyLen], data, pebble.NoSync); err != nil {
+		if err := db.Set(keyBuf[:pLen], data, pebble.NoSync); err != nil {
 			return fmt.Errorf("writing entry: %w", err)
 		}
 	}

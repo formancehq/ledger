@@ -195,14 +195,13 @@ func describeKey(key []byte) string {
 
 // describeAttributeKey returns a human-readable label for an attribute key.
 func describeAttributeKey(key []byte) string {
-	// Layout: [0xF1][canonicalKey...][attrType(1)][raftIndex(8)]
-	if len(key) < 10 { // 1 prefix + at least 1 canonical + 1 type + 8 index
+	// Layout: [0xF1][canonicalKey...][attrType(1)]
+	if len(key) < 3 { // 1 prefix + at least 1 canonical + 1 type
 		return "ATTR (short key)"
 	}
 
-	attrTypeByte := key[len(key)-9]
-	raftIndex := binary.BigEndian.Uint64(key[len(key)-8:])
-	canonicalHex := hex.EncodeToString(key[1 : len(key)-9])
+	attrTypeByte := key[len(key)-1]
+	canonicalHex := hex.EncodeToString(key[1 : len(key)-1])
 
 	var attrType string
 	switch attrTypeByte {
@@ -224,7 +223,7 @@ func describeAttributeKey(key []byte) string {
 		attrType = fmt.Sprintf("0x%02X", attrTypeByte)
 	}
 
-	return fmt.Sprintf("ATTR type=%s raftIndex=%d canonical=%s", attrType, raftIndex, canonicalHex)
+	return fmt.Sprintf("ATTR type=%s canonical=%s", attrType, canonicalHex)
 }
 
 // decodeValue attempts to decode a value based on the key prefix.
@@ -290,11 +289,11 @@ func decodeValue(key, val []byte) string {
 
 // decodeAttributeValue decodes an attribute value based on the type byte in the key.
 func decodeAttributeValue(key, val []byte) string {
-	if len(key) < 10 {
+	if len(key) < 3 {
 		return hexVal(val)
 	}
 
-	attrTypeByte := key[len(key)-9]
+	attrTypeByte := key[len(key)-1]
 
 	switch attrTypeByte {
 	case dal.AttributePrefixVolume:

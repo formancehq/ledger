@@ -24,7 +24,7 @@ func ReadTransactionState(ctx context.Context, reader dal.PebbleReader, attrs *a
 
 	txKey := domain.TransactionKey{Ledger: ledger, ID: txID}
 
-	state, _, err := attrs.ComputeValue(reader, ^uint64(0), txKey.Bytes())
+	state, err := attrs.Get(reader, txKey.Bytes())
 	if err != nil {
 		return nil, fmt.Errorf("computing transaction state for tx %d: %w", txID, err)
 	}

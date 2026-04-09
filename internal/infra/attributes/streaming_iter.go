@@ -59,8 +59,9 @@ func (a *Attribute[V]) NewStreamingIter(reader dal.PebbleReader, canonicalPrefix
 	}
 
 	return &StreamingIter[V]{
-		ab:        accumulatorBase[V]{attr: a},
-		iter:      iter,
+		ab:   accumulatorBase[V]{attr: a},
+		iter: iter,
+		// Minimum key length: [0xF1 prefix][at least 1 byte canonical][attrType] = 3
 		minKeyLen: 1 + SuffixLen,
 	}, nil
 }

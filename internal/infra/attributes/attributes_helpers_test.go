@@ -30,7 +30,7 @@ func TestAttrTypeFromKey(t *testing.T) {
 	t.Run("too short key", func(t *testing.T) {
 		t.Parallel()
 
-		key := make([]byte, 5) // less than 1+SuffixLen
+		key := make([]byte, 1) // less than 1+SuffixLen
 		_, ok := AttrTypeFromKey(key)
 		require.False(t, ok)
 	})
@@ -63,7 +63,7 @@ func TestCanonicalKeyFromPebbleKey(t *testing.T) {
 	t.Run("too short key returns nil", func(t *testing.T) {
 		t.Parallel()
 
-		key := make([]byte, 5)
+		key := make([]byte, 1)
 		result := CanonicalKeyFromPebbleKey(key)
 		require.Nil(t, result)
 	})
@@ -131,53 +131,6 @@ func TestIncrementBytes(t *testing.T) {
 	})
 }
 
-func TestDeleteOldest(t *testing.T) {
-	t.Parallel()
-
-	store := createTestStore(t)
-	attrs := New()
-
-	testKey := []byte("ledger\x00oldest-test\x00USD")
-
-	// Write entries at indexes 5, 10, 15, 20
-	batch := store.NewBatch()
-	require.NoError(t, attrs.Volume.Set(batch, 5, testKey, &raftcmdpb.VolumePair{
-		Input: commonpb.NewUint256FromUint64(100),
-	}))
-	require.NoError(t, attrs.Volume.Set(batch, 10, testKey, &raftcmdpb.VolumePair{
-		Input: commonpb.NewUint256FromUint64(200),
-	}))
-	require.NoError(t, attrs.Volume.Set(batch, 15, testKey, &raftcmdpb.VolumePair{
-		Input: commonpb.NewUint256FromUint64(300),
-	}))
-	require.NoError(t, attrs.Volume.Set(batch, 20, testKey, &raftcmdpb.VolumePair{
-		Input: commonpb.NewUint256FromUint64(400),
-	}))
-	require.NoError(t, batch.Commit())
-
-	// Verify all entries exist
-	scan, err := attrs.Volume.ScanEntries(store, testKey)
-	require.NoError(t, err)
-	require.Equal(t, 4, scan.TotalEntries)
-
-	// Delete oldest entries (strictly before index 15)
-	batch = store.NewBatch()
-	require.NoError(t, attrs.Volume.DeleteOldest(batch, 15, testKey))
-	require.NoError(t, batch.Commit())
-
-	// Verify entries at 5 and 10 are removed, entries at 15 and 20 remain
-	scan, err = attrs.Volume.ScanEntries(store, testKey)
-	require.NoError(t, err)
-	require.Equal(t, 2, scan.TotalEntries)
-	require.True(t, scan.HasBase)
-	require.Equal(t, uint64(20), scan.LatestBaseIndex)
-
-	// Computed value should still work (latest Set = 400)
-	result, _, err := attrs.Volume.ComputeValue(store, ^uint64(0), testKey)
-	require.NoError(t, err)
-	require.Equal(t, int64(400), result.GetInput().ToBigInt().Int64())
-}
-
 func TestAccumulator(t *testing.T) {
 	t.Parallel()
 
@@ -189,13 +142,13 @@ func TestAccumulator(t *testing.T) {
 	keyB := []byte("ledger\x00bob\x00USD")
 
 	batch := store.NewBatch()
-	require.NoError(t, attrs.Volume.Set(batch, 1, keyA, &raftcmdpb.VolumePair{
+	require.NoError(t, attrs.Volume.Set(batch, keyA, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(1000),
 	}))
-	require.NoError(t, attrs.Volume.Set(batch, 2, keyA, &raftcmdpb.VolumePair{
+	require.NoError(t, attrs.Volume.Set(batch, keyA, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(500),
 	}))
-	require.NoError(t, attrs.Volume.Set(batch, 1, keyB, &raftcmdpb.VolumePair{
+	require.NoError(t, attrs.Volume.Set(batch, keyB, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(2000),
 	}))
 	require.NoError(t, batch.Commit())
@@ -226,8 +179,8 @@ func TestAccumulatorFeedAndFlush(t *testing.T) {
 	keyB := []byte("ledger\x00bob\x00field1")
 
 	batch := store.NewBatch()
-	require.NoError(t, attrs.Metadata.Set(batch, 1, keyA, commonpb.NewStringValue("alice-val")))
-	require.NoError(t, attrs.Metadata.Set(batch, 1, keyB, commonpb.NewStringValue("bob-val")))
+	require.NoError(t, attrs.Metadata.Set(batch, keyA, commonpb.NewStringValue("alice-val")))
+	require.NoError(t, attrs.Metadata.Set(batch, keyB, commonpb.NewStringValue("bob-val")))
 	require.NoError(t, batch.Commit())
 
 	// Use ComputeAllForPrefix to get all entries under the ledger prefix
@@ -280,7 +233,7 @@ func TestAccumulatorPrefix(t *testing.T) {
 	require.Equal(t, dal.AttributePrefixMetadata, metaAcc.Prefix())
 }
 
-func TestComputeValueMaxIndex(t *testing.T) {
+func TestGetReturnsLatestSet(t *testing.T) {
 	t.Parallel()
 
 	store := createTestStore(t)
@@ -288,33 +241,23 @@ func TestComputeValueMaxIndex(t *testing.T) {
 
 	testKey := []byte("ledger\x00maxidx\x00USD")
 
+	// Multiple Sets overwrite in place — last Set wins
 	batch := store.NewBatch()
-	require.NoError(t, attrs.Volume.Set(batch, 5, testKey, &raftcmdpb.VolumePair{
+	require.NoError(t, attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(100),
 	}))
-	require.NoError(t, attrs.Volume.Set(batch, 10, testKey, &raftcmdpb.VolumePair{
+	require.NoError(t, attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(200),
 	}))
-	require.NoError(t, attrs.Volume.Set(batch, 20, testKey, &raftcmdpb.VolumePair{
+	require.NoError(t, attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(300),
 	}))
 	require.NoError(t, batch.Commit())
 
-	// Query at max index 15 should see last Set at index 10 (last-write-wins) = 200
-	result, _, err := attrs.Volume.ComputeValue(store, 15, testKey)
+	// Get returns the latest Set value = 300
+	result, err := attrs.Volume.Get(store, testKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(200), result.GetInput().ToBigInt().Int64())
-
-	// Query at max index 7 should only see Set at index 5 = 100
-	result, _, err = attrs.Volume.ComputeValue(store, 7, testKey)
-	require.NoError(t, err)
-	require.Equal(t, int64(100), result.GetInput().ToBigInt().Int64())
-
-	// Query at max index 3 should see nothing (first Set is at index 5)
-	result, _, err = attrs.Volume.ComputeValue(store, 3, testKey)
-	require.NoError(t, err)
-	// No entries found - returns zero
-	require.Equal(t, int64(0), result.GetInput().ToBigInt().Int64())
+	require.Equal(t, int64(300), result.GetInput().ToBigInt().Int64())
 }
 
 func TestComputeAllForPrefixMaxIndex(t *testing.T) {
@@ -326,14 +269,12 @@ func TestComputeAllForPrefixMaxIndex(t *testing.T) {
 	keyA := []byte("test\x00a\x00USD")
 	keyB := []byte("test\x00b\x00USD")
 
+	// Each Set overwrites in place, so only the last Set per key survives.
 	batch := store.NewBatch()
-	require.NoError(t, attrs.Volume.Set(batch, 5, keyA, &raftcmdpb.VolumePair{
-		Input: commonpb.NewUint256FromUint64(100),
-	}))
-	require.NoError(t, attrs.Volume.Set(batch, 50, keyA, &raftcmdpb.VolumePair{
+	require.NoError(t, attrs.Volume.Set(batch, keyA, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(500),
 	}))
-	require.NoError(t, attrs.Volume.Set(batch, 3, keyB, &raftcmdpb.VolumePair{
+	require.NoError(t, attrs.Volume.Set(batch, keyB, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(200),
 	}))
 	require.NoError(t, batch.Commit())
@@ -352,8 +293,7 @@ func TestComputeAllForPrefixMaxIndex(t *testing.T) {
 	require.NoError(t, iter.Err())
 	require.Len(t, results, 2)
 
-	// keyA has two entries (index 5 and 50); the accumulator picks the latest (500).
-	// keyB has one entry (index 3) with value 200.
+	// keyA has value 500, keyB has value 200.
 	for _, r := range results {
 		if string(r.CanonicalKey) == string(keyA) {
 			require.Equal(t, int64(500), r.Value.GetInput().ToBigInt().Int64())
@@ -373,23 +313,23 @@ func TestIdempotencyKeysAttribute(t *testing.T) {
 
 	// Set a value, then overwrite with a later Set — latest wins
 	batch := store.NewBatch()
-	require.NoError(t, attrs.IdempotencyKeys.Set(batch, 1, testKey, &commonpb.IdempotencyKeyValue{
+	require.NoError(t, attrs.IdempotencyKeys.Set(batch, testKey, &commonpb.IdempotencyKeyValue{
 		LogSequence: 10,
 	}))
 	require.NoError(t, batch.Commit())
 
-	result, _, err := attrs.IdempotencyKeys.ComputeValue(store, ^uint64(0), testKey)
+	result, err := attrs.IdempotencyKeys.Get(store, testKey)
 	require.NoError(t, err)
 	require.Equal(t, uint64(10), result.GetLogSequence())
 
 	// Overwrite with a later Set
 	batch = store.NewBatch()
-	require.NoError(t, attrs.IdempotencyKeys.Set(batch, 2, testKey, &commonpb.IdempotencyKeyValue{
+	require.NoError(t, attrs.IdempotencyKeys.Set(batch, testKey, &commonpb.IdempotencyKeyValue{
 		LogSequence: 20,
 	}))
 	require.NoError(t, batch.Commit())
 
-	result, _, err = attrs.IdempotencyKeys.ComputeValue(store, ^uint64(0), testKey)
+	result, err = attrs.IdempotencyKeys.Get(store, testKey)
 	require.NoError(t, err)
 	require.Equal(t, uint64(20), result.GetLogSequence())
 }
@@ -404,23 +344,23 @@ func TestReferenceAttribute(t *testing.T) {
 
 	// Set a value, then overwrite with a later Set — latest wins
 	batch := store.NewBatch()
-	require.NoError(t, attrs.References.Set(batch, 1, testKey, &commonpb.TransactionReferenceValue{
+	require.NoError(t, attrs.References.Set(batch, testKey, &commonpb.TransactionReferenceValue{
 		TransactionId: 42,
 	}))
 	require.NoError(t, batch.Commit())
 
-	result, _, err := attrs.References.ComputeValue(store, ^uint64(0), testKey)
+	result, err := attrs.References.Get(store, testKey)
 	require.NoError(t, err)
 	require.Equal(t, uint64(42), result.GetTransactionId())
 
 	// Overwrite with a later Set
 	batch = store.NewBatch()
-	require.NoError(t, attrs.References.Set(batch, 2, testKey, &commonpb.TransactionReferenceValue{
+	require.NoError(t, attrs.References.Set(batch, testKey, &commonpb.TransactionReferenceValue{
 		TransactionId: 99,
 	}))
 	require.NoError(t, batch.Commit())
 
-	result, _, err = attrs.References.ComputeValue(store, ^uint64(0), testKey)
+	result, err = attrs.References.Get(store, testKey)
 	require.NoError(t, err)
 	require.Equal(t, uint64(99), result.GetTransactionId())
 }
@@ -447,23 +387,23 @@ func TestLedgerAttribute(t *testing.T) {
 
 	// Set a value
 	batch := store.NewBatch()
-	require.NoError(t, attrs.Ledger.Set(batch, 1, testKey, &commonpb.LedgerInfo{
+	require.NoError(t, attrs.Ledger.Set(batch, testKey, &commonpb.LedgerInfo{
 		Name: "my-ledger",
 	}))
 	require.NoError(t, batch.Commit())
 
-	result, _, err := attrs.Ledger.ComputeValue(store, ^uint64(0), testKey)
+	result, err := attrs.Ledger.Get(store, testKey)
 	require.NoError(t, err)
 	require.Equal(t, "my-ledger", result.GetName())
 
 	// Overwrite with a later Set — latest wins
 	batch = store.NewBatch()
-	require.NoError(t, attrs.Ledger.Set(batch, 2, testKey, &commonpb.LedgerInfo{
+	require.NoError(t, attrs.Ledger.Set(batch, testKey, &commonpb.LedgerInfo{
 		Name: "my-ledger-renamed",
 	}))
 	require.NoError(t, batch.Commit())
 
-	result, _, err = attrs.Ledger.ComputeValue(store, ^uint64(0), testKey)
+	result, err = attrs.Ledger.Get(store, testKey)
 	require.NoError(t, err)
 	require.Equal(t, "my-ledger-renamed", result.GetName())
 }
@@ -477,26 +417,25 @@ func TestBoundaryAttribute(t *testing.T) {
 	testKey := []byte("boundary-ledger")
 
 	batch := store.NewBatch()
-	require.NoError(t, attrs.Boundary.Set(batch, 1, testKey, &raftcmdpb.LedgerBoundaries{
+	require.NoError(t, attrs.Boundary.Set(batch, testKey, &raftcmdpb.LedgerBoundaries{
 		NextTransactionId: 10,
 		NextLogId:         20,
 	}))
 	require.NoError(t, batch.Commit())
 
-	result, _, err := attrs.Boundary.ComputeValue(store, ^uint64(0), testKey)
+	result, err := attrs.Boundary.Get(store, testKey)
 	require.NoError(t, err)
 	require.Equal(t, uint64(10), result.GetNextTransactionId())
 	require.Equal(t, uint64(20), result.GetNextLogId())
 }
 
 // makePebbleKey builds a pebble attribute key for testing:
-// [KeyPrefixAttributes(1B)][canonical][attrType(1B)][raftIndex(8B BE)].
-func makePebbleKey(canonical []byte, attrType byte, raftIndex uint64) []byte {
-	key := make([]byte, 1+len(canonical)+1+8)
+// [KeyPrefixAttributes(1B)][canonical][attrType(1B)].
+func makePebbleKey(canonical []byte, attrType byte) []byte {
+	key := make([]byte, 1+len(canonical)+1)
 	key[0] = dal.KeyPrefixAttributes
 	copy(key[1:], canonical)
 	key[1+len(canonical)] = attrType
-	binary.BigEndian.PutUint64(key[1+len(canonical)+1:], raftIndex)
 
 	return key
 }
@@ -514,30 +453,19 @@ func TestAccumulatorFeedPublicMethod(t *testing.T) {
 	baseBytes, err := proto.Marshal(baseValue)
 	require.NoError(t, err)
 
-	pebbleKey := makePebbleKey(canonical, dal.AttributePrefixMetadata, 1)
+	pebbleKey := makePebbleKey(canonical, dal.AttributePrefixMetadata)
 
 	matched, feedErr := acc.Feed(pebbleKey, baseBytes)
 	require.NoError(t, feedErr)
 	require.True(t, matched)
 
-	// Feed a second entry for the same canonical key (overwrites first)
-	overwriteValue := commonpb.NewStringValue("overwrite-val")
-	overwriteBytes, err := proto.Marshal(overwriteValue)
-	require.NoError(t, err)
-
-	overwriteKey := makePebbleKey(canonical, dal.AttributePrefixMetadata, 5)
-
-	matched, feedErr = acc.Feed(overwriteKey, overwriteBytes)
-	require.NoError(t, feedErr)
-	require.True(t, matched)
-
-	// Feed a different canonical key to trigger boundary computation of the previous key
+	// Feed a different canonical key
 	canonical2 := []byte("ledger\x00account2\x00field")
 	base2Value := commonpb.NewStringValue("base2-val")
 	base2Bytes, err := proto.Marshal(base2Value)
 	require.NoError(t, err)
 
-	pebbleKey2 := makePebbleKey(canonical2, dal.AttributePrefixMetadata, 1)
+	pebbleKey2 := makePebbleKey(canonical2, dal.AttributePrefixMetadata)
 
 	matched, feedErr = acc.Feed(pebbleKey2, base2Bytes)
 	require.NoError(t, feedErr)
@@ -560,7 +488,7 @@ func TestAccumulatorFeedNonMatchingPrefix(t *testing.T) {
 	baseBytes, err := proto.Marshal(baseValue)
 	require.NoError(t, err)
 
-	pebbleKey := makePebbleKey(canonical, dal.AttributePrefixVolume, 1)
+	pebbleKey := makePebbleKey(canonical, dal.AttributePrefixVolume)
 
 	matched, feedErr := acc.Feed(pebbleKey, baseBytes)
 	require.NoError(t, feedErr)
@@ -573,8 +501,8 @@ func TestAccumulatorFeedTooShortKey(t *testing.T) {
 	attrs := New()
 	acc := attrs.Metadata.NewAccumulator()
 
-	// Key shorter than 1+SuffixLen
-	shortKey := make([]byte, 5)
+	// Key shorter than 1+SuffixLen (need <= 2 bytes to be too short)
+	shortKey := make([]byte, 1)
 	matched, feedErr := acc.Feed(shortKey, []byte("value"))
 	require.NoError(t, feedErr)
 	require.False(t, matched)
@@ -590,20 +518,14 @@ func TestCompactAllForBackup(t *testing.T) {
 	keyB := []byte("ledger\x00bob\x00USD")
 
 	batch := store.NewBatch()
-	require.NoError(t, attrs.Volume.Set(batch, 1, keyA, &raftcmdpb.VolumePair{
-		Input: commonpb.NewUint256FromUint64(100),
-	}))
-	require.NoError(t, attrs.Volume.Set(batch, 5, keyA, &raftcmdpb.VolumePair{
-		Input: commonpb.NewUint256FromUint64(200),
-	}))
-	require.NoError(t, attrs.Volume.Set(batch, 10, keyA, &raftcmdpb.VolumePair{
+	require.NoError(t, attrs.Volume.Set(batch, keyA, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(300),
 	}))
-	require.NoError(t, attrs.Volume.Set(batch, 1, keyB, &raftcmdpb.VolumePair{
+	require.NoError(t, attrs.Volume.Set(batch, keyB, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(500),
 	}))
 	// Also add metadata entries
-	require.NoError(t, attrs.Metadata.Set(batch, 1, []byte("ledger\x00alice\x00field"), commonpb.NewStringValue("val")))
+	require.NoError(t, attrs.Metadata.Set(batch, []byte("ledger\x00alice\x00field"), commonpb.NewStringValue("val")))
 	require.NoError(t, batch.Commit())
 
 	// Run compaction - CompactAllForBackup creates its own batch and Attributes internally
@@ -612,11 +534,11 @@ func TestCompactAllForBackup(t *testing.T) {
 
 	// After compaction, the values should still be readable using a fresh Attributes
 	freshAttrs := New()
-	result, _, err := freshAttrs.Volume.ComputeValue(store, ^uint64(0), keyA)
+	result, err := freshAttrs.Volume.Get(store, keyA)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	result, _, err = freshAttrs.Volume.ComputeValue(store, ^uint64(0), keyB)
+	result, err = freshAttrs.Volume.Get(store, keyB)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 }
@@ -637,27 +559,23 @@ func TestCompactAllForBackupAllTypes(t *testing.T) {
 	referenceKey := []byte("\x00\x00\x00\x01ref-abc")
 	boundaryKey := []byte("myledger")
 
-	// Write data at high raft indexes
+	// Write data
 	batch := store.NewBatch()
-	require.NoError(t, attrs.Volume.Set(batch, 100, volumeKey, &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(1000),
-		Output: commonpb.NewUint256FromUint64(500),
-	}))
-	require.NoError(t, attrs.Volume.Set(batch, 200, volumeKey, &raftcmdpb.VolumePair{
+	require.NoError(t, attrs.Volume.Set(batch, volumeKey, &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(300),
 		Output: commonpb.NewUint256FromUint64(100),
 	}))
-	require.NoError(t, attrs.Metadata.Set(batch, 50, metadataKey, commonpb.NewStringValue("active")))
-	require.NoError(t, attrs.IdempotencyKeys.Set(batch, 75, idempotencyKey, &commonpb.IdempotencyKeyValue{
+	require.NoError(t, attrs.Metadata.Set(batch, metadataKey, commonpb.NewStringValue("active")))
+	require.NoError(t, attrs.IdempotencyKeys.Set(batch, idempotencyKey, &commonpb.IdempotencyKeyValue{
 		LogSequence: 42,
 	}))
-	require.NoError(t, attrs.References.Set(batch, 80, referenceKey, &commonpb.TransactionReferenceValue{
+	require.NoError(t, attrs.References.Set(batch, referenceKey, &commonpb.TransactionReferenceValue{
 		TransactionId: 99,
 	}))
-	require.NoError(t, attrs.Ledger.Set(batch, 60, ledgerKey, &commonpb.LedgerInfo{
+	require.NoError(t, attrs.Ledger.Set(batch, ledgerKey, &commonpb.LedgerInfo{
 		Name: "myledger",
 	}))
-	require.NoError(t, attrs.Boundary.Set(batch, 90, boundaryKey, &raftcmdpb.LedgerBoundaries{
+	require.NoError(t, attrs.Boundary.Set(batch, boundaryKey, &raftcmdpb.LedgerBoundaries{
 		NextTransactionId: 10,
 		NextLogId:         5,
 	}))
@@ -668,44 +586,39 @@ func TestCompactAllForBackupAllTypes(t *testing.T) {
 	require.NoError(t, batch.SetBytes([]byte{dal.KeyPrefixLastAppliedIndex}, idxBuf))
 	require.NoError(t, batch.Commit())
 
-	// Verify data is NOT visible at index 0 before compaction
-	vol, _, err := attrs.Volume.ComputeValue(store, 0, volumeKey)
-	require.NoError(t, err)
-	require.Equal(t, int64(0), vol.GetInput().ToBigInt().Int64(), "volume should not be visible at index 0 before compaction")
-
 	// Run compaction
 	require.NoError(t, CompactAllForBackup(store))
 
-	// Verify all types are readable at index 0 with correct values
+	// Verify all types are readable with correct values
 	freshAttrs := New()
 
-	vol, _, err = freshAttrs.Volume.ComputeValue(store, 0, volumeKey)
+	vol, err := freshAttrs.Volume.Get(store, volumeKey)
 	require.NoError(t, err)
 	require.NotNil(t, vol)
 	require.Equal(t, int64(300), vol.GetInput().ToBigInt().Int64(), "volume input: last Set wins (300)")
 	require.Equal(t, int64(100), vol.GetOutput().ToBigInt().Int64(), "volume output: last Set wins (100)")
 
-	meta, _, err := freshAttrs.Metadata.ComputeValue(store, 0, metadataKey)
+	meta, err := freshAttrs.Metadata.Get(store, metadataKey)
 	require.NoError(t, err)
 	require.NotNil(t, meta)
 	require.Equal(t, "active", commonpb.MetadataValueToString(meta))
 
-	idem, _, err := freshAttrs.IdempotencyKeys.ComputeValue(store, 0, idempotencyKey)
+	idem, err := freshAttrs.IdempotencyKeys.Get(store, idempotencyKey)
 	require.NoError(t, err)
 	require.NotNil(t, idem)
 	require.Equal(t, uint64(42), idem.GetLogSequence())
 
-	ref, _, err := freshAttrs.References.ComputeValue(store, 0, referenceKey)
+	ref, err := freshAttrs.References.Get(store, referenceKey)
 	require.NoError(t, err)
 	require.NotNil(t, ref)
 	require.Equal(t, uint64(99), ref.GetTransactionId())
 
-	ledger, _, err := freshAttrs.Ledger.ComputeValue(store, 0, ledgerKey)
+	ledger, err := freshAttrs.Ledger.Get(store, ledgerKey)
 	require.NoError(t, err)
 	require.NotNil(t, ledger)
 	require.Equal(t, "myledger", ledger.GetName())
 
-	boundary, _, err := freshAttrs.Boundary.ComputeValue(store, 0, boundaryKey)
+	boundary, err := freshAttrs.Boundary.Get(store, boundaryKey)
 	require.NoError(t, err)
 	require.NotNil(t, boundary)
 	require.Equal(t, uint64(10), boundary.GetNextTransactionId())
@@ -731,22 +644,16 @@ func TestCompactAllForBackupMultiKeyPerType(t *testing.T) {
 	keyCharlie := []byte("ledger\x00charlie\x00USD")
 
 	batch := store.NewBatch()
-	// Alice: Set 100 then Set 50 → last-write-wins = 50
-	require.NoError(t, attrs.Volume.Set(batch, 1, keyAlice, &raftcmdpb.VolumePair{
-		Input: commonpb.NewUint256FromUint64(100),
-	}))
-	require.NoError(t, attrs.Volume.Set(batch, 5, keyAlice, &raftcmdpb.VolumePair{
+	// Alice: last Set wins = 50
+	require.NoError(t, attrs.Volume.Set(batch, keyAlice, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(50),
 	}))
 	// Bob: single Set = 200
-	require.NoError(t, attrs.Volume.Set(batch, 3, keyBob, &raftcmdpb.VolumePair{
+	require.NoError(t, attrs.Volume.Set(batch, keyBob, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(200),
 	}))
-	// Charlie: two Sets → last-write-wins = 300
-	require.NoError(t, attrs.Volume.Set(batch, 2, keyCharlie, &raftcmdpb.VolumePair{
-		Input: commonpb.NewUint256FromUint64(100),
-	}))
-	require.NoError(t, attrs.Volume.Set(batch, 7, keyCharlie, &raftcmdpb.VolumePair{
+	// Charlie: last Set wins = 300
+	require.NoError(t, attrs.Volume.Set(batch, keyCharlie, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(300),
 	}))
 	require.NoError(t, batch.Commit())
@@ -755,17 +662,17 @@ func TestCompactAllForBackupMultiKeyPerType(t *testing.T) {
 
 	freshAttrs := New()
 
-	alice, _, err := freshAttrs.Volume.ComputeValue(store, 0, keyAlice)
+	alice, err := freshAttrs.Volume.Get(store, keyAlice)
 	require.NoError(t, err)
 	require.NotNil(t, alice)
 	require.Equal(t, int64(50), alice.GetInput().ToBigInt().Int64(), "alice: last Set wins (50)")
 
-	bob, _, err := freshAttrs.Volume.ComputeValue(store, 0, keyBob)
+	bob, err := freshAttrs.Volume.Get(store, keyBob)
 	require.NoError(t, err)
 	require.NotNil(t, bob)
 	require.Equal(t, int64(200), bob.GetInput().ToBigInt().Int64(), "bob: single Set 200")
 
-	charlie, _, err := freshAttrs.Volume.ComputeValue(store, 0, keyCharlie)
+	charlie, err := freshAttrs.Volume.Get(store, keyCharlie)
 	require.NoError(t, err)
 	require.NotNil(t, charlie)
 	require.Equal(t, int64(300), charlie.GetInput().ToBigInt().Int64(), "charlie: last Set wins (300)")

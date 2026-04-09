@@ -12,9 +12,8 @@ const loaderShards = 256
 
 // loadedEntry stores a loaded attribute value with its boundary.
 type loadedEntry[T any] struct {
-	boundary  uint64
-	value     T
-	baseIndex uint64 // Raft index of the Pebble entry (for point deletes)
+	boundary uint64
+	value    T
 }
 
 // loaderShard is one of loaderShards independent partitions, each with its own
@@ -38,9 +37,8 @@ type AttributeLoader[T any] struct {
 
 // LoadResult represents the result of loading an attribute.
 type LoadResult[T any] struct {
-	Value     T
-	BaseIndex uint64 // Raft index of the Pebble entry (for point deletes)
-	FromLoad  bool   // true if we actually loaded from store, false if from loader cache
+	Value    T
+	FromLoad bool // true if we actually loaded from store, false if from loader cache
 }
 
 // NewAttributeLoader creates a new AttributeLoader for the given type.
@@ -61,12 +59,9 @@ func (al *AttributeLoader[T]) shard(key attributes.U128) *loaderShard[T] {
 }
 
 // LoadOrWait loads an attribute value or waits for an ongoing load.
-// It returns the value, the base index from Pebble, and whether we actually
-// performed a load (vs using cached).
+// It returns the value and whether we actually performed a load (vs using cached).
 // The loadFn is called only if the value needs to be loaded from store.
-// It returns (value, baseIndex, error) where baseIndex is the raft index of the
-// Pebble entry (used for point deletes instead of range tombstones).
-func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary uint64, loadFn func() (T, uint64, error)) (*LoadResult[T], error) {
+func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary uint64, loadFn func() (T, error)) (*LoadResult[T], error) {
 	s := al.shard(key)
 
 	// Fast path: check if already loaded using read lock
@@ -75,7 +70,7 @@ func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary uint64, l
 	if cached, ok := s.loaded[key]; ok && cached.boundary >= boundary {
 		s.mu.RUnlock()
 
-		return &LoadResult[T]{Value: cached.value, BaseIndex: cached.baseIndex, FromLoad: false}, nil
+		return &LoadResult[T]{Value: cached.value, FromLoad: false}, nil
 	}
 	// Check if someone is already loading this key
 	waitCh, isLoading := s.loading[key]
@@ -90,7 +85,7 @@ func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary uint64, l
 		if cached, ok := s.loaded[key]; ok && cached.boundary >= boundary {
 			s.mu.RUnlock()
 
-			return &LoadResult[T]{Value: cached.value, BaseIndex: cached.baseIndex, FromLoad: false}, nil
+			return &LoadResult[T]{Value: cached.value, FromLoad: false}, nil
 		}
 
 		s.mu.RUnlock()
@@ -104,7 +99,7 @@ func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary uint64, l
 	if cached, ok := s.loaded[key]; ok && cached.boundary >= boundary {
 		s.mu.Unlock()
 
-		return &LoadResult[T]{Value: cached.value, BaseIndex: cached.baseIndex, FromLoad: false}, nil
+		return &LoadResult[T]{Value: cached.value, FromLoad: false}, nil
 	}
 
 	// Check again if someone started loading while we were waiting for the lock
@@ -122,14 +117,14 @@ func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary uint64, l
 	s.mu.Unlock()
 
 	// Perform the actual load (outside of lock)
-	value, baseIndex, err := loadFn()
+	value, err := loadFn()
 
 	// Update state with write lock
 	s.mu.Lock()
 	delete(s.loading, key)
 
 	if err == nil {
-		s.loaded[key] = &loadedEntry[T]{boundary: boundary, value: value, baseIndex: baseIndex}
+		s.loaded[key] = &loadedEntry[T]{boundary: boundary, value: value}
 	}
 
 	close(waitCh)
@@ -141,7 +136,7 @@ func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary uint64, l
 		return &LoadResult[T]{Value: zero, FromLoad: false}, err
 	}
 
-	return &LoadResult[T]{Value: value, BaseIndex: baseIndex, FromLoad: true}, nil
+	return &LoadResult[T]{Value: value, FromLoad: true}, nil
 }
 
 // Release removes the loaded entry for the given key.

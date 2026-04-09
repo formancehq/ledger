@@ -540,7 +540,7 @@ func TestAttributeCache_Touch_DoesNotOverwriteGen0(t *testing.T) {
 	key := attributes.NewU128(1, 1)
 
 	// Put a value in Gen0, then rotate so it moves to Gen1
-	gen1Entry := attributes.Entry[*raftcmdpb.VolumePair]{Tag: 100, BaseIndex: 5}
+	gen1Entry := attributes.Entry[*raftcmdpb.VolumePair]{Tag: 100}
 	ac.Put(key, gen1Entry)
 	ac.Rotate()
 
@@ -551,7 +551,7 @@ func TestAttributeCache_Touch_DoesNotOverwriteGen0(t *testing.T) {
 	assert.Equal(t, uint64(100), v.Tag)
 
 	// Simulate a Merge updating Gen0 with a newer value
-	gen0Entry := attributes.Entry[*raftcmdpb.VolumePair]{Tag: 200, BaseIndex: 12}
+	gen0Entry := attributes.Entry[*raftcmdpb.VolumePair]{Tag: 200}
 	ac.Gen0().Put(key, gen0Entry)
 
 	// A redundant Touch (from a concurrent admission) must NOT overwrite the newer Gen0 value
@@ -559,7 +559,6 @@ func TestAttributeCache_Touch_DoesNotOverwriteGen0(t *testing.T) {
 	v, ok = ac.Gen0().Get(key)
 	require.True(t, ok)
 	assert.Equal(t, uint64(200), v.Tag, "Touch must not overwrite existing Gen0 entry")
-	assert.Equal(t, uint64(12), v.BaseIndex, "Touch must not overwrite existing Gen0 BaseIndex")
 }
 
 func TestCache_AllAttributeCachesRotate(t *testing.T) {

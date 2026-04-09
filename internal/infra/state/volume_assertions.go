@@ -58,8 +58,8 @@ func deduplicateVolumeUpdates(results []ApplyResult) []attributes.Update[domain.
 		}
 
 		// Remove volumes that were purged by this entry's ephemeral purge.
-		// A purge deletes the Pebble entry at OldBaseIndex, which may have been
-		// written by an earlier entry in this same batch.
+		// A purge deletes the Pebble entry, which may have been written by
+		// an earlier entry in this same batch.
 		for _, key := range r.purgedVolumeKeys {
 			if idx, ok := seen[key]; ok {
 				// Mark as removed by setting to zero value; compact below.
@@ -96,7 +96,7 @@ func verifyPostCommitVolumes(
 ) error {
 	for _, update := range volumeUpdates {
 		// Read from Pebble (the committed value)
-		pebbleValue, _, err := volumeAttr.ComputeValue(store, ^uint64(0), update.CanonicalKey)
+		pebbleValue, err := volumeAttr.Get(store, update.CanonicalKey)
 		if err != nil {
 			return fmt.Errorf("reading volume from pebble for verification: %w", err)
 		}

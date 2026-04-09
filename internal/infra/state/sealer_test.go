@@ -119,10 +119,10 @@ func TestSealerDeterministic(t *testing.T) {
 		attrs := attributes.New()
 
 		batch := store.NewBatch()
-		require.NoError(t, attrs.Volume.Set(batch, 1, []byte("l\x00a\x00USD"), &raftcmdpb.VolumePair{
+		require.NoError(t, attrs.Volume.Set(batch, []byte("l\x00a\x00USD"), &raftcmdpb.VolumePair{
 			Input: commonpb.NewUint256FromUint64(uint64(500)),
 		}))
-		require.NoError(t, attrs.Metadata.Set(batch, 1, []byte("l\x00a\x00key"), commonpb.NewStringValue("val")))
+		require.NoError(t, attrs.Metadata.Set(batch, []byte("l\x00a\x00key"), commonpb.NewStringValue("val")))
 		require.NoError(t, batch.Commit())
 
 		checkpointPath := createSealCheckpoint(t, store, 42)
@@ -150,7 +150,7 @@ func TestSealerCheckpointIsolation(t *testing.T) {
 
 	// Write data at index 1
 	batch := store.NewBatch()
-	require.NoError(t, attrs.Volume.Set(batch, 1, []byte("l\x00a\x00USD"), &raftcmdpb.VolumePair{
+	require.NoError(t, attrs.Volume.Set(batch, []byte("l\x00a\x00USD"), &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(uint64(100)),
 	}))
 	require.NoError(t, batch.Commit())
@@ -171,7 +171,7 @@ func TestSealerCheckpointIsolation(t *testing.T) {
 
 	// Write additional data at index 20 (after the checkpoint was taken)
 	batch2 := store.NewBatch()
-	require.NoError(t, attrs.Volume.Set(batch2, 20, []byte("l\x00b\x00EUR"), &raftcmdpb.VolumePair{
+	require.NoError(t, attrs.Volume.Set(batch2, []byte("l\x00b\x00EUR"), &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(uint64(999)),
 	}))
 	require.NoError(t, batch2.Commit())

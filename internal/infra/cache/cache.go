@@ -209,6 +209,7 @@ func newAttributeCache[T any](cache *Cache, cacheType string) *AttributeCache[T]
 }
 
 type Cache struct {
+	// todo: recheck all app locks for opportunity of using RWLock instead of Mutex
 	mu                  sync.Mutex
 	Volumes             *AttributeCache[*raftcmdpb.VolumePair]
 	AccountMetadata     *AttributeCache[*commonpb.MetadataValue]

@@ -82,15 +82,15 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	batch = s.NewBatch()
 	worldKey := domain.VolumeKey{AccountKey: domain.AccountKey{Ledger: ledgerName, Account: "world"}, Asset: "USD"}
 	worldCanonicalKey := worldKey.Bytes()
-	require.NoError(t, attrs.Volume.Set(batch, 1, worldCanonicalKey, &raftcmdpb.VolumePair{
+	require.NoError(t, attrs.Volume.Set(batch, worldCanonicalKey, &raftcmdpb.VolumePair{
 		Output: commonpb.NewUint256FromUint64(100),
 	}))
 
 	metadataKey := domain.MetadataKey{AccountKey: domain.AccountKey{Ledger: ledgerName, Account: "bank"}, Key: "key"}
 	metadataCanonicalKey := metadataKey.Bytes()
-	require.NoError(t, attrs.Metadata.Set(batch, 1, metadataCanonicalKey, commonpb.NewStringValue("value")))
+	require.NoError(t, attrs.Metadata.Set(batch, metadataCanonicalKey, commonpb.NewStringValue("value")))
 	txKey := domain.TransactionKey{Ledger: ledgerName, ID: 1}
-	require.NoError(t, attrs.Transaction.Set(batch, 1, txKey.Bytes(), &commonpb.TransactionState{
+	require.NoError(t, attrs.Transaction.Set(batch, txKey.Bytes(), &commonpb.TransactionState{
 		CreatedByLog: 1,
 	}))
 	require.NoError(t, batch.Commit())
@@ -123,7 +123,7 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	require.Equal(t, deletedAt.GetData(), ledgers[0].GetDeletedAt().GetData())
 
 	// Verify data still exists (soft delete doesn't remove data)
-	volumeResult, _, err := attrs.Volume.ComputeValue(s, 100, worldCanonicalKey)
+	volumeResult, err := attrs.Volume.Get(s, worldCanonicalKey)
 	require.NoError(t, err)
 	require.Equal(t, big.NewInt(100), volumeResult.GetOutput().ToBigInt())
 }

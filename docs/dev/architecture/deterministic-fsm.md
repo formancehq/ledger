@@ -503,13 +503,10 @@ This keeps the number of entries per key bounded without requiring a separate co
 All attributes use a unified key format:
 
 ```
-[KeyPrefixAttributes(1B)][canonical key(NB)][attr type(1B)][raft index(8B)]
+[KeyPrefixAttributes(1B)][canonical key(NB)][attr type(1B)]
 ```
 
-Admission algorithm at boundary `B`:
-
-1) Scan attribute entries for the canonical key
-2) Return the latest value at or before `B`
+Each canonical key has exactly one Pebble entry, overwritten in place. Reads are simple point lookups via `Get`.
 
 ---
 

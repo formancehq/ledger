@@ -109,11 +109,12 @@ func (mr *MockControllerMockRecorder) Apply(ctx any, requests ...any) *gomock.Ca
 }
 
 // Barrier mocks base method.
-func (m *MockController) Barrier(ctx context.Context) error {
+func (m *MockController) Barrier(ctx context.Context) (uint64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Barrier", ctx)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(uint64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // Barrier indicates an expected call of Barrier.

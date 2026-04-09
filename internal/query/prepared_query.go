@@ -89,4 +89,3 @@ func ReadPreparedQueries(ctx context.Context, reader dal.PebbleReader, ledger st
 
 	return queries, nil
 }
-

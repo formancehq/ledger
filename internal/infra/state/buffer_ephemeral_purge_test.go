@@ -103,10 +103,9 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 	}
 
 	// Put ledger into the parent KeyStore so partitionEphemeralVolumes can find it.
-	_, _, _, err := machine.Registry.Ledgers.Put(
+	_, _, err := machine.Registry.Ledgers.Put(
 		(&domain.LedgerKey{Name: "test"}).Bytes(),
 		ledgerInfo,
-		1,
 	)
 	require.NoError(t, err)
 

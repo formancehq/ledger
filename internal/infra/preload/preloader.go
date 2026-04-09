@@ -110,12 +110,7 @@ func (p *Preloader) ReadBoundaries(ledgerName string) (*raftcmdpb.LedgerBoundari
 	reader := p.store.NewReadHandle()
 	defer func() { _ = reader.Close() }()
 
-	boundaries, _, err := p.attrs.Boundary.ComputeValue(reader, ^uint64(0), []byte(ledgerName))
-	if err != nil {
-		return nil, err
-	}
-
-	return boundaries, nil
+	return p.attrs.Boundary.Get(reader, []byte(ledgerName))
 }
 
 // LockTracker acquires the IndexTracker's mutex. Used by non-guard callers
@@ -244,7 +239,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 			r, results[i].err = resolveStandard(
 				needs.Ledgers, nextIndex, boundary,
 				p.cache.Ledgers, p.loaders.Ledgers,
-				p.attrs.Ledger.ComputeValue, p.store,
+				p.attrs.Ledger.Get, p.store,
 				buildLedgerPreload, true,
 				raftcmdpb.CacheTouchType_CACHE_TOUCH_LEDGERS, nil,
 				p.logger, "ledgers",
@@ -262,7 +257,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 			r, results[i].err = resolveStandard(
 				needs.Boundaries, nextIndex, boundary,
 				p.cache.Boundaries, p.loaders.Boundaries,
-				p.attrs.Boundary.ComputeValue, p.store,
+				p.attrs.Boundary.Get, p.store,
 				buildBoundaryPreload, true,
 				raftcmdpb.CacheTouchType_CACHE_TOUCH_BOUNDARIES, nil,
 				p.logger, "boundaries",
@@ -280,7 +275,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 			r, results[i].err = resolveStandard(
 				needs.Volumes, nextIndex, boundary,
 				p.cache.Volumes, p.loaders.Volumes,
-				p.attrs.Volume.ComputeValue, p.store,
+				p.attrs.Volume.Get, p.store,
 				buildVolumePreload, true,
 				raftcmdpb.CacheTouchType_CACHE_TOUCH_VOLUMES, nil,
 				p.logger, "volumes",
@@ -298,7 +293,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 			r, results[i].err = resolveStandard(
 				needs.IdempotencyKeys, nextIndex, boundary,
 				p.cache.IdempotencyKeys, p.loaders.IdempotencyKeys,
-				p.attrs.IdempotencyKeys.ComputeValue, p.store,
+				p.attrs.IdempotencyKeys.Get, p.store,
 				buildIdempotencyKeyPreload, false,
 				raftcmdpb.CacheTouchType_CACHE_TOUCH_IDEMPOTENCY_KEYS, nil,
 				p.logger, "idempotency_keys",
@@ -316,7 +311,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 			r, results[i].err = resolveStandard(
 				needs.References, nextIndex, boundary,
 				p.cache.References, p.loaders.References,
-				p.attrs.References.ComputeValue, p.store,
+				p.attrs.References.Get, p.store,
 				buildReferencePreload, false,
 				raftcmdpb.CacheTouchType_CACHE_TOUCH_REFERENCES, nil,
 				p.logger, "references",
@@ -402,7 +397,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 			r, results[i].err = resolveStandard(
 				needs.Transactions, nextIndex, boundary,
 				p.cache.Transactions, p.loaders.Transactions,
-				p.attrs.Transaction.ComputeValue, p.store,
+				p.attrs.Transaction.Get, p.store,
 				buildTransactionStatePreload, false,
 				raftcmdpb.CacheTouchType_CACHE_TOUCH_TRANSACTIONS, nil,
 				p.logger, "transactions",
@@ -420,7 +415,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 			r, results[i].err = resolveStandard(
 				needs.Metadata, nextIndex, boundary,
 				p.cache.AccountMetadata, p.loaders.AccountMetadata,
-				p.attrs.Metadata.ComputeValue, p.store,
+				p.attrs.Metadata.Get, p.store,
 				buildMetadataPreload, false,
 				raftcmdpb.CacheTouchType_CACHE_TOUCH_ACCOUNT_METADATA, nil,
 				p.logger, "metadata",

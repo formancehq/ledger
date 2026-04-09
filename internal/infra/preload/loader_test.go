@@ -22,10 +22,10 @@ func TestAttributeLoader_LoadOrWait_FirstLoad(t *testing.T) {
 	key := attributes.NewU128(1, 2)
 
 	loadCount := 0
-	result, err := loader.LoadOrWait(key, 100, func() (int, uint64, error) {
+	result, err := loader.LoadOrWait(key, 100, func() (int, error) {
 		loadCount++
 
-		return 42, 0, nil
+		return 42, nil
 	})
 
 	require.NoError(t, err)
@@ -41,17 +41,17 @@ func TestAttributeLoader_LoadOrWait_CachedResult(t *testing.T) {
 	key := attributes.NewU128(1, 2)
 
 	// First load
-	_, err := loader.LoadOrWait(key, 100, func() (int, uint64, error) {
-		return 42, 0, nil
+	_, err := loader.LoadOrWait(key, 100, func() (int, error) {
+		return 42, nil
 	})
 	require.NoError(t, err)
 
 	// Second load with same boundary - should use cached value
 	loadCount := 0
-	result, err := loader.LoadOrWait(key, 100, func() (int, uint64, error) {
+	result, err := loader.LoadOrWait(key, 100, func() (int, error) {
 		loadCount++
 
-		return 999, 0, nil
+		return 999, nil
 	})
 
 	require.NoError(t, err)
@@ -67,17 +67,17 @@ func TestAttributeLoader_LoadOrWait_CachedResultWithLowerBoundary(t *testing.T) 
 	key := attributes.NewU128(1, 2)
 
 	// First load at boundary 200
-	_, err := loader.LoadOrWait(key, 200, func() (int, uint64, error) {
-		return 42, 0, nil
+	_, err := loader.LoadOrWait(key, 200, func() (int, error) {
+		return 42, nil
 	})
 	require.NoError(t, err)
 
 	// Second load with lower boundary - should use cached value
 	loadCount := 0
-	result, err := loader.LoadOrWait(key, 100, func() (int, uint64, error) {
+	result, err := loader.LoadOrWait(key, 100, func() (int, error) {
 		loadCount++
 
-		return 999, 0, nil
+		return 999, nil
 	})
 
 	require.NoError(t, err)
@@ -101,12 +101,12 @@ func TestAttributeLoader_LoadOrWait_ConcurrentLoads(t *testing.T) {
 	var wg sync.WaitGroup
 
 	wg.Go(func() {
-		result, err := loader.LoadOrWait(key, 100, func() (int, uint64, error) {
+		result, err := loader.LoadOrWait(key, 100, func() (int, error) {
 			loadCount.Add(1)
 			close(loadStarted)
 			<-loadContinue // Wait for signal to continue
 
-			return 42, 0, nil
+			return 42, nil
 		})
 		require.NoError(t, err)
 		assert.Equal(t, 42, result.Value)
@@ -125,10 +125,10 @@ func TestAttributeLoader_LoadOrWait_ConcurrentLoads(t *testing.T) {
 		go func() {
 			defer wg.Done()
 
-			result, err := loader.LoadOrWait(key, 100, func() (int, uint64, error) {
+			result, err := loader.LoadOrWait(key, 100, func() (int, error) {
 				loadCount.Add(1)
 
-				return 999, 0, nil // Should never be called
+				return 999, nil // Should never be called
 			})
 			require.NoError(t, err)
 
@@ -162,8 +162,8 @@ func TestAttributeLoader_LoadOrWait_Error(t *testing.T) {
 	key := attributes.NewU128(1, 2)
 
 	expectedErr := errors.New("load failed")
-	result, err := loader.LoadOrWait(key, 100, func() (int, uint64, error) {
-		return 0, 0, expectedErr
+	result, err := loader.LoadOrWait(key, 100, func() (int, error) {
+		return 0, expectedErr
 	})
 
 	require.ErrorIs(t, err, expectedErr)
@@ -172,10 +172,10 @@ func TestAttributeLoader_LoadOrWait_Error(t *testing.T) {
 
 	// Verify the key is not in the loaded map (error should not cache)
 	loadCount := 0
-	result, err = loader.LoadOrWait(key, 100, func() (int, uint64, error) {
+	result, err = loader.LoadOrWait(key, 100, func() (int, error) {
 		loadCount++
 
-		return 42, 0, nil
+		return 42, nil
 	})
 
 	require.NoError(t, err)
@@ -197,11 +197,11 @@ func TestAttributeLoader_LoadOrWait_ErrorReleasesWaiters(t *testing.T) {
 	var wg sync.WaitGroup
 
 	wg.Go(func() {
-		_, err := loader.LoadOrWait(key, 100, func() (int, uint64, error) {
+		_, err := loader.LoadOrWait(key, 100, func() (int, error) {
 			close(loadStarted)
 			<-loadContinue
 
-			return 0, 0, errors.New("load failed")
+			return 0, errors.New("load failed")
 		})
 		require.Error(t, err)
 	})
@@ -217,8 +217,8 @@ func TestAttributeLoader_LoadOrWait_ErrorReleasesWaiters(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		// This should wait, then try to load again since the first one failed
-		result, err := loader.LoadOrWait(key, 100, func() (int, uint64, error) {
-			return 42, 0, nil
+		result, err := loader.LoadOrWait(key, 100, func() (int, error) {
+			return 42, nil
 		})
 		require.NoError(t, err)
 		assert.Equal(t, 42, result.Value)
@@ -257,17 +257,17 @@ func TestAttributeLoader_Release(t *testing.T) {
 	key := attributes.NewU128(1, 2)
 
 	// Load a value
-	_, err := loader.LoadOrWait(key, 100, func() (int, uint64, error) {
-		return 42, 0, nil
+	_, err := loader.LoadOrWait(key, 100, func() (int, error) {
+		return 42, nil
 	})
 	require.NoError(t, err)
 
 	// Verify it's cached
 	loadCount := 0
-	result, err := loader.LoadOrWait(key, 100, func() (int, uint64, error) {
+	result, err := loader.LoadOrWait(key, 100, func() (int, error) {
 		loadCount++
 
-		return 999, 0, nil
+		return 999, nil
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 42, result.Value)
@@ -278,10 +278,10 @@ func TestAttributeLoader_Release(t *testing.T) {
 	loader.Release(key)
 
 	// Should load again
-	result, err = loader.LoadOrWait(key, 100, func() (int, uint64, error) {
+	result, err = loader.LoadOrWait(key, 100, func() (int, error) {
 		loadCount++
 
-		return 123, 0, nil
+		return 123, nil
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 123, result.Value)
@@ -297,16 +297,16 @@ func TestAttributeLoader_DifferentKeys(t *testing.T) {
 	key2 := attributes.NewU128(2, 2)
 
 	// Load key1
-	result1, err := loader.LoadOrWait(key1, 100, func() (int, uint64, error) {
-		return 42, 0, nil
+	result1, err := loader.LoadOrWait(key1, 100, func() (int, error) {
+		return 42, nil
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 42, result1.Value)
 	assert.True(t, result1.FromLoad)
 
 	// Load key2 - should not use key1's cached value
-	result2, err := loader.LoadOrWait(key2, 100, func() (int, uint64, error) {
-		return 99, 0, nil
+	result2, err := loader.LoadOrWait(key2, 100, func() (int, error) {
+		return 99, nil
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 99, result2.Value)
@@ -332,18 +332,18 @@ func TestCleanupToken_Release(t *testing.T) {
 	key2 := attributes.NewU128(2, 2)
 	key4 := attributes.NewU128(4, 4)
 
-	_, err := loaders.Volumes.LoadOrWait(key1, 100, func() (*raftcmdpb.VolumePair, uint64, error) {
-		return &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(42)}, 0, nil
+	_, err := loaders.Volumes.LoadOrWait(key1, 100, func() (*raftcmdpb.VolumePair, error) {
+		return &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(42)}, nil
 	})
 	require.NoError(t, err)
 
-	_, err = loaders.Volumes.LoadOrWait(key2, 100, func() (*raftcmdpb.VolumePair, uint64, error) {
-		return &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(43)}, 0, nil
+	_, err = loaders.Volumes.LoadOrWait(key2, 100, func() (*raftcmdpb.VolumePair, error) {
+		return &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(43)}, nil
 	})
 	require.NoError(t, err)
 
-	_, err = loaders.IdempotencyKeys.LoadOrWait(key4, 100, func() (*commonpb.IdempotencyKeyValue, uint64, error) {
-		return &commonpb.IdempotencyKeyValue{LogSequence: 1, Hash: []byte("test")}, 0, nil
+	_, err = loaders.IdempotencyKeys.LoadOrWait(key4, 100, func() (*commonpb.IdempotencyKeyValue, error) {
+		return &commonpb.IdempotencyKeyValue{LogSequence: 1, Hash: []byte("test")}, nil
 	})
 	require.NoError(t, err)
 
@@ -358,28 +358,28 @@ func TestCleanupToken_Release(t *testing.T) {
 
 	// Verify all keys were removed - next load should actually load
 	volumeLoadCount := 0
-	_, err = loaders.Volumes.LoadOrWait(key1, 100, func() (*raftcmdpb.VolumePair, uint64, error) {
+	_, err = loaders.Volumes.LoadOrWait(key1, 100, func() (*raftcmdpb.VolumePair, error) {
 		volumeLoadCount++
 
-		return &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)}, 0, nil
+		return &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)}, nil
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 1, volumeLoadCount, "Volumes key1 should reload after Release")
 
 	volumeLoadCount2 := 0
-	_, err = loaders.Volumes.LoadOrWait(key2, 100, func() (*raftcmdpb.VolumePair, uint64, error) {
+	_, err = loaders.Volumes.LoadOrWait(key2, 100, func() (*raftcmdpb.VolumePair, error) {
 		volumeLoadCount2++
 
-		return &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)}, 0, nil
+		return &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)}, nil
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 1, volumeLoadCount2, "Volumes key2 should reload after Release")
 
 	idempotencyLoadCount := 0
-	_, err = loaders.IdempotencyKeys.LoadOrWait(key4, 100, func() (*commonpb.IdempotencyKeyValue, uint64, error) {
+	_, err = loaders.IdempotencyKeys.LoadOrWait(key4, 100, func() (*commonpb.IdempotencyKeyValue, error) {
 		idempotencyLoadCount++
 
-		return &commonpb.IdempotencyKeyValue{LogSequence: 2, Hash: []byte("new")}, 0, nil
+		return &commonpb.IdempotencyKeyValue{LogSequence: 2, Hash: []byte("new")}, nil
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 1, idempotencyLoadCount, "IdempotencyKeys should reload after Release")

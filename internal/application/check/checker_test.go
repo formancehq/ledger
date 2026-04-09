@@ -153,7 +153,7 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 			Output: vp.GetOutput(),
 		}
 		if storePair.GetInput() != nil || storePair.GetOutput() != nil {
-			err := e.attrs.Volume.Set(batch, e.raftIndex, canonicalKey, storePair)
+			err := e.attrs.Volume.Set(batch, canonicalKey, storePair)
 			require.NoError(e.t, err)
 		}
 	}
@@ -164,7 +164,7 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 
 		canonicalKey := []byte(key)
 		if ok {
-			err := e.attrs.Metadata.Set(batch, e.raftIndex, canonicalKey, value)
+			err := e.attrs.Metadata.Set(batch, canonicalKey, value)
 			require.NoError(e.t, err)
 		} else {
 			// Metadata was deleted
@@ -176,7 +176,7 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 	// Write modified transaction states to Pebble via attributes
 	for keyStr := range modifiedTxStates {
 		txState := e.transactionStates[keyStr]
-		err := e.attrs.Transaction.Set(batch, e.raftIndex, []byte(keyStr), txState)
+		err := e.attrs.Transaction.Set(batch, []byte(keyStr), txState)
 		require.NoError(e.t, err)
 	}
 
@@ -184,7 +184,7 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 	for _, info := range e.ledgers {
 		err := state.SaveLedger(batch, info)
 		require.NoError(e.t, err)
-		err = e.attrs.Ledger.Set(batch, e.raftIndex, domain.LedgerKey{Name: info.GetName()}.Bytes(), info)
+		err = e.attrs.Ledger.Set(batch, domain.LedgerKey{Name: info.GetName()}.Bytes(), info)
 		require.NoError(e.t, err)
 	}
 
@@ -794,8 +794,8 @@ func TestCheckerDetectsHashMismatch(t *testing.T) {
 
 	// Write ledger attributes
 	batch2 := store.NewBatch()
-	require.NoError(t, attrs.Ledger.Set(batch2, 1, domain.LedgerKey{Name: "test"}.Bytes(), log1.GetPayload().GetCreateLedger().GetInfo()))
-	require.NoError(t, attrs.Ledger.Set(batch2, 1, domain.LedgerKey{Name: "test2"}.Bytes(), log2.GetPayload().GetCreateLedger().GetInfo()))
+	require.NoError(t, attrs.Ledger.Set(batch2, domain.LedgerKey{Name: "test"}.Bytes(), log1.GetPayload().GetCreateLedger().GetInfo()))
+	require.NoError(t, attrs.Ledger.Set(batch2, domain.LedgerKey{Name: "test2"}.Bytes(), log2.GetPayload().GetCreateLedger().GetInfo()))
 	require.NoError(t, batch2.Commit())
 
 	errors := collectCheckErrors(t, store, attrs)
@@ -1080,7 +1080,7 @@ func TestCheckerDetectsTransactionUpdateMismatch(t *testing.T) {
 	// Use a high raft index so it overrides the correct state.
 	batch := engine.store.NewBatch()
 	txKey := domain.TransactionKey{Ledger: "test", ID: 1}
-	err := engine.attrs.Transaction.Set(batch, engine.raftIndex+1, txKey.Bytes(), &commonpb.TransactionState{
+	err := engine.attrs.Transaction.Set(batch, txKey.Bytes(), &commonpb.TransactionState{
 		CreatedByLog: 999,
 	})
 	require.NoError(t, err)
@@ -1226,7 +1226,7 @@ func TestCheckerDetectsDoubleRevert(t *testing.T) {
 	batch := store.NewBatch()
 	require.NoError(t, state.AppendLogs(batch, log1, log2, log3, log4))
 	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().GetInfo()))
-	require.NoError(t, writeVolumes(batch, attrs, posting, "test", 1))
+	require.NoError(t, writeVolumes(batch, attrs, posting, "test"))
 	require.NoError(t, batch.Commit())
 
 	errors := collectCheckErrors(t, store, attrs)
@@ -1328,7 +1328,7 @@ func reversePosting(p *commonpb.Posting) *commonpb.Posting {
 }
 
 // writeVolumes writes volume attributes for a posting to make the store consistent.
-func writeVolumes(batch *dal.Batch, attrs *attributes.Attributes, posting *commonpb.Posting, ledger string, raftIndex uint64) error {
+func writeVolumes(batch *dal.Batch, attrs *attributes.Attributes, posting *commonpb.Posting, ledger string) error {
 	sourceKey := domain.VolumeKey{
 		AccountKey: domain.AccountKey{Ledger: ledger, Account: posting.GetSource()},
 		Asset:      posting.GetAsset(),
@@ -1338,7 +1338,7 @@ func writeVolumes(batch *dal.Batch, attrs *attributes.Attributes, posting *commo
 		Asset:      posting.GetAsset(),
 	}
 
-	err := attrs.Volume.Set(batch, raftIndex, sourceKey.Bytes(), &raftcmdpb.VolumePair{
+	err := attrs.Volume.Set(batch, sourceKey.Bytes(), &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(0),
 		Output: posting.GetAmount(),
 	})
@@ -1346,7 +1346,7 @@ func writeVolumes(batch *dal.Batch, attrs *attributes.Attributes, posting *commo
 		return err
 	}
 
-	return attrs.Volume.Set(batch, raftIndex, destKey.Bytes(), &raftcmdpb.VolumePair{
+	return attrs.Volume.Set(batch, destKey.Bytes(), &raftcmdpb.VolumePair{
 		Input:  posting.GetAmount(),
 		Output: commonpb.NewUint256FromUint64(0),
 	})

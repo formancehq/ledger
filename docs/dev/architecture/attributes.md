@@ -9,7 +9,7 @@ All attributes share:
 - **Tag-based collision detection** (64-bit secondary hash)
 - **Generation cache** (gen0/gen1) for fast access
 - **AttributeLoader** for coordinated concurrent loads
-- **Last-write-wins storage** — the latest value at a given raft index wins
+- **Single-value storage** — each canonical key has at most one Pebble entry, overwritten in place
 
 **Exception:** Reversions use a dedicated in-memory bitset instead of the attribute system. See [Reversions](#reversions) below.
 
@@ -202,7 +202,7 @@ Track per-ledger boundaries (next log ID, next transaction ID).
 All attributes use a unified key format in PebbleDB:
 
 ```
-[KeyPrefixAttributes][canonical key bytes][attribute prefix][raft index]
+[KeyPrefixAttributes][canonical key bytes][attribute prefix]
 ```
 
 | Component | Size | Description |
@@ -210,9 +210,8 @@ All attributes use a unified key format in PebbleDB:
 | `KeyPrefixAttributes` | 1 byte | Constant prefix (`0xF1`) for all attributes |
 | `canonical key bytes` | variable | Domain-specific key (e.g., ledger + account + asset for volumes) |
 | `attribute prefix` | 1 byte | Identifies attribute type (see table below) |
-| `raft index` | 8 bytes | Raft log index (big-endian) |
 
-This layout groups all entries for the same canonical key together, enabling efficient range scans for `ComputeValue`, `DeleteOldest`, and `List`.
+Each canonical key has exactly one Pebble entry, overwritten in place via `Set`. This enables simple point lookups via `Get` and prefix scans via `List`.
 
 ### Attribute Prefixes
 
@@ -229,25 +228,13 @@ All attributes are stored under the `KeyPrefixAttributes` (`0xF1`) top-level pre
 
 > **Note:** Reversions are stored in-memory as a bitset and are **not** persisted as Pebble attributes. They are reconstructed from WAL replay or snapshot restore.
 
-### Value Computation
+### Value Reads
 
-During read (`ComputeValue`), the system:
-1. Scans all entries for the canonical key up to the target raft index
-2. Returns the latest entry value (last-write-wins)
-
-All attribute types use the same last-write-wins semantics. The latest raft index wins.
-
-### Old Entry Cleanup (per Merge)
-
-When a new value is written during `Buffered.Merge`, old entries for the same canonical key are cleaned up:
-- If the previous raft index is known (from cache), a point delete removes just that entry
-- If the previous index is unknown (cold preload), a range delete removes all entries before the current index
-
-This keeps the number of entries per key bounded.
+Each canonical key has at most one Pebble entry. Reading a value is a simple point lookup via `Get(reader, canonicalKey)`. Writes overwrite the previous value in place.
 
 ## Listing Attribute Keys
 
-The `List` method iterates over actual attribute entries in PebbleDB (prefix scan) and extracts unique canonical keys by stripping the prefix (2 bytes) and suffix (9 bytes: attr type + raft index) from each Pebble key.
+The `List` method iterates over actual attribute entries in PebbleDB (prefix scan) and extracts unique canonical keys by stripping the prefix (1 byte) and suffix (1 byte: attr type) from each Pebble key.
 
 This enables:
 - Listing all accounts with volumes

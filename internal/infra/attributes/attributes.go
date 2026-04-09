@@ -1,8 +1,9 @@
 package attributes
 
 import (
-	"encoding/binary"
+	"errors"
 	"fmt"
+	"reflect"
 
 	"github.com/cockroachdb/pebble/v2"
 	"google.golang.org/protobuf/proto"
@@ -13,15 +14,14 @@ import (
 // Attribute is the implementation for all attribute types.
 // It holds the Pebble key layout, serialization helpers, and entry write logic.
 //
-// Key layout: [KeyPrefixAttributes (1B)][CanonicalKey (NB)][AttrType (1B)][RaftIndex (8B)]
-// The suffix is always 9 bytes: [AttrType 1B][RaftIndex 8B].
-// This layout co-locates all attributes for the same canonical key in Pebble,
-// improving write locality and compaction.
+// Key layout: [KeyPrefixAttributes (1B)][CanonicalKey (NB)][AttrType (1B)]
+// The suffix is always 1 byte: [AttrType 1B].
+// Each canonical key has at most one Pebble entry; Set overwrites in place.
 //
 // Thread-safety:
 // - Each Attribute instance has its own pre-allocated key buffer.
 // - Use dependency injection (New) to get separate instances per Raft node.
-// - Read methods (ComputeValue, List, ScanEntries) allocate their own buffer for concurrent access.
+// - Read methods (Get, ScanEntries) allocate their own buffer for concurrent access.
 type Attribute[V proto.Message] struct {
 	prefix      byte
 	newValue    func() V
@@ -91,15 +91,14 @@ func unmarshalProto(data []byte, msg proto.Message) error {
 	return proto.Unmarshal(data, msg)
 }
 
-// Set stores a value for the given canonical key at the specified raft index.
-// Key format: [KeyPrefixAttributes][canonicalKey][prefix][index BE 8 bytes].
+// Set stores a value for the given canonical key.
+// Key format: [KeyPrefixAttributes][canonicalKey][prefix].
+// A simple Set overwrites the previous value in place — no delete needed.
 // Uses the pre-allocated keyBuf — not safe for concurrent use.
-func (a *Attribute[V]) Set(batch *dal.Batch, index uint64, canonicalKey []byte, value V) error {
+func (a *Attribute[V]) Set(batch *dal.Batch, canonicalKey []byte, value V) error {
 	pLen := prefixLen(canonicalKey)
-	keyLen := pLen + 8
-	a.ensureKeyBuf(keyLen)
+	a.ensureKeyBuf(pLen)
 	a.putPrefix(a.keyBuf, canonicalKey)
-	binary.BigEndian.PutUint64(a.keyBuf[pLen:], index)
 
 	valueBytes, err := marshalProto(a.protoBuffer, value)
 	if err != nil {
@@ -108,169 +107,73 @@ func (a *Attribute[V]) Set(batch *dal.Batch, index uint64, canonicalKey []byte, 
 
 	a.protoBuffer = valueBytes
 
-	return batch.Set(a.keyBuf[:keyLen], valueBytes, pebble.NoSync)
+	return batch.Set(a.keyBuf[:pLen], valueBytes, pebble.NoSync)
 }
 
 // SuffixLen is the fixed suffix length of an attribute Pebble key:
-// [AttrType(1)][RaftIndex(8)] = 9 bytes.
-const SuffixLen = 9
+// [AttrType(1)] = 1 byte.
+const SuffixLen = 1
 
-// ComputeValue computes the final value for the given canonical key at the specified raft index.
-// It finds the most recent entry with index <= maxIndex.
-// Returns the value, the raft index of the latest Pebble entry (0 if no entry found),
-// and any error. The returned index enables point deletes instead of range tombstones
-// when the entry is later overwritten.
+// Get retrieves the value for the given canonical key.
+// Key format: [KeyPrefixAttributes][canonicalKey][attrType].
+// Returns the value and any error. Returns (zero, nil) if no entry found.
 // Note: This is a read operation — allocates its own buffer for concurrent safety.
-func (a *Attribute[V]) ComputeValue(reader dal.PebbleReader, index uint64, canonicalKey []byte) (V, uint64, error) {
+func (a *Attribute[V]) Get(reader dal.PebbleReader, canonicalKey []byte) (V, error) {
 	var zeroValue V
 
-	// Key prefix: [KeyPrefixAttributes][canonicalKey][attrType]
 	pLen := prefixLen(canonicalKey)
-
-	var upperExtra int
-	if index == ^uint64(0) {
-		upperExtra = 1 // 0xFF sentinel
-	} else {
-		upperExtra = 8 // index+1 as big-endian uint64
-	}
-
-	buf := make([]byte, pLen+upperExtra)
+	buf := make([]byte, pLen)
 	a.putPrefix(buf, canonicalKey)
 
-	if index == ^uint64(0) {
-		buf[pLen] = 0xFF
-	} else {
-		binary.BigEndian.PutUint64(buf[pLen:], index+1)
-	}
-
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: buf[:pLen],
-		UpperBound: buf[:pLen+upperExtra],
-	})
+	valueBytes, closer, err := reader.Get(buf)
 	if err != nil {
-		return zeroValue, 0, fmt.Errorf("creating iterator: %w", err)
-	}
-
-	defer func() { _ = iter.Close() }()
-
-	// Track the most recent value and its raft index
-	var latestValue V
-	var latestIndex uint64
-
-	for iter.First(); iter.Valid(); iter.Next() {
-		key := iter.Key()
-		latestIndex = binary.BigEndian.Uint64(key[len(key)-8:])
-
-		valueBytes, err := iter.ValueAndErr()
-		if err != nil {
-			return zeroValue, 0, fmt.Errorf("reading value: %w", err)
+		if errors.Is(err, pebble.ErrNotFound) {
+			return zeroValue, nil
 		}
 
-		v := a.newValue()
-		if err := unmarshalProto(valueBytes, v); err != nil {
-			return zeroValue, 0, fmt.Errorf("unmarshaling value: %w", err)
-		}
-
-		latestValue = v
+		return zeroValue, fmt.Errorf("reading key: %w", err)
 	}
 
-	return latestValue, latestIndex, nil
+	defer func() { _ = closer.Close() }()
+
+	v := a.newValue()
+	if err := unmarshalProto(valueBytes, v); err != nil {
+		return zeroValue, fmt.Errorf("unmarshaling value: %w", err)
+	}
+
+	return v, nil
 }
 
-// Delete removes all entries for the given canonical key at any raft index.
-// This performs a physical deletion, removing all historical data for this key.
+// Delete removes the entry for the given canonical key.
+// This performs a point delete on the single Pebble key.
 // Note: Uses the instance's keyBuf — ensure each Raft node has its own instance.
 func (a *Attribute[V]) Delete(batch *dal.Batch, canonicalKey []byte) error {
 	pLen := prefixLen(canonicalKey)
-	upperLen := pLen + 9 // +8 for ^uint64(0) + 1 for 0xFF
-	a.ensureKeyBuf(upperLen)
+	a.ensureKeyBuf(pLen)
 	a.putPrefix(a.keyBuf, canonicalKey)
-	binary.BigEndian.PutUint64(a.keyBuf[pLen:], ^uint64(0))
-	a.keyBuf[pLen+8] = 0xFF
 
-	// Sub-slices of the same buffer are safe — Pebble copies both in DeleteRange.
-	return batch.DeleteRange(a.keyBuf[:pLen], a.keyBuf[:upperLen], pebble.NoSync)
+	return batch.DeleteKey(a.keyBuf[:pLen])
 }
 
-// DeleteAt deletes the entry at a specific raft index for the given canonical key.
-// This performs a point delete (no range tombstone), which is more efficient than DeleteOldest
-// when the exact previous index is known.
-// Note: Uses the instance's keyBuf — ensure each Raft node has its own instance.
-func (a *Attribute[V]) DeleteAt(batch *dal.Batch, index uint64, canonicalKey []byte) error {
-	pLen := prefixLen(canonicalKey)
-	keyLen := pLen + 8
-	a.ensureKeyBuf(keyLen)
-	a.putPrefix(a.keyBuf, canonicalKey)
-	binary.BigEndian.PutUint64(a.keyBuf[pLen:], index)
-
-	return batch.DeleteKey(a.keyBuf[:keyLen])
-}
-
-// DeleteOldest deletes all entries with raft index strictly less than the given index.
-// This is used to clean up old data after consolidating into a new base.
-// The canonical key is used directly as the Pebble key for better data locality.
-// Note: Uses the instance's keyBuf — ensure each Raft node has its own instance.
-func (a *Attribute[V]) DeleteOldest(batch *dal.Batch, index uint64, canonicalKey []byte) error {
-	pLen := prefixLen(canonicalKey)
-	upperLen := pLen + 8
-	a.ensureKeyBuf(upperLen)
-	a.putPrefix(a.keyBuf, canonicalKey)
-	binary.BigEndian.PutUint64(a.keyBuf[pLen:], index)
-
-	// Sub-slices of the same buffer are safe — Pebble copies both in DeleteRange.
-	return batch.DeleteRange(a.keyBuf[:pLen], a.keyBuf[:upperLen], pebble.NoSync)
-}
-
-// ScanResult holds the results of scanning all entries for a canonical key.
+// ScanResult holds the results of scanning the entry for a canonical key.
 type ScanResult[V proto.Message] struct {
-	LatestBase      V
-	LatestBaseIndex uint64
-	HasBase         bool
-	TotalEntries    int
+	LatestBase V
+	HasBase    bool
 }
 
-// ScanEntries scans all entries for a canonical key and returns the latest entry info.
+// ScanEntries reads the entry for a canonical key and returns the result.
 // Thread-safe: allocates its own buffer for concurrent access.
 func (a *Attribute[V]) ScanEntries(reader dal.PebbleReader, canonicalKey []byte) (*ScanResult[V], error) {
-	// Single allocation for both bounds.
-	pLen := prefixLen(canonicalKey)
-	buf := make([]byte, pLen+1)
-	a.putPrefix(buf, canonicalKey)
-	buf[pLen] = 0xFF
-
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: buf[:pLen],
-		UpperBound: buf[:pLen+1],
-	})
+	value, err := a.Get(reader, canonicalKey)
 	if err != nil {
-		return nil, fmt.Errorf("creating iterator: %w", err)
+		return nil, err
 	}
-
-	defer func() { _ = iter.Close() }()
 
 	result := &ScanResult[V]{}
 
-	for iter.First(); iter.Valid(); iter.Next() {
-		iterKey := iter.Key()
-		result.TotalEntries++
-
-		raftIndex := binary.BigEndian.Uint64(iterKey[len(iterKey)-8:])
-
-		if !result.HasBase || raftIndex > result.LatestBaseIndex {
-			valueBytes, err := iter.ValueAndErr()
-			if err != nil {
-				return nil, fmt.Errorf("reading value: %w", err)
-			}
-
-			v := a.newValue()
-			if err := unmarshalProto(valueBytes, v); err != nil {
-				return nil, fmt.Errorf("unmarshaling value: %w", err)
-			}
-
-			result.LatestBase = v
-			result.LatestBaseIndex = raftIndex
-			result.HasBase = true
-		}
+	if !reflect.ValueOf(value).IsNil() {
+		result.LatestBase = value
+		result.HasBase = true
 	}
 
 	return result, nil
@@ -278,7 +181,7 @@ func (a *Attribute[V]) ScanEntries(reader dal.PebbleReader, canonicalKey []byte)
 
 // ComputeAllForPrefix computes the final value for all canonical keys sharing the
 // given prefix. It performs a single forward scan using NewStreamingIter internally.
-// This is more efficient than List + ComputeValue per key, as it uses one iterator
+// This is more efficient than List + Get per key, as it uses one iterator
 // scoped to just the prefix range instead of the entire attribute space.
 // Thread-safe: allocates its own buffer for concurrent access.
 func (a *Attribute[V]) ComputeAllForPrefix(reader dal.PebbleReader, canonicalPrefix []byte) ([]ComputedEntry[V], error) {

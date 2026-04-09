@@ -6,7 +6,7 @@ import (
 )
 
 // Needs describes the preload requirements for a command.
-// Standard attribute types use map[K]struct{} and are resolved via attrs.*.ComputeValue.
+// Standard attribute types use map[K]struct{} and are resolved via attrs.*.Get.
 // Custom types (SinkConfigs, NumscriptVersions, NumscriptEntries) use map[K]func()(T, error)
 // where the caller supplies the load function.
 type Needs struct {

@@ -49,7 +49,7 @@ func TestStateRegistryKeyStoresPutAndGet(t *testing.T) {
 	// Ledgers: Put and Get via canonical bytes
 	ledgerKey := domain.LedgerKey{Name: "my-ledger"}
 	ledgerInfo := &commonpb.LedgerInfo{Name: "my-ledger"}
-	_, _, _, err := reg.Ledgers.Put(ledgerKey.Bytes(), ledgerInfo, 0)
+	_, _, err := reg.Ledgers.Put(ledgerKey.Bytes(), ledgerInfo)
 	require.NoError(t, err)
 	gotLedger, _, err := reg.Ledgers.Get(ledgerKey.Bytes())
 	require.NoError(t, err)
@@ -77,7 +77,7 @@ func TestDerivedRegistryReadsFromParent(t *testing.T) {
 
 	reg := newTestRegistry(t)
 	ledgerKey := domain.LedgerKey{Name: "ledger-a"}
-	_, _, _, err := reg.Ledgers.Put(ledgerKey.Bytes(), &commonpb.LedgerInfo{Name: "ledger-a"}, 0)
+	_, _, err := reg.Ledgers.Put(ledgerKey.Bytes(), &commonpb.LedgerInfo{Name: "ledger-a"})
 	require.NoError(t, err)
 
 	derived := NewDerivedRegistry(reg)
@@ -121,7 +121,7 @@ func TestDerivedRegistryMerge(t *testing.T) {
 	derived.Ledgers.Put(ledgerKey, &commonpb.LedgerInfo{Name: "merge-test"})
 
 	// Merge propagates to parent
-	updates, _, err := derived.Ledgers.Merge(10)
+	updates, _, err := derived.Ledgers.Merge()
 	require.NoError(t, err)
 	require.Len(t, updates, 1)
 	require.Equal(t, "merge-test", updates[0].New.GetName())

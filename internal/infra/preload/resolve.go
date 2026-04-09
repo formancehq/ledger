@@ -19,7 +19,7 @@ type resolveResult struct {
 	tracker  []attributes.U128
 }
 
-// resolveStandard resolves a standard attribute type (loaded via attrs.*.ComputeValue).
+// resolveStandard resolves a standard attribute type (loaded via attrs.*.Get).
 // For each key not guaranteed in cache, it either emits a touch (if the key is
 // in Gen1 but not Gen0) or loads the value from store and appends a preload entry.
 func resolveStandard[K interface {
@@ -30,7 +30,7 @@ func resolveStandard[K interface {
 	nextIndex, boundary uint64,
 	attrCache *cache.AttributeCache[T],
 	loader *AttributeLoader[T],
-	computeValue func(reader dal.PebbleReader, index uint64, canonicalKey []byte) (T, uint64, error),
+	getValue func(reader dal.PebbleReader, canonicalKey []byte) (T, error),
 	store dal.PebbleReader,
 	buildPreload func(id *raftcmdpb.AttributeID, value T) *raftcmdpb.Preload,
 	includeZeroValue bool,
@@ -79,8 +79,8 @@ func resolveStandard[K interface {
 				}).Debugf("Cache miss: key not guaranteed in cache, loading from store")
 			}
 
-			result, err := loader.LoadOrWait(id, boundary, func() (T, uint64, error) {
-				return computeValue(store, boundary, canonicalKey)
+			result, err := loader.LoadOrWait(id, boundary, func() (T, error) {
+				return getValue(store, canonicalKey)
 			})
 			if err != nil {
 				return nil, err
@@ -94,7 +94,7 @@ func resolveStandard[K interface {
 			hasValue := any(result.Value) != any(zero)
 
 			if includeZeroValue || hasValue {
-				attrID := &raftcmdpb.AttributeID{Id: id[:], Tag: tag, BaseIndex: result.BaseIndex}
+				attrID := &raftcmdpb.AttributeID{Id: id[:], Tag: tag}
 				preloads = append(preloads, buildPreload(attrID, result.Value))
 			}
 		}
@@ -161,14 +161,7 @@ func resolveCustom[K interface {
 				}).Debugf("Cache miss: key not guaranteed in cache, loading from store")
 			}
 
-			// Wrap loadFn to match the (T, uint64, error) signature — baseIndex=0 for custom types.
-			wrappedFn := func() (T, uint64, error) {
-				v, err := loadFn()
-
-				return v, 0, err
-			}
-
-			result, err := loader.LoadOrWait(id, boundary, wrappedFn)
+			result, err := loader.LoadOrWait(id, boundary, loadFn)
 			if err != nil {
 				return nil, err
 			}

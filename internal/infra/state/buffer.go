@@ -16,32 +16,17 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
-// mergeSimple writes each update to an Attribute using Set,
-// then eagerly deletes the superseded entry so that each canonical key
-// has at most one Pebble entry at any time.
+// mergeSimple writes each update to an Attribute using Set.
+// Each canonical key has at most one Pebble entry — Set overwrites in place.
 func mergeSimple[K attributes.Key, V proto.Message](
 	attr *attributes.Attribute[V],
 	batch *dal.Batch,
-	index uint64,
 	updates []attributes.Update[K, V],
 ) error {
 	for _, update := range updates {
-		err := attr.Set(batch, index, update.CanonicalKey, update.New)
+		err := attr.Set(batch, update.CanonicalKey, update.New)
 		if err != nil {
 			return err
-		}
-
-		// Delete the previous Pebble entry if one exists.
-		// OldBaseIndex > 0 means we know the exact raft index of the previous entry
-		// (propagated from ComputeValue through the preload system).
-		// OldBaseIndex == 0 means either: (a) first write for this key (no Pebble entry
-		// to delete), or (b) snapshot restore (at most 1 orphan entry, acceptable).
-		// Raft indices start at 1, so 0 is a reliable sentinel for "no previous entry."
-		if update.OldBaseIndex > 0 {
-			err = attr.DeleteAt(batch, update.OldBaseIndex, update.CanonicalKey)
-			if err != nil {
-				return err
-			}
 		}
 	}
 
@@ -128,14 +113,14 @@ type purgeRange struct {
 	closeSequence uint64
 }
 
-func (b *Buffered) Merge(index uint64, batch *dal.Batch, logs []*commonpb.Log) error {
+func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	// Process Ledger updates
-	ledgerUpdates, _, err := b.Derived.Ledgers.Merge(index)
+	ledgerUpdates, _, err := b.Derived.Ledgers.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge ledgers: %w", err)
 	}
 
-	if err := mergeSimple(b.attrs.Ledger, batch, index, ledgerUpdates); err != nil {
+	if err := mergeSimple(b.attrs.Ledger, batch, ledgerUpdates); err != nil {
 		return fmt.Errorf("failed merging ledger attributes: %w", err)
 	}
 
@@ -147,12 +132,12 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch, logs []*commonpb.Log) e
 	}
 
 	// Process Boundary updates
-	boundaryUpdates, boundaryDeletions, err := b.Derived.Boundaries.Merge(index)
+	boundaryUpdates, boundaryDeletions, err := b.Derived.Boundaries.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge boundaries: %w", err)
 	}
 
-	if err := mergeSimple(b.attrs.Boundary, batch, index, boundaryUpdates); err != nil {
+	if err := mergeSimple(b.attrs.Boundary, batch, boundaryUpdates); err != nil {
 		return fmt.Errorf("failed merging boundary attributes: %w", err)
 	}
 
@@ -163,7 +148,7 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch, logs []*commonpb.Log) e
 	}
 
 	// Process Volume updates — all volumes are now always preloaded with Known values.
-	volumeUpdates, _, err := b.Derived.Volumes.Merge(index)
+	volumeUpdates, _, err := b.Derived.Volumes.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge volumes: %w", err)
 	}
@@ -171,7 +156,7 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch, logs []*commonpb.Log) e
 	// Partition: purge zero-balance volumes on ephemeral account types.
 	purgeResult := b.partitionEphemeralVolumes(volumeUpdates)
 
-	if err := mergeSimple(b.attrs.Volume, batch, index, purgeResult.kept); err != nil {
+	if err := mergeSimple(b.attrs.Volume, batch, purgeResult.kept); err != nil {
 		return fmt.Errorf("failed merging volume attributes: %w", err)
 	}
 
@@ -202,12 +187,12 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch, logs []*commonpb.Log) e
 		b.purgedVolumeKeys = append(b.purgedVolumeKeys, purged.Key)
 	}
 
-	accountMetadataUpdates, accountMetadataDeletions, err := b.Derived.AccountMetadata.Merge(index)
+	accountMetadataUpdates, accountMetadataDeletions, err := b.Derived.AccountMetadata.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge account metadata: %w", err)
 	}
 
-	if err := mergeSimple(b.attrs.Metadata, batch, index, accountMetadataUpdates); err != nil {
+	if err := mergeSimple(b.attrs.Metadata, batch, accountMetadataUpdates); err != nil {
 		return fmt.Errorf("failed merging metadata attributes: %w", err)
 	}
 
@@ -225,32 +210,32 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch, logs []*commonpb.Log) e
 	}
 
 	// Process IdempotencyKeys updates
-	idempotencyUpdates, _, err := b.Derived.IdempotencyKeys.Merge(index)
+	idempotencyUpdates, _, err := b.Derived.IdempotencyKeys.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge idempotency keys: %w", err)
 	}
 
-	if err := mergeSimple(b.attrs.IdempotencyKeys, batch, index, idempotencyUpdates); err != nil {
+	if err := mergeSimple(b.attrs.IdempotencyKeys, batch, idempotencyUpdates); err != nil {
 		return fmt.Errorf("failed merging idempotency key attributes: %w", err)
 	}
 
 	// Process References updates
-	referenceUpdates, _, err := b.Derived.References.Merge(index)
+	referenceUpdates, _, err := b.Derived.References.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge references: %w", err)
 	}
 
-	if err := mergeSimple(b.attrs.References, batch, index, referenceUpdates); err != nil {
+	if err := mergeSimple(b.attrs.References, batch, referenceUpdates); err != nil {
 		return fmt.Errorf("failed merging reference attributes: %w", err)
 	}
 
 	// Process Transaction state updates
-	txUpdates, _, err := b.Derived.Transactions.Merge(index)
+	txUpdates, _, err := b.Derived.Transactions.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge transactions: %w", err)
 	}
 
-	if err := mergeSimple(b.attrs.Transaction, batch, index, txUpdates); err != nil {
+	if err := mergeSimple(b.attrs.Transaction, batch, txUpdates); err != nil {
 		return fmt.Errorf("failed merging transaction attributes: %w", err)
 	}
 
@@ -327,15 +312,15 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch, logs []*commonpb.Log) e
 
 	// Merge NumscriptVersions and NumscriptEntries overlays into the underlying KeyStores
 	// (no Pebble attribute writes — the actual Pebble writes are handled by pendingNumscriptWrites / pendingNumscriptDeletes below).
-	if _, _, err := b.Derived.NumscriptVersions.Merge(index); err != nil {
+	if _, _, err := b.Derived.NumscriptVersions.Merge(); err != nil {
 		return fmt.Errorf("failed to merge numscript versions: %w", err)
 	}
 
-	if _, _, err := b.Derived.NumscriptEntries.Merge(index); err != nil {
+	if _, _, err := b.Derived.NumscriptEntries.Merge(); err != nil {
 		return fmt.Errorf("failed to merge numscript entries: %w", err)
 	}
 
-	sinkUpdates, sinkDeletions, err := b.Derived.SinkConfigs.Merge(index)
+	sinkUpdates, sinkDeletions, err := b.Derived.SinkConfigs.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge sink configs: %w", err)
 	}
