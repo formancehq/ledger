@@ -792,33 +792,20 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	// In that case, skip config preservation and proceed with the restore.
 	var preservedConfig []byte
 	if oldDB != nil {
-		_, err := recoverPebbleClosedPanic(func() (struct{}, error) {
-			if value, closer, getErr := oldDB.Get([]byte{KeyPrefixPersistedConfig}); getErr == nil {
-				preservedConfig = append([]byte(nil), value...)
-				_ = closer.Close()
-			}
-
-			return struct{}{}, nil
-		})
-		if err != nil {
-			// DB already closed from a previous failed restore — skip config preservation.
-			s.logger.Infof("Skipping config preservation: database already closed")
+		if value, closer, getErr := oldDB.Get([]byte{KeyPrefixPersistedConfig}); getErr == nil {
+			preservedConfig = append([]byte(nil), value...)
+			_ = closer.Close()
 		}
 
-		_, closeErr := recoverPebbleClosedPanic(func() (struct{}, error) {
-			if err := oldDB.Close(); err != nil {
-				return struct{}{}, err
-			}
-
-			return struct{}{}, nil
-		})
-		if closeErr != nil {
+		if closeErr := oldDB.Close(); closeErr != nil {
 			// Pebble closes the DB even on error (e.g. leaked iterators).
 			// Log but continue — the old data is stale anyway.
 			s.logger.WithFields(map[string]any{
 				"error": closeErr,
 			}).Errorf("Error closing old database during checkpoint restore (continuing)")
 		}
+
+		s.db = nil
 	}
 
 	// Remove the live directory

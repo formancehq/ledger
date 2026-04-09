@@ -2,6 +2,7 @@ package indexbuilder
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -17,7 +18,14 @@ import (
 // This reduces allocations from ~32/op (UnmarshalVT + resetLogForReuse) to ~5/op
 // and avoids parsing ~70% of each log entry's bytes.
 func (b *Builder) processBackfillPostings(stop <-chan struct{}, task *backfillTask, deadline time.Time) error {
-	iter, err := query.ReadLogsSinceRaw(context.Background(), b.pebbleStore, task.cursor)
+	handle, err := b.pebbleStore.NewReadHandle()
+	if err != nil {
+		return fmt.Errorf("creating read handle for postings backfill: %w", err)
+	}
+
+	defer func() { _ = handle.Close() }()
+
+	iter, err := query.ReadLogsSinceRaw(context.Background(), handle, task.cursor)
 	if err != nil {
 		return err
 	}
