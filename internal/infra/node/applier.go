@@ -327,6 +327,12 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 
 	replayStart := time.Now()
 
+	// Read HardState to know the committed index — we must never apply past it.
+	hardState, _, err := a.wal.InitialState()
+	if err != nil {
+		return false, fmt.Errorf("reading WAL initial state: %w", err)
+	}
+
 	// Replay WAL entries that were applied to the live Pebble DB but not
 	// captured in the last Raft snapshot checkpoint. At startup the store
 	// is restored from the checkpoint, so entries between the checkpoint
@@ -343,11 +349,14 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 
 	a.logger.WithFields(map[string]any{
 		"fromIndex": storeLastAppliedIndex,
+		"commitIndex": hardState.Commit,
 	}).Infof("Starting spool replay")
 
-	// todo: is it necessary to replay spool since we re read from the wal?
-	// why don't we just need to replay the wal then clear the spool?
-	if err := a.replaySpool(ctx, storeLastAppliedIndex); err != nil {
+	// Replay spooled entries up to the committed index only.
+	// The spool may contain uncommitted entries (received from the leader
+	// before the node crashed). Applying past committed would cause
+	// etcd-raft to panic with "applied is out of range".
+	if err := a.replaySpoolUntil(ctx, storeLastAppliedIndex, hardState.Commit); err != nil {
 		return false, fmt.Errorf("replaying spool: %w", err)
 	}
 
@@ -992,9 +1001,21 @@ func (a *Applier) replayWAL(ctx context.Context, afterIndex uint64) error {
 	return nil
 }
 
+// replaySpoolUntil replays spooled entries from fromIndex up to maxIndex (inclusive).
+// Entries beyond maxIndex are skipped. This prevents applying uncommitted entries
+// that may be in the spool after a crash.
+func (a *Applier) replaySpoolUntil(ctx context.Context, fromIndex uint64, maxIndex uint64) error {
+	return a.replaySpoolImpl(ctx, fromIndex, maxIndex)
+}
+
 func (a *Applier) replaySpool(ctx context.Context, fromIndex uint64) error {
+	return a.replaySpoolImpl(ctx, fromIndex, 0)
+}
+
+func (a *Applier) replaySpoolImpl(ctx context.Context, fromIndex uint64, maxIndex uint64) error {
 	a.logger.WithFields(map[string]any{
 		"fromIndex": fromIndex,
+		"maxIndex":  maxIndex,
 	}).Infof("Replaying spool")
 
 	until, err := a.spool.End()
@@ -1010,6 +1031,11 @@ func (a *Applier) replaySpool(ctx context.Context, fromIndex uint64) error {
 	var lastEntry *raftpb.Entry
 
 	if err := a.spool.ReplayUntil(ctx, *until, fromIndex, func(entry raftpb.Entry) error {
+		// Skip uncommitted entries beyond the commit boundary.
+		if maxIndex > 0 && entry.Index > maxIndex {
+			return nil
+		}
+
 		batch = append(batch, entry)
 		if len(batch) >= batchSize {
 			result, err := a.applyEntriesAndResolveCommands(ctx, batch...)

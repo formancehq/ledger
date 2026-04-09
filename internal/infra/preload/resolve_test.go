@@ -16,7 +16,6 @@ func TestBuildIdempotencyKeyPreload_WithValue(t *testing.T) {
 	id := &raftcmdpb.AttributeID{
 		Id:        []byte{1, 2, 3},
 		Tag:       42,
-		BaseIndex: 10,
 	}
 
 	value := &commonpb.IdempotencyKeyValue{
@@ -128,7 +127,6 @@ func TestBuildMetadataPreload_WithValue(t *testing.T) {
 	id := &raftcmdpb.AttributeID{
 		Id:        []byte{10, 11, 12},
 		Tag:       13,
-		BaseIndex: 50,
 	}
 
 	value := &commonpb.MetadataValue{
@@ -292,7 +290,6 @@ func TestBuildTransactionStatePreload(t *testing.T) {
 
 	id := &raftcmdpb.AttributeID{
 		Id:        []byte{11, 12},
-		BaseIndex: 99,
 	}
 
 	state := &commonpb.TransactionState{

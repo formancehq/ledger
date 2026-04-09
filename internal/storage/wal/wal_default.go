@@ -460,13 +460,23 @@ func (s *DefaultWAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) 
 		return nil
 	}
 
+	var firstIdx, lastIdx uint64
+	if len(entries) > 0 {
+		firstIdx = entries[0].Index
+		lastIdx = entries[len(entries)-1].Index
+	}
+
 	logger := s.logger.WithFields(map[string]any{
 		"entries":          len(entries),
+		"firstIndex":       firstIdx,
+		"lastIndex":        lastIdx,
 		"hardState.Term":   hardState.Term,
 		"hardState.Vote":   hardState.Vote,
 		"hardState.Commit": hardState.Commit,
+		"prevCommit":       s.hardState.Commit,
+		"cachedEntries":    len(s.entries),
 	})
-	logger.Debugf("Appending entries")
+	logger.Infof("WAL Append")
 
 	// Update in-memory cache
 	cacheStart := time.Now()
@@ -503,19 +513,18 @@ func (s *DefaultWAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) 
 	s.mu.Unlock()
 	s.appendCacheHistogram.Record(context.Background(), time.Since(cacheStart).Microseconds())
 
-	s.logger.
-		WithFields(map[string]any{
-			"hardState.Term":   newHardState.Term,
-			"hardState.Vote":   newHardState.Vote,
-			"hardState.Commit": newHardState.Commit,
-		}).
-		Debug("Saving DefaultWAL entries to disk")
-
 	// Save to DefaultWAL
 	saveStart := time.Now()
 	err := s.wal.Save(newHardState, entries)
 	s.appendSaveHistogram.Record(context.Background(), time.Since(saveStart).Microseconds())
 	s.appendBatchSizeHistogram.Record(context.Background(), int64(len(entries)))
+
+	if err != nil {
+		s.logger.WithFields(map[string]any{
+			"error":            err,
+			"hardState.Commit": newHardState.Commit,
+		}).Errorf("WAL Save failed")
+	}
 
 	return err
 }
@@ -674,6 +683,14 @@ func (s *DefaultWAL) termLocked(i uint64) (uint64, error) {
 func (s *DefaultWAL) ApplySnapshot(snap raftpb.Snapshot) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	s.logger.WithFields(map[string]any{
+		"snapIndex":        snap.Metadata.Index,
+		"snapTerm":         snap.Metadata.Term,
+		"prevSnapIndex":    s.snapshot.Metadata.Index,
+		"prevHardCommit":   s.hardState.Commit,
+		"cachedEntries":    len(s.entries),
+	}).Infof("WAL ApplySnapshot")
 
 	s.snapshot = snap
 	s.entries = nil // Clear entries after applying snapshot

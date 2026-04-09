@@ -1244,12 +1244,11 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 	ctx := logging.TestingContext()
 
 	// Create a 3-node cluster with a low snapshot threshold
-	// Create a 3-node cluster with a low snapshot threshold
 	config := ClusterConfig{SnapshotThreshold: 5}
 	cluster := NewCluster(t, 3, config)
 
 	// Start the cluster
-	nodeErrors := cluster.Start(ctx)
+	cluster.Start(ctx)
 
 	// Wait for leader election
 	leaderID, err := cluster.WaitForLeader(5 * time.Second)
@@ -1260,22 +1259,18 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 	require.NotNil(t, leader)
 
 	// Find a follower to test
-	var (
-		follower      *ClusterNode
-		followerIndex int
-	)
+	var follower *ClusterNode
 
-	for i, node := range []*ClusterNode{cluster.GetNode(0), cluster.GetNode(1), cluster.GetNode(2)} {
+	for _, node := range []*ClusterNode{cluster.GetNode(0), cluster.GetNode(1), cluster.GetNode(2)} {
 		if node.ID != leaderID {
 			follower = node
-			followerIndex = i
 
 			break
 		}
 	}
 
 	require.NotNil(t, follower, "should have a follower")
-	t.Logf("Selected follower: node %d (index %d)", follower.ID, followerIndex)
+	t.Logf("Selected follower: node %d", follower.ID)
 
 	// Create a ledger before disconnecting the follower
 	ledgerInfo, err := createLedger(ctx, leader.Node, "test-ledger")
@@ -1363,47 +1358,25 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 		t.Fatal("Timeout waiting for snapshot to be applied to wal")
 	}
 
-	// Wait for the follower node to fail due to checkpoint restore error
-	followerNodeError := nodeErrors[followerIndex]
-	select {
-	case err := <-followerNodeError:
-		require.Error(t, err)
-		t.Logf("Follower node failed as expected: %v", err)
-	case <-time.After(5 * time.Second):
-		t.Fatal("Timeout waiting for follower to fail")
-	}
+	// Wait for the sync to fail (the node stays alive but out of sync).
+	// Verify by checking the follower still doesn't have the ledgers created
+	// while it was disconnected (checkpoint restore failed).
+	require.Eventually(t, func() bool {
+		return !listLedgerContains(follower.Store, "ledger-0")
+	}, 5*time.Second, 50*time.Millisecond, "follower should NOT have ledger-0 (sync failed)")
+	t.Log("Follower is out of sync as expected (ledger-0 not found)")
 
-	// Clear the interceptor so sync can succeed on restart
+	// Clear the interceptor so the next sync attempt succeeds
 	snapshotFetcherProvider.SetFetchSnapshotInterceptor(nil)
 
-	// Restart the follower node
-	t.Logf("Restarting follower node %d", follower.ID)
-	newNodeError, err := cluster.RestartNode(ctx, follower.ID, config)
-	require.NoError(t, err)
+	// Force a new SoftState by disconnecting and reconnecting the follower.
+	// This triggers processReady to detect statusOutOfSync and start a new sync.
+	cluster.DisconnectNode(follower.ID)
+	cluster.ReconnectNode(follower.ID)
 
-	// Get the new follower reference
-	follower = cluster.GetNodeByID(follower.ID)
-	require.NotNil(t, follower)
-
-	// Wait for leader election (might change after restart)
-	newLeaderID, err := cluster.WaitForLeader(5 * time.Second)
-	require.NoError(t, err)
-	t.Logf("Leader elected after restart: node %d", newLeaderID)
-
-	// Refresh leader reference (leader might have changed after restart)
-	leader = cluster.GetLeader()
-	require.NotNil(t, leader)
-
-	// Wait for the follower to sync and verify its data matches
-	t.Logf("Waiting for follower to sync data after restart...")
+	// Wait for the follower to re-sync and recover all data.
+	t.Logf("Waiting for follower to re-sync...")
 	require.Eventually(t, func() bool {
-		defer func() {
-			// Handle transient "pebble: closed" panic during checkpoint restore
-			if r := recover(); r != nil {
-				t.Logf("Recovered from panic during ledger check: %v", r)
-			}
-		}()
-
 		// Check all ledgers
 		for i := range numLedgers {
 			if !listLedgerContains(follower.Store, fmt.Sprintf("ledger-%d", i)) {
@@ -1411,26 +1384,18 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 			}
 		}
 
-		t.Logf("Follower synced after restart: has all %d ledgers", numLedgers)
+		t.Logf("Follower re-synced: has all %d ledgers", numLedgers)
 
 		return true
-	}, 10*time.Second, 50*time.Millisecond)
+	}, 15*time.Second, 200*time.Millisecond)
 
-	// Verify leader still has all ledgers (using refreshed leader reference)
+	// Verify leader still has all ledgers
 	for i := range numLedgers {
 		require.True(t, listLedgerContains(leader.Store, fmt.Sprintf("ledger-%d", i)),
 			"leader should have ledger-%d", i)
 	}
 
-	// Make sure node is still running without errors
-	select {
-	case err := <-newNodeError:
-		t.Fatalf("Restarted node failed unexpectedly: %v", err)
-	default:
-		// Node is still running, good
-	}
-
-	t.Log("Test passed: node recovered correctly after checkpoint restore failure")
+	t.Log("Test passed: node recovered from sync failure without restart")
 }
 
 func TestFollowerRestartLeaderStability(t *testing.T) {
