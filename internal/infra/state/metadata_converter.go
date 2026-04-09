@@ -307,7 +307,10 @@ func (mc *MetadataConverter) convert(ctx context.Context, req MetadataConvertReq
 	ledgerPrefix := []byte(req.LedgerName + "\x00")
 
 	// Open a Pebble read handle for a point-in-time snapshot used by both passes.
-	reader := mc.dataStore.NewReadHandle()
+	reader, err := mc.dataStore.NewReadHandle()
+	if err != nil {
+		return fmt.Errorf("creating read handle: %w", err)
+	}
 
 	defer func() { _ = reader.Close() }()
 

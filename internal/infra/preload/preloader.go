@@ -1,6 +1,7 @@
 package preload
 
 import (
+	"fmt"
 	"sync"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -107,7 +108,10 @@ func (p *Preloader) Loaders() *Loaders {
 // ReadBoundaries reads the current LedgerBoundaries for the given ledger
 // directly from Pebble (not from the cache overlay).
 func (p *Preloader) ReadBoundaries(ledgerName string) (*raftcmdpb.LedgerBoundaries, error) {
-	reader := p.store.NewReadHandle()
+	reader, err := p.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
 	defer func() { _ = reader.Close() }()
 
 	return p.attrs.Boundary.Get(reader, []byte(ledgerName))

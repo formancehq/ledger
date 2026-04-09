@@ -40,7 +40,12 @@ func newLedgerIndexConfig() *ledgerIndexConfig {
 // It also detects BUILDING indexes and creates backfill tasks, loading persisted
 // cursors from Pebble so backfills survive restarts.
 func (b *Builder) initIndexConfig() {
-	handle := b.pebbleStore.NewReadHandle()
+	handle, err := b.pebbleStore.NewReadHandle()
+	if err != nil {
+		b.logger.Errorf("Failed to create read handle for index config: %v", err)
+
+		return
+	}
 
 	defer func() { _ = handle.Close() }()
 

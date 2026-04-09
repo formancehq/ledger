@@ -2202,7 +2202,12 @@ func (fsm *Machine) dispatchArchiveRequests() {
 // conversion requests for metadata fields still in CONVERTING status.
 // Called on leadership acquisition to recover incomplete conversions.
 func (fsm *Machine) dispatchMetadataConversionRequests() {
-	handle := fsm.dataStore.NewReadHandle()
+	handle, err := fsm.dataStore.NewReadHandle()
+	if err != nil {
+		fsm.logger.Errorf("Failed to create read handle for metadata conversion recovery: %v", err)
+
+		return
+	}
 
 	defer func() { _ = handle.Close() }()
 
@@ -2250,7 +2255,12 @@ func (fsm *Machine) dispatchConvertingFields(info *commonpb.LedgerInfo, targetTy
 // migration requests for account types still in MIGRATING status.
 // Called on leadership acquisition to recover incomplete migrations.
 func (fsm *Machine) dispatchAccountMigrationRequests() {
-	handle := fsm.dataStore.NewReadHandle()
+	handle, err := fsm.dataStore.NewReadHandle()
+	if err != nil {
+		fsm.logger.Errorf("Failed to create read handle for account migration recovery: %v", err)
+
+		return
+	}
 	defer func() { _ = handle.Close() }()
 
 	cursor, err := query.ReadLedgers(context.Background(), handle)

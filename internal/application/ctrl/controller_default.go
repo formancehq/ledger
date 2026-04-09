@@ -83,7 +83,10 @@ func NewDefaultController(
 
 // ListLedgers returns a cursor over all active (non-deleted) ledgers.
 func (ctrl *DefaultController) ListLedgers(ctx context.Context) (dal.Cursor[*commonpb.LedgerInfo], error) {
-	handle := ctrl.store.NewReadHandle()
+	handle, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
 
 	cursor, err := query.ReadLedgers(ctx, handle)
 	if err != nil {
@@ -121,7 +124,10 @@ func (ctrl *DefaultController) GetTransactionFrom(ctx context.Context, store *da
 		return nil, err
 	}
 
-	handle := store.NewReadHandle()
+	handle, err := store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
 
 	defer func() { _ = handle.Close() }()
 
@@ -235,7 +241,10 @@ func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *
 
 	// Create a Pebble snapshot first so that GetLedgerByName and the listing
 	// read from the same consistent point-in-time view.
-	handle := store.NewReadHandle()
+	handle, err := store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
 
 	ledgerInfo, err := query.GetLedgerByName(ctx, handle, ledgerName)
 	if err != nil {
@@ -320,7 +329,10 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 
 	// Create a Pebble snapshot first so that GetLedgerByName and the listing
 	// read from the same consistent point-in-time view.
-	handle := ctrl.store.NewReadHandle()
+	handle, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
 
 	ledgerInfo, err := query.GetLedgerByName(ctx, handle, ledgerName)
 	if err != nil {
@@ -405,7 +417,10 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string
 
 	// Single-entity lookup reads directly from Pebble without index filtering,
 	// so no cross-store consistency cap is needed. Use ^uint64(0) to read all entries.
-	handle := ctrl.store.NewReadHandle()
+	handle, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
 
 	defer func() { _ = handle.Close() }()
 
@@ -425,7 +440,10 @@ func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName st
 
 	var stats commonpb.LedgerStats
 
-	handle := ctrl.store.NewReadHandle()
+	handle, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
 
 	defer func() { _ = handle.Close() }()
 
@@ -534,7 +552,10 @@ func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName s
 		return nil, fmt.Errorf("validating ledger for analysis: %w", err)
 	}
 
-	handle := ctrl.store.NewReadHandle()
+	handle, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
 
 	defer func() { _ = handle.Close() }()
 
@@ -552,7 +573,10 @@ func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName s
 // Uses two sequential Pebble log scans with streaming processing to avoid loading
 // all transactions into memory (O(unique addresses + unique signatures) instead of O(N)).
 func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(processed, total uint64)) (*servicepb.AnalyzeTransactionsResponse, error) {
-	handle := ctrl.store.NewReadHandle()
+	handle, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
 
 	defer func() { _ = handle.Close() }()
 
@@ -691,7 +715,10 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 		return nil, err
 	}
 
-	handle := ctrl.store.NewReadHandle()
+	handle, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
 	defer func() { _ = handle.Close() }()
 
 	// Fast path: unfiltered aggregation scans Pebble volumes in a single pass.
@@ -748,7 +775,10 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 // that ledger are returned using the Compile framework (supports boolean filters, date ranges).
 // Otherwise all logs are returned in global sequence order, paginated by afterSequence.
 func (ctrl *DefaultController) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (dal.Cursor[*commonpb.Log], error) {
-	handle := ctrl.store.NewReadHandle()
+	handle, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
 
 	if ledger := extractLedgerFilter(filter); ledger != "" {
 		// Strip the LedgerCondition from the filter tree — the ledger is set
@@ -923,7 +953,10 @@ func stripLedgerFilter(f *commonpb.QueryFilter) *commonpb.QueryFilter {
 
 // ListAuditEntries returns a cursor over audit entries, applying optional filters.
 func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32, ledger string) (dal.Cursor[*auditpb.AuditEntry], error) {
-	handle := ctrl.store.NewReadHandle()
+	handle, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
 
 	cursor, err := query.ReadAuditEntries(ctx, handle, afterSequence)
 	if err != nil {
@@ -976,7 +1009,10 @@ func auditEntryTargetsLedger(entry *auditpb.AuditEntry, ledger string) bool {
 // GetLog returns a single system log by sequence number.
 // Falls back to cold storage if the log has been archived.
 func (ctrl *DefaultController) GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
-	handle := ctrl.store.NewReadHandle()
+	handle, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
 
 	defer func() { _ = handle.Close() }()
 
@@ -994,7 +1030,10 @@ func (ctrl *DefaultController) GetLog(ctx context.Context, sequence uint64) (*co
 
 // GetAuditEntry returns a single audit entry by sequence number.
 func (ctrl *DefaultController) GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error) {
-	handle := ctrl.store.NewReadHandle()
+	handle, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
 
 	defer func() { _ = handle.Close() }()
 
@@ -1012,7 +1051,10 @@ func (ctrl *DefaultController) GetAuditEntry(ctx context.Context, sequence uint6
 
 // ListPeriods returns a cursor over all non-purged periods from the store.
 func (ctrl *DefaultController) ListPeriods(ctx context.Context) (dal.Cursor[*commonpb.Period], error) {
-	handle := ctrl.store.NewReadHandle()
+	handle, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
 
 	cursor, err := query.ReadPeriods(ctx, handle)
 	if err != nil {
@@ -1026,7 +1068,10 @@ func (ctrl *DefaultController) ListPeriods(ctx context.Context) (dal.Cursor[*com
 
 // ListSigningKeys returns a cursor over all registered signing keys.
 func (ctrl *DefaultController) ListSigningKeys(ctx context.Context) (dal.Cursor[*commonpb.SigningKey], error) {
-	handle := ctrl.store.NewReadHandle()
+	handle, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
 
 	cursor, err := query.ReadSigningKeysCursor(ctx, handle)
 	if err != nil {
@@ -1065,7 +1110,10 @@ func (ctrl *DefaultController) ExecutePreparedQuery(ctx context.Context, req *se
 
 // GetNumscript returns a numscript by ledger, name and optional version ("" = latest).
 func (ctrl *DefaultController) GetNumscript(_ context.Context, ledger, name string, version string) (*commonpb.NumscriptInfo, error) {
-	handle := ctrl.store.NewReadHandle()
+	handle, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
 
 	defer func() { _ = handle.Close() }()
 
@@ -1083,7 +1131,10 @@ func (ctrl *DefaultController) GetNumscript(_ context.Context, ledger, name stri
 
 // ListNumscripts returns the latest version of all numscripts for a ledger.
 func (ctrl *DefaultController) ListNumscripts(_ context.Context, ledger string) ([]*commonpb.NumscriptInfo, error) {
-	handle := ctrl.store.NewReadHandle()
+	handle, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
 
 	defer func() { _ = handle.Close() }()
 

@@ -19,7 +19,8 @@ func TestReadHandle_GetAndClose(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Create read handle
-	rh := s.NewReadHandle()
+	rh, err := s.NewReadHandle()
+	require.NoError(t, err)
 
 	val, closer, err := rh.Get([]byte("rh-key"))
 	require.NoError(t, err)
@@ -45,7 +46,8 @@ func TestReadHandle_NewIter(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Create read handle and iterate
-	rh := s.NewReadHandle()
+	rh, err := s.NewReadHandle()
+	require.NoError(t, err)
 
 	defer func() { _ = rh.Close() }()
 
@@ -77,7 +79,8 @@ func TestReadHandle_PointInTimeSnapshot(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Create read handle (point-in-time snapshot)
-	rh := s.NewReadHandle()
+	rh, err := s.NewReadHandle()
+	require.NoError(t, err)
 
 	defer func() { _ = rh.Close() }()
 

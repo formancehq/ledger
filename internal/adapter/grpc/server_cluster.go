@@ -669,7 +669,10 @@ func (impl *ClusterServiceServerImpl) ListQueryCheckpoints(ctx context.Context, 
 		return nil, err
 	}
 
-	handle := impl.store.NewReadHandle()
+	handle, err := impl.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
 	defer func() { _ = handle.Close() }()
 
 	cps, err := query.ListQueryCheckpoints(handle)
@@ -690,7 +693,10 @@ func (impl *ClusterServiceServerImpl) GetQueryCheckpointInfo(ctx context.Context
 		return nil, err
 	}
 
-	handle := impl.store.NewReadHandle()
+	handle, err := impl.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
 	defer func() { _ = handle.Close() }()
 
 	cp, err := query.ReadQueryCheckpoint(handle, req.GetCheckpointId())

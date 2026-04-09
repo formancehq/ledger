@@ -101,7 +101,10 @@ func Execute(
 	defer func() { _ = indexSnap.Close() }()
 
 	// Always open a read handle — needed for filter compilation and entity enrichment.
-	handle := pebbleStore.NewReadHandle()
+	handle, err := pebbleStore.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
 	defer func() { _ = handle.Close() }()
 
 	kb := dal.NewKeyBuilder()

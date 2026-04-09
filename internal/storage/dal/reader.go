@@ -1,8 +1,8 @@
 package dal
 
 import (
+	"errors"
 	"io"
-	"sync"
 
 	"github.com/cockroachdb/pebble/v2"
 )
@@ -15,21 +15,26 @@ type PebbleReader interface {
 }
 
 // ReadHandle provides point-in-time read access to the store via a Pebble snapshot.
-// It holds dbMu.RLock for its lifetime to prevent RestoreCheckpoint/Close from
-// closing the DB while the snapshot is in use. The caller must call Close() when done.
+// The caller must call Close() when done.
+//
+// If the underlying DB is closed (e.g. by RestoreCheckpoint), operations on
+// the snapshot will panic with pebble.ErrClosed. Use RecoverablePebbleOp to
+// convert these panics into ErrStoreClosed errors.
 type ReadHandle struct {
 	snap *pebble.Snapshot
-	mu   *sync.RWMutex
 }
 
 // NewReadHandle creates a new ReadHandle backed by a Pebble snapshot.
-// It holds dbMu.RLock until Close() is called, preventing DB lifecycle
-// operations (RestoreCheckpoint, Close) from closing the DB while the
-// snapshot is in use.
-func (s *Store) NewReadHandle() *ReadHandle {
-	s.dbMu.RLock()
+// Returns ErrStoreClosed if the DB has been closed (e.g. by RestoreCheckpoint).
+func (s *Store) NewReadHandle() (*ReadHandle, error) {
+	snap, err := recoverPebbleClosedPanic(func() (*pebble.Snapshot, error) {
+		return s.getDB().NewSnapshot(), nil
+	})
+	if err != nil {
+		return nil, err
+	}
 
-	return &ReadHandle{snap: s.getDB().NewSnapshot(), mu: &s.dbMu}
+	return &ReadHandle{snap: snap}, nil
 }
 
 func (h *ReadHandle) Get(key []byte) ([]byte, io.Closer, error) {
@@ -41,9 +46,24 @@ func (h *ReadHandle) NewIter(opts *pebble.IterOptions) (*pebble.Iterator, error)
 }
 
 func (h *ReadHandle) Close() error {
-	defer h.mu.RUnlock()
-
 	return h.snap.Close()
+}
+
+// recoverPebbleClosedPanic calls fn and recovers panics caused by
+// pebble.ErrClosed, converting them to ErrStoreClosed.
+func recoverPebbleClosedPanic[T any](fn func() (T, error)) (result T, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			if rErr, ok := r.(error); ok && errors.Is(rErr, pebble.ErrClosed) {
+				err = ErrStoreClosed
+				return
+			}
+
+			panic(r) // re-panic for non-pebble-closed panics
+		}
+	}()
+
+	return fn()
 }
 
 // Get performs a raw key lookup on the underlying Pebble database.
