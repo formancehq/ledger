@@ -15,6 +15,43 @@ import (
 	"github.com/formancehq/ledger-v3-poc/tests/antithesis/workload/internal"
 )
 
+// waitForQuiescence calls Barrier repeatedly until two consecutive barriers
+// return commit indices that differ by exactly 1 (the barrier itself).
+// Returns the confirmed commit index, or 0 if quiescence could not be achieved.
+func waitForQuiescence(ctx context.Context, client servicepb.BucketServiceClient) uint64 {
+	const maxAttempts = 20
+
+	var lastCommitIndex uint64
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		resp, err := client.Barrier(ctx, &servicepb.BarrierRequest{})
+		if err != nil {
+			if internal.IsUnavailable(err) {
+				log.Printf("composer: barrier #%d unavailable, retrying: %s", attempt, err)
+				continue
+			}
+
+			assert.Unreachable("barrier returned unexpected error", internal.Details{
+				"error":   err,
+				"attempt": attempt,
+			})
+
+			return 0
+		}
+
+		currentIndex := resp.GetCommitIndex()
+		log.Printf("composer: barrier #%d completed, commitIndex=%d", attempt, currentIndex)
+
+		if lastCommitIndex > 0 && currentIndex == lastCommitIndex+1 {
+			log.Printf("composer: quiescence confirmed at commitIndex=%d after %d barriers", currentIndex, attempt)
+			return currentIndex
+		}
+
+		lastCommitIndex = currentIndex
+	}
+
+	return 0
+}
+
 func main() {
 	log.Println("composer: eventually_correct")
 
@@ -26,52 +63,11 @@ func main() {
 	}
 	defer conn.Close()
 
-	// Double-barrier ensures quiescence: killed workload drivers may have
-	// in-flight Raft proposals that arrive after a single barrier. By calling
-	// Barrier twice and comparing commit indices, we confirm nothing was
-	// committed between the two calls — the cluster is truly idle.
-	//
-	// Each barrier is itself a Raft proposal, so it always advances the commit
-	// index by 1. Quiescence is confirmed when the only new commit between two
-	// barriers is the second barrier itself (delta == 1).
-	const maxBarrierAttempts = 20
+	commitIndex := waitForQuiescence(ctx, client)
+	assert.Sometimes(commitIndex > 0, "barrier quiescence achieved", nil)
 
-	quiescent := false
-
-	var lastCommitIndex uint64
-	for attempt := 1; attempt <= maxBarrierAttempts; attempt++ {
-		resp, barrierErr := client.Barrier(ctx, &servicepb.BarrierRequest{})
-		if barrierErr != nil {
-			if internal.IsUnavailable(barrierErr) {
-				log.Printf("composer: barrier #%d unavailable, retrying: %s", attempt, barrierErr)
-				continue
-			}
-
-			assert.Unreachable("barrier returned unexpected error", internal.Details{
-				"error":   barrierErr,
-				"attempt": attempt,
-			})
-
-			break
-		}
-
-		currentIndex := resp.GetCommitIndex()
-		log.Printf("composer: barrier #%d completed, commitIndex=%d", attempt, currentIndex)
-
-		if lastCommitIndex > 0 && currentIndex == lastCommitIndex+1 {
-			log.Printf("composer: quiescence confirmed at commitIndex=%d after %d barriers", currentIndex, attempt)
-			quiescent = true
-
-			break
-		}
-
-		lastCommitIndex = currentIndex
-	}
-
-	assert.Sometimes(quiescent, "barrier quiescence achieved", nil)
-
-	if !quiescent {
-		log.Printf("composer: could not achieve quiescence after %d attempts, aborting", maxBarrierAttempts)
+	if commitIndex == 0 {
+		log.Printf("composer: could not achieve quiescence, aborting")
 		return
 	}
 
@@ -90,15 +86,14 @@ func main() {
 			defer wg.Done()
 			checkBalanced(ctx, client, ledger)
 			checkAccountBalances(ctx, client, ledger)
-			checkVolumesConsistent(ctx, client, ledger)
+			checkVolumesConsistent(ctx, client, ledger, commitIndex)
 		}(ledger)
 	}
 	wg.Wait()
 }
 
 // listAccounts streams all accounts for a ledger. On a mid-stream error it
-// returns what was collected so far plus the error, so callers can still
-// assert on partial data and report the failure.
+// returns what was collected so far plus the error.
 func listAccounts(ctx context.Context, client servicepb.BucketServiceClient, ledger string) ([]*commonpb.Account, error) {
 	stream, err := client.ListAccounts(ctx, &servicepb.ListAccountsRequest{Ledger: ledger})
 	if err != nil {
@@ -208,8 +203,10 @@ func checkAccountBalances(ctx context.Context, client servicepb.BucketServiceCli
 }
 
 // checkVolumesConsistent iterates all accounts and cross-checks ListAccounts
-// balances against GetAccount balances.
-func checkVolumesConsistent(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+// balances against GetAccount balances. If a mismatch is detected, it re-checks
+// quiescence: if the commit index has advanced (late proposals from killed
+// drivers), the mismatch is expected and ignored.
+func checkVolumesConsistent(ctx context.Context, client servicepb.BucketServiceClient, ledger string, quiescentCommitIndex uint64) {
 	details := internal.Details{"ledger": ledger}
 
 	accounts, err := listAccounts(ctx, client, ledger)
@@ -257,7 +254,33 @@ func checkVolumesConsistent(ctx context.Context, client servicepb.BucketServiceC
 			}
 
 			actualBalance := parseBalance(actualVol.GetBalance())
-			assert.Always(balance.Cmp(actualBalance) == 0, "list balance should match getaccount balance", details.With(internal.Details{
+			if balance.Cmp(actualBalance) != 0 {
+				// Mismatch detected — check if the commit index has advanced
+				// (late proposals from killed drivers arrived after quiescence).
+				newCommitIndex := waitForQuiescence(ctx, client)
+				if newCommitIndex > quiescentCommitIndex+1 {
+					log.Printf("composer: balance mismatch on %s/%s (list=%s, get=%s) but commit index advanced %d→%d, late proposals detected — retrying",
+						account.Address, asset, balance.String(), actualBalance.String(), quiescentCommitIndex, newCommitIndex)
+					// Restart the entire check with the new quiescent state.
+					checkVolumesConsistent(ctx, client, ledger, newCommitIndex)
+
+					return
+				}
+
+				// Commit index didn't advance — this is a real consistency bug.
+				assert.Always(false, "list balance should match getaccount balance", details.With(internal.Details{
+					"account":       account.Address,
+					"asset":         asset,
+					"listBalance":   balance.String(),
+					"actualBalance": actualBalance.String(),
+				}))
+
+				checked = true
+
+				continue
+			}
+
+			assert.Always(true, "list balance should match getaccount balance", details.With(internal.Details{
 				"account":       account.Address,
 				"asset":         asset,
 				"listBalance":   balance.String(),
