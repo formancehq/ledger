@@ -7,7 +7,7 @@ require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.43.0
 	github.com/IBM/sarama v1.46.3
 	github.com/alecthomas/participle/v2 v2.1.4
-	github.com/antithesishq/antithesis-sdk-go v0.6.0
+	github.com/antithesishq/antithesis-sdk-go v0.7.0
 	github.com/aws/aws-sdk-go-v2 v1.41.5
 	github.com/aws/aws-sdk-go-v2/config v1.32.14
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.98.0

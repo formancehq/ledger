@@ -5,7 +5,7 @@ ARG GOOS
 
 RUN apt-get update && apt-get install -y bash git gcc
 
-RUN go install github.com/antithesishq/antithesis-sdk-go/tools/antithesis-go-instrumentor@v0.6.0
+RUN go install github.com/antithesishq/antithesis-sdk-go/tools/antithesis-go-instrumentor@v0.7.0
 
 COPY go.* /src/
 COPY internal /src/internal
@@ -25,7 +25,7 @@ WORKDIR /instrumented/customer
 
 RUN go build -o /init ./bin/init
 RUN mkdir -p /cmds
-RUN CATALOG=$(ls ./*_antithesis_catalog.go) && for file in $(ls ./bin/cmds/); do cp "$CATALOG" ./bin/cmds/$file/; go build -race -o /cmds/$file ./bin/cmds/$file; done
+RUN for file in $(ls ./bin/cmds/); do go build -race -o /cmds/$file ./bin/cmds/$file; done
 
 # Runner
 FROM debian:trixie
