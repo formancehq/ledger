@@ -447,6 +447,15 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 			a.readiesDuringGatingHistogram.Record(context.Background(), readiesDuringGating)
 			readiesDuringGating = 0
 			gatingStart = time.Time{}
+			a.gatingTerminated = nil
+
+			if a.status.Load() == statusOutOfSync {
+				a.logger.Infof("Background operation failed, node is out of sync — waiting for next sync")
+				waitStart = time.Now()
+
+				continue
+			}
+
 			unspoolStart := time.Now()
 
 			err := a.unspoolAndResume(ctx)
@@ -455,7 +464,6 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 			}
 
 			a.unspoolDurationHistogram.Record(context.Background(), float64(time.Since(unspoolStart).Microseconds()))
-			a.gatingTerminated = nil
 			waitStart = time.Now()
 		case <-stop:
 			a.taskExecutor.interrupt()
@@ -870,6 +878,12 @@ func (a *Applier) startMaintenanceTask(
 		}
 
 		a.maintenanceSnapshotHistogram.Record(context.Background(), float64(time.Since(snapshotStart).Microseconds()))
+
+		// If the task marked the node as out of sync (e.g. failed sync with leader),
+		// skip spool replay — the node must wait for a new sync attempt.
+		if a.status.Load() == statusOutOfSync {
+			return nil
+		}
 
 		replayStart := time.Now()
 

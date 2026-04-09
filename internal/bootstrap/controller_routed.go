@@ -84,11 +84,18 @@ func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, *node
 	}
 
 	if errors.Is(err, node.ErrNodeSyncing) || errors.Is(err, node.ErrNotLeader) {
-		span.SetAttributes(attribute.String("route", "leader_fallback"))
+		// Only fallback to the leader if we are NOT the leader ourselves.
+		// If we ARE the leader but ReadIndex failed (quorum not yet confirmed
+		// after election), we must NOT serve a stale local read without a barrier.
+		if !b.IsLeader() {
+			span.SetAttributes(attribute.String("route", "leader_fallback"))
 
-		c, leaderErr := b.getLeaderCtrl()
+			c, leaderErr := b.getLeaderCtrl()
 
-		return c, nil, leaderErr
+			return c, nil, leaderErr
+		}
+
+		span.SetAttributes(attribute.String("route", "leader_readindex_failed"))
 	}
 
 	return nil, nil, err
