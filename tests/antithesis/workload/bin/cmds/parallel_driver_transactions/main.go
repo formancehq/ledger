@@ -45,7 +45,7 @@ func main() {
 }
 
 func createTransaction(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
-	switch random.RandomChoice([]uint8{0, 1, 2, 3, 4}) {
+	switch random.RandomChoice([]uint8{0, 0, 1, 1, 2, 3, 4, 5, 6}) {
 	case 0:
 		createRandomPostingsTransaction(ctx, client, ledger)
 	case 1:
@@ -56,6 +56,10 @@ func createTransaction(ctx context.Context, client servicepb.BucketServiceClient
 		createAndRevertTransaction(ctx, client, ledger)
 	case 4:
 		createIdempotentTransaction(ctx, client, ledger)
+	case 5:
+		saveAndUseNumscript(ctx, client, ledger)
+	case 6:
+		createAndExecutePreparedQuery(ctx, client, ledger)
 	}
 }
 
@@ -417,6 +421,167 @@ func createIdempotentTransaction(ctx context.Context, client servicepb.BucketSer
 			"firstTxId":  tx1.Transaction.Id,
 			"secondTxId": tx2.Transaction.Id,
 		}))
+}
+
+// saveAndUseNumscript saves a versioned numscript and then creates a transaction using it.
+// Tests that the script is readable after save (read-after-write) and usable in transactions.
+func saveAndUseNumscript(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+	scriptName := fmt.Sprintf("transfer-%d", random.GetRandom()%50)
+	version := fmt.Sprintf("%d.0.0", random.GetRandom()%10+1)
+	script := `
+		vars {
+			account $from
+			account $to
+			monetary $amount
+		}
+		send $amount (
+			source = $from allowing unbounded overdraft
+			destination = $to
+		)
+	`
+
+	details := internal.Details{
+		"ledger":     ledger,
+		"scriptName": scriptName,
+		"version":    version,
+	}
+
+	// Save the numscript.
+	_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+		Requests: []*servicepb.Request{{
+			Type: &servicepb.Request_SaveNumscript{
+				SaveNumscript: &servicepb.SaveNumscriptRequest{
+					Name:    scriptName,
+					Content: script,
+					Version: version,
+					Ledger:  ledger,
+				},
+			},
+		}},
+	})
+
+	assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to save numscript", details.With(internal.Details{"error": err}))
+	if err != nil {
+		return
+	}
+
+	// Read-after-write: verify the script is readable.
+	info, err := client.GetNumscript(ctx, &servicepb.GetNumscriptRequest{
+		Name:   scriptName,
+		Ledger: ledger,
+	})
+	if err != nil {
+		return
+	}
+
+	assert.AlwaysOrUnreachable(info.GetName() == scriptName, "saved numscript should be readable", details)
+
+	// Use the script in a transaction via script reference.
+	vars := map[string]string{
+		"from":   internal.GetRandomAddress(),
+		"to":     internal.GetRandomAddress(),
+		"amount": fmt.Sprintf("COIN %v", internal.RandomBigInt().String()),
+	}
+
+	_, err = client.Apply(ctx, &servicepb.ApplyRequest{
+		Requests: []*servicepb.Request{{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{
+							Script: &commonpb.Script{
+								Reference: &commonpb.ScriptReference{
+									Name: scriptName,
+								},
+								Vars: vars,
+							},
+							Force: true,
+						},
+					},
+				},
+			},
+		}},
+	})
+
+	assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to use saved numscript in transaction", details.With(internal.Details{"error": err}))
+}
+
+// createAndExecutePreparedQuery creates a prepared query filtering accounts by prefix,
+// executes it, then deletes it. Tests the full prepared query lifecycle under chaos.
+func createAndExecutePreparedQuery(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+	queryName := fmt.Sprintf("q-%d", random.GetRandom()%100)
+
+	details := internal.Details{
+		"ledger":    ledger,
+		"queryName": queryName,
+	}
+
+	// Create a prepared query that filters accounts by address prefix "users:".
+	_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+		Requests: []*servicepb.Request{{
+			Type: &servicepb.Request_CreatePreparedQuery{
+				CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+					Query: &commonpb.PreparedQuery{
+						Name:   queryName,
+						Ledger: ledger,
+						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Filter: &commonpb.QueryFilter{
+							Filter: &commonpb.QueryFilter_Address{
+								Address: "users:",
+							},
+						},
+					},
+				},
+			},
+		}},
+	})
+
+	if err != nil {
+		if internal.IsUnavailable(err) {
+			return
+		}
+		// AlreadyExists is expected if another goroutine created the same query.
+		st, _ := status.FromError(err)
+		if st.Code() != codes.AlreadyExists {
+			assert.Unreachable("prepared query creation returned unexpected error", details.With(internal.Details{"error": err}))
+		}
+	}
+
+	// Execute the query.
+	execResp, err := client.ExecutePreparedQuery(ctx, &servicepb.ExecutePreparedQueryRequest{
+		Ledger:    ledger,
+		QueryName: queryName,
+		PageSize:  10,
+	})
+
+	assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to execute prepared query", details.With(internal.Details{"error": err}))
+	if err != nil {
+		return
+	}
+
+	// Verify the response has a result.
+	assert.AlwaysOrUnreachable(execResp != nil, "prepared query should return a response", details)
+
+	// Delete the query.
+	_, err = client.Apply(ctx, &servicepb.ApplyRequest{
+		Requests: []*servicepb.Request{{
+			Type: &servicepb.Request_DeletePreparedQuery{
+				DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{
+					Ledger: ledger,
+					Name:   queryName,
+				},
+			},
+		}},
+	})
+
+	// Deletion may fail if another goroutine already deleted it.
+	if err != nil && !internal.IsUnavailable(err) {
+		st, _ := status.FromError(err)
+		if st.Code() != codes.NotFound {
+			assert.Unreachable("prepared query deletion returned unexpected error", details.With(internal.Details{"error": err}))
+		}
+	}
 }
 
 // successOrInsufficientFunds returns true if err is nil or indicates insufficient funds.
