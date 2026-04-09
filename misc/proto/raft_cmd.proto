@@ -388,6 +388,13 @@ message Proposal {
   PreloadSet preload = 4;
   repeated EventsSinkUpdate events_sink_updates = 5;  // Per-sink cursor and error updates (Raft-replicated)
   repeated MirrorSyncUpdate mirror_sync_updates = 6;  // Per-ledger mirror cursor and error updates (Raft-replicated)
+  // predicted_index is the Raft log index predicted by the IndexTracker at
+  // admission time. The FSM compares it with the actual entry.Index: a mismatch
+  // means the tracker was stale (e.g. after a leadership transition) and the
+  // preloadSet is invalid. The entry is rejected without audit and the caller
+  // receives Unavailable so it can retry with fresh preloads.
+  // A value of 0 means no prediction (e.g. barrier, mirror sync).
+  uint64 predicted_index = 7;
 }
 
 message MirrorSyncUpdate {

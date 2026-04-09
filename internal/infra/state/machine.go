@@ -777,7 +777,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	case fsm.Registry.Cache.BaseIndex.Gen1:
 		fsm.logger.Debug("Selecting cache generation 1")
 	default:
-		fsm.logger.WithFields(map[string]any{
+		details := map[string]any{
 			"lastPersistedIndex":  preloadSet.GetLastPersistedIndex(),
 			"gen0":                fsm.Registry.Cache.BaseIndex.Gen0,
 			"gen1":                fsm.Registry.Cache.BaseIndex.Gen1,
@@ -786,7 +786,9 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 			"lastAppliedIndex":    fsm.lastAppliedIndex,
 			"preloadCount":        len(preloadSet.GetPreloads()),
 			"touchCount":          len(preloadSet.GetTouches()),
-		}).Errorf("Preload boundary mismatch: LastPersistedIndex does not match Gen0 or Gen1")
+		}
+		fsm.logger.WithFields(details).Errorf("Preload boundary mismatch: LastPersistedIndex does not match Gen0 or Gen1")
+		assert.Unreachable("preload boundary mismatch should be prevented by predicted_index check", details)
 
 		return fmt.Errorf("preloading preloaded index is invalid: lastPersistedIndex=%d gen0=%d gen1=%d currentGen=%d lastApplied=%d",
 			preloadSet.GetLastPersistedIndex(),
@@ -1264,6 +1266,28 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return &ApplyResult{
 			ProposalID: proposal.GetId(),
 			Error:      &domain.BusinessError{Err: domain.ErrMaintenanceMode},
+		}, nil
+	}
+
+	// Reject proposals whose predicted index doesn't match the actual Raft index.
+	// This detects stale proposals admitted with an inflated IndexTracker (e.g.
+	// after leadership transition). The preloadSet is invalid — reject cleanly
+	// so the caller retries with fresh preloads.
+	if predicted := proposal.GetPredictedIndex(); predicted != 0 && predicted != raftIndex {
+		fsm.logger.WithFields(map[string]any{
+			"predictedIndex": predicted,
+			"actualIndex":    raftIndex,
+			"proposalID":     proposal.GetId(),
+		}).Infof("Rejecting proposal: predicted index mismatch (stale tracker)")
+
+		lifecycle.SendEvent("stale_proposal_rejected", map[string]any{
+			"predictedIndex": predicted,
+			"actualIndex":    raftIndex,
+		})
+
+		return &ApplyResult{
+			ProposalID: proposal.GetId(),
+			Error:      &domain.BusinessError{Err: domain.ErrStaleProposal},
 		}, nil
 	}
 

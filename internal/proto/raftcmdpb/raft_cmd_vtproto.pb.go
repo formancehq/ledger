@@ -1632,6 +1632,7 @@ func (m *Proposal) CloneVT() *Proposal {
 	r.Id = m.Id
 	r.Date = m.Date.CloneVT()
 	r.Preload = m.Preload.CloneVT()
+	r.PredictedIndex = m.PredictedIndex
 	if rhs := m.Orders; rhs != nil {
 		tmpContainer := make([]*Order, len(rhs))
 		for k, v := range rhs {
@@ -2564,7 +2565,6 @@ func (m *AttributeID) CloneVT() *AttributeID {
 	}
 	r := new(AttributeID)
 	r.Tag = m.Tag
-	r.BaseIndex = m.BaseIndex
 	if rhs := m.Id; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
@@ -5489,6 +5489,9 @@ func (this *Proposal) EqualVT(that *Proposal) bool {
 			}
 		}
 	}
+	if this.PredictedIndex != that.PredictedIndex {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -6911,9 +6914,6 @@ func (this *AttributeID) EqualVT(that *AttributeID) bool {
 		return false
 	}
 	if this.Tag != that.Tag {
-		return false
-	}
-	if this.BaseIndex != that.BaseIndex {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -10837,6 +10837,11 @@ func (m *Proposal) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.PredictedIndex != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PredictedIndex))
+		i--
+		dAtA[i] = 0x38
+	}
 	if len(m.MirrorSyncUpdates) > 0 {
 		for iNdEx := len(m.MirrorSyncUpdates) - 1; iNdEx >= 0; iNdEx-- {
 			size, err := m.MirrorSyncUpdates[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
@@ -13159,11 +13164,6 @@ func (m *AttributeID) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.BaseIndex != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.BaseIndex))
-		i--
-		dAtA[i] = 0x18
-	}
 	if m.Tag != 0 {
 		i -= 8
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Tag))
@@ -14921,6 +14921,9 @@ func (m *Proposal) SizeVT() (n int) {
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
 	}
+	if m.PredictedIndex != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.PredictedIndex))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -15826,9 +15829,6 @@ func (m *AttributeID) SizeVT() (n int) {
 	}
 	if m.Tag != 0 {
 		n += 9
-	}
-	if m.BaseIndex != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.BaseIndex))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -24850,6 +24850,25 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PredictedIndex", wireType)
+			}
+			m.PredictedIndex = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.PredictedIndex |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -30107,25 +30126,6 @@ func (m *AttributeID) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Tag = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field BaseIndex", wireType)
-			}
-			m.BaseIndex = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.BaseIndex |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

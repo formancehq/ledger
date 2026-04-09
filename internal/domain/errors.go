@@ -33,6 +33,7 @@ const (
 	ErrReasonMetadataNotFound                  = "METADATA_NOT_FOUND"
 	ErrReasonInvalidReceipt                    = "INVALID_RECEIPT"
 	ErrReasonMaintenanceMode                   = "MAINTENANCE_MODE"
+	ErrReasonStaleProposal                     = "STALE_PROPOSAL"
 	ErrReasonInvalidCronExpression             = "INVALID_CRON_EXPRESSION"
 	ErrReasonLedgerInMirrorMode                = "LEDGER_IN_MIRROR_MODE"
 	ErrReasonLedgerNotInMirrorMode             = "LEDGER_NOT_IN_MIRROR_MODE"
@@ -78,6 +79,7 @@ var (
 	ErrMetadataKeyRequired        = errors.New("key is required")
 	ErrAuditDisabled              = errors.New("audit log is disabled on this server")
 	ErrMaintenanceMode            = errors.New("cluster is in maintenance mode: write operations are blocked")
+	ErrStaleProposal              = errors.New("proposal rejected: predicted index mismatch (stale tracker after leadership transition)")
 	ErrNumscriptNameRequired      = errors.New("numscript name is required")
 	ErrNumscriptContentRequired   = errors.New("numscript content is required")
 	ErrScriptAndReferenceConflict = errors.New("cannot specify both script and scriptReference")

@@ -156,6 +156,7 @@ var errorMappings = []errorMapping{
 	{matchIs(numscript.ErrMetaNotSupported), codes.InvalidArgument, domain.ErrReasonValidation},
 
 	{matchIs(domain.ErrMaintenanceMode), codes.Unavailable, domain.ErrReasonMaintenanceMode},
+	{matchIs(domain.ErrStaleProposal), codes.Unavailable, domain.ErrReasonStaleProposal},
 
 	{matchAs(func(e *domain.ErrInvalidCronExpression) map[string]string {
 		return map[string]string{"expression": e.Expression, "details": e.Details}

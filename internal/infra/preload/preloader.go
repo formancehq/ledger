@@ -117,6 +117,9 @@ func (p *Preloader) ReadBoundaries(ledgerName string) (*raftcmdpb.LedgerBoundari
 	return p.attrs.Boundary.Get(reader, []byte(ledgerName))
 }
 
+// TrackerNext returns the predicted next Raft index from the IndexTracker.
+func (p *Preloader) TrackerNext() uint64 { return p.tracker.Next() }
+
 // LockTracker acquires the IndexTracker's mutex. Used by non-guard callers
 // (mirror error reporting, admission barrier) that Propose without going
 // through AcquireProposalGuard, to serialize the tracker Increment with

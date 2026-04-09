@@ -3982,8 +3982,15 @@ type Proposal struct {
 	Preload           *PreloadSet            `protobuf:"bytes,4,opt,name=preload,proto3" json:"preload,omitempty"`
 	EventsSinkUpdates []*EventsSinkUpdate    `protobuf:"bytes,5,rep,name=events_sink_updates,json=eventsSinkUpdates,proto3" json:"events_sink_updates,omitempty"` // Per-sink cursor and error updates (Raft-replicated)
 	MirrorSyncUpdates []*MirrorSyncUpdate    `protobuf:"bytes,6,rep,name=mirror_sync_updates,json=mirrorSyncUpdates,proto3" json:"mirror_sync_updates,omitempty"` // Per-ledger mirror cursor and error updates (Raft-replicated)
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// predicted_index is the Raft log index predicted by the IndexTracker at
+	// admission time. The FSM compares it with the actual entry.Index: a mismatch
+	// means the tracker was stale (e.g. after a leadership transition) and the
+	// preloadSet is invalid. The entry is rejected without audit and the caller
+	// receives Unavailable so it can retry with fresh preloads.
+	// A value of 0 means no prediction (e.g. barrier, mirror sync).
+	PredictedIndex uint64 `protobuf:"varint,7,opt,name=predicted_index,json=predictedIndex,proto3" json:"predicted_index,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Proposal) Reset() {
@@ -4056,6 +4063,13 @@ func (x *Proposal) GetMirrorSyncUpdates() []*MirrorSyncUpdate {
 		return x.MirrorSyncUpdates
 	}
 	return nil
+}
+
+func (x *Proposal) GetPredictedIndex() uint64 {
+	if x != nil {
+		return x.PredictedIndex
+	}
+	return 0
 }
 
 type MirrorSyncUpdate struct {
@@ -6326,7 +6340,6 @@ type AttributeID struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            []byte                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"` // 16-byte U128 identifier
 	Tag           uint64                 `protobuf:"fixed64,2,opt,name=tag,proto3" json:"tag,omitempty"`
-	BaseIndex     uint64                 `protobuf:"varint,3,opt,name=base_index,json=baseIndex,proto3" json:"base_index,omitempty"` // Raft index of the Pebble entry (for eager cleanup via point deletes)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6371,13 +6384,6 @@ func (x *AttributeID) GetId() []byte {
 func (x *AttributeID) GetTag() uint64 {
 	if x != nil {
 		return x.Tag
-	}
-	return 0
-}
-
-func (x *AttributeID) GetBaseIndex() uint64 {
-	if x != nil {
-		return x.BaseIndex
 	}
 	return 0
 }
@@ -6649,14 +6655,15 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x0eexpand_volumes\x18\x06 \x01(\bR\rexpandVolumes\"O\n" +
 	"\x13DeleteMetadataOrder\x12&\n" +
 	"\x06target\x18\x01 \x01(\v2\x0e.common.TargetR\x06target\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\"\xa2\x02\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\"\xcb\x02\n" +
 	"\bProposal\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12#\n" +
 	"\x06orders\x18\x02 \x03(\v2\v.raft.OrderR\x06orders\x12%\n" +
 	"\x04date\x18\x03 \x01(\v2\x11.common.TimestampR\x04date\x12*\n" +
 	"\apreload\x18\x04 \x01(\v2\x10.raft.PreloadSetR\apreload\x12F\n" +
 	"\x13events_sink_updates\x18\x05 \x03(\v2\x16.raft.EventsSinkUpdateR\x11eventsSinkUpdates\x12F\n" +
-	"\x13mirror_sync_updates\x18\x06 \x03(\v2\x16.raft.MirrorSyncUpdateR\x11mirrorSyncUpdates\"\xc5\x01\n" +
+	"\x13mirror_sync_updates\x18\x06 \x03(\v2\x16.raft.MirrorSyncUpdateR\x11mirrorSyncUpdates\x12'\n" +
+	"\x0fpredicted_index\x18\a \x01(\x04R\x0epredictedIndex\"\xc5\x01\n" +
 	"\x10MirrorSyncUpdate\x12\x1f\n" +
 	"\vledger_name\x18\x01 \x01(\tR\n" +
 	"ledgerName\x12\x16\n" +
@@ -6823,12 +6830,10 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x1b.common.IdempotencyKeyValueR\x05value\"D\n" +
 	"\x14ReversionBitsetEntry\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x14\n" +
-	"\x05words\x18\x02 \x01(\fR\x05words\"N\n" +
+	"\x05words\x18\x02 \x01(\fR\x05words\"/\n" +
 	"\vAttributeID\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\fR\x02id\x12\x10\n" +
-	"\x03tag\x18\x02 \x01(\x06R\x03tag\x12\x1d\n" +
-	"\n" +
-	"base_index\x18\x03 \x01(\x04R\tbaseIndex*\x80\x03\n" +
+	"\x03tag\x18\x02 \x01(\x06R\x03tag*\x80\x03\n" +
 	"\x0eCacheTouchType\x12\x1b\n" +
 	"\x17CACHE_TOUCH_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13CACHE_TOUCH_VOLUMES\x10\x01\x12 \n" +

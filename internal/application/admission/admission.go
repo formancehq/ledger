@@ -383,13 +383,19 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	if updatedPreloads != nil {
 		a.proposalGuardRebuildCounter.Add(ctx, 1)
 		cmd.Preload = updatedPreloads
+	}
 
-		proposalData, err = a.marshalCommand(ctx, cmd)
-		if err != nil {
-			guard.ReleaseAll()
+	// Set the predicted index under the proposal guard (tracker locked).
+	// The FSM uses this to detect stale proposals whose preloads were
+	// computed against an inflated tracker (e.g. after leadership transition).
+	cmd.PredictedIndex = a.preloader.TrackerNext()
 
-			return nil, err
-		}
+	// Re-marshal with the predicted index (and possibly updated preloads).
+	proposalData, err = a.marshalCommand(ctx, cmd)
+	if err != nil {
+		guard.ReleaseAll()
+
+		return nil, err
 	}
 
 	proposal := node.NewProposal(cmd.GetId(), proposalData)
