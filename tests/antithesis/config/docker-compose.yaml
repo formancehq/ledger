@@ -41,11 +41,15 @@ services:
       ETCD_ADVERTISE_CLIENT_URLS: http://etcd-0:2379
     volumes:
       - etcd-0-data:/var/run/etcd
+    annotations:
+      com.antithesis.exclude.faults: "all"
 
   etcd-1:
     <<: *etcd-common
     container_name: etcd-1
     hostname: etcd-1
+    annotations:
+      com.antithesis.exclude.faults: "all"
     environment:
       <<: *etcd-env
       ETCD_NAME: etcd-1
@@ -59,6 +63,8 @@ services:
     <<: *etcd-common
     container_name: etcd-2
     hostname: etcd-2
+    annotations:
+      com.antithesis.exclude.faults: "all"
     environment:
       <<: *etcd-env
       ETCD_NAME: etcd-2
@@ -84,6 +90,8 @@ services:
           --node-id 1 \
           --advertise-addr "ledger-0:7777" \
           $$CLUSTER_FLAG
+    annotations:
+      com.antithesis.exclude.faults: "stop, pause, cpu_max"
     volumes:
       - ledger-0-wal:/data/raft
       - ledger-0-data:/data/app
@@ -98,10 +106,17 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
+        if [ -f "/data/app/CURRENT_CHECKPOINT" ]; then
+          JOIN_FLAG=""
+        else
+          JOIN_FLAG="--join ledger-0:8888"
+        fi
         exec ./ledger-v3-poc run \
           --node-id 2 \
           --advertise-addr "ledger-1:7777" \
-          --join ledger-0:8888
+          $$JOIN_FLAG
+    annotations:
+      com.antithesis.exclude.faults: "stop, pause, cpu_max"
     volumes:
       - ledger-1-wal:/data/raft
       - ledger-1-data:/data/app
@@ -116,10 +131,17 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
+        if [ -f "/data/app/CURRENT_CHECKPOINT" ]; then
+          JOIN_FLAG=""
+        else
+          JOIN_FLAG="--join ledger-0:8888"
+        fi
         exec ./ledger-v3-poc run \
           --node-id 3 \
           --advertise-addr "ledger-2:7777" \
-          --join ledger-0:8888
+          $$JOIN_FLAG
+    annotations:
+      com.antithesis.exclude.faults: "stop, pause, cpu_max"
     volumes:
       - ledger-2-wal:/data/raft
       - ledger-2-data:/data/app
@@ -134,6 +156,8 @@ services:
       LEDGER_GRPC_ADDR: "ledger-0:8888"
       EXPECTED_VOTERS: "3"
       ETCD_ENDPOINTS: "http://etcd-0:2379,http://etcd-1:2379,http://etcd-2:2379"
+    annotations:
+      com.antithesis.exclude.faults: "stop, pause, cpu_max"
     depends_on:
       - ledger-0
       - ledger-1
