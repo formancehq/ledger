@@ -1,7 +1,6 @@
 package internal
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -18,7 +17,7 @@ func NewGRPCConn() (*grpc.ClientConn, error) {
 		target = "localhost:15100"
 	}
 
-	retryPolicy := fmt.Sprintf(`{
+	retryPolicy := `{
 		"methodConfig": [{
 			"name": [{}],
 			"retryPolicy": {
@@ -29,7 +28,7 @@ func NewGRPCConn() (*grpc.ClientConn, error) {
 				"RetryableStatusCodes": ["UNAVAILABLE"]
 			}
 		}]
-	}`)
+	}`
 
 	conn, err := grpc.NewClient(
 		target,

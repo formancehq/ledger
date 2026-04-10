@@ -7,10 +7,7 @@ replace github.com/formancehq/ledger-v3-poc => ../../../
 
 // replace github.com/formancehq/ledger-v3-poc/tests/antithesis/workload => .
 
-require (
-	github.com/alitto/pond v1.9.2
-	github.com/antithesishq/antithesis-sdk-go v0.7.0
-)
+require github.com/antithesishq/antithesis-sdk-go v0.7.0
 
 require (
 	github.com/formancehq/ledger-v3-poc v0.0.0-00010101000000-000000000000

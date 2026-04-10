@@ -7,7 +7,7 @@ import (
 	"log"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/antithesishq/antithesis-sdk-go/random"
+
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/pkg/scenario"
 	"github.com/formancehq/ledger-v3-poc/tests/antithesis/workload/internal"
@@ -111,14 +111,14 @@ func RunLoop(ctx context.Context, client servicepb.BucketServiceClient, groups [
 
 	log.Printf("scenario_blocks: %d blocks active, entering loop", len(allBlocks))
 
-	randFn := scenario.RandFunc(random.GetRandom)
+	randFn := scenario.RandFunc(func() uint64 { return internal.Rand().Uint64() })
 
 	for {
 		if ctx.Err() != nil {
 			return
 		}
 
-		b := allBlocks[random.GetRandom()%uint64(len(allBlocks))]
+		b := allBlocks[internal.Rand().Uint64()%uint64(len(allBlocks))]
 		details := internal.Details{"block": b.Name}
 
 		resp, err := b.Run(ctx, client, randFn)

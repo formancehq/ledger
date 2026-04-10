@@ -6,7 +6,6 @@ import (
 	"log"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/antithesishq/antithesis-sdk-go/random"
 	"github.com/formancehq/ledger-v3-poc/tests/antithesis/workload/internal"
 )
 
@@ -21,7 +20,7 @@ func main() {
 	}
 	defer conn.Close()
 
-	id := random.GetRandom() % 1e6
+	id := internal.Rand().Uint64() % 1e6
 	ledger := fmt.Sprintf("ledger-%d", id)
 
 	err = internal.CreateLedger(ctx, client, ledger)

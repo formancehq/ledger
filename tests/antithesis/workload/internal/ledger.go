@@ -5,7 +5,7 @@ import (
 	"io"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/antithesishq/antithesis-sdk-go/random"
+
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
@@ -61,5 +61,5 @@ func GetRandomLedger(ctx context.Context, client servicepb.BucketServiceClient) 
 	if len(ledgers) == 0 {
 		return "", io.EOF
 	}
-	return ledgers[random.GetRandom()%uint64(len(ledgers))], nil
+	return ledgers[Rand().Uint64()%uint64(len(ledgers))], nil
 }
