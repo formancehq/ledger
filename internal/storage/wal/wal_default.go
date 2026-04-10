@@ -2,7 +2,6 @@ package wal
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -25,7 +24,7 @@ import (
 const (
 	walCreationCompletedFile = "WAL_CREATION_COMPLETED"
 	etcdWalDir               = "etcd"
-	stateFile                = "raft-state.pb"
+	snapDir                  = "snap"
 
 	defaultPurgeInterval = 30 * time.Second
 )
@@ -59,11 +58,11 @@ type DefaultWAL struct {
 	// This is rebuilt from DefaultWAL on startup
 	entries []raftpb.Entry
 
-	logger     logging.Logger
-	meter      metric.Meter
-	dataDir    string
-	stateFile  string
-	etcdWalDir string
+	logger      logging.Logger
+	meter       metric.Meter
+	dataDir     string
+	snapshotter *Snapshotter
+	etcdWalDir  string
 
 	// Purger for old WAL segment files
 	stopPurge     chan struct{}
@@ -87,12 +86,17 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 
 	logger = logger.WithFields(map[string]any{"cmp": "wal"})
 
+	snapshotter, err := NewSnapshotter(filepath.Join(dataDir, snapDir), logger)
+	if err != nil {
+		return nil, err
+	}
+
 	s := &DefaultWAL{
 		entries:       make([]raftpb.Entry, 0),
 		logger:        logger,
 		meter:         meter,
 		dataDir:       dataDir,
-		stateFile:     filepath.Join(dataDir, stateFile),
+		snapshotter:   snapshotter,
 		etcdWalDir:    filepath.Join(dataDir, etcdWalDir),
 		purgeInterval: defaultPurgeInterval,
 	}
@@ -102,8 +106,6 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 	}
 
 	// Create metrics
-	var err error
-
 	s.appendCacheHistogram, err = meter.Int64Histogram(
 		"wal.append.cache.duration",
 		metric.WithDescription("Time spent updating in-memory cache"),
@@ -154,17 +156,22 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 	if err == nil {
 		s.logger.Infof("WAL creation completed, opening existing DefaultWAL")
 
-		data, err := os.ReadFile(s.stateFile)
-		if err != nil && !os.IsNotExist(err) {
-			return nil, err
+		// List valid snapshot records from the etcd WAL (source of truth).
+		walSnaps, err := wal.ValidSnapshotEntries(zapLogger, s.etcdWalDir)
+		if err != nil {
+			return nil, fmt.Errorf("reading valid snapshot entries from WAL: %w", err)
 		}
 
-		if err == nil {
-			err := unmarshalStateFile(data, &s.snapshot)
-			if err != nil {
-				return nil, err
-			}
+		// Load the newest snap file that matches a WAL snapshot record.
+		// This ensures orphaned snap files (written before a crash, without
+		// a corresponding WAL record) are not used.
+		loadedSnap, err := s.snapshotter.LoadNewestAvailable(walSnaps)
+		if err != nil {
+			return nil, fmt.Errorf("loading snapshot matching WAL: %w", err)
+		}
 
+		if loadedSnap != nil {
+			s.snapshot = *loadedSnap
 			s.logger.
 				WithFields(map[string]any{
 					"index": s.snapshot.Metadata.Index,
@@ -278,68 +285,6 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 	return s, nil
 }
 
-func unmarshalStateFile(data []byte, to *raftpb.Snapshot) error {
-	if len(data) < 8 {
-		return errors.New("state file too short")
-	}
-
-	// Format: [snapshotLength (8 bytes)][snapshotData]
-	snapshotLen := binary.BigEndian.Uint64(data[0:8])
-	if len(data) < int(8+snapshotLen) {
-		return errors.New("state file truncated at snapshot")
-	}
-
-	return to.Unmarshal(data[8 : 8+snapshotLen])
-}
-
-// saveSnapshot saves snapshot to disk
-// Format: [snapshotLength (8 bytes)][snapshotData].
-func (s *DefaultWAL) saveSnapshot(snap raftpb.Snapshot) error {
-	// Marshal Snapshot
-	snapshotData, err := snap.Marshal()
-	if err != nil {
-		return fmt.Errorf("marshaling snapshot: %w", err)
-	}
-
-	// Create file with length-prefixed format
-	// Format: [snapshotLength (8 bytes)][snapshotData]
-	totalSize := 8 + len(snapshotData)
-	fileData := make([]byte, totalSize)
-
-	// Write snapshot length
-	binary.BigEndian.PutUint64(fileData[0:8], uint64(len(snapshotData)))
-
-	// Write snapshot data
-	copy(fileData[8:8+len(snapshotData)], snapshotData)
-
-	stateFile, err := os.Create(s.stateFile + ".tmp")
-	if err != nil {
-		return fmt.Errorf("creating state file: %w", err)
-	}
-
-	defer func() {
-		_ = stateFile.Close()
-	}()
-
-	// Write file
-	if _, err := stateFile.Write(fileData); err != nil {
-		return fmt.Errorf("writing state file: %w", err)
-	}
-
-	if err := stateFile.Sync(); err != nil {
-		return fmt.Errorf("syncing state file: %w", err)
-	}
-
-	if err := stateFile.Close(); err != nil {
-		return fmt.Errorf("closing state file: %w", err)
-	}
-
-	if err := os.Rename(s.stateFile+".tmp", s.stateFile); err != nil {
-		return fmt.Errorf("renaming state file: %w", err)
-	}
-
-	return nil
-}
 
 // InitialState returns the saved HardState and ConfState information.
 func (s *DefaultWAL) InitialState() (raftpb.HardState, raftpb.ConfState, error) {
@@ -583,7 +528,7 @@ func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []b
 	s.snapshot = snap
 	s.mu.Unlock()
 
-	if err := s.saveSnapshot(snap); err != nil {
+	if err := s.snapshotter.Save(snap); err != nil {
 		return fmt.Errorf("saving snapshot: %w", err)
 	}
 
@@ -619,7 +564,7 @@ func (s *DefaultWAL) UpdateSnapshotConfState(cs *raftpb.ConfState) error {
 	s.snapshot = snap
 	s.mu.Unlock()
 
-	err := s.saveSnapshot(snap)
+	err := s.snapshotter.Save(snap)
 	if err != nil {
 		return fmt.Errorf("saving snapshot: %w", err)
 	}
@@ -695,10 +640,41 @@ func (s *DefaultWAL) ApplySnapshot(snap raftpb.Snapshot) error {
 	s.snapshot = snap
 	s.entries = nil // Clear entries after applying snapshot
 
-	// Save to disk
-	err := s.saveSnapshot(snap)
-	if err != nil {
-		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to save snapshot to disk")
+	// Ensure the HardState commit index is at least as high as the snapshot.
+	// A snapshot at index N implies all entries up to N are committed.
+	if s.hardState.Commit < snap.Metadata.Index {
+		s.hardState.Commit = snap.Metadata.Index
+		s.hardState.Term = snap.Metadata.Term
+	}
+
+	// Write the snapshot record + updated HardState to the etcd WAL first.
+	// This is the source of truth for crash safety: on restart, ReadAll()
+	// returns a HardState with Commit >= snapshot.Index. The etcd WAL fsyncs
+	// both records together in the Save call.
+	//
+	// Order matters: WAL before state file. If we crash between the two,
+	// the state file has the old snapshot (stale Data) but the WAL has the
+	// correct {Index, Term, HardState}. On restart the node will be marked
+	// out-of-sync and re-fetch the checkpoint from the leader.
+	// Save the full snapshot file first, then the WAL record + HardState.
+	// Order follows etcd's pattern: an orphaned snap file is harmless (cleaned
+	// up on the next snapshot), but a WAL snapshot record without a corresponding
+	// snap file would cause issues at restart.
+	if err := s.snapshotter.Save(snap); err != nil {
+		return fmt.Errorf("saving snapshot file: %w", err)
+	}
+
+	walSnap := walpb.Snapshot{
+		Index:     snap.Metadata.Index,
+		Term:      snap.Metadata.Term,
+		ConfState: &snap.Metadata.ConfState,
+	}
+	if err := s.wal.SaveSnapshot(walSnap); err != nil {
+		return fmt.Errorf("saving snapshot to WAL: %w", err)
+	}
+
+	if err := s.wal.Save(s.hardState, nil); err != nil {
+		return fmt.Errorf("saving HardState after snapshot to WAL: %w", err)
 	}
 
 	return nil
@@ -768,10 +744,15 @@ func (s *DefaultWAL) Compact(compactIndex uint64) error {
 	return nil
 }
 
-// Close closes the DefaultWAL.
+// Close closes the DefaultWAL. Safe to call multiple times.
 func (s *DefaultWAL) Close() error {
-	close(s.stopPurge)
-	<-s.purgeDone
+	select {
+	case <-s.stopPurge:
+		// Already closed
+	default:
+		close(s.stopPurge)
+		<-s.purgeDone
+	}
 
 	return s.wal.Close()
 }

@@ -775,61 +775,6 @@ func TestCreateSnapshot_OutOfDate(t *testing.T) {
 	require.ErrorIs(t, err, raft.ErrSnapOutOfDate)
 }
 
-// --- unmarshalStateFile tests ---
-
-func TestUnmarshalStateFile_TooShort(t *testing.T) {
-	t.Parallel()
-
-	err := unmarshalStateFile([]byte{1, 2, 3}, &raftpb.Snapshot{})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "too short")
-}
-
-func TestUnmarshalStateFile_Truncated(t *testing.T) {
-	t.Parallel()
-
-	// Header says 100 bytes but data is only 16 bytes total
-	data := make([]byte, 16)
-	data[0] = 0
-	data[1] = 0
-	data[2] = 0
-	data[3] = 0
-	data[4] = 0
-	data[5] = 0
-	data[6] = 0
-	data[7] = 100 // snapshot length = 100, but only 8 bytes remain
-
-	err := unmarshalStateFile(data, &raftpb.Snapshot{})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "truncated")
-}
-
-func TestUnmarshalStateFile_ValidRoundTrip(t *testing.T) {
-	t.Parallel()
-
-	w := newTestWAL(t)
-
-	// Append entries and create a snapshot
-	require.NoError(t, w.Append(raftpb.HardState{Term: 2, Vote: 1, Commit: 3}, []raftpb.Entry{
-		{Index: 1, Term: 1, Data: []byte("a")},
-		{Index: 2, Term: 2, Data: []byte("b")},
-		{Index: 3, Term: 2, Data: []byte("c")},
-	}))
-
-	cs := &raftpb.ConfState{Voters: []uint64{1}}
-	require.NoError(t, w.CreateSnapshot(3, cs, []byte("test-data")))
-
-	// Read the state file and unmarshal it
-	data, err := os.ReadFile(w.stateFile)
-	require.NoError(t, err)
-
-	var snap raftpb.Snapshot
-	require.NoError(t, unmarshalStateFile(data, &snap))
-	require.Equal(t, uint64(3), snap.Metadata.Index)
-	require.Equal(t, uint64(2), snap.Metadata.Term)
-	require.Equal(t, []byte("test-data"), snap.Data)
-}
-
 // --- WAL persistence/restart test ---
 
 func TestWAL_Persistence(t *testing.T) {
