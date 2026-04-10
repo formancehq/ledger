@@ -129,6 +129,10 @@ func RunLoop(ctx context.Context, client servicepb.BucketServiceClient, groups [
 		case errors.Is(err, scenario.ErrSkip):
 		case internal.IsUnavailable(err):
 			log.Printf("scenario_blocks: %s unavailable (transient): %v", b.Name, err)
+		case isFailedPrecondition(err):
+			// FailedPrecondition is expected for idempotent retries
+			// (e.g. reverting an already-reverted transaction).
+			log.Printf("scenario_blocks: %s precondition failed (expected): %v", b.Name, err)
 		default:
 			assert.Unreachable(fmt.Sprintf("block %s failed", b.Name), details.With(internal.Details{"error": err}))
 			log.Printf("scenario_blocks: %s failed: %v", b.Name, err)
@@ -140,6 +144,12 @@ func RunLoop(ctx context.Context, client servicepb.BucketServiceClient, groups [
 func isAlreadyExists(err error) bool {
 	st, ok := status.FromError(err)
 	return ok && st.Code() == codes.AlreadyExists
+}
+
+// isFailedPrecondition checks if the gRPC error code is FailedPrecondition.
+func isFailedPrecondition(err error) bool {
+	st, ok := status.FromError(err)
+	return ok && st.Code() == codes.FailedPrecondition
 }
 
 // CheckPostCommitVolumes verifies volume consistency on a transaction response.
