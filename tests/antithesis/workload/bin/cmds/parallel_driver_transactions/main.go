@@ -120,6 +120,10 @@ func checkReadAfterWrite(ctx context.Context, client servicepb.BucketServiceClie
 		TransactionId: createdTx.Transaction.Id,
 	})
 	if err != nil {
+		if internal.IsTransient(err) {
+			return
+		}
+
 		st, _ := status.FromError(err)
 		assert.AlwaysOrUnreachable(st.Code() != codes.NotFound, "should always be able to read committed transaction", internal.Details{
 			"ledger": ledger,
