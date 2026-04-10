@@ -233,6 +233,7 @@ func TestProcessApply_LedgerNotFound(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
+	mockStore.EXPECT().GetLedger("nonexistent").Return(nil, false)
 	mockStore.EXPECT().GetBoundaries("nonexistent").Return(nil, false)
 
 	request := &servicepb.Request{

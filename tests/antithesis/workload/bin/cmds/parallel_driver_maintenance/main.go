@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
@@ -13,7 +14,14 @@ import (
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_maintenance", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+	internal.RunDriver("parallel_driver_maintenance", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
+		// Create a dedicated ledger so we don't depend on a shared ledger
+		// that may be deleted by another concurrent driver.
+		ledger := fmt.Sprintf("maint-%d", internal.Rand().Uint64()%1_000_000)
+		if err := internal.CreateLedger(ctx, client, ledger); err != nil {
+			return
+		}
+
 		// Enable maintenance mode.
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{{

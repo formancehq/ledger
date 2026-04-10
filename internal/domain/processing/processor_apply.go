@@ -9,23 +9,22 @@ import (
 )
 
 func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
+	// Check deletion status before boundaries: MarkLedgerForCleanup removes
+	// boundaries on delete, so GetBoundaries would return false and we'd
+	// incorrectly return ErrLedgerNotFound instead of ErrLedgerDeleted.
+	ledgerInfo, infoOk := s.GetLedger(apply.GetLedger())
+	if infoOk && ledgerInfo.GetDeletedAt() != nil {
+		return nil, &domain.ErrLedgerDeleted{Name: apply.GetLedger()}
+	}
+
 	boundaries, ok := s.GetBoundaries(apply.GetLedger())
 	if !ok {
 		return nil, &domain.ErrLedgerNotFound{Name: apply.GetLedger()}
 	}
 
-	// Block writes on deleted or mirror-mode ledgers.
-	if ledgerInfo, infoOk := s.GetLedger(apply.GetLedger()); infoOk {
-		if ledgerInfo.GetDeletedAt() != nil {
-			return nil, &domain.ErrLedgerDeleted{Name: apply.GetLedger()}
-		}
-
-		// Schema operations (set/remove metadata field type and their conversion
-		// lifecycle) are allowed on mirror-mode ledgers because they only affect
-		// local configuration, not replicated data.
-		if ledgerInfo.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR && !isMirrorSafeApply(apply) {
-			return nil, &domain.ErrLedgerInMirrorMode{Name: apply.GetLedger()}
-		}
+	// Block writes on mirror-mode ledgers.
+	if infoOk && ledgerInfo.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR && !isMirrorSafeApply(apply) {
+		return nil, &domain.ErrLedgerInMirrorMode{Name: apply.GetLedger()}
 	}
 
 	var (
