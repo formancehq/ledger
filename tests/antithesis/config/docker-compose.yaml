@@ -90,6 +90,12 @@ services:
     volumes:
       - minio-data:/data
 
+  nats:
+    image: nats:2-alpine
+    container_name: nats
+    hostname: nats
+    command: ["-js"]
+
   minio-init:
     image: minio/mc:latest
     container_name: minio-init
