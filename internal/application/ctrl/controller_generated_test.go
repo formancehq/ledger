@@ -168,6 +168,21 @@ func (mr *MockControllerMockRecorder) GetAuditEntry(ctx, sequence any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAuditEntry", reflect.TypeOf((*MockController)(nil).GetAuditEntry), ctx, sequence)
 }
 
+// GetEventsSinks mocks base method.
+func (m *MockController) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetEventsSinks", ctx)
+	ret0, _ := ret[0].([]*commonpb.SinkConfig)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetEventsSinks indicates an expected call of GetEventsSinks.
+func (mr *MockControllerMockRecorder) GetEventsSinks(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEventsSinks", reflect.TypeOf((*MockController)(nil).GetEventsSinks), ctx)
+}
+
 // GetLedgerByName mocks base method.
 func (m *MockController) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
 	m.ctrl.T.Helper()
@@ -241,6 +256,21 @@ func (m *MockController) GetNumscript(ctx context.Context, ledger, name, version
 func (mr *MockControllerMockRecorder) GetNumscript(ctx, ledger, name, version any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNumscript", reflect.TypeOf((*MockController)(nil).GetNumscript), ctx, ledger, name, version)
+}
+
+// GetPeriodSchedule mocks base method.
+func (m *MockController) GetPeriodSchedule(ctx context.Context) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPeriodSchedule", ctx)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetPeriodSchedule indicates an expected call of GetPeriodSchedule.
+func (mr *MockControllerMockRecorder) GetPeriodSchedule(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPeriodSchedule", reflect.TypeOf((*MockController)(nil).GetPeriodSchedule), ctx)
 }
 
 // GetTransaction mocks base method.

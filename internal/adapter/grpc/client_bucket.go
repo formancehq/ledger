@@ -318,4 +318,22 @@ func (g *BucketGrpcClient) ListNumscripts(ctx context.Context, ledger string) ([
 	return scripts, nil
 }
 
+func (g *BucketGrpcClient) GetPeriodSchedule(ctx context.Context) (string, error) {
+	resp, err := g.client.GetPeriodSchedule(ctx, &servicepb.GetPeriodScheduleRequest{})
+	if err != nil {
+		return "", fmt.Errorf("gRPC GetPeriodSchedule call failed: %w", err)
+	}
+
+	return resp.GetCron(), nil
+}
+
+func (g *BucketGrpcClient) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, error) {
+	resp, err := g.client.GetEventsSinks(ctx, &servicepb.GetEventsSinksRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("gRPC GetEventsSinks call failed: %w", err)
+	}
+
+	return resp.GetSinks(), nil
+}
+
 var _ ctrl.Controller = (*BucketGrpcClient)(nil)

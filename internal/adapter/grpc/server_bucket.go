@@ -622,7 +622,7 @@ func (impl *BucketServiceServerImpl) GetEventsSinks(ctx context.Context, _ *serv
 		return nil, err
 	}
 
-	sinks, err := query.ReadAllSinkConfigs(impl.store)
+	sinks, err := impl.ctrl.GetEventsSinks(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("loading sink configs: %w", err)
 	}
@@ -671,7 +671,7 @@ func (impl *BucketServiceServerImpl) GetPeriodSchedule(ctx context.Context, _ *s
 		return nil, err
 	}
 
-	cronExpr, err := query.ReadPeriodSchedule(impl.store)
+	cronExpr, err := impl.ctrl.GetPeriodSchedule(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("loading period schedule: %w", err)
 	}

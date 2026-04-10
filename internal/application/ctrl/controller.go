@@ -60,6 +60,10 @@ type Controller interface {
 	GetNumscript(ctx context.Context, ledger, name string, version string) (*commonpb.NumscriptInfo, error)
 	ListNumscripts(ctx context.Context, ledger string) ([]*commonpb.NumscriptInfo, error)
 
+	// Cluster-wide config operations (read-only)
+	GetPeriodSchedule(ctx context.Context) (string, error)
+	GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, error)
+
 	// Write operations - single entry point for all requests
 	Apply(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error)
 

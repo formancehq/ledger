@@ -361,6 +361,24 @@ func (b *RoutedController) ListNumscripts(ctx context.Context, ledger string) ([
 	return c.ListNumscripts(ctx, ledger)
 }
 
+func (b *RoutedController) GetPeriodSchedule(ctx context.Context) (string, error) {
+	c, _, err := b.readCtrl(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	return c.GetPeriodSchedule(ctx)
+}
+
+func (b *RoutedController) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, error) {
+	c, _, err := b.readCtrl(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.GetEventsSinks(ctx)
+}
+
 var _ ctrl.Controller = (*RoutedController)(nil)
 
 func NewRoutedController(localController ctrl.Controller, node *node.Node, servicePool *transport.ConnectionPool) *RoutedController {

@@ -1141,6 +1141,28 @@ func (ctrl *DefaultController) ListNumscripts(_ context.Context, ledger string) 
 	return query.ReadAllNumscripts(handle, ledger)
 }
 
+func (ctrl *DefaultController) GetPeriodSchedule(_ context.Context) (string, error) {
+	handle, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return "", fmt.Errorf("creating read handle: %w", err)
+	}
+
+	defer func() { _ = handle.Close() }()
+
+	return query.ReadPeriodSchedule(handle)
+}
+
+func (ctrl *DefaultController) GetEventsSinks(_ context.Context) ([]*commonpb.SinkConfig, error) {
+	handle, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
+
+	defer func() { _ = handle.Close() }()
+
+	return query.ReadAllSinkConfigs(handle)
+}
+
 // Barrier proposes a no-op through Raft consensus. When it returns, all
 // previously proposed entries are guaranteed to have been applied.
 // Returns the Raft commit index at which the barrier was applied.
