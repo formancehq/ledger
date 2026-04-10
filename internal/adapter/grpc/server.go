@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/aws/smithy-go"
 	"go.etcd.io/etcd/raft/v3"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/attribute"
@@ -446,6 +447,27 @@ func convertToGRPCError(err error) error {
 	var bizErr *domain.BusinessError
 	if errors.As(err, &bizErr) {
 		return businessErrorToGRPCStatus(bizErr).Err()
+	}
+
+	// Convert AWS S3/infrastructure errors to FailedPrecondition so clients
+	// can distinguish infrastructure misconfiguration from application bugs.
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		st := status.New(codes.FailedPrecondition, err.Error())
+
+		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
+			Reason: "EXTERNAL_SERVICE_ERROR",
+			Domain: errorDomain,
+			Metadata: map[string]string{
+				"code":    apiErr.ErrorCode(),
+				"service": "s3",
+			},
+		})
+		if detailErr == nil {
+			return detailed.Err()
+		}
+
+		return st.Err()
 	}
 
 	// Default: return as Unknown (preserves the original error message)

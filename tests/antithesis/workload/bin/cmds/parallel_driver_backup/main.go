@@ -29,8 +29,8 @@ func main() {
 		S3Endpoint: "http://minio:9000",
 	})
 	if err != nil {
-		if internal.IsUnavailable(err) {
-			log.Printf("Backup unavailable: %s", err)
+		if internal.IsTransient(err) {
+			log.Printf("Backup transient error: %s", err)
 			return
 		}
 

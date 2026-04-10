@@ -54,32 +54,44 @@ func IsUnavailable(err error) bool {
 	return ok && st.Code() == codes.Unavailable
 }
 
-// IsLedgerDeleted returns true if the error is a gRPC FailedPrecondition
-// with reason LEDGER_DELETED. This means the ledger was soft-deleted by a
-// concurrent driver — not a bug, just a race.
-func IsLedgerDeleted(err error) bool {
+// HasErrorReason returns true if the error is a gRPC status with an
+// ErrorInfo detail matching the given reason.
+func HasErrorReason(err error, reason string) bool {
 	if err == nil {
 		return false
 	}
 
 	st, ok := status.FromError(err)
-	if !ok || st.Code() != codes.FailedPrecondition {
+	if !ok {
 		return false
 	}
 
 	for _, detail := range st.Details() {
 		if info, ok := detail.(*errdetails.ErrorInfo); ok {
-			return info.GetReason() == domain.ErrReasonLedgerDeleted
+			if info.GetReason() == reason {
+				return true
+			}
 		}
 	}
 
 	return false
 }
 
+// IsLedgerDeleted returns true if the error indicates a soft-deleted ledger.
+func IsLedgerDeleted(err error) bool {
+	return HasErrorReason(err, domain.ErrReasonLedgerDeleted)
+}
+
+// IsExternalServiceError returns true if the error indicates an external
+// service failure (e.g. S3 bucket not found, credentials error).
+func IsExternalServiceError(err error) bool {
+	return HasErrorReason(err, "EXTERNAL_SERVICE_ERROR")
+}
+
 // IsTransient returns true if the error is transient and should not
-// trigger failure assertions (Unavailable or ledger deleted by concurrent driver).
+// trigger failure assertions (Unavailable, ledger deleted, or external service error).
 func IsTransient(err error) bool {
-	return IsUnavailable(err) || IsLedgerDeleted(err)
+	return IsUnavailable(err) || IsLedgerDeleted(err) || IsExternalServiceError(err)
 }
 
 // NewClient creates a BucketServiceClient connected to the ledger service.
