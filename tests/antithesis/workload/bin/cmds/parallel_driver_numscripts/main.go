@@ -12,7 +12,7 @@ import (
 func main() {
 	internal.RunDriver("parallel_driver_numscripts", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
 		r := internal.Rand()
-		scriptName := fmt.Sprintf("transfer-%d", r.Uint64()%50)
+		scriptName := fmt.Sprintf("transfer-%d", r.Uint64())
 		version := fmt.Sprintf("%d.0.0", r.Uint64()%10+1)
 
 		details := internal.Details{"ledger": ledger, "scriptName": scriptName, "version": version}

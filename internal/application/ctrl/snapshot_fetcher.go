@@ -126,6 +126,9 @@ type grpcSnapshotFetcherProvider struct {
 
 func (p *grpcSnapshotFetcherProvider) GetForPeer(id uint64) (state.SnapshotFetcher, error) {
 	conn := p.transport.GetPeerConnection(id)
+	if conn == nil {
+		return nil, fmt.Errorf("no connection to peer %d", id)
+	}
 
 	return &grpcSnapshotFetcher{
 		client: snapshotpb.NewSnapshotServiceClient(conn),
