@@ -317,13 +317,21 @@ func (b *RoutedController) AnalyzeTransactions(ctx context.Context, ledgerName s
 }
 
 func (b *RoutedController) ListPreparedQueries(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error) {
-	// Read from local store - prepared queries are replicated via Raft
-	return b.localController.ListPreparedQueries(ctx, ledger)
+	c, _, err := b.readCtrl(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.ListPreparedQueries(ctx, ledger)
 }
 
 func (b *RoutedController) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
-	// Execute locally - both read index and Pebble data are available on all nodes
-	return b.localController.ExecutePreparedQuery(ctx, req)
+	c, _, err := b.readCtrl(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.ExecutePreparedQuery(ctx, req)
 }
 
 func (b *RoutedController) GetLedgerStats(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error) {
@@ -336,13 +344,21 @@ func (b *RoutedController) GetLedgerStats(ctx context.Context, ledgerName string
 }
 
 func (b *RoutedController) GetNumscript(ctx context.Context, ledger, name string, version string) (*commonpb.NumscriptInfo, error) {
-	// Read from local store - numscripts are replicated via Raft
-	return b.localController.GetNumscript(ctx, ledger, name, version)
+	c, _, err := b.readCtrl(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.GetNumscript(ctx, ledger, name, version)
 }
 
 func (b *RoutedController) ListNumscripts(ctx context.Context, ledger string) ([]*commonpb.NumscriptInfo, error) {
-	// Read from local store - numscripts are replicated via Raft
-	return b.localController.ListNumscripts(ctx, ledger)
+	c, _, err := b.readCtrl(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.ListNumscripts(ctx, ledger)
 }
 
 var _ ctrl.Controller = (*RoutedController)(nil)
