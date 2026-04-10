@@ -6170,18 +6170,20 @@ func (x *RemovedMetadataFieldTypeLog) GetKey() string {
 }
 
 type Period struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Start         *Timestamp             `protobuf:"bytes,2,opt,name=start,proto3" json:"start,omitempty"`
-	End           *Timestamp             `protobuf:"bytes,3,opt,name=end,proto3" json:"end,omitempty"`
-	Status        PeriodStatus           `protobuf:"varint,4,opt,name=status,proto3,enum=common.PeriodStatus" json:"status,omitempty"`
-	CloseSequence uint64                 `protobuf:"varint,5,opt,name=close_sequence,json=closeSequence,proto3" json:"close_sequence,omitempty"`
-	SealingHash   []byte                 `protobuf:"bytes,6,opt,name=sealing_hash,json=sealingHash,proto3" json:"sealing_hash,omitempty"`
-	LastLogHash   []byte                 `protobuf:"bytes,7,opt,name=last_log_hash,json=lastLogHash,proto3" json:"last_log_hash,omitempty"`      // Log chain hash at the time the period was closed (for crash recovery)
-	StartSequence uint64                 `protobuf:"varint,8,opt,name=start_sequence,json=startSequence,proto3" json:"start_sequence,omitempty"` // First log sequence in this period (previous close_sequence + 1, or 1 for the first period)
-	StateHash     []byte                 `protobuf:"bytes,9,opt,name=state_hash,json=stateHash,proto3" json:"state_hash,omitempty"`              // BLAKE3 hash of computed attributes (V+M+T) at seal time
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Id                 uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Start              *Timestamp             `protobuf:"bytes,2,opt,name=start,proto3" json:"start,omitempty"`
+	End                *Timestamp             `protobuf:"bytes,3,opt,name=end,proto3" json:"end,omitempty"`
+	Status             PeriodStatus           `protobuf:"varint,4,opt,name=status,proto3,enum=common.PeriodStatus" json:"status,omitempty"`
+	CloseSequence      uint64                 `protobuf:"varint,5,opt,name=close_sequence,json=closeSequence,proto3" json:"close_sequence,omitempty"`
+	SealingHash        []byte                 `protobuf:"bytes,6,opt,name=sealing_hash,json=sealingHash,proto3" json:"sealing_hash,omitempty"`
+	LastLogHash        []byte                 `protobuf:"bytes,7,opt,name=last_log_hash,json=lastLogHash,proto3" json:"last_log_hash,omitempty"`                        // Log chain hash at the time the period was closed (for crash recovery)
+	StartSequence      uint64                 `protobuf:"varint,8,opt,name=start_sequence,json=startSequence,proto3" json:"start_sequence,omitempty"`                   // First log sequence in this period (previous close_sequence + 1, or 1 for the first period)
+	StateHash          []byte                 `protobuf:"bytes,9,opt,name=state_hash,json=stateHash,proto3" json:"state_hash,omitempty"`                                // BLAKE3 hash of computed attributes (V+M+T) at seal time
+	StartAuditSequence uint64                 `protobuf:"varint,10,opt,name=start_audit_sequence,json=startAuditSequence,proto3" json:"start_audit_sequence,omitempty"` // First audit sequence in this period
+	CloseAuditSequence uint64                 `protobuf:"varint,11,opt,name=close_audit_sequence,json=closeAuditSequence,proto3" json:"close_audit_sequence,omitempty"` // Last audit sequence when period was closed
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *Period) Reset() {
@@ -6275,6 +6277,20 @@ func (x *Period) GetStateHash() []byte {
 		return x.StateHash
 	}
 	return nil
+}
+
+func (x *Period) GetStartAuditSequence() uint64 {
+	if x != nil {
+		return x.StartAuditSequence
+	}
+	return 0
+}
+
+func (x *Period) GetCloseAuditSequence() uint64 {
+	if x != nil {
+		return x.CloseAuditSequence
+	}
+	return 0
 }
 
 type ClosePeriodLog struct {
@@ -9820,7 +9836,7 @@ const file_common_proto_rawDesc = "" +
 	"\x1bRemovedMetadataFieldTypeLog\x123\n" +
 	"\vtarget_type\x18\x01 \x01(\x0e2\x12.common.TargetTypeR\n" +
 	"targetType\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\"\xc8\x02\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\"\xac\x03\n" +
 	"\x06Period\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12'\n" +
 	"\x05start\x18\x02 \x01(\v2\x11.common.TimestampR\x05start\x12#\n" +
@@ -9831,7 +9847,10 @@ const file_common_proto_rawDesc = "" +
 	"\rlast_log_hash\x18\a \x01(\fR\vlastLogHash\x12%\n" +
 	"\x0estart_sequence\x18\b \x01(\x04R\rstartSequence\x12\x1d\n" +
 	"\n" +
-	"state_hash\x18\t \x01(\fR\tstateHash\"t\n" +
+	"state_hash\x18\t \x01(\fR\tstateHash\x120\n" +
+	"\x14start_audit_sequence\x18\n" +
+	" \x01(\x04R\x12startAuditSequence\x120\n" +
+	"\x14close_audit_sequence\x18\v \x01(\x04R\x12closeAuditSequence\"t\n" +
 	"\x0eClosePeriodLog\x123\n" +
 	"\rclosed_period\x18\x01 \x01(\v2\x0e.common.PeriodR\fclosedPeriod\x12-\n" +
 	"\n" +

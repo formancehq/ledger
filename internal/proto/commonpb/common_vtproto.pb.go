@@ -2145,6 +2145,8 @@ func (m *Period) CloneVT() *Period {
 	r.Status = m.Status
 	r.CloseSequence = m.CloseSequence
 	r.StartSequence = m.StartSequence
+	r.StartAuditSequence = m.StartAuditSequence
+	r.CloseAuditSequence = m.CloseAuditSequence
 	if rhs := m.SealingHash; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
@@ -7066,6 +7068,12 @@ func (this *Period) EqualVT(that *Period) bool {
 		return false
 	}
 	if string(this.StateHash) != string(that.StateHash) {
+		return false
+	}
+	if this.StartAuditSequence != that.StartAuditSequence {
+		return false
+	}
+	if this.CloseAuditSequence != that.CloseAuditSequence {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -14218,6 +14226,16 @@ func (m *Period) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.CloseAuditSequence != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.CloseAuditSequence))
+		i--
+		dAtA[i] = 0x58
+	}
+	if m.StartAuditSequence != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.StartAuditSequence))
+		i--
+		dAtA[i] = 0x50
+	}
 	if len(m.StateHash) > 0 {
 		i -= len(m.StateHash)
 		copy(dAtA[i:], m.StateHash)
@@ -19590,6 +19608,12 @@ func (m *Period) SizeVT() (n int) {
 	l = len(m.StateHash)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.StartAuditSequence != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.StartAuditSequence))
+	}
+	if m.CloseAuditSequence != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.CloseAuditSequence))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -33274,6 +33298,44 @@ func (m *Period) UnmarshalVT(dAtA []byte) error {
 				m.StateHash = []byte{}
 			}
 			iNdEx = postIndex
+		case 10:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StartAuditSequence", wireType)
+			}
+			m.StartAuditSequence = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.StartAuditSequence |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 11:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CloseAuditSequence", wireType)
+			}
+			m.CloseAuditSequence = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.CloseAuditSequence |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

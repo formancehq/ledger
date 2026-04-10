@@ -414,9 +414,11 @@ func (s *inMemoryStore) GetPeriodByID(_ uint64) (*commonpb.Period, bool) {
 	return nil, false
 }
 
+func (s *inMemoryStore) GetNextAuditSequenceID() uint64 { return 0 }
+
 func (s *inMemoryStore) UpdatePeriod(_ *commonpb.Period) {}
 
-func (s *inMemoryStore) SetPurgeRange(_, _, _ uint64) {}
+func (s *inMemoryStore) SetPurgeRange(_, _, _, _, _ uint64) {}
 
 func (s *inMemoryStore) SetPendingArchive(_, _, _ uint64) {}
 

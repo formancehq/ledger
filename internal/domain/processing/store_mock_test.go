@@ -294,6 +294,20 @@ func (mr *MockInMemoryStoreMockRecorder) GetLedger(name any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLedger", reflect.TypeOf((*MockInMemoryStore)(nil).GetLedger), name)
 }
 
+// GetNextAuditSequenceID mocks base method.
+func (m *MockInMemoryStore) GetNextAuditSequenceID() uint64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetNextAuditSequenceID")
+	ret0, _ := ret[0].(uint64)
+	return ret0
+}
+
+// GetNextAuditSequenceID indicates an expected call of GetNextAuditSequenceID.
+func (mr *MockInMemoryStoreMockRecorder) GetNextAuditSequenceID() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNextAuditSequenceID", reflect.TypeOf((*MockInMemoryStore)(nil).GetNextAuditSequenceID))
+}
+
 // GetNextPeriodID mocks base method.
 func (m *MockInMemoryStore) GetNextPeriodID() uint64 {
 	m.ctrl.T.Helper()
@@ -795,15 +809,15 @@ func (mr *MockInMemoryStoreMockRecorder) SetPeriodSchedule(cron any) *gomock.Cal
 }
 
 // SetPurgeRange mocks base method.
-func (m *MockInMemoryStore) SetPurgeRange(periodID, startSequence, closeSequence uint64) {
+func (m *MockInMemoryStore) SetPurgeRange(periodID, startSequence, closeSequence, startAuditSequence, closeAuditSequence uint64) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "SetPurgeRange", periodID, startSequence, closeSequence)
+	m.ctrl.Call(m, "SetPurgeRange", periodID, startSequence, closeSequence, startAuditSequence, closeAuditSequence)
 }
 
 // SetPurgeRange indicates an expected call of SetPurgeRange.
-func (mr *MockInMemoryStoreMockRecorder) SetPurgeRange(periodID, startSequence, closeSequence any) *gomock.Call {
+func (mr *MockInMemoryStoreMockRecorder) SetPurgeRange(periodID, startSequence, closeSequence, startAuditSequence, closeAuditSequence any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetPurgeRange", reflect.TypeOf((*MockInMemoryStore)(nil).SetPurgeRange), periodID, startSequence, closeSequence)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetPurgeRange", reflect.TypeOf((*MockInMemoryStore)(nil).SetPurgeRange), periodID, startSequence, closeSequence, startAuditSequence, closeAuditSequence)
 }
 
 // SetRequireSignatures mocks base method.

@@ -415,10 +415,10 @@ func TestBufferedSetPurgeRange(t *testing.T) {
 	require.Empty(t, buf.purgeRanges)
 	require.False(t, buf.HasPurges())
 
-	buf.SetPurgeRange(1, 10, 50)
+	buf.SetPurgeRange(1, 10, 50, 5, 25)
 	require.True(t, buf.HasPurges())
 
-	buf.SetPurgeRange(2, 51, 100)
+	buf.SetPurgeRange(2, 51, 100, 26, 50)
 	require.Len(t, buf.purgeRanges, 2)
 	require.Equal(t, uint64(10), buf.purgeRanges[0].startSequence)
 	require.Equal(t, uint64(51), buf.purgeRanges[1].startSequence)

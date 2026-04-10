@@ -72,6 +72,7 @@ type InMemoryStore interface {
 	// Counters and timestamps
 	GetNextSequenceID() uint64
 	IncrementNextSequenceID() uint64
+	GetNextAuditSequenceID() uint64
 	GetDate() *commonpb.Timestamp
 
 	// Period operations
@@ -87,7 +88,7 @@ type InMemoryStore interface {
 	// Archive period operations
 	GetPeriodByID(periodID uint64) (*commonpb.Period, bool)
 	UpdatePeriod(period *commonpb.Period)
-	SetPurgeRange(periodID, startSequence, closeSequence uint64)
+	SetPurgeRange(periodID, startSequence, closeSequence, startAuditSequence, closeAuditSequence uint64)
 	SetPendingArchive(periodID, startSequence, closeSequence uint64)
 
 	// Metadata conversion requests

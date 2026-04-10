@@ -35,16 +35,19 @@ func TestProcessClosePeriod_Success(t *testing.T) {
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(42)).Times(2)
 	mockStore.EXPECT().GetDate().Return(now).Times(2)
 	mockStore.EXPECT().GetLastLogHash().Return(lastLogHash)
+	mockStore.EXPECT().GetNextAuditSequenceID().Return(uint64(10)).Times(2)
 	mockStore.EXPECT().IncrementNextPeriodID().Return(uint64(2))
 	mockStore.EXPECT().AddClosingPeriod(gomock.Any()).Do(func(period *commonpb.Period) {
 		require.Equal(t, commonpb.PeriodStatus_PERIOD_CLOSING, period.GetStatus())
 		require.Equal(t, uint64(42), period.GetCloseSequence())
+		require.Equal(t, uint64(9), period.GetCloseAuditSequence()) // nextAuditSeq - 1
 		require.Equal(t, lastLogHash, period.GetLastLogHash())
 	})
 	mockStore.EXPECT().SetCurrentOpenPeriod(gomock.Any()).Do(func(period *commonpb.Period) {
 		require.Equal(t, commonpb.PeriodStatus_PERIOD_OPEN, period.GetStatus())
 		require.Equal(t, uint64(2), period.GetId())
-		require.Equal(t, uint64(43), period.GetStartSequence()) // CloseSequence + 1
+		require.Equal(t, uint64(43), period.GetStartSequence())      // CloseSequence + 1
+		require.Equal(t, uint64(10), period.GetStartAuditSequence()) // nextAuditSeq
 	})
 
 	payload, err := processor.processClosePeriod(&raftcmdpb.ClosePeriodOrder{}, mockStore)
@@ -100,6 +103,7 @@ func TestProcessClosePeriod_SucceedsWhileAnotherPeriodIsClosing(t *testing.T) {
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(100)).Times(2)
 	mockStore.EXPECT().GetDate().Return(now).Times(2)
 	mockStore.EXPECT().GetLastLogHash().Return(lastLogHash)
+	mockStore.EXPECT().GetNextAuditSequenceID().Return(uint64(20)).Times(2)
 	mockStore.EXPECT().IncrementNextPeriodID().Return(uint64(3))
 	mockStore.EXPECT().AddClosingPeriod(gomock.Any()).Do(func(period *commonpb.Period) {
 		require.Equal(t, uint64(2), period.GetId())
@@ -348,7 +352,7 @@ func TestProcessConfirmArchivePeriod_Success(t *testing.T) {
 	mockStore.EXPECT().UpdatePeriod(gomock.Any()).Do(func(period *commonpb.Period) {
 		require.Equal(t, commonpb.PeriodStatus_PERIOD_ARCHIVED, period.GetStatus())
 	})
-	mockStore.EXPECT().SetPurgeRange(uint64(1), uint64(1), uint64(42))
+	mockStore.EXPECT().SetPurgeRange(uint64(1), uint64(1), uint64(42), gomock.Any(), gomock.Any())
 
 	payload, err := processor.processConfirmArchivePeriod(&raftcmdpb.ConfirmArchivePeriodOrder{PeriodId: 1}, mockStore)
 	require.NoError(t, err)

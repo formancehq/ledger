@@ -61,6 +61,7 @@ type Buffered struct {
 	attrs                          *attributes.Attributes
 	Date                           *commonpb.Timestamp
 	NextSequenceID                 uint64
+	NextAuditSequenceID            uint64
 	NextQueryCheckpointID          uint64
 	LastLogHash                    []byte
 	Derived                        *DerivedRegistry
@@ -106,11 +107,14 @@ type numscriptDeleteEntry struct {
 	name   string
 }
 
-// purgeRange identifies a period's sequence range to delete from Pebble during Merge().
+// purgeRange identifies a period's sequence ranges to delete from Pebble during Merge().
+// Log and audit entries have independent sequence counters, so separate ranges are needed.
 type purgeRange struct {
-	periodID      uint64
-	startSequence uint64
-	closeSequence uint64
+	periodID           uint64
+	startSequence      uint64 // log sequence range start
+	closeSequence      uint64 // log sequence range end
+	startAuditSequence uint64 // audit sequence range start
+	closeAuditSequence uint64 // audit sequence range end
 }
 
 func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
@@ -462,6 +466,7 @@ func NewBuffer(at *commonpb.Timestamp, fsm *Machine) *Buffered {
 		Date:                  at,
 		Derived:               NewDerivedRegistry(fsm.Registry),
 		NextSequenceID:        fsm.nextSequenceID,
+		NextAuditSequenceID:   fsm.nextAuditSequenceID,
 		NextQueryCheckpointID: fsm.nextQueryCheckpointID,
 		LastLogHash:           fsm.lastLogHash,
 		periods:               fsm.Periods.Clone(),
@@ -685,6 +690,10 @@ func (b *Buffered) GetNextSequenceID() uint64 {
 	return b.NextSequenceID
 }
 
+func (b *Buffered) GetNextAuditSequenceID() uint64 {
+	return b.NextAuditSequenceID
+}
+
 func (b *Buffered) IncrementNextSequenceID() uint64 {
 	id := b.NextSequenceID
 	b.NextSequenceID++
@@ -822,14 +831,16 @@ func (b *Buffered) UpdatePeriod(period *commonpb.Period) {
 	b.changedPeriods = append(b.changedPeriods, period)
 }
 
-// SetPurgeRange records a sequence range to be purged (logs + audit entries) during Merge().
-// periodID identifies the archived period to remove from the in-memory map.
-// Can be called multiple times to purge multiple periods in the same batch.
-func (b *Buffered) SetPurgeRange(periodID, startSequence, closeSequence uint64) {
+// SetPurgeRange records sequence ranges to be purged during Merge().
+// Log and audit entries have independent sequence counters (audit advances
+// slower due to batching), so both ranges are needed for correct purging.
+func (b *Buffered) SetPurgeRange(periodID, startSequence, closeSequence, startAuditSequence, closeAuditSequence uint64) {
 	b.purgeRanges = append(b.purgeRanges, purgeRange{
-		periodID:      periodID,
-		startSequence: startSequence,
-		closeSequence: closeSequence,
+		periodID:           periodID,
+		startSequence:      startSequence,
+		closeSequence:      closeSequence,
+		startAuditSequence: startAuditSequence,
+		closeAuditSequence: closeAuditSequence,
 	})
 }
 
@@ -848,15 +859,21 @@ func (b *Buffered) SetPendingArchive(periodID, startSequence, closeSequence uint
 // It also cleans up per-ledger data for any deleted ledgers whose
 // DeleteLedger log falls within the purge range.
 func (b *Buffered) executePurge(batch *dal.Batch, pr *purgeRange) error {
-	// Sequence-keyed prefixes (logs, audit): efficient range delete.
-	for _, prefix := range dal.ColdSequencePrefixes {
-		start := dal.NewKeyBuilder().PutByte(prefix).PutUint64(pr.startSequence).Build()
+	// Logs: purge using log sequence range.
+	logStart := dal.NewKeyBuilder().PutByte(dal.KeyPrefixLog).PutUint64(pr.startSequence).Build()
+	logEnd := dal.NewKeyBuilder().PutByte(dal.KeyPrefixLog).PutUint64(pr.closeSequence + 1).Build()
 
-		end := dal.NewKeyBuilder().PutByte(prefix).PutUint64(pr.closeSequence + 1).Build()
+	if err := batch.DeleteRange(logStart, logEnd, nil); err != nil {
+		return fmt.Errorf("purging logs [%d, %d]: %w", pr.startSequence, pr.closeSequence, err)
+	}
 
-		err := batch.DeleteRange(start, end, nil)
-		if err != nil {
-			return fmt.Errorf("purging prefix 0x%02x [%d, %d]: %w", prefix, pr.startSequence, pr.closeSequence, err)
+	// Audit: purge using audit sequence range (independent counter, advances slower).
+	if pr.closeAuditSequence >= pr.startAuditSequence {
+		auditStart := dal.NewKeyBuilder().PutByte(dal.KeyPrefixAudit).PutUint64(pr.startAuditSequence).Build()
+		auditEnd := dal.NewKeyBuilder().PutByte(dal.KeyPrefixAudit).PutUint64(pr.closeAuditSequence + 1).Build()
+
+		if err := batch.DeleteRange(auditStart, auditEnd, nil); err != nil {
+			return fmt.Errorf("purging audit [%d, %d]: %w", pr.startAuditSequence, pr.closeAuditSequence, err)
 		}
 	}
 

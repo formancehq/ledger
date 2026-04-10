@@ -19,15 +19,21 @@ func (p *RequestProcessor) processClosePeriod(_ *raftcmdpb.ClosePeriodOrder, s I
 	currentPeriod.CloseSequence = s.GetNextSequenceID()
 	currentPeriod.End = s.GetDate()
 	currentPeriod.LastLogHash = s.GetLastLogHash()
+	// Capture the audit sequence at close time. The next audit sequence ID is
+	// one past the last written, so close_audit_sequence = next - 1.
+	// If no audit entries were written (nextAudit == startAudit), close equals
+	// start - 1, which makes the purge range empty (correct: nothing to purge).
+	currentPeriod.CloseAuditSequence = s.GetNextAuditSequenceID() - 1
 	s.AddClosingPeriod(currentPeriod)
 
 	// Create new OPEN period
 	// StartSequence is the next sequence after the close boundary (close_sequence is the ClosePeriod log itself)
 	newPeriod := &commonpb.Period{
-		Id:            s.IncrementNextPeriodID(),
-		Start:         s.GetDate(),
-		Status:        commonpb.PeriodStatus_PERIOD_OPEN,
-		StartSequence: s.GetNextSequenceID() + 1,
+		Id:                 s.IncrementNextPeriodID(),
+		Start:              s.GetDate(),
+		Status:             commonpb.PeriodStatus_PERIOD_OPEN,
+		StartSequence:      s.GetNextSequenceID() + 1,
+		StartAuditSequence: s.GetNextAuditSequenceID(),
 	}
 	s.SetCurrentOpenPeriod(newPeriod)
 
@@ -118,8 +124,10 @@ func (p *RequestProcessor) processConfirmArchivePeriod(order *raftcmdpb.ConfirmA
 	period.Status = commonpb.PeriodStatus_PERIOD_ARCHIVED
 	s.UpdatePeriod(period)
 
-	// Signal the FSM to purge logs and audit entries for this period's sequence range
-	s.SetPurgeRange(period.GetId(), period.GetStartSequence(), period.GetCloseSequence())
+	// Signal the FSM to purge logs and audit entries for this period's sequence ranges.
+	// Logs and audit entries have independent sequence counters, so both ranges are needed.
+	s.SetPurgeRange(period.GetId(), period.GetStartSequence(), period.GetCloseSequence(),
+		period.GetStartAuditSequence(), period.GetCloseAuditSequence())
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_ConfirmArchivePeriod{
