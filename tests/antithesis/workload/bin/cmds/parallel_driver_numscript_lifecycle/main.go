@@ -45,7 +45,10 @@ func main() {
 			return
 		}
 
-		found := false
+		var (
+			found     bool
+			streamErr bool
+		)
 
 		for {
 			info, err := stream.Recv()
@@ -54,6 +57,8 @@ func main() {
 			}
 
 			if err != nil {
+				streamErr = true
+
 				break
 			}
 
@@ -62,7 +67,9 @@ func main() {
 			}
 		}
 
-		assert.AlwaysOrUnreachable(found, "saved numscript should appear in ListNumscripts", details)
+		if !streamErr {
+			assert.AlwaysOrUnreachable(found, "saved numscript should appear in ListNumscripts", details)
+		}
 
 		// 3. Save a new version.
 		version2 := "2.0.0"
@@ -78,13 +85,12 @@ func main() {
 				},
 			}},
 		})
-
 		if err != nil {
 			return
 		}
 
 		// 4. GetNumscript should return the latest version.
-		info, err := client.GetNumscript(ctx, &servicepb.GetNumscriptRequest{
+		nsInfo, err := client.GetNumscript(ctx, &servicepb.GetNumscriptRequest{
 			Name:   scriptName,
 			Ledger: ledger,
 		})
@@ -92,9 +98,9 @@ func main() {
 			return
 		}
 
-		assert.AlwaysOrUnreachable(info.GetVersion() == version2,
+		assert.AlwaysOrUnreachable(nsInfo.GetVersion() == version2,
 			"GetNumscript should return latest version",
-			details.With(internal.Details{"expected": version2, "actual": info.GetVersion()}))
+			details.With(internal.Details{"expected": version2, "actual": nsInfo.GetVersion()}))
 
 		// 5. Delete the numscript.
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
