@@ -15,13 +15,13 @@ func NewBackupCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "backup",
 		Aliases: []string{"bk"},
-		Short:   "Perform an incremental backup",
-		Long:    "Perform an incremental backup of the Pebble store to a filesystem path or S3 bucket",
+		Short:   "Perform an backup",
+		Long:    "Perform an backup of the Pebble store to a filesystem path or S3 bucket",
 		RunE:    runBackup,
 	}
 
-	cmd.Flags().String("driver", "", "Backup storage driver: 'filesystem' or 's3' (required)")
-	cmd.Flags().String("path", "", "Base path for filesystem backup storage (required when driver=filesystem)")
+	cmd.Flags().String("driver", "s3", "Backup storage driver (only 's3' is supported)")
+	cmd.Flags().String("path", "", "Reserved for future use")
 	cmd.Flags().String("bucket-id", "", "Namespace prefix for backup files (default: cluster-id)")
 	cmd.Flags().String("s3-bucket", "", "S3 bucket name (required when driver=s3)")
 	cmd.Flags().String("s3-region", "", "AWS region for S3 bucket")
@@ -56,10 +56,10 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 
 	var spinner *pterm.SpinnerPrinter
 	if !structuredOutput {
-		spinner, _ = pterm.DefaultSpinner.Start("Running incremental backup...")
+		spinner, _ = pterm.DefaultSpinner.Start("Running backup...")
 	}
 
-	resp, err := client.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
+	resp, err := client.Backup(ctx, &clusterpb.BackupRequest{
 		Driver:     driver,
 		BasePath:   basePath,
 		BucketId:   bucketID,
@@ -72,11 +72,11 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 			_ = spinner.Stop()
 		}
 
-		return cmdutil.FormatGRPCError("incremental backup failed", err)
+		return cmdutil.FormatGRPCError("backup failed", err)
 	}
 
 	if spinner != nil {
-		spinner.Success(fmt.Sprintf("Incremental backup completed: %d uploaded, %d deleted, %d total (%dms)",
+		spinner.Success(fmt.Sprintf("Backup completed: %d uploaded, %d deleted, %d total (%dms)",
 			resp.GetFilesUploaded(), resp.GetFilesDeleted(), resp.GetTotalFiles(), resp.GetDurationMs()))
 	}
 

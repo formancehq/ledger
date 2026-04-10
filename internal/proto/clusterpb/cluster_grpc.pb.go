@@ -23,14 +23,13 @@ const (
 	ClusterService_GetDiskUsage_FullMethodName           = "/cluster.ClusterService/GetDiskUsage"
 	ClusterService_GetNodeTime_FullMethodName            = "/cluster.ClusterService/GetNodeTime"
 	ClusterService_TransferLeadership_FullMethodName     = "/cluster.ClusterService/TransferLeadership"
-	ClusterService_Backup_FullMethodName                 = "/cluster.ClusterService/Backup"
 	ClusterService_AddLearner_FullMethodName             = "/cluster.ClusterService/AddLearner"
 	ClusterService_PromoteLearner_FullMethodName         = "/cluster.ClusterService/PromoteLearner"
 	ClusterService_RemoveNode_FullMethodName             = "/cluster.ClusterService/RemoveNode"
 	ClusterService_CompactStore_FullMethodName           = "/cluster.ClusterService/CompactStore"
 	ClusterService_CompactReadIndex_FullMethodName       = "/cluster.ClusterService/CompactReadIndex"
 	ClusterService_CreateCheckpoint_FullMethodName       = "/cluster.ClusterService/CreateCheckpoint"
-	ClusterService_IncrementalBackup_FullMethodName      = "/cluster.ClusterService/IncrementalBackup"
+	ClusterService_Backup_FullMethodName                 = "/cluster.ClusterService/Backup"
 	ClusterService_CreateQueryCheckpoint_FullMethodName  = "/cluster.ClusterService/CreateQueryCheckpoint"
 	ClusterService_DeleteQueryCheckpoint_FullMethodName  = "/cluster.ClusterService/DeleteQueryCheckpoint"
 	ClusterService_ListQueryCheckpoints_FullMethodName   = "/cluster.ClusterService/ListQueryCheckpoints"
@@ -51,9 +50,6 @@ type ClusterServiceClient interface {
 	GetNodeTime(ctx context.Context, in *GetNodeTimeRequest, opts ...grpc.CallOption) (*NodeTime, error)
 	// TransferLeadership transfers Raft leadership to a specific node
 	TransferLeadership(ctx context.Context, in *TransferLeadershipRequest, opts ...grpc.CallOption) (*TransferLeadershipResponse, error)
-	// Backup streams a point-in-time backup of the Pebble store as a tar archive.
-	// The request is forwarded to the leader to ensure the most up-to-date state.
-	Backup(ctx context.Context, in *BackupRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[BackupResponse], error)
 	// AddLearner adds a non-voting (learner) node to the Raft cluster.
 	// The request is forwarded to the leader.
 	AddLearner(ctx context.Context, in *AddLearnerRequest, opts ...grpc.CallOption) (*AddLearnerResponse, error)
@@ -72,10 +68,10 @@ type ClusterServiceClient interface {
 	// CreateCheckpoint creates a Pebble checkpoint of the current live database state.
 	// Node-local operation (not forwarded to leader).
 	CreateCheckpoint(ctx context.Context, in *CreateCheckpointRequest, opts ...grpc.CallOption) (*CreateCheckpointResponse, error)
-	// IncrementalBackup performs a one-shot incremental backup of the Pebble store.
+	// Backup performs a one-shot incremental backup of the Pebble store.
 	// The caller specifies the storage destination (filesystem or S3) in the request.
 	// The request is forwarded to the leader.
-	IncrementalBackup(ctx context.Context, in *IncrementalBackupRequest, opts ...grpc.CallOption) (*IncrementalBackupResponse, error)
+	Backup(ctx context.Context, in *BackupRequest, opts ...grpc.CallOption) (*BackupResponse, error)
 	// CreateQueryCheckpoint creates a physical Pebble checkpoint via Raft consensus.
 	// The checkpoint captures both the main store and read index, enabling
 	// point-in-time queries on any node. Forwarded to leader.
@@ -139,25 +135,6 @@ func (c *clusterServiceClient) TransferLeadership(ctx context.Context, in *Trans
 	return out, nil
 }
 
-func (c *clusterServiceClient) Backup(ctx context.Context, in *BackupRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[BackupResponse], error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &ClusterService_ServiceDesc.Streams[0], ClusterService_Backup_FullMethodName, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &grpc.GenericClientStream[BackupRequest, BackupResponse]{ClientStream: stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type ClusterService_BackupClient = grpc.ServerStreamingClient[BackupResponse]
-
 func (c *clusterServiceClient) AddLearner(ctx context.Context, in *AddLearnerRequest, opts ...grpc.CallOption) (*AddLearnerResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AddLearnerResponse)
@@ -218,10 +195,10 @@ func (c *clusterServiceClient) CreateCheckpoint(ctx context.Context, in *CreateC
 	return out, nil
 }
 
-func (c *clusterServiceClient) IncrementalBackup(ctx context.Context, in *IncrementalBackupRequest, opts ...grpc.CallOption) (*IncrementalBackupResponse, error) {
+func (c *clusterServiceClient) Backup(ctx context.Context, in *BackupRequest, opts ...grpc.CallOption) (*BackupResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(IncrementalBackupResponse)
-	err := c.cc.Invoke(ctx, ClusterService_IncrementalBackup_FullMethodName, in, out, cOpts...)
+	out := new(BackupResponse)
+	err := c.cc.Invoke(ctx, ClusterService_Backup_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -282,9 +259,6 @@ type ClusterServiceServer interface {
 	GetNodeTime(context.Context, *GetNodeTimeRequest) (*NodeTime, error)
 	// TransferLeadership transfers Raft leadership to a specific node
 	TransferLeadership(context.Context, *TransferLeadershipRequest) (*TransferLeadershipResponse, error)
-	// Backup streams a point-in-time backup of the Pebble store as a tar archive.
-	// The request is forwarded to the leader to ensure the most up-to-date state.
-	Backup(*BackupRequest, grpc.ServerStreamingServer[BackupResponse]) error
 	// AddLearner adds a non-voting (learner) node to the Raft cluster.
 	// The request is forwarded to the leader.
 	AddLearner(context.Context, *AddLearnerRequest) (*AddLearnerResponse, error)
@@ -303,10 +277,10 @@ type ClusterServiceServer interface {
 	// CreateCheckpoint creates a Pebble checkpoint of the current live database state.
 	// Node-local operation (not forwarded to leader).
 	CreateCheckpoint(context.Context, *CreateCheckpointRequest) (*CreateCheckpointResponse, error)
-	// IncrementalBackup performs a one-shot incremental backup of the Pebble store.
+	// Backup performs a one-shot incremental backup of the Pebble store.
 	// The caller specifies the storage destination (filesystem or S3) in the request.
 	// The request is forwarded to the leader.
-	IncrementalBackup(context.Context, *IncrementalBackupRequest) (*IncrementalBackupResponse, error)
+	Backup(context.Context, *BackupRequest) (*BackupResponse, error)
 	// CreateQueryCheckpoint creates a physical Pebble checkpoint via Raft consensus.
 	// The checkpoint captures both the main store and read index, enabling
 	// point-in-time queries on any node. Forwarded to leader.
@@ -342,9 +316,6 @@ func (UnimplementedClusterServiceServer) GetNodeTime(context.Context, *GetNodeTi
 func (UnimplementedClusterServiceServer) TransferLeadership(context.Context, *TransferLeadershipRequest) (*TransferLeadershipResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method TransferLeadership not implemented")
 }
-func (UnimplementedClusterServiceServer) Backup(*BackupRequest, grpc.ServerStreamingServer[BackupResponse]) error {
-	return status.Error(codes.Unimplemented, "method Backup not implemented")
-}
 func (UnimplementedClusterServiceServer) AddLearner(context.Context, *AddLearnerRequest) (*AddLearnerResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AddLearner not implemented")
 }
@@ -363,8 +334,8 @@ func (UnimplementedClusterServiceServer) CompactReadIndex(context.Context, *Comp
 func (UnimplementedClusterServiceServer) CreateCheckpoint(context.Context, *CreateCheckpointRequest) (*CreateCheckpointResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateCheckpoint not implemented")
 }
-func (UnimplementedClusterServiceServer) IncrementalBackup(context.Context, *IncrementalBackupRequest) (*IncrementalBackupResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method IncrementalBackup not implemented")
+func (UnimplementedClusterServiceServer) Backup(context.Context, *BackupRequest) (*BackupResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Backup not implemented")
 }
 func (UnimplementedClusterServiceServer) CreateQueryCheckpoint(context.Context, *CreateQueryCheckpointRequest) (*CreateQueryCheckpointResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateQueryCheckpoint not implemented")
@@ -470,17 +441,6 @@ func _ClusterService_TransferLeadership_Handler(srv interface{}, ctx context.Con
 	}
 	return interceptor(ctx, in, info, handler)
 }
-
-func _ClusterService_Backup_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(BackupRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(ClusterServiceServer).Backup(m, &grpc.GenericServerStream[BackupRequest, BackupResponse]{ServerStream: stream})
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type ClusterService_BackupServer = grpc.ServerStreamingServer[BackupResponse]
 
 func _ClusterService_AddLearner_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AddLearnerRequest)
@@ -590,20 +550,20 @@ func _ClusterService_CreateCheckpoint_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ClusterService_IncrementalBackup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(IncrementalBackupRequest)
+func _ClusterService_Backup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BackupRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ClusterServiceServer).IncrementalBackup(ctx, in)
+		return srv.(ClusterServiceServer).Backup(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: ClusterService_IncrementalBackup_FullMethodName,
+		FullMethod: ClusterService_Backup_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ClusterServiceServer).IncrementalBackup(ctx, req.(*IncrementalBackupRequest))
+		return srv.(ClusterServiceServer).Backup(ctx, req.(*BackupRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -728,8 +688,8 @@ var ClusterService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ClusterService_CreateCheckpoint_Handler,
 		},
 		{
-			MethodName: "IncrementalBackup",
-			Handler:    _ClusterService_IncrementalBackup_Handler,
+			MethodName: "Backup",
+			Handler:    _ClusterService_Backup_Handler,
 		},
 		{
 			MethodName: "CreateQueryCheckpoint",
@@ -748,12 +708,6 @@ var ClusterService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ClusterService_GetQueryCheckpointInfo_Handler,
 		},
 	},
-	Streams: []grpc.StreamDesc{
-		{
-			StreamName:    "Backup",
-			Handler:       _ClusterService_Backup_Handler,
-			ServerStreams: true,
-		},
-	},
+	Streams:  []grpc.StreamDesc{},
 	Metadata: "cluster.proto",
 }

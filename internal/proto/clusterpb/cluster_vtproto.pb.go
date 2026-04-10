@@ -396,6 +396,12 @@ func (m *BackupRequest) CloneVT() *BackupRequest {
 		return (*BackupRequest)(nil)
 	}
 	r := new(BackupRequest)
+	r.Driver = m.Driver
+	r.BasePath = m.BasePath
+	r.BucketId = m.BucketId
+	r.S3Bucket = m.S3Bucket
+	r.S3Region = m.S3Region
+	r.S3Endpoint = m.S3Endpoint
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -412,55 +418,6 @@ func (m *BackupResponse) CloneVT() *BackupResponse {
 		return (*BackupResponse)(nil)
 	}
 	r := new(BackupResponse)
-	r.ChunkOffset = m.ChunkOffset
-	r.Eof = m.Eof
-	r.ContentSha256 = m.ContentSha256
-	r.ContentSize = m.ContentSize
-	r.EstimatedTotalSize = m.EstimatedTotalSize
-	r.StatusMessage = m.StatusMessage
-	if rhs := m.Data; rhs != nil {
-		tmpBytes := make([]byte, len(rhs))
-		copy(tmpBytes, rhs)
-		r.Data = tmpBytes
-	}
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *BackupResponse) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
-func (m *IncrementalBackupRequest) CloneVT() *IncrementalBackupRequest {
-	if m == nil {
-		return (*IncrementalBackupRequest)(nil)
-	}
-	r := new(IncrementalBackupRequest)
-	r.Driver = m.Driver
-	r.BasePath = m.BasePath
-	r.BucketId = m.BucketId
-	r.S3Bucket = m.S3Bucket
-	r.S3Region = m.S3Region
-	r.S3Endpoint = m.S3Endpoint
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *IncrementalBackupRequest) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
-func (m *IncrementalBackupResponse) CloneVT() *IncrementalBackupResponse {
-	if m == nil {
-		return (*IncrementalBackupResponse)(nil)
-	}
-	r := new(IncrementalBackupResponse)
 	r.FilesUploaded = m.FilesUploaded
 	r.FilesDeleted = m.FilesDeleted
 	r.TotalFiles = m.TotalFiles
@@ -472,7 +429,7 @@ func (m *IncrementalBackupResponse) CloneVT() *IncrementalBackupResponse {
 	return r
 }
 
-func (m *IncrementalBackupResponse) CloneMessageVT() proto.Message {
+func (m *BackupResponse) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -1225,59 +1182,6 @@ func (this *BackupRequest) EqualVT(that *BackupRequest) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *BackupRequest) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*BackupRequest)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
-func (this *BackupResponse) EqualVT(that *BackupResponse) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if this.ChunkOffset != that.ChunkOffset {
-		return false
-	}
-	if string(this.Data) != string(that.Data) {
-		return false
-	}
-	if this.Eof != that.Eof {
-		return false
-	}
-	if this.ContentSha256 != that.ContentSha256 {
-		return false
-	}
-	if this.ContentSize != that.ContentSize {
-		return false
-	}
-	if this.EstimatedTotalSize != that.EstimatedTotalSize {
-		return false
-	}
-	if this.StatusMessage != that.StatusMessage {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *BackupResponse) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*BackupResponse)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
-func (this *IncrementalBackupRequest) EqualVT(that *IncrementalBackupRequest) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
 	if this.Driver != that.Driver {
 		return false
 	}
@@ -1299,14 +1203,14 @@ func (this *IncrementalBackupRequest) EqualVT(that *IncrementalBackupRequest) bo
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *IncrementalBackupRequest) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*IncrementalBackupRequest)
+func (this *BackupRequest) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*BackupRequest)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *IncrementalBackupResponse) EqualVT(that *IncrementalBackupResponse) bool {
+func (this *BackupResponse) EqualVT(that *BackupResponse) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -1327,8 +1231,8 @@ func (this *IncrementalBackupResponse) EqualVT(that *IncrementalBackupResponse) 
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *IncrementalBackupResponse) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*IncrementalBackupResponse)
+func (this *BackupResponse) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*BackupResponse)
 	if !ok {
 		return false
 	}
@@ -2643,118 +2547,6 @@ func (m *BackupRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	return len(dAtA) - i, nil
-}
-
-func (m *BackupResponse) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *BackupResponse) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *BackupResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if len(m.StatusMessage) > 0 {
-		i -= len(m.StatusMessage)
-		copy(dAtA[i:], m.StatusMessage)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.StatusMessage)))
-		i--
-		dAtA[i] = 0x3a
-	}
-	if m.EstimatedTotalSize != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.EstimatedTotalSize))
-		i--
-		dAtA[i] = 0x30
-	}
-	if m.ContentSize != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ContentSize))
-		i--
-		dAtA[i] = 0x28
-	}
-	if len(m.ContentSha256) > 0 {
-		i -= len(m.ContentSha256)
-		copy(dAtA[i:], m.ContentSha256)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ContentSha256)))
-		i--
-		dAtA[i] = 0x22
-	}
-	if m.Eof {
-		i--
-		if m.Eof {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x18
-	}
-	if len(m.Data) > 0 {
-		i -= len(m.Data)
-		copy(dAtA[i:], m.Data)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Data)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.ChunkOffset != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ChunkOffset))
-		i--
-		dAtA[i] = 0x8
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *IncrementalBackupRequest) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *IncrementalBackupRequest) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *IncrementalBackupRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
 	if len(m.S3Endpoint) > 0 {
 		i -= len(m.S3Endpoint)
 		copy(dAtA[i:], m.S3Endpoint)
@@ -2800,7 +2592,7 @@ func (m *IncrementalBackupRequest) MarshalToSizedBufferVT(dAtA []byte) (int, err
 	return len(dAtA) - i, nil
 }
 
-func (m *IncrementalBackupResponse) MarshalVT() (dAtA []byte, err error) {
+func (m *BackupResponse) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -2813,12 +2605,12 @@ func (m *IncrementalBackupResponse) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *IncrementalBackupResponse) MarshalToVT(dAtA []byte) (int, error) {
+func (m *BackupResponse) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *IncrementalBackupResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *BackupResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -3781,50 +3573,6 @@ func (m *BackupRequest) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *BackupResponse) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.ChunkOffset != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ChunkOffset))
-	}
-	l = len(m.Data)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Eof {
-		n += 2
-	}
-	l = len(m.ContentSha256)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.ContentSize != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ContentSize))
-	}
-	if m.EstimatedTotalSize != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.EstimatedTotalSize))
-	}
-	l = len(m.StatusMessage)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *IncrementalBackupRequest) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
 	l = len(m.Driver)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
@@ -3853,7 +3601,7 @@ func (m *IncrementalBackupRequest) SizeVT() (n int) {
 	return n
 }
 
-func (m *IncrementalBackupResponse) SizeVT() (n int) {
+func (m *BackupResponse) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -6437,283 +6185,6 @@ func (m *BackupRequest) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: BackupRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *BackupResponse) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: BackupResponse: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: BackupResponse: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ChunkOffset", wireType)
-			}
-			m.ChunkOffset = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.ChunkOffset |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Data", wireType)
-			}
-			var byteLen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				byteLen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if byteLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + byteLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Data = append(m.Data[:0], dAtA[iNdEx:postIndex]...)
-			if m.Data == nil {
-				m.Data = []byte{}
-			}
-			iNdEx = postIndex
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Eof", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.Eof = bool(v != 0)
-		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ContentSha256", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.ContentSha256 = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 5:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ContentSize", wireType)
-			}
-			m.ContentSize = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.ContentSize |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 6:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field EstimatedTotalSize", wireType)
-			}
-			m.EstimatedTotalSize = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.EstimatedTotalSize |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 7:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field StatusMessage", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.StatusMessage = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *IncrementalBackupRequest) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: IncrementalBackupRequest: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: IncrementalBackupRequest: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
 		case 1:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Driver", wireType)
@@ -6928,7 +6399,7 @@ func (m *IncrementalBackupRequest) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *IncrementalBackupResponse) UnmarshalVT(dAtA []byte) error {
+func (m *BackupResponse) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -6951,10 +6422,10 @@ func (m *IncrementalBackupResponse) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: IncrementalBackupResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: BackupResponse: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: IncrementalBackupResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: BackupResponse: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:

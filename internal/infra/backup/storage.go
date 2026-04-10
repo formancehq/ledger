@@ -18,12 +18,6 @@ type Storage interface {
 // NewStorage creates a Storage implementation based on the driver name.
 func NewStorage(driver, basePath, s3Bucket, s3Region, s3Endpoint string) (Storage, error) {
 	switch driver {
-	case "filesystem":
-		if basePath == "" {
-			return nil, errors.New("base_path is required for filesystem driver")
-		}
-
-		return NewFilesystemStorage(basePath), nil
 	case "s3":
 		if s3Bucket == "" {
 			return nil, errors.New("s3_bucket is required for s3 driver")
@@ -31,6 +25,6 @@ func NewStorage(driver, basePath, s3Bucket, s3Region, s3Endpoint string) (Storag
 
 		return NewS3BackupStorage(s3Bucket, s3Region, s3Endpoint)
 	default:
-		return nil, fmt.Errorf("unknown backup driver: %q", driver)
+		return nil, fmt.Errorf("unsupported backup driver: %q (only \"s3\" is supported)", driver)
 	}
 }

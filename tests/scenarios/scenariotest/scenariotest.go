@@ -5,7 +5,6 @@ package scenariotest
 import (
 	"context"
 	"fmt"
-	"io"
 	"math/big"
 	"os"
 	"testing"
@@ -16,7 +15,6 @@ import (
 	cmdserver "github.com/formancehq/ledger-v3-poc/cmd/server"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/restorepb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/formancehq/ledger-v3-poc/pkg/testserver"
@@ -72,71 +70,6 @@ func (sc *ScenarioCluster) Restart() {
 	// Restart without --bootstrap (WAL replay).
 	sc.bootstrap = false
 	sc.startServer()
-}
-
-// BackupAndRestore takes a backup, restores it to fresh directories, and
-// restarts the server on the restored data. After this call, Client and Cluster
-// point to the restored server and sc.walDir/sc.dataDir have been updated.
-func (sc *ScenarioCluster) BackupAndRestore() {
-	sc.t.Helper()
-
-	// 1. Take backup to memory.
-	backup, err := actions.BackupToBuffer(sc.ctx, sc.Cluster)
-	require.NoError(sc.t, err, "BackupToBuffer failed")
-	require.NotEmpty(sc.t, backup.Data, "backup should produce data")
-	sc.t.Logf("Backup captured: %d bytes, SHA-256=%s", len(backup.Data), backup.Hash)
-
-	// 2. Stop current server.
-	_ = sc.conn.Close()
-	stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	require.NoError(sc.t, sc.server.Stop(stopCtx), "failed to stop server for backup-restore")
-
-	// 3. Start restore-mode server on fresh dirs.
-	restoreWalDir := sc.t.TempDir()
-	restoreDataDir := sc.t.TempDir()
-
-	raftPort := sc.grpcPort - 1000
-	restoreServer := testservice.New(cmdserver.NewRunCommand,
-		testservice.WithInstruments(
-			testservice.OutputInstrumentation(os.Stderr),
-			testserver.WithNodeID(1),
-			testserver.WithClusterID("scenario-cluster"),
-			testserver.WithHTTPPort(sc.httpPort),
-			testserver.WithWalDir(restoreWalDir),
-			testserver.WithDataDir(restoreDataDir),
-			testserver.WithRaftPort(raftPort),
-			testserver.WithGRPCPort(sc.grpcPort),
-			testserver.WithDebug(os.Getenv("DEBUG") == "true"),
-			testserver.WithRestore(),
-		),
-	)
-	require.NoError(sc.t, restoreServer.Start(sc.ctx))
-
-	restoreConn, err := grpc.NewClient(
-		fmt.Sprintf("localhost:%d", sc.grpcPort),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
-	require.NoError(sc.t, err)
-	restoreClient := restorepb.NewRestoreServiceClient(restoreConn)
-
-	// 4. Upload, validate, finalize.
-	require.NoError(sc.t, actions.UploadAndFinalizeRestore(sc.ctx, restoreClient, backup),
-		"UploadAndFinalizeRestore failed")
-
-	// 5. Stop restore server.
-	_ = restoreConn.Close()
-	stopCtx2, cancel2 := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel2()
-	require.NoError(sc.t, restoreServer.Stop(stopCtx2), "failed to stop restore server")
-
-	// 6. Switch to restored dirs and start normal server with --bootstrap.
-	sc.walDir = restoreWalDir
-	sc.dataDir = restoreDataDir
-	sc.bootstrap = true
-	sc.startServer()
-
-	sc.t.Logf("Backup-restore complete: server running on restored data")
 }
 
 func (sc *ScenarioCluster) startServer() {
@@ -235,21 +168,10 @@ func CheckStoreIntegrity(t *testing.T, ctx context.Context, client servicepb.Buc
 	require.NotEmpty(t, result.Progress, "should emit at least one progress event")
 }
 
-// PerformBackup runs the Backup RPC and verifies it produces a non-empty tar archive.
-func PerformBackup(t *testing.T, ctx context.Context, clusterClient clusterpb.ClusterServiceClient) {
-	t.Helper()
-
-	totalBytes, sha256, err := actions.StreamBackup(ctx, clusterClient, io.Discard)
-	require.NoError(t, err, "Backup RPC failed")
-	require.NotZero(t, totalBytes, "backup should produce data")
-	require.NotEmpty(t, sha256, "backup should report content SHA-256")
-	t.Logf("Backup complete: %d bytes, SHA-256=%s", totalBytes, sha256)
-}
-
 // RunPostTestPhases runs the standard tail phases common to all scenario tests:
-// StoreCheck -> Backup -> RestartAndVerify -> BackupRestoreAndVerify.
+// StoreCheck -> RestartAndVerify.
 // The verifyFn callback runs the scenario-specific invariant checks; it receives
-// the current client (which may change after restart/restore).
+// the current client (which may change after restart).
 func RunPostTestPhases(t *testing.T, sc *ScenarioCluster, verifyFn func(t *testing.T, client servicepb.BucketServiceClient)) {
 	t.Helper()
 
@@ -259,18 +181,8 @@ func RunPostTestPhases(t *testing.T, sc *ScenarioCluster, verifyFn func(t *testi
 		CheckStoreIntegrity(t, ctx, sc.Client)
 	})
 
-	t.Run("Backup", func(t *testing.T) {
-		PerformBackup(t, ctx, sc.Cluster)
-	})
-
 	t.Run("RestartAndVerify", func(t *testing.T) {
 		sc.Restart()
-		CheckStoreIntegrity(t, ctx, sc.Client)
-		verifyFn(t, sc.Client)
-	})
-
-	t.Run("BackupRestoreAndVerify", func(t *testing.T) {
-		sc.BackupAndRestore()
 		CheckStoreIntegrity(t, ctx, sc.Client)
 		verifyFn(t, sc.Client)
 	})

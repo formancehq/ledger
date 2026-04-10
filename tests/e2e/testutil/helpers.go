@@ -119,8 +119,6 @@ var (
 
 	// Backup helpers.
 	CollectCheckStoreEvents  = actions.CollectCheckStoreEvents
-	StreamBackup             = actions.StreamBackup
-	BackupToBuffer           = actions.BackupToBuffer
 	UploadAndFinalizeRestore = actions.UploadAndFinalizeRestore
 )
 

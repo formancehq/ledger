@@ -72,7 +72,7 @@ func backupS3ObjectExists(ctx context.Context, client *s3.Client, key string) bo
 	return err == nil
 }
 
-var _ = Describe("S3 Incremental Backup", Ordered, func() {
+var _ = Describe("S3 Backup", Ordered, func() {
 	var (
 		ctx           context.Context
 		client        servicepb.BucketServiceClient
@@ -128,7 +128,7 @@ var _ = Describe("S3 Incremental Backup", Ordered, func() {
 		ctx, client, clusterClient = testutil.SetupSingleNode(s3BackupHTTPPort2, s3BackupGRPCPort2)
 	})
 
-	It("should create an incremental backup on S3", func() {
+	It("should create an backup on S3", func() {
 		// Create a ledger with data
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
@@ -149,8 +149,8 @@ var _ = Describe("S3 Incremental Backup", Ordered, func() {
 		})
 		Expect(err).To(Succeed())
 
-		// Trigger incremental backup via gRPC
-		resp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
+		// Trigger backup via gRPC
+		resp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
 			Driver:     "s3",
 			S3Bucket:   backupS3Bucket,
 			S3Region:   backupS3Region,
@@ -173,7 +173,7 @@ var _ = Describe("S3 Incremental Backup", Ordered, func() {
 		}
 	})
 
-	It("should update the backup incrementally on S3", func() {
+	It("should update the backup after adding more data on S3", func() {
 		manifestBefore, err := readS3BackupManifest(ctx, s3Client)
 		Expect(err).To(Succeed())
 		timestampBefore := manifestBefore.Timestamp
@@ -193,8 +193,8 @@ var _ = Describe("S3 Incremental Backup", Ordered, func() {
 			Expect(err).To(Succeed())
 		}
 
-		// Trigger another incremental backup
-		resp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
+		// Trigger another backup
+		resp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
 			Driver:     "s3",
 			S3Bucket:   backupS3Bucket,
 			S3Region:   backupS3Region,
@@ -212,7 +212,7 @@ var _ = Describe("S3 Incremental Backup", Ordered, func() {
 		for filename := range manifestAfter.Files {
 			key := backupS3DataPrefix + filename
 			Expect(backupS3ObjectExists(ctx, s3Client, key)).To(BeTrue(),
-				"S3 object %s should exist after incremental backup", key)
+				"S3 object %s should exist after backup", key)
 		}
 	})
 })

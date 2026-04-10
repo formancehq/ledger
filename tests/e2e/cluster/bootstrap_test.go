@@ -1,18 +1,18 @@
-//go:build e2e
+//go:build e2e && s3
 
 package cluster
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"io"
 	"math/big"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/store"
@@ -25,7 +25,16 @@ import (
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
 	"google.golang.org/grpc"
+)
+
+const (
+	bootstrapMinioAccessKey = "minioadmin"
+	bootstrapMinioSecretKey = "minioadmin"
+	bootstrapS3Bucket       = "bootstrap-backup"
+	bootstrapS3Region       = "us-east-1"
 )
 
 var _ = Describe("Bootstrap from backup", Ordered, func() {
@@ -42,18 +51,60 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		backupTarPath    string
 		bootstrapWalDir  string
 		bootstrapDataDir string
+		minioEndpoint    string
+		s3Client         *s3.Client
 	)
 
 	BeforeAll(func() {
 		ctx = logging.TestingContext()
 
-		var err error
+		// Start MinIO container
+		container, err := testcontainers.Run(context.Background(), "minio/minio:latest",
+			testcontainers.WithEnv(map[string]string{
+				"MINIO_ROOT_USER":     bootstrapMinioAccessKey,
+				"MINIO_ROOT_PASSWORD": bootstrapMinioSecretKey,
+			}),
+			testcontainers.WithCmd("server", "/data"),
+			testcontainers.WithExposedPorts("9000/tcp"),
+			testcontainers.WithWaitStrategy(
+				wait.ForHTTP("/minio/health/live").WithPort("9000/tcp").WithStartupTimeout(30*time.Second),
+			),
+		)
+		Expect(err).To(Succeed())
+		DeferCleanup(func() { _ = container.Terminate(context.Background()) })
+
+		minioEndpoint, err = container.Endpoint(context.Background(), "http")
+		Expect(err).To(Succeed())
+
+		// Create S3 client
+		cfg, err := awsconfig.LoadDefaultConfig(context.Background(),
+			awsconfig.WithRegion(bootstrapS3Region),
+			awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+				bootstrapMinioAccessKey, bootstrapMinioSecretKey, "",
+			)),
+		)
+		Expect(err).To(Succeed())
+
+		s3Client = s3.NewFromConfig(cfg, func(o *s3.Options) {
+			o.BaseEndpoint = aws.String(minioEndpoint)
+			o.UsePathStyle = true
+		})
+
+		// Create the backup bucket
+		_, err = s3Client.CreateBucket(context.Background(), &s3.CreateBucketInput{
+			Bucket: aws.String(bootstrapS3Bucket),
+		})
+		Expect(err).To(Succeed())
+
+		// Set AWS credentials for the ledger server process
+		GinkgoT().Setenv("AWS_ACCESS_KEY_ID", bootstrapMinioAccessKey)
+		GinkgoT().Setenv("AWS_SECRET_ACCESS_KEY", bootstrapMinioSecretKey)
+
 		bootstrapWalDir, err = os.MkdirTemp("", "bootstrap-wal-*")
 		Expect(err).To(Succeed())
 		bootstrapDataDir, err = os.MkdirTemp("", "bootstrap-data-*")
 		Expect(err).To(Succeed())
 
-		// Ensure cleanup regardless of which phase fails.
 		DeferCleanup(func() {
 			_ = os.RemoveAll(bootstrapWalDir)
 			_ = os.RemoveAll(bootstrapDataDir)
@@ -167,40 +218,24 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			Expect(sourceServer.Stop(stopCtx)).To(Succeed())
 		})
 
-		It("should take a backup and write it to a tar file", func() {
-			stream, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{})
+		It("should take a backup to S3 and write it to a tar file", func() {
+			resp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
+				Driver:     "s3",
+				S3Bucket:   bootstrapS3Bucket,
+				S3Region:   bootstrapS3Region,
+				S3Endpoint: minioEndpoint,
+			})
 			Expect(err).To(Succeed())
+			Expect(resp.GetTotalFiles()).To(BeNumerically(">", 0))
 
-			var buf bytes.Buffer
-			hash := sha256.New()
-			var expectedHash string
+			// Download backup from S3 and write as tar file
+			tarData, _ := downloadBackupAsTar(ctx, s3Client, bootstrapS3Bucket)
+			Expect(tarData).NotTo(BeEmpty())
 
-			for {
-				resp, err := stream.Recv()
-				if err == io.EOF {
-					break
-				}
-				Expect(err).To(Succeed())
-
-				if resp.Eof {
-					expectedHash = resp.ContentSha256
-					break
-				}
-
-				buf.Write(resp.Data)
-				_, err = hash.Write(resp.Data)
-				Expect(err).To(Succeed())
-			}
-
-			actualHash := hex.EncodeToString(hash.Sum(nil))
-			Expect(actualHash).To(Equal(expectedHash))
-			Expect(buf.Len()).To(BeNumerically(">", 0))
-
-			// Write to a temp tar file for the CLI command to consume.
 			tmpFile, err := os.CreateTemp("", "bootstrap-backup-*.tar")
 			Expect(err).To(Succeed())
 
-			_, err = tmpFile.Write(buf.Bytes())
+			_, err = tmpFile.Write(tarData)
 			Expect(err).To(Succeed())
 			Expect(tmpFile.Close()).To(Succeed())
 

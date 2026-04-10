@@ -28,10 +28,10 @@ type Result struct {
 	Duration      time.Duration
 }
 
-// RunIncrementalBackup performs a single incremental backup cycle.
+// RunBackup performs a single backup cycle.
 // It creates a Pebble checkpoint, diffs against the previous manifest,
 // uploads new files, deletes stale ones, and writes an updated manifest.
-func RunIncrementalBackup(
+func RunBackup(
 	ctx context.Context,
 	logger logging.Logger,
 	store *dal.Store,
@@ -110,7 +110,7 @@ func RunIncrementalBackup(
 		"uploaded": len(toUpload),
 		"deleted":  len(toDelete),
 		"total":    len(localFiles),
-	}).Infof("Incremental backup completed")
+	}).Infof("Backup completed")
 
 	return &Result{
 		FilesUploaded: len(toUpload),

@@ -1,21 +1,29 @@
-//go:build e2e
+//go:build e2e && s3
 
 package cluster
 
 import (
+	"archive/tar"
 	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"math/big"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	cmdserver "github.com/formancehq/ledger-v3-poc/cmd/server"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/backup"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/restorepb"
@@ -25,8 +33,17 @@ import (
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+)
+
+const (
+	restoreMinioAccessKey = "minioadmin"
+	restoreMinioSecretKey = "minioadmin"
+	restoreS3Bucket       = "restore-backup"
+	restoreS3Region       = "us-east-1"
 )
 
 // newRestoreGRPCClient creates a gRPC connection with a RestoreServiceClient.
@@ -39,6 +56,68 @@ func newRestoreGRPCClient(grpcPort int) (restorepb.RestoreServiceClient, *grpc.C
 		return nil, nil, err
 	}
 	return restorepb.NewRestoreServiceClient(conn), conn, nil
+}
+
+// downloadBackupAsTar downloads all backup data files from S3 and creates a tar archive.
+func downloadBackupAsTar(ctx context.Context, s3Client *s3.Client, bucket string) ([]byte, string) {
+	// Read manifest to get file list
+	manifestOutput, err := s3Client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String("test-cluster/backups/manifest.json"),
+	})
+	Expect(err).To(Succeed())
+
+	manifestData, err := io.ReadAll(manifestOutput.Body)
+	_ = manifestOutput.Body.Close()
+	Expect(err).To(Succeed())
+
+	var manifest backup.Manifest
+	Expect(json.Unmarshal(manifestData, &manifest)).To(Succeed())
+	Expect(manifest.Files).NotTo(BeEmpty())
+
+	// Download each file and add to tar
+	var buf bytes.Buffer
+	hash := sha256.New()
+	mw := io.MultiWriter(&buf, hash)
+	tw := tar.NewWriter(mw)
+
+	for filename, size := range manifest.Files {
+		key := "test-cluster/backups/data/" + filename
+
+		output, err := s3Client.GetObject(ctx, &s3.GetObjectInput{
+			Bucket: aws.String(bucket),
+			Key:    aws.String(key),
+		})
+		Expect(err).To(Succeed())
+
+		data, err := io.ReadAll(output.Body)
+		_ = output.Body.Close()
+		Expect(err).To(Succeed())
+
+		// Handle nested paths (e.g., "subdir/file.sst")
+		parts := strings.Split(filename, "/")
+		for i := range len(parts) - 1 {
+			dirName := strings.Join(parts[:i+1], "/")
+			_ = tw.WriteHeader(&tar.Header{
+				Typeflag: tar.TypeDir,
+				Name:     dirName + "/",
+				Mode:     0o755,
+			})
+		}
+
+		Expect(tw.WriteHeader(&tar.Header{
+			Name: filename,
+			Size: size,
+			Mode: 0o644,
+		})).To(Succeed())
+
+		_, err = tw.Write(data)
+		Expect(err).To(Succeed())
+	}
+
+	Expect(tw.Close()).To(Succeed())
+
+	return buf.Bytes(), hex.EncodeToString(hash.Sum(nil))
 }
 
 var _ = Describe("Restore", Ordered, func() {
@@ -56,16 +135,56 @@ var _ = Describe("Restore", Ordered, func() {
 		backupHash     string
 		restoreWalDir  string
 		restoreDataDir string
+		minioEndpoint  string
+		s3Client       *s3.Client
 	)
 
 	BeforeAll(func() {
 		ctx = logging.TestingContext()
 
-		// Create temp dirs for restore phases (shared between Phase 2 and Phase 3).
-		// We use os.MkdirTemp instead of GinkgoT().TempDir() because GinkgoT().TempDir()
-		// auto-cleans when the inner Describe ends, but we need the dirs to persist
-		// across Phase 2 → Phase 3.
-		var err error
+		// Start MinIO container
+		container, err := testcontainers.Run(context.Background(), "minio/minio:latest",
+			testcontainers.WithEnv(map[string]string{
+				"MINIO_ROOT_USER":     restoreMinioAccessKey,
+				"MINIO_ROOT_PASSWORD": restoreMinioSecretKey,
+			}),
+			testcontainers.WithCmd("server", "/data"),
+			testcontainers.WithExposedPorts("9000/tcp"),
+			testcontainers.WithWaitStrategy(
+				wait.ForHTTP("/minio/health/live").WithPort("9000/tcp").WithStartupTimeout(30*time.Second),
+			),
+		)
+		Expect(err).To(Succeed())
+		DeferCleanup(func() { _ = container.Terminate(context.Background()) })
+
+		minioEndpoint, err = container.Endpoint(context.Background(), "http")
+		Expect(err).To(Succeed())
+
+		// Create S3 client
+		cfg, err := awsconfig.LoadDefaultConfig(context.Background(),
+			awsconfig.WithRegion(restoreS3Region),
+			awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+				restoreMinioAccessKey, restoreMinioSecretKey, "",
+			)),
+		)
+		Expect(err).To(Succeed())
+
+		s3Client = s3.NewFromConfig(cfg, func(o *s3.Options) {
+			o.BaseEndpoint = aws.String(minioEndpoint)
+			o.UsePathStyle = true
+		})
+
+		// Create the backup bucket
+		_, err = s3Client.CreateBucket(context.Background(), &s3.CreateBucketInput{
+			Bucket: aws.String(bucket),
+		})
+		Expect(err).To(Succeed())
+
+		// Set AWS credentials for the ledger server process
+		GinkgoT().Setenv("AWS_ACCESS_KEY_ID", restoreMinioAccessKey)
+		GinkgoT().Setenv("AWS_SECRET_ACCESS_KEY", restoreMinioSecretKey)
+
+		// Create temp dirs for restore phases
 		restoreWalDir, err = os.MkdirTemp("", "restore-wal-*")
 		Expect(err).To(Succeed())
 		restoreDataDir, err = os.MkdirTemp("", "restore-data-*")
@@ -177,34 +296,19 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(sourceServer.Stop(stopCtx)).To(Succeed())
 		})
 
-		It("should take a backup with valid data", func() {
-			stream, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{})
+		It("should take a backup to S3", func() {
+			resp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
+				Driver:     "s3",
+				S3Bucket:   restoreS3Bucket,
+				S3Region:   restoreS3Region,
+				S3Endpoint: minioEndpoint,
+			})
 			Expect(err).To(Succeed())
+			Expect(resp.GetTotalFiles()).To(BeNumerically(">", 0))
+			Expect(resp.GetFilesUploaded()).To(BeNumerically(">", 0))
 
-			var buf bytes.Buffer
-			hash := sha256.New()
-
-			for {
-				resp, err := stream.Recv()
-				if err == io.EOF {
-					break
-				}
-				Expect(err).To(Succeed())
-
-				if resp.Eof {
-					backupHash = resp.ContentSha256
-					break
-				}
-
-				buf.Write(resp.Data)
-				_, err = hash.Write(resp.Data)
-				Expect(err).To(Succeed())
-			}
-
-			actualHash := hex.EncodeToString(hash.Sum(nil))
-			Expect(actualHash).To(Equal(backupHash))
-
-			backupData = buf.Bytes()
+			// Download backup from S3 and create tar for restore
+			backupData, backupHash = downloadBackupAsTar(ctx, s3Client, restoreS3Bucket)
 			Expect(backupData).NotTo(BeEmpty())
 		})
 	})
@@ -316,8 +420,8 @@ var _ = Describe("Restore", Ordered, func() {
 
 			Expect(resp.LedgerCount).To(Equal(uint32(2)))
 			Expect(resp.LedgerNames).To(ConsistOf(ledgerName, ledger2))
-			// After backup compaction, lastAppliedIndex is reset to 0
-			Expect(resp.LastAppliedIndex).To(Equal(uint64(0)))
+			// Preview runs before FinalizeRestore compaction, so index is non-zero
+			Expect(resp.LastAppliedIndex).To(BeNumerically(">", 0))
 			Expect(resp.LastSequence).To(BeNumerically(">", 0))
 		})
 
@@ -460,7 +564,6 @@ var _ = Describe("Restore", Ordered, func() {
 		})
 
 		It("should accept new transactions after restore", func() {
-			// Create a new transaction on ledger 1
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
@@ -470,7 +573,6 @@ var _ = Describe("Restore", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 
-			// Verify charlie has the correct balance
 			charlieResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "charlie",
@@ -479,7 +581,6 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(charlieResp.Volumes).To(HaveKey("USD"))
 			Expect(charlieResp.Volumes["USD"].Input).To(Equal("1000"))
 
-			// Verify bank balance is updated (10000 in, 6000 out)
 			bankResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "bank",
@@ -507,7 +608,7 @@ var _ = Describe("Restore", Ordered, func() {
 
 			ledgers, err := actions.ListLedgers(ctx, client)
 			Expect(err).To(Succeed())
-			Expect(ledgers).To(HaveLen(3)) // restore-ledger, restore-ledger-2, post-restore-ledger
+			Expect(ledgers).To(HaveLen(3))
 		})
 	})
 })

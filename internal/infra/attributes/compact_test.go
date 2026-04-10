@@ -516,7 +516,7 @@ func TestCompactSurvivesPebbleCheckpointTarCycle(t *testing.T) {
 		require.NoError(t, s.Close())
 	}()
 
-	// Phase 2: Open checkpoint, compact, close (simulating backupLocal compaction)
+	// Phase 2: Open checkpoint, compact, close (simulating restore compaction)
 	func() {
 		s, err := dal.OpenDirect(checkpointDir, logger)
 		require.NoError(t, err)

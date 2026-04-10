@@ -10,11 +10,11 @@ The ledger provides a complete backup and restore pipeline. A backup captures a 
 ┌─────────────────────────────────────────────────────────────────────────┐
 │ 1. BACKUP (running cluster)                                            │
 │                                                                        │
-│    ledgerctl store backup -o backup.tar                                │
+│    ledgerctl store backup --driver s3 --s3-bucket my-bucket            │
 │    ─► Leader: create Pebble checkpoint (direct, no Raft consensus)    │
-│    ─► Leader: compact attributes to index 0, reset lastAppliedIndex   │
-│    ─► Leader: stream checkpoint directory as tar + SHA256              │
-│    ─► Client: verify SHA256, write to disk                            │
+│    ─► Leader: diff against previous manifest (SSTs are immutable)     │
+│    ─► Leader: upload new/changed files, delete stale files            │
+│    ─► Leader: write updated manifest                                  │
 └─────────────────────────────────────────────────────────────────────────┘
                                 │
                  ┌──────────────┴──────────────┐
@@ -26,7 +26,7 @@ The ledger provides a complete backup and restore pipeline. A backup captures a 
 │  a. restore upload           │ │    -i backup.tar --data-dir ./data   │
 │  b. restore validate         │ │                                      │
 │  c. restore preview          │ │  No server needed.                   │
-│  d. restore finalize         │ │  Extract → preview → finalize.       │
+│  d. restore finalize         │ │  Extract → compact → finalize.       │
 └──────────────────────────────┘ └──────────────────────────────────────┘
                  │                             │
                  └──────────────┬──────────────┘
@@ -41,60 +41,66 @@ The ledger provides a complete backup and restore pipeline. A backup captures a 
 
 ---
 
-## Backup
+## Backup ()
 
 ### CLI Command
 
 ```bash
-# Save to a file
-ledgerctl store backup --output backup.tar
+# Backup to S3
+ledgerctl store backup --driver s3 --s3-bucket my-bucket --s3-region us-east-1
 
-# Pipe to gzip
-ledgerctl store backup | gzip > backup.tar.gz
+# Backup to filesystem
+ledgerctl store backup --driver filesystem --path /mnt/backups
+
+# Backup to MinIO
+ledgerctl store backup --driver s3 --s3-bucket my-bucket --s3-endpoint http://minio:9000
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-o, --output` | | Output file path (required if stdout is a terminal) |
-| `--timeout` | `100s` | Request timeout |
+| `--driver` | (required) | Storage driver: `filesystem` or `s3` |
+| `--path` | | Base path for filesystem driver |
+| `--bucket-id` | cluster-id | Namespace prefix for backup files |
+| `--s3-bucket` | | S3 bucket name (required for s3 driver) |
+| `--s3-region` | | AWS region for S3 bucket |
+| `--s3-endpoint` | | Custom S3 endpoint (for MinIO) |
+| `--timeout` | `1000s` | Request timeout |
 
 ### How It Works
 
-The `store backup` command calls the `ClusterService.Backup` gRPC RPC (server-streaming). If connected to a follower, the request is transparently forwarded to the leader.
+The `store backup` command calls the `ClusterService.Backup` gRPC RPC (unary). If connected to a follower, the request is transparently forwarded to the leader.
 
 #### Step 1: Direct Pebble Checkpoint
 
-The leader creates a **Pebble checkpoint** directly — a point-in-time filesystem snapshot using hardlinks. Because boundaries (nextTransactionId, nextLogId per ledger) are written to Pebble on every committed entry, the checkpoint is immediately consistent without requiring Raft consensus or FSM gating. This means backup does not block writes at all.
+The leader creates a **temporary Pebble checkpoint** — a point-in-time filesystem snapshot using hardlinks. Because boundaries (nextTransactionId, nextLogId per ledger) are written to Pebble on every committed entry, the checkpoint is immediately consistent without requiring Raft consensus or FSM gating. Backup does not block writes.
 
-**File**: `internal/infra/node/node.go` — `CreateBackupCheckpoint()`
+#### Step 2: Diff Against Previous Manifest
 
-#### Step 2: Compaction for Restore Compatibility
+The backup reads the previous manifest from storage (if any) and computes a diff:
+- **New/changed files**: SST files that are new or have changed size are uploaded.
+- **Stale files**: Files present in the old manifest but not in the current checkpoint are deleted.
 
-The checkpoint is opened in read-write mode and prepared for standalone use:
+SST files in Pebble are immutable — same filename means same content. This makes the diff very efficient.
 
-1. **Attribute compaction**: All versioned attribute entries (volumes, metadata, reversions, idempotency keys, references, ledger info, boundaries) in the `[0xF1, 0xF2)` key range are compacted to index 0. This removes the version history and keeps only the final value, making the backup self-contained.
+#### Step 3: Upload and Manifest
 
-2. **Reset lastAppliedIndex**: The Raft applied index is reset to 0 in the checkpoint. The restored cluster starts with fresh Raft indices — no index conflict with the original cluster.
+New files are uploaded to the storage backend. A manifest JSON file is written last (for atomicity).
 
-3. **Flush**: Pebble is flushed to ensure all compacted data is written to SSTs.
-
-**File**: `internal/infra/attributes/compact.go` — `CompactAllForBackup()`
-
-#### Step 3: Tar Streaming
-
-The checkpoint directory is streamed to the client as a tar archive:
-
-- Files and directories are added to the tar in filesystem walk order.
-- Data is sent in **64 KB chunks** through the gRPC server stream.
-- A **SHA256 hash** is computed over the entire tar content as it streams.
-- The final message is an EOF marker containing the SHA256 hash and total content size.
-- The client verifies the hash against the server-reported hash and fails if they differ.
-
-**File**: `internal/adapter/grpc/tar_streaming.go` — `StreamDirAsTar()`
+**File**: `internal/infra/backup/manager.go` — `RunBackup()`
 
 #### Cleanup
 
-The temporary checkpoint is removed from the leader's filesystem after streaming completes (or on error).
+The temporary checkpoint is removed from the leader's filesystem after the backup completes.
+
+### Compaction on Restore
+
+Attribute compaction is performed on the **restore side** (during `FinalizeRestore` or `store bootstrap`), not during backup. This means backups contain raw Pebble data, while the restore process prepares it for standalone use:
+
+1. **Attribute compaction**: All versioned attribute entries are compacted to index 0.
+2. **Reset lastAppliedIndex**: The Raft applied index is reset to 0.
+3. **Remove persisted config**: Node and cluster IDs are stripped for portability.
+
+**File**: `internal/infra/attributes/compact.go` — `CompactAllForBackup()`
 
 ### What the Backup Contains
 
@@ -115,22 +121,21 @@ sequenceDiagram
     participant Client as ledgerctl
     participant Follower as Follower Node
     participant Leader as Raft Leader
-    participant FSM
     participant Pebble
+    participant Storage as S3 / Filesystem
 
     Client->>Follower: Backup RPC
     Follower->>Leader: Forward to leader
 
-    Leader->>Pebble: CreateTemporaryCheckpoint("checkpoint")
+    Leader->>Pebble: CreateTemporaryCheckpoint("backup")
+    Leader->>Storage: Read previous manifest
+    Leader->>Leader: Compute diff (new/changed/stale)
+    Leader->>Storage: Upload new/changed files
+    Leader->>Storage: Delete stale files
+    Leader->>Storage: Write updated manifest
+    Leader->>Pebble: Remove tmp/backup
 
-    Leader->>Pebble: CompactAllForBackup()
-    Note over Leader,Pebble: Compact attributes to index 0<br/>Reset lastAppliedIndex to 0
-
-    Leader->>Client: Stream tar chunks (64KB each)
-    Leader->>Client: EOF + SHA256 + size
-
-    Client->>Client: Verify SHA256
-    Leader->>Pebble: Remove tmp/checkpoint
+    Leader->>Client: Response (files uploaded, deleted, total, duration)
 ```
 
 ---
@@ -371,8 +376,8 @@ The `RESTORED` file is a JSON file written to the data directory during `Finaliz
 | Guarantee | Mechanism |
 |-----------|-----------|
 | **Consistent snapshot** | Backup checkpoint is created as a direct Pebble checkpoint. Boundaries are always up-to-date in Pebble (written on every commit), so the checkpoint is consistent without Raft consensus or FSM gating. |
-| **Self-contained backup** | Attributes are compacted to index 0 and `lastAppliedIndex` is reset. No dependency on the original cluster's Raft indices. |
-| **Data integrity (transport)** | SHA256 hash is computed during streaming and verified by both client and server. Hash mismatch aborts the operation. |
+| **Incremental efficiency** | SST files are immutable — same name means same content. Only new/changed files are uploaded; stale files are deleted. |
+| **Self-contained on restore** | During restore finalize, attributes are compacted to index 0 and `lastAppliedIndex` is reset. No dependency on the original cluster's Raft indices. |
 | **Data integrity (content)** | `ValidateRestore` runs the full integrity checker: log hash chain continuity, volume balance verification, metadata consistency. |
 | **Fresh directory required** | Restore mode refuses to start if `CURRENT_CHECKPOINT` exists, preventing accidental overwrites. |
 | **Atomic finalize** | Checkpoint placement uses `HardLink()` (temp directory + atomic `os.Rename`) for crash safety. |
@@ -386,29 +391,24 @@ The `RESTORED` file is a JSON file written to the data directory during `Finaliz
 ```bash
 # ── On the running cluster ──
 
-# 1. Create a backup
-ledgerctl store backup --output backup.tar
+# 1. Create an backup to S3
+ledgerctl store backup --driver s3 --s3-bucket my-bucket --s3-region us-east-1
 
 # ── On a fresh server ──
 
-# 2. Start server in restore mode
+# 2. Download backup files from S3 and create a tar archive
+# (use your preferred S3 tool: aws s3 sync, rclone, etc.)
+
+# 3a. OPTION A: Offline bootstrap (no server needed)
+ledgerctl store bootstrap --input backup.tar --data-dir ./fresh-data --validate --yes
+ledger-v3-poc run --node-id 1 --data-dir ./fresh-data --bootstrap --wal-dir ./fresh-wal --grpc-port 9999
+
+# 3b. OPTION B: Online restore (4-step gRPC flow)
 ledger-v3-poc run --node-id 1 --data-dir ./fresh-data --restore --grpc-port 9999
-
-# 3. Upload the backup
 ledgerctl --server localhost:9999 restore upload --input backup.tar
-
-# 4. Validate integrity
 ledgerctl --server localhost:9999 restore validate
-
-# 5. Preview contents
-ledgerctl --server localhost:9999 restore preview
-
-# 6. Finalize
 ledgerctl --server localhost:9999 restore finalize --yes
-
-# 7. Stop the restore-mode server (Ctrl+C or SIGTERM)
-
-# 8. Restart in normal mode
+# Stop restore server, then restart normally:
 ledger-v3-poc run --node-id 1 --data-dir ./fresh-data --bootstrap --wal-dir ./fresh-wal --grpc-port 9999
 ```
 
@@ -433,11 +433,12 @@ See [Periods](../dev/architecture/periods.md) for the full period lifecycle and 
 | File | Description |
 |------|-------------|
 | **Backup** | |
-| `cmd/ledgerctl/store_backup.go` | `store backup` CLI command |
+| `cmd/ledgerctl/store/incremental_backup.go` | `store backup` CLI command |
 | `internal/adapter/grpc/server_cluster.go` | `ClusterService.Backup` gRPC implementation |
-| `internal/adapter/grpc/tar_streaming.go` | Tar streaming with SHA256 |
-| `internal/infra/attributes/compact.go` | `CompactAllForBackup()` — attribute compaction |
-| `internal/infra/node/node.go` | `CreateBackupCheckpoint()` — direct Pebble checkpoint |
+| `internal/infra/backup/manager.go` | `RunBackup()` — diff, upload, manifest |
+| `internal/infra/backup/filesystem.go` | Filesystem storage driver |
+| `internal/infra/backup/s3.go` | S3 storage driver |
+| `internal/infra/attributes/compact.go` | `CompactAllForBackup()` — attribute compaction (used during restore) |
 | **Restore (gRPC)** | |
 | `misc/proto/restore.proto` | RestoreService proto definition |
 | `internal/proto/restorepb/` | Generated proto code |

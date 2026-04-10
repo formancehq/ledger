@@ -1,15 +1,11 @@
 package actions
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/restorepb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
@@ -48,89 +44,10 @@ func CollectCheckStoreEvents(ctx context.Context, client servicepb.BucketService
 	return result, nil
 }
 
-// StreamBackup runs the Backup RPC and writes the tar archive to the provided writer.
-// Returns the total bytes written and the content SHA-256 reported by the server.
-func StreamBackup(ctx context.Context, client clusterpb.ClusterServiceClient, w io.Writer) (uint64, string, error) {
-	stream, err := client.Backup(ctx, &clusterpb.BackupRequest{})
-	if err != nil {
-		return 0, "", err
-	}
-
-	var (
-		totalBytes    uint64
-		contentSha256 string
-	)
-	for {
-		resp, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return 0, "", err
-		}
-
-		if len(resp.GetData()) > 0 {
-			if _, err := w.Write(resp.GetData()); err != nil {
-				return 0, "", err
-			}
-			totalBytes += uint64(len(resp.GetData()))
-		}
-
-		if resp.GetEof() {
-			contentSha256 = resp.GetContentSha256()
-
-			break
-		}
-	}
-
-	return totalBytes, contentSha256, nil
-}
-
 // BackupData holds the raw backup archive and its SHA-256 hash.
 type BackupData struct {
 	Data []byte
 	Hash string
-}
-
-// BackupToBuffer runs the Backup RPC and captures the full tar archive in memory.
-// It verifies the SHA-256 hash matches the server-reported value.
-func BackupToBuffer(ctx context.Context, client clusterpb.ClusterServiceClient) (*BackupData, error) {
-	stream, err := client.Backup(ctx, &clusterpb.BackupRequest{})
-	if err != nil {
-		return nil, fmt.Errorf("backup RPC: %w", err)
-	}
-
-	var buf bytes.Buffer
-	hash := sha256.New()
-
-	var contentSha256 string
-	for {
-		resp, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return nil, fmt.Errorf("backup recv: %w", err)
-		}
-
-		if len(resp.GetData()) > 0 {
-			buf.Write(resp.GetData())
-			_, _ = hash.Write(resp.GetData())
-		}
-
-		if resp.GetEof() {
-			contentSha256 = resp.GetContentSha256()
-
-			break
-		}
-	}
-
-	actualHash := hex.EncodeToString(hash.Sum(nil))
-	if actualHash != contentSha256 {
-		return nil, fmt.Errorf("backup hash mismatch: got %s, server reported %s", actualHash, contentSha256)
-	}
-
-	return &BackupData{Data: buf.Bytes(), Hash: contentSha256}, nil
 }
 
 // UploadAndFinalizeRestore uploads a backup to a restore-mode server, validates it,

@@ -146,6 +146,48 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
+	// Compact attributes to index 0 and reset lastAppliedIndex.
+	// This ensures the backup is self-contained and can be restored on a fresh
+	// cluster without raft index conflicts in the attribute storage.
+	compactSpinner, _ := pterm.DefaultSpinner.Start("Compacting attributes for restore compatibility...")
+
+	compactStore, err := dal.OpenDirect(stagingDir, logger)
+	if err != nil {
+		compactSpinner.Fail("Failed to open staging for compaction")
+
+		return cmdutil.Displayed(fmt.Errorf("opening staging for compaction: %w", err))
+	}
+
+	if err := attributes.CompactAllForBackup(compactStore); err != nil {
+		_ = compactStore.Close()
+		compactSpinner.Fail("Failed to compact attributes")
+
+		return cmdutil.Displayed(fmt.Errorf("compacting backup attributes: %w", err))
+	}
+
+	if err := compactStore.Close(); err != nil {
+		compactSpinner.Fail("Failed to close compacted store")
+
+		return cmdutil.Displayed(fmt.Errorf("closing compacted staging: %w", err))
+	}
+
+	compactSpinner.Success("Attributes compacted")
+
+	// Re-read metadata after compaction (lastAppliedIndex is now 0).
+	store, err = dal.OpenReadOnly(stagingDir, logger)
+	if err != nil {
+		return fmt.Errorf("re-opening staging store: %w", err)
+	}
+
+	lastAppliedIndex, lastAppliedTimestamp, _, err = readBootstrapPreviewData(store)
+	if err != nil {
+		_ = store.Close()
+
+		return fmt.Errorf("re-reading preview data after compaction: %w", err)
+	}
+
+	_ = store.Close()
+
 	// Create checkpoint 0 via hard-link.
 	checkpointsDir := filepath.Join(dataDir, "checkpoints")
 	if err := os.MkdirAll(checkpointsDir, 0755); err != nil {

@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -16,7 +14,6 @@ import (
 	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
 	"github.com/formancehq/ledger-v3-poc/internal/application/ctrl"
 	"github.com/formancehq/ledger-v3-poc/internal/application/indexbuilder"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/backup"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/diskusage"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
@@ -273,130 +270,6 @@ func (impl *ClusterServiceServerImpl) GetNodeTime(ctx context.Context, _ *cluste
 	return &clusterpb.NodeTime{
 		TimestampUs: uint64(time.Now().UnixMicro()),
 	}, nil
-}
-
-func (impl *ClusterServiceServerImpl) Backup(req *clusterpb.BackupRequest, stream ggrpc.ServerStreamingServer[clusterpb.BackupResponse]) error {
-	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
-		return err
-	}
-
-	// If this node is the leader, create a checkpoint and stream it
-	if impl.node.IsLeader() {
-		return impl.backupLocal(stream)
-	}
-
-	// Forward to leader
-	leaderID := impl.node.GetLeader()
-	if leaderID == 0 {
-		return commonpb.ErrNoLeader
-	}
-
-	grpcConn := impl.servicePool.GetConnection(leaderID)
-	if grpcConn == nil {
-		return commonpb.ErrNoLeader
-	}
-
-	impl.logger.WithFields(map[string]any{
-		"leader_id": leaderID,
-	}).Infof("Forwarding backup request to leader")
-
-	client := clusterpb.NewClusterServiceClient(grpcConn)
-
-	backupStream, err := client.Backup(stream.Context(), req)
-	if err != nil {
-		return fmt.Errorf("forwarding backup to leader: %w", err)
-	}
-
-	// Relay chunks from leader to caller
-	for {
-		resp, err := backupStream.Recv()
-		if errors.Is(err, io.EOF) {
-			return nil
-		}
-
-		if err != nil {
-			return fmt.Errorf("receiving backup chunk from leader: %w", err)
-		}
-
-		if err := stream.Send(resp); err != nil {
-			return fmt.Errorf("sending backup chunk to client: %w", err)
-		}
-	}
-}
-
-func (impl *ClusterServiceServerImpl) backupLocal(stream ggrpc.ServerStreamingServer[clusterpb.BackupResponse]) error {
-	impl.backupMu.Lock()
-	defer impl.backupMu.Unlock()
-
-	impl.logger.Infof("Creating backup checkpoint")
-
-	if err := stream.Send(&clusterpb.BackupResponse{StatusMessage: "Creating checkpoint..."}); err != nil {
-		return fmt.Errorf("sending status message: %w", err)
-	}
-
-	// Create a direct Pebble checkpoint (no Raft consensus needed).
-	// Boundaries are always up-to-date in Pebble since they are written on every commit.
-	backupPath, err := impl.store.CreateTemporaryCheckpoint("checkpoint")
-	if err != nil {
-		return fmt.Errorf("creating backup checkpoint: %w", err)
-	}
-
-	defer func() {
-		err := impl.store.RemoveTemporaryCheckpoint("checkpoint")
-		if err != nil {
-			impl.logger.WithFields(map[string]any{
-				"error": err,
-			}).Errorf("Failed to remove backup checkpoint")
-		}
-	}()
-
-	// Compact attributes to index 0 and reset lastAppliedIndex in the backup.
-	// This ensures backups are self-contained and can be restored on a fresh cluster
-	// without raft index conflicts in the attribute storage.
-	impl.logger.Infof("Compacting backup checkpoint for restore compatibility")
-
-	if err := stream.Send(&clusterpb.BackupResponse{StatusMessage: "Compacting attributes..."}); err != nil {
-		return fmt.Errorf("sending status message: %w", err)
-	}
-
-	compactStore, err := dal.OpenDirect(backupPath, impl.logger)
-	if err != nil {
-		return fmt.Errorf("opening backup for compaction: %w", err)
-	}
-
-	if err := attributes.CompactAllForBackup(compactStore); err != nil {
-		_ = compactStore.Close()
-
-		return fmt.Errorf("compacting backup attributes: %w", err)
-	}
-
-	if err := compactStore.Close(); err != nil {
-		return fmt.Errorf("closing compacted backup: %w", err)
-	}
-
-	// Include baseline checkpoint in the backup so integrity checks work after restore.
-	baselinePath, hasBaseline := impl.store.BaselineCheckpointPath()
-	if hasBaseline {
-		baselineDst := filepath.Join(backupPath, "_baseline")
-		if err := dal.HardLink(baselinePath, baselineDst); err != nil {
-			impl.logger.WithFields(map[string]any{
-				"error": err,
-			}).Errorf("Failed to include baseline checkpoint in backup (non-fatal)")
-		}
-	}
-
-	impl.logger.Infof("Streaming backup checkpoint")
-
-	return StreamDirAsTar(backupPath, 0, func(chunk TarStreamChunk) error {
-		return stream.Send(&clusterpb.BackupResponse{
-			ChunkOffset:        chunk.ChunkOffset,
-			Data:               chunk.Data,
-			Eof:                chunk.IsEOF,
-			ContentSha256:      chunk.ContentSHA256,
-			ContentSize:        chunk.ContentSize,
-			EstimatedTotalSize: chunk.EstimatedTotalSize,
-		})
-	})
 }
 
 func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *clusterpb.AddLearnerRequest) (*clusterpb.AddLearnerResponse, error) {
@@ -719,7 +592,7 @@ func queryCheckpointToInfo(cp *raftcmdpb.QueryCheckpointState) *clusterpb.QueryC
 	}
 }
 
-func (impl *ClusterServiceServerImpl) IncrementalBackup(ctx context.Context, req *clusterpb.IncrementalBackupRequest) (*clusterpb.IncrementalBackupResponse, error) {
+func (impl *ClusterServiceServerImpl) Backup(ctx context.Context, req *clusterpb.BackupRequest) (*clusterpb.BackupResponse, error) {
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
 		return nil, err
 	}
@@ -738,10 +611,10 @@ func (impl *ClusterServiceServerImpl) IncrementalBackup(ctx context.Context, req
 
 		client := clusterpb.NewClusterServiceClient(grpcConn)
 
-		return client.IncrementalBackup(ctx, req)
+		return client.Backup(ctx, req)
 	}
 
-	// Serialize backups (reuse the existing backupMu)
+	// Serialize backups
 	impl.backupMu.Lock()
 	defer impl.backupMu.Unlock()
 
@@ -765,12 +638,12 @@ func (impl *ClusterServiceServerImpl) IncrementalBackup(ctx context.Context, req
 		bucketID = impl.clusterID
 	}
 
-	result, err := backup.RunIncrementalBackup(ctx, impl.logger, impl.store, storage, bucketID)
+	result, err := backup.RunBackup(ctx, impl.logger, impl.store, storage, bucketID)
 	if err != nil {
-		return nil, fmt.Errorf("incremental backup failed: %w", err)
+		return nil, fmt.Errorf("backup failed: %w", err)
 	}
 
-	return &clusterpb.IncrementalBackupResponse{
+	return &clusterpb.BackupResponse{
 		FilesUploaded: uint32(result.FilesUploaded),
 		FilesDeleted:  uint32(result.FilesDeleted),
 		TotalFiles:    uint32(result.TotalFiles),

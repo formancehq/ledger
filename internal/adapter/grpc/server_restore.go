@@ -308,7 +308,27 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 
 	stagingDir := s.stagingDir()
 
-	// Open staging to read metadata
+	// Compact attributes to index 0 and reset lastAppliedIndex.
+	// This ensures the backup is self-contained and can be restored on a fresh
+	// cluster without raft index conflicts in the attribute storage.
+	s.logger.Infof("Compacting backup for restore compatibility")
+
+	compactStore, err := dal.OpenDirect(stagingDir, s.logger)
+	if err != nil {
+		return nil, fmt.Errorf("opening staging for compaction: %w", err)
+	}
+
+	if err := attributes.CompactAllForBackup(compactStore); err != nil {
+		_ = compactStore.Close()
+
+		return nil, fmt.Errorf("compacting backup attributes: %w", err)
+	}
+
+	if err := compactStore.Close(); err != nil {
+		return nil, fmt.Errorf("closing compacted staging: %w", err)
+	}
+
+	// Open staging to read metadata (after compaction, lastAppliedIndex is 0)
 	store, err := dal.OpenReadOnly(stagingDir, s.logger)
 	if err != nil {
 		return nil, fmt.Errorf("opening staging store: %w", err)
