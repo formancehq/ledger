@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_period_schedule", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
+	internal.RunDriver("singleton_driver_period_schedule", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
 		details := internal.Details{}
 
 		// 1. Set an automatic period schedule (every hour).
