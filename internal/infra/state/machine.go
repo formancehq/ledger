@@ -2123,6 +2123,7 @@ func (fsm *Machine) SynchronizeWithLeader(ctx context.Context, snapshotFetcher S
 	// and will be preloaded on demand by the admission layer.
 
 	fsm.lastAppliedIndex = fsm.snapshotIndex
+	fsm.lastPersistedIndex.Store(fsm.snapshotIndex)
 
 	return fsm.snapshotIndex, nil
 }
