@@ -19,7 +19,7 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	RestoreService_UploadBackup_FullMethodName    = "/restore.RestoreService/UploadBackup"
+	RestoreService_DownloadBackup_FullMethodName  = "/restore.RestoreService/DownloadBackup"
 	RestoreService_ValidateRestore_FullMethodName = "/restore.RestoreService/ValidateRestore"
 	RestoreService_PreviewRestore_FullMethodName  = "/restore.RestoreService/PreviewRestore"
 	RestoreService_FinalizeRestore_FullMethodName = "/restore.RestoreService/FinalizeRestore"
@@ -32,13 +32,13 @@ const (
 // RestoreService provides backup restore operations for a fresh cluster.
 // Available only when the server is started with --restore mode.
 type RestoreServiceClient interface {
-	// UploadBackup streams a tar archive backup into the restore staging area.
-	UploadBackup(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[UploadBackupRequest, UploadBackupResponse], error)
+	// DownloadBackup downloads a backup from S3 into the restore staging area.
+	DownloadBackup(ctx context.Context, in *DownloadBackupRequest, opts ...grpc.CallOption) (*DownloadBackupResponse, error)
 	// ValidateRestore runs integrity checks on the staged backup data.
 	ValidateRestore(ctx context.Context, in *ValidateRestoreRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ValidateRestoreEvent], error)
 	// PreviewRestore returns a summary of the staged backup data.
 	PreviewRestore(ctx context.Context, in *PreviewRestoreRequest, opts ...grpc.CallOption) (*PreviewRestoreResponse, error)
-	// FinalizeRestore commits the staged backup as the live data and shuts down the server.
+	// FinalizeRestore compacts attributes, commits the staged backup as the live data.
 	FinalizeRestore(ctx context.Context, in *FinalizeRestoreRequest, opts ...grpc.CallOption) (*FinalizeRestoreResponse, error)
 }
 
@@ -50,22 +50,19 @@ func NewRestoreServiceClient(cc grpc.ClientConnInterface) RestoreServiceClient {
 	return &restoreServiceClient{cc}
 }
 
-func (c *restoreServiceClient) UploadBackup(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[UploadBackupRequest, UploadBackupResponse], error) {
+func (c *restoreServiceClient) DownloadBackup(ctx context.Context, in *DownloadBackupRequest, opts ...grpc.CallOption) (*DownloadBackupResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &RestoreService_ServiceDesc.Streams[0], RestoreService_UploadBackup_FullMethodName, cOpts...)
+	out := new(DownloadBackupResponse)
+	err := c.cc.Invoke(ctx, RestoreService_DownloadBackup_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[UploadBackupRequest, UploadBackupResponse]{ClientStream: stream}
-	return x, nil
+	return out, nil
 }
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type RestoreService_UploadBackupClient = grpc.ClientStreamingClient[UploadBackupRequest, UploadBackupResponse]
 
 func (c *restoreServiceClient) ValidateRestore(ctx context.Context, in *ValidateRestoreRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ValidateRestoreEvent], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &RestoreService_ServiceDesc.Streams[1], RestoreService_ValidateRestore_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &RestoreService_ServiceDesc.Streams[0], RestoreService_ValidateRestore_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -109,13 +106,13 @@ func (c *restoreServiceClient) FinalizeRestore(ctx context.Context, in *Finalize
 // RestoreService provides backup restore operations for a fresh cluster.
 // Available only when the server is started with --restore mode.
 type RestoreServiceServer interface {
-	// UploadBackup streams a tar archive backup into the restore staging area.
-	UploadBackup(grpc.ClientStreamingServer[UploadBackupRequest, UploadBackupResponse]) error
+	// DownloadBackup downloads a backup from S3 into the restore staging area.
+	DownloadBackup(context.Context, *DownloadBackupRequest) (*DownloadBackupResponse, error)
 	// ValidateRestore runs integrity checks on the staged backup data.
 	ValidateRestore(*ValidateRestoreRequest, grpc.ServerStreamingServer[ValidateRestoreEvent]) error
 	// PreviewRestore returns a summary of the staged backup data.
 	PreviewRestore(context.Context, *PreviewRestoreRequest) (*PreviewRestoreResponse, error)
-	// FinalizeRestore commits the staged backup as the live data and shuts down the server.
+	// FinalizeRestore compacts attributes, commits the staged backup as the live data.
 	FinalizeRestore(context.Context, *FinalizeRestoreRequest) (*FinalizeRestoreResponse, error)
 	mustEmbedUnimplementedRestoreServiceServer()
 }
@@ -127,8 +124,8 @@ type RestoreServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedRestoreServiceServer struct{}
 
-func (UnimplementedRestoreServiceServer) UploadBackup(grpc.ClientStreamingServer[UploadBackupRequest, UploadBackupResponse]) error {
-	return status.Error(codes.Unimplemented, "method UploadBackup not implemented")
+func (UnimplementedRestoreServiceServer) DownloadBackup(context.Context, *DownloadBackupRequest) (*DownloadBackupResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DownloadBackup not implemented")
 }
 func (UnimplementedRestoreServiceServer) ValidateRestore(*ValidateRestoreRequest, grpc.ServerStreamingServer[ValidateRestoreEvent]) error {
 	return status.Error(codes.Unimplemented, "method ValidateRestore not implemented")
@@ -160,12 +157,23 @@ func RegisterRestoreServiceServer(s grpc.ServiceRegistrar, srv RestoreServiceSer
 	s.RegisterService(&RestoreService_ServiceDesc, srv)
 }
 
-func _RestoreService_UploadBackup_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(RestoreServiceServer).UploadBackup(&grpc.GenericServerStream[UploadBackupRequest, UploadBackupResponse]{ServerStream: stream})
+func _RestoreService_DownloadBackup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DownloadBackupRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RestoreServiceServer).DownloadBackup(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RestoreService_DownloadBackup_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RestoreServiceServer).DownloadBackup(ctx, req.(*DownloadBackupRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type RestoreService_UploadBackupServer = grpc.ClientStreamingServer[UploadBackupRequest, UploadBackupResponse]
 
 func _RestoreService_ValidateRestore_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(ValidateRestoreRequest)
@@ -222,6 +230,10 @@ var RestoreService_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*RestoreServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
+			MethodName: "DownloadBackup",
+			Handler:    _RestoreService_DownloadBackup_Handler,
+		},
+		{
 			MethodName: "PreviewRestore",
 			Handler:    _RestoreService_PreviewRestore_Handler,
 		},
@@ -231,11 +243,6 @@ var RestoreService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams: []grpc.StreamDesc{
-		{
-			StreamName:    "UploadBackup",
-			Handler:       _RestoreService_UploadBackup_Handler,
-			ClientStreams: true,
-		},
 		{
 			StreamName:    "ValidateRestore",
 			Handler:       _RestoreService_ValidateRestore_Handler,

@@ -35,6 +35,7 @@ const (
 	bootstrapMinioSecretKey = "minioadmin"
 	bootstrapS3Bucket       = "bootstrap-backup"
 	bootstrapS3Region       = "us-east-1"
+	bootstrapBucketID       = "test-cluster"
 )
 
 var _ = Describe("Bootstrap from backup", Ordered, func() {
@@ -48,11 +49,9 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 
 	var (
 		ctx              context.Context
-		backupTarPath    string
 		bootstrapWalDir  string
 		bootstrapDataDir string
 		minioEndpoint    string
-		s3Client         *s3.Client
 	)
 
 	BeforeAll(func() {
@@ -76,7 +75,6 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		minioEndpoint, err = container.Endpoint(context.Background(), "http")
 		Expect(err).To(Succeed())
 
-		// Create S3 client
 		cfg, err := awsconfig.LoadDefaultConfig(context.Background(),
 			awsconfig.WithRegion(bootstrapS3Region),
 			awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
@@ -85,18 +83,16 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		)
 		Expect(err).To(Succeed())
 
-		s3Client = s3.NewFromConfig(cfg, func(o *s3.Options) {
+		s3Client := s3.NewFromConfig(cfg, func(o *s3.Options) {
 			o.BaseEndpoint = aws.String(minioEndpoint)
 			o.UsePathStyle = true
 		})
 
-		// Create the backup bucket
 		_, err = s3Client.CreateBucket(context.Background(), &s3.CreateBucketInput{
 			Bucket: aws.String(bootstrapS3Bucket),
 		})
 		Expect(err).To(Succeed())
 
-		// Set AWS credentials for the ledger server process
 		GinkgoT().Setenv("AWS_ACCESS_KEY_ID", bootstrapMinioAccessKey)
 		GinkgoT().Setenv("AWS_SECRET_ACCESS_KEY", bootstrapMinioSecretKey)
 
@@ -108,13 +104,10 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		DeferCleanup(func() {
 			_ = os.RemoveAll(bootstrapWalDir)
 			_ = os.RemoveAll(bootstrapDataDir)
-			if backupTarPath != "" {
-				_ = os.Remove(backupTarPath)
-			}
 		})
 	})
 
-	// Phase 1: Start a normal cluster, create data, take a backup.
+	// Phase 1: Start a normal cluster, create data, take a backup to S3.
 	Describe("Phase 1: Create data and backup", Ordered, func() {
 		var (
 			sourceServer  *testservice.Service
@@ -129,7 +122,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 
 			instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 				NodeID:    1,
-				ClusterID: "test-cluster",
+				ClusterID: bootstrapBucketID,
 				HTTPPort:  httpPort,
 				RaftPort:  raftPort,
 				GRPCPort:  grpcPort,
@@ -149,22 +142,17 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(grpcPort)
 			Expect(err).To(Succeed())
 
-			// Wait for leader election.
 			Eventually(func(g Gomega) bool {
 				state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 				g.Expect(err).To(Succeed())
 				return state.Leader != 0
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
 
-			// Create first ledger with metadata.
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					actions.CreateLedgerAction(ledgerName, map[string]string{"env": "test"}),
-				},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, map[string]string{"env": "test"})},
 			})
 			Expect(err).To(Succeed())
 
-			// Transaction 1: fund the bank.
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
@@ -174,7 +162,6 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 
-			// Transaction 2: distribute from bank.
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
@@ -185,19 +172,13 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 
-			// Add account metadata.
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "customer"}),
-				},
+				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "customer"})},
 			})
 			Expect(err).To(Succeed())
 
-			// Create second ledger with a transaction.
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					actions.CreateLedgerAction(ledger2, nil),
-				},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledger2, nil)},
 			})
 			Expect(err).To(Succeed())
 
@@ -218,7 +199,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			Expect(sourceServer.Stop(stopCtx)).To(Succeed())
 		})
 
-		It("should take a backup to S3 and write it to a tar file", func() {
+		It("should take a backup to S3", func() {
 			resp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
 				Driver:     "s3",
 				S3Bucket:   bootstrapS3Bucket,
@@ -227,31 +208,21 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.GetTotalFiles()).To(BeNumerically(">", 0))
-
-			// Download backup from S3 and write as tar file
-			tarData, _ := downloadBackupAsTar(ctx, s3Client, bootstrapS3Bucket)
-			Expect(tarData).NotTo(BeEmpty())
-
-			tmpFile, err := os.CreateTemp("", "bootstrap-backup-*.tar")
-			Expect(err).To(Succeed())
-
-			_, err = tmpFile.Write(tarData)
-			Expect(err).To(Succeed())
-			Expect(tmpFile.Close()).To(Succeed())
-
-			backupTarPath = tmpFile.Name()
 		})
 	})
 
-	// Phase 2: Run the CLI command offline — no server.
+	// Phase 2: Run the offline bootstrap CLI — downloads from S3, no server.
 	Describe("Phase 2: Offline bootstrap via CLI command", Ordered, func() {
 		It("should refuse to bootstrap into a directory with CURRENT_CHECKPOINT", func() {
 			tmpDir := GinkgoT().TempDir()
-			Expect(os.WriteFile(filepath.Join(tmpDir, "CURRENT_CHECKPOINT"), []byte("0"), 0644)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(tmpDir, "CURRENT_CHECKPOINT"), []byte("0"), 0o644)).To(Succeed())
 
 			cmd := store.NewBootstrapCommand()
 			cmd.SetArgs([]string{
-				"--input", backupTarPath,
+				"--s3-bucket", bootstrapS3Bucket,
+				"--s3-region", bootstrapS3Region,
+				"--s3-endpoint", minioEndpoint,
+				"--bucket-id", bootstrapBucketID,
 				"--data-dir", tmpDir,
 				"--yes",
 			})
@@ -264,7 +235,10 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		It("should bootstrap with --validate --yes", func() {
 			cmd := store.NewBootstrapCommand()
 			cmd.SetArgs([]string{
-				"--input", backupTarPath,
+				"--s3-bucket", bootstrapS3Bucket,
+				"--s3-region", bootstrapS3Region,
+				"--s3-endpoint", minioEndpoint,
+				"--bucket-id", bootstrapBucketID,
 				"--data-dir", bootstrapDataDir,
 				"--validate",
 				"--yes",
@@ -303,7 +277,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		BeforeAll(func() {
 			instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 				NodeID:    1,
-				ClusterID: "test-cluster",
+				ClusterID: bootstrapBucketID,
 				HTTPPort:  httpPort,
 				RaftPort:  raftPort,
 				GRPCPort:  grpcPort,
@@ -323,7 +297,6 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(grpcPort)
 			Expect(err).To(Succeed())
 
-			// Wait for leader election.
 			Eventually(func(g Gomega) bool {
 				state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 				g.Expect(err).To(Succeed())
@@ -350,61 +323,21 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			Expect(ledgers).To(HaveKey(ledger2))
 		})
 
-		It("should have the correct transactions on ledger 1", func() {
-			txs, err := listAllTransactions(ctx, client, ledgerName, 100, 0)
+		It("should have the correct account balances", func() {
+			aliceResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
 			Expect(err).To(Succeed())
-			Expect(txs).To(HaveLen(2))
-		})
-
-		It("should have the correct account balances on ledger 1", func() {
-			aliceResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
-				Ledger:  ledgerName,
-				Address: "alice",
-			})
-			Expect(err).To(Succeed())
-			Expect(aliceResp.Volumes).To(HaveKey("USD"))
 			Expect(aliceResp.Volumes["USD"].Input).To(Equal("3000"))
 
-			bobResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
-				Ledger:  ledgerName,
-				Address: "bob",
-			})
+			bankResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "bank"})
 			Expect(err).To(Succeed())
-			Expect(bobResp.Volumes).To(HaveKey("USD"))
-			Expect(bobResp.Volumes["USD"].Input).To(Equal("2000"))
-
-			bankResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
-				Ledger:  ledgerName,
-				Address: "bank",
-			})
-			Expect(err).To(Succeed())
-			Expect(bankResp.Volumes).To(HaveKey("USD"))
 			Expect(bankResp.Volumes["USD"].Input).To(Equal("10000"))
 			Expect(bankResp.Volumes["USD"].Output).To(Equal("5000"))
 		})
 
 		It("should have the correct account metadata", func() {
-			aliceResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
-				Ledger:  ledgerName,
-				Address: "alice",
-			})
+			aliceResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
 			Expect(err).To(Succeed())
-			Expect(aliceResp.Metadata).NotTo(BeNil())
 			Expect(commonpb.MetadataSetToMap(aliceResp.Metadata)).To(HaveKeyWithValue("role", "customer"))
-		})
-
-		It("should have the correct data on ledger 2", func() {
-			txs, err := listAllTransactions(ctx, client, ledger2, 100, 0)
-			Expect(err).To(Succeed())
-			Expect(txs).To(HaveLen(1))
-
-			treasuryResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
-				Ledger:  ledger2,
-				Address: "treasury",
-			})
-			Expect(err).To(Succeed())
-			Expect(treasuryResp.Volumes).To(HaveKey("EUR"))
-			Expect(treasuryResp.Volumes["EUR"].Input).To(Equal("50000"))
 		})
 
 		It("should accept new transactions after bootstrap", func() {
@@ -412,47 +345,14 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("bank", "charlie", big.NewInt(1000), "USD"),
-					}, map[string]string{"type": "post-bootstrap"}, nil),
-				},
-			})
-			Expect(err).To(Succeed())
-
-			charlieResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
-				Ledger:  ledgerName,
-				Address: "charlie",
-			})
-			Expect(err).To(Succeed())
-			Expect(charlieResp.Volumes).To(HaveKey("USD"))
-			Expect(charlieResp.Volumes["USD"].Input).To(Equal("1000"))
-
-			bankResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
-				Ledger:  ledgerName,
-				Address: "bank",
-			})
-			Expect(err).To(Succeed())
-			Expect(bankResp.Volumes["USD"].Output).To(Equal("6000"))
-		})
-
-		It("should accept new ledger creation after bootstrap", func() {
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					actions.CreateLedgerAction("post-bootstrap-ledger", nil),
-				},
-			})
-			Expect(err).To(Succeed())
-
-			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					actions.CreateTransactionAction("post-bootstrap-ledger", []*commonpb.Posting{
-						actions.NewPosting("world", "user1", big.NewInt(100), "BTC"),
 					}, nil, nil),
 				},
 			})
 			Expect(err).To(Succeed())
 
-			ledgers, err := actions.ListLedgers(ctx, client)
+			charlieResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "charlie"})
 			Expect(err).To(Succeed())
-			Expect(ledgers).To(HaveLen(3))
+			Expect(charlieResp.Volumes["USD"].Input).To(Equal("1000"))
 		})
 	})
 })

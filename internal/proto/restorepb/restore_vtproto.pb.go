@@ -19,19 +19,15 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-func (m *UploadBackupRequest) CloneVT() *UploadBackupRequest {
+func (m *DownloadBackupRequest) CloneVT() *DownloadBackupRequest {
 	if m == nil {
-		return (*UploadBackupRequest)(nil)
+		return (*DownloadBackupRequest)(nil)
 	}
-	r := new(UploadBackupRequest)
-	r.Eof = m.Eof
-	r.ContentSha256 = m.ContentSha256
-	r.ContentSize = m.ContentSize
-	if rhs := m.Data; rhs != nil {
-		tmpBytes := make([]byte, len(rhs))
-		copy(tmpBytes, rhs)
-		r.Data = tmpBytes
-	}
+	r := new(DownloadBackupRequest)
+	r.S3Bucket = m.S3Bucket
+	r.S3Region = m.S3Region
+	r.S3Endpoint = m.S3Endpoint
+	r.BucketId = m.BucketId
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -39,17 +35,17 @@ func (m *UploadBackupRequest) CloneVT() *UploadBackupRequest {
 	return r
 }
 
-func (m *UploadBackupRequest) CloneMessageVT() proto.Message {
+func (m *DownloadBackupRequest) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *UploadBackupResponse) CloneVT() *UploadBackupResponse {
+func (m *DownloadBackupResponse) CloneVT() *DownloadBackupResponse {
 	if m == nil {
-		return (*UploadBackupResponse)(nil)
+		return (*DownloadBackupResponse)(nil)
 	}
-	r := new(UploadBackupResponse)
-	r.BytesReceived = m.BytesReceived
-	r.Sha256 = m.Sha256
+	r := new(DownloadBackupResponse)
+	r.FilesDownloaded = m.FilesDownloaded
+	r.TotalBytes = m.TotalBytes
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -57,7 +53,7 @@ func (m *UploadBackupResponse) CloneVT() *UploadBackupResponse {
 	return r
 }
 
-func (m *UploadBackupResponse) CloneMessageVT() proto.Message {
+func (m *DownloadBackupResponse) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -225,51 +221,51 @@ func (m *FinalizeRestoreResponse) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (this *UploadBackupRequest) EqualVT(that *UploadBackupRequest) bool {
+func (this *DownloadBackupRequest) EqualVT(that *DownloadBackupRequest) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
 		return false
 	}
-	if string(this.Data) != string(that.Data) {
+	if this.S3Bucket != that.S3Bucket {
 		return false
 	}
-	if this.Eof != that.Eof {
+	if this.S3Region != that.S3Region {
 		return false
 	}
-	if this.ContentSha256 != that.ContentSha256 {
+	if this.S3Endpoint != that.S3Endpoint {
 		return false
 	}
-	if this.ContentSize != that.ContentSize {
+	if this.BucketId != that.BucketId {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *UploadBackupRequest) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*UploadBackupRequest)
+func (this *DownloadBackupRequest) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*DownloadBackupRequest)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *UploadBackupResponse) EqualVT(that *UploadBackupResponse) bool {
+func (this *DownloadBackupResponse) EqualVT(that *DownloadBackupResponse) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.BytesReceived != that.BytesReceived {
+	if this.FilesDownloaded != that.FilesDownloaded {
 		return false
 	}
-	if this.Sha256 != that.Sha256 {
+	if this.TotalBytes != that.TotalBytes {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *UploadBackupResponse) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*UploadBackupResponse)
+func (this *DownloadBackupResponse) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*DownloadBackupResponse)
 	if !ok {
 		return false
 	}
@@ -498,7 +494,7 @@ func (this *FinalizeRestoreResponse) EqualMessageVT(thatMsg proto.Message) bool 
 	}
 	return this.EqualVT(that)
 }
-func (m *UploadBackupRequest) MarshalVT() (dAtA []byte, err error) {
+func (m *DownloadBackupRequest) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -511,12 +507,12 @@ func (m *UploadBackupRequest) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *UploadBackupRequest) MarshalToVT(dAtA []byte) (int, error) {
+func (m *DownloadBackupRequest) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *UploadBackupRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *DownloadBackupRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -528,39 +524,38 @@ func (m *UploadBackupRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.ContentSize != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ContentSize))
+	if len(m.BucketId) > 0 {
+		i -= len(m.BucketId)
+		copy(dAtA[i:], m.BucketId)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.BucketId)))
 		i--
-		dAtA[i] = 0x20
+		dAtA[i] = 0x22
 	}
-	if len(m.ContentSha256) > 0 {
-		i -= len(m.ContentSha256)
-		copy(dAtA[i:], m.ContentSha256)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ContentSha256)))
+	if len(m.S3Endpoint) > 0 {
+		i -= len(m.S3Endpoint)
+		copy(dAtA[i:], m.S3Endpoint)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.S3Endpoint)))
 		i--
 		dAtA[i] = 0x1a
 	}
-	if m.Eof {
+	if len(m.S3Region) > 0 {
+		i -= len(m.S3Region)
+		copy(dAtA[i:], m.S3Region)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.S3Region)))
 		i--
-		if m.Eof {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x10
+		dAtA[i] = 0x12
 	}
-	if len(m.Data) > 0 {
-		i -= len(m.Data)
-		copy(dAtA[i:], m.Data)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Data)))
+	if len(m.S3Bucket) > 0 {
+		i -= len(m.S3Bucket)
+		copy(dAtA[i:], m.S3Bucket)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.S3Bucket)))
 		i--
 		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
 
-func (m *UploadBackupResponse) MarshalVT() (dAtA []byte, err error) {
+func (m *DownloadBackupResponse) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -573,12 +568,12 @@ func (m *UploadBackupResponse) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *UploadBackupResponse) MarshalToVT(dAtA []byte) (int, error) {
+func (m *DownloadBackupResponse) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *UploadBackupResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *DownloadBackupResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -590,15 +585,13 @@ func (m *UploadBackupResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.Sha256) > 0 {
-		i -= len(m.Sha256)
-		copy(dAtA[i:], m.Sha256)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Sha256)))
+	if m.TotalBytes != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.TotalBytes))
 		i--
-		dAtA[i] = 0x12
+		dAtA[i] = 0x10
 	}
-	if m.BytesReceived != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.BytesReceived))
+	if m.FilesDownloaded != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.FilesDownloaded))
 		i--
 		dAtA[i] = 0x8
 	}
@@ -969,42 +962,43 @@ func (m *FinalizeRestoreResponse) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 	return len(dAtA) - i, nil
 }
 
-func (m *UploadBackupRequest) SizeVT() (n int) {
+func (m *DownloadBackupRequest) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	l = len(m.Data)
+	l = len(m.S3Bucket)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.Eof {
-		n += 2
-	}
-	l = len(m.ContentSha256)
+	l = len(m.S3Region)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.ContentSize != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ContentSize))
+	l = len(m.S3Endpoint)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.BucketId)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
 }
 
-func (m *UploadBackupResponse) SizeVT() (n int) {
+func (m *DownloadBackupResponse) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.BytesReceived != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.BytesReceived))
+	if m.FilesDownloaded != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.FilesDownloaded))
 	}
-	l = len(m.Sha256)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	if m.TotalBytes != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.TotalBytes))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -1149,7 +1143,7 @@ func (m *FinalizeRestoreResponse) SizeVT() (n int) {
 	return n
 }
 
-func (m *UploadBackupRequest) UnmarshalVT(dAtA []byte) error {
+func (m *DownloadBackupRequest) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -1172,69 +1166,15 @@ func (m *UploadBackupRequest) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: UploadBackupRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: DownloadBackupRequest: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: UploadBackupRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: DownloadBackupRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Data", wireType)
-			}
-			var byteLen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				byteLen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if byteLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + byteLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Data = append(m.Data[:0], dAtA[iNdEx:postIndex]...)
-			if m.Data == nil {
-				m.Data = []byte{}
-			}
-			iNdEx = postIndex
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Eof", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.Eof = bool(v != 0)
-		case 3:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ContentSha256", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field S3Bucket", wireType)
 			}
 			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
@@ -1262,13 +1202,13 @@ func (m *UploadBackupRequest) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.ContentSha256 = string(dAtA[iNdEx:postIndex])
+			m.S3Bucket = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 4:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ContentSize", wireType)
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field S3Region", wireType)
 			}
-			m.ContentSize = 0
+			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -1278,11 +1218,88 @@ func (m *UploadBackupRequest) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.ContentSize |= uint64(b&0x7F) << shift
+				stringLen |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.S3Region = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field S3Endpoint", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.S3Endpoint = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BucketId", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.BucketId = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -1305,7 +1322,7 @@ func (m *UploadBackupRequest) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *UploadBackupResponse) UnmarshalVT(dAtA []byte) error {
+func (m *DownloadBackupResponse) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -1328,17 +1345,17 @@ func (m *UploadBackupResponse) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: UploadBackupResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: DownloadBackupResponse: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: UploadBackupResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: DownloadBackupResponse: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field BytesReceived", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field FilesDownloaded", wireType)
 			}
-			m.BytesReceived = 0
+			m.FilesDownloaded = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -1348,16 +1365,16 @@ func (m *UploadBackupResponse) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.BytesReceived |= uint64(b&0x7F) << shift
+				m.FilesDownloaded |= uint32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
 		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Sha256", wireType)
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TotalBytes", wireType)
 			}
-			var stringLen uint64
+			m.TotalBytes = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -1367,24 +1384,11 @@ func (m *UploadBackupResponse) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
+				m.TotalBytes |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Sha256 = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

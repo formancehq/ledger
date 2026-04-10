@@ -19,7 +19,7 @@ func NewCommand() *cobra.Command {
 		Long:  "Upload, validate, preview, and finalize backup restores on a server running in --restore mode",
 	}
 
-	cmd.AddCommand(NewUploadCommand())
+	cmd.AddCommand(NewDownloadCommand())
 	cmd.AddCommand(NewValidateCommand())
 	cmd.AddCommand(NewPreviewCommand())
 	cmd.AddCommand(NewFinalizeCommand())

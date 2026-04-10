@@ -66,3 +66,4 @@ misc/devenv/devenv
 .venv/
 .hypothesis/
 misc/devenv/operator/operator
+tests/antithesis/workload/parallel_driver_*

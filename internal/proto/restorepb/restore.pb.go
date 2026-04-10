@@ -21,30 +21,30 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type UploadBackupRequest struct {
+type DownloadBackupRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Data          []byte                 `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`                                        // Tar archive chunk data
-	Eof           bool                   `protobuf:"varint,2,opt,name=eof,proto3" json:"eof,omitempty"`                                         // True for the final chunk (may be empty)
-	ContentSha256 string                 `protobuf:"bytes,3,opt,name=content_sha256,json=contentSha256,proto3" json:"content_sha256,omitempty"` // Expected SHA256 hash of the full archive (set on EOF)
-	ContentSize   uint64                 `protobuf:"varint,4,opt,name=content_size,json=contentSize,proto3" json:"content_size,omitempty"`      // Expected total size of the archive in bytes (set on EOF)
+	S3Bucket      string                 `protobuf:"bytes,1,opt,name=s3_bucket,json=s3Bucket,proto3" json:"s3_bucket,omitempty"`       // S3 bucket containing the backup
+	S3Region      string                 `protobuf:"bytes,2,opt,name=s3_region,json=s3Region,proto3" json:"s3_region,omitempty"`       // AWS region for the S3 bucket
+	S3Endpoint    string                 `protobuf:"bytes,3,opt,name=s3_endpoint,json=s3Endpoint,proto3" json:"s3_endpoint,omitempty"` // Custom S3 endpoint (for MinIO)
+	BucketId      string                 `protobuf:"bytes,4,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"`       // Namespace prefix for backup files (default: cluster-id from server config)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *UploadBackupRequest) Reset() {
-	*x = UploadBackupRequest{}
+func (x *DownloadBackupRequest) Reset() {
+	*x = DownloadBackupRequest{}
 	mi := &file_restore_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *UploadBackupRequest) String() string {
+func (x *DownloadBackupRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*UploadBackupRequest) ProtoMessage() {}
+func (*DownloadBackupRequest) ProtoMessage() {}
 
-func (x *UploadBackupRequest) ProtoReflect() protoreflect.Message {
+func (x *DownloadBackupRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_restore_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -56,61 +56,61 @@ func (x *UploadBackupRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use UploadBackupRequest.ProtoReflect.Descriptor instead.
-func (*UploadBackupRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use DownloadBackupRequest.ProtoReflect.Descriptor instead.
+func (*DownloadBackupRequest) Descriptor() ([]byte, []int) {
 	return file_restore_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *UploadBackupRequest) GetData() []byte {
+func (x *DownloadBackupRequest) GetS3Bucket() string {
 	if x != nil {
-		return x.Data
-	}
-	return nil
-}
-
-func (x *UploadBackupRequest) GetEof() bool {
-	if x != nil {
-		return x.Eof
-	}
-	return false
-}
-
-func (x *UploadBackupRequest) GetContentSha256() string {
-	if x != nil {
-		return x.ContentSha256
+		return x.S3Bucket
 	}
 	return ""
 }
 
-func (x *UploadBackupRequest) GetContentSize() uint64 {
+func (x *DownloadBackupRequest) GetS3Region() string {
 	if x != nil {
-		return x.ContentSize
+		return x.S3Region
 	}
-	return 0
+	return ""
 }
 
-type UploadBackupResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	BytesReceived uint64                 `protobuf:"varint,1,opt,name=bytes_received,json=bytesReceived,proto3" json:"bytes_received,omitempty"` // Total bytes received
-	Sha256        string                 `protobuf:"bytes,2,opt,name=sha256,proto3" json:"sha256,omitempty"`                                     // Computed SHA256 hash of the received data
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+func (x *DownloadBackupRequest) GetS3Endpoint() string {
+	if x != nil {
+		return x.S3Endpoint
+	}
+	return ""
 }
 
-func (x *UploadBackupResponse) Reset() {
-	*x = UploadBackupResponse{}
+func (x *DownloadBackupRequest) GetBucketId() string {
+	if x != nil {
+		return x.BucketId
+	}
+	return ""
+}
+
+type DownloadBackupResponse struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	FilesDownloaded uint32                 `protobuf:"varint,1,opt,name=files_downloaded,json=filesDownloaded,proto3" json:"files_downloaded,omitempty"` // Number of files downloaded
+	TotalBytes      uint64                 `protobuf:"varint,2,opt,name=total_bytes,json=totalBytes,proto3" json:"total_bytes,omitempty"`                // Total bytes downloaded
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *DownloadBackupResponse) Reset() {
+	*x = DownloadBackupResponse{}
 	mi := &file_restore_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *UploadBackupResponse) String() string {
+func (x *DownloadBackupResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*UploadBackupResponse) ProtoMessage() {}
+func (*DownloadBackupResponse) ProtoMessage() {}
 
-func (x *UploadBackupResponse) ProtoReflect() protoreflect.Message {
+func (x *DownloadBackupResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_restore_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -122,23 +122,23 @@ func (x *UploadBackupResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use UploadBackupResponse.ProtoReflect.Descriptor instead.
-func (*UploadBackupResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use DownloadBackupResponse.ProtoReflect.Descriptor instead.
+func (*DownloadBackupResponse) Descriptor() ([]byte, []int) {
 	return file_restore_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *UploadBackupResponse) GetBytesReceived() uint64 {
+func (x *DownloadBackupResponse) GetFilesDownloaded() uint32 {
 	if x != nil {
-		return x.BytesReceived
+		return x.FilesDownloaded
 	}
 	return 0
 }
 
-func (x *UploadBackupResponse) GetSha256() string {
+func (x *DownloadBackupResponse) GetTotalBytes() uint64 {
 	if x != nil {
-		return x.Sha256
+		return x.TotalBytes
 	}
-	return ""
+	return 0
 }
 
 type ValidateRestoreRequest struct {
@@ -551,15 +551,17 @@ var File_restore_proto protoreflect.FileDescriptor
 
 const file_restore_proto_rawDesc = "" +
 	"\n" +
-	"\rrestore.proto\x12\arestore\"\x85\x01\n" +
-	"\x13UploadBackupRequest\x12\x12\n" +
-	"\x04data\x18\x01 \x01(\fR\x04data\x12\x10\n" +
-	"\x03eof\x18\x02 \x01(\bR\x03eof\x12%\n" +
-	"\x0econtent_sha256\x18\x03 \x01(\tR\rcontentSha256\x12!\n" +
-	"\fcontent_size\x18\x04 \x01(\x04R\vcontentSize\"U\n" +
-	"\x14UploadBackupResponse\x12%\n" +
-	"\x0ebytes_received\x18\x01 \x01(\x04R\rbytesReceived\x12\x16\n" +
-	"\x06sha256\x18\x02 \x01(\tR\x06sha256\"\x18\n" +
+	"\rrestore.proto\x12\arestore\"\x8f\x01\n" +
+	"\x15DownloadBackupRequest\x12\x1b\n" +
+	"\ts3_bucket\x18\x01 \x01(\tR\bs3Bucket\x12\x1b\n" +
+	"\ts3_region\x18\x02 \x01(\tR\bs3Region\x12\x1f\n" +
+	"\vs3_endpoint\x18\x03 \x01(\tR\n" +
+	"s3Endpoint\x12\x1b\n" +
+	"\tbucket_id\x18\x04 \x01(\tR\bbucketId\"d\n" +
+	"\x16DownloadBackupResponse\x12)\n" +
+	"\x10files_downloaded\x18\x01 \x01(\rR\x0ffilesDownloaded\x12\x1f\n" +
+	"\vtotal_bytes\x18\x02 \x01(\x04R\n" +
+	"totalBytes\"\x18\n" +
 	"\x16ValidateRestoreRequest\"\x95\x01\n" +
 	"\x14ValidateRestoreEvent\x125\n" +
 	"\x05error\x18\x01 \x01(\v2\x1d.restore.ValidateRestoreErrorH\x00R\x05error\x12>\n" +
@@ -580,9 +582,9 @@ const file_restore_proto_rawDesc = "" +
 	"\fledger_names\x18\x05 \x03(\tR\vledgerNames\"\x18\n" +
 	"\x16FinalizeRestoreRequest\"3\n" +
 	"\x17FinalizeRestoreResponse\x12\x18\n" +
-	"\amessage\x18\x01 \x01(\tR\amessage2\xdd\x02\n" +
-	"\x0eRestoreService\x12M\n" +
-	"\fUploadBackup\x12\x1c.restore.UploadBackupRequest\x1a\x1d.restore.UploadBackupResponse(\x01\x12S\n" +
+	"\amessage\x18\x01 \x01(\tR\amessage2\xe1\x02\n" +
+	"\x0eRestoreService\x12Q\n" +
+	"\x0eDownloadBackup\x12\x1e.restore.DownloadBackupRequest\x1a\x1f.restore.DownloadBackupResponse\x12S\n" +
 	"\x0fValidateRestore\x12\x1f.restore.ValidateRestoreRequest\x1a\x1d.restore.ValidateRestoreEvent0\x01\x12Q\n" +
 	"\x0ePreviewRestore\x12\x1e.restore.PreviewRestoreRequest\x1a\x1f.restore.PreviewRestoreResponse\x12T\n" +
 	"\x0fFinalizeRestore\x12\x1f.restore.FinalizeRestoreRequest\x1a .restore.FinalizeRestoreResponseB>Z<github.com/formancehq/ledger-v3-poc/internal/proto/restorepbb\x06proto3"
@@ -601,8 +603,8 @@ func file_restore_proto_rawDescGZIP() []byte {
 
 var file_restore_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_restore_proto_goTypes = []any{
-	(*UploadBackupRequest)(nil),     // 0: restore.UploadBackupRequest
-	(*UploadBackupResponse)(nil),    // 1: restore.UploadBackupResponse
+	(*DownloadBackupRequest)(nil),   // 0: restore.DownloadBackupRequest
+	(*DownloadBackupResponse)(nil),  // 1: restore.DownloadBackupResponse
 	(*ValidateRestoreRequest)(nil),  // 2: restore.ValidateRestoreRequest
 	(*ValidateRestoreEvent)(nil),    // 3: restore.ValidateRestoreEvent
 	(*ValidateRestoreError)(nil),    // 4: restore.ValidateRestoreError
@@ -615,11 +617,11 @@ var file_restore_proto_goTypes = []any{
 var file_restore_proto_depIdxs = []int32{
 	4, // 0: restore.ValidateRestoreEvent.error:type_name -> restore.ValidateRestoreError
 	5, // 1: restore.ValidateRestoreEvent.progress:type_name -> restore.ValidateRestoreProgress
-	0, // 2: restore.RestoreService.UploadBackup:input_type -> restore.UploadBackupRequest
+	0, // 2: restore.RestoreService.DownloadBackup:input_type -> restore.DownloadBackupRequest
 	2, // 3: restore.RestoreService.ValidateRestore:input_type -> restore.ValidateRestoreRequest
 	6, // 4: restore.RestoreService.PreviewRestore:input_type -> restore.PreviewRestoreRequest
 	8, // 5: restore.RestoreService.FinalizeRestore:input_type -> restore.FinalizeRestoreRequest
-	1, // 6: restore.RestoreService.UploadBackup:output_type -> restore.UploadBackupResponse
+	1, // 6: restore.RestoreService.DownloadBackup:output_type -> restore.DownloadBackupResponse
 	3, // 7: restore.RestoreService.ValidateRestore:output_type -> restore.ValidateRestoreEvent
 	7, // 8: restore.RestoreService.PreviewRestore:output_type -> restore.PreviewRestoreResponse
 	9, // 9: restore.RestoreService.FinalizeRestore:output_type -> restore.FinalizeRestoreResponse

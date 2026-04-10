@@ -21,9 +21,9 @@ import (
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/application/check"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/backup"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/otlplogs"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/tarutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
@@ -33,20 +33,23 @@ import (
 func NewBootstrapCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "bootstrap",
-		Short: "Build a data directory from a backup tar file (offline)",
-		Long: `Extract a backup tar archive into a fresh Pebble data directory,
+		Short: "Build a data directory from an S3 backup (offline)",
+		Long: `Download backup files from S3 into a fresh Pebble data directory,
 optionally validate integrity, and finalize with checkpoint + RESTORED marker.
 
 This is a purely offline operation — no server needed.`,
 		RunE: runBootstrap,
 	}
 
-	cmd.Flags().StringP("input", "i", "", "Path to the backup tar file (required)")
+	cmd.Flags().String("s3-bucket", "", "S3 bucket containing the backup (required)")
+	cmd.Flags().String("s3-region", "", "AWS region for S3 bucket")
+	cmd.Flags().String("s3-endpoint", "", "Custom S3 endpoint (for MinIO)")
+	cmd.Flags().String("bucket-id", "", "Namespace prefix for backup files (default: uses cluster-id from config)")
 	cmd.Flags().String("data-dir", "", "Target data directory (required, must be fresh)")
-	cmd.Flags().Bool("validate", false, "Run integrity checks after extraction")
+	cmd.Flags().Bool("validate", false, "Run integrity checks after download")
 	cmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
 
-	_ = cmd.MarkFlagRequired("input")
+	_ = cmd.MarkFlagRequired("s3-bucket")
 	_ = cmd.MarkFlagRequired("data-dir")
 
 	return cmd
@@ -54,10 +57,13 @@ This is a purely offline operation — no server needed.`,
 
 func runBootstrap(cmd *cobra.Command, _ []string) error {
 	var (
-		inputPath, _ = cmd.Flags().GetString("input")
-		dataDir, _   = cmd.Flags().GetString("data-dir")
-		validate, _  = cmd.Flags().GetBool("validate")
-		yes, _       = cmd.Flags().GetBool("yes")
+		s3Bucket, _   = cmd.Flags().GetString("s3-bucket")
+		s3Region, _   = cmd.Flags().GetString("s3-region")
+		s3Endpoint, _ = cmd.Flags().GetString("s3-endpoint")
+		bucketID, _   = cmd.Flags().GetString("bucket-id")
+		dataDir, _    = cmd.Flags().GetString("data-dir")
+		validate, _   = cmd.Flags().GetBool("validate")
+		yes, _        = cmd.Flags().GetBool("yes")
 	)
 
 	// Ensure data directory is fresh (no CURRENT_CHECKPOINT).
@@ -66,33 +72,97 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("data directory %s already contains CURRENT_CHECKPOINT; refusing to overwrite", dataDir)
 	}
 
-	// Create staging directory.
+	// Create S3 storage
+	storage, err := backup.NewStorage("s3", "", s3Bucket, s3Region, s3Endpoint)
+	if err != nil {
+		return cmdutil.Displayed(fmt.Errorf("creating S3 storage: %w", err))
+	}
+
+	if bucketID == "" {
+		bucketID = "default"
+	}
+
+	manifestKey := bucketID + "/backups/manifest.json"
+	fileKeyPrefix := bucketID + "/backups/data/"
+
+	// Read manifest
+	spinner, _ := pterm.DefaultSpinner.Start("Reading backup manifest from S3...")
+
+	manifestReader, err := storage.GetFile(cmd.Context(), manifestKey)
+	if err != nil {
+		spinner.Fail("Failed to read manifest")
+
+		return cmdutil.Displayed(fmt.Errorf("reading backup manifest: %w", err))
+	}
+
+	manifestData, err := io.ReadAll(manifestReader)
+	_ = manifestReader.Close()
+
+	if err != nil {
+		spinner.Fail("Failed to read manifest")
+
+		return cmdutil.Displayed(fmt.Errorf("reading manifest data: %w", err))
+	}
+
+	var manifest backup.Manifest
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		spinner.Fail("Failed to parse manifest")
+
+		return cmdutil.Displayed(fmt.Errorf("parsing manifest: %w", err))
+	}
+
+	spinner.Success(fmt.Sprintf("Manifest loaded: %d files", len(manifest.Files)))
+
+	// Create staging directory
 	stagingDir := filepath.Join(dataDir, "restore-staging")
-	if err := os.MkdirAll(stagingDir, 0755); err != nil {
+	if err := os.MkdirAll(stagingDir, 0o755); err != nil {
 		return fmt.Errorf("creating staging directory: %w", err)
 	}
 
-	// Extract tar into staging.
-	spinner, _ := pterm.DefaultSpinner.Start("Extracting backup archive...")
+	// Download files
+	dlSpinner, _ := pterm.DefaultSpinner.Start("Downloading backup files from S3...")
 
-	f, err := os.Open(inputPath)
-	if err != nil {
-		spinner.Fail("Failed to open input file")
+	var totalBytes uint64
 
-		return cmdutil.Displayed(fmt.Errorf("opening input file: %w", err))
+	for filename := range manifest.Files {
+		key := fileKeyPrefix + filename
+		destPath := filepath.Join(stagingDir, filepath.FromSlash(filename))
+
+		if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+			dlSpinner.Fail("Failed to create directory")
+
+			return cmdutil.Displayed(fmt.Errorf("creating directory for %s: %w", filename, err))
+		}
+
+		reader, err := storage.GetFile(cmd.Context(), key)
+		if err != nil {
+			dlSpinner.Fail("Failed to download file")
+
+			return cmdutil.Displayed(fmt.Errorf("downloading %s: %w", filename, err))
+		}
+
+		outFile, err := os.Create(destPath)
+		if err != nil {
+			_ = reader.Close()
+			dlSpinner.Fail("Failed to create file")
+
+			return cmdutil.Displayed(fmt.Errorf("creating file %s: %w", filename, err))
+		}
+
+		n, err := io.Copy(outFile, reader)
+		_ = reader.Close()
+		_ = outFile.Close()
+
+		if err != nil {
+			dlSpinner.Fail("Failed to write file")
+
+			return cmdutil.Displayed(fmt.Errorf("writing file %s: %w", filename, err))
+		}
+
+		totalBytes += uint64(n)
 	}
 
-	if err := tarutil.ExtractTar(f, stagingDir); err != nil {
-		_ = f.Close()
-
-		spinner.Fail("Failed to extract backup")
-
-		return cmdutil.Displayed(fmt.Errorf("extracting tar: %w", err))
-	}
-
-	_ = f.Close()
-
-	spinner.Success("Backup extracted")
+	dlSpinner.Success(fmt.Sprintf("Downloaded %d files (%s)", len(manifest.Files), cmdutil.FormatBytes(totalBytes)))
 
 	// Open staging as read-only to read metadata.
 	logger := otlplogs.NopLogger()
@@ -111,11 +181,9 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 
 	_ = store.Close()
 
-	// Print preview.
 	printBootstrapPreview(lastAppliedIndex, lastAppliedTimestamp, ledgerNames)
 	pterm.Println()
 
-	// Optionally validate integrity.
 	if validate {
 		err := runBootstrapValidation(cmd.Context(), stagingDir, logger)
 		if err != nil {
@@ -125,7 +193,6 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 		pterm.Println()
 	}
 
-	// Confirm unless --yes.
 	if !yes {
 		pterm.Warning.Println("This will finalize the data directory for use by the server.")
 		pterm.Print("Continue? [y/N] ")
@@ -146,9 +213,7 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	// Compact attributes to index 0 and reset lastAppliedIndex.
-	// This ensures the backup is self-contained and can be restored on a fresh
-	// cluster without raft index conflicts in the attribute storage.
+	// Compact attributes
 	compactSpinner, _ := pterm.DefaultSpinner.Start("Compacting attributes for restore compatibility...")
 
 	compactStore, err := dal.OpenDirect(stagingDir, logger)
@@ -173,7 +238,7 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 
 	compactSpinner.Success("Attributes compacted")
 
-	// Re-read metadata after compaction (lastAppliedIndex is now 0).
+	// Re-read metadata after compaction
 	store, err = dal.OpenReadOnly(stagingDir, logger)
 	if err != nil {
 		return fmt.Errorf("re-opening staging store: %w", err)
@@ -188,9 +253,9 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 
 	_ = store.Close()
 
-	// Create checkpoint 0 via hard-link.
+	// Create checkpoint 0 via hard-link
 	checkpointsDir := filepath.Join(dataDir, "checkpoints")
-	if err := os.MkdirAll(checkpointsDir, 0755); err != nil {
+	if err := os.MkdirAll(checkpointsDir, 0o755); err != nil {
 		return fmt.Errorf("creating checkpoints directory: %w", err)
 	}
 
@@ -199,12 +264,12 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("hard linking staging to checkpoint: %w", err)
 	}
 
-	// Write CURRENT_CHECKPOINT.
-	if err := os.WriteFile(cpPath, []byte("0"), 0644); err != nil {
+	// Write CURRENT_CHECKPOINT
+	if err := os.WriteFile(cpPath, []byte("0"), 0o644); err != nil {
 		return fmt.Errorf("writing CURRENT_CHECKPOINT: %w", err)
 	}
 
-	// Write RESTORED marker.
+	// Write RESTORED marker
 	marker := node.RestoredMarker{
 		LastAppliedIndex:     lastAppliedIndex,
 		LastAppliedTimestamp: lastAppliedTimestamp,
@@ -216,11 +281,11 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 	}
 
 	markerPath := filepath.Join(dataDir, "RESTORED")
-	if err := os.WriteFile(markerPath, markerData, 0644); err != nil {
+	if err := os.WriteFile(markerPath, markerData, 0o644); err != nil {
 		return fmt.Errorf("writing restored marker: %w", err)
 	}
 
-	// Remove staging directory.
+	// Remove staging directory
 	if err := os.RemoveAll(stagingDir); err != nil {
 		pterm.Warning.Printfln("Failed to remove staging directory: %v", err)
 	}
@@ -323,7 +388,7 @@ func runBootstrapValidation(ctx context.Context, stagingDir string, logger loggi
 		}
 	})
 
-	pterm.Println() // newline after carriage-return progress
+	pterm.Println()
 
 	if err != nil {
 		pterm.Error.Println("Failed to validate backup")

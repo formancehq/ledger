@@ -118,14 +118,12 @@ var (
 	ExecutePreparedQueryWithParams = actions.ExecutePreparedQueryWithParams
 
 	// Backup helpers.
-	CollectCheckStoreEvents  = actions.CollectCheckStoreEvents
-	UploadAndFinalizeRestore = actions.UploadAndFinalizeRestore
+	CollectCheckStoreEvents = actions.CollectCheckStoreEvents
 )
 
 // Type re-exports for backward compatibility.
 type (
 	CheckStoreResult = actions.CheckStoreResult
-	BackupData       = actions.BackupData
 )
 
 // GenerateTestKeypair generates an Ed25519 keypair and returns (publicKey, privateKey).

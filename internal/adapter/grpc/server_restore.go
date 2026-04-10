@@ -2,8 +2,6 @@ package grpc
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,8 +18,8 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/application/check"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/backup"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/tarutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/restorepb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
@@ -34,18 +32,20 @@ const restoreStagingDir = "restore-staging"
 type RestoreServiceServerImpl struct {
 	restorepb.UnimplementedRestoreServiceServer
 
-	mu        sync.Mutex
-	dataDir   string
-	logger    logging.Logger
-	uploading bool
-	uploaded  bool
+	mu          sync.Mutex
+	dataDir     string
+	clusterID   string
+	logger      logging.Logger
+	downloading bool
+	downloaded  bool
 }
 
 // NewRestoreServiceServer creates a new RestoreServiceServerImpl.
-func NewRestoreServiceServer(dataDir string, logger logging.Logger) *RestoreServiceServerImpl {
+func NewRestoreServiceServer(dataDir, clusterID string, logger logging.Logger) *RestoreServiceServerImpl {
 	return &RestoreServiceServerImpl{
-		dataDir: dataDir,
-		logger:  logger,
+		dataDir:   dataDir,
+		clusterID: clusterID,
+		logger:    logger,
 	}
 }
 
@@ -53,143 +53,137 @@ func (s *RestoreServiceServerImpl) stagingDir() string {
 	return filepath.Join(s.dataDir, restoreStagingDir)
 }
 
-// UploadBackup receives a tar archive via client streaming and extracts it into the staging directory.
-func (s *RestoreServiceServerImpl) UploadBackup(stream ggrpc.ClientStreamingServer[restorepb.UploadBackupRequest, restorepb.UploadBackupResponse]) error {
+// DownloadBackup downloads backup files from S3 into the restore staging area.
+func (s *RestoreServiceServerImpl) DownloadBackup(ctx context.Context, req *restorepb.DownloadBackupRequest) (*restorepb.DownloadBackupResponse, error) {
 	s.mu.Lock()
-	if s.uploaded {
+	if s.downloaded {
 		s.mu.Unlock()
 
-		return status.Error(codes.FailedPrecondition, "backup already uploaded; finalize or restart to upload again")
+		return nil, status.Error(codes.FailedPrecondition, "backup already downloaded; finalize or restart to download again")
 	}
 
-	if s.uploading {
+	if s.downloading {
 		s.mu.Unlock()
 
-		return status.Error(codes.FailedPrecondition, "another upload is already in progress")
+		return nil, status.Error(codes.FailedPrecondition, "another download is already in progress")
 	}
 
-	s.uploading = true
+	s.downloading = true
 	s.mu.Unlock()
 
-	// Reset uploading flag on failure (on success, uploaded is set instead)
 	success := false
 
 	defer func() {
-		if !success {
-			s.mu.Lock()
-			s.uploading = false
-			s.mu.Unlock()
+		s.mu.Lock()
+		if success {
+			s.downloaded = true
 		}
+		s.downloading = false
+		s.mu.Unlock()
 	}()
 
+	// Create S3 storage
+	storage, err := backup.NewStorage("s3", "", req.GetS3Bucket(), req.GetS3Region(), req.GetS3Endpoint())
+	if err != nil {
+		return nil, fmt.Errorf("creating S3 storage: %w", err)
+	}
+
+	bucketID := req.GetBucketId()
+	if bucketID == "" {
+		bucketID = s.clusterID
+	}
+
+	manifestKey := bucketID + "/backups/manifest.json"
+	fileKeyPrefix := bucketID + "/backups/data/"
+
+	// Read manifest
+	manifestReader, err := storage.GetFile(ctx, manifestKey)
+	if err != nil {
+		return nil, fmt.Errorf("reading backup manifest: %w", err)
+	}
+
+	manifestData, err := io.ReadAll(manifestReader)
+	_ = manifestReader.Close()
+
+	if err != nil {
+		return nil, fmt.Errorf("reading manifest data: %w", err)
+	}
+
+	var manifest backup.Manifest
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		return nil, fmt.Errorf("parsing manifest: %w", err)
+	}
+
+	if len(manifest.Files) == 0 {
+		return nil, status.Error(codes.FailedPrecondition, "backup manifest contains no files")
+	}
+
+	// Prepare staging directory
 	stagingDir := s.stagingDir()
 
-	// Clean and create staging directory
-	err := os.RemoveAll(stagingDir)
-	if err != nil {
-		return fmt.Errorf("cleaning staging directory: %w", err)
+	if err := os.RemoveAll(stagingDir); err != nil {
+		return nil, fmt.Errorf("cleaning staging directory: %w", err)
 	}
 
-	err = os.MkdirAll(stagingDir, 0755)
-	if err != nil {
-		return fmt.Errorf("creating staging directory: %w", err)
+	if err := os.MkdirAll(stagingDir, 0o755); err != nil {
+		return nil, fmt.Errorf("creating staging directory: %w", err)
 	}
 
-	// Set up pipe-based concurrent extraction
-	pr, pw := io.Pipe()
-	extractErrCh := make(chan error, 1)
+	// Download each file from S3 into staging
+	var totalBytes uint64
 
-	go func() {
-		defer func() { _ = pr.Close() }()
+	for filename := range manifest.Files {
+		key := fileKeyPrefix + filename
+		destPath := filepath.Join(stagingDir, filepath.FromSlash(filename))
 
-		extractErrCh <- tarutil.ExtractTar(pr, stagingDir)
-	}()
-
-	var (
-		totalReceived uint64
-		hash          = sha256.New()
-		expectedHash  string
-	)
-
-	for {
-		req, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			break
+		if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+			return nil, fmt.Errorf("creating directory for %s: %w", filename, err)
 		}
+
+		reader, err := storage.GetFile(ctx, key)
+		if err != nil {
+			return nil, fmt.Errorf("downloading %s: %w", filename, err)
+		}
+
+		outFile, err := os.Create(destPath)
+		if err != nil {
+			_ = reader.Close()
+
+			return nil, fmt.Errorf("creating file %s: %w", filename, err)
+		}
+
+		n, err := io.Copy(outFile, reader)
+		_ = reader.Close()
+		_ = outFile.Close()
 
 		if err != nil {
-			_ = pw.CloseWithError(err)
-
-			return fmt.Errorf("receiving upload chunk: %w", err)
+			return nil, fmt.Errorf("writing file %s: %w", filename, err)
 		}
 
-		if req.GetEof() {
-			expectedHash = req.GetContentSha256()
-
-			break
-		}
-
-		if len(req.GetData()) > 0 {
-			if _, err := pw.Write(req.GetData()); err != nil {
-				return fmt.Errorf("writing to tar pipe: %w", err)
-			}
-
-			if _, err := hash.Write(req.GetData()); err != nil {
-				return fmt.Errorf("computing hash: %w", err)
-			}
-
-			totalReceived += uint64(len(req.GetData()))
-		}
+		totalBytes += uint64(n)
 	}
-
-	// Close write end to signal EOF to tar reader
-	err = pw.Close()
-	if err != nil {
-		return fmt.Errorf("closing pipe: %w", err)
-	}
-
-	// Wait for extraction to complete
-	err = <-extractErrCh
-	if err != nil {
-		return fmt.Errorf("extracting tar: %w", err)
-	}
-
-	actualHash := hex.EncodeToString(hash.Sum(nil))
-
-	// Verify hash if provided
-	if expectedHash != "" && actualHash != expectedHash {
-		// Clean up staging on hash mismatch
-		_ = os.RemoveAll(stagingDir)
-
-		return status.Errorf(codes.DataLoss, "SHA256 mismatch: expected %s, got %s", expectedHash, actualHash)
-	}
-
-	s.mu.Lock()
-	s.uploaded = true
-	s.uploading = false
-	s.mu.Unlock()
 
 	success = true
 
 	s.logger.WithFields(map[string]any{
-		"bytesReceived": totalReceived,
-		"sha256":        actualHash,
-	}).Infof("Backup uploaded successfully")
+		"filesDownloaded": len(manifest.Files),
+		"totalBytes":      totalBytes,
+	}).Infof("Backup downloaded from S3 successfully")
 
-	return stream.SendAndClose(&restorepb.UploadBackupResponse{
-		BytesReceived: totalReceived,
-		Sha256:        actualHash,
-	})
+	return &restorepb.DownloadBackupResponse{
+		FilesDownloaded: uint32(len(manifest.Files)),
+		TotalBytes:      totalBytes,
+	}, nil
 }
 
 // ValidateRestore runs integrity checks on the staged backup data.
 func (s *RestoreServiceServerImpl) ValidateRestore(_ *restorepb.ValidateRestoreRequest, stream ggrpc.ServerStreamingServer[restorepb.ValidateRestoreEvent]) error {
 	s.mu.Lock()
-	uploaded := s.uploaded
+	downloaded := s.downloaded
 	s.mu.Unlock()
 
-	if !uploaded {
-		return status.Error(codes.FailedPrecondition, "no backup uploaded; upload a backup first")
+	if !downloaded {
+		return status.Error(codes.FailedPrecondition, "no backup downloaded; download a backup first")
 	}
 
 	stagingDir := s.stagingDir()
@@ -205,7 +199,6 @@ func (s *RestoreServiceServerImpl) ValidateRestore(_ *restorepb.ValidateRestoreR
 	checker := check.NewChecker(store, attrs)
 
 	return checker.Check(stream.Context(), func(event *servicepb.CheckStoreEvent) {
-		// Convert CheckStoreEvent to ValidateRestoreEvent
 		var restoreEvent restorepb.ValidateRestoreEvent
 
 		switch t := event.GetType().(type) {
@@ -234,11 +227,11 @@ func (s *RestoreServiceServerImpl) ValidateRestore(_ *restorepb.ValidateRestoreR
 // PreviewRestore returns a summary of the staged backup data.
 func (s *RestoreServiceServerImpl) PreviewRestore(ctx context.Context, _ *restorepb.PreviewRestoreRequest) (*restorepb.PreviewRestoreResponse, error) {
 	s.mu.Lock()
-	uploaded := s.uploaded
+	downloaded := s.downloaded
 	s.mu.Unlock()
 
-	if !uploaded {
-		return nil, status.Error(codes.FailedPrecondition, "no backup uploaded; upload a backup first")
+	if !downloaded {
+		return nil, status.Error(codes.FailedPrecondition, "no backup downloaded; download a backup first")
 	}
 
 	stagingDir := s.stagingDir()
@@ -296,21 +289,19 @@ func (s *RestoreServiceServerImpl) PreviewRestore(ctx context.Context, _ *restor
 	}, nil
 }
 
-// FinalizeRestore commits the staged backup as the live data.
+// FinalizeRestore compacts attributes and commits the staged backup as the live data.
 func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restorepb.FinalizeRestoreRequest) (*restorepb.FinalizeRestoreResponse, error) {
 	s.mu.Lock()
-	uploaded := s.uploaded
+	downloaded := s.downloaded
 	s.mu.Unlock()
 
-	if !uploaded {
-		return nil, status.Error(codes.FailedPrecondition, "no backup uploaded; upload a backup first")
+	if !downloaded {
+		return nil, status.Error(codes.FailedPrecondition, "no backup downloaded; download a backup first")
 	}
 
 	stagingDir := s.stagingDir()
 
 	// Compact attributes to index 0 and reset lastAppliedIndex.
-	// This ensures the backup is self-contained and can be restored on a fresh
-	// cluster without raft index conflicts in the attribute storage.
 	s.logger.Infof("Compacting backup for restore compatibility")
 
 	compactStore, err := dal.OpenDirect(stagingDir, s.logger)
@@ -328,7 +319,7 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 		return nil, fmt.Errorf("closing compacted staging: %w", err)
 	}
 
-	// Open staging to read metadata (after compaction, lastAppliedIndex is 0)
+	// Read metadata after compaction
 	store, err := dal.OpenReadOnly(stagingDir, s.logger)
 	if err != nil {
 		return nil, fmt.Errorf("opening staging store: %w", err)
@@ -364,30 +355,13 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 	}
 
 	markerPath := filepath.Join(s.dataDir, "RESTORED")
-	if err := os.WriteFile(markerPath, markerData, 0644); err != nil {
+	if err := os.WriteFile(markerPath, markerData, 0o644); err != nil {
 		return nil, fmt.Errorf("writing restored marker: %w", err)
-	}
-
-	// Extract baseline checkpoint from staging if present.
-	baselineSrc := filepath.Join(stagingDir, "_baseline")
-	if info, err := os.Stat(baselineSrc); err == nil && info.IsDir() {
-		baselineDst := filepath.Join(s.dataDir, "baseline", "checker")
-		if err := os.MkdirAll(filepath.Dir(baselineDst), 0755); err != nil {
-			return nil, fmt.Errorf("creating baseline directory: %w", err)
-		}
-
-		_ = os.RemoveAll(baselineDst)
-
-		if err := os.Rename(baselineSrc, baselineDst); err != nil {
-			return nil, fmt.Errorf("moving baseline checkpoint: %w", err)
-		}
-
-		s.logger.Infof("Restored baseline checkpoint for integrity verification")
 	}
 
 	// Move staging to checkpoint 0
 	checkpointsDir := filepath.Join(s.dataDir, "checkpoints")
-	if err := os.MkdirAll(checkpointsDir, 0755); err != nil {
+	if err := os.MkdirAll(checkpointsDir, 0o755); err != nil {
 		return nil, fmt.Errorf("creating checkpoints directory: %w", err)
 	}
 
@@ -402,7 +376,7 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 
 	// Write CURRENT_CHECKPOINT
 	cpFile := filepath.Join(s.dataDir, "CURRENT_CHECKPOINT")
-	if err := os.WriteFile(cpFile, []byte("0"), 0644); err != nil {
+	if err := os.WriteFile(cpFile, []byte("0"), 0o644); err != nil {
 		return nil, fmt.Errorf("writing CURRENT_CHECKPOINT: %w", err)
 	}
 
