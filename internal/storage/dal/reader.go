@@ -53,7 +53,6 @@ func (h *ReadHandle) Close() error {
 	return h.snap.Close()
 }
 
-
 // Get performs a raw key lookup on the underlying Pebble database.
 // This makes *Store implement PebbleReader.
 func (s *Store) Get(key []byte) ([]byte, io.Closer, error) {

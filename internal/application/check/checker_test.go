@@ -2,7 +2,7 @@ package check
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -441,7 +441,7 @@ func (s *inMemoryStore) MarkLedgerForCleanup(ledger string) {
 }
 func (s *inMemoryStore) AddAccountMigrateRequest(_, _, _, _ string) {}
 func (s *inMemoryStore) ResolveNumscriptText(_ []byte) (string, error) {
-	return "", fmt.Errorf("not implemented in test store")
+	return "", errors.New("not implemented in test store")
 }
 
 // Helper functions for building orders

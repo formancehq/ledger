@@ -21,7 +21,7 @@ var bufPool = sync.Pool{
 // MarshalCopy marshals msg using a pooled scratch buffer and returns a
 // newly allocated byte slice safe for long-term retention (e.g. Raft).
 func MarshalCopy(msg VTMarshaler) ([]byte, error) {
-	bufp := bufPool.Get().(*[]byte) //nolint:errcheck // pool always returns *[]byte
+	bufp := bufPool.Get().(*[]byte)
 
 	size := msg.SizeVT()
 

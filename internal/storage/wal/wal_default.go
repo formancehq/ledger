@@ -285,7 +285,6 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 	return s, nil
 }
 
-
 // InitialState returns the saved HardState and ConfState information.
 func (s *DefaultWAL) InitialState() (raftpb.HardState, raftpb.ConfState, error) {
 	s.mu.RLock()
@@ -630,11 +629,11 @@ func (s *DefaultWAL) ApplySnapshot(snap raftpb.Snapshot) error {
 	defer s.mu.Unlock()
 
 	s.logger.WithFields(map[string]any{
-		"snapIndex":        snap.Metadata.Index,
-		"snapTerm":         snap.Metadata.Term,
-		"prevSnapIndex":    s.snapshot.Metadata.Index,
-		"prevHardCommit":   s.hardState.Commit,
-		"cachedEntries":    len(s.entries),
+		"snapIndex":      snap.Metadata.Index,
+		"snapTerm":       snap.Metadata.Term,
+		"prevSnapIndex":  s.snapshot.Metadata.Index,
+		"prevHardCommit": s.hardState.Commit,
+		"cachedEntries":  len(s.entries),
 	}).Infof("WAL ApplySnapshot")
 
 	s.snapshot = snap

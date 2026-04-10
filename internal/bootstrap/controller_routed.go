@@ -168,10 +168,10 @@ func (b *RoutedController) GetTransaction(ctx context.Context, ledgerName string
 		fields := map[string]any{
 			"ledger":         ledgerName,
 			"transactionId":  transactionID,
-			"nodeId":         b.Node.GetNodeID(),
-			"leader":         b.Node.GetLeader(),
-			"isLeader":       b.Node.IsLeader(),
-			"persistedIndex": b.Node.LastPersistedIndex(),
+			"nodeId":         b.GetNodeID(),
+			"leader":         b.GetLeader(),
+			"isLeader":       b.IsLeader(),
+			"persistedIndex": b.LastPersistedIndex(),
 			"forwarded":      c != b.localController,
 		}
 		if barrier != nil {
@@ -238,13 +238,13 @@ func (b *RoutedController) GetAccount(ctx context.Context, ledgerName string, ad
 
 	if barrier != nil {
 		b.Node.Logger().WithFields(map[string]any{
-			"op":              "GetAccount",
-			"ledger":          ledgerName,
-			"address":         address,
-			"commitIndex":     barrier.CommitIndex,
-			"persistedAfter":  barrier.PersistedAfter,
-			"currentPersist":  b.Node.LastPersistedIndex(),
-			"nodeId":          b.Node.GetNodeID(),
+			"op":             "GetAccount",
+			"ledger":         ledgerName,
+			"address":        address,
+			"commitIndex":    barrier.CommitIndex,
+			"persistedAfter": barrier.PersistedAfter,
+			"currentPersist": b.Node.LastPersistedIndex(),
+			"nodeId":         b.Node.GetNodeID(),
 		}).Infof("read barrier for GetAccount")
 	}
 
@@ -259,12 +259,12 @@ func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, 
 
 	if barrier != nil {
 		b.Node.Logger().WithFields(map[string]any{
-			"op":              "ListAccounts",
-			"ledger":          ledgerName,
-			"commitIndex":     barrier.CommitIndex,
-			"persistedAfter":  barrier.PersistedAfter,
-			"currentPersist":  b.Node.LastPersistedIndex(),
-			"nodeId":          b.Node.GetNodeID(),
+			"op":             "ListAccounts",
+			"ledger":         ledgerName,
+			"commitIndex":    barrier.CommitIndex,
+			"persistedAfter": barrier.PersistedAfter,
+			"currentPersist": b.Node.LastPersistedIndex(),
+			"nodeId":         b.Node.GetNodeID(),
 		}).Infof("read barrier for ListAccounts")
 	}
 

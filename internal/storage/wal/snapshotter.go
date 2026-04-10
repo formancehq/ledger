@@ -6,9 +6,10 @@ import (
 	"path/filepath"
 	"sort"
 
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.etcd.io/etcd/server/v3/wal/walpb"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
 
 // Snapshotter manages snapshot files on disk.
@@ -94,7 +95,6 @@ func (s *Snapshotter) Load() (*raftpb.Snapshot, error) {
 	return &snap, nil
 }
 
-
 // LoadNewestAvailable loads the newest snap file that matches one of the
 // given WAL snapshot records. This filters out orphaned snap files that
 // were written before a crash but have no corresponding WAL record.
@@ -179,6 +179,7 @@ func snapFileName(term, index uint64) string {
 
 func parseSnapFileName(name string) (term, index uint64, ok bool) {
 	n, err := fmt.Sscanf(name, "%016x-%016x.snap", &term, &index)
+
 	return term, index, err == nil && n == 2
 }
 

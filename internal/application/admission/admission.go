@@ -26,10 +26,10 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/receipt"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/commands"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/vtmarshal"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/keystore"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/vtmarshal"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -38,7 +38,6 @@ import (
 )
 
 var tracer = otel.Tracer("admission")
-
 
 type Proposer interface {
 	Propose(context.Context, *node.Proposal) (*futures.Future[state.ApplyResult], error)
@@ -360,13 +359,6 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		a.commandDurationHistogram.Record(ctx, time.Since(start).Microseconds())
 	}()
 
-	proposalData, err := a.marshalCommand(ctx, cmd)
-	if err != nil {
-		build.ReleaseLoaders(a.preloader.Loaders())
-
-		return nil, err
-	}
-
 	// Step 6: Acquire proposal lock and validate boundary.
 	guardStart := time.Now()
 	updatedPreloads, guard, err := a.preloader.AcquireProposalGuard(build, needs)
@@ -379,7 +371,6 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		return nil, fmt.Errorf("acquiring proposal guard: %w", err)
 	}
 
-	// Rare: boundary shifted — re-marshal with updated preloads under lock.
 	if updatedPreloads != nil {
 		a.proposalGuardRebuildCounter.Add(ctx, 1)
 		cmd.Preload = updatedPreloads
@@ -390,8 +381,8 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	// computed against an inflated tracker (e.g. after leadership transition).
 	cmd.PredictedIndex = a.preloader.TrackerNext()
 
-	// Re-marshal with the predicted index (and possibly updated preloads).
-	proposalData, err = a.marshalCommand(ctx, cmd)
+	// Marshal with the final preloads and predicted index.
+	proposalData, err := a.marshalCommand(ctx, cmd)
 	if err != nil {
 		guard.ReleaseAll()
 

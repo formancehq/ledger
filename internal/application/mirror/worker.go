@@ -16,8 +16,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/preload"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/commands"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/vtmarshal"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/vtmarshal"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
@@ -32,7 +32,6 @@ const (
 	maxBackoff        = 60 * time.Second
 	backoffMultiplier = 2.0
 )
-
 
 // prefetchResult holds the result of a background log fetch started during
 // the previous batch's Raft wait. The cursor field is used to validate that
@@ -64,7 +63,7 @@ type Worker struct {
 	nextTxID       uint64        // last known next transaction ID, avoids Pebble read per batch
 	cursorLoaded   bool
 	nextTxIDLoaded bool
-	prefetchCh   chan prefetchResult // pending prefetch from previous batch
+	prefetchCh     chan prefetchResult // pending prefetch from previous batch
 
 	// Metrics
 	ledgerAttr        attribute.KeyValue

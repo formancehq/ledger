@@ -20,6 +20,7 @@ type httpErrorMapping struct {
 func matchAs[T error]() func(error) bool {
 	return func(err error) bool {
 		var target T
+
 		return errors.As(err, &target)
 	}
 }

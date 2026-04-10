@@ -348,7 +348,7 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 	}
 
 	a.logger.WithFields(map[string]any{
-		"fromIndex": storeLastAppliedIndex,
+		"fromIndex":   storeLastAppliedIndex,
 		"commitIndex": hardState.Commit,
 	}).Infof("Starting spool replay")
 

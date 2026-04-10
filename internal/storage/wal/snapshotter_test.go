@@ -118,7 +118,6 @@ func TestSnapshotter_IgnoresNonSnapFiles(t *testing.T) {
 	require.Nil(t, loaded)
 }
 
-
 func TestSnapFileName_RoundTrip(t *testing.T) {
 	t.Parallel()
 
