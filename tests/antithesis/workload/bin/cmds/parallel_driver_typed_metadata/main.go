@@ -16,7 +16,7 @@ import (
 func main() {
 	internal.RunDriver("parallel_driver_typed_metadata", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
 		r := internal.Rand()
-		metaKey := fmt.Sprintf("score-%d", r.Uint64()%20)
+		metaKey := fmt.Sprintf("score-%d", r.Uint64())
 		metaValue := int64(r.Uint64() % 1000)
 		address := internal.GetRandomAddress()
 
