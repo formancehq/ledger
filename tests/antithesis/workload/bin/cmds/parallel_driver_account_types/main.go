@@ -34,6 +34,8 @@ func main() {
 				},
 			}},
 		})
+		assert.Sometimes(err == nil || internal.IsTransient(err) || status.Code(err) == codes.AlreadyExists,
+			"should be able to add account type", details.With(internal.Details{"error": err}))
 		if err != nil && !internal.IsTransient(err) {
 			st, _ := status.FromError(err)
 			if st.Code() != codes.AlreadyExists {
@@ -41,8 +43,10 @@ func main() {
 			}
 		}
 
-		assert.Sometimes(err == nil || internal.IsTransient(err) || status.Code(err) == codes.AlreadyExists,
-			"should be able to add account type", details.With(internal.Details{"error": err}))
+		// Skip verification if the add was not committed (transient error).
+		if err != nil && internal.IsTransient(err) {
+			return
+		}
 
 		// 2. Verify the account type appears in the ledger info.
 		info, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledger})
