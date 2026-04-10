@@ -50,7 +50,7 @@ func closePeriod(ctx context.Context, client servicepb.BucketServiceClient) {
 	})
 
 	if err != nil {
-		if internal.IsUnavailable(err) {
+		if internal.IsTransient(err) {
 			log.Printf("period close unavailable: %s", err)
 			return
 		}
@@ -90,7 +90,7 @@ func archiveClosedPeriods(ctx context.Context, client servicepb.BucketServiceCli
 		})
 
 		if err != nil {
-			if internal.IsUnavailable(err) {
+			if internal.IsTransient(err) {
 				continue
 			}
 
@@ -111,7 +111,7 @@ func archiveClosedPeriods(ctx context.Context, client servicepb.BucketServiceCli
 		})
 
 		if err != nil {
-			if internal.IsUnavailable(err) {
+			if internal.IsTransient(err) {
 				continue
 			}
 
