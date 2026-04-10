@@ -7,22 +7,6 @@ option go_package = "github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdp
 import "common.proto";
 import "signature.proto";
 
-// ============================================================================
-// Raft FSM State
-// ============================================================================
-
-message LedgerState {
-  common.LedgerInfo ledger_info = 1;
-  uint64 next_log_id = 2;
-  uint64 next_transaction_id = 3;
-}
-
-message State {
-  map<string, LedgerState> ledgers = 1;
-  uint64 next_sequence = 2;                 // Next global sequence number for SystemLog
-  uint64 checkpoint_id = 3;                 // ID of the last checkpoint (for snapshot recovery)
-}
-
 // Order represents a request to be processed by the FSM
 // The FSM is responsible for interpreting the request and applying the changes
 message Order {

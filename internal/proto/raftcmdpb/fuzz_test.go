@@ -64,30 +64,3 @@ func FuzzOrderUnmarshalVT(f *testing.F) {
 		_ = msg.UnmarshalVT(data)
 	})
 }
-
-// FuzzStateUnmarshalVT fuzzes the binary protobuf decoder for the Raft FSM State.
-// The State message is deserialized during snapshot restore and contains all
-// ledger states, node snapshots, and cached data.
-func FuzzStateUnmarshalVT(f *testing.F) {
-	empty := &State{}
-	if data, err := empty.MarshalVT(); err == nil {
-		f.Add(data)
-	}
-
-	withLedger := &State{
-		Ledgers: map[string]*LedgerState{
-			"default": {NextTransactionId: 42},
-		},
-	}
-	if data, err := withLedger.MarshalVT(); err == nil {
-		f.Add(data)
-	}
-
-	f.Add([]byte{})
-	f.Add([]byte{0xFF, 0xFF})
-
-	f.Fuzz(func(t *testing.T, data []byte) {
-		var msg State
-		_ = msg.UnmarshalVT(data)
-	})
-}
