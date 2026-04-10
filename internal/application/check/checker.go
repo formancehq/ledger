@@ -51,7 +51,18 @@ func NewChecker(store *dal.Store, attrs *attributes.Attributes) *Checker {
 // 7. Archived period sealing hash decomposition
 // 8. Archived state via baseline checkpoint + 3-way merge comparison.
 func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStoreEvent)) error {
-	lastSequence, err := query.ReadLastSequence(c.store)
+	// Take a point-in-time snapshot so that log iteration and live attribute
+	// reads see the same committed state. Without this, entries committed
+	// between the log scan and the attribute scan cause false-positive
+	// mismatches (the live volumes include effects of logs the replay never saw).
+	snap, err := c.store.NewReadHandle()
+	if err != nil {
+		return fmt.Errorf("creating read snapshot: %w", err)
+	}
+
+	defer func() { _ = snap.Close() }()
+
+	lastSequence, err := query.ReadLastSequence(snap)
 	if err != nil {
 		return fmt.Errorf("getting last sequence: %w", err)
 	}
@@ -70,7 +81,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	}
 
 	// Read archived periods to adjust the starting point for log replay.
-	periodsCursor, err := query.ReadPeriods(ctx, c.store)
+	periodsCursor, err := query.ReadPeriods(ctx, snap)
 	if err != nil {
 		return fmt.Errorf("reading periods: %w", err)
 	}
@@ -128,7 +139,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// If periods were archived, pre-populate knownLedgers from Pebble
 	// since the CreateLedger logs have been purged.
 	if hasArchivedPeriods {
-		ledgerCursor, err := query.ReadLedgers(ctx, c.store)
+		ledgerCursor, err := query.ReadLedgers(ctx, snap)
 		if err != nil {
 			return fmt.Errorf("reading ledgers for archive recovery: %w", err)
 		}
@@ -152,7 +163,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 		// Pre-populate knownTxIDs from archived transaction states so that
 		// reversion invariant checks work correctly for non-archived logs.
-		txIter, err := c.attrs.Transaction.NewStreamingIter(c.store, nil)
+		txIter, err := c.attrs.Transaction.NewStreamingIter(snap, nil)
 		if err != nil {
 			return fmt.Errorf("creating tx streaming iter for archive recovery: %w", err)
 		}
@@ -182,7 +193,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	}
 
 	// Pass 1: Single forward iterator over all logs.
-	logIter, err := c.store.NewIter(&pebble.IterOptions{
+	logIter, err := snap.NewIter(&pebble.IterOptions{
 		LowerBound: []byte{dal.KeyPrefixLog},
 		UpperBound: []byte{dal.KeyPrefixLog, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
 	})
@@ -313,22 +324,22 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	// Comparison passes: 3-way merge (baseline + replay + live).
 	// When no archived periods exist, baseline is nil and expected = replay delta only.
-	c.compareVolumes(ctx, baselineDB, replay, callback)
-	c.compareMetadata(ctx, baselineDB, replay, callback)
-	c.compareTransactions(ctx, baselineDB, replay, callback)
+	c.compareVolumes(ctx, snap, baselineDB, replay, callback)
+	c.compareMetadata(ctx, snap, baselineDB, replay, callback)
+	c.compareTransactions(ctx, snap, baselineDB, replay, callback)
 
 	return nil
 }
 
 // compareVolumes performs a 3-way merge comparison for volumes.
 // expected = baseline + replay delta; compare with live (actual).
-func (c *Checker) compareVolumes(ctx context.Context, baselineDB *pebble.DB, replay *replayStore, callback func(*servicepb.CheckStoreEvent)) int {
+func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, baselineDB *pebble.DB, replay *replayStore, callback func(*servicepb.CheckStoreEvent)) int {
 	errorCount := 0
 
 	// Collect live volumes
 	liveVolumes := make(map[string]*raftcmdpb.VolumePair)
 
-	liveIter, err := c.attrs.Volume.NewStreamingIter(c.store, nil)
+	liveIter, err := c.attrs.Volume.NewStreamingIter(reader, nil)
 	if err != nil {
 		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
 			fmt.Sprintf("failed to create live volume iterator: %v", err), 0, "", "", ""))
@@ -505,13 +516,13 @@ func (c *Checker) compareVolumes(ctx context.Context, baselineDB *pebble.DB, rep
 // compareMetadata performs a 3-way merge comparison for account metadata.
 // Replay entries encode SET (flag 0x00 + value) or DELETED (flag 0x01).
 // expected = replay override if present, else baseline; compare with live.
-func (c *Checker) compareMetadata(ctx context.Context, baselineDB *pebble.DB, replay *replayStore, callback func(*servicepb.CheckStoreEvent)) int {
+func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, baselineDB *pebble.DB, replay *replayStore, callback func(*servicepb.CheckStoreEvent)) int {
 	errorCount := 0
 
 	// Collect live metadata
 	liveMetadata := make(map[string]string)
 
-	liveIter, err := c.attrs.Metadata.NewStreamingIter(c.store, nil)
+	liveIter, err := c.attrs.Metadata.NewStreamingIter(reader, nil)
 	if err != nil {
 		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
 			fmt.Sprintf("failed to create live metadata iterator: %v", err), 0, "", "", ""))
@@ -690,7 +701,7 @@ func (c *Checker) compareMetadata(ctx context.Context, baselineDB *pebble.DB, re
 
 // compareTransactions performs a 3-way merge comparison for transaction states.
 // expected = replay override if present, else baseline; compare with live.
-func (c *Checker) compareTransactions(ctx context.Context, baselineDB *pebble.DB, replay *replayStore, callback func(*servicepb.CheckStoreEvent)) int {
+func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleReader, baselineDB *pebble.DB, replay *replayStore, callback func(*servicepb.CheckStoreEvent)) int {
 	errorCount := 0
 
 	// Collect replay transaction states
@@ -790,7 +801,7 @@ func (c *Checker) compareTransactions(ctx context.Context, baselineDB *pebble.DB
 		}
 
 		// Read actual from live store
-		actualState, err := query.ReadTransactionState(context.Background(), c.store, c.attrs.Transaction, tk.Ledger, tk.ID)
+		actualState, err := query.ReadTransactionState(context.Background(), reader, c.attrs.Transaction, tk.Ledger, tk.ID)
 		if err != nil {
 			return errorCount
 		}
