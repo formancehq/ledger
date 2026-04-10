@@ -8,12 +8,13 @@ import (
 	"log"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/tests/antithesis/workload/internal"
 )
 
 func main() {
-	log.Println("composer: parallel_driver_signing_keys")
+	log.Println("composer: singleton_driver_signing_keys")
 
 	ctx := context.Background()
 	bucketClient, conn, err := internal.NewClient()
@@ -85,16 +86,23 @@ func main() {
 		assert.AlwaysOrUnreachable(found, "registered key should appear in ListSigningKeys", details)
 	}
 
-	// 3. Revoke the signing key (so we don't accumulate keys across runs).
-	_, err = bucketClient.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{{
-			Type: &servicepb.Request_RevokeSigningKey{
-				RevokeSigningKey: &servicepb.RevokeSigningKeyRequest{
-					KeyId:   keyID,
-					Cascade: true,
-				},
+	// 3. Revoke the signing key (must be signed — keys exist on the cluster).
+	revokeReq := &servicepb.Request{
+		Type: &servicepb.Request_RevokeSigningKey{
+			RevokeSigningKey: &servicepb.RevokeSigningKeyRequest{
+				KeyId:   keyID,
+				Cascade: true,
 			},
-		}},
+		},
+	}
+
+	if err := signing.Sign(revokeReq, keyID, privateKey); err != nil {
+		log.Printf("failed to sign revoke request: %s", err)
+		return
+	}
+
+	_, err = bucketClient.Apply(ctx, &servicepb.ApplyRequest{
+		Requests: []*servicepb.Request{revokeReq},
 	})
 
 	assert.Sometimes(err == nil || internal.IsTransient(err),
