@@ -12,19 +12,19 @@ x-ledger-common: &ledger-common
   image: us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/ledger-v3-poc:__TAG__
   init: true
   environment: &ledger-env
-    BIND_ADDR: "0.0.0.0:7777"
-    GRPC_PORT: "8888"
-    HTTP_PORT: "9000"
     WAL_DIR: "/data/raft"
     DATA_DIR: "/data/app"
     CLUSTER_ID: "default"
+    INSECURE: "true"
+
+    # Chaos-tuned: lower thresholds to exercise more code paths under fault injection
+    SNAPSHOT_THRESHOLD: "200"
+    CACHE_ROTATION_THRESHOLD: "50"
+
+    # Runtime consistency checks (valuable under chaos)
     VOLUME_ASSERTIONS: "true"
-    SNAPSHOT_THRESHOLD: "1000"
-    RAFT_ELECTION_TICK: "10"
-    RAFT_HEARTBEAT_TICK: "1"
-    RAFT_MAX_SIZE_PER_MSG: "1048576"
-    RAFT_MAX_INFLIGHT_MSGS: "256"
-    RAFT_TICK_INTERVAL: "100ms"
+
+    # Cold storage (S3/MinIO)
     COLD_CACHE_DIR: "/data/cold-cache"
     COLD_STORAGE_DRIVER: "s3"
     COLD_STORAGE_S3_BUCKET: "archives"
@@ -32,7 +32,6 @@ x-ledger-common: &ledger-common
     COLD_STORAGE_S3_ENDPOINT: "http://minio:9000"
     AWS_ACCESS_KEY_ID: "minioadmin"
     AWS_SECRET_ACCESS_KEY: "minioadmin"
-    INSECURE: "true"
 
 services:
   etcd-0:
