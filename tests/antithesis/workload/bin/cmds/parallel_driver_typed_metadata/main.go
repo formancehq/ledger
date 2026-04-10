@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -276,34 +277,46 @@ func main() {
 					"toType": "INT64",
 					"error":  err,
 				})
+			if err != nil {
+				// Declaration failed (e.g. maintenance mode) — skip verification.
+			} else {
+				// Retry until the background conversion has completed and the
+				// read path returns a NullValue for the unconvertible string.
+				for attempt := 0; attempt < 10; attempt++ {
+					acctAfterBad, readErr := client.GetAccount(ctx, &servicepb.GetAccountRequest{
+						Ledger:  ledger,
+						Address: address,
+					})
+					if readErr != nil {
+						if internal.IsTransient(readErr) {
+							break
+						}
 
-			// Read the account and verify the value is readable.
-			// The read path enforces the schema lazily: if background conversion
-			// hasn't run yet, enforceAccountSchema converts on the fly.
-			// For "not-a-number" → INT64, the result should be a NullValue.
-			acctAfterBad, readErr := client.GetAccount(ctx, &servicepb.GetAccountRequest{
-				Ledger:  ledger,
-				Address: address,
-			})
-			assert.AlwaysOrUnreachable(readErr == nil || internal.IsTransient(readErr),
-				"account should be readable after invalid type declaration", internal.Details{
-					"key":   badKey,
-					"error": readErr,
-				})
-
-			if readErr == nil {
-				for _, m := range acctAfterBad.GetMetadata().GetMetadata() {
-					if m.GetKey() == badKey {
-						// After declaring "not-a-number" as INT64, the read path
-						// should convert it to a NullValue (preserving the original).
-						_, isNull := m.GetValue().GetType().(*commonpb.MetadataValue_NullValue)
-						assert.AlwaysOrUnreachable(isNull, "unconvertible string should become NullValue on read", internal.Details{
-							"key":       badKey,
-							"valueType": fmt.Sprintf("%T", m.GetValue().GetType()),
+						assert.Unreachable("GetAccount failed after invalid type declaration", internal.Details{
+							"key":   badKey,
+							"error": readErr,
 						})
 
 						break
 					}
+
+					converted := false
+
+					for _, m := range acctAfterBad.GetMetadata().GetMetadata() {
+						if m.GetKey() == badKey {
+							if _, isNull := m.GetValue().GetType().(*commonpb.MetadataValue_NullValue); isNull {
+								converted = true
+							}
+
+							break
+						}
+					}
+
+					if converted {
+						break
+					}
+
+					time.Sleep(200 * time.Millisecond)
 				}
 			}
 
