@@ -1,6 +1,6 @@
 # Compiler — instruments the ledger service for Antithesis coverage
 FROM golang:1.26-trixie AS compiler
-ARG BUILD_TAGS=""
+ARG BUILD_TAGS="s3"
 
 RUN apt-get update && apt-get install -y bash git gcc
 

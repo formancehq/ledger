@@ -26,6 +26,12 @@ x-ledger-common: &ledger-common
     RAFT_MAX_INFLIGHT_MSGS: "256"
     RAFT_TICK_INTERVAL: "100ms"
     COLD_CACHE_DIR: "/data/cold-cache"
+    COLD_STORAGE_DRIVER: "s3"
+    COLD_STORAGE_S3_BUCKET: "archives"
+    COLD_STORAGE_S3_REGION: "us-east-1"
+    COLD_STORAGE_S3_ENDPOINT: "http://minio:9000"
+    AWS_ACCESS_KEY_ID: "minioadmin"
+    AWS_SECRET_ACCESS_KEY: "minioadmin"
     INSECURE: "true"
 
 services:
@@ -74,10 +80,38 @@ services:
     volumes:
       - etcd-2-data:/var/run/etcd
 
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    hostname: minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio-data:/data
+    annotations:
+      com.antithesis.exclude.faults: "all"
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: minio-init
+    depends_on:
+      - minio
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        until mc alias set local http://minio:9000 minioadmin minioadmin; do sleep 1; done
+        mc mb --ignore-existing local/archives
+    annotations:
+      com.antithesis.exclude.faults: "all"
+
   ledger-0:
     <<: *ledger-common
     container_name: ledger-0
     hostname: ledger-0
+    depends_on:
+      - minio-init
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
@@ -167,6 +201,7 @@ services:
       - etcd-2
 
 volumes:
+  minio-data:
   etcd-0-data:
   etcd-1-data:
   etcd-2-data:
