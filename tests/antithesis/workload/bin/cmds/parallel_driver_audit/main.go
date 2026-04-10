@@ -64,6 +64,7 @@ func main() {
 		}
 
 		count := 0
+		streamFailed := false
 
 		for {
 			_, err := stream.Recv()
@@ -71,10 +72,20 @@ func main() {
 				break
 			}
 			if err != nil {
+				if internal.IsUnavailable(err) {
+					streamFailed = true
+				}
+
 				break
 			}
 
 			count++
+		}
+
+		// If the stream failed due to a leadership change, we cannot draw
+		// any conclusion about the audit trail contents — just bail out.
+		if streamFailed {
+			return
 		}
 
 		assert.AlwaysOrUnreachable(count > 0, "audit trail should contain entries after enabling audit", internal.Details{
