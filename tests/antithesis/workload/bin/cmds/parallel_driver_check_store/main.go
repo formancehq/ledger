@@ -52,7 +52,7 @@ func main() {
 
 		switch e := event.GetType().(type) {
 		case *servicepb.CheckStoreEvent_Error:
-			assert.Always(false, "CheckStore found integrity error", internal.Details{
+			assert.AlwaysOrUnreachable(false, "CheckStore found integrity error", internal.Details{
 				"errorType":     e.Error.GetErrorType().String(),
 				"message":       e.Error.GetMessage(),
 				"logSequence":   e.Error.GetLogSequence(),
