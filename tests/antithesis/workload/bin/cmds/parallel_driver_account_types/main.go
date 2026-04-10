@@ -13,9 +13,17 @@ import (
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_account_types", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+	internal.RunDriver("parallel_driver_account_types", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
 		r := internal.Rand()
-		typeName := fmt.Sprintf("type-%d", r.Uint64()%100)
+
+		// Create a dedicated ledger so account type patterns don't interfere
+		// with other drivers using the shared default ledger.
+		ledger := fmt.Sprintf("accttype-%d", r.Uint64()%1_000_000)
+		if err := internal.CreateLedger(ctx, client, ledger); err != nil {
+			return
+		}
+
+		typeName := fmt.Sprintf("type-%d", r.Uint64())
 		pattern := fmt.Sprintf("%s:{id}", typeName)
 
 		details := internal.Details{"ledger": ledger, "typeName": typeName, "pattern": pattern}
