@@ -591,6 +591,12 @@ message ConvertMetadataBatchLog {
   TargetType target_type = 1;
   string key = 2;
   uint32 count = 3;
+  repeated ConvertMetadataBatchLogEntry entries = 4;
+}
+
+message ConvertMetadataBatchLogEntry {
+  bytes canonical_key = 1;
+  MetadataValue new_value = 2;
 }
 
 message MetadataConversionCompleteLog {

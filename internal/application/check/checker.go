@@ -1073,7 +1073,14 @@ func replayLedgerLog(
 	case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
 		// Schema operations — no state to track for integrity checks
 	case *commonpb.LedgerLogPayload_ConvertMetadataBatch:
-		// Background conversion — no state to track for integrity checks
+		if p.ConvertMetadataBatch != nil {
+			for _, entry := range p.ConvertMetadataBatch.GetEntries() {
+				valueStr := commonpb.MetadataValueToString(entry.GetNewValue())
+				if err := replay.setMetadata(entry.GetCanonicalKey(), valueStr); err != nil {
+					return fmt.Errorf("replaying metadata conversion: %w", err)
+				}
+			}
+		}
 	case *commonpb.LedgerLogPayload_MetadataConversionComplete:
 		// Background conversion — no state to track for integrity checks
 	}

@@ -35,7 +35,10 @@ func (p *RequestProcessor) processConvertMetadataBatch(
 		}, nil
 	}
 
-	var count uint32
+	var (
+		count      uint32
+		logEntries []*commonpb.ConvertMetadataBatchLogEntry
+	)
 
 	for _, entry := range order.GetEntries() {
 		var mk domain.MetadataKey
@@ -53,6 +56,11 @@ func (p *RequestProcessor) processConvertMetadataBatch(
 		if !commonpb.TypeMatches(value, order.GetExpectedType()) {
 			s.PutAccountMetadata(mk, entry.GetConvertedValue())
 
+			logEntries = append(logEntries, &commonpb.ConvertMetadataBatchLogEntry{
+				CanonicalKey: entry.GetCanonicalKey(),
+				NewValue:     entry.GetConvertedValue(),
+			})
+
 			count++
 		}
 	}
@@ -69,6 +77,7 @@ func (p *RequestProcessor) processConvertMetadataBatch(
 				TargetType: order.GetTargetType(),
 				Key:        order.GetKey(),
 				Count:      count,
+				Entries:    logEntries,
 			},
 		},
 	}, nil
