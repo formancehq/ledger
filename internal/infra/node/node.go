@@ -620,6 +620,26 @@ func (node *Node) maybeCompactAtStartup(ctx context.Context) error {
 }
 
 func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
+	// Determine the Applied index for raft.Config. Normally this is the store's
+	// last applied index. However, when the store is behind the WAL snapshot
+	// (out-of-sync recovery after a crash during checkpoint sync), Raft requires
+	// Applied >= snapshot.Metadata.Index. Use the max of the two.
+	applied := node.fsm.LastAppliedIndex()
+
+	walSnap, err := node.wal.Snapshot()
+	if err != nil {
+		return fmt.Errorf("reading WAL snapshot for Applied: %w", err)
+	}
+
+	if walSnap.Metadata.Index > applied {
+		node.logger.WithFields(map[string]any{
+			"storeApplied":   applied,
+			"walSnapshotIdx": walSnap.Metadata.Index,
+		}).Infof("Store behind WAL snapshot, using snapshot index as Applied")
+
+		applied = walSnap.Metadata.Index
+	}
+
 	raftConfig := &raft.Config{
 		ID:                        node.config.NodeID,
 		ElectionTick:              node.config.ElectionTick,
@@ -634,7 +654,7 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 		// Ready does not re-emit them in CommittedEntries. Without this, the
 		// IndexTracker double-counts non-proposal WAL entries (ConfChange, no-ops)
 		// because they are already accounted for by initialIndex(wal).
-		Applied: node.fsm.LastAppliedIndex(),
+		Applied: applied,
 	}
 
 	node.logger.WithFields(map[string]any{
@@ -645,8 +665,6 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 		"maxInflightMsgs": raftConfig.MaxInflightMsgs,
 		"preVote":         raftConfig.PreVote,
 	}).Infof("Starting raft node")
-
-	var err error
 
 	node.rawNode, err = raft.NewRawNode(raftConfig)
 	if err != nil {
