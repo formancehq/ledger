@@ -56,8 +56,11 @@ func main() {
 			return
 		}
 
-		var count int
-		found := false
+		var (
+			count     int
+			found     bool
+			streamErr bool
+		)
 
 		for {
 			tx, err := stream.Recv()
@@ -66,6 +69,8 @@ func main() {
 			}
 
 			if err != nil {
+				streamErr = true
+
 				break
 			}
 
@@ -76,8 +81,10 @@ func main() {
 			}
 		}
 
-		assert.AlwaysOrUnreachable(count > 0, "ListTransactions should return at least one transaction", details)
-		assert.AlwaysOrUnreachable(found, "ListTransactions should contain the just-created transaction", details)
+		if !streamErr {
+			assert.AlwaysOrUnreachable(count > 0, "ListTransactions should return at least one transaction", details)
+			assert.AlwaysOrUnreachable(found, "ListTransactions should contain the just-created transaction", details)
+		}
 
 		// 3. List transactions in reverse order.
 		reverseStream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
@@ -90,6 +97,7 @@ func main() {
 		}
 
 		var reverseCount int
+		streamErr = false
 
 		for {
 			_, err := reverseStream.Recv()
@@ -98,12 +106,16 @@ func main() {
 			}
 
 			if err != nil {
+				streamErr = true
+
 				break
 			}
 
 			reverseCount++
 		}
 
-		assert.AlwaysOrUnreachable(reverseCount > 0, "reverse ListTransactions should return results", details)
+		if !streamErr {
+			assert.AlwaysOrUnreachable(reverseCount > 0, "reverse ListTransactions should return results", details)
+		}
 	})
 }

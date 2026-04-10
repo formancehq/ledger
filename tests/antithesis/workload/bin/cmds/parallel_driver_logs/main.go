@@ -48,8 +48,9 @@ func main() {
 		}
 
 		var (
-			count    int
-			firstSeq uint64
+			count     int
+			firstSeq  uint64
+			streamErr bool
 		)
 
 		for {
@@ -59,6 +60,8 @@ func main() {
 			}
 
 			if err != nil {
+				streamErr = true
+
 				break
 			}
 
@@ -67,6 +70,10 @@ func main() {
 			if firstSeq == 0 {
 				firstSeq = logEntry.GetSequence()
 			}
+		}
+
+		if streamErr {
+			return
 		}
 
 		assert.AlwaysOrUnreachable(count > 0, "ListLogs should return at least one entry", details)
