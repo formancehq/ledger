@@ -3,7 +3,9 @@ package internal
 import (
 	"os"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -52,20 +54,32 @@ func IsUnavailable(err error) bool {
 	return ok && st.Code() == codes.Unavailable
 }
 
-// IsNotFound returns true if the error is a gRPC NotFound status.
-// This typically means a ledger was deleted by a concurrent driver.
-func IsNotFound(err error) bool {
+// IsLedgerDeleted returns true if the error is a gRPC FailedPrecondition
+// with reason LEDGER_DELETED. This means the ledger was soft-deleted by a
+// concurrent driver — not a bug, just a race.
+func IsLedgerDeleted(err error) bool {
 	if err == nil {
 		return false
 	}
+
 	st, ok := status.FromError(err)
-	return ok && st.Code() == codes.NotFound
+	if !ok || st.Code() != codes.FailedPrecondition {
+		return false
+	}
+
+	for _, detail := range st.Details() {
+		if info, ok := detail.(*errdetails.ErrorInfo); ok {
+			return info.GetReason() == domain.ErrReasonLedgerDeleted
+		}
+	}
+
+	return false
 }
 
 // IsTransient returns true if the error is transient and should not
-// trigger failure assertions (Unavailable or NotFound from a deleted ledger).
+// trigger failure assertions (Unavailable or ledger deleted by concurrent driver).
 func IsTransient(err error) bool {
-	return IsUnavailable(err) || IsNotFound(err)
+	return IsUnavailable(err) || IsLedgerDeleted(err)
 }
 
 // NewClient creates a BucketServiceClient connected to the ledger service.
