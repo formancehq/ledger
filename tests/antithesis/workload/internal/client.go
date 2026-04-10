@@ -88,10 +88,21 @@ func IsExternalServiceError(err error) bool {
 	return HasErrorReason(err, "EXTERNAL_SERVICE_ERROR")
 }
 
+// IsLedgerNotFound returns true if the error is a gRPC NotFound status.
+// In the Antithesis workload context, this happens when a ledger picked from
+// ListLedgers is deleted by another driver before we finish using it.
+func IsLedgerNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	st, ok := status.FromError(err)
+	return ok && st.Code() == codes.NotFound
+}
+
 // IsTransient returns true if the error is transient and should not
-// trigger failure assertions (Unavailable, ledger deleted, or external service error).
+// trigger failure assertions (Unavailable, ledger deleted/not found, or external service error).
 func IsTransient(err error) bool {
-	return IsUnavailable(err) || IsLedgerDeleted(err) || IsExternalServiceError(err)
+	return IsUnavailable(err) || IsLedgerDeleted(err) || IsLedgerNotFound(err) || IsExternalServiceError(err)
 }
 
 // NewClient creates a BucketServiceClient connected to the ledger service.

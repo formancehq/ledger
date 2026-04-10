@@ -89,8 +89,6 @@ services:
       MINIO_ROOT_PASSWORD: minioadmin
     volumes:
       - minio-data:/data
-    annotations:
-      com.antithesis.exclude.faults: "all"
 
   minio-init:
     image: minio/mc:latest
@@ -101,10 +99,8 @@ services:
     command:
       - |
         until mc alias set local http://minio:9000 minioadmin minioadmin; do sleep 1; done
-        mc mb --ignore-existing local/archives
-        mc mb --ignore-existing local/backups
-    annotations:
-      com.antithesis.exclude.faults: "all"
+        until mc mb --ignore-existing local/archives; do sleep 1; done
+        until mc mb --ignore-existing local/backups; do sleep 1; done
 
   ledger-0:
     <<: *ledger-common
