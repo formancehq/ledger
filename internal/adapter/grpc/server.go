@@ -329,10 +329,18 @@ func convertToGRPCError(err error) error {
 	// Convert Raft transient errors to Unavailable (client should retry).
 	// ErrProposalDropped: the leader lost leadership while processing the proposal.
 	// ErrNotLeader/ErrNodeSyncing: node cannot serve the request right now.
+	// ErrTransferLeaderTimeout: leadership transfer did not complete in time.
 	if errors.Is(err, raft.ErrProposalDropped) ||
 		errors.Is(err, node.ErrNotLeader) ||
-		errors.Is(err, node.ErrNodeSyncing) {
+		errors.Is(err, node.ErrNodeSyncing) ||
+		errors.Is(err, node.ErrTransferLeaderTimeout) {
 		return status.Error(codes.Unavailable, err.Error())
+	}
+
+	// Convert leadership transfer client errors to FailedPrecondition.
+	if errors.Is(err, node.ErrUnknownTransferee) ||
+		errors.Is(err, node.ErrLearnerNotEligible) {
+		return status.Error(codes.FailedPrecondition, err.Error())
 	}
 
 	// Convert ErrUnhealthy to Unavailable with ErrorInfo (client should retry later)
