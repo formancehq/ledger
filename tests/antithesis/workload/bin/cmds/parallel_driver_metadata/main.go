@@ -12,9 +12,10 @@ import (
 
 func main() {
 	internal.RunDriver("parallel_driver_metadata", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+		r := internal.Rand()
 		address := internal.GetRandomAddress()
-		key := fmt.Sprintf("meta-%d", internal.Rand().Uint64()%100)
-		value := fmt.Sprintf("val-%d", internal.Rand().Uint64()%1000)
+		key := fmt.Sprintf("meta-%d", r.Uint64())
+		value := fmt.Sprintf("val-%d", r.Uint64())
 
 		details := internal.Details{
 			"ledger":  ledger,

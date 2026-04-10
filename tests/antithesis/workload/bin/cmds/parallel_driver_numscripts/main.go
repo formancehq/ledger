@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/tests/antithesis/workload/internal"
 )
@@ -59,11 +58,9 @@ func main() {
 						Ledger: ledger,
 						Data: &servicepb.LedgerApplyRequest_CreateTransaction{
 							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Script: &commonpb.Script{
-									Vars: vars,
-								},
 								ScriptReference: &servicepb.ScriptReference{
 									Name: scriptName,
+									Vars: vars,
 								},
 								Force: true,
 							},
