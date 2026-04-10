@@ -451,6 +451,8 @@ func convertToGRPCError(err error) error {
 
 	// Convert AWS S3/infrastructure errors to FailedPrecondition so clients
 	// can distinguish infrastructure misconfiguration from application bugs.
+	// APIError covers S3 API errors (NoSuchBucket, AccessDenied, etc.).
+	// OperationError covers transport-level failures (DNS, connection refused).
 	var apiErr smithy.APIError
 	if errors.As(err, &apiErr) {
 		st := status.New(codes.FailedPrecondition, err.Error())
@@ -461,6 +463,25 @@ func convertToGRPCError(err error) error {
 			Metadata: map[string]string{
 				"code":    apiErr.ErrorCode(),
 				"service": "s3",
+			},
+		})
+		if detailErr == nil {
+			return detailed.Err()
+		}
+
+		return st.Err()
+	}
+
+	var opErr *smithy.OperationError
+	if errors.As(err, &opErr) {
+		st := status.New(codes.FailedPrecondition, err.Error())
+
+		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
+			Reason: "EXTERNAL_SERVICE_ERROR",
+			Domain: errorDomain,
+			Metadata: map[string]string{
+				"service":   opErr.Service(),
+				"operation": opErr.Operation(),
 			},
 		})
 		if detailErr == nil {
