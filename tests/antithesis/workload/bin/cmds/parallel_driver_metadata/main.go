@@ -16,6 +16,13 @@ func main() {
 		key := fmt.Sprintf("meta-%d", internal.Rand().Uint64()%100)
 		value := fmt.Sprintf("val-%d", internal.Rand().Uint64()%1000)
 
+		details := internal.Details{
+			"ledger":  ledger,
+			"account": address,
+			"key":     key,
+		}
+
+		// Save metadata.
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{{
 				Type: &servicepb.Request_Apply{
@@ -36,17 +43,12 @@ func main() {
 			}},
 		})
 
-		details := internal.Details{
-			"ledger":  ledger,
-			"account": address,
-			"key":     key,
-		}
-
 		assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to save account metadata", details.With(internal.Details{"error": err}))
 		if err != nil {
 			return
 		}
 
+		// Read-after-write: verify the key is present.
 		acct, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
 			Ledger:  ledger,
 			Address: address,
@@ -55,20 +57,56 @@ func main() {
 			return
 		}
 
-		found := false
-		for _, m := range acct.GetMetadata().GetMetadata() {
-			if m.GetKey() == key {
-				found = true
-				actual := m.GetValue().GetStringValue()
-				assert.AlwaysOrUnreachable(actual == value, "metadata read-after-write should return saved value", details.With(internal.Details{
-					"expected": value,
-					"actual":   actual,
-				}))
+		assert.AlwaysOrUnreachable(findMetadata(acct, key) == value, "metadata read-after-write should return saved value", details.With(internal.Details{
+			"expected": value,
+			"actual":   findMetadata(acct, key),
+		}))
 
-				break
-			}
+		// Delete the metadata key.
+		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
+			Requests: []*servicepb.Request{{
+				Type: &servicepb.Request_Apply{
+					Apply: &servicepb.LedgerApplyRequest{
+						Ledger: ledger,
+						Data: &servicepb.LedgerApplyRequest_DeleteMetadata{
+							DeleteMetadata: &commonpb.DeleteMetadataCommand{
+								Target: &commonpb.Target{
+									Target: &commonpb.Target_Account{
+										Account: &commonpb.TargetAccount{Addr: address},
+									},
+								},
+								Key: key,
+							},
+						},
+					},
+				},
+			}},
+		})
+
+		assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to delete account metadata", details.With(internal.Details{"error": err}))
+		if err != nil {
+			return
 		}
 
-		assert.AlwaysOrUnreachable(found, "saved metadata key should be present in account", details)
+		// Read-after-delete: verify the key is gone.
+		acct, err = client.GetAccount(ctx, &servicepb.GetAccountRequest{
+			Ledger:  ledger,
+			Address: address,
+		})
+		if err != nil {
+			return
+		}
+
+		assert.AlwaysOrUnreachable(findMetadata(acct, key) == "", "deleted metadata key should be absent", details)
 	})
+}
+
+func findMetadata(acct *commonpb.Account, key string) string {
+	for _, m := range acct.GetMetadata().GetMetadata() {
+		if m.GetKey() == key {
+			return m.GetValue().GetStringValue()
+		}
+	}
+
+	return ""
 }
