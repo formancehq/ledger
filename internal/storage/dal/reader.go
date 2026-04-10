@@ -56,7 +56,15 @@ func (h *ReadHandle) Close() error {
 // Get performs a raw key lookup on the underlying Pebble database.
 // This makes *Store implement PebbleReader.
 func (s *Store) Get(key []byte) ([]byte, io.Closer, error) {
-	return s.getDB().Get(key)
+	s.dbMu.RLock()
+	defer s.dbMu.RUnlock()
+
+	db := s.getDB()
+	if db == nil {
+		return nil, nil, ErrStoreClosed
+	}
+
+	return db.Get(key)
 }
 
 // NewBoundedIter creates a Pebble iterator bounded by [lower, upper).
