@@ -24,21 +24,6 @@ func AppendLogs(b *dal.Batch, logs ...*commonpb.Log) error {
 		if err != nil {
 			return fmt.Errorf("inserting system log: %w", err)
 		}
-
-		// Create idempotency index if present
-		if log.GetIdempotency() != nil && log.GetIdempotency().GetKey() != "" {
-			seqValue := make([]byte, 8)
-			binary.BigEndian.PutUint64(seqValue, log.GetSequence())
-
-			b.KeyBuilder.
-				PutByte(dal.KeyPrefixIdempotency).
-				PutString(log.GetIdempotency().GetKey())
-
-			err := b.SetBytes(b.KeyBuilder.Build(), seqValue)
-			if err != nil {
-				return fmt.Errorf("inserting idempotency index: %w", err)
-			}
-		}
 	}
 
 	return nil

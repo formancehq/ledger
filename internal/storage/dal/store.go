@@ -152,7 +152,6 @@ var (
 
 	KeyPrefixLastAppliedIndex     byte = 0xF2 // [KeyPrefixLastAppliedIndex] -> uint64
 	KeyPrefixLastAppliedTimestamp byte = 0xF3 // [KeyPrefixLastAppliedTimestamp] -> uint64 (HLC microseconds)
-	KeyPrefixIdempotency          byte = 0xF4 // [KeyPrefixIdempotency][key] -> sequence
 	KeyPrefixLedgerInfo           byte = 0xF5 // [KeyPrefixLedgerInfo][name] -> LedgerInfo
 	KeyPrefixSigningKey           byte = 0xF6 // [KeyPrefixSigningKey][keyID] -> ed25519 public key (32 bytes)
 	KeyPrefixPeriods              byte = 0xF7 // [KeyPrefixPeriods][periodID] -> Period

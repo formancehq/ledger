@@ -146,8 +146,6 @@ func describeKey(key []byte) string {
 		return "LAST_APPLIED_INDEX"
 	case dal.KeyPrefixLastAppliedTimestamp:
 		return "LAST_APPLIED_TIMESTAMP"
-	case dal.KeyPrefixIdempotency:
-		return "IDEMPOTENCY rest=" + safeString(key[1:])
 	case dal.KeyPrefixLedgerInfo:
 		return "LEDGER_INFO name=" + safeString(key[1:])
 	case dal.KeyPrefixSigningKey:
