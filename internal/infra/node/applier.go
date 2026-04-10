@@ -1104,38 +1104,57 @@ func (a *Applier) handleCheckpointDuringReplay(ctx context.Context, applyResult 
 		return a.handleQueryCheckpointDuringReplay(ctx, applyResult)
 	}
 
-	checkpointPath, err := a.store.CreateTemporaryCheckpoint(fmt.Sprintf("replay-%d", applyResult.CheckpointPeriodID))
+	if err := a.createReplayCheckpoint(applyResult); err != nil {
+		return err
+	}
+
+	// Apply remaining entries. Loop to handle cascading checkpoints
+	// (multiple ClosePeriod entries in the same spool batch).
+	remaining := applyResult.RemainingEntries
+
+	for len(remaining) > 0 {
+		remainResult, err := a.applyEntriesAndResolveCommands(ctx, remaining...)
+		if err != nil {
+			return fmt.Errorf("applying remaining entries after checkpoint during replay: %w", err)
+		}
+
+		if !remainResult.CheckpointRequired {
+			break
+		}
+
+		if err := a.createReplayCheckpoint(remainResult); err != nil {
+			return err
+		}
+
+		remaining = remainResult.RemainingEntries
+	}
+
+	return nil
+}
+
+// createReplayCheckpoint creates a checkpoint for a ClosePeriod entry encountered
+// during spool replay and resolves the deferred future.
+func (a *Applier) createReplayCheckpoint(result *state.ApplyEntriesResult) error {
+	checkpointPath, err := a.store.CreateTemporaryCheckpoint(fmt.Sprintf("replay-%d", result.CheckpointPeriodID))
 	if err != nil {
 		return fmt.Errorf("creating checkpoint during replay: %w", err)
 	}
 
-	if applyResult.OnCheckpointDone != nil {
-		applyResult.OnCheckpointDone(checkpointPath)
+	if result.OnCheckpointDone != nil {
+		result.OnCheckpointDone(checkpointPath)
 	}
 
-	// Create compact baseline snapshot for the checker (non-fatal on error).
 	if err := a.createBaselineSnapshot(); err != nil {
 		a.logger.WithFields(map[string]any{"error": err}).
 			Errorf("Failed to create baseline snapshot during replay (checker will degrade gracefully)")
 	}
 
-	// Resolve the deferred future for the checkpoint-triggering entry.
-	// During replay, applyEntriesAndResolveCommands skips this future
-	// (resolveCount-- when CheckpointRequired is true).
-	if len(applyResult.Results) > 0 {
-		lastResult := &applyResult.Results[len(applyResult.Results)-1]
+	if len(result.Results) > 0 {
+		lastResult := &result.Results[len(result.Results)-1]
 		if f, ok := a.futures.Load(lastResult.ProposalID); ok {
 			lastResult.CheckpointPath = checkpointPath
 			f.Resolve(*lastResult, nil)
 			a.futures.Delete(lastResult.ProposalID)
-		}
-	}
-
-	// Apply remaining entries directly (no re-spool needed since we're replaying)
-	if len(applyResult.RemainingEntries) > 0 {
-		_, err := a.applyEntriesAndResolveCommands(ctx, applyResult.RemainingEntries...)
-		if err != nil {
-			return fmt.Errorf("applying remaining entries after checkpoint during replay: %w", err)
 		}
 	}
 
