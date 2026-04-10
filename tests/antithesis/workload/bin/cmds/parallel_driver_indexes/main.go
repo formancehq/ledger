@@ -36,7 +36,7 @@ func main() {
 		})
 
 		if err != nil {
-			if internal.IsUnavailable(err) {
+			if internal.IsTransient(err) {
 				return
 			}
 
@@ -49,7 +49,7 @@ func main() {
 		// Check index status.
 		statusResp, err := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{})
 		if err != nil {
-			if !internal.IsUnavailable(err) {
+			if !internal.IsTransient(err) {
 				assert.Unreachable("GetIndexStatus returned unexpected error", details.With(internal.Details{"error": err}))
 			}
 
@@ -76,7 +76,7 @@ func main() {
 			}},
 		})
 
-		if err != nil && !internal.IsUnavailable(err) {
+		if err != nil && !internal.IsTransient(err) {
 			st, _ := status.FromError(err)
 			if st.Code() != codes.NotFound {
 				assert.Unreachable("DropIndex returned unexpected error", details.With(internal.Details{"error": err}))

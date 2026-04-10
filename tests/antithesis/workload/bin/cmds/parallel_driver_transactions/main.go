@@ -43,7 +43,7 @@ func createRandomPostingsTransaction(ctx context.Context, client servicepb.Bucke
 		}},
 	})
 
-	assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to create a transaction", internal.Details{
+	assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to create a transaction", internal.Details{
 		"ledger": ledger,
 		"error":  err,
 	})
@@ -97,7 +97,7 @@ func createRandomNumscriptTransaction(ctx context.Context, client servicepb.Buck
 		}},
 	})
 
-	assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to create a transaction", internal.Details{
+	assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to create a transaction", internal.Details{
 		"ledger": ledger,
 		"error":  err,
 	})

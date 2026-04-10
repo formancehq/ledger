@@ -14,7 +14,7 @@ func main() {
 			Ledger: ledger,
 		})
 		if err != nil {
-			if internal.IsUnavailable(err) {
+			if internal.IsTransient(err) {
 				return
 			}
 

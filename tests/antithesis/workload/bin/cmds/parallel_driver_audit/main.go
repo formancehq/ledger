@@ -24,7 +24,7 @@ func main() {
 			}},
 		})
 
-		assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to enable audit logging", internal.Details{"error": err})
+		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to enable audit logging", internal.Details{"error": err})
 		if err != nil {
 			return
 		}
@@ -56,7 +56,7 @@ func main() {
 			PageSize: 10,
 		})
 		if err != nil {
-			if !internal.IsUnavailable(err) {
+			if !internal.IsTransient(err) {
 				assert.Unreachable("ListAuditEntries returned unexpected error", internal.Details{"error": err})
 			}
 
@@ -72,7 +72,7 @@ func main() {
 				break
 			}
 			if err != nil {
-				if internal.IsUnavailable(err) {
+				if internal.IsTransient(err) {
 					streamFailed = true
 				}
 
@@ -103,7 +103,7 @@ func main() {
 			}},
 		})
 
-		assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to disable audit logging", internal.Details{"error": err})
+		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to disable audit logging", internal.Details{"error": err})
 
 		log.Printf("audit cycle completed: %d entries found", count)
 	})

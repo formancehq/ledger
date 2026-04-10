@@ -41,7 +41,7 @@ func main() {
 		})
 
 		if err != nil {
-			if internal.IsUnavailable(err) {
+			if internal.IsTransient(err) {
 				return
 			}
 
@@ -57,7 +57,7 @@ func main() {
 			PageSize:  10,
 		})
 
-		assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to execute prepared query", details.With(internal.Details{"error": err}))
+		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to execute prepared query", details.With(internal.Details{"error": err}))
 		if err != nil {
 			return
 		}
@@ -75,7 +75,7 @@ func main() {
 			}},
 		})
 
-		if err != nil && !internal.IsUnavailable(err) {
+		if err != nil && !internal.IsTransient(err) {
 			st, _ := status.FromError(err)
 			if st.Code() != codes.NotFound {
 				assert.Unreachable("prepared query deletion returned unexpected error", details.With(internal.Details{"error": err}))

@@ -27,7 +27,7 @@ func main() {
 			}},
 		})
 
-		assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to create a transaction for revert", internal.Details{"ledger": ledger, "error": err})
+		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to create a transaction for revert", internal.Details{"ledger": ledger, "error": err})
 		if err != nil {
 			return
 		}
@@ -57,7 +57,7 @@ func main() {
 			}},
 		})
 
-		assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to revert a transaction", details.With(internal.Details{"error": err}))
+		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to revert a transaction", details.With(internal.Details{"error": err}))
 		if err != nil {
 			return
 		}

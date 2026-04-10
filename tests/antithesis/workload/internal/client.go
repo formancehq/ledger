@@ -52,6 +52,22 @@ func IsUnavailable(err error) bool {
 	return ok && st.Code() == codes.Unavailable
 }
 
+// IsNotFound returns true if the error is a gRPC NotFound status.
+// This typically means a ledger was deleted by a concurrent driver.
+func IsNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	st, ok := status.FromError(err)
+	return ok && st.Code() == codes.NotFound
+}
+
+// IsTransient returns true if the error is transient and should not
+// trigger failure assertions (Unavailable or NotFound from a deleted ledger).
+func IsTransient(err error) bool {
+	return IsUnavailable(err) || IsNotFound(err)
+}
+
 // NewClient creates a BucketServiceClient connected to the ledger service.
 func NewClient() (servicepb.BucketServiceClient, *grpc.ClientConn, error) {
 	conn, err := NewGRPCConn()

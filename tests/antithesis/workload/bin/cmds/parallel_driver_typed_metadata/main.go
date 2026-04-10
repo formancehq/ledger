@@ -39,7 +39,7 @@ func main() {
 				},
 			}},
 		})
-		if err != nil && !internal.IsUnavailable(err) {
+		if err != nil && !internal.IsTransient(err) {
 			return
 		}
 
@@ -60,7 +60,7 @@ func main() {
 				},
 			}},
 		})
-		if err != nil && !internal.IsUnavailable(err) {
+		if err != nil && !internal.IsTransient(err) {
 			st, _ := status.FromError(err)
 			if st.Code() != codes.AlreadyExists {
 				return
@@ -124,7 +124,7 @@ func main() {
 				},
 			}},
 		})
-		if err != nil && !internal.IsUnavailable(err) {
+		if err != nil && !internal.IsTransient(err) {
 			st, _ := status.FromError(err)
 			if st.Code() != codes.AlreadyExists {
 				return
@@ -182,7 +182,7 @@ func main() {
 					},
 				}},
 			})
-			assert.AlwaysOrUnreachable(err == nil || internal.IsUnavailable(err),
+			assert.AlwaysOrUnreachable(err == nil || internal.IsTransient(err),
 				"changing metadata type should not crash", details.With(internal.Details{
 					"newType": newType.String(),
 					"error":   err,
@@ -207,7 +207,7 @@ func main() {
 			Ledger:  ledger,
 			Address: address,
 		})
-		assert.AlwaysOrUnreachable(err == nil || internal.IsUnavailable(err),
+		assert.AlwaysOrUnreachable(err == nil || internal.IsTransient(err),
 			"account should be readable after metadata type changes", details.With(internal.Details{"error": err}))
 
 		if err == nil {
@@ -269,7 +269,7 @@ func main() {
 			})
 			// The server accepts the declaration — conversion runs in background.
 			// "not-a-number" → INT64 produces a NullValue (original string preserved).
-			assert.AlwaysOrUnreachable(err == nil || internal.IsUnavailable(err),
+			assert.AlwaysOrUnreachable(err == nil || internal.IsTransient(err),
 				"invalid type conversion should be accepted", internal.Details{
 					"key":    badKey,
 					"value":  "not-a-number",
@@ -285,7 +285,7 @@ func main() {
 				Ledger:  ledger,
 				Address: address,
 			})
-			assert.AlwaysOrUnreachable(readErr == nil || internal.IsUnavailable(readErr),
+			assert.AlwaysOrUnreachable(readErr == nil || internal.IsTransient(readErr),
 				"account should be readable after invalid type declaration", internal.Details{
 					"key":   badKey,
 					"error": readErr,
@@ -320,7 +320,7 @@ func main() {
 					},
 				}},
 			})
-			assert.AlwaysOrUnreachable(err == nil || internal.IsUnavailable(err),
+			assert.AlwaysOrUnreachable(err == nil || internal.IsTransient(err),
 				"numeric to bool conversion should be accepted", internal.Details{
 					"key":    metaKey,
 					"value":  metaValue,
