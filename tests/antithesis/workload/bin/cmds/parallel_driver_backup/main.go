@@ -7,6 +7,8 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/tests/antithesis/workload/internal"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func main() {
@@ -29,8 +31,16 @@ func main() {
 		S3Endpoint: "http://minio:9000",
 	})
 	if err != nil {
-		if internal.IsUnavailable(err) {
-			log.Printf("Backup unavailable: %s", err)
+		if internal.IsTransient(err) {
+			log.Printf("Backup transient error: %s", err)
+			return
+		}
+
+		// S3 infrastructure errors (bucket not created yet, MinIO not ready)
+		// are not application bugs — just log and bail.
+		st, _ := status.FromError(err)
+		if st.Code() == codes.Unknown {
+			log.Printf("Backup infrastructure error (likely S3): %s", err)
 			return
 		}
 
