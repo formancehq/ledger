@@ -239,4 +239,12 @@ func (m *mockBackend) Barrier(_ context.Context) (uint64, error) {
 	return 0, nil
 }
 
+func (m *mockBackend) GetPeriodSchedule(_ context.Context) (string, error) {
+	return "", nil
+}
+
+func (m *mockBackend) GetEventsSinks(_ context.Context) ([]*commonpb.SinkConfig, error) {
+	return nil, nil
+}
+
 var _ Backend = (*mockBackend)(nil)
