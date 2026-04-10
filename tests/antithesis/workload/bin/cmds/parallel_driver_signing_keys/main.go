@@ -62,6 +62,7 @@ func main() {
 	}
 
 	found := false
+	streamErr := false
 
 	for {
 		key, err := stream.Recv()
@@ -70,6 +71,8 @@ func main() {
 		}
 
 		if err != nil {
+			streamErr = true
+
 			break
 		}
 
@@ -78,7 +81,9 @@ func main() {
 		}
 	}
 
-	assert.AlwaysOrUnreachable(found, "registered key should appear in ListSigningKeys", details)
+	if !streamErr {
+		assert.AlwaysOrUnreachable(found, "registered key should appear in ListSigningKeys", details)
+	}
 
 	// 3. Revoke the signing key (so we don't accumulate keys across runs).
 	_, err = bucketClient.Apply(ctx, &servicepb.ApplyRequest{
@@ -105,6 +110,7 @@ func main() {
 	}
 
 	foundAfterRevoke := false
+	streamErr = false
 
 	for {
 		key, err := stream.Recv()
@@ -113,6 +119,8 @@ func main() {
 		}
 
 		if err != nil {
+			streamErr = true
+
 			break
 		}
 
@@ -121,7 +129,9 @@ func main() {
 		}
 	}
 
-	assert.AlwaysOrUnreachable(!foundAfterRevoke, "revoked key should not appear in ListSigningKeys", details)
+	if !streamErr {
+		assert.AlwaysOrUnreachable(!foundAfterRevoke, "revoked key should not appear in ListSigningKeys", details)
+	}
 
 	log.Printf("Signing key lifecycle complete: %s", keyID)
 }

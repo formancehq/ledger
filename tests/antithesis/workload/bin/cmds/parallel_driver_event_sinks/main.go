@@ -23,7 +23,7 @@ func main() {
 	defer conn.Close()
 
 	r := internal.Rand()
-	sinkName := fmt.Sprintf("nats-sink-%d", r.Uint64()%50)
+	sinkName := fmt.Sprintf("nats-sink-%d", r.Uint64())
 	topic := fmt.Sprintf("ledger.events.%d", r.Uint64()%10)
 
 	details := internal.Details{"sinkName": sinkName, "topic": topic}
