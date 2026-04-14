@@ -19,21 +19,22 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ClusterService_GetClusterState_FullMethodName        = "/cluster.ClusterService/GetClusterState"
-	ClusterService_GetDiskUsage_FullMethodName           = "/cluster.ClusterService/GetDiskUsage"
-	ClusterService_GetNodeTime_FullMethodName            = "/cluster.ClusterService/GetNodeTime"
-	ClusterService_TransferLeadership_FullMethodName     = "/cluster.ClusterService/TransferLeadership"
-	ClusterService_AddLearner_FullMethodName             = "/cluster.ClusterService/AddLearner"
-	ClusterService_PromoteLearner_FullMethodName         = "/cluster.ClusterService/PromoteLearner"
-	ClusterService_RemoveNode_FullMethodName             = "/cluster.ClusterService/RemoveNode"
-	ClusterService_CompactStore_FullMethodName           = "/cluster.ClusterService/CompactStore"
-	ClusterService_CompactReadIndex_FullMethodName       = "/cluster.ClusterService/CompactReadIndex"
-	ClusterService_CreateCheckpoint_FullMethodName       = "/cluster.ClusterService/CreateCheckpoint"
-	ClusterService_Backup_FullMethodName                 = "/cluster.ClusterService/Backup"
-	ClusterService_CreateQueryCheckpoint_FullMethodName  = "/cluster.ClusterService/CreateQueryCheckpoint"
-	ClusterService_DeleteQueryCheckpoint_FullMethodName  = "/cluster.ClusterService/DeleteQueryCheckpoint"
-	ClusterService_ListQueryCheckpoints_FullMethodName   = "/cluster.ClusterService/ListQueryCheckpoints"
-	ClusterService_GetQueryCheckpointInfo_FullMethodName = "/cluster.ClusterService/GetQueryCheckpointInfo"
+	ClusterService_GetClusterState_FullMethodName            = "/cluster.ClusterService/GetClusterState"
+	ClusterService_GetDiskUsage_FullMethodName               = "/cluster.ClusterService/GetDiskUsage"
+	ClusterService_GetNodeTime_FullMethodName                = "/cluster.ClusterService/GetNodeTime"
+	ClusterService_TransferLeadership_FullMethodName         = "/cluster.ClusterService/TransferLeadership"
+	ClusterService_AddLearner_FullMethodName                 = "/cluster.ClusterService/AddLearner"
+	ClusterService_PromoteLearner_FullMethodName             = "/cluster.ClusterService/PromoteLearner"
+	ClusterService_RemoveNode_FullMethodName                 = "/cluster.ClusterService/RemoveNode"
+	ClusterService_CompactStore_FullMethodName               = "/cluster.ClusterService/CompactStore"
+	ClusterService_CompactReadIndex_FullMethodName           = "/cluster.ClusterService/CompactReadIndex"
+	ClusterService_CreateCheckpoint_FullMethodName           = "/cluster.ClusterService/CreateCheckpoint"
+	ClusterService_Backup_FullMethodName                     = "/cluster.ClusterService/Backup"
+	ClusterService_CreateQueryCheckpoint_FullMethodName      = "/cluster.ClusterService/CreateQueryCheckpoint"
+	ClusterService_DeleteQueryCheckpoint_FullMethodName      = "/cluster.ClusterService/DeleteQueryCheckpoint"
+	ClusterService_ListQueryCheckpoints_FullMethodName       = "/cluster.ClusterService/ListQueryCheckpoints"
+	ClusterService_GetQueryCheckpointInfo_FullMethodName     = "/cluster.ClusterService/GetQueryCheckpointInfo"
+	ClusterService_GetQueryCheckpointSchedule_FullMethodName = "/cluster.ClusterService/GetQueryCheckpointSchedule"
 )
 
 // ClusterServiceClient is the client API for ClusterService service.
@@ -85,6 +86,9 @@ type ClusterServiceClient interface {
 	// GetQueryCheckpointInfo returns detailed information about a query checkpoint.
 	// Reads from replicated Pebble state (available on any node).
 	GetQueryCheckpointInfo(ctx context.Context, in *GetQueryCheckpointInfoRequest, opts ...grpc.CallOption) (*QueryCheckpointInfo, error)
+	// GetQueryCheckpointSchedule returns the current automatic query checkpoint schedule.
+	// Reads from replicated Pebble state (available on any node).
+	GetQueryCheckpointSchedule(ctx context.Context, in *GetQueryCheckpointScheduleRequest, opts ...grpc.CallOption) (*GetQueryCheckpointScheduleResponse, error)
 }
 
 type clusterServiceClient struct {
@@ -245,6 +249,16 @@ func (c *clusterServiceClient) GetQueryCheckpointInfo(ctx context.Context, in *G
 	return out, nil
 }
 
+func (c *clusterServiceClient) GetQueryCheckpointSchedule(ctx context.Context, in *GetQueryCheckpointScheduleRequest, opts ...grpc.CallOption) (*GetQueryCheckpointScheduleResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetQueryCheckpointScheduleResponse)
+	err := c.cc.Invoke(ctx, ClusterService_GetQueryCheckpointSchedule_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ClusterServiceServer is the server API for ClusterService service.
 // All implementations must embed UnimplementedClusterServiceServer
 // for forward compatibility.
@@ -294,6 +308,9 @@ type ClusterServiceServer interface {
 	// GetQueryCheckpointInfo returns detailed information about a query checkpoint.
 	// Reads from replicated Pebble state (available on any node).
 	GetQueryCheckpointInfo(context.Context, *GetQueryCheckpointInfoRequest) (*QueryCheckpointInfo, error)
+	// GetQueryCheckpointSchedule returns the current automatic query checkpoint schedule.
+	// Reads from replicated Pebble state (available on any node).
+	GetQueryCheckpointSchedule(context.Context, *GetQueryCheckpointScheduleRequest) (*GetQueryCheckpointScheduleResponse, error)
 	mustEmbedUnimplementedClusterServiceServer()
 }
 
@@ -348,6 +365,9 @@ func (UnimplementedClusterServiceServer) ListQueryCheckpoints(context.Context, *
 }
 func (UnimplementedClusterServiceServer) GetQueryCheckpointInfo(context.Context, *GetQueryCheckpointInfoRequest) (*QueryCheckpointInfo, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQueryCheckpointInfo not implemented")
+}
+func (UnimplementedClusterServiceServer) GetQueryCheckpointSchedule(context.Context, *GetQueryCheckpointScheduleRequest) (*GetQueryCheckpointScheduleResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQueryCheckpointSchedule not implemented")
 }
 func (UnimplementedClusterServiceServer) mustEmbedUnimplementedClusterServiceServer() {}
 func (UnimplementedClusterServiceServer) testEmbeddedByValue()                        {}
@@ -640,6 +660,24 @@ func _ClusterService_GetQueryCheckpointInfo_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClusterService_GetQueryCheckpointSchedule_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQueryCheckpointScheduleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClusterServiceServer).GetQueryCheckpointSchedule(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClusterService_GetQueryCheckpointSchedule_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClusterServiceServer).GetQueryCheckpointSchedule(ctx, req.(*GetQueryCheckpointScheduleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ClusterService_ServiceDesc is the grpc.ServiceDesc for ClusterService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -706,6 +744,10 @@ var ClusterService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetQueryCheckpointInfo",
 			Handler:    _ClusterService_GetQueryCheckpointInfo_Handler,
+		},
+		{
+			MethodName: "GetQueryCheckpointSchedule",
+			Handler:    _ClusterService_GetQueryCheckpointSchedule_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

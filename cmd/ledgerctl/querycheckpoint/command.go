@@ -17,6 +17,9 @@ func NewCommand() *cobra.Command {
 	cmd.AddCommand(newDeleteCommand())
 	cmd.AddCommand(newListCommand())
 	cmd.AddCommand(newInfoCommand())
+	cmd.AddCommand(newSetScheduleCommand())
+	cmd.AddCommand(newGetScheduleCommand())
+	cmd.AddCommand(newDeleteScheduleCommand())
 
 	return cmd
 }

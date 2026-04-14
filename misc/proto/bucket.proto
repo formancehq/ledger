@@ -214,6 +214,8 @@ message Request {
     CreateQueryCheckpointRequest create_query_checkpoint = 32;
     DeleteQueryCheckpointRequest delete_query_checkpoint = 33;
     MigrateAccountTypeLedgerRequest migrate_account_type = 34;
+    SetQueryCheckpointScheduleRequest set_query_checkpoint_schedule = 35;
+    DeleteQueryCheckpointScheduleRequest delete_query_checkpoint_schedule = 36;
   }
   signature.RequestSignature signature = 5;
 }
@@ -386,6 +388,14 @@ message ScriptReference {
   string version = 2; // "" = latest
   map<string, string> vars = 3;
 }
+
+// SetQueryCheckpointScheduleRequest sets the automatic query checkpoint creation schedule.
+message SetQueryCheckpointScheduleRequest {
+  string cron = 1;   // Cron expression (standard 5-field or extended 6-field)
+}
+
+// DeleteQueryCheckpointScheduleRequest disables the automatic query checkpoint schedule.
+message DeleteQueryCheckpointScheduleRequest {}
 
 message GetPeriodScheduleRequest {}
 

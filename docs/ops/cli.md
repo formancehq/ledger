@@ -3456,6 +3456,9 @@ Manage query checkpoints — coordinated snapshots of both the main store and th
 | `delete` | Delete a query checkpoint |
 | `list` | List all query checkpoints |
 | `info` | Show detailed information about a query checkpoint |
+| `set-schedule` | Set a cron schedule for automatic checkpoint creation |
+| `delete-schedule` | Remove the automatic checkpoint schedule |
+| `get-schedule` | Show the current checkpoint schedule |
 
 #### query-checkpoint create
 
@@ -3558,4 +3561,74 @@ ledgerctl query-checkpoint info <checkpoint-id>
 
 ```bash
 ledgerctl query-checkpoint info 1
+```
+
+#### query-checkpoint set-schedule
+
+Set a cron schedule for automatic query checkpoint creation. The schedule is stored in Raft and takes effect immediately on the leader.
+
+```bash
+ledgerctl query-checkpoint set-schedule <cron-expression>
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--timeout` | No | Request timeout (default: 10s) |
+
+The cron expression uses the standard 5-field format (`minute hour day-of-month month day-of-week`) or the extended 6-field format with an optional leading seconds field (`second minute hour day-of-month month day-of-week`).
+
+**Examples:**
+
+```bash
+# Create a checkpoint every day at midnight
+ledgerctl query-checkpoint set-schedule "0 0 * * *"
+
+# Create a checkpoint every hour
+ledgerctl query-checkpoint set-schedule "0 * * * *"
+
+# Create a checkpoint every 30 seconds (6-field format)
+ledgerctl query-checkpoint set-schedule "*/30 * * * * *"
+```
+
+#### query-checkpoint delete-schedule
+
+Remove the cron schedule for automatic query checkpoint creation, disabling automatic creation.
+
+```bash
+ledgerctl query-checkpoint delete-schedule
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--timeout` | No | Request timeout (default: 10s) |
+
+**Example:**
+
+```bash
+ledgerctl query-checkpoint delete-schedule
+#  SUCCESS  Query checkpoint schedule deleted
+```
+
+#### query-checkpoint get-schedule
+
+Display the current cron schedule for automatic query checkpoint creation.
+
+```bash
+ledgerctl query-checkpoint get-schedule
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--timeout` | No | Request timeout (default: 10s) |
+
+**Example:**
+
+```bash
+ledgerctl query-checkpoint get-schedule
+
+# Output (schedule set):
+#  SUCCESS  Query checkpoint schedule: 0 0 * * *
+
+# Output (no schedule):
+#  SUCCESS  No query checkpoint schedule configured (automatic creation disabled)
 ```

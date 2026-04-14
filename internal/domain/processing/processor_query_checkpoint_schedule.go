@@ -1,0 +1,40 @@
+package processing
+
+import (
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+)
+
+// processSetQueryCheckpointSchedule handles the SetQueryCheckpointSchedule order.
+// It validates the cron expression and stores it in the FSM state.
+func (p *RequestProcessor) processSetQueryCheckpointSchedule(order *raftcmdpb.SetQueryCheckpointScheduleOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
+	if _, err := CronParser.Parse(order.GetCron()); err != nil {
+		return nil, &domain.ErrInvalidCronExpression{
+			Expression: order.GetCron(),
+			Details:    err.Error(),
+		}
+	}
+
+	s.SetQueryCheckpointSchedule(order.GetCron())
+
+	return &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_SetQueryCheckpointSchedule{
+			SetQueryCheckpointSchedule: &commonpb.SetQueryCheckpointScheduleLog{
+				Cron: order.GetCron(),
+			},
+		},
+	}, nil
+}
+
+// processDeleteQueryCheckpointSchedule handles the DeleteQueryCheckpointSchedule order.
+// It removes the query checkpoint schedule from the FSM state.
+func (p *RequestProcessor) processDeleteQueryCheckpointSchedule(s InMemoryStore) (*commonpb.LogPayload, error) {
+	s.DeleteQueryCheckpointSchedule()
+
+	return &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_DeleteQueryCheckpointSchedule{
+			DeleteQueryCheckpointSchedule: &commonpb.DeleteQueryCheckpointScheduleLog{},
+		},
+	}, nil
+}

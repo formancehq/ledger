@@ -314,6 +314,8 @@ message LogPayload {
     DeletedNumscriptLog deleted_numscript = 22;
     CreatedQueryCheckpointLog created_query_checkpoint = 23;
     DeletedQueryCheckpointLog deleted_query_checkpoint = 24;
+    SetQueryCheckpointScheduleLog set_query_checkpoint_schedule = 25;
+    DeleteQueryCheckpointScheduleLog delete_query_checkpoint_schedule = 26;
   }
 }
 
@@ -434,6 +436,14 @@ message DeletedNumscriptLog {
   string name = 1;
   string ledger = 2;
 }
+
+// SetQueryCheckpointScheduleLog records a query checkpoint schedule change.
+message SetQueryCheckpointScheduleLog {
+  string cron = 1;
+}
+
+// DeleteQueryCheckpointScheduleLog records the removal of the query checkpoint schedule.
+message DeleteQueryCheckpointScheduleLog {}
 
 // CreatedQueryCheckpointLog records a query checkpoint being created.
 message CreatedQueryCheckpointLog {

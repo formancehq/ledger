@@ -37,6 +37,8 @@ message Order {
     DeleteNumscriptOrder delete_numscript = 25;
     CreateQueryCheckpointOrder create_query_checkpoint = 26;
     DeleteQueryCheckpointOrder delete_query_checkpoint = 27;
+    SetQueryCheckpointScheduleOrder set_query_checkpoint_schedule = 28;
+    DeleteQueryCheckpointScheduleOrder delete_query_checkpoint_schedule = 29;
   }
   signature.RequestSignature signature = 5;
 }
@@ -141,6 +143,12 @@ message QueryCheckpointState {
   uint64 max_sequence = 2;            // next_sequence - 1 at creation
   common.Timestamp created_at = 3;    // Creation timestamp (from proposal date)
 }
+
+message SetQueryCheckpointScheduleOrder {
+  string cron = 1;
+}
+
+message DeleteQueryCheckpointScheduleOrder {}
 
 message CreateLedgerOrder {
   string name = 1;

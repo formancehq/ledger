@@ -162,6 +162,18 @@ func (mr *MockInMemoryStoreMockRecorder) DeleteQueryCheckpoint(checkpointID any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteQueryCheckpoint", reflect.TypeOf((*MockInMemoryStore)(nil).DeleteQueryCheckpoint), checkpointID)
 }
 
+// DeleteQueryCheckpointSchedule mocks base method.
+func (m *MockInMemoryStore) DeleteQueryCheckpointSchedule() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "DeleteQueryCheckpointSchedule")
+}
+
+// DeleteQueryCheckpointSchedule indicates an expected call of DeleteQueryCheckpointSchedule.
+func (mr *MockInMemoryStoreMockRecorder) DeleteQueryCheckpointSchedule() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteQueryCheckpointSchedule", reflect.TypeOf((*MockInMemoryStore)(nil).DeleteQueryCheckpointSchedule))
+}
+
 // GetAccountMetadata mocks base method.
 func (m *MockInMemoryStore) GetAccountMetadata(key domain.MetadataKey) (*commonpb.MetadataValue, error) {
 	m.ctrl.T.Helper()
@@ -818,6 +830,18 @@ func (m *MockInMemoryStore) SetPurgeRange(periodID, startSequence, closeSequence
 func (mr *MockInMemoryStoreMockRecorder) SetPurgeRange(periodID, startSequence, closeSequence, startAuditSequence, closeAuditSequence any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetPurgeRange", reflect.TypeOf((*MockInMemoryStore)(nil).SetPurgeRange), periodID, startSequence, closeSequence, startAuditSequence, closeAuditSequence)
+}
+
+// SetQueryCheckpointSchedule mocks base method.
+func (m *MockInMemoryStore) SetQueryCheckpointSchedule(cron string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetQueryCheckpointSchedule", cron)
+}
+
+// SetQueryCheckpointSchedule indicates an expected call of SetQueryCheckpointSchedule.
+func (mr *MockInMemoryStoreMockRecorder) SetQueryCheckpointSchedule(cron any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetQueryCheckpointSchedule", reflect.TypeOf((*MockInMemoryStore)(nil).SetQueryCheckpointSchedule), cron)
 }
 
 // SetRequireSignatures mocks base method.

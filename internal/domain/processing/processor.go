@@ -211,6 +211,10 @@ func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s InMemoryStore)
 		return p.processCreateQueryCheckpoint(orderType.CreateQueryCheckpoint, s)
 	case *raftcmdpb.Order_DeleteQueryCheckpoint:
 		return p.processDeleteQueryCheckpoint(orderType.DeleteQueryCheckpoint, s)
+	case *raftcmdpb.Order_SetQueryCheckpointSchedule:
+		return p.processSetQueryCheckpointSchedule(orderType.SetQueryCheckpointSchedule, s)
+	case *raftcmdpb.Order_DeleteQueryCheckpointSchedule:
+		return p.processDeleteQueryCheckpointSchedule(s)
 	default:
 		return nil, errors.New("invalid order type")
 	}

@@ -584,6 +584,26 @@ func (impl *ClusterServiceServerImpl) GetQueryCheckpointInfo(ctx context.Context
 	return queryCheckpointToInfo(cp), nil
 }
 
+func (impl *ClusterServiceServerImpl) GetQueryCheckpointSchedule(ctx context.Context, _ *clusterpb.GetQueryCheckpointScheduleRequest) (*clusterpb.GetQueryCheckpointScheduleResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterRead); err != nil {
+		return nil, err
+	}
+
+	handle, err := impl.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
+
+	defer func() { _ = handle.Close() }()
+
+	cronExpr, err := query.ReadQueryCheckpointSchedule(handle)
+	if err != nil {
+		return nil, fmt.Errorf("loading query checkpoint schedule: %w", err)
+	}
+
+	return &clusterpb.GetQueryCheckpointScheduleResponse{Cron: cronExpr}, nil
+}
+
 func queryCheckpointToInfo(cp *raftcmdpb.QueryCheckpointState) *clusterpb.QueryCheckpointInfo {
 	return &clusterpb.QueryCheckpointInfo{
 		CheckpointId: cp.GetCheckpointId(),

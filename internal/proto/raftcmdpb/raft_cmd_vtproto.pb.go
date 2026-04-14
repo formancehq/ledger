@@ -268,6 +268,24 @@ func (m *Order_DeleteQueryCheckpoint) CloneVT() isOrder_Type {
 	return r
 }
 
+func (m *Order_SetQueryCheckpointSchedule) CloneVT() isOrder_Type {
+	if m == nil {
+		return (*Order_SetQueryCheckpointSchedule)(nil)
+	}
+	r := new(Order_SetQueryCheckpointSchedule)
+	r.SetQueryCheckpointSchedule = m.SetQueryCheckpointSchedule.CloneVT()
+	return r
+}
+
+func (m *Order_DeleteQueryCheckpointSchedule) CloneVT() isOrder_Type {
+	if m == nil {
+		return (*Order_DeleteQueryCheckpointSchedule)(nil)
+	}
+	r := new(Order_DeleteQueryCheckpointSchedule)
+	r.DeleteQueryCheckpointSchedule = m.DeleteQueryCheckpointSchedule.CloneVT()
+	return r
+}
+
 func (m *CreatePreparedQueryOrder) CloneVT() *CreatePreparedQueryOrder {
 	if m == nil {
 		return (*CreatePreparedQueryOrder)(nil)
@@ -645,6 +663,39 @@ func (m *QueryCheckpointState) CloneVT() *QueryCheckpointState {
 }
 
 func (m *QueryCheckpointState) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *SetQueryCheckpointScheduleOrder) CloneVT() *SetQueryCheckpointScheduleOrder {
+	if m == nil {
+		return (*SetQueryCheckpointScheduleOrder)(nil)
+	}
+	r := new(SetQueryCheckpointScheduleOrder)
+	r.Cron = m.Cron
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *SetQueryCheckpointScheduleOrder) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *DeleteQueryCheckpointScheduleOrder) CloneVT() *DeleteQueryCheckpointScheduleOrder {
+	if m == nil {
+		return (*DeleteQueryCheckpointScheduleOrder)(nil)
+	}
+	r := new(DeleteQueryCheckpointScheduleOrder)
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *DeleteQueryCheckpointScheduleOrder) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -3194,6 +3245,56 @@ func (this *Order_DeleteQueryCheckpoint) EqualVT(thatIface isOrder_Type) bool {
 	return true
 }
 
+func (this *Order_SetQueryCheckpointSchedule) EqualVT(thatIface isOrder_Type) bool {
+	that, ok := thatIface.(*Order_SetQueryCheckpointSchedule)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.SetQueryCheckpointSchedule, that.SetQueryCheckpointSchedule; p != q {
+		if p == nil {
+			p = &SetQueryCheckpointScheduleOrder{}
+		}
+		if q == nil {
+			q = &SetQueryCheckpointScheduleOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *Order_DeleteQueryCheckpointSchedule) EqualVT(thatIface isOrder_Type) bool {
+	that, ok := thatIface.(*Order_DeleteQueryCheckpointSchedule)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.DeleteQueryCheckpointSchedule, that.DeleteQueryCheckpointSchedule; p != q {
+		if p == nil {
+			p = &DeleteQueryCheckpointScheduleOrder{}
+		}
+		if q == nil {
+			q = &DeleteQueryCheckpointScheduleOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
 func (this *CreatePreparedQueryOrder) EqualVT(that *CreatePreparedQueryOrder) bool {
 	if this == that {
 		return true
@@ -3621,6 +3722,41 @@ func (this *QueryCheckpointState) EqualVT(that *QueryCheckpointState) bool {
 
 func (this *QueryCheckpointState) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*QueryCheckpointState)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *SetQueryCheckpointScheduleOrder) EqualVT(that *SetQueryCheckpointScheduleOrder) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.Cron != that.Cron {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *SetQueryCheckpointScheduleOrder) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*SetQueryCheckpointScheduleOrder)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *DeleteQueryCheckpointScheduleOrder) EqualVT(that *DeleteQueryCheckpointScheduleOrder) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *DeleteQueryCheckpointScheduleOrder) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*DeleteQueryCheckpointScheduleOrder)
 	if !ok {
 		return false
 	}
@@ -7376,6 +7512,48 @@ func (m *Order_DeleteQueryCheckpoint) MarshalToSizedBufferVT(dAtA []byte) (int, 
 	}
 	return len(dAtA) - i, nil
 }
+func (m *Order_SetQueryCheckpointSchedule) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Order_SetQueryCheckpointSchedule) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.SetQueryCheckpointSchedule != nil {
+		size, err := m.SetQueryCheckpointSchedule.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0xe2
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Order_DeleteQueryCheckpointSchedule) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Order_DeleteQueryCheckpointSchedule) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.DeleteQueryCheckpointSchedule != nil {
+		size, err := m.DeleteQueryCheckpointSchedule.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0xea
+	}
+	return len(dAtA) - i, nil
+}
 func (m *CreatePreparedQueryOrder) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -8301,6 +8479,79 @@ func (m *QueryCheckpointState) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.CheckpointId))
 		i--
 		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *SetQueryCheckpointScheduleOrder) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SetQueryCheckpointScheduleOrder) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *SetQueryCheckpointScheduleOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.Cron) > 0 {
+		i -= len(m.Cron)
+		copy(dAtA[i:], m.Cron)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Cron)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *DeleteQueryCheckpointScheduleOrder) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *DeleteQueryCheckpointScheduleOrder) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *DeleteQueryCheckpointScheduleOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
 	}
 	return len(dAtA) - i, nil
 }
@@ -13272,6 +13523,30 @@ func (m *Order_DeleteQueryCheckpoint) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *Order_SetQueryCheckpointSchedule) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.SetQueryCheckpointSchedule != nil {
+		l = m.SetQueryCheckpointSchedule.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *Order_DeleteQueryCheckpointSchedule) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.DeleteQueryCheckpointSchedule != nil {
+		l = m.DeleteQueryCheckpointSchedule.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
 func (m *CreatePreparedQueryOrder) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -13596,6 +13871,30 @@ func (m *QueryCheckpointState) SizeVT() (n int) {
 		l = m.CreatedAt.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *SetQueryCheckpointScheduleOrder) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Cron)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *DeleteQueryCheckpointScheduleOrder) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
 	n += len(m.unknownFields)
 	return n
 }
@@ -16682,6 +16981,88 @@ func (m *Order) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Order_DeleteQueryCheckpoint{DeleteQueryCheckpoint: v}
 			}
 			iNdEx = postIndex
+		case 28:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SetQueryCheckpointSchedule", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Type.(*Order_SetQueryCheckpointSchedule); ok {
+				if err := oneof.SetQueryCheckpointSchedule.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &SetQueryCheckpointScheduleOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Type = &Order_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: v}
+			}
+			iNdEx = postIndex
+		case 29:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DeleteQueryCheckpointSchedule", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Type.(*Order_DeleteQueryCheckpointSchedule); ok {
+				if err := oneof.DeleteQueryCheckpointSchedule.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &DeleteQueryCheckpointScheduleOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Type = &Order_DeleteQueryCheckpointSchedule{DeleteQueryCheckpointSchedule: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -18673,6 +19054,140 @@ func (m *QueryCheckpointState) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SetQueryCheckpointScheduleOrder) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SetQueryCheckpointScheduleOrder: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SetQueryCheckpointScheduleOrder: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Cron", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Cron = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *DeleteQueryCheckpointScheduleOrder) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: DeleteQueryCheckpointScheduleOrder: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: DeleteQueryCheckpointScheduleOrder: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

@@ -69,6 +69,10 @@ service ClusterService {
   // GetQueryCheckpointInfo returns detailed information about a query checkpoint.
   // Reads from replicated Pebble state (available on any node).
   rpc GetQueryCheckpointInfo(GetQueryCheckpointInfoRequest) returns (QueryCheckpointInfo);
+
+  // GetQueryCheckpointSchedule returns the current automatic query checkpoint schedule.
+  // Reads from replicated Pebble state (available on any node).
+  rpc GetQueryCheckpointSchedule(GetQueryCheckpointScheduleRequest) returns (GetQueryCheckpointScheduleResponse);
 }
 
 message GetClusterStateRequest {
@@ -288,6 +292,12 @@ message ListQueryCheckpointsResponse {
 
 message GetQueryCheckpointInfoRequest {
   uint64 checkpoint_id = 1;
+}
+
+message GetQueryCheckpointScheduleRequest {}
+
+message GetQueryCheckpointScheduleResponse {
+  string cron = 1;   // Current cron expression, empty if disabled
 }
 
 message QueryCheckpointInfo {

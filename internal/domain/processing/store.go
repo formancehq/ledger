@@ -114,6 +114,10 @@ type InMemoryStore interface {
 	SaveQueryCheckpoint(cp *raftcmdpb.QueryCheckpointState)
 	DeleteQueryCheckpoint(checkpointID uint64)
 
+	// Query checkpoint schedule operations
+	SetQueryCheckpointSchedule(cron string)
+	DeleteQueryCheckpointSchedule()
+
 	// Ledger cleanup
 	MarkLedgerForCleanup(ledger string)
 

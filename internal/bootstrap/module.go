@@ -587,6 +587,26 @@ func Module() fx.Option {
 			},
 			func(
 				logger logging.Logger,
+				machine *state.Machine,
+				admissionHandler ctrl.Admission,
+				raftNode *node.Node,
+			) *state.QueryCheckpointScheduler {
+				return state.NewQueryCheckpointScheduler(
+					logger,
+					raftNode.IsLeader,
+					machine.QueryCheckpointSchedule,
+					func() {
+						_, _ = admissionHandler.Admit(context.Background(), &servicepb.Request{
+							Type: &servicepb.Request_CreateQueryCheckpoint{
+								CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{},
+							},
+						})
+					},
+					machine.QueryCheckpointScheduleChanged(),
+				)
+			},
+			func(
+				logger logging.Logger,
 				store *dal.Store,
 				attrs *attributes.Attributes,
 				machine *state.Machine,
@@ -1019,6 +1039,9 @@ func Module() fx.Option {
 				lc.Append(worker.FxHook(sealer))
 			},
 			func(lc fx.Lifecycle, scheduler *state.PeriodScheduler) {
+				lc.Append(worker.FxHook(scheduler))
+			},
+			func(lc fx.Lifecycle, scheduler *state.QueryCheckpointScheduler) {
 				lc.Append(worker.FxHook(scheduler))
 			},
 			func(lc fx.Lifecycle, converter *state.MetadataConverter) {

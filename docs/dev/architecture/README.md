@@ -55,6 +55,9 @@ Idempotency key mechanism for safe request retries, hash-based conflict detectio
 ### [Periods](./periods.md)
 Period lifecycle (OPEN -> CLOSING -> CLOSED), two-step close process with background sealing, BLAKE3 sealing hash computation, crash recovery, and JWT transaction receipts.
 
+### [Query Checkpoints](./query-checkpoints.md)
+Coordinated point-in-time snapshots of the main store and read index for historical queries. Includes cron-based automatic checkpoint creation, storage layout, and gRPC API.
+
 ### [Events](./events.md)
 Domain event types and event sink system (NATS, Kafka, ClickHouse, HTTP).
 

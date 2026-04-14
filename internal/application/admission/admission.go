@@ -1228,6 +1228,16 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 				CheckpointId: reqType.DeleteQueryCheckpoint.GetCheckpointId(),
 			},
 		}
+	case *servicepb.Request_SetQueryCheckpointSchedule:
+		order.Type = &raftcmdpb.Order_SetQueryCheckpointSchedule{
+			SetQueryCheckpointSchedule: &raftcmdpb.SetQueryCheckpointScheduleOrder{
+				Cron: reqType.SetQueryCheckpointSchedule.GetCron(),
+			},
+		}
+	case *servicepb.Request_DeleteQueryCheckpointSchedule:
+		order.Type = &raftcmdpb.Order_DeleteQueryCheckpointSchedule{
+			DeleteQueryCheckpointSchedule: &raftcmdpb.DeleteQueryCheckpointScheduleOrder{},
+		}
 	case *servicepb.Request_AddAccountType:
 		order.Type = &raftcmdpb.Order_Apply{
 			Apply: &raftcmdpb.LedgerApplyOrder{

@@ -57,26 +57,27 @@ type auditConfigUpdate struct {
 }
 
 type Buffered struct {
-	fsm                            *Machine
-	attrs                          *attributes.Attributes
-	Date                           *commonpb.Timestamp
-	NextSequenceID                 uint64
-	NextAuditSequenceID            uint64
-	NextQueryCheckpointID          uint64
-	LastLogHash                    []byte
-	Derived                        *DerivedRegistry
-	pendingSigningKeyUpdates       []signingKeyUpdate
-	pendingSigningConfigUpdate     *signingConfigUpdate
-	pendingMaintenanceModeUpdate   *maintenanceModeUpdate
-	pendingAuditConfigUpdate       *auditConfigUpdate
-	pendingPeriodScheduleUpdate    *string
-	sinkConfigChanged              bool
-	periods                        *PeriodTracker
-	changedPeriods                 []*commonpb.Period
-	purgeRanges                    []purgeRange
-	pendingArchives                []ArchiveRequest
-	pendingMetadataConvertRequests []MetadataConvertRequest
-	pendingAccountMigrateRequests  []AccountMigrateRequest
+	fsm                                  *Machine
+	attrs                                *attributes.Attributes
+	Date                                 *commonpb.Timestamp
+	NextSequenceID                       uint64
+	NextAuditSequenceID                  uint64
+	NextQueryCheckpointID                uint64
+	LastLogHash                          []byte
+	Derived                              *DerivedRegistry
+	pendingSigningKeyUpdates             []signingKeyUpdate
+	pendingSigningConfigUpdate           *signingConfigUpdate
+	pendingMaintenanceModeUpdate         *maintenanceModeUpdate
+	pendingAuditConfigUpdate             *auditConfigUpdate
+	pendingPeriodScheduleUpdate          *string
+	pendingQueryCheckpointScheduleUpdate *string
+	sinkConfigChanged                    bool
+	periods                              *PeriodTracker
+	changedPeriods                       []*commonpb.Period
+	purgeRanges                          []purgeRange
+	pendingArchives                      []ArchiveRequest
+	pendingMetadataConvertRequests       []MetadataConvertRequest
+	pendingAccountMigrateRequests        []AccountMigrateRequest
 
 	// Pending prepared query changes (ledger/name -> query or nil for deletion)
 	pendingPreparedQueries  map[domain.PreparedQueryKey]*commonpb.PreparedQuery
@@ -312,6 +313,22 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 		}
 
 		b.fsm.Periods.SetSchedule(*b.pendingPeriodScheduleUpdate)
+	}
+
+	if b.pendingQueryCheckpointScheduleUpdate != nil {
+		if *b.pendingQueryCheckpointScheduleUpdate == "" {
+			err := BatchDeleteQueryCheckpointSchedule(batch)
+			if err != nil {
+				return fmt.Errorf("deleting query checkpoint schedule: %w", err)
+			}
+		} else {
+			err := SaveQueryCheckpointSchedule(batch, *b.pendingQueryCheckpointScheduleUpdate)
+			if err != nil {
+				return fmt.Errorf("saving query checkpoint schedule: %w", err)
+			}
+		}
+
+		b.fsm.SetQueryCheckpointSchedule(*b.pendingQueryCheckpointScheduleUpdate)
 	}
 
 	// Merge NumscriptVersions and NumscriptEntries overlays into the underlying KeyStores
@@ -649,6 +666,15 @@ func (b *Buffered) SetPeriodSchedule(cronExpr string) {
 func (b *Buffered) DeletePeriodSchedule() {
 	empty := ""
 	b.pendingPeriodScheduleUpdate = &empty
+}
+
+func (b *Buffered) SetQueryCheckpointSchedule(cronExpr string) {
+	b.pendingQueryCheckpointScheduleUpdate = &cronExpr
+}
+
+func (b *Buffered) DeleteQueryCheckpointSchedule() {
+	empty := ""
+	b.pendingQueryCheckpointScheduleUpdate = &empty
 }
 
 func (b *Buffered) GetSinkConfig(name string) (*commonpb.SinkConfig, error) {

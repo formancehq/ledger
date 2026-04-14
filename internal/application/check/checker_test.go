@@ -438,6 +438,8 @@ func (s *inMemoryStore) GetNextQueryCheckpointID() uint64                      {
 func (s *inMemoryStore) IncrementNextQueryCheckpointID() uint64                { return 1 }
 func (s *inMemoryStore) SaveQueryCheckpoint(_ *raftcmdpb.QueryCheckpointState) {}
 func (s *inMemoryStore) DeleteQueryCheckpoint(_ uint64)                        {}
+func (s *inMemoryStore) SetQueryCheckpointSchedule(_ string)                   {}
+func (s *inMemoryStore) DeleteQueryCheckpointSchedule()                        {}
 func (s *inMemoryStore) MarkLedgerForCleanup(ledger string) {
 	s.engine.pendingLedgerDeletions = append(s.engine.pendingLedgerDeletions, ledger)
 }

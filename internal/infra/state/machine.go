@@ -59,11 +59,13 @@ type Machine struct {
 	pendingLedgerCleanups map[string]uint64
 
 	// FSM mechanics
-	nextSequenceID        uint64
-	nextAuditSequenceID   uint64
-	nextQueryCheckpointID uint64
-	lastLogHash           []byte
-	lastCheckpointID      uint64
+	nextSequenceID                 uint64
+	nextAuditSequenceID            uint64
+	nextQueryCheckpointID          uint64
+	queryCheckpointSchedule        string
+	queryCheckpointScheduleChanged signal.Signal
+	lastLogHash                    []byte
+	lastCheckpointID               uint64
 
 	lastAppliedIndex     uint64
 	lastAppliedTimestamp uint64
@@ -245,6 +247,15 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 
 	stepStart = time.Now()
 
+	queryCheckpointSchedule, err := query.ReadQueryCheckpointSchedule(dataStore)
+	if err != nil {
+		return nil, fmt.Errorf("loading query checkpoint schedule from store: %w", err)
+	}
+
+	logger.WithFields(map[string]any{"duration": time.Since(stepStart).String()}).Infof("FSM: ReadQueryCheckpointSchedule done")
+
+	stepStart = time.Now()
+
 	processor, err := processing.NewRequestProcessor(meter, numscriptCacheSize)
 	if err != nil {
 		return nil, fmt.Errorf("creating request processor: %w", err)
@@ -303,31 +314,33 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 	logger.WithFields(map[string]any{"duration": time.Since(stepStart).String(), "count": len(pendingCleanups)}).Infof("FSM: ReadPendingLedgerCleanups done")
 
 	fsm := &Machine{
-		logger:                    logger,
-		dataStore:                 dataStore,
-		lastAppliedIndex:          lastAppliedIndex,
-		lastAppliedTimestamp:      lastAppliedTimestamp,
-		volumeAssertions:          volumeAssertions,
-		logsAppendedCounter:       logsAppendedCounter,
-		rotationDurationHistogram: rotationDurationHistogram,
-		batchCommitHistogram:      batchCommitHistogram,
-		processor:                 processor,
-		eventNotifier:             eventNotifier,
-		mirrorNotifier:            mirrorNotifier,
-		indexNotifier:             indexNotifier,
-		keyStore:                  ks,
-		sharedState:               sharedState,
-		Registry:                  NewStateRegistry(cache, attrs),
-		Periods:                   NewPeriodTracker(allPeriods, currentOpenPeriod, closingPeriods, nextPeriodID, periodSchedule),
-		nextSequenceID:            1,
-		nextAuditSequenceID:       1,
-		nextQueryCheckpointID:     nextQueryCheckpointID,
-		sealRequestCh:             make(chan SealRequest, 10),
-		archiveRequestCh:          make(chan ArchiveRequest, 1),
-		metadataConvertRequestCh:  make(chan MetadataConvertRequest, 16),
-		accountMigrateRequestCh:   make(chan AccountMigrateRequest, 16),
-		coldCompactionCh:          make(chan struct{}, 1),
-		pendingLedgerCleanups:     pendingCleanups,
+		logger:                         logger,
+		dataStore:                      dataStore,
+		lastAppliedIndex:               lastAppliedIndex,
+		lastAppliedTimestamp:           lastAppliedTimestamp,
+		volumeAssertions:               volumeAssertions,
+		logsAppendedCounter:            logsAppendedCounter,
+		rotationDurationHistogram:      rotationDurationHistogram,
+		batchCommitHistogram:           batchCommitHistogram,
+		processor:                      processor,
+		eventNotifier:                  eventNotifier,
+		mirrorNotifier:                 mirrorNotifier,
+		indexNotifier:                  indexNotifier,
+		keyStore:                       ks,
+		sharedState:                    sharedState,
+		Registry:                       NewStateRegistry(cache, attrs),
+		Periods:                        NewPeriodTracker(allPeriods, currentOpenPeriod, closingPeriods, nextPeriodID, periodSchedule),
+		nextSequenceID:                 1,
+		nextAuditSequenceID:            1,
+		nextQueryCheckpointID:          nextQueryCheckpointID,
+		queryCheckpointSchedule:        queryCheckpointSchedule,
+		queryCheckpointScheduleChanged: signal.New(),
+		sealRequestCh:                  make(chan SealRequest, 10),
+		archiveRequestCh:               make(chan ArchiveRequest, 1),
+		metadataConvertRequestCh:       make(chan MetadataConvertRequest, 16),
+		accountMigrateRequestCh:        make(chan AccountMigrateRequest, 16),
+		coldCompactionCh:               make(chan struct{}, 1),
+		pendingLedgerCleanups:          pendingCleanups,
 	}
 	fsm.appliedCond = sync.NewCond(&fsm.appliedMu)
 
@@ -376,6 +389,14 @@ func (fsm *Machine) RecoverState() error {
 	}
 
 	fsm.nextQueryCheckpointID = nextQCPID
+
+	// Recover query checkpoint schedule
+	qcpSchedule, err := query.ReadQueryCheckpointSchedule(fsm.dataStore)
+	if err != nil {
+		return fmt.Errorf("recovering query checkpoint schedule: %w", err)
+	}
+
+	fsm.queryCheckpointSchedule = qcpSchedule
 
 	fsm.logger.WithFields(map[string]any{
 		"nextSequenceID":        fsm.nextSequenceID,
@@ -2391,6 +2412,29 @@ func (fsm *Machine) PeriodSchedule() string {
 // ScheduleChanged returns the Signal that fires when the period schedule changes.
 func (fsm *Machine) ScheduleChanged() signal.Signal {
 	return fsm.Periods.ScheduleChanged()
+}
+
+// QueryCheckpointSchedule returns the current query checkpoint schedule cron expression.
+// Empty string means the schedule is disabled.
+func (fsm *Machine) QueryCheckpointSchedule() string {
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
+
+	return fsm.queryCheckpointSchedule
+}
+
+// SetQueryCheckpointSchedule updates the query checkpoint schedule and fires the changed signal.
+func (fsm *Machine) SetQueryCheckpointSchedule(s string) {
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
+
+	fsm.queryCheckpointSchedule = s
+	fsm.queryCheckpointScheduleChanged.Notify()
+}
+
+// QueryCheckpointScheduleChanged returns the Signal that fires when the query checkpoint schedule changes.
+func (fsm *Machine) QueryCheckpointScheduleChanged() signal.Signal {
+	return fsm.queryCheckpointScheduleChanged
 }
 
 // checkClosePeriod checks if the apply result contains a ClosePeriod log

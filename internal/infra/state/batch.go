@@ -169,6 +169,26 @@ func BatchDeletePeriodSchedule(b *dal.Batch) error {
 	return nil
 }
 
+// SaveQueryCheckpointSchedule stores the query checkpoint schedule cron expression in the batch.
+func SaveQueryCheckpointSchedule(b *dal.Batch, cron string) error {
+	err := b.SetBytes([]byte{dal.KeyPrefixQueryCheckpointSchedule}, []byte(cron))
+	if err != nil {
+		return fmt.Errorf("saving query checkpoint schedule: %w", err)
+	}
+
+	return nil
+}
+
+// BatchDeleteQueryCheckpointSchedule removes the query checkpoint schedule from the batch.
+func BatchDeleteQueryCheckpointSchedule(b *dal.Batch) error {
+	err := b.DeleteKey([]byte{dal.KeyPrefixQueryCheckpointSchedule})
+	if err != nil {
+		return fmt.Errorf("deleting query checkpoint schedule: %w", err)
+	}
+
+	return nil
+}
+
 // SaveSinkConfig stores a per-sink configuration in the batch.
 func SaveSinkConfig(b *dal.Batch, config *commonpb.SinkConfig) error {
 	b.KeyBuilder.PutByte(dal.KeyPrefixEventsConfig).

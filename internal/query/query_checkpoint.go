@@ -55,6 +55,23 @@ func ReadNextQueryCheckpointID(reader dal.PebbleReader) (uint64, error) {
 	return binary.BigEndian.Uint64(value[:8]), nil
 }
 
+// ReadQueryCheckpointSchedule loads the query checkpoint schedule cron expression from the given reader.
+// Returns an empty string if no schedule is configured.
+func ReadQueryCheckpointSchedule(reader dal.PebbleReader) (string, error) {
+	value, closer, err := reader.Get([]byte{dal.KeyPrefixQueryCheckpointSchedule})
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return "", nil
+		}
+
+		return "", fmt.Errorf("loading query checkpoint schedule: %w", err)
+	}
+
+	defer func() { _ = closer.Close() }()
+
+	return string(value), nil
+}
+
 // ListQueryCheckpoints reads all query checkpoints from Pebble, sorted by checkpoint ID ascending.
 func ListQueryCheckpoints(reader dal.PebbleReader) ([]*raftcmdpb.QueryCheckpointState, error) {
 	lowerBound := []byte{dal.KeyPrefixQueryCheckpoint}
