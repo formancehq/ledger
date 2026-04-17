@@ -145,6 +145,17 @@ type Node struct {
 	// committed entries like no-ops and config changes).
 	indexTracker *IndexTracker
 
+	// commitIndex tracks the latest Raft commit index, updated atomically
+	// during the ready loop.
+	commitIndex atomic.Uint64
+
+	// leaderReady is closed (done) when the new leader's FSM has caught up
+	// with all committed entries from the previous term. Admission blocks
+	// on this channel before pre-reads. On leadership gain it is replaced
+	// with a fresh channel; a background goroutine closes it after
+	// WaitForApplied(commitIndex) completes.
+	leaderReady atomic.Pointer[chan struct{}]
+
 	// Metrics (kept on Node: WAL/transport/orchestrate-related)
 	processEntryHistogram             metric.Int64Histogram
 	appendEntriesHistogram            metric.Int64Histogram
@@ -415,6 +426,11 @@ func NewNode(
 		observer:         NewNoOpObserver(),
 	}
 
+	// Start with a closed channel (leader ready — no leadership transition yet).
+	readyCh := make(chan struct{})
+	close(readyCh)
+	node.leaderReady.Store(&readyCh)
+
 	logger.WithFields(map[string]any{
 		"initialIndex": initialIndex(wal),
 	}).Infof("IndexTracker initialized")
@@ -671,8 +687,12 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 		return fmt.Errorf("creating raw rawNode: %w", err)
 	}
 
-	// Log initial raft state for cluster join diagnostics
+	// Seed commit index from initial raft state so it's available before
+	// the first ready cycle.
 	status := node.rawNode.Status()
+	node.commitIndex.Store(status.Commit)
+
+	// Log initial raft state for cluster join diagnostics
 	node.logger.WithFields(map[string]any{
 		"nodeID":    node.config.NodeID,
 		"raftState": status.RaftState.String(),
@@ -824,8 +844,28 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 				lifecycle.SendEvent("leadership_gained", details)
 				node.observer.Emit(LeadershipChangeEvent{IsLeader: true})
 
+				// Block admission until the FSM has applied all committed
+				// entries inherited from the previous leader. Without this,
+				// admission pre-reads (revert postings, numscript resolution)
+				// can see stale Pebble state and reject valid requests.
+				pending := make(chan struct{})
+				node.leaderReady.Store(&pending)
+
+				ci := node.commitIndex.Load()
+
 				node.applier.Drain(stop)
 				node.fsm.OnLeadershipAcquired()
+
+				go func() {
+					if err := node.fsm.WaitForApplied(ctx, ci); err != nil {
+						node.logger.WithFields(map[string]any{
+							"error":       err,
+							"commitIndex": ci,
+						}).Errorf("Failed to wait for FSM catch-up after leadership gain")
+					}
+
+					close(pending)
+				}()
 			}
 		}
 
@@ -856,6 +896,8 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 	if err != nil {
 		return readyResult{}, fmt.Errorf("appending entries to storage: %w", err)
 	}
+
+	node.commitIndex.Store(rd.Commit)
 
 	node.appendEntriesHistogram.Record(ctx, time.Since(now).Microseconds())
 
@@ -1404,6 +1446,23 @@ func (node *Node) GetNodeID() uint64 {
 // Logger returns the node's logger.
 func (node *Node) Logger() logging.Logger {
 	return node.logger
+}
+
+// WaitLeaderReady blocks until the leader's FSM has caught up after a
+// leadership transition. During steady-state the channel is already
+// closed, so this returns immediately.
+func (node *Node) WaitLeaderReady(ctx context.Context) error {
+	ch := node.leaderReady.Load()
+	if ch == nil {
+		return nil
+	}
+
+	select {
+	case <-*ch:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // LastPersistedIndex returns the FSM's last persisted Raft index.

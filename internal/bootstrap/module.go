@@ -542,6 +542,7 @@ func Module() fx.Option {
 					ss,
 					attrs,
 					numscript.NewNumscriptCache(cfg.NumscriptCacheSize),
+					node.WaitLeaderReady,
 					opts...,
 				)
 			},

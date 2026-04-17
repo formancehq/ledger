@@ -113,6 +113,7 @@ func createTestAdmission(t *testing.T, store *dal.Store) (*Admission, *attribute
 		ss,
 		attrs,
 		numscript.NewNumscriptCache(0),
+		func(context.Context) error { return nil },
 	), attrs
 }
 
@@ -390,7 +391,7 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 			},
 		}
 
-		order, err := admission.convertApplyRequest(applyRequest)
+		order, err := admission.convertApplyRequest(t.Context(), applyRequest)
 		require.NoError(t, err)
 		require.NotNil(t, order)
 
@@ -420,7 +421,7 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 			},
 		}
 
-		_, err := admission.convertApplyRequest(applyRequest)
+		_, err := admission.convertApplyRequest(t.Context(), applyRequest)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "getting original transaction postings")
 	})
@@ -693,7 +694,7 @@ func TestConvertApplyRequest_CreateTransaction_Force(t *testing.T) {
 			},
 		}
 
-		order, err := admission.convertApplyRequest(applyRequest)
+		order, err := admission.convertApplyRequest(t.Context(), applyRequest)
 		require.NoError(t, err)
 		require.NotNil(t, order)
 
@@ -748,7 +749,7 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 			},
 		}
 
-		order, err := admission.requestToOrder(request)
+		order, err := admission.requestToOrder(t.Context(), request)
 		require.NoError(t, err)
 		require.NotNil(t, order)
 		require.NotNil(t, order.GetIdempotency())
@@ -942,7 +943,7 @@ func TestRequestToOrder_IdempotencyKeyValidation(t *testing.T) {
 			},
 		}
 
-		order, err := adm.requestToOrder(req)
+		order, err := adm.requestToOrder(t.Context(), req)
 		require.NoError(t, err)
 		require.NotNil(t, order)
 		require.NotNil(t, order.GetIdempotency())
@@ -966,7 +967,7 @@ func TestRequestToOrder_IdempotencyKeyValidation(t *testing.T) {
 			},
 		}
 
-		order, err := adm.requestToOrder(req)
+		order, err := adm.requestToOrder(t.Context(), req)
 		require.NoError(t, err)
 		require.NotNil(t, order)
 		require.NotNil(t, order.GetIdempotency())
@@ -990,7 +991,7 @@ func TestRequestToOrder_IdempotencyKeyValidation(t *testing.T) {
 			},
 		}
 
-		_, err := adm.requestToOrder(req)
+		_, err := adm.requestToOrder(t.Context(), req)
 		require.Error(t, err)
 		require.ErrorIs(t, err, ErrIdempotencyKeyTooLong)
 	})
@@ -1008,7 +1009,7 @@ func TestRequestToOrder_IdempotencyKeyValidation(t *testing.T) {
 			},
 		}
 
-		order, err := adm.requestToOrder(req)
+		order, err := adm.requestToOrder(t.Context(), req)
 		require.NoError(t, err)
 		require.NotNil(t, order)
 		require.Nil(t, order.GetIdempotency())

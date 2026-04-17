@@ -58,6 +58,7 @@ type Admission struct {
 	attrs              *attributes.Attributes
 	numscriptCache     *numscript.NumscriptCache
 	coldStorageEnabled bool
+	waitLeaderReady    func(context.Context) error
 
 	// Metrics (noop when metricsEnabled is false)
 	metricsEnabled                 bool
@@ -110,18 +111,20 @@ func NewAdmission(
 	sharedState *state.SharedState,
 	attrs *attributes.Attributes,
 	numscriptCache *numscript.NumscriptCache,
+	waitLeaderReady func(context.Context) error,
 	opts ...func(*Admission),
 ) *Admission {
 	a := &Admission{
-		store:          store,
-		logger:         logger,
-		proposer:       proposer,
-		preloader:      preloader,
-		healthChecker:  healthChecker,
-		keyStore:       keyStore,
-		sharedState:    sharedState,
-		attrs:          attrs,
-		numscriptCache: numscriptCache,
+		store:           store,
+		logger:          logger,
+		proposer:        proposer,
+		preloader:       preloader,
+		healthChecker:   healthChecker,
+		keyStore:        keyStore,
+		sharedState:     sharedState,
+		attrs:           attrs,
+		numscriptCache:  numscriptCache,
+		waitLeaderReady: waitLeaderReady,
 	}
 	for _, opt := range opts {
 		opt(a)
@@ -295,6 +298,13 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		return nil, ErrMaintenanceMode
 	}
 
+	// Wait for the FSM to be caught up after a leadership transition.
+	// This ensures admission pre-reads (revert postings, numscript resolution)
+	// see all committed entries from the previous leader.
+	if err := a.waitLeaderReady(ctx); err != nil {
+		return nil, fmt.Errorf("waiting for leader readiness: %w", err)
+	}
+
 	// Verify signatures and resolve signed payloads
 	ctx, sigSpan := tracer.Start(ctx, "admission.verify_signatures")
 	requests, err := a.verifyAndResolveSignatures(requests)
@@ -306,7 +316,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	}
 
 	// Convert requests to orders
-	orders, err := a.requestsToOrders(requests)
+	orders, err := a.requestsToOrders(ctx, requests)
 	if err != nil {
 		return nil, fmt.Errorf("converting requests to orders: %w", err)
 	}
@@ -996,7 +1006,7 @@ func enrichMigratingVolumePreloads(
 }
 
 // requestToOrder converts a servicepb.Request to a raftcmdpb.Order.
-func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, error) {
+func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request) (*raftcmdpb.Order, error) {
 	order := &raftcmdpb.Order{}
 
 	switch reqType := req.GetType().(type) {
@@ -1018,7 +1028,7 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 			},
 		}
 	case *servicepb.Request_Apply:
-		applyOrder, err := a.convertApplyRequest(reqType.Apply)
+		applyOrder, err := a.convertApplyRequest(ctx, reqType.Apply)
 		if err != nil {
 			return nil, err
 		}
@@ -1309,7 +1319,7 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 }
 
 // convertApplyRequest converts a servicepb.LedgerApplyRequest to raftcmdpb.LedgerApplyOrder.
-func (a *Admission) convertApplyRequest(apply *servicepb.LedgerApplyRequest) (*raftcmdpb.LedgerApplyOrder, error) {
+func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.LedgerApplyRequest) (*raftcmdpb.LedgerApplyOrder, error) {
 	order := &raftcmdpb.LedgerApplyOrder{
 		Ledger: apply.GetLedger(),
 	}
@@ -1442,10 +1452,10 @@ func (a *Admission) convertApplyRequest(apply *servicepb.LedgerApplyRequest) (*r
 }
 
 // requestsToOrders converts a slice of servicepb.Request to raftcmdpb.Order.
-func (a *Admission) requestsToOrders(reqs []*servicepb.Request) ([]*raftcmdpb.Order, error) {
+func (a *Admission) requestsToOrders(ctx context.Context, reqs []*servicepb.Request) ([]*raftcmdpb.Order, error) {
 	orders := make([]*raftcmdpb.Order, len(reqs))
 	for i, req := range reqs {
-		order, err := a.requestToOrder(req)
+		order, err := a.requestToOrder(ctx, req)
 		if err != nil {
 			return nil, fmt.Errorf("converting request %d: %w", i, err)
 		}
