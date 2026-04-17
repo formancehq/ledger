@@ -132,5 +132,6 @@ func (store *Store) ReadLogWithIdempotencyKey(ctx context.Context, key string) (
 
 			return pointer.For(ret.ToCore()), nil
 		},
+		tracing.SkipErrorRecordingIf(postgres.IsNotFoundError),
 	)
 }

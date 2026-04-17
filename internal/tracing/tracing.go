@@ -104,7 +104,7 @@ func TraceWithMetric[RET any](
 	tracer trace.Tracer,
 	histogram metric.Int64Histogram,
 	fn func(ctx context.Context) (RET, error),
-	finalizers ...func(ctx context.Context, ret RET),
+	opts ...TraceOption,
 ) (RET, error) {
 	var zeroRet RET
 
@@ -120,11 +120,45 @@ func TraceWithMetric[RET any](
 		histogram.Record(ctx, latency.Milliseconds())
 		trace.SpanFromContext(ctx).SetAttributes(attribute.String("latency", latency.String()))
 
-		for _, finalizer := range finalizers {
-			finalizer(ctx, ret)
-		}
-
 		return ret, nil
+	}, opts...)
+}
+
+type traceSettings struct {
+	spanStartOptions   []trace.SpanStartOption
+	skipRecordErrorIfs []func(error) bool
+}
+
+func (s *traceSettings) shouldSkipErrorRecording(err error) bool {
+	for _, predicate := range s.skipRecordErrorIfs {
+		if predicate(err) {
+			return true
+		}
+	}
+	return false
+}
+
+// TraceOption configures Trace and TraceWithMetric.
+type TraceOption interface {
+	applyTrace(*traceSettings)
+}
+
+type traceOptionFunc func(*traceSettings)
+
+func (f traceOptionFunc) applyTrace(s *traceSettings) { f(s) }
+
+// WithSpanStartOptions passes options to tracer.Start (for example trace.WithAttributes).
+func WithSpanStartOptions(opts ...trace.SpanStartOption) TraceOption {
+	return traceOptionFunc(func(s *traceSettings) {
+		s.spanStartOptions = append(s.spanStartOptions, opts...)
+	})
+}
+
+// SkipErrorRecordingIf skips otlp.RecordError when predicate returns true for the returned error.
+// The error is still returned to the caller unchanged. Multiple options compose with OR semantics.
+func SkipErrorRecordingIf(predicate func(error) bool) TraceOption {
+	return traceOptionFunc(func(s *traceSettings) {
+		s.skipRecordErrorIfs = append(s.skipRecordErrorIfs, predicate)
 	})
 }
 
@@ -133,14 +167,21 @@ func Trace[RET any](
 	tracer trace.Tracer,
 	name string,
 	fn func(ctx context.Context) (RET, error),
-	spanOptions ...trace.SpanStartOption,
+	opts ...TraceOption,
 ) (RET, error) {
-	ctx, span := tracer.Start(ctx, name, spanOptions...)
+	var settings traceSettings
+	for _, o := range opts {
+		o.applyTrace(&settings)
+	}
+
+	ctx, span := tracer.Start(ctx, name, settings.spanStartOptions...)
 	defer span.End()
 
 	ret, err := fn(ctx)
 	if err != nil {
-		otlp.RecordError(ctx, err)
+		if !settings.shouldSkipErrorRecording(err) {
+			otlp.RecordError(ctx, err)
+		}
 		return ret, err
 	}
 
