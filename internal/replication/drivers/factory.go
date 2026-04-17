@@ -40,7 +40,7 @@ func (c *DriverFactoryWithBatching) Create(ctx context.Context, id string) (Driv
 		return nil, nil, errors.Wrap(err, "validating batching config")
 	}
 
-	return newBatcher(exporter, bh.Batching, c.logger), rawConfig, nil
+	return NewBatcher(exporter, bh.Batching, c.logger), rawConfig, nil
 }
 
 var _ Factory = (*DriverFactoryWithBatching)(nil)

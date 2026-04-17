@@ -20,6 +20,14 @@ var (
 	DefaultPushRetryPeriod = 10 * time.Second
 )
 
+// ProgressTracker abstracts the state tracking for a pipeline, allowing
+// PipelineHandler to be shared between the Manager and GlobalExporterRunner.
+type ProgressTracker interface {
+	LedgerName() string
+	LastLogID() *uint64
+	UpdateLastLogID(ctx context.Context, id uint64) error
+}
+
 type PipelineHandlerConfig struct {
 	PullInterval    time.Duration
 	PushRetryPeriod time.Duration
@@ -55,7 +63,7 @@ var (
 )
 
 type PipelineHandler struct {
-	pipeline       ledger.Pipeline
+	state          ProgressTracker
 	stopChannel    chan chan error
 	store          LogFetcher
 	exporter       drivers.Driver
@@ -63,7 +71,7 @@ type PipelineHandler struct {
 	logger         logging.Logger
 }
 
-func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan uint64) {
+func (p *PipelineHandler) Run(ctx context.Context) {
 	p.logger.Debugf("Pipeline started.")
 	nextInterval := time.Duration(0)
 
@@ -80,8 +88,8 @@ func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan uint64) {
 		case <-time.After(nextInterval):
 			p.logger.Debugf("Fetch next batch.")
 			var builder query.Builder
-			if p.pipeline.LastLogID != nil {
-				builder = query.Gt("id", *p.pipeline.LastLogID)
+			if p.state.LastLogID() != nil {
+				builder = query.Gt("id", *p.state.LastLogID())
 			}
 			logs, err := p.store.ListLogs(ctx, common.InitialPaginatedQuery[any]{
 				PageSize: p.pipelineConfig.LogsPageSize,
@@ -114,10 +122,7 @@ func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan uint64) {
 				exportContext, cancel := context.WithCancel(ctx)
 				go func() {
 					_, err := p.exporter.Accept(exportContext, collectionutils.Map(logs.Data, func(log ledger.Log) drivers.LogWithLedger {
-						return drivers.LogWithLedger{
-							Log:    log,
-							Ledger: p.pipeline.Ledger,
-						}
+						return drivers.NewLogWithLedger(p.state.LedgerName(), log)
 					})...)
 					errChan <- err
 				}()
@@ -145,12 +150,8 @@ func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan uint64) {
 
 			lastLogID := logs.Data[len(logs.Data)-1].ID
 			p.logger.Debugf("Move last log id to %d", *lastLogID)
-			p.pipeline.LastLogID = lastLogID
-
-			select {
-			case <-ctx.Done():
-				return
-			case ingestedLogs <- *lastLogID:
+			if err := p.state.UpdateLastLogID(ctx, *lastLogID); err != nil {
+				p.logger.Errorf("Error updating last log ID: %s", err)
 			}
 
 			if !logs.HasMore {
@@ -181,7 +182,7 @@ func (p *PipelineHandler) Shutdown(ctx context.Context) error {
 }
 
 func NewPipelineHandler(
-	pipeline ledger.Pipeline,
+	state ProgressTracker,
 	store LogFetcher,
 	driver drivers.Driver,
 	logger logging.Logger,
@@ -193,14 +194,13 @@ func NewPipelineHandler(
 	}
 
 	return &PipelineHandler{
-		pipeline:       pipeline,
+		state:          state,
 		stopChannel:    make(chan chan error, 1),
 		store:          store,
 		exporter:       driver,
 		pipelineConfig: config,
 		logger: logger.
 			WithField("component", "pipeline").
-			WithField("module", pipeline.Ledger).
-			WithField("driver", pipeline.ExporterID),
+			WithField("module", state.LedgerName()),
 	}
 }
