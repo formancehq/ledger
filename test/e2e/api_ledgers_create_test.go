@@ -3,6 +3,11 @@
 package test_suite
 
 import (
+	"fmt"
+	"math/big"
+	"strings"
+	"sync"
+
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/pointer"
 	. "github.com/formancehq/go-libs/v3/testing/api"
@@ -15,9 +20,9 @@ import (
 	"github.com/formancehq/ledger/pkg/features"
 	. "github.com/formancehq/ledger/pkg/testserver"
 	"github.com/formancehq/ledger/pkg/testserver/ginkgo"
+	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"strings"
 )
 
 var _ = Context("Ledger engine tests", func() {
@@ -184,6 +189,68 @@ var _ = Context("Ledger engine tests", func() {
 				})
 				It("should be ok", func() {
 					Expect(err).To(BeNil())
+				})
+			})
+
+			// Regression test: concurrent CreateLedger calls into a brand-new
+			// bucket used to leave losers of the migrator advisory-lock race
+			// without their per-ledger sequences (transaction_id_<id> /
+			// log_id_<id>), because migration 11's DO block only saw the
+			// winner's uncommitted _system.ledgers row under READ COMMITTED.
+			// The first write to a loser then 500'd with
+			// `relation "<bucket>.transaction_id_N" does not exist`.
+			Context("concurrent creation into a fresh bucket", func() {
+				It("should set up per-ledger sequences for every ledger", func(specContext SpecContext) {
+					const n = 10
+					bucket := "race-" + uuid.NewString()[:8]
+
+					names := make([]string, n)
+					for i := range names {
+						names[i] = fmt.Sprintf("ledger-%d", i)
+					}
+
+					start := make(chan struct{})
+					wg := sync.WaitGroup{}
+					errs := make([]error, n)
+					for i := 0; i < n; i++ {
+						wg.Add(1)
+						go func(i int) {
+							defer GinkgoRecover()
+							defer wg.Done()
+							<-start
+							_, errs[i] = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx,
+								operations.V2CreateLedgerRequest{
+									Ledger: names[i],
+									V2CreateLedgerRequest: components.V2CreateLedgerRequest{
+										Bucket: pointer.For(bucket),
+									},
+								})
+						}(i)
+					}
+					close(start)
+					wg.Wait()
+
+					for i, err := range errs {
+						Expect(err).To(BeNil(), "CreateLedger failed for %s: %v", names[i], err)
+					}
+
+					// Force the initializing→in-use state transition that
+					// runs setval on the per-ledger sequence.
+					for _, name := range names {
+						_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx,
+							operations.V2CreateTransactionRequest{
+								Ledger: name,
+								V2PostTransaction: components.V2PostTransaction{
+									Postings: []components.V2Posting{{
+										Source:      "world",
+										Destination: "alice",
+										Amount:      big.NewInt(1),
+										Asset:       "USD",
+									}},
+								},
+							})
+						Expect(err).To(BeNil(), "CreateTransaction failed for %s: %v", name, err)
+					}
 				})
 			})
 		})
