@@ -42,16 +42,9 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 
 	var ret *ledgerstore.Store
 	err := d.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		systemStore := d.systemStoreFactory.Create(tx)
-
-		if err := systemStore.CreateLedger(ctx, l); err != nil {
-			if errors.Is(postgres.ResolveError(err), postgres.ErrConstraintsFailed{}) {
-				return systemstore.ErrLedgerAlreadyExists
-			}
-			return postgres.ResolveError(err)
-		}
-
 		b := d.bucketFactory.Create(l.Bucket)
+
+		// Bring the bucket up to date before inserting the _system.ledgers row.
 		isInitialized, err := b.IsInitialized(ctx, tx)
 		if err != nil {
 			return fmt.Errorf("checking if bucket is initialized: %w", err)
@@ -65,14 +58,22 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 			if !upToDate {
 				return ErrBucketOutdated
 			}
-
-			if err := b.AddLedger(ctx, tx, *l); err != nil {
-				return fmt.Errorf("adding ledger to bucket: %w", err)
-			}
 		} else {
 			if err := b.Migrate(ctx, tx); err != nil {
 				return fmt.Errorf("migrating bucket: %w", err)
 			}
+		}
+
+		systemStore := d.systemStoreFactory.Create(tx)
+		if err := systemStore.CreateLedger(ctx, l); err != nil {
+			if errors.Is(postgres.ResolveError(err), postgres.ErrConstraintsFailed{}) {
+				return systemstore.ErrLedgerAlreadyExists
+			}
+			return postgres.ResolveError(err)
+		}
+
+		if err := b.AddLedger(ctx, tx, *l); err != nil {
+			return fmt.Errorf("adding ledger to bucket: %w", err)
 		}
 
 		count, err := systemStore.CountLedgersInBucket(ctx, l.Bucket)
