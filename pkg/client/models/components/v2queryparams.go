@@ -51,7 +51,7 @@ type QueryTemplateVolumeParams struct {
 	// Sort results using a field name and order (ascending or descending).
 	// Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 	//
-	Sort any `json:"sort,omitempty"`
+	Sort *string `json:"sort,omitempty"`
 }
 
 func (q QueryTemplateVolumeParams) MarshalJSON() ([]byte, error) {
@@ -114,7 +114,7 @@ func (o *QueryTemplateVolumeParams) GetPit() *time.Time {
 	return o.Pit
 }
 
-func (o *QueryTemplateVolumeParams) GetSort() any {
+func (o *QueryTemplateVolumeParams) GetSort() *string {
 	if o == nil {
 		return nil
 	}
@@ -160,7 +160,7 @@ type QueryTemplateLogParams struct {
 	// Sort results using a field name and order (ascending or descending).
 	// Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 	//
-	Sort any `json:"sort,omitempty"`
+	Sort *string `json:"sort,omitempty"`
 }
 
 func (q QueryTemplateLogParams) MarshalJSON() ([]byte, error) {
@@ -209,7 +209,7 @@ func (o *QueryTemplateLogParams) GetPit() *time.Time {
 	return o.Pit
 }
 
-func (o *QueryTemplateLogParams) GetSort() any {
+func (o *QueryTemplateLogParams) GetSort() *string {
 	if o == nil {
 		return nil
 	}
@@ -255,7 +255,7 @@ type QueryTemplateTransactionParams struct {
 	// Sort results using a field name and order (ascending or descending).
 	// Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 	//
-	Sort any `json:"sort,omitempty"`
+	Sort *string `json:"sort,omitempty"`
 }
 
 func (q QueryTemplateTransactionParams) MarshalJSON() ([]byte, error) {
@@ -304,7 +304,7 @@ func (o *QueryTemplateTransactionParams) GetPit() *time.Time {
 	return o.Pit
 }
 
-func (o *QueryTemplateTransactionParams) GetSort() any {
+func (o *QueryTemplateTransactionParams) GetSort() *string {
 	if o == nil {
 		return nil
 	}
@@ -350,7 +350,7 @@ type QueryTemplateAccountParams struct {
 	// Sort results using a field name and order (ascending or descending).
 	// Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 	//
-	Sort any `json:"sort,omitempty"`
+	Sort *string `json:"sort,omitempty"`
 }
 
 func (q QueryTemplateAccountParams) MarshalJSON() ([]byte, error) {
@@ -399,7 +399,7 @@ func (o *QueryTemplateAccountParams) GetPit() *time.Time {
 	return o.Pit
 }
 
-func (o *QueryTemplateAccountParams) GetSort() any {
+func (o *QueryTemplateAccountParams) GetSort() *string {
 	if o == nil {
 		return nil
 	}
