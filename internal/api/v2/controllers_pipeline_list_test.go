@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/go-libs/v4/auth"
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v5/pkg/authn/jwt"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
 
 	ledger "github.com/formancehq/ledger/internal"
 )
@@ -18,7 +18,7 @@ func TestListPipelines(t *testing.T) {
 	t.Parallel()
 
 	systemController, _ := newTestingSystemController(t, true)
-	router := NewRouter(systemController, auth.NewNoAuth(), "develop", WithExporters(true))
+	router := NewRouter(systemController, jwt.NewNoAuth(), "develop", WithExporters(true))
 
 	req := httptest.NewRequest(http.MethodGet, "/xxx/pipelines", nil)
 	rec := httptest.NewRecorder()
@@ -29,7 +29,7 @@ func TestListPipelines(t *testing.T) {
 	}
 	systemController.EXPECT().
 		ListPipelines(gomock.Any()).
-		Return(&bunpaginate.Cursor[ledger.Pipeline]{
+		Return(&paginate.Cursor[ledger.Pipeline]{
 			Data: pipelines,
 		}, nil)
 

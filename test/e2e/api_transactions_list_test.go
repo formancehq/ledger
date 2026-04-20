@@ -12,16 +12,16 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/pointer"
-	"github.com/formancehq/go-libs/v4/query"
-	. "github.com/formancehq/go-libs/v4/testing/api"
-	. "github.com/formancehq/go-libs/v4/testing/deferred/ginkgo"
-	"github.com/formancehq/go-libs/v4/testing/platform/pgtesting"
-	"github.com/formancehq/go-libs/v4/testing/testservice"
-	libtime "github.com/formancehq/go-libs/v4/time"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/query"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	. "github.com/formancehq/go-libs/v5/pkg/testing/api"
+	. "github.com/formancehq/go-libs/v5/pkg/testing/deferred/ginkgo"
+	"github.com/formancehq/go-libs/v5/pkg/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
+	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
+	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/client/models/components"
@@ -393,7 +393,7 @@ var _ = Context("Ledger transactions list API tests", func() {
 			It("Should be ok", func() {
 				Expect(response.V2TransactionsCursorResponse.Cursor.Next).NotTo(BeNil())
 				cursor := &common.ColumnPaginatedQuery[any]{}
-				Expect(bunpaginate.UnmarshalCursor(*response.V2TransactionsCursorResponse.Cursor.Next, cursor)).To(BeNil())
+				Expect(paginate.UnmarshalCursor(*response.V2TransactionsCursorResponse.Cursor.Next, cursor)).To(BeNil())
 				Expect(cursor.PageSize).To(Equal(uint64(10)))
 				Expect(cursor.Options).To(Equal(common.ResourceQuery[any]{
 					Builder: query.Match("source", "world"),
@@ -435,7 +435,7 @@ var _ = Context("Ledger transactions list API tests", func() {
 			It("Should be ok", func() {
 				Expect(response.V2TransactionsCursorResponse.Cursor.Next).NotTo(BeNil())
 				cursor := &common.ColumnPaginatedQuery[any]{}
-				Expect(bunpaginate.UnmarshalCursor(*response.V2TransactionsCursorResponse.Cursor.Next, cursor)).To(BeNil())
+				Expect(paginate.UnmarshalCursor(*response.V2TransactionsCursorResponse.Cursor.Next, cursor)).To(BeNil())
 				Expect(cursor.PageSize).To(Equal(uint64(10)))
 				Expect(cursor.Options).To(Equal(common.ResourceQuery[any]{
 					Builder: query.And(

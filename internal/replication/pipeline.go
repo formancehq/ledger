@@ -4,11 +4,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/collectionutils"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/pointer"
-	"github.com/formancehq/go-libs/v4/query"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/query"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/types/collections"
+	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/replication/drivers"
@@ -89,7 +89,7 @@ func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan uint64) {
 				Options: common.ResourceQuery[any]{
 					Builder: builder,
 				},
-				Order: pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+				Order: pointer.For(paginate.Order(paginate.OrderAsc)),
 			})
 			if err != nil {
 				p.logger.Errorf("Error fetching logs: %s", err)
@@ -113,7 +113,7 @@ func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan uint64) {
 				errChan := make(chan error, 1)
 				exportContext, cancel := context.WithCancel(ctx)
 				go func() {
-					_, err := p.exporter.Accept(exportContext, collectionutils.Map(logs.Data, func(log ledger.Log) drivers.LogWithLedger {
+					_, err := p.exporter.Accept(exportContext, collections.Map(logs.Data, func(log ledger.Log) drivers.LogWithLedger {
 						return drivers.LogWithLedger{
 							Log:    log,
 							Ledger: p.pipeline.Ledger,

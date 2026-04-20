@@ -3,8 +3,8 @@ package v2
 import (
 	"net/http"
 
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/transport/api"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
@@ -21,13 +21,13 @@ func listSchemas(paginationConfig storagecommon.PaginationConfig) http.HandlerFu
 			column = sort
 		}
 
-		order := bunpaginate.Order(bunpaginate.OrderDesc)
+		order := paginate.Order(paginate.OrderDesc)
 		if orderParam := r.URL.Query().Get("order"); orderParam != "" {
 			switch orderParam {
 			case "asc":
-				order = bunpaginate.Order(bunpaginate.OrderAsc)
+				order = paginate.Order(paginate.OrderAsc)
 			case "desc":
-				order = bunpaginate.Order(bunpaginate.OrderDesc)
+				order = paginate.Order(paginate.OrderDesc)
 			}
 		}
 
@@ -43,7 +43,7 @@ func listSchemas(paginationConfig storagecommon.PaginationConfig) http.HandlerFu
 			return
 		}
 
-		api.RenderCursor(w, *bunpaginate.MapCursor(cursor, func(schema ledger.Schema) any {
+		api.RenderCursor(w, *paginate.MapCursor(cursor, func(schema ledger.Schema) any {
 			return renderSchema(r, schema)
 		}))
 	}

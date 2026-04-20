@@ -8,12 +8,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/go-libs/v4/bun/bunconnect"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/testing/deferred"
-	"github.com/formancehq/go-libs/v4/testing/docker"
-	"github.com/formancehq/go-libs/v4/testing/platform/pgtesting"
-	"github.com/formancehq/go-libs/v4/testing/testservice"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/connect"
+	"github.com/formancehq/go-libs/v5/pkg/testing/deferred"
+	"github.com/formancehq/go-libs/v5/pkg/testing/docker"
+	"github.com/formancehq/go-libs/v5/pkg/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
@@ -26,7 +26,7 @@ func TestGenerator(t *testing.T) {
 	ctx := logging.TestingContext()
 
 	testServer := NewTestServer(
-		deferred.FromValue(bunconnect.ConnectionOptions{
+		deferred.FromValue(connect.ConnectionOptions{
 			DatabaseSourceName: pgServer.GetDSN(),
 		}),
 		testservice.WithLogger(t),

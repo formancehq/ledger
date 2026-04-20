@@ -12,14 +12,14 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/go-libs/v4/bun/bunconnect"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/otlp/otlpmetrics"
-	"github.com/formancehq/go-libs/v4/testing/deferred"
-	"github.com/formancehq/go-libs/v4/testing/docker"
-	"github.com/formancehq/go-libs/v4/testing/platform/pgtesting"
-	"github.com/formancehq/go-libs/v4/testing/testservice"
-	"github.com/formancehq/go-libs/v4/time"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/observe/metrics"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/connect"
+	"github.com/formancehq/go-libs/v5/pkg/testing/deferred"
+	"github.com/formancehq/go-libs/v5/pkg/testing/docker"
+	"github.com/formancehq/go-libs/v5/pkg/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	ledgerclient "github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/testserver"
@@ -60,7 +60,7 @@ func (f *TestServerEnvFactory) Create(ctx context.Context, b *testing.B) env.Env
 
 	f.dockerPool = docker.NewPool(b, logging.Testing())
 
-	var connectionOptions bunconnect.ConnectionOptions
+	var connectionOptions connect.ConnectionOptions
 	if postgresURIFlag == "" {
 		pgServer := pgtesting.CreatePostgresServer(b, f.dockerPool, pgtesting.WithPGCrypto())
 
@@ -86,7 +86,7 @@ func (f *TestServerEnvFactory) Create(ctx context.Context, b *testing.B) env.Env
 			testservice.DebugInstrumentation(os.Getenv("DEBUG") == "true"),
 			testservice.OutputInstrumentation(output),
 			testservice.OTLPInstrumentation(deferred.FromValue(testservice.OTLPConfig{
-				Metrics: &otlpmetrics.ModuleConfig{
+				Metrics: &metrics.ModuleConfig{
 					KeepInMemory:   true,
 					RuntimeMetrics: true,
 				},

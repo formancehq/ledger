@@ -15,12 +15,12 @@ import (
 	"github.com/uptrace/bun"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/auth"
-	"github.com/formancehq/go-libs/v4/collectionutils"
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/pointer"
-	"github.com/formancehq/go-libs/v4/time"
+	"github.com/formancehq/go-libs/v5/pkg/authn/jwt"
+	"github.com/formancehq/go-libs/v5/pkg/transport/api"
+	"github.com/formancehq/go-libs/v5/pkg/types/collections"
+	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
+	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
+	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/bulking"
@@ -564,7 +564,7 @@ func TestBulk(t *testing.T) {
 			systemController, ledgerController := newTestingSystemController(t, true)
 			testCase.expectations(ledgerController)
 
-			router := NewRouter(systemController, auth.NewNoAuth(), "develop")
+			router := NewRouter(systemController, jwt.NewNoAuth(), "develop")
 
 			req := httptest.NewRequest(http.MethodPost, "/xxx/_bulk", bytes.NewBufferString(testCase.body))
 			req.Header = testCase.headers
@@ -584,7 +584,7 @@ func TestBulk(t *testing.T) {
 
 			if expectedStatusCode == http.StatusOK || expectedStatusCode == http.StatusBadRequest {
 				ret, _ := api.DecodeSingleResponse[[]bulking.APIResult](t, rec.Body)
-				ret = collectionutils.Map(ret, func(from bulking.APIResult) bulking.APIResult {
+				ret = collections.Map(ret, func(from bulking.APIResult) bulking.APIResult {
 					switch data := from.Data.(type) {
 					case map[string]any:
 						delete(data, "insertedAt")

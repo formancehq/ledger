@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/go-libs/v4/auth"
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/logging"
+	"github.com/formancehq/go-libs/v5/pkg/authn/jwt"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
 
 	ledger "github.com/formancehq/ledger/internal"
 )
@@ -22,14 +22,14 @@ func TestListExporters(t *testing.T) {
 	systemController, _ := newTestingSystemController(t, false)
 	systemController.EXPECT().
 		ListExporters(gomock.Any()).
-		Return(&bunpaginate.Cursor[ledger.Exporter]{
+		Return(&paginate.Cursor[ledger.Exporter]{
 			Data: []ledger.Exporter{
 				ledger.NewExporter(ledger.NewExporterConfiguration("exporter1", json.RawMessage(`{}`))),
 				ledger.NewExporter(ledger.NewExporterConfiguration("exporter2", json.RawMessage(`{}`))),
 			},
 		}, nil)
 
-	router := NewRouter(systemController, auth.NewNoAuth(), "develop", WithExporters(true))
+	router := NewRouter(systemController, jwt.NewNoAuth(), "develop", WithExporters(true))
 
 	req := httptest.NewRequest(http.MethodGet, "/_/exporters", nil)
 	rec := httptest.NewRecorder()

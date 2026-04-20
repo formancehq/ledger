@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"reflect"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
 )
 
 // todo: backport in go libs
@@ -17,8 +17,8 @@ func Extract[OF any](
 	defaulter func() (*InitialPaginatedQuery[OF], error),
 	modifiers ...func(query *InitialPaginatedQuery[OF]) error,
 ) (PaginatedQuery[OF], error) {
-	if r.URL.Query().Get(bunpaginate.QueryKeyCursor) != "" {
-		return UnmarshalCursor[OF](r.URL.Query().Get(bunpaginate.QueryKeyCursor), modifiers...)
+	if r.URL.Query().Get(paginate.QueryKeyCursor) != "" {
+		return UnmarshalCursor[OF](r.URL.Query().Get(paginate.QueryKeyCursor), modifiers...)
 	} else {
 		initialQuery, err := defaulter()
 		if err != nil {
@@ -73,8 +73,8 @@ func UnmarshalCursor[Options any](v string, modifiers ...func(query *InitialPagi
 func Iterate[OF any, Options any](
 	ctx context.Context,
 	initialQuery InitialPaginatedQuery[Options],
-	iterator func(ctx context.Context, q PaginatedQuery[Options]) (*bunpaginate.Cursor[OF], error),
-	cb func(cursor *bunpaginate.Cursor[OF]) error,
+	iterator func(ctx context.Context, q PaginatedQuery[Options]) (*paginate.Cursor[OF], error),
+	cb func(cursor *paginate.Cursor[OF]) error,
 ) error {
 
 	var query PaginatedQuery[OF] = initialQuery
@@ -105,5 +105,5 @@ func encodeCursor[OptionsType any, PaginatedQueryType PaginatedQuery[OptionsType
 	if v == nil {
 		return ""
 	}
-	return bunpaginate.EncodeCursor(v)
+	return paginate.EncodeCursor(v)
 }

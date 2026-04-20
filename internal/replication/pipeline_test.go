@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/pointer"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/replication/drivers"
@@ -59,10 +59,10 @@ func TestPipeline(t *testing.T) {
 			PageSize: 100,
 			Column:   "id",
 			Options:  common.ResourceQuery[any]{},
-			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+			Order:    pointer.For(paginate.Order(paginate.OrderAsc)),
 		}).
 		AnyTimes().
-		DoAndReturn(func(ctx context.Context, paginatedQuery common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
+		DoAndReturn(func(ctx context.Context, paginatedQuery common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Log], error) {
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
@@ -71,12 +71,12 @@ func TestPipeline(t *testing.T) {
 				case <-delivered:
 				default:
 					close(delivered)
-					return &bunpaginate.Cursor[ledger.Log]{
+					return &paginate.Cursor[ledger.Log]{
 						Data: []ledger.Log{log},
 					}, nil
 				}
 			}
-			return &bunpaginate.Cursor[ledger.Log]{}, nil
+			return &paginate.Cursor[ledger.Log]{}, nil
 		})
 
 	driver.EXPECT().

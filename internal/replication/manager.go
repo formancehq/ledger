@@ -8,10 +8,10 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/otlp"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
+	"github.com/formancehq/go-libs/v5/pkg/observe"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/storage/postgres"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/controller/system"
@@ -338,7 +338,7 @@ func (m *Manager) GetExporter(ctx context.Context, id string) (*ledger.Exporter,
 	return exporter, nil
 }
 
-func (m *Manager) ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error) {
+func (m *Manager) ListExporters(ctx context.Context) (*paginate.Cursor[ledger.Exporter], error) {
 	return m.storage.ListExporters(ctx)
 }
 
@@ -404,7 +404,7 @@ func (m *Manager) UpdateExporter(ctx context.Context, id string, configuration l
 	return m.synchronizePipelines(ctx)
 }
 
-func (m *Manager) ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error) {
+func (m *Manager) ListPipelines(ctx context.Context) (*paginate.Cursor[ledger.Pipeline], error) {
 	return m.storage.ListPipelines(ctx)
 }
 
@@ -421,7 +421,7 @@ func (m *Manager) CreatePipeline(ctx context.Context, config ledger.PipelineConf
 
 	if _, err := m.startPipeline(ctx, pipeline); err != nil {
 		logging.FromContext(ctx).Error("starting pipeline %s: %s", pipeline.ID, err)
-		otlp.RecordError(ctx, err)
+		observe.RecordError(ctx, err)
 	}
 
 	return &pipeline, nil

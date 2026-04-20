@@ -11,11 +11,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/auth"
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/pointer"
-	"github.com/formancehq/go-libs/v4/time"
+	"github.com/formancehq/go-libs/v5/pkg/authn/jwt"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/transport/api"
+	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
+	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	ledger "github.com/formancehq/ledger/internal"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
@@ -31,7 +31,7 @@ func TestListSchemas(t *testing.T) {
 		expectStatusCode  int
 		expectedErrorCode string
 		expectBackendCall bool
-		returnCursor      *bunpaginate.Cursor[ledger.Schema]
+		returnCursor      *paginate.Cursor[ledger.Schema]
 		returnErr         error
 	}
 
@@ -49,7 +49,7 @@ func TestListSchemas(t *testing.T) {
 		},
 	}
 
-	testCursor := &bunpaginate.Cursor[ledger.Schema]{
+	testCursor := &paginate.Cursor[ledger.Schema]{
 		Data:     testSchemas,
 		HasMore:  false,
 		PageSize: 15,
@@ -60,9 +60,9 @@ func TestListSchemas(t *testing.T) {
 			name:        "nominal",
 			queryParams: url.Values{},
 			expectQuery: storagecommon.InitialPaginatedQuery[any]{
-				PageSize: bunpaginate.QueryDefaultPageSize,
+				PageSize: paginate.QueryDefaultPageSize,
 				Column:   "created_at",
-				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Order:    pointer.For(paginate.Order(paginate.OrderDesc)),
 				Options: storagecommon.ResourceQuery[any]{
 					Expand: make([]string, 0),
 				},
@@ -95,9 +95,9 @@ func TestListSchemas(t *testing.T) {
 				"order": []string{"desc"},
 			},
 			expectQuery: storagecommon.InitialPaginatedQuery[any]{
-				PageSize: bunpaginate.QueryDefaultPageSize,
+				PageSize: paginate.QueryDefaultPageSize,
 				Column:   "created_at",
-				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Order:    pointer.For(paginate.Order(paginate.OrderDesc)),
 				Options: storagecommon.ResourceQuery[any]{
 					Expand: make([]string, 0),
 				},
@@ -110,9 +110,9 @@ func TestListSchemas(t *testing.T) {
 			name:        "backend error",
 			queryParams: url.Values{},
 			expectQuery: storagecommon.InitialPaginatedQuery[any]{
-				PageSize: bunpaginate.QueryDefaultPageSize,
+				PageSize: paginate.QueryDefaultPageSize,
 				Column:   "created_at",
-				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+				Order:    pointer.For(paginate.Order(paginate.OrderDesc)),
 				Options: storagecommon.ResourceQuery[any]{
 					Expand: make([]string, 0),
 				},
@@ -145,7 +145,7 @@ func TestListSchemas(t *testing.T) {
 					Return(tc.returnCursor, tc.returnErr)
 			}
 
-			router := NewRouter(systemController, auth.NewNoAuth(), "develop")
+			router := NewRouter(systemController, jwt.NewNoAuth(), "develop")
 
 			req := httptest.NewRequest(http.MethodGet, "/default/schemas?"+tc.queryParams.Encode(), nil)
 			rec := httptest.NewRecorder()

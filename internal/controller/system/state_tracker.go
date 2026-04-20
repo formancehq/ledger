@@ -8,8 +8,8 @@ import (
 
 	"github.com/uptrace/bun"
 
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/otlp"
+	"github.com/formancehq/go-libs/v5/pkg/observe"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
@@ -248,7 +248,7 @@ func withLock(ctx context.Context, ctrl ledgercontroller.Controller, fn func(ctr
 				"failed to release lock: %v",
 				err,
 			)
-			otlp.RecordError(ctx, fmt.Errorf("failed to release lock: %v", err))
+			observe.RecordError(ctx, fmt.Errorf("failed to release lock: %v", err))
 		}
 	}()
 

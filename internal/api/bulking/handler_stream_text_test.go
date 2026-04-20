@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/go-libs/v4/api"
+	"github.com/formancehq/go-libs/v5/pkg/transport/api"
 
 	ledger "github.com/formancehq/ledger/internal"
 )

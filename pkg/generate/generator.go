@@ -14,8 +14,8 @@ import (
 	"github.com/dop251/goja"
 	"github.com/google/uuid"
 
-	"github.com/formancehq/go-libs/v4/collectionutils"
-	"github.com/formancehq/go-libs/v4/pointer"
+	"github.com/formancehq/go-libs/v5/pkg/types/collections"
+	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/bulking"
@@ -49,11 +49,11 @@ func (r Action) Apply(ctx context.Context, client *client.V2, l string) ([]compo
 					}(),
 					Script: &components.V2PostTransactionScript{
 						Plain: pointer.For(transactionRequest.Script.Plain),
-						Vars: collectionutils.ConvertMap(transactionRequest.Script.Vars, func(from any) string {
+						Vars: collections.ConvertMap(transactionRequest.Script.Vars, func(from any) string {
 							return fmt.Sprint(from)
 						}),
 					},
-					Postings: collectionutils.Map(transactionRequest.Postings, func(p ledger.Posting) components.V2Posting {
+					Postings: collections.Map(transactionRequest.Postings, func(p ledger.Posting) components.V2Posting {
 						return components.V2Posting{
 							Amount:      p.Amount,
 							Asset:       p.Asset,

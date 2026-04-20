@@ -8,8 +8,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	_ "github.com/pkg/errors"
 
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/transport/api"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
@@ -46,8 +46,8 @@ func runQuery(paginationConfig storage.PaginationConfig) http.HandlerFunc {
 	}
 }
 
-func getJsonResponse(r *http.Request, w http.ResponseWriter, resource queries.ResourceKind, cursor bunpaginate.Cursor[any]) error {
-	renderedCursor := *bunpaginate.MapCursor(&cursor, func(item any) any {
+func getJsonResponse(r *http.Request, w http.ResponseWriter, resource queries.ResourceKind, cursor paginate.Cursor[any]) error {
+	renderedCursor := *paginate.MapCursor(&cursor, func(item any) any {
 		switch v := item.(type) {
 		case ledger.Transaction:
 			return renderTransaction(r, v)

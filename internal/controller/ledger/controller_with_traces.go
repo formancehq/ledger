@@ -8,8 +8,8 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/migrations"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/storage/migrations"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/queries"
@@ -238,13 +238,13 @@ func (c *ControllerWithTraces) GetMigrationsInfo(ctx context.Context) ([]migrati
 	)
 }
 
-func (c *ControllerWithTraces) ListTransactions(ctx context.Context, q common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error) {
+func (c *ControllerWithTraces) ListTransactions(ctx context.Context, q common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Transaction], error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"ListTransactions",
 		c.tracer,
 		c.listTransactionsHistogram,
-		func(ctx context.Context) (*bunpaginate.Cursor[ledger.Transaction], error) {
+		func(ctx context.Context) (*paginate.Cursor[ledger.Transaction], error) {
 			return c.underlying.ListTransactions(ctx, q)
 		},
 	)
@@ -286,13 +286,13 @@ func (c *ControllerWithTraces) CountAccounts(ctx context.Context, a common.Resou
 	)
 }
 
-func (c *ControllerWithTraces) ListAccounts(ctx context.Context, a common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Account], error) {
+func (c *ControllerWithTraces) ListAccounts(ctx context.Context, a common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Account], error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"ListAccounts",
 		c.tracer,
 		c.listAccountsHistogram,
-		func(ctx context.Context) (*bunpaginate.Cursor[ledger.Account], error) {
+		func(ctx context.Context) (*paginate.Cursor[ledger.Account], error) {
 			return c.underlying.ListAccounts(ctx, a)
 		},
 	)
@@ -322,13 +322,13 @@ func (c *ControllerWithTraces) GetAggregatedBalances(ctx context.Context, q comm
 	)
 }
 
-func (c *ControllerWithTraces) ListLogs(ctx context.Context, q common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
+func (c *ControllerWithTraces) ListLogs(ctx context.Context, q common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Log], error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"ListLogs",
 		c.tracer,
 		c.listLogsHistogram,
-		func(ctx context.Context) (*bunpaginate.Cursor[ledger.Log], error) {
+		func(ctx context.Context) (*paginate.Cursor[ledger.Log], error) {
 			return c.underlying.ListLogs(ctx, q)
 		},
 	)
@@ -370,13 +370,13 @@ func (c *ControllerWithTraces) IsDatabaseUpToDate(ctx context.Context) (bool, er
 	)
 }
 
-func (c *ControllerWithTraces) GetVolumesWithBalances(ctx context.Context, q common.PaginatedQuery[ledger.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+func (c *ControllerWithTraces) GetVolumesWithBalances(ctx context.Context, q common.PaginatedQuery[ledger.GetVolumesOptions]) (*paginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
 	return tracing.TraceWithMetric(
 		ctx,
 		"GetVolumesWithBalances",
 		c.tracer,
 		c.getVolumesWithBalancesHistogram,
-		func(ctx context.Context) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+		func(ctx context.Context) (*paginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
 			return c.underlying.GetVolumesWithBalances(ctx, q)
 		},
 	)
@@ -567,9 +567,9 @@ func (c *ControllerWithTraces) GetSchema(ctx context.Context, version string) (*
 	return schema, nil
 }
 
-func (c *ControllerWithTraces) ListSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error) {
+func (c *ControllerWithTraces) ListSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Schema], error) {
 	var (
-		schemas *bunpaginate.Cursor[ledger.Schema]
+		schemas *paginate.Cursor[ledger.Schema]
 		err     error
 	)
 	_, err = tracing.TraceWithMetric(
@@ -589,10 +589,10 @@ func (c *ControllerWithTraces) ListSchemas(ctx context.Context, query common.Pag
 	return schemas, nil
 }
 
-func (c *ControllerWithTraces) RunQuery(ctx context.Context, schemaVersion string, id string, query common.RunQuery, paginationConfig common.PaginationConfig) (*queries.ResourceKind, *bunpaginate.Cursor[any], error) {
+func (c *ControllerWithTraces) RunQuery(ctx context.Context, schemaVersion string, id string, query common.RunQuery, paginationConfig common.PaginationConfig) (*queries.ResourceKind, *paginate.Cursor[any], error) {
 	var (
 		resource *queries.ResourceKind
-		cursor   *bunpaginate.Cursor[any]
+		cursor   *paginate.Cursor[any]
 		err      error
 	)
 	_, err = tracing.TraceWithMetric(

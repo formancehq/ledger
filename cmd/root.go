@@ -4,10 +4,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/uptrace/bun"
 
-	"github.com/formancehq/go-libs/v4/bun/bunmigrate"
-	"github.com/formancehq/go-libs/v4/otlp"
-	"github.com/formancehq/go-libs/v4/otlp/otlptraces"
-	"github.com/formancehq/go-libs/v4/service"
+	"github.com/formancehq/go-libs/v5/pkg/observe"
+	"github.com/formancehq/go-libs/v5/pkg/observe/traces"
+	"github.com/formancehq/go-libs/v5/pkg/service"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/migrate"
 
 	"github.com/formancehq/ledger/internal/storage/driver"
 )
@@ -53,7 +53,7 @@ func NewRootCommand() *cobra.Command {
 }
 
 func newMigrationCommand() *cobra.Command {
-	ret := bunmigrate.NewDefaultCommand(func(cmd *cobra.Command, _ []string, db *bun.DB) error {
+	ret := migrate.NewDefaultCommand(func(cmd *cobra.Command, _ []string, db *bun.DB) error {
 		return withStorageDriver(cmd, func(driver *driver.Driver) error {
 			if err := driver.Initialize(cmd.Context()); err != nil {
 				return err
@@ -62,8 +62,8 @@ func newMigrationCommand() *cobra.Command {
 			return driver.UpgradeAllBuckets(cmd.Context())
 		})
 	})
-	otlp.AddFlags(ret.Flags())
-	otlptraces.AddFlags(ret.Flags())
+	observe.AddFlags(ret.Flags())
+	traces.AddFlags(ret.Flags())
 
 	return ret
 }

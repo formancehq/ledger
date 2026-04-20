@@ -10,10 +10,11 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/formancehq/go-libs/v4/bun/bunconnect"
-	"github.com/formancehq/go-libs/v4/otlp/otlpmetrics"
-	"github.com/formancehq/go-libs/v4/otlp/otlptraces"
-	"github.com/formancehq/go-libs/v4/service"
+	"github.com/formancehq/go-libs/v5/pkg/fx/storagefx"
+	"github.com/formancehq/go-libs/v5/pkg/observe/metrics"
+	"github.com/formancehq/go-libs/v5/pkg/observe/traces"
+	"github.com/formancehq/go-libs/v5/pkg/service"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/connect"
 
 	"github.com/formancehq/ledger/internal/replication"
 	"github.com/formancehq/ledger/internal/replication/drivers"
@@ -92,7 +93,7 @@ func NewWorkerCommand() *cobra.Command {
 		Use:          "worker",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			connectionOptions, err := bunconnect.ConnectionOptionsFromFlags(cmd)
+			connectionOptions, err := connect.ConnectionOptionsFromFlags(cmd.Flags(), cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -109,7 +110,7 @@ func NewWorkerCommand() *cobra.Command {
 			return service.New(cmd.OutOrStdout(),
 				fx.NopLogger,
 				otlpModule(cmd, cfg.commonConfig),
-				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
+				storagefx.BunConnectModule(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(storage.ModuleConfig{}),
 				drivers.NewFXModule(),
 				fx.Invoke(alldrivers.Register),
@@ -128,9 +129,9 @@ func NewWorkerCommand() *cobra.Command {
 
 	addWorkerFlags(cmd)
 	service.AddFlags(cmd.Flags())
-	bunconnect.AddFlags(cmd.Flags())
-	otlpmetrics.AddFlags(cmd.Flags())
-	otlptraces.AddFlags(cmd.Flags())
+	connect.AddFlags(cmd.Flags())
+	metrics.AddFlags(cmd.Flags())
+	traces.AddFlags(cmd.Flags())
 
 	return cmd
 }

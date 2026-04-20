@@ -9,8 +9,8 @@ import (
 
 	"github.com/uptrace/bun"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/time"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	"github.com/formancehq/ledger/internal/queries"
 )
@@ -29,7 +29,7 @@ func (o columnPaginator[ResourceType, OptionsType]) Paginate(sb *bun.SelectQuery
 
 	pageSize := o.query.PageSize
 	if pageSize == 0 {
-		pageSize = bunpaginate.QueryDefaultPageSize
+		pageSize = paginate.QueryDefaultPageSize
 	}
 
 	sb = sb.Limit(int(pageSize) + 1) // Fetch one additional item to find the next token
@@ -45,16 +45,16 @@ func (o columnPaginator[ResourceType, OptionsType]) Paginate(sb *bun.SelectQuery
 		paginationID := convertPaginationIDToSQLType(o.fieldType, o.query.PaginationID)
 		if o.query.Reverse {
 			switch originalOrder {
-			case bunpaginate.OrderAsc:
+			case paginate.OrderAsc:
 				sb = sb.Where(fmt.Sprintf("%s < ?", paginationColumn), paginationID)
-			case bunpaginate.OrderDesc:
+			case paginate.OrderDesc:
 				sb = sb.Where(fmt.Sprintf("%s > ?", paginationColumn), paginationID)
 			}
 		} else {
 			switch originalOrder {
-			case bunpaginate.OrderAsc:
+			case paginate.OrderAsc:
 				sb = sb.Where(fmt.Sprintf("%s >= ?", paginationColumn), paginationID)
-			case bunpaginate.OrderDesc:
+			case paginate.OrderDesc:
 				sb = sb.Where(fmt.Sprintf("%s <= ?", paginationColumn), paginationID)
 			}
 		}
@@ -64,13 +64,13 @@ func (o columnPaginator[ResourceType, OptionsType]) Paginate(sb *bun.SelectQuery
 }
 
 //nolint:unused
-func (o columnPaginator[ResourceType, OptionsType]) BuildCursor(ret []ResourceType) (*bunpaginate.Cursor[ResourceType], error) {
+func (o columnPaginator[ResourceType, OptionsType]) BuildCursor(ret []ResourceType) (*paginate.Cursor[ResourceType], error) {
 
 	paginationColumn := o.query.Column
 
 	pageSize := o.query.PageSize
 	if pageSize == 0 {
-		pageSize = bunpaginate.QueryDefaultPageSize
+		pageSize = paginate.QueryDefaultPageSize
 	}
 
 	order := *o.query.Order
@@ -118,8 +118,8 @@ func (o columnPaginator[ResourceType, OptionsType]) BuildCursor(ret []ResourceTy
 			next = &cp
 		}
 		if o.query.PaginationID != nil {
-			if (order == bunpaginate.OrderAsc && o.query.PaginationID.Cmp(o.query.Bottom) > 0) ||
-				(order == bunpaginate.OrderDesc && o.query.PaginationID.Cmp(o.query.Bottom) < 0) {
+			if (order == paginate.OrderAsc && o.query.PaginationID.Cmp(o.query.Bottom) > 0) ||
+				(order == paginate.OrderDesc && o.query.PaginationID.Cmp(o.query.Bottom) < 0) {
 				cp := o.query
 				cp.Reverse = true
 				previous = &cp
@@ -127,7 +127,7 @@ func (o columnPaginator[ResourceType, OptionsType]) BuildCursor(ret []ResourceTy
 		}
 	}
 
-	return &bunpaginate.Cursor[ResourceType]{
+	return &paginate.Cursor[ResourceType]{
 		PageSize: int(pageSize),
 		HasMore:  next != nil,
 		Previous: encodeCursor[OptionsType, ColumnPaginatedQuery[OptionsType]](previous),
@@ -163,7 +163,7 @@ func findPaginationFieldPath(v any, paginationColumn string) []reflect.StructFie
 			if fieldType.AssignableTo(reflect.TypeOf(time.Time{})) ||
 				fieldType.AssignableTo(reflect.TypeOf(libtime.Time{})) ||
 				fieldType.AssignableTo(reflect.TypeOf(big.Int{})) ||
-				fieldType.AssignableTo(reflect.TypeOf(bunpaginate.BigInt{})) {
+				fieldType.AssignableTo(reflect.TypeOf(paginate.BigInt{})) {
 
 				if fields := checkTag(field, paginationColumn); len(fields) > 0 {
 					return fields
@@ -209,9 +209,9 @@ func findPaginationField(v any, fields ...reflect.StructField) *big.Int {
 			return big.NewInt(rawPaginationID.UTC().UnixMicro())
 		case libtime.Time:
 			return big.NewInt(rawPaginationID.UTC().UnixMicro())
-		case *bunpaginate.BigInt:
+		case *paginate.BigInt:
 			return (*big.Int)(rawPaginationID)
-		case bunpaginate.BigInt:
+		case paginate.BigInt:
 			return (*big.Int)(&rawPaginationID)
 		case *big.Int:
 			return rawPaginationID

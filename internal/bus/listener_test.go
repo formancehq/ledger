@@ -11,7 +11,7 @@ import (
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/require"
 
-	topicmapper "github.com/formancehq/go-libs/v4/publish/topic_mapper"
+	topicmapper "github.com/formancehq/go-libs/v5/pkg/messaging/publish/topicmap"
 
 	ledger "github.com/formancehq/ledger/internal"
 )

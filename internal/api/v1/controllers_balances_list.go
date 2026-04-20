@@ -4,8 +4,8 @@ import (
 	"math/big"
 	"net/http"
 
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/transport/api"
 
 	"github.com/formancehq/ledger/internal/api/common"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
@@ -17,7 +17,7 @@ func getBalances(w http.ResponseWriter, r *http.Request) {
 	rq, err := getPaginatedQuery[any](
 		r,
 		"address",
-		bunpaginate.OrderAsc,
+		paginate.OrderAsc,
 		func(resourceQuery *storagecommon.ResourceQuery[any]) error {
 			var err error
 			resourceQuery.Expand = append(resourceQuery.Expand, "volumes")
@@ -47,7 +47,7 @@ func getBalances(w http.ResponseWriter, r *http.Request) {
 		ret = append(ret, e)
 	}
 
-	api.RenderCursor(w, bunpaginate.Cursor[map[string]map[string]*big.Int]{
+	api.RenderCursor(w, paginate.Cursor[map[string]map[string]*big.Int]{
 		PageSize: cursor.PageSize,
 		HasMore:  cursor.HasMore,
 		Previous: cursor.Previous,

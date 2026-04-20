@@ -1,16 +1,16 @@
 package ginkgo
 
 import (
-	"github.com/formancehq/go-libs/v4/bun/bunconnect"
-	"github.com/formancehq/go-libs/v4/testing/deferred"
-	"github.com/formancehq/go-libs/v4/testing/testservice"
-	. "github.com/formancehq/go-libs/v4/testing/testservice/ginkgo"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/connect"
+	"github.com/formancehq/go-libs/v5/pkg/testing/deferred"
+	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	. "github.com/formancehq/go-libs/v5/pkg/testing/testservice/ginkgo"
 
 	"github.com/formancehq/ledger/cmd"
 	"github.com/formancehq/ledger/pkg/testserver"
 )
 
-func DeferTestServer(postgresConnectionOptions *deferred.Deferred[bunconnect.ConnectionOptions], options ...testservice.Option) *deferred.Deferred[*testservice.Service] {
+func DeferTestServer(postgresConnectionOptions *deferred.Deferred[connect.ConnectionOptions], options ...testservice.Option) *deferred.Deferred[*testservice.Service] {
 	return DeferNew(
 		cmd.NewRootCommand,
 		append([]testservice.Option{
@@ -19,7 +19,7 @@ func DeferTestServer(postgresConnectionOptions *deferred.Deferred[bunconnect.Con
 	)
 }
 
-func DeferTestWorker(postgresConnectionOptions *deferred.Deferred[bunconnect.ConnectionOptions], options ...testservice.Option) *deferred.Deferred[*testservice.Service] {
+func DeferTestWorker(postgresConnectionOptions *deferred.Deferred[connect.ConnectionOptions], options ...testservice.Option) *deferred.Deferred[*testservice.Service] {
 	return DeferNew(
 		cmd.NewRootCommand,
 		append([]testservice.Option{

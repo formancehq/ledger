@@ -12,8 +12,8 @@ import (
 	sql "database/sql"
 	reflect "reflect"
 
-	bunpaginate "github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	migrations "github.com/formancehq/go-libs/v4/migrations"
+	paginate "github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	migrations "github.com/formancehq/go-libs/v5/pkg/storage/migrations"
 	ledger "github.com/formancehq/ledger/internal"
 	queries "github.com/formancehq/ledger/internal/queries"
 	common "github.com/formancehq/ledger/internal/storage/common"
@@ -595,10 +595,10 @@ func (c *MockControllerGetTransactionCall) DoAndReturn(f func(context.Context, c
 }
 
 // GetVolumesWithBalances mocks base method.
-func (m *MockController) GetVolumesWithBalances(ctx context.Context, q common.PaginatedQuery[ledger.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+func (m *MockController) GetVolumesWithBalances(ctx context.Context, q common.PaginatedQuery[ledger.GetVolumesOptions]) (*paginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetVolumesWithBalances", ctx, q)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -616,19 +616,19 @@ type MockControllerGetVolumesWithBalancesCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerGetVolumesWithBalancesCall) Return(arg0 *bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], arg1 error) *MockControllerGetVolumesWithBalancesCall {
+func (c *MockControllerGetVolumesWithBalancesCall) Return(arg0 *paginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], arg1 error) *MockControllerGetVolumesWithBalancesCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerGetVolumesWithBalancesCall) Do(f func(context.Context, common.PaginatedQuery[ledger.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)) *MockControllerGetVolumesWithBalancesCall {
+func (c *MockControllerGetVolumesWithBalancesCall) Do(f func(context.Context, common.PaginatedQuery[ledger.GetVolumesOptions]) (*paginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)) *MockControllerGetVolumesWithBalancesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerGetVolumesWithBalancesCall) DoAndReturn(f func(context.Context, common.PaginatedQuery[ledger.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)) *MockControllerGetVolumesWithBalancesCall {
+func (c *MockControllerGetVolumesWithBalancesCall) DoAndReturn(f func(context.Context, common.PaginatedQuery[ledger.GetVolumesOptions]) (*paginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)) *MockControllerGetVolumesWithBalancesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -790,10 +790,10 @@ func (c *MockControllerIsDatabaseUpToDateCall) DoAndReturn(f func(context.Contex
 }
 
 // ListAccounts mocks base method.
-func (m *MockController) ListAccounts(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Account], error) {
+func (m *MockController) ListAccounts(ctx context.Context, query common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Account], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListAccounts", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Account])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.Account])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -811,28 +811,28 @@ type MockControllerListAccountsCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerListAccountsCall) Return(arg0 *bunpaginate.Cursor[ledger.Account], arg1 error) *MockControllerListAccountsCall {
+func (c *MockControllerListAccountsCall) Return(arg0 *paginate.Cursor[ledger.Account], arg1 error) *MockControllerListAccountsCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerListAccountsCall) Do(f func(context.Context, common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Account], error)) *MockControllerListAccountsCall {
+func (c *MockControllerListAccountsCall) Do(f func(context.Context, common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Account], error)) *MockControllerListAccountsCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerListAccountsCall) DoAndReturn(f func(context.Context, common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Account], error)) *MockControllerListAccountsCall {
+func (c *MockControllerListAccountsCall) DoAndReturn(f func(context.Context, common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Account], error)) *MockControllerListAccountsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // ListLogs mocks base method.
-func (m *MockController) ListLogs(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
+func (m *MockController) ListLogs(ctx context.Context, query common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Log], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListLogs", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Log])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.Log])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -850,28 +850,28 @@ type MockControllerListLogsCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerListLogsCall) Return(arg0 *bunpaginate.Cursor[ledger.Log], arg1 error) *MockControllerListLogsCall {
+func (c *MockControllerListLogsCall) Return(arg0 *paginate.Cursor[ledger.Log], arg1 error) *MockControllerListLogsCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerListLogsCall) Do(f func(context.Context, common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error)) *MockControllerListLogsCall {
+func (c *MockControllerListLogsCall) Do(f func(context.Context, common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Log], error)) *MockControllerListLogsCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerListLogsCall) DoAndReturn(f func(context.Context, common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error)) *MockControllerListLogsCall {
+func (c *MockControllerListLogsCall) DoAndReturn(f func(context.Context, common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Log], error)) *MockControllerListLogsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // ListSchemas mocks base method.
-func (m *MockController) ListSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error) {
+func (m *MockController) ListSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Schema], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListSchemas", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Schema])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.Schema])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -889,28 +889,28 @@ type MockControllerListSchemasCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerListSchemasCall) Return(arg0 *bunpaginate.Cursor[ledger.Schema], arg1 error) *MockControllerListSchemasCall {
+func (c *MockControllerListSchemasCall) Return(arg0 *paginate.Cursor[ledger.Schema], arg1 error) *MockControllerListSchemasCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerListSchemasCall) Do(f func(context.Context, common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error)) *MockControllerListSchemasCall {
+func (c *MockControllerListSchemasCall) Do(f func(context.Context, common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Schema], error)) *MockControllerListSchemasCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerListSchemasCall) DoAndReturn(f func(context.Context, common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error)) *MockControllerListSchemasCall {
+func (c *MockControllerListSchemasCall) DoAndReturn(f func(context.Context, common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Schema], error)) *MockControllerListSchemasCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // ListTransactions mocks base method.
-func (m *MockController) ListTransactions(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error) {
+func (m *MockController) ListTransactions(ctx context.Context, query common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Transaction], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListTransactions", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Transaction])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.Transaction])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -928,19 +928,19 @@ type MockControllerListTransactionsCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerListTransactionsCall) Return(arg0 *bunpaginate.Cursor[ledger.Transaction], arg1 error) *MockControllerListTransactionsCall {
+func (c *MockControllerListTransactionsCall) Return(arg0 *paginate.Cursor[ledger.Transaction], arg1 error) *MockControllerListTransactionsCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerListTransactionsCall) Do(f func(context.Context, common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error)) *MockControllerListTransactionsCall {
+func (c *MockControllerListTransactionsCall) Do(f func(context.Context, common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Transaction], error)) *MockControllerListTransactionsCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerListTransactionsCall) DoAndReturn(f func(context.Context, common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error)) *MockControllerListTransactionsCall {
+func (c *MockControllerListTransactionsCall) DoAndReturn(f func(context.Context, common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Transaction], error)) *MockControllerListTransactionsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -1066,11 +1066,11 @@ func (c *MockControllerRollbackCall) DoAndReturn(f func(context.Context) error) 
 }
 
 // RunQuery mocks base method.
-func (m *MockController) RunQuery(ctx context.Context, schemaVersion, queryId string, runQuery common.RunQuery, defaultPageSize common.PaginationConfig) (*queries.ResourceKind, *bunpaginate.Cursor[any], error) {
+func (m *MockController) RunQuery(ctx context.Context, schemaVersion, queryId string, runQuery common.RunQuery, defaultPageSize common.PaginationConfig) (*queries.ResourceKind, *paginate.Cursor[any], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RunQuery", ctx, schemaVersion, queryId, runQuery, defaultPageSize)
 	ret0, _ := ret[0].(*queries.ResourceKind)
-	ret1, _ := ret[1].(*bunpaginate.Cursor[any])
+	ret1, _ := ret[1].(*paginate.Cursor[any])
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
@@ -1088,19 +1088,19 @@ type MockControllerRunQueryCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerRunQueryCall) Return(arg0 *queries.ResourceKind, arg1 *bunpaginate.Cursor[any], arg2 error) *MockControllerRunQueryCall {
+func (c *MockControllerRunQueryCall) Return(arg0 *queries.ResourceKind, arg1 *paginate.Cursor[any], arg2 error) *MockControllerRunQueryCall {
 	c.Call = c.Call.Return(arg0, arg1, arg2)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerRunQueryCall) Do(f func(context.Context, string, string, common.RunQuery, common.PaginationConfig) (*queries.ResourceKind, *bunpaginate.Cursor[any], error)) *MockControllerRunQueryCall {
+func (c *MockControllerRunQueryCall) Do(f func(context.Context, string, string, common.RunQuery, common.PaginationConfig) (*queries.ResourceKind, *paginate.Cursor[any], error)) *MockControllerRunQueryCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerRunQueryCall) DoAndReturn(f func(context.Context, string, string, common.RunQuery, common.PaginationConfig) (*queries.ResourceKind, *bunpaginate.Cursor[any], error)) *MockControllerRunQueryCall {
+func (c *MockControllerRunQueryCall) DoAndReturn(f func(context.Context, string, string, common.RunQuery, common.PaginationConfig) (*queries.ResourceKind, *paginate.Cursor[any], error)) *MockControllerRunQueryCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

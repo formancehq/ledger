@@ -1,9 +1,9 @@
 package testserver
 
 import (
-	"github.com/formancehq/go-libs/v4/collectionutils"
-	"github.com/formancehq/go-libs/v4/pointer"
-	"github.com/formancehq/go-libs/v4/time"
+	"github.com/formancehq/go-libs/v5/pkg/types/collections"
+	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
+	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/pkg/client/models/components"
@@ -12,7 +12,7 @@ import (
 func ConvertSDKTxToCoreTX(tx *components.V2Transaction) ledger.Transaction {
 	return ledger.Transaction{
 		TransactionData: ledger.TransactionData{
-			Postings:  collectionutils.Map(tx.Postings, ConvertSDKPostingToCorePosting),
+			Postings:  collections.Map(tx.Postings, ConvertSDKPostingToCorePosting),
 			Timestamp: time.New(tx.Timestamp),
 			Metadata:  tx.Metadata,
 			Reference: func() string {
