@@ -11,7 +11,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	migrations "github.com/formancehq/go-libs/v4/migrations"
+	migrations "github.com/formancehq/go-libs/v5/pkg/storage/migrations"
 	ledger "github.com/formancehq/ledger/internal"
 	bucket "github.com/formancehq/ledger/internal/storage/bucket"
 	bun "github.com/uptrace/bun"

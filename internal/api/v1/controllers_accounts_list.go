@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/transport/api"
 
 	"github.com/formancehq/ledger/internal/api/common"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
@@ -18,7 +18,7 @@ func listAccounts(w http.ResponseWriter, r *http.Request) {
 	rq, err := getPaginatedQuery(
 		r,
 		"address",
-		bunpaginate.OrderAsc,
+		paginate.OrderAsc,
 		func(resourceQuery *storagecommon.ResourceQuery[any]) error {
 			var err error
 			resourceQuery.Builder, err = buildAccountsFilterQuery(r)

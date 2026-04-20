@@ -4,9 +4,9 @@ import (
 	_ "embed"
 	"net/http"
 
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/collectionutils"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/transport/api"
+	"github.com/formancehq/go-libs/v5/pkg/types/collections"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
@@ -40,8 +40,8 @@ func GetInfo(systemController system.Controller, version string) func(w http.Res
 			PageSize: 100,
 		},
 			systemController.ListLedgers,
-			func(cursor *bunpaginate.Cursor[ledger.Ledger]) error {
-				ledgerNames = append(ledgerNames, collectionutils.Map(cursor.Data, func(from ledger.Ledger) string {
+			func(cursor *paginate.Cursor[ledger.Ledger]) error {
+				ledgerNames = append(ledgerNames, collections.Map(cursor.Data, func(from ledger.Ledger) string {
 					return from.Name
 				})...)
 				return nil

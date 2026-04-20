@@ -11,11 +11,11 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/pointer"
-	"github.com/formancehq/go-libs/v4/testing/docker"
-	"github.com/formancehq/go-libs/v4/testing/platform/clickhousetesting"
-	"github.com/formancehq/go-libs/v4/time"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/testing/docker"
+	"github.com/formancehq/go-libs/v5/pkg/testing/platform/clickhousetesting"
+	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
+	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/replication/drivers"

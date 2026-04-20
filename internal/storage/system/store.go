@@ -11,10 +11,10 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/migrations"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/storage/migrations"
+	"github.com/formancehq/go-libs/v5/pkg/storage/postgres"
+	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/common"
@@ -122,7 +122,7 @@ func (d *DefaultStore) DeleteLedgerMetadata(ctx context.Context, name string, ke
 func (d *DefaultStore) Ledgers() common.PaginatedResource[
 	ledger.Ledger,
 	ListLedgersQueryPayload] {
-	return common.NewPaginatedResourceRepository[ledger.Ledger, ListLedgersQueryPayload](&ledgersResourceHandler{store: d}, "id", bunpaginate.OrderAsc)
+	return common.NewPaginatedResourceRepository[ledger.Ledger, ListLedgersQueryPayload](&ledgersResourceHandler{store: d}, "id", paginate.OrderAsc)
 }
 
 func (d *DefaultStore) DeleteBucket(ctx context.Context, bucket string) error {
@@ -239,11 +239,11 @@ var defaultOptions = []Option{
 	WithTracer(noop.Tracer{}),
 }
 
-func (d *DefaultStore) ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error) {
-	return bunpaginate.UsingOffset[struct{}, ledger.Exporter](
+func (d *DefaultStore) ListExporters(ctx context.Context) (*paginate.Cursor[ledger.Exporter], error) {
+	return paginate.UsingOffset[struct{}, ledger.Exporter](
 		ctx,
 		d.db.NewSelect(),
-		bunpaginate.OffsetPaginatedQuery[struct{}]{},
+		paginate.OffsetPaginatedQuery[struct{}]{},
 	)
 }
 
@@ -287,11 +287,11 @@ func (d *DefaultStore) GetExporter(ctx context.Context, id string) (*ledger.Expo
 	return ret, nil
 }
 
-func (d *DefaultStore) ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error) {
-	return bunpaginate.UsingOffset[struct{}, ledger.Pipeline](
+func (d *DefaultStore) ListPipelines(ctx context.Context) (*paginate.Cursor[ledger.Pipeline], error) {
+	return paginate.UsingOffset[struct{}, ledger.Pipeline](
 		ctx,
 		d.db.NewSelect(),
-		bunpaginate.OffsetPaginatedQuery[struct{}]{},
+		paginate.OffsetPaginatedQuery[struct{}]{},
 	)
 }
 

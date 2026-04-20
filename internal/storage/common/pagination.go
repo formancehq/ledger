@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"math/big"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
 )
 
 type PaginationConfig struct {
@@ -15,7 +15,7 @@ type PaginationConfig struct {
 type (
 	InitialPaginatedQuery[OptionsType any] struct {
 		Column   string                     `json:"column"`
-		Order    *bunpaginate.Order         `json:"order"`
+		Order    *paginate.Order            `json:"order"`
 		PageSize uint64                     `json:"pageSize"`
 		Options  ResourceQuery[OptionsType] `json:"filters"`
 	}

@@ -1336,15 +1336,15 @@ type Memento interface {
 type Move struct {
     bun.BaseModel `bun:"table:moves"`
 
-    TransactionID              uint64              `bun:"transactions_id,type:bigint"`
-    IsSource                   bool                `bun:"is_source,type:bool"`
-    Account                    string              `bun:"accounts_address,type:varchar"`
-    Amount                     *bunpaginate.BigInt `bun:"amount,type:numeric"`
-    Asset                      string              `bun:"asset,type:varchar"`
-    InsertionDate              time.Time           `bun:"insertion_date,type:timestamp,nullzero"`
-    EffectiveDate              time.Time           `bun:"effective_date,type:timestamp,nullzero"`
-    PostCommitVolumes          *Volumes            `bun:"post_commit_volumes,type:jsonb"`
-    PostCommitEffectiveVolumes *Volumes            `bun:"post_commit_effective_volumes,type:jsonb,scanonly"`
+    TransactionID              uint64           `bun:"transactions_id,type:bigint"`
+    IsSource                   bool             `bun:"is_source,type:bool"`
+    Account                    string           `bun:"accounts_address,type:varchar"`
+    Amount                     *paginate.BigInt `bun:"amount,type:numeric"`
+    Asset                      string           `bun:"asset,type:varchar"`
+    InsertionDate              time.Time        `bun:"insertion_date,type:timestamp,nullzero"`
+    EffectiveDate              time.Time        `bun:"effective_date,type:timestamp,nullzero"`
+    PostCommitVolumes          *Volumes         `bun:"post_commit_volumes,type:jsonb"`
+    PostCommitEffectiveVolumes *Volumes         `bun:"post_commit_effective_volumes,type:jsonb,scanonly"`
 }
 ```
 
@@ -1581,7 +1581,7 @@ type QueryTemplateParams[Opts any] struct {
     Expand     []string
     Opts       Opts
     SortColumn string
-    SortOrder  *bunpaginate.Order
+    SortOrder  *paginate.Order
     PageSize   uint
 }
 ```

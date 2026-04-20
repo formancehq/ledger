@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/formancehq/go-libs/v4/collectionutils"
-	"github.com/formancehq/go-libs/v4/metadata"
+	"github.com/formancehq/go-libs/v5/pkg/types/collections"
+	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
 	"github.com/formancehq/numscript"
 
 	ledger "github.com/formancehq/ledger/internal"
@@ -65,7 +65,7 @@ func (d *MachineNumscriptRuntimeAdapter) Execute(ctx context.Context, store Stor
 	}
 
 	return &NumscriptExecutionResult{
-		Postings: collectionutils.Map(machineInstance.Postings, func(from vm.Posting) ledger.Posting {
+		Postings: collections.Map(machineInstance.Postings, func(from vm.Posting) ledger.Posting {
 			return ledger.Posting{
 				Source:      from.Source,
 				Destination: from.Destination,
@@ -111,7 +111,7 @@ func (d *DefaultInterpreterMachineAdapter) Execute(ctx context.Context, store St
 	}
 
 	return &NumscriptExecutionResult{
-		Postings: collectionutils.Map(execResult.Postings, func(posting numscript.Posting) ledger.Posting {
+		Postings: collections.Map(execResult.Postings, func(posting numscript.Posting) ledger.Posting {
 			return ledger.Posting(posting)
 		}),
 		Metadata:        castMetadata(execResult.Metadata),

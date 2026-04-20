@@ -12,9 +12,9 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/fx"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/query"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/query"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
 
 	ledger "github.com/formancehq/ledger/internal"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
@@ -90,7 +90,7 @@ func (r *AsyncBlockRunner) run(ctx context.Context) error {
 		ctx,
 		initialQuery,
 		systemStore.Ledgers().Paginate,
-		func(cursor *bunpaginate.Cursor[ledger.Ledger]) error {
+		func(cursor *paginate.Cursor[ledger.Ledger]) error {
 			for _, l := range cursor.Data {
 				if err := r.processLedger(ctx, l); err != nil {
 					return err

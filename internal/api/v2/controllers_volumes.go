@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/time"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/transport/api"
+	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
@@ -54,7 +54,7 @@ func readVolumes(paginationConfig storagecommon.PaginationConfig) http.HandlerFu
 			r,
 			paginationConfig,
 			"account",
-			bunpaginate.OrderAsc,
+			paginate.OrderAsc,
 			func(rq *storagecommon.ResourceQuery[ledger.GetVolumesOptions]) {
 				if groupBy > 0 {
 					rq.Opts.GroupLvl = groupBy
@@ -80,7 +80,7 @@ func readVolumes(paginationConfig storagecommon.PaginationConfig) http.HandlerFu
 			return
 		}
 
-		api.RenderCursor(w, *bunpaginate.MapCursor(cursor, func(volumes ledger.VolumesWithBalanceByAssetByAccount) any {
+		api.RenderCursor(w, *paginate.MapCursor(cursor, func(volumes ledger.VolumesWithBalanceByAssetByAccount) any {
 			return renderVolumesWithBalances(r, volumes)
 		}))
 	}

@@ -12,12 +12,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/pointer"
-	"github.com/formancehq/go-libs/v4/query"
-	"github.com/formancehq/go-libs/v4/time"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/query"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
+	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
+	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/common"
@@ -131,7 +131,7 @@ func TestLogsInsert(t *testing.T) {
 
 		logs, err := store.Logs().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			PageSize: countLogs,
-			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+			Order:    pointer.For(paginate.Order(paginate.OrderAsc)),
 		})
 		require.NoError(t, err)
 
@@ -221,7 +221,7 @@ func TestLogsList(t *testing.T) {
 
 	cursor, err := store.Logs().Paginate(context.Background(), common.InitialPaginatedQuery[any]{})
 	require.NoError(t, err)
-	require.Equal(t, bunpaginate.QueryDefaultPageSize, cursor.PageSize)
+	require.Equal(t, paginate.QueryDefaultPageSize, cursor.PageSize)
 
 	require.Equal(t, 3, len(cursor.Data))
 	require.EqualValues(t, 3, *cursor.Data[0].ID)
@@ -242,7 +242,7 @@ func TestLogsList(t *testing.T) {
 				query.Lt("date", now.Add(-time.Hour)),
 			),
 		},
-		Order: pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+		Order: pointer.For(paginate.Order(paginate.OrderAsc)),
 	})
 	require.NoError(t, err)
 	require.Equal(t, 10, cursor.PageSize)

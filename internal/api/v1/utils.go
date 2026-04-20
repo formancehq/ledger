@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/time"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
@@ -27,7 +27,7 @@ func getCommandParameters[INPUT any](r *http.Request, input INPUT) ledgercontrol
 func getPaginatedQuery[Options any](
 	r *http.Request,
 	defaultColumn string,
-	defaultOrder bunpaginate.Order,
+	defaultOrder paginate.Order,
 	modifiers ...func(resourceQuery *storagecommon.ResourceQuery[Options]) error,
 ) (storagecommon.PaginatedQuery[Options], error) {
 
@@ -45,10 +45,10 @@ func getPaginatedQuery[Options any](
 				}
 			}
 
-			pageSize, err := bunpaginate.GetPageSize(
+			pageSize, err := paginate.GetPageSize(
 				r,
-				bunpaginate.WithMaxPageSize(MaxPageSize),
-				bunpaginate.WithDefaultPageSize(DefaultPageSize),
+				paginate.WithMaxPageSize(MaxPageSize),
+				paginate.WithDefaultPageSize(DefaultPageSize),
 			)
 			if err != nil {
 				return nil, err
@@ -63,10 +63,10 @@ func getPaginatedQuery[Options any](
 		},
 		func(query *storagecommon.InitialPaginatedQuery[Options]) error {
 			var err error
-			query.PageSize, err = bunpaginate.GetPageSize(
+			query.PageSize, err = paginate.GetPageSize(
 				r,
-				bunpaginate.WithMaxPageSize(MaxPageSize),
-				bunpaginate.WithDefaultPageSize(query.PageSize),
+				paginate.WithMaxPageSize(MaxPageSize),
+				paginate.WithDefaultPageSize(query.PageSize),
 			)
 			return err
 		},

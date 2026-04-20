@@ -9,11 +9,11 @@ import (
 
 	"github.com/uptrace/bun"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
-	"github.com/formancehq/go-libs/v4/pointer"
-	"github.com/formancehq/go-libs/v4/query"
-	"github.com/formancehq/go-libs/v4/time"
+	"github.com/formancehq/go-libs/v5/pkg/query"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/storage/postgres"
+	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
+	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	"github.com/formancehq/ledger/internal/queries"
 )
@@ -255,14 +255,14 @@ func NewResourceRepository[ResourceType, OptionsType any](
 
 type PaginatedResourceRepository[ResourceType, OptionsType any] struct {
 	defaultPaginationColumn string
-	defaultOrder            bunpaginate.Order
+	defaultOrder            paginate.Order
 	*ResourceRepository[ResourceType, OptionsType]
 }
 
 func (r *PaginatedResourceRepository[ResourceType, OptionsType]) Paginate(
 	ctx context.Context,
 	paginationQuery PaginatedQuery[OptionsType],
-) (*bunpaginate.Cursor[ResourceType], error) {
+) (*paginate.Cursor[ResourceType], error) {
 
 	switch v := any(paginationQuery).(type) {
 	case OffsetPaginatedQuery[OptionsType]:
@@ -276,7 +276,7 @@ func (r *PaginatedResourceRepository[ResourceType, OptionsType]) Paginate(
 			v.Order = pointer.For(r.defaultOrder)
 		}
 		if v.PageSize == 0 {
-			v.PageSize = bunpaginate.QueryDefaultPageSize
+			v.PageSize = paginate.QueryDefaultPageSize
 		}
 
 		_, field := r.resourceHandler.Schema().GetFieldByNameOrAlias(v.Column)
@@ -354,7 +354,7 @@ func (r *PaginatedResourceRepository[ResourceType, OptionsType]) Paginate(
 func NewPaginatedResourceRepository[ResourceType, OptionsType any](
 	handler RepositoryHandler[OptionsType],
 	defaultPaginationColumn string,
-	defaultOrder bunpaginate.Order,
+	defaultOrder paginate.Order,
 ) *PaginatedResourceRepository[ResourceType, OptionsType] {
 	return &PaginatedResourceRepository[ResourceType, OptionsType]{
 		ResourceRepository:      NewResourceRepository[ResourceType, OptionsType](handler),
@@ -372,13 +372,13 @@ type PaginatedResourceRepositoryMapper[ToResourceType any, OriginalResourceType 
 func (m PaginatedResourceRepositoryMapper[ToResourceType, OriginalResourceType, OptionsType]) Paginate(
 	ctx context.Context,
 	paginatedQuery PaginatedQuery[OptionsType],
-) (*bunpaginate.Cursor[ToResourceType], error) {
+) (*paginate.Cursor[ToResourceType], error) {
 	cursor, err := m.PaginatedResourceRepository.Paginate(ctx, paginatedQuery)
 	if err != nil {
 		return nil, err
 	}
 
-	return bunpaginate.MapCursor(cursor, OriginalResourceType.ToCore), nil
+	return paginate.MapCursor(cursor, OriginalResourceType.ToCore), nil
 }
 
 func (m PaginatedResourceRepositoryMapper[ToResourceType, OriginalResourceType, OptionsType]) GetOne(
@@ -398,7 +398,7 @@ func NewPaginatedResourceRepositoryMapper[ToResourceType any, OriginalResourceTy
 }, OptionsType any](
 	handler RepositoryHandler[OptionsType],
 	defaultPaginationColumn string,
-	defaultOrder bunpaginate.Order,
+	defaultOrder paginate.Order,
 ) *PaginatedResourceRepositoryMapper[ToResourceType, OriginalResourceType, OptionsType] {
 	return &PaginatedResourceRepositoryMapper[ToResourceType, OriginalResourceType, OptionsType]{
 		PaginatedResourceRepository: NewPaginatedResourceRepository[OriginalResourceType, OptionsType](handler, defaultPaginationColumn, defaultOrder),
@@ -446,5 +446,5 @@ type Resource[ResourceType, OptionsType any] interface {
 
 type PaginatedResource[ResourceType, OptionsType any] interface {
 	Resource[ResourceType, OptionsType]
-	Paginate(ctx context.Context, paginationOptions PaginatedQuery[OptionsType]) (*bunpaginate.Cursor[ResourceType], error)
+	Paginate(ctx context.Context, paginationOptions PaginatedQuery[OptionsType]) (*paginate.Cursor[ResourceType], error)
 }

@@ -7,8 +7,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
+	"github.com/formancehq/go-libs/v5/pkg/storage/postgres"
+	"github.com/formancehq/go-libs/v5/pkg/transport/api"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"

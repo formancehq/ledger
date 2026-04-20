@@ -5,23 +5,23 @@ import (
 
 	"github.com/uptrace/bun"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/collectionutils"
-	"github.com/formancehq/go-libs/v4/time"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/types/collections"
+	"github.com/formancehq/go-libs/v5/pkg/types/time"
 )
 
 type Move struct {
 	bun.BaseModel `bun:"table:moves"`
 
-	TransactionID              uint64              `bun:"transactions_id,type:bigint"`
-	IsSource                   bool                `bun:"is_source,type:bool"`
-	Account                    string              `bun:"accounts_address,type:varchar"`
-	Amount                     *bunpaginate.BigInt `bun:"amount,type:numeric"`
-	Asset                      string              `bun:"asset,type:varchar"`
-	InsertionDate              time.Time           `bun:"insertion_date,type:timestamp,nullzero"`
-	EffectiveDate              time.Time           `bun:"effective_date,type:timestamp,nullzero"`
-	PostCommitVolumes          *Volumes            `bun:"post_commit_volumes,type:jsonb"`
-	PostCommitEffectiveVolumes *Volumes            `bun:"post_commit_effective_volumes,type:jsonb,scanonly"`
+	TransactionID              uint64           `bun:"transactions_id,type:bigint"`
+	IsSource                   bool             `bun:"is_source,type:bool"`
+	Account                    string           `bun:"accounts_address,type:varchar"`
+	Amount                     *paginate.BigInt `bun:"amount,type:numeric"`
+	Asset                      string           `bun:"asset,type:varchar"`
+	InsertionDate              time.Time        `bun:"insertion_date,type:timestamp,nullzero"`
+	EffectiveDate              time.Time        `bun:"effective_date,type:timestamp,nullzero"`
+	PostCommitVolumes          *Volumes         `bun:"post_commit_volumes,type:jsonb"`
+	PostCommitEffectiveVolumes *Volumes         `bun:"post_commit_effective_volumes,type:jsonb,scanonly"`
 }
 
 type Moves []*Move
@@ -32,7 +32,7 @@ func (m Moves) ComputePostCommitEffectiveVolumes() PostCommitVolumes {
 		Asset   string
 	}
 
-	visited := collectionutils.Set[key]{}
+	visited := collections.Set[key]{}
 
 	// We need to find the more recent move for each account/asset.
 	// We will iterate on moves by starting by the more recent.

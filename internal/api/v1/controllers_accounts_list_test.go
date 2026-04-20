@@ -10,12 +10,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/auth"
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/pointer"
-	"github.com/formancehq/go-libs/v4/query"
+	"github.com/formancehq/go-libs/v5/pkg/authn/jwt"
+	"github.com/formancehq/go-libs/v5/pkg/query"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/transport/api"
+	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
+	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
@@ -43,7 +43,7 @@ func TestAccountsList(t *testing.T) {
 			expectQuery: storagecommon.InitialPaginatedQuery[any]{
 				PageSize: DefaultPageSize,
 				Column:   "address",
-				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+				Order:    pointer.For(paginate.Order(paginate.OrderAsc)),
 			},
 		},
 		{
@@ -58,7 +58,7 @@ func TestAccountsList(t *testing.T) {
 					Builder: query.Match("metadata[roles]", "admin"),
 				},
 				Column: "address",
-				Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+				Order:  pointer.For(paginate.Order(paginate.OrderAsc)),
 			},
 		},
 		{
@@ -73,15 +73,15 @@ func TestAccountsList(t *testing.T) {
 					Builder: query.Match("address", "foo"),
 				},
 				Column: "address",
-				Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+				Order:  pointer.For(paginate.Order(paginate.OrderAsc)),
 			},
 		},
 		{
 			name: "using empty cursor",
 			queryParams: url.Values{
-				"cursor": []string{bunpaginate.EncodeCursor(storagecommon.ColumnPaginatedQuery[any]{
+				"cursor": []string{paginate.EncodeCursor(storagecommon.ColumnPaginatedQuery[any]{
 					InitialPaginatedQuery: storagecommon.InitialPaginatedQuery[any]{
-						PageSize: bunpaginate.QueryDefaultPageSize,
+						PageSize: paginate.QueryDefaultPageSize,
 					},
 				})},
 			},
@@ -117,7 +117,7 @@ func TestAccountsList(t *testing.T) {
 			expectQuery: storagecommon.InitialPaginatedQuery[any]{
 				PageSize: MaxPageSize,
 				Column:   "address",
-				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+				Order:    pointer.For(paginate.Order(paginate.OrderAsc)),
 			},
 		},
 		{
@@ -133,7 +133,7 @@ func TestAccountsList(t *testing.T) {
 					Builder: query.Match("balance", int64(100)),
 				},
 				Column: "address",
-				Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+				Order:  pointer.For(paginate.Order(paginate.OrderAsc)),
 			},
 		},
 		{
@@ -145,7 +145,7 @@ func TestAccountsList(t *testing.T) {
 			expectQuery: storagecommon.InitialPaginatedQuery[any]{
 				PageSize: DefaultPageSize,
 				Column:   "address",
-				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+				Order:    pointer.For(paginate.Order(paginate.OrderAsc)),
 			},
 		},
 	}
@@ -157,7 +157,7 @@ func TestAccountsList(t *testing.T) {
 				testCase.expectStatusCode = http.StatusOK
 			}
 
-			expectedCursor := bunpaginate.Cursor[ledger.Account]{
+			expectedCursor := paginate.Cursor[ledger.Account]{
 				Data: []ledger.Account{
 					{
 						Address:  "world",
@@ -173,7 +173,7 @@ func TestAccountsList(t *testing.T) {
 					Return(&expectedCursor, testCase.returnErr)
 			}
 
-			router := NewRouter(systemController, auth.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")
+			router := NewRouter(systemController, jwt.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")
 
 			req := httptest.NewRequest(http.MethodGet, "/xxx/accounts", nil)
 			rec := httptest.NewRecorder()

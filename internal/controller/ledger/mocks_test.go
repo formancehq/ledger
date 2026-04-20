@@ -11,7 +11,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	bunpaginate "github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	paginate "github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
 	queries "github.com/formancehq/ledger/internal/queries"
 	common "github.com/formancehq/ledger/internal/storage/common"
 	bun "github.com/uptrace/bun"
@@ -265,10 +265,10 @@ func (mr *MockPaginatedResourceMockRecorder[ResourceType, OptionsType]) GetOne(c
 }
 
 // Paginate mocks base method.
-func (m *MockPaginatedResource[ResourceType, OptionsType]) Paginate(ctx context.Context, paginationOptions common.PaginatedQuery[OptionsType]) (*bunpaginate.Cursor[ResourceType], error) {
+func (m *MockPaginatedResource[ResourceType, OptionsType]) Paginate(ctx context.Context, paginationOptions common.PaginatedQuery[OptionsType]) (*paginate.Cursor[ResourceType], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Paginate", ctx, paginationOptions)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ResourceType])
+	ret0, _ := ret[0].(*paginate.Cursor[ResourceType])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

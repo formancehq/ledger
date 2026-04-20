@@ -8,7 +8,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/go-libs/v4/collectionutils"
+	"github.com/formancehq/go-libs/v5/pkg/types/collections"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/controller/system"
@@ -51,7 +51,7 @@ func (srv GRPCServiceImpl) ListExporters(ctx context.Context, _ *grpc.ListExport
 	}
 
 	return &grpc.ListExportersResponse{
-		Data:   collectionutils.Map(ret.Data, mapExporter),
+		Data:   collections.Map(ret.Data, mapExporter),
 		Cursor: mapCursor(ret),
 	}, nil
 }
@@ -110,7 +110,7 @@ func (srv GRPCServiceImpl) ListPipelines(ctx context.Context, _ *grpc.ListPipeli
 	}
 
 	return &grpc.ListPipelinesResponse{
-		Data:   collectionutils.Map(cursor.Data, mapPipeline),
+		Data:   collections.Map(cursor.Data, mapPipeline),
 		Cursor: mapCursor(cursor),
 	}, nil
 }

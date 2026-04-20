@@ -6,9 +6,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	. "github.com/formancehq/go-libs/v4/collectionutils"
-	"github.com/formancehq/go-libs/v4/pointer"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	. "github.com/formancehq/go-libs/v5/pkg/types/collections"
+	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/controller/system"
@@ -19,7 +19,7 @@ type ThroughGRPCBackend struct {
 	client grpc.ReplicationClient
 }
 
-func (t ThroughGRPCBackend) ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error) {
+func (t ThroughGRPCBackend) ListExporters(ctx context.Context) (*paginate.Cursor[ledger.Exporter], error) {
 	ret, err := t.client.ListExporters(ctx, &grpc.ListExportersRequest{})
 	if err != nil {
 		return nil, err
@@ -85,7 +85,7 @@ func (t ThroughGRPCBackend) GetExporter(ctx context.Context, id string) (*ledger
 	return pointer.For(mapExporterFromGRPC(exporter.Exporter)), nil
 }
 
-func (t ThroughGRPCBackend) ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error) {
+func (t ThroughGRPCBackend) ListPipelines(ctx context.Context) (*paginate.Cursor[ledger.Pipeline], error) {
 	pipelines, err := t.client.ListPipelines(ctx, &grpc.ListPipelinesRequest{})
 	if err != nil {
 		return nil, err

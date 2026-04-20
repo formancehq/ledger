@@ -3,8 +3,8 @@ package ledger
 import (
 	"context"
 
-	"github.com/formancehq/go-libs/v4/collectionutils"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
+	"github.com/formancehq/go-libs/v5/pkg/storage/postgres"
+	"github.com/formancehq/go-libs/v5/pkg/types/collections"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/tracing"
@@ -23,7 +23,7 @@ func (store *Store) UpdateVolumes(ctx context.Context, accountVolumes ...ledger.
 				Ledger                 string `bun:"ledger,type:varchar"`
 			}
 
-			accountsVolumesWithLedger := collectionutils.Map(accountVolumes, func(from ledger.AccountsVolumes) AccountsVolumesWithLedger {
+			accountsVolumesWithLedger := collections.Map(accountVolumes, func(from ledger.AccountsVolumes) AccountsVolumesWithLedger {
 				return AccountsVolumesWithLedger{
 					AccountsVolumes: from,
 					Ledger:          store.ledger.Name,

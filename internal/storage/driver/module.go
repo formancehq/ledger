@@ -8,7 +8,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
 
-	"github.com/formancehq/go-libs/v4/logging"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"

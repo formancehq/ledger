@@ -12,7 +12,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
 
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
@@ -23,13 +23,13 @@ import (
 )
 
 type ReplicationBackend interface {
-	ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error)
+	ListExporters(ctx context.Context) (*paginate.Cursor[ledger.Exporter], error)
 	CreateExporter(ctx context.Context, configuration ledger.ExporterConfiguration) (*ledger.Exporter, error)
 	UpdateExporter(ctx context.Context, id string, configuration ledger.ExporterConfiguration) error
 	DeleteExporter(ctx context.Context, id string) error
 	GetExporter(ctx context.Context, id string) (*ledger.Exporter, error)
 
-	ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error)
+	ListPipelines(ctx context.Context) (*paginate.Cursor[ledger.Pipeline], error)
 	GetPipeline(ctx context.Context, id string) (*ledger.Pipeline, error)
 	CreatePipeline(ctx context.Context, pipelineConfiguration ledger.PipelineConfiguration) (*ledger.Pipeline, error)
 	DeletePipeline(ctx context.Context, id string) error
@@ -42,7 +42,7 @@ type Controller interface {
 	ReplicationBackend
 	GetLedgerController(ctx context.Context, name string) (ledgercontroller.Controller, error)
 	GetLedger(ctx context.Context, name string) (*ledger.Ledger, error)
-	ListLedgers(ctx context.Context, query common.PaginatedQuery[systemstore.ListLedgersQueryPayload]) (*bunpaginate.Cursor[ledger.Ledger], error)
+	ListLedgers(ctx context.Context, query common.PaginatedQuery[systemstore.ListLedgersQueryPayload]) (*paginate.Cursor[ledger.Ledger], error)
 	// CreateLedger can return following errors:
 	//  * ErrLedgerAlreadyExists
 	//  * ledger.ErrInvalidLedgerName
@@ -76,7 +76,7 @@ type DefaultController struct {
 	schemaEnforcementMode ledgercontroller.SchemaEnforcementMode
 }
 
-func (ctrl *DefaultController) ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error) {
+func (ctrl *DefaultController) ListExporters(ctx context.Context) (*paginate.Cursor[ledger.Exporter], error) {
 	return ctrl.replicationBackend.ListExporters(ctx)
 }
 
@@ -109,7 +109,7 @@ func (ctrl *DefaultController) GetExporter(ctx context.Context, id string) (*led
 	return ctrl.replicationBackend.GetExporter(ctx, id)
 }
 
-func (ctrl *DefaultController) ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error) {
+func (ctrl *DefaultController) ListPipelines(ctx context.Context) (*paginate.Cursor[ledger.Pipeline], error) {
 	return ctrl.replicationBackend.ListPipelines(ctx)
 }
 
@@ -218,8 +218,8 @@ func (ctrl *DefaultController) GetLedger(ctx context.Context, name string) (*led
 	})
 }
 
-func (ctrl *DefaultController) ListLedgers(ctx context.Context, query common.PaginatedQuery[systemstore.ListLedgersQueryPayload]) (*bunpaginate.Cursor[ledger.Ledger], error) {
-	return tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "ListLedgers", func(ctx context.Context) (*bunpaginate.Cursor[ledger.Ledger], error) {
+func (ctrl *DefaultController) ListLedgers(ctx context.Context, query common.PaginatedQuery[systemstore.ListLedgersQueryPayload]) (*paginate.Cursor[ledger.Ledger], error) {
+	return tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "ListLedgers", func(ctx context.Context) (*paginate.Cursor[ledger.Ledger], error) {
 		return ctrl.driver.GetSystemStore().Ledgers().Paginate(ctx, query)
 	})
 }

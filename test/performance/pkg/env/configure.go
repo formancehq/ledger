@@ -13,7 +13,7 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 
-	"github.com/formancehq/go-libs/v4/httpclient"
+	"github.com/formancehq/go-libs/v5/pkg/transport/httpclient"
 )
 
 var (

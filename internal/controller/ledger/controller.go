@@ -6,9 +6,9 @@ import (
 
 	"github.com/uptrace/bun"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/migrations"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/storage/migrations"
+	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/machine/vm"
@@ -32,13 +32,13 @@ type Controller interface {
 	GetStats(ctx context.Context) (Stats, error)
 
 	GetAccount(ctx context.Context, query common.ResourceQuery[any]) (*ledger.Account, error)
-	ListAccounts(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Account], error)
+	ListAccounts(ctx context.Context, query common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Account], error)
 	CountAccounts(ctx context.Context, query common.ResourceQuery[any]) (int, error)
-	ListLogs(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error)
+	ListLogs(ctx context.Context, query common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Log], error)
 	CountTransactions(ctx context.Context, query common.ResourceQuery[any]) (int, error)
-	ListTransactions(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error)
+	ListTransactions(ctx context.Context, query common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Transaction], error)
 	GetTransaction(ctx context.Context, query common.ResourceQuery[any]) (*ledger.Transaction, error)
-	GetVolumesWithBalances(ctx context.Context, q common.PaginatedQuery[ledger.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)
+	GetVolumesWithBalances(ctx context.Context, q common.PaginatedQuery[ledger.GetVolumesOptions]) (*paginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)
 	GetAggregatedBalances(ctx context.Context, q common.ResourceQuery[ledger.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error)
 
 	// CreateTransaction accept a numscript script and returns a transaction
@@ -85,10 +85,10 @@ type Controller interface {
 	// GetSchema Get the schema by version
 	GetSchema(ctx context.Context, version string) (*ledger.Schema, error)
 	// ListSchemas List all schemas for the ledger
-	ListSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error)
+	ListSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Schema], error)
 
 	// Run a query template on the ledger
-	RunQuery(ctx context.Context, schemaVersion string, queryId string, runQuery common.RunQuery, defaultPageSize common.PaginationConfig) (*queries.ResourceKind, *bunpaginate.Cursor[any], error)
+	RunQuery(ctx context.Context, schemaVersion string, queryId string, runQuery common.RunQuery, defaultPageSize common.PaginationConfig) (*queries.ResourceKind, *paginate.Cursor[any], error)
 }
 
 type RunScript = vm.RunScript

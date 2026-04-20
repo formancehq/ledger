@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/go-libs/v4/auth"
-	"github.com/formancehq/go-libs/v4/logging"
-	sharedapi "github.com/formancehq/go-libs/v4/testing/api"
+	"github.com/formancehq/go-libs/v5/pkg/authn/jwt"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	sharedapi "github.com/formancehq/go-libs/v5/pkg/testing/api"
 
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
@@ -59,7 +59,7 @@ func TestStopPipeline(t *testing.T) {
 			t.Parallel()
 
 			systemController, _ := newTestingSystemController(t, true)
-			router := NewRouter(systemController, auth.NewNoAuth(), "develop", WithExporters(true))
+			router := NewRouter(systemController, jwt.NewNoAuth(), "develop", WithExporters(true))
 
 			exporterID := uuid.NewString()
 			req := httptest.NewRequest(http.MethodPost, "/xxx/pipelines/"+exporterID+"/stop", nil)

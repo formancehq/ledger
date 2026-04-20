@@ -11,14 +11,14 @@ import (
 	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bun/extra/bundebug"
+	debug "github.com/uptrace/bun/extra/bundebug"
 	"go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/formancehq/go-libs/v4/bun/bunconnect"
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/migrations"
-	"github.com/formancehq/go-libs/v4/pointer"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/connect"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/storage/migrations"
+	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
@@ -32,12 +32,12 @@ func TestMigrations(t *testing.T) {
 
 	ctx := logging.TestingContext()
 	pgDatabase := srv.NewDatabase(t)
-	db, err := bunconnect.OpenSQLDB(ctx, pgDatabase.ConnectionOptions())
+	db, err := connect.OpenSQLDB(ctx, pgDatabase.ConnectionOptions())
 	require.NoError(t, err)
 
 	require.NoError(t, system.Migrate(ctx, db))
 	if testing.Verbose() {
-		db.AddQueryHook(bundebug.NewQueryHook())
+		db.AddQueryHook(debug.NewQueryHook())
 	}
 
 	bucketName := uuid.NewString()[:8]
@@ -97,10 +97,10 @@ func TestMigrations(t *testing.T) {
 			ctx,
 			common.InitialPaginatedQuery[any]{
 				PageSize: 100,
-				Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+				Order:    pointer.For(paginate.Order(paginate.OrderAsc)),
 			},
 			store.Logs().Paginate,
-			func(cursor *bunpaginate.Cursor[ledger.Log]) error {
+			func(cursor *paginate.Cursor[ledger.Log]) error {
 				return nil
 			},
 		))

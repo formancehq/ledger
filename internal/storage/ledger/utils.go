@@ -7,7 +7,7 @@ import (
 
 	"github.com/uptrace/bun"
 
-	"github.com/formancehq/go-libs/v4/query"
+	"github.com/formancehq/go-libs/v5/pkg/query"
 )
 
 func isPartialAddress(address string) bool {

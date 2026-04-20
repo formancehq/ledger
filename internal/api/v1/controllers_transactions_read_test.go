@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/auth"
-	"github.com/formancehq/go-libs/v4/query"
+	"github.com/formancehq/go-libs/v5/pkg/authn/jwt"
+	"github.com/formancehq/go-libs/v5/pkg/query"
+	"github.com/formancehq/go-libs/v5/pkg/transport/api"
 
 	ledger "github.com/formancehq/ledger/internal"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
@@ -32,7 +32,7 @@ func TestTransactionsRead(t *testing.T) {
 		}).
 		Return(&tx, nil)
 
-	router := NewRouter(systemController, auth.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")
+	router := NewRouter(systemController, jwt.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")
 
 	req := httptest.NewRequest(http.MethodGet, "/xxx/transactions/0", nil)
 	rec := httptest.NewRecorder()

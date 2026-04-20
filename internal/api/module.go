@@ -7,8 +7,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
 
-	"github.com/formancehq/go-libs/v4/auth"
-	"github.com/formancehq/go-libs/v4/health"
+	"github.com/formancehq/go-libs/v5/pkg/authn/jwt"
+	"github.com/formancehq/go-libs/v5/pkg/fx/servicefx"
 
 	"github.com/formancehq/ledger/internal/api/bulking"
 	"github.com/formancehq/ledger/internal/controller/system"
@@ -32,7 +32,7 @@ func Module(cfg Config) fx.Option {
 	return fx.Options(
 		fx.Provide(func(
 			backend system.Controller,
-			authenticator auth.Authenticator,
+			authenticator jwt.Authenticator,
 			tracerProvider trace.TracerProvider,
 		) chi.Router {
 			return NewRouter(
@@ -50,6 +50,6 @@ func Module(cfg Config) fx.Option {
 				WithExporters(cfg.Exporters),
 			)
 		}),
-		health.Module(),
+		servicefx.HealthModule(),
 	)
 }

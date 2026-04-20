@@ -11,12 +11,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 
-	"github.com/formancehq/go-libs/v4/bun/bunconnect"
-	"github.com/formancehq/go-libs/v4/bun/bundebug"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/testing/docker"
-	"github.com/formancehq/go-libs/v4/testing/platform/pgtesting"
-	. "github.com/formancehq/go-libs/v4/testing/utils"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/connect"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/debug"
+	"github.com/formancehq/go-libs/v5/pkg/testing/docker"
+	"github.com/formancehq/go-libs/v5/pkg/testing/platform/pgtesting"
+	. "github.com/formancehq/go-libs/v5/pkg/testing/utils"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
@@ -267,10 +267,10 @@ func newStoreAndDBForWorkerTest(t docker.T) (*systemstore.DefaultStore, *bun.DB)
 	pgDatabase := workerTestSrv.NewDatabase(t)
 
 	hooks := make([]bun.QueryHook, 0)
-	debugHook := bundebug.NewQueryHook()
+	debugHook := debug.NewQueryHook()
 	debugHook.Debug = os.Getenv("DEBUG") == "true"
 	hooks = append(hooks, debugHook)
-	db, err := bunconnect.OpenSQLDB(ctx, pgDatabase.ConnectionOptions(), hooks...)
+	db, err := connect.OpenSQLDB(ctx, pgDatabase.ConnectionOptions(), hooks...)
 	require.NoError(t, err)
 
 	store := systemstore.New(db)

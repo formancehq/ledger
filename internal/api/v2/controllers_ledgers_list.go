@@ -3,8 +3,8 @@ package v2
 import (
 	"net/http"
 
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/transport/api"
 
 	"github.com/formancehq/ledger/internal/api/common"
 	"github.com/formancehq/ledger/internal/controller/system"
@@ -23,7 +23,7 @@ func listLedgers(b system.Controller, paginationConfig storagecommon.PaginationC
 			r,
 			paginationConfig,
 			"id",
-			bunpaginate.OrderAsc,
+			paginate.OrderAsc,
 			func(resourceQuery *storagecommon.ResourceQuery[systemstore.ListLedgersQueryPayload]) {
 				// Extract includeDeleted query parameter
 				includeDeleted := api.QueryParamBool(r, "includeDeleted")

@@ -12,10 +12,10 @@ import (
 	sql "database/sql"
 	reflect "reflect"
 
-	bunpaginate "github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	metadata "github.com/formancehq/go-libs/v4/metadata"
-	migrations "github.com/formancehq/go-libs/v4/migrations"
-	time "github.com/formancehq/go-libs/v4/time"
+	paginate "github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	migrations "github.com/formancehq/go-libs/v5/pkg/storage/migrations"
+	metadata "github.com/formancehq/go-libs/v5/pkg/types/metadata"
+	time "github.com/formancehq/go-libs/v5/pkg/types/time"
 	ledger "github.com/formancehq/ledger/internal"
 	common "github.com/formancehq/ledger/internal/storage/common"
 	ledger0 "github.com/formancehq/ledger/internal/storage/ledger"
@@ -180,10 +180,10 @@ func (mr *MockStoreMockRecorder) FindSchema(ctx, version any) *gomock.Call {
 }
 
 // FindSchemas mocks base method.
-func (m *MockStore) FindSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error) {
+func (m *MockStore) FindSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Schema], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "FindSchemas", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Schema])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.Schema])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

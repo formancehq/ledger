@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"slices"
 
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/collectionutils"
-	"github.com/formancehq/go-libs/v4/pointer"
+	"github.com/formancehq/go-libs/v5/pkg/transport/api"
+	"github.com/formancehq/go-libs/v5/pkg/types/collections"
+	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
 
 	"github.com/formancehq/ledger/internal/api/common"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
@@ -51,7 +51,7 @@ func (h *JsonBulkHandler) Terminate(w http.ResponseWriter, _ *http.Request) {
 		results = append(results, element)
 	}
 
-	writeJSONResponse(w, collectionutils.Map(h.bulkElements, BulkElement.GetAction), results, nil)
+	writeJSONResponse(w, collections.Map(h.bulkElements, BulkElement.GetAction), results, nil)
 }
 
 func NewJSONBulkHandler(bulkMaxSize int) *JsonBulkHandler {

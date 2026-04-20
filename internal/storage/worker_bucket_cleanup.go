@@ -12,7 +12,7 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/fx"
 
-	"github.com/formancehq/go-libs/v4/logging"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 )

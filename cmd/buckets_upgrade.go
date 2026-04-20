@@ -4,11 +4,12 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
 
-	"github.com/formancehq/go-libs/v4/bun/bunconnect"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/otlp"
-	"github.com/formancehq/go-libs/v4/otlp/otlptraces"
-	"github.com/formancehq/go-libs/v4/service"
+	"github.com/formancehq/go-libs/v5/pkg/fx/observefx"
+	"github.com/formancehq/go-libs/v5/pkg/fx/storagefx"
+	"github.com/formancehq/go-libs/v5/pkg/observe"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/service"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/connect"
 
 	"github.com/formancehq/ledger/internal/storage"
 	"github.com/formancehq/ledger/internal/storage/driver"
@@ -31,7 +32,7 @@ func NewBucketUpgrade() *cobra.Command {
 	}
 
 	service.AddFlags(cmd.Flags())
-	bunconnect.AddFlags(cmd.Flags())
+	connect.AddFlags(cmd.Flags())
 
 	return cmd
 }
@@ -40,7 +41,7 @@ func withStorageDriver(cmd *cobra.Command, fn func(driver *driver.Driver) error)
 
 	logger := logging.NewDefaultLogger(cmd.OutOrStdout(), service.IsDebug(cmd), false, false)
 
-	connectionOptions, err := bunconnect.ConnectionOptionsFromFlags(cmd)
+	connectionOptions, err := connect.ConnectionOptionsFromFlags(cmd.Flags(), cmd.Context())
 	if err != nil {
 		return err
 	}
@@ -48,9 +49,9 @@ func withStorageDriver(cmd *cobra.Command, fn func(driver *driver.Driver) error)
 	var d *driver.Driver
 	app := fx.New(
 		fx.NopLogger,
-		otlp.FXModuleFromFlags(cmd, otlp.WithServiceVersion(Version)),
-		otlptraces.FXModuleFromFlags(cmd),
-		bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
+		observefx.ResourceModuleFromFlags(cmd, observe.WithServiceVersion(Version)),
+		observefx.TracesModuleFromFlags(cmd),
+		storagefx.BunConnectModule(*connectionOptions, service.IsDebug(cmd)),
 		storage.NewFXModule(storage.ModuleConfig{}),
 		fx.Supply(fx.Annotate(logger, fx.As(new(logging.Logger)))),
 		fx.Populate(&d),

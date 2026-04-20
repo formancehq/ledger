@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/formancehq/go-libs/v4/query"
+	"github.com/formancehq/go-libs/v5/pkg/query"
 
 	ledger "github.com/formancehq/ledger/internal"
 )

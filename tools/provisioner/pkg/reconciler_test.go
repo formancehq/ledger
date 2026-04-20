@@ -8,11 +8,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/testing/deferred"
-	"github.com/formancehq/go-libs/v4/testing/docker"
-	"github.com/formancehq/go-libs/v4/testing/platform/pgtesting"
-	"github.com/formancehq/go-libs/v4/testing/testservice"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/testing/deferred"
+	"github.com/formancehq/go-libs/v5/pkg/testing/docker"
+	"github.com/formancehq/go-libs/v5/pkg/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	"github.com/formancehq/ledger/pkg/testserver"
 )
 

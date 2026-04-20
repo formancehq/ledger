@@ -9,9 +9,9 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
-	"github.com/formancehq/go-libs/v4/pointer"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/storage/postgres"
+	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
 
 	ledger "github.com/formancehq/ledger/internal"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"

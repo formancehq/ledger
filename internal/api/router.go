@@ -13,11 +13,11 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/auth"
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/otlp"
-	"github.com/formancehq/go-libs/v4/service"
+	"github.com/formancehq/go-libs/v5/pkg/authn/jwt"
+	"github.com/formancehq/go-libs/v5/pkg/observe"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/transport/api"
+	"github.com/formancehq/go-libs/v5/pkg/transport/httpserver"
 
 	"github.com/formancehq/ledger/internal/api/bulking"
 	"github.com/formancehq/ledger/internal/api/common"
@@ -30,7 +30,7 @@ import (
 // todo: refine textual errors
 func NewRouter(
 	systemController system.Controller,
-	authenticator auth.Authenticator,
+	authenticator jwt.Authenticator,
 	version string,
 	debug bool,
 	opts ...RouterOption,
@@ -58,7 +58,7 @@ func NewRouter(
 		}).Handler,
 		common.LogID(),
 		middleware.RequestLogger(api.NewLogFormatter()),
-		service.OTLPMiddleware("ledger", debug),
+		httpserver.OTLPMiddleware("ledger", debug),
 		otelchimetric.NewRequestDurationMillis(baseCfg),
 		otelchimetric.NewRequestInFlight(baseCfg),
 		otelchimetric.NewResponseSizeBytes(baseCfg),
@@ -76,7 +76,7 @@ func NewRouter(
 							middleware.PrintPrettyStack(rvr)
 						}
 
-						otlp.RecordError(r.Context(), fmt.Errorf("%s", rvr))
+						observe.RecordError(r.Context(), fmt.Errorf("%s", rvr))
 
 						w.WriteHeader(http.StatusInternalServerError)
 					}
@@ -166,8 +166,8 @@ var defaultRouterOptions = []RouterOption{
 	WithMeterProvider(noopmetrics.MeterProvider{}),
 	WithBulkMaxSize(DefaultBulkMaxSize),
 	WithPaginationConfiguration(storagecommon.PaginationConfig{
-		MaxPageSize:     bunpaginate.MaxPageSize,
-		DefaultPageSize: bunpaginate.QueryDefaultPageSize,
+		MaxPageSize:     paginate.MaxPageSize,
+		DefaultPageSize: paginate.QueryDefaultPageSize,
 	}),
 }
 
