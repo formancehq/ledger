@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/accounttype"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
@@ -45,7 +46,8 @@ func (p *RequestProcessor) processRevertTransaction(ledger string, boundaries *r
 	// Validate reversed postings against account types.
 	if info, ok := s.GetLedger(ledger); ok {
 		if len(info.GetAccountTypes()) > 0 {
-			if typeErr := validatePostingsAgainstAccountTypes(revertPostings, info.GetAccountTypes(), info.GetDefaultEnforcementMode()); typeErr != nil {
+			compiled := accounttype.CompileTypes(info.GetAccountTypes())
+			if typeErr := validatePostingsAgainstAccountTypes(revertPostings, compiled, info.GetDefaultEnforcementMode()); typeErr != nil {
 				return nil, typeErr
 			}
 		}

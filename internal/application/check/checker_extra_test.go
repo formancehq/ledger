@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/accounttype"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
@@ -93,14 +94,14 @@ func TestSimulateEphemeralPurgeDeletesZeroBalance(t *testing.T) {
 	rs := newTestReplayStore(t)
 
 	// Create an ephemeral account type matching "orders:*"
-	ledgerAccountTypes := map[string]map[string]*commonpb.AccountType{
-		"ledger": {
+	ledgerAccountTypes := map[string][]accounttype.CompiledType{
+		"ledger": accounttype.CompileTypes(map[string]*commonpb.AccountType{
 			"orders": {
 				Name:      "orders",
 				Pattern:   "orders:{id}",
 				Ephemeral: true,
 			},
-		},
+		}),
 	}
 
 	// Fund order account: world -> orders:123  100 USD
@@ -140,14 +141,14 @@ func TestSimulateEphemeralPurgeSkipsNonEphemeral(t *testing.T) {
 	rs := newTestReplayStore(t)
 
 	// No ephemeral types
-	ledgerAccountTypes := map[string]map[string]*commonpb.AccountType{
-		"ledger": {
+	ledgerAccountTypes := map[string][]accounttype.CompiledType{
+		"ledger": accounttype.CompileTypes(map[string]*commonpb.AccountType{
 			"users": {
 				Name:    "users",
 				Pattern: "users:{id}",
 				// Ephemeral is false (default)
 			},
-		},
+		}),
 	}
 
 	postings := []*commonpb.Posting{
@@ -178,7 +179,7 @@ func TestSimulateEphemeralPurgeNoAccountTypes(t *testing.T) {
 	rs := newTestReplayStore(t)
 
 	// Empty account types — should be a no-op
-	ledgerAccountTypes := map[string]map[string]*commonpb.AccountType{}
+	ledgerAccountTypes := map[string][]accounttype.CompiledType{}
 
 	postings := []*commonpb.Posting{
 		newPosting("world", "account", "USD", 100),
@@ -201,14 +202,14 @@ func TestSimulateEphemeralPurgeSkipsWorldAccount(t *testing.T) {
 
 	rs := newTestReplayStore(t)
 
-	ledgerAccountTypes := map[string]map[string]*commonpb.AccountType{
-		"ledger": {
+	ledgerAccountTypes := map[string][]accounttype.CompiledType{
+		"ledger": accounttype.CompileTypes(map[string]*commonpb.AccountType{
 			"world-type": {
 				Name:      "world-type",
 				Pattern:   "world",
 				Ephemeral: true,
 			},
-		},
+		}),
 	}
 
 	postings := []*commonpb.Posting{
@@ -433,14 +434,14 @@ func TestSimulateEphemeralPurgeMultipleAssets(t *testing.T) {
 
 	rs := newTestReplayStore(t)
 
-	ledgerAccountTypes := map[string]map[string]*commonpb.AccountType{
-		"ledger": {
+	ledgerAccountTypes := map[string][]accounttype.CompiledType{
+		"ledger": accounttype.CompileTypes(map[string]*commonpb.AccountType{
 			"orders": {
 				Name:      "orders",
 				Pattern:   "orders:{id}",
 				Ephemeral: true,
 			},
-		},
+		}),
 	}
 
 	// Fund in two assets

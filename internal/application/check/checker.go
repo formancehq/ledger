@@ -133,7 +133,8 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		ledgerKnownTxIDs    = make(map[string]*domain.ReversionBitset)
 		ledgerRevertedTxIDs = make(map[string]*domain.ReversionBitset)
 		// Per-ledger account types for ephemeral purge simulation
-		ledgerAccountTypes = make(map[string]map[string]*commonpb.AccountType)
+		rawLedgerTypes     = make(map[string]map[string]*commonpb.AccountType)
+		ledgerAccountTypes = make(map[string][]accounttype.CompiledType)
 	)
 
 	// If periods were archived, pre-populate knownLedgers from Pebble
@@ -154,7 +155,8 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 				knownLedgers[info.GetName()] = struct{}{}
 
 				if types := info.GetAccountTypes(); len(types) > 0 {
-					ledgerAccountTypes[info.GetName()] = types
+					rawLedgerTypes[info.GetName()] = types
+					ledgerAccountTypes[info.GetName()] = accounttype.CompileTypes(types)
 				}
 			}
 		}
@@ -269,7 +271,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					}
 
 					if payload.Apply.GetLog() != nil && payload.Apply.GetLog().GetData() != nil {
-						if err := replayLedgerLog(ledgerName, seq, payload.Apply.GetLog().GetData(), replay, ledgerAccountTypes); err != nil {
+						if err := replayLedgerLog(ledgerName, seq, payload.Apply.GetLog().GetData(), replay, rawLedgerTypes, ledgerAccountTypes); err != nil {
 							return fmt.Errorf("replaying log %d: %w", seq, err)
 						}
 
@@ -863,31 +865,35 @@ func verifySealingHash(p *commonpb.Period, callback func(*servicepb.CheckStoreEv
 }
 
 // replayLedgerLog updates expected state in the replay store based on a ledger log payload.
-// ledgerAccountTypes tracks account types per ledger for ephemeral purge simulation.
+// rawLedgerTypes tracks the raw account type map for add/remove mutations.
+// ledgerAccountTypes tracks pre-compiled account types for ephemeral purge simulation.
 func replayLedgerLog(
 	ledger string,
 	seq uint64,
 	payload *commonpb.LedgerLogPayload,
 	replay *replayStore,
-	ledgerAccountTypes map[string]map[string]*commonpb.AccountType,
+	rawLedgerTypes map[string]map[string]*commonpb.AccountType,
+	ledgerAccountTypes map[string][]accounttype.CompiledType,
 ) error {
 	switch p := payload.GetPayload().(type) {
 	case *commonpb.LedgerLogPayload_AddedAccountType:
 		if p.AddedAccountType != nil && p.AddedAccountType.GetAccountType() != nil {
 			at := p.AddedAccountType.GetAccountType()
-			types := ledgerAccountTypes[ledger]
+			types := rawLedgerTypes[ledger]
 			if types == nil {
 				types = make(map[string]*commonpb.AccountType)
-				ledgerAccountTypes[ledger] = types
+				rawLedgerTypes[ledger] = types
 			}
 
 			types[at.GetName()] = at
+			ledgerAccountTypes[ledger] = accounttype.CompileTypes(types)
 		}
 
 	case *commonpb.LedgerLogPayload_RemovedAccountType:
 		if p.RemovedAccountType != nil {
-			if types := ledgerAccountTypes[ledger]; types != nil {
+			if types := rawLedgerTypes[ledger]; types != nil {
 				delete(types, p.RemovedAccountType.GetName())
+				ledgerAccountTypes[ledger] = accounttype.CompileTypes(types)
 			}
 		}
 
@@ -1096,10 +1102,10 @@ func simulateEphemeralPurge(
 	ledger string,
 	postings []*commonpb.Posting,
 	replay *replayStore,
-	ledgerAccountTypes map[string]map[string]*commonpb.AccountType,
+	ledgerAccountTypes map[string][]accounttype.CompiledType,
 ) error {
-	types := ledgerAccountTypes[ledger]
-	if len(types) == 0 {
+	compiled := ledgerAccountTypes[ledger]
+	if len(compiled) == 0 {
 		return nil
 	}
 
@@ -1118,7 +1124,7 @@ func simulateEphemeralPurge(
 
 			seen[addr] = struct{}{}
 
-			matched := accounttype.FindMatchingType(addr, types)
+			matched := accounttype.FindMatchingType(addr, compiled)
 			if matched == nil || !matched.GetEphemeral() {
 				continue
 			}

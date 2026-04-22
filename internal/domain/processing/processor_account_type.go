@@ -348,10 +348,10 @@ func (p *RequestProcessor) processCompleteAccountMigration(
 // STRICT rejects the transaction, AUDIT silently allows it.
 func validatePostingsAgainstAccountTypes(
 	postings []*commonpb.Posting,
-	types map[string]*commonpb.AccountType,
+	compiled []accounttype.CompiledType,
 	defaultMode commonpb.ChartEnforcementMode,
 ) error {
-	if len(types) == 0 {
+	if len(compiled) == 0 {
 		return nil
 	}
 
@@ -370,7 +370,7 @@ func validatePostingsAgainstAccountTypes(
 		}
 		seen[address] = struct{}{}
 
-		if accounttype.FindMatchingType(address, types) == nil {
+		if accounttype.FindMatchingType(address, compiled) == nil {
 			if defaultMode == commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT {
 				return &domain.ErrAccountNotMatchingType{Address: address}
 			}
@@ -386,14 +386,14 @@ func validatePostingsAgainstAccountTypes(
 // When the address doesn't match any type, defaultMode controls the behavior.
 func validateAccountAgainstAccountTypes(
 	address string,
-	types map[string]*commonpb.AccountType,
+	compiled []accounttype.CompiledType,
 	defaultMode commonpb.ChartEnforcementMode,
 ) error {
-	if len(types) == 0 || address == "world" {
+	if len(compiled) == 0 || address == "world" {
 		return nil
 	}
 
-	if accounttype.FindMatchingType(address, types) == nil {
+	if accounttype.FindMatchingType(address, compiled) == nil {
 		if defaultMode == commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT {
 			return &domain.ErrAccountNotMatchingType{Address: address}
 		}

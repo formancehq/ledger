@@ -129,7 +129,17 @@ func TestParsePattern(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			assert.Equal(t, tt.want, got)
+			require.Len(t, got, len(tt.want))
+			for i, seg := range got {
+				assert.Equal(t, tt.want[i].Kind, seg.Kind)
+				assert.Equal(t, tt.want[i].Value, seg.Value)
+				assert.Equal(t, tt.want[i].Pattern, seg.Pattern)
+				if seg.Pattern != "" {
+					assert.NotNil(t, seg.CompiledRegexp, "CompiledRegexp should be set for pattern %q", seg.Pattern)
+				} else {
+					assert.Nil(t, seg.CompiledRegexp)
+				}
+			}
 		})
 	}
 }

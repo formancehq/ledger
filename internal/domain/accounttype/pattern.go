@@ -18,9 +18,10 @@ const (
 
 // PatternSegment represents one colon-separated segment in an account type pattern.
 type PatternSegment struct {
-	Kind    SegmentKind
-	Value   string // literal for Fixed, variable name for Variable
-	Pattern string // regex constraint for Variable (empty = match any non-empty)
+	Kind           SegmentKind
+	Value          string         // literal for Fixed, variable name for Variable
+	Pattern        string         // regex constraint for Variable (empty = match any non-empty)
+	CompiledRegexp *regexp.Regexp // pre-compiled regexp for Pattern (nil when Pattern is empty)
 }
 
 // segmentNameRe validates fixed segment literals.
@@ -115,13 +116,18 @@ func parseSegment(s string) (PatternSegment, error) {
 		return PatternSegment{}, fmt.Errorf("invalid variable name %q: must match [a-zA-Z_][a-zA-Z0-9_]*", name)
 	}
 
+	var compiled *regexp.Regexp
+
 	if regex != "" {
-		if _, err := regexp.Compile(regex); err != nil {
+		var err error
+
+		compiled, err = regexp.Compile("^(?:" + regex + ")$")
+		if err != nil {
 			return PatternSegment{}, fmt.Errorf("invalid regex in variable %q: %w", name, err)
 		}
 	}
 
-	return PatternSegment{Kind: SegmentVariable, Value: name, Pattern: regex}, nil
+	return PatternSegment{Kind: SegmentVariable, Value: name, Pattern: regex, CompiledRegexp: compiled}, nil
 }
 
 // MatchAddress matches an account address against parsed pattern segments.
@@ -144,9 +150,8 @@ func MatchAddress(address string, segments []PatternSegment) (map[string]string,
 			if part == "" {
 				return nil, false
 			}
-			if seg.Pattern != "" {
-				matched, err := regexp.MatchString("^(?:"+seg.Pattern+")$", part)
-				if err != nil || !matched {
+			if seg.CompiledRegexp != nil {
+				if !seg.CompiledRegexp.MatchString(part) {
 					return nil, false
 				}
 			}

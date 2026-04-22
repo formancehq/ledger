@@ -6,7 +6,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/accounttype"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
@@ -42,8 +41,8 @@ type ephemeralPurgeResult struct {
 func (b *Buffered) partitionEphemeralVolumes(
 	updates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 ) ephemeralPurgeResult {
-	// Build a cache of ledger → account types to avoid repeated lookups.
-	ledgerTypes := make(map[string]map[string]*commonpb.AccountType)
+	// Build a cache of ledger → compiled account types to avoid repeated parsing.
+	ledgerTypes := make(map[string][]accounttype.CompiledType)
 
 	result := ephemeralPurgeResult{
 		kept: make([]attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair], 0, len(updates)),
@@ -56,7 +55,7 @@ func (b *Buffered) partitionEphemeralVolumes(
 			continue
 		}
 
-		types, ok := ledgerTypes[update.Key.Ledger]
+		compiled, ok := ledgerTypes[update.Key.Ledger]
 		if !ok {
 			info, _, err := b.fsm.Registry.Ledgers.Get(
 				domain.LedgerKey{Name: update.Key.Ledger}.Bytes(),
@@ -67,17 +66,17 @@ func (b *Buffered) partitionEphemeralVolumes(
 				continue
 			}
 
-			types = info.GetAccountTypes()
-			ledgerTypes[update.Key.Ledger] = types
+			compiled = accounttype.CompileTypes(info.GetAccountTypes())
+			ledgerTypes[update.Key.Ledger] = compiled
 		}
 
-		if len(types) == 0 {
+		if len(compiled) == 0 {
 			result.kept = append(result.kept, update)
 
 			continue
 		}
 
-		matched := accounttype.FindMatchingType(update.Key.Account, types)
+		matched := accounttype.FindMatchingType(update.Key.Account, compiled)
 		if matched == nil || !matched.GetEphemeral() {
 			result.kept = append(result.kept, update)
 
