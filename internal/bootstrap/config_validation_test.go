@@ -32,7 +32,7 @@ func TestValidateOrPersistConfig_FirstBoot(t *testing.T) {
 	logger := logging.Testing()
 
 	cfg := Config{
-		RaftConfig: node.NodeConfig{NodeID: 1},
+		RaftConfig: node.NodeConfig{NodeID: 1, RotationThreshold: 1000},
 		ClusterID:  "test-cluster",
 	}
 
@@ -45,6 +45,7 @@ func TestValidateOrPersistConfig_FirstBoot(t *testing.T) {
 	require.NotNil(t, persisted)
 	require.Equal(t, uint64(1), persisted.NodeID)
 	require.Equal(t, "test-cluster", persisted.ClusterID)
+	require.Equal(t, uint64(1000), persisted.RotationThreshold)
 }
 
 func TestValidateOrPersistConfig_MatchingConfig(t *testing.T) {
@@ -53,7 +54,7 @@ func TestValidateOrPersistConfig_MatchingConfig(t *testing.T) {
 	logger := logging.Testing()
 
 	cfg := Config{
-		RaftConfig: node.NodeConfig{NodeID: 42},
+		RaftConfig: node.NodeConfig{NodeID: 42, RotationThreshold: 1000},
 		ClusterID:  "my-cluster",
 	}
 
@@ -72,7 +73,7 @@ func TestValidateOrPersistConfig_NodeIDMismatch(t *testing.T) {
 	logger := logging.Testing()
 
 	cfg := Config{
-		RaftConfig: node.NodeConfig{NodeID: 1},
+		RaftConfig: node.NodeConfig{NodeID: 1, RotationThreshold: 1000},
 		ClusterID:  "test-cluster",
 	}
 
@@ -98,7 +99,7 @@ func TestValidateOrPersistConfig_ClusterIDMismatch(t *testing.T) {
 	logger := logging.Testing()
 
 	cfg := Config{
-		RaftConfig: node.NodeConfig{NodeID: 1},
+		RaftConfig: node.NodeConfig{NodeID: 1, RotationThreshold: 1000},
 		ClusterID:  "cluster-a",
 	}
 
@@ -124,7 +125,7 @@ func TestValidateOrPersistConfig_ForceOverride(t *testing.T) {
 	logger := logging.Testing()
 
 	cfg := Config{
-		RaftConfig: node.NodeConfig{NodeID: 1},
+		RaftConfig: node.NodeConfig{NodeID: 1, RotationThreshold: 1000},
 		ClusterID:  "cluster-a",
 	}
 
@@ -135,6 +136,7 @@ func TestValidateOrPersistConfig_ForceOverride(t *testing.T) {
 	// Second boot with different values but force=true
 	cfg.RaftConfig.NodeID = 2
 	cfg.ClusterID = "cluster-b"
+	cfg.RaftConfig.RotationThreshold = 500
 	err = ValidateOrPersistConfig(store, cfg, logger, true)
 	require.NoError(t, err)
 
@@ -143,4 +145,69 @@ func TestValidateOrPersistConfig_ForceOverride(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(2), persisted.NodeID)
 	require.Equal(t, "cluster-b", persisted.ClusterID)
+	require.Equal(t, uint64(500), persisted.RotationThreshold)
+}
+
+func TestValidateOrPersistConfig_RotationThresholdMismatch(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	logger := logging.Testing()
+
+	cfg := Config{
+		RaftConfig: node.NodeConfig{NodeID: 1, RotationThreshold: 1000},
+		ClusterID:  "test-cluster",
+	}
+
+	// First boot
+	err := ValidateOrPersistConfig(store, cfg, logger, false)
+	require.NoError(t, err)
+
+	// Second boot with different rotation threshold
+	cfg.RaftConfig.RotationThreshold = 100
+	err = ValidateOrPersistConfig(store, cfg, logger, false)
+	require.Error(t, err)
+
+	var mismatchErr *ConfigMismatchError
+	require.ErrorAs(t, err, &mismatchErr)
+	require.Equal(t, "cache-rotation-threshold", mismatchErr.Field)
+	require.Equal(t, "1000", mismatchErr.Persisted)
+	require.Equal(t, "100", mismatchErr.Current)
+}
+
+func TestValidateOrPersistConfig_RotationThresholdBackfill(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	logger := logging.Testing()
+
+	// Simulate old config without RotationThreshold
+	batch := store.NewBatch()
+	err := SavePersistedConfig(batch, &PersistedConfig{
+		NodeID:    1,
+		ClusterID: "test-cluster",
+		// RotationThreshold: 0 (not persisted in old version)
+	})
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	// Boot with RotationThreshold — should backfill, not error
+	cfg := Config{
+		RaftConfig: node.NodeConfig{NodeID: 1, RotationThreshold: 1000},
+		ClusterID:  "test-cluster",
+	}
+	err = ValidateOrPersistConfig(store, cfg, logger, false)
+	require.NoError(t, err)
+
+	// Verify it was backfilled
+	persisted, err := LoadPersistedConfig(store)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1000), persisted.RotationThreshold)
+
+	// Now a mismatch should be detected
+	cfg.RaftConfig.RotationThreshold = 500
+	err = ValidateOrPersistConfig(store, cfg, logger, false)
+	require.Error(t, err)
+
+	var mismatchErr *ConfigMismatchError
+	require.ErrorAs(t, err, &mismatchErr)
+	require.Equal(t, "cache-rotation-threshold", mismatchErr.Field)
 }

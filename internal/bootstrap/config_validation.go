@@ -20,8 +20,9 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 	}
 
 	current := &PersistedConfig{
-		NodeID:    cfg.RaftConfig.NodeID,
-		ClusterID: cfg.ClusterID,
+		NodeID:            cfg.RaftConfig.NodeID,
+		ClusterID:         cfg.ClusterID,
+		RotationThreshold: cfg.RaftConfig.RotationThreshold,
 	}
 
 	if persisted == nil {
@@ -29,6 +30,17 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 		logger.Infof("First boot detected, persisting configuration for future safety checks")
 
 		return persistConfig(store, current)
+	}
+
+	// Backfill RotationThreshold for configs persisted before this field existed.
+	if persisted.RotationThreshold == 0 {
+		persisted.RotationThreshold = current.RotationThreshold
+
+		logger.Infof("Backfilling rotation-threshold=%d into persisted config", current.RotationThreshold)
+
+		if err := persistConfig(store, persisted); err != nil {
+			return fmt.Errorf("backfilling persisted config: %w", err)
+		}
 	}
 
 	// Subsequent boot: validate critical parameters
@@ -47,6 +59,15 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 			Field:     "cluster-id",
 			Persisted: persisted.ClusterID,
 			Current:   current.ClusterID,
+		})
+	}
+
+	// RotationThreshold: only validate if persisted value is non-zero (backward compat with old configs).
+	if persisted.RotationThreshold != 0 && persisted.RotationThreshold != current.RotationThreshold {
+		mismatches = append(mismatches, &ConfigMismatchError{
+			Field:     "cache-rotation-threshold",
+			Persisted: strconv.FormatUint(persisted.RotationThreshold, 10),
+			Current:   strconv.FormatUint(current.RotationThreshold, 10),
 		})
 	}
 
