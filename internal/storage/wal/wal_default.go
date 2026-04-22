@@ -73,7 +73,6 @@ type DefaultWAL struct {
 	zapLogger *zap.Logger
 
 	// Metrics
-	appendCacheHistogram     metric.Int64Histogram
 	appendSaveHistogram      metric.Int64Histogram
 	appendBatchSizeHistogram metric.Int64Histogram
 }
@@ -106,15 +105,6 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 	}
 
 	// Create metrics
-	s.appendCacheHistogram, err = meter.Int64Histogram(
-		"wal.append.cache.duration",
-		metric.WithDescription("Time spent updating in-memory cache"),
-		metric.WithUnit("us"),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("creating append cache histogram: %w", err)
-	}
-
 	s.appendSaveHistogram, err = meter.Int64Histogram(
 		"wal.append.save.duration",
 		metric.WithDescription("Time spent saving entries to DefaultWAL"),
@@ -423,8 +413,6 @@ func (s *DefaultWAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) 
 	logger.Infof("WAL Append")
 
 	// Update in-memory cache
-	cacheStart := time.Now()
-
 	if len(entries) > 0 {
 		if len(s.entries) > 0 {
 			offset := s.entries[0].Index
@@ -455,7 +443,6 @@ func (s *DefaultWAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) 
 		newHardState = hardState
 	}
 	s.mu.Unlock()
-	s.appendCacheHistogram.Record(context.Background(), time.Since(cacheStart).Microseconds())
 
 	// Save to DefaultWAL
 	saveStart := time.Now()

@@ -87,7 +87,6 @@ The Write-Ahead Log (WAL) metrics track the performance of the WAL append operat
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `wal.append.cache.duration` | Histogram | µs | Time spent updating the in-memory cache during WAL append. This is purely in-memory and should be very fast. |
 | `wal.append.save.duration` | Histogram | µs | Time spent saving entries to the WAL on disk. This is the actual disk I/O time. |
 | `wal.append.batch_size` | Histogram | 1 | Number of entries appended at once. Higher values indicate efficient batching under load. |
 
