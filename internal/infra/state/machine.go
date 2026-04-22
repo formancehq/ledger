@@ -343,6 +343,7 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		pendingLedgerCleanups:          pendingCleanups,
 	}
 	fsm.appliedCond = sync.NewCond(&fsm.appliedMu)
+	fsm.lastPersistedIndex.Store(lastAppliedIndex)
 
 	return fsm, nil
 }
