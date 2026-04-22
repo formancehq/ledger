@@ -63,6 +63,9 @@ func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl 
 	applyDuration, _ := meter.Int64Histogram("grpc.apply.duration",
 		metric.WithUnit("us"),
 		metric.WithDescription("Total duration of the gRPC Apply handler (auth + ctrl.Apply + signing)"),
+		metric.WithExplicitBucketBoundaries(
+			0, 100, 500, 2000, 10000, 50000, 200000, 1000000,
+		),
 	)
 
 	return &BucketServiceServerImpl{

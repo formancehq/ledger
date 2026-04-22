@@ -65,6 +65,9 @@ func NewDefaultController(
 		"ctrl.apply.duration",
 		metric.WithDescription("End-to-end duration of a batch Apply call"),
 		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 100, 500, 2000, 10000, 50000, 200000, 1000000,
+		),
 	)
 	if err != nil {
 		panic(err)
