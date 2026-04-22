@@ -93,6 +93,7 @@ func (m *Manager) StartPipeline(ctx context.Context, pipelineID string) error {
 	return err
 }
 
+//nolint:unparam // PipelineHandler return kept for future callers
 func (m *Manager) startPipeline(ctx context.Context, pipeline ledger.Pipeline) (*PipelineHandler, error) {
 	m.logger.Infof("initializing pipeline")
 	_, ok := m.pipelines[pipeline.ID]

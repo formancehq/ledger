@@ -1,7 +1,6 @@
 package stdout
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"testing"
@@ -17,7 +16,7 @@ import (
 func TestStdoutDriver(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.TODO()
+	ctx := t.Context()
 
 	// Create our driver
 	driver, err := NewDriver(struct{}{}, logging.Testing())

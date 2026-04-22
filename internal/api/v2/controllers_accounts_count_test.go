@@ -129,6 +129,7 @@ func TestAccountsCount(t *testing.T) {
 	for _, testCase := range testCases {
 		testCase := testCase
 		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
 
 			if testCase.expectStatusCode == 0 {
 				testCase.expectStatusCode = http.StatusNoContent

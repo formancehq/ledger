@@ -27,7 +27,7 @@ func NewEventCommittedTransactions(txs CommittedTransactions) publish.EventMessa
 type SavedMetadata struct {
 	Ledger     string            `json:"ledger"`
 	TargetType string            `json:"targetType"`
-	TargetID   string            `json:"targetId"`
+	TargetID   string            `json:"targetId"` //nolint:tagliatelle
 	Metadata   metadata.Metadata `json:"metadata"`
 }
 
@@ -60,7 +60,7 @@ func NewEventRevertedTransaction(revertedTransaction RevertedTransaction) publis
 type DeletedMetadata struct {
 	Ledger     string `json:"ledger"`
 	TargetType string `json:"targetType"`
-	TargetID   any    `json:"targetId"`
+	TargetID   any    `json:"targetId"` //nolint:tagliatelle
 	Key        string `json:"key"`
 }
 

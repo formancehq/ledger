@@ -18,11 +18,53 @@ formatters:
 run:
   timeout: 5m
 
+exclusions:
+  paths:
+    - pkg/client # Generated SDK code
+
 linters:
   enable:
     - unused
     - gosec
+    - tagliatelle
+    - gocyclo
+    - unparam
+    - unused
+    - unconvert
+    - errcheck
+    - errchkjson
+    - godox
+    - tparallel
+    - usetesting
   settings:
+    usetesting:
+      os-create-temp: true
+      os-mkdir-temp: true
+      os-setenv: true
+      os-temp-dir: true
+      os-chdir: true
+      context-background: true
+      context-todo: true
+    godox:
+      # Report any comments starting with keywords
+      keywords:
+        - BUG
+        - FIXME
+        - OPTIMIZE
+        - HACK
+    gocyclo:
+      # Minimal code complexity to report.
+      # Default: 30 (but we recommend 10-20)
+      min-complexity: 30
+    tagliatelle:
+      case:
+        rules:
+          json: goCamel
+          yaml: goCamel
+          xml: goCamel
+          bson: goCamel
+          env: upperSnake
+          envconfig: upperSnake
     errcheck:
       exclude-functions:
         - (io.Closer).Close

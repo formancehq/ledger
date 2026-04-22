@@ -1,7 +1,6 @@
 package bus
 
 import (
-	"context"
 	"os"
 	"testing"
 	"time"
@@ -24,13 +23,13 @@ func TestMonitor(t *testing.T) {
 		},
 		watermill.NewStdLogger(os.Getenv("DEBUG") == "true", os.Getenv("DEBUG") == "true"),
 	)
-	messages, err := pubSub.Subscribe(context.Background(), "testing")
+	messages, err := pubSub.Subscribe(t.Context(), "testing")
 	require.NoError(t, err)
 	p := topicmapper.NewPublisherDecorator(pubSub, map[string]string{
 		"*": "testing",
 	})
 	m := NewLedgerListener(p)
-	go m.CommittedTransactions(context.Background(), uuid.New(), ledger.Transaction{}, nil)
+	go m.CommittedTransactions(t.Context(), uuid.New(), ledger.Transaction{}, nil)
 
 	select {
 	case m := <-messages:
