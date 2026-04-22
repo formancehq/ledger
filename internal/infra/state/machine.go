@@ -2425,10 +2425,17 @@ func (fsm *Machine) QueryCheckpointSchedule() string {
 }
 
 // SetQueryCheckpointSchedule updates the query checkpoint schedule and fires the changed signal.
+// Must not be called from within ApplyEntries (use setQueryCheckpointSchedule instead).
 func (fsm *Machine) SetQueryCheckpointSchedule(s string) {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
 
+	fsm.setQueryCheckpointSchedule(s)
+}
+
+// setQueryCheckpointSchedule is the lock-free version for use within ApplyEntries
+// where fsm.mu is already held.
+func (fsm *Machine) setQueryCheckpointSchedule(s string) {
 	fsm.queryCheckpointSchedule = s
 	fsm.queryCheckpointScheduleChanged.Notify()
 }

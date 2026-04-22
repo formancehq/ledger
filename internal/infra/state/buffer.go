@@ -328,7 +328,7 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 			}
 		}
 
-		b.fsm.SetQueryCheckpointSchedule(*b.pendingQueryCheckpointScheduleUpdate)
+		b.fsm.setQueryCheckpointSchedule(*b.pendingQueryCheckpointScheduleUpdate)
 	}
 
 	// Merge NumscriptVersions and NumscriptEntries overlays into the underlying KeyStores
