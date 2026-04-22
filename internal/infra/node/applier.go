@@ -297,6 +297,11 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("restoring cache from store on restart: %w", err)
 	}
 
+	// Recover all FSM state (counters, periods, reversions, etc.) from Pebble.
+	if err := a.fsm.RecoverState(); err != nil {
+		return false, fmt.Errorf("recovering state from store on restart: %w", err)
+	}
+
 	// Recovery: if periods are in CLOSING state but no seal checkpoint exists,
 	// the node crashed after ClosePeriod batch.Commit() but before checkpoint creation.
 	// Pebble state is exactly at the ClosePeriod boundary right now (spool replay hasn't run).

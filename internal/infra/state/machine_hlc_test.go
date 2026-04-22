@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
@@ -178,10 +177,10 @@ func TestHLCTimestampIntegration(t *testing.T) {
 		require.Equal(t, uint64(5000), persistedTS)
 	})
 
-	t.Run("HLC timestamp survives snapshot round-trip", func(t *testing.T) {
+	t.Run("HLC timestamp persisted in Pebble", func(t *testing.T) {
 		t.Parallel()
 
-		machine, _, _ := newTestMachine(t)
+		machine, dataStore, _ := newTestMachine(t)
 		ctx := context.Background()
 
 		const ledgerName = "hlc-snapshot-test"
@@ -197,15 +196,10 @@ func TestHLCTimestampIntegration(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, result.Results[0].Error)
 
-		// Create snapshot
-		snapshotData, err := machine.CreateSnapshot(ctx)
+		// Verify timestamp is persisted in Pebble.
+		lastTimestamp, err := query.ReadLastAppliedTimestamp(dataStore)
 		require.NoError(t, err)
-
-		// Deserialize and verify the snapshot contains the timestamp
-		snapshot := &raftcmdpb.MemorySnapshot{}
-		err = proto.Unmarshal(snapshotData, snapshot)
-		require.NoError(t, err)
-		require.Equal(t, uint64(9999999), snapshot.GetLastAppliedTimestamp())
+		require.Equal(t, uint64(9999999), lastTimestamp)
 	})
 
 	t.Run("monotonicity across multiple entries", func(t *testing.T) {

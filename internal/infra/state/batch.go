@@ -189,6 +189,19 @@ func BatchDeleteQueryCheckpointSchedule(b *dal.Batch) error {
 	return nil
 }
 
+// SaveReversions stores a ledger's reversion bitset in the batch.
+func SaveReversions(b *dal.Batch, ledger string, data []byte) error {
+	b.KeyBuilder.PutByte(dal.KeyPrefixReversions).
+		PutString(ledger)
+
+	err := b.SetBytes(b.KeyBuilder.Build(), data)
+	if err != nil {
+		return fmt.Errorf("saving reversions for %s: %w", ledger, err)
+	}
+
+	return nil
+}
+
 // SaveSinkConfig stores a per-sink configuration in the batch.
 func SaveSinkConfig(b *dal.Batch, config *commonpb.SinkConfig) error {
 	b.KeyBuilder.PutByte(dal.KeyPrefixEventsConfig).

@@ -209,7 +209,7 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	}
 
 	// Flush pending reversions to the authoritative in-memory bitset.
-	// No Pebble writes needed — reversions are reconstructed from WAL replay or snapshot.
+	// Reversions are persisted to Pebble only at snapshot time (like the cache).
 	for _, txKey := range b.Derived.PendingReversions {
 		b.fsm.Registry.SetReverted(txKey)
 	}

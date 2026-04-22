@@ -8,7 +8,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
-	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -286,13 +285,13 @@ func TestAuditLogDisabled(t *testing.T) {
 	require.Empty(t, entries, "no audit entries should exist when audit is disabled")
 }
 
-func TestAuditLogInSnapshot(t *testing.T) {
+func TestAuditSequenceAdvances(t *testing.T) {
 	t.Parallel()
 
-	machine, _, _ := newTestMachine(t)
+	machine, dataStore, _ := newTestMachine(t)
 	ctx := context.Background()
 
-	const ledgerName = "audit-snapshot"
+	const ledgerName = "audit-seq"
 
 	// Create a ledger + transaction to increment audit sequence
 	result, err := machine.ApplyEntries(ctx,
@@ -311,14 +310,11 @@ func TestAuditLogInSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, result.Results[0].Error)
 
-	// Create snapshot and verify audit sequence is captured
-	snapshotBytes, err := machine.CreateSnapshot(ctx)
+	// Verify audit sequence is recoverable from Pebble.
+	lastAuditSeq, err := query.ReadLastAuditSequence(dataStore)
 	require.NoError(t, err)
-
-	var snapshot raftcmdpb.MemorySnapshot
-	require.NoError(t, proto.Unmarshal(snapshotBytes, &snapshot))
-	require.Equal(t, uint64(3), snapshot.GetNextAuditSequenceId(),
-		"snapshot should capture next audit sequence ID (2 entries written starting at 1, next = 3)")
+	require.Equal(t, uint64(2), lastAuditSeq,
+		"last audit sequence should be 2 (2 entries written)")
 }
 
 func TestBuildAuditFailure(t *testing.T) {

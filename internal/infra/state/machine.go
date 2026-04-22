@@ -129,10 +129,6 @@ type Machine struct {
 	// indexNotifier is notified after new logs are committed.
 	// Used by the index builder to update the read store.
 	indexNotifier Notifier
-
-	// snapshotBuf is a reusable buffer for snapshot serialization to avoid
-	// repeated allocations (snapshots can be large).
-	snapshotBuf []byte
 }
 
 func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, ks *keystore.KeyStore, sharedState *SharedState, eventNotifier Notifier, mirrorNotifier Notifier, indexNotifier Notifier, numscriptCacheSize int, volumeAssertions bool) (*Machine, error) {
@@ -348,10 +344,9 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 	return fsm, nil
 }
 
-// RecoverState recovers the FSM's in-memory counters from the Pebble data store.
-// This is called during restore bootstrap when the WAL snapshot doesn't carry
-// the FSM memory state (nextSequenceID, etc.).
-// After calling this method, CreateSnapshot will serialize the correct state.
+// RecoverState loads all FSM in-memory state from the Pebble data store.
+// Called on restart (via RecoverAndReplay) and after follower sync
+// (via reloadStateFromStore).
 func (fsm *Machine) RecoverState() error {
 	// Recover nextSequenceID from last log sequence
 	lastSeq, err := query.ReadLastSequence(fsm.dataStore)
@@ -399,11 +394,81 @@ func (fsm *Machine) RecoverState() error {
 
 	fsm.queryCheckpointSchedule = qcpSchedule
 
+	// Recover lastAppliedTimestamp from Pebble
+	lastAppliedTimestamp, err := query.ReadLastAppliedTimestamp(fsm.dataStore)
+	if err != nil {
+		return fmt.Errorf("recovering last applied timestamp: %w", err)
+	}
+
+	fsm.lastAppliedTimestamp = lastAppliedTimestamp
+
+	// Recover periods from Pebble
+	periodsCursor, err := query.ReadPeriods(context.Background(), fsm.dataStore)
+	if err != nil {
+		return fmt.Errorf("recovering periods: %w", err)
+	}
+
+	periodsFromStore, err := dal.Collect(periodsCursor)
+	if err != nil {
+		return fmt.Errorf("collecting periods: %w", err)
+	}
+
+	allPeriods := make(map[uint64]*commonpb.Period, len(periodsFromStore))
+
+	var currentOpenPeriod *commonpb.Period
+
+	var closingPeriods []*commonpb.Period
+
+	for _, p := range periodsFromStore {
+		allPeriods[p.GetId()] = p
+
+		switch p.GetStatus() {
+		case commonpb.PeriodStatus_PERIOD_OPEN:
+			currentOpenPeriod = p
+		case commonpb.PeriodStatus_PERIOD_CLOSING:
+			closingPeriods = append(closingPeriods, p)
+		}
+	}
+
+	nextPeriodID, err := query.ReadNextPeriodID(fsm.dataStore)
+	if err != nil {
+		return fmt.Errorf("recovering next period ID: %w", err)
+	}
+
+	fsm.Periods.Reset(allPeriods, currentOpenPeriod, closingPeriods, nextPeriodID)
+
+	// Recover period schedule from Pebble
+	periodSchedule, err := query.ReadPeriodSchedule(fsm.dataStore)
+	if err != nil {
+		return fmt.Errorf("recovering period schedule: %w", err)
+	}
+
+	fsm.Periods.SetSchedule(periodSchedule)
+
+	// Recover reversions from Pebble
+	reversions, err := query.ReadReversions(fsm.dataStore)
+	if err != nil {
+		return fmt.Errorf("recovering reversions: %w", err)
+	}
+
+	fsm.Registry.Reversions = reversions
+
+	// Recover pending ledger cleanups from Pebble
+	pendingCleanups, err := query.ReadPendingLedgerCleanups(fsm.dataStore)
+	if err != nil {
+		return fmt.Errorf("recovering pending ledger cleanups: %w", err)
+	}
+
+	fsm.pendingLedgerCleanups = pendingCleanups
+
 	fsm.logger.WithFields(map[string]any{
 		"nextSequenceID":        fsm.nextSequenceID,
 		"nextAuditSequenceID":   fsm.nextAuditSequenceID,
 		"nextQueryCheckpointID": fsm.nextQueryCheckpointID,
 		"hasLogHash":            len(fsm.lastLogHash) > 0,
+		"periodCount":           len(allPeriods),
+		"reversionLedgers":      len(reversions),
+		"pendingCleanups":       len(pendingCleanups),
 	}).Infof("Recovered FSM state from store")
 
 	return nil
@@ -1477,11 +1542,11 @@ func hasMirrorConfigChange(proposal *raftcmdpb.Proposal) bool {
 func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 	totalStart := time.Now()
 
-	// Persist cache into Pebble so it's included in the checkpoint
+	// Persist cache and reversions into Pebble so they're included in the checkpoint.
 	persistStart := time.Now()
 
-	if err := fsm.persistCacheToStore(); err != nil {
-		return nil, fmt.Errorf("persisting cache to store: %w", err)
+	if err := fsm.persistInMemoryState(); err != nil {
+		return nil, fmt.Errorf("persisting in-memory state: %w", err)
 	}
 
 	fsm.logger.WithFields(map[string]any{
@@ -1490,92 +1555,55 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 		"gen1":              fsm.Registry.Cache.BaseIndex.Gen1,
 		"currentGeneration": fsm.Registry.Cache.CurrentGeneration(),
 		"lastAppliedIndex":  fsm.lastAppliedIndex,
-	}).Infof("Persisted cache to Pebble")
+		"reversionLedgers":  len(fsm.Registry.Reversions),
+	}).Infof("Persisted in-memory state to Pebble")
 
 	checkpointID, err := fsm.dataStore.CreateSnapshot()
 	if err != nil {
 		return nil, fmt.Errorf("creating snapshot: %w", err)
 	}
 
-	// Collect CLOSED/ARCHIVED periods (OPEN and CLOSING are stored separately)
-	closedPeriods := make([]*commonpb.Period, 0)
-
-	for _, p := range fsm.Periods.AllPeriods() {
-		if p.GetStatus() != commonpb.PeriodStatus_PERIOD_OPEN && p.GetStatus() != commonpb.PeriodStatus_PERIOD_CLOSING {
-			closedPeriods = append(closedPeriods, p)
-		}
-	}
-
-	// Serialize reversion bitsets
-	reversions := make([]*raftcmdpb.ReversionBitsetEntry, 0, len(fsm.Registry.Reversions))
-	for ledger, bs := range fsm.Registry.Reversions {
-		reversions = append(reversions, &raftcmdpb.ReversionBitsetEntry{
-			Ledger: ledger,
-			Words:  bs.MarshalWords(),
-		})
-	}
-
-	// Serialize pending ledger cleanups
-	pendingCleanups := make([]*raftcmdpb.PendingLedgerCleanup, 0, len(fsm.pendingLedgerCleanups))
-	for ledger, seq := range fsm.pendingLedgerCleanups {
-		pendingCleanups = append(pendingCleanups, &raftcmdpb.PendingLedgerCleanup{
-			Ledger:         ledger,
-			DeleteSequence: seq,
-		})
-	}
-
+	// The MemorySnapshot only carries the checkpoint ID. All FSM state
+	// is recovered from the Pebble checkpoint on startup.
 	serializeStart := time.Now()
 	snapshot := &raftcmdpb.MemorySnapshot{
-		NextSequenceId:        fsm.nextSequenceID,
-		LastLogHash:           fsm.lastLogHash,
-		CheckpointId:          checkpointID,
-		CurrentGeneration:     fsm.Registry.Cache.CurrentGeneration(),
-		LastAppliedTimestamp:  fsm.lastAppliedTimestamp,
-		NextAuditSequenceId:   fsm.nextAuditSequenceID,
-		OpenPeriod:            fsm.Periods.CurrentOpenPeriod(),
-		ClosingPeriods:        fsm.Periods.ClosingPeriods(),
-		NextPeriodId:          fsm.Periods.NextPeriodID(),
-		ClosedPeriods:         closedPeriods,
-		Reversions:            reversions,
-		PendingLedgerCleanups: pendingCleanups,
-		NextQueryCheckpointId: fsm.nextQueryCheckpointID,
+		CheckpointId: checkpointID,
 	}
 
-	size := snapshot.SizeVT()
-	if cap(fsm.snapshotBuf) < size {
-		fsm.snapshotBuf = make([]byte, size)
-	} else {
-		fsm.snapshotBuf = fsm.snapshotBuf[:size]
-	}
-
-	n, err := snapshot.MarshalToVT(fsm.snapshotBuf)
+	data, err := snapshot.MarshalVT()
 	if err != nil {
 		return nil, fmt.Errorf("marshaling snapshot: %w", err)
 	}
 
 	lifecycle.SendEvent("spool replay completed", map[string]any{
 		"checkpointId": checkpointID,
-		"snapshotSize": n,
+		"snapshotSize": len(data),
 	})
 	fsm.logger.WithFields(map[string]any{
 		"totalDuration":     time.Since(totalStart).String(),
 		"serializeDuration": time.Since(serializeStart).String(),
-		"snapshotSize":      n,
+		"snapshotSize":      len(data),
 		"checkpointId":      checkpointID,
 	}).Infof("Created MemorySnapshot")
 
-	return fsm.snapshotBuf[:n], nil
+	return data, nil
 }
 
 // persistCacheToStore writes all cache data into Pebble under the 0xFF prefix.
-// This is called before creating a checkpoint so the checkpoint includes the cache.
-func (fsm *Machine) persistCacheToStore() error {
+// persistInMemoryState writes cache and reversions to Pebble in a single batch.
+// Called before creating a checkpoint so the checkpoint includes both.
+func (fsm *Machine) persistInMemoryState() error {
 	batch := fsm.dataStore.NewBatch()
 	defer func() { _ = batch.Cancel() }()
 
-	// Clear previous cache snapshot data: delete range [0xFF, 0xFF 0xFF 0x01)
-	// This covers all per-gen data and gen metadata but stops before the cache meta key.
-	// Then we re-write everything fresh.
+	// Reversions: write each ledger's bitset.
+	for ledger, bs := range fsm.Registry.Reversions {
+		if err := SaveReversions(batch, ledger, bs.MarshalWords()); err != nil {
+			return fmt.Errorf("saving reversions for %s: %w", ledger, err)
+		}
+	}
+
+	// Cache: clear previous snapshot data then re-write.
 	if err := batch.DeleteRangeNoSync(
 		[]byte{dal.KeyPrefixCacheSnapshot},
 		[]byte{dal.KeyPrefixCacheSnapshot, dal.CacheMetaKey, 0x01},
@@ -1583,16 +1611,12 @@ func (fsm *Machine) persistCacheToStore() error {
 		return fmt.Errorf("clearing cache snapshot range: %w", err)
 	}
 
-	// Persist both generations
 	for genIndex := range 2 {
-		genByte := byte(genIndex)
-
-		if err := fsm.persistCacheGeneration(batch, genByte); err != nil {
+		if err := fsm.persistCacheGeneration(batch, byte(genIndex)); err != nil {
 			return fmt.Errorf("persisting cache gen%d: %w", genIndex, err)
 		}
 	}
 
-	// Write cache-level metadata
 	if err := batch.SetProto(
 		[]byte{dal.KeyPrefixCacheSnapshot, dal.CacheMetaKey},
 		&raftcmdpb.CacheSnapshotMeta{
@@ -2024,48 +2048,12 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 		"checkpointId": memSnapshot.GetCheckpointId(),
 	}).Infof("Deserialized MemorySnapshot")
 
-	// Restore memory state from snapshot
-	fsm.nextSequenceID = memSnapshot.GetNextSequenceId()
-	fsm.nextAuditSequenceID = memSnapshot.GetNextAuditSequenceId()
-	fsm.nextQueryCheckpointID = memSnapshot.GetNextQueryCheckpointId()
-	fsm.lastLogHash = memSnapshot.GetLastLogHash()
 	fsm.lastCheckpointID = memSnapshot.GetCheckpointId()
-	fsm.lastAppliedTimestamp = memSnapshot.GetLastAppliedTimestamp()
-	// Rebuild allPeriods from all three sources in the snapshot
-	allPeriods := make(map[uint64]*commonpb.Period)
-	if memSnapshot.GetOpenPeriod() != nil {
-		allPeriods[memSnapshot.GetOpenPeriod().GetId()] = memSnapshot.GetOpenPeriod()
-	}
-
-	for _, cp := range memSnapshot.GetClosingPeriods() {
-		allPeriods[cp.GetId()] = cp
-	}
-
-	for _, p := range memSnapshot.GetClosedPeriods() {
-		allPeriods[p.GetId()] = p
-	}
-
-	fsm.Periods.Reset(allPeriods, memSnapshot.GetOpenPeriod(), memSnapshot.GetClosingPeriods(), memSnapshot.GetNextPeriodId())
 
 	// Reset the cache — it will be restored from Pebble later:
 	// - On restart: after InstallSnapshot, via RestoreCacheFromStore
 	// - On follower sync: after restoreCheckpoint, via RestoreCacheFromStore
 	fsm.Registry.Cache.Reset()
-	fsm.Registry.Cache.SetCurrentGeneration(memSnapshot.GetCurrentGeneration())
-
-	// Restore reversion bitsets from snapshot
-	fsm.Registry.ResetReversions()
-
-	for _, entry := range memSnapshot.GetReversions() {
-		fsm.Registry.Reversions[entry.GetLedger()] = domain.ReversionBitsetFromWords(entry.GetWords())
-	}
-
-	// Restore pending ledger cleanups from snapshot
-	fsm.pendingLedgerCleanups = make(map[string]uint64, len(memSnapshot.GetPendingLedgerCleanups()))
-
-	for _, entry := range memSnapshot.GetPendingLedgerCleanups() {
-		fsm.pendingLedgerCleanups[entry.GetLedger()] = entry.GetDeleteSequence()
-	}
 
 	fsm.logger.WithFields(map[string]any{
 		"totalDuration": time.Since(totalStart).String(),
@@ -2075,9 +2063,14 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 	return nil
 }
 
-// reloadStateFromStore reloads signing keys and shared runtime flags from Pebble.
+// reloadStateFromStore reloads all FSM state from Pebble.
 // Called after SynchronizeWithLeader restores the Pebble checkpoint from the leader.
 func (fsm *Machine) reloadStateFromStore() error {
+	// Recover all FSM counters, periods, reversions, etc. from Pebble.
+	if err := fsm.RecoverState(); err != nil {
+		return fmt.Errorf("recovering state: %w", err)
+	}
+
 	if fsm.keyStore != nil {
 		fsm.keyStore.Reset()
 
