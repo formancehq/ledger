@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	json "encoding/json"
 	"io"
 	"math/big"
 	"net/http"
@@ -13,7 +14,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/encoding/protojson"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
@@ -140,22 +140,22 @@ func TestHTTPSinkIntegration_PublishAndReceive(t *testing.T) {
 	require.Len(t, reqs, 2)
 
 	// Verify CREATED_LEDGER event
-	var evt1 eventspb.Event
-	require.NoError(t, protojson.Unmarshal(reqs[0].Body, &evt1))
-	require.Equal(t, commonpb.EventType_CREATED_LEDGER, evt1.GetType())
-	require.Equal(t, "orders", evt1.GetLedger())
-	require.Equal(t, uint64(1), evt1.GetLogSequence())
+	var evt1 map[string]any
+	require.NoError(t, json.Unmarshal(reqs[0].Body, &evt1))
+	require.Equal(t, "CREATED_LEDGER", evt1["type"])
+	require.Equal(t, "orders", evt1["ledger"])
+	require.Equal(t, float64(1), evt1["logSequence"])
 	require.Equal(t, "application/json", reqs[0].ContentType)
 	require.Equal(t, "created_ledger", reqs[0].EventType)
 	require.Equal(t, "orders", reqs[0].Ledger)
 	require.Equal(t, "1", reqs[0].LogSequence)
 
 	// Verify COMMITTED_TRANSACTION event
-	var evt2 eventspb.Event
-	require.NoError(t, protojson.Unmarshal(reqs[1].Body, &evt2))
-	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, evt2.GetType())
-	require.Equal(t, "orders", evt2.GetLedger())
-	require.Equal(t, uint64(2), evt2.GetLogSequence())
+	var evt2 map[string]any
+	require.NoError(t, json.Unmarshal(reqs[1].Body, &evt2))
+	require.Equal(t, "COMMITTED_TRANSACTION", evt2["type"])
+	require.Equal(t, "orders", evt2["ledger"])
+	require.Equal(t, float64(2), evt2["logSequence"])
 	require.Equal(t, "committed_transaction", reqs[1].EventType)
 	require.Equal(t, "2", reqs[1].LogSequence)
 }

@@ -12,8 +12,9 @@ import (
 )
 
 var (
-	protoMessageType = reflect.TypeFor[proto.Message]()
-	protoJSONOpts    = protojson.MarshalOptions{
+	protoMessageType  = reflect.TypeFor[proto.Message]()
+	jsonMarshalerType = reflect.TypeFor[json.Marshaler]()
+	protoJSONOpts     = protojson.MarshalOptions{
 		Multiline:       true,
 		Indent:          "  ",
 		EmitUnpopulated: true,
@@ -75,13 +76,21 @@ func encodeYAMLViaJSON(data any) error {
 	return err
 }
 
-// marshalJSON dispatches to protojson for proto.Message types, handles slices
-// and maps containing proto types, and falls back to encoding/json otherwise.
+// marshalJSON dispatches to the appropriate JSON encoder:
+//   - proto.Message with custom MarshalJSON → encoding/json (respects custom marshalers for Uint256, Timestamp, etc.)
+//   - proto.Message without custom MarshalJSON → protojson (preserves camelCase field names)
+//   - slices/maps of proto types → same logic per element
+//   - everything else → encoding/json
 func marshalJSON(data any) ([]byte, error) {
 	// Direct proto.Message
 	if msg, ok := data.(proto.Message); ok {
 		if isNilProto(msg) {
 			return []byte("null"), nil
+		}
+
+		// Prefer custom MarshalJSON when available (handles Uint256, Timestamp, etc.)
+		if _, ok := data.(json.Marshaler); ok {
+			return json.MarshalIndent(data, "", "  ")
 		}
 
 		return protoJSONOpts.Marshal(msg)
@@ -94,7 +103,13 @@ func marshalJSON(data any) ([]byte, error) {
 
 	switch rv.Kind() {
 	case reflect.Slice:
-		if rv.Type().Elem().Implements(protoMessageType) {
+		elemType := rv.Type().Elem()
+		// If elements have custom MarshalJSON, encoding/json will call it for each element.
+		if elemType.Implements(jsonMarshalerType) {
+			return json.MarshalIndent(data, "", "  ")
+		}
+
+		if elemType.Implements(protoMessageType) {
 			return marshalProtoSlice(rv)
 		}
 	case reflect.Map:
@@ -208,13 +223,23 @@ func convertAnyValue(rv reflect.Value) (any, error) {
 	return iface, nil
 }
 
-// protoToAny marshals a proto.Message to canonical JSON, then unmarshals to
-// any so it can be combined with other values in a json.MarshalIndent call.
+// protoToAny marshals a proto.Message to JSON, then unmarshals to any so it
+// can be combined with other values in a json.MarshalIndent call.
+// Prefers custom MarshalJSON when available (handles Uint256, Timestamp, etc.).
 func protoToAny(msg proto.Message) (any, error) {
-	b, err := protoJSONOpts.Marshal(msg)
+	var b []byte
+	var err error
+
+	if jm, ok := msg.(json.Marshaler); ok {
+		b, err = jm.MarshalJSON()
+	} else {
+		b, err = protoJSONOpts.Marshal(msg)
+	}
+
 	if err != nil {
 		return nil, err
 	}
+
 	var v any
 	if err := json.Unmarshal(b, &v); err != nil {
 		return nil, err

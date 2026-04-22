@@ -3,8 +3,7 @@ package events
 import (
 	"fmt"
 
-	"google.golang.org/protobuf/encoding/protojson"
-
+	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/eventspb"
 )
@@ -64,7 +63,7 @@ func LogToEvent(log *commonpb.Log) *eventspb.Event {
 func SerializeEvent(event *eventspb.Event, format Format) ([]byte, error) {
 	switch format {
 	case FormatJSON:
-		data, err := protojson.Marshal(event)
+		data, err := json.Marshal(event)
 		if err != nil {
 			return nil, fmt.Errorf("marshaling event to JSON: %w", err)
 		}

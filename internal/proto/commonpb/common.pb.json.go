@@ -1,14 +1,134 @@
 package commonpb
 
 import (
+	"encoding/hex"
 	"fmt"
 	"strconv"
 	"strings"
 
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
+
+	"github.com/formancehq/go-libs/v5/pkg/types/time"
+
 	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
 )
 
+// protoFieldJSON marshals a proto.Message field to json.RawValue using protojson,
+// preserving camelCase field names. Returns nil for nil/zero messages.
+func protoFieldJSON(msg proto.Message) json.RawValue {
+	if msg == nil {
+		return nil
+	}
+
+	b, err := protojson.Marshal(msg)
+	if err != nil {
+		return nil
+	}
+
+	return b
+}
+
 // Note: Transaction.MarshalJSON is already implemented in transaction.go
+
+// MarshalJSON implements json.Marshaler for Log (global log).
+func (x *Log) MarshalJSON() ([]byte, error) {
+	type Aux struct {
+		Sequence          uint64        `json:"sequence,omitempty"`
+		Payload           *LogPayload   `json:"payload,omitempty"`
+		Idempotency       json.RawValue `json:"idempotency,omitempty"`
+		Hash              string        `json:"hash,omitempty"`
+		Signature         json.RawValue `json:"signature,omitempty"`
+		Receipt           string        `json:"receipt,omitempty"`
+		ResponseSignature json.RawValue `json:"responseSignature,omitempty"`
+	}
+
+	aux := Aux{
+		Sequence:          x.GetSequence(),
+		Payload:           x.GetPayload(),
+		Idempotency:       protoFieldJSON(x.GetIdempotency()),
+		Signature:         protoFieldJSON(x.GetSignature()),
+		ResponseSignature: protoFieldJSON(x.GetResponseSignature()),
+		Receipt:           x.GetReceipt(),
+	}
+
+	if len(x.GetHash()) > 0 {
+		aux.Hash = hex.EncodeToString(x.GetHash())
+	}
+
+	return json.Marshal(aux)
+}
+
+// MarshalJSON implements json.Marshaler for LogPayload (oneof dispatch).
+func (x *LogPayload) MarshalJSON() ([]byte, error) {
+	switch p := x.GetType().(type) {
+	case *LogPayload_CreateLedger:
+		return json.Marshal(&struct {
+			CreateLedger *CreateLedgerLog `json:"createLedger,omitempty"`
+		}{CreateLedger: p.CreateLedger})
+	case *LogPayload_DeleteLedger:
+		return json.Marshal(&struct {
+			DeleteLedger *DeleteLedgerLog `json:"deleteLedger,omitempty"`
+		}{DeleteLedger: p.DeleteLedger})
+	case *LogPayload_Apply:
+		return json.Marshal(&struct {
+			Apply *ApplyLedgerLog `json:"apply,omitempty"`
+		}{Apply: p.Apply})
+	default:
+		// Other variants (signing, sinks, periods, etc.) — use protojson for camelCase
+		return protojson.Marshal(x)
+	}
+}
+
+// MarshalJSON implements json.Marshaler for CreateLedgerLog.
+func (x *CreateLedgerLog) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Info *LedgerInfo `json:"info,omitempty"`
+	}{Info: x.GetInfo()})
+}
+
+// MarshalJSON implements json.Marshaler for DeleteLedgerLog.
+func (x *DeleteLedgerLog) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Info *LedgerInfo `json:"info,omitempty"`
+	}{Info: x.GetInfo()})
+}
+
+// MarshalJSON implements json.Marshaler for ApplyLedgerLog.
+func (x *ApplyLedgerLog) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		LedgerName string     `json:"ledgerName,omitempty"`
+		Log        *LedgerLog `json:"log,omitempty"`
+	}{
+		LedgerName: x.GetLedgerName(),
+		Log:        x.GetLog(),
+	})
+}
+
+// MarshalJSON implements json.Marshaler for LedgerLogPayload (oneof dispatch).
+func (x *LedgerLogPayload) MarshalJSON() ([]byte, error) {
+	switch p := x.GetPayload().(type) {
+	case *LedgerLogPayload_CreatedTransaction:
+		return json.Marshal(&struct {
+			CreatedTransaction *CreatedTransaction `json:"createdTransaction,omitempty"`
+		}{CreatedTransaction: p.CreatedTransaction})
+	case *LedgerLogPayload_RevertedTransaction:
+		return json.Marshal(&struct {
+			RevertedTransaction *RevertedTransaction `json:"revertedTransaction,omitempty"`
+		}{RevertedTransaction: p.RevertedTransaction})
+	case *LedgerLogPayload_SavedMetadata:
+		return json.Marshal(&struct {
+			SavedMetadata *SavedMetadata `json:"savedMetadata,omitempty"`
+		}{SavedMetadata: p.SavedMetadata})
+	case *LedgerLogPayload_DeletedMetadata:
+		return json.Marshal(&struct {
+			DeletedMetadata *DeletedMetadata `json:"deletedMetadata,omitempty"`
+		}{DeletedMetadata: p.DeletedMetadata})
+	default:
+		// Other variants — use protojson for camelCase
+		return protojson.Marshal(x)
+	}
+}
 
 // MarshalJSON implements json.Marshaler for PostCommitVolumes.
 func (x *PostCommitVolumes) MarshalJSON() ([]byte, error) {
@@ -232,6 +352,114 @@ func (x *PreparedQueryCursor) MarshalJSON() ([]byte, error) {
 		AccountData:     x.GetAccountData(),
 		TransactionData: x.GetTransactionData(),
 	})
+}
+
+// MarshalJSON implements json.Marshaler for LedgerInfo.
+func (x *LedgerInfo) MarshalJSON() ([]byte, error) {
+	type Aux struct {
+		Name                   string        `json:"name,omitempty"`
+		CreatedAt              *time.Time    `json:"createdAt,omitempty"`
+		DeletedAt              *time.Time    `json:"deletedAt,omitempty"`
+		MetadataSchema         json.RawValue `json:"metadataSchema,omitempty"`
+		Mode                   string        `json:"mode,omitempty"`
+		MirrorSource           json.RawValue `json:"mirrorSource,omitempty"`
+		MirrorSyncProgress     json.RawValue `json:"mirrorSyncProgress,omitempty"`
+		BuiltinIndexes         json.RawValue `json:"builtinIndexes,omitempty"`
+		LogBuiltinIndexes      json.RawValue `json:"logBuiltinIndexes,omitempty"`
+		AccountTypes           json.RawValue `json:"accountTypes,omitempty"`
+		DefaultEnforcementMode string        `json:"defaultEnforcementMode,omitempty"`
+	}
+
+	aux := Aux{
+		Name:                   x.GetName(),
+		MetadataSchema:         protoFieldJSON(x.GetMetadataSchema()),
+		MirrorSource:           protoFieldJSON(x.GetMirrorSource()),
+		MirrorSyncProgress:     protoFieldJSON(x.GetMirrorSyncProgress()),
+		BuiltinIndexes:         protoFieldJSON(x.GetBuiltinIndexes()),
+		LogBuiltinIndexes:      protoFieldJSON(x.GetLogBuiltinIndexes()),
+		DefaultEnforcementMode: x.GetDefaultEnforcementMode().String(),
+	}
+
+	if x.GetMode() != LedgerMode_LEDGER_MODE_NORMAL {
+		aux.Mode = x.GetMode().String()
+	}
+
+	if x.GetCreatedAt() != nil {
+		t := x.GetCreatedAt().AsTime()
+		aux.CreatedAt = &t
+	}
+
+	if x.GetDeletedAt() != nil {
+		t := x.GetDeletedAt().AsTime()
+		aux.DeletedAt = &t
+	}
+
+	if len(x.GetAccountTypes()) > 0 {
+		// Use protojson for the map of proto types to preserve camelCase
+		m := make(map[string]json.RawValue, len(x.GetAccountTypes()))
+		for k, v := range x.GetAccountTypes() {
+			m[k] = protoFieldJSON(v)
+		}
+
+		b, err := json.Marshal(m)
+		if err != nil {
+			return nil, err
+		}
+
+		aux.AccountTypes = b
+	}
+
+	return json.Marshal(aux)
+}
+
+// MarshalJSON implements json.Marshaler for Period.
+func (x *Period) MarshalJSON() ([]byte, error) {
+	type Aux struct {
+		ID                 uint64     `json:"id,omitempty"`
+		Start              *time.Time `json:"start,omitempty"`
+		End                *time.Time `json:"end,omitempty"`
+		Status             string     `json:"status,omitempty"`
+		CloseSequence      uint64     `json:"closeSequence,omitempty"`
+		SealingHash        string     `json:"sealingHash,omitempty"`
+		LastLogHash        string     `json:"lastLogHash,omitempty"`
+		StartSequence      uint64     `json:"startSequence,omitempty"`
+		StateHash          string     `json:"stateHash,omitempty"`
+		StartAuditSequence uint64     `json:"startAuditSequence,omitempty"`
+		CloseAuditSequence uint64     `json:"closeAuditSequence,omitempty"`
+	}
+
+	aux := Aux{
+		ID:                 x.GetId(),
+		Status:             x.GetStatus().String(),
+		CloseSequence:      x.GetCloseSequence(),
+		StartSequence:      x.GetStartSequence(),
+		StartAuditSequence: x.GetStartAuditSequence(),
+		CloseAuditSequence: x.GetCloseAuditSequence(),
+	}
+
+	if x.GetStart() != nil {
+		t := x.GetStart().AsTime()
+		aux.Start = &t
+	}
+
+	if x.GetEnd() != nil {
+		t := x.GetEnd().AsTime()
+		aux.End = &t
+	}
+
+	if len(x.GetSealingHash()) > 0 {
+		aux.SealingHash = hex.EncodeToString(x.GetSealingHash())
+	}
+
+	if len(x.GetLastLogHash()) > 0 {
+		aux.LastLogHash = hex.EncodeToString(x.GetLastLogHash())
+	}
+
+	if len(x.GetStateHash()) > 0 {
+		aux.StateHash = hex.EncodeToString(x.GetStateHash())
+	}
+
+	return json.Marshal(aux)
 }
 
 // ParseTarget parses targetType and targetId into a Target message.

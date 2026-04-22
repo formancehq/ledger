@@ -125,6 +125,71 @@ func TestEncodeStructured(t *testing.T) {
 		require.NotContains(t, out, `"created_at"`)
 	})
 
+	t.Run("transaction json renders uint256 as number and timestamp as ISO string", func(t *testing.T) {
+		tx := &commonpb.Transaction{
+			Id: 42,
+			Postings: []*commonpb.Posting{
+				{
+					Source:      "world",
+					Destination: "users:001",
+					Amount:      commonpb.NewUint256FromUint64(5_000_000_000),
+					Asset:       "USD",
+				},
+			},
+			Timestamp: &commonpb.Timestamp{Data: 1_776_864_120_966_130},
+		}
+
+		cmd := &cobra.Command{}
+		cmdutil.AddOutputFlags(cmd)
+		require.NoError(t, cmd.Flags().Set("json", "true"))
+
+		out := captureStdout(t, func() {
+			handled, err := cmdutil.EncodeStructured(cmd, tx)
+			require.NoError(t, err)
+			require.True(t, handled)
+		})
+
+		// Uint256 must render as a plain number, not {"v0":...,"v1":...,...}
+		require.Contains(t, out, `5000000000`)
+		require.NotContains(t, out, `"v0"`)
+		require.NotContains(t, out, `"v1"`)
+
+		// Timestamp must render as an ISO 8601 string, not {"data":...}
+		require.Contains(t, out, `"timestamp"`)
+		require.Contains(t, out, "2026-")
+		require.NotContains(t, out, `"data"`)
+	})
+
+	t.Run("transaction slice json renders properly", func(t *testing.T) {
+		txs := []*commonpb.Transaction{
+			{
+				Id: 1,
+				Postings: []*commonpb.Posting{
+					{
+						Source:      "world",
+						Destination: "bank",
+						Amount:      commonpb.NewUint256FromUint64(100),
+						Asset:       "EUR",
+					},
+				},
+				Timestamp: &commonpb.Timestamp{Data: 1_000_000_000_000},
+			},
+		}
+
+		cmd := &cobra.Command{}
+		cmdutil.AddOutputFlags(cmd)
+		require.NoError(t, cmd.Flags().Set("json", "true"))
+
+		out := captureStdout(t, func() {
+			handled, err := cmdutil.EncodeStructured(cmd, txs)
+			require.NoError(t, err)
+			require.True(t, handled)
+		})
+
+		require.NotContains(t, out, `"v0"`)
+		require.NotContains(t, out, `"data"`)
+	})
+
 	t.Run("map string any with proto values", func(t *testing.T) {
 		data := map[string]any{
 			"info": &commonpb.NumscriptInfo{

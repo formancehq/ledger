@@ -3,13 +3,13 @@
 package events_test
 
 import (
+	"encoding/json"
 	"math/big"
 	"testing"
 	"time"
 
 	"github.com/IBM/sarama"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/encoding/protojson"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
@@ -125,18 +125,18 @@ func TestKafkaSinkIntegration_PublishAndConsume(t *testing.T) {
 	msgs := consumeKafkaMessages(t, brokers, topic, 2, 10*time.Second)
 
 	// Verify CREATED_LEDGER event (JSON)
-	var evt1 eventspb.Event
-	require.NoError(t, protojson.Unmarshal(msgs[0].Value, &evt1))
-	require.Equal(t, commonpb.EventType_CREATED_LEDGER, evt1.GetType())
-	require.Equal(t, "orders", evt1.GetLedger())
-	require.Equal(t, uint64(1), evt1.GetLogSequence())
+	var evt1 map[string]any
+	require.NoError(t, json.Unmarshal(msgs[0].Value, &evt1))
+	require.Equal(t, "CREATED_LEDGER", evt1["type"])
+	require.Equal(t, "orders", evt1["ledger"])
+	require.Equal(t, float64(1), evt1["logSequence"])
 
 	// Verify COMMITTED_TRANSACTION event (JSON)
-	var evt2 eventspb.Event
-	require.NoError(t, protojson.Unmarshal(msgs[1].Value, &evt2))
-	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, evt2.GetType())
-	require.Equal(t, "orders", evt2.GetLedger())
-	require.Equal(t, uint64(2), evt2.GetLogSequence())
+	var evt2 map[string]any
+	require.NoError(t, json.Unmarshal(msgs[1].Value, &evt2))
+	require.Equal(t, "COMMITTED_TRANSACTION", evt2["type"])
+	require.Equal(t, "orders", evt2["ledger"])
+	require.Equal(t, float64(2), evt2["logSequence"])
 
 	// Verify event_type header
 	require.Equal(t, "created_ledger", headerValue(msgs[0].Headers, "event_type"))

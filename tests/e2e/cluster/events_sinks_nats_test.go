@@ -4,18 +4,17 @@ package cluster
 
 import (
 	"context"
+	"encoding/json"
 	"math/big"
 	"time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/eventspb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	natsserver "github.com/nats-io/nats-server/v2/server"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"google.golang.org/protobuf/encoding/protojson"
 	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 )
@@ -147,13 +146,17 @@ var _ = Describe("Events Sinks NATS", Ordered, func() {
 			foundCommittedTx        bool
 		)
 		for _, msg := range msgs {
-			var evt eventspb.Event
-			Expect(protojson.Unmarshal(msg.Data(), &evt)).To(Succeed())
+			var evt map[string]any
+			Expect(json.Unmarshal(msg.Data(), &evt)).To(Succeed())
 
-			if evt.Type == commonpb.EventType_CREATED_LEDGER && evt.Ledger == "nats-test" {
+			evtType, _ := evt["type"].(string)
+			evtLedger, _ := evt["ledger"].(string)
+
+			if evtType == "CREATED_LEDGER" && evtLedger == "nats-test" {
 				foundCreatedLedger = true
 			}
-			if evt.Type == commonpb.EventType_COMMITTED_TRANSACTION && evt.Ledger == "nats-test" {
+
+			if evtType == "COMMITTED_TRANSACTION" && evtLedger == "nats-test" {
 				foundCommittedTx = true
 			}
 		}

@@ -169,15 +169,20 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		})
 
 		It("Should show the schema in ledgers get --json", func() {
-			var ledger commonpb.LedgerInfo
+			var ledger map[string]any
 			err := runCLIJSON(grpcPort, &ledger, "ledgers", "get", ledgerName, "--json")
 			Expect(err).To(Succeed())
 
-			Expect(ledger.Name).To(Equal(ledgerName))
-			Expect(ledger.MetadataSchema).NotTo(BeNil())
-			Expect(ledger.MetadataSchema.AccountFields).To(HaveKey("age"))
-			Expect(ledger.MetadataSchema.AccountFields).To(HaveKey("active"))
-			Expect(ledger.MetadataSchema.TransactionFields).To(HaveKey("priority"))
+			Expect(ledger["name"]).To(Equal(ledgerName))
+			schema, ok := ledger["metadataSchema"].(map[string]any)
+			Expect(ok).To(BeTrue(), "metadataSchema should be a map")
+			accountFields, ok := schema["accountFields"].(map[string]any)
+			Expect(ok).To(BeTrue(), "accountFields should be a map")
+			Expect(accountFields).To(HaveKey("age"))
+			Expect(accountFields).To(HaveKey("active"))
+			txFields, ok := schema["transactionFields"].(map[string]any)
+			Expect(ok).To(BeTrue(), "transactionFields should be a map")
+			Expect(txFields).To(HaveKey("priority"))
 		})
 	})
 
@@ -438,14 +443,17 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		})
 
 		It("Should show schema in ledgers get", func() {
-			var ledger commonpb.LedgerInfo
+			var ledger map[string]any
 			err := runCLIJSON(grpcPort, &ledger, "ledgers", "get", ledgerName, "--json")
 			Expect(err).To(Succeed())
 
-			Expect(ledger.MetadataSchema).NotTo(BeNil())
-			Expect(ledger.MetadataSchema.AccountFields).To(HaveKey("age"))
-			Expect(ledger.MetadataSchema.AccountFields).To(HaveKey("active"))
-			Expect(ledger.MetadataSchema.AccountFields).NotTo(HaveKey("score"))
+			schema, ok := ledger["metadataSchema"].(map[string]any)
+			Expect(ok).To(BeTrue(), "metadataSchema should be a map")
+			accountFields, ok := schema["accountFields"].(map[string]any)
+			Expect(ok).To(BeTrue(), "accountFields should be a map")
+			Expect(accountFields).To(HaveKey("age"))
+			Expect(accountFields).To(HaveKey("active"))
+			Expect(accountFields).NotTo(HaveKey("score"))
 		})
 	})
 

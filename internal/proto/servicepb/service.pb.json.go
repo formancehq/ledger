@@ -7,6 +7,17 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
+// MarshalJSON implements json.Marshaler for GetTransactionResponse.
+func (x *GetTransactionResponse) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Transaction *commonpb.Transaction `json:"transaction,omitempty"`
+		Receipt     string                `json:"receipt,omitempty"`
+	}{
+		Transaction: x.GetTransaction(),
+		Receipt:     x.GetReceipt(),
+	})
+}
+
 // MarshalJSON implements json.Marshaler for CreateTransactionPayload.
 func (x *CreateTransactionPayload) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {

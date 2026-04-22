@@ -4,6 +4,7 @@ package events_test
 
 import (
 	"context"
+	"encoding/json"
 	"math/big"
 	"os"
 	"testing"
@@ -13,7 +14,6 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/encoding/protojson"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
@@ -192,18 +192,18 @@ func TestNATSSinkIntegration_PublishAndConsume(t *testing.T) {
 	msgs := consumeEvents(t, cons, 2, 5*time.Second)
 
 	// Verify CREATED_LEDGER event (JSON)
-	var evt1 eventspb.Event
-	require.NoError(t, protojson.Unmarshal(msgs[0].Data(), &evt1))
-	require.Equal(t, commonpb.EventType_CREATED_LEDGER, evt1.GetType())
-	require.Equal(t, "orders", evt1.GetLedger())
-	require.Equal(t, uint64(1), evt1.GetLogSequence())
+	var evt1 map[string]any
+	require.NoError(t, json.Unmarshal(msgs[0].Data(), &evt1))
+	require.Equal(t, "CREATED_LEDGER", evt1["type"])
+	require.Equal(t, "orders", evt1["ledger"])
+	require.Equal(t, float64(1), evt1["logSequence"])
 
 	// Verify COMMITTED_TRANSACTION event (JSON)
-	var evt2 eventspb.Event
-	require.NoError(t, protojson.Unmarshal(msgs[1].Data(), &evt2))
-	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, evt2.GetType())
-	require.Equal(t, "orders", evt2.GetLedger())
-	require.Equal(t, uint64(2), evt2.GetLogSequence())
+	var evt2 map[string]any
+	require.NoError(t, json.Unmarshal(msgs[1].Data(), &evt2))
+	require.Equal(t, "COMMITTED_TRANSACTION", evt2["type"])
+	require.Equal(t, "orders", evt2["ledger"])
+	require.Equal(t, float64(2), evt2["logSequence"])
 
 	// Verify NATS subject routing
 	require.Equal(t, topic+".orders.created_ledger", msgs[0].Subject())
@@ -426,24 +426,24 @@ func TestNATSSinkIntegration_SubjectRouting(t *testing.T) {
 	// Verify "orders" consumer gets exactly 2 events (CREATED_LEDGER + COMMITTED_TRANSACTION)
 	ordersMsgs := consumeEvents(t, ordersConsumer, 2, 5*time.Second)
 
-	var ordEvt1, ordEvt2 eventspb.Event
-	require.NoError(t, protojson.Unmarshal(ordersMsgs[0].Data(), &ordEvt1))
-	require.NoError(t, protojson.Unmarshal(ordersMsgs[1].Data(), &ordEvt2))
+	var ordEvt1, ordEvt2 map[string]any
+	require.NoError(t, json.Unmarshal(ordersMsgs[0].Data(), &ordEvt1))
+	require.NoError(t, json.Unmarshal(ordersMsgs[1].Data(), &ordEvt2))
 
-	require.Equal(t, commonpb.EventType_CREATED_LEDGER, ordEvt1.GetType())
-	require.Equal(t, "orders", ordEvt1.GetLedger())
-	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, ordEvt2.GetType())
-	require.Equal(t, "orders", ordEvt2.GetLedger())
+	require.Equal(t, "CREATED_LEDGER", ordEvt1["type"])
+	require.Equal(t, "orders", ordEvt1["ledger"])
+	require.Equal(t, "COMMITTED_TRANSACTION", ordEvt2["type"])
+	require.Equal(t, "orders", ordEvt2["ledger"])
 
 	// Verify "payments" consumer gets exactly 2 events
 	paymentsMsgs := consumeEvents(t, paymentsConsumer, 2, 5*time.Second)
 
-	var payEvt1, payEvt2 eventspb.Event
-	require.NoError(t, protojson.Unmarshal(paymentsMsgs[0].Data(), &payEvt1))
-	require.NoError(t, protojson.Unmarshal(paymentsMsgs[1].Data(), &payEvt2))
+	var payEvt1, payEvt2 map[string]any
+	require.NoError(t, json.Unmarshal(paymentsMsgs[0].Data(), &payEvt1))
+	require.NoError(t, json.Unmarshal(paymentsMsgs[1].Data(), &payEvt2))
 
-	require.Equal(t, commonpb.EventType_CREATED_LEDGER, payEvt1.GetType())
-	require.Equal(t, "payments", payEvt1.GetLedger())
-	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, payEvt2.GetType())
-	require.Equal(t, "payments", payEvt2.GetLedger())
+	require.Equal(t, "CREATED_LEDGER", payEvt1["type"])
+	require.Equal(t, "payments", payEvt1["ledger"])
+	require.Equal(t, "COMMITTED_TRANSACTION", payEvt2["type"])
+	require.Equal(t, "payments", payEvt2["ledger"])
 }
