@@ -2,6 +2,7 @@ package preload
 
 import (
 	"encoding/hex"
+	"sync"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -11,6 +12,12 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
+
+// resolveParallelism is the maximum number of concurrent Pebble Gets within
+// a single attribute type resolution. The workload is I/O bound (Ceph RBD
+// reads at ~1ms per miss), so moderate parallelism saturates the storage
+// without overwhelming Pebble's iterator pool.
+const resolveParallelism = 16
 
 // resolveResult holds the output of a resolve call: preloads, touches, and tracker keys.
 type resolveResult struct {
@@ -22,6 +29,7 @@ type resolveResult struct {
 // resolveStandard resolves a standard attribute type (loaded via attrs.*.Get).
 // For each key not guaranteed in cache, it either emits a touch (if the key is
 // in Gen1 but not Gen0) or loads the value from store and appends a preload entry.
+// Keys are resolved with bounded parallelism to amortize I/O latency.
 func resolveStandard[K interface {
 	comparable
 	Bytes() []byte
@@ -40,9 +48,14 @@ func resolveStandard[K interface {
 	typeName string,
 ) (*resolveResult, error) {
 	var (
+		mu       sync.Mutex
+		wg       sync.WaitGroup
+		firstErr error
 		preloads []*raftcmdpb.Preload
 		touches  []*raftcmdpb.CacheTouch
 	)
+
+	sem := make(chan struct{}, resolveParallelism)
 
 	for key := range keys {
 		canonicalKey := key.Bytes()
@@ -62,10 +75,12 @@ func resolveStandard[K interface {
 				}).Debugf("Cache touch: promoting key from gen1 to gen0")
 			}
 
+			mu.Lock()
 			touches = append(touches, &raftcmdpb.CacheTouch{
 				Id:   id[:],
 				Type: touchType,
 			})
+			mu.Unlock()
 
 			continue
 
@@ -79,25 +94,49 @@ func resolveStandard[K interface {
 				}).Debugf("Cache miss: key not guaranteed in cache, loading from store")
 			}
 
-			result, err := loader.LoadOrWait(id, boundary, func() (T, error) {
-				return getValue(store, canonicalKey)
+			sem <- struct{}{}
+
+			canonicalKey := canonicalKey
+			id := id
+			tag := tag
+
+			wg.Go(func() {
+				defer func() { <-sem }()
+
+				result, err := loader.LoadOrWait(id, boundary, func() (T, error) {
+					return getValue(store, canonicalKey)
+				})
+
+				mu.Lock()
+				defer mu.Unlock()
+
+				if err != nil {
+					if firstErr == nil {
+						firstErr = err
+					}
+
+					return
+				}
+
+				if result.FromLoad {
+					tracker = append(tracker, id)
+				}
+
+				var zero T
+				hasValue := any(result.Value) != any(zero)
+
+				if includeZeroValue || hasValue {
+					attrID := &raftcmdpb.AttributeID{Id: id[:], Tag: tag}
+					preloads = append(preloads, buildPreload(attrID, result.Value))
+				}
 			})
-			if err != nil {
-				return nil, err
-			}
-
-			if result.FromLoad {
-				tracker = append(tracker, id)
-			}
-
-			var zero T
-			hasValue := any(result.Value) != any(zero)
-
-			if includeZeroValue || hasValue {
-				attrID := &raftcmdpb.AttributeID{Id: id[:], Tag: tag}
-				preloads = append(preloads, buildPreload(attrID, result.Value))
-			}
 		}
+	}
+
+	wg.Wait()
+
+	if firstErr != nil {
+		return nil, firstErr
 	}
 
 	return &resolveResult{preloads: preloads, touches: touches, tracker: tracker}, nil
@@ -106,6 +145,7 @@ func resolveStandard[K interface {
 // resolveCustom resolves a custom attribute type where callers provide load functions.
 // Custom types (sink configs, numscript) don't come from Pebble attributes, so
 // baseIndex is always 0 — acceptable since they are rarely overwritten.
+// Keys are resolved with bounded parallelism to amortize I/O latency.
 func resolveCustom[K interface {
 	comparable
 	Bytes() []byte
@@ -122,9 +162,14 @@ func resolveCustom[K interface {
 	typeName string,
 ) (*resolveResult, error) {
 	var (
+		mu       sync.Mutex
+		wg       sync.WaitGroup
+		firstErr error
 		preloads []*raftcmdpb.Preload
 		touches  []*raftcmdpb.CacheTouch
 	)
+
+	sem := make(chan struct{}, resolveParallelism)
 
 	for key, loadFn := range keys {
 		canonicalKey := key.Bytes()
@@ -144,10 +189,12 @@ func resolveCustom[K interface {
 				}).Debugf("Cache touch: promoting key from gen1 to gen0")
 			}
 
+			mu.Lock()
 			touches = append(touches, &raftcmdpb.CacheTouch{
 				Id:   id[:],
 				Type: touchType,
 			})
+			mu.Unlock()
 
 			continue
 
@@ -161,23 +208,47 @@ func resolveCustom[K interface {
 				}).Debugf("Cache miss: key not guaranteed in cache, loading from store")
 			}
 
-			result, err := loader.LoadOrWait(id, boundary, loadFn)
-			if err != nil {
-				return nil, err
-			}
+			sem <- struct{}{}
 
-			if result.FromLoad {
-				tracker = append(tracker, id)
-			}
+			loadFn := loadFn
+			id := id
+			tag := tag
 
-			var zero T
-			hasValue := any(result.Value) != any(zero)
+			wg.Go(func() {
+				defer func() { <-sem }()
 
-			if includeZeroValue || hasValue {
-				attrID := &raftcmdpb.AttributeID{Id: id[:], Tag: tag}
-				preloads = append(preloads, buildPreload(attrID, result.Value))
-			}
+				result, err := loader.LoadOrWait(id, boundary, loadFn)
+
+				mu.Lock()
+				defer mu.Unlock()
+
+				if err != nil {
+					if firstErr == nil {
+						firstErr = err
+					}
+
+					return
+				}
+
+				if result.FromLoad {
+					tracker = append(tracker, id)
+				}
+
+				var zero T
+				hasValue := any(result.Value) != any(zero)
+
+				if includeZeroValue || hasValue {
+					attrID := &raftcmdpb.AttributeID{Id: id[:], Tag: tag}
+					preloads = append(preloads, buildPreload(attrID, result.Value))
+				}
+			})
 		}
+	}
+
+	wg.Wait()
+
+	if firstErr != nil {
+		return nil, firstErr
 	}
 
 	return &resolveResult{preloads: preloads, touches: touches, tracker: tracker}, nil
