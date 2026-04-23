@@ -22,7 +22,7 @@ require (
 	github.com/bytedance/sonic v1.15.0 // indirect
 	github.com/bytedance/sonic/loader v0.5.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
-	github.com/formancehq/go-libs/v5 v5.0.1-0.20260323155508-4fc9cafbd358 // indirect
+	github.com/formancehq/go-libs/v5 v5.0.1 // indirect
 	github.com/holiman/uint256 v1.3.2 // indirect
 	github.com/invopop/jsonschema v0.13.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
@@ -40,6 +40,6 @@ require (
 
 require (
 	golang.org/x/net v0.51.0 // indirect
-	golang.org/x/sys v0.41.0 // indirect
-	golang.org/x/text v0.34.0 // indirect
+	golang.org/x/sys v0.42.0 // indirect
+	golang.org/x/text v0.35.0 // indirect
 )

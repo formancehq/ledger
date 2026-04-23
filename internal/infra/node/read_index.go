@@ -102,7 +102,13 @@ func (node *Node) ReadIndexAndWait(ctx context.Context) (*ReadBarrierInfo, error
 	ctx, span := readIndexTracer.Start(ctx, "node.read_index_and_wait")
 	defer span.End()
 
-	if node.isSyncing() {
+	// Only reject reads when the node is genuinely out of sync (restoring a
+	// remote snapshot or waiting for a leader). During local snapshotting the
+	// store is frozen but consistent — ReadIndex still works and WaitForApplied
+	// will block until the spool is replayed, which is the correct behavior
+	// (the read waits instead of failing immediately).
+	s := node.applier.Status()
+	if s == statusSyncing || s == statusOutOfSync {
 		return nil, ErrNodeSyncing
 	}
 

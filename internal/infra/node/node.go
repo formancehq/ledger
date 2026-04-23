@@ -1126,7 +1126,8 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 	// not-yet-caught-up node from being forced into leadership.
 	stepMessages := func(msgs []raftpb.Message) error {
 		for _, msg := range msgs {
-			if msg.Type == raftpb.MsgTimeoutNow && node.isSyncing() {
+			s := node.applier.Status()
+			if msg.Type == raftpb.MsgTimeoutNow && (s == statusSyncing || s == statusSnapshotting || s == statusOutOfSync) {
 				node.logger.Infof("Rejecting MsgTimeoutNow while syncing")
 
 				continue
@@ -1419,14 +1420,6 @@ func (node *Node) IsLeader() bool {
 	}
 
 	return lastSoftState.RaftState == raft.StateLeader
-}
-
-// isSyncing returns true when the node is restoring a snapshot or checkpoint
-// and is not yet ready to serve as leader.
-func (node *Node) isSyncing() bool {
-	s := node.applier.Status()
-
-	return s == statusSyncing || s == statusSnapshotting || s == statusOutOfSync
 }
 
 func (node *Node) GetLeader() uint64 {
