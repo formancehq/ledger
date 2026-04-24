@@ -106,9 +106,11 @@ func (s *SnapshotServiceServerImpl) FetchSnapshot(req *snapshotpb.FetchSnapshotR
 		return fmt.Errorf("streaming snapshot: %w", err)
 	}
 
-	s.logger.WithFields(map[string]any{
-		"snapshot_id": req.GetSnapshotId(),
-	}).Infof("FetchSnapshot completed")
+	if s.logger.Enabled(logging.DebugLevel) {
+		s.logger.WithFields(map[string]any{
+			"snapshot_id": req.GetSnapshotId(),
+		}).Debugf("FetchSnapshot completed")
+	}
 
 	return nil
 }

@@ -110,7 +110,9 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 		}
 	}
 
-	impl.logger.Debugf("Apply request received with %d requests", len(req.GetRequests()))
+	if impl.logger.Enabled(logging.DebugLevel) {
+		impl.logger.Debugf("Apply request received with %d requests", len(req.GetRequests()))
+	}
 
 	logs, err := impl.ctrl.Apply(ctx, req.GetRequests()...)
 	if err != nil {
@@ -297,8 +299,10 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 		return errors.New("ledger name is required")
 	}
 
-	impl.logger.Debugf("ListTransactions request received for ledger %s (pageSize=%d, afterTxID=%d, hasFilter=%v, reverse=%v)",
-		req.GetLedger(), req.GetPageSize(), req.GetAfterTxId(), req.GetFilter() != nil, req.GetReverse())
+	if impl.logger.Enabled(logging.DebugLevel) {
+		impl.logger.Debugf("ListTransactions request received for ledger %s (pageSize=%d, afterTxID=%d, hasFilter=%v, reverse=%v)",
+			req.GetLedger(), req.GetPageSize(), req.GetAfterTxId(), req.GetFilter() != nil, req.GetReverse())
+	}
 
 	profileCtx, profile := query.WithProfile(ctx)
 
@@ -401,8 +405,10 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 		return err
 	}
 
-	impl.logger.Debugf("ListAccounts request received for ledger %s (pageSize=%d, afterAddress=%q, hasFilter=%v, reverse=%v)",
-		req.GetLedger(), req.GetPageSize(), req.GetAfterAddress(), req.GetFilter() != nil, req.GetReverse())
+	if impl.logger.Enabled(logging.DebugLevel) {
+		impl.logger.Debugf("ListAccounts request received for ledger %s (pageSize=%d, afterAddress=%q, hasFilter=%v, reverse=%v)",
+			req.GetLedger(), req.GetPageSize(), req.GetAfterAddress(), req.GetFilter() != nil, req.GetReverse())
+	}
 
 	profileCtx, profile := query.WithProfile(ctx)
 

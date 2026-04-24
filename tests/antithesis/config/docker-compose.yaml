@@ -16,6 +16,7 @@ x-ledger-common: &ledger-common
     DATA_DIR: "/data/app"
     CLUSTER_ID: "default"
     INSECURE: "true"
+    DEBUG: "true"
 
     # Chaos-tuned: lower thresholds to exercise more code paths under fault injection
     SNAPSHOT_THRESHOLD: "200"

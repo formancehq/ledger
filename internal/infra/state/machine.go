@@ -593,12 +593,14 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 			lifecycle.SendEvent("spool replay completed", map[string]any{
 				"entryIndex": entry.Index,
 			})
-			fsm.logger.WithFields(map[string]any{
-				"entryIndex":        entry.Index,
-				"currentGeneration": fsm.Registry.Cache.CurrentGeneration(),
-				"gen0":              fsm.Registry.Cache.BaseIndex.Gen0,
-				"gen1":              fsm.Registry.Cache.BaseIndex.Gen1,
-			}).Infof("Cache generation rotated")
+			if fsm.logger.Enabled(logging.DebugLevel) {
+				fsm.logger.WithFields(map[string]any{
+					"entryIndex":        entry.Index,
+					"currentGeneration": fsm.Registry.Cache.CurrentGeneration(),
+					"gen0":              fsm.Registry.Cache.BaseIndex.Gen0,
+					"gen1":              fsm.Registry.Cache.BaseIndex.Gen1,
+				}).Debugf("Cache generation rotated")
+			}
 			rotationStart := time.Now()
 			fsm.rotationDurationHistogram.Record(context.Background(), time.Since(rotationStart).Microseconds())
 		}
@@ -721,14 +723,16 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 	fsm.appliedCond.Broadcast()
 
 	if fsm.lastAppliedIndex != previousPersisted+uint64(len(entries)) {
-		fsm.logger.WithFields(map[string]any{
-			"previousPersisted": previousPersisted,
-			"newPersisted":      fsm.lastAppliedIndex,
-			"entryCount":        len(entries),
-			"gen0":              fsm.Registry.Cache.BaseIndex.Gen0,
-			"gen1":              fsm.Registry.Cache.BaseIndex.Gen1,
-			"currentGeneration": fsm.Registry.Cache.CurrentGeneration(),
-		}).Infof("lastPersistedIndex updated (non-trivial jump)")
+		if fsm.logger.Enabled(logging.DebugLevel) {
+			fsm.logger.WithFields(map[string]any{
+				"previousPersisted": previousPersisted,
+				"newPersisted":      fsm.lastAppliedIndex,
+				"entryCount":        len(entries),
+				"gen0":              fsm.Registry.Cache.BaseIndex.Gen0,
+				"gen1":              fsm.Registry.Cache.BaseIndex.Gen1,
+				"currentGeneration": fsm.Registry.Cache.CurrentGeneration(),
+			}).Debugf("lastPersistedIndex updated (non-trivial jump)")
+		}
 	}
 
 	if needsArchiveDispatch {
@@ -842,10 +846,12 @@ func (fsm *Machine) commitAndRequestCheckpoint(
 // Called after the batch containing the DeleteQueryCheckpoint metadata removal is committed.
 func (fsm *Machine) deleteQueryCheckpointFiles(checkpointID uint64) {
 	if err := fsm.dataStore.DeleteQueryCheckpointFiles(checkpointID); err != nil {
-		fsm.logger.WithFields(map[string]any{
-			"error":        err,
-			"checkpointID": checkpointID,
-		}).Infof("Failed to delete query checkpoint files (may not exist on this node)")
+		if fsm.logger.Enabled(logging.DebugLevel) {
+			fsm.logger.WithFields(map[string]any{
+				"error":        err,
+				"checkpointID": checkpointID,
+			}).Debugf("Failed to delete query checkpoint files (may not exist on this node)")
+		}
 	}
 }
 
@@ -860,9 +866,13 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	// A mismatch here indicates a bug in the preload/cache coordination.
 	switch preloadSet.GetLastPersistedIndex() {
 	case fsm.Registry.Cache.BaseIndex.Gen0:
-		fsm.logger.Debug("Selecting cache generation 0")
+		if fsm.logger.Enabled(logging.DebugLevel) {
+			fsm.logger.Debug("Selecting cache generation 0")
+		}
 	case fsm.Registry.Cache.BaseIndex.Gen1:
-		fsm.logger.Debug("Selecting cache generation 1")
+		if fsm.logger.Enabled(logging.DebugLevel) {
+			fsm.logger.Debug("Selecting cache generation 1")
+		}
 	default:
 		details := map[string]any{
 			"lastPersistedIndex":  preloadSet.GetLastPersistedIndex(),
@@ -1361,11 +1371,13 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// after leadership transition). The preloadSet is invalid — reject cleanly
 	// so the caller retries with fresh preloads.
 	if predicted := proposal.GetPredictedIndex(); predicted != 0 && predicted != raftIndex {
-		fsm.logger.WithFields(map[string]any{
-			"predictedIndex": predicted,
-			"actualIndex":    raftIndex,
-			"proposalID":     proposal.GetId(),
-		}).Infof("Rejecting proposal: predicted index mismatch (stale tracker)")
+		if fsm.logger.Enabled(logging.DebugLevel) {
+			fsm.logger.WithFields(map[string]any{
+				"predictedIndex": predicted,
+				"actualIndex":    raftIndex,
+				"proposalID":     proposal.GetId(),
+			}).Debugf("Rejecting proposal: predicted index mismatch (stale tracker)")
+		}
 
 		lifecycle.SendEvent("stale_proposal_rejected", map[string]any{
 			"predictedIndex": predicted,
@@ -1452,7 +1464,10 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		// Global check: aggregated volumes must be balanced (input == output per asset).
 		ledgerNames := collectLedgerNames(proposal.GetOrders())
 		if len(ledgerNames) > 0 {
-			fsm.logger.Debugf("Verifying aggregated volume balance for %d ledgers at raft index %d", len(ledgerNames), raftIndex)
+			if fsm.logger.Enabled(logging.DebugLevel) {
+				fsm.logger.Debugf("Verifying aggregated volume balance for %d ledgers at raft index %d", len(ledgerNames), raftIndex)
+			}
+
 			if err := verifyAggregatedVolumesBalanced(
 				fsm.dataStore, fsm.Registry.Attrs.Volume, ledgerNames, raftIndex,
 			); err != nil {
@@ -1549,14 +1564,16 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 		return nil, fmt.Errorf("persisting in-memory state: %w", err)
 	}
 
-	fsm.logger.WithFields(map[string]any{
-		"duration":          time.Since(persistStart).String(),
-		"gen0":              fsm.Registry.Cache.BaseIndex.Gen0,
-		"gen1":              fsm.Registry.Cache.BaseIndex.Gen1,
-		"currentGeneration": fsm.Registry.Cache.CurrentGeneration(),
-		"lastAppliedIndex":  fsm.lastAppliedIndex,
-		"reversionLedgers":  len(fsm.Registry.Reversions),
-	}).Infof("Persisted in-memory state to Pebble")
+	if fsm.logger.Enabled(logging.DebugLevel) {
+		fsm.logger.WithFields(map[string]any{
+			"duration":          time.Since(persistStart).String(),
+			"gen0":              fsm.Registry.Cache.BaseIndex.Gen0,
+			"gen1":              fsm.Registry.Cache.BaseIndex.Gen1,
+			"currentGeneration": fsm.Registry.Cache.CurrentGeneration(),
+			"lastAppliedIndex":  fsm.lastAppliedIndex,
+			"reversionLedgers":  len(fsm.Registry.Reversions),
+		}).Debugf("Persisted in-memory state to Pebble")
+	}
 
 	checkpointID, err := fsm.dataStore.CreateSnapshot()
 	if err != nil {
@@ -1579,12 +1596,14 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 		"checkpointId": checkpointID,
 		"snapshotSize": len(data),
 	})
-	fsm.logger.WithFields(map[string]any{
-		"totalDuration":     time.Since(totalStart).String(),
-		"serializeDuration": time.Since(serializeStart).String(),
-		"snapshotSize":      len(data),
-		"checkpointId":      checkpointID,
-	}).Infof("Created MemorySnapshot")
+	if fsm.logger.Enabled(logging.DebugLevel) {
+		fsm.logger.WithFields(map[string]any{
+			"totalDuration":     time.Since(totalStart).String(),
+			"serializeDuration": time.Since(serializeStart).String(),
+			"snapshotSize":      len(data),
+			"checkpointId":      checkpointID,
+		}).Debugf("Created MemorySnapshot")
+	}
 
 	return data, nil
 }

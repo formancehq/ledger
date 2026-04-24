@@ -286,7 +286,7 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 	}
 
 	if !isStoreUpToDate {
-		a.logger.Infof("Store is not up to date, resuming from snapshot and tagging node as out of sync")
+		a.logger.Debugf("Store is not up to date, resuming from snapshot and tagging node as out of sync")
 		a.SetOutOfSync()
 
 		return false, nil
@@ -308,7 +308,7 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 	for _, period := range a.fsm.ClosingPeriods() {
 		name := state.SealCheckpointName(period.GetId())
 		if _, exists := a.store.TemporaryCheckpointPath(name); !exists {
-			a.logger.Infof("Recovering: creating seal checkpoint for closing period %d", period.GetId())
+			a.logger.Debugf("Recovering: creating seal checkpoint for closing period %d", period.GetId())
 
 			checkpointPath, err := a.store.CreateTemporaryCheckpoint(name)
 			if err != nil {
@@ -352,10 +352,12 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("getting store last applied index after WAL replay: %w", err)
 	}
 
-	a.logger.WithFields(map[string]any{
-		"fromIndex":   storeLastAppliedIndex,
-		"commitIndex": hardState.Commit,
-	}).Infof("Starting spool replay")
+	if a.logger.Enabled(logging.DebugLevel) {
+		a.logger.WithFields(map[string]any{
+			"fromIndex":   storeLastAppliedIndex,
+			"commitIndex": hardState.Commit,
+		}).Debugf("Starting spool replay")
+	}
 
 	// Replay spooled entries up to the committed index only.
 	// The spool may contain uncommitted entries (received from the leader
@@ -368,9 +370,11 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 	assert.Reachable("startup recovery completed", map[string]any{
 		"duration": time.Since(replayStart).String(),
 	})
-	a.logger.WithFields(map[string]any{
-		"duration": time.Since(replayStart).String(),
-	}).Infof("Spool replay complete")
+	if a.logger.Enabled(logging.DebugLevel) {
+		a.logger.WithFields(map[string]any{
+			"duration": time.Since(replayStart).String(),
+		}).Debugf("Spool replay complete")
+	}
 
 	return true, nil
 }
@@ -464,7 +468,7 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 			a.gatingTerminated = nil
 
 			if a.status.Load() == statusOutOfSync {
-				a.logger.Infof("Background operation failed, node is out of sync — waiting for next sync")
+				a.logger.Debugf("Background operation failed, node is out of sync — waiting for next sync")
 				waitStart = time.Now()
 
 				continue
@@ -504,7 +508,9 @@ func (a *Applier) startSyncSnapshot(ctx context.Context, leader uint64) {
 	syncDetails := map[string]any{
 		"leader": leader,
 	}
-	a.logger.WithFields(syncDetails).Infof("Syncing snapshot from leader")
+	if a.logger.Enabled(logging.DebugLevel) {
+		a.logger.WithFields(syncDetails).Debugf("Syncing snapshot from leader")
+	}
 	lifecycle.SendEvent("sync_snapshot_started", syncDetails)
 
 	progress := state.NewSyncProgress()
@@ -822,12 +828,14 @@ func (a *Applier) triggerSnapshot(ctx context.Context, confState *raftpb.ConfSta
 
 	// Called from Run goroutine — assign gating directly.
 	a.gatingTerminated = a.startMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
-		a.logger.WithFields(map[string]any{
-			"applied":           lastEntryIndex,
-			"lastSnapshotIndex": lastSnapshotIndex,
-			"snapshotThreshold": a.snapshotThreshold,
-			"compactionMargin":  a.compactionMargin,
-		}).Infof("Creating new snapshot")
+		if a.logger.Enabled(logging.DebugLevel) {
+			a.logger.WithFields(map[string]any{
+				"applied":           lastEntryIndex,
+				"lastSnapshotIndex": lastSnapshotIndex,
+				"snapshotThreshold": a.snapshotThreshold,
+				"compactionMargin":  a.compactionMargin,
+			}).Debugf("Creating new snapshot")
+		}
 
 		startTime := time.Now()
 
@@ -923,7 +931,7 @@ func (a *Applier) startMaintenanceTask(
 }
 
 func (a *Applier) unspoolAndResume(ctx context.Context) error {
-	a.logger.Infof("Background operation terminated, applying spooled entries before resuming...")
+	a.logger.Debugf("Background operation terminated, applying spooled entries before resuming...")
 
 	lastAppliedIndex, err := query.ReadLastAppliedIndex(a.store)
 	if err != nil {
@@ -946,7 +954,7 @@ func (a *Applier) unspoolAndResume(ctx context.Context) error {
 	}
 
 	lifecycle.SendEvent("spool replay completed", nil)
-	a.logger.Infof("Unspooling operation terminated, resuming...")
+	a.logger.Debugf("Unspooling operation terminated, resuming...")
 
 	return nil
 }
@@ -970,10 +978,12 @@ func (a *Applier) replayWAL(ctx context.Context, afterIndex uint64) error {
 
 	lo := afterIndex + 1
 
-	a.logger.WithFields(map[string]any{
-		"from": lo,
-		"to":   commitIndex,
-	}).Infof("Replaying WAL entries before spool")
+	if a.logger.Enabled(logging.DebugLevel) {
+		a.logger.WithFields(map[string]any{
+			"from": lo,
+			"to":   commitIndex,
+		}).Debugf("Replaying WAL entries before spool")
+	}
 
 	entries, err := a.wal.Entries(lo, commitIndex+1, math.MaxUint64)
 	if err != nil {
@@ -999,9 +1009,11 @@ func (a *Applier) replayWAL(ctx context.Context, afterIndex uint64) error {
 		}
 	}
 
-	a.logger.WithFields(map[string]any{
-		"count": len(entries),
-	}).Infof("WAL replay complete")
+	if a.logger.Enabled(logging.DebugLevel) {
+		a.logger.WithFields(map[string]any{
+			"count": len(entries),
+		}).Debugf("WAL replay complete")
+	}
 
 	return nil
 }
@@ -1018,10 +1030,12 @@ func (a *Applier) replaySpool(ctx context.Context, fromIndex uint64) error {
 }
 
 func (a *Applier) replaySpoolImpl(ctx context.Context, fromIndex uint64, maxIndex uint64) error {
-	a.logger.WithFields(map[string]any{
-		"fromIndex": fromIndex,
-		"maxIndex":  maxIndex,
-	}).Infof("Replaying spool")
+	if a.logger.Enabled(logging.DebugLevel) {
+		a.logger.WithFields(map[string]any{
+			"fromIndex": fromIndex,
+			"maxIndex":  maxIndex,
+		}).Debugf("Replaying spool")
+	}
 
 	until, err := a.spool.End()
 	if err != nil {
@@ -1201,9 +1215,11 @@ func (a *Applier) createMainStoreCheckpoint(checkpointID uint64) error {
 		return fmt.Errorf("creating main store query checkpoint %d: %w", checkpointID, err)
 	}
 
-	a.logger.WithFields(map[string]any{
-		"checkpointID": checkpointID,
-	}).Infof("Created main store query checkpoint")
+	if a.logger.Enabled(logging.DebugLevel) {
+		a.logger.WithFields(map[string]any{
+			"checkpointID": checkpointID,
+		}).Debugf("Created main store query checkpoint")
+	}
 
 	return nil
 }

@@ -1031,12 +1031,6 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 			return nil
 		}
 
-		conn.logger.
-			WithFields(map[string]any{
-				"count": len(raftMessages),
-			}).
-			Debugf("Sending batch of messages to peer via stream")
-
 		conn.pendingResponseCounter.Add(context.Background(), float64(len(raftMessages)))
 
 		err := stream.Send(&rafttransportpb.SendMessageRequest{

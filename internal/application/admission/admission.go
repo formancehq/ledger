@@ -804,9 +804,11 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 							return nil, &domain.BusinessError{Err: numscript.ErrMetaNotSupported}
 						}
 
-						a.logger.WithFields(map[string]any{
-							"error": err.Error(),
-						}).Info("Numscript emulation failed during dependency discovery, skipping preload")
+						if a.logger.Enabled(logging.DebugLevel) {
+							a.logger.WithFields(map[string]any{
+								"error": err.Error(),
+							}).Debug("Numscript emulation failed during dependency discovery, skipping preload")
+						}
 					}
 
 					if discovered != nil {
