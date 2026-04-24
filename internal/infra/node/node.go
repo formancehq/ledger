@@ -145,15 +145,13 @@ type Node struct {
 	// committed entries like no-ops and config changes).
 	indexTracker *IndexTracker
 
-	// commitIndex tracks the latest Raft commit index, updated atomically
-	// during the ready loop.
-	commitIndex atomic.Uint64
-
 	// leaderReady is closed (done) when the new leader's FSM has caught up
 	// with all committed entries from the previous term. Admission blocks
 	// on this channel before pre-reads. On leadership gain it is replaced
 	// with a fresh channel; a background goroutine closes it after
-	// WaitForApplied(commitIndex) completes.
+	// WaitForApplied reaches the index of the leader's no-op blank entry —
+	// once that is applied, every preceding log entry is committed and
+	// applied too, including anything the prior leader had applied.
 	leaderReady atomic.Pointer[chan struct{}]
 
 	// Metrics (kept on Node: WAL/transport/orchestrate-related)
@@ -687,10 +685,7 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 		return fmt.Errorf("creating raw rawNode: %w", err)
 	}
 
-	// Seed commit index from initial raft state so it's available before
-	// the first ready cycle.
 	status := node.rawNode.Status()
-	node.commitIndex.Store(status.Commit)
 
 	// Log initial raft state for cluster join diagnostics
 	node.logger.WithFields(map[string]any{
@@ -844,23 +839,27 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 				lifecycle.SendEvent("leadership_gained", details)
 				node.observer.Emit(LeadershipChangeEvent{IsLeader: true})
 
-				// Block admission until the FSM has applied all committed
-				// entries inherited from the previous leader. Without this,
-				// admission pre-reads (revert postings, numscript resolution)
-				// can see stale Pebble state and reject valid requests.
+				// Block admission until the FSM has applied all entries the
+				// previous leader had applied. The target is the no-op blank
+				// entry appended by raft on leadership gain (last of
+				// rd.Entries): once it's committed (majority replication) and
+				// applied, every preceding log entry is committed too (leader
+				// completeness + the rule that commits always pass through a
+				// current-term entry), including entries the old leader
+				// applied whose commit broadcast never reached us.
 				pending := make(chan struct{})
 				node.leaderReady.Store(&pending)
 
-				ci := node.commitIndex.Load()
+				target := rd.Entries[len(rd.Entries)-1].Index
 
 				node.applier.Drain(stop)
 				node.fsm.OnLeadershipAcquired()
 
 				go func() {
-					if err := node.fsm.WaitForApplied(ctx, ci); err != nil {
+					if err := node.fsm.WaitForApplied(ctx, target); err != nil {
 						node.logger.WithFields(map[string]any{
-							"error":       err,
-							"commitIndex": ci,
+							"error":  err,
+							"target": target,
 						}).Errorf("Failed to wait for FSM catch-up after leadership gain")
 					}
 
@@ -896,8 +895,6 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 	if err != nil {
 		return readyResult{}, fmt.Errorf("appending entries to storage: %w", err)
 	}
-
-	node.commitIndex.Store(rd.Commit)
 
 	node.appendEntriesHistogram.Record(ctx, time.Since(now).Microseconds())
 
