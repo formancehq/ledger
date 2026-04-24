@@ -2067,7 +2067,13 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 // Called after SynchronizeWithLeader restores the Pebble checkpoint from the leader.
 func (fsm *Machine) reloadStateFromStore() error {
 	// Recover all FSM counters, periods, reversions, etc. from Pebble.
-	if err := fsm.RecoverState(); err != nil {
+	// Hold mu during RecoverState because concurrent readers (e.g.
+	// QueryCheckpointScheduler) access fields like queryCheckpointSchedule
+	// under the same lock.
+	fsm.mu.Lock()
+	err := fsm.RecoverState()
+	fsm.mu.Unlock()
+	if err != nil {
 		return fmt.Errorf("recovering state: %w", err)
 	}
 
