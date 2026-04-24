@@ -81,7 +81,9 @@ func (l *pyroscopeLogger) Infof(format string, args ...any) {
 }
 
 func (l *pyroscopeLogger) Debugf(format string, args ...any) {
-	l.logger.Debugf(format, args...)
+	if l.logger.Enabled(logging.DebugLevel) {
+		l.logger.Debugf(format, args...)
+	}
 }
 
 func (l *pyroscopeLogger) Errorf(format string, args ...any) {

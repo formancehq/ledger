@@ -20,7 +20,9 @@ func NewPebbleLogger(logger logging.Logger) pebble.Logger {
 }
 
 func (l *PebbleLogger) Infof(format string, args ...any) {
-	l.logger.Debugf(format, args...)
+	if l.logger.Enabled(logging.DebugLevel) {
+		l.logger.Debugf(format, args...)
+	}
 }
 
 func (l *PebbleLogger) Errorf(format string, args ...any) {

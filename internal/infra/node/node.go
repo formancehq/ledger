@@ -777,7 +777,9 @@ func (node *Node) processReadies(ctx context.Context, stop chan struct{}) error 
 }
 
 func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.Ready) (readyResult, error) {
-	node.logger.Debugf("Processing ready")
+	if node.logger.Enabled(logging.DebugLevel) {
+		node.logger.Debugf("Processing ready")
+	}
 
 	node.committedEntriesPerReadyHistogram.Record(context.Background(), int64(len(rd.CommittedEntries)))
 
@@ -969,7 +971,9 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 	}
 
 	// Send messages via transport
-	node.logger.Debugf("Sending messages via transport")
+	if node.logger.Enabled(logging.DebugLevel) {
+		node.logger.Debugf("Sending messages via transport")
+	}
 	node.transport.Send(rd.Messages)
 
 	// Extract conf changes from committed entries. The actual rawNode.ApplyConfChange
@@ -1139,7 +1143,9 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 			err := node.rawNode.Step(msg)
 			if err != nil {
 				if errors.Is(err, raft.ErrStepPeerNotFound) {
-					node.logger.Debugf("Ignoring message from unknown peer %d (type=%s)", msg.From, msg.Type)
+					if node.logger.Enabled(logging.DebugLevel) {
+						node.logger.Debugf("Ignoring message from unknown peer %d (type=%s)", msg.From, msg.Type)
+					}
 
 					continue
 				}

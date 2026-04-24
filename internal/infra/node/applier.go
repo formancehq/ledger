@@ -286,7 +286,9 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 	}
 
 	if !isStoreUpToDate {
-		a.logger.Debugf("Store is not up to date, resuming from snapshot and tagging node as out of sync")
+		if a.logger.Enabled(logging.DebugLevel) {
+			a.logger.Debugf("Store is not up to date, resuming from snapshot and tagging node as out of sync")
+		}
 		a.SetOutOfSync()
 
 		return false, nil
@@ -308,7 +310,9 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 	for _, period := range a.fsm.ClosingPeriods() {
 		name := state.SealCheckpointName(period.GetId())
 		if _, exists := a.store.TemporaryCheckpointPath(name); !exists {
-			a.logger.Debugf("Recovering: creating seal checkpoint for closing period %d", period.GetId())
+			if a.logger.Enabled(logging.DebugLevel) {
+				a.logger.Debugf("Recovering: creating seal checkpoint for closing period %d", period.GetId())
+			}
 
 			checkpointPath, err := a.store.CreateTemporaryCheckpoint(name)
 			if err != nil {
@@ -460,7 +464,9 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 					return err
 				}
 			default:
-				a.logger.Debugf("Spool committed entries")
+				if a.logger.Enabled(logging.DebugLevel) {
+					a.logger.Debugf("Spool committed entries")
+				}
 
 				err := a.spool.AppendCommittedEntries(ctx, work.entries...)
 				if err != nil {
@@ -477,7 +483,9 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 			a.gatingTerminated = nil
 
 			if a.status.Load() == statusOutOfSync {
-				a.logger.Debugf("Background operation failed, node is out of sync — waiting for next sync")
+				if a.logger.Enabled(logging.DebugLevel) {
+					a.logger.Debugf("Background operation failed, node is out of sync — waiting for next sync")
+				}
 				waitStart = time.Now()
 
 				continue
@@ -940,7 +948,9 @@ func (a *Applier) startMaintenanceTask(
 }
 
 func (a *Applier) unspoolAndResume(ctx context.Context) error {
-	a.logger.Debugf("Background operation terminated, applying spooled entries before resuming...")
+	if a.logger.Enabled(logging.DebugLevel) {
+		a.logger.Debugf("Background operation terminated, applying spooled entries before resuming...")
+	}
 
 	lastAppliedIndex, err := query.ReadLastAppliedIndex(a.store)
 	if err != nil {
@@ -963,7 +973,9 @@ func (a *Applier) unspoolAndResume(ctx context.Context) error {
 	}
 
 	lifecycle.SendEvent("spool replay completed", nil)
-	a.logger.Debugf("Unspooling operation terminated, resuming...")
+	if a.logger.Enabled(logging.DebugLevel) {
+		a.logger.Debugf("Unspooling operation terminated, resuming...")
+	}
 
 	return nil
 }

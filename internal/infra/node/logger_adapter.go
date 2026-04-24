@@ -20,12 +20,16 @@ func NewLoggerAdapter(logger logging.Logger) raft.Logger {
 
 // Debug logs a debug message.
 func (l *loggerAdapter) Debug(v ...any) {
-	l.logger.Debugf("%s", fmt.Sprint(v...))
+	if l.logger.Enabled(logging.DebugLevel) {
+		l.logger.Debugf("%s", fmt.Sprint(v...))
+	}
 }
 
 // Debugf logs a formatted debug message.
 func (l *loggerAdapter) Debugf(format string, v ...any) {
-	l.logger.Debugf(format, v...)
+	if l.logger.Enabled(logging.DebugLevel) {
+		l.logger.Debugf(format, v...)
+	}
 }
 
 // Error logs an error message.
