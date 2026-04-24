@@ -403,6 +403,15 @@ func (a *Applier) Drain(stop chan struct{}) {
 	}
 }
 
+// InterruptMaintenance cancels any in-flight maintenance task (sync, checkpoint
+// creation, etc.) and blocks until the task goroutine has exited. Must be
+// called before mutating FSM state that a running maintenance task may read
+// (e.g. before InstallSnapshot, which writes fsm.lastCheckpointID /
+// fsm.snapshotIndex that SynchronizeWithLeader reads).
+func (a *Applier) InterruptMaintenance() {
+	a.taskExecutor.interrupt()
+}
+
 // Status returns the current applier status (statusNormal, statusSyncing, etc.).
 func (a *Applier) Status() int32 {
 	return a.status.Load()

@@ -916,6 +916,12 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 
 		node.applier.Drain(stop)
 
+		// A previous leader snapshot may have spawned a background sync task
+		// that reads fsm.lastCheckpointID / fsm.snapshotIndex. InstallSnapshot
+		// below writes those fields, so the old task must be fully unwound
+		// before we proceed.
+		node.applier.InterruptMaintenance()
+
 		if err := node.wal.ApplySnapshot(rd.Snapshot); err != nil {
 			return readyResult{}, fmt.Errorf("applying snapshot to storage: %w", err)
 		}
