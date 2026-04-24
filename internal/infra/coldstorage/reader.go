@@ -149,6 +149,7 @@ func (r *ColdReader) openAndIngest(dbDir, sstPath string) (*pebble.DB, error) {
 	}
 
 	db, err := pebble.Open(dbDir, &pebble.Options{
+		Logger:                      dal.NewPebbleLogger(r.logger),
 		FS:                          vfs.Default,
 		DisableWAL:                  true,
 		L0CompactionThreshold:       1000, // effectively disable auto-compaction

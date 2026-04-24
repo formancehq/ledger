@@ -14,6 +14,7 @@ import (
 // The caller must call Close() when done.
 func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
 	opts := &pebble.Options{
+		Logger:   NewPebbleLogger(logger),
 		ReadOnly: true,
 	}
 
@@ -36,7 +37,9 @@ func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
 // without checkpoint management. Used for backup compaction operations.
 // The caller must call Close() when done.
 func OpenDirect(dirPath string, logger logging.Logger) (*Store, error) {
-	opts := &pebble.Options{}
+	opts := &pebble.Options{
+		Logger: NewPebbleLogger(logger),
+	}
 
 	db, err := pebble.Open(dirPath, opts)
 	if err != nil {

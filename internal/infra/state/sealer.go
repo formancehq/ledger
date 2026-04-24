@@ -157,7 +157,10 @@ func (s *Sealer) seal(req SealRequest) error {
 	s.logger.WithFields(logFields).Infof("Starting period sealing")
 
 	// Open the seal checkpoint as a read-only Pebble DB
-	db, err := pebble.Open(req.CheckpointPath, &pebble.Options{ReadOnly: true})
+	db, err := pebble.Open(req.CheckpointPath, &pebble.Options{
+		Logger:   dal.NewPebbleLogger(s.logger),
+		ReadOnly: true,
+	})
 	if err != nil {
 		return fmt.Errorf("opening seal checkpoint: %w", err)
 	}

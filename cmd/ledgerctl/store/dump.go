@@ -42,7 +42,10 @@ func runDump(cmd *cobra.Command, args []string) error {
 	limit, _ := cmd.Flags().GetInt("limit")
 	raw, _ := cmd.Flags().GetBool("raw")
 
-	db, err := pebble.Open(dataDir, &pebble.Options{ReadOnly: true})
+	db, err := pebble.Open(dataDir, &pebble.Options{
+		Logger:   dal.DiscardPebbleLogger(),
+		ReadOnly: true,
+	})
 	if err != nil {
 		return fmt.Errorf("opening pebble at %s: %w", dataDir, err)
 	}

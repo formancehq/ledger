@@ -196,7 +196,7 @@ func (s *RestoreServiceServerImpl) ValidateRestore(_ *restorepb.ValidateRestoreR
 	defer func() { _ = store.Close() }()
 
 	attrs := attributes.New()
-	checker := check.NewChecker(store, attrs)
+	checker := check.NewChecker(store, attrs, s.logger)
 
 	return checker.Check(stream.Context(), func(event *servicepb.CheckStoreEvent) {
 		var restoreEvent restorepb.ValidateRestoreEvent

@@ -14,6 +14,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/pebblecfg"
 )
 
@@ -80,6 +81,7 @@ func New(dir string, logger logging.Logger, cfg Config) (*Store, error) {
 	defer cache.Unref()
 
 	opts := &pebble.Options{
+		Logger:             dal.NewPebbleLogger(logger),
 		FormatMajorVersion: pebble.FormatNewest,
 		// The read index is a derived view rebuilt from the Raft log.
 		// We can safely disable WAL: on crash the index builder simply
@@ -124,7 +126,10 @@ func New(dir string, logger logging.Logger, cfg Config) (*Store, error) {
 // OpenReadOnly opens a Pebble read index at dirPath in read-only mode.
 // The caller must call Close() when done.
 func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
-	db, err := pebble.Open(dirPath, &pebble.Options{ReadOnly: true})
+	db, err := pebble.Open(dirPath, &pebble.Options{
+		Logger:   dal.NewPebbleLogger(logger),
+		ReadOnly: true,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("opening read-only Pebble read index at %s: %w", dirPath, err)
 	}

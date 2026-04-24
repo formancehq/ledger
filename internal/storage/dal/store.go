@@ -198,6 +198,7 @@ func NewStore(
 	stallState := NewWriteStallState()
 
 	opts := &pebble.Options{
+		Logger:             NewPebbleLogger(logger),
 		FormatMajorVersion: pebble.FormatNewest,
 		EventListener:      NewMetricsListener(meter, stallState),
 		// 1) Absorb more writes before flush => fewer SST files, fewer compactions.

@@ -552,7 +552,7 @@ func (impl *BucketServiceServerImpl) CheckStore(_ *servicepb.CheckStoreRequest, 
 		return err
 	}
 
-	checker := check.NewChecker(impl.store, impl.attrs)
+	checker := check.NewChecker(impl.store, impl.attrs, impl.logger)
 
 	return checker.Check(stream.Context(), func(event *servicepb.CheckStoreEvent) {
 		_ = stream.Send(event)

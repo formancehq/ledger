@@ -577,7 +577,7 @@ func deleteAccountMetadataOrder(ledger, account, key string) *raftcmdpb.Order {
 func collectCheckErrors(t *testing.T, store *dal.Store, attrs *attributes.Attributes) []*servicepb.CheckStoreError {
 	t.Helper()
 
-	checker := NewChecker(store, attrs)
+	checker := NewChecker(store, attrs, logging.Testing())
 
 	var errors []*servicepb.CheckStoreError
 
@@ -886,7 +886,7 @@ func TestCheckerProgressEvents(t *testing.T) {
 		))
 	}
 
-	checker := NewChecker(engine.store, engine.attrs)
+	checker := NewChecker(engine.store, engine.attrs, logging.Testing())
 
 	var progressEvents []*servicepb.CheckStoreProgress
 

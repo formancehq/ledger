@@ -43,6 +43,7 @@ func CreateBaselineSnapshot(reader dal.PebbleReader, attrs *Attributes, destPath
 	}()
 
 	db, err := pebble.Open(tmpPath, &pebble.Options{
+		Logger:     dal.DiscardPebbleLogger(),
 		DisableWAL: true,
 	})
 	if err != nil {

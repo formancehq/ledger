@@ -245,7 +245,10 @@ func TestStore_Checkpoint(t *testing.T) {
 	require.NoError(t, s.Checkpoint(destDir))
 
 	// Verify we can open it
-	db, err := pebble.Open(destDir, &pebble.Options{ReadOnly: true})
+	db, err := pebble.Open(destDir, &pebble.Options{
+		Logger:   DiscardPebbleLogger(),
+		ReadOnly: true,
+	})
 	require.NoError(t, err)
 
 	val, closer, err := db.Get([]byte("cp-key"))

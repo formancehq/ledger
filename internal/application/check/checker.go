@@ -28,15 +28,17 @@ const progressInterval = 100
 
 // Checker verifies store integrity by replaying logs and comparing derived state.
 type Checker struct {
-	store *dal.Store
-	attrs *attributes.Attributes
+	store  *dal.Store
+	attrs  *attributes.Attributes
+	logger logging.Logger
 }
 
 // NewChecker creates a new Checker.
-func NewChecker(store *dal.Store, attrs *attributes.Attributes) *Checker {
+func NewChecker(store *dal.Store, attrs *attributes.Attributes, logger logging.Logger) *Checker {
 	return &Checker{
-		store: store,
-		attrs: attrs,
+		store:  store,
+		attrs:  attrs,
+		logger: logger,
 	}
 }
 
@@ -304,9 +306,12 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	if hasArchivedPeriods {
 		baselinePath, exists := c.store.BaselineCheckpointPath()
 		if exists {
-			db, openErr := pebble.Open(baselinePath, &pebble.Options{ReadOnly: true})
+			db, openErr := pebble.Open(baselinePath, &pebble.Options{
+				Logger:   dal.NewPebbleLogger(c.logger),
+				ReadOnly: true,
+			})
 			if openErr != nil {
-				logging.FromContext(ctx).Infof("failed to open baseline checkpoint: %v (skipping entry-by-entry comparison)", openErr)
+				c.logger.Infof("failed to open baseline checkpoint: %v (skipping entry-by-entry comparison)", openErr)
 			} else {
 				baselineDB = db
 
@@ -319,7 +324,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// entry-by-entry comparison (the replay only covers non-archived logs).
 	// This is expected after a restore. Warn and skip comparison passes.
 	if hasArchivedPeriods && baselineDB == nil {
-		logging.FromContext(ctx).Info("no baseline checkpoint available for archived state comparison; skipping entry-by-entry verification")
+		c.logger.Info("no baseline checkpoint available for archived state comparison; skipping entry-by-entry verification")
 
 		return nil
 	}

@@ -367,7 +367,7 @@ func runBootstrapValidation(ctx context.Context, stagingDir string, logger loggi
 	defer func() { _ = store.Close() }()
 
 	attrs := attributes.New()
-	checker := check.NewChecker(store, attrs)
+	checker := check.NewChecker(store, attrs, logger)
 
 	pterm.Info.Println("Validating backup integrity...")
 

@@ -13,6 +13,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // Pebble key prefixes for the replay store.
@@ -55,6 +56,7 @@ func newReplayStore() (*replayStore, error) {
 	}
 
 	db, err := pebble.Open(dir, &pebble.Options{
+		Logger:       dal.DiscardPebbleLogger(),
 		DisableWAL:   true,
 		MemTableSize: 16 << 20, // 16 MB
 		Merger:       replayMerger,
