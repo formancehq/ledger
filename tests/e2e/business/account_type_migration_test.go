@@ -362,4 +362,117 @@ var _ = Describe("AccountTypeMigration", Ordered, func() {
 			Expect(user2.Volumes["USD"].Input).To(Equal("500"))
 		})
 	})
+
+	// Regression test for the double-entry invariant when a transaction that
+	// uses the NEW pattern hits an address whose OLD form still holds volumes.
+	// resolveMigratingVolumes used to leave the old key un-zeroed and, on the
+	// "no existing newVol" branch, aliased the old VolumePair pointer into the
+	// new key. Once persisted, Pebble held the same value under both keys and
+	// the aggregator double-counted the migrated balance across the ledger.
+	//
+	// The race is forced deterministically by batching MigrateAccountType and
+	// the probe CreateTransactions into a single Apply. Every order in that
+	// Apply runs in one FSM tick, so the probes see MIGRATING status with the
+	// old keys still fully populated — the background migrator only dispatches
+	// after the batch commits.
+	Context("When a new-pattern tx hits an un-migrated old address", Ordered, func() {
+		var ledgerName = "acct-type-migrate-invariant"
+
+		const (
+			asset      = "COIN"
+			probeCount = 20
+		)
+
+		BeforeAll(func() {
+			// AUDIT enforcement: when the migrate order and probe txs run in
+			// the same FSM tick, validatePostingsAgainstAccountTypes compiles
+			// the type's current pattern ("users:{id}") which doesn't match
+			// the new-pattern addresses ("u:*"). STRICT would reject the
+			// probes. AUDIT lets them through, so the bug path runs.
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					testutil.CreateLedgerAction(ledgerName, nil),
+					testutil.AddAccountTypeAction(ledgerName, "user", "users:{id}"),
+					{Type: &servicepb.Request_SetDefaultEnforcementMode{
+						SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{
+							Ledger:          ledgerName,
+							EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
+						},
+					}},
+				},
+			})
+			Expect(err).To(Succeed())
+
+			// Seed one 1-COIN credit per probe target so each account is a
+			// net receiver: its old-key residual, if double-counted, shows
+			// up on the input side of the aggregate.
+			seedReqs := make([]*servicepb.Request, probeCount)
+			for i := range seedReqs {
+				seedReqs[i] = testutil.CreateTransactionAction(
+					ledgerName,
+					[]*commonpb.Posting{
+						testutil.NewPosting("world", fmt.Sprintf("users:u%d", i), big.NewInt(1), asset),
+					},
+					nil, nil,
+				)
+			}
+			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{Requests: seedReqs})
+			Expect(err).To(Succeed())
+
+			// Pre-condition: aggregate must already balance.
+			agg, err := testutil.AggregateVolumes(sharedCtx, sharedClient, ledgerName)
+			Expect(err).To(Succeed())
+			for _, v := range agg.GetVolumes() {
+				Expect(v.GetInput().ToBigInt().String()).To(Equal(v.GetOutput().ToBigInt().String()),
+					"pre-migration aggregate should balance for %s", v.GetAsset())
+			}
+		})
+
+		It("Preserves the double-entry invariant across the whole ledger", func() {
+			// Batch MigrateAccountType + all probe transactions into a single
+			// Apply. The FSM processes every order in one tick: the migrate
+			// order sets Status=MIGRATING, then each probe tx — targeting an
+			// address whose OLD form still holds volumes — runs through
+			// resolveMigratingVolumes before the background migrator gets
+			// dispatched.
+			reqs := make([]*servicepb.Request, 0, 1+probeCount)
+			reqs = append(reqs,
+				testutil.MigrateAccountTypeAction(ledgerName, "user", "u:{id}"),
+			)
+			for i := range probeCount {
+				reqs = append(reqs, testutil.CreateTransactionAction(
+					ledgerName,
+					[]*commonpb.Posting{
+						testutil.NewPosting("world", fmt.Sprintf("u:u%d", i), big.NewInt(1), asset),
+					},
+					nil, nil,
+				))
+			}
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{Requests: reqs})
+			Expect(err).To(Succeed())
+
+			// Let the background migrator finish so the ledger settles into
+			// its steady-state post-migration shape.
+			Eventually(func(g Gomega) {
+				info, err := testutil.GetLedger(sharedCtx, sharedClient, ledgerName)
+				g.Expect(err).To(Succeed())
+
+				at, ok := info.GetAccountTypes()["user"]
+				g.Expect(ok).To(BeTrue())
+				g.Expect(at.GetStatus()).To(Equal(commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE))
+				g.Expect(at.GetMigration()).To(BeNil())
+			}).Within(30 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+
+			// Double-entry invariant: for each asset, sum(input) == sum(output).
+			agg, err := testutil.AggregateVolumes(sharedCtx, sharedClient, ledgerName)
+			Expect(err).To(Succeed())
+			for _, v := range agg.GetVolumes() {
+				input := v.GetInput().ToBigInt().String()
+				output := v.GetOutput().ToBigInt().String()
+				Expect(input).To(Equal(output),
+					"double-entry invariant violated for asset %s: input=%s output=%s",
+					v.GetAsset(), input, output)
+			}
+		})
+	})
 })

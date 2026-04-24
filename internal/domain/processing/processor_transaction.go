@@ -366,21 +366,24 @@ func resolveMigratingVolumes(
 					Asset:      posting.GetAsset(),
 				}
 
-				newVol, err := s.GetVolume(newKey)
-				if err != nil || newVol == nil {
-					// New address has no volume — use old directly.
-					s.PutVolume(newKey, oldVol)
-
-					break
+				var newInput, newOutput uint256.Int
+				if newVol, err := s.GetVolume(newKey); err == nil && newVol != nil {
+					newVol.GetInput().IntoUint256(&newInput)
+					newVol.GetOutput().IntoUint256(&newOutput)
 				}
 
-				var newInput, newOutput uint256.Int
-				newVol.GetInput().IntoUint256(&newInput)
-				newVol.GetOutput().IntoUint256(&newOutput)
-
+				// Write a fresh VolumePair so we never alias oldVol: a later
+				// applyPosting that mutates the new key in place would otherwise
+				// leak back into the old key.
 				s.PutVolume(newKey, &raftcmdpb.VolumePair{
 					Input:  commonpb.NewUint256(new(uint256.Int).Add(&newInput, &oldInput)),
 					Output: commonpb.NewUint256(new(uint256.Int).Add(&newOutput, &oldOutput)),
+				})
+
+				// Zero the old key so it no longer contributes to aggregates.
+				s.PutVolume(oldKey, &raftcmdpb.VolumePair{
+					Input:  commonpb.NewUint256(new(uint256.Int)),
+					Output: commonpb.NewUint256(new(uint256.Int)),
 				})
 
 				break // Only one type can match an address.
