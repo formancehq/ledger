@@ -246,7 +246,14 @@ generate-proto:
         --go-grpc_opt=module=github.com/formancehq/ledger-v3-poc \
         --go-vtproto_out=. \
         --go-vtproto_opt=module=github.com/formancehq/ledger-v3-poc \
-        --go-vtproto_opt=features=marshal+unmarshal+size+clone+equal \
+        --go-vtproto_opt=features=marshal+unmarshal+size+clone+equal+pool \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.Proposal \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.PreloadSet \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.Preload \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.CacheTouch \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.Order \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.EventsSinkUpdate \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.MirrorSyncUpdate \
         -I misc/proto \
         misc/proto/raft_transport.proto \
         misc/proto/common.proto \

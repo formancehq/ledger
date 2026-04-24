@@ -13,6 +13,7 @@ import (
 	proto "google.golang.org/protobuf/proto"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	io "io"
+	sync "sync"
 )
 
 const (
@@ -26,7 +27,7 @@ func (m *Order) CloneVT() *Order {
 	if m == nil {
 		return (*Order)(nil)
 	}
-	r := new(Order)
+	r := OrderFromVTPool()
 	r.Idempotency = m.Idempotency.CloneVT()
 	r.Signature = m.Signature.CloneVT()
 	if m.Type != nil {
@@ -1635,7 +1636,7 @@ func (m *Proposal) CloneVT() *Proposal {
 	if m == nil {
 		return (*Proposal)(nil)
 	}
-	r := new(Proposal)
+	r := ProposalFromVTPool()
 	r.Id = m.Id
 	r.Date = m.Date.CloneVT()
 	r.Preload = m.Preload.CloneVT()
@@ -1676,7 +1677,7 @@ func (m *MirrorSyncUpdate) CloneVT() *MirrorSyncUpdate {
 	if m == nil {
 		return (*MirrorSyncUpdate)(nil)
 	}
-	r := new(MirrorSyncUpdate)
+	r := MirrorSyncUpdateFromVTPool()
 	r.LedgerName = m.LedgerName
 	r.Cursor = m.Cursor
 	r.Error = m.Error.CloneVT()
@@ -1697,7 +1698,7 @@ func (m *EventsSinkUpdate) CloneVT() *EventsSinkUpdate {
 	if m == nil {
 		return (*EventsSinkUpdate)(nil)
 	}
-	r := new(EventsSinkUpdate)
+	r := EventsSinkUpdateFromVTPool()
 	r.SinkName = m.SinkName
 	r.Cursor = m.Cursor
 	r.Error = m.Error.CloneVT()
@@ -1792,7 +1793,7 @@ func (m *PreloadSet) CloneVT() *PreloadSet {
 	if m == nil {
 		return (*PreloadSet)(nil)
 	}
-	r := new(PreloadSet)
+	r := PreloadSetFromVTPool()
 	r.LastPersistedIndex = m.LastPersistedIndex
 	if rhs := m.Preloads; rhs != nil {
 		tmpContainer := make([]*Preload, len(rhs))
@@ -1823,7 +1824,7 @@ func (m *CacheTouch) CloneVT() *CacheTouch {
 	if m == nil {
 		return (*CacheTouch)(nil)
 	}
-	r := new(CacheTouch)
+	r := CacheTouchFromVTPool()
 	r.Type = m.Type
 	if rhs := m.Id; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
@@ -1845,7 +1846,7 @@ func (m *Preload) CloneVT() *Preload {
 	if m == nil {
 		return (*Preload)(nil)
 	}
-	r := new(Preload)
+	r := PreloadFromVTPool()
 	if m.Type != nil {
 		r.Type = m.Type.(interface{ CloneVT() isPreload_Type }).CloneVT()
 	}
@@ -12799,6 +12800,180 @@ func (m *AttributeID) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+var vtprotoPool_Order = sync.Pool{
+	New: func() interface{} {
+		return &Order{}
+	},
+}
+
+func (m *Order) ResetVT() {
+	if m != nil {
+		m.Reset()
+	}
+}
+func (m *Order) ReturnToVTPool() {
+	if m != nil {
+		m.ResetVT()
+		vtprotoPool_Order.Put(m)
+	}
+}
+func OrderFromVTPool() *Order {
+	return vtprotoPool_Order.Get().(*Order)
+}
+
+var vtprotoPool_Proposal = sync.Pool{
+	New: func() interface{} {
+		return &Proposal{}
+	},
+}
+
+func (m *Proposal) ResetVT() {
+	if m != nil {
+		for _, mm := range m.Orders {
+			mm.ResetVT()
+		}
+		f0 := m.Orders[:0]
+		m.Preload.ReturnToVTPool()
+		for _, mm := range m.EventsSinkUpdates {
+			mm.ResetVT()
+		}
+		f1 := m.EventsSinkUpdates[:0]
+		for _, mm := range m.MirrorSyncUpdates {
+			mm.ResetVT()
+		}
+		f2 := m.MirrorSyncUpdates[:0]
+		m.Reset()
+		m.Orders = f0
+		m.EventsSinkUpdates = f1
+		m.MirrorSyncUpdates = f2
+	}
+}
+func (m *Proposal) ReturnToVTPool() {
+	if m != nil {
+		m.ResetVT()
+		vtprotoPool_Proposal.Put(m)
+	}
+}
+func ProposalFromVTPool() *Proposal {
+	return vtprotoPool_Proposal.Get().(*Proposal)
+}
+
+var vtprotoPool_MirrorSyncUpdate = sync.Pool{
+	New: func() interface{} {
+		return &MirrorSyncUpdate{}
+	},
+}
+
+func (m *MirrorSyncUpdate) ResetVT() {
+	if m != nil {
+		m.Reset()
+	}
+}
+func (m *MirrorSyncUpdate) ReturnToVTPool() {
+	if m != nil {
+		m.ResetVT()
+		vtprotoPool_MirrorSyncUpdate.Put(m)
+	}
+}
+func MirrorSyncUpdateFromVTPool() *MirrorSyncUpdate {
+	return vtprotoPool_MirrorSyncUpdate.Get().(*MirrorSyncUpdate)
+}
+
+var vtprotoPool_EventsSinkUpdate = sync.Pool{
+	New: func() interface{} {
+		return &EventsSinkUpdate{}
+	},
+}
+
+func (m *EventsSinkUpdate) ResetVT() {
+	if m != nil {
+		m.Reset()
+	}
+}
+func (m *EventsSinkUpdate) ReturnToVTPool() {
+	if m != nil {
+		m.ResetVT()
+		vtprotoPool_EventsSinkUpdate.Put(m)
+	}
+}
+func EventsSinkUpdateFromVTPool() *EventsSinkUpdate {
+	return vtprotoPool_EventsSinkUpdate.Get().(*EventsSinkUpdate)
+}
+
+var vtprotoPool_PreloadSet = sync.Pool{
+	New: func() interface{} {
+		return &PreloadSet{}
+	},
+}
+
+func (m *PreloadSet) ResetVT() {
+	if m != nil {
+		for _, mm := range m.Preloads {
+			mm.ResetVT()
+		}
+		f0 := m.Preloads[:0]
+		for _, mm := range m.Touches {
+			mm.ResetVT()
+		}
+		f1 := m.Touches[:0]
+		m.Reset()
+		m.Preloads = f0
+		m.Touches = f1
+	}
+}
+func (m *PreloadSet) ReturnToVTPool() {
+	if m != nil {
+		m.ResetVT()
+		vtprotoPool_PreloadSet.Put(m)
+	}
+}
+func PreloadSetFromVTPool() *PreloadSet {
+	return vtprotoPool_PreloadSet.Get().(*PreloadSet)
+}
+
+var vtprotoPool_CacheTouch = sync.Pool{
+	New: func() interface{} {
+		return &CacheTouch{}
+	},
+}
+
+func (m *CacheTouch) ResetVT() {
+	if m != nil {
+		f0 := m.Id[:0]
+		m.Reset()
+		m.Id = f0
+	}
+}
+func (m *CacheTouch) ReturnToVTPool() {
+	if m != nil {
+		m.ResetVT()
+		vtprotoPool_CacheTouch.Put(m)
+	}
+}
+func CacheTouchFromVTPool() *CacheTouch {
+	return vtprotoPool_CacheTouch.Get().(*CacheTouch)
+}
+
+var vtprotoPool_Preload = sync.Pool{
+	New: func() interface{} {
+		return &Preload{}
+	},
+}
+
+func (m *Preload) ResetVT() {
+	if m != nil {
+		m.Reset()
+	}
+}
+func (m *Preload) ReturnToVTPool() {
+	if m != nil {
+		m.ResetVT()
+		vtprotoPool_Preload.Put(m)
+	}
+}
+func PreloadFromVTPool() *Preload {
+	return vtprotoPool_Preload.Get().(*Preload)
+}
 func (m *Order) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -24111,7 +24286,14 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Orders = append(m.Orders, &Order{})
+			if len(m.Orders) == cap(m.Orders) {
+				m.Orders = append(m.Orders, &Order{})
+			} else {
+				m.Orders = m.Orders[:len(m.Orders)+1]
+				if m.Orders[len(m.Orders)-1] == nil {
+					m.Orders[len(m.Orders)-1] = &Order{}
+				}
+			}
 			if err := m.Orders[len(m.Orders)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -24182,7 +24364,7 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Preload == nil {
-				m.Preload = &PreloadSet{}
+				m.Preload = PreloadSetFromVTPool()
 			}
 			if err := m.Preload.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -24217,7 +24399,14 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.EventsSinkUpdates = append(m.EventsSinkUpdates, &EventsSinkUpdate{})
+			if len(m.EventsSinkUpdates) == cap(m.EventsSinkUpdates) {
+				m.EventsSinkUpdates = append(m.EventsSinkUpdates, &EventsSinkUpdate{})
+			} else {
+				m.EventsSinkUpdates = m.EventsSinkUpdates[:len(m.EventsSinkUpdates)+1]
+				if m.EventsSinkUpdates[len(m.EventsSinkUpdates)-1] == nil {
+					m.EventsSinkUpdates[len(m.EventsSinkUpdates)-1] = &EventsSinkUpdate{}
+				}
+			}
 			if err := m.EventsSinkUpdates[len(m.EventsSinkUpdates)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -24251,7 +24440,14 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.MirrorSyncUpdates = append(m.MirrorSyncUpdates, &MirrorSyncUpdate{})
+			if len(m.MirrorSyncUpdates) == cap(m.MirrorSyncUpdates) {
+				m.MirrorSyncUpdates = append(m.MirrorSyncUpdates, &MirrorSyncUpdate{})
+			} else {
+				m.MirrorSyncUpdates = m.MirrorSyncUpdates[:len(m.MirrorSyncUpdates)+1]
+				if m.MirrorSyncUpdates[len(m.MirrorSyncUpdates)-1] == nil {
+					m.MirrorSyncUpdates[len(m.MirrorSyncUpdates)-1] = &MirrorSyncUpdate{}
+				}
+			}
 			if err := m.MirrorSyncUpdates[len(m.MirrorSyncUpdates)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -25033,7 +25229,14 @@ func (m *PreloadSet) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Preloads = append(m.Preloads, &Preload{})
+			if len(m.Preloads) == cap(m.Preloads) {
+				m.Preloads = append(m.Preloads, &Preload{})
+			} else {
+				m.Preloads = m.Preloads[:len(m.Preloads)+1]
+				if m.Preloads[len(m.Preloads)-1] == nil {
+					m.Preloads[len(m.Preloads)-1] = &Preload{}
+				}
+			}
 			if err := m.Preloads[len(m.Preloads)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -25067,7 +25270,14 @@ func (m *PreloadSet) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Touches = append(m.Touches, &CacheTouch{})
+			if len(m.Touches) == cap(m.Touches) {
+				m.Touches = append(m.Touches, &CacheTouch{})
+			} else {
+				m.Touches = m.Touches[:len(m.Touches)+1]
+				if m.Touches[len(m.Touches)-1] == nil {
+					m.Touches[len(m.Touches)-1] = &CacheTouch{}
+				}
+			}
 			if err := m.Touches[len(m.Touches)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}

@@ -609,7 +609,7 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 			continue
 		}
 
-		cmd.Reset()
+		cmd.ResetVT()
 
 		if err := cmd.UnmarshalVT(entry.Data); err != nil {
 			return nil, err

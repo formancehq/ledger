@@ -90,8 +90,8 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 		log := &commonpb.Log{
 			Sequence:    nextSequenceID,
 			Payload:     payload,
-			Idempotency: order.GetIdempotency(),
-			Signature:   order.GetSignature(),
+			Idempotency: order.GetIdempotency().CloneVT(),
+			Signature:   order.GetSignature().CloneVT(),
 		}
 		log.Hash = ComputeLogHash(p.logHasher, s.GetLastLogHash(), log)
 		s.SetLastLogHash(log.GetHash())
