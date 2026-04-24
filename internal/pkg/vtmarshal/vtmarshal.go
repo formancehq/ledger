@@ -8,6 +8,11 @@ type VTMarshaler interface {
 	MarshalToVT([]byte) (int, error)
 }
 
+// marshalSlack is extra capacity added to the output buffer returned by
+// MarshalCopy. It allows callers to append a few bytes (e.g. a protobuf
+// field patch) without triggering a full reallocation + memcpy.
+const marshalSlack = 16
+
 // bufPool holds reusable scratch buffers for MarshalToVT to avoid repeated
 // buffer growth allocations in the proposal hot path.
 var bufPool = sync.Pool{
@@ -40,7 +45,7 @@ func MarshalCopy(msg VTMarshaler) ([]byte, error) {
 		return nil, err
 	}
 
-	data := make([]byte, n)
+	data := make([]byte, n, n+marshalSlack)
 	copy(data, buf[:n])
 
 	*bufp = buf
