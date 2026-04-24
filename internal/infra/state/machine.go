@@ -108,9 +108,9 @@ type Machine struct {
 	batchCommitHistogram      metric.Int64Histogram
 	lastPersistedIndex        atomic.Uint64
 
-	// volumeAssertions enables runtime volume consistency checks
+	// sentinelMode enables runtime volume consistency checks
 	// (monotonicity, delta/posting cross-check, post-commit cache/Pebble verification).
-	volumeAssertions bool
+	sentinelMode bool
 
 	// eventNotifier is notified after new logs are committed and when events
 	// config changes. Used by the event Manager.
@@ -131,7 +131,7 @@ type Machine struct {
 	indexNotifier Notifier
 }
 
-func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, ks *keystore.KeyStore, sharedState *SharedState, eventNotifier Notifier, mirrorNotifier Notifier, indexNotifier Notifier, numscriptCacheSize int, volumeAssertions bool) (*Machine, error) {
+func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, ks *keystore.KeyStore, sharedState *SharedState, eventNotifier Notifier, mirrorNotifier Notifier, indexNotifier Notifier, numscriptCacheSize int, sentinelMode bool) (*Machine, error) {
 	stepStart := time.Now()
 
 	lastAppliedIndex, err := query.ReadLastAppliedIndex(dataStore)
@@ -314,7 +314,7 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		dataStore:                      dataStore,
 		lastAppliedIndex:               lastAppliedIndex,
 		lastAppliedTimestamp:           lastAppliedTimestamp,
-		volumeAssertions:               volumeAssertions,
+		sentinelMode:                   sentinelMode,
 		logsAppendedCounter:            logsAppendedCounter,
 		rotationDurationHistogram:      rotationDurationHistogram,
 		batchCommitHistogram:           batchCommitHistogram,
@@ -702,7 +702,7 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 	// key, only the last entry's value survives in Pebble (Set overwrites in
 	// place). We must deduplicate by canonical key, keeping only the latest
 	// update, before comparing with Pebble.
-	if fsm.volumeAssertions {
+	if fsm.sentinelMode {
 		finalUpdates := deduplicateVolumeUpdates(ret.Results)
 		if len(finalUpdates) > 0 {
 			if err := verifyPostCommitVolumes(
@@ -1444,7 +1444,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	}
 
 	// Cross-check: volume deltas must match postings in the committed logs.
-	if fsm.volumeAssertions {
+	if fsm.sentinelMode {
 		if err := verifyVolumeDeltasMatchPostings(buffer.AllVolumeUpdates(), createdLogs); err != nil {
 			return nil, fmt.Errorf("volume delta/posting cross-check failed at raft index %d: %w", raftIndex, err)
 		}

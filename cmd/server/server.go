@@ -176,8 +176,8 @@ func NewRunCommand() *cobra.Command {
 	// Configuration safety
 	runCmd.Flags().Bool("unsafe-skip-config-validation", false, "Skip startup configuration safety checks (DANGEROUS: allows node-id/cluster-id changes)")
 
-	// Volume assertions (runtime consistency checks)
-	runCmd.Flags().Bool("volume-assertions", false, "Enable runtime volume consistency assertions (monotonicity, delta/posting cross-check, post-commit cache/Pebble verification)")
+	// Sentinel mode (runtime consistency checks)
+	runCmd.Flags().Bool("sentinel-mode", false, "Enable sentinel mode: runtime volume consistency assertions (monotonicity, delta/posting cross-check, post-commit cache/Pebble verification)")
 
 	// Read index configuration
 	runCmd.Flags().String("read-index-dir", "", "Directory for the Pebble read index (default: <data-dir>/read-indexes/)")
@@ -512,8 +512,8 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 	// Configuration safety
 	cfg.UnsafeSkipConfigValidation = getBool("unsafe-skip-config-validation", false)
 
-	// Volume assertions
-	cfg.VolumeAssertions = getBool("volume-assertions", false)
+	// Sentinel mode
+	cfg.SentinelMode = getBool("sentinel-mode", false)
 
 	// Read index configuration
 	cfg.ReadIndexConfig = bootstrap.ReadIndexConfig{

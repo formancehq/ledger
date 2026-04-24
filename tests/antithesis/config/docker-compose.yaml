@@ -22,7 +22,7 @@ x-ledger-common: &ledger-common
     CACHE_ROTATION_THRESHOLD: "50"
 
     # Runtime consistency checks (valuable under chaos)
-    VOLUME_ASSERTIONS: "true"
+    SENTINEL_MODE: "true"
 
     # Cold storage (S3/MinIO)
     COLD_CACHE_DIR: "/data/cold-cache"

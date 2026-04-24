@@ -3,7 +3,7 @@
 ## I want to...
 
 ### Deploy & operate the ledger → [Operations Guide](./ops/)
-Deployment, monitoring, backup/restore, cluster management, CLI reference, request signing, maintenance mode.
+Deployment, monitoring, backup/restore, cluster management, CLI reference, request signing, maintenance mode, sentinel mode.
 
 ### Develop on the project → [Developer Guide](./dev/)
 Getting started, conventions, testing, protobuf, Numscript, and detailed architecture documentation.

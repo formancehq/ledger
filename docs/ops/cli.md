@@ -3038,6 +3038,26 @@ ledger-v3-poc run --node-id 2 --data-dir ./data --unsafe-skip-config-validation
 
 ---
 
+### Server `--sentinel-mode` Flag
+
+Enables sentinel mode: runtime volume consistency assertions that verify correctness at every Raft apply. See [Sentinel Mode](./sentinel-mode.md) for full details.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--sentinel-mode` | `false` | Enable runtime volume consistency assertions (monotonicity, delta/posting cross-check, post-commit cache/Pebble verification) |
+
+When enabled, four checks run in the write path: volume monotonicity, delta/posting cross-check, aggregated volume balance, and post-commit cache/Pebble verification. Intended for testing and staging environments.
+
+```bash
+# Enable sentinel mode
+ledger-v3-poc run --sentinel-mode [other flags...]
+
+# Via environment variable
+SENTINEL_MODE=true ledger-v3-poc run [other flags...]
+```
+
+---
+
 ### Server `--response-signing-key` Flag
 
 Enables Ed25519 response signing. When configured, the server signs every `Log` in `ApplyResponse` messages so clients can verify the response is authentic.

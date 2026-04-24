@@ -175,7 +175,7 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	}
 
 	// Defensive check: volumes must never decrease (stale base detection).
-	if b.fsm.volumeAssertions {
+	if b.fsm.sentinelMode {
 		if err := verifyVolumeUpdateMonotonicity(volumeUpdates); err != nil {
 			return err
 		}
