@@ -2359,6 +2359,10 @@ components:
           type: string
         version:
           type: string
+        experimentalFeatures:
+          type: array
+          items:
+            type: string
       required:
         - config
         - server

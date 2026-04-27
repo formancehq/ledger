@@ -3,9 +3,10 @@
 package components
 
 type ConfigInfo struct {
-	Config  Config `json:"config"`
-	Server  string `json:"server"`
-	Version string `json:"version"`
+	Config               Config   `json:"config"`
+	Server               string   `json:"server"`
+	Version              string   `json:"version"`
+	ExperimentalFeatures []string `json:"experimentalFeatures,omitempty"`
 }
 
 func (o *ConfigInfo) GetConfig() Config {
@@ -27,4 +28,11 @@ func (o *ConfigInfo) GetVersion() string {
 		return ""
 	}
 	return o.Version
+}
+
+func (o *ConfigInfo) GetExperimentalFeatures() []string {
+	if o == nil {
+		return nil
+	}
+	return o.ExperimentalFeatures
 }
