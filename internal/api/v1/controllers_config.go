@@ -17,9 +17,10 @@ import (
 )
 
 type ConfigInfo struct {
-	Server  string        `json:"server"`
-	Version string        `json:"version"`
-	Config  *LedgerConfig `json:"config"`
+	Server               string        `json:"server"`
+	Version              string        `json:"version"`
+	Config               *LedgerConfig `json:"config"`
+	ExperimentalFeatures []string      `json:"experimentalFeatures"`
 }
 
 type LedgerConfig struct {
@@ -32,7 +33,7 @@ type LedgerStorage struct {
 	Ledgers []string `json:"ledgers"`
 }
 
-func GetInfo(systemController system.Controller, version string) func(w http.ResponseWriter, r *http.Request) {
+func GetInfo(systemController system.Controller, version string, experimentalFeatures []string) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		ledgerNames := make([]string, 0)
@@ -61,6 +62,7 @@ func GetInfo(systemController system.Controller, version string) func(w http.Res
 					Ledgers: ledgerNames,
 				},
 			},
+			ExperimentalFeatures: experimentalFeatures,
 		})
 	}
 }

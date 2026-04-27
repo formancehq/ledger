@@ -98,6 +98,7 @@ func NewRouter(
 		v2.WithDefaultBulkHandlerFactories(routerOptions.bulkMaxSize),
 		v2.WithPaginationConfig(routerOptions.paginationConfig),
 		v2.WithExporters(routerOptions.exporters),
+		v2.WithExperimentalFeatures(routerOptions.experimentalFeatures),
 	)
 	mux.Handle("/v2*", http.StripPrefix("/v2", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		chi.RouteContext(r.Context()).Reset()
@@ -109,18 +110,20 @@ func NewRouter(
 		version,
 		debug,
 		v1.WithTracer(routerOptions.tracer),
+		v1.WithExperimentalFeatures(routerOptions.experimentalFeatures),
 	))
 
 	return mux
 }
 
 type routerOptions struct {
-	tracer           trace.Tracer
-	meterProvider    metric.MeterProvider
-	bulkMaxSize      int
-	bulkerFactory    bulking.BulkerFactory
-	paginationConfig storagecommon.PaginationConfig
-	exporters        bool
+	tracer               trace.Tracer
+	meterProvider        metric.MeterProvider
+	bulkMaxSize          int
+	bulkerFactory        bulking.BulkerFactory
+	paginationConfig     storagecommon.PaginationConfig
+	exporters            bool
+	experimentalFeatures []string
 }
 
 type RouterOption func(ro *routerOptions)
@@ -152,6 +155,12 @@ func WithPaginationConfiguration(paginationConfig storagecommon.PaginationConfig
 func WithExporters(v bool) RouterOption {
 	return func(ro *routerOptions) {
 		ro.exporters = v
+	}
+}
+
+func WithExperimentalFeatures(features []string) RouterOption {
+	return func(ro *routerOptions) {
+		ro.experimentalFeatures = features
 	}
 }
 
