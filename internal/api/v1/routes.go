@@ -28,7 +28,7 @@ func NewRouter(
 
 	router := chi.NewMux()
 
-	router.Get("/_info", GetInfo(systemController, version))
+	router.Get("/_info", GetInfo(systemController, version, routerOptions.experimentalFeatures))
 
 	router.Group(func(router chi.Router) {
 		router.Use(jwt.Middleware(authenticator))
@@ -79,7 +79,8 @@ func NewRouter(
 }
 
 type routerOptions struct {
-	tracer trace.Tracer
+	tracer               trace.Tracer
+	experimentalFeatures []string
 }
 
 type RouterOption func(ro *routerOptions)
@@ -87,6 +88,12 @@ type RouterOption func(ro *routerOptions)
 func WithTracer(tracer trace.Tracer) RouterOption {
 	return func(ro *routerOptions) {
 		ro.tracer = tracer
+	}
+}
+
+func WithExperimentalFeatures(features []string) RouterOption {
+	return func(ro *routerOptions) {
+		ro.experimentalFeatures = features
 	}
 }
 
