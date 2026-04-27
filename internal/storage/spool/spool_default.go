@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"go.etcd.io/etcd/raft/v3/raftpb"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
 
 var ErrCorrupt = errors.New("spool: corrupt record")
@@ -27,6 +29,7 @@ type DefaultSpoolConfig struct {
 	WriteBufBytes   int
 	SyncEvery       int
 	SyncMaxDelay    time.Duration
+	Logger          logging.Logger
 }
 
 type Default struct {
@@ -87,6 +90,10 @@ func NewDefault(cfg DefaultSpoolConfig) (*Default, error) {
 
 	if cfg.SyncMaxDelay <= 0 {
 		cfg.SyncMaxDelay = 200 * time.Millisecond
+	}
+
+	if cfg.Logger == nil {
+		cfg.Logger = logging.NewDefaultLogger(os.Stderr, false, false, false)
 	}
 
 	if err := os.MkdirAll(cfg.Dir, 0o700); err != nil {
@@ -362,6 +369,25 @@ func (s *Default) ReplayUntil(
 			}
 
 			if err != nil {
+				// On the last segment, a corrupt record or unexpected EOF means
+				// a partial/garbled write from a crash (SIGKILL, OOM). Truncate
+				// at the last good offset and continue — the WAL has these
+				// entries and they'll be replayed through normal Raft recovery.
+				if (errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, ErrCorrupt)) && i == len(ids)-1 {
+					s.cfg.Logger.Errorf("========================================")
+					s.cfg.Logger.Errorf("SPOOL CORRUPTED: %v in segment %d at offset %d", err, segID, curOff)
+					s.cfg.Logger.Errorf("Truncating corrupt tail and continuing...")
+					s.cfg.Logger.Errorf("========================================")
+
+					_ = f.Close()
+
+					if truncErr := os.Truncate(path, curOff); truncErr != nil {
+						return fmt.Errorf("truncating corrupted spool segment %d: %w", segID, truncErr)
+					}
+
+					break
+				}
+
 				_ = f.Close()
 
 				return err

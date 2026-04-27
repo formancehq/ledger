@@ -2,7 +2,9 @@ package spool
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -329,6 +331,147 @@ func TestDefaultSpoolReplayApplyError(t *testing.T) {
 		return applyErr
 	})
 	require.ErrorIs(t, err, applyErr)
+}
+
+func TestDefaultSpoolRepairPartialRecord(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	cfg := DefaultSpoolConfig{
+		Dir:             dir,
+		SegmentMaxBytes: 1 << 20,
+		WriteBufBytes:   512,
+		SyncEvery:       1,
+	}
+
+	s, err := NewDefault(cfg)
+	require.NoError(t, err)
+
+	// Write 3 entries and sync
+	require.NoError(t, s.AppendCommittedEntries(context.Background(),
+		makeEntry(1), makeEntry(2), makeEntry(3),
+	))
+	require.NoError(t, s.Close())
+
+	// Corrupt the last segment by appending a partial record header
+	ids, err := listSegments(dir)
+	require.NoError(t, err)
+	require.NotEmpty(t, ids)
+
+	lastSeg := segmentPath(dir, ids[len(ids)-1])
+
+	// Remove the trailer that Close() wrote, then append garbage
+	fi, err := os.Stat(lastSeg)
+	require.NoError(t, err)
+	originalSize := fi.Size() - trailerLen // size without trailer
+
+	require.NoError(t, os.Truncate(lastSeg, originalSize))
+
+	// Append a partial record header (only 8 bytes of 12-byte header)
+	f, err := os.OpenFile(lastSeg, os.O_WRONLY|os.O_APPEND, 0o600)
+	require.NoError(t, err)
+
+	partialHeader := make([]byte, 8)
+	binary.LittleEndian.PutUint32(partialHeader[0:4], recMagic)
+	binary.LittleEndian.PutUint32(partialHeader[4:8], 100) // claims 100 bytes payload
+	_, err = f.Write(partialHeader)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	corruptedSize := originalSize + 8 // data + partial header
+
+	fi, err = os.Stat(lastSeg)
+	require.NoError(t, err)
+	require.Equal(t, corruptedSize, fi.Size(), "file should have data + partial header")
+
+	// Reopen — should recover from the partial record
+	s2, err := NewDefault(cfg)
+	require.NoError(t, err)
+
+	end, err := s2.End()
+	require.NoError(t, err)
+
+	// Should replay the 3 good entries
+	entries := collectEntries(t, s2, end, 0)
+	require.Len(t, entries, 3)
+	require.Equal(t, uint64(1), entries[0].Index)
+	require.Equal(t, uint64(3), entries[2].Index)
+
+	// Verify the file was truncated to remove the partial record
+	fi, err = os.Stat(lastSeg)
+	require.NoError(t, err)
+	require.Equal(t, originalSize, fi.Size(),
+		"file should be truncated back to original data size (partial record removed)")
+
+	require.NoError(t, s2.Close())
+}
+
+func TestDefaultSpoolRepairCorruptRecord(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	cfg := DefaultSpoolConfig{
+		Dir:             dir,
+		SegmentMaxBytes: 1 << 20,
+		WriteBufBytes:   512,
+		SyncEvery:       1,
+	}
+
+	s, err := NewDefault(cfg)
+	require.NoError(t, err)
+
+	require.NoError(t, s.AppendCommittedEntries(context.Background(),
+		makeEntry(1), makeEntry(2), makeEntry(3),
+	))
+	require.NoError(t, s.Close())
+
+	ids, err := listSegments(dir)
+	require.NoError(t, err)
+	require.NotEmpty(t, ids)
+
+	lastSeg := segmentPath(dir, ids[len(ids)-1])
+
+	// Remove trailer, then append a full record header with valid magic but bad CRC + fake payload
+	fi, err := os.Stat(lastSeg)
+	require.NoError(t, err)
+	originalSize := fi.Size() - trailerLen
+
+	require.NoError(t, os.Truncate(lastSeg, originalSize))
+
+	f, err := os.OpenFile(lastSeg, os.O_WRONLY|os.O_APPEND, 0o600)
+	require.NoError(t, err)
+
+	// Write a complete record with valid magic, valid length, but wrong CRC
+	fakePayload := []byte("corrupted-data")
+	corruptHeader := make([]byte, recHdrLen)
+	binary.LittleEndian.PutUint32(corruptHeader[0:4], recMagic)
+	binary.LittleEndian.PutUint32(corruptHeader[4:8], uint32(len(fakePayload)))
+	binary.LittleEndian.PutUint32(corruptHeader[8:12], 0xDEADBEEF) // bad CRC
+	_, err = f.Write(corruptHeader)
+	require.NoError(t, err)
+	_, err = f.Write(fakePayload)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	// Reopen — should recover from the corrupt record
+	s2, err := NewDefault(cfg)
+	require.NoError(t, err)
+
+	end, err := s2.End()
+	require.NoError(t, err)
+
+	entries := collectEntries(t, s2, end, 0)
+	require.Len(t, entries, 3)
+	require.Equal(t, uint64(1), entries[0].Index)
+	require.Equal(t, uint64(3), entries[2].Index)
+
+	// File should be truncated to remove the corrupt record
+	fi, err = os.Stat(lastSeg)
+	require.NoError(t, err)
+	require.Equal(t, originalSize, fi.Size(),
+		"file should be truncated back to original data size (corrupt record removed)")
+
+	require.NoError(t, s2.Close())
 }
 
 func TestDefaultSpoolCloseAndReopen(t *testing.T) {

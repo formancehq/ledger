@@ -237,9 +237,12 @@ func Module() fx.Option {
 					"cmp": "wal",
 				}), meterProvider.Meter("wal"))
 			},
-			func(cfg Config) (*spool.Default, error) {
+			func(cfg Config, logger logging.Logger) (*spool.Default, error) {
 				return spool.NewDefault(spool.DefaultSpoolConfig{
 					Dir: filepath.Join(cfg.RaftConfig.WalDir, "spool"),
+					Logger: logger.WithFields(map[string]any{
+						"cmp": "spool",
+					}),
 				})
 			},
 			ctrl.GRPCSnapshotFetcherProvider,
