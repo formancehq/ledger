@@ -32,6 +32,42 @@ const (
 	baselineCheckpointsDir  = "baseline"
 )
 
+// WriteCurrentCheckpointAtomic writes the checkpoint ID to the CURRENT_CHECKPOINT
+// file using a write-to-tmp + fsync + rename pattern. This guarantees that the
+// file is either the old value or the new value after a crash — never a truncated
+// or partial write.
+func WriteCurrentCheckpointAtomic(dataDir string, checkpointID uint64) error {
+	tmpPath := filepath.Join(dataDir, currentCheckpointFile+".tmp")
+	finalPath := filepath.Join(dataDir, currentCheckpointFile)
+
+	f, err := os.Create(tmpPath)
+	if err != nil {
+		return fmt.Errorf("creating tmp file: %w", err)
+	}
+
+	defer func() {
+		_ = f.Close()
+	}()
+
+	if _, err := fmt.Fprintf(f, "%d", checkpointID); err != nil {
+		return fmt.Errorf("writing tmp file: %w", err)
+	}
+
+	if err := f.Sync(); err != nil {
+		return fmt.Errorf("syncing tmp file: %w", err)
+	}
+
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("closing tmp file: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, finalPath); err != nil {
+		return fmt.Errorf("renaming tmp to final: %w", err)
+	}
+
+	return nil
+}
+
 // Store is a Pebble implementation of dal.Store
 // It stores balances and account metadata.
 type Store struct {
@@ -274,21 +310,8 @@ func NewStore(
 			return nil, fmt.Errorf("creating initial checkpoint: %w", err)
 		}
 
-		f, err := os.Create(filepath.Join(dataDir, currentCheckpointFile))
-		if err != nil {
-			return nil, fmt.Errorf("creating current checkpoint file: %w", err)
-		}
-
-		if _, err := f.WriteString("0"); err != nil {
+		if err := WriteCurrentCheckpointAtomic(dataDir, 0); err != nil {
 			return nil, fmt.Errorf("writing current checkpoint: %w", err)
-		}
-
-		if err := f.Sync(); err != nil {
-			return nil, fmt.Errorf("syncing current checkpoint file: %w", err)
-		}
-
-		if err := f.Close(); err != nil {
-			return nil, fmt.Errorf("closing current checkpoint file: %w", err)
 		}
 	} else {
 		logger.Infof("Checkpoint found, restoring from checkpoint %s to directory %s", string(currentCheckpointRaw), liveDir)
@@ -536,29 +559,8 @@ func (s *Store) CreateSnapshot() (uint64, error) {
 		return 0, fmt.Errorf("creating checkpoint: %w", err)
 	}
 
-	f, err := os.Create(filepath.Join(s.dataDir, currentCheckpointFile+".tmp"))
-	if err != nil {
-		return 0, fmt.Errorf("creating checkpoint file: %w", err)
-	}
-
-	defer func() {
-		_ = f.Close()
-	}()
-
-	if _, err := fmt.Fprintf(f, "%d", newCheckpointID); err != nil {
-		return 0, fmt.Errorf("writing checkpoint file: %w", err)
-	}
-
-	if err := f.Sync(); err != nil {
-		return 0, fmt.Errorf("syncing checkpoint file: %w", err)
-	}
-
-	if err := f.Close(); err != nil {
-		return 0, fmt.Errorf("closing checkpoint file: %w", err)
-	}
-
-	if err := os.Rename(filepath.Join(s.dataDir, currentCheckpointFile+".tmp"), filepath.Join(s.dataDir, currentCheckpointFile)); err != nil {
-		return 0, fmt.Errorf("renaming checkpoint file: %w", err)
+	if err := WriteCurrentCheckpointAtomic(s.dataDir, newCheckpointID); err != nil {
+		return 0, fmt.Errorf("updating current checkpoint file: %w", err)
 	}
 
 	// Clean up old checkpoints beyond the configured maximum
@@ -854,22 +856,9 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 		}
 	}
 
-	// Update the current checkpoint file
-	f, err := os.Create(filepath.Join(s.dataDir, currentCheckpointFile))
-	if err != nil {
-		return fmt.Errorf("creating checkpoint file: %w", err)
-	}
-
-	defer func() {
-		_ = f.Close()
-	}()
-
-	if _, err := fmt.Fprintf(f, "%d", checkpointID); err != nil {
-		return fmt.Errorf("writing checkpoint file: %w", err)
-	}
-
-	if err := f.Sync(); err != nil {
-		return fmt.Errorf("syncing checkpoint file: %w", err)
+	// Update the current checkpoint file (atomic write via .tmp + rename)
+	if err := WriteCurrentCheckpointAtomic(s.dataDir, checkpointID); err != nil {
+		return fmt.Errorf("updating current checkpoint file: %w", err)
 	}
 
 	// Update internal state

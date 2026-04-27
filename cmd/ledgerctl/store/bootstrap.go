@@ -264,8 +264,8 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("hard linking staging to checkpoint: %w", err)
 	}
 
-	// Write CURRENT_CHECKPOINT
-	if err := os.WriteFile(cpPath, []byte("0"), 0o644); err != nil {
+	// Write CURRENT_CHECKPOINT (atomic)
+	if err := dal.WriteCurrentCheckpointAtomic(dataDir, 0); err != nil {
 		return fmt.Errorf("writing CURRENT_CHECKPOINT: %w", err)
 	}
 

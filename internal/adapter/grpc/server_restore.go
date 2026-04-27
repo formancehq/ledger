@@ -374,9 +374,8 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 		return nil, fmt.Errorf("hard linking staging to checkpoint: %w", err)
 	}
 
-	// Write CURRENT_CHECKPOINT
-	cpFile := filepath.Join(s.dataDir, "CURRENT_CHECKPOINT")
-	if err := os.WriteFile(cpFile, []byte("0"), 0o644); err != nil {
+	// Write CURRENT_CHECKPOINT (atomic)
+	if err := dal.WriteCurrentCheckpointAtomic(s.dataDir, 0); err != nil {
 		return nil, fmt.Errorf("writing CURRENT_CHECKPOINT: %w", err)
 	}
 
