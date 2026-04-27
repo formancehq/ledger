@@ -515,16 +515,25 @@ func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []b
 	s.mu.Unlock()
 
 	if err := s.snapshotter.Save(snap); err != nil {
-		return fmt.Errorf("saving snapshot: %w", err)
+		return fmt.Errorf("saving snapshot file: %w", err)
 	}
 
+	// Write the WAL snapshot record BEFORE cleaning up old snap files.
+	// If a crash occurs between Save and SaveSnapshot, the old snap file
+	// is still on disk and LoadNewestAvailable will fall back to it.
+	// Without this ordering, a crash would leave zero matching snap files,
+	// causing the node to enter the fresh-start branch and lose cache state.
 	if err := s.wal.SaveSnapshot(walpb.Snapshot{
 		Index:     snap.Metadata.Index,
 		Term:      snap.Metadata.Term,
 		ConfState: cs,
 	}); err != nil {
-		return fmt.Errorf("saving snapshot: %w", err)
+		return fmt.Errorf("saving snapshot record: %w", err)
 	}
+
+	// Safe to clean up old snap files now — the WAL record guarantees that
+	// LoadNewestAvailable will match the new snap file on restart.
+	s.snapshotter.CleanupOlderThan(snap.Metadata.Index)
 
 	s.logger.WithFields(map[string]any{"index": index}).Infof("Snapshot created")
 
@@ -662,6 +671,9 @@ func (s *DefaultWAL) ApplySnapshot(snap raftpb.Snapshot) error {
 	if err := s.wal.Save(s.hardState, nil); err != nil {
 		return fmt.Errorf("saving HardState after snapshot to WAL: %w", err)
 	}
+
+	// Safe to clean up old snap files now — the WAL record is persisted.
+	s.snapshotter.CleanupOlderThan(snap.Metadata.Index)
 
 	return nil
 }

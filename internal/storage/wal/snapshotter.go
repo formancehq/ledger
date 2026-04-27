@@ -29,8 +29,10 @@ func NewSnapshotter(dir string, logger logging.Logger) (*Snapshotter, error) {
 	return &Snapshotter{dir: dir, logger: logger}, nil
 }
 
-// Save writes the snapshot to a file named <term>-<index>.snap and
-// removes older snap files.
+// Save writes the snapshot to a file named <term>-<index>.snap.
+// Old snap files are NOT removed here — call CleanupOlderThan after
+// the WAL snapshot record is persisted to avoid losing the only valid
+// snap file on a crash between Save and WAL write.
 func (s *Snapshotter) Save(snap raftpb.Snapshot) error {
 	data, err := snap.Marshal()
 	if err != nil {
@@ -44,9 +46,13 @@ func (s *Snapshotter) Save(snap raftpb.Snapshot) error {
 		return fmt.Errorf("writing snap file: %w", err)
 	}
 
-	s.cleanupOlder(snap.Metadata.Index)
-
 	return nil
+}
+
+// CleanupOlderThan removes snap files with index strictly less than keepIndex.
+// Must be called only after the corresponding WAL snapshot record is persisted.
+func (s *Snapshotter) CleanupOlderThan(keepIndex uint64) {
+	s.cleanupOlder(keepIndex)
 }
 
 // Load scans the directory for the most recent .snap file and returns it.

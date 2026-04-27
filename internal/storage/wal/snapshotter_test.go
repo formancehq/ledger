@@ -90,19 +90,32 @@ func TestSnapshotter_CleansUpOldFiles(t *testing.T) {
 		Metadata: raftpb.SnapshotMetadata{Index: 20, Term: 2},
 	}))
 
-	entries, err := os.ReadDir(s.dir)
+	// Before cleanup, both snap files exist
+	snapFiles := listSnapFiles(t, s.dir)
+	require.Len(t, snapFiles, 2)
+
+	// After explicit cleanup, only the latest snap file remains
+	s.CleanupOlderThan(20)
+
+	snapFiles = listSnapFiles(t, s.dir)
+	require.Len(t, snapFiles, 1)
+	require.Equal(t, snapFileName(2, 20), snapFiles[0])
+}
+
+func listSnapFiles(t *testing.T, dir string) []string {
+	t.Helper()
+
+	entries, err := os.ReadDir(dir)
 	require.NoError(t, err)
 
-	var snapFiles []string
+	var names []string
 	for _, e := range entries {
 		if _, _, ok := parseSnapFileName(e.Name()); ok {
-			snapFiles = append(snapFiles, e.Name())
+			names = append(names, e.Name())
 		}
 	}
 
-	// Only the latest snap file should remain
-	require.Len(t, snapFiles, 1)
-	require.Equal(t, snapFileName(2, 20), snapFiles[0])
+	return names
 }
 
 func TestSnapshotter_IgnoresNonSnapFiles(t *testing.T) {
