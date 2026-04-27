@@ -1054,7 +1054,7 @@ func enrichMigratingVolumePreloads(
 				continue
 			}
 
-			oldAddr, rwErr := accounttype.RewriteAddress(bindings, oldSegments)
+			oldAddr, rwErr := accounttype.RewriteAddress(&bindings, oldSegments)
 			if rwErr != nil {
 				continue
 			}

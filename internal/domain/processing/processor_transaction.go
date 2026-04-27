@@ -338,7 +338,7 @@ func resolveMigratingVolumes(
 					continue
 				}
 
-				oldAddr, rwErr := accounttype.RewriteAddress(bindings, mt.oldSegments)
+				oldAddr, rwErr := accounttype.RewriteAddress(&bindings, mt.oldSegments)
 				if rwErr != nil {
 					continue
 				}

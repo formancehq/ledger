@@ -56,6 +56,10 @@ func ParsePattern(pattern string) ([]PatternSegment, error) {
 				return nil, fmt.Errorf("duplicate variable name %q in pattern", seg.Value)
 			}
 			seenVars[seg.Value] = struct{}{}
+
+			if len(seenVars) > maxBindings {
+				return nil, fmt.Errorf("pattern has more than %d variables", maxBindings)
+			}
 		}
 
 		segments = append(segments, seg)
@@ -131,31 +135,44 @@ func parseSegment(s string) (PatternSegment, error) {
 }
 
 // MatchAddress matches an account address against parsed pattern segments.
-// Returns variable bindings and whether the address matched.
-func MatchAddress(address string, segments []PatternSegment) (map[string]string, bool) {
-	parts := strings.Split(address, ":")
-	if len(parts) != len(segments) {
-		return nil, false
-	}
+// Returns variable bindings and whether the address matched. Fully zero-allocation.
+func MatchAddress(address string, segments []PatternSegment) (Bindings, bool) {
+	var bindings Bindings
+	remaining := address
+	last := len(segments) - 1
 
-	bindings := make(map[string]string, len(segments))
-	for i, seg := range segments {
-		part := parts[i]
+	for i := range segments {
+		seg := &segments[i]
+
+		var part string
+		colonIdx := strings.IndexByte(remaining, ':')
+
+		if i < last {
+			if colonIdx < 0 {
+				return bindings, false
+			}
+			part = remaining[:colonIdx]
+			remaining = remaining[colonIdx+1:]
+		} else {
+			if colonIdx >= 0 {
+				return bindings, false
+			}
+			part = remaining
+		}
+
 		switch seg.Kind {
 		case SegmentFixed:
 			if part != seg.Value {
-				return nil, false
+				return bindings, false
 			}
 		case SegmentVariable:
-			if part == "" {
-				return nil, false
+			if len(part) == 0 {
+				return bindings, false
 			}
-			if seg.CompiledRegexp != nil {
-				if !seg.CompiledRegexp.MatchString(part) {
-					return nil, false
-				}
+			if seg.CompiledRegexp != nil && !seg.CompiledRegexp.MatchString(part) {
+				return bindings, false
 			}
-			bindings[seg.Value] = part
+			bindings.set(seg.Value, part)
 		}
 	}
 
@@ -177,14 +194,14 @@ func Specificity(segments []PatternSegment) int {
 
 // RewriteAddress applies captured variable bindings to a target pattern,
 // producing a new account address.
-func RewriteAddress(bindings map[string]string, target []PatternSegment) (string, error) {
+func RewriteAddress(bindings *Bindings, target []PatternSegment) (string, error) {
 	parts := make([]string, len(target))
 	for i, seg := range target {
 		switch seg.Kind {
 		case SegmentFixed:
 			parts[i] = seg.Value
 		case SegmentVariable:
-			val, ok := bindings[seg.Value]
+			val, ok := bindings.Get(seg.Value)
 			if !ok {
 				return "", fmt.Errorf("missing binding for variable %q", seg.Value)
 			}

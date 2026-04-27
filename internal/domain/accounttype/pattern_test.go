@@ -116,6 +116,11 @@ func TestParsePattern(t *testing.T) {
 			pattern: "users:{id}:{id}",
 			wantErr: "duplicate variable name",
 		},
+		{
+			name:    "too many variables",
+			pattern: "{a}:{b}:{c}:{d}:{e}:{f}:{g}:{h}:{i}:{j}:{k}",
+			wantErr: "more than 10 variables",
+		},
 	}
 
 	for _, tt := range tests {
@@ -152,14 +157,13 @@ func TestMatchAddress(t *testing.T) {
 		pattern      string
 		address      string
 		wantMatch    bool
-		wantBindings map[string]string
+		wantBindings map[string]string // nil means no bindings expected
 	}{
 		{
-			name:         "fixed match",
-			pattern:      "platform:fees",
-			address:      "platform:fees",
-			wantMatch:    true,
-			wantBindings: map[string]string{},
+			name:      "fixed match",
+			pattern:   "platform:fees",
+			address:   "platform:fees",
+			wantMatch: true,
 		},
 		{
 			name:      "fixed mismatch",
@@ -220,11 +224,10 @@ func TestMatchAddress(t *testing.T) {
 			wantBindings: map[string]string{"orgId": "acme", "deptId": "engineering"},
 		},
 		{
-			name:         "single fixed",
-			pattern:      "world",
-			address:      "world",
-			wantMatch:    true,
-			wantBindings: map[string]string{},
+			name:      "single fixed",
+			pattern:   "world",
+			address:   "world",
+			wantMatch: true,
 		},
 		{
 			name:         "fees with variable",
@@ -250,7 +253,40 @@ func TestMatchAddress(t *testing.T) {
 			bindings, ok := MatchAddress(tt.address, segments)
 			assert.Equal(t, tt.wantMatch, ok)
 			if tt.wantMatch {
-				assert.Equal(t, tt.wantBindings, bindings)
+				for k, v := range tt.wantBindings {
+					got, found := bindings.Get(k)
+					assert.True(t, found, "missing binding %q", k)
+					assert.Equal(t, v, got, "binding %q", k)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkMatchAddress(b *testing.B) {
+	segments3Fixed, _ := ParsePattern("platform:fees:main")
+	segments3Var, _ := ParsePattern("users:{id}:checking")
+	segmentsRegex, _ := ParsePattern("banks:{iban:^[A-Z]{2}[0-9]{14}$}:main")
+	segments5Var, _ := ParsePattern("org:{a}:dept:{b}:team:{c}:proj:{d}:env:{e}")
+
+	cases := []struct {
+		name     string
+		address  string
+		segments []PatternSegment
+	}{
+		{"no_match_segment_count", "a:b", segments3Fixed},
+		{"no_match_fixed", "platform:other:main", segments3Fixed},
+		{"match_all_fixed", "platform:fees:main", segments3Fixed},
+		{"match_with_variable", "users:alice:checking", segments3Var},
+		{"match_with_regex", "banks:FR76300060000112:main", segmentsRegex},
+		{"match_5_variables", "org:acme:dept:eng:team:core:proj:ledger:env:prod", segments5Var},
+	}
+
+	for _, tc := range cases {
+		b.Run(tc.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				MatchAddress(tc.address, tc.segments)
 			}
 		})
 	}
@@ -280,37 +316,46 @@ func TestSpecificity(t *testing.T) {
 	}
 }
 
+func makeBindings(m map[string]string) Bindings {
+	var b Bindings
+	for k, v := range m {
+		b.set(k, v)
+	}
+
+	return b
+}
+
 func TestRewriteAddress(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name     string
-		bindings map[string]string
+		bindings Bindings
 		target   string
 		want     string
 		wantErr  string
 	}{
 		{
 			name:     "simple rewrite",
-			bindings: map[string]string{"id": "alice"},
+			bindings: makeBindings(map[string]string{"id": "alice"}),
 			target:   "clients:{id}:courant",
 			want:     "clients:alice:courant",
 		},
 		{
 			name:     "multiple variables",
-			bindings: map[string]string{"orgId": "acme", "deptId": "eng"},
+			bindings: makeBindings(map[string]string{"orgId": "acme", "deptId": "eng"}),
 			target:   "companies:{orgId}:teams:{deptId}",
 			want:     "companies:acme:teams:eng",
 		},
 		{
 			name:     "pure fixed target",
-			bindings: map[string]string{"id": "alice"},
+			bindings: makeBindings(map[string]string{"id": "alice"}),
 			target:   "platform:fees",
 			want:     "platform:fees",
 		},
 		{
 			name:     "missing binding",
-			bindings: map[string]string{"id": "alice"},
+			bindings: makeBindings(map[string]string{"id": "alice"}),
 			target:   "clients:{name}:courant",
 			wantErr:  "missing binding",
 		},
@@ -322,7 +367,7 @@ func TestRewriteAddress(t *testing.T) {
 			target, err := ParsePattern(tt.target)
 			require.NoError(t, err)
 
-			got, err := RewriteAddress(tt.bindings, target)
+			got, err := RewriteAddress(&tt.bindings, target)
 			if tt.wantErr != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErr)

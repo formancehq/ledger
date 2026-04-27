@@ -255,7 +255,7 @@ func (am *AccountMigrator) migrate(ctx context.Context, req AccountMigrateReques
 			continue
 		}
 
-		newAddr, rwErr := accounttype.RewriteAddress(bindings, targetSegments)
+		newAddr, rwErr := accounttype.RewriteAddress(&bindings, targetSegments)
 		if rwErr != nil {
 			am.logger.Errorf("Failed to rewrite address %q: %v", vk.Account, rwErr)
 
