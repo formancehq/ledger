@@ -3,8 +3,9 @@
 package components
 
 type V2ConfigInfoResponse struct {
-	Server  string `json:"server"`
-	Version string `json:"version"`
+	Server               string   `json:"server"`
+	Version              string   `json:"version"`
+	ExperimentalFeatures []string `json:"experimentalFeatures,omitempty"`
 }
 
 func (v *V2ConfigInfoResponse) GetServer() string {
@@ -19,6 +20,13 @@ func (v *V2ConfigInfoResponse) GetVersion() string {
 		return ""
 	}
 	return v.Version
+}
+
+func (v *V2ConfigInfoResponse) GetExperimentalFeatures() []string {
+	if v == nil {
+		return nil
+	}
+	return v.ExperimentalFeatures
 }
 
 // #region class-body-v2configinforesponse
