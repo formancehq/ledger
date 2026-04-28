@@ -128,7 +128,7 @@ services:
           --advertise-addr "ledger-0:7777" \
           $$CLUSTER_FLAG
     annotations:
-      com.antithesis.exclude.faults: "stop, pause"
+      com.antithesis.exclude.faults: ""
     volumes:
       - ledger-0-wal:/data/raft
       - ledger-0-data:/data/app
@@ -153,7 +153,7 @@ services:
           --advertise-addr "ledger-1:7777" \
           $$JOIN_FLAG
     annotations:
-      com.antithesis.exclude.faults: "stop, pause"
+      com.antithesis.exclude.faults: ""
     volumes:
       - ledger-1-wal:/data/raft
       - ledger-1-data:/data/app
@@ -178,7 +178,7 @@ services:
           --advertise-addr "ledger-2:7777" \
           $$JOIN_FLAG
     annotations:
-      com.antithesis.exclude.faults: "stop, pause"
+      com.antithesis.exclude.faults: ""
     volumes:
       - ledger-2-wal:/data/raft
       - ledger-2-data:/data/app
@@ -194,7 +194,7 @@ services:
       EXPECTED_VOTERS: "3"
       ETCD_ENDPOINTS: "http://etcd-0:2379,http://etcd-1:2379,http://etcd-2:2379"
     annotations:
-      com.antithesis.exclude.faults: "stop, pause"
+      com.antithesis.exclude.faults: ""
     depends_on:
       - ledger-0
       - ledger-1
