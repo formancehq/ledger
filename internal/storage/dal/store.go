@@ -177,14 +177,15 @@ var (
 
 	KeyPrefixAttributes byte = 0xF1
 
-	// Attribute type prefixes used within the attributes zone.
-	AttributePrefixVolume      = byte('V') // Volume — unchanged
-	AttributePrefixMetadata    = byte('M') // Metadata — unchanged
-	AttributePrefixIdempotency = byte('I') // Idempotency
-	AttributePrefixReference   = byte('R') // Reference
-	AttributePrefixLedger      = byte('L') // Ledger
-	AttributePrefixBoundary    = byte('B') // Boundary — unchanged
-	AttributePrefixTransaction = byte('T') // Transaction state
+	// Attribute type prefixes used within the attributes zone and cache snapshot zone.
+	AttributePrefixVolume      = byte('V')
+	AttributePrefixMetadata    = byte('M')
+	AttributePrefixIdempotency = byte('I')
+	AttributePrefixReference   = byte('R')
+	AttributePrefixLedger      = byte('L')
+	AttributePrefixBoundary    = byte('B')
+	AttributePrefixTransaction = byte('T')
+	AttributePrefixNumscript   = byte('N')
 
 	// --- Global system zone [0xF2, 0xFF] ---.
 
@@ -204,23 +205,15 @@ var (
 )
 
 // Cache snapshot sub-prefixes within the 0xFF zone.
+// The type byte reuses AttributePrefix* constants so there is a single set
+// of attribute type identifiers across the attributes zone and the cache zone.
 // Key format:
 //
-//	[0xFF][gen: 0x00|0x01][type][16-byte U128 key] → proto value (attribute entry)
-//	[0xFF][gen: 0x00|0x01][0x00]                   → CacheGenerationMeta (baseIndex)
-//	[0xFF][0xFF]                                   → CacheSnapshotMeta (currentGeneration)
+//	[0xFF][gen: 0x00|0x01][AttributePrefix*][16-byte U128 key] → proto value (attribute entry)
+//	[0xFF][gen: 0x00|0x01][0x00]                               → CacheGenerationMeta (baseIndex)
+//	[0xFF][0xFF]                                               → CacheSnapshotMeta (currentGeneration)
 const (
 	CacheGenMeta byte = 0x00 // Generation metadata sub-key (under [0xFF][gen])
-
-	CacheTypeVolumes      byte = 0x01
-	CacheTypeMetadata     byte = 0x02
-	CacheTypeLedgers      byte = 0x03
-	CacheTypeBoundaries   byte = 0x04
-	CacheTypeReferences   byte = 0x05
-	CacheTypeTransactions byte = 0x06
-	CacheTypeNumscript    byte = 0x07
-	CacheTypeIdempotency  byte = 0x08
-
 	CacheMetaKey byte = 0xFF // [0xFF][0xFF] → CacheSnapshotMeta
 )
 

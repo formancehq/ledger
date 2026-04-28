@@ -97,7 +97,7 @@ func createTestAdmission(t *testing.T, store *dal.Store) (*Admission, *attribute
 
 	testCache, _ := cache.New(100, nil)
 	attrs := attributes.New()
-	testPreloader := preload.New(node.NewIndexTracker(1), testCache, attrs, store, logger)
+	testPreloader := preload.New(node.NewIndexTracker(1), testCache, attrs, store, nil, logger)
 
 	ks := keystore.NewKeyStore()
 	ss := state.NewSharedState()

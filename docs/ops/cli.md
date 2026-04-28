@@ -3058,6 +3058,45 @@ SENTINEL_MODE=true ledger-v3-poc run [other flags...]
 
 ---
 
+### Server Bloom Filter Flags
+
+Application-level bloom filters that avoid Pebble reads for keys known not to exist. Each attribute type has its own filter with independent sizing. Set `expected-keys` to `0` to disable a type.
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--bloom-volumes-expected-keys` | uint | `100000000` | Expected unique volume keys (0 = disable) |
+| `--bloom-volumes-fp-rate` | float64 | `0.01` | False positive rate for volumes (0.01 = 1%) |
+| `--bloom-metadata-expected-keys` | uint | `10000000` | Expected unique metadata keys (0 = disable) |
+| `--bloom-metadata-fp-rate` | float64 | `0.01` | False positive rate for metadata |
+| `--bloom-idempotency-expected-keys` | uint | `10000000` | Expected unique idempotency keys (0 = disable) |
+| `--bloom-idempotency-fp-rate` | float64 | `0.01` | False positive rate for idempotency |
+| `--bloom-references-expected-keys` | uint | `10000000` | Expected unique reference keys (0 = disable) |
+| `--bloom-references-fp-rate` | float64 | `0.01` | False positive rate for references |
+| `--bloom-ledgers-expected-keys` | uint | `0` | Expected unique ledger keys (0 = disabled by default) |
+| `--bloom-ledgers-fp-rate` | float64 | `0.01` | False positive rate for ledgers |
+| `--bloom-boundaries-expected-keys` | uint | `0` | Expected unique boundary keys (0 = disabled by default) |
+| `--bloom-boundaries-fp-rate` | float64 | `0.01` | False positive rate for boundaries |
+| `--bloom-transactions-expected-keys` | uint | `0` | Expected unique transaction keys (0 = disabled by default) |
+| `--bloom-transactions-fp-rate` | float64 | `0.01` | False positive rate for transactions |
+
+Ledger, boundary, and transaction filters are disabled by default because these attribute types are rarely read and don't benefit from bloom filtering.
+
+```bash
+# Default config (volumes, metadata, idempotency, references enabled)
+ledger-v3-poc run [other flags...]
+
+# Disable all bloom filters
+ledger-v3-poc run --bloom-volumes-expected-keys 0 --bloom-metadata-expected-keys 0 \
+  --bloom-idempotency-expected-keys 0 --bloom-references-expected-keys 0
+
+# Enable transaction filter for a specific workload
+ledger-v3-poc run --bloom-transactions-expected-keys 50000000
+```
+
+Changing any bloom filter configuration triggers a full repopulation scan on next startup.
+
+---
+
 ### Server `--response-signing-key` Flag
 
 Enables Ed25519 response signing. When configured, the server signs every `Log` in `ApplyResponse` messages so clients can verify the response is authentic.

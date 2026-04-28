@@ -247,11 +247,40 @@ The `GenerationRotationThreshold` (`K`) controls how many Raft entries fit in on
 
 Default is appropriate for most workloads. Increase if admission preload metrics (`admission.preload.duration`) show high latency.
 
-### 5.4. Numscript Cache Size
+### 5.4. Bloom Filters
+
+Application-level bloom filters sit in front of Pebble and short-circuit point lookups for keys that definitely don't exist. This is especially valuable when Pebble is on network-attached storage (e.g., Ceph RBD) where each miss costs ~1ms.
+
+Each attribute type has its own filter with independent `expected-keys` and `fp-rate` settings. Types with `expected-keys=0` are disabled (no memory allocated).
+
+**Default configuration:**
+
+| Type | Expected Keys | FP Rate | Enabled |
+|------|--------------|---------|---------|
+| Volumes | 100M | 1% | Yes |
+| Metadata | 10M | 1% | Yes |
+| Idempotency | 10M | 1% | Yes |
+| References | 10M | 1% | Yes |
+| Ledgers | 0 | — | No |
+| Boundaries | 0 | — | No |
+| Transactions | 0 | — | No |
+
+Ledger, boundary, and transaction filters are disabled by default because these attribute types are rarely read during the hot path.
+
+**Tuning guidelines:**
+
+- Set `expected-keys` to the number of unique keys you expect for that attribute type. Over-estimating wastes memory; under-estimating increases false positives.
+- A lower `fp-rate` reduces false positives but increases memory usage. The default 1% is a good starting point.
+- Monitor `bloom.negatives` (Pebble Gets avoided) and `bloom.lookups` (total checks). A high negatives/lookups ratio means the filter is effective.
+- Changing any bloom configuration triggers a full repopulation from Pebble on next startup.
+
+See [CLI Reference](./cli.md#server-bloom-filter-flags) for all flags.
+
+### 5.5 Numscript Cache Size
 
 Default: **1024** entries. Increase if your application uses more than 1024 distinct script texts (monitor `numscript.cache.size` gauge). In practice, most applications have fewer than 10 distinct scripts.
 
-### 5.5. Admission Metrics
+### 5.6. Admission Metrics
 
 Admission metrics (histograms, counters) are **disabled by default** because OpenTelemetry histogram internals can cause contention under high concurrency. Enable them (`--admission-metrics`) only when profiling, not in steady-state production.
 
@@ -323,6 +352,8 @@ Current balance = `base + latest cumulative diff`. Pebble range scans are effici
 | `raft.fsm.apply_entries.duration` p99 | > 50ms | Check disk I/O, compaction backlog |
 | `pebble_write_stall_count` | Any increase | Add disk IOPS, tune compaction |
 | `cache.rotations` | Frequency | Informational: correlates with K |
+| `bloom.negatives` / `bloom.lookups` | Low ratio per type | Filter not effective for that type — consider disabling it |
+| `bloom.ready` | 0 after startup | Filter still populating — preloads fall back to Pebble |
 | Memory usage | Sustained growth | Check generation size, snapshot frequency |
 
 ---

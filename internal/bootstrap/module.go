@@ -36,6 +36,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/application/mirror"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/bloom"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/coldstorage"
 	clusterhealth "github.com/formancehq/ledger-v3-poc/internal/infra/health"
@@ -278,8 +279,11 @@ func Module() fx.Option {
 			func(cfg node.NodeConfig, meterProvider metric.MeterProvider) (*cache.Cache, error) {
 				return cache.New(cfg.RotationThreshold, meterProvider.Meter("cache"))
 			},
-			func(n *node.Node, c *cache.Cache, attrs *attributes.Attributes, store *dal.Store, logger logging.Logger) *preload.Preloader {
-				return preload.New(n.IndexTracker(), c, attrs, store, logger)
+			func(cfg Config, meterProvider metric.MeterProvider) *bloom.FilterSet {
+				return bloom.NewFilterSet(cfg.BloomConfig, meterProvider.Meter("bloom"))
+			},
+			func(n *node.Node, c *cache.Cache, attrs *attributes.Attributes, store *dal.Store, bloomFilters *bloom.FilterSet, logger logging.Logger) *preload.Preloader {
+				return preload.New(n.IndexTracker(), c, attrs, store, bloomFilters, logger)
 			},
 			fx.Annotate(func(
 				cfg Config,
@@ -293,6 +297,7 @@ func Module() fx.Option {
 				eventNotifications *signal.Notifications,
 				mirrorNotifications *signal.Notifications,
 				indexNotifications *signal.Notifications,
+				bloomFilters *bloom.FilterSet,
 			) (*state.Machine, error) {
 				machineStart := time.Now()
 
@@ -307,6 +312,7 @@ func Module() fx.Option {
 					eventNotifications,
 					mirrorNotifications,
 					indexNotifications,
+					bloomFilters,
 					cfg.NumscriptCacheSize,
 					cfg.SentinelMode,
 				)

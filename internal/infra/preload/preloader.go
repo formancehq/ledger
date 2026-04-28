@@ -7,6 +7,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/bloom"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
@@ -22,12 +23,13 @@ import (
 // where a dropped proposal shifts the tracker across a generation boundary
 // between AcquireProposalGuard's validation and Node.Propose.
 type Preloader struct {
-	tracker *node.IndexTracker
-	cache   *cache.Cache
-	attrs   *attributes.Attributes
-	store   *dal.Store
-	loaders *Loaders
-	logger  logging.Logger
+	tracker      *node.IndexTracker
+	cache        *cache.Cache
+	attrs        *attributes.Attributes
+	store        *dal.Store
+	loaders      *Loaders
+	bloomFilters *bloom.FilterSet
+	logger       logging.Logger
 }
 
 // PreloadBuild carries the result of an optimistic BuildPreloads call.
@@ -88,14 +90,15 @@ func (g *ProposalGuard) ReleaseAll() {
 }
 
 // New creates a Preloader using the given IndexTracker for Raft index prediction.
-func New(tracker *node.IndexTracker, c *cache.Cache, attrs *attributes.Attributes, store *dal.Store, logger logging.Logger) *Preloader {
+func New(tracker *node.IndexTracker, c *cache.Cache, attrs *attributes.Attributes, store *dal.Store, bloomFilters *bloom.FilterSet, logger logging.Logger) *Preloader {
 	return &Preloader{
-		tracker: tracker,
-		cache:   c,
-		attrs:   attrs,
-		store:   store,
-		loaders: NewLoaders(),
-		logger:  logger,
+		tracker:      tracker,
+		cache:        c,
+		attrs:        attrs,
+		store:        store,
+		loaders:      NewLoaders(),
+		bloomFilters: bloomFilters,
+		logger:       logger,
 	}
 }
 
@@ -201,6 +204,15 @@ func (p *Preloader) AcquireProposalGuard(build *PreloadBuild, needs *Needs) (*ra
 	return preloadSet, &ProposalGuard{p: p, token: token}, nil
 }
 
+// bloomFilter returns the bloom filter for the given attribute type, or nil if disabled.
+func (p *Preloader) bloomFilter(attrType byte) *bloom.Filter {
+	if p.bloomFilters == nil || !p.bloomFilters.IsReady() {
+		return nil
+	}
+
+	return p.bloomFilters.FilterForAttrType(attrType)
+}
+
 // buildResult holds the output of a single attribute-type resolution goroutine.
 type buildResult struct {
 	resolve *resolveResult
@@ -249,6 +261,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.attrs.Ledger.Get, p.store,
 				buildLedgerPreload, true,
 				raftcmdpb.CacheTouchType_CACHE_TOUCH_LEDGERS, nil,
+				p.bloomFilter(dal.AttributePrefixLedger),
 				p.logger, "ledgers",
 			)
 			results[i].resolve = r
@@ -267,6 +280,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.attrs.Boundary.Get, p.store,
 				buildBoundaryPreload, true,
 				raftcmdpb.CacheTouchType_CACHE_TOUCH_BOUNDARIES, nil,
+				p.bloomFilter(dal.AttributePrefixBoundary),
 				p.logger, "boundaries",
 			)
 			results[i].resolve = r
@@ -285,6 +299,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.attrs.Volume.Get, p.store,
 				buildVolumePreload, true,
 				raftcmdpb.CacheTouchType_CACHE_TOUCH_VOLUMES, nil,
+				p.bloomFilter(dal.AttributePrefixVolume),
 				p.logger, "volumes",
 			)
 			results[i].resolve = r
@@ -303,6 +318,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.attrs.IdempotencyKeys.Get, p.store,
 				buildIdempotencyKeyPreload, false,
 				raftcmdpb.CacheTouchType_CACHE_TOUCH_IDEMPOTENCY_KEYS, nil,
+				p.bloomFilter(dal.AttributePrefixIdempotency),
 				p.logger, "idempotency_keys",
 			)
 			results[i].resolve = r
@@ -321,6 +337,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.attrs.References.Get, p.store,
 				buildReferencePreload, false,
 				raftcmdpb.CacheTouchType_CACHE_TOUCH_REFERENCES, nil,
+				p.bloomFilter(dal.AttributePrefixReference),
 				p.logger, "references",
 			)
 			results[i].resolve = r
@@ -407,6 +424,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.attrs.Transaction.Get, p.store,
 				buildTransactionStatePreload, false,
 				raftcmdpb.CacheTouchType_CACHE_TOUCH_TRANSACTIONS, nil,
+				p.bloomFilter(dal.AttributePrefixTransaction),
 				p.logger, "transactions",
 			)
 			results[i].resolve = r
@@ -425,6 +443,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.attrs.Metadata.Get, p.store,
 				buildMetadataPreload, false,
 				raftcmdpb.CacheTouchType_CACHE_TOUCH_ACCOUNT_METADATA, nil,
+				p.bloomFilter(dal.AttributePrefixMetadata),
 				p.logger, "metadata",
 			)
 			results[i].resolve = r

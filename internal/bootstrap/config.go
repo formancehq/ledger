@@ -6,6 +6,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/formancehq/ledger-v3-poc/internal/infra/bloom"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/coldstorage"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
@@ -70,6 +71,7 @@ type Config struct {
 	ReadIndexConfig            ReadIndexConfig
 	QueryProfileThreshold      time.Duration
 	GRPCSlowThreshold          time.Duration
+	BloomConfig                bloom.FilterSetConfig
 }
 
 func (c Config) Validate() error {

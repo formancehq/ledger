@@ -45,7 +45,7 @@ func newTestMachineWithAudit(t *testing.T, auditEnabled bool) (*Machine, *dal.St
 	require.NoError(t, SaveAuditConfig(batch, auditEnabled))
 	require.NoError(t, batch.Commit())
 
-	machine, err := NewMachine(logger, dataStore, meter, c, attrs, keystore.NewKeyStore(), NewSharedState(), NoopNotifier{}, NoopNotifier{}, NoopNotifier{}, 0, false)
+	machine, err := NewMachine(logger, dataStore, meter, c, attrs, keystore.NewKeyStore(), NewSharedState(), NoopNotifier{}, NoopNotifier{}, NoopNotifier{}, nil, 0, false)
 	require.NoError(t, err)
 
 	return machine, dataStore, attrs

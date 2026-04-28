@@ -7,6 +7,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/bloom"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
@@ -44,6 +45,7 @@ func resolveStandard[K interface {
 	includeZeroValue bool,
 	touchType raftcmdpb.CacheTouchType,
 	tracker []attributes.U128,
+	bloomFilter *bloom.Filter,
 	logger logging.Logger,
 	typeName string,
 ) (*resolveResult, error) {
@@ -85,6 +87,21 @@ func resolveStandard[K interface {
 			continue
 
 		case cache.CacheMiss:
+			// Bloom filter short-circuit: if the key is definitely not in Pebble,
+			// skip the goroutine + Pebble Get and return a zero value directly.
+			if bloomFilter != nil && !bloomFilter.MayContain(id) {
+				if includeZeroValue {
+					var zero T
+					attrID := &raftcmdpb.AttributeID{Id: id[:], Tag: tag}
+
+					mu.Lock()
+					preloads = append(preloads, buildPreload(attrID, zero))
+					mu.Unlock()
+				}
+
+				continue
+			}
+
 			if logger.Enabled(logging.DebugLevel) {
 				logger.WithFields(map[string]any{
 					"type":      typeName,

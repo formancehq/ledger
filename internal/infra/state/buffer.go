@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/bloom"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
@@ -97,6 +98,10 @@ type Buffered struct {
 	// Used to exclude these from cross-entry post-commit verification.
 	purgedVolumeKeys []domain.VolumeKey
 
+	// bloomUpdates collects canonical keys per attribute type during Merge
+	// for bloom filter updates before batch.Commit().
+	bloomUpdates bloom.BloomUpdates
+
 	// Pending query checkpoint changes for Merge.
 	pendingQueryCheckpointSaves   []*raftcmdpb.QueryCheckpointState
 	pendingQueryCheckpointDeletes []uint64
@@ -130,6 +135,10 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	}
 
 	for _, update := range ledgerUpdates {
+		b.bloomUpdates.Ledgers = append(b.bloomUpdates.Ledgers, update.CanonicalKey)
+	}
+
+	for _, update := range ledgerUpdates {
 		err := SaveLedger(batch, update.New)
 		if err != nil {
 			return fmt.Errorf("failed to save ledger: %w", err)
@@ -144,6 +153,10 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 
 	if err := mergeSimple(b.attrs.Boundary, batch, boundaryUpdates); err != nil {
 		return fmt.Errorf("failed merging boundary attributes: %w", err)
+	}
+
+	for _, update := range boundaryUpdates {
+		b.bloomUpdates.Boundaries = append(b.bloomUpdates.Boundaries, update.CanonicalKey)
 	}
 
 	for _, deletion := range boundaryDeletions {
@@ -163,6 +176,10 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 
 	if err := mergeSimple(b.attrs.Volume, batch, purgeResult.kept); err != nil {
 		return fmt.Errorf("failed merging volume attributes: %w", err)
+	}
+
+	for _, update := range purgeResult.kept {
+		b.bloomUpdates.Volumes = append(b.bloomUpdates.Volumes, update.CanonicalKey)
 	}
 
 	if err := b.applyEphemeralPurge(batch, purgeResult.purged); err != nil {
@@ -201,6 +218,10 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 		return fmt.Errorf("failed merging metadata attributes: %w", err)
 	}
 
+	for _, update := range accountMetadataUpdates {
+		b.bloomUpdates.Metadata = append(b.bloomUpdates.Metadata, update.CanonicalKey)
+	}
+
 	for _, deletion := range accountMetadataDeletions {
 		err := b.attrs.Metadata.Delete(batch, deletion.CanonicalKey)
 		if err != nil {
@@ -224,6 +245,10 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 		return fmt.Errorf("failed merging idempotency key attributes: %w", err)
 	}
 
+	for _, update := range idempotencyUpdates {
+		b.bloomUpdates.Idempotency = append(b.bloomUpdates.Idempotency, update.CanonicalKey)
+	}
+
 	// Process References updates
 	referenceUpdates, _, err := b.Derived.References.Merge()
 	if err != nil {
@@ -234,6 +259,10 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 		return fmt.Errorf("failed merging reference attributes: %w", err)
 	}
 
+	for _, update := range referenceUpdates {
+		b.bloomUpdates.References = append(b.bloomUpdates.References, update.CanonicalKey)
+	}
+
 	// Process Transaction state updates
 	txUpdates, _, err := b.Derived.Transactions.Merge()
 	if err != nil {
@@ -242,6 +271,10 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 
 	if err := mergeSimple(b.attrs.Transaction, batch, txUpdates); err != nil {
 		return fmt.Errorf("failed merging transaction attributes: %w", err)
+	}
+
+	for _, update := range txUpdates {
+		b.bloomUpdates.Transactions = append(b.bloomUpdates.Transactions, update.CanonicalKey)
 	}
 
 	err = AppendLogs(batch, logs...)
@@ -1026,6 +1059,11 @@ func (b *Buffered) SaveQueryCheckpoint(cp *raftcmdpb.QueryCheckpointState) {
 // DeleteQueryCheckpoint marks a query checkpoint for deletion during Merge.
 func (b *Buffered) DeleteQueryCheckpoint(checkpointID uint64) {
 	b.pendingQueryCheckpointDeletes = append(b.pendingQueryCheckpointDeletes, checkpointID)
+}
+
+// BloomUpdates returns the canonical keys collected during Merge for bloom filter updates.
+func (b *Buffered) BloomUpdates() *bloom.BloomUpdates {
+	return &b.bloomUpdates
 }
 
 // PurgedVolumeKeys returns the keys of volumes that were purged by ephemeral purge.

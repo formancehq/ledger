@@ -46,6 +46,7 @@ func DefaultTestInstruments(cfg TestNodeConfig) []testservice.Instrumentation {
 		WithRaftTickInterval(cfg.TickInterval),
 		WithRaftHeartbeatTick(1),
 		WithRaftElectionTick(10),
+		WithBloomTestConfig(),
 	}
 }
 
@@ -347,6 +348,19 @@ func WithColdCacheDir(dir string) testservice.InstrumentationFunc {
 func WithCacheRotationThreshold(threshold uint64) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--cache-rotation-threshold", strconv.FormatUint(threshold, 10))
+
+		return nil
+	}
+}
+
+func WithBloomTestConfig() testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs(
+			"--bloom-volumes-expected-keys", "10000",
+			"--bloom-metadata-expected-keys", "1000",
+			"--bloom-idempotency-expected-keys", "1000",
+			"--bloom-references-expected-keys", "1000",
+		)
 
 		return nil
 	}

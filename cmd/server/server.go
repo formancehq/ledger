@@ -28,6 +28,7 @@ import (
 	"github.com/formancehq/go-libs/v5/pkg/service"
 
 	"github.com/formancehq/ledger-v3-poc/internal/bootstrap"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/bloom"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/flightrecorder"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/pyroscope"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/tracesampling"
@@ -178,6 +179,9 @@ func NewRunCommand() *cobra.Command {
 
 	// Sentinel mode (runtime consistency checks)
 	runCmd.Flags().Bool("sentinel-mode", false, "Enable sentinel mode: runtime volume consistency assertions (monotonicity, delta/posting cross-check, post-commit cache/Pebble verification)")
+
+	// Bloom filter per-attribute-type configuration
+	registerBloomFlags(runCmd)
 
 	// Read index configuration
 	runCmd.Flags().String("read-index-dir", "", "Directory for the Pebble read index (default: <data-dir>/read-indexes/)")
@@ -515,6 +519,9 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 	// Sentinel mode
 	cfg.SentinelMode = getBool("sentinel-mode", false)
 
+	// Bloom filter per-type config
+	cfg.BloomConfig = loadBloomConfig(cmd)
+
 	// Read index configuration
 	cfg.ReadIndexConfig = bootstrap.ReadIndexConfig{
 		Dir:          getString("read-index-dir", ""),
@@ -824,4 +831,64 @@ func loadPebbleConfig(cmd *cobra.Command) dal.Config {
 // loadReadIndexPebbleConfig loads Pebble configuration for the read index from command flags.
 func loadReadIndexPebbleConfig(cmd *cobra.Command) readstore.Config {
 	return loadBasePebbleConfig(cmd, "read-index", readstore.DefaultConfig())
+}
+
+// bloomFlagType describes one attribute type for bloom filter flag registration.
+type bloomFlagType struct {
+	name     string
+	defaults bloom.FilterConfig
+}
+
+var bloomFlagTypes = []bloomFlagType{
+	{"volumes", bloom.DefaultFilterSetConfig().Volume},
+	{"metadata", bloom.DefaultFilterSetConfig().Metadata},
+	{"idempotency", bloom.DefaultFilterSetConfig().Idempotency},
+	{"references", bloom.DefaultFilterSetConfig().Reference},
+	{"ledgers", bloom.DefaultFilterSetConfig().Ledger},
+	{"boundaries", bloom.DefaultFilterSetConfig().Boundary},
+	{"transactions", bloom.DefaultFilterSetConfig().Transaction},
+}
+
+// registerBloomFlags registers per-attribute-type bloom filter flags.
+func registerBloomFlags(cmd *cobra.Command) {
+	for _, t := range bloomFlagTypes {
+		cmd.Flags().Uint(
+			fmt.Sprintf("bloom-%s-expected-keys", t.name), t.defaults.ExpectedKeys,
+			fmt.Sprintf("Expected unique keys for %s bloom filter (0 = disable this type)", t.name),
+		)
+		cmd.Flags().Float64(
+			fmt.Sprintf("bloom-%s-fp-rate", t.name), t.defaults.FPRate,
+			fmt.Sprintf("False positive rate for %s bloom filter", t.name),
+		)
+	}
+}
+
+// loadBloomConfig builds a FilterSetConfig from per-type CLI flags.
+func loadBloomConfig(cmd *cobra.Command) bloom.FilterSetConfig {
+	load := func(name string, defaults bloom.FilterConfig) bloom.FilterConfig {
+		expectedKeys, _ := cmd.Flags().GetUint(fmt.Sprintf("bloom-%s-expected-keys", name))
+		fpRate, _ := cmd.Flags().GetFloat64(fmt.Sprintf("bloom-%s-fp-rate", name))
+
+		if expectedKeys == 0 && !cmd.Flags().Changed(fmt.Sprintf("bloom-%s-expected-keys", name)) {
+			expectedKeys = defaults.ExpectedKeys
+		}
+
+		if fpRate == 0 && !cmd.Flags().Changed(fmt.Sprintf("bloom-%s-fp-rate", name)) {
+			fpRate = defaults.FPRate
+		}
+
+		return bloom.FilterConfig{ExpectedKeys: expectedKeys, FPRate: fpRate}
+	}
+
+	defaults := bloom.DefaultFilterSetConfig()
+
+	return bloom.FilterSetConfig{
+		Volume:      load("volumes", defaults.Volume),
+		Metadata:    load("metadata", defaults.Metadata),
+		Idempotency: load("idempotency", defaults.Idempotency),
+		Reference:   load("references", defaults.Reference),
+		Ledger:      load("ledgers", defaults.Ledger),
+		Boundary:    load("boundaries", defaults.Boundary),
+		Transaction: load("transactions", defaults.Transaction),
+	}
 }

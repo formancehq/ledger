@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -18,6 +19,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/bloom"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/keystore"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/kv"
@@ -102,6 +104,10 @@ type Machine struct {
 	// meaning the cold zone [0x01, 0xF1) contains fresh tombstones that benefit from compaction.
 	coldCompactionCh chan struct{}
 
+	// BloomFilters holds per-attribute-type bloom filters for key existence checks.
+	// Updated during FSM apply, read during preload building.
+	BloomFilters *bloom.FilterSet
+
 	// Metrics
 	logsAppendedCounter       metric.Int64Counter
 	rotationDurationHistogram metric.Int64Histogram
@@ -131,7 +137,7 @@ type Machine struct {
 	indexNotifier Notifier
 }
 
-func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, ks *keystore.KeyStore, sharedState *SharedState, eventNotifier Notifier, mirrorNotifier Notifier, indexNotifier Notifier, numscriptCacheSize int, sentinelMode bool) (*Machine, error) {
+func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, ks *keystore.KeyStore, sharedState *SharedState, eventNotifier Notifier, mirrorNotifier Notifier, indexNotifier Notifier, bloomFilters *bloom.FilterSet, numscriptCacheSize int, sentinelMode bool) (*Machine, error) {
 	stepStart := time.Now()
 
 	lastAppliedIndex, err := query.ReadLastAppliedIndex(dataStore)
@@ -314,6 +320,7 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		dataStore:                      dataStore,
 		lastAppliedIndex:               lastAppliedIndex,
 		lastAppliedTimestamp:           lastAppliedTimestamp,
+		BloomFilters:                   bloomFilters,
 		sentinelMode:                   sentinelMode,
 		logsAppendedCounter:            logsAppendedCounter,
 		rotationDurationHistogram:      rotationDurationHistogram,
@@ -1455,6 +1462,11 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return nil, err
 	}
 
+	// Update bloom filters with newly written keys (before batch.Commit).
+	if fsm.BloomFilters != nil {
+		fsm.BloomFilters.AddCanonicalKeys(buffer.BloomUpdates())
+	}
+
 	// Cross-check: volume deltas must match postings in the committed logs.
 	if fsm.sentinelMode {
 		if err := verifyVolumeDeltasMatchPostings(buffer.AllVolumeUpdates(), createdLogs); err != nil {
@@ -1645,6 +1657,13 @@ func (fsm *Machine) persistInMemoryState() error {
 		return fmt.Errorf("writing cache snapshot meta: %w", err)
 	}
 
+	// Persist bloom filters alongside cache snapshot.
+	if fsm.BloomFilters != nil {
+		if err := fsm.BloomFilters.PersistToStore(batch); err != nil {
+			return fmt.Errorf("persisting bloom filters: %w", err)
+		}
+	}
+
 	return batch.Commit()
 }
 
@@ -1716,7 +1735,7 @@ func (fsm *Machine) persistCacheGeneration(batch *dal.Batch, genByte byte) error
 			e.Output = entry.Data.GetOutput()
 		}
 
-		if err := batch.SetProto(makeKey(dal.CacheTypeVolumes, u128), e); err != nil {
+		if err := batch.SetProto(makeKey(dal.AttributePrefixVolume, u128), e); err != nil {
 			return err
 		}
 	}
@@ -1727,7 +1746,7 @@ func (fsm *Machine) persistCacheGeneration(batch *dal.Batch, genByte byte) error
 			Id:    &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag},
 			Value: entry.Data,
 		}
-		if err := batch.SetProto(makeKey(dal.CacheTypeMetadata, u128), e); err != nil {
+		if err := batch.SetProto(makeKey(dal.AttributePrefixMetadata, u128), e); err != nil {
 			return err
 		}
 	}
@@ -1738,7 +1757,7 @@ func (fsm *Machine) persistCacheGeneration(batch *dal.Batch, genByte byte) error
 			Id:   &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag},
 			Info: entry.Data,
 		}
-		if err := batch.SetProto(makeKey(dal.CacheTypeLedgers, u128), e); err != nil {
+		if err := batch.SetProto(makeKey(dal.AttributePrefixLedger, u128), e); err != nil {
 			return err
 		}
 	}
@@ -1749,7 +1768,7 @@ func (fsm *Machine) persistCacheGeneration(batch *dal.Batch, genByte byte) error
 			Id:         &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag},
 			Boundaries: entry.Data,
 		}
-		if err := batch.SetProto(makeKey(dal.CacheTypeBoundaries, u128), e); err != nil {
+		if err := batch.SetProto(makeKey(dal.AttributePrefixBoundary, u128), e); err != nil {
 			return err
 		}
 	}
@@ -1760,7 +1779,7 @@ func (fsm *Machine) persistCacheGeneration(batch *dal.Batch, genByte byte) error
 			Id:    &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag},
 			Value: entry.Data,
 		}
-		if err := batch.SetProto(makeKey(dal.CacheTypeReferences, u128), e); err != nil {
+		if err := batch.SetProto(makeKey(dal.AttributePrefixReference, u128), e); err != nil {
 			return err
 		}
 	}
@@ -1771,7 +1790,7 @@ func (fsm *Machine) persistCacheGeneration(batch *dal.Batch, genByte byte) error
 			Id:    &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag},
 			State: entry.Data,
 		}
-		if err := batch.SetProto(makeKey(dal.CacheTypeTransactions, u128), e); err != nil {
+		if err := batch.SetProto(makeKey(dal.AttributePrefixTransaction, u128), e); err != nil {
 			return err
 		}
 	}
@@ -1782,7 +1801,7 @@ func (fsm *Machine) persistCacheGeneration(batch *dal.Batch, genByte byte) error
 			Id:    &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag},
 			Plain: entry.Data,
 		}
-		if err := batch.SetProto(makeKey(dal.CacheTypeNumscript, u128), e); err != nil {
+		if err := batch.SetProto(makeKey(dal.AttributePrefixNumscript, u128), e); err != nil {
 			return err
 		}
 	}
@@ -1793,7 +1812,7 @@ func (fsm *Machine) persistCacheGeneration(batch *dal.Batch, genByte byte) error
 			Id:    &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag},
 			Value: entry.Data,
 		}
-		if err := batch.SetProto(makeKey(dal.CacheTypeIdempotency, u128), e); err != nil {
+		if err := batch.SetProto(makeKey(dal.AttributePrefixIdempotency, u128), e); err != nil {
 			return err
 		}
 	}
@@ -1841,6 +1860,29 @@ func (fsm *Machine) RestoreCacheFromStore() error {
 		"duration":          time.Since(restoreStart).String(),
 		"currentGeneration": meta.GetCurrentGeneration(),
 	}).Infof("Restored cache from Pebble")
+
+	// Restore bloom filters from Pebble snapshot.
+	if fsm.BloomFilters != nil {
+		if err := fsm.BloomFilters.RestoreFromStore(fsm.dataStore); err != nil {
+			if !errors.Is(err, bloom.ErrNoSnapshot) && !errors.Is(err, bloom.ErrConfigChanged) {
+				return fmt.Errorf("restoring bloom filters: %w", err)
+			}
+
+			// No usable snapshot: either first boot or config changed.
+			// Rebuild from a full attribute scan.
+			fsm.logger.WithFields(map[string]any{
+				"reason": err.Error(),
+			}).Infof("Rebuilding bloom filters from attribute scan")
+
+			if err := fsm.BloomFilters.PopulateFromStore(fsm.dataStore); err != nil {
+				return fmt.Errorf("populating bloom filters from store: %w", err)
+			}
+
+			fsm.logger.WithFields(map[string]any{"duration": time.Since(restoreStart).String()}).Infof("Bloom filters populated from attribute scan")
+		} else {
+			fsm.logger.WithFields(map[string]any{"duration": time.Since(restoreStart).String()}).Infof("Restored bloom filters from Pebble")
+		}
+	}
 
 	return nil
 }
@@ -1910,7 +1952,7 @@ func (fsm *Machine) restoreCacheGeneration(genByte byte) error {
 	}
 
 	specs := []restoreSpec{
-		{dal.CacheTypeVolumes, func(u128 attributes.U128, value []byte) error {
+		{dal.AttributePrefixVolume, func(u128 attributes.U128, value []byte) error {
 			e := &raftcmdpb.VolumeAttributeSnapshotEntry{}
 			if err := e.UnmarshalVT(value); err != nil {
 				return err
@@ -1922,7 +1964,7 @@ func (fsm *Machine) restoreCacheGeneration(genByte byte) error {
 
 			return nil
 		}},
-		{dal.CacheTypeMetadata, func(u128 attributes.U128, value []byte) error {
+		{dal.AttributePrefixMetadata, func(u128 attributes.U128, value []byte) error {
 			e := &raftcmdpb.MetadataAttributeEntry{}
 			if err := e.UnmarshalVT(value); err != nil {
 				return err
@@ -1933,7 +1975,7 @@ func (fsm *Machine) restoreCacheGeneration(genByte byte) error {
 
 			return nil
 		}},
-		{dal.CacheTypeLedgers, func(u128 attributes.U128, value []byte) error {
+		{dal.AttributePrefixLedger, func(u128 attributes.U128, value []byte) error {
 			e := &raftcmdpb.LedgerAttributeEntry{}
 			if err := e.UnmarshalVT(value); err != nil {
 				return err
@@ -1944,7 +1986,7 @@ func (fsm *Machine) restoreCacheGeneration(genByte byte) error {
 
 			return nil
 		}},
-		{dal.CacheTypeBoundaries, func(u128 attributes.U128, value []byte) error {
+		{dal.AttributePrefixBoundary, func(u128 attributes.U128, value []byte) error {
 			e := &raftcmdpb.BoundaryAttributeEntry{}
 			if err := e.UnmarshalVT(value); err != nil {
 				return err
@@ -1955,7 +1997,7 @@ func (fsm *Machine) restoreCacheGeneration(genByte byte) error {
 
 			return nil
 		}},
-		{dal.CacheTypeReferences, func(u128 attributes.U128, value []byte) error {
+		{dal.AttributePrefixReference, func(u128 attributes.U128, value []byte) error {
 			e := &raftcmdpb.TransactionReferenceAttributeEntry{}
 			if err := e.UnmarshalVT(value); err != nil {
 				return err
@@ -1966,7 +2008,7 @@ func (fsm *Machine) restoreCacheGeneration(genByte byte) error {
 
 			return nil
 		}},
-		{dal.CacheTypeTransactions, func(u128 attributes.U128, value []byte) error {
+		{dal.AttributePrefixTransaction, func(u128 attributes.U128, value []byte) error {
 			e := &raftcmdpb.TransactionStateAttributeEntry{}
 			if err := e.UnmarshalVT(value); err != nil {
 				return err
@@ -1977,7 +2019,7 @@ func (fsm *Machine) restoreCacheGeneration(genByte byte) error {
 
 			return nil
 		}},
-		{dal.CacheTypeNumscript, func(u128 attributes.U128, value []byte) error {
+		{dal.AttributePrefixNumscript, func(u128 attributes.U128, value []byte) error {
 			e := &raftcmdpb.NumscriptParsedAttributeEntry{}
 			if err := e.UnmarshalVT(value); err != nil {
 				return err
@@ -1988,7 +2030,7 @@ func (fsm *Machine) restoreCacheGeneration(genByte byte) error {
 
 			return nil
 		}},
-		{dal.CacheTypeIdempotency, func(u128 attributes.U128, value []byte) error {
+		{dal.AttributePrefixIdempotency, func(u128 attributes.U128, value []byte) error {
 			e := &raftcmdpb.IdempotencyKeyAttributeEntry{}
 			if err := e.UnmarshalVT(value); err != nil {
 				return err
