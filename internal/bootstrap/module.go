@@ -862,47 +862,6 @@ func Module() fx.Option {
 					},
 				})
 			}, fx.ParamTags(``, ``, ``, ``, `name:"service"`, ``, ``, ``)),
-			// Start Service server (external)
-			func(
-				lc fx.Lifecycle,
-				serviceServer *grpcadp.ServiceServer,
-				logger logging.Logger,
-			) {
-				var waitService func()
-
-				lc.Append(fx.Hook{
-					OnStart: func(ctx context.Context) error {
-						logger.Infof("Starting Service gRPC server")
-
-						listening := make(chan struct{})
-
-						waitService = otlplogs.GoWait(func() {
-							err := serviceServer.Start(listening)
-							if err != nil {
-								panic(err)
-							}
-						}, logger)
-
-						select {
-						case <-ctx.Done():
-							return ctx.Err()
-						case <-listening:
-						}
-
-						logger.Infof("Service gRPC server started successfully")
-
-						return nil
-					},
-					OnStop: func(ctx context.Context) error {
-						logger.Infof("Stopping Service gRPC server")
-
-						err := serviceServer.Stop()
-						waitService()
-
-						return err
-					},
-				})
-			},
 			// Wire Observer: handle ConfChange and LeadershipChange events
 			fx.Annotate(func(
 				n *node.Node,
@@ -962,6 +921,52 @@ func Module() fx.Option {
 				})
 
 				return node, nil
+			},
+			// Start Service server (external).
+			// Registered AFTER the Raft node so that fx stops it BEFORE the node
+			// (fx runs OnStop in reverse order). This ensures the gRPC server
+			// stops accepting client requests before the Raft node begins its
+			// shutdown sequence, preventing requests from being processed while
+			// the node is draining.
+			func(
+				lc fx.Lifecycle,
+				serviceServer *grpcadp.ServiceServer,
+				logger logging.Logger,
+			) {
+				var waitService func()
+
+				lc.Append(fx.Hook{
+					OnStart: func(ctx context.Context) error {
+						logger.Infof("Starting Service gRPC server")
+
+						listening := make(chan struct{})
+
+						waitService = otlplogs.GoWait(func() {
+							err := serviceServer.Start(listening)
+							if err != nil {
+								panic(err)
+							}
+						}, logger)
+
+						select {
+						case <-ctx.Done():
+							return ctx.Err()
+						case <-listening:
+						}
+
+						logger.Infof("Service gRPC server started successfully")
+
+						return nil
+					},
+					OnStop: func(ctx context.Context) error {
+						logger.Infof("Stopping Service gRPC server")
+
+						err := serviceServer.Stop()
+						waitService()
+
+						return err
+					},
+				})
 			},
 			// Join mode: auto-register as learner on the leader after raft starts.
 			// Any peer will forward the request to the current leader automatically.
