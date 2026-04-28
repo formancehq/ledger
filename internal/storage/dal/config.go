@@ -67,11 +67,6 @@ type Config struct {
 	// Default: 10
 	MaxCheckpoints int `yaml:"maxCheckpoints"`
 
-	// IncrementalCompactThreshold is the number of new log entries before the
-	// SmartCompactor triggers an incremental compaction of just the new range.
-	// Default: 100000
-	IncrementalCompactThreshold uint64 `yaml:"incrementalCompactThreshold"`
-
 	// ValueSeparation controls Pebble's value separation (blob files) feature.
 	ValueSeparation ValueSeparationConfig `yaml:"valueSeparation"`
 }
@@ -92,11 +87,10 @@ func DefaultConfig() Config {
 			MaxConcurrentCompactions:    2,
 			Compression:                 pebblecfg.DefaultLevelCompression(),
 		},
-		WALBytesPerSync:             1 << 20, // 1MB
-		WALMinSyncInterval:          0,       // immediate sync
-		DisableWAL:                  false,
-		MaxCheckpoints:              10,
-		IncrementalCompactThreshold: 100_000,
+		WALBytesPerSync:    1 << 20, // 1MB
+		WALMinSyncInterval: 0,       // immediate sync
+		DisableWAL:         false,
+		MaxCheckpoints:     10,
 		ValueSeparation: ValueSeparationConfig{
 			Enabled:               false,
 			MinimumSize:           256,

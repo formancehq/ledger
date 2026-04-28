@@ -117,7 +117,6 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().Int("pebble-wal-bytes-per-sync", 0, "Pebble WAL bytes written before sync (default: 1MB)")
 	runCmd.Flags().Duration("pebble-wal-min-sync-interval", 0, "Pebble minimum interval between WAL syncs (default: 0, immediate sync)")
 	runCmd.Flags().Bool("pebble-disable-wal", false, "Pebble disable WAL (WARNING: risks data loss)")
-	runCmd.Flags().Uint64("pebble-incremental-compact-threshold", 0, "New log entries before triggering incremental compaction (default: 100000)")
 	// Value separation flags
 	runCmd.Flags().Bool("pebble-value-separation", false, "Enable value separation (large values stored in blob files)")
 	runCmd.Flags().Int("pebble-value-separation-min-size", 256, "Minimum value size in bytes for separation (default: 256)")
@@ -796,17 +795,8 @@ func loadPebbleConfig(cmd *cobra.Command) dal.Config {
 		return def
 	}
 
-	getUint64 := func(flag string, def uint64) uint64 {
-		if val, _ := cmd.Flags().GetUint64(flag); val != 0 {
-			return val
-		}
-
-		return def
-	}
-
 	cfg.WALBytesPerSync = getInt("pebble-wal-bytes-per-sync", cfg.WALBytesPerSync)
 	cfg.WALMinSyncInterval = getDuration("pebble-wal-min-sync-interval", cfg.WALMinSyncInterval)
-	cfg.IncrementalCompactThreshold = getUint64("pebble-incremental-compact-threshold", cfg.IncrementalCompactThreshold)
 
 	if disableWAL, _ := cmd.Flags().GetBool("pebble-disable-wal"); disableWAL {
 		cfg.DisableWAL = true

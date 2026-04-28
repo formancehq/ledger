@@ -3175,9 +3175,6 @@ Tune the Pebble (LSM-tree) storage engine. All sizes are in bytes unless specifi
 | `--pebble-max-concurrent-compactions` | int | `2` | Maximum concurrent compactions |
 | `--pebble-wal-min-sync-interval` | duration | `0` | Minimum interval between WAL syncs (0 = immediate) |
 | `--pebble-disable-wal` | bool | `false` | Disable WAL entirely (WARNING: risks data loss) |
-| `--pebble-incremental-compact-threshold` | uint64 | `100000` | New log entries before triggering incremental compaction |
-
-The `--pebble-incremental-compact-threshold` controls the SmartCompactor's incremental compaction. When the number of new log entries since the last compaction exceeds this threshold, the compactor compacts only the new range for logs and audit prefixes. This keeps each compaction bounded in memory, avoiding OOM on large databases.
 
 ---
 

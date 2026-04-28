@@ -9,7 +9,6 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
@@ -34,9 +33,8 @@ func TestSmartCompactorStartStop(t *testing.T) {
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 	coldCh := make(chan struct{}, 1)
-	notifications := signal.NewNotifications()
 
-	compactor := dal.NewSmartCompactor(store, logger, notifications, coldCh, 10_000)
+	compactor := dal.NewSmartCompactor(store, logger, coldCh)
 	compactor.Start()
 	compactor.Stop()
 }
@@ -48,9 +46,8 @@ func TestSmartCompactorColdRequest(t *testing.T) {
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 	coldCh := make(chan struct{}, 1)
-	notifications := signal.NewNotifications()
 
-	compactor := dal.NewSmartCompactor(store, logger, notifications, coldCh, 10_000)
+	compactor := dal.NewSmartCompactor(store, logger, coldCh)
 	compactor.Start()
 
 	// Send a cold compaction signal.
@@ -68,9 +65,8 @@ func TestSmartCompactorColdRequestMultiple(t *testing.T) {
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 	coldCh := make(chan struct{}, 2)
-	notifications := signal.NewNotifications()
 
-	compactor := dal.NewSmartCompactor(store, logger, notifications, coldCh, 10_000)
+	compactor := dal.NewSmartCompactor(store, logger, coldCh)
 	compactor.Start()
 
 	// Send two signals. The concurrency guard may skip the second one, but
@@ -83,27 +79,6 @@ func TestSmartCompactorColdRequestMultiple(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return len(coldCh) == 0
 	}, 5*time.Second, 10*time.Millisecond)
-
-	compactor.Stop()
-}
-
-func TestSmartCompactorIncrementalCompact(t *testing.T) {
-	t.Parallel()
-
-	store := newTestStoreForCompactor(t)
-	ctx := logging.TestingContext()
-	logger := logging.FromContext(ctx)
-	coldCh := make(chan struct{}, 1)
-	notifications := signal.NewNotifications()
-
-	compactor := dal.NewSmartCompactor(store, logger, notifications, coldCh, 10_000)
-	compactor.Start()
-
-	// Simulate writing 15,000 logs (above the 10,000 threshold).
-	notifications.NotifyLogsCommitted(15_000)
-
-	// Give the compactor time to process the signal and run the compaction.
-	time.Sleep(100 * time.Millisecond)
 
 	compactor.Stop()
 }

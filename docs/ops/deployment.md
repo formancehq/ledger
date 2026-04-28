@@ -59,7 +59,6 @@ Available flags for `run`:
 - `--cold-storage-s3-bucket`: S3 bucket name (required when driver=s3)
 - `--cold-storage-s3-region`: AWS region for S3
 - `--cold-storage-s3-endpoint`: Custom S3 endpoint (for MinIO)
-- `--pebble-incremental-compact-threshold`: Number of new log entries before triggering an incremental compaction (default: `100000`)
 
 ### Configuration
 
@@ -575,24 +574,6 @@ config:
 > - 5000 tx/s → `snapshotThreshold: 10000`
 >
 > Setting the threshold too low will cause constant snapshotting, impacting performance. Setting it too high will increase recovery time after a restart.
-
-### Pebble Storage
-
-#### Incremental Compaction
-
-The SmartCompactor runs incremental compaction of the cold zone (logs, audit) as new entries are written. When the number of new entries since the last compaction exceeds the threshold, it compacts only the new range to keep each compaction small and bounded in memory.
-
-```yaml
-config:
-  pebble:
-    incrementalCompactThreshold: 100000  # default: 100000
-```
-
-| Flag | Environment Variable | Default | Description |
-|------|---------------------|---------|-------------|
-| `--pebble-incremental-compact-threshold` | `PEBBLE_INCREMENTAL_COMPACT_THRESHOLD` | `100000` | Number of new log entries before triggering an incremental compaction |
-
-> Lower values trigger more frequent but smaller compactions. Higher values accumulate more data before compacting, which may use more memory per compaction but reduce overall compaction overhead.
 
 ### Configuration Safety Checks at Startup
 
