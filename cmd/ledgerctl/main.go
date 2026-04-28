@@ -21,9 +21,11 @@ import (
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/events"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/ledgers"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/logs"
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/numscripts"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/periods"
 	profilecmd "github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/profile"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/provision"
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/queries"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/querycheckpoint"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/restore"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/signing"
@@ -142,6 +144,8 @@ func newRootCommand() *cobra.Command {
 	rootCmd.AddCommand(upgrade.NewCommand(version))
 	rootCmd.AddCommand(provision.NewCommand())
 	rootCmd.AddCommand(querycheckpoint.NewCommand())
+	rootCmd.AddCommand(queries.NewCommand())
+	rootCmd.AddCommand(numscripts.NewCommand())
 
 	return rootCmd
 }

@@ -2901,6 +2901,112 @@ ledgerctl numscripts delete <name> --ledger <ledger-name> [flags]
 
 ---
 
+### queries
+
+Manage prepared queries — named, parameterized query templates stored in the primary store.
+
+**Aliases:** `query`, `pq`
+
+#### queries create
+
+Create a named prepared query for a ledger.
+
+```bash
+ledgerctl queries create <name> --ledger <ledger-name> [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ledger` | | Ledger name (interactive selection if omitted) |
+| `--target` | `accounts` | Query target: `accounts`, `transactions`, or `logs` |
+| `--filter` | | Filter expression (same DSL as account/transaction list) |
+| `--timeout` | `10s` | Request timeout |
+
+**Examples:**
+
+```bash
+# Query accounts with specific metadata
+ledgerctl queries create active-users --ledger my-ledger --target accounts --filter "metadata[active] == true"
+
+# Query transactions above a threshold
+ledgerctl queries create big-txns --ledger my-ledger --target transactions --filter "amount > 1000"
+
+# Parameterized query (parameters prefixed with $)
+ledgerctl queries create by-tier --ledger my-ledger --target accounts --filter "metadata[tier] == \$tier"
+```
+
+#### queries list
+
+List all prepared queries for a ledger.
+
+**Aliases:** `ls`, `l`
+
+```bash
+ledgerctl queries list --ledger <ledger-name> [flags]
+```
+
+Displays each query's name, target, and filter in human-readable DSL format.
+
+#### queries update
+
+Update the filter of an existing prepared query.
+
+```bash
+ledgerctl queries update <name> --ledger <ledger-name> --filter "<new-filter>" [flags]
+```
+
+#### queries delete
+
+Delete a prepared query.
+
+**Aliases:** `rm`
+
+```bash
+ledgerctl queries delete <name> --ledger <ledger-name> [flags]
+```
+
+#### queries execute
+
+Execute a prepared query and display results.
+
+**Aliases:** `exec`, `run`
+
+```bash
+ledgerctl queries execute <name> --ledger <ledger-name> [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ledger` | | Ledger name (interactive selection if omitted) |
+| `--param` | | Query parameter as `key=value` (repeatable) |
+| `--page-size` | `10` | Number of results per page |
+| `--mode` | `list` | Query mode: `list` or `aggregate` |
+| `--min-log-sequence` | `0` | Minimum log sequence before reading |
+| `--analyze` | `false` | Display query execution profile |
+| `--timeout` | `10s` | Request timeout |
+
+**Examples:**
+
+```bash
+# Execute without parameters
+ledgerctl queries execute active-users --ledger my-ledger
+
+# Execute with parameters
+ledgerctl queries execute by-tier --ledger my-ledger --param tier=gold
+
+# Aggregate mode (returns per-asset volumes)
+ledgerctl queries execute active-users --ledger my-ledger --mode aggregate
+
+# Multiple parameters
+ledgerctl queries execute filtered --ledger my-ledger --param status=active --param region=eu
+```
+
+---
+
 ### restore
 
 Backup restore operations. Requires the server to be started with `--restore`.

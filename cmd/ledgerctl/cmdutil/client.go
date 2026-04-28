@@ -24,6 +24,7 @@ import (
 const (
 	DefaultTimeout  = 10 * time.Second
 	DefaultPageSize = 10
+	MaxRecvMsgSize  = 64 * 1024 * 1024 // 64 MB
 )
 
 // GetClientTransportCredentials returns the transport credentials based on CLI flags.
@@ -70,6 +71,7 @@ func GetClient(cmd *cobra.Command) (servicepb.BucketServiceClient, *grpc.ClientC
 		grpc.WithDefaultServiceConfig(actions.GRPCRetryPolicy), // Retry on UNAVAILABLE (no leader) up to 50 times with 200ms delay (10s max)
 		grpc.WithUnaryInterceptor(TracingUnaryInterceptor()),
 		grpc.WithStreamInterceptor(TracingStreamInterceptor()),
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(MaxRecvMsgSize)),
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to connect to gRPC server: %w", err)
@@ -91,6 +93,7 @@ func GetClusterClient(cmd *cobra.Command) (clusterpb.ClusterServiceClient, *grpc
 		grpc.WithTransportCredentials(creds),
 		grpc.WithUnaryInterceptor(TracingUnaryInterceptor()),
 		grpc.WithStreamInterceptor(TracingStreamInterceptor()),
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(MaxRecvMsgSize)),
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to connect to gRPC server: %w", err)
