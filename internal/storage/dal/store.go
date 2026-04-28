@@ -72,6 +72,7 @@ func WriteCurrentCheckpointAtomic(dataDir string, checkpointID uint64) error {
 // It stores balances and account metadata.
 type Store struct {
 	dbMu              sync.RWMutex // protects DB lifecycle (RestoreCheckpoint, Close)
+	snapshotMu        sync.Mutex   // serializes checkpoint creation (currentCheckPoint counter)
 	db                *pebble.DB
 	opts              *pebble.Options
 	logger            logging.Logger
@@ -533,11 +534,14 @@ func (s *Store) Close() error {
 }
 
 // CreateSnapshot creates a new checkpoint of the database and returns the checkpoint ID.
-// It holds dbMu exclusively to serialize against concurrent calls from triggerSnapshot
-// (via FSM) and the CreateCheckpoint gRPC handler.
+// snapshotMu serializes concurrent calls (FSM triggerSnapshot vs gRPC CreateCheckpoint).
+// dbMu is held as RLock only — checkpoint creation doesn't need to exclude readers.
 func (s *Store) CreateSnapshot() (uint64, error) {
-	s.dbMu.Lock()
-	defer s.dbMu.Unlock()
+	s.snapshotMu.Lock()
+	defer s.snapshotMu.Unlock()
+
+	s.dbMu.RLock()
+	defer s.dbMu.RUnlock()
 
 	s.logger.Infof("Creating snapshot")
 

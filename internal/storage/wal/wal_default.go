@@ -400,17 +400,19 @@ func (s *DefaultWAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) 
 		lastIdx = entries[len(entries)-1].Index
 	}
 
-	logger := s.logger.WithFields(map[string]any{
-		"entries":          len(entries),
-		"firstIndex":       firstIdx,
-		"lastIndex":        lastIdx,
-		"hardState.Term":   hardState.Term,
-		"hardState.Vote":   hardState.Vote,
-		"hardState.Commit": hardState.Commit,
-		"prevCommit":       s.hardState.Commit,
-		"cachedEntries":    len(s.entries),
-	})
-	logger.Infof("WAL Append")
+	if s.logger.Enabled(logging.DebugLevel) {
+		logger := s.logger.WithFields(map[string]any{
+			"entries":          len(entries),
+			"firstIndex":       firstIdx,
+			"lastIndex":        lastIdx,
+			"hardState.Term":   hardState.Term,
+			"hardState.Vote":   hardState.Vote,
+			"hardState.Commit": hardState.Commit,
+			"prevCommit":       s.hardState.Commit,
+			"cachedEntries":    len(s.entries),
+		})
+		logger.Debugf("WAL Append")
+	}
 
 	// Update in-memory cache
 	if len(entries) > 0 {
