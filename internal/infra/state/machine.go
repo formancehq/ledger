@@ -2178,15 +2178,11 @@ func (fsm *Machine) reloadStateFromStore() error {
 }
 
 func (fsm *Machine) SynchronizeWithLeader(ctx context.Context, snapshotFetcher SnapshotFetcher, progress *SyncProgress) (uint64, error) {
-	// Restore checkpoint from the leader if needed
-	// The checkpoint ID is stored in the Machine state from the snapshot
+	// Always fetch: checkpointId is a per-node counter, so equal IDs across
+	// nodes can refer to Pebble dumps at different Raft indices.
 	if fsm.lastCheckpointID > 0 {
-		currentCheckpointID := fsm.dataStore.GetCurrentCheckpointID()
-		if currentCheckpointID < fsm.lastCheckpointID {
-			err := fsm.restoreCheckpoint(ctx, snapshotFetcher, progress)
-			if err != nil {
-				return 0, fmt.Errorf("restoring checkpoint from leader: %w", err)
-			}
+		if err := fsm.restoreCheckpoint(ctx, snapshotFetcher, progress); err != nil {
+			return 0, fmt.Errorf("restoring checkpoint from leader: %w", err)
 		}
 	}
 
