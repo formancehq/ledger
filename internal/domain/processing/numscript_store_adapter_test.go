@@ -163,7 +163,6 @@ func TestGetAccountsMetadata_Basic(t *testing.T) {
 	}
 
 	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(commonpb.NewStringValue("active"), nil)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false)
 
 	query := numscriptlib.MetadataQuery{
 		"users:001": {"status"},
@@ -219,6 +218,14 @@ func TestGetAccountsMetadata_WithSchemaConversion(t *testing.T) {
 		store:  mockStore,
 		ledger: "test-ledger",
 		force:  false,
+		schema: &commonpb.MetadataSchema{
+			AccountFields: map[string]*commonpb.MetadataFieldSchema{
+				"age": {
+					Type:   commonpb.MetadataType_METADATA_TYPE_INT64,
+					Status: commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE,
+				},
+			},
+		},
 	}
 
 	metaKey := domain.MetadataKey{
@@ -228,17 +235,6 @@ func TestGetAccountsMetadata_WithSchemaConversion(t *testing.T) {
 
 	// Return a string value that should be converted to int64 per schema
 	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(commonpb.NewStringValue("25"), nil)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{
-		Name: "test-ledger",
-		MetadataSchema: &commonpb.MetadataSchema{
-			AccountFields: map[string]*commonpb.MetadataFieldSchema{
-				"age": {
-					Type:   commonpb.MetadataType_METADATA_TYPE_INT64,
-					Status: commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE,
-				},
-			},
-		},
-	}, true)
 	// Schema conversion writes back the converted value
 	mockStore.EXPECT().PutAccountMetadata(metaKey, gomock.Any())
 
@@ -272,8 +268,6 @@ func TestGetAccountsMetadata_NoSchemaLedger(t *testing.T) {
 	}
 
 	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(commonpb.NewStringValue("25"), nil)
-	// Ledger not found -- no schema conversion
-	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false)
 
 	query := numscriptlib.MetadataQuery{
 		"users:001": {"age"},

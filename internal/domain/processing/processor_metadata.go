@@ -10,15 +10,9 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processAddMetadata(ledger string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.SaveMetadataOrder, s InMemoryStore) (*commonpb.LedgerLogPayload, error) {
+func (p *RequestProcessor) processAddMetadata(ledger string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.SaveMetadataOrder, s InMemoryStore, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, error) {
 	if order.GetTarget() == nil {
 		return nil, domain.ErrTargetRequired
-	}
-
-	// Load ledger info once for both chart validation and schema enforcement.
-	var info *commonpb.LedgerInfo
-	if ledgerInfo, ok := s.GetLedger(ledger); ok {
-		info = ledgerInfo
 	}
 
 	// Validate account address against account types.

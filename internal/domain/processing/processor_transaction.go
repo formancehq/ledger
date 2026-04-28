@@ -12,7 +12,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.CreateTransactionOrder, s InMemoryStore) (*commonpb.LedgerLogPayload, error) {
+func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.CreateTransactionOrder, s InMemoryStore, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, error) {
 	// Check transaction reference uniqueness if reference is provided
 	if order.GetReference() != "" {
 		refKey := domain.TransactionReferenceKey{Ledger: ledger, Reference: order.GetReference()}
@@ -30,14 +30,9 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 		}
 	}
 
-	// Load ledger info early for migration pre-resolution and validation.
-	var (
-		schema *commonpb.MetadataSchema
-		info   *commonpb.LedgerInfo
-	)
-	if ledgerInfo, ok := s.GetLedger(ledger); ok {
-		info = ledgerInfo
-		schema = ledgerInfo.GetMetadataSchema()
+	var schema *commonpb.MetadataSchema
+	if info != nil {
+		schema = info.GetMetadataSchema()
 	}
 
 	// Pre-resolve migrating volumes: combine old-address volumes into new-address
@@ -61,7 +56,7 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 	// Select the appropriate posting producer
 	var producer postingProducer
 	if order.GetScript() != nil && order.GetScript().GetPlain() != "" {
-		producer = &numscriptPostingProducer{cache: p.numscriptCache, ledger: ledger}
+		producer = &numscriptPostingProducer{cache: p.numscriptCache, ledger: ledger, schema: schema}
 	} else {
 		producer = &stdPostingProducer{}
 	}

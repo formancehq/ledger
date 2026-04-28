@@ -9,7 +9,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processRevertTransaction(ledger string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.RevertTransactionOrder, s InMemoryStore) (*commonpb.LedgerLogPayload, error) {
+func (p *RequestProcessor) processRevertTransaction(ledger string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.RevertTransactionOrder, s InMemoryStore, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, error) {
 	txKey := domain.TransactionKey{
 		Ledger: ledger,
 		ID:     order.GetTransactionId(),
@@ -44,12 +44,10 @@ func (p *RequestProcessor) processRevertTransaction(ledger string, boundaries *r
 	}
 
 	// Validate reversed postings against account types.
-	if info, ok := s.GetLedger(ledger); ok {
-		if len(info.GetAccountTypes()) > 0 {
-			compiled := accounttype.CompileTypes(info.GetAccountTypes())
-			if typeErr := validatePostingsAgainstAccountTypes(revertPostings, compiled, info.GetDefaultEnforcementMode()); typeErr != nil {
-				return nil, typeErr
-			}
+	if info != nil && len(info.GetAccountTypes()) > 0 {
+		compiled := accounttype.CompileTypes(info.GetAccountTypes())
+		if typeErr := validatePostingsAgainstAccountTypes(revertPostings, compiled, info.GetDefaultEnforcementMode()); typeErr != nil {
+			return nil, typeErr
 		}
 	}
 

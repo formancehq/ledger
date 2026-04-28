@@ -20,6 +20,7 @@ import (
 type numscriptPostingProducer struct {
 	cache  *numscript.NumscriptCache
 	ledger string
+	schema *commonpb.MetadataSchema
 }
 
 func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error) {
@@ -43,6 +44,7 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order
 		store:  s,
 		ledger: ledger,
 		force:  order.GetForce(),
+		schema: p.schema,
 	}
 
 	// Execute the script (experimental features are declared directly in scripts)
@@ -175,6 +177,7 @@ type numscriptStoreAdapter struct {
 	store  InMemoryStore
 	ledger string
 	force  bool // When true, return unlimited balances to bypass balance checks
+	schema *commonpb.MetadataSchema
 }
 
 func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscriptlib.BalanceQuery) (numscriptlib.Balances, error) {
@@ -253,15 +256,11 @@ func (s *numscriptStoreAdapter) GetAccountsMetadata(_ context.Context, query num
 
 			if value != nil {
 				// Opportunistically convert to declared schema type and write back.
-				// The schema is looked up lazily from the Store to avoid impacting
-				// tests that don't set up the GetLedger expectation.
-				if s.ledger != "" {
-					if info, ok := s.store.GetLedger(s.ledger); ok && info.GetMetadataSchema() != nil {
-						if fields := info.GetMetadataSchema().GetAccountFields(); fields != nil {
-							if fieldSchema, schemaOK := fields[key]; schemaOK && !commonpb.TypeMatches(value, fieldSchema.GetType()) {
-								value = commonpb.ConvertMetadataValue(value, fieldSchema.GetType())
-								s.store.PutAccountMetadata(metaKey, value)
-							}
+				if s.schema != nil {
+					if fields := s.schema.GetAccountFields(); fields != nil {
+						if fieldSchema, schemaOK := fields[key]; schemaOK && !commonpb.TypeMatches(value, fieldSchema.GetType()) {
+							value = commonpb.ConvertMetadataValue(value, fieldSchema.GetType())
+							s.store.PutAccountMetadata(metaKey, value)
 						}
 					}
 				}

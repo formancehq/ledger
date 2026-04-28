@@ -34,13 +34,13 @@ func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s InM
 
 	switch applyData := apply.GetData().(type) {
 	case *raftcmdpb.LedgerApplyOrder_AddMetadata:
-		logPayload, err = p.processAddMetadata(apply.GetLedger(), boundaries, applyData.AddMetadata, s)
+		logPayload, err = p.processAddMetadata(apply.GetLedger(), boundaries, applyData.AddMetadata, s, ledgerInfo)
 	case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
 		logPayload, err = p.processDeleteMetadata(apply.GetLedger(), boundaries, applyData.DeleteMetadata, s)
 	case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
-		logPayload, err = p.processCreateTransaction(apply.GetLedger(), boundaries, applyData.CreateTransaction, s)
+		logPayload, err = p.processCreateTransaction(apply.GetLedger(), boundaries, applyData.CreateTransaction, s, ledgerInfo)
 	case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
-		logPayload, err = p.processRevertTransaction(apply.GetLedger(), boundaries, applyData.RevertTransaction, s)
+		logPayload, err = p.processRevertTransaction(apply.GetLedger(), boundaries, applyData.RevertTransaction, s, ledgerInfo)
 	case *raftcmdpb.LedgerApplyOrder_SetMetadataFieldType:
 		logPayload, err = p.processSetMetadataFieldType(apply.GetLedger(), applyData.SetMetadataFieldType, s)
 	case *raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType:
