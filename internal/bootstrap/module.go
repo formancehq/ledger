@@ -1065,6 +1065,15 @@ func Module() fx.Option {
 			func(lc fx.Lifecycle, migrator *state.AccountMigrator) {
 				lc.Append(worker.FxHook(migrator))
 			},
+			func(lc fx.Lifecycle, machine *state.Machine) {
+				lc.Append(fx.Hook{
+					OnStop: func(_ context.Context) error {
+						machine.Close()
+
+						return nil
+					},
+				})
+			},
 			// Register Pebble read index metrics and unregister on stop.
 			func(lc fx.Lifecycle, rs *readstore.Store, meterProvider metric.MeterProvider) error {
 				reg, err := rs.RegisterMetrics(meterProvider.Meter("readindex"))

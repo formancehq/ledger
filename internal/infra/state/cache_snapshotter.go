@@ -25,6 +25,10 @@ type CacheSnapshotter struct {
 	dataStore    *dal.Store
 	registry     *StateRegistry
 	bloomFilters *bloom.FilterSet
+
+	// bloomPopulateDone is closed when the background bloom populate goroutine
+	// finishes. Nil when no background work is running.
+	bloomPopulateDone chan struct{}
 }
 
 // NewCacheSnapshotter creates a CacheSnapshotter.
@@ -74,9 +78,18 @@ func (s *CacheSnapshotter) PersistToStore() error {
 	}
 
 	// Persist bloom filters alongside cache snapshot.
+	// Only persist full filter data when ready; otherwise persist config only
+	// so that restoring nodes detect the config match and start their own
+	// background populate.
 	if s.bloomFilters != nil {
-		if err := s.bloomFilters.PersistToStore(batch); err != nil {
-			return fmt.Errorf("persisting bloom filters: %w", err)
+		if s.bloomFilters.IsReady() {
+			if err := s.bloomFilters.PersistToStore(batch); err != nil {
+				return fmt.Errorf("persisting bloom filters: %w", err)
+			}
+		} else {
+			if err := s.bloomFilters.PersistConfigOnly(batch); err != nil {
+				return fmt.Errorf("persisting bloom config: %w", err)
+			}
 		}
 	}
 
@@ -280,21 +293,17 @@ func (s *CacheSnapshotter) RestoreFromStore() error {
 	// Restore bloom filters from Pebble snapshot.
 	if s.bloomFilters != nil {
 		if err := s.bloomFilters.RestoreFromStore(s.dataStore); err != nil {
-			if !errors.Is(err, bloom.ErrNoSnapshot) && !errors.Is(err, bloom.ErrConfigChanged) {
+			if !errors.Is(err, bloom.ErrNoSnapshot) &&
+				!errors.Is(err, bloom.ErrConfigChanged) &&
+				!errors.Is(err, bloom.ErrFilterDataMissing) {
 				return fmt.Errorf("restoring bloom filters: %w", err)
 			}
 
-			// No usable snapshot: either first boot or config changed.
-			// Rebuild from a full attribute scan.
-			s.logger.WithFields(map[string]any{
-				"reason": err.Error(),
-			}).Infof("Rebuilding bloom filters from attribute scan")
-
-			if err := s.bloomFilters.PopulateFromStore(s.dataStore); err != nil {
-				return fmt.Errorf("populating bloom filters from store: %w", err)
-			}
-
-			s.logger.WithFields(map[string]any{"duration": time.Since(restoreStart).String()}).Infof("Bloom filters populated from attribute scan")
+			// No usable snapshot: first boot, config changed, or config-only
+			// checkpoint (bloom was not ready when the checkpoint was taken).
+			// Populate in the background — the preloader falls back to Pebble
+			// Gets while IsReady() returns false.
+			s.startAsyncBloomPopulate(err.Error())
 		} else {
 			s.logger.WithFields(map[string]any{"duration": time.Since(restoreStart).String()}).Infof("Restored bloom filters from Pebble")
 		}
@@ -504,4 +513,38 @@ func (s *CacheSnapshotter) restoreGeneration(genByte byte) error {
 	}
 
 	return nil
+}
+
+// startAsyncBloomPopulate launches a background goroutine to populate the bloom
+// filters from a full Pebble attribute scan. While populating, IsReady()
+// returns false and the preloader falls back to Pebble Gets.
+func (s *CacheSnapshotter) startAsyncBloomPopulate(reason string) {
+	s.logger.WithFields(map[string]any{
+		"reason": reason,
+	}).Infof("Populating bloom filters from attribute scan in background")
+
+	s.bloomPopulateDone = make(chan struct{})
+
+	go func() {
+		defer close(s.bloomPopulateDone)
+
+		start := time.Now()
+
+		if err := s.bloomFilters.PopulateFromStore(s.dataStore); err != nil {
+			s.logger.Errorf("Background bloom populate failed: %v", err)
+
+			return
+		}
+
+		s.logger.WithFields(map[string]any{
+			"duration": time.Since(start).String(),
+		}).Infof("Background bloom populate complete")
+	}()
+}
+
+// Stop waits for any background bloom populate goroutine to finish.
+func (s *CacheSnapshotter) Stop() {
+	if s.bloomPopulateDone != nil {
+		<-s.bloomPopulateDone
+	}
 }

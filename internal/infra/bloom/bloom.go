@@ -57,19 +57,11 @@ func (c FilterSetConfig) asList() [7]FilterConfig {
 	}
 }
 
-// DefaultFilterSetConfig returns sensible defaults matching typical workloads.
-// Ledger, boundary, and transaction filters are disabled by default because
-// these attribute types are rarely read and don't benefit from bloom filtering.
+// DefaultFilterSetConfig returns defaults with all bloom filters disabled.
+// Operators can enable individual filters via CLI flags (e.g.
+// --bloom-volumes-expected-keys=100000000 --bloom-volumes-fp-rate=0.01).
 func DefaultFilterSetConfig() FilterSetConfig {
-	return FilterSetConfig{
-		Volume:      FilterConfig{ExpectedKeys: 100_000_000, FPRate: 0.01},
-		Metadata:    FilterConfig{ExpectedKeys: 10_000_000, FPRate: 0.01},
-		Idempotency: FilterConfig{ExpectedKeys: 10_000_000, FPRate: 0.01},
-		Reference:   FilterConfig{ExpectedKeys: 10_000_000, FPRate: 0.01},
-		Ledger:      FilterConfig{},
-		Boundary:    FilterConfig{},
-		Transaction: FilterConfig{},
-	}
+	return FilterSetConfig{}
 }
 
 // Filter wraps a blocked bloom filter with lock-free atomic operations.
@@ -304,12 +296,23 @@ func unmarshalFilterSetConfig(data []byte) (FilterSetConfig, bool) {
 	}, true
 }
 
-// PersistToStore serializes all bloom filters into the provided Pebble batch.
-func (fs *FilterSet) PersistToStore(batch *dal.Batch) error {
-	// Write per-type config into the marker key so RestoreFromStore can detect config changes.
+// PersistConfigOnly writes only the bloom filter config metadata to the Pebble
+// batch, without any filter data. Used when the bloom filters are not yet ready
+// (e.g. still being populated in the background) so that checkpoints don't
+// capture incomplete filter state.
+func (fs *FilterSet) PersistConfigOnly(batch *dal.Batch) error {
 	metaKey := []byte{dal.KeyPrefixCacheSnapshot, CacheBloomMeta}
 	if err := batch.SetBytes(metaKey, marshalFilterSetConfig(fs.config)); err != nil {
 		return fmt.Errorf("writing bloom meta: %w", err)
+	}
+
+	return nil
+}
+
+// PersistToStore serializes all bloom filters into the provided Pebble batch.
+func (fs *FilterSet) PersistToStore(batch *dal.Batch) error {
+	if err := fs.PersistConfigOnly(batch); err != nil {
+		return err
 	}
 
 	for _, entry := range fs.allFilters() {
@@ -355,6 +358,8 @@ func (fs *FilterSet) RestoreFromStore(reader dal.PebbleReader) error {
 		return ErrConfigChanged
 	}
 
+	var loaded bool
+
 	for _, entry := range fs.allFilters() {
 		if entry.filter == nil {
 			continue
@@ -378,6 +383,12 @@ func (fs *FilterSet) RestoreFromStore(reader dal.PebbleReader) error {
 		}
 
 		_ = dataCloser.Close()
+
+		loaded = true
+	}
+
+	if !loaded {
+		return ErrFilterDataMissing
 	}
 
 	fs.SetReady(true)
@@ -392,6 +403,10 @@ var (
 	// ErrConfigChanged is returned by RestoreFromStore when the persisted config
 	// differs from the current one (expectedKeys or fpRate changed).
 	ErrConfigChanged = errors.New("bloom filter config changed")
+
+	// ErrFilterDataMissing is returned by RestoreFromStore when the config matches
+	// but no filter data exists (config-only checkpoint taken while bloom was not ready).
+	ErrFilterDataMissing = errors.New("bloom filter data missing from snapshot")
 )
 
 // PopulateFromStore scans the Pebble attribute range and inserts all existing

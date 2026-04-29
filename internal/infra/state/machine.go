@@ -1629,6 +1629,11 @@ func (fsm *Machine) RestoreCacheFromStore() error {
 	return fsm.cacheSnapshotter.RestoreFromStore()
 }
 
+// Close stops background work owned by the Machine (e.g. bloom populate).
+func (fsm *Machine) Close() {
+	fsm.cacheSnapshotter.Stop()
+}
+
 func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapshot) error {
 	totalStart := time.Now()
 	fsm.snapshotIndex = snapshot.Metadata.Index

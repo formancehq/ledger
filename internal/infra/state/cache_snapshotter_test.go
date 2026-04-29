@@ -223,13 +223,49 @@ func TestCacheSnapshotter_PersistAndRestoreWithBloomFilters(t *testing.T) {
 	bloomFilters := bloom.NewFilterSet(bloomCfg, meter)
 	require.NotNil(t, bloomFilters)
 
+	// Mark ready so PersistToStore writes full filter data.
+	bloomFilters.SetReady(true)
+
 	snapshotter, _, _ := newTestCacheSnapshotter(t, bloomFilters)
+	defer snapshotter.Stop()
 
 	// Persist (includes bloom filters)
 	require.NoError(t, snapshotter.PersistToStore())
 
+	// Reset ready to verify RestoreFromStore sets it back.
+	bloomFilters.SetReady(false)
+
 	// Restore (includes bloom filters)
 	require.NoError(t, snapshotter.RestoreFromStore())
+	require.True(t, bloomFilters.IsReady())
+}
+
+func TestCacheSnapshotter_PersistNotReadyBloom(t *testing.T) {
+	t.Parallel()
+
+	meter := noop.NewMeterProvider().Meter("test")
+	bloomCfg := bloom.FilterSetConfig{
+		Volume:   bloom.FilterConfig{ExpectedKeys: 1000, FPRate: 0.01},
+		Metadata: bloom.FilterConfig{ExpectedKeys: 1000, FPRate: 0.01},
+	}
+	bloomFilters := bloom.NewFilterSet(bloomCfg, meter)
+	require.NotNil(t, bloomFilters)
+
+	// Do NOT mark ready — simulates mid-population state.
+	snapshotter, _, _ := newTestCacheSnapshotter(t, bloomFilters)
+	defer snapshotter.Stop()
+
+	// Persist: should only write config, not filter data.
+	require.NoError(t, snapshotter.PersistToStore())
+	require.False(t, bloomFilters.IsReady())
+
+	// Restore: should detect config-only snapshot and start async populate.
+	require.NoError(t, snapshotter.RestoreFromStore())
+
+	// Bloom is not ready immediately (async populate in progress).
+	// Wait for the background goroutine to finish.
+	snapshotter.Stop()
+	require.True(t, bloomFilters.IsReady())
 }
 
 func TestCacheSnapshotter_PersistAndRestoreIdempotencyKeys(t *testing.T) {

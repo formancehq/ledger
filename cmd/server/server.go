@@ -867,6 +867,11 @@ func loadBloomConfig(cmd *cobra.Command) bloom.FilterSetConfig {
 			fpRate = defaults.FPRate
 		}
 
+		// Prevent blobloom panic: FPRate must be > 0 when filter is enabled.
+		if expectedKeys > 0 && fpRate == 0 {
+			fpRate = 0.01
+		}
+
 		return bloom.FilterConfig{ExpectedKeys: expectedKeys, FPRate: fpRate}
 	}
 
