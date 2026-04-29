@@ -42,6 +42,7 @@ func (p *RequestProcessor) processAddAccountType(
 
 	info.AccountTypes[at.GetName()] = at
 	s.PutLedger(ledgerName, info)
+	p.invalidateCompiledTypes(ledgerName)
 
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_AddedAccountType{
@@ -70,6 +71,7 @@ func (p *RequestProcessor) processRemoveAccountType(
 
 	delete(info.GetAccountTypes(), order.GetName())
 	s.PutLedger(ledgerName, info)
+	p.invalidateCompiledTypes(ledgerName)
 
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_RemovedAccountType{
@@ -329,6 +331,7 @@ func (p *RequestProcessor) processCompleteAccountMigration(
 	at.Migration = nil
 
 	s.PutLedger(ledgerName, info)
+	p.invalidateCompiledTypes(ledgerName)
 
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_CompletedAccountMigration{

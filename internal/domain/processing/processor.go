@@ -11,15 +11,17 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/accounttype"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
 
 type RequestProcessor struct {
-	numscriptCache *numscript.NumscriptCache
-	logHasher      *blake3.Hasher
-	orderHashBuf   []byte // reusable buffer for order hash marshaling
+	numscriptCache     *numscript.NumscriptCache
+	logHasher          *blake3.Hasher
+	orderHashBuf       []byte // reusable buffer for order hash marshaling
+	compiledTypesCache map[string][]accounttype.CompiledType
 }
 
 // NewRequestProcessor creates a new RequestProcessor with the given meter.
@@ -38,14 +40,40 @@ func NewRequestProcessor(m metric.Meter, numscriptCacheSize int) (*RequestProces
 	}
 
 	return &RequestProcessor{
-		numscriptCache: cache,
-		logHasher:      blake3.New(),
-		orderHashBuf:   make([]byte, 0, 512),
+		numscriptCache:     cache,
+		logHasher:          blake3.New(),
+		orderHashBuf:       make([]byte, 0, 512),
+		compiledTypesCache: make(map[string][]accounttype.CompiledType),
 	}, nil
+}
+
+// getCompiledTypes returns compiled account types for the given ledger,
+// using a per-batch cache to avoid redundant ParsePattern calls across orders.
+func (p *RequestProcessor) getCompiledTypes(ledger string, info *commonpb.LedgerInfo) []accounttype.CompiledType {
+	if info == nil || len(info.GetAccountTypes()) == 0 {
+		return nil
+	}
+
+	if cached, ok := p.compiledTypesCache[ledger]; ok {
+		return cached
+	}
+
+	compiled := accounttype.CompileTypes(info.GetAccountTypes())
+	p.compiledTypesCache[ledger] = compiled
+
+	return compiled
+}
+
+// invalidateCompiledTypes removes the cached compiled types for a ledger,
+// forcing recompilation on the next access.
+func (p *RequestProcessor) invalidateCompiledTypes(ledger string) {
+	delete(p.compiledTypesCache, ledger)
 }
 
 // ProcessOrders processes a list of orders and returns the resulting logs.
 func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemoryStore) ([]*raftcmdpb.CreatedLogOrReference, error) {
+	clear(p.compiledTypesCache)
+
 	logs := make([]*raftcmdpb.CreatedLogOrReference, len(orders))
 
 	for i, order := range orders {

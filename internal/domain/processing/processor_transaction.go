@@ -76,8 +76,7 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 	}
 
 	// Validate postings against account types.
-	if info != nil && len(info.GetAccountTypes()) > 0 {
-		compiled := accounttype.CompileTypes(info.GetAccountTypes())
+	if compiled := p.getCompiledTypes(ledger, info); len(compiled) > 0 {
 		if typeErr := validatePostingsAgainstAccountTypes(result.Postings, compiled, info.GetDefaultEnforcementMode()); typeErr != nil {
 			return nil, typeErr
 		}
