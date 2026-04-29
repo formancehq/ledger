@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/formancehq/ledger-v3-poc/deployments/devenv/shared"
+	"github.com/formancehq/ledger-v3-poc/deployments/devenv/testing/pulumiutil"
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/helm/v3"
 	k8syaml "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/yaml"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -17,19 +17,19 @@ func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
 		cfg := config.New(ctx, "")
 
-		k8s, err := shared.NewK8sSetup(ctx, cfg)
+		k8s, err := pulumiutil.NewK8sSetup(ctx, cfg)
 		if err != nil {
 			return err
 		}
 		namespace := k8s.Namespace
 		k8sProvider := k8s.Provider
 
-		dc := shared.NewDockerConfig(ctx, cfg)
+		dc := pulumiutil.NewDockerConfig(ctx, cfg)
 
 		// Deploy k6-operator (optional, enabled by default)
 		var k6Operator *helm.Release
-		if shared.GetConfigBool(cfg, "k6operator-enabled", true) {
-			k6OperatorValues, k6Err := shared.GetConfigObject(cfg, "k6operator", ".")
+		if pulumiutil.GetConfigBool(cfg, "k6operator-enabled", true) {
+			k6OperatorValues, k6Err := pulumiutil.GetConfigObject(cfg, "k6operator", ".")
 			if k6Err != nil {
 				k6OperatorValues = make(map[string]any)
 			}
@@ -51,13 +51,13 @@ func main() {
 		}
 
 		// Deploy benchmark operator (optional, disabled by default)
-		if shared.GetConfigBool(cfg, "benchmarkOperator-enabled", false) {
+		if pulumiutil.GetConfigBool(cfg, "benchmarkOperator-enabled", false) {
 			benchmarkOperatorImage, imgErr := dc.BuildImage(ctx, "formancehq/benchmark-operator", "../../benchmark-operator", "../../benchmark-operator/Dockerfile")
 			if imgErr != nil {
 				return fmt.Errorf("failed to build benchmark operator image: %w", imgErr)
 			}
 
-			benchmarkOperatorValues, valErr := shared.GetConfigObject(cfg, "benchmarkOperator", ".")
+			benchmarkOperatorValues, valErr := pulumiutil.GetConfigObject(cfg, "benchmarkOperator", ".")
 			if valErr != nil {
 				benchmarkOperatorValues = make(map[string]any)
 			}

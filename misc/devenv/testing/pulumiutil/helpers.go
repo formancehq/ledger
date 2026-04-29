@@ -1,8 +1,7 @@
-// Package shared provides common helpers for devenv Pulumi sub-projects.
-package shared
+// Package pulumiutil provides common helpers for Pulumi projects.
+package pulumiutil
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -17,13 +16,6 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 	"gopkg.in/yaml.v3"
 )
-
-// DashboardFile holds a parsed Grafana dashboard JSON file.
-type DashboardFile struct {
-	Name     string
-	Filename string
-	Content  string
-}
 
 // GetBuildVersion generates a version string based on git commit and timestamp.
 // Format: <short-commit>-<timestamp> (e.g., "abc1234-20260125-143022")
@@ -90,122 +82,6 @@ func GetConfigBool(cfg *config.Config, key string, fallback bool) bool {
 	return fallback
 }
 
-// ReadDashboardFiles reads all JSON dashboard files from a directory.
-func ReadDashboardFiles(configPath, dirPath string) ([]DashboardFile, error) {
-	fullPath := filepath.Join(configPath, dirPath)
-	entries, err := os.ReadDir(fullPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read dashboard directory %s: %w", fullPath, err)
-	}
-
-	var dashboards []DashboardFile
-
-	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
-			continue
-		}
-
-		filePath := filepath.Join(fullPath, entry.Name())
-		data, err := os.ReadFile(filePath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read dashboard file %s: %w", filePath, err)
-		}
-
-		var jsonData map[string]any
-		if err := json.Unmarshal(data, &jsonData); err != nil {
-			return nil, fmt.Errorf("failed to parse JSON file %s: %w", filePath, err)
-		}
-
-		jsonBytes, err := json.MarshalIndent(jsonData, "", "  ")
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal JSON file %s: %w", filePath, err)
-		}
-
-		baseName := entry.Name()
-		configMapName := baseName[:len(baseName)-len(filepath.Ext(baseName))]
-		configMapName = filepath.Base(configMapName)
-
-		dashboards = append(dashboards, DashboardFile{
-			Name:     configMapName,
-			Filename: entry.Name(),
-			Content:  string(jsonBytes),
-		})
-	}
-
-	return dashboards, nil
-}
-
-// ReadTextFile reads a text file relative to configPath.
-func ReadTextFile(configPath, filePath string) (string, error) {
-	fullPath := filepath.Join(configPath, filePath)
-	data, err := os.ReadFile(fullPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read text file %s: %w", fullPath, err)
-	}
-	return string(data), nil
-}
-
-// ExtractLedgerDefaults moves LedgerDefaultsSpec-eligible fields out of
-// ledgerSpec into a new defaults map.
-func ExtractLedgerDefaults(ledgerSpec map[string]any) map[string]any {
-	defaultsSpec := make(map[string]any)
-
-	topLevelKeys := []string{
-		"image", "imagePullSecrets", "serviceAccount", "resources",
-		"nodeSelector", "tolerations", "affinity", "podAntiAffinity",
-		"podDisruptionBudget", "serviceMonitor", "networkPolicy",
-		"livenessProbe", "readinessProbe", "podSecurityContext",
-		"securityContext", "persistence", "autoNetworking",
-	}
-
-	for _, key := range topLevelKeys {
-		if val, ok := ledgerSpec[key]; ok {
-			defaultsSpec[key] = val
-			delete(ledgerSpec, key)
-		}
-	}
-
-	configKeys := []string{
-		"pebble", "raft", "health", "coldStorage",
-		"tls", "responseSigning", "monitoring",
-	}
-
-	configMap, hasConfig := ledgerSpec["config"].(map[string]any)
-	if hasConfig {
-		defaultsConfig := make(map[string]any)
-		for _, key := range configKeys {
-			if val, ok := configMap[key]; ok {
-				defaultsConfig[key] = val
-				delete(configMap, key)
-			}
-		}
-		if len(defaultsConfig) > 0 {
-			defaultsSpec["config"] = defaultsConfig
-		}
-	}
-
-	return defaultsSpec
-}
-
-// EnsurePersistenceRetentionPolicy ensures persistence.retentionPolicy.whenDeleted=Delete.
-func EnsurePersistenceRetentionPolicy(defaultsSpec map[string]any) {
-	persistence, ok := defaultsSpec["persistence"].(map[string]any)
-	if !ok {
-		persistence = make(map[string]any)
-		defaultsSpec["persistence"] = persistence
-	}
-
-	rp, ok := persistence["retentionPolicy"].(map[string]any)
-	if !ok {
-		rp = make(map[string]any)
-		persistence["retentionPolicy"] = rp
-	}
-
-	if _, ok := rp["whenDeleted"]; !ok {
-		rp["whenDeleted"] = "Delete"
-	}
-}
-
 // K8sSetup holds the common Kubernetes provider and namespace setup.
 type K8sSetup struct {
 	Provider  pulumi.ProviderResource
@@ -221,7 +97,7 @@ func NewK8sSetup(ctx *pulumi.Context, cfg *config.Config) (*K8sSetup, error) {
 		namespaceName = ctx.Stack()
 	}
 
-	k8sProvider, err := NewK8sProvider(ctx, kubeContext)
+	k8sProvider, err := newK8sProviderInternal(ctx, kubeContext)
 	if err != nil {
 		return nil, err
 	}
@@ -239,11 +115,6 @@ func NewK8sSetup(ctx *pulumi.Context, cfg *config.Config) (*K8sSetup, error) {
 		Provider:  k8sProvider,
 		Namespace: namespace,
 	}, nil
-}
-
-// NewK8sProvider creates a Kubernetes provider for the given context.
-func NewK8sProvider(ctx *pulumi.Context, kubeContext string) (pulumi.ProviderResource, error) {
-	return newK8sProviderInternal(ctx, kubeContext)
 }
 
 // DockerConfig holds common Docker image build configuration.
@@ -322,20 +193,6 @@ func (m *MultiArchImage) Resource() pulumi.Resource {
 	return m.Index
 }
 
-// BuildImageOption configures optional parameters for BuildImage.
-type BuildImageOption func(*buildImageOptions)
-
-type buildImageOptions struct {
-	buildArgs pulumi.StringMap
-}
-
-// WithBuildArgs sets Docker build args (ARG) for the image build.
-func WithBuildArgs(args pulumi.StringMap) BuildImageOption {
-	return func(o *buildImageOptions) {
-		o.buildArgs = args
-	}
-}
-
 // BuildImage builds one cached image per platform, then joins them into a
 // multi-arch Index pushed with :latest and :<imageTag> tags.
 func (dc *DockerConfig) BuildImage(
@@ -343,19 +200,12 @@ func (dc *DockerConfig) BuildImage(
 	name string,
 	contextPath string,
 	dockerfilePath string,
-	opts ...BuildImageOption,
 ) (*MultiArchImage, error) {
-	var options buildImageOptions
-	for _, o := range opts {
-		o(&options)
-	}
-
 	var sources pulumi.StringArray
 	var images []*dockerbuild.Image
 
 	for _, platform := range dc.Platforms {
 		img, err := dockerbuild.NewImage(ctx, fmt.Sprintf("%s-%s", name, platform), &dockerbuild.ImageArgs{
-			BuildArgs: options.buildArgs,
 			Context: dockerbuild.BuildContextArgs{
 				Location: pulumi.String(contextPath),
 			},
@@ -409,7 +259,6 @@ func (dc *DockerConfig) BuildImage(
 		return nil, fmt.Errorf("failed to create index for %s: %w", name, err)
 	}
 
-	// Extract digest from the ref (e.g. "registry/name:tag@sha256:abc" → "sha256:abc").
 	digest := idx.Ref.ApplyT(func(ref string) string {
 		if i := strings.Index(ref, "@"); i >= 0 {
 			return ref[i+1:]

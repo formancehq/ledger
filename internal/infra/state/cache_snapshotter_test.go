@@ -1,0 +1,381 @@
+package state
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/bloom"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+)
+
+func newTestCacheSnapshotter(t *testing.T, bloomFilters *bloom.FilterSet) (*CacheSnapshotter, *dal.Store, *StateRegistry) {
+	t.Helper()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("test")
+
+	dataStore, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = dataStore.Close() })
+
+	attrs := attributes.New()
+
+	c, err := cache.New(1000, meter)
+	require.NoError(t, err)
+
+	registry := NewStateRegistry(c, attrs)
+
+	snapshotter := NewCacheSnapshotter(logger, dataStore, registry, bloomFilters)
+
+	return snapshotter, dataStore, registry
+}
+
+func TestCacheSnapshotter_PersistAndRestoreEmpty(t *testing.T) {
+	t.Parallel()
+
+	snapshotter, _, registry := newTestCacheSnapshotter(t, nil)
+
+	// Persist empty cache
+	require.NoError(t, snapshotter.PersistToStore())
+
+	// Reset and restore
+	registry.Cache.Reset()
+
+	require.NoError(t, snapshotter.RestoreFromStore())
+}
+
+func TestCacheSnapshotter_PersistAndRestoreVolumes(t *testing.T) {
+	t.Parallel()
+
+	snapshotter, _, registry := newTestCacheSnapshotter(t, nil)
+
+	// Populate cache with volume data in gen0
+	volumeKey := domain.NewVolumeKey(domain.AccountKey{Ledger: "test-ledger", Account: "bank"}, "USD")
+	u128 := attributes.HashU128(attributes.DefaultSeeds, volumeKey.Bytes())
+	pair := &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(100),
+		Output: commonpb.NewUint256FromUint64(50),
+	}
+	registry.Cache.Volumes.Gen0().Put(u128, attributes.Entry[*raftcmdpb.VolumePair]{
+		Tag: 1, Data: pair,
+	})
+
+	// Persist
+	require.NoError(t, snapshotter.PersistToStore())
+
+	// Save generation for comparison
+	savedGen := registry.Cache.CurrentGeneration()
+
+	// Reset and restore
+	registry.Cache.Reset()
+
+	require.NoError(t, snapshotter.RestoreFromStore())
+
+	// Verify restored data
+	require.Equal(t, savedGen, registry.Cache.CurrentGeneration())
+
+	restored, ok := registry.Cache.Volumes.Gen0().Get(u128)
+	require.True(t, ok)
+	require.Equal(t, int64(100), restored.Data.GetInput().ToBigInt().Int64())
+	require.Equal(t, int64(50), restored.Data.GetOutput().ToBigInt().Int64())
+	require.Equal(t, uint64(1), restored.Tag)
+}
+
+func TestCacheSnapshotter_PersistAndRestoreMetadata(t *testing.T) {
+	t.Parallel()
+
+	snapshotter, _, registry := newTestCacheSnapshotter(t, nil)
+
+	// Populate cache with metadata in gen0
+	metaKey := domain.MetadataKey{AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "bank"}, Key: "label"}
+	u128 := attributes.HashU128(attributes.DefaultSeeds, metaKey.Bytes())
+	metaValue := commonpb.NewStringValue("test-value")
+	registry.Cache.AccountMetadata.Gen0().Put(u128, attributes.Entry[*commonpb.MetadataValue]{
+		Tag: 2, Data: metaValue,
+	})
+
+	// Persist and restore
+	require.NoError(t, snapshotter.PersistToStore())
+	registry.Cache.Reset()
+	require.NoError(t, snapshotter.RestoreFromStore())
+
+	// Verify
+	restored, ok := registry.Cache.AccountMetadata.Gen0().Get(u128)
+	require.True(t, ok)
+	require.Equal(t, "test-value", restored.Data.GetStringValue())
+	require.Equal(t, uint64(2), restored.Tag)
+}
+
+func TestCacheSnapshotter_PersistAndRestoreLedgers(t *testing.T) {
+	t.Parallel()
+
+	snapshotter, _, registry := newTestCacheSnapshotter(t, nil)
+
+	// Populate cache with ledger info in gen0
+	ledgerKey := domain.LedgerKey{Name: "my-ledger"}
+	u128 := attributes.HashU128(attributes.DefaultSeeds, ledgerKey.Bytes())
+	ledgerInfo := &commonpb.LedgerInfo{Name: "my-ledger"}
+	registry.Cache.Ledgers.Gen0().Put(u128, attributes.Entry[*commonpb.LedgerInfo]{
+		Tag: 3, Data: ledgerInfo,
+	})
+
+	// Persist and restore
+	require.NoError(t, snapshotter.PersistToStore())
+	registry.Cache.Reset()
+	require.NoError(t, snapshotter.RestoreFromStore())
+
+	// Verify
+	restored, ok := registry.Cache.Ledgers.Gen0().Get(u128)
+	require.True(t, ok)
+	require.Equal(t, "my-ledger", restored.Data.GetName())
+	require.Equal(t, uint64(3), restored.Tag)
+}
+
+func TestCacheSnapshotter_PersistAndRestoreReversions(t *testing.T) {
+	t.Parallel()
+
+	snapshotter, _, registry := newTestCacheSnapshotter(t, nil)
+
+	// Populate reversions
+	bs := domain.NewReversionBitset(10)
+	bs.SetReverted(3)
+	bs.SetReverted(7)
+	registry.Reversions["test-ledger"] = bs
+
+	// Persist — should succeed (reversions are written to Pebble)
+	require.NoError(t, snapshotter.PersistToStore())
+}
+
+func TestCacheSnapshotter_PersistAndRestoreBothGenerations(t *testing.T) {
+	t.Parallel()
+
+	snapshotter, _, registry := newTestCacheSnapshotter(t, nil)
+
+	// Populate gen0 with a volume
+	volKey0 := domain.NewVolumeKey(domain.AccountKey{Ledger: "ledger", Account: "alice"}, "USD")
+	u128_0 := attributes.HashU128(attributes.DefaultSeeds, volKey0.Bytes())
+	registry.Cache.Volumes.Gen0().Put(u128_0, attributes.Entry[*raftcmdpb.VolumePair]{
+		Tag: 1, Data: &raftcmdpb.VolumePair{
+			Input:  commonpb.NewUint256FromUint64(200),
+			Output: commonpb.NewUint256FromUint64(0),
+		},
+	})
+
+	// Populate gen1 with a different volume
+	volKey1 := domain.NewVolumeKey(domain.AccountKey{Ledger: "ledger", Account: "bob"}, "EUR")
+	u128_1 := attributes.HashU128(attributes.DefaultSeeds, volKey1.Bytes())
+	registry.Cache.Volumes.Gen1().Put(u128_1, attributes.Entry[*raftcmdpb.VolumePair]{
+		Tag: 2, Data: &raftcmdpb.VolumePair{
+			Input:  commonpb.NewUint256FromUint64(0),
+			Output: commonpb.NewUint256FromUint64(300),
+		},
+	})
+
+	// Set base indexes
+	registry.Cache.BaseIndex.Gen0 = 10
+	registry.Cache.BaseIndex.Gen1 = 20
+
+	// Persist and restore
+	require.NoError(t, snapshotter.PersistToStore())
+	registry.Cache.Reset()
+	require.NoError(t, snapshotter.RestoreFromStore())
+
+	// Verify gen0
+	require.Equal(t, uint64(10), registry.Cache.BaseIndex.Gen0)
+	restoredGen0, ok := registry.Cache.Volumes.Gen0().Get(u128_0)
+	require.True(t, ok)
+	require.Equal(t, int64(200), restoredGen0.Data.GetInput().ToBigInt().Int64())
+
+	// Verify gen1
+	require.Equal(t, uint64(20), registry.Cache.BaseIndex.Gen1)
+	restoredGen1, ok := registry.Cache.Volumes.Gen1().Get(u128_1)
+	require.True(t, ok)
+	require.Equal(t, int64(300), restoredGen1.Data.GetOutput().ToBigInt().Int64())
+}
+
+func TestCacheSnapshotter_RestoreFromEmptyStore(t *testing.T) {
+	t.Parallel()
+
+	snapshotter, _, _ := newTestCacheSnapshotter(t, nil)
+
+	// RestoreFromStore on an empty Pebble should succeed silently
+	require.NoError(t, snapshotter.RestoreFromStore())
+}
+
+func TestCacheSnapshotter_PersistAndRestoreWithBloomFilters(t *testing.T) {
+	t.Parallel()
+
+	meter := noop.NewMeterProvider().Meter("test")
+	bloomCfg := bloom.FilterSetConfig{
+		Volume:   bloom.FilterConfig{ExpectedKeys: 1000, FPRate: 0.01},
+		Metadata: bloom.FilterConfig{ExpectedKeys: 1000, FPRate: 0.01},
+	}
+	bloomFilters := bloom.NewFilterSet(bloomCfg, meter)
+	require.NotNil(t, bloomFilters)
+
+	snapshotter, _, _ := newTestCacheSnapshotter(t, bloomFilters)
+
+	// Persist (includes bloom filters)
+	require.NoError(t, snapshotter.PersistToStore())
+
+	// Restore (includes bloom filters)
+	require.NoError(t, snapshotter.RestoreFromStore())
+}
+
+func TestCacheSnapshotter_PersistAndRestoreIdempotencyKeys(t *testing.T) {
+	t.Parallel()
+
+	snapshotter, _, registry := newTestCacheSnapshotter(t, nil)
+
+	idempKey := domain.IdempotencyKey{Key: "my-key"}
+	u128 := attributes.HashU128(attributes.DefaultSeeds, idempKey.Bytes())
+	value := &commonpb.IdempotencyKeyValue{LogSequence: 42}
+	registry.Cache.IdempotencyKeys.Gen0().Put(u128, attributes.Entry[*commonpb.IdempotencyKeyValue]{
+		Tag: 5, Data: value,
+	})
+
+	require.NoError(t, snapshotter.PersistToStore())
+	registry.Cache.Reset()
+	require.NoError(t, snapshotter.RestoreFromStore())
+
+	restored, ok := registry.Cache.IdempotencyKeys.Gen0().Get(u128)
+	require.True(t, ok)
+	require.Equal(t, uint64(42), restored.Data.GetLogSequence())
+	require.Equal(t, uint64(5), restored.Tag)
+}
+
+func TestCacheSnapshotter_PersistAndRestoreReferences(t *testing.T) {
+	t.Parallel()
+
+	snapshotter, _, registry := newTestCacheSnapshotter(t, nil)
+
+	refKey := domain.TransactionReferenceKey{Ledger: "test-ledger", Reference: "ref-1"}
+	u128 := attributes.HashU128(attributes.DefaultSeeds, refKey.Bytes())
+	value := &commonpb.TransactionReferenceValue{TransactionId: 99}
+	registry.Cache.References.Gen0().Put(u128, attributes.Entry[*commonpb.TransactionReferenceValue]{
+		Tag: 6, Data: value,
+	})
+
+	require.NoError(t, snapshotter.PersistToStore())
+	registry.Cache.Reset()
+	require.NoError(t, snapshotter.RestoreFromStore())
+
+	restored, ok := registry.Cache.References.Gen0().Get(u128)
+	require.True(t, ok)
+	require.Equal(t, uint64(99), restored.Data.GetTransactionId())
+	require.Equal(t, uint64(6), restored.Tag)
+}
+
+func TestCacheSnapshotter_PersistAndRestoreTransactions(t *testing.T) {
+	t.Parallel()
+
+	snapshotter, _, registry := newTestCacheSnapshotter(t, nil)
+
+	txKey := domain.TransactionKey{Ledger: "test-ledger", ID: 42}
+	u128 := attributes.HashU128(attributes.DefaultSeeds, txKey.Bytes())
+	value := &commonpb.TransactionState{CreatedByLog: 10, RevertedByTransaction: 5}
+	registry.Cache.Transactions.Gen0().Put(u128, attributes.Entry[*commonpb.TransactionState]{
+		Tag: 7, Data: value,
+	})
+
+	require.NoError(t, snapshotter.PersistToStore())
+	registry.Cache.Reset()
+	require.NoError(t, snapshotter.RestoreFromStore())
+
+	restored, ok := registry.Cache.Transactions.Gen0().Get(u128)
+	require.True(t, ok)
+	require.Equal(t, uint64(10), restored.Data.GetCreatedByLog())
+	require.Equal(t, uint64(5), restored.Data.GetRevertedByTransaction())
+	require.Equal(t, uint64(7), restored.Tag)
+}
+
+func TestCacheSnapshotter_PersistOverwritesPrevious(t *testing.T) {
+	t.Parallel()
+
+	snapshotter, _, registry := newTestCacheSnapshotter(t, nil)
+
+	// First persist with one volume
+	volKey := domain.NewVolumeKey(domain.AccountKey{Ledger: "ledger", Account: "alice"}, "USD")
+	u128 := attributes.HashU128(attributes.DefaultSeeds, volKey.Bytes())
+	registry.Cache.Volumes.Gen0().Put(u128, attributes.Entry[*raftcmdpb.VolumePair]{
+		Tag: 1, Data: &raftcmdpb.VolumePair{
+			Input:  commonpb.NewUint256FromUint64(100),
+			Output: commonpb.NewUint256FromUint64(0),
+		},
+	})
+
+	require.NoError(t, snapshotter.PersistToStore())
+
+	// Update volume and persist again
+	registry.Cache.Volumes.Gen0().Put(u128, attributes.Entry[*raftcmdpb.VolumePair]{
+		Tag: 1, Data: &raftcmdpb.VolumePair{
+			Input:  commonpb.NewUint256FromUint64(500),
+			Output: commonpb.NewUint256FromUint64(200),
+		},
+	})
+
+	require.NoError(t, snapshotter.PersistToStore())
+
+	// Restore and verify we get the latest values
+	registry.Cache.Reset()
+	require.NoError(t, snapshotter.RestoreFromStore())
+
+	restored, ok := registry.Cache.Volumes.Gen0().Get(u128)
+	require.True(t, ok)
+	require.Equal(t, int64(500), restored.Data.GetInput().ToBigInt().Int64())
+	require.Equal(t, int64(200), restored.Data.GetOutput().ToBigInt().Int64())
+}
+
+func TestCacheSnapshotter_PersistAndRestoreCurrentGeneration(t *testing.T) {
+	t.Parallel()
+
+	snapshotter, _, registry := newTestCacheSnapshotter(t, nil)
+
+	// Set a non-default current generation
+	registry.Cache.SetCurrentGeneration(42)
+
+	require.NoError(t, snapshotter.PersistToStore())
+	registry.Cache.Reset()
+	require.NoError(t, snapshotter.RestoreFromStore())
+
+	require.Equal(t, uint64(42), registry.Cache.CurrentGeneration())
+}
+
+func TestCacheSnapshotter_MachineIntegration(t *testing.T) {
+	t.Parallel()
+
+	// Verify Machine.RestoreCacheFromStore delegates to CacheSnapshotter
+	machine, _, _ := newTestMachine(t)
+
+	// Populate some data via the machine's registry
+	volKey := domain.NewVolumeKey(domain.AccountKey{Ledger: "ledger", Account: "alice"}, "USD")
+	u128 := attributes.HashU128(attributes.DefaultSeeds, volKey.Bytes())
+	machine.Registry.Cache.Volumes.Gen0().Put(u128, attributes.Entry[*raftcmdpb.VolumePair]{
+		Tag: 1, Data: &raftcmdpb.VolumePair{
+			Input:  commonpb.NewUint256FromUint64(100),
+			Output: commonpb.NewUint256FromUint64(0),
+		},
+	})
+
+	// Persist via the machine's internal snapshotter
+	require.NoError(t, machine.cacheSnapshotter.PersistToStore())
+
+	// Reset and restore via the Machine delegation method
+	machine.Registry.Cache.Reset()
+	require.NoError(t, machine.RestoreCacheFromStore())
+
+	// Verify
+	restored, ok := machine.Registry.Cache.Volumes.Gen0().Get(u128)
+	require.True(t, ok)
+	require.Equal(t, int64(100), restored.Data.GetInput().ToBigInt().Int64())
+}

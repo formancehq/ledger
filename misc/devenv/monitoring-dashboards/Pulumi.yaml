@@ -1,0 +1,17 @@
+name: monitoring-dashboards
+runtime:
+  name: go
+  options:
+    buildTarget: ./bin/pulumi
+description: Ledger Grafana dashboards (GrafanaDashboard CRDs)
+x-plr-config:
+  k8s-context:
+    type: string
+    required: true
+    description: Kubernetes context to use
+  namespace:
+    type: string
+    description: Kubernetes namespace (defaults to stack name)
+  grafana-instance-selector:
+    type: string
+    description: Label value for Grafana instanceSelector (defaults to "grafana")

@@ -4077,7 +4077,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 11
+        "y": 19
       },
       "id": 338,
       "options": {
@@ -4213,7 +4213,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 19
+        "y": 27
       },
       "id": 339,
       "options": {
@@ -4305,7 +4305,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 19
+        "y": 35
       },
       "id": 340,
       "options": {
@@ -4437,7 +4437,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 27
+        "y": 43
       },
       "id": 341,
       "options": {
@@ -4573,7 +4573,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 43
+        "y": 51
       },
       "id": 345,
       "options": {
@@ -4669,7 +4669,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 43
+        "y": 59
       },
       "id": 346,
       "options": {
@@ -4765,7 +4765,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 51
+        "y": 67
       },
       "id": 347,
       "options": {
@@ -4893,7 +4893,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 51
+        "y": 75
       },
       "id": 348,
       "options": {
@@ -5026,7 +5026,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 59
+        "y": 83
       },
       "id": 349,
       "options": {
@@ -5126,7 +5126,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 59
+        "y": 91
       },
       "id": 350,
       "options": {
@@ -5222,7 +5222,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 67
+        "y": 99
       },
       "id": 334,
       "options": {
@@ -5319,7 +5319,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 67
+        "y": 107
       },
       "id": 381,
       "options": {
@@ -5428,7 +5428,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 75
+        "y": 115
       },
       "id": 382,
       "options": {
@@ -5525,7 +5525,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 75
+        "y": 122
       },
       "id": 380,
       "options": {
@@ -5622,7 +5622,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 82
+        "y": 129
       },
       "id": 383,
       "options": {
@@ -5730,7 +5730,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 82
+        "y": 136
       },
       "id": 384,
       "options": {
@@ -5870,7 +5870,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 89
+        "y": 143
       },
       "id": 385,
       "options": {
@@ -5979,7 +5979,7 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 96
+        "y": 150
       },
       "id": 386,
       "options": {
@@ -6076,7 +6076,7 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 96
+        "y": 157
       },
       "id": 388,
       "options": {
@@ -6128,7 +6128,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 164
       },
       "id": 510,
       "panels": [
@@ -6733,7 +6733,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 103
+        "y": 165
       },
       "id": 4,
       "panels": [
@@ -7697,7 +7697,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 104
+        "y": 166
       },
       "id": 410,
       "panels": [
@@ -8096,7 +8096,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 105
+        "y": 167
       },
       "id": 5,
       "panels": [
@@ -8451,7 +8451,516 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 105
+        "y": 168
+      },
+      "id": 525,
+      "panels": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "description": "Rate of bloom filter checks per second, broken down by attribute type.\n\nShows how heavily each bloom filter is being queried during transaction processing.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "showValues": false,
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  }
+                ]
+              },
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 1
+          },
+          "id": 520,
+          "options": {
+            "legend": {
+              "calcs": [
+                "last"
+              ],
+              "displayMode": "table",
+              "placement": "right",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "12.3.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum(rate(bloom.lookups{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (type, service.node_id)",
+              "interval": "1s",
+              "legendFormat": "{{type}} (Node {{service.node_id}})",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Bloom Lookup Rate by Type",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "description": "Percentage of bloom filter lookups that returned definitely-not-present, by type.\n\nHigher values mean the bloom filter is effectively avoiding Pebble Gets. A value of 80% means 80% of lookups were short-circuited without hitting storage.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "showValues": false,
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  }
+                ]
+              },
+              "unit": "percent"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 1
+          },
+          "id": 521,
+          "options": {
+            "legend": {
+              "calcs": [
+                "last"
+              ],
+              "displayMode": "table",
+              "placement": "right",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "12.3.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum(rate(bloom.negatives{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (type, service.node_id) / sum(rate(bloom.lookups{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (type, service.node_id) * 100",
+              "interval": "1s",
+              "legendFormat": "{{type}} (Node {{service.node_id}})",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Bloom Filter Efficiency (% Negatives)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "description": "Rate of bloom filter checks that returned definitely-not-present, by type.\n\nEach negative result represents a Pebble Get that was avoided, directly saving I/O.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "showValues": false,
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  }
+                ]
+              },
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 9
+          },
+          "id": 522,
+          "options": {
+            "legend": {
+              "calcs": [
+                "last"
+              ],
+              "displayMode": "table",
+              "placement": "right",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "12.3.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum(rate(bloom.negatives{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (type, service.node_id)",
+              "interval": "1s",
+              "legendFormat": "{{type}} (Node {{service.node_id}})",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Bloom Negatives Rate (Pebble Gets Avoided)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "description": "Rate of keys being added to bloom filters, by type.\n\nShows how fast bloom filters are growing. High add rates may indicate the filter is approaching its configured capacity.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "showValues": false,
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  }
+                ]
+              },
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 9
+          },
+          "id": 523,
+          "options": {
+            "legend": {
+              "calcs": [
+                "last"
+              ],
+              "displayMode": "table",
+              "placement": "right",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "12.3.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum(rate(bloom.adds{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (type, service.node_id)",
+              "interval": "1s",
+              "legendFormat": "{{type}} (Node {{service.node_id}})",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Bloom Adds Rate",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "description": "Bloom filter readiness state (1 = ready, 0 = populating).\n\nDuring startup, bloom filters must be populated from the WAL before they can serve lookups. Until ready, all lookups fall through to Pebble.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "showValues": false,
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  }
+                ]
+              },
+              "unit": "bool"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 17
+          },
+          "id": 524,
+          "options": {
+            "legend": {
+              "calcs": [
+                "last"
+              ],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "12.3.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "bloom.ready{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}",
+              "interval": "1s",
+              "legendFormat": "Node {{service.node_id}}",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Bloom Ready",
+          "type": "timeseries"
+        }
+      ],
+      "title": "Bloom Filter",
+      "type": "row"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 169
       },
       "id": 6,
       "panels": [
@@ -10020,7 +10529,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 106
+        "y": 170
       },
       "id": 500,
       "panels": [
@@ -10278,7 +10787,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 107
+        "y": 171
       },
       "id": 395,
       "panels": [
@@ -10866,7 +11375,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 107
+        "y": 172
       },
       "id": 7,
       "panels": [
@@ -11126,7 +11635,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 108
+        "y": 173
       },
       "id": 400,
       "panels": [
@@ -11384,7 +11893,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 109
+        "y": 174
       },
       "id": 8,
       "panels": [
