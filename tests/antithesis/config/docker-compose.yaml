@@ -22,6 +22,12 @@ x-ledger-common: &ledger-common
     SNAPSHOT_THRESHOLD: "200"
     CACHE_ROTATION_THRESHOLD: "50"
 
+    # Bloom filters: reduce from defaults (100M/10M) to 1M — antithesis is not a large-scale workload
+    BLOOM_VOLUMES_EXPECTED_KEYS: "1000000"
+    BLOOM_METADATA_EXPECTED_KEYS: "1000000"
+    BLOOM_IDEMPOTENCY_EXPECTED_KEYS: "1000000"
+    BLOOM_REFERENCES_EXPECTED_KEYS: "1000000"
+
     # Runtime consistency checks (valuable under chaos)
     SENTINEL_MODE: "true"
 
