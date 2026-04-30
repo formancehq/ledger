@@ -140,23 +140,10 @@ type Machine struct {
 }
 
 func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, ks *keystore.KeyStore, sharedState *SharedState, eventNotifier Notifier, mirrorNotifier Notifier, indexNotifier Notifier, bloomFilters *bloom.FilterSet, numscriptCacheSize int, sentinelMode bool) (*Machine, error) {
-	stepStart := time.Now()
-
 	lastAppliedIndex, err := query.ReadLastAppliedIndex(dataStore)
 	if err != nil {
 		return nil, err
 	}
-
-	logger.WithFields(map[string]any{"duration": time.Since(stepStart).String()}).Infof("FSM: ReadLastAppliedIndex done")
-
-	stepStart = time.Now()
-
-	lastAppliedTimestamp, err := query.ReadLastAppliedTimestamp(dataStore)
-	if err != nil {
-		return nil, err
-	}
-
-	logger.WithFields(map[string]any{"duration": time.Since(stepStart).String()}).Infof("FSM: ReadLastAppliedTimestamp done")
 
 	logsAppendedCounter, err := meter.Int64Counter(
 		"raft.fsm.logs_appended",
@@ -191,137 +178,15 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		return nil, fmt.Errorf("creating batch_commit_duration histogram: %w", err)
 	}
 
-	stepStart = time.Now()
-
-	periodsCursor, err := query.ReadPeriods(context.Background(), dataStore)
-	if err != nil {
-		return nil, fmt.Errorf("loading periods from store: %w", err)
-	}
-
-	periodsFromStore, err := dal.Collect(periodsCursor)
-	if err != nil {
-		return nil, fmt.Errorf("collecting periods: %w", err)
-	}
-
-	logger.WithFields(map[string]any{"duration": time.Since(stepStart).String(), "count": len(periodsFromStore)}).Infof("FSM: ReadPeriods done")
-
-	allPeriods := make(map[uint64]*commonpb.Period, len(periodsFromStore))
-
-	var currentOpenPeriod *commonpb.Period
-
-	var closingPeriods []*commonpb.Period
-
-	for _, p := range periodsFromStore {
-		allPeriods[p.GetId()] = p
-
-		switch p.GetStatus() {
-		case commonpb.PeriodStatus_PERIOD_OPEN:
-			currentOpenPeriod = p
-		case commonpb.PeriodStatus_PERIOD_CLOSING:
-			closingPeriods = append(closingPeriods, p)
-		}
-	}
-
-	stepStart = time.Now()
-
-	nextPeriodID, err := query.ReadNextPeriodID(dataStore)
-	if err != nil {
-		return nil, fmt.Errorf("loading next period ID from store: %w", err)
-	}
-
-	logger.WithFields(map[string]any{"duration": time.Since(stepStart).String()}).Infof("FSM: ReadNextPeriodID done")
-
-	stepStart = time.Now()
-
-	nextQueryCheckpointID, err := query.ReadNextQueryCheckpointID(dataStore)
-	if err != nil {
-		return nil, fmt.Errorf("loading next query checkpoint ID from store: %w", err)
-	}
-
-	logger.WithFields(map[string]any{"duration": time.Since(stepStart).String()}).Infof("FSM: ReadNextQueryCheckpointID done")
-
-	stepStart = time.Now()
-
-	periodSchedule, err := query.ReadPeriodSchedule(dataStore)
-	if err != nil {
-		return nil, fmt.Errorf("loading period schedule from store: %w", err)
-	}
-
-	logger.WithFields(map[string]any{"duration": time.Since(stepStart).String()}).Infof("FSM: ReadPeriodSchedule done")
-
-	stepStart = time.Now()
-
-	queryCheckpointSchedule, err := query.ReadQueryCheckpointSchedule(dataStore)
-	if err != nil {
-		return nil, fmt.Errorf("loading query checkpoint schedule from store: %w", err)
-	}
-
-	logger.WithFields(map[string]any{"duration": time.Since(stepStart).String()}).Infof("FSM: ReadQueryCheckpointSchedule done")
-
-	stepStart = time.Now()
-
 	processor, err := processing.NewRequestProcessor(meter, numscriptCacheSize)
 	if err != nil {
 		return nil, fmt.Errorf("creating request processor: %w", err)
 	}
 
-	logger.WithFields(map[string]any{"duration": time.Since(stepStart).String()}).Infof("FSM: NewRequestProcessor done")
-
-	// Load signing keys from Pebble on startup
-	stepStart = time.Now()
-
-	if ks != nil {
-		signingKeys, err := query.ReadSigningKeys(dataStore)
-		if err != nil {
-			return nil, fmt.Errorf("loading signing keys from store: %w", err)
-		}
-
-		for keyID, entry := range signingKeys {
-			ks.AddPublicKey(keyID, entry.PublicKey, entry.ParentKeyID)
-		}
-	}
-
-	logger.WithFields(map[string]any{"duration": time.Since(stepStart).String()}).Infof("FSM: ReadSigningKeys done")
-
-	// Load shared runtime flags from Pebble on startup
-	stepStart = time.Now()
-
-	requireSig, err := query.ReadSigningConfig(dataStore)
-	if err != nil {
-		return nil, fmt.Errorf("loading signing config from store: %w", err)
-	}
-
-	sharedState.SetRequireSignatures(requireSig)
-
-	maintenanceMode, err := query.ReadMaintenanceMode(dataStore)
-	if err != nil {
-		return nil, fmt.Errorf("loading maintenance mode from store: %w", err)
-	}
-
-	sharedState.SetMaintenanceMode(maintenanceMode)
-
-	auditEnabled, err := query.ReadAuditConfig(dataStore)
-	if err != nil {
-		return nil, fmt.Errorf("loading audit config from store: %w", err)
-	}
-
-	sharedState.SetAuditEnabled(auditEnabled)
-	logger.WithFields(map[string]any{"duration": time.Since(stepStart).String()}).Infof("FSM: ReadSharedState done")
-
-	stepStart = time.Now()
-
-	pendingCleanups, err := query.ReadPendingLedgerCleanups(dataStore)
-	if err != nil {
-		return nil, fmt.Errorf("loading pending ledger cleanups from store: %w", err)
-	}
-
-	logger.WithFields(map[string]any{"duration": time.Since(stepStart).String(), "count": len(pendingCleanups)}).Infof("FSM: ReadPendingLedgerCleanups done")
-
 	fsm := &Machine{
 		logger:                         logger,
 		dataStore:                      dataStore,
 		lastAppliedIndex:               lastAppliedIndex,
-		lastAppliedTimestamp:           lastAppliedTimestamp,
 		BloomFilters:                   bloomFilters,
 		sentinelMode:                   sentinelMode,
 		logsAppendedCounter:            logsAppendedCounter,
@@ -334,22 +199,23 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		keyStore:                       ks,
 		sharedState:                    sharedState,
 		Registry:                       NewStateRegistry(cache, attrs),
-		Periods:                        NewPeriodTracker(allPeriods, currentOpenPeriod, closingPeriods, nextPeriodID, periodSchedule),
+		Periods:                        NewPeriodTracker(nil, nil, nil, 0, ""),
 		nextSequenceID:                 1,
 		nextAuditSequenceID:            1,
-		nextQueryCheckpointID:          nextQueryCheckpointID,
-		queryCheckpointSchedule:        queryCheckpointSchedule,
 		queryCheckpointScheduleChanged: signal.New(),
 		sealRequestCh:                  make(chan SealRequest, 10),
 		archiveRequestCh:               make(chan ArchiveRequest, 1),
 		metadataConvertRequestCh:       make(chan MetadataConvertRequest, 16),
 		accountMigrateRequestCh:        make(chan AccountMigrateRequest, 16),
 		coldCompactionCh:               make(chan struct{}, 1),
-		pendingLedgerCleanups:          pendingCleanups,
 	}
 	fsm.appliedCond = sync.NewCond(&fsm.appliedMu)
 	fsm.lastPersistedIndex.Store(lastAppliedIndex)
 	fsm.cacheSnapshotter = NewCacheSnapshotter(logger, dataStore, fsm.Registry, bloomFilters)
+
+	if err := fsm.RecoverState(); err != nil {
+		return nil, fmt.Errorf("recovering state: %w", err)
+	}
 
 	return fsm, nil
 }
@@ -470,6 +336,44 @@ func (fsm *Machine) RecoverState() error {
 	}
 
 	fsm.pendingLedgerCleanups = pendingCleanups
+
+	// Recover signing keys from Pebble
+	if fsm.keyStore != nil {
+		fsm.keyStore.Reset()
+
+		signingKeys, err := query.ReadSigningKeys(fsm.dataStore)
+		if err != nil {
+			return fmt.Errorf("loading signing keys: %w", err)
+		}
+
+		for keyID, entry := range signingKeys {
+			fsm.keyStore.AddPublicKey(keyID, entry.PublicKey, entry.ParentKeyID)
+		}
+	}
+
+	// Recover shared runtime flags from Pebble
+	fsm.sharedState.Reset()
+
+	requireSig, err := query.ReadSigningConfig(fsm.dataStore)
+	if err != nil {
+		return fmt.Errorf("loading signing config: %w", err)
+	}
+
+	fsm.sharedState.SetRequireSignatures(requireSig)
+
+	maintenanceMode, err := query.ReadMaintenanceMode(fsm.dataStore)
+	if err != nil {
+		return fmt.Errorf("loading maintenance mode: %w", err)
+	}
+
+	fsm.sharedState.SetMaintenanceMode(maintenanceMode)
+
+	auditEnabled, err := query.ReadAuditConfig(fsm.dataStore)
+	if err != nil {
+		return fmt.Errorf("loading audit config: %w", err)
+	}
+
+	fsm.sharedState.SetAuditEnabled(auditEnabled)
 
 	fsm.logger.WithFields(map[string]any{
 		"nextSequenceID":        fsm.nextSequenceID,
@@ -1456,59 +1360,6 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 	return nil
 }
 
-// reloadStateFromStore reloads all FSM state from Pebble.
-// Called after SynchronizeWithLeader restores the Pebble checkpoint from the leader.
-func (fsm *Machine) reloadStateFromStore() error {
-	// Recover all FSM counters, periods, reversions, etc. from Pebble.
-	// Hold mu during RecoverState because concurrent readers (e.g.
-	// QueryCheckpointScheduler) access fields like queryCheckpointSchedule
-	// under the same lock.
-	fsm.mu.Lock()
-	err := fsm.RecoverState()
-	fsm.mu.Unlock()
-	if err != nil {
-		return fmt.Errorf("recovering state: %w", err)
-	}
-
-	if fsm.keyStore != nil {
-		fsm.keyStore.Reset()
-
-		signingKeys, err := query.ReadSigningKeys(fsm.dataStore)
-		if err != nil {
-			return fmt.Errorf("loading signing keys: %w", err)
-		}
-
-		for keyID, entry := range signingKeys {
-			fsm.keyStore.AddPublicKey(keyID, entry.PublicKey, entry.ParentKeyID)
-		}
-	}
-
-	fsm.sharedState.Reset()
-
-	requireSig, err := query.ReadSigningConfig(fsm.dataStore)
-	if err != nil {
-		return fmt.Errorf("loading signing config: %w", err)
-	}
-
-	fsm.sharedState.SetRequireSignatures(requireSig)
-
-	maintenanceMode, err := query.ReadMaintenanceMode(fsm.dataStore)
-	if err != nil {
-		return fmt.Errorf("loading maintenance mode: %w", err)
-	}
-
-	fsm.sharedState.SetMaintenanceMode(maintenanceMode)
-
-	auditEnabled, err := query.ReadAuditConfig(fsm.dataStore)
-	if err != nil {
-		return fmt.Errorf("loading audit config: %w", err)
-	}
-
-	fsm.sharedState.SetAuditEnabled(auditEnabled)
-
-	return nil
-}
-
 func (fsm *Machine) SynchronizeWithLeader(ctx context.Context, snapshotFetcher SnapshotFetcher, progress *SyncProgress) (uint64, error) {
 	// Always fetch: checkpointId is a per-node counter, so equal IDs across
 	// nodes can refer to Pebble dumps at different Raft indices.
@@ -1523,10 +1374,15 @@ func (fsm *Machine) SynchronizeWithLeader(ctx context.Context, snapshotFetcher S
 		return 0, fmt.Errorf("restoring cache after sync: %w", err)
 	}
 
-	// Reload signing keys from Pebble (the checkpoint contains the leader's keys)
-	err := fsm.reloadStateFromStore()
+	// Reload all FSM state from Pebble (the checkpoint contains the leader's state).
+	// Hold mu because concurrent readers (e.g. QueryCheckpointScheduler) access
+	// fields like queryCheckpointSchedule under the same lock.
+	fsm.mu.Lock()
+	err := fsm.RecoverState()
+	fsm.mu.Unlock()
+
 	if err != nil {
-		return 0, fmt.Errorf("reloading state after sync: %w", err)
+		return 0, fmt.Errorf("recovering state after sync: %w", err)
 	}
 
 	// Sink configs are not reloaded at sync time — they live in the cache
