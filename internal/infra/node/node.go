@@ -33,6 +33,7 @@ const (
 	statusSyncing
 	statusSnapshotting
 	statusOutOfSync
+	statusInstallingSnapshot
 )
 
 var (
@@ -913,12 +914,35 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		node.logger.WithFields(snapshotDetails).Infof("Applying snapshot sent by leader")
 		lifecycle.SendEvent("snapshot_received", snapshotDetails)
 
+		// Mark snapshot installation in progress BEFORE Drain and
+		// InterruptMaintenance. If a local maintenance task (snapshot
+		// creation, checkpoint, or earlier sync) is running, its
+		// gatingTerminated channel will close as soon as we cancel its
+		// context — and Run, when it picks that up, would otherwise call
+		// unspoolAndResume. That replay would race with InstallSnapshot
+		// below writing fsm.snapshotIndex on this goroutine, causing
+		// ApplyEntries to fire the "node out of sync during apply"
+		// assertion in machine.go.
+		//
+		// Setting the status here, before cancelling, gives Run a
+		// happens-before-safe signal: status.Store → cancel() →
+		// gatingTerminated close → Run's <-gatingTerminated → Run's
+		// status.Load. Run is guaranteed to observe statusInstallingSnapshot
+		// and skip unspoolAndResume.
+		//
+		// Drain still runs before InterruptMaintenance so that any
+		// in-flight Run work (e.g. spooling entries) finishes and Run is
+		// idle in select before we cancel the task. That way the barrier
+		// is already consumed when gatingTerminated closes, and Run picks
+		// up gatingTerminated unambiguously without racing the barrier.
+		node.applier.SetStatus(statusInstallingSnapshot)
+
 		node.applier.Drain(stop)
 
-		// A previous leader snapshot may have spawned a background sync task
-		// that reads fsm.lastCheckpointID / fsm.snapshotIndex. InstallSnapshot
-		// below writes those fields, so the old task must be fully unwound
-		// before we proceed.
+		// A previous maintenance task may have spawned a background sync
+		// task that reads fsm.lastCheckpointID / fsm.snapshotIndex.
+		// InstallSnapshot below writes those fields, so the old task must
+		// be fully unwound before we proceed.
 		node.applier.InterruptMaintenance()
 
 		if err := node.wal.ApplySnapshot(rd.Snapshot); err != nil {
@@ -1134,7 +1158,7 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 	stepMessages := func(msgs []raftpb.Message) error {
 		for _, msg := range msgs {
 			s := node.applier.Status()
-			if msg.Type == raftpb.MsgTimeoutNow && (s == statusSyncing || s == statusSnapshotting || s == statusOutOfSync) {
+			if msg.Type == raftpb.MsgTimeoutNow && (s == statusSyncing || s == statusSnapshotting || s == statusOutOfSync || s == statusInstallingSnapshot) {
 				node.logger.Infof("Rejecting MsgTimeoutNow while syncing")
 
 				continue
@@ -1176,7 +1200,7 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 		case <-ticker.C:
 			// Prevent election timeouts from happening while syncing the Machine
 			status := node.applier.Status()
-			if status != statusSyncing && status != statusOutOfSync {
+			if status != statusSyncing && status != statusOutOfSync && status != statusInstallingSnapshot {
 				node.rawNode.Tick()
 
 				if node.config.AutoPromoteThreshold > 0 {

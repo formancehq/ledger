@@ -421,6 +421,11 @@ func (a *Applier) Status() int32 {
 	return a.status.Load()
 }
 
+// SetStatus stores the applier status.
+func (a *Applier) SetStatus(s int32) {
+	a.status.Store(s)
+}
+
 // Run is the Applier goroutine. It processes submitted work items and
 // handles gating termination (unspool after maintenance tasks).
 func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
@@ -482,9 +487,21 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 			gatingStart = time.Time{}
 			a.gatingTerminated = nil
 
-			if a.status.Load() == statusOutOfSync {
+			switch a.status.Load() {
+			case statusOutOfSync:
 				if a.logger.Enabled(logging.DebugLevel) {
 					a.logger.Debugf("Background operation failed, node is out of sync — waiting for next sync")
+				}
+				waitStart = time.Now()
+
+				continue
+			case statusInstallingSnapshot:
+				// processReadies set this status before interrupting the
+				// previous maintenance task. InstallSnapshot is about to (or
+				// already has) write fsm.snapshotIndex on the processReadies
+				// goroutine; calling unspoolAndResume here would race.
+				if a.logger.Enabled(logging.DebugLevel) {
+					a.logger.Debugf("Skipping unspoolAndResume: leader snapshot installation in progress")
 				}
 				waitStart = time.Now()
 
@@ -575,6 +592,8 @@ func (a *Applier) StatusString() string {
 		return "snapshotting"
 	case statusOutOfSync:
 		return "out_of_sync"
+	case statusInstallingSnapshot:
+		return "installing_snapshot"
 	default:
 		return "unknown"
 	}
