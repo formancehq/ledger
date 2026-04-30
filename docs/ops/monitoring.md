@@ -345,6 +345,27 @@ The attribute cache stores computed attribute values (volumes, metadata) in memo
 
 **Cache Generations**: The cache uses a dual-generation system where old data is gradually evicted. Each "rotation" promotes Gen0 to Gen1 and discards the old Gen1, triggered by raft index thresholds.
 
+### Bloom Filter Metrics
+
+Bloom filters provide probabilistic key existence checks to avoid unnecessary Pebble Gets during preloading. They are configured per attribute type via `--bloom-*` flags.
+
+| Metric | Type | Unit | Description |
+|--------|------|------|-------------|
+| `bloom.lookups` | Counter | 1 | Total bloom filter checks (MayContain calls) |
+| `bloom.negatives` | Counter | 1 | Checks that returned definitely-not-present (Pebble Get avoided) |
+| `bloom.false_positives` | Counter | 1 | Checks that returned maybe-present but Pebble Get found nothing |
+| `bloom.adds` | Counter | 1 | Keys added to the bloom filter |
+| `bloom.ready` | Gauge | 1 | Readiness state (1 = ready, 0 = populating) |
+
+**Attributes**:
+- `type`: Attribute type (`volumes`, `metadata`, `idempotency`, `references`, `ledgers`, `boundaries`, `transactions`)
+
+**Key ratios**:
+- **Negative rate** = `negatives / lookups` — fraction of lookups that avoided Pebble I/O. Higher is better.
+- **False positive rate** = `false_positives / (lookups - negatives)` — fraction of Pebble Gets that were unnecessary. Should stay below the configured `fpRate` (default 1%).
+
+**Lifecycle**: Bloom filters are never persisted in checkpoints. At startup, they are rebuilt from a full Pebble attribute scan in the background. During this scan (`bloom.ready = 0`), MayContain always returns true (no optimization, no false negatives).
+
 ## Configuration
 
 ### Enabling Metrics Export

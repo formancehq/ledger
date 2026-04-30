@@ -3,6 +3,7 @@ package accounttypes
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -76,7 +77,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	sort.Strings(names)
 
 	tableData := pterm.TableData{
-		{"NAME", "PATTERN", "STATUS", "EPHEMERAL"},
+		{"NAME", "PATTERN", "STATUS", "PERSISTENCE"},
 	}
 
 	for _, n := range names {
@@ -85,7 +86,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 			at.GetName(),
 			at.GetPattern(),
 			FormatStatus(at.GetStatus()),
-			FormatEphemeral(at.GetEphemeral()),
+			FormatPersistence(at.GetPersistence()),
 		})
 	}
 
@@ -105,10 +106,26 @@ func FormatStatus(s commonpb.AccountTypeStatus) string {
 	}
 }
 
-func FormatEphemeral(ephemeral bool) string {
-	if ephemeral {
-		return "YES"
+func FormatPersistence(p commonpb.AccountTypePersistence) string {
+	switch p {
+	case commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL:
+		return "EPHEMERAL"
+	case commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT:
+		return "TRANSIENT"
+	default:
+		return "NORMAL"
 	}
+}
 
-	return "NO"
+func ParsePersistence(s string) (commonpb.AccountTypePersistence, error) {
+	switch strings.ToLower(s) {
+	case "normal", "":
+		return commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL, nil
+	case "ephemeral":
+		return commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL, nil
+	case "transient":
+		return commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT, nil
+	default:
+		return 0, fmt.Errorf("unknown persistence mode %q (valid: normal, ephemeral, transient)", s)
+	}
 }

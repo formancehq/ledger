@@ -2596,7 +2596,7 @@ func (m *AccountType) CloneVT() *AccountType {
 	r.Name = m.Name
 	r.Pattern = m.Pattern
 	r.Status = m.Status
-	r.Ephemeral = m.Ephemeral
+	r.Persistence = m.Persistence
 	r.Migration = m.Migration.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -7772,7 +7772,7 @@ func (this *AccountType) EqualVT(that *AccountType) bool {
 	if this.Status != that.Status {
 		return false
 	}
-	if this.Ephemeral != that.Ephemeral {
+	if this.Persistence != that.Persistence {
 		return false
 	}
 	if !this.Migration.EqualVT(that.Migration) {
@@ -15642,13 +15642,8 @@ func (m *AccountType) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x2a
 	}
-	if m.Ephemeral {
-		i--
-		if m.Ephemeral {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
+	if m.Persistence != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Persistence))
 		i--
 		dAtA[i] = 0x20
 	}
@@ -20444,8 +20439,8 @@ func (m *AccountType) SizeVT() (n int) {
 	if m.Status != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.Status))
 	}
-	if m.Ephemeral {
-		n += 2
+	if m.Persistence != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Persistence))
 	}
 	if m.Migration != nil {
 		l = m.Migration.SizeVT()
@@ -36570,9 +36565,9 @@ func (m *AccountType) UnmarshalVT(dAtA []byte) error {
 			}
 		case 4:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Ephemeral", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Persistence", wireType)
 			}
-			var v int
+			m.Persistence = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -36582,12 +36577,11 @@ func (m *AccountType) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				v |= int(b&0x7F) << shift
+				m.Persistence |= AccountTypePersistence(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			m.Ephemeral = bool(v != 0)
 		case 5:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Migration", wireType)

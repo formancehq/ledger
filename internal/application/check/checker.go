@@ -1130,7 +1130,7 @@ func simulateEphemeralPurge(
 			seen[addr] = struct{}{}
 
 			matched := accounttype.FindMatchingType(addr, compiled)
-			if matched == nil || !matched.GetEphemeral() {
+			if matched == nil || matched.GetPersistence() == commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL {
 				continue
 			}
 

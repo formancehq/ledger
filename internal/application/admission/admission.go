@@ -701,13 +701,50 @@ func (a *Admission) cachedLedgerInfo(ctx context.Context, cache map[string]*comm
 	return info
 }
 
+// cachedCompiledTypes returns compiled account types for a ledger, caching the result.
+func (a *Admission) cachedCompiledTypes(ctx context.Context, cache map[string][]accounttype.CompiledType, ledgerInfoCache map[string]*commonpb.LedgerInfo, ledgerName string) []accounttype.CompiledType {
+	if compiled, ok := cache[ledgerName]; ok {
+		return compiled
+	}
+
+	info := a.cachedLedgerInfo(ctx, ledgerInfoCache, ledgerName)
+	if info == nil {
+		cache[ledgerName] = nil
+
+		return nil
+	}
+
+	compiled := accounttype.CompileTypes(info.GetAccountTypes())
+	cache[ledgerName] = compiled
+
+	return compiled
+}
+
+// addVolumeNeed routes a volume key to either TransientVolumes (zero-initialized preload,
+// no Pebble lookup) or Volumes (normal Pebble lookup) based on the account type's persistence.
+func addVolumeNeed(p *preload.Needs, ledgerName, account, asset string, compiledTypes []accounttype.CompiledType) {
+	vk := domain.VolumeKey{
+		AccountKey: domain.AccountKey{Ledger: ledgerName, Account: account},
+		Asset:      asset,
+	}
+
+	matched := accounttype.FindMatchingType(account, compiledTypes)
+	if matched != nil && matched.GetPersistence() == commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
+		p.TransientVolumes[vk] = struct{}{}
+
+		return
+	}
+
+	p.Volumes[vk] = struct{}{}
+}
+
 // extractPreloadNeeds extracts all preload keys from orders in a single pass.
 func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb.Order) (*preload.Needs, error) {
 	p := preload.NewNeeds()
 
-	// Cache LedgerInfo per ledger to avoid repeated Pebble reads
-	// (used by enrichMigratingVolumePreloads).
+	// Cache LedgerInfo and compiled account types per ledger to avoid repeated Pebble reads.
 	ledgerInfoCache := make(map[string]*commonpb.LedgerInfo)
+	compiledTypesCache := make(map[string][]accounttype.CompiledType)
 
 	for _, order := range orders {
 		// Idempotency keys apply to all order types.
@@ -751,15 +788,10 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 				postings = rt.GetReversePostings()
 			}
 
+			mirrorTypes := a.cachedCompiledTypes(ctx, compiledTypesCache, ledgerInfoCache, ledgerName)
 			for _, posting := range postings {
-				p.Volumes[domain.VolumeKey{
-					AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.GetSource()},
-					Asset:      posting.GetAsset(),
-				}] = struct{}{}
-				p.Volumes[domain.VolumeKey{
-					AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.GetDestination()},
-					Asset:      posting.GetAsset(),
-				}] = struct{}{}
+				addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset(), mirrorTypes)
+				addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset(), mirrorTypes)
 			}
 
 			// Preload account metadata for previous value capture in logs.
@@ -872,12 +904,13 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 					}
 
 					if discovered != nil {
+						scriptTypes := a.cachedCompiledTypes(ctx, compiledTypesCache, ledgerInfoCache, ledgerName)
 						for key := range discovered.SourceVolumes {
-							p.Volumes[key] = struct{}{}
+							addVolumeNeed(p, key.Ledger, key.Account, key.Asset, scriptTypes)
 						}
 
 						for key := range discovered.DestinationVolumes {
-							p.Volumes[key] = struct{}{}
+							addVolumeNeed(p, key.Ledger, key.Account, key.Asset, scriptTypes)
 						}
 
 						for key := range discovered.WrittenMetadata {
@@ -916,15 +949,10 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 					continue
 				}
 
+				txTypes := a.cachedCompiledTypes(ctx, compiledTypesCache, ledgerInfoCache, ledgerName)
 				for _, posting := range applyData.CreateTransaction.GetPostings() {
-					p.Volumes[domain.VolumeKey{
-						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.GetSource()},
-						Asset:      posting.GetAsset(),
-					}] = struct{}{}
-					p.Volumes[domain.VolumeKey{
-						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.GetDestination()},
-						Asset:      posting.GetAsset(),
-					}] = struct{}{}
+					addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset(), txTypes)
+					addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset(), txTypes)
 				}
 
 				// Enrich preload with old-address volumes for MIGRATING account types.
@@ -946,15 +974,10 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 					ID:     applyData.RevertTransaction.GetTransactionId(),
 				}] = struct{}{}
 
+				revertTypes := a.cachedCompiledTypes(ctx, compiledTypesCache, ledgerInfoCache, ledgerName)
 				for _, posting := range applyData.RevertTransaction.GetOriginalPostings() {
-					p.Volumes[domain.VolumeKey{
-						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.GetDestination()},
-						Asset:      posting.GetAsset(),
-					}] = struct{}{}
-					p.Volumes[domain.VolumeKey{
-						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.GetSource()},
-						Asset:      posting.GetAsset(),
-					}] = struct{}{}
+					addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset(), revertTypes)
+					addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset(), revertTypes)
 				}
 
 			case *raftcmdpb.LedgerApplyOrder_AddMetadata:

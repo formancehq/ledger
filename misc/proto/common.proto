@@ -811,12 +811,19 @@ enum ChartEnforcementMode {
 // Account Types
 // ============================================================================
 
+// AccountTypePersistence controls how account volumes are stored and managed.
+enum AccountTypePersistence {
+  ACCOUNT_TYPE_NORMAL = 0;     // Default: fully persisted
+  ACCOUNT_TYPE_EPHEMERAL = 1;  // Persisted, purged when zero balance after commit
+  ACCOUNT_TYPE_TRANSIENT = 2;  // Never persisted, must be zero at end of batch
+}
+
 // AccountType defines a single account address pattern for a ledger.
 message AccountType {
   string name = 1;                           // Unique identifier: "user-checking"
   string pattern = 2;                        // Address pattern: "users:{id}:checking"
   AccountTypeStatus status = 3;              // ACTIVE, DEPRECATED
-  bool ephemeral = 4;                        // Purge volumes when input == output (zero balance)
+  AccountTypePersistence persistence = 4;    // How volumes are stored (replaces bool ephemeral)
   AccountTypeMigration migration = 5;  // non-nil when status == MIGRATING
 }
 

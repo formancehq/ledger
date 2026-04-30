@@ -94,24 +94,17 @@ func TestMultiLedgerPayroll(t *testing.T) {
 				}
 				scenariotest.ApplyActions(t, ctx, client, deptActions...)
 
-				// Step 3: Fund department payroll pools (from @world, mirroring clearing allocation)
-				var payrollActions []*servicepb.Request
+				// Step 3+4: Fund payroll pools and pay employees (same batch so payroll:pool nets to zero).
 				for _, dept := range departments {
 					amount := int64(dept.Employees) * baseSalary
+					var payrollActions []*servicepb.Request
 					payrollActions = append(payrollActions,
 						actions.CreateScriptRefTransactionAction(dept.Ledger, "fund_payroll", "1.0.0", map[string]string{
 							"amount": fmt.Sprintf("USD/2 %d", amount),
 						}, map[string]string{"month": fmt.Sprintf("%d", month)}),
 					)
-					balances[dept.Ledger].payrollPool.Add(balances[dept.Ledger].payrollPool, big.NewInt(amount))
-				}
-				scenariotest.ApplyActions(t, ctx, client, payrollActions...)
-
-				// Step 4: Pay employees in each department
-				for _, dept := range departments {
-					var salaryActions []*servicepb.Request
 					for emp := 1; emp <= dept.Employees; emp++ {
-						salaryActions = append(salaryActions,
+						payrollActions = append(payrollActions,
 							actions.CreateScriptRefTransactionAction(dept.Ledger, "pay_salary", "1.0.0", map[string]string{
 								"employee": fmt.Sprintf("employee:%d", emp),
 								"amount":   fmt.Sprintf("USD/2 %d", baseSalary),
@@ -120,10 +113,9 @@ func TestMultiLedgerPayroll(t *testing.T) {
 								"type":  "salary",
 							}),
 						)
-						balances[dept.Ledger].payrollPool.Sub(balances[dept.Ledger].payrollPool, big.NewInt(baseSalary))
 						balances[dept.Ledger].employees[emp].Add(balances[dept.Ledger].employees[emp], big.NewInt(baseSalary))
 					}
-					scenariotest.ApplyActions(t, ctx, client, salaryActions...)
+					scenariotest.ApplyActions(t, ctx, client, payrollActions...)
 				}
 
 				// Close period after each cycle
@@ -138,16 +130,13 @@ func TestMultiLedgerPayroll(t *testing.T) {
 		dept := departments[0]
 		bonusAmount := int64(baseSalary * bonusPercent / 100)
 
-		// Fund bonus pool
+		// Fund bonus pool and pay bonuses (same batch so payroll:pool nets to zero).
 		totalBonus := bonusAmount * int64(dept.Employees)
-		scenariotest.ApplyActions(t, ctx, client,
+		bonusActions := []*servicepb.Request{
 			actions.CreateScriptRefTransactionAction(dept.Ledger, "fund_payroll", "1.0.0", map[string]string{
 				"amount": fmt.Sprintf("USD/2 %d", totalBonus),
 			}, map[string]string{"type": "bonus-funding"}),
-		)
-		balances[dept.Ledger].payrollPool.Add(balances[dept.Ledger].payrollPool, big.NewInt(totalBonus))
-
-		var bonusActions []*servicepb.Request
+		}
 		for emp := 1; emp <= dept.Employees; emp++ {
 			bonusActions = append(bonusActions,
 				actions.CreateScriptRefTransactionAction(dept.Ledger, "pay_salary", "1.0.0", map[string]string{
@@ -155,7 +144,6 @@ func TestMultiLedgerPayroll(t *testing.T) {
 					"amount":   fmt.Sprintf("USD/2 %d", bonusAmount),
 				}, map[string]string{"type": "bonus"}),
 			)
-			balances[dept.Ledger].payrollPool.Sub(balances[dept.Ledger].payrollPool, big.NewInt(bonusAmount))
 			balances[dept.Ledger].employees[emp].Add(balances[dept.Ledger].employees[emp], big.NewInt(bonusAmount))
 		}
 		scenariotest.ApplyActions(t, ctx, client, bonusActions...)
@@ -282,10 +270,9 @@ send $amount (
 			}
 		}
 
-		// Verify payroll pools are zero (all paid out)
-		for _, dept := range departments {
-			scenariotest.CheckAccountBalance(t, ctx, client, dept.Ledger, "payroll:pool", "USD/2", balances[dept.Ledger].payrollPool)
-		}
+		// payroll:pool is transient — volumes are evicted after each batch,
+		// so there's nothing to verify in Pebble. The zero-balance invariant
+		// is enforced at commit time by ValidateTransientVolumes.
 
 		// Stats per ledger
 		for _, dept := range departments {

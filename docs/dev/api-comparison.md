@@ -197,6 +197,7 @@ See [Numscript Guide](./numscript.md) for complete documentation.
 - ✅ Account type lifecycle: ACTIVE → DEPRECATED
 - ✅ `world` account always passes validation
 - ✅ Account types can be set at ledger creation time or added later
+- ✅ Persistence modes: `NORMAL` (default), `EPHEMERAL` (purged when zero balance), `TRANSIENT` (never persisted, must be zero at end of batch)
 
 ### 6. Transaction Read
 

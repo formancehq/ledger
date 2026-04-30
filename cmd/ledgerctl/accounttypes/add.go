@@ -30,7 +30,7 @@ Examples:
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger (required)")
-	cmd.Flags().Bool("ephemeral", false, "Purge volumes when account reaches zero balance (input == output)")
+	cmd.Flags().String("persistence", "normal", "Volume persistence mode: normal, ephemeral (purge on zero), transient (never persisted, must be zero at batch end)")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 	_ = cmd.MarkFlagRequired("ledger")
 
@@ -42,7 +42,12 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	pattern := args[1]
 
 	ledgerName, _ := cmd.Flags().GetString("ledger")
-	ephemeral, _ := cmd.Flags().GetBool("ephemeral")
+	persistence, _ := cmd.Flags().GetString("persistence")
+
+	persistenceEnum, err := ParsePersistence(persistence)
+	if err != nil {
+		return err
+	}
 
 	client, conn, err := cmdutil.GetClient(cmd)
 	if err != nil {
@@ -61,9 +66,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 				AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 					Ledger: ledgerName,
 					AccountType: &commonpb.AccountType{
-						Name:      name,
-						Pattern:   pattern,
-						Ephemeral: ephemeral,
+						Name:        name,
+						Pattern:     pattern,
+						Persistence: persistenceEnum,
 					},
 				},
 			},
@@ -88,7 +93,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	pterm.Println()
 	pterm.Printf("Name:      %s\n", pterm.Cyan(name))
 	pterm.Printf("Pattern:   %s\n", pattern)
-	pterm.Printf("Ephemeral: %s\n", FormatEphemeral(ephemeral))
+	pterm.Printf("Persistence: %s\n", FormatPersistence(persistenceEnum))
 	pterm.Printf("Ledger:    %s\n", pterm.Gray(ledgerName))
 
 	return nil

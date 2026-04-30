@@ -67,7 +67,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 	pterm.Printf("Name:      %s\n", pterm.Cyan(at.GetName()))
 	pterm.Printf("Pattern:   %s\n", at.GetPattern())
 	pterm.Printf("Status:    %s\n", FormatStatus(at.GetStatus()))
-	pterm.Printf("Ephemeral: %s\n", FormatEphemeral(at.GetEphemeral()))
+	pterm.Printf("Persistence: %s\n", FormatPersistence(at.GetPersistence()))
 
 	return nil
 }

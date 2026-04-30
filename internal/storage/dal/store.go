@@ -543,6 +543,8 @@ func (s *Store) CreateSnapshot() (uint64, error) {
 	s.dbMu.RLock()
 	defer s.dbMu.RUnlock()
 
+	snapshotStart := time.Now()
+
 	s.logger.Infof("Creating snapshot")
 
 	newCheckpointID := s.currentCheckPoint + 1
@@ -552,9 +554,13 @@ func (s *Store) CreateSnapshot() (uint64, error) {
 		return 0, fmt.Errorf("removing checkpoint directory: %w", err)
 	}
 
+	removeOldDone := time.Now()
+
 	if err := s.getDB().Checkpoint(checkpointDir, pebble.WithFlushedWAL()); err != nil {
 		return 0, fmt.Errorf("creating checkpoint: %w", err)
 	}
+
+	pebbleCheckpointDone := time.Now()
 
 	if err := WriteCurrentCheckpointAtomic(s.dataDir, newCheckpointID); err != nil {
 		return 0, fmt.Errorf("updating current checkpoint file: %w", err)
@@ -568,7 +574,11 @@ func (s *Store) CreateSnapshot() (uint64, error) {
 	}
 
 	s.logger.WithFields(map[string]any{
-		"checkpoint": newCheckpointID,
+		"checkpoint":       newCheckpointID,
+		"total":            time.Since(snapshotStart).String(),
+		"removeOld":        removeOldDone.Sub(snapshotStart).String(),
+		"pebbleCheckpoint": pebbleCheckpointDone.Sub(removeOldDone).String(),
+		"cleanup":          time.Since(pebbleCheckpointDone).String(),
 	}).Infof("Snapshot created")
 	s.currentCheckPoint = newCheckpointID
 

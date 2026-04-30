@@ -6,6 +6,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/accounttype"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
@@ -29,32 +30,30 @@ func isVolumeZeroBalance(v *raftcmdpb.VolumePair) bool {
 		in.GetV3() == out.GetV3()
 }
 
-// ephemeralPurgeResult holds the result of partitioning volume updates.
-type ephemeralPurgeResult struct {
-	kept   []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
-	purged []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
+// volumePartitionResult holds the result of partitioning volume updates by persistence mode.
+type volumePartitionResult struct {
+	kept      []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] // NORMAL + non-zero ephemeral
+	purged    []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] // EPHEMERAL with zero balance
+	transient []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] // TRANSIENT — never written to Pebble
 }
 
-// partitionEphemeralVolumes splits volume updates into kept and purged sets.
-// A volume is purged when it has zero balance (input == output) and its account
-// matches an ephemeral account type.
-func (b *Buffered) partitionEphemeralVolumes(
+// partitionVolumes splits volume updates into kept, purged, and transient sets.
+//
+//   - NORMAL accounts: always kept
+//   - EPHEMERAL accounts with zero balance: purged (deleted from Pebble)
+//   - EPHEMERAL accounts with non-zero balance: kept
+//   - TRANSIENT accounts: always transient (never written to Pebble)
+func (b *Buffered) partitionVolumes(
 	updates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
-) ephemeralPurgeResult {
+) volumePartitionResult {
 	// Build a cache of ledger → compiled account types to avoid repeated parsing.
 	ledgerTypes := make(map[string][]accounttype.CompiledType)
 
-	result := ephemeralPurgeResult{
+	result := volumePartitionResult{
 		kept: make([]attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair], 0, len(updates)),
 	}
 
 	for _, update := range updates {
-		if !isVolumeZeroBalance(update.New) {
-			result.kept = append(result.kept, update)
-
-			continue
-		}
-
 		compiled, ok := ledgerTypes[update.Key.Ledger]
 		if !ok {
 			info, _, err := b.fsm.Registry.Ledgers.Get(
@@ -77,16 +76,47 @@ func (b *Buffered) partitionEphemeralVolumes(
 		}
 
 		matched := accounttype.FindMatchingType(update.Key.Account, compiled)
-		if matched == nil || !matched.GetEphemeral() {
+		if matched == nil {
 			result.kept = append(result.kept, update)
 
 			continue
 		}
 
-		result.purged = append(result.purged, update)
+		switch matched.GetPersistence() {
+		case commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT:
+			// Transient behavior only activates when the base volume is zero (or absent).
+			// Pre-existing non-zero volumes (from before the account was marked transient)
+			// are treated as normal to avoid losing persisted data.
+			if update.Old.IsDefined() && !isVolumeZeroBalance(update.Old.Value()) {
+				result.kept = append(result.kept, update)
+			} else {
+				result.transient = append(result.transient, update)
+			}
+
+		case commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL:
+			if isVolumeZeroBalance(update.New) {
+				result.purged = append(result.purged, update)
+			} else {
+				result.kept = append(result.kept, update)
+			}
+
+		default:
+			result.kept = append(result.kept, update)
+		}
 	}
 
 	return result
+}
+
+// evictTransientVolumes removes transient volumes from the in-memory parent KeyStore.
+// Unlike ephemeral purge, transient volumes were never written to Pebble, so only
+// the in-memory eviction is needed.
+func (b *Buffered) evictTransientVolumes(
+	transient []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
+) {
+	for _, update := range transient {
+		_, _ = b.fsm.Registry.Volumes.Delete(update.CanonicalKey)
+	}
 }
 
 // applyEphemeralPurge deletes purged volume entries from Pebble and the parent KeyStore.

@@ -1273,7 +1273,7 @@ Manage account types (pattern-based account validation).
 Add a new account type to a ledger.
 
 ```bash
-ledgerctl account-types add <name> <pattern> --ledger <ledger> [--ephemeral]
+ledgerctl account-types add <name> <pattern> --ledger <ledger> [--persistence <mode>]
 ```
 
 **Arguments:**
@@ -1284,7 +1284,14 @@ ledgerctl account-types add <name> <pattern> --ledger <ledger> [--ephemeral]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | *(required)* | Target ledger name |
-| `--ephemeral` | `false` | Purge volumes when account reaches zero balance (input == output) |
+| `--persistence` | `normal` | Volume persistence mode (see below) |
+
+**Persistence modes:**
+| Mode | Description |
+|------|-------------|
+| `normal` | Default. Volumes are fully persisted. |
+| `ephemeral` | Volumes are persisted but purged when the account reaches zero balance (input == output). |
+| `transient` | Volumes are never written to storage. The account must have zero balance at the end of each batch. Ideal for staging/intermediary accounts that are only used within a single batch. |
 
 **Pattern syntax:**
 - Fixed segments: `users`, `bank`, `checking`
@@ -1295,7 +1302,8 @@ ledgerctl account-types add <name> <pattern> --ledger <ledger> [--ephemeral]
 ```bash
 ledgerctl at add user-checking "users:{id}:checking" --ledger my-ledger
 ledgerctl at add bank-main "banks:{iban:^[A-Z]{2}[0-9]{14}$}:main" --ledger my-ledger
-ledgerctl at add fx-clearing "fx:clearing" --ledger my-ledger --ephemeral
+ledgerctl at add fx-clearing "fx:clearing" --ledger my-ledger --persistence ephemeral
+ledgerctl at add staging "staging:{txhash}" --ledger my-ledger --persistence transient
 ```
 
 #### account-types list
@@ -1321,7 +1329,7 @@ Get details of a specific account type.
 ledgerctl account-types get <name> [--ledger <ledger>]
 ```
 
-Shows name, pattern, status, and ephemeral flag.
+Shows name, pattern, status, and persistence mode.
 
 #### account-types remove
 

@@ -142,6 +142,12 @@ func resolveStandard[K interface {
 				var zero T
 				hasValue := any(result.Value) != any(zero)
 
+				// Track bloom false positives: MayContain said "maybe" but Pebble
+				// had nothing. Only counts loads we actually performed (FromLoad).
+				if result.FromLoad && !hasValue && bloomFilter != nil {
+					bloomFilter.RecordFalsePositive()
+				}
+
 				if includeZeroValue || hasValue {
 					attrID := &raftcmdpb.AttributeID{Id: id[:], Tag: tag}
 					preloads = append(preloads, buildPreload(attrID, result.Value))

@@ -8,6 +8,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/accounttype"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/bloom"
@@ -179,20 +180,24 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 		return fmt.Errorf("failed to merge volumes: %w", err)
 	}
 
-	// Partition: purge zero-balance volumes on ephemeral account types.
-	purgeResult := b.partitionEphemeralVolumes(volumeUpdates)
+	// Partition volumes by persistence mode: normal (kept), ephemeral (purged), transient (skipped).
+	partResult := b.partitionVolumes(volumeUpdates)
 
-	if err := mergeSimple(b.attrs.Volume, batch, purgeResult.kept); err != nil {
+	if err := mergeSimple(b.attrs.Volume, batch, partResult.kept); err != nil {
 		return fmt.Errorf("failed merging volume attributes: %w", err)
 	}
 
-	for _, update := range purgeResult.kept {
+	for _, update := range partResult.kept {
 		b.bloomUpdates.Volumes = append(b.bloomUpdates.Volumes, update.CanonicalKey)
 	}
 
-	if err := b.applyEphemeralPurge(batch, purgeResult.purged); err != nil {
+	if err := b.applyEphemeralPurge(batch, partResult.purged); err != nil {
 		return fmt.Errorf("failed purging ephemeral volumes: %w", err)
 	}
+
+	// Evict transient volumes from the in-memory KeyStore. Merge() pushed them
+	// to the parent, but they must not persist across batches.
+	b.evictTransientVolumes(partResult.transient)
 
 	// Defensive check: double-entry invariant (on all updates, including purged).
 	if err := checkDoubleEntryInvariant(volumeUpdates); err != nil {
@@ -210,10 +215,10 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	// entries too), and kept-only for post-commit Pebble verification (purged
 	// entries are intentionally deleted from Pebble by applyEphemeralPurge).
 	b.allVolumeUpdates = volumeUpdates
-	b.keptVolumeUpdates = purgeResult.kept
+	b.keptVolumeUpdates = partResult.kept
 
 	// Record purged volume keys for cross-entry deduplication in ApplyEntries.
-	for _, purged := range purgeResult.purged {
+	for _, purged := range partResult.purged {
 		b.purgedVolumeKeys = append(b.purgedVolumeKeys, purged.Key)
 	}
 
@@ -542,6 +547,51 @@ func (b *Buffered) GetVolume(key domain.VolumeKey) (*raftcmdpb.VolumePair, error
 
 func (b *Buffered) PutVolume(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
 	b.Derived.Volumes.Put(key, value)
+}
+
+// ValidateTransientVolumes checks that all transient account volumes have zero balance.
+// Must be called after ProcessOrders and before Commit, so that failures are
+// treated as business errors (rejected proposals) rather than fatal FSM errors.
+//
+// Transient validation only applies when the base volume (before this batch) is zero
+// or absent. Pre-existing non-zero volumes from before the account was marked transient
+// are treated as normal and skip the zero-balance check.
+func (b *Buffered) ValidateTransientVolumes() error {
+	ledgerTypes := make(map[string][]accounttype.CompiledType)
+
+	for key, vol := range b.Derived.Volumes.DirtyValues() {
+		compiled, ok := ledgerTypes[key.Ledger]
+		if !ok {
+			info, infoOK := b.GetLedger(key.Ledger)
+			if !infoOK {
+				continue
+			}
+
+			compiled = accounttype.CompileTypes(info.GetAccountTypes())
+			ledgerTypes[key.Ledger] = compiled
+		}
+
+		matched := accounttype.FindMatchingType(key.Account, compiled)
+		if matched == nil || matched.GetPersistence() != commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
+			continue
+		}
+
+		// Check if the parent KeyStore has a pre-existing non-zero volume.
+		// If so, the account had volumes before being marked transient — skip validation.
+		baseVol, _, baseErr := b.fsm.Registry.Volumes.Get(key.Bytes())
+		if baseErr == nil && !isVolumeZeroBalance(baseVol) {
+			continue
+		}
+
+		if !isVolumeZeroBalance(vol) {
+			return &domain.ErrTransientAccountNonZero{
+				Account: key.Account,
+				Asset:   key.Asset,
+			}
+		}
+	}
+
+	return nil
 }
 
 func (b *Buffered) GetAccountMetadata(key domain.MetadataKey) (*commonpb.MetadataValue, error) {

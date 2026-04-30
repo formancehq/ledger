@@ -473,5 +473,13 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 		}
 	}
 
+	// Emit zero-initialized preloads for transient volumes (no Pebble lookup needed).
+	for key := range needs.TransientVolumes {
+		canonicalKey := key.Bytes()
+		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
+		attrID := &raftcmdpb.AttributeID{Id: id[:], Tag: tag}
+		preloadSet.Preloads = append(preloadSet.Preloads, buildVolumePreload(attrID, nil))
+	}
+
 	return preloadSet, token, nil
 }

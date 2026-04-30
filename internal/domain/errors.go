@@ -53,6 +53,7 @@ const (
 	ErrReasonAccountTypeMigrationInProgress    = "ACCOUNT_TYPE_MIGRATION_IN_PROGRESS"
 	ErrReasonAccountTypeMigrationNotCompatible = "ACCOUNT_TYPE_MIGRATION_NOT_COMPATIBLE"
 	ErrReasonClusterUnhealthy                  = "CLUSTER_UNHEALTHY"
+	ErrReasonTransientAccountNonZero           = "TRANSIENT_ACCOUNT_NON_ZERO"
 )
 
 // BusinessError wraps a processing error to distinguish it from infrastructure errors.
@@ -431,4 +432,14 @@ type ErrAccountTypeMigrationNotCompatible struct {
 
 func (e *ErrAccountTypeMigrationNotCompatible) Error() string {
 	return fmt.Sprintf("migration from %q to %q is not compatible: %s", e.Source, e.Target, e.Details)
+}
+
+// ErrTransientAccountNonZero is returned when a transient account has non-zero balance at end of batch.
+type ErrTransientAccountNonZero struct {
+	Account string
+	Asset   string
+}
+
+func (e *ErrTransientAccountNonZero) Error() string {
+	return fmt.Sprintf("transient account %s/%s has non-zero balance at end of batch (input != output)", e.Account, e.Asset)
 }

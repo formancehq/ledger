@@ -197,6 +197,10 @@ var errorMappings = []errorMapping{
 	{matchAs(func(e *domain.ErrAccountTypeMigrationNotCompatible) map[string]string {
 		return map[string]string{"source": e.Source, "target": e.Target, "details": e.Details}
 	}), codes.InvalidArgument, domain.ErrReasonAccountTypeMigrationNotCompatible},
+
+	{matchAs(func(e *domain.ErrTransientAccountNonZero) map[string]string {
+		return map[string]string{"account": e.Account, "asset": e.Asset}
+	}), codes.FailedPrecondition, domain.ErrReasonTransientAccountNonZero},
 }
 
 // businessErrorToGRPCStatus converts a BusinessError to a gRPC status with ErrorInfo details.

@@ -36,7 +36,7 @@ var _ = Describe("EphemeralPurge", Ordered, func() {
 									Name:      "clearing",
 									Pattern:   "clearing:{id}",
 									Status:    commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE,
-									Ephemeral: true,
+									Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
 								},
 							},
 						},

@@ -1,13 +1,9 @@
 package bloom
 
 import (
-	"bytes"
 	"context"
-	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
-	"math"
 	"sync/atomic"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -39,7 +35,7 @@ type FilterSetConfig struct {
 
 // Enabled returns true if at least one attribute type has a non-zero expected key count.
 func (c FilterSetConfig) Enabled() bool {
-	for _, fc := range c.asList() {
+	for _, fc := range c.AsList() {
 		if fc.ExpectedKeys > 0 {
 			return true
 		}
@@ -48,9 +44,9 @@ func (c FilterSetConfig) Enabled() bool {
 	return false
 }
 
-// asList returns all per-type configs in a fixed order (volume, metadata, idempotency,
+// AsList returns all per-type configs in a fixed order (volume, metadata, idempotency,
 // reference, ledger, boundary, transaction) for deterministic serialization.
-func (c FilterSetConfig) asList() [7]FilterConfig {
+func (c FilterSetConfig) AsList() [7]FilterConfig {
 	return [7]FilterConfig{
 		c.Volume, c.Metadata, c.Idempotency, c.Reference,
 		c.Ledger, c.Boundary, c.Transaction,
@@ -70,9 +66,10 @@ func DefaultFilterSetConfig() FilterSetConfig {
 type Filter struct {
 	filter *blobloom.SyncFilter
 
-	lookups   metric.Int64Counter
-	negatives metric.Int64Counter
-	adds      metric.Int64Counter
+	lookups        metric.Int64Counter
+	negatives      metric.Int64Counter
+	falsePositives metric.Int64Counter
+	adds           metric.Int64Counter
 }
 
 // MayContain returns true if the key might be in the set, false if it is
@@ -87,6 +84,12 @@ func (f *Filter) MayContain(id attributes.U128) bool {
 	}
 
 	return result
+}
+
+// RecordFalsePositive increments the false positive counter. Called by the
+// preloader when MayContain returned true but the Pebble Get found no value.
+func (f *Filter) RecordFalsePositive() {
+	f.falsePositives.Add(context.Background(), 1)
 }
 
 // Add inserts a key into the bloom filter. Called from the FSM goroutine only.
@@ -136,27 +139,6 @@ type FilterSet struct {
 	config FilterSetConfig
 
 	readyGauge metric.Int64Gauge
-}
-
-// allFilters returns all filters with their attribute type byte for iteration.
-func (fs *FilterSet) allFilters() []struct {
-	filter   *Filter
-	attrType byte
-	name     string
-} {
-	return []struct {
-		filter   *Filter
-		attrType byte
-		name     string
-	}{
-		{fs.Volume, dal.AttributePrefixVolume, "volumes"},
-		{fs.Metadata, dal.AttributePrefixMetadata, "metadata"},
-		{fs.Idempotency, dal.AttributePrefixIdempotency, "idempotency"},
-		{fs.Reference, dal.AttributePrefixReference, "references"},
-		{fs.Ledger, dal.AttributePrefixLedger, "ledgers"},
-		{fs.Boundary, dal.AttributePrefixBoundary, "boundaries"},
-		{fs.Transaction, dal.AttributePrefixTransaction, "transactions"},
-	}
 }
 
 // FilterForAttrType returns the bloom filter for a given attribute type prefix byte.
@@ -247,168 +229,6 @@ func (fs *FilterSet) AddCanonicalKeys(updates *BloomUpdates) {
 
 // Cache snapshot sub-prefix for bloom filter data within the 0xFF zone.
 // Key layout:
-//
-//	[0xFF][0xFE]              → BloomSnapshotMeta (marker for presence)
-//	[0xFF][0xFE][cache_type]  → serialized bloom filter bytes
-const (
-	CacheBloomMeta byte = 0xFE
-)
-
-const filterSetConfigSize = 7 * 16 // 7 types * (uint64 expectedKeys + float64 fpRate)
-
-// marshalFilterSetConfig encodes the full per-type config into 112 bytes.
-func marshalFilterSetConfig(cfg FilterSetConfig) []byte {
-	buf := make([]byte, filterSetConfigSize)
-
-	for i, fc := range cfg.asList() {
-		off := i * 16
-		binary.LittleEndian.PutUint64(buf[off:off+8], uint64(fc.ExpectedKeys))
-		binary.LittleEndian.PutUint64(buf[off+8:off+16], math.Float64bits(fc.FPRate))
-	}
-
-	return buf
-}
-
-// unmarshalFilterSetConfig decodes per-type config from 112 bytes.
-func unmarshalFilterSetConfig(data []byte) (FilterSetConfig, bool) {
-	if len(data) < filterSetConfigSize {
-		return FilterSetConfig{}, false
-	}
-
-	var configs [7]FilterConfig
-
-	for i := range configs {
-		off := i * 16
-		configs[i] = FilterConfig{
-			ExpectedKeys: uint(binary.LittleEndian.Uint64(data[off : off+8])),
-			FPRate:       math.Float64frombits(binary.LittleEndian.Uint64(data[off+8 : off+16])),
-		}
-	}
-
-	return FilterSetConfig{
-		Volume:      configs[0],
-		Metadata:    configs[1],
-		Idempotency: configs[2],
-		Reference:   configs[3],
-		Ledger:      configs[4],
-		Boundary:    configs[5],
-		Transaction: configs[6],
-	}, true
-}
-
-// PersistConfigOnly writes only the bloom filter config metadata to the Pebble
-// batch, without any filter data. Used when the bloom filters are not yet ready
-// (e.g. still being populated in the background) so that checkpoints don't
-// capture incomplete filter state.
-func (fs *FilterSet) PersistConfigOnly(batch *dal.Batch) error {
-	metaKey := []byte{dal.KeyPrefixCacheSnapshot, CacheBloomMeta}
-	if err := batch.SetBytes(metaKey, marshalFilterSetConfig(fs.config)); err != nil {
-		return fmt.Errorf("writing bloom meta: %w", err)
-	}
-
-	return nil
-}
-
-// PersistToStore serializes all bloom filters into the provided Pebble batch.
-func (fs *FilterSet) PersistToStore(batch *dal.Batch) error {
-	if err := fs.PersistConfigOnly(batch); err != nil {
-		return err
-	}
-
-	for _, entry := range fs.allFilters() {
-		if entry.filter == nil {
-			continue
-		}
-
-		var buf bytes.Buffer
-		if _, err := entry.filter.WriteTo(&buf); err != nil {
-			return fmt.Errorf("serializing bloom filter %s: %w", entry.name, err)
-		}
-
-		key := []byte{dal.KeyPrefixCacheSnapshot, CacheBloomMeta, entry.attrType}
-		if err := batch.SetBytes(key, buf.Bytes()); err != nil {
-			return fmt.Errorf("writing bloom filter %s: %w", entry.name, err)
-		}
-	}
-
-	return nil
-}
-
-// RestoreFromStore deserializes bloom filters from Pebble.
-// Returns ErrNoSnapshot if no bloom data exists (first boot).
-// Returns ErrConfigChanged if the persisted config differs from the current one
-// (including format changes from older versions).
-func (fs *FilterSet) RestoreFromStore(reader dal.PebbleReader) error {
-	metaKey := []byte{dal.KeyPrefixCacheSnapshot, CacheBloomMeta}
-
-	metaData, closer, err := reader.Get(metaKey)
-	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
-			return ErrNoSnapshot
-		}
-
-		return fmt.Errorf("reading bloom meta: %w", err)
-	}
-
-	persisted, ok := unmarshalFilterSetConfig(metaData)
-
-	_ = closer.Close()
-
-	if !ok || persisted != fs.config {
-		return ErrConfigChanged
-	}
-
-	var loaded bool
-
-	for _, entry := range fs.allFilters() {
-		if entry.filter == nil {
-			continue
-		}
-
-		key := []byte{dal.KeyPrefixCacheSnapshot, CacheBloomMeta, entry.attrType}
-
-		data, dataCloser, err := reader.Get(key)
-		if err != nil {
-			if errors.Is(err, pebble.ErrNotFound) {
-				continue // No data for this type — leave filter empty
-			}
-
-			return fmt.Errorf("reading bloom filter %s: %w", entry.name, err)
-		}
-
-		if err := entry.filter.LoadFrom(bytes.NewReader(data)); err != nil {
-			_ = dataCloser.Close()
-
-			return fmt.Errorf("deserializing bloom filter %s: %w", entry.name, err)
-		}
-
-		_ = dataCloser.Close()
-
-		loaded = true
-	}
-
-	if !loaded {
-		return ErrFilterDataMissing
-	}
-
-	fs.SetReady(true)
-
-	return nil
-}
-
-var (
-	// ErrNoSnapshot is returned by RestoreFromStore when no bloom data exists in Pebble.
-	ErrNoSnapshot = errors.New("no bloom filter snapshot found")
-
-	// ErrConfigChanged is returned by RestoreFromStore when the persisted config
-	// differs from the current one (expectedKeys or fpRate changed).
-	ErrConfigChanged = errors.New("bloom filter config changed")
-
-	// ErrFilterDataMissing is returned by RestoreFromStore when the config matches
-	// but no filter data exists (config-only checkpoint taken while bloom was not ready).
-	ErrFilterDataMissing = errors.New("bloom filter data missing from snapshot")
-)
-
 // PopulateFromStore scans the Pebble attribute range and inserts all existing
 // canonical keys into the bloom filters. Used on first boot when no bloom
 // snapshot exists yet.
@@ -468,14 +288,20 @@ func newFilter(expectedKeys uint, fpRate float64, meter metric.Meter, typeName s
 		metric.WithDescription("Keys added to bloom filter"),
 	)
 
+	falsePositives, _ := meter.Int64Counter(
+		"bloom.false_positives",
+		metric.WithDescription("Bloom filter checks that returned maybe-present but Pebble Get found nothing"),
+	)
+
 	return &Filter{
 		filter: blobloom.NewSyncOptimized(blobloom.Config{
 			Capacity: uint64(expectedKeys),
 			FPRate:   fpRate,
 		}),
-		lookups:   withAttr(lookups, typeAttr),
-		negatives: withAttr(negatives, typeAttr),
-		adds:      withAttr(adds, typeAttr),
+		lookups:        withAttr(lookups, typeAttr),
+		negatives:      withAttr(negatives, typeAttr),
+		falsePositives: withAttr(falsePositives, typeAttr),
+		adds:           withAttr(adds, typeAttr),
 	}
 }
 

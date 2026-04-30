@@ -97,9 +97,9 @@ func TestSimulateEphemeralPurgeDeletesZeroBalance(t *testing.T) {
 	ledgerAccountTypes := map[string][]accounttype.CompiledType{
 		"ledger": accounttype.CompileTypes(map[string]*commonpb.AccountType{
 			"orders": {
-				Name:      "orders",
-				Pattern:   "orders:{id}",
-				Ephemeral: true,
+				Name:        "orders",
+				Pattern:     "orders:{id}",
+				Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
 			},
 		}),
 	}
@@ -205,9 +205,9 @@ func TestSimulateEphemeralPurgeSkipsWorldAccount(t *testing.T) {
 	ledgerAccountTypes := map[string][]accounttype.CompiledType{
 		"ledger": accounttype.CompileTypes(map[string]*commonpb.AccountType{
 			"world-type": {
-				Name:      "world-type",
-				Pattern:   "world",
-				Ephemeral: true,
+				Name:        "world-type",
+				Pattern:     "world",
+				Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
 			},
 		}),
 	}
@@ -437,9 +437,9 @@ func TestSimulateEphemeralPurgeMultipleAssets(t *testing.T) {
 	ledgerAccountTypes := map[string][]accounttype.CompiledType{
 		"ledger": accounttype.CompileTypes(map[string]*commonpb.AccountType{
 			"orders": {
-				Name:      "orders",
-				Pattern:   "orders:{id}",
-				Ephemeral: true,
+				Name:        "orders",
+				Pattern:     "orders:{id}",
+				Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
 			},
 		}),
 	}

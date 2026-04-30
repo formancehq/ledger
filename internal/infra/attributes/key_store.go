@@ -246,6 +246,11 @@ func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], []Deletion[K], error) {
 	return touched, deletions, nil
 }
 
+// DirtyValues returns the uncommitted local values written during the current batch.
+func (s *DerivedKeyStore[K, T]) DirtyValues() map[K]T {
+	return s.values
+}
+
 func NewDerivedKeyStore[K Key, T any](store *KeyStore[K, T], cloneFn func(T) T) *DerivedKeyStore[K, T] {
 	return &DerivedKeyStore[K, T]{
 		KeyStore:  store,

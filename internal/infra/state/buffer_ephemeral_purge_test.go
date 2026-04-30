@@ -91,9 +91,9 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 		Name: "test",
 		AccountTypes: map[string]*commonpb.AccountType{
 			"clearing": {
-				Name:      "clearing",
-				Pattern:   "clearing:{id}",
-				Ephemeral: true,
+				Name:        "clearing",
+				Pattern:     "clearing:{id}",
+				Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
 			},
 			"user": {
 				Name:    "user",
@@ -152,10 +152,103 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 		},
 	}
 
-	result := buf.partitionEphemeralVolumes(updates)
+	result := buf.partitionVolumes(updates)
 
 	require.Len(t, result.purged, 1)
 	require.Equal(t, "clearing:tx1", result.purged[0].Key.Account)
 
 	require.Len(t, result.kept, 3)
+	require.Empty(t, result.transient)
+}
+
+func TestPartitionVolumesTransient(t *testing.T) {
+	t.Parallel()
+
+	machine, _, _ := newTestMachine(t)
+
+	ledgerInfo := &commonpb.LedgerInfo{
+		Name: "test",
+		AccountTypes: map[string]*commonpb.AccountType{
+			"staging": {
+				Name:        "staging",
+				Pattern:     "staging:{id}",
+				Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
+			},
+			"user": {
+				Name:    "user",
+				Pattern: "users:{id}",
+			},
+		},
+	}
+
+	_, _, err := machine.Registry.Ledgers.Put(
+		(&domain.LedgerKey{Name: "test"}).Bytes(),
+		ledgerInfo,
+	)
+	require.NoError(t, err)
+
+	buf := &Buffered{
+		fsm: machine,
+	}
+
+	updates := []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{
+		{
+			// Transient + zero balance → transient partition
+			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{Ledger: "test", Account: "staging:tx1"}, Asset: "USD"},
+			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{Ledger: "test", Account: "staging:tx1"}, Asset: "USD"}).Bytes(),
+			New: &raftcmdpb.VolumePair{
+				Input:  commonpb.NewUint256FromUint64(100),
+				Output: commonpb.NewUint256FromUint64(100),
+			},
+		},
+		{
+			// Transient + non-zero balance → transient partition (validation catches this later)
+			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{Ledger: "test", Account: "staging:tx2"}, Asset: "EUR"},
+			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{Ledger: "test", Account: "staging:tx2"}, Asset: "EUR"}).Bytes(),
+			New: &raftcmdpb.VolumePair{
+				Input:  commonpb.NewUint256FromUint64(200),
+				Output: commonpb.NewUint256FromUint64(50),
+			},
+		},
+		{
+			// Normal account → kept
+			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{Ledger: "test", Account: "users:alice"}, Asset: "USD"},
+			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{Ledger: "test", Account: "users:alice"}, Asset: "USD"}).Bytes(),
+			New: &raftcmdpb.VolumePair{
+				Input:  commonpb.NewUint256FromUint64(100),
+				Output: commonpb.NewUint256FromUint64(0),
+			},
+		},
+	}
+
+	result := buf.partitionVolumes(updates)
+
+	require.Len(t, result.transient, 2)
+	require.Len(t, result.kept, 1)
+	require.Equal(t, "users:alice", result.kept[0].Key.Account)
+	require.Empty(t, result.purged)
+}
+
+func TestIsVolumeZeroBalance_Transient(t *testing.T) {
+	t.Parallel()
+
+	t.Run("equal input/output → zero balance", func(t *testing.T) {
+		t.Parallel()
+
+		vol := &raftcmdpb.VolumePair{
+			Input:  commonpb.NewUint256FromUint64(100),
+			Output: commonpb.NewUint256FromUint64(100),
+		}
+		require.True(t, isVolumeZeroBalance(vol))
+	})
+
+	t.Run("unequal input/output → non-zero balance", func(t *testing.T) {
+		t.Parallel()
+
+		vol := &raftcmdpb.VolumePair{
+			Input:  commonpb.NewUint256FromUint64(100),
+			Output: commonpb.NewUint256FromUint64(50),
+		}
+		require.False(t, isVolumeZeroBalance(vol))
+	})
 }

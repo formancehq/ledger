@@ -690,13 +690,22 @@ func logMemoryEstimate(logger logging.Logger, cfg *bootstrap.Config, memlimit in
 
 	fsmCache := fsmCacheGenerations * rotationThreshold * fsmCacheKeysPerEntry * fsmCacheBytesPerKey
 
-	total := pebbleCache + memtables + readIndexCache + readIndexMemtables + transportTotal + fsmCache + goRuntimeEstimate
+	// Bloom filter memory: m = -n * ln(p) / (ln2)^2 bits per filter.
+	var bloomTotal int64
+	for _, fc := range cfg.BloomConfig.AsList() {
+		if fc.ExpectedKeys > 0 && fc.FPRate > 0 {
+			bits := -float64(fc.ExpectedKeys) * math.Log(fc.FPRate) / (math.Ln2 * math.Ln2)
+			bloomTotal += int64(bits) / 8
+		}
+	}
+
+	total := pebbleCache + memtables + readIndexCache + readIndexMemtables + transportTotal + fsmCache + bloomTotal + goRuntimeEstimate
 
 	logger.Infof(
-		"Memory estimate: pebbleCache=%dMiB memtables=%dMiB readIndexCache=%dMiB readIndexMemtables=%dMiB transport=%dMiB fsmCache=%dMiB goRuntime=%dMiB total=%dMiB",
+		"Memory estimate: pebbleCache=%dMiB memtables=%dMiB readIndexCache=%dMiB readIndexMemtables=%dMiB transport=%dMiB fsmCache=%dMiB bloom=%dMiB goRuntime=%dMiB total=%dMiB",
 		mib(pebbleCache), mib(memtables),
 		mib(readIndexCache), mib(readIndexMemtables),
-		mib(transportTotal), mib(fsmCache), mib(goRuntimeEstimate), mib(total),
+		mib(transportTotal), mib(fsmCache), mib(bloomTotal), mib(goRuntimeEstimate), mib(total),
 	)
 
 	if memlimit != math.MaxInt64 && total > memlimit {

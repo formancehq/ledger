@@ -1484,6 +1484,21 @@ components:
           description: Per-type account address validation
           additionalProperties:
             type: object
+            properties:
+              name:
+                type: string
+              pattern:
+                type: string
+              status:
+                type: string
+                enum: [ACTIVE, MIGRATING, DEPRECATED]
+              persistence:
+                type: string
+                enum: [NORMAL, EPHEMERAL, TRANSIENT]
+                description: |
+                  NORMAL: fully persisted (default).
+                  EPHEMERAL: persisted, purged when zero balance.
+                  TRANSIENT: never persisted, must be zero at end of batch.
           nullable: true
         default_enforcement_mode:
           type: string

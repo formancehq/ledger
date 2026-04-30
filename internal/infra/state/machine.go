@@ -1134,6 +1134,33 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		}, nil
 	}
 
+	// Validate transient volumes have zero balance. This is a business error
+	// (rejected proposal), not a fatal FSM error, so it must be checked before Commit.
+	if err := buffer.ValidateTransientVolumes(); err != nil {
+		if fsm.sharedState.AuditEnabled() {
+			auditEntry := &auditpb.AuditEntry{
+				Sequence:   fsm.nextAuditSequenceID,
+				Timestamp:  effectiveDate,
+				ProposalId: proposal.GetId(),
+				Orders:     proposal.GetOrders(),
+				Outcome: &auditpb.AuditEntry_Failure{
+					Failure: buildAuditFailure(err),
+				},
+			}
+			fsm.nextAuditSequenceID++
+
+			appendErr := AppendAuditEntries(batch, auditEntry)
+			if appendErr != nil {
+				return nil, fmt.Errorf("appending audit entry for transient validation failure: %w", appendErr)
+			}
+		}
+
+		return &ApplyResult{
+			ProposalID: proposal.GetId(),
+			Error:      &domain.BusinessError{Err: err},
+		}, nil
+	}
+
 	// Extract created logs for the write buffer (reference sequences are idempotent
 	// responses that don't produce new logs)
 	var createdLogs []*commonpb.Log
@@ -1231,9 +1258,9 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		MirrorConfigChanged:     mirrorConfigChanged,
 		HasArchiveRequests:      hasArchiveRequests,
 		HasPurges:               hasPurges,
-		MetadataConvertRequests: buffer.MetadataConvertRequests(),
 		QueryCheckpointCreated:  queryCheckpointCreated,
 		QueryCheckpointDeleted:  queryCheckpointDeleted,
+		MetadataConvertRequests: buffer.MetadataConvertRequests(),
 		AccountMigrateRequests:  buffer.AccountMigrateRequests(),
 		volumeUpdates:           buffer.KeptVolumeUpdates(),
 		purgedVolumeKeys:        buffer.PurgedVolumeKeys(),
@@ -1271,16 +1298,10 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 		return nil, fmt.Errorf("persisting in-memory state: %w", err)
 	}
 
-	if fsm.logger.Enabled(logging.DebugLevel) {
-		fsm.logger.WithFields(map[string]any{
-			"duration":          time.Since(persistStart).String(),
-			"gen0":              fsm.Registry.Cache.BaseIndex.Gen0,
-			"gen1":              fsm.Registry.Cache.BaseIndex.Gen1,
-			"currentGeneration": fsm.Registry.Cache.CurrentGeneration(),
-			"lastAppliedIndex":  fsm.lastAppliedIndex,
-			"reversionLedgers":  len(fsm.Registry.Reversions),
-		}).Debugf("Persisted in-memory state to Pebble")
-	}
+	fsm.logger.WithFields(map[string]any{
+		"duration":         time.Since(persistStart).String(),
+		"lastAppliedIndex": fsm.lastAppliedIndex,
+	}).Infof("Persisted in-memory state to Pebble")
 
 	checkpointID, err := fsm.dataStore.CreateSnapshot()
 	if err != nil {

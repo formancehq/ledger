@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"strconv"
 
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 )
@@ -62,24 +63,13 @@ func payrollDistribute(ctx context.Context, client servicepb.BucketServiceClient
 func payrollPaySalary(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
 	departments := MultiLedgerPayrollDepartments()
 	dept := departments[RandIntN(r, len(departments))]
-
-	// Ensure payroll pool is funded.
-	poolBal, ok := GetAccountBalance(ctx, client, dept.Ledger, "payroll:pool", "USD/2")
-	if !ok || poolBal.Cmp(big.NewInt(MultiLedgerPayrollBaseSalary)) < 0 {
-		// Try to fund the pool first.
-		_, err := ApplyActions(ctx, client,
-			actions.CreateScriptRefTransactionAction(dept.Ledger, "fund_payroll", "1.0.0", map[string]string{
-				"amount": fmt.Sprintf("USD/2 %d", int64(dept.Employees)*MultiLedgerPayrollBaseSalary),
-			}, nil),
-		)
-		if err != nil {
-			return nil, ErrSkip
-		}
-	}
-
 	empID := 1 + RandIntN(r, dept.Employees)
 
+	// Fund pool and pay in the same batch so payroll:pool (transient) nets to zero.
 	return ApplyActions(ctx, client,
+		actions.CreateScriptRefTransactionAction(dept.Ledger, "fund_payroll", "1.0.0", map[string]string{
+			"amount": fmt.Sprintf("USD/2 %d", MultiLedgerPayrollBaseSalary),
+		}, map[string]string{"type": "salary-funding"}),
 		actions.CreateScriptRefTransactionAction(dept.Ledger, "pay_salary", "1.0.0", map[string]string{
 			"employee": fmt.Sprintf("employee:%d", empID),
 			"amount":   fmt.Sprintf("USD/2 %d", MultiLedgerPayrollBaseSalary),
@@ -170,7 +160,7 @@ send $amount (
 	for _, dept := range departments {
 		reqs = append(reqs,
 			actions.CreateLedgerAction(dept.Ledger, nil),
-			actions.AddAccountTypeAction(dept.Ledger, "payroll", "payroll:{type}"),
+			actions.AddAccountTypeWithPersistenceAction(dept.Ledger, "payroll", "payroll:{type}", commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
 			actions.AddAccountTypeAction(dept.Ledger, "employee", "employee:{id}"),
 			actions.AddAccountTypeAction(dept.Ledger, "expense", "expense:{type}"),
 			actions.SaveNumscriptWithVersionAction(dept.Ledger, "fund_payroll", `vars {
@@ -242,25 +232,17 @@ func RunMultiLedgerPayroll(r *Runner) error {
 			return err
 		}
 
-		// Step 3: Fund department payroll pools
-		var payrollReqs []*servicepb.Request
+		// Step 3: Fund payroll pools and pay employees (same batch so payroll:pool nets to zero).
 		for _, dept := range departments {
 			amount := int64(dept.Employees) * baseSalary
+			var payrollReqs []*servicepb.Request
 			payrollReqs = append(payrollReqs,
 				actions.CreateScriptRefTransactionAction(dept.Ledger, "fund_payroll", "1.0.0", map[string]string{
 					"amount": fmt.Sprintf("USD/2 %d", amount),
 				}, map[string]string{"month": strconv.Itoa(month)}),
 			)
-		}
-		if _, err := r.Step(fmt.Sprintf("Month%d/FundPayrollPools", month), payrollReqs...); err != nil {
-			return err
-		}
-
-		// Step 4: Pay employees in each department
-		for _, dept := range departments {
-			var salaryReqs []*servicepb.Request
 			for emp := 1; emp <= dept.Employees; emp++ {
-				salaryReqs = append(salaryReqs,
+				payrollReqs = append(payrollReqs,
 					actions.CreateScriptRefTransactionAction(dept.Ledger, "pay_salary", "1.0.0", map[string]string{
 						"employee": fmt.Sprintf("employee:%d", emp),
 						"amount":   fmt.Sprintf("USD/2 %d", baseSalary),
@@ -270,7 +252,7 @@ func RunMultiLedgerPayroll(r *Runner) error {
 					}),
 				)
 			}
-			if _, err := r.Step(fmt.Sprintf("Month%d/PayEmployees/%s", month, dept.Name), salaryReqs...); err != nil {
+			if _, err := r.Step(fmt.Sprintf("Month%d/Payroll/%s", month, dept.Name), payrollReqs...); err != nil {
 				return err
 			}
 		}
@@ -282,15 +264,11 @@ func RunMultiLedgerPayroll(r *Runner) error {
 		bonusAmount := int64(baseSalary * bonusPercent / 100)
 		totalBonus := bonusAmount * int64(dept.Employees)
 
-		if _, err := r.Step("Bonuses/FundPool",
+		bonusReqs := []*servicepb.Request{
 			actions.CreateScriptRefTransactionAction(dept.Ledger, "fund_payroll", "1.0.0", map[string]string{
 				"amount": fmt.Sprintf("USD/2 %d", totalBonus),
 			}, map[string]string{"type": "bonus-funding"}),
-		); err != nil {
-			return err
 		}
-
-		var bonusReqs []*servicepb.Request
 		for emp := 1; emp <= dept.Employees; emp++ {
 			bonusReqs = append(bonusReqs,
 				actions.CreateScriptRefTransactionAction(dept.Ledger, "pay_salary", "1.0.0", map[string]string{

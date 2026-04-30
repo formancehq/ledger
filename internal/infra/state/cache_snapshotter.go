@@ -1,7 +1,6 @@
 package state
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
@@ -77,21 +76,10 @@ func (s *CacheSnapshotter) PersistToStore() error {
 		return fmt.Errorf("writing cache snapshot meta: %w", err)
 	}
 
-	// Persist bloom filters alongside cache snapshot.
-	// Only persist full filter data when ready; otherwise persist config only
-	// so that restoring nodes detect the config match and start their own
-	// background populate.
-	if s.bloomFilters != nil {
-		if s.bloomFilters.IsReady() {
-			if err := s.bloomFilters.PersistToStore(batch); err != nil {
-				return fmt.Errorf("persisting bloom filters: %w", err)
-			}
-		} else {
-			if err := s.bloomFilters.PersistConfigOnly(batch); err != nil {
-				return fmt.Errorf("persisting bloom config: %w", err)
-			}
-		}
-	}
+	// Bloom filters are NOT persisted in the checkpoint. They are large (can
+	// exceed 1 GiB) and are fully rebuildable from Pebble attributes via
+	// PopulateFromStore. At restart, the missing data triggers a fast background
+	// rebuild that doesn't block the node.
 
 	return batch.Commit()
 }
@@ -290,23 +278,11 @@ func (s *CacheSnapshotter) RestoreFromStore() error {
 		"currentGeneration": meta.GetCurrentGeneration(),
 	}).Infof("Restored cache from Pebble")
 
-	// Restore bloom filters from Pebble snapshot.
+	// Bloom filters are never persisted in checkpoints (too large). Always
+	// rebuild from a full attribute scan in the background. The preloader
+	// falls back to Pebble Gets while IsReady() returns false.
 	if s.bloomFilters != nil {
-		if err := s.bloomFilters.RestoreFromStore(s.dataStore); err != nil {
-			if !errors.Is(err, bloom.ErrNoSnapshot) &&
-				!errors.Is(err, bloom.ErrConfigChanged) &&
-				!errors.Is(err, bloom.ErrFilterDataMissing) {
-				return fmt.Errorf("restoring bloom filters: %w", err)
-			}
-
-			// No usable snapshot: first boot, config changed, or config-only
-			// checkpoint (bloom was not ready when the checkpoint was taken).
-			// Populate in the background — the preloader falls back to Pebble
-			// Gets while IsReady() returns false.
-			s.startAsyncBloomPopulate(err.Error())
-		} else {
-			s.logger.WithFields(map[string]any{"duration": time.Since(restoreStart).String()}).Infof("Restored bloom filters from Pebble")
-		}
+		s.startAsyncBloomPopulate("bloom filters not persisted in checkpoint")
 	}
 
 	return nil
