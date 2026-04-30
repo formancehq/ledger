@@ -17,6 +17,38 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
+// mergeAndTrackBloom merges a DerivedKeyStore into its parent, writes the updates
+// to the Pebble batch via the Attribute, tracks canonical keys for bloom filter
+// updates, and processes any attribute deletions.
+func mergeAndTrackBloom[K attributes.Key, V proto.Message](
+	derived *attributes.DerivedKeyStore[K, V],
+	attr *attributes.Attribute[V],
+	batch *dal.Batch,
+	bloomSlice *[][]byte,
+	label string,
+) ([]attributes.Update[K, V], error) {
+	updates, deletions, err := derived.Merge()
+	if err != nil {
+		return nil, fmt.Errorf("failed to merge %s: %w", label, err)
+	}
+
+	if err := mergeSimple(attr, batch, updates); err != nil {
+		return nil, fmt.Errorf("failed merging %s attributes: %w", label, err)
+	}
+
+	for _, update := range updates {
+		*bloomSlice = append(*bloomSlice, update.CanonicalKey)
+	}
+
+	for _, deletion := range deletions {
+		if err := attr.Delete(batch, deletion.CanonicalKey); err != nil {
+			return nil, fmt.Errorf("failed deleting %s attribute: %w", label, err)
+		}
+	}
+
+	return updates, nil
+}
+
 // mergeSimple writes each update to an Attribute using Set.
 // Each canonical key has at most one Pebble entry — Set overwrites in place.
 func mergeSimple[K attributes.Key, V proto.Message](
@@ -125,44 +157,20 @@ type purgeRange struct {
 
 func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	// Process Ledger updates
-	ledgerUpdates, _, err := b.Derived.Ledgers.Merge()
+	ledgerUpdates, err := mergeAndTrackBloom(b.Derived.Ledgers, b.attrs.Ledger, batch, &b.bloomUpdates.Ledgers, "ledgers")
 	if err != nil {
-		return fmt.Errorf("failed to merge ledgers: %w", err)
-	}
-
-	if err := mergeSimple(b.attrs.Ledger, batch, ledgerUpdates); err != nil {
-		return fmt.Errorf("failed merging ledger attributes: %w", err)
+		return err
 	}
 
 	for _, update := range ledgerUpdates {
-		b.bloomUpdates.Ledgers = append(b.bloomUpdates.Ledgers, update.CanonicalKey)
-	}
-
-	for _, update := range ledgerUpdates {
-		err := SaveLedger(batch, update.New)
-		if err != nil {
+		if err := SaveLedger(batch, update.New); err != nil {
 			return fmt.Errorf("failed to save ledger: %w", err)
 		}
 	}
 
 	// Process Boundary updates
-	boundaryUpdates, boundaryDeletions, err := b.Derived.Boundaries.Merge()
-	if err != nil {
-		return fmt.Errorf("failed to merge boundaries: %w", err)
-	}
-
-	if err := mergeSimple(b.attrs.Boundary, batch, boundaryUpdates); err != nil {
-		return fmt.Errorf("failed merging boundary attributes: %w", err)
-	}
-
-	for _, update := range boundaryUpdates {
-		b.bloomUpdates.Boundaries = append(b.bloomUpdates.Boundaries, update.CanonicalKey)
-	}
-
-	for _, deletion := range boundaryDeletions {
-		if err := b.attrs.Boundary.Delete(batch, deletion.CanonicalKey); err != nil {
-			return fmt.Errorf("failed deleting boundary attribute: %w", err)
-		}
+	if _, err := mergeAndTrackBloom(b.Derived.Boundaries, b.attrs.Boundary, batch, &b.bloomUpdates.Boundaries, "boundaries"); err != nil {
+		return err
 	}
 
 	// Process Volume updates — all volumes are now always preloaded with Known values.
@@ -209,24 +217,9 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 		b.purgedVolumeKeys = append(b.purgedVolumeKeys, purged.Key)
 	}
 
-	accountMetadataUpdates, accountMetadataDeletions, err := b.Derived.AccountMetadata.Merge()
-	if err != nil {
-		return fmt.Errorf("failed to merge account metadata: %w", err)
-	}
-
-	if err := mergeSimple(b.attrs.Metadata, batch, accountMetadataUpdates); err != nil {
-		return fmt.Errorf("failed merging metadata attributes: %w", err)
-	}
-
-	for _, update := range accountMetadataUpdates {
-		b.bloomUpdates.Metadata = append(b.bloomUpdates.Metadata, update.CanonicalKey)
-	}
-
-	for _, deletion := range accountMetadataDeletions {
-		err := b.attrs.Metadata.Delete(batch, deletion.CanonicalKey)
-		if err != nil {
-			return fmt.Errorf("failed deleting metadata attribute: %w", err)
-		}
+	// Process AccountMetadata updates
+	if _, err := mergeAndTrackBloom(b.Derived.AccountMetadata, b.attrs.Metadata, batch, &b.bloomUpdates.Metadata, "account metadata"); err != nil {
+		return err
 	}
 
 	// Flush pending reversions to the authoritative in-memory bitset.
@@ -236,45 +229,18 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	}
 
 	// Process IdempotencyKeys updates
-	idempotencyUpdates, _, err := b.Derived.IdempotencyKeys.Merge()
-	if err != nil {
-		return fmt.Errorf("failed to merge idempotency keys: %w", err)
-	}
-
-	if err := mergeSimple(b.attrs.IdempotencyKeys, batch, idempotencyUpdates); err != nil {
-		return fmt.Errorf("failed merging idempotency key attributes: %w", err)
-	}
-
-	for _, update := range idempotencyUpdates {
-		b.bloomUpdates.Idempotency = append(b.bloomUpdates.Idempotency, update.CanonicalKey)
+	if _, err := mergeAndTrackBloom(b.Derived.IdempotencyKeys, b.attrs.IdempotencyKeys, batch, &b.bloomUpdates.Idempotency, "idempotency keys"); err != nil {
+		return err
 	}
 
 	// Process References updates
-	referenceUpdates, _, err := b.Derived.References.Merge()
-	if err != nil {
-		return fmt.Errorf("failed to merge references: %w", err)
-	}
-
-	if err := mergeSimple(b.attrs.References, batch, referenceUpdates); err != nil {
-		return fmt.Errorf("failed merging reference attributes: %w", err)
-	}
-
-	for _, update := range referenceUpdates {
-		b.bloomUpdates.References = append(b.bloomUpdates.References, update.CanonicalKey)
+	if _, err := mergeAndTrackBloom(b.Derived.References, b.attrs.References, batch, &b.bloomUpdates.References, "references"); err != nil {
+		return err
 	}
 
 	// Process Transaction state updates
-	txUpdates, _, err := b.Derived.Transactions.Merge()
-	if err != nil {
-		return fmt.Errorf("failed to merge transactions: %w", err)
-	}
-
-	if err := mergeSimple(b.attrs.Transaction, batch, txUpdates); err != nil {
-		return fmt.Errorf("failed merging transaction attributes: %w", err)
-	}
-
-	for _, update := range txUpdates {
-		b.bloomUpdates.Transactions = append(b.bloomUpdates.Transactions, update.CanonicalKey)
+	if _, err := mergeAndTrackBloom(b.Derived.Transactions, b.attrs.Transaction, batch, &b.bloomUpdates.Transactions, "transactions"); err != nil {
+		return err
 	}
 
 	err = AppendLogs(batch, logs...)
