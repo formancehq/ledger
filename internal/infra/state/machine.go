@@ -865,6 +865,25 @@ func (fsm *Machine) deleteQueryCheckpointFiles(checkpointID uint64) {
 	}
 }
 
+// putInCache inserts a value into a cache generation if the key is absent.
+// If the key already exists, the existing value is returned unchanged.
+// Used by Preload to populate the dual-generation cache.
+func putInCache[T any](store kv.KV[attributes.U128, attributes.Entry[T]], attrID *raftcmdpb.AttributeID, value T) T {
+	id := attributes.U128FromBytes(attrID.GetId())
+
+	existing, ok := store.Get(id)
+	if ok {
+		return existing.Data
+	}
+
+	store.Put(id, attributes.Entry[T]{
+		Tag:  attrID.GetTag(),
+		Data: value,
+	})
+
+	return value
+}
+
 // Preload applies preloaded data to the Machine's volatile state.
 func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	if preloadSet == nil || (len(preloadSet.GetPreloads()) == 0 && len(preloadSet.GetTouches()) == 0) {
@@ -950,237 +969,6 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		return pair
 	}
 
-	// Helper function to put a preloaded idempotency value into a cache generation
-	putInCacheIdempotencyValue := func(
-		kv kv.KV[attributes.U128, attributes.Entry[*commonpb.IdempotencyKeyValue]],
-		attrID *raftcmdpb.AttributeID,
-		value *commonpb.IdempotencyKeyValue,
-	) *commonpb.IdempotencyKeyValue {
-		id := attributes.U128FromBytes(attrID.GetId())
-
-		// fsm.logger.WithFields(map[string]any{
-		//	"id":           id.Hex(),
-		//	"log_sequence": value.GetLogSequence(),
-		//	"hash":         value.GetHash(),
-		// }).Debugf("Preload idempotency value")
-
-		existing, ok := kv.Get(id)
-		if ok {
-			return existing.Data
-		}
-
-		kv.Put(id, attributes.Entry[*commonpb.IdempotencyKeyValue]{
-			Tag:  attrID.GetTag(),
-			Data: value,
-		})
-
-		return value
-	}
-
-	// Helper function to put a preloaded transaction reference value into a cache generation
-	putInCacheReferenceValue := func(
-		kv kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionReferenceValue]],
-		attrID *raftcmdpb.AttributeID,
-		value *commonpb.TransactionReferenceValue,
-	) *commonpb.TransactionReferenceValue {
-		id := attributes.U128FromBytes(attrID.GetId())
-
-		// fsm.logger.WithFields(map[string]any{
-		//	"id":             id.Hex(),
-		//	"transaction_id": value.GetTransactionId(),
-		// }).Debugf("Preload transaction reference value")
-
-		existing, ok := kv.Get(id)
-		if ok {
-			return existing.Data
-		}
-
-		kv.Put(id, attributes.Entry[*commonpb.TransactionReferenceValue]{
-			Tag:  attrID.GetTag(),
-			Data: value,
-		})
-
-		return value
-	}
-
-	// Helper function to put a preloaded ledger info into a cache generation
-	putInCacheLedger := func(
-		kv kv.KV[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]],
-		attrID *raftcmdpb.AttributeID,
-		value *commonpb.LedgerInfo,
-	) *commonpb.LedgerInfo {
-		id := attributes.U128FromBytes(attrID.GetId())
-
-		// fsm.logger.WithFields(map[string]any{
-		//	"id":   id.Hex(),
-		//	"name": value.GetName(),
-		// }).Debugf("Preload ledger")
-
-		existing, ok := kv.Get(id)
-		if ok {
-			return existing.Data
-		}
-
-		kv.Put(id, attributes.Entry[*commonpb.LedgerInfo]{
-			Tag:  attrID.GetTag(),
-			Data: value,
-		})
-
-		return value
-	}
-
-	// Helper function to put a preloaded boundary into a cache generation
-	putInCacheBoundary := func(
-		kv kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.LedgerBoundaries]],
-		attrID *raftcmdpb.AttributeID,
-		value *raftcmdpb.LedgerBoundaries,
-	) *raftcmdpb.LedgerBoundaries {
-		id := attributes.U128FromBytes(attrID.GetId())
-
-		// fsm.logger.WithFields(map[string]any{
-		//	"id": id.Hex(),
-		// }).Debugf("Preload boundary")
-
-		existing, ok := kv.Get(id)
-		if ok {
-			return existing.Data
-		}
-
-		kv.Put(id, attributes.Entry[*raftcmdpb.LedgerBoundaries]{
-			Tag:  attrID.GetTag(),
-			Data: value,
-		})
-
-		return value
-	}
-
-	// Helper function to put a preloaded sink config into a cache generation
-	putInCacheSinkConfig := func(
-		kv kv.KV[attributes.U128, attributes.Entry[*commonpb.SinkConfig]],
-		attrID *raftcmdpb.AttributeID,
-		value *commonpb.SinkConfig,
-	) *commonpb.SinkConfig {
-		id := attributes.U128FromBytes(attrID.GetId())
-
-		// fsm.logger.WithFields(map[string]any{
-		//	"id":   id.Hex(),
-		//	"name": value.GetName(),
-		// }).Debugf("Preload sink config")
-
-		existing, ok := kv.Get(id)
-		if ok {
-			return existing.Data
-		}
-
-		kv.Put(id, attributes.Entry[*commonpb.SinkConfig]{
-			Tag:  attrID.GetTag(),
-			Data: value,
-		})
-
-		return value
-	}
-
-	// Helper function to put a preloaded string value into a cache generation
-	putInCacheString := func(
-		kv kv.KV[attributes.U128, attributes.Entry[string]],
-		attrID *raftcmdpb.AttributeID,
-		value string,
-	) string {
-		id := attributes.U128FromBytes(attrID.GetId())
-
-		// fsm.logger.WithFields(map[string]any{
-		//	"id":    id.Hex(),
-		//	"value": value,
-		// }).Debugf("Preload string")
-
-		existing, ok := kv.Get(id)
-		if ok {
-			return existing.Data
-		}
-
-		kv.Put(id, attributes.Entry[string]{
-			Tag:  attrID.GetTag(),
-			Data: value,
-		})
-
-		return value
-	}
-
-	putInCacheBool := func(
-		kv kv.KV[attributes.U128, attributes.Entry[bool]],
-		attrID *raftcmdpb.AttributeID,
-		value bool,
-	) bool {
-		id := attributes.U128FromBytes(attrID.GetId())
-
-		// fsm.logger.WithFields(map[string]any{
-		//	"id":    id.Hex(),
-		//	"value": value,
-		// }).Debugf("Preload bool")
-
-		existing, ok := kv.Get(id)
-		if ok {
-			return existing.Data
-		}
-
-		kv.Put(id, attributes.Entry[bool]{
-			Tag:  attrID.GetTag(),
-			Data: value,
-		})
-
-		return value
-	}
-
-	// Helper function to put a preloaded account metadata value into a cache generation
-	putInCacheMetadataValue := func(
-		kv kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]],
-		attrID *raftcmdpb.AttributeID,
-		value *commonpb.MetadataValue,
-	) *commonpb.MetadataValue {
-		id := attributes.U128FromBytes(attrID.GetId())
-
-		// fsm.logger.WithFields(map[string]any{
-		//	"id": id.Hex(),
-		// }).Debugf("Preload account metadata")
-
-		existing, ok := kv.Get(id)
-		if ok {
-			return existing.Data
-		}
-
-		kv.Put(id, attributes.Entry[*commonpb.MetadataValue]{
-			Tag:  attrID.GetTag(),
-			Data: value,
-		})
-
-		return value
-	}
-
-	// Helper function to put a preloaded transaction state into a cache generation
-	putInCacheTransactionState := func(
-		kv kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionState]],
-		attrID *raftcmdpb.AttributeID,
-		value *commonpb.TransactionState,
-	) *commonpb.TransactionState {
-		id := attributes.U128FromBytes(attrID.GetId())
-
-		// fsm.logger.WithFields(map[string]any{
-		//	"id": id.Hex(),
-		// }).Debugf("Preload transaction state")
-
-		existing, ok := kv.Get(id)
-		if ok {
-			return existing.Data
-		}
-
-		kv.Put(id, attributes.Entry[*commonpb.TransactionState]{
-			Tag:  attrID.GetTag(),
-			Data: value,
-		})
-
-		return value
-	}
-
 	for _, preload := range preloadSet.GetPreloads() {
 		switch preloadType := preload.GetType().(type) {
 		case *raftcmdpb.Preload_Volume:
@@ -1201,47 +989,47 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 				LogSequence: preloadType.IdempotencyKey.GetLogSequence(),
 				Hash:        preloadType.IdempotencyKey.GetHash(),
 			}
-			value := putInCacheIdempotencyValue(fsm.Registry.Cache.IdempotencyKeys.Gen1(), preloadType.IdempotencyKey.GetId(), idempotencyValue)
-			putInCacheIdempotencyValue(fsm.Registry.Cache.IdempotencyKeys.Gen0(), preloadType.IdempotencyKey.GetId(), value)
+			value := putInCache(fsm.Registry.Cache.IdempotencyKeys.Gen1(), preloadType.IdempotencyKey.GetId(), idempotencyValue)
+			putInCache(fsm.Registry.Cache.IdempotencyKeys.Gen0(), preloadType.IdempotencyKey.GetId(), value)
 
 		case *raftcmdpb.Preload_Ledger:
-			value := putInCacheLedger(fsm.Registry.Cache.Ledgers.Gen1(), preloadType.Ledger.GetId(), preloadType.Ledger.GetInfo())
-			putInCacheLedger(fsm.Registry.Cache.Ledgers.Gen0(), preloadType.Ledger.GetId(), value)
+			value := putInCache(fsm.Registry.Cache.Ledgers.Gen1(), preloadType.Ledger.GetId(), preloadType.Ledger.GetInfo())
+			putInCache(fsm.Registry.Cache.Ledgers.Gen0(), preloadType.Ledger.GetId(), value)
 
 		case *raftcmdpb.Preload_Boundary:
-			value := putInCacheBoundary(fsm.Registry.Cache.Boundaries.Gen1(), preloadType.Boundary.GetId(), preloadType.Boundary.GetBoundaries())
-			putInCacheBoundary(fsm.Registry.Cache.Boundaries.Gen0(), preloadType.Boundary.GetId(), value)
+			value := putInCache(fsm.Registry.Cache.Boundaries.Gen1(), preloadType.Boundary.GetId(), preloadType.Boundary.GetBoundaries())
+			putInCache(fsm.Registry.Cache.Boundaries.Gen0(), preloadType.Boundary.GetId(), value)
 
 		case *raftcmdpb.Preload_TransactionReference:
 			referenceValue := &commonpb.TransactionReferenceValue{
 				TransactionId: preloadType.TransactionReference.GetTransactionId(),
 			}
-			value := putInCacheReferenceValue(fsm.Registry.Cache.References.Gen1(), preloadType.TransactionReference.GetId(), referenceValue)
-			putInCacheReferenceValue(fsm.Registry.Cache.References.Gen0(), preloadType.TransactionReference.GetId(), value)
+			value := putInCache(fsm.Registry.Cache.References.Gen1(), preloadType.TransactionReference.GetId(), referenceValue)
+			putInCache(fsm.Registry.Cache.References.Gen0(), preloadType.TransactionReference.GetId(), value)
 
 		case *raftcmdpb.Preload_SinkConfig:
-			value := putInCacheSinkConfig(fsm.Registry.Cache.SinkConfigs.Gen1(), preloadType.SinkConfig.GetId(), preloadType.SinkConfig.GetConfig())
-			putInCacheSinkConfig(fsm.Registry.Cache.SinkConfigs.Gen0(), preloadType.SinkConfig.GetId(), value)
+			value := putInCache(fsm.Registry.Cache.SinkConfigs.Gen1(), preloadType.SinkConfig.GetId(), preloadType.SinkConfig.GetConfig())
+			putInCache(fsm.Registry.Cache.SinkConfigs.Gen0(), preloadType.SinkConfig.GetId(), value)
 
 		case *raftcmdpb.Preload_AccountMetadata:
-			value := putInCacheMetadataValue(fsm.Registry.Cache.AccountMetadata.Gen1(), preloadType.AccountMetadata.GetId(), preloadType.AccountMetadata.GetValue())
-			putInCacheMetadataValue(fsm.Registry.Cache.AccountMetadata.Gen0(), preloadType.AccountMetadata.GetId(), value)
+			value := putInCache(fsm.Registry.Cache.AccountMetadata.Gen1(), preloadType.AccountMetadata.GetId(), preloadType.AccountMetadata.GetValue())
+			putInCache(fsm.Registry.Cache.AccountMetadata.Gen0(), preloadType.AccountMetadata.GetId(), value)
 
 		case *raftcmdpb.Preload_NumscriptVersion:
-			value := putInCacheString(fsm.Registry.Cache.NumscriptVersions.Gen1(), preloadType.NumscriptVersion.GetId(), preloadType.NumscriptVersion.GetVersion())
-			putInCacheString(fsm.Registry.Cache.NumscriptVersions.Gen0(), preloadType.NumscriptVersion.GetId(), value)
+			value := putInCache(fsm.Registry.Cache.NumscriptVersions.Gen1(), preloadType.NumscriptVersion.GetId(), preloadType.NumscriptVersion.GetVersion())
+			putInCache(fsm.Registry.Cache.NumscriptVersions.Gen0(), preloadType.NumscriptVersion.GetId(), value)
 
 		case *raftcmdpb.Preload_NumscriptEntry:
-			value := putInCacheBool(fsm.Registry.Cache.NumscriptEntries.Gen1(), preloadType.NumscriptEntry.GetId(), preloadType.NumscriptEntry.GetExists())
-			putInCacheBool(fsm.Registry.Cache.NumscriptEntries.Gen0(), preloadType.NumscriptEntry.GetId(), value)
+			value := putInCache(fsm.Registry.Cache.NumscriptEntries.Gen1(), preloadType.NumscriptEntry.GetId(), preloadType.NumscriptEntry.GetExists())
+			putInCache(fsm.Registry.Cache.NumscriptEntries.Gen0(), preloadType.NumscriptEntry.GetId(), value)
 
 		case *raftcmdpb.Preload_TransactionState:
-			value := putInCacheTransactionState(fsm.Registry.Cache.Transactions.Gen1(), preloadType.TransactionState.GetId(), preloadType.TransactionState.GetState())
-			putInCacheTransactionState(fsm.Registry.Cache.Transactions.Gen0(), preloadType.TransactionState.GetId(), value)
+			value := putInCache(fsm.Registry.Cache.Transactions.Gen1(), preloadType.TransactionState.GetId(), preloadType.TransactionState.GetState())
+			putInCache(fsm.Registry.Cache.Transactions.Gen0(), preloadType.TransactionState.GetId(), value)
 
 		case *raftcmdpb.Preload_NumscriptParsed:
-			value := putInCacheString(fsm.Registry.Cache.NumscriptParsed.Gen1(), preloadType.NumscriptParsed.GetId(), preloadType.NumscriptParsed.GetPlain())
-			putInCacheString(fsm.Registry.Cache.NumscriptParsed.Gen0(), preloadType.NumscriptParsed.GetId(), value)
+			value := putInCache(fsm.Registry.Cache.NumscriptParsed.Gen1(), preloadType.NumscriptParsed.GetId(), preloadType.NumscriptParsed.GetPlain())
+			putInCache(fsm.Registry.Cache.NumscriptParsed.Gen0(), preloadType.NumscriptParsed.GetId(), value)
 		}
 	}
 
