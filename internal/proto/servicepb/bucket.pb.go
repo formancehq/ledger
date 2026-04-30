@@ -831,8 +831,12 @@ func (x *GetLedgerRequest) GetCheckpointId() uint64 {
 }
 
 type ApplyRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Requests      []*Request             `protobuf:"bytes,1,rep,name=requests,proto3" json:"requests,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Requests []*Request             `protobuf:"bytes,1,rep,name=requests,proto3" json:"requests,omitempty"`
+	// skip_response, when true, strips log payloads from the response.
+	// Only the sequence number is returned for each log. Useful for
+	// historical ingestion where the client does not need the full response.
+	SkipResponse  bool `protobuf:"varint,2,opt,name=skip_response,json=skipResponse,proto3" json:"skip_response,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -872,6 +876,13 @@ func (x *ApplyRequest) GetRequests() []*Request {
 		return x.Requests
 	}
 	return nil
+}
+
+func (x *ApplyRequest) GetSkipResponse() bool {
+	if x != nil {
+		return x.SkipResponse
+	}
+	return false
 }
 
 type ApplyResponse struct {
@@ -8159,9 +8170,10 @@ const file_bucket_proto_rawDesc = "" +
 	"\rcheckpoint_id\x18\x02 \x01(\x04R\fcheckpointId\"O\n" +
 	"\x10GetLedgerRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12#\n" +
-	"\rcheckpoint_id\x18\x02 \x01(\x04R\fcheckpointId\";\n" +
+	"\rcheckpoint_id\x18\x02 \x01(\x04R\fcheckpointId\"`\n" +
 	"\fApplyRequest\x12+\n" +
-	"\brequests\x18\x01 \x03(\v2\x0f.ledger.RequestR\brequests\"0\n" +
+	"\brequests\x18\x01 \x03(\v2\x0f.ledger.RequestR\brequests\x12#\n" +
+	"\rskip_response\x18\x02 \x01(\bR\fskipResponse\"0\n" +
 	"\rApplyResponse\x12\x1f\n" +
 	"\x04logs\x18\x01 \x03(\v2\v.common.LogR\x04logs\"\x87\x17\n" +
 	"\aRequest\x12'\n" +

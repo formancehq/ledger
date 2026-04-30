@@ -150,6 +150,7 @@ All write operations go through the unified `Apply` method, which accepts a batc
 ```protobuf
 message ApplyRequest {
   repeated Request requests = 1;
+  bool skip_response = 2;  // Strip log payloads from response (only sequence returned)
 }
 
 message Request {
@@ -407,6 +408,22 @@ resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 // Each request produces one log entry
 for i, log := range resp.Logs {
     fmt.Printf("Request %d: Log sequence %d\n", i, log.Sequence)
+}
+```
+
+### Skip Response
+
+For high-throughput ingestion scenarios where the client does not need the full response payload, set `skip_response: true`. The server returns one log per request containing only the `sequence` number, skipping receipt signing, response signing, and payload serialization:
+
+```go
+resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
+    Requests:     requests,
+    SkipResponse: true,
+})
+
+// Logs contain only the sequence number; all other fields are empty
+for _, log := range resp.Logs {
+    fmt.Printf("Committed: sequence %d\n", log.Sequence)
 }
 ```
 

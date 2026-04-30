@@ -173,6 +173,10 @@ message GetLedgerRequest {
 
 message ApplyRequest {
   repeated Request requests = 1;
+  // skip_response, when true, strips log payloads from the response.
+  // Only the sequence number is returned for each log. Useful for
+  // historical ingestion where the client does not need the full response.
+  bool skip_response = 2;
 }
 
 message ApplyResponse {

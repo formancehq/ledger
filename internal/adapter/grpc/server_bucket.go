@@ -119,22 +119,37 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 		return nil, err
 	}
 
-	// Sign receipts for created transactions (outside FSM to avoid Raft nondeterminism)
-	if impl.receiptSigner != nil {
-		for _, log := range logs {
-			impl.signReceiptIfNeeded(log)
-		}
-	}
+	skipResponse := req.GetSkipResponse()
 
-	// Sign response logs with server Ed25519 key (after receipt signing, since receipt is cleared before signing)
-	if impl.responseSigner != nil {
-		for _, log := range logs {
-			log.ResponseSignature = impl.responseSigner.SignLog(log)
+	if !skipResponse {
+		// Sign receipts for created transactions (outside FSM to avoid Raft nondeterminism)
+		if impl.receiptSigner != nil {
+			for _, log := range logs {
+				impl.signReceiptIfNeeded(log)
+			}
+		}
+
+		// Sign response logs with server Ed25519 key (after receipt signing, since receipt is cleared before signing)
+		if impl.responseSigner != nil {
+			for _, log := range logs {
+				log.ResponseSignature = impl.responseSigner.SignLog(log)
+			}
 		}
 	}
 
 	impl.applyDuration.Record(ctx, time.Since(start).Microseconds(),
 		metric.WithAttributes(attribute.Int("batch_size", len(req.GetRequests()))))
+
+	if skipResponse {
+		for _, log := range logs {
+			log.Payload = nil
+			log.Idempotency = nil
+			log.Hash = nil
+			log.Signature = nil
+			log.Receipt = ""
+			log.ResponseSignature = nil
+		}
+	}
 
 	return &servicepb.ApplyResponse{Logs: logs}, nil
 }

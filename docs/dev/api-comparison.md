@@ -651,6 +651,7 @@ The `Apply` method is the **single entry point for all ledger write operations**
 **Request:** `ApplyRequest` containing a `LedgerAction` with:
 - `ledger_id`: Target ledger ID
 - `idempotency_key`: Optional idempotency key
+- `skip_response`: When `true`, strips log payloads from the response (only `sequence` is returned per log). Useful for historical ingestion where the client does not need the full response on success.
 - One of:
   - `create_transaction`: Create a new transaction
   - `add_metadata`: Add metadata to an account or transaction
@@ -659,7 +660,7 @@ The `Apply` method is the **single entry point for all ledger write operations**
   - `save_numscript`: Save a numscript (with semver version)
   - `delete_numscript`: Delete a numscript
 
-**Response:** `common.Log` - The log entry created by the action
+**Response:** `common.Log` - The log entry created by the action (stripped to `sequence` only when `skip_response` is set)
 
 **Note:** Individual RPC methods like `CreateTransaction`, `RevertTransaction`, `SaveAccountMetadata`, etc. have been consolidated into the `Apply` method for a cleaner API.
 

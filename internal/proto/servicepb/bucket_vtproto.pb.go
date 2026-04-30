@@ -233,6 +233,7 @@ func (m *ApplyRequest) CloneVT() *ApplyRequest {
 		return (*ApplyRequest)(nil)
 	}
 	r := new(ApplyRequest)
+	r.SkipResponse = m.SkipResponse
 	if rhs := m.Requests; rhs != nil {
 		tmpContainer := make([]*Request, len(rhs))
 		for k, v := range rhs {
@@ -3293,6 +3294,9 @@ func (this *ApplyRequest) EqualVT(that *ApplyRequest) bool {
 				return false
 			}
 		}
+	}
+	if this.SkipResponse != that.SkipResponse {
+		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -8312,6 +8316,16 @@ func (m *ApplyRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.SkipResponse {
+		i--
+		if m.SkipResponse {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x10
 	}
 	if len(m.Requests) > 0 {
 		for iNdEx := len(m.Requests) - 1; iNdEx >= 0; iNdEx-- {
@@ -15295,6 +15309,9 @@ func (m *ApplyRequest) SizeVT() (n int) {
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
 	}
+	if m.SkipResponse {
+		n += 2
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -19663,6 +19680,26 @@ func (m *ApplyRequest) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SkipResponse", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.SkipResponse = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
