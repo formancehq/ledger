@@ -8,7 +8,6 @@ import (
 
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes"
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apiextensions"
-	v1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
@@ -31,15 +30,6 @@ func main() {
 			return fmt.Errorf("failed to create k8s provider: %w", err)
 		}
 
-		namespace, err := v1.NewNamespace(ctx, "namespace", &v1.NamespaceArgs{
-			Metadata: &metav1.ObjectMetaArgs{
-				Name: pulumi.String(namespaceName),
-			},
-		}, pulumi.Provider(k8sProvider))
-		if err != nil {
-			return fmt.Errorf("failed to create namespace: %w", err)
-		}
-
 		instanceSelector := cfg.Get("grafana-instance-selector")
 		if instanceSelector == "" {
 			instanceSelector = "grafana"
@@ -56,7 +46,7 @@ func main() {
 				Kind:       pulumi.String("GrafanaDashboard"),
 				Metadata: &metav1.ObjectMetaArgs{
 					Name:      pulumi.String(fmt.Sprintf("dashboard-%s", db.name)),
-					Namespace: namespace.Metadata.Name(),
+					Namespace: pulumi.String(namespaceName),
 				},
 				OtherFields: map[string]any{
 					"spec": map[string]any{
@@ -69,7 +59,6 @@ func main() {
 					},
 				},
 			},
-				pulumi.DependsOn([]pulumi.Resource{namespace}),
 				pulumi.Provider(k8sProvider),
 			)
 			if err != nil {
