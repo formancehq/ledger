@@ -260,6 +260,7 @@ func runServer(cmd *cobra.Command, _ []string) error {
 		}
 
 		pyroscopeCfg.Tags["node_id"] = strconv.FormatUint(cfg.RaftConfig.NodeID, 10)
+		pyroscopeCfg.Tags["cluster_id"] = cfg.ClusterID
 	}
 
 	// Configure trace sampling
