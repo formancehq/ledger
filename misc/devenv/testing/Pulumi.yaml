@@ -1,6 +1,0 @@
-name: ledger-testing
-runtime:
-  name: go
-  options:
-    buildTarget: ./bin/pulumi
-description: Testing tools (k6-operator, benchmark-operator)

@@ -1,0 +1,19 @@
+name: perf
+runtime:
+  name: go
+  options:
+    buildTarget: ./bin/pulumi
+description: k6 performance benchmark runner (ConfigMap + Benchmark CR)
+x-plr-config:
+  k8s-context:
+    type: string
+    required: true
+    description: Kubernetes context to use
+  benchmark:
+    type: object
+    required: true
+    description: >
+      Benchmark configuration object containing: script (k6 script name),
+      metadata (name, namespace), spec (parallelism, arguments, separate),
+      resources (LedgerService/Ledger manifests with readyConditions),
+      runner (env vars, nodeSelector, tolerations)
