@@ -498,6 +498,16 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, b
 			actualOutput = actual.GetOutput().ToBigInt()
 		}
 
+		// A zero-balanced volume (input == output) is semantically equivalent
+		// to absent. This matters for transient accounts: the real system may
+		// keep pre-existing zero-balanced volumes in Pebble while the replay
+		// store purges them (or vice versa). Both represent "no net balance".
+		expectedZeroBal := expectedInput.Cmp(expectedOutput) == 0
+		actualZeroBal := actualInput.Cmp(actualOutput) == 0
+		if expectedZeroBal && actualZeroBal {
+			continue
+		}
+
 		if expectedInput.Cmp(actualInput) != 0 {
 			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
 				fmt.Sprintf("input mismatch for %s/%s: expected %s, got %s",
