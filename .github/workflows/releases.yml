@@ -8,20 +8,18 @@ permissions:
 
 jobs:
   GoReleaser:
-    runs-on: "shipfox-4vcpu-ubuntu-2404"
+    runs-on: "namespace-profile-linux-amd64-4vcpu"
     steps:
-      - uses: actions/checkout@v4
+      - uses: namespacelabs/nscloud-checkout-action@v7
         with:
           fetch-depth: 0
-          filter: tree:0 # treeless clone, faster to clone as history and blobs are only fetched when needed.
+          dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
         with:
           token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: namespacelabs/nscloud-setup-buildx-action@v0
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
