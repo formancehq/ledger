@@ -30,10 +30,10 @@ jobs:
       GOPATH: /tmp/go
       GOLANGCI_LINT_CACHE: /tmp/golangci-lint
     steps:
-      - uses: actions/checkout@v6
+      - uses: namespacelabs/nscloud-checkout-action@v7
         with:
           fetch-depth: 0
-          filter: tree:0 # treeless clone, faster to clone as history and blobs are only fetched when needed.
+          dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
         with:
@@ -59,10 +59,10 @@ jobs:
     env:
       GOPATH: /tmp/go
     steps:
-      - uses: actions/checkout@v6
+      - uses: namespacelabs/nscloud-checkout-action@v7
         with:
           fetch-depth: 0
-          filter: tree:0 # treeless clone, faster to clone as history and blobs are only fetched when needed.
+          dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
         with:
@@ -91,10 +91,10 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           version: "latest"
-      - uses: actions/checkout@v6
+      - uses: namespacelabs/nscloud-checkout-action@v7
         with:
           fetch-depth: 0
-          filter: tree:0 # treeless clone, faster to clone as history and blobs are only fetched when needed.
+          dissociate: true
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       - name: Setup Env
         uses: ./.github/actions/default
