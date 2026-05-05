@@ -551,6 +551,65 @@ reference        -            -          READY
 timestamp        -            -          BUILDING (starting...)
 ```
 
+#### ledgers inspect-index
+
+Inspect a metadata index to see distinct values, facets (value + count), or a summary (cardinality, min, max, existence counts).
+
+**Aliases:** `ii`
+
+```bash
+ledgerctl ledgers inspect-index [flags]
+```
+
+**Flags:**
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--ledger` | Name of the ledger | (interactive) |
+| `--key` | Metadata key to inspect (required) | |
+| `--target` | Target type: `account` or `transaction` | `account` |
+| `--mode` | Mode: `summary`, `distinct-values`, `facets` | `summary` |
+| `--page-size` | Page size for distinct-values/facets | `20` |
+| `--cursor` | Pagination cursor from previous response | |
+| `--timeout` | Request timeout | `10s` |
+
+**Examples:**
+
+```bash
+# Get a summary of the "category" index
+ledgerctl ledgers inspect-index --ledger my-ledger --key category
+
+# List distinct values
+ledgerctl ledgers inspect-index --ledger my-ledger --key category --mode distinct-values
+
+# List facets (value + count)
+ledgerctl ledgers inspect-index --ledger my-ledger --key status --mode facets --target transaction
+
+# Paginate through distinct values
+ledgerctl ledgers inspect-index --ledger my-ledger --key category --mode distinct-values --page-size 10
+```
+
+**Sample output (summary mode):**
+
+```
+Index: category on account (ledger: my-ledger)
+─────────────────────────────────
+Cardinality:       3
+Min:               "basic"
+Max:               "premium"
+Entities with key: 150
+Entities null:     12
+```
+
+**Sample output (facets mode):**
+
+```
+VALUE          COUNT
+"premium"      80
+"basic"        58
+"enterprise"   12
+```
+
 #### ledgers catalog
 
 Show a ledger's full configuration catalog: chart of accounts, indexes, prepared queries, and numscript library.

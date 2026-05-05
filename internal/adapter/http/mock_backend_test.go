@@ -247,4 +247,8 @@ func (m *mockBackend) GetEventsSinks(_ context.Context) ([]*commonpb.SinkConfig,
 	return nil, nil
 }
 
+func (m *mockBackend) InspectIndex(_ context.Context, _ *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error) {
+	return nil, nil
+}
+
 var _ Backend = (*mockBackend)(nil)

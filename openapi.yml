@@ -813,6 +813,78 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
+  /{ledgerName}/indexes/{metadataKey}:
+    get:
+      summary: Inspect a metadata index
+      description: |
+        Scans a metadata index and returns distinct values, facets (value + count),
+        or a summary (cardinality, min/max, existence counts). The index must be
+        in READY state. Requires `ledger:read` scope.
+      operationId: inspectIndex
+      tags:
+        - Indexes
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - name: metadataKey
+          in: path
+          required: true
+          description: Metadata key to inspect
+          schema:
+            type: string
+        - name: target
+          in: query
+          description: Target type
+          schema:
+            type: string
+            enum: [account, transaction]
+            default: account
+        - name: mode
+          in: query
+          description: Inspection mode
+          schema:
+            type: string
+            enum: [summary, distinctValues, facets]
+            default: summary
+        - name: pageSize
+          in: query
+          description: Page size for distinctValues/facets modes
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10000
+        - name: cursor
+          in: query
+          description: Pagination cursor from previous response
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Index inspection result
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/InspectSummaryResponse'
+                  - $ref: '#/components/schemas/InspectDistinctValuesResponse'
+                  - $ref: '#/components/schemas/InspectFacetsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
   /{ledgerName}/analyze-accounts:
     get:
       summary: Analyze accounts and suggest a Chart of Accounts
@@ -2239,6 +2311,78 @@ components:
         isPaused:
           type: boolean
           description: Whether this node is paused
+
+    InspectSummaryResponse:
+      type: object
+      required:
+        - cardinality
+        - entitiesWithKey
+        - entitiesWithNull
+      properties:
+        cardinality:
+          type: integer
+          format: uint64
+          description: Number of distinct values
+        min:
+          description: Minimum value (null if index is empty)
+        max:
+          description: Maximum value (null if index is empty)
+        entitiesWithKey:
+          type: integer
+          format: uint64
+          description: Number of entities that have this metadata key set (non-null)
+        entitiesWithNull:
+          type: integer
+          format: uint64
+          description: Number of entities with a null value for this key
+
+    InspectDistinctValuesResponse:
+      type: object
+      required:
+        - values
+        - hasMore
+      properties:
+        values:
+          type: array
+          items: {}
+          description: Distinct values in sorted order
+        hasMore:
+          type: boolean
+          description: Whether more values are available
+        nextCursor:
+          type: string
+          description: Pagination cursor for the next page
+
+    InspectFacetsResponse:
+      type: object
+      required:
+        - facets
+        - hasMore
+      properties:
+        facets:
+          type: array
+          items:
+            $ref: '#/components/schemas/InspectFacet'
+          description: Facets sorted by value
+        hasMore:
+          type: boolean
+          description: Whether more facets are available
+        nextCursor:
+          type: string
+          description: Pagination cursor for the next page
+
+    InspectFacet:
+      type: object
+      required:
+        - value
+        - count
+      properties:
+        value:
+          description: The metadata value
+        count:
+          type: integer
+          format: uint64
+          description: Number of entities with this value
 
     MetadataSchemaStatusResponse:
       type: object

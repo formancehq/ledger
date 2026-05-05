@@ -288,6 +288,21 @@ func (mr *MockControllerMockRecorder) GetTransaction(ctx, ledgerName, transactio
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTransaction", reflect.TypeOf((*MockController)(nil).GetTransaction), ctx, ledgerName, transactionID)
 }
 
+// InspectIndex mocks base method.
+func (m *MockController) InspectIndex(ctx context.Context, req *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InspectIndex", ctx, req)
+	ret0, _ := ret[0].(*servicepb.InspectIndexResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InspectIndex indicates an expected call of InspectIndex.
+func (mr *MockControllerMockRecorder) InspectIndex(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InspectIndex", reflect.TypeOf((*MockController)(nil).InspectIndex), ctx, req)
+}
+
 // ListAccounts mocks base method.
 func (m *MockController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Account], error) {
 	m.ctrl.T.Helper()

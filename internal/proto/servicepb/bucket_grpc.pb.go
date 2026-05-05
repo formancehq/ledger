@@ -53,6 +53,7 @@ const (
 	BucketService_AggregateVolumes_FullMethodName        = "/ledger.BucketService/AggregateVolumes"
 	BucketService_GetNumscript_FullMethodName            = "/ledger.BucketService/GetNumscript"
 	BucketService_ListNumscripts_FullMethodName          = "/ledger.BucketService/ListNumscripts"
+	BucketService_InspectIndex_FullMethodName            = "/ledger.BucketService/InspectIndex"
 	BucketService_Barrier_FullMethodName                 = "/ledger.BucketService/Barrier"
 )
 
@@ -126,6 +127,8 @@ type BucketServiceClient interface {
 	GetNumscript(ctx context.Context, in *GetNumscriptRequest, opts ...grpc.CallOption) (*commonpb.NumscriptInfo, error)
 	// ListNumscripts streams all numscripts (latest version of each)
 	ListNumscripts(ctx context.Context, in *ListNumscriptsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.NumscriptInfo], error)
+	// InspectIndex scans a metadata index and returns distinct values, facets, or a summary
+	InspectIndex(ctx context.Context, in *InspectIndexRequest, opts ...grpc.CallOption) (*InspectIndexResponse, error)
 	// Barrier proposes a no-op through Raft consensus. When it returns, all
 	// previously proposed entries are guaranteed to have been applied to the FSM.
 	// Useful for ensuring read-after-write consistency across API calls.
@@ -559,6 +562,16 @@ func (c *bucketServiceClient) ListNumscripts(ctx context.Context, in *ListNumscr
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type BucketService_ListNumscriptsClient = grpc.ServerStreamingClient[commonpb.NumscriptInfo]
 
+func (c *bucketServiceClient) InspectIndex(ctx context.Context, in *InspectIndexRequest, opts ...grpc.CallOption) (*InspectIndexResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(InspectIndexResponse)
+	err := c.cc.Invoke(ctx, BucketService_InspectIndex_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *bucketServiceClient) Barrier(ctx context.Context, in *BarrierRequest, opts ...grpc.CallOption) (*BarrierResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(BarrierResponse)
@@ -639,6 +652,8 @@ type BucketServiceServer interface {
 	GetNumscript(context.Context, *GetNumscriptRequest) (*commonpb.NumscriptInfo, error)
 	// ListNumscripts streams all numscripts (latest version of each)
 	ListNumscripts(*ListNumscriptsRequest, grpc.ServerStreamingServer[commonpb.NumscriptInfo]) error
+	// InspectIndex scans a metadata index and returns distinct values, facets, or a summary
+	InspectIndex(context.Context, *InspectIndexRequest) (*InspectIndexResponse, error)
 	// Barrier proposes a no-op through Raft consensus. When it returns, all
 	// previously proposed entries are guaranteed to have been applied to the FSM.
 	// Useful for ensuring read-after-write consistency across API calls.
@@ -748,6 +763,9 @@ func (UnimplementedBucketServiceServer) GetNumscript(context.Context, *GetNumscr
 }
 func (UnimplementedBucketServiceServer) ListNumscripts(*ListNumscriptsRequest, grpc.ServerStreamingServer[commonpb.NumscriptInfo]) error {
 	return status.Error(codes.Unimplemented, "method ListNumscripts not implemented")
+}
+func (UnimplementedBucketServiceServer) InspectIndex(context.Context, *InspectIndexRequest) (*InspectIndexResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method InspectIndex not implemented")
 }
 func (UnimplementedBucketServiceServer) Barrier(context.Context, *BarrierRequest) (*BarrierResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Barrier not implemented")
@@ -1272,6 +1290,24 @@ func _BucketService_ListNumscripts_Handler(srv interface{}, stream grpc.ServerSt
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type BucketService_ListNumscriptsServer = grpc.ServerStreamingServer[commonpb.NumscriptInfo]
 
+func _BucketService_InspectIndex_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InspectIndexRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BucketServiceServer).InspectIndex(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BucketService_InspectIndex_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BucketServiceServer).InspectIndex(ctx, req.(*InspectIndexRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _BucketService_Barrier_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(BarrierRequest)
 	if err := dec(in); err != nil {
@@ -1380,6 +1416,10 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetNumscript",
 			Handler:    _BucketService_GetNumscript_Handler,
+		},
+		{
+			MethodName: "InspectIndex",
+			Handler:    _BucketService_InspectIndex_Handler,
 		},
 		{
 			MethodName: "Barrier",

@@ -379,6 +379,15 @@ func (b *RoutedController) GetEventsSinks(ctx context.Context) ([]*commonpb.Sink
 	return c.GetEventsSinks(ctx)
 }
 
+func (b *RoutedController) InspectIndex(ctx context.Context, req *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error) {
+	c, _, err := b.readCtrl(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.InspectIndex(ctx, req)
+}
+
 var _ ctrl.Controller = (*RoutedController)(nil)
 
 func NewRoutedController(localController ctrl.Controller, node *node.Node, servicePool *transport.ConnectionPool) *RoutedController {

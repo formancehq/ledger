@@ -2,6 +2,7 @@ package ctrl
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -28,7 +29,10 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
 )
 
-var tracer = otel.Tracer("ctrl")
+var (
+	tracer         = otel.Tracer("ctrl")
+	base64Encoding = base64.RawURLEncoding
+)
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller_default.go -destination controller_default_generated_test.go -package ctrl . Admission
 type Admission interface {
@@ -772,6 +776,155 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 	}
 
 	return result, nil
+}
+
+// InspectIndex scans a metadata index and returns distinct values, facets, or a summary.
+func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error) {
+	ctx, span := tracer.Start(ctx, "ctrl.inspect_index",
+		trace.WithAttributes(
+			attribute.String("ledger", req.GetLedger()),
+			attribute.String("metadata_key", req.GetMetadataKey()),
+		))
+	defer span.End()
+
+	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store, req.GetLedger())
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, commonpb.NewNotFoundError("ledger %s not found", req.GetLedger())
+		}
+
+		return nil, err
+	}
+
+	var (
+		fields    map[string]*commonpb.MetadataFieldSchema
+		namespace string
+	)
+
+	switch req.GetTargetType() {
+	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		fields = ledgerInfo.GetMetadataSchema().GetTransactionFields()
+		namespace = readstore.NamespaceTransaction
+	default:
+		fields = ledgerInfo.GetMetadataSchema().GetAccountFields()
+		namespace = readstore.NamespaceAccount
+	}
+
+	metaKey := req.GetMetadataKey()
+
+	fieldSchema, ok := fields[metaKey]
+	if !ok || !fieldSchema.GetIndexed() {
+		return nil, &domain.BusinessError{Err: &domain.ErrIndexNotFound{
+			Index: fmt.Sprintf("metadata[%q] on %s", metaKey, req.GetTargetType()),
+		}}
+	}
+
+	if fieldSchema.GetIndexBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+		return nil, &domain.BusinessError{Err: &domain.ErrIndexBuilding{
+			Index: fmt.Sprintf("metadata[%q] on %s", metaKey, req.GetTargetType()),
+		}}
+	}
+
+	snap := ctrl.readStore.NewSnapshot()
+	defer func() { _ = snap.Close() }()
+
+	var cursorBytes []byte
+	if c := req.GetCursor(); c != "" {
+		cursorBytes, err = decodeCursor(c)
+		if err != nil {
+			return nil, fmt.Errorf("invalid cursor: %w", err)
+		}
+	}
+
+	var mode readstore.InspectMode
+	switch req.GetMode() {
+	case servicepb.InspectIndexMode_INSPECT_INDEX_MODE_FACETS:
+		mode = readstore.InspectFacetsMode
+	case servicepb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY:
+		mode = readstore.InspectSummaryMode
+	default:
+		mode = readstore.InspectDistinctValuesMode
+	}
+
+	inspectResult, err := readstore.InspectIndex(readstore.InspectParams{
+		Reader:      snap,
+		KB:          dal.NewKeyBuilder(),
+		Ledger:      ledgerInfo.GetName(),
+		Namespace:   namespace,
+		MetadataKey: metaKey,
+		Mode:        mode,
+		PageSize:    req.GetPageSize(),
+		CursorBytes: cursorBytes,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("inspecting index: %w", err)
+	}
+
+	return toInspectIndexResponse(inspectResult), nil
+}
+
+func toInspectIndexResponse(r *readstore.InspectResult) *servicepb.InspectIndexResponse {
+	if r.Values != nil {
+		var nextCursor string
+		if r.HasMore && len(r.NextCursor) > 0 {
+			nextCursor = encodeCursor(r.NextCursor)
+		}
+
+		return &servicepb.InspectIndexResponse{
+			Result: &servicepb.InspectIndexResponse_DistinctValues{
+				DistinctValues: &servicepb.InspectDistinctValues{
+					Values:     r.Values,
+					HasMore:    r.HasMore,
+					NextCursor: nextCursor,
+				},
+			},
+		}
+	}
+
+	if r.Facets != nil {
+		facets := make([]*servicepb.InspectFacet, len(r.Facets))
+		for i, f := range r.Facets {
+			facets[i] = &servicepb.InspectFacet{
+				Value: f.Value,
+				Count: f.Count,
+			}
+		}
+
+		var nextCursor string
+		if r.HasMore && len(r.NextCursor) > 0 {
+			nextCursor = encodeCursor(r.NextCursor)
+		}
+
+		return &servicepb.InspectIndexResponse{
+			Result: &servicepb.InspectIndexResponse_Facets{
+				Facets: &servicepb.InspectFacets{
+					Facets:     facets,
+					HasMore:    r.HasMore,
+					NextCursor: nextCursor,
+				},
+			},
+		}
+	}
+
+	return &servicepb.InspectIndexResponse{
+		Result: &servicepb.InspectIndexResponse_Summary{
+			Summary: &servicepb.InspectSummary{
+				Cardinality:      r.Cardinality,
+				Min:              r.Min,
+				Max:              r.Max,
+				EntitiesWithKey:  r.EntitiesWithKey,
+				EntitiesWithNull: r.EntitiesWithNull,
+			},
+		},
+	}
+}
+
+func decodeCursor(s string) ([]byte, error) {
+	return base64Encoding.DecodeString(s)
+}
+
+func encodeCursor(b []byte) string {
+	return base64Encoding.EncodeToString(b)
 }
 
 // ListLogs returns a cursor over logs. When filter contains a ledger condition, only logs for

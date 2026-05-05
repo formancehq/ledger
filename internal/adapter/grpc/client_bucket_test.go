@@ -230,6 +230,10 @@ func (m *mockBucketServiceClient) Barrier(_ context.Context, _ *servicepb.Barrie
 	return nil, nil
 }
 
+func (m *mockBucketServiceClient) InspectIndex(_ context.Context, _ *servicepb.InspectIndexRequest, _ ...grpc.CallOption) (*servicepb.InspectIndexResponse, error) {
+	return nil, nil
+}
+
 var _ servicepb.BucketServiceClient = (*mockBucketServiceClient)(nil)
 
 // --- Tests ---

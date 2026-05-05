@@ -64,6 +64,9 @@ type Controller interface {
 	GetPeriodSchedule(ctx context.Context) (string, error)
 	GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, error)
 
+	// Index inspection
+	InspectIndex(ctx context.Context, req *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error)
+
 	// Write operations - single entry point for all requests
 	Apply(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error)
 

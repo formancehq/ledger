@@ -336,4 +336,8 @@ func (g *BucketGrpcClient) GetEventsSinks(ctx context.Context) ([]*commonpb.Sink
 	return resp.GetSinks(), nil
 }
 
+func (g *BucketGrpcClient) InspectIndex(ctx context.Context, req *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error) {
+	return g.client.InspectIndex(ctx, req)
+}
+
 var _ ctrl.Controller = (*BucketGrpcClient)(nil)

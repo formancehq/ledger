@@ -924,6 +924,22 @@ func (impl *BucketServiceServerImpl) ListNumscripts(req *servicepb.ListNumscript
 	return nil
 }
 
+func (impl *BucketServiceServerImpl) InspectIndex(ctx context.Context, req *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeLedgersRead); err != nil {
+		return nil, err
+	}
+
+	if req.GetLedger() == "" {
+		return nil, errors.New("ledger name is required")
+	}
+
+	if req.GetMetadataKey() == "" {
+		return nil, errors.New("metadata_key is required")
+	}
+
+	return impl.ctrl.InspectIndex(ctx, req)
+}
+
 func (impl *BucketServiceServerImpl) Barrier(ctx context.Context, _ *servicepb.BarrierRequest) (*servicepb.BarrierResponse, error) {
 	commitIndex, err := impl.ctrl.Barrier(ctx)
 	if err != nil {

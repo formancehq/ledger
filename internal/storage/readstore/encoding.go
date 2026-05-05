@@ -1,6 +1,13 @@
 package readstore
 
-import "encoding/binary"
+import (
+	"bytes"
+	"encoding/binary"
+	"errors"
+	"fmt"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+)
 
 // Type tags for sortable value encoding in Pebble keys.
 // These ensure values of different types sort into distinct regions.
@@ -71,6 +78,113 @@ func EncodeNull(dst []byte, rawValue string) []byte {
 	dst = append(dst, 0x00)
 
 	return dst
+}
+
+// DecodeValue decodes an encoded metadata value starting at data[0].
+// Returns the decoded MetadataValue and the number of bytes consumed.
+func DecodeValue(data []byte) (*commonpb.MetadataValue, int, error) {
+	if len(data) == 0 {
+		return nil, 0, errors.New("empty data")
+	}
+
+	switch data[0] {
+	case TypeTagString:
+		s, n, err := DecodeString(data[1:])
+		if err != nil {
+			return nil, 0, err
+		}
+
+		return &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: s}}, 1 + n, nil
+
+	case TypeTagInt:
+		v, n, err := DecodeInt64(data[1:])
+		if err != nil {
+			return nil, 0, err
+		}
+
+		return &commonpb.MetadataValue{Type: &commonpb.MetadataValue_IntValue{IntValue: v}}, 1 + n, nil
+
+	case TypeTagUint:
+		v, n, err := DecodeUint64(data[1:])
+		if err != nil {
+			return nil, 0, err
+		}
+
+		return &commonpb.MetadataValue{Type: &commonpb.MetadataValue_UintValue{UintValue: v}}, 1 + n, nil
+
+	case TypeTagBool:
+		v, n, err := DecodeBool(data[1:])
+		if err != nil {
+			return nil, 0, err
+		}
+
+		return &commonpb.MetadataValue{Type: &commonpb.MetadataValue_BoolValue{BoolValue: v}}, 1 + n, nil
+
+	case TypeTagNull:
+		s, n, err := DecodeNull(data[1:])
+		if err != nil {
+			return nil, 0, err
+		}
+
+		return &commonpb.MetadataValue{Type: &commonpb.MetadataValue_NullValue{NullValue: &commonpb.NullValue{Original: s}}}, 1 + n, nil
+
+	default:
+		return nil, 0, fmt.Errorf("unknown type tag: 0x%02x", data[0])
+	}
+}
+
+// DecodeString decodes a null-terminated string.
+// data starts AFTER the type tag.
+func DecodeString(data []byte) (string, int, error) {
+	idx := bytes.IndexByte(data, 0x00)
+	if idx < 0 {
+		return "", 0, errors.New("string value missing null terminator")
+	}
+
+	return string(data[:idx]), idx + 1, nil
+}
+
+// DecodeInt64 decodes a sign-XOR'd big-endian int64.
+// data starts AFTER the type tag.
+func DecodeInt64(data []byte) (int64, int, error) {
+	if len(data) < 8 {
+		return 0, 0, fmt.Errorf("int64 value too short: need 8, got %d", len(data))
+	}
+
+	raw := binary.BigEndian.Uint64(data[:8])
+
+	return int64(raw ^ 0x8000000000000000), 8, nil
+}
+
+// DecodeUint64 decodes a big-endian uint64.
+// data starts AFTER the type tag.
+func DecodeUint64(data []byte) (uint64, int, error) {
+	if len(data) < 8 {
+		return 0, 0, fmt.Errorf("uint64 value too short: need 8, got %d", len(data))
+	}
+
+	return binary.BigEndian.Uint64(data[:8]), 8, nil
+}
+
+// DecodeBool decodes a single-byte boolean.
+// data starts AFTER the type tag.
+func DecodeBool(data []byte) (bool, int, error) {
+	if len(data) < 1 {
+		return false, 0, errors.New("bool value too short")
+	}
+
+	return data[0] == 0x01, 1, nil
+}
+
+// DecodeNull decodes a null-terminated original value.
+// data starts AFTER the type tag.
+func DecodeNull(data []byte) (string, int, error) {
+	idx := bytes.IndexByte(data, 0x00)
+	if idx < 0 {
+		return "", 0, errors.New("null value missing null terminator")
+	}
+
+	return string(data[:idx]), idx + 1, nil
 }
 
 // EncodeTxID appends a transaction ID as 8-byte big-endian.

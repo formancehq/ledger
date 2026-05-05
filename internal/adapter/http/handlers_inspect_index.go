@@ -1,0 +1,155 @@
+package http
+
+import (
+	"net/http"
+	"strconv"
+
+	"github.com/go-chi/chi/v5"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+)
+
+type inspectDistinctValuesJSON struct {
+	Values     []any  `json:"values"`
+	HasMore    bool   `json:"hasMore"`
+	NextCursor string `json:"nextCursor,omitempty"`
+}
+
+type inspectFacetJSON struct {
+	Value any    `json:"value"`
+	Count uint64 `json:"count"`
+}
+
+type inspectFacetsJSON struct {
+	Facets     []inspectFacetJSON `json:"facets"`
+	HasMore    bool               `json:"hasMore"`
+	NextCursor string             `json:"nextCursor,omitempty"`
+}
+
+type inspectSummaryJSON struct {
+	Cardinality      uint64 `json:"cardinality"`
+	Min              any    `json:"min"`
+	Max              any    `json:"max"`
+	EntitiesWithKey  uint64 `json:"entitiesWithKey"`
+	EntitiesWithNull uint64 `json:"entitiesWithNull"`
+}
+
+func metadataValueToAny(v *commonpb.MetadataValue) any {
+	if v == nil {
+		return nil
+	}
+
+	switch t := v.GetType().(type) {
+	case *commonpb.MetadataValue_StringValue:
+		return t.StringValue
+	case *commonpb.MetadataValue_IntValue:
+		return t.IntValue
+	case *commonpb.MetadataValue_UintValue:
+		return t.UintValue
+	case *commonpb.MetadataValue_BoolValue:
+		return t.BoolValue
+	case *commonpb.MetadataValue_NullValue:
+		return nil
+	default:
+		return nil
+	}
+}
+
+func (s *Server) handleInspectIndex(w http.ResponseWriter, r *http.Request) {
+	ledgerName, ok := requireLedgerName(w, r)
+	if !ok {
+		return
+	}
+
+	metadataKey := chi.URLParam(r, "metadataKey")
+	if metadataKey == "" {
+		writeBadRequest(w, "MISSING_METADATA_KEY", nil)
+
+		return
+	}
+
+	targetType := commonpb.TargetType_TARGET_TYPE_ACCOUNT
+	if r.URL.Query().Get("target") == "transaction" {
+		targetType = commonpb.TargetType_TARGET_TYPE_TRANSACTION
+	}
+
+	var mode servicepb.InspectIndexMode
+	switch r.URL.Query().Get("mode") {
+	case "distinctValues", "distinct-values":
+		mode = servicepb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES
+	case "facets":
+		mode = servicepb.InspectIndexMode_INSPECT_INDEX_MODE_FACETS
+	default:
+		mode = servicepb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY
+	}
+
+	var pageSize uint32
+	if ps := r.URL.Query().Get("pageSize"); ps != "" {
+		v, err := strconv.ParseUint(ps, 10, 32)
+		if err != nil {
+			writeBadRequest(w, "INVALID_PAGE_SIZE", err)
+
+			return
+		}
+
+		pageSize = uint32(v)
+	}
+
+	resp, err := s.backend.InspectIndex(r.Context(), &servicepb.InspectIndexRequest{
+		Ledger:      ledgerName,
+		TargetType:  targetType,
+		MetadataKey: metadataKey,
+		Mode:        mode,
+		PageSize:    pageSize,
+		Cursor:      r.URL.Query().Get("cursor"),
+	})
+	if err != nil {
+		handleError(w, r, err)
+
+		return
+	}
+
+	switch result := resp.GetResult().(type) {
+	case *servicepb.InspectIndexResponse_DistinctValues:
+		dv := result.DistinctValues
+		values := make([]any, len(dv.GetValues()))
+
+		for i, v := range dv.GetValues() {
+			values[i] = metadataValueToAny(v)
+		}
+
+		writeOK(w, &inspectDistinctValuesJSON{
+			Values:     values,
+			HasMore:    dv.GetHasMore(),
+			NextCursor: dv.GetNextCursor(),
+		})
+
+	case *servicepb.InspectIndexResponse_Facets:
+		f := result.Facets
+		facets := make([]inspectFacetJSON, len(f.GetFacets()))
+
+		for i, fv := range f.GetFacets() {
+			facets[i] = inspectFacetJSON{
+				Value: metadataValueToAny(fv.GetValue()),
+				Count: fv.GetCount(),
+			}
+		}
+
+		writeOK(w, &inspectFacetsJSON{
+			Facets:     facets,
+			HasMore:    f.GetHasMore(),
+			NextCursor: f.GetNextCursor(),
+		})
+
+	case *servicepb.InspectIndexResponse_Summary:
+		s := result.Summary
+		writeOK(w, &inspectSummaryJSON{
+			Cardinality:      s.GetCardinality(),
+			Min:              metadataValueToAny(s.GetMin()),
+			Max:              metadataValueToAny(s.GetMax()),
+			EntitiesWithKey:  s.GetEntitiesWithKey(),
+			EntitiesWithNull: s.GetEntitiesWithNull(),
+		})
+	}
+}

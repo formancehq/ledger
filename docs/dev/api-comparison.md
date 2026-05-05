@@ -637,6 +637,7 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `GetIndexStatus` | Read index builder progress (lag, file size) | ✅ |
 | `GetLedgerStats` | Get aggregate statistics (account + transaction count) | ✅ |
 | `AggregateVolumes` | Per-asset aggregated volumes for filtered accounts | ✅ |
+| `InspectIndex` | Inspect metadata index (distinct values, facets, summary) | ✅ |
 
 ### Apply Method
 

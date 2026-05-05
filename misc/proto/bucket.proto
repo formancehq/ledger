@@ -79,6 +79,8 @@ service BucketService {
   rpc GetNumscript(GetNumscriptRequest) returns (common.NumscriptInfo);
   // ListNumscripts streams all numscripts (latest version of each)
   rpc ListNumscripts(ListNumscriptsRequest) returns (stream common.NumscriptInfo);
+  // InspectIndex scans a metadata index and returns distinct values, facets, or a summary
+  rpc InspectIndex(InspectIndexRequest) returns (InspectIndexResponse);
   // Barrier proposes a no-op through Raft consensus. When it returns, all
   // previously proposed entries are guaranteed to have been applied to the FSM.
   // Useful for ensuring read-after-write consistency across API calls.
@@ -994,6 +996,59 @@ message IteratorProfile {
   int64 next_calls = 4;
   int64 seek_calls = 5;
   repeated IteratorProfile children = 6;
+}
+
+// ============================================================================
+// Index Inspection Messages
+// ============================================================================
+
+enum InspectIndexMode {
+  INSPECT_INDEX_MODE_DISTINCT_VALUES = 0;
+  INSPECT_INDEX_MODE_FACETS = 1;
+  INSPECT_INDEX_MODE_SUMMARY = 2;
+}
+
+message InspectIndexRequest {
+  string ledger = 1;
+  common.TargetType target_type = 2;
+  string metadata_key = 3;
+  InspectIndexMode mode = 4;
+  uint32 page_size = 5;
+  string cursor = 6;
+  uint64 checkpoint_id = 7;
+}
+
+message InspectIndexResponse {
+  oneof result {
+    InspectDistinctValues distinct_values = 1;
+    InspectFacets facets = 2;
+    InspectSummary summary = 3;
+  }
+}
+
+message InspectDistinctValues {
+  repeated common.MetadataValue values = 1;
+  bool has_more = 2;
+  string next_cursor = 3;
+}
+
+message InspectFacet {
+  common.MetadataValue value = 1;
+  uint64 count = 2;
+}
+
+message InspectFacets {
+  repeated InspectFacet facets = 1;
+  bool has_more = 2;
+  string next_cursor = 3;
+}
+
+message InspectSummary {
+  uint64 cardinality = 1;
+  common.MetadataValue min = 2;
+  common.MetadataValue max = 3;
+  uint64 entities_with_key = 4;
+  uint64 entities_with_null = 5;
 }
 
 // ============================================================================
