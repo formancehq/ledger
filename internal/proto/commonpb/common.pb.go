@@ -2753,6 +2753,7 @@ type Log struct {
 	Signature         *signaturepb.RequestSignature  `protobuf:"bytes,5,opt,name=signature,proto3" json:"signature,omitempty"`
 	Receipt           string                         `protobuf:"bytes,6,opt,name=receipt,proto3" json:"receipt,omitempty"`
 	ResponseSignature *signaturepb.ResponseSignature `protobuf:"bytes,7,opt,name=response_signature,json=responseSignature,proto3" json:"response_signature,omitempty"`
+	HashVersion       uint32                         `protobuf:"varint,8,opt,name=hash_version,json=hashVersion,proto3" json:"hash_version,omitempty"` // Hash algorithm version (0 = legacy = v1)
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -2834,6 +2835,13 @@ func (x *Log) GetResponseSignature() *signaturepb.ResponseSignature {
 		return x.ResponseSignature
 	}
 	return nil
+}
+
+func (x *Log) GetHashVersion() uint32 {
+	if x != nil {
+		return x.HashVersion
+	}
+	return 0
 }
 
 type LogPayload struct {
@@ -7447,6 +7455,7 @@ type IdempotencyKeyValue struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	LogSequence   uint64                 `protobuf:"varint,1,opt,name=log_sequence,json=logSequence,proto3" json:"log_sequence,omitempty"`
 	Hash          []byte                 `protobuf:"bytes,2,opt,name=hash,proto3" json:"hash,omitempty"`
+	HashVersion   uint32                 `protobuf:"varint,3,opt,name=hash_version,json=hashVersion,proto3" json:"hash_version,omitempty"` // Hash algorithm version (0 = legacy = v1)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -7493,6 +7502,13 @@ func (x *IdempotencyKeyValue) GetHash() []byte {
 		return x.Hash
 	}
 	return nil
+}
+
+func (x *IdempotencyKeyValue) GetHashVersion() uint32 {
+	if x != nil {
+		return x.HashVersion
+	}
+	return 0
 }
 
 // TransactionReferenceValue stores the transaction ID associated with a unique reference within a ledger.
@@ -9870,7 +9886,7 @@ const file_common_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\"=\n" +
 	"\x10IdempotencyEntry\x12\x12\n" +
 	"\x04hash\x18\x01 \x01(\fR\x04hash\x12\x15\n" +
-	"\x06log_id\x18\x02 \x01(\x04R\x05logId\"\xbc\x02\n" +
+	"\x06log_id\x18\x02 \x01(\x04R\x05logId\"\xdf\x02\n" +
 	"\x03Log\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x04R\bsequence\x12,\n" +
 	"\apayload\x18\x02 \x01(\v2\x12.common.LogPayloadR\apayload\x125\n" +
@@ -9878,7 +9894,8 @@ const file_common_proto_rawDesc = "" +
 	"\x04hash\x18\x04 \x01(\fR\x04hash\x129\n" +
 	"\tsignature\x18\x05 \x01(\v2\x1b.signature.RequestSignatureR\tsignature\x12\x18\n" +
 	"\areceipt\x18\x06 \x01(\tR\areceipt\x12K\n" +
-	"\x12response_signature\x18\a \x01(\v2\x1c.signature.ResponseSignatureR\x11responseSignature\"\xa0\x10\n" +
+	"\x12response_signature\x18\a \x01(\v2\x1c.signature.ResponseSignatureR\x11responseSignature\x12!\n" +
+	"\fhash_version\x18\b \x01(\rR\vhashVersion\"\xa0\x10\n" +
 	"\n" +
 	"LogPayload\x12>\n" +
 	"\rcreate_ledger\x18\x01 \x01(\v2\x17.common.CreateLedgerLogH\x00R\fcreateLedger\x12>\n" +
@@ -10221,10 +10238,11 @@ const file_common_proto_rawDesc = "" +
 	"\x10TransactionState\x12$\n" +
 	"\x0ecreated_by_log\x18\x01 \x01(\x04R\fcreatedByLog\x126\n" +
 	"\x17reverted_by_transaction\x18\x02 \x01(\x04R\x15revertedByTransaction\x12/\n" +
-	"\bmetadata\x18\x03 \x01(\v2\x13.common.MetadataSetR\bmetadata\"L\n" +
+	"\bmetadata\x18\x03 \x01(\v2\x13.common.MetadataSetR\bmetadata\"o\n" +
 	"\x13IdempotencyKeyValue\x12!\n" +
 	"\flog_sequence\x18\x01 \x01(\x04R\vlogSequence\x12\x12\n" +
-	"\x04hash\x18\x02 \x01(\fR\x04hash\"B\n" +
+	"\x04hash\x18\x02 \x01(\fR\x04hash\x12!\n" +
+	"\fhash_version\x18\x03 \x01(\rR\vhashVersion\"B\n" +
 	"\x19TransactionReferenceValue\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\x04R\rtransactionId\"\xec\x01\n" +
 	"\vAccountType\x12\x12\n" +

@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/zeebo/blake3"
 	"go.opentelemetry.io/otel/metric/noop"
 	"google.golang.org/protobuf/proto"
 
@@ -60,7 +59,6 @@ type testEngine struct {
 	currentOpenPeriod      *commonpb.Period
 	closingPeriods         []*commonpb.Period
 	nextPeriodID           uint64
-	hasher                 *blake3.Hasher
 	raftIndex              uint64
 	pendingLedgerDeletions []string
 }
@@ -93,7 +91,6 @@ func newTestEngine(t *testing.T) *testEngine {
 		references:        make(map[string]*commonpb.TransactionReferenceValue),
 		transactionStates: make(map[string]*commonpb.TransactionState),
 		nextPeriodID:      1,
-		hasher:            blake3.New(),
 		raftIndex:         1,
 	}
 }
@@ -757,7 +754,6 @@ func TestCheckerDetectsHashMismatch(t *testing.T) {
 	attrs := attributes.New()
 
 	// Manually write a log with a bad hash
-	hasher := blake3.New()
 	log1 := &commonpb.Log{
 		Sequence: 1,
 		Payload: &commonpb.LogPayload{
@@ -770,7 +766,7 @@ func TestCheckerDetectsHashMismatch(t *testing.T) {
 		},
 	}
 	// Compute correct hash for log1
-	log1.Hash = computeCorrectHash(hasher, nil, log1)
+	log1.Hash = computeCorrectHash(nil, log1)
 
 	// Create log2 with WRONG hash
 	log2 := &commonpb.Log{
@@ -813,8 +809,6 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 	store := createTestStore(t)
 	attrs := attributes.New()
 
-	hasher := blake3.New()
-
 	// Write log at sequence 1
 	log1 := &commonpb.Log{
 		Sequence: 1,
@@ -827,7 +821,7 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 			},
 		},
 	}
-	log1.Hash = computeCorrectHash(hasher, nil, log1)
+	log1.Hash = computeCorrectHash(nil, log1)
 
 	// Skip sequence 2 and write log at sequence 3
 	log3 := &commonpb.Log{
@@ -842,7 +836,7 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 		},
 	}
 	// Even with correct hash chaining from log1, the gap will be detected
-	log3.Hash = computeCorrectHash(hasher, log1.GetHash(), log3)
+	log3.Hash = computeCorrectHash(log1.GetHash(), log3)
 
 	batch := store.NewBatch()
 	require.NoError(t, state.AppendLogs(batch, log1, log3))
@@ -1058,8 +1052,10 @@ func deleteTransactionMetadataOrder(ledger string, txID uint64, key string) *raf
 }
 
 // computeCorrectHash computes the correct hash for a log entry, matching the production logic.
-func computeCorrectHash(hasher *blake3.Hasher, lastHash []byte, log *commonpb.Log) []byte {
-	return processing.ComputeLogHash(hasher, lastHash, log)
+func computeCorrectHash(lastHash []byte, log *commonpb.Log) []byte {
+	_, hash := processing.ComputeLogHash(nil, lastHash, log)
+
+	return hash
 }
 
 // TestCheckerDetectsTransactionUpdateMismatch verifies the checker detects
@@ -1143,7 +1139,6 @@ func TestCheckerDetectsDoubleRevert(t *testing.T) {
 
 	store := createTestStore(t)
 	attrs := attributes.New()
-	hasher := blake3.New()
 
 	// Build a valid log chain manually:
 	// 1. Create ledger "test"
@@ -1156,7 +1151,7 @@ func TestCheckerDetectsDoubleRevert(t *testing.T) {
 	seqID := uint64(1)
 
 	// Log 1: Create ledger
-	log1 := buildLog(hasher, &lastHash, &seqID, &commonpb.LogPayload{
+	log1 := buildLog(&lastHash, &seqID, &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_CreateLedger{
 			CreateLedger: &commonpb.CreateLedgerLog{
 				Name: "test", CreatedAt: &commonpb.Timestamp{Data: 1700000000},
@@ -1166,7 +1161,7 @@ func TestCheckerDetectsDoubleRevert(t *testing.T) {
 
 	// Log 2: Create transaction (tx 1)
 	posting := newPosting("world", "user:alice", "USD", 1000)
-	log2 := buildLog(hasher, &lastHash, &seqID, &commonpb.LogPayload{
+	log2 := buildLog(&lastHash, &seqID, &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_Apply{
 			Apply: &commonpb.ApplyLedgerLog{
 				LedgerName: "test",
@@ -1184,7 +1179,7 @@ func TestCheckerDetectsDoubleRevert(t *testing.T) {
 	})
 
 	// Log 3: Revert tx 1 (valid)
-	log3 := buildLog(hasher, &lastHash, &seqID, &commonpb.LogPayload{
+	log3 := buildLog(&lastHash, &seqID, &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_Apply{
 			Apply: &commonpb.ApplyLedgerLog{
 				LedgerName: "test",
@@ -1203,7 +1198,7 @@ func TestCheckerDetectsDoubleRevert(t *testing.T) {
 	})
 
 	// Log 4: Revert tx 1 AGAIN (double revert)
-	log4 := buildLog(hasher, &lastHash, &seqID, &commonpb.LogPayload{
+	log4 := buildLog(&lastHash, &seqID, &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_Apply{
 			Apply: &commonpb.ApplyLedgerLog{
 				LedgerName: "test",
@@ -1248,14 +1243,13 @@ func TestCheckerDetectsRevertOfNonExistentTransaction(t *testing.T) {
 
 	store := createTestStore(t)
 	attrs := attributes.New()
-	hasher := blake3.New()
 
 	var lastHash []byte
 
 	seqID := uint64(1)
 
 	// Log 1: Create ledger
-	log1 := buildLog(hasher, &lastHash, &seqID, &commonpb.LogPayload{
+	log1 := buildLog(&lastHash, &seqID, &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_CreateLedger{
 			CreateLedger: &commonpb.CreateLedgerLog{
 				Name: "test", CreatedAt: &commonpb.Timestamp{Data: 1700000000},
@@ -1265,7 +1259,7 @@ func TestCheckerDetectsRevertOfNonExistentTransaction(t *testing.T) {
 
 	// Log 2: Revert tx 999 (which was never created)
 	posting := newPosting("user:alice", "world", "USD", 1000)
-	log2 := buildLog(hasher, &lastHash, &seqID, &commonpb.LogPayload{
+	log2 := buildLog(&lastHash, &seqID, &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_Apply{
 			Apply: &commonpb.ApplyLedgerLog{
 				LedgerName: "test",
@@ -1303,12 +1297,12 @@ func TestCheckerDetectsRevertOfNonExistentTransaction(t *testing.T) {
 }
 
 // buildLog creates a log entry with the correct hash chain.
-func buildLog(hasher *blake3.Hasher, lastHash *[]byte, seqID *uint64, payload *commonpb.LogPayload) *commonpb.Log {
+func buildLog(lastHash *[]byte, seqID *uint64, payload *commonpb.LogPayload) *commonpb.Log {
 	log := &commonpb.Log{
 		Sequence: *seqID,
 		Payload:  payload,
 	}
-	log.Hash = processing.ComputeLogHash(hasher, *lastHash, log)
+	_, log.Hash = processing.ComputeLogHash(nil, *lastHash, log)
 	*lastHash = log.GetHash()
 	*seqID++
 

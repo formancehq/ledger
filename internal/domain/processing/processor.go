@@ -8,7 +8,6 @@ import (
 	"github.com/zeebo/blake3"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/accounttype"
@@ -19,8 +18,7 @@ import (
 
 type RequestProcessor struct {
 	numscriptCache     *numscript.NumscriptCache
-	logHasher          *blake3.Hasher
-	orderHashBuf       []byte // reusable buffer for order hash marshaling
+	hashBuf            []byte // reusable buffer for deterministic hash serialization
 	compiledTypesCache map[string][]accounttype.CompiledType
 }
 
@@ -41,8 +39,7 @@ func NewRequestProcessor(m metric.Meter, numscriptCacheSize int) (*RequestProces
 
 	return &RequestProcessor{
 		numscriptCache:     cache,
-		logHasher:          blake3.New(),
-		orderHashBuf:       make([]byte, 0, 512),
+		hashBuf:            make([]byte, 0, 1024),
 		compiledTypesCache: make(map[string][]accounttype.CompiledType),
 	}, nil
 }
@@ -77,7 +74,9 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 	logs := make([]*raftcmdpb.CreatedLogOrReference, len(orders))
 
 	for i, order := range orders {
-		// Compute idempotency hash once if needed (reused for check + store)
+		// Compute idempotency hash once if needed (reused for check + store).
+		// IMPORTANT: must be computed BEFORE ProcessOrder, which may mutate the
+		// order (e.g. resolving Script.Plain from ContentHash cache).
 		hasIdempotency := order.GetIdempotency() != nil && order.GetIdempotency().GetKey() != ""
 
 		var orderHash []byte
@@ -121,7 +120,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 			Idempotency: order.GetIdempotency().CloneVT(),
 			Signature:   order.GetSignature().CloneVT(),
 		}
-		log.Hash = ComputeLogHash(p.logHasher, s.GetLastLogHash(), log)
+		p.hashBuf, log.Hash = ComputeLogHash(p.hashBuf, s.GetLastLogHash(), log)
 		s.SetLastLogHash(log.GetHash())
 
 		// After a ClosePeriod log, update the closing period's LastLogHash to
@@ -140,7 +139,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 			},
 		}
 
-		// Store idempotency key if present (reuse orderHash computed above)
+		// Store idempotency key (hash was computed before ProcessOrder)
 		if hasIdempotency {
 			s.PutIdempotencyKey(
 				domain.IdempotencyKey{
@@ -157,15 +156,8 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 	return logs, nil
 }
 
-// deterministicMarshalOpts serializes protobuf messages with sorted map keys,
-// ensuring the same Order always produces the same bytes regardless of Go map
-// iteration order. Required for idempotency hash correctness because Order
-// contains map fields (Script.vars, CreateTransactionOrder.account_metadata,
-// CreateLedgerOrder.account_types, MirrorCreatedTransaction.account_metadata).
-var deterministicMarshalOpts = proto.MarshalOptions{Deterministic: true}
-
 // computeOrderHash computes a blake3 hash of the order content (excluding
-// idempotency) for idempotency checking. It reuses p.orderHashBuf across calls
+// idempotency) for idempotency checking. It reuses p.hashBuf across calls
 // to avoid allocations. Safe because ProcessOrders is single-threaded.
 func (p *RequestProcessor) computeOrderHash(order *raftcmdpb.Order) []byte {
 	// Temporarily nil the idempotency field to exclude it from the hash,
@@ -173,15 +165,11 @@ func (p *RequestProcessor) computeOrderHash(order *raftcmdpb.Order) []byte {
 	saved := order.GetIdempotency()
 	order.Idempotency = nil
 
-	var err error
-	p.orderHashBuf, err = deterministicMarshalOpts.MarshalAppend(p.orderHashBuf[:0], order)
+	p.hashBuf = order.MarshalDeterministicVT(p.hashBuf[:0])
+
 	order.Idempotency = saved
 
-	if err != nil {
-		panic(fmt.Sprintf("failed to marshal order: %v", err))
-	}
-
-	hash := blake3.Sum256(p.orderHashBuf)
+	hash := blake3.Sum256(p.hashBuf)
 
 	return hash[:]
 }

@@ -742,6 +742,7 @@ func (m *Log) CloneVT() *Log {
 	r.Signature = m.Signature.CloneVT()
 	r.Receipt = m.Receipt
 	r.ResponseSignature = m.ResponseSignature.CloneVT()
+	r.HashVersion = m.HashVersion
 	if rhs := m.Hash; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
@@ -2568,6 +2569,7 @@ func (m *IdempotencyKeyValue) CloneVT() *IdempotencyKeyValue {
 	}
 	r := new(IdempotencyKeyValue)
 	r.LogSequence = m.LogSequence
+	r.HashVersion = m.HashVersion
 	if rhs := m.Hash; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
@@ -4603,6 +4605,9 @@ func (this *Log) EqualVT(that *Log) bool {
 		return false
 	}
 	if !this.ResponseSignature.EqualVT(that.ResponseSignature) {
+		return false
+	}
+	if this.HashVersion != that.HashVersion {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -7777,6 +7782,9 @@ func (this *IdempotencyKeyValue) EqualVT(that *IdempotencyKeyValue) bool {
 		return false
 	}
 	if string(this.Hash) != string(that.Hash) {
+		return false
+	}
+	if this.HashVersion != that.HashVersion {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -11017,6 +11025,11 @@ func (m *Log) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.HashVersion != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.HashVersion))
+		i--
+		dAtA[i] = 0x40
 	}
 	if m.ResponseSignature != nil {
 		size, err := m.ResponseSignature.MarshalToSizedBufferVT(dAtA[:i])
@@ -15663,6 +15676,11 @@ func (m *IdempotencyKeyValue) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.HashVersion != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.HashVersion))
+		i--
+		dAtA[i] = 0x18
+	}
 	if len(m.Hash) > 0 {
 		i -= len(m.Hash)
 		copy(dAtA[i:], m.Hash)
@@ -18537,6 +18555,9 @@ func (m *Log) SizeVT() (n int) {
 		l = m.ResponseSignature.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	if m.HashVersion != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.HashVersion))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -20553,6 +20574,9 @@ func (m *IdempotencyKeyValue) SizeVT() (n int) {
 	l = len(m.Hash)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.HashVersion != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.HashVersion))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -25907,6 +25931,25 @@ func (m *Log) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 8:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field HashVersion", wireType)
+			}
+			m.HashVersion = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.HashVersion |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -36807,6 +36850,25 @@ func (m *IdempotencyKeyValue) UnmarshalVT(dAtA []byte) error {
 				m.Hash = []byte{}
 			}
 			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field HashVersion", wireType)
+			}
+			m.HashVersion = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.HashVersion |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

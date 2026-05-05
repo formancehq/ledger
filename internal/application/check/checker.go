@@ -128,7 +128,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	// State tracked during log replay
 	var (
-		hasher       = blake3.New()
+		hashBuf      = make([]byte, 0, 1024)
 		lastHash     []byte
 		knownLedgers = make(map[string]struct{})
 		// Per-ledger reversion tracking using bitsets (1 bit per tx ID)
@@ -239,7 +239,8 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		}
 
 		// 2. Verify hash chain
-		expectedHash := processing.ComputeLogHash(hasher, lastHash, log)
+		var expectedHash []byte
+		hashBuf, expectedHash = processing.ComputeLogHash(hashBuf, lastHash, log)
 		if !bytes.Equal(expectedHash, log.GetHash()) {
 			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
 				fmt.Sprintf("hash mismatch at sequence %d: expected %x, got %x", seq, expectedHash, log.GetHash()),

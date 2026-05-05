@@ -286,6 +286,7 @@ message Log {
   signature.RequestSignature signature = 5;
   string receipt = 6;
   signature.ResponseSignature response_signature = 7;
+  uint32 hash_version = 8;  // Hash algorithm version (0 = legacy = v1)
 }
 
 message LogPayload {
@@ -804,6 +805,7 @@ message TransactionState {
 message IdempotencyKeyValue {
   uint64 log_sequence = 1;
   bytes hash = 2;
+  uint32 hash_version = 3;  // Hash algorithm version (0 = legacy = v1)
 }
 
 // TransactionReferenceValue stores the transaction ID associated with a unique reference within a ledger.

@@ -5,15 +5,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/zeebo/blake3"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
-
-func TestHashVersion(t *testing.T) {
-	t.Parallel()
-	require.Equal(t, HashVersion, byte(1))
-}
 
 func TestGoldenHashCreateLedger(t *testing.T) {
 	t.Parallel()
@@ -30,9 +24,9 @@ func TestGoldenHashCreateLedger(t *testing.T) {
 		},
 	}
 
-	h := blake3.New()
-	got := hex.EncodeToString(ComputeLogHash(h, nil, log))
-	require.Equal(t, "6a502520750f7d661decb57a3a41bbbf83a188e166292e7b0b2c5b1c92426a53", got)
+	_, hashResult := ComputeLogHash(nil, nil, log)
+	got := hex.EncodeToString(hashResult)
+	require.Equal(t, "4c3a6bfe05fec9cba8609d5ef3ec2ee8bd1900ad07c6848177954dee2da4a74d", got)
 }
 
 func TestGoldenHashApplyCreatedTransaction(t *testing.T) {
@@ -80,9 +74,9 @@ func TestGoldenHashApplyCreatedTransaction(t *testing.T) {
 		Idempotency: &commonpb.Idempotency{Key: "ik-001"},
 	}
 
-	h := blake3.New()
-	got := hex.EncodeToString(ComputeLogHash(h, nil, log))
-	require.Equal(t, "2ef4d0537e9e3b8dd791fa6b35d18368f5e2f8bd5a4196cd4ca30185f983bbc5", got)
+	_, hashResult := ComputeLogHash(nil, nil, log)
+	got := hex.EncodeToString(hashResult)
+	require.Equal(t, "c23b78773ffee9ca51e0bd537aca882aaa456bf1c7a7b09ed632c36653084eb6", got)
 }
 
 func TestGoldenHashRegisterSigningKey(t *testing.T) {
@@ -100,9 +94,9 @@ func TestGoldenHashRegisterSigningKey(t *testing.T) {
 		},
 	}
 
-	h := blake3.New()
-	got := hex.EncodeToString(ComputeLogHash(h, nil, log))
-	require.Equal(t, "dc12f734090785d59c2f1dc2271e7d1bff6973208ad3c1689b6028f42fb9ff8d", got)
+	_, hashResult := ComputeLogHash(nil, nil, log)
+	got := hex.EncodeToString(hashResult)
+	require.Equal(t, "f04073764b0943de1bc9a2d3f029617859b870fb980a6246f962c8dbc7597281", got)
 }
 
 func TestGoldenHashClosePeriod(t *testing.T) {
@@ -134,9 +128,9 @@ func TestGoldenHashClosePeriod(t *testing.T) {
 		},
 	}
 
-	h := blake3.New()
-	got := hex.EncodeToString(ComputeLogHash(h, nil, log))
-	require.Equal(t, "d044bd44f548384fe98e19f72b444ceb63635de05f5e5a1e6654b73a24b08d87", got)
+	_, hashResult := ComputeLogHash(nil, nil, log)
+	got := hex.EncodeToString(hashResult)
+	require.Equal(t, "156dc03db4090c12f312d91932f8f2960cf50358072cb971a967bdfaa8099bc3", got)
 }
 
 func TestGoldenHashChain(t *testing.T) {
@@ -165,15 +159,14 @@ func TestGoldenHashChain(t *testing.T) {
 		},
 	}
 
-	h := blake3.New()
-	hash1 := ComputeLogHash(h, nil, log1)
-	hash2 := ComputeLogHash(h, hash1, log2)
+	_, hash1 := ComputeLogHash(nil, nil, log1)
+	_, hash2 := ComputeLogHash(nil, hash1, log2)
 
 	gotHash1 := hex.EncodeToString(hash1)
 	gotHash2 := hex.EncodeToString(hash2)
 
-	require.Equal(t, "77086e702016ce244f37c58947730ae0885ed68c8ae11c3396faaede120c4687", gotHash1)
-	require.Equal(t, "bd64f59f1a9fddea7ea0bff0e31072eadb71920434c20028a13c15381122a95e", gotHash2)
+	require.Equal(t, "1b39681428080739048fb5c4c10c7a7ee8a8457b7900b2738806f5512a73f04a", gotHash1)
+	require.Equal(t, "9d0ef52b62bea8aa341a09ced470247d53fdcb707d3f3b631109cf30b625f22f", gotHash2)
 }
 
 func TestGoldenHashAddedEventsSink(t *testing.T) {
@@ -205,9 +198,9 @@ func TestGoldenHashAddedEventsSink(t *testing.T) {
 		},
 	}
 
-	h := blake3.New()
-	got := hex.EncodeToString(ComputeLogHash(h, nil, log))
-	require.Equal(t, "acbff024e2acb3dbd4c5a08531cd3b05abfb22aefe2d6f5fce54d654b83cae8b", got)
+	_, hashResult := ComputeLogHash(nil, nil, log)
+	got := hex.EncodeToString(hashResult)
+	require.Equal(t, "0be9ea6b42614612fed58b404e15492d3749932e354fcfbcd08d75fceea5f603", got)
 }
 
 func TestGoldenHashDeleteLedger(t *testing.T) {
@@ -225,9 +218,9 @@ func TestGoldenHashDeleteLedger(t *testing.T) {
 		},
 	}
 
-	h := blake3.New()
-	got := hex.EncodeToString(ComputeLogHash(h, nil, log))
-	require.Equal(t, "c79f06841163df6dfdec72b8d28cce5d7d5caccd53cb0556ecf301bdf6af142f", got)
+	_, hashResult := ComputeLogHash(nil, nil, log)
+	got := hex.EncodeToString(hashResult)
+	require.Equal(t, "5ecb640d59b7ccf95196cfe150254ca6c26b92bed122457586ef41df10d44a80", got)
 }
 
 func TestGoldenHashRevokeSigningKey(t *testing.T) {
@@ -244,9 +237,9 @@ func TestGoldenHashRevokeSigningKey(t *testing.T) {
 		},
 	}
 
-	h := blake3.New()
-	got := hex.EncodeToString(ComputeLogHash(h, nil, log))
-	require.Equal(t, "4593f5458510c4ebb4a665dd6c15fdeff37b4b7164ec99f52a7871fddddbe963", got)
+	_, hashResult := ComputeLogHash(nil, nil, log)
+	got := hex.EncodeToString(hashResult)
+	require.Equal(t, "0a3c5bbfb95e0cb05ab69604378e4efb2c7d5ff8e793802cf1b4a00fdbf3deff", got)
 }
 
 func TestGoldenHashSetSigningConfig(t *testing.T) {
@@ -263,9 +256,9 @@ func TestGoldenHashSetSigningConfig(t *testing.T) {
 		},
 	}
 
-	h := blake3.New()
-	got := hex.EncodeToString(ComputeLogHash(h, nil, log))
-	require.Equal(t, "5bd7cef2502c9ee88deb3c00276427c571973b10f456ca9154a1ab7fadc0cfea", got)
+	_, hashResult := ComputeLogHash(nil, nil, log)
+	got := hex.EncodeToString(hashResult)
+	require.Equal(t, "46499e88a7e3af506d10420fb1afefebc988906e3900c193a53fb41731243ac4", got)
 }
 
 func TestGoldenHashRemovedEventsSink(t *testing.T) {
@@ -282,9 +275,9 @@ func TestGoldenHashRemovedEventsSink(t *testing.T) {
 		},
 	}
 
-	h := blake3.New()
-	got := hex.EncodeToString(ComputeLogHash(h, nil, log))
-	require.Equal(t, "24620ea62c5bf39461900f97879eeaebbeed1f20762bf7005e001316ffb263a8", got)
+	_, hashResult := ComputeLogHash(nil, nil, log)
+	got := hex.EncodeToString(hashResult)
+	require.Equal(t, "8a4b0ef9a4cfbb44888488d1ef4a81eac64ac400d0b85b46884c7753b6e1d072", got)
 }
 
 func TestGoldenHashSealPeriod(t *testing.T) {
@@ -310,9 +303,9 @@ func TestGoldenHashSealPeriod(t *testing.T) {
 		},
 	}
 
-	h := blake3.New()
-	got := hex.EncodeToString(ComputeLogHash(h, nil, log))
-	require.Equal(t, "d610bcb6577c5444f222df32e2b03668be1501ed60fbf8d4e6ea7f0ec1bb3c69", got)
+	_, hashResult := ComputeLogHash(nil, nil, log)
+	got := hex.EncodeToString(hashResult)
+	require.Equal(t, "4dfaa042ee56fb64425efde50eecc866c68ac069d1c99c25eec434dde2b0bc8a", got)
 }
 
 func TestGoldenHashArchivePeriod(t *testing.T) {
@@ -336,9 +329,9 @@ func TestGoldenHashArchivePeriod(t *testing.T) {
 		},
 	}
 
-	h := blake3.New()
-	got := hex.EncodeToString(ComputeLogHash(h, nil, log))
-	require.Equal(t, "403420c6a026b66db0f6e731cb2f6fbaa0fc01aab87fea57370edb6e999af2a9", got)
+	_, hashResult := ComputeLogHash(nil, nil, log)
+	got := hex.EncodeToString(hashResult)
+	require.Equal(t, "57ebde89fce9b769b7aa8d05e51407e1019893290c5f5545c83162071f24ab08", got)
 }
 
 func TestGoldenHashConfirmArchivePeriod(t *testing.T) {
@@ -362,9 +355,9 @@ func TestGoldenHashConfirmArchivePeriod(t *testing.T) {
 		},
 	}
 
-	h := blake3.New()
-	got := hex.EncodeToString(ComputeLogHash(h, nil, log))
-	require.Equal(t, "9c6505f6044005f110709b82e558120a02e4bb648cbd52a9cecb46e59e3536e7", got)
+	_, hashResult := ComputeLogHash(nil, nil, log)
+	got := hex.EncodeToString(hashResult)
+	require.Equal(t, "48d6b6508309e58f9f8261a305145c42c39258efd8d69f9969d5460f0bd01da6", got)
 }
 
 func TestGoldenHashSetMaintenanceMode(t *testing.T) {
@@ -381,9 +374,9 @@ func TestGoldenHashSetMaintenanceMode(t *testing.T) {
 		},
 	}
 
-	h := blake3.New()
-	got := hex.EncodeToString(ComputeLogHash(h, nil, log))
-	require.Equal(t, "be64e50062f4c360436a8fc4293e66a8f738aae18d51a68bf082e3f7b0bf7d1f", got)
+	_, hashResult := ComputeLogHash(nil, nil, log)
+	got := hex.EncodeToString(hashResult)
+	require.Equal(t, "1cae9c8d4b4a448b5dd90d8a96a03a49cd404b5d9e69c62492bf24057d87cedf", got)
 }
 
 func TestGoldenHashSetPeriodSchedule(t *testing.T) {
@@ -400,11 +393,9 @@ func TestGoldenHashSetPeriodSchedule(t *testing.T) {
 		},
 	}
 
-	h := blake3.New()
-	got := hex.EncodeToString(ComputeLogHash(h, nil, log))
-	// Golden value computed from the implementation
-	require.NotEmpty(t, got)
-	require.Len(t, got, 64)
+	_, hashResult := ComputeLogHash(nil, nil, log)
+	got := hex.EncodeToString(hashResult)
+	require.Equal(t, "9b33ffed56648e735e783c97c28910b06f8d2aa1fda191d07da2556a8a922ade", got)
 }
 
 func TestGoldenHashDeletePeriodSchedule(t *testing.T) {
@@ -419,11 +410,9 @@ func TestGoldenHashDeletePeriodSchedule(t *testing.T) {
 		},
 	}
 
-	h := blake3.New()
-	got := hex.EncodeToString(ComputeLogHash(h, nil, log))
-	// Golden value computed from the implementation
-	require.NotEmpty(t, got)
-	require.Len(t, got, 64)
+	_, hashResult := ComputeLogHash(nil, nil, log)
+	got := hex.EncodeToString(hashResult)
+	require.Equal(t, "ec1fa38ae983e8a790e721aebc26fe43f389bb561a7e1d38cb408c3d7e3ff50c", got)
 }
 
 func TestGoldenHashNilPayload(t *testing.T) {
@@ -433,7 +422,7 @@ func TestGoldenHashNilPayload(t *testing.T) {
 		Sequence: 99,
 	}
 
-	h := blake3.New()
-	got := hex.EncodeToString(ComputeLogHash(h, nil, log))
-	require.Equal(t, "104c3a76bfe5455b41027204dfbb1ee919aa76d99ae9df59b78af8c889cd778b", got)
+	_, hashResult := ComputeLogHash(nil, nil, log)
+	got := hex.EncodeToString(hashResult)
+	require.Equal(t, "694ffc71c585ffe6e555885384da6e05cd990c9ed138c0ca48525abb1c7ce5fd", got)
 }

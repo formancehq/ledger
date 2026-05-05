@@ -241,6 +241,7 @@ generate-proto:
     @echo "Generating gRPC code from proto files..."
     rm -f internal/proto/rafttransportpb/*.pb.go internal/proto/commonpb/*.pb.go internal/proto/servicepb/*.pb.go internal/proto/raftcmdpb/*.pb.go internal/proto/snapshotpb/*.pb.go internal/proto/clusterpb/*.pb.go internal/proto/auditpb/*.pb.go internal/proto/signaturepb/*.pb.go internal/proto/eventspb/*.pb.go internal/proto/restorepb/*.pb.go || true
     mkdir -p internal/proto/clusterpb internal/proto/rafttransportpb internal/proto/auditpb internal/proto/signaturepb internal/proto/eventspb internal/proto/restorepb
+    @cd tools/protoc-gen-dethash && go build -o ../../build/protoc-gen-dethash .
     @protoc --go_out=. --go_opt=module=github.com/formancehq/ledger-v3-poc \
         --go-grpc_out=. \
         --go-grpc_opt=module=github.com/formancehq/ledger-v3-poc \
@@ -254,6 +255,9 @@ generate-proto:
         --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.Order \
         --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.EventsSinkUpdate \
         --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.MirrorSyncUpdate \
+        --plugin=protoc-gen-dethash=build/protoc-gen-dethash \
+        --dethash_out=. \
+        --dethash_opt=module=github.com/formancehq/ledger-v3-poc \
         -I misc/proto \
         misc/proto/raft_transport.proto \
         misc/proto/common.proto \
