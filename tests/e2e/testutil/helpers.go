@@ -44,7 +44,6 @@ var (
 	FindMetadataValue                  = actions.FindMetadataValue
 	ClosePeriodAction                  = actions.ClosePeriodAction
 	SetMaintenanceModeAction           = actions.SetMaintenanceModeAction
-	SetAuditConfigAction               = actions.SetAuditConfigAction
 	SetPeriodScheduleAction            = actions.SetPeriodScheduleAction
 	DeletePeriodScheduleAction         = actions.DeletePeriodScheduleAction
 	SetMetadataFieldTypeAction         = actions.SetMetadataFieldTypeAction

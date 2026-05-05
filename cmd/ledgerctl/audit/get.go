@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
@@ -47,13 +46,6 @@ func runGet(cmd *cobra.Command, args []string) error {
 		Sequence: sequence,
 	})
 	if err != nil {
-		if isAuditDisabledError(err) {
-			pterm.Warning.Println("Audit log is disabled on this server.")
-			pterm.Println(pterm.Gray("Run `ledgerctl audit enable` to activate audit logging."))
-
-			return nil
-		}
-
 		return cmdutil.FormatGRPCError("failed to get audit entry", err)
 	}
 

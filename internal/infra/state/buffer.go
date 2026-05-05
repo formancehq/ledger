@@ -75,11 +75,6 @@ type maintenanceModeUpdate struct {
 	enabled bool
 }
 
-// auditConfigUpdate represents a pending audit config change.
-type auditConfigUpdate struct {
-	enabled bool
-}
-
 type Buffered struct {
 	fsm                                  *Machine
 	attrs                                *attributes.Attributes
@@ -92,7 +87,6 @@ type Buffered struct {
 	pendingSigningKeyUpdates             []signingKeyUpdate
 	pendingSigningConfigUpdate           *signingConfigUpdate
 	pendingMaintenanceModeUpdate         *maintenanceModeUpdate
-	pendingAuditConfigUpdate             *auditConfigUpdate
 	pendingPeriodScheduleUpdate          *string
 	pendingQueryCheckpointScheduleUpdate *string
 	sinkConfigChanged                    bool
@@ -306,15 +300,6 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 		}
 
 		b.fsm.sharedState.SetMaintenanceMode(b.pendingMaintenanceModeUpdate.enabled)
-	}
-
-	if b.pendingAuditConfigUpdate != nil {
-		err := SaveAuditConfig(batch, b.pendingAuditConfigUpdate.enabled)
-		if err != nil {
-			return fmt.Errorf("saving audit config: %w", err)
-		}
-
-		b.fsm.sharedState.SetAuditEnabled(b.pendingAuditConfigUpdate.enabled)
 	}
 
 	if b.pendingPeriodScheduleUpdate != nil {
@@ -716,12 +701,6 @@ func (b *Buffered) SetRequireSignatures(require bool) {
 
 func (b *Buffered) SetMaintenanceMode(enabled bool) {
 	b.pendingMaintenanceModeUpdate = &maintenanceModeUpdate{
-		enabled: enabled,
-	}
-}
-
-func (b *Buffered) SetAuditEnabled(enabled bool) {
-	b.pendingAuditConfigUpdate = &auditConfigUpdate{
 		enabled: enabled,
 	}
 }

@@ -105,8 +105,6 @@ func TestStressInvariants(t *testing.T) {
 	})
 
 	// --- Phase 3b: Audit Entries after Trading ---
-	// Note: audit entries require explicit SetAuditConfig(true). The stress test
-	// does not enable audit logging, so we only verify the RPC works (empty is OK).
 	t.Run("AuditEntriesAfterTrading", func(t *testing.T) {
 		entries, err := actions.ListAuditEntries(ctx, client, false)
 		require.NoError(t, err, "ListAuditEntries RPC should succeed")

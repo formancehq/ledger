@@ -183,8 +183,6 @@ func describeKey(key []byte) string {
 		return "MIRROR_STATUS ledger=" + safeString(key[1:])
 	case dal.KeyPrefixMirrorSourceHead:
 		return "MIRROR_SOURCE_HEAD ledger=" + safeString(key[1:])
-	case dal.KeyPrefixAuditConfig:
-		return "AUDIT_CONFIG"
 	case dal.KeyPrefixPeriodSchedule:
 		return "PERIOD_SCHEDULE"
 	case dal.KeyPrefixCacheSnapshot:
@@ -263,7 +261,7 @@ func decodeValue(key, val []byte) string {
 		}
 
 		return hexVal(val)
-	case dal.KeyPrefixMaintenanceMode, dal.KeyPrefixSigningConfig, dal.KeyPrefixAuditConfig:
+	case dal.KeyPrefixMaintenanceMode, dal.KeyPrefixSigningConfig:
 		if len(val) == 1 {
 			return fmt.Sprintf("enabled=%v", val[0] != 0)
 		}

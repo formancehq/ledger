@@ -79,11 +79,8 @@ func TestOperationsLifecycle(t *testing.T) {
 		)
 	})
 
-	// --- Phase 3: Audit Config ---
-	t.Run("AuditConfig", func(t *testing.T) {
-		// Enable audit logging
-		scenariotest.ApplyActions(t, ctx, client, actions.SetAuditConfigAction(true))
-
+	// --- Phase 3: Audit ---
+	t.Run("Audit", func(t *testing.T) {
 		// 3 successful transactions
 		for i := 1; i <= 3; i++ {
 			scenariotest.ApplyActions(t, ctx, client,
@@ -118,8 +115,6 @@ func TestOperationsLifecycle(t *testing.T) {
 			require.NotNil(t, entry.GetFailure(), "failure entry should have failure outcome")
 		}
 
-		// Disable audit logging
-		scenariotest.ApplyActions(t, ctx, client, actions.SetAuditConfigAction(false))
 	})
 
 	// --- Phase 3b: GetAuditEntry ---

@@ -313,10 +313,6 @@ func NewCluster(t *testing.T, numNodes int, config ClusterConfig) *Cluster {
 		require.NoError(t, err)
 
 		nodeAttrs := attributes.New()
-		// Persist audit config before creating the machine (NewMachine reads from Pebble)
-		auditBatch := pebbleStore.NewBatch()
-		require.NoError(t, state.SaveAuditConfig(auditBatch, true))
-		require.NoError(t, auditBatch.Commit())
 
 		fsm, err := state.NewMachine(
 			logger.WithFields(map[string]any{"node": nodeID}),
@@ -645,15 +641,6 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 	}
 
 	nodeAttrs := attributes.New()
-	// Persist audit config before creating the machine (NewMachine reads from Pebble)
-	auditBatch := newStore.NewBatch()
-	if err := state.SaveAuditConfig(auditBatch, true); err != nil {
-		return nil, fmt.Errorf("saving audit config: %w", err)
-	}
-
-	if err := auditBatch.Commit(); err != nil {
-		return nil, fmt.Errorf("committing audit config: %w", err)
-	}
 
 	fsm, err := state.NewMachine(
 		c.logger.WithFields(map[string]any{"node": nodeID}),

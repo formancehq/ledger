@@ -432,16 +432,6 @@ func (m *Request) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i--
 			dAtA[i] = 0x9a
 		}
-	case *Request_SetAuditConfig:
-		if v.SetAuditConfig != nil {
-			size, _ := v.SetAuditConfig.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0xa2
-		}
 	case *Request_PromoteLedger:
 		if v.PromoteLedger != nil {
 			size, _ := v.PromoteLedger.MarshalToSizedBufferVT(dAtA[:i])
@@ -805,17 +795,6 @@ func (m *SetMetadataFieldTypeRequest) MarshalDeterministicVT(dAtA []byte) []byte
 }
 
 func (m *RemoveMetadataFieldTypeRequest) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *SetAuditConfigRequest) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}

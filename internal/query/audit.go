@@ -107,24 +107,3 @@ func ReadAuditEntry(ctx context.Context, reader dal.PebbleReader, sequence uint6
 
 	return entry, nil
 }
-
-// ReadAuditConfig loads the audit enabled flag from the given reader.
-// Returns true if the config key does not exist (audit enabled by default).
-func ReadAuditConfig(reader dal.PebbleReader) (bool, error) {
-	value, closer, err := reader.Get([]byte{dal.KeyPrefixAuditConfig})
-	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
-			return true, nil
-		}
-
-		return false, fmt.Errorf("loading audit config: %w", err)
-	}
-
-	defer func() { _ = closer.Close() }()
-
-	if len(value) == 0 {
-		return true, nil
-	}
-
-	return value[0] == 0x01, nil
-}

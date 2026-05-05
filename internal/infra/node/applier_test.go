@@ -61,11 +61,6 @@ func newTestApplierSetup(t *testing.T) *testApplierSetup {
 
 	nodeAttrs := attributes.New()
 
-	// Persist audit config before creating the machine.
-	auditBatch := pebbleStore.NewBatch()
-	require.NoError(t, state.SaveAuditConfig(auditBatch, true))
-	require.NoError(t, auditBatch.Commit())
-
 	fsm, err := state.NewMachine(
 		logger, pebbleStore, meter, nodeCache, nodeAttrs,
 		nil, state.NewSharedState(), state.NoopNotifier{}, state.NoopNotifier{}, state.NoopNotifier{}, nil, 0, false,

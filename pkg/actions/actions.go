@@ -403,17 +403,6 @@ func SetMaintenanceModeAction(enabled bool) *servicepb.Request {
 	}
 }
 
-// SetAuditConfigAction creates a request to enable or disable audit logging.
-func SetAuditConfigAction(enabled bool) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_SetAuditConfig{
-			SetAuditConfig: &servicepb.SetAuditConfigRequest{
-				Enabled: enabled,
-			},
-		},
-	}
-}
-
 // SetPeriodScheduleAction creates a request to set the period schedule cron expression.
 func SetPeriodScheduleAction(cron string) *servicepb.Request {
 	return &servicepb.Request{

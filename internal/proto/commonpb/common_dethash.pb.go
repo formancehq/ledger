@@ -738,16 +738,6 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i--
 			dAtA[i] = 0x7a
 		}
-	case *LogPayload_SetAuditConfig:
-		if v.SetAuditConfig != nil {
-			size, _ := v.SetAuditConfig.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0x82
-		}
 	case *LogPayload_PromoteLedger:
 		if v.PromoteLedger != nil {
 			size, _ := v.PromoteLedger.MarshalToSizedBufferVT(dAtA[:i])
@@ -952,17 +942,6 @@ func (m *SetPeriodScheduleLog) MarshalDeterministicVT(dAtA []byte) []byte {
 }
 
 func (m *DeletePeriodScheduleLog) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *SetAuditConfigLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}

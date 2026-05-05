@@ -27,7 +27,6 @@ message Order {
     SetMaintenanceModeOrder set_maintenance_mode = 15;
     SetPeriodScheduleOrder set_period_schedule = 16;
     DeletePeriodScheduleOrder delete_period_schedule = 17;
-    SetAuditConfigOrder set_audit_config = 18;
     MirrorIngestOrder mirror_ingest = 19;
     PromoteLedgerOrder promote_ledger = 20;
     CreatePreparedQueryOrder create_prepared_query = 21;
@@ -107,10 +106,6 @@ message SetPeriodScheduleOrder {
 }
 
 message DeletePeriodScheduleOrder {}
-
-message SetAuditConfigOrder {
-  bool enabled = 1;
-}
 
 message SaveNumscriptOrder {
   string name = 1;

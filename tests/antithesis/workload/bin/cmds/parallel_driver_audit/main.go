@@ -13,24 +13,8 @@ import (
 
 func main() {
 	internal.RunDriver("parallel_driver_audit", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
-		// Enable audit logging.
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
-				Type: &servicepb.Request_SetAuditConfig{
-					SetAuditConfig: &servicepb.SetAuditConfigRequest{
-						Enabled: true,
-					},
-				},
-			}},
-		})
-
-		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to enable audit logging", internal.Details{"error": err})
-		if err != nil {
-			return
-		}
-
 		// Create a transaction so the audit trail has something.
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
+		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{{
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
@@ -88,22 +72,9 @@ func main() {
 			return
 		}
 
-		assert.AlwaysOrUnreachable(count > 0, "audit trail should contain entries after enabling audit", internal.Details{
+		assert.AlwaysOrUnreachable(count > 0, "audit trail should contain entries", internal.Details{
 			"count": count,
 		})
-
-		// Disable audit logging.
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
-				Type: &servicepb.Request_SetAuditConfig{
-					SetAuditConfig: &servicepb.SetAuditConfigRequest{
-						Enabled: false,
-					},
-				},
-			}},
-		})
-
-		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to disable audit logging", internal.Details{"error": err})
 
 		log.Printf("audit cycle completed: %d entries found", count)
 	})

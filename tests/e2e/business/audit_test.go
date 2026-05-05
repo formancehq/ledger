@@ -35,22 +35,8 @@ var _ = Describe("Audit Log", Ordered, func() {
 	var entriesBeforeTest int
 
 	BeforeAll(func() {
-		// Enable audit logging via RPC (audit starts disabled by default)
-		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
-				{
-					Type: &servicepb.Request_SetAuditConfig{
-						SetAuditConfig: &servicepb.SetAuditConfigRequest{
-							Enabled: true,
-						},
-					},
-				},
-			},
-		})
-		Expect(err).To(Succeed())
-
 		// Create the test ledger (generates 1 audit entry)
-		_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 		})
 		Expect(err).To(Succeed())
@@ -247,20 +233,6 @@ var _ = Describe("Audit Log", Ordered, func() {
 		// Create a fresh node for signing tests to avoid interfering with other tests
 		sigCtx, sigClient, _ := testutil.SetupSingleNode(9109, 8109)
 
-		// Enable audit logging on the fresh node
-		_, err := sigClient.Apply(sigCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
-				{
-					Type: &servicepb.Request_SetAuditConfig{
-						SetAuditConfig: &servicepb.SetAuditConfigRequest{
-							Enabled: true,
-						},
-					},
-				},
-			},
-		})
-		Expect(err).To(Succeed())
-
 		// Generate a keypair
 		pubKey, privKey, genErr := ed25519.GenerateKey(rand.Reader)
 		Expect(genErr).To(Succeed())
@@ -268,7 +240,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 		const keyID = "audit-test-key"
 
 		// Register the key (bootstrap: first key can be unsigned)
-		_, err = sigClient.Apply(sigCtx, &servicepb.ApplyRequest{
+		_, err := sigClient.Apply(sigCtx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
 				actions.RegisterSigningKeyAction(keyID, pubKey),
 			},
@@ -293,10 +265,9 @@ var _ = Describe("Audit Log", Ordered, func() {
 		Expect(sig).NotTo(BeNil())
 		Expect(sig.KeyId).To(Equal(keyID))
 
-		// Verify unsigned orders have no signature (first entry after SetAuditConfig is RegisterSigningKey)
-		// entries[0] = SetAuditConfig, entries[1] = RegisterSigningKey
-		Expect(len(entries)).To(BeNumerically(">=", 2))
-		regEntry := entries[1]
+		// Verify unsigned orders have no signature (entries[0] = RegisterSigningKey)
+		Expect(len(entries)).To(BeNumerically(">=", 1))
+		regEntry := entries[0]
 		Expect(regEntry.Orders[0].GetSignature()).To(BeNil())
 	})
 
@@ -348,6 +319,4 @@ var _ = Describe("Audit Log", Ordered, func() {
 		Expect(status.Code(err)).To(Equal(codes.NotFound))
 	})
 
-	// The "FAILED_PRECONDITION when audit is disabled" test is covered in
-	// audit_config_test.go which tests the full SetAuditConfig lifecycle.
 })

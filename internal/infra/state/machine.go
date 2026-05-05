@@ -369,13 +369,6 @@ func (fsm *Machine) RecoverState() error {
 
 	fsm.sharedState.SetMaintenanceMode(maintenanceMode)
 
-	auditEnabled, err := query.ReadAuditConfig(fsm.dataStore)
-	if err != nil {
-		return fmt.Errorf("loading audit config: %w", err)
-	}
-
-	fsm.sharedState.SetAuditEnabled(auditEnabled)
-
 	fsm.logger.WithFields(map[string]any{
 		"nextSequenceID":        fsm.nextSequenceID,
 		"nextAuditSequenceID":   fsm.nextAuditSequenceID,
@@ -1133,22 +1126,20 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	logs, err := fsm.processor.ProcessOrders(proposal.GetOrders(), buffer)
 	if err != nil {
 		// FAILURE: write audit entry and return business error
-		if fsm.sharedState.AuditEnabled() {
-			auditEntry := &auditpb.AuditEntry{
-				Sequence:   fsm.nextAuditSequenceID,
-				Timestamp:  effectiveDate,
-				ProposalId: proposal.GetId(),
-				Orders:     proposal.GetOrders(),
-				Outcome: &auditpb.AuditEntry_Failure{
-					Failure: buildAuditFailure(err),
-				},
-			}
-			fsm.nextAuditSequenceID++
+		auditEntry := &auditpb.AuditEntry{
+			Sequence:   fsm.nextAuditSequenceID,
+			Timestamp:  effectiveDate,
+			ProposalId: proposal.GetId(),
+			Orders:     proposal.GetOrders(),
+			Outcome: &auditpb.AuditEntry_Failure{
+				Failure: buildAuditFailure(err),
+			},
+		}
+		fsm.nextAuditSequenceID++
 
-			appendErr := AppendAuditEntries(batch, auditEntry)
-			if appendErr != nil {
-				return nil, fmt.Errorf("appending audit entry for failure: %w", appendErr)
-			}
+		appendErr := AppendAuditEntries(batch, auditEntry)
+		if appendErr != nil {
+			return nil, fmt.Errorf("appending audit entry for failure: %w", appendErr)
 		}
 
 		return &ApplyResult{
@@ -1160,22 +1151,20 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// Validate transient volumes have zero balance. This is a business error
 	// (rejected proposal), not a fatal FSM error, so it must be checked before Commit.
 	if err := buffer.ValidateTransientVolumes(); err != nil {
-		if fsm.sharedState.AuditEnabled() {
-			auditEntry := &auditpb.AuditEntry{
-				Sequence:   fsm.nextAuditSequenceID,
-				Timestamp:  effectiveDate,
-				ProposalId: proposal.GetId(),
-				Orders:     proposal.GetOrders(),
-				Outcome: &auditpb.AuditEntry_Failure{
-					Failure: buildAuditFailure(err),
-				},
-			}
-			fsm.nextAuditSequenceID++
+		auditEntry := &auditpb.AuditEntry{
+			Sequence:   fsm.nextAuditSequenceID,
+			Timestamp:  effectiveDate,
+			ProposalId: proposal.GetId(),
+			Orders:     proposal.GetOrders(),
+			Outcome: &auditpb.AuditEntry_Failure{
+				Failure: buildAuditFailure(err),
+			},
+		}
+		fsm.nextAuditSequenceID++
 
-			appendErr := AppendAuditEntries(batch, auditEntry)
-			if appendErr != nil {
-				return nil, fmt.Errorf("appending audit entry for transient validation failure: %w", appendErr)
-			}
+		appendErr := AppendAuditEntries(batch, auditEntry)
+		if appendErr != nil {
+			return nil, fmt.Errorf("appending audit entry for transient validation failure: %w", appendErr)
 		}
 
 		return &ApplyResult{
@@ -1198,10 +1187,6 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	mirrorConfigChanged := hasMirrorConfigChange(proposal)
 	hasArchiveRequests := len(buffer.pendingArchives) > 0
 	hasPurges := buffer.HasPurges()
-	// Capture audit state before Merge, which may toggle sharedState via SetAuditConfig.
-	// We record the audit entry if audit was enabled before OR after, so that
-	// SetAuditConfig(true) and SetAuditConfig(false) both record themselves.
-	auditBefore := fsm.sharedState.AuditEnabled()
 
 	if err := buffer.Merge(batch, createdLogs); err != nil {
 		return nil, err
@@ -1235,27 +1220,22 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		}
 	}
 
-	auditAfter := fsm.sharedState.AuditEnabled()
-
 	// SUCCESS: write audit entry
-	if auditBefore || auditAfter {
-		auditEntry := &auditpb.AuditEntry{
-			Sequence:   fsm.nextAuditSequenceID,
-			Timestamp:  effectiveDate,
-			ProposalId: proposal.GetId(),
-			Orders:     proposal.GetOrders(),
-			Outcome: &auditpb.AuditEntry_Success{
-				Success: &auditpb.AuditSuccess{
-					LogSequences: extractLogSequencesFromLogsOrRefs(logs),
-				},
+	auditEntry := &auditpb.AuditEntry{
+		Sequence:   fsm.nextAuditSequenceID,
+		Timestamp:  effectiveDate,
+		ProposalId: proposal.GetId(),
+		Orders:     proposal.GetOrders(),
+		Outcome: &auditpb.AuditEntry_Success{
+			Success: &auditpb.AuditSuccess{
+				LogSequences: extractLogSequencesFromLogsOrRefs(logs),
 			},
-		}
-		fsm.nextAuditSequenceID++
+		},
+	}
+	fsm.nextAuditSequenceID++
 
-		err := AppendAuditEntries(batch, auditEntry)
-		if err != nil {
-			return nil, fmt.Errorf("appending audit entry for success: %w", err)
-		}
+	if err := AppendAuditEntries(batch, auditEntry); err != nil {
+		return nil, fmt.Errorf("appending audit entry for success: %w", err)
 	}
 
 	fsm.logsAppendedCounter.Add(ctx, int64(len(createdLogs)))

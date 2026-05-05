@@ -205,7 +205,6 @@ message Request {
     DeletePeriodScheduleRequest delete_period_schedule = 17;
     SetMetadataFieldTypeRequest set_metadata_field_type = 18;
     RemoveMetadataFieldTypeRequest remove_metadata_field_type = 19;
-    SetAuditConfigRequest set_audit_config = 20;
     PromoteLedgerRequest promote_ledger = 21;
     CreatePreparedQueryRequest create_prepared_query = 22;
     UpdatePreparedQueryRequest update_prepared_query = 23;
@@ -328,10 +327,6 @@ message RemoveMetadataFieldTypeRequest {
   string key = 3;
 }
 
-// SetAuditConfigRequest enables or disables audit logging.
-message SetAuditConfigRequest {
-  bool enabled = 1;   // Whether audit logging is active
-}
 
 // CreateIndexRequest requests the creation of an index on a ledger.
 message CreateIndexRequest {

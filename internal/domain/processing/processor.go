@@ -191,8 +191,6 @@ func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s InMemoryStore)
 		return p.processSetSigningConfig(orderType.SetSigningConfig, s)
 	case *raftcmdpb.Order_SetMaintenanceMode:
 		return p.processSetMaintenanceMode(orderType.SetMaintenanceMode, s)
-	case *raftcmdpb.Order_SetAuditConfig:
-		return p.processSetAuditConfig(orderType.SetAuditConfig, s)
 	case *raftcmdpb.Order_AddEventsSink:
 		return p.processAddEventsSink(orderType.AddEventsSink, s)
 	case *raftcmdpb.Order_RemoveEventsSink:

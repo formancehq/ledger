@@ -7,49 +7,14 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/metric/noop"
-
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/keystore"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
-
-// newTestMachineWithAudit creates a Machine with configurable audit enablement.
-func newTestMachineWithAudit(t *testing.T, auditEnabled bool) (*Machine, *dal.Store, *attributes.Attributes) {
-	t.Helper()
-
-	ctx := logging.TestingContext()
-	logger := logging.FromContext(ctx)
-	meter := noop.NewMeterProvider().Meter("test")
-
-	dataStore, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = dataStore.Close() })
-
-	attrs := attributes.New()
-
-	c, err := cache.New(1000, meter)
-	require.NoError(t, err)
-
-	// Persist audit config before creating the machine (NewMachine reads from Pebble).
-	// Must always write explicitly since the default (no key) is now enabled.
-	batch := dataStore.NewBatch()
-	require.NoError(t, SaveAuditConfig(batch, auditEnabled))
-	require.NoError(t, batch.Commit())
-
-	machine, err := NewMachine(logger, dataStore, meter, c, attrs, keystore.NewKeyStore(), NewSharedState(), NoopNotifier{}, NoopNotifier{}, NoopNotifier{}, nil, 0, false)
-	require.NoError(t, err)
-
-	return machine, dataStore, attrs
-}
 
 // listAuditEntries collects all audit entries from the store into a slice.
 // Pass afterSequence=0 to return all entries.
@@ -251,38 +216,6 @@ func TestAuditLogAfterSequenceFilter(t *testing.T) {
 	// After sequence 4: should return nothing
 	after4 := listAuditEntries(t, dataStore, 4)
 	require.Empty(t, after4)
-}
-
-func TestAuditLogDisabled(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-
-	// Create a machine with audit disabled
-	machine, dataStore, _ := newTestMachineWithAudit(t, false)
-
-	const ledgerName = "audit-disabled"
-
-	// Create a ledger + transaction
-	result, err := machine.ApplyEntries(ctx,
-		makeEntry(t, 1, makeProposal(1, createLedgerOrder(ledgerName))),
-	)
-	require.NoError(t, err)
-	require.NoError(t, result.Results[0].Error)
-
-	result, err = machine.ApplyEntries(ctx,
-		makeEntry(t, 2, makeProposal(2,
-			createTransactionOrder(ledgerName, true,
-				newPosting("world", "bank", "USD", 1000),
-			),
-		)),
-	)
-	require.NoError(t, err)
-	require.NoError(t, result.Results[0].Error)
-
-	// Verify no audit entries were written
-	entries := listAuditEntries(t, dataStore, 0)
-	require.Empty(t, entries, "no audit entries should exist when audit is disabled")
 }
 
 func TestAuditSequenceAdvances(t *testing.T) {

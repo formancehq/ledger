@@ -192,8 +192,6 @@ func describeLogPayload(log *commonpb.Log) (string, string) {
 		return "SET_PERIOD_SCHED", ""
 	case *commonpb.LogPayload_DeletePeriodSchedule:
 		return "DEL_PERIOD_SCHED", ""
-	case *commonpb.LogPayload_SetAuditConfig:
-		return "SET_AUDIT_CFG", ""
 	case *commonpb.LogPayload_PromoteLedger:
 		if t.PromoteLedger != nil {
 			return "PROMOTE_LEDGER", t.PromoteLedger.GetName()
@@ -247,10 +245,6 @@ func formatLogDetails(log *commonpb.Log) string {
 	case *commonpb.LogPayload_SetPeriodSchedule:
 		if t.SetPeriodSchedule != nil {
 			return "cron=" + t.SetPeriodSchedule.GetCron()
-		}
-	case *commonpb.LogPayload_SetAuditConfig:
-		if t.SetAuditConfig != nil {
-			return fmt.Sprintf("enabled=%v", t.SetAuditConfig.GetEnabled())
 		}
 	}
 

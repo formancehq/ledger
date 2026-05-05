@@ -43,8 +43,6 @@ func RequiredScopeForRequest(req *servicepb.Request) Scope {
 		return ScopeMetadataWrite
 	case *servicepb.Request_RemoveMetadataFieldType:
 		return ScopeMetadataWrite
-	case *servicepb.Request_SetAuditConfig:
-		return ScopeAuditWrite
 	case *servicepb.Request_CreatePreparedQuery:
 		return ScopeQueriesWrite
 	case *servicepb.Request_UpdatePreparedQuery:

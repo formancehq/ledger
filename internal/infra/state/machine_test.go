@@ -38,11 +38,6 @@ func newTestMachineWithThreshold(t *testing.T, generationThreshold uint64) (*Mac
 	c, err := cache.New(generationThreshold, meter)
 	require.NoError(t, err)
 
-	// Persist audit config before creating the machine (NewMachine reads from Pebble)
-	batch := dataStore.NewBatch()
-	require.NoError(t, SaveAuditConfig(batch, true))
-	require.NoError(t, batch.Commit())
-
 	machine, err := NewMachine(logger, dataStore, meter, c, attrs, keystore.NewKeyStore(), NewSharedState(), NoopNotifier{}, NoopNotifier{}, NoopNotifier{}, nil, 0, false)
 	require.NoError(t, err)
 

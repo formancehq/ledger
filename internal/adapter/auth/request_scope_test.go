@@ -77,13 +77,6 @@ func TestRequiredScopeForRequest_MetadataWrite(t *testing.T) {
 	}
 }
 
-func TestRequiredScopeForRequest_AuditWrite(t *testing.T) {
-	t.Parallel()
-
-	req := &servicepb.Request{Type: &servicepb.Request_SetAuditConfig{}}
-	assert.Equal(t, ScopeAuditWrite, RequiredScopeForRequest(req))
-}
-
 func TestRequiredScopeForRequest_QueriesWrite(t *testing.T) {
 	t.Parallel()
 

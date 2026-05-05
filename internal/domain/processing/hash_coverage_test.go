@@ -513,24 +513,6 @@ func TestGoldenHashNilSubMessages(t *testing.T) {
 	}
 }
 
-// TestGoldenHashSetAuditConfig covers LogPayload_SetAuditConfig.
-func TestGoldenHashSetAuditConfig(t *testing.T) {
-	t.Parallel()
-
-	log := &commonpb.Log{
-		Sequence: 70,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_SetAuditConfig{
-				SetAuditConfig: &commonpb.SetAuditConfigLog{Enabled: true},
-			},
-		},
-	}
-
-	_, hashResult := ComputeLogHash(nil, nil, log)
-	got := hex.EncodeToString(hashResult)
-	require.Equal(t, "20c4aabb72e82949db1599d9749e1fb6f0d95911846c4012c3a1c4221a6e8d06", got)
-}
-
 // TestGoldenHashPromoteLedger covers LogPayload_PromoteLedger.
 func TestGoldenHashPromoteLedger(t *testing.T) {
 	t.Parallel()

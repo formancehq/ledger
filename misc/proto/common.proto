@@ -306,7 +306,6 @@ message LogPayload {
     SetMaintenanceModeLog set_maintenance_mode = 13;
     SetPeriodScheduleLog set_period_schedule = 14;
     DeletePeriodScheduleLog delete_period_schedule = 15;
-    SetAuditConfigLog set_audit_config = 16;
     PromoteLedgerLog promote_ledger = 17;
     CreatedPreparedQueryLog created_prepared_query = 18;
     UpdatedPreparedQueryLog updated_prepared_query = 19;
@@ -375,11 +374,6 @@ message SetPeriodScheduleLog {
 
 // DeletePeriodScheduleLog records the removal of the period schedule.
 message DeletePeriodScheduleLog {}
-
-// SetAuditConfigLog records an audit configuration change.
-message SetAuditConfigLog {
-  bool enabled = 1;
-}
 
 // CreatedPreparedQueryLog records the creation of a prepared query.
 message CreatedPreparedQueryLog {

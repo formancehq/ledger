@@ -100,13 +100,8 @@ var _ = Describe("Audit entry purge after period archive", Ordered, func() {
 	It("should purge all audit entries from period 2 after archive", func() {
 		const ledger = "audit-purge-test"
 
-		// Enable audit, create ledger.
+		// Create ledger.
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{actions.SetAuditConfigAction(true)},
-		})
-		Expect(err).To(Succeed())
-
-		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{actions.CreateLedgerAction(ledger, nil)},
 		})
 		Expect(err).To(Succeed())
@@ -128,7 +123,7 @@ var _ = Describe("Audit entry purge after period archive", Ordered, func() {
 
 		entriesBefore, err := actions.ListAuditEntries(ctx, client, false)
 		Expect(err).To(Succeed())
-		Expect(len(entriesBefore)).To(BeNumerically(">=", 6), "should have audit entries from period 1")
+		Expect(len(entriesBefore)).To(BeNumerically(">=", 5), "should have audit entries from period 1")
 
 		GinkgoWriter.Printf("Period 1: %d audit entries, max audit seq = %d\n",
 			len(entriesBefore), entriesBefore[len(entriesBefore)-1].Sequence)

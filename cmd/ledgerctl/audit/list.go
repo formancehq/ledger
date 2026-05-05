@@ -8,11 +8,8 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
-	"google.golang.org/genproto/googleapis/rpc/errdetails"
-	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -67,13 +64,6 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 	stream, err := client.ListAuditEntries(ctx, req)
 	if err != nil {
-		if isAuditDisabledError(err) {
-			pterm.Warning.Println("Audit log is disabled on this server.")
-			pterm.Println(pterm.Gray("Run `ledgerctl audit enable` to activate audit logging."))
-
-			return nil
-		}
-
 		return cmdutil.FormatGRPCError("failed to list audit entries", err)
 	}
 
@@ -86,13 +76,6 @@ func runList(cmd *cobra.Command, _ []string) error {
 		}
 
 		if err != nil {
-			if isAuditDisabledError(err) {
-				pterm.Warning.Println("Audit log is disabled on this server.")
-				pterm.Println(pterm.Gray("Run `ledgerctl audit enable` to activate audit logging."))
-
-				return nil
-			}
-
 			return cmdutil.FormatGRPCError("receiving audit entry", err)
 		}
 
@@ -255,8 +238,6 @@ func describeOrder(order *raftcmdpb.Order) (string, string) {
 		return "ConfirmArchivePeriod", fmt.Sprintf("periodId=%d", order.GetConfirmArchivePeriod().GetPeriodId())
 	case order.GetSetMaintenanceMode() != nil:
 		return "SetMaintenanceMode", fmt.Sprintf("enabled=%v", order.GetSetMaintenanceMode().GetEnabled())
-	case order.GetSetAuditConfig() != nil:
-		return "SetAuditConfig", fmt.Sprintf("enabled=%v", order.GetSetAuditConfig().GetEnabled())
 	case order.GetSetPeriodSchedule() != nil:
 		return "SetPeriodSchedule", "cron=" + order.GetSetPeriodSchedule().GetCron()
 	case order.GetDeletePeriodSchedule() != nil:
@@ -305,25 +286,4 @@ func describeApplyOrder(apply *raftcmdpb.LedgerApplyOrder) (string, string) {
 	default:
 		return "Apply", ""
 	}
-}
-
-// isAuditDisabledError checks if a gRPC error indicates that audit is disabled.
-func isAuditDisabledError(err error) bool {
-	st, ok := status.FromError(err)
-	if !ok {
-		return false
-	}
-
-	for _, detail := range st.Details() {
-		info, ok := detail.(*errdetails.ErrorInfo)
-		if !ok {
-			continue
-		}
-
-		if info.GetReason() == domain.ErrReasonAuditDisabled && info.GetDomain() == "ledger" {
-			return true
-		}
-	}
-
-	return false
 }
