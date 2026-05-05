@@ -24,4 +24,4 @@ runs:
     - name: Install earthly
       uses: earthly/actions-setup@v1
       with:
-        github-token: ${{ secrets.GITHUB_TOKEN }}
+        github-token: ${{ inputs.token }}
