@@ -22,10 +22,7 @@ func TestHandlePromoteLedger_Success(t *testing.T) {
 				Payload: &commonpb.LogPayload{
 					Type: &commonpb.LogPayload_PromoteLedger{
 						PromoteLedger: &commonpb.PromoteLedgerLog{
-							Info: &commonpb.LedgerInfo{
-								Name: "mirror-ledger",
-								Mode: commonpb.LedgerMode_LEDGER_MODE_NORMAL,
-							},
+							Name: "mirror-ledger",
 						},
 					},
 				},

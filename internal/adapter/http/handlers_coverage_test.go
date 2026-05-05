@@ -1170,7 +1170,7 @@ func TestNewHandler_CreateLedgerRoute(t *testing.T) {
 					Payload: &commonpb.LogPayload{
 						Type: &commonpb.LogPayload_CreateLedger{
 							CreateLedger: &commonpb.CreateLedgerLog{
-								Info: &commonpb.LedgerInfo{Name: "test"},
+								Name: "test",
 							},
 						},
 					},
@@ -1444,7 +1444,7 @@ func TestHandleCreateLedger_IdempotencyKeyPropagated(t *testing.T) {
 					Payload: &commonpb.LogPayload{
 						Type: &commonpb.LogPayload_CreateLedger{
 							CreateLedger: &commonpb.CreateLedgerLog{
-								Info: &commonpb.LedgerInfo{Name: "test"},
+								Name: "test",
 							},
 						},
 					},

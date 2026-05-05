@@ -208,10 +208,8 @@ func TestReadLogsSince(t *testing.T) {
 				Payload: &commonpb.LogPayload{
 					Type: &commonpb.LogPayload_CreateLedger{
 						CreateLedger: &commonpb.CreateLedgerLog{
-							Info: &commonpb.LedgerInfo{
-								Name:      "new-ledger",
-								CreatedAt: commonpb.NewTimestamp(now),
-							},
+							Name:      "new-ledger",
+							CreatedAt: commonpb.NewTimestamp(now),
 						},
 					},
 				},
@@ -243,10 +241,8 @@ func TestReadLogsSince(t *testing.T) {
 				Payload: &commonpb.LogPayload{
 					Type: &commonpb.LogPayload_DeleteLedger{
 						DeleteLedger: &commonpb.DeleteLedgerLog{
-							Info: &commonpb.LedgerInfo{
-								Name:      "new-ledger",
-								DeletedAt: commonpb.NewTimestamp(now),
-							},
+							Name:      "new-ledger",
+							DeletedAt: commonpb.NewTimestamp(now),
 						},
 					},
 				},
@@ -400,7 +396,7 @@ func TestReadLogBySequenceWithCold_ColdFallback(t *testing.T) {
 		Sequence: 5,
 		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
 			CreateLedger: &commonpb.CreateLedgerLog{
-				Info: &commonpb.LedgerInfo{Name: "cold-ledger", CreatedAt: commonpb.NewTimestamp(libtime.Now())},
+				Name: "cold-ledger", CreatedAt: commonpb.NewTimestamp(libtime.Now()),
 			},
 		}},
 	}
@@ -450,7 +446,7 @@ func TestReadLogBySequenceWithCold_NotInCold(t *testing.T) {
 		Sequence: 1,
 		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
 			CreateLedger: &commonpb.CreateLedgerLog{
-				Info: &commonpb.LedgerInfo{Name: "other", CreatedAt: commonpb.NewTimestamp(libtime.Now())},
+				Name: "other", CreatedAt: commonpb.NewTimestamp(libtime.Now()),
 			},
 		}},
 	})

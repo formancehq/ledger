@@ -98,7 +98,7 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeCreated(w, logs[0].GetPayload().GetCreateLedger().GetInfo())
+	writeCreated(w, logs[0].GetPayload().GetCreateLedger().ToLedgerInfo())
 }
 
 // mirrorSourceToProto converts the HTTP body to the proto MirrorSourceConfig.

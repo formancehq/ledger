@@ -25,10 +25,8 @@ func TestLogToEvent(t *testing.T) {
 				Payload: &commonpb.LogPayload{
 					Type: &commonpb.LogPayload_CreateLedger{
 						CreateLedger: &commonpb.CreateLedgerLog{
-							Info: &commonpb.LedgerInfo{
-								Name:      "orders",
-								CreatedAt: &commonpb.Timestamp{Data: 1000},
-							},
+							Name:      "orders",
+							CreatedAt: &commonpb.Timestamp{Data: 1000},
 						},
 					},
 				},
@@ -43,10 +41,8 @@ func TestLogToEvent(t *testing.T) {
 				Payload: &commonpb.LogPayload{
 					Type: &commonpb.LogPayload_DeleteLedger{
 						DeleteLedger: &commonpb.DeleteLedgerLog{
-							Info: &commonpb.LedgerInfo{
-								Name:      "orders",
-								DeletedAt: &commonpb.Timestamp{Data: 2000},
-							},
+							Name:      "orders",
+							DeletedAt: &commonpb.Timestamp{Data: 2000},
 						},
 					},
 				},

@@ -272,8 +272,7 @@ func TestPromoteLedger_Success(t *testing.T) {
 
 	promoteLog := result.GetPromoteLedger()
 	require.NotNil(t, promoteLog)
-	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_NORMAL, promoteLog.GetInfo().GetMode())
-	require.Nil(t, promoteLog.GetInfo().GetMirrorSource())
+	require.Equal(t, "mirror-ledger", promoteLog.GetName())
 }
 
 func TestPromoteLedger_NotMirrorMode(t *testing.T) {

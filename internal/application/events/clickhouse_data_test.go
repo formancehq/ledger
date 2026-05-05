@@ -72,9 +72,7 @@ func TestEventToClickHouseJSON_CreateLedger(t *testing.T) {
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_CreateLedger{
 					CreateLedger: &commonpb.CreateLedgerLog{
-						Info: &commonpb.LedgerInfo{
-							Name: "orders",
-						},
+						Name: "orders",
 					},
 				},
 			},
@@ -102,9 +100,7 @@ func TestEventToClickHouseJSON_DeleteLedger(t *testing.T) {
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_DeleteLedger{
 					DeleteLedger: &commonpb.DeleteLedgerLog{
-						Info: &commonpb.LedgerInfo{
-							Name: "old-ledger",
-						},
+						Name: "old-ledger",
 					},
 				},
 			},

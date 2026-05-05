@@ -83,15 +83,33 @@ func (x *LogPayload) MarshalJSON() ([]byte, error) {
 // MarshalJSON implements json.Marshaler for CreateLedgerLog.
 func (x *CreateLedgerLog) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		Info *LedgerInfo `json:"info,omitempty"`
-	}{Info: x.GetInfo()})
+		Name                   string                  `json:"name,omitempty"`
+		CreatedAt              *Timestamp              `json:"createdAt,omitempty"`
+		MetadataSchema         *MetadataSchema         `json:"metadataSchema,omitempty"`
+		Mode                   LedgerMode              `json:"mode,omitempty"`
+		MirrorSource           *MirrorSourceConfig     `json:"mirrorSource,omitempty"`
+		AccountTypes           map[string]*AccountType `json:"accountTypes,omitempty"`
+		DefaultEnforcementMode ChartEnforcementMode    `json:"defaultEnforcementMode,omitempty"`
+	}{
+		Name:                   x.GetName(),
+		CreatedAt:              x.GetCreatedAt(),
+		MetadataSchema:         x.GetMetadataSchema(),
+		Mode:                   x.GetMode(),
+		MirrorSource:           x.GetMirrorSource(),
+		AccountTypes:           x.GetAccountTypes(),
+		DefaultEnforcementMode: x.GetDefaultEnforcementMode(),
+	})
 }
 
 // MarshalJSON implements json.Marshaler for DeleteLedgerLog.
 func (x *DeleteLedgerLog) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		Info *LedgerInfo `json:"info,omitempty"`
-	}{Info: x.GetInfo()})
+		Name      string     `json:"name,omitempty"`
+		DeletedAt *Timestamp `json:"deletedAt,omitempty"`
+	}{
+		Name:      x.GetName(),
+		DeletedAt: x.GetDeletedAt(),
+	})
 }
 
 // MarshalJSON implements json.Marshaler for ApplyLedgerLog.

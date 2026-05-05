@@ -53,7 +53,7 @@ func TestProcessCreateLedger(t *testing.T) {
 
 	createLedgerLog := result.GetCreateLedger()
 	require.NotNil(t, createLedgerLog)
-	require.Equal(t, "test-ledger", createLedgerLog.GetInfo().GetName())
+	require.Equal(t, "test-ledger", createLedgerLog.GetName())
 }
 
 func TestProcessCreateLedger_AlreadyExists(t *testing.T) {
@@ -115,8 +115,8 @@ func TestProcessDeleteLedger(t *testing.T) {
 
 	deleteLedgerLog := result.GetDeleteLedger()
 	require.NotNil(t, deleteLedgerLog)
-	require.Equal(t, "test-ledger", deleteLedgerLog.GetInfo().GetName())
-	require.Equal(t, now, deleteLedgerLog.GetInfo().GetDeletedAt())
+	require.Equal(t, "test-ledger", deleteLedgerLog.GetName())
+	require.Equal(t, now, deleteLedgerLog.GetDeletedAt())
 }
 
 func TestProcessDeleteLedger_NotFound(t *testing.T) {

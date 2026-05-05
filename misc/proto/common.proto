@@ -320,7 +320,7 @@ message LogPayload {
 }
 
 message PromoteLedgerLog {
-  LedgerInfo info = 1;
+  string name = 1;
 }
 
 // ============================================================================
@@ -524,12 +524,22 @@ message DatabricksSinkConfig {
   int32 port = 7;               // Port number (default: 443)
 }
 
+// CreateLedgerLog captures the creation-time parameters of a ledger.
+// Uses dedicated fields instead of embedding LedgerInfo to avoid sharing
+// a mutable pointer between the FSM store and the immutable log payload.
 message CreateLedgerLog {
-  LedgerInfo info = 1;
+  string name = 1;
+  Timestamp created_at = 2;
+  MetadataSchema metadata_schema = 3;
+  LedgerMode mode = 4;
+  MirrorSourceConfig mirror_source = 5;
+  map<string, AccountType> account_types = 6;
+  ChartEnforcementMode default_enforcement_mode = 7;
 }
 
 message DeleteLedgerLog {
-  LedgerInfo info = 1;  // Ledger info with deleted_at set
+  string name = 1;
+  Timestamp deleted_at = 2;
 }
 
 message ApplyLedgerLog {

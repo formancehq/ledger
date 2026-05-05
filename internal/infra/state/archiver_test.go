@@ -112,7 +112,7 @@ func TestArchiverArchivesAndProposes(t *testing.T) {
 	batch := dataStore.NewBatch()
 	require.NoError(t, AppendLogs(batch, &commonpb.Log{
 		Sequence: 1,
-		Payload:  &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreateLedgerLog{Info: &commonpb.LedgerInfo{Name: "test", CreatedAt: commonpb.NewTimestamp(libtime.Now())}}}},
+		Payload:  &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreateLedgerLog{Name: "test", CreatedAt: commonpb.NewTimestamp(libtime.Now())}}},
 	}))
 	require.NoError(t, batch.Commit())
 
@@ -279,7 +279,7 @@ func TestArchiverNonLeaderRetries(t *testing.T) {
 	batch := dataStore.NewBatch()
 	require.NoError(t, AppendLogs(batch, &commonpb.Log{
 		Sequence: 1,
-		Payload:  &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreateLedgerLog{Info: &commonpb.LedgerInfo{Name: "test", CreatedAt: commonpb.NewTimestamp(libtime.Now())}}}},
+		Payload:  &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreateLedgerLog{Name: "test", CreatedAt: commonpb.NewTimestamp(libtime.Now())}}},
 	}))
 	require.NoError(t, batch.Commit())
 
@@ -307,7 +307,7 @@ func TestArchiverSSTRoundtrip(t *testing.T) {
 		Sequence: 1,
 		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
 			CreateLedger: &commonpb.CreateLedgerLog{
-				Info: &commonpb.LedgerInfo{Name: "test-ledger", CreatedAt: commonpb.NewTimestamp(libtime.Now())},
+				Name: "test-ledger", CreatedAt: commonpb.NewTimestamp(libtime.Now()),
 			},
 		}},
 	}))

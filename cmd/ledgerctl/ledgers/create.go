@@ -159,7 +159,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		return cmdutil.Displayed(errors.New("unexpected response type"))
 	}
 
-	ledger := createLedgerLog.GetInfo()
+	ledger := createLedgerLog.ToLedgerInfo()
 
 	spinner.Success("Created")
 

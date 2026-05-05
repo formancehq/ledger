@@ -166,7 +166,10 @@ func (h *logHasher) hashCreateLedgerLog(cl *commonpb.CreateLedgerLog) {
 	}
 
 	h.writePresence(true)
-	h.hashLedgerInfo(cl.GetInfo())
+	h.writeString(cl.GetName())
+	h.hashTimestamp(cl.GetCreatedAt())
+	h.writeInt32(int32(cl.GetMode()))
+	h.hashMirrorSourceConfig(cl.GetMirrorSource())
 }
 
 func (h *logHasher) hashDeleteLedgerLog(dl *commonpb.DeleteLedgerLog) {
@@ -177,22 +180,8 @@ func (h *logHasher) hashDeleteLedgerLog(dl *commonpb.DeleteLedgerLog) {
 	}
 
 	h.writePresence(true)
-	h.hashLedgerInfo(dl.GetInfo())
-}
-
-func (h *logHasher) hashLedgerInfo(info *commonpb.LedgerInfo) {
-	if info == nil {
-		h.writePresence(false)
-
-		return
-	}
-
-	h.writePresence(true)
-	h.writeString(info.GetName())
-	h.hashTimestamp(info.GetCreatedAt())
-	h.hashTimestamp(info.GetDeletedAt())
-	h.writeInt32(int32(info.GetMode()))
-	h.hashMirrorSourceConfig(info.GetMirrorSource())
+	h.writeString(dl.GetName())
+	h.hashTimestamp(dl.GetDeletedAt())
 }
 
 func (h *logHasher) hashMirrorSourceConfig(cfg *commonpb.MirrorSourceConfig) {
@@ -866,7 +855,7 @@ func (h *logHasher) hashPromoteLedgerLog(p *commonpb.PromoteLedgerLog) {
 	}
 
 	h.writePresence(true)
-	h.hashLedgerInfo(p.GetInfo())
+	h.writeString(p.GetName())
 }
 
 // ComputeLogHash computes a blake3 hash for log chaining:

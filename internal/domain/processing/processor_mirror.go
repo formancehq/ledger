@@ -401,7 +401,7 @@ func (p *RequestProcessor) processPromoteLedger(order *raftcmdpb.PromoteLedgerOr
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_PromoteLedger{
 			PromoteLedger: &commonpb.PromoteLedgerLog{
-				Info: info,
+				Name: info.GetName(),
 			},
 		},
 	}, nil

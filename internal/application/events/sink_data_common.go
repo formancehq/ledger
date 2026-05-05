@@ -105,10 +105,10 @@ func eventToSinkJSON(event *eventspb.Event) ([]byte, error) {
 
 	switch p := log.GetPayload().GetType().(type) {
 	case *commonpb.LogPayload_CreateLedger:
-		sinkPopulateLedgerInfo(&data, p.CreateLedger.GetInfo())
+		data.LedgerName = &p.CreateLedger.Name
 
 	case *commonpb.LogPayload_DeleteLedger:
-		sinkPopulateLedgerInfo(&data, p.DeleteLedger.GetInfo())
+		data.LedgerName = &p.DeleteLedger.Name
 
 	case *commonpb.LogPayload_Apply:
 		sinkPopulateApply(&data, p.Apply)

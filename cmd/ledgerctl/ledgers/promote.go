@@ -3,7 +3,6 @@ package ledgers
 import (
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -135,28 +134,19 @@ func runPromote(cmd *cobra.Command, args []string) error {
 		return cmdutil.Displayed(errors.New("unexpected response type"))
 	}
 
-	ledger := promoteLedgerLog.GetInfo()
-
 	spinner.Success("Promoted")
 
-	if handled, err := cmdutil.EncodeStructured(cmd, ledger); handled || err != nil {
+	if handled, err := cmdutil.EncodeStructured(cmd, promoteLedgerLog); handled || err != nil {
 		return err
 	}
 
 	pterm.Println()
 
-	pterm.Printf("Ledger: %s (promoted to normal mode)\n", ledger.GetName())
+	pterm.Printf("Ledger: %s (promoted to normal mode)\n", promoteLedgerLog.GetName())
 	pterm.Println(pterm.Gray("─────────────────────────────────"))
 
-	pterm.Printf("Name:       %s\n", pterm.Gray(ledger.GetName()))
-
-	createdAt := "-"
-	if ledger.GetCreatedAt() != nil {
-		createdAt = ledger.GetCreatedAt().AsTime().Format(time.RFC3339)
-	}
-
-	pterm.Printf("Created At: %s\n", createdAt)
-	pterm.Printf("Mode:       %s\n", ledgerModeString(ledger.GetMode()))
+	pterm.Printf("Name:       %s\n", pterm.Gray(promoteLedgerLog.GetName()))
+	pterm.Printf("Mode:       normal\n")
 
 	return nil
 }

@@ -88,8 +88,8 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 
 			// Handle ledger deletion: remove all read indexes for the deleted ledger.
 			if dl, ok := log.GetPayload().GetType().(*commonpb.LogPayload_DeleteLedger); ok {
-				if dl.DeleteLedger.GetInfo() != nil {
-					if err := readstore.DeleteLedgerIndexes(batch, dl.DeleteLedger.GetInfo().GetName()); err != nil {
+				if dl.DeleteLedger != nil {
+					if err := readstore.DeleteLedgerIndexes(batch, dl.DeleteLedger.GetName()); err != nil {
 						_ = batch.Close()
 
 						return cursor, err
@@ -328,8 +328,8 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log) error
 
 	// Handle ledger deletion: remove all read indexes for the deleted ledger.
 	if dl, ok := log.GetPayload().GetType().(*commonpb.LogPayload_DeleteLedger); ok {
-		if dl.DeleteLedger.GetInfo() != nil && b.wb.Batch() != nil {
-			return readstore.DeleteLedgerIndexes(b.wb.Batch(), dl.DeleteLedger.GetInfo().GetName())
+		if dl.DeleteLedger != nil && b.wb.Batch() != nil {
+			return readstore.DeleteLedgerIndexes(b.wb.Batch(), dl.DeleteLedger.GetName())
 		}
 
 		return nil

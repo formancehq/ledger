@@ -175,10 +175,8 @@ func TestEmitterIntegration_ProcessExistingLogs(t *testing.T) {
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_CreateLedger{
 					CreateLedger: &commonpb.CreateLedgerLog{
-						Info: &commonpb.LedgerInfo{
-							Name:      "orders",
-							CreatedAt: commonpb.NewTimestamp(now),
-						},
+						Name:      "orders",
+						CreatedAt: commonpb.NewTimestamp(now),
 					},
 				},
 			},
@@ -316,7 +314,7 @@ func TestEmitterIntegration_CursorResumesAfterRestart(t *testing.T) {
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_CreateLedger{
 					CreateLedger: &commonpb.CreateLedgerLog{
-						Info: &commonpb.LedgerInfo{Name: "orders", CreatedAt: commonpb.NewTimestamp(now)},
+						Name: "orders", CreatedAt: commonpb.NewTimestamp(now),
 					},
 				},
 			},
@@ -446,7 +444,7 @@ func TestEmitterIntegration_AllEventTypes(t *testing.T) {
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_CreateLedger{
 					CreateLedger: &commonpb.CreateLedgerLog{
-						Info: &commonpb.LedgerInfo{Name: "test", CreatedAt: commonpb.NewTimestamp(now)},
+						Name: "test", CreatedAt: commonpb.NewTimestamp(now),
 					},
 				},
 			},
@@ -544,7 +542,7 @@ func TestEmitterIntegration_AllEventTypes(t *testing.T) {
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_DeleteLedger{
 					DeleteLedger: &commonpb.DeleteLedgerLog{
-						Info: &commonpb.LedgerInfo{Name: "test", DeletedAt: commonpb.NewTimestamp(now)},
+						Name: "test", DeletedAt: commonpb.NewTimestamp(now),
 					},
 				},
 			},
@@ -665,7 +663,7 @@ func TestEmitterIntegration_EventTypeFilter(t *testing.T) {
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_CreateLedger{
 					CreateLedger: &commonpb.CreateLedgerLog{
-						Info: &commonpb.LedgerInfo{Name: "test", CreatedAt: commonpb.NewTimestamp(now)},
+						Name: "test", CreatedAt: commonpb.NewTimestamp(now),
 					},
 				},
 			},

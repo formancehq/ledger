@@ -23,9 +23,7 @@ func TestHandleCreateLedger_Success(t *testing.T) {
 					Payload: &commonpb.LogPayload{
 						Type: &commonpb.LogPayload_CreateLedger{
 							CreateLedger: &commonpb.CreateLedgerLog{
-								Info: &commonpb.LedgerInfo{
-									Name: "test-ledger",
-								},
+								Name: "test-ledger",
 							},
 						},
 					},

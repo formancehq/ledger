@@ -23,10 +23,8 @@ func TestGoldenHashCreateLedger(t *testing.T) {
 		Payload: &commonpb.LogPayload{
 			Type: &commonpb.LogPayload_CreateLedger{
 				CreateLedger: &commonpb.CreateLedgerLog{
-					Info: &commonpb.LedgerInfo{
-						Name:      "default",
-						CreatedAt: &commonpb.Timestamp{Data: 1700000000},
-					},
+					Name:      "default",
+					CreatedAt: &commonpb.Timestamp{Data: 1700000000},
 				},
 			},
 		},
@@ -34,7 +32,7 @@ func TestGoldenHashCreateLedger(t *testing.T) {
 
 	h := blake3.New()
 	got := hex.EncodeToString(ComputeLogHash(h, nil, log))
-	require.Equal(t, "0b72cef72f58a65f0b0aa4b2f0e226f474524444cb54628957bcddbd02c3e542", got)
+	require.Equal(t, "6a502520750f7d661decb57a3a41bbbf83a188e166292e7b0b2c5b1c92426a53", got)
 }
 
 func TestGoldenHashApplyCreatedTransaction(t *testing.T) {
@@ -149,10 +147,8 @@ func TestGoldenHashChain(t *testing.T) {
 		Payload: &commonpb.LogPayload{
 			Type: &commonpb.LogPayload_CreateLedger{
 				CreateLedger: &commonpb.CreateLedgerLog{
-					Info: &commonpb.LedgerInfo{
-						Name:      "ops",
-						CreatedAt: &commonpb.Timestamp{Data: 1700000000},
-					},
+					Name:      "ops",
+					CreatedAt: &commonpb.Timestamp{Data: 1700000000},
 				},
 			},
 		},
@@ -176,8 +172,8 @@ func TestGoldenHashChain(t *testing.T) {
 	gotHash1 := hex.EncodeToString(hash1)
 	gotHash2 := hex.EncodeToString(hash2)
 
-	require.Equal(t, "a817810e446f921e64eb7fbdef2c51899e6fb788413971427081dc28ed57b640", gotHash1)
-	require.Equal(t, "fa2be97c6ccda07a3e6909a4f4527a2cc36baa96f5dbb26005ff99b19a1666d0", gotHash2)
+	require.Equal(t, "77086e702016ce244f37c58947730ae0885ed68c8ae11c3396faaede120c4687", gotHash1)
+	require.Equal(t, "bd64f59f1a9fddea7ea0bff0e31072eadb71920434c20028a13c15381122a95e", gotHash2)
 }
 
 func TestGoldenHashAddedEventsSink(t *testing.T) {
@@ -222,11 +218,8 @@ func TestGoldenHashDeleteLedger(t *testing.T) {
 		Payload: &commonpb.LogPayload{
 			Type: &commonpb.LogPayload_DeleteLedger{
 				DeleteLedger: &commonpb.DeleteLedgerLog{
-					Info: &commonpb.LedgerInfo{
-						Name:      "old-ledger",
-						CreatedAt: &commonpb.Timestamp{Data: 1700000000},
-						DeletedAt: &commonpb.Timestamp{Data: 1700500000},
-					},
+					Name:      "old-ledger",
+					DeletedAt: &commonpb.Timestamp{Data: 1700500000},
 				},
 			},
 		},
@@ -234,7 +227,7 @@ func TestGoldenHashDeleteLedger(t *testing.T) {
 
 	h := blake3.New()
 	got := hex.EncodeToString(ComputeLogHash(h, nil, log))
-	require.Equal(t, "712c8b09d51e1c2fa0713cb36ef756efcfe417de4ac8fd41ff0b419b460e6d24", got)
+	require.Equal(t, "c79f06841163df6dfdec72b8d28cce5d7d5caccd53cb0556ecf301bdf6af142f", got)
 }
 
 func TestGoldenHashRevokeSigningKey(t *testing.T) {

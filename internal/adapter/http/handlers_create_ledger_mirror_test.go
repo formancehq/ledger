@@ -26,10 +26,8 @@ func TestHandleCreateLedger_MirrorModeHTTP(t *testing.T) {
 				Payload: &commonpb.LogPayload{
 					Type: &commonpb.LogPayload_CreateLedger{
 						CreateLedger: &commonpb.CreateLedgerLog{
-							Info: &commonpb.LedgerInfo{
-								Name: "mirror-ledger",
-								Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
-							},
+							Name: "mirror-ledger",
+							Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 						},
 					},
 				},
@@ -78,10 +76,8 @@ func TestHandleCreateLedger_MirrorModePostgres(t *testing.T) {
 				Payload: &commonpb.LogPayload{
 					Type: &commonpb.LogPayload_CreateLedger{
 						CreateLedger: &commonpb.CreateLedgerLog{
-							Info: &commonpb.LedgerInfo{
-								Name: "mirror-pg",
-								Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
-							},
+							Name: "mirror-pg",
+							Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 						},
 					},
 				},
@@ -123,7 +119,7 @@ func TestHandleCreateLedger_MirrorModeDefaultType(t *testing.T) {
 				Payload: &commonpb.LogPayload{
 					Type: &commonpb.LogPayload_CreateLedger{
 						CreateLedger: &commonpb.CreateLedgerLog{
-							Info: &commonpb.LedgerInfo{Name: "mirror-default"},
+							Name: "mirror-default",
 						},
 					},
 				},

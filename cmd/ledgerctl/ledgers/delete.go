@@ -135,31 +135,22 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		return cmdutil.Displayed(errors.New("unexpected response type"))
 	}
 
-	ledger := deleteLedgerLog.GetInfo()
-
 	spinner.Success("Deleted")
 
-	if handled, err := cmdutil.EncodeStructured(cmd, ledger); handled || err != nil {
+	if handled, err := cmdutil.EncodeStructured(cmd, deleteLedgerLog); handled || err != nil {
 		return err
 	}
 
 	pterm.Println()
 
-	pterm.Printf("Ledger: %s (deleted)\n", pterm.Cyan(ledger.GetName()))
+	pterm.Printf("Ledger: %s (deleted)\n", pterm.Cyan(deleteLedgerLog.GetName()))
 	pterm.Println(pterm.Gray("─────────────────────────────────"))
 
-	pterm.Printf("Name:       %s\n", pterm.Gray(ledger.GetName()))
-
-	createdAt := "-"
-	if ledger.GetCreatedAt() != nil {
-		createdAt = ledger.GetCreatedAt().AsTime().Format(time.RFC3339)
-	}
-
-	pterm.Printf("Created At: %s\n", createdAt)
+	pterm.Printf("Name:       %s\n", pterm.Gray(deleteLedgerLog.GetName()))
 
 	deletedAt := "-"
-	if ledger.GetDeletedAt() != nil {
-		deletedAt = ledger.GetDeletedAt().AsTime().Format(time.RFC3339)
+	if deleteLedgerLog.GetDeletedAt() != nil {
+		deletedAt = deleteLedgerLog.GetDeletedAt().AsTime().Format(time.RFC3339)
 	}
 
 	pterm.Printf("Deleted At: %s\n", deletedAt)

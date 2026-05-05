@@ -787,7 +787,7 @@ func createLedger(ctx context.Context, node *Node, name string) (*commonpb.Ledge
 		return nil, err
 	}
 
-	return logs[0].GetPayload().GetCreateLedger().GetInfo(), nil
+	return logs[0].GetPayload().GetCreateLedger().ToLedgerInfo(), nil
 }
 
 func TestClusterBasic(t *testing.T) {

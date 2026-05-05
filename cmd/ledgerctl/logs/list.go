@@ -130,15 +130,15 @@ func describeLogPayload(log *commonpb.Log) (string, string) {
 	switch t := log.GetPayload().GetType().(type) {
 	case *commonpb.LogPayload_CreateLedger:
 		name := ""
-		if t.CreateLedger != nil && t.CreateLedger.GetInfo() != nil {
-			name = t.CreateLedger.GetInfo().GetName()
+		if t.CreateLedger != nil {
+			name = t.CreateLedger.GetName()
 		}
 
 		return "CREATE_LEDGER", name
 	case *commonpb.LogPayload_DeleteLedger:
 		name := ""
-		if t.DeleteLedger != nil && t.DeleteLedger.GetInfo() != nil {
-			name = t.DeleteLedger.GetInfo().GetName()
+		if t.DeleteLedger != nil {
+			name = t.DeleteLedger.GetName()
 		}
 
 		return "DELETE_LEDGER", name
@@ -195,8 +195,8 @@ func describeLogPayload(log *commonpb.Log) (string, string) {
 	case *commonpb.LogPayload_SetAuditConfig:
 		return "SET_AUDIT_CFG", ""
 	case *commonpb.LogPayload_PromoteLedger:
-		if t.PromoteLedger != nil && t.PromoteLedger.GetInfo() != nil {
-			return "PROMOTE_LEDGER", t.PromoteLedger.GetInfo().GetName()
+		if t.PromoteLedger != nil {
+			return "PROMOTE_LEDGER", t.PromoteLedger.GetName()
 		}
 
 		return "PROMOTE_LEDGER", ""
@@ -237,8 +237,8 @@ func formatLogDetails(log *commonpb.Log) string {
 
 		return ts
 	case *commonpb.LogPayload_CreateLedger:
-		if t.CreateLedger != nil && t.CreateLedger.GetInfo() != nil && t.CreateLedger.GetInfo().GetCreatedAt() != nil {
-			return t.CreateLedger.GetInfo().GetCreatedAt().AsTime().Format(time.RFC3339)
+		if t.CreateLedger != nil && t.CreateLedger.GetCreatedAt() != nil {
+			return t.CreateLedger.GetCreatedAt().AsTime().Format(time.RFC3339)
 		}
 	case *commonpb.LogPayload_SetMaintenanceMode:
 		if t.SetMaintenanceMode != nil {

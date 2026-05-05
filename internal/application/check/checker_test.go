@@ -763,10 +763,8 @@ func TestCheckerDetectsHashMismatch(t *testing.T) {
 		Payload: &commonpb.LogPayload{
 			Type: &commonpb.LogPayload_CreateLedger{
 				CreateLedger: &commonpb.CreateLedgerLog{
-					Info: &commonpb.LedgerInfo{
-						Name:      "test",
-						CreatedAt: &commonpb.Timestamp{Data: 1700000000},
-					},
+					Name:      "test",
+					CreatedAt: &commonpb.Timestamp{Data: 1700000000},
 				},
 			},
 		},
@@ -780,10 +778,8 @@ func TestCheckerDetectsHashMismatch(t *testing.T) {
 		Payload: &commonpb.LogPayload{
 			Type: &commonpb.LogPayload_CreateLedger{
 				CreateLedger: &commonpb.CreateLedgerLog{
-					Info: &commonpb.LedgerInfo{
-						Name:      "test2",
-						CreatedAt: &commonpb.Timestamp{Data: 1700000001},
-					},
+					Name:      "test2",
+					CreatedAt: &commonpb.Timestamp{Data: 1700000001},
 				},
 			},
 		},
@@ -792,15 +788,15 @@ func TestCheckerDetectsHashMismatch(t *testing.T) {
 
 	batch := store.NewBatch()
 	require.NoError(t, state.AppendLogs(batch, log1, log2))
-	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().GetInfo()))
-	require.NoError(t, state.SaveLedger(batch, log2.GetPayload().GetCreateLedger().GetInfo()))
+	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().ToLedgerInfo()))
+	require.NoError(t, state.SaveLedger(batch, log2.GetPayload().GetCreateLedger().ToLedgerInfo()))
 	require.NoError(t, batch.Commit())
 
 	// Write ledger attributes
 	batch2 := store.NewBatch()
-	_, err := attrs.Ledger.Set(batch2, domain.LedgerKey{Name: "test"}.Bytes(), log1.GetPayload().GetCreateLedger().GetInfo())
+	_, err := attrs.Ledger.Set(batch2, domain.LedgerKey{Name: "test"}.Bytes(), log1.GetPayload().GetCreateLedger().ToLedgerInfo())
 	require.NoError(t, err)
-	_, err = attrs.Ledger.Set(batch2, domain.LedgerKey{Name: "test2"}.Bytes(), log2.GetPayload().GetCreateLedger().GetInfo())
+	_, err = attrs.Ledger.Set(batch2, domain.LedgerKey{Name: "test2"}.Bytes(), log2.GetPayload().GetCreateLedger().ToLedgerInfo())
 	require.NoError(t, err)
 	require.NoError(t, batch2.Commit())
 
@@ -825,10 +821,8 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 		Payload: &commonpb.LogPayload{
 			Type: &commonpb.LogPayload_CreateLedger{
 				CreateLedger: &commonpb.CreateLedgerLog{
-					Info: &commonpb.LedgerInfo{
-						Name:      "test",
-						CreatedAt: &commonpb.Timestamp{Data: 1700000000},
-					},
+					Name:      "test",
+					CreatedAt: &commonpb.Timestamp{Data: 1700000000},
 				},
 			},
 		},
@@ -841,10 +835,8 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 		Payload: &commonpb.LogPayload{
 			Type: &commonpb.LogPayload_CreateLedger{
 				CreateLedger: &commonpb.CreateLedgerLog{
-					Info: &commonpb.LedgerInfo{
-						Name:      "test2",
-						CreatedAt: &commonpb.Timestamp{Data: 1700000002},
-					},
+					Name:      "test2",
+					CreatedAt: &commonpb.Timestamp{Data: 1700000002},
 				},
 			},
 		},
@@ -854,8 +846,8 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 
 	batch := store.NewBatch()
 	require.NoError(t, state.AppendLogs(batch, log1, log3))
-	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().GetInfo()))
-	require.NoError(t, state.SaveLedger(batch, log3.GetPayload().GetCreateLedger().GetInfo()))
+	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().ToLedgerInfo()))
+	require.NoError(t, state.SaveLedger(batch, log3.GetPayload().GetCreateLedger().ToLedgerInfo()))
 	require.NoError(t, batch.Commit())
 
 	errors := collectCheckErrors(t, store, attrs)
@@ -1167,7 +1159,7 @@ func TestCheckerDetectsDoubleRevert(t *testing.T) {
 	log1 := buildLog(hasher, &lastHash, &seqID, &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_CreateLedger{
 			CreateLedger: &commonpb.CreateLedgerLog{
-				Info: &commonpb.LedgerInfo{Name: "test", CreatedAt: &commonpb.Timestamp{Data: 1700000000}},
+				Name: "test", CreatedAt: &commonpb.Timestamp{Data: 1700000000},
 			},
 		},
 	})
@@ -1231,7 +1223,7 @@ func TestCheckerDetectsDoubleRevert(t *testing.T) {
 
 	batch := store.NewBatch()
 	require.NoError(t, state.AppendLogs(batch, log1, log2, log3, log4))
-	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().GetInfo()))
+	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().ToLedgerInfo()))
 	require.NoError(t, writeVolumes(batch, attrs, posting, "test"))
 	require.NoError(t, batch.Commit())
 
@@ -1266,7 +1258,7 @@ func TestCheckerDetectsRevertOfNonExistentTransaction(t *testing.T) {
 	log1 := buildLog(hasher, &lastHash, &seqID, &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_CreateLedger{
 			CreateLedger: &commonpb.CreateLedgerLog{
-				Info: &commonpb.LedgerInfo{Name: "test", CreatedAt: &commonpb.Timestamp{Data: 1700000000}},
+				Name: "test", CreatedAt: &commonpb.Timestamp{Data: 1700000000},
 			},
 		},
 	})
@@ -1293,7 +1285,7 @@ func TestCheckerDetectsRevertOfNonExistentTransaction(t *testing.T) {
 
 	batch := store.NewBatch()
 	require.NoError(t, state.AppendLogs(batch, log1, log2))
-	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().GetInfo()))
+	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().ToLedgerInfo()))
 	require.NoError(t, batch.Commit())
 
 	errors := collectCheckErrors(t, store, attrs)

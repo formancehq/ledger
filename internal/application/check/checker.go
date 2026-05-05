@@ -252,12 +252,12 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		if log.GetPayload() != nil {
 			switch payload := log.GetPayload().GetType().(type) {
 			case *commonpb.LogPayload_CreateLedger:
-				if payload.CreateLedger != nil && payload.CreateLedger.GetInfo() != nil {
-					knownLedgers[payload.CreateLedger.GetInfo().GetName()] = struct{}{}
+				if payload.CreateLedger != nil {
+					knownLedgers[payload.CreateLedger.GetName()] = struct{}{}
 				}
 			case *commonpb.LogPayload_DeleteLedger:
-				if payload.DeleteLedger != nil && payload.DeleteLedger.GetInfo() != nil {
-					delete(knownLedgers, payload.DeleteLedger.GetInfo().GetName())
+				if payload.DeleteLedger != nil {
+					delete(knownLedgers, payload.DeleteLedger.GetName())
 				}
 			case *commonpb.LogPayload_Apply:
 				if payload.Apply != nil {

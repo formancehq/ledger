@@ -26,9 +26,11 @@ func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrde
 		at.Status = commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE
 	}
 
+	createdAt := s.GetDate()
+
 	info := &commonpb.LedgerInfo{
 		Name:                   order.GetName(),
-		CreatedAt:              s.GetDate(),
+		CreatedAt:              createdAt,
 		MetadataSchema:         populateInitialSchema(order.GetInitialSchema()),
 		Mode:                   order.GetMode(),
 		MirrorSource:           order.GetMirrorSource(),
@@ -41,10 +43,19 @@ func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrde
 		NextLogId:         1,
 	})
 
+	// Build the log from the order — NOT from `info` which is the mutable
+	// store object. MetadataSchema is built separately to avoid sharing
+	// mutable maps between the store and the immutable log payload.
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_CreateLedger{
 			CreateLedger: &commonpb.CreateLedgerLog{
-				Info: info,
+				Name:                   order.GetName(),
+				CreatedAt:              createdAt,
+				MetadataSchema:         populateInitialSchema(order.GetInitialSchema()),
+				Mode:                   order.GetMode(),
+				MirrorSource:           order.GetMirrorSource(),
+				AccountTypes:           order.GetAccountTypes(),
+				DefaultEnforcementMode: order.GetDefaultEnforcementMode(),
 			},
 		},
 	}, nil
@@ -64,7 +75,8 @@ func (p *RequestProcessor) processDeleteLedger(order *raftcmdpb.DeleteLedgerOrde
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_DeleteLedger{
 			DeleteLedger: &commonpb.DeleteLedgerLog{
-				Info: l,
+				Name:      l.GetName(),
+				DeletedAt: l.GetDeletedAt(),
 			},
 		},
 	}, nil

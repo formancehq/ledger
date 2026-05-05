@@ -26,12 +26,12 @@ func LogToEvent(log *commonpb.Log) *eventspb.Event {
 	switch p := log.GetPayload().GetType().(type) {
 	case *commonpb.LogPayload_CreateLedger:
 		event.Type = commonpb.EventType_CREATED_LEDGER
-		event.Ledger = p.CreateLedger.GetInfo().GetName()
-		event.Date = p.CreateLedger.GetInfo().GetCreatedAt()
+		event.Ledger = p.CreateLedger.GetName()
+		event.Date = p.CreateLedger.GetCreatedAt()
 	case *commonpb.LogPayload_DeleteLedger:
 		event.Type = commonpb.EventType_DELETED_LEDGER
-		event.Ledger = p.DeleteLedger.GetInfo().GetName()
-		event.Date = p.DeleteLedger.GetInfo().GetDeletedAt()
+		event.Ledger = p.DeleteLedger.GetName()
+		event.Date = p.DeleteLedger.GetDeletedAt()
 	case *commonpb.LogPayload_Apply:
 		event.Ledger = p.Apply.GetLedgerName()
 		event.Date = p.Apply.GetLog().GetDate()

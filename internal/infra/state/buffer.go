@@ -443,8 +443,8 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 		deleteSequences := make(map[string]uint64, len(b.pendingLedgerDeletions))
 
 		for _, log := range logs {
-			if dl := log.GetPayload().GetDeleteLedger(); dl != nil && dl.GetInfo() != nil {
-				deleteSequences[dl.GetInfo().GetName()] = log.GetSequence()
+			if dl := log.GetPayload().GetDeleteLedger(); dl != nil {
+				deleteSequences[dl.GetName()] = log.GetSequence()
 			}
 		}
 
