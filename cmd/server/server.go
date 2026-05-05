@@ -117,6 +117,7 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().Int("pebble-wal-bytes-per-sync", 0, "Pebble WAL bytes written before sync (default: 1MB)")
 	runCmd.Flags().Duration("pebble-wal-min-sync-interval", 0, "Pebble minimum interval between WAL syncs (default: 0, immediate sync)")
 	runCmd.Flags().Bool("pebble-disable-wal", false, "Pebble disable WAL (WARNING: risks data loss)")
+	runCmd.Flags().Int("pebble-max-checkpoints", dal.DefaultConfig().MaxCheckpoints, "Maximum number of Pebble checkpoints to keep (default: 10)")
 	// Value separation flags
 	runCmd.Flags().Bool("pebble-value-separation", false, "Enable value separation (large values stored in blob files)")
 	runCmd.Flags().Int("pebble-value-separation-min-size", 256, "Minimum value size in bytes for separation (default: 256)")
@@ -807,6 +808,7 @@ func loadPebbleConfig(cmd *cobra.Command) dal.Config {
 
 	cfg.WALBytesPerSync = getInt("pebble-wal-bytes-per-sync", cfg.WALBytesPerSync)
 	cfg.WALMinSyncInterval = getDuration("pebble-wal-min-sync-interval", cfg.WALMinSyncInterval)
+	cfg.MaxCheckpoints = getInt("pebble-max-checkpoints", cfg.MaxCheckpoints)
 
 	if disableWAL, _ := cmd.Flags().GetBool("pebble-disable-wal"); disableWAL {
 		cfg.DisableWAL = true

@@ -3289,6 +3289,7 @@ Tune the Pebble (LSM-tree) storage engine. All sizes are in bytes unless specifi
 | `--pebble-max-concurrent-compactions` | int | `2` | Maximum concurrent compactions |
 | `--pebble-wal-min-sync-interval` | duration | `0` | Minimum interval between WAL syncs (0 = immediate) |
 | `--pebble-disable-wal` | bool | `false` | Disable WAL entirely (WARNING: risks data loss) |
+| `--pebble-max-checkpoints` | int | `10` | Maximum number of Pebble checkpoints to keep |
 
 ---
 
