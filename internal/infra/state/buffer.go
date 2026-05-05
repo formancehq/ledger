@@ -21,20 +21,26 @@ import (
 // mergeAndTrackBloom merges a DerivedKeyStore into its parent, writes the updates
 // to the Pebble batch via the Attribute, tracks canonical keys for bloom filter
 // updates, and processes any attribute deletions.
+// mergeAndTrackBloom merges a DerivedKeyStore into its parent, writes the updates
+// to the Pebble batch via the Attribute AND to the 0xFF cache zone (lean format),
+// tracks canonical keys for bloom filter updates, and processes any attribute deletions.
 func mergeAndTrackBloom[K attributes.Key, V proto.Message](
 	derived *attributes.DerivedKeyStore[K, V],
 	attr *attributes.Attribute[V],
 	batch *dal.Batch,
+	genByte byte,
+	cacheType byte,
 	bloomSlice *[][]byte,
 	label string,
-) ([]attributes.Update[K, V], error) {
+) ([]attributes.Update[K, V], []attributes.Deletion[K], error) {
 	updates, deletions, err := derived.Merge()
 	if err != nil {
-		return nil, fmt.Errorf("failed to merge %s: %w", label, err)
+		return nil, nil, fmt.Errorf("failed to merge %s: %w", label, err)
 	}
 
-	if err := mergeSimple(attr, batch, updates); err != nil {
-		return nil, fmt.Errorf("failed merging %s attributes: %w", label, err)
+	// Write to 0xF1 (attributes) + 0xFF (cache) in a single loop, sharing marshaled bytes.
+	if err := mergeSimpleWithCache(attr, batch, genByte, cacheType, updates); err != nil {
+		return nil, nil, fmt.Errorf("failed merging %s attributes: %w", label, err)
 	}
 
 	for _, update := range updates {
@@ -43,28 +49,15 @@ func mergeAndTrackBloom[K attributes.Key, V proto.Message](
 
 	for _, deletion := range deletions {
 		if err := attr.Delete(batch, deletion.CanonicalKey); err != nil {
-			return nil, fmt.Errorf("failed deleting %s attribute: %w", label, err)
+			return nil, nil, fmt.Errorf("failed deleting %s attribute: %w", label, err)
+		}
+
+		if err := deleteCacheEntry(batch, genByte, cacheType, deletion.ID); err != nil {
+			return nil, nil, fmt.Errorf("failed deleting %s cache entry: %w", label, err)
 		}
 	}
 
-	return updates, nil
-}
-
-// mergeSimple writes each update to an Attribute using Set.
-// Each canonical key has at most one Pebble entry — Set overwrites in place.
-func mergeSimple[K attributes.Key, V proto.Message](
-	attr *attributes.Attribute[V],
-	batch *dal.Batch,
-	updates []attributes.Update[K, V],
-) error {
-	for _, update := range updates {
-		err := attr.Set(batch, update.CanonicalKey, update.New)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return updates, deletions, nil
 }
 
 // signingKeyUpdate represents a pending signing key change to be applied during Merge.
@@ -157,8 +150,11 @@ type purgeRange struct {
 }
 
 func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
+	// gen0 byte for incremental 0xFF cache writes.
+	genByte := byte(b.fsm.Registry.Cache.CurrentGeneration() % 2)
+
 	// Process Ledger updates
-	ledgerUpdates, err := mergeAndTrackBloom(b.Derived.Ledgers, b.attrs.Ledger, batch, &b.bloomUpdates.Ledgers, "ledgers")
+	ledgerUpdates, _, err := mergeAndTrackBloom(b.Derived.Ledgers, b.attrs.Ledger, batch, genByte, dal.AttributePrefixLedger, &b.bloomUpdates.Ledgers, "ledgers")
 	if err != nil {
 		return err
 	}
@@ -170,11 +166,12 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	}
 
 	// Process Boundary updates
-	if _, err := mergeAndTrackBloom(b.Derived.Boundaries, b.attrs.Boundary, batch, &b.bloomUpdates.Boundaries, "boundaries"); err != nil {
+	if _, _, err := mergeAndTrackBloom(b.Derived.Boundaries, b.attrs.Boundary, batch, genByte, dal.AttributePrefixBoundary, &b.bloomUpdates.Boundaries, "boundaries"); err != nil {
 		return err
 	}
 
-	// Process Volume updates — all volumes are now always preloaded with Known values.
+	// Process Volume updates — volumes are handled inline (not via mergeAndTrackBloom)
+	// because of the unique ephemeral purge, double-entry invariant, and sentinel checks.
 	volumeUpdates, _, err := b.Derived.Volumes.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge volumes: %w", err)
@@ -183,7 +180,8 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	// Partition volumes by persistence mode: normal (kept), ephemeral (purged), transient (skipped).
 	partResult := b.partitionVolumes(volumeUpdates)
 
-	if err := mergeSimple(b.attrs.Volume, batch, partResult.kept); err != nil {
+	// Write kept volumes to 0xF1 + 0xFF in one pass (shared marshaled bytes).
+	if err := mergeSimpleWithCache(b.attrs.Volume, batch, genByte, dal.AttributePrefixVolume, partResult.kept); err != nil {
 		return fmt.Errorf("failed merging volume attributes: %w", err)
 	}
 
@@ -191,7 +189,7 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 		b.bloomUpdates.Volumes = append(b.bloomUpdates.Volumes, update.CanonicalKey)
 	}
 
-	if err := b.applyEphemeralPurge(batch, partResult.purged); err != nil {
+	if err := b.applyEphemeralPurge(batch, genByte, partResult.purged); err != nil {
 		return fmt.Errorf("failed purging ephemeral volumes: %w", err)
 	}
 
@@ -222,29 +220,44 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 		b.purgedVolumeKeys = append(b.purgedVolumeKeys, purged.Key)
 	}
 
-	// Process AccountMetadata updates
-	if _, err := mergeAndTrackBloom(b.Derived.AccountMetadata, b.attrs.Metadata, batch, &b.bloomUpdates.Metadata, "account metadata"); err != nil {
+	// Process AccountMetadata updates (deletions handled inside mergeAndTrackBloom)
+	_, _, err = mergeAndTrackBloom(b.Derived.AccountMetadata, b.attrs.Metadata, batch, genByte, dal.AttributePrefixMetadata, &b.bloomUpdates.Metadata, "account metadata")
+	if err != nil {
 		return err
 	}
 
-	// Flush pending reversions to the authoritative in-memory bitset.
-	// Reversions are persisted to Pebble only at snapshot time (like the cache).
+	// Flush pending reversions to the authoritative in-memory bitset and persist only the modified words.
+	type dirtyWord struct {
+		ledger    string
+		wordIndex uint64
+	}
+
+	var dirtyWords []dirtyWord
+
 	for _, txKey := range b.Derived.PendingReversions {
-		b.fsm.Registry.SetReverted(txKey)
+		wi := b.fsm.Registry.SetReverted(txKey)
+		dirtyWords = append(dirtyWords, dirtyWord{ledger: txKey.Ledger, wordIndex: wi})
+	}
+
+	for _, dw := range dirtyWords {
+		word := b.fsm.Registry.Reversions[dw.ledger].Word(dw.wordIndex)
+		if err := SaveReversionWord(batch, dw.ledger, dw.wordIndex, word); err != nil {
+			return fmt.Errorf("saving reversion word for %s: %w", dw.ledger, err)
+		}
 	}
 
 	// Process IdempotencyKeys updates
-	if _, err := mergeAndTrackBloom(b.Derived.IdempotencyKeys, b.attrs.IdempotencyKeys, batch, &b.bloomUpdates.Idempotency, "idempotency keys"); err != nil {
+	if _, _, err := mergeAndTrackBloom(b.Derived.IdempotencyKeys, b.attrs.IdempotencyKeys, batch, genByte, dal.AttributePrefixIdempotency, &b.bloomUpdates.Idempotency, "idempotency keys"); err != nil {
 		return err
 	}
 
 	// Process References updates
-	if _, err := mergeAndTrackBloom(b.Derived.References, b.attrs.References, batch, &b.bloomUpdates.References, "references"); err != nil {
+	if _, _, err := mergeAndTrackBloom(b.Derived.References, b.attrs.References, batch, genByte, dal.AttributePrefixReference, &b.bloomUpdates.References, "references"); err != nil {
 		return err
 	}
 
 	// Process Transaction state updates
-	if _, err := mergeAndTrackBloom(b.Derived.Transactions, b.attrs.Transaction, batch, &b.bloomUpdates.Transactions, "transactions"); err != nil {
+	if _, _, err := mergeAndTrackBloom(b.Derived.Transactions, b.attrs.Transaction, batch, genByte, dal.AttributePrefixTransaction, &b.bloomUpdates.Transactions, "transactions"); err != nil {
 		return err
 	}
 
@@ -447,8 +460,12 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 			// Boundary deletion is handled above via boundaryDeletions
 			// (MarkLedgerForCleanup adds a Delete to the Derived.Boundaries overlay).
 
-			// Clean in-memory reversion bitset — not needed after deletion.
+			// Clean in-memory reversion bitset and Pebble words — not needed after deletion.
 			delete(b.fsm.Registry.Reversions, ledgerName)
+
+			if err := DeleteReversionsByLedger(batch, ledgerName); err != nil {
+				return fmt.Errorf("deleting reversions for %q: %w", ledgerName, err)
+			}
 		}
 	}
 

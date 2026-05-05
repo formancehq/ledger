@@ -149,9 +149,10 @@ func TestGetTransactionPostings(t *testing.T) {
 		require.NoError(t, err)
 
 		// Store TransactionState to link transaction ID to its creating log
-		require.NoError(t, attrs.Transaction.Set(batch, domain.TransactionKey{Ledger: testLedgerName, ID: 1}.Bytes(), &commonpb.TransactionState{
+		_, err = attrs.Transaction.Set(batch, domain.TransactionKey{Ledger: testLedgerName, ID: 1}.Bytes(), &commonpb.TransactionState{
 			CreatedByLog: 1,
-		}))
+		})
+		require.NoError(t, err)
 		require.NoError(t, state.SetAppliedIndex(batch, 1))
 		require.NoError(t, batch.Commit())
 
@@ -373,9 +374,10 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 		err := state.AppendLogs(batch, txLog)
 		require.NoError(t, err)
 		// Store TransactionState to link transaction ID to its creating log
-		require.NoError(t, attrs.Transaction.Set(batch, domain.TransactionKey{Ledger: testLedgerName, ID: 1}.Bytes(), &commonpb.TransactionState{
+		_, err = attrs.Transaction.Set(batch, domain.TransactionKey{Ledger: testLedgerName, ID: 1}.Bytes(), &commonpb.TransactionState{
 			CreatedByLog: 1,
-		}))
+		})
+		require.NoError(t, err)
 		require.NoError(t, state.SetAppliedIndex(batch, 1))
 		require.NoError(t, batch.Commit())
 
@@ -727,9 +729,10 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 		err := state.AppendLogs(batch, txLog)
 		require.NoError(t, err)
 		// Store TransactionState to link transaction ID to its creating log
-		require.NoError(t, attrs.Transaction.Set(batch, domain.TransactionKey{Ledger: testLedgerName, ID: 42}.Bytes(), &commonpb.TransactionState{
+		_, err = attrs.Transaction.Set(batch, domain.TransactionKey{Ledger: testLedgerName, ID: 42}.Bytes(), &commonpb.TransactionState{
 			CreatedByLog: 1,
-		}))
+		})
+		require.NoError(t, err)
 		require.NoError(t, state.SetAppliedIndex(batch, 1))
 		require.NoError(t, batch.Commit())
 

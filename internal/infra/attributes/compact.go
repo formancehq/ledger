@@ -46,7 +46,9 @@ func (c *typedCompactor[V]) Feed(pebbleKey, pebbleValue []byte) error {
 }
 
 func (c *typedCompactor[V]) writeCompacted(entry *ComputedEntry[V]) error {
-	return c.attr.Set(c.batch, entry.CanonicalKey, entry.Value)
+	_, err := c.attr.Set(c.batch, entry.CanonicalKey, entry.Value)
+
+	return err
 }
 
 func (c *typedCompactor[V]) Flush() error {

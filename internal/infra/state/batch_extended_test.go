@@ -279,14 +279,16 @@ func TestReadTransactionState(t *testing.T) {
 
 	// Store state for two different transactions
 	batch := s.NewBatch()
-	require.NoError(t, txAttr.Set(batch,
+	_, err := txAttr.Set(batch,
 		domain.TransactionKey{Ledger: "test", ID: 100}.Bytes(),
 		&commonpb.TransactionState{CreatedByLog: 1},
-	))
-	require.NoError(t, txAttr.Set(batch,
+	)
+	require.NoError(t, err)
+	_, err = txAttr.Set(batch,
 		domain.TransactionKey{Ledger: "test", ID: 200}.Bytes(),
 		&commonpb.TransactionState{CreatedByLog: 2},
-	))
+	)
+	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
 	// Read state for transaction 100
@@ -318,10 +320,11 @@ func TestFindTransactionCreationLog(t *testing.T) {
 
 	// Store a transaction state via the attribute system
 	batch := s.NewBatch()
-	require.NoError(t, txAttr.Set(batch,
+	_, err := txAttr.Set(batch,
 		domain.TransactionKey{Ledger: "find-tx-ledger", ID: 1}.Bytes(),
 		&commonpb.TransactionState{CreatedByLog: 5},
-	))
+	)
+	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
 	// Store a log at sequence 5

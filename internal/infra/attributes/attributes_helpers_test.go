@@ -12,6 +12,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
+func errOnly(_ []byte, err error) error { return err }
+
 func TestAttrTypeFromKey(t *testing.T) {
 	t.Parallel()
 
@@ -142,15 +144,15 @@ func TestAccumulator(t *testing.T) {
 	keyB := []byte("ledger\x00bob\x00USD")
 
 	batch := store.NewBatch()
-	require.NoError(t, attrs.Volume.Set(batch, keyA, &raftcmdpb.VolumePair{
+	require.NoError(t, errOnly(attrs.Volume.Set(batch, keyA, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(1000),
-	}))
-	require.NoError(t, attrs.Volume.Set(batch, keyA, &raftcmdpb.VolumePair{
+	})))
+	require.NoError(t, errOnly(attrs.Volume.Set(batch, keyA, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(500),
-	}))
-	require.NoError(t, attrs.Volume.Set(batch, keyB, &raftcmdpb.VolumePair{
+	})))
+	require.NoError(t, errOnly(attrs.Volume.Set(batch, keyB, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(2000),
-	}))
+	})))
 	require.NoError(t, batch.Commit())
 
 	// Use StreamingIter to iterate and verify results
@@ -179,8 +181,8 @@ func TestAccumulatorFeedAndFlush(t *testing.T) {
 	keyB := []byte("ledger\x00bob\x00field1")
 
 	batch := store.NewBatch()
-	require.NoError(t, attrs.Metadata.Set(batch, keyA, commonpb.NewStringValue("alice-val")))
-	require.NoError(t, attrs.Metadata.Set(batch, keyB, commonpb.NewStringValue("bob-val")))
+	require.NoError(t, errOnly(attrs.Metadata.Set(batch, keyA, commonpb.NewStringValue("alice-val"))))
+	require.NoError(t, errOnly(attrs.Metadata.Set(batch, keyB, commonpb.NewStringValue("bob-val"))))
 	require.NoError(t, batch.Commit())
 
 	// Use ComputeAllForPrefix to get all entries under the ledger prefix
@@ -243,15 +245,15 @@ func TestGetReturnsLatestSet(t *testing.T) {
 
 	// Multiple Sets overwrite in place — last Set wins
 	batch := store.NewBatch()
-	require.NoError(t, attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{
+	require.NoError(t, errOnly(attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(100),
-	}))
-	require.NoError(t, attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{
+	})))
+	require.NoError(t, errOnly(attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(200),
-	}))
-	require.NoError(t, attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{
+	})))
+	require.NoError(t, errOnly(attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(300),
-	}))
+	})))
 	require.NoError(t, batch.Commit())
 
 	// Get returns the latest Set value = 300
@@ -271,12 +273,12 @@ func TestComputeAllForPrefixMaxIndex(t *testing.T) {
 
 	// Each Set overwrites in place, so only the last Set per key survives.
 	batch := store.NewBatch()
-	require.NoError(t, attrs.Volume.Set(batch, keyA, &raftcmdpb.VolumePair{
+	require.NoError(t, errOnly(attrs.Volume.Set(batch, keyA, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(500),
-	}))
-	require.NoError(t, attrs.Volume.Set(batch, keyB, &raftcmdpb.VolumePair{
+	})))
+	require.NoError(t, errOnly(attrs.Volume.Set(batch, keyB, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(200),
-	}))
+	})))
 	require.NoError(t, batch.Commit())
 
 	// StreamingIter scans all entries and groups by canonical key.
@@ -313,9 +315,9 @@ func TestIdempotencyKeysAttribute(t *testing.T) {
 
 	// Set a value, then overwrite with a later Set — latest wins
 	batch := store.NewBatch()
-	require.NoError(t, attrs.IdempotencyKeys.Set(batch, testKey, &commonpb.IdempotencyKeyValue{
+	require.NoError(t, errOnly(attrs.IdempotencyKeys.Set(batch, testKey, &commonpb.IdempotencyKeyValue{
 		LogSequence: 10,
-	}))
+	})))
 	require.NoError(t, batch.Commit())
 
 	result, err := attrs.IdempotencyKeys.Get(store, testKey)
@@ -324,9 +326,9 @@ func TestIdempotencyKeysAttribute(t *testing.T) {
 
 	// Overwrite with a later Set
 	batch = store.NewBatch()
-	require.NoError(t, attrs.IdempotencyKeys.Set(batch, testKey, &commonpb.IdempotencyKeyValue{
+	require.NoError(t, errOnly(attrs.IdempotencyKeys.Set(batch, testKey, &commonpb.IdempotencyKeyValue{
 		LogSequence: 20,
-	}))
+	})))
 	require.NoError(t, batch.Commit())
 
 	result, err = attrs.IdempotencyKeys.Get(store, testKey)
@@ -344,9 +346,9 @@ func TestReferenceAttribute(t *testing.T) {
 
 	// Set a value, then overwrite with a later Set — latest wins
 	batch := store.NewBatch()
-	require.NoError(t, attrs.References.Set(batch, testKey, &commonpb.TransactionReferenceValue{
+	require.NoError(t, errOnly(attrs.References.Set(batch, testKey, &commonpb.TransactionReferenceValue{
 		TransactionId: 42,
-	}))
+	})))
 	require.NoError(t, batch.Commit())
 
 	result, err := attrs.References.Get(store, testKey)
@@ -355,9 +357,9 @@ func TestReferenceAttribute(t *testing.T) {
 
 	// Overwrite with a later Set
 	batch = store.NewBatch()
-	require.NoError(t, attrs.References.Set(batch, testKey, &commonpb.TransactionReferenceValue{
+	require.NoError(t, errOnly(attrs.References.Set(batch, testKey, &commonpb.TransactionReferenceValue{
 		TransactionId: 99,
-	}))
+	})))
 	require.NoError(t, batch.Commit())
 
 	result, err = attrs.References.Get(store, testKey)
@@ -387,9 +389,9 @@ func TestLedgerAttribute(t *testing.T) {
 
 	// Set a value
 	batch := store.NewBatch()
-	require.NoError(t, attrs.Ledger.Set(batch, testKey, &commonpb.LedgerInfo{
+	require.NoError(t, errOnly(attrs.Ledger.Set(batch, testKey, &commonpb.LedgerInfo{
 		Name: "my-ledger",
-	}))
+	})))
 	require.NoError(t, batch.Commit())
 
 	result, err := attrs.Ledger.Get(store, testKey)
@@ -398,9 +400,9 @@ func TestLedgerAttribute(t *testing.T) {
 
 	// Overwrite with a later Set — latest wins
 	batch = store.NewBatch()
-	require.NoError(t, attrs.Ledger.Set(batch, testKey, &commonpb.LedgerInfo{
+	require.NoError(t, errOnly(attrs.Ledger.Set(batch, testKey, &commonpb.LedgerInfo{
 		Name: "my-ledger-renamed",
-	}))
+	})))
 	require.NoError(t, batch.Commit())
 
 	result, err = attrs.Ledger.Get(store, testKey)
@@ -417,10 +419,10 @@ func TestBoundaryAttribute(t *testing.T) {
 	testKey := []byte("boundary-ledger")
 
 	batch := store.NewBatch()
-	require.NoError(t, attrs.Boundary.Set(batch, testKey, &raftcmdpb.LedgerBoundaries{
+	require.NoError(t, errOnly(attrs.Boundary.Set(batch, testKey, &raftcmdpb.LedgerBoundaries{
 		NextTransactionId: 10,
 		NextLogId:         20,
-	}))
+	})))
 	require.NoError(t, batch.Commit())
 
 	result, err := attrs.Boundary.Get(store, testKey)
@@ -518,14 +520,14 @@ func TestCompactAllForBackup(t *testing.T) {
 	keyB := []byte("ledger\x00bob\x00USD")
 
 	batch := store.NewBatch()
-	require.NoError(t, attrs.Volume.Set(batch, keyA, &raftcmdpb.VolumePair{
+	require.NoError(t, errOnly(attrs.Volume.Set(batch, keyA, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(300),
-	}))
-	require.NoError(t, attrs.Volume.Set(batch, keyB, &raftcmdpb.VolumePair{
+	})))
+	require.NoError(t, errOnly(attrs.Volume.Set(batch, keyB, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(500),
-	}))
+	})))
 	// Also add metadata entries
-	require.NoError(t, attrs.Metadata.Set(batch, []byte("ledger\x00alice\x00field"), commonpb.NewStringValue("val")))
+	require.NoError(t, errOnly(attrs.Metadata.Set(batch, []byte("ledger\x00alice\x00field"), commonpb.NewStringValue("val"))))
 	require.NoError(t, batch.Commit())
 
 	// Run compaction - CompactAllForBackup creates its own batch and Attributes internally
@@ -561,24 +563,24 @@ func TestCompactAllForBackupAllTypes(t *testing.T) {
 
 	// Write data
 	batch := store.NewBatch()
-	require.NoError(t, attrs.Volume.Set(batch, volumeKey, &raftcmdpb.VolumePair{
+	require.NoError(t, errOnly(attrs.Volume.Set(batch, volumeKey, &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(300),
 		Output: commonpb.NewUint256FromUint64(100),
-	}))
-	require.NoError(t, attrs.Metadata.Set(batch, metadataKey, commonpb.NewStringValue("active")))
-	require.NoError(t, attrs.IdempotencyKeys.Set(batch, idempotencyKey, &commonpb.IdempotencyKeyValue{
+	})))
+	require.NoError(t, errOnly(attrs.Metadata.Set(batch, metadataKey, commonpb.NewStringValue("active"))))
+	require.NoError(t, errOnly(attrs.IdempotencyKeys.Set(batch, idempotencyKey, &commonpb.IdempotencyKeyValue{
 		LogSequence: 42,
-	}))
-	require.NoError(t, attrs.References.Set(batch, referenceKey, &commonpb.TransactionReferenceValue{
+	})))
+	require.NoError(t, errOnly(attrs.References.Set(batch, referenceKey, &commonpb.TransactionReferenceValue{
 		TransactionId: 99,
-	}))
-	require.NoError(t, attrs.Ledger.Set(batch, ledgerKey, &commonpb.LedgerInfo{
+	})))
+	require.NoError(t, errOnly(attrs.Ledger.Set(batch, ledgerKey, &commonpb.LedgerInfo{
 		Name: "myledger",
-	}))
-	require.NoError(t, attrs.Boundary.Set(batch, boundaryKey, &raftcmdpb.LedgerBoundaries{
+	})))
+	require.NoError(t, errOnly(attrs.Boundary.Set(batch, boundaryKey, &raftcmdpb.LedgerBoundaries{
 		NextTransactionId: 10,
 		NextLogId:         5,
-	}))
+	})))
 
 	// Set lastAppliedIndex to a high value
 	idxBuf := make([]byte, 8)
@@ -645,17 +647,17 @@ func TestCompactAllForBackupMultiKeyPerType(t *testing.T) {
 
 	batch := store.NewBatch()
 	// Alice: last Set wins = 50
-	require.NoError(t, attrs.Volume.Set(batch, keyAlice, &raftcmdpb.VolumePair{
+	require.NoError(t, errOnly(attrs.Volume.Set(batch, keyAlice, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(50),
-	}))
+	})))
 	// Bob: single Set = 200
-	require.NoError(t, attrs.Volume.Set(batch, keyBob, &raftcmdpb.VolumePair{
+	require.NoError(t, errOnly(attrs.Volume.Set(batch, keyBob, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(200),
-	}))
+	})))
 	// Charlie: last Set wins = 300
-	require.NoError(t, attrs.Volume.Set(batch, keyCharlie, &raftcmdpb.VolumePair{
+	require.NoError(t, errOnly(attrs.Volume.Set(batch, keyCharlie, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(300),
-	}))
+	})))
 	require.NoError(t, batch.Commit())
 
 	require.NoError(t, CompactAllForBackup(store))

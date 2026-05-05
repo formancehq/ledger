@@ -119,14 +119,21 @@ func (b *Buffered) evictTransientVolumes(
 	}
 }
 
-// applyEphemeralPurge deletes purged volume entries from Pebble and the parent KeyStore.
+// applyEphemeralPurge deletes purged volume entries from Pebble, the parent KeyStore,
+// and the 0xFF cache zone.
 func (b *Buffered) applyEphemeralPurge(
 	batch *dal.Batch,
+	genByte byte,
 	purged []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 ) error {
 	for _, update := range purged {
-		// Delete the entry from Pebble.
+		// Delete the entry from Pebble attributes zone.
 		if err := b.attrs.Volume.Delete(batch, update.CanonicalKey); err != nil {
+			return err
+		}
+
+		// Delete from 0xFF cache zone.
+		if err := deleteCacheEntry(batch, genByte, dal.AttributePrefixVolume, update.ID); err != nil {
 			return err
 		}
 

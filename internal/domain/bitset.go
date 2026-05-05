@@ -31,11 +31,37 @@ func (b *ReversionBitset) IsReverted(txID uint64) bool {
 	return b.words[w]&(1<<bitIndex(txID)) != 0
 }
 
-// SetReverted marks the given transaction ID as reverted.
-// Grows the bitset if necessary.
-func (b *ReversionBitset) SetReverted(txID uint64) {
+// SetReverted marks the given transaction ID as reverted and returns the
+// word index that was modified so the caller can persist just that word.
+func (b *ReversionBitset) SetReverted(txID uint64) uint64 {
 	b.grow(txID)
-	b.words[wordIndex(txID)] |= 1 << bitIndex(txID)
+	wi := wordIndex(txID)
+	b.words[wi] |= 1 << bitIndex(txID)
+
+	return wi
+}
+
+// Word returns the value of the word at the given index.
+func (b *ReversionBitset) Word(index uint64) uint64 {
+	if index >= uint64(len(b.words)) {
+		return 0
+	}
+
+	return b.words[index]
+}
+
+// WordCount returns the number of words in the bitset.
+func (b *ReversionBitset) WordCount() int {
+	return len(b.words)
+}
+
+// SetWord sets the word at the given index. Grows if necessary.
+func (b *ReversionBitset) SetWord(index uint64, value uint64) {
+	if index >= uint64(len(b.words)) {
+		b.grow(index * 64)
+	}
+
+	b.words[index] = value
 }
 
 // grow ensures the bitset can hold at least txID.
@@ -57,31 +83,13 @@ func (b *ReversionBitset) grow(txID uint64) {
 	b.words = newWords
 }
 
-// MarshalWords serializes the words as a packed little-endian byte slice.
-func (b *ReversionBitset) MarshalWords() []byte {
-	buf := make([]byte, len(b.words)*8)
-	for i, w := range b.words {
-		binary.LittleEndian.PutUint64(buf[i*8:], w)
-	}
+func wordIndex(txID uint64) uint64 { return txID / 64 }
+func bitIndex(txID uint64) uint64  { return txID % 64 }
+
+// MarshalWord serializes a single uint64 word as 8 little-endian bytes.
+func MarshalWord(w uint64) []byte {
+	buf := make([]byte, 8)
+	binary.LittleEndian.PutUint64(buf, w)
 
 	return buf
 }
-
-// ReversionBitsetFromWords creates a bitset from a packed little-endian byte slice.
-func ReversionBitsetFromWords(data []byte) *ReversionBitset {
-	if len(data) == 0 {
-		return &ReversionBitset{}
-	}
-
-	nWords := len(data) / 8
-
-	words := make([]uint64, nWords)
-	for i := range nWords {
-		words[i] = binary.LittleEndian.Uint64(data[i*8:])
-	}
-
-	return &ReversionBitset{words: words}
-}
-
-func wordIndex(txID uint64) uint64 { return txID / 64 }
-func bitIndex(txID uint64) uint64  { return txID % 64 }

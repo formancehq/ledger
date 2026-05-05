@@ -47,7 +47,7 @@ func TestSetAndComputeValue(t *testing.T) {
 	testValue := &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(1000)}
 
 	// Set at index 5
-	err := attrs.Volume.Set(batch, testKey, testValue)
+	_, err := attrs.Volume.Set(batch, testKey, testValue)
 	require.NoError(t, err)
 
 	// Commit the batch
@@ -79,19 +79,19 @@ func TestComputeValueWithMultipleSets(t *testing.T) {
 	testKey := []byte("test-ledger\x00cumul-account\x00USD")
 
 	// Set at index 5: input = 1000
-	err := attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(1000)})
+	_, err := attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(1000)})
 	require.NoError(t, err)
 
 	// Set at index 10: input = 100
-	err = attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)})
+	_, err = attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)})
 	require.NoError(t, err)
 
 	// Set at index 15: input = 250
-	err = attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(250)})
+	_, err = attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(250)})
 	require.NoError(t, err)
 
 	// Set at index 20: input = 500
-	err = attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(500)})
+	_, err = attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(500)})
 	require.NoError(t, err)
 
 	err = batch.Commit()
@@ -114,9 +114,9 @@ func TestDeleteRemovesAllEntries(t *testing.T) {
 
 	// Set metadata values at two indexes
 	batch := store.NewBatch()
-	err := attrs.Metadata.Set(batch, testKey, commonpb.NewStringValue("active"))
+	_, err := attrs.Metadata.Set(batch, testKey, commonpb.NewStringValue("active"))
 	require.NoError(t, err)
-	err = attrs.Metadata.Set(batch, testKey, commonpb.NewStringValue("inactive"))
+	_, err = attrs.Metadata.Set(batch, testKey, commonpb.NewStringValue("inactive"))
 	require.NoError(t, err)
 	err = batch.Commit()
 	require.NoError(t, err)
@@ -155,7 +155,7 @@ func TestDeleteThenReAdd(t *testing.T) {
 
 	// Set initial value
 	batch := store.NewBatch()
-	err := attrs.Metadata.Set(batch, testKey, commonpb.NewStringValue("original"))
+	_, err := attrs.Metadata.Set(batch, testKey, commonpb.NewStringValue("original"))
 	require.NoError(t, err)
 	err = batch.Commit()
 	require.NoError(t, err)
@@ -169,7 +169,7 @@ func TestDeleteThenReAdd(t *testing.T) {
 
 	// Re-add with a new value
 	batch = store.NewBatch()
-	err = attrs.Metadata.Set(batch, testKey, commonpb.NewStringValue("new-value"))
+	_, err = attrs.Metadata.Set(batch, testKey, commonpb.NewStringValue("new-value"))
 	require.NoError(t, err)
 	err = batch.Commit()
 	require.NoError(t, err)
@@ -215,17 +215,17 @@ func TestScanEntriesMultipleSets(t *testing.T) {
 	defer func() { _ = batch.Cancel() }()
 
 	// Set at index 5: input = 1000
-	err := attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(1000)})
+	_, err := attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(1000)})
 	require.NoError(t, err)
 
 	// Set at index 10
-	err = attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)})
+	_, err = attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)})
 	require.NoError(t, err)
 	// Set at index 15
-	err = attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(250)})
+	_, err = attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(250)})
 	require.NoError(t, err)
 	// Set at index 20
-	err = attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(500)})
+	_, err = attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(500)})
 	require.NoError(t, err)
 
 	err = batch.Commit()
@@ -251,9 +251,9 @@ func TestScanEntriesMultipleSetsNoPrior(t *testing.T) {
 	defer func() { _ = batch.Cancel() }()
 
 	// Two sets, no prior data
-	err := attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)})
+	_, err := attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)})
 	require.NoError(t, err)
-	err = attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(200)})
+	_, err = attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(200)})
 	require.NoError(t, err)
 
 	err = batch.Commit()
@@ -301,7 +301,7 @@ func TestSetWithZeroValue(t *testing.T) {
 	testValue := &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(0)}
 
 	// Set at index 5
-	err := attrs.Volume.Set(batch, testKey, testValue)
+	_, err := attrs.Volume.Set(batch, testKey, testValue)
 	require.NoError(t, err)
 
 	// Commit the batch

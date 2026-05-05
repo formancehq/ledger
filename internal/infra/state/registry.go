@@ -93,14 +93,15 @@ func (r *StateRegistry) GetReverted(key domain.TransactionKey) bool {
 }
 
 // SetReverted marks a transaction as reverted in the bitset.
-func (r *StateRegistry) SetReverted(key domain.TransactionKey) {
+// Returns the word index that was modified.
+func (r *StateRegistry) SetReverted(key domain.TransactionKey) uint64 {
 	bs, ok := r.Reversions[key.Ledger]
 	if !ok {
 		bs = domain.NewReversionBitset(key.ID)
 		r.Reversions[key.Ledger] = bs
 	}
 
-	bs.SetReverted(key.ID)
+	return bs.SetReverted(key.ID)
 }
 
 // ResetReversions clears all reversion bitsets (used during snapshot restore).

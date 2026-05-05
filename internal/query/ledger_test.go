@@ -82,17 +82,20 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	batch = s.NewBatch()
 	worldKey := domain.VolumeKey{AccountKey: domain.AccountKey{Ledger: ledgerName, Account: "world"}, Asset: "USD"}
 	worldCanonicalKey := worldKey.Bytes()
-	require.NoError(t, attrs.Volume.Set(batch, worldCanonicalKey, &raftcmdpb.VolumePair{
+	_, err = attrs.Volume.Set(batch, worldCanonicalKey, &raftcmdpb.VolumePair{
 		Output: commonpb.NewUint256FromUint64(100),
-	}))
+	})
+	require.NoError(t, err)
 
 	metadataKey := domain.MetadataKey{AccountKey: domain.AccountKey{Ledger: ledgerName, Account: "bank"}, Key: "key"}
 	metadataCanonicalKey := metadataKey.Bytes()
-	require.NoError(t, attrs.Metadata.Set(batch, metadataCanonicalKey, commonpb.NewStringValue("value")))
+	_, err = attrs.Metadata.Set(batch, metadataCanonicalKey, commonpb.NewStringValue("value"))
+	require.NoError(t, err)
 	txKey := domain.TransactionKey{Ledger: ledgerName, ID: 1}
-	require.NoError(t, attrs.Transaction.Set(batch, txKey.Bytes(), &commonpb.TransactionState{
+	_, err = attrs.Transaction.Set(batch, txKey.Bytes(), &commonpb.TransactionState{
 		CreatedByLog: 1,
-	}))
+	})
+	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
 	// Verify ledger exists and is not deleted

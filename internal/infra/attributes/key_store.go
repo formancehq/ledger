@@ -232,13 +232,14 @@ func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], []Deletion[K], error) {
 	for k := range s.deletions {
 		canonical := k.Bytes()
 
-		_, err := s.KeyStore.Delete(canonical)
+		id, err := s.KeyStore.Delete(canonical)
 		if err != nil && !errors.Is(err, domain.ErrNotFound) {
 			return nil, nil, err
 		}
 
 		deletions = append(deletions, Deletion[K]{
 			Key:          k,
+			ID:           id,
 			CanonicalKey: canonical,
 		})
 	}
@@ -271,5 +272,6 @@ type Update[K Key, T any] struct {
 
 type Deletion[K Key] struct {
 	Key          K
+	ID           U128
 	CanonicalKey []byte
 }

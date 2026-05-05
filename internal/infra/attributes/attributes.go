@@ -91,23 +91,24 @@ func unmarshalProto(data []byte, msg proto.Message) error {
 	return proto.Unmarshal(data, msg)
 }
 
-// Set stores a value for the given canonical key.
+// Set stores a value for the given canonical key and returns the marshaled bytes.
 // Key format: [KeyPrefixAttributes][canonicalKey][prefix].
 // A simple Set overwrites the previous value in place — no delete needed.
 // Uses the pre-allocated keyBuf — not safe for concurrent use.
-func (a *Attribute[V]) Set(batch *dal.Batch, canonicalKey []byte, value V) error {
+// The returned slice is valid until the next Set call on this Attribute.
+func (a *Attribute[V]) Set(batch *dal.Batch, canonicalKey []byte, value V) ([]byte, error) {
 	pLen := prefixLen(canonicalKey)
 	a.ensureKeyBuf(pLen)
 	a.putPrefix(a.keyBuf, canonicalKey)
 
 	valueBytes, err := marshalProto(a.protoBuffer, value)
 	if err != nil {
-		return fmt.Errorf("marshaling value: %w", err)
+		return nil, fmt.Errorf("marshaling value: %w", err)
 	}
 
 	a.protoBuffer = valueBytes
 
-	return batch.Set(a.keyBuf[:pLen], valueBytes, pebble.NoSync)
+	return valueBytes, batch.Set(a.keyBuf[:pLen], valueBytes, pebble.NoSync)
 }
 
 // SuffixLen is the fixed suffix length of an attribute Pebble key:

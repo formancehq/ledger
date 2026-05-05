@@ -84,23 +84,26 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) *dal.Store) {
 		// Index 1: world sends 100 to bank
 		worldKey := domain.VolumeKey{AccountKey: domain.AccountKey{Ledger: testLedgerName, Account: "world"}, Asset: "USD"}
 		worldCanonicalKey := worldKey.Bytes()
-		require.NoError(t, attrs.Volume.Set(batch, worldCanonicalKey, &raftcmdpb.VolumePair{
+		_, err := attrs.Volume.Set(batch, worldCanonicalKey, &raftcmdpb.VolumePair{
 			Output: commonpb.NewUint256FromUint64(100),
-		}))
+		})
+		require.NoError(t, err)
 
 		bankKey := domain.VolumeKey{AccountKey: domain.AccountKey{Ledger: testLedgerName, Account: "bank"}, Asset: "USD"}
 		bankCanonicalKey := bankKey.Bytes()
-		require.NoError(t, attrs.Volume.Set(batch, bankCanonicalKey, &raftcmdpb.VolumePair{
+		_, err = attrs.Volume.Set(batch, bankCanonicalKey, &raftcmdpb.VolumePair{
 			Input:  commonpb.NewUint256FromUint64(100),
 			Output: commonpb.NewUint256FromUint64(50),
-		}))
+		})
+		require.NoError(t, err)
 
 		userKey := domain.VolumeKey{AccountKey: domain.AccountKey{Ledger: testLedgerName, Account: "user"}, Asset: "USD"}
 		userCanonicalKey := userKey.Bytes()
 
-		require.NoError(t, attrs.Volume.Set(batch, userCanonicalKey, &raftcmdpb.VolumePair{
+		_, err = attrs.Volume.Set(batch, userCanonicalKey, &raftcmdpb.VolumePair{
 			Input: commonpb.NewUint256FromUint64(50),
-		}))
+		})
+		require.NoError(t, err)
 
 		require.NoError(t, batch.Commit())
 
@@ -286,10 +289,11 @@ func TestVolume(t *testing.T) {
 
 	// Set cumulative volume for bank USD.
 	batch := s.NewBatch()
-	require.NoError(t, attrs.Volume.Set(batch, bankUSDKey, &raftcmdpb.VolumePair{
+	_, err = attrs.Volume.Set(batch, bankUSDKey, &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(150),
 		Output: commonpb.NewUint256FromUint64(30),
-	}))
+	})
+	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
 	// Read back: input=150, output=30
@@ -299,10 +303,11 @@ func TestVolume(t *testing.T) {
 
 	// Overwrite with a new cumulative value
 	batch = s.NewBatch()
-	require.NoError(t, attrs.Volume.Set(batch, bankUSDKey, &raftcmdpb.VolumePair{
+	_, err = attrs.Volume.Set(batch, bankUSDKey, &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(1000),
 		Output: commonpb.NewUint256FromUint64(30),
-	}))
+	})
+	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
 	// Latest value: input=1000, output=30
@@ -312,10 +317,11 @@ func TestVolume(t *testing.T) {
 
 	// Overwrite again
 	batch = s.NewBatch()
-	require.NoError(t, attrs.Volume.Set(batch, bankUSDKey, &raftcmdpb.VolumePair{
+	_, err = attrs.Volume.Set(batch, bankUSDKey, &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(5000),
 		Output: commonpb.NewUint256FromUint64(80),
-	}))
+	})
+	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
 	// Latest value: input=5000, output=80

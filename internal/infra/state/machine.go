@@ -516,6 +516,17 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 				}).Debugf("Cache generation rotated")
 			}
 			rotationStart := time.Now()
+
+			// Persist rotation to the 0xFF cache zone: purge old gen1, update metadata.
+			if err := writeCacheRotation(
+				batch,
+				fsm.Registry.Cache.CurrentGeneration(),
+				fsm.Registry.Cache.BaseIndex.Gen0,
+				fsm.Registry.Cache.BaseIndex.Gen1,
+			); err != nil {
+				return nil, fmt.Errorf("writing cache rotation: %w", err)
+			}
+
 			fsm.rotationDurationHistogram.Record(context.Background(), time.Since(rotationStart).Microseconds())
 		}
 
@@ -789,7 +800,9 @@ func putInCache[T any](store kv.KV[attributes.U128, attributes.Entry[T]], attrID
 }
 
 // Preload applies preloaded data to the Machine's volatile state.
-func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
+// Preload applies preloaded data to the Machine's volatile state.
+// batch and genByte are used for incremental 0xFF persistence of NumscriptParsed entries.
+func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet, batch *dal.Batch, genByte byte) error {
 	if preloadSet == nil || (len(preloadSet.GetPreloads()) == 0 && len(preloadSet.GetTouches()) == 0) {
 		return nil
 	}
@@ -934,6 +947,14 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		case *raftcmdpb.Preload_NumscriptParsed:
 			value := putInCache(fsm.Registry.Cache.NumscriptParsed.Gen1(), preloadType.NumscriptParsed.GetId(), preloadType.NumscriptParsed.GetPlain())
 			putInCache(fsm.Registry.Cache.NumscriptParsed.Gen0(), preloadType.NumscriptParsed.GetId(), value)
+
+			// Write to 0xFF cache zone for incremental persistence (lean format).
+			attrID := preloadType.NumscriptParsed.GetId()
+			id := attributes.U128FromBytes(attrID.GetId())
+
+			if err := writeCacheRaw(batch, genByte, dal.AttributePrefixNumscript, id, attrID.GetTag(), []byte(value)); err != nil {
+				return fmt.Errorf("writing numscript parsed to cache: %w", err)
+			}
 		}
 	}
 
@@ -1092,7 +1113,9 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		}, nil
 	}
 
-	if err := fsm.Preload(proposal.GetPreload()); err != nil {
+	genByte := byte(fsm.Registry.Cache.CurrentGeneration() % 2)
+
+	if err := fsm.Preload(proposal.GetPreload(), batch, genByte); err != nil {
 		return nil, fmt.Errorf("raftIndex=%d: %w", raftIndex, err)
 	}
 
@@ -1285,13 +1308,17 @@ func hasMirrorConfigChange(proposal *raftcmdpb.Proposal) bool {
 }
 
 // CreateSnapshot creates a snapshot of the Machine state.
-// Cache data is persisted to Pebble under the 0xFF prefix before creating the
-// checkpoint so that the checkpoint includes it. The MemorySnapshot itself is
-// lightweight (no cache data).
+// With incremental cache persistence, 0xFF data and reversions are already
+// up-to-date in Pebble from the apply path. On the first snapshot after
+// upgrading from the old format, a one-time migration rewrites 0xFF with
+// the gen-byte alternation scheme (genByte = currentGeneration % 2).
 func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 	totalStart := time.Now()
 
-	// Persist cache and reversions into Pebble so they're included in the checkpoint.
+	// Persist cache and reversions into Pebble so the checkpoint includes them.
+	// The incremental writes in Merge() maintain 0xFF during normal apply,
+	// but we still do a full dump here to guarantee a consistent baseline
+	// in the checkpoint (the gen-byte mapping must be up to date).
 	persistStart := time.Now()
 
 	if err := fsm.cacheSnapshotter.PersistToStore(); err != nil {

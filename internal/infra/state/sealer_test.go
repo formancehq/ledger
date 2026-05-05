@@ -119,16 +119,18 @@ func TestSealerDeterministic(t *testing.T) {
 		attrs := attributes.New()
 
 		batch := store.NewBatch()
-		require.NoError(t, attrs.Volume.Set(batch, []byte("l\x00a\x00USD"), &raftcmdpb.VolumePair{
+		_, err := attrs.Volume.Set(batch, []byte("l\x00a\x00USD"), &raftcmdpb.VolumePair{
 			Input: commonpb.NewUint256FromUint64(uint64(500)),
-		}))
-		require.NoError(t, attrs.Metadata.Set(batch, []byte("l\x00a\x00key"), commonpb.NewStringValue("val")))
+		})
+		require.NoError(t, err)
+		_, err = attrs.Metadata.Set(batch, []byte("l\x00a\x00key"), commonpb.NewStringValue("val"))
+		require.NoError(t, err)
 		require.NoError(t, batch.Commit())
 
 		checkpointPath := createSealCheckpoint(t, store, 42)
 
 		sealer, result := newTestSealer(t, store, 42)
-		err := sealer.seal(SealRequest{
+		err = sealer.seal(SealRequest{
 			PeriodID:       42,
 			CloseSequence:  100,
 			LastLogHash:    []byte("chain-hash"),
@@ -150,16 +152,17 @@ func TestSealerCheckpointIsolation(t *testing.T) {
 
 	// Write data at index 1
 	batch := store.NewBatch()
-	require.NoError(t, attrs.Volume.Set(batch, []byte("l\x00a\x00USD"), &raftcmdpb.VolumePair{
+	_, err := attrs.Volume.Set(batch, []byte("l\x00a\x00USD"), &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(uint64(100)),
-	}))
+	})
+	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
 	// Create checkpoint BEFORE writing more data
 	checkpointPath := createSealCheckpoint(t, store, 42)
 
 	sealer, result := newTestSealer(t, store, 1)
-	err := sealer.seal(SealRequest{
+	err = sealer.seal(SealRequest{
 		PeriodID:       1,
 		CloseSequence:  10,
 		LastLogHash:    nil,
@@ -171,9 +174,10 @@ func TestSealerCheckpointIsolation(t *testing.T) {
 
 	// Write additional data at index 20 (after the checkpoint was taken)
 	batch2 := store.NewBatch()
-	require.NoError(t, attrs.Volume.Set(batch2, []byte("l\x00b\x00EUR"), &raftcmdpb.VolumePair{
+	_, err = attrs.Volume.Set(batch2, []byte("l\x00b\x00EUR"), &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(uint64(999)),
-	}))
+	})
+	require.NoError(t, err)
 	require.NoError(t, batch2.Commit())
 
 	// Create a NEW checkpoint that includes the index-20 data

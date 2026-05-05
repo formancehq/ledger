@@ -189,17 +189,31 @@ func BatchDeleteQueryCheckpointSchedule(b *dal.Batch) error {
 	return nil
 }
 
-// SaveReversions stores a ledger's reversion bitset in the batch.
-func SaveReversions(b *dal.Batch, ledger string, data []byte) error {
+// SaveReversionWord writes a single bitset word for a ledger.
+// Key: [0xE5][ledger\x00][wordIndex BE 8 bytes] → [uint64 LE 8 bytes].
+func SaveReversionWord(b *dal.Batch, ledger string, wordIndex uint64, value uint64) error {
 	b.KeyBuilder.PutByte(dal.KeyPrefixReversions).
-		PutString(ledger)
+		PutString(ledger).
+		PutByte(0x00).
+		PutUint64(wordIndex)
 
-	err := b.SetBytes(b.KeyBuilder.Build(), data)
-	if err != nil {
-		return fmt.Errorf("saving reversions for %s: %w", ledger, err)
+	if err := b.SetBytes(b.KeyBuilder.Build(), domain.MarshalWord(value)); err != nil {
+		return fmt.Errorf("saving reversion word %d for %s: %w", wordIndex, ledger, err)
 	}
 
 	return nil
+}
+
+// DeleteReversionsByLedger removes all reversion words for a ledger.
+func DeleteReversionsByLedger(b *dal.Batch, ledger string) error {
+	prefix := append([]byte{dal.KeyPrefixReversions}, []byte(ledger)...)
+	prefix = append(prefix, 0x00)
+
+	end := make([]byte, len(prefix))
+	copy(end, prefix)
+	end[len(end)-1]++
+
+	return b.DeleteRangeNoSync(prefix, end)
 }
 
 // SaveSinkConfig stores a per-sink configuration in the batch.
