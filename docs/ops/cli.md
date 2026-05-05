@@ -1479,7 +1479,7 @@ ledgerctl s gc
 
 #### store checkpoint
 
-Create a Pebble checkpoint of the current live database state. Useful after `store compact` to persist the compacted state so it survives restarts (which restore from the latest checkpoint).
+Create a Pebble checkpoint of the current live database state. Checkpoints are used for follower sync and as a safety fallback.
 
 **Aliases:** `cp`
 
@@ -1496,7 +1496,7 @@ ledgerctl store checkpoint [flags]
 
 **Behavior:**
 - Creates a new Pebble checkpoint from the current `live/` directory (node-local, not forwarded to leader)
-- Updates `CURRENT_CHECKPOINT` so the next restart uses this checkpoint
+- Updates `CURRENT_CHECKPOINT` for follower sync tracking
 - Returns the new checkpoint ID
 
 **Example:**

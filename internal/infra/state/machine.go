@@ -800,7 +800,6 @@ func putInCache[T any](store kv.KV[attributes.U128, attributes.Entry[T]], attrID
 }
 
 // Preload applies preloaded data to the Machine's volatile state.
-// Preload applies preloaded data to the Machine's volatile state.
 // batch and genByte are used for incremental 0xFF persistence of NumscriptParsed entries.
 func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet, batch *dal.Batch, genByte byte) error {
 	if preloadSet == nil || (len(preloadSet.GetPreloads()) == 0 && len(preloadSet.GetTouches()) == 0) {
@@ -1309,26 +1308,10 @@ func hasMirrorConfigChange(proposal *raftcmdpb.Proposal) bool {
 
 // CreateSnapshot creates a snapshot of the Machine state.
 // With incremental cache persistence, 0xFF data and reversions are already
-// up-to-date in Pebble from the apply path. On the first snapshot after
-// upgrading from the old format, a one-time migration rewrites 0xFF with
-// the gen-byte alternation scheme (genByte = currentGeneration % 2).
+// up-to-date in Pebble from the apply path. The checkpoint is only needed
+// for follower sync (SynchronizeWithLeader).
 func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 	totalStart := time.Now()
-
-	// Persist cache and reversions into Pebble so the checkpoint includes them.
-	// The incremental writes in Merge() maintain 0xFF during normal apply,
-	// but we still do a full dump here to guarantee a consistent baseline
-	// in the checkpoint (the gen-byte mapping must be up to date).
-	persistStart := time.Now()
-
-	if err := fsm.cacheSnapshotter.PersistToStore(); err != nil {
-		return nil, fmt.Errorf("persisting in-memory state: %w", err)
-	}
-
-	fsm.logger.WithFields(map[string]any{
-		"duration":         time.Since(persistStart).String(),
-		"lastAppliedIndex": fsm.lastAppliedIndex,
-	}).Infof("Persisted in-memory state to Pebble")
 
 	checkpointID, err := fsm.dataStore.CreateSnapshot()
 	if err != nil {

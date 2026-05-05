@@ -47,58 +47,6 @@ func NewCacheSnapshotter(logger logging.Logger, dataStore *dal.Store, registry *
 	}
 }
 
-// PersistToStore writes cache and reversions to Pebble in a single batch.
-// Called before creating a checkpoint so the checkpoint includes both.
-func (s *CacheSnapshotter) PersistToStore() error {
-	batch := s.dataStore.NewBatch()
-	defer func() { _ = batch.Cancel() }()
-
-	// Reversions: write each word of each ledger's bitset.
-	for ledger, bs := range s.registry.Reversions {
-		for i := range bs.WordCount() {
-			if err := SaveReversionWord(batch, ledger, uint64(i), bs.Word(uint64(i))); err != nil {
-				return fmt.Errorf("saving reversion word for %s: %w", ledger, err)
-			}
-		}
-	}
-
-	// Cache: clear previous snapshot data then re-write.
-	if err := batch.DeleteRangeNoSync(
-		[]byte{dal.KeyPrefixCacheSnapshot},
-		[]byte{dal.KeyPrefixCacheSnapshot, dal.CacheMetaKey, 0x01},
-	); err != nil {
-		return fmt.Errorf("clearing cache snapshot range: %w", err)
-	}
-
-	currentGen := s.registry.Cache.CurrentGeneration()
-	gen0Byte := byte(currentGen % 2)
-	gen1Byte := byte((currentGen + 1) % 2)
-
-	if err := s.persistGeneration(batch, gen0Byte, 0); err != nil {
-		return fmt.Errorf("persisting cache gen0: %w", err)
-	}
-
-	if err := s.persistGeneration(batch, gen1Byte, 1); err != nil {
-		return fmt.Errorf("persisting cache gen1: %w", err)
-	}
-
-	if err := batch.SetProto(
-		[]byte{dal.KeyPrefixCacheSnapshot, dal.CacheMetaKey},
-		&raftcmdpb.CacheSnapshotMeta{
-			CurrentGeneration: s.registry.Cache.CurrentGeneration(),
-		},
-	); err != nil {
-		return fmt.Errorf("writing cache snapshot meta: %w", err)
-	}
-
-	// Bloom filters are NOT persisted in the checkpoint. They are large (can
-	// exceed 1 GiB) and are fully rebuildable from Pebble attributes via
-	// PopulateFromStore. At restart, the missing data triggers a fast background
-	// rebuild that doesn't block the node.
-
-	return batch.Commit()
-}
-
 // persistGeneration writes a single cache generation to Pebble.
 // genByte is the byte written into 0xFF keys; genIndex selects which
 // in-memory generation to read (0=gen0, 1=gen1).
@@ -232,6 +180,8 @@ func (s *CacheSnapshotter) RestoreFromStore() error {
 	s.registry.Cache.Reset()
 
 	currentGen := meta.GetCurrentGeneration()
+
+	// Gen-byte mapping: gen0 at currentGeneration % 2, gen1 at the other byte.
 	gen0Byte := byte(currentGen % 2)
 	gen1Byte := byte((currentGen + 1) % 2)
 
@@ -248,8 +198,6 @@ func (s *CacheSnapshotter) RestoreFromStore() error {
 	s.logger.WithFields(map[string]any{
 		"duration":          time.Since(restoreStart).String(),
 		"currentGeneration": currentGen,
-		"gen0Byte":          gen0Byte,
-		"gen1Byte":          gen1Byte,
 	}).Infof("Restored cache from Pebble")
 
 	// Bloom filters are never persisted in checkpoints (too large). Always

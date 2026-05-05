@@ -1,6 +1,7 @@
 package state
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -16,6 +17,51 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
+
+// persistToStore is a test helper that writes cache and reversions to Pebble
+// in a single batch, so that RestoreFromStore can be tested.
+func persistToStore(s *CacheSnapshotter) error {
+	batch := s.dataStore.NewBatch()
+	defer func() { _ = batch.Cancel() }()
+
+	for ledger, bs := range s.registry.Reversions {
+		for i := range bs.WordCount() {
+			if err := SaveReversionWord(batch, ledger, uint64(i), bs.Word(uint64(i))); err != nil {
+				return fmt.Errorf("saving reversion word for %s: %w", ledger, err)
+			}
+		}
+	}
+
+	if err := batch.DeleteRangeNoSync(
+		[]byte{dal.KeyPrefixCacheSnapshot},
+		[]byte{dal.KeyPrefixCacheSnapshot, dal.CacheMetaKey, 0x01},
+	); err != nil {
+		return fmt.Errorf("clearing cache snapshot range: %w", err)
+	}
+
+	currentGen := s.registry.Cache.CurrentGeneration()
+	gen0Byte := byte(currentGen % 2)
+	gen1Byte := byte((currentGen + 1) % 2)
+
+	if err := s.persistGeneration(batch, gen0Byte, 0); err != nil {
+		return fmt.Errorf("persisting cache gen0: %w", err)
+	}
+
+	if err := s.persistGeneration(batch, gen1Byte, 1); err != nil {
+		return fmt.Errorf("persisting cache gen1: %w", err)
+	}
+
+	if err := batch.SetProto(
+		[]byte{dal.KeyPrefixCacheSnapshot, dal.CacheMetaKey},
+		&raftcmdpb.CacheSnapshotMeta{
+			CurrentGeneration: s.registry.Cache.CurrentGeneration(),
+		},
+	); err != nil {
+		return fmt.Errorf("writing cache snapshot meta: %w", err)
+	}
+
+	return batch.Commit()
+}
 
 func newTestCacheSnapshotter(t *testing.T, bloomFilters *bloom.FilterSet) (*CacheSnapshotter, *dal.Store, *StateRegistry) {
 	t.Helper()
@@ -46,7 +92,7 @@ func TestCacheSnapshotter_PersistAndRestoreEmpty(t *testing.T) {
 	snapshotter, _, registry := newTestCacheSnapshotter(t, nil)
 
 	// Persist empty cache
-	require.NoError(t, snapshotter.PersistToStore())
+	require.NoError(t, persistToStore(snapshotter))
 
 	// Reset and restore
 	registry.Cache.Reset()
@@ -71,7 +117,7 @@ func TestCacheSnapshotter_PersistAndRestoreVolumes(t *testing.T) {
 	})
 
 	// Persist
-	require.NoError(t, snapshotter.PersistToStore())
+	require.NoError(t, persistToStore(snapshotter))
 
 	// Save generation for comparison
 	savedGen := registry.Cache.CurrentGeneration()
@@ -105,7 +151,7 @@ func TestCacheSnapshotter_PersistAndRestoreMetadata(t *testing.T) {
 	})
 
 	// Persist and restore
-	require.NoError(t, snapshotter.PersistToStore())
+	require.NoError(t, persistToStore(snapshotter))
 	registry.Cache.Reset()
 	require.NoError(t, snapshotter.RestoreFromStore())
 
@@ -130,7 +176,7 @@ func TestCacheSnapshotter_PersistAndRestoreLedgers(t *testing.T) {
 	})
 
 	// Persist and restore
-	require.NoError(t, snapshotter.PersistToStore())
+	require.NoError(t, persistToStore(snapshotter))
 	registry.Cache.Reset()
 	require.NoError(t, snapshotter.RestoreFromStore())
 
@@ -153,7 +199,7 @@ func TestCacheSnapshotter_PersistAndRestoreReversions(t *testing.T) {
 	registry.Reversions["test-ledger"] = bs
 
 	// Persist — should succeed (reversions are written to Pebble)
-	require.NoError(t, snapshotter.PersistToStore())
+	require.NoError(t, persistToStore(snapshotter))
 }
 
 func TestCacheSnapshotter_PersistAndRestoreBothGenerations(t *testing.T) {
@@ -186,7 +232,7 @@ func TestCacheSnapshotter_PersistAndRestoreBothGenerations(t *testing.T) {
 	registry.Cache.BaseIndex.Gen1 = 20
 
 	// Persist and restore
-	require.NoError(t, snapshotter.PersistToStore())
+	require.NoError(t, persistToStore(snapshotter))
 	registry.Cache.Reset()
 	require.NoError(t, snapshotter.RestoreFromStore())
 
@@ -229,7 +275,7 @@ func TestCacheSnapshotter_PersistAndRestoreWithBloomFilters(t *testing.T) {
 	defer snapshotter.Stop()
 
 	// Persist (config only — full filter data is never checkpointed)
-	require.NoError(t, snapshotter.PersistToStore())
+	require.NoError(t, persistToStore(snapshotter))
 
 	bloomFilters.SetReady(false)
 
@@ -258,7 +304,7 @@ func TestCacheSnapshotter_PersistNotReadyBloom(t *testing.T) {
 	defer snapshotter.Stop()
 
 	// Persist: should only write config, not filter data.
-	require.NoError(t, snapshotter.PersistToStore())
+	require.NoError(t, persistToStore(snapshotter))
 	require.False(t, bloomFilters.IsReady())
 
 	// Restore: should detect config-only snapshot and start async populate.
@@ -282,7 +328,7 @@ func TestCacheSnapshotter_PersistAndRestoreIdempotencyKeys(t *testing.T) {
 		Tag: 5, Data: value,
 	})
 
-	require.NoError(t, snapshotter.PersistToStore())
+	require.NoError(t, persistToStore(snapshotter))
 	registry.Cache.Reset()
 	require.NoError(t, snapshotter.RestoreFromStore())
 
@@ -304,7 +350,7 @@ func TestCacheSnapshotter_PersistAndRestoreReferences(t *testing.T) {
 		Tag: 6, Data: value,
 	})
 
-	require.NoError(t, snapshotter.PersistToStore())
+	require.NoError(t, persistToStore(snapshotter))
 	registry.Cache.Reset()
 	require.NoError(t, snapshotter.RestoreFromStore())
 
@@ -326,7 +372,7 @@ func TestCacheSnapshotter_PersistAndRestoreTransactions(t *testing.T) {
 		Tag: 7, Data: value,
 	})
 
-	require.NoError(t, snapshotter.PersistToStore())
+	require.NoError(t, persistToStore(snapshotter))
 	registry.Cache.Reset()
 	require.NoError(t, snapshotter.RestoreFromStore())
 
@@ -352,7 +398,7 @@ func TestCacheSnapshotter_PersistOverwritesPrevious(t *testing.T) {
 		},
 	})
 
-	require.NoError(t, snapshotter.PersistToStore())
+	require.NoError(t, persistToStore(snapshotter))
 
 	// Update volume and persist again
 	registry.Cache.Volumes.Gen0().Put(u128, attributes.Entry[*raftcmdpb.VolumePair]{
@@ -362,7 +408,7 @@ func TestCacheSnapshotter_PersistOverwritesPrevious(t *testing.T) {
 		},
 	})
 
-	require.NoError(t, snapshotter.PersistToStore())
+	require.NoError(t, persistToStore(snapshotter))
 
 	// Restore and verify we get the latest values
 	registry.Cache.Reset()
@@ -382,7 +428,7 @@ func TestCacheSnapshotter_PersistAndRestoreCurrentGeneration(t *testing.T) {
 	// Set a non-default current generation
 	registry.Cache.SetCurrentGeneration(42)
 
-	require.NoError(t, snapshotter.PersistToStore())
+	require.NoError(t, persistToStore(snapshotter))
 	registry.Cache.Reset()
 	require.NoError(t, snapshotter.RestoreFromStore())
 
@@ -406,7 +452,7 @@ func TestCacheSnapshotter_MachineIntegration(t *testing.T) {
 	})
 
 	// Persist via the machine's internal snapshotter
-	require.NoError(t, machine.cacheSnapshotter.PersistToStore())
+	require.NoError(t, persistToStore(machine.cacheSnapshotter))
 
 	// Reset and restore via the Machine delegation method
 	machine.Registry.Cache.Reset()

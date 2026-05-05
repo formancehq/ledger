@@ -133,14 +133,14 @@ data/runtime/
 └── CURRENT_CHECKPOINT       # File containing current checkpoint ID
 ```
 
-### Checkpoint System
+### Startup and Checkpoint System
 
-Pebble uses a checkpoint-based system for durability:
+With incremental cache persistence (0xFF zone written in each Pebble batch), the `live/` directory is always up-to-date after each commit. On startup:
 
-1. **On startup**: If `CURRENT_CHECKPOINT` exists, restore from that checkpoint using hard links to the `live/` directory
-2. **On first run**: Create an initial checkpoint (ID: 0)
-3. **On snapshot**: Create a new checkpoint with incremented ID using Pebble's built-in checkpoint feature
-4. **Efficiency**: Checkpoints use hard links, so they don't duplicate data
+1. **Normal restart**: If `live/` exists, open it directly — no checkpoint restoration needed. Pebble's own WAL ensures crash safety.
+2. **Fresh start**: If `live/` does not exist, create a new Pebble database.
+3. **Follower sync**: Checkpoints are created on Raft snapshot and used by followers joining the cluster via `SynchronizeWithLeader`.
+4. **Efficiency**: Checkpoints use hard links, so they don't duplicate data.
 
 ### L0 Compaction Management
 

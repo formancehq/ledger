@@ -279,105 +279,70 @@ func NewStore(
 	}
 
 	var (
-		db *pebble.DB
+		db  *pebble.DB
+		err error
 	)
 
-	currentCheckpointRaw, err := os.ReadFile(filepath.Join(dataDir, currentCheckpointFile))
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("reading current checkpoint: %w", err)
-	}
-
 	liveDir := filepath.Join(dataDir, liveDir)
-	if errors.Is(err, os.ErrNotExist) {
-		logger.Infof("No checkpoint found, creating new database in %s", liveDir)
 
-		if err := os.RemoveAll(liveDir); err != nil {
-			return nil, fmt.Errorf("removing old database: %w", err)
-		}
+	// With incremental 0xFF cache persistence, the live/ directory is always
+	// up-to-date after each Pebble batch commit. On restart we open it directly
+	// — no checkpoint hard-linking needed. Checkpoints are only used for
+	// follower sync (SynchronizeWithLeader) and as a safety fallback.
+	//
+	// Special case: after a restore/bootstrap, live/ does not exist but a
+	// checkpoint does. In that case, hard-link the checkpoint to live/.
+	_, liveDirErr := os.Stat(liveDir)
 
-		db, err = pebble.Open(liveDir, opts)
-		if err != nil {
-			return nil, fmt.Errorf("opening pebble database: %w", err)
-		}
+	if liveDirErr != nil {
+		// live/ does not exist. Check if a checkpoint exists (restore/bootstrap path).
+		if cpRaw, cpErr := os.ReadFile(filepath.Join(dataDir, currentCheckpointFile)); cpErr == nil {
+			checkpointPath := filepath.Join(dataDir, checkpointsDir, string(cpRaw))
 
-		if err := db.Checkpoint(filepath.Join(dataDir, checkpointsDir, "0")); err != nil {
-			return nil, fmt.Errorf("creating initial checkpoint: %w", err)
-		}
+			logger.Infof("No live directory found, restoring from checkpoint %s", string(cpRaw))
 
-		if err := WriteCurrentCheckpointAtomic(dataDir, 0); err != nil {
-			return nil, fmt.Errorf("writing current checkpoint: %w", err)
+			if err = HardLink(checkpointPath, liveDir); err != nil {
+				return nil, fmt.Errorf("hard linking checkpoint to live directory: %w", err)
+			}
+		} else {
+			logger.Infof("No live directory found, creating new database in %s", liveDir)
 		}
 	} else {
-		logger.Infof("Checkpoint found, restoring from checkpoint %s to directory %s", string(currentCheckpointRaw), liveDir)
-
-		checkpointPath := filepath.Join(dataDir, checkpointsDir, string(currentCheckpointRaw))
-
-		// Clean up incomplete post-compaction leftovers from a previous crash.
-		_ = os.RemoveAll(checkpointPath + ".compacted")
-		// If the main checkpoint dir is missing but .old exists, a crash happened
-		// between rename(target→.old) and rename(.compacted→target). Restore it.
-		if _, statErr := os.Stat(checkpointPath); os.IsNotExist(statErr) {
-			oldPath := checkpointPath + ".old"
-			if _, oldStatErr := os.Stat(oldPath); oldStatErr == nil {
-				logger.Infof("Recovering checkpoint from .old (crash during post-compaction rename)")
-
-				renameErr := os.Rename(oldPath, checkpointPath)
-				if renameErr != nil {
-					return nil, fmt.Errorf("recovering checkpoint from .old: %w", renameErr)
-				}
-			}
-		}
-
-		_ = os.RemoveAll(checkpointPath + ".old")
-
-		removeStart := time.Now()
-
-		err := os.RemoveAll(liveDir)
-		if err != nil {
-			return nil, fmt.Errorf("removing old database: %w", err)
-		}
-
-		logger.WithFields(map[string]any{
-			"duration": time.Since(removeStart).String(),
-		}).Infof("Removed old live directory")
-
-		linkStart := time.Now()
-
-		err = HardLink(checkpointPath, liveDir)
-		if err != nil {
-			return nil, fmt.Errorf("hard linking checkpoint: %w", err)
-		}
-
-		logger.WithFields(map[string]any{
-			"duration": time.Since(linkStart).String(),
-		}).Infof("Hard-linked checkpoint to live directory")
-
-		openStart := time.Now()
-
-		db, err = pebble.Open(liveDir, opts)
-		if err != nil {
-			return nil, fmt.Errorf("opening pebble database: %w", err)
-		}
-
-		m := db.Metrics()
-		logger.WithFields(map[string]any{
-			"duration":          time.Since(openStart).String(),
-			"l0FileCount":       m.Levels[0].TablesCount,
-			"l0Size":            m.Levels[0].TablesSize,
-			"l1FileCount":       m.Levels[1].TablesCount,
-			"l1Size":            m.Levels[1].TablesSize,
-			"memTableCount":     m.MemTable.Count,
-			"memTableSize":      m.MemTable.Size,
-			"compactionCount":   m.Compact.Count,
-			"compactionDebt":    m.Compact.InProgressBytes,
-			"compactionEstDebt": m.Compact.EstimatedDebt,
-			"walFilesCount":     m.WAL.Files,
-			"walSize":           m.WAL.Size,
-			"totalLevelsSize":   m.DiskSpaceUsage(),
-		}).Infof("Pebble database opened — LSM state")
+		logger.Infof("Opening existing database from %s", liveDir)
 	}
 
+	openStart := time.Now()
+
+	db, err = pebble.Open(liveDir, opts)
+	if err != nil {
+		return nil, fmt.Errorf("opening pebble database: %w", err)
+	}
+
+	m := db.Metrics()
+	logger.WithFields(map[string]any{
+		"duration":          time.Since(openStart).String(),
+		"l0FileCount":       m.Levels[0].TablesCount,
+		"l0Size":            m.Levels[0].TablesSize,
+		"l1FileCount":       m.Levels[1].TablesCount,
+		"l1Size":            m.Levels[1].TablesSize,
+		"memTableCount":     m.MemTable.Count,
+		"memTableSize":      m.MemTable.Size,
+		"compactionCount":   m.Compact.Count,
+		"compactionDebt":    m.Compact.InProgressBytes,
+		"compactionEstDebt": m.Compact.EstimatedDebt,
+		"walFilesCount":     m.WAL.Files,
+		"walSize":           m.WAL.Size,
+		"totalLevelsSize":   m.DiskSpaceUsage(),
+	}).Infof("Pebble database opened — LSM state")
+
+	// Read current checkpoint counter (used by CreateSnapshot for follower sync).
 	var currentCheckpoint uint64
+
+	currentCheckpointRaw, readErr := os.ReadFile(filepath.Join(dataDir, currentCheckpointFile))
+	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+		return nil, fmt.Errorf("reading current checkpoint: %w", readErr)
+	}
+
 	if len(currentCheckpointRaw) > 0 {
 		currentCheckpoint, err = strconv.ParseUint(string(currentCheckpointRaw), 10, 64)
 		if err != nil {
@@ -839,8 +804,8 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	s.db = newDB
 
 	// Re-write this node's persisted config into the restored database.
-	// After writing, flush and recreate the checkpoint so the config survives
-	// the next startup (NewStore re-links live from the checkpoint directory).
+	// The checkpoint originates from the leader and contains the leader's
+	// config (including its node-id). We must restore this node's identity.
 	if preservedConfig != nil {
 		err := newDB.Set([]byte{KeyPrefixPersistedConfig}, preservedConfig, pebble.Sync)
 		if err != nil {

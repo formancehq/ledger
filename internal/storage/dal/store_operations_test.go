@@ -78,8 +78,11 @@ func TestStore_GetCheckpointPath(t *testing.T) {
 
 	s := newTestStore(t)
 
-	// Checkpoint 0 should exist (initial)
-	path, err := s.GetCheckpointPath(0)
+	// On fresh start, no checkpoint exists. Create one first.
+	checkpointID, err := s.CreateSnapshot()
+	require.NoError(t, err)
+
+	path, err := s.GetCheckpointPath(checkpointID)
 	require.NoError(t, err)
 	require.Contains(t, path, "checkpoints")
 

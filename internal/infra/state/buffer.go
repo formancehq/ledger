@@ -19,9 +19,6 @@ import (
 )
 
 // mergeAndTrackBloom merges a DerivedKeyStore into its parent, writes the updates
-// to the Pebble batch via the Attribute, tracks canonical keys for bloom filter
-// updates, and processes any attribute deletions.
-// mergeAndTrackBloom merges a DerivedKeyStore into its parent, writes the updates
 // to the Pebble batch via the Attribute AND to the 0xFF cache zone (lean format),
 // tracks canonical keys for bloom filter updates, and processes any attribute deletions.
 func mergeAndTrackBloom[K attributes.Key, V proto.Message](

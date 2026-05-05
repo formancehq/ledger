@@ -275,9 +275,10 @@ func (a *Applier) SetOutOfSync() {
 }
 
 // RecoverAndReplay checks whether the store is up to date with the FSM and,
-// if so, recovers any incomplete seal checkpoint, replays WAL entries and
-// spooled entries to bring the store fully up to date. When the store is not
-// up to date (snapshot was installed), it marks the applier as out-of-sync.
+// if so, recovers the in-memory cache, replays Raft WAL entries and spooled
+// entries to bring the node fully up to date. When the store is not up to date
+// (e.g. the node crashed after receiving a leader snapshot but before syncing),
+// it marks the applier as out-of-sync so SynchronizeWithLeader runs.
 // Returns true when the store was up to date and replay succeeded.
 func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 	isStoreUpToDate, err := a.fsm.IsStoreUpToDate(ctx)
@@ -342,10 +343,8 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("reading WAL initial state: %w", err)
 	}
 
-	// Replay WAL entries that were applied to the live Pebble DB but not
-	// captured in the last Raft snapshot checkpoint. At startup the store
-	// is restored from the checkpoint, so entries between the checkpoint
-	// index and the spool start may be missing. The WAL always has them.
+	// Replay Raft WAL entries that were committed but not yet applied
+	// (e.g. the node crashed between Raft commit and FSM apply).
 	if err := a.replayWAL(ctx, storeLastAppliedIndex); err != nil {
 		return false, fmt.Errorf("replaying WAL: %w", err)
 	}
