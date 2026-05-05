@@ -9,12 +9,12 @@ permissions:
 
 jobs:
   GoReleaser:
-    runs-on: shipfox-4vcpu-ubuntu-2404
+    runs-on: namespace-profile-linux-amd64-4vcpu
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          filter: tree:0
+          dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
       - run: >

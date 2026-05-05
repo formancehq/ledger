@@ -30,7 +30,7 @@ jobs:
   #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   Dirty:
-    runs-on: shipfox-4vcpu-ubuntu-2404
+    runs-on: namespace-profile-linux-amd64-4vcpu
     env:
       GOPATH: /tmp/go
       GOLANGCI_LINT_CACHE: /tmp/golangci-lint
@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          filter: tree:0
+          dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
       - run: >
@@ -56,14 +56,14 @@ jobs:
           fi
 
   Tests:
-    runs-on: shipfox-4vcpu-ubuntu-2404
+    runs-on: namespace-profile-linux-amd64-4vcpu
     env:
       GOPATH: /tmp/go
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          filter: tree:0
+          dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
       - name: Run unit tests with coverage
@@ -79,14 +79,14 @@ jobs:
           if-no-files-found: ignore
 
   Tests-E2E:
-    runs-on: shipfox-4vcpu-ubuntu-2404
+    runs-on: namespace-profile-linux-amd64-4vcpu
     env:
       GOPATH: /tmp/go
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          filter: tree:0
+          dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
       - name: Run E2E tests with coverage
@@ -102,14 +102,14 @@ jobs:
           if-no-files-found: ignore
 
   Tests-Scenarios:
-    runs-on: shipfox-4vcpu-ubuntu-2404
+    runs-on: namespace-profile-linux-amd64-4vcpu
     env:
       GOPATH: /tmp/go
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          filter: tree:0
+          dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
       - name: Run scenario tests with coverage
@@ -127,14 +127,14 @@ jobs:
   Coverage:
     if: always()
     needs: [Tests, Tests-E2E, Tests-Scenarios]
-    runs-on: shipfox-4vcpu-ubuntu-2404
+    runs-on: namespace-profile-linux-amd64-4vcpu
     env:
       GOPATH: /tmp/go
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          filter: tree:0
+          dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
       - name: Download all coverage profiles
@@ -173,28 +173,28 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   Build:
-    runs-on: shipfox-4vcpu-ubuntu-2404
+    runs-on: namespace-profile-linux-amd64-4vcpu
     env:
       GOPATH: /tmp/go
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          filter: tree:0
+          dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
       - run: >
           nix develop --command go build ./...
 
   Tests-Schemathesis:
-    runs-on: shipfox-4vcpu-ubuntu-2404
+    runs-on: namespace-profile-linux-amd64-4vcpu
     env:
       GOPATH: /tmp/go
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          filter: tree:0
+          dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
       - name: Run Schemathesis API conformity tests
@@ -221,14 +221,14 @@ jobs:
         Tests-Schemathesis,
         Build,
       ]
-    runs-on: shipfox-4vcpu-ubuntu-2404
+    runs-on: namespace-profile-linux-amd64-4vcpu
     env:
       GOPATH: /tmp/go
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          filter: tree:0
+          dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
       - name: Release nightly
