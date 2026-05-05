@@ -119,6 +119,7 @@ func (p *RequestProcessor) processMirrorCreatedTransaction(ledger string, bounda
 	if boundaries.GetNextTransactionId() <= txID {
 		boundaries.NextTransactionId = txID + 1
 	}
+	boundaries.PostingCount += uint64(len(ct.GetPostings()))
 
 	// Record transaction state (include metadata from the mirrored transaction)
 	s.PutTransactionState(domain.TransactionKey{Ledger: ledger, ID: txID}, &commonpb.TransactionState{
@@ -345,6 +346,8 @@ func (p *RequestProcessor) processMirrorRevertedTransaction(ledger string, bound
 	if boundaries.GetNextTransactionId() <= revertTxID {
 		boundaries.NextTransactionId = revertTxID + 1
 	}
+	boundaries.PostingCount += uint64(len(rt.GetReversePostings()))
+	boundaries.RevertCount++
 
 	// Update the original transaction's state to record the reversion
 	origKey := domain.TransactionKey{Ledger: ledger, ID: rt.GetRevertedTransactionId()}

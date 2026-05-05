@@ -3466,8 +3466,16 @@ func (m *LedgerStats) CloneVT() *LedgerStats {
 		return (*LedgerStats)(nil)
 	}
 	r := new(LedgerStats)
-	r.AccountCount = m.AccountCount
 	r.TransactionCount = m.TransactionCount
+	r.VolumeCount = m.VolumeCount
+	r.MetadataCount = m.MetadataCount
+	r.ReferenceCount = m.ReferenceCount
+	r.PostingCount = m.PostingCount
+	r.EphemeralEvictedCount = m.EphemeralEvictedCount
+	r.TransientUsedCount = m.TransientUsedCount
+	r.RevertCount = m.RevertCount
+	r.NumscriptExecutionCount = m.NumscriptExecutionCount
+	r.LogCount = m.LogCount
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -9217,10 +9225,34 @@ func (this *LedgerStats) EqualVT(that *LedgerStats) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.AccountCount != that.AccountCount {
+	if this.TransactionCount != that.TransactionCount {
 		return false
 	}
-	if this.TransactionCount != that.TransactionCount {
+	if this.VolumeCount != that.VolumeCount {
+		return false
+	}
+	if this.MetadataCount != that.MetadataCount {
+		return false
+	}
+	if this.ReferenceCount != that.ReferenceCount {
+		return false
+	}
+	if this.PostingCount != that.PostingCount {
+		return false
+	}
+	if this.EphemeralEvictedCount != that.EphemeralEvictedCount {
+		return false
+	}
+	if this.TransientUsedCount != that.TransientUsedCount {
+		return false
+	}
+	if this.RevertCount != that.RevertCount {
+		return false
+	}
+	if this.NumscriptExecutionCount != that.NumscriptExecutionCount {
+		return false
+	}
+	if this.LogCount != that.LogCount {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -17776,13 +17808,53 @@ func (m *LedgerStats) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.TransactionCount != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.TransactionCount))
+	if m.LogCount != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogCount))
+		i--
+		dAtA[i] = 0x50
+	}
+	if m.NumscriptExecutionCount != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NumscriptExecutionCount))
+		i--
+		dAtA[i] = 0x48
+	}
+	if m.RevertCount != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.RevertCount))
+		i--
+		dAtA[i] = 0x40
+	}
+	if m.TransientUsedCount != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.TransientUsedCount))
+		i--
+		dAtA[i] = 0x38
+	}
+	if m.EphemeralEvictedCount != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.EphemeralEvictedCount))
+		i--
+		dAtA[i] = 0x30
+	}
+	if m.PostingCount != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PostingCount))
+		i--
+		dAtA[i] = 0x28
+	}
+	if m.ReferenceCount != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ReferenceCount))
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.MetadataCount != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MetadataCount))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.VolumeCount != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.VolumeCount))
 		i--
 		dAtA[i] = 0x10
 	}
-	if m.AccountCount != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.AccountCount))
+	if m.TransactionCount != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.TransactionCount))
 		i--
 		dAtA[i] = 0x8
 	}
@@ -21456,11 +21528,35 @@ func (m *LedgerStats) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.AccountCount != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.AccountCount))
-	}
 	if m.TransactionCount != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.TransactionCount))
+	}
+	if m.VolumeCount != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.VolumeCount))
+	}
+	if m.MetadataCount != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.MetadataCount))
+	}
+	if m.ReferenceCount != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.ReferenceCount))
+	}
+	if m.PostingCount != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.PostingCount))
+	}
+	if m.EphemeralEvictedCount != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.EphemeralEvictedCount))
+	}
+	if m.TransientUsedCount != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.TransientUsedCount))
+	}
+	if m.RevertCount != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.RevertCount))
+	}
+	if m.NumscriptExecutionCount != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.NumscriptExecutionCount))
+	}
+	if m.LogCount != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.LogCount))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -41410,25 +41506,6 @@ func (m *LedgerStats) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AccountCount", wireType)
-			}
-			m.AccountCount = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.AccountCount |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 2:
-			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field TransactionCount", wireType)
 			}
 			m.TransactionCount = 0
@@ -41442,6 +41519,177 @@ func (m *LedgerStats) UnmarshalVT(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.TransactionCount |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field VolumeCount", wireType)
+			}
+			m.VolumeCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.VolumeCount |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MetadataCount", wireType)
+			}
+			m.MetadataCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.MetadataCount |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ReferenceCount", wireType)
+			}
+			m.ReferenceCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ReferenceCount |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PostingCount", wireType)
+			}
+			m.PostingCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.PostingCount |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field EphemeralEvictedCount", wireType)
+			}
+			m.EphemeralEvictedCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.EphemeralEvictedCount |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TransientUsedCount", wireType)
+			}
+			m.TransientUsedCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.TransientUsedCount |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 8:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RevertCount", wireType)
+			}
+			m.RevertCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.RevertCount |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 9:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptExecutionCount", wireType)
+			}
+			m.NumscriptExecutionCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.NumscriptExecutionCount |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 10:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LogCount", wireType)
+			}
+			m.LogCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.LogCount |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

@@ -31,8 +31,11 @@ var _ = Describe("GetLedgerStats", Ordered, func() {
 				Ledger: ledgerName,
 			})
 			Expect(err).To(Succeed())
-			Expect(resp.AccountCount).To(BeZero())
 			Expect(resp.TransactionCount).To(BeZero())
+			Expect(resp.PostingCount).To(BeZero())
+			Expect(resp.VolumeCount).To(BeZero())
+			Expect(resp.MetadataCount).To(BeZero())
+			Expect(resp.ReferenceCount).To(BeZero())
 		})
 	})
 
@@ -62,17 +65,20 @@ var _ = Describe("GetLedgerStats", Ordered, func() {
 			Expect(err).To(Succeed())
 		})
 
-		It("Should return correct account and transaction counts", func() {
+		It("Should return correct counts", func() {
 			// Index builder processes logs asynchronously; poll until indexes are up to date.
 			Eventually(func(g Gomega) {
 				resp, err := sharedClient.GetLedgerStats(sharedCtx, &servicepb.GetLedgerStatsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
-				// world + bank:main + bank:fees + users:alice = 4
-				g.Expect(resp.AccountCount).To(Equal(uint64(4)))
-				// 3 transactions
+				// 3 transactions, each with 1 posting = 3 postings
 				g.Expect(resp.TransactionCount).To(Equal(uint64(3)))
+				g.Expect(resp.PostingCount).To(Equal(uint64(3)))
+				// world/USD + bank:main/USD + bank:fees/USD + users:alice/USD = 4
+				g.Expect(resp.VolumeCount).To(Equal(uint64(4)))
+				g.Expect(resp.MetadataCount).To(BeZero())
+				g.Expect(resp.ReferenceCount).To(BeZero())
 			}).Should(Succeed())
 		})
 	})

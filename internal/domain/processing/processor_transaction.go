@@ -55,7 +55,8 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 
 	// Select the appropriate posting producer
 	var producer postingProducer
-	if order.GetScript() != nil && order.GetScript().GetPlain() != "" {
+	isNumscript := order.GetScript() != nil && order.GetScript().GetPlain() != ""
+	if isNumscript {
 		producer = &numscriptPostingProducer{cache: p.numscriptCache, ledger: ledger, schema: schema}
 	} else {
 		producer = &stdPostingProducer{}
@@ -69,6 +70,11 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 
 	nextTransactionID := boundaries.GetNextTransactionId()
 	boundaries.NextTransactionId = nextTransactionID + 1
+	boundaries.PostingCount += uint64(len(result.Postings))
+
+	if isNumscript {
+		boundaries.NumscriptExecutionCount++
+	}
 
 	txKey := domain.TransactionKey{Ledger: ledger, ID: nextTransactionID}
 	txState := &commonpb.TransactionState{

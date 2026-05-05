@@ -162,11 +162,6 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 		}
 	}
 
-	// Process Boundary updates
-	if _, _, err := mergeAndTrackBloom(b.Derived.Boundaries, b.attrs.Boundary, batch, genByte, dal.AttributePrefixBoundary, &b.bloomUpdates.Boundaries, "boundaries"); err != nil {
-		return err
-	}
-
 	// Process Volume updates — volumes are handled inline (not via mergeAndTrackBloom)
 	// because of the unique ephemeral purge, double-entry invariant, and sentinel checks.
 	volumeUpdates, _, err := b.Derived.Volumes.Merge()
@@ -217,8 +212,8 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 		b.purgedVolumeKeys = append(b.purgedVolumeKeys, purged.Key)
 	}
 
-	// Process AccountMetadata updates (deletions handled inside mergeAndTrackBloom)
-	_, _, err = mergeAndTrackBloom(b.Derived.AccountMetadata, b.attrs.Metadata, batch, genByte, dal.AttributePrefixMetadata, &b.bloomUpdates.Metadata, "account metadata")
+	// Process AccountMetadata updates
+	metadataUpdates, metadataDeletions, err := mergeAndTrackBloom(b.Derived.AccountMetadata, b.attrs.Metadata, batch, genByte, dal.AttributePrefixMetadata, &b.bloomUpdates.Metadata, "account metadata")
 	if err != nil {
 		return err
 	}
@@ -249,7 +244,16 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	}
 
 	// Process References updates
-	if _, _, err := mergeAndTrackBloom(b.Derived.References, b.attrs.References, batch, genByte, dal.AttributePrefixReference, &b.bloomUpdates.References, "references"); err != nil {
+	referenceUpdates, _, err := mergeAndTrackBloom(b.Derived.References, b.attrs.References, batch, genByte, dal.AttributePrefixReference, &b.bloomUpdates.References, "references")
+	if err != nil {
+		return err
+	}
+
+	// Update per-ledger attribute counters in boundaries before merging them.
+	b.updateBoundaryCounters(volumeUpdates, partResult.purged, partResult.transient, metadataUpdates, metadataDeletions, referenceUpdates)
+
+	// Process Boundary updates (after counted attributes so counters are included).
+	if _, _, err := mergeAndTrackBloom(b.Derived.Boundaries, b.attrs.Boundary, batch, genByte, dal.AttributePrefixBoundary, &b.bloomUpdates.Boundaries, "boundaries"); err != nil {
 		return err
 	}
 

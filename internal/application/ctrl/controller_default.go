@@ -430,7 +430,8 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string
 	return scanAccount(handle, ctrl.attrs, ledgerInfo.GetName(), address, ledgerInfo.GetMetadataSchema(), ctrl.logger)
 }
 
-// GetLedgerStats returns aggregate statistics (account count, transaction count) for a ledger.
+// GetLedgerStats returns aggregate statistics for a ledger.
+// All counters are O(1) reads from the LedgerBoundaries attribute.
 func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error) {
 	_, err := query.GetLedgerByName(ctx, ctrl.store, ledgerName)
 	if err != nil {
@@ -441,8 +442,6 @@ func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName st
 		return nil, err
 	}
 
-	var stats commonpb.LedgerStats
-
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
@@ -450,29 +449,30 @@ func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName st
 
 	defer func() { _ = handle.Close() }()
 
-	// Count accounts from Pebble attributes zone
-	accountIter, err := readstore.NewPebbleAccountIterator(handle, ledgerName)
+	boundaries, err := ctrl.attrs.Boundary.Get(handle, domain.LedgerKey{Name: ledgerName}.Bytes())
 	if err != nil {
-		return nil, fmt.Errorf("creating account iterator for stats: %w", err)
+		return nil, fmt.Errorf("reading boundaries for stats: %w", err)
 	}
 
-	for accountIter.Next() {
-		stats.AccountCount++
+	var stats commonpb.LedgerStats
+	if boundaries != nil {
+		if nextTxID := boundaries.GetNextTransactionId(); nextTxID > 0 {
+			stats.TransactionCount = nextTxID - 1
+		}
+
+		stats.VolumeCount = boundaries.GetVolumeCount()
+		stats.MetadataCount = boundaries.GetMetadataCount()
+		stats.ReferenceCount = boundaries.GetReferenceCount()
+		stats.PostingCount = boundaries.GetPostingCount()
+		stats.EphemeralEvictedCount = boundaries.GetEphemeralEvictedCount()
+		stats.TransientUsedCount = boundaries.GetTransientUsedCount()
+		stats.RevertCount = boundaries.GetRevertCount()
+		stats.NumscriptExecutionCount = boundaries.GetNumscriptExecutionCount()
+
+		if nextLogID := boundaries.GetNextLogId(); nextLogID > 0 {
+			stats.LogCount = nextLogID - 1
+		}
 	}
-
-	accountIter.Close()
-
-	// Count transactions from Pebble cold zone
-	txIter, err := readstore.NewPebbleTxIterator(handle, ledgerName)
-	if err != nil {
-		return nil, fmt.Errorf("creating tx iterator for stats: %w", err)
-	}
-
-	for txIter.Next() {
-		stats.TransactionCount++
-	}
-
-	txIter.Close()
 
 	return &stats, nil
 }

@@ -380,8 +380,8 @@ func TestLendingLifecycle(t *testing.T) {
 		// Stats
 		stats, err := actions.GetLedgerStats(ctx, client, ledger)
 		require.NoError(t, err)
-		t.Logf("LedgerStats: %d accounts, %d transactions",
-			stats.GetAccountCount(), stats.GetTransactionCount())
+		t.Logf("LedgerStats: %d volumes, %d transactions",
+			stats.GetVolumeCount(), stats.GetTransactionCount())
 	})
 
 	// --- Tail phases ---

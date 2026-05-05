@@ -8,14 +8,30 @@ import (
 
 // ledgerStatsJSON is the camelCase JSON DTO for LedgerStats.
 type ledgerStatsJSON struct {
-	AccountCount     uint64 `json:"accountCount"`
-	TransactionCount uint64 `json:"transactionCount"`
+	TransactionCount        uint64 `json:"transactionCount"`
+	VolumeCount             uint64 `json:"volumeCount"`
+	MetadataCount           uint64 `json:"metadataCount"`
+	ReferenceCount          uint64 `json:"referenceCount"`
+	PostingCount            uint64 `json:"postingCount"`
+	LogCount                uint64 `json:"logCount"`
+	EphemeralEvictedCount   uint64 `json:"ephemeralEvictedCount"`
+	TransientUsedCount      uint64 `json:"transientUsedCount"`
+	RevertCount             uint64 `json:"revertCount"`
+	NumscriptExecutionCount uint64 `json:"numscriptExecutionCount"`
 }
 
 func toLedgerStatsJSON(stats *commonpb.LedgerStats) *ledgerStatsJSON {
 	return &ledgerStatsJSON{
-		AccountCount:     stats.GetAccountCount(),
-		TransactionCount: stats.GetTransactionCount(),
+		TransactionCount:        stats.GetTransactionCount(),
+		VolumeCount:             stats.GetVolumeCount(),
+		MetadataCount:           stats.GetMetadataCount(),
+		ReferenceCount:          stats.GetReferenceCount(),
+		PostingCount:            stats.GetPostingCount(),
+		LogCount:                stats.GetLogCount(),
+		EphemeralEvictedCount:   stats.GetEphemeralEvictedCount(),
+		TransientUsedCount:      stats.GetTransientUsedCount(),
+		RevertCount:             stats.GetRevertCount(),
+		NumscriptExecutionCount: stats.GetNumscriptExecutionCount(),
 	}
 }
 

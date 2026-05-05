@@ -327,10 +327,10 @@ func TestOperationsLifecycle(t *testing.T) {
 		// Verify stats
 		stats, err := actions.GetLedgerStats(ctx, client, ledger)
 		require.NoError(t, err, "GetLedgerStats failed")
-		require.Greater(t, stats.GetAccountCount(), uint64(0), "should have accounts")
+		require.Greater(t, stats.GetVolumeCount(), uint64(0), "should have volumes")
 		require.Greater(t, stats.GetTransactionCount(), uint64(0), "should have transactions")
-		t.Logf("LedgerStats: %d accounts, %d transactions",
-			stats.GetAccountCount(), stats.GetTransactionCount())
+		t.Logf("LedgerStats: %d volumes, %d transactions",
+			stats.GetVolumeCount(), stats.GetTransactionCount())
 	})
 
 	// --- Tail phases: StoreCheck, Backup, Restart+Verify, BackupRestore+Verify ---

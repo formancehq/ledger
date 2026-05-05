@@ -24,8 +24,11 @@ func TestHandleGetLedgerStats_Success(t *testing.T) {
 			require.Equal(t, "my-ledger", ledgerName)
 
 			return &commonpb.LedgerStats{
-				AccountCount:     42,
 				TransactionCount: 100,
+				VolumeCount:      42,
+				MetadataCount:    10,
+				ReferenceCount:   5,
+				PostingCount:     200,
 			}, nil
 		},
 	}
@@ -41,8 +44,11 @@ func TestHandleGetLedgerStats_Success(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 
 	wrapper := decodeResponse[BaseResponse[ledgerStatsJSON]](t, w)
-	require.Equal(t, uint64(42), wrapper.Data.AccountCount)
 	require.Equal(t, uint64(100), wrapper.Data.TransactionCount)
+	require.Equal(t, uint64(42), wrapper.Data.VolumeCount)
+	require.Equal(t, uint64(10), wrapper.Data.MetadataCount)
+	require.Equal(t, uint64(5), wrapper.Data.ReferenceCount)
+	require.Equal(t, uint64(200), wrapper.Data.PostingCount)
 }
 
 func TestHandleGetLedgerStats_EmptyLedger(t *testing.T) {
@@ -50,10 +56,7 @@ func TestHandleGetLedgerStats_EmptyLedger(t *testing.T) {
 
 	backend := &mockBackend{
 		getLedgerStatsFn: func(_ context.Context, _ string) (*commonpb.LedgerStats, error) {
-			return &commonpb.LedgerStats{
-				AccountCount:     0,
-				TransactionCount: 0,
-			}, nil
+			return &commonpb.LedgerStats{}, nil
 		},
 	}
 	srv := newTestServer(t, backend)
@@ -68,8 +71,11 @@ func TestHandleGetLedgerStats_EmptyLedger(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 
 	wrapper := decodeResponse[BaseResponse[ledgerStatsJSON]](t, w)
-	require.Equal(t, uint64(0), wrapper.Data.AccountCount)
 	require.Equal(t, uint64(0), wrapper.Data.TransactionCount)
+	require.Equal(t, uint64(0), wrapper.Data.VolumeCount)
+	require.Equal(t, uint64(0), wrapper.Data.MetadataCount)
+	require.Equal(t, uint64(0), wrapper.Data.ReferenceCount)
+	require.Equal(t, uint64(0), wrapper.Data.PostingCount)
 }
 
 func TestHandleGetLedgerStats_MissingLedgerName(t *testing.T) {
@@ -155,8 +161,8 @@ func TestHandleGetLedgerStats_FullRouteIntegration(t *testing.T) {
 	backend := &mockBackend{
 		getLedgerStatsFn: func(_ context.Context, _ string) (*commonpb.LedgerStats, error) {
 			return &commonpb.LedgerStats{
-				AccountCount:     5,
 				TransactionCount: 10,
+				VolumeCount:      5,
 			}, nil
 		},
 	}

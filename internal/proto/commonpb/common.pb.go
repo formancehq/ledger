@@ -9681,11 +9681,19 @@ func (x *PreparedQueryCursor) GetTransactionData() []*Transaction {
 
 // LedgerStats contains aggregate statistics for a ledger.
 type LedgerStats struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	AccountCount     uint64                 `protobuf:"varint,1,opt,name=account_count,json=accountCount,proto3" json:"account_count,omitempty"`
-	TransactionCount uint64                 `protobuf:"varint,2,opt,name=transaction_count,json=transactionCount,proto3" json:"transaction_count,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state                   protoimpl.MessageState `protogen:"open.v1"`
+	TransactionCount        uint64                 `protobuf:"varint,1,opt,name=transaction_count,json=transactionCount,proto3" json:"transaction_count,omitempty"`
+	VolumeCount             uint64                 `protobuf:"varint,2,opt,name=volume_count,json=volumeCount,proto3" json:"volume_count,omitempty"`
+	MetadataCount           uint64                 `protobuf:"varint,3,opt,name=metadata_count,json=metadataCount,proto3" json:"metadata_count,omitempty"`
+	ReferenceCount          uint64                 `protobuf:"varint,4,opt,name=reference_count,json=referenceCount,proto3" json:"reference_count,omitempty"`
+	PostingCount            uint64                 `protobuf:"varint,5,opt,name=posting_count,json=postingCount,proto3" json:"posting_count,omitempty"`
+	EphemeralEvictedCount   uint64                 `protobuf:"varint,6,opt,name=ephemeral_evicted_count,json=ephemeralEvictedCount,proto3" json:"ephemeral_evicted_count,omitempty"`
+	TransientUsedCount      uint64                 `protobuf:"varint,7,opt,name=transient_used_count,json=transientUsedCount,proto3" json:"transient_used_count,omitempty"`
+	RevertCount             uint64                 `protobuf:"varint,8,opt,name=revert_count,json=revertCount,proto3" json:"revert_count,omitempty"`
+	NumscriptExecutionCount uint64                 `protobuf:"varint,9,opt,name=numscript_execution_count,json=numscriptExecutionCount,proto3" json:"numscript_execution_count,omitempty"`
+	LogCount                uint64                 `protobuf:"varint,10,opt,name=log_count,json=logCount,proto3" json:"log_count,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *LedgerStats) Reset() {
@@ -9718,16 +9726,72 @@ func (*LedgerStats) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{124}
 }
 
-func (x *LedgerStats) GetAccountCount() uint64 {
+func (x *LedgerStats) GetTransactionCount() uint64 {
 	if x != nil {
-		return x.AccountCount
+		return x.TransactionCount
 	}
 	return 0
 }
 
-func (x *LedgerStats) GetTransactionCount() uint64 {
+func (x *LedgerStats) GetVolumeCount() uint64 {
 	if x != nil {
-		return x.TransactionCount
+		return x.VolumeCount
+	}
+	return 0
+}
+
+func (x *LedgerStats) GetMetadataCount() uint64 {
+	if x != nil {
+		return x.MetadataCount
+	}
+	return 0
+}
+
+func (x *LedgerStats) GetReferenceCount() uint64 {
+	if x != nil {
+		return x.ReferenceCount
+	}
+	return 0
+}
+
+func (x *LedgerStats) GetPostingCount() uint64 {
+	if x != nil {
+		return x.PostingCount
+	}
+	return 0
+}
+
+func (x *LedgerStats) GetEphemeralEvictedCount() uint64 {
+	if x != nil {
+		return x.EphemeralEvictedCount
+	}
+	return 0
+}
+
+func (x *LedgerStats) GetTransientUsedCount() uint64 {
+	if x != nil {
+		return x.TransientUsedCount
+	}
+	return 0
+}
+
+func (x *LedgerStats) GetRevertCount() uint64 {
+	if x != nil {
+		return x.RevertCount
+	}
+	return 0
+}
+
+func (x *LedgerStats) GetNumscriptExecutionCount() uint64 {
+	if x != nil {
+		return x.NumscriptExecutionCount
+	}
+	return 0
+}
+
+func (x *LedgerStats) GetLogCount() uint64 {
+	if x != nil {
+		return x.LogCount
 	}
 	return 0
 }
@@ -10384,10 +10448,19 @@ const file_common_proto_rawDesc = "" +
 	"\bprevious\x18\x03 \x01(\tR\bprevious\x12\x12\n" +
 	"\x04next\x18\x04 \x01(\tR\x04next\x122\n" +
 	"\faccount_data\x18\x05 \x03(\v2\x0f.common.AccountR\vaccountData\x12>\n" +
-	"\x10transaction_data\x18\x06 \x03(\v2\x13.common.TransactionR\x0ftransactionData\"_\n" +
-	"\vLedgerStats\x12#\n" +
-	"\raccount_count\x18\x01 \x01(\x04R\faccountCount\x12+\n" +
-	"\x11transaction_count\x18\x02 \x01(\x04R\x10transactionCount*B\n" +
+	"\x10transaction_data\x18\x06 \x03(\v2\x13.common.TransactionR\x0ftransactionData\"\xb8\x03\n" +
+	"\vLedgerStats\x12+\n" +
+	"\x11transaction_count\x18\x01 \x01(\x04R\x10transactionCount\x12!\n" +
+	"\fvolume_count\x18\x02 \x01(\x04R\vvolumeCount\x12%\n" +
+	"\x0emetadata_count\x18\x03 \x01(\x04R\rmetadataCount\x12'\n" +
+	"\x0freference_count\x18\x04 \x01(\x04R\x0ereferenceCount\x12#\n" +
+	"\rposting_count\x18\x05 \x01(\x04R\fpostingCount\x126\n" +
+	"\x17ephemeral_evicted_count\x18\x06 \x01(\x04R\x15ephemeralEvictedCount\x120\n" +
+	"\x14transient_used_count\x18\a \x01(\x04R\x12transientUsedCount\x12!\n" +
+	"\frevert_count\x18\b \x01(\x04R\vrevertCount\x12:\n" +
+	"\x19numscript_execution_count\x18\t \x01(\x04R\x17numscriptExecutionCount\x12\x1b\n" +
+	"\tlog_count\x18\n" +
+	" \x01(\x04R\blogCount*B\n" +
 	"\n" +
 	"TargetType\x12\x17\n" +
 	"\x13TARGET_TYPE_ACCOUNT\x10\x00\x12\x1b\n" +

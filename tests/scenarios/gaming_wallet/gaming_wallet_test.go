@@ -465,8 +465,8 @@ func TestGamingWalletLifecycle(t *testing.T) {
 		stats, err := actions.GetLedgerStats(ctx, client, ledger)
 		require.NoError(t, err)
 		require.Greater(t, stats.GetTransactionCount(), uint64(100), "should have many transactions")
-		t.Logf("LedgerStats: %d accounts, %d transactions",
-			stats.GetAccountCount(), stats.GetTransactionCount())
+		t.Logf("LedgerStats: %d volumes, %d transactions",
+			stats.GetVolumeCount(), stats.GetTransactionCount())
 
 		// Audit trail
 		scenariotest.CheckAuditTrail(t, ctx, client, []scenariotest.AuditExpectation{

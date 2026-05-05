@@ -278,8 +278,8 @@ send $amount (
 		for _, dept := range departments {
 			stats, err := actions.GetLedgerStats(ctx, client, dept.Ledger)
 			require.NoError(t, err)
-			t.Logf("%s: %d accounts, %d transactions",
-				dept.Name, stats.GetAccountCount(), stats.GetTransactionCount())
+			t.Logf("%s: %d volumes, %d transactions",
+				dept.Name, stats.GetVolumeCount(), stats.GetTransactionCount())
 		}
 	})
 

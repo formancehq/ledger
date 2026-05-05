@@ -63,6 +63,8 @@ func (p *RequestProcessor) processRevertTransaction(ledger string, boundaries *r
 	// Get new transaction ID for the revert transaction
 	revertTxID := boundaries.GetNextTransactionId()
 	boundaries.NextTransactionId = revertTxID + 1
+	boundaries.PostingCount += uint64(len(revertPostings))
+	boundaries.RevertCount++
 
 	// Update the original transaction's state to record the reversion
 	origState, err := s.GetTransactionState(txKey)
