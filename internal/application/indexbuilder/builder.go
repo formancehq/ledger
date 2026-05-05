@@ -223,17 +223,45 @@ func (b *Builder) loop(stop <-chan struct{}) {
 		"backfills":  len(b.backfillTasks),
 	}).Infof("Index builder started")
 
-	// Initial catch-up (unbounded — backfills haven't started yet).
+	// Initial catch-up: process all pending logs before entering the main loop.
 	// Use a larger batch size to reduce fsync overhead, and strip BUILDING
 	// indexes from the config since their ranges will be covered by backfill
 	// tasks. This avoids millions of redundant Pebble writes.
+	//
+	// The catch-up is split into time-bounded iterations (catchUpBudget) so
+	// that the Pebble ReadHandle (snapshot) is released between iterations.
+	// Without this, a single unbounded processLogs call holds a snapshot for
+	// the entire catch-up duration (potentially hours on large stores),
+	// preventing Pebble from garbage-collecting obsolete SSTs and causing
+	// zombie files and pinned keys to accumulate.
+	const catchUpBudget = 5 * time.Second
 	prevCursor := cursor
 	savedBatchSize := b.batchSize
 	b.batchSize = max(b.batchSize, 10_000)
 	restoreIndexes := b.stripBuildingIndexes()
 
-	if cursor, err = b.processLogs(cursor, time.Time{}); err != nil {
-		b.logger.Errorf("Error during initial catch-up: %v", err)
+	for {
+		select {
+		case <-stop:
+			restoreIndexes()
+			b.batchSize = savedBatchSize
+
+			return
+		default:
+		}
+
+		before := cursor
+		deadline := time.Now().Add(catchUpBudget)
+
+		if cursor, err = b.processLogs(cursor, deadline); err != nil {
+			b.logger.Errorf("Error during initial catch-up: %v", err)
+
+			break
+		}
+
+		if cursor == before {
+			break
+		}
 	}
 
 	restoreIndexes()
