@@ -376,10 +376,6 @@ type snapshotServiceGateway struct {
 	client snapshotpb.SnapshotServiceClient
 }
 
-func (g *snapshotServiceGateway) DescribeSnapshot(ctx context.Context, req *snapshotpb.DescribeSnapshotRequest) (*snapshotpb.DescribeSnapshotResponse, error) {
-	return g.client.DescribeSnapshot(ctx, req)
-}
-
 func (g *snapshotServiceGateway) FetchSnapshot(req *snapshotpb.FetchSnapshotRequest, stream grpc.ServerStreamingServer[snapshotpb.FetchSnapshotResponse]) error {
 	ctx := stream.Context()
 

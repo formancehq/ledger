@@ -65,7 +65,6 @@ type Machine struct {
 	queryCheckpointSchedule        string
 	queryCheckpointScheduleChanged signal.Signal
 	lastLogHash                    []byte
-	lastCheckpointID               uint64
 
 	lastAppliedIndex     uint64
 	lastAppliedTimestamp uint64
@@ -140,11 +139,6 @@ type Machine struct {
 }
 
 func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, ks *keystore.KeyStore, sharedState *SharedState, eventNotifier Notifier, mirrorNotifier Notifier, indexNotifier Notifier, bloomFilters *bloom.FilterSet, numscriptCacheSize int, sentinelMode bool) (*Machine, error) {
-	lastAppliedIndex, err := query.ReadLastAppliedIndex(dataStore)
-	if err != nil {
-		return nil, err
-	}
-
 	logsAppendedCounter, err := meter.Int64Counter(
 		"raft.fsm.logs_appended",
 		metric.WithDescription("Total number of logs appended to the store. Use rate() to get logs per second."),
@@ -186,7 +180,6 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 	fsm := &Machine{
 		logger:                         logger,
 		dataStore:                      dataStore,
-		lastAppliedIndex:               lastAppliedIndex,
 		BloomFilters:                   bloomFilters,
 		sentinelMode:                   sentinelMode,
 		logsAppendedCounter:            logsAppendedCounter,
@@ -210,7 +203,6 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		coldCompactionCh:               make(chan struct{}, 1),
 	}
 	fsm.appliedCond = sync.NewCond(&fsm.appliedMu)
-	fsm.lastPersistedIndex.Store(lastAppliedIndex)
 	fsm.cacheSnapshotter = NewCacheSnapshotter(logger, dataStore, fsm.Registry, bloomFilters)
 
 	if err := fsm.RecoverState(); err != nil {
@@ -224,6 +216,15 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 // Called on restart (via RecoverAndReplay) and after follower sync
 // (via reloadStateFromStore).
 func (fsm *Machine) RecoverState() error {
+	// Recover lastAppliedIndex from Pebble
+	lastAppliedIndex, err := query.ReadLastAppliedIndex(fsm.dataStore)
+	if err != nil {
+		return fmt.Errorf("recovering last applied index: %w", err)
+	}
+
+	fsm.lastAppliedIndex = lastAppliedIndex
+	fsm.lastPersistedIndex.Store(lastAppliedIndex)
+
 	// Recover nextSequenceID from last log sequence
 	lastSeq, err := query.ReadLastSequence(fsm.dataStore)
 	if err != nil {
@@ -1306,46 +1307,6 @@ func hasMirrorConfigChange(proposal *raftcmdpb.Proposal) bool {
 	return false
 }
 
-// CreateSnapshot creates a snapshot of the Machine state.
-// With incremental cache persistence, 0xFF data and reversions are already
-// up-to-date in Pebble from the apply path. The checkpoint is only needed
-// for follower sync (SynchronizeWithLeader).
-func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
-	totalStart := time.Now()
-
-	checkpointID, err := fsm.dataStore.CreateSnapshot()
-	if err != nil {
-		return nil, fmt.Errorf("creating snapshot: %w", err)
-	}
-
-	// The MemorySnapshot only carries the checkpoint ID. All FSM state
-	// is recovered from the Pebble checkpoint on startup.
-	serializeStart := time.Now()
-	snapshot := &raftcmdpb.MemorySnapshot{
-		CheckpointId: checkpointID,
-	}
-
-	data, err := snapshot.MarshalVT()
-	if err != nil {
-		return nil, fmt.Errorf("marshaling snapshot: %w", err)
-	}
-
-	lifecycle.SendEvent("spool replay completed", map[string]any{
-		"checkpointId": checkpointID,
-		"snapshotSize": len(data),
-	})
-	if fsm.logger.Enabled(logging.DebugLevel) {
-		fsm.logger.WithFields(map[string]any{
-			"totalDuration":     time.Since(totalStart).String(),
-			"serializeDuration": time.Since(serializeStart).String(),
-			"snapshotSize":      len(data),
-			"checkpointId":      checkpointID,
-		}).Debugf("Created MemorySnapshot")
-	}
-
-	return data, nil
-}
-
 // RestoreCacheFromStore delegates to the CacheSnapshotter.
 // Kept as a Machine method for external callers (e.g. applier).
 func (fsm *Machine) RestoreCacheFromStore() error {
@@ -1357,26 +1318,8 @@ func (fsm *Machine) Close() {
 	fsm.cacheSnapshotter.Stop()
 }
 
-func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapshot) error {
-	totalStart := time.Now()
+func (fsm *Machine) InstallSnapshot(_ context.Context, snapshot raftpb.Snapshot) error {
 	fsm.snapshotIndex = snapshot.Metadata.Index
-
-	deserializeStart := time.Now()
-
-	memSnapshot := &raftcmdpb.MemorySnapshot{}
-
-	err := memSnapshot.UnmarshalVT(snapshot.Data)
-	if err != nil {
-		return err
-	}
-
-	fsm.logger.WithFields(map[string]any{
-		"duration":     time.Since(deserializeStart).String(),
-		"dataSize":     len(snapshot.Data),
-		"checkpointId": memSnapshot.GetCheckpointId(),
-	}).Infof("Deserialized MemorySnapshot")
-
-	fsm.lastCheckpointID = memSnapshot.GetCheckpointId()
 
 	// Reset the cache — it will be restored from Pebble later:
 	// - On restart: after InstallSnapshot, via RestoreCacheFromStore
@@ -1384,7 +1327,6 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 	fsm.Registry.Cache.Reset()
 
 	fsm.logger.WithFields(map[string]any{
-		"totalDuration": time.Since(totalStart).String(),
 		"snapshotIndex": snapshot.Metadata.Index,
 	}).Infof("InstallSnapshot complete")
 
@@ -1392,12 +1334,8 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 }
 
 func (fsm *Machine) SynchronizeWithLeader(ctx context.Context, snapshotFetcher SnapshotFetcher, progress *SyncProgress) (uint64, error) {
-	// Always fetch: checkpointId is a per-node counter, so equal IDs across
-	// nodes can refer to Pebble dumps at different Raft indices.
-	if fsm.lastCheckpointID > 0 {
-		if err := fsm.restoreCheckpoint(ctx, snapshotFetcher, progress); err != nil {
-			return 0, fmt.Errorf("restoring checkpoint from leader: %w", err)
-		}
+	if err := fsm.restoreCheckpoint(ctx, snapshotFetcher, progress); err != nil {
+		return 0, fmt.Errorf("restoring checkpoint from leader: %w", err)
 	}
 
 	// Restore cache from Pebble (the checkpoint contains the leader's cache data)
@@ -1406,6 +1344,9 @@ func (fsm *Machine) SynchronizeWithLeader(ctx context.Context, snapshotFetcher S
 	}
 
 	// Reload all FSM state from Pebble (the checkpoint contains the leader's state).
+	// This also recovers lastAppliedIndex from the restored Pebble — the fresh
+	// checkpoint is at an index >= snapshotIndex, so spool replay correctly
+	// skips entries already in the checkpoint.
 	// Hold mu because concurrent readers (e.g. QueryCheckpointScheduler) access
 	// fields like queryCheckpointSchedule under the same lock.
 	fsm.mu.Lock()
@@ -1416,54 +1357,47 @@ func (fsm *Machine) SynchronizeWithLeader(ctx context.Context, snapshotFetcher S
 		return 0, fmt.Errorf("recovering state after sync: %w", err)
 	}
 
-	// Sink configs are not reloaded at sync time — they live in the cache
-	// and will be preloaded on demand by the admission layer.
-
-	fsm.lastAppliedIndex = fsm.snapshotIndex
-	fsm.lastPersistedIndex.Store(fsm.snapshotIndex)
-
-	return fsm.snapshotIndex, nil
+	return fsm.lastAppliedIndex, nil
 }
 
-// restoreCheckpoint restores a checkpoint from the leader.
+// restoreCheckpoint fetches a fresh checkpoint from the leader and restores it.
+// The fetch writes to a staging directory ("incoming") that cannot collide with
+// the numbered checkpoints created by the background goroutine. After the fetch,
+// ActivateIncomingRestore atomically reserves a checkpoint ID and renames.
 func (fsm *Machine) restoreCheckpoint(ctx context.Context, snapshotFetcher SnapshotFetcher, progress *SyncProgress) error {
-	fsm.logger.WithFields(map[string]any{
-		"currentCheckpointId": fsm.dataStore.GetCurrentCheckpointID(),
-		"targetCheckpointId":  fsm.lastCheckpointID,
-	}).Infof("Fetching checkpoint from leader")
+	fsm.logger.Infof("Fetching fresh checkpoint from leader")
 
-	if progress != nil {
-		progress.SetCheckpointID(fsm.lastCheckpointID)
-	}
-
-	// Prepare the checkpoint directory
-	checkpointDir, err := fsm.dataStore.PrepareCheckpointRestore(fsm.lastCheckpointID)
+	// Prepare a staging directory outside the numbered checkpoint space.
+	incomingDir, err := fsm.dataStore.PrepareIncomingRestore()
 	if err != nil {
-		return fmt.Errorf("preparing checkpoint restore: %w", err)
+		return fmt.Errorf("preparing incoming restore: %w", err)
 	}
 
-	// Fetch the checkpoint from the leader
-	size, hash, err := snapshotFetcher.FetchSnapshot(ctx, fsm.lastCheckpointID, checkpointDir, progress)
+	// Fetch a fresh checkpoint from the leader into the staging directory.
+	size, hash, err := snapshotFetcher.FetchSnapshot(ctx, incomingDir, progress)
 	if err != nil {
 		return fmt.Errorf("fetching snapshot from leader: %w", err)
 	}
 
 	fsm.logger.WithFields(map[string]any{
-		"checkpointId": fsm.lastCheckpointID,
-		"size":         size,
-		"hash":         hash,
+		"size": size,
+		"hash": hash,
 	}).Infof("Checkpoint fetched from leader")
 
-	// Restore the checkpoint
-	if err := fsm.dataStore.RestoreCheckpoint(fsm.lastCheckpointID); err != nil {
+	// Move the incoming checkpoint to a numbered slot (holds snapshotMu briefly).
+	checkpointID, err := fsm.dataStore.ActivateIncomingRestore()
+	if err != nil {
+		return fmt.Errorf("activating incoming checkpoint: %w", err)
+	}
+
+	// Restore the checkpoint (closes DB, hard-links to live/, reopens).
+	if err := fsm.dataStore.RestoreCheckpoint(checkpointID); err != nil {
 		return fmt.Errorf("restoring checkpoint: %w", err)
 	}
 
 	fsm.logger.WithFields(map[string]any{
-		"checkpointId": fsm.lastCheckpointID,
+		"checkpointId": checkpointID,
 	}).Infof("Checkpoint restored successfully")
-
-	fsm.lastAppliedIndex = fsm.snapshotIndex
 
 	return nil
 }

@@ -6,101 +6,29 @@ option go_package = "github.com/formancehq/ledger-v3-poc/internal/proto/snapshot
 
 // Service exposed by the leader (or any node hosting the snapshot).
 service SnapshotService {
-  // Returns necessary metadata (allows follower to validate
-  // it's requesting the correct snapshot for a given raft index/term).
-  rpc DescribeSnapshot(DescribeSnapshotRequest) returns (DescribeSnapshotResponse);
-
-  // Stream snapshot bytes (Pebble checkpoint packaged as tar).
-  // Supports resume via offset.
+  // Stream a fresh Pebble checkpoint as a tar archive.
+  // The leader creates the checkpoint on demand when called.
   rpc FetchSnapshot(FetchSnapshotRequest) returns (stream FetchSnapshotResponse);
 }
 
-message DescribeSnapshotRequest {
-  uint64 snapshot_id = 1;
-
-  // To avoid mismatches: follower can enforce expected index/term.
-  uint64 expected_raft_index = 2;
-  uint64 expected_raft_term  = 3;
-
-  // Calling node identity (for logging/quotas).
-  string node_id = 4;
-}
-
-message DescribeSnapshotResponse {
-  uint64 snapshot_id = 1;
-  uint64 raft_index  = 2;
-  uint64 raft_term   = 3;
-
-  // Integrity verification for the snapshot.
-  string content_sha256 = 4;
-  uint64 content_size   = 5;
-
-  // Payload format
-  enum Format {
-    FORMAT_UNSPECIFIED = 0;
-    FORMAT_TAR         = 1;  // tar (option: tar+zstd)
-    FORMAT_ZIP         = 2;
-  }
-  Format format = 6;
-
-  // Optional: compression hints
-  enum Compression {
-    COMP_NONE = 0;
-    COMP_ZSTD = 1;
-    COMP_GZIP = 2;
-  }
-  Compression compression = 7;
-
-  // Snapshot validity duration (for GC). Leader may refuse after expiration.
-  uint64 expires_unix_ms = 8;
-
-  // If snapshot not ready, leader can build it async and request retry.
-  enum Status {
-    READY = 0;
-    BUILDING = 1;
-    NOT_FOUND = 2;
-    EXPIRED = 3;
-    MISMATCH = 4;
-  }
-  Status status = 9;
-
-  // Recommended backoff if BUILDING.
-  uint32 retry_after_ms = 10;
-}
-
 message FetchSnapshotRequest {
-  uint64 snapshot_id = 1;
-
-  // Resume from offset bytes in the tar stream.
-  uint64 offset = 2;
-
-  // For consistency checks.
-  uint64 expected_raft_index = 3;
-  uint64 expected_raft_term  = 4;
-
-  string node_id = 5;
-
-  // Optional: explicit format/compression request
-  DescribeSnapshotResponse.Format desired_format = 6;
-  DescribeSnapshotResponse.Compression desired_compression = 7;
+  // Calling node identity (for logging/quotas).
+  string node_id = 1;
 }
 
 message FetchSnapshotResponse {
-  // Same header in first chunk (or every chunk for simplicity).
+  // True for the first chunk (carries metadata).
   bool header = 1;
 
-  uint64 snapshot_id = 2;
-  uint64 raft_index  = 3;
-  uint64 raft_term   = 4;
-
-  string content_sha256 = 5;
-  uint64 content_size   = 6;
-
   // Chunk offset in the total stream
-  uint64 chunk_offset = 7;
+  uint64 chunk_offset = 2;
 
-  bytes data = 8;
+  bytes data = 3;
 
   // True if last chunk
-  bool eof = 9;
+  bool eof = 4;
+
+  // Set on the EOF chunk: integrity verification.
+  string content_sha256 = 5;
+  uint64 content_size   = 6;
 }

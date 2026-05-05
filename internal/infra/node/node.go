@@ -124,6 +124,7 @@ type Node struct {
 	tasks              *taskSet
 	stopChannel        chan chan struct{}
 	recoveredPeers     map[uint64]ConfChangeContext
+	peerAddressesMu    sync.RWMutex
 	peerAddresses      map[uint64]ConfChangeContext
 	pendingConfChanges SyncMap[uint64, *futures.Future[struct{}]]
 
@@ -210,12 +211,8 @@ func NewNode(
 				return nil, fmt.Errorf("recovering FSM state from store: %w", err)
 			}
 
-			fsmData, err := fsm.CreateSnapshot(context.Background())
-			if err != nil {
-				return nil, fmt.Errorf("creating restore snapshot data: %w", err)
-			}
-			// Wrap with empty NodeSnapshot (no peer addresses on restore bootstrap)
-			ns := &raftcmdpb.NodeSnapshot{FsmSnapshot: fsmData}
+			// Wrap with empty NodeSnapshot (no FSM data, no peer addresses on restore bootstrap)
+			ns := &raftcmdpb.NodeSnapshot{}
 
 			data, err := ns.MarshalVT()
 			if err != nil {
@@ -270,12 +267,8 @@ func NewNode(
 				return nil, errors.New("first start requires --bootstrap or --join")
 			}
 
-			fsmData, err := fsm.CreateSnapshot(context.Background())
-			if err != nil {
-				return nil, fmt.Errorf("creating initial snapshot data: %w", err)
-			}
-			// Wrap with empty NodeSnapshot (no peer addresses on initial bootstrap)
-			ns := &raftcmdpb.NodeSnapshot{FsmSnapshot: fsmData}
+			// Wrap with empty NodeSnapshot (no FSM data, no peer addresses on initial bootstrap)
+			ns := &raftcmdpb.NodeSnapshot{}
 
 			data, err := ns.MarshalVT()
 			if err != nil {
@@ -316,22 +309,15 @@ func NewNode(
 			}
 
 			logger.WithFields(map[string]any{
-				"duration":    time.Since(unwrapStart).String(),
-				"fsmDataSize": len(result.fsmData),
-				"peerCount":   len(result.peerAddresses),
+				"duration":  time.Since(unwrapStart).String(),
+				"peerCount": len(result.peerAddresses),
 			}).Infof("Unwrapped NodeSnapshot")
 
-			fsmSnapshot := snapshot
-			fsmSnapshot.Data = result.fsmData
-			installStart := time.Now()
-
-			if err := fsm.InstallSnapshot(context.Background(), fsmSnapshot); err != nil {
+			if err := fsm.InstallSnapshot(context.Background(), snapshot); err != nil {
 				panic(err)
 			}
 
-			logger.WithFields(map[string]any{
-				"duration": time.Since(installStart).String(),
-			}).Infof("Installed FSM snapshot (memory state restored)")
+			logger.Infof("Installed FSM snapshot (snapshotIndex set, cache reset)")
 
 			// Seed recovered peers from snapshot peer addresses
 			recoveredPeers = make(map[uint64]ConfChangeContext, len(result.peerAddresses))
@@ -441,10 +427,6 @@ func NewNode(
 		node.peerAddresses = make(map[uint64]ConfChangeContext)
 	}
 
-	// Wire the snapshot wrapper so the Applier wraps FSM snapshots with peer addresses.
-	// todo: clean that
-	applier.SetSnapshotWrapper(node.wrapSnapshot)
-
 	// Initialize node metrics
 	node.appendEntriesHistogram, err = meter.Int64Histogram("raft.append_entries",
 		metric.WithDescription("Time spending appending entries to wal"),
@@ -527,7 +509,7 @@ func NewNode(
 
 	if storeUpToDate {
 		// Early compaction: if the WAL has accumulated far more entries than the
-		// snapshot threshold, create a snapshot and compact now to release memory
+		// compaction margin, create a snapshot and compact now to release memory
 		// before the Raft node starts. Without this, the leader would try to
 		// replicate tens of thousands of entries to lagging followers, causing OOM.
 		compactStart := time.Now()
@@ -547,7 +529,7 @@ func NewNode(
 }
 
 // maybeCompactAtStartup creates a snapshot and compacts the WAL if entries have
-// accumulated beyond the snapshot threshold. This prevents OOM during Raft
+// accumulated beyond the compaction margin. This prevents OOM during Raft
 // replication: without compaction a leader with 50K+ WAL entries would try to
 // send them all to lagging followers, exhausting memory.
 func (node *Node) maybeCompactAtStartup(ctx context.Context) error {
@@ -561,7 +543,7 @@ func (node *Node) maybeCompactAtStartup(ctx context.Context) error {
 		return fmt.Errorf("reading WAL last index: %w", err)
 	}
 
-	if walLastIdx <= lastSnap.Metadata.Index+node.applier.SnapshotThreshold() {
+	if walLastIdx <= lastSnap.Metadata.Index+node.applier.CompactionMargin() {
 		return nil
 	}
 
@@ -583,31 +565,19 @@ func (node *Node) maybeCompactAtStartup(ctx context.Context) error {
 		"entriesAccumulated": walLastIdx - lastSnap.Metadata.Index,
 	}).Infof("WAL has excess entries, compacting before Raft start")
 
-	snapshotStart := time.Now()
+	compactionStart := time.Now()
 
-	fsmData, err := node.fsm.CreateSnapshot(ctx)
-	if err != nil {
-		return fmt.Errorf("creating snapshot: %w", err)
-	}
-
-	node.logger.WithFields(map[string]any{
-		"duration":    time.Since(snapshotStart).String(),
-		"fsmDataSize": len(fsmData),
-	}).Infof("Created FSM snapshot for early compaction")
-
-	snapshotData, err := node.wrapSnapshot(fsmData)
+	// Wrap nil FSM data with peer addresses for the WAL snapshot.
+	snapshotData, err := node.wrapSnapshot()
 	if err != nil {
 		return fmt.Errorf("wrapping snapshot: %w", err)
 	}
-
-	walSnapshotStart := time.Now()
 
 	if err := node.wal.CreateSnapshot(appliedIndex, node.confState.Load(), snapshotData); err != nil {
 		return fmt.Errorf("saving snapshot: %w", err)
 	}
 
 	node.logger.WithFields(map[string]any{
-		"duration":     time.Since(walSnapshotStart).String(),
 		"snapshotSize": len(snapshotData),
 		"appliedIndex": appliedIndex,
 	}).Infof("Saved snapshot to WAL")
@@ -628,10 +598,72 @@ func (node *Node) maybeCompactAtStartup(ctx context.Context) error {
 	}
 
 	node.logger.WithFields(map[string]any{
-		"totalDuration": time.Since(snapshotStart).String(),
+		"totalDuration": time.Since(compactionStart).String(),
 	}).Infof("Early compaction completed")
 
 	return nil
+}
+
+// runBackgroundMaintenance periodically creates WAL snapshots, compacts the WAL,
+// and creates Pebble checkpoints. This replaces both the old triggerSnapshot
+// mechanism (which used gating in the applier) and Store.RunBackgroundCheckpoints.
+func (node *Node) runBackgroundMaintenance(ctx context.Context, stop chan struct{}) error {
+	interval := node.config.MaintenanceInterval
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-stop:
+			return nil
+		case <-ticker.C:
+			node.doMaintenance()
+		}
+	}
+}
+
+func (node *Node) doMaintenance() {
+	store := node.applier.Store()
+
+	// 1. WAL snapshot + compact
+	lastPersistedIndex := node.fsm.LastPersistedIndex()
+
+	lastSnap, err := node.wal.Snapshot()
+	if err != nil {
+		node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to read WAL snapshot")
+
+		return
+	}
+
+	if lastPersistedIndex > lastSnap.Metadata.Index {
+		data, err := node.wrapSnapshot()
+		if err != nil {
+			node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to wrap snapshot")
+
+			return
+		}
+
+		if err := node.wal.CreateSnapshot(lastPersistedIndex, node.confState.Load(), data); err != nil {
+			if !errors.Is(err, raft.ErrSnapOutOfDate) {
+				node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to create WAL snapshot")
+			}
+
+			return
+		}
+
+		if lastPersistedIndex > node.applier.CompactionMargin() {
+			compactIdx := lastPersistedIndex - node.applier.CompactionMargin()
+			if err := node.wal.Compact(compactIdx); err != nil && !errors.Is(err, raft.ErrCompacted) {
+				node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to compact WAL")
+			}
+		}
+	}
+
+	// 2. Pebble checkpoint (for follower sync + disaster recovery)
+	if _, err := store.CreateSnapshot(); err != nil {
+		node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to create Pebble checkpoint")
+	}
 }
 
 func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
@@ -703,6 +735,7 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 	node.tasks.add(newTask(node.orchestrate))
 	node.tasks.add(newTask(node.applier.Run))
 	node.tasks.add(newTask(node.processReadies))
+	node.tasks.add(newTask(node.runBackgroundMaintenance))
 	node.tasks.run(ctx)
 
 	// Wait for the FSM to apply all initially committed entries before
@@ -958,19 +991,16 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		}
 
 		node.logger.WithFields(map[string]any{
-			"duration":    time.Since(unwrapStart).String(),
-			"fsmDataSize": len(snapResult.fsmData),
-			"peerCount":   len(snapResult.peerAddresses),
+			"duration":  time.Since(unwrapStart).String(),
+			"peerCount": len(snapResult.peerAddresses),
 		}).Infof("Unwrapped leader snapshot")
 
-		fsmSnapshot := rd.Snapshot
-
-		fsmSnapshot.Data = snapResult.fsmData
-		if err := node.fsm.InstallSnapshot(ctx, fsmSnapshot); err != nil {
+		if err := node.fsm.InstallSnapshot(ctx, rd.Snapshot); err != nil {
 			return readyResult{}, fmt.Errorf("installing snapshot: %w", err)
 		}
 
 		// Restore peer addresses into node
+		node.peerAddressesMu.Lock()
 		node.peerAddresses = make(map[uint64]ConfChangeContext, len(snapResult.peerAddresses))
 		for _, addr := range snapResult.peerAddresses {
 			node.peerAddresses[addr.GetNodeId()] = ConfChangeContext{
@@ -978,6 +1008,7 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 				ServiceAddress: addr.GetServiceAddress(),
 			}
 		}
+		node.peerAddressesMu.Unlock()
 
 		// Defer ReportSnapshot to orchestrate goroutine (rawNode is not thread-safe).
 		result.snapshotApplied = true
@@ -1608,7 +1639,6 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 	if sp := node.applier.GetSyncProgress(); sp != nil {
 		clusterState.SyncProgress.BytesReceived = sp.BytesReceived()
 		clusterState.SyncProgress.BytesTotal = sp.BytesTotal()
-		clusterState.SyncProgress.CheckpointId = sp.CheckpointID()
 	}
 
 	return clusterState, nil
@@ -2040,26 +2070,37 @@ func (node *Node) RecoveredPeers() map[uint64]ConfChangeContext {
 // SetPeerAddress upserts a peer's raft and service addresses.
 // Called on ConfChange commits and by bootstrap for self-registration.
 func (node *Node) SetPeerAddress(nodeID uint64, raftAddr, serviceAddr string) {
+	node.peerAddressesMu.Lock()
 	node.peerAddresses[nodeID] = ConfChangeContext{
 		RaftAddress:    raftAddr,
 		ServiceAddress: serviceAddr,
 	}
+	node.peerAddressesMu.Unlock()
 }
 
 // RemovePeerAddress removes a peer's addresses.
 // Called when a ConfChange removing a peer is committed.
 func (node *Node) RemovePeerAddress(nodeID uint64) {
+	node.peerAddressesMu.Lock()
 	delete(node.peerAddresses, nodeID)
+	node.peerAddressesMu.Unlock()
 }
 
-// PeerAddresses returns the current peer address map.
+// PeerAddresses returns a copy of the current peer address map.
 func (node *Node) PeerAddresses() map[uint64]ConfChangeContext {
-	return node.peerAddresses
+	node.peerAddressesMu.RLock()
+	defer node.peerAddressesMu.RUnlock()
+
+	cp := make(map[uint64]ConfChangeContext, len(node.peerAddresses))
+	maps.Copy(cp, node.peerAddresses)
+
+	return cp
 }
 
-// wrapSnapshot wraps FSM snapshot data with cluster-level metadata (peer addresses)
-// into a NodeSnapshot for WAL storage.
-func (node *Node) wrapSnapshot(fsmData []byte) ([]byte, error) {
+// wrapSnapshot serializes cluster-level metadata (peer addresses) into a
+// NodeSnapshot for WAL storage.
+func (node *Node) wrapSnapshot() ([]byte, error) {
+	node.peerAddressesMu.RLock()
 	peerAddrs := make([]*raftcmdpb.PeerAddress, 0, len(node.peerAddresses))
 	for nodeID, addr := range node.peerAddresses {
 		peerAddrs = append(peerAddrs, &raftcmdpb.PeerAddress{
@@ -2068,9 +2109,9 @@ func (node *Node) wrapSnapshot(fsmData []byte) ([]byte, error) {
 			ServiceAddress: addr.ServiceAddress,
 		})
 	}
+	node.peerAddressesMu.RUnlock()
 
 	ns := &raftcmdpb.NodeSnapshot{
-		FsmSnapshot:   fsmData,
 		PeerAddresses: peerAddrs,
 	}
 

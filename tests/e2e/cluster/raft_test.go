@@ -174,7 +174,7 @@ var _ = Describe("Simple cluster", func() {
 			By("Stopping the follower")
 			testutil.StopNode(ctx, servers[followerID-1])
 
-			By("Creating transactions past the snapshot threshold")
+			By("Creating transactions to trigger background maintenance")
 			lid := *leaderID
 			for i := 0; i < countTransactions; i++ {
 				_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{

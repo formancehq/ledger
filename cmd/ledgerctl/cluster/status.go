@@ -302,7 +302,6 @@ func renderSyncProgress(sp *clusterpb.SyncProgress) string {
 	totalMB := float64(sp.GetBytesTotal()) / (1024 * 1024)
 
 	progressData := [][]string{
-		{pterm.LightCyan("Checkpoint ID:"), strconv.FormatUint(sp.GetCheckpointId(), 10)},
 		{pterm.LightCyan("Progress:"), pterm.Cyan(fmt.Sprintf("%.1f%%", pct))},
 		{pterm.LightCyan("Transferred:"), fmt.Sprintf("%.1f / %.1f MB", receivedMB, totalMB)},
 	}

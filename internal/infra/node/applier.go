@@ -2,7 +2,6 @@ package node
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"sync"
@@ -11,7 +10,6 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
-	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
 
@@ -46,7 +44,6 @@ type Applier struct {
 	futures                 *SyncMap[uint64, *futures.Future[state.ApplyResult]]
 	taskExecutor            *singleTaskExecutor
 	logger                  logging.Logger
-	snapshotThreshold       uint64
 	compactionMargin        uint64
 	replayBatchSize         int
 	snapshotFetcherProvider state.SnapshotFetcherProvider
@@ -55,14 +52,11 @@ type Applier struct {
 	syncProgress     atomic.Pointer[state.SyncProgress]
 	gatingTerminated chan struct{}
 	ch               chan applyWork // buffered(1)
-	snapshotWrapper  func([]byte) ([]byte, error)
 
 	// Metrics
 	applyEntriesHistogram           metric.Int64Histogram
 	applyEntriesBatchSizeCounter    metric.Int64Counter
 	applyEntriesBatchSizeHistogram  metric.Int64Histogram
-	createSnapshotHistogram         metric.Float64Histogram
-	snapshotTriggeredCounter        metric.Int64Counter
 	unspoolDurationHistogram        metric.Float64Histogram
 	gatingWaitDurationHistogram     metric.Int64Histogram
 	readiesDuringGatingHistogram    metric.Int64Histogram
@@ -79,7 +73,6 @@ func NewApplier(
 	wal wal.WAL,
 	logger logging.Logger,
 	meter metric.Meter,
-	snapshotThreshold uint64,
 	compactionMargin uint64,
 	replayBatchSize int,
 	snapshotFetcherProvider state.SnapshotFetcherProvider,
@@ -95,7 +88,6 @@ func NewApplier(
 		futures:                 &SyncMap[uint64, *futures.Future[state.ApplyResult]]{},
 		taskExecutor:            newSingleTaskExecutor(logger),
 		logger:                  logger,
-		snapshotThreshold:       snapshotThreshold,
 		compactionMargin:        compactionMargin,
 		replayBatchSize:         replayBatchSize,
 		snapshotFetcherProvider: snapshotFetcherProvider,
@@ -133,25 +125,6 @@ func NewApplier(
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating batch_size_distribution histogram: %w", err)
-	}
-
-	a.createSnapshotHistogram, err = meter.Float64Histogram("raft.syncer.create_snapshot.duration",
-		metric.WithDescription("Time spent creating snapshot in syncer"),
-		metric.WithUnit("ms"),
-		metric.WithExplicitBucketBoundaries(
-			0, 5, 10, 25, 50, 100, 250, 500, 1000, 5000,
-		),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("creating create_snapshot histogram: %w", err)
-	}
-
-	a.snapshotTriggeredCounter, err = meter.Int64Counter("raft.snapshot.triggered",
-		metric.WithDescription("Number of snapshots triggered"),
-		metric.WithUnit("1"),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("creating snapshot_triggered counter: %w", err)
 	}
 
 	a.unspoolDurationHistogram, err = meter.Float64Histogram(
@@ -229,11 +202,6 @@ func NewApplier(
 	return a, nil
 }
 
-// SnapshotThreshold returns the configured snapshot threshold.
-func (a *Applier) SnapshotThreshold() uint64 {
-	return a.snapshotThreshold
-}
-
 // CompactionMargin returns the configured compaction margin.
 func (a *Applier) CompactionMargin() uint64 {
 	return a.compactionMargin
@@ -265,10 +233,6 @@ func (a *Applier) TaskError() <-chan error {
 }
 
 // SetSnapshotWrapper sets the function used to wrap FSM snapshots with cluster metadata.
-func (a *Applier) SetSnapshotWrapper(fn func([]byte) ([]byte, error)) {
-	a.snapshotWrapper = fn
-}
-
 // SetOutOfSync transitions the applier to the out-of-sync status.
 func (a *Applier) SetOutOfSync() {
 	a.status.Store(statusOutOfSync)
@@ -653,38 +617,6 @@ func (a *Applier) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 		return a.handleCheckpointRequired(ctx, entries, result)
 	}
 
-	lastSnapshot, err := a.wal.Snapshot()
-	if err != nil {
-		panic(fmt.Errorf("getting last snapshot: %w", err))
-	}
-
-	lastEntryIndex := entries[len(entries)-1].Index
-	thresholdReached := lastEntryIndex-lastSnapshot.Metadata.Index >= a.snapshotThreshold
-
-	// Force a snapshot when cluster membership has changed since the last
-	// snapshot. Without this, a newly added learner/voter would receive
-	// a snapshot whose ConfState doesn't include it, causing etcd/raft
-	// on the new node to reject the snapshot.
-	//
-	// Skip joint consensus states (VotersOutgoing non-empty): V2 conf
-	// changes like learner-to-voter promotion go through a transient joint
-	// state before auto-leaving. Persisting such a state causes newRaft
-	// to panic on restore. The auto-leave ConfChange follows immediately
-	// and will trigger the snapshot with a clean ConfState.
-	confStateChanged := confState != nil &&
-		confStateIsClean(confState) &&
-		!confStatesEqual(confState, &lastSnapshot.Metadata.ConfState)
-
-	if thresholdReached || confStateChanged {
-		details := map[string]any{
-			"lastEntryIndex":   lastEntryIndex,
-			"thresholdReached": thresholdReached,
-			"confStateChanged": confStateChanged,
-		}
-		lifecycle.SendEvent("snapshot_triggered", details)
-		a.triggerSnapshot(ctx, confState, lastEntryIndex, lastSnapshot.Metadata.Index)
-	}
-
 	return nil
 }
 
@@ -826,14 +758,6 @@ func (a *Applier) handleQueryCheckpointRequired(
 	return nil
 }
 
-// confStateIsClean returns false when the ConfState represents a joint
-// consensus transition (VotersOutgoing is non-empty). Joint states are
-// transient — etcd/raft auto-leaves them immediately — and must not be
-// persisted in snapshots because newRaft panics when restoring from one.
-func confStateIsClean(cs *raftpb.ConfState) bool {
-	return len(cs.VotersOutgoing) == 0
-}
-
 // confStatesEqual returns true when two ConfStates have identical membership.
 func confStatesEqual(a, b *raftpb.ConfState) bool {
 	return slicesEqual(a.Voters, b.Voters) &&
@@ -854,59 +778,6 @@ func slicesEqual(a, b []uint64) bool {
 	}
 
 	return true
-}
-
-// triggerSnapshot creates a Raft snapshot when the threshold is reached.
-func (a *Applier) triggerSnapshot(ctx context.Context, confState *raftpb.ConfState, lastEntryIndex, lastSnapshotIndex uint64) {
-	a.snapshotTriggeredCounter.Add(ctx, 1)
-	a.status.Store(statusSnapshotting)
-
-	// Called from Run goroutine — assign gating directly.
-	a.gatingTerminated = a.startMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
-		if a.logger.Enabled(logging.DebugLevel) {
-			a.logger.WithFields(map[string]any{
-				"applied":           lastEntryIndex,
-				"lastSnapshotIndex": lastSnapshotIndex,
-				"snapshotThreshold": a.snapshotThreshold,
-				"compactionMargin":  a.compactionMargin,
-			}).Debugf("Creating new snapshot")
-		}
-
-		startTime := time.Now()
-
-		snapshotData, err := a.fsm.CreateSnapshot(ctx)
-		if err != nil {
-			return 0, err
-		}
-
-		// Wrap FSM data with cluster-level metadata (peer addresses) if wrapper is set.
-		if a.snapshotWrapper != nil {
-			snapshotData, err = a.snapshotWrapper(snapshotData)
-			if err != nil {
-				return 0, fmt.Errorf("wrapping snapshot: %w", err)
-			}
-		}
-
-		if err := a.wal.CreateSnapshot(lastEntryIndex, confState, snapshotData); err != nil {
-			return 0, err
-		}
-
-		a.createSnapshotHistogram.Record(ctx, float64(time.Since(startTime).Milliseconds()))
-
-		return lastEntryIndex, nil
-	}, func(ctx context.Context) {
-		// WAL compaction runs after gating ends to avoid holding the WAL
-		// mutex during the spooling window, which would block wal.Append
-		// and stall the Ready pipeline.
-		if lastEntryIndex > a.compactionMargin {
-			err := a.wal.Compact(lastEntryIndex - a.compactionMargin)
-			if err != nil && !errors.Is(err, raft.ErrCompacted) {
-				a.logger.WithFields(map[string]any{
-					"error": err,
-				}).Errorf("Failed to compact WAL")
-			}
-		}
-	})
 }
 
 // startMaintenanceTask creates a gating channel and runs the maintenance task

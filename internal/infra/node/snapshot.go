@@ -6,11 +6,10 @@ import (
 
 // snapshotUnwrapResult holds the result of unwrapping a NodeSnapshot.
 type snapshotUnwrapResult struct {
-	fsmData       []byte
 	peerAddresses []*raftcmdpb.PeerAddress
 }
 
-// unwrapSnapshot extracts FSM snapshot data and peer addresses from a NodeSnapshot.
+// unwrapSnapshot extracts peer addresses from a NodeSnapshot.
 func unwrapSnapshot(data []byte) (*snapshotUnwrapResult, error) {
 	ns := &raftcmdpb.NodeSnapshot{}
 
@@ -20,7 +19,6 @@ func unwrapSnapshot(data []byte) (*snapshotUnwrapResult, error) {
 	}
 
 	return &snapshotUnwrapResult{
-		fsmData:       ns.GetFsmSnapshot(),
 		peerAddresses: ns.GetPeerAddresses(),
 	}, nil
 }

@@ -451,7 +451,7 @@ func TestStore_NewStoreReopensExisting(t *testing.T) {
 	require.NoError(t, batch.SetBytes([]byte("persist-key"), []byte("persist-val")))
 	require.NoError(t, batch.Commit())
 
-	// Create a checkpoint so we have a CURRENT_CHECKPOINT file
+	// Create a checkpoint so the checkpoints/ directory is populated
 	_, err = s1.CreateSnapshot()
 	require.NoError(t, err)
 

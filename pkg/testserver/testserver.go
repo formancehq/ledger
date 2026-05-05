@@ -41,7 +41,7 @@ func DefaultTestInstruments(cfg TestNodeConfig) []testservice.Instrumentation {
 		WithDataDir(cfg.DataDir),
 		WithRaftPort(cfg.RaftPort),
 		WithGRPCPort(cfg.GRPCPort),
-		WithSnapshotThreshold(10),
+		WithMaintenanceInterval(5 * time.Second),
 		WithDebug(cfg.Debug),
 		WithRaftTickInterval(cfg.TickInterval),
 		WithRaftHeartbeatTick(1),
@@ -124,9 +124,9 @@ func WithAutoPromoteThreshold(threshold uint64) testservice.InstrumentationFunc 
 	}
 }
 
-func WithSnapshotThreshold(threshold int) testservice.InstrumentationFunc {
+func WithMaintenanceInterval(interval time.Duration) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		cfg.AppendArgs("--snapshot-threshold", strconv.Itoa(threshold))
+		cfg.AppendArgs("--maintenance-interval", interval.String())
 
 		return nil
 	}

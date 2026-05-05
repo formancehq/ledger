@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 
 	"go.uber.org/fx"
 	"google.golang.org/grpc/health"
@@ -17,6 +15,7 @@ import (
 
 	grpcadp "github.com/formancehq/ledger-v3-poc/internal/adapter/grpc"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/otlplogs"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // RestoreModule returns a minimal fx module for restore mode.
@@ -38,11 +37,15 @@ func RestoreModule() fx.Option {
 			},
 		),
 		fx.Invoke(
-			// Validate that the data directory is fresh (no CURRENT_CHECKPOINT)
+			// Validate that the data directory is fresh (no existing checkpoints)
 			func(cfg Config) error {
-				cpPath := filepath.Join(cfg.DataDir, "CURRENT_CHECKPOINT")
-				if _, err := os.Stat(cpPath); err == nil {
-					return fmt.Errorf("restore mode requires a fresh data directory; %s already exists", cpPath)
+				latestID, err := dal.ScanLatestCheckpointID(cfg.DataDir)
+				if err != nil {
+					return fmt.Errorf("scanning data directory: %w", err)
+				}
+
+				if latestID > 0 {
+					return fmt.Errorf("restore mode requires a fresh data directory; checkpoints already exist in %s", cfg.DataDir)
 				}
 
 				return nil

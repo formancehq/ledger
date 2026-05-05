@@ -1,7 +1,6 @@
 package node
 
 import (
-	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -35,7 +34,7 @@ type testApplierSetup struct {
 }
 
 // newTestApplierSetup creates a minimal Applier with real infrastructure (Pebble, WAL, spool, FSM).
-func newTestApplierSetup(t *testing.T, snapshotThreshold uint64) *testApplierSetup {
+func newTestApplierSetup(t *testing.T) *testApplierSetup {
 	t.Helper()
 
 	logger := logging.Testing()
@@ -73,18 +72,12 @@ func newTestApplierSetup(t *testing.T, snapshotThreshold uint64) *testApplierSet
 	)
 	require.NoError(t, err)
 
-	// Create initial snapshot data and store it in the WAL.
-	snapshotData, err := fsm.CreateSnapshot(context.Background())
-	require.NoError(t, err)
-	require.NoError(t, w.CreateSnapshot(0, &confState, snapshotData))
-
-	if snapshotThreshold == 0 {
-		snapshotThreshold = 1000
-	}
+	// Create initial snapshot (no FSM data) in the WAL.
+	require.NoError(t, w.CreateSnapshot(0, &confState, nil))
 
 	applier, err := NewApplier(
 		fsm, defaultSpool, pebbleStore, w, logger, meter,
-		snapshotThreshold, 0, 1000, nil,
+		0, 1000, nil,
 	)
 	require.NoError(t, err)
 
@@ -135,7 +128,7 @@ func TestApplierRunAppliesEntries(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
-	setup := newTestApplierSetup(t, 0)
+	setup := newTestApplierSetup(t)
 
 	// Start the Run goroutine.
 	runDone := make(chan error, 1)
@@ -174,7 +167,7 @@ func TestApplierRunSpoolsWhenNotNormal(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
-	setup := newTestApplierSetup(t, 0)
+	setup := newTestApplierSetup(t)
 
 	// Set status to syncing before starting.
 	setup.applier.SetOutOfSync() // Set to non-normal status for spooling test
@@ -220,7 +213,7 @@ func TestApplierRunSpoolsWhenNotNormal(t *testing.T) {
 func TestApplierDrainAbortsOnStop(t *testing.T) {
 	t.Parallel()
 
-	setup := newTestApplierSetup(t, 0)
+	setup := newTestApplierSetup(t)
 
 	// Close stop before calling Drain.
 	close(setup.stop)
@@ -243,7 +236,7 @@ func TestApplierDrainAbortsOnStop(t *testing.T) {
 func TestApplierSubmitAbortsOnStop(t *testing.T) {
 	t.Parallel()
 
-	setup := newTestApplierSetup(t, 0)
+	setup := newTestApplierSetup(t)
 
 	// Fill the channel buffer manually.
 	entry, _ := makeCreateLedgerEntry(t, 1, "filler")
@@ -273,7 +266,7 @@ func TestApplierRunExitsOnStop(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
-	setup := newTestApplierSetup(t, 0)
+	setup := newTestApplierSetup(t)
 
 	runDone := make(chan error, 1)
 
@@ -296,7 +289,7 @@ func TestApplierFutureResolution(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
-	setup := newTestApplierSetup(t, 0)
+	setup := newTestApplierSetup(t)
 
 	// Create entry and register a future for the proposal ID.
 	entry, proposalID := makeCreateLedgerEntry(t, 1, "future-ledger")
@@ -353,7 +346,7 @@ func TestApplierSnapshotGatingCycle(t *testing.T) {
 
 	ctx := logging.TestingContext()
 	// Snapshot threshold of 5: after 5 applied entries, a snapshot is triggered.
-	setup := newTestApplierSetup(t, 5)
+	setup := newTestApplierSetup(t)
 
 	// Start the Run goroutine.
 	runDone := make(chan error, 1)

@@ -66,10 +66,14 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 		yes, _        = cmd.Flags().GetBool("yes")
 	)
 
-	// Ensure data directory is fresh (no CURRENT_CHECKPOINT).
-	cpPath := filepath.Join(dataDir, "CURRENT_CHECKPOINT")
-	if _, err := os.Stat(cpPath); err == nil {
-		return fmt.Errorf("data directory %s already contains CURRENT_CHECKPOINT; refusing to overwrite", dataDir)
+	// Ensure data directory is fresh (no existing checkpoints).
+	latestID, err := dal.ScanLatestCheckpointID(dataDir)
+	if err != nil {
+		return fmt.Errorf("scanning data directory: %w", err)
+	}
+
+	if latestID > 0 {
+		return fmt.Errorf("data directory %s already contains checkpoints; refusing to overwrite", dataDir)
 	}
 
 	// Create S3 storage
@@ -262,11 +266,6 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 	checkpointPath := filepath.Join(checkpointsDir, "0")
 	if err := dal.HardLink(stagingDir, checkpointPath); err != nil {
 		return fmt.Errorf("hard linking staging to checkpoint: %w", err)
-	}
-
-	// Write CURRENT_CHECKPOINT (atomic)
-	if err := dal.WriteCurrentCheckpointAtomic(dataDir, 0); err != nil {
-		return fmt.Errorf("writing CURRENT_CHECKPOINT: %w", err)
 	}
 
 	// Write RESTORED marker

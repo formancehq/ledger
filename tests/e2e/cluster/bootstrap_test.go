@@ -213,9 +213,9 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 
 	// Phase 2: Run the offline bootstrap CLI — downloads from S3, no server.
 	Describe("Phase 2: Offline bootstrap via CLI command", Ordered, func() {
-		It("should refuse to bootstrap into a directory with CURRENT_CHECKPOINT", func() {
+		It("should refuse to bootstrap into a directory with existing checkpoints", func() {
 			tmpDir := GinkgoT().TempDir()
-			Expect(os.WriteFile(filepath.Join(tmpDir, "CURRENT_CHECKPOINT"), []byte("0"), 0o644)).To(Succeed())
+			Expect(os.MkdirAll(filepath.Join(tmpDir, "checkpoints", "1"), 0o755)).To(Succeed())
 
 			cmd := store.NewBootstrapCommand()
 			cmd.SetArgs([]string{
@@ -229,7 +229,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 
 			err := cmd.Execute()
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("CURRENT_CHECKPOINT"))
+			Expect(err.Error()).To(ContainSubstring("checkpoints"))
 		})
 
 		It("should bootstrap with --validate --yes", func() {
@@ -247,10 +247,9 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			Expect(cmd.Execute()).To(Succeed())
 		})
 
-		It("should have created CURRENT_CHECKPOINT and RESTORED marker", func() {
-			cpData, err := os.ReadFile(filepath.Join(bootstrapDataDir, "CURRENT_CHECKPOINT"))
-			Expect(err).To(Succeed())
-			Expect(string(cpData)).To(Equal("0"))
+		It("should have created checkpoint 0 and RESTORED marker", func() {
+			_, err := os.Stat(filepath.Join(bootstrapDataDir, "checkpoints", "0"))
+			Expect(err).To(Succeed(), "checkpoint 0 directory should exist")
 
 			_, err = os.Stat(filepath.Join(bootstrapDataDir, "RESTORED"))
 			Expect(err).To(Succeed(), "RESTORED marker should exist")

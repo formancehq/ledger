@@ -2172,33 +2172,11 @@ func (m *PreloadNumscriptParsed) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *MemorySnapshot) CloneVT() *MemorySnapshot {
-	if m == nil {
-		return (*MemorySnapshot)(nil)
-	}
-	r := new(MemorySnapshot)
-	r.CheckpointId = m.CheckpointId
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *MemorySnapshot) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
 func (m *NodeSnapshot) CloneVT() *NodeSnapshot {
 	if m == nil {
 		return (*NodeSnapshot)(nil)
 	}
 	r := new(NodeSnapshot)
-	if rhs := m.FsmSnapshot; rhs != nil {
-		tmpBytes := make([]byte, len(rhs))
-		copy(tmpBytes, rhs)
-		r.FsmSnapshot = tmpBytes
-	}
 	if rhs := m.PeerAddresses; rhs != nil {
 		tmpContainer := make([]*PeerAddress, len(rhs))
 		for k, v := range rhs {
@@ -6277,32 +6255,10 @@ func (this *PreloadNumscriptParsed) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *MemorySnapshot) EqualVT(that *MemorySnapshot) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if this.CheckpointId != that.CheckpointId {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *MemorySnapshot) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*MemorySnapshot)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
 func (this *NodeSnapshot) EqualVT(that *NodeSnapshot) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if string(this.FsmSnapshot) != string(that.FsmSnapshot) {
 		return false
 	}
 	if len(this.PeerAddresses) != len(that.PeerAddresses) {
@@ -12031,44 +11987,6 @@ func (m *PreloadNumscriptParsed) MarshalToSizedBufferVT(dAtA []byte) (int, error
 	return len(dAtA) - i, nil
 }
 
-func (m *MemorySnapshot) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *MemorySnapshot) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *MemorySnapshot) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.CheckpointId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.CheckpointId))
-		i--
-		dAtA[i] = 0x8
-	}
-	return len(dAtA) - i, nil
-}
-
 func (m *NodeSnapshot) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -12108,15 +12026,8 @@ func (m *NodeSnapshot) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x12
+			dAtA[i] = 0xa
 		}
-	}
-	if len(m.FsmSnapshot) > 0 {
-		i -= len(m.FsmSnapshot)
-		copy(dAtA[i:], m.FsmSnapshot)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.FsmSnapshot)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -15326,29 +15237,12 @@ func (m *PreloadNumscriptParsed) SizeVT() (n int) {
 	return n
 }
 
-func (m *MemorySnapshot) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.CheckpointId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.CheckpointId))
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
 func (m *NodeSnapshot) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	l = len(m.FsmSnapshot)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	if len(m.PeerAddresses) > 0 {
 		for _, e := range m.PeerAddresses {
 			l = e.SizeVT()
@@ -27523,76 +27417,6 @@ func (m *PreloadNumscriptParsed) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *MemorySnapshot) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: MemorySnapshot: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: MemorySnapshot: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field CheckpointId", wireType)
-			}
-			m.CheckpointId = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.CheckpointId |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
 func (m *NodeSnapshot) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -27623,40 +27447,6 @@ func (m *NodeSnapshot) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field FsmSnapshot", wireType)
-			}
-			var byteLen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				byteLen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if byteLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + byteLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.FsmSnapshot = append(m.FsmSnapshot[:0], dAtA[iNdEx:postIndex]...)
-			if m.FsmSnapshot == nil {
-				m.FsmSnapshot = []byte{}
-			}
-			iNdEx = postIndex
-		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field PeerAddresses", wireType)
 			}

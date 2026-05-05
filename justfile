@@ -104,7 +104,6 @@ fuzz duration="30s":
         "FuzzRequestSignatureUnmarshalVT ./internal/proto/signaturepb/"
         "FuzzResponseSignatureUnmarshalVT ./internal/proto/signaturepb/"
         "FuzzFetchSnapshotResponseUnmarshalVT ./internal/proto/snapshotpb/"
-        "FuzzDescribeSnapshotResponseUnmarshalVT ./internal/proto/snapshotpb/"
         "FuzzFilterExprParse ./internal/pkg/filterexpr/"
         "FuzzSemverParse ./internal/pkg/semver/"
         "FuzzSemverParsePartial ./internal/pkg/semver/"

@@ -29,21 +29,9 @@ func isUnavailableError(err error) bool {
 	return false
 }
 
-func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, snapshotID uint64, targetDir string, progress *state.SyncProgress) (uint64, string, error) {
-	// Fetch total size upfront so callers can display progress.
-	if progress != nil {
-		desc, err := f.client.DescribeSnapshot(ctx, &snapshotpb.DescribeSnapshotRequest{
-			SnapshotId: snapshotID,
-		})
-		if err == nil && desc.GetStatus() == snapshotpb.DescribeSnapshotResponse_READY {
-			progress.SetTotal(desc.GetContentSize())
-		}
-	}
-
-	// Request the snapshot stream
-	stream, err := f.client.FetchSnapshot(ctx, &snapshotpb.FetchSnapshotRequest{
-		SnapshotId: snapshotID,
-	})
+func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir string, progress *state.SyncProgress) (uint64, string, error) {
+	// Request a fresh checkpoint from the leader
+	stream, err := f.client.FetchSnapshot(ctx, &snapshotpb.FetchSnapshotRequest{})
 	if err != nil {
 		if isUnavailableError(err) {
 			return 0, "", fmt.Errorf("starting snapshot fetch: %w", state.ErrNotAvailable)

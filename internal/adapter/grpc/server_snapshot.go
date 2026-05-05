@@ -1,10 +1,9 @@
 package grpc
 
 import (
-	"context"
 	"fmt"
-	"os"
-	"path/filepath"
+	"strconv"
+	"sync/atomic"
 
 	ggrpc "google.golang.org/grpc"
 
@@ -18,8 +17,9 @@ import (
 type SnapshotServiceServerImpl struct {
 	snapshotpb.UnimplementedSnapshotServiceServer
 
-	logger logging.Logger
-	store  *dal.Store
+	logger     logging.Logger
+	store      *dal.Store
+	nextSyncID atomic.Uint64
 }
 
 // NewSnapshotServiceServer creates a new SnapshotServiceServer.
@@ -30,71 +30,42 @@ func NewSnapshotServiceServer(logger logging.Logger, s *dal.Store) snapshotpb.Sn
 	}
 }
 
-// DescribeSnapshot returns metadata about a snapshot.
-func (s *SnapshotServiceServerImpl) DescribeSnapshot(ctx context.Context, req *snapshotpb.DescribeSnapshotRequest) (*snapshotpb.DescribeSnapshotResponse, error) {
-	if s.logger.Enabled(logging.DebugLevel) {
-		s.logger.WithFields(map[string]any{
-			"snapshot_id": req.GetSnapshotId(),
-			"node_id":     req.GetNodeId(),
-		}).Debugf("DescribeSnapshot request received")
-	}
-
-	// Get checkpoint path
-	checkpointPath, err := s.store.GetCheckpointPath(req.GetSnapshotId())
-	if err != nil {
-		return &snapshotpb.DescribeSnapshotResponse{
-			SnapshotId: req.GetSnapshotId(),
-			Status:     snapshotpb.DescribeSnapshotResponse_NOT_FOUND,
-		}, nil
-	}
-
-	// Calculate total size of the checkpoint directory
-	var totalSize uint64
-
-	err = filepath.Walk(checkpointPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if !info.IsDir() {
-			totalSize += uint64(info.Size())
-		}
-
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("calculating checkpoint size: %w", err)
-	}
-
-	return &snapshotpb.DescribeSnapshotResponse{
-		SnapshotId:  req.GetSnapshotId(),
-		ContentSize: totalSize,
-		Format:      snapshotpb.DescribeSnapshotResponse_FORMAT_TAR,
-		Compression: snapshotpb.DescribeSnapshotResponse_COMP_NONE,
-		Status:      snapshotpb.DescribeSnapshotResponse_READY,
-	}, nil
-}
-
-// FetchSnapshot streams the snapshot as a tar archive.
+// FetchSnapshot creates a fresh Pebble checkpoint and streams it as a tar archive.
+// Uses a temporary checkpoint to avoid interference with cleanupOldCheckpoints
+// running in the background goroutine (which only deletes numbered checkpoints).
 func (s *SnapshotServiceServerImpl) FetchSnapshot(req *snapshotpb.FetchSnapshotRequest, stream ggrpc.ServerStreamingServer[snapshotpb.FetchSnapshotResponse]) error {
 	if s.logger.Enabled(logging.DebugLevel) {
 		s.logger.WithFields(map[string]any{
-			"snapshot_id": req.GetSnapshotId(),
-			"offset":      req.GetOffset(),
-			"node_id":     req.GetNodeId(),
+			"node_id": req.GetNodeId(),
 		}).Debugf("FetchSnapshot request received")
 	}
 
-	// Get checkpoint path
-	checkpointPath, err := s.store.GetCheckpointPath(req.GetSnapshotId())
+	// Use a temporary checkpoint with a unique name per call.
+	// Temporary checkpoints live in tmp/ and are not affected by
+	// cleanupOldCheckpoints (which only touches checkpoints/{N}/).
+	syncName := "follower-sync-" + strconv.FormatUint(s.nextSyncID.Add(1), 10)
+
+	checkpointPath, err := s.store.CreateTemporaryCheckpoint(syncName)
 	if err != nil {
-		return fmt.Errorf("checkpoint not found: %w", err)
+		return fmt.Errorf("creating temporary checkpoint: %w", err)
 	}
 
-	err = StreamDirAsTar(checkpointPath, req.GetOffset(), func(chunk TarStreamChunk) error {
+	defer func() {
+		if rmErr := s.store.RemoveTemporaryCheckpoint(syncName); rmErr != nil {
+			s.logger.WithFields(map[string]any{
+				"error": rmErr,
+				"name":  syncName,
+			}).Errorf("Failed to remove temporary checkpoint after streaming")
+		}
+	}()
+
+	s.logger.WithFields(map[string]any{
+		"name": syncName,
+	}).Infof("Temporary checkpoint created for follower sync")
+
+	err = StreamDirAsTar(checkpointPath, 0, func(chunk TarStreamChunk) error {
 		return stream.Send(&snapshotpb.FetchSnapshotResponse{
 			Header:        chunk.IsFirst,
-			SnapshotId:    req.GetSnapshotId(),
 			ChunkOffset:   chunk.ChunkOffset,
 			Data:          chunk.Data,
 			Eof:           chunk.IsEOF,
@@ -108,7 +79,7 @@ func (s *SnapshotServiceServerImpl) FetchSnapshot(req *snapshotpb.FetchSnapshotR
 
 	if s.logger.Enabled(logging.DebugLevel) {
 		s.logger.WithFields(map[string]any{
-			"snapshot_id": req.GetSnapshotId(),
+			"name": syncName,
 		}).Debugf("FetchSnapshot completed")
 	}
 

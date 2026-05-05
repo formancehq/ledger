@@ -19,8 +19,7 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	SnapshotService_DescribeSnapshot_FullMethodName = "/snapshot.v1.SnapshotService/DescribeSnapshot"
-	SnapshotService_FetchSnapshot_FullMethodName    = "/snapshot.v1.SnapshotService/FetchSnapshot"
+	SnapshotService_FetchSnapshot_FullMethodName = "/snapshot.v1.SnapshotService/FetchSnapshot"
 )
 
 // SnapshotServiceClient is the client API for SnapshotService service.
@@ -29,11 +28,8 @@ const (
 //
 // Service exposed by the leader (or any node hosting the snapshot).
 type SnapshotServiceClient interface {
-	// Returns necessary metadata (allows follower to validate
-	// it's requesting the correct snapshot for a given raft index/term).
-	DescribeSnapshot(ctx context.Context, in *DescribeSnapshotRequest, opts ...grpc.CallOption) (*DescribeSnapshotResponse, error)
-	// Stream snapshot bytes (Pebble checkpoint packaged as tar).
-	// Supports resume via offset.
+	// Stream a fresh Pebble checkpoint as a tar archive.
+	// The leader creates the checkpoint on demand when called.
 	FetchSnapshot(ctx context.Context, in *FetchSnapshotRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[FetchSnapshotResponse], error)
 }
 
@@ -43,16 +39,6 @@ type snapshotServiceClient struct {
 
 func NewSnapshotServiceClient(cc grpc.ClientConnInterface) SnapshotServiceClient {
 	return &snapshotServiceClient{cc}
-}
-
-func (c *snapshotServiceClient) DescribeSnapshot(ctx context.Context, in *DescribeSnapshotRequest, opts ...grpc.CallOption) (*DescribeSnapshotResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(DescribeSnapshotResponse)
-	err := c.cc.Invoke(ctx, SnapshotService_DescribeSnapshot_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *snapshotServiceClient) FetchSnapshot(ctx context.Context, in *FetchSnapshotRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[FetchSnapshotResponse], error) {
@@ -80,11 +66,8 @@ type SnapshotService_FetchSnapshotClient = grpc.ServerStreamingClient[FetchSnaps
 //
 // Service exposed by the leader (or any node hosting the snapshot).
 type SnapshotServiceServer interface {
-	// Returns necessary metadata (allows follower to validate
-	// it's requesting the correct snapshot for a given raft index/term).
-	DescribeSnapshot(context.Context, *DescribeSnapshotRequest) (*DescribeSnapshotResponse, error)
-	// Stream snapshot bytes (Pebble checkpoint packaged as tar).
-	// Supports resume via offset.
+	// Stream a fresh Pebble checkpoint as a tar archive.
+	// The leader creates the checkpoint on demand when called.
 	FetchSnapshot(*FetchSnapshotRequest, grpc.ServerStreamingServer[FetchSnapshotResponse]) error
 	mustEmbedUnimplementedSnapshotServiceServer()
 }
@@ -96,9 +79,6 @@ type SnapshotServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedSnapshotServiceServer struct{}
 
-func (UnimplementedSnapshotServiceServer) DescribeSnapshot(context.Context, *DescribeSnapshotRequest) (*DescribeSnapshotResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method DescribeSnapshot not implemented")
-}
 func (UnimplementedSnapshotServiceServer) FetchSnapshot(*FetchSnapshotRequest, grpc.ServerStreamingServer[FetchSnapshotResponse]) error {
 	return status.Error(codes.Unimplemented, "method FetchSnapshot not implemented")
 }
@@ -123,24 +103,6 @@ func RegisterSnapshotServiceServer(s grpc.ServiceRegistrar, srv SnapshotServiceS
 	s.RegisterService(&SnapshotService_ServiceDesc, srv)
 }
 
-func _SnapshotService_DescribeSnapshot_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DescribeSnapshotRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(SnapshotServiceServer).DescribeSnapshot(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: SnapshotService_DescribeSnapshot_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SnapshotServiceServer).DescribeSnapshot(ctx, req.(*DescribeSnapshotRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _SnapshotService_FetchSnapshot_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(FetchSnapshotRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -158,12 +120,7 @@ type SnapshotService_FetchSnapshotServer = grpc.ServerStreamingServer[FetchSnaps
 var SnapshotService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "snapshot.v1.SnapshotService",
 	HandlerType: (*SnapshotServiceServer)(nil),
-	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "DescribeSnapshot",
-			Handler:    _SnapshotService_DescribeSnapshot_Handler,
-		},
-	},
+	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "FetchSnapshot",

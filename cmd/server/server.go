@@ -95,14 +95,13 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().Bool("bootstrap", false, "Initialize a new single-node cluster (mutually exclusive with --join)")
 	runCmd.Flags().Uint64("learner-promotion-threshold", 100, "Max log entry lag before auto-promoting a caught-up learner to voter (0 = disable)")
 	runCmd.Flags().Int("http-port", 9000, "HTTP server port")
-	runCmd.Flags().Uint64("snapshot-threshold", 5000, "Number of logs before triggering a snapshot (0 = use Raft default)")
-
 	runCmd.Flags().Int("raft-election-tick", 10, "Election timeout in ticks (0 = use default 10)")
 	runCmd.Flags().Int("raft-heartbeat-tick", 1, "Heartbeat interval in ticks (0 = use default 1)")
 	runCmd.Flags().Uint64("raft-max-size-per-msg", 0, "Maximum size per message in bytes (0 = use default 1MB)")
 	runCmd.Flags().Int("raft-max-inflight-msgs", 0, "Maximum number of in-flight messages (0 = use default 256)")
 	runCmd.Flags().Duration("raft-tick-interval", 100*time.Millisecond, "Interval between Raft ticks (0 = use default 100ms)")
 	runCmd.Flags().Uint64("raft-compaction-margin", 1000, "Minimum log entries between snapshots (0 = use default 1000)")
+	runCmd.Flags().Duration("maintenance-interval", 30*time.Second, "Interval for background WAL snapshot + Pebble checkpoint (0 = use default 30s)")
 	runCmd.Flags().Int("raft-propose-queue-capacity", 0, "Capacity of the propose queue (0 = use default 100)")
 	runCmd.Flags().IntSlice("raft-transport-reception-queues", []int{}, "Comma-separated list of reception queue capacities per priority (e.g., \"10,512,512,512,128\")")
 	runCmd.Flags().IntSlice("raft-transport-send-queues", []int{}, "Comma-separated list of send queue capacities per priority (e.g., \"10,512,512,512,128\")")
@@ -409,7 +408,7 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 	cfg.DataDir = getString("data-dir", "./data")
 	cfg.RaftConfig.Bootstrap = getBool("bootstrap", false)
 	cfg.RaftConfig.AutoPromoteThreshold = getUint64("learner-promotion-threshold", 100)
-	cfg.RaftConfig.SnapshotThreshold = getUint64("snapshot-threshold", 0)
+	cfg.RaftConfig.MaintenanceInterval = getDuration("maintenance-interval", 30*time.Second)
 
 	cfg.RaftConfig.ElectionTick = getInt("raft-election-tick", 0)
 	cfg.RaftConfig.HeartbeatTick = getInt("raft-heartbeat-tick", 0)
@@ -520,6 +519,7 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 	// Sentinel mode
 	cfg.SentinelMode = getBool("sentinel-mode", false)
 
+	// Background checkpoint interval
 	// Bloom filter per-type config
 	cfg.BloomConfig = loadBloomConfig(cmd)
 

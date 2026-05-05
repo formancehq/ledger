@@ -323,13 +323,12 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(resp.Message).To(ContainSubstring("Restore finalized"))
 		})
 
-		It("should have created the RESTORED marker and CURRENT_CHECKPOINT", func() {
+		It("should have created the RESTORED marker and checkpoint 0", func() {
 			_, err := os.Stat(restoreDataDir + "/RESTORED")
 			Expect(err).To(Succeed(), "RESTORED marker should exist")
 
-			cpData, err := os.ReadFile(restoreDataDir + "/CURRENT_CHECKPOINT")
-			Expect(err).To(Succeed())
-			Expect(string(cpData)).To(Equal("0"))
+			_, err = os.Stat(restoreDataDir + "/checkpoints/0")
+			Expect(err).To(Succeed(), "checkpoint 0 directory should exist")
 		})
 	})
 

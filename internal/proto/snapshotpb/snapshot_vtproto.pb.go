@@ -19,64 +19,12 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-func (m *DescribeSnapshotRequest) CloneVT() *DescribeSnapshotRequest {
-	if m == nil {
-		return (*DescribeSnapshotRequest)(nil)
-	}
-	r := new(DescribeSnapshotRequest)
-	r.SnapshotId = m.SnapshotId
-	r.ExpectedRaftIndex = m.ExpectedRaftIndex
-	r.ExpectedRaftTerm = m.ExpectedRaftTerm
-	r.NodeId = m.NodeId
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *DescribeSnapshotRequest) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
-func (m *DescribeSnapshotResponse) CloneVT() *DescribeSnapshotResponse {
-	if m == nil {
-		return (*DescribeSnapshotResponse)(nil)
-	}
-	r := new(DescribeSnapshotResponse)
-	r.SnapshotId = m.SnapshotId
-	r.RaftIndex = m.RaftIndex
-	r.RaftTerm = m.RaftTerm
-	r.ContentSha256 = m.ContentSha256
-	r.ContentSize = m.ContentSize
-	r.Format = m.Format
-	r.Compression = m.Compression
-	r.ExpiresUnixMs = m.ExpiresUnixMs
-	r.Status = m.Status
-	r.RetryAfterMs = m.RetryAfterMs
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *DescribeSnapshotResponse) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
 func (m *FetchSnapshotRequest) CloneVT() *FetchSnapshotRequest {
 	if m == nil {
 		return (*FetchSnapshotRequest)(nil)
 	}
 	r := new(FetchSnapshotRequest)
-	r.SnapshotId = m.SnapshotId
-	r.Offset = m.Offset
-	r.ExpectedRaftIndex = m.ExpectedRaftIndex
-	r.ExpectedRaftTerm = m.ExpectedRaftTerm
 	r.NodeId = m.NodeId
-	r.DesiredFormat = m.DesiredFormat
-	r.DesiredCompression = m.DesiredCompression
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -94,13 +42,10 @@ func (m *FetchSnapshotResponse) CloneVT() *FetchSnapshotResponse {
 	}
 	r := new(FetchSnapshotResponse)
 	r.Header = m.Header
-	r.SnapshotId = m.SnapshotId
-	r.RaftIndex = m.RaftIndex
-	r.RaftTerm = m.RaftTerm
-	r.ContentSha256 = m.ContentSha256
-	r.ContentSize = m.ContentSize
 	r.ChunkOffset = m.ChunkOffset
 	r.Eof = m.Eof
+	r.ContentSha256 = m.ContentSha256
+	r.ContentSize = m.ContentSize
 	if rhs := m.Data; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
@@ -117,105 +62,13 @@ func (m *FetchSnapshotResponse) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (this *DescribeSnapshotRequest) EqualVT(that *DescribeSnapshotRequest) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if this.SnapshotId != that.SnapshotId {
-		return false
-	}
-	if this.ExpectedRaftIndex != that.ExpectedRaftIndex {
-		return false
-	}
-	if this.ExpectedRaftTerm != that.ExpectedRaftTerm {
-		return false
-	}
-	if this.NodeId != that.NodeId {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *DescribeSnapshotRequest) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*DescribeSnapshotRequest)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
-func (this *DescribeSnapshotResponse) EqualVT(that *DescribeSnapshotResponse) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if this.SnapshotId != that.SnapshotId {
-		return false
-	}
-	if this.RaftIndex != that.RaftIndex {
-		return false
-	}
-	if this.RaftTerm != that.RaftTerm {
-		return false
-	}
-	if this.ContentSha256 != that.ContentSha256 {
-		return false
-	}
-	if this.ContentSize != that.ContentSize {
-		return false
-	}
-	if this.Format != that.Format {
-		return false
-	}
-	if this.Compression != that.Compression {
-		return false
-	}
-	if this.ExpiresUnixMs != that.ExpiresUnixMs {
-		return false
-	}
-	if this.Status != that.Status {
-		return false
-	}
-	if this.RetryAfterMs != that.RetryAfterMs {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *DescribeSnapshotResponse) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*DescribeSnapshotResponse)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
 func (this *FetchSnapshotRequest) EqualVT(that *FetchSnapshotRequest) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.SnapshotId != that.SnapshotId {
-		return false
-	}
-	if this.Offset != that.Offset {
-		return false
-	}
-	if this.ExpectedRaftIndex != that.ExpectedRaftIndex {
-		return false
-	}
-	if this.ExpectedRaftTerm != that.ExpectedRaftTerm {
-		return false
-	}
 	if this.NodeId != that.NodeId {
-		return false
-	}
-	if this.DesiredFormat != that.DesiredFormat {
-		return false
-	}
-	if this.DesiredCompression != that.DesiredCompression {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -237,21 +90,6 @@ func (this *FetchSnapshotResponse) EqualVT(that *FetchSnapshotResponse) bool {
 	if this.Header != that.Header {
 		return false
 	}
-	if this.SnapshotId != that.SnapshotId {
-		return false
-	}
-	if this.RaftIndex != that.RaftIndex {
-		return false
-	}
-	if this.RaftTerm != that.RaftTerm {
-		return false
-	}
-	if this.ContentSha256 != that.ContentSha256 {
-		return false
-	}
-	if this.ContentSize != that.ContentSize {
-		return false
-	}
 	if this.ChunkOffset != that.ChunkOffset {
 		return false
 	}
@@ -259,6 +97,12 @@ func (this *FetchSnapshotResponse) EqualVT(that *FetchSnapshotResponse) bool {
 		return false
 	}
 	if this.Eof != that.Eof {
+		return false
+	}
+	if this.ContentSha256 != that.ContentSha256 {
+		return false
+	}
+	if this.ContentSize != that.ContentSize {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -271,146 +115,6 @@ func (this *FetchSnapshotResponse) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (m *DescribeSnapshotRequest) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *DescribeSnapshotRequest) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *DescribeSnapshotRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if len(m.NodeId) > 0 {
-		i -= len(m.NodeId)
-		copy(dAtA[i:], m.NodeId)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.NodeId)))
-		i--
-		dAtA[i] = 0x22
-	}
-	if m.ExpectedRaftTerm != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ExpectedRaftTerm))
-		i--
-		dAtA[i] = 0x18
-	}
-	if m.ExpectedRaftIndex != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ExpectedRaftIndex))
-		i--
-		dAtA[i] = 0x10
-	}
-	if m.SnapshotId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.SnapshotId))
-		i--
-		dAtA[i] = 0x8
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *DescribeSnapshotResponse) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *DescribeSnapshotResponse) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *DescribeSnapshotResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.RetryAfterMs != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.RetryAfterMs))
-		i--
-		dAtA[i] = 0x50
-	}
-	if m.Status != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Status))
-		i--
-		dAtA[i] = 0x48
-	}
-	if m.ExpiresUnixMs != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ExpiresUnixMs))
-		i--
-		dAtA[i] = 0x40
-	}
-	if m.Compression != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Compression))
-		i--
-		dAtA[i] = 0x38
-	}
-	if m.Format != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Format))
-		i--
-		dAtA[i] = 0x30
-	}
-	if m.ContentSize != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ContentSize))
-		i--
-		dAtA[i] = 0x28
-	}
-	if len(m.ContentSha256) > 0 {
-		i -= len(m.ContentSha256)
-		copy(dAtA[i:], m.ContentSha256)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ContentSha256)))
-		i--
-		dAtA[i] = 0x22
-	}
-	if m.RaftTerm != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.RaftTerm))
-		i--
-		dAtA[i] = 0x18
-	}
-	if m.RaftIndex != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.RaftIndex))
-		i--
-		dAtA[i] = 0x10
-	}
-	if m.SnapshotId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.SnapshotId))
-		i--
-		dAtA[i] = 0x8
-	}
-	return len(dAtA) - i, nil
-}
-
 func (m *FetchSnapshotRequest) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -441,42 +145,12 @@ func (m *FetchSnapshotRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.DesiredCompression != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DesiredCompression))
-		i--
-		dAtA[i] = 0x38
-	}
-	if m.DesiredFormat != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DesiredFormat))
-		i--
-		dAtA[i] = 0x30
-	}
 	if len(m.NodeId) > 0 {
 		i -= len(m.NodeId)
 		copy(dAtA[i:], m.NodeId)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.NodeId)))
 		i--
-		dAtA[i] = 0x2a
-	}
-	if m.ExpectedRaftTerm != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ExpectedRaftTerm))
-		i--
-		dAtA[i] = 0x20
-	}
-	if m.ExpectedRaftIndex != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ExpectedRaftIndex))
-		i--
-		dAtA[i] = 0x18
-	}
-	if m.Offset != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Offset))
-		i--
-		dAtA[i] = 0x10
-	}
-	if m.SnapshotId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.SnapshotId))
-		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -511,28 +185,6 @@ func (m *FetchSnapshotResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Eof {
-		i--
-		if m.Eof {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x48
-	}
-	if len(m.Data) > 0 {
-		i -= len(m.Data)
-		copy(dAtA[i:], m.Data)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Data)))
-		i--
-		dAtA[i] = 0x42
-	}
-	if m.ChunkOffset != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ChunkOffset))
-		i--
-		dAtA[i] = 0x38
-	}
 	if m.ContentSize != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ContentSize))
 		i--
@@ -545,18 +197,25 @@ func (m *FetchSnapshotResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 		i--
 		dAtA[i] = 0x2a
 	}
-	if m.RaftTerm != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.RaftTerm))
+	if m.Eof {
+		i--
+		if m.Eof {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
 		i--
 		dAtA[i] = 0x20
 	}
-	if m.RaftIndex != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.RaftIndex))
+	if len(m.Data) > 0 {
+		i -= len(m.Data)
+		copy(dAtA[i:], m.Data)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Data)))
 		i--
-		dAtA[i] = 0x18
+		dAtA[i] = 0x1a
 	}
-	if m.SnapshotId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.SnapshotId))
+	if m.ChunkOffset != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ChunkOffset))
 		i--
 		dAtA[i] = 0x10
 	}
@@ -573,97 +232,15 @@ func (m *FetchSnapshotResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 	return len(dAtA) - i, nil
 }
 
-func (m *DescribeSnapshotRequest) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.SnapshotId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.SnapshotId))
-	}
-	if m.ExpectedRaftIndex != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ExpectedRaftIndex))
-	}
-	if m.ExpectedRaftTerm != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ExpectedRaftTerm))
-	}
-	l = len(m.NodeId)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *DescribeSnapshotResponse) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.SnapshotId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.SnapshotId))
-	}
-	if m.RaftIndex != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.RaftIndex))
-	}
-	if m.RaftTerm != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.RaftTerm))
-	}
-	l = len(m.ContentSha256)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.ContentSize != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ContentSize))
-	}
-	if m.Format != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Format))
-	}
-	if m.Compression != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Compression))
-	}
-	if m.ExpiresUnixMs != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ExpiresUnixMs))
-	}
-	if m.Status != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Status))
-	}
-	if m.RetryAfterMs != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.RetryAfterMs))
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
 func (m *FetchSnapshotRequest) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.SnapshotId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.SnapshotId))
-	}
-	if m.Offset != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Offset))
-	}
-	if m.ExpectedRaftIndex != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ExpectedRaftIndex))
-	}
-	if m.ExpectedRaftTerm != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ExpectedRaftTerm))
-	}
 	l = len(m.NodeId)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.DesiredFormat != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.DesiredFormat))
-	}
-	if m.DesiredCompression != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.DesiredCompression))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -678,22 +255,6 @@ func (m *FetchSnapshotResponse) SizeVT() (n int) {
 	if m.Header {
 		n += 2
 	}
-	if m.SnapshotId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.SnapshotId))
-	}
-	if m.RaftIndex != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.RaftIndex))
-	}
-	if m.RaftTerm != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.RaftTerm))
-	}
-	l = len(m.ContentSha256)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.ContentSize != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ContentSize))
-	}
 	if m.ChunkOffset != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.ChunkOffset))
 	}
@@ -704,404 +265,17 @@ func (m *FetchSnapshotResponse) SizeVT() (n int) {
 	if m.Eof {
 		n += 2
 	}
+	l = len(m.ContentSha256)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.ContentSize != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.ContentSize))
+	}
 	n += len(m.unknownFields)
 	return n
 }
 
-func (m *DescribeSnapshotRequest) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: DescribeSnapshotRequest: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: DescribeSnapshotRequest: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SnapshotId", wireType)
-			}
-			m.SnapshotId = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.SnapshotId |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ExpectedRaftIndex", wireType)
-			}
-			m.ExpectedRaftIndex = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.ExpectedRaftIndex |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ExpectedRaftTerm", wireType)
-			}
-			m.ExpectedRaftTerm = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.ExpectedRaftTerm |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field NodeId", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.NodeId = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *DescribeSnapshotResponse) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: DescribeSnapshotResponse: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: DescribeSnapshotResponse: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SnapshotId", wireType)
-			}
-			m.SnapshotId = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.SnapshotId |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field RaftIndex", wireType)
-			}
-			m.RaftIndex = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.RaftIndex |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field RaftTerm", wireType)
-			}
-			m.RaftTerm = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.RaftTerm |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ContentSha256", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.ContentSha256 = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 5:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ContentSize", wireType)
-			}
-			m.ContentSize = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.ContentSize |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 6:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Format", wireType)
-			}
-			m.Format = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Format |= DescribeSnapshotResponse_Format(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 7:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Compression", wireType)
-			}
-			m.Compression = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Compression |= DescribeSnapshotResponse_Compression(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 8:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ExpiresUnixMs", wireType)
-			}
-			m.ExpiresUnixMs = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.ExpiresUnixMs |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 9:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Status", wireType)
-			}
-			m.Status = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Status |= DescribeSnapshotResponse_Status(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 10:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field RetryAfterMs", wireType)
-			}
-			m.RetryAfterMs = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.RetryAfterMs |= uint32(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
 func (m *FetchSnapshotRequest) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -1132,82 +306,6 @@ func (m *FetchSnapshotRequest) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SnapshotId", wireType)
-			}
-			m.SnapshotId = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.SnapshotId |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Offset", wireType)
-			}
-			m.Offset = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Offset |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ExpectedRaftIndex", wireType)
-			}
-			m.ExpectedRaftIndex = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.ExpectedRaftIndex |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 4:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ExpectedRaftTerm", wireType)
-			}
-			m.ExpectedRaftTerm = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.ExpectedRaftTerm |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 5:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NodeId", wireType)
 			}
@@ -1239,44 +337,6 @@ func (m *FetchSnapshotRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			m.NodeId = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 6:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DesiredFormat", wireType)
-			}
-			m.DesiredFormat = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.DesiredFormat |= DescribeSnapshotResponse_Format(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 7:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DesiredCompression", wireType)
-			}
-			m.DesiredCompression = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.DesiredCompression |= DescribeSnapshotResponse_Compression(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -1350,9 +410,9 @@ func (m *FetchSnapshotResponse) UnmarshalVT(dAtA []byte) error {
 			m.Header = bool(v != 0)
 		case 2:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SnapshotId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ChunkOffset", wireType)
 			}
-			m.SnapshotId = 0
+			m.ChunkOffset = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -1362,16 +422,16 @@ func (m *FetchSnapshotResponse) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.SnapshotId |= uint64(b&0x7F) << shift
+				m.ChunkOffset |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
 		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field RaftIndex", wireType)
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Data", wireType)
 			}
-			m.RaftIndex = 0
+			var byteLen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -1381,16 +441,31 @@ func (m *FetchSnapshotResponse) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.RaftIndex |= uint64(b&0x7F) << shift
+				byteLen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
+			if byteLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Data = append(m.Data[:0], dAtA[iNdEx:postIndex]...)
+			if m.Data == nil {
+				m.Data = []byte{}
+			}
+			iNdEx = postIndex
 		case 4:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field RaftTerm", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Eof", wireType)
 			}
-			m.RaftTerm = 0
+			var v int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -1400,11 +475,12 @@ func (m *FetchSnapshotResponse) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.RaftTerm |= uint64(b&0x7F) << shift
+				v |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
+			m.Eof = bool(v != 0)
 		case 5:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ContentSha256", wireType)
@@ -1456,79 +532,6 @@ func (m *FetchSnapshotResponse) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 7:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ChunkOffset", wireType)
-			}
-			m.ChunkOffset = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.ChunkOffset |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 8:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Data", wireType)
-			}
-			var byteLen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				byteLen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if byteLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + byteLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Data = append(m.Data[:0], dAtA[iNdEx:postIndex]...)
-			if m.Data == nil {
-				m.Data = []byte{}
-			}
-			iNdEx = postIndex
-		case 9:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Eof", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.Eof = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

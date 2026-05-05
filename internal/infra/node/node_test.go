@@ -92,7 +92,7 @@ type Cluster struct {
 // SnapshotFetcherInterceptorFunc is a function that intercepts FetchSnapshot calls.
 // If it returns an error, the error is returned immediately.
 // If it returns nil, the actual FetchSnapshot is called.
-type SnapshotFetcherInterceptorFunc func(ctx context.Context, snapshotID uint64, targetDir string) error
+type SnapshotFetcherInterceptorFunc func(ctx context.Context, targetDir string) error
 
 // ClusterSnapshotFetcherProvider provides SnapshotFetcher access to peer stores within a cluster.
 // This is used for tests where we don't have gRPC connections between nodes.
@@ -133,17 +133,22 @@ type clusterSnapshotFetcher struct {
 	provider *ClusterSnapshotFetcherProvider
 }
 
-func (f *clusterSnapshotFetcher) FetchSnapshot(ctx context.Context, snapshotID uint64, targetDir string, _ *state.SyncProgress) (uint64, string, error) {
+func (f *clusterSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir string, _ *state.SyncProgress) (uint64, string, error) {
 	// Call interceptor if set
 	if interceptor := f.provider.getInterceptor(); interceptor != nil {
-		err := interceptor(ctx, snapshotID, targetDir)
+		err := interceptor(ctx, targetDir)
 		if err != nil {
 			return 0, "", err
 		}
 	}
 
-	// Get the checkpoint path from the source store
-	srcPath, err := f.store.GetCheckpointPath(snapshotID)
+	// Create a fresh checkpoint on the source store (simulates on-demand checkpoint)
+	checkpointID, err := f.store.CreateSnapshot()
+	if err != nil {
+		return 0, "", fmt.Errorf("creating fresh checkpoint on source: %w", err)
+	}
+
+	srcPath, err := f.store.GetCheckpointPath(checkpointID)
 	if err != nil {
 		return 0, "", fmt.Errorf("getting checkpoint path: %w", err)
 	}
@@ -204,14 +209,14 @@ func (f *clusterSnapshotFetcher) FetchSnapshot(ctx context.Context, snapshotID u
 
 // ClusterConfig holds configuration for creating a test cluster.
 type ClusterConfig struct {
-	// SnapshotThreshold is the number of entries before creating a snapshot
-	SnapshotThreshold uint64
+	// MaintenanceInterval is the interval for background WAL snapshot + Pebble checkpoint.
+	MaintenanceInterval time.Duration
 }
 
 // DefaultClusterConfig returns default cluster configuration.
 func DefaultClusterConfig() ClusterConfig {
 	return ClusterConfig{
-		SnapshotThreshold: 1000,
+		MaintenanceInterval: 30 * time.Second,
 	}
 }
 
@@ -297,11 +302,11 @@ func NewCluster(t *testing.T, numNodes int, config ClusterConfig) *Cluster {
 
 		// Create node using interceptors
 		nodeConfig := NodeConfig{
-			NodeID:            nodeID,
-			SnapshotThreshold: config.SnapshotThreshold,
-			Peers:             peers,
-			ElectionTick:      20,
-			Bootstrap:         true,
+			NodeID:              nodeID,
+			MaintenanceInterval: config.MaintenanceInterval,
+			Peers:               peers,
+			ElectionTick:        20,
+			Bootstrap:           true,
 		}
 		nodeConfig.SetDefaults()
 		nodeCache, err := cache.New(nodeConfig.RotationThreshold, nil)
@@ -324,7 +329,7 @@ func NewCluster(t *testing.T, numNodes int, config ClusterConfig) *Cluster {
 
 		applier, err := NewApplier(
 			fsm, spoolInterceptor, pebbleStore, walInterceptor, nodeLogger, meter,
-			nodeConfig.SnapshotThreshold, nodeConfig.CompactionMargin, nodeConfig.ReplayBatchSize,
+			nodeConfig.CompactionMargin, nodeConfig.ReplayBatchSize,
 			snapshotFetcherProvider,
 		)
 		require.NoError(t, err)
@@ -628,9 +633,9 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 
 	// Create new node
 	nodeConfig := NodeConfig{
-		NodeID:            nodeID,
-		SnapshotThreshold: config.SnapshotThreshold,
-		Peers:             peers,
+		NodeID:              nodeID,
+		MaintenanceInterval: config.MaintenanceInterval,
+		Peers:               peers,
 	}
 	nodeConfig.SetDefaults()
 
@@ -663,7 +668,7 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 
 	applier, err := NewApplier(
 		fsm, spoolInterceptor, newStore, walInterceptor, restartLogger, noop.Meter{},
-		nodeConfig.SnapshotThreshold, nodeConfig.CompactionMargin, nodeConfig.ReplayBatchSize,
+		nodeConfig.CompactionMargin, nodeConfig.ReplayBatchSize,
 		snapshotFetcherProvider,
 	)
 	if err != nil {
@@ -837,86 +842,14 @@ func TestClusterBasic(t *testing.T) {
 	t.Log("Test passed: all ledgers replicated to all nodes")
 }
 
-func TestNodeFailureBetweenStoreSnapshotAndWalSnapshot(t *testing.T) {
-	t.Parallel()
-
-	ctx := logging.TestingContext()
-
-	// Create a single-node cluster with snapshot threshold of 10
-	config := ClusterConfig{SnapshotThreshold: 10}
-	cluster := NewCluster(t, 1, config)
-
-	// Get the node and its DefaultWAL interceptor
-	clusterNode := cluster.GetNode(0)
-
-	// Start the cluster
-	nodeErrors := cluster.Start(ctx)
-	require.Len(t, nodeErrors, 1)
-	nodeError := nodeErrors[0]
-
-	// Wait for leader election
-	_, err := cluster.WaitForLeader(4 * time.Second)
-	require.NoError(t, err)
-
-	// Track CreateSnapshot calls to fail on the second one
-	var errUnexpected = errors.New("unexpected error")
-
-	clusterNode.WALInterceptor.SetCreateSnapshotInterceptor(func(delegate wal.WAL, i uint64, r *raftpb.ConfState, data []byte) error {
-		return errUnexpected
-	})
-
-	// Should not trigger any snapshotting at this point (8 ledger creates < threshold of 10)
-	for i := range 8 {
-		_, err := createLedger(ctx, clusterNode.Node, fmt.Sprintf("ledger-%d", i))
-		require.NoError(t, err)
-	}
-
-	// Now should trigger the snapshotting (and the interceptor will fail)
-	go func() {
-		_, _ = createLedger(ctx, clusterNode.Node, "trigger-ledger")
-	}()
-
-	select {
-	case <-time.After(15 * time.Second):
-		require.Fail(t, "node did not fail and it should")
-	case err := <-nodeError:
-		require.Error(t, err)
-		require.ErrorIs(t, err, errUnexpected)
-	}
-
-	// Restart the node (simulates crash recovery)
-	t.Log("Restarting the node after simulated crash")
-
-	_, err = cluster.RestartNode(ctx, clusterNode.ID, config)
-	require.NoError(t, err)
-
-	// Get the new node reference after restart
-	clusterNode = cluster.GetNode(0)
-
-	// Wait for leader election
-	_, err = cluster.WaitForLeader(2 * time.Second)
-	require.NoError(t, err)
-
-	// Verify ledgers recovered correctly
-	require.Eventually(t, func() bool {
-		for i := range 8 {
-			if !listLedgerContains(clusterNode.Store, fmt.Sprintf("ledger-%d", i)) {
-				return false
-			}
-		}
-
-		return true
-	}, 2*time.Second, 100*time.Millisecond)
-}
-
 func TestFollowerResyncViaSnapshot(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
 
-	// Create a 3-node cluster with a low snapshot threshold to trigger snapshots quickly
-	// Create a 3-node cluster with a low snapshot threshold to trigger snapshots quickly
-	config := ClusterConfig{SnapshotThreshold: 5}
+	// Create a 3-node cluster with a short maintenance interval
+	// Create a 3-node cluster with a short maintenance interval
+	config := ClusterConfig{MaintenanceInterval: 100 * time.Millisecond}
 	cluster := NewCluster(t, 3, config)
 
 	// Start the cluster
@@ -1040,8 +973,8 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 
 	ctx := logging.TestingContext()
 
-	// Create a 3-node cluster with a low snapshot threshold
-	config := ClusterConfig{SnapshotThreshold: 5}
+	// Create a 3-node cluster with a short maintenance interval
+	config := ClusterConfig{MaintenanceInterval: 100 * time.Millisecond}
 	cluster := NewCluster(t, 3, config)
 
 	// Start the cluster
@@ -1127,14 +1060,14 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 	snapshotFetcherProvider := cluster.GetSnapshotFetcherProvider()
 	require.NotNil(t, snapshotFetcherProvider, "snapshot fetcher provider should be available")
 
-	snapshotFetcherProvider.SetFetchSnapshotInterceptor(func(ctx context.Context, snapshotID uint64, targetDir string) error {
+	snapshotFetcherProvider.SetFetchSnapshotInterceptor(func(ctx context.Context, targetDir string) error {
 		// Signal that sync has started
 		select {
 		case syncStarted <- struct{}{}:
 		default:
 		}
 		// Block until we're told to continue
-		t.Logf("FetchSnapshot called (snapshotID=%d, targetDir=%s) - BLOCKING", snapshotID, targetDir)
+		t.Logf("FetchSnapshot called (targetDir=%s) - BLOCKING", targetDir)
 		<-syncBlocked
 		t.Logf("FetchSnapshot UNBLOCKED")
 
@@ -1243,9 +1176,10 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 
 	ctx := logging.TestingContext()
 
-	// Create a 3-node cluster with a low snapshot threshold
-	config := ClusterConfig{SnapshotThreshold: 5}
-	cluster := NewCluster(t, 3, config)
+	// Use a moderate maintenance interval: short enough to create WAL snapshots
+	// during the test, but long enough to avoid aggressive compaction that would
+	// delete entries needed for follower catch-up.
+	cluster := NewCluster(t, 3, ClusterConfig{MaintenanceInterval: time.Second})
 
 	// Start the cluster
 	cluster.Start(ctx)
@@ -1340,8 +1274,8 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 	snapshotFetcherProvider := cluster.GetSnapshotFetcherProvider()
 	require.NotNil(t, snapshotFetcherProvider, "snapshot fetcher provider should be available")
 
-	snapshotFetcherProvider.SetFetchSnapshotInterceptor(func(ctx context.Context, snapshotID uint64, targetDir string) error {
-		t.Logf("FetchSnapshot called (snapshotID=%d) - returning error to simulate failure", snapshotID)
+	snapshotFetcherProvider.SetFetchSnapshotInterceptor(func(_ context.Context, _ string) error {
+		t.Log("FetchSnapshot called - returning error to simulate failure")
 
 		return errSyncFailed
 	})
@@ -1494,128 +1428,6 @@ func TestFollowerRestartLeaderStability(t *testing.T) {
 	}, 5*time.Second, 100*time.Millisecond, "ledger should be replicated to restarted follower")
 
 	t.Log("Test passed: follower restarted successfully and leader remained stable")
-}
-
-func TestLocalSnapshotWALFailureRecovery(t *testing.T) {
-	t.Parallel()
-
-	ctx := logging.TestingContext()
-
-	// Create a single-node cluster with a low snapshot threshold
-	config := ClusterConfig{SnapshotThreshold: 10}
-	cluster := NewCluster(t, 1, config)
-
-	// Get the node
-	node := cluster.GetNode(0)
-
-	// Start the cluster
-	nodeErrors := cluster.Start(ctx)
-	require.Len(t, nodeErrors, 1)
-	nodeError := nodeErrors[0]
-
-	// Wait for leader election
-	_, err := cluster.WaitForLeader(5 * time.Second)
-	require.NoError(t, err)
-	t.Logf("Node %d became leader", node.ID)
-
-	// Apply some ledgers but not enough to trigger snapshot yet
-	// Threshold is 10, so we apply 8 ledgers
-	numInitialLedgers := 8
-	t.Logf("Creating %d initial ledgers (not triggering snapshot yet)", numInitialLedgers)
-
-	for i := range numInitialLedgers {
-		_, err := createLedger(ctx, node.Node, fmt.Sprintf("ledger-%d", i))
-		require.NoError(t, err)
-	}
-
-	// Verify initial ledgers exist
-	for i := range numInitialLedgers {
-		require.True(t, listLedgerContains(node.Store, fmt.Sprintf("ledger-%d", i)), "ledger-%d should exist", i)
-	}
-
-	t.Logf("Initial %d ledgers verified", numInitialLedgers)
-
-	// Set up interceptor to make DefaultWAL.CreateSnapshot fail
-	var errSnapshotFailed = errors.New("simulated wal snapshot failure")
-
-	node.WALInterceptor.SetCreateSnapshotInterceptor(func(delegate wal.WAL, i uint64, r *raftpb.ConfState, data []byte) error {
-		t.Logf("DefaultWAL.CreateSnapshot called at index %d - returning error", i)
-
-		return errSnapshotFailed
-	})
-
-	// Now apply more ledgers to trigger snapshot (need 2 more to reach threshold of 10)
-	numTriggerLedgers := 2
-	t.Logf("Creating %d more ledgers to trigger snapshot", numTriggerLedgers)
-
-	for i := range numTriggerLedgers {
-		go func(idx int) {
-			_, _ = createLedger(ctx, node.Node, fmt.Sprintf("trigger-ledger-%d", idx))
-		}(i)
-	}
-
-	// Wait for the node to fail due to snapshot error
-	select {
-	case err := <-nodeError:
-		require.Error(t, err)
-		require.ErrorIs(t, err, errSnapshotFailed)
-		t.Logf("Node failed as expected: %v", err)
-	case <-time.After(5 * time.Second):
-		t.Fatal("Timeout waiting for node to fail")
-	}
-
-	// Calculate expected total ledgers after all operations
-	totalLedgers := numInitialLedgers + numTriggerLedgers
-
-	// Restart the node
-	t.Logf("Restarting node %d", node.ID)
-	newNodeError, err := cluster.RestartNode(ctx, node.ID, config)
-	require.NoError(t, err)
-
-	// Get the new node reference
-	node = cluster.GetNode(0)
-	require.NotNil(t, node)
-
-	// Wait for leader election
-	_, err = cluster.WaitForLeader(5 * time.Second)
-	require.NoError(t, err)
-	t.Logf("Got leader after restart")
-
-	// Verify the state is consistent after replay
-	// Since the snapshot was not saved, all entries should be replayed
-	t.Logf("Verifying state after restart...")
-	require.Eventually(t, func() bool {
-		// Check all initial ledgers exist
-		for i := range numInitialLedgers {
-			if !listLedgerContains(node.Store, fmt.Sprintf("ledger-%d", i)) {
-				t.Logf("ledger-%d not found yet", i)
-
-				return false
-			}
-		}
-		// Check all trigger ledgers exist
-		for i := range numTriggerLedgers {
-			if !listLedgerContains(node.Store, fmt.Sprintf("trigger-ledger-%d", i)) {
-				t.Logf("trigger-ledger-%d not found yet", i)
-
-				return false
-			}
-		}
-
-		t.Logf("State verified after restart: %d ledgers exist", totalLedgers)
-
-		return true
-	}, 5*time.Second, 200*time.Millisecond)
-
-	// Make sure node is still running without errors
-	select {
-	case err := <-newNodeError:
-		t.Fatalf("Restarted node failed unexpectedly: %v", err)
-	default:
-		// Node is still running, good
-	}
-
-	t.Log("Test passed: node recovered correctly after wal snapshot failure, entries replayed correctly")
 }
 
 func TestForceRemoveNode_DisconnectedNode(t *testing.T) {

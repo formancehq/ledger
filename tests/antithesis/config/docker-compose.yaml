@@ -124,7 +124,7 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        if [ -f "/data/app/CURRENT_CHECKPOINT" ]; then
+        if [ -d "/data/app/checkpoints" ] && [ "$(ls -A /data/app/checkpoints 2>/dev/null)" ]; then
           CLUSTER_FLAG=""
         else
           CLUSTER_FLAG="--bootstrap"
@@ -149,7 +149,7 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        if [ -f "/data/app/CURRENT_CHECKPOINT" ]; then
+        if [ -d "/data/app/checkpoints" ] && [ "$(ls -A /data/app/checkpoints 2>/dev/null)" ]; then
           JOIN_FLAG=""
         else
           JOIN_FLAG="--join ledger-0:8888"
@@ -174,7 +174,7 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        if [ -f "/data/app/CURRENT_CHECKPOINT" ]; then
+        if [ -d "/data/app/checkpoints" ] && [ "$(ls -A /data/app/checkpoints 2>/dev/null)" ]; then
           JOIN_FLAG=""
         else
           JOIN_FLAG="--join ledger-0:8888"

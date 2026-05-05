@@ -142,7 +142,6 @@ message SyncProgress {
   string status = 1;              // "normal", "syncing", "snapshotting", "out_of_sync"
   uint64 bytes_received = 2;      // Bytes received so far during checkpoint fetch
   uint64 bytes_total = 3;         // Total bytes to fetch (0 if unknown)
-  uint64 checkpoint_id = 4;       // Checkpoint ID being fetched
 }
 
 // ============================================================================

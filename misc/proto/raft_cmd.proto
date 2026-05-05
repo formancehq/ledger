@@ -532,20 +532,12 @@ message PreloadNumscriptParsed {
 }
 
 // ============================================================================
-// Memory Snapshot (for Raft snapshots)
+// Snapshot
 // ============================================================================
 
-// MemorySnapshot carries the Pebble checkpoint ID. All FSM state is
-// recovered from the Pebble checkpoint on startup.
-message MemorySnapshot {
-  uint64 checkpoint_id = 1;
-}
-
-// NodeSnapshot wraps the FSM snapshot with cluster-level metadata.
-// The Node layer serializes/deserializes this; the FSM only sees its own bytes.
+// NodeSnapshot carries cluster-level metadata (peer addresses) for WAL snapshots.
 message NodeSnapshot {
-  bytes fsm_snapshot = 1;
-  repeated PeerAddress peer_addresses = 2;
+  repeated PeerAddress peer_addresses = 1;
 }
 
 // CacheGenerationMeta stores per-generation metadata in Pebble.

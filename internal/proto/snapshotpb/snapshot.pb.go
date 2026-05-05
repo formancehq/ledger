@@ -21,370 +21,17 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Payload format
-type DescribeSnapshotResponse_Format int32
-
-const (
-	DescribeSnapshotResponse_FORMAT_UNSPECIFIED DescribeSnapshotResponse_Format = 0
-	DescribeSnapshotResponse_FORMAT_TAR         DescribeSnapshotResponse_Format = 1 // tar (option: tar+zstd)
-	DescribeSnapshotResponse_FORMAT_ZIP         DescribeSnapshotResponse_Format = 2
-)
-
-// Enum value maps for DescribeSnapshotResponse_Format.
-var (
-	DescribeSnapshotResponse_Format_name = map[int32]string{
-		0: "FORMAT_UNSPECIFIED",
-		1: "FORMAT_TAR",
-		2: "FORMAT_ZIP",
-	}
-	DescribeSnapshotResponse_Format_value = map[string]int32{
-		"FORMAT_UNSPECIFIED": 0,
-		"FORMAT_TAR":         1,
-		"FORMAT_ZIP":         2,
-	}
-)
-
-func (x DescribeSnapshotResponse_Format) Enum() *DescribeSnapshotResponse_Format {
-	p := new(DescribeSnapshotResponse_Format)
-	*p = x
-	return p
-}
-
-func (x DescribeSnapshotResponse_Format) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (DescribeSnapshotResponse_Format) Descriptor() protoreflect.EnumDescriptor {
-	return file_snapshot_proto_enumTypes[0].Descriptor()
-}
-
-func (DescribeSnapshotResponse_Format) Type() protoreflect.EnumType {
-	return &file_snapshot_proto_enumTypes[0]
-}
-
-func (x DescribeSnapshotResponse_Format) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use DescribeSnapshotResponse_Format.Descriptor instead.
-func (DescribeSnapshotResponse_Format) EnumDescriptor() ([]byte, []int) {
-	return file_snapshot_proto_rawDescGZIP(), []int{1, 0}
-}
-
-// Optional: compression hints
-type DescribeSnapshotResponse_Compression int32
-
-const (
-	DescribeSnapshotResponse_COMP_NONE DescribeSnapshotResponse_Compression = 0
-	DescribeSnapshotResponse_COMP_ZSTD DescribeSnapshotResponse_Compression = 1
-	DescribeSnapshotResponse_COMP_GZIP DescribeSnapshotResponse_Compression = 2
-)
-
-// Enum value maps for DescribeSnapshotResponse_Compression.
-var (
-	DescribeSnapshotResponse_Compression_name = map[int32]string{
-		0: "COMP_NONE",
-		1: "COMP_ZSTD",
-		2: "COMP_GZIP",
-	}
-	DescribeSnapshotResponse_Compression_value = map[string]int32{
-		"COMP_NONE": 0,
-		"COMP_ZSTD": 1,
-		"COMP_GZIP": 2,
-	}
-)
-
-func (x DescribeSnapshotResponse_Compression) Enum() *DescribeSnapshotResponse_Compression {
-	p := new(DescribeSnapshotResponse_Compression)
-	*p = x
-	return p
-}
-
-func (x DescribeSnapshotResponse_Compression) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (DescribeSnapshotResponse_Compression) Descriptor() protoreflect.EnumDescriptor {
-	return file_snapshot_proto_enumTypes[1].Descriptor()
-}
-
-func (DescribeSnapshotResponse_Compression) Type() protoreflect.EnumType {
-	return &file_snapshot_proto_enumTypes[1]
-}
-
-func (x DescribeSnapshotResponse_Compression) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use DescribeSnapshotResponse_Compression.Descriptor instead.
-func (DescribeSnapshotResponse_Compression) EnumDescriptor() ([]byte, []int) {
-	return file_snapshot_proto_rawDescGZIP(), []int{1, 1}
-}
-
-// If snapshot not ready, leader can build it async and request retry.
-type DescribeSnapshotResponse_Status int32
-
-const (
-	DescribeSnapshotResponse_READY     DescribeSnapshotResponse_Status = 0
-	DescribeSnapshotResponse_BUILDING  DescribeSnapshotResponse_Status = 1
-	DescribeSnapshotResponse_NOT_FOUND DescribeSnapshotResponse_Status = 2
-	DescribeSnapshotResponse_EXPIRED   DescribeSnapshotResponse_Status = 3
-	DescribeSnapshotResponse_MISMATCH  DescribeSnapshotResponse_Status = 4
-)
-
-// Enum value maps for DescribeSnapshotResponse_Status.
-var (
-	DescribeSnapshotResponse_Status_name = map[int32]string{
-		0: "READY",
-		1: "BUILDING",
-		2: "NOT_FOUND",
-		3: "EXPIRED",
-		4: "MISMATCH",
-	}
-	DescribeSnapshotResponse_Status_value = map[string]int32{
-		"READY":     0,
-		"BUILDING":  1,
-		"NOT_FOUND": 2,
-		"EXPIRED":   3,
-		"MISMATCH":  4,
-	}
-)
-
-func (x DescribeSnapshotResponse_Status) Enum() *DescribeSnapshotResponse_Status {
-	p := new(DescribeSnapshotResponse_Status)
-	*p = x
-	return p
-}
-
-func (x DescribeSnapshotResponse_Status) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (DescribeSnapshotResponse_Status) Descriptor() protoreflect.EnumDescriptor {
-	return file_snapshot_proto_enumTypes[2].Descriptor()
-}
-
-func (DescribeSnapshotResponse_Status) Type() protoreflect.EnumType {
-	return &file_snapshot_proto_enumTypes[2]
-}
-
-func (x DescribeSnapshotResponse_Status) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use DescribeSnapshotResponse_Status.Descriptor instead.
-func (DescribeSnapshotResponse_Status) EnumDescriptor() ([]byte, []int) {
-	return file_snapshot_proto_rawDescGZIP(), []int{1, 2}
-}
-
-type DescribeSnapshotRequest struct {
-	state      protoimpl.MessageState `protogen:"open.v1"`
-	SnapshotId uint64                 `protobuf:"varint,1,opt,name=snapshot_id,json=snapshotId,proto3" json:"snapshot_id,omitempty"`
-	// To avoid mismatches: follower can enforce expected index/term.
-	ExpectedRaftIndex uint64 `protobuf:"varint,2,opt,name=expected_raft_index,json=expectedRaftIndex,proto3" json:"expected_raft_index,omitempty"`
-	ExpectedRaftTerm  uint64 `protobuf:"varint,3,opt,name=expected_raft_term,json=expectedRaftTerm,proto3" json:"expected_raft_term,omitempty"`
-	// Calling node identity (for logging/quotas).
-	NodeId        string `protobuf:"bytes,4,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *DescribeSnapshotRequest) Reset() {
-	*x = DescribeSnapshotRequest{}
-	mi := &file_snapshot_proto_msgTypes[0]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DescribeSnapshotRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DescribeSnapshotRequest) ProtoMessage() {}
-
-func (x *DescribeSnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_snapshot_proto_msgTypes[0]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DescribeSnapshotRequest.ProtoReflect.Descriptor instead.
-func (*DescribeSnapshotRequest) Descriptor() ([]byte, []int) {
-	return file_snapshot_proto_rawDescGZIP(), []int{0}
-}
-
-func (x *DescribeSnapshotRequest) GetSnapshotId() uint64 {
-	if x != nil {
-		return x.SnapshotId
-	}
-	return 0
-}
-
-func (x *DescribeSnapshotRequest) GetExpectedRaftIndex() uint64 {
-	if x != nil {
-		return x.ExpectedRaftIndex
-	}
-	return 0
-}
-
-func (x *DescribeSnapshotRequest) GetExpectedRaftTerm() uint64 {
-	if x != nil {
-		return x.ExpectedRaftTerm
-	}
-	return 0
-}
-
-func (x *DescribeSnapshotRequest) GetNodeId() string {
-	if x != nil {
-		return x.NodeId
-	}
-	return ""
-}
-
-type DescribeSnapshotResponse struct {
-	state      protoimpl.MessageState `protogen:"open.v1"`
-	SnapshotId uint64                 `protobuf:"varint,1,opt,name=snapshot_id,json=snapshotId,proto3" json:"snapshot_id,omitempty"`
-	RaftIndex  uint64                 `protobuf:"varint,2,opt,name=raft_index,json=raftIndex,proto3" json:"raft_index,omitempty"`
-	RaftTerm   uint64                 `protobuf:"varint,3,opt,name=raft_term,json=raftTerm,proto3" json:"raft_term,omitempty"`
-	// Integrity verification for the snapshot.
-	ContentSha256 string                               `protobuf:"bytes,4,opt,name=content_sha256,json=contentSha256,proto3" json:"content_sha256,omitempty"`
-	ContentSize   uint64                               `protobuf:"varint,5,opt,name=content_size,json=contentSize,proto3" json:"content_size,omitempty"`
-	Format        DescribeSnapshotResponse_Format      `protobuf:"varint,6,opt,name=format,proto3,enum=snapshot.v1.DescribeSnapshotResponse_Format" json:"format,omitempty"`
-	Compression   DescribeSnapshotResponse_Compression `protobuf:"varint,7,opt,name=compression,proto3,enum=snapshot.v1.DescribeSnapshotResponse_Compression" json:"compression,omitempty"`
-	// Snapshot validity duration (for GC). Leader may refuse after expiration.
-	ExpiresUnixMs uint64                          `protobuf:"varint,8,opt,name=expires_unix_ms,json=expiresUnixMs,proto3" json:"expires_unix_ms,omitempty"`
-	Status        DescribeSnapshotResponse_Status `protobuf:"varint,9,opt,name=status,proto3,enum=snapshot.v1.DescribeSnapshotResponse_Status" json:"status,omitempty"`
-	// Recommended backoff if BUILDING.
-	RetryAfterMs  uint32 `protobuf:"varint,10,opt,name=retry_after_ms,json=retryAfterMs,proto3" json:"retry_after_ms,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *DescribeSnapshotResponse) Reset() {
-	*x = DescribeSnapshotResponse{}
-	mi := &file_snapshot_proto_msgTypes[1]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DescribeSnapshotResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DescribeSnapshotResponse) ProtoMessage() {}
-
-func (x *DescribeSnapshotResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_snapshot_proto_msgTypes[1]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DescribeSnapshotResponse.ProtoReflect.Descriptor instead.
-func (*DescribeSnapshotResponse) Descriptor() ([]byte, []int) {
-	return file_snapshot_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *DescribeSnapshotResponse) GetSnapshotId() uint64 {
-	if x != nil {
-		return x.SnapshotId
-	}
-	return 0
-}
-
-func (x *DescribeSnapshotResponse) GetRaftIndex() uint64 {
-	if x != nil {
-		return x.RaftIndex
-	}
-	return 0
-}
-
-func (x *DescribeSnapshotResponse) GetRaftTerm() uint64 {
-	if x != nil {
-		return x.RaftTerm
-	}
-	return 0
-}
-
-func (x *DescribeSnapshotResponse) GetContentSha256() string {
-	if x != nil {
-		return x.ContentSha256
-	}
-	return ""
-}
-
-func (x *DescribeSnapshotResponse) GetContentSize() uint64 {
-	if x != nil {
-		return x.ContentSize
-	}
-	return 0
-}
-
-func (x *DescribeSnapshotResponse) GetFormat() DescribeSnapshotResponse_Format {
-	if x != nil {
-		return x.Format
-	}
-	return DescribeSnapshotResponse_FORMAT_UNSPECIFIED
-}
-
-func (x *DescribeSnapshotResponse) GetCompression() DescribeSnapshotResponse_Compression {
-	if x != nil {
-		return x.Compression
-	}
-	return DescribeSnapshotResponse_COMP_NONE
-}
-
-func (x *DescribeSnapshotResponse) GetExpiresUnixMs() uint64 {
-	if x != nil {
-		return x.ExpiresUnixMs
-	}
-	return 0
-}
-
-func (x *DescribeSnapshotResponse) GetStatus() DescribeSnapshotResponse_Status {
-	if x != nil {
-		return x.Status
-	}
-	return DescribeSnapshotResponse_READY
-}
-
-func (x *DescribeSnapshotResponse) GetRetryAfterMs() uint32 {
-	if x != nil {
-		return x.RetryAfterMs
-	}
-	return 0
-}
-
 type FetchSnapshotRequest struct {
-	state      protoimpl.MessageState `protogen:"open.v1"`
-	SnapshotId uint64                 `protobuf:"varint,1,opt,name=snapshot_id,json=snapshotId,proto3" json:"snapshot_id,omitempty"`
-	// Resume from offset bytes in the tar stream.
-	Offset uint64 `protobuf:"varint,2,opt,name=offset,proto3" json:"offset,omitempty"`
-	// For consistency checks.
-	ExpectedRaftIndex uint64 `protobuf:"varint,3,opt,name=expected_raft_index,json=expectedRaftIndex,proto3" json:"expected_raft_index,omitempty"`
-	ExpectedRaftTerm  uint64 `protobuf:"varint,4,opt,name=expected_raft_term,json=expectedRaftTerm,proto3" json:"expected_raft_term,omitempty"`
-	NodeId            string `protobuf:"bytes,5,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
-	// Optional: explicit format/compression request
-	DesiredFormat      DescribeSnapshotResponse_Format      `protobuf:"varint,6,opt,name=desired_format,json=desiredFormat,proto3,enum=snapshot.v1.DescribeSnapshotResponse_Format" json:"desired_format,omitempty"`
-	DesiredCompression DescribeSnapshotResponse_Compression `protobuf:"varint,7,opt,name=desired_compression,json=desiredCompression,proto3,enum=snapshot.v1.DescribeSnapshotResponse_Compression" json:"desired_compression,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Calling node identity (for logging/quotas).
+	NodeId        string `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *FetchSnapshotRequest) Reset() {
 	*x = FetchSnapshotRequest{}
-	mi := &file_snapshot_proto_msgTypes[2]
+	mi := &file_snapshot_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -396,7 +43,7 @@ func (x *FetchSnapshotRequest) String() string {
 func (*FetchSnapshotRequest) ProtoMessage() {}
 
 func (x *FetchSnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_snapshot_proto_msgTypes[2]
+	mi := &file_snapshot_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -409,35 +56,7 @@ func (x *FetchSnapshotRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchSnapshotRequest.ProtoReflect.Descriptor instead.
 func (*FetchSnapshotRequest) Descriptor() ([]byte, []int) {
-	return file_snapshot_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *FetchSnapshotRequest) GetSnapshotId() uint64 {
-	if x != nil {
-		return x.SnapshotId
-	}
-	return 0
-}
-
-func (x *FetchSnapshotRequest) GetOffset() uint64 {
-	if x != nil {
-		return x.Offset
-	}
-	return 0
-}
-
-func (x *FetchSnapshotRequest) GetExpectedRaftIndex() uint64 {
-	if x != nil {
-		return x.ExpectedRaftIndex
-	}
-	return 0
-}
-
-func (x *FetchSnapshotRequest) GetExpectedRaftTerm() uint64 {
-	if x != nil {
-		return x.ExpectedRaftTerm
-	}
-	return 0
+	return file_snapshot_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *FetchSnapshotRequest) GetNodeId() string {
@@ -447,41 +66,25 @@ func (x *FetchSnapshotRequest) GetNodeId() string {
 	return ""
 }
 
-func (x *FetchSnapshotRequest) GetDesiredFormat() DescribeSnapshotResponse_Format {
-	if x != nil {
-		return x.DesiredFormat
-	}
-	return DescribeSnapshotResponse_FORMAT_UNSPECIFIED
-}
-
-func (x *FetchSnapshotRequest) GetDesiredCompression() DescribeSnapshotResponse_Compression {
-	if x != nil {
-		return x.DesiredCompression
-	}
-	return DescribeSnapshotResponse_COMP_NONE
-}
-
 type FetchSnapshotResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Same header in first chunk (or every chunk for simplicity).
-	Header        bool   `protobuf:"varint,1,opt,name=header,proto3" json:"header,omitempty"`
-	SnapshotId    uint64 `protobuf:"varint,2,opt,name=snapshot_id,json=snapshotId,proto3" json:"snapshot_id,omitempty"`
-	RaftIndex     uint64 `protobuf:"varint,3,opt,name=raft_index,json=raftIndex,proto3" json:"raft_index,omitempty"`
-	RaftTerm      uint64 `protobuf:"varint,4,opt,name=raft_term,json=raftTerm,proto3" json:"raft_term,omitempty"`
+	// True for the first chunk (carries metadata).
+	Header bool `protobuf:"varint,1,opt,name=header,proto3" json:"header,omitempty"`
+	// Chunk offset in the total stream
+	ChunkOffset uint64 `protobuf:"varint,2,opt,name=chunk_offset,json=chunkOffset,proto3" json:"chunk_offset,omitempty"`
+	Data        []byte `protobuf:"bytes,3,opt,name=data,proto3" json:"data,omitempty"`
+	// True if last chunk
+	Eof bool `protobuf:"varint,4,opt,name=eof,proto3" json:"eof,omitempty"`
+	// Set on the EOF chunk: integrity verification.
 	ContentSha256 string `protobuf:"bytes,5,opt,name=content_sha256,json=contentSha256,proto3" json:"content_sha256,omitempty"`
 	ContentSize   uint64 `protobuf:"varint,6,opt,name=content_size,json=contentSize,proto3" json:"content_size,omitempty"`
-	// Chunk offset in the total stream
-	ChunkOffset uint64 `protobuf:"varint,7,opt,name=chunk_offset,json=chunkOffset,proto3" json:"chunk_offset,omitempty"`
-	Data        []byte `protobuf:"bytes,8,opt,name=data,proto3" json:"data,omitempty"`
-	// True if last chunk
-	Eof           bool `protobuf:"varint,9,opt,name=eof,proto3" json:"eof,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *FetchSnapshotResponse) Reset() {
 	*x = FetchSnapshotResponse{}
-	mi := &file_snapshot_proto_msgTypes[3]
+	mi := &file_snapshot_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -493,7 +96,7 @@ func (x *FetchSnapshotResponse) String() string {
 func (*FetchSnapshotResponse) ProtoMessage() {}
 
 func (x *FetchSnapshotResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_snapshot_proto_msgTypes[3]
+	mi := &file_snapshot_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -506,7 +109,7 @@ func (x *FetchSnapshotResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchSnapshotResponse.ProtoReflect.Descriptor instead.
 func (*FetchSnapshotResponse) Descriptor() ([]byte, []int) {
-	return file_snapshot_proto_rawDescGZIP(), []int{3}
+	return file_snapshot_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *FetchSnapshotResponse) GetHeader() bool {
@@ -514,41 +117,6 @@ func (x *FetchSnapshotResponse) GetHeader() bool {
 		return x.Header
 	}
 	return false
-}
-
-func (x *FetchSnapshotResponse) GetSnapshotId() uint64 {
-	if x != nil {
-		return x.SnapshotId
-	}
-	return 0
-}
-
-func (x *FetchSnapshotResponse) GetRaftIndex() uint64 {
-	if x != nil {
-		return x.RaftIndex
-	}
-	return 0
-}
-
-func (x *FetchSnapshotResponse) GetRaftTerm() uint64 {
-	if x != nil {
-		return x.RaftTerm
-	}
-	return 0
-}
-
-func (x *FetchSnapshotResponse) GetContentSha256() string {
-	if x != nil {
-		return x.ContentSha256
-	}
-	return ""
-}
-
-func (x *FetchSnapshotResponse) GetContentSize() uint64 {
-	if x != nil {
-		return x.ContentSize
-	}
-	return 0
 }
 
 func (x *FetchSnapshotResponse) GetChunkOffset() uint64 {
@@ -572,70 +140,35 @@ func (x *FetchSnapshotResponse) GetEof() bool {
 	return false
 }
 
+func (x *FetchSnapshotResponse) GetContentSha256() string {
+	if x != nil {
+		return x.ContentSha256
+	}
+	return ""
+}
+
+func (x *FetchSnapshotResponse) GetContentSize() uint64 {
+	if x != nil {
+		return x.ContentSize
+	}
+	return 0
+}
+
 var File_snapshot_proto protoreflect.FileDescriptor
 
 const file_snapshot_proto_rawDesc = "" +
 	"\n" +
-	"\x0esnapshot.proto\x12\vsnapshot.v1\"\xb1\x01\n" +
-	"\x17DescribeSnapshotRequest\x12\x1f\n" +
-	"\vsnapshot_id\x18\x01 \x01(\x04R\n" +
-	"snapshotId\x12.\n" +
-	"\x13expected_raft_index\x18\x02 \x01(\x04R\x11expectedRaftIndex\x12,\n" +
-	"\x12expected_raft_term\x18\x03 \x01(\x04R\x10expectedRaftTerm\x12\x17\n" +
-	"\anode_id\x18\x04 \x01(\tR\x06nodeId\"\xbb\x05\n" +
-	"\x18DescribeSnapshotResponse\x12\x1f\n" +
-	"\vsnapshot_id\x18\x01 \x01(\x04R\n" +
-	"snapshotId\x12\x1d\n" +
-	"\n" +
-	"raft_index\x18\x02 \x01(\x04R\traftIndex\x12\x1b\n" +
-	"\traft_term\x18\x03 \x01(\x04R\braftTerm\x12%\n" +
-	"\x0econtent_sha256\x18\x04 \x01(\tR\rcontentSha256\x12!\n" +
-	"\fcontent_size\x18\x05 \x01(\x04R\vcontentSize\x12D\n" +
-	"\x06format\x18\x06 \x01(\x0e2,.snapshot.v1.DescribeSnapshotResponse.FormatR\x06format\x12S\n" +
-	"\vcompression\x18\a \x01(\x0e21.snapshot.v1.DescribeSnapshotResponse.CompressionR\vcompression\x12&\n" +
-	"\x0fexpires_unix_ms\x18\b \x01(\x04R\rexpiresUnixMs\x12D\n" +
-	"\x06status\x18\t \x01(\x0e2,.snapshot.v1.DescribeSnapshotResponse.StatusR\x06status\x12$\n" +
-	"\x0eretry_after_ms\x18\n" +
-	" \x01(\rR\fretryAfterMs\"@\n" +
-	"\x06Format\x12\x16\n" +
-	"\x12FORMAT_UNSPECIFIED\x10\x00\x12\x0e\n" +
-	"\n" +
-	"FORMAT_TAR\x10\x01\x12\x0e\n" +
-	"\n" +
-	"FORMAT_ZIP\x10\x02\":\n" +
-	"\vCompression\x12\r\n" +
-	"\tCOMP_NONE\x10\x00\x12\r\n" +
-	"\tCOMP_ZSTD\x10\x01\x12\r\n" +
-	"\tCOMP_GZIP\x10\x02\"K\n" +
-	"\x06Status\x12\t\n" +
-	"\x05READY\x10\x00\x12\f\n" +
-	"\bBUILDING\x10\x01\x12\r\n" +
-	"\tNOT_FOUND\x10\x02\x12\v\n" +
-	"\aEXPIRED\x10\x03\x12\f\n" +
-	"\bMISMATCH\x10\x04\"\xff\x02\n" +
-	"\x14FetchSnapshotRequest\x12\x1f\n" +
-	"\vsnapshot_id\x18\x01 \x01(\x04R\n" +
-	"snapshotId\x12\x16\n" +
-	"\x06offset\x18\x02 \x01(\x04R\x06offset\x12.\n" +
-	"\x13expected_raft_index\x18\x03 \x01(\x04R\x11expectedRaftIndex\x12,\n" +
-	"\x12expected_raft_term\x18\x04 \x01(\x04R\x10expectedRaftTerm\x12\x17\n" +
-	"\anode_id\x18\x05 \x01(\tR\x06nodeId\x12S\n" +
-	"\x0edesired_format\x18\x06 \x01(\x0e2,.snapshot.v1.DescribeSnapshotResponse.FormatR\rdesiredFormat\x12b\n" +
-	"\x13desired_compression\x18\a \x01(\x0e21.snapshot.v1.DescribeSnapshotResponse.CompressionR\x12desiredCompression\"\x9f\x02\n" +
+	"\x0esnapshot.proto\x12\vsnapshot.v1\"/\n" +
+	"\x14FetchSnapshotRequest\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeId\"\xc2\x01\n" +
 	"\x15FetchSnapshotResponse\x12\x16\n" +
-	"\x06header\x18\x01 \x01(\bR\x06header\x12\x1f\n" +
-	"\vsnapshot_id\x18\x02 \x01(\x04R\n" +
-	"snapshotId\x12\x1d\n" +
-	"\n" +
-	"raft_index\x18\x03 \x01(\x04R\traftIndex\x12\x1b\n" +
-	"\traft_term\x18\x04 \x01(\x04R\braftTerm\x12%\n" +
+	"\x06header\x18\x01 \x01(\bR\x06header\x12!\n" +
+	"\fchunk_offset\x18\x02 \x01(\x04R\vchunkOffset\x12\x12\n" +
+	"\x04data\x18\x03 \x01(\fR\x04data\x12\x10\n" +
+	"\x03eof\x18\x04 \x01(\bR\x03eof\x12%\n" +
 	"\x0econtent_sha256\x18\x05 \x01(\tR\rcontentSha256\x12!\n" +
-	"\fcontent_size\x18\x06 \x01(\x04R\vcontentSize\x12!\n" +
-	"\fchunk_offset\x18\a \x01(\x04R\vchunkOffset\x12\x12\n" +
-	"\x04data\x18\b \x01(\fR\x04data\x12\x10\n" +
-	"\x03eof\x18\t \x01(\bR\x03eof2\xcc\x01\n" +
-	"\x0fSnapshotService\x12_\n" +
-	"\x10DescribeSnapshot\x12$.snapshot.v1.DescribeSnapshotRequest\x1a%.snapshot.v1.DescribeSnapshotResponse\x12X\n" +
+	"\fcontent_size\x18\x06 \x01(\x04R\vcontentSize2k\n" +
+	"\x0fSnapshotService\x12X\n" +
 	"\rFetchSnapshot\x12!.snapshot.v1.FetchSnapshotRequest\x1a\".snapshot.v1.FetchSnapshotResponse0\x01B?Z=github.com/formancehq/ledger-v3-poc/internal/proto/snapshotpbb\x06proto3"
 
 var (
@@ -650,32 +183,19 @@ func file_snapshot_proto_rawDescGZIP() []byte {
 	return file_snapshot_proto_rawDescData
 }
 
-var file_snapshot_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_snapshot_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_snapshot_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_snapshot_proto_goTypes = []any{
-	(DescribeSnapshotResponse_Format)(0),      // 0: snapshot.v1.DescribeSnapshotResponse.Format
-	(DescribeSnapshotResponse_Compression)(0), // 1: snapshot.v1.DescribeSnapshotResponse.Compression
-	(DescribeSnapshotResponse_Status)(0),      // 2: snapshot.v1.DescribeSnapshotResponse.Status
-	(*DescribeSnapshotRequest)(nil),           // 3: snapshot.v1.DescribeSnapshotRequest
-	(*DescribeSnapshotResponse)(nil),          // 4: snapshot.v1.DescribeSnapshotResponse
-	(*FetchSnapshotRequest)(nil),              // 5: snapshot.v1.FetchSnapshotRequest
-	(*FetchSnapshotResponse)(nil),             // 6: snapshot.v1.FetchSnapshotResponse
+	(*FetchSnapshotRequest)(nil),  // 0: snapshot.v1.FetchSnapshotRequest
+	(*FetchSnapshotResponse)(nil), // 1: snapshot.v1.FetchSnapshotResponse
 }
 var file_snapshot_proto_depIdxs = []int32{
-	0, // 0: snapshot.v1.DescribeSnapshotResponse.format:type_name -> snapshot.v1.DescribeSnapshotResponse.Format
-	1, // 1: snapshot.v1.DescribeSnapshotResponse.compression:type_name -> snapshot.v1.DescribeSnapshotResponse.Compression
-	2, // 2: snapshot.v1.DescribeSnapshotResponse.status:type_name -> snapshot.v1.DescribeSnapshotResponse.Status
-	0, // 3: snapshot.v1.FetchSnapshotRequest.desired_format:type_name -> snapshot.v1.DescribeSnapshotResponse.Format
-	1, // 4: snapshot.v1.FetchSnapshotRequest.desired_compression:type_name -> snapshot.v1.DescribeSnapshotResponse.Compression
-	3, // 5: snapshot.v1.SnapshotService.DescribeSnapshot:input_type -> snapshot.v1.DescribeSnapshotRequest
-	5, // 6: snapshot.v1.SnapshotService.FetchSnapshot:input_type -> snapshot.v1.FetchSnapshotRequest
-	4, // 7: snapshot.v1.SnapshotService.DescribeSnapshot:output_type -> snapshot.v1.DescribeSnapshotResponse
-	6, // 8: snapshot.v1.SnapshotService.FetchSnapshot:output_type -> snapshot.v1.FetchSnapshotResponse
-	7, // [7:9] is the sub-list for method output_type
-	5, // [5:7] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	0, // 0: snapshot.v1.SnapshotService.FetchSnapshot:input_type -> snapshot.v1.FetchSnapshotRequest
+	1, // 1: snapshot.v1.SnapshotService.FetchSnapshot:output_type -> snapshot.v1.FetchSnapshotResponse
+	1, // [1:2] is the sub-list for method output_type
+	0, // [0:1] is the sub-list for method input_type
+	0, // [0:0] is the sub-list for extension type_name
+	0, // [0:0] is the sub-list for extension extendee
+	0, // [0:0] is the sub-list for field type_name
 }
 
 func init() { file_snapshot_proto_init() }
@@ -688,14 +208,13 @@ func file_snapshot_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_snapshot_proto_rawDesc), len(file_snapshot_proto_rawDesc)),
-			NumEnums:      3,
-			NumMessages:   4,
+			NumEnums:      0,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_snapshot_proto_goTypes,
 		DependencyIndexes: file_snapshot_proto_depIdxs,
-		EnumInfos:         file_snapshot_proto_enumTypes,
 		MessageInfos:      file_snapshot_proto_msgTypes,
 	}.Build()
 	File_snapshot_proto = out.File

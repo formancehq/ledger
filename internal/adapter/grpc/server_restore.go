@@ -374,11 +374,6 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 		return nil, fmt.Errorf("hard linking staging to checkpoint: %w", err)
 	}
 
-	// Write CURRENT_CHECKPOINT (atomic)
-	if err := dal.WriteCurrentCheckpointAtomic(s.dataDir, 0); err != nil {
-		return nil, fmt.Errorf("writing CURRENT_CHECKPOINT: %w", err)
-	}
-
 	// Remove staging directory
 	if err := os.RemoveAll(stagingDir); err != nil {
 		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to remove staging directory")

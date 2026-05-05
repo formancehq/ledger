@@ -26,46 +26,44 @@ var ErrStoreClosed = errors.New("store closed")
 
 const (
 	liveDir                 = "live"
-	currentCheckpointFile   = "CURRENT_CHECKPOINT"
 	checkpointsDir          = "checkpoints"
 	temporaryCheckpointsDir = "tmp"
 	baselineCheckpointsDir  = "baseline"
+	incomingRestoreDir      = "incoming" // inside checkpointsDir, non-numeric to avoid ID collision
 )
 
-// WriteCurrentCheckpointAtomic writes the checkpoint ID to the CURRENT_CHECKPOINT
-// file using a write-to-tmp + fsync + rename pattern. This guarantees that the
-// file is either the old value or the new value after a crash — never a truncated
-// or partial write.
-func WriteCurrentCheckpointAtomic(dataDir string, checkpointID uint64) error {
-	tmpPath := filepath.Join(dataDir, currentCheckpointFile+".tmp")
-	finalPath := filepath.Join(dataDir, currentCheckpointFile)
+// ScanLatestCheckpointID scans the checkpoints directory and returns the highest
+// numeric checkpoint ID found. Returns 0 if no checkpoints exist.
+func ScanLatestCheckpointID(dataDir string) (uint64, error) {
+	dir := filepath.Join(dataDir, checkpointsDir)
 
-	f, err := os.Create(tmpPath)
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return fmt.Errorf("creating tmp file: %w", err)
+		if errors.Is(err, os.ErrNotExist) {
+			return 0, nil
+		}
+
+		return 0, fmt.Errorf("reading checkpoints directory: %w", err)
 	}
 
-	defer func() {
-		_ = f.Close()
-	}()
+	var maxID uint64
 
-	if _, err := fmt.Fprintf(f, "%d", checkpointID); err != nil {
-		return fmt.Errorf("writing tmp file: %w", err)
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		id, err := strconv.ParseUint(entry.Name(), 10, 64)
+		if err != nil {
+			continue // skip non-numeric dirs (e.g. "incoming")
+		}
+
+		if id > maxID {
+			maxID = id
+		}
 	}
 
-	if err := f.Sync(); err != nil {
-		return fmt.Errorf("syncing tmp file: %w", err)
-	}
-
-	if err := f.Close(); err != nil {
-		return fmt.Errorf("closing tmp file: %w", err)
-	}
-
-	if err := os.Rename(tmpPath, finalPath); err != nil {
-		return fmt.Errorf("renaming tmp to final: %w", err)
-	}
-
-	return nil
+	return maxID, nil
 }
 
 // Store is a Pebble implementation of dal.Store
@@ -294,12 +292,19 @@ func NewStore(
 	// checkpoint does. In that case, hard-link the checkpoint to live/.
 	_, liveDirErr := os.Stat(liveDir)
 
+	// Scan the checkpoints directory to find the latest checkpoint ID.
+	// The ID is derived from the highest-numbered directory in checkpoints/.
+	latestCheckpointID, err := ScanLatestCheckpointID(dataDir)
+	if err != nil {
+		return nil, fmt.Errorf("scanning checkpoints: %w", err)
+	}
+
 	if liveDirErr != nil {
 		// live/ does not exist. Check if a checkpoint exists (restore/bootstrap path).
-		if cpRaw, cpErr := os.ReadFile(filepath.Join(dataDir, currentCheckpointFile)); cpErr == nil {
-			checkpointPath := filepath.Join(dataDir, checkpointsDir, string(cpRaw))
+		if latestCheckpointID > 0 {
+			checkpointPath := filepath.Join(dataDir, checkpointsDir, strconv.FormatUint(latestCheckpointID, 10))
 
-			logger.Infof("No live directory found, restoring from checkpoint %s", string(cpRaw))
+			logger.Infof("No live directory found, restoring from checkpoint %d", latestCheckpointID)
 
 			if err = HardLink(checkpointPath, liveDir); err != nil {
 				return nil, fmt.Errorf("hard linking checkpoint to live directory: %w", err)
@@ -335,33 +340,18 @@ func NewStore(
 		"totalLevelsSize":   m.DiskSpaceUsage(),
 	}).Infof("Pebble database opened — LSM state")
 
-	// Read current checkpoint counter (used by CreateSnapshot for follower sync).
-	var currentCheckpoint uint64
-
-	currentCheckpointRaw, readErr := os.ReadFile(filepath.Join(dataDir, currentCheckpointFile))
-	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
-		return nil, fmt.Errorf("reading current checkpoint: %w", readErr)
-	}
-
-	if len(currentCheckpointRaw) > 0 {
-		currentCheckpoint, err = strconv.ParseUint(string(currentCheckpointRaw), 10, 64)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	// Calculate the oldest checkpoint that should exist
-	// based on current checkpoint and max checkpoints configuration
+	// based on latest checkpoint and max checkpoints configuration
 	var oldestCheckpoint uint64
-	if currentCheckpoint >= uint64(cfg.MaxCheckpoints) {
-		oldestCheckpoint = currentCheckpoint - uint64(cfg.MaxCheckpoints) + 1
+	if latestCheckpointID >= uint64(cfg.MaxCheckpoints) {
+		oldestCheckpoint = latestCheckpointID - uint64(cfg.MaxCheckpoints) + 1
 	}
 
 	store := &Store{
 		opts:              opts,
 		logger:            logger.WithField("cmp", "pebble"),
 		dataDir:           dataDir,
-		currentCheckPoint: currentCheckpoint,
+		currentCheckPoint: latestCheckpointID,
 		oldestCheckpoint:  oldestCheckpoint,
 		maxCheckpoints:    cfg.MaxCheckpoints,
 		stallState:        stallState,
@@ -370,6 +360,9 @@ func NewStore(
 
 	// Clean up any orphaned backup checkpoints from a previous crash
 	store.cleanupTemporaryCheckpoints()
+
+	// Clean up any partial incoming checkpoint left by a crash during follower sync
+	store.cleanupIncomingRestore()
 
 	return store, nil
 }
@@ -527,10 +520,6 @@ func (s *Store) CreateSnapshot() (uint64, error) {
 
 	pebbleCheckpointDone := time.Now()
 
-	if err := WriteCurrentCheckpointAtomic(s.dataDir, newCheckpointID); err != nil {
-		return 0, fmt.Errorf("updating current checkpoint file: %w", err)
-	}
-
 	// Clean up old checkpoints beyond the configured maximum
 	// Note: it can fail, leaving old checkpoints on disk
 	// this is not critical, but we should fix it eventually
@@ -602,7 +591,7 @@ func (s *Store) GetCurrentCheckpointID() uint64 {
 }
 
 // CreateTemporaryCheckpoint creates a Pebble checkpoint in the tmp/<name> directory.
-// Unlike CreateSnapshot, this does not modify currentCheckPoint, CURRENT_CHECKPOINT,
+// Unlike CreateSnapshot, this does not modify currentCheckPoint,
 // or interfere with the Raft snapshot lifecycle in any way.
 // The caller must call RemoveTemporaryCheckpoint when the checkpoint is no longer needed.
 func (s *Store) CreateTemporaryCheckpoint(name string) (string, error) {
@@ -722,6 +711,20 @@ func (s *Store) cleanupTemporaryCheckpoints() {
 	}
 }
 
+// cleanupIncomingRestore removes the incoming restore directory on startup.
+// A partial incoming checkpoint can be left if the node crashed during follower sync
+// (between PrepareIncomingRestore and RestoreCheckpoint). It is safe to delete.
+func (s *Store) cleanupIncomingRestore() {
+	path := filepath.Join(s.dataDir, checkpointsDir, incomingRestoreDir)
+
+	err := os.RemoveAll(path)
+	if err != nil {
+		s.logger.WithFields(map[string]any{
+			"error": err,
+		}).Errorf("Failed to clean up incoming restore directory")
+	}
+}
+
 // PrepareCheckpointRestore prepares a directory for restoring a checkpoint from a remote peer.
 // It returns the path to the directory where the checkpoint should be extracted.
 func (s *Store) PrepareCheckpointRestore(checkpointID uint64) (string, error) {
@@ -740,6 +743,49 @@ func (s *Store) PrepareCheckpointRestore(checkpointID uint64) (string, error) {
 	}
 
 	return checkpointDir, nil
+}
+
+// PrepareIncomingRestore creates a staging directory for an incoming checkpoint
+// from a leader. The directory is "checkpoints/incoming/" — a non-numeric name
+// that cannot collide with the numbered checkpoints created by CreateSnapshot
+// or the background checkpoint goroutine.
+func (s *Store) PrepareIncomingRestore() (string, error) {
+	dir := filepath.Join(s.dataDir, checkpointsDir, incomingRestoreDir)
+
+	if err := os.RemoveAll(dir); err != nil {
+		return "", fmt.Errorf("removing existing incoming directory: %w", err)
+	}
+
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", fmt.Errorf("creating incoming directory: %w", err)
+	}
+
+	return dir, nil
+}
+
+// ActivateIncomingRestore moves the incoming checkpoint to a numbered slot
+// and returns the assigned checkpoint ID. It holds snapshotMu briefly to
+// reserve the ID, preventing collision with the background checkpoint goroutine.
+func (s *Store) ActivateIncomingRestore() (uint64, error) {
+	s.snapshotMu.Lock()
+	defer s.snapshotMu.Unlock()
+
+	newID := s.currentCheckPoint + 1
+	incomingDir := filepath.Join(s.dataDir, checkpointsDir, incomingRestoreDir)
+	targetDir := filepath.Join(s.dataDir, checkpointsDir, strconv.FormatUint(newID, 10))
+
+	if err := os.RemoveAll(targetDir); err != nil {
+		return 0, fmt.Errorf("removing target checkpoint directory: %w", err)
+	}
+
+	if err := os.Rename(incomingDir, targetDir); err != nil {
+		return 0, fmt.Errorf("moving incoming checkpoint to %d: %w", newID, err)
+	}
+
+	// Reserve the ID so the background goroutine skips it.
+	s.currentCheckPoint = newID
+
+	return newID, nil
 }
 
 // RestoreCheckpoint restores the database from a checkpoint.
@@ -826,11 +872,6 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 		if err != nil {
 			return fmt.Errorf("re-creating checkpoint with preserved config: %w", err)
 		}
-	}
-
-	// Update the current checkpoint file (atomic write via .tmp + rename)
-	if err := WriteCurrentCheckpointAtomic(s.dataDir, checkpointID); err != nil {
-		return fmt.Errorf("updating current checkpoint file: %w", err)
 	}
 
 	// Update internal state

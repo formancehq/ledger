@@ -264,7 +264,6 @@ func Module() fx.Option {
 					w,
 					logger,
 					meterProvider.Meter("raft.node"),
-					cfg.SnapshotThreshold,
 					cfg.CompactionMargin,
 					cfg.ReplayBatchSize,
 					snapshotFetcherProvider,

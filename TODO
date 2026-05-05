@@ -21,6 +21,7 @@ Tests:
 Refactor:
 * store checks memory usage
 * estimate cache size
+* Add sync checkpoint of read indexes
 
 Later:
 * Events

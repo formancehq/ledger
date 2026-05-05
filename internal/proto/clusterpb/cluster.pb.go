@@ -522,7 +522,6 @@ type SyncProgress struct {
 	Status        string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`                                     // "normal", "syncing", "snapshotting", "out_of_sync"
 	BytesReceived uint64                 `protobuf:"varint,2,opt,name=bytes_received,json=bytesReceived,proto3" json:"bytes_received,omitempty"` // Bytes received so far during checkpoint fetch
 	BytesTotal    uint64                 `protobuf:"varint,3,opt,name=bytes_total,json=bytesTotal,proto3" json:"bytes_total,omitempty"`          // Total bytes to fetch (0 if unknown)
-	CheckpointId  uint64                 `protobuf:"varint,4,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`    // Checkpoint ID being fetched
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -574,13 +573,6 @@ func (x *SyncProgress) GetBytesReceived() uint64 {
 func (x *SyncProgress) GetBytesTotal() uint64 {
 	if x != nil {
 		return x.BytesTotal
-	}
-	return 0
-}
-
-func (x *SyncProgress) GetCheckpointId() uint64 {
-	if x != nil {
-		return x.CheckpointId
 	}
 	return 0
 }
@@ -2048,13 +2040,12 @@ const file_cluster_proto_rawDesc = "" +
 	"\x0eindex_progress\x18\b \x01(\v2\x16.cluster.IndexProgressR\rindexProgress\"u\n" +
 	"\rIndexProgress\x122\n" +
 	"\x15last_indexed_sequence\x18\x01 \x01(\x04R\x13lastIndexedSequence\x120\n" +
-	"\x14pebble_last_sequence\x18\x02 \x01(\x04R\x12pebbleLastSequence\"\x93\x01\n" +
+	"\x14pebble_last_sequence\x18\x02 \x01(\x04R\x12pebbleLastSequence\"n\n" +
 	"\fSyncProgress\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12%\n" +
 	"\x0ebytes_received\x18\x02 \x01(\x04R\rbytesReceived\x12\x1f\n" +
 	"\vbytes_total\x18\x03 \x01(\x04R\n" +
-	"bytesTotal\x12#\n" +
-	"\rcheckpoint_id\x18\x04 \x01(\x04R\fcheckpointId\";\n" +
+	"bytesTotal\";\n" +
 	"\x19TransferLeadershipRequest\x12\x1e\n" +
 	"\n" +
 	"transferee\x18\x01 \x01(\rR\n" +
