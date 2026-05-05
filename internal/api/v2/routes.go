@@ -34,7 +34,7 @@ func NewRouter(
 	router.Group(func(router chi.Router) {
 		router.Use(auth.Middleware(authenticator))
 
-		router.Get("/_info", v1.GetInfo(systemController, version))
+		router.Get("/_info", v1.GetInfo(systemController, version, routerOptions.experimentalFeatures))
 
 		router.Route("/_", func(router chi.Router) {
 			if routerOptions.exporters {
@@ -127,6 +127,7 @@ type routerOptions struct {
 	bulkHandlerFactories map[string]bulking.HandlerFactory
 	paginationConfig     common.PaginationConfig
 	exporters            bool
+	experimentalFeatures []string
 }
 
 type RouterOption func(ro *routerOptions)
@@ -158,6 +159,12 @@ func WithPaginationConfig(paginationConfig common.PaginationConfig) RouterOption
 func WithExporters(v bool) RouterOption {
 	return func(ro *routerOptions) {
 		ro.exporters = v
+	}
+}
+
+func WithExperimentalFeatures(features []string) RouterOption {
+	return func(ro *routerOptions) {
+		ro.experimentalFeatures = features
 	}
 }
 

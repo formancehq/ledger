@@ -43,7 +43,10 @@ Accept: application/json
 ```json
 {
   "server": "string",
-  "version": "string"
+  "version": "string",
+  "experimentalFeatures": [
+    "string"
+  ]
 }
 ```
 
@@ -3426,7 +3429,10 @@ This operation does not require authentication
 ```json
 {
   "server": "string",
-  "version": "string"
+  "version": "string",
+  "experimentalFeatures": [
+    "string"
+  ]
 }
 
 ```
@@ -3437,6 +3443,7 @@ This operation does not require authentication
 |---|---|---|---|---|
 |server|string|true|none|none|
 |version|string|true|none|none|
+|experimentalFeatures|[string]|false|none|none|
 
 <h2 id="tocS_V2Account">V2Account</h2>
 <!-- backwards compatibility -->
@@ -4120,7 +4127,10 @@ This operation does not require authentication
 ```json
 {
   "server": "string",
-  "version": "string"
+  "version": "string",
+  "experimentalFeatures": [
+    "string"
+  ]
 }
 
 ```

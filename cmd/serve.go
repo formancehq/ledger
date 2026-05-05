@@ -126,7 +126,8 @@ func NewServeCommand() *cobra.Command {
 						MaxPageSize:     cfg.MaxPageSize,
 						DefaultPageSize: cfg.DefaultPageSize,
 					},
-					Exporters: cfg.ExperimentalExporters,
+					Exporters:            cfg.ExperimentalExporters,
+					ExperimentalFeatures: experimentalFeatures(cfg),
 				}),
 				fx.Decorate(func(
 					params struct {
@@ -245,4 +246,18 @@ func assembleFinalRouter(
 	wrappedRouter.Mount("/", handler)
 
 	return wrappedRouter
+}
+
+func experimentalFeatures(cfg *ServeCommandConfig) []string {
+	var features []string
+	if cfg.ExperimentalFeaturesEnabled {
+		features = append(features, ExperimentalFeaturesFlag)
+	}
+	if cfg.ExperimentalExporters {
+		features = append(features, ExperimentalExporters)
+	}
+	if cfg.NumscriptInterpreter {
+		features = append(features, NumscriptInterpreterFlag)
+	}
+	return features
 }
