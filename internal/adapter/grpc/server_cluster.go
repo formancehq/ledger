@@ -251,14 +251,14 @@ func (impl *ClusterServiceServerImpl) GetDiskUsage(ctx context.Context, _ *clust
 	}
 
 	return &clusterpb.DiskUsage{
-		SpoolBytes:           impl.collector.SpoolBytes(),
-		WalBytes:             impl.collector.WALBytes(),
-		DataBytes:            impl.collector.DataBytes(),
-		ReadIndexBytes:       impl.collector.ReadIndexBytes(),
-		WalVolumeBytes:       impl.collector.WALVolumeBytes(),
-		DataVolumeBytes:      impl.collector.DataVolumeBytes(),
-		WalVolumeTotalBytes:  impl.collector.WALVolumeTotalBytes(),
-		DataVolumeTotalBytes: impl.collector.DataVolumeTotalBytes(),
+		WalVolume: &clusterpb.VolumeUsage{
+			UsedBytes:  impl.collector.WALVolume.UsedBytes(),
+			TotalBytes: impl.collector.WALVolume.TotalBytes(),
+		},
+		DataVolume: &clusterpb.VolumeUsage{
+			UsedBytes:  impl.collector.DataVolume.UsedBytes(),
+			TotalBytes: impl.collector.DataVolume.TotalBytes(),
+		},
 	}, nil
 }
 

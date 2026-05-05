@@ -14,7 +14,7 @@ func NewDiskUsageCommand() *cobra.Command {
 		Use:     "disk-usage",
 		Aliases: []string{"du"},
 		Short:   "Get disk usage",
-		Long:    "Display disk space used by storage components on the connected node",
+		Long:    "Display filesystem-level disk usage on the connected node",
 		RunE:    runDiskUsage,
 	}
 
@@ -50,25 +50,12 @@ func runDiskUsage(cmd *cobra.Command, _ []string) error {
 }
 
 func displayDiskUsage(usage *clusterpb.DiskUsage) {
-	pterm.DefaultSection.Println("Storage Components")
-
-	componentData := [][]string{
-		{"COMPONENT", "SIZE"},
-		{"Spool", cmdutil.FormatBytes(uint64(usage.GetSpoolBytes()))},
-		{"WAL", cmdutil.FormatBytes(uint64(usage.GetWalBytes()))},
-		{"Data", cmdutil.FormatBytes(uint64(usage.GetDataBytes()))},
-		{"Read Index", cmdutil.FormatBytes(uint64(usage.GetReadIndexBytes()))},
-	}
-	_ = pterm.DefaultTable.WithHasHeader(true).WithData(componentData).Render()
-
-	pterm.Println()
-
 	pterm.DefaultSection.Println("Volumes")
 
 	volumeData := [][]string{
 		{"VOLUME", "USED", "TOTAL"},
-		{"WAL", cmdutil.FormatBytes(uint64(usage.GetWalVolumeBytes())), cmdutil.FormatBytes(uint64(usage.GetWalVolumeTotalBytes()))},
-		{"Data", cmdutil.FormatBytes(uint64(usage.GetDataVolumeBytes())), cmdutil.FormatBytes(uint64(usage.GetDataVolumeTotalBytes()))},
+		{"WAL", cmdutil.FormatBytes(uint64(usage.GetWalVolume().GetUsedBytes())), cmdutil.FormatBytes(uint64(usage.GetWalVolume().GetTotalBytes()))},
+		{"Data", cmdutil.FormatBytes(uint64(usage.GetDataVolume().GetUsedBytes())), cmdutil.FormatBytes(uint64(usage.GetDataVolume().GetTotalBytes()))},
 	}
 	_ = pterm.DefaultTable.WithHasHeader(true).WithData(volumeData).Render()
 

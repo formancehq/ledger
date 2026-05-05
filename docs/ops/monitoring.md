@@ -277,38 +277,19 @@ Write stalls occur when Pebble cannot keep up with write rate due to compaction 
 
 ## Storage Disk Usage Metrics
 
-Disk space consumption is tracked per storage component and per volume. These metrics use observable gauges that compute directory sizes on each collection interval.
-
-### Per-Component Disk Usage
+Filesystem-level disk usage is tracked per volume via `syscall.Statfs`. A background collector samples usage at a regular interval (default 5s).
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
-| `storage.disk.component.bytes` | Gauge | By | Disk space used by a storage component |
-
-**Attributes**:
-- `component`: Storage component name
-
-| Component | Path | Description |
-|-----------|------|-------------|
-| `spool` | `{walDir}/spool/` | Spool log files buffering Raft entries before WAL persistence |
-| `wal` | `{walDir}/` (excluding `spool/`) | Write-Ahead Log files (`etcd/` directory + state files) |
-| `data` | `{dataDir}/` | Pebble database (live SSTs, checkpoints, manifests, etc.) |
-
-### Per-Volume Disk Usage
-
-| Metric | Type | Unit | Description |
-|--------|------|------|-------------|
-| `storage.disk.volume.bytes` | Gauge | By | Disk space used by a storage volume |
+| `storage.disk.volume.bytes` | Gauge | By | Disk space used on a storage volume |
 
 **Attributes**:
 - `volume`: Storage volume name
 
 | Volume | Path | Description |
 |--------|------|-------------|
-| `wal` | `{walDir}/` (entire directory) | WAL volume containing spool + WAL data |
-| `data` | `{dataDir}/` (entire directory) | Data volume containing the Pebble database |
-
-**Note**: The WAL volume total (`volume=wal`) equals the sum of the spool and wal components (`component=spool` + `component=wal`).
+| `wal` | `{walDir}/` | WAL volume containing spool + WAL data |
+| `data` | `{dataDir}/` | Data volume containing the Pebble database |
 
 ## Caching & Attributes Metrics
 

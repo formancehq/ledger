@@ -264,19 +264,31 @@ func (m *NodeTime) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
+func (m *VolumeUsage) CloneVT() *VolumeUsage {
+	if m == nil {
+		return (*VolumeUsage)(nil)
+	}
+	r := new(VolumeUsage)
+	r.UsedBytes = m.UsedBytes
+	r.TotalBytes = m.TotalBytes
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *VolumeUsage) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
 func (m *DiskUsage) CloneVT() *DiskUsage {
 	if m == nil {
 		return (*DiskUsage)(nil)
 	}
 	r := new(DiskUsage)
-	r.SpoolBytes = m.SpoolBytes
-	r.WalBytes = m.WalBytes
-	r.DataBytes = m.DataBytes
-	r.WalVolumeBytes = m.WalVolumeBytes
-	r.DataVolumeBytes = m.DataVolumeBytes
-	r.WalVolumeTotalBytes = m.WalVolumeTotalBytes
-	r.DataVolumeTotalBytes = m.DataVolumeTotalBytes
-	r.ReadIndexBytes = m.ReadIndexBytes
+	r.WalVolume = m.WalVolume.CloneVT()
+	r.DataVolume = m.DataVolume.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1051,34 +1063,38 @@ func (this *NodeTime) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
+func (this *VolumeUsage) EqualVT(that *VolumeUsage) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.UsedBytes != that.UsedBytes {
+		return false
+	}
+	if this.TotalBytes != that.TotalBytes {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *VolumeUsage) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*VolumeUsage)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
 func (this *DiskUsage) EqualVT(that *DiskUsage) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.SpoolBytes != that.SpoolBytes {
+	if !this.WalVolume.EqualVT(that.WalVolume) {
 		return false
 	}
-	if this.WalBytes != that.WalBytes {
-		return false
-	}
-	if this.DataBytes != that.DataBytes {
-		return false
-	}
-	if this.WalVolumeBytes != that.WalVolumeBytes {
-		return false
-	}
-	if this.DataVolumeBytes != that.DataVolumeBytes {
-		return false
-	}
-	if this.WalVolumeTotalBytes != that.WalVolumeTotalBytes {
-		return false
-	}
-	if this.DataVolumeTotalBytes != that.DataVolumeTotalBytes {
-		return false
-	}
-	if this.ReadIndexBytes != that.ReadIndexBytes {
+	if !this.DataVolume.EqualVT(that.DataVolume) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -2266,6 +2282,49 @@ func (m *NodeTime) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *VolumeUsage) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *VolumeUsage) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *VolumeUsage) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.TotalBytes != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.TotalBytes))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.UsedBytes != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.UsedBytes))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *DiskUsage) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -2296,45 +2355,25 @@ func (m *DiskUsage) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.ReadIndexBytes != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ReadIndexBytes))
+	if m.DataVolume != nil {
+		size, err := m.DataVolume.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x40
+		dAtA[i] = 0x12
 	}
-	if m.DataVolumeTotalBytes != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DataVolumeTotalBytes))
+	if m.WalVolume != nil {
+		size, err := m.WalVolume.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x38
-	}
-	if m.WalVolumeTotalBytes != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.WalVolumeTotalBytes))
-		i--
-		dAtA[i] = 0x30
-	}
-	if m.DataVolumeBytes != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DataVolumeBytes))
-		i--
-		dAtA[i] = 0x28
-	}
-	if m.WalVolumeBytes != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.WalVolumeBytes))
-		i--
-		dAtA[i] = 0x20
-	}
-	if m.DataBytes != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DataBytes))
-		i--
-		dAtA[i] = 0x18
-	}
-	if m.WalBytes != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.WalBytes))
-		i--
-		dAtA[i] = 0x10
-	}
-	if m.SpoolBytes != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.SpoolBytes))
-		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -3582,35 +3621,35 @@ func (m *NodeTime) SizeVT() (n int) {
 	return n
 }
 
+func (m *VolumeUsage) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.UsedBytes != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.UsedBytes))
+	}
+	if m.TotalBytes != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.TotalBytes))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
 func (m *DiskUsage) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.SpoolBytes != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.SpoolBytes))
+	if m.WalVolume != nil {
+		l = m.WalVolume.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.WalBytes != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.WalBytes))
-	}
-	if m.DataBytes != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.DataBytes))
-	}
-	if m.WalVolumeBytes != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.WalVolumeBytes))
-	}
-	if m.DataVolumeBytes != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.DataVolumeBytes))
-	}
-	if m.WalVolumeTotalBytes != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.WalVolumeTotalBytes))
-	}
-	if m.DataVolumeTotalBytes != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.DataVolumeTotalBytes))
-	}
-	if m.ReadIndexBytes != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ReadIndexBytes))
+	if m.DataVolume != nil {
+		l = m.DataVolume.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -5640,6 +5679,95 @@ func (m *NodeTime) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
+func (m *VolumeUsage) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: VolumeUsage: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: VolumeUsage: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field UsedBytes", wireType)
+			}
+			m.UsedBytes = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.UsedBytes |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TotalBytes", wireType)
+			}
+			m.TotalBytes = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.TotalBytes |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
 func (m *DiskUsage) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -5670,10 +5798,10 @@ func (m *DiskUsage) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SpoolBytes", wireType)
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field WalVolume", wireType)
 			}
-			m.SpoolBytes = 0
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -5683,16 +5811,33 @@ func (m *DiskUsage) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.SpoolBytes |= int64(b&0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.WalVolume == nil {
+				m.WalVolume = &VolumeUsage{}
+			}
+			if err := m.WalVolume.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field WalBytes", wireType)
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DataVolume", wireType)
 			}
-			m.WalBytes = 0
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -5702,125 +5847,28 @@ func (m *DiskUsage) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.WalBytes |= int64(b&0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DataBytes", wireType)
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
 			}
-			m.DataBytes = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.DataBytes |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
 			}
-		case 4:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field WalVolumeBytes", wireType)
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
 			}
-			m.WalVolumeBytes = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.WalVolumeBytes |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if m.DataVolume == nil {
+				m.DataVolume = &VolumeUsage{}
 			}
-		case 5:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DataVolumeBytes", wireType)
+			if err := m.DataVolume.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
 			}
-			m.DataVolumeBytes = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.DataVolumeBytes |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 6:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field WalVolumeTotalBytes", wireType)
-			}
-			m.WalVolumeTotalBytes = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.WalVolumeTotalBytes |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 7:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DataVolumeTotalBytes", wireType)
-			}
-			m.DataVolumeTotalBytes = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.DataVolumeTotalBytes |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 8:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ReadIndexBytes", wireType)
-			}
-			m.ReadIndexBytes = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.ReadIndexBytes |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

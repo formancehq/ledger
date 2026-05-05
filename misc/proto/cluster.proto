@@ -169,16 +169,16 @@ message NodeTime {
   uint64 timestamp_us = 1;  // Current time in microseconds since epoch
 }
 
-// DiskUsage represents the disk space used by storage components on a node
+// VolumeUsage represents the disk usage of a single filesystem volume.
+message VolumeUsage {
+  int64 used_bytes = 1;   // Used bytes on the filesystem
+  int64 total_bytes = 2;  // Total capacity of the filesystem in bytes
+}
+
+// DiskUsage represents the filesystem-level disk usage on a node.
 message DiskUsage {
-  int64 spool_bytes = 1;              // Spool directory size in bytes
-  int64 wal_bytes = 2;                // WAL directory size in bytes (excluding spool)
-  int64 data_bytes = 3;               // Data directory size in bytes (excluding read index)
-  int64 wal_volume_bytes = 4;         // Total WAL volume size in bytes
-  int64 data_volume_bytes = 5;        // Total data volume size in bytes
-  int64 wal_volume_total_bytes = 6;   // Total capacity of the WAL filesystem in bytes
-  int64 data_volume_total_bytes = 7;  // Total capacity of the data filesystem in bytes
-  int64 read_index_bytes = 8;         // Pebble read index size in bytes
+  VolumeUsage wal_volume = 1;   // WAL filesystem usage
+  VolumeUsage data_volume = 2;  // Data filesystem usage
 }
 
 // ============================================================================

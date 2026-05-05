@@ -11285,7 +11285,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "description": "Disk space used by each storage component (spool, WAL, data, read index). Updated every 10 seconds by a background collector.",
+          "description": "Disk space used by each storage volume (WAL volume, data volume). Updated every 10 seconds by a background collector.",
           "fieldConfig": {
             "defaults": {
               "color": {
@@ -11369,9 +11369,9 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "storage.disk.component.bytes{service.cluster=~\"$cluster\", service.node_id=~\"$node\", component=\"spool\"}",
+              "expr": "storage.disk.volume.bytes{service.cluster=~\"$cluster\", service.node_id=~\"$node\", volume=\"wal\"}",
               "interval": "1s",
-              "legendFormat": "Spool (Node {{service.node_id}})",
+              "legendFormat": "WAL Volume (Node {{service.node_id}})",
               "range": true,
               "refId": "A"
             },
@@ -11381,38 +11381,14 @@
                 "uid": "${datasource}"
               },
               "editorMode": "code",
-              "expr": "storage.disk.component.bytes{service.cluster=~\"$cluster\", service.node_id=~\"$node\", component=\"wal\"}",
+              "expr": "storage.disk.volume.bytes{service.cluster=~\"$cluster\", service.node_id=~\"$node\", volume=\"data\"}",
               "interval": "1s",
-              "legendFormat": "WAL (Node {{service.node_id}})",
+              "legendFormat": "Data Volume (Node {{service.node_id}})",
               "range": true,
               "refId": "B"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${datasource}"
-              },
-              "editorMode": "code",
-              "expr": "storage.disk.component.bytes{service.cluster=~\"$cluster\", service.node_id=~\"$node\", component=\"data\"}",
-              "interval": "1s",
-              "legendFormat": "Data (Node {{service.node_id}})",
-              "range": true,
-              "refId": "C"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${datasource}"
-              },
-              "editorMode": "code",
-              "expr": "storage.disk.component.bytes{service.cluster=~\"$cluster\", service.node_id=~\"$node\", component=\"readindex\"}",
-              "interval": "1s",
-              "legendFormat": "Read Index (Node {{service.node_id}})",
-              "range": true,
-              "refId": "D"
             }
           ],
-          "title": "Disk Usage by Component",
+          "title": "Disk Usage by Volume",
           "type": "timeseries"
         },
         {

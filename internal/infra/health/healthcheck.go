@@ -137,10 +137,10 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 
 	var reports []nodeUsageReport
 
-	localWalUsed := hc.collector.WALVolumeBytes()
-	localWalTotal := hc.collector.WALVolumeTotalBytes()
-	localDataUsed := hc.collector.DataVolumeBytes()
-	localDataTotal := hc.collector.DataVolumeTotalBytes()
+	localWalUsed := hc.collector.WALVolume.UsedBytes()
+	localWalTotal := hc.collector.WALVolume.TotalBytes()
+	localDataUsed := hc.collector.DataVolume.UsedBytes()
+	localDataTotal := hc.collector.DataVolume.TotalBytes()
 
 	healthy := !hc.exceedsThreshold(
 		hc.node.GetNodeID(),
@@ -191,24 +191,23 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 				fetchErr: err,
 			})
 		} else {
-			if hc.exceedsThreshold(
-				peerID,
-				resp.GetWalVolumeBytes(),
-				resp.GetWalVolumeTotalBytes(),
-				resp.GetDataVolumeBytes(),
-				resp.GetDataVolumeTotalBytes(),
-			) {
+			walUsed := resp.GetWalVolume().GetUsedBytes()
+			walTotal := resp.GetWalVolume().GetTotalBytes()
+			dataUsed := resp.GetDataVolume().GetUsedBytes()
+			dataTotal := resp.GetDataVolume().GetTotalBytes()
+
+			if hc.exceedsThreshold(peerID, walUsed, walTotal, dataUsed, dataTotal) {
 				healthy = false
 			}
 
 			reports = append(reports, nodeUsageReport{
 				nodeID:      peerID,
-				walUsed:     resp.GetWalVolumeBytes(),
-				walTotal:    resp.GetWalVolumeTotalBytes(),
-				walPercent:  safePercent(resp.GetWalVolumeBytes(), resp.GetWalVolumeTotalBytes()),
-				dataUsed:    resp.GetDataVolumeBytes(),
-				dataTotal:   resp.GetDataVolumeTotalBytes(),
-				dataPercent: safePercent(resp.GetDataVolumeBytes(), resp.GetDataVolumeTotalBytes()),
+				walUsed:     walUsed,
+				walTotal:    walTotal,
+				walPercent:  safePercent(walUsed, walTotal),
+				dataUsed:    dataUsed,
+				dataTotal:   dataTotal,
+				dataPercent: safePercent(dataUsed, dataTotal),
 			})
 		}
 
