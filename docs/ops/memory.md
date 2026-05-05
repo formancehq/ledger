@@ -25,8 +25,8 @@ At startup the server logs an estimated memory breakdown and warns if it exceeds
 ## Pebble Block Cache
 
 **Flag:** `--pebble-cache-size`
-**Default:** `1073741824` (1 GiB)
-**Type:** bytes
+**Default:** `1Gi`
+**Type:** ByteSize
 
 Shared LRU cache for decompressed SST data blocks. Every Pebble read (point lookup or range scan) checks this cache first.
 
@@ -44,7 +44,7 @@ Shared LRU cache for decompressed SST data blocks. Every Pebble read (point look
 ## Pebble Memtables
 
 **Flags:**
-- `--pebble-memtable-size` (default: `268435456` / 256 MiB)
+- `--pebble-memtable-size` (default: `256Mi`)
 - `--pebble-memtable-stop-writes-threshold` (default: `6`)
 
 **Worst-case memory:** `memtable-size * stop-writes-threshold` = 256 MiB * 6 = **1.5 GiB**
@@ -81,8 +81,8 @@ These have indirect or minor memory impact:
 ## Pebble Read Index
 
 **Flags:**
-- `--read-index-cache-size` (default: `67108864` / 64 MiB)
-- `--read-index-memtable-size` (default: `67108864` / 64 MiB)
+- `--read-index-cache-size` (default: `64Mi`)
+- `--read-index-memtable-size` (default: `64Mi`)
 - `--read-index-memtable-stop-writes-threshold` (default: `4`)
 
 **Worst-case memory:** `cache-size + memtable-size * stop-writes-threshold` = 64 MiB + 64 MiB * 4 = **320 MiB**
@@ -118,8 +118,8 @@ Pebble uses lockfree memtables for writes (no exclusive write lock) and supports
 ## Raft Transport Buffers
 
 **Flag:** `--raft-transport-buffer-size`
-**Default:** `10485760` (10 MiB)
-**Type:** bytes, per peer
+**Default:** `10Mi`
+**Type:** ByteSize, per peer
 
 Each peer connection allocates a send buffer of this size. Total transport memory scales linearly with the number of peers.
 
@@ -262,9 +262,9 @@ WARNING: estimated memory usage (3118MiB) exceeds GOMEMLIMIT (2048MiB) — risk 
 
 | Container memory | Recommended `GOMEMLIMIT` | Suggested tuning |
 |-----------------|--------------------------|------------------|
-| 2 GiB | 1800MiB | `--pebble-cache-size=268435456` (256 MiB), `--pebble-memtable-size=67108864` (64 MiB) |
+| 2 GiB | 1800MiB | `--pebble-cache-size=256Mi`, `--pebble-memtable-size=64Mi` |
 | 4 GiB | 3600MiB | Defaults work |
-| 8 GiB | 7200MiB | Increase `--pebble-cache-size` to 4 GiB for better read perf |
+| 8 GiB | 7200MiB | `--pebble-cache-size=4Gi` for better read perf |
 | 16 GiB | 14400MiB | Increase both cache and threshold for large datasets |
 
 ---

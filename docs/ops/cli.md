@@ -3244,14 +3244,14 @@ The Pebble-based read index store is always active. An index builder tails the s
 |------|------|---------|-------------|
 | `--read-index-dir` | string | `""` | Directory for the Pebble read index database (default: `<data-dir>/read-indexes/`) |
 | `--read-index-batch-size` | int | `1000` | Log entries per write batch. Larger batches reduce flush frequency but use more memory per batch. |
-| `--read-index-memtable-size` | uint64 | `67108864` (64 MB) | Read index memtable size in bytes |
+| `--read-index-memtable-size` | ByteSize | `64Mi` | Read index memtable size |
 | `--read-index-memtable-stop-writes-threshold` | int | `4` | Read index memtable count before stopping writes |
-| `--read-index-cache-size` | int64 | `67108864` (64 MB) | Read index block cache size in bytes |
+| `--read-index-cache-size` | ByteSize | `64Mi` | Read index block cache size |
 | `--read-index-l0-compaction-threshold` | int | `4` | Read index L0 file count to trigger compaction |
 | `--read-index-l0-stop-writes-threshold` | int | `12` | Read index L0 file count before stopping writes |
-| `--read-index-lbase-max-bytes` | int64 | `536870912` (512 MB) | Read index L1 max size in bytes |
-| `--read-index-target-file-size` | int64 | `67108864` (64 MB) | Read index SST file target size in bytes |
-| `--read-index-bytes-per-sync` | int | `524288` (512 KB) | Read index bytes written before sync |
+| `--read-index-lbase-max-bytes` | ByteSize | `512Mi` | Read index L1 max size |
+| `--read-index-target-file-size` | ByteSize | `64Mi` | Read index SST file target size |
+| `--read-index-bytes-per-sync` | ByteSize | `512Ki` | Read index bytes written before sync |
 | `--read-index-max-concurrent-compactions` | int | `1` | Read index max concurrent compactions |
 
 ```bash
@@ -3262,7 +3262,7 @@ ledger-v3-poc run [other flags...]
 ledger-v3-poc run --read-index-dir /ssd/read-indexes [other flags...]
 
 # Increase read index cache for better read performance
-ledger-v3-poc run --read-index-cache-size 134217728 [other flags...]
+ledger-v3-poc run --read-index-cache-size 128Mi [other flags...]
 ```
 
 The index builder runs on ALL nodes (not just the leader), so follower nodes can also serve prepared query reads. Listings are eventually consistent (the read index may lag behind the latest Raft commits).
@@ -3273,19 +3273,19 @@ After restoring from a backup, use `ledgerctl store rebuild-indexes` to backfill
 
 ### Server Pebble Storage Flags
 
-Tune the Pebble (LSM-tree) storage engine. All sizes are in bytes unless specified.
+Tune the Pebble (LSM-tree) storage engine. Size flags accept Kubernetes-style quantities (e.g., `256Mi`, `1Gi`, `512Ki`).
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--pebble-memtable-size` | uint64 | `268435456` (256 MB) | Size of a single memtable |
+| `--pebble-memtable-size` | ByteSize | `256Mi` | Size of a single memtable |
 | `--pebble-memtable-stop-writes-threshold` | int | `6` | Number of memtables before stopping writes |
 | `--pebble-l0-compaction-threshold` | int | `4` | L0 file count to trigger compaction |
 | `--pebble-l0-stop-writes-threshold` | int | `16` | L0 file count before stopping writes |
-| `--pebble-lbase-max-bytes` | int64 | `2147483648` (2 GB) | Maximum size of L1 |
-| `--pebble-cache-size` | int64 | `1073741824` (1 GB) | Block cache size |
-| `--pebble-target-file-size` | int64 | `268435456` (256 MB) | Target SST file size |
-| `--pebble-bytes-per-sync` | int | `1048576` (1 MB) | Bytes written before sync during flush/compaction |
-| `--pebble-wal-bytes-per-sync` | int | `1048576` (1 MB) | WAL bytes written before sync |
+| `--pebble-lbase-max-bytes` | ByteSize | `2Gi` | Maximum size of L1 |
+| `--pebble-cache-size` | ByteSize | `1Gi` | Block cache size |
+| `--pebble-target-file-size` | ByteSize | `256Mi` | Target SST file size |
+| `--pebble-bytes-per-sync` | ByteSize | `1Mi` | Bytes written before sync during flush/compaction |
+| `--pebble-wal-bytes-per-sync` | ByteSize | `1Mi` | WAL bytes written before sync |
 | `--pebble-max-concurrent-compactions` | int | `2` | Maximum concurrent compactions |
 | `--pebble-wal-min-sync-interval` | duration | `0` | Minimum interval between WAL syncs (0 = immediate) |
 | `--pebble-disable-wal` | bool | `false` | Disable WAL entirely (WARNING: risks data loss) |

@@ -34,6 +34,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/tracesampling"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/bytesize"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/pebblecfg"
@@ -97,7 +98,7 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().Int("http-port", 9000, "HTTP server port")
 	runCmd.Flags().Int("raft-election-tick", 10, "Election timeout in ticks (0 = use default 10)")
 	runCmd.Flags().Int("raft-heartbeat-tick", 1, "Heartbeat interval in ticks (0 = use default 1)")
-	runCmd.Flags().Uint64("raft-max-size-per-msg", 0, "Maximum size per message in bytes (0 = use default 1MB)")
+	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "raft-max-size-per-msg", 0, "Maximum size per message (0 = use default 1Mi)")
 	runCmd.Flags().Int("raft-max-inflight-msgs", 0, "Maximum number of in-flight messages (0 = use default 256)")
 	runCmd.Flags().Duration("raft-tick-interval", 100*time.Millisecond, "Interval between Raft ticks (0 = use default 100ms)")
 	runCmd.Flags().Uint64("raft-compaction-margin", 1000, "Minimum log entries between snapshots (0 = use default 1000)")
@@ -105,7 +106,7 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().Int("raft-propose-queue-capacity", 0, "Capacity of the propose queue (0 = use default 100)")
 	runCmd.Flags().IntSlice("raft-transport-reception-queues", []int{}, "Comma-separated list of reception queue capacities per priority (e.g., \"10,512,512,512,128\")")
 	runCmd.Flags().IntSlice("raft-transport-send-queues", []int{}, "Comma-separated list of send queue capacities per priority (e.g., \"10,512,512,512,128\")")
-	runCmd.Flags().Int("raft-transport-buffer-size", 0, "Per-peer send buffer capacity in bytes (0 = use default 10MB)")
+	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "raft-transport-buffer-size", 0, "Per-peer send buffer capacity (0 = use default 10Mi)")
 	runCmd.Flags().Duration("raft-processing-tick-interval", 0, "Interval for processing committed entries (0 = tick-interval/10)")
 	runCmd.Flags().Int("raft-replay-batch-size", 0, "Number of entries per batch during spool replay (0 = use default 1000)")
 	runCmd.Flags().Bool("grpc-compression", false, "Enable gzip compression on gRPC calls")
@@ -113,13 +114,13 @@ func NewRunCommand() *cobra.Command {
 	// Pebble storage configuration flags (common flags shared with read index)
 	registerPebbleFlags(runCmd, "pebble", dal.DefaultConfig().Config)
 	// DAL-specific Pebble flags
-	runCmd.Flags().Int("pebble-wal-bytes-per-sync", 0, "Pebble WAL bytes written before sync (default: 1MB)")
+	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "pebble-wal-bytes-per-sync", 0, "Pebble WAL bytes written before sync (default: 1Mi)")
 	runCmd.Flags().Duration("pebble-wal-min-sync-interval", 0, "Pebble minimum interval between WAL syncs (default: 0, immediate sync)")
 	runCmd.Flags().Bool("pebble-disable-wal", false, "Pebble disable WAL (WARNING: risks data loss)")
 	runCmd.Flags().Int("pebble-max-checkpoints", dal.DefaultConfig().MaxCheckpoints, "Maximum number of Pebble checkpoints to keep (default: 10)")
 	// Value separation flags
 	runCmd.Flags().Bool("pebble-value-separation", false, "Enable value separation (large values stored in blob files)")
-	runCmd.Flags().Int("pebble-value-separation-min-size", 256, "Minimum value size in bytes for separation (default: 256)")
+	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "pebble-value-separation-min-size", 256, "Minimum value size for separation (default: 256)")
 	runCmd.Flags().Int("pebble-value-separation-max-depth", 4, "Max blob reference depth per SSTable (default: 4)")
 	runCmd.Flags().Duration("pebble-value-separation-rewrite-age", time.Hour, "Minimum blob file age before rewrite (default: 1h)")
 	runCmd.Flags().Float64("pebble-value-separation-garbage-ratio", 0.20, "Blob garbage ratio before rewrite (default: 0.20)")
@@ -196,7 +197,7 @@ func NewRunCommand() *cobra.Command {
 	// Flight recorder flags
 	runCmd.Flags().Bool("flight-recorder-enabled", false, "Enable the runtime flight recorder (continuous trace buffering)")
 	runCmd.Flags().Duration("flight-recorder-min-age", 5*time.Second, "Minimum duration of trace data retained in the flight recorder buffer")
-	runCmd.Flags().Int("flight-recorder-max-bytes", 10<<20, "Maximum memory for the flight recorder buffer in bytes (default: 10MiB)")
+	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "flight-recorder-max-bytes", 10<<20, "Maximum memory for the flight recorder buffer (default: 10Mi)")
 
 	return runCmd
 }
@@ -269,7 +270,7 @@ func runServer(cmd *cobra.Command, _ []string) error {
 	// Configure flight recorder
 	frEnabled, _ := cmd.Flags().GetBool("flight-recorder-enabled")
 	frMinAge, _ := cmd.Flags().GetDuration("flight-recorder-min-age")
-	frMaxBytes, _ := cmd.Flags().GetInt("flight-recorder-max-bytes")
+	frMaxBytes := bytesize.Get(cmd, "flight-recorder-max-bytes").Int()
 	flightRecorderCfg := flightrecorder.Config{
 		Enabled:  frEnabled,
 		MinAge:   frMinAge,
@@ -412,12 +413,12 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 
 	cfg.RaftConfig.ElectionTick = getInt("raft-election-tick", 0)
 	cfg.RaftConfig.HeartbeatTick = getInt("raft-heartbeat-tick", 0)
-	cfg.RaftConfig.MaxSizePerMsg = getUint64("raft-max-size-per-msg", 0)
+	cfg.RaftConfig.MaxSizePerMsg = bytesize.Get(cmd, "raft-max-size-per-msg").Uint64()
 	cfg.RaftConfig.MaxInflightMsgs = getInt("raft-max-inflight-msgs", 0)
 	cfg.RaftConfig.TickInterval = getDuration("raft-tick-interval", 0)
 	cfg.RaftConfig.CompactionMargin = getUint64("raft-compaction-margin", 1000)
 	cfg.RaftConfig.ProposeQueueCapacity = getInt("raft-propose-queue-capacity", 0)
-	cfg.RaftConfig.TransportBufferSize = getInt("raft-transport-buffer-size", 0)
+	cfg.RaftConfig.TransportBufferSize = bytesize.Get(cmd, "raft-transport-buffer-size").Int()
 	cfg.RaftConfig.ProcessingTickInterval = getDuration("raft-processing-tick-interval", 0)
 	cfg.RaftConfig.ReplayBatchSize = getInt("raft-replay-batch-size", 0)
 	cfg.PoolConfig.Compression = getBool("grpc-compression", false)
@@ -722,14 +723,14 @@ func logMemoryEstimate(logger logging.Logger, cfg *bootstrap.Config, memlimit in
 // Flag names are "{prefix}-memtable-size", "{prefix}-cache-size", etc.
 func registerPebbleFlags(cmd *cobra.Command, prefix string, defaults pebblecfg.Config) {
 	p := prefix + "-"
-	cmd.Flags().Uint64(p+"memtable-size", 0, fmt.Sprintf("Pebble memtable size in bytes (default: %dMB)", defaults.MemTableSize>>20))
+	bytesize.ByteSizeVar(cmd, new(bytesize.ByteSize), p+"memtable-size", 0, fmt.Sprintf("Pebble memtable size (default: %s)", bytesize.ByteSize(defaults.MemTableSize)))
 	cmd.Flags().Int(p+"memtable-stop-writes-threshold", 0, fmt.Sprintf("Pebble memtable count before stopping writes (default: %d)", defaults.MemTableStopWritesThreshold))
 	cmd.Flags().Int(p+"l0-compaction-threshold", 0, fmt.Sprintf("Pebble L0 file count to trigger compaction (default: %d)", defaults.L0CompactionThreshold))
 	cmd.Flags().Int(p+"l0-stop-writes-threshold", 0, fmt.Sprintf("Pebble L0 file count before stopping writes (default: %d)", defaults.L0StopWritesThreshold))
-	cmd.Flags().Int64(p+"lbase-max-bytes", 0, fmt.Sprintf("Pebble L1 max size in bytes (default: %dMB)", defaults.LBaseMaxBytes>>20))
-	cmd.Flags().Int64(p+"cache-size", 0, fmt.Sprintf("Pebble block cache size in bytes (default: %dMB)", defaults.CacheSize>>20))
-	cmd.Flags().Int64(p+"target-file-size", 0, fmt.Sprintf("Pebble SST file target size in bytes (default: %dMB)", defaults.TargetFileSize>>20))
-	cmd.Flags().Int(p+"bytes-per-sync", 0, fmt.Sprintf("Pebble bytes written before sync (default: %dKB)", defaults.BytesPerSync>>10))
+	bytesize.ByteSizeVar(cmd, new(bytesize.ByteSize), p+"lbase-max-bytes", 0, fmt.Sprintf("Pebble L1 max size (default: %s)", bytesize.ByteSize(defaults.LBaseMaxBytes)))
+	bytesize.ByteSizeVar(cmd, new(bytesize.ByteSize), p+"cache-size", 0, fmt.Sprintf("Pebble block cache size (default: %s)", bytesize.ByteSize(defaults.CacheSize)))
+	bytesize.ByteSizeVar(cmd, new(bytesize.ByteSize), p+"target-file-size", 0, fmt.Sprintf("Pebble SST file target size (default: %s)", bytesize.ByteSize(defaults.TargetFileSize)))
+	bytesize.ByteSizeVar(cmd, new(bytesize.ByteSize), p+"bytes-per-sync", 0, fmt.Sprintf("Pebble bytes written before sync (default: %s)", bytesize.ByteSize(defaults.BytesPerSync)))
 	cmd.Flags().Int(p+"max-concurrent-compactions", 0, fmt.Sprintf("Pebble max concurrent compactions (default: %d)", defaults.MaxConcurrentCompactions))
 	cmd.Flags().String(p+"compression", "", fmt.Sprintf("Pebble per-level compression L0-L6, comma-separated (none|snappy|zstd|fastest|fast|balanced|good|default) (default: %s)", defaults.Compression))
 }
@@ -738,17 +739,9 @@ func registerPebbleFlags(cmd *cobra.Command, prefix string, defaults pebblecfg.C
 func loadBasePebbleConfig(cmd *cobra.Command, prefix string, defaults pebblecfg.Config) pebblecfg.Config {
 	p := prefix + "-"
 
-	getUint64 := func(flag string, def uint64) uint64 {
-		if val, _ := cmd.Flags().GetUint64(flag); val != 0 {
-			return val
-		}
-
-		return def
-	}
-
-	getInt64 := func(flag string, def int64) int64 {
-		if val, _ := cmd.Flags().GetInt64(flag); val != 0 {
-			return val
+	getByteSize := func(flag string, def int64) int64 {
+		if val := bytesize.Get(cmd, flag); val != 0 {
+			return val.Int64()
 		}
 
 		return def
@@ -772,14 +765,14 @@ func loadBasePebbleConfig(cmd *cobra.Command, prefix string, defaults pebblecfg.
 	}
 
 	return pebblecfg.Config{
-		MemTableSize:                getUint64(p+"memtable-size", defaults.MemTableSize),
+		MemTableSize:                uint64(getByteSize(p+"memtable-size", int64(defaults.MemTableSize))),
 		MemTableStopWritesThreshold: getInt(p+"memtable-stop-writes-threshold", defaults.MemTableStopWritesThreshold),
 		L0CompactionThreshold:       getInt(p+"l0-compaction-threshold", defaults.L0CompactionThreshold),
 		L0StopWritesThreshold:       getInt(p+"l0-stop-writes-threshold", defaults.L0StopWritesThreshold),
-		LBaseMaxBytes:               getInt64(p+"lbase-max-bytes", defaults.LBaseMaxBytes),
-		CacheSize:                   getInt64(p+"cache-size", defaults.CacheSize),
-		TargetFileSize:              getInt64(p+"target-file-size", defaults.TargetFileSize),
-		BytesPerSync:                getInt(p+"bytes-per-sync", defaults.BytesPerSync),
+		LBaseMaxBytes:               getByteSize(p+"lbase-max-bytes", defaults.LBaseMaxBytes),
+		CacheSize:                   getByteSize(p+"cache-size", defaults.CacheSize),
+		TargetFileSize:              getByteSize(p+"target-file-size", defaults.TargetFileSize),
+		BytesPerSync:                int(getByteSize(p+"bytes-per-sync", int64(defaults.BytesPerSync))),
 		MaxConcurrentCompactions:    getInt(p+"max-concurrent-compactions", defaults.MaxConcurrentCompactions),
 		Compression:                 compression,
 	}
@@ -806,7 +799,15 @@ func loadPebbleConfig(cmd *cobra.Command) dal.Config {
 		return def
 	}
 
-	cfg.WALBytesPerSync = getInt("pebble-wal-bytes-per-sync", cfg.WALBytesPerSync)
+	getByteSize := func(flag string, def int) int {
+		if val := bytesize.Get(cmd, flag); val != 0 {
+			return val.Int()
+		}
+
+		return def
+	}
+
+	cfg.WALBytesPerSync = getByteSize("pebble-wal-bytes-per-sync", cfg.WALBytesPerSync)
 	cfg.WALMinSyncInterval = getDuration("pebble-wal-min-sync-interval", cfg.WALMinSyncInterval)
 	cfg.MaxCheckpoints = getInt("pebble-max-checkpoints", cfg.MaxCheckpoints)
 
@@ -819,7 +820,7 @@ func loadPebbleConfig(cmd *cobra.Command) dal.Config {
 		cfg.ValueSeparation.Enabled = true
 	}
 
-	cfg.ValueSeparation.MinimumSize = getInt("pebble-value-separation-min-size", cfg.ValueSeparation.MinimumSize)
+	cfg.ValueSeparation.MinimumSize = getByteSize("pebble-value-separation-min-size", cfg.ValueSeparation.MinimumSize)
 	cfg.ValueSeparation.MaxBlobReferenceDepth = getInt("pebble-value-separation-max-depth", cfg.ValueSeparation.MaxBlobReferenceDepth)
 	cfg.ValueSeparation.RewriteMinimumAge = getDuration("pebble-value-separation-rewrite-age", cfg.ValueSeparation.RewriteMinimumAge)
 

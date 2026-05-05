@@ -183,15 +183,15 @@ Pebble can be configured using command-line flags:
 
 ```bash
 ./ledger serve \
-  --pebble-memtable-size=268435456 \
+  --pebble-memtable-size=256Mi \
   --pebble-memtable-stop-writes-threshold=6 \
   --pebble-l0-compaction-threshold=4 \
   --pebble-l0-stop-writes-threshold=16 \
-  --pebble-lbase-max-bytes=2147483648 \
-  --pebble-cache-size=1073741824 \
-  --pebble-target-file-size=268435456 \
-  --pebble-bytes-per-sync=1048576 \
-  --pebble-wal-bytes-per-sync=1048576 \
+  --pebble-lbase-max-bytes=2Gi \
+  --pebble-cache-size=1Gi \
+  --pebble-target-file-size=256Mi \
+  --pebble-bytes-per-sync=1Mi \
+  --pebble-wal-bytes-per-sync=1Mi \
   --pebble-max-concurrent-compactions=2 \
   --pebble-wal-min-sync-interval=0 \
   --pebble-disable-wal=false
