@@ -156,30 +156,35 @@ func persistLeanProtoEntries[V interface {
 
 // RestoreFromStore rebuilds the in-memory cache from Pebble (0xFF prefix).
 // Called on restart (when store is up to date) and after follower sync.
+//
+// The cache-level meta key ([0xFF][CacheMetaKey]) and per-generation meta keys
+// ([0xFF][gen][CacheGenMeta]) are written only on rotation, but per-entry rows
+// ([0xFF][gen][cacheType][U128]) are written every batch by mergeSimpleWithCache.
+// Recovery therefore must iterate the entry rows directly and treat any missing
+// meta as "no rotation has happened yet" (currentGeneration=0, BaseIndex=0)
+// rather than gating restoration on the meta sentinel.
 func (s *CacheSnapshotter) RestoreFromStore() error {
 	restoreStart := time.Now()
 
-	// Read cache-level metadata
-	metaVal, closer, err := s.dataStore.Get([]byte{dal.KeyPrefixCacheSnapshot, dal.CacheMetaKey})
-	if err != nil {
-		// No cache data in Pebble — leave cache empty (fresh node)
-		s.logger.Infof("No cache snapshot found in Pebble, starting with empty cache")
-
-		return nil
-	}
-
-	meta := &raftcmdpb.CacheSnapshotMeta{}
-	if err := meta.UnmarshalVT(metaVal); err != nil {
-		_ = closer.Close()
-
-		return fmt.Errorf("unmarshaling cache snapshot meta: %w", err)
-	}
-
-	_ = closer.Close()
-
 	s.registry.Cache.Reset()
 
-	currentGen := meta.GetCurrentGeneration()
+	// Read cache-level metadata if present. Pre-rotation, this key does not
+	// exist; default to currentGeneration=0.
+	currentGen := uint64(0)
+
+	metaVal, closer, err := s.dataStore.Get([]byte{dal.KeyPrefixCacheSnapshot, dal.CacheMetaKey})
+	if err == nil {
+		meta := &raftcmdpb.CacheSnapshotMeta{}
+		if unmarshalErr := meta.UnmarshalVT(metaVal); unmarshalErr != nil {
+			_ = closer.Close()
+
+			return fmt.Errorf("unmarshaling cache snapshot meta: %w", unmarshalErr)
+		}
+
+		_ = closer.Close()
+
+		currentGen = meta.GetCurrentGeneration()
+	}
 
 	// Gen-byte mapping: gen0 at currentGeneration % 2, gen1 at the other byte.
 	gen0Byte := byte(currentGen % 2)
@@ -213,28 +218,35 @@ func (s *CacheSnapshotter) RestoreFromStore() error {
 // restoreGeneration restores a single cache generation from Pebble.
 // genByte is the byte position in 0xFF keys; genIndex selects the
 // in-memory generation to populate (0=gen0, 1=gen1).
+//
+// The per-generation meta key ([0xFF][gen][CacheGenMeta]) is only written on
+// rotation. When absent, BaseIndex defaults to 0 (the pre-rotation value) and
+// we still iterate the per-entry rows that mergeSimpleWithCache emits every
+// batch.
 func (s *CacheSnapshotter) restoreGeneration(genByte byte, genIndex int) error {
-	// Read generation metadata
+	// Read generation metadata if present.
+	baseIndex := uint64(0)
+
 	genMetaKey := []byte{dal.KeyPrefixCacheSnapshot, genByte, dal.CacheGenMeta}
 
 	genMetaVal, closer, err := s.dataStore.Get(genMetaKey)
-	if err != nil {
-		return nil // No data for this generation
-	}
+	if err == nil {
+		genMeta := &raftcmdpb.CacheGenerationMeta{}
+		if unmarshalErr := genMeta.UnmarshalVT(genMetaVal); unmarshalErr != nil {
+			_ = closer.Close()
 
-	genMeta := &raftcmdpb.CacheGenerationMeta{}
-	if err := genMeta.UnmarshalVT(genMetaVal); err != nil {
+			return fmt.Errorf("unmarshaling gen meta: %w", unmarshalErr)
+		}
+
 		_ = closer.Close()
 
-		return fmt.Errorf("unmarshaling gen meta: %w", err)
+		baseIndex = genMeta.GetBaseIndex()
 	}
 
-	_ = closer.Close()
-
 	if genIndex == 0 {
-		s.registry.Cache.BaseIndex.Gen0 = genMeta.GetBaseIndex()
+		s.registry.Cache.BaseIndex.Gen0 = baseIndex
 	} else {
-		s.registry.Cache.BaseIndex.Gen1 = genMeta.GetBaseIndex()
+		s.registry.Cache.BaseIndex.Gen1 = baseIndex
 	}
 
 	var (

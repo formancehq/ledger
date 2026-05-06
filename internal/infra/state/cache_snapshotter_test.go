@@ -435,6 +435,65 @@ func TestCacheSnapshotter_PersistAndRestoreCurrentGeneration(t *testing.T) {
 	require.Equal(t, uint64(42), registry.Cache.CurrentGeneration())
 }
 
+// TestCacheSnapshotter_RestorePreRotation simulates a crash before any cache
+// rotation has occurred: per-entry rows are written every batch by
+// mergeSimpleWithCache, but [0xFF][CacheMetaKey] and [0xFF][gen][CacheGenMeta]
+// are produced only by writeCacheRotation. Recovery must still rebuild the
+// cache from the per-entry rows that exist on disk.
+func TestCacheSnapshotter_RestorePreRotation(t *testing.T) {
+	t.Parallel()
+
+	snapshotter, dataStore, registry := newTestCacheSnapshotter(t, nil)
+
+	// Simulate the writes mergeSimpleWithCache emits during normal apply,
+	// without invoking writeCacheRotation. genByte=0 is the natural choice
+	// pre-rotation because CurrentGeneration() defaults to 0.
+	const genByte byte = 0
+
+	boundaryKey := domain.LedgerKey{Name: "default"}
+	boundaryU128 := attributes.HashU128(attributes.DefaultSeeds, boundaryKey.Bytes())
+	boundaryValue := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1}
+	boundaryBytes, err := boundaryValue.MarshalVT()
+	require.NoError(t, err)
+
+	volKey := domain.NewVolumeKey(domain.AccountKey{Ledger: "default", Account: "world"}, "USD")
+	volU128 := attributes.HashU128(attributes.DefaultSeeds, volKey.Bytes())
+	volValue := &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
+	}
+	volBytes, err := volValue.MarshalVT()
+	require.NoError(t, err)
+
+	batch := dataStore.NewBatch()
+	require.NoError(t, writeCacheRaw(batch, genByte, dal.AttributePrefixBoundary, boundaryU128, 11, boundaryBytes))
+	require.NoError(t, writeCacheRaw(batch, genByte, dal.AttributePrefixVolume, volU128, 22, volBytes))
+	require.NoError(t, batch.Commit())
+
+	// Sanity: no meta keys written.
+	_, _, err = dataStore.Get([]byte{dal.KeyPrefixCacheSnapshot, dal.CacheMetaKey})
+	require.Error(t, err, "CacheMetaKey must be absent pre-rotation")
+
+	_, _, err = dataStore.Get([]byte{dal.KeyPrefixCacheSnapshot, genByte, dal.CacheGenMeta})
+	require.Error(t, err, "CacheGenMeta must be absent pre-rotation")
+
+	// Recovery must pick up the entries despite the missing sentinels.
+	registry.Cache.Reset()
+	require.NoError(t, snapshotter.RestoreFromStore())
+
+	require.Equal(t, uint64(0), registry.Cache.CurrentGeneration())
+	require.Equal(t, uint64(0), registry.Cache.BaseIndex.Gen0)
+
+	restoredBoundary, ok := registry.Cache.Boundaries.Gen0().Get(boundaryU128)
+	require.True(t, ok, "boundary must be restored from per-entry row")
+	require.Equal(t, uint64(1), restoredBoundary.Data.GetNextTransactionId())
+	require.Equal(t, uint64(11), restoredBoundary.Tag)
+
+	restoredVol, ok := registry.Cache.Volumes.Gen0().Get(volU128)
+	require.True(t, ok, "volume must be restored from per-entry row")
+	require.Equal(t, uint64(22), restoredVol.Tag)
+}
+
 func TestCacheSnapshotter_MachineIntegration(t *testing.T) {
 	t.Parallel()
 
