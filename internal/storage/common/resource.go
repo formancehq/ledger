@@ -176,10 +176,12 @@ func (r *ResourceRepository[ResourceType, OptionsType]) buildFilteredDataset(q R
 		if err != nil {
 			return nil, err
 		}
-		if len(args) > 0 {
-			dataset = dataset.Where(where, args...)
-		} else {
-			dataset = dataset.Where(where)
+		if where != "" {
+			if len(args) > 0 {
+				dataset = dataset.Where(where, args...)
+			} else {
+				dataset = dataset.Where(where)
+			}
 		}
 	}
 
