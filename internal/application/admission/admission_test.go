@@ -752,7 +752,7 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 			},
 		}
 
-		order, err := admission.requestToOrder(t.Context(), request)
+		order, err := admission.requestToOrder(t.Context(), request, newBulkOverlay())
 		require.NoError(t, err)
 		require.NotNil(t, order)
 		require.NotNil(t, order.GetIdempotency())
@@ -802,8 +802,10 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 			},
 		}
 
+		overlay := newBulkOverlay()
 		needs, err := admission.extractPreloadNeeds(context.Background(), orders)
 		require.NoError(t, err)
+		require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs))
 		volumes := needs.Volumes
 
 		// Both source and destination volumes are preloaded from numscript
@@ -853,8 +855,10 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 			},
 		}
 
+		overlay := newBulkOverlay()
 		needs, err := admission.extractPreloadNeeds(context.Background(), orders)
 		require.NoError(t, err)
+		require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs))
 		volumes := needs.Volumes
 
 		// Force=true no longer skips volume extraction - all volumes are preloaded
@@ -946,7 +950,7 @@ func TestRequestToOrder_IdempotencyKeyValidation(t *testing.T) {
 			},
 		}
 
-		order, err := adm.requestToOrder(t.Context(), req)
+		order, err := adm.requestToOrder(t.Context(), req, newBulkOverlay())
 		require.NoError(t, err)
 		require.NotNil(t, order)
 		require.NotNil(t, order.GetIdempotency())
@@ -970,7 +974,7 @@ func TestRequestToOrder_IdempotencyKeyValidation(t *testing.T) {
 			},
 		}
 
-		order, err := adm.requestToOrder(t.Context(), req)
+		order, err := adm.requestToOrder(t.Context(), req, newBulkOverlay())
 		require.NoError(t, err)
 		require.NotNil(t, order)
 		require.NotNil(t, order.GetIdempotency())
@@ -994,7 +998,7 @@ func TestRequestToOrder_IdempotencyKeyValidation(t *testing.T) {
 			},
 		}
 
-		_, err := adm.requestToOrder(t.Context(), req)
+		_, err := adm.requestToOrder(t.Context(), req, newBulkOverlay())
 		require.Error(t, err)
 		require.ErrorIs(t, err, ErrIdempotencyKeyTooLong)
 	})
@@ -1012,7 +1016,7 @@ func TestRequestToOrder_IdempotencyKeyValidation(t *testing.T) {
 			},
 		}
 
-		order, err := adm.requestToOrder(t.Context(), req)
+		order, err := adm.requestToOrder(t.Context(), req, newBulkOverlay())
 		require.NoError(t, err)
 		require.NotNil(t, order)
 		require.Nil(t, order.GetIdempotency())

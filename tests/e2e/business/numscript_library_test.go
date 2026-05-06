@@ -495,6 +495,11 @@ send $amount (
 			Expect(createdTx.Transaction.Postings[0].Asset).To(Equal("USD/2"))
 			Expect(createdTx.Transaction.Postings[0].Amount.ToBigInt().String()).To(Equal("1000"))
 
+			// Audit: NumscriptReference should be populated with the requested version (not resolved)
+			Expect(createdTx.NumscriptReference).NotTo(BeNil())
+			Expect(createdTx.NumscriptReference.Name).To(Equal("send_payment"))
+			Expect(createdTx.NumscriptReference.Version).To(BeEmpty()) // version="" means latest
+
 			// Verify balance
 			Eventually(func(g Gomega) {
 				account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
@@ -535,6 +540,164 @@ send $amount (
 			Expect(createdTx.Transaction.Postings[0].Source).To(Equal("world"))
 			Expect(createdTx.Transaction.Postings[0].Destination).To(Equal("users:bob"))
 			Expect(createdTx.Transaction.Postings[0].Amount.ToBigInt().String()).To(Equal("500"))
+		})
+	})
+
+	Context("Intra-bulk script reference", Ordered, func() {
+		const ledgerName = "numscript-intra-bulk-ref-ledger"
+
+		const transferScript = `
+vars {
+  account $destination
+  monetary $amount
+}
+
+send $amount (
+  source = @world
+  destination = $destination
+)
+`
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("Should save a numscript and use it by reference in the same bulk", func() {
+			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.SaveNumscriptWithVersionAction(ledgerName, "intra-transfer", transferScript, "1.0.0"),
+					actions.CreateScriptRefTransactionAction(ledgerName, "intra-transfer", "1.0.0", map[string]string{
+						"destination": "users:intra-bulk",
+						"amount":      "USD/2 500",
+					}, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(resp.Logs).To(HaveLen(2))
+
+			// First log: saved numscript
+			saved := resp.Logs[0].Payload.GetSavedNumscript()
+			Expect(saved).NotTo(BeNil())
+			Expect(saved.Info.Name).To(Equal("intra-transfer"))
+
+			// Second log: created transaction
+			createdTx := resp.Logs[1].Payload.GetApply().Log.Data.GetCreatedTransaction()
+			Expect(createdTx).NotTo(BeNil())
+			Expect(createdTx.Transaction.Postings).To(HaveLen(1))
+			Expect(createdTx.Transaction.Postings[0].Destination).To(Equal("users:intra-bulk"))
+			Expect(createdTx.Transaction.Postings[0].Amount.ToBigInt().String()).To(Equal("500"))
+
+			// Audit: NumscriptReference should be populated
+			Expect(createdTx.NumscriptReference).NotTo(BeNil())
+			Expect(createdTx.NumscriptReference.Name).To(Equal("intra-transfer"))
+			Expect(createdTx.NumscriptReference.Version).To(Equal("1.0.0"))
+		})
+	})
+
+	Context("Intra-bulk numscript operations", Ordered, func() {
+		const ledgerName = "numscript-intra-bulk-ops-ledger"
+
+		const simpleScript = `send [USD/2 1] (source = @world destination = @x)`
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("Should save two versions of the same numscript in one bulk", func() {
+			const v1Script = `send [USD/2 10] (source = @world destination = @x)`
+			const v2Script = `send [USD/2 20] (source = @world destination = @x)`
+
+			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.SaveNumscriptWithVersionAction(ledgerName, "multi-ver", v1Script, "1.0.0"),
+					actions.SaveNumscriptWithVersionAction(ledgerName, "multi-ver", v2Script, "2.0.0"),
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(resp.Logs).To(HaveLen(2))
+
+			// Both should succeed
+			Expect(resp.Logs[0].Payload.GetSavedNumscript().Info.Version).To(Equal("1.0.0"))
+			Expect(resp.Logs[1].Payload.GetSavedNumscript().Info.Version).To(Equal("2.0.0"))
+
+			// Latest should be 2.0.0
+			info, err := sharedClient.GetNumscript(sharedCtx, &servicepb.GetNumscriptRequest{
+				Ledger: ledgerName,
+				Name:   "multi-ver",
+			})
+			Expect(err).To(Succeed())
+			Expect(info.Version).To(Equal("2.0.0"))
+		})
+
+		It("Should save a numscript then delete it in the same bulk", func() {
+			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.SaveNumscriptWithVersionAction(ledgerName, "ephemeral", simpleScript, "1.0.0"),
+					actions.DeleteNumscriptAction(ledgerName, "ephemeral"),
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(resp.Logs).To(HaveLen(2))
+
+			Expect(resp.Logs[0].Payload.GetSavedNumscript()).NotTo(BeNil())
+			Expect(resp.Logs[1].Payload.GetDeletedNumscript()).NotTo(BeNil())
+
+			// Numscript should be gone
+			_, err = sharedClient.GetNumscript(sharedCtx, &servicepb.GetNumscriptRequest{
+				Ledger: ledgerName,
+				Name:   "ephemeral",
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(status.Code(err)).To(Equal(codes.NotFound))
+		})
+	})
+
+	Context("Intra-bulk delete blocks reference", Ordered, func() {
+		const ledgerName = "numscript-intra-delete-ref-ledger"
+
+		const transferScript = `
+vars {
+  account $destination
+  monetary $amount
+}
+
+send $amount (
+  source = @world
+  destination = $destination
+)
+`
+
+		BeforeAll(func() {
+			// Create ledger and save the numscript in a prior bulk
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.CreateLedgerAction(ledgerName, nil),
+					actions.SaveNumscriptWithVersionAction(ledgerName, "doomed", transferScript, "1.0.0"),
+				},
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("Should fail when referencing a numscript deleted earlier in the same bulk", func() {
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.DeleteNumscriptAction(ledgerName, "doomed"),
+					actions.CreateScriptRefTransactionAction(ledgerName, "doomed", "1.0.0", map[string]string{
+						"destination": "users:ghost",
+						"amount":      "USD/2 1",
+					}, nil),
+				},
+			})
+			Expect(err).To(HaveOccurred())
+			st, ok := status.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(st.Code()).To(Equal(codes.NotFound))
 		})
 	})
 
@@ -629,7 +792,9 @@ send $amount (
 											Plain: "send [USD/2 1] (source = @world destination = @x)",
 										},
 										ScriptReference: &servicepb.ScriptReference{
-											Name: "some-script",
+											Reference: &commonpb.NumscriptReference{
+												Name: "some-script",
+											},
 										},
 									},
 								},

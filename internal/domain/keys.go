@@ -318,13 +318,24 @@ func (k NumscriptEntryKey) Bytes() []byte {
 	return ret
 }
 
-// NumscriptContentKey uniquely identifies a numscript by content hash for the dual-gen parse cache.
+// NumscriptContentKey uniquely identifies a numscript by (ledger, name, version) for the dual-gen cache.
+// Used by the preload pipeline to cache resolved numscript content for ScriptReference orders.
 type NumscriptContentKey struct {
-	Hash [32]byte
+	Ledger  string
+	Name    string
+	Version string
 }
 
 func (k NumscriptContentKey) Bytes() []byte {
-	return k.Hash[:]
+	// Deterministic encoding: ledger\x00name\x00version
+	b := make([]byte, 0, len(k.Ledger)+1+len(k.Name)+1+len(k.Version))
+	b = append(b, k.Ledger...)
+	b = append(b, 0)
+	b = append(b, k.Name...)
+	b = append(b, 0)
+	b = append(b, k.Version...)
+
+	return b
 }
 
 const (

@@ -721,19 +721,19 @@ func (mr *MockInMemoryStoreMockRecorder) RemoveSinkConfig(name any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveSinkConfig", reflect.TypeOf((*MockInMemoryStore)(nil).RemoveSinkConfig), name)
 }
 
-// ResolveNumscriptText mocks base method.
-func (m *MockInMemoryStore) ResolveNumscriptText(contentHash []byte) (string, error) {
+// ResolveNumscriptContent mocks base method.
+func (m *MockInMemoryStore) ResolveNumscriptContent(ledger, name, version string) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ResolveNumscriptText", contentHash)
+	ret := m.ctrl.Call(m, "ResolveNumscriptContent", ledger, name, version)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ResolveNumscriptText indicates an expected call of ResolveNumscriptText.
-func (mr *MockInMemoryStoreMockRecorder) ResolveNumscriptText(contentHash any) *gomock.Call {
+// ResolveNumscriptContent indicates an expected call of ResolveNumscriptContent.
+func (mr *MockInMemoryStoreMockRecorder) ResolveNumscriptContent(ledger, name, version any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveNumscriptText", reflect.TypeOf((*MockInMemoryStore)(nil).ResolveNumscriptText), contentHash)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveNumscriptContent", reflect.TypeOf((*MockInMemoryStore)(nil).ResolveNumscriptContent), ledger, name, version)
 }
 
 // SaveQueryCheckpoint mocks base method.

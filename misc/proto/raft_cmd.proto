@@ -341,6 +341,7 @@ message CreateTransactionOrder {
   map<string, common.MetadataSet> account_metadata = 6;
   bool force = 7;  // Skip balance checks when true
   bool expand_volumes = 8;  // Include post-commit volumes in response
+  common.NumscriptReference numscript_reference = 9;  // Audit: which named numscript was resolved
 }
 
 message SaveMetadataOrder {
@@ -382,6 +383,10 @@ message Proposal {
   // receives Unavailable so it can retry with fresh preloads.
   // A value of 0 means no prediction (e.g. barrier, mirror sync).
   uint64 predicted_index = 7;
+  // dry_run instructs the FSM to process orders without persisting results.
+  // The FSM runs ProcessOrders normally but skips buffer.Merge, audit entries,
+  // and Machine state updates. The computed logs are returned to the caller.
+  bool dry_run = 8;
 }
 
 message MirrorSyncUpdate {

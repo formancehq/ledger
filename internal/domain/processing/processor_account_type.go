@@ -2,6 +2,7 @@ package processing
 
 import (
 	"github.com/holiman/uint256"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/accounttype"
@@ -20,24 +21,24 @@ func (p *RequestProcessor) processAddAccountType(
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 	}
 
-	at := order.GetAccountType()
-	if at == nil || at.GetName() == "" {
+	if order.GetAccountType() == nil || order.GetAccountType().GetName() == "" {
 		return nil, &domain.ErrInvalidPattern{Pattern: "", Details: "account type name is required"}
 	}
 
-	if err := accounttype.ValidatePattern(at.GetPattern()); err != nil {
-		return nil, &domain.ErrInvalidPattern{Pattern: at.GetPattern(), Details: err.Error()}
+	if err := accounttype.ValidatePattern(order.GetAccountType().GetPattern()); err != nil {
+		return nil, &domain.ErrInvalidPattern{Pattern: order.GetAccountType().GetPattern(), Details: err.Error()}
 	}
 
 	if info.AccountTypes == nil {
 		info.AccountTypes = make(map[string]*commonpb.AccountType)
 	}
 
-	if _, exists := info.GetAccountTypes()[at.GetName()]; exists {
-		return nil, &domain.ErrAccountTypeAlreadyExists{Name: at.GetName()}
+	if _, exists := info.GetAccountTypes()[order.GetAccountType().GetName()]; exists {
+		return nil, &domain.ErrAccountTypeAlreadyExists{Name: order.GetAccountType().GetName()}
 	}
 
-	// Set default status to ACTIVE.
+	// Clone the order's AccountType to avoid mutating the order (audit integrity).
+	at := proto.Clone(order.GetAccountType()).(*commonpb.AccountType)
 	at.Status = commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE
 
 	info.AccountTypes[at.GetName()] = at
@@ -125,6 +126,9 @@ func (p *RequestProcessor) processStartAccountMigration(
 	}
 
 	oldPattern := at.GetPattern()
+
+	// Clone the AccountType to avoid mutating shared state from the order/preload.
+	at = proto.Clone(at).(*commonpb.AccountType)
 	at.Status = commonpb.AccountTypeStatus_ACCOUNT_TYPE_MIGRATING
 	at.Migration = &commonpb.AccountTypeMigration{
 		TargetPattern:    order.GetTargetPattern(),
@@ -132,6 +136,7 @@ func (p *RequestProcessor) processStartAccountMigration(
 		MigratedAccounts: 0,
 	}
 
+	info.AccountTypes[order.GetAccountTypeName()] = at
 	s.PutLedger(ledgerName, info)
 	s.AddAccountMigrateRequest(ledgerName, at.GetName(), oldPattern, order.GetTargetPattern())
 
@@ -176,7 +181,6 @@ func (p *RequestProcessor) processAccountMigrationBatch(
 		}, nil
 	}
 
-	migration := at.GetMigration()
 	zeroVolume := &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256(new(uint256.Int)),
 		Output: commonpb.NewUint256(new(uint256.Int)),
@@ -257,7 +261,11 @@ func (p *RequestProcessor) processAccountMigrationBatch(
 		count++
 	}
 
-	// Update migration progress.
+	// Update migration progress on a clone to avoid mutating shared state.
+	at = proto.Clone(at).(*commonpb.AccountType)
+	info.AccountTypes[order.GetAccountTypeName()] = at
+	migration := at.GetMigration()
+
 	if len(order.GetEntries()) > 0 {
 		lastEntry := order.GetEntries()[len(order.GetEntries())-1]
 		migration.Cursor = lastEntry.GetOldAddress()
@@ -324,12 +332,15 @@ func (p *RequestProcessor) processCompleteAccountMigration(
 
 	migration := at.GetMigration()
 	oldPattern := at.GetPattern()
+	totalMigrated := migration.GetMigratedAccounts()
 
+	// Clone the AccountType to avoid mutating shared state from the preload.
+	at = proto.Clone(at).(*commonpb.AccountType)
 	at.Pattern = migration.GetTargetPattern()
 	at.Status = commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE
-	totalMigrated := migration.GetMigratedAccounts()
 	at.Migration = nil
 
+	info.AccountTypes[order.GetAccountTypeName()] = at
 	s.PutLedger(ledgerName, info)
 	p.invalidateCompiledTypes(ledgerName)
 

@@ -529,12 +529,13 @@ func (b *Buffered) GetBoundaries(ledger string) (*raftcmdpb.LedgerBoundaries, bo
 	return boundaries, true
 }
 
-func (b *Buffered) ResolveNumscriptText(contentHash []byte) (string, error) {
-	id, _ := attributes.MakeKey(attributes.DefaultSeeds, contentHash)
+func (b *Buffered) ResolveNumscriptContent(ledger, name, version string) (string, error) {
+	key := domain.NumscriptContentKey{Ledger: ledger, Name: name, Version: version}
+	id, _ := attributes.MakeKey(attributes.DefaultSeeds, key.Bytes())
 
 	entry, ok := b.fsm.Registry.Cache.NumscriptParsed.Get(id)
 	if !ok {
-		return "", fmt.Errorf("numscript text not in cache for hash %x", contentHash)
+		return "", fmt.Errorf("numscript %q version %q not in cache for ledger %q", name, version, ledger)
 	}
 
 	return entry.Data, nil

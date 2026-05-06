@@ -119,5 +119,5 @@ type InMemoryStore interface {
 	MarkLedgerForCleanup(ledger string)
 
 	// Numscript resolution
-	ResolveNumscriptText(contentHash []byte) (string, error)
+	ResolveNumscriptContent(ledger, name, version string) (string, error)
 }

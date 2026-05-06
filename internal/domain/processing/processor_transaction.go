@@ -42,22 +42,24 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 		resolveMigratingVolumes(s, ledger, order, info)
 	}
 
-	// Resolve numscript text from cache for hash-only scripts
-	if script := order.GetScript(); script != nil &&
-		len(script.GetContentHash()) > 0 && script.GetPlain() == "" {
-		text, err := s.ResolveNumscriptText(script.GetContentHash())
+	// Determine script text: inline (from order) or resolved (from cache via reference)
+	var scriptText string
+
+	if ref := order.GetNumscriptReference(); ref != nil && ref.GetName() != "" {
+		text, err := s.ResolveNumscriptContent(ledger, ref.GetName(), ref.GetVersion())
 		if err != nil {
 			return nil, err
 		}
 
-		script.Plain = text
+		scriptText = text
+	} else if order.GetScript() != nil && order.GetScript().GetPlain() != "" {
+		scriptText = order.GetScript().GetPlain()
 	}
 
 	// Select the appropriate posting producer
 	var producer postingProducer
-	isNumscript := order.GetScript() != nil && order.GetScript().GetPlain() != ""
-	if isNumscript {
-		producer = &numscriptPostingProducer{cache: p.numscriptCache, ledger: ledger, schema: schema}
+	if scriptText != "" {
+		producer = &numscriptPostingProducer{cache: p.numscriptCache, ledger: ledger, schema: schema, scriptText: scriptText}
 	} else {
 		producer = &stdPostingProducer{}
 	}
@@ -72,7 +74,7 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 	boundaries.NextTransactionId = nextTransactionID + 1
 	boundaries.PostingCount += uint64(len(result.Postings))
 
-	if isNumscript {
+	if scriptText != "" {
 		boundaries.NumscriptExecutionCount++
 	}
 
@@ -237,6 +239,7 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 				PeriodId:                periodID,
 				PostCommitVolumes:       postCommitVolumes,
 				PreviousAccountMetadata: previousAccountMetadata,
+				NumscriptReference:      order.GetNumscriptReference(),
 			},
 		},
 	}, nil

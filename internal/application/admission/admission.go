@@ -29,6 +29,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/keystore"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/semver"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/vtmarshal"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
@@ -316,18 +317,24 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	}
 
 	// Convert requests to orders
-	orders, err := a.requestsToOrders(ctx, requests)
+	orders, overlay, err := a.requestsToOrders(ctx, requests)
 	if err != nil {
 		return nil, fmt.Errorf("converting requests to orders: %w", err)
 	}
 
-	// Step 1: Extract all preload needs from orders in a single pass
+	// Step 1: Extract preload needs from orders (excludes script-dependent needs)
 	needs, err := a.extractPreloadNeeds(ctx, orders)
 	if err != nil {
 		return nil, err
 	}
 
-	// Step 2-4: Build preloads via shared Preloader (no lock)
+	// Step 2: Resolve script references and discover script dependencies.
+	// This enriches needs with volumes/metadata discovered from scripts.
+	if err := a.resolveScriptsAndEnrichNeeds(ctx, orders, overlay, needs); err != nil {
+		return nil, err
+	}
+
+	// Step 3-5: Build preloads via shared Preloader (no lock)
 	cmd := commands.NewCommand(orders...)
 
 	ctx, preloadSpan := tracer.Start(ctx, "admission.preload",
@@ -879,73 +886,13 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 					}] = struct{}{}
 				}
 
-				// Numscript emulation: discover required accounts and metadata
-				if applyData.CreateTransaction.GetScript() != nil &&
-					applyData.CreateTransaction.GetScript().GetPlain() != "" &&
-					len(applyData.CreateTransaction.GetPostings()) == 0 {
-					scriptText := applyData.CreateTransaction.GetScript().GetPlain()
-
-					discovered, err := numscript.DiscoverNumscriptDependencies(
-						a.numscriptCache,
-						scriptText,
-						applyData.CreateTransaction.GetScript().GetVars(),
-						ledgerName,
-					)
-					if err != nil {
-						if errors.Is(err, numscript.ErrMetaNotSupported) {
-							return nil, &domain.BusinessError{Err: numscript.ErrMetaNotSupported}
-						}
-
-						if a.logger.Enabled(logging.DebugLevel) {
-							a.logger.WithFields(map[string]any{
-								"error": err.Error(),
-							}).Debug("Numscript emulation failed during dependency discovery, skipping preload")
-						}
-					}
-
-					if discovered != nil {
-						scriptTypes := a.cachedCompiledTypes(ctx, compiledTypesCache, ledgerInfoCache, ledgerName)
-						for key := range discovered.SourceVolumes {
-							addVolumeNeed(p, key.Ledger, key.Account, key.Asset, scriptTypes)
-						}
-
-						for key := range discovered.DestinationVolumes {
-							addVolumeNeed(p, key.Ledger, key.Account, key.Asset, scriptTypes)
-						}
-
-						for key := range discovered.WrittenMetadata {
-							p.Metadata[key] = struct{}{}
-						}
-					}
-
-					// Add script text to NumscriptParsed needs for dual-gen cache
-					scriptHash := numscript.HashScript(scriptText)
-					contentKey := domain.NumscriptContentKey{Hash: scriptHash}
-
-					if p.NumscriptParsed == nil {
-						p.NumscriptParsed = make(map[domain.NumscriptContentKey]func() (string, error))
-					}
-
-					p.NumscriptParsed[contentKey] = func() (string, error) { return scriptText, nil }
-
-					// Set content_hash and clear plain (FSM resolves from dual-gen cache)
-					applyData.CreateTransaction.GetScript().ContentHash = scriptHash[:]
-					applyData.CreateTransaction.GetScript().Plain = ""
-
-					// Enrich preload with old-address volumes for MIGRATING account types.
-					if discovered != nil {
-						var scriptVolKeys []domain.VolumeKey
-						for key := range discovered.SourceVolumes {
-							scriptVolKeys = append(scriptVolKeys, key)
-						}
-
-						for key := range discovered.DestinationVolumes {
-							scriptVolKeys = append(scriptVolKeys, key)
-						}
-
-						enrichMigratingVolumePreloads(a.cachedLedgerInfo(ctx, ledgerInfoCache, ledgerName), ledgerName, p, scriptVolKeys)
-					}
-
+				// Scripts (inline or reference) are resolved in a separate pass
+				// (resolveScriptsAndEnrichNeeds) after extractPreloadNeeds returns.
+				// Skip volume/metadata preload for script-based orders here.
+				if applyData.CreateTransaction.GetNumscriptReference() != nil ||
+					(applyData.CreateTransaction.GetScript() != nil &&
+						applyData.CreateTransaction.GetScript().GetPlain() != "" &&
+						len(applyData.CreateTransaction.GetPostings()) == 0) {
 					continue
 				}
 
@@ -1016,6 +963,120 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 	}
 
 	return p, nil
+}
+
+// resolveScriptsAndEnrichNeeds resolves ScriptReferences and discovers volume/metadata
+// dependencies from all script-based CreateTransaction orders. It enriches the given
+// Needs with the discovered dependencies so that a single BuildPreloads call covers everything.
+//
+// This runs after extractPreloadNeeds (which skips script-based orders) and before BuildPreloads.
+func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*raftcmdpb.Order, overlay *bulkOverlay, p *preload.Needs) error {
+	ledgerInfoCache := make(map[string]*commonpb.LedgerInfo)
+	compiledTypesCache := make(map[string][]accounttype.CompiledType)
+
+	for _, order := range orders {
+		applyOrder, ok := order.GetType().(*raftcmdpb.Order_Apply)
+		if !ok {
+			continue
+		}
+
+		createTx, ok := applyOrder.Apply.GetData().(*raftcmdpb.LedgerApplyOrder_CreateTransaction)
+		if !ok {
+			continue
+		}
+
+		ledgerName := applyOrder.Apply.GetLedger()
+
+		var scriptText string
+		isReference := false
+
+		// Resolve ScriptReference: load numscript content from overlay (intra-bulk) or Pebble.
+		if ref := createTx.CreateTransaction.GetNumscriptReference(); ref != nil && ref.GetName() != "" {
+			content, _, err := a.resolveNumscriptReference(overlay, ledgerName, ref.GetName(), ref.GetVersion())
+			if err != nil {
+				return err
+			}
+
+			scriptText = content
+			isReference = true
+		} else if createTx.CreateTransaction.GetScript() != nil &&
+			createTx.CreateTransaction.GetScript().GetPlain() != "" &&
+			len(createTx.CreateTransaction.GetPostings()) == 0 {
+			// Inline script
+			scriptText = createTx.CreateTransaction.GetScript().GetPlain()
+		} else {
+			// Postings-only — handled by extractPreloadNeeds
+			continue
+		}
+
+		discovered, err := numscript.DiscoverNumscriptDependencies(
+			a.numscriptCache,
+			scriptText,
+			createTx.CreateTransaction.GetScript().GetVars(),
+			ledgerName,
+		)
+		if err != nil {
+			if errors.Is(err, numscript.ErrMetaNotSupported) {
+				return &domain.BusinessError{Err: numscript.ErrMetaNotSupported}
+			}
+
+			if a.logger.Enabled(logging.DebugLevel) {
+				a.logger.WithFields(map[string]any{
+					"error": err.Error(),
+				}).Debug("Numscript emulation failed during dependency discovery, skipping preload")
+			}
+		}
+
+		if discovered != nil {
+			scriptTypes := a.cachedCompiledTypes(ctx, compiledTypesCache, ledgerInfoCache, ledgerName)
+
+			for key := range discovered.SourceVolumes {
+				addVolumeNeed(p, key.Ledger, key.Account, key.Asset, scriptTypes)
+			}
+
+			for key := range discovered.DestinationVolumes {
+				addVolumeNeed(p, key.Ledger, key.Account, key.Asset, scriptTypes)
+			}
+
+			for key := range discovered.WrittenMetadata {
+				p.Metadata[key] = struct{}{}
+			}
+		}
+
+		// For references: preload the resolved content keyed by (ledger, name, version).
+		// The FSM resolves via NumscriptReference from the dual-gen cache.
+		// For inline scripts: the text stays in the order as-is, no preload needed.
+		if isReference {
+			ref := createTx.CreateTransaction.GetNumscriptReference()
+			contentKey := domain.NumscriptContentKey{
+				Ledger:  ledgerName,
+				Name:    ref.GetName(),
+				Version: ref.GetVersion(),
+			}
+
+			if p.NumscriptParsed == nil {
+				p.NumscriptParsed = make(map[domain.NumscriptContentKey]func() (string, error))
+			}
+
+			p.NumscriptParsed[contentKey] = func() (string, error) { return scriptText, nil }
+		}
+
+		// Enrich preload with old-address volumes for MIGRATING account types.
+		if discovered != nil {
+			var scriptVolKeys []domain.VolumeKey
+			for key := range discovered.SourceVolumes {
+				scriptVolKeys = append(scriptVolKeys, key)
+			}
+
+			for key := range discovered.DestinationVolumes {
+				scriptVolKeys = append(scriptVolKeys, key)
+			}
+
+			enrichMigratingVolumePreloads(a.cachedLedgerInfo(ctx, ledgerInfoCache, ledgerName), ledgerName, p, scriptVolKeys)
+		}
+	}
+
+	return nil
 }
 
 // volumeKeysFromPostings extracts volume keys from postings (source + destination).
@@ -1091,7 +1152,7 @@ func enrichMigratingVolumePreloads(
 }
 
 // requestToOrder converts a servicepb.Request to a raftcmdpb.Order.
-func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request) (*raftcmdpb.Order, error) {
+func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, overlay *bulkOverlay) (*raftcmdpb.Order, error) {
 	order := &raftcmdpb.Order{}
 
 	switch reqType := req.GetType().(type) {
@@ -1153,12 +1214,16 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request) 
 				Config: reqType.AddEventsSink.GetConfig(),
 			},
 		}
+
+		overlay.sinks.Put(reqType.AddEventsSink.GetConfig().GetName(), reqType.AddEventsSink.GetConfig())
 	case *servicepb.Request_RemoveEventsSink:
 		order.Type = &raftcmdpb.Order_RemoveEventsSink{
 			RemoveEventsSink: &raftcmdpb.RemoveEventsSinkOrder{
 				Name: reqType.RemoveEventsSink.GetName(),
 			},
 		}
+
+		overlay.sinks.Delete(reqType.RemoveEventsSink.GetName())
 	case *servicepb.Request_ClosePeriod:
 		order.Type = &raftcmdpb.Order_ClosePeriod{
 			ClosePeriod: &raftcmdpb.ClosePeriodOrder{},
@@ -1300,6 +1365,13 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request) 
 				Ledger:  reqType.SaveNumscript.GetLedger(),
 			},
 		}
+
+		overlay.recordNumscriptSave(
+			reqType.SaveNumscript.GetLedger(),
+			reqType.SaveNumscript.GetName(),
+			reqType.SaveNumscript.GetVersion(),
+			reqType.SaveNumscript.GetContent(),
+		)
 	case *servicepb.Request_DeleteNumscript:
 		order.Type = &raftcmdpb.Order_DeleteNumscript{
 			DeleteNumscript: &raftcmdpb.DeleteNumscriptOrder{
@@ -1307,6 +1379,8 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request) 
 				Ledger: reqType.DeleteNumscript.GetLedger(),
 			},
 		}
+
+		overlay.recordNumscriptDelete(reqType.DeleteNumscript.GetLedger(), reqType.DeleteNumscript.GetName())
 	case *servicepb.Request_CreateQueryCheckpoint:
 		order.Type = &raftcmdpb.Order_CreateQueryCheckpoint{
 			CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{},
@@ -1408,7 +1482,10 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 		ct := data.CreateTransaction
 		script := ct.GetScript()
 
-		// Resolve ScriptReference: read numscript from Pebble and use it as the script
+		var numscriptRef *commonpb.NumscriptReference
+
+		// ScriptReference validation: reject if both script content and reference are set.
+		// Content resolution is deferred to extractPreloadNeeds.
 		if ct.GetScriptReference() != nil {
 			if script != nil && script.GetPlain() != "" {
 				return nil, &domain.BusinessError{
@@ -1416,33 +1493,25 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 				}
 			}
 
-			info, err := query.ReadNumscript(a.store, apply.GetLedger(), ct.GetScriptReference().GetName(), ct.GetScriptReference().GetVersion())
-			if err != nil {
-				return nil, fmt.Errorf("reading numscript %q: %w", ct.GetScriptReference().GetName(), err)
-			}
-
-			if info == nil {
-				return nil, &domain.BusinessError{
-					Err: &domain.ErrNumscriptNotFound{Name: ct.GetScriptReference().GetName()},
-				}
-			}
-
+			// Pass vars through; content will be resolved in resolveScriptsAndEnrichNeeds
 			script = &commonpb.Script{
-				Plain: info.GetContent(),
-				Vars:  ct.GetScriptReference().GetVars(),
+				Vars: ct.GetScriptReference().GetVars(),
 			}
+
+			numscriptRef = ct.GetScriptReference().GetReference()
 		}
 
 		order.Data = &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 			CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-				Postings:        ct.GetPostings(),
-				Script:          script,
-				Timestamp:       ct.GetTimestamp(),
-				Reference:       ct.GetReference(),
-				Metadata:        ct.GetMetadata(),
-				AccountMetadata: ct.GetAccountMetadata(),
-				Force:           ct.GetForce(),
-				ExpandVolumes:   ct.GetExpandVolumes(),
+				Postings:           ct.GetPostings(),
+				Script:             script,
+				Timestamp:          ct.GetTimestamp(),
+				Reference:          ct.GetReference(),
+				Metadata:           ct.GetMetadata(),
+				AccountMetadata:    ct.GetAccountMetadata(),
+				Force:              ct.GetForce(),
+				ExpandVolumes:      ct.GetExpandVolumes(),
+				NumscriptReference: numscriptRef,
 			},
 		}
 	case *servicepb.LedgerApplyRequest_AddMetadata:
@@ -1531,18 +1600,120 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 }
 
 // requestsToOrders converts a slice of servicepb.Request to raftcmdpb.Order.
-func (a *Admission) requestsToOrders(ctx context.Context, reqs []*servicepb.Request) ([]*raftcmdpb.Order, error) {
+// resolveNumscriptReference resolves a numscript reference from the overlay (intra-bulk) or Pebble.
+func (a *Admission) resolveNumscriptReference(overlay *bulkOverlay, ledger, name, version string) (string, string, error) {
+	if content, resolvedVersion, found := a.resolveNumscriptFromOverlay(overlay, ledger, name, version); found {
+		return content, resolvedVersion, nil
+	}
+
+	if overlay.numscriptLatest.IsDeleted(numscriptNameKey{Ledger: ledger, Name: name}) {
+		return "", "", &domain.BusinessError{Err: &domain.ErrNumscriptNotFound{Name: name}}
+	}
+
+	info, err := query.ReadNumscript(a.store, ledger, name, version)
+	if err != nil {
+		return "", "", fmt.Errorf("reading numscript %q: %w", name, err)
+	}
+
+	if info == nil {
+		return "", "", &domain.BusinessError{Err: &domain.ErrNumscriptNotFound{Name: name}}
+	}
+
+	return info.GetContent(), info.GetVersion(), nil
+}
+
+// resolveNumscriptFromOverlay tries to resolve a numscript from the intra-bulk overlay.
+func (a *Admission) resolveNumscriptFromOverlay(overlay *bulkOverlay, ledger, name, version string) (string, string, bool) {
+	if version == "" {
+		latestVer, ok := overlay.numscriptLatest.Get(numscriptNameKey{Ledger: ledger, Name: name})
+		if !ok {
+			return "", "", false
+		}
+
+		content, ok := overlay.numscriptEntries.Get(numscriptEntryKey{Ledger: ledger, Name: name, Version: latestVer})
+		if !ok {
+			return "", "", false
+		}
+
+		return content, latestVer, true
+	}
+
+	if version == "latest" {
+		content, ok := overlay.numscriptEntries.Get(numscriptEntryKey{Ledger: ledger, Name: name, Version: "latest"})
+		if !ok {
+			return "", "", false
+		}
+
+		return content, "latest", true
+	}
+
+	// Exact semver lookup
+	if content, ok := overlay.numscriptEntries.Get(numscriptEntryKey{Ledger: ledger, Name: name, Version: version}); ok {
+		return content, version, true
+	}
+
+	// Partial semver: iterate overlay entries and find highest match
+	major, minor, _, depth, err := semver.ParsePartial(version)
+	if err != nil || depth == 3 {
+		return "", "", false
+	}
+
+	var (
+		bestContent string
+		bestVersion semver.Version
+		found       bool
+	)
+
+	overlay.numscriptEntries.Range(func(key numscriptEntryKey, content string) bool {
+		if key.Ledger != ledger || key.Name != name || key.Version == "latest" {
+			return true
+		}
+
+		v, parseErr := semver.Parse(key.Version)
+		if parseErr != nil {
+			return true
+		}
+
+		if v.Major != major {
+			return true
+		}
+
+		if depth >= 2 && v.Minor != minor {
+			return true
+		}
+
+		if !found || v.Major > bestVersion.Major ||
+			(v.Major == bestVersion.Major && v.Minor > bestVersion.Minor) ||
+			(v.Major == bestVersion.Major && v.Minor == bestVersion.Minor && v.Patch > bestVersion.Patch) {
+			bestContent = content
+			bestVersion = v
+			found = true
+		}
+
+		return true
+	})
+
+	if !found {
+		return "", "", false
+	}
+
+	return bestContent, bestVersion.String(), true
+}
+
+func (a *Admission) requestsToOrders(ctx context.Context, reqs []*servicepb.Request) ([]*raftcmdpb.Order, *bulkOverlay, error) {
+	overlay := newBulkOverlay()
 	orders := make([]*raftcmdpb.Order, len(reqs))
+
 	for i, req := range reqs {
-		order, err := a.requestToOrder(ctx, req)
+		order, err := a.requestToOrder(ctx, req, overlay)
 		if err != nil {
-			return nil, fmt.Errorf("converting request %d: %w", i, err)
+			return nil, nil, fmt.Errorf("converting request %d: %w", i, err)
 		}
 
 		orders[i] = order
 	}
 
-	return orders, nil
+	return orders, overlay, nil
 }
 
 // getTransactionPostings retrieves the postings of an original transaction from the store.
