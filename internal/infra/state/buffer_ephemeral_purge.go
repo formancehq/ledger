@@ -123,7 +123,6 @@ func (b *Buffered) evictTransientVolumes(
 // and the 0xFF cache zone.
 func (b *Buffered) applyEphemeralPurge(
 	batch *dal.Batch,
-	genByte byte,
 	purged []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 ) error {
 	for _, update := range purged {
@@ -133,7 +132,7 @@ func (b *Buffered) applyEphemeralPurge(
 		}
 
 		// Delete from 0xFF cache zone.
-		if err := deleteCacheEntry(batch, genByte, dal.AttributePrefixVolume, update.ID); err != nil {
+		if err := deleteCacheEntry(batch, dal.AttributePrefixVolume, update.ID); err != nil {
 			return err
 		}
 

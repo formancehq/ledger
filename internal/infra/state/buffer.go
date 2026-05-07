@@ -49,7 +49,7 @@ func mergeAndTrackBloom[K attributes.Key, V proto.Message](
 			return nil, nil, fmt.Errorf("failed deleting %s attribute: %w", label, err)
 		}
 
-		if err := deleteCacheEntry(batch, genByte, cacheType, deletion.ID); err != nil {
+		if err := deleteCacheEntry(batch, cacheType, deletion.ID); err != nil {
 			return nil, nil, fmt.Errorf("failed deleting %s cache entry: %w", label, err)
 		}
 	}
@@ -174,7 +174,7 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 		b.bloomUpdates.Volumes = append(b.bloomUpdates.Volumes, update.CanonicalKey)
 	}
 
-	if err := b.applyEphemeralPurge(batch, genByte, partResult.purged); err != nil {
+	if err := b.applyEphemeralPurge(batch, partResult.purged); err != nil {
 		return fmt.Errorf("failed purging ephemeral volumes: %w", err)
 	}
 

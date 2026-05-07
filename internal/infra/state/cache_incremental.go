@@ -43,11 +43,14 @@ func writeCacheRaw(batch *dal.Batch, genByte, cacheType byte, id attributes.U128
 	return batch.Set(key[:], val, pebble.NoSync)
 }
 
-// deleteCacheEntry deletes a single cache entry from the 0xFF zone.
-func deleteCacheEntry(batch *dal.Batch, genByte, cacheType byte, id attributes.U128) error {
-	key := fillCacheKey(genByte, cacheType, id)
-	if err := batch.DeleteKey(key[:]); err != nil {
-		return fmt.Errorf("deleting cache entry: %w", err)
+// deleteCacheEntry clears the cache entry at id from both gen0Byte and
+// gen1Byte 0xFF rows, matching AttributeCache.Del's both-gens semantic.
+func deleteCacheEntry(batch *dal.Batch, cacheType byte, id attributes.U128) error {
+	for _, genByte := range []byte{0, 1} {
+		key := fillCacheKey(genByte, cacheType, id)
+		if err := batch.DeleteKey(key[:]); err != nil {
+			return fmt.Errorf("deleting cache entry: %w", err)
+		}
 	}
 
 	return nil
