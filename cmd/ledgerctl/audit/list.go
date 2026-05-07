@@ -116,7 +116,7 @@ func printAuditEntry(entry *auditpb.AuditEntry) {
 	var statusIcon, statusText string
 	if entry.GetSuccess() != nil {
 		statusIcon = pterm.Green("OK")
-		statusText = formatLogSequences(entry.GetSuccess().GetLogSequences())
+		statusText = formatLogRange(entry.GetSuccess().GetMinLogSequence(), entry.GetSuccess().GetMaxLogSequence())
 	} else if entry.GetFailure() != nil {
 		f := entry.GetFailure()
 		statusIcon = pterm.Red("FAIL")
@@ -135,19 +135,17 @@ func printAuditEntry(entry *auditpb.AuditEntry) {
 	printGroupedOrders(entry.GetOrders())
 }
 
-// formatLogSequences formats log sequences compactly.
-// For small sets: logs=[1 2 3]. For large sets: logs=500 (28487003..28487502).
-func formatLogSequences(seqs []uint64) string {
-	n := len(seqs)
-	if n == 0 {
+// formatLogRange formats a log sequence range compactly.
+func formatLogRange(minSeq, maxSeq uint64) string {
+	if minSeq == 0 && maxSeq == 0 {
 		return "logs=[]"
 	}
 
-	if n <= 5 {
-		return fmt.Sprintf("logs=%v", seqs)
+	if minSeq == maxSeq {
+		return fmt.Sprintf("logs=[%d]", minSeq)
 	}
 
-	return fmt.Sprintf("logs=%d (%d..%d)", n, seqs[0], seqs[n-1])
+	return fmt.Sprintf("logs=%d..%d", minSeq, maxSeq)
 }
 
 // orderGroup represents a run of consecutive identical order types.

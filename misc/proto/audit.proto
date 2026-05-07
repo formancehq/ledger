@@ -24,9 +24,29 @@ message AuditEntry {
   }
 }
 
-// AuditSuccess records the log sequences created by a successful proposal.
+// AuditSuccess records the log sequence range created by a successful proposal
+// and batch-level side effects computed during Merge.
 message AuditSuccess {
-  repeated uint64 log_sequences = 1;
+  // Contiguous log sequence range [min_log_sequence, max_log_sequence] produced
+  // by this proposal. Both are inclusive. When a proposal produces a single log,
+  // min == max. When it produces no logs (all idempotent), both are 0.
+  uint64 min_log_sequence = 1;
+  uint64 max_log_sequence = 2;
+
+  // Accounts whose volumes were transient in this proposal, keyed by ledger.
+  // The index builder uses this to skip account→transaction mappings for
+  // transient accounts without any Pebble reads.
+  map<string, AccountList> transient_accounts = 3;
+
+  // Accounts whose ephemeral volumes were purged (zero balance) in this
+  // proposal, keyed by ledger. The index builder uses this to skip
+  // account→transaction mappings for purged ephemeral accounts.
+  map<string, AccountList> purged_accounts = 4;
+}
+
+// AccountList is a list of account addresses.
+message AccountList {
+  repeated string accounts = 1;
 }
 
 // AuditFailure records the reason and context for a failed proposal.

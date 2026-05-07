@@ -84,7 +84,7 @@ func TestAuditLogOnSuccess(t *testing.T) {
 	require.Equal(t, uint64(1), first.GetSequence())
 	require.Equal(t, uint64(1), first.GetProposalId())
 	require.NotNil(t, first.GetSuccess(), "create ledger should be success")
-	require.NotEmpty(t, first.GetSuccess().GetLogSequences())
+	require.NotZero(t, first.GetSuccess().GetMinLogSequence())
 	require.NotEmpty(t, first.GetOrders())
 
 	// Second entry: create transaction (success)
@@ -92,7 +92,7 @@ func TestAuditLogOnSuccess(t *testing.T) {
 	require.Equal(t, uint64(2), second.GetSequence())
 	require.Equal(t, uint64(2), second.GetProposalId())
 	require.NotNil(t, second.GetSuccess(), "transaction should be success")
-	require.NotEmpty(t, second.GetSuccess().GetLogSequences())
+	require.NotZero(t, second.GetSuccess().GetMinLogSequence())
 	require.NotEmpty(t, second.GetOrders())
 	require.NotNil(t, second.GetTimestamp())
 }
@@ -373,7 +373,7 @@ func TestBuildAuditFailure(t *testing.T) {
 	})
 }
 
-func TestExtractLogSequencesFromLogsOrRefs(t *testing.T) {
+func TestExtractLogSequenceRange(t *testing.T) {
 	t.Parallel()
 
 	logsOrRefs := []*raftcmdpb.CreatedLogOrReference{
@@ -381,6 +381,7 @@ func TestExtractLogSequencesFromLogsOrRefs(t *testing.T) {
 		{Type: &raftcmdpb.CreatedLogOrReference_ReferenceSequence{ReferenceSequence: 5}},
 		{Type: &raftcmdpb.CreatedLogOrReference_CreatedLog{CreatedLog: &commonpb.Log{Sequence: 10}}},
 	}
-	sequences := extractLogSequencesFromLogsOrRefs(logsOrRefs)
-	require.Equal(t, []uint64{1, 5, 10}, sequences)
+	minSeq, maxSeq := extractLogSequenceRange(logsOrRefs)
+	require.Equal(t, uint64(1), minSeq)
+	require.Equal(t, uint64(10), maxSeq)
 }

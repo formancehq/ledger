@@ -66,10 +66,14 @@ type Builder struct {
 	// Round-robin index for fair scheduling across backfill tasks.
 	nextBackfillIdx int
 
+	// Audit sync for transient account filtering.
+	lastAuditSeq uint64
+
 	// Reusable scratch objects to reduce allocations in the hot loop.
-	kb       *dal.KeyBuilder
-	wb       *readstore.WriteBatch
-	accounts map[string]struct{}
+	kb               *dal.KeyBuilder
+	wb               *readstore.WriteBatch
+	accounts         map[string]struct{}
+	excludedAccounts map[string]struct{} // current proposal's excluded accounts (transient + purged ephemeral)
 }
 
 // NewBuilder creates a new index builder.
@@ -208,6 +212,11 @@ func (b *Builder) loop(stop <-chan struct{}) {
 	}
 
 	b.lastIndexedSeq.Store(cursor)
+
+	// Recover audit progress.
+	if auditSeq, err := b.readStore.ReadAuditProgress(); err == nil {
+		b.lastAuditSeq = auditSeq
+	}
 
 	// Seed pebble last sequence.
 	if pebbleLast, err := query.ReadLastSequence(b.pebbleStore); err == nil {

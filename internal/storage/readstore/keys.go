@@ -16,8 +16,9 @@ const (
 	PrefixLedgerLogs            byte = 0x09 // llog — ledger log mapping
 	PrefixLedgerLogDate         byte = 0x0A // lldt — ledger log date
 	PrefixTransactionInsertedAt byte = 0x0B // txiat — transaction inserted_at
-	PrefixProgress              byte = 0xF0 // prog — progress (single key)
+	PrefixProgress              byte = 0xF0 // prog — progress (single key: last indexed log sequence)
 	PrefixBackfill              byte = 0xF1 // bfil — backfill cursors
+	PrefixAuditProgress         byte = 0xF2 // aprog — audit progress (single key: last consumed audit sequence)
 )
 
 // Namespace prefixes to distinguish accounts, transactions, and logs in shared buckets.

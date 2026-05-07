@@ -115,6 +115,14 @@ type Buffered struct {
 	// Used to exclude these from cross-entry post-commit verification.
 	purgedVolumeKeys []domain.VolumeKey
 
+	// transientAccounts holds unique transient account names per ledger,
+	// populated during Merge for inclusion in the audit entry.
+	transientAccounts map[string][]string
+
+	// purgedAccounts holds unique ephemeral account names per ledger whose
+	// volumes were purged (zero balance), populated during Merge.
+	purgedAccounts map[string][]string
+
 	// bloomUpdates collects canonical keys per attribute type during Merge
 	// for bloom filter updates before batch.Commit().
 	bloomUpdates bloom.BloomUpdates
@@ -182,6 +190,15 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	// Evict transient volumes from the in-memory KeyStore. Merge() pushed them
 	// to the parent, but they must not persist across batches.
 	b.evictTransientVolumes(partResult.transient)
+
+	// Collect unique transient/purged account names per ledger for the audit entry.
+	if len(partResult.transient) > 0 {
+		b.transientAccounts = collectUniqueAccounts(partResult.transient)
+	}
+
+	if len(partResult.purged) > 0 {
+		b.purgedAccounts = collectUniqueAccounts(partResult.purged)
+	}
 
 	// Defensive check: double-entry invariant (on all updates, including purged).
 	if err := checkDoubleEntryInvariant(volumeUpdates); err != nil {
@@ -1085,6 +1102,48 @@ func (b *Buffered) BloomUpdates() *bloom.BloomUpdates {
 // in the same ApplyEntries batch purges a volume that was written by an earlier entry.
 func (b *Buffered) PurgedVolumeKeys() []domain.VolumeKey {
 	return b.purgedVolumeKeys
+}
+
+// TransientAccounts returns unique transient account names per ledger,
+// collected during Merge from the transient volume partition.
+func (b *Buffered) TransientAccounts() map[string][]string {
+	return b.transientAccounts
+}
+
+// PurgedAccounts returns unique ephemeral account names per ledger whose
+// volumes were purged (zero balance), collected during Merge.
+func (b *Buffered) PurgedAccounts() map[string][]string {
+	return b.purgedAccounts
+}
+
+// collectUniqueAccounts extracts unique account names per ledger from
+// volume updates.
+func collectUniqueAccounts(updates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]) map[string][]string {
+	// Deduplicate: a single account may appear multiple times (one per asset).
+	seen := make(map[string]map[string]struct{})
+
+	for _, update := range updates {
+		ledger := update.Key.Ledger
+		account := update.Key.Account
+
+		if seen[ledger] == nil {
+			seen[ledger] = make(map[string]struct{})
+		}
+
+		seen[ledger][account] = struct{}{}
+	}
+
+	result := make(map[string][]string, len(seen))
+	for ledger, accounts := range seen {
+		list := make([]string, 0, len(accounts))
+		for account := range accounts {
+			list = append(list, account)
+		}
+
+		result[ledger] = list
+	}
+
+	return result
 }
 
 // Ensure Buffered implements InMemoryStore.

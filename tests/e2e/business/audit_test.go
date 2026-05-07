@@ -65,7 +65,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 
 		last := entries[len(entries)-1]
 		Expect(last.GetSuccess()).NotTo(BeNil(), "expected success outcome")
-		Expect(last.GetSuccess().LogSequences).NotTo(BeEmpty())
+		Expect(last.GetSuccess().GetMinLogSequence()).NotTo(BeZero())
 		Expect(last.Sequence).NotTo(BeZero())
 	})
 

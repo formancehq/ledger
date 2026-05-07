@@ -211,6 +211,35 @@ func (s *Store) NotifyProgress() {
 	s.progressCond.Broadcast()
 }
 
+// ReadAuditProgress returns the last consumed audit sequence.
+// Returns 0 if no audit progress has been recorded.
+func (s *Store) ReadAuditProgress() (uint64, error) {
+	v, closer, err := s.db.Get([]byte{PrefixAuditProgress})
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return 0, nil
+		}
+
+		return 0, fmt.Errorf("reading audit progress: %w", err)
+	}
+
+	defer func() { _ = closer.Close() }()
+
+	if len(v) != 8 {
+		return 0, nil
+	}
+
+	return binary.BigEndian.Uint64(v), nil
+}
+
+// WriteAuditProgress stores the last consumed audit sequence.
+func (s *Store) WriteAuditProgress(batch *pebble.Batch, sequence uint64) error {
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], sequence)
+
+	return batch.Set([]byte{PrefixAuditProgress}, buf[:], pebble.NoSync)
+}
+
 // WriteBackfillProgress stores a backfill cursor.
 func (s *Store) WriteBackfillProgress(batch *pebble.Batch, key []byte, cursor uint64) error {
 	fullKey := make([]byte, 1+len(key))

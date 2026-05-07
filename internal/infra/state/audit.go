@@ -158,18 +158,26 @@ func buildAuditFailure(err error) *auditpb.AuditFailure {
 	return failure
 }
 
-// extractLogSequencesFromLogsOrRefs extracts the sequence numbers from a slice of
-// CreatedLogOrReference. For created logs it returns the log sequence; for reference
-// sequences it returns the reference directly.
-func extractLogSequencesFromLogsOrRefs(logsOrRefs []*raftcmdpb.CreatedLogOrReference) []uint64 {
-	sequences := make([]uint64, len(logsOrRefs))
-	for i, logOrRef := range logsOrRefs {
+// extractLogSequenceRange returns the min and max log sequence from a slice of
+// CreatedLogOrReference. For created logs it uses the log sequence; for
+// idempotent references it uses the reference sequence. Returns (0, 0) if empty.
+func extractLogSequenceRange(logsOrRefs []*raftcmdpb.CreatedLogOrReference) (minSeq, maxSeq uint64) {
+	for _, logOrRef := range logsOrRefs {
+		var seq uint64
 		if created := logOrRef.GetCreatedLog(); created != nil {
-			sequences[i] = created.GetSequence()
+			seq = created.GetSequence()
 		} else {
-			sequences[i] = logOrRef.GetReferenceSequence()
+			seq = logOrRef.GetReferenceSequence()
+		}
+
+		if minSeq == 0 || seq < minSeq {
+			minSeq = seq
+		}
+
+		if seq > maxSeq {
+			maxSeq = seq
 		}
 	}
 
-	return sequences
+	return minSeq, maxSeq
 }

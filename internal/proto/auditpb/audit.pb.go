@@ -139,12 +139,25 @@ func (*AuditEntry_Success) isAuditEntry_Outcome() {}
 
 func (*AuditEntry_Failure) isAuditEntry_Outcome() {}
 
-// AuditSuccess records the log sequences created by a successful proposal.
+// AuditSuccess records the log sequence range created by a successful proposal
+// and batch-level side effects computed during Merge.
 type AuditSuccess struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	LogSequences  []uint64               `protobuf:"varint,1,rep,packed,name=log_sequences,json=logSequences,proto3" json:"log_sequences,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Contiguous log sequence range [min_log_sequence, max_log_sequence] produced
+	// by this proposal. Both are inclusive. When a proposal produces a single log,
+	// min == max. When it produces no logs (all idempotent), both are 0.
+	MinLogSequence uint64 `protobuf:"varint,1,opt,name=min_log_sequence,json=minLogSequence,proto3" json:"min_log_sequence,omitempty"`
+	MaxLogSequence uint64 `protobuf:"varint,2,opt,name=max_log_sequence,json=maxLogSequence,proto3" json:"max_log_sequence,omitempty"`
+	// Accounts whose volumes were transient in this proposal, keyed by ledger.
+	// The index builder uses this to skip account→transaction mappings for
+	// transient accounts without any Pebble reads.
+	TransientAccounts map[string]*AccountList `protobuf:"bytes,3,rep,name=transient_accounts,json=transientAccounts,proto3" json:"transient_accounts,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Accounts whose ephemeral volumes were purged (zero balance) in this
+	// proposal, keyed by ledger. The index builder uses this to skip
+	// account→transaction mappings for purged ephemeral accounts.
+	PurgedAccounts map[string]*AccountList `protobuf:"bytes,4,rep,name=purged_accounts,json=purgedAccounts,proto3" json:"purged_accounts,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *AuditSuccess) Reset() {
@@ -177,9 +190,75 @@ func (*AuditSuccess) Descriptor() ([]byte, []int) {
 	return file_audit_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *AuditSuccess) GetLogSequences() []uint64 {
+func (x *AuditSuccess) GetMinLogSequence() uint64 {
 	if x != nil {
-		return x.LogSequences
+		return x.MinLogSequence
+	}
+	return 0
+}
+
+func (x *AuditSuccess) GetMaxLogSequence() uint64 {
+	if x != nil {
+		return x.MaxLogSequence
+	}
+	return 0
+}
+
+func (x *AuditSuccess) GetTransientAccounts() map[string]*AccountList {
+	if x != nil {
+		return x.TransientAccounts
+	}
+	return nil
+}
+
+func (x *AuditSuccess) GetPurgedAccounts() map[string]*AccountList {
+	if x != nil {
+		return x.PurgedAccounts
+	}
+	return nil
+}
+
+// AccountList is a list of account addresses.
+type AccountList struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Accounts      []string               `protobuf:"bytes,1,rep,name=accounts,proto3" json:"accounts,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AccountList) Reset() {
+	*x = AccountList{}
+	mi := &file_audit_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccountList) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccountList) ProtoMessage() {}
+
+func (x *AccountList) ProtoReflect() protoreflect.Message {
+	mi := &file_audit_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccountList.ProtoReflect.Descriptor instead.
+func (*AccountList) Descriptor() ([]byte, []int) {
+	return file_audit_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *AccountList) GetAccounts() []string {
+	if x != nil {
+		return x.Accounts
 	}
 	return nil
 }
@@ -196,7 +275,7 @@ type AuditFailure struct {
 
 func (x *AuditFailure) Reset() {
 	*x = AuditFailure{}
-	mi := &file_audit_proto_msgTypes[2]
+	mi := &file_audit_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -208,7 +287,7 @@ func (x *AuditFailure) String() string {
 func (*AuditFailure) ProtoMessage() {}
 
 func (x *AuditFailure) ProtoReflect() protoreflect.Message {
-	mi := &file_audit_proto_msgTypes[2]
+	mi := &file_audit_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -221,7 +300,7 @@ func (x *AuditFailure) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditFailure.ProtoReflect.Descriptor instead.
 func (*AuditFailure) Descriptor() ([]byte, []int) {
-	return file_audit_proto_rawDescGZIP(), []int{2}
+	return file_audit_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *AuditFailure) GetErrorType() string {
@@ -259,9 +338,20 @@ const file_audit_proto_rawDesc = "" +
 	"\x06orders\x18\x04 \x03(\v2\v.raft.OrderR\x06orders\x12/\n" +
 	"\asuccess\x18\x05 \x01(\v2\x13.audit.AuditSuccessH\x00R\asuccess\x12/\n" +
 	"\afailure\x18\x06 \x01(\v2\x13.audit.AuditFailureH\x00R\afailureB\t\n" +
-	"\aoutcome\"3\n" +
-	"\fAuditSuccess\x12#\n" +
-	"\rlog_sequences\x18\x01 \x03(\x04R\flogSequences\"\xbf\x01\n" +
+	"\aoutcome\"\xc0\x03\n" +
+	"\fAuditSuccess\x12(\n" +
+	"\x10min_log_sequence\x18\x01 \x01(\x04R\x0eminLogSequence\x12(\n" +
+	"\x10max_log_sequence\x18\x02 \x01(\x04R\x0emaxLogSequence\x12Y\n" +
+	"\x12transient_accounts\x18\x03 \x03(\v2*.audit.AuditSuccess.TransientAccountsEntryR\x11transientAccounts\x12P\n" +
+	"\x0fpurged_accounts\x18\x04 \x03(\v2'.audit.AuditSuccess.PurgedAccountsEntryR\x0epurgedAccounts\x1aX\n" +
+	"\x16TransientAccountsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12(\n" +
+	"\x05value\x18\x02 \x01(\v2\x12.audit.AccountListR\x05value:\x028\x01\x1aU\n" +
+	"\x13PurgedAccountsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12(\n" +
+	"\x05value\x18\x02 \x01(\v2\x12.audit.AccountListR\x05value:\x028\x01\")\n" +
+	"\vAccountList\x12\x1a\n" +
+	"\baccounts\x18\x01 \x03(\tR\baccounts\"\xbf\x01\n" +
 	"\fAuditFailure\x12\x1d\n" +
 	"\n" +
 	"error_type\x18\x01 \x01(\tR\terrorType\x12\x18\n" +
@@ -283,26 +373,33 @@ func file_audit_proto_rawDescGZIP() []byte {
 	return file_audit_proto_rawDescData
 }
 
-var file_audit_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_audit_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_audit_proto_goTypes = []any{
 	(*AuditEntry)(nil),         // 0: audit.AuditEntry
 	(*AuditSuccess)(nil),       // 1: audit.AuditSuccess
-	(*AuditFailure)(nil),       // 2: audit.AuditFailure
-	nil,                        // 3: audit.AuditFailure.ContextEntry
-	(*commonpb.Timestamp)(nil), // 4: common.Timestamp
-	(*raftcmdpb.Order)(nil),    // 5: raft.Order
+	(*AccountList)(nil),        // 2: audit.AccountList
+	(*AuditFailure)(nil),       // 3: audit.AuditFailure
+	nil,                        // 4: audit.AuditSuccess.TransientAccountsEntry
+	nil,                        // 5: audit.AuditSuccess.PurgedAccountsEntry
+	nil,                        // 6: audit.AuditFailure.ContextEntry
+	(*commonpb.Timestamp)(nil), // 7: common.Timestamp
+	(*raftcmdpb.Order)(nil),    // 8: raft.Order
 }
 var file_audit_proto_depIdxs = []int32{
-	4, // 0: audit.AuditEntry.timestamp:type_name -> common.Timestamp
-	5, // 1: audit.AuditEntry.orders:type_name -> raft.Order
+	7, // 0: audit.AuditEntry.timestamp:type_name -> common.Timestamp
+	8, // 1: audit.AuditEntry.orders:type_name -> raft.Order
 	1, // 2: audit.AuditEntry.success:type_name -> audit.AuditSuccess
-	2, // 3: audit.AuditEntry.failure:type_name -> audit.AuditFailure
-	3, // 4: audit.AuditFailure.context:type_name -> audit.AuditFailure.ContextEntry
-	5, // [5:5] is the sub-list for method output_type
-	5, // [5:5] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	3, // 3: audit.AuditEntry.failure:type_name -> audit.AuditFailure
+	4, // 4: audit.AuditSuccess.transient_accounts:type_name -> audit.AuditSuccess.TransientAccountsEntry
+	5, // 5: audit.AuditSuccess.purged_accounts:type_name -> audit.AuditSuccess.PurgedAccountsEntry
+	6, // 6: audit.AuditFailure.context:type_name -> audit.AuditFailure.ContextEntry
+	2, // 7: audit.AuditSuccess.TransientAccountsEntry.value:type_name -> audit.AccountList
+	2, // 8: audit.AuditSuccess.PurgedAccountsEntry.value:type_name -> audit.AccountList
+	9, // [9:9] is the sub-list for method output_type
+	9, // [9:9] is the sub-list for method input_type
+	9, // [9:9] is the sub-list for extension type_name
+	9, // [9:9] is the sub-list for extension extendee
+	0, // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_audit_proto_init() }
@@ -320,7 +417,7 @@ func file_audit_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_audit_proto_rawDesc), len(file_audit_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

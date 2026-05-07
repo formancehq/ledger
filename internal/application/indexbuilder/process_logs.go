@@ -46,6 +46,14 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 
 	defer func() { _ = logsCursor.Close() }()
 
+	// Open audit iterator for transient account filtering.
+	audit, err := newAuditSync(handle, b.lastAuditSeq)
+	if err != nil {
+		return cursor, fmt.Errorf("creating audit sync: %w", err)
+	}
+
+	defer func() { _ = audit.close() }()
+
 	// Track whether we advanced the cursor without persisting it yet.
 	needsPersist := false
 	startCursor := cursor
@@ -128,6 +136,9 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 				continue
 			}
 
+			// Sync audit iterator and load excluded accounts (transient + purged ephemeral).
+			b.excludedAccounts = audit.syncTo(lastSeq, ledgerName)
+
 			cfg := b.ledgerConfig(ledgerName)
 
 			// Index ledger log for per-ledger listing (opt-in via log builtin index).
@@ -169,6 +180,17 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 				_ = batch.Close()
 
 				return cursor, err
+			}
+
+			// Persist audit progress alongside log progress.
+			if auditSeq := audit.auditSequence(); auditSeq > b.lastAuditSeq {
+				if err := b.readStore.WriteAuditProgress(batch, auditSeq); err != nil {
+					_ = batch.Close()
+
+					return cursor, err
+				}
+
+				b.lastAuditSeq = auditSeq
 			}
 
 			if err := b.wb.Flush(); err != nil {
@@ -241,6 +263,16 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 			_ = batch.Close()
 
 			return cursor, fmt.Errorf("writing progress: %w", err)
+		}
+
+		if auditSeq := audit.auditSequence(); auditSeq > b.lastAuditSeq {
+			if err := b.readStore.WriteAuditProgress(batch, auditSeq); err != nil {
+				_ = batch.Close()
+
+				return cursor, fmt.Errorf("writing audit progress: %w", err)
+			}
+
+			b.lastAuditSeq = auditSeq
 		}
 
 		if err := batch.Commit(pebble.NoSync); err != nil {
@@ -420,28 +452,37 @@ func (b *Builder) indexCreatedTransaction(
 
 	clear(b.accounts)
 
+	excluded := b.excludedAccounts
+
 	for _, posting := range txn.GetPostings() {
 		b.accounts[posting.GetSource()] = struct{}{}
 		b.accounts[posting.GetDestination()] = struct{}{}
 
-		// Account→transaction mapping (any role)
+		srcExcluded := isExcluded(excluded, posting.GetSource())
+		dstExcluded := isExcluded(excluded, posting.GetDestination())
+
+		// Account→transaction mapping (any role) — skip transient accounts.
 		if indexAny {
-			if err := wb.WriteAccountTxMapping(kb, ledger, posting.GetSource(), txn.GetId()); err != nil {
-				return err
+			if !srcExcluded {
+				if err := wb.WriteAccountTxMapping(kb, ledger, posting.GetSource(), txn.GetId()); err != nil {
+					return err
+				}
 			}
 
-			if err := wb.WriteAccountTxMapping(kb, ledger, posting.GetDestination(), txn.GetId()); err != nil {
-				return err
+			if !dstExcluded {
+				if err := wb.WriteAccountTxMapping(kb, ledger, posting.GetDestination(), txn.GetId()); err != nil {
+					return err
+				}
 			}
 		}
-		// Role-specific mappings
-		if indexSrc {
+		// Role-specific mappings — skip transient accounts.
+		if indexSrc && !srcExcluded {
 			if err := wb.WriteSourceAccountTxMapping(kb, ledger, posting.GetSource(), txn.GetId()); err != nil {
 				return err
 			}
 		}
 
-		if indexDst {
+		if indexDst && !dstExcluded {
 			if err := wb.WriteDestAccountTxMapping(kb, ledger, posting.GetDestination(), txn.GetId()); err != nil {
 				return err
 			}
@@ -542,27 +583,36 @@ func (b *Builder) indexRevertedTransaction(
 
 	clear(b.accounts)
 
+	excluded := b.excludedAccounts
+
 	for _, posting := range revertTxn.GetPostings() {
 		b.accounts[posting.GetSource()] = struct{}{}
-
 		b.accounts[posting.GetDestination()] = struct{}{}
+
+		srcExcluded := isExcluded(excluded, posting.GetSource())
+		dstExcluded := isExcluded(excluded, posting.GetDestination())
+
 		if indexAny {
-			if err := wb.WriteAccountTxMapping(kb, ledger, posting.GetSource(), revertTxn.GetId()); err != nil {
-				return err
+			if !srcExcluded {
+				if err := wb.WriteAccountTxMapping(kb, ledger, posting.GetSource(), revertTxn.GetId()); err != nil {
+					return err
+				}
 			}
 
-			if err := wb.WriteAccountTxMapping(kb, ledger, posting.GetDestination(), revertTxn.GetId()); err != nil {
-				return err
+			if !dstExcluded {
+				if err := wb.WriteAccountTxMapping(kb, ledger, posting.GetDestination(), revertTxn.GetId()); err != nil {
+					return err
+				}
 			}
 		}
-		// Role-specific mappings
-		if indexSrc {
+		// Role-specific mappings — skip transient accounts.
+		if indexSrc && !srcExcluded {
 			if err := wb.WriteSourceAccountTxMapping(kb, ledger, posting.GetSource(), revertTxn.GetId()); err != nil {
 				return err
 			}
 		}
 
-		if indexDst {
+		if indexDst && !dstExcluded {
 			if err := wb.WriteDestAccountTxMapping(kb, ledger, posting.GetDestination(), revertTxn.GetId()); err != nil {
 				return err
 			}
@@ -875,6 +925,18 @@ func extractMetadataKeyFromReverseMap(key, nsPrefix []byte, ns string) string {
 	}
 
 	return ""
+}
+
+// isExcluded returns true if the account is in the excluded set
+// (transient or purged ephemeral).
+func isExcluded(excluded map[string]struct{}, account string) bool {
+	if excluded == nil {
+		return false
+	}
+
+	_, ok := excluded[account]
+
+	return ok
 }
 
 // lookupPreviousAccountValue looks up the encoded previous value for a metadata key

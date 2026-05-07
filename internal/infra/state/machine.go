@@ -1220,16 +1220,34 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		}
 	}
 
-	// SUCCESS: write audit entry
+	// SUCCESS: write audit entry with batch-level side effects.
+	minLogSeq, maxLogSeq := extractLogSequenceRange(logs)
+	auditSuccess := &auditpb.AuditSuccess{
+		MinLogSequence: minLogSeq,
+		MaxLogSequence: maxLogSeq,
+	}
+
+	if ta := buffer.TransientAccounts(); len(ta) > 0 {
+		auditSuccess.TransientAccounts = make(map[string]*auditpb.AccountList, len(ta))
+		for ledger, accounts := range ta {
+			auditSuccess.TransientAccounts[ledger] = &auditpb.AccountList{Accounts: accounts}
+		}
+	}
+
+	if pa := buffer.PurgedAccounts(); len(pa) > 0 {
+		auditSuccess.PurgedAccounts = make(map[string]*auditpb.AccountList, len(pa))
+		for ledger, accounts := range pa {
+			auditSuccess.PurgedAccounts[ledger] = &auditpb.AccountList{Accounts: accounts}
+		}
+	}
+
 	auditEntry := &auditpb.AuditEntry{
 		Sequence:   fsm.nextAuditSequenceID,
 		Timestamp:  effectiveDate,
 		ProposalId: proposal.GetId(),
 		Orders:     proposal.GetOrders(),
 		Outcome: &auditpb.AuditEntry_Success{
-			Success: &auditpb.AuditSuccess{
-				LogSequences: extractLogSequencesFromLogsOrRefs(logs),
-			},
+			Success: auditSuccess,
 		},
 	}
 	fsm.nextAuditSequenceID++

@@ -102,6 +102,182 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 		})
 	})
 
+	Context("When the audit entry records transient accounts", Ordered, func() {
+		const ledgerName = "transient-audit"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.CreateLedgerAction(ledgerName, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					{
+						Type: &servicepb.Request_AddAccountType{
+							AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
+								Ledger: ledgerName,
+								AccountType: &commonpb.AccountType{
+									Name:        "staging",
+									Pattern:     "staging:{id}",
+									Status:      commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE,
+									Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
+								},
+							},
+						},
+					},
+					{
+						Type: &servicepb.Request_SetDefaultEnforcementMode{
+							SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{
+								Ledger:          ledgerName,
+								EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
+							},
+						},
+					},
+				},
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("Should include transient accounts in the audit entry", func() {
+			// Batch: world → staging:audit1 50 USD, staging:audit1 → dest 50 USD
+			// staging:audit1 ends at zero balance → transient
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "staging:audit1", big.NewInt(50), "USD"),
+					}, nil),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("staging:audit1", "dest", big.NewInt(50), "USD"),
+					}, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			// Find the audit entry for this batch
+			entries, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
+				Ledger: ledgerName,
+			})
+			Expect(err).To(Succeed())
+			Expect(entries).NotTo(BeEmpty())
+
+			// The last success entry should contain transient_accounts
+			var found bool
+			for i := len(entries) - 1; i >= 0; i-- {
+				success := entries[i].GetSuccess()
+				if success == nil {
+					continue
+				}
+
+				ta := success.GetTransientAccounts()
+				if ta == nil {
+					continue
+				}
+
+				accountList, ok := ta[ledgerName]
+				if !ok || accountList == nil {
+					continue
+				}
+
+				Expect(accountList.GetAccounts()).To(ContainElement("staging:audit1"),
+					"audit entry should list staging:audit1 as transient")
+				found = true
+
+				break
+			}
+
+			Expect(found).To(BeTrue(), "should find an audit entry with transient_accounts")
+		})
+	})
+
+	Context("When the audit entry records purged ephemeral accounts", Ordered, func() {
+		const ledgerName = "ephemeral-audit"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+			})
+			Expect(err).To(Succeed())
+
+			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					{
+						Type: &servicepb.Request_AddAccountType{
+							AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
+								Ledger: ledgerName,
+								AccountType: &commonpb.AccountType{
+									Name:        "clearing",
+									Pattern:     "clearing:{id}",
+									Status:      commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE,
+									Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+								},
+							},
+						},
+					},
+					{
+						Type: &servicepb.Request_SetDefaultEnforcementMode{
+							SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{
+								Ledger:          ledgerName,
+								EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
+							},
+						},
+					},
+				},
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("Should include purged accounts in the audit entry", func() {
+			// Batch: world → clearing:ep1 75 USD, clearing:ep1 → dest 75 USD
+			// clearing:ep1 ends at zero → purged
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "clearing:ep1", big.NewInt(75), "USD"),
+					}, nil),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("clearing:ep1", "dest", big.NewInt(75), "USD"),
+					}, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			entries, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
+				Ledger: ledgerName,
+			})
+			Expect(err).To(Succeed())
+			Expect(entries).NotTo(BeEmpty())
+
+			var found bool
+			for i := len(entries) - 1; i >= 0; i-- {
+				success := entries[i].GetSuccess()
+				if success == nil {
+					continue
+				}
+
+				pa := success.GetPurgedAccounts()
+				if pa == nil {
+					continue
+				}
+
+				accountList, ok := pa[ledgerName]
+				if !ok || accountList == nil {
+					continue
+				}
+
+				Expect(accountList.GetAccounts()).To(ContainElement("clearing:ep1"),
+					"audit entry should list clearing:ep1 as purged")
+				found = true
+
+				break
+			}
+
+			Expect(found).To(BeTrue(), "should find an audit entry with purged_accounts")
+		})
+	})
+
 	Context("When a transient account has non-zero balance at end of batch", Ordered, func() {
 		const ledgerName = "transient-non-zero"
 
