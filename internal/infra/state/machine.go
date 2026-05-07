@@ -20,7 +20,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/bloom"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/keystore"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/kv"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -774,34 +773,6 @@ func (fsm *Machine) deleteQueryCheckpointFiles(checkpointID uint64) {
 	}
 }
 
-// putInCache inserts a value into a cache generation if the key is absent.
-// If the key already exists, the existing value is returned unchanged.
-// preloadToCache populates both Gen1 and Gen0 of an AttributeCache with a preloaded value.
-// Gen1 is checked first: after rotation it holds the previous Gen0's data which may be
-// more recent than the preload. If Gen1 already has the key, its value is propagated to
-// Gen0 (preventing a stale preload from shadowing it).
-func preloadToCache[T any](ac *cache.AttributeCache[T], id *raftcmdpb.AttributeID, value T) {
-	value = putInCache(ac.Gen1(), id, value)
-	putInCache(ac.Gen0(), id, value)
-}
-
-// Used by Preload to populate the dual-generation cache.
-func putInCache[T any](store kv.KV[attributes.U128, attributes.Entry[T]], attrID *raftcmdpb.AttributeID, value T) T {
-	id := attributes.U128FromBytes(attrID.GetId())
-
-	existing, ok := store.Get(id)
-	if ok {
-		return existing.Data
-	}
-
-	store.Put(id, attributes.Entry[T]{
-		Tag:  attrID.GetTag(),
-		Data: value,
-	})
-
-	return value
-}
-
 // Preload applies preloaded data to the Machine's volatile state.
 // batch and genByte are used for incremental 0xFF persistence of NumscriptParsed entries.
 func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet, batch *dal.Batch, genByte byte) error {
@@ -844,44 +815,18 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet, batch *dal.Batch, 
 		)
 	}
 
+	gen1Byte := genByte ^ 1
 	for _, preload := range preloadSet.GetPreloads() {
-		switch preloadType := preload.GetType().(type) {
-		case *raftcmdpb.Preload_Volume:
-			preloadToCache(fsm.Registry.Cache.Volumes, preloadType.Volume.GetId(), preloadType.Volume.GetValue())
-
-		case *raftcmdpb.Preload_IdempotencyKey:
-			preloadToCache(fsm.Registry.Cache.IdempotencyKeys, preloadType.IdempotencyKey.GetId(), preloadType.IdempotencyKey.GetValue())
-
-		case *raftcmdpb.Preload_Ledger:
-			preloadToCache(fsm.Registry.Cache.Ledgers, preloadType.Ledger.GetId(), preloadType.Ledger.GetValue())
-
-		case *raftcmdpb.Preload_Boundary:
-			preloadToCache(fsm.Registry.Cache.Boundaries, preloadType.Boundary.GetId(), preloadType.Boundary.GetValue())
-
-		case *raftcmdpb.Preload_TransactionReference:
-			preloadToCache(fsm.Registry.Cache.References, preloadType.TransactionReference.GetId(), preloadType.TransactionReference.GetValue())
-
-		case *raftcmdpb.Preload_SinkConfig:
-			preloadToCache(fsm.Registry.Cache.SinkConfigs, preloadType.SinkConfig.GetId(), preloadType.SinkConfig.GetValue())
-
-		case *raftcmdpb.Preload_AccountMetadata:
-			preloadToCache(fsm.Registry.Cache.AccountMetadata, preloadType.AccountMetadata.GetId(), preloadType.AccountMetadata.GetValue())
-
-		case *raftcmdpb.Preload_NumscriptVersion:
-			preloadToCache(fsm.Registry.Cache.NumscriptVersions, preloadType.NumscriptVersion.GetId(), preloadType.NumscriptVersion.GetValue())
-
-		case *raftcmdpb.Preload_TransactionState:
-			preloadToCache(fsm.Registry.Cache.Transactions, preloadType.TransactionState.GetId(), preloadType.TransactionState.GetValue())
-
-		case *raftcmdpb.Preload_NumscriptContent:
-			preloadToCache(fsm.Registry.Cache.NumscriptContents, preloadType.NumscriptContent.GetId(), preloadType.NumscriptContent.GetValue())
+		if err := fsm.cacheSnapshotter.MirrorPreload(batch, genByte, gen1Byte, preload); err != nil {
+			return err
 		}
 	}
 
-	// Apply touches: promote keys from Gen1 to Gen0 without a store read.
 	for _, touch := range preloadSet.GetTouches() {
 		id := attributes.U128FromBytes(touch.GetId())
-		fsm.Registry.Cache.TouchByType(touch.GetType(), id)
+		if err := fsm.cacheSnapshotter.MirrorTouch(batch, touch.GetType(), genByte, id); err != nil {
+			return err
+		}
 	}
 
 	return nil

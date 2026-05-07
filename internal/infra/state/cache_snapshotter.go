@@ -24,6 +24,24 @@ func parseLeanValue(value []byte) (uint64, []byte) {
 	return binary.LittleEndian.Uint64(value[:8]), value[8:]
 }
 
+// putAttributeIfAbsent puts value at id only if store doesn't already have
+// an entry, returning whichever value ends up in store. Used by MirrorPreload
+// to avoid clobbering a fresher in-memory value with the boundary preload.
+func putAttributeIfAbsent[V any](
+	store kv.KV[attributes.U128, attributes.Entry[V]],
+	id attributes.U128,
+	tag uint64,
+	value V,
+) V {
+	if existing, ok := store.Get(id); ok {
+		return existing.Data
+	}
+
+	store.Put(id, attributes.Entry[V]{Tag: tag, Data: value})
+
+	return value
+}
+
 // cacheSnapshotSlot captures the persist/restore logic for a single cache type.
 // Implemented by protoSnapshotSlot[V] for proto-backed caches.
 type cacheSnapshotSlot interface {
@@ -33,6 +51,14 @@ type cacheSnapshotSlot interface {
 	Persist(batch *dal.Batch, genByte byte, genIndex int) error
 	// RestoreEntry returns a function that restores a single entry into the given generation.
 	RestoreEntry(genIndex int) func(u128 attributes.U128, rawValue []byte) error
+	// MirrorTouch promotes id from gen1 to gen0 in-memory and mirrors the
+	// new gen0 entry to 0xFF. No-op if gen0 already has the key or the key
+	// is in neither generation.
+	MirrorTouch(batch *dal.Batch, gen0Byte byte, id attributes.U128) error
+	// MirrorPreload puts value into both in-memory generations and mirrors
+	// to 0xFF at both byte positions. value is type-erased; the concrete
+	// implementation re-asserts to V.
+	MirrorPreload(batch *dal.Batch, gen0Byte, gen1Byte byte, attrID *raftcmdpb.AttributeID, value any) error
 }
 
 // protoSnapshotSlot implements cacheSnapshotSlot for a proto-backed AttributeCache.
@@ -57,6 +83,67 @@ func (s *protoSnapshotSlot[V]) selectGen(genIndex int) kv.KV[attributes.U128, at
 
 func (s *protoSnapshotSlot[V]) Persist(batch *dal.Batch, genByte byte, genIndex int) error {
 	return persistLeanProtoEntries(batch, genByte, s.cacheType, s.selectGen(genIndex))
+}
+
+func (s *protoSnapshotSlot[V]) MirrorTouch(batch *dal.Batch, gen0Byte byte, id attributes.U128) error {
+	// Skip when gen0 already holds the key — Touch is a no-op then, and
+	// the 0xFF gen0Byte row may hold a fresher in-batch Merge value.
+	if _, ok := s.ac.Gen0().Get(id); ok {
+		return nil
+	}
+
+	s.ac.Touch(id)
+
+	entry, ok := s.ac.Gen0().Get(id)
+	if !ok {
+		return nil
+	}
+
+	valueBytes, err := entry.Data.MarshalVT()
+	if err != nil {
+		return fmt.Errorf("marshaling touched value: %w", err)
+	}
+
+	if err := writeCacheRaw(batch, gen0Byte, s.cacheType, id, entry.Tag, valueBytes); err != nil {
+		return fmt.Errorf("persisting touched value: %w", err)
+	}
+
+	return nil
+}
+
+func (s *protoSnapshotSlot[V]) MirrorPreload(
+	batch *dal.Batch,
+	gen0Byte, gen1Byte byte,
+	attrID *raftcmdpb.AttributeID,
+	value any,
+) error {
+	typed, ok := value.(V)
+	if !ok {
+		return fmt.Errorf("MirrorPreload: value type %T does not match slot's V", value)
+	}
+
+	id := attributes.U128FromBytes(attrID.GetId())
+	tag := attrID.GetTag()
+
+	// gen1 wins if it already has a (post-rotation, possibly fresher)
+	// value; otherwise the preload value populates both gens.
+	effective := putAttributeIfAbsent(s.ac.Gen1(), id, tag, typed)
+	putAttributeIfAbsent(s.ac.Gen0(), id, tag, effective)
+
+	valueBytes, err := effective.MarshalVT()
+	if err != nil {
+		return fmt.Errorf("marshaling preloaded value: %w", err)
+	}
+
+	if err := writeCacheRaw(batch, gen0Byte, s.cacheType, id, tag, valueBytes); err != nil {
+		return fmt.Errorf("persisting preloaded gen0 value: %w", err)
+	}
+
+	if err := writeCacheRaw(batch, gen1Byte, s.cacheType, id, tag, valueBytes); err != nil {
+		return fmt.Errorf("persisting preloaded gen1 value: %w", err)
+	}
+
+	return nil
 }
 
 func (s *protoSnapshotSlot[V]) RestoreEntry(genIndex int) func(u128 attributes.U128, rawValue []byte) error {
@@ -93,6 +180,9 @@ type CacheSnapshotter struct {
 	registry     *StateRegistry
 	bloomFilters *bloom.FilterSet
 	slots        []cacheSnapshotSlot
+	// touchSlots maps CacheTouchType enum values to the corresponding slot,
+	// for the FSM apply path's MirrorTouch dispatch.
+	touchSlots map[raftcmdpb.CacheTouchType]cacheSnapshotSlot
 
 	// bloomPopulateDone is closed when the background bloom populate goroutine
 	// finishes. Nil when no background work is running.
@@ -103,24 +193,98 @@ type CacheSnapshotter struct {
 func NewCacheSnapshotter(logger logging.Logger, dataStore *dal.Store, registry *StateRegistry, bloomFilters *bloom.FilterSet) *CacheSnapshotter {
 	c := registry.Cache
 
+	volumes := newProtoSnapshotSlot(dal.AttributePrefixVolume, c.Volumes, func() *raftcmdpb.VolumePair { return &raftcmdpb.VolumePair{} })
+	metadata := newProtoSnapshotSlot(dal.AttributePrefixMetadata, c.AccountMetadata, func() *commonpb.MetadataValue { return &commonpb.MetadataValue{} })
+	ledgers := newProtoSnapshotSlot(dal.AttributePrefixLedger, c.Ledgers, func() *commonpb.LedgerInfo { return &commonpb.LedgerInfo{} })
+	boundaries := newProtoSnapshotSlot(dal.AttributePrefixBoundary, c.Boundaries, func() *raftcmdpb.LedgerBoundaries { return &raftcmdpb.LedgerBoundaries{} })
+	references := newProtoSnapshotSlot(dal.AttributePrefixReference, c.References, func() *commonpb.TransactionReferenceValue { return &commonpb.TransactionReferenceValue{} })
+	transactions := newProtoSnapshotSlot(dal.AttributePrefixTransaction, c.Transactions, func() *commonpb.TransactionState { return &commonpb.TransactionState{} })
+	idempotency := newProtoSnapshotSlot(dal.AttributePrefixIdempotency, c.IdempotencyKeys, func() *commonpb.IdempotencyKeyValue { return &commonpb.IdempotencyKeyValue{} })
+	sinks := newProtoSnapshotSlot(dal.AttributePrefixSinkConfig, c.SinkConfigs, func() *commonpb.SinkConfig { return &commonpb.SinkConfig{} })
+	numscriptVersions := newProtoSnapshotSlot(dal.AttributePrefixNumscriptVersion, c.NumscriptVersions, func() *commonpb.NumscriptVersionValue { return &commonpb.NumscriptVersionValue{} })
+	numscriptContents := newProtoSnapshotSlot(dal.AttributePrefixNumscriptContent, c.NumscriptContents, func() *commonpb.NumscriptInfo { return &commonpb.NumscriptInfo{} })
+
 	return &CacheSnapshotter{
 		logger:       logger,
 		dataStore:    dataStore,
 		registry:     registry,
 		bloomFilters: bloomFilters,
 		slots: []cacheSnapshotSlot{
-			newProtoSnapshotSlot(dal.AttributePrefixVolume, c.Volumes, func() *raftcmdpb.VolumePair { return &raftcmdpb.VolumePair{} }),
-			newProtoSnapshotSlot(dal.AttributePrefixMetadata, c.AccountMetadata, func() *commonpb.MetadataValue { return &commonpb.MetadataValue{} }),
-			newProtoSnapshotSlot(dal.AttributePrefixLedger, c.Ledgers, func() *commonpb.LedgerInfo { return &commonpb.LedgerInfo{} }),
-			newProtoSnapshotSlot(dal.AttributePrefixBoundary, c.Boundaries, func() *raftcmdpb.LedgerBoundaries { return &raftcmdpb.LedgerBoundaries{} }),
-			newProtoSnapshotSlot(dal.AttributePrefixReference, c.References, func() *commonpb.TransactionReferenceValue { return &commonpb.TransactionReferenceValue{} }),
-			newProtoSnapshotSlot(dal.AttributePrefixTransaction, c.Transactions, func() *commonpb.TransactionState { return &commonpb.TransactionState{} }),
-			newProtoSnapshotSlot(dal.AttributePrefixIdempotency, c.IdempotencyKeys, func() *commonpb.IdempotencyKeyValue { return &commonpb.IdempotencyKeyValue{} }),
-			newProtoSnapshotSlot(dal.AttributePrefixSinkConfig, c.SinkConfigs, func() *commonpb.SinkConfig { return &commonpb.SinkConfig{} }),
-			newProtoSnapshotSlot(dal.AttributePrefixNumscriptVersion, c.NumscriptVersions, func() *commonpb.NumscriptVersionValue { return &commonpb.NumscriptVersionValue{} }),
-			newProtoSnapshotSlot(dal.AttributePrefixNumscriptContent, c.NumscriptContents, func() *commonpb.NumscriptInfo { return &commonpb.NumscriptInfo{} }),
+			volumes, metadata, ledgers, boundaries, references,
+			transactions, idempotency, sinks, numscriptVersions, numscriptContents,
+		},
+		touchSlots: map[raftcmdpb.CacheTouchType]cacheSnapshotSlot{
+			raftcmdpb.CacheTouchType_CACHE_TOUCH_VOLUMES:            volumes,
+			raftcmdpb.CacheTouchType_CACHE_TOUCH_ACCOUNT_METADATA:   metadata,
+			raftcmdpb.CacheTouchType_CACHE_TOUCH_LEDGERS:            ledgers,
+			raftcmdpb.CacheTouchType_CACHE_TOUCH_BOUNDARIES:         boundaries,
+			raftcmdpb.CacheTouchType_CACHE_TOUCH_REFERENCES:         references,
+			raftcmdpb.CacheTouchType_CACHE_TOUCH_TRANSACTIONS:       transactions,
+			raftcmdpb.CacheTouchType_CACHE_TOUCH_IDEMPOTENCY_KEYS:   idempotency,
+			raftcmdpb.CacheTouchType_CACHE_TOUCH_SINK_CONFIGS:       sinks,
+			raftcmdpb.CacheTouchType_CACHE_TOUCH_NUMSCRIPT_VERSIONS: numscriptVersions,
+			raftcmdpb.CacheTouchType_CACHE_TOUCH_NUMSCRIPT_CONTENTS: numscriptContents,
 		},
 	}
+}
+
+// MirrorTouch performs an in-memory Touch and mirrors the gen0 promotion
+// to 0xFF, so a restart restores the entry into the same generation it
+// occupies in memory. gen0Byte = currentGeneration % 2.
+func (s *CacheSnapshotter) MirrorTouch(batch *dal.Batch, typ raftcmdpb.CacheTouchType, gen0Byte byte, id attributes.U128) error {
+	slot, ok := s.touchSlots[typ]
+	if !ok {
+		return nil
+	}
+
+	return slot.MirrorTouch(batch, gen0Byte, id)
+}
+
+// MirrorPreload populates both in-memory generations and mirrors to 0xFF
+// at both byte positions, matching what preloadToCache used to do
+// in-memory only.
+func (s *CacheSnapshotter) MirrorPreload(batch *dal.Batch, gen0Byte, gen1Byte byte, preload *raftcmdpb.Preload) error {
+	typ, attrID, value := extractPreload(preload)
+	if attrID == nil {
+		return nil
+	}
+
+	slot, ok := s.touchSlots[typ]
+	if !ok {
+		return nil
+	}
+
+	return slot.MirrorPreload(batch, gen0Byte, gen1Byte, attrID, value)
+}
+
+// extractPreload pulls the CacheTouchType, AttributeID and typed value out
+// of a Preload variant. One case per variant — no way to express this
+// generically because each variant is a distinct concrete struct.
+func extractPreload(p *raftcmdpb.Preload) (raftcmdpb.CacheTouchType, *raftcmdpb.AttributeID, any) {
+	switch v := p.GetType().(type) {
+	case *raftcmdpb.Preload_Volume:
+		return raftcmdpb.CacheTouchType_CACHE_TOUCH_VOLUMES, v.Volume.GetId(), v.Volume.GetValue()
+	case *raftcmdpb.Preload_IdempotencyKey:
+		return raftcmdpb.CacheTouchType_CACHE_TOUCH_IDEMPOTENCY_KEYS, v.IdempotencyKey.GetId(), v.IdempotencyKey.GetValue()
+	case *raftcmdpb.Preload_Ledger:
+		return raftcmdpb.CacheTouchType_CACHE_TOUCH_LEDGERS, v.Ledger.GetId(), v.Ledger.GetValue()
+	case *raftcmdpb.Preload_Boundary:
+		return raftcmdpb.CacheTouchType_CACHE_TOUCH_BOUNDARIES, v.Boundary.GetId(), v.Boundary.GetValue()
+	case *raftcmdpb.Preload_TransactionReference:
+		return raftcmdpb.CacheTouchType_CACHE_TOUCH_REFERENCES, v.TransactionReference.GetId(), v.TransactionReference.GetValue()
+	case *raftcmdpb.Preload_SinkConfig:
+		return raftcmdpb.CacheTouchType_CACHE_TOUCH_SINK_CONFIGS, v.SinkConfig.GetId(), v.SinkConfig.GetValue()
+	case *raftcmdpb.Preload_AccountMetadata:
+		return raftcmdpb.CacheTouchType_CACHE_TOUCH_ACCOUNT_METADATA, v.AccountMetadata.GetId(), v.AccountMetadata.GetValue()
+	case *raftcmdpb.Preload_NumscriptVersion:
+		return raftcmdpb.CacheTouchType_CACHE_TOUCH_NUMSCRIPT_VERSIONS, v.NumscriptVersion.GetId(), v.NumscriptVersion.GetValue()
+	case *raftcmdpb.Preload_TransactionState:
+		return raftcmdpb.CacheTouchType_CACHE_TOUCH_TRANSACTIONS, v.TransactionState.GetId(), v.TransactionState.GetValue()
+	case *raftcmdpb.Preload_NumscriptContent:
+		return raftcmdpb.CacheTouchType_CACHE_TOUCH_NUMSCRIPT_CONTENTS, v.NumscriptContent.GetId(), v.NumscriptContent.GetValue()
+	}
+
+	return 0, nil, nil
 }
 
 // persistGeneration writes a single cache generation to Pebble.
