@@ -1295,7 +1295,7 @@ func (m *MigrateAccountTypeRequest) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *GetStoreMetricsRequest) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *GetPrimaryMetricsRequest) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -1306,7 +1306,7 @@ func (m *GetStoreMetricsRequest) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *GetStoreMetricsResponse) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *GetPrimaryMetricsResponse) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -1317,7 +1317,7 @@ func (m *GetStoreMetricsResponse) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *GetReadIndexMetricsRequest) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *GetSecondaryMetricsRequest) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -1328,7 +1328,7 @@ func (m *GetReadIndexMetricsRequest) MarshalDeterministicVT(dAtA []byte) []byte 
 	return append(dAtA, b...)
 }
 
-func (m *GetReadIndexMetricsResponse) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *GetSecondaryMetricsResponse) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}

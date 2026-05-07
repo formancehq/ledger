@@ -384,7 +384,7 @@ func (m *BackupResponse) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *CompactStoreRequest) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *CompactPrimaryRequest) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -395,7 +395,7 @@ func (m *CompactStoreRequest) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *CompactStoreResponse) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *CompactPrimaryResponse) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -406,7 +406,7 @@ func (m *CompactStoreResponse) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *CompactReadIndexRequest) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *CompactSecondaryRequest) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -417,7 +417,7 @@ func (m *CompactReadIndexRequest) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *CompactReadIndexResponse) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *CompactSecondaryResponse) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}

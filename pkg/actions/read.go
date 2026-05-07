@@ -315,14 +315,14 @@ func Discovery(ctx context.Context, client servicepb.BucketServiceClient) (*serv
 	return client.Discovery(ctx, &servicepb.DiscoveryRequest{})
 }
 
-// GetStoreMetrics calls the GetStoreMetrics RPC.
-func GetStoreMetrics(ctx context.Context, client servicepb.BucketServiceClient) (*servicepb.GetStoreMetricsResponse, error) {
-	return client.GetStoreMetrics(ctx, &servicepb.GetStoreMetricsRequest{})
+// GetPrimaryMetrics calls the GetPrimaryMetrics RPC.
+func GetPrimaryMetrics(ctx context.Context, client servicepb.BucketServiceClient) (*servicepb.GetPrimaryMetricsResponse, error) {
+	return client.GetPrimaryMetrics(ctx, &servicepb.GetPrimaryMetricsRequest{})
 }
 
-// GetReadIndexMetrics calls the GetReadIndexMetrics RPC.
-func GetReadIndexMetrics(ctx context.Context, client servicepb.BucketServiceClient) (*servicepb.GetReadIndexMetricsResponse, error) {
-	return client.GetReadIndexMetrics(ctx, &servicepb.GetReadIndexMetricsRequest{})
+// GetSecondaryMetrics calls the GetSecondaryMetrics RPC.
+func GetSecondaryMetrics(ctx context.Context, client servicepb.BucketServiceClient) (*servicepb.GetSecondaryMetricsResponse, error) {
+	return client.GetSecondaryMetrics(ctx, &servicepb.GetSecondaryMetricsRequest{})
 }
 
 // GetIndexStatus calls the GetIndexStatus RPC.

@@ -10,14 +10,14 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 )
 
-// NewCompactCommand creates the store compact command.
-func NewCompactCommand() *cobra.Command {
+// NewPrimaryCompactCommand creates the store primary compact command.
+func NewPrimaryCompactCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "compact",
 		Aliases: []string{"gc"},
-		Short:   "Compact the Pebble store",
-		Long:    "Trigger a synchronous prefix-by-prefix compaction of the local Pebble store via gRPC",
-		RunE:    runCompact,
+		Short:   "Compact the primary Pebble store",
+		Long:    "Trigger a synchronous prefix-by-prefix compaction of the primary Pebble store via gRPC",
+		RunE:    runPrimaryCompact,
 	}
 
 	cmdutil.AddOutputFlags(cmd)
@@ -26,7 +26,7 @@ func NewCompactCommand() *cobra.Command {
 	return cmd
 }
 
-func runCompact(cmd *cobra.Command, _ []string) error {
+func runPrimaryCompact(cmd *cobra.Command, _ []string) error {
 	client, conn, err := cmdutil.GetClusterClient(cmd)
 	if err != nil {
 		return err
@@ -44,7 +44,7 @@ func runCompact(cmd *cobra.Command, _ []string) error {
 		spinner, _ = pterm.DefaultSpinner.Start("Compacting storage...")
 	}
 
-	resp, err := client.CompactStore(ctx, &clusterpb.CompactStoreRequest{})
+	resp, err := client.CompactPrimary(ctx, &clusterpb.CompactPrimaryRequest{})
 	if err != nil {
 		if spinner != nil {
 			_ = spinner.Stop()

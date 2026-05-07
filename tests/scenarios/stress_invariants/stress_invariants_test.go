@@ -128,18 +128,18 @@ func TestStressInvariants(t *testing.T) {
 
 	// --- Phase 4b: Monitoring RPCs ---
 	t.Run("MonitoringRPCs", func(t *testing.T) {
-		// GetStoreMetrics
-		storeMetrics, err := actions.GetStoreMetrics(ctx, client)
-		require.NoError(t, err, "GetStoreMetrics failed")
-		require.True(t, storeMetrics.GetAvailable(), "store metrics should be available")
-		require.NotNil(t, storeMetrics.GetMetrics(), "store metrics should not be nil")
-		t.Logf("StoreMetrics: available=%v", storeMetrics.GetAvailable())
+		// GetPrimaryMetrics
+		storeMetrics, err := actions.GetPrimaryMetrics(ctx, client)
+		require.NoError(t, err, "GetPrimaryMetrics failed")
+		require.True(t, storeMetrics.GetAvailable(), "primary metrics should be available")
+		require.NotNil(t, storeMetrics.GetMetrics(), "primary metrics should not be nil")
+		t.Logf("PrimaryMetrics: available=%v", storeMetrics.GetAvailable())
 
-		// GetReadIndexMetrics
-		readMetrics, err := actions.GetReadIndexMetrics(ctx, client)
-		require.NoError(t, err, "GetReadIndexMetrics failed")
-		require.True(t, readMetrics.GetAvailable(), "read index metrics should be available")
-		t.Logf("ReadIndexMetrics: available=%v", readMetrics.GetAvailable())
+		// GetSecondaryMetrics
+		readMetrics, err := actions.GetSecondaryMetrics(ctx, client)
+		require.NoError(t, err, "GetSecondaryMetrics failed")
+		require.True(t, readMetrics.GetAvailable(), "secondary metrics should be available")
+		t.Logf("SecondaryMetrics: available=%v", readMetrics.GetAvailable())
 
 		// GetIndexStatus
 		indexStatus, err := actions.GetIndexStatus(ctx, client)

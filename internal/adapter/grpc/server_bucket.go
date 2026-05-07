@@ -23,8 +23,10 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/application/check"
 	"github.com/formancehq/ledger-v3-poc/internal/application/ctrl"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/receipt"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -56,9 +58,10 @@ type BucketServiceServerImpl struct {
 	authCfg               internalauth.AuthConfig
 	queryProfileThreshold time.Duration
 	applyDuration         metric.Int64Histogram
+	forwarder             nodeForwarder
 }
 
-func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, receiptSigner *receipt.Signer, responseSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, queryProfileThreshold time.Duration, meterProvider metric.MeterProvider) servicepb.BucketServiceServer {
+func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, receiptSigner *receipt.Signer, responseSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, queryProfileThreshold time.Duration, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool) servicepb.BucketServiceServer {
 	meter := meterProvider.Meter("grpc")
 	applyDuration, _ := meter.Int64Histogram("grpc.apply.duration",
 		metric.WithUnit("us"),
@@ -81,6 +84,7 @@ func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl 
 		authCfg:               authCfg,
 		queryProfileThreshold: queryProfileThreshold,
 		applyDuration:         applyDuration,
+		forwarder:             nodeForwarder{node: n, servicePool: servicePool},
 	}
 }
 
@@ -438,37 +442,49 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 	return err
 }
 
-func (impl *BucketServiceServerImpl) GetStoreMetrics(ctx context.Context, _ *servicepb.GetStoreMetricsRequest) (*servicepb.GetStoreMetricsResponse, error) {
+func (impl *BucketServiceServerImpl) GetPrimaryMetrics(ctx context.Context, req *servicepb.GetPrimaryMetricsRequest) (*servicepb.GetPrimaryMetricsResponse, error) {
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
 		return nil, err
+	}
+
+	if conn, err := impl.forwarder.resolve(req.GetNodeId()); err != nil {
+		return nil, err
+	} else if conn != nil {
+		return servicepb.NewBucketServiceClient(conn).GetPrimaryMetrics(ctx, req)
 	}
 
 	// Get metrics from the Pebble store directly
 	metrics, ok := impl.store.GetMetrics().(*servicepb.PebbleMetrics)
 	if !ok {
-		return &servicepb.GetStoreMetricsResponse{
+		return &servicepb.GetPrimaryMetricsResponse{
 			Available: false,
 		}, nil
 	}
 
-	return &servicepb.GetStoreMetricsResponse{
+	return &servicepb.GetPrimaryMetricsResponse{
 		Available: true,
 		Metrics:   metrics,
 	}, nil
 }
 
-func (impl *BucketServiceServerImpl) GetReadIndexMetrics(ctx context.Context, _ *servicepb.GetReadIndexMetricsRequest) (*servicepb.GetReadIndexMetricsResponse, error) {
+func (impl *BucketServiceServerImpl) GetSecondaryMetrics(ctx context.Context, req *servicepb.GetSecondaryMetricsRequest) (*servicepb.GetSecondaryMetricsResponse, error) {
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
 		return nil, err
 	}
 
+	if conn, err := impl.forwarder.resolve(req.GetNodeId()); err != nil {
+		return nil, err
+	} else if conn != nil {
+		return servicepb.NewBucketServiceClient(conn).GetSecondaryMetrics(ctx, req)
+	}
+
 	if impl.readStore == nil {
-		return &servicepb.GetReadIndexMetricsResponse{
+		return &servicepb.GetSecondaryMetricsResponse{
 			Available: false,
 		}, nil
 	}
 
-	return &servicepb.GetReadIndexMetricsResponse{
+	return &servicepb.GetSecondaryMetricsResponse{
 		Available: true,
 		Metrics:   impl.readStore.GetMetrics(),
 	}, nil

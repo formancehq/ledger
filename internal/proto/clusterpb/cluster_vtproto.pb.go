@@ -444,11 +444,11 @@ func (m *BackupResponse) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *CompactStoreRequest) CloneVT() *CompactStoreRequest {
+func (m *CompactPrimaryRequest) CloneVT() *CompactPrimaryRequest {
 	if m == nil {
-		return (*CompactStoreRequest)(nil)
+		return (*CompactPrimaryRequest)(nil)
 	}
-	r := new(CompactStoreRequest)
+	r := new(CompactPrimaryRequest)
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -456,15 +456,15 @@ func (m *CompactStoreRequest) CloneVT() *CompactStoreRequest {
 	return r
 }
 
-func (m *CompactStoreRequest) CloneMessageVT() proto.Message {
+func (m *CompactPrimaryRequest) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *CompactStoreResponse) CloneVT() *CompactStoreResponse {
+func (m *CompactPrimaryResponse) CloneVT() *CompactPrimaryResponse {
 	if m == nil {
-		return (*CompactStoreResponse)(nil)
+		return (*CompactPrimaryResponse)(nil)
 	}
-	r := new(CompactStoreResponse)
+	r := new(CompactPrimaryResponse)
 	r.DurationMs = m.DurationMs
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -473,15 +473,15 @@ func (m *CompactStoreResponse) CloneVT() *CompactStoreResponse {
 	return r
 }
 
-func (m *CompactStoreResponse) CloneMessageVT() proto.Message {
+func (m *CompactPrimaryResponse) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *CompactReadIndexRequest) CloneVT() *CompactReadIndexRequest {
+func (m *CompactSecondaryRequest) CloneVT() *CompactSecondaryRequest {
 	if m == nil {
-		return (*CompactReadIndexRequest)(nil)
+		return (*CompactSecondaryRequest)(nil)
 	}
-	r := new(CompactReadIndexRequest)
+	r := new(CompactSecondaryRequest)
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -489,15 +489,15 @@ func (m *CompactReadIndexRequest) CloneVT() *CompactReadIndexRequest {
 	return r
 }
 
-func (m *CompactReadIndexRequest) CloneMessageVT() proto.Message {
+func (m *CompactSecondaryRequest) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *CompactReadIndexResponse) CloneVT() *CompactReadIndexResponse {
+func (m *CompactSecondaryResponse) CloneVT() *CompactSecondaryResponse {
 	if m == nil {
-		return (*CompactReadIndexResponse)(nil)
+		return (*CompactSecondaryResponse)(nil)
 	}
-	r := new(CompactReadIndexResponse)
+	r := new(CompactSecondaryResponse)
 	r.DurationMs = m.DurationMs
 	r.SizeBeforeBytes = m.SizeBeforeBytes
 	r.SizeAfterBytes = m.SizeAfterBytes
@@ -508,7 +508,7 @@ func (m *CompactReadIndexResponse) CloneVT() *CompactReadIndexResponse {
 	return r
 }
 
-func (m *CompactReadIndexResponse) CloneMessageVT() proto.Message {
+func (m *CompactSecondaryResponse) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -1283,7 +1283,7 @@ func (this *BackupResponse) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *CompactStoreRequest) EqualVT(that *CompactStoreRequest) bool {
+func (this *CompactPrimaryRequest) EqualVT(that *CompactPrimaryRequest) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -1292,14 +1292,14 @@ func (this *CompactStoreRequest) EqualVT(that *CompactStoreRequest) bool {
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *CompactStoreRequest) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*CompactStoreRequest)
+func (this *CompactPrimaryRequest) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*CompactPrimaryRequest)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *CompactStoreResponse) EqualVT(that *CompactStoreResponse) bool {
+func (this *CompactPrimaryResponse) EqualVT(that *CompactPrimaryResponse) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -1311,14 +1311,14 @@ func (this *CompactStoreResponse) EqualVT(that *CompactStoreResponse) bool {
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *CompactStoreResponse) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*CompactStoreResponse)
+func (this *CompactPrimaryResponse) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*CompactPrimaryResponse)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *CompactReadIndexRequest) EqualVT(that *CompactReadIndexRequest) bool {
+func (this *CompactSecondaryRequest) EqualVT(that *CompactSecondaryRequest) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -1327,14 +1327,14 @@ func (this *CompactReadIndexRequest) EqualVT(that *CompactReadIndexRequest) bool
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *CompactReadIndexRequest) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*CompactReadIndexRequest)
+func (this *CompactSecondaryRequest) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*CompactSecondaryRequest)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *CompactReadIndexResponse) EqualVT(that *CompactReadIndexResponse) bool {
+func (this *CompactSecondaryResponse) EqualVT(that *CompactSecondaryResponse) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -1352,8 +1352,8 @@ func (this *CompactReadIndexResponse) EqualVT(that *CompactReadIndexResponse) bo
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *CompactReadIndexResponse) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*CompactReadIndexResponse)
+func (this *CompactSecondaryResponse) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*CompactSecondaryResponse)
 	if !ok {
 		return false
 	}
@@ -2743,7 +2743,7 @@ func (m *BackupResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *CompactStoreRequest) MarshalVT() (dAtA []byte, err error) {
+func (m *CompactPrimaryRequest) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -2756,12 +2756,12 @@ func (m *CompactStoreRequest) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *CompactStoreRequest) MarshalToVT(dAtA []byte) (int, error) {
+func (m *CompactPrimaryRequest) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *CompactStoreRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *CompactPrimaryRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -2776,7 +2776,7 @@ func (m *CompactStoreRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *CompactStoreResponse) MarshalVT() (dAtA []byte, err error) {
+func (m *CompactPrimaryResponse) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -2789,12 +2789,12 @@ func (m *CompactStoreResponse) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *CompactStoreResponse) MarshalToVT(dAtA []byte) (int, error) {
+func (m *CompactPrimaryResponse) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *CompactStoreResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *CompactPrimaryResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -2814,7 +2814,7 @@ func (m *CompactStoreResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 	return len(dAtA) - i, nil
 }
 
-func (m *CompactReadIndexRequest) MarshalVT() (dAtA []byte, err error) {
+func (m *CompactSecondaryRequest) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -2827,12 +2827,12 @@ func (m *CompactReadIndexRequest) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *CompactReadIndexRequest) MarshalToVT(dAtA []byte) (int, error) {
+func (m *CompactSecondaryRequest) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *CompactReadIndexRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *CompactSecondaryRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -2847,7 +2847,7 @@ func (m *CompactReadIndexRequest) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 	return len(dAtA) - i, nil
 }
 
-func (m *CompactReadIndexResponse) MarshalVT() (dAtA []byte, err error) {
+func (m *CompactSecondaryResponse) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -2860,12 +2860,12 @@ func (m *CompactReadIndexResponse) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *CompactReadIndexResponse) MarshalToVT(dAtA []byte) (int, error) {
+func (m *CompactSecondaryResponse) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *CompactReadIndexResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *CompactSecondaryResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -3791,7 +3791,7 @@ func (m *BackupResponse) SizeVT() (n int) {
 	return n
 }
 
-func (m *CompactStoreRequest) SizeVT() (n int) {
+func (m *CompactPrimaryRequest) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3801,7 +3801,7 @@ func (m *CompactStoreRequest) SizeVT() (n int) {
 	return n
 }
 
-func (m *CompactStoreResponse) SizeVT() (n int) {
+func (m *CompactPrimaryResponse) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3814,7 +3814,7 @@ func (m *CompactStoreResponse) SizeVT() (n int) {
 	return n
 }
 
-func (m *CompactReadIndexRequest) SizeVT() (n int) {
+func (m *CompactSecondaryRequest) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3824,7 +3824,7 @@ func (m *CompactReadIndexRequest) SizeVT() (n int) {
 	return n
 }
 
-func (m *CompactReadIndexResponse) SizeVT() (n int) {
+func (m *CompactSecondaryResponse) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -6708,7 +6708,7 @@ func (m *BackupResponse) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *CompactStoreRequest) UnmarshalVT(dAtA []byte) error {
+func (m *CompactPrimaryRequest) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -6731,10 +6731,10 @@ func (m *CompactStoreRequest) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: CompactStoreRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: CompactPrimaryRequest: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: CompactStoreRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: CompactPrimaryRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		default:
@@ -6759,7 +6759,7 @@ func (m *CompactStoreRequest) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *CompactStoreResponse) UnmarshalVT(dAtA []byte) error {
+func (m *CompactPrimaryResponse) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -6782,10 +6782,10 @@ func (m *CompactStoreResponse) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: CompactStoreResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: CompactPrimaryResponse: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: CompactStoreResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: CompactPrimaryResponse: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -6829,7 +6829,7 @@ func (m *CompactStoreResponse) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *CompactReadIndexRequest) UnmarshalVT(dAtA []byte) error {
+func (m *CompactSecondaryRequest) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -6852,10 +6852,10 @@ func (m *CompactReadIndexRequest) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: CompactReadIndexRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: CompactSecondaryRequest: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: CompactReadIndexRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: CompactSecondaryRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		default:
@@ -6880,7 +6880,7 @@ func (m *CompactReadIndexRequest) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *CompactReadIndexResponse) UnmarshalVT(dAtA []byte) error {
+func (m *CompactSecondaryResponse) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -6903,10 +6903,10 @@ func (m *CompactReadIndexResponse) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: CompactReadIndexResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: CompactSecondaryResponse: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: CompactReadIndexResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: CompactSecondaryResponse: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:

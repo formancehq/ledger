@@ -73,8 +73,8 @@ Interleaved operations during the loop:
 
 | RPC | Verification |
 |-----|-------------|
-| `GetStoreMetrics` | available=true, metrics not nil |
-| `GetReadIndexMetrics` | available=true |
+| `GetPrimaryMetrics` | available=true, metrics not nil |
+| `GetSecondaryMetrics` | available=true |
 | `GetIndexStatus` | lastIndexedSequence > 0 |
 
 ### Phase 4c: Discovery

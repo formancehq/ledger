@@ -28,8 +28,8 @@ const (
 	BucketService_ListTransactions_FullMethodName        = "/ledger.BucketService/ListTransactions"
 	BucketService_ListAccounts_FullMethodName            = "/ledger.BucketService/ListAccounts"
 	BucketService_Apply_FullMethodName                   = "/ledger.BucketService/Apply"
-	BucketService_GetStoreMetrics_FullMethodName         = "/ledger.BucketService/GetStoreMetrics"
-	BucketService_GetReadIndexMetrics_FullMethodName     = "/ledger.BucketService/GetReadIndexMetrics"
+	BucketService_GetPrimaryMetrics_FullMethodName       = "/ledger.BucketService/GetPrimaryMetrics"
+	BucketService_GetSecondaryMetrics_FullMethodName     = "/ledger.BucketService/GetSecondaryMetrics"
 	BucketService_CheckStore_FullMethodName              = "/ledger.BucketService/CheckStore"
 	BucketService_ListAuditEntries_FullMethodName        = "/ledger.BucketService/ListAuditEntries"
 	BucketService_GetAuditEntry_FullMethodName           = "/ledger.BucketService/GetAuditEntry"
@@ -77,10 +77,10 @@ type BucketServiceClient interface {
 	ListAccounts(ctx context.Context, in *ListAccountsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Account], error)
 	// Apply applies actions (create/delete ledger, create transaction, revert, save/delete metadata)
 	Apply(ctx context.Context, in *ApplyRequest, opts ...grpc.CallOption) (*ApplyResponse, error)
-	// GetStoreMetrics returns metrics from the local store (Pebble only)
-	GetStoreMetrics(ctx context.Context, in *GetStoreMetricsRequest, opts ...grpc.CallOption) (*GetStoreMetricsResponse, error)
-	// GetReadIndexMetrics returns metrics from the read index Pebble store
-	GetReadIndexMetrics(ctx context.Context, in *GetReadIndexMetricsRequest, opts ...grpc.CallOption) (*GetReadIndexMetricsResponse, error)
+	// GetPrimaryMetrics returns metrics from the primary Pebble store. Supports node_id targeting.
+	GetPrimaryMetrics(ctx context.Context, in *GetPrimaryMetricsRequest, opts ...grpc.CallOption) (*GetPrimaryMetricsResponse, error)
+	// GetSecondaryMetrics returns metrics from the secondary (read index) Pebble store. Supports node_id targeting.
+	GetSecondaryMetrics(ctx context.Context, in *GetSecondaryMetricsRequest, opts ...grpc.CallOption) (*GetSecondaryMetricsResponse, error)
 	// CheckStore verifies store integrity (hash chain and derived data consistency)
 	CheckStore(ctx context.Context, in *CheckStoreRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CheckStoreEvent], error)
 	// ListAuditEntries streams audit trail entries (success and failure)
@@ -240,20 +240,20 @@ func (c *bucketServiceClient) Apply(ctx context.Context, in *ApplyRequest, opts 
 	return out, nil
 }
 
-func (c *bucketServiceClient) GetStoreMetrics(ctx context.Context, in *GetStoreMetricsRequest, opts ...grpc.CallOption) (*GetStoreMetricsResponse, error) {
+func (c *bucketServiceClient) GetPrimaryMetrics(ctx context.Context, in *GetPrimaryMetricsRequest, opts ...grpc.CallOption) (*GetPrimaryMetricsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetStoreMetricsResponse)
-	err := c.cc.Invoke(ctx, BucketService_GetStoreMetrics_FullMethodName, in, out, cOpts...)
+	out := new(GetPrimaryMetricsResponse)
+	err := c.cc.Invoke(ctx, BucketService_GetPrimaryMetrics_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *bucketServiceClient) GetReadIndexMetrics(ctx context.Context, in *GetReadIndexMetricsRequest, opts ...grpc.CallOption) (*GetReadIndexMetricsResponse, error) {
+func (c *bucketServiceClient) GetSecondaryMetrics(ctx context.Context, in *GetSecondaryMetricsRequest, opts ...grpc.CallOption) (*GetSecondaryMetricsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetReadIndexMetricsResponse)
-	err := c.cc.Invoke(ctx, BucketService_GetReadIndexMetrics_FullMethodName, in, out, cOpts...)
+	out := new(GetSecondaryMetricsResponse)
+	err := c.cc.Invoke(ctx, BucketService_GetSecondaryMetrics_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -602,10 +602,10 @@ type BucketServiceServer interface {
 	ListAccounts(*ListAccountsRequest, grpc.ServerStreamingServer[commonpb.Account]) error
 	// Apply applies actions (create/delete ledger, create transaction, revert, save/delete metadata)
 	Apply(context.Context, *ApplyRequest) (*ApplyResponse, error)
-	// GetStoreMetrics returns metrics from the local store (Pebble only)
-	GetStoreMetrics(context.Context, *GetStoreMetricsRequest) (*GetStoreMetricsResponse, error)
-	// GetReadIndexMetrics returns metrics from the read index Pebble store
-	GetReadIndexMetrics(context.Context, *GetReadIndexMetricsRequest) (*GetReadIndexMetricsResponse, error)
+	// GetPrimaryMetrics returns metrics from the primary Pebble store. Supports node_id targeting.
+	GetPrimaryMetrics(context.Context, *GetPrimaryMetricsRequest) (*GetPrimaryMetricsResponse, error)
+	// GetSecondaryMetrics returns metrics from the secondary (read index) Pebble store. Supports node_id targeting.
+	GetSecondaryMetrics(context.Context, *GetSecondaryMetricsRequest) (*GetSecondaryMetricsResponse, error)
 	// CheckStore verifies store integrity (hash chain and derived data consistency)
 	CheckStore(*CheckStoreRequest, grpc.ServerStreamingServer[CheckStoreEvent]) error
 	// ListAuditEntries streams audit trail entries (success and failure)
@@ -689,11 +689,11 @@ func (UnimplementedBucketServiceServer) ListAccounts(*ListAccountsRequest, grpc.
 func (UnimplementedBucketServiceServer) Apply(context.Context, *ApplyRequest) (*ApplyResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Apply not implemented")
 }
-func (UnimplementedBucketServiceServer) GetStoreMetrics(context.Context, *GetStoreMetricsRequest) (*GetStoreMetricsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetStoreMetrics not implemented")
+func (UnimplementedBucketServiceServer) GetPrimaryMetrics(context.Context, *GetPrimaryMetricsRequest) (*GetPrimaryMetricsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetPrimaryMetrics not implemented")
 }
-func (UnimplementedBucketServiceServer) GetReadIndexMetrics(context.Context, *GetReadIndexMetricsRequest) (*GetReadIndexMetricsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetReadIndexMetrics not implemented")
+func (UnimplementedBucketServiceServer) GetSecondaryMetrics(context.Context, *GetSecondaryMetricsRequest) (*GetSecondaryMetricsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetSecondaryMetrics not implemented")
 }
 func (UnimplementedBucketServiceServer) CheckStore(*CheckStoreRequest, grpc.ServerStreamingServer[CheckStoreEvent]) error {
 	return status.Error(codes.Unimplemented, "method CheckStore not implemented")
@@ -896,38 +896,38 @@ func _BucketService_Apply_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
-func _BucketService_GetStoreMetrics_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetStoreMetricsRequest)
+func _BucketService_GetPrimaryMetrics_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetPrimaryMetricsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(BucketServiceServer).GetStoreMetrics(ctx, in)
+		return srv.(BucketServiceServer).GetPrimaryMetrics(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: BucketService_GetStoreMetrics_FullMethodName,
+		FullMethod: BucketService_GetPrimaryMetrics_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(BucketServiceServer).GetStoreMetrics(ctx, req.(*GetStoreMetricsRequest))
+		return srv.(BucketServiceServer).GetPrimaryMetrics(ctx, req.(*GetPrimaryMetricsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _BucketService_GetReadIndexMetrics_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetReadIndexMetricsRequest)
+func _BucketService_GetSecondaryMetrics_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetSecondaryMetricsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(BucketServiceServer).GetReadIndexMetrics(ctx, in)
+		return srv.(BucketServiceServer).GetSecondaryMetrics(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: BucketService_GetReadIndexMetrics_FullMethodName,
+		FullMethod: BucketService_GetSecondaryMetrics_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(BucketServiceServer).GetReadIndexMetrics(ctx, req.(*GetReadIndexMetricsRequest))
+		return srv.(BucketServiceServer).GetSecondaryMetrics(ctx, req.(*GetSecondaryMetricsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1350,12 +1350,12 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _BucketService_Apply_Handler,
 		},
 		{
-			MethodName: "GetStoreMetrics",
-			Handler:    _BucketService_GetStoreMetrics_Handler,
+			MethodName: "GetPrimaryMetrics",
+			Handler:    _BucketService_GetPrimaryMetrics_Handler,
 		},
 		{
-			MethodName: "GetReadIndexMetrics",
-			Handler:    _BucketService_GetReadIndexMetrics_Handler,
+			MethodName: "GetSecondaryMetrics",
+			Handler:    _BucketService_GetSecondaryMetrics_Handler,
 		},
 		{
 			MethodName: "GetAuditEntry",

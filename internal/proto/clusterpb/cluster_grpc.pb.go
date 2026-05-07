@@ -26,8 +26,8 @@ const (
 	ClusterService_AddLearner_FullMethodName                 = "/cluster.ClusterService/AddLearner"
 	ClusterService_PromoteLearner_FullMethodName             = "/cluster.ClusterService/PromoteLearner"
 	ClusterService_RemoveNode_FullMethodName                 = "/cluster.ClusterService/RemoveNode"
-	ClusterService_CompactStore_FullMethodName               = "/cluster.ClusterService/CompactStore"
-	ClusterService_CompactReadIndex_FullMethodName           = "/cluster.ClusterService/CompactReadIndex"
+	ClusterService_CompactPrimary_FullMethodName             = "/cluster.ClusterService/CompactPrimary"
+	ClusterService_CompactSecondary_FullMethodName           = "/cluster.ClusterService/CompactSecondary"
 	ClusterService_CreateCheckpoint_FullMethodName           = "/cluster.ClusterService/CreateCheckpoint"
 	ClusterService_Backup_FullMethodName                     = "/cluster.ClusterService/Backup"
 	ClusterService_CreateQueryCheckpoint_FullMethodName      = "/cluster.ClusterService/CreateQueryCheckpoint"
@@ -60,12 +60,12 @@ type ClusterServiceClient interface {
 	// RemoveNode removes a node (voter or learner) from the Raft cluster.
 	// The request is forwarded to the leader. Cannot remove the leader itself.
 	RemoveNode(ctx context.Context, in *RemoveNodeRequest, opts ...grpc.CallOption) (*RemoveNodeResponse, error)
-	// CompactStore triggers a synchronous prefix-by-prefix compaction of the
-	// local Pebble store. Node-local operation (not forwarded to leader).
-	CompactStore(ctx context.Context, in *CompactStoreRequest, opts ...grpc.CallOption) (*CompactStoreResponse, error)
-	// CompactReadIndex triggers an online compaction of the local Pebble read index.
+	// CompactPrimary triggers a synchronous prefix-by-prefix compaction of the
+	// primary Pebble store. Node-local operation (not forwarded to leader).
+	CompactPrimary(ctx context.Context, in *CompactPrimaryRequest, opts ...grpc.CallOption) (*CompactPrimaryResponse, error)
+	// CompactSecondary triggers an online compaction of the secondary (read index) Pebble store.
 	// Node-local operation (not forwarded to leader).
-	CompactReadIndex(ctx context.Context, in *CompactReadIndexRequest, opts ...grpc.CallOption) (*CompactReadIndexResponse, error)
+	CompactSecondary(ctx context.Context, in *CompactSecondaryRequest, opts ...grpc.CallOption) (*CompactSecondaryResponse, error)
 	// CreateCheckpoint creates a Pebble checkpoint of the current live database state.
 	// Node-local operation (not forwarded to leader).
 	CreateCheckpoint(ctx context.Context, in *CreateCheckpointRequest, opts ...grpc.CallOption) (*CreateCheckpointResponse, error)
@@ -169,20 +169,20 @@ func (c *clusterServiceClient) RemoveNode(ctx context.Context, in *RemoveNodeReq
 	return out, nil
 }
 
-func (c *clusterServiceClient) CompactStore(ctx context.Context, in *CompactStoreRequest, opts ...grpc.CallOption) (*CompactStoreResponse, error) {
+func (c *clusterServiceClient) CompactPrimary(ctx context.Context, in *CompactPrimaryRequest, opts ...grpc.CallOption) (*CompactPrimaryResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(CompactStoreResponse)
-	err := c.cc.Invoke(ctx, ClusterService_CompactStore_FullMethodName, in, out, cOpts...)
+	out := new(CompactPrimaryResponse)
+	err := c.cc.Invoke(ctx, ClusterService_CompactPrimary_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *clusterServiceClient) CompactReadIndex(ctx context.Context, in *CompactReadIndexRequest, opts ...grpc.CallOption) (*CompactReadIndexResponse, error) {
+func (c *clusterServiceClient) CompactSecondary(ctx context.Context, in *CompactSecondaryRequest, opts ...grpc.CallOption) (*CompactSecondaryResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(CompactReadIndexResponse)
-	err := c.cc.Invoke(ctx, ClusterService_CompactReadIndex_FullMethodName, in, out, cOpts...)
+	out := new(CompactSecondaryResponse)
+	err := c.cc.Invoke(ctx, ClusterService_CompactSecondary_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -282,12 +282,12 @@ type ClusterServiceServer interface {
 	// RemoveNode removes a node (voter or learner) from the Raft cluster.
 	// The request is forwarded to the leader. Cannot remove the leader itself.
 	RemoveNode(context.Context, *RemoveNodeRequest) (*RemoveNodeResponse, error)
-	// CompactStore triggers a synchronous prefix-by-prefix compaction of the
-	// local Pebble store. Node-local operation (not forwarded to leader).
-	CompactStore(context.Context, *CompactStoreRequest) (*CompactStoreResponse, error)
-	// CompactReadIndex triggers an online compaction of the local Pebble read index.
+	// CompactPrimary triggers a synchronous prefix-by-prefix compaction of the
+	// primary Pebble store. Node-local operation (not forwarded to leader).
+	CompactPrimary(context.Context, *CompactPrimaryRequest) (*CompactPrimaryResponse, error)
+	// CompactSecondary triggers an online compaction of the secondary (read index) Pebble store.
 	// Node-local operation (not forwarded to leader).
-	CompactReadIndex(context.Context, *CompactReadIndexRequest) (*CompactReadIndexResponse, error)
+	CompactSecondary(context.Context, *CompactSecondaryRequest) (*CompactSecondaryResponse, error)
 	// CreateCheckpoint creates a Pebble checkpoint of the current live database state.
 	// Node-local operation (not forwarded to leader).
 	CreateCheckpoint(context.Context, *CreateCheckpointRequest) (*CreateCheckpointResponse, error)
@@ -342,11 +342,11 @@ func (UnimplementedClusterServiceServer) PromoteLearner(context.Context, *Promot
 func (UnimplementedClusterServiceServer) RemoveNode(context.Context, *RemoveNodeRequest) (*RemoveNodeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RemoveNode not implemented")
 }
-func (UnimplementedClusterServiceServer) CompactStore(context.Context, *CompactStoreRequest) (*CompactStoreResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method CompactStore not implemented")
+func (UnimplementedClusterServiceServer) CompactPrimary(context.Context, *CompactPrimaryRequest) (*CompactPrimaryResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CompactPrimary not implemented")
 }
-func (UnimplementedClusterServiceServer) CompactReadIndex(context.Context, *CompactReadIndexRequest) (*CompactReadIndexResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method CompactReadIndex not implemented")
+func (UnimplementedClusterServiceServer) CompactSecondary(context.Context, *CompactSecondaryRequest) (*CompactSecondaryResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CompactSecondary not implemented")
 }
 func (UnimplementedClusterServiceServer) CreateCheckpoint(context.Context, *CreateCheckpointRequest) (*CreateCheckpointResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateCheckpoint not implemented")
@@ -516,38 +516,38 @@ func _ClusterService_RemoveNode_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ClusterService_CompactStore_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CompactStoreRequest)
+func _ClusterService_CompactPrimary_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CompactPrimaryRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ClusterServiceServer).CompactStore(ctx, in)
+		return srv.(ClusterServiceServer).CompactPrimary(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: ClusterService_CompactStore_FullMethodName,
+		FullMethod: ClusterService_CompactPrimary_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ClusterServiceServer).CompactStore(ctx, req.(*CompactStoreRequest))
+		return srv.(ClusterServiceServer).CompactPrimary(ctx, req.(*CompactPrimaryRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ClusterService_CompactReadIndex_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CompactReadIndexRequest)
+func _ClusterService_CompactSecondary_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CompactSecondaryRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ClusterServiceServer).CompactReadIndex(ctx, in)
+		return srv.(ClusterServiceServer).CompactSecondary(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: ClusterService_CompactReadIndex_FullMethodName,
+		FullMethod: ClusterService_CompactSecondary_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ClusterServiceServer).CompactReadIndex(ctx, req.(*CompactReadIndexRequest))
+		return srv.(ClusterServiceServer).CompactSecondary(ctx, req.(*CompactSecondaryRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -714,12 +714,12 @@ var ClusterService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ClusterService_RemoveNode_Handler,
 		},
 		{
-			MethodName: "CompactStore",
-			Handler:    _ClusterService_CompactStore_Handler,
+			MethodName: "CompactPrimary",
+			Handler:    _ClusterService_CompactPrimary_Handler,
 		},
 		{
-			MethodName: "CompactReadIndex",
-			Handler:    _ClusterService_CompactReadIndex_Handler,
+			MethodName: "CompactSecondary",
+			Handler:    _ClusterService_CompactSecondary_Handler,
 		},
 		{
 			MethodName: "CreateCheckpoint",

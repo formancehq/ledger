@@ -104,8 +104,8 @@ var (
 	GetLog                         = actions.GetLog
 	GetAuditEntry                  = actions.GetAuditEntry
 	Discovery                      = actions.Discovery
-	GetStoreMetrics                = actions.GetStoreMetrics
-	GetReadIndexMetrics            = actions.GetReadIndexMetrics
+	GetPrimaryMetrics              = actions.GetPrimaryMetrics
+	GetSecondaryMetrics            = actions.GetSecondaryMetrics
 	GetIndexStatus                 = actions.GetIndexStatus
 	ListAccountsFiltered           = actions.ListAccountsFiltered
 	ListTransactionsFiltered       = actions.ListTransactionsFiltered

@@ -36,13 +36,13 @@ service ClusterService {
   // The request is forwarded to the leader. Cannot remove the leader itself.
   rpc RemoveNode(RemoveNodeRequest) returns (RemoveNodeResponse);
 
-  // CompactStore triggers a synchronous prefix-by-prefix compaction of the
-  // local Pebble store. Node-local operation (not forwarded to leader).
-  rpc CompactStore(CompactStoreRequest) returns (CompactStoreResponse);
+  // CompactPrimary triggers a synchronous prefix-by-prefix compaction of the
+  // primary Pebble store. Node-local operation (not forwarded to leader).
+  rpc CompactPrimary(CompactPrimaryRequest) returns (CompactPrimaryResponse);
 
-  // CompactReadIndex triggers an online compaction of the local Pebble read index.
+  // CompactSecondary triggers an online compaction of the secondary (read index) Pebble store.
   // Node-local operation (not forwarded to leader).
-  rpc CompactReadIndex(CompactReadIndexRequest) returns (CompactReadIndexResponse);
+  rpc CompactSecondary(CompactSecondaryRequest) returns (CompactSecondaryResponse);
 
   // CreateCheckpoint creates a Pebble checkpoint of the current live database state.
   // Node-local operation (not forwarded to leader).
@@ -235,22 +235,22 @@ message BackupResponse {
 }
 
 // ============================================================================
-// Compact Store Messages
+// Compact Primary Messages
 // ============================================================================
 
-message CompactStoreRequest {}
+message CompactPrimaryRequest {}
 
-message CompactStoreResponse {
+message CompactPrimaryResponse {
   int64 duration_ms = 1;  // Wall-clock duration of the compaction in milliseconds
 }
 
 // ============================================================================
-// Compact Read Index Messages
+// Compact Secondary Messages
 // ============================================================================
 
-message CompactReadIndexRequest {}
+message CompactSecondaryRequest {}
 
-message CompactReadIndexResponse {
+message CompactSecondaryResponse {
   int64 duration_ms = 1;       // Wall-clock duration of the compaction in milliseconds
   int64 size_before_bytes = 2; // Read index file size before compaction in bytes
   int64 size_after_bytes = 3;  // Read index file size after compaction in bytes

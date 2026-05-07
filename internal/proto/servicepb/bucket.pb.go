@@ -4068,26 +4068,28 @@ func (x *MigrateAccountTypeRequest) GetTargetPattern() string {
 	return ""
 }
 
-type GetStoreMetricsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+type GetPrimaryMetricsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// node_id indicates which node to query (0 = local node)
+	NodeId        uint32 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *GetStoreMetricsRequest) Reset() {
-	*x = GetStoreMetricsRequest{}
+func (x *GetPrimaryMetricsRequest) Reset() {
+	*x = GetPrimaryMetricsRequest{}
 	mi := &file_bucket_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GetStoreMetricsRequest) String() string {
+func (x *GetPrimaryMetricsRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GetStoreMetricsRequest) ProtoMessage() {}
+func (*GetPrimaryMetricsRequest) ProtoMessage() {}
 
-func (x *GetStoreMetricsRequest) ProtoReflect() protoreflect.Message {
+func (x *GetPrimaryMetricsRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_bucket_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -4099,12 +4101,19 @@ func (x *GetStoreMetricsRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GetStoreMetricsRequest.ProtoReflect.Descriptor instead.
-func (*GetStoreMetricsRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use GetPrimaryMetricsRequest.ProtoReflect.Descriptor instead.
+func (*GetPrimaryMetricsRequest) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{57}
 }
 
-type GetStoreMetricsResponse struct {
+func (x *GetPrimaryMetricsRequest) GetNodeId() uint32 {
+	if x != nil {
+		return x.NodeId
+	}
+	return 0
+}
+
+type GetPrimaryMetricsResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// available indicates if metrics are available (false for non-Pebble stores)
 	Available bool `protobuf:"varint,1,opt,name=available,proto3" json:"available,omitempty"`
@@ -4114,20 +4123,20 @@ type GetStoreMetricsResponse struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *GetStoreMetricsResponse) Reset() {
-	*x = GetStoreMetricsResponse{}
+func (x *GetPrimaryMetricsResponse) Reset() {
+	*x = GetPrimaryMetricsResponse{}
 	mi := &file_bucket_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GetStoreMetricsResponse) String() string {
+func (x *GetPrimaryMetricsResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GetStoreMetricsResponse) ProtoMessage() {}
+func (*GetPrimaryMetricsResponse) ProtoMessage() {}
 
-func (x *GetStoreMetricsResponse) ProtoReflect() protoreflect.Message {
+func (x *GetPrimaryMetricsResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_bucket_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -4139,45 +4148,47 @@ func (x *GetStoreMetricsResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GetStoreMetricsResponse.ProtoReflect.Descriptor instead.
-func (*GetStoreMetricsResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use GetPrimaryMetricsResponse.ProtoReflect.Descriptor instead.
+func (*GetPrimaryMetricsResponse) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{58}
 }
 
-func (x *GetStoreMetricsResponse) GetAvailable() bool {
+func (x *GetPrimaryMetricsResponse) GetAvailable() bool {
 	if x != nil {
 		return x.Available
 	}
 	return false
 }
 
-func (x *GetStoreMetricsResponse) GetMetrics() *PebbleMetrics {
+func (x *GetPrimaryMetricsResponse) GetMetrics() *PebbleMetrics {
 	if x != nil {
 		return x.Metrics
 	}
 	return nil
 }
 
-type GetReadIndexMetricsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+type GetSecondaryMetricsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// node_id indicates which node to query (0 = local node)
+	NodeId        uint32 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *GetReadIndexMetricsRequest) Reset() {
-	*x = GetReadIndexMetricsRequest{}
+func (x *GetSecondaryMetricsRequest) Reset() {
+	*x = GetSecondaryMetricsRequest{}
 	mi := &file_bucket_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GetReadIndexMetricsRequest) String() string {
+func (x *GetSecondaryMetricsRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GetReadIndexMetricsRequest) ProtoMessage() {}
+func (*GetSecondaryMetricsRequest) ProtoMessage() {}
 
-func (x *GetReadIndexMetricsRequest) ProtoReflect() protoreflect.Message {
+func (x *GetSecondaryMetricsRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_bucket_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -4189,35 +4200,42 @@ func (x *GetReadIndexMetricsRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GetReadIndexMetricsRequest.ProtoReflect.Descriptor instead.
-func (*GetReadIndexMetricsRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use GetSecondaryMetricsRequest.ProtoReflect.Descriptor instead.
+func (*GetSecondaryMetricsRequest) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{59}
 }
 
-type GetReadIndexMetricsResponse struct {
+func (x *GetSecondaryMetricsRequest) GetNodeId() uint32 {
+	if x != nil {
+		return x.NodeId
+	}
+	return 0
+}
+
+type GetSecondaryMetricsResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// available indicates if the read index store is active
+	// available indicates if the secondary store is active
 	Available bool `protobuf:"varint,1,opt,name=available,proto3" json:"available,omitempty"`
-	// metrics contains the read index Pebble metrics (only set if available is true)
+	// metrics contains the secondary Pebble metrics (only set if available is true)
 	Metrics       *PebbleMetrics `protobuf:"bytes,2,opt,name=metrics,proto3" json:"metrics,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *GetReadIndexMetricsResponse) Reset() {
-	*x = GetReadIndexMetricsResponse{}
+func (x *GetSecondaryMetricsResponse) Reset() {
+	*x = GetSecondaryMetricsResponse{}
 	mi := &file_bucket_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GetReadIndexMetricsResponse) String() string {
+func (x *GetSecondaryMetricsResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GetReadIndexMetricsResponse) ProtoMessage() {}
+func (*GetSecondaryMetricsResponse) ProtoMessage() {}
 
-func (x *GetReadIndexMetricsResponse) ProtoReflect() protoreflect.Message {
+func (x *GetSecondaryMetricsResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_bucket_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -4229,19 +4247,19 @@ func (x *GetReadIndexMetricsResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GetReadIndexMetricsResponse.ProtoReflect.Descriptor instead.
-func (*GetReadIndexMetricsResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use GetSecondaryMetricsResponse.ProtoReflect.Descriptor instead.
+func (*GetSecondaryMetricsResponse) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{60}
 }
 
-func (x *GetReadIndexMetricsResponse) GetAvailable() bool {
+func (x *GetSecondaryMetricsResponse) GetAvailable() bool {
 	if x != nil {
 		return x.Available
 	}
 	return false
 }
 
-func (x *GetReadIndexMetricsResponse) GetMetrics() *PebbleMetrics {
+func (x *GetSecondaryMetricsResponse) GetMetrics() *PebbleMetrics {
 	if x != nil {
 		return x.Metrics
 	}
@@ -8783,13 +8801,15 @@ const file_bucket_proto_rawDesc = "" +
 	"\x0etarget_pattern\x18\x03 \x01(\tR\rtargetPattern\"V\n" +
 	"\x19MigrateAccountTypeRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12%\n" +
-	"\x0etarget_pattern\x18\x02 \x01(\tR\rtargetPattern\"\x18\n" +
-	"\x16GetStoreMetricsRequest\"h\n" +
-	"\x17GetStoreMetricsResponse\x12\x1c\n" +
+	"\x0etarget_pattern\x18\x02 \x01(\tR\rtargetPattern\"3\n" +
+	"\x18GetPrimaryMetricsRequest\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\rR\x06nodeId\"j\n" +
+	"\x19GetPrimaryMetricsResponse\x12\x1c\n" +
 	"\tavailable\x18\x01 \x01(\bR\tavailable\x12/\n" +
-	"\ametrics\x18\x02 \x01(\v2\x15.ledger.PebbleMetricsR\ametrics\"\x1c\n" +
-	"\x1aGetReadIndexMetricsRequest\"l\n" +
-	"\x1bGetReadIndexMetricsResponse\x12\x1c\n" +
+	"\ametrics\x18\x02 \x01(\v2\x15.ledger.PebbleMetricsR\ametrics\"5\n" +
+	"\x1aGetSecondaryMetricsRequest\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\rR\x06nodeId\"l\n" +
+	"\x1bGetSecondaryMetricsResponse\x12\x1c\n" +
 	"\tavailable\x18\x01 \x01(\bR\tavailable\x12/\n" +
 	"\ametrics\x18\x02 \x01(\v2\x15.ledger.PebbleMetricsR\ametrics\"\xa6\x04\n" +
 	"\rPebbleMetrics\x12:\n" +
@@ -9148,7 +9168,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x10InspectIndexMode\x12&\n" +
 	"\"INSPECT_INDEX_MODE_DISTINCT_VALUES\x10\x00\x12\x1d\n" +
 	"\x19INSPECT_INDEX_MODE_FACETS\x10\x01\x12\x1e\n" +
-	"\x1aINSPECT_INDEX_MODE_SUMMARY\x10\x022\xac\x14\n" +
+	"\x1aINSPECT_INDEX_MODE_SUMMARY\x10\x022\xb2\x14\n" +
 	"\rBucketService\x12?\n" +
 	"\vListLedgers\x12\x1a.ledger.ListLedgersRequest\x1a\x12.common.LedgerInfo0\x01\x129\n" +
 	"\tGetLedger\x12\x18.ledger.GetLedgerRequest\x1a\x12.common.LedgerInfo\x128\n" +
@@ -9157,9 +9177,9 @@ const file_bucket_proto_rawDesc = "" +
 	"\x0eGetTransaction\x12\x1d.ledger.GetTransactionRequest\x1a\x1e.ledger.GetTransactionResponse\x12J\n" +
 	"\x10ListTransactions\x12\x1f.ledger.ListTransactionsRequest\x1a\x13.common.Transaction0\x01\x12>\n" +
 	"\fListAccounts\x12\x1b.ledger.ListAccountsRequest\x1a\x0f.common.Account0\x01\x124\n" +
-	"\x05Apply\x12\x14.ledger.ApplyRequest\x1a\x15.ledger.ApplyResponse\x12R\n" +
-	"\x0fGetStoreMetrics\x12\x1e.ledger.GetStoreMetricsRequest\x1a\x1f.ledger.GetStoreMetricsResponse\x12^\n" +
-	"\x13GetReadIndexMetrics\x12\".ledger.GetReadIndexMetricsRequest\x1a#.ledger.GetReadIndexMetricsResponse\x12B\n" +
+	"\x05Apply\x12\x14.ledger.ApplyRequest\x1a\x15.ledger.ApplyResponse\x12X\n" +
+	"\x11GetPrimaryMetrics\x12 .ledger.GetPrimaryMetricsRequest\x1a!.ledger.GetPrimaryMetricsResponse\x12^\n" +
+	"\x13GetSecondaryMetrics\x12\".ledger.GetSecondaryMetricsRequest\x1a#.ledger.GetSecondaryMetricsResponse\x12B\n" +
 	"\n" +
 	"CheckStore\x12\x19.ledger.CheckStoreRequest\x1a\x17.ledger.CheckStoreEvent0\x01\x12H\n" +
 	"\x10ListAuditEntries\x12\x1f.ledger.ListAuditEntriesRequest\x1a\x11.audit.AuditEntry0\x01\x12@\n" +
@@ -9263,10 +9283,10 @@ var file_bucket_proto_goTypes = []any{
 	(*RemoveAccountTypeLedgerRequest)(nil),         // 58: ledger.RemoveAccountTypeLedgerRequest
 	(*MigrateAccountTypeLedgerRequest)(nil),        // 59: ledger.MigrateAccountTypeLedgerRequest
 	(*MigrateAccountTypeRequest)(nil),              // 60: ledger.MigrateAccountTypeRequest
-	(*GetStoreMetricsRequest)(nil),                 // 61: ledger.GetStoreMetricsRequest
-	(*GetStoreMetricsResponse)(nil),                // 62: ledger.GetStoreMetricsResponse
-	(*GetReadIndexMetricsRequest)(nil),             // 63: ledger.GetReadIndexMetricsRequest
-	(*GetReadIndexMetricsResponse)(nil),            // 64: ledger.GetReadIndexMetricsResponse
+	(*GetPrimaryMetricsRequest)(nil),               // 61: ledger.GetPrimaryMetricsRequest
+	(*GetPrimaryMetricsResponse)(nil),              // 62: ledger.GetPrimaryMetricsResponse
+	(*GetSecondaryMetricsRequest)(nil),             // 63: ledger.GetSecondaryMetricsRequest
+	(*GetSecondaryMetricsResponse)(nil),            // 64: ledger.GetSecondaryMetricsResponse
 	(*PebbleMetrics)(nil),                          // 65: ledger.PebbleMetrics
 	(*BlockCacheMetrics)(nil),                      // 66: ledger.BlockCacheMetrics
 	(*CompactMetrics)(nil),                         // 67: ledger.CompactMetrics
@@ -9451,8 +9471,8 @@ var file_bucket_proto_depIdxs = []int32{
 	139, // 73: ledger.SetDefaultEnforcementModeRequest.enforcement_mode:type_name -> common.ChartEnforcementMode
 	139, // 74: ledger.SetDefaultEnforcementModeLedgerRequest.enforcement_mode:type_name -> common.ChartEnforcementMode
 	155, // 75: ledger.AddAccountTypeLedgerRequest.account_type:type_name -> common.AccountType
-	65,  // 76: ledger.GetStoreMetricsResponse.metrics:type_name -> ledger.PebbleMetrics
-	65,  // 77: ledger.GetReadIndexMetricsResponse.metrics:type_name -> ledger.PebbleMetrics
+	65,  // 76: ledger.GetPrimaryMetricsResponse.metrics:type_name -> ledger.PebbleMetrics
+	65,  // 77: ledger.GetSecondaryMetricsResponse.metrics:type_name -> ledger.PebbleMetrics
 	66,  // 78: ledger.PebbleMetrics.block_cache:type_name -> ledger.BlockCacheMetrics
 	67,  // 79: ledger.PebbleMetrics.compact:type_name -> ledger.CompactMetrics
 	68,  // 80: ledger.PebbleMetrics.flush:type_name -> ledger.FlushMetrics
@@ -9524,8 +9544,8 @@ var file_bucket_proto_depIdxs = []int32{
 	7,   // 146: ledger.BucketService.ListTransactions:input_type -> ledger.ListTransactionsRequest
 	8,   // 147: ledger.BucketService.ListAccounts:input_type -> ledger.ListAccountsRequest
 	14,  // 148: ledger.BucketService.Apply:input_type -> ledger.ApplyRequest
-	61,  // 149: ledger.BucketService.GetStoreMetrics:input_type -> ledger.GetStoreMetricsRequest
-	63,  // 150: ledger.BucketService.GetReadIndexMetrics:input_type -> ledger.GetReadIndexMetricsRequest
+	61,  // 149: ledger.BucketService.GetPrimaryMetrics:input_type -> ledger.GetPrimaryMetricsRequest
+	63,  // 150: ledger.BucketService.GetSecondaryMetrics:input_type -> ledger.GetSecondaryMetricsRequest
 	76,  // 151: ledger.BucketService.CheckStore:input_type -> ledger.CheckStoreRequest
 	80,  // 152: ledger.BucketService.ListAuditEntries:input_type -> ledger.ListAuditEntriesRequest
 	81,  // 153: ledger.BucketService.GetAuditEntry:input_type -> ledger.GetAuditEntryRequest
@@ -9558,8 +9578,8 @@ var file_bucket_proto_depIdxs = []int32{
 	134, // 180: ledger.BucketService.ListTransactions:output_type -> common.Transaction
 	165, // 181: ledger.BucketService.ListAccounts:output_type -> common.Account
 	15,  // 182: ledger.BucketService.Apply:output_type -> ledger.ApplyResponse
-	62,  // 183: ledger.BucketService.GetStoreMetrics:output_type -> ledger.GetStoreMetricsResponse
-	64,  // 184: ledger.BucketService.GetReadIndexMetrics:output_type -> ledger.GetReadIndexMetricsResponse
+	62,  // 183: ledger.BucketService.GetPrimaryMetrics:output_type -> ledger.GetPrimaryMetricsResponse
+	64,  // 184: ledger.BucketService.GetSecondaryMetrics:output_type -> ledger.GetSecondaryMetricsResponse
 	77,  // 185: ledger.BucketService.CheckStore:output_type -> ledger.CheckStoreEvent
 	166, // 186: ledger.BucketService.ListAuditEntries:output_type -> audit.AuditEntry
 	166, // 187: ledger.BucketService.GetAuditEntry:output_type -> audit.AuditEntry

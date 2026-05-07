@@ -1547,11 +1547,12 @@ func (m *MigrateAccountTypeRequest) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *GetStoreMetricsRequest) CloneVT() *GetStoreMetricsRequest {
+func (m *GetPrimaryMetricsRequest) CloneVT() *GetPrimaryMetricsRequest {
 	if m == nil {
-		return (*GetStoreMetricsRequest)(nil)
+		return (*GetPrimaryMetricsRequest)(nil)
 	}
-	r := new(GetStoreMetricsRequest)
+	r := new(GetPrimaryMetricsRequest)
+	r.NodeId = m.NodeId
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1559,15 +1560,15 @@ func (m *GetStoreMetricsRequest) CloneVT() *GetStoreMetricsRequest {
 	return r
 }
 
-func (m *GetStoreMetricsRequest) CloneMessageVT() proto.Message {
+func (m *GetPrimaryMetricsRequest) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *GetStoreMetricsResponse) CloneVT() *GetStoreMetricsResponse {
+func (m *GetPrimaryMetricsResponse) CloneVT() *GetPrimaryMetricsResponse {
 	if m == nil {
-		return (*GetStoreMetricsResponse)(nil)
+		return (*GetPrimaryMetricsResponse)(nil)
 	}
-	r := new(GetStoreMetricsResponse)
+	r := new(GetPrimaryMetricsResponse)
 	r.Available = m.Available
 	r.Metrics = m.Metrics.CloneVT()
 	if len(m.unknownFields) > 0 {
@@ -1577,15 +1578,16 @@ func (m *GetStoreMetricsResponse) CloneVT() *GetStoreMetricsResponse {
 	return r
 }
 
-func (m *GetStoreMetricsResponse) CloneMessageVT() proto.Message {
+func (m *GetPrimaryMetricsResponse) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *GetReadIndexMetricsRequest) CloneVT() *GetReadIndexMetricsRequest {
+func (m *GetSecondaryMetricsRequest) CloneVT() *GetSecondaryMetricsRequest {
 	if m == nil {
-		return (*GetReadIndexMetricsRequest)(nil)
+		return (*GetSecondaryMetricsRequest)(nil)
 	}
-	r := new(GetReadIndexMetricsRequest)
+	r := new(GetSecondaryMetricsRequest)
+	r.NodeId = m.NodeId
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1593,15 +1595,15 @@ func (m *GetReadIndexMetricsRequest) CloneVT() *GetReadIndexMetricsRequest {
 	return r
 }
 
-func (m *GetReadIndexMetricsRequest) CloneMessageVT() proto.Message {
+func (m *GetSecondaryMetricsRequest) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *GetReadIndexMetricsResponse) CloneVT() *GetReadIndexMetricsResponse {
+func (m *GetSecondaryMetricsResponse) CloneVT() *GetSecondaryMetricsResponse {
 	if m == nil {
-		return (*GetReadIndexMetricsResponse)(nil)
+		return (*GetSecondaryMetricsResponse)(nil)
 	}
-	r := new(GetReadIndexMetricsResponse)
+	r := new(GetSecondaryMetricsResponse)
 	r.Available = m.Available
 	r.Metrics = m.Metrics.CloneVT()
 	if len(m.unknownFields) > 0 {
@@ -1611,7 +1613,7 @@ func (m *GetReadIndexMetricsResponse) CloneVT() *GetReadIndexMetricsResponse {
 	return r
 }
 
-func (m *GetReadIndexMetricsResponse) CloneMessageVT() proto.Message {
+func (m *GetSecondaryMetricsResponse) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -5670,23 +5672,26 @@ func (this *MigrateAccountTypeRequest) EqualMessageVT(thatMsg proto.Message) boo
 	}
 	return this.EqualVT(that)
 }
-func (this *GetStoreMetricsRequest) EqualVT(that *GetStoreMetricsRequest) bool {
+func (this *GetPrimaryMetricsRequest) EqualVT(that *GetPrimaryMetricsRequest) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
 		return false
 	}
+	if this.NodeId != that.NodeId {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *GetStoreMetricsRequest) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*GetStoreMetricsRequest)
+func (this *GetPrimaryMetricsRequest) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*GetPrimaryMetricsRequest)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *GetStoreMetricsResponse) EqualVT(that *GetStoreMetricsResponse) bool {
+func (this *GetPrimaryMetricsResponse) EqualVT(that *GetPrimaryMetricsResponse) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -5701,30 +5706,33 @@ func (this *GetStoreMetricsResponse) EqualVT(that *GetStoreMetricsResponse) bool
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *GetStoreMetricsResponse) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*GetStoreMetricsResponse)
+func (this *GetPrimaryMetricsResponse) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*GetPrimaryMetricsResponse)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *GetReadIndexMetricsRequest) EqualVT(that *GetReadIndexMetricsRequest) bool {
+func (this *GetSecondaryMetricsRequest) EqualVT(that *GetSecondaryMetricsRequest) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
 		return false
 	}
+	if this.NodeId != that.NodeId {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *GetReadIndexMetricsRequest) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*GetReadIndexMetricsRequest)
+func (this *GetSecondaryMetricsRequest) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*GetSecondaryMetricsRequest)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *GetReadIndexMetricsResponse) EqualVT(that *GetReadIndexMetricsResponse) bool {
+func (this *GetSecondaryMetricsResponse) EqualVT(that *GetSecondaryMetricsResponse) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -5739,8 +5747,8 @@ func (this *GetReadIndexMetricsResponse) EqualVT(that *GetReadIndexMetricsRespon
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *GetReadIndexMetricsResponse) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*GetReadIndexMetricsResponse)
+func (this *GetSecondaryMetricsResponse) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*GetSecondaryMetricsResponse)
 	if !ok {
 		return false
 	}
@@ -11786,7 +11794,7 @@ func (m *MigrateAccountTypeRequest) MarshalToSizedBufferVT(dAtA []byte) (int, er
 	return len(dAtA) - i, nil
 }
 
-func (m *GetStoreMetricsRequest) MarshalVT() (dAtA []byte, err error) {
+func (m *GetPrimaryMetricsRequest) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -11799,12 +11807,12 @@ func (m *GetStoreMetricsRequest) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *GetStoreMetricsRequest) MarshalToVT(dAtA []byte) (int, error) {
+func (m *GetPrimaryMetricsRequest) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *GetStoreMetricsRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *GetPrimaryMetricsRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -11816,10 +11824,15 @@ func (m *GetStoreMetricsRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.NodeId != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NodeId))
+		i--
+		dAtA[i] = 0x8
+	}
 	return len(dAtA) - i, nil
 }
 
-func (m *GetStoreMetricsResponse) MarshalVT() (dAtA []byte, err error) {
+func (m *GetPrimaryMetricsResponse) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -11832,12 +11845,12 @@ func (m *GetStoreMetricsResponse) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *GetStoreMetricsResponse) MarshalToVT(dAtA []byte) (int, error) {
+func (m *GetPrimaryMetricsResponse) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *GetStoreMetricsResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *GetPrimaryMetricsResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -11872,7 +11885,7 @@ func (m *GetStoreMetricsResponse) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 	return len(dAtA) - i, nil
 }
 
-func (m *GetReadIndexMetricsRequest) MarshalVT() (dAtA []byte, err error) {
+func (m *GetSecondaryMetricsRequest) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -11885,12 +11898,12 @@ func (m *GetReadIndexMetricsRequest) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *GetReadIndexMetricsRequest) MarshalToVT(dAtA []byte) (int, error) {
+func (m *GetSecondaryMetricsRequest) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *GetReadIndexMetricsRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *GetSecondaryMetricsRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -11902,10 +11915,15 @@ func (m *GetReadIndexMetricsRequest) MarshalToSizedBufferVT(dAtA []byte) (int, e
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.NodeId != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NodeId))
+		i--
+		dAtA[i] = 0x8
+	}
 	return len(dAtA) - i, nil
 }
 
-func (m *GetReadIndexMetricsResponse) MarshalVT() (dAtA []byte, err error) {
+func (m *GetSecondaryMetricsResponse) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -11918,12 +11936,12 @@ func (m *GetReadIndexMetricsResponse) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *GetReadIndexMetricsResponse) MarshalToVT(dAtA []byte) (int, error) {
+func (m *GetSecondaryMetricsResponse) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *GetReadIndexMetricsResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *GetSecondaryMetricsResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -17356,17 +17374,20 @@ func (m *MigrateAccountTypeRequest) SizeVT() (n int) {
 	return n
 }
 
-func (m *GetStoreMetricsRequest) SizeVT() (n int) {
+func (m *GetPrimaryMetricsRequest) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
+	if m.NodeId != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.NodeId))
+	}
 	n += len(m.unknownFields)
 	return n
 }
 
-func (m *GetStoreMetricsResponse) SizeVT() (n int) {
+func (m *GetPrimaryMetricsResponse) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -17383,17 +17404,20 @@ func (m *GetStoreMetricsResponse) SizeVT() (n int) {
 	return n
 }
 
-func (m *GetReadIndexMetricsRequest) SizeVT() (n int) {
+func (m *GetSecondaryMetricsRequest) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
+	if m.NodeId != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.NodeId))
+	}
 	n += len(m.unknownFields)
 	return n
 }
 
-func (m *GetReadIndexMetricsResponse) SizeVT() (n int) {
+func (m *GetSecondaryMetricsResponse) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -27278,7 +27302,7 @@ func (m *MigrateAccountTypeRequest) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *GetStoreMetricsRequest) UnmarshalVT(dAtA []byte) error {
+func (m *GetPrimaryMetricsRequest) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -27301,12 +27325,31 @@ func (m *GetStoreMetricsRequest) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: GetStoreMetricsRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: GetPrimaryMetricsRequest: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: GetStoreMetricsRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: GetPrimaryMetricsRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NodeId", wireType)
+			}
+			m.NodeId = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.NodeId |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -27329,7 +27372,7 @@ func (m *GetStoreMetricsRequest) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *GetStoreMetricsResponse) UnmarshalVT(dAtA []byte) error {
+func (m *GetPrimaryMetricsResponse) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -27352,10 +27395,10 @@ func (m *GetStoreMetricsResponse) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: GetStoreMetricsResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: GetPrimaryMetricsResponse: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: GetStoreMetricsResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: GetPrimaryMetricsResponse: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -27436,7 +27479,7 @@ func (m *GetStoreMetricsResponse) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *GetReadIndexMetricsRequest) UnmarshalVT(dAtA []byte) error {
+func (m *GetSecondaryMetricsRequest) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -27459,12 +27502,31 @@ func (m *GetReadIndexMetricsRequest) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: GetReadIndexMetricsRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: GetSecondaryMetricsRequest: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: GetReadIndexMetricsRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: GetSecondaryMetricsRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NodeId", wireType)
+			}
+			m.NodeId = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.NodeId |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -27487,7 +27549,7 @@ func (m *GetReadIndexMetricsRequest) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *GetReadIndexMetricsResponse) UnmarshalVT(dAtA []byte) error {
+func (m *GetSecondaryMetricsResponse) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -27510,10 +27572,10 @@ func (m *GetReadIndexMetricsResponse) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: GetReadIndexMetricsResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: GetSecondaryMetricsResponse: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: GetReadIndexMetricsResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: GetSecondaryMetricsResponse: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:

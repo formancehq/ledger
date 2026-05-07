@@ -186,11 +186,11 @@ func (m *mockBucketServiceClient) ListNumscripts(_ context.Context, _ *servicepb
 }
 
 // Stub methods not used by BucketGrpcClient but required by the interface.
-func (m *mockBucketServiceClient) GetStoreMetrics(_ context.Context, _ *servicepb.GetStoreMetricsRequest, _ ...grpc.CallOption) (*servicepb.GetStoreMetricsResponse, error) {
+func (m *mockBucketServiceClient) GetPrimaryMetrics(_ context.Context, _ *servicepb.GetPrimaryMetricsRequest, _ ...grpc.CallOption) (*servicepb.GetPrimaryMetricsResponse, error) {
 	return nil, nil
 }
 
-func (m *mockBucketServiceClient) GetReadIndexMetrics(_ context.Context, _ *servicepb.GetReadIndexMetricsRequest, _ ...grpc.CallOption) (*servicepb.GetReadIndexMetricsResponse, error) {
+func (m *mockBucketServiceClient) GetSecondaryMetrics(_ context.Context, _ *servicepb.GetSecondaryMetricsRequest, _ ...grpc.CallOption) (*servicepb.GetSecondaryMetricsResponse, error) {
 	return nil, nil
 }
 

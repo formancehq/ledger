@@ -56,7 +56,8 @@ service BucketService {
   rpc Apply(ApplyRequest) returns (ApplyResponse);
 
   // Diagnostics
-  rpc GetStoreMetrics(GetStoreMetricsRequest) returns (GetStoreMetricsResponse);
+  rpc GetPrimaryMetrics(GetPrimaryMetricsRequest) returns (GetPrimaryMetricsResponse);
+  rpc GetSecondaryMetrics(GetSecondaryMetricsRequest) returns (GetSecondaryMetricsResponse);
   rpc CheckStore(CheckStoreRequest) returns (stream CheckStoreEvent);
 
   // Audit
@@ -645,7 +646,7 @@ for {
 Retrieve Pebble storage metrics (useful for monitoring):
 
 ```go
-metrics, err := client.GetStoreMetrics(ctx, &servicepb.GetStoreMetricsRequest{})
+metrics, err := client.GetPrimaryMetrics(ctx, &servicepb.GetPrimaryMetricsRequest{})
 if err != nil {
     return err
 }

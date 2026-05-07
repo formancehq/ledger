@@ -1410,14 +1410,14 @@ Storage operations.
 
 **Aliases:** `s`
 
-#### store metrics
+#### store primary metrics
 
-Get metrics from the Pebble storage engine.
+Get metrics from the primary Pebble storage engine.
 
-**Aliases:** `m`, `stats`
+**Aliases:** `store p m`
 
 ```bash
-ledgerctl store metrics [flags]
+ledgerctl store primary metrics [flags]
 ```
 
 **Flags:**
@@ -1426,23 +1426,27 @@ ledgerctl store metrics [flags]
 |------|---------|-------------|
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
+| `--node-id` | `0` | Target node ID (0 = local node) |
 
 **Example:**
 
 ```bash
 # Display formatted metrics
-ledgerctl store metrics
+ledgerctl store primary metrics
 
 # Output as JSON
-ledgerctl store metrics --json
+ledgerctl store primary metrics --json
+
+# Query a specific node
+ledgerctl store primary metrics --node-id 2
 ```
 
-#### store read-index-metrics
+#### store secondary metrics
 
-Get metrics from the read index Pebble store.
+Get metrics from the secondary (read index) Pebble store.
 
 ```bash
-ledgerctl store read-index-metrics [flags]
+ledgerctl store secondary metrics [flags]
 ```
 
 **Flags:**
@@ -1451,15 +1455,19 @@ ledgerctl store read-index-metrics [flags]
 |------|---------|-------------|
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
+| `--node-id` | `0` | Target node ID (0 = local node) |
 
 **Example:**
 
 ```bash
 # Display formatted metrics
-ledgerctl store read-index-metrics
+ledgerctl store secondary metrics
 
 # Output as JSON
-ledgerctl store read-index-metrics --json
+ledgerctl store secondary metrics --json
+
+# Query a specific node
+ledgerctl store secondary metrics --node-id 3
 ```
 
 #### store check
@@ -1501,14 +1509,14 @@ ledgerctl store check
 ledgerctl store check --json
 ```
 
-#### store compact
+#### store primary compact
 
-Trigger a synchronous compaction of the local Pebble store. Useful after bulk deletes, period archival, or before taking a backup.
+Trigger a synchronous compaction of the primary Pebble store. Useful after bulk deletes, period archival, or before taking a backup.
 
-**Aliases:** `gc`
+**Aliases:** `store p gc`
 
 ```bash
-ledgerctl store compact [flags]
+ledgerctl store primary compact [flags]
 ```
 
 **Flags:**
@@ -1526,14 +1534,43 @@ ledgerctl store compact [flags]
 **Example:**
 
 ```bash
-# Compact the local store
-ledgerctl store compact
+# Compact the primary store
+ledgerctl store primary compact
 
 # Output as JSON (for scripting)
-ledgerctl store compact --json
+ledgerctl store primary compact --json
 
 # Short form
-ledgerctl s gc
+ledgerctl s p gc
+```
+
+#### store secondary compact
+
+Trigger an online compaction of the secondary (read index) Pebble store.
+
+```bash
+ledgerctl store secondary compact [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `50s` | Request timeout |
+
+**Behavior:**
+- Compacts the read index Pebble store on the connected node
+- Returns the wall-clock duration and size before/after
+
+**Example:**
+
+```bash
+# Compact the secondary store
+ledgerctl store secondary compact
+
+# Output as JSON (for scripting)
+ledgerctl store secondary compact --json
 ```
 
 #### store checkpoint
@@ -1562,7 +1599,7 @@ ledgerctl store checkpoint [flags]
 
 ```bash
 # Create a checkpoint after compaction
-ledgerctl store compact && ledgerctl store checkpoint
+ledgerctl store primary compact && ledgerctl store checkpoint
 
 # Output as JSON (for scripting)
 ledgerctl store checkpoint --json

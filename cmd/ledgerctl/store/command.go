@@ -13,13 +13,11 @@ func NewCommand() *cobra.Command {
 		Long:    "Commands for store-level operations via gRPC",
 	}
 
-	cmd.AddCommand(NewMetricsCommand())
+	cmd.AddCommand(NewPrimaryCommand())
+	cmd.AddCommand(NewSecondaryCommand())
 	cmd.AddCommand(NewCheckCommand())
 	cmd.AddCommand(NewBootstrapCommand())
 	cmd.AddCommand(NewRebuildIndexesCommand())
-	cmd.AddCommand(NewCompactCommand())
-	cmd.AddCommand(NewCompactReadIndexCommand())
-	cmd.AddCommand(NewReadIndexMetricsCommand())
 	cmd.AddCommand(NewCheckpointCommand())
 	cmd.AddCommand(NewDumpCommand())
 	cmd.AddCommand(NewBackupCommand())

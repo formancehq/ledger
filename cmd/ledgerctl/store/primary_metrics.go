@@ -12,23 +12,24 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
-// NewMetricsCommand creates the store metrics command.
-func NewMetricsCommand() *cobra.Command {
+// NewPrimaryMetricsCommand creates the store primary metrics command.
+func NewPrimaryMetricsCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "metrics",
-		Aliases: []string{"m", "stats"},
-		Short:   "Get store metrics",
-		Long:    "Retrieve and display metrics from the Pebble storage engine via gRPC",
-		RunE:    runMetrics,
+		Aliases: []string{"m"},
+		Short:   "Get primary store metrics",
+		Long:    "Retrieve and display metrics from the primary Pebble storage engine via gRPC",
+		RunE:    runPrimaryMetrics,
 	}
 
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
+	cmd.Flags().Uint32("node-id", 0, "Target node ID (0 = local node)")
 
 	return cmd
 }
 
-func runMetrics(cmd *cobra.Command, _ []string) error {
+func runPrimaryMetrics(cmd *cobra.Command, _ []string) error {
 	client, conn, err := cmdutil.GetClient(cmd)
 	if err != nil {
 		return err
@@ -39,13 +40,17 @@ func runMetrics(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
+	nodeID, _ := cmd.Flags().GetUint32("node-id")
+
 	spinner, _ := pterm.DefaultSpinner.Start("Fetching store metrics...")
 
-	resp, err := client.GetStoreMetrics(ctx, &servicepb.GetStoreMetricsRequest{})
+	resp, err := client.GetPrimaryMetrics(ctx, &servicepb.GetPrimaryMetricsRequest{
+		NodeId: nodeID,
+	})
 	if err != nil {
 		_ = spinner.Stop()
 
-		return cmdutil.FormatGRPCError("failed to get store metrics", err)
+		return cmdutil.FormatGRPCError("failed to get primary metrics", err)
 	}
 
 	if !resp.GetAvailable() {

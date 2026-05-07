@@ -46,6 +46,7 @@ type ClusterServiceServerImpl struct {
 	authCfg          internalauth.AuthConfig
 	clusterID        string
 	backupMu         sync.Mutex
+	forwarder        nodeForwarder
 }
 
 func NewClusterServiceServer(
@@ -79,6 +80,7 @@ func NewClusterServiceServer(
 		localServiceAddr: localServiceAddr,
 		authCfg:          authCfg,
 		clusterID:        clusterID,
+		forwarder:        nodeForwarder{node: node, servicePool: servicePool},
 	}
 }
 
@@ -87,57 +89,40 @@ func (impl *ClusterServiceServerImpl) GetClusterState(ctx context.Context, req *
 		return nil, err
 	}
 
-	// Determine target node
-	var targetNodeID uint64
-
-	localNodeID := impl.node.GetNodeID()
-
 	if req.GetNodeId() == 0 {
 		// No node ID specified, route to leader
 		if impl.node.IsLeader() {
-			// This node is the leader, handle locally
 			return impl.getClusterStateLocal(ctx)
 		}
 
-		// Get the leader ID
-		targetNodeID = impl.node.GetLeader()
-		if targetNodeID == 0 {
+		leaderID := impl.node.GetLeader()
+		if leaderID == 0 {
 			impl.logger.WithFields(map[string]any{
-				"localNodeID": localNodeID,
+				"localNodeID": impl.node.GetNodeID(),
 			}).Infof("GetClusterState: no leader known, returning ErrNoLeader")
 
 			return nil, commonpb.ErrNoLeader
 		}
-	} else {
-		// Specific node ID requested
-		targetNodeID = uint64(req.GetNodeId())
 
-		// If requesting this node, handle locally
-		if targetNodeID == localNodeID {
-			return impl.getClusterStateLocal(ctx)
+		conn := impl.servicePool.GetConnection(leaderID)
+		if conn == nil {
+			return nil, commonpb.ErrNoLeader
 		}
+
+		return clusterpb.NewClusterServiceClient(conn).GetClusterState(ctx, req)
 	}
 
-	// Forward to target node
-	grpcConn := impl.servicePool.GetConnection(targetNodeID)
-	if grpcConn == nil {
-		impl.logger.WithFields(map[string]any{
-			"localNodeID":  localNodeID,
-			"targetNodeID": targetNodeID,
-			"knownPeers":   impl.servicePool.PeerIDs(),
-		}).Infof("GetClusterState: no connection to target node, returning ErrNoLeader")
-
-		return nil, commonpb.ErrNoLeader
+	// Specific node ID requested — use shared resolver.
+	conn, err := impl.forwarder.resolve(req.GetNodeId())
+	if err != nil {
+		return nil, err
 	}
 
-	impl.logger.WithFields(map[string]any{
-		"localNodeID":  localNodeID,
-		"targetNodeID": targetNodeID,
-	}).Infof("GetClusterState: forwarding to target node")
+	if conn != nil {
+		return clusterpb.NewClusterServiceClient(conn).GetClusterState(ctx, req)
+	}
 
-	client := clusterpb.NewClusterServiceClient(grpcConn)
-
-	return client.GetClusterState(ctx, req)
+	return impl.getClusterStateLocal(ctx)
 }
 
 // getClusterStateLocal returns cluster state with peer address information populated.
@@ -434,7 +419,7 @@ func (impl *ClusterServiceServerImpl) RemoveNode(ctx context.Context, req *clust
 	return &clusterpb.RemoveNodeResponse{}, nil
 }
 
-func (impl *ClusterServiceServerImpl) CompactStore(ctx context.Context, _ *clusterpb.CompactStoreRequest) (*clusterpb.CompactStoreResponse, error) {
+func (impl *ClusterServiceServerImpl) CompactPrimary(ctx context.Context, _ *clusterpb.CompactPrimaryRequest) (*clusterpb.CompactPrimaryResponse, error) {
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
 		return nil, err
 	}
@@ -446,12 +431,12 @@ func (impl *ClusterServiceServerImpl) CompactStore(ctx context.Context, _ *clust
 		return nil, fmt.Errorf("compaction failed: %w", err)
 	}
 
-	return &clusterpb.CompactStoreResponse{
+	return &clusterpb.CompactPrimaryResponse{
 		DurationMs: time.Since(start).Milliseconds(),
 	}, nil
 }
 
-func (impl *ClusterServiceServerImpl) CompactReadIndex(ctx context.Context, _ *clusterpb.CompactReadIndexRequest) (*clusterpb.CompactReadIndexResponse, error) {
+func (impl *ClusterServiceServerImpl) CompactSecondary(ctx context.Context, _ *clusterpb.CompactSecondaryRequest) (*clusterpb.CompactSecondaryResponse, error) {
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
 		return nil, err
 	}
@@ -463,7 +448,7 @@ func (impl *ClusterServiceServerImpl) CompactReadIndex(ctx context.Context, _ *c
 		return nil, fmt.Errorf("read index compaction failed: %w", err)
 	}
 
-	return &clusterpb.CompactReadIndexResponse{
+	return &clusterpb.CompactSecondaryResponse{
 		DurationMs:      time.Since(start).Milliseconds(),
 		SizeBeforeBytes: sizeBefore,
 		SizeAfterBytes:  sizeAfter,

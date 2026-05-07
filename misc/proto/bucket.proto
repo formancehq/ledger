@@ -29,10 +29,10 @@ service BucketService {
   rpc ListAccounts(ListAccountsRequest) returns (stream common.Account);
   // Apply applies actions (create/delete ledger, create transaction, revert, save/delete metadata)
   rpc Apply(ApplyRequest) returns (ApplyResponse);
-  // GetStoreMetrics returns metrics from the local store (Pebble only)
-  rpc GetStoreMetrics(GetStoreMetricsRequest) returns (GetStoreMetricsResponse);
-  // GetReadIndexMetrics returns metrics from the read index Pebble store
-  rpc GetReadIndexMetrics(GetReadIndexMetricsRequest) returns (GetReadIndexMetricsResponse);
+  // GetPrimaryMetrics returns metrics from the primary Pebble store. Supports node_id targeting.
+  rpc GetPrimaryMetrics(GetPrimaryMetricsRequest) returns (GetPrimaryMetricsResponse);
+  // GetSecondaryMetrics returns metrics from the secondary (read index) Pebble store. Supports node_id targeting.
+  rpc GetSecondaryMetrics(GetSecondaryMetricsRequest) returns (GetSecondaryMetricsResponse);
   // CheckStore verifies store integrity (hash chain and derived data consistency)
   rpc CheckStore(CheckStoreRequest) returns (stream CheckStoreEvent);
   // ListAuditEntries streams audit trail entries (success and failure)
@@ -512,21 +512,27 @@ message MigrateAccountTypeRequest {
 // Store Metrics Messages
 // ============================================================================
 
-message GetStoreMetricsRequest {}
+message GetPrimaryMetricsRequest {
+  // node_id indicates which node to query (0 = local node)
+  uint32 node_id = 1;
+}
 
-message GetStoreMetricsResponse {
+message GetPrimaryMetricsResponse {
   // available indicates if metrics are available (false for non-Pebble stores)
   bool available = 1;
   // metrics contains the Pebble metrics (only set if available is true)
   PebbleMetrics metrics = 2;
 }
 
-message GetReadIndexMetricsRequest {}
+message GetSecondaryMetricsRequest {
+  // node_id indicates which node to query (0 = local node)
+  uint32 node_id = 1;
+}
 
-message GetReadIndexMetricsResponse {
-  // available indicates if the read index store is active
+message GetSecondaryMetricsResponse {
+  // available indicates if the secondary store is active
   bool available = 1;
-  // metrics contains the read index Pebble metrics (only set if available is true)
+  // metrics contains the secondary Pebble metrics (only set if available is true)
   PebbleMetrics metrics = 2;
 }
 

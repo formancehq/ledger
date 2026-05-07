@@ -1304,26 +1304,26 @@ func (x *BackupResponse) GetDurationMs() int64 {
 	return 0
 }
 
-type CompactStoreRequest struct {
+type CompactPrimaryRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *CompactStoreRequest) Reset() {
-	*x = CompactStoreRequest{}
+func (x *CompactPrimaryRequest) Reset() {
+	*x = CompactPrimaryRequest{}
 	mi := &file_cluster_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *CompactStoreRequest) String() string {
+func (x *CompactPrimaryRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*CompactStoreRequest) ProtoMessage() {}
+func (*CompactPrimaryRequest) ProtoMessage() {}
 
-func (x *CompactStoreRequest) ProtoReflect() protoreflect.Message {
+func (x *CompactPrimaryRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_cluster_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -1335,32 +1335,32 @@ func (x *CompactStoreRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use CompactStoreRequest.ProtoReflect.Descriptor instead.
-func (*CompactStoreRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use CompactPrimaryRequest.ProtoReflect.Descriptor instead.
+func (*CompactPrimaryRequest) Descriptor() ([]byte, []int) {
 	return file_cluster_proto_rawDescGZIP(), []int{22}
 }
 
-type CompactStoreResponse struct {
+type CompactPrimaryResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	DurationMs    int64                  `protobuf:"varint,1,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"` // Wall-clock duration of the compaction in milliseconds
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *CompactStoreResponse) Reset() {
-	*x = CompactStoreResponse{}
+func (x *CompactPrimaryResponse) Reset() {
+	*x = CompactPrimaryResponse{}
 	mi := &file_cluster_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *CompactStoreResponse) String() string {
+func (x *CompactPrimaryResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*CompactStoreResponse) ProtoMessage() {}
+func (*CompactPrimaryResponse) ProtoMessage() {}
 
-func (x *CompactStoreResponse) ProtoReflect() protoreflect.Message {
+func (x *CompactPrimaryResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_cluster_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -1372,38 +1372,38 @@ func (x *CompactStoreResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use CompactStoreResponse.ProtoReflect.Descriptor instead.
-func (*CompactStoreResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use CompactPrimaryResponse.ProtoReflect.Descriptor instead.
+func (*CompactPrimaryResponse) Descriptor() ([]byte, []int) {
 	return file_cluster_proto_rawDescGZIP(), []int{23}
 }
 
-func (x *CompactStoreResponse) GetDurationMs() int64 {
+func (x *CompactPrimaryResponse) GetDurationMs() int64 {
 	if x != nil {
 		return x.DurationMs
 	}
 	return 0
 }
 
-type CompactReadIndexRequest struct {
+type CompactSecondaryRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *CompactReadIndexRequest) Reset() {
-	*x = CompactReadIndexRequest{}
+func (x *CompactSecondaryRequest) Reset() {
+	*x = CompactSecondaryRequest{}
 	mi := &file_cluster_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *CompactReadIndexRequest) String() string {
+func (x *CompactSecondaryRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*CompactReadIndexRequest) ProtoMessage() {}
+func (*CompactSecondaryRequest) ProtoMessage() {}
 
-func (x *CompactReadIndexRequest) ProtoReflect() protoreflect.Message {
+func (x *CompactSecondaryRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_cluster_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -1415,12 +1415,12 @@ func (x *CompactReadIndexRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use CompactReadIndexRequest.ProtoReflect.Descriptor instead.
-func (*CompactReadIndexRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use CompactSecondaryRequest.ProtoReflect.Descriptor instead.
+func (*CompactSecondaryRequest) Descriptor() ([]byte, []int) {
 	return file_cluster_proto_rawDescGZIP(), []int{24}
 }
 
-type CompactReadIndexResponse struct {
+type CompactSecondaryResponse struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	DurationMs      int64                  `protobuf:"varint,1,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`                  // Wall-clock duration of the compaction in milliseconds
 	SizeBeforeBytes int64                  `protobuf:"varint,2,opt,name=size_before_bytes,json=sizeBeforeBytes,proto3" json:"size_before_bytes,omitempty"` // Read index file size before compaction in bytes
@@ -1429,20 +1429,20 @@ type CompactReadIndexResponse struct {
 	sizeCache       protoimpl.SizeCache
 }
 
-func (x *CompactReadIndexResponse) Reset() {
-	*x = CompactReadIndexResponse{}
+func (x *CompactSecondaryResponse) Reset() {
+	*x = CompactSecondaryResponse{}
 	mi := &file_cluster_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *CompactReadIndexResponse) String() string {
+func (x *CompactSecondaryResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*CompactReadIndexResponse) ProtoMessage() {}
+func (*CompactSecondaryResponse) ProtoMessage() {}
 
-func (x *CompactReadIndexResponse) ProtoReflect() protoreflect.Message {
+func (x *CompactSecondaryResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_cluster_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -1454,26 +1454,26 @@ func (x *CompactReadIndexResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use CompactReadIndexResponse.ProtoReflect.Descriptor instead.
-func (*CompactReadIndexResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use CompactSecondaryResponse.ProtoReflect.Descriptor instead.
+func (*CompactSecondaryResponse) Descriptor() ([]byte, []int) {
 	return file_cluster_proto_rawDescGZIP(), []int{25}
 }
 
-func (x *CompactReadIndexResponse) GetDurationMs() int64 {
+func (x *CompactSecondaryResponse) GetDurationMs() int64 {
 	if x != nil {
 		return x.DurationMs
 	}
 	return 0
 }
 
-func (x *CompactReadIndexResponse) GetSizeBeforeBytes() int64 {
+func (x *CompactSecondaryResponse) GetSizeBeforeBytes() int64 {
 	if x != nil {
 		return x.SizeBeforeBytes
 	}
 	return 0
 }
 
-func (x *CompactReadIndexResponse) GetSizeAfterBytes() int64 {
+func (x *CompactSecondaryResponse) GetSizeAfterBytes() int64 {
 	if x != nil {
 		return x.SizeAfterBytes
 	}
@@ -2098,13 +2098,13 @@ const file_cluster_proto_rawDesc = "" +
 	"\vtotal_files\x18\x03 \x01(\rR\n" +
 	"totalFiles\x12\x1f\n" +
 	"\vduration_ms\x18\x04 \x01(\x03R\n" +
-	"durationMs\"\x15\n" +
-	"\x13CompactStoreRequest\"7\n" +
-	"\x14CompactStoreResponse\x12\x1f\n" +
+	"durationMs\"\x17\n" +
+	"\x15CompactPrimaryRequest\"9\n" +
+	"\x16CompactPrimaryResponse\x12\x1f\n" +
 	"\vduration_ms\x18\x01 \x01(\x03R\n" +
 	"durationMs\"\x19\n" +
-	"\x17CompactReadIndexRequest\"\x91\x01\n" +
-	"\x18CompactReadIndexResponse\x12\x1f\n" +
+	"\x17CompactSecondaryRequest\"\x91\x01\n" +
+	"\x18CompactSecondaryResponse\x12\x1f\n" +
 	"\vduration_ms\x18\x01 \x01(\x03R\n" +
 	"durationMs\x12*\n" +
 	"\x11size_before_bytes\x18\x02 \x01(\x03R\x0fsizeBeforeBytes\x12(\n" +
@@ -2131,7 +2131,7 @@ const file_cluster_proto_rawDesc = "" +
 	"\rcheckpoint_id\x18\x01 \x01(\x04R\fcheckpointId\x12!\n" +
 	"\fmax_sequence\x18\x02 \x01(\x04R\vmaxSequence\x120\n" +
 	"\n" +
-	"created_at\x18\x03 \x01(\v2\x11.common.TimestampR\tcreatedAt2\xe2\n" +
+	"created_at\x18\x03 \x01(\v2\x11.common.TimestampR\tcreatedAt2\xe8\n" +
 	"\n" +
 	"\x0eClusterService\x12I\n" +
 	"\x0fGetClusterState\x12\x1f.cluster.GetClusterStateRequest\x1a\x15.cluster.ClusterState\x12@\n" +
@@ -2142,9 +2142,9 @@ const file_cluster_proto_rawDesc = "" +
 	"AddLearner\x12\x1a.cluster.AddLearnerRequest\x1a\x1b.cluster.AddLearnerResponse\x12Q\n" +
 	"\x0ePromoteLearner\x12\x1e.cluster.PromoteLearnerRequest\x1a\x1f.cluster.PromoteLearnerResponse\x12E\n" +
 	"\n" +
-	"RemoveNode\x12\x1a.cluster.RemoveNodeRequest\x1a\x1b.cluster.RemoveNodeResponse\x12K\n" +
-	"\fCompactStore\x12\x1c.cluster.CompactStoreRequest\x1a\x1d.cluster.CompactStoreResponse\x12W\n" +
-	"\x10CompactReadIndex\x12 .cluster.CompactReadIndexRequest\x1a!.cluster.CompactReadIndexResponse\x12W\n" +
+	"RemoveNode\x12\x1a.cluster.RemoveNodeRequest\x1a\x1b.cluster.RemoveNodeResponse\x12Q\n" +
+	"\x0eCompactPrimary\x12\x1e.cluster.CompactPrimaryRequest\x1a\x1f.cluster.CompactPrimaryResponse\x12W\n" +
+	"\x10CompactSecondary\x12 .cluster.CompactSecondaryRequest\x1a!.cluster.CompactSecondaryResponse\x12W\n" +
 	"\x10CreateCheckpoint\x12 .cluster.CreateCheckpointRequest\x1a!.cluster.CreateCheckpointResponse\x129\n" +
 	"\x06Backup\x12\x16.cluster.BackupRequest\x1a\x17.cluster.BackupResponse\x12f\n" +
 	"\x15CreateQueryCheckpoint\x12%.cluster.CreateQueryCheckpointRequest\x1a&.cluster.CreateQueryCheckpointResponse\x12f\n" +
@@ -2189,10 +2189,10 @@ var file_cluster_proto_goTypes = []any{
 	(*RemoveNodeResponse)(nil),                 // 19: cluster.RemoveNodeResponse
 	(*BackupRequest)(nil),                      // 20: cluster.BackupRequest
 	(*BackupResponse)(nil),                     // 21: cluster.BackupResponse
-	(*CompactStoreRequest)(nil),                // 22: cluster.CompactStoreRequest
-	(*CompactStoreResponse)(nil),               // 23: cluster.CompactStoreResponse
-	(*CompactReadIndexRequest)(nil),            // 24: cluster.CompactReadIndexRequest
-	(*CompactReadIndexResponse)(nil),           // 25: cluster.CompactReadIndexResponse
+	(*CompactPrimaryRequest)(nil),              // 22: cluster.CompactPrimaryRequest
+	(*CompactPrimaryResponse)(nil),             // 23: cluster.CompactPrimaryResponse
+	(*CompactSecondaryRequest)(nil),            // 24: cluster.CompactSecondaryRequest
+	(*CompactSecondaryResponse)(nil),           // 25: cluster.CompactSecondaryResponse
 	(*CreateCheckpointRequest)(nil),            // 26: cluster.CreateCheckpointRequest
 	(*CreateCheckpointResponse)(nil),           // 27: cluster.CreateCheckpointResponse
 	(*CreateQueryCheckpointRequest)(nil),       // 28: cluster.CreateQueryCheckpointRequest
@@ -2229,8 +2229,8 @@ var file_cluster_proto_depIdxs = []int32{
 	14, // 17: cluster.ClusterService.AddLearner:input_type -> cluster.AddLearnerRequest
 	16, // 18: cluster.ClusterService.PromoteLearner:input_type -> cluster.PromoteLearnerRequest
 	18, // 19: cluster.ClusterService.RemoveNode:input_type -> cluster.RemoveNodeRequest
-	22, // 20: cluster.ClusterService.CompactStore:input_type -> cluster.CompactStoreRequest
-	24, // 21: cluster.ClusterService.CompactReadIndex:input_type -> cluster.CompactReadIndexRequest
+	22, // 20: cluster.ClusterService.CompactPrimary:input_type -> cluster.CompactPrimaryRequest
+	24, // 21: cluster.ClusterService.CompactSecondary:input_type -> cluster.CompactSecondaryRequest
 	26, // 22: cluster.ClusterService.CreateCheckpoint:input_type -> cluster.CreateCheckpointRequest
 	20, // 23: cluster.ClusterService.Backup:input_type -> cluster.BackupRequest
 	28, // 24: cluster.ClusterService.CreateQueryCheckpoint:input_type -> cluster.CreateQueryCheckpointRequest
@@ -2245,8 +2245,8 @@ var file_cluster_proto_depIdxs = []int32{
 	15, // 33: cluster.ClusterService.AddLearner:output_type -> cluster.AddLearnerResponse
 	17, // 34: cluster.ClusterService.PromoteLearner:output_type -> cluster.PromoteLearnerResponse
 	19, // 35: cluster.ClusterService.RemoveNode:output_type -> cluster.RemoveNodeResponse
-	23, // 36: cluster.ClusterService.CompactStore:output_type -> cluster.CompactStoreResponse
-	25, // 37: cluster.ClusterService.CompactReadIndex:output_type -> cluster.CompactReadIndexResponse
+	23, // 36: cluster.ClusterService.CompactPrimary:output_type -> cluster.CompactPrimaryResponse
+	25, // 37: cluster.ClusterService.CompactSecondary:output_type -> cluster.CompactSecondaryResponse
 	27, // 38: cluster.ClusterService.CreateCheckpoint:output_type -> cluster.CreateCheckpointResponse
 	21, // 39: cluster.ClusterService.Backup:output_type -> cluster.BackupResponse
 	29, // 40: cluster.ClusterService.CreateQueryCheckpoint:output_type -> cluster.CreateQueryCheckpointResponse

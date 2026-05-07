@@ -10,13 +10,13 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 )
 
-// NewCompactReadIndexCommand creates the store compact-read-index command.
-func NewCompactReadIndexCommand() *cobra.Command {
+// NewSecondaryCompactCommand creates the store secondary compact command.
+func NewSecondaryCompactCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "compact-read-index",
-		Short: "Compact the Pebble read index",
-		Long:  "Trigger an online compaction of the local Pebble read index via gRPC",
-		RunE:  runCompactReadIndex,
+		Use:   "compact",
+		Short: "Compact the secondary Pebble store",
+		Long:  "Trigger an online compaction of the secondary (read index) Pebble store via gRPC",
+		RunE:  runSecondaryCompact,
 	}
 
 	cmdutil.AddOutputFlags(cmd)
@@ -25,7 +25,7 @@ func NewCompactReadIndexCommand() *cobra.Command {
 	return cmd
 }
 
-func runCompactReadIndex(cmd *cobra.Command, _ []string) error {
+func runSecondaryCompact(cmd *cobra.Command, _ []string) error {
 	client, conn, err := cmdutil.GetClusterClient(cmd)
 	if err != nil {
 		return err
@@ -43,7 +43,7 @@ func runCompactReadIndex(cmd *cobra.Command, _ []string) error {
 		spinner, _ = pterm.DefaultSpinner.Start("Compacting read index...")
 	}
 
-	resp, err := client.CompactReadIndex(ctx, &clusterpb.CompactReadIndexRequest{})
+	resp, err := client.CompactSecondary(ctx, &clusterpb.CompactSecondaryRequest{})
 	if err != nil {
 		if spinner != nil {
 			_ = spinner.Stop()
