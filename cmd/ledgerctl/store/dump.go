@@ -139,10 +139,6 @@ func describeKey(key []byte) string {
 		return "QUERY_CHECKPOINT (short key)"
 	case dal.KeyPrefixPreparedQuery:
 		return "PREPARED_QUERY rest=" + safeString(key[1:])
-	case dal.KeyPrefixNumscript:
-		return "NUMSCRIPT rest=" + safeString(key[1:])
-	case dal.KeyPrefixNumscriptLatest:
-		return "NUMSCRIPT_LATEST rest=" + safeString(key[1:])
 	case dal.KeyPrefixAttributes:
 		return describeAttributeKey(key)
 	case dal.KeyPrefixLastAppliedIndex:
@@ -273,14 +269,6 @@ func decodeValue(key, val []byte) string {
 		return "json=" + string(val)
 	case dal.KeyPrefixAttributes:
 		return decodeAttributeValue(key, val)
-	case dal.KeyPrefixNumscript:
-		return tryProtoJSON(val, &commonpb.NumscriptInfo{})
-	case dal.KeyPrefixNumscriptLatest:
-		if len(val) == 8 {
-			return fmt.Sprintf("version=%d", binary.BigEndian.Uint64(val))
-		}
-
-		return hexVal(val)
 	default:
 		return hexVal(val)
 	}

@@ -6,7 +6,6 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/semver"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
@@ -199,32 +198,6 @@ func DeleteReversionsByLedger(b *dal.Batch, ledger string) error {
 	end[len(end)-1]++
 
 	return b.DeleteRangeNoSync(prefix, end)
-}
-
-// SaveSinkConfig stores a per-sink configuration in the batch.
-func SaveSinkConfig(b *dal.Batch, config *commonpb.SinkConfig) error {
-	b.KeyBuilder.PutByte(dal.KeyPrefixEventsConfig).
-		PutString(config.GetName())
-
-	err := b.SetProto(b.KeyBuilder.Build(), config)
-	if err != nil {
-		return fmt.Errorf("saving sink config: %w", err)
-	}
-
-	return nil
-}
-
-// DeleteSinkConfig removes a per-sink configuration from the batch.
-func DeleteSinkConfig(b *dal.Batch, name string) error {
-	b.KeyBuilder.PutByte(dal.KeyPrefixEventsConfig).
-		PutString(name)
-
-	err := b.DeleteKey(b.KeyBuilder.Build())
-	if err != nil {
-		return fmt.Errorf("deleting sink config: %w", err)
-	}
-
-	return nil
 }
 
 // SavePreparedQuery stores a prepared query in the batch.
@@ -437,50 +410,6 @@ func SetLastAppliedTimestamp(b *dal.Batch, timestamp uint64) error {
 	return b.SetBytes([]byte{dal.KeyPrefixLastAppliedTimestamp}, value)
 }
 
-// SaveNumscript stores a versioned numscript entry and updates the latest version pointer.
-// Semver versions are encoded as [prefix][ledger\x00][name]\x00\x00[major_u32BE][minor_u32BE][patch_u32BE].
-// The "latest" slot is encoded as [prefix][ledger\x00][name]\x00\x01.
-func SaveNumscript(b *dal.Batch, info *commonpb.NumscriptInfo) error {
-	b.KeyBuilder.
-		PutByte(dal.KeyPrefixNumscript).
-		PutLedgerName(info.GetLedger()).
-		PutString(info.GetName()).
-		PutByte(0x00)
-
-	if info.GetVersion() == "latest" {
-		b.KeyBuilder.PutByte(domain.NumscriptVersionTagLatest)
-	} else {
-		sv, err := semver.Parse(info.GetVersion())
-		if err != nil {
-			return fmt.Errorf("saving numscript %q: %w", info.GetName(), err)
-		}
-
-		b.KeyBuilder.
-			PutByte(domain.NumscriptVersionTagSemver).
-			PutUint32(sv.Major).
-			PutUint32(sv.Minor).
-			PutUint32(sv.Patch)
-	}
-
-	err := b.SetProto(b.KeyBuilder.Build(), info)
-	if err != nil {
-		return fmt.Errorf("saving numscript %q v%s: %w", info.GetName(), info.GetVersion(), err)
-	}
-
-	// Update latest version pointer: [prefix][ledger\x00][name] -> version string bytes
-	b.KeyBuilder.
-		PutByte(dal.KeyPrefixNumscriptLatest).
-		PutLedgerName(info.GetLedger()).
-		PutString(info.GetName())
-
-	err = b.SetBytes(b.KeyBuilder.Build(), []byte(info.GetVersion()))
-	if err != nil {
-		return fmt.Errorf("saving numscript latest version for %q: %w", info.GetName(), err)
-	}
-
-	return nil
-}
-
 // DeleteLedgerData removes all per-ledger data from Pebble for the given ledger.
 // This performs range deletes on:
 //   - Attributes zone (0xF1): volumes, metadata, transactions, references (keyed by [ledger\x00]...)
@@ -504,7 +433,7 @@ func DeleteLedgerData(b *dal.Batch, ledgerName string) error {
 	}
 
 	// Range delete prepared queries: [0xE0][ledger\x00] -> [0xE0][ledger\x01]
-	for _, prefix := range []byte{dal.KeyPrefixPreparedQuery, dal.KeyPrefixNumscript, dal.KeyPrefixNumscriptLatest} {
+	for _, prefix := range []byte{dal.KeyPrefixPreparedQuery} {
 		start := append([]byte{prefix}, ledgerPrefix...)
 		end := append([]byte{prefix}, ledgerPrefixUpper...)
 
@@ -551,22 +480,6 @@ func DeletePendingLedgerCleanup(b *dal.Batch, ledgerName string) error {
 	err := b.DeleteKey(b.KeyBuilder.Build())
 	if err != nil {
 		return fmt.Errorf("deleting pending ledger cleanup for %q: %w", ledgerName, err)
-	}
-
-	return nil
-}
-
-// ClearNumscriptLatestVersion soft-deletes a numscript by writing an empty version pointer.
-// The version entries remain in Pebble and are still accessible by explicit version.
-func ClearNumscriptLatestVersion(b *dal.Batch, ledger, name string) error {
-	b.KeyBuilder.
-		PutByte(dal.KeyPrefixNumscriptLatest).
-		PutLedgerName(ledger).
-		PutString(name)
-
-	err := b.SetBytes(b.KeyBuilder.Build(), nil)
-	if err != nil {
-		return fmt.Errorf("clearing numscript latest version for %q: %w", name, err)
 	}
 
 	return nil

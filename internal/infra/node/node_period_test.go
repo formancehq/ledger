@@ -62,9 +62,8 @@ func buildVolumePreloads(ledger string, postings []*commonpb.Posting) []*raftcmd
 			preloads = append(preloads, &raftcmdpb.Preload{
 				Type: &raftcmdpb.Preload_Volume{
 					Volume: &raftcmdpb.PreloadVolume{
-						Id:     &raftcmdpb.AttributeID{Id: id[:], Tag: tag},
-						Input:  zero,
-						Output: zero,
+						Id:    &raftcmdpb.AttributeID{Id: id[:], Tag: tag},
+						Value: &raftcmdpb.VolumePair{Input: zero, Output: zero},
 					},
 				},
 			})

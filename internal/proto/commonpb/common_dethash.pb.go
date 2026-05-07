@@ -127,6 +127,13 @@ func (m *Script) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.ContentHash) > 0 {
+		i -= len(m.ContentHash)
+		copy(dAtA[i:], m.ContentHash)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ContentHash)))
+		i--
+		dAtA[i] = 0x1a
+	}
 	if len(m.Vars) > 0 {
 		for _, k := range slices.Sorted(maps.Keys(m.Vars)) {
 			v := m.Vars[k]
@@ -989,17 +996,6 @@ func (m *NumscriptInfo) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *NumscriptReference) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
 func (m *SavedNumscriptLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
@@ -1591,13 +1587,6 @@ func (m *CreatedTransaction) MarshalToSizedBufferDeterministicVT(dAtA []byte) (i
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.NumscriptReference != nil {
-		size, _ := m.NumscriptReference.MarshalToSizedBufferVT(dAtA[:i])
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x32
-	}
 	if len(m.PreviousAccountMetadata) > 0 {
 		for _, k := range slices.Sorted(maps.Keys(m.PreviousAccountMetadata)) {
 			v := m.PreviousAccountMetadata[k]
@@ -2060,6 +2049,17 @@ func (m *IdempotencyKeyValue) MarshalDeterministicVT(dAtA []byte) []byte {
 }
 
 func (m *TransactionReferenceValue) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *NumscriptVersionValue) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}

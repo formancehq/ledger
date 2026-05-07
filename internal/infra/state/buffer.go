@@ -98,10 +98,7 @@ type Buffered struct {
 	pendingAccountMigrateRequests        []AccountMigrateRequest
 
 	// Pending prepared query changes (ledger/name -> query or nil for deletion)
-	pendingPreparedQueries  map[domain.PreparedQueryKey]*commonpb.PreparedQuery
-	pendingNumscriptWrites  []*commonpb.NumscriptInfo
-	pendingNumscriptDeletes []numscriptDeleteEntry
-
+	pendingPreparedQueries map[domain.PreparedQueryKey]*commonpb.PreparedQuery
 	// pendingLedgerDeletions holds ledger names scheduled for data cleanup during Merge.
 	pendingLedgerDeletions []string
 
@@ -130,12 +127,6 @@ type Buffered struct {
 	// Pending query checkpoint changes for Merge.
 	pendingQueryCheckpointSaves   []*raftcmdpb.QueryCheckpointState
 	pendingQueryCheckpointDeletes []uint64
-}
-
-// numscriptDeleteEntry identifies a numscript to soft-delete, scoped to a ledger.
-type numscriptDeleteEntry struct {
-	ledger string
-	name   string
 }
 
 // purgeRange identifies a period's sequence ranges to delete from Pebble during Merge().
@@ -351,33 +342,19 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 		b.fsm.setQueryCheckpointSchedule(*b.pendingQueryCheckpointScheduleUpdate)
 	}
 
-	// Merge NumscriptVersions and NumscriptEntries overlays into the underlying KeyStores
-	// (no Pebble attribute writes — the actual Pebble writes are handled by pendingNumscriptWrites / pendingNumscriptDeletes below).
-	if _, _, err := b.Derived.NumscriptVersions.Merge(); err != nil {
-		return fmt.Errorf("failed to merge numscript versions: %w", err)
+	// Process SinkConfig updates
+	if _, _, err := mergeAndTrackBloom(b.Derived.SinkConfigs, b.attrs.SinkConfig, batch, genByte, dal.AttributePrefixSinkConfig, &b.bloomUpdates.SinkConfigs, "sink configs"); err != nil {
+		return err
 	}
 
-	if _, _, err := b.Derived.NumscriptEntries.Merge(); err != nil {
-		return fmt.Errorf("failed to merge numscript entries: %w", err)
+	// Process NumscriptVersion updates
+	if _, _, err := mergeAndTrackBloom(b.Derived.NumscriptVersions, b.attrs.NumscriptVersion, batch, genByte, dal.AttributePrefixNumscriptVersion, &b.bloomUpdates.NumscriptVersions, "numscript versions"); err != nil {
+		return err
 	}
 
-	sinkUpdates, sinkDeletions, err := b.Derived.SinkConfigs.Merge()
-	if err != nil {
-		return fmt.Errorf("failed to merge sink configs: %w", err)
-	}
-
-	for _, update := range sinkUpdates {
-		err := SaveSinkConfig(batch, update.New)
-		if err != nil {
-			return fmt.Errorf("saving sink config %q: %w", update.Key.Name, err)
-		}
-	}
-
-	for _, deletion := range sinkDeletions {
-		err := DeleteSinkConfig(batch, deletion.Key.Name)
-		if err != nil {
-			return fmt.Errorf("deleting sink config %q: %w", deletion.Key.Name, err)
-		}
+	// Process NumscriptContent updates
+	if _, _, err := mergeAndTrackBloom(b.Derived.NumscriptContents, b.attrs.NumscriptContent, batch, genByte, dal.AttributePrefixNumscriptContent, &b.bloomUpdates.NumscriptContents, "numscript contents"); err != nil {
+		return err
 	}
 
 	for key, pq := range b.pendingPreparedQueries {
@@ -410,20 +387,6 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 		err := b.executePurge(batch, &b.purgeRanges[i])
 		if err != nil {
 			return fmt.Errorf("purging archived period %d data: %w", b.purgeRanges[i].periodID, err)
-		}
-	}
-
-	// Process numscript writes
-	for _, info := range b.pendingNumscriptWrites {
-		err := SaveNumscript(batch, info)
-		if err != nil {
-			return fmt.Errorf("saving numscript %q: %w", info.GetName(), err)
-		}
-	}
-
-	for _, entry := range b.pendingNumscriptDeletes {
-		if err := ClearNumscriptLatestVersion(batch, entry.ledger, entry.name); err != nil {
-			return fmt.Errorf("clearing numscript latest version %s/%q: %w", entry.ledger, entry.name, err)
 		}
 	}
 
@@ -546,16 +509,8 @@ func (b *Buffered) GetBoundaries(ledger string) (*raftcmdpb.LedgerBoundaries, bo
 	return boundaries, true
 }
 
-func (b *Buffered) ResolveNumscriptContent(ledger, name, version string) (string, error) {
-	key := domain.NumscriptContentKey{Ledger: ledger, Name: name, Version: version}
-	id, _ := attributes.MakeKey(attributes.DefaultSeeds, key.Bytes())
-
-	entry, ok := b.fsm.Registry.Cache.NumscriptParsed.Get(id)
-	if !ok {
-		return "", fmt.Errorf("numscript %q version %q not in cache for ledger %q", name, version, ledger)
-	}
-
-	return entry.Data, nil
+func (b *Buffered) ResolveNumscriptContent(ledger, name, version string) (*commonpb.NumscriptInfo, error) {
+	return b.Derived.NumscriptContents.Get(domain.NumscriptEntryKey{Ledger: ledger, Name: name, Version: version})
 }
 
 func (b *Buffered) PutBoundaries(ledger string, boundaries *raftcmdpb.LedgerBoundaries) {
@@ -1047,28 +1002,31 @@ func (b *Buffered) DeletePreparedQuery(ledger, name string) {
 // Numscript library operations
 
 func (b *Buffered) GetNumscriptLatestVersion(ledger, name string) (string, error) {
-	return b.Derived.NumscriptVersions.Get(domain.NumscriptVersionKey{Ledger: ledger, Name: name})
+	val, err := b.Derived.NumscriptVersions.Get(domain.NumscriptVersionKey{Ledger: ledger, Name: name})
+	if err != nil || val == nil {
+		return "", err
+	}
+
+	return val.GetVersion(), nil
 }
 
 func (b *Buffered) PutNumscript(info *commonpb.NumscriptInfo) {
-	b.Derived.NumscriptVersions.Put(domain.NumscriptVersionKey{Ledger: info.GetLedger(), Name: info.GetName()}, info.GetVersion())
-	b.Derived.NumscriptEntries.Put(domain.NumscriptEntryKey{Ledger: info.GetLedger(), Name: info.GetName(), Version: info.GetVersion()}, true)
-	b.pendingNumscriptWrites = append(b.pendingNumscriptWrites, info)
+	b.Derived.NumscriptVersions.Put(domain.NumscriptVersionKey{Ledger: info.GetLedger(), Name: info.GetName()}, &commonpb.NumscriptVersionValue{Version: info.GetVersion()})
+	b.Derived.NumscriptContents.Put(domain.NumscriptEntryKey{Ledger: info.GetLedger(), Name: info.GetName(), Version: info.GetVersion()}, info)
 }
 
 func (b *Buffered) DeleteNumscriptLatest(ledger, name string) {
-	b.Derived.NumscriptVersions.Put(domain.NumscriptVersionKey{Ledger: ledger, Name: name}, "")
-	b.pendingNumscriptDeletes = append(b.pendingNumscriptDeletes, numscriptDeleteEntry{ledger: ledger, name: name})
+	b.Derived.NumscriptVersions.Put(domain.NumscriptVersionKey{Ledger: ledger, Name: name}, &commonpb.NumscriptVersionValue{})
 }
 
 func (b *Buffered) NumscriptVersionExists(ledger, name, version string) (bool, error) {
-	exists, err := b.Derived.NumscriptEntries.Get(domain.NumscriptEntryKey{Ledger: ledger, Name: name, Version: version})
+	info, err := b.Derived.NumscriptContents.Get(domain.NumscriptEntryKey{Ledger: ledger, Name: name, Version: version})
 	if err != nil {
 		// Not in cache — treat as not existing (admission ensures preloading)
 		return false, nil
 	}
 
-	return exists, nil
+	return info != nil, nil
 }
 
 func (b *Buffered) GetNextQueryCheckpointID() uint64 {

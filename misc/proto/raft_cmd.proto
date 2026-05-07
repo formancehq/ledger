@@ -341,7 +341,15 @@ message CreateTransactionOrder {
   map<string, common.MetadataSet> account_metadata = 6;
   bool force = 7;  // Skip balance checks when true
   bool expand_volumes = 8;  // Include post-commit volumes in response
-  common.NumscriptReference numscript_reference = 9;  // Audit: which named numscript was resolved
+  NumscriptReference numscript_reference = 9;
+}
+
+// NumscriptReference identifies a numscript from the library to use for a transaction.
+// The version is resolved by admission (fuzzy → exact) before entering the Raft log.
+message NumscriptReference {
+  string name = 1;
+  string version = 2;
+  map<string, string> vars = 3;
 }
 
 message SaveMetadataOrder {
@@ -383,10 +391,6 @@ message Proposal {
   // receives Unavailable so it can retry with fresh preloads.
   // A value of 0 means no prediction (e.g. barrier, mirror sync).
   uint64 predicted_index = 7;
-  // dry_run instructs the FSM to process orders without persisting results.
-  // The FSM runs ProcessOrders normally but skips buffer.Merge, audit entries,
-  // and Machine state updates. The computed logs are returned to the caller.
-  bool dry_run = 8;
 }
 
 message MirrorSyncUpdate {
@@ -453,9 +457,8 @@ enum CacheTouchType {
   CACHE_TOUCH_SINK_CONFIGS = 6;
   CACHE_TOUCH_ACCOUNT_METADATA = 7;
   CACHE_TOUCH_NUMSCRIPT_VERSIONS = 8;
-  CACHE_TOUCH_NUMSCRIPT_ENTRIES = 9;
-  CACHE_TOUCH_NUMSCRIPT_PARSED = 10;
   CACHE_TOUCH_TRANSACTIONS = 11;
+  CACHE_TOUCH_NUMSCRIPT_CONTENTS = 12;
 }
 
 message Preload {
@@ -468,42 +471,39 @@ message Preload {
      PreloadSinkConfig sink_config = 6;
      PreloadAccountMetadata account_metadata = 7;
      PreloadNumscriptVersion numscript_version = 8;
-     PreloadNumscriptEntry numscript_entry = 9;
      PreloadTransactionState transaction_state = 10;
-     PreloadNumscriptParsed numscript_parsed = 11;
+     PreloadNumscriptContent numscript_content = 11;
   }
 }
 
 message PreloadVolume {
   AttributeID id = 1;
-  common.Uint256 input = 2;
-  common.Uint256 output = 3;
+  VolumePair value = 2;
 }
 
 message PreloadIdempotencyKey {
   AttributeID id = 1;
-  uint64 log_sequence = 2;  // 0 means not found
-  bytes hash = 3;           // Hash of the original request (for conflict detection)
+  common.IdempotencyKeyValue value = 2;
 }
 
 message PreloadLedger {
   AttributeID id = 1;
-  common.LedgerInfo info = 2;
+  common.LedgerInfo value = 2;
 }
 
 message PreloadBoundary {
   AttributeID id = 1;
-  LedgerBoundaries boundaries = 2;
+  LedgerBoundaries value = 2;
 }
 
 message PreloadTransactionReference {
   AttributeID id = 1;
-  uint64 transaction_id = 2;
+  common.TransactionReferenceValue value = 2;
 }
 
 message PreloadSinkConfig {
   AttributeID id = 1;
-  common.SinkConfig config = 2;
+  common.SinkConfig value = 2;
 }
 
 message PreloadAccountMetadata {
@@ -513,22 +513,17 @@ message PreloadAccountMetadata {
 
 message PreloadNumscriptVersion {
   AttributeID id = 1;
-  string version = 2;
-}
-
-message PreloadNumscriptEntry {
-  AttributeID id = 1;
-  bool exists = 2;
+  common.NumscriptVersionValue value = 2;
 }
 
 message PreloadTransactionState {
   AttributeID id = 1;
-  common.TransactionState state = 2;
+  common.TransactionState value = 2;
 }
 
-message PreloadNumscriptParsed {
+message PreloadNumscriptContent {
   AttributeID id = 1;
-  string plain = 2;  // Full script text
+  common.NumscriptInfo value = 2;
 }
 
 // ============================================================================
@@ -566,14 +561,7 @@ message GenerationSnapshot {
   repeated BoundaryAttributeEntry boundaries = 6;
   repeated TransactionReferenceAttributeEntry references = 7;
   repeated TransactionStateAttributeEntry transactions = 8;
-  repeated NumscriptParsedAttributeEntry numscript_parsed = 9;
-  repeated IdempotencyKeyAttributeEntry idempotency_keys = 10;
-}
-
-// NumscriptParsedAttributeEntry stores a numscript text in cache snapshots.
-message NumscriptParsedAttributeEntry {
-  AttributeID id = 1;
-  string plain = 2;
+  repeated IdempotencyKeyAttributeEntry idempotency_keys = 9;
 }
 
 // VolumeAttributeSnapshotEntry stores a merged Input+Output volume pair in cache snapshots.

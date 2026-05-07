@@ -159,10 +159,9 @@ type Loaders struct {
 	Boundaries        *AttributeLoader[*raftcmdpb.LedgerBoundaries]
 	SinkConfigs       *AttributeLoader[*commonpb.SinkConfig]
 	AccountMetadata   *AttributeLoader[*commonpb.MetadataValue]
-	NumscriptVersions *AttributeLoader[string]
-	NumscriptEntries  *AttributeLoader[bool]
-	NumscriptParsed   *AttributeLoader[string]
+	NumscriptVersions *AttributeLoader[*commonpb.NumscriptVersionValue]
 	Transactions      *AttributeLoader[*commonpb.TransactionState]
+	NumscriptContents *AttributeLoader[*commonpb.NumscriptInfo]
 }
 
 // NewLoaders creates a new Loaders instance with all attribute loaders initialized.
@@ -175,72 +174,35 @@ func NewLoaders() *Loaders {
 		Boundaries:        NewAttributeLoader[*raftcmdpb.LedgerBoundaries](),
 		SinkConfigs:       NewAttributeLoader[*commonpb.SinkConfig](),
 		AccountMetadata:   NewAttributeLoader[*commonpb.MetadataValue](),
-		NumscriptVersions: NewAttributeLoader[string](),
-		NumscriptEntries:  NewAttributeLoader[bool](),
-		NumscriptParsed:   NewAttributeLoader[string](),
+		NumscriptVersions: NewAttributeLoader[*commonpb.NumscriptVersionValue](),
 		Transactions:      NewAttributeLoader[*commonpb.TransactionState](),
+		NumscriptContents: NewAttributeLoader[*commonpb.NumscriptInfo](),
 	}
+}
+
+// LoaderOps is the non-generic interface satisfied by every AttributeLoader[T].
+// It captures the Release operation needed by CleanupToken.
+type LoaderOps interface {
+	Release(attributes.U128)
+}
+
+// trackedLoader pairs a loader with the keys that were loaded through it.
+type trackedLoader struct {
+	loader LoaderOps
+	keys   []attributes.U128
 }
 
 // CleanupToken tracks which keys were loaded for each attribute type.
 // Used to clean up loaded entries after a command is applied.
 type CleanupToken struct {
-	Volumes           []attributes.U128
-	IdempotencyKeys   []attributes.U128
-	References        []attributes.U128
-	Ledgers           []attributes.U128
-	Boundaries        []attributes.U128
-	SinkConfigs       []attributes.U128
-	AccountMetadata   []attributes.U128
-	NumscriptVersions []attributes.U128
-	NumscriptEntries  []attributes.U128
-	NumscriptParsed   []attributes.U128
-	Transactions      []attributes.U128
+	tracked []trackedLoader
 }
 
 // Release cleans up all tracked keys from their respective loaders.
-func (t *CleanupToken) Release(loaders *Loaders) {
-	for _, key := range t.Volumes {
-		loaders.Volumes.Release(key)
-	}
-
-	for _, key := range t.IdempotencyKeys {
-		loaders.IdempotencyKeys.Release(key)
-	}
-
-	for _, key := range t.References {
-		loaders.References.Release(key)
-	}
-
-	for _, key := range t.Ledgers {
-		loaders.Ledgers.Release(key)
-	}
-
-	for _, key := range t.Boundaries {
-		loaders.Boundaries.Release(key)
-	}
-
-	for _, key := range t.SinkConfigs {
-		loaders.SinkConfigs.Release(key)
-	}
-
-	for _, key := range t.AccountMetadata {
-		loaders.AccountMetadata.Release(key)
-	}
-
-	for _, key := range t.NumscriptVersions {
-		loaders.NumscriptVersions.Release(key)
-	}
-
-	for _, key := range t.NumscriptEntries {
-		loaders.NumscriptEntries.Release(key)
-	}
-
-	for _, key := range t.NumscriptParsed {
-		loaders.NumscriptParsed.Release(key)
-	}
-
-	for _, key := range t.Transactions {
-		loaders.Transactions.Release(key)
+func (t *CleanupToken) Release() {
+	for i := range t.tracked {
+		for _, key := range t.tracked[i].keys {
+			t.tracked[i].loader.Release(key)
+		}
 	}
 }

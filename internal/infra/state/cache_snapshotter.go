@@ -11,6 +11,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/bloom"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/kv"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
@@ -23,6 +24,66 @@ func parseLeanValue(value []byte) (uint64, []byte) {
 	return binary.LittleEndian.Uint64(value[:8]), value[8:]
 }
 
+// cacheSnapshotSlot captures the persist/restore logic for a single cache type.
+// Implemented by protoSnapshotSlot[V] for proto-backed caches.
+type cacheSnapshotSlot interface {
+	// CacheType returns the Pebble attribute prefix byte for this cache type.
+	CacheType() byte
+	// Persist writes all entries from the given generation to the Pebble batch.
+	Persist(batch *dal.Batch, genByte byte, genIndex int) error
+	// RestoreEntry returns a function that restores a single entry into the given generation.
+	RestoreEntry(genIndex int) func(u128 attributes.U128, rawValue []byte) error
+}
+
+// protoSnapshotSlot implements cacheSnapshotSlot for a proto-backed AttributeCache.
+type protoSnapshotSlot[V interface {
+	MarshalVT() ([]byte, error)
+	UnmarshalVT([]byte) error
+}] struct {
+	cacheType byte
+	ac        *cache.AttributeCache[V]
+	newValue  func() V
+}
+
+func (s *protoSnapshotSlot[V]) CacheType() byte { return s.cacheType }
+
+func (s *protoSnapshotSlot[V]) selectGen(genIndex int) kv.KV[attributes.U128, attributes.Entry[V]] {
+	if genIndex == 0 {
+		return s.ac.Gen0()
+	}
+
+	return s.ac.Gen1()
+}
+
+func (s *protoSnapshotSlot[V]) Persist(batch *dal.Batch, genByte byte, genIndex int) error {
+	return persistLeanProtoEntries(batch, genByte, s.cacheType, s.selectGen(genIndex))
+}
+
+func (s *protoSnapshotSlot[V]) RestoreEntry(genIndex int) func(u128 attributes.U128, rawValue []byte) error {
+	store := s.selectGen(genIndex)
+
+	return func(u128 attributes.U128, rawValue []byte) error {
+		tag, valueBytes := parseLeanValue(rawValue)
+		v := s.newValue()
+
+		if err := v.UnmarshalVT(valueBytes); err != nil {
+			return err
+		}
+
+		store.Put(u128, attributes.Entry[V]{Tag: tag, Data: v})
+
+		return nil
+	}
+}
+
+// newProtoSnapshotSlot creates a cacheSnapshotSlot for a proto-backed AttributeCache.
+func newProtoSnapshotSlot[V interface {
+	MarshalVT() ([]byte, error)
+	UnmarshalVT([]byte) error
+}](cacheType byte, ac *cache.AttributeCache[V], newValue func() V) cacheSnapshotSlot {
+	return &protoSnapshotSlot[V]{cacheType: cacheType, ac: ac, newValue: newValue}
+}
+
 // CacheSnapshotter handles persisting and restoring the in-memory cache
 // (generations, reversions, bloom filters) to/from Pebble under the 0xFF prefix.
 // Extracted from Machine to isolate pure IO serialization logic.
@@ -31,6 +92,7 @@ type CacheSnapshotter struct {
 	dataStore    *dal.Store
 	registry     *StateRegistry
 	bloomFilters *bloom.FilterSet
+	slots        []cacheSnapshotSlot
 
 	// bloomPopulateDone is closed when the background bloom populate goroutine
 	// finishes. Nil when no background work is running.
@@ -39,11 +101,25 @@ type CacheSnapshotter struct {
 
 // NewCacheSnapshotter creates a CacheSnapshotter.
 func NewCacheSnapshotter(logger logging.Logger, dataStore *dal.Store, registry *StateRegistry, bloomFilters *bloom.FilterSet) *CacheSnapshotter {
+	c := registry.Cache
+
 	return &CacheSnapshotter{
 		logger:       logger,
 		dataStore:    dataStore,
 		registry:     registry,
 		bloomFilters: bloomFilters,
+		slots: []cacheSnapshotSlot{
+			newProtoSnapshotSlot(dal.AttributePrefixVolume, c.Volumes, func() *raftcmdpb.VolumePair { return &raftcmdpb.VolumePair{} }),
+			newProtoSnapshotSlot(dal.AttributePrefixMetadata, c.AccountMetadata, func() *commonpb.MetadataValue { return &commonpb.MetadataValue{} }),
+			newProtoSnapshotSlot(dal.AttributePrefixLedger, c.Ledgers, func() *commonpb.LedgerInfo { return &commonpb.LedgerInfo{} }),
+			newProtoSnapshotSlot(dal.AttributePrefixBoundary, c.Boundaries, func() *raftcmdpb.LedgerBoundaries { return &raftcmdpb.LedgerBoundaries{} }),
+			newProtoSnapshotSlot(dal.AttributePrefixReference, c.References, func() *commonpb.TransactionReferenceValue { return &commonpb.TransactionReferenceValue{} }),
+			newProtoSnapshotSlot(dal.AttributePrefixTransaction, c.Transactions, func() *commonpb.TransactionState { return &commonpb.TransactionState{} }),
+			newProtoSnapshotSlot(dal.AttributePrefixIdempotency, c.IdempotencyKeys, func() *commonpb.IdempotencyKeyValue { return &commonpb.IdempotencyKeyValue{} }),
+			newProtoSnapshotSlot(dal.AttributePrefixSinkConfig, c.SinkConfigs, func() *commonpb.SinkConfig { return &commonpb.SinkConfig{} }),
+			newProtoSnapshotSlot(dal.AttributePrefixNumscriptVersion, c.NumscriptVersions, func() *commonpb.NumscriptVersionValue { return &commonpb.NumscriptVersionValue{} }),
+			newProtoSnapshotSlot(dal.AttributePrefixNumscriptContent, c.NumscriptContents, func() *commonpb.NumscriptInfo { return &commonpb.NumscriptInfo{} }),
+		},
 	}
 }
 
@@ -51,40 +127,11 @@ func NewCacheSnapshotter(logger logging.Logger, dataStore *dal.Store, registry *
 // genByte is the byte written into 0xFF keys; genIndex selects which
 // in-memory generation to read (0=gen0, 1=gen1).
 func (s *CacheSnapshotter) persistGeneration(batch *dal.Batch, genByte byte, genIndex int) error {
-	c := s.registry.Cache
-
-	var (
-		baseIndex            uint64
-		volumeStore          kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.VolumePair]]
-		metadataStore        kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
-		ledgerStore          kv.KV[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]]
-		boundaryStore        kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.LedgerBoundaries]]
-		referenceStore       kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionReferenceValue]]
-		transactionStore     kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionState]]
-		numscriptParsedStore kv.KV[attributes.U128, attributes.Entry[string]]
-		idempotencyStore     kv.KV[attributes.U128, attributes.Entry[*commonpb.IdempotencyKeyValue]]
-	)
-
+	var baseIndex uint64
 	if genIndex == 0 {
-		baseIndex = c.BaseIndex.Gen0
-		volumeStore = c.Volumes.Gen0()
-		metadataStore = c.AccountMetadata.Gen0()
-		ledgerStore = c.Ledgers.Gen0()
-		boundaryStore = c.Boundaries.Gen0()
-		referenceStore = c.References.Gen0()
-		transactionStore = c.Transactions.Gen0()
-		numscriptParsedStore = c.NumscriptParsed.Gen0()
-		idempotencyStore = c.IdempotencyKeys.Gen0()
+		baseIndex = s.registry.Cache.BaseIndex.Gen0
 	} else {
-		baseIndex = c.BaseIndex.Gen1
-		volumeStore = c.Volumes.Gen1()
-		metadataStore = c.AccountMetadata.Gen1()
-		ledgerStore = c.Ledgers.Gen1()
-		boundaryStore = c.Boundaries.Gen1()
-		referenceStore = c.References.Gen1()
-		transactionStore = c.Transactions.Gen1()
-		numscriptParsedStore = c.NumscriptParsed.Gen1()
-		idempotencyStore = c.IdempotencyKeys.Gen1()
+		baseIndex = s.registry.Cache.BaseIndex.Gen1
 	}
 
 	// Write generation metadata
@@ -97,40 +144,10 @@ func (s *CacheSnapshotter) persistGeneration(batch *dal.Batch, genByte byte, gen
 
 	// All entries use lean format: [8-byte tag LE][raw value proto bytes].
 	// This matches the format written incrementally by mergeSimpleWithCache.
-
-	if err := persistLeanProtoEntries(batch, genByte, dal.AttributePrefixVolume, volumeStore); err != nil {
-		return err
-	}
-
-	if err := persistLeanProtoEntries(batch, genByte, dal.AttributePrefixMetadata, metadataStore); err != nil {
-		return err
-	}
-
-	if err := persistLeanProtoEntries(batch, genByte, dal.AttributePrefixLedger, ledgerStore); err != nil {
-		return err
-	}
-
-	if err := persistLeanProtoEntries(batch, genByte, dal.AttributePrefixBoundary, boundaryStore); err != nil {
-		return err
-	}
-
-	if err := persistLeanProtoEntries(batch, genByte, dal.AttributePrefixReference, referenceStore); err != nil {
-		return err
-	}
-
-	if err := persistLeanProtoEntries(batch, genByte, dal.AttributePrefixTransaction, transactionStore); err != nil {
-		return err
-	}
-
-	// NumscriptParsed stores a string, not a proto — write string bytes directly.
-	for u128, entry := range numscriptParsedStore.Iter() {
-		if err := writeCacheRaw(batch, genByte, dal.AttributePrefixNumscript, u128, entry.Tag, []byte(entry.Data)); err != nil {
+	for _, slot := range s.slots {
+		if err := slot.Persist(batch, genByte, genIndex); err != nil {
 			return err
 		}
-	}
-
-	if err := persistLeanProtoEntries(batch, genByte, dal.AttributePrefixIdempotency, idempotencyStore); err != nil {
-		return err
 	}
 
 	return nil
@@ -249,133 +266,20 @@ func (s *CacheSnapshotter) restoreGeneration(genByte byte, genIndex int) error {
 		s.registry.Cache.BaseIndex.Gen1 = baseIndex
 	}
 
-	var (
-		volumeStore          kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.VolumePair]]
-		metadataStore        kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
-		ledgerStore          kv.KV[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]]
-		boundaryStore        kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.LedgerBoundaries]]
-		referenceStore       kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionReferenceValue]]
-		transactionStore     kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionState]]
-		numscriptParsedStore kv.KV[attributes.U128, attributes.Entry[string]]
-		idempotencyStore     kv.KV[attributes.U128, attributes.Entry[*commonpb.IdempotencyKeyValue]]
-	)
-
-	if genIndex == 0 {
-		volumeStore = s.registry.Cache.Volumes.Gen0()
-		metadataStore = s.registry.Cache.AccountMetadata.Gen0()
-		ledgerStore = s.registry.Cache.Ledgers.Gen0()
-		boundaryStore = s.registry.Cache.Boundaries.Gen0()
-		referenceStore = s.registry.Cache.References.Gen0()
-		transactionStore = s.registry.Cache.Transactions.Gen0()
-		numscriptParsedStore = s.registry.Cache.NumscriptParsed.Gen0()
-		idempotencyStore = s.registry.Cache.IdempotencyKeys.Gen0()
-	} else {
-		volumeStore = s.registry.Cache.Volumes.Gen1()
-		metadataStore = s.registry.Cache.AccountMetadata.Gen1()
-		ledgerStore = s.registry.Cache.Ledgers.Gen1()
-		boundaryStore = s.registry.Cache.Boundaries.Gen1()
-		referenceStore = s.registry.Cache.References.Gen1()
-		transactionStore = s.registry.Cache.Transactions.Gen1()
-		numscriptParsedStore = s.registry.Cache.NumscriptParsed.Gen1()
-		idempotencyStore = s.registry.Cache.IdempotencyKeys.Gen1()
-	}
-
-	// Restore each cache type by iterating over its prefix.
+	// Restore each cache type by iterating over its Pebble prefix.
 	// All entries use lean format: [8-byte tag LE][raw value proto bytes].
-	type restoreSpec struct {
-		cacheType byte
-		restore   func(u128 attributes.U128, value []byte) error
-	}
+	for _, slot := range s.slots {
+		restoreFn := slot.RestoreEntry(genIndex)
 
-	specs := []restoreSpec{
-		{dal.AttributePrefixVolume, func(u128 attributes.U128, value []byte) error {
-			tag, valueBytes := parseLeanValue(value)
-			v := &raftcmdpb.VolumePair{}
-			if err := v.UnmarshalVT(valueBytes); err != nil {
-				return err
-			}
-			volumeStore.Put(u128, attributes.Entry[*raftcmdpb.VolumePair]{Tag: tag, Data: v})
-
-			return nil
-		}},
-		{dal.AttributePrefixMetadata, func(u128 attributes.U128, value []byte) error {
-			tag, valueBytes := parseLeanValue(value)
-			v := &commonpb.MetadataValue{}
-			if err := v.UnmarshalVT(valueBytes); err != nil {
-				return err
-			}
-			metadataStore.Put(u128, attributes.Entry[*commonpb.MetadataValue]{Tag: tag, Data: v})
-
-			return nil
-		}},
-		{dal.AttributePrefixLedger, func(u128 attributes.U128, value []byte) error {
-			tag, valueBytes := parseLeanValue(value)
-			v := &commonpb.LedgerInfo{}
-			if err := v.UnmarshalVT(valueBytes); err != nil {
-				return err
-			}
-			ledgerStore.Put(u128, attributes.Entry[*commonpb.LedgerInfo]{Tag: tag, Data: v})
-
-			return nil
-		}},
-		{dal.AttributePrefixBoundary, func(u128 attributes.U128, value []byte) error {
-			tag, valueBytes := parseLeanValue(value)
-			v := &raftcmdpb.LedgerBoundaries{}
-			if err := v.UnmarshalVT(valueBytes); err != nil {
-				return err
-			}
-			boundaryStore.Put(u128, attributes.Entry[*raftcmdpb.LedgerBoundaries]{Tag: tag, Data: v})
-
-			return nil
-		}},
-		{dal.AttributePrefixReference, func(u128 attributes.U128, value []byte) error {
-			tag, valueBytes := parseLeanValue(value)
-			v := &commonpb.TransactionReferenceValue{}
-			if err := v.UnmarshalVT(valueBytes); err != nil {
-				return err
-			}
-			referenceStore.Put(u128, attributes.Entry[*commonpb.TransactionReferenceValue]{Tag: tag, Data: v})
-
-			return nil
-		}},
-		{dal.AttributePrefixTransaction, func(u128 attributes.U128, value []byte) error {
-			tag, valueBytes := parseLeanValue(value)
-			v := &commonpb.TransactionState{}
-			if err := v.UnmarshalVT(valueBytes); err != nil {
-				return err
-			}
-			transactionStore.Put(u128, attributes.Entry[*commonpb.TransactionState]{Tag: tag, Data: v})
-
-			return nil
-		}},
-		{dal.AttributePrefixNumscript, func(u128 attributes.U128, value []byte) error {
-			tag, valueBytes := parseLeanValue(value)
-			numscriptParsedStore.Put(u128, attributes.Entry[string]{Tag: tag, Data: string(valueBytes)})
-
-			return nil
-		}},
-		{dal.AttributePrefixIdempotency, func(u128 attributes.U128, value []byte) error {
-			tag, valueBytes := parseLeanValue(value)
-			v := &commonpb.IdempotencyKeyValue{}
-			if err := v.UnmarshalVT(valueBytes); err != nil {
-				return err
-			}
-			idempotencyStore.Put(u128, attributes.Entry[*commonpb.IdempotencyKeyValue]{Tag: tag, Data: v})
-
-			return nil
-		}},
-	}
-
-	for _, spec := range specs {
-		lower := []byte{dal.KeyPrefixCacheSnapshot, genByte, spec.cacheType}
-		upper := []byte{dal.KeyPrefixCacheSnapshot, genByte, spec.cacheType + 1}
+		lower := []byte{dal.KeyPrefixCacheSnapshot, genByte, slot.CacheType()}
+		upper := []byte{dal.KeyPrefixCacheSnapshot, genByte, slot.CacheType() + 1}
 
 		iter, err := s.dataStore.NewIter(&pebble.IterOptions{
 			LowerBound: lower,
 			UpperBound: upper,
 		})
 		if err != nil {
-			return fmt.Errorf("creating cache iter for type 0x%02x: %w", spec.cacheType, err)
+			return fmt.Errorf("creating cache iter for type 0x%02x: %w", slot.CacheType(), err)
 		}
 
 		for iter.First(); iter.Valid(); iter.Next() {
@@ -394,7 +298,7 @@ func (s *CacheSnapshotter) restoreGeneration(genByte byte, genIndex int) error {
 				return fmt.Errorf("reading cache value: %w", err)
 			}
 
-			if err := spec.restore(u128, value); err != nil {
+			if err := restoreFn(u128, value); err != nil {
 				_ = iter.Close()
 
 				return fmt.Errorf("restoring cache entry: %w", err)

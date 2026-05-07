@@ -45,9 +45,9 @@ type PreloadBuild struct {
 // ReleaseLoaders releases the loader cleanup token from the build.
 // Use this on error paths when AcquireProposalGuard was never called.
 // Safe to call multiple times (idempotent via nil check).
-func (b *PreloadBuild) ReleaseLoaders(loaders *Loaders) {
+func (b *PreloadBuild) ReleaseLoaders() {
 	if b.token != nil {
-		b.token.Release(loaders)
+		b.token.Release()
 		b.token = nil
 	}
 }
@@ -77,7 +77,7 @@ func (g *ProposalGuard) Release() {
 // Safe to call multiple times (idempotent via nil check).
 func (g *ProposalGuard) ReleaseLoaders() {
 	if g.token != nil {
-		g.token.Release(g.p.loaders)
+		g.token.Release()
 		g.token = nil
 	}
 }
@@ -136,7 +136,7 @@ func (p *Preloader) UnlockTracker() { p.tracker.Unlock() }
 // proposal lock. The returned PreloadBuild contains the PreloadSet for
 // marshalling and internal state for boundary validation.
 //
-// On error, the caller must call build.ReleaseLoaders(preloader.Loaders()).
+// On error, the caller must call build.ReleaseLoaders().
 func (p *Preloader) BuildPreloads(needs *Needs) (*PreloadBuild, error) {
 	nextIndex := p.tracker.Next()
 	nextIndexGen := cache.Gen(nextIndex, p.cache.GenerationThreshold)
@@ -183,7 +183,7 @@ func (p *Preloader) AcquireProposalGuard(build *PreloadBuild, needs *Needs) (*ra
 	// CheckCache decisions (hit/miss/touch) may be wrong. Under the tracker
 	// lock, nextIndex is stable for the duration of the rebuild (Decrement
 	// also acquires this lock, preventing the race).
-	build.token.Release(p.loaders)
+	build.token.Release()
 
 	if p.logger.Enabled(logging.DebugLevel) {
 		p.logger.WithFields(map[string]any{
@@ -217,6 +217,7 @@ func (p *Preloader) bloomFilter(attrType byte) *bloom.Filter {
 type buildResult struct {
 	resolve *resolveResult
 	err     error
+	loader  LoaderOps // which loader the tracker keys should be released from
 }
 
 // buildPreloadsAt resolves all preload needs at the given nextIndex.
@@ -234,9 +235,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 		}).Debugf("Preloader: buildPreloadsAt")
 	}
 
-	token := &CleanupToken{}
-
-	// Each goroutine writes to a distinct results[slot] and a distinct token field.
+	// Each goroutine writes to a distinct results[slot].
 	const maxTypes = 11
 	results := make([]buildResult, maxTypes)
 
@@ -257,7 +256,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 	if len(needs.Ledgers) > 0 {
 		launch(func(i int) {
 			var r *resolveResult
-			r, results[i].err = resolveStandard(
+			r, results[i].err = resolveAttributePreload(
 				needs.Ledgers, nextIndex, boundary,
 				p.cache.Ledgers, p.loaders.Ledgers,
 				p.attrs.Ledger.Get, p.store,
@@ -267,16 +266,14 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.logger, "ledgers",
 			)
 			results[i].resolve = r
-			if r != nil {
-				token.Ledgers = r.tracker
-			}
+			results[i].loader = p.loaders.Ledgers
 		})
 	}
 
 	if len(needs.Boundaries) > 0 {
 		launch(func(i int) {
 			var r *resolveResult
-			r, results[i].err = resolveStandard(
+			r, results[i].err = resolveAttributePreload(
 				needs.Boundaries, nextIndex, boundary,
 				p.cache.Boundaries, p.loaders.Boundaries,
 				p.attrs.Boundary.Get, p.store,
@@ -286,16 +283,14 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.logger, "boundaries",
 			)
 			results[i].resolve = r
-			if r != nil {
-				token.Boundaries = r.tracker
-			}
+			results[i].loader = p.loaders.Boundaries
 		})
 	}
 
 	if len(needs.Volumes) > 0 {
 		launch(func(i int) {
 			var r *resolveResult
-			r, results[i].err = resolveStandard(
+			r, results[i].err = resolveAttributePreload(
 				needs.Volumes, nextIndex, boundary,
 				p.cache.Volumes, p.loaders.Volumes,
 				p.attrs.Volume.Get, p.store,
@@ -305,16 +300,14 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.logger, "volumes",
 			)
 			results[i].resolve = r
-			if r != nil {
-				token.Volumes = r.tracker
-			}
+			results[i].loader = p.loaders.Volumes
 		})
 	}
 
 	if len(needs.IdempotencyKeys) > 0 {
 		launch(func(i int) {
 			var r *resolveResult
-			r, results[i].err = resolveStandard(
+			r, results[i].err = resolveAttributePreload(
 				needs.IdempotencyKeys, nextIndex, boundary,
 				p.cache.IdempotencyKeys, p.loaders.IdempotencyKeys,
 				p.attrs.IdempotencyKeys.Get, p.store,
@@ -324,16 +317,14 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.logger, "idempotency_keys",
 			)
 			results[i].resolve = r
-			if r != nil {
-				token.IdempotencyKeys = r.tracker
-			}
+			results[i].loader = p.loaders.IdempotencyKeys
 		})
 	}
 
 	if len(needs.References) > 0 {
 		launch(func(i int) {
 			var r *resolveResult
-			r, results[i].err = resolveStandard(
+			r, results[i].err = resolveAttributePreload(
 				needs.References, nextIndex, boundary,
 				p.cache.References, p.loaders.References,
 				p.attrs.References.Get, p.store,
@@ -343,84 +334,65 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.logger, "references",
 			)
 			results[i].resolve = r
-			if r != nil {
-				token.References = r.tracker
-			}
+			results[i].loader = p.loaders.References
 		})
 	}
 
 	if len(needs.SinkConfigs) > 0 {
 		launch(func(i int) {
 			var r *resolveResult
-			r, results[i].err = resolveCustom(
+			r, results[i].err = resolveAttributePreload(
 				needs.SinkConfigs, nextIndex, boundary,
 				p.cache.SinkConfigs, p.loaders.SinkConfigs,
+				p.attrs.SinkConfig.Get, p.store,
 				buildSinkConfigPreload, false,
 				raftcmdpb.CacheTouchType_CACHE_TOUCH_SINK_CONFIGS, nil,
+				p.bloomFilter(dal.AttributePrefixSinkConfig),
 				p.logger, "sink_configs",
 			)
 			results[i].resolve = r
-			if r != nil {
-				token.SinkConfigs = r.tracker
-			}
+			results[i].loader = p.loaders.SinkConfigs
 		})
 	}
 
 	if len(needs.NumscriptVersions) > 0 {
 		launch(func(i int) {
 			var r *resolveResult
-			r, results[i].err = resolveCustom(
+			r, results[i].err = resolveAttributePreload(
 				needs.NumscriptVersions, nextIndex, boundary,
 				p.cache.NumscriptVersions, p.loaders.NumscriptVersions,
+				p.attrs.NumscriptVersion.Get, p.store,
 				buildNumscriptVersionPreload, true,
 				raftcmdpb.CacheTouchType_CACHE_TOUCH_NUMSCRIPT_VERSIONS, nil,
+				p.bloomFilter(dal.AttributePrefixNumscriptVersion),
 				p.logger, "numscript_versions",
 			)
 			results[i].resolve = r
-			if r != nil {
-				token.NumscriptVersions = r.tracker
-			}
+			results[i].loader = p.loaders.NumscriptVersions
 		})
 	}
 
-	if len(needs.NumscriptEntries) > 0 {
+	if len(needs.NumscriptContents) > 0 {
 		launch(func(i int) {
 			var r *resolveResult
-			r, results[i].err = resolveCustom(
-				needs.NumscriptEntries, nextIndex, boundary,
-				p.cache.NumscriptEntries, p.loaders.NumscriptEntries,
-				buildNumscriptEntryPreload, true,
-				raftcmdpb.CacheTouchType_CACHE_TOUCH_NUMSCRIPT_ENTRIES, nil,
-				p.logger, "numscript_entries",
+			r, results[i].err = resolveAttributePreload(
+				needs.NumscriptContents, nextIndex, boundary,
+				p.cache.NumscriptContents, p.loaders.NumscriptContents,
+				p.attrs.NumscriptContent.Get, p.store,
+				buildNumscriptContentPreload, true,
+				raftcmdpb.CacheTouchType_CACHE_TOUCH_NUMSCRIPT_CONTENTS, nil,
+				p.bloomFilter(dal.AttributePrefixNumscriptContent),
+				p.logger, "numscript_contents",
 			)
 			results[i].resolve = r
-			if r != nil {
-				token.NumscriptEntries = r.tracker
-			}
-		})
-	}
-
-	if len(needs.NumscriptParsed) > 0 {
-		launch(func(i int) {
-			var r *resolveResult
-			r, results[i].err = resolveCustom(
-				needs.NumscriptParsed, nextIndex, boundary,
-				p.cache.NumscriptParsed, p.loaders.NumscriptParsed,
-				buildNumscriptParsedPreload, true,
-				raftcmdpb.CacheTouchType_CACHE_TOUCH_NUMSCRIPT_PARSED, nil,
-				p.logger, "numscript_parsed",
-			)
-			results[i].resolve = r
-			if r != nil {
-				token.NumscriptParsed = r.tracker
-			}
+			results[i].loader = p.loaders.NumscriptContents
 		})
 	}
 
 	if len(needs.Transactions) > 0 {
 		launch(func(i int) {
 			var r *resolveResult
-			r, results[i].err = resolveStandard(
+			r, results[i].err = resolveAttributePreload(
 				needs.Transactions, nextIndex, boundary,
 				p.cache.Transactions, p.loaders.Transactions,
 				p.attrs.Transaction.Get, p.store,
@@ -430,16 +402,14 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.logger, "transactions",
 			)
 			results[i].resolve = r
-			if r != nil {
-				token.Transactions = r.tracker
-			}
+			results[i].loader = p.loaders.Transactions
 		})
 	}
 
 	if len(needs.Metadata) > 0 {
 		launch(func(i int) {
 			var r *resolveResult
-			r, results[i].err = resolveStandard(
+			r, results[i].err = resolveAttributePreload(
 				needs.Metadata, nextIndex, boundary,
 				p.cache.AccountMetadata, p.loaders.AccountMetadata,
 				p.attrs.Metadata.Get, p.store,
@@ -449,15 +419,14 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.logger, "metadata",
 			)
 			results[i].resolve = r
-			if r != nil {
-				token.AccountMetadata = r.tracker
-			}
+			results[i].loader = p.loaders.AccountMetadata
 		})
 	}
 
 	wg.Wait()
 
-	// Merge results, returning first error encountered.
+	// Build CleanupToken and merge results, returning first error encountered.
+	token := &CleanupToken{}
 	preloadSet := &raftcmdpb.PreloadSet{
 		LastPersistedIndex: boundary,
 	}
@@ -470,6 +439,13 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 		if results[i].resolve != nil {
 			preloadSet.Preloads = append(preloadSet.Preloads, results[i].resolve.preloads...)
 			preloadSet.Touches = append(preloadSet.Touches, results[i].resolve.touches...)
+
+			if results[i].loader != nil && len(results[i].resolve.tracker) > 0 {
+				token.tracked = append(token.tracked, trackedLoader{
+					loader: results[i].loader,
+					keys:   results[i].resolve.tracker,
+				})
+			}
 		}
 	}
 

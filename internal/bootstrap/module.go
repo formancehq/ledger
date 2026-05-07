@@ -477,7 +477,7 @@ func Module() fx.Option {
 			keystore.NewKeyStore,
 			state.NewSharedState,
 			fx.Annotate(signal.NewNotifications, fx.ResultTags(`name:"events"`)),
-			fx.Annotate(events.NewManager, fx.ParamTags(``, ``, ``, `name:"events"`)),
+			fx.Annotate(events.NewManager, fx.ParamTags(``, ``, ``, ``, `name:"events"`)),
 			fx.Annotate(signal.NewNotifications, fx.ResultTags(`name:"mirror"`)),
 			fx.Annotate(signal.NewNotifications, fx.ResultTags(`name:"index"`)),
 			fx.Annotate(func(store *dal.Store, proposer mirror.Proposer, preloader *preload.Preloader, logger logging.Logger, notifications *signal.Notifications, meterProvider metric.MeterProvider, cfg Config) *mirror.Manager {

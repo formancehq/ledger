@@ -118,6 +118,6 @@ type InMemoryStore interface {
 	// Ledger cleanup
 	MarkLedgerForCleanup(ledger string)
 
-	// Numscript resolution
-	ResolveNumscriptContent(ledger, name, version string) (string, error)
+	// Numscript content resolution
+	ResolveNumscriptContent(ledger, name, version string) (*commonpb.NumscriptInfo, error)
 }

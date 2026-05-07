@@ -75,8 +75,6 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 
 	for i, order := range orders {
 		// Compute idempotency hash once if needed (reused for check + store).
-		// IMPORTANT: must be computed BEFORE ProcessOrder, which may mutate the
-		// order (e.g. resolving Script.Plain from ContentHash cache).
 		hasIdempotency := order.GetIdempotency() != nil && order.GetIdempotency().GetKey() != ""
 
 		var orderHash []byte

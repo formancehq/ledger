@@ -354,7 +354,7 @@ func (w *Worker) processBatch() (bool, error) {
 
 	build, err := w.preloader.BuildPreloads(needs)
 	if err != nil {
-		build.ReleaseLoaders(w.preloader.Loaders())
+		build.ReleaseLoaders()
 
 		return false, fmt.Errorf("building preloads: %w", err)
 	}
@@ -377,7 +377,7 @@ func (w *Worker) processBatch() (bool, error) {
 	// and has no dependency on the lock.
 	proposalData, err := marshalMirrorCommand(cmd)
 	if err != nil {
-		build.ReleaseLoaders(w.preloader.Loaders())
+		build.ReleaseLoaders()
 
 		return false, err
 	}

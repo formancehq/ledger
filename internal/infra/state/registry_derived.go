@@ -21,9 +21,9 @@ type DerivedRegistry struct {
 	Ledgers           *attributes.DerivedKeyStore[domain.LedgerKey, *commonpb.LedgerInfo]
 	Boundaries        *attributes.DerivedKeyStore[domain.LedgerKey, *raftcmdpb.LedgerBoundaries]
 	SinkConfigs       *attributes.DerivedKeyStore[domain.SinkConfigKey, *commonpb.SinkConfig]
-	NumscriptVersions *attributes.DerivedKeyStore[domain.NumscriptVersionKey, string]
-	NumscriptEntries  *attributes.DerivedKeyStore[domain.NumscriptEntryKey, bool]
+	NumscriptVersions *attributes.DerivedKeyStore[domain.NumscriptVersionKey, *commonpb.NumscriptVersionValue]
 	Transactions      *attributes.DerivedKeyStore[domain.TransactionKey, *commonpb.TransactionState]
+	NumscriptContents *attributes.DerivedKeyStore[domain.NumscriptEntryKey, *commonpb.NumscriptInfo]
 
 	// PendingReversions holds transaction keys marked as reverted in the
 	// current proposal. These are flushed to the parent bitset on Merge.
@@ -44,9 +44,9 @@ func NewDerivedRegistry(reg *StateRegistry) *DerivedRegistry {
 		Ledgers:           attributes.NewDerivedKeyStore(reg.Ledgers, (*commonpb.LedgerInfo).CloneVT),
 		Boundaries:        attributes.NewDerivedKeyStore(reg.Boundaries, (*raftcmdpb.LedgerBoundaries).CloneVT),
 		SinkConfigs:       attributes.NewDerivedKeyStore(reg.SinkConfigs, (*commonpb.SinkConfig).CloneVT),
-		NumscriptVersions: attributes.NewDerivedKeyStore(reg.NumscriptVersions, nil), // string is a value type
-		NumscriptEntries:  attributes.NewDerivedKeyStore(reg.NumscriptEntries, nil),  // bool is a value type
+		NumscriptVersions: attributes.NewDerivedKeyStore(reg.NumscriptVersions, (*commonpb.NumscriptVersionValue).CloneVT),
 		Transactions:      attributes.NewDerivedKeyStore(reg.Transactions, (*commonpb.TransactionState).CloneVT),
+		NumscriptContents: attributes.NewDerivedKeyStore(reg.NumscriptContents, (*commonpb.NumscriptInfo).CloneVT),
 		parentReversions:  reg.Reversions,
 	}
 }

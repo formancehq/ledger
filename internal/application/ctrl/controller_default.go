@@ -1273,7 +1273,7 @@ func (ctrl *DefaultController) GetNumscript(_ context.Context, ledger, name stri
 
 	defer func() { _ = handle.Close() }()
 
-	info, err := query.ReadNumscript(handle, ledger, name, version)
+	info, err := query.ReadNumscript(ctrl.attrs.NumscriptVersion, ctrl.attrs.NumscriptContent, handle, ledger, name, version)
 	if err != nil {
 		return nil, fmt.Errorf("reading numscript %q: %w", name, err)
 	}
@@ -1294,7 +1294,7 @@ func (ctrl *DefaultController) ListNumscripts(_ context.Context, ledger string) 
 
 	defer func() { _ = handle.Close() }()
 
-	return query.ReadAllNumscripts(handle, ledger)
+	return query.ReadAllNumscripts(ctrl.attrs.NumscriptVersion, ctrl.attrs.NumscriptContent, handle, ledger)
 }
 
 func (ctrl *DefaultController) GetPeriodSchedule(_ context.Context) (string, error) {
@@ -1316,7 +1316,7 @@ func (ctrl *DefaultController) GetEventsSinks(_ context.Context) ([]*commonpb.Si
 
 	defer func() { _ = handle.Close() }()
 
-	return query.ReadAllSinkConfigs(handle)
+	return query.ReadAllSinkConfigs(ctrl.attrs.SinkConfig, handle)
 }
 
 // Barrier proposes a no-op through Raft consensus. When it returns, all

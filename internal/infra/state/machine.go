@@ -49,7 +49,7 @@ type Machine struct {
 	mu sync.Mutex
 
 	// Composed subsystems
-	Registry *StateRegistry // 10 KeyStores + Cache + Attrs (includes NumscriptVersions/NumscriptEntries)
+	Registry *StateRegistry // KeyStores + Cache + Attrs
 	Periods  *PeriodTracker // Period lifecycle
 
 	// pendingLedgerCleanups tracks deleted ledgers whose Pebble data has not
@@ -776,6 +776,15 @@ func (fsm *Machine) deleteQueryCheckpointFiles(checkpointID uint64) {
 
 // putInCache inserts a value into a cache generation if the key is absent.
 // If the key already exists, the existing value is returned unchanged.
+// preloadToCache populates both Gen1 and Gen0 of an AttributeCache with a preloaded value.
+// Gen1 is checked first: after rotation it holds the previous Gen0's data which may be
+// more recent than the preload. If Gen1 already has the key, its value is propagated to
+// Gen0 (preventing a stale preload from shadowing it).
+func preloadToCache[T any](ac *cache.AttributeCache[T], id *raftcmdpb.AttributeID, value T) {
+	value = putInCache(ac.Gen1(), id, value)
+	putInCache(ac.Gen0(), id, value)
+}
+
 // Used by Preload to populate the dual-generation cache.
 func putInCache[T any](store kv.KV[attributes.U128, attributes.Entry[T]], attrID *raftcmdpb.AttributeID, value T) T {
 	id := attributes.U128FromBytes(attrID.GetId())
@@ -835,150 +844,44 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet, batch *dal.Batch, 
 		)
 	}
 
-	// Helper function to put a preloaded volume pair into a cache generation.
-	// Since volumes are always preloaded with absolute Known values,
-	// if already in cache we keep the existing value (already up to date).
-	putInCacheVolumePair := func(
-		kv kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.VolumePair]],
-		attrID *raftcmdpb.AttributeID,
-		pair *raftcmdpb.VolumePair,
-	) *raftcmdpb.VolumePair {
-		id := attributes.U128FromBytes(attrID.GetId())
-
-		value, ok := kv.Get(id)
-		if ok {
-			// Assertion: the preloaded value should never be greater than the
-			// cached value. If it is, something went wrong with the preload
-			// (the admission layer loaded a value that's ahead of the cache).
-			// The reverse (preload < cache) is expected: the cache was updated
-			// by a later proposal after this preload was computed at admission.
-			cacheInput := value.Data.GetInput().ToBigInt()
-			cacheOutput := value.Data.GetOutput().ToBigInt()
-			preloadInput := pair.GetInput().ToBigInt()
-			preloadOutput := pair.GetOutput().ToBigInt()
-
-			if preloadInput.Cmp(cacheInput) > 0 || preloadOutput.Cmp(cacheOutput) > 0 {
-				// Todo: return a true error
-				fsm.logger.WithFields(map[string]any{
-					"id":             id.Hex(),
-					"cache_input":    cacheInput.String(),
-					"cache_output":   cacheOutput.String(),
-					"preload_input":  preloadInput.String(),
-					"preload_output": preloadOutput.String(),
-				}).Errorf("PRELOAD AHEAD OF CACHE: preloaded volume is greater than cached value — this should not happen")
-			}
-
-			return value.Data
-		}
-
-		kv.Put(id, attributes.Entry[*raftcmdpb.VolumePair]{
-			Tag:  attrID.GetTag(),
-			Data: pair,
-		})
-
-		return pair
-	}
-
 	for _, preload := range preloadSet.GetPreloads() {
 		switch preloadType := preload.GetType().(type) {
 		case *raftcmdpb.Preload_Volume:
-			pair := &raftcmdpb.VolumePair{
-				Input:  preloadType.Volume.GetInput(),
-				Output: preloadType.Volume.GetOutput(),
-			}
-			// Always check Gen1 first: after rotation, Gen1 holds the previous Gen0's
-			// data which may be more recent than the preload (read from committed Pebble,
-			// which lags behind uncommitted batch writes). If Gen1 already has the key,
-			// putInCacheVolumePair returns the existing (fresher) value; that value is then
-			// propagated to Gen0, preventing a stale preload from shadowing it.
-			aggregated := putInCacheVolumePair(fsm.Registry.Cache.Volumes.Gen1(), preloadType.Volume.GetId(), pair)
-			putInCacheVolumePair(fsm.Registry.Cache.Volumes.Gen0(), preloadType.Volume.GetId(), aggregated)
+			preloadToCache(fsm.Registry.Cache.Volumes, preloadType.Volume.GetId(), preloadType.Volume.GetValue())
 
 		case *raftcmdpb.Preload_IdempotencyKey:
-			idempotencyValue := &commonpb.IdempotencyKeyValue{
-				LogSequence: preloadType.IdempotencyKey.GetLogSequence(),
-				Hash:        preloadType.IdempotencyKey.GetHash(),
-			}
-			value := putInCache(fsm.Registry.Cache.IdempotencyKeys.Gen1(), preloadType.IdempotencyKey.GetId(), idempotencyValue)
-			putInCache(fsm.Registry.Cache.IdempotencyKeys.Gen0(), preloadType.IdempotencyKey.GetId(), value)
+			preloadToCache(fsm.Registry.Cache.IdempotencyKeys, preloadType.IdempotencyKey.GetId(), preloadType.IdempotencyKey.GetValue())
 
 		case *raftcmdpb.Preload_Ledger:
-			value := putInCache(fsm.Registry.Cache.Ledgers.Gen1(), preloadType.Ledger.GetId(), preloadType.Ledger.GetInfo())
-			putInCache(fsm.Registry.Cache.Ledgers.Gen0(), preloadType.Ledger.GetId(), value)
+			preloadToCache(fsm.Registry.Cache.Ledgers, preloadType.Ledger.GetId(), preloadType.Ledger.GetValue())
 
 		case *raftcmdpb.Preload_Boundary:
-			value := putInCache(fsm.Registry.Cache.Boundaries.Gen1(), preloadType.Boundary.GetId(), preloadType.Boundary.GetBoundaries())
-			putInCache(fsm.Registry.Cache.Boundaries.Gen0(), preloadType.Boundary.GetId(), value)
+			preloadToCache(fsm.Registry.Cache.Boundaries, preloadType.Boundary.GetId(), preloadType.Boundary.GetValue())
 
 		case *raftcmdpb.Preload_TransactionReference:
-			referenceValue := &commonpb.TransactionReferenceValue{
-				TransactionId: preloadType.TransactionReference.GetTransactionId(),
-			}
-			value := putInCache(fsm.Registry.Cache.References.Gen1(), preloadType.TransactionReference.GetId(), referenceValue)
-			putInCache(fsm.Registry.Cache.References.Gen0(), preloadType.TransactionReference.GetId(), value)
+			preloadToCache(fsm.Registry.Cache.References, preloadType.TransactionReference.GetId(), preloadType.TransactionReference.GetValue())
 
 		case *raftcmdpb.Preload_SinkConfig:
-			value := putInCache(fsm.Registry.Cache.SinkConfigs.Gen1(), preloadType.SinkConfig.GetId(), preloadType.SinkConfig.GetConfig())
-			putInCache(fsm.Registry.Cache.SinkConfigs.Gen0(), preloadType.SinkConfig.GetId(), value)
+			preloadToCache(fsm.Registry.Cache.SinkConfigs, preloadType.SinkConfig.GetId(), preloadType.SinkConfig.GetValue())
 
 		case *raftcmdpb.Preload_AccountMetadata:
-			value := putInCache(fsm.Registry.Cache.AccountMetadata.Gen1(), preloadType.AccountMetadata.GetId(), preloadType.AccountMetadata.GetValue())
-			putInCache(fsm.Registry.Cache.AccountMetadata.Gen0(), preloadType.AccountMetadata.GetId(), value)
+			preloadToCache(fsm.Registry.Cache.AccountMetadata, preloadType.AccountMetadata.GetId(), preloadType.AccountMetadata.GetValue())
 
 		case *raftcmdpb.Preload_NumscriptVersion:
-			value := putInCache(fsm.Registry.Cache.NumscriptVersions.Gen1(), preloadType.NumscriptVersion.GetId(), preloadType.NumscriptVersion.GetVersion())
-			putInCache(fsm.Registry.Cache.NumscriptVersions.Gen0(), preloadType.NumscriptVersion.GetId(), value)
-
-		case *raftcmdpb.Preload_NumscriptEntry:
-			value := putInCache(fsm.Registry.Cache.NumscriptEntries.Gen1(), preloadType.NumscriptEntry.GetId(), preloadType.NumscriptEntry.GetExists())
-			putInCache(fsm.Registry.Cache.NumscriptEntries.Gen0(), preloadType.NumscriptEntry.GetId(), value)
+			preloadToCache(fsm.Registry.Cache.NumscriptVersions, preloadType.NumscriptVersion.GetId(), preloadType.NumscriptVersion.GetValue())
 
 		case *raftcmdpb.Preload_TransactionState:
-			value := putInCache(fsm.Registry.Cache.Transactions.Gen1(), preloadType.TransactionState.GetId(), preloadType.TransactionState.GetState())
-			putInCache(fsm.Registry.Cache.Transactions.Gen0(), preloadType.TransactionState.GetId(), value)
+			preloadToCache(fsm.Registry.Cache.Transactions, preloadType.TransactionState.GetId(), preloadType.TransactionState.GetValue())
 
-		case *raftcmdpb.Preload_NumscriptParsed:
-			value := putInCache(fsm.Registry.Cache.NumscriptParsed.Gen1(), preloadType.NumscriptParsed.GetId(), preloadType.NumscriptParsed.GetPlain())
-			putInCache(fsm.Registry.Cache.NumscriptParsed.Gen0(), preloadType.NumscriptParsed.GetId(), value)
-
-			// Write to 0xFF cache zone for incremental persistence (lean format).
-			attrID := preloadType.NumscriptParsed.GetId()
-			id := attributes.U128FromBytes(attrID.GetId())
-
-			if err := writeCacheRaw(batch, genByte, dal.AttributePrefixNumscript, id, attrID.GetTag(), []byte(value)); err != nil {
-				return fmt.Errorf("writing numscript parsed to cache: %w", err)
-			}
+		case *raftcmdpb.Preload_NumscriptContent:
+			preloadToCache(fsm.Registry.Cache.NumscriptContents, preloadType.NumscriptContent.GetId(), preloadType.NumscriptContent.GetValue())
 		}
 	}
 
 	// Apply touches: promote keys from Gen1 to Gen0 without a store read.
 	for _, touch := range preloadSet.GetTouches() {
 		id := attributes.U128FromBytes(touch.GetId())
-
-		switch touch.GetType() {
-		case raftcmdpb.CacheTouchType_CACHE_TOUCH_VOLUMES:
-			fsm.Registry.Cache.Volumes.Touch(id)
-		case raftcmdpb.CacheTouchType_CACHE_TOUCH_IDEMPOTENCY_KEYS:
-			fsm.Registry.Cache.IdempotencyKeys.Touch(id)
-		case raftcmdpb.CacheTouchType_CACHE_TOUCH_REFERENCES:
-			fsm.Registry.Cache.References.Touch(id)
-		case raftcmdpb.CacheTouchType_CACHE_TOUCH_LEDGERS:
-			fsm.Registry.Cache.Ledgers.Touch(id)
-		case raftcmdpb.CacheTouchType_CACHE_TOUCH_BOUNDARIES:
-			fsm.Registry.Cache.Boundaries.Touch(id)
-		case raftcmdpb.CacheTouchType_CACHE_TOUCH_SINK_CONFIGS:
-			fsm.Registry.Cache.SinkConfigs.Touch(id)
-		case raftcmdpb.CacheTouchType_CACHE_TOUCH_ACCOUNT_METADATA:
-			fsm.Registry.Cache.AccountMetadata.Touch(id)
-		case raftcmdpb.CacheTouchType_CACHE_TOUCH_NUMSCRIPT_VERSIONS:
-			fsm.Registry.Cache.NumscriptVersions.Touch(id)
-		case raftcmdpb.CacheTouchType_CACHE_TOUCH_NUMSCRIPT_ENTRIES:
-			fsm.Registry.Cache.NumscriptEntries.Touch(id)
-		case raftcmdpb.CacheTouchType_CACHE_TOUCH_NUMSCRIPT_PARSED:
-			fsm.Registry.Cache.NumscriptParsed.Touch(id)
-		case raftcmdpb.CacheTouchType_CACHE_TOUCH_TRANSACTIONS:
-			fsm.Registry.Cache.Transactions.Touch(id)
-		}
+		fsm.Registry.Cache.TouchByType(touch.GetType(), id)
 	}
 
 	return nil

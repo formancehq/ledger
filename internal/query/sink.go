@@ -8,6 +8,8 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
@@ -72,56 +74,20 @@ func ReadAllSinkStatuses(reader dal.PebbleReader) ([]*commonpb.SinkStatus, error
 
 // ReadSinkConfig loads a single sink configuration by name from the given reader.
 // Returns nil (not error) if the sink does not exist.
-func ReadSinkConfig(reader dal.PebbleReader, name string) (*commonpb.SinkConfig, error) {
-	kb := dal.NewKeyBuilder()
-	kb.PutByte(dal.KeyPrefixEventsConfig).
-		PutString(name)
-
-	value, closer, err := reader.Get(kb.Build())
-	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
-			return nil, nil
-		}
-
-		return nil, fmt.Errorf("loading sink config %q: %w", name, err)
-	}
-
-	defer func() { _ = closer.Close() }()
-
-	cfg := &commonpb.SinkConfig{}
-	if err := proto.Unmarshal(value, cfg); err != nil {
-		return nil, fmt.Errorf("unmarshaling sink config %q: %w", name, err)
-	}
-
-	return cfg, nil
+func ReadSinkConfig(attr *attributes.Attribute[*commonpb.SinkConfig], reader dal.PebbleReader, name string) (*commonpb.SinkConfig, error) {
+	return attr.Get(reader, domain.SinkConfigKey{Name: name}.Bytes())
 }
 
-// ReadAllSinkConfigs loads all sink configurations by scanning the events config prefix.
-func ReadAllSinkConfigs(reader dal.PebbleReader) ([]*commonpb.SinkConfig, error) {
-	lowerBound := []byte{dal.KeyPrefixEventsConfig}
-	upperBound := []byte{dal.KeyPrefixEventsConfig + 1}
-
-	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
+// ReadAllSinkConfigs loads all sink configurations from the attributes zone.
+func ReadAllSinkConfigs(attr *attributes.Attribute[*commonpb.SinkConfig], reader dal.PebbleReader) ([]*commonpb.SinkConfig, error) {
+	entries, err := attr.ComputeAllForPrefix(reader, nil)
 	if err != nil {
-		return nil, fmt.Errorf("creating iterator for sink configs: %w", err)
+		return nil, fmt.Errorf("scanning sink configs: %w", err)
 	}
 
-	defer func() { _ = iter.Close() }()
-
-	var configs []*commonpb.SinkConfig
-
-	for iter.First(); iter.Valid(); iter.Next() {
-		value, err := iter.ValueAndErr()
-		if err != nil {
-			return nil, fmt.Errorf("reading sink config value: %w", err)
-		}
-
-		cfg := &commonpb.SinkConfig{}
-		if err := proto.Unmarshal(value, cfg); err != nil {
-			return nil, fmt.Errorf("unmarshaling sink config: %w", err)
-		}
-
-		configs = append(configs, cfg)
+	configs := make([]*commonpb.SinkConfig, 0, len(entries))
+	for _, entry := range entries {
+		configs = append(configs, entry.Value)
 	}
 
 	return configs, nil

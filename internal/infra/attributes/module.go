@@ -11,25 +11,31 @@ import (
 // Attributes holds all attribute types used in the ledger.
 // Each instance has its own pre-allocated key buffer for thread-safe concurrent access.
 type Attributes struct {
-	Volume          *Attribute[*raftcmdpb.VolumePair]
-	Metadata        *Attribute[*commonpb.MetadataValue]
-	IdempotencyKeys *Attribute[*commonpb.IdempotencyKeyValue]
-	References      *Attribute[*commonpb.TransactionReferenceValue]
-	Ledger          *Attribute[*commonpb.LedgerInfo]
-	Boundary        *Attribute[*raftcmdpb.LedgerBoundaries]
-	Transaction     *Attribute[*commonpb.TransactionState]
+	Volume           *Attribute[*raftcmdpb.VolumePair]
+	Metadata         *Attribute[*commonpb.MetadataValue]
+	IdempotencyKeys  *Attribute[*commonpb.IdempotencyKeyValue]
+	References       *Attribute[*commonpb.TransactionReferenceValue]
+	Ledger           *Attribute[*commonpb.LedgerInfo]
+	Boundary         *Attribute[*raftcmdpb.LedgerBoundaries]
+	Transaction      *Attribute[*commonpb.TransactionState]
+	SinkConfig       *Attribute[*commonpb.SinkConfig]
+	NumscriptVersion *Attribute[*commonpb.NumscriptVersionValue]
+	NumscriptContent *Attribute[*commonpb.NumscriptInfo]
 }
 
 // New creates a new Attributes instance with all attribute types initialized.
 func New() *Attributes {
 	return &Attributes{
-		Volume:          NewVolumeAttribute(),
-		Metadata:        NewMetadataAttribute(),
-		IdempotencyKeys: NewIdempotencyKeysAttribute(),
-		References:      NewReferenceAttribute(),
-		Ledger:          NewLedgerAttribute(),
-		Boundary:        NewBoundaryAttribute(),
-		Transaction:     NewTransactionAttribute(),
+		Volume:           NewVolumeAttribute(),
+		Metadata:         NewMetadataAttribute(),
+		IdempotencyKeys:  NewIdempotencyKeysAttribute(),
+		References:       NewReferenceAttribute(),
+		Ledger:           NewLedgerAttribute(),
+		Boundary:         NewBoundaryAttribute(),
+		Transaction:      NewTransactionAttribute(),
+		SinkConfig:       NewSinkConfigAttribute(),
+		NumscriptVersion: NewNumscriptVersionAttribute(),
+		NumscriptContent: NewNumscriptContentAttribute(),
 	}
 }
 
@@ -92,6 +98,33 @@ func NewTransactionAttribute() *Attribute[*commonpb.TransactionState] {
 	return &Attribute[*commonpb.TransactionState]{
 		prefix:   dal.AttributePrefixTransaction,
 		newValue: func() *commonpb.TransactionState { return &commonpb.TransactionState{} },
+		keyBuf:   make([]byte, 128),
+	}
+}
+
+// NewSinkConfigAttribute creates a new SinkConfig attribute for storing event sink configurations.
+func NewSinkConfigAttribute() *Attribute[*commonpb.SinkConfig] {
+	return &Attribute[*commonpb.SinkConfig]{
+		prefix:   dal.AttributePrefixSinkConfig,
+		newValue: func() *commonpb.SinkConfig { return &commonpb.SinkConfig{} },
+		keyBuf:   make([]byte, 128),
+	}
+}
+
+// NewNumscriptVersionAttribute creates a new NumscriptVersion attribute for storing latest version pointers.
+func NewNumscriptVersionAttribute() *Attribute[*commonpb.NumscriptVersionValue] {
+	return &Attribute[*commonpb.NumscriptVersionValue]{
+		prefix:   dal.AttributePrefixNumscriptVersion,
+		newValue: func() *commonpb.NumscriptVersionValue { return &commonpb.NumscriptVersionValue{} },
+		keyBuf:   make([]byte, 128),
+	}
+}
+
+// NewNumscriptContentAttribute creates a new NumscriptContent attribute for storing full numscript info.
+func NewNumscriptContentAttribute() *Attribute[*commonpb.NumscriptInfo] {
+	return &Attribute[*commonpb.NumscriptInfo]{
+		prefix:   dal.AttributePrefixNumscriptContent,
+		newValue: func() *commonpb.NumscriptInfo { return &commonpb.NumscriptInfo{} },
 		keyBuf:   make([]byte, 128),
 	}
 }

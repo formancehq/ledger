@@ -1202,7 +1202,7 @@ func (m *CreateTransactionOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if m.NumscriptReference != nil {
-		size, _ := m.NumscriptReference.MarshalToSizedBufferVT(dAtA[:i])
+		size, _ := m.NumscriptReference.MarshalToSizedBufferDeterministicVT(dAtA[:i])
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
@@ -1287,6 +1287,61 @@ func (m *CreateTransactionOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte
 	return len(dAtA) - i, nil
 }
 
+func (m *NumscriptReference) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	sz := m.SizeVT()
+	buf := make([]byte, sz)
+	n, _ := m.MarshalToSizedBufferDeterministicVT(buf)
+	return append(dAtA, buf[sz-n:]...)
+}
+
+func (m *NumscriptReference) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.Vars) > 0 {
+		for _, k := range slices.Sorted(maps.Keys(m.Vars)) {
+			v := m.Vars[k]
+			baseI := i
+			i -= len(v)
+			copy(dAtA[i:], v)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(v)))
+			i--
+			dAtA[i] = 0x12
+			i -= len(k)
+			copy(dAtA[i:], k)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(k)))
+			i--
+			dAtA[i] = 0xa
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
+	if len(m.Version) > 0 {
+		i -= len(m.Version)
+		copy(dAtA[i:], m.Version)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Version)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Name) > 0 {
+		i -= len(m.Name)
+		copy(dAtA[i:], m.Name)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Name)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *SaveMetadataOrder) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
@@ -1338,16 +1393,6 @@ func (m *Proposal) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error)
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.DryRun {
-		i--
-		if m.DryRun {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x40
 	}
 	if m.PredictedIndex != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PredictedIndex))
@@ -1623,14 +1668,6 @@ func (m *Preload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i--
 			dAtA[i] = 0x42
 		}
-	case *Preload_NumscriptEntry:
-		if v.NumscriptEntry != nil {
-			size, _ := v.NumscriptEntry.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x4a
-		}
 	case *Preload_TransactionState:
 		if v.TransactionState != nil {
 			size, _ := v.TransactionState.MarshalToSizedBufferVT(dAtA[:i])
@@ -1639,9 +1676,9 @@ func (m *Preload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i--
 			dAtA[i] = 0x52
 		}
-	case *Preload_NumscriptParsed:
-		if v.NumscriptParsed != nil {
-			size, _ := v.NumscriptParsed.MarshalToSizedBufferVT(dAtA[:i])
+	case *Preload_NumscriptContent:
+		if v.NumscriptContent != nil {
+			size, _ := v.NumscriptContent.MarshalToSizedBufferVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
@@ -1692,8 +1729,8 @@ func (m *PreloadLedger) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, e
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Info != nil {
-		size, _ := m.Info.MarshalToSizedBufferDeterministicVT(dAtA[:i])
+	if m.Value != nil {
+		size, _ := m.Value.MarshalToSizedBufferDeterministicVT(dAtA[:i])
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
@@ -1764,17 +1801,6 @@ func (m *PreloadNumscriptVersion) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *PreloadNumscriptEntry) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
 func (m *PreloadTransactionState) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
@@ -1786,7 +1812,7 @@ func (m *PreloadTransactionState) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *PreloadNumscriptParsed) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *PreloadNumscriptContent) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -1866,15 +1892,6 @@ func (m *GenerationSnapshot) MarshalToSizedBufferDeterministicVT(dAtA []byte) (i
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x52
-		}
-	}
-	if len(m.NumscriptParsed) > 0 {
-		for iNdEx := len(m.NumscriptParsed) - 1; iNdEx >= 0; iNdEx-- {
-			size, _ := m.NumscriptParsed[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
 			dAtA[i] = 0x4a
 		}
 	}
@@ -1947,17 +1964,6 @@ func (m *GenerationSnapshot) MarshalToSizedBufferDeterministicVT(dAtA []byte) (i
 		dAtA[i] = 0x8
 	}
 	return len(dAtA) - i, nil
-}
-
-func (m *NumscriptParsedAttributeEntry) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
 }
 
 func (m *VolumeAttributeSnapshotEntry) MarshalDeterministicVT(dAtA []byte) []byte {

@@ -42,24 +42,28 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 		resolveMigratingVolumes(s, ledger, order, info)
 	}
 
-	// Determine script text: inline (from order) or resolved (from cache via reference)
-	var scriptText string
-
-	if ref := order.GetNumscriptReference(); ref != nil && ref.GetName() != "" {
-		text, err := s.ResolveNumscriptContent(ledger, ref.GetName(), ref.GetVersion())
+	// Resolve script reference: load content from preloaded cache.
+	if ref := order.GetNumscriptReference(); ref != nil {
+		info, err := s.ResolveNumscriptContent(ledger, ref.GetName(), ref.GetVersion())
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("resolving numscript %q v%s: %w", ref.GetName(), ref.GetVersion(), err)
 		}
 
-		scriptText = text
-	} else if order.GetScript() != nil && order.GetScript().GetPlain() != "" {
-		scriptText = order.GetScript().GetPlain()
+		if info == nil {
+			return nil, &domain.ErrNumscriptNotFound{Name: ref.GetName()}
+		}
+
+		order.Script = &commonpb.Script{
+			Plain: info.GetContent(),
+			Vars:  ref.GetVars(),
+		}
 	}
 
 	// Select the appropriate posting producer
 	var producer postingProducer
-	if scriptText != "" {
-		producer = &numscriptPostingProducer{cache: p.numscriptCache, ledger: ledger, schema: schema, scriptText: scriptText}
+	isNumscript := order.GetScript() != nil && order.GetScript().GetPlain() != ""
+	if isNumscript {
+		producer = &numscriptPostingProducer{cache: p.numscriptCache, ledger: ledger, schema: schema}
 	} else {
 		producer = &stdPostingProducer{}
 	}
@@ -74,7 +78,7 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 	boundaries.NextTransactionId = nextTransactionID + 1
 	boundaries.PostingCount += uint64(len(result.Postings))
 
-	if scriptText != "" {
+	if isNumscript {
 		boundaries.NumscriptExecutionCount++
 	}
 
@@ -239,7 +243,6 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 				PeriodId:                periodID,
 				PostCommitVolumes:       postCommitVolumes,
 				PreviousAccountMetadata: previousAccountMetadata,
-				NumscriptReference:      order.GetNumscriptReference(),
 			},
 		},
 	}, nil

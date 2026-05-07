@@ -722,10 +722,10 @@ func (mr *MockInMemoryStoreMockRecorder) RemoveSinkConfig(name any) *gomock.Call
 }
 
 // ResolveNumscriptContent mocks base method.
-func (m *MockInMemoryStore) ResolveNumscriptContent(ledger, name, version string) (string, error) {
+func (m *MockInMemoryStore) ResolveNumscriptContent(ledger, name, version string) (*commonpb.NumscriptInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ResolveNumscriptContent", ledger, name, version)
-	ret0, _ := ret[0].(string)
+	ret0, _ := ret[0].(*commonpb.NumscriptInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

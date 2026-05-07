@@ -552,11 +552,9 @@ func CreateScriptRefTransactionAction(ledgerName, scriptName, version string, va
 				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						ScriptReference: &servicepb.ScriptReference{
-							Reference: &commonpb.NumscriptReference{
-								Name:    scriptName,
-								Version: version,
-							},
-							Vars: vars,
+							Name:    scriptName,
+							Version: version,
+							Vars:    vars,
 						},
 						Metadata: commonpb.MetadataSetFromMap(metadata),
 					},

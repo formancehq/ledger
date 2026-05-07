@@ -18,19 +18,18 @@ import (
 )
 
 type numscriptPostingProducer struct {
-	cache      *numscript.NumscriptCache
-	ledger     string
-	schema     *commonpb.MetadataSchema
-	scriptText string
+	cache  *numscript.NumscriptCache
+	ledger string
+	schema *commonpb.MetadataSchema
 }
 
 func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error) {
-	if p.scriptText == "" {
+	if order.GetScript() == nil || order.GetScript().GetPlain() == "" {
 		return nil, domain.ErrScriptRequired
 	}
 
 	// Parse the script (uses cache to avoid re-parsing)
-	parsed, err := p.cache.GetOrParse(p.scriptText)
+	parsed, err := p.cache.GetOrParse(order.GetScript().GetPlain())
 	if err != nil {
 		return nil, err
 	}

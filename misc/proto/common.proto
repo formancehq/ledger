@@ -82,6 +82,7 @@ message Transaction {
 message Script {
   string plain = 1;
   map<string, string> vars = 2;
+  bytes content_hash = 3;  // BLAKE3 hash of the script content (32 bytes)
 }
 
 // ============================================================================
@@ -420,13 +421,6 @@ message NumscriptInfo {
   string ledger = 5;
 }
 
-// NumscriptReference records which named numscript was used to create a transaction.
-// Populated only when the transaction was created via a ScriptReference.
-message NumscriptReference {
-  string name = 1;
-  string version = 2;  // The fully resolved version (e.g. "1.0.5" even if "1" was requested)
-}
-
 // SavedNumscriptLog records a numscript being saved to the library.
 message SavedNumscriptLog {
   NumscriptInfo info = 1;
@@ -631,7 +625,6 @@ message CreatedTransaction {
   uint64 period_id = 3;  // Period that was OPEN when this transaction was created
   PostCommitVolumes post_commit_volumes = 4;  // Opt-in: volumes after commit (only when expand_volumes is true)
   map<string, MetadataSet> previous_account_metadata = 5;  // previous account metadata values (for index replay)
-  NumscriptReference numscript_reference = 6;  // Which named numscript was used (nil if inline script or postings)
 }
 
 message RevertedTransaction {
@@ -812,6 +805,11 @@ message IdempotencyKeyValue {
 // TransactionReferenceValue stores the transaction ID associated with a unique reference within a ledger.
 message TransactionReferenceValue {
   uint64 transaction_id = 1;
+}
+
+// NumscriptVersionValue stores the latest version pointer for a named numscript.
+message NumscriptVersionValue {
+  string version = 1;
 }
 
 // ChartEnforcementMode controls how chart violations are handled.

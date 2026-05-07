@@ -111,9 +111,8 @@ func buildVolumePreloads(orders []*raftcmdpb.Order) []*raftcmdpb.Preload {
 				preloads = append(preloads, &raftcmdpb.Preload{
 					Type: &raftcmdpb.Preload_Volume{
 						Volume: &raftcmdpb.PreloadVolume{
-							Id:     &raftcmdpb.AttributeID{Id: id[:], Tag: tag},
-							Input:  zero,
-							Output: zero,
+							Id:    &raftcmdpb.AttributeID{Id: id[:], Tag: tag},
+							Value: &raftcmdpb.VolumePair{Input: zero, Output: zero},
 						},
 					},
 				})

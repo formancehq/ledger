@@ -12,7 +12,8 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger-v3-poc/internal/application/events"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
@@ -21,8 +22,7 @@ import (
 func saveHTTPSinkConfig(t *testing.T, s *dal.Store, name, endpoint string) {
 	t.Helper()
 
-	batch := s.NewBatch()
-	require.NoError(t, state.SaveSinkConfig(batch, &commonpb.SinkConfig{
+	cfg := &commonpb.SinkConfig{
 		Name: name,
 		Type: &commonpb.SinkConfig_Http{
 			Http: &commonpb.HttpSinkConfig{
@@ -30,7 +30,11 @@ func saveHTTPSinkConfig(t *testing.T, s *dal.Store, name, endpoint string) {
 			},
 		},
 		Format: "json",
-	}))
+	}
+	attr := attributes.NewSinkConfigAttribute()
+	batch := s.NewBatch()
+	_, err := attr.Set(batch, domain.SinkConfigKey{Name: name}.Bytes(), cfg)
+	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 }
 
@@ -56,7 +60,7 @@ func TestManager_HTTPSink_StartStop(t *testing.T) {
 	// Pre-save an HTTP sink config
 	saveHTTPSinkConfig(t, store, "http-sink", server.URL)
 
-	manager := events.NewManager(store, proposer, logger, notifications)
+	manager := events.NewManager(store, attributes.New(), proposer, logger, notifications)
 	manager.Start()
 
 	// Become leader -- triggers reconcile which creates and starts the HTTP sink
@@ -90,7 +94,7 @@ func TestManager_HTTPSink_ConfigChangeRemovesSink(t *testing.T) {
 	// Pre-save an HTTP sink config
 	saveHTTPSinkConfig(t, store, "http-sink", server.URL)
 
-	manager := events.NewManager(store, proposer, logger, notifications)
+	manager := events.NewManager(store, attributes.New(), proposer, logger, notifications)
 
 	manager.Start()
 	defer manager.Stop()
@@ -100,7 +104,7 @@ func TestManager_HTTPSink_ConfigChangeRemovesSink(t *testing.T) {
 
 	// Remove the sink config
 	batch := store.NewBatch()
-	require.NoError(t, state.DeleteSinkConfig(batch, "http-sink"))
+	require.NoError(t, attributes.NewSinkConfigAttribute().Delete(batch, domain.SinkConfigKey{Name: "http-sink"}.Bytes()))
 	require.NoError(t, batch.Commit())
 
 	// Notify config change

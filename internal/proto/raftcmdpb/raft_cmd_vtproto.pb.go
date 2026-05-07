@@ -1543,6 +1543,31 @@ func (m *CreateTransactionOrder) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
+func (m *NumscriptReference) CloneVT() *NumscriptReference {
+	if m == nil {
+		return (*NumscriptReference)(nil)
+	}
+	r := new(NumscriptReference)
+	r.Name = m.Name
+	r.Version = m.Version
+	if rhs := m.Vars; rhs != nil {
+		tmpContainer := make(map[string]string, len(rhs))
+		for k, v := range rhs {
+			tmpContainer[k] = v
+		}
+		r.Vars = tmpContainer
+	}
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *NumscriptReference) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
 func (m *SaveMetadataOrder) CloneVT() *SaveMetadataOrder {
 	if m == nil {
 		return (*SaveMetadataOrder)(nil)
@@ -1616,7 +1641,6 @@ func (m *Proposal) CloneVT() *Proposal {
 	r.Date = m.Date.CloneVT()
 	r.Preload = m.Preload.CloneVT()
 	r.PredictedIndex = m.PredictedIndex
-	r.DryRun = m.DryRun
 	if rhs := m.Orders; rhs != nil {
 		tmpContainer := make([]*Order, len(rhs))
 		for k, v := range rhs {
@@ -1917,15 +1941,6 @@ func (m *Preload_NumscriptVersion) CloneVT() isPreload_Type {
 	return r
 }
 
-func (m *Preload_NumscriptEntry) CloneVT() isPreload_Type {
-	if m == nil {
-		return (*Preload_NumscriptEntry)(nil)
-	}
-	r := new(Preload_NumscriptEntry)
-	r.NumscriptEntry = m.NumscriptEntry.CloneVT()
-	return r
-}
-
 func (m *Preload_TransactionState) CloneVT() isPreload_Type {
 	if m == nil {
 		return (*Preload_TransactionState)(nil)
@@ -1935,12 +1950,12 @@ func (m *Preload_TransactionState) CloneVT() isPreload_Type {
 	return r
 }
 
-func (m *Preload_NumscriptParsed) CloneVT() isPreload_Type {
+func (m *Preload_NumscriptContent) CloneVT() isPreload_Type {
 	if m == nil {
-		return (*Preload_NumscriptParsed)(nil)
+		return (*Preload_NumscriptContent)(nil)
 	}
-	r := new(Preload_NumscriptParsed)
-	r.NumscriptParsed = m.NumscriptParsed.CloneVT()
+	r := new(Preload_NumscriptContent)
+	r.NumscriptContent = m.NumscriptContent.CloneVT()
 	return r
 }
 
@@ -1950,8 +1965,7 @@ func (m *PreloadVolume) CloneVT() *PreloadVolume {
 	}
 	r := new(PreloadVolume)
 	r.Id = m.Id.CloneVT()
-	r.Input = m.Input.CloneVT()
-	r.Output = m.Output.CloneVT()
+	r.Value = m.Value.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1969,12 +1983,7 @@ func (m *PreloadIdempotencyKey) CloneVT() *PreloadIdempotencyKey {
 	}
 	r := new(PreloadIdempotencyKey)
 	r.Id = m.Id.CloneVT()
-	r.LogSequence = m.LogSequence
-	if rhs := m.Hash; rhs != nil {
-		tmpBytes := make([]byte, len(rhs))
-		copy(tmpBytes, rhs)
-		r.Hash = tmpBytes
-	}
+	r.Value = m.Value.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1992,7 +2001,7 @@ func (m *PreloadLedger) CloneVT() *PreloadLedger {
 	}
 	r := new(PreloadLedger)
 	r.Id = m.Id.CloneVT()
-	r.Info = m.Info.CloneVT()
+	r.Value = m.Value.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2010,7 +2019,7 @@ func (m *PreloadBoundary) CloneVT() *PreloadBoundary {
 	}
 	r := new(PreloadBoundary)
 	r.Id = m.Id.CloneVT()
-	r.Boundaries = m.Boundaries.CloneVT()
+	r.Value = m.Value.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2028,7 +2037,7 @@ func (m *PreloadTransactionReference) CloneVT() *PreloadTransactionReference {
 	}
 	r := new(PreloadTransactionReference)
 	r.Id = m.Id.CloneVT()
-	r.TransactionId = m.TransactionId
+	r.Value = m.Value.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2046,7 +2055,7 @@ func (m *PreloadSinkConfig) CloneVT() *PreloadSinkConfig {
 	}
 	r := new(PreloadSinkConfig)
 	r.Id = m.Id.CloneVT()
-	r.Config = m.Config.CloneVT()
+	r.Value = m.Value.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2082,7 +2091,7 @@ func (m *PreloadNumscriptVersion) CloneVT() *PreloadNumscriptVersion {
 	}
 	r := new(PreloadNumscriptVersion)
 	r.Id = m.Id.CloneVT()
-	r.Version = m.Version
+	r.Value = m.Value.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2094,31 +2103,13 @@ func (m *PreloadNumscriptVersion) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *PreloadNumscriptEntry) CloneVT() *PreloadNumscriptEntry {
-	if m == nil {
-		return (*PreloadNumscriptEntry)(nil)
-	}
-	r := new(PreloadNumscriptEntry)
-	r.Id = m.Id.CloneVT()
-	r.Exists = m.Exists
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *PreloadNumscriptEntry) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
 func (m *PreloadTransactionState) CloneVT() *PreloadTransactionState {
 	if m == nil {
 		return (*PreloadTransactionState)(nil)
 	}
 	r := new(PreloadTransactionState)
 	r.Id = m.Id.CloneVT()
-	r.State = m.State.CloneVT()
+	r.Value = m.Value.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2130,13 +2121,13 @@ func (m *PreloadTransactionState) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *PreloadNumscriptParsed) CloneVT() *PreloadNumscriptParsed {
+func (m *PreloadNumscriptContent) CloneVT() *PreloadNumscriptContent {
 	if m == nil {
-		return (*PreloadNumscriptParsed)(nil)
+		return (*PreloadNumscriptContent)(nil)
 	}
-	r := new(PreloadNumscriptParsed)
+	r := new(PreloadNumscriptContent)
 	r.Id = m.Id.CloneVT()
-	r.Plain = m.Plain
+	r.Value = m.Value.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2144,7 +2135,7 @@ func (m *PreloadNumscriptParsed) CloneVT() *PreloadNumscriptParsed {
 	return r
 }
 
-func (m *PreloadNumscriptParsed) CloneMessageVT() proto.Message {
+func (m *PreloadNumscriptContent) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -2279,13 +2270,6 @@ func (m *GenerationSnapshot) CloneVT() *GenerationSnapshot {
 		}
 		r.Transactions = tmpContainer
 	}
-	if rhs := m.NumscriptParsed; rhs != nil {
-		tmpContainer := make([]*NumscriptParsedAttributeEntry, len(rhs))
-		for k, v := range rhs {
-			tmpContainer[k] = v.CloneVT()
-		}
-		r.NumscriptParsed = tmpContainer
-	}
 	if rhs := m.IdempotencyKeys; rhs != nil {
 		tmpContainer := make([]*IdempotencyKeyAttributeEntry, len(rhs))
 		for k, v := range rhs {
@@ -2301,24 +2285,6 @@ func (m *GenerationSnapshot) CloneVT() *GenerationSnapshot {
 }
 
 func (m *GenerationSnapshot) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
-func (m *NumscriptParsedAttributeEntry) CloneVT() *NumscriptParsedAttributeEntry {
-	if m == nil {
-		return (*NumscriptParsedAttributeEntry)(nil)
-	}
-	r := new(NumscriptParsedAttributeEntry)
-	r.Id = m.Id.CloneVT()
-	r.Plain = m.Plain
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *NumscriptParsedAttributeEntry) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -5198,6 +5164,40 @@ func (this *CreateTransactionOrder) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
+func (this *NumscriptReference) EqualVT(that *NumscriptReference) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.Name != that.Name {
+		return false
+	}
+	if this.Version != that.Version {
+		return false
+	}
+	if len(this.Vars) != len(that.Vars) {
+		return false
+	}
+	for i, vx := range this.Vars {
+		vy, ok := that.Vars[i]
+		if !ok {
+			return false
+		}
+		if vx != vy {
+			return false
+		}
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *NumscriptReference) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*NumscriptReference)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
 func (this *SaveMetadataOrder) EqualVT(that *SaveMetadataOrder) bool {
 	if this == that {
 		return true
@@ -5357,9 +5357,6 @@ func (this *Proposal) EqualVT(that *Proposal) bool {
 		}
 	}
 	if this.PredictedIndex != that.PredictedIndex {
-		return false
-	}
-	if this.DryRun != that.DryRun {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -5870,31 +5867,6 @@ func (this *Preload_NumscriptVersion) EqualVT(thatIface isPreload_Type) bool {
 	return true
 }
 
-func (this *Preload_NumscriptEntry) EqualVT(thatIface isPreload_Type) bool {
-	that, ok := thatIface.(*Preload_NumscriptEntry)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.NumscriptEntry, that.NumscriptEntry; p != q {
-		if p == nil {
-			p = &PreloadNumscriptEntry{}
-		}
-		if q == nil {
-			q = &PreloadNumscriptEntry{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
 func (this *Preload_TransactionState) EqualVT(thatIface isPreload_Type) bool {
 	that, ok := thatIface.(*Preload_TransactionState)
 	if !ok {
@@ -5920,8 +5892,8 @@ func (this *Preload_TransactionState) EqualVT(thatIface isPreload_Type) bool {
 	return true
 }
 
-func (this *Preload_NumscriptParsed) EqualVT(thatIface isPreload_Type) bool {
-	that, ok := thatIface.(*Preload_NumscriptParsed)
+func (this *Preload_NumscriptContent) EqualVT(thatIface isPreload_Type) bool {
+	that, ok := thatIface.(*Preload_NumscriptContent)
 	if !ok {
 		return false
 	}
@@ -5931,12 +5903,12 @@ func (this *Preload_NumscriptParsed) EqualVT(thatIface isPreload_Type) bool {
 	if this == nil && that != nil || this != nil && that == nil {
 		return false
 	}
-	if p, q := this.NumscriptParsed, that.NumscriptParsed; p != q {
+	if p, q := this.NumscriptContent, that.NumscriptContent; p != q {
 		if p == nil {
-			p = &PreloadNumscriptParsed{}
+			p = &PreloadNumscriptContent{}
 		}
 		if q == nil {
-			q = &PreloadNumscriptParsed{}
+			q = &PreloadNumscriptContent{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -5954,10 +5926,7 @@ func (this *PreloadVolume) EqualVT(that *PreloadVolume) bool {
 	if !this.Id.EqualVT(that.Id) {
 		return false
 	}
-	if !this.Input.EqualVT(that.Input) {
-		return false
-	}
-	if !this.Output.EqualVT(that.Output) {
+	if !this.Value.EqualVT(that.Value) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -5979,10 +5948,7 @@ func (this *PreloadIdempotencyKey) EqualVT(that *PreloadIdempotencyKey) bool {
 	if !this.Id.EqualVT(that.Id) {
 		return false
 	}
-	if this.LogSequence != that.LogSequence {
-		return false
-	}
-	if string(this.Hash) != string(that.Hash) {
+	if !this.Value.EqualVT(that.Value) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -6004,7 +5970,7 @@ func (this *PreloadLedger) EqualVT(that *PreloadLedger) bool {
 	if !this.Id.EqualVT(that.Id) {
 		return false
 	}
-	if !this.Info.EqualVT(that.Info) {
+	if !this.Value.EqualVT(that.Value) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -6026,7 +5992,7 @@ func (this *PreloadBoundary) EqualVT(that *PreloadBoundary) bool {
 	if !this.Id.EqualVT(that.Id) {
 		return false
 	}
-	if !this.Boundaries.EqualVT(that.Boundaries) {
+	if !this.Value.EqualVT(that.Value) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -6048,7 +6014,7 @@ func (this *PreloadTransactionReference) EqualVT(that *PreloadTransactionReferen
 	if !this.Id.EqualVT(that.Id) {
 		return false
 	}
-	if this.TransactionId != that.TransactionId {
+	if !this.Value.EqualVT(that.Value) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -6070,7 +6036,7 @@ func (this *PreloadSinkConfig) EqualVT(that *PreloadSinkConfig) bool {
 	if !this.Id.EqualVT(that.Id) {
 		return false
 	}
-	if !this.Config.EqualVT(that.Config) {
+	if !this.Value.EqualVT(that.Value) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -6114,7 +6080,7 @@ func (this *PreloadNumscriptVersion) EqualVT(that *PreloadNumscriptVersion) bool
 	if !this.Id.EqualVT(that.Id) {
 		return false
 	}
-	if this.Version != that.Version {
+	if !this.Value.EqualVT(that.Value) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -6122,28 +6088,6 @@ func (this *PreloadNumscriptVersion) EqualVT(that *PreloadNumscriptVersion) bool
 
 func (this *PreloadNumscriptVersion) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*PreloadNumscriptVersion)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
-func (this *PreloadNumscriptEntry) EqualVT(that *PreloadNumscriptEntry) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if !this.Id.EqualVT(that.Id) {
-		return false
-	}
-	if this.Exists != that.Exists {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *PreloadNumscriptEntry) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*PreloadNumscriptEntry)
 	if !ok {
 		return false
 	}
@@ -6158,7 +6102,7 @@ func (this *PreloadTransactionState) EqualVT(that *PreloadTransactionState) bool
 	if !this.Id.EqualVT(that.Id) {
 		return false
 	}
-	if !this.State.EqualVT(that.State) {
+	if !this.Value.EqualVT(that.Value) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -6171,7 +6115,7 @@ func (this *PreloadTransactionState) EqualMessageVT(thatMsg proto.Message) bool 
 	}
 	return this.EqualVT(that)
 }
-func (this *PreloadNumscriptParsed) EqualVT(that *PreloadNumscriptParsed) bool {
+func (this *PreloadNumscriptContent) EqualVT(that *PreloadNumscriptContent) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -6180,14 +6124,14 @@ func (this *PreloadNumscriptParsed) EqualVT(that *PreloadNumscriptParsed) bool {
 	if !this.Id.EqualVT(that.Id) {
 		return false
 	}
-	if this.Plain != that.Plain {
+	if !this.Value.EqualVT(that.Value) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *PreloadNumscriptParsed) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*PreloadNumscriptParsed)
+func (this *PreloadNumscriptContent) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*PreloadNumscriptContent)
 	if !ok {
 		return false
 	}
@@ -6417,23 +6361,6 @@ func (this *GenerationSnapshot) EqualVT(that *GenerationSnapshot) bool {
 			}
 		}
 	}
-	if len(this.NumscriptParsed) != len(that.NumscriptParsed) {
-		return false
-	}
-	for i, vx := range this.NumscriptParsed {
-		vy := that.NumscriptParsed[i]
-		if p, q := vx, vy; p != q {
-			if p == nil {
-				p = &NumscriptParsedAttributeEntry{}
-			}
-			if q == nil {
-				q = &NumscriptParsedAttributeEntry{}
-			}
-			if !p.EqualVT(q) {
-				return false
-			}
-		}
-	}
 	if len(this.IdempotencyKeys) != len(that.IdempotencyKeys) {
 		return false
 	}
@@ -6456,28 +6383,6 @@ func (this *GenerationSnapshot) EqualVT(that *GenerationSnapshot) bool {
 
 func (this *GenerationSnapshot) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*GenerationSnapshot)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
-func (this *NumscriptParsedAttributeEntry) EqualVT(that *NumscriptParsedAttributeEntry) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if !this.Id.EqualVT(that.Id) {
-		return false
-	}
-	if this.Plain != that.Plain {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *NumscriptParsedAttributeEntry) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*NumscriptParsedAttributeEntry)
 	if !ok {
 		return false
 	}
@@ -10293,6 +10198,72 @@ func (m *CreateTransactionOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error
 	return len(dAtA) - i, nil
 }
 
+func (m *NumscriptReference) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *NumscriptReference) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *NumscriptReference) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.Vars) > 0 {
+		for k := range m.Vars {
+			v := m.Vars[k]
+			baseI := i
+			i -= len(v)
+			copy(dAtA[i:], v)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(v)))
+			i--
+			dAtA[i] = 0x12
+			i -= len(k)
+			copy(dAtA[i:], k)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(k)))
+			i--
+			dAtA[i] = 0xa
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
+	if len(m.Version) > 0 {
+		i -= len(m.Version)
+		copy(dAtA[i:], m.Version)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Version)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Name) > 0 {
+		i -= len(m.Name)
+		copy(dAtA[i:], m.Name)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Name)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *SaveMetadataOrder) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -10515,16 +10486,6 @@ func (m *Proposal) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.DryRun {
-		i--
-		if m.DryRun {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x40
 	}
 	if m.PredictedIndex != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PredictedIndex))
@@ -11240,25 +11201,6 @@ func (m *Preload_NumscriptVersion) MarshalToSizedBufferVT(dAtA []byte) (int, err
 	}
 	return len(dAtA) - i, nil
 }
-func (m *Preload_NumscriptEntry) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *Preload_NumscriptEntry) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.NumscriptEntry != nil {
-		size, err := m.NumscriptEntry.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x4a
-	}
-	return len(dAtA) - i, nil
-}
 func (m *Preload_TransactionState) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
@@ -11278,15 +11220,15 @@ func (m *Preload_TransactionState) MarshalToSizedBufferVT(dAtA []byte) (int, err
 	}
 	return len(dAtA) - i, nil
 }
-func (m *Preload_NumscriptParsed) MarshalToVT(dAtA []byte) (int, error) {
+func (m *Preload_NumscriptContent) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *Preload_NumscriptParsed) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *Preload_NumscriptContent) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.NumscriptParsed != nil {
-		size, err := m.NumscriptParsed.MarshalToSizedBufferVT(dAtA[:i])
+	if m.NumscriptContent != nil {
+		size, err := m.NumscriptContent.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -11327,18 +11269,8 @@ func (m *PreloadVolume) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Output != nil {
-		size, err := m.Output.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1a
-	}
-	if m.Input != nil {
-		size, err := m.Input.MarshalToSizedBufferVT(dAtA[:i])
+	if m.Value != nil {
+		size, err := m.Value.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -11390,17 +11322,15 @@ func (m *PreloadIdempotencyKey) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.Hash) > 0 {
-		i -= len(m.Hash)
-		copy(dAtA[i:], m.Hash)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Hash)))
+	if m.Value != nil {
+		size, err := m.Value.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x1a
-	}
-	if m.LogSequence != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogSequence))
-		i--
-		dAtA[i] = 0x10
+		dAtA[i] = 0x12
 	}
 	if m.Id != nil {
 		size, err := m.Id.MarshalToSizedBufferVT(dAtA[:i])
@@ -11445,8 +11375,8 @@ func (m *PreloadLedger) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Info != nil {
-		size, err := m.Info.MarshalToSizedBufferVT(dAtA[:i])
+	if m.Value != nil {
+		size, err := m.Value.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -11498,8 +11428,8 @@ func (m *PreloadBoundary) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Boundaries != nil {
-		size, err := m.Boundaries.MarshalToSizedBufferVT(dAtA[:i])
+	if m.Value != nil {
+		size, err := m.Value.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -11551,10 +11481,15 @@ func (m *PreloadTransactionReference) MarshalToSizedBufferVT(dAtA []byte) (int, 
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.TransactionId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.TransactionId))
+	if m.Value != nil {
+		size, err := m.Value.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x10
+		dAtA[i] = 0x12
 	}
 	if m.Id != nil {
 		size, err := m.Id.MarshalToSizedBufferVT(dAtA[:i])
@@ -11599,8 +11534,8 @@ func (m *PreloadSinkConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Config != nil {
-		size, err := m.Config.MarshalToSizedBufferVT(dAtA[:i])
+	if m.Value != nil {
+		size, err := m.Value.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -11705,65 +11640,15 @@ func (m *PreloadNumscriptVersion) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.Version) > 0 {
-		i -= len(m.Version)
-		copy(dAtA[i:], m.Version)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Version)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Id != nil {
-		size, err := m.Id.MarshalToSizedBufferVT(dAtA[:i])
+	if m.Value != nil {
+		size, err := m.Value.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *PreloadNumscriptEntry) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *PreloadNumscriptEntry) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *PreloadNumscriptEntry) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Exists {
-		i--
-		if m.Exists {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x10
+		dAtA[i] = 0x12
 	}
 	if m.Id != nil {
 		size, err := m.Id.MarshalToSizedBufferVT(dAtA[:i])
@@ -11808,8 +11693,8 @@ func (m *PreloadTransactionState) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.State != nil {
-		size, err := m.State.MarshalToSizedBufferVT(dAtA[:i])
+	if m.Value != nil {
+		size, err := m.Value.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -11831,7 +11716,7 @@ func (m *PreloadTransactionState) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 	return len(dAtA) - i, nil
 }
 
-func (m *PreloadNumscriptParsed) MarshalVT() (dAtA []byte, err error) {
+func (m *PreloadNumscriptContent) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -11844,12 +11729,12 @@ func (m *PreloadNumscriptParsed) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *PreloadNumscriptParsed) MarshalToVT(dAtA []byte) (int, error) {
+func (m *PreloadNumscriptContent) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *PreloadNumscriptParsed) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *PreloadNumscriptContent) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -11861,10 +11746,13 @@ func (m *PreloadNumscriptParsed) MarshalToSizedBufferVT(dAtA []byte) (int, error
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.Plain) > 0 {
-		i -= len(m.Plain)
-		copy(dAtA[i:], m.Plain)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Plain)))
+	if m.Value != nil {
+		size, err := m.Value.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
 		dAtA[i] = 0x12
 	}
@@ -12093,18 +11981,6 @@ func (m *GenerationSnapshot) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x52
-		}
-	}
-	if len(m.NumscriptParsed) > 0 {
-		for iNdEx := len(m.NumscriptParsed) - 1; iNdEx >= 0; iNdEx-- {
-			size, err := m.NumscriptParsed[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
 			dAtA[i] = 0x4a
 		}
 	}
@@ -12196,56 +12072,6 @@ func (m *GenerationSnapshot) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.BaseIndex))
 		i--
 		dAtA[i] = 0x8
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *NumscriptParsedAttributeEntry) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *NumscriptParsedAttributeEntry) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *NumscriptParsedAttributeEntry) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if len(m.Plain) > 0 {
-		i -= len(m.Plain)
-		copy(dAtA[i:], m.Plain)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Plain)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Id != nil {
-		size, err := m.Id.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -14467,6 +14293,32 @@ func (m *CreateTransactionOrder) SizeVT() (n int) {
 	return n
 }
 
+func (m *NumscriptReference) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Name)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.Version)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if len(m.Vars) > 0 {
+		for k, v := range m.Vars {
+			_ = k
+			_ = v
+			mapEntrySize := 1 + len(k) + protohelpers.SizeOfVarint(uint64(len(k))) + 1 + len(v) + protohelpers.SizeOfVarint(uint64(len(v)))
+			n += mapEntrySize + 1 + protohelpers.SizeOfVarint(uint64(mapEntrySize))
+		}
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
 func (m *SaveMetadataOrder) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -14572,9 +14424,6 @@ func (m *Proposal) SizeVT() (n int) {
 	}
 	if m.PredictedIndex != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.PredictedIndex))
-	}
-	if m.DryRun {
-		n += 2
 	}
 	n += len(m.unknownFields)
 	return n
@@ -14874,18 +14723,6 @@ func (m *Preload_NumscriptVersion) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *Preload_NumscriptEntry) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.NumscriptEntry != nil {
-		l = m.NumscriptEntry.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
 func (m *Preload_TransactionState) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -14898,14 +14735,14 @@ func (m *Preload_TransactionState) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *Preload_NumscriptParsed) SizeVT() (n int) {
+func (m *Preload_NumscriptContent) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.NumscriptParsed != nil {
-		l = m.NumscriptParsed.SizeVT()
+	if m.NumscriptContent != nil {
+		l = m.NumscriptContent.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
@@ -14920,12 +14757,8 @@ func (m *PreloadVolume) SizeVT() (n int) {
 		l = m.Id.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.Input != nil {
-		l = m.Input.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Output != nil {
-		l = m.Output.SizeVT()
+	if m.Value != nil {
+		l = m.Value.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -14942,11 +14775,8 @@ func (m *PreloadIdempotencyKey) SizeVT() (n int) {
 		l = m.Id.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.LogSequence != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.LogSequence))
-	}
-	l = len(m.Hash)
-	if l > 0 {
+	if m.Value != nil {
+		l = m.Value.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -14963,8 +14793,8 @@ func (m *PreloadLedger) SizeVT() (n int) {
 		l = m.Id.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.Info != nil {
-		l = m.Info.SizeVT()
+	if m.Value != nil {
+		l = m.Value.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -14981,8 +14811,8 @@ func (m *PreloadBoundary) SizeVT() (n int) {
 		l = m.Id.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.Boundaries != nil {
-		l = m.Boundaries.SizeVT()
+	if m.Value != nil {
+		l = m.Value.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -14999,8 +14829,9 @@ func (m *PreloadTransactionReference) SizeVT() (n int) {
 		l = m.Id.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.TransactionId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.TransactionId))
+	if m.Value != nil {
+		l = m.Value.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -15016,8 +14847,8 @@ func (m *PreloadSinkConfig) SizeVT() (n int) {
 		l = m.Id.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.Config != nil {
-		l = m.Config.SizeVT()
+	if m.Value != nil {
+		l = m.Value.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -15052,26 +14883,9 @@ func (m *PreloadNumscriptVersion) SizeVT() (n int) {
 		l = m.Id.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	l = len(m.Version)
-	if l > 0 {
+	if m.Value != nil {
+		l = m.Value.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *PreloadNumscriptEntry) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.Id != nil {
-		l = m.Id.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Exists {
-		n += 2
 	}
 	n += len(m.unknownFields)
 	return n
@@ -15087,15 +14901,15 @@ func (m *PreloadTransactionState) SizeVT() (n int) {
 		l = m.Id.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.State != nil {
-		l = m.State.SizeVT()
+	if m.Value != nil {
+		l = m.Value.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
 }
 
-func (m *PreloadNumscriptParsed) SizeVT() (n int) {
+func (m *PreloadNumscriptContent) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -15105,8 +14919,8 @@ func (m *PreloadNumscriptParsed) SizeVT() (n int) {
 		l = m.Id.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	l = len(m.Plain)
-	if l > 0 {
+	if m.Value != nil {
+		l = m.Value.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -15227,35 +15041,11 @@ func (m *GenerationSnapshot) SizeVT() (n int) {
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
 	}
-	if len(m.NumscriptParsed) > 0 {
-		for _, e := range m.NumscriptParsed {
-			l = e.SizeVT()
-			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-		}
-	}
 	if len(m.IdempotencyKeys) > 0 {
 		for _, e := range m.IdempotencyKeys {
 			l = e.SizeVT()
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *NumscriptParsedAttributeEntry) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.Id != nil {
-		l = m.Id.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	l = len(m.Plain)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -23529,11 +23319,253 @@ func (m *CreateTransactionOrder) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.NumscriptReference == nil {
-				m.NumscriptReference = &commonpb.NumscriptReference{}
+				m.NumscriptReference = &NumscriptReference{}
 			}
 			if err := m.NumscriptReference.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *NumscriptReference) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: NumscriptReference: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: NumscriptReference: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Name = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Version", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Version = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Vars", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Vars == nil {
+				m.Vars = make(map[string]string)
+			}
+			var mapkey string
+			var mapvalue string
+			for iNdEx < postIndex {
+				entryPreIndex := iNdEx
+				var wire uint64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protohelpers.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					wire |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				fieldNum := int32(wire >> 3)
+				if fieldNum == 1 {
+					var stringLenmapkey uint64
+					for shift := uint(0); ; shift += 7 {
+						if shift >= 64 {
+							return protohelpers.ErrIntOverflow
+						}
+						if iNdEx >= l {
+							return io.ErrUnexpectedEOF
+						}
+						b := dAtA[iNdEx]
+						iNdEx++
+						stringLenmapkey |= uint64(b&0x7F) << shift
+						if b < 0x80 {
+							break
+						}
+					}
+					intStringLenmapkey := int(stringLenmapkey)
+					if intStringLenmapkey < 0 {
+						return protohelpers.ErrInvalidLength
+					}
+					postStringIndexmapkey := iNdEx + intStringLenmapkey
+					if postStringIndexmapkey < 0 {
+						return protohelpers.ErrInvalidLength
+					}
+					if postStringIndexmapkey > l {
+						return io.ErrUnexpectedEOF
+					}
+					mapkey = string(dAtA[iNdEx:postStringIndexmapkey])
+					iNdEx = postStringIndexmapkey
+				} else if fieldNum == 2 {
+					var stringLenmapvalue uint64
+					for shift := uint(0); ; shift += 7 {
+						if shift >= 64 {
+							return protohelpers.ErrIntOverflow
+						}
+						if iNdEx >= l {
+							return io.ErrUnexpectedEOF
+						}
+						b := dAtA[iNdEx]
+						iNdEx++
+						stringLenmapvalue |= uint64(b&0x7F) << shift
+						if b < 0x80 {
+							break
+						}
+					}
+					intStringLenmapvalue := int(stringLenmapvalue)
+					if intStringLenmapvalue < 0 {
+						return protohelpers.ErrInvalidLength
+					}
+					postStringIndexmapvalue := iNdEx + intStringLenmapvalue
+					if postStringIndexmapvalue < 0 {
+						return protohelpers.ErrInvalidLength
+					}
+					if postStringIndexmapvalue > l {
+						return io.ErrUnexpectedEOF
+					}
+					mapvalue = string(dAtA[iNdEx:postStringIndexmapvalue])
+					iNdEx = postStringIndexmapvalue
+				} else {
+					iNdEx = entryPreIndex
+					skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+					if err != nil {
+						return err
+					}
+					if (skippy < 0) || (iNdEx+skippy) < 0 {
+						return protohelpers.ErrInvalidLength
+					}
+					if (iNdEx + skippy) > postIndex {
+						return io.ErrUnexpectedEOF
+					}
+					iNdEx += skippy
+				}
+			}
+			m.Vars[mapkey] = mapvalue
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -24261,26 +24293,6 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 8:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DryRun", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.DryRun = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -25727,47 +25739,6 @@ func (m *Preload) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Preload_NumscriptVersion{NumscriptVersion: v}
 			}
 			iNdEx = postIndex
-		case 9:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptEntry", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Preload_NumscriptEntry); ok {
-				if err := oneof.NumscriptEntry.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &PreloadNumscriptEntry{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Preload_NumscriptEntry{NumscriptEntry: v}
-			}
-			iNdEx = postIndex
 		case 10:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field TransactionState", wireType)
@@ -25811,7 +25782,7 @@ func (m *Preload) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 11:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptParsed", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptContent", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -25838,16 +25809,16 @@ func (m *Preload) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Type.(*Preload_NumscriptParsed); ok {
-				if err := oneof.NumscriptParsed.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if oneof, ok := m.Type.(*Preload_NumscriptContent); ok {
+				if err := oneof.NumscriptContent.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
-				v := &PreloadNumscriptParsed{}
+				v := &PreloadNumscriptContent{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Type = &Preload_NumscriptParsed{NumscriptParsed: v}
+				m.Type = &Preload_NumscriptContent{NumscriptContent: v}
 			}
 			iNdEx = postIndex
 		default:
@@ -25939,7 +25910,7 @@ func (m *PreloadVolume) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Input", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -25966,46 +25937,10 @@ func (m *PreloadVolume) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.Input == nil {
-				m.Input = &commonpb.Uint256{}
+			if m.Value == nil {
+				m.Value = &VolumePair{}
 			}
-			if err := m.Input.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 3:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Output", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.Output == nil {
-				m.Output = &commonpb.Uint256{}
-			}
-			if err := m.Output.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if err := m.Value.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -26097,29 +26032,10 @@ func (m *PreloadIdempotencyKey) UnmarshalVT(dAtA []byte) error {
 			}
 			iNdEx = postIndex
 		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LogSequence", wireType)
-			}
-			m.LogSequence = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.LogSequence |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 3:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Hash", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
 			}
-			var byteLen int
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -26129,24 +26045,26 @@ func (m *PreloadIdempotencyKey) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				byteLen |= int(b&0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			if byteLen < 0 {
+			if msglen < 0 {
 				return protohelpers.ErrInvalidLength
 			}
-			postIndex := iNdEx + byteLen
+			postIndex := iNdEx + msglen
 			if postIndex < 0 {
 				return protohelpers.ErrInvalidLength
 			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Hash = append(m.Hash[:0], dAtA[iNdEx:postIndex]...)
-			if m.Hash == nil {
-				m.Hash = []byte{}
+			if m.Value == nil {
+				m.Value = &commonpb.IdempotencyKeyValue{}
+			}
+			if err := m.Value.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
 			}
 			iNdEx = postIndex
 		default:
@@ -26238,7 +26156,7 @@ func (m *PreloadLedger) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Info", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -26265,10 +26183,10 @@ func (m *PreloadLedger) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.Info == nil {
-				m.Info = &commonpb.LedgerInfo{}
+			if m.Value == nil {
+				m.Value = &commonpb.LedgerInfo{}
 			}
-			if err := m.Info.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if err := m.Value.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -26361,7 +26279,7 @@ func (m *PreloadBoundary) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Boundaries", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -26388,10 +26306,10 @@ func (m *PreloadBoundary) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.Boundaries == nil {
-				m.Boundaries = &LedgerBoundaries{}
+			if m.Value == nil {
+				m.Value = &LedgerBoundaries{}
 			}
-			if err := m.Boundaries.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if err := m.Value.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -26483,10 +26401,10 @@ func (m *PreloadTransactionReference) UnmarshalVT(dAtA []byte) error {
 			}
 			iNdEx = postIndex
 		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field TransactionId", wireType)
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
 			}
-			m.TransactionId = 0
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -26496,11 +26414,28 @@ func (m *PreloadTransactionReference) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.TransactionId |= uint64(b&0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Value == nil {
+				m.Value = &commonpb.TransactionReferenceValue{}
+			}
+			if err := m.Value.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -26590,7 +26525,7 @@ func (m *PreloadSinkConfig) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Config", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -26617,10 +26552,10 @@ func (m *PreloadSinkConfig) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.Config == nil {
-				m.Config = &commonpb.SinkConfig{}
+			if m.Value == nil {
+				m.Value = &commonpb.SinkConfig{}
 			}
-			if err := m.Config.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if err := m.Value.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -26836,90 +26771,7 @@ func (m *PreloadNumscriptVersion) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Version", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Version = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *PreloadNumscriptEntry) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: PreloadNumscriptEntry: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: PreloadNumscriptEntry: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -26946,33 +26798,13 @@ func (m *PreloadNumscriptEntry) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.Id == nil {
-				m.Id = &AttributeID{}
+			if m.Value == nil {
+				m.Value = &commonpb.NumscriptVersionValue{}
 			}
-			if err := m.Id.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if err := m.Value.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Exists", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.Exists = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -27062,7 +26894,7 @@ func (m *PreloadTransactionState) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field State", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -27089,10 +26921,10 @@ func (m *PreloadTransactionState) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.State == nil {
-				m.State = &commonpb.TransactionState{}
+			if m.Value == nil {
+				m.Value = &commonpb.TransactionState{}
 			}
-			if err := m.State.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if err := m.Value.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -27118,7 +26950,7 @@ func (m *PreloadTransactionState) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *PreloadNumscriptParsed) UnmarshalVT(dAtA []byte) error {
+func (m *PreloadNumscriptContent) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -27141,10 +26973,10 @@ func (m *PreloadNumscriptParsed) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: PreloadNumscriptParsed: wiretype end group for non-group")
+			return fmt.Errorf("proto: PreloadNumscriptContent: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: PreloadNumscriptParsed: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: PreloadNumscriptContent: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -27185,9 +27017,9 @@ func (m *PreloadNumscriptParsed) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Plain", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
 			}
-			var stringLen uint64
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -27197,23 +27029,27 @@ func (m *PreloadNumscriptParsed) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
+			if msglen < 0 {
 				return protohelpers.ErrInvalidLength
 			}
-			postIndex := iNdEx + intStringLen
+			postIndex := iNdEx + msglen
 			if postIndex < 0 {
 				return protohelpers.ErrInvalidLength
 			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Plain = string(dAtA[iNdEx:postIndex])
+			if m.Value == nil {
+				m.Value = &commonpb.NumscriptInfo{}
+			}
+			if err := m.Value.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -27884,40 +27720,6 @@ func (m *GenerationSnapshot) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 9:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptParsed", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.NumscriptParsed = append(m.NumscriptParsed, &NumscriptParsedAttributeEntry{})
-			if err := m.NumscriptParsed[len(m.NumscriptParsed)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 10:
-			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field IdempotencyKeys", wireType)
 			}
 			var msglen int
@@ -27949,125 +27751,6 @@ func (m *GenerationSnapshot) UnmarshalVT(dAtA []byte) error {
 			if err := m.IdempotencyKeys[len(m.IdempotencyKeys)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *NumscriptParsedAttributeEntry) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: NumscriptParsedAttributeEntry: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: NumscriptParsedAttributeEntry: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.Id == nil {
-				m.Id = &AttributeID{}
-			}
-			if err := m.Id.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Plain", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Plain = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

@@ -32,7 +32,7 @@ func TestProposalGuard_ReleaseLoaders(t *testing.T) {
 
 	guard := &ProposalGuard{
 		p:     p,
-		token: &CleanupToken{Volumes: []attributes.U128{key}},
+		token: &CleanupToken{tracked: []trackedLoader{{loader: loaders.Volumes, keys: []attributes.U128{key}}}},
 	}
 
 	// Release loaders
@@ -76,7 +76,7 @@ func TestProposalGuard_ReleaseAll(t *testing.T) {
 
 	guard := &ProposalGuard{
 		p:     p,
-		token: &CleanupToken{IdempotencyKeys: []attributes.U128{key}},
+		token: &CleanupToken{tracked: []trackedLoader{{loader: loaders.IdempotencyKeys, keys: []attributes.U128{key}}}},
 	}
 
 	// ReleaseAll should release both the lock and the loaders
@@ -108,16 +108,16 @@ func TestPreloadBuild_ReleaseLoaders(t *testing.T) {
 	require.NoError(t, err)
 
 	build := &PreloadBuild{
-		token: &CleanupToken{References: []attributes.U128{key}},
+		token: &CleanupToken{tracked: []trackedLoader{{loader: loaders.References, keys: []attributes.U128{key}}}},
 	}
 
-	build.ReleaseLoaders(loaders)
+	build.ReleaseLoaders()
 
 	// Token should be nil
 	assert.Nil(t, build.token)
 
 	// Calling again should be safe (idempotent)
-	build.ReleaseLoaders(loaders)
+	build.ReleaseLoaders()
 
 	// Key should have been released
 	loadCount := 0
@@ -133,11 +133,10 @@ func TestPreloadBuild_ReleaseLoaders(t *testing.T) {
 func TestPreloadBuild_ReleaseLoaders_NilToken(t *testing.T) {
 	t.Parallel()
 
-	loaders := NewLoaders()
 	build := &PreloadBuild{token: nil}
 
 	// Should not panic with nil token
-	build.ReleaseLoaders(loaders)
+	build.ReleaseLoaders()
 }
 
 func TestPreloader_Loaders(t *testing.T) {
@@ -155,8 +154,6 @@ func TestPreloader_Loaders(t *testing.T) {
 	assert.NotNil(t, loaders.SinkConfigs)
 	assert.NotNil(t, loaders.AccountMetadata)
 	assert.NotNil(t, loaders.NumscriptVersions)
-	assert.NotNil(t, loaders.NumscriptEntries)
-	assert.NotNil(t, loaders.NumscriptParsed)
 	assert.NotNil(t, loaders.Transactions)
 
 	// Verify it returns the same instance

@@ -1,9 +1,6 @@
 package internal
 
 import (
-	"context"
-	"encoding/base64"
-	"encoding/binary"
 	"os"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
@@ -38,41 +35,12 @@ func NewGRPCConn() (*grpc.ClientConn, error) {
 	conn, err := grpc.NewClient(
 		target,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(injectIdempotencyKeys),
 		grpc.WithDefaultServiceConfig(retryPolicy),
 	)
 	if err != nil {
 		return nil, err
 	}
 	return conn, nil
-}
-
-// injectIdempotencyKeys ensures every Apply request element carries a stable
-// idempotency key, so a gRPC retry of an Apply that already landed on the
-// server is deduplicated by the FSM rather than re-applied as a new
-// transaction. The interceptor runs once before the first attempt; retries
-// reuse the same wire bytes and therefore the same keys.
-func injectIdempotencyKeys(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-	if applyReq, ok := req.(*servicepb.ApplyRequest); ok {
-		for _, r := range applyReq.GetRequests() {
-			if r.GetIdempotencyKey() == "" {
-				r.IdempotencyKey = newIdempotencyKey()
-			}
-		}
-	}
-
-	return invoker(ctx, method, req, reply, cc, opts...)
-}
-
-// newIdempotencyKey draws 128 bits from the Antithesis-deterministic RNG and
-// formats them as URL-safe base64. Determinism matters so multiverse replay
-// produces the same keys on every branch.
-func newIdempotencyKey() string {
-	var b [16]byte
-	binary.LittleEndian.PutUint64(b[0:8], Rand().Uint64())
-	binary.LittleEndian.PutUint64(b[8:16], Rand().Uint64())
-
-	return base64.RawURLEncoding.EncodeToString(b[:])
 }
 
 // IsUnavailable returns true if the error is a gRPC Unavailable status

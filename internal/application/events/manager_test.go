@@ -9,7 +9,8 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger-v3-poc/internal/application/events"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
@@ -18,16 +19,19 @@ import (
 func saveSinkConfig(t *testing.T, s *dal.Store, config *commonpb.SinkConfig) {
 	t.Helper()
 
+	attr := attributes.NewSinkConfigAttribute()
 	batch := s.NewBatch()
-	require.NoError(t, state.SaveSinkConfig(batch, config))
+	_, err := attr.Set(batch, domain.SinkConfigKey{Name: config.GetName()}.Bytes(), config)
+	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 }
 
 func deleteSinkConfig(t *testing.T, s *dal.Store, name string) {
 	t.Helper()
 
+	attr := attributes.NewSinkConfigAttribute()
 	batch := s.NewBatch()
-	require.NoError(t, state.DeleteSinkConfig(batch, name))
+	require.NoError(t, attr.Delete(batch, domain.SinkConfigKey{Name: name}.Bytes()))
 	require.NoError(t, batch.Commit())
 }
 
@@ -39,7 +43,7 @@ func TestManager_AddRemoveSink(t *testing.T) {
 	logger := logging.Testing()
 	notifications := signal.NewNotifications()
 
-	manager := events.NewManager(store, proposer, logger, notifications)
+	manager := events.NewManager(store, attributes.New(), proposer, logger, notifications)
 
 	manager.Start()
 	defer manager.Stop()
@@ -85,7 +89,7 @@ func TestManager_LeadershipChange(t *testing.T) {
 		Format: "json",
 	})
 
-	manager := events.NewManager(store, proposer, logger, notifications)
+	manager := events.NewManager(store, attributes.New(), proposer, logger, notifications)
 
 	manager.Start()
 	defer manager.Stop()
@@ -108,7 +112,7 @@ func TestManager_ConfigChangeWhileFollower(t *testing.T) {
 	logger := logging.Testing()
 	notifications := signal.NewNotifications()
 
-	manager := events.NewManager(store, proposer, logger, notifications)
+	manager := events.NewManager(store, attributes.New(), proposer, logger, notifications)
 
 	manager.Start()
 	defer manager.Stop()
@@ -138,7 +142,7 @@ func TestManager_StopWithoutStart(t *testing.T) {
 	logger := logging.Testing()
 	notifications := signal.NewNotifications()
 
-	manager := events.NewManager(store, proposer, logger, notifications)
+	manager := events.NewManager(store, attributes.New(), proposer, logger, notifications)
 	manager.Start()
 	// Stop immediately — should not hang
 	manager.Stop()
@@ -158,7 +162,7 @@ func TestManager_LogNotificationForwarding(t *testing.T) {
 		Format: "json",
 	})
 
-	manager := events.NewManager(store, proposer, logger, notifications)
+	manager := events.NewManager(store, attributes.New(), proposer, logger, notifications)
 
 	manager.Start()
 	defer manager.Stop()

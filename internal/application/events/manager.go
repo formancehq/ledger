@@ -7,6 +7,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -25,10 +26,11 @@ type managedSink struct {
 // the Raft-replicated events configuration. It creates one Emitter per
 // named sink, each with its own cursor and error status.
 type Manager struct {
-	store         *dal.Store
-	proposer      Proposer
-	logger        logging.Logger
-	notifications *signal.Notifications
+	store          *dal.Store
+	sinkConfigAttr *attributes.Attribute[*commonpb.SinkConfig]
+	proposer       Proposer
+	logger         logging.Logger
+	notifications  *signal.Notifications
 
 	mu       sync.Mutex
 	isLeader bool
@@ -38,13 +40,14 @@ type Manager struct {
 }
 
 // NewManager creates a new event Manager.
-func NewManager(store *dal.Store, proposer Proposer, logger logging.Logger, notifications *signal.Notifications) *Manager {
+func NewManager(store *dal.Store, attrs *attributes.Attributes, proposer Proposer, logger logging.Logger, notifications *signal.Notifications) *Manager {
 	return &Manager{
-		store:         store,
-		proposer:      proposer,
-		logger:        logger.WithFields(map[string]any{"cmp": "event-manager"}),
-		notifications: notifications,
-		emitters:      make(map[string]*managedSink),
+		store:          store,
+		sinkConfigAttr: attrs.SinkConfig,
+		proposer:       proposer,
+		logger:         logger.WithFields(map[string]any{"cmp": "event-manager"}),
+		notifications:  notifications,
+		emitters:       make(map[string]*managedSink),
 	}
 }
 
@@ -106,7 +109,7 @@ func (m *Manager) reconcile() {
 		return
 	}
 
-	sinkCfgs, err := query.ReadAllSinkConfigs(m.store)
+	sinkCfgs, err := query.ReadAllSinkConfigs(m.sinkConfigAttr, m.store)
 	if err != nil {
 		m.logger.Errorf("Failed to load sink configs: %v", err)
 

@@ -2,7 +2,6 @@ package check
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -440,8 +439,8 @@ func (s *inMemoryStore) MarkLedgerForCleanup(ledger string) {
 	s.engine.pendingLedgerDeletions = append(s.engine.pendingLedgerDeletions, ledger)
 }
 func (s *inMemoryStore) AddAccountMigrateRequest(_, _, _, _ string) {}
-func (s *inMemoryStore) ResolveNumscriptContent(_, _, _ string) (string, error) {
-	return "", errors.New("not implemented in test store")
+func (s *inMemoryStore) ResolveNumscriptContent(_, _, _ string) (*commonpb.NumscriptInfo, error) {
+	return nil, nil
 }
 
 // Helper functions for building orders

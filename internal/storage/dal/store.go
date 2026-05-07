@@ -164,8 +164,6 @@ var (
 	KeyPrefixNextQueryCheckpointID   byte = 0xE3 // [KeyPrefixNextQueryCheckpointID] -> uint64 (next checkpoint ID)
 	KeyPrefixQueryCheckpointSchedule byte = 0xE4 // [KeyPrefixQueryCheckpointSchedule] -> cron expression string
 	KeyPrefixReversions              byte = 0xE5 // [KeyPrefixReversions][ledger_name] -> packed little-endian uint64 bitset
-	KeyPrefixNumscript               byte = 0xE9 // [KeyPrefixNumscript][name]\x00[version_BE] -> NumscriptInfo protobuf
-	KeyPrefixNumscriptLatest         byte = 0xEA // [KeyPrefixNumscriptLatest][name] -> uint64 (latest version)
 	KeyPrefixMirrorSourceHead        byte = 0xEB // [KeyPrefixMirrorSourceHead][ledger_name] -> uint64 (latest known v2 source log ID)
 	KeyPrefixMirrorCursor            byte = 0xEC // [KeyPrefixMirrorCursor][ledger_name] -> uint64 (last ingested v2 log ID)
 	KeyPrefixMirrorStatus            byte = 0xED // [KeyPrefixMirrorStatus][ledger_name] -> MirrorSyncError protobuf
@@ -176,14 +174,16 @@ var (
 	KeyPrefixAttributes byte = 0xF1
 
 	// Attribute type prefixes used within the attributes zone and cache snapshot zone.
-	AttributePrefixVolume      = byte('V')
-	AttributePrefixMetadata    = byte('M')
-	AttributePrefixIdempotency = byte('I')
-	AttributePrefixReference   = byte('R')
-	AttributePrefixLedger      = byte('L')
-	AttributePrefixBoundary    = byte('B')
-	AttributePrefixTransaction = byte('T')
-	AttributePrefixNumscript   = byte('N')
+	AttributePrefixVolume           = byte('V')
+	AttributePrefixMetadata         = byte('M')
+	AttributePrefixIdempotency      = byte('I')
+	AttributePrefixReference        = byte('R')
+	AttributePrefixLedger           = byte('L')
+	AttributePrefixBoundary         = byte('B')
+	AttributePrefixTransaction      = byte('T')
+	AttributePrefixSinkConfig       = byte('S')
+	AttributePrefixNumscriptVersion = byte('N')
+	AttributePrefixNumscriptContent = byte('C')
 
 	// --- Global system zone [0xF2, 0xFF] ---.
 

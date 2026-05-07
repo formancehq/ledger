@@ -128,13 +128,16 @@ func (f *Filter) LoadFrom(r io.Reader) error {
 type FilterSet struct {
 	ready atomic.Bool
 
-	Volume      *Filter
-	Metadata    *Filter
-	Idempotency *Filter
-	Reference   *Filter
-	Ledger      *Filter
-	Boundary    *Filter
-	Transaction *Filter
+	Volume           *Filter
+	Metadata         *Filter
+	Idempotency      *Filter
+	Reference        *Filter
+	Ledger           *Filter
+	Boundary         *Filter
+	Transaction      *Filter
+	SinkConfig       *Filter
+	NumscriptVersion *Filter
+	NumscriptContent *Filter
 
 	config FilterSetConfig
 
@@ -158,6 +161,12 @@ func (fs *FilterSet) FilterForAttrType(attrType byte) *Filter {
 		return fs.Boundary
 	case dal.AttributePrefixTransaction:
 		return fs.Transaction
+	case dal.AttributePrefixSinkConfig:
+		return fs.SinkConfig
+	case dal.AttributePrefixNumscriptVersion:
+		return fs.NumscriptVersion
+	case dal.AttributePrefixNumscriptContent:
+		return fs.NumscriptContent
 	default:
 		return nil
 	}
@@ -182,13 +191,16 @@ func (fs *FilterSet) SetReady(v bool) {
 
 // BloomUpdates holds canonical keys collected during Merge for bloom filter updates.
 type BloomUpdates struct {
-	Volumes      [][]byte
-	Metadata     [][]byte
-	Idempotency  [][]byte
-	References   [][]byte
-	Ledgers      [][]byte
-	Boundaries   [][]byte
-	Transactions [][]byte
+	Volumes           [][]byte
+	Metadata          [][]byte
+	Idempotency       [][]byte
+	References        [][]byte
+	Ledgers           [][]byte
+	Boundaries        [][]byte
+	Transactions      [][]byte
+	SinkConfigs       [][]byte
+	NumscriptVersions [][]byte
+	NumscriptContents [][]byte
 }
 
 // Reset clears all slices while preserving their backing arrays.
@@ -200,6 +212,9 @@ func (u *BloomUpdates) Reset() {
 	u.Ledgers = u.Ledgers[:0]
 	u.Boundaries = u.Boundaries[:0]
 	u.Transactions = u.Transactions[:0]
+	u.SinkConfigs = u.SinkConfigs[:0]
+	u.NumscriptVersions = u.NumscriptVersions[:0]
+	u.NumscriptContents = u.NumscriptContents[:0]
 }
 
 // AddCanonicalKeys hashes canonical keys and inserts them into the corresponding bloom filters.
@@ -225,6 +240,9 @@ func (fs *FilterSet) AddCanonicalKeys(updates *BloomUpdates) {
 	addKeys(fs.Ledger, updates.Ledgers)
 	addKeys(fs.Boundary, updates.Boundaries)
 	addKeys(fs.Transaction, updates.Transactions)
+	addKeys(fs.SinkConfig, updates.SinkConfigs)
+	addKeys(fs.NumscriptVersion, updates.NumscriptVersions)
+	addKeys(fs.NumscriptContent, updates.NumscriptContents)
 }
 
 // Cache snapshot sub-prefix for bloom filter data within the 0xFF zone.
@@ -331,15 +349,18 @@ func NewFilterSet(cfg FilterSetConfig, meter metric.Meter) *FilterSet {
 	)
 
 	return &FilterSet{
-		Volume:      newFilterOrNil(cfg.Volume, meter, "volumes"),
-		Metadata:    newFilterOrNil(cfg.Metadata, meter, "metadata"),
-		Idempotency: newFilterOrNil(cfg.Idempotency, meter, "idempotency"),
-		Reference:   newFilterOrNil(cfg.Reference, meter, "references"),
-		Ledger:      newFilterOrNil(cfg.Ledger, meter, "ledgers"),
-		Boundary:    newFilterOrNil(cfg.Boundary, meter, "boundaries"),
-		Transaction: newFilterOrNil(cfg.Transaction, meter, "transactions"),
-		config:      cfg,
-		readyGauge:  readyGauge,
+		Volume:           newFilterOrNil(cfg.Volume, meter, "volumes"),
+		Metadata:         newFilterOrNil(cfg.Metadata, meter, "metadata"),
+		Idempotency:      newFilterOrNil(cfg.Idempotency, meter, "idempotency"),
+		Reference:        newFilterOrNil(cfg.Reference, meter, "references"),
+		Ledger:           newFilterOrNil(cfg.Ledger, meter, "ledgers"),
+		Boundary:         newFilterOrNil(cfg.Boundary, meter, "boundaries"),
+		Transaction:      newFilterOrNil(cfg.Transaction, meter, "transactions"),
+		SinkConfig:       newFilterOrNil(cfg.Transaction, meter, "sink_configs"),
+		NumscriptVersion: newFilterOrNil(cfg.Transaction, meter, "numscript_versions"),
+		NumscriptContent: newFilterOrNil(cfg.Transaction, meter, "numscript_contents"),
+		config:           cfg,
+		readyGauge:       readyGauge,
 	}
 }
 

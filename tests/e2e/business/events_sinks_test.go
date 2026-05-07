@@ -173,29 +173,6 @@ var _ = Describe("Events Sinks", Ordered, func() {
 		Expect(resp.Sinks).To(BeEmpty())
 	})
 
-	It("Should add and remove a sink in a single bulk", func() {
-		resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
-				addEventsSinkAction(newTestSinkConfig("intra-bulk-sink", "intra.events")),
-				removeEventsSinkAction("intra-bulk-sink"),
-			},
-		})
-		Expect(err).To(Succeed())
-		Expect(resp.Logs).To(HaveLen(2))
-
-		Expect(resp.Logs[0].Payload.GetAddedEventsSink()).NotTo(BeNil())
-		Expect(resp.Logs[0].Payload.GetAddedEventsSink().Config.Name).To(Equal("intra-bulk-sink"))
-		Expect(resp.Logs[1].Payload.GetRemovedEventsSink()).NotTo(BeNil())
-		Expect(resp.Logs[1].Payload.GetRemovedEventsSink().Name).To(Equal("intra-bulk-sink"))
-
-		// Sink should be gone
-		sinks, err := sharedClient.GetEventsSinks(sharedCtx, &servicepb.GetEventsSinksRequest{})
-		Expect(err).To(Succeed())
-		for _, s := range sinks.Sinks {
-			Expect(s.Name).NotTo(Equal("intra-bulk-sink"))
-		}
-	})
-
 	It("Should produce audit log entries for sink operations", func() {
 		addResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{

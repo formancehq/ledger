@@ -6,7 +6,6 @@ import (
 
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
 
@@ -105,25 +104,22 @@ func TestSaveSinkConfig(t *testing.T) {
 
 	s := newTestStore(t)
 
-	// Save a sink config
+	attr := attributes.NewSinkConfigAttribute()
+
+	// Save a sink config via attribute
 	config := &commonpb.SinkConfig{
 		Name: "my-sink",
 		Type: &commonpb.SinkConfig_Http{Http: &commonpb.HttpSinkConfig{Endpoint: "http://example.com"}},
 	}
 	batch := s.NewBatch()
-	require.NoError(t, SaveSinkConfig(batch, config))
+	_, err := attr.Set(batch, domain.SinkConfigKey{Name: "my-sink"}.Bytes(), config)
+	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
-	// Read it back by iterating over the events config prefix
-	kb := dal.NewKeyBuilder()
-	kb.PutByte(dal.KeyPrefixEventsConfig).PutString("my-sink")
-	val, closer, err := s.Get(kb.Build())
+	// Read it back via attribute
+	readBack, err := attr.Get(s, domain.SinkConfigKey{Name: "my-sink"}.Bytes())
 	require.NoError(t, err)
-
-	defer func() { _ = closer.Close() }()
-
-	readBack := &commonpb.SinkConfig{}
-	require.NoError(t, proto.Unmarshal(val, readBack))
+	require.NotNil(t, readBack)
 	require.Equal(t, "my-sink", readBack.GetName())
 }
 
@@ -131,25 +127,26 @@ func TestDeleteSinkConfig(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
+	attr := attributes.NewSinkConfigAttribute()
 
 	// Save a config
 	batch := s.NewBatch()
-	require.NoError(t, SaveSinkConfig(batch, &commonpb.SinkConfig{
+	_, err := attr.Set(batch, domain.SinkConfigKey{Name: "sink-to-delete"}.Bytes(), &commonpb.SinkConfig{
 		Name: "sink-to-delete",
 		Type: &commonpb.SinkConfig_Http{Http: &commonpb.HttpSinkConfig{Endpoint: "http://example.com"}},
-	}))
+	})
+	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
 	// Delete it
 	batch = s.NewBatch()
-	require.NoError(t, DeleteSinkConfig(batch, "sink-to-delete"))
+	require.NoError(t, attr.Delete(batch, domain.SinkConfigKey{Name: "sink-to-delete"}.Bytes()))
 	require.NoError(t, batch.Commit())
 
 	// Verify it's gone
-	kb := dal.NewKeyBuilder()
-	kb.PutByte(dal.KeyPrefixEventsConfig).PutString("sink-to-delete")
-	_, _, err := s.Get(kb.Build())
-	require.ErrorIs(t, err, pebble.ErrNotFound)
+	readBack, err := attr.Get(s, domain.SinkConfigKey{Name: "sink-to-delete"}.Bytes())
+	require.NoError(t, err)
+	require.Nil(t, readBack)
 }
 
 func TestSetSinkCursor(t *testing.T) {

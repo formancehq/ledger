@@ -352,7 +352,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds())
 	if err != nil {
 		preloadSpan.End()
-		build.ReleaseLoaders(a.preloader.Loaders())
+		build.ReleaseLoaders()
 
 		return nil, fmt.Errorf("building preloads: %w", err)
 	}
@@ -382,7 +382,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 	proposalData, err := a.marshalCommand(ctx, cmd)
 	if err != nil {
-		build.ReleaseLoaders(a.preloader.Loaders())
+		build.ReleaseLoaders()
 
 		return nil, err
 	}
@@ -765,23 +765,9 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 		case *raftcmdpb.Order_DeleteLedger:
 			p.Ledgers[domain.LedgerKey{Name: orderType.DeleteLedger.GetName()}] = struct{}{}
 		case *raftcmdpb.Order_AddEventsSink:
-			sinkKey := domain.SinkConfigKey{Name: orderType.AddEventsSink.GetConfig().GetName()}
-			if p.SinkConfigs == nil {
-				p.SinkConfigs = make(map[domain.SinkConfigKey]func() (*commonpb.SinkConfig, error))
-			}
-
-			p.SinkConfigs[sinkKey] = func() (*commonpb.SinkConfig, error) {
-				return query.ReadSinkConfig(a.store, sinkKey.Name)
-			}
+			p.SinkConfigs[domain.SinkConfigKey{Name: orderType.AddEventsSink.GetConfig().GetName()}] = struct{}{}
 		case *raftcmdpb.Order_RemoveEventsSink:
-			sinkKey := domain.SinkConfigKey{Name: orderType.RemoveEventsSink.GetName()}
-			if p.SinkConfigs == nil {
-				p.SinkConfigs = make(map[domain.SinkConfigKey]func() (*commonpb.SinkConfig, error))
-			}
-
-			p.SinkConfigs[sinkKey] = func() (*commonpb.SinkConfig, error) {
-				return query.ReadSinkConfig(a.store, sinkKey.Name)
-			}
+			p.SinkConfigs[domain.SinkConfigKey{Name: orderType.RemoveEventsSink.GetName()}] = struct{}{}
 		case *raftcmdpb.Order_MirrorIngest:
 			p.Ledgers[domain.LedgerKey{Name: orderType.MirrorIngest.GetLedger()}] = struct{}{}
 			p.Boundaries[domain.LedgerKey{Name: orderType.MirrorIngest.GetLedger()}] = struct{}{}
@@ -836,40 +822,14 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 		case *raftcmdpb.Order_PromoteLedger:
 			p.Ledgers[domain.LedgerKey{Name: orderType.PromoteLedger.GetLedger()}] = struct{}{}
 		case *raftcmdpb.Order_SaveNumscript:
-			nsKey := domain.NumscriptVersionKey{Ledger: orderType.SaveNumscript.GetLedger(), Name: orderType.SaveNumscript.GetName()}
-			if p.NumscriptVersions == nil {
-				p.NumscriptVersions = make(map[domain.NumscriptVersionKey]func() (string, error))
-			}
-
-			p.NumscriptVersions[nsKey] = func() (string, error) {
-				return query.ReadNumscriptLatestVersion(a.store, nsKey.Ledger, nsKey.Name)
-			}
-			// For semver saves, preload the specific version entry for immutability check
+			p.NumscriptVersions[domain.NumscriptVersionKey{Ledger: orderType.SaveNumscript.GetLedger(), Name: orderType.SaveNumscript.GetName()}] = struct{}{}
+			// For semver saves, preload the specific version content for immutability check
 			version := orderType.SaveNumscript.GetVersion()
 			if version != "" && version != "latest" {
-				entryKey := domain.NumscriptEntryKey{Ledger: orderType.SaveNumscript.GetLedger(), Name: orderType.SaveNumscript.GetName(), Version: version}
-				if p.NumscriptEntries == nil {
-					p.NumscriptEntries = make(map[domain.NumscriptEntryKey]func() (bool, error))
-				}
-
-				p.NumscriptEntries[entryKey] = func() (bool, error) {
-					info, err := query.ReadNumscript(a.store, entryKey.Ledger, entryKey.Name, entryKey.Version)
-					if err != nil {
-						return false, err
-					}
-
-					return info != nil, nil
-				}
+				p.NumscriptContents[domain.NumscriptEntryKey{Ledger: orderType.SaveNumscript.GetLedger(), Name: orderType.SaveNumscript.GetName(), Version: version}] = struct{}{}
 			}
 		case *raftcmdpb.Order_DeleteNumscript:
-			nsKey := domain.NumscriptVersionKey{Ledger: orderType.DeleteNumscript.GetLedger(), Name: orderType.DeleteNumscript.GetName()}
-			if p.NumscriptVersions == nil {
-				p.NumscriptVersions = make(map[domain.NumscriptVersionKey]func() (string, error))
-			}
-
-			p.NumscriptVersions[nsKey] = func() (string, error) {
-				return query.ReadNumscriptLatestVersion(a.store, nsKey.Ledger, nsKey.Name)
-			}
+			p.NumscriptVersions[domain.NumscriptVersionKey{Ledger: orderType.DeleteNumscript.GetLedger(), Name: orderType.DeleteNumscript.GetName()}] = struct{}{}
 		case *raftcmdpb.Order_Apply:
 			ledgerKey := domain.LedgerKey{Name: orderType.Apply.GetLedger()}
 			p.Boundaries[ledgerKey] = struct{}{}
@@ -991,14 +951,21 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		isReference := false
 
 		// Resolve ScriptReference: load numscript content from overlay (intra-bulk) or Pebble.
+		var resolvedVersion string
+
 		if ref := createTx.CreateTransaction.GetNumscriptReference(); ref != nil && ref.GetName() != "" {
-			content, _, err := a.resolveNumscriptReference(overlay, ledgerName, ref.GetName(), ref.GetVersion())
+			content, rv, err := a.resolveNumscriptReference(overlay, ledgerName, ref.GetName(), ref.GetVersion())
 			if err != nil {
 				return err
 			}
 
 			scriptText = content
+			resolvedVersion = rv
 			isReference = true
+
+			// Update the order's reference with the resolved version so the FSM
+			// uses an exact key for cache lookup.
+			ref.Version = resolvedVersion
 		} else if createTx.CreateTransaction.GetScript() != nil &&
 			createTx.CreateTransaction.GetScript().GetPlain() != "" &&
 			len(createTx.CreateTransaction.GetPostings()) == 0 {
@@ -1048,17 +1015,13 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		// For inline scripts: the text stays in the order as-is, no preload needed.
 		if isReference {
 			ref := createTx.CreateTransaction.GetNumscriptReference()
-			contentKey := domain.NumscriptContentKey{
+			p.NumscriptContents[domain.NumscriptEntryKey{
 				Ledger:  ledgerName,
 				Name:    ref.GetName(),
-				Version: ref.GetVersion(),
-			}
-
-			if p.NumscriptParsed == nil {
-				p.NumscriptParsed = make(map[domain.NumscriptContentKey]func() (string, error))
-			}
-
-			p.NumscriptParsed[contentKey] = func() (string, error) { return scriptText, nil }
+				Version: resolvedVersion,
+			}] = struct{}{}
+			// Ensure the order's reference has the resolved version for FSM cache lookup.
+			_ = ref
 		}
 
 		// Enrich preload with old-address volumes for MIGRATING account types.
@@ -1482,7 +1445,7 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 		ct := data.CreateTransaction
 		script := ct.GetScript()
 
-		var numscriptRef *commonpb.NumscriptReference
+		var numscriptRef *raftcmdpb.NumscriptReference
 
 		// ScriptReference validation: reject if both script content and reference are set.
 		// Content resolution is deferred to extractPreloadNeeds.
@@ -1498,7 +1461,11 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 				Vars: ct.GetScriptReference().GetVars(),
 			}
 
-			numscriptRef = ct.GetScriptReference().GetReference()
+			numscriptRef = &raftcmdpb.NumscriptReference{
+				Name:    ct.GetScriptReference().GetName(),
+				Version: ct.GetScriptReference().GetVersion(),
+				Vars:    ct.GetScriptReference().GetVars(),
+			}
 		}
 
 		order.Data = &raftcmdpb.LedgerApplyOrder_CreateTransaction{
@@ -1610,7 +1577,7 @@ func (a *Admission) resolveNumscriptReference(overlay *bulkOverlay, ledger, name
 		return "", "", &domain.BusinessError{Err: &domain.ErrNumscriptNotFound{Name: name}}
 	}
 
-	info, err := query.ReadNumscript(a.store, ledger, name, version)
+	info, err := query.ReadNumscript(a.attrs.NumscriptVersion, a.attrs.NumscriptContent, a.store, ledger, name, version)
 	if err != nil {
 		return "", "", fmt.Errorf("reading numscript %q: %w", name, err)
 	}

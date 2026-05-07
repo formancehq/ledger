@@ -89,13 +89,16 @@ func CompactAllForBackup(s *dal.Store) error {
 
 	// Build dispatch table: attrType byte → compactor
 	dispatch := map[byte]compactor{
-		dal.AttributePrefixVolume:      newCompactor(attrs.Volume, batch),
-		dal.AttributePrefixMetadata:    newCompactor(attrs.Metadata, batch),
-		dal.AttributePrefixIdempotency: newCompactor(attrs.IdempotencyKeys, batch),
-		dal.AttributePrefixReference:   newCompactor(attrs.References, batch),
-		dal.AttributePrefixLedger:      newCompactor(attrs.Ledger, batch),
-		dal.AttributePrefixBoundary:    newCompactor(attrs.Boundary, batch),
-		dal.AttributePrefixTransaction: newCompactor(attrs.Transaction, batch),
+		dal.AttributePrefixVolume:           newCompactor(attrs.Volume, batch),
+		dal.AttributePrefixMetadata:         newCompactor(attrs.Metadata, batch),
+		dal.AttributePrefixIdempotency:      newCompactor(attrs.IdempotencyKeys, batch),
+		dal.AttributePrefixReference:        newCompactor(attrs.References, batch),
+		dal.AttributePrefixLedger:           newCompactor(attrs.Ledger, batch),
+		dal.AttributePrefixBoundary:         newCompactor(attrs.Boundary, batch),
+		dal.AttributePrefixTransaction:      newCompactor(attrs.Transaction, batch),
+		dal.AttributePrefixSinkConfig:       newCompactor(attrs.SinkConfig, batch),
+		dal.AttributePrefixNumscriptVersion: newCompactor(attrs.NumscriptVersion, batch),
+		dal.AttributePrefixNumscriptContent: newCompactor(attrs.NumscriptContent, batch),
 	}
 
 	// Single scan over the entire attribute range

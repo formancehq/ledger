@@ -349,12 +349,14 @@ func TestCleanupToken_Release(t *testing.T) {
 
 	// Create tracker with the loaded keys
 	token := &CleanupToken{
-		Volumes:         []attributes.U128{key1, key2},
-		IdempotencyKeys: []attributes.U128{key4},
+		tracked: []trackedLoader{
+			{loader: loaders.Volumes, keys: []attributes.U128{key1, key2}},
+			{loader: loaders.IdempotencyKeys, keys: []attributes.U128{key4}},
+		},
 	}
 
 	// Release all tracked keys
-	token.Release(loaders)
+	token.Release()
 
 	// Verify all keys were removed - next load should actually load
 	volumeLoadCount := 0

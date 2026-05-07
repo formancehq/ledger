@@ -208,6 +208,17 @@ func newAttributeCache[T any](cache *Cache, cacheType string) *AttributeCache[T]
 	return ac
 }
 
+// CacheOps is the non-generic interface satisfied by every AttributeCache[T].
+// It captures the mechanical operations that are identical for every attribute
+// type, allowing Cache to iterate over all caches in a single loop instead of
+// repeating per-type calls.
+type CacheOps interface {
+	Rotate()
+	Reset()
+	Size() uint64
+	Touch(attributes.U128)
+}
+
 type Cache struct {
 	// todo: recheck all app locks for opportunity of using RWLock instead of Mutex
 	mu                  sync.Mutex
@@ -219,11 +230,18 @@ type Cache struct {
 	Boundaries          *AttributeCache[*raftcmdpb.LedgerBoundaries]
 	Transactions        *AttributeCache[*commonpb.TransactionState]
 	SinkConfigs         *AttributeCache[*commonpb.SinkConfig]
-	NumscriptVersions   *AttributeCache[string]
-	NumscriptEntries    *AttributeCache[bool]
-	NumscriptParsed     *AttributeCache[string]
+	NumscriptVersions   *AttributeCache[*commonpb.NumscriptVersionValue]
+	NumscriptContents   *AttributeCache[*commonpb.NumscriptInfo]
 	BaseIndex           DualGen[uint64]
 	GenerationThreshold uint64
+
+	// caches holds all AttributeCache instances for iteration in Rotate/Reset/metrics.
+	// Parallel to cacheNames.
+	caches []CacheOps
+	// cacheNames holds the metric label for each cache, parallel to caches.
+	cacheNames []string
+	// touchMap maps CacheTouchType enum values to their cache for Touch dispatch.
+	touchMap map[raftcmdpb.CacheTouchType]CacheOps
 
 	// currentGeneration is accessed atomically from IsGuaranteedInCache (hot path)
 	// and written under mu by rotateLocked/Reset.
@@ -250,17 +268,11 @@ type Cache struct {
 // generation and conservatively include the preload, which is always safe.
 func (c *Cache) rotateLocked(index uint64, newGeneration uint64) {
 	c.currentGeneration.Store(newGeneration)
-	c.Volumes.Rotate()
-	c.AccountMetadata.Rotate()
-	c.IdempotencyKeys.Rotate()
-	c.References.Rotate()
-	c.Ledgers.Rotate()
-	c.Boundaries.Rotate()
-	c.Transactions.Rotate()
-	c.SinkConfigs.Rotate()
-	c.NumscriptVersions.Rotate()
-	c.NumscriptEntries.Rotate()
-	c.NumscriptParsed.Rotate()
+
+	for _, ac := range c.caches {
+		ac.Rotate()
+	}
+
 	c.BaseIndex.Rotate(index)
 
 	c.recordRotation()
@@ -273,17 +285,10 @@ func (c *Cache) Reset() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.Volumes.Reset()
-	c.AccountMetadata.Reset()
-	c.IdempotencyKeys.Reset()
-	c.References.Reset()
-	c.Ledgers.Reset()
-	c.Boundaries.Reset()
-	c.Transactions.Reset()
-	c.SinkConfigs.Reset()
-	c.NumscriptVersions.Reset()
-	c.NumscriptEntries.Reset()
-	c.NumscriptParsed.Reset()
+	for _, ac := range c.caches {
+		ac.Reset()
+	}
+
 	c.BaseIndex = newDualGen[uint64](0, 0)
 	c.currentGeneration.Store(0)
 }
@@ -339,31 +344,15 @@ func (c *Cache) initMetrics(m metric.Meter) error {
 		return err
 	}
 
-	// Register callback to observe cache sizes
-	type namedCache struct {
-		name string
-		size func() uint64
-	}
-
-	caches := []namedCache{
-		{"volumes", c.Volumes.Size},
-		{"account_metadata", c.AccountMetadata.Size},
-		{"idempotency_keys", c.IdempotencyKeys.Size},
-		{"references", c.References.Size},
-		{"ledgers", c.Ledgers.Size},
-		{"boundaries", c.Boundaries.Size},
-		{"transactions", c.Transactions.Size},
-		{"sink_configs", c.SinkConfigs.Size},
-		{"numscript_versions", c.NumscriptVersions.Size},
-		{"numscript_entries", c.NumscriptEntries.Size},
-		{"numscript_parsed", c.NumscriptParsed.Size},
-	}
+	// Register callback to observe cache sizes using the caches/cacheNames slices.
+	allCaches := c.caches
+	allNames := c.cacheNames
 
 	registration, err := m.RegisterCallback(
 		func(_ context.Context, o metric.Observer) error {
-			for _, cache := range caches {
-				o.ObserveInt64(sizeGauge, int64(cache.size()),
-					metric.WithAttributes(attribute.String("type", cache.name)))
+			for i, ac := range allCaches {
+				o.ObserveInt64(sizeGauge, int64(ac.Size()),
+					metric.WithAttributes(attribute.String("type", allNames[i])))
 			}
 
 			return nil
@@ -399,6 +388,15 @@ func (c *Cache) recordGeneration(gen int64) {
 	c.generationGauge.Record(context.Background(), gen)
 }
 
+// TouchByType promotes a key from Gen1 to Gen0 for the cache identified by the
+// given CacheTouchType. This is the unified dispatch point used by the FSM
+// Preload path instead of a per-type switch.
+func (c *Cache) TouchByType(typ raftcmdpb.CacheTouchType, id attributes.U128) {
+	if tc, ok := c.touchMap[typ]; ok {
+		tc.Touch(id)
+	}
+}
+
 // CurrentGeneration returns the current generation number.
 func (c *Cache) CurrentGeneration() uint64 {
 	return c.currentGeneration.Load()
@@ -432,9 +430,36 @@ func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
 	ret.Boundaries = newAttributeCache[*raftcmdpb.LedgerBoundaries](ret, "boundaries")
 	ret.Transactions = newAttributeCache[*commonpb.TransactionState](ret, "transactions")
 	ret.SinkConfigs = newAttributeCache[*commonpb.SinkConfig](ret, "sink_configs")
-	ret.NumscriptVersions = newAttributeCache[string](ret, "numscript_versions")
-	ret.NumscriptEntries = newAttributeCache[bool](ret, "numscript_entries")
-	ret.NumscriptParsed = newAttributeCache[string](ret, "numscript_parsed")
+	ret.NumscriptVersions = newAttributeCache[*commonpb.NumscriptVersionValue](ret, "numscript_versions")
+	ret.NumscriptContents = newAttributeCache[*commonpb.NumscriptInfo](ret, "numscript_contents")
+
+	// Register all caches for iteration in Rotate/Reset/metrics.
+	ret.caches = []CacheOps{
+		ret.Volumes, ret.AccountMetadata, ret.IdempotencyKeys,
+		ret.References, ret.Ledgers, ret.Boundaries,
+		ret.Transactions, ret.SinkConfigs, ret.NumscriptVersions,
+		ret.NumscriptContents,
+	}
+	ret.cacheNames = []string{
+		"volumes", "account_metadata", "idempotency_keys",
+		"references", "ledgers", "boundaries",
+		"transactions", "sink_configs", "numscript_versions",
+		"numscript_contents",
+	}
+
+	// Register touch dispatch map for CacheTouchType -> cache.
+	ret.touchMap = map[raftcmdpb.CacheTouchType]CacheOps{
+		raftcmdpb.CacheTouchType_CACHE_TOUCH_VOLUMES:            ret.Volumes,
+		raftcmdpb.CacheTouchType_CACHE_TOUCH_IDEMPOTENCY_KEYS:   ret.IdempotencyKeys,
+		raftcmdpb.CacheTouchType_CACHE_TOUCH_REFERENCES:         ret.References,
+		raftcmdpb.CacheTouchType_CACHE_TOUCH_LEDGERS:            ret.Ledgers,
+		raftcmdpb.CacheTouchType_CACHE_TOUCH_BOUNDARIES:         ret.Boundaries,
+		raftcmdpb.CacheTouchType_CACHE_TOUCH_SINK_CONFIGS:       ret.SinkConfigs,
+		raftcmdpb.CacheTouchType_CACHE_TOUCH_ACCOUNT_METADATA:   ret.AccountMetadata,
+		raftcmdpb.CacheTouchType_CACHE_TOUCH_NUMSCRIPT_VERSIONS: ret.NumscriptVersions,
+		raftcmdpb.CacheTouchType_CACHE_TOUCH_TRANSACTIONS:       ret.Transactions,
+		raftcmdpb.CacheTouchType_CACHE_TOUCH_NUMSCRIPT_CONTENTS: ret.NumscriptContents,
+	}
 
 	err := ret.initMetrics(m)
 	if err != nil {
