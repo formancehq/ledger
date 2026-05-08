@@ -42,7 +42,7 @@ func New() *Attributes {
 // NewVolumeAttribute creates a new Volume attribute storing Input+Output pairs (last-write-wins).
 func NewVolumeAttribute() *Attribute[*raftcmdpb.VolumePair] {
 	return &Attribute[*raftcmdpb.VolumePair]{
-		prefix:   dal.AttributePrefixVolume,
+		prefix:   dal.AttributeCodeVolume,
 		newValue: func() *raftcmdpb.VolumePair { return &raftcmdpb.VolumePair{} },
 		keyBuf:   make([]byte, 128),
 	}
@@ -51,7 +51,7 @@ func NewVolumeAttribute() *Attribute[*raftcmdpb.VolumePair] {
 // NewMetadataAttribute creates a new Metadata attribute for account metadata.
 func NewMetadataAttribute() *Attribute[*commonpb.MetadataValue] {
 	return &Attribute[*commonpb.MetadataValue]{
-		prefix:   dal.AttributePrefixMetadata,
+		prefix:   dal.AttributeCodeMetadata,
 		newValue: func() *commonpb.MetadataValue { return &commonpb.MetadataValue{} },
 		keyBuf:   make([]byte, 128),
 	}
@@ -60,7 +60,7 @@ func NewMetadataAttribute() *Attribute[*commonpb.MetadataValue] {
 // NewIdempotencyKeysAttribute creates a new IdempotencyKeys attribute for storing idempotency key mappings.
 func NewIdempotencyKeysAttribute() *Attribute[*commonpb.IdempotencyKeyValue] {
 	return &Attribute[*commonpb.IdempotencyKeyValue]{
-		prefix:   dal.AttributePrefixIdempotency,
+		prefix:   dal.AttributeCodeIdempotency,
 		newValue: func() *commonpb.IdempotencyKeyValue { return &commonpb.IdempotencyKeyValue{} },
 		keyBuf:   make([]byte, 128),
 	}
@@ -69,7 +69,7 @@ func NewIdempotencyKeysAttribute() *Attribute[*commonpb.IdempotencyKeyValue] {
 // NewReferenceAttribute creates a new Reference attribute for storing transaction reference mappings.
 func NewReferenceAttribute() *Attribute[*commonpb.TransactionReferenceValue] {
 	return &Attribute[*commonpb.TransactionReferenceValue]{
-		prefix:   dal.AttributePrefixReference,
+		prefix:   dal.AttributeCodeReference,
 		newValue: func() *commonpb.TransactionReferenceValue { return &commonpb.TransactionReferenceValue{} },
 		keyBuf:   make([]byte, 128),
 	}
@@ -78,7 +78,7 @@ func NewReferenceAttribute() *Attribute[*commonpb.TransactionReferenceValue] {
 // NewLedgerAttribute creates a new Ledger attribute for storing ledger info.
 func NewLedgerAttribute() *Attribute[*commonpb.LedgerInfo] {
 	return &Attribute[*commonpb.LedgerInfo]{
-		prefix:   dal.AttributePrefixLedger,
+		prefix:   dal.AttributeCodeLedger,
 		newValue: func() *commonpb.LedgerInfo { return &commonpb.LedgerInfo{} },
 		keyBuf:   make([]byte, 128),
 	}
@@ -87,7 +87,7 @@ func NewLedgerAttribute() *Attribute[*commonpb.LedgerInfo] {
 // NewBoundaryAttribute creates a new Boundary attribute for storing ledger boundaries.
 func NewBoundaryAttribute() *Attribute[*raftcmdpb.LedgerBoundaries] {
 	return &Attribute[*raftcmdpb.LedgerBoundaries]{
-		prefix:   dal.AttributePrefixBoundary,
+		prefix:   dal.AttributeCodeBoundary,
 		newValue: func() *raftcmdpb.LedgerBoundaries { return &raftcmdpb.LedgerBoundaries{} },
 		keyBuf:   make([]byte, 128),
 	}
@@ -96,7 +96,7 @@ func NewBoundaryAttribute() *Attribute[*raftcmdpb.LedgerBoundaries] {
 // NewTransactionAttribute creates a new Transaction attribute for storing transaction state.
 func NewTransactionAttribute() *Attribute[*commonpb.TransactionState] {
 	return &Attribute[*commonpb.TransactionState]{
-		prefix:   dal.AttributePrefixTransaction,
+		prefix:   dal.AttributeCodeTransaction,
 		newValue: func() *commonpb.TransactionState { return &commonpb.TransactionState{} },
 		keyBuf:   make([]byte, 128),
 	}
@@ -105,7 +105,7 @@ func NewTransactionAttribute() *Attribute[*commonpb.TransactionState] {
 // NewSinkConfigAttribute creates a new SinkConfig attribute for storing event sink configurations.
 func NewSinkConfigAttribute() *Attribute[*commonpb.SinkConfig] {
 	return &Attribute[*commonpb.SinkConfig]{
-		prefix:   dal.AttributePrefixSinkConfig,
+		prefix:   dal.AttributeCodeSinkConfig,
 		newValue: func() *commonpb.SinkConfig { return &commonpb.SinkConfig{} },
 		keyBuf:   make([]byte, 128),
 	}
@@ -114,7 +114,7 @@ func NewSinkConfigAttribute() *Attribute[*commonpb.SinkConfig] {
 // NewNumscriptVersionAttribute creates a new NumscriptVersion attribute for storing latest version pointers.
 func NewNumscriptVersionAttribute() *Attribute[*commonpb.NumscriptVersionValue] {
 	return &Attribute[*commonpb.NumscriptVersionValue]{
-		prefix:   dal.AttributePrefixNumscriptVersion,
+		prefix:   dal.AttributeCodeNumscriptVersion,
 		newValue: func() *commonpb.NumscriptVersionValue { return &commonpb.NumscriptVersionValue{} },
 		keyBuf:   make([]byte, 128),
 	}
@@ -123,7 +123,7 @@ func NewNumscriptVersionAttribute() *Attribute[*commonpb.NumscriptVersionValue] 
 // NewNumscriptContentAttribute creates a new NumscriptContent attribute for storing full numscript info.
 func NewNumscriptContentAttribute() *Attribute[*commonpb.NumscriptInfo] {
 	return &Attribute[*commonpb.NumscriptInfo]{
-		prefix:   dal.AttributePrefixNumscriptContent,
+		prefix:   dal.AttributeCodeNumscriptContent,
 		newValue: func() *commonpb.NumscriptInfo { return &commonpb.NumscriptInfo{} },
 		keyBuf:   make([]byte, 128),
 	}

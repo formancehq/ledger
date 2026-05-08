@@ -200,19 +200,19 @@ func describeAttributeKey(key []byte) string {
 
 	var attrType string
 	switch attrTypeByte {
-	case dal.AttributePrefixVolume:
+	case dal.AttributeCodeVolume:
 		attrType = "Volume"
-	case dal.AttributePrefixMetadata:
+	case dal.AttributeCodeMetadata:
 		attrType = "Metadata"
-	case dal.AttributePrefixIdempotency:
+	case dal.AttributeCodeIdempotency:
 		attrType = "Idempotency"
-	case dal.AttributePrefixReference:
+	case dal.AttributeCodeReference:
 		attrType = "Reference"
-	case dal.AttributePrefixLedger:
+	case dal.AttributeCodeLedger:
 		attrType = "Ledger"
-	case dal.AttributePrefixBoundary:
+	case dal.AttributeCodeBoundary:
 		attrType = "Boundary"
-	case dal.AttributePrefixTransaction:
+	case dal.AttributeCodeTransaction:
 		attrType = "Transaction"
 	default:
 		attrType = fmt.Sprintf("0x%02X", attrTypeByte)
@@ -283,19 +283,19 @@ func decodeAttributeValue(key, val []byte) string {
 	attrTypeByte := key[len(key)-1]
 
 	switch attrTypeByte {
-	case dal.AttributePrefixVolume:
+	case dal.AttributeCodeVolume:
 		return tryProtoJSON(val, &raftcmdpb.VolumePair{})
-	case dal.AttributePrefixMetadata:
+	case dal.AttributeCodeMetadata:
 		return tryProtoJSON(val, &commonpb.MetadataValue{})
-	case dal.AttributePrefixIdempotency:
+	case dal.AttributeCodeIdempotency:
 		return tryProtoJSON(val, &commonpb.IdempotencyKeyValue{})
-	case dal.AttributePrefixReference:
+	case dal.AttributeCodeReference:
 		return tryProtoJSON(val, &commonpb.TransactionReferenceValue{})
-	case dal.AttributePrefixLedger:
+	case dal.AttributeCodeLedger:
 		return tryProtoJSON(val, &commonpb.LedgerInfo{})
-	case dal.AttributePrefixBoundary:
+	case dal.AttributeCodeBoundary:
 		return tryProtoJSON(val, &raftcmdpb.LedgerBoundaries{})
-	case dal.AttributePrefixTransaction:
+	case dal.AttributeCodeTransaction:
 		return tryProtoJSON(val, &commonpb.TransactionState{})
 	default:
 		return hexVal(val)

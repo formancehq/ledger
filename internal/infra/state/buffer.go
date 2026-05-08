@@ -144,7 +144,7 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	genByte := byte(b.fsm.Registry.Cache.CurrentGeneration() % 2)
 
 	// Process Ledger updates
-	ledgerUpdates, _, err := mergeAndTrackBloom(b.Derived.Ledgers, b.attrs.Ledger, batch, genByte, dal.AttributePrefixLedger, &b.bloomUpdates.Ledgers, "ledgers")
+	ledgerUpdates, _, err := mergeAndTrackBloom(b.Derived.Ledgers, b.attrs.Ledger, batch, genByte, dal.AttributeCodeLedger, &b.bloomUpdates.Ledgers, "ledgers")
 	if err != nil {
 		return err
 	}
@@ -166,7 +166,7 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	partResult := b.partitionVolumes(volumeUpdates)
 
 	// Write kept volumes to 0xF1 + 0xFF in one pass (shared marshaled bytes).
-	if err := mergeSimpleWithCache(b.attrs.Volume, batch, genByte, dal.AttributePrefixVolume, partResult.kept); err != nil {
+	if err := mergeSimpleWithCache(b.attrs.Volume, batch, genByte, dal.AttributeCodeVolume, partResult.kept); err != nil {
 		return fmt.Errorf("failed merging volume attributes: %w", err)
 	}
 
@@ -215,7 +215,7 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	}
 
 	// Process AccountMetadata updates
-	metadataUpdates, metadataDeletions, err := mergeAndTrackBloom(b.Derived.AccountMetadata, b.attrs.Metadata, batch, genByte, dal.AttributePrefixMetadata, &b.bloomUpdates.Metadata, "account metadata")
+	metadataUpdates, metadataDeletions, err := mergeAndTrackBloom(b.Derived.AccountMetadata, b.attrs.Metadata, batch, genByte, dal.AttributeCodeMetadata, &b.bloomUpdates.Metadata, "account metadata")
 	if err != nil {
 		return err
 	}
@@ -241,12 +241,12 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	}
 
 	// Process IdempotencyKeys updates
-	if _, _, err := mergeAndTrackBloom(b.Derived.IdempotencyKeys, b.attrs.IdempotencyKeys, batch, genByte, dal.AttributePrefixIdempotency, &b.bloomUpdates.Idempotency, "idempotency keys"); err != nil {
+	if _, _, err := mergeAndTrackBloom(b.Derived.IdempotencyKeys, b.attrs.IdempotencyKeys, batch, genByte, dal.AttributeCodeIdempotency, &b.bloomUpdates.Idempotency, "idempotency keys"); err != nil {
 		return err
 	}
 
 	// Process References updates
-	referenceUpdates, _, err := mergeAndTrackBloom(b.Derived.References, b.attrs.References, batch, genByte, dal.AttributePrefixReference, &b.bloomUpdates.References, "references")
+	referenceUpdates, _, err := mergeAndTrackBloom(b.Derived.References, b.attrs.References, batch, genByte, dal.AttributeCodeReference, &b.bloomUpdates.References, "references")
 	if err != nil {
 		return err
 	}
@@ -255,12 +255,12 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	b.updateBoundaryCounters(volumeUpdates, partResult.purged, partResult.transient, metadataUpdates, metadataDeletions, referenceUpdates)
 
 	// Process Boundary updates (after counted attributes so counters are included).
-	if _, _, err := mergeAndTrackBloom(b.Derived.Boundaries, b.attrs.Boundary, batch, genByte, dal.AttributePrefixBoundary, &b.bloomUpdates.Boundaries, "boundaries"); err != nil {
+	if _, _, err := mergeAndTrackBloom(b.Derived.Boundaries, b.attrs.Boundary, batch, genByte, dal.AttributeCodeBoundary, &b.bloomUpdates.Boundaries, "boundaries"); err != nil {
 		return err
 	}
 
 	// Process Transaction state updates
-	if _, _, err := mergeAndTrackBloom(b.Derived.Transactions, b.attrs.Transaction, batch, genByte, dal.AttributePrefixTransaction, &b.bloomUpdates.Transactions, "transactions"); err != nil {
+	if _, _, err := mergeAndTrackBloom(b.Derived.Transactions, b.attrs.Transaction, batch, genByte, dal.AttributeCodeTransaction, &b.bloomUpdates.Transactions, "transactions"); err != nil {
 		return err
 	}
 
@@ -343,17 +343,17 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	}
 
 	// Process SinkConfig updates
-	if _, _, err := mergeAndTrackBloom(b.Derived.SinkConfigs, b.attrs.SinkConfig, batch, genByte, dal.AttributePrefixSinkConfig, &b.bloomUpdates.SinkConfigs, "sink configs"); err != nil {
+	if _, _, err := mergeAndTrackBloom(b.Derived.SinkConfigs, b.attrs.SinkConfig, batch, genByte, dal.AttributeCodeSinkConfig, &b.bloomUpdates.SinkConfigs, "sink configs"); err != nil {
 		return err
 	}
 
 	// Process NumscriptVersion updates
-	if _, _, err := mergeAndTrackBloom(b.Derived.NumscriptVersions, b.attrs.NumscriptVersion, batch, genByte, dal.AttributePrefixNumscriptVersion, &b.bloomUpdates.NumscriptVersions, "numscript versions"); err != nil {
+	if _, _, err := mergeAndTrackBloom(b.Derived.NumscriptVersions, b.attrs.NumscriptVersion, batch, genByte, dal.AttributeCodeNumscriptVersion, &b.bloomUpdates.NumscriptVersions, "numscript versions"); err != nil {
 		return err
 	}
 
 	// Process NumscriptContent updates
-	if _, _, err := mergeAndTrackBloom(b.Derived.NumscriptContents, b.attrs.NumscriptContent, batch, genByte, dal.AttributePrefixNumscriptContent, &b.bloomUpdates.NumscriptContents, "numscript contents"); err != nil {
+	if _, _, err := mergeAndTrackBloom(b.Derived.NumscriptContents, b.attrs.NumscriptContent, batch, genByte, dal.AttributeCodeNumscriptContent, &b.bloomUpdates.NumscriptContents, "numscript contents"); err != nil {
 		return err
 	}
 

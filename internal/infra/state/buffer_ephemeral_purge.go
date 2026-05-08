@@ -132,7 +132,7 @@ func (b *Buffered) applyEphemeralPurge(
 		}
 
 		// Delete from 0xFF cache zone.
-		if err := deleteCacheEntry(batch, dal.AttributePrefixVolume, update.ID); err != nil {
+		if err := deleteCacheEntry(batch, dal.AttributeCodeVolume, update.ID); err != nil {
 			return err
 		}
 

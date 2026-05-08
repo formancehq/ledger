@@ -89,16 +89,16 @@ func CompactAllForBackup(s *dal.Store) error {
 
 	// Build dispatch table: attrType byte → compactor
 	dispatch := map[byte]compactor{
-		dal.AttributePrefixVolume:           newCompactor(attrs.Volume, batch),
-		dal.AttributePrefixMetadata:         newCompactor(attrs.Metadata, batch),
-		dal.AttributePrefixIdempotency:      newCompactor(attrs.IdempotencyKeys, batch),
-		dal.AttributePrefixReference:        newCompactor(attrs.References, batch),
-		dal.AttributePrefixLedger:           newCompactor(attrs.Ledger, batch),
-		dal.AttributePrefixBoundary:         newCompactor(attrs.Boundary, batch),
-		dal.AttributePrefixTransaction:      newCompactor(attrs.Transaction, batch),
-		dal.AttributePrefixSinkConfig:       newCompactor(attrs.SinkConfig, batch),
-		dal.AttributePrefixNumscriptVersion: newCompactor(attrs.NumscriptVersion, batch),
-		dal.AttributePrefixNumscriptContent: newCompactor(attrs.NumscriptContent, batch),
+		dal.AttributeCodeVolume:           newCompactor(attrs.Volume, batch),
+		dal.AttributeCodeMetadata:         newCompactor(attrs.Metadata, batch),
+		dal.AttributeCodeIdempotency:      newCompactor(attrs.IdempotencyKeys, batch),
+		dal.AttributeCodeReference:        newCompactor(attrs.References, batch),
+		dal.AttributeCodeLedger:           newCompactor(attrs.Ledger, batch),
+		dal.AttributeCodeBoundary:         newCompactor(attrs.Boundary, batch),
+		dal.AttributeCodeTransaction:      newCompactor(attrs.Transaction, batch),
+		dal.AttributeCodeSinkConfig:       newCompactor(attrs.SinkConfig, batch),
+		dal.AttributeCodeNumscriptVersion: newCompactor(attrs.NumscriptVersion, batch),
+		dal.AttributeCodeNumscriptContent: newCompactor(attrs.NumscriptContent, batch),
 	}
 
 	// Single scan over the entire attribute range

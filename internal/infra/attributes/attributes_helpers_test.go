@@ -229,10 +229,10 @@ func TestAccumulatorPrefix(t *testing.T) {
 
 	attrs := New()
 	acc := attrs.Volume.NewAccumulator()
-	require.Equal(t, dal.AttributePrefixVolume, acc.Prefix())
+	require.Equal(t, dal.AttributeCodeVolume, acc.Prefix())
 
 	metaAcc := attrs.Metadata.NewAccumulator()
-	require.Equal(t, dal.AttributePrefixMetadata, metaAcc.Prefix())
+	require.Equal(t, dal.AttributeCodeMetadata, metaAcc.Prefix())
 }
 
 func TestGetReturnsLatestSet(t *testing.T) {
@@ -455,7 +455,7 @@ func TestAccumulatorFeedPublicMethod(t *testing.T) {
 	baseBytes, err := proto.Marshal(baseValue)
 	require.NoError(t, err)
 
-	pebbleKey := makePebbleKey(canonical, dal.AttributePrefixMetadata)
+	pebbleKey := makePebbleKey(canonical, dal.AttributeCodeMetadata)
 
 	matched, feedErr := acc.Feed(pebbleKey, baseBytes)
 	require.NoError(t, feedErr)
@@ -467,7 +467,7 @@ func TestAccumulatorFeedPublicMethod(t *testing.T) {
 	base2Bytes, err := proto.Marshal(base2Value)
 	require.NoError(t, err)
 
-	pebbleKey2 := makePebbleKey(canonical2, dal.AttributePrefixMetadata)
+	pebbleKey2 := makePebbleKey(canonical2, dal.AttributeCodeMetadata)
 
 	matched, feedErr = acc.Feed(pebbleKey2, base2Bytes)
 	require.NoError(t, feedErr)
@@ -490,7 +490,7 @@ func TestAccumulatorFeedNonMatchingPrefix(t *testing.T) {
 	baseBytes, err := proto.Marshal(baseValue)
 	require.NoError(t, err)
 
-	pebbleKey := makePebbleKey(canonical, dal.AttributePrefixVolume)
+	pebbleKey := makePebbleKey(canonical, dal.AttributeCodeVolume)
 
 	matched, feedErr := acc.Feed(pebbleKey, baseBytes)
 	require.NoError(t, feedErr)

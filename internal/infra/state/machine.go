@@ -824,7 +824,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet, batch *dal.Batch, 
 
 	for _, touch := range preloadSet.GetTouches() {
 		id := attributes.U128FromBytes(touch.GetId())
-		if err := fsm.cacheSnapshotter.MirrorTouch(batch, touch.GetType(), genByte, id); err != nil {
+		if err := fsm.cacheSnapshotter.MirrorTouch(batch, byte(touch.GetAttrType()), genByte, id); err != nil {
 			return err
 		}
 	}

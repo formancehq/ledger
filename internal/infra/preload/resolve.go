@@ -43,7 +43,7 @@ func resolveAttributePreload[K interface {
 	store dal.PebbleReader,
 	buildPreload func(id *raftcmdpb.AttributeID, value T) *raftcmdpb.Preload,
 	includeZeroValue bool,
-	touchType raftcmdpb.CacheTouchType,
+	attrCode byte,
 	tracker []attributes.U128,
 	bloomFilter *bloom.Filter,
 	logger logging.Logger,
@@ -79,8 +79,8 @@ func resolveAttributePreload[K interface {
 
 			mu.Lock()
 			touches = append(touches, &raftcmdpb.CacheTouch{
-				Id:   id[:],
-				Type: touchType,
+				Id:       id[:],
+				AttrType: uint32(attrCode),
 			})
 			mu.Unlock()
 

@@ -38,12 +38,12 @@ func TestPreload_TouchIsPersistedToCacheZone(t *testing.T) {
 	infoBytes, err := info.MarshalVT()
 	require.NoError(t, err)
 	require.NoError(t,
-		writeCacheRaw(seedBatch, gen1Byte, dal.AttributePrefixLedger, id, 7, infoBytes))
+		writeCacheRaw(seedBatch, gen1Byte, dal.AttributeCodeLedger, id, 7, infoBytes))
 	require.NoError(t, seedBatch.Commit())
 
-	gen1Key := []byte{dal.KeyPrefixCacheSnapshot, gen1Byte, dal.AttributePrefixLedger}
+	gen1Key := []byte{dal.KeyPrefixCacheSnapshot, gen1Byte, dal.AttributeCodeLedger}
 	gen1Key = append(gen1Key, id[:]...)
-	gen0Key := []byte{dal.KeyPrefixCacheSnapshot, gen0Byte, dal.AttributePrefixLedger}
+	gen0Key := []byte{dal.KeyPrefixCacheSnapshot, gen0Byte, dal.AttributeCodeLedger}
 	gen0Key = append(gen0Key, id[:]...)
 
 	if val, closer, getErr := dataStore.Get(gen1Key); getErr == nil {
@@ -62,8 +62,8 @@ func TestPreload_TouchIsPersistedToCacheZone(t *testing.T) {
 	preloadSet := &raftcmdpb.PreloadSet{
 		LastPersistedIndex: registry.Cache.BaseIndex.Gen0,
 		Touches: []*raftcmdpb.CacheTouch{{
-			Id:   id[:],
-			Type: raftcmdpb.CacheTouchType_CACHE_TOUCH_LEDGERS,
+			Id:       id[:],
+			AttrType: uint32(dal.AttributeCodeLedger),
 		}},
 	}
 
@@ -122,9 +122,9 @@ func TestPreload_TouchSkipsWhenGen0HasFreshValue(t *testing.T) {
 	freshBytes, err := freshInfo.MarshalVT()
 	require.NoError(t, err)
 	require.NoError(t,
-		writeCacheRaw(seedBatch, gen1Byte, dal.AttributePrefixLedger, id, 1, staleBytes))
+		writeCacheRaw(seedBatch, gen1Byte, dal.AttributeCodeLedger, id, 1, staleBytes))
 	require.NoError(t,
-		writeCacheRaw(seedBatch, gen0Byte, dal.AttributePrefixLedger, id, 1, freshBytes))
+		writeCacheRaw(seedBatch, gen0Byte, dal.AttributeCodeLedger, id, 1, freshBytes))
 	require.NoError(t, seedBatch.Commit())
 
 	applyBatch := dataStore.NewBatch()
@@ -133,8 +133,8 @@ func TestPreload_TouchSkipsWhenGen0HasFreshValue(t *testing.T) {
 	preloadSet := &raftcmdpb.PreloadSet{
 		LastPersistedIndex: registry.Cache.BaseIndex.Gen0,
 		Touches: []*raftcmdpb.CacheTouch{{
-			Id:   id[:],
-			Type: raftcmdpb.CacheTouchType_CACHE_TOUCH_LEDGERS,
+			Id:       id[:],
+			AttrType: uint32(dal.AttributeCodeLedger),
 		}},
 	}
 	require.NoError(t, machine.Preload(preloadSet, applyBatch, gen0Byte))
@@ -144,7 +144,7 @@ func TestPreload_TouchSkipsWhenGen0HasFreshValue(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "gaming-fresh", got.Data.GetName(), "touch must not overwrite fresh gen0 value")
 
-	gen0Key := []byte{dal.KeyPrefixCacheSnapshot, gen0Byte, dal.AttributePrefixLedger}
+	gen0Key := []byte{dal.KeyPrefixCacheSnapshot, gen0Byte, dal.AttributeCodeLedger}
 	gen0Key = append(gen0Key, id[:]...)
 	val, closer, err := dataStore.Get(gen0Key)
 	require.NoError(t, err)
@@ -210,7 +210,7 @@ func TestPreload_FullPreloadIsPersistedToCacheZone(t *testing.T) {
 	require.Equal(t, scriptInfo.GetContent(), gotGen1.Data.GetContent())
 
 	for _, b := range []byte{gen0Byte, gen1Byte} {
-		key := []byte{dal.KeyPrefixCacheSnapshot, b, dal.AttributePrefixNumscriptContent}
+		key := []byte{dal.KeyPrefixCacheSnapshot, b, dal.AttributeCodeNumscriptContent}
 		key = append(key, hash[:]...)
 
 		val, closer, getErr := dataStore.Get(key)

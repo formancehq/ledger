@@ -180,9 +180,9 @@ type CacheSnapshotter struct {
 	registry     *StateRegistry
 	bloomFilters *bloom.FilterSet
 	slots        []cacheSnapshotSlot
-	// touchSlots maps CacheTouchType enum values to the corresponding slot,
+	// touchSlots maps attribute code bytes to the corresponding slot,
 	// for the FSM apply path's MirrorTouch dispatch.
-	touchSlots map[raftcmdpb.CacheTouchType]cacheSnapshotSlot
+	touchSlots map[byte]cacheSnapshotSlot
 
 	// bloomPopulateDone is closed when the background bloom populate goroutine
 	// finishes. Nil when no background work is running.
@@ -193,16 +193,16 @@ type CacheSnapshotter struct {
 func NewCacheSnapshotter(logger logging.Logger, dataStore *dal.Store, registry *StateRegistry, bloomFilters *bloom.FilterSet) *CacheSnapshotter {
 	c := registry.Cache
 
-	volumes := newProtoSnapshotSlot(dal.AttributePrefixVolume, c.Volumes, func() *raftcmdpb.VolumePair { return &raftcmdpb.VolumePair{} })
-	metadata := newProtoSnapshotSlot(dal.AttributePrefixMetadata, c.AccountMetadata, func() *commonpb.MetadataValue { return &commonpb.MetadataValue{} })
-	ledgers := newProtoSnapshotSlot(dal.AttributePrefixLedger, c.Ledgers, func() *commonpb.LedgerInfo { return &commonpb.LedgerInfo{} })
-	boundaries := newProtoSnapshotSlot(dal.AttributePrefixBoundary, c.Boundaries, func() *raftcmdpb.LedgerBoundaries { return &raftcmdpb.LedgerBoundaries{} })
-	references := newProtoSnapshotSlot(dal.AttributePrefixReference, c.References, func() *commonpb.TransactionReferenceValue { return &commonpb.TransactionReferenceValue{} })
-	transactions := newProtoSnapshotSlot(dal.AttributePrefixTransaction, c.Transactions, func() *commonpb.TransactionState { return &commonpb.TransactionState{} })
-	idempotency := newProtoSnapshotSlot(dal.AttributePrefixIdempotency, c.IdempotencyKeys, func() *commonpb.IdempotencyKeyValue { return &commonpb.IdempotencyKeyValue{} })
-	sinks := newProtoSnapshotSlot(dal.AttributePrefixSinkConfig, c.SinkConfigs, func() *commonpb.SinkConfig { return &commonpb.SinkConfig{} })
-	numscriptVersions := newProtoSnapshotSlot(dal.AttributePrefixNumscriptVersion, c.NumscriptVersions, func() *commonpb.NumscriptVersionValue { return &commonpb.NumscriptVersionValue{} })
-	numscriptContents := newProtoSnapshotSlot(dal.AttributePrefixNumscriptContent, c.NumscriptContents, func() *commonpb.NumscriptInfo { return &commonpb.NumscriptInfo{} })
+	volumes := newProtoSnapshotSlot(dal.AttributeCodeVolume, c.Volumes, func() *raftcmdpb.VolumePair { return &raftcmdpb.VolumePair{} })
+	metadata := newProtoSnapshotSlot(dal.AttributeCodeMetadata, c.AccountMetadata, func() *commonpb.MetadataValue { return &commonpb.MetadataValue{} })
+	ledgers := newProtoSnapshotSlot(dal.AttributeCodeLedger, c.Ledgers, func() *commonpb.LedgerInfo { return &commonpb.LedgerInfo{} })
+	boundaries := newProtoSnapshotSlot(dal.AttributeCodeBoundary, c.Boundaries, func() *raftcmdpb.LedgerBoundaries { return &raftcmdpb.LedgerBoundaries{} })
+	references := newProtoSnapshotSlot(dal.AttributeCodeReference, c.References, func() *commonpb.TransactionReferenceValue { return &commonpb.TransactionReferenceValue{} })
+	transactions := newProtoSnapshotSlot(dal.AttributeCodeTransaction, c.Transactions, func() *commonpb.TransactionState { return &commonpb.TransactionState{} })
+	idempotency := newProtoSnapshotSlot(dal.AttributeCodeIdempotency, c.IdempotencyKeys, func() *commonpb.IdempotencyKeyValue { return &commonpb.IdempotencyKeyValue{} })
+	sinks := newProtoSnapshotSlot(dal.AttributeCodeSinkConfig, c.SinkConfigs, func() *commonpb.SinkConfig { return &commonpb.SinkConfig{} })
+	numscriptVersions := newProtoSnapshotSlot(dal.AttributeCodeNumscriptVersion, c.NumscriptVersions, func() *commonpb.NumscriptVersionValue { return &commonpb.NumscriptVersionValue{} })
+	numscriptContents := newProtoSnapshotSlot(dal.AttributeCodeNumscriptContent, c.NumscriptContents, func() *commonpb.NumscriptInfo { return &commonpb.NumscriptInfo{} })
 
 	return &CacheSnapshotter{
 		logger:       logger,
@@ -213,17 +213,17 @@ func NewCacheSnapshotter(logger logging.Logger, dataStore *dal.Store, registry *
 			volumes, metadata, ledgers, boundaries, references,
 			transactions, idempotency, sinks, numscriptVersions, numscriptContents,
 		},
-		touchSlots: map[raftcmdpb.CacheTouchType]cacheSnapshotSlot{
-			raftcmdpb.CacheTouchType_CACHE_TOUCH_VOLUMES:            volumes,
-			raftcmdpb.CacheTouchType_CACHE_TOUCH_ACCOUNT_METADATA:   metadata,
-			raftcmdpb.CacheTouchType_CACHE_TOUCH_LEDGERS:            ledgers,
-			raftcmdpb.CacheTouchType_CACHE_TOUCH_BOUNDARIES:         boundaries,
-			raftcmdpb.CacheTouchType_CACHE_TOUCH_REFERENCES:         references,
-			raftcmdpb.CacheTouchType_CACHE_TOUCH_TRANSACTIONS:       transactions,
-			raftcmdpb.CacheTouchType_CACHE_TOUCH_IDEMPOTENCY_KEYS:   idempotency,
-			raftcmdpb.CacheTouchType_CACHE_TOUCH_SINK_CONFIGS:       sinks,
-			raftcmdpb.CacheTouchType_CACHE_TOUCH_NUMSCRIPT_VERSIONS: numscriptVersions,
-			raftcmdpb.CacheTouchType_CACHE_TOUCH_NUMSCRIPT_CONTENTS: numscriptContents,
+		touchSlots: map[byte]cacheSnapshotSlot{
+			dal.AttributeCodeVolume:           volumes,
+			dal.AttributeCodeMetadata:         metadata,
+			dal.AttributeCodeLedger:           ledgers,
+			dal.AttributeCodeBoundary:         boundaries,
+			dal.AttributeCodeReference:        references,
+			dal.AttributeCodeTransaction:      transactions,
+			dal.AttributeCodeIdempotency:      idempotency,
+			dal.AttributeCodeSinkConfig:       sinks,
+			dal.AttributeCodeNumscriptVersion: numscriptVersions,
+			dal.AttributeCodeNumscriptContent: numscriptContents,
 		},
 	}
 }
@@ -231,8 +231,8 @@ func NewCacheSnapshotter(logger logging.Logger, dataStore *dal.Store, registry *
 // MirrorTouch performs an in-memory Touch and mirrors the gen0 promotion
 // to 0xFF, so a restart restores the entry into the same generation it
 // occupies in memory. gen0Byte = currentGeneration % 2.
-func (s *CacheSnapshotter) MirrorTouch(batch *dal.Batch, typ raftcmdpb.CacheTouchType, gen0Byte byte, id attributes.U128) error {
-	slot, ok := s.touchSlots[typ]
+func (s *CacheSnapshotter) MirrorTouch(batch *dal.Batch, attrType byte, gen0Byte byte, id attributes.U128) error {
+	slot, ok := s.touchSlots[attrType]
 	if !ok {
 		return nil
 	}
@@ -244,12 +244,12 @@ func (s *CacheSnapshotter) MirrorTouch(batch *dal.Batch, typ raftcmdpb.CacheTouc
 // at both byte positions, matching what preloadToCache used to do
 // in-memory only.
 func (s *CacheSnapshotter) MirrorPreload(batch *dal.Batch, gen0Byte, gen1Byte byte, preload *raftcmdpb.Preload) error {
-	typ, attrID, value := extractPreload(preload)
+	attrCode, attrID, value := extractPreload(preload)
 	if attrID == nil {
 		return nil
 	}
 
-	slot, ok := s.touchSlots[typ]
+	slot, ok := s.touchSlots[attrCode]
 	if !ok {
 		return nil
 	}
@@ -257,31 +257,31 @@ func (s *CacheSnapshotter) MirrorPreload(batch *dal.Batch, gen0Byte, gen1Byte by
 	return slot.MirrorPreload(batch, gen0Byte, gen1Byte, attrID, value)
 }
 
-// extractPreload pulls the CacheTouchType, AttributeID and typed value out
+// extractPreload pulls the attribute code, AttributeID and typed value out
 // of a Preload variant. One case per variant — no way to express this
 // generically because each variant is a distinct concrete struct.
-func extractPreload(p *raftcmdpb.Preload) (raftcmdpb.CacheTouchType, *raftcmdpb.AttributeID, any) {
+func extractPreload(p *raftcmdpb.Preload) (byte, *raftcmdpb.AttributeID, any) {
 	switch v := p.GetType().(type) {
 	case *raftcmdpb.Preload_Volume:
-		return raftcmdpb.CacheTouchType_CACHE_TOUCH_VOLUMES, v.Volume.GetId(), v.Volume.GetValue()
+		return dal.AttributeCodeVolume, v.Volume.GetId(), v.Volume.GetValue()
 	case *raftcmdpb.Preload_IdempotencyKey:
-		return raftcmdpb.CacheTouchType_CACHE_TOUCH_IDEMPOTENCY_KEYS, v.IdempotencyKey.GetId(), v.IdempotencyKey.GetValue()
+		return dal.AttributeCodeIdempotency, v.IdempotencyKey.GetId(), v.IdempotencyKey.GetValue()
 	case *raftcmdpb.Preload_Ledger:
-		return raftcmdpb.CacheTouchType_CACHE_TOUCH_LEDGERS, v.Ledger.GetId(), v.Ledger.GetValue()
+		return dal.AttributeCodeLedger, v.Ledger.GetId(), v.Ledger.GetValue()
 	case *raftcmdpb.Preload_Boundary:
-		return raftcmdpb.CacheTouchType_CACHE_TOUCH_BOUNDARIES, v.Boundary.GetId(), v.Boundary.GetValue()
+		return dal.AttributeCodeBoundary, v.Boundary.GetId(), v.Boundary.GetValue()
 	case *raftcmdpb.Preload_TransactionReference:
-		return raftcmdpb.CacheTouchType_CACHE_TOUCH_REFERENCES, v.TransactionReference.GetId(), v.TransactionReference.GetValue()
+		return dal.AttributeCodeReference, v.TransactionReference.GetId(), v.TransactionReference.GetValue()
 	case *raftcmdpb.Preload_SinkConfig:
-		return raftcmdpb.CacheTouchType_CACHE_TOUCH_SINK_CONFIGS, v.SinkConfig.GetId(), v.SinkConfig.GetValue()
+		return dal.AttributeCodeSinkConfig, v.SinkConfig.GetId(), v.SinkConfig.GetValue()
 	case *raftcmdpb.Preload_AccountMetadata:
-		return raftcmdpb.CacheTouchType_CACHE_TOUCH_ACCOUNT_METADATA, v.AccountMetadata.GetId(), v.AccountMetadata.GetValue()
+		return dal.AttributeCodeMetadata, v.AccountMetadata.GetId(), v.AccountMetadata.GetValue()
 	case *raftcmdpb.Preload_NumscriptVersion:
-		return raftcmdpb.CacheTouchType_CACHE_TOUCH_NUMSCRIPT_VERSIONS, v.NumscriptVersion.GetId(), v.NumscriptVersion.GetValue()
+		return dal.AttributeCodeNumscriptVersion, v.NumscriptVersion.GetId(), v.NumscriptVersion.GetValue()
 	case *raftcmdpb.Preload_TransactionState:
-		return raftcmdpb.CacheTouchType_CACHE_TOUCH_TRANSACTIONS, v.TransactionState.GetId(), v.TransactionState.GetValue()
+		return dal.AttributeCodeTransaction, v.TransactionState.GetId(), v.TransactionState.GetValue()
 	case *raftcmdpb.Preload_NumscriptContent:
-		return raftcmdpb.CacheTouchType_CACHE_TOUCH_NUMSCRIPT_CONTENTS, v.NumscriptContent.GetId(), v.NumscriptContent.GetValue()
+		return dal.AttributeCodeNumscriptContent, v.NumscriptContent.GetId(), v.NumscriptContent.GetValue()
 	}
 
 	return 0, nil, nil

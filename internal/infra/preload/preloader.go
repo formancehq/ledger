@@ -261,8 +261,8 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.cache.Ledgers, p.loaders.Ledgers,
 				p.attrs.Ledger.Get, p.store,
 				buildLedgerPreload, true,
-				raftcmdpb.CacheTouchType_CACHE_TOUCH_LEDGERS, nil,
-				p.bloomFilter(dal.AttributePrefixLedger),
+				dal.AttributeCodeLedger, nil,
+				p.bloomFilter(dal.AttributeCodeLedger),
 				p.logger, "ledgers",
 			)
 			results[i].resolve = r
@@ -278,8 +278,8 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.cache.Boundaries, p.loaders.Boundaries,
 				p.attrs.Boundary.Get, p.store,
 				buildBoundaryPreload, true,
-				raftcmdpb.CacheTouchType_CACHE_TOUCH_BOUNDARIES, nil,
-				p.bloomFilter(dal.AttributePrefixBoundary),
+				dal.AttributeCodeBoundary, nil,
+				p.bloomFilter(dal.AttributeCodeBoundary),
 				p.logger, "boundaries",
 			)
 			results[i].resolve = r
@@ -295,8 +295,8 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.cache.Volumes, p.loaders.Volumes,
 				p.attrs.Volume.Get, p.store,
 				buildVolumePreload, true,
-				raftcmdpb.CacheTouchType_CACHE_TOUCH_VOLUMES, nil,
-				p.bloomFilter(dal.AttributePrefixVolume),
+				dal.AttributeCodeVolume, nil,
+				p.bloomFilter(dal.AttributeCodeVolume),
 				p.logger, "volumes",
 			)
 			results[i].resolve = r
@@ -312,8 +312,8 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.cache.IdempotencyKeys, p.loaders.IdempotencyKeys,
 				p.attrs.IdempotencyKeys.Get, p.store,
 				buildIdempotencyKeyPreload, false,
-				raftcmdpb.CacheTouchType_CACHE_TOUCH_IDEMPOTENCY_KEYS, nil,
-				p.bloomFilter(dal.AttributePrefixIdempotency),
+				dal.AttributeCodeIdempotency, nil,
+				p.bloomFilter(dal.AttributeCodeIdempotency),
 				p.logger, "idempotency_keys",
 			)
 			results[i].resolve = r
@@ -329,8 +329,8 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.cache.References, p.loaders.References,
 				p.attrs.References.Get, p.store,
 				buildReferencePreload, false,
-				raftcmdpb.CacheTouchType_CACHE_TOUCH_REFERENCES, nil,
-				p.bloomFilter(dal.AttributePrefixReference),
+				dal.AttributeCodeReference, nil,
+				p.bloomFilter(dal.AttributeCodeReference),
 				p.logger, "references",
 			)
 			results[i].resolve = r
@@ -346,8 +346,8 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.cache.SinkConfigs, p.loaders.SinkConfigs,
 				p.attrs.SinkConfig.Get, p.store,
 				buildSinkConfigPreload, false,
-				raftcmdpb.CacheTouchType_CACHE_TOUCH_SINK_CONFIGS, nil,
-				p.bloomFilter(dal.AttributePrefixSinkConfig),
+				dal.AttributeCodeSinkConfig, nil,
+				p.bloomFilter(dal.AttributeCodeSinkConfig),
 				p.logger, "sink_configs",
 			)
 			results[i].resolve = r
@@ -363,8 +363,8 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.cache.NumscriptVersions, p.loaders.NumscriptVersions,
 				p.attrs.NumscriptVersion.Get, p.store,
 				buildNumscriptVersionPreload, true,
-				raftcmdpb.CacheTouchType_CACHE_TOUCH_NUMSCRIPT_VERSIONS, nil,
-				p.bloomFilter(dal.AttributePrefixNumscriptVersion),
+				dal.AttributeCodeNumscriptVersion, nil,
+				p.bloomFilter(dal.AttributeCodeNumscriptVersion),
 				p.logger, "numscript_versions",
 			)
 			results[i].resolve = r
@@ -380,8 +380,8 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.cache.NumscriptContents, p.loaders.NumscriptContents,
 				p.attrs.NumscriptContent.Get, p.store,
 				buildNumscriptContentPreload, true,
-				raftcmdpb.CacheTouchType_CACHE_TOUCH_NUMSCRIPT_CONTENTS, nil,
-				p.bloomFilter(dal.AttributePrefixNumscriptContent),
+				dal.AttributeCodeNumscriptContent, nil,
+				p.bloomFilter(dal.AttributeCodeNumscriptContent),
 				p.logger, "numscript_contents",
 			)
 			results[i].resolve = r
@@ -397,8 +397,8 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.cache.Transactions, p.loaders.Transactions,
 				p.attrs.Transaction.Get, p.store,
 				buildTransactionStatePreload, false,
-				raftcmdpb.CacheTouchType_CACHE_TOUCH_TRANSACTIONS, nil,
-				p.bloomFilter(dal.AttributePrefixTransaction),
+				dal.AttributeCodeTransaction, nil,
+				p.bloomFilter(dal.AttributeCodeTransaction),
 				p.logger, "transactions",
 			)
 			results[i].resolve = r
@@ -414,8 +414,8 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.cache.AccountMetadata, p.loaders.AccountMetadata,
 				p.attrs.Metadata.Get, p.store,
 				buildMetadataPreload, false,
-				raftcmdpb.CacheTouchType_CACHE_TOUCH_ACCOUNT_METADATA, nil,
-				p.bloomFilter(dal.AttributePrefixMetadata),
+				dal.AttributeCodeMetadata, nil,
+				p.bloomFilter(dal.AttributeCodeMetadata),
 				p.logger, "metadata",
 			)
 			results[i].resolve = r

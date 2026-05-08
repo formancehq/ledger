@@ -94,9 +94,9 @@ func (it *CompactAccountIterator) Next() (analysis.CompactAccount, error) {
 		var sepByte byte
 
 		switch attrType {
-		case dal.AttributePrefixVolume:
+		case dal.AttributeCodeVolume:
 			sepByte = dal.CanonicalKeySepVolume
-		case dal.AttributePrefixMetadata:
+		case dal.AttributeCodeMetadata:
 			sepByte = dal.CanonicalKeySepMetadata
 		default:
 			it.iter.Next()
@@ -174,12 +174,12 @@ func (it *CompactAccountIterator) addEntry(canonical []byte, nameBytes []byte, a
 	it.lastCanonical = append(it.lastCanonical[:0], canonical...)
 
 	switch attrType {
-	case dal.AttributePrefixVolume:
+	case dal.AttributeCodeVolume:
 		// nameBytes is [asset_base][precision_byte] — last byte is always precision.
 		if len(nameBytes) >= 2 {
 			it.assets = append(it.assets, domain.FormatAsset(string(nameBytes[:len(nameBytes)-1]), nameBytes[len(nameBytes)-1]))
 		}
-	case dal.AttributePrefixMetadata:
+	case dal.AttributeCodeMetadata:
 		it.metadataKeys = append(it.metadataKeys, string(nameBytes))
 	}
 }

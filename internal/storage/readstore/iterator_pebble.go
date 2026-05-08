@@ -407,7 +407,7 @@ type PebbleTxIterator struct {
 
 // NewPebbleTxIterator creates an iterator over all transactions in a ledger.
 func NewPebbleTxIterator(reader dal.PebbleReader, ledger string) (*PebbleTxIterator, error) {
-	prefix := txAttributePrefix(ledger)
+	prefix := txAttributeCode(ledger)
 	upperBound := IncrementBytes(prefix)
 
 	iter, err := reader.NewIter(&pebble.IterOptions{
@@ -535,7 +535,7 @@ type PebbleReverseTxIterator struct {
 
 // NewPebbleReverseTxIterator creates a reverse transaction iterator.
 func NewPebbleReverseTxIterator(reader dal.PebbleReader, ledger string) (*PebbleReverseTxIterator, error) {
-	prefix := txAttributePrefix(ledger)
+	prefix := txAttributeCode(ledger)
 	upperBound := IncrementBytes(prefix)
 
 	iter, err := reader.NewIter(&pebble.IterOptions{
@@ -704,7 +704,7 @@ type PebbleTxRangeIterator struct {
 
 // NewPebbleTxRangeIterator creates a bounded transaction iterator for range queries.
 func NewPebbleTxRangeIterator(reader dal.PebbleReader, ledger string, lower, upper []byte) (*PebbleTxRangeIterator, error) {
-	prefix := txAttributePrefix(ledger)
+	prefix := txAttributeCode(ledger)
 
 	lowerBound := make([]byte, len(prefix)+len(lower))
 	copy(lowerBound, prefix)
@@ -841,10 +841,10 @@ func (it *PebbleTxRangeIterator) extractTxID(key []byte) []byte {
 
 // --- transaction prefix helper ---
 
-// txAttributePrefix builds the Pebble key prefix for scanning transactions
+// txAttributeCode builds the Pebble key prefix for scanning transactions
 // in a ledger within the attributes zone.
 // Format: [0xF1][ledger\x00\x02].
-func txAttributePrefix(ledger string) []byte {
+func txAttributeCode(ledger string) []byte {
 	prefix := make([]byte, 1+len(ledger)+1+1)
 	prefix[0] = dal.KeyPrefixAttributes
 	copy(prefix[1:], ledger)

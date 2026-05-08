@@ -466,8 +466,8 @@ func TestCacheSnapshotter_RestorePreRotation(t *testing.T) {
 	require.NoError(t, err)
 
 	batch := dataStore.NewBatch()
-	require.NoError(t, writeCacheRaw(batch, genByte, dal.AttributePrefixBoundary, boundaryU128, 11, boundaryBytes))
-	require.NoError(t, writeCacheRaw(batch, genByte, dal.AttributePrefixVolume, volU128, 22, volBytes))
+	require.NoError(t, writeCacheRaw(batch, genByte, dal.AttributeCodeBoundary, boundaryU128, 11, boundaryBytes))
+	require.NoError(t, writeCacheRaw(batch, genByte, dal.AttributeCodeVolume, volU128, 22, volBytes))
 	require.NoError(t, batch.Commit())
 
 	// Sanity: no meta keys written.

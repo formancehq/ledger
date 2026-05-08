@@ -147,25 +147,25 @@ type FilterSet struct {
 // FilterForAttrType returns the bloom filter for a given attribute type prefix byte.
 func (fs *FilterSet) FilterForAttrType(attrType byte) *Filter {
 	switch attrType {
-	case dal.AttributePrefixVolume:
+	case dal.AttributeCodeVolume:
 		return fs.Volume
-	case dal.AttributePrefixMetadata:
+	case dal.AttributeCodeMetadata:
 		return fs.Metadata
-	case dal.AttributePrefixIdempotency:
+	case dal.AttributeCodeIdempotency:
 		return fs.Idempotency
-	case dal.AttributePrefixReference:
+	case dal.AttributeCodeReference:
 		return fs.Reference
-	case dal.AttributePrefixLedger:
+	case dal.AttributeCodeLedger:
 		return fs.Ledger
-	case dal.AttributePrefixBoundary:
+	case dal.AttributeCodeBoundary:
 		return fs.Boundary
-	case dal.AttributePrefixTransaction:
+	case dal.AttributeCodeTransaction:
 		return fs.Transaction
-	case dal.AttributePrefixSinkConfig:
+	case dal.AttributeCodeSinkConfig:
 		return fs.SinkConfig
-	case dal.AttributePrefixNumscriptVersion:
+	case dal.AttributeCodeNumscriptVersion:
 		return fs.NumscriptVersion
-	case dal.AttributePrefixNumscriptContent:
+	case dal.AttributeCodeNumscriptContent:
 		return fs.NumscriptContent
 	default:
 		return nil

@@ -174,16 +174,16 @@ var (
 	KeyPrefixAttributes byte = 0xF1
 
 	// Attribute type prefixes used within the attributes zone and cache snapshot zone.
-	AttributePrefixVolume           = byte('V')
-	AttributePrefixMetadata         = byte('M')
-	AttributePrefixIdempotency      = byte('I')
-	AttributePrefixReference        = byte('R')
-	AttributePrefixLedger           = byte('L')
-	AttributePrefixBoundary         = byte('B')
-	AttributePrefixTransaction      = byte('T')
-	AttributePrefixSinkConfig       = byte('S')
-	AttributePrefixNumscriptVersion = byte('N')
-	AttributePrefixNumscriptContent = byte('C')
+	AttributeCodeVolume           = byte('V')
+	AttributeCodeMetadata         = byte('M')
+	AttributeCodeIdempotency      = byte('I')
+	AttributeCodeReference        = byte('R')
+	AttributeCodeLedger           = byte('L')
+	AttributeCodeBoundary         = byte('B')
+	AttributeCodeTransaction      = byte('T')
+	AttributeCodeSinkConfig       = byte('S')
+	AttributeCodeNumscriptVersion = byte('N')
+	AttributeCodeNumscriptContent = byte('C')
 
 	// --- Global system zone [0xF2, 0xFF] ---.
 
@@ -203,11 +203,11 @@ var (
 )
 
 // Cache snapshot sub-prefixes within the 0xFF zone.
-// The type byte reuses AttributePrefix* constants so there is a single set
+// The type byte reuses AttributeCode* constants so there is a single set
 // of attribute type identifiers across the attributes zone and the cache zone.
 // Key format:
 //
-//	[0xFF][gen: 0x00|0x01][AttributePrefix*][16-byte U128 key] → proto value (attribute entry)
+//	[0xFF][gen: 0x00|0x01][AttributeCode*][16-byte U128 key] → proto value (attribute entry)
 //	[0xFF][gen: 0x00|0x01][0x00]                               → CacheGenerationMeta (baseIndex)
 //	[0xFF][0xFF]                                               → CacheSnapshotMeta (currentGeneration)
 const (

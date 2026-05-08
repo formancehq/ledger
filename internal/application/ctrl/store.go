@@ -184,11 +184,11 @@ func scanAccount(
 		}
 
 		switch attrType {
-		case dal.AttributePrefixVolume:
+		case dal.AttributeCodeVolume:
 			if _, err := volAcc.Feed(key, valueBytes); err != nil {
 				return nil, fmt.Errorf("feeding volume: %w", err)
 			}
-		case dal.AttributePrefixMetadata:
+		case dal.AttributeCodeMetadata:
 			if _, err := metaAcc.Feed(key, valueBytes); err != nil {
 				return nil, fmt.Errorf("feeding metadata: %w", err)
 			}

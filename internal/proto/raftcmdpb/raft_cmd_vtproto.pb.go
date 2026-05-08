@@ -1833,7 +1833,7 @@ func (m *CacheTouch) CloneVT() *CacheTouch {
 		return (*CacheTouch)(nil)
 	}
 	r := CacheTouchFromVTPool()
-	r.Type = m.Type
+	r.AttrType = m.AttrType
 	if rhs := m.Id; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
@@ -5628,7 +5628,7 @@ func (this *CacheTouch) EqualVT(that *CacheTouch) bool {
 	if string(this.Id) != string(that.Id) {
 		return false
 	}
-	if this.Type != that.Type {
+	if this.AttrType != that.AttrType {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -10992,8 +10992,8 @@ func (m *CacheTouch) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Type != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Type))
+	if m.AttrType != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.AttrType))
 		i--
 		dAtA[i] = 0x10
 	}
@@ -14607,8 +14607,8 @@ func (m *CacheTouch) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.Type != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Type))
+	if m.AttrType != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.AttrType))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -25343,9 +25343,9 @@ func (m *CacheTouch) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Type", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field AttrType", wireType)
 			}
-			m.Type = 0
+			m.AttrType = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -25355,7 +25355,7 @@ func (m *CacheTouch) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Type |= CacheTouchType(b&0x7F) << shift
+				m.AttrType |= uint32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

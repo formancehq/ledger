@@ -16,6 +16,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/kv"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // u128Hash extracts the low 64 bits of a U128 for shard selection.
@@ -240,8 +241,8 @@ type Cache struct {
 	caches []CacheOps
 	// cacheNames holds the metric label for each cache, parallel to caches.
 	cacheNames []string
-	// touchMap maps CacheTouchType enum values to their cache for Touch dispatch.
-	touchMap map[raftcmdpb.CacheTouchType]CacheOps
+	// touchMap maps attribute code bytes to their cache for Touch dispatch.
+	touchMap map[byte]CacheOps
 
 	// currentGeneration is accessed atomically from IsGuaranteedInCache (hot path)
 	// and written under mu by rotateLocked/Reset.
@@ -389,10 +390,10 @@ func (c *Cache) recordGeneration(gen int64) {
 }
 
 // TouchByType promotes a key from Gen1 to Gen0 for the cache identified by the
-// given CacheTouchType. This is the unified dispatch point used by the FSM
+// given attribute code byte. This is the unified dispatch point used by the FSM
 // Preload path instead of a per-type switch.
-func (c *Cache) TouchByType(typ raftcmdpb.CacheTouchType, id attributes.U128) {
-	if tc, ok := c.touchMap[typ]; ok {
+func (c *Cache) TouchByType(attrType byte, id attributes.U128) {
+	if tc, ok := c.touchMap[attrType]; ok {
 		tc.Touch(id)
 	}
 }
@@ -447,18 +448,18 @@ func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
 		"numscript_contents",
 	}
 
-	// Register touch dispatch map for CacheTouchType -> cache.
-	ret.touchMap = map[raftcmdpb.CacheTouchType]CacheOps{
-		raftcmdpb.CacheTouchType_CACHE_TOUCH_VOLUMES:            ret.Volumes,
-		raftcmdpb.CacheTouchType_CACHE_TOUCH_IDEMPOTENCY_KEYS:   ret.IdempotencyKeys,
-		raftcmdpb.CacheTouchType_CACHE_TOUCH_REFERENCES:         ret.References,
-		raftcmdpb.CacheTouchType_CACHE_TOUCH_LEDGERS:            ret.Ledgers,
-		raftcmdpb.CacheTouchType_CACHE_TOUCH_BOUNDARIES:         ret.Boundaries,
-		raftcmdpb.CacheTouchType_CACHE_TOUCH_SINK_CONFIGS:       ret.SinkConfigs,
-		raftcmdpb.CacheTouchType_CACHE_TOUCH_ACCOUNT_METADATA:   ret.AccountMetadata,
-		raftcmdpb.CacheTouchType_CACHE_TOUCH_NUMSCRIPT_VERSIONS: ret.NumscriptVersions,
-		raftcmdpb.CacheTouchType_CACHE_TOUCH_TRANSACTIONS:       ret.Transactions,
-		raftcmdpb.CacheTouchType_CACHE_TOUCH_NUMSCRIPT_CONTENTS: ret.NumscriptContents,
+	// Register touch dispatch map for attribute code byte -> cache.
+	ret.touchMap = map[byte]CacheOps{
+		dal.AttributeCodeVolume:           ret.Volumes,
+		dal.AttributeCodeIdempotency:      ret.IdempotencyKeys,
+		dal.AttributeCodeReference:        ret.References,
+		dal.AttributeCodeLedger:           ret.Ledgers,
+		dal.AttributeCodeBoundary:         ret.Boundaries,
+		dal.AttributeCodeSinkConfig:       ret.SinkConfigs,
+		dal.AttributeCodeMetadata:         ret.AccountMetadata,
+		dal.AttributeCodeNumscriptVersion: ret.NumscriptVersions,
+		dal.AttributeCodeTransaction:      ret.Transactions,
+		dal.AttributeCodeNumscriptContent: ret.NumscriptContents,
 	}
 
 	err := ret.initMetrics(m)
