@@ -1,7 +1,6 @@
 package state
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/holiman/uint256"
@@ -14,7 +13,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/bloom"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
@@ -97,8 +95,6 @@ type Buffered struct {
 	pendingMetadataConvertRequests       []MetadataConvertRequest
 	pendingAccountMigrateRequests        []AccountMigrateRequest
 
-	// Pending prepared query changes (ledger/name -> query or nil for deletion)
-	pendingPreparedQueries map[domain.PreparedQueryKey]*commonpb.PreparedQuery
 	// pendingLedgerDeletions holds ledger names scheduled for data cleanup during Merge.
 	pendingLedgerDeletions []string
 
@@ -357,18 +353,9 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 		return err
 	}
 
-	for key, pq := range b.pendingPreparedQueries {
-		if pq != nil {
-			err := SavePreparedQuery(batch, pq)
-			if err != nil {
-				return fmt.Errorf("saving prepared query %s/%s: %w", key.Ledger, key.Name, err)
-			}
-		} else {
-			err := DeletePreparedQuery(batch, key.Ledger, key.Name)
-			if err != nil {
-				return fmt.Errorf("deleting prepared query %s/%s: %w", key.Ledger, key.Name, err)
-			}
-		}
+	// Process PreparedQuery updates
+	if _, _, err := mergeAndTrackBloom(b.Derived.PreparedQueries, b.attrs.PreparedQuery, batch, genByte, dal.AttributeCodePreparedQuery, &b.bloomUpdates.PreparedQueries, "prepared queries"); err != nil {
+		return err
 	}
 
 	for _, p := range b.changedPeriods {
@@ -975,28 +962,15 @@ func (b *Buffered) HasPurges() bool {
 }
 
 func (b *Buffered) GetPreparedQuery(ledger, name string) (*commonpb.PreparedQuery, error) {
-	key := domain.PreparedQueryKey{Ledger: ledger, Name: name}
-	if pq, ok := b.pendingPreparedQueries[key]; ok {
-		return pq, nil // nil means deleted
-	}
-	// todo: remove from the hotpath!!!
-	return query.ReadPreparedQuery(context.Background(), b.fsm.dataStore, ledger, name)
+	return b.Derived.PreparedQueries.Get(domain.PreparedQueryKey{Ledger: ledger, Name: name})
 }
 
 func (b *Buffered) PutPreparedQuery(pq *commonpb.PreparedQuery) {
-	if b.pendingPreparedQueries == nil {
-		b.pendingPreparedQueries = make(map[domain.PreparedQueryKey]*commonpb.PreparedQuery)
-	}
-
-	b.pendingPreparedQueries[domain.PreparedQueryKey{Ledger: pq.GetLedger(), Name: pq.GetName()}] = pq
+	b.Derived.PreparedQueries.Put(domain.PreparedQueryKey{Ledger: pq.GetLedger(), Name: pq.GetName()}, pq)
 }
 
 func (b *Buffered) DeletePreparedQuery(ledger, name string) {
-	if b.pendingPreparedQueries == nil {
-		b.pendingPreparedQueries = make(map[domain.PreparedQueryKey]*commonpb.PreparedQuery)
-	}
-
-	b.pendingPreparedQueries[domain.PreparedQueryKey{Ledger: ledger, Name: name}] = nil
+	b.Derived.PreparedQueries.Delete(domain.PreparedQueryKey{Ledger: ledger, Name: name})
 }
 
 // Numscript library operations

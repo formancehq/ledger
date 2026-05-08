@@ -424,16 +424,6 @@ func DeleteLedgerData(b *dal.Batch, ledgerName string) error {
 		return fmt.Errorf("deleting ledger attributes for %q: %w", ledgerName, err)
 	}
 
-	// Range delete prepared queries: [0xE0][ledger\x00] -> [0xE0][ledger\x01]
-	for _, prefix := range []byte{dal.KeyPrefixPreparedQuery} {
-		start := append([]byte{prefix}, ledgerPrefix...)
-		end := append([]byte{prefix}, ledgerPrefixUpper...)
-
-		if err := b.DeleteRange(start, end, nil); err != nil {
-			return fmt.Errorf("deleting prefix 0x%02x for ledger %q: %w", prefix, ledgerName, err)
-		}
-	}
-
 	// Point deletes for mirror keys (keyed by [prefix][ledgerName], no null separator).
 	for _, prefix := range []byte{dal.KeyPrefixMirrorSourceHead, dal.KeyPrefixMirrorCursor, dal.KeyPrefixMirrorStatus} {
 		key := append([]byte{prefix}, ledgerName...)

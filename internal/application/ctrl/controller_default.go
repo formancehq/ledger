@@ -1241,7 +1241,7 @@ func (ctrl *DefaultController) ListSigningKeys(ctx context.Context) (dal.Cursor[
 
 // ListPreparedQueries returns all prepared queries for a ledger.
 func (ctrl *DefaultController) ListPreparedQueries(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error) {
-	return query.ReadPreparedQueries(ctx, ctrl.store, ledger)
+	return query.ReadPreparedQueries(ctx, ctrl.attrs.PreparedQuery, ctrl.store, ledger)
 }
 
 // entityEnricher returns an EntityEnricher that uses the controller's attributes
@@ -1261,7 +1261,7 @@ func (ctrl *DefaultController) entityEnricher() *query.EntityEnricher {
 func (ctrl *DefaultController) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
 	profile := query.ProfileFromContext(ctx)
 
-	return query.Execute(ctx, ctrl.readStore, ctrl.store, ctrl.attrs.Volume, req, profile, ctrl.entityEnricher())
+	return query.Execute(ctx, ctrl.readStore, ctrl.store, ctrl.attrs.Volume, ctrl.attrs.PreparedQuery, req, profile, ctrl.entityEnricher())
 }
 
 // GetNumscript returns a numscript by ledger, name and optional version ("" = latest).

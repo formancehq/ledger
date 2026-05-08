@@ -236,7 +236,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 	}
 
 	// Each goroutine writes to a distinct results[slot].
-	const maxTypes = 11
+	const maxTypes = 12
 	results := make([]buildResult, maxTypes)
 
 	var wg sync.WaitGroup
@@ -420,6 +420,23 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 			)
 			results[i].resolve = r
 			results[i].loader = p.loaders.AccountMetadata
+		})
+	}
+
+	if len(needs.PreparedQueries) > 0 {
+		launch(func(i int) {
+			var r *resolveResult
+			r, results[i].err = resolveAttributePreload(
+				needs.PreparedQueries, nextIndex, boundary,
+				p.cache.PreparedQueries, p.loaders.PreparedQueries,
+				p.attrs.PreparedQuery.Get, p.store,
+				buildPreparedQueryPreload, true,
+				dal.AttributeCodePreparedQuery, nil,
+				p.bloomFilter(dal.AttributeCodePreparedQuery),
+				p.logger, "prepared_queries",
+			)
+			results[i].resolve = r
+			results[i].loader = p.loaders.PreparedQueries
 		})
 	}
 

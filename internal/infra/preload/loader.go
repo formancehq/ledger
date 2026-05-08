@@ -162,6 +162,7 @@ type Loaders struct {
 	NumscriptVersions *AttributeLoader[*commonpb.NumscriptVersionValue]
 	Transactions      *AttributeLoader[*commonpb.TransactionState]
 	NumscriptContents *AttributeLoader[*commonpb.NumscriptInfo]
+	PreparedQueries   *AttributeLoader[*commonpb.PreparedQuery]
 }
 
 // NewLoaders creates a new Loaders instance with all attribute loaders initialized.
@@ -177,6 +178,7 @@ func NewLoaders() *Loaders {
 		NumscriptVersions: NewAttributeLoader[*commonpb.NumscriptVersionValue](),
 		Transactions:      NewAttributeLoader[*commonpb.TransactionState](),
 		NumscriptContents: NewAttributeLoader[*commonpb.NumscriptInfo](),
+		PreparedQueries:   NewAttributeLoader[*commonpb.PreparedQuery](),
 	}
 }
 

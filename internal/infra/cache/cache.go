@@ -233,6 +233,7 @@ type Cache struct {
 	SinkConfigs         *AttributeCache[*commonpb.SinkConfig]
 	NumscriptVersions   *AttributeCache[*commonpb.NumscriptVersionValue]
 	NumscriptContents   *AttributeCache[*commonpb.NumscriptInfo]
+	PreparedQueries     *AttributeCache[*commonpb.PreparedQuery]
 	BaseIndex           DualGen[uint64]
 	GenerationThreshold uint64
 
@@ -433,19 +434,20 @@ func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
 	ret.SinkConfigs = newAttributeCache[*commonpb.SinkConfig](ret, "sink_configs")
 	ret.NumscriptVersions = newAttributeCache[*commonpb.NumscriptVersionValue](ret, "numscript_versions")
 	ret.NumscriptContents = newAttributeCache[*commonpb.NumscriptInfo](ret, "numscript_contents")
+	ret.PreparedQueries = newAttributeCache[*commonpb.PreparedQuery](ret, "prepared_queries")
 
 	// Register all caches for iteration in Rotate/Reset/metrics.
 	ret.caches = []CacheOps{
 		ret.Volumes, ret.AccountMetadata, ret.IdempotencyKeys,
 		ret.References, ret.Ledgers, ret.Boundaries,
 		ret.Transactions, ret.SinkConfigs, ret.NumscriptVersions,
-		ret.NumscriptContents,
+		ret.NumscriptContents, ret.PreparedQueries,
 	}
 	ret.cacheNames = []string{
 		"volumes", "account_metadata", "idempotency_keys",
 		"references", "ledgers", "boundaries",
 		"transactions", "sink_configs", "numscript_versions",
-		"numscript_contents",
+		"numscript_contents", "prepared_queries",
 	}
 
 	// Register touch dispatch map for attribute code byte -> cache.
@@ -460,6 +462,7 @@ func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
 		dal.AttributeCodeNumscriptVersion: ret.NumscriptVersions,
 		dal.AttributeCodeTransaction:      ret.Transactions,
 		dal.AttributeCodeNumscriptContent: ret.NumscriptContents,
+		dal.AttributeCodePreparedQuery:    ret.PreparedQueries,
 	}
 
 	err := ret.initMetrics(m)

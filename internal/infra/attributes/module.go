@@ -21,6 +21,7 @@ type Attributes struct {
 	SinkConfig       *Attribute[*commonpb.SinkConfig]
 	NumscriptVersion *Attribute[*commonpb.NumscriptVersionValue]
 	NumscriptContent *Attribute[*commonpb.NumscriptInfo]
+	PreparedQuery    *Attribute[*commonpb.PreparedQuery]
 }
 
 // New creates a new Attributes instance with all attribute types initialized.
@@ -36,6 +37,7 @@ func New() *Attributes {
 		SinkConfig:       NewSinkConfigAttribute(),
 		NumscriptVersion: NewNumscriptVersionAttribute(),
 		NumscriptContent: NewNumscriptContentAttribute(),
+		PreparedQuery:    NewPreparedQueryAttribute(),
 	}
 }
 
@@ -125,6 +127,15 @@ func NewNumscriptContentAttribute() *Attribute[*commonpb.NumscriptInfo] {
 	return &Attribute[*commonpb.NumscriptInfo]{
 		prefix:   dal.AttributeCodeNumscriptContent,
 		newValue: func() *commonpb.NumscriptInfo { return &commonpb.NumscriptInfo{} },
+		keyBuf:   make([]byte, 128),
+	}
+}
+
+// NewPreparedQueryAttribute creates a new PreparedQuery attribute for storing prepared queries.
+func NewPreparedQueryAttribute() *Attribute[*commonpb.PreparedQuery] {
+	return &Attribute[*commonpb.PreparedQuery]{
+		prefix:   dal.AttributeCodePreparedQuery,
+		newValue: func() *commonpb.PreparedQuery { return &commonpb.PreparedQuery{} },
 		keyBuf:   make([]byte, 128),
 	}
 }

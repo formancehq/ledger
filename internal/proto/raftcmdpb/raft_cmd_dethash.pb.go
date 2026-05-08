@@ -1684,6 +1684,14 @@ func (m *Preload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i--
 			dAtA[i] = 0x5a
 		}
+	case *Preload_PreparedQuery:
+		if v.PreparedQuery != nil {
+			size, _ := v.PreparedQuery.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x62
+		}
 	}
 	return len(dAtA) - i, nil
 }
@@ -1813,6 +1821,17 @@ func (m *PreloadTransactionState) MarshalDeterministicVT(dAtA []byte) []byte {
 }
 
 func (m *PreloadNumscriptContent) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *PreloadPreparedQuery) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}

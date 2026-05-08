@@ -203,6 +203,7 @@ func NewCacheSnapshotter(logger logging.Logger, dataStore *dal.Store, registry *
 	sinks := newProtoSnapshotSlot(dal.AttributeCodeSinkConfig, c.SinkConfigs, func() *commonpb.SinkConfig { return &commonpb.SinkConfig{} })
 	numscriptVersions := newProtoSnapshotSlot(dal.AttributeCodeNumscriptVersion, c.NumscriptVersions, func() *commonpb.NumscriptVersionValue { return &commonpb.NumscriptVersionValue{} })
 	numscriptContents := newProtoSnapshotSlot(dal.AttributeCodeNumscriptContent, c.NumscriptContents, func() *commonpb.NumscriptInfo { return &commonpb.NumscriptInfo{} })
+	preparedQueries := newProtoSnapshotSlot(dal.AttributeCodePreparedQuery, c.PreparedQueries, func() *commonpb.PreparedQuery { return &commonpb.PreparedQuery{} })
 
 	return &CacheSnapshotter{
 		logger:       logger,
@@ -212,6 +213,7 @@ func NewCacheSnapshotter(logger logging.Logger, dataStore *dal.Store, registry *
 		slots: []cacheSnapshotSlot{
 			volumes, metadata, ledgers, boundaries, references,
 			transactions, idempotency, sinks, numscriptVersions, numscriptContents,
+			preparedQueries,
 		},
 		touchSlots: map[byte]cacheSnapshotSlot{
 			dal.AttributeCodeVolume:           volumes,
@@ -224,6 +226,7 @@ func NewCacheSnapshotter(logger logging.Logger, dataStore *dal.Store, registry *
 			dal.AttributeCodeSinkConfig:       sinks,
 			dal.AttributeCodeNumscriptVersion: numscriptVersions,
 			dal.AttributeCodeNumscriptContent: numscriptContents,
+			dal.AttributeCodePreparedQuery:    preparedQueries,
 		},
 	}
 }
@@ -282,6 +285,8 @@ func extractPreload(p *raftcmdpb.Preload) (byte, *raftcmdpb.AttributeID, any) {
 		return dal.AttributeCodeTransaction, v.TransactionState.GetId(), v.TransactionState.GetValue()
 	case *raftcmdpb.Preload_NumscriptContent:
 		return dal.AttributeCodeNumscriptContent, v.NumscriptContent.GetId(), v.NumscriptContent.GetValue()
+	case *raftcmdpb.Preload_PreparedQuery:
+		return dal.AttributeCodePreparedQuery, v.PreparedQuery.GetId(), v.PreparedQuery.GetValue()
 	}
 
 	return 0, nil, nil

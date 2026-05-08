@@ -819,6 +819,12 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 					}] = struct{}{}
 				}
 			}
+		case *raftcmdpb.Order_CreatePreparedQuery:
+			p.PreparedQueries[domain.PreparedQueryKey{Ledger: orderType.CreatePreparedQuery.GetQuery().GetLedger(), Name: orderType.CreatePreparedQuery.GetQuery().GetName()}] = struct{}{}
+		case *raftcmdpb.Order_UpdatePreparedQuery:
+			p.PreparedQueries[domain.PreparedQueryKey{Ledger: orderType.UpdatePreparedQuery.GetLedger(), Name: orderType.UpdatePreparedQuery.GetName()}] = struct{}{}
+		case *raftcmdpb.Order_DeletePreparedQuery:
+			p.PreparedQueries[domain.PreparedQueryKey{Ledger: orderType.DeletePreparedQuery.GetLedger(), Name: orderType.DeletePreparedQuery.GetName()}] = struct{}{}
 		case *raftcmdpb.Order_PromoteLedger:
 			p.Ledgers[domain.LedgerKey{Name: orderType.PromoteLedger.GetLedger()}] = struct{}{}
 		case *raftcmdpb.Order_SaveNumscript:

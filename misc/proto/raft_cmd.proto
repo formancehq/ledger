@@ -459,6 +459,7 @@ message Preload {
      PreloadNumscriptVersion numscript_version = 8;
      PreloadTransactionState transaction_state = 10;
      PreloadNumscriptContent numscript_content = 11;
+     PreloadPreparedQuery prepared_query = 12;
   }
 }
 
@@ -510,6 +511,11 @@ message PreloadTransactionState {
 message PreloadNumscriptContent {
   AttributeID id = 1;
   common.NumscriptInfo value = 2;
+}
+
+message PreloadPreparedQuery {
+  AttributeID id = 1;
+  common.PreparedQuery value = 2;
 }
 
 // ============================================================================

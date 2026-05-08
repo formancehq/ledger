@@ -184,6 +184,7 @@ var (
 	AttributeCodeSinkConfig       = byte('S')
 	AttributeCodeNumscriptVersion = byte('N')
 	AttributeCodeNumscriptContent = byte('C')
+	AttributeCodePreparedQuery    = byte('P')
 
 	// --- Global system zone [0xF2, 0xFF] ---.
 

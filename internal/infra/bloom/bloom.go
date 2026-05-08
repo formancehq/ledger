@@ -201,6 +201,7 @@ type BloomUpdates struct {
 	SinkConfigs       [][]byte
 	NumscriptVersions [][]byte
 	NumscriptContents [][]byte
+	PreparedQueries   [][]byte
 }
 
 // Reset clears all slices while preserving their backing arrays.
@@ -215,6 +216,7 @@ func (u *BloomUpdates) Reset() {
 	u.SinkConfigs = u.SinkConfigs[:0]
 	u.NumscriptVersions = u.NumscriptVersions[:0]
 	u.NumscriptContents = u.NumscriptContents[:0]
+	u.PreparedQueries = u.PreparedQueries[:0]
 }
 
 // AddCanonicalKeys hashes canonical keys and inserts them into the corresponding bloom filters.

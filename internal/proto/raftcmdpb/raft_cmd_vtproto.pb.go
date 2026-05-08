@@ -1959,6 +1959,15 @@ func (m *Preload_NumscriptContent) CloneVT() isPreload_Type {
 	return r
 }
 
+func (m *Preload_PreparedQuery) CloneVT() isPreload_Type {
+	if m == nil {
+		return (*Preload_PreparedQuery)(nil)
+	}
+	r := new(Preload_PreparedQuery)
+	r.PreparedQuery = m.PreparedQuery.CloneVT()
+	return r
+}
+
 func (m *PreloadVolume) CloneVT() *PreloadVolume {
 	if m == nil {
 		return (*PreloadVolume)(nil)
@@ -2136,6 +2145,24 @@ func (m *PreloadNumscriptContent) CloneVT() *PreloadNumscriptContent {
 }
 
 func (m *PreloadNumscriptContent) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *PreloadPreparedQuery) CloneVT() *PreloadPreparedQuery {
+	if m == nil {
+		return (*PreloadPreparedQuery)(nil)
+	}
+	r := new(PreloadPreparedQuery)
+	r.Id = m.Id.CloneVT()
+	r.Value = m.Value.CloneVT()
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *PreloadPreparedQuery) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -5917,6 +5944,31 @@ func (this *Preload_NumscriptContent) EqualVT(thatIface isPreload_Type) bool {
 	return true
 }
 
+func (this *Preload_PreparedQuery) EqualVT(thatIface isPreload_Type) bool {
+	that, ok := thatIface.(*Preload_PreparedQuery)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.PreparedQuery, that.PreparedQuery; p != q {
+		if p == nil {
+			p = &PreloadPreparedQuery{}
+		}
+		if q == nil {
+			q = &PreloadPreparedQuery{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
 func (this *PreloadVolume) EqualVT(that *PreloadVolume) bool {
 	if this == that {
 		return true
@@ -6132,6 +6184,28 @@ func (this *PreloadNumscriptContent) EqualVT(that *PreloadNumscriptContent) bool
 
 func (this *PreloadNumscriptContent) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*PreloadNumscriptContent)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *PreloadPreparedQuery) EqualVT(that *PreloadPreparedQuery) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if !this.Id.EqualVT(that.Id) {
+		return false
+	}
+	if !this.Value.EqualVT(that.Value) {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *PreloadPreparedQuery) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*PreloadPreparedQuery)
 	if !ok {
 		return false
 	}
@@ -11239,6 +11313,25 @@ func (m *Preload_NumscriptContent) MarshalToSizedBufferVT(dAtA []byte) (int, err
 	}
 	return len(dAtA) - i, nil
 }
+func (m *Preload_PreparedQuery) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Preload_PreparedQuery) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.PreparedQuery != nil {
+		size, err := m.PreparedQuery.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x62
+	}
+	return len(dAtA) - i, nil
+}
 func (m *PreloadVolume) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -11735,6 +11828,59 @@ func (m *PreloadNumscriptContent) MarshalToVT(dAtA []byte) (int, error) {
 }
 
 func (m *PreloadNumscriptContent) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Value != nil {
+		size, err := m.Value.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.Id != nil {
+		size, err := m.Id.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *PreloadPreparedQuery) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *PreloadPreparedQuery) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *PreloadPreparedQuery) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -14747,6 +14893,18 @@ func (m *Preload_NumscriptContent) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *Preload_PreparedQuery) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.PreparedQuery != nil {
+		l = m.PreparedQuery.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
 func (m *PreloadVolume) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -14910,6 +15068,24 @@ func (m *PreloadTransactionState) SizeVT() (n int) {
 }
 
 func (m *PreloadNumscriptContent) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Id != nil {
+		l = m.Id.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.Value != nil {
+		l = m.Value.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *PreloadPreparedQuery) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -25821,6 +25997,47 @@ func (m *Preload) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Preload_NumscriptContent{NumscriptContent: v}
 			}
 			iNdEx = postIndex
+		case 12:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PreparedQuery", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Type.(*Preload_PreparedQuery); ok {
+				if err := oneof.PreparedQuery.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &PreloadPreparedQuery{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Type = &Preload_PreparedQuery{PreparedQuery: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -27046,6 +27263,129 @@ func (m *PreloadNumscriptContent) UnmarshalVT(dAtA []byte) error {
 			}
 			if m.Value == nil {
 				m.Value = &commonpb.NumscriptInfo{}
+			}
+			if err := m.Value.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *PreloadPreparedQuery) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: PreloadPreparedQuery: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: PreloadPreparedQuery: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Id == nil {
+				m.Id = &AttributeID{}
+			}
+			if err := m.Id.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Value == nil {
+				m.Value = &commonpb.PreparedQuery{}
 			}
 			if err := m.Value.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err

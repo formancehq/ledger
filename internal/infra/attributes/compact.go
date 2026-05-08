@@ -99,6 +99,7 @@ func CompactAllForBackup(s *dal.Store) error {
 		dal.AttributeCodeSinkConfig:       newCompactor(attrs.SinkConfig, batch),
 		dal.AttributeCodeNumscriptVersion: newCompactor(attrs.NumscriptVersion, batch),
 		dal.AttributeCodeNumscriptContent: newCompactor(attrs.NumscriptContent, batch),
+		dal.AttributeCodePreparedQuery:    newCompactor(attrs.PreparedQuery, batch),
 	}
 
 	// Single scan over the entire attribute range

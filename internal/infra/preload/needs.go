@@ -18,6 +18,7 @@ type Needs struct {
 	SinkConfigs       map[domain.SinkConfigKey]struct{}
 	NumscriptVersions map[domain.NumscriptVersionKey]struct{}
 	NumscriptContents map[domain.NumscriptEntryKey]struct{}
+	PreparedQueries   map[domain.PreparedQueryKey]struct{}
 }
 
 // TotalKeys returns the total number of keys across all need types.
@@ -26,7 +27,7 @@ func (n *Needs) TotalKeys() int {
 		len(n.TransientVolumes) + len(n.IdempotencyKeys) + len(n.References) +
 		len(n.Metadata) + len(n.Transactions) +
 		len(n.SinkConfigs) + len(n.NumscriptVersions) +
-		len(n.NumscriptContents)
+		len(n.NumscriptContents) + len(n.PreparedQueries)
 }
 
 // NewNeeds creates a Needs with all maps initialized.
@@ -43,5 +44,6 @@ func NewNeeds() *Needs {
 		SinkConfigs:       make(map[domain.SinkConfigKey]struct{}),
 		NumscriptVersions: make(map[domain.NumscriptVersionKey]struct{}),
 		NumscriptContents: make(map[domain.NumscriptEntryKey]struct{}),
+		PreparedQueries:   make(map[domain.PreparedQueryKey]struct{}),
 	}
 }

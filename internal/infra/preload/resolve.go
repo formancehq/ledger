@@ -213,3 +213,7 @@ func buildTransactionStatePreload(id *raftcmdpb.AttributeID, value *commonpb.Tra
 func buildNumscriptContentPreload(id *raftcmdpb.AttributeID, value *commonpb.NumscriptInfo) *raftcmdpb.Preload {
 	return &raftcmdpb.Preload{Type: &raftcmdpb.Preload_NumscriptContent{NumscriptContent: &raftcmdpb.PreloadNumscriptContent{Id: id, Value: value}}}
 }
+
+func buildPreparedQueryPreload(id *raftcmdpb.AttributeID, value *commonpb.PreparedQuery) *raftcmdpb.Preload {
+	return &raftcmdpb.Preload{Type: &raftcmdpb.Preload_PreparedQuery{PreparedQuery: &raftcmdpb.PreloadPreparedQuery{Id: id, Value: value}}}
+}

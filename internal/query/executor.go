@@ -44,6 +44,7 @@ func Execute(
 	rs *readstore.Store,
 	pebbleStore *dal.Store,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
+	preparedQueryAttr *attributes.Attribute[*commonpb.PreparedQuery],
 	req *servicepb.ExecutePreparedQueryRequest,
 	profile *QueryProfile,
 	enricher *EntityEnricher,
@@ -56,7 +57,7 @@ func Execute(
 	defer span.End()
 
 	// Read the prepared query from Pebble
-	pq, err := ReadPreparedQuery(ctx, pebbleStore, req.GetLedger(), req.GetQueryName())
+	pq, err := ReadPreparedQuery(ctx, preparedQueryAttr, pebbleStore, req.GetLedger(), req.GetQueryName())
 	if err != nil {
 		return nil, fmt.Errorf("reading prepared query: %w", err)
 	}

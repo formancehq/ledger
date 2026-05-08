@@ -24,6 +24,7 @@ type DerivedRegistry struct {
 	NumscriptVersions *attributes.DerivedKeyStore[domain.NumscriptVersionKey, *commonpb.NumscriptVersionValue]
 	Transactions      *attributes.DerivedKeyStore[domain.TransactionKey, *commonpb.TransactionState]
 	NumscriptContents *attributes.DerivedKeyStore[domain.NumscriptEntryKey, *commonpb.NumscriptInfo]
+	PreparedQueries   *attributes.DerivedKeyStore[domain.PreparedQueryKey, *commonpb.PreparedQuery]
 
 	// PendingReversions holds transaction keys marked as reverted in the
 	// current proposal. These are flushed to the parent bitset on Merge.
@@ -47,6 +48,7 @@ func NewDerivedRegistry(reg *StateRegistry) *DerivedRegistry {
 		NumscriptVersions: attributes.NewDerivedKeyStore(reg.NumscriptVersions, (*commonpb.NumscriptVersionValue).CloneVT),
 		Transactions:      attributes.NewDerivedKeyStore(reg.Transactions, (*commonpb.TransactionState).CloneVT),
 		NumscriptContents: attributes.NewDerivedKeyStore(reg.NumscriptContents, (*commonpb.NumscriptInfo).CloneVT),
+		PreparedQueries:   attributes.NewDerivedKeyStore(reg.PreparedQueries, (*commonpb.PreparedQuery).CloneVT),
 		parentReversions:  reg.Reversions,
 	}
 }

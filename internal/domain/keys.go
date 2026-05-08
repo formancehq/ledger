@@ -270,6 +270,16 @@ type PreparedQueryKey struct {
 	Name   string
 }
 
+func (k PreparedQueryKey) Bytes() []byte {
+	ret := make([]byte, len(k.Ledger)+1+len(k.Name))
+	n := copy(ret, k.Ledger)
+	ret[n] = 0x00
+	n++
+	copy(ret[n:], k.Name)
+
+	return ret
+}
+
 // NumscriptVersionKey uniquely identifies a numscript by ledger and name for version tracking.
 type NumscriptVersionKey struct {
 	Ledger string
