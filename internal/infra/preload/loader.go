@@ -153,7 +153,6 @@ func (al *AttributeLoader[T]) Release(key attributes.U128) {
 // Loaders groups all attribute loaders by type.
 type Loaders struct {
 	Volumes           *AttributeLoader[*raftcmdpb.VolumePair]
-	IdempotencyKeys   *AttributeLoader[*commonpb.IdempotencyKeyValue]
 	References        *AttributeLoader[*commonpb.TransactionReferenceValue]
 	Ledgers           *AttributeLoader[*commonpb.LedgerInfo]
 	Boundaries        *AttributeLoader[*raftcmdpb.LedgerBoundaries]
@@ -169,7 +168,6 @@ type Loaders struct {
 func NewLoaders() *Loaders {
 	return &Loaders{
 		Volumes:           NewAttributeLoader[*raftcmdpb.VolumePair](),
-		IdempotencyKeys:   NewAttributeLoader[*commonpb.IdempotencyKeyValue](),
 		References:        NewAttributeLoader[*commonpb.TransactionReferenceValue](),
 		Ledgers:           NewAttributeLoader[*commonpb.LedgerInfo](),
 		Boundaries:        NewAttributeLoader[*raftcmdpb.LedgerBoundaries](),

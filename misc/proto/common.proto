@@ -800,6 +800,7 @@ message IdempotencyKeyValue {
   uint64 log_sequence = 1;
   bytes hash = 2;
   uint32 hash_version = 3;  // Hash algorithm version (0 = legacy = v1)
+  uint64 created_at = 4;    // HLC microseconds (from Raft entry timestamp)
 }
 
 // TransactionReferenceValue stores the transaction ID associated with a unique reference within a ledger.

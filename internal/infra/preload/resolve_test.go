@@ -10,45 +10,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
 
-func TestBuildIdempotencyKeyPreload_WithValue(t *testing.T) {
-	t.Parallel()
-
-	id := &raftcmdpb.AttributeID{
-		Id:  []byte{1, 2, 3},
-		Tag: 42,
-	}
-
-	value := &commonpb.IdempotencyKeyValue{
-		LogSequence: 5,
-		Hash:        []byte("test-hash"),
-	}
-
-	preload := buildIdempotencyKeyPreload(id, value)
-	require.NotNil(t, preload)
-
-	ik := preload.GetIdempotencyKey()
-	require.NotNil(t, ik)
-	assert.Equal(t, id, ik.GetId())
-	assert.Equal(t, uint64(5), ik.GetValue().GetLogSequence())
-	assert.Equal(t, []byte("test-hash"), ik.GetValue().GetHash())
-}
-
-func TestBuildIdempotencyKeyPreload_NilValue(t *testing.T) {
-	t.Parallel()
-
-	id := &raftcmdpb.AttributeID{
-		Id: []byte{1, 2, 3},
-	}
-
-	preload := buildIdempotencyKeyPreload(id, nil)
-	require.NotNil(t, preload)
-
-	ik := preload.GetIdempotencyKey()
-	require.NotNil(t, ik)
-	assert.Equal(t, uint64(0), ik.GetValue().GetLogSequence())
-	assert.Nil(t, ik.GetValue().GetHash())
-}
-
 func TestBuildReferencePreload_WithValue(t *testing.T) {
 	t.Parallel()
 

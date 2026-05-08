@@ -1394,6 +1394,13 @@ func (m *Proposal) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error)
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.IdempotencyEviction != nil {
+		size, _ := m.IdempotencyEviction.MarshalToSizedBufferVT(dAtA[:i])
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x42
+	}
 	if m.PredictedIndex != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PredictedIndex))
 		i--
@@ -1446,6 +1453,17 @@ func (m *Proposal) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error)
 		dAtA[i] = 0x8
 	}
 	return len(dAtA) - i, nil
+}
+
+func (m *IdempotencyEviction) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
 }
 
 func (m *MirrorSyncUpdate) MarshalDeterministicVT(dAtA []byte) []byte {
@@ -1904,15 +1922,6 @@ func (m *GenerationSnapshot) MarshalToSizedBufferDeterministicVT(dAtA []byte) (i
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if len(m.IdempotencyKeys) > 0 {
-		for iNdEx := len(m.IdempotencyKeys) - 1; iNdEx >= 0; iNdEx-- {
-			size, _ := m.IdempotencyKeys[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x4a
-		}
 	}
 	if len(m.Transactions) > 0 {
 		for iNdEx := len(m.Transactions) - 1; iNdEx >= 0; iNdEx-- {

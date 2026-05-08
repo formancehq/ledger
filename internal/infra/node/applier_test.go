@@ -98,7 +98,7 @@ func newTestApplierSetup(t *testing.T) *testApplierSetup {
 
 	fsm, err := state.NewMachine(
 		logger, pebbleStore, meter, nodeCache, nodeAttrs,
-		nil, state.NewSharedState(), noopNotifier{}, noopNotifier{}, noopNotifier{}, nil, 0, false,
+		nil, state.NewSharedState(), noopNotifier{}, noopNotifier{}, noopNotifier{}, nil, 0, false, 0,
 	)
 	require.NoError(t, err)
 

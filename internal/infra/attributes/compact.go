@@ -91,7 +91,6 @@ func CompactAllForBackup(s *dal.Store) error {
 	dispatch := map[byte]compactor{
 		dal.AttributeCodeVolume:           newCompactor(attrs.Volume, batch),
 		dal.AttributeCodeMetadata:         newCompactor(attrs.Metadata, batch),
-		dal.AttributeCodeIdempotency:      newCompactor(attrs.IdempotencyKeys, batch),
 		dal.AttributeCodeReference:        newCompactor(attrs.References, batch),
 		dal.AttributeCodeLedger:           newCompactor(attrs.Ledger, batch),
 		dal.AttributeCodeBoundary:         newCompactor(attrs.Boundary, batch),

@@ -391,6 +391,13 @@ message Proposal {
   // receives Unavailable so it can retry with fresh preloads.
   // A value of 0 means no prediction (e.g. barrier, mirror sync).
   uint64 predicted_index = 7;
+  IdempotencyEviction idempotency_eviction = 8;
+}
+
+// IdempotencyEviction is a deterministic cleanup command proposed by the leader.
+// All nodes apply it identically: entries with created_at <= cutoff_micros are removed.
+message IdempotencyEviction {
+  uint64 cutoff_micros = 1;
 }
 
 message MirrorSyncUpdate {
@@ -469,7 +476,7 @@ message PreloadVolume {
 }
 
 message PreloadIdempotencyKey {
-  AttributeID id = 1;
+  string key = 1;
   common.IdempotencyKeyValue value = 2;
 }
 
@@ -553,7 +560,7 @@ message GenerationSnapshot {
   repeated BoundaryAttributeEntry boundaries = 6;
   repeated TransactionReferenceAttributeEntry references = 7;
   repeated TransactionStateAttributeEntry transactions = 8;
-  repeated IdempotencyKeyAttributeEntry idempotency_keys = 9;
+  reserved 9; // was: idempotency_keys (moved to dedicated prefix 0x03)
 }
 
 // VolumeAttributeSnapshotEntry stores a merged Input+Output volume pair in cache snapshots.
@@ -593,7 +600,8 @@ message TransactionStateAttributeEntry {
   common.TransactionState state = 2;
 }
 
-// IdempotencyKeyAttributeEntry stores a single entry from KeyStore[*IdempotencyKeyValue]
+// Deprecated: IdempotencyKeyAttributeEntry is no longer used in snapshots.
+// Kept for wire compatibility with older nodes that may still send this message.
 message IdempotencyKeyAttributeEntry {
   AttributeID id = 1;
   common.IdempotencyKeyValue value = 2;

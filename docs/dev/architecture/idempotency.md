@@ -4,7 +4,7 @@
 
 Idempotency keys provide a mechanism to safely retry requests without risking duplicate operations. When a client includes an idempotency key with a request, the system guarantees that the operation will only be executed once, even if the request is sent multiple times.
 
-Idempotency keys are implemented as a system [attribute](./attributes.md), following the same storage and caching patterns as volumes, metadata, and reversions.
+Idempotency keys are stored under a dedicated Pebble prefix (`0x03`) with an in-memory bridge map for inter-proposal visibility. They are not part of the shared attribute/cache system.
 
 ## Key Characteristics
 
@@ -13,8 +13,9 @@ Idempotency keys are implemented as a system [attribute](./attributes.md), follo
 | **Scope** | System-level (not per-ledger) |
 | **Uniqueness** | Keys must be globally unique across all ledgers |
 | **Hash verification** | Content is hashed (BLAKE3) to detect conflicts |
-| **Persistence** | Stored in the generation-based cache and persisted to Pebble |
-| **Immutability** | Once set, idempotency keys are never modified |
+| **Persistence** | Stored under Pebble prefix `0x03` with a time index at `0x04` |
+| **TTL** | Configurable time-to-live (default: 24h, 0 = no expiration) |
+| **Eviction** | Deterministic cleanup via Raft `IdempotencyEviction` commands |
 
 ## How It Works
 
@@ -24,10 +25,12 @@ Idempotency keys are implemented as a system [attribute](./attributes.md), follo
 flowchart TD
     REQ[Request with Idempotency Key] --> CHECK{Key exists?}
     CHECK -->|No| PROCESS[Process request normally]
-    PROCESS --> STORE[Store key + hash + sequence]
+    PROCESS --> STORE[Store key + hash + sequence + created_at]
     STORE --> RETURN[Return response]
     
-    CHECK -->|Yes| HASH{Hash matches?}
+    CHECK -->|Yes| EXPIRED{TTL expired?}
+    EXPIRED -->|Yes| PROCESS
+    EXPIRED -->|No| HASH{Hash matches?}
     HASH -->|Yes| CACHED[Return cached response<br/>Reference to original log]
     HASH -->|No| CONFLICT[Return conflict error]
 ```
@@ -40,11 +43,13 @@ When processing a request with an idempotency key:
 2. **Storage**: The idempotency key maps to:
    - `LogSequence`: The global log sequence number of the original response
    - `Hash`: BLAKE3 hash of the request content
+   - `CreatedAt`: HLC microsecond timestamp from the Raft entry
 
 ```go
 type IdempotencyKeyValue struct {
     LogSequence uint64  // Global sequence number of the original log
     Hash        []byte  // BLAKE3 hash of the request content
+    CreatedAt   uint64  // HLC microseconds (from Raft entry timestamp)
 }
 ```
 
@@ -53,9 +58,77 @@ type IdempotencyKeyValue struct {
 | Scenario | Result |
 |----------|--------|
 | New idempotency key | Process normally, store key |
-| Same key + same content | Return reference to original log |
-| Same key + different content | Return `idempotency key conflict` error |
+| Same key + same content (within TTL) | Return reference to original log |
+| Same key + different content (within TTL) | Return `idempotency key conflict` error |
+| Same key (after TTL expiration) | Process normally (key treated as new) |
 | No idempotency key | Process normally, no idempotency tracking |
+
+## TTL and Eviction
+
+### Configuration
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--idempotency-ttl` | `24h` | Time-to-live for idempotency keys (0 = no expiration) |
+| `--idempotency-eviction-interval` | `60s` | How often the leader proposes eviction |
+
+The TTL is persisted in `PersistedConfig` to ensure all Raft nodes use identical TTL values (FSM determinism requirement). Changing the TTL after first boot requires `--unsafe-skip-config-validation`.
+
+### Eviction Mechanism
+
+Expired idempotency keys are cleaned up via a dedicated Raft command (`IdempotencyEviction`):
+
+1. The leader periodically computes `cutoff = now - TTL` and proposes an eviction
+2. All nodes apply the eviction deterministically: scan in-memory map + Pebble, delete entries with `created_at <= cutoff`
+3. The cutoff is embedded in the Raft proposal, so all nodes agree on exactly what to evict
+4. No race conditions: eviction is serialized with business proposals in the FSM
+
+### Memory Bounds
+
+The in-memory map grows between eviction commands and shrinks on each eviction:
+- With interval=60s and 1000 IK/s: ~60K entries x ~80B = ~5MB
+- With interval=60s and 10K IK/s: ~600K entries x ~80B = ~48MB
+
+## Storage Architecture
+
+### Pebble Layout
+
+```
+[0x03][key_hash 16 bytes]        -> IdempotencyKeyValue protobuf
+[0x04][created_at BE][key_hash]  -> empty (time index for eviction scan)
+```
+
+The key hash is a 16-byte BLAKE3 truncation of the idempotency key string.
+
+### In-Memory Bridge
+
+An in-memory map (`IdempotencyStore`) bridges state between consecutive proposals. A key written by proposal N must be visible to proposal N+1 even if N+1's preload ran before N was applied to Pebble.
+
+```
+Admission (preload) ─── direct Pebble Get ──> PreloadSet
+                                                  │
+FSM (apply) ─── in-memory map (bridge) ──────────>│
+                │                                  │
+                └── DerivedIdempotencyStore ───> Merge ──> Pebble [0x03]
+```
+
+### Preloading
+
+During admission, idempotency keys are loaded directly from Pebble (no bloom filter, no dual-generation cache):
+
+```go
+value, err := state.LoadIdempotencyKey(reader, key)
+if value != nil {
+    preloads = append(preloads, &raftcmdpb.Preload{
+        Type: &raftcmdpb.Preload_IdempotencyKey{
+            IdempotencyKey: &raftcmdpb.PreloadIdempotencyKey{
+                Key:   key,
+                Value: value,
+            },
+        },
+    })
+}
+```
 
 ## API Usage
 
@@ -64,7 +137,6 @@ type IdempotencyKeyValue struct {
 Include the idempotency key in the `Idempotency-Key` HTTP header:
 
 ```bash
-# Create a transaction with idempotency key
 curl -X POST http://localhost:9000/my-ledger/transactions \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: unique-request-id-123" \
@@ -77,29 +149,7 @@ curl -X POST http://localhost:9000/my-ledger/transactions \
 
 ### gRPC API
 
-Include the idempotency key in the `idempotency_key` field of the request:
-
-```protobuf
-message Request {
-  string idempotency_key = 1;
-  oneof type {
-    // ... request types
-  }
-}
-```
-
-```go
-resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-    Requests: []*servicepb.Request{{
-        IdempotencyKey: "unique-request-id-123",
-        Type: &servicepb.Request_Apply{
-            Apply: &servicepb.LedgerApplyRequest{
-                // ... request data
-            },
-        },
-    }},
-})
-```
+Include the idempotency key in the `idempotency_key` field of the request.
 
 ## Supported Operations
 
@@ -107,92 +157,27 @@ All write operations support idempotency keys:
 
 | Operation | Endpoint | Idempotency Support |
 |-----------|----------|---------------------|
-| Create transaction | `POST /{ledger}/transactions` | ✅ |
-| Revert transaction | `POST /{ledger}/transactions/{id}/revert` | ✅ |
-| Save account metadata | `POST /{ledger}/accounts/{addr}/metadata` | ✅ |
-| Delete account metadata | `DELETE /{ledger}/accounts/{addr}/metadata/{key}` | ✅ |
-| Save transaction metadata | `POST /{ledger}/transactions/{id}/metadata` | ✅ |
-| Delete transaction metadata | `DELETE /{ledger}/transactions/{id}/metadata/{key}` | ✅ |
-| Create ledger | `POST /{ledger}` | ✅ |
-| Delete ledger | `DELETE /{ledger}` | ✅ |
-| Bulk operations | `POST /{ledger}/_bulk` | ✅ (per action) |
+| Create transaction | `POST /{ledger}/transactions` | Yes |
+| Revert transaction | `POST /{ledger}/transactions/{id}/revert` | Yes |
+| Save account metadata | `POST /{ledger}/accounts/{addr}/metadata` | Yes |
+| Delete account metadata | `DELETE /{ledger}/accounts/{addr}/metadata/{key}` | Yes |
+| Save transaction metadata | `POST /{ledger}/transactions/{id}/metadata` | Yes |
+| Delete transaction metadata | `DELETE /{ledger}/transactions/{id}/metadata/{key}` | Yes |
+| Create ledger | `POST /{ledger}` | Yes |
+| Delete ledger | `DELETE /{ledger}` | Yes |
+| Bulk operations | `POST /{ledger}/_bulk` | Yes (per action) |
 
 ## Key Validation
-
-Idempotency keys are validated at admission time:
 
 | Rule | Limit | Error |
 |------|-------|-------|
 | Maximum length | 256 characters | `VALIDATION` (HTTP 400 / gRPC `INVALID_ARGUMENT`) |
 
-Keys exceeding 256 characters are rejected before reaching Raft consensus. This limit applies to both the `Idempotency-Key` HTTP header and the `idempotency_key` gRPC field, as well as the `ik` field in bulk operations.
-
-## Storage Architecture
-
-### Cache Layer
-
-Idempotency keys are stored in the generation-based cache (same as other attributes):
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    AttributeLoader                       │
-│         (Coordinates concurrent loads from store)        │
-└─────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────┐
-│                  Generation Cache                        │
-│   ┌─────────────┐    ┌─────────────┐                    │
-│   │    Gen0     │    │    Gen1     │                    │
-│   │  (current)  │    │  (previous) │                    │
-│   └─────────────┘    └─────────────┘                    │
-│      U128 → IdempotencyKeyValue                         │
-└─────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────┐
-│                      Pebble                              │
-│            (Persisted idempotency keys)                  │
-└─────────────────────────────────────────────────────────┘
-```
-
-### Key Format
-
-Idempotency keys are stored using the same U128 hash-based key format as other attributes:
-
-- **ID**: 128-bit BLAKE3 hash of the key string
-- **Tag**: 64-bit truncated hash for collision detection
-- **Value**: `IdempotencyKeyValue` (log sequence + content hash)
-
-## Preloading
-
-During admission (before Raft proposal), idempotency keys are preloaded if:
-
-1. The key is not guaranteed to be in the cache (`gen0 ∪ gen1`)
-2. The key exists in the store
-
-```go
-// Only send preload if the key exists in the store
-if result.Value != nil {
-    cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
-        Type: &raftcmdpb.Preload_IdempotencyKey{
-            IdempotencyKey: &raftcmdpb.PreloadIdempotencyKey{
-                Id:          attrID,
-                LogSequence: result.Value.LogSequence,
-                Hash:        result.Value.Hash,
-            },
-        },
-    })
-}
-```
-
-This ensures the FSM can check idempotency deterministically without store reads.
-
 ## Error Handling
 
 ### Conflict Error
 
-When a conflict is detected (same key, different content):
+When a conflict is detected (same key, different content, within TTL):
 
 **HTTP Response:**
 ```json
@@ -207,48 +192,6 @@ When a conflict is detected (same key, different content):
 ### Best Practices
 
 1. **Use unique keys**: UUIDs or composite keys (e.g., `{client-id}-{request-id}`)
-2. **Include timestamp in key**: `{operation}-{timestamp}-{random}` for debugging
+2. **Be aware of TTL**: Keys expire after the configured TTL (default 24h)
 3. **Don't reuse keys**: Even for "similar" operations
 4. **Handle conflicts**: Implement retry logic with new keys on conflict
-
-## Example: Safe Retry Pattern
-
-```go
-func createTransactionWithRetry(ctx context.Context, client LedgerClient, req *CreateTransactionRequest) (*Log, error) {
-    idempotencyKey := uuid.New().String()
-    
-    for attempt := 0; attempt < 3; attempt++ {
-        resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-            Requests: []*servicepb.Request{{
-                IdempotencyKey: idempotencyKey,
-                Type: &servicepb.Request_Apply{
-                    Apply: &servicepb.LedgerApplyRequest{
-                        Ledger: req.Ledger,
-                        Data: &servicepb.LedgerApplyRequest_CreateTransaction{
-                            CreateTransaction: req.Transaction,
-                        },
-                    },
-                },
-            }},
-        })
-        
-        if err != nil {
-            if isRetryable(err) {
-                // Same idempotency key - safe to retry
-                continue
-            }
-            return nil, err
-        }
-        
-        return resp.Logs[0], nil
-    }
-    
-    return nil, errors.New("max retries exceeded")
-}
-```
-
-## Next Steps
-
-- [Deterministic FSM](./deterministic-fsm.md) - Generation-based caching that powers idempotency
-- [API Documentation](./api.md) - Complete API reference
-- [Data Flows](./data-flows.md) - Transaction processing flow

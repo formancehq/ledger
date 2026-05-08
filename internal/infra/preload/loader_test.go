@@ -319,7 +319,7 @@ func TestNewLoaders(t *testing.T) {
 	loaders := NewLoaders()
 
 	assert.NotNil(t, loaders.Volumes)
-	assert.NotNil(t, loaders.IdempotencyKeys)
+	assert.NotNil(t, loaders.References)
 }
 
 func TestCleanupToken_Release(t *testing.T) {
@@ -342,8 +342,8 @@ func TestCleanupToken_Release(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = loaders.IdempotencyKeys.LoadOrWait(key4, 100, func() (*commonpb.IdempotencyKeyValue, error) {
-		return &commonpb.IdempotencyKeyValue{LogSequence: 1, Hash: []byte("test")}, nil
+	_, err = loaders.References.LoadOrWait(key4, 100, func() (*commonpb.TransactionReferenceValue, error) {
+		return &commonpb.TransactionReferenceValue{TransactionId: 1}, nil
 	})
 	require.NoError(t, err)
 
@@ -351,7 +351,7 @@ func TestCleanupToken_Release(t *testing.T) {
 	token := &CleanupToken{
 		tracked: []trackedLoader{
 			{loader: loaders.Volumes, keys: []attributes.U128{key1, key2}},
-			{loader: loaders.IdempotencyKeys, keys: []attributes.U128{key4}},
+			{loader: loaders.References, keys: []attributes.U128{key4}},
 		},
 	}
 
@@ -377,12 +377,12 @@ func TestCleanupToken_Release(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, volumeLoadCount2, "Volumes key2 should reload after Release")
 
-	idempotencyLoadCount := 0
-	_, err = loaders.IdempotencyKeys.LoadOrWait(key4, 100, func() (*commonpb.IdempotencyKeyValue, error) {
-		idempotencyLoadCount++
+	refLoadCount := 0
+	_, err = loaders.References.LoadOrWait(key4, 100, func() (*commonpb.TransactionReferenceValue, error) {
+		refLoadCount++
 
-		return &commonpb.IdempotencyKeyValue{LogSequence: 2, Hash: []byte("new")}, nil
+		return &commonpb.TransactionReferenceValue{TransactionId: 2}, nil
 	})
 	require.NoError(t, err)
-	assert.Equal(t, 1, idempotencyLoadCount, "IdempotencyKeys should reload after Release")
+	assert.Equal(t, 1, refLoadCount, "References should reload after Release")
 }

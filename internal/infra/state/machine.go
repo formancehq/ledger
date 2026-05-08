@@ -131,7 +131,7 @@ type Machine struct {
 	indexNotifier Notifier
 }
 
-func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, ks *keystore.KeyStore, sharedState *SharedState, eventNotifier Notifier, mirrorNotifier Notifier, indexNotifier Notifier, bloomFilters *bloom.FilterSet, numscriptCacheSize int, sentinelMode bool) (*Machine, error) {
+func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, ks *keystore.KeyStore, sharedState *SharedState, eventNotifier Notifier, mirrorNotifier Notifier, indexNotifier Notifier, bloomFilters *bloom.FilterSet, numscriptCacheSize int, sentinelMode bool, idempotencyTTLMicros uint64) (*Machine, error) {
 	logsAppendedCounter, err := meter.Int64Counter(
 		"raft.fsm.logs_appended",
 		metric.WithDescription("Total number of logs appended to the store. Use rate() to get logs per second."),
@@ -184,7 +184,7 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		indexNotifier:                  indexNotifier,
 		keyStore:                       ks,
 		sharedState:                    sharedState,
-		Registry:                       NewStateRegistry(cache, attrs),
+		Registry:                       newStateRegistryWithIdempotency(cache, attrs, idempotencyTTLMicros),
 		Periods:                        NewPeriodTracker(nil, nil, nil, 0, ""),
 		nextSequenceID:                 1,
 		nextAuditSequenceID:            1,
@@ -533,7 +533,7 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 		// no sink/mirror updates. Proposals carrying MirrorSyncUpdates or
 		// EventsSinkUpdates must still go through applyProposal so that
 		// cursor and status writes reach the Pebble batch.
-		if len(cmd.GetOrders()) == 0 && len(cmd.GetMirrorSyncUpdates()) == 0 && len(cmd.GetEventsSinkUpdates()) == 0 {
+		if len(cmd.GetOrders()) == 0 && len(cmd.GetMirrorSyncUpdates()) == 0 && len(cmd.GetEventsSinkUpdates()) == 0 && cmd.GetIdempotencyEviction() == nil {
 			ret.Results = append(ret.Results, ApplyResult{ProposalID: cmd.GetId(), AppliedIndex: entry.Index})
 
 			continue
@@ -811,6 +811,16 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet, batch *dal.Batch, 
 
 	gen1Byte := genByte ^ 1
 	for _, preload := range preloadSet.GetPreloads() {
+		// Handle idempotency keys separately — they use the dedicated store, not the cache.
+		if ik, ok := preload.GetType().(*raftcmdpb.Preload_IdempotencyKey); ok {
+			ikData := ik.IdempotencyKey
+			if ikData.GetValue() != nil && ikData.GetValue().GetLogSequence() > 0 {
+				fsm.Registry.Idempotency.Put(ikData.GetKey(), ikData.GetValue())
+			}
+
+			continue
+		}
+
 		if err := fsm.cacheSnapshotter.MirrorPreload(batch, genByte, gen1Byte, preload); err != nil {
 			return err
 		}
@@ -906,6 +916,18 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			if err != nil {
 				return nil, fmt.Errorf("setting mirror status: %w", err)
 			}
+		}
+	}
+
+	// Handle idempotency eviction (deterministic cleanup via Raft)
+	if eviction := proposal.GetIdempotencyEviction(); eviction != nil {
+		evicted, err := fsm.Registry.Idempotency.EvictBefore(batch, fsm.dataStore, eviction.GetCutoffMicros())
+		if err != nil {
+			return nil, fmt.Errorf("evicting idempotency keys: %w", err)
+		}
+
+		if evicted > 0 {
+			fsm.logger.Infof("Evicted %d expired idempotency keys (cutoff=%d)", evicted, eviction.GetCutoffMicros())
 		}
 	}
 
@@ -1165,6 +1187,7 @@ func (fsm *Machine) InstallSnapshot(_ context.Context, snapshot raftpb.Snapshot)
 	// - On restart: after InstallSnapshot, via RestoreCacheFromStore
 	// - On follower sync: after restoreCheckpoint, via RestoreCacheFromStore
 	fsm.Registry.Cache.Reset()
+	fsm.Registry.Idempotency.Reset()
 
 	fsm.logger.WithFields(map[string]any{
 		"snapshotIndex": snapshot.Metadata.Index,

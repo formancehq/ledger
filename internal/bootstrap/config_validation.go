@@ -20,9 +20,10 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 	}
 
 	current := &PersistedConfig{
-		NodeID:            cfg.RaftConfig.NodeID,
-		ClusterID:         cfg.ClusterID,
-		RotationThreshold: cfg.RaftConfig.RotationThreshold,
+		NodeID:                cfg.RaftConfig.NodeID,
+		ClusterID:             cfg.ClusterID,
+		RotationThreshold:     cfg.RaftConfig.RotationThreshold,
+		IdempotencyTTLSeconds: uint64(cfg.IdempotencyTTL.Seconds()),
 	}
 
 	if persisted == nil {
@@ -37,6 +38,17 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 		persisted.RotationThreshold = current.RotationThreshold
 
 		logger.Infof("Backfilling rotation-threshold=%d into persisted config", current.RotationThreshold)
+
+		if err := persistConfig(store, persisted); err != nil {
+			return fmt.Errorf("backfilling persisted config: %w", err)
+		}
+	}
+
+	// Backfill IdempotencyTTLSeconds for configs persisted before this field existed.
+	if persisted.IdempotencyTTLSeconds == 0 && current.IdempotencyTTLSeconds != 0 {
+		persisted.IdempotencyTTLSeconds = current.IdempotencyTTLSeconds
+
+		logger.Infof("Backfilling idempotency-ttl-seconds=%d into persisted config", current.IdempotencyTTLSeconds)
 
 		if err := persistConfig(store, persisted); err != nil {
 			return fmt.Errorf("backfilling persisted config: %w", err)
@@ -68,6 +80,15 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 			Field:     "cache-rotation-threshold",
 			Persisted: strconv.FormatUint(persisted.RotationThreshold, 10),
 			Current:   strconv.FormatUint(current.RotationThreshold, 10),
+		})
+	}
+
+	// IdempotencyTTLSeconds: only validate if persisted value is non-zero (backward compat).
+	if persisted.IdempotencyTTLSeconds != 0 && persisted.IdempotencyTTLSeconds != current.IdempotencyTTLSeconds {
+		mismatches = append(mismatches, &ConfigMismatchError{
+			Field:     "idempotency-ttl",
+			Persisted: strconv.FormatUint(persisted.IdempotencyTTLSeconds, 10) + "s",
+			Current:   strconv.FormatUint(current.IdempotencyTTLSeconds, 10) + "s",
 		})
 	}
 

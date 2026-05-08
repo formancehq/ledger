@@ -3,11 +3,15 @@
 package business
 
 import (
-	"github.com/formancehq/ledger-v3-poc/pkg/actions"
+	"context"
 	"math/big"
+	"time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
+	"github.com/formancehq/ledger-v3-poc/pkg/testserver"
+	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -224,6 +228,91 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "account-multi",
+			})
+			Expect(err).To(Succeed())
+			Expect(account.Volumes["USD"].Input).To(Equal("200"))
+		})
+	})
+
+	Context("When idempotency keys expire via TTL", Ordered, func() {
+		// This test uses a dedicated server with a short idempotency TTL (2s)
+		// and eviction interval (1s) to verify TTL-based expiration.
+		var (
+			ttlCtx    context.Context
+			ttlClient servicepb.BucketServiceClient
+		)
+
+		BeforeAll(func() {
+			ttlCtx, ttlClient, _ = testutil.SetupSingleNode(
+				15900, 16000,
+				testserver.WithIdempotencyTTL(2*time.Second),
+				testserver.WithIdempotencyEvictionInterval(1*time.Second),
+			)
+		})
+
+		It("Should allow reuse of an idempotency key after TTL expiration", func() {
+			ledgerName := "ttl-test-ledger"
+
+			// Create ledger
+			_, err := ttlClient.Apply(ttlCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+			})
+			Expect(err).To(Succeed())
+
+			idempotencyKey := "ttl-expire-key"
+
+			// First request: create a transaction with idempotency key
+			resp1, err := ttlClient.Apply(ttlCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.WithIdempotencyKey(
+						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", "ttl-account", big.NewInt(100), "USD"),
+						}, nil, nil),
+						idempotencyKey,
+					),
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(resp1.Logs).To(HaveLen(1))
+			firstSeq := resp1.Logs[0].Sequence
+
+			// Immediately retry should return the same log (idempotent)
+			resp2, err := ttlClient.Apply(ttlCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.WithIdempotencyKey(
+						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", "ttl-account", big.NewInt(100), "USD"),
+						}, nil, nil),
+						idempotencyKey,
+					),
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(resp2.Logs[0].Sequence).To(Equal(firstSeq))
+
+			// Wait for TTL + eviction interval to expire the key
+			time.Sleep(4 * time.Second)
+
+			// After TTL expiration: same IK + same content should create a NEW transaction
+			resp3, err := ttlClient.Apply(ttlCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.WithIdempotencyKey(
+						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", "ttl-account", big.NewInt(100), "USD"),
+						}, nil, nil),
+						idempotencyKey,
+					),
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(resp3.Logs).To(HaveLen(1))
+			// Should be a NEW log sequence (not a reference to the old one)
+			Expect(resp3.Logs[0].Sequence).NotTo(Equal(firstSeq))
+
+			// Verify: account should have 200 total (100 from first tx + 100 from new tx)
+			account, err := ttlClient.GetAccount(ttlCtx, &servicepb.GetAccountRequest{
+				Ledger:  ledgerName,
+				Address: "ttl-account",
 			})
 			Expect(err).To(Succeed())
 			Expect(account.Volumes["USD"].Input).To(Equal("200"))

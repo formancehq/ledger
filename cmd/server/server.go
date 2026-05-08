@@ -174,6 +174,10 @@ func NewRunCommand() *cobra.Command {
 	// Scope mapping: virtual → granular scope expansion
 	runCmd.Flags().String("auth-scope-mapping-file", "", "Path to JSON file mapping virtual scopes (e.g. ledger:read) to granular scopes")
 
+	// Idempotency TTL and eviction
+	runCmd.Flags().Duration("idempotency-ttl", 24*time.Hour, "Idempotency key time-to-live (0 = never expire)")
+	runCmd.Flags().Duration("idempotency-eviction-interval", 60*time.Second, "How often the leader proposes idempotency eviction")
+
 	// Configuration safety
 	runCmd.Flags().Bool("unsafe-skip-config-validation", false, "Skip startup configuration safety checks (DANGEROUS: allows node-id/cluster-id changes)")
 
@@ -514,6 +518,10 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 		ScopeMappingFile: scopeMappingFile,
 		ScopeMappingJSON: scopeMappingJSON,
 	}
+	// Idempotency TTL
+	cfg.IdempotencyTTL = getDuration("idempotency-ttl", 24*time.Hour)
+	cfg.IdempotencyEvictionInterval = getDuration("idempotency-eviction-interval", 60*time.Second)
+
 	// Configuration safety
 	cfg.UnsafeSkipConfigValidation = getBool("unsafe-skip-config-validation", false)
 
@@ -845,7 +853,6 @@ type bloomFlagType struct {
 var bloomFlagTypes = []bloomFlagType{
 	{"volumes", bloom.DefaultFilterSetConfig().Volume},
 	{"metadata", bloom.DefaultFilterSetConfig().Metadata},
-	{"idempotency", bloom.DefaultFilterSetConfig().Idempotency},
 	{"references", bloom.DefaultFilterSetConfig().Reference},
 	{"ledgers", bloom.DefaultFilterSetConfig().Ledger},
 	{"boundaries", bloom.DefaultFilterSetConfig().Boundary},
@@ -893,7 +900,6 @@ func loadBloomConfig(cmd *cobra.Command) bloom.FilterSetConfig {
 	return bloom.FilterSetConfig{
 		Volume:      load("volumes", defaults.Volume),
 		Metadata:    load("metadata", defaults.Metadata),
-		Idempotency: load("idempotency", defaults.Idempotency),
 		Reference:   load("references", defaults.Reference),
 		Ledger:      load("ledgers", defaults.Ledger),
 		Boundary:    load("boundaries", defaults.Boundary),

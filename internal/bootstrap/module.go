@@ -300,6 +300,8 @@ func Module() fx.Option {
 			) (*state.Machine, error) {
 				machineStart := time.Now()
 
+				idempotencyTTLMicros := uint64(cfg.IdempotencyTTL.Microseconds())
+
 				m, err := state.NewMachine(
 					logger,
 					store,
@@ -314,6 +316,7 @@ func Module() fx.Option {
 					bloomFilters,
 					cfg.NumscriptCacheSize,
 					cfg.SentinelMode,
+					idempotencyTTLMicros,
 				)
 				if err != nil {
 					return nil, err
@@ -1048,6 +1051,34 @@ func Module() fx.Option {
 			},
 			func(lc fx.Lifecycle, scheduler *state.PeriodScheduler) {
 				lc.Append(worker.FxHook(scheduler))
+			},
+			func(lc fx.Lifecycle, cfg Config, logger logging.Logger, raftNode *node.Node) {
+				if cfg.IdempotencyTTL > 0 && cfg.IdempotencyEvictionInterval > 0 {
+					proposer := NewNodeProposer(raftNode)
+					scheduler := state.NewIdempotencyEvictionScheduler(
+						logger,
+						raftNode.IsLeader,
+						func(cutoffMicros uint64) {
+							if err := proposer.ProposeIdempotencyEviction(cutoffMicros); err != nil {
+								logger.Errorf("Failed to propose idempotency eviction: %v", err)
+							}
+						},
+						cfg.IdempotencyEvictionInterval,
+						cfg.IdempotencyTTL,
+					)
+					lc.Append(fx.Hook{
+						OnStart: func(_ context.Context) error {
+							scheduler.Start()
+
+							return nil
+						},
+						OnStop: func(_ context.Context) error {
+							scheduler.Stop()
+
+							return nil
+						},
+					})
+				}
 			},
 			func(lc fx.Lifecycle, scheduler *state.QueryCheckpointScheduler) {
 				lc.Append(worker.FxHook(scheduler))

@@ -236,9 +236,9 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 		}
 	}
 
-	// Process IdempotencyKeys updates
-	if _, _, err := mergeAndTrackBloom(b.Derived.IdempotencyKeys, b.attrs.IdempotencyKeys, batch, genByte, dal.AttributeCodeIdempotency, &b.bloomUpdates.Idempotency, "idempotency keys"); err != nil {
-		return err
+	// Process idempotency key updates (dedicated prefix, not attribute system)
+	if err := b.Derived.Idempotency.Merge(batch); err != nil {
+		return fmt.Errorf("failed to merge idempotency keys: %w", err)
 	}
 
 	// Process References updates
@@ -580,11 +580,22 @@ func (b *Buffered) PutReverted(key domain.TransactionKey, reverted bool) {
 }
 
 func (b *Buffered) GetIdempotencyKey(key domain.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error) {
-	return b.Derived.IdempotencyKeys.Get(key)
+	value, err := b.Derived.Idempotency.Get(key.Key)
+	if err != nil || value == nil {
+		return nil, err
+	}
+
+	// Check TTL expiration: treat expired keys as not found.
+	if b.fsm.Registry.Idempotency.IsExpired(value, b.Date.GetData()) {
+		return nil, nil
+	}
+
+	return value, nil
 }
 
 func (b *Buffered) PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
-	b.Derived.IdempotencyKeys.Put(key, value)
+	value.CreatedAt = b.Date.GetData() // HLC timestamp
+	b.Derived.Idempotency.Put(key.Key, value)
 }
 
 func (b *Buffered) GetTransactionReference(key domain.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error) {

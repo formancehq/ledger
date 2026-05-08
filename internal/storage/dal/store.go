@@ -149,8 +149,10 @@ var (
 	// --- Cold zone [0x01, 0x04) ---.
 
 	// Sequence-keyed prefixes: [prefix][sequence] — support efficient range scan/delete.
-	KeyPrefixLog   byte = 0x01 // [KeyPrefixLog][sequence] -> Log
-	KeyPrefixAudit byte = 0x02 // [KeyPrefixAudit][sequence] -> AuditEntry
+	KeyPrefixLog                byte = 0x01 // [KeyPrefixLog][sequence] -> Log
+	KeyPrefixAudit              byte = 0x02 // [KeyPrefixAudit][sequence] -> AuditEntry
+	KeyPrefixIdempotency        byte = 0x03 // [KeyPrefixIdempotency][key_string_bytes] -> IdempotencyKeyValue
+	KeyPrefixIdempotencyTimeIdx byte = 0x04 // [KeyPrefixIdempotencyTimeIdx][created_at BE][key_string_bytes] -> empty (time index)
 
 	// ColdSequencePrefixes lists cold-storable prefixes keyed by sequence number.
 	// These support efficient range scan and range delete by [prefix][startSeq]..[prefix][endSeq].
@@ -176,7 +178,7 @@ var (
 	// Attribute type prefixes used within the attributes zone and cache snapshot zone.
 	AttributeCodeVolume           = byte('V')
 	AttributeCodeMetadata         = byte('M')
-	AttributeCodeIdempotency      = byte('I')
+	AttributeCodeIdempotency      = byte('I') // Deprecated: idempotency uses dedicated prefix 0x03. Kept for backward compatibility with existing Pebble data.
 	AttributeCodeReference        = byte('R')
 	AttributeCodeLedger           = byte('L')
 	AttributeCodeBoundary         = byte('B')

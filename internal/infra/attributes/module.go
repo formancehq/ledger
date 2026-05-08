@@ -13,7 +13,6 @@ import (
 type Attributes struct {
 	Volume           *Attribute[*raftcmdpb.VolumePair]
 	Metadata         *Attribute[*commonpb.MetadataValue]
-	IdempotencyKeys  *Attribute[*commonpb.IdempotencyKeyValue]
 	References       *Attribute[*commonpb.TransactionReferenceValue]
 	Ledger           *Attribute[*commonpb.LedgerInfo]
 	Boundary         *Attribute[*raftcmdpb.LedgerBoundaries]
@@ -29,7 +28,6 @@ func New() *Attributes {
 	return &Attributes{
 		Volume:           NewVolumeAttribute(),
 		Metadata:         NewMetadataAttribute(),
-		IdempotencyKeys:  NewIdempotencyKeysAttribute(),
 		References:       NewReferenceAttribute(),
 		Ledger:           NewLedgerAttribute(),
 		Boundary:         NewBoundaryAttribute(),
@@ -55,15 +53,6 @@ func NewMetadataAttribute() *Attribute[*commonpb.MetadataValue] {
 	return &Attribute[*commonpb.MetadataValue]{
 		prefix:   dal.AttributeCodeMetadata,
 		newValue: func() *commonpb.MetadataValue { return &commonpb.MetadataValue{} },
-		keyBuf:   make([]byte, 128),
-	}
-}
-
-// NewIdempotencyKeysAttribute creates a new IdempotencyKeys attribute for storing idempotency key mappings.
-func NewIdempotencyKeysAttribute() *Attribute[*commonpb.IdempotencyKeyValue] {
-	return &Attribute[*commonpb.IdempotencyKeyValue]{
-		prefix:   dal.AttributeCodeIdempotency,
-		newValue: func() *commonpb.IdempotencyKeyValue { return &commonpb.IdempotencyKeyValue{} },
 		keyBuf:   make([]byte, 128),
 	}
 }

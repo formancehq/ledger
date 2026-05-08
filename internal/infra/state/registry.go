@@ -17,7 +17,7 @@ type StateRegistry struct {
 	Attrs             *attributes.Attributes
 	Volumes           *attributes.KeyStore[domain.VolumeKey, *raftcmdpb.VolumePair]
 	AccountMetadata   *attributes.KeyStore[domain.MetadataKey, *commonpb.MetadataValue]
-	IdempotencyKeys   *attributes.KeyStore[domain.IdempotencyKey, *commonpb.IdempotencyKeyValue]
+	Idempotency       *IdempotencyStore
 	References        *attributes.KeyStore[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
 	Ledgers           *attributes.KeyStore[domain.LedgerKey, *commonpb.LedgerInfo]
 	Boundaries        *attributes.KeyStore[domain.LedgerKey, *raftcmdpb.LedgerBoundaries]
@@ -36,6 +36,12 @@ type StateRegistry struct {
 // NewStateRegistry creates a StateRegistry with all KeyStores backed by the
 // given cache.
 func NewStateRegistry(c *cache.Cache, attrs *attributes.Attributes) *StateRegistry {
+	return newStateRegistryWithIdempotency(c, attrs, 0)
+}
+
+// newStateRegistryWithIdempotency creates a StateRegistry with a dedicated IdempotencyStore.
+// idempotencyTTLMicros is the TTL in HLC microseconds (0 = no expiration).
+func newStateRegistryWithIdempotency(c *cache.Cache, attrs *attributes.Attributes, idempotencyTTLMicros uint64) *StateRegistry {
 	return &StateRegistry{
 		Cache: c,
 		Attrs: attrs,
@@ -47,10 +53,7 @@ func NewStateRegistry(c *cache.Cache, attrs *attributes.Attributes) *StateRegist
 			attributes.DefaultSeeds,
 			c.AccountMetadata,
 		),
-		IdempotencyKeys: attributes.NewKeyStore[domain.IdempotencyKey, *commonpb.IdempotencyKeyValue](
-			attributes.DefaultSeeds,
-			c.IdempotencyKeys,
-		),
+		Idempotency: NewIdempotencyStore(idempotencyTTLMicros),
 		References: attributes.NewKeyStore[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue](
 			attributes.DefaultSeeds,
 			c.References,

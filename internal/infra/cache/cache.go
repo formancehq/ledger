@@ -225,7 +225,6 @@ type Cache struct {
 	mu                  sync.Mutex
 	Volumes             *AttributeCache[*raftcmdpb.VolumePair]
 	AccountMetadata     *AttributeCache[*commonpb.MetadataValue]
-	IdempotencyKeys     *AttributeCache[*commonpb.IdempotencyKeyValue]
 	References          *AttributeCache[*commonpb.TransactionReferenceValue]
 	Ledgers             *AttributeCache[*commonpb.LedgerInfo]
 	Boundaries          *AttributeCache[*raftcmdpb.LedgerBoundaries]
@@ -426,7 +425,6 @@ func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
 	}
 	ret.Volumes = newAttributeCache[*raftcmdpb.VolumePair](ret, "volumes")
 	ret.AccountMetadata = newAttributeCache[*commonpb.MetadataValue](ret, "account_metadata")
-	ret.IdempotencyKeys = newAttributeCache[*commonpb.IdempotencyKeyValue](ret, "idempotency_keys")
 	ret.References = newAttributeCache[*commonpb.TransactionReferenceValue](ret, "references")
 	ret.Ledgers = newAttributeCache[*commonpb.LedgerInfo](ret, "ledgers")
 	ret.Boundaries = newAttributeCache[*raftcmdpb.LedgerBoundaries](ret, "boundaries")
@@ -438,13 +436,13 @@ func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
 
 	// Register all caches for iteration in Rotate/Reset/metrics.
 	ret.caches = []CacheOps{
-		ret.Volumes, ret.AccountMetadata, ret.IdempotencyKeys,
+		ret.Volumes, ret.AccountMetadata,
 		ret.References, ret.Ledgers, ret.Boundaries,
 		ret.Transactions, ret.SinkConfigs, ret.NumscriptVersions,
 		ret.NumscriptContents, ret.PreparedQueries,
 	}
 	ret.cacheNames = []string{
-		"volumes", "account_metadata", "idempotency_keys",
+		"volumes", "account_metadata",
 		"references", "ledgers", "boundaries",
 		"transactions", "sink_configs", "numscript_versions",
 		"numscript_contents", "prepared_queries",
@@ -453,7 +451,6 @@ func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
 	// Register touch dispatch map for attribute code byte -> cache.
 	ret.touchMap = map[byte]CacheOps{
 		dal.AttributeCodeVolume:           ret.Volumes,
-		dal.AttributeCodeIdempotency:      ret.IdempotencyKeys,
 		dal.AttributeCodeReference:        ret.References,
 		dal.AttributeCodeLedger:           ret.Ledgers,
 		dal.AttributeCodeBoundary:         ret.Boundaries,

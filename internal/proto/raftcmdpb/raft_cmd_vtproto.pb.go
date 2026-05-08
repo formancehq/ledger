@@ -1641,6 +1641,7 @@ func (m *Proposal) CloneVT() *Proposal {
 	r.Date = m.Date.CloneVT()
 	r.Preload = m.Preload.CloneVT()
 	r.PredictedIndex = m.PredictedIndex
+	r.IdempotencyEviction = m.IdempotencyEviction.CloneVT()
 	if rhs := m.Orders; rhs != nil {
 		tmpContainer := make([]*Order, len(rhs))
 		for k, v := range rhs {
@@ -1670,6 +1671,23 @@ func (m *Proposal) CloneVT() *Proposal {
 }
 
 func (m *Proposal) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *IdempotencyEviction) CloneVT() *IdempotencyEviction {
+	if m == nil {
+		return (*IdempotencyEviction)(nil)
+	}
+	r := new(IdempotencyEviction)
+	r.CutoffMicros = m.CutoffMicros
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *IdempotencyEviction) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -1991,7 +2009,7 @@ func (m *PreloadIdempotencyKey) CloneVT() *PreloadIdempotencyKey {
 		return (*PreloadIdempotencyKey)(nil)
 	}
 	r := new(PreloadIdempotencyKey)
-	r.Id = m.Id.CloneVT()
+	r.Key = m.Key
 	r.Value = m.Value.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -2296,13 +2314,6 @@ func (m *GenerationSnapshot) CloneVT() *GenerationSnapshot {
 			tmpContainer[k] = v.CloneVT()
 		}
 		r.Transactions = tmpContainer
-	}
-	if rhs := m.IdempotencyKeys; rhs != nil {
-		tmpContainer := make([]*IdempotencyKeyAttributeEntry, len(rhs))
-		for k, v := range rhs {
-			tmpContainer[k] = v.CloneVT()
-		}
-		r.IdempotencyKeys = tmpContainer
 	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -5386,11 +5397,33 @@ func (this *Proposal) EqualVT(that *Proposal) bool {
 	if this.PredictedIndex != that.PredictedIndex {
 		return false
 	}
+	if !this.IdempotencyEviction.EqualVT(that.IdempotencyEviction) {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
 func (this *Proposal) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*Proposal)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *IdempotencyEviction) EqualVT(that *IdempotencyEviction) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.CutoffMicros != that.CutoffMicros {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *IdempotencyEviction) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*IdempotencyEviction)
 	if !ok {
 		return false
 	}
@@ -5997,7 +6030,7 @@ func (this *PreloadIdempotencyKey) EqualVT(that *PreloadIdempotencyKey) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
-	if !this.Id.EqualVT(that.Id) {
+	if this.Key != that.Key {
 		return false
 	}
 	if !this.Value.EqualVT(that.Value) {
@@ -6429,23 +6462,6 @@ func (this *GenerationSnapshot) EqualVT(that *GenerationSnapshot) bool {
 			}
 			if q == nil {
 				q = &TransactionStateAttributeEntry{}
-			}
-			if !p.EqualVT(q) {
-				return false
-			}
-		}
-	}
-	if len(this.IdempotencyKeys) != len(that.IdempotencyKeys) {
-		return false
-	}
-	for i, vx := range this.IdempotencyKeys {
-		vy := that.IdempotencyKeys[i]
-		if p, q := vx, vy; p != q {
-			if p == nil {
-				p = &IdempotencyKeyAttributeEntry{}
-			}
-			if q == nil {
-				q = &IdempotencyKeyAttributeEntry{}
 			}
 			if !p.EqualVT(q) {
 				return false
@@ -10561,6 +10577,16 @@ func (m *Proposal) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.IdempotencyEviction != nil {
+		size, err := m.IdempotencyEviction.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x42
+	}
 	if m.PredictedIndex != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PredictedIndex))
 		i--
@@ -10624,6 +10650,44 @@ func (m *Proposal) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	}
 	if m.Id != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Id))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *IdempotencyEviction) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *IdempotencyEviction) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *IdempotencyEviction) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.CutoffMicros != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.CutoffMicros))
 		i--
 		dAtA[i] = 0x8
 	}
@@ -11425,13 +11489,10 @@ func (m *PreloadIdempotencyKey) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 		i--
 		dAtA[i] = 0x12
 	}
-	if m.Id != nil {
-		size, err := m.Id.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+	if len(m.Key) > 0 {
+		i -= len(m.Key)
+		copy(dAtA[i:], m.Key)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Key)))
 		i--
 		dAtA[i] = 0xa
 	}
@@ -12117,18 +12178,6 @@ func (m *GenerationSnapshot) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if len(m.IdempotencyKeys) > 0 {
-		for iNdEx := len(m.IdempotencyKeys) - 1; iNdEx >= 0; iNdEx-- {
-			size, err := m.IdempotencyKeys[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x4a
-		}
 	}
 	if len(m.Transactions) > 0 {
 		for iNdEx := len(m.Transactions) - 1; iNdEx >= 0; iNdEx-- {
@@ -14571,6 +14620,23 @@ func (m *Proposal) SizeVT() (n int) {
 	if m.PredictedIndex != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.PredictedIndex))
 	}
+	if m.IdempotencyEviction != nil {
+		l = m.IdempotencyEviction.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *IdempotencyEviction) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.CutoffMicros != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.CutoffMicros))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -14929,8 +14995,8 @@ func (m *PreloadIdempotencyKey) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Id != nil {
-		l = m.Id.SizeVT()
+	l = len(m.Key)
+	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	if m.Value != nil {
@@ -15213,12 +15279,6 @@ func (m *GenerationSnapshot) SizeVT() (n int) {
 	}
 	if len(m.Transactions) > 0 {
 		for _, e := range m.Transactions {
-			l = e.SizeVT()
-			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-		}
-	}
-	if len(m.IdempotencyKeys) > 0 {
-		for _, e := range m.IdempotencyKeys {
 			l = e.SizeVT()
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
@@ -24469,6 +24529,112 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field IdempotencyEviction", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.IdempotencyEviction == nil {
+				m.IdempotencyEviction = &IdempotencyEviction{}
+			}
+			if err := m.IdempotencyEviction.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *IdempotencyEviction) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: IdempotencyEviction: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: IdempotencyEviction: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CutoffMicros", wireType)
+			}
+			m.CutoffMicros = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.CutoffMicros |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -26214,9 +26380,9 @@ func (m *PreloadIdempotencyKey) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
 			}
-			var msglen int
+			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -26226,27 +26392,23 @@ func (m *PreloadIdempotencyKey) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				msglen |= int(b&0x7F) << shift
+				stringLen |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			if msglen < 0 {
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
 				return protohelpers.ErrInvalidLength
 			}
-			postIndex := iNdEx + msglen
+			postIndex := iNdEx + intStringLen
 			if postIndex < 0 {
 				return protohelpers.ErrInvalidLength
 			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.Id == nil {
-				m.Id = &AttributeID{}
-			}
-			if err := m.Id.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
+			m.Key = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
@@ -28055,40 +28217,6 @@ func (m *GenerationSnapshot) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Transactions = append(m.Transactions, &TransactionStateAttributeEntry{})
 			if err := m.Transactions[len(m.Transactions)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 9:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field IdempotencyKeys", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.IdempotencyKeys = append(m.IdempotencyKeys, &IdempotencyKeyAttributeEntry{})
-			if err := m.IdempotencyKeys[len(m.IdempotencyKeys)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex

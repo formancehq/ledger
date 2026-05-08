@@ -3268,6 +3268,30 @@ SENTINEL_MODE=true ledger-v3-poc run [other flags...]
 
 ---
 
+### Server Idempotency TTL Flags
+
+Controls the time-to-live for idempotency keys. After the TTL expires, an idempotency key is treated as new, allowing the same key to be reused for a fresh operation. Expired keys are cleaned up via a deterministic Raft eviction command.
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--idempotency-ttl` | duration | `24h` | Time-to-live for idempotency keys (0 = never expire) |
+| `--idempotency-eviction-interval` | duration | `60s` | How often the leader proposes eviction of expired keys |
+
+The TTL is persisted in the startup config and validated on subsequent boots (same as `--cache-rotation-threshold`). Changing it requires `--unsafe-skip-config-validation`.
+
+```bash
+# Default: 24h TTL, eviction every 60s
+ledger-v3-poc run [other flags...]
+
+# Short TTL for development/testing
+ledger-v3-poc run --idempotency-ttl 5m --idempotency-eviction-interval 30s
+
+# Disable TTL (idempotency keys never expire)
+ledger-v3-poc run --idempotency-ttl 0
+```
+
+---
+
 ### Server Bloom Filter Flags
 
 Application-level bloom filters that avoid Pebble reads for keys known not to exist. Each attribute type has its own filter with independent sizing. Set `expected-keys` to `0` to disable a type.
@@ -3278,8 +3302,6 @@ Application-level bloom filters that avoid Pebble reads for keys known not to ex
 | `--bloom-volumes-fp-rate` | float64 | `0.01` | False positive rate for volumes (0.01 = 1%) |
 | `--bloom-metadata-expected-keys` | uint | `10000000` | Expected unique metadata keys (0 = disable) |
 | `--bloom-metadata-fp-rate` | float64 | `0.01` | False positive rate for metadata |
-| `--bloom-idempotency-expected-keys` | uint | `10000000` | Expected unique idempotency keys (0 = disable) |
-| `--bloom-idempotency-fp-rate` | float64 | `0.01` | False positive rate for idempotency |
 | `--bloom-references-expected-keys` | uint | `10000000` | Expected unique reference keys (0 = disable) |
 | `--bloom-references-fp-rate` | float64 | `0.01` | False positive rate for references |
 | `--bloom-ledgers-expected-keys` | uint | `0` | Expected unique ledger keys (0 = disabled by default) |
@@ -3292,12 +3314,12 @@ Application-level bloom filters that avoid Pebble reads for keys known not to ex
 Ledger, boundary, and transaction filters are disabled by default because these attribute types are rarely read and don't benefit from bloom filtering.
 
 ```bash
-# Default config (volumes, metadata, idempotency, references enabled)
+# Default config (volumes, metadata, references enabled)
 ledger-v3-poc run [other flags...]
 
 # Disable all bloom filters
 ledger-v3-poc run --bloom-volumes-expected-keys 0 --bloom-metadata-expected-keys 0 \
-  --bloom-idempotency-expected-keys 0 --bloom-references-expected-keys 0
+  --bloom-references-expected-keys 0
 
 # Enable transaction filter for a specific workload
 ledger-v3-poc run --bloom-transactions-expected-keys 50000000

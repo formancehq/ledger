@@ -13,9 +13,10 @@ import (
 // PersistedConfig stores critical configuration parameters that must not change
 // between restarts with existing data. It is JSON-encoded at Pebble key 0xFE.
 type PersistedConfig struct {
-	NodeID            uint64 `json:"nodeId"`
-	ClusterID         string `json:"clusterId"`
-	RotationThreshold uint64 `json:"rotationThreshold,omitempty"`
+	NodeID                uint64 `json:"nodeId"`
+	ClusterID             string `json:"clusterId"`
+	RotationThreshold     uint64 `json:"rotationThreshold,omitempty"`
+	IdempotencyTTLSeconds uint64 `json:"idempotencyTTLSeconds,omitempty"`
 }
 
 // ConfigMismatchError is returned when a persisted configuration value differs

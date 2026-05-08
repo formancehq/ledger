@@ -305,37 +305,6 @@ func TestComputeAllForPrefixMaxIndex(t *testing.T) {
 	}
 }
 
-func TestIdempotencyKeysAttribute(t *testing.T) {
-	t.Parallel()
-
-	store := createTestStore(t)
-	attrs := New()
-
-	testKey := []byte("idem-key-1")
-
-	// Set a value, then overwrite with a later Set — latest wins
-	batch := store.NewBatch()
-	require.NoError(t, errOnly(attrs.IdempotencyKeys.Set(batch, testKey, &commonpb.IdempotencyKeyValue{
-		LogSequence: 10,
-	})))
-	require.NoError(t, batch.Commit())
-
-	result, err := attrs.IdempotencyKeys.Get(store, testKey)
-	require.NoError(t, err)
-	require.Equal(t, uint64(10), result.GetLogSequence())
-
-	// Overwrite with a later Set
-	batch = store.NewBatch()
-	require.NoError(t, errOnly(attrs.IdempotencyKeys.Set(batch, testKey, &commonpb.IdempotencyKeyValue{
-		LogSequence: 20,
-	})))
-	require.NoError(t, batch.Commit())
-
-	result, err = attrs.IdempotencyKeys.Get(store, testKey)
-	require.NoError(t, err)
-	require.Equal(t, uint64(20), result.GetLogSequence())
-}
-
 func TestReferenceAttribute(t *testing.T) {
 	t.Parallel()
 
@@ -373,7 +342,6 @@ func TestModuleNew(t *testing.T) {
 	attrs := New()
 	require.NotNil(t, attrs.Volume)
 	require.NotNil(t, attrs.Metadata)
-	require.NotNil(t, attrs.IdempotencyKeys)
 	require.NotNil(t, attrs.References)
 	require.NotNil(t, attrs.Ledger)
 	require.NotNil(t, attrs.Boundary)
@@ -557,7 +525,6 @@ func TestCompactAllForBackupAllTypes(t *testing.T) {
 	ledgerKey := []byte("myledger")
 	volumeKey := []byte("myledger\x00alice\x00USD")
 	metadataKey := []byte("myledger\x00alice\x00status")
-	idempotencyKey := []byte("idem-key-123")
 	referenceKey := []byte("\x00\x00\x00\x01ref-abc")
 	boundaryKey := []byte("myledger")
 
@@ -568,9 +535,6 @@ func TestCompactAllForBackupAllTypes(t *testing.T) {
 		Output: commonpb.NewUint256FromUint64(100),
 	})))
 	require.NoError(t, errOnly(attrs.Metadata.Set(batch, metadataKey, commonpb.NewStringValue("active"))))
-	require.NoError(t, errOnly(attrs.IdempotencyKeys.Set(batch, idempotencyKey, &commonpb.IdempotencyKeyValue{
-		LogSequence: 42,
-	})))
 	require.NoError(t, errOnly(attrs.References.Set(batch, referenceKey, &commonpb.TransactionReferenceValue{
 		TransactionId: 99,
 	})))
@@ -604,11 +568,6 @@ func TestCompactAllForBackupAllTypes(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, meta)
 	require.Equal(t, "active", commonpb.MetadataValueToString(meta))
-
-	idem, err := freshAttrs.IdempotencyKeys.Get(store, idempotencyKey)
-	require.NoError(t, err)
-	require.NotNil(t, idem)
-	require.Equal(t, uint64(42), idem.GetLogSequence())
 
 	ref, err := freshAttrs.References.Get(store, referenceKey)
 	require.NoError(t, err)

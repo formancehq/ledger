@@ -351,28 +351,6 @@ func TestCacheSnapshotter_PersistNotReadyBloom(t *testing.T) {
 	require.True(t, bloomFilters.IsReady())
 }
 
-func TestCacheSnapshotter_PersistAndRestoreIdempotencyKeys(t *testing.T) {
-	t.Parallel()
-
-	snapshotter, _, registry := newTestCacheSnapshotter(t, nil)
-
-	idempKey := domain.IdempotencyKey{Key: "my-key"}
-	u128 := attributes.HashU128(attributes.DefaultSeeds, idempKey.Bytes())
-	value := &commonpb.IdempotencyKeyValue{LogSequence: 42}
-	registry.Cache.IdempotencyKeys.Gen0().Put(u128, attributes.Entry[*commonpb.IdempotencyKeyValue]{
-		Tag: 5, Data: value,
-	})
-
-	require.NoError(t, persistToStore(snapshotter))
-	registry.Cache.Reset()
-	require.NoError(t, snapshotter.RestoreFromStore())
-
-	restored, ok := registry.Cache.IdempotencyKeys.Gen0().Get(u128)
-	require.True(t, ok)
-	require.Equal(t, uint64(42), restored.Data.GetLogSequence())
-	require.Equal(t, uint64(5), restored.Tag)
-}
-
 func TestCacheSnapshotter_PersistAndRestoreReferences(t *testing.T) {
 	t.Parallel()
 

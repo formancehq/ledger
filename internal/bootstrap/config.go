@@ -46,32 +46,34 @@ type ReadIndexConfig struct {
 }
 
 type Config struct {
-	RaftConfig                 node.NodeConfig
-	Debug                      bool
-	HTTPPort                   int
-	GRPCPort                   int
-	TransportConfig            node.TransportConfig
-	DataDir                    string
-	PebbleConfig               dal.Config
-	HealthConfig               HealthConfig
-	ClusterID                  string
-	AdmissionMetrics           bool
-	ReceiptSigningKey          string
-	ResponseSigningKeyFile     string
-	ColdStorageConfig          coldstorage.Config
-	PoolConfig                 transport.PoolConfig
-	TLSConfig                  TLSConfig
-	AuthConfig                 AuthFlagConfig
-	ClusterSecret              string
-	Restore                    bool
-	NumscriptCacheSize         int
-	MirrorMaxBatchSize         int
-	UnsafeSkipConfigValidation bool
-	SentinelMode               bool
-	ReadIndexConfig            ReadIndexConfig
-	QueryProfileThreshold      time.Duration
-	GRPCSlowThreshold          time.Duration
-	BloomConfig                bloom.FilterSetConfig
+	RaftConfig                  node.NodeConfig
+	Debug                       bool
+	HTTPPort                    int
+	GRPCPort                    int
+	TransportConfig             node.TransportConfig
+	DataDir                     string
+	PebbleConfig                dal.Config
+	HealthConfig                HealthConfig
+	ClusterID                   string
+	AdmissionMetrics            bool
+	ReceiptSigningKey           string
+	ResponseSigningKeyFile      string
+	ColdStorageConfig           coldstorage.Config
+	PoolConfig                  transport.PoolConfig
+	TLSConfig                   TLSConfig
+	AuthConfig                  AuthFlagConfig
+	ClusterSecret               string
+	Restore                     bool
+	NumscriptCacheSize          int
+	MirrorMaxBatchSize          int
+	UnsafeSkipConfigValidation  bool
+	SentinelMode                bool
+	ReadIndexConfig             ReadIndexConfig
+	QueryProfileThreshold       time.Duration
+	GRPCSlowThreshold           time.Duration
+	BloomConfig                 bloom.FilterSetConfig
+	IdempotencyTTL              time.Duration
+	IdempotencyEvictionInterval time.Duration
 }
 
 func (c Config) Validate() error {

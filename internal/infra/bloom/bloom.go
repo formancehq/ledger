@@ -26,7 +26,6 @@ type FilterConfig struct {
 type FilterSetConfig struct {
 	Volume      FilterConfig
 	Metadata    FilterConfig
-	Idempotency FilterConfig
 	Reference   FilterConfig
 	Ledger      FilterConfig
 	Boundary    FilterConfig
@@ -46,9 +45,9 @@ func (c FilterSetConfig) Enabled() bool {
 
 // AsList returns all per-type configs in a fixed order (volume, metadata, idempotency,
 // reference, ledger, boundary, transaction) for deterministic serialization.
-func (c FilterSetConfig) AsList() [7]FilterConfig {
-	return [7]FilterConfig{
-		c.Volume, c.Metadata, c.Idempotency, c.Reference,
+func (c FilterSetConfig) AsList() [6]FilterConfig {
+	return [6]FilterConfig{
+		c.Volume, c.Metadata, c.Reference,
 		c.Ledger, c.Boundary, c.Transaction,
 	}
 }
@@ -130,7 +129,6 @@ type FilterSet struct {
 
 	Volume           *Filter
 	Metadata         *Filter
-	Idempotency      *Filter
 	Reference        *Filter
 	Ledger           *Filter
 	Boundary         *Filter
@@ -151,8 +149,6 @@ func (fs *FilterSet) FilterForAttrType(attrType byte) *Filter {
 		return fs.Volume
 	case dal.AttributeCodeMetadata:
 		return fs.Metadata
-	case dal.AttributeCodeIdempotency:
-		return fs.Idempotency
 	case dal.AttributeCodeReference:
 		return fs.Reference
 	case dal.AttributeCodeLedger:
@@ -193,7 +189,6 @@ func (fs *FilterSet) SetReady(v bool) {
 type BloomUpdates struct {
 	Volumes           [][]byte
 	Metadata          [][]byte
-	Idempotency       [][]byte
 	References        [][]byte
 	Ledgers           [][]byte
 	Boundaries        [][]byte
@@ -208,7 +203,6 @@ type BloomUpdates struct {
 func (u *BloomUpdates) Reset() {
 	u.Volumes = u.Volumes[:0]
 	u.Metadata = u.Metadata[:0]
-	u.Idempotency = u.Idempotency[:0]
 	u.References = u.References[:0]
 	u.Ledgers = u.Ledgers[:0]
 	u.Boundaries = u.Boundaries[:0]
@@ -237,7 +231,6 @@ func (fs *FilterSet) AddCanonicalKeys(updates *BloomUpdates) {
 
 	addKeys(fs.Volume, updates.Volumes)
 	addKeys(fs.Metadata, updates.Metadata)
-	addKeys(fs.Idempotency, updates.Idempotency)
 	addKeys(fs.Reference, updates.References)
 	addKeys(fs.Ledger, updates.Ledgers)
 	addKeys(fs.Boundary, updates.Boundaries)
@@ -353,7 +346,6 @@ func NewFilterSet(cfg FilterSetConfig, meter metric.Meter) *FilterSet {
 	return &FilterSet{
 		Volume:           newFilterOrNil(cfg.Volume, meter, "volumes"),
 		Metadata:         newFilterOrNil(cfg.Metadata, meter, "metadata"),
-		Idempotency:      newFilterOrNil(cfg.Idempotency, meter, "idempotency"),
 		Reference:        newFilterOrNil(cfg.Reference, meter, "references"),
 		Ledger:           newFilterOrNil(cfg.Ledger, meter, "ledgers"),
 		Boundary:         newFilterOrNil(cfg.Boundary, meter, "boundaries"),

@@ -199,7 +199,6 @@ func NewCacheSnapshotter(logger logging.Logger, dataStore *dal.Store, registry *
 	boundaries := newProtoSnapshotSlot(dal.AttributeCodeBoundary, c.Boundaries, func() *raftcmdpb.LedgerBoundaries { return &raftcmdpb.LedgerBoundaries{} })
 	references := newProtoSnapshotSlot(dal.AttributeCodeReference, c.References, func() *commonpb.TransactionReferenceValue { return &commonpb.TransactionReferenceValue{} })
 	transactions := newProtoSnapshotSlot(dal.AttributeCodeTransaction, c.Transactions, func() *commonpb.TransactionState { return &commonpb.TransactionState{} })
-	idempotency := newProtoSnapshotSlot(dal.AttributeCodeIdempotency, c.IdempotencyKeys, func() *commonpb.IdempotencyKeyValue { return &commonpb.IdempotencyKeyValue{} })
 	sinks := newProtoSnapshotSlot(dal.AttributeCodeSinkConfig, c.SinkConfigs, func() *commonpb.SinkConfig { return &commonpb.SinkConfig{} })
 	numscriptVersions := newProtoSnapshotSlot(dal.AttributeCodeNumscriptVersion, c.NumscriptVersions, func() *commonpb.NumscriptVersionValue { return &commonpb.NumscriptVersionValue{} })
 	numscriptContents := newProtoSnapshotSlot(dal.AttributeCodeNumscriptContent, c.NumscriptContents, func() *commonpb.NumscriptInfo { return &commonpb.NumscriptInfo{} })
@@ -212,7 +211,7 @@ func NewCacheSnapshotter(logger logging.Logger, dataStore *dal.Store, registry *
 		bloomFilters: bloomFilters,
 		slots: []cacheSnapshotSlot{
 			volumes, metadata, ledgers, boundaries, references,
-			transactions, idempotency, sinks, numscriptVersions, numscriptContents,
+			transactions, sinks, numscriptVersions, numscriptContents,
 			preparedQueries,
 		},
 		touchSlots: map[byte]cacheSnapshotSlot{
@@ -222,7 +221,6 @@ func NewCacheSnapshotter(logger logging.Logger, dataStore *dal.Store, registry *
 			dal.AttributeCodeBoundary:         boundaries,
 			dal.AttributeCodeReference:        references,
 			dal.AttributeCodeTransaction:      transactions,
-			dal.AttributeCodeIdempotency:      idempotency,
 			dal.AttributeCodeSinkConfig:       sinks,
 			dal.AttributeCodeNumscriptVersion: numscriptVersions,
 			dal.AttributeCodeNumscriptContent: numscriptContents,
@@ -268,7 +266,9 @@ func extractPreload(p *raftcmdpb.Preload) (byte, *raftcmdpb.AttributeID, any) {
 	case *raftcmdpb.Preload_Volume:
 		return dal.AttributeCodeVolume, v.Volume.GetId(), v.Volume.GetValue()
 	case *raftcmdpb.Preload_IdempotencyKey:
-		return dal.AttributeCodeIdempotency, v.IdempotencyKey.GetId(), v.IdempotencyKey.GetValue()
+		// Idempotency keys are no longer stored in the cache system.
+		// They are handled separately via the dedicated IdempotencyStore.
+		return 0, nil, nil
 	case *raftcmdpb.Preload_Ledger:
 		return dal.AttributeCodeLedger, v.Ledger.GetId(), v.Ledger.GetValue()
 	case *raftcmdpb.Preload_Boundary:
@@ -323,6 +323,7 @@ func (s *CacheSnapshotter) RestoreFromStore() error {
 	restoreStart := time.Now()
 
 	s.registry.Cache.Reset()
+	s.registry.Idempotency.Reset()
 
 	// Read cache-level metadata if present. Pre-rotation, this key does not
 	// exist; default to currentGeneration=0.

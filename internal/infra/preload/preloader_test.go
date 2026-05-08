@@ -65,8 +65,8 @@ func TestProposalGuard_ReleaseAll(t *testing.T) {
 
 	key := attributes.NewU128(30, 40)
 
-	_, err := loaders.IdempotencyKeys.LoadOrWait(key, 100, func() (*commonpb.IdempotencyKeyValue, error) {
-		return &commonpb.IdempotencyKeyValue{LogSequence: 1, Hash: []byte("h")}, nil
+	_, err := loaders.References.LoadOrWait(key, 100, func() (*commonpb.TransactionReferenceValue, error) {
+		return &commonpb.TransactionReferenceValue{TransactionId: 1}, nil
 	})
 	require.NoError(t, err)
 
@@ -76,7 +76,7 @@ func TestProposalGuard_ReleaseAll(t *testing.T) {
 
 	guard := &ProposalGuard{
 		p:     p,
-		token: &CleanupToken{tracked: []trackedLoader{{loader: loaders.IdempotencyKeys, keys: []attributes.U128{key}}}},
+		token: &CleanupToken{tracked: []trackedLoader{{loader: loaders.References, keys: []attributes.U128{key}}}},
 	}
 
 	// ReleaseAll should release both the lock and the loaders
@@ -86,10 +86,10 @@ func TestProposalGuard_ReleaseAll(t *testing.T) {
 	assert.Nil(t, guard.token)
 
 	loadCount := 0
-	_, err = loaders.IdempotencyKeys.LoadOrWait(key, 100, func() (*commonpb.IdempotencyKeyValue, error) {
+	_, err = loaders.References.LoadOrWait(key, 100, func() (*commonpb.TransactionReferenceValue, error) {
 		loadCount++
 
-		return &commonpb.IdempotencyKeyValue{LogSequence: 2, Hash: []byte("h2")}, nil
+		return &commonpb.TransactionReferenceValue{TransactionId: 2}, nil
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 1, loadCount, "Key should reload after ReleaseAll")
@@ -149,7 +149,6 @@ func TestPreloader_Loaders(t *testing.T) {
 	assert.NotNil(t, loaders.Volumes)
 	assert.NotNil(t, loaders.Ledgers)
 	assert.NotNil(t, loaders.Boundaries)
-	assert.NotNil(t, loaders.IdempotencyKeys)
 	assert.NotNil(t, loaders.References)
 	assert.NotNil(t, loaders.SinkConfigs)
 	assert.NotNil(t, loaders.AccountMetadata)

@@ -186,10 +186,6 @@ func buildVolumePreload(id *raftcmdpb.AttributeID, vol *raftcmdpb.VolumePair) *r
 	return &raftcmdpb.Preload{Type: &raftcmdpb.Preload_Volume{Volume: &raftcmdpb.PreloadVolume{Id: id, Value: vol}}}
 }
 
-func buildIdempotencyKeyPreload(id *raftcmdpb.AttributeID, value *commonpb.IdempotencyKeyValue) *raftcmdpb.Preload {
-	return &raftcmdpb.Preload{Type: &raftcmdpb.Preload_IdempotencyKey{IdempotencyKey: &raftcmdpb.PreloadIdempotencyKey{Id: id, Value: value}}}
-}
-
 func buildReferencePreload(id *raftcmdpb.AttributeID, value *commonpb.TransactionReferenceValue) *raftcmdpb.Preload {
 	return &raftcmdpb.Preload{Type: &raftcmdpb.Preload_TransactionReference{TransactionReference: &raftcmdpb.PreloadTransactionReference{Id: id, Value: value}}}
 }

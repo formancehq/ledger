@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/bloom"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
@@ -306,18 +307,35 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 
 	if len(needs.IdempotencyKeys) > 0 {
 		launch(func(i int) {
-			var r *resolveResult
-			r, results[i].err = resolveAttributePreload(
-				needs.IdempotencyKeys, nextIndex, boundary,
-				p.cache.IdempotencyKeys, p.loaders.IdempotencyKeys,
-				p.attrs.IdempotencyKeys.Get, p.store,
-				buildIdempotencyKeyPreload, false,
-				dal.AttributeCodeIdempotency, nil,
-				p.bloomFilter(dal.AttributeCodeIdempotency),
-				p.logger, "idempotency_keys",
-			)
-			results[i].resolve = r
-			results[i].loader = p.loaders.IdempotencyKeys
+			reader, err := p.store.NewReadHandle()
+			if err != nil {
+				results[i].err = err
+
+				return
+			}
+			defer func() { _ = reader.Close() }()
+
+			var preloads []*raftcmdpb.Preload
+			for ik := range needs.IdempotencyKeys {
+				value, err := state.LoadIdempotencyKey(reader, ik.Key)
+				if err != nil {
+					results[i].err = err
+
+					return
+				}
+
+				if value != nil {
+					preloads = append(preloads, &raftcmdpb.Preload{
+						Type: &raftcmdpb.Preload_IdempotencyKey{
+							IdempotencyKey: &raftcmdpb.PreloadIdempotencyKey{
+								Key:   ik.Key,
+								Value: value,
+							},
+						},
+					})
+				}
+			}
+			results[i].resolve = &resolveResult{preloads: preloads}
 		})
 	}
 

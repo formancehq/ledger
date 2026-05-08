@@ -7395,6 +7395,7 @@ type IdempotencyKeyValue struct {
 	LogSequence   uint64                 `protobuf:"varint,1,opt,name=log_sequence,json=logSequence,proto3" json:"log_sequence,omitempty"`
 	Hash          []byte                 `protobuf:"bytes,2,opt,name=hash,proto3" json:"hash,omitempty"`
 	HashVersion   uint32                 `protobuf:"varint,3,opt,name=hash_version,json=hashVersion,proto3" json:"hash_version,omitempty"` // Hash algorithm version (0 = legacy = v1)
+	CreatedAt     uint64                 `protobuf:"varint,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`       // HLC microseconds (from Raft entry timestamp)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -7446,6 +7447,13 @@ func (x *IdempotencyKeyValue) GetHash() []byte {
 func (x *IdempotencyKeyValue) GetHashVersion() uint32 {
 	if x != nil {
 		return x.HashVersion
+	}
+	return 0
+}
+
+func (x *IdempotencyKeyValue) GetCreatedAt() uint64 {
+	if x != nil {
+		return x.CreatedAt
 	}
 	return 0
 }
@@ -10283,11 +10291,13 @@ const file_common_proto_rawDesc = "" +
 	"\x10TransactionState\x12$\n" +
 	"\x0ecreated_by_log\x18\x01 \x01(\x04R\fcreatedByLog\x126\n" +
 	"\x17reverted_by_transaction\x18\x02 \x01(\x04R\x15revertedByTransaction\x12/\n" +
-	"\bmetadata\x18\x03 \x01(\v2\x13.common.MetadataSetR\bmetadata\"o\n" +
+	"\bmetadata\x18\x03 \x01(\v2\x13.common.MetadataSetR\bmetadata\"\x8e\x01\n" +
 	"\x13IdempotencyKeyValue\x12!\n" +
 	"\flog_sequence\x18\x01 \x01(\x04R\vlogSequence\x12\x12\n" +
 	"\x04hash\x18\x02 \x01(\fR\x04hash\x12!\n" +
-	"\fhash_version\x18\x03 \x01(\rR\vhashVersion\"B\n" +
+	"\fhash_version\x18\x03 \x01(\rR\vhashVersion\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\x04 \x01(\x04R\tcreatedAt\"B\n" +
 	"\x19TransactionReferenceValue\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\x04R\rtransactionId\"1\n" +
 	"\x15NumscriptVersionValue\x12\x18\n" +

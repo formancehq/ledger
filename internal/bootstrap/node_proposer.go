@@ -3,9 +3,12 @@ package bootstrap
 import (
 	"context"
 	"fmt"
+	"math/rand/v2"
+	"time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/commands"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
 
@@ -46,6 +49,37 @@ func (p *NodeProposer) ProposeOrders(orders ...*raftcmdpb.Order) error {
 	// Wait for the raw Raft proposal to be accepted (not FSM application).
 	if _, err := proposal.Wait(); err != nil {
 		return fmt.Errorf("raft proposal failed: %w", err)
+	}
+
+	return nil
+}
+
+// ProposeIdempotencyEviction proposes a deterministic idempotency eviction
+// command through Raft. All nodes apply the same cutoff, removing expired keys.
+func (p *NodeProposer) ProposeIdempotencyEviction(cutoffMicros uint64) error {
+	cmd := &raftcmdpb.Proposal{
+		Id:                  rand.Uint64(),
+		Date:                &commonpb.Timestamp{Data: uint64(time.Now().UnixMicro())},
+		IdempotencyEviction: &raftcmdpb.IdempotencyEviction{CutoffMicros: cutoffMicros},
+	}
+
+	data, err := cmd.MarshalVT()
+	if err != nil {
+		return fmt.Errorf("marshaling eviction proposal: %w", err)
+	}
+
+	proposal := node.NewProposal(cmd.GetId(), data)
+
+	p.node.IndexTracker().Lock()
+	_, err = p.node.Propose(context.Background(), proposal)
+	p.node.IndexTracker().Unlock()
+
+	if err != nil {
+		return fmt.Errorf("proposing eviction to raft: %w", err)
+	}
+
+	if _, err := proposal.Wait(); err != nil {
+		return fmt.Errorf("eviction proposal failed: %w", err)
 	}
 
 	return nil

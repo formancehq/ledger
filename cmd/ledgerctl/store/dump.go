@@ -113,6 +113,16 @@ func describeKey(key []byte) string {
 	}
 
 	switch key[0] {
+	case dal.KeyPrefixIdempotency:
+		return "IDEMPOTENCY key_hash=" + hex.EncodeToString(key[1:])
+	case dal.KeyPrefixIdempotencyTimeIdx:
+		if len(key) >= 9 {
+			ts := binary.BigEndian.Uint64(key[1:9])
+
+			return fmt.Sprintf("IDEMPOTENCY_TIME_IDX created_at=%d hash=%s", ts, hex.EncodeToString(key[9:]))
+		}
+
+		return "IDEMPOTENCY_TIME_IDX (short key)"
 	case dal.KeyPrefixLog:
 		if len(key) >= 9 {
 			seq := binary.BigEndian.Uint64(key[1:9])
@@ -204,8 +214,6 @@ func describeAttributeKey(key []byte) string {
 		attrType = "Volume"
 	case dal.AttributeCodeMetadata:
 		attrType = "Metadata"
-	case dal.AttributeCodeIdempotency:
-		attrType = "Idempotency"
 	case dal.AttributeCodeReference:
 		attrType = "Reference"
 	case dal.AttributeCodeLedger:
@@ -228,6 +236,10 @@ func decodeValue(key, val []byte) string {
 	}
 
 	switch key[0] {
+	case dal.KeyPrefixIdempotency:
+		return tryProtoJSON(val, &commonpb.IdempotencyKeyValue{})
+	case dal.KeyPrefixIdempotencyTimeIdx:
+		return "(empty time index entry)"
 	case dal.KeyPrefixLog:
 		return tryProtoJSON(val, &commonpb.Log{})
 	case dal.KeyPrefixAudit:
@@ -287,8 +299,6 @@ func decodeAttributeValue(key, val []byte) string {
 		return tryProtoJSON(val, &raftcmdpb.VolumePair{})
 	case dal.AttributeCodeMetadata:
 		return tryProtoJSON(val, &commonpb.MetadataValue{})
-	case dal.AttributeCodeIdempotency:
-		return tryProtoJSON(val, &commonpb.IdempotencyKeyValue{})
 	case dal.AttributeCodeReference:
 		return tryProtoJSON(val, &commonpb.TransactionReferenceValue{})
 	case dal.AttributeCodeLedger:

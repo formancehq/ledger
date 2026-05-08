@@ -298,9 +298,24 @@ func WithBloomTestConfig() testservice.InstrumentationFunc {
 		cfg.AppendArgs(
 			"--bloom-volumes-expected-keys", "10000",
 			"--bloom-metadata-expected-keys", "1000",
-			"--bloom-idempotency-expected-keys", "1000",
 			"--bloom-references-expected-keys", "1000",
 		)
+
+		return nil
+	}
+}
+
+func WithIdempotencyTTL(d time.Duration) testservice.InstrumentationFunc {
+	return func(_ context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--idempotency-ttl", d.String())
+
+		return nil
+	}
+}
+
+func WithIdempotencyEvictionInterval(d time.Duration) testservice.InstrumentationFunc {
+	return func(_ context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--idempotency-eviction-interval", d.String())
 
 		return nil
 	}
