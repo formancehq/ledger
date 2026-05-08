@@ -16,8 +16,13 @@ type testKey struct {
 
 func (k testKey) Bytes() []byte { return []byte(k.name) }
 
+// newTestKV creates a simple KV store for tests using ShardedMap with a hash function for U128.
+func newTestKV[V any]() kv.KV[U128, V] {
+	return kv.NewShardedMap[U128, V](func(k U128) uint64 { return k.Hi() })
+}
+
 func newTestKeyStore() *KeyStore[testKey, string] {
-	return NewKeyStore[testKey, string](DefaultSeeds, kv.NewMap[U128, Entry[string]]())
+	return NewKeyStore[testKey, string](DefaultSeeds, newTestKV[Entry[string]]())
 }
 
 func TestKeyStorePut(t *testing.T) {
@@ -258,7 +263,7 @@ func TestDerivedKeyStoreCloneFn(t *testing.T) {
 		count int
 	}
 
-	store := NewKeyStore[testKey, *mutableValue](DefaultSeeds, kv.NewMap[U128, Entry[*mutableValue]]())
+	store := NewKeyStore[testKey, *mutableValue](DefaultSeeds, newTestKV[Entry[*mutableValue]]())
 	_, _, err := store.Put([]byte("cloned"), &mutableValue{count: 42})
 	require.NoError(t, err)
 

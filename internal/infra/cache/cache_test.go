@@ -38,28 +38,6 @@ func TestGen(t *testing.T) {
 	}
 }
 
-func TestGenStartIndex(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		g        uint64
-		k        uint64
-		expected uint64
-	}{
-		{"gen 0 with k=10 starts at 1", 0, 10, 1},
-		{"gen 1 with k=10 starts at 11", 1, 10, 11},
-		{"gen 2 with k=10 starts at 21", 2, 10, 21},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := genStartIndex(tt.g, tt.k)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
 func TestGenEndIndex(t *testing.T) {
 	t.Parallel()
 

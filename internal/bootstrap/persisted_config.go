@@ -55,17 +55,6 @@ func LoadPersistedConfig(reader dal.PebbleReader) (*PersistedConfig, error) {
 	return &cfg, nil
 }
 
-// DeletePersistedConfig removes the persisted configuration from the batch.
-// This is used during backup compaction so the backup is portable to any cluster.
-func DeletePersistedConfig(b *dal.Batch) error {
-	err := b.DeleteKey([]byte{dal.KeyPrefixPersistedConfig})
-	if err != nil {
-		return fmt.Errorf("deleting persisted config: %w", err)
-	}
-
-	return nil
-}
-
 // SavePersistedConfig writes the persisted configuration to the batch.
 func SavePersistedConfig(b *dal.Batch, cfg *PersistedConfig) error {
 	value, err := json.Marshal(cfg)

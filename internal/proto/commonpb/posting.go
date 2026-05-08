@@ -1,12 +1,9 @@
 package commonpb
 
 import (
-	"errors"
 	"math/big"
 
 	"github.com/holiman/uint256"
-
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
 )
 
 // Postings is a slice of Posting pointers.
@@ -34,33 +31,6 @@ func (p Postings) Reverse() Postings {
 	}
 
 	return postings
-}
-
-// Validate validates all postings in the slice.
-func (p Postings) Validate() (int, error) {
-	for i, posting := range p {
-		if posting == nil {
-			return i, errors.New("nil posting")
-		}
-
-		if posting.GetAmount().IsZero() {
-			return i, errors.New("no amount defined")
-		}
-
-		if !domain.ValidateAccountAddress(posting.GetSource()) {
-			return i, errors.New("invalid source address")
-		}
-
-		if !domain.ValidateAccountAddress(posting.GetDestination()) {
-			return i, errors.New("invalid destination address")
-		}
-
-		if !domain.ValidateAsset(posting.GetAsset()) {
-			return i, errors.New("invalid asset")
-		}
-	}
-
-	return 0, nil
 }
 
 // NewPosting creates a new Posting from the given parameters.

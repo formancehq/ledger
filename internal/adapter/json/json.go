@@ -18,21 +18,10 @@ func Unmarshal(data []byte, v any) error {
 	return sonic.Unmarshal(data, v)
 }
 
-// MarshalWrite writes the JSON encoding of v to the writer.
-// This is equivalent to encoding/json/v2's MarshalWrite.
-func MarshalWrite(w io.Writer, v any) error {
-	return sonic.ConfigDefault.NewEncoder(w).Encode(v)
-}
-
 // UnmarshalRead reads JSON from the reader and unmarshals it into v.
 // This is equivalent to encoding/json/v2's UnmarshalRead.
 func UnmarshalRead(r io.Reader, v any) error {
 	return sonic.ConfigStd.NewDecoder(r).Decode(v)
-}
-
-// Valid reports whether data is a valid JSON encoding.
-func Valid(data []byte) bool {
-	return sonic.Valid(data)
 }
 
 // RawValue represents a raw JSON value that can be stored and used later.

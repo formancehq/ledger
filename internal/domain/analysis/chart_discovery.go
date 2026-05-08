@@ -97,30 +97,6 @@ func newTrieNode() *trieNode {
 // progressReportInterval is the number of items between progress callbacks.
 const progressReportInterval = 500
 
-// Analyze scans a slice of compact accounts and returns an AnalyzeAccountsResponse with
-// a suggested ChartOfAccounts, discovered patterns, and total account count.
-func Analyze(accounts []CompactAccount, variableThreshold uint32) *servicepb.AnalyzeAccountsResponse {
-	i := 0
-	next := func() (CompactAccount, error) {
-		if i >= len(accounts) {
-			return CompactAccount{}, io.EOF
-		}
-
-		acc := accounts[i]
-		i++
-
-		return acc, nil
-	}
-
-	resp, err := AnalyzeFromIterator(next, variableThreshold, nil)
-	if err != nil {
-		// Slice iterator never returns a non-EOF error.
-		panic(fmt.Sprintf("unexpected error from slice iterator: %v", err))
-	}
-
-	return resp
-}
-
 // AnalyzeFromIterator incrementally builds a trie from accounts yielded by next.
 // Each account is discarded after insertion, so memory is O(unique address segments)
 // instead of O(N accounts).

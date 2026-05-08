@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"fmt"
+	"io"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,6 +10,25 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
+
+func analyze(accounts []CompactAccount, variableThreshold uint32) *servicepb.AnalyzeAccountsResponse {
+	i := 0
+	next := func() (CompactAccount, error) {
+		if i >= len(accounts) {
+			return CompactAccount{}, io.EOF
+		}
+		acc := accounts[i]
+		i++
+
+		return acc, nil
+	}
+	resp, err := AnalyzeFromIterator(next, variableThreshold, nil)
+	if err != nil {
+		panic(fmt.Sprintf("unexpected error from slice iterator: %v", err))
+	}
+
+	return resp
+}
 
 func makeCompactAccount(address string) CompactAccount {
 	return CompactAccount{Address: address}
@@ -25,7 +45,7 @@ func makeCompactAccountWithMetadata(address string, keys ...string) CompactAccou
 func TestAnalyze_EmptyAccounts(t *testing.T) {
 	t.Parallel()
 
-	resp := Analyze(nil, 0)
+	resp := analyze(nil, 0)
 	require.NotNil(t, resp)
 	assert.Empty(t, resp.GetPatterns())
 	assert.Equal(t, uint64(0), resp.GetTotalAccounts())
@@ -34,7 +54,7 @@ func TestAnalyze_EmptyAccounts(t *testing.T) {
 func TestAnalyze_SingleAccount(t *testing.T) {
 	t.Parallel()
 
-	resp := Analyze([]CompactAccount{makeCompactAccount("world")}, 0)
+	resp := analyze([]CompactAccount{makeCompactAccount("world")}, 0)
 
 	require.NotNil(t, resp)
 	assert.Equal(t, uint64(1), resp.GetTotalAccounts())
@@ -54,7 +74,7 @@ func TestAnalyze_SimpleFixedHierarchy(t *testing.T) {
 		makeCompactAccount("world"),
 	}
 
-	resp := Analyze(accounts, 0)
+	resp := analyze(accounts, 0)
 
 	require.NotNil(t, resp)
 	assert.Equal(t, uint64(3), resp.GetTotalAccounts())
@@ -74,7 +94,7 @@ func TestAnalyze_VariableDetection(t *testing.T) {
 		accounts = append(accounts, makeCompactAccount("users:"+uuid))
 	}
 
-	resp := Analyze(accounts, 0)
+	resp := analyze(accounts, 0)
 
 	require.NotNil(t, resp)
 	assert.Equal(t, uint64(15), resp.GetTotalAccounts())
@@ -97,7 +117,7 @@ func TestAnalyze_NumericPattern(t *testing.T) {
 		accounts = append(accounts, makeCompactAccount(fmt.Sprintf("orders:%d", 1000+i)))
 	}
 
-	resp := Analyze(accounts, 0)
+	resp := analyze(accounts, 0)
 
 	require.Len(t, resp.GetPatterns(), 1)
 	assert.Equal(t, "orders:{number}", resp.GetPatterns()[0].GetPattern())
@@ -112,7 +132,7 @@ func TestAnalyze_DeepNestedHierarchy(t *testing.T) {
 		makeCompactAccount("platform:region:eu:fees"),
 	}
 
-	resp := Analyze(accounts, 0)
+	resp := analyze(accounts, 0)
 
 	require.NotNil(t, resp)
 	assert.Equal(t, uint64(3), resp.GetTotalAccounts())
@@ -127,7 +147,7 @@ func TestAnalyze_AssetsAggregation(t *testing.T) {
 		makeCompactAccountWithAssets("bank:fees", "USD"),
 	}
 
-	resp := Analyze(accounts, 0)
+	resp := analyze(accounts, 0)
 
 	// Find the "bank:main" pattern
 	var mainPattern *servicepb.AccountPattern
@@ -150,7 +170,7 @@ func TestAnalyze_MetadataKeysAggregation(t *testing.T) {
 		makeCompactAccountWithMetadata("users:bob", "phone", "role"),
 	}
 
-	resp := Analyze(accounts, 0)
+	resp := analyze(accounts, 0)
 
 	// With 2 users, they're fixed segments
 	var alicePattern *servicepb.AccountPattern
@@ -176,11 +196,11 @@ func TestAnalyze_ThresholdConfigurability(t *testing.T) {
 	}
 
 	// With default threshold (10), should be fixed — 5 patterns
-	resp := Analyze(accounts, 0)
+	resp := analyze(accounts, 0)
 	require.Len(t, resp.GetPatterns(), 5)
 
 	// With threshold=3, should become variable (5 numeric IDs > threshold 3)
-	resp2 := Analyze(accounts, 3)
+	resp2 := analyze(accounts, 3)
 	require.Len(t, resp2.GetPatterns(), 1)
 	assert.Equal(t, "users:{number}", resp2.GetPatterns()[0].GetPattern())
 }
@@ -201,7 +221,7 @@ func TestAnalyze_WorldAndUsersPattern(t *testing.T) {
 		accounts = append(accounts, makeCompactAccount("users:"+uuid+":savings"))
 	}
 
-	resp := Analyze(accounts, 0)
+	resp := analyze(accounts, 0)
 
 	require.NotNil(t, resp)
 	assert.Equal(t, uint64(33), resp.GetTotalAccounts())
@@ -263,7 +283,7 @@ func TestAnalyze_OverflowCapping(t *testing.T) {
 		accounts = append(accounts, makeCompactAccount("users:"+uuid+":wallet"))
 	}
 
-	resp := Analyze(accounts, 5)
+	resp := analyze(accounts, 5)
 
 	require.NotNil(t, resp)
 	assert.Equal(t, uint64(100), resp.GetTotalAccounts())
@@ -291,7 +311,7 @@ func TestAnalyze_OverflowMemoryBounded(t *testing.T) {
 		accounts = append(accounts, makeCompactAccount(fmt.Sprintf("users:%06d", i)))
 	}
 
-	resp := Analyze(accounts, threshold)
+	resp := analyze(accounts, threshold)
 
 	require.NotNil(t, resp)
 	assert.Equal(t, uint64(numAccounts), resp.GetTotalAccounts())

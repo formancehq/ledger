@@ -10,8 +10,6 @@ func Gen(i, k uint64) uint64 {
 	return (i - 1) / k
 }
 
-func genStartIndex(g, k uint64) uint64 { return g*k + 1 }
-
 func genEndIndex(g, k uint64) uint64 { return (g + 1) * k }
 
 // Canonical boundary B(i) = end(gen(i)-1) for g>=1 else 0.

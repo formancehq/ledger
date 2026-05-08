@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"fmt"
+	"io"
 	"math/big"
 	"testing"
 
@@ -10,6 +11,44 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
+
+// analyzeTransactions is a test helper that wraps AnalyzeTransactionsFromIterators
+// with simple slice-based iterators.
+func analyzeTransactions(txns []CompactTransaction, variableThreshold uint32) *servicepb.AnalyzeTransactionsResponse {
+	var totalReverted uint64
+	for i := range txns {
+		if txns[i].Reverted {
+			totalReverted++
+		}
+	}
+
+	makeIter := func() func() (CompactTransaction, error) {
+		i := 0
+
+		return func() (CompactTransaction, error) {
+			if i >= len(txns) {
+				return CompactTransaction{}, io.EOF
+			}
+			ct := txns[i]
+			i++
+
+			return ct, nil
+		}
+	}
+
+	count := totalReverted
+
+	resp, err := AnalyzeTransactionsFromIterators(
+		makeIter(), makeIter(),
+		func() uint64 { return count },
+		variableThreshold, nil,
+	)
+	if err != nil {
+		panic(fmt.Sprintf("analyzeTransactions: unexpected error: %v", err))
+	}
+
+	return resp
+}
 
 func makeCompactTransaction(ts uint64, postings []CompactPosting) CompactTransaction {
 	return CompactTransaction{
@@ -31,7 +70,7 @@ func makeCompactPosting(src, dst, asset string, amount uint64) CompactPosting {
 func TestAnalyzeTransactions_Empty(t *testing.T) {
 	t.Parallel()
 
-	resp := AnalyzeTransactions(nil, 0)
+	resp := analyzeTransactions(nil, 0)
 	require.NotNil(t, resp)
 	assert.Equal(t, uint64(0), resp.GetTotalTransactions())
 	assert.Equal(t, uint64(0), resp.GetTotalReverted())
@@ -47,7 +86,7 @@ func TestAnalyzeTransactions_SingleSimple(t *testing.T) {
 		}),
 	}
 
-	resp := AnalyzeTransactions(txns, 0)
+	resp := analyzeTransactions(txns, 0)
 	require.NotNil(t, resp)
 	assert.Equal(t, uint64(1), resp.GetTotalTransactions())
 	assert.Equal(t, uint64(0), resp.GetTotalReverted())
@@ -72,7 +111,7 @@ func TestAnalyzeTransactions_MultiDestination(t *testing.T) {
 		}),
 	}
 
-	resp := AnalyzeTransactions(txns, 0)
+	resp := analyzeTransactions(txns, 0)
 	require.Len(t, resp.GetFlowPatterns(), 1)
 	assert.Equal(t, servicepb.PostingStructure_POSTING_STRUCTURE_MULTI_DESTINATION, resp.GetFlowPatterns()[0].GetStructure())
 }
@@ -87,7 +126,7 @@ func TestAnalyzeTransactions_MultiSource(t *testing.T) {
 		}),
 	}
 
-	resp := AnalyzeTransactions(txns, 0)
+	resp := analyzeTransactions(txns, 0)
 	require.Len(t, resp.GetFlowPatterns(), 1)
 	assert.Equal(t, servicepb.PostingStructure_POSTING_STRUCTURE_MULTI_SOURCE, resp.GetFlowPatterns()[0].GetStructure())
 }
@@ -107,7 +146,7 @@ func TestAnalyzeTransactions_NormalizationUUID(t *testing.T) {
 		))
 	}
 
-	resp := AnalyzeTransactions(txns, 0)
+	resp := analyzeTransactions(txns, 0)
 	require.Len(t, resp.GetFlowPatterns(), 1)
 
 	pattern := resp.GetFlowPatterns()[0]
@@ -128,7 +167,7 @@ func TestAnalyzeTransactions_NormalizationNumeric(t *testing.T) {
 		))
 	}
 
-	resp := AnalyzeTransactions(txns, 0)
+	resp := analyzeTransactions(txns, 0)
 	require.Len(t, resp.GetFlowPatterns(), 1)
 
 	pattern := resp.GetFlowPatterns()[0]
@@ -150,7 +189,7 @@ func TestAnalyzeTransactions_TemporalStats(t *testing.T) {
 		}),
 	}
 
-	resp := AnalyzeTransactions(txns, 0)
+	resp := analyzeTransactions(txns, 0)
 	require.Len(t, resp.GetFlowPatterns(), 1)
 
 	temporal := resp.GetFlowPatterns()[0].GetTemporal()
@@ -172,7 +211,7 @@ func TestAnalyzeTransactions_VolumeStats(t *testing.T) {
 		}),
 	}
 
-	resp := AnalyzeTransactions(txns, 0)
+	resp := analyzeTransactions(txns, 0)
 	require.Len(t, resp.GetFlowPatterns(), 1)
 
 	volumeStats := resp.GetFlowPatterns()[0].GetVolumeStats()
@@ -202,7 +241,7 @@ func TestAnalyzeTransactions_RevertedCounted(t *testing.T) {
 		},
 	}
 
-	resp := AnalyzeTransactions(txns, 0)
+	resp := analyzeTransactions(txns, 0)
 	assert.Equal(t, uint64(2), resp.GetTotalTransactions())
 	assert.Equal(t, uint64(1), resp.GetTotalReverted())
 }
@@ -229,7 +268,7 @@ func TestAnalyzeTransactions_MetadataKeys(t *testing.T) {
 		},
 	}
 
-	resp := AnalyzeTransactions(txns, 0)
+	resp := analyzeTransactions(txns, 0)
 	require.Len(t, resp.GetFlowPatterns(), 1)
 	assert.Equal(t, []string{"category", "region", "source"}, resp.GetFlowPatterns()[0].GetMetadataKeys())
 }
@@ -249,7 +288,7 @@ func TestAnalyzeTransactions_GroupedBySignature(t *testing.T) {
 		}),
 	}
 
-	resp := AnalyzeTransactions(txns, 0)
+	resp := analyzeTransactions(txns, 0)
 	assert.Equal(t, uint64(3), resp.GetTotalTransactions())
 	require.Len(t, resp.GetFlowPatterns(), 2)
 

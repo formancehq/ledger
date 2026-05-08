@@ -24,13 +24,3 @@ func Module(cfg Config) fx.Option {
 		}),
 	)
 }
-
-// WrapExporter wraps an existing SpanExporter with error-aware sampling.
-// This can be used when fx decoration is not possible.
-func WrapExporter(exporter sdktrace.SpanExporter, cfg Config) sdktrace.SpanExporter {
-	if !cfg.Enabled {
-		return exporter
-	}
-
-	return NewErrorAwareSamplingExporter(exporter, cfg.SuccessRatio)
-}

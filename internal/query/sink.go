@@ -8,7 +8,6 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
@@ -70,12 +69,6 @@ func ReadAllSinkStatuses(reader dal.PebbleReader) ([]*commonpb.SinkStatus, error
 	}
 
 	return statuses, nil
-}
-
-// ReadSinkConfig loads a single sink configuration by name from the given reader.
-// Returns nil (not error) if the sink does not exist.
-func ReadSinkConfig(attr *attributes.Attribute[*commonpb.SinkConfig], reader dal.PebbleReader, name string) (*commonpb.SinkConfig, error) {
-	return attr.Get(reader, domain.SinkConfigKey{Name: name}.Bytes())
 }
 
 // ReadAllSinkConfigs loads all sink configurations from the attributes zone.

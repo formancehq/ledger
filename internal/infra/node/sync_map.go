@@ -47,9 +47,3 @@ func (m *SyncMap[K, V]) Range(f func(K, V) bool) {
 		return f(key.(K), value.(V))
 	})
 }
-
-func NewSyncMap[K comparable, V any]() *SyncMap[K, V] {
-	return &SyncMap[K, V]{
-		m: sync.Map{},
-	}
-}

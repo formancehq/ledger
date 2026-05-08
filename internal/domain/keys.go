@@ -26,22 +26,10 @@ type VolumeKey struct {
 	Asset string
 
 	// AssetBase and AssetPrecision are the decomposed form, populated by
-	// NewVolumeKey and Unmarshal. They avoid re-parsing the Asset string
-	// when serializing or aggregating.
+	// Unmarshal. They avoid re-parsing the Asset string when serializing
+	// or aggregating.
 	AssetBase      string
 	AssetPrecision uint8
-}
-
-// NewVolumeKey creates a VolumeKey, parsing the asset string into base and precision.
-func NewVolumeKey(ak AccountKey, asset string) VolumeKey {
-	base, prec := ParseAssetPrecision(asset)
-
-	return VolumeKey{
-		AccountKey:     ak,
-		Asset:          asset,
-		AssetBase:      base,
-		AssetPrecision: prec,
-	}
 }
 
 // Bytes returns a canonical byte representation of the balance key.
@@ -52,7 +40,7 @@ func (bk VolumeKey) Bytes() []byte {
 	base := bk.AssetBase
 	precision := bk.AssetPrecision
 
-	// Fallback: if constructed via struct literal without NewVolumeKey.
+	// Fallback: if constructed via struct literal without decomposed fields.
 	if base == "" && bk.Asset != "" {
 		base, precision = ParseAssetPrecision(bk.Asset)
 	}

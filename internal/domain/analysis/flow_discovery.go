@@ -13,43 +13,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
-// AnalyzeTransactions scans a slice of compact transactions and returns an AnalyzeTransactionsResponse
-// with discovered flow patterns, temporal stats, volume stats, and metadata keys.
-func AnalyzeTransactions(txns []CompactTransaction, variableThreshold uint32) *servicepb.AnalyzeTransactionsResponse {
-	var totalReverted uint64
-
-	for i := range txns {
-		if txns[i].Reverted {
-			totalReverted++
-		}
-	}
-
-	makeIter := func() func() (CompactTransaction, error) {
-		i := 0
-
-		return func() (CompactTransaction, error) {
-			if i >= len(txns) {
-				return CompactTransaction{}, io.EOF
-			}
-
-			ct := txns[i]
-			i++
-
-			return ct, nil
-		}
-	}
-
-	count := totalReverted
-
-	resp, err := AnalyzeTransactionsFromIterators(makeIter(), makeIter(), func() uint64 { return count }, variableThreshold, nil)
-	if err != nil {
-		// Slice iterators never return a non-EOF error.
-		panic(fmt.Sprintf("unexpected error from slice iterator: %v", err))
-	}
-
-	return resp
-}
-
 // txGroupAccum accumulates statistics for a group of transactions sharing
 // the same flow signature. It uses online accumulators instead of storing
 // the full transaction list, keeping memory at O(unique signatures).

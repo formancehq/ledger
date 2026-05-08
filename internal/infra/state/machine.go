@@ -35,12 +35,6 @@ type Notifier interface {
 	NotifyConfigChanged()
 }
 
-// NoopNotifier is a no-op implementation of Notifier for use in tests.
-type NoopNotifier struct{}
-
-func (NoopNotifier) NotifyLogsCommitted(uint64) {}
-func (NoopNotifier) NotifyConfigChanged()       {}
-
 type Machine struct {
 	logger    logging.Logger
 	dataStore *dal.Store

@@ -70,42 +70,9 @@ func MetadataSetToMap(ms *MetadataSet) metadata.Metadata {
 	return MetadataToMap(ms.GetMetadata())
 }
 
-// NewMetadataSet creates a new MetadataSet from a metadata.Metadata map.
-func NewMetadataSet(m metadata.Metadata) *MetadataSet {
-	return MetadataSetFromMap(m)
-}
-
 // ToMap converts a MetadataSet to metadata.Metadata (map[string]string).
 func (ms *MetadataSet) ToMap() metadata.Metadata {
 	return MetadataSetToMap(ms)
-}
-
-// AccountMetadataFromMap converts a map[string]metadata.Metadata to map[string]*MetadataSet.
-func AccountMetadataFromMap(m map[string]metadata.Metadata) map[string]*MetadataSet {
-	if m == nil {
-		return nil
-	}
-
-	result := make(map[string]*MetadataSet, len(m))
-	for k, v := range m {
-		result[k] = MetadataSetFromMap(v)
-	}
-
-	return result
-}
-
-// AccountMetadataToMap converts a map[string]*MetadataSet to map[string]metadata.Metadata.
-func AccountMetadataToMap(m map[string]*MetadataSet) map[string]metadata.Metadata {
-	if m == nil {
-		return nil
-	}
-
-	result := make(map[string]metadata.Metadata, len(m))
-	for k, v := range m {
-		result[k] = MetadataSetToMap(v)
-	}
-
-	return result
 }
 
 // MetadataValueToAny converts a MetadataValue to a JSON-compatible any value.

@@ -61,13 +61,3 @@ func (r *Runner) Step(name string, actions ...*servicepb.Request) (*servicepb.Ap
 
 	return r.Apply(actions...)
 }
-
-// Client returns the underlying gRPC client.
-func (r *Runner) Client() servicepb.BucketServiceClient {
-	return r.client
-}
-
-// Ctx returns the runner's context.
-func (r *Runner) Ctx() context.Context {
-	return r.ctx
-}

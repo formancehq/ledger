@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"sort"
 	"strings"
 )
 
@@ -212,37 +211,6 @@ func RewriteAddress(bindings *Bindings, target []PatternSegment) (string, error)
 	return strings.Join(parts, ":"), nil
 }
 
-// PatternString reconstructs the pattern string from parsed segments.
-func PatternString(segments []PatternSegment) string {
-	parts := make([]string, len(segments))
-	for i, seg := range segments {
-		switch seg.Kind {
-		case SegmentFixed:
-			parts[i] = seg.Value
-		case SegmentVariable:
-			if seg.Pattern != "" {
-				parts[i] = "{" + seg.Value + ":" + seg.Pattern + "}"
-			} else {
-				parts[i] = "{" + seg.Value + "}"
-			}
-		}
-	}
-
-	return strings.Join(parts, ":")
-}
-
-// VariableNames returns the variable names in a pattern in order.
-func VariableNames(segments []PatternSegment) []string {
-	var names []string
-	for _, seg := range segments {
-		if seg.Kind == SegmentVariable {
-			names = append(names, seg.Value)
-		}
-	}
-
-	return names
-}
-
 // ValidateMigrationCompatible checks that target pattern is compatible with source
 // for migration. All variables in the target must exist in the source (variables
 // can be dropped but not added). Fixed segments can change freely, and the number
@@ -264,21 +232,4 @@ func ValidateMigrationCompatible(source, target []PatternSegment) error {
 	}
 
 	return nil
-}
-
-// SortBySpecificity sorts pattern segment slices by specificity (most specific first).
-// Ties are broken by fewer total segments (more constrained), then lexicographic on pattern string.
-func SortBySpecificity(patterns [][]PatternSegment) {
-	sort.SliceStable(patterns, func(i, j int) bool {
-		si, sj := Specificity(patterns[i]), Specificity(patterns[j])
-		if si != sj {
-			return si > sj
-		}
-		li, lj := len(patterns[i]), len(patterns[j])
-		if li != lj {
-			return li < lj
-		}
-
-		return PatternString(patterns[i]) < PatternString(patterns[j])
-	})
 }

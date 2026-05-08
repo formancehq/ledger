@@ -1,7 +1,10 @@
 package node
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"io"
 	"testing"
 	"time"
 
@@ -17,10 +20,42 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/commands"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/spool"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/wal"
 )
+
+type noopNotifier struct{}
+
+func (noopNotifier) NotifyLogsCommitted(uint64) {}
+func (noopNotifier) NotifyConfigChanged()       {}
+
+func listLedgerContains(s *dal.Store, name string) bool {
+	cursor, err := query.ReadLedgers(context.Background(), s)
+	if err != nil {
+		return false
+	}
+
+	defer func() { _ = cursor.Close() }()
+
+	for {
+		ledger, err := cursor.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+
+		if err != nil {
+			return false
+		}
+
+		if ledger.GetName() == name {
+			return true
+		}
+	}
+
+	return false
+}
 
 // testApplierSetup holds all the infrastructure needed to test the Applier in isolation.
 type testApplierSetup struct {
@@ -63,7 +98,7 @@ func newTestApplierSetup(t *testing.T) *testApplierSetup {
 
 	fsm, err := state.NewMachine(
 		logger, pebbleStore, meter, nodeCache, nodeAttrs,
-		nil, state.NewSharedState(), state.NoopNotifier{}, state.NoopNotifier{}, state.NoopNotifier{}, nil, 0, false,
+		nil, state.NewSharedState(), noopNotifier{}, noopNotifier{}, noopNotifier{}, nil, 0, false,
 	)
 	require.NoError(t, err)
 

@@ -18,6 +18,41 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
+func newVolumeKey(ak domain.AccountKey, asset string) domain.VolumeKey {
+	base, prec := domain.ParseAssetPrecision(asset)
+
+	return domain.VolumeKey{
+		AccountKey:     ak,
+		Asset:          asset,
+		AssetBase:      base,
+		AssetPrecision: prec,
+	}
+}
+
+func persistGeneration(s *CacheSnapshotter, batch *dal.Batch, genByte byte, genIndex int) error {
+	var baseIndex uint64
+	if genIndex == 0 {
+		baseIndex = s.registry.Cache.BaseIndex.Gen0
+	} else {
+		baseIndex = s.registry.Cache.BaseIndex.Gen1
+	}
+
+	if err := batch.SetProto(
+		[]byte{dal.KeyPrefixCacheSnapshot, genByte, dal.CacheGenMeta},
+		&raftcmdpb.CacheGenerationMeta{BaseIndex: baseIndex},
+	); err != nil {
+		return fmt.Errorf("writing gen meta: %w", err)
+	}
+
+	for _, slot := range s.slots {
+		if err := slot.Persist(batch, genByte, genIndex); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // persistToStore is a test helper that writes cache and reversions to Pebble
 // in a single batch, so that RestoreFromStore can be tested.
 func persistToStore(s *CacheSnapshotter) error {
@@ -43,11 +78,11 @@ func persistToStore(s *CacheSnapshotter) error {
 	gen0Byte := byte(currentGen % 2)
 	gen1Byte := byte((currentGen + 1) % 2)
 
-	if err := s.persistGeneration(batch, gen0Byte, 0); err != nil {
+	if err := persistGeneration(s, batch, gen0Byte, 0); err != nil {
 		return fmt.Errorf("persisting cache gen0: %w", err)
 	}
 
-	if err := s.persistGeneration(batch, gen1Byte, 1); err != nil {
+	if err := persistGeneration(s, batch, gen1Byte, 1); err != nil {
 		return fmt.Errorf("persisting cache gen1: %w", err)
 	}
 
@@ -106,7 +141,7 @@ func TestCacheSnapshotter_PersistAndRestoreVolumes(t *testing.T) {
 	snapshotter, _, registry := newTestCacheSnapshotter(t, nil)
 
 	// Populate cache with volume data in gen0
-	volumeKey := domain.NewVolumeKey(domain.AccountKey{Ledger: "test-ledger", Account: "bank"}, "USD")
+	volumeKey := newVolumeKey(domain.AccountKey{Ledger: "test-ledger", Account: "bank"}, "USD")
 	u128 := attributes.HashU128(attributes.DefaultSeeds, volumeKey.Bytes())
 	pair := &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(100),
@@ -208,7 +243,7 @@ func TestCacheSnapshotter_PersistAndRestoreBothGenerations(t *testing.T) {
 	snapshotter, _, registry := newTestCacheSnapshotter(t, nil)
 
 	// Populate gen0 with a volume
-	volKey0 := domain.NewVolumeKey(domain.AccountKey{Ledger: "ledger", Account: "alice"}, "USD")
+	volKey0 := newVolumeKey(domain.AccountKey{Ledger: "ledger", Account: "alice"}, "USD")
 	u128_0 := attributes.HashU128(attributes.DefaultSeeds, volKey0.Bytes())
 	registry.Cache.Volumes.Gen0().Put(u128_0, attributes.Entry[*raftcmdpb.VolumePair]{
 		Tag: 1, Data: &raftcmdpb.VolumePair{
@@ -218,7 +253,7 @@ func TestCacheSnapshotter_PersistAndRestoreBothGenerations(t *testing.T) {
 	})
 
 	// Populate gen1 with a different volume
-	volKey1 := domain.NewVolumeKey(domain.AccountKey{Ledger: "ledger", Account: "bob"}, "EUR")
+	volKey1 := newVolumeKey(domain.AccountKey{Ledger: "ledger", Account: "bob"}, "EUR")
 	u128_1 := attributes.HashU128(attributes.DefaultSeeds, volKey1.Bytes())
 	registry.Cache.Volumes.Gen1().Put(u128_1, attributes.Entry[*raftcmdpb.VolumePair]{
 		Tag: 2, Data: &raftcmdpb.VolumePair{
@@ -389,7 +424,7 @@ func TestCacheSnapshotter_PersistOverwritesPrevious(t *testing.T) {
 	snapshotter, _, registry := newTestCacheSnapshotter(t, nil)
 
 	// First persist with one volume
-	volKey := domain.NewVolumeKey(domain.AccountKey{Ledger: "ledger", Account: "alice"}, "USD")
+	volKey := newVolumeKey(domain.AccountKey{Ledger: "ledger", Account: "alice"}, "USD")
 	u128 := attributes.HashU128(attributes.DefaultSeeds, volKey.Bytes())
 	registry.Cache.Volumes.Gen0().Put(u128, attributes.Entry[*raftcmdpb.VolumePair]{
 		Tag: 1, Data: &raftcmdpb.VolumePair{
@@ -456,7 +491,7 @@ func TestCacheSnapshotter_RestorePreRotation(t *testing.T) {
 	boundaryBytes, err := boundaryValue.MarshalVT()
 	require.NoError(t, err)
 
-	volKey := domain.NewVolumeKey(domain.AccountKey{Ledger: "default", Account: "world"}, "USD")
+	volKey := newVolumeKey(domain.AccountKey{Ledger: "default", Account: "world"}, "USD")
 	volU128 := attributes.HashU128(attributes.DefaultSeeds, volKey.Bytes())
 	volValue := &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(0),
@@ -501,7 +536,7 @@ func TestCacheSnapshotter_MachineIntegration(t *testing.T) {
 	machine, _, _ := newTestMachine(t)
 
 	// Populate some data via the machine's registry
-	volKey := domain.NewVolumeKey(domain.AccountKey{Ledger: "ledger", Account: "alice"}, "USD")
+	volKey := newVolumeKey(domain.AccountKey{Ledger: "ledger", Account: "alice"}, "USD")
 	u128 := attributes.HashU128(attributes.DefaultSeeds, volKey.Bytes())
 	machine.Registry.Cache.Volumes.Gen0().Put(u128, attributes.Entry[*raftcmdpb.VolumePair]{
 		Tag: 1, Data: &raftcmdpb.VolumePair{

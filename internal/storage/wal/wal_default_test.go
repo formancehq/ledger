@@ -32,6 +32,11 @@ func countWALFiles(t *testing.T, dir string) int {
 	return count
 }
 
+// withPurgeInterval is a test helper that returns an Option setting the purge interval.
+func withPurgeInterval(d time.Duration) Option {
+	return func(w *DefaultWAL) { w.purgeInterval = d }
+}
+
 func newTestWAL(t *testing.T, opts ...Option) *DefaultWAL {
 	t.Helper()
 
@@ -49,7 +54,7 @@ func newTestWAL(t *testing.T, opts ...Option) *DefaultWAL {
 func TestPurgeOldWALSegments(t *testing.T) {
 	t.Parallel()
 
-	w := newTestWAL(t, WithPurgeInterval(100*time.Millisecond))
+	w := newTestWAL(t, withPurgeInterval(100*time.Millisecond))
 
 	// Write enough data to force WAL segment rotation.
 	// etcd WAL segments are 64MB, so writing ~200MB should create at least 3 segments.
@@ -824,16 +829,6 @@ func TestWAL_Persistence(t *testing.T) {
 	lastIdx, err := w2.LastIndex()
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, lastIdx, uint64(2))
-}
-
-// --- WithPurgeInterval option test ---
-
-func TestWithPurgeInterval(t *testing.T) {
-	t.Parallel()
-
-	w := &DefaultWAL{purgeInterval: defaultPurgeInterval}
-	WithPurgeInterval(42 * time.Second)(w)
-	require.Equal(t, 42*time.Second, w.purgeInterval)
 }
 
 // --- WAL repair tests ---

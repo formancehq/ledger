@@ -19,6 +19,12 @@ import (
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 )
 
+func claimsFromContext(ctx context.Context) *oidc.AccessTokenClaims {
+	claims, _ := ctx.Value(contextKey{}).(*oidc.AccessTokenClaims)
+
+	return claims
+}
+
 const testIssuer = "https://test-issuer.example.com"
 
 // testKeyPair generates an RSA key pair and returns both private key and a static JWKS KeySet.
@@ -111,7 +117,7 @@ func TestAuthenticate_NoScopes(t *testing.T) {
 	newCtx, err := Authenticate(ctx, cfg)
 	require.NoError(t, err)
 
-	claims := ClaimsFromContext(newCtx)
+	claims := claimsFromContext(newCtx)
 	require.NotNil(t, claims)
 	assert.Equal(t, "test-user", claims.GetSubject())
 }
@@ -143,7 +149,7 @@ func TestAuthenticate_ValidToken_VirtualToGranular(t *testing.T) {
 	newCtx, err := Authenticate(ctx, cfg, ScopeLedgersRead)
 	require.NoError(t, err)
 
-	claims := ClaimsFromContext(newCtx)
+	claims := claimsFromContext(newCtx)
 	require.NotNil(t, claims)
 	assert.Equal(t, "test-user", claims.GetSubject())
 
@@ -324,7 +330,7 @@ func TestAuthenticate_EdDSA_Valid(t *testing.T) {
 	newCtx, err := Authenticate(ctx, cfg, ScopeLedgersRead)
 	require.NoError(t, err)
 
-	got := ClaimsFromContext(newCtx)
+	got := claimsFromContext(newCtx)
 	require.NotNil(t, got)
 	assert.Equal(t, "test-user", got.GetSubject())
 }
@@ -426,7 +432,7 @@ func TestAuthenticate_EdDSA_NoIssuerCheck(t *testing.T) {
 
 	newCtx, err := Authenticate(ctx, cfg)
 	require.NoError(t, err)
-	require.NotNil(t, ClaimsFromContext(newCtx))
+	require.NotNil(t, claimsFromContext(newCtx))
 }
 
 func TestAuthenticate_GranularScopePassThrough(t *testing.T) {

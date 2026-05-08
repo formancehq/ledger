@@ -2,31 +2,9 @@ package domain
 
 import (
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 )
-
-const (
-	accountSegmentRegex = "[a-zA-Z0-9_-]+"
-	accountPattern      = "^" + accountSegmentRegex + "(:" + accountSegmentRegex + ")*$"
-	assetPattern        = `^[A-Z][A-Z0-9]{0,16}(_[A-Z]{1,16})?(\/\d{1,6})?$`
-)
-
-var (
-	accountRegexp = regexp.MustCompile(accountPattern)
-	assetRegexp   = regexp.MustCompile(assetPattern)
-)
-
-// ValidateAccountAddress returns true if addr is a valid account address.
-func ValidateAccountAddress(addr string) bool {
-	return accountRegexp.MatchString(addr)
-}
-
-// ValidateAsset returns true if v is a valid asset identifier.
-func ValidateAsset(v string) bool {
-	return assetRegexp.MatchString(v)
-}
 
 // ParseAssetPrecision splits an asset string into its base name and precision.
 // "USD/4" → ("USD", 4), "EUR" → ("EUR", 0).

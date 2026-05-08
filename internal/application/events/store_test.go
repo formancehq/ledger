@@ -15,6 +15,10 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
+func readSinkConfig(attr *attributes.Attribute[*commonpb.SinkConfig], reader dal.PebbleReader, name string) (*commonpb.SinkConfig, error) {
+	return attr.Get(reader, domain.SinkConfigKey{Name: name}.Bytes())
+}
+
 func saveSinkConfigBatch(batch *dal.Batch, cfg *commonpb.SinkConfig) error {
 	attr := attributes.NewSinkConfigAttribute()
 	_, err := attr.Set(batch, domain.SinkConfigKey{Name: cfg.GetName()}.Bytes(), cfg)
@@ -212,7 +216,7 @@ func TestSinkConfig(t *testing.T) {
 		}))
 		require.NoError(t, batch.Commit())
 
-		cfg, err := query.ReadSinkConfig(attributes.NewSinkConfigAttribute(), s, "primary-nats")
+		cfg, err := readSinkConfig(attributes.NewSinkConfigAttribute(), s, "primary-nats")
 		require.NoError(t, err)
 		require.NotNil(t, cfg)
 		require.Equal(t, "primary-nats", cfg.GetName())
@@ -284,7 +288,7 @@ func TestSinkConfig(t *testing.T) {
 		require.Equal(t, "sink-b", configs[0].GetName())
 
 		// Verify the deleted one returns nil
-		cfg, err := query.ReadSinkConfig(attributes.NewSinkConfigAttribute(), s, "sink-a")
+		cfg, err := readSinkConfig(attributes.NewSinkConfigAttribute(), s, "sink-a")
 		require.NoError(t, err)
 		require.Nil(t, cfg)
 	})
@@ -315,7 +319,7 @@ func TestSinkConfig(t *testing.T) {
 		}))
 		require.NoError(t, batch.Commit())
 
-		cfg, err := query.ReadSinkConfig(attributes.NewSinkConfigAttribute(), s, "my-sink")
+		cfg, err := readSinkConfig(attributes.NewSinkConfigAttribute(), s, "my-sink")
 		require.NoError(t, err)
 		require.NotNil(t, cfg)
 		require.Equal(t, "protobuf", cfg.GetFormat())

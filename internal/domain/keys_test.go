@@ -6,6 +6,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func newVolumeKey(ak AccountKey, asset string) VolumeKey {
+	base, prec := ParseAssetPrecision(asset)
+
+	return VolumeKey{
+		AccountKey:     ak,
+		Asset:          asset,
+		AssetBase:      base,
+		AssetPrecision: prec,
+	}
+}
+
 func TestSinkConfigKey_Bytes(t *testing.T) {
 	t.Parallel()
 
@@ -32,7 +43,7 @@ func TestVolumeKey_RoundTrip(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			vk := NewVolumeKey(AccountKey{Ledger: "ledger1", Account: "users:alice"}, tt.asset)
+			vk := newVolumeKey(AccountKey{Ledger: "ledger1", Account: "users:alice"}, tt.asset)
 
 			data := vk.Bytes()
 
@@ -49,7 +60,7 @@ func TestVolumeKey_RoundTrip(t *testing.T) {
 func TestVolumeKey_ByteFormat(t *testing.T) {
 	t.Parallel()
 
-	vk := NewVolumeKey(AccountKey{Ledger: "l", Account: "a"}, "USD/4")
+	vk := newVolumeKey(AccountKey{Ledger: "l", Account: "a"}, "USD/4")
 
 	data := vk.Bytes()
 	// Expected: "l" \x00 "a" \x00 "USD" \x04

@@ -138,14 +138,6 @@ func eventToSinkJSON(event *eventspb.Event) ([]byte, error) {
 
 // ---------- Helpers ----------
 
-func sinkPopulateLedgerInfo(data *sinkEventData, info *commonpb.LedgerInfo) {
-	if info == nil {
-		return
-	}
-
-	data.LedgerName = &info.Name
-}
-
 func sinkPopulateApply(data *sinkEventData, apply *commonpb.ApplyLedgerLog) {
 	if apply == nil || apply.GetLog() == nil || apply.GetLog().GetData() == nil {
 		return

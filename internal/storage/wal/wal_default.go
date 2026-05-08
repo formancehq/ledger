@@ -32,14 +32,6 @@ const (
 // Option configures a DefaultWAL instance.
 type Option func(*DefaultWAL)
 
-// WithPurgeInterval sets the interval at which the background purger checks
-// for old WAL segment files to delete. Defaults to 30s.
-func WithPurgeInterval(d time.Duration) Option {
-	return func(w *DefaultWAL) {
-		w.purgeInterval = d
-	}
-}
-
 // DefaultWAL implements raft.Storage interface for etcd/raft using etcd/wal.
 type DefaultWAL struct {
 	// mu protects all mutable state (entries, snapshot, hardState)

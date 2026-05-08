@@ -71,7 +71,7 @@ func TestHTTPAuthMiddleware_ValidToken_ClaimsInContext(t *testing.T) {
 	var capturedSubject string
 
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		claims := ClaimsFromContext(r.Context())
+		claims := claimsFromContext(r.Context())
 		if claims != nil {
 			capturedSubject = claims.GetSubject()
 		}
@@ -323,7 +323,7 @@ func TestHTTPAuthMiddleware_EdDSA_ValidToken(t *testing.T) {
 	var capturedSubject string
 
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		claims := ClaimsFromContext(r.Context())
+		claims := claimsFromContext(r.Context())
 		if claims != nil {
 			capturedSubject = claims.GetSubject()
 		}

@@ -304,23 +304,6 @@ func translatePostings(v2Postings []V2Posting) ([]*commonpb.Posting, error) {
 	return ptrs, nil
 }
 
-// parseUint256 converts a decimal string directly to a proto Uint256.
-// Uses uint256.SetFromDecimal to avoid the big.Int intermediary allocation.
-func parseUint256(s string) (*commonpb.Uint256, error) {
-	if len(s) > 0 && s[0] == '-' {
-		return nil, fmt.Errorf("negative amount: %s", s)
-	}
-
-	var u uint256.Int
-
-	err := u.SetFromDecimal(s)
-	if err != nil {
-		return nil, fmt.Errorf("invalid uint256: %s", s)
-	}
-
-	return commonpb.NewUint256(&u), nil
-}
-
 // parseUint256Into parses a decimal string directly into a pre-allocated Uint256.
 func parseUint256Into(s string, dst *commonpb.Uint256) error {
 	if len(s) > 0 && s[0] == '-' {

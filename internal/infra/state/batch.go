@@ -95,14 +95,6 @@ func DeleteSigningKey(b *dal.Batch, keyID string) error {
 	return nil
 }
 
-// DeleteAllSigningKeys removes all signing keys from the batch using a range delete.
-func DeleteAllSigningKeys(b *dal.Batch) error {
-	return b.DeleteRangeNoSync(
-		[]byte{dal.KeyPrefixSigningKey},
-		[]byte{dal.KeyPrefixSigningKey + 1},
-	)
-}
-
 // SaveSigningConfig stores the require-signatures flag in the batch.
 func SaveSigningConfig(b *dal.Batch, requireSignatures bool) error {
 	value := []byte{0x00}

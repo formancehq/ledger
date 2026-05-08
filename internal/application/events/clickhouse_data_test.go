@@ -705,11 +705,3 @@ func TestSinkTime_MarshalJSON(t *testing.T) {
 	// Should be quoted string in sink datetime format
 	require.Contains(t, string(data), "\"")
 }
-
-func TestSinkPopulateLedgerInfo_Nil(t *testing.T) {
-	t.Parallel()
-
-	data := &sinkEventData{}
-	sinkPopulateLedgerInfo(data, nil)
-	require.Nil(t, data.LedgerName)
-}

@@ -7,7 +7,15 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
+
+func deleteAllSigningKeys(b *dal.Batch) error {
+	return b.DeleteRangeNoSync(
+		[]byte{dal.KeyPrefixSigningKey},
+		[]byte{dal.KeyPrefixSigningKey + 1},
+	)
+}
 
 func TestReadSigningKeys(t *testing.T) {
 	t.Parallel()
@@ -90,7 +98,7 @@ func TestReadSigningKeys(t *testing.T) {
 		require.Len(t, keys, 4) // key-2 from previous test + a, b, c
 
 		batch = s.NewBatch()
-		require.NoError(t, state.DeleteAllSigningKeys(batch))
+		require.NoError(t, deleteAllSigningKeys(batch))
 		require.NoError(t, batch.Commit())
 
 		keys, err = query.ReadSigningKeys(s)

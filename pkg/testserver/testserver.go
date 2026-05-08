@@ -100,14 +100,6 @@ func WithNodeID(nodeID int) testservice.InstrumentationFunc {
 	}
 }
 
-func WithAdvertiseAddr(addr string) testservice.InstrumentationFunc {
-	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		cfg.AppendArgs("--advertise-addr", addr)
-
-		return nil
-	}
-}
-
 func WithBootstrap() testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--bootstrap")
@@ -148,22 +140,6 @@ func WithRaftHeartbeatTick(tick int) testservice.InstrumentationFunc {
 	}
 }
 
-func WithRaftMaxSizePerMsg(size uint64) testservice.InstrumentationFunc {
-	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		cfg.AppendArgs("--raft-max-size-per-msg", strconv.FormatUint(size, 10))
-
-		return nil
-	}
-}
-
-func WithRaftMaxInflightMsgs(count int) testservice.InstrumentationFunc {
-	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		cfg.AppendArgs("--raft-max-inflight-msgs", strconv.Itoa(count))
-
-		return nil
-	}
-}
-
 func WithRaftTickInterval(interval time.Duration) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--raft-tick-interval", interval.String())
@@ -175,34 +151,6 @@ func WithRaftTickInterval(interval time.Duration) testservice.InstrumentationFun
 func WithRaftCompactionMargin(margin uint64) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--raft-compaction-margin", strconv.FormatUint(margin, 10))
-
-		return nil
-	}
-}
-
-func WithRaftProposeQueueCapacity(capacity int) testservice.InstrumentationFunc {
-	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		cfg.AppendArgs("--raft-propose-queue-capacity", strconv.Itoa(capacity))
-
-		return nil
-	}
-}
-
-func WithRaftTransportReceptionQueues(capacities ...int) testservice.InstrumentationFunc {
-	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		for _, cap := range capacities {
-			cfg.AppendArgs("--raft-transport-reception-queues", strconv.Itoa(cap))
-		}
-
-		return nil
-	}
-}
-
-func WithRaftTransportSendQueues(capacities ...int) testservice.InstrumentationFunc {
-	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		for _, cap := range capacities {
-			cfg.AppendArgs("--raft-transport-send-queues", strconv.Itoa(cap))
-		}
 
 		return nil
 	}
@@ -332,14 +280,6 @@ func WithColdStorageS3(bucket, region, endpoint string) testservice.Instrumentat
 		if endpoint != "" {
 			cfg.AppendArgs("--cold-storage-s3-endpoint", endpoint)
 		}
-
-		return nil
-	}
-}
-
-func WithColdCacheDir(dir string) testservice.InstrumentationFunc {
-	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		cfg.AppendArgs("--cold-cache-dir", dir)
 
 		return nil
 	}

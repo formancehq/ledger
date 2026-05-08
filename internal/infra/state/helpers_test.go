@@ -15,6 +15,11 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
+type noopNotifier struct{}
+
+func (noopNotifier) NotifyLogsCommitted(uint64) {}
+func (noopNotifier) NotifyConfigChanged()       {}
+
 func newTestStore(t *testing.T) *dal.Store {
 	t.Helper()
 

@@ -287,36 +287,6 @@ func extractPreload(p *raftcmdpb.Preload) (byte, *raftcmdpb.AttributeID, any) {
 	return 0, nil, nil
 }
 
-// persistGeneration writes a single cache generation to Pebble.
-// genByte is the byte written into 0xFF keys; genIndex selects which
-// in-memory generation to read (0=gen0, 1=gen1).
-func (s *CacheSnapshotter) persistGeneration(batch *dal.Batch, genByte byte, genIndex int) error {
-	var baseIndex uint64
-	if genIndex == 0 {
-		baseIndex = s.registry.Cache.BaseIndex.Gen0
-	} else {
-		baseIndex = s.registry.Cache.BaseIndex.Gen1
-	}
-
-	// Write generation metadata
-	if err := batch.SetProto(
-		[]byte{dal.KeyPrefixCacheSnapshot, genByte, dal.CacheGenMeta},
-		&raftcmdpb.CacheGenerationMeta{BaseIndex: baseIndex},
-	); err != nil {
-		return fmt.Errorf("writing gen meta: %w", err)
-	}
-
-	// All entries use lean format: [8-byte tag LE][raw value proto bytes].
-	// This matches the format written incrementally by mergeSimpleWithCache.
-	for _, slot := range s.slots {
-		if err := slot.Persist(batch, genByte, genIndex); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 // persistLeanProtoEntries writes all entries from a KV store to 0xFF in lean format.
 func persistLeanProtoEntries[V interface {
 	MarshalVT() ([]byte, error)

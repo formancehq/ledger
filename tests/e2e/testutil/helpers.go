@@ -1,17 +1,6 @@
 package testutil
 
 import (
-	"context"
-	"crypto/ed25519"
-	"crypto/rand"
-	"errors"
-	"io"
-
-	. "github.com/onsi/gomega" //nolint:staticcheck // dot import is idiomatic for Gomega test helpers
-
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 )
 
@@ -124,36 +113,3 @@ var (
 type (
 	CheckStoreResult = actions.CheckStoreResult
 )
-
-// GenerateTestKeypair generates an Ed25519 keypair and returns (publicKey, privateKey).
-func GenerateTestKeypair() (ed25519.PublicKey, ed25519.PrivateKey) {
-	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
-	Expect(err).To(Succeed())
-
-	return pubKey, privKey
-}
-
-// SignRequest signs a request with the given key and returns the same request (modified in place).
-func SignRequest(req *servicepb.Request, keyID string, privKey ed25519.PrivateKey) *servicepb.Request {
-	Expect(signing.Sign(req, keyID, privKey)).To(Succeed())
-
-	return req
-}
-
-// ListAllSigningKeys collects all signing keys from the ListSigningKeys stream into a slice.
-func ListAllSigningKeys(ctx context.Context, client servicepb.BucketServiceClient) []*commonpb.SigningKey {
-	stream, err := client.ListSigningKeys(ctx, &servicepb.ListSigningKeysRequest{})
-	Expect(err).To(Succeed())
-
-	var keys []*commonpb.SigningKey
-	for {
-		key, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		Expect(err).To(Succeed())
-		keys = append(keys, key)
-	}
-
-	return keys
-}

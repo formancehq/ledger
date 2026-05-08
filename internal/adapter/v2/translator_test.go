@@ -446,22 +446,6 @@ func TestMakeMirrorOrder(t *testing.T) {
 	require.Equal(t, uint64(42), order.GetMirrorIngest().GetEntry().GetV2LogId())
 }
 
-func TestParseUint256_Zero(t *testing.T) {
-	t.Parallel()
-
-	result, err := parseUint256("0")
-	require.NoError(t, err)
-	require.Equal(t, commonpb.NewUint256FromUint64(0), result)
-}
-
-func TestParseUint256_MaxUint64(t *testing.T) {
-	t.Parallel()
-
-	result, err := parseUint256("18446744073709551615")
-	require.NoError(t, err)
-	require.NotNil(t, result)
-}
-
 func mustMarshal(t *testing.T, v any) json.RawMessage {
 	t.Helper()
 
@@ -508,21 +492,5 @@ func BenchmarkTranslateBatch(b *testing.B) {
 		}
 
 		_ = orders
-	}
-}
-
-func BenchmarkParseUint256(b *testing.B) {
-	amounts := []string{"0", "100", "999999", "18446744073709551615", "999999999999999999999"}
-
-	b.ResetTimer()
-	b.ReportAllocs()
-
-	for range b.N {
-		for _, s := range amounts {
-			_, err := parseUint256(s)
-			if err != nil {
-				b.Fatal(err)
-			}
-		}
 	}
 }

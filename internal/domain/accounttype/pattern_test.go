@@ -380,85 +380,10 @@ func TestRewriteAddress(t *testing.T) {
 	}
 }
 
-func TestPatternString(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		pattern string
-	}{
-		{"platform:fees"},
-		{"users:{id}:checking"},
-		{"banks:{iban:^[A-Z]{2}[0-9]{14}$}:main"},
-		{"org:{orgId}:departments:{deptId:^[0-9]+$}:main"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.pattern, func(t *testing.T) {
-			t.Parallel()
-			segments, err := ParsePattern(tt.pattern)
-			require.NoError(t, err)
-			assert.Equal(t, tt.pattern, PatternString(segments))
-		})
-	}
-}
-
-func TestVariableNames(t *testing.T) {
-	t.Parallel()
-
-	segments, err := ParsePattern("org:{orgId}:departments:{deptId}:main")
-	require.NoError(t, err)
-	assert.Equal(t, []string{"orgId", "deptId"}, VariableNames(segments))
-}
-
-func TestSortBySpecificity(t *testing.T) {
-	t.Parallel()
-
-	// fees:card (specificity 2) should come before fees:{type} (specificity 1)
-	feesCard, err := ParsePattern("fees:card")
-	require.NoError(t, err)
-	feesType, err := ParsePattern("fees:{type}")
-	require.NoError(t, err)
-
-	patterns := [][]PatternSegment{feesType, feesCard}
-	SortBySpecificity(patterns)
-
-	assert.Equal(t, "fees:card", PatternString(patterns[0]))
-	assert.Equal(t, "fees:{type}", PatternString(patterns[1]))
-}
-
 func TestValidatePattern(t *testing.T) {
 	t.Parallel()
 
 	assert.NoError(t, ValidatePattern("users:{id}:checking"))
 	assert.Error(t, ValidatePattern(""))
 	assert.Error(t, ValidatePattern("users:{id}:{id}"))
-}
-
-func TestDetectOverlaps(t *testing.T) {
-	t.Parallel()
-
-	feesCard, err := ParsePattern("fees:card")
-	require.NoError(t, err)
-	feesType, err := ParsePattern("fees:{type}")
-	require.NoError(t, err)
-	usersChecking, err := ParsePattern("users:{id}:checking")
-	require.NoError(t, err)
-
-	existing := map[string][]PatternSegment{
-		"fees-card":      feesCard,
-		"fees-type":      feesType,
-		"users-checking": usersChecking,
-	}
-
-	// fees:{category} overlaps with both fees:card and fees:{type}
-	newPattern, err := ParsePattern("fees:{category}")
-	require.NoError(t, err)
-	overlaps := DetectOverlaps(newPattern, existing)
-	assert.Equal(t, []string{"fees-card", "fees-type"}, overlaps)
-
-	// platform:fees overlaps with nothing (different segment count)
-	platformFees, err := ParsePattern("platform:fees:main")
-	require.NoError(t, err)
-	overlaps = DetectOverlaps(platformFees, existing)
-	assert.Empty(t, overlaps)
 }
