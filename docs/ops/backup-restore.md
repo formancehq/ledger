@@ -2,19 +2,31 @@
 
 ## Overview
 
-The ledger provides a complete backup and restore pipeline. A backup captures a point-in-time snapshot of the entire Pebble database (all ledgers, logs, audit entries, attributes, and system metadata). A restore bootstraps a fresh cluster from that snapshot.
+The ledger provides a two-tier backup and restore pipeline:
+
+1. **Full backup** (`store backup`) — captures a complete Pebble checkpoint (all SST files). Forwarded to the leader (SST numbering is node-local). Done infrequently.
+2. **Incremental backup** (`store incremental-backup`) — exports only new log and audit entries since the last backup. Can run on **any node** (log/audit sequences are identical across all replicas). Done frequently.
+
+A restore combines the latest checkpoint with any incremental exports to reconstruct the full state.
 
 ### End-to-End Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│ 1. BACKUP (running cluster)                                            │
+│ 1a. FULL BACKUP (running cluster, leader only)                         │
 │                                                                        │
 │    ledgerctl store backup --driver s3 --s3-bucket my-bucket            │
-│    ─► Leader: create Pebble checkpoint (direct, no Raft consensus)    │
-│    ─► Leader: diff against previous manifest (SSTs are immutable)     │
-│    ─► Leader: upload new/changed files, delete stale files            │
-│    ─► Leader: write updated manifest                                  │
+│    ─► Leader: create Pebble checkpoint                                │
+│    ─► Leader: diff SSTs against previous checkpoint                   │
+│    ─► Leader: upload new/changed files, clean old exports             │
+│    ─► Leader: write manifest (checkpoint + empty exports)             │
+├─────────────────────────────────────────────────────────────────────────┤
+│ 1b. INCREMENTAL BACKUP (any node)                                      │
+│                                                                        │
+│    ledgerctl store incremental-backup --driver s3 --s3-bucket my-bucket│
+│    ─► Any node: read manifest, determine last exported sequences      │
+│    ─► Any node: stream new log + audit entries as KV segments         │
+│    ─► Any node: append segments to manifest exports list              │
 └─────────────────────────────────────────────────────────────────────────┘
                                 │
                  ┌──────────────┴──────────────┐
@@ -23,10 +35,10 @@ The ledger provides a complete backup and restore pipeline. A backup captures a 
 │ 2a. RESTORE (gRPC, 4-step)  │ │ 2b. OFFLINE BOOTSTRAP (single CLI)   │
 │                              │ │                                      │
 │  Start server with --restore │ │  ledgerctl store bootstrap           │
-│  a. restore upload           │ │    -i backup.tar --data-dir ./data   │
+│  a. restore upload           │ │    --s3-bucket ... --data-dir ./data │
 │  b. restore validate         │ │                                      │
 │  c. restore preview          │ │  No server needed.                   │
-│  d. restore finalize         │ │  Extract → compact → finalize.       │
+│  d. restore finalize         │ │  Download → compact → finalize.      │
 └──────────────────────────────┘ └──────────────────────────────────────┘
                  │                             │
                  └──────────────┬──────────────┘
@@ -137,6 +149,74 @@ sequenceDiagram
 
     Leader->>Client: Response (files uploaded, deleted, total, duration)
 ```
+
+---
+
+## Incremental Backup
+
+### CLI Command
+
+```bash
+# Incremental backup to S3 (can target any node)
+ledgerctl store incremental-backup --driver s3 --s3-bucket my-bucket --s3-region us-east-1
+
+# Incremental backup to MinIO
+ledgerctl store incremental-backup --driver s3 --s3-bucket my-bucket --s3-endpoint http://minio:9000
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--driver` | (required) | Storage driver: `s3` |
+| `--bucket-id` | cluster-id | Namespace prefix for backup files |
+| `--s3-bucket` | | S3 bucket name (required for s3 driver) |
+| `--s3-region` | | AWS region for S3 bucket |
+| `--s3-endpoint` | | Custom S3 endpoint (for MinIO) |
+| `--timeout` | `1000s` | Request timeout |
+
+### How It Works
+
+The `store incremental-backup` command calls the `ClusterService.IncrementalBackup` gRPC RPC. Unlike the full backup, this RPC is **not** forwarded to the leader — it can run on any node because log and audit entry sequences are deterministic across all Raft replicas.
+
+1. **Read manifest**: Reads the existing manifest from S3 to determine the last exported sequences.
+2. **Snapshot**: Takes a `ReadHandle` (Pebble snapshot) for point-in-time consistency.
+3. **Determine delta**: Compares current sequences against the manifest's last exported sequences.
+4. **Stream entries**: Iterates new log entries (`0x01` prefix) and audit entries (`0x02` prefix) via raw Pebble range scan, writing them as a KV stream binary format to S3 segments.
+5. **Update manifest**: Appends new export segments to the manifest.
+
+### Prerequisites
+
+A **full backup must exist** before running an incremental backup. The incremental backup needs a checkpoint as a base.
+
+### Node Independence
+
+Because the FSM is deterministic, all nodes in the cluster have identical log and audit entries with the same sequence numbers. This means:
+- Incremental backups can run on **any node** (not just the leader)
+- No leader forwarding overhead
+- Survives leader elections without any impact
+
+### Manifest Structure
+
+The manifest combines checkpoint metadata with incremental exports:
+
+```json
+{
+  "checkpoint": {
+    "timestamp": "2024-01-15T10:30:00Z",
+    "lastAppliedIndex": 12345,
+    "lastLogSequence": 500,
+    "lastAuditSequence": 300,
+    "files": {"000001.sst": 1234, "000002.sst": 5678}
+  },
+  "exports": [
+    {"type": "log", "startSeq": 501, "endSeq": 600, "key": "...", "size": 12345},
+    {"type": "audit", "startSeq": 301, "endSeq": 350, "key": "...", "size": 6789}
+  ]
+}
+```
+
+When a new **full backup** is taken, old exports are cleaned up and the exports list is reset to empty.
+
+**File**: `internal/infra/backup/manager.go` — `RunIncrementalBackup()`
 
 ---
 

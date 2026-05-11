@@ -114,8 +114,8 @@ func (s *RestoreServiceServerImpl) DownloadBackup(ctx context.Context, req *rest
 		return nil, fmt.Errorf("parsing manifest: %w", err)
 	}
 
-	if len(manifest.Files) == 0 {
-		return nil, status.Error(codes.FailedPrecondition, "backup manifest contains no files")
+	if manifest.Checkpoint == nil || len(manifest.Checkpoint.Files) == 0 {
+		return nil, status.Error(codes.FailedPrecondition, "backup manifest contains no checkpoint files")
 	}
 
 	// Prepare staging directory
@@ -132,7 +132,7 @@ func (s *RestoreServiceServerImpl) DownloadBackup(ctx context.Context, req *rest
 	// Download each file from S3 into staging
 	var totalBytes uint64
 
-	for filename := range manifest.Files {
+	for filename := range manifest.Checkpoint.Files {
 		key := fileKeyPrefix + filename
 		destPath := filepath.Join(stagingDir, filepath.FromSlash(filename))
 
@@ -166,12 +166,12 @@ func (s *RestoreServiceServerImpl) DownloadBackup(ctx context.Context, req *rest
 	success = true
 
 	s.logger.WithFields(map[string]any{
-		"filesDownloaded": len(manifest.Files),
+		"filesDownloaded": len(manifest.Checkpoint.Files),
 		"totalBytes":      totalBytes,
 	}).Infof("Backup downloaded from S3 successfully")
 
 	return &restorepb.DownloadBackupResponse{
-		FilesDownloaded: uint32(len(manifest.Files)),
+		FilesDownloaded: uint32(len(manifest.Checkpoint.Files)),
 		TotalBytes:      totalBytes,
 	}, nil
 }

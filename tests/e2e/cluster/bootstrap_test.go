@@ -199,15 +199,54 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			Expect(sourceServer.Stop(stopCtx)).To(Succeed())
 		})
 
-		It("should take a backup to S3", func() {
+		It("should take a backup to S3 with sequence metadata", func() {
 			resp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
 				Driver:     "s3",
+				BucketId:   bootstrapBucketID,
 				S3Bucket:   bootstrapS3Bucket,
 				S3Region:   bootstrapS3Region,
 				S3Endpoint: minioEndpoint,
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.GetTotalFiles()).To(BeNumerically(">", 0))
+			Expect(resp.GetLastLogSequence()).To(BeNumerically(">", 0))
+			Expect(resp.GetLastAuditSequence()).To(BeNumerically(">", 0))
+			Expect(resp.GetLastAppliedIndex()).To(BeNumerically(">", 0))
+		})
+
+		It("should run incremental backup after adding more data", func() {
+			// Add more data after the full backup
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("bank", "eve", big.NewInt(500), "USD"),
+					}, nil, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			// Run incremental backup
+			incrResp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
+				Driver:     "s3",
+				BucketId:   bootstrapBucketID,
+				S3Bucket:   bootstrapS3Bucket,
+				S3Region:   bootstrapS3Region,
+				S3Endpoint: minioEndpoint,
+			})
+			Expect(err).To(Succeed())
+			Expect(incrResp.GetLogEntriesExported()).To(BeNumerically(">", 0))
+			Expect(incrResp.GetAuditEntriesExported()).To(BeNumerically(">", 0))
+
+			// Take a new full backup to include all data (clears exports)
+			fullResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
+				Driver:     "s3",
+				BucketId:   bootstrapBucketID,
+				S3Bucket:   bootstrapS3Bucket,
+				S3Region:   bootstrapS3Region,
+				S3Endpoint: minioEndpoint,
+			})
+			Expect(err).To(Succeed())
+			Expect(fullResp.GetTotalFiles()).To(BeNumerically(">", 0))
 		})
 	})
 
@@ -337,6 +376,12 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			aliceResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
 			Expect(err).To(Succeed())
 			Expect(commonpb.MetadataSetToMap(aliceResp.Metadata)).To(HaveKeyWithValue("role", "customer"))
+		})
+
+		It("should have the data added after the first backup (via second full backup)", func() {
+			eveResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "eve"})
+			Expect(err).To(Succeed())
+			Expect(eveResp.Volumes["USD"].Input).To(Equal("500"))
 		})
 
 		It("should accept new transactions after bootstrap", func() {

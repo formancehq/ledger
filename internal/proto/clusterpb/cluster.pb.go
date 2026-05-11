@@ -1237,13 +1237,16 @@ func (x *BackupRequest) GetS3Endpoint() string {
 }
 
 type BackupResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	FilesUploaded uint32                 `protobuf:"varint,1,opt,name=files_uploaded,json=filesUploaded,proto3" json:"files_uploaded,omitempty"` // Number of new/changed files uploaded
-	FilesDeleted  uint32                 `protobuf:"varint,2,opt,name=files_deleted,json=filesDeleted,proto3" json:"files_deleted,omitempty"`    // Number of stale files deleted
-	TotalFiles    uint32                 `protobuf:"varint,3,opt,name=total_files,json=totalFiles,proto3" json:"total_files,omitempty"`          // Total files in the backup after this run
-	DurationMs    int64                  `protobuf:"varint,4,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`          // Wall-clock duration in milliseconds
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	FilesUploaded     uint32                 `protobuf:"varint,1,opt,name=files_uploaded,json=filesUploaded,proto3" json:"files_uploaded,omitempty"`               // Number of new/changed files uploaded
+	FilesDeleted      uint32                 `protobuf:"varint,2,opt,name=files_deleted,json=filesDeleted,proto3" json:"files_deleted,omitempty"`                  // Number of stale files deleted
+	TotalFiles        uint32                 `protobuf:"varint,3,opt,name=total_files,json=totalFiles,proto3" json:"total_files,omitempty"`                        // Total files in the backup after this run
+	DurationMs        int64                  `protobuf:"varint,4,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`                        // Wall-clock duration in milliseconds
+	LastLogSequence   uint64                 `protobuf:"varint,5,opt,name=last_log_sequence,json=lastLogSequence,proto3" json:"last_log_sequence,omitempty"`       // Log sequence at checkpoint time
+	LastAuditSequence uint64                 `protobuf:"varint,6,opt,name=last_audit_sequence,json=lastAuditSequence,proto3" json:"last_audit_sequence,omitempty"` // Audit sequence at checkpoint time
+	LastAppliedIndex  uint64                 `protobuf:"varint,7,opt,name=last_applied_index,json=lastAppliedIndex,proto3" json:"last_applied_index,omitempty"`    // Raft applied index at checkpoint time
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *BackupResponse) Reset() {
@@ -1304,6 +1307,195 @@ func (x *BackupResponse) GetDurationMs() int64 {
 	return 0
 }
 
+func (x *BackupResponse) GetLastLogSequence() uint64 {
+	if x != nil {
+		return x.LastLogSequence
+	}
+	return 0
+}
+
+func (x *BackupResponse) GetLastAuditSequence() uint64 {
+	if x != nil {
+		return x.LastAuditSequence
+	}
+	return 0
+}
+
+func (x *BackupResponse) GetLastAppliedIndex() uint64 {
+	if x != nil {
+		return x.LastAppliedIndex
+	}
+	return 0
+}
+
+type IncrementalBackupRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Driver        string                 `protobuf:"bytes,1,opt,name=driver,proto3" json:"driver,omitempty"`                           // "s3" (only supported driver)
+	BasePath      string                 `protobuf:"bytes,2,opt,name=base_path,json=basePath,proto3" json:"base_path,omitempty"`       // Reserved for future use
+	BucketId      string                 `protobuf:"bytes,3,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"`       // Namespace prefix for backup files (default: cluster-id)
+	S3Bucket      string                 `protobuf:"bytes,4,opt,name=s3_bucket,json=s3Bucket,proto3" json:"s3_bucket,omitempty"`       // S3 bucket name (required when driver=s3)
+	S3Region      string                 `protobuf:"bytes,5,opt,name=s3_region,json=s3Region,proto3" json:"s3_region,omitempty"`       // AWS region for backup S3 bucket
+	S3Endpoint    string                 `protobuf:"bytes,6,opt,name=s3_endpoint,json=s3Endpoint,proto3" json:"s3_endpoint,omitempty"` // Custom S3 endpoint (for MinIO)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IncrementalBackupRequest) Reset() {
+	*x = IncrementalBackupRequest{}
+	mi := &file_cluster_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IncrementalBackupRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IncrementalBackupRequest) ProtoMessage() {}
+
+func (x *IncrementalBackupRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cluster_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IncrementalBackupRequest.ProtoReflect.Descriptor instead.
+func (*IncrementalBackupRequest) Descriptor() ([]byte, []int) {
+	return file_cluster_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *IncrementalBackupRequest) GetDriver() string {
+	if x != nil {
+		return x.Driver
+	}
+	return ""
+}
+
+func (x *IncrementalBackupRequest) GetBasePath() string {
+	if x != nil {
+		return x.BasePath
+	}
+	return ""
+}
+
+func (x *IncrementalBackupRequest) GetBucketId() string {
+	if x != nil {
+		return x.BucketId
+	}
+	return ""
+}
+
+func (x *IncrementalBackupRequest) GetS3Bucket() string {
+	if x != nil {
+		return x.S3Bucket
+	}
+	return ""
+}
+
+func (x *IncrementalBackupRequest) GetS3Region() string {
+	if x != nil {
+		return x.S3Region
+	}
+	return ""
+}
+
+func (x *IncrementalBackupRequest) GetS3Endpoint() string {
+	if x != nil {
+		return x.S3Endpoint
+	}
+	return ""
+}
+
+type IncrementalBackupResponse struct {
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	LogEntriesExported   uint64                 `protobuf:"varint,1,opt,name=log_entries_exported,json=logEntriesExported,proto3" json:"log_entries_exported,omitempty"`       // Number of log entries exported
+	AuditEntriesExported uint64                 `protobuf:"varint,2,opt,name=audit_entries_exported,json=auditEntriesExported,proto3" json:"audit_entries_exported,omitempty"` // Number of audit entries exported
+	SegmentsUploaded     uint32                 `protobuf:"varint,3,opt,name=segments_uploaded,json=segmentsUploaded,proto3" json:"segments_uploaded,omitempty"`               // Number of segments uploaded
+	DurationMs           int64                  `protobuf:"varint,4,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`                                 // Wall-clock duration in milliseconds
+	LastLogSequence      uint64                 `protobuf:"varint,5,opt,name=last_log_sequence,json=lastLogSequence,proto3" json:"last_log_sequence,omitempty"`                // Last exported log sequence
+	LastAuditSequence    uint64                 `protobuf:"varint,6,opt,name=last_audit_sequence,json=lastAuditSequence,proto3" json:"last_audit_sequence,omitempty"`          // Last exported audit sequence
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *IncrementalBackupResponse) Reset() {
+	*x = IncrementalBackupResponse{}
+	mi := &file_cluster_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IncrementalBackupResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IncrementalBackupResponse) ProtoMessage() {}
+
+func (x *IncrementalBackupResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cluster_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IncrementalBackupResponse.ProtoReflect.Descriptor instead.
+func (*IncrementalBackupResponse) Descriptor() ([]byte, []int) {
+	return file_cluster_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *IncrementalBackupResponse) GetLogEntriesExported() uint64 {
+	if x != nil {
+		return x.LogEntriesExported
+	}
+	return 0
+}
+
+func (x *IncrementalBackupResponse) GetAuditEntriesExported() uint64 {
+	if x != nil {
+		return x.AuditEntriesExported
+	}
+	return 0
+}
+
+func (x *IncrementalBackupResponse) GetSegmentsUploaded() uint32 {
+	if x != nil {
+		return x.SegmentsUploaded
+	}
+	return 0
+}
+
+func (x *IncrementalBackupResponse) GetDurationMs() int64 {
+	if x != nil {
+		return x.DurationMs
+	}
+	return 0
+}
+
+func (x *IncrementalBackupResponse) GetLastLogSequence() uint64 {
+	if x != nil {
+		return x.LastLogSequence
+	}
+	return 0
+}
+
+func (x *IncrementalBackupResponse) GetLastAuditSequence() uint64 {
+	if x != nil {
+		return x.LastAuditSequence
+	}
+	return 0
+}
+
 type CompactPrimaryRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -1312,7 +1504,7 @@ type CompactPrimaryRequest struct {
 
 func (x *CompactPrimaryRequest) Reset() {
 	*x = CompactPrimaryRequest{}
-	mi := &file_cluster_proto_msgTypes[22]
+	mi := &file_cluster_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1324,7 +1516,7 @@ func (x *CompactPrimaryRequest) String() string {
 func (*CompactPrimaryRequest) ProtoMessage() {}
 
 func (x *CompactPrimaryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[22]
+	mi := &file_cluster_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1337,7 +1529,7 @@ func (x *CompactPrimaryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompactPrimaryRequest.ProtoReflect.Descriptor instead.
 func (*CompactPrimaryRequest) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{22}
+	return file_cluster_proto_rawDescGZIP(), []int{24}
 }
 
 type CompactPrimaryResponse struct {
@@ -1349,7 +1541,7 @@ type CompactPrimaryResponse struct {
 
 func (x *CompactPrimaryResponse) Reset() {
 	*x = CompactPrimaryResponse{}
-	mi := &file_cluster_proto_msgTypes[23]
+	mi := &file_cluster_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1361,7 +1553,7 @@ func (x *CompactPrimaryResponse) String() string {
 func (*CompactPrimaryResponse) ProtoMessage() {}
 
 func (x *CompactPrimaryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[23]
+	mi := &file_cluster_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1374,7 +1566,7 @@ func (x *CompactPrimaryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompactPrimaryResponse.ProtoReflect.Descriptor instead.
 func (*CompactPrimaryResponse) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{23}
+	return file_cluster_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *CompactPrimaryResponse) GetDurationMs() int64 {
@@ -1392,7 +1584,7 @@ type CompactSecondaryRequest struct {
 
 func (x *CompactSecondaryRequest) Reset() {
 	*x = CompactSecondaryRequest{}
-	mi := &file_cluster_proto_msgTypes[24]
+	mi := &file_cluster_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1404,7 +1596,7 @@ func (x *CompactSecondaryRequest) String() string {
 func (*CompactSecondaryRequest) ProtoMessage() {}
 
 func (x *CompactSecondaryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[24]
+	mi := &file_cluster_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1417,7 +1609,7 @@ func (x *CompactSecondaryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompactSecondaryRequest.ProtoReflect.Descriptor instead.
 func (*CompactSecondaryRequest) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{24}
+	return file_cluster_proto_rawDescGZIP(), []int{26}
 }
 
 type CompactSecondaryResponse struct {
@@ -1431,7 +1623,7 @@ type CompactSecondaryResponse struct {
 
 func (x *CompactSecondaryResponse) Reset() {
 	*x = CompactSecondaryResponse{}
-	mi := &file_cluster_proto_msgTypes[25]
+	mi := &file_cluster_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1443,7 +1635,7 @@ func (x *CompactSecondaryResponse) String() string {
 func (*CompactSecondaryResponse) ProtoMessage() {}
 
 func (x *CompactSecondaryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[25]
+	mi := &file_cluster_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1456,7 +1648,7 @@ func (x *CompactSecondaryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompactSecondaryResponse.ProtoReflect.Descriptor instead.
 func (*CompactSecondaryResponse) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{25}
+	return file_cluster_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *CompactSecondaryResponse) GetDurationMs() int64 {
@@ -1488,7 +1680,7 @@ type CreateCheckpointRequest struct {
 
 func (x *CreateCheckpointRequest) Reset() {
 	*x = CreateCheckpointRequest{}
-	mi := &file_cluster_proto_msgTypes[26]
+	mi := &file_cluster_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1500,7 +1692,7 @@ func (x *CreateCheckpointRequest) String() string {
 func (*CreateCheckpointRequest) ProtoMessage() {}
 
 func (x *CreateCheckpointRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[26]
+	mi := &file_cluster_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1513,7 +1705,7 @@ func (x *CreateCheckpointRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateCheckpointRequest.ProtoReflect.Descriptor instead.
 func (*CreateCheckpointRequest) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{26}
+	return file_cluster_proto_rawDescGZIP(), []int{28}
 }
 
 type CreateCheckpointResponse struct {
@@ -1525,7 +1717,7 @@ type CreateCheckpointResponse struct {
 
 func (x *CreateCheckpointResponse) Reset() {
 	*x = CreateCheckpointResponse{}
-	mi := &file_cluster_proto_msgTypes[27]
+	mi := &file_cluster_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1537,7 +1729,7 @@ func (x *CreateCheckpointResponse) String() string {
 func (*CreateCheckpointResponse) ProtoMessage() {}
 
 func (x *CreateCheckpointResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[27]
+	mi := &file_cluster_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1550,7 +1742,7 @@ func (x *CreateCheckpointResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateCheckpointResponse.ProtoReflect.Descriptor instead.
 func (*CreateCheckpointResponse) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{27}
+	return file_cluster_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *CreateCheckpointResponse) GetCheckpointId() uint64 {
@@ -1568,7 +1760,7 @@ type CreateQueryCheckpointRequest struct {
 
 func (x *CreateQueryCheckpointRequest) Reset() {
 	*x = CreateQueryCheckpointRequest{}
-	mi := &file_cluster_proto_msgTypes[28]
+	mi := &file_cluster_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1580,7 +1772,7 @@ func (x *CreateQueryCheckpointRequest) String() string {
 func (*CreateQueryCheckpointRequest) ProtoMessage() {}
 
 func (x *CreateQueryCheckpointRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[28]
+	mi := &file_cluster_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1593,7 +1785,7 @@ func (x *CreateQueryCheckpointRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateQueryCheckpointRequest.ProtoReflect.Descriptor instead.
 func (*CreateQueryCheckpointRequest) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{28}
+	return file_cluster_proto_rawDescGZIP(), []int{30}
 }
 
 type CreateQueryCheckpointResponse struct {
@@ -1606,7 +1798,7 @@ type CreateQueryCheckpointResponse struct {
 
 func (x *CreateQueryCheckpointResponse) Reset() {
 	*x = CreateQueryCheckpointResponse{}
-	mi := &file_cluster_proto_msgTypes[29]
+	mi := &file_cluster_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1618,7 +1810,7 @@ func (x *CreateQueryCheckpointResponse) String() string {
 func (*CreateQueryCheckpointResponse) ProtoMessage() {}
 
 func (x *CreateQueryCheckpointResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[29]
+	mi := &file_cluster_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1631,7 +1823,7 @@ func (x *CreateQueryCheckpointResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateQueryCheckpointResponse.ProtoReflect.Descriptor instead.
 func (*CreateQueryCheckpointResponse) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{29}
+	return file_cluster_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *CreateQueryCheckpointResponse) GetCheckpointId() uint64 {
@@ -1657,7 +1849,7 @@ type DeleteQueryCheckpointRequest struct {
 
 func (x *DeleteQueryCheckpointRequest) Reset() {
 	*x = DeleteQueryCheckpointRequest{}
-	mi := &file_cluster_proto_msgTypes[30]
+	mi := &file_cluster_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1669,7 +1861,7 @@ func (x *DeleteQueryCheckpointRequest) String() string {
 func (*DeleteQueryCheckpointRequest) ProtoMessage() {}
 
 func (x *DeleteQueryCheckpointRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[30]
+	mi := &file_cluster_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1682,7 +1874,7 @@ func (x *DeleteQueryCheckpointRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteQueryCheckpointRequest.ProtoReflect.Descriptor instead.
 func (*DeleteQueryCheckpointRequest) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{30}
+	return file_cluster_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *DeleteQueryCheckpointRequest) GetCheckpointId() uint64 {
@@ -1700,7 +1892,7 @@ type DeleteQueryCheckpointResponse struct {
 
 func (x *DeleteQueryCheckpointResponse) Reset() {
 	*x = DeleteQueryCheckpointResponse{}
-	mi := &file_cluster_proto_msgTypes[31]
+	mi := &file_cluster_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1712,7 +1904,7 @@ func (x *DeleteQueryCheckpointResponse) String() string {
 func (*DeleteQueryCheckpointResponse) ProtoMessage() {}
 
 func (x *DeleteQueryCheckpointResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[31]
+	mi := &file_cluster_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1725,7 +1917,7 @@ func (x *DeleteQueryCheckpointResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteQueryCheckpointResponse.ProtoReflect.Descriptor instead.
 func (*DeleteQueryCheckpointResponse) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{31}
+	return file_cluster_proto_rawDescGZIP(), []int{33}
 }
 
 type ListQueryCheckpointsRequest struct {
@@ -1736,7 +1928,7 @@ type ListQueryCheckpointsRequest struct {
 
 func (x *ListQueryCheckpointsRequest) Reset() {
 	*x = ListQueryCheckpointsRequest{}
-	mi := &file_cluster_proto_msgTypes[32]
+	mi := &file_cluster_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1748,7 +1940,7 @@ func (x *ListQueryCheckpointsRequest) String() string {
 func (*ListQueryCheckpointsRequest) ProtoMessage() {}
 
 func (x *ListQueryCheckpointsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[32]
+	mi := &file_cluster_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1761,7 +1953,7 @@ func (x *ListQueryCheckpointsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListQueryCheckpointsRequest.ProtoReflect.Descriptor instead.
 func (*ListQueryCheckpointsRequest) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{32}
+	return file_cluster_proto_rawDescGZIP(), []int{34}
 }
 
 type ListQueryCheckpointsResponse struct {
@@ -1773,7 +1965,7 @@ type ListQueryCheckpointsResponse struct {
 
 func (x *ListQueryCheckpointsResponse) Reset() {
 	*x = ListQueryCheckpointsResponse{}
-	mi := &file_cluster_proto_msgTypes[33]
+	mi := &file_cluster_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1785,7 +1977,7 @@ func (x *ListQueryCheckpointsResponse) String() string {
 func (*ListQueryCheckpointsResponse) ProtoMessage() {}
 
 func (x *ListQueryCheckpointsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[33]
+	mi := &file_cluster_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1798,7 +1990,7 @@ func (x *ListQueryCheckpointsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListQueryCheckpointsResponse.ProtoReflect.Descriptor instead.
 func (*ListQueryCheckpointsResponse) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{33}
+	return file_cluster_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *ListQueryCheckpointsResponse) GetCheckpoints() []*QueryCheckpointInfo {
@@ -1817,7 +2009,7 @@ type GetQueryCheckpointInfoRequest struct {
 
 func (x *GetQueryCheckpointInfoRequest) Reset() {
 	*x = GetQueryCheckpointInfoRequest{}
-	mi := &file_cluster_proto_msgTypes[34]
+	mi := &file_cluster_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1829,7 +2021,7 @@ func (x *GetQueryCheckpointInfoRequest) String() string {
 func (*GetQueryCheckpointInfoRequest) ProtoMessage() {}
 
 func (x *GetQueryCheckpointInfoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[34]
+	mi := &file_cluster_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1842,7 +2034,7 @@ func (x *GetQueryCheckpointInfoRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetQueryCheckpointInfoRequest.ProtoReflect.Descriptor instead.
 func (*GetQueryCheckpointInfoRequest) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{34}
+	return file_cluster_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *GetQueryCheckpointInfoRequest) GetCheckpointId() uint64 {
@@ -1860,7 +2052,7 @@ type GetQueryCheckpointScheduleRequest struct {
 
 func (x *GetQueryCheckpointScheduleRequest) Reset() {
 	*x = GetQueryCheckpointScheduleRequest{}
-	mi := &file_cluster_proto_msgTypes[35]
+	mi := &file_cluster_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1872,7 +2064,7 @@ func (x *GetQueryCheckpointScheduleRequest) String() string {
 func (*GetQueryCheckpointScheduleRequest) ProtoMessage() {}
 
 func (x *GetQueryCheckpointScheduleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[35]
+	mi := &file_cluster_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1885,7 +2077,7 @@ func (x *GetQueryCheckpointScheduleRequest) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use GetQueryCheckpointScheduleRequest.ProtoReflect.Descriptor instead.
 func (*GetQueryCheckpointScheduleRequest) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{35}
+	return file_cluster_proto_rawDescGZIP(), []int{37}
 }
 
 type GetQueryCheckpointScheduleResponse struct {
@@ -1897,7 +2089,7 @@ type GetQueryCheckpointScheduleResponse struct {
 
 func (x *GetQueryCheckpointScheduleResponse) Reset() {
 	*x = GetQueryCheckpointScheduleResponse{}
-	mi := &file_cluster_proto_msgTypes[36]
+	mi := &file_cluster_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1909,7 +2101,7 @@ func (x *GetQueryCheckpointScheduleResponse) String() string {
 func (*GetQueryCheckpointScheduleResponse) ProtoMessage() {}
 
 func (x *GetQueryCheckpointScheduleResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[36]
+	mi := &file_cluster_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1922,7 +2114,7 @@ func (x *GetQueryCheckpointScheduleResponse) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use GetQueryCheckpointScheduleResponse.ProtoReflect.Descriptor instead.
 func (*GetQueryCheckpointScheduleResponse) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{36}
+	return file_cluster_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *GetQueryCheckpointScheduleResponse) GetCron() string {
@@ -1943,7 +2135,7 @@ type QueryCheckpointInfo struct {
 
 func (x *QueryCheckpointInfo) Reset() {
 	*x = QueryCheckpointInfo{}
-	mi := &file_cluster_proto_msgTypes[37]
+	mi := &file_cluster_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1955,7 +2147,7 @@ func (x *QueryCheckpointInfo) String() string {
 func (*QueryCheckpointInfo) ProtoMessage() {}
 
 func (x *QueryCheckpointInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[37]
+	mi := &file_cluster_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1968,7 +2160,7 @@ func (x *QueryCheckpointInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueryCheckpointInfo.ProtoReflect.Descriptor instead.
 func (*QueryCheckpointInfo) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{37}
+	return file_cluster_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *QueryCheckpointInfo) GetCheckpointId() uint64 {
@@ -2091,14 +2283,33 @@ const file_cluster_proto_rawDesc = "" +
 	"\ts3_bucket\x18\x04 \x01(\tR\bs3Bucket\x12\x1b\n" +
 	"\ts3_region\x18\x05 \x01(\tR\bs3Region\x12\x1f\n" +
 	"\vs3_endpoint\x18\x06 \x01(\tR\n" +
-	"s3Endpoint\"\x9e\x01\n" +
+	"s3Endpoint\"\xa8\x02\n" +
 	"\x0eBackupResponse\x12%\n" +
 	"\x0efiles_uploaded\x18\x01 \x01(\rR\rfilesUploaded\x12#\n" +
 	"\rfiles_deleted\x18\x02 \x01(\rR\ffilesDeleted\x12\x1f\n" +
 	"\vtotal_files\x18\x03 \x01(\rR\n" +
 	"totalFiles\x12\x1f\n" +
 	"\vduration_ms\x18\x04 \x01(\x03R\n" +
-	"durationMs\"\x17\n" +
+	"durationMs\x12*\n" +
+	"\x11last_log_sequence\x18\x05 \x01(\x04R\x0flastLogSequence\x12.\n" +
+	"\x13last_audit_sequence\x18\x06 \x01(\x04R\x11lastAuditSequence\x12,\n" +
+	"\x12last_applied_index\x18\a \x01(\x04R\x10lastAppliedIndex\"\xc7\x01\n" +
+	"\x18IncrementalBackupRequest\x12\x16\n" +
+	"\x06driver\x18\x01 \x01(\tR\x06driver\x12\x1b\n" +
+	"\tbase_path\x18\x02 \x01(\tR\bbasePath\x12\x1b\n" +
+	"\tbucket_id\x18\x03 \x01(\tR\bbucketId\x12\x1b\n" +
+	"\ts3_bucket\x18\x04 \x01(\tR\bs3Bucket\x12\x1b\n" +
+	"\ts3_region\x18\x05 \x01(\tR\bs3Region\x12\x1f\n" +
+	"\vs3_endpoint\x18\x06 \x01(\tR\n" +
+	"s3Endpoint\"\xad\x02\n" +
+	"\x19IncrementalBackupResponse\x120\n" +
+	"\x14log_entries_exported\x18\x01 \x01(\x04R\x12logEntriesExported\x124\n" +
+	"\x16audit_entries_exported\x18\x02 \x01(\x04R\x14auditEntriesExported\x12+\n" +
+	"\x11segments_uploaded\x18\x03 \x01(\rR\x10segmentsUploaded\x12\x1f\n" +
+	"\vduration_ms\x18\x04 \x01(\x03R\n" +
+	"durationMs\x12*\n" +
+	"\x11last_log_sequence\x18\x05 \x01(\x04R\x0flastLogSequence\x12.\n" +
+	"\x13last_audit_sequence\x18\x06 \x01(\x04R\x11lastAuditSequence\"\x17\n" +
 	"\x15CompactPrimaryRequest\"9\n" +
 	"\x16CompactPrimaryResponse\x12\x1f\n" +
 	"\vduration_ms\x18\x01 \x01(\x03R\n" +
@@ -2131,8 +2342,7 @@ const file_cluster_proto_rawDesc = "" +
 	"\rcheckpoint_id\x18\x01 \x01(\x04R\fcheckpointId\x12!\n" +
 	"\fmax_sequence\x18\x02 \x01(\x04R\vmaxSequence\x120\n" +
 	"\n" +
-	"created_at\x18\x03 \x01(\v2\x11.common.TimestampR\tcreatedAt2\xe8\n" +
-	"\n" +
+	"created_at\x18\x03 \x01(\v2\x11.common.TimestampR\tcreatedAt2\xc4\v\n" +
 	"\x0eClusterService\x12I\n" +
 	"\x0fGetClusterState\x12\x1f.cluster.GetClusterStateRequest\x1a\x15.cluster.ClusterState\x12@\n" +
 	"\fGetDiskUsage\x12\x1c.cluster.GetDiskUsageRequest\x1a\x12.cluster.DiskUsage\x12=\n" +
@@ -2146,7 +2356,8 @@ const file_cluster_proto_rawDesc = "" +
 	"\x0eCompactPrimary\x12\x1e.cluster.CompactPrimaryRequest\x1a\x1f.cluster.CompactPrimaryResponse\x12W\n" +
 	"\x10CompactSecondary\x12 .cluster.CompactSecondaryRequest\x1a!.cluster.CompactSecondaryResponse\x12W\n" +
 	"\x10CreateCheckpoint\x12 .cluster.CreateCheckpointRequest\x1a!.cluster.CreateCheckpointResponse\x129\n" +
-	"\x06Backup\x12\x16.cluster.BackupRequest\x1a\x17.cluster.BackupResponse\x12f\n" +
+	"\x06Backup\x12\x16.cluster.BackupRequest\x1a\x17.cluster.BackupResponse\x12Z\n" +
+	"\x11IncrementalBackup\x12!.cluster.IncrementalBackupRequest\x1a\".cluster.IncrementalBackupResponse\x12f\n" +
 	"\x15CreateQueryCheckpoint\x12%.cluster.CreateQueryCheckpointRequest\x1a&.cluster.CreateQueryCheckpointResponse\x12f\n" +
 	"\x15DeleteQueryCheckpoint\x12%.cluster.DeleteQueryCheckpointRequest\x1a&.cluster.DeleteQueryCheckpointResponse\x12c\n" +
 	"\x14ListQueryCheckpoints\x12$.cluster.ListQueryCheckpointsRequest\x1a%.cluster.ListQueryCheckpointsResponse\x12^\n" +
@@ -2165,7 +2376,7 @@ func file_cluster_proto_rawDescGZIP() []byte {
 	return file_cluster_proto_rawDescData
 }
 
-var file_cluster_proto_msgTypes = make([]protoimpl.MessageInfo, 39)
+var file_cluster_proto_msgTypes = make([]protoimpl.MessageInfo, 41)
 var file_cluster_proto_goTypes = []any{
 	(*GetClusterStateRequest)(nil),             // 0: cluster.GetClusterStateRequest
 	(*NodeInfo)(nil),                           // 1: cluster.NodeInfo
@@ -2189,38 +2400,40 @@ var file_cluster_proto_goTypes = []any{
 	(*RemoveNodeResponse)(nil),                 // 19: cluster.RemoveNodeResponse
 	(*BackupRequest)(nil),                      // 20: cluster.BackupRequest
 	(*BackupResponse)(nil),                     // 21: cluster.BackupResponse
-	(*CompactPrimaryRequest)(nil),              // 22: cluster.CompactPrimaryRequest
-	(*CompactPrimaryResponse)(nil),             // 23: cluster.CompactPrimaryResponse
-	(*CompactSecondaryRequest)(nil),            // 24: cluster.CompactSecondaryRequest
-	(*CompactSecondaryResponse)(nil),           // 25: cluster.CompactSecondaryResponse
-	(*CreateCheckpointRequest)(nil),            // 26: cluster.CreateCheckpointRequest
-	(*CreateCheckpointResponse)(nil),           // 27: cluster.CreateCheckpointResponse
-	(*CreateQueryCheckpointRequest)(nil),       // 28: cluster.CreateQueryCheckpointRequest
-	(*CreateQueryCheckpointResponse)(nil),      // 29: cluster.CreateQueryCheckpointResponse
-	(*DeleteQueryCheckpointRequest)(nil),       // 30: cluster.DeleteQueryCheckpointRequest
-	(*DeleteQueryCheckpointResponse)(nil),      // 31: cluster.DeleteQueryCheckpointResponse
-	(*ListQueryCheckpointsRequest)(nil),        // 32: cluster.ListQueryCheckpointsRequest
-	(*ListQueryCheckpointsResponse)(nil),       // 33: cluster.ListQueryCheckpointsResponse
-	(*GetQueryCheckpointInfoRequest)(nil),      // 34: cluster.GetQueryCheckpointInfoRequest
-	(*GetQueryCheckpointScheduleRequest)(nil),  // 35: cluster.GetQueryCheckpointScheduleRequest
-	(*GetQueryCheckpointScheduleResponse)(nil), // 36: cluster.GetQueryCheckpointScheduleResponse
-	(*QueryCheckpointInfo)(nil),                // 37: cluster.QueryCheckpointInfo
-	nil,                                        // 38: cluster.RaftStatus.ProgressEntry
-	(*commonpb.Timestamp)(nil),                 // 39: common.Timestamp
+	(*IncrementalBackupRequest)(nil),           // 22: cluster.IncrementalBackupRequest
+	(*IncrementalBackupResponse)(nil),          // 23: cluster.IncrementalBackupResponse
+	(*CompactPrimaryRequest)(nil),              // 24: cluster.CompactPrimaryRequest
+	(*CompactPrimaryResponse)(nil),             // 25: cluster.CompactPrimaryResponse
+	(*CompactSecondaryRequest)(nil),            // 26: cluster.CompactSecondaryRequest
+	(*CompactSecondaryResponse)(nil),           // 27: cluster.CompactSecondaryResponse
+	(*CreateCheckpointRequest)(nil),            // 28: cluster.CreateCheckpointRequest
+	(*CreateCheckpointResponse)(nil),           // 29: cluster.CreateCheckpointResponse
+	(*CreateQueryCheckpointRequest)(nil),       // 30: cluster.CreateQueryCheckpointRequest
+	(*CreateQueryCheckpointResponse)(nil),      // 31: cluster.CreateQueryCheckpointResponse
+	(*DeleteQueryCheckpointRequest)(nil),       // 32: cluster.DeleteQueryCheckpointRequest
+	(*DeleteQueryCheckpointResponse)(nil),      // 33: cluster.DeleteQueryCheckpointResponse
+	(*ListQueryCheckpointsRequest)(nil),        // 34: cluster.ListQueryCheckpointsRequest
+	(*ListQueryCheckpointsResponse)(nil),       // 35: cluster.ListQueryCheckpointsResponse
+	(*GetQueryCheckpointInfoRequest)(nil),      // 36: cluster.GetQueryCheckpointInfoRequest
+	(*GetQueryCheckpointScheduleRequest)(nil),  // 37: cluster.GetQueryCheckpointScheduleRequest
+	(*GetQueryCheckpointScheduleResponse)(nil), // 38: cluster.GetQueryCheckpointScheduleResponse
+	(*QueryCheckpointInfo)(nil),                // 39: cluster.QueryCheckpointInfo
+	nil,                                        // 40: cluster.RaftStatus.ProgressEntry
+	(*commonpb.Timestamp)(nil),                 // 41: common.Timestamp
 }
 var file_cluster_proto_depIdxs = []int32{
 	2,  // 0: cluster.NodeInfo.progress:type_name -> cluster.ProgressInfo
 	6,  // 1: cluster.NodeInfo.sync_progress:type_name -> cluster.SyncProgress
 	5,  // 2: cluster.NodeInfo.index_progress:type_name -> cluster.IndexProgress
-	38, // 3: cluster.RaftStatus.progress:type_name -> cluster.RaftStatus.ProgressEntry
+	40, // 3: cluster.RaftStatus.progress:type_name -> cluster.RaftStatus.ProgressEntry
 	1,  // 4: cluster.ClusterState.nodes:type_name -> cluster.NodeInfo
 	3,  // 5: cluster.ClusterState.raft_status:type_name -> cluster.RaftStatus
 	6,  // 6: cluster.ClusterState.sync_progress:type_name -> cluster.SyncProgress
 	5,  // 7: cluster.ClusterState.index_progress:type_name -> cluster.IndexProgress
 	12, // 8: cluster.DiskUsage.wal_volume:type_name -> cluster.VolumeUsage
 	12, // 9: cluster.DiskUsage.data_volume:type_name -> cluster.VolumeUsage
-	37, // 10: cluster.ListQueryCheckpointsResponse.checkpoints:type_name -> cluster.QueryCheckpointInfo
-	39, // 11: cluster.QueryCheckpointInfo.created_at:type_name -> common.Timestamp
+	39, // 10: cluster.ListQueryCheckpointsResponse.checkpoints:type_name -> cluster.QueryCheckpointInfo
+	41, // 11: cluster.QueryCheckpointInfo.created_at:type_name -> common.Timestamp
 	2,  // 12: cluster.RaftStatus.ProgressEntry.value:type_name -> cluster.ProgressInfo
 	0,  // 13: cluster.ClusterService.GetClusterState:input_type -> cluster.GetClusterStateRequest
 	9,  // 14: cluster.ClusterService.GetDiskUsage:input_type -> cluster.GetDiskUsageRequest
@@ -2229,33 +2442,35 @@ var file_cluster_proto_depIdxs = []int32{
 	14, // 17: cluster.ClusterService.AddLearner:input_type -> cluster.AddLearnerRequest
 	16, // 18: cluster.ClusterService.PromoteLearner:input_type -> cluster.PromoteLearnerRequest
 	18, // 19: cluster.ClusterService.RemoveNode:input_type -> cluster.RemoveNodeRequest
-	22, // 20: cluster.ClusterService.CompactPrimary:input_type -> cluster.CompactPrimaryRequest
-	24, // 21: cluster.ClusterService.CompactSecondary:input_type -> cluster.CompactSecondaryRequest
-	26, // 22: cluster.ClusterService.CreateCheckpoint:input_type -> cluster.CreateCheckpointRequest
+	24, // 20: cluster.ClusterService.CompactPrimary:input_type -> cluster.CompactPrimaryRequest
+	26, // 21: cluster.ClusterService.CompactSecondary:input_type -> cluster.CompactSecondaryRequest
+	28, // 22: cluster.ClusterService.CreateCheckpoint:input_type -> cluster.CreateCheckpointRequest
 	20, // 23: cluster.ClusterService.Backup:input_type -> cluster.BackupRequest
-	28, // 24: cluster.ClusterService.CreateQueryCheckpoint:input_type -> cluster.CreateQueryCheckpointRequest
-	30, // 25: cluster.ClusterService.DeleteQueryCheckpoint:input_type -> cluster.DeleteQueryCheckpointRequest
-	32, // 26: cluster.ClusterService.ListQueryCheckpoints:input_type -> cluster.ListQueryCheckpointsRequest
-	34, // 27: cluster.ClusterService.GetQueryCheckpointInfo:input_type -> cluster.GetQueryCheckpointInfoRequest
-	35, // 28: cluster.ClusterService.GetQueryCheckpointSchedule:input_type -> cluster.GetQueryCheckpointScheduleRequest
-	4,  // 29: cluster.ClusterService.GetClusterState:output_type -> cluster.ClusterState
-	13, // 30: cluster.ClusterService.GetDiskUsage:output_type -> cluster.DiskUsage
-	11, // 31: cluster.ClusterService.GetNodeTime:output_type -> cluster.NodeTime
-	8,  // 32: cluster.ClusterService.TransferLeadership:output_type -> cluster.TransferLeadershipResponse
-	15, // 33: cluster.ClusterService.AddLearner:output_type -> cluster.AddLearnerResponse
-	17, // 34: cluster.ClusterService.PromoteLearner:output_type -> cluster.PromoteLearnerResponse
-	19, // 35: cluster.ClusterService.RemoveNode:output_type -> cluster.RemoveNodeResponse
-	23, // 36: cluster.ClusterService.CompactPrimary:output_type -> cluster.CompactPrimaryResponse
-	25, // 37: cluster.ClusterService.CompactSecondary:output_type -> cluster.CompactSecondaryResponse
-	27, // 38: cluster.ClusterService.CreateCheckpoint:output_type -> cluster.CreateCheckpointResponse
-	21, // 39: cluster.ClusterService.Backup:output_type -> cluster.BackupResponse
-	29, // 40: cluster.ClusterService.CreateQueryCheckpoint:output_type -> cluster.CreateQueryCheckpointResponse
-	31, // 41: cluster.ClusterService.DeleteQueryCheckpoint:output_type -> cluster.DeleteQueryCheckpointResponse
-	33, // 42: cluster.ClusterService.ListQueryCheckpoints:output_type -> cluster.ListQueryCheckpointsResponse
-	37, // 43: cluster.ClusterService.GetQueryCheckpointInfo:output_type -> cluster.QueryCheckpointInfo
-	36, // 44: cluster.ClusterService.GetQueryCheckpointSchedule:output_type -> cluster.GetQueryCheckpointScheduleResponse
-	29, // [29:45] is the sub-list for method output_type
-	13, // [13:29] is the sub-list for method input_type
+	22, // 24: cluster.ClusterService.IncrementalBackup:input_type -> cluster.IncrementalBackupRequest
+	30, // 25: cluster.ClusterService.CreateQueryCheckpoint:input_type -> cluster.CreateQueryCheckpointRequest
+	32, // 26: cluster.ClusterService.DeleteQueryCheckpoint:input_type -> cluster.DeleteQueryCheckpointRequest
+	34, // 27: cluster.ClusterService.ListQueryCheckpoints:input_type -> cluster.ListQueryCheckpointsRequest
+	36, // 28: cluster.ClusterService.GetQueryCheckpointInfo:input_type -> cluster.GetQueryCheckpointInfoRequest
+	37, // 29: cluster.ClusterService.GetQueryCheckpointSchedule:input_type -> cluster.GetQueryCheckpointScheduleRequest
+	4,  // 30: cluster.ClusterService.GetClusterState:output_type -> cluster.ClusterState
+	13, // 31: cluster.ClusterService.GetDiskUsage:output_type -> cluster.DiskUsage
+	11, // 32: cluster.ClusterService.GetNodeTime:output_type -> cluster.NodeTime
+	8,  // 33: cluster.ClusterService.TransferLeadership:output_type -> cluster.TransferLeadershipResponse
+	15, // 34: cluster.ClusterService.AddLearner:output_type -> cluster.AddLearnerResponse
+	17, // 35: cluster.ClusterService.PromoteLearner:output_type -> cluster.PromoteLearnerResponse
+	19, // 36: cluster.ClusterService.RemoveNode:output_type -> cluster.RemoveNodeResponse
+	25, // 37: cluster.ClusterService.CompactPrimary:output_type -> cluster.CompactPrimaryResponse
+	27, // 38: cluster.ClusterService.CompactSecondary:output_type -> cluster.CompactSecondaryResponse
+	29, // 39: cluster.ClusterService.CreateCheckpoint:output_type -> cluster.CreateCheckpointResponse
+	21, // 40: cluster.ClusterService.Backup:output_type -> cluster.BackupResponse
+	23, // 41: cluster.ClusterService.IncrementalBackup:output_type -> cluster.IncrementalBackupResponse
+	31, // 42: cluster.ClusterService.CreateQueryCheckpoint:output_type -> cluster.CreateQueryCheckpointResponse
+	33, // 43: cluster.ClusterService.DeleteQueryCheckpoint:output_type -> cluster.DeleteQueryCheckpointResponse
+	35, // 44: cluster.ClusterService.ListQueryCheckpoints:output_type -> cluster.ListQueryCheckpointsResponse
+	39, // 45: cluster.ClusterService.GetQueryCheckpointInfo:output_type -> cluster.QueryCheckpointInfo
+	38, // 46: cluster.ClusterService.GetQueryCheckpointSchedule:output_type -> cluster.GetQueryCheckpointScheduleResponse
+	30, // [30:47] is the sub-list for method output_type
+	13, // [13:30] is the sub-list for method input_type
 	13, // [13:13] is the sub-list for extension type_name
 	13, // [13:13] is the sub-list for extension extendee
 	0,  // [0:13] is the sub-list for field type_name
@@ -2272,7 +2487,7 @@ func file_cluster_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cluster_proto_rawDesc), len(file_cluster_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   39,
+			NumMessages:   41,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

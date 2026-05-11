@@ -172,6 +172,10 @@ func (m *PreviewRestoreResponse) CloneVT() *PreviewRestoreResponse {
 	r.LastAppliedTimestamp = m.LastAppliedTimestamp
 	r.LastSequence = m.LastSequence
 	r.LedgerCount = m.LedgerCount
+	r.FirstLogSequence = m.FirstLogSequence
+	r.FirstAuditSequence = m.FirstAuditSequence
+	r.HasExports = m.HasExports
+	r.ExportCount = m.ExportCount
 	if rhs := m.LedgerNames; rhs != nil {
 		tmpContainer := make([]string, len(rhs))
 		copy(tmpContainer, rhs)
@@ -448,6 +452,18 @@ func (this *PreviewRestoreResponse) EqualVT(that *PreviewRestoreResponse) bool {
 		if vx != vy {
 			return false
 		}
+	}
+	if this.FirstLogSequence != that.FirstLogSequence {
+		return false
+	}
+	if this.FirstAuditSequence != that.FirstAuditSequence {
+		return false
+	}
+	if this.HasExports != that.HasExports {
+		return false
+	}
+	if this.ExportCount != that.ExportCount {
+		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -857,6 +873,31 @@ func (m *PreviewRestoreResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.ExportCount != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ExportCount))
+		i--
+		dAtA[i] = 0x48
+	}
+	if m.HasExports {
+		i--
+		if m.HasExports {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x40
+	}
+	if m.FirstAuditSequence != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.FirstAuditSequence))
+		i--
+		dAtA[i] = 0x38
+	}
+	if m.FirstLogSequence != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.FirstLogSequence))
+		i--
+		dAtA[i] = 0x30
+	}
 	if len(m.LedgerNames) > 0 {
 		for iNdEx := len(m.LedgerNames) - 1; iNdEx >= 0; iNdEx-- {
 			i -= len(m.LedgerNames[iNdEx])
@@ -1114,6 +1155,18 @@ func (m *PreviewRestoreResponse) SizeVT() (n int) {
 			l = len(s)
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
+	}
+	if m.FirstLogSequence != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.FirstLogSequence))
+	}
+	if m.FirstAuditSequence != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.FirstAuditSequence))
+	}
+	if m.HasExports {
+		n += 2
+	}
+	if m.ExportCount != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.ExportCount))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -1955,6 +2008,83 @@ func (m *PreviewRestoreResponse) UnmarshalVT(dAtA []byte) error {
 			}
 			m.LedgerNames = append(m.LedgerNames, string(dAtA[iNdEx:postIndex]))
 			iNdEx = postIndex
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field FirstLogSequence", wireType)
+			}
+			m.FirstLogSequence = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.FirstLogSequence |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field FirstAuditSequence", wireType)
+			}
+			m.FirstAuditSequence = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.FirstAuditSequence |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 8:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field HasExports", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.HasExports = bool(v != 0)
+		case 9:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ExportCount", wireType)
+			}
+			m.ExportCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ExportCount |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

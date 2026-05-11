@@ -10,14 +10,14 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 )
 
-// NewBackupCommand creates the store backup command.
-func NewBackupCommand() *cobra.Command {
+// NewIncrementalBackupCommand creates the store incremental-backup command.
+func NewIncrementalBackupCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "backup",
-		Aliases: []string{"bk"},
-		Short:   "Perform an backup",
-		Long:    "Perform an backup of the Pebble store to a filesystem path or S3 bucket",
-		RunE:    runBackup,
+		Use:     "incremental-backup",
+		Aliases: []string{"ibk"},
+		Short:   "Export new log and audit entries since the last backup",
+		Long:    "Perform an incremental backup by exporting new log and audit entries to S3. Requires a prior full backup.",
+		RunE:    runIncrementalBackup,
 	}
 
 	cmd.Flags().String("driver", "s3", "Backup storage driver (only 's3' is supported)")
@@ -34,7 +34,7 @@ func NewBackupCommand() *cobra.Command {
 	return cmd
 }
 
-func runBackup(cmd *cobra.Command, _ []string) error {
+func runIncrementalBackup(cmd *cobra.Command, _ []string) error {
 	driver, _ := cmd.Flags().GetString("driver")
 	basePath, _ := cmd.Flags().GetString("path")
 	bucketID, _ := cmd.Flags().GetString("bucket-id")
@@ -56,10 +56,10 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 
 	var spinner *pterm.SpinnerPrinter
 	if !structuredOutput {
-		spinner, _ = pterm.DefaultSpinner.Start("Running backup...")
+		spinner, _ = pterm.DefaultSpinner.Start("Running incremental backup...")
 	}
 
-	resp, err := client.Backup(ctx, &clusterpb.BackupRequest{
+	resp, err := client.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
 		Driver:     driver,
 		BasePath:   basePath,
 		BucketId:   bucketID,
@@ -72,32 +72,30 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 			_ = spinner.Stop()
 		}
 
-		return cmdutil.FormatGRPCError("backup failed", err)
+		return cmdutil.FormatGRPCError("incremental backup failed", err)
 	}
 
 	if spinner != nil {
-		spinner.Success(fmt.Sprintf("Backup completed: %d uploaded, %d deleted, %d total (log_seq=%d, audit_seq=%d, applied_idx=%d) (%dms)",
-			resp.GetFilesUploaded(), resp.GetFilesDeleted(), resp.GetTotalFiles(),
-			resp.GetLastLogSequence(), resp.GetLastAuditSequence(), resp.GetLastAppliedIndex(),
+		spinner.Success(fmt.Sprintf("Incremental backup completed: %d log entries, %d audit entries, %d segments (log_seq=%d, audit_seq=%d) (%dms)",
+			resp.GetLogEntriesExported(), resp.GetAuditEntriesExported(), resp.GetSegmentsUploaded(),
+			resp.GetLastLogSequence(), resp.GetLastAuditSequence(),
 			resp.GetDurationMs()))
 	}
 
 	if handled, err := cmdutil.EncodeStructured(cmd, struct {
-		FilesUploaded     uint32 `json:"filesUploaded"`
-		FilesDeleted      uint32 `json:"filesDeleted"`
-		TotalFiles        uint32 `json:"totalFiles"`
-		DurationMs        int64  `json:"durationMs"`
-		LastLogSequence   uint64 `json:"lastLogSequence"`
-		LastAuditSequence uint64 `json:"lastAuditSequence"`
-		LastAppliedIndex  uint64 `json:"lastAppliedIndex"`
+		LogEntriesExported   uint64 `json:"logEntriesExported"`
+		AuditEntriesExported uint64 `json:"auditEntriesExported"`
+		SegmentsUploaded     uint32 `json:"segmentsUploaded"`
+		DurationMs           int64  `json:"durationMs"`
+		LastLogSequence      uint64 `json:"lastLogSequence"`
+		LastAuditSequence    uint64 `json:"lastAuditSequence"`
 	}{
-		FilesUploaded:     resp.GetFilesUploaded(),
-		FilesDeleted:      resp.GetFilesDeleted(),
-		TotalFiles:        resp.GetTotalFiles(),
-		DurationMs:        resp.GetDurationMs(),
-		LastLogSequence:   resp.GetLastLogSequence(),
-		LastAuditSequence: resp.GetLastAuditSequence(),
-		LastAppliedIndex:  resp.GetLastAppliedIndex(),
+		LogEntriesExported:   resp.GetLogEntriesExported(),
+		AuditEntriesExported: resp.GetAuditEntriesExported(),
+		SegmentsUploaded:     resp.GetSegmentsUploaded(),
+		DurationMs:           resp.GetDurationMs(),
+		LastLogSequence:      resp.GetLastLogSequence(),
+		LastAuditSequence:    resp.GetLastAuditSequence(),
 	}); handled || err != nil {
 		return err
 	}

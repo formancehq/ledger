@@ -1610,7 +1610,7 @@ ledgerctl s cp
 
 #### store backup
 
-Download a point-in-time backup of the Pebble store as a tar archive. The request is forwarded to the cluster leader to ensure the most up-to-date state.
+Perform a full checkpoint backup of the Pebble store to S3. The request is forwarded to the cluster leader because SST file numbering is node-local.
 
 **Aliases:** `bk`
 
@@ -1622,27 +1622,84 @@ ledgerctl store backup [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-o, --output` | | Output file path (required if stdout is a terminal) |
-| `--timeout` | `100s` | Request timeout |
+| `--driver` | `s3` | Storage driver (only `s3` is supported) |
+| `--bucket-id` | cluster-id | Namespace prefix for backup files |
+| `--s3-bucket` | | S3 bucket name (required) |
+| `--s3-region` | | AWS region for S3 bucket |
+| `--s3-endpoint` | | Custom S3 endpoint (for MinIO) |
+| `--timeout` | `1000s` | Request timeout |
 
 **Behavior:**
 - Creates a fresh Pebble checkpoint on the leader node
-- Streams the checkpoint as a tar archive
-- Verifies SHA256 integrity on completion
-- If connected to a follower, the request is automatically forwarded to the leader
-- Refuses to write binary data to a terminal; use `--output` or pipe to a file
+- Diffs SST files against the previous checkpoint in the manifest
+- Uploads new/changed files, deletes stale files
+- Cleans up old incremental export segments (they become obsolete)
+- Writes updated manifest with checkpoint metadata and empty exports list
+- Response includes `lastLogSequence`, `lastAuditSequence`, `lastAppliedIndex`
 
 **Example:**
 
 ```bash
-# Save backup to a file
-ledgerctl store backup --output backup.tar
+# Full backup to S3
+ledgerctl store backup --driver s3 --s3-bucket my-bucket --s3-region us-east-1
 
-# Pipe to gzip
-ledgerctl store backup | gzip > backup.tar.gz
+# Full backup to MinIO
+ledgerctl store backup --driver s3 --s3-bucket my-bucket --s3-endpoint http://minio:9000
 
 # Short form
-ledgerctl s bk -o backup.tar
+ledgerctl s bk --driver s3 --s3-bucket my-bucket
+```
+
+#### store incremental-backup
+
+Export new log and audit entries since the last backup to S3. Can run on **any node** (no leader forwarding required).
+
+**Aliases:** `ibk`
+
+```bash
+ledgerctl store incremental-backup [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--driver` | `s3` | Storage driver (only `s3` is supported) |
+| `--bucket-id` | cluster-id | Namespace prefix for backup files |
+| `--s3-bucket` | | S3 bucket name (required) |
+| `--s3-region` | | AWS region for S3 bucket |
+| `--s3-endpoint` | | Custom S3 endpoint (for MinIO) |
+| `--timeout` | `1000s` | Request timeout |
+
+**Behavior:**
+- Requires a prior full backup (fails if no checkpoint exists in manifest)
+- Takes a point-in-time Pebble snapshot for consistent reads
+- Streams new log entries (`0x01`) and audit entries (`0x02`) as KV stream segments
+- Appends new export segments to the manifest
+- No-op if no new entries since last export
+- Response includes `logEntriesExported`, `auditEntriesExported`, `lastLogSequence`, `lastAuditSequence`
+
+**Example:**
+
+```bash
+# Incremental backup to S3
+ledgerctl store incremental-backup --driver s3 --s3-bucket my-bucket --s3-region us-east-1
+
+# Short form
+ledgerctl s ibk --driver s3 --s3-bucket my-bucket
+```
+
+**Typical workflow:**
+
+```bash
+# Initial full backup (infrequent, leader-only)
+ledgerctl store backup --driver s3 --s3-bucket my-bucket
+
+# Periodic incremental backups (frequent, any node)
+ledgerctl store incremental-backup --driver s3 --s3-bucket my-bucket
+
+# After many incrementals, take a new full backup to reset the base
+ledgerctl store backup --driver s3 --s3-bucket my-bucket
 ```
 
 ---

@@ -21,6 +21,7 @@ func NewCommand() *cobra.Command {
 	cmd.AddCommand(NewCheckpointCommand())
 	cmd.AddCommand(NewDumpCommand())
 	cmd.AddCommand(NewBackupCommand())
+	cmd.AddCommand(NewIncrementalBackupCommand())
 
 	return cmd
 }

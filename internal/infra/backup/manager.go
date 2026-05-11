@@ -3,7 +3,6 @@ package backup
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,26 +10,34 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
-// Manifest describes the current state of a backup.
-type Manifest struct {
-	Timestamp string           `json:"timestamp"`
-	Files     map[string]int64 `json:"files"` // filename -> size in bytes
-}
-
-// Result contains statistics from a backup run.
+// Result contains statistics from a full backup run.
 type Result struct {
-	FilesUploaded int
-	FilesDeleted  int
-	TotalFiles    int
-	Duration      time.Duration
+	FilesUploaded     int
+	FilesDeleted      int
+	TotalFiles        int
+	LastLogSequence   uint64
+	LastAuditSequence uint64
+	LastAppliedIndex  uint64
+	Duration          time.Duration
 }
 
-// RunBackup performs a single backup cycle.
-// It creates a Pebble checkpoint, diffs against the previous manifest,
-// uploads new files, deletes stale ones, and writes an updated manifest.
+// IncrementalBackupResult contains statistics from an incremental backup run.
+type IncrementalBackupResult struct {
+	LogEntriesExported   uint64
+	AuditEntriesExported uint64
+	SegmentsUploaded     int
+	Duration             time.Duration
+	LastLogSequence      uint64
+	LastAuditSequence    uint64
+}
+
+// RunBackup performs a full checkpoint backup cycle.
+// It creates a Pebble checkpoint, diffs SST files against the previous manifest,
+// uploads new/changed files, cleans up stale exports, and writes an updated manifest.
 func RunBackup(
 	ctx context.Context,
 	logger logging.Logger,
@@ -40,8 +47,7 @@ func RunBackup(
 ) (*Result, error) {
 	start := time.Now()
 
-	manifestKey := bucketID + "/backups/manifest.json"
-	fileKeyPrefix := bucketID + "/backups/data/"
+	manifestKey := ManifestKey(bucketID)
 
 	// 1. Create temporary checkpoint (hard links, quasi-free)
 	checkpointPath, err := store.CreateTemporaryCheckpoint("backup")
@@ -59,16 +65,18 @@ func RunBackup(
 		return nil, fmt.Errorf("listing checkpoint files: %w", err)
 	}
 
-	// 3. Read existing manifest (nil on first backup)
-	existingManifest, err := readManifest(ctx, storage, manifestKey)
-	if err != nil {
-		logger.Infof("No existing manifest found, performing full backup")
+	// 3. Read existing manifest
+	existingManifest := ReadManifestOrEmpty(ctx, logger, storage, manifestKey)
 
-		existingManifest = &Manifest{Files: make(map[string]int64)}
+	// 4. Compute diff against previous checkpoint files
+	var previousFiles map[string]int64
+	if existingManifest.Checkpoint != nil {
+		previousFiles = existingManifest.Checkpoint.Files
+	} else {
+		previousFiles = make(map[string]int64)
 	}
 
-	// 4. Compute diff — SST files are immutable, so same name = same content
-	toUpload, toDelete := diffFiles(localFiles, existingManifest.Files)
+	toUpload, toDelete := diffFiles(localFiles, previousFiles)
 
 	logger.WithFields(map[string]any{
 		"totalFiles": len(localFiles),
@@ -78,14 +86,14 @@ func RunBackup(
 
 	// 5. Upload new/changed files
 	for _, filename := range toUpload {
-		if err := uploadFile(ctx, storage, checkpointPath, fileKeyPrefix+filename, filename); err != nil {
+		if err := uploadFile(ctx, storage, checkpointPath, CheckpointFileKey(bucketID, filename), filename); err != nil {
 			return nil, err
 		}
 	}
 
-	// 6. Delete stale files from backup storage
+	// 6. Delete stale checkpoint files from storage
 	for _, filename := range toDelete {
-		if err := storage.DeleteFile(ctx, fileKeyPrefix+filename); err != nil {
+		if err := storage.DeleteFile(ctx, CheckpointFileKey(bucketID, filename)); err != nil {
 			logger.WithFields(map[string]any{
 				"file":  filename,
 				"error": err,
@@ -93,31 +101,268 @@ func RunBackup(
 		}
 	}
 
-	// 7. Write updated manifest (last, for atomicity)
-	newManifest := &Manifest{
-		Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
-		Files:     localFiles,
+	// 7. Clean up old exports (they are obsolete after a new checkpoint)
+	for _, seg := range existingManifest.Exports {
+		if err := storage.DeleteFile(ctx, seg.Key); err != nil {
+			logger.WithFields(map[string]any{
+				"segment": seg.Key,
+				"error":   err,
+			}).Errorf("Failed to delete stale export segment (non-fatal)")
+		}
 	}
 
-	if err := writeManifest(ctx, storage, manifestKey, newManifest); err != nil {
+	// 8. Read sequences from the checkpoint to record in manifest
+	checkpointStore, err := dal.OpenReadOnly(checkpointPath, logger)
+	if err != nil {
+		return nil, fmt.Errorf("opening checkpoint for reading sequences: %w", err)
+	}
+
+	lastAppliedIndex, _ := query.ReadLastAppliedIndex(checkpointStore)
+
+	lastLog, _ := query.ReadLastLog(checkpointStore)
+
+	var lastLogSeq uint64
+	if lastLog != nil {
+		lastLogSeq = lastLog.GetSequence()
+	}
+
+	lastAuditSeq, _ := query.ReadLastAuditSequence(checkpointStore)
+
+	_ = checkpointStore.Close()
+
+	// 9. Write updated manifest with new checkpoint and empty exports
+	newManifest := &Manifest{
+		Checkpoint: &CheckpointManifest{
+			Timestamp:         time.Now().UTC().Format(time.RFC3339Nano),
+			LastAppliedIndex:  lastAppliedIndex,
+			LastLogSequence:   lastLogSeq,
+			LastAuditSequence: lastAuditSeq,
+			Files:             localFiles,
+		},
+		Exports: nil,
+	}
+
+	if err := WriteManifest(ctx, storage, manifestKey, newManifest); err != nil {
 		return nil, fmt.Errorf("writing manifest: %w", err)
 	}
 
 	duration := time.Since(start)
 
 	logger.WithFields(map[string]any{
-		"duration": duration.String(),
-		"uploaded": len(toUpload),
-		"deleted":  len(toDelete),
-		"total":    len(localFiles),
+		"duration":          duration.String(),
+		"uploaded":          len(toUpload),
+		"deleted":           len(toDelete),
+		"total":             len(localFiles),
+		"lastLogSequence":   lastLogSeq,
+		"lastAuditSequence": lastAuditSeq,
+		"lastAppliedIndex":  lastAppliedIndex,
 	}).Infof("Backup completed")
 
 	return &Result{
-		FilesUploaded: len(toUpload),
-		FilesDeleted:  len(toDelete),
-		TotalFiles:    len(localFiles),
-		Duration:      duration,
+		FilesUploaded:     len(toUpload),
+		FilesDeleted:      len(toDelete),
+		TotalFiles:        len(localFiles),
+		LastLogSequence:   lastLogSeq,
+		LastAuditSequence: lastAuditSeq,
+		LastAppliedIndex:  lastAppliedIndex,
+		Duration:          duration,
 	}, nil
+}
+
+// RunIncrementalBackup exports new log and audit entries since the last backup.
+// It reads the manifest to determine the starting sequences, streams new entries
+// as KV stream segments to S3, and updates the manifest.
+func RunIncrementalBackup(
+	ctx context.Context,
+	logger logging.Logger,
+	store *dal.Store,
+	storage Storage,
+	bucketID string,
+) (*IncrementalBackupResult, error) {
+	start := time.Now()
+
+	manifestKey := ManifestKey(bucketID)
+
+	// 1. Read existing manifest (empty if first run)
+	manifest := ReadManifestOrEmpty(ctx, logger, storage, manifestKey)
+
+	// 2. Take a point-in-time snapshot for consistent reads
+	readHandle, err := store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
+
+	defer func() { _ = readHandle.Close() }()
+
+	// 3. Determine starting sequences
+	afterLogSeq := manifest.LastExportLogSequence()
+	afterAuditSeq := manifest.LastExportAuditSequence()
+
+	// 4. Read current last sequences
+	currentLastLog, _ := query.ReadLastLog(readHandle)
+
+	var currentLogSeq uint64
+	if currentLastLog != nil {
+		currentLogSeq = currentLastLog.GetSequence()
+	}
+
+	currentAuditSeq, _ := query.ReadLastAuditSequence(readHandle)
+
+	// 5. Check if there's anything new
+	if currentLogSeq <= afterLogSeq && currentAuditSeq <= afterAuditSeq {
+		logger.Infof("No new entries to export")
+
+		return &IncrementalBackupResult{
+			Duration:          time.Since(start),
+			LastLogSequence:   afterLogSeq,
+			LastAuditSequence: afterAuditSeq,
+		}, nil
+	}
+
+	var (
+		logEntriesExported   uint64
+		auditEntriesExported uint64
+		segmentsUploaded     int
+	)
+
+	// 6. Export new log entries
+	if currentLogSeq > afterLogSeq {
+		count, err := exportEntries(
+			ctx, storage, readHandle, bucketID,
+			dal.KeyPrefixLog, afterLogSeq, currentLogSeq,
+			ExportLogSegmentKey(bucketID, afterLogSeq+1, currentLogSeq),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("exporting log entries: %w", err)
+		}
+
+		logEntriesExported = count
+
+		manifest.Exports = append(manifest.Exports, ExportSegment{
+			Type:     "log",
+			StartSeq: afterLogSeq + 1,
+			EndSeq:   currentLogSeq,
+			Key:      ExportLogSegmentKey(bucketID, afterLogSeq+1, currentLogSeq),
+		})
+
+		segmentsUploaded++
+	}
+
+	// 7. Export new audit entries
+	if currentAuditSeq > afterAuditSeq {
+		count, err := exportEntries(
+			ctx, storage, readHandle, bucketID,
+			dal.KeyPrefixAudit, afterAuditSeq, currentAuditSeq,
+			ExportAuditSegmentKey(bucketID, afterAuditSeq+1, currentAuditSeq),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("exporting audit entries: %w", err)
+		}
+
+		auditEntriesExported = count
+
+		manifest.Exports = append(manifest.Exports, ExportSegment{
+			Type:     "audit",
+			StartSeq: afterAuditSeq + 1,
+			EndSeq:   currentAuditSeq,
+			Key:      ExportAuditSegmentKey(bucketID, afterAuditSeq+1, currentAuditSeq),
+		})
+
+		segmentsUploaded++
+	}
+
+	// 8. Write updated manifest
+	if err := WriteManifest(ctx, storage, manifestKey, manifest); err != nil {
+		return nil, fmt.Errorf("writing manifest: %w", err)
+	}
+
+	duration := time.Since(start)
+
+	logger.WithFields(map[string]any{
+		"duration":             duration.String(),
+		"logEntriesExported":   logEntriesExported,
+		"auditEntriesExported": auditEntriesExported,
+		"segmentsUploaded":     segmentsUploaded,
+		"lastLogSequence":      currentLogSeq,
+		"lastAuditSequence":    currentAuditSeq,
+	}).Infof("Incremental backup completed")
+
+	return &IncrementalBackupResult{
+		LogEntriesExported:   logEntriesExported,
+		AuditEntriesExported: auditEntriesExported,
+		SegmentsUploaded:     segmentsUploaded,
+		Duration:             duration,
+		LastLogSequence:      currentLogSeq,
+		LastAuditSequence:    currentAuditSeq,
+	}, nil
+}
+
+// exportEntries streams entries for a given prefix from (afterSeq, endSeq] into
+// a KV stream segment uploaded to storage. Returns the number of entries exported.
+func exportEntries(
+	ctx context.Context,
+	storage Storage,
+	reader dal.PebbleReader,
+	_ string,
+	prefix byte,
+	afterSeq, endSeq uint64,
+	segmentKey string,
+) (uint64, error) {
+	kb := dal.NewKeyBuilder()
+	kb.PutByte(prefix)
+
+	if afterSeq > 0 {
+		kb.PutUint64(afterSeq + 1)
+	}
+
+	lowerBound := kb.Build()
+
+	kb2 := dal.NewKeyBuilder()
+	kb2.PutByte(prefix).PutUint64(endSeq + 1)
+	upperBound := kb2.Build()
+
+	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
+	if err != nil {
+		return 0, fmt.Errorf("creating iterator: %w", err)
+	}
+
+	defer func() { _ = iter.Close() }()
+
+	// Buffer the segment in memory then upload.
+	// For very large exports, this could be switched to a streaming upload.
+	var buf bytes.Buffer
+	writer := NewKVStreamWriter(&buf)
+
+	if err := writer.WriteHeader(); err != nil {
+		return 0, err
+	}
+
+	var count uint64
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		value, err := iter.ValueAndErr()
+		if err != nil {
+			return 0, fmt.Errorf("reading value: %w", err)
+		}
+
+		if err := writer.WriteEntry(iter.Key(), value); err != nil {
+			return 0, err
+		}
+
+		count++
+	}
+
+	if err := writer.WriteFooter(); err != nil {
+		return 0, err
+	}
+
+	if count > 0 {
+		if err := storage.PutFile(ctx, segmentKey, bytes.NewReader(buf.Bytes()), int64(buf.Len())); err != nil {
+			return 0, fmt.Errorf("uploading segment %s: %w", segmentKey, err)
+		}
+	}
+
+	return count, nil
 }
 
 func uploadFile(ctx context.Context, storage Storage, checkpointPath, key, filename string) error {
@@ -143,31 +388,6 @@ func uploadFile(ctx context.Context, storage Storage, checkpointPath, key, filen
 	}
 
 	return nil
-}
-
-func readManifest(ctx context.Context, storage Storage, key string) (*Manifest, error) {
-	reader, err := storage.GetFile(ctx, key)
-	if err != nil {
-		return nil, err
-	}
-
-	defer func() { _ = reader.Close() }()
-
-	var manifest Manifest
-	if err := json.NewDecoder(reader).Decode(&manifest); err != nil {
-		return nil, fmt.Errorf("decoding manifest: %w", err)
-	}
-
-	return &manifest, nil
-}
-
-func writeManifest(ctx context.Context, storage Storage, key string, manifest *Manifest) error {
-	data, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshaling manifest: %w", err)
-	}
-
-	return storage.PutFile(ctx, key, bytes.NewReader(data), int64(len(data)))
 }
 
 // listCheckpointFiles walks the checkpoint directory and returns all files with their sizes.

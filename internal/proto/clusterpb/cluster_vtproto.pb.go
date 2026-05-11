@@ -433,6 +433,9 @@ func (m *BackupResponse) CloneVT() *BackupResponse {
 	r.FilesDeleted = m.FilesDeleted
 	r.TotalFiles = m.TotalFiles
 	r.DurationMs = m.DurationMs
+	r.LastLogSequence = m.LastLogSequence
+	r.LastAuditSequence = m.LastAuditSequence
+	r.LastAppliedIndex = m.LastAppliedIndex
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -441,6 +444,50 @@ func (m *BackupResponse) CloneVT() *BackupResponse {
 }
 
 func (m *BackupResponse) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *IncrementalBackupRequest) CloneVT() *IncrementalBackupRequest {
+	if m == nil {
+		return (*IncrementalBackupRequest)(nil)
+	}
+	r := new(IncrementalBackupRequest)
+	r.Driver = m.Driver
+	r.BasePath = m.BasePath
+	r.BucketId = m.BucketId
+	r.S3Bucket = m.S3Bucket
+	r.S3Region = m.S3Region
+	r.S3Endpoint = m.S3Endpoint
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *IncrementalBackupRequest) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *IncrementalBackupResponse) CloneVT() *IncrementalBackupResponse {
+	if m == nil {
+		return (*IncrementalBackupResponse)(nil)
+	}
+	r := new(IncrementalBackupResponse)
+	r.LogEntriesExported = m.LogEntriesExported
+	r.AuditEntriesExported = m.AuditEntriesExported
+	r.SegmentsUploaded = m.SegmentsUploaded
+	r.DurationMs = m.DurationMs
+	r.LastLogSequence = m.LastLogSequence
+	r.LastAuditSequence = m.LastAuditSequence
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *IncrementalBackupResponse) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -1273,11 +1320,88 @@ func (this *BackupResponse) EqualVT(that *BackupResponse) bool {
 	if this.DurationMs != that.DurationMs {
 		return false
 	}
+	if this.LastLogSequence != that.LastLogSequence {
+		return false
+	}
+	if this.LastAuditSequence != that.LastAuditSequence {
+		return false
+	}
+	if this.LastAppliedIndex != that.LastAppliedIndex {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
 func (this *BackupResponse) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*BackupResponse)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *IncrementalBackupRequest) EqualVT(that *IncrementalBackupRequest) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.Driver != that.Driver {
+		return false
+	}
+	if this.BasePath != that.BasePath {
+		return false
+	}
+	if this.BucketId != that.BucketId {
+		return false
+	}
+	if this.S3Bucket != that.S3Bucket {
+		return false
+	}
+	if this.S3Region != that.S3Region {
+		return false
+	}
+	if this.S3Endpoint != that.S3Endpoint {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *IncrementalBackupRequest) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*IncrementalBackupRequest)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *IncrementalBackupResponse) EqualVT(that *IncrementalBackupResponse) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.LogEntriesExported != that.LogEntriesExported {
+		return false
+	}
+	if this.AuditEntriesExported != that.AuditEntriesExported {
+		return false
+	}
+	if this.SegmentsUploaded != that.SegmentsUploaded {
+		return false
+	}
+	if this.DurationMs != that.DurationMs {
+		return false
+	}
+	if this.LastLogSequence != that.LastLogSequence {
+		return false
+	}
+	if this.LastAuditSequence != that.LastAuditSequence {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *IncrementalBackupResponse) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*IncrementalBackupResponse)
 	if !ok {
 		return false
 	}
@@ -2720,6 +2844,21 @@ func (m *BackupResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.LastAppliedIndex != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LastAppliedIndex))
+		i--
+		dAtA[i] = 0x38
+	}
+	if m.LastAuditSequence != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LastAuditSequence))
+		i--
+		dAtA[i] = 0x30
+	}
+	if m.LastLogSequence != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LastLogSequence))
+		i--
+		dAtA[i] = 0x28
+	}
 	if m.DurationMs != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DurationMs))
 		i--
@@ -2737,6 +2876,144 @@ func (m *BackupResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	}
 	if m.FilesUploaded != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.FilesUploaded))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *IncrementalBackupRequest) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *IncrementalBackupRequest) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *IncrementalBackupRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.S3Endpoint) > 0 {
+		i -= len(m.S3Endpoint)
+		copy(dAtA[i:], m.S3Endpoint)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.S3Endpoint)))
+		i--
+		dAtA[i] = 0x32
+	}
+	if len(m.S3Region) > 0 {
+		i -= len(m.S3Region)
+		copy(dAtA[i:], m.S3Region)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.S3Region)))
+		i--
+		dAtA[i] = 0x2a
+	}
+	if len(m.S3Bucket) > 0 {
+		i -= len(m.S3Bucket)
+		copy(dAtA[i:], m.S3Bucket)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.S3Bucket)))
+		i--
+		dAtA[i] = 0x22
+	}
+	if len(m.BucketId) > 0 {
+		i -= len(m.BucketId)
+		copy(dAtA[i:], m.BucketId)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.BucketId)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if len(m.BasePath) > 0 {
+		i -= len(m.BasePath)
+		copy(dAtA[i:], m.BasePath)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.BasePath)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Driver) > 0 {
+		i -= len(m.Driver)
+		copy(dAtA[i:], m.Driver)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Driver)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *IncrementalBackupResponse) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *IncrementalBackupResponse) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *IncrementalBackupResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.LastAuditSequence != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LastAuditSequence))
+		i--
+		dAtA[i] = 0x30
+	}
+	if m.LastLogSequence != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LastLogSequence))
+		i--
+		dAtA[i] = 0x28
+	}
+	if m.DurationMs != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DurationMs))
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.SegmentsUploaded != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.SegmentsUploaded))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.AuditEntriesExported != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.AuditEntriesExported))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.LogEntriesExported != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogEntriesExported))
 		i--
 		dAtA[i] = 0x8
 	}
@@ -3786,6 +4063,77 @@ func (m *BackupResponse) SizeVT() (n int) {
 	}
 	if m.DurationMs != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.DurationMs))
+	}
+	if m.LastLogSequence != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.LastLogSequence))
+	}
+	if m.LastAuditSequence != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.LastAuditSequence))
+	}
+	if m.LastAppliedIndex != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.LastAppliedIndex))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *IncrementalBackupRequest) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Driver)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.BasePath)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.BucketId)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.S3Bucket)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.S3Region)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.S3Endpoint)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *IncrementalBackupResponse) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.LogEntriesExported != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.LogEntriesExported))
+	}
+	if m.AuditEntriesExported != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.AuditEntriesExported))
+	}
+	if m.SegmentsUploaded != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.SegmentsUploaded))
+	}
+	if m.DurationMs != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.DurationMs))
+	}
+	if m.LastLogSequence != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.LastLogSequence))
+	}
+	if m.LastAuditSequence != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.LastAuditSequence))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -6682,6 +7030,471 @@ func (m *BackupResponse) UnmarshalVT(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.DurationMs |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LastLogSequence", wireType)
+			}
+			m.LastLogSequence = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.LastLogSequence |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LastAuditSequence", wireType)
+			}
+			m.LastAuditSequence = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.LastAuditSequence |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LastAppliedIndex", wireType)
+			}
+			m.LastAppliedIndex = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.LastAppliedIndex |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *IncrementalBackupRequest) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: IncrementalBackupRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: IncrementalBackupRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Driver", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Driver = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BasePath", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.BasePath = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BucketId", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.BucketId = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field S3Bucket", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.S3Bucket = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field S3Region", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.S3Region = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field S3Endpoint", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.S3Endpoint = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *IncrementalBackupResponse) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: IncrementalBackupResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: IncrementalBackupResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LogEntriesExported", wireType)
+			}
+			m.LogEntriesExported = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.LogEntriesExported |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AuditEntriesExported", wireType)
+			}
+			m.AuditEntriesExported = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.AuditEntriesExported |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SegmentsUploaded", wireType)
+			}
+			m.SegmentsUploaded = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.SegmentsUploaded |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DurationMs", wireType)
+			}
+			m.DurationMs = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.DurationMs |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LastLogSequence", wireType)
+			}
+			m.LastLogSequence = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.LastLogSequence |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LastAuditSequence", wireType)
+			}
+			m.LastAuditSequence = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.LastAuditSequence |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

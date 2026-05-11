@@ -398,6 +398,10 @@ type PreviewRestoreResponse struct {
 	LastSequence         uint64                 `protobuf:"varint,3,opt,name=last_sequence,json=lastSequence,proto3" json:"last_sequence,omitempty"`                           // Last log sequence number
 	LedgerCount          uint32                 `protobuf:"varint,4,opt,name=ledger_count,json=ledgerCount,proto3" json:"ledger_count,omitempty"`                              // Number of ledgers in the backup
 	LedgerNames          []string               `protobuf:"bytes,5,rep,name=ledger_names,json=ledgerNames,proto3" json:"ledger_names,omitempty"`                               // Names of all ledgers
+	FirstLogSequence     uint64                 `protobuf:"varint,6,opt,name=first_log_sequence,json=firstLogSequence,proto3" json:"first_log_sequence,omitempty"`             // First log sequence in the backup
+	FirstAuditSequence   uint64                 `protobuf:"varint,7,opt,name=first_audit_sequence,json=firstAuditSequence,proto3" json:"first_audit_sequence,omitempty"`       // First audit sequence in the backup
+	HasExports           bool                   `protobuf:"varint,8,opt,name=has_exports,json=hasExports,proto3" json:"has_exports,omitempty"`                                 // Whether incremental exports are present
+	ExportCount          uint32                 `protobuf:"varint,9,opt,name=export_count,json=exportCount,proto3" json:"export_count,omitempty"`                              // Number of export segments
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -465,6 +469,34 @@ func (x *PreviewRestoreResponse) GetLedgerNames() []string {
 		return x.LedgerNames
 	}
 	return nil
+}
+
+func (x *PreviewRestoreResponse) GetFirstLogSequence() uint64 {
+	if x != nil {
+		return x.FirstLogSequence
+	}
+	return 0
+}
+
+func (x *PreviewRestoreResponse) GetFirstAuditSequence() uint64 {
+	if x != nil {
+		return x.FirstAuditSequence
+	}
+	return 0
+}
+
+func (x *PreviewRestoreResponse) GetHasExports() bool {
+	if x != nil {
+		return x.HasExports
+	}
+	return false
+}
+
+func (x *PreviewRestoreResponse) GetExportCount() uint32 {
+	if x != nil {
+		return x.ExportCount
+	}
+	return 0
 }
 
 type FinalizeRestoreRequest struct {
@@ -573,13 +605,18 @@ const file_restore_proto_rawDesc = "" +
 	"\flogs_checked\x18\x01 \x01(\x04R\vlogsChecked\x12\x1d\n" +
 	"\n" +
 	"total_logs\x18\x02 \x01(\x04R\ttotalLogs\"\x17\n" +
-	"\x15PreviewRestoreRequest\"\xe7\x01\n" +
+	"\x15PreviewRestoreRequest\"\x8b\x03\n" +
 	"\x16PreviewRestoreResponse\x12,\n" +
 	"\x12last_applied_index\x18\x01 \x01(\x04R\x10lastAppliedIndex\x124\n" +
 	"\x16last_applied_timestamp\x18\x02 \x01(\x04R\x14lastAppliedTimestamp\x12#\n" +
 	"\rlast_sequence\x18\x03 \x01(\x04R\flastSequence\x12!\n" +
 	"\fledger_count\x18\x04 \x01(\rR\vledgerCount\x12!\n" +
-	"\fledger_names\x18\x05 \x03(\tR\vledgerNames\"\x18\n" +
+	"\fledger_names\x18\x05 \x03(\tR\vledgerNames\x12,\n" +
+	"\x12first_log_sequence\x18\x06 \x01(\x04R\x10firstLogSequence\x120\n" +
+	"\x14first_audit_sequence\x18\a \x01(\x04R\x12firstAuditSequence\x12\x1f\n" +
+	"\vhas_exports\x18\b \x01(\bR\n" +
+	"hasExports\x12!\n" +
+	"\fexport_count\x18\t \x01(\rR\vexportCount\"\x18\n" +
 	"\x16FinalizeRestoreRequest\"3\n" +
 	"\x17FinalizeRestoreResponse\x12\x18\n" +
 	"\amessage\x18\x01 \x01(\tR\amessage2\xe1\x02\n" +

@@ -66,7 +66,7 @@ func TestReplayStoreVolumeSingleDelta(t *testing.T) {
 	rs := newTestReplayStore(t)
 	key := []byte("ledger\x00account\x00USD")
 
-	require.NoError(t, rs.addVolumeDelta(key, big.NewInt(100), big.NewInt(0)))
+	require.NoError(t, rs.AddVolumeDelta(key, big.NewInt(100), big.NewInt(0)))
 
 	pair := readVolume(t, rs, key)
 	require.Equal(t, "100", pair.GetInput().ToBigInt().String())
@@ -79,9 +79,9 @@ func TestReplayStoreVolumeAccumulation(t *testing.T) {
 	rs := newTestReplayStore(t)
 	key := []byte("ledger\x00account\x00USD")
 
-	require.NoError(t, rs.addVolumeDelta(key, big.NewInt(100), big.NewInt(0)))
-	require.NoError(t, rs.addVolumeDelta(key, big.NewInt(50), big.NewInt(30)))
-	require.NoError(t, rs.addVolumeDelta(key, big.NewInt(0), big.NewInt(70)))
+	require.NoError(t, rs.AddVolumeDelta(key, big.NewInt(100), big.NewInt(0)))
+	require.NoError(t, rs.AddVolumeDelta(key, big.NewInt(50), big.NewInt(30)))
+	require.NoError(t, rs.AddVolumeDelta(key, big.NewInt(0), big.NewInt(70)))
 
 	pair := readVolume(t, rs, key)
 	require.Equal(t, "150", pair.GetInput().ToBigInt().String())
@@ -95,8 +95,8 @@ func TestReplayStoreVolumeMultipleKeys(t *testing.T) {
 	keyUSD := []byte("ledger\x00account\x00USD")
 	keyEUR := []byte("ledger\x00account\x00EUR")
 
-	require.NoError(t, rs.addVolumeDelta(keyUSD, big.NewInt(100), big.NewInt(50)))
-	require.NoError(t, rs.addVolumeDelta(keyEUR, big.NewInt(200), big.NewInt(0)))
+	require.NoError(t, rs.AddVolumeDelta(keyUSD, big.NewInt(100), big.NewInt(50)))
+	require.NoError(t, rs.AddVolumeDelta(keyEUR, big.NewInt(200), big.NewInt(0)))
 
 	pairUSD := readVolume(t, rs, keyUSD)
 	require.Equal(t, "100", pairUSD.GetInput().ToBigInt().String())
@@ -113,7 +113,7 @@ func TestReplayStoreMetadataSetAndRead(t *testing.T) {
 	rs := newTestReplayStore(t)
 	key := []byte("ledger\x00account\x00role")
 
-	require.NoError(t, rs.setMetadata(key, "admin"))
+	require.NoError(t, rs.SetMetadata(key, "admin"))
 
 	val, closer, err := rs.db.Get(replayKey(replayPrefixMetadata, key))
 	require.NoError(t, err)
@@ -129,8 +129,8 @@ func TestReplayStoreMetadataOverwrite(t *testing.T) {
 	rs := newTestReplayStore(t)
 	key := []byte("ledger\x00account\x00role")
 
-	require.NoError(t, rs.setMetadata(key, "user"))
-	require.NoError(t, rs.setMetadata(key, "admin"))
+	require.NoError(t, rs.SetMetadata(key, "user"))
+	require.NoError(t, rs.SetMetadata(key, "admin"))
 
 	val, closer, err := rs.db.Get(replayKey(replayPrefixMetadata, key))
 	require.NoError(t, err)
@@ -145,8 +145,8 @@ func TestReplayStoreMetadataDelete(t *testing.T) {
 	rs := newTestReplayStore(t)
 	key := []byte("ledger\x00account\x00role")
 
-	require.NoError(t, rs.setMetadata(key, "admin"))
-	require.NoError(t, rs.deleteMetadata(key))
+	require.NoError(t, rs.SetMetadata(key, "admin"))
+	require.NoError(t, rs.DeleteMetadata(key))
 
 	val, closer, err := rs.db.Get(replayKey(replayPrefixMetadata, key))
 	require.NoError(t, err)
@@ -168,7 +168,7 @@ func TestReplayStoreTransactionCreate(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, rs.createTransaction(key, 42, meta))
+	require.NoError(t, rs.CreateTransaction(key, 42, meta))
 
 	state := readTransaction(t, rs, key)
 	require.Equal(t, uint64(42), state.GetCreatedByLog())
@@ -183,7 +183,7 @@ func TestReplayStoreTransactionCreateWithoutMetadata(t *testing.T) {
 	rs := newTestReplayStore(t)
 	key := []byte("ledger\x00tx:1")
 
-	require.NoError(t, rs.createTransaction(key, 10, nil))
+	require.NoError(t, rs.CreateTransaction(key, 10, nil))
 
 	state := readTransaction(t, rs, key)
 	require.Equal(t, uint64(10), state.GetCreatedByLog())
@@ -196,8 +196,8 @@ func TestReplayStoreTransactionRevertedBy(t *testing.T) {
 	rs := newTestReplayStore(t)
 	key := []byte("ledger\x00tx:1")
 
-	require.NoError(t, rs.createTransaction(key, 5, nil))
-	require.NoError(t, rs.setRevertedBy(key, 99))
+	require.NoError(t, rs.CreateTransaction(key, 5, nil))
+	require.NoError(t, rs.SetRevertedBy(key, 99))
 
 	state := readTransaction(t, rs, key)
 	require.Equal(t, uint64(5), state.GetCreatedByLog())
@@ -210,8 +210,8 @@ func TestReplayStoreTransactionSaveMeta(t *testing.T) {
 	rs := newTestReplayStore(t)
 	key := []byte("ledger\x00tx:1")
 
-	require.NoError(t, rs.createTransaction(key, 1, nil))
-	require.NoError(t, rs.saveTxMetadata(key, []*commonpb.Metadata{
+	require.NoError(t, rs.CreateTransaction(key, 1, nil))
+	require.NoError(t, rs.SaveTxMetadata(key, []*commonpb.Metadata{
 		strMeta("env", "staging"),
 	}))
 
@@ -232,8 +232,8 @@ func TestReplayStoreTransactionSaveMetaOverwrite(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, rs.createTransaction(key, 1, meta))
-	require.NoError(t, rs.saveTxMetadata(key, []*commonpb.Metadata{
+	require.NoError(t, rs.CreateTransaction(key, 1, meta))
+	require.NoError(t, rs.SaveTxMetadata(key, []*commonpb.Metadata{
 		strMeta("env", "prod"),
 	}))
 
@@ -255,8 +255,8 @@ func TestReplayStoreTransactionDeleteMeta(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, rs.createTransaction(key, 1, meta))
-	require.NoError(t, rs.deleteTxMetadata(key, "env"))
+	require.NoError(t, rs.CreateTransaction(key, 1, meta))
+	require.NoError(t, rs.DeleteTxMetadata(key, "env"))
 
 	state := readTransaction(t, rs, key)
 	require.Len(t, state.GetMetadata().GetMetadata(), 1)
@@ -270,27 +270,27 @@ func TestReplayStoreTransactionFullLifecycle(t *testing.T) {
 	key := []byte("ledger\x00tx:1")
 
 	// Create with initial metadata
-	require.NoError(t, rs.createTransaction(key, 1, &commonpb.MetadataSet{
+	require.NoError(t, rs.CreateTransaction(key, 1, &commonpb.MetadataSet{
 		Metadata: []*commonpb.Metadata{
 			strMeta("type", "payment"),
 		},
 	}))
 
 	// Add metadata
-	require.NoError(t, rs.saveTxMetadata(key, []*commonpb.Metadata{
+	require.NoError(t, rs.SaveTxMetadata(key, []*commonpb.Metadata{
 		strMeta("status", "pending"),
 	}))
 
 	// Overwrite metadata
-	require.NoError(t, rs.saveTxMetadata(key, []*commonpb.Metadata{
+	require.NoError(t, rs.SaveTxMetadata(key, []*commonpb.Metadata{
 		strMeta("status", "completed"),
 	}))
 
 	// Delete metadata
-	require.NoError(t, rs.deleteTxMetadata(key, "type"))
+	require.NoError(t, rs.DeleteTxMetadata(key, "type"))
 
 	// Revert
-	require.NoError(t, rs.setRevertedBy(key, 42))
+	require.NoError(t, rs.SetRevertedBy(key, 42))
 
 	state := readTransaction(t, rs, key)
 	require.Equal(t, uint64(1), state.GetCreatedByLog())
@@ -306,10 +306,10 @@ func TestReplayStorePrefixIter(t *testing.T) {
 	rs := newTestReplayStore(t)
 
 	// Write data across all three prefixes.
-	require.NoError(t, rs.addVolumeDelta([]byte("k1"), big.NewInt(10), big.NewInt(0)))
-	require.NoError(t, rs.addVolumeDelta([]byte("k2"), big.NewInt(20), big.NewInt(0)))
-	require.NoError(t, rs.setMetadata([]byte("m1"), "v1"))
-	require.NoError(t, rs.createTransaction([]byte("t1"), 1, nil))
+	require.NoError(t, rs.AddVolumeDelta([]byte("k1"), big.NewInt(10), big.NewInt(0)))
+	require.NoError(t, rs.AddVolumeDelta([]byte("k2"), big.NewInt(20), big.NewInt(0)))
+	require.NoError(t, rs.SetMetadata([]byte("m1"), "v1"))
+	require.NoError(t, rs.CreateTransaction([]byte("t1"), 1, nil))
 
 	// Volume prefix should yield exactly 2 entries.
 	iter, err := rs.newPrefixIter(replayPrefixVolume)

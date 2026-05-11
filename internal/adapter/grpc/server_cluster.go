@@ -31,22 +31,23 @@ import (
 type ClusterServiceServerImpl struct {
 	clusterpb.UnimplementedClusterServiceServer
 
-	node             *node.Node
-	raftTransport    *node.DefaultTransport
-	servicePool      *transport.ConnectionPool
-	collector        *diskusage.Collector
-	store            *dal.Store
-	readStore        *readstore.Store
-	sharedState      *state.SharedState
-	indexBuilder     *indexbuilder.Builder
-	admission        ctrl.Admission
-	logger           logging.Logger
-	localRaftAddr    string // This node's own Raft advertise address
-	localServiceAddr string // This node's own gRPC service address
-	authCfg          internalauth.AuthConfig
-	clusterID        string
-	backupMu         sync.Mutex
-	forwarder        nodeForwarder
+	node                *node.Node
+	raftTransport       *node.DefaultTransport
+	servicePool         *transport.ConnectionPool
+	collector           *diskusage.Collector
+	store               *dal.Store
+	readStore           *readstore.Store
+	sharedState         *state.SharedState
+	indexBuilder        *indexbuilder.Builder
+	admission           ctrl.Admission
+	logger              logging.Logger
+	localRaftAddr       string // This node's own Raft advertise address
+	localServiceAddr    string // This node's own gRPC service address
+	authCfg             internalauth.AuthConfig
+	clusterID           string
+	backupMu            sync.Mutex
+	incrementalBackupMu sync.Mutex
+	forwarder           nodeForwarder
 }
 
 func NewClusterServiceServer(
@@ -649,10 +650,58 @@ func (impl *ClusterServiceServerImpl) Backup(ctx context.Context, req *clusterpb
 	}
 
 	return &clusterpb.BackupResponse{
-		FilesUploaded: uint32(result.FilesUploaded),
-		FilesDeleted:  uint32(result.FilesDeleted),
-		TotalFiles:    uint32(result.TotalFiles),
-		DurationMs:    result.Duration.Milliseconds(),
+		FilesUploaded:     uint32(result.FilesUploaded),
+		FilesDeleted:      uint32(result.FilesDeleted),
+		TotalFiles:        uint32(result.TotalFiles),
+		DurationMs:        result.Duration.Milliseconds(),
+		LastLogSequence:   result.LastLogSequence,
+		LastAuditSequence: result.LastAuditSequence,
+		LastAppliedIndex:  result.LastAppliedIndex,
+	}, nil
+}
+
+func (impl *ClusterServiceServerImpl) IncrementalBackup(ctx context.Context, req *clusterpb.IncrementalBackupRequest) (*clusterpb.IncrementalBackupResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
+		return nil, err
+	}
+
+	// No leader routing: log/audit sequences are identical across all replicas.
+
+	impl.incrementalBackupMu.Lock()
+	defer impl.incrementalBackupMu.Unlock()
+
+	if req.GetDriver() == "" {
+		return nil, errors.New("driver is required")
+	}
+
+	storage, err := backup.NewStorage(
+		req.GetDriver(),
+		req.GetBasePath(),
+		req.GetS3Bucket(),
+		req.GetS3Region(),
+		req.GetS3Endpoint(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating backup storage: %w", err)
+	}
+
+	bucketID := req.GetBucketId()
+	if bucketID == "" {
+		bucketID = impl.clusterID
+	}
+
+	result, err := backup.RunIncrementalBackup(ctx, impl.logger, impl.store, storage, bucketID)
+	if err != nil {
+		return nil, fmt.Errorf("incremental backup failed: %w", err)
+	}
+
+	return &clusterpb.IncrementalBackupResponse{
+		LogEntriesExported:   result.LogEntriesExported,
+		AuditEntriesExported: result.AuditEntriesExported,
+		SegmentsUploaded:     uint32(result.SegmentsUploaded),
+		DurationMs:           result.Duration.Milliseconds(),
+		LastLogSequence:      result.LastLogSequence,
+		LastAuditSequence:    result.LastAuditSequence,
 	}, nil
 }
 

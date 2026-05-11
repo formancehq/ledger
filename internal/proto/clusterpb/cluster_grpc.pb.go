@@ -30,6 +30,7 @@ const (
 	ClusterService_CompactSecondary_FullMethodName           = "/cluster.ClusterService/CompactSecondary"
 	ClusterService_CreateCheckpoint_FullMethodName           = "/cluster.ClusterService/CreateCheckpoint"
 	ClusterService_Backup_FullMethodName                     = "/cluster.ClusterService/Backup"
+	ClusterService_IncrementalBackup_FullMethodName          = "/cluster.ClusterService/IncrementalBackup"
 	ClusterService_CreateQueryCheckpoint_FullMethodName      = "/cluster.ClusterService/CreateQueryCheckpoint"
 	ClusterService_DeleteQueryCheckpoint_FullMethodName      = "/cluster.ClusterService/DeleteQueryCheckpoint"
 	ClusterService_ListQueryCheckpoints_FullMethodName       = "/cluster.ClusterService/ListQueryCheckpoints"
@@ -69,10 +70,13 @@ type ClusterServiceClient interface {
 	// CreateCheckpoint creates a Pebble checkpoint of the current live database state.
 	// Node-local operation (not forwarded to leader).
 	CreateCheckpoint(ctx context.Context, in *CreateCheckpointRequest, opts ...grpc.CallOption) (*CreateCheckpointResponse, error)
-	// Backup performs a one-shot incremental backup of the Pebble store.
+	// Backup performs a full checkpoint backup of the Pebble store.
 	// The caller specifies the storage destination (filesystem or S3) in the request.
-	// The request is forwarded to the leader.
+	// The request is forwarded to the leader (SST files are node-local).
 	Backup(ctx context.Context, in *BackupRequest, opts ...grpc.CallOption) (*BackupResponse, error)
+	// IncrementalBackup exports new log and audit entries since the last export.
+	// Can run on any node (log/audit sequences are identical across replicas).
+	IncrementalBackup(ctx context.Context, in *IncrementalBackupRequest, opts ...grpc.CallOption) (*IncrementalBackupResponse, error)
 	// CreateQueryCheckpoint creates a physical Pebble checkpoint via Raft consensus.
 	// The checkpoint captures both the main store and read index, enabling
 	// point-in-time queries on any node. Forwarded to leader.
@@ -209,6 +213,16 @@ func (c *clusterServiceClient) Backup(ctx context.Context, in *BackupRequest, op
 	return out, nil
 }
 
+func (c *clusterServiceClient) IncrementalBackup(ctx context.Context, in *IncrementalBackupRequest, opts ...grpc.CallOption) (*IncrementalBackupResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(IncrementalBackupResponse)
+	err := c.cc.Invoke(ctx, ClusterService_IncrementalBackup_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *clusterServiceClient) CreateQueryCheckpoint(ctx context.Context, in *CreateQueryCheckpointRequest, opts ...grpc.CallOption) (*CreateQueryCheckpointResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CreateQueryCheckpointResponse)
@@ -291,10 +305,13 @@ type ClusterServiceServer interface {
 	// CreateCheckpoint creates a Pebble checkpoint of the current live database state.
 	// Node-local operation (not forwarded to leader).
 	CreateCheckpoint(context.Context, *CreateCheckpointRequest) (*CreateCheckpointResponse, error)
-	// Backup performs a one-shot incremental backup of the Pebble store.
+	// Backup performs a full checkpoint backup of the Pebble store.
 	// The caller specifies the storage destination (filesystem or S3) in the request.
-	// The request is forwarded to the leader.
+	// The request is forwarded to the leader (SST files are node-local).
 	Backup(context.Context, *BackupRequest) (*BackupResponse, error)
+	// IncrementalBackup exports new log and audit entries since the last export.
+	// Can run on any node (log/audit sequences are identical across replicas).
+	IncrementalBackup(context.Context, *IncrementalBackupRequest) (*IncrementalBackupResponse, error)
 	// CreateQueryCheckpoint creates a physical Pebble checkpoint via Raft consensus.
 	// The checkpoint captures both the main store and read index, enabling
 	// point-in-time queries on any node. Forwarded to leader.
@@ -353,6 +370,9 @@ func (UnimplementedClusterServiceServer) CreateCheckpoint(context.Context, *Crea
 }
 func (UnimplementedClusterServiceServer) Backup(context.Context, *BackupRequest) (*BackupResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Backup not implemented")
+}
+func (UnimplementedClusterServiceServer) IncrementalBackup(context.Context, *IncrementalBackupRequest) (*IncrementalBackupResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method IncrementalBackup not implemented")
 }
 func (UnimplementedClusterServiceServer) CreateQueryCheckpoint(context.Context, *CreateQueryCheckpointRequest) (*CreateQueryCheckpointResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateQueryCheckpoint not implemented")
@@ -588,6 +608,24 @@ func _ClusterService_Backup_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClusterService_IncrementalBackup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(IncrementalBackupRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClusterServiceServer).IncrementalBackup(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClusterService_IncrementalBackup_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClusterServiceServer).IncrementalBackup(ctx, req.(*IncrementalBackupRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ClusterService_CreateQueryCheckpoint_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CreateQueryCheckpointRequest)
 	if err := dec(in); err != nil {
@@ -728,6 +766,10 @@ var ClusterService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Backup",
 			Handler:    _ClusterService_Backup_Handler,
+		},
+		{
+			MethodName: "IncrementalBackup",
+			Handler:    _ClusterService_IncrementalBackup_Handler,
 		},
 		{
 			MethodName: "CreateQueryCheckpoint",

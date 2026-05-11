@@ -87,7 +87,7 @@ func replayKey(prefix byte, canonicalKey []byte) []byte {
 }
 
 // addVolumeDelta merges a volume delta without reading existing state.
-func (s *replayStore) addVolumeDelta(canonicalKey []byte, inputDelta, outputDelta *big.Int) error {
+func (s *replayStore) AddVolumeDelta(canonicalKey []byte, inputDelta, outputDelta *big.Int) error {
 	key := replayKey(replayPrefixVolume, canonicalKey)
 
 	var u256Input, u256Output uint256.Int
@@ -110,7 +110,7 @@ func (s *replayStore) addVolumeDelta(canonicalKey []byte, inputDelta, outputDelt
 
 // getVolume reads the current accumulated volume for a canonical key.
 // Returns nil if the key does not exist.
-func (s *replayStore) getVolume(canonicalKey []byte) (*raftcmdpb.VolumePair, error) {
+func (s *replayStore) GetVolume(canonicalKey []byte) (*raftcmdpb.VolumePair, error) {
 	key := replayKey(replayPrefixVolume, canonicalKey)
 
 	val, closer, err := s.db.Get(key)
@@ -133,7 +133,7 @@ func (s *replayStore) getVolume(canonicalKey []byte) (*raftcmdpb.VolumePair, err
 }
 
 // deleteVolume removes a volume entry from the replay store.
-func (s *replayStore) deleteVolume(canonicalKey []byte) error {
+func (s *replayStore) DeleteVolume(canonicalKey []byte) error {
 	key := replayKey(replayPrefixVolume, canonicalKey)
 
 	return s.db.Delete(key, pebble.NoSync)
@@ -142,8 +142,8 @@ func (s *replayStore) deleteVolume(canonicalKey []byte) error {
 // moveVolume transfers accumulated volume from oldKey to newKey:
 // newVolume += oldVolume, then deletes oldKey.
 // If oldKey has no volume, this is a no-op.
-func (s *replayStore) moveVolume(oldCanonicalKey, newCanonicalKey []byte) error {
-	oldVol, err := s.getVolume(oldCanonicalKey)
+func (s *replayStore) MoveVolume(oldCanonicalKey, newCanonicalKey []byte) error {
+	oldVol, err := s.GetVolume(oldCanonicalKey)
 	if err != nil {
 		return err
 	}
@@ -155,16 +155,16 @@ func (s *replayStore) moveVolume(oldCanonicalKey, newCanonicalKey []byte) error 
 	inBig := oldVol.GetInput().ToBigInt()
 	outBig := oldVol.GetOutput().ToBigInt()
 
-	if err := s.addVolumeDelta(newCanonicalKey, inBig, outBig); err != nil {
+	if err := s.AddVolumeDelta(newCanonicalKey, inBig, outBig); err != nil {
 		return err
 	}
 
-	return s.deleteVolume(oldCanonicalKey)
+	return s.DeleteVolume(oldCanonicalKey)
 }
 
 // moveMetadata transfers a metadata entry from oldKey to newKey.
 // If oldKey has no metadata, this is a no-op.
-func (s *replayStore) moveMetadata(oldCanonicalKey, newCanonicalKey []byte) error {
+func (s *replayStore) MoveMetadata(oldCanonicalKey, newCanonicalKey []byte) error {
 	oldKey := replayKey(replayPrefixMetadata, oldCanonicalKey)
 
 	val, closer, err := s.db.Get(oldKey)
@@ -187,7 +187,7 @@ func (s *replayStore) moveMetadata(oldCanonicalKey, newCanonicalKey []byte) erro
 }
 
 // setMetadata stores a metadata value in the replay store (pure write).
-func (s *replayStore) setMetadata(canonicalKey []byte, value string) error {
+func (s *replayStore) SetMetadata(canonicalKey []byte, value string) error {
 	key := replayKey(replayPrefixMetadata, canonicalKey)
 
 	data := make([]byte, 1+len(value))
@@ -198,14 +198,14 @@ func (s *replayStore) setMetadata(canonicalKey []byte, value string) error {
 }
 
 // deleteMetadata marks a metadata key as deleted in the replay store (pure write).
-func (s *replayStore) deleteMetadata(canonicalKey []byte) error {
+func (s *replayStore) DeleteMetadata(canonicalKey []byte) error {
 	key := replayKey(replayPrefixMetadata, canonicalKey)
 
 	return s.db.Set(key, []byte{metaFlagDeleted}, pebble.NoSync)
 }
 
 // createTransaction records a transaction creation op via merge (no read).
-func (s *replayStore) createTransaction(canonicalKey []byte, seq uint64, metadata *commonpb.MetadataSet) error {
+func (s *replayStore) CreateTransaction(canonicalKey []byte, seq uint64, metadata *commonpb.MetadataSet) error {
 	key := replayKey(replayPrefixTransaction, canonicalKey)
 
 	var metaBytes []byte
@@ -228,7 +228,7 @@ func (s *replayStore) createTransaction(canonicalKey []byte, seq uint64, metadat
 }
 
 // setRevertedBy records that a transaction was reverted via merge (no read).
-func (s *replayStore) setRevertedBy(canonicalKey []byte, revertTxID uint64) error {
+func (s *replayStore) SetRevertedBy(canonicalKey []byte, revertTxID uint64) error {
 	key := replayKey(replayPrefixTransaction, canonicalKey)
 
 	buf := make([]byte, 1+8)
@@ -239,7 +239,7 @@ func (s *replayStore) setRevertedBy(canonicalKey []byte, revertTxID uint64) erro
 }
 
 // saveTxMetadata records a metadata upsert on a transaction via merge (no read).
-func (s *replayStore) saveTxMetadata(canonicalKey []byte, metadata []*commonpb.Metadata) error {
+func (s *replayStore) SaveTxMetadata(canonicalKey []byte, metadata []*commonpb.Metadata) error {
 	key := replayKey(replayPrefixTransaction, canonicalKey)
 
 	for _, m := range metadata {
@@ -261,7 +261,7 @@ func (s *replayStore) saveTxMetadata(canonicalKey []byte, metadata []*commonpb.M
 }
 
 // deleteTxMetadata records a metadata deletion on a transaction via merge (no read).
-func (s *replayStore) deleteTxMetadata(canonicalKey []byte, metaKey string) error {
+func (s *replayStore) DeleteTxMetadata(canonicalKey []byte, metaKey string) error {
 	key := replayKey(replayPrefixTransaction, canonicalKey)
 
 	buf := make([]byte, 1+len(metaKey))

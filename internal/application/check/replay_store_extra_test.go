@@ -16,10 +16,10 @@ func TestReplayStoreMoveVolumeTransfersAndDeletes(t *testing.T) {
 	newKey := []byte("ledger\x00new-account\x00USD")
 
 	// Seed the old key with some volume
-	require.NoError(t, rs.addVolumeDelta(oldKey, big.NewInt(500), big.NewInt(200)))
+	require.NoError(t, rs.AddVolumeDelta(oldKey, big.NewInt(500), big.NewInt(200)))
 
 	// Move old -> new
-	require.NoError(t, rs.moveVolume(oldKey, newKey))
+	require.NoError(t, rs.MoveVolume(oldKey, newKey))
 
 	// New key should have the transferred volume
 	pair := readVolume(t, rs, newKey)
@@ -39,11 +39,11 @@ func TestReplayStoreMoveVolumeAccumulatesIntoExisting(t *testing.T) {
 	newKey := []byte("ledger\x00new-account\x00USD")
 
 	// Seed both keys
-	require.NoError(t, rs.addVolumeDelta(oldKey, big.NewInt(100), big.NewInt(50)))
-	require.NoError(t, rs.addVolumeDelta(newKey, big.NewInt(200), big.NewInt(80)))
+	require.NoError(t, rs.AddVolumeDelta(oldKey, big.NewInt(100), big.NewInt(50)))
+	require.NoError(t, rs.AddVolumeDelta(newKey, big.NewInt(200), big.NewInt(80)))
 
 	// Move old -> new (should add to existing)
-	require.NoError(t, rs.moveVolume(oldKey, newKey))
+	require.NoError(t, rs.MoveVolume(oldKey, newKey))
 
 	pair := readVolume(t, rs, newKey)
 	require.Equal(t, "300", pair.GetInput().ToBigInt().String())
@@ -62,7 +62,7 @@ func TestReplayStoreMoveVolumeNoOpWhenSourceMissing(t *testing.T) {
 	newKey := []byte("ledger\x00target\x00USD")
 
 	// Move from a key that does not exist — should be a no-op
-	require.NoError(t, rs.moveVolume(oldKey, newKey))
+	require.NoError(t, rs.MoveVolume(oldKey, newKey))
 
 	// New key should not exist either
 	_, _, err := rs.db.Get(replayKey(replayPrefixVolume, newKey))
@@ -76,9 +76,9 @@ func TestReplayStoreMoveMetadataTransfersAndDeletes(t *testing.T) {
 	oldKey := []byte("ledger\x00old-account\x01role")
 	newKey := []byte("ledger\x00new-account\x01role")
 
-	require.NoError(t, rs.setMetadata(oldKey, "admin"))
+	require.NoError(t, rs.SetMetadata(oldKey, "admin"))
 
-	require.NoError(t, rs.moveMetadata(oldKey, newKey))
+	require.NoError(t, rs.MoveMetadata(oldKey, newKey))
 
 	// New key should have the value
 	val, closer, err := rs.db.Get(replayKey(replayPrefixMetadata, newKey))
@@ -99,7 +99,7 @@ func TestReplayStoreMoveMetadataNoOpWhenSourceMissing(t *testing.T) {
 	oldKey := []byte("ledger\x00nonexistent\x01role")
 	newKey := []byte("ledger\x00target\x01role")
 
-	require.NoError(t, rs.moveMetadata(oldKey, newKey))
+	require.NoError(t, rs.MoveMetadata(oldKey, newKey))
 
 	// New key should not exist
 	_, _, err := rs.db.Get(replayKey(replayPrefixMetadata, newKey))
@@ -113,10 +113,10 @@ func TestReplayStoreMoveMetadataOverwritesExistingTarget(t *testing.T) {
 	oldKey := []byte("ledger\x00src\x01role")
 	newKey := []byte("ledger\x00dst\x01role")
 
-	require.NoError(t, rs.setMetadata(newKey, "user"))
-	require.NoError(t, rs.setMetadata(oldKey, "admin"))
+	require.NoError(t, rs.SetMetadata(newKey, "user"))
+	require.NoError(t, rs.SetMetadata(oldKey, "admin"))
 
-	require.NoError(t, rs.moveMetadata(oldKey, newKey))
+	require.NoError(t, rs.MoveMetadata(oldKey, newKey))
 
 	val, closer, err := rs.db.Get(replayKey(replayPrefixMetadata, newKey))
 	require.NoError(t, err)
@@ -130,9 +130,9 @@ func TestReplayStoreDeleteVolume(t *testing.T) {
 	rs := newTestReplayStore(t)
 	key := []byte("ledger\x00account\x00USD")
 
-	require.NoError(t, rs.addVolumeDelta(key, big.NewInt(100), big.NewInt(100)))
+	require.NoError(t, rs.AddVolumeDelta(key, big.NewInt(100), big.NewInt(100)))
 
-	require.NoError(t, rs.deleteVolume(key))
+	require.NoError(t, rs.DeleteVolume(key))
 
 	_, _, err := rs.db.Get(replayKey(replayPrefixVolume, key))
 	require.ErrorIs(t, err, pebble.ErrNotFound)
@@ -144,7 +144,7 @@ func TestReplayStoreDeleteVolumeNonExistentKey(t *testing.T) {
 	rs := newTestReplayStore(t)
 
 	// Deleting a non-existent key should not error
-	require.NoError(t, rs.deleteVolume([]byte("ledger\x00ghost\x00USD")))
+	require.NoError(t, rs.DeleteVolume([]byte("ledger\x00ghost\x00USD")))
 }
 
 func TestReplayStoreGetVolumeNonExistent(t *testing.T) {
@@ -152,7 +152,7 @@ func TestReplayStoreGetVolumeNonExistent(t *testing.T) {
 
 	rs := newTestReplayStore(t)
 
-	pair, err := rs.getVolume([]byte("ledger\x00ghost\x00USD"))
+	pair, err := rs.GetVolume([]byte("ledger\x00ghost\x00USD"))
 	require.NoError(t, err)
 	require.Nil(t, pair)
 }

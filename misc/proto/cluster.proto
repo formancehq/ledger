@@ -48,10 +48,14 @@ service ClusterService {
   // Node-local operation (not forwarded to leader).
   rpc CreateCheckpoint(CreateCheckpointRequest) returns (CreateCheckpointResponse);
 
-  // Backup performs a one-shot incremental backup of the Pebble store.
+  // Backup performs a full checkpoint backup of the Pebble store.
   // The caller specifies the storage destination (filesystem or S3) in the request.
-  // The request is forwarded to the leader.
+  // The request is forwarded to the leader (SST files are node-local).
   rpc Backup(BackupRequest) returns (BackupResponse);
+
+  // IncrementalBackup exports new log and audit entries since the last export.
+  // Can run on any node (log/audit sequences are identical across replicas).
+  rpc IncrementalBackup(IncrementalBackupRequest) returns (IncrementalBackupResponse);
 
   // CreateQueryCheckpoint creates a physical Pebble checkpoint via Raft consensus.
   // The checkpoint captures both the main store and read index, enabling
@@ -228,10 +232,35 @@ message BackupRequest {
 }
 
 message BackupResponse {
-  uint32 files_uploaded = 1;  // Number of new/changed files uploaded
-  uint32 files_deleted = 2;   // Number of stale files deleted
-  uint32 total_files = 3;     // Total files in the backup after this run
-  int64 duration_ms = 4;      // Wall-clock duration in milliseconds
+  uint32 files_uploaded = 1;      // Number of new/changed files uploaded
+  uint32 files_deleted = 2;       // Number of stale files deleted
+  uint32 total_files = 3;         // Total files in the backup after this run
+  int64 duration_ms = 4;          // Wall-clock duration in milliseconds
+  uint64 last_log_sequence = 5;   // Log sequence at checkpoint time
+  uint64 last_audit_sequence = 6; // Audit sequence at checkpoint time
+  uint64 last_applied_index = 7;  // Raft applied index at checkpoint time
+}
+
+// ============================================================================
+// Incremental Backup Messages
+// ============================================================================
+
+message IncrementalBackupRequest {
+  string driver = 1;       // "s3" (only supported driver)
+  string base_path = 2;    // Reserved for future use
+  string bucket_id = 3;    // Namespace prefix for backup files (default: cluster-id)
+  string s3_bucket = 4;    // S3 bucket name (required when driver=s3)
+  string s3_region = 5;    // AWS region for backup S3 bucket
+  string s3_endpoint = 6;  // Custom S3 endpoint (for MinIO)
+}
+
+message IncrementalBackupResponse {
+  uint64 log_entries_exported = 1;   // Number of log entries exported
+  uint64 audit_entries_exported = 2; // Number of audit entries exported
+  uint32 segments_uploaded = 3;      // Number of segments uploaded
+  int64 duration_ms = 4;             // Wall-clock duration in milliseconds
+  uint64 last_log_sequence = 5;      // Last exported log sequence
+  uint64 last_audit_sequence = 6;    // Last exported audit sequence
 }
 
 // ============================================================================

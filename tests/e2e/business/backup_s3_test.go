@@ -128,7 +128,27 @@ var _ = Describe("S3 Backup", Ordered, func() {
 		ctx, client, clusterClient = testutil.SetupSingleNode(s3BackupHTTPPort2, s3BackupGRPCPort2)
 	})
 
-	It("should create an backup on S3", func() {
+	backupRequest := func() *clusterpb.BackupRequest {
+		return &clusterpb.BackupRequest{
+			Driver:     "s3",
+			BucketId:   "test-cluster",
+			S3Bucket:   backupS3Bucket,
+			S3Region:   backupS3Region,
+			S3Endpoint: minioEndpoint,
+		}
+	}
+
+	incrementalBackupRequest := func() *clusterpb.IncrementalBackupRequest {
+		return &clusterpb.IncrementalBackupRequest{
+			Driver:     "s3",
+			BucketId:   "test-cluster",
+			S3Bucket:   backupS3Bucket,
+			S3Region:   backupS3Region,
+			S3Endpoint: minioEndpoint,
+		}
+	}
+
+	It("should create a full backup on S3 with checkpoint manifest", func() {
 		// Create a ledger with data
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
@@ -149,24 +169,26 @@ var _ = Describe("S3 Backup", Ordered, func() {
 		})
 		Expect(err).To(Succeed())
 
-		// Trigger backup via gRPC
-		resp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
-			Driver:     "s3",
-			S3Bucket:   backupS3Bucket,
-			S3Region:   backupS3Region,
-			S3Endpoint: minioEndpoint,
-		})
+		// Trigger full backup via gRPC
+		resp, err := clusterClient.Backup(ctx, backupRequest())
 		Expect(err).To(Succeed())
 		Expect(resp.GetTotalFiles()).To(BeNumerically(">", 0))
 		Expect(resp.GetFilesUploaded()).To(BeNumerically(">", 0))
+		Expect(resp.GetLastLogSequence()).To(BeNumerically(">", 0))
+		Expect(resp.GetLastAuditSequence()).To(BeNumerically(">", 0))
+		Expect(resp.GetLastAppliedIndex()).To(BeNumerically(">", 0))
 
-		// Verify manifest exists on S3
+		// Verify manifest exists and has checkpoint structure
 		manifest, err := readS3BackupManifest(ctx, s3Client)
 		Expect(err).To(Succeed())
-		Expect(manifest.Files).NotTo(BeEmpty())
+		Expect(manifest.Checkpoint).NotTo(BeNil())
+		Expect(manifest.Checkpoint.Files).NotTo(BeEmpty())
+		Expect(manifest.Checkpoint.LastLogSequence).To(BeNumerically(">", 0))
+		Expect(manifest.Checkpoint.LastAuditSequence).To(BeNumerically(">", 0))
+		Expect(manifest.Exports).To(BeEmpty())
 
-		// Verify all referenced files exist on S3
-		for filename := range manifest.Files {
+		// Verify all checkpoint files exist on S3
+		for filename := range manifest.Checkpoint.Files {
 			key := backupS3DataPrefix + filename
 			Expect(backupS3ObjectExists(ctx, s3Client, key)).To(BeTrue(),
 				"S3 object %s should exist", key)
@@ -176,7 +198,7 @@ var _ = Describe("S3 Backup", Ordered, func() {
 	It("should update the backup after adding more data on S3", func() {
 		manifestBefore, err := readS3BackupManifest(ctx, s3Client)
 		Expect(err).To(Succeed())
-		timestampBefore := manifestBefore.Timestamp
+		timestampBefore := manifestBefore.Checkpoint.Timestamp
 
 		// Add more data
 		for i := range 5 {
@@ -193,26 +215,169 @@ var _ = Describe("S3 Backup", Ordered, func() {
 			Expect(err).To(Succeed())
 		}
 
-		// Trigger another backup
-		resp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
-			Driver:     "s3",
-			S3Bucket:   backupS3Bucket,
-			S3Region:   backupS3Region,
-			S3Endpoint: minioEndpoint,
-		})
+		// Trigger another full backup
+		resp, err := clusterClient.Backup(ctx, backupRequest())
 		Expect(err).To(Succeed())
 		Expect(resp.GetTotalFiles()).To(BeNumerically(">", 0))
 
 		// Verify manifest was updated
 		manifestAfter, err := readS3BackupManifest(ctx, s3Client)
 		Expect(err).To(Succeed())
-		Expect(manifestAfter.Timestamp).NotTo(Equal(timestampBefore))
+		Expect(manifestAfter.Checkpoint.Timestamp).NotTo(Equal(timestampBefore))
 
-		// Verify all files in updated manifest exist on S3
-		for filename := range manifestAfter.Files {
+		// Verify all checkpoint files exist on S3
+		for filename := range manifestAfter.Checkpoint.Files {
 			key := backupS3DataPrefix + filename
 			Expect(backupS3ObjectExists(ctx, s3Client, key)).To(BeTrue(),
 				"S3 object %s should exist after backup", key)
+		}
+	})
+
+	It("should succeed with incremental backup without a prior checkpoint", func() {
+		// Use a fresh bucket-id with no prior manifest
+		resp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
+			Driver:     "s3",
+			BucketId:   "no-prior",
+			S3Bucket:   backupS3Bucket,
+			S3Region:   backupS3Region,
+			S3Endpoint: minioEndpoint,
+		})
+		Expect(err).To(Succeed())
+		Expect(resp.GetLogEntriesExported()).To(BeNumerically(">", 0))
+		Expect(resp.GetAuditEntriesExported()).To(BeNumerically(">", 0))
+
+		// Verify manifest was created with no checkpoint and with exports
+		manifest, err := readS3BackupManifest(ctx, s3Client)
+		Expect(err).To(Succeed())
+		// The "no-prior" bucket has its own manifest key, read it directly
+		noPriorManifest, err := func() (*backup.Manifest, error) {
+			output, err := s3Client.GetObject(ctx, &s3.GetObjectInput{
+				Bucket: aws.String(backupS3Bucket),
+				Key:    aws.String("no-prior/backups/manifest.json"),
+			})
+			if err != nil {
+				return nil, err
+			}
+			defer func() { _ = output.Body.Close() }()
+			data, err := io.ReadAll(output.Body)
+			if err != nil {
+				return nil, err
+			}
+			var m backup.Manifest
+			if err := json.Unmarshal(data, &m); err != nil {
+				return nil, err
+			}
+			return &m, nil
+		}()
+		Expect(err).To(Succeed())
+		Expect(noPriorManifest.Checkpoint).To(BeNil())
+		Expect(noPriorManifest.Exports).NotTo(BeEmpty())
+		_ = manifest // main manifest is unaffected
+	})
+
+	It("should export new entries incrementally after a full backup", func() {
+		// Ensure we have a clean full backup
+		fullResp, err := clusterClient.Backup(ctx, backupRequest())
+		Expect(err).To(Succeed())
+		checkpointLogSeq := fullResp.GetLastLogSequence()
+		checkpointAuditSeq := fullResp.GetLastAuditSequence()
+
+		// Add more data
+		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
+			Requests: []*servicepb.Request{
+				actions.CreateForceTransactionAction("s3-backup-test",
+					[]*commonpb.Posting{
+						actions.NewPosting("world", "users:charlie", big.NewInt(500), "GBP"),
+					},
+					nil,
+				),
+			},
+		})
+		Expect(err).To(Succeed())
+
+		// Run incremental backup
+		incrResp, err := clusterClient.IncrementalBackup(ctx, incrementalBackupRequest())
+		Expect(err).To(Succeed())
+		Expect(incrResp.GetLogEntriesExported()).To(BeNumerically(">", 0))
+		Expect(incrResp.GetAuditEntriesExported()).To(BeNumerically(">", 0))
+		Expect(incrResp.GetSegmentsUploaded()).To(BeNumerically(">", 0))
+		Expect(incrResp.GetLastLogSequence()).To(BeNumerically(">", checkpointLogSeq))
+		Expect(incrResp.GetLastAuditSequence()).To(BeNumerically(">", checkpointAuditSeq))
+
+		// Verify manifest has exports
+		manifest, err := readS3BackupManifest(ctx, s3Client)
+		Expect(err).To(Succeed())
+		Expect(manifest.Checkpoint).NotTo(BeNil())
+		Expect(manifest.Exports).NotTo(BeEmpty())
+
+		// Verify export segments exist on S3
+		for _, seg := range manifest.Exports {
+			Expect(backupS3ObjectExists(ctx, s3Client, seg.Key)).To(BeTrue(),
+				"export segment %s should exist", seg.Key)
+		}
+	})
+
+	It("should accumulate multiple incremental exports", func() {
+		// First incremental is already done from previous test
+		manifestBefore, err := readS3BackupManifest(ctx, s3Client)
+		Expect(err).To(Succeed())
+		exportCountBefore := len(manifestBefore.Exports)
+
+		// Add more data
+		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
+			Requests: []*servicepb.Request{
+				actions.CreateForceTransactionAction("s3-backup-test",
+					[]*commonpb.Posting{
+						actions.NewPosting("world", "users:dave", big.NewInt(200), "JPY"),
+					},
+					nil,
+				),
+			},
+		})
+		Expect(err).To(Succeed())
+
+		// Run another incremental
+		_, err = clusterClient.IncrementalBackup(ctx, incrementalBackupRequest())
+		Expect(err).To(Succeed())
+
+		// Verify exports accumulated
+		manifestAfter, err := readS3BackupManifest(ctx, s3Client)
+		Expect(err).To(Succeed())
+		Expect(len(manifestAfter.Exports)).To(BeNumerically(">", exportCountBefore))
+	})
+
+	It("should no-op when no new data since last export", func() {
+		resp, err := clusterClient.IncrementalBackup(ctx, incrementalBackupRequest())
+		Expect(err).To(Succeed())
+		Expect(resp.GetLogEntriesExported()).To(BeZero())
+		Expect(resp.GetAuditEntriesExported()).To(BeZero())
+		Expect(resp.GetSegmentsUploaded()).To(BeZero())
+	})
+
+	It("should clean up old exports when a new full backup is taken", func() {
+		// Verify exports exist before
+		manifestBefore, err := readS3BackupManifest(ctx, s3Client)
+		Expect(err).To(Succeed())
+		Expect(manifestBefore.Exports).NotTo(BeEmpty())
+
+		oldExportKeys := make([]string, len(manifestBefore.Exports))
+		for i, seg := range manifestBefore.Exports {
+			oldExportKeys[i] = seg.Key
+		}
+
+		// Take a new full backup — this should clean up old exports
+		_, err = clusterClient.Backup(ctx, backupRequest())
+		Expect(err).To(Succeed())
+
+		// Verify exports are cleared in manifest
+		manifestAfter, err := readS3BackupManifest(ctx, s3Client)
+		Expect(err).To(Succeed())
+		Expect(manifestAfter.Exports).To(BeEmpty())
+
+		// Verify old export segments were deleted from S3
+		for _, key := range oldExportKeys {
+			Expect(backupS3ObjectExists(ctx, s3Client, key)).To(BeFalse(),
+				"old export segment %s should have been cleaned up", key)
 		}
 	})
 })

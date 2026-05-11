@@ -115,7 +115,19 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 		return cmdutil.Displayed(fmt.Errorf("parsing manifest: %w", err))
 	}
 
-	spinner.Success(fmt.Sprintf("Manifest loaded: %d files", len(manifest.Files)))
+	if manifest.Checkpoint == nil && len(manifest.Exports) == 0 {
+		spinner.Fail("Manifest contains no checkpoint and no exports")
+
+		return cmdutil.Displayed(errors.New("manifest contains no data to restore"))
+	}
+
+	var checkpointFiles int
+	if manifest.Checkpoint != nil {
+		checkpointFiles = len(manifest.Checkpoint.Files)
+	}
+
+	spinner.Success(fmt.Sprintf("Manifest loaded: %d checkpoint files, %d export segments",
+		checkpointFiles, len(manifest.Exports)))
 
 	// Create staging directory
 	stagingDir := filepath.Join(dataDir, "restore-staging")
@@ -123,53 +135,100 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("creating staging directory: %w", err)
 	}
 
-	// Download files
-	dlSpinner, _ := pterm.DefaultSpinner.Start("Downloading backup files from S3...")
+	// Download checkpoint files (if any)
+	if manifest.Checkpoint != nil && len(manifest.Checkpoint.Files) > 0 {
+		dlSpinner, _ := pterm.DefaultSpinner.Start("Downloading checkpoint files from S3...")
 
-	var totalBytes uint64
+		var totalBytes uint64
 
-	for filename := range manifest.Files {
-		key := fileKeyPrefix + filename
-		destPath := filepath.Join(stagingDir, filepath.FromSlash(filename))
+		for filename := range manifest.Checkpoint.Files {
+			key := fileKeyPrefix + filename
+			destPath := filepath.Join(stagingDir, filepath.FromSlash(filename))
 
-		if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
-			dlSpinner.Fail("Failed to create directory")
+			if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+				dlSpinner.Fail("Failed to create directory")
 
-			return cmdutil.Displayed(fmt.Errorf("creating directory for %s: %w", filename, err))
-		}
+				return cmdutil.Displayed(fmt.Errorf("creating directory for %s: %w", filename, err))
+			}
 
-		reader, err := storage.GetFile(cmd.Context(), key)
-		if err != nil {
-			dlSpinner.Fail("Failed to download file")
+			reader, err := storage.GetFile(cmd.Context(), key)
+			if err != nil {
+				dlSpinner.Fail("Failed to download file")
 
-			return cmdutil.Displayed(fmt.Errorf("downloading %s: %w", filename, err))
-		}
+				return cmdutil.Displayed(fmt.Errorf("downloading %s: %w", filename, err))
+			}
 
-		outFile, err := os.Create(destPath)
-		if err != nil {
+			outFile, err := os.Create(destPath)
+			if err != nil {
+				_ = reader.Close()
+				dlSpinner.Fail("Failed to create file")
+
+				return cmdutil.Displayed(fmt.Errorf("creating file %s: %w", filename, err))
+			}
+
+			n, err := io.Copy(outFile, reader)
 			_ = reader.Close()
-			dlSpinner.Fail("Failed to create file")
+			_ = outFile.Close()
 
-			return cmdutil.Displayed(fmt.Errorf("creating file %s: %w", filename, err))
+			if err != nil {
+				dlSpinner.Fail("Failed to write file")
+
+				return cmdutil.Displayed(fmt.Errorf("writing file %s: %w", filename, err))
+			}
+
+			totalBytes += uint64(n)
 		}
 
-		n, err := io.Copy(outFile, reader)
-		_ = reader.Close()
-		_ = outFile.Close()
-
-		if err != nil {
-			dlSpinner.Fail("Failed to write file")
-
-			return cmdutil.Displayed(fmt.Errorf("writing file %s: %w", filename, err))
-		}
-
-		totalBytes += uint64(n)
+		dlSpinner.Success(fmt.Sprintf("Downloaded %d checkpoint files (%s)", len(manifest.Checkpoint.Files), cmdutil.FormatBytes(totalBytes)))
 	}
 
-	dlSpinner.Success(fmt.Sprintf("Downloaded %d files (%s)", len(manifest.Files), cmdutil.FormatBytes(totalBytes)))
+	logger := otlplogs.NopLogger()
+
+	// Apply export segments (if any)
+	if len(manifest.Exports) > 0 {
+		exportSpinner, _ := pterm.DefaultSpinner.Start("Applying export segments...")
+
+		exportStore, openErr := dal.OpenDirect(stagingDir, logger)
+		if openErr != nil {
+			exportSpinner.Fail("Failed to open staging for export application")
+
+			return cmdutil.Displayed(fmt.Errorf("opening staging for exports: %w", openErr))
+		}
+
+		if applyErr := backup.ApplyExports(cmd.Context(), logger, storage, exportStore, manifest.Exports); applyErr != nil {
+			_ = exportStore.Close()
+			exportSpinner.Fail("Failed to apply exports")
+
+			return cmdutil.Displayed(fmt.Errorf("applying exports: %w", applyErr))
+		}
+
+		// Rebuild derived state from the exported logs
+		var fromLogSeq uint64
+		if manifest.Checkpoint != nil {
+			fromLogSeq = manifest.Checkpoint.LastLogSequence
+		}
+
+		rebuildSpinner, _ := pterm.DefaultSpinner.Start("Rebuilding derived state from logs...")
+
+		if rebuildErr := backup.RebuildDelta(cmd.Context(), logger, exportStore, fromLogSeq); rebuildErr != nil {
+			_ = exportStore.Close()
+			rebuildSpinner.Fail("Failed to rebuild state")
+
+			return cmdutil.Displayed(fmt.Errorf("rebuilding derived state: %w", rebuildErr))
+		}
+
+		rebuildSpinner.Success("Derived state rebuilt")
+
+		if closeErr := exportStore.Close(); closeErr != nil {
+			exportSpinner.Fail("Failed to close export store")
+
+			return cmdutil.Displayed(fmt.Errorf("closing export store: %w", closeErr))
+		}
+
+		exportSpinner.Success(fmt.Sprintf("Applied %d export segments", len(manifest.Exports)))
+	}
 
 	// Open staging as read-only to read metadata.
-	logger := otlplogs.NopLogger()
 
 	store, err := dal.OpenReadOnly(stagingDir, logger)
 	if err != nil {
