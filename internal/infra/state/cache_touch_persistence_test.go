@@ -155,6 +155,91 @@ func TestPreload_TouchSkipsWhenGen0HasFreshValue(t *testing.T) {
 	require.Equal(t, freshBytes, val[8:], "0xFF gen0 row must not be clobbered with stale gen1 value")
 }
 
+// Asserts a CacheMiss preload for a key already in gen0 is a no-op for that
+// generation — must not clobber a fresher in-batch Merge value at 0xFF gen0Byte
+// with the (potentially stale) preload value computed at admission time.
+func TestPreload_FullPreloadSkipsWhenGen0HasFreshValue(t *testing.T) {
+	t.Parallel()
+
+	machine, dataStore, _ := newTestMachine(t)
+	registry := machine.Registry
+
+	const (
+		gen0Byte byte = 0
+		gen1Byte byte = 1
+	)
+
+	canonicalKey := []byte("lending\x00disburse_loan\x001.0.0")
+	hash := attributes.HashU128(attributes.DefaultSeeds, canonicalKey)
+	tag := uint64(42)
+
+	staleInfo := &commonpb.NumscriptInfo{
+		Ledger:  "lending",
+		Name:    "disburse_loan",
+		Version: "1.0.0",
+		Content: "STALE — leader's admission view",
+	}
+	freshInfo := &commonpb.NumscriptInfo{
+		Ledger:  "lending",
+		Name:    "disburse_loan",
+		Version: "1.0.0",
+		Content: "FRESH — written by an earlier in-batch Merge",
+	}
+
+	// Post-Merge shape on entry N: fresh value in gen0 + 0xFF gen0Byte.
+	registry.Cache.NumscriptContents.Gen0().Put(hash, attributes.Entry[*commonpb.NumscriptInfo]{Tag: tag, Data: freshInfo})
+
+	seedBatch := dataStore.NewBatch()
+
+	freshBytes, err := freshInfo.MarshalVT()
+	require.NoError(t, err)
+	require.NoError(t,
+		writeCacheRaw(seedBatch, gen0Byte, dal.AttributeCodeNumscriptContent, hash, tag, freshBytes))
+	require.NoError(t, seedBatch.Commit())
+
+	// Entry N+1's preload arrives with the leader's admission-time value
+	// (stale wrt the in-batch merge).
+	preloadSet := &raftcmdpb.PreloadSet{
+		LastPersistedIndex: registry.Cache.BaseIndex.Gen0,
+		Preloads: []*raftcmdpb.Preload{{
+			Type: &raftcmdpb.Preload_NumscriptContent{
+				NumscriptContent: &raftcmdpb.PreloadNumscriptContent{
+					Id:    &raftcmdpb.AttributeID{Id: hash[:], Tag: tag},
+					Value: staleInfo,
+				},
+			},
+		}},
+	}
+
+	applyBatch := dataStore.NewBatch()
+	defer func() { _ = applyBatch.Cancel() }()
+
+	require.NoError(t, machine.Preload(preloadSet, applyBatch, gen0Byte))
+	require.NoError(t, applyBatch.Commit())
+
+	got, ok := registry.Cache.NumscriptContents.Gen0().Get(hash)
+	require.True(t, ok)
+	require.Equal(t, freshInfo.GetContent(), got.Data.GetContent(),
+		"in-memory gen0 must not be overwritten with stale preload")
+
+	gen0Key := []byte{dal.KeyPrefixCacheSnapshot, gen0Byte, dal.AttributeCodeNumscriptContent}
+	gen0Key = append(gen0Key, hash[:]...)
+	val, closer, err := dataStore.Get(gen0Key)
+	require.NoError(t, err)
+
+	defer func() { _ = closer.Close() }()
+
+	require.Equal(t, freshBytes, val[8:],
+		"0xFF gen0 row must not be clobbered with stale preload value")
+
+	gen1Key := []byte{dal.KeyPrefixCacheSnapshot, gen1Byte, dal.AttributeCodeNumscriptContent}
+	gen1Key = append(gen1Key, hash[:]...)
+	gen1Val, gen1Closer, err := dataStore.Get(gen1Key)
+	require.NoError(t, err, "0xFF gen1 row should still be populated from the preload")
+	require.NotEmpty(t, gen1Val)
+	require.NoError(t, gen1Closer.Close())
+}
+
 // Asserts a full preload (CacheMiss path) lands at both 0xFF byte positions
 // and survives a restart, even when no order subsequently modifies the key.
 func TestPreload_FullPreloadIsPersistedToCacheZone(t *testing.T) {

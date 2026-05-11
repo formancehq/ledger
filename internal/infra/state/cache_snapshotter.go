@@ -25,21 +25,21 @@ func parseLeanValue(value []byte) (uint64, []byte) {
 }
 
 // putAttributeIfAbsent puts value at id only if store doesn't already have
-// an entry, returning whichever value ends up in store. Used by MirrorPreload
-// to avoid clobbering a fresher in-memory value with the boundary preload.
+// an entry. Returns the resulting in-store value (existing data on a no-op,
+// or value when the put happened) and whether the put occurred.
 func putAttributeIfAbsent[V any](
 	store kv.KV[attributes.U128, attributes.Entry[V]],
 	id attributes.U128,
 	tag uint64,
 	value V,
-) V {
+) (V, bool) {
 	if existing, ok := store.Get(id); ok {
-		return existing.Data
+		return existing.Data, false
 	}
 
 	store.Put(id, attributes.Entry[V]{Tag: tag, Data: value})
 
-	return value
+	return value, true
 }
 
 // cacheSnapshotSlot captures the persist/restore logic for a single cache type.
@@ -127,20 +127,28 @@ func (s *protoSnapshotSlot[V]) MirrorPreload(
 
 	// gen1 wins if it already has a (post-rotation, possibly fresher)
 	// value; otherwise the preload value populates both gens.
-	effective := putAttributeIfAbsent(s.ac.Gen1(), id, tag, typed)
-	putAttributeIfAbsent(s.ac.Gen0(), id, tag, effective)
+	effective, gen1Set := putAttributeIfAbsent(s.ac.Gen1(), id, tag, typed)
+	_, gen0Set := putAttributeIfAbsent(s.ac.Gen0(), id, tag, effective)
+
+	if !gen0Set && !gen1Set {
+		return nil
+	}
 
 	valueBytes, err := effective.MarshalVT()
 	if err != nil {
 		return fmt.Errorf("marshaling preloaded value: %w", err)
 	}
 
-	if err := writeCacheRaw(batch, gen0Byte, s.cacheType, id, tag, valueBytes); err != nil {
-		return fmt.Errorf("persisting preloaded gen0 value: %w", err)
+	if gen0Set {
+		if err := writeCacheRaw(batch, gen0Byte, s.cacheType, id, tag, valueBytes); err != nil {
+			return fmt.Errorf("persisting preloaded gen0 value: %w", err)
+		}
 	}
 
-	if err := writeCacheRaw(batch, gen1Byte, s.cacheType, id, tag, valueBytes); err != nil {
-		return fmt.Errorf("persisting preloaded gen1 value: %w", err)
+	if gen1Set {
+		if err := writeCacheRaw(batch, gen1Byte, s.cacheType, id, tag, valueBytes); err != nil {
+			return fmt.Errorf("persisting preloaded gen1 value: %w", err)
+		}
 	}
 
 	return nil
