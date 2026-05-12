@@ -170,7 +170,7 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 		b.bloomUpdates.Volumes = append(b.bloomUpdates.Volumes, update.CanonicalKey)
 	}
 
-	if err := b.applyEphemeralPurge(batch, partResult.purged); err != nil {
+	if err := b.applyEphemeralPurge(batch, genByte, partResult.purged); err != nil {
 		return fmt.Errorf("failed purging ephemeral volumes: %w", err)
 	}
 

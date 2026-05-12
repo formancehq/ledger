@@ -1,8 +1,6 @@
 package state
 
 import (
-	"errors"
-
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/accounttype"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
@@ -119,29 +117,48 @@ func (b *Buffered) evictTransientVolumes(
 	}
 }
 
-// applyEphemeralPurge deletes purged volume entries from Pebble, the parent KeyStore,
-// and the 0xFF cache zone.
+// applyEphemeralPurge deletes purged volumes from 0xF1 and overwrites the
+// cache (in-memory + 0xFF gen0Byte) with a zero VolumePair. Overwriting
+// rather than deleting keeps the cache populated for any co-batched proposal
+// that was admitted with CacheGuaranteed and therefore carries no preload
+// for the key. The zero entry ages out via rotation.
 func (b *Buffered) applyEphemeralPurge(
 	batch *dal.Batch,
+	genByte byte,
 	purged []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 ) error {
+	if len(purged) == 0 {
+		return nil
+	}
+
+	zeroBytes, err := (&raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
+	}).MarshalVT()
+	if err != nil {
+		return err
+	}
+
 	for _, update := range purged {
-		// Delete the entry from Pebble attributes zone.
+		// Delete the entry from Pebble attributes zone (storage saving).
 		if err := b.attrs.Volume.Delete(batch, update.CanonicalKey); err != nil {
 			return err
 		}
 
-		// Delete from 0xFF cache zone.
-		if err := deleteCacheEntry(batch, dal.AttributeCodeVolume, update.ID); err != nil {
+		// Overwrite the in-memory cache with a fresh zero VolumePair (one per
+		// entry, to avoid shared-pointer mutations leaking across keys).
+		zeroVol := &raftcmdpb.VolumePair{
+			Input:  commonpb.NewUint256FromUint64(0),
+			Output: commonpb.NewUint256FromUint64(0),
+		}
+		if _, _, err := b.fsm.Registry.Volumes.Put(update.CanonicalKey, zeroVol); err != nil {
 			return err
 		}
 
-		// Evict from the parent KeyStore so the cache doesn't keep stale zero-balance entries.
-		if _, err := b.fsm.Registry.Volumes.Delete(update.CanonicalKey); err != nil {
-			// Ignore not-found — the entry may have been evicted by cache rotation.
-			if !errors.Is(err, domain.ErrNotFound) {
-				return err
-			}
+		// Mirror the in-memory zero to 0xFF gen0Byte so the cache stays
+		// consistent across restore.
+		if err := writeCacheRaw(batch, genByte, dal.AttributeCodeVolume, update.ID, update.Tag, zeroBytes); err != nil {
+			return err
 		}
 	}
 
