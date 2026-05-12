@@ -6,10 +6,10 @@ import (
 	"net"
 	"time"
 
-	"github.com/formancehq/ledger-v3-poc/internal/infra/bloom"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/coldstorage"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/pebblecfg"
 )
@@ -71,7 +71,7 @@ type Config struct {
 	ReadIndexConfig             ReadIndexConfig
 	QueryProfileThreshold       time.Duration
 	GRPCSlowThreshold           time.Duration
-	BloomConfig                 bloom.FilterSetConfig
+	BloomConfig                 *commonpb.ClusterConfig
 	IdempotencyTTL              time.Duration
 	IdempotencyEvictionInterval time.Duration
 }

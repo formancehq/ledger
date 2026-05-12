@@ -5,6 +5,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/bitset"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
@@ -31,7 +32,7 @@ type DerivedRegistry struct {
 	PendingReversions []domain.TransactionKey
 
 	// parent is the authoritative reversion bitset map (from StateRegistry).
-	parentReversions map[string]*domain.ReversionBitset
+	parentReversions map[string]*bitset.Bitset
 }
 
 // NewDerivedRegistry creates a DerivedRegistry from a parent StateRegistry.
@@ -65,7 +66,7 @@ func (d *DerivedRegistry) GetReverted(key domain.TransactionKey) bool {
 		return false
 	}
 
-	return bs.IsReverted(key.ID)
+	return bs.Test(key.ID)
 }
 
 // PutReverted adds a transaction key to the pending reversions.

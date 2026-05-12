@@ -167,6 +167,7 @@ var (
 	KeyPrefixQueryCheckpointSchedule byte = 0xE4 // [KeyPrefixQueryCheckpointSchedule] -> cron expression string
 	KeyPrefixReversions              byte = 0xE5 // [KeyPrefixReversions][ledger_name] -> packed little-endian uint64 bitset
 	KeyPrefixClusterConfig           byte = 0xE6 // [KeyPrefixClusterConfig] -> ClusterConfig protobuf (mutable cluster-wide config)
+	KeyPrefixBloom                   byte = 0xE7 // [KeyPrefixBloom][attrCode][blockIndex BE 8] -> 64-byte block
 	KeyPrefixMirrorSourceHead        byte = 0xEB // [KeyPrefixMirrorSourceHead][ledger_name] -> uint64 (latest known v2 source log ID)
 	KeyPrefixMirrorCursor            byte = 0xEC // [KeyPrefixMirrorCursor][ledger_name] -> uint64 (last ingested v2 log ID)
 	KeyPrefixMirrorStatus            byte = 0xED // [KeyPrefixMirrorStatus][ledger_name] -> MirrorSyncError protobuf

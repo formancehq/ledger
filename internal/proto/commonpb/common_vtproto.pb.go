@@ -12,6 +12,7 @@ import (
 	proto "google.golang.org/protobuf/proto"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	io "io"
+	math "math"
 )
 
 const (
@@ -1150,12 +1151,39 @@ func (m *SetMaintenanceModeLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
+func (m *BloomTypeConfig) CloneVT() *BloomTypeConfig {
+	if m == nil {
+		return (*BloomTypeConfig)(nil)
+	}
+	r := new(BloomTypeConfig)
+	r.ExpectedKeys = m.ExpectedKeys
+	r.FpRate = m.FpRate
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *BloomTypeConfig) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
 func (m *ClusterConfig) CloneVT() *ClusterConfig {
 	if m == nil {
 		return (*ClusterConfig)(nil)
 	}
 	r := new(ClusterConfig)
 	r.RotationThreshold = m.RotationThreshold
+	r.BloomVolumes = m.BloomVolumes.CloneVT()
+	r.BloomMetadata = m.BloomMetadata.CloneVT()
+	r.BloomReferences = m.BloomReferences.CloneVT()
+	r.BloomLedgers = m.BloomLedgers.CloneVT()
+	r.BloomBoundaries = m.BloomBoundaries.CloneVT()
+	r.BloomTransactions = m.BloomTransactions.CloneVT()
+	r.BloomSinkConfigs = m.BloomSinkConfigs.CloneVT()
+	r.BloomNumscriptVersions = m.BloomNumscriptVersions.CloneVT()
+	r.BloomNumscriptContents = m.BloomNumscriptContents.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -5506,6 +5534,28 @@ func (this *SetMaintenanceModeLog) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
+func (this *BloomTypeConfig) EqualVT(that *BloomTypeConfig) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.ExpectedKeys != that.ExpectedKeys {
+		return false
+	}
+	if this.FpRate != that.FpRate {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *BloomTypeConfig) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*BloomTypeConfig)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
 func (this *ClusterConfig) EqualVT(that *ClusterConfig) bool {
 	if this == that {
 		return true
@@ -5513,6 +5563,33 @@ func (this *ClusterConfig) EqualVT(that *ClusterConfig) bool {
 		return false
 	}
 	if this.RotationThreshold != that.RotationThreshold {
+		return false
+	}
+	if !this.BloomVolumes.EqualVT(that.BloomVolumes) {
+		return false
+	}
+	if !this.BloomMetadata.EqualVT(that.BloomMetadata) {
+		return false
+	}
+	if !this.BloomReferences.EqualVT(that.BloomReferences) {
+		return false
+	}
+	if !this.BloomLedgers.EqualVT(that.BloomLedgers) {
+		return false
+	}
+	if !this.BloomBoundaries.EqualVT(that.BloomBoundaries) {
+		return false
+	}
+	if !this.BloomTransactions.EqualVT(that.BloomTransactions) {
+		return false
+	}
+	if !this.BloomSinkConfigs.EqualVT(that.BloomSinkConfigs) {
+		return false
+	}
+	if !this.BloomNumscriptVersions.EqualVT(that.BloomNumscriptVersions) {
+		return false
+	}
+	if !this.BloomNumscriptContents.EqualVT(that.BloomNumscriptContents) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -12136,6 +12213,50 @@ func (m *SetMaintenanceModeLog) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 	return len(dAtA) - i, nil
 }
 
+func (m *BloomTypeConfig) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *BloomTypeConfig) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *BloomTypeConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.FpRate != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(math.Float64bits(float64(m.FpRate))))
+		i--
+		dAtA[i] = 0x11
+	}
+	if m.ExpectedKeys != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ExpectedKeys))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *ClusterConfig) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -12165,6 +12286,96 @@ func (m *ClusterConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.BloomNumscriptContents != nil {
+		size, err := m.BloomNumscriptContents.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x52
+	}
+	if m.BloomNumscriptVersions != nil {
+		size, err := m.BloomNumscriptVersions.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x4a
+	}
+	if m.BloomSinkConfigs != nil {
+		size, err := m.BloomSinkConfigs.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x42
+	}
+	if m.BloomTransactions != nil {
+		size, err := m.BloomTransactions.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x3a
+	}
+	if m.BloomBoundaries != nil {
+		size, err := m.BloomBoundaries.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x32
+	}
+	if m.BloomLedgers != nil {
+		size, err := m.BloomLedgers.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x2a
+	}
+	if m.BloomReferences != nil {
+		size, err := m.BloomReferences.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x22
+	}
+	if m.BloomMetadata != nil {
+		size, err := m.BloomMetadata.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if m.BloomVolumes != nil {
+		size, err := m.BloomVolumes.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x12
 	}
 	if m.RotationThreshold != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.RotationThreshold))
@@ -19297,6 +19508,22 @@ func (m *SetMaintenanceModeLog) SizeVT() (n int) {
 	return n
 }
 
+func (m *BloomTypeConfig) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.ExpectedKeys != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.ExpectedKeys))
+	}
+	if m.FpRate != 0 {
+		n += 9
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
 func (m *ClusterConfig) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -19305,6 +19532,42 @@ func (m *ClusterConfig) SizeVT() (n int) {
 	_ = l
 	if m.RotationThreshold != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.RotationThreshold))
+	}
+	if m.BloomVolumes != nil {
+		l = m.BloomVolumes.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.BloomMetadata != nil {
+		l = m.BloomMetadata.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.BloomReferences != nil {
+		l = m.BloomReferences.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.BloomLedgers != nil {
+		l = m.BloomLedgers.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.BloomBoundaries != nil {
+		l = m.BloomBoundaries.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.BloomTransactions != nil {
+		l = m.BloomTransactions.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.BloomSinkConfigs != nil {
+		l = m.BloomSinkConfigs.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.BloomNumscriptVersions != nil {
+		l = m.BloomNumscriptVersions.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.BloomNumscriptContents != nil {
+		l = m.BloomNumscriptContents.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -28381,6 +28644,87 @@ func (m *SetMaintenanceModeLog) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
+func (m *BloomTypeConfig) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: BloomTypeConfig: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: BloomTypeConfig: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ExpectedKeys", wireType)
+			}
+			m.ExpectedKeys = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ExpectedKeys |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field FpRate", wireType)
+			}
+			var v uint64
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+			m.FpRate = float64(math.Float64frombits(v))
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
 func (m *ClusterConfig) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -28429,6 +28773,330 @@ func (m *ClusterConfig) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BloomVolumes", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.BloomVolumes == nil {
+				m.BloomVolumes = &BloomTypeConfig{}
+			}
+			if err := m.BloomVolumes.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BloomMetadata", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.BloomMetadata == nil {
+				m.BloomMetadata = &BloomTypeConfig{}
+			}
+			if err := m.BloomMetadata.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BloomReferences", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.BloomReferences == nil {
+				m.BloomReferences = &BloomTypeConfig{}
+			}
+			if err := m.BloomReferences.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BloomLedgers", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.BloomLedgers == nil {
+				m.BloomLedgers = &BloomTypeConfig{}
+			}
+			if err := m.BloomLedgers.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BloomBoundaries", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.BloomBoundaries == nil {
+				m.BloomBoundaries = &BloomTypeConfig{}
+			}
+			if err := m.BloomBoundaries.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BloomTransactions", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.BloomTransactions == nil {
+				m.BloomTransactions = &BloomTypeConfig{}
+			}
+			if err := m.BloomTransactions.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BloomSinkConfigs", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.BloomSinkConfigs == nil {
+				m.BloomSinkConfigs = &BloomTypeConfig{}
+			}
+			if err := m.BloomSinkConfigs.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 9:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BloomNumscriptVersions", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.BloomNumscriptVersions == nil {
+				m.BloomNumscriptVersions = &BloomTypeConfig{}
+			}
+			if err := m.BloomNumscriptVersions.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 10:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BloomNumscriptContents", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.BloomNumscriptContents == nil {
+				m.BloomNumscriptContents = &BloomTypeConfig{}
+			}
+			if err := m.BloomNumscriptContents.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

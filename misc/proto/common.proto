@@ -363,10 +363,25 @@ message SetMaintenanceModeLog {
   bool enabled = 1;
 }
 
+// BloomTypeConfig holds the configuration for a single bloom filter type.
+message BloomTypeConfig {
+  uint64 expected_keys = 1;
+  double fp_rate = 2;
+}
+
 // ClusterConfig holds mutable cluster-wide configuration parameters.
 // These are updated via Raft to ensure deterministic application across all nodes.
 message ClusterConfig {
   uint64 rotation_threshold = 1;
+  BloomTypeConfig bloom_volumes = 2;
+  BloomTypeConfig bloom_metadata = 3;
+  BloomTypeConfig bloom_references = 4;
+  BloomTypeConfig bloom_ledgers = 5;
+  BloomTypeConfig bloom_boundaries = 6;
+  BloomTypeConfig bloom_transactions = 7;
+  BloomTypeConfig bloom_sink_configs = 8;
+  BloomTypeConfig bloom_numscript_versions = 9;
+  BloomTypeConfig bloom_numscript_contents = 10;
 }
 
 // PersistedClusterState wraps ClusterConfig with internal FSM state that must

@@ -9,6 +9,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/accounttype"
 	domainreplay "github.com/formancehq/ledger-v3-poc/internal/domain/replay"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/bitset"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
@@ -227,8 +228,8 @@ func TestSimulateEphemeralPurgeSkipsWorldAccount(t *testing.T) {
 func TestCheckReversionInvariantsValidCreationAndRevert(t *testing.T) {
 	t.Parallel()
 
-	knownTxIDs := make(map[string]*domain.ReversionBitset)
-	revertedTxIDs := make(map[string]*domain.ReversionBitset)
+	knownTxIDs := make(map[string]*bitset.Bitset)
+	revertedTxIDs := make(map[string]*bitset.Bitset)
 	var errors []*servicepb.CheckStoreError
 
 	callback := func(event *servicepb.CheckStoreEvent) {
@@ -261,16 +262,16 @@ func TestCheckReversionInvariantsValidCreationAndRevert(t *testing.T) {
 	require.Empty(t, errors, "valid revert should produce no errors")
 
 	// Verify tx 1 is tracked as reverted
-	require.True(t, revertedTxIDs["ledger"].IsReverted(1))
+	require.True(t, revertedTxIDs["ledger"].Test(1))
 	// Verify revert tx (ID 2) is tracked as known
-	require.True(t, knownTxIDs["ledger"].IsReverted(2))
+	require.True(t, knownTxIDs["ledger"].Test(2))
 }
 
 func TestCheckReversionInvariantsDoubleRevert(t *testing.T) {
 	t.Parallel()
 
-	knownTxIDs := make(map[string]*domain.ReversionBitset)
-	revertedTxIDs := make(map[string]*domain.ReversionBitset)
+	knownTxIDs := make(map[string]*bitset.Bitset)
+	revertedTxIDs := make(map[string]*bitset.Bitset)
 	var errors []*servicepb.CheckStoreError
 
 	callback := func(event *servicepb.CheckStoreEvent) {
@@ -318,8 +319,8 @@ func TestCheckReversionInvariantsDoubleRevert(t *testing.T) {
 func TestCheckReversionInvariantsRevertNonExistent(t *testing.T) {
 	t.Parallel()
 
-	knownTxIDs := make(map[string]*domain.ReversionBitset)
-	revertedTxIDs := make(map[string]*domain.ReversionBitset)
+	knownTxIDs := make(map[string]*bitset.Bitset)
+	revertedTxIDs := make(map[string]*bitset.Bitset)
 	var errors []*servicepb.CheckStoreError
 
 	callback := func(event *servicepb.CheckStoreEvent) {
@@ -346,8 +347,8 @@ func TestCheckReversionInvariantsRevertNonExistent(t *testing.T) {
 func TestCheckReversionInvariantsMultipleLedgersIsolated(t *testing.T) {
 	t.Parallel()
 
-	knownTxIDs := make(map[string]*domain.ReversionBitset)
-	revertedTxIDs := make(map[string]*domain.ReversionBitset)
+	knownTxIDs := make(map[string]*bitset.Bitset)
+	revertedTxIDs := make(map[string]*bitset.Bitset)
 	var errors []*servicepb.CheckStoreError
 
 	callback := func(event *servicepb.CheckStoreEvent) {
@@ -382,8 +383,8 @@ func TestCheckReversionInvariantsMultipleLedgersIsolated(t *testing.T) {
 func TestCheckReversionInvariantsNilPayload(t *testing.T) {
 	t.Parallel()
 
-	knownTxIDs := make(map[string]*domain.ReversionBitset)
-	revertedTxIDs := make(map[string]*domain.ReversionBitset)
+	knownTxIDs := make(map[string]*bitset.Bitset)
+	revertedTxIDs := make(map[string]*bitset.Bitset)
 	var errors []*servicepb.CheckStoreError
 
 	callback := func(event *servicepb.CheckStoreEvent) {

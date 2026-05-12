@@ -54,7 +54,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/snapshotpb"
@@ -873,7 +872,7 @@ func Module() fx.Option {
 				defaultTransport *node.DefaultTransport,
 				servicePool *transport.ConnectionPool,
 				store *dal.Store,
-				cfg node.NodeConfig,
+				cfg Config,
 				logger logging.Logger,
 				eventsManager *events.Manager,
 				mirrorManager *mirror.Manager,
@@ -1141,28 +1140,27 @@ func Module() fx.Option {
 }
 
 // proposeClusterConfigIfNeeded reads the persisted cluster state from Pebble
-// and proposes an update if the CLI-desired threshold differs. Called when the
+// and proposes an update if the CLI-desired config differs. Called when the
 // node becomes leader and the FSM is caught up (LeaderReadyEvent).
-func proposeClusterConfigIfNeeded(n *node.Node, store *dal.Store, cfg node.NodeConfig, logger logging.Logger) {
+func proposeClusterConfigIfNeeded(n *node.Node, store *dal.Store, cfg Config, logger logging.Logger) {
 	clusterState, _ := query.ReadClusterState(store)
-	if clusterState != nil && clusterState.GetConfig().GetRotationThreshold() == cfg.RotationThreshold {
-		return
-	}
 
-	var persisted uint64
+	desiredCfg := cfg.BloomConfig
+	desiredCfg.RotationThreshold = cfg.RaftConfig.RotationThreshold
+
 	if clusterState != nil {
-		persisted = clusterState.GetConfig().GetRotationThreshold()
+		persistedCfg := clusterState.GetConfig()
+
+		if persistedCfg.GetRotationThreshold() == desiredCfg.GetRotationThreshold() &&
+			bloom.BloomConfigEqual(persistedCfg, desiredCfg) {
+			return
+		}
 	}
 
-	logger.WithFields(map[string]any{
-		"persisted": persisted,
-		"desired":   cfg.RotationThreshold,
-	}).Infof("Proposing cluster config update on leadership acquisition")
+	logger.Infof("Proposing cluster config update on leadership acquisition")
 
 	proposal := commands.NewCommand()
-	proposal.ClusterConfig = &commonpb.ClusterConfig{
-		RotationThreshold: cfg.RotationThreshold,
-	}
+	proposal.ClusterConfig = desiredCfg
 
 	proposer := NewNodeProposer(n)
 	if err := proposer.ProposeProposal(proposal); err != nil {

@@ -4,8 +4,8 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/bitset"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
@@ -178,7 +178,7 @@ func SaveReversionWord(b *dal.Batch, ledger string, wordIndex uint64, value uint
 		PutByte(0x00).
 		PutUint64(wordIndex)
 
-	if err := b.SetBytes(b.KeyBuilder.Build(), domain.MarshalWord(value)); err != nil {
+	if err := b.SetBytes(b.KeyBuilder.Build(), bitset.MarshalWord(value)); err != nil {
 		return fmt.Errorf("saving reversion word %d for %s: %w", wordIndex, ledger, err)
 	}
 

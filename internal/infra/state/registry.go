@@ -4,6 +4,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/bitset"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
@@ -30,7 +31,7 @@ type StateRegistry struct {
 	// Reversions uses a compact bitset per ledger instead of a KeyStore.
 	// Bit N being set means transaction N in that ledger has been reverted.
 	// This is always authoritative (no cache generations, no preload needed).
-	Reversions map[string]*domain.ReversionBitset
+	Reversions map[string]*bitset.Bitset
 }
 
 // NewStateRegistry creates a StateRegistry with all KeyStores backed by the
@@ -86,7 +87,7 @@ func newStateRegistryWithIdempotency(c *cache.Cache, attrs *attributes.Attribute
 			attributes.DefaultSeeds,
 			c.PreparedQueries,
 		),
-		Reversions: make(map[string]*domain.ReversionBitset),
+		Reversions: make(map[string]*bitset.Bitset),
 	}
 }
 
@@ -97,7 +98,7 @@ func (r *StateRegistry) GetReverted(key domain.TransactionKey) bool {
 		return false
 	}
 
-	return bs.IsReverted(key.ID)
+	return bs.Test(key.ID)
 }
 
 // SetReverted marks a transaction as reverted in the bitset.
@@ -105,14 +106,14 @@ func (r *StateRegistry) GetReverted(key domain.TransactionKey) bool {
 func (r *StateRegistry) SetReverted(key domain.TransactionKey) uint64 {
 	bs, ok := r.Reversions[key.Ledger]
 	if !ok {
-		bs = domain.NewReversionBitset(key.ID)
+		bs = bitset.New(key.ID)
 		r.Reversions[key.Ledger] = bs
 	}
 
-	return bs.SetReverted(key.ID)
+	return bs.Set(key.ID)
 }
 
 // ResetReversions clears all reversion bitsets (used during snapshot restore).
 func (r *StateRegistry) ResetReversions() {
-	r.Reversions = make(map[string]*domain.ReversionBitset)
+	r.Reversions = make(map[string]*bitset.Bitset)
 }

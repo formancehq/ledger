@@ -28,7 +28,6 @@ import (
 	"github.com/formancehq/go-libs/v5/pkg/service"
 
 	"github.com/formancehq/ledger-v3-poc/internal/bootstrap"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/bloom"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/flightrecorder"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/pyroscope"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/tracesampling"
@@ -36,6 +35,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/bytesize"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/pebblecfg"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
@@ -530,7 +530,8 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 
 	// Background checkpoint interval
 	// Bloom filter per-type config
-	cfg.BloomConfig = loadBloomConfig(cmd)
+	cfg.BloomConfig = &commonpb.ClusterConfig{}
+	loadBloomConfig(cmd, cfg.BloomConfig)
 
 	// Read index configuration
 	cfg.ReadIndexConfig = bootstrap.ReadIndexConfig{
@@ -703,9 +704,15 @@ func logMemoryEstimate(logger logging.Logger, cfg *bootstrap.Config, memlimit in
 
 	// Bloom filter memory: m = -n * ln(p) / (ln2)^2 bits per filter.
 	var bloomTotal int64
-	for _, fc := range cfg.BloomConfig.AsList() {
-		if fc.ExpectedKeys > 0 && fc.FPRate > 0 {
-			bits := -float64(fc.ExpectedKeys) * math.Log(fc.FPRate) / (math.Ln2 * math.Ln2)
+	for _, tc := range []*commonpb.BloomTypeConfig{
+		cfg.BloomConfig.GetBloomVolumes(), cfg.BloomConfig.GetBloomMetadata(),
+		cfg.BloomConfig.GetBloomReferences(), cfg.BloomConfig.GetBloomLedgers(),
+		cfg.BloomConfig.GetBloomBoundaries(), cfg.BloomConfig.GetBloomTransactions(),
+		cfg.BloomConfig.GetBloomSinkConfigs(), cfg.BloomConfig.GetBloomNumscriptVersions(),
+		cfg.BloomConfig.GetBloomNumscriptContents(),
+	} {
+		if tc.GetExpectedKeys() > 0 && tc.GetFpRate() > 0 {
+			bits := -float64(tc.GetExpectedKeys()) * math.Log(tc.GetFpRate()) / (math.Ln2 * math.Ln2)
 			bloomTotal += int64(bits) / 8
 		}
 	}
@@ -844,65 +851,52 @@ func loadReadIndexPebbleConfig(cmd *cobra.Command) readstore.Config {
 	return loadBasePebbleConfig(cmd, "read-index", readstore.DefaultConfig())
 }
 
-// bloomFlagType describes one attribute type for bloom filter flag registration.
-type bloomFlagType struct {
-	name     string
-	defaults bloom.FilterConfig
-}
-
-var bloomFlagTypes = []bloomFlagType{
-	{"volumes", bloom.DefaultFilterSetConfig().Volume},
-	{"metadata", bloom.DefaultFilterSetConfig().Metadata},
-	{"references", bloom.DefaultFilterSetConfig().Reference},
-	{"ledgers", bloom.DefaultFilterSetConfig().Ledger},
-	{"boundaries", bloom.DefaultFilterSetConfig().Boundary},
-	{"transactions", bloom.DefaultFilterSetConfig().Transaction},
-}
+// bloomFlagNames lists per-attribute-type names for bloom filter flag registration.
+var bloomFlagNames = []string{"volumes", "metadata", "references", "ledgers", "boundaries", "transactions", "sink-configs", "numscript-versions", "numscript-contents"}
 
 // registerBloomFlags registers per-attribute-type bloom filter flags.
 func registerBloomFlags(cmd *cobra.Command) {
-	for _, t := range bloomFlagTypes {
+	for _, name := range bloomFlagNames {
 		cmd.Flags().Uint(
-			fmt.Sprintf("bloom-%s-expected-keys", t.name), t.defaults.ExpectedKeys,
-			fmt.Sprintf("Expected unique keys for %s bloom filter (0 = disable this type)", t.name),
+			fmt.Sprintf("bloom-%s-expected-keys", name), 0,
+			fmt.Sprintf("Expected unique keys for %s bloom filter (0 = disable this type)", name),
 		)
 		cmd.Flags().Float64(
-			fmt.Sprintf("bloom-%s-fp-rate", t.name), t.defaults.FPRate,
-			fmt.Sprintf("False positive rate for %s bloom filter", t.name),
+			fmt.Sprintf("bloom-%s-fp-rate", name), 0,
+			fmt.Sprintf("False positive rate for %s bloom filter", name),
 		)
 	}
 }
 
-// loadBloomConfig builds a FilterSetConfig from per-type CLI flags.
-func loadBloomConfig(cmd *cobra.Command) bloom.FilterSetConfig {
-	load := func(name string, defaults bloom.FilterConfig) bloom.FilterConfig {
+// loadBloomConfig builds bloom filter configuration from per-type CLI flags
+// and writes them into a ClusterConfig proto.
+func loadBloomConfig(cmd *cobra.Command, cfg *commonpb.ClusterConfig) {
+	load := func(name string) *commonpb.BloomTypeConfig {
 		expectedKeys, _ := cmd.Flags().GetUint(fmt.Sprintf("bloom-%s-expected-keys", name))
 		fpRate, _ := cmd.Flags().GetFloat64(fmt.Sprintf("bloom-%s-fp-rate", name))
 
-		if expectedKeys == 0 && !cmd.Flags().Changed(fmt.Sprintf("bloom-%s-expected-keys", name)) {
-			expectedKeys = defaults.ExpectedKeys
+		if expectedKeys == 0 {
+			return nil
 		}
 
-		if fpRate == 0 && !cmd.Flags().Changed(fmt.Sprintf("bloom-%s-fp-rate", name)) {
-			fpRate = defaults.FPRate
-		}
-
-		// Prevent blobloom panic: FPRate must be > 0 when filter is enabled.
-		if expectedKeys > 0 && fpRate == 0 {
+		// FPRate must be > 0 when filter is enabled.
+		if fpRate == 0 {
 			fpRate = 0.01
 		}
 
-		return bloom.FilterConfig{ExpectedKeys: expectedKeys, FPRate: fpRate}
+		return &commonpb.BloomTypeConfig{
+			ExpectedKeys: uint64(expectedKeys),
+			FpRate:       fpRate,
+		}
 	}
 
-	defaults := bloom.DefaultFilterSetConfig()
-
-	return bloom.FilterSetConfig{
-		Volume:      load("volumes", defaults.Volume),
-		Metadata:    load("metadata", defaults.Metadata),
-		Reference:   load("references", defaults.Reference),
-		Ledger:      load("ledgers", defaults.Ledger),
-		Boundary:    load("boundaries", defaults.Boundary),
-		Transaction: load("transactions", defaults.Transaction),
-	}
+	cfg.BloomVolumes = load("volumes")
+	cfg.BloomMetadata = load("metadata")
+	cfg.BloomReferences = load("references")
+	cfg.BloomLedgers = load("ledgers")
+	cfg.BloomBoundaries = load("boundaries")
+	cfg.BloomTransactions = load("transactions")
+	cfg.BloomSinkConfigs = load("sink-configs")
+	cfg.BloomNumscriptVersions = load("numscript-versions")
+	cfg.BloomNumscriptContents = load("numscript-contents")
 }

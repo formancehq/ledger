@@ -13,6 +13,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/bloom"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/bitset"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
@@ -61,7 +62,7 @@ func persistToStore(s *CacheSnapshotter) error {
 
 	for ledger, bs := range s.registry.Reversions {
 		for i := range bs.WordCount() {
-			if err := SaveReversionWord(batch, ledger, uint64(i), bs.Word(uint64(i))); err != nil {
+			if err := SaveReversionWord(batch, ledger, i, bs.Word(i)); err != nil {
 				return fmt.Errorf("saving reversion word for %s: %w", ledger, err)
 			}
 		}
@@ -228,9 +229,9 @@ func TestCacheSnapshotter_PersistAndRestoreReversions(t *testing.T) {
 	snapshotter, _, registry := newTestCacheSnapshotter(t, nil)
 
 	// Populate reversions
-	bs := domain.NewReversionBitset(10)
-	bs.SetReverted(3)
-	bs.SetReverted(7)
+	bs := bitset.New(10)
+	bs.Set(3)
+	bs.Set(7)
 	registry.Reversions["test-ledger"] = bs
 
 	// Persist — should succeed (reversions are written to Pebble)
@@ -297,9 +298,9 @@ func TestCacheSnapshotter_PersistAndRestoreWithBloomFilters(t *testing.T) {
 	t.Parallel()
 
 	meter := noop.NewMeterProvider().Meter("test")
-	bloomCfg := bloom.FilterSetConfig{
-		Volume:   bloom.FilterConfig{ExpectedKeys: 1000, FPRate: 0.01},
-		Metadata: bloom.FilterConfig{ExpectedKeys: 1000, FPRate: 0.01},
+	bloomCfg := &commonpb.ClusterConfig{
+		BloomVolumes:  &commonpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
+		BloomMetadata: &commonpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
 	}
 	bloomFilters := bloom.NewFilterSet(bloomCfg, meter)
 	require.NotNil(t, bloomFilters)
@@ -327,9 +328,9 @@ func TestCacheSnapshotter_PersistNotReadyBloom(t *testing.T) {
 	t.Parallel()
 
 	meter := noop.NewMeterProvider().Meter("test")
-	bloomCfg := bloom.FilterSetConfig{
-		Volume:   bloom.FilterConfig{ExpectedKeys: 1000, FPRate: 0.01},
-		Metadata: bloom.FilterConfig{ExpectedKeys: 1000, FPRate: 0.01},
+	bloomCfg := &commonpb.ClusterConfig{
+		BloomVolumes:  &commonpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
+		BloomMetadata: &commonpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
 	}
 	bloomFilters := bloom.NewFilterSet(bloomCfg, meter)
 	require.NotNil(t, bloomFilters)

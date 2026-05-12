@@ -102,6 +102,10 @@ type Machine struct {
 	// Updated during FSM apply, read during preload building.
 	BloomFilters *bloom.FilterSet
 
+	// lastClusterConfig tracks the most recently applied ClusterConfig so that
+	// config-change detection in applyProposal can compare without reading Pebble.
+	lastClusterConfig *commonpb.ClusterConfig
+
 	// Metrics
 	logsAppendedCounter       metric.Int64Counter
 	rotationDurationHistogram metric.Int64Histogram
@@ -368,6 +372,7 @@ func (fsm *Machine) RecoverState() error {
 	}
 
 	if clusterState != nil {
+		fsm.lastClusterConfig = clusterState.GetConfig()
 		fsm.Registry.Cache.SetGenerationThreshold(clusterState.GetConfig().GetRotationThreshold())
 		fsm.Registry.Cache.SetEpoch(clusterState.GetCacheEpoch())
 	}
@@ -522,6 +527,14 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 				fsm.Registry.Cache.BaseIndex.Gen1,
 			); err != nil {
 				return nil, fmt.Errorf("writing cache rotation: %w", err)
+			}
+
+			// Flush dirty bloom blocks in the same batch as the rotation.
+			// At restart, bloom_pebble ∪ cache_gen0 ∪ cache_gen1 = complete set.
+			if fsm.BloomFilters != nil {
+				if err := fsm.BloomFilters.PersistDirtyBlocks(batch); err != nil {
+					return nil, fmt.Errorf("persisting bloom dirty blocks: %w", err)
+				}
 			}
 
 			fsm.rotationDurationHistogram.Record(context.Background(), time.Since(rotationStart).Microseconds())
@@ -914,16 +927,41 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			}
 		}
 
+		// Check if bloom filter config changed. If so, purge persisted blocks
+		// and rebuild filters with new dimensions. The preloader falls back to
+		// Pebble Gets while IsReady() returns false.
+		if fsm.BloomFilters != nil && !bloom.BloomConfigEqual(cfg, fsm.lastClusterConfig) {
+			fsm.logger.WithFields(map[string]any{
+				"raftIndex": raftIndex,
+			}).Infof("Bloom filter config changed: purging blocks and rebuilding")
+
+			// Purge all persisted bloom blocks.
+			if err := batch.DeleteRangeNoSync(
+				[]byte{dal.KeyPrefixBloom},
+				[]byte{dal.KeyPrefixBloom + 1},
+			); err != nil {
+				return nil, fmt.Errorf("purging bloom blocks: %w", err)
+			}
+
+			// Rebuild filters with new dimensions (sets IsReady=false).
+			fsm.BloomFilters.Rebuild(cfg)
+
+			// Launch async repopulation from attribute scan.
+			fsm.cacheSnapshotter.StartAsyncBloomPopulate("bloom config changed via cluster config")
+		}
+
 		// Persist the cluster state with the current cache epoch.
 		// The epoch is deterministic (incremented only by ResetWithThreshold
 		// in the FSM apply path) and must be persisted so that nodes
 		// restoring from a checkpoint have the correct epoch.
 		if err := SaveClusterState(batch, &commonpb.PersistedClusterState{
-			Config:     &commonpb.ClusterConfig{RotationThreshold: newThreshold},
+			Config:     cfg,
 			CacheEpoch: fsm.Registry.Cache.Epoch(),
 		}); err != nil {
 			return nil, fmt.Errorf("saving cluster state: %w", err)
 		}
+
+		fsm.lastClusterConfig = cfg
 	}
 
 	// Handle per-sink cursor and status updates (Raft-replicated, no orders needed)

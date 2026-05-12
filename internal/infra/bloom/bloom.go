@@ -2,40 +2,27 @@ package bloom
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
-	"io"
+	"iter"
+	"math/bits"
 	"sync/atomic"
 
 	"github.com/cockroachdb/pebble/v2"
-	"github.com/greatroar/blobloom"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
 
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
-// FilterConfig holds the configuration for a single bloom filter.
-type FilterConfig struct {
-	ExpectedKeys uint
-	FPRate       float64
-}
-
-// FilterSetConfig holds per-attribute-type bloom filter configurations.
-type FilterSetConfig struct {
-	Volume      FilterConfig
-	Metadata    FilterConfig
-	Reference   FilterConfig
-	Ledger      FilterConfig
-	Boundary    FilterConfig
-	Transaction FilterConfig
-}
-
-// Enabled returns true if at least one attribute type has a non-zero expected key count.
-func (c FilterSetConfig) Enabled() bool {
-	for _, fc := range c.AsList() {
-		if fc.ExpectedKeys > 0 {
+// BloomConfigEnabled returns true if at least one bloom filter type has a
+// non-zero expected key count in the given ClusterConfig.
+func BloomConfigEnabled(cfg *commonpb.ClusterConfig) bool {
+	for _, tc := range bloomTypes(cfg) {
+		if tc.cfg.GetExpectedKeys() > 0 {
 			return true
 		}
 	}
@@ -43,27 +30,31 @@ func (c FilterSetConfig) Enabled() bool {
 	return false
 }
 
-// AsList returns all per-type configs in a fixed order (volume, metadata, idempotency,
-// reference, ledger, boundary, transaction) for deterministic serialization.
-func (c FilterSetConfig) AsList() [6]FilterConfig {
-	return [6]FilterConfig{
-		c.Volume, c.Metadata, c.Reference,
-		c.Ledger, c.Boundary, c.Transaction,
+// BloomConfigEqual returns true if two ClusterConfigs have identical bloom
+// filter settings.
+func BloomConfigEqual(a, b *commonpb.ClusterConfig) bool {
+	for i, at := range bloomTypes(a) {
+		bt := bloomTypes(b)[i]
+		if at.cfg.GetExpectedKeys() != bt.cfg.GetExpectedKeys() || at.cfg.GetFpRate() != bt.cfg.GetFpRate() {
+			return false
+		}
 	}
+
+	return true
 }
 
-// DefaultFilterSetConfig returns defaults with all bloom filters disabled.
-// Operators can enable individual filters via CLI flags (e.g.
-// --bloom-volumes-expected-keys=100000000 --bloom-volumes-fp-rate=0.01).
-func DefaultFilterSetConfig() FilterSetConfig {
-	return FilterSetConfig{}
-}
-
-// Filter wraps a blocked bloom filter with lock-free atomic operations.
-// SyncFilter supports concurrent reads (admission goroutines) and single-writer
-// updates (FSM goroutine) without any mutex.
+// Filter wraps a blocked bloom filter with lock-free atomic operations and
+// dirty-block tracking for incremental Pebble persistence.
 type Filter struct {
-	filter *blobloom.SyncFilter
+	filter *blockedFilter
+
+	// attrCode is the AttributeCode* byte used as Pebble key component.
+	attrCode byte
+
+	// dirty is a bitset with one bit per block, tracking which blocks have
+	// been modified since the last flush. Accessed with atomic operations
+	// for concurrent safety (FSM goroutine + background populate).
+	dirty []uint64
 
 	lookups        metric.Int64Counter
 	negatives      metric.Int64Counter
@@ -92,37 +83,113 @@ func (f *Filter) RecordFalsePositive() {
 }
 
 // Add inserts a key into the bloom filter. Called from the FSM goroutine only.
-// Lock-free via SyncFilter atomics.
+// Lock-free via atomic operations. The touched block is marked dirty.
 func (f *Filter) Add(id attributes.U128) {
-	f.filter.Add(id.Hi())
+	idx := f.filter.Add(id.Hi())
+	atomic.OrUint64(&f.dirty[idx/64], 1<<(uint64(idx)%64))
 	f.adds.Add(context.Background(), 1)
 }
 
-// WriteTo serializes the bloom filter to the writer.
-func (f *Filter) WriteTo(w io.Writer) (int64, error) {
-	return blobloom.DumpSync(w, f.filter, "")
+// PersistDirtyBlocks writes all blocks modified since the last flush to
+// the Pebble batch. Key format: [KeyPrefixBloom][attrCode][blockIndex BE 8].
+func (f *Filter) PersistDirtyBlocks(batch *dal.Batch) error {
+	for blockIdx, blk := range f.dirtyBlocks() {
+		key := make([]byte, 1+1+8)
+		key[0] = dal.KeyPrefixBloom
+		key[1] = f.attrCode
+		binary.BigEndian.PutUint64(key[2:], blockIdx)
+
+		if err := batch.Set(key, marshalBlock(&blk), pebble.NoSync); err != nil {
+			return fmt.Errorf("persisting bloom block %d: %w", blockIdx, err)
+		}
+	}
+
+	for i := range f.dirty {
+		atomic.StoreUint64(&f.dirty[i], 0)
+	}
+
+	return nil
 }
 
-// LoadFrom deserializes a bloom filter from the reader, replacing the current filter.
-func (f *Filter) LoadFrom(r io.Reader) error {
-	loader, err := blobloom.NewLoader(r)
+// dirtyBlocks returns an iterator over (blockIndex, block) pairs for all
+// blocks that have been modified since the last flush.
+func (f *Filter) dirtyBlocks() iter.Seq2[uint64, block] {
+	return func(yield func(uint64, block) bool) {
+		for wi := range f.dirty {
+			word := atomic.LoadUint64(&f.dirty[wi])
+			if word == 0 {
+				continue
+			}
+
+			for word != 0 {
+				bit := word & (^word + 1) // isolate lowest set bit
+				bitIdx := bits.TrailingZeros64(word)
+				blockIdx := uint64(wi)*64 + uint64(bitIdx)
+
+				if blockIdx >= f.filter.BlockCount() {
+					return
+				}
+
+				if !yield(blockIdx, f.filter.GetBlock(blockIdx)) {
+					return
+				}
+
+				word ^= bit
+			}
+		}
+	}
+}
+
+// RestoreFromStore loads persisted bloom blocks from Pebble, replacing the
+// in-memory filter contents. Blocks not found in Pebble remain zeroed.
+func (f *Filter) RestoreFromStore(store dal.PebbleReader) error {
+	lower := []byte{dal.KeyPrefixBloom, f.attrCode}
+	upper := []byte{dal.KeyPrefixBloom, f.attrCode + 1}
+
+	it, err := store.NewIter(&pebble.IterOptions{
+		LowerBound: lower,
+		UpperBound: upper,
+	})
 	if err != nil {
-		return fmt.Errorf("creating bloom loader: %w", err)
+		return fmt.Errorf("creating bloom restore iterator: %w", err)
 	}
 
-	loaded, err := loader.LoadSync(f.filter)
-	if err != nil {
-		return fmt.Errorf("loading bloom filter: %w", err)
+	defer func() { _ = it.Close() }()
+
+	for it.First(); it.Valid(); it.Next() {
+		key := it.Key()
+		// Key format: [0xE7][attrCode][blockIndex BE 8]
+		if len(key) < 1+1+8 {
+			continue
+		}
+
+		blockIdx := binary.BigEndian.Uint64(key[2:])
+		if blockIdx >= f.filter.BlockCount() {
+			continue
+		}
+
+		val, err := it.ValueAndErr()
+		if err != nil {
+			return fmt.Errorf("reading bloom block %d: %w", blockIdx, err)
+		}
+
+		if len(val) < blockBytes {
+			continue
+		}
+
+		f.filter.SetBlock(blockIdx, unmarshalBlock(val))
 	}
 
-	f.filter = loaded
+	if err := it.Error(); err != nil {
+		return fmt.Errorf("bloom restore iter error: %w", err)
+	}
 
 	return nil
 }
 
 // FilterSet holds per-attribute-type bloom filters.
 // The ready flag indicates whether the bloom filters have been fully populated
-// (from a checkpoint restore or background scan). While not ready, MayContain
+// (from a Pebble restore + cache replay). While not ready, MayContain
 // always returns true (= "maybe present") to avoid false negatives.
 type FilterSet struct {
 	ready atomic.Bool
@@ -137,7 +204,7 @@ type FilterSet struct {
 	NumscriptVersion *Filter
 	NumscriptContent *Filter
 
-	config FilterSetConfig
+	meter metric.Meter
 
 	readyGauge metric.Int64Gauge
 }
@@ -223,10 +290,8 @@ func (fs *FilterSet) AddCanonicalKeys(updates *BloomUpdates) {
 
 		for _, key := range keys {
 			id := attributes.HashU128(attributes.DefaultSeeds, key)
-			f.filter.Add(id.Hi())
+			f.Add(id)
 		}
-
-		f.adds.Add(context.Background(), int64(len(keys)))
 	}
 
 	addKeys(fs.Volume, updates.Volumes)
@@ -240,13 +305,42 @@ func (fs *FilterSet) AddCanonicalKeys(updates *BloomUpdates) {
 	addKeys(fs.NumscriptContent, updates.NumscriptContents)
 }
 
-// Cache snapshot sub-prefix for bloom filter data within the 0xFF zone.
-// Key layout:
+// PersistDirtyBlocks writes all dirty blocks from all filters to the Pebble batch.
+// Called during cache rotation to flush bloom state atomically with the rotation.
+func (fs *FilterSet) PersistDirtyBlocks(batch *dal.Batch) error {
+	for _, f := range fs.allFilters() {
+		if f == nil {
+			continue
+		}
+
+		if err := f.PersistDirtyBlocks(batch); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// RestoreFromStore loads all persisted bloom blocks from Pebble.
+func (fs *FilterSet) RestoreFromStore(store dal.PebbleReader) error {
+	for _, f := range fs.allFilters() {
+		if f == nil {
+			continue
+		}
+
+		if err := f.RestoreFromStore(store); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // PopulateFromStore scans the Pebble attribute range and inserts all existing
-// canonical keys into the bloom filters. Used on first boot when no bloom
-// snapshot exists yet.
+// canonical keys into the bloom filters. Used on first boot when no persisted
+// bloom blocks exist yet.
 func (fs *FilterSet) PopulateFromStore(store dal.PebbleReader) error {
-	iter, err := store.NewIter(&pebble.IterOptions{
+	it, err := store.NewIter(&pebble.IterOptions{
 		LowerBound: []byte{dal.KeyPrefixAttributes},
 		UpperBound: []byte{dal.KeyPrefixAttributes + 1},
 	})
@@ -254,10 +348,10 @@ func (fs *FilterSet) PopulateFromStore(store dal.PebbleReader) error {
 		return fmt.Errorf("creating attribute iterator: %w", err)
 	}
 
-	defer func() { _ = iter.Close() }()
+	defer func() { _ = it.Close() }()
 
-	for iter.First(); iter.Valid(); iter.Next() {
-		pebbleKey := iter.Key()
+	for it.First(); it.Valid(); it.Next() {
+		pebbleKey := it.Key()
 
 		attrType, ok := attributes.AttrTypeFromKey(pebbleKey)
 		if !ok {
@@ -271,10 +365,10 @@ func (fs *FilterSet) PopulateFromStore(store dal.PebbleReader) error {
 
 		canonicalKey := attributes.CanonicalKeyFromPebbleKey(pebbleKey)
 		id := attributes.HashU128(attributes.DefaultSeeds, canonicalKey)
-		f.filter.Add(id.Hi())
+		f.Add(id)
 	}
 
-	if err := iter.Error(); err != nil {
+	if err := it.Error(); err != nil {
 		return fmt.Errorf("iterating attributes: %w", err)
 	}
 
@@ -283,7 +377,62 @@ func (fs *FilterSet) PopulateFromStore(store dal.PebbleReader) error {
 	return nil
 }
 
-func newFilter(expectedKeys uint, fpRate float64, meter metric.Meter, typeName string) *Filter {
+// Rebuild recreates all bloom filters with new dimensions from the given
+// ClusterConfig. Existing filter data is discarded. The caller must purge
+// persisted blocks (0xE7) and trigger a full attribute scan to repopulate.
+func (fs *FilterSet) Rebuild(cfg *commonpb.ClusterConfig) {
+	// Mark not-ready BEFORE replacing filters to avoid a window where
+	// concurrent readers see IsReady=true but get empty filters (false negatives).
+	fs.SetReady(false)
+
+	for _, bt := range bloomTypes(cfg) {
+		bt.rebuild(fs)
+	}
+}
+
+func (fs *FilterSet) allFilters() []*Filter {
+	return []*Filter{
+		fs.Volume, fs.Metadata, fs.Reference,
+		fs.Ledger, fs.Boundary, fs.Transaction, fs.SinkConfig,
+		fs.NumscriptVersion, fs.NumscriptContent,
+	}
+}
+
+// bloomType maps a proto bloom config field to its Filter field and metadata.
+type bloomType struct {
+	cfg      *commonpb.BloomTypeConfig
+	attrCode byte
+	name     string
+	field    func(fs *FilterSet) **Filter
+}
+
+func (bt bloomType) rebuild(fs *FilterSet) {
+	dst := bt.field(fs)
+	if bt.cfg.GetExpectedKeys() == 0 {
+		*dst = nil
+
+		return
+	}
+
+	*dst = newFilter(uint(bt.cfg.GetExpectedKeys()), bt.cfg.GetFpRate(), bt.attrCode, fs.meter, bt.name)
+}
+
+// bloomTypes returns the ordered list of bloom type descriptors from a ClusterConfig.
+func bloomTypes(cfg *commonpb.ClusterConfig) []bloomType {
+	return []bloomType{
+		{cfg.GetBloomVolumes(), dal.AttributeCodeVolume, "volumes", func(fs *FilterSet) **Filter { return &fs.Volume }},
+		{cfg.GetBloomMetadata(), dal.AttributeCodeMetadata, "metadata", func(fs *FilterSet) **Filter { return &fs.Metadata }},
+		{cfg.GetBloomReferences(), dal.AttributeCodeReference, "references", func(fs *FilterSet) **Filter { return &fs.Reference }},
+		{cfg.GetBloomLedgers(), dal.AttributeCodeLedger, "ledgers", func(fs *FilterSet) **Filter { return &fs.Ledger }},
+		{cfg.GetBloomBoundaries(), dal.AttributeCodeBoundary, "boundaries", func(fs *FilterSet) **Filter { return &fs.Boundary }},
+		{cfg.GetBloomTransactions(), dal.AttributeCodeTransaction, "transactions", func(fs *FilterSet) **Filter { return &fs.Transaction }},
+		{cfg.GetBloomSinkConfigs(), dal.AttributeCodeSinkConfig, "sink_configs", func(fs *FilterSet) **Filter { return &fs.SinkConfig }},
+		{cfg.GetBloomNumscriptVersions(), dal.AttributeCodeNumscriptVersion, "numscript_versions", func(fs *FilterSet) **Filter { return &fs.NumscriptVersion }},
+		{cfg.GetBloomNumscriptContents(), dal.AttributeCodeNumscriptContent, "numscript_contents", func(fs *FilterSet) **Filter { return &fs.NumscriptContent }},
+	}
+}
+
+func newFilter(expectedKeys uint, fpRate float64, attrCode byte, meter metric.Meter, typeName string) *Filter {
 	typeAttr := attribute.String("type", typeName)
 
 	lookups, _ := meter.Int64Counter(
@@ -306,11 +455,12 @@ func newFilter(expectedKeys uint, fpRate float64, meter metric.Meter, typeName s
 		metric.WithDescription("Bloom filter checks that returned maybe-present but Pebble Get found nothing"),
 	)
 
+	bf := newBlockedFilterOptimized(uint64(expectedKeys), fpRate)
+
 	return &Filter{
-		filter: blobloom.NewSyncOptimized(blobloom.Config{
-			Capacity: uint64(expectedKeys),
-			FPRate:   fpRate,
-		}),
+		filter:         bf,
+		attrCode:       attrCode,
+		dirty:          make([]uint64, (bf.BlockCount()+63)/64),
 		lookups:        withAttr(lookups, typeAttr),
 		negatives:      withAttr(negatives, typeAttr),
 		falsePositives: withAttr(falsePositives, typeAttr),
@@ -318,19 +468,10 @@ func newFilter(expectedKeys uint, fpRate float64, meter metric.Meter, typeName s
 	}
 }
 
-// newFilterOrNil creates a bloom filter for the given config, or returns nil if disabled.
-func newFilterOrNil(cfg FilterConfig, meter metric.Meter, typeName string) *Filter {
-	if cfg.ExpectedKeys == 0 {
-		return nil
-	}
-
-	return newFilter(cfg.ExpectedKeys, cfg.FPRate, meter, typeName)
-}
-
-// NewFilterSet creates a new FilterSet with per-type bloom filters.
-// Returns nil if no attribute type is enabled (all ExpectedKeys == 0).
-func NewFilterSet(cfg FilterSetConfig, meter metric.Meter) *FilterSet {
-	if !cfg.Enabled() {
+// NewFilterSet creates a new FilterSet with per-type bloom filters from a
+// ClusterConfig. Returns nil if no bloom filter type is enabled.
+func NewFilterSet(cfg *commonpb.ClusterConfig, meter metric.Meter) *FilterSet {
+	if !BloomConfigEnabled(cfg) {
 		return nil
 	}
 
@@ -343,19 +484,16 @@ func NewFilterSet(cfg FilterSetConfig, meter metric.Meter) *FilterSet {
 		metric.WithDescription("Bloom filter readiness (1 = ready, 0 = populating)"),
 	)
 
-	return &FilterSet{
-		Volume:           newFilterOrNil(cfg.Volume, meter, "volumes"),
-		Metadata:         newFilterOrNil(cfg.Metadata, meter, "metadata"),
-		Reference:        newFilterOrNil(cfg.Reference, meter, "references"),
-		Ledger:           newFilterOrNil(cfg.Ledger, meter, "ledgers"),
-		Boundary:         newFilterOrNil(cfg.Boundary, meter, "boundaries"),
-		Transaction:      newFilterOrNil(cfg.Transaction, meter, "transactions"),
-		SinkConfig:       newFilterOrNil(cfg.Transaction, meter, "sink_configs"),
-		NumscriptVersion: newFilterOrNil(cfg.Transaction, meter, "numscript_versions"),
-		NumscriptContent: newFilterOrNil(cfg.Transaction, meter, "numscript_contents"),
-		config:           cfg,
-		readyGauge:       readyGauge,
+	fs := &FilterSet{
+		meter:      meter,
+		readyGauge: readyGauge,
 	}
+
+	for _, bt := range bloomTypes(cfg) {
+		bt.rebuild(fs)
+	}
+
+	return fs
 }
 
 // attrCounter wraps a counter to always include a fixed attribute.

@@ -18,6 +18,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/domain/processing"
 	domainreplay "github.com/formancehq/ledger-v3-poc/internal/domain/replay"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/bitset"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -133,8 +134,8 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		lastHash     []byte
 		knownLedgers = make(map[string]struct{})
 		// Per-ledger reversion tracking using bitsets (1 bit per tx ID)
-		ledgerKnownTxIDs    = make(map[string]*domain.ReversionBitset)
-		ledgerRevertedTxIDs = make(map[string]*domain.ReversionBitset)
+		ledgerKnownTxIDs    = make(map[string]*bitset.Bitset)
+		ledgerRevertedTxIDs = make(map[string]*bitset.Bitset)
 		// Per-ledger account types for ephemeral purge simulation
 		rawLedgerTypes     = make(map[string]map[string]*commonpb.AccountType)
 		ledgerAccountTypes = make(map[string][]accounttype.CompiledType)
@@ -914,8 +915,8 @@ func checkReversionInvariants(
 	ledger string,
 	seq uint64,
 	payload *commonpb.LedgerLogPayload,
-	knownTxIDs map[string]*domain.ReversionBitset,
-	revertedTxIDs map[string]*domain.ReversionBitset,
+	knownTxIDs map[string]*bitset.Bitset,
+	revertedTxIDs map[string]*bitset.Bitset,
 	callback func(*servicepb.CheckStoreEvent),
 ) {
 	switch p := payload.GetPayload().(type) {
@@ -933,7 +934,7 @@ func checkReversionInvariants(
 
 		// Check that the target transaction exists
 		bs := knownTxIDs[ledger]
-		if bs == nil || !bs.IsReverted(revertedID) {
+		if bs == nil || !bs.Test(revertedID) {
 			callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
 				fmt.Sprintf("log %d reverts non-existent transaction %d in ledger %q", seq, revertedID, ledger),
 				ledger, revertedID))
@@ -941,7 +942,7 @@ func checkReversionInvariants(
 
 		// Check that the transaction is not already reverted
 		rbs := revertedTxIDs[ledger]
-		if rbs != nil && rbs.IsReverted(revertedID) {
+		if rbs != nil && rbs.Test(revertedID) {
 			callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
 				fmt.Sprintf("log %d double-reverts transaction %d in ledger %q", seq, revertedID, ledger),
 				ledger, revertedID))
@@ -965,12 +966,12 @@ func normalizeTransactionState(s *commonpb.TransactionState) {
 	}
 }
 
-func trackTxID(m map[string]*domain.ReversionBitset, ledger string, txID uint64) {
+func trackTxID(m map[string]*bitset.Bitset, ledger string, txID uint64) {
 	bs := m[ledger]
 	if bs == nil {
-		bs = &domain.ReversionBitset{}
+		bs = &bitset.Bitset{}
 		m[ledger] = bs
 	}
 
-	bs.SetReverted(txID)
+	bs.Set(txID)
 }

@@ -67,7 +67,6 @@ require (
 	github.com/cockroachdb/pebble/v2 v2.1.4
 	github.com/databricks/databricks-sql-go v1.10.0
 	github.com/formancehq/go-libs/v5 v5.0.1
-	github.com/greatroar/blobloom v0.8.1
 	github.com/testcontainers/testcontainers-go v0.40.0
 )
 

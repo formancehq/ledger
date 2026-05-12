@@ -139,8 +139,14 @@ func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) 
 
 	// Populate maintenance mode from shared state
 	clusterState.MaintenanceMode = impl.sharedState.MaintenanceMode()
-	clusterState.ClusterConfig = &commonpb.ClusterConfig{
-		RotationThreshold: impl.cache.GenerationThreshold(),
+	// Read the full persisted cluster config (includes bloom filter settings).
+	// Fall back to a minimal config with just the rotation threshold if not yet persisted.
+	if persistedState, err := query.ReadClusterState(impl.store); err == nil && persistedState != nil {
+		clusterState.ClusterConfig = persistedState.GetConfig()
+	} else {
+		clusterState.ClusterConfig = &commonpb.ClusterConfig{
+			RotationThreshold: impl.cache.GenerationThreshold(),
+		}
 	}
 
 	// Populate local index builder progress on ClusterState (for backward compat / single-node view)

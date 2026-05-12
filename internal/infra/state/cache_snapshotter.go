@@ -3,6 +3,7 @@ package state
 import (
 	"encoding/binary"
 	"fmt"
+	"iter"
 	"time"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -59,6 +60,8 @@ type cacheSnapshotSlot interface {
 	// to 0xFF at both byte positions. value is type-erased; the concrete
 	// implementation re-asserts to V.
 	MirrorPreload(batch *dal.Batch, gen0Byte, gen1Byte byte, attrID *raftcmdpb.AttributeID, value any) error
+	// IterKeys iterates all U128 keys in the given generation.
+	IterKeys(genIndex int) iter.Seq[attributes.U128]
 }
 
 // protoSnapshotSlot implements cacheSnapshotSlot for a proto-backed AttributeCache.
@@ -152,6 +155,18 @@ func (s *protoSnapshotSlot[V]) MirrorPreload(
 	}
 
 	return nil
+}
+
+func (s *protoSnapshotSlot[V]) IterKeys(genIndex int) iter.Seq[attributes.U128] {
+	store := s.selectGen(genIndex)
+
+	return func(yield func(attributes.U128) bool) {
+		for u128 := range store.Iter() {
+			if !yield(u128) {
+				return
+			}
+		}
+	}
 }
 
 func (s *protoSnapshotSlot[V]) RestoreEntry(genIndex int) func(u128 attributes.U128, rawValue []byte) error {
@@ -370,11 +385,11 @@ func (s *CacheSnapshotter) RestoreFromStore() error {
 		"currentGeneration": currentGen,
 	}).Infof("Restored cache from Pebble")
 
-	// Bloom filters are never persisted in checkpoints (too large). Always
-	// rebuild from a full attribute scan in the background. The preloader
-	// falls back to Pebble Gets while IsReady() returns false.
+	// Restore bloom filters: load persisted blocks from Pebble, then replay
+	// cache gen0+gen1 entries to fill the gap since the last rotation flush.
+	// If no persisted blocks exist (first boot), fall back to a full attribute scan.
 	if s.bloomFilters != nil {
-		s.startAsyncBloomPopulate("bloom filters not persisted in checkpoint")
+		s.restoreBloomFilters()
 	}
 
 	return nil
@@ -465,10 +480,96 @@ func (s *CacheSnapshotter) restoreGeneration(genByte byte, genIndex int) error {
 	return nil
 }
 
-// startAsyncBloomPopulate launches a background goroutine to populate the bloom
-// filters from a full Pebble attribute scan. While populating, IsReady()
-// returns false and the preloader falls back to Pebble Gets.
-func (s *CacheSnapshotter) startAsyncBloomPopulate(reason string) {
+// restoreBloomFilters launches a background goroutine to restore bloom filters.
+// If persisted blocks exist, loads them from Pebble and replays cache gen0+gen1
+// to fill the gap. Otherwise, falls back to a full attribute scan.
+// In both cases, IsReady() remains false until the background work completes.
+func (s *CacheSnapshotter) restoreBloomFilters() {
+	hasBlocks := s.hasPersistedBloomBlocks()
+
+	if !hasBlocks {
+		s.StartAsyncBloomPopulate("first boot: no persisted bloom blocks")
+
+		return
+	}
+
+	s.logger.Infof("Restoring bloom filters from Pebble blocks in background")
+
+	s.bloomPopulateDone = make(chan struct{})
+
+	go func() {
+		defer close(s.bloomPopulateDone)
+
+		start := time.Now()
+
+		if err := s.bloomFilters.RestoreFromStore(s.dataStore); err != nil {
+			s.logger.Errorf("Bloom restore from Pebble failed: %v", err)
+
+			return
+		}
+
+		s.replayBloomFromCache()
+		s.bloomFilters.SetReady(true)
+
+		s.logger.WithFields(map[string]any{
+			"duration": time.Since(start).String(),
+		}).Infof("Bloom filters restored from Pebble blocks + cache replay")
+	}()
+}
+
+// hasPersistedBloomBlocks checks if any bloom block keys exist in Pebble.
+func (s *CacheSnapshotter) hasPersistedBloomBlocks() bool {
+	lower := []byte{dal.KeyPrefixBloom}
+	upper := []byte{dal.KeyPrefixBloom + 1}
+
+	iter, err := s.dataStore.NewIter(&pebble.IterOptions{
+		LowerBound: lower,
+		UpperBound: upper,
+	})
+	if err != nil {
+		return false
+	}
+
+	defer func() { _ = iter.Close() }()
+
+	return iter.First()
+}
+
+// replayBloomFromCache iterates all entries in cache gen0 and gen1 and adds
+// their canonical keys to the bloom filters. This fills the gap between the
+// last rotation flush (when bloom blocks were persisted) and the current state.
+// Adding duplicates is harmless for a bloom filter.
+func (s *CacheSnapshotter) replayBloomFromCache() {
+	for _, slot := range s.slots {
+		f := s.bloomFilters.FilterForAttrType(slot.CacheType())
+		if f == nil {
+			continue
+		}
+
+		for _, genIndex := range []int{0, 1} {
+			replayBloomFromSlot(slot, genIndex, f)
+		}
+	}
+}
+
+// replayBloomFromSlot adds all U128 keys from a cache slot generation into the
+// bloom filter. The U128 is already a hash, so we use Hi() directly.
+func replayBloomFromSlot(slot cacheSnapshotSlot, genIndex int, f *bloom.Filter) {
+	for u128 := range slot.IterKeys(genIndex) {
+		f.Add(u128)
+	}
+}
+
+// StartAsyncBloomPopulate launches a background goroutine to populate the bloom
+// filters from a full Pebble attribute scan. Used on first boot and after
+// bloom config changes.
+func (s *CacheSnapshotter) StartAsyncBloomPopulate(reason string) {
+	// Wait for any previous populate to finish before starting a new one.
+	// This prevents two goroutines from writing to the same (or stale) filters.
+	if s.bloomPopulateDone != nil {
+		<-s.bloomPopulateDone
+	}
+
 	s.logger.WithFields(map[string]any{
 		"reason": reason,
 	}).Infof("Populating bloom filters from attribute scan in background")

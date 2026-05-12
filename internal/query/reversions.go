@@ -7,13 +7,13 @@ import (
 
 	"github.com/cockroachdb/pebble/v2"
 
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/bitset"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // ReadReversions loads all per-ledger reversion bitsets from Pebble.
 // Key format: [0xE5][ledger\x00][wordIndex BE 8 bytes] → [uint64 LE 8 bytes].
-func ReadReversions(reader dal.PebbleReader) (map[string]*domain.ReversionBitset, error) {
+func ReadReversions(reader dal.PebbleReader) (map[string]*bitset.Bitset, error) {
 	lowerBound := []byte{dal.KeyPrefixReversions}
 	upperBound := []byte{dal.KeyPrefixReversions + 1}
 
@@ -27,7 +27,7 @@ func ReadReversions(reader dal.PebbleReader) (map[string]*domain.ReversionBitset
 
 	defer func() { _ = iter.Close() }()
 
-	result := make(map[string]*domain.ReversionBitset)
+	result := make(map[string]*bitset.Bitset)
 
 	for iter.First(); iter.Valid(); iter.Next() {
 		key := iter.Key()
@@ -54,7 +54,7 @@ func ReadReversions(reader dal.PebbleReader) (map[string]*domain.ReversionBitset
 
 		bs, ok := result[ledger]
 		if !ok {
-			bs = &domain.ReversionBitset{}
+			bs = &bitset.Bitset{}
 			result[ledger] = bs
 		}
 
