@@ -571,7 +571,7 @@ func (m *CreateLedgerOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (in
 		for _, k := range slices.Sorted(maps.Keys(m.AccountTypes)) {
 			v := m.AccountTypes[k]
 			baseI := i
-			size, _ := v.MarshalToSizedBufferVT(dAtA[:i])
+			size, _ := v.MarshalToSizedBufferDeterministicVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
@@ -1086,7 +1086,7 @@ func (m *LedgerApplyOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 		}
 	case *LedgerApplyOrder_AddAccountType:
 		if v.AddAccountType != nil {
-			size, _ := v.AddAccountType.MarshalToSizedBufferVT(dAtA[:i])
+			size, _ := v.AddAccountType.MarshalToSizedBufferDeterministicVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
@@ -1149,11 +1149,29 @@ func (m *AddAccountTypeOrder) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
+	sz := m.SizeVT()
+	buf := make([]byte, sz)
+	n, _ := m.MarshalToSizedBufferDeterministicVT(buf)
+	return append(dAtA, buf[sz-n:]...)
+}
+
+func (m *AddAccountTypeOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
 	}
-	return append(dAtA, b...)
+	i := len(dAtA)
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.AccountType != nil {
+		size, _ := m.AccountType.MarshalToSizedBufferDeterministicVT(dAtA[:i])
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *RemoveAccountTypeOrder) MarshalDeterministicVT(dAtA []byte) []byte {

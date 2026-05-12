@@ -15,12 +15,23 @@ const (
 	SegmentVariable
 )
 
+// SegmentValueType controls how a variable segment is encoded in Pebble keys.
+type SegmentValueType int
+
+const (
+	SegmentValueString SegmentValueType = iota // UTF-8 string (default)
+	SegmentValueUUID                           // 16 bytes raw, RFC 4122
+	SegmentValueUint64                         // 8 bytes big-endian
+	SegmentValueBytes                          // variable-length raw bytes (hex in addresses)
+)
+
 // PatternSegment represents one colon-separated segment in an account type pattern.
 type PatternSegment struct {
 	Kind           SegmentKind
-	Value          string         // literal for Fixed, variable name for Variable
-	Pattern        string         // regex constraint for Variable (empty = match any non-empty)
-	CompiledRegexp *regexp.Regexp // pre-compiled regexp for Pattern (nil when Pattern is empty)
+	Value          string           // literal for Fixed, variable name for Variable
+	Pattern        string           // regex constraint for Variable (empty = match any non-empty)
+	CompiledRegexp *regexp.Regexp   // pre-compiled regexp for Pattern (nil when Pattern is empty)
+	ValueType      SegmentValueType // encoding type for Variable segments (ignored for Fixed)
 }
 
 // segmentNameRe validates fixed segment literals.

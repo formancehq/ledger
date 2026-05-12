@@ -1,9 +1,12 @@
 package domain
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
+
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // CanonicalBytes is implemented by key types that can be serialized
@@ -33,7 +36,7 @@ type VolumeKey struct {
 }
 
 // Bytes returns a canonical byte representation of the balance key.
-// Format: [ledger]\x00[account]\x00[asset_base][precision_byte]
+// Format: [ledger]\x00[account][0xFD][asset_base][precision_byte]
 // The last byte is always the precision. Asset bases are uppercase ASCII
 // (≥0x41), so there is no ambiguity with precision values (0x00–0xFF).
 func (bk VolumeKey) Bytes() []byte {
@@ -45,13 +48,13 @@ func (bk VolumeKey) Bytes() []byte {
 		base, precision = ParseAssetPrecision(bk.Asset)
 	}
 
-	// [ledger]\x00[account]\x00[base][precision]
+	// [ledger]\x00[account][sep][base][precision]
 	ret := make([]byte, len(bk.Ledger)+1+len(bk.Account)+1+len(base)+1)
 	n := copy(ret, bk.Ledger)
 	ret[n] = 0x00
 	n++
 	n += copy(ret[n:], bk.Account)
-	ret[n] = 0x00
+	ret[n] = dal.CanonicalKeySepVolume
 	n++
 	n += copy(ret[n:], base)
 	ret[n] = precision
@@ -60,18 +63,27 @@ func (bk VolumeKey) Bytes() []byte {
 }
 
 // Unmarshal parses canonical bytes into the VolumeKey.
-// Expected format: [ledger]\x00[account]\x00[asset_base][precision_byte]
+// Expected format: [ledger]\x00[account][0xFD][asset_base][precision_byte]
 // The last byte is always the precision.
 func (bk *VolumeKey) Unmarshal(d []byte) error {
-	parts := splitNullBytes(d, 3)
-	if len(parts) != 3 {
-		return fmt.Errorf("invalid balance key bytes: expected 3 parts, got %d", len(parts))
+	// Split ledger on first null byte.
+	nullIdx := bytes.IndexByte(d, 0x00)
+	if nullIdx < 0 {
+		return errors.New("invalid balance key bytes: missing ledger separator")
 	}
 
-	bk.Ledger = string(parts[0])
-	bk.Account = string(parts[1])
+	bk.Ledger = string(d[:nullIdx])
+	rest := d[nullIdx+1:]
 
-	assetPart := parts[2]
+	// Find the volume separator (0xFD) to split account from asset.
+	sepIdx := bytes.IndexByte(rest, dal.CanonicalKeySepVolume)
+	if sepIdx < 0 {
+		return errors.New("invalid balance key bytes: missing volume separator")
+	}
+
+	bk.Account = string(rest[:sepIdx])
+
+	assetPart := rest[sepIdx+1:]
 	if len(assetPart) < 2 {
 		return errors.New("invalid balance key bytes: asset part too short")
 	}
@@ -92,15 +104,14 @@ type MetadataKey struct {
 }
 
 // Bytes returns a canonical byte representation of the metadata key.
-// Format: [ledger]\x00[account]\x01[key]
-// Uses \x00 after ledger, \x01 before key to distinguish from balance keys.
+// Format: [ledger]\x00[account][0xFE][key]
 func (mk MetadataKey) Bytes() []byte {
 	ret := make([]byte, len(mk.Ledger)+1+len(mk.Account)+1+len(mk.Key))
 	n := copy(ret, mk.Ledger)
 	ret[n] = 0x00
 	n++
 	n += copy(ret[n:], mk.Account)
-	ret[n] = 0x01
+	ret[n] = dal.CanonicalKeySepMetadata
 	n++
 	copy(ret[n:], mk.Key)
 
@@ -109,32 +120,24 @@ func (mk MetadataKey) Bytes() []byte {
 
 // Unmarshal parses canonical bytes into the MetadataKey.
 func (mk *MetadataKey) Unmarshal(d []byte) error {
-	// First split on \x00 to separate ledger from the rest
-	parts := splitNullBytes(d, 2)
-	if len(parts) != 2 {
-		return errors.New("invalid metadata key bytes: expected ledger separator")
+	// Split ledger on first null byte.
+	nullIdx := bytes.IndexByte(d, 0x00)
+	if nullIdx < 0 {
+		return errors.New("invalid metadata key bytes: missing ledger separator")
 	}
 
-	mk.Ledger = string(parts[0])
+	mk.Ledger = string(d[:nullIdx])
 
-	// Rest is account + \x01 + key
-	rest := parts[1]
-	separator := -1
+	// Rest is account + [0xFE] + key
+	rest := d[nullIdx+1:]
 
-	for i, b := range rest {
-		if b == 0x01 {
-			separator = i
-
-			break
-		}
+	sepIdx := bytes.IndexByte(rest, dal.CanonicalKeySepMetadata)
+	if sepIdx < 0 {
+		return errors.New("invalid metadata key bytes: missing metadata separator")
 	}
 
-	if separator == -1 {
-		return errors.New("invalid metadata key bytes: missing account/key separator")
-	}
-
-	mk.Account = string(rest[:separator])
-	mk.Key = string(rest[separator+1:])
+	mk.Account = string(rest[:sepIdx])
+	mk.Key = string(rest[sepIdx+1:])
 
 	return nil
 }
@@ -147,14 +150,14 @@ type TransactionKey struct {
 }
 
 // Bytes returns a canonical byte representation of the transaction key.
-// Format: [ledger]\x00\x02[txID (8 bytes)].
-// \x02 = CanonicalKeySepTransaction, distinguishes from account keys (\x00 volume, \x01 metadata).
+// Format: [ledger]\x00[0xFF][txID (8 bytes)].
+// 0xFF = CanonicalKeySepTransaction.
 func (tk TransactionKey) Bytes() []byte {
 	ret := make([]byte, len(tk.Ledger)+1+1+8)
 	n := copy(ret, tk.Ledger)
 	ret[n] = 0x00
 	n++
-	ret[n] = 0x02 // CanonicalKeySepTransaction
+	ret[n] = dal.CanonicalKeySepTransaction
 	n++
 	binary.BigEndian.PutUint64(ret[n:], tk.ID)
 
@@ -163,11 +166,11 @@ func (tk TransactionKey) Bytes() []byte {
 
 // Unmarshal parses canonical bytes into the TransactionKey.
 func (tk *TransactionKey) Unmarshal(d []byte) error {
-	// Find the \x00\x02 separator between ledger name and txID
+	// Find the \x00[0xFF] separator between ledger name and txID.
 	sep := -1
 
 	for i, b := range d {
-		if b == 0x00 && i+1 < len(d) && d[i+1] == 0x02 {
+		if b == 0x00 && i+1 < len(d) && d[i+1] == dal.CanonicalKeySepTransaction {
 			sep = i
 
 			break
@@ -175,7 +178,7 @@ func (tk *TransactionKey) Unmarshal(d []byte) error {
 	}
 
 	if sep == -1 || len(d) < sep+2+8 {
-		return errors.New("invalid transaction key bytes: expected [ledger]\\x00\\x02[txID(8)]")
+		return fmt.Errorf("invalid transaction key bytes: expected [ledger]\\x00[0x%02X][txID(8)]", dal.CanonicalKeySepTransaction)
 	}
 
 	tk.Ledger = string(d[:sep])

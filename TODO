@@ -12,6 +12,7 @@ Docs:
 * Clean relying parties distinctions
 * migrate existing clients
 * Complexities
+* add units in metrics
 
 Tests:
 * Convert K6 tests to GRPC

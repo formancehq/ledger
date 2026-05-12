@@ -215,10 +215,12 @@ const (
 
 // Canonical key separators used inside attribute canonical keys
 // to delimit volume and metadata sub-keys.
+// These occupy the high range (0xFD-0xFF) so that segment type tags
+// (0x00-0x03) in the typed key encoding never collide.
 const (
-	CanonicalKeySepVolume      byte = 0x00
-	CanonicalKeySepMetadata    byte = 0x01
-	CanonicalKeySepTransaction byte = 0x02
+	CanonicalKeySepVolume      byte = 0xFD
+	CanonicalKeySepMetadata    byte = 0xFE
+	CanonicalKeySepTransaction byte = 0xFF
 )
 
 // MaxUint64Bytes is the big-endian representation of math.MaxUint64,

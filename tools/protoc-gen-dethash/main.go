@@ -287,6 +287,10 @@ func genMapMarshal(g *protogen.GeneratedFile, f *protogen.Field, hasMap map[stri
 		g.P("      i = ", protohelpersPkg.Ident("EncodeVarint"), "(dAtA, i, uint64(len(v)))")
 		g.P("      i--")
 		g.P("      dAtA[i] = 0x12")
+	} else if valKind == protoreflect.EnumKind || valKind == protoreflect.Int32Kind || valKind == protoreflect.Uint32Kind || valKind == protoreflect.Int64Kind || valKind == protoreflect.Uint64Kind {
+		g.P("      i = ", protohelpersPkg.Ident("EncodeVarint"), "(dAtA, i, uint64(v))")
+		g.P("      i--")
+		g.P("      dAtA[i] = 0x10") // field 2, wire type varint
 	} else {
 		panic(fmt.Sprintf("protoc-gen-dethash: unsupported map value type %s in field %s", valKind, f.Desc.FullName()))
 	}

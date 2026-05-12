@@ -883,12 +883,24 @@ enum AccountTypePersistence {
   ACCOUNT_TYPE_TRANSIENT = 2;  // Never persisted, must be zero at end of batch
 }
 
+// SegmentValueType controls how a variable segment is encoded in Pebble keys.
+// When set on an account type, variable segments are stored in compact binary
+// form instead of UTF-8 strings, reducing key size and improving performance.
+enum SegmentValueType {
+  SEGMENT_VALUE_STRING = 0;  // Default: length-prefixed UTF-8 string
+  SEGMENT_VALUE_UUID = 1;    // 16 bytes raw, RFC 4122 canonical form
+  SEGMENT_VALUE_UINT64 = 2;  // 8 bytes big-endian
+  SEGMENT_VALUE_BYTES = 3;   // Length-prefixed raw bytes (hex-encoded in addresses)
+}
+
 // AccountType defines a single account address pattern for a ledger.
 message AccountType {
   string name = 1;                           // Unique identifier: "user-checking"
   string pattern = 2;                        // Address pattern: "users:{id}:checking"
   AccountTypeStatus status = 3;              // ACTIVE, DEPRECATED
   AccountTypePersistence persistence = 4;    // How volumes are stored (replaces bool ephemeral)
+  AccountTypeMigration migration = 5;        // non-nil when status == MIGRATING
+  map<string, SegmentValueType> segment_types = 6;  // variable_name -> encoding type
 }
 
 // AccountTypeStatus represents the lifecycle state of an account type.
@@ -912,6 +924,47 @@ message UpdatedDefaultEnforcementModeLog {
   ChartEnforcementMode enforcement_mode = 1;
 }
 
+// AccountTypeMigration tracks the progress of a pattern migration or re-encoding.
+message AccountTypeMigration {
+  string target_pattern = 1;                              // non-empty for pattern migration
+  string cursor = 2;                                      // last processed address (lexicographic)
+  uint64 migrated_accounts = 3;
+  map<string, SegmentValueType> target_segment_types = 4; // non-empty for re-encoding migration
+}
+
+// StartedAccountMigrationLog records the start of a pattern migration.
+message StartedAccountMigrationLog {
+  string account_type_name = 1;
+  string old_pattern = 2;
+  string target_pattern = 3;
+}
+
+// AccountMigrationBatchLog records a batch of account renames during migration.
+message AccountMigrationBatchLog {
+  string account_type_name = 1;
+  uint32 count = 2;
+  repeated AccountMigrationEntryLog entries = 3;
+}
+
+// AccountMigrationEntryLog records a single account rename with the assets
+// and metadata keys that were migrated. This is needed so that the integrity
+// checker can replay volume/metadata movements and re-encoding in the read store.
+message AccountMigrationEntryLog {
+  string old_address = 1;
+  string new_address = 2;
+  repeated string assets = 3;
+  repeated string metadata_keys = 4;
+  bytes old_encoded_account = 5;  // old key encoding for read store cleanup
+  bytes new_encoded_account = 6;  // new key encoding for read store writes
+}
+
+// CompletedAccountMigrationLog records the completion of a pattern migration.
+message CompletedAccountMigrationLog {
+  string account_type_name = 1;
+  string old_pattern = 2;
+  string new_pattern = 3;
+  uint64 total_migrated = 4;
+}
 // ============================================================================
 // Prepared Queries — Filter Model
 // ============================================================================
