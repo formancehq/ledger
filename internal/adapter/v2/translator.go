@@ -138,11 +138,11 @@ func translateNewTransaction(v2Log V2Log, _ uint64) (*raftcmdpb.MirrorLogEntry, 
 		}
 	}
 
-	var accountMetadata map[string]*commonpb.MetadataSet
+	var accountMetadata map[string]*commonpb.MetadataMap
 	if len(data.AccountMetadata) > 0 {
-		accountMetadata = make(map[string]*commonpb.MetadataSet, len(data.AccountMetadata))
+		accountMetadata = make(map[string]*commonpb.MetadataMap, len(data.AccountMetadata))
 		for account, meta := range data.AccountMetadata {
-			accountMetadata[account] = translateMetadataMap(meta)
+			accountMetadata[account] = &commonpb.MetadataMap{Values: translateMetadataMap(meta)}
 		}
 	}
 
@@ -372,31 +372,20 @@ func translateTarget(targetType string, rawID stdjson.RawMessage) (*commonpb.Tar
 	}
 }
 
-// translateMetadataMap converts a v2 metadata map to a v3 MetadataSet.
-// Uses batch-allocated backing arrays to reduce per-entry heap allocations
-// from 3N to 3 (one []Metadata, one []MetadataValue, one []*Metadata).
-func translateMetadataMap(meta map[string]any) *commonpb.MetadataSet {
+// translateMetadataMap converts a v2 metadata map to a map[string]*MetadataValue.
+func translateMetadataMap(meta map[string]any) map[string]*commonpb.MetadataValue {
 	if len(meta) == 0 {
 		return nil
 	}
 
-	n := len(meta)
-	metaBuf := make([]commonpb.Metadata, n)
-	valueBuf := make([]commonpb.MetadataValue, n)
-	entries := make([]*commonpb.Metadata, n)
-
-	i := 0
+	result := make(map[string]*commonpb.MetadataValue, len(meta))
 	for key, value := range meta {
-		setMetadataValue(value, &valueBuf[i])
-		metaBuf[i] = commonpb.Metadata{
-			Key:   key,
-			Value: &valueBuf[i],
-		}
-		entries[i] = &metaBuf[i]
-		i++
+		var mv commonpb.MetadataValue
+		setMetadataValue(value, &mv)
+		result[key] = &mv
 	}
 
-	return &commonpb.MetadataSet{Metadata: entries}
+	return result
 }
 
 // setMetadataValue writes a v2 metadata value into a pre-allocated MetadataValue.

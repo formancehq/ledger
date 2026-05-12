@@ -342,10 +342,10 @@ func crossCheckMetadata(listAccount, getAccount *commonpb.Account, details inter
 	}))
 }
 
-func metadataToMap(ms *commonpb.MetadataSet) map[string]string {
+func metadataToMap(ms map[string]*commonpb.MetadataValue) map[string]string {
 	result := make(map[string]string)
-	for _, m := range ms.GetMetadata() {
-		result[m.GetKey()] = m.GetValue().GetStringValue()
+	for k, v := range ms {
+		result[k] = v.GetStringValue()
 	}
 
 	return result

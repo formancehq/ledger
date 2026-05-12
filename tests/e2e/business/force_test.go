@@ -170,8 +170,8 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			applyLog := log.Payload.GetApply()
 			createdTx := applyLog.Log.Data.GetCreatedTransaction()
 			Expect(createdTx.Transaction.Metadata).NotTo(BeNil())
-			Expect(createdTx.Transaction.Metadata.ToMap()["description"]).To(Equal("Forced transaction"))
-			Expect(createdTx.Transaction.Metadata.ToMap()["reason"]).To(Equal("bulk import"))
+			Expect(commonpb.MetadataToGoMap(createdTx.Transaction.Metadata)["description"]).To(Equal("Forced transaction"))
+			Expect(commonpb.MetadataToGoMap(createdTx.Transaction.Metadata)["reason"]).To(Equal("bulk import"))
 		})
 
 		It("Should handle bulk transactions with mixed force flags", func() {

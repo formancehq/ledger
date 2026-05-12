@@ -269,21 +269,19 @@ func buildTestLog() *commonpb.Log {
 											{Source: "world", Destination: "users:001", Amount: &commonpb.Uint256{V0: 100}, Asset: "USD"},
 											{Source: "world", Destination: "users:002", Amount: &commonpb.Uint256{V0: 200}, Asset: "EUR"},
 										},
-										Metadata: &commonpb.MetadataSet{
-											Metadata: []*commonpb.Metadata{
-												{Key: "type", Value: &commonpb.MetadataValue{}},
-											},
+										Metadata: map[string]*commonpb.MetadataValue{
+											"type": {},
 										},
 										Timestamp:  &commonpb.Timestamp{},
 										InsertedAt: &commonpb.Timestamp{},
 										UpdatedAt:  &commonpb.Timestamp{},
 										RevertedAt: &commonpb.Timestamp{},
 									},
-									AccountMetadata: map[string]*commonpb.MetadataSet{
-										"users:001": {Metadata: []*commonpb.Metadata{{Key: "type"}}},
+									AccountMetadata: map[string]*commonpb.MetadataMap{
+										"users:001": {Values: map[string]*commonpb.MetadataValue{"type": {}}},
 									},
-									PreviousAccountMetadata: map[string]*commonpb.MetadataSet{
-										"users:001": {Metadata: []*commonpb.Metadata{{Key: "type"}}},
+									PreviousAccountMetadata: map[string]*commonpb.MetadataMap{
+										"users:001": {Values: map[string]*commonpb.MetadataValue{"type": {}}},
 									},
 								},
 							},

@@ -24,26 +24,26 @@ func (p *RequestProcessor) processAddMetadata(ledger string, boundaries *raftcmd
 	}
 
 	// Enforce schema: convert metadata values to declared types.
-	if order.GetMetadata() != nil && info != nil && info.GetMetadataSchema() != nil {
+	if len(order.GetMetadata()) > 0 && info != nil && info.GetMetadataSchema() != nil {
 		targetType := commonpb.TargetType_TARGET_TYPE_ACCOUNT
 		if _, isTx := order.GetTarget().GetTarget().(*commonpb.Target_Transaction); isTx {
 			targetType = commonpb.TargetType_TARGET_TYPE_TRANSACTION
 		}
 
-		enforceSchema(info.GetMetadataSchema(), targetType, order.GetMetadata().GetMetadata())
+		enforceSchemaMap(info.GetMetadataSchema(), targetType, order.GetMetadata())
 	}
 
 	var previousValues map[string]*commonpb.MetadataValue
 
 	switch target := order.GetTarget().GetTarget().(type) {
 	case *commonpb.Target_Account:
-		for _, entry := range order.GetMetadata().GetMetadata() {
+		for key, value := range order.GetMetadata() {
 			metaKey := domain.MetadataKey{
 				AccountKey: domain.AccountKey{
 					Ledger:  ledger,
 					Account: target.Account.GetAddr(),
 				},
-				Key: entry.GetKey(),
+				Key: key,
 			}
 
 			// Capture old value before overwriting (for log replay in indexbuilder).
@@ -52,10 +52,10 @@ func (p *RequestProcessor) processAddMetadata(ledger string, boundaries *raftcmd
 					previousValues = make(map[string]*commonpb.MetadataValue)
 				}
 
-				previousValues[entry.GetKey()] = oldVal
+				previousValues[key] = oldVal
 			}
 
-			s.PutAccountMetadata(metaKey, entry.GetValue())
+			s.PutAccountMetadata(metaKey, value)
 		}
 	case *commonpb.Target_Transaction:
 		if target.Transaction.GetId() >= boundaries.GetNextTransactionId() {
@@ -75,31 +75,20 @@ func (p *RequestProcessor) processAddMetadata(ledger string, boundaries *raftcmd
 
 		// Add metadata entries to the transaction state
 		if state.GetMetadata() == nil {
-			state.Metadata = &commonpb.MetadataSet{}
+			state.Metadata = make(map[string]*commonpb.MetadataValue)
 		}
 
-		for _, metadatum := range order.GetMetadata().GetMetadata() {
-			// Replace existing key or append
-			found := false
-
-			for i, existing := range state.GetMetadata().GetMetadata() {
-				if existing.GetKey() == metadatum.GetKey() {
-					// Capture old value before overwriting.
-					if previousValues == nil {
-						previousValues = make(map[string]*commonpb.MetadataValue)
-					}
-
-					previousValues[metadatum.GetKey()] = existing.GetValue()
-					state.Metadata.Metadata[i] = metadatum
-					found = true
-
-					break
+		for key, value := range order.GetMetadata() {
+			// Capture old value before overwriting.
+			if existing, ok := state.GetMetadata()[key]; ok {
+				if previousValues == nil {
+					previousValues = make(map[string]*commonpb.MetadataValue)
 				}
+
+				previousValues[key] = existing
 			}
 
-			if !found {
-				state.Metadata.Metadata = append(state.Metadata.Metadata, metadatum)
-			}
+			state.Metadata[key] = value
 		}
 
 		s.PutTransactionState(txKey, state)
@@ -169,17 +158,10 @@ func (p *RequestProcessor) processDeleteMetadata(ledger string, boundaries *raft
 
 		// Capture old value and remove the metadata key from the transaction state
 		if state.GetMetadata() != nil {
-			filtered := make([]*commonpb.Metadata, 0, len(state.GetMetadata().GetMetadata()))
-
-			for _, md := range state.GetMetadata().GetMetadata() {
-				if md.GetKey() == order.GetKey() {
-					previousValue = md.GetValue()
-				} else {
-					filtered = append(filtered, md)
-				}
+			if val, ok := state.GetMetadata()[order.GetKey()]; ok {
+				previousValue = val
+				delete(state.GetMetadata(), order.GetKey())
 			}
-
-			state.Metadata.Metadata = filtered
 		}
 
 		s.PutTransactionState(txKey, state)

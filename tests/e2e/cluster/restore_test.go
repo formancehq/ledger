@@ -410,7 +410,7 @@ var _ = Describe("Restore", Ordered, func() {
 		It("should have the correct account metadata", func() {
 			aliceResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
 			Expect(err).To(Succeed())
-			Expect(commonpb.MetadataSetToMap(aliceResp.Metadata)).To(HaveKeyWithValue("role", "customer"))
+			Expect(commonpb.MetadataToGoMap(aliceResp.Metadata)).To(HaveKeyWithValue("role", "customer"))
 		})
 
 		It("should have the correct data on ledger 2", func() {

@@ -36,7 +36,7 @@ func main() {
 										Account: &commonpb.TargetAccount{Addr: address},
 									},
 								},
-								Metadata: commonpb.MetadataSetFromMap(map[string]string{key: value}),
+								Metadata: commonpb.MetadataFromGoMap(map[string]string{key: value}),
 							},
 						},
 					},
@@ -103,10 +103,8 @@ func main() {
 }
 
 func findMetadata(acct *commonpb.Account, key string) string {
-	for _, m := range acct.GetMetadata().GetMetadata() {
-		if m.GetKey() == key {
-			return m.GetValue().GetStringValue()
-		}
+	if v, ok := acct.GetMetadata()[key]; ok {
+		return v.GetStringValue()
 	}
 
 	return ""

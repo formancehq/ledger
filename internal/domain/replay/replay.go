@@ -65,19 +65,19 @@ func ReplayLedgerLog(
 			return fmt.Errorf("putting tx state for created tx %d: %w", tx.GetId(), err)
 		}
 
-		for account, metaSet := range p.CreatedTransaction.GetAccountMetadata() {
-			if metaSet != nil {
-				for _, m := range metaSet.GetMetadata() {
+		for account, metadataMap := range p.CreatedTransaction.GetAccountMetadata() {
+			if metadataMap != nil {
+				for key, value := range metadataMap.GetValues() {
 					mk := domain.MetadataKey{
 						AccountKey: domain.AccountKey{
 							Ledger:  ledger,
 							Account: account,
 						},
-						Key: m.GetKey(),
+						Key: key,
 					}
 
-					if m.GetValue() != nil {
-						if err := w.SetMetadata(mk.Bytes(), commonpb.MetadataValueToString(m.GetValue())); err != nil {
+					if value != nil {
+						if err := w.SetMetadata(mk.Bytes(), commonpb.MetadataValueToString(value)); err != nil {
 							return fmt.Errorf("setting account metadata: %w", err)
 						}
 					}
@@ -118,28 +118,28 @@ func ReplayLedgerLog(
 
 		switch target := p.SavedMetadata.GetTarget().GetTarget().(type) {
 		case *commonpb.Target_Account:
-			if p.SavedMetadata.GetMetadata() != nil {
-				for _, m := range p.SavedMetadata.GetMetadata().GetMetadata() {
+			if len(p.SavedMetadata.GetMetadata()) > 0 {
+				for key, value := range p.SavedMetadata.GetMetadata() {
 					mk := domain.MetadataKey{
 						AccountKey: domain.AccountKey{
 							Ledger:  ledger,
 							Account: target.Account.GetAddr(),
 						},
-						Key: m.GetKey(),
+						Key: key,
 					}
 
-					if m.GetValue() != nil {
-						if err := w.SetMetadata(mk.Bytes(), commonpb.MetadataValueToString(m.GetValue())); err != nil {
+					if value != nil {
+						if err := w.SetMetadata(mk.Bytes(), commonpb.MetadataValueToString(value)); err != nil {
 							return fmt.Errorf("setting metadata: %w", err)
 						}
 					}
 				}
 			}
 		case *commonpb.Target_Transaction:
-			if p.SavedMetadata.GetMetadata() != nil {
+			if len(p.SavedMetadata.GetMetadata()) > 0 {
 				txCanonical := domain.TransactionKey{Ledger: ledger, ID: target.Transaction.GetId()}.Bytes()
 
-				if err := w.SaveTxMetadata(txCanonical, p.SavedMetadata.GetMetadata().GetMetadata()); err != nil {
+				if err := w.SaveTxMetadata(txCanonical, p.SavedMetadata.GetMetadata()); err != nil {
 					return fmt.Errorf("saving tx metadata for tx %d: %w", target.Transaction.GetId(), err)
 				}
 			}

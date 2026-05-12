@@ -324,10 +324,7 @@ func renderAccountsTable(accounts []*commonpb.Account) {
 	}
 
 	for _, account := range accounts {
-		metadataCount := "0"
-		if account.GetMetadata() != nil {
-			metadataCount = strconv.Itoa(len(account.GetMetadata().GetMetadata()))
-		}
+		metadataCount := strconv.Itoa(len(account.GetMetadata()))
 
 		lines := cmdutil.WrapText(account.GetAddress(), maxAddressWidth, ":")
 

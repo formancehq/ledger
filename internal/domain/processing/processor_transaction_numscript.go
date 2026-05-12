@@ -131,15 +131,14 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order
 	}
 
 	// Apply account metadata from script execution and collect for return.
-	// Build typed []*commonpb.Metadata directly to avoid map[string]string roundtrip.
-	var accountsMeta map[string][]*commonpb.Metadata
+	var accountsMeta map[string]map[string]*commonpb.MetadataValue
 	if len(result.AccountsMetadata) > 0 {
-		accountsMeta = make(map[string][]*commonpb.Metadata, len(result.AccountsMetadata))
+		accountsMeta = make(map[string]map[string]*commonpb.MetadataValue, len(result.AccountsMetadata))
 		for account, meta := range result.AccountsMetadata {
-			mdList := make([]*commonpb.Metadata, 0, len(meta))
+			mdMap := make(map[string]*commonpb.MetadataValue, len(meta))
 			for key, value := range meta {
 				mv := commonpb.NewStringValue(value)
-				mdList = append(mdList, &commonpb.Metadata{Key: key, Value: mv})
+				mdMap[key] = mv
 				s.PutAccountMetadata(domain.MetadataKey{
 					AccountKey: domain.AccountKey{
 						Ledger:  ledger,
@@ -149,19 +148,16 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order
 				}, mv)
 			}
 
-			accountsMeta[account] = mdList
+			accountsMeta[account] = mdMap
 		}
 	}
 
-	// Convert transaction metadata from Numscript values to typed []*commonpb.Metadata.
-	var txMeta []*commonpb.Metadata
+	// Convert transaction metadata from Numscript values to typed map.
+	var txMeta map[string]*commonpb.MetadataValue
 	if len(result.Metadata) > 0 {
-		txMeta = make([]*commonpb.Metadata, 0, len(result.Metadata))
+		txMeta = make(map[string]*commonpb.MetadataValue, len(result.Metadata))
 		for key, value := range result.Metadata {
-			txMeta = append(txMeta, &commonpb.Metadata{
-				Key:   key,
-				Value: commonpb.NewStringValue(value.String()),
-			})
+			txMeta[key] = commonpb.NewStringValue(value.String())
 		}
 	}
 

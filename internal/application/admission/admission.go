@@ -790,11 +790,11 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 			// Preload account metadata for previous value capture in logs.
 			mi := orderType.MirrorIngest
 			if ct := mi.GetEntry().GetCreatedTransaction(); ct != nil {
-				for account, ms := range ct.GetAccountMetadata() {
-					for _, md := range ms.GetMetadata() {
+				for account, mm := range ct.GetAccountMetadata() {
+					for key := range mm.GetValues() {
 						p.Metadata[domain.MetadataKey{
 							AccountKey: domain.AccountKey{Ledger: ledgerName, Account: account},
-							Key:        md.GetKey(),
+							Key:        key,
 						}] = struct{}{}
 					}
 				}
@@ -802,10 +802,10 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 
 			if sm := mi.GetEntry().GetSavedMetadata(); sm != nil {
 				if target, ok := sm.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
-					for _, entry := range sm.GetMetadata().GetMetadata() {
+					for key := range sm.GetMetadata() {
 						p.Metadata[domain.MetadataKey{
 							AccountKey: domain.AccountKey{Ledger: ledgerName, Account: target.Account.GetAddr()},
-							Key:        entry.GetKey(),
+							Key:        key,
 						}] = struct{}{}
 					}
 				}
@@ -872,11 +872,11 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 				enrichMigratingVolumePreloads(a.cachedLedgerInfo(ctx, ledgerInfoCache, ledgerName), ledgerName, p, volumeKeysFromPostings(ledgerName, applyData.CreateTransaction.GetPostings()))
 
 				// Preload account metadata for previous value capture.
-				for account, ms := range applyData.CreateTransaction.GetAccountMetadata() {
-					for _, md := range ms.GetMetadata() {
+				for account, mm := range applyData.CreateTransaction.GetAccountMetadata() {
+					for key := range mm.GetValues() {
 						p.Metadata[domain.MetadataKey{
 							AccountKey: domain.AccountKey{Ledger: ledgerName, Account: account},
-							Key:        md.GetKey(),
+							Key:        key,
 						}] = struct{}{}
 					}
 				}
@@ -895,10 +895,10 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 
 			case *raftcmdpb.LedgerApplyOrder_AddMetadata:
 				if target, ok := applyData.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
-					for _, entry := range applyData.AddMetadata.GetMetadata().GetMetadata() {
+					for key := range applyData.AddMetadata.GetMetadata() {
 						p.Metadata[domain.MetadataKey{
 							AccountKey: domain.AccountKey{Ledger: ledgerName, Account: target.Account.GetAddr()},
-							Key:        entry.GetKey(),
+							Key:        key,
 						}] = struct{}{}
 					}
 				}

@@ -3,7 +3,6 @@ package commonpb
 import (
 	"fmt"
 	"math"
-	"sort"
 
 	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
 
@@ -16,63 +15,54 @@ const (
 	MetaTargetTypeTransaction = "TRANSACTION"
 )
 
-// MetadataFromMap converts a metadata.Metadata (map[string]string) to a []*Metadata slice.
-func MetadataFromMap(m metadata.Metadata) []*Metadata {
+// MetadataFromGoMap converts a metadata.Metadata (map[string]string) to a map[string]*MetadataValue.
+func MetadataFromGoMap(m metadata.Metadata) map[string]*MetadataValue {
 	if m == nil {
 		return nil
 	}
 
-	result := make([]*Metadata, 0, len(m))
+	result := make(map[string]*MetadataValue, len(m))
 	for k, v := range m {
-		result = append(result, &Metadata{Key: k, Value: NewStringValue(v)})
+		result[k] = NewStringValue(v)
 	}
-	// Sort by key for deterministic output
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].GetKey() < result[j].GetKey()
-	})
 
 	return result
 }
 
-// MetadataSetFromMap converts a metadata.Metadata (map[string]string) to a *MetadataSet.
-func MetadataSetFromMap(m metadata.Metadata) *MetadataSet {
-	if m == nil {
-		return nil
-	}
-
-	return &MetadataSet{
-		Metadata: MetadataFromMap(m),
-	}
-}
-
-// MetadataToMap converts a []*Metadata slice to metadata.Metadata (map[string]string).
-func MetadataToMap(m []*Metadata) metadata.Metadata {
+// MetadataToGoMap converts a map[string]*MetadataValue to metadata.Metadata (map[string]string).
+func MetadataToGoMap(m map[string]*MetadataValue) metadata.Metadata {
 	if m == nil {
 		return nil
 	}
 
 	result := make(metadata.Metadata, len(m))
-	for _, md := range m {
-		if md != nil && md.GetValue() != nil {
-			result[md.GetKey()] = MetadataValueToString(md.GetValue())
+	for k, v := range m {
+		if v != nil {
+			result[k] = MetadataValueToString(v)
 		}
 	}
 
 	return result
 }
 
-// MetadataSetToMap converts a *MetadataSet to metadata.Metadata (map[string]string).
-func MetadataSetToMap(ms *MetadataSet) metadata.Metadata {
-	if ms == nil {
+// MetadataMapToGoMap converts a *MetadataMap to metadata.Metadata (map[string]string).
+func MetadataMapToGoMap(mm *MetadataMap) metadata.Metadata {
+	if mm == nil {
 		return nil
 	}
 
-	return MetadataToMap(ms.GetMetadata())
+	return MetadataToGoMap(mm.GetValues())
 }
 
-// ToMap converts a MetadataSet to metadata.Metadata (map[string]string).
-func (ms *MetadataSet) ToMap() metadata.Metadata {
-	return MetadataSetToMap(ms)
+// MetadataMapFromGoMap converts a metadata.Metadata (map[string]string) to a *MetadataMap.
+func MetadataMapFromGoMap(m metadata.Metadata) *MetadataMap {
+	if m == nil {
+		return nil
+	}
+
+	return &MetadataMap{
+		Values: MetadataFromGoMap(m),
+	}
 }
 
 // MetadataValueToAny converts a MetadataValue to a JSON-compatible any value.
@@ -99,20 +89,29 @@ func MetadataValueToAny(v *MetadataValue) any {
 	}
 }
 
-// MetadataSetToAnyMap converts a *MetadataSet to map[string]any with typed values.
-func MetadataSetToAnyMap(ms *MetadataSet) map[string]any {
-	if ms == nil {
+// MetadataToAnyMap converts a map[string]*MetadataValue to map[string]any with typed values.
+func MetadataToAnyMap(m map[string]*MetadataValue) map[string]any {
+	if m == nil {
 		return nil
 	}
 
-	result := make(map[string]any, len(ms.GetMetadata()))
-	for _, md := range ms.GetMetadata() {
-		if md != nil && md.GetValue() != nil {
-			result[md.GetKey()] = MetadataValueToAny(md.GetValue())
+	result := make(map[string]any, len(m))
+	for k, v := range m {
+		if v != nil {
+			result[k] = MetadataValueToAny(v)
 		}
 	}
 
 	return result
+}
+
+// MetadataMapToAnyMap converts a *MetadataMap to map[string]any with typed values.
+func MetadataMapToAnyMap(mm *MetadataMap) map[string]any {
+	if mm == nil {
+		return nil
+	}
+
+	return MetadataToAnyMap(mm.GetValues())
 }
 
 // MetadataValueFromAny infers a MetadataValue from a JSON-decoded any value.
@@ -170,14 +169,14 @@ func MetadataValueFromAny(v any) (*MetadataValue, error) {
 	}
 }
 
-// MetadataFromAnyMap converts a map[string]any to []*Metadata with JSON type inference.
+// MetadataFromAnyMap converts a map[string]any to map[string]*MetadataValue with JSON type inference.
 // Keys with nil values are skipped (nil signals deletion at the HTTP layer).
-func MetadataFromAnyMap(m map[string]any) ([]*Metadata, error) {
+func MetadataFromAnyMap(m map[string]any) (map[string]*MetadataValue, error) {
 	if m == nil {
 		return nil, nil
 	}
 
-	result := make([]*Metadata, 0, len(m))
+	result := make(map[string]*MetadataValue, len(m))
 	for k, v := range m {
 		mv, err := MetadataValueFromAny(v)
 		if err != nil {
@@ -188,34 +187,30 @@ func MetadataFromAnyMap(m map[string]any) ([]*Metadata, error) {
 			continue // nil means delete this key
 		}
 
-		result = append(result, &Metadata{Key: k, Value: mv})
+		result[k] = mv
 	}
-
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].GetKey() < result[j].GetKey()
-	})
 
 	return result, nil
 }
 
-// MetadataSetFromAnyMap converts a map[string]any to *MetadataSet with JSON type inference.
-func MetadataSetFromAnyMap(m map[string]any) (*MetadataSet, error) {
+// AccountMetadataToAnyMap converts a map[string]*MetadataMap to map[string]map[string]any.
+func AccountMetadataToAnyMap(m map[string]*MetadataMap) map[string]map[string]any {
 	if m == nil {
-		return nil, nil
+		return nil
 	}
 
-	md, err := MetadataFromAnyMap(m)
-	if err != nil {
-		return nil, err
+	result := make(map[string]map[string]any, len(m))
+	for k, v := range m {
+		result[k] = MetadataMapToAnyMap(v)
 	}
 
-	return &MetadataSet{Metadata: md}, nil
+	return result
 }
 
-// MarshalJSON implements json.Marshaler for MetadataSet.
+// MarshalJSON implements json.Marshaler for MetadataMap.
 // Outputs a flat JSON object with typed values: {"key": "str", "count": 42, "active": true}.
-func (ms *MetadataSet) MarshalJSON() ([]byte, error) {
-	m := MetadataSetToAnyMap(ms)
+func (mm *MetadataMap) MarshalJSON() ([]byte, error) {
+	m := MetadataMapToAnyMap(mm)
 	if m == nil {
 		m = make(map[string]any)
 	}
@@ -223,10 +218,10 @@ func (ms *MetadataSet) MarshalJSON() ([]byte, error) {
 	return jsonPkg.Marshal(m)
 }
 
-// UnmarshalJSON implements json.Unmarshaler for MetadataSet.
+// UnmarshalJSON implements json.Unmarshaler for MetadataMap.
 // Accepts a flat JSON object: {"key": "str", "count": 42, "active": true, "cleared": null}
 // Uses JSON type inference (see MetadataValueFromAny).
-func (ms *MetadataSet) UnmarshalJSON(data []byte) error {
+func (mm *MetadataMap) UnmarshalJSON(data []byte) error {
 	var m map[string]any
 	if err := jsonPkg.Unmarshal(data, &m); err != nil {
 		return err
@@ -237,21 +232,7 @@ func (ms *MetadataSet) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	ms.Metadata = md
+	mm.Values = md
 
 	return nil
-}
-
-// AccountMetadataToAnyMap converts a map[string]*MetadataSet to map[string]map[string]any.
-func AccountMetadataToAnyMap(m map[string]*MetadataSet) map[string]map[string]any {
-	if m == nil {
-		return nil
-	}
-
-	result := make(map[string]map[string]any, len(m))
-	for k, v := range m {
-		result[k] = MetadataSetToAnyMap(v)
-	}
-
-	return result
 }

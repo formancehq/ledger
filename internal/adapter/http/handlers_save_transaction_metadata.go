@@ -28,7 +28,7 @@ func (s *Server) handleSaveTransactionMetadata(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	ms, metaErr := commonpb.MetadataSetFromAnyMap(inputMetadata)
+	ms, metaErr := commonpb.MetadataFromAnyMap(inputMetadata)
 	if metaErr != nil {
 		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid metadata: %w", metaErr))
 

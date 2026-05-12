@@ -265,10 +265,10 @@ func TestEnforceSchema(t *testing.T) {
 	t.Run("NilSchema", func(t *testing.T) {
 		t.Parallel()
 
-		metadata := []*commonpb.Metadata{{Key: "k", Value: commonpb.NewStringValue("v")}}
-		enforceSchema(nil, commonpb.TargetType_TARGET_TYPE_ACCOUNT, metadata)
+		metadata := map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue("v")}
+		enforceSchemaMap(nil, commonpb.TargetType_TARGET_TYPE_ACCOUNT, metadata)
 		// Should not panic
-		require.Equal(t, "v", commonpb.MetadataValueToString(metadata[0].GetValue()))
+		require.Equal(t, "v", commonpb.MetadataValueToString(metadata["k"]))
 	})
 
 	t.Run("EmptyMetadata", func(t *testing.T) {
@@ -279,7 +279,7 @@ func TestEnforceSchema(t *testing.T) {
 				"amount": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
 			},
 		}
-		enforceSchema(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, nil)
+		enforceSchemaMap(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, nil)
 		// Should not panic
 	})
 
@@ -292,10 +292,10 @@ func TestEnforceSchema(t *testing.T) {
 				"amount": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
 			},
 		}
-		metadata := []*commonpb.Metadata{{Key: "amount", Value: commonpb.NewStringValue("42")}}
-		enforceSchema(schema, commonpb.TargetType_TARGET_TYPE_TRANSACTION, metadata)
+		metadata := map[string]*commonpb.MetadataValue{"amount": commonpb.NewStringValue("42")}
+		enforceSchemaMap(schema, commonpb.TargetType_TARGET_TYPE_TRANSACTION, metadata)
 		// Should not modify since no transaction fields
-		require.Equal(t, "42", commonpb.MetadataValueToString(metadata[0].GetValue()))
+		require.Equal(t, "42", commonpb.MetadataValueToString(metadata["amount"]))
 	})
 
 	t.Run("UndeclaredKey", func(t *testing.T) {
@@ -306,10 +306,10 @@ func TestEnforceSchema(t *testing.T) {
 				"amount": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
 			},
 		}
-		metadata := []*commonpb.Metadata{{Key: "status", Value: commonpb.NewStringValue("active")}}
-		enforceSchema(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, metadata)
+		metadata := map[string]*commonpb.MetadataValue{"status": commonpb.NewStringValue("active")}
+		enforceSchemaMap(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, metadata)
 		// "status" is not declared, should stay as string
-		require.Equal(t, "active", commonpb.MetadataValueToString(metadata[0].GetValue()))
+		require.Equal(t, "active", commonpb.MetadataValueToString(metadata["status"]))
 	})
 
 	t.Run("NilValue", func(t *testing.T) {
@@ -320,10 +320,10 @@ func TestEnforceSchema(t *testing.T) {
 				"amount": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
 			},
 		}
-		metadata := []*commonpb.Metadata{{Key: "amount", Value: nil}}
-		enforceSchema(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, metadata)
+		metadata := map[string]*commonpb.MetadataValue{"amount": nil}
+		enforceSchemaMap(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, metadata)
 		// Nil value should be left as nil
-		require.Nil(t, metadata[0].GetValue())
+		require.Nil(t, metadata["amount"])
 	})
 }
 

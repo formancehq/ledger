@@ -1,6 +1,7 @@
 package check
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -34,9 +35,9 @@ const (
 // Transaction merge op tags — each Merge operand starts with one of these.
 const (
 	txOpFinalized  = 0x00 // [txOpFinalized][marshaledTransactionState] — output of a previous Finish
-	txOpCreate     = 0x01 // [txOpCreate][uint64 seq][marshaledMetadataSet]
+	txOpCreate     = 0x01 // [txOpCreate][uint64 seq][marshaledMetadataMap]
 	txOpRevertedBy = 0x02 // [txOpRevertedBy][uint64 revertTxId]
-	txOpSetMeta    = 0x03 // [txOpSetMeta][marshaledMetadata]
+	txOpSetMeta    = 0x03 // [txOpSetMeta][key\x00][marshaledMetadataValue]
 	txOpDeleteMeta = 0x04 // [txOpDeleteMeta][key string]
 )
 
@@ -204,15 +205,17 @@ func (s *replayStore) DeleteMetadata(canonicalKey []byte) error {
 	return s.db.Set(key, []byte{metaFlagDeleted}, pebble.NoSync)
 }
 
-// createTransaction records a transaction creation op via merge (no read).
-func (s *replayStore) CreateTransaction(canonicalKey []byte, seq uint64, metadata *commonpb.MetadataSet) error {
+// CreateTransaction records a transaction creation op via merge (no read).
+func (s *replayStore) CreateTransaction(canonicalKey []byte, seq uint64, metadata map[string]*commonpb.MetadataValue) error {
 	key := replayKey(replayPrefixTransaction, canonicalKey)
 
 	var metaBytes []byte
-	if metadata != nil {
+	if len(metadata) > 0 {
+		mm := &commonpb.MetadataMap{Values: metadata}
+
 		var err error
 
-		metaBytes, err = metadata.MarshalVT()
+		metaBytes, err = mm.MarshalVT()
 		if err != nil {
 			return fmt.Errorf("marshaling tx metadata: %w", err)
 		}
@@ -238,19 +241,27 @@ func (s *replayStore) SetRevertedBy(canonicalKey []byte, revertTxID uint64) erro
 	return s.db.Merge(key, buf, pebble.NoSync)
 }
 
-// saveTxMetadata records a metadata upsert on a transaction via merge (no read).
-func (s *replayStore) SaveTxMetadata(canonicalKey []byte, metadata []*commonpb.Metadata) error {
+// SaveTxMetadata records a metadata upsert on a transaction via merge (no read).
+func (s *replayStore) SaveTxMetadata(canonicalKey []byte, metadata map[string]*commonpb.MetadataValue) error {
 	key := replayKey(replayPrefixTransaction, canonicalKey)
 
-	for _, m := range metadata {
-		data, err := m.MarshalVT()
-		if err != nil {
-			return fmt.Errorf("marshaling metadata entry: %w", err)
+	for metaKey, metaValue := range metadata {
+		var valueBytes []byte
+		if metaValue != nil {
+			var err error
+
+			valueBytes, err = metaValue.MarshalVT()
+			if err != nil {
+				return fmt.Errorf("marshaling metadata value: %w", err)
+			}
 		}
 
-		buf := make([]byte, 1+len(data))
+		// [txOpSetMeta][key\x00][marshaledMetadataValue]
+		buf := make([]byte, 1+len(metaKey)+1+len(valueBytes))
 		buf[0] = txOpSetMeta
-		copy(buf[1:], data)
+		copy(buf[1:], metaKey)
+		buf[1+len(metaKey)] = 0x00
+		copy(buf[1+len(metaKey)+1:], valueBytes)
 
 		if err := s.db.Merge(key, buf, pebble.NoSync); err != nil {
 			return err
@@ -391,12 +402,12 @@ func (m *txMerger) Finish(_ bool) ([]byte, io.Closer, error) {
 			state.CreatedByLog = binary.BigEndian.Uint64(op[1:9])
 
 			if len(op) > 9 {
-				meta := &commonpb.MetadataSet{}
-				if err := meta.UnmarshalVT(op[9:]); err != nil {
+				mm := &commonpb.MetadataMap{}
+				if err := mm.UnmarshalVT(op[9:]); err != nil {
 					return nil, nil, fmt.Errorf("unmarshaling create metadata: %w", err)
 				}
 
-				state.Metadata = meta
+				state.Metadata = mm.GetValues()
 			}
 
 		case txOpRevertedBy:
@@ -407,44 +418,33 @@ func (m *txMerger) Finish(_ bool) ([]byte, io.Closer, error) {
 			state.RevertedByTransaction = binary.BigEndian.Uint64(op[1:9])
 
 		case txOpSetMeta:
-			entry := &commonpb.Metadata{}
-			if err := entry.UnmarshalVT(op[1:]); err != nil {
-				return nil, nil, fmt.Errorf("unmarshaling set-meta op: %w", err)
+			// Wire format: [key\x00][marshaledMetadataValue]
+			payload := op[1:]
+			nullIdx := bytes.IndexByte(payload, 0x00)
+			if nullIdx < 0 {
+				return nil, nil, errors.New("txOpSetMeta missing null separator")
 			}
 
-			if state.GetMetadata() == nil {
-				state.Metadata = &commonpb.MetadataSet{}
-			}
+			metaKey := string(payload[:nullIdx])
+			valueBytes := payload[nullIdx+1:]
 
-			found := false
-
-			for i, existing := range state.GetMetadata().GetMetadata() {
-				if existing.GetKey() == entry.GetKey() {
-					state.Metadata.Metadata[i] = entry
-					found = true
-
-					break
+			value := &commonpb.MetadataValue{}
+			if len(valueBytes) > 0 {
+				if err := value.UnmarshalVT(valueBytes); err != nil {
+					return nil, nil, fmt.Errorf("unmarshaling set-meta op: %w", err)
 				}
 			}
 
-			if !found {
-				state.Metadata.Metadata = append(state.Metadata.Metadata, entry)
+			if state.Metadata == nil {
+				state.Metadata = make(map[string]*commonpb.MetadataValue)
 			}
+
+			state.Metadata[metaKey] = value
 
 		case txOpDeleteMeta:
 			metaKey := string(op[1:])
 
-			if state.GetMetadata() != nil {
-				filtered := make([]*commonpb.Metadata, 0, len(state.GetMetadata().GetMetadata()))
-
-				for _, existing := range state.GetMetadata().GetMetadata() {
-					if existing.GetKey() != metaKey {
-						filtered = append(filtered, existing)
-					}
-				}
-
-				state.Metadata.Metadata = filtered
-			}
+			delete(state.GetMetadata(), metaKey)
 
 		case txOpFinalized:
 			// Re-ingesting a previously finalized state (from a prior compaction).

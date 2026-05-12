@@ -835,8 +835,8 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 			continue
 		}
 
-		// Normalize empty MetadataSet to nil so that proto.Equal does not
-		// treat nil vs &MetadataSet{} as a mismatch.
+		// Normalize empty metadata map to nil so that proto.Equal does not
+		// treat nil vs empty map as a mismatch.
 		// todo: this should be handled at source
 		normalizeTransactionState(expected)
 		normalizeTransactionState(actualState)
@@ -957,10 +957,10 @@ func checkReversionInvariants(
 	}
 }
 
-// normalizeTransactionState replaces an empty MetadataSet with nil so that
+// normalizeTransactionState replaces an empty metadata map with nil so that
 // proto.Equal treats both representations as equivalent.
 func normalizeTransactionState(s *commonpb.TransactionState) {
-	if s.GetMetadata() != nil && len(s.GetMetadata().GetMetadata()) == 0 {
+	if s.GetMetadata() != nil && len(s.GetMetadata()) == 0 {
 		s.Metadata = nil
 	}
 }

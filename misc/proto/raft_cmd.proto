@@ -177,22 +177,22 @@ message MirrorFillGap {
 message MirrorCreatedTransaction {
   uint64 transaction_id = 1;
   repeated common.Posting postings = 2;
-  common.MetadataSet metadata = 3;
+  map<string, common.MetadataValue> metadata = 3;
   common.Timestamp timestamp = 4;
   string reference = 5;
-  map<string, common.MetadataSet> account_metadata = 6;
+  map<string, common.MetadataMap> account_metadata = 6;
 }
 
 message MirrorSavedMetadata {
   common.Target target = 1;
-  common.MetadataSet metadata = 2;
+  map<string, common.MetadataValue> metadata = 2;
 }
 
 message MirrorRevertedTransaction {
   uint64 reverted_transaction_id = 1;
   uint64 new_transaction_id = 2;
   repeated common.Posting reverse_postings = 3;
-  common.MetadataSet metadata = 4;
+  map<string, common.MetadataValue> metadata = 4;
   common.Timestamp timestamp = 5;
 }
 
@@ -337,8 +337,8 @@ message CreateTransactionOrder {
   common.Script script = 2;
   common.Timestamp timestamp = 3;
   string reference = 4;
-  common.MetadataSet metadata = 5;
-  map<string, common.MetadataSet> account_metadata = 6;
+  map<string, common.MetadataValue> metadata = 5;
+  map<string, common.MetadataMap> account_metadata = 6;
   bool force = 7;  // Skip balance checks when true
   bool expand_volumes = 8;  // Include post-commit volumes in response
   NumscriptReference numscript_reference = 9;
@@ -354,14 +354,14 @@ message NumscriptReference {
 
 message SaveMetadataOrder {
   common.Target target = 1;
-  common.MetadataSet metadata = 2;
+  map<string, common.MetadataValue> metadata = 2;
 }
 
 message RevertTransactionOrder {
   uint64 transaction_id = 1;
   bool force = 2;
   bool at_effective_date = 3;
-  common.MetadataSet metadata = 4;
+  map<string, common.MetadataValue> metadata = 4;
   repeated common.Posting original_postings = 5;
   bool expand_volumes = 6;  // Include post-commit volumes in response
 }

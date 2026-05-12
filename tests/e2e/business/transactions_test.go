@@ -118,13 +118,14 @@ var _ = Describe("Transactions", Ordered, func() {
 			applyLog := log.Payload.GetApply()
 			createdTx := applyLog.Log.Data.GetCreatedTransaction()
 			Expect(createdTx.Transaction.Metadata).NotTo(BeNil())
-			Expect(createdTx.Transaction.Metadata.ToMap()["description"]).To(Equal("Test transaction"))
-			Expect(createdTx.Transaction.Metadata.ToMap()["category"]).To(Equal("test"))
+			txMeta := commonpb.MetadataToGoMap(createdTx.Transaction.Metadata)
+			Expect(txMeta["description"]).To(Equal("Test transaction"))
+			Expect(txMeta["category"]).To(Equal("test"))
 		})
 
 		It("Should create a transaction with account metadata", func() {
-			accountMetadata := map[string]*commonpb.MetadataSet{
-				"account-with-meta": commonpb.MetadataSetFromMap(map[string]string{
+			accountMetadata := map[string]*commonpb.MetadataMap{
+				"account-with-meta": commonpb.MetadataMapFromGoMap(map[string]string{
 					"account_type": "asset",
 					"label":        "Account with Metadata",
 				}),
@@ -468,7 +469,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(getResp.Transaction.Postings[0].Source).To(Equal("world"))
 			Expect(getResp.Transaction.Postings[0].Destination).To(Equal("read-account"))
 			Expect(getResp.Transaction.Postings[0].Asset).To(Equal("USD"))
-			Expect(getResp.Transaction.Metadata.ToMap()["description"]).To(Equal("Test transaction"))
+			Expect(commonpb.MetadataToGoMap(getResp.Transaction.Metadata)["description"]).To(Equal("Test transaction"))
 		})
 
 		It("Should return error for non-existent transaction", func() {
@@ -693,7 +694,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(tx.Postings[0].Destination).To(Equal("list-account"))
 			Expect(tx.Postings[0].Asset).To(Equal("USD"))
 			Expect(tx.Metadata).NotTo(BeNil())
-			Expect(tx.Metadata.ToMap()["index"]).To(Equal("E"))
+			Expect(commonpb.MetadataToGoMap(tx.Metadata)["index"]).To(Equal("E"))
 		})
 
 		It("Should handle large page sizes correctly", func() {
@@ -1016,7 +1017,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			// Verify all returned transactions have category=payment
 			for _, tx := range txs {
 				Expect(tx.Metadata).NotTo(BeNil())
-				Expect(tx.Metadata.ToMap()["category"]).To(Equal("payment"))
+				Expect(commonpb.MetadataToGoMap(tx.Metadata)["category"]).To(Equal("payment"))
 			}
 		})
 
@@ -1025,7 +1026,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			txs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, filter)
 			Expect(err).To(Succeed())
 			Expect(txs).To(HaveLen(1))
-			Expect(txs[0].Metadata.ToMap()["category"]).To(Equal("refund"))
+			Expect(commonpb.MetadataToGoMap(txs[0].Metadata)["category"]).To(Equal("refund"))
 		})
 
 		It("Should return empty list when no transactions match the filter", func() {
@@ -1057,8 +1058,9 @@ var _ = Describe("Transactions", Ordered, func() {
 			txs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, filter)
 			Expect(err).To(Succeed())
 			Expect(txs).To(HaveLen(1))
-			Expect(txs[0].Metadata.ToMap()["category"]).To(Equal("payment"))
-			Expect(txs[0].Metadata.ToMap()["priority"]).To(Equal("high"))
+			txMeta := commonpb.MetadataToGoMap(txs[0].Metadata)
+			Expect(txMeta["category"]).To(Equal("payment"))
+			Expect(txMeta["priority"]).To(Equal("high"))
 		})
 
 		It("Should combine filters with OR", func() {

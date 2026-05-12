@@ -33,7 +33,7 @@ func createRandomPostingsTransaction(ctx context.Context, client servicepb.Bucke
 					Data: &servicepb.LedgerApplyRequest_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
 							Postings:      internal.RandomPostings(),
-							Metadata:      commonpb.MetadataSetFromMap(internal.RandomMetadata()),
+							Metadata:      commonpb.MetadataFromGoMap(internal.RandomMetadata()),
 							Force:         true,
 							ExpandVolumes: true,
 						},

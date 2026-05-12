@@ -202,17 +202,17 @@ func runGet(cmd *cobra.Command, args []string) error {
 	}
 
 	// Display metadata
-	if tx.GetMetadata() != nil && len(tx.GetMetadata().GetMetadata()) > 0 {
+	if len(tx.GetMetadata()) > 0 {
 		pterm.Println()
 		pterm.Println("Metadata:")
 
 		metadataTable := pterm.TableData{
 			{"KEY", "VALUE"},
 		}
-		for _, md := range tx.GetMetadata().GetMetadata() {
+		for key, value := range tx.GetMetadata() {
 			metadataTable = append(metadataTable, []string{
-				md.GetKey(),
-				commonpb.MetadataValueToString(md.GetValue()),
+				key,
+				commonpb.MetadataValueToString(value),
 			})
 		}
 

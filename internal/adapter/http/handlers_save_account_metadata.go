@@ -34,7 +34,7 @@ func (s *Server) handleSaveAccountMetadata(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	ms, err := commonpb.MetadataSetFromAnyMap(inputMetadata)
+	ms, err := commonpb.MetadataFromAnyMap(inputMetadata)
 	if err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid metadata: %w", err))
 

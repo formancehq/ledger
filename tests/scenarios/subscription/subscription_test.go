@@ -143,18 +143,14 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 		if cycle == 1 {
 			t.Run(fmt.Sprintf("%s/TypedMetadata", cycleName), func(t *testing.T) {
 				scenariotest.ApplyActions(t, ctx, client,
-					actions.SaveTypedAccountMetadataAction(ledger, "subscriber:6", &commonpb.MetadataSet{
-						Metadata: []*commonpb.Metadata{
-							{Key: "subscriber_plan", Value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: "pro"}}},
-							{Key: "billing_cycle", Value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_IntValue{IntValue: 1}}},
-							{Key: "retention_score", Value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_IntValue{IntValue: 85}}},
-						},
+					actions.SaveTypedAccountMetadataAction(ledger, "subscriber:6", map[string]*commonpb.MetadataValue{
+						"subscriber_plan": {Type: &commonpb.MetadataValue_StringValue{StringValue: "pro"}},
+						"billing_cycle":   {Type: &commonpb.MetadataValue_IntValue{IntValue: 1}},
+						"retention_score": {Type: &commonpb.MetadataValue_IntValue{IntValue: 85}},
 					}),
-					actions.SaveTypedAccountMetadataAction(ledger, "subscriber:7", &commonpb.MetadataSet{
-						Metadata: []*commonpb.Metadata{
-							{Key: "subscriber_plan", Value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: "enterprise"}}},
-							{Key: "retention_score", Value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_IntValue{IntValue: 92}}},
-						},
+					actions.SaveTypedAccountMetadataAction(ledger, "subscriber:7", map[string]*commonpb.MetadataValue{
+						"subscriber_plan": {Type: &commonpb.MetadataValue_StringValue{StringValue: "enterprise"}},
+						"retention_score": {Type: &commonpb.MetadataValue_IntValue{IntValue: 92}},
 					}),
 				)
 
@@ -175,11 +171,9 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/TypedTxMetadata", cycleName), func(t *testing.T) {
 				require.NotZero(t, firstFundTxID, "should have captured first fund tx ID")
 				scenariotest.ApplyActions(t, ctx, client,
-					actions.SaveTypedTransactionMetadataAction(ledger, firstFundTxID, &commonpb.MetadataSet{
-						Metadata: []*commonpb.Metadata{
-							{Key: "billing_cycle", Value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_IntValue{IntValue: 1}}},
-							{Key: "subscriber_plan", Value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: "initial_fund"}}},
-						},
+					actions.SaveTypedTransactionMetadataAction(ledger, firstFundTxID, map[string]*commonpb.MetadataValue{
+						"billing_cycle":   {Type: &commonpb.MetadataValue_IntValue{IntValue: 1}},
+						"subscriber_plan": {Type: &commonpb.MetadataValue_StringValue{StringValue: "initial_fund"}},
 					}),
 				)
 

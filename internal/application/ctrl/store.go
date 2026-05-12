@@ -25,7 +25,7 @@ func assembleAccount(
 ) *commonpb.Account {
 	account := &commonpb.Account{
 		Address:  address,
-		Metadata: &commonpb.MetadataSet{},
+		Metadata: map[string]*commonpb.MetadataValue{},
 	}
 
 	if len(volEntries) > 0 {
@@ -62,24 +62,21 @@ func assembleAccount(
 	}
 
 	if len(metaEntries) > 0 {
-		mdList := make([]*commonpb.Metadata, 0, len(metaEntries))
+		mdMap := make(map[string]*commonpb.MetadataValue, len(metaEntries))
 		for _, entry := range metaEntries {
 			var mk domain.MetadataKey
 
 			err := mk.Unmarshal(entry.CanonicalKey)
 			if err == nil && entry.Value != nil {
-				mdList = append(mdList, &commonpb.Metadata{
-					Key:   mk.Key,
-					Value: entry.Value,
-				})
+				mdMap[mk.Key] = entry.Value
 			}
 		}
 
-		if len(mdList) > 0 {
-			account.Metadata = &commonpb.MetadataSet{Metadata: mdList}
+		if len(mdMap) > 0 {
+			account.Metadata = mdMap
 			// Lazy read-path conversion: enforce schema types on stored values.
 			if schema != nil {
-				enforceAccountSchema(schema, mdList)
+				enforceAccountSchema(schema, mdMap)
 			}
 		}
 	}
@@ -88,19 +85,19 @@ func assembleAccount(
 }
 
 // enforceAccountSchema converts metadata values to match declared account field types.
-func enforceAccountSchema(schema *commonpb.MetadataSchema, metadata []*commonpb.Metadata) {
+func enforceAccountSchema(schema *commonpb.MetadataSchema, metadata map[string]*commonpb.MetadataValue) {
 	if len(schema.GetAccountFields()) == 0 {
 		return
 	}
 
-	for _, m := range metadata {
-		fieldSchema, ok := schema.GetAccountFields()[m.GetKey()]
-		if !ok || m.GetValue() == nil {
+	for key, value := range metadata {
+		fieldSchema, ok := schema.GetAccountFields()[key]
+		if !ok || value == nil {
 			continue
 		}
 
-		if !commonpb.TypeMatches(m.GetValue(), fieldSchema.GetType()) {
-			m.Value = commonpb.ConvertMetadataValue(m.GetValue(), fieldSchema.GetType())
+		if !commonpb.TypeMatches(value, fieldSchema.GetType()) {
+			metadata[key] = commonpb.ConvertMetadataValue(value, fieldSchema.GetType())
 		}
 	}
 }

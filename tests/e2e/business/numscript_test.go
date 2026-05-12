@@ -9,6 +9,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -440,7 +441,7 @@ send $amount (
 			applyLog := log.Payload.GetApply()
 			createdTx := applyLog.Log.Data.GetCreatedTransaction()
 			Expect(createdTx.Transaction.Metadata).NotTo(BeNil())
-			metaMap := createdTx.Transaction.Metadata.ToMap()
+			metaMap := commonpb.MetadataToGoMap(createdTx.Transaction.Metadata)
 			Expect(metaMap["type"]).To(Equal("payment"))
 			Expect(metaMap["category"]).To(Equal("purchase"))
 		})
@@ -477,7 +478,7 @@ send $amount (
 				Address: "users:grace:savings",
 			})
 			Expect(err).To(Succeed())
-			metaMap := account.Metadata.ToMap()
+			metaMap := commonpb.MetadataToGoMap(account.Metadata)
 			Expect(metaMap["account_type"]).To(Equal("savings"))
 			Expect(metaMap["created_by"]).To(Equal("numscript"))
 		})

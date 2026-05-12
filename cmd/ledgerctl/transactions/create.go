@@ -374,7 +374,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 							Postings:      postings,
 							Script:        script,
 							Reference:     reference,
-							Metadata:      commonpb.MetadataSetFromMap(metadata),
+							Metadata:      commonpb.MetadataFromGoMap(metadata),
 							Force:         force,
 							ExpandVolumes: expandVolumes,
 						},
@@ -477,17 +477,17 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Display metadata
-	if tx.GetMetadata() != nil && len(tx.GetMetadata().GetMetadata()) > 0 {
+	if len(tx.GetMetadata()) > 0 {
 		pterm.Println()
 		pterm.Println("Metadata:")
 
 		metadataTable := pterm.TableData{
 			{"KEY", "VALUE"},
 		}
-		for _, md := range tx.GetMetadata().GetMetadata() {
+		for key, value := range tx.GetMetadata() {
 			metadataTable = append(metadataTable, []string{
-				md.GetKey(),
-				commonpb.MetadataValueToString(md.GetValue()),
+				key,
+				commonpb.MetadataValueToString(value),
 			})
 		}
 

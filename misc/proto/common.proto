@@ -14,12 +14,6 @@ message Timestamp {
   uint64 data = 1;
 }
 
-// Metadata represents account or transaction metadata as a map of string key-value pairs
-message Metadata {
-  string key = 1;
-  MetadataValue value = 2;
-}
-
 // NullValue represents a metadata value that could not be converted to the
 // declared type. It preserves the original raw value for debugging, but
 // signals to consumers that the value is unusable in its expected type.
@@ -37,8 +31,10 @@ message MetadataValue {
   }
 }
 
-message MetadataSet {
-  repeated Metadata metadata = 1;
+// MetadataMap wraps a metadata map for use as a proto map value
+// (proto3 does not support nested maps like map<string, map<string, MetadataValue>>).
+message MetadataMap {
+  map<string, MetadataValue> values = 1;
 }
 
 // ParameterValue represents a typed parameter value for prepared query execution.
@@ -69,7 +65,7 @@ message Posting {
 // Transaction represents a transaction
 message Transaction {
   repeated Posting postings = 1;
-  MetadataSet metadata = 2;
+  map<string, MetadataValue> metadata = 2;
   Timestamp timestamp = 3;
   string reference = 4;
   uint64 id = 5;
@@ -119,7 +115,7 @@ message PostCommitVolumes {
 // Account represents an account in the ledger
 message Account {
   string address = 1;
-  MetadataSet metadata = 2;
+  map<string, MetadataValue> metadata = 2;
   Timestamp first_usage = 3;
   Timestamp insertion_date = 4;
   Timestamp updated_at = 5;
@@ -635,10 +631,10 @@ message MetadataConversionCompleteLog {
 
 message CreatedTransaction {
   Transaction transaction = 1;
-  map<string, MetadataSet> account_metadata = 2;
+  map<string, MetadataMap> account_metadata = 2;
   uint64 period_id = 3;  // Period that was OPEN when this transaction was created
   PostCommitVolumes post_commit_volumes = 4;  // Opt-in: volumes after commit (only when expand_volumes is true)
-  map<string, MetadataSet> previous_account_metadata = 5;  // previous account metadata values (for index replay)
+  map<string, MetadataMap> previous_account_metadata = 5;  // previous account metadata values (for index replay)
 }
 
 message RevertedTransaction {
@@ -649,7 +645,7 @@ message RevertedTransaction {
 
 message SavedMetadata {
   Target target = 1;
-  MetadataSet metadata = 2;
+  map<string, MetadataValue> metadata = 2;
   map<string, MetadataValue> previous_values = 3;  // previous values keyed by metadata key (for index replay)
 }
 
@@ -793,7 +789,7 @@ message LedgerInfo {
 // SaveMetadataCommand is used for adding metadata
 message SaveMetadataCommand {
   Target target = 1;
-  MetadataSet metadata = 2;
+  map<string, MetadataValue> metadata = 2;
 }
 
 // DeleteMetadataCommand is used for deleting metadata
@@ -806,7 +802,7 @@ message DeleteMetadataCommand {
 message TransactionState {
   uint64 created_by_log = 1;
   uint64 reverted_by_transaction = 2;  // 0 = not reverted
-  MetadataSet metadata = 3;
+  map<string, MetadataValue> metadata = 3;
 }
 
 // IdempotencyKeyValue stores the log sequence associated with an idempotency key.

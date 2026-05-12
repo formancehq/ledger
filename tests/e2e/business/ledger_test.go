@@ -55,8 +55,8 @@ var _ = Describe("Ledger", Ordered, func() {
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "merge-account", big.NewInt(50), "USD"),
-					}, nil, map[string]*commonpb.MetadataSet{
-						"merge-account": commonpb.MetadataSetFromMap(map[string]string{
+					}, nil, map[string]*commonpb.MetadataMap{
+						"merge-account": commonpb.MetadataMapFromGoMap(map[string]string{
 							"key1": "value1",
 							"key2": "value2",
 						}),

@@ -103,16 +103,16 @@ func runGet(cmd *cobra.Command, args []string) error {
 	pterm.Printf("Account: %s\n", pterm.Cyan(account.GetAddress()))
 	pterm.Println(pterm.Gray("─────────────────────────────────"))
 
-	if account.GetMetadata() != nil && len(account.GetMetadata().GetMetadata()) > 0 {
+	if len(account.GetMetadata()) > 0 {
 		pterm.Println("Metadata:")
 
 		metadataTable := pterm.TableData{
 			{"KEY", "VALUE"},
 		}
-		for _, md := range account.GetMetadata().GetMetadata() {
+		for key, value := range account.GetMetadata() {
 			metadataTable = append(metadataTable, []string{
-				md.GetKey(),
-				commonpb.MetadataValueToString(md.GetValue()),
+				key,
+				commonpb.MetadataValueToString(value),
 			})
 		}
 

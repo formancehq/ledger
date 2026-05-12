@@ -148,10 +148,7 @@ func resetSavedMetadata(sm *commonpb.SavedMetadata) {
 
 	sm.Target = nil
 	clear(sm.GetPreviousValues())
-
-	if sm.GetMetadata() != nil {
-		sm.Metadata.Metadata = sm.GetMetadata().GetMetadata()[:0]
-	}
+	clear(sm.GetMetadata())
 }
 
 func resetDeletedMetadata(dm *commonpb.DeletedMetadata) {

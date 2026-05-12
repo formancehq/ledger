@@ -88,8 +88,8 @@ var _ = Describe("Reversions", Ordered, func() {
 			revertTx := revertApplyLog.Log.Data.GetRevertedTransaction()
 			Expect(revertTx).NotTo(BeNil())
 			Expect(revertTx.RevertTransaction.Metadata).NotTo(BeNil())
-			Expect(revertTx.RevertTransaction.Metadata.ToMap()["reason"]).To(Equal("correction"))
-			Expect(revertTx.RevertTransaction.Metadata.ToMap()["source"]).To(Equal("support"))
+			Expect(commonpb.MetadataToGoMap(revertTx.RevertTransaction.Metadata)["reason"]).To(Equal("correction"))
+			Expect(commonpb.MetadataToGoMap(revertTx.RevertTransaction.Metadata)["source"]).To(Equal("support"))
 		})
 
 		It("Should revert a transaction with force flag", func() {

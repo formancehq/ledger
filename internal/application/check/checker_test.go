@@ -490,7 +490,7 @@ func createTransactionOrder(ledger string, force bool, postings ...*commonpb.Pos
 	}
 }
 
-func createTransactionWithMetadataOrder(ledger string, force bool, metadata map[string]string, accountMeta map[string]*commonpb.MetadataSet, postings ...*commonpb.Posting) *raftcmdpb.Order {
+func createTransactionWithMetadataOrder(ledger string, force bool, metadata map[string]string, accountMeta map[string]*commonpb.MetadataMap, postings ...*commonpb.Posting) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_Apply{
 			Apply: &raftcmdpb.LedgerApplyOrder{
@@ -499,7 +499,7 @@ func createTransactionWithMetadataOrder(ledger string, force bool, metadata map[
 					CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 						Postings:        postings,
 						Force:           force,
-						Metadata:        commonpb.MetadataSetFromMap(metadata),
+						Metadata:        commonpb.MetadataFromGoMap(metadata),
 						AccountMetadata: accountMeta,
 					},
 				},
@@ -538,7 +538,7 @@ func saveAccountMetadataOrder(ledger, account string, metadata map[string]string
 								},
 							},
 						},
-						Metadata: commonpb.MetadataSetFromMap(metadata),
+						Metadata: commonpb.MetadataFromGoMap(metadata),
 					},
 				},
 			},
@@ -683,8 +683,8 @@ func TestCheckerComprehensive(t *testing.T) {
 	// --- Step 7: Transactions with account metadata attached ---
 	engine.processAndCommit(createTransactionWithMetadataOrder("payments", true,
 		map[string]string{"type": "deposit"},
-		map[string]*commonpb.MetadataSet{
-			"customer:dave": commonpb.MetadataSetFromMap(map[string]string{
+		map[string]*commonpb.MetadataMap{
+			"customer:dave": commonpb.MetadataMapFromGoMap(map[string]string{
 				"joined": "2026-01-01",
 			}),
 		},
@@ -1019,7 +1019,7 @@ func saveTransactionMetadataOrder(ledger string, txID uint64, metadata map[strin
 								},
 							},
 						},
-						Metadata: commonpb.MetadataSetFromMap(metadata),
+						Metadata: commonpb.MetadataFromGoMap(metadata),
 					},
 				},
 			},

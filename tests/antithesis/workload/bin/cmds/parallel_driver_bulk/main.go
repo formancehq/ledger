@@ -72,7 +72,7 @@ func main() {
 											Account: &commonpb.TargetAccount{Addr: addr1},
 										},
 									},
-									Metadata: commonpb.MetadataSetFromMap(map[string]string{metaKey: metaValue}),
+									Metadata: commonpb.MetadataFromGoMap(map[string]string{metaKey: metaValue}),
 								},
 							},
 						},
@@ -103,12 +103,8 @@ func main() {
 
 		found := false
 
-		for _, m := range acct.GetMetadata().GetMetadata() {
-			if m.GetKey() == metaKey && m.GetValue().GetStringValue() == metaValue {
-				found = true
-
-				break
-			}
+		if v, ok := acct.GetMetadata()[metaKey]; ok && v.GetStringValue() == metaValue {
+			found = true
 		}
 
 		assert.AlwaysOrUnreachable(found,

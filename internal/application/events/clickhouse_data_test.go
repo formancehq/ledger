@@ -146,18 +146,16 @@ func TestEventToClickHouseJSON_CommittedTransaction(t *testing.T) {
 													Asset:       "USD/2",
 												},
 											},
-											Metadata: &commonpb.MetadataSet{
-												Metadata: []*commonpb.Metadata{
-													{Key: "type", Value: commonpb.NewStringValue("transfer")},
-												},
+											Metadata: map[string]*commonpb.MetadataValue{
+												"type": commonpb.NewStringValue("transfer"),
 											},
 											Reference:  "tx-001",
 											InsertedAt: &commonpb.Timestamp{Data: 1700000100},
 										},
-										AccountMetadata: map[string]*commonpb.MetadataSet{
+										AccountMetadata: map[string]*commonpb.MetadataMap{
 											"users:001": {
-												Metadata: []*commonpb.Metadata{
-													{Key: "name", Value: commonpb.NewStringValue("Alice")},
+												Values: map[string]*commonpb.MetadataValue{
+													"name": commonpb.NewStringValue("Alice"),
 												},
 											},
 										},
@@ -274,10 +272,8 @@ func TestEventToClickHouseJSON_SavedMetadata_Account(t *testing.T) {
 												Account: &commonpb.TargetAccount{Addr: "user:123"},
 											},
 										},
-										Metadata: &commonpb.MetadataSet{
-											Metadata: []*commonpb.Metadata{
-												{Key: "status", Value: commonpb.NewStringValue("active")},
-											},
+										Metadata: map[string]*commonpb.MetadataValue{
+											"status": commonpb.NewStringValue("active"),
 										},
 									},
 								},
@@ -620,31 +616,29 @@ func TestSinkConvertTarget_Transaction(t *testing.T) {
 	require.Equal(t, uint64(42), id)
 }
 
-func TestSinkConvertMetadataSet_Nil(t *testing.T) {
+func TestSinkConvertMetadata_Nil(t *testing.T) {
 	t.Parallel()
 
-	result := sinkConvertMetadataSet(nil)
+	result := sinkConvertMetadata(nil)
 	require.Nil(t, result)
 }
 
-func TestSinkConvertMetadataSet_Empty(t *testing.T) {
+func TestSinkConvertMetadata_Empty(t *testing.T) {
 	t.Parallel()
 
-	result := sinkConvertMetadataSet(&commonpb.MetadataSet{})
+	result := sinkConvertMetadata(map[string]*commonpb.MetadataValue{})
 	require.Nil(t, result)
 }
 
-func TestSinkConvertMetadataSet_WithValues(t *testing.T) {
+func TestSinkConvertMetadata_WithValues(t *testing.T) {
 	t.Parallel()
 
-	ms := &commonpb.MetadataSet{
-		Metadata: []*commonpb.Metadata{
-			{Key: "status", Value: commonpb.NewStringValue("active")},
-			{Key: "empty", Value: nil},
-		},
+	ms := map[string]*commonpb.MetadataValue{
+		"status": commonpb.NewStringValue("active"),
+		"empty":  nil,
 	}
 
-	result := sinkConvertMetadataSet(ms)
+	result := sinkConvertMetadata(ms)
 	require.NotNil(t, result)
 	require.Equal(t, "active", result["status"])
 	// nil values are skipped
@@ -662,10 +656,10 @@ func TestSinkConvertAccountMetadataMap_Nil(t *testing.T) {
 func TestSinkConvertAccountMetadataMap_WithValues(t *testing.T) {
 	t.Parallel()
 
-	am := map[string]*commonpb.MetadataSet{
+	am := map[string]*commonpb.MetadataMap{
 		"user:123": {
-			Metadata: []*commonpb.Metadata{
-				{Key: "name", Value: commonpb.NewStringValue("Alice")},
+			Values: map[string]*commonpb.MetadataValue{
+				"name": commonpb.NewStringValue("Alice"),
 			},
 		},
 	}

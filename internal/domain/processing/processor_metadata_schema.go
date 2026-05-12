@@ -103,10 +103,10 @@ func (p *RequestProcessor) processRemoveMetadataFieldType(
 	}, nil
 }
 
-// enforceSchema converts metadata values in-place according to the ledger's
+// enforceSchemaMap converts metadata values in-place according to the ledger's
 // declared metadata schema. Values for keys with a declared type are converted
 // using the conversion matrix; keys without a declared type are left as-is.
-func enforceSchema(schema *commonpb.MetadataSchema, targetType commonpb.TargetType, metadata []*commonpb.Metadata) {
+func enforceSchemaMap(schema *commonpb.MetadataSchema, targetType commonpb.TargetType, metadata map[string]*commonpb.MetadataValue) {
 	if schema == nil || len(metadata) == 0 {
 		return
 	}
@@ -124,14 +124,14 @@ func enforceSchema(schema *commonpb.MetadataSchema, targetType commonpb.TargetTy
 		return
 	}
 
-	for _, m := range metadata {
-		fieldSchema, ok := fields[m.GetKey()]
-		if !ok || m.GetValue() == nil {
+	for key, value := range metadata {
+		fieldSchema, ok := fields[key]
+		if !ok || value == nil {
 			continue
 		}
 
-		if !commonpb.TypeMatches(m.GetValue(), fieldSchema.GetType()) {
-			m.Value = commonpb.ConvertMetadataValue(m.GetValue(), fieldSchema.GetType())
+		if !commonpb.TypeMatches(value, fieldSchema.GetType()) {
+			metadata[key] = commonpb.ConvertMetadataValue(value, fieldSchema.GetType())
 		}
 	}
 }

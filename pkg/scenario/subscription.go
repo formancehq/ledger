@@ -292,16 +292,12 @@ func RunSubscription(r *Runner) error {
 		// Typed metadata on first cycle
 		if cycle == 1 {
 			if _, err := r.Step("Cycle1/TypedMetadata",
-				actions.SaveTypedAccountMetadataAction(SubscriptionLedger, "subscriber:6", &commonpb.MetadataSet{
-					Metadata: []*commonpb.Metadata{
-						{Key: "subscriber_plan", Value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: "pro"}}},
-						{Key: "billing_cycle", Value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_IntValue{IntValue: 1}}},
-					},
+				actions.SaveTypedAccountMetadataAction(SubscriptionLedger, "subscriber:6", map[string]*commonpb.MetadataValue{
+					"subscriber_plan": {Type: &commonpb.MetadataValue_StringValue{StringValue: "pro"}},
+					"billing_cycle":   {Type: &commonpb.MetadataValue_IntValue{IntValue: 1}},
 				}),
-				actions.SaveTypedAccountMetadataAction(SubscriptionLedger, "subscriber:7", &commonpb.MetadataSet{
-					Metadata: []*commonpb.Metadata{
-						{Key: "subscriber_plan", Value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: "enterprise"}}},
-					},
+				actions.SaveTypedAccountMetadataAction(SubscriptionLedger, "subscriber:7", map[string]*commonpb.MetadataValue{
+					"subscriber_plan": {Type: &commonpb.MetadataValue_StringValue{StringValue: "enterprise"}},
 				}),
 			); err != nil {
 				return err

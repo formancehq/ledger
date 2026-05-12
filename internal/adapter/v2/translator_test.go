@@ -74,8 +74,8 @@ func TestTranslateBatch_SetMetadata_Account(t *testing.T) {
 	account := sm.GetTarget().GetAccount()
 	require.NotNil(t, account)
 	require.Equal(t, "users:001", account.GetAddr())
-	require.Len(t, sm.GetMetadata().GetMetadata(), 1)
-	require.Equal(t, "role", sm.GetMetadata().GetMetadata()[0].GetKey())
+	require.Len(t, sm.GetMetadata(), 1)
+	require.Contains(t, sm.GetMetadata(), "role")
 }
 
 func TestTranslateBatch_SetMetadata_Transaction(t *testing.T) {

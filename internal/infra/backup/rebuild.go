@@ -3,10 +3,10 @@ package backup
 import (
 	"context"
 	"fmt"
+	"maps"
 	"math/big"
 
 	"github.com/holiman/uint256"
-	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -344,7 +344,7 @@ func (w *attributeReplayWriter) MoveMetadata(oldKey, newKey []byte) error {
 	return w.metadata.Delete(w.batch, oldKey)
 }
 
-func (w *attributeReplayWriter) CreateTransaction(canonicalKey []byte, seq uint64, metadata *commonpb.MetadataSet) error {
+func (w *attributeReplayWriter) CreateTransaction(canonicalKey []byte, seq uint64, metadata map[string]*commonpb.MetadataValue) error {
 	txState := &commonpb.TransactionState{
 		CreatedByLog: seq,
 		Metadata:     metadata,
@@ -372,7 +372,7 @@ func (w *attributeReplayWriter) SetRevertedBy(canonicalKey []byte, revertTxID ui
 	return err
 }
 
-func (w *attributeReplayWriter) SaveTxMetadata(canonicalKey []byte, metadata []*commonpb.Metadata) error {
+func (w *attributeReplayWriter) SaveTxMetadata(canonicalKey []byte, metadata map[string]*commonpb.MetadataValue) error {
 	existing, err := w.tx.Get(w.store, canonicalKey)
 	if err != nil {
 		return err
@@ -383,25 +383,10 @@ func (w *attributeReplayWriter) SaveTxMetadata(canonicalKey []byte, metadata []*
 	}
 
 	if existing.GetMetadata() == nil {
-		existing.Metadata = &commonpb.MetadataSet{}
+		existing.Metadata = make(map[string]*commonpb.MetadataValue)
 	}
 
-	for _, m := range metadata {
-		found := false
-
-		for i, e := range existing.GetMetadata().GetMetadata() {
-			if e.GetKey() == m.GetKey() {
-				existing.Metadata.Metadata[i] = proto.Clone(m).(*commonpb.Metadata)
-				found = true
-
-				break
-			}
-		}
-
-		if !found {
-			existing.Metadata.Metadata = append(existing.Metadata.Metadata, proto.Clone(m).(*commonpb.Metadata))
-		}
-	}
+	maps.Copy(existing.GetMetadata(), metadata)
 
 	_, err = w.tx.Set(w.batch, canonicalKey, existing)
 
@@ -418,15 +403,7 @@ func (w *attributeReplayWriter) DeleteTxMetadata(canonicalKey []byte, key string
 		return nil
 	}
 
-	filtered := make([]*commonpb.Metadata, 0, len(existing.GetMetadata().GetMetadata()))
-
-	for _, m := range existing.GetMetadata().GetMetadata() {
-		if m.GetKey() != key {
-			filtered = append(filtered, m)
-		}
-	}
-
-	existing.Metadata.Metadata = filtered
+	delete(existing.GetMetadata(), key)
 
 	_, err = w.tx.Set(w.batch, canonicalKey, existing)
 

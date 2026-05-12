@@ -155,7 +155,7 @@ func runRevert(cmd *cobra.Command, args []string) error {
 								TransactionId:   txID,
 								Force:           force,
 								AtEffectiveDate: atEffectiveDate,
-								Metadata:        commonpb.MetadataSetFromMap(metadata),
+								Metadata:        commonpb.MetadataFromGoMap(metadata),
 								Receipt:         receiptFlag,
 								ExpandVolumes:   expandVolumes,
 							},

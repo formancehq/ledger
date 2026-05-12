@@ -668,7 +668,7 @@ func (m *MirrorLogEntry) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, 
 		}
 	case *MirrorLogEntry_SavedMetadata:
 		if v.SavedMetadata != nil {
-			size, _ := v.SavedMetadata.MarshalToSizedBufferVT(dAtA[:i])
+			size, _ := v.SavedMetadata.MarshalToSizedBufferDeterministicVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
@@ -676,7 +676,7 @@ func (m *MirrorLogEntry) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, 
 		}
 	case *MirrorLogEntry_RevertedTransaction:
 		if v.RevertedTransaction != nil {
-			size, _ := v.RevertedTransaction.MarshalToSizedBufferVT(dAtA[:i])
+			size, _ := v.RevertedTransaction.MarshalToSizedBufferDeterministicVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
@@ -736,7 +736,7 @@ func (m *MirrorCreatedTransaction) MarshalToSizedBufferDeterministicVT(dAtA []by
 		for _, k := range slices.Sorted(maps.Keys(m.AccountMetadata)) {
 			v := m.AccountMetadata[k]
 			baseI := i
-			size, _ := v.MarshalToSizedBufferVT(dAtA[:i])
+			size, _ := v.MarshalToSizedBufferDeterministicVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
@@ -765,12 +765,24 @@ func (m *MirrorCreatedTransaction) MarshalToSizedBufferDeterministicVT(dAtA []by
 		i--
 		dAtA[i] = 0x22
 	}
-	if m.Metadata != nil {
-		size, _ := m.Metadata.MarshalToSizedBufferVT(dAtA[:i])
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1a
+	if len(m.Metadata) > 0 {
+		for _, k := range slices.Sorted(maps.Keys(m.Metadata)) {
+			v := m.Metadata[k]
+			baseI := i
+			size, _ := v.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x12
+			i -= len(k)
+			copy(dAtA[i:], k)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(k)))
+			i--
+			dAtA[i] = 0xa
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
+			i--
+			dAtA[i] = 0x1a
+		}
 	}
 	if len(m.Postings) > 0 {
 		for iNdEx := len(m.Postings) - 1; iNdEx >= 0; iNdEx-- {
@@ -793,22 +805,115 @@ func (m *MirrorSavedMetadata) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
+	sz := m.SizeVT()
+	buf := make([]byte, sz)
+	n, _ := m.MarshalToSizedBufferDeterministicVT(buf)
+	return append(dAtA, buf[sz-n:]...)
+}
+
+func (m *MirrorSavedMetadata) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
 	}
-	return append(dAtA, b...)
+	i := len(dAtA)
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.Metadata) > 0 {
+		for _, k := range slices.Sorted(maps.Keys(m.Metadata)) {
+			v := m.Metadata[k]
+			baseI := i
+			size, _ := v.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x12
+			i -= len(k)
+			copy(dAtA[i:], k)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(k)))
+			i--
+			dAtA[i] = 0xa
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
+			i--
+			dAtA[i] = 0x12
+		}
+	}
+	if m.Target != nil {
+		size, _ := m.Target.MarshalToSizedBufferVT(dAtA[:i])
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *MirrorRevertedTransaction) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
+	sz := m.SizeVT()
+	buf := make([]byte, sz)
+	n, _ := m.MarshalToSizedBufferDeterministicVT(buf)
+	return append(dAtA, buf[sz-n:]...)
+}
+
+func (m *MirrorRevertedTransaction) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
 	}
-	return append(dAtA, b...)
+	i := len(dAtA)
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Timestamp != nil {
+		size, _ := m.Timestamp.MarshalToSizedBufferVT(dAtA[:i])
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x2a
+	}
+	if len(m.Metadata) > 0 {
+		for _, k := range slices.Sorted(maps.Keys(m.Metadata)) {
+			v := m.Metadata[k]
+			baseI := i
+			size, _ := v.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x12
+			i -= len(k)
+			copy(dAtA[i:], k)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(k)))
+			i--
+			dAtA[i] = 0xa
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
+			i--
+			dAtA[i] = 0x22
+		}
+	}
+	if len(m.ReversePostings) > 0 {
+		for iNdEx := len(m.ReversePostings) - 1; iNdEx >= 0; iNdEx-- {
+			size, _ := m.ReversePostings[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
+	if m.NewTransactionId != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NewTransactionId))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.RevertedTransactionId != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.RevertedTransactionId))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *MirrorDeletedMetadata) MarshalDeterministicVT(dAtA []byte) []byte {
@@ -881,7 +986,7 @@ func (m *LedgerApplyOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 		}
 	case *LedgerApplyOrder_AddMetadata:
 		if v.AddMetadata != nil {
-			size, _ := v.AddMetadata.MarshalToSizedBufferVT(dAtA[:i])
+			size, _ := v.AddMetadata.MarshalToSizedBufferDeterministicVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
@@ -889,7 +994,7 @@ func (m *LedgerApplyOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 		}
 	case *LedgerApplyOrder_RevertTransaction:
 		if v.RevertTransaction != nil {
-			size, _ := v.RevertTransaction.MarshalToSizedBufferVT(dAtA[:i])
+			size, _ := v.RevertTransaction.MarshalToSizedBufferDeterministicVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
@@ -1232,7 +1337,7 @@ func (m *CreateTransactionOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte
 		for _, k := range slices.Sorted(maps.Keys(m.AccountMetadata)) {
 			v := m.AccountMetadata[k]
 			baseI := i
-			size, _ := v.MarshalToSizedBufferVT(dAtA[:i])
+			size, _ := v.MarshalToSizedBufferDeterministicVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
@@ -1247,12 +1352,24 @@ func (m *CreateTransactionOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte
 			dAtA[i] = 0x32
 		}
 	}
-	if m.Metadata != nil {
-		size, _ := m.Metadata.MarshalToSizedBufferVT(dAtA[:i])
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x2a
+	if len(m.Metadata) > 0 {
+		for _, k := range slices.Sorted(maps.Keys(m.Metadata)) {
+			v := m.Metadata[k]
+			baseI := i
+			size, _ := v.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x12
+			i -= len(k)
+			copy(dAtA[i:], k)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(k)))
+			i--
+			dAtA[i] = 0xa
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
+			i--
+			dAtA[i] = 0x2a
+		}
 	}
 	if len(m.Reference) > 0 {
 		i -= len(m.Reference)
@@ -1346,22 +1463,133 @@ func (m *SaveMetadataOrder) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
+	sz := m.SizeVT()
+	buf := make([]byte, sz)
+	n, _ := m.MarshalToSizedBufferDeterministicVT(buf)
+	return append(dAtA, buf[sz-n:]...)
+}
+
+func (m *SaveMetadataOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
 	}
-	return append(dAtA, b...)
+	i := len(dAtA)
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.Metadata) > 0 {
+		for _, k := range slices.Sorted(maps.Keys(m.Metadata)) {
+			v := m.Metadata[k]
+			baseI := i
+			size, _ := v.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x12
+			i -= len(k)
+			copy(dAtA[i:], k)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(k)))
+			i--
+			dAtA[i] = 0xa
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
+			i--
+			dAtA[i] = 0x12
+		}
+	}
+	if m.Target != nil {
+		size, _ := m.Target.MarshalToSizedBufferVT(dAtA[:i])
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *RevertTransactionOrder) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
+	sz := m.SizeVT()
+	buf := make([]byte, sz)
+	n, _ := m.MarshalToSizedBufferDeterministicVT(buf)
+	return append(dAtA, buf[sz-n:]...)
+}
+
+func (m *RevertTransactionOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
 	}
-	return append(dAtA, b...)
+	i := len(dAtA)
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.ExpandVolumes {
+		i--
+		if m.ExpandVolumes {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x30
+	}
+	if len(m.OriginalPostings) > 0 {
+		for iNdEx := len(m.OriginalPostings) - 1; iNdEx >= 0; iNdEx-- {
+			size, _ := m.OriginalPostings[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x2a
+		}
+	}
+	if len(m.Metadata) > 0 {
+		for _, k := range slices.Sorted(maps.Keys(m.Metadata)) {
+			v := m.Metadata[k]
+			baseI := i
+			size, _ := v.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x12
+			i -= len(k)
+			copy(dAtA[i:], k)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(k)))
+			i--
+			dAtA[i] = 0xa
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
+			i--
+			dAtA[i] = 0x22
+		}
+	}
+	if m.AtEffectiveDate {
+		i--
+		if m.AtEffectiveDate {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.Force {
+		i--
+		if m.Force {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.TransactionId != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.TransactionId))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *DeleteMetadataOrder) MarshalDeterministicVT(dAtA []byte) []byte {
@@ -1700,7 +1928,7 @@ func (m *Preload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 		}
 	case *Preload_TransactionState:
 		if v.TransactionState != nil {
-			size, _ := v.TransactionState.MarshalToSizedBufferVT(dAtA[:i])
+			size, _ := v.TransactionState.MarshalToSizedBufferDeterministicVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
@@ -1843,11 +2071,36 @@ func (m *PreloadTransactionState) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
+	sz := m.SizeVT()
+	buf := make([]byte, sz)
+	n, _ := m.MarshalToSizedBufferDeterministicVT(buf)
+	return append(dAtA, buf[sz-n:]...)
+}
+
+func (m *PreloadTransactionState) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
 	}
-	return append(dAtA, b...)
+	i := len(dAtA)
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Value != nil {
+		size, _ := m.Value.MarshalToSizedBufferDeterministicVT(dAtA[:i])
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.Id != nil {
+		size, _ := m.Id.MarshalToSizedBufferVT(dAtA[:i])
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *PreloadNumscriptContent) MarshalDeterministicVT(dAtA []byte) []byte {
@@ -1937,7 +2190,7 @@ func (m *GenerationSnapshot) MarshalToSizedBufferDeterministicVT(dAtA []byte) (i
 	}
 	if len(m.Transactions) > 0 {
 		for iNdEx := len(m.Transactions) - 1; iNdEx >= 0; iNdEx-- {
-			size, _ := m.Transactions[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			size, _ := m.Transactions[iNdEx].MarshalToSizedBufferDeterministicVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
@@ -2090,11 +2343,36 @@ func (m *TransactionStateAttributeEntry) MarshalDeterministicVT(dAtA []byte) []b
 	if m == nil {
 		return dAtA
 	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
+	sz := m.SizeVT()
+	buf := make([]byte, sz)
+	n, _ := m.MarshalToSizedBufferDeterministicVT(buf)
+	return append(dAtA, buf[sz-n:]...)
+}
+
+func (m *TransactionStateAttributeEntry) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
 	}
-	return append(dAtA, b...)
+	i := len(dAtA)
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.State != nil {
+		size, _ := m.State.MarshalToSizedBufferDeterministicVT(dAtA[:i])
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.Id != nil {
+		size, _ := m.Id.MarshalToSizedBufferVT(dAtA[:i])
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *IdempotencyKeyAttributeEntry) MarshalDeterministicVT(dAtA []byte) []byte {

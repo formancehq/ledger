@@ -440,10 +440,10 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "merchant", big.NewInt(1000), "USD"),
-					}, nil, map[string]*commonpb.MetadataSet{
+					}, nil, map[string]*commonpb.MetadataMap{
 						"merchant": {
-							Metadata: []*commonpb.Metadata{
-								{Key: "source", Value: commonpb.NewStringValue("api")},
+							Values: map[string]*commonpb.MetadataValue{
+								"source": commonpb.NewStringValue("api"),
 							},
 						},
 					}),

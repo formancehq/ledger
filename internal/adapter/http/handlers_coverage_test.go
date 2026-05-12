@@ -1343,7 +1343,7 @@ func TestHandleSaveAccountMetadata_InvalidMetadataType(t *testing.T) {
 	srv := newTestServer(t, &mockBackend{})
 
 	w := httptest.NewRecorder()
-	// Float values (non-integer) are not supported and trigger MetadataSetFromAnyMap error
+	// Float values (non-integer) are not supported and trigger MetadataFromAnyMap error
 	body := strings.NewReader(`{"price":1.5}`)
 	r := newRequest(t, http.MethodPost, "/ledger1/accounts/users:001/metadata", body, map[string]string{
 		"ledgerName": "ledger1",
@@ -1368,7 +1368,7 @@ func TestHandleSaveTransactionMetadata_InvalidMetadataType(t *testing.T) {
 	srv := newTestServer(t, &mockBackend{})
 
 	w := httptest.NewRecorder()
-	// Float values (non-integer) trigger MetadataSetFromAnyMap error
+	// Float values (non-integer) trigger MetadataFromAnyMap error
 	body := strings.NewReader(`{"amount":3.14}`)
 	r := newRequest(t, http.MethodPost, "/ledger1/transactions/1/metadata", body, map[string]string{
 		"ledgerName":    "ledger1",

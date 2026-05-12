@@ -247,7 +247,7 @@ func TestProcessApply_LedgerNotFound(t *testing.T) {
 								Account: &commonpb.TargetAccount{Addr: "test"},
 							},
 						},
-						Metadata: &commonpb.MetadataSet{},
+						Metadata: map[string]*commonpb.MetadataValue{},
 					},
 				},
 			},
@@ -744,7 +744,7 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 	require.NotNil(t, createdTx.GetTransaction().GetMetadata())
 
 	// Verify metadata was set
-	metaMap := createdTx.GetTransaction().GetMetadata().ToMap()
+	metaMap := commonpb.MetadataToGoMap(createdTx.GetTransaction().GetMetadata())
 	require.Equal(t, "payment", metaMap["type"])
 	require.Equal(t, "purchase", metaMap["category"])
 }
@@ -826,7 +826,7 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 	require.Contains(t, createdTx.GetAccountMetadata(), "users:alice", "AccountMetadata should contain users:alice")
 	aliceMeta := createdTx.GetAccountMetadata()["users:alice"]
 	require.NotNil(t, aliceMeta)
-	metaMap := aliceMeta.ToMap()
+	metaMap := commonpb.MetadataMapToGoMap(aliceMeta)
 	require.Equal(t, "savings", metaMap["account_type"])
 	require.Equal(t, "numscript", metaMap["created_by"])
 }

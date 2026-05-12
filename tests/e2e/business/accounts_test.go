@@ -148,8 +148,8 @@ var _ = Describe("Accounts", Ordered, func() {
 			}
 			Expect(aliceAccount).NotTo(BeNil())
 			Expect(aliceAccount.Metadata).NotTo(BeNil())
-			Expect(aliceAccount.Metadata.ToMap()["role"]).To(Equal("admin"))
-			Expect(aliceAccount.Metadata.ToMap()["tier"]).To(Equal("premium"))
+			Expect(commonpb.MetadataToGoMap(aliceAccount.Metadata)["role"]).To(Equal("admin"))
+			Expect(commonpb.MetadataToGoMap(aliceAccount.Metadata)["tier"]).To(Equal("premium"))
 		})
 	})
 

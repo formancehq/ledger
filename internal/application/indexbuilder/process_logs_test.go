@@ -262,9 +262,9 @@ func TestLookupPreviousAccountValue_NilMap(t *testing.T) {
 func TestLookupPreviousAccountValue_AccountNotFound(t *testing.T) {
 	t.Parallel()
 
-	prevMeta := map[string]*commonpb.MetadataSet{
-		"other": {Metadata: []*commonpb.Metadata{
-			{Key: "key", Value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: "val"}}},
+	prevMeta := map[string]*commonpb.MetadataMap{
+		"other": {Values: map[string]*commonpb.MetadataValue{
+			"key": {Type: &commonpb.MetadataValue_StringValue{StringValue: "val"}},
 		}},
 	}
 
@@ -275,7 +275,7 @@ func TestLookupPreviousAccountValue_AccountNotFound(t *testing.T) {
 func TestLookupPreviousAccountValue_NilSet(t *testing.T) {
 	t.Parallel()
 
-	prevMeta := map[string]*commonpb.MetadataSet{
+	prevMeta := map[string]*commonpb.MetadataMap{
 		"acct": nil,
 	}
 
@@ -286,9 +286,9 @@ func TestLookupPreviousAccountValue_NilSet(t *testing.T) {
 func TestLookupPreviousAccountValue_KeyNotFound(t *testing.T) {
 	t.Parallel()
 
-	prevMeta := map[string]*commonpb.MetadataSet{
-		"acct": {Metadata: []*commonpb.Metadata{
-			{Key: "other", Value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: "val"}}},
+	prevMeta := map[string]*commonpb.MetadataMap{
+		"acct": {Values: map[string]*commonpb.MetadataValue{
+			"other": {Type: &commonpb.MetadataValue_StringValue{StringValue: "val"}},
 		}},
 	}
 
@@ -300,9 +300,9 @@ func TestLookupPreviousAccountValue_Found(t *testing.T) {
 	t.Parallel()
 
 	mv := &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: "hello"}}
-	prevMeta := map[string]*commonpb.MetadataSet{
-		"users:alice": {Metadata: []*commonpb.Metadata{
-			{Key: "role", Value: mv},
+	prevMeta := map[string]*commonpb.MetadataMap{
+		"users:alice": {Values: map[string]*commonpb.MetadataValue{
+			"role": mv,
 		}},
 	}
 
@@ -316,10 +316,10 @@ func TestLookupPreviousAccountValue_FoundAmongMultiple(t *testing.T) {
 
 	mv1 := &commonpb.MetadataValue{Type: &commonpb.MetadataValue_IntValue{IntValue: 42}}
 	mv2 := &commonpb.MetadataValue{Type: &commonpb.MetadataValue_BoolValue{BoolValue: true}}
-	prevMeta := map[string]*commonpb.MetadataSet{
-		"acct": {Metadata: []*commonpb.Metadata{
-			{Key: "count", Value: mv1},
-			{Key: "active", Value: mv2},
+	prevMeta := map[string]*commonpb.MetadataMap{
+		"acct": {Values: map[string]*commonpb.MetadataValue{
+			"count":  mv1,
+			"active": mv2,
 		}},
 	}
 

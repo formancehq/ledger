@@ -165,10 +165,7 @@ func renderCursorPage(cmd *cobra.Command, cursor *commonpb.PreparedQueryCursor, 
 
 		tableData := pterm.TableData{{"ADDRESS", "METADATA"}}
 		for _, a := range cursor.GetAccountData() {
-			metaCount := "0"
-			if a.GetMetadata() != nil {
-				metaCount = strconv.Itoa(len(a.GetMetadata().GetMetadata()))
-			}
+			metaCount := strconv.Itoa(len(a.GetMetadata()))
 
 			tableData = append(tableData, []string{a.GetAddress(), metaCount})
 		}

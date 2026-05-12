@@ -115,12 +115,12 @@ var _ = Describe("AccountTypeMigration", Ordered, func() {
 			aliceAcct, err := testutil.GetAccount(sharedCtx, sharedClient, ledgerName, "usr:alice:chk")
 			Expect(err).To(Succeed())
 			Expect(aliceAcct.Metadata).NotTo(BeNil())
-			Expect(aliceAcct.Metadata.ToMap()["tier"]).To(Equal("premium"))
+			Expect(commonpb.MetadataToGoMap(aliceAcct.Metadata)["tier"]).To(Equal("premium"))
 
 			bobAcct, err := testutil.GetAccount(sharedCtx, sharedClient, ledgerName, "usr:bob:chk")
 			Expect(err).To(Succeed())
 			Expect(bobAcct.Metadata).NotTo(BeNil())
-			Expect(bobAcct.Metadata.ToMap()["tier"]).To(Equal("basic"))
+			Expect(commonpb.MetadataToGoMap(bobAcct.Metadata)["tier"]).To(Equal("basic"))
 		})
 
 		It("Should accept new transactions on the new pattern", func() {

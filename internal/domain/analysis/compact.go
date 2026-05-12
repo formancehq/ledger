@@ -59,9 +59,9 @@ func ExtractCompactTransaction(tx *commonpb.Transaction) CompactTransaction {
 		Reverted:     tx.GetReverted(),
 	}
 
-	if tx.GetMetadata() != nil {
-		for _, m := range tx.GetMetadata().GetMetadata() {
-			ct.MetadataKeys = append(ct.MetadataKeys, m.GetKey())
+	if len(tx.GetMetadata()) > 0 {
+		for key := range tx.GetMetadata() {
+			ct.MetadataKeys = append(ct.MetadataKeys, key)
 		}
 
 		sort.Strings(ct.MetadataKeys)

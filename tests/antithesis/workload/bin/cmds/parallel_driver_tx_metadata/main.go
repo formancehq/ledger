@@ -59,7 +59,7 @@ func main() {
 										Transaction: &commonpb.TargetTransaction{Id: txID},
 									},
 								},
-								Metadata: commonpb.MetadataSetFromMap(map[string]string{key: value}),
+								Metadata: commonpb.MetadataFromGoMap(map[string]string{key: value}),
 							},
 						},
 					},
@@ -131,10 +131,8 @@ func main() {
 }
 
 func findTxMetadata(tx *commonpb.Transaction, key string) string {
-	for _, m := range tx.GetMetadata().GetMetadata() {
-		if m.GetKey() == key {
-			return m.GetValue().GetStringValue()
-		}
+	if v, ok := tx.GetMetadata()[key]; ok {
+		return v.GetStringValue()
 	}
 
 	return ""

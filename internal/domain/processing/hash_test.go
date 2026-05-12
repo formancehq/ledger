@@ -55,10 +55,8 @@ func TestGoldenHashApplyCreatedTransaction(t *testing.T) {
 												Asset:       "USD/2",
 											},
 										},
-										Metadata: &commonpb.MetadataSet{
-											Metadata: []*commonpb.Metadata{
-												{Key: "type", Value: commonpb.NewStringValue("transfer")},
-											},
+										Metadata: map[string]*commonpb.MetadataValue{
+											"type": commonpb.NewStringValue("transfer"),
 										},
 										Reference:  "tx-ref-001",
 										InsertedAt: &commonpb.Timestamp{Data: 1700000100},
@@ -76,7 +74,7 @@ func TestGoldenHashApplyCreatedTransaction(t *testing.T) {
 
 	_, hashResult := ComputeLogHash(nil, nil, log)
 	got := hex.EncodeToString(hashResult)
-	require.Equal(t, "c23b78773ffee9ca51e0bd537aca882aaa456bf1c7a7b09ed632c36653084eb6", got)
+	require.Equal(t, "d93e91d45ac362c62d7b60b0b339c424f53284bbde9cf8e49fdc04dd7a7d6393", got)
 }
 
 func TestGoldenHashRegisterSigningKey(t *testing.T) {

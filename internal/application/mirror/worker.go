@@ -567,11 +567,11 @@ func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) *preload.Needs {
 
 		// Preload account metadata for previous value capture in logs.
 		if ct := mi.GetEntry().GetCreatedTransaction(); ct != nil {
-			for account, ms := range ct.GetAccountMetadata() {
-				for _, md := range ms.GetMetadata() {
+			for account, mm := range ct.GetAccountMetadata() {
+				for key := range mm.GetValues() {
 					needs.Metadata[domain.MetadataKey{
 						AccountKey: domain.AccountKey{Ledger: w.ledgerName, Account: account},
-						Key:        md.GetKey(),
+						Key:        key,
 					}] = struct{}{}
 				}
 			}
@@ -579,10 +579,10 @@ func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) *preload.Needs {
 
 		if sm := mi.GetEntry().GetSavedMetadata(); sm != nil {
 			if target, ok := sm.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
-				for _, entry := range sm.GetMetadata().GetMetadata() {
+				for key := range sm.GetMetadata() {
 					needs.Metadata[domain.MetadataKey{
 						AccountKey: domain.AccountKey{Ledger: w.ledgerName, Account: target.Account.GetAddr()},
-						Key:        entry.GetKey(),
+						Key:        key,
 					}] = struct{}{}
 				}
 			}

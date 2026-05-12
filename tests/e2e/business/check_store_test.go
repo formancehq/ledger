@@ -402,8 +402,8 @@ var _ = Describe("CheckStore", Ordered, func() {
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "customer:2", big.NewInt(3000), "EUR"),
-					}, map[string]string{"type": "fx-deposit"}, map[string]*commonpb.MetadataSet{
-						"customer:2": commonpb.MetadataSetFromMap(map[string]string{
+					}, map[string]string{"type": "fx-deposit"}, map[string]*commonpb.MetadataMap{
+						"customer:2": commonpb.MetadataMapFromGoMap(map[string]string{
 							"joined":  "2026-01-15",
 							"country": "FR",
 						}),

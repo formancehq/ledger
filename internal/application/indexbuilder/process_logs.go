@@ -492,20 +492,20 @@ func (b *Builder) indexCreatedTransaction(
 	// Account metadata from account_metadata map
 	prevAcctMeta := ct.GetPreviousAccountMetadata()
 
-	for account, metadataSet := range ct.GetAccountMetadata() {
-		if metadataSet != nil {
-			for _, md := range metadataSet.GetMetadata() {
-				if !cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_ACCOUNT, md.GetKey()) {
+	for account, metadataMap := range ct.GetAccountMetadata() {
+		if metadataMap != nil {
+			for key, value := range metadataMap.GetValues() {
+				if !cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key) {
 					continue
 				}
 
-				reverseKey := readstore.AccountReverseMapKey(kb, ledger, account, md.GetKey())
-				newEncoded := readstore.EncodeMetadataValue(nil, md.GetValue())
-				oldEncoded := lookupPreviousAccountValue(prevAcctMeta, account, md.GetKey())
+				reverseKey := readstore.AccountReverseMapKey(kb, ledger, account, key)
+				newEncoded := readstore.EncodeMetadataValue(nil, value)
+				oldEncoded := lookupPreviousAccountValue(prevAcctMeta, account, key)
 
 				if err := wb.ReplaceMetadataIndex(
 					kb, reverseKey,
-					ledger, readstore.NamespaceAccount, md.GetKey(),
+					ledger, readstore.NamespaceAccount, key,
 					newEncoded, oldEncoded, []byte(account),
 				); err != nil {
 					return err
@@ -515,21 +515,21 @@ func (b *Builder) indexCreatedTransaction(
 	}
 
 	// Transaction metadata (first write for new tx — no previous values)
-	if txn.GetMetadata() != nil {
+	if len(txn.GetMetadata()) > 0 {
 		txIDBytes := make([]byte, 0, 8)
 
 		txIDBytes = readstore.EncodeTxID(txIDBytes, txn.GetId())
-		for _, md := range txn.GetMetadata().GetMetadata() {
-			if !cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_TRANSACTION, md.GetKey()) {
+		for key, value := range txn.GetMetadata() {
+			if !cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_TRANSACTION, key) {
 				continue
 			}
 
-			reverseKey := readstore.TransactionReverseMapKey(kb, ledger, txn.GetId(), md.GetKey())
-			newEncoded := readstore.EncodeMetadataValue(nil, md.GetValue())
+			reverseKey := readstore.TransactionReverseMapKey(kb, ledger, txn.GetId(), key)
+			newEncoded := readstore.EncodeMetadataValue(nil, value)
 
 			if err := wb.ReplaceMetadataIndex(
 				kb, reverseKey,
-				ledger, readstore.NamespaceTransaction, md.GetKey(),
+				ledger, readstore.NamespaceTransaction, key,
 				newEncoded, nil, txIDBytes,
 			); err != nil {
 				return err
@@ -620,21 +620,21 @@ func (b *Builder) indexRevertedTransaction(
 	}
 
 	// Transaction metadata for the revert transaction (first write — no previous values)
-	if revertTxn.GetMetadata() != nil {
+	if len(revertTxn.GetMetadata()) > 0 {
 		txIDBytes := make([]byte, 0, 8)
 
 		txIDBytes = readstore.EncodeTxID(txIDBytes, revertTxn.GetId())
-		for _, md := range revertTxn.GetMetadata().GetMetadata() {
-			if !cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_TRANSACTION, md.GetKey()) {
+		for key, value := range revertTxn.GetMetadata() {
+			if !cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_TRANSACTION, key) {
 				continue
 			}
 
-			reverseKey := readstore.TransactionReverseMapKey(kb, ledger, revertTxn.GetId(), md.GetKey())
-			newEncoded := readstore.EncodeMetadataValue(nil, md.GetValue())
+			reverseKey := readstore.TransactionReverseMapKey(kb, ledger, revertTxn.GetId(), key)
+			newEncoded := readstore.EncodeMetadataValue(nil, value)
 
 			if err := wb.ReplaceMetadataIndex(
 				kb, reverseKey,
-				ledger, readstore.NamespaceTransaction, md.GetKey(),
+				ledger, readstore.NamespaceTransaction, key,
 				newEncoded, nil, txIDBytes,
 			); err != nil {
 				return err
@@ -665,7 +665,7 @@ func (b *Builder) indexSavedMetadata(
 	ledger string,
 	sm *commonpb.SavedMetadata,
 ) error {
-	if sm.GetTarget() == nil || sm.GetMetadata() == nil {
+	if sm.GetTarget() == nil || len(sm.GetMetadata()) == 0 {
 		return nil
 	}
 
@@ -676,21 +676,21 @@ func (b *Builder) indexSavedMetadata(
 	case *commonpb.Target_Account:
 		account := t.Account.GetAddr()
 
-		for _, md := range sm.GetMetadata().GetMetadata() {
-			if !cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_ACCOUNT, md.GetKey()) {
+		for key, value := range sm.GetMetadata() {
+			if !cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key) {
 				continue
 			}
 
-			reverseKey := readstore.AccountReverseMapKey(kb, ledger, account, md.GetKey())
-			newEncoded := readstore.EncodeMetadataValue(nil, md.GetValue())
+			reverseKey := readstore.AccountReverseMapKey(kb, ledger, account, key)
+			newEncoded := readstore.EncodeMetadataValue(nil, value)
 			var oldEncoded []byte
-			if pv, ok := prevValues[md.GetKey()]; ok && pv != nil {
+			if pv, ok := prevValues[key]; ok && pv != nil {
 				oldEncoded = readstore.EncodeMetadataValue(nil, pv)
 			}
 
 			if err := wb.ReplaceMetadataIndex(
 				kb, reverseKey,
-				ledger, readstore.NamespaceAccount, md.GetKey(),
+				ledger, readstore.NamespaceAccount, key,
 				newEncoded, oldEncoded, []byte(account),
 			); err != nil {
 				return err
@@ -701,21 +701,21 @@ func (b *Builder) indexSavedMetadata(
 		txIDBytes := make([]byte, 0, 8)
 		txIDBytes = readstore.EncodeTxID(txIDBytes, txID)
 
-		for _, md := range sm.GetMetadata().GetMetadata() {
-			if !cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_TRANSACTION, md.GetKey()) {
+		for key, value := range sm.GetMetadata() {
+			if !cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_TRANSACTION, key) {
 				continue
 			}
 
-			reverseKey := readstore.TransactionReverseMapKey(kb, ledger, txID, md.GetKey())
-			newEncoded := readstore.EncodeMetadataValue(nil, md.GetValue())
+			reverseKey := readstore.TransactionReverseMapKey(kb, ledger, txID, key)
+			newEncoded := readstore.EncodeMetadataValue(nil, value)
 			var oldEncoded []byte
-			if pv, ok := prevValues[md.GetKey()]; ok && pv != nil {
+			if pv, ok := prevValues[key]; ok && pv != nil {
 				oldEncoded = readstore.EncodeMetadataValue(nil, pv)
 			}
 
 			if err := wb.ReplaceMetadataIndex(
 				kb, reverseKey,
-				ledger, readstore.NamespaceTransaction, md.GetKey(),
+				ledger, readstore.NamespaceTransaction, key,
 				newEncoded, oldEncoded, txIDBytes,
 			); err != nil {
 				return err
@@ -941,20 +941,18 @@ func isExcluded(excluded map[string]struct{}, account string) bool {
 
 // lookupPreviousAccountValue looks up the encoded previous value for a metadata key
 // from the previous_account_metadata map in the log.
-func lookupPreviousAccountValue(prevAcctMeta map[string]*commonpb.MetadataSet, account, metadataKey string) []byte {
+func lookupPreviousAccountValue(prevAcctMeta map[string]*commonpb.MetadataMap, account, metadataKey string) []byte {
 	if prevAcctMeta == nil {
 		return nil
 	}
 
-	prevSet, ok := prevAcctMeta[account]
-	if !ok || prevSet == nil {
+	prevMap, ok := prevAcctMeta[account]
+	if !ok || prevMap == nil {
 		return nil
 	}
 
-	for _, md := range prevSet.GetMetadata() {
-		if md.GetKey() == metadataKey {
-			return readstore.EncodeMetadataValue(nil, md.GetValue())
-		}
+	if value, found := prevMap.GetValues()[metadataKey]; found && value != nil {
+		return readstore.EncodeMetadataValue(nil, value)
 	}
 
 	return nil

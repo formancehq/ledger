@@ -50,7 +50,7 @@ func DeleteLedgerAction(ledgerName string) *servicepb.Request {
 }
 
 // CreateTransactionAction creates an action for creating a transaction.
-func CreateTransactionAction(ledgerName string, postings []*commonpb.Posting, metadata map[string]string, accountMetadata map[string]*commonpb.MetadataSet) *servicepb.Request {
+func CreateTransactionAction(ledgerName string, postings []*commonpb.Posting, metadata map[string]string, accountMetadata map[string]*commonpb.MetadataMap) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
@@ -58,7 +58,7 @@ func CreateTransactionAction(ledgerName string, postings []*commonpb.Posting, me
 				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Postings:        postings,
-						Metadata:        commonpb.MetadataSetFromMap(metadata),
+						Metadata:        commonpb.MetadataFromGoMap(metadata),
 						AccountMetadata: accountMetadata,
 					},
 				},
@@ -76,7 +76,7 @@ func CreateForceTransactionAction(ledgerName string, postings []*commonpb.Postin
 				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Postings: postings,
-						Metadata: commonpb.MetadataSetFromMap(metadata),
+						Metadata: commonpb.MetadataFromGoMap(metadata),
 						Force:    true,
 					},
 				},
@@ -97,7 +97,7 @@ func CreateForceScriptTransactionAction(ledgerName string, script string, vars m
 							Plain: script,
 							Vars:  vars,
 						},
-						Metadata: commonpb.MetadataSetFromMap(metadata),
+						Metadata: commonpb.MetadataFromGoMap(metadata),
 						Force:    true,
 					},
 				},
@@ -118,7 +118,7 @@ func CreateScriptTransactionAction(ledgerName string, script string, vars map[st
 							Plain: script,
 							Vars:  vars,
 						},
-						Metadata: commonpb.MetadataSetFromMap(metadata),
+						Metadata: commonpb.MetadataFromGoMap(metadata),
 					},
 				},
 			},
@@ -203,7 +203,7 @@ func SaveAccountMetadataAction(ledgerName, address string, metadata map[string]s
 								Account: &commonpb.TargetAccount{Addr: address},
 							},
 						},
-						Metadata: commonpb.MetadataSetFromMap(metadata),
+						Metadata: commonpb.MetadataFromGoMap(metadata),
 					},
 				},
 			},
@@ -245,7 +245,7 @@ func SaveTransactionMetadataAction(ledgerName string, transactionID uint64, meta
 								Transaction: &commonpb.TargetTransaction{Id: transactionID},
 							},
 						},
-						Metadata: commonpb.MetadataSetFromMap(metadata),
+						Metadata: commonpb.MetadataFromGoMap(metadata),
 					},
 				},
 			},
@@ -285,7 +285,7 @@ func RevertTransactionAction(ledgerName string, transactionID uint64, force, atE
 						TransactionId:   transactionID,
 						Force:           force,
 						AtEffectiveDate: atEffectiveDate,
-						Metadata:        commonpb.MetadataSetFromMap(metadata),
+						Metadata:        commonpb.MetadataFromGoMap(metadata),
 					},
 				},
 			},
@@ -369,18 +369,13 @@ func FindSigningKey(keys []*commonpb.SigningKey, keyID string) *commonpb.Signing
 	return nil
 }
 
-// FindMetadataValue looks up a key in a MetadataSet and returns the *MetadataValue (nil if not found).
-func FindMetadataValue(ms *commonpb.MetadataSet, key string) *commonpb.MetadataValue {
-	if ms == nil {
+// FindMetadataValue looks up a key in a metadata map and returns the *MetadataValue (nil if not found).
+func FindMetadataValue(m map[string]*commonpb.MetadataValue, key string) *commonpb.MetadataValue {
+	if m == nil {
 		return nil
 	}
-	for _, md := range ms.GetMetadata() {
-		if md.GetKey() == key {
-			return md.GetValue()
-		}
-	}
 
-	return nil
+	return m[key]
 }
 
 // ClosePeriodAction creates a request to close the current accounting period.
@@ -462,8 +457,8 @@ func CreateLedgerWithSchemaAction(name string, _ map[string]string, schema []*co
 	}
 }
 
-// SaveTypedAccountMetadataAction creates a request with a typed MetadataSet (not map[string]string).
-func SaveTypedAccountMetadataAction(ledgerName, address string, metadata *commonpb.MetadataSet) *servicepb.Request {
+// SaveTypedAccountMetadataAction creates a request with a typed metadata map (not map[string]string).
+func SaveTypedAccountMetadataAction(ledgerName, address string, metadata map[string]*commonpb.MetadataValue) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
@@ -483,8 +478,8 @@ func SaveTypedAccountMetadataAction(ledgerName, address string, metadata *common
 	}
 }
 
-// SaveTypedTransactionMetadataAction creates a request with a typed MetadataSet (not map[string]string).
-func SaveTypedTransactionMetadataAction(ledgerName string, txID uint64, metadata *commonpb.MetadataSet) *servicepb.Request {
+// SaveTypedTransactionMetadataAction creates a request with a typed metadata map (not map[string]string).
+func SaveTypedTransactionMetadataAction(ledgerName string, txID uint64, metadata map[string]*commonpb.MetadataValue) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
@@ -556,7 +551,7 @@ func CreateScriptRefTransactionAction(ledgerName, scriptName, version string, va
 							Version: version,
 							Vars:    vars,
 						},
-						Metadata: commonpb.MetadataSetFromMap(metadata),
+						Metadata: commonpb.MetadataFromGoMap(metadata),
 					},
 				},
 			},

@@ -48,10 +48,8 @@ func TestProcessAddMetadata_Account(t *testing.T) {
 								Account: &commonpb.TargetAccount{Addr: "users:123"},
 							},
 						},
-						Metadata: &commonpb.MetadataSet{
-							Metadata: []*commonpb.Metadata{
-								{Key: "status", Value: commonpb.NewStringValue("active")},
-							},
+						Metadata: map[string]*commonpb.MetadataValue{
+							"status": commonpb.NewStringValue("active"),
 						},
 					},
 				},
@@ -99,9 +97,9 @@ func TestProcessAddMetadata_Transaction(t *testing.T) {
 	mockStore.EXPECT().PutTransactionState(txKey, gomock.Any()).Do(
 		func(_ domain.TransactionKey, state *commonpb.TransactionState) {
 			require.NotNil(t, state.GetMetadata())
-			require.Len(t, state.GetMetadata().GetMetadata(), 1)
-			require.Equal(t, "category", state.GetMetadata().GetMetadata()[0].GetKey())
-			require.Equal(t, commonpb.NewStringValue("payment"), state.GetMetadata().GetMetadata()[0].GetValue())
+			require.Len(t, state.GetMetadata(), 1)
+			require.Contains(t, state.GetMetadata(), "category")
+			require.Equal(t, commonpb.NewStringValue("payment"), state.GetMetadata()["category"])
 		},
 	)
 
@@ -116,10 +114,8 @@ func TestProcessAddMetadata_Transaction(t *testing.T) {
 								Transaction: &commonpb.TargetTransaction{Id: 5},
 							},
 						},
-						Metadata: &commonpb.MetadataSet{
-							Metadata: []*commonpb.Metadata{
-								{Key: "category", Value: commonpb.NewStringValue("payment")},
-							},
+						Metadata: map[string]*commonpb.MetadataValue{
+							"category": commonpb.NewStringValue("payment"),
 						},
 					},
 				},

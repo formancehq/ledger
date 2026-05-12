@@ -21,11 +21,13 @@ func newTestReplayStore(t *testing.T) *replayStore {
 	return rs
 }
 
-func strMeta(key, value string) *commonpb.Metadata {
-	return &commonpb.Metadata{
-		Key:   key,
-		Value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: value}},
+func strMetaMap(entries ...string) map[string]*commonpb.MetadataValue {
+	m := make(map[string]*commonpb.MetadataValue, len(entries)/2)
+	for i := 0; i < len(entries); i += 2 {
+		m[entries[i]] = &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: entries[i+1]}}
 	}
+
+	return m
 }
 
 // readVolume reads the merged VolumePair for the given canonical key.
@@ -162,19 +164,14 @@ func TestReplayStoreTransactionCreate(t *testing.T) {
 	rs := newTestReplayStore(t)
 	key := []byte("ledger\x00tx:1")
 
-	meta := &commonpb.MetadataSet{
-		Metadata: []*commonpb.Metadata{
-			strMeta("env", "prod"),
-		},
-	}
+	meta := strMetaMap("env", "prod")
 
 	require.NoError(t, rs.CreateTransaction(key, 42, meta))
 
 	state := readTransaction(t, rs, key)
 	require.Equal(t, uint64(42), state.GetCreatedByLog())
-	require.Len(t, state.GetMetadata().GetMetadata(), 1)
-	require.Equal(t, "env", state.GetMetadata().GetMetadata()[0].GetKey())
-	require.Equal(t, "prod", state.GetMetadata().GetMetadata()[0].GetValue().GetStringValue())
+	require.Len(t, state.GetMetadata(), 1)
+	require.Equal(t, "prod", state.GetMetadata()["env"].GetStringValue())
 }
 
 func TestReplayStoreTransactionCreateWithoutMetadata(t *testing.T) {
@@ -187,7 +184,7 @@ func TestReplayStoreTransactionCreateWithoutMetadata(t *testing.T) {
 
 	state := readTransaction(t, rs, key)
 	require.Equal(t, uint64(10), state.GetCreatedByLog())
-	require.Nil(t, state.GetMetadata())
+	require.Empty(t, state.GetMetadata())
 }
 
 func TestReplayStoreTransactionRevertedBy(t *testing.T) {
@@ -211,13 +208,11 @@ func TestReplayStoreTransactionSaveMeta(t *testing.T) {
 	key := []byte("ledger\x00tx:1")
 
 	require.NoError(t, rs.CreateTransaction(key, 1, nil))
-	require.NoError(t, rs.SaveTxMetadata(key, []*commonpb.Metadata{
-		strMeta("env", "staging"),
-	}))
+	require.NoError(t, rs.SaveTxMetadata(key, strMetaMap("env", "staging")))
 
 	state := readTransaction(t, rs, key)
-	require.Len(t, state.GetMetadata().GetMetadata(), 1)
-	require.Equal(t, "staging", state.GetMetadata().GetMetadata()[0].GetValue().GetStringValue())
+	require.Len(t, state.GetMetadata(), 1)
+	require.Equal(t, "staging", state.GetMetadata()["env"].GetStringValue())
 }
 
 func TestReplayStoreTransactionSaveMetaOverwrite(t *testing.T) {
@@ -226,20 +221,14 @@ func TestReplayStoreTransactionSaveMetaOverwrite(t *testing.T) {
 	rs := newTestReplayStore(t)
 	key := []byte("ledger\x00tx:1")
 
-	meta := &commonpb.MetadataSet{
-		Metadata: []*commonpb.Metadata{
-			strMeta("env", "dev"),
-		},
-	}
+	meta := strMetaMap("env", "dev")
 
 	require.NoError(t, rs.CreateTransaction(key, 1, meta))
-	require.NoError(t, rs.SaveTxMetadata(key, []*commonpb.Metadata{
-		strMeta("env", "prod"),
-	}))
+	require.NoError(t, rs.SaveTxMetadata(key, strMetaMap("env", "prod")))
 
 	state := readTransaction(t, rs, key)
-	require.Len(t, state.GetMetadata().GetMetadata(), 1)
-	require.Equal(t, "prod", state.GetMetadata().GetMetadata()[0].GetValue().GetStringValue())
+	require.Len(t, state.GetMetadata(), 1)
+	require.Equal(t, "prod", state.GetMetadata()["env"].GetStringValue())
 }
 
 func TestReplayStoreTransactionDeleteMeta(t *testing.T) {
@@ -248,19 +237,14 @@ func TestReplayStoreTransactionDeleteMeta(t *testing.T) {
 	rs := newTestReplayStore(t)
 	key := []byte("ledger\x00tx:1")
 
-	meta := &commonpb.MetadataSet{
-		Metadata: []*commonpb.Metadata{
-			strMeta("env", "prod"),
-			strMeta("region", "eu"),
-		},
-	}
+	meta := strMetaMap("env", "prod", "region", "eu")
 
 	require.NoError(t, rs.CreateTransaction(key, 1, meta))
 	require.NoError(t, rs.DeleteTxMetadata(key, "env"))
 
 	state := readTransaction(t, rs, key)
-	require.Len(t, state.GetMetadata().GetMetadata(), 1)
-	require.Equal(t, "region", state.GetMetadata().GetMetadata()[0].GetKey())
+	require.Len(t, state.GetMetadata(), 1)
+	require.Equal(t, "eu", state.GetMetadata()["region"].GetStringValue())
 }
 
 func TestReplayStoreTransactionFullLifecycle(t *testing.T) {
@@ -270,21 +254,13 @@ func TestReplayStoreTransactionFullLifecycle(t *testing.T) {
 	key := []byte("ledger\x00tx:1")
 
 	// Create with initial metadata
-	require.NoError(t, rs.CreateTransaction(key, 1, &commonpb.MetadataSet{
-		Metadata: []*commonpb.Metadata{
-			strMeta("type", "payment"),
-		},
-	}))
+	require.NoError(t, rs.CreateTransaction(key, 1, strMetaMap("type", "payment")))
 
 	// Add metadata
-	require.NoError(t, rs.SaveTxMetadata(key, []*commonpb.Metadata{
-		strMeta("status", "pending"),
-	}))
+	require.NoError(t, rs.SaveTxMetadata(key, strMetaMap("status", "pending")))
 
 	// Overwrite metadata
-	require.NoError(t, rs.SaveTxMetadata(key, []*commonpb.Metadata{
-		strMeta("status", "completed"),
-	}))
+	require.NoError(t, rs.SaveTxMetadata(key, strMetaMap("status", "completed")))
 
 	// Delete metadata
 	require.NoError(t, rs.DeleteTxMetadata(key, "type"))
@@ -295,9 +271,8 @@ func TestReplayStoreTransactionFullLifecycle(t *testing.T) {
 	state := readTransaction(t, rs, key)
 	require.Equal(t, uint64(1), state.GetCreatedByLog())
 	require.Equal(t, uint64(42), state.GetRevertedByTransaction())
-	require.Len(t, state.GetMetadata().GetMetadata(), 1)
-	require.Equal(t, "status", state.GetMetadata().GetMetadata()[0].GetKey())
-	require.Equal(t, "completed", state.GetMetadata().GetMetadata()[0].GetValue().GetStringValue())
+	require.Len(t, state.GetMetadata(), 1)
+	require.Equal(t, "completed", state.GetMetadata()["status"].GetStringValue())
 }
 
 func TestReplayStorePrefixIter(t *testing.T) {

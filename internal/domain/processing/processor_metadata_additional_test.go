@@ -33,7 +33,7 @@ func TestProcessAddMetadata_NilTarget(t *testing.T) {
 				Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
 					AddMetadata: &raftcmdpb.SaveMetadataOrder{
 						Target:   nil,
-						Metadata: &commonpb.MetadataSet{},
+						Metadata: map[string]*commonpb.MetadataValue{},
 					},
 				},
 			},
@@ -89,10 +89,8 @@ func TestProcessAddMetadata_WithSchema(t *testing.T) {
 								Account: &commonpb.TargetAccount{Addr: "users:001"},
 							},
 						},
-						Metadata: &commonpb.MetadataSet{
-							Metadata: []*commonpb.Metadata{
-								{Key: "age", Value: commonpb.NewStringValue("25")},
-							},
+						Metadata: map[string]*commonpb.MetadataValue{
+							"age": commonpb.NewStringValue("25"),
 						},
 					},
 				},
@@ -131,10 +129,8 @@ func TestProcessAddMetadata_TransactionNotFound(t *testing.T) {
 								Transaction: &commonpb.TargetTransaction{Id: 99}, // Beyond NextTransactionId=5
 							},
 						},
-						Metadata: &commonpb.MetadataSet{
-							Metadata: []*commonpb.Metadata{
-								{Key: "status", Value: commonpb.NewStringValue("done")},
-							},
+						Metadata: map[string]*commonpb.MetadataValue{
+							"status": commonpb.NewStringValue("done"),
 						},
 					},
 				},
@@ -239,11 +235,9 @@ func TestProcessDeleteMetadata_Transaction(t *testing.T) {
 	txKey := domain.TransactionKey{Ledger: "test-ledger", ID: 3}
 	existingState := &commonpb.TransactionState{
 		CreatedByLog: 1,
-		Metadata: &commonpb.MetadataSet{
-			Metadata: []*commonpb.Metadata{
-				{Key: "category", Value: commonpb.NewStringValue("expense")},
-				{Key: "status", Value: commonpb.NewStringValue("active")},
-			},
+		Metadata: map[string]*commonpb.MetadataValue{
+			"category": commonpb.NewStringValue("expense"),
+			"status":   commonpb.NewStringValue("active"),
 		},
 	}
 
@@ -254,8 +248,8 @@ func TestProcessDeleteMetadata_Transaction(t *testing.T) {
 		func(_ domain.TransactionKey, state *commonpb.TransactionState) {
 			// "category" should be removed, only "status" remains
 			require.NotNil(t, state.GetMetadata())
-			require.Len(t, state.GetMetadata().GetMetadata(), 1)
-			require.Equal(t, "status", state.GetMetadata().GetMetadata()[0].GetKey())
+			require.Len(t, state.GetMetadata(), 1)
+			require.Contains(t, state.GetMetadata(), "status")
 		},
 	)
 	mockStore.EXPECT().GetDate().Return(now)

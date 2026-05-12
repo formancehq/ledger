@@ -3,6 +3,7 @@ package processing
 import (
 	"errors"
 	"fmt"
+	"maps"
 
 	"github.com/holiman/uint256"
 
@@ -95,35 +96,23 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 	}
 
 	// Merge metadata: order metadata takes precedence over script metadata.
-	// Uses typed []*Metadata directly to avoid map[string]string roundtrip.
 	finalMetadata := order.GetMetadata()
 
 	if len(result.TransactionMetadata) > 0 {
-		// Build a set of existing order keys for precedence check
-		orderKeys := make(map[string]struct{})
-
-		if finalMetadata != nil {
-			for _, md := range finalMetadata.GetMetadata() {
-				orderKeys[md.GetKey()] = struct{}{}
-			}
+		if finalMetadata == nil {
+			finalMetadata = make(map[string]*commonpb.MetadataValue, len(result.TransactionMetadata))
 		}
+
 		// Append script metadata (order metadata takes precedence if key exists)
-		merged := make([]*commonpb.Metadata, 0, len(orderKeys)+len(result.TransactionMetadata))
-		if finalMetadata != nil {
-			merged = append(merged, finalMetadata.GetMetadata()...)
-		}
-
-		for _, md := range result.TransactionMetadata {
-			if _, exists := orderKeys[md.GetKey()]; !exists {
-				merged = append(merged, md)
+		for key, value := range result.TransactionMetadata {
+			if _, exists := finalMetadata[key]; !exists {
+				finalMetadata[key] = value
 			}
 		}
-
-		finalMetadata = &commonpb.MetadataSet{Metadata: merged}
 	}
 
-	if finalMetadata != nil {
-		enforceSchema(schema, commonpb.TargetType_TARGET_TYPE_TRANSACTION, finalMetadata.GetMetadata())
+	if len(finalMetadata) > 0 {
+		enforceSchemaMap(schema, commonpb.TargetType_TARGET_TYPE_TRANSACTION, finalMetadata)
 		txState.Metadata = finalMetadata
 	}
 
@@ -131,73 +120,56 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 
 	// Merge account metadata from script output and order.
 	// Order metadata takes precedence over script metadata (same key → order wins).
-	var accountMetadata map[string]*commonpb.MetadataSet
+	var accountMetadata map[string]*commonpb.MetadataMap
 	if len(result.AccountsMetadata) > 0 {
-		accountMetadata = make(map[string]*commonpb.MetadataSet, len(result.AccountsMetadata))
-		for account, mdList := range result.AccountsMetadata {
-			accountMetadata[account] = &commonpb.MetadataSet{Metadata: mdList}
+		accountMetadata = make(map[string]*commonpb.MetadataMap, len(result.AccountsMetadata))
+		for account, mdMap := range result.AccountsMetadata {
+			accountMetadata[account] = &commonpb.MetadataMap{Values: mdMap}
 		}
 	}
 
-	for account, ms := range order.GetAccountMetadata() {
+	for account, mm := range order.GetAccountMetadata() {
 		if accountMetadata == nil {
-			accountMetadata = make(map[string]*commonpb.MetadataSet)
+			accountMetadata = make(map[string]*commonpb.MetadataMap)
 		}
 
 		existing := accountMetadata[account]
 		if existing == nil {
-			accountMetadata[account] = ms
+			accountMetadata[account] = mm
 		} else {
-			// Order keys take precedence: build set of order keys, keep only
-			// script entries whose key is not overridden.
-			orderKeys := make(map[string]struct{}, len(ms.GetMetadata()))
-			for _, md := range ms.GetMetadata() {
-				orderKeys[md.GetKey()] = struct{}{}
-			}
-
-			merged := make([]*commonpb.Metadata, 0, len(existing.GetMetadata())+len(ms.GetMetadata()))
-			for _, md := range existing.GetMetadata() {
-				if _, overridden := orderKeys[md.GetKey()]; !overridden {
-					merged = append(merged, md)
-				}
-			}
-
-			merged = append(merged, ms.GetMetadata()...)
-			accountMetadata[account] = &commonpb.MetadataSet{Metadata: merged}
+			// Order keys take precedence: merge order entries into existing.
+			maps.Copy(existing.GetValues(), mm.GetValues())
 		}
 	}
 
 	// Enforce schema, capture previous values, and write to buffer.
-	var previousAccountMetadata map[string]*commonpb.MetadataSet
+	var previousAccountMetadata map[string]*commonpb.MetadataMap
 
-	for account, ms := range accountMetadata {
-		enforceSchema(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, ms.GetMetadata())
+	for account, mm := range accountMetadata {
+		enforceSchemaMap(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, mm.GetValues())
 
-		for _, md := range ms.GetMetadata() {
+		for key, value := range mm.GetValues() {
 			metaKey := domain.MetadataKey{
 				AccountKey: domain.AccountKey{Ledger: ledger, Account: account},
-				Key:        md.GetKey(),
+				Key:        key,
 			}
 
 			// Capture old value before overwriting (for log replay in indexbuilder).
 			if oldVal, err := s.GetAccountMetadata(metaKey); err == nil {
 				if previousAccountMetadata == nil {
-					previousAccountMetadata = make(map[string]*commonpb.MetadataSet)
+					previousAccountMetadata = make(map[string]*commonpb.MetadataMap)
 				}
 
-				prevSet := previousAccountMetadata[account]
-				if prevSet == nil {
-					prevSet = &commonpb.MetadataSet{}
-					previousAccountMetadata[account] = prevSet
+				prevMap := previousAccountMetadata[account]
+				if prevMap == nil {
+					prevMap = &commonpb.MetadataMap{Values: make(map[string]*commonpb.MetadataValue)}
+					previousAccountMetadata[account] = prevMap
 				}
 
-				prevSet.Metadata = append(prevSet.Metadata, &commonpb.Metadata{
-					Key:   md.GetKey(),
-					Value: oldVal,
-				})
+				prevMap.Values[key] = oldVal
 			}
 
-			s.PutAccountMetadata(metaKey, md.GetValue())
+			s.PutAccountMetadata(metaKey, value)
 		}
 	}
 
@@ -250,11 +222,10 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 
 // produceResult holds the result of producing postings from an order.
 // It includes the postings and any metadata set by the script.
-// Metadata is carried as typed []*commonpb.Metadata to avoid string roundtrips.
 type produceResult struct {
 	Postings            []*commonpb.Posting
-	TransactionMetadata []*commonpb.Metadata            // Metadata from set_tx_meta in Numscript
-	AccountsMetadata    map[string][]*commonpb.Metadata // Metadata from set_account_meta in Numscript
+	TransactionMetadata map[string]*commonpb.MetadataValue            // Metadata from set_tx_meta in Numscript
+	AccountsMetadata    map[string]map[string]*commonpb.MetadataValue // Metadata from set_account_meta in Numscript
 }
 
 type postingProducer interface {

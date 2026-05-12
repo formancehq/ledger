@@ -29,7 +29,7 @@ func (x *CreateTransactionPayload) MarshalJSON() ([]byte, error) {
 		Script          *commonpb.Script          `json:"script,omitempty"`
 	}{
 		AccountMetadata: commonpb.AccountMetadataToAnyMap(x.GetAccountMetadata()),
-		Metadata:        commonpb.MetadataSetToAnyMap(x.GetMetadata()),
+		Metadata:        commonpb.MetadataToAnyMap(x.GetMetadata()),
 		Timestamp:       x.GetTimestamp(),
 		Reference:       x.GetReference(),
 		Postings:        x.GetPostings(),
@@ -48,7 +48,7 @@ func (x *RevertTransactionPayload) MarshalJSON() ([]byte, error) {
 		TransactionId:   x.GetTransactionId(),
 		Force:           x.GetForce(),
 		AtEffectiveDate: x.GetAtEffectiveDate(),
-		Metadata:        commonpb.MetadataSetToAnyMap(x.GetMetadata()),
+		Metadata:        commonpb.MetadataToAnyMap(x.GetMetadata()),
 	})
 }
 
@@ -215,7 +215,7 @@ func unmarshalSaveMetadataCommand(data json.RawValue) (*commonpb.SaveMetadataCom
 		return nil, err
 	}
 
-	ms, err := commonpb.MetadataSetFromAnyMap(raw.Metadata)
+	ms, err := commonpb.MetadataFromAnyMap(raw.Metadata)
 	if err != nil {
 		return nil, fmt.Errorf("invalid metadata: %w", err)
 	}
@@ -240,7 +240,7 @@ func unmarshalRevertTransactionPayload(data json.RawValue) (*RevertTransactionPa
 		return nil, err
 	}
 
-	ms, err := commonpb.MetadataSetFromAnyMap(raw.Metadata)
+	ms, err := commonpb.MetadataFromAnyMap(raw.Metadata)
 	if err != nil {
 		return nil, fmt.Errorf("invalid metadata: %w", err)
 	}

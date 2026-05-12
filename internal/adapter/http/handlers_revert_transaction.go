@@ -49,7 +49,7 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 				}
 			}
 
-			payload.Metadata = commonpb.MetadataSetFromMap(metadataMap)
+			payload.Metadata = commonpb.MetadataFromGoMap(metadataMap)
 		}
 
 		if force, ok := reqBody["force"].(bool); ok {

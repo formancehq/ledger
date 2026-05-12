@@ -154,7 +154,7 @@ func sinkPopulateApply(data *sinkEventData, apply *commonpb.ApplyLedgerLog) {
 
 	case *commonpb.LedgerLogPayload_SavedMetadata:
 		data.TargetType, data.TargetID = sinkConvertTarget(lp.SavedMetadata.GetTarget())
-		data.Metadata = sinkConvertMetadataSet(lp.SavedMetadata.GetMetadata())
+		data.Metadata = sinkConvertMetadata(lp.SavedMetadata.GetMetadata())
 
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
 		data.TargetType, data.TargetID = sinkConvertTarget(lp.DeletedMetadata.GetTarget())
@@ -200,34 +200,34 @@ func sinkConvertTransaction(tx *commonpb.Transaction) *sinkTransaction {
 		}
 	}
 
-	result.Metadata = sinkConvertMetadataSet(tx.GetMetadata())
+	result.Metadata = sinkConvertMetadata(tx.GetMetadata())
 
 	return result
 }
 
-func sinkConvertMetadataSet(ms *commonpb.MetadataSet) map[string]string {
-	if ms == nil || len(ms.GetMetadata()) == 0 {
+func sinkConvertMetadata(m map[string]*commonpb.MetadataValue) map[string]string {
+	if len(m) == 0 {
 		return nil
 	}
 
-	result := make(map[string]string, len(ms.GetMetadata()))
-	for _, entry := range ms.GetMetadata() {
-		if entry.GetValue() != nil {
-			result[entry.GetKey()] = commonpb.MetadataValueToString(entry.GetValue())
+	result := make(map[string]string, len(m))
+	for key, value := range m {
+		if value != nil {
+			result[key] = commonpb.MetadataValueToString(value)
 		}
 	}
 
 	return result
 }
 
-func sinkConvertAccountMetadataMap(am map[string]*commonpb.MetadataSet) map[string]map[string]string {
+func sinkConvertAccountMetadataMap(am map[string]*commonpb.MetadataMap) map[string]map[string]string {
 	if len(am) == 0 {
 		return nil
 	}
 
 	result := make(map[string]map[string]string, len(am))
-	for addr, ms := range am {
-		result[addr] = sinkConvertMetadataSet(ms)
+	for addr, mm := range am {
+		result[addr] = sinkConvertMetadata(mm.GetValues())
 	}
 
 	return result

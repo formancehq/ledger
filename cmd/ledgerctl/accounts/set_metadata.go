@@ -133,7 +133,7 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 										Account: &commonpb.TargetAccount{Addr: address},
 									},
 								},
-								Metadata: commonpb.MetadataSetFromMap(metadata),
+								Metadata: commonpb.MetadataFromGoMap(metadata),
 							},
 						},
 					},

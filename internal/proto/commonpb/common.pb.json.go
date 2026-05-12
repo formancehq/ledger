@@ -167,7 +167,7 @@ func (x *Account) MarshalJSON() ([]byte, error) {
 		UpdatedAt     *Timestamp     `json:"updatedAt,omitempty"`
 	}{
 		Address:       x.GetAddress(),
-		Metadata:      MetadataSetToAnyMap(x.GetMetadata()),
+		Metadata:      MetadataToAnyMap(x.GetMetadata()),
 		FirstUsage:    x.GetFirstUsage(),
 		InsertionDate: x.GetInsertionDate(),
 		UpdatedAt:     x.GetUpdatedAt(),
@@ -207,7 +207,7 @@ func (x *SavedMetadata) MarshalJSON() ([]byte, error) {
 		Metadata      map[string]any `json:"metadata,omitempty"`
 	}{
 		TargetType: x.GetTarget().AsConst(),
-		Metadata:   MetadataSetToAnyMap(x.GetMetadata()),
+		Metadata:   MetadataToAnyMap(x.GetMetadata()),
 	}
 
 	// Handle oneof target_id
@@ -312,12 +312,12 @@ func (sm *SavedMetadata) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	ms, err := MetadataSetFromAnyMap(x.Metadata)
+	md, err := MetadataFromAnyMap(x.Metadata)
 	if err != nil {
 		return fmt.Errorf("invalid metadata: %w", err)
 	}
 
-	sm.Metadata = ms
+	sm.Metadata = md
 
 	switch strings.ToUpper(x.TargetType) {
 	case strings.ToUpper(MetaTargetTypeAccount):

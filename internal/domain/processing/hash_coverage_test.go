@@ -75,10 +75,8 @@ func TestGoldenHashSavedMetadata(t *testing.T) {
 											Account: &commonpb.TargetAccount{Addr: "user:123"},
 										},
 									},
-									Metadata: &commonpb.MetadataSet{
-										Metadata: []*commonpb.Metadata{
-											{Key: "status", Value: commonpb.NewStringValue("active")},
-										},
+									Metadata: map[string]*commonpb.MetadataValue{
+										"status": commonpb.NewStringValue("active"),
 									},
 								},
 							},
@@ -91,7 +89,7 @@ func TestGoldenHashSavedMetadata(t *testing.T) {
 
 	_, hashResult := ComputeLogHash(nil, nil, log)
 	got := hex.EncodeToString(hashResult)
-	require.Equal(t, "cf60a55a14e2b846fd836c76776f346484684cdf4ed7f0a8f72a6eb846a1cc8e", got)
+	require.Equal(t, "72f89815cf6511cb652f1bfb8cd6fb5474ac0369f57478541d8745953c6a9b57", got)
 }
 
 // TestGoldenHashDeletedMetadata covers hashDeletedMetadata and hashTarget (transaction).

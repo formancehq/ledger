@@ -145,7 +145,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 			Expect(intVal.IntValue).To(Equal(int64(42)))
 
 			// ToMap should still return string representation
-			Expect(account.Metadata.ToMap()["age"]).To(Equal("42"))
+			Expect(commonpb.MetadataToGoMap(account.Metadata)["age"]).To(Equal("42"))
 		})
 	})
 
@@ -293,7 +293,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 			Expect(nullVal.NullValue.Original).To(Equal("not-a-number"))
 
 			// ToMap should preserve the original string
-			Expect(account.Metadata.ToMap()["age"]).To(Equal("not-a-number"))
+			Expect(commonpb.MetadataToGoMap(account.Metadata)["age"]).To(Equal("not-a-number"))
 		})
 	})
 
@@ -629,7 +629,7 @@ set_account_meta(@user, "account_type", "true")
 			})
 			Expect(err).To(Succeed())
 
-			m := account.Metadata.ToMap()
+			m := commonpb.MetadataToGoMap(account.Metadata)
 			Expect(m["field_int8"]).To(Equal("-42"))
 			Expect(m["field_int16"]).To(Equal("1000"))
 			Expect(m["field_int32"]).To(Equal("100000"))
@@ -752,10 +752,8 @@ set_account_meta(@user, "account_type", "true")
 		})
 
 		It("Should accept and preserve a typed int_value sent directly", func() {
-			typedMeta := &commonpb.MetadataSet{
-				Metadata: []*commonpb.Metadata{
-					{Key: "score", Value: commonpb.NewIntValue(42)},
-				},
+			typedMeta := map[string]*commonpb.MetadataValue{
+				"score": commonpb.NewIntValue(42),
 			}
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{

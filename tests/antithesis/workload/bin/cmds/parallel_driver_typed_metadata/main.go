@@ -81,7 +81,7 @@ func main() {
 										Account: &commonpb.TargetAccount{Addr: address},
 									},
 								},
-								Metadata: commonpb.MetadataSetFromMap(map[string]string{
+								Metadata: commonpb.MetadataFromGoMap(map[string]string{
 									metaKey: fmt.Sprintf("%d", metaValue),
 								}),
 							},
@@ -213,14 +213,7 @@ func main() {
 
 		if err == nil {
 			// The metadata value should still be present (possibly converted).
-			found := false
-			for _, m := range acct.GetMetadata().GetMetadata() {
-				if m.GetKey() == metaKey {
-					found = true
-
-					break
-				}
-			}
+			_, found := acct.GetMetadata()[metaKey]
 
 			assert.AlwaysOrUnreachable(found, "metadata key should survive type changes", details)
 		}
@@ -242,7 +235,7 @@ func main() {
 										Account: &commonpb.TargetAccount{Addr: address},
 									},
 								},
-								Metadata: commonpb.MetadataSetFromMap(map[string]string{
+								Metadata: commonpb.MetadataFromGoMap(map[string]string{
 									badKey: "not-a-number",
 								}),
 							},
@@ -302,13 +295,9 @@ func main() {
 
 					converted := false
 
-					for _, m := range acctAfterBad.GetMetadata().GetMetadata() {
-						if m.GetKey() == badKey {
-							if _, isNull := m.GetValue().GetType().(*commonpb.MetadataValue_NullValue); isNull {
-								converted = true
-							}
-
-							break
+					if v, ok := acctAfterBad.GetMetadata()[badKey]; ok {
+						if _, isNull := v.GetType().(*commonpb.MetadataValue_NullValue); isNull {
+							converted = true
 						}
 					}
 

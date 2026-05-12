@@ -157,19 +157,19 @@ func (ctrl *DefaultController) buildTransaction(ctx context.Context, reader dal.
 
 // enforceTransactionSchema converts transaction metadata values in-place
 // according to the ledger's declared metadata schema. Mirrors enforceAccountSchema.
-func enforceTransactionSchema(schema *commonpb.MetadataSchema, metadata []*commonpb.Metadata) {
+func enforceTransactionSchema(schema *commonpb.MetadataSchema, metadata map[string]*commonpb.MetadataValue) {
 	if schema == nil || len(schema.GetTransactionFields()) == 0 {
 		return
 	}
 
-	for _, m := range metadata {
-		fieldSchema, ok := schema.GetTransactionFields()[m.GetKey()]
-		if !ok || m.GetValue() == nil {
+	for key, value := range metadata {
+		fieldSchema, ok := schema.GetTransactionFields()[key]
+		if !ok || value == nil {
 			continue
 		}
 
-		if !commonpb.TypeMatches(m.GetValue(), fieldSchema.GetType()) {
-			m.Value = commonpb.ConvertMetadataValue(m.GetValue(), fieldSchema.GetType())
+		if !commonpb.TypeMatches(value, fieldSchema.GetType()) {
+			metadata[key] = commonpb.ConvertMetadataValue(value, fieldSchema.GetType())
 		}
 	}
 }
@@ -215,13 +215,13 @@ func assembleTransactionFromState(ctx context.Context, reader dal.PebbleReader, 
 	tx.Reverted = state.GetRevertedByTransaction() > 0
 
 	// Override metadata from the state (which is the current truth)
-	if state.GetMetadata() != nil && len(state.GetMetadata().GetMetadata()) > 0 {
+	if len(state.GetMetadata()) > 0 {
 		tx.Metadata = state.GetMetadata()
 	}
 
 	// Apply read-time schema enforcement for transaction metadata.
-	if tx.GetMetadata() != nil {
-		enforceTransactionSchema(schema, tx.GetMetadata().GetMetadata())
+	if len(tx.GetMetadata()) > 0 {
+		enforceTransactionSchema(schema, tx.GetMetadata())
 	}
 
 	return tx, nil

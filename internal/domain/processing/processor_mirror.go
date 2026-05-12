@@ -137,38 +137,35 @@ func (p *RequestProcessor) processMirrorCreatedTransaction(ledger string, bounda
 
 	// Store account metadata
 	var (
-		accountMetadata         map[string]*commonpb.MetadataSet
-		previousAccountMetadata map[string]*commonpb.MetadataSet
+		accountMetadata         map[string]*commonpb.MetadataMap
+		previousAccountMetadata map[string]*commonpb.MetadataMap
 	)
 
 	if len(ct.GetAccountMetadata()) > 0 {
 		accountMetadata = ct.GetAccountMetadata()
-		for account, ms := range ct.GetAccountMetadata() {
-			for _, md := range ms.GetMetadata() {
+		for account, mm := range ct.GetAccountMetadata() {
+			for key, value := range mm.GetValues() {
 				metaKey := domain.MetadataKey{
 					AccountKey: domain.AccountKey{Ledger: ledger, Account: account},
-					Key:        md.GetKey(),
+					Key:        key,
 				}
 
 				// Capture old value before overwriting (for log replay in indexbuilder).
 				if oldVal, err := s.GetAccountMetadata(metaKey); err == nil {
 					if previousAccountMetadata == nil {
-						previousAccountMetadata = make(map[string]*commonpb.MetadataSet)
+						previousAccountMetadata = make(map[string]*commonpb.MetadataMap)
 					}
 
-					prevSet := previousAccountMetadata[account]
-					if prevSet == nil {
-						prevSet = &commonpb.MetadataSet{}
-						previousAccountMetadata[account] = prevSet
+					prevMap := previousAccountMetadata[account]
+					if prevMap == nil {
+						prevMap = &commonpb.MetadataMap{Values: make(map[string]*commonpb.MetadataValue)}
+						previousAccountMetadata[account] = prevMap
 					}
 
-					prevSet.Metadata = append(prevSet.Metadata, &commonpb.Metadata{
-						Key:   md.GetKey(),
-						Value: oldVal,
-					})
+					prevMap.Values[key] = oldVal
 				}
 
-				s.PutAccountMetadata(metaKey, md.GetValue())
+				s.PutAccountMetadata(metaKey, value)
 			}
 		}
 	}
@@ -210,56 +207,44 @@ func (p *RequestProcessor) processMirrorSavedMetadata(ledger string, _ *raftcmdp
 	if sm.GetTarget() != nil {
 		switch target := sm.GetTarget().GetTarget().(type) {
 		case *commonpb.Target_Account:
-			if sm.GetMetadata() != nil {
-				for _, entry := range sm.GetMetadata().GetMetadata() {
-					metaKey := domain.MetadataKey{
-						AccountKey: domain.AccountKey{Ledger: ledger, Account: target.Account.GetAddr()},
-						Key:        entry.GetKey(),
-					}
-
-					// Capture old value before overwriting.
-					if oldVal, err := s.GetAccountMetadata(metaKey); err == nil {
-						if previousValues == nil {
-							previousValues = make(map[string]*commonpb.MetadataValue)
-						}
-
-						previousValues[entry.GetKey()] = oldVal
-					}
-
-					s.PutAccountMetadata(metaKey, entry.GetValue())
+			for key, value := range sm.GetMetadata() {
+				metaKey := domain.MetadataKey{
+					AccountKey: domain.AccountKey{Ledger: ledger, Account: target.Account.GetAddr()},
+					Key:        key,
 				}
+
+				// Capture old value before overwriting.
+				if oldVal, err := s.GetAccountMetadata(metaKey); err == nil {
+					if previousValues == nil {
+						previousValues = make(map[string]*commonpb.MetadataValue)
+					}
+
+					previousValues[key] = oldVal
+				}
+
+				s.PutAccountMetadata(metaKey, value)
 			}
 		case *commonpb.Target_Transaction:
-			if sm.GetMetadata() != nil {
+			if len(sm.GetMetadata()) > 0 {
 				txKey := domain.TransactionKey{Ledger: ledger, ID: target.Transaction.GetId()}
 
 				state, _ := s.GetTransactionState(txKey)
 				if state != nil {
 					if state.GetMetadata() == nil {
-						state.Metadata = &commonpb.MetadataSet{}
+						state.Metadata = make(map[string]*commonpb.MetadataValue)
 					}
 
-					for _, metadatum := range sm.GetMetadata().GetMetadata() {
-						found := false
-
-						for i, existing := range state.GetMetadata().GetMetadata() {
-							if existing.GetKey() == metadatum.GetKey() {
-								// Capture old value before overwriting.
-								if previousValues == nil {
-									previousValues = make(map[string]*commonpb.MetadataValue)
-								}
-
-								previousValues[metadatum.GetKey()] = existing.GetValue()
-								state.Metadata.Metadata[i] = metadatum
-								found = true
-
-								break
+					for key, value := range sm.GetMetadata() {
+						// Capture old value before overwriting.
+						if existing, ok := state.GetMetadata()[key]; ok {
+							if previousValues == nil {
+								previousValues = make(map[string]*commonpb.MetadataValue)
 							}
+
+							previousValues[key] = existing
 						}
 
-						if !found {
-							state.Metadata.Metadata = append(state.Metadata.Metadata, metadatum)
-						}
+						state.Metadata[key] = value
 					}
 
 					s.PutTransactionState(txKey, state)
@@ -301,17 +286,11 @@ func (p *RequestProcessor) processMirrorDeletedMetadata(ledger string, _ *raftcm
 
 			state, _ := s.GetTransactionState(txKey)
 			if state != nil && state.GetMetadata() != nil {
-				filtered := make([]*commonpb.Metadata, 0, len(state.GetMetadata().GetMetadata()))
-
-				for _, md := range state.GetMetadata().GetMetadata() {
-					if md.GetKey() == dm.GetKey() {
-						previousValue = md.GetValue()
-					} else {
-						filtered = append(filtered, md)
-					}
+				if val, ok := state.GetMetadata()[dm.GetKey()]; ok {
+					previousValue = val
+					delete(state.GetMetadata(), dm.GetKey())
 				}
 
-				state.Metadata.Metadata = filtered
 				s.PutTransactionState(txKey, state)
 			}
 		}

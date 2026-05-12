@@ -57,11 +57,11 @@ func FuzzUint256UnmarshalJSON(f *testing.F) {
 	})
 }
 
-// FuzzMetadataSetUnmarshalJSON fuzzes the MetadataSet JSON decoder.
-// MetadataSet accepts a flat JSON object with typed values and performs
+// FuzzMetadataMapUnmarshalJSON fuzzes the MetadataMap JSON decoder.
+// MetadataMap accepts a flat JSON object with typed values and performs
 // type inference (string, int, uint, bool, null). This targets the
 // inference logic and polymorphic dispatch.
-func FuzzMetadataSetUnmarshalJSON(f *testing.F) {
+func FuzzMetadataMapUnmarshalJSON(f *testing.F) {
 	// Seed corpus: valid JSON objects with various value types.
 	f.Add([]byte(`{}`))
 	f.Add([]byte(`{"key": "value"}`))
@@ -83,30 +83,30 @@ func FuzzMetadataSetUnmarshalJSON(f *testing.F) {
 	f.Add([]byte(`[]`))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		var ms MetadataSet
+		var mm MetadataMap
 
-		err := ms.UnmarshalJSON(data)
+		err := mm.UnmarshalJSON(data)
 		if err != nil {
 			return // invalid input is fine, just must not panic
 		}
 
 		// If parsing succeeded, verify the round-trip.
-		out, err := ms.MarshalJSON()
+		out, err := mm.MarshalJSON()
 		if err != nil {
 			t.Fatalf("MarshalJSON failed after successful UnmarshalJSON: %v", err)
 		}
 
-		var ms2 MetadataSet
+		var mm2 MetadataMap
 
-		err = ms2.UnmarshalJSON(out)
+		err = mm2.UnmarshalJSON(out)
 		if err != nil {
 			t.Fatalf("round-trip UnmarshalJSON failed on %q: %v", out, err)
 		}
 
 		// Verify same number of keys.
-		if len(ms.GetMetadata()) != len(ms2.GetMetadata()) {
+		if len(mm.GetValues()) != len(mm2.GetValues()) {
 			t.Fatalf("round-trip key count mismatch: %d vs %d (input=%q, output=%q)",
-				len(ms.GetMetadata()), len(ms2.GetMetadata()), data, out)
+				len(mm.GetValues()), len(mm2.GetValues()), data, out)
 		}
 	})
 }
