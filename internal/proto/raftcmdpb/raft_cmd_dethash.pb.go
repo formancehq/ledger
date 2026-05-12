@@ -1394,6 +1394,13 @@ func (m *Proposal) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error)
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.ClusterConfig != nil {
+		size, _ := m.ClusterConfig.MarshalToSizedBufferVT(dAtA[:i])
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x4a
+	}
 	if m.IdempotencyEviction != nil {
 		size, _ := m.IdempotencyEviction.MarshalToSizedBufferVT(dAtA[:i])
 		i -= size
@@ -1564,6 +1571,11 @@ func (m *PreloadSet) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.CacheEpoch != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.CacheEpoch))
+		i--
+		dAtA[i] = 0x20
 	}
 	if len(m.Touches) > 0 {
 		for iNdEx := len(m.Touches) - 1; iNdEx >= 0; iNdEx-- {

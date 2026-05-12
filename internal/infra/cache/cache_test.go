@@ -299,7 +299,7 @@ func TestCache_NewCache(t *testing.T) {
 
 	assert.NotNil(t, cache.Volumes)
 	assert.NotNil(t, cache.AccountMetadata)
-	assert.Equal(t, uint64(100), cache.GenerationThreshold)
+	assert.Equal(t, uint64(100), cache.GenerationThreshold())
 	assert.Equal(t, uint64(0), cache.CurrentGeneration())
 	assert.Equal(t, uint64(0), cache.BaseIndex.Gen0)
 	assert.Equal(t, uint64(0), cache.BaseIndex.Gen1)
@@ -486,7 +486,7 @@ func TestCache_CheckRotationNeeded_ZeroThreshold(t *testing.T) {
 	cache, err := New(10, nil)
 	require.NoError(t, err)
 
-	cache.GenerationThreshold = 0
+	cache.SetGenerationThreshold(0)
 
 	rotated, _ := cache.CheckRotationNeeded(100)
 	assert.False(t, rotated)
@@ -498,7 +498,7 @@ func TestAttributeCache_IsGuaranteedInCache_ZeroThreshold(t *testing.T) {
 	cache, err := New(10, nil)
 	require.NoError(t, err)
 
-	cache.GenerationThreshold = 0
+	cache.SetGenerationThreshold(0)
 
 	key := attributes.NewU128(1, 1)
 	cache.Volumes.Put(key, attributes.Entry[*raftcmdpb.VolumePair]{})

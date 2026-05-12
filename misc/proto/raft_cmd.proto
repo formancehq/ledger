@@ -392,6 +392,7 @@ message Proposal {
   // A value of 0 means no prediction (e.g. barrier, mirror sync).
   uint64 predicted_index = 7;
   IdempotencyEviction idempotency_eviction = 8;
+  common.ClusterConfig cluster_config = 9;  // Cluster-wide config update (technical, no log entry)
 }
 
 // IdempotencyEviction is a deterministic cleanup command proposed by the leader.
@@ -445,6 +446,7 @@ message PreloadSet {
   uint64 lastPersistedIndex = 1;
   repeated Preload preloads = 2;
   repeated CacheTouch touches = 3;
+  uint64 cache_epoch = 4;  // Cache epoch at admission time; FSM rejects on mismatch (cache was reset)
 }
 
 // CacheTouch tells the FSM to promote a key from Gen1 to Gen0 (no value payload).

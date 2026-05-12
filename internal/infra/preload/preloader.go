@@ -140,9 +140,10 @@ func (p *Preloader) UnlockTracker() { p.tracker.Unlock() }
 // On error, the caller must call build.ReleaseLoaders().
 func (p *Preloader) BuildPreloads(needs *Needs) (*PreloadBuild, error) {
 	nextIndex := p.tracker.Next()
-	nextIndexGen := cache.Gen(nextIndex, p.cache.GenerationThreshold)
+	snap := p.cache.Snapshot()
+	nextIndexGen := cache.Gen(nextIndex, snap.GenerationThreshold)
 
-	preloadSet, token, err := p.buildPreloadsAt(nextIndex, needs)
+	preloadSet, token, err := p.buildPreloadsAt(nextIndex, snap, needs)
 	if err != nil {
 		return &PreloadBuild{token: token, nextIndex: nextIndex, nextIndexGen: nextIndexGen}, err
 	}
@@ -172,8 +173,9 @@ func (p *Preloader) BuildPreloads(needs *Needs) (*PreloadBuild, error) {
 func (p *Preloader) AcquireProposalGuard(build *PreloadBuild, needs *Needs) (*raftcmdpb.PreloadSet, *ProposalGuard, error) {
 	p.tracker.Lock()
 
+	snap := p.cache.Snapshot()
 	nextIndexAfter := p.tracker.Next()
-	nextIndexGenAfter := cache.Gen(nextIndexAfter, p.cache.GenerationThreshold)
+	nextIndexGenAfter := cache.Gen(nextIndexAfter, snap.GenerationThreshold)
 
 	if build.nextIndexGen == nextIndexGenAfter {
 		return nil, &ProposalGuard{p: p, token: build.token}, nil
@@ -195,7 +197,7 @@ func (p *Preloader) AcquireProposalGuard(build *PreloadBuild, needs *Needs) (*ra
 		}).Debugf("nextIndex generation changed, rebuilding preloads under lock")
 	}
 
-	preloadSet, token, err := p.buildPreloadsAt(p.tracker.Next(), needs)
+	preloadSet, token, err := p.buildPreloadsAt(p.tracker.Next(), snap, needs)
 	if err != nil {
 		p.tracker.Unlock()
 
@@ -224,15 +226,15 @@ type buildResult struct {
 // buildPreloadsAt resolves all preload needs at the given nextIndex.
 // Each attribute type uses independent caches and loaders, so they are resolved
 // in parallel to reduce wall-clock time and shard lock hold duration.
-func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.PreloadSet, *CleanupToken, error) {
-	boundary := cache.BoundaryIndex(nextIndex, p.cache.GenerationThreshold)
+func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, needs *Needs) (*raftcmdpb.PreloadSet, *CleanupToken, error) {
+	boundary := cache.BoundaryIndex(nextIndex, snap.GenerationThreshold)
 
 	if p.logger.Enabled(logging.DebugLevel) {
 		p.logger.WithFields(map[string]any{
 			"nextIndex":           nextIndex,
 			"boundary":            boundary,
-			"generationThreshold": p.cache.GenerationThreshold,
-			"gen":                 cache.Gen(nextIndex, p.cache.GenerationThreshold),
+			"generationThreshold": snap.GenerationThreshold,
+			"gen":                 cache.Gen(nextIndex, snap.GenerationThreshold),
 		}).Debugf("Preloader: buildPreloadsAt")
 	}
 
@@ -464,6 +466,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 	token := &CleanupToken{}
 	preloadSet := &raftcmdpb.PreloadSet{
 		LastPersistedIndex: boundary,
+		CacheEpoch:         snap.Epoch,
 	}
 
 	for i := range slot {

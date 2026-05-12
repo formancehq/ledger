@@ -367,6 +367,20 @@ message SetMaintenanceModeLog {
   bool enabled = 1;
 }
 
+// ClusterConfig holds mutable cluster-wide configuration parameters.
+// These are updated via Raft to ensure deterministic application across all nodes.
+message ClusterConfig {
+  uint64 rotation_threshold = 1;
+}
+
+// PersistedClusterState wraps ClusterConfig with internal FSM state that must
+// be persisted for deterministic restore but is not part of the config proposal.
+message PersistedClusterState {
+  ClusterConfig config = 1;
+  uint64 cache_epoch = 2;  // Incremented on each config-driven cache reset
+}
+
+
 // SetPeriodScheduleLog records a period schedule change.
 message SetPeriodScheduleLog {
   string cron = 1;

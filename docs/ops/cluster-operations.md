@@ -483,6 +483,89 @@ ledgerctl cluster status
 - The force-removed node is not notified — if it somehow recovers, it will have stale cluster membership
 - Cannot force-remove the leader itself
 
+## Cluster Configuration Updates
+
+Some configuration parameters can be changed on a live cluster via a **rolling upgrade** -- restart nodes one by one with the new CLI flags. The new leader propagates the configuration change through Raft consensus so all nodes converge deterministically.
+
+### Mutable Parameters
+
+| Parameter | CLI Flag | Effect of change |
+|-----------|----------|-----------------|
+| Cache rotation threshold | `--cache-rotation-threshold` | Controls how many Raft entries per cache generation. Lower = less memory, more Pebble reads. Higher = more memory, fewer preloads. |
+
+### Immutable Parameters
+
+These parameters are validated at boot and cannot be changed without `--unsafe-skip-config-validation`:
+
+| Parameter | CLI Flag |
+|-----------|----------|
+| Node ID | `--node-id` |
+| Cluster ID | `--cluster-id` |
+
+### How It Works
+
+Mutable config parameters are propagated through the Raft log to ensure all nodes apply the change at the same index. The mechanism:
+
+1. When a node becomes **leader**, it compares its CLI config with the persisted cluster config in Pebble.
+2. If they differ, it proposes an `UpdateClusterConfig` entry through Raft.
+3. All nodes apply the config change at the same Raft index (deterministic).
+4. The change takes effect immediately -- no restart required for the nodes that already received the Raft entry.
+
+### Rolling Upgrade Procedure
+
+To change `--cache-rotation-threshold` from 1000 to 500 on a 3-node cluster:
+
+```bash
+# 1. Restart each follower with the new flag
+#    (check cluster state to identify the leader first)
+ledgerctl cluster state
+
+# 2. Stop follower node 2, restart with new config
+# 3. Wait for node 2 to rejoin as follower
+# 4. Repeat for follower node 3
+
+# 5. Transfer leadership to an updated node
+ledgerctl cluster transfer-leadership --target 2
+
+# 6. The new leader proposes the config change via Raft
+#    All nodes (including the old leader) apply it
+
+# 7. Restart the old leader with the new flag
+```
+
+### Monitoring Convergence
+
+Use `GetClusterState` to verify all nodes have converged to the new threshold:
+
+```bash
+ledgerctl cluster state
+# Look for cluster_config.rotation_threshold in the output
+```
+
+### Transient Command Rejections During Rolling Upgrade
+
+When a config change resets the cache (threshold changed), there is a **race window** between the admission layer (which builds preloads against the old cache state) and the FSM (which resets the cache when applying the config change).
+
+Proposals admitted just before the config change may carry a stale `cache_epoch`. The FSM detects this and rejects the proposal with `Unavailable`, causing the client to **retry automatically** via the gRPC retry policy.
+
+**Impact:**
+
+- A small number of in-flight requests may experience a single retry (~1-10 ms additional latency).
+- No data loss or corruption -- the retry rebuilds preloads against the fresh cache state.
+- This only happens once per config change, during the brief window between the config proposal entering the Raft log and the FSM applying it.
+
+**Mitigation:** If zero-downtime is critical, apply the config change during a low-traffic period. The rejection window is typically under 100 ms.
+
+### What Happens to the Cache
+
+When the rotation threshold changes, the cache boundaries shift. The FSM:
+
+1. **Resets** the in-memory cache (Gen0 and Gen1 cleared).
+2. **Purges** the persisted cache snapshot zone (0xFF) in Pebble.
+3. **Increments** the cache epoch (persisted in `PersistedClusterState`).
+
+After the reset, the preloader falls back to Pebble reads (0xF1 zone) for all cache misses. The cache rebuilds naturally as new entries are applied. This causes a temporary increase in Pebble reads until the cache is warm again.
+
 ## Related Documentation
 
 - [Raft Consensus](../dev/architecture/raft-consensus.md) - Raft protocol details, elections, replication
@@ -490,3 +573,4 @@ ledgerctl cluster status
 - [Spool](../dev/architecture/spool.md) - Spool technical implementation
 - [Deployment](./deployment.md) - Helm chart configuration, CLI flags
 - [CLI Reference](./cli.md) - `cluster add-learner`, `cluster promote-learner` commands
+- [Memory Management](./memory.md) - Cache rotation threshold memory impact

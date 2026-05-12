@@ -15,6 +15,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/application/ctrl"
 	"github.com/formancehq/ledger-v3-poc/internal/application/indexbuilder"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/backup"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/diskusage"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
@@ -37,6 +38,7 @@ type ClusterServiceServerImpl struct {
 	collector           *diskusage.Collector
 	store               *dal.Store
 	readStore           *readstore.Store
+	cache               *cache.Cache
 	sharedState         *state.SharedState
 	indexBuilder        *indexbuilder.Builder
 	admission           ctrl.Admission
@@ -56,6 +58,7 @@ func NewClusterServiceServer(
 	servicePool *transport.ConnectionPool,
 	collector *diskusage.Collector,
 	store *dal.Store,
+	cache *cache.Cache,
 	sharedState *state.SharedState,
 	indexBuilder *indexbuilder.Builder,
 	readStore *readstore.Store,
@@ -73,6 +76,7 @@ func NewClusterServiceServer(
 		collector:        collector,
 		store:            store,
 		readStore:        readStore,
+		cache:            cache,
 		sharedState:      sharedState,
 		indexBuilder:     indexBuilder,
 		admission:        admission,
@@ -135,6 +139,9 @@ func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) 
 
 	// Populate maintenance mode from shared state
 	clusterState.MaintenanceMode = impl.sharedState.MaintenanceMode()
+	clusterState.ClusterConfig = &commonpb.ClusterConfig{
+		RotationThreshold: impl.cache.GenerationThreshold(),
+	}
 
 	// Populate local index builder progress on ClusterState (for backward compat / single-node view)
 	localIndexProgress := &clusterpb.IndexProgress{

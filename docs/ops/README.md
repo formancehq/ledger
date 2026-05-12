@@ -13,6 +13,7 @@ Everything you need to deploy, monitor, and operate a Ledger v3 cluster.
 | Manage request signing | [signing.md](./signing.md) |
 | Enable maintenance mode | [maintenance-mode.md](./maintenance-mode.md) |
 | Manage cluster nodes | [cluster-operations.md](./cluster-operations.md) |
+| Change cluster config (rolling upgrade) | [cluster-operations.md](./cluster-operations.md#cluster-configuration-updates) |
 | Monitor disk usage | [disk-space.md](./disk-space.md) |
 | Enable sentinel mode | [sentinel-mode.md](./sentinel-mode.md) |
 | Verify data integrity | [correctness.md](./correctness.md) |

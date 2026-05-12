@@ -15,7 +15,6 @@ import (
 type PersistedConfig struct {
 	NodeID                uint64 `json:"nodeId"`
 	ClusterID             string `json:"clusterId"`
-	RotationThreshold     uint64 `json:"rotationThreshold,omitempty"`
 	IdempotencyTTLSeconds uint64 `json:"idempotencyTTLSeconds,omitempty"`
 }
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/cockroachdb/pebble/v2"
 
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
@@ -75,4 +76,26 @@ func ReadMaintenanceMode(reader dal.PebbleReader) (bool, error) {
 	}
 
 	return value[0] == 0x01, nil
+}
+
+// ReadClusterState loads the persisted cluster state from the given reader.
+// Returns nil if the key does not exist (first boot).
+func ReadClusterState(reader dal.PebbleReader) (*commonpb.PersistedClusterState, error) {
+	value, closer, err := reader.Get([]byte{dal.KeyPrefixClusterConfig})
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf("loading cluster state: %w", err)
+	}
+
+	defer func() { _ = closer.Close() }()
+
+	state := &commonpb.PersistedClusterState{}
+	if err := state.UnmarshalVT(value); err != nil {
+		return nil, fmt.Errorf("unmarshaling cluster state: %w", err)
+	}
+
+	return state, nil
 }

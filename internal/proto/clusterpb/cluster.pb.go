@@ -364,15 +364,16 @@ func (x *RaftStatus) GetProgress() map[uint64]*ProgressInfo {
 
 // ClusterState represents the state of the Raft cluster
 type ClusterState struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	State           string                 `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"`                                             // Leader, Follower, Candidate, Shutdown
-	Leader          uint32                 `protobuf:"varint,2,opt,name=leader,proto3" json:"leader,omitempty"`                                          // ID of the current leader (0 if no leader)
-	Nodes           []*NodeInfo            `protobuf:"bytes,3,rep,name=nodes,proto3" json:"nodes,omitempty"`                                             // List of all nodes in the cluster
-	LocalNode       uint32                 `protobuf:"varint,4,opt,name=local_node,json=localNode,proto3" json:"local_node,omitempty"`                   // ID of the local node
-	RaftStatus      *RaftStatus            `protobuf:"bytes,5,opt,name=raft_status,json=raftStatus,proto3" json:"raft_status,omitempty"`                 // Complete Raft status information
-	MaintenanceMode bool                   `protobuf:"varint,6,opt,name=maintenance_mode,json=maintenanceMode,proto3" json:"maintenance_mode,omitempty"` // Whether maintenance mode is active
-	SyncProgress    *SyncProgress          `protobuf:"bytes,7,opt,name=sync_progress,json=syncProgress,proto3" json:"sync_progress,omitempty"`           // Local node checkpoint sync progress
-	IndexProgress   *IndexProgress         `protobuf:"bytes,8,opt,name=index_progress,json=indexProgress,proto3" json:"index_progress,omitempty"`        // Local index builder progress
+	state           protoimpl.MessageState  `protogen:"open.v1"`
+	State           string                  `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"`                                             // Leader, Follower, Candidate, Shutdown
+	Leader          uint32                  `protobuf:"varint,2,opt,name=leader,proto3" json:"leader,omitempty"`                                          // ID of the current leader (0 if no leader)
+	Nodes           []*NodeInfo             `protobuf:"bytes,3,rep,name=nodes,proto3" json:"nodes,omitempty"`                                             // List of all nodes in the cluster
+	LocalNode       uint32                  `protobuf:"varint,4,opt,name=local_node,json=localNode,proto3" json:"local_node,omitempty"`                   // ID of the local node
+	RaftStatus      *RaftStatus             `protobuf:"bytes,5,opt,name=raft_status,json=raftStatus,proto3" json:"raft_status,omitempty"`                 // Complete Raft status information
+	MaintenanceMode bool                    `protobuf:"varint,6,opt,name=maintenance_mode,json=maintenanceMode,proto3" json:"maintenance_mode,omitempty"` // Whether maintenance mode is active
+	SyncProgress    *SyncProgress           `protobuf:"bytes,7,opt,name=sync_progress,json=syncProgress,proto3" json:"sync_progress,omitempty"`           // Local node checkpoint sync progress
+	IndexProgress   *IndexProgress          `protobuf:"bytes,8,opt,name=index_progress,json=indexProgress,proto3" json:"index_progress,omitempty"`        // Local index builder progress
+	ClusterConfig   *commonpb.ClusterConfig `protobuf:"bytes,9,opt,name=cluster_config,json=clusterConfig,proto3" json:"cluster_config,omitempty"`        // Raft-replicated mutable cluster configuration
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -459,6 +460,13 @@ func (x *ClusterState) GetSyncProgress() *SyncProgress {
 func (x *ClusterState) GetIndexProgress() *IndexProgress {
 	if x != nil {
 		return x.IndexProgress
+	}
+	return nil
+}
+
+func (x *ClusterState) GetClusterConfig() *commonpb.ClusterConfig {
+	if x != nil {
+		return x.ClusterConfig
 	}
 	return nil
 }
@@ -2223,7 +2231,7 @@ const file_cluster_proto_rawDesc = "" +
 	"\bprogress\x18\b \x03(\v2!.cluster.RaftStatus.ProgressEntryR\bprogress\x1aR\n" +
 	"\rProgressEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\x04R\x03key\x12+\n" +
-	"\x05value\x18\x02 \x01(\v2\x15.cluster.ProgressInfoR\x05value:\x028\x01\"\xe0\x02\n" +
+	"\x05value\x18\x02 \x01(\v2\x15.cluster.ProgressInfoR\x05value:\x028\x01\"\x9e\x03\n" +
 	"\fClusterState\x12\x14\n" +
 	"\x05state\x18\x01 \x01(\tR\x05state\x12\x16\n" +
 	"\x06leader\x18\x02 \x01(\rR\x06leader\x12'\n" +
@@ -2234,7 +2242,8 @@ const file_cluster_proto_rawDesc = "" +
 	"raftStatus\x12)\n" +
 	"\x10maintenance_mode\x18\x06 \x01(\bR\x0fmaintenanceMode\x12:\n" +
 	"\rsync_progress\x18\a \x01(\v2\x15.cluster.SyncProgressR\fsyncProgress\x12=\n" +
-	"\x0eindex_progress\x18\b \x01(\v2\x16.cluster.IndexProgressR\rindexProgress\"u\n" +
+	"\x0eindex_progress\x18\b \x01(\v2\x16.cluster.IndexProgressR\rindexProgress\x12<\n" +
+	"\x0ecluster_config\x18\t \x01(\v2\x15.common.ClusterConfigR\rclusterConfig\"u\n" +
 	"\rIndexProgress\x122\n" +
 	"\x15last_indexed_sequence\x18\x01 \x01(\x04R\x13lastIndexedSequence\x120\n" +
 	"\x14pebble_last_sequence\x18\x02 \x01(\x04R\x12pebbleLastSequence\"n\n" +
@@ -2419,7 +2428,8 @@ var file_cluster_proto_goTypes = []any{
 	(*GetQueryCheckpointScheduleResponse)(nil), // 38: cluster.GetQueryCheckpointScheduleResponse
 	(*QueryCheckpointInfo)(nil),                // 39: cluster.QueryCheckpointInfo
 	nil,                                        // 40: cluster.RaftStatus.ProgressEntry
-	(*commonpb.Timestamp)(nil),                 // 41: common.Timestamp
+	(*commonpb.ClusterConfig)(nil),             // 41: common.ClusterConfig
+	(*commonpb.Timestamp)(nil),                 // 42: common.Timestamp
 }
 var file_cluster_proto_depIdxs = []int32{
 	2,  // 0: cluster.NodeInfo.progress:type_name -> cluster.ProgressInfo
@@ -2430,50 +2440,51 @@ var file_cluster_proto_depIdxs = []int32{
 	3,  // 5: cluster.ClusterState.raft_status:type_name -> cluster.RaftStatus
 	6,  // 6: cluster.ClusterState.sync_progress:type_name -> cluster.SyncProgress
 	5,  // 7: cluster.ClusterState.index_progress:type_name -> cluster.IndexProgress
-	12, // 8: cluster.DiskUsage.wal_volume:type_name -> cluster.VolumeUsage
-	12, // 9: cluster.DiskUsage.data_volume:type_name -> cluster.VolumeUsage
-	39, // 10: cluster.ListQueryCheckpointsResponse.checkpoints:type_name -> cluster.QueryCheckpointInfo
-	41, // 11: cluster.QueryCheckpointInfo.created_at:type_name -> common.Timestamp
-	2,  // 12: cluster.RaftStatus.ProgressEntry.value:type_name -> cluster.ProgressInfo
-	0,  // 13: cluster.ClusterService.GetClusterState:input_type -> cluster.GetClusterStateRequest
-	9,  // 14: cluster.ClusterService.GetDiskUsage:input_type -> cluster.GetDiskUsageRequest
-	10, // 15: cluster.ClusterService.GetNodeTime:input_type -> cluster.GetNodeTimeRequest
-	7,  // 16: cluster.ClusterService.TransferLeadership:input_type -> cluster.TransferLeadershipRequest
-	14, // 17: cluster.ClusterService.AddLearner:input_type -> cluster.AddLearnerRequest
-	16, // 18: cluster.ClusterService.PromoteLearner:input_type -> cluster.PromoteLearnerRequest
-	18, // 19: cluster.ClusterService.RemoveNode:input_type -> cluster.RemoveNodeRequest
-	24, // 20: cluster.ClusterService.CompactPrimary:input_type -> cluster.CompactPrimaryRequest
-	26, // 21: cluster.ClusterService.CompactSecondary:input_type -> cluster.CompactSecondaryRequest
-	28, // 22: cluster.ClusterService.CreateCheckpoint:input_type -> cluster.CreateCheckpointRequest
-	20, // 23: cluster.ClusterService.Backup:input_type -> cluster.BackupRequest
-	22, // 24: cluster.ClusterService.IncrementalBackup:input_type -> cluster.IncrementalBackupRequest
-	30, // 25: cluster.ClusterService.CreateQueryCheckpoint:input_type -> cluster.CreateQueryCheckpointRequest
-	32, // 26: cluster.ClusterService.DeleteQueryCheckpoint:input_type -> cluster.DeleteQueryCheckpointRequest
-	34, // 27: cluster.ClusterService.ListQueryCheckpoints:input_type -> cluster.ListQueryCheckpointsRequest
-	36, // 28: cluster.ClusterService.GetQueryCheckpointInfo:input_type -> cluster.GetQueryCheckpointInfoRequest
-	37, // 29: cluster.ClusterService.GetQueryCheckpointSchedule:input_type -> cluster.GetQueryCheckpointScheduleRequest
-	4,  // 30: cluster.ClusterService.GetClusterState:output_type -> cluster.ClusterState
-	13, // 31: cluster.ClusterService.GetDiskUsage:output_type -> cluster.DiskUsage
-	11, // 32: cluster.ClusterService.GetNodeTime:output_type -> cluster.NodeTime
-	8,  // 33: cluster.ClusterService.TransferLeadership:output_type -> cluster.TransferLeadershipResponse
-	15, // 34: cluster.ClusterService.AddLearner:output_type -> cluster.AddLearnerResponse
-	17, // 35: cluster.ClusterService.PromoteLearner:output_type -> cluster.PromoteLearnerResponse
-	19, // 36: cluster.ClusterService.RemoveNode:output_type -> cluster.RemoveNodeResponse
-	25, // 37: cluster.ClusterService.CompactPrimary:output_type -> cluster.CompactPrimaryResponse
-	27, // 38: cluster.ClusterService.CompactSecondary:output_type -> cluster.CompactSecondaryResponse
-	29, // 39: cluster.ClusterService.CreateCheckpoint:output_type -> cluster.CreateCheckpointResponse
-	21, // 40: cluster.ClusterService.Backup:output_type -> cluster.BackupResponse
-	23, // 41: cluster.ClusterService.IncrementalBackup:output_type -> cluster.IncrementalBackupResponse
-	31, // 42: cluster.ClusterService.CreateQueryCheckpoint:output_type -> cluster.CreateQueryCheckpointResponse
-	33, // 43: cluster.ClusterService.DeleteQueryCheckpoint:output_type -> cluster.DeleteQueryCheckpointResponse
-	35, // 44: cluster.ClusterService.ListQueryCheckpoints:output_type -> cluster.ListQueryCheckpointsResponse
-	39, // 45: cluster.ClusterService.GetQueryCheckpointInfo:output_type -> cluster.QueryCheckpointInfo
-	38, // 46: cluster.ClusterService.GetQueryCheckpointSchedule:output_type -> cluster.GetQueryCheckpointScheduleResponse
-	30, // [30:47] is the sub-list for method output_type
-	13, // [13:30] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	41, // 8: cluster.ClusterState.cluster_config:type_name -> common.ClusterConfig
+	12, // 9: cluster.DiskUsage.wal_volume:type_name -> cluster.VolumeUsage
+	12, // 10: cluster.DiskUsage.data_volume:type_name -> cluster.VolumeUsage
+	39, // 11: cluster.ListQueryCheckpointsResponse.checkpoints:type_name -> cluster.QueryCheckpointInfo
+	42, // 12: cluster.QueryCheckpointInfo.created_at:type_name -> common.Timestamp
+	2,  // 13: cluster.RaftStatus.ProgressEntry.value:type_name -> cluster.ProgressInfo
+	0,  // 14: cluster.ClusterService.GetClusterState:input_type -> cluster.GetClusterStateRequest
+	9,  // 15: cluster.ClusterService.GetDiskUsage:input_type -> cluster.GetDiskUsageRequest
+	10, // 16: cluster.ClusterService.GetNodeTime:input_type -> cluster.GetNodeTimeRequest
+	7,  // 17: cluster.ClusterService.TransferLeadership:input_type -> cluster.TransferLeadershipRequest
+	14, // 18: cluster.ClusterService.AddLearner:input_type -> cluster.AddLearnerRequest
+	16, // 19: cluster.ClusterService.PromoteLearner:input_type -> cluster.PromoteLearnerRequest
+	18, // 20: cluster.ClusterService.RemoveNode:input_type -> cluster.RemoveNodeRequest
+	24, // 21: cluster.ClusterService.CompactPrimary:input_type -> cluster.CompactPrimaryRequest
+	26, // 22: cluster.ClusterService.CompactSecondary:input_type -> cluster.CompactSecondaryRequest
+	28, // 23: cluster.ClusterService.CreateCheckpoint:input_type -> cluster.CreateCheckpointRequest
+	20, // 24: cluster.ClusterService.Backup:input_type -> cluster.BackupRequest
+	22, // 25: cluster.ClusterService.IncrementalBackup:input_type -> cluster.IncrementalBackupRequest
+	30, // 26: cluster.ClusterService.CreateQueryCheckpoint:input_type -> cluster.CreateQueryCheckpointRequest
+	32, // 27: cluster.ClusterService.DeleteQueryCheckpoint:input_type -> cluster.DeleteQueryCheckpointRequest
+	34, // 28: cluster.ClusterService.ListQueryCheckpoints:input_type -> cluster.ListQueryCheckpointsRequest
+	36, // 29: cluster.ClusterService.GetQueryCheckpointInfo:input_type -> cluster.GetQueryCheckpointInfoRequest
+	37, // 30: cluster.ClusterService.GetQueryCheckpointSchedule:input_type -> cluster.GetQueryCheckpointScheduleRequest
+	4,  // 31: cluster.ClusterService.GetClusterState:output_type -> cluster.ClusterState
+	13, // 32: cluster.ClusterService.GetDiskUsage:output_type -> cluster.DiskUsage
+	11, // 33: cluster.ClusterService.GetNodeTime:output_type -> cluster.NodeTime
+	8,  // 34: cluster.ClusterService.TransferLeadership:output_type -> cluster.TransferLeadershipResponse
+	15, // 35: cluster.ClusterService.AddLearner:output_type -> cluster.AddLearnerResponse
+	17, // 36: cluster.ClusterService.PromoteLearner:output_type -> cluster.PromoteLearnerResponse
+	19, // 37: cluster.ClusterService.RemoveNode:output_type -> cluster.RemoveNodeResponse
+	25, // 38: cluster.ClusterService.CompactPrimary:output_type -> cluster.CompactPrimaryResponse
+	27, // 39: cluster.ClusterService.CompactSecondary:output_type -> cluster.CompactSecondaryResponse
+	29, // 40: cluster.ClusterService.CreateCheckpoint:output_type -> cluster.CreateCheckpointResponse
+	21, // 41: cluster.ClusterService.Backup:output_type -> cluster.BackupResponse
+	23, // 42: cluster.ClusterService.IncrementalBackup:output_type -> cluster.IncrementalBackupResponse
+	31, // 43: cluster.ClusterService.CreateQueryCheckpoint:output_type -> cluster.CreateQueryCheckpointResponse
+	33, // 44: cluster.ClusterService.DeleteQueryCheckpoint:output_type -> cluster.DeleteQueryCheckpointResponse
+	35, // 45: cluster.ClusterService.ListQueryCheckpoints:output_type -> cluster.ListQueryCheckpointsResponse
+	39, // 46: cluster.ClusterService.GetQueryCheckpointInfo:output_type -> cluster.QueryCheckpointInfo
+	38, // 47: cluster.ClusterService.GetQueryCheckpointSchedule:output_type -> cluster.GetQueryCheckpointScheduleResponse
+	31, // [31:48] is the sub-list for method output_type
+	14, // [14:31] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_cluster_proto_init() }

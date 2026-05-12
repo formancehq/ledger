@@ -125,6 +125,11 @@ func SaveMaintenanceMode(b *dal.Batch, enabled bool) error {
 	return nil
 }
 
+// SaveClusterState stores the persisted cluster state in the batch.
+func SaveClusterState(b *dal.Batch, state *commonpb.PersistedClusterState) error {
+	return b.SetProto([]byte{dal.KeyPrefixClusterConfig}, state)
+}
+
 // SavePeriodSchedule stores the period schedule cron expression in the batch.
 func SavePeriodSchedule(b *dal.Batch, cron string) error {
 	err := b.SetBytes([]byte{dal.KeyPrefixPeriodSchedule}, []byte(cron))

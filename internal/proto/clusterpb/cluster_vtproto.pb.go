@@ -126,6 +126,7 @@ func (m *ClusterState) CloneVT() *ClusterState {
 	r.MaintenanceMode = m.MaintenanceMode
 	r.SyncProgress = m.SyncProgress.CloneVT()
 	r.IndexProgress = m.IndexProgress.CloneVT()
+	r.ClusterConfig = m.ClusterConfig.CloneVT()
 	if rhs := m.Nodes; rhs != nil {
 		tmpContainer := make([]*NodeInfo, len(rhs))
 		for k, v := range rhs {
@@ -962,6 +963,9 @@ func (this *ClusterState) EqualVT(that *ClusterState) bool {
 		return false
 	}
 	if !this.IndexProgress.EqualVT(that.IndexProgress) {
+		return false
+	}
+	if !this.ClusterConfig.EqualVT(that.ClusterConfig) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -2060,6 +2064,16 @@ func (m *ClusterState) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.ClusterConfig != nil {
+		size, err := m.ClusterConfig.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x4a
 	}
 	if m.IndexProgress != nil {
 		size, err := m.IndexProgress.MarshalToSizedBufferVT(dAtA[:i])
@@ -3799,6 +3813,10 @@ func (m *ClusterState) SizeVT() (n int) {
 		l = m.IndexProgress.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	if m.ClusterConfig != nil {
+		l = m.ClusterConfig.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -5480,6 +5498,42 @@ func (m *ClusterState) UnmarshalVT(dAtA []byte) error {
 				m.IndexProgress = &IndexProgress{}
 			}
 			if err := m.IndexProgress.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 9:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ClusterConfig", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.ClusterConfig == nil {
+				m.ClusterConfig = &commonpb.ClusterConfig{}
+			}
+			if err := m.ClusterConfig.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex

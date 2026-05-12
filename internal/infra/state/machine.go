@@ -362,6 +362,16 @@ func (fsm *Machine) RecoverState() error {
 
 	fsm.sharedState.SetMaintenanceMode(maintenanceMode)
 
+	clusterState, err := query.ReadClusterState(fsm.dataStore)
+	if err != nil {
+		return fmt.Errorf("loading cluster state: %w", err)
+	}
+
+	if clusterState != nil {
+		fsm.Registry.Cache.SetGenerationThreshold(clusterState.GetConfig().GetRotationThreshold())
+		fsm.Registry.Cache.SetEpoch(clusterState.GetCacheEpoch())
+	}
+
 	fsm.logger.WithFields(map[string]any{
 		"nextSequenceID":        fsm.nextSequenceID,
 		"nextAuditSequenceID":   fsm.nextAuditSequenceID,
@@ -530,10 +540,8 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 		}
 
 		// Skip applyProposal for system-only proposals with no orders AND
-		// no sink/mirror updates. Proposals carrying MirrorSyncUpdates or
-		// EventsSinkUpdates must still go through applyProposal so that
-		// cursor and status writes reach the Pebble batch.
-		if len(cmd.GetOrders()) == 0 && len(cmd.GetMirrorSyncUpdates()) == 0 && len(cmd.GetEventsSinkUpdates()) == 0 && cmd.GetIdempotencyEviction() == nil {
+		// no sink/mirror/config/eviction updates.
+		if len(cmd.GetOrders()) == 0 && len(cmd.GetMirrorSyncUpdates()) == 0 && len(cmd.GetEventsSinkUpdates()) == 0 && cmd.GetIdempotencyEviction() == nil && cmd.GetClusterConfig() == nil {
 			ret.Results = append(ret.Results, ApplyResult{ProposalID: cmd.GetId(), AppliedIndex: entry.Index})
 
 			continue
@@ -792,7 +800,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet, batch *dal.Batch, 
 			"gen0":                fsm.Registry.Cache.BaseIndex.Gen0,
 			"gen1":                fsm.Registry.Cache.BaseIndex.Gen1,
 			"currentGeneration":   fsm.Registry.Cache.CurrentGeneration(),
-			"generationThreshold": fsm.Registry.Cache.GenerationThreshold,
+			"generationThreshold": fsm.Registry.Cache.GenerationThreshold(),
 			"lastAppliedIndex":    fsm.lastAppliedIndex,
 			"preloadCount":        len(preloadSet.GetPreloads()),
 			"touchCount":          len(preloadSet.GetTouches()),
@@ -864,6 +872,60 @@ func authorizedInMaintenanceMode(orders []*raftcmdpb.Order) bool {
 // applyProposal processes all orders in a proposal atomically.
 // Uses RequestProcessor which handles rollback internally via Buffered.
 func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *dal.Batch, proposal *raftcmdpb.Proposal) (*ApplyResult, error) {
+	// Handle cluster config updates (Raft-replicated, no orders/logs needed).
+	// When the rotation threshold changes, the generation boundaries shift and the
+	// alternating-byte persistence scheme in 0xFF can lose data on even-generation
+	// skips. Reset the cache and purge 0xFF entirely — the preloader falls back to
+	// Pebble reads (0xF1) and the cache rebuilds naturally.
+	if cfg := proposal.GetClusterConfig(); cfg != nil {
+		oldThreshold := fsm.Registry.Cache.GenerationThreshold()
+		newThreshold := cfg.GetRotationThreshold()
+
+		if newThreshold != oldThreshold {
+			fsm.logger.WithFields(map[string]any{
+				"oldThreshold": oldThreshold,
+				"newThreshold": newThreshold,
+				"raftIndex":    raftIndex,
+			}).Infof("Applying cluster config change: resetting cache and purging 0xFF")
+
+			fsm.Registry.Cache.ResetWithThreshold(newThreshold)
+
+			// Purge both generation byte positions (0 and 1) in the 0xFF cache zone.
+			// We can't use a single DeleteRange from [0xFF] to [0xFF+1] because
+			// 0xFF+1 overflows to 0x00 as a byte. Instead, purge each gen byte
+			// separately using the same pattern as writeCacheRotation.
+			for _, genByte := range []byte{0, 1} {
+				if err := batch.DeleteRangeNoSync(
+					[]byte{dal.KeyPrefixCacheSnapshot, genByte},
+					[]byte{dal.KeyPrefixCacheSnapshot, genByte + 1},
+				); err != nil {
+					return nil, fmt.Errorf("purging cache gen %d: %w", genByte, err)
+				}
+			}
+
+			// Reset the cache metadata sentinel to currentGeneration=0 (post-reset state).
+			// We must NOT delete it — RestoreFromStore tolerates a missing sentinel
+			// but other code paths may depend on it being present.
+			if err := batch.SetProto(
+				[]byte{dal.KeyPrefixCacheSnapshot, dal.CacheMetaKey},
+				&raftcmdpb.CacheSnapshotMeta{CurrentGeneration: 0},
+			); err != nil {
+				return nil, fmt.Errorf("resetting cache snapshot meta: %w", err)
+			}
+		}
+
+		// Persist the cluster state with the current cache epoch.
+		// The epoch is deterministic (incremented only by ResetWithThreshold
+		// in the FSM apply path) and must be persisted so that nodes
+		// restoring from a checkpoint have the correct epoch.
+		if err := SaveClusterState(batch, &commonpb.PersistedClusterState{
+			Config:     &commonpb.ClusterConfig{RotationThreshold: newThreshold},
+			CacheEpoch: fsm.Registry.Cache.Epoch(),
+		}); err != nil {
+			return nil, fmt.Errorf("saving cluster state: %w", err)
+		}
+	}
+
 	// Handle per-sink cursor and status updates (Raft-replicated, no orders needed)
 	for _, update := range proposal.GetEventsSinkUpdates() {
 		if update.GetCursor() > 0 {
@@ -963,6 +1025,25 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			"predictedIndex": predicted,
 			"actualIndex":    raftIndex,
 		})
+
+		return &ApplyResult{
+			ProposalID: proposal.GetId(),
+			Error:      &domain.BusinessError{Err: domain.ErrStaleProposal},
+		}, nil
+	}
+
+	// Reject proposals whose cache epoch doesn't match. This detects proposals
+	// admitted before a cache reset (e.g. cluster config change). The preloads
+	// were built against stale cache state — keys assumed to be in cache are gone.
+	if preloadEpoch := proposal.GetPreload().GetCacheEpoch(); preloadEpoch != 0 && preloadEpoch != fsm.Registry.Cache.Epoch() {
+		if fsm.logger.Enabled(logging.DebugLevel) {
+			fsm.logger.WithFields(map[string]any{
+				"preloadEpoch": preloadEpoch,
+				"cacheEpoch":   fsm.Registry.Cache.Epoch(),
+				"proposalID":   proposal.GetId(),
+				"raftIndex":    raftIndex,
+			}).Debugf("Rejecting proposal: cache epoch mismatch (cache was reset)")
+		}
 
 		return &ApplyResult{
 			ProposalID: proposal.GetId(),

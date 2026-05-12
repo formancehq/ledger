@@ -133,6 +133,7 @@ message ClusterState {
   bool maintenance_mode = 6;    // Whether maintenance mode is active
   SyncProgress sync_progress = 7; // Local node checkpoint sync progress
   IndexProgress index_progress = 8; // Local index builder progress
+  common.ClusterConfig cluster_config = 9; // Raft-replicated mutable cluster configuration
 }
 
 // IndexProgress tracks the index builder's position relative to Pebble.

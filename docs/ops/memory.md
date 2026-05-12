@@ -192,6 +192,8 @@ The 9 caches and their approximate per-entry sizes:
 
 **Recommendation:** Monitor `admission.preload.duration` and `admission.preload.cache_hits`. If preload latency is high, increase the threshold. The default of 1000 works well for most workloads.
 
+**Live tuning:** This parameter can be changed on a running cluster via [rolling upgrade](./cluster-operations.md#cluster-configuration-updates) without downtime. The new leader propagates the change through Raft consensus.
+
 ---
 
 ## Numscript Cache

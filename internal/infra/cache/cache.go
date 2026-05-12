@@ -131,7 +131,7 @@ const (
 //
 // This method only takes a brief shared RLock on a single shard.
 func (a *AttributeCache[T]) CheckCache(at uint64, k attributes.U128) CacheStatus {
-	threshold := a.Cache.GenerationThreshold // immutable after init
+	threshold := a.Cache.GenerationThreshold()
 	if threshold == 0 {
 		return CacheMiss
 	}
@@ -234,7 +234,7 @@ type Cache struct {
 	NumscriptContents   *AttributeCache[*commonpb.NumscriptInfo]
 	PreparedQueries     *AttributeCache[*commonpb.PreparedQuery]
 	BaseIndex           DualGen[uint64]
-	GenerationThreshold uint64
+	generationThreshold atomic.Uint64
 
 	// caches holds all AttributeCache instances for iteration in Rotate/Reset/metrics.
 	// Parallel to cacheNames.
@@ -247,6 +247,11 @@ type Cache struct {
 	// currentGeneration is accessed atomically from IsGuaranteedInCache (hot path)
 	// and written under mu by rotateLocked/Reset.
 	currentGeneration atomic.Uint64
+
+	// epoch is incremented on every Reset(). Used by the admission layer to
+	// detect that the cache was invalidated between preload building and FSM
+	// application (e.g. after a cluster config change).
+	epoch atomic.Uint64
 
 	// Metrics (nil if not initialized)
 	rotations       metric.Int64Counter
@@ -281,11 +286,31 @@ func (c *Cache) rotateLocked(index uint64, newGeneration uint64) {
 }
 
 // Reset clears all cache data and resets the state to initial values.
-// This is used during snapshot restoration.
+// This is used during snapshot restoration. Does NOT increment the epoch
+// because this is a local rebuild, not a FSM state change — the epoch
+// must be deterministic across all nodes.
 func (c *Cache) Reset() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	c.clearLocked()
+}
+
+// ResetWithThreshold atomically resets the cache, increments the epoch, and
+// sets a new generation threshold. Called by the FSM when a cluster config
+// change is applied — the epoch increment is deterministic (all nodes apply
+// the same Raft entry).
+func (c *Cache) ResetWithThreshold(threshold uint64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.clearLocked()
+	c.epoch.Add(1)
+	c.generationThreshold.Store(threshold)
+}
+
+// clearLocked clears all cache data without incrementing the epoch.
+func (c *Cache) clearLocked() {
 	for _, ac := range c.caches {
 		ac.Reset()
 	}
@@ -298,18 +323,19 @@ func (c *Cache) Reset() {
 // and performs it atomically if necessary.
 // Returns whether a rotation occurred and the old Gen1 base index (compaction threshold).
 func (c *Cache) CheckRotationNeeded(index uint64) (rotated bool, oldGen1BaseIndex uint64) {
-	if c.GenerationThreshold == 0 {
+	threshold := c.generationThreshold.Load()
+	if threshold == 0 {
 		return false, 0
 	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if g := Gen(index, c.GenerationThreshold); g != c.currentGeneration.Load() {
+	if g := Gen(index, threshold); g != c.currentGeneration.Load() {
 		oldGen1BaseIndex = c.BaseIndex.Gen1
 		// Use canonical boundary (end of previous generation) instead of raw index.
 		// This must match BoundaryIndex(nextIndex, K) used by admission when building preloads.
-		boundary := genEndIndex(g-1, c.GenerationThreshold)
+		boundary := genEndIndex(g-1, threshold)
 		c.rotateLocked(boundary, g)
 
 		return true, oldGen1BaseIndex
@@ -408,6 +434,45 @@ func (c *Cache) SetCurrentGeneration(g uint64) {
 	c.currentGeneration.Store(g)
 }
 
+// GenerationThreshold returns the cache rotation threshold.
+func (c *Cache) GenerationThreshold() uint64 {
+	return c.generationThreshold.Load()
+}
+
+// SetGenerationThreshold updates the cache rotation threshold atomically.
+func (c *Cache) SetGenerationThreshold(v uint64) {
+	c.generationThreshold.Store(v)
+}
+
+// Epoch returns the current cache epoch.
+func (c *Cache) Epoch() uint64 {
+	return c.epoch.Load()
+}
+
+// SetEpoch restores the cache epoch from persisted state.
+func (c *Cache) SetEpoch(e uint64) {
+	c.epoch.Store(e)
+}
+
+// ConfigSnapshot holds a consistent snapshot of mutable cache parameters.
+type ConfigSnapshot struct {
+	GenerationThreshold uint64
+	Epoch               uint64
+}
+
+// Snapshot returns a consistent snapshot of the cache's mutable config.
+// Takes the cache mutex to ensure epoch and generationThreshold are read
+// atomically with respect to Reset() which updates both.
+func (c *Cache) Snapshot() ConfigSnapshot {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return ConfigSnapshot{
+		GenerationThreshold: c.generationThreshold.Load(),
+		Epoch:               c.epoch.Load(),
+	}
+}
+
 // New creates a new Cache with the given generation threshold and meter.
 // If meter is nil, a noop meter is used.
 func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
@@ -420,9 +485,9 @@ func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
 	}
 
 	ret := &Cache{
-		BaseIndex:           newDualGen[uint64](0, 0),
-		GenerationThreshold: generationThreshold,
+		BaseIndex: newDualGen[uint64](0, 0),
 	}
+	ret.generationThreshold.Store(generationThreshold)
 	ret.Volumes = newAttributeCache[*raftcmdpb.VolumePair](ret, "volumes")
 	ret.AccountMetadata = newAttributeCache[*commonpb.MetadataValue](ret, "account_metadata")
 	ret.References = newAttributeCache[*commonpb.TransactionReferenceValue](ret, "references")

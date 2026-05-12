@@ -249,6 +249,14 @@ func RestartNode(ctx context.Context, srv *ServiceWithClient) {
 	srv.GRPCConn = conn
 }
 
+// RestartNodeWithInstruments stops a node, replaces its instruments, and restarts it.
+// Used to simulate rolling upgrades with different CLI flags.
+func RestartNodeWithInstruments(ctx context.Context, srv *ServiceWithClient, instruments []testservice.Instrumentation) {
+	StopNode(ctx, srv)
+	srv.Service.Instruments = instruments
+	RestartNode(ctx, srv)
+}
+
 // StopServers stops all servers in the list. Used in AfterEach/AfterAll blocks.
 func StopServers(ctx context.Context, servers []*ServiceWithClient) {
 	for _, server := range servers {

@@ -48,13 +48,17 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/receipt"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/commands"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/keystore"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/snapshotpb"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/spool"
@@ -275,8 +279,13 @@ func Module() fx.Option {
 			func(n *node.Node) events.Proposer {
 				return node.NewLockedProposer(n)
 			},
-			func(cfg node.NodeConfig, meterProvider metric.MeterProvider) (*cache.Cache, error) {
-				return cache.New(cfg.RotationThreshold, meterProvider.Meter("cache"))
+			func(cfg node.NodeConfig, store *dal.Store, meterProvider metric.MeterProvider) (*cache.Cache, error) {
+				threshold := cfg.RotationThreshold
+				if clusterState, err := query.ReadClusterState(store); err == nil && clusterState != nil {
+					threshold = clusterState.GetConfig().GetRotationThreshold()
+				}
+
+				return cache.New(threshold, meterProvider.Meter("cache"))
 			},
 			func(cfg Config, meterProvider metric.MeterProvider) *bloom.FilterSet {
 				return bloom.NewFilterSet(cfg.BloomConfig, meterProvider.Meter("bloom"))
@@ -459,14 +468,14 @@ func Module() fx.Option {
 					meterProvider.Meter("storage"),
 				)
 			},
-			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, collector *diskusage.Collector, store *dal.Store, ss *state.SharedState, ib *indexbuilder.Builder, rs *readstore.Store, adm ctrl.Admission, logger logging.Logger, cfg Config, authCfg internalauth.AuthConfig) clusterpb.ClusterServiceServer {
-				return grpcadp.NewClusterServiceServer(n, raftTransport, servicePool, collector, store, ss, ib, rs, adm, logger,
+			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, collector *diskusage.Collector, store *dal.Store, c *cache.Cache, ss *state.SharedState, ib *indexbuilder.Builder, rs *readstore.Store, adm ctrl.Admission, logger logging.Logger, cfg Config, authCfg internalauth.AuthConfig) clusterpb.ClusterServiceServer {
+				return grpcadp.NewClusterServiceServer(n, raftTransport, servicePool, collector, store, c, ss, ib, rs, adm, logger,
 					cfg.RaftConfig.AdvertiseAddr,
 					cfg.ServiceAdvertiseAddr(),
 					authCfg,
 					cfg.ClusterID,
 				)
-			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``, ``, ``, ``, ``)),
+			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``)),
 			fx.Annotate(func(n *node.Node, collector *diskusage.Collector, servicePool *transport.ConnectionPool, cfg Config, logger logging.Logger) *clusterhealth.HealthChecker {
 				return clusterhealth.NewHealthChecker(
 					n, collector, servicePool,
@@ -858,11 +867,13 @@ func Module() fx.Option {
 					},
 				})
 			}, fx.ParamTags(``, ``, ``, ``, `name:"service"`, ``, ``, ``)),
-			// Wire Observer: handle ConfChange and LeadershipChange events
+			// Wire Observer: handle ConfChange, LeadershipChange, and LeaderReady events
 			fx.Annotate(func(
 				n *node.Node,
 				defaultTransport *node.DefaultTransport,
 				servicePool *transport.ConnectionPool,
+				store *dal.Store,
+				cfg node.NodeConfig,
 				logger logging.Logger,
 				eventsManager *events.Manager,
 				mirrorManager *mirror.Manager,
@@ -873,11 +884,13 @@ func Module() fx.Option {
 						handleConfChangeEvent(e, defaultTransport, servicePool, logger)
 					case node.LeadershipChangeEvent:
 						handleLeadershipChangeEvent(e, eventsManager, mirrorManager, logger)
+					case node.LeaderReadyEvent:
+						proposeClusterConfigIfNeeded(n, store, cfg, logger)
 					default:
 						logger.Errorf("Unknown observer event type: %T", event)
 					}
 				}))
-			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``)),
+			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``)),
 			func(lc fx.Lifecycle, node *node.Node, logger logging.Logger) (*node.Node, error) {
 				var waitNode func()
 
@@ -1059,7 +1072,9 @@ func Module() fx.Option {
 						logger,
 						raftNode.IsLeader,
 						func(cutoffMicros uint64) {
-							if err := proposer.ProposeIdempotencyEviction(cutoffMicros); err != nil {
+							proposal := commands.NewCommand()
+							proposal.IdempotencyEviction = &raftcmdpb.IdempotencyEviction{CutoffMicros: cutoffMicros}
+							if err := proposer.ProposeProposal(proposal); err != nil {
 								logger.Errorf("Failed to propose idempotency eviction: %v", err)
 							}
 						},
@@ -1123,6 +1138,38 @@ func Module() fx.Option {
 			}, fx.ParamTags(``, ``, `name:"index"`, ``)),
 		),
 	)
+}
+
+// proposeClusterConfigIfNeeded reads the persisted cluster state from Pebble
+// and proposes an update if the CLI-desired threshold differs. Called when the
+// node becomes leader and the FSM is caught up (LeaderReadyEvent).
+func proposeClusterConfigIfNeeded(n *node.Node, store *dal.Store, cfg node.NodeConfig, logger logging.Logger) {
+	clusterState, _ := query.ReadClusterState(store)
+	if clusterState != nil && clusterState.GetConfig().GetRotationThreshold() == cfg.RotationThreshold {
+		return
+	}
+
+	var persisted uint64
+	if clusterState != nil {
+		persisted = clusterState.GetConfig().GetRotationThreshold()
+	}
+
+	logger.WithFields(map[string]any{
+		"persisted": persisted,
+		"desired":   cfg.RotationThreshold,
+	}).Infof("Proposing cluster config update on leadership acquisition")
+
+	proposal := commands.NewCommand()
+	proposal.ClusterConfig = &commonpb.ClusterConfig{
+		RotationThreshold: cfg.RotationThreshold,
+	}
+
+	proposer := NewNodeProposer(n)
+	if err := proposer.ProposeProposal(proposal); err != nil {
+		logger.WithFields(map[string]any{
+			"error": err,
+		}).Errorf("Failed to propose cluster config update")
+	}
 }
 
 // handleConfChangeEvent processes a single ConfChangeEvent by updating the

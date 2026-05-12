@@ -899,6 +899,8 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 						}).Errorf("Failed to wait for FSM catch-up after leadership gain")
 					}
 
+					node.observer.Emit(LeaderReadyEvent{})
+
 					close(pending)
 				}()
 			}
