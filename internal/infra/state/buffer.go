@@ -1,6 +1,7 @@
 package state
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/holiman/uint256"
@@ -973,7 +974,14 @@ func (b *Buffered) HasPurges() bool {
 }
 
 func (b *Buffered) GetPreparedQuery(ledger, name string) (*commonpb.PreparedQuery, error) {
-	return b.Derived.PreparedQueries.Get(domain.PreparedQueryKey{Ledger: ledger, Name: name})
+	pq, err := b.Derived.PreparedQueries.Get(domain.PreparedQueryKey{Ledger: ledger, Name: name})
+	// Treat a cache miss as "doesn't exist". A delete in an earlier entry of
+	// the same batch will have cleared the cache
+	if errors.Is(err, domain.ErrNotFound) {
+		return nil, nil
+	}
+
+	return pq, err
 }
 
 func (b *Buffered) PutPreparedQuery(pq *commonpb.PreparedQuery) {
