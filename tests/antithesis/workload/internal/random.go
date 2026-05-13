@@ -2,12 +2,24 @@ package internal
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"math/rand"
 
 	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
+
+// GeometricBulkSize returns a value in [min, max] drawn from a Geometric(p) distribution
+// via inverse-CDF sampling: k = ⌊log(u) / log(1−p)⌋ for u ~ Uniform(0,1).
+func GeometricBulkSize(p float64, min uint64, max uint64) uint64 {
+	u := 1 - Rand().Float64()
+	size := uint64(math.Floor(math.Log(u) / math.Log(1-p)))
+	if size > max-min {
+		size = max - min
+	}
+	return size + min
+}
 
 const UserAccountCount uint64 = 32
 
