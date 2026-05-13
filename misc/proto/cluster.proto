@@ -224,12 +224,14 @@ message RemoveNodeResponse {}
 // ============================================================================
 
 message BackupRequest {
-  string driver = 1;       // "s3" (only supported driver)
-  string base_path = 2;    // Reserved for future use
-  string bucket_id = 3;    // Namespace prefix for backup files (default: cluster-id)
-  string s3_bucket = 4;    // S3 bucket name (required when driver=s3)
-  string s3_region = 5;    // AWS region for backup S3 bucket
-  string s3_endpoint = 6;  // Custom S3 endpoint (for MinIO)
+  string driver = 1;              // "s3" (only supported driver)
+  string base_path = 2;           // Reserved for future use
+  string bucket_id = 3;           // Namespace prefix for backup files (default: cluster-id)
+  string s3_bucket = 4;           // S3 bucket name (required when driver=s3)
+  string s3_region = 5;           // AWS region for backup S3 bucket
+  string s3_endpoint = 6;         // Custom S3 endpoint (for MinIO)
+  string s3_access_key_id = 7;    // Optional static AWS access key ID
+  string s3_secret_access_key = 8; // Optional static AWS secret access key
 }
 
 message BackupResponse {
@@ -247,12 +249,14 @@ message BackupResponse {
 // ============================================================================
 
 message IncrementalBackupRequest {
-  string driver = 1;       // "s3" (only supported driver)
-  string base_path = 2;    // Reserved for future use
-  string bucket_id = 3;    // Namespace prefix for backup files (default: cluster-id)
-  string s3_bucket = 4;    // S3 bucket name (required when driver=s3)
-  string s3_region = 5;    // AWS region for backup S3 bucket
-  string s3_endpoint = 6;  // Custom S3 endpoint (for MinIO)
+  string driver = 1;              // "s3" (only supported driver)
+  string base_path = 2;           // Reserved for future use
+  string bucket_id = 3;           // Namespace prefix for backup files (default: cluster-id)
+  string s3_bucket = 4;           // S3 bucket name (required when driver=s3)
+  string s3_region = 5;           // AWS region for backup S3 bucket
+  string s3_endpoint = 6;         // Custom S3 endpoint (for MinIO)
+  string s3_access_key_id = 7;    // Optional static AWS access key ID
+  string s3_secret_access_key = 8; // Optional static AWS secret access key
 }
 
 message IncrementalBackupResponse {

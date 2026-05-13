@@ -70,8 +70,8 @@ var _ Storage = (*S3Storage)(nil)
 
 // NewS3BackupStorage creates a Storage backed by S3.
 // It reuses the S3 client factory from coldstorage.
-func NewS3BackupStorage(bucket, region, endpoint string) (Storage, error) {
-	client, err := coldstorage.NewS3Client(region, endpoint)
+func NewS3BackupStorage(bucket, region, endpoint, accessKeyID, secretAccessKey string) (Storage, error) {
+	client, err := coldstorage.NewS3Client(region, endpoint, accessKeyID, secretAccessKey)
 	if err != nil {
 		return nil, err
 	}

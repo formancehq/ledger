@@ -26,6 +26,8 @@ func NewIncrementalBackupCommand() *cobra.Command {
 	cmd.Flags().String("s3-bucket", "", "S3 bucket name (required when driver=s3)")
 	cmd.Flags().String("s3-region", "", "AWS region for S3 bucket")
 	cmd.Flags().String("s3-endpoint", "", "Custom S3 endpoint (for MinIO)")
+	cmd.Flags().String("s3-access-key-id", "", "Static AWS access key ID (default: use default credential chain)")
+	cmd.Flags().String("s3-secret-access-key", "", "Static AWS secret access key (default: use default credential chain)")
 	cmd.Flags().Duration("timeout", 10*cmdutil.DefaultTimeout, "Request timeout")
 	cmdutil.AddOutputFlags(cmd)
 
@@ -41,6 +43,8 @@ func runIncrementalBackup(cmd *cobra.Command, _ []string) error {
 	s3Bucket, _ := cmd.Flags().GetString("s3-bucket")
 	s3Region, _ := cmd.Flags().GetString("s3-region")
 	s3Endpoint, _ := cmd.Flags().GetString("s3-endpoint")
+	s3AccessKeyID, _ := cmd.Flags().GetString("s3-access-key-id")
+	s3SecretAccessKey, _ := cmd.Flags().GetString("s3-secret-access-key")
 
 	client, conn, err := cmdutil.GetClusterClient(cmd)
 	if err != nil {
@@ -60,12 +64,14 @@ func runIncrementalBackup(cmd *cobra.Command, _ []string) error {
 	}
 
 	resp, err := client.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
-		Driver:     driver,
-		BasePath:   basePath,
-		BucketId:   bucketID,
-		S3Bucket:   s3Bucket,
-		S3Region:   s3Region,
-		S3Endpoint: s3Endpoint,
+		Driver:            driver,
+		BasePath:          basePath,
+		BucketId:          bucketID,
+		S3Bucket:          s3Bucket,
+		S3Region:          s3Region,
+		S3Endpoint:        s3Endpoint,
+		S3AccessKeyId:     s3AccessKeyID,
+		S3SecretAccessKey: s3SecretAccessKey,
 	})
 	if err != nil {
 		if spinner != nil {

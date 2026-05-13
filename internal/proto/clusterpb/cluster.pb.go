@@ -1161,15 +1161,17 @@ func (*RemoveNodeResponse) Descriptor() ([]byte, []int) {
 }
 
 type BackupRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Driver        string                 `protobuf:"bytes,1,opt,name=driver,proto3" json:"driver,omitempty"`                           // "s3" (only supported driver)
-	BasePath      string                 `protobuf:"bytes,2,opt,name=base_path,json=basePath,proto3" json:"base_path,omitempty"`       // Reserved for future use
-	BucketId      string                 `protobuf:"bytes,3,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"`       // Namespace prefix for backup files (default: cluster-id)
-	S3Bucket      string                 `protobuf:"bytes,4,opt,name=s3_bucket,json=s3Bucket,proto3" json:"s3_bucket,omitempty"`       // S3 bucket name (required when driver=s3)
-	S3Region      string                 `protobuf:"bytes,5,opt,name=s3_region,json=s3Region,proto3" json:"s3_region,omitempty"`       // AWS region for backup S3 bucket
-	S3Endpoint    string                 `protobuf:"bytes,6,opt,name=s3_endpoint,json=s3Endpoint,proto3" json:"s3_endpoint,omitempty"` // Custom S3 endpoint (for MinIO)
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Driver            string                 `protobuf:"bytes,1,opt,name=driver,proto3" json:"driver,omitempty"`                                                    // "s3" (only supported driver)
+	BasePath          string                 `protobuf:"bytes,2,opt,name=base_path,json=basePath,proto3" json:"base_path,omitempty"`                                // Reserved for future use
+	BucketId          string                 `protobuf:"bytes,3,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"`                                // Namespace prefix for backup files (default: cluster-id)
+	S3Bucket          string                 `protobuf:"bytes,4,opt,name=s3_bucket,json=s3Bucket,proto3" json:"s3_bucket,omitempty"`                                // S3 bucket name (required when driver=s3)
+	S3Region          string                 `protobuf:"bytes,5,opt,name=s3_region,json=s3Region,proto3" json:"s3_region,omitempty"`                                // AWS region for backup S3 bucket
+	S3Endpoint        string                 `protobuf:"bytes,6,opt,name=s3_endpoint,json=s3Endpoint,proto3" json:"s3_endpoint,omitempty"`                          // Custom S3 endpoint (for MinIO)
+	S3AccessKeyId     string                 `protobuf:"bytes,7,opt,name=s3_access_key_id,json=s3AccessKeyId,proto3" json:"s3_access_key_id,omitempty"`             // Optional static AWS access key ID
+	S3SecretAccessKey string                 `protobuf:"bytes,8,opt,name=s3_secret_access_key,json=s3SecretAccessKey,proto3" json:"s3_secret_access_key,omitempty"` // Optional static AWS secret access key
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *BackupRequest) Reset() {
@@ -1240,6 +1242,20 @@ func (x *BackupRequest) GetS3Region() string {
 func (x *BackupRequest) GetS3Endpoint() string {
 	if x != nil {
 		return x.S3Endpoint
+	}
+	return ""
+}
+
+func (x *BackupRequest) GetS3AccessKeyId() string {
+	if x != nil {
+		return x.S3AccessKeyId
+	}
+	return ""
+}
+
+func (x *BackupRequest) GetS3SecretAccessKey() string {
+	if x != nil {
+		return x.S3SecretAccessKey
 	}
 	return ""
 }
@@ -1337,15 +1353,17 @@ func (x *BackupResponse) GetLastAppliedIndex() uint64 {
 }
 
 type IncrementalBackupRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Driver        string                 `protobuf:"bytes,1,opt,name=driver,proto3" json:"driver,omitempty"`                           // "s3" (only supported driver)
-	BasePath      string                 `protobuf:"bytes,2,opt,name=base_path,json=basePath,proto3" json:"base_path,omitempty"`       // Reserved for future use
-	BucketId      string                 `protobuf:"bytes,3,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"`       // Namespace prefix for backup files (default: cluster-id)
-	S3Bucket      string                 `protobuf:"bytes,4,opt,name=s3_bucket,json=s3Bucket,proto3" json:"s3_bucket,omitempty"`       // S3 bucket name (required when driver=s3)
-	S3Region      string                 `protobuf:"bytes,5,opt,name=s3_region,json=s3Region,proto3" json:"s3_region,omitempty"`       // AWS region for backup S3 bucket
-	S3Endpoint    string                 `protobuf:"bytes,6,opt,name=s3_endpoint,json=s3Endpoint,proto3" json:"s3_endpoint,omitempty"` // Custom S3 endpoint (for MinIO)
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Driver            string                 `protobuf:"bytes,1,opt,name=driver,proto3" json:"driver,omitempty"`                                                    // "s3" (only supported driver)
+	BasePath          string                 `protobuf:"bytes,2,opt,name=base_path,json=basePath,proto3" json:"base_path,omitempty"`                                // Reserved for future use
+	BucketId          string                 `protobuf:"bytes,3,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"`                                // Namespace prefix for backup files (default: cluster-id)
+	S3Bucket          string                 `protobuf:"bytes,4,opt,name=s3_bucket,json=s3Bucket,proto3" json:"s3_bucket,omitempty"`                                // S3 bucket name (required when driver=s3)
+	S3Region          string                 `protobuf:"bytes,5,opt,name=s3_region,json=s3Region,proto3" json:"s3_region,omitempty"`                                // AWS region for backup S3 bucket
+	S3Endpoint        string                 `protobuf:"bytes,6,opt,name=s3_endpoint,json=s3Endpoint,proto3" json:"s3_endpoint,omitempty"`                          // Custom S3 endpoint (for MinIO)
+	S3AccessKeyId     string                 `protobuf:"bytes,7,opt,name=s3_access_key_id,json=s3AccessKeyId,proto3" json:"s3_access_key_id,omitempty"`             // Optional static AWS access key ID
+	S3SecretAccessKey string                 `protobuf:"bytes,8,opt,name=s3_secret_access_key,json=s3SecretAccessKey,proto3" json:"s3_secret_access_key,omitempty"` // Optional static AWS secret access key
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *IncrementalBackupRequest) Reset() {
@@ -1416,6 +1434,20 @@ func (x *IncrementalBackupRequest) GetS3Region() string {
 func (x *IncrementalBackupRequest) GetS3Endpoint() string {
 	if x != nil {
 		return x.S3Endpoint
+	}
+	return ""
+}
+
+func (x *IncrementalBackupRequest) GetS3AccessKeyId() string {
+	if x != nil {
+		return x.S3AccessKeyId
+	}
+	return ""
+}
+
+func (x *IncrementalBackupRequest) GetS3SecretAccessKey() string {
+	if x != nil {
+		return x.S3SecretAccessKey
 	}
 	return ""
 }
@@ -2284,7 +2316,7 @@ const file_cluster_proto_rawDesc = "" +
 	"\x11RemoveNodeRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12\x14\n" +
 	"\x05force\x18\x02 \x01(\bR\x05force\"\x14\n" +
-	"\x12RemoveNodeResponse\"\xbc\x01\n" +
+	"\x12RemoveNodeResponse\"\x96\x02\n" +
 	"\rBackupRequest\x12\x16\n" +
 	"\x06driver\x18\x01 \x01(\tR\x06driver\x12\x1b\n" +
 	"\tbase_path\x18\x02 \x01(\tR\bbasePath\x12\x1b\n" +
@@ -2292,7 +2324,9 @@ const file_cluster_proto_rawDesc = "" +
 	"\ts3_bucket\x18\x04 \x01(\tR\bs3Bucket\x12\x1b\n" +
 	"\ts3_region\x18\x05 \x01(\tR\bs3Region\x12\x1f\n" +
 	"\vs3_endpoint\x18\x06 \x01(\tR\n" +
-	"s3Endpoint\"\xa8\x02\n" +
+	"s3Endpoint\x12'\n" +
+	"\x10s3_access_key_id\x18\a \x01(\tR\rs3AccessKeyId\x12/\n" +
+	"\x14s3_secret_access_key\x18\b \x01(\tR\x11s3SecretAccessKey\"\xa8\x02\n" +
 	"\x0eBackupResponse\x12%\n" +
 	"\x0efiles_uploaded\x18\x01 \x01(\rR\rfilesUploaded\x12#\n" +
 	"\rfiles_deleted\x18\x02 \x01(\rR\ffilesDeleted\x12\x1f\n" +
@@ -2302,7 +2336,7 @@ const file_cluster_proto_rawDesc = "" +
 	"durationMs\x12*\n" +
 	"\x11last_log_sequence\x18\x05 \x01(\x04R\x0flastLogSequence\x12.\n" +
 	"\x13last_audit_sequence\x18\x06 \x01(\x04R\x11lastAuditSequence\x12,\n" +
-	"\x12last_applied_index\x18\a \x01(\x04R\x10lastAppliedIndex\"\xc7\x01\n" +
+	"\x12last_applied_index\x18\a \x01(\x04R\x10lastAppliedIndex\"\xa1\x02\n" +
 	"\x18IncrementalBackupRequest\x12\x16\n" +
 	"\x06driver\x18\x01 \x01(\tR\x06driver\x12\x1b\n" +
 	"\tbase_path\x18\x02 \x01(\tR\bbasePath\x12\x1b\n" +
@@ -2310,7 +2344,9 @@ const file_cluster_proto_rawDesc = "" +
 	"\ts3_bucket\x18\x04 \x01(\tR\bs3Bucket\x12\x1b\n" +
 	"\ts3_region\x18\x05 \x01(\tR\bs3Region\x12\x1f\n" +
 	"\vs3_endpoint\x18\x06 \x01(\tR\n" +
-	"s3Endpoint\"\xad\x02\n" +
+	"s3Endpoint\x12'\n" +
+	"\x10s3_access_key_id\x18\a \x01(\tR\rs3AccessKeyId\x12/\n" +
+	"\x14s3_secret_access_key\x18\b \x01(\tR\x11s3SecretAccessKey\"\xad\x02\n" +
 	"\x19IncrementalBackupResponse\x120\n" +
 	"\x14log_entries_exported\x18\x01 \x01(\x04R\x12logEntriesExported\x124\n" +
 	"\x16audit_entries_exported\x18\x02 \x01(\x04R\x14auditEntriesExported\x12+\n" +

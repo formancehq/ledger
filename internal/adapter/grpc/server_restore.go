@@ -83,7 +83,7 @@ func (s *RestoreServiceServerImpl) DownloadBackup(ctx context.Context, req *rest
 	}()
 
 	// Create S3 storage
-	storage, err := backup.NewStorage("s3", "", req.GetS3Bucket(), req.GetS3Region(), req.GetS3Endpoint())
+	storage, err := backup.NewStorage("s3", "", req.GetS3Bucket(), req.GetS3Region(), req.GetS3Endpoint(), req.GetS3AccessKeyId(), req.GetS3SecretAccessKey())
 	if err != nil {
 		return nil, fmt.Errorf("creating S3 storage: %w", err)
 	}

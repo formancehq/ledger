@@ -10,16 +10,25 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
-// NewS3Client creates an S3 client using the default AWS credential chain.
+// NewS3Client creates an S3 client.
+// When accessKeyID and secretAccessKey are both non-empty, static credentials are used.
+// Otherwise the default AWS credential chain is used (env vars, ~/.aws/credentials, IAM role).
 // If endpoint is non-empty, it is used as a custom S3 endpoint (e.g. for MinIO).
-func NewS3Client(region, endpoint string) (*s3.Client, error) {
+func NewS3Client(region, endpoint, accessKeyID, secretAccessKey string) (*s3.Client, error) {
 	var opts []func(*awsconfig.LoadOptions) error
 	if region != "" {
 		opts = append(opts, awsconfig.WithRegion(region))
+	}
+
+	if accessKeyID != "" && secretAccessKey != "" {
+		opts = append(opts, awsconfig.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider(accessKeyID, secretAccessKey, ""),
+		))
 	}
 
 	cfg, err := awsconfig.LoadDefaultConfig(context.Background(), opts...)
@@ -112,7 +121,7 @@ var _ ColdStorage = (*S3Storage)(nil)
 // NewS3ColdStorage creates a ColdStorage backed by S3.
 // This is the public entry point used by bootstrap; it hides S3-specific types.
 func NewS3ColdStorage(bucket, region, endpoint string) (ColdStorage, error) {
-	client, err := NewS3Client(region, endpoint)
+	client, err := NewS3Client(region, endpoint, "", "")
 	if err != nil {
 		return nil, err
 	}

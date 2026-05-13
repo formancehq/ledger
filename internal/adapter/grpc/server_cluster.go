@@ -647,6 +647,8 @@ func (impl *ClusterServiceServerImpl) Backup(ctx context.Context, req *clusterpb
 		req.GetS3Bucket(),
 		req.GetS3Region(),
 		req.GetS3Endpoint(),
+		req.GetS3AccessKeyId(),
+		req.GetS3SecretAccessKey(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating backup storage: %w", err)
@@ -693,6 +695,8 @@ func (impl *ClusterServiceServerImpl) IncrementalBackup(ctx context.Context, req
 		req.GetS3Bucket(),
 		req.GetS3Region(),
 		req.GetS3Endpoint(),
+		req.GetS3AccessKeyId(),
+		req.GetS3SecretAccessKey(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating backup storage: %w", err)

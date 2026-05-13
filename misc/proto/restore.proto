@@ -29,10 +29,12 @@ service RestoreService {
 // ============================================================================
 
 message DownloadBackupRequest {
-  string s3_bucket = 1;    // S3 bucket containing the backup
-  string s3_region = 2;    // AWS region for the S3 bucket
-  string s3_endpoint = 3;  // Custom S3 endpoint (for MinIO)
-  string bucket_id = 4;    // Namespace prefix for backup files (default: cluster-id from server config)
+  string s3_bucket = 1;           // S3 bucket containing the backup
+  string s3_region = 2;           // AWS region for the S3 bucket
+  string s3_endpoint = 3;         // Custom S3 endpoint (for MinIO)
+  string bucket_id = 4;           // Namespace prefix for backup files (default: cluster-id from server config)
+  string s3_access_key_id = 5;    // Optional static AWS access key ID
+  string s3_secret_access_key = 6; // Optional static AWS secret access key
 }
 
 message DownloadBackupResponse {

@@ -22,13 +22,15 @@ const (
 )
 
 type DownloadBackupRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	S3Bucket      string                 `protobuf:"bytes,1,opt,name=s3_bucket,json=s3Bucket,proto3" json:"s3_bucket,omitempty"`       // S3 bucket containing the backup
-	S3Region      string                 `protobuf:"bytes,2,opt,name=s3_region,json=s3Region,proto3" json:"s3_region,omitempty"`       // AWS region for the S3 bucket
-	S3Endpoint    string                 `protobuf:"bytes,3,opt,name=s3_endpoint,json=s3Endpoint,proto3" json:"s3_endpoint,omitempty"` // Custom S3 endpoint (for MinIO)
-	BucketId      string                 `protobuf:"bytes,4,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"`       // Namespace prefix for backup files (default: cluster-id from server config)
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	S3Bucket          string                 `protobuf:"bytes,1,opt,name=s3_bucket,json=s3Bucket,proto3" json:"s3_bucket,omitempty"`                                // S3 bucket containing the backup
+	S3Region          string                 `protobuf:"bytes,2,opt,name=s3_region,json=s3Region,proto3" json:"s3_region,omitempty"`                                // AWS region for the S3 bucket
+	S3Endpoint        string                 `protobuf:"bytes,3,opt,name=s3_endpoint,json=s3Endpoint,proto3" json:"s3_endpoint,omitempty"`                          // Custom S3 endpoint (for MinIO)
+	BucketId          string                 `protobuf:"bytes,4,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"`                                // Namespace prefix for backup files (default: cluster-id from server config)
+	S3AccessKeyId     string                 `protobuf:"bytes,5,opt,name=s3_access_key_id,json=s3AccessKeyId,proto3" json:"s3_access_key_id,omitempty"`             // Optional static AWS access key ID
+	S3SecretAccessKey string                 `protobuf:"bytes,6,opt,name=s3_secret_access_key,json=s3SecretAccessKey,proto3" json:"s3_secret_access_key,omitempty"` // Optional static AWS secret access key
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *DownloadBackupRequest) Reset() {
@@ -85,6 +87,20 @@ func (x *DownloadBackupRequest) GetS3Endpoint() string {
 func (x *DownloadBackupRequest) GetBucketId() string {
 	if x != nil {
 		return x.BucketId
+	}
+	return ""
+}
+
+func (x *DownloadBackupRequest) GetS3AccessKeyId() string {
+	if x != nil {
+		return x.S3AccessKeyId
+	}
+	return ""
+}
+
+func (x *DownloadBackupRequest) GetS3SecretAccessKey() string {
+	if x != nil {
+		return x.S3SecretAccessKey
 	}
 	return ""
 }
@@ -583,13 +599,15 @@ var File_restore_proto protoreflect.FileDescriptor
 
 const file_restore_proto_rawDesc = "" +
 	"\n" +
-	"\rrestore.proto\x12\arestore\"\x8f\x01\n" +
+	"\rrestore.proto\x12\arestore\"\xe9\x01\n" +
 	"\x15DownloadBackupRequest\x12\x1b\n" +
 	"\ts3_bucket\x18\x01 \x01(\tR\bs3Bucket\x12\x1b\n" +
 	"\ts3_region\x18\x02 \x01(\tR\bs3Region\x12\x1f\n" +
 	"\vs3_endpoint\x18\x03 \x01(\tR\n" +
 	"s3Endpoint\x12\x1b\n" +
-	"\tbucket_id\x18\x04 \x01(\tR\bbucketId\"d\n" +
+	"\tbucket_id\x18\x04 \x01(\tR\bbucketId\x12'\n" +
+	"\x10s3_access_key_id\x18\x05 \x01(\tR\rs3AccessKeyId\x12/\n" +
+	"\x14s3_secret_access_key\x18\x06 \x01(\tR\x11s3SecretAccessKey\"d\n" +
 	"\x16DownloadBackupResponse\x12)\n" +
 	"\x10files_downloaded\x18\x01 \x01(\rR\x0ffilesDownloaded\x12\x1f\n" +
 	"\vtotal_bytes\x18\x02 \x01(\x04R\n" +

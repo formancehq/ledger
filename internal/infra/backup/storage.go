@@ -16,14 +16,14 @@ type Storage interface {
 }
 
 // NewStorage creates a Storage implementation based on the driver name.
-func NewStorage(driver, basePath, s3Bucket, s3Region, s3Endpoint string) (Storage, error) {
+func NewStorage(driver, basePath, s3Bucket, s3Region, s3Endpoint, s3AccessKeyID, s3SecretAccessKey string) (Storage, error) {
 	switch driver {
 	case "s3":
 		if s3Bucket == "" {
 			return nil, errors.New("s3_bucket is required for s3 driver")
 		}
 
-		return NewS3BackupStorage(s3Bucket, s3Region, s3Endpoint)
+		return NewS3BackupStorage(s3Bucket, s3Region, s3Endpoint, s3AccessKeyID, s3SecretAccessKey)
 	default:
 		return nil, fmt.Errorf("unsupported backup driver: %q (only \"s3\" is supported)", driver)
 	}

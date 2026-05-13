@@ -414,6 +414,8 @@ func (m *BackupRequest) CloneVT() *BackupRequest {
 	r.S3Bucket = m.S3Bucket
 	r.S3Region = m.S3Region
 	r.S3Endpoint = m.S3Endpoint
+	r.S3AccessKeyId = m.S3AccessKeyId
+	r.S3SecretAccessKey = m.S3SecretAccessKey
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -459,6 +461,8 @@ func (m *IncrementalBackupRequest) CloneVT() *IncrementalBackupRequest {
 	r.S3Bucket = m.S3Bucket
 	r.S3Region = m.S3Region
 	r.S3Endpoint = m.S3Endpoint
+	r.S3AccessKeyId = m.S3AccessKeyId
+	r.S3SecretAccessKey = m.S3SecretAccessKey
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1296,6 +1300,12 @@ func (this *BackupRequest) EqualVT(that *BackupRequest) bool {
 	if this.S3Endpoint != that.S3Endpoint {
 		return false
 	}
+	if this.S3AccessKeyId != that.S3AccessKeyId {
+		return false
+	}
+	if this.S3SecretAccessKey != that.S3SecretAccessKey {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -1365,6 +1375,12 @@ func (this *IncrementalBackupRequest) EqualVT(that *IncrementalBackupRequest) bo
 		return false
 	}
 	if this.S3Endpoint != that.S3Endpoint {
+		return false
+	}
+	if this.S3AccessKeyId != that.S3AccessKeyId {
+		return false
+	}
+	if this.S3SecretAccessKey != that.S3SecretAccessKey {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -2783,6 +2799,20 @@ func (m *BackupRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.S3SecretAccessKey) > 0 {
+		i -= len(m.S3SecretAccessKey)
+		copy(dAtA[i:], m.S3SecretAccessKey)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.S3SecretAccessKey)))
+		i--
+		dAtA[i] = 0x42
+	}
+	if len(m.S3AccessKeyId) > 0 {
+		i -= len(m.S3AccessKeyId)
+		copy(dAtA[i:], m.S3AccessKeyId)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.S3AccessKeyId)))
+		i--
+		dAtA[i] = 0x3a
+	}
 	if len(m.S3Endpoint) > 0 {
 		i -= len(m.S3Endpoint)
 		copy(dAtA[i:], m.S3Endpoint)
@@ -2925,6 +2955,20 @@ func (m *IncrementalBackupRequest) MarshalToSizedBufferVT(dAtA []byte) (int, err
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.S3SecretAccessKey) > 0 {
+		i -= len(m.S3SecretAccessKey)
+		copy(dAtA[i:], m.S3SecretAccessKey)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.S3SecretAccessKey)))
+		i--
+		dAtA[i] = 0x42
+	}
+	if len(m.S3AccessKeyId) > 0 {
+		i -= len(m.S3AccessKeyId)
+		copy(dAtA[i:], m.S3AccessKeyId)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.S3AccessKeyId)))
+		i--
+		dAtA[i] = 0x3a
 	}
 	if len(m.S3Endpoint) > 0 {
 		i -= len(m.S3Endpoint)
@@ -4060,6 +4104,14 @@ func (m *BackupRequest) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	l = len(m.S3AccessKeyId)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.S3SecretAccessKey)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -4122,6 +4174,14 @@ func (m *IncrementalBackupRequest) SizeVT() (n int) {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	l = len(m.S3Endpoint)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.S3AccessKeyId)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.S3SecretAccessKey)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
@@ -6961,6 +7021,70 @@ func (m *BackupRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			m.S3Endpoint = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field S3AccessKeyId", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.S3AccessKeyId = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field S3SecretAccessKey", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.S3SecretAccessKey = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -7387,6 +7511,70 @@ func (m *IncrementalBackupRequest) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.S3Endpoint = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field S3AccessKeyId", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.S3AccessKeyId = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field S3SecretAccessKey", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.S3SecretAccessKey = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

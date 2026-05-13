@@ -44,6 +44,8 @@ This is a purely offline operation — no server needed.`,
 	cmd.Flags().String("s3-bucket", "", "S3 bucket containing the backup (required)")
 	cmd.Flags().String("s3-region", "", "AWS region for S3 bucket")
 	cmd.Flags().String("s3-endpoint", "", "Custom S3 endpoint (for MinIO)")
+	cmd.Flags().String("s3-access-key-id", "", "Static AWS access key ID (default: use default credential chain)")
+	cmd.Flags().String("s3-secret-access-key", "", "Static AWS secret access key (default: use default credential chain)")
 	cmd.Flags().String("bucket-id", "", "Namespace prefix for backup files (default: uses cluster-id from config)")
 	cmd.Flags().String("data-dir", "", "Target data directory (required, must be fresh)")
 	cmd.Flags().Bool("validate", false, "Run integrity checks after download")
@@ -57,13 +59,15 @@ This is a purely offline operation — no server needed.`,
 
 func runBootstrap(cmd *cobra.Command, _ []string) error {
 	var (
-		s3Bucket, _   = cmd.Flags().GetString("s3-bucket")
-		s3Region, _   = cmd.Flags().GetString("s3-region")
-		s3Endpoint, _ = cmd.Flags().GetString("s3-endpoint")
-		bucketID, _   = cmd.Flags().GetString("bucket-id")
-		dataDir, _    = cmd.Flags().GetString("data-dir")
-		validate, _   = cmd.Flags().GetBool("validate")
-		yes, _        = cmd.Flags().GetBool("yes")
+		s3Bucket, _          = cmd.Flags().GetString("s3-bucket")
+		s3Region, _          = cmd.Flags().GetString("s3-region")
+		s3Endpoint, _        = cmd.Flags().GetString("s3-endpoint")
+		s3AccessKeyID, _     = cmd.Flags().GetString("s3-access-key-id")
+		s3SecretAccessKey, _ = cmd.Flags().GetString("s3-secret-access-key")
+		bucketID, _          = cmd.Flags().GetString("bucket-id")
+		dataDir, _           = cmd.Flags().GetString("data-dir")
+		validate, _          = cmd.Flags().GetBool("validate")
+		yes, _               = cmd.Flags().GetBool("yes")
 	)
 
 	// Ensure data directory is fresh (no existing checkpoints).
@@ -77,7 +81,7 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Create S3 storage
-	storage, err := backup.NewStorage("s3", "", s3Bucket, s3Region, s3Endpoint)
+	storage, err := backup.NewStorage("s3", "", s3Bucket, s3Region, s3Endpoint, s3AccessKeyID, s3SecretAccessKey)
 	if err != nil {
 		return cmdutil.Displayed(fmt.Errorf("creating S3 storage: %w", err))
 	}
