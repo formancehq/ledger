@@ -376,16 +376,18 @@ type snapshotServiceGateway struct {
 	client snapshotpb.SnapshotServiceClient
 }
 
-func (g *snapshotServiceGateway) FetchSnapshot(req *snapshotpb.FetchSnapshotRequest, stream grpc.ServerStreamingServer[snapshotpb.FetchSnapshotResponse]) error {
+func (g *snapshotServiceGateway) PrepareSnapshot(ctx context.Context, req *snapshotpb.PrepareSnapshotRequest) (*snapshotpb.PrepareSnapshotResponse, error) {
+	return g.client.PrepareSnapshot(ctx, req)
+}
+
+func (g *snapshotServiceGateway) FetchFile(req *snapshotpb.FetchFileRequest, stream grpc.ServerStreamingServer[snapshotpb.FetchFileResponse]) error {
 	ctx := stream.Context()
 
-	// Create client stream to backend
-	clientStream, err := g.client.FetchSnapshot(ctx, req)
+	clientStream, err := g.client.FetchFile(ctx, req)
 	if err != nil {
 		return fmt.Errorf("failed to create client stream: %w", err)
 	}
 
-	// Forward messages from backend to client
 	for {
 		msg, err := clientStream.Recv()
 		if err != nil {
@@ -400,4 +402,8 @@ func (g *snapshotServiceGateway) FetchSnapshot(req *snapshotpb.FetchSnapshotRequ
 			return fmt.Errorf("failed to send to client: %w", err)
 		}
 	}
+}
+
+func (g *snapshotServiceGateway) CloseSession(ctx context.Context, req *snapshotpb.CloseSessionRequest) (*snapshotpb.CloseSessionResponse, error) {
+	return g.client.CloseSession(ctx, req)
 }

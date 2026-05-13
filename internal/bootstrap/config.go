@@ -45,6 +45,14 @@ type ReadIndexConfig struct {
 	PebbleConfig pebblecfg.Config // Pebble tunables for the read index
 }
 
+// SnapshotSyncConfig holds configuration for the session-based snapshot sync protocol.
+type SnapshotSyncConfig struct {
+	SessionTTL     time.Duration // Server-side session lifetime before reaper cleanup
+	Parallelism    int           // Number of parallel file fetch workers on the client
+	RetryCount     int           // Session-level retry attempts on transient errors
+	FileRetryCount int           // Per-file retry attempts on transient stream errors
+}
+
 type Config struct {
 	RaftConfig                  node.NodeConfig
 	Debug                       bool
@@ -74,6 +82,7 @@ type Config struct {
 	BloomConfig                 *commonpb.ClusterConfig
 	IdempotencyTTL              time.Duration
 	IdempotencyEvictionInterval time.Duration
+	SnapshotSyncConfig          SnapshotSyncConfig
 }
 
 func (c Config) Validate() error {

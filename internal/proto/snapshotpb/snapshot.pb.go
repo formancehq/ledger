@@ -21,7 +21,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type FetchSnapshotRequest struct {
+type PrepareSnapshotRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Calling node identity (for logging/quotas).
 	NodeId        string `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
@@ -29,20 +29,20 @@ type FetchSnapshotRequest struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *FetchSnapshotRequest) Reset() {
-	*x = FetchSnapshotRequest{}
+func (x *PrepareSnapshotRequest) Reset() {
+	*x = PrepareSnapshotRequest{}
 	mi := &file_snapshot_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *FetchSnapshotRequest) String() string {
+func (x *PrepareSnapshotRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*FetchSnapshotRequest) ProtoMessage() {}
+func (*PrepareSnapshotRequest) ProtoMessage() {}
 
-func (x *FetchSnapshotRequest) ProtoReflect() protoreflect.Message {
+func (x *PrepareSnapshotRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_snapshot_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -54,48 +54,42 @@ func (x *FetchSnapshotRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use FetchSnapshotRequest.ProtoReflect.Descriptor instead.
-func (*FetchSnapshotRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use PrepareSnapshotRequest.ProtoReflect.Descriptor instead.
+func (*PrepareSnapshotRequest) Descriptor() ([]byte, []int) {
 	return file_snapshot_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *FetchSnapshotRequest) GetNodeId() string {
+func (x *PrepareSnapshotRequest) GetNodeId() string {
 	if x != nil {
 		return x.NodeId
 	}
 	return ""
 }
 
-type FetchSnapshotResponse struct {
+type PrepareSnapshotResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// True for the first chunk (carries metadata).
-	Header bool `protobuf:"varint,1,opt,name=header,proto3" json:"header,omitempty"`
-	// Chunk offset in the total stream
-	ChunkOffset uint64 `protobuf:"varint,2,opt,name=chunk_offset,json=chunkOffset,proto3" json:"chunk_offset,omitempty"`
-	Data        []byte `protobuf:"bytes,3,opt,name=data,proto3" json:"data,omitempty"`
-	// True if last chunk
-	Eof bool `protobuf:"varint,4,opt,name=eof,proto3" json:"eof,omitempty"`
-	// Set on the EOF chunk: integrity verification.
-	ContentSha256 string `protobuf:"bytes,5,opt,name=content_sha256,json=contentSha256,proto3" json:"content_sha256,omitempty"`
-	ContentSize   uint64 `protobuf:"varint,6,opt,name=content_size,json=contentSize,proto3" json:"content_size,omitempty"`
+	// Opaque session identifier. Must be passed to FetchFile and CloseSession.
+	SessionId string `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	// Manifest listing all files in the checkpoint.
+	Manifest      *SnapshotManifest `protobuf:"bytes,2,opt,name=manifest,proto3" json:"manifest,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *FetchSnapshotResponse) Reset() {
-	*x = FetchSnapshotResponse{}
+func (x *PrepareSnapshotResponse) Reset() {
+	*x = PrepareSnapshotResponse{}
 	mi := &file_snapshot_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *FetchSnapshotResponse) String() string {
+func (x *PrepareSnapshotResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*FetchSnapshotResponse) ProtoMessage() {}
+func (*PrepareSnapshotResponse) ProtoMessage() {}
 
-func (x *FetchSnapshotResponse) ProtoReflect() protoreflect.Message {
+func (x *PrepareSnapshotResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_snapshot_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -107,69 +101,350 @@ func (x *FetchSnapshotResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use FetchSnapshotResponse.ProtoReflect.Descriptor instead.
-func (*FetchSnapshotResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use PrepareSnapshotResponse.ProtoReflect.Descriptor instead.
+func (*PrepareSnapshotResponse) Descriptor() ([]byte, []int) {
 	return file_snapshot_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *FetchSnapshotResponse) GetHeader() bool {
+func (x *PrepareSnapshotResponse) GetSessionId() string {
 	if x != nil {
-		return x.Header
+		return x.SessionId
 	}
-	return false
+	return ""
 }
 
-func (x *FetchSnapshotResponse) GetChunkOffset() uint64 {
+func (x *PrepareSnapshotResponse) GetManifest() *SnapshotManifest {
 	if x != nil {
-		return x.ChunkOffset
+		return x.Manifest
 	}
-	return 0
+	return nil
 }
 
-func (x *FetchSnapshotResponse) GetData() []byte {
+type FetchFileRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Session returned by PrepareSnapshot.
+	SessionId string `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	// Relative path of the file to fetch (from the manifest).
+	Path          string `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FetchFileRequest) Reset() {
+	*x = FetchFileRequest{}
+	mi := &file_snapshot_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FetchFileRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FetchFileRequest) ProtoMessage() {}
+
+func (x *FetchFileRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_snapshot_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FetchFileRequest.ProtoReflect.Descriptor instead.
+func (*FetchFileRequest) Descriptor() ([]byte, []int) {
+	return file_snapshot_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *FetchFileRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *FetchFileRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+type FetchFileResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Raw file data.
+	Data []byte `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`
+	// True on the last chunk for this file.
+	Eof           bool `protobuf:"varint,2,opt,name=eof,proto3" json:"eof,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FetchFileResponse) Reset() {
+	*x = FetchFileResponse{}
+	mi := &file_snapshot_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FetchFileResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FetchFileResponse) ProtoMessage() {}
+
+func (x *FetchFileResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_snapshot_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FetchFileResponse.ProtoReflect.Descriptor instead.
+func (*FetchFileResponse) Descriptor() ([]byte, []int) {
+	return file_snapshot_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *FetchFileResponse) GetData() []byte {
 	if x != nil {
 		return x.Data
 	}
 	return nil
 }
 
-func (x *FetchSnapshotResponse) GetEof() bool {
+func (x *FetchFileResponse) GetEof() bool {
 	if x != nil {
 		return x.Eof
 	}
 	return false
 }
 
-func (x *FetchSnapshotResponse) GetContentSha256() string {
+type CloseSessionRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Session to close.
+	SessionId     string `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CloseSessionRequest) Reset() {
+	*x = CloseSessionRequest{}
+	mi := &file_snapshot_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CloseSessionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CloseSessionRequest) ProtoMessage() {}
+
+func (x *CloseSessionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_snapshot_proto_msgTypes[4]
 	if x != nil {
-		return x.ContentSha256
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CloseSessionRequest.ProtoReflect.Descriptor instead.
+func (*CloseSessionRequest) Descriptor() ([]byte, []int) {
+	return file_snapshot_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *CloseSessionRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
 	}
 	return ""
 }
 
-func (x *FetchSnapshotResponse) GetContentSize() uint64 {
+type CloseSessionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CloseSessionResponse) Reset() {
+	*x = CloseSessionResponse{}
+	mi := &file_snapshot_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CloseSessionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CloseSessionResponse) ProtoMessage() {}
+
+func (x *CloseSessionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_snapshot_proto_msgTypes[5]
 	if x != nil {
-		return x.ContentSize
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CloseSessionResponse.ProtoReflect.Descriptor instead.
+func (*CloseSessionResponse) Descriptor() ([]byte, []int) {
+	return file_snapshot_proto_rawDescGZIP(), []int{5}
+}
+
+type SnapshotManifest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Files         []*FileEntry           `protobuf:"bytes,1,rep,name=files,proto3" json:"files,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SnapshotManifest) Reset() {
+	*x = SnapshotManifest{}
+	mi := &file_snapshot_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SnapshotManifest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SnapshotManifest) ProtoMessage() {}
+
+func (x *SnapshotManifest) ProtoReflect() protoreflect.Message {
+	mi := &file_snapshot_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SnapshotManifest.ProtoReflect.Descriptor instead.
+func (*SnapshotManifest) Descriptor() ([]byte, []int) {
+	return file_snapshot_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *SnapshotManifest) GetFiles() []*FileEntry {
+	if x != nil {
+		return x.Files
+	}
+	return nil
+}
+
+type FileEntry struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	Size          uint64                 `protobuf:"varint,2,opt,name=size,proto3" json:"size,omitempty"`
+	Sha256        string                 `protobuf:"bytes,3,opt,name=sha256,proto3" json:"sha256,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FileEntry) Reset() {
+	*x = FileEntry{}
+	mi := &file_snapshot_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FileEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FileEntry) ProtoMessage() {}
+
+func (x *FileEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_snapshot_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FileEntry.ProtoReflect.Descriptor instead.
+func (*FileEntry) Descriptor() ([]byte, []int) {
+	return file_snapshot_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *FileEntry) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *FileEntry) GetSize() uint64 {
+	if x != nil {
+		return x.Size
 	}
 	return 0
+}
+
+func (x *FileEntry) GetSha256() string {
+	if x != nil {
+		return x.Sha256
+	}
+	return ""
 }
 
 var File_snapshot_proto protoreflect.FileDescriptor
 
 const file_snapshot_proto_rawDesc = "" +
 	"\n" +
-	"\x0esnapshot.proto\x12\vsnapshot.v1\"/\n" +
-	"\x14FetchSnapshotRequest\x12\x17\n" +
-	"\anode_id\x18\x01 \x01(\tR\x06nodeId\"\xc2\x01\n" +
-	"\x15FetchSnapshotResponse\x12\x16\n" +
-	"\x06header\x18\x01 \x01(\bR\x06header\x12!\n" +
-	"\fchunk_offset\x18\x02 \x01(\x04R\vchunkOffset\x12\x12\n" +
-	"\x04data\x18\x03 \x01(\fR\x04data\x12\x10\n" +
-	"\x03eof\x18\x04 \x01(\bR\x03eof\x12%\n" +
-	"\x0econtent_sha256\x18\x05 \x01(\tR\rcontentSha256\x12!\n" +
-	"\fcontent_size\x18\x06 \x01(\x04R\vcontentSize2k\n" +
-	"\x0fSnapshotService\x12X\n" +
-	"\rFetchSnapshot\x12!.snapshot.v1.FetchSnapshotRequest\x1a\".snapshot.v1.FetchSnapshotResponse0\x01B?Z=github.com/formancehq/ledger-v3-poc/internal/proto/snapshotpbb\x06proto3"
+	"\x0esnapshot.proto\x12\vsnapshot.v1\"1\n" +
+	"\x16PrepareSnapshotRequest\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeId\"s\n" +
+	"\x17PrepareSnapshotResponse\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x129\n" +
+	"\bmanifest\x18\x02 \x01(\v2\x1d.snapshot.v1.SnapshotManifestR\bmanifest\"E\n" +
+	"\x10FetchFileRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\"9\n" +
+	"\x11FetchFileResponse\x12\x12\n" +
+	"\x04data\x18\x01 \x01(\fR\x04data\x12\x10\n" +
+	"\x03eof\x18\x02 \x01(\bR\x03eof\"4\n" +
+	"\x13CloseSessionRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\"\x16\n" +
+	"\x14CloseSessionResponse\"@\n" +
+	"\x10SnapshotManifest\x12,\n" +
+	"\x05files\x18\x01 \x03(\v2\x16.snapshot.v1.FileEntryR\x05files\"K\n" +
+	"\tFileEntry\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x12\n" +
+	"\x04size\x18\x02 \x01(\x04R\x04size\x12\x16\n" +
+	"\x06sha256\x18\x03 \x01(\tR\x06sha2562\x92\x02\n" +
+	"\x0fSnapshotService\x12\\\n" +
+	"\x0fPrepareSnapshot\x12#.snapshot.v1.PrepareSnapshotRequest\x1a$.snapshot.v1.PrepareSnapshotResponse\x12L\n" +
+	"\tFetchFile\x12\x1d.snapshot.v1.FetchFileRequest\x1a\x1e.snapshot.v1.FetchFileResponse0\x01\x12S\n" +
+	"\fCloseSession\x12 .snapshot.v1.CloseSessionRequest\x1a!.snapshot.v1.CloseSessionResponseB?Z=github.com/formancehq/ledger-v3-poc/internal/proto/snapshotpbb\x06proto3"
 
 var (
 	file_snapshot_proto_rawDescOnce sync.Once
@@ -183,19 +458,31 @@ func file_snapshot_proto_rawDescGZIP() []byte {
 	return file_snapshot_proto_rawDescData
 }
 
-var file_snapshot_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_snapshot_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_snapshot_proto_goTypes = []any{
-	(*FetchSnapshotRequest)(nil),  // 0: snapshot.v1.FetchSnapshotRequest
-	(*FetchSnapshotResponse)(nil), // 1: snapshot.v1.FetchSnapshotResponse
+	(*PrepareSnapshotRequest)(nil),  // 0: snapshot.v1.PrepareSnapshotRequest
+	(*PrepareSnapshotResponse)(nil), // 1: snapshot.v1.PrepareSnapshotResponse
+	(*FetchFileRequest)(nil),        // 2: snapshot.v1.FetchFileRequest
+	(*FetchFileResponse)(nil),       // 3: snapshot.v1.FetchFileResponse
+	(*CloseSessionRequest)(nil),     // 4: snapshot.v1.CloseSessionRequest
+	(*CloseSessionResponse)(nil),    // 5: snapshot.v1.CloseSessionResponse
+	(*SnapshotManifest)(nil),        // 6: snapshot.v1.SnapshotManifest
+	(*FileEntry)(nil),               // 7: snapshot.v1.FileEntry
 }
 var file_snapshot_proto_depIdxs = []int32{
-	0, // 0: snapshot.v1.SnapshotService.FetchSnapshot:input_type -> snapshot.v1.FetchSnapshotRequest
-	1, // 1: snapshot.v1.SnapshotService.FetchSnapshot:output_type -> snapshot.v1.FetchSnapshotResponse
-	1, // [1:2] is the sub-list for method output_type
-	0, // [0:1] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	6, // 0: snapshot.v1.PrepareSnapshotResponse.manifest:type_name -> snapshot.v1.SnapshotManifest
+	7, // 1: snapshot.v1.SnapshotManifest.files:type_name -> snapshot.v1.FileEntry
+	0, // 2: snapshot.v1.SnapshotService.PrepareSnapshot:input_type -> snapshot.v1.PrepareSnapshotRequest
+	2, // 3: snapshot.v1.SnapshotService.FetchFile:input_type -> snapshot.v1.FetchFileRequest
+	4, // 4: snapshot.v1.SnapshotService.CloseSession:input_type -> snapshot.v1.CloseSessionRequest
+	1, // 5: snapshot.v1.SnapshotService.PrepareSnapshot:output_type -> snapshot.v1.PrepareSnapshotResponse
+	3, // 6: snapshot.v1.SnapshotService.FetchFile:output_type -> snapshot.v1.FetchFileResponse
+	5, // 7: snapshot.v1.SnapshotService.CloseSession:output_type -> snapshot.v1.CloseSessionResponse
+	5, // [5:8] is the sub-list for method output_type
+	2, // [2:5] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_snapshot_proto_init() }
@@ -209,7 +496,7 @@ func file_snapshot_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_snapshot_proto_rawDesc), len(file_snapshot_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

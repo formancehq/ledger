@@ -22,12 +22,12 @@ type copyDirFetcher struct {
 	srcDir string
 }
 
-func (f *copyDirFetcher) FetchSnapshot(_ context.Context, targetDir string, _ *SyncProgress) (uint64, string, error) {
+func (f *copyDirFetcher) FetchSnapshot(_ context.Context, targetDir string, _ *SyncProgress) (uint64, error) {
 	if err := os.CopyFS(targetDir, os.DirFS(f.srcDir)); err != nil {
-		return 0, "", err
+		return 0, err
 	}
 
-	return 0, "", nil
+	return 0, nil
 }
 
 // TestSynchronizeWithLeader verifies that a follower correctly syncs from the

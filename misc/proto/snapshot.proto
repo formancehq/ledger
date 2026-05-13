@@ -5,30 +5,55 @@ package snapshot.v1;
 option go_package = "github.com/formancehq/ledger-v3-poc/internal/proto/snapshotpb";
 
 // Service exposed by the leader (or any node hosting the snapshot).
+// Uses a session-based protocol for parallel file transfers:
+//   1. PrepareSnapshot creates a Pebble checkpoint and returns a manifest + session ID.
+//   2. FetchFile streams a single file from the session (called N times in parallel).
+//   3. CloseSession releases the checkpoint and session resources.
 service SnapshotService {
-  // Stream a fresh Pebble checkpoint as a tar archive.
-  // The leader creates the checkpoint on demand when called.
-  rpc FetchSnapshot(FetchSnapshotRequest) returns (stream FetchSnapshotResponse);
+  rpc PrepareSnapshot(PrepareSnapshotRequest) returns (PrepareSnapshotResponse);
+  rpc FetchFile(FetchFileRequest) returns (stream FetchFileResponse);
+  rpc CloseSession(CloseSessionRequest) returns (CloseSessionResponse);
 }
 
-message FetchSnapshotRequest {
+message PrepareSnapshotRequest {
   // Calling node identity (for logging/quotas).
   string node_id = 1;
 }
 
-message FetchSnapshotResponse {
-  // True for the first chunk (carries metadata).
-  bool header = 1;
+message PrepareSnapshotResponse {
+  // Opaque session identifier. Must be passed to FetchFile and CloseSession.
+  string session_id = 1;
+  // Manifest listing all files in the checkpoint.
+  SnapshotManifest manifest = 2;
+}
 
-  // Chunk offset in the total stream
-  uint64 chunk_offset = 2;
+message FetchFileRequest {
+  // Session returned by PrepareSnapshot.
+  string session_id = 1;
+  // Relative path of the file to fetch (from the manifest).
+  string path = 2;
+}
 
-  bytes data = 3;
+message FetchFileResponse {
+  // Raw file data.
+  bytes data = 1;
+  // True on the last chunk for this file.
+  bool eof = 2;
+}
 
-  // True if last chunk
-  bool eof = 4;
+message CloseSessionRequest {
+  // Session to close.
+  string session_id = 1;
+}
 
-  // Set on the EOF chunk: integrity verification.
-  string content_sha256 = 5;
-  uint64 content_size   = 6;
+message CloseSessionResponse {}
+
+message SnapshotManifest {
+  repeated FileEntry files = 1;
+}
+
+message FileEntry {
+  string path = 1;
+  uint64 size = 2;
+  string sha256 = 3;
 }

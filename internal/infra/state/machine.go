@@ -1356,14 +1356,13 @@ func (fsm *Machine) restoreCheckpoint(ctx context.Context, snapshotFetcher Snaps
 	}
 
 	// Fetch a fresh checkpoint from the leader into the staging directory.
-	size, hash, err := snapshotFetcher.FetchSnapshot(ctx, incomingDir, progress)
+	size, err := snapshotFetcher.FetchSnapshot(ctx, incomingDir, progress)
 	if err != nil {
 		return fmt.Errorf("fetching snapshot from leader: %w", err)
 	}
 
 	fsm.logger.WithFields(map[string]any{
 		"size": size,
-		"hash": hash,
 	}).Infof("Checkpoint fetched from leader")
 
 	// Move the incoming checkpoint to a numbered slot (holds snapshotMu briefly).

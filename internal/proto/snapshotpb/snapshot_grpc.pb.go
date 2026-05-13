@@ -19,7 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	SnapshotService_FetchSnapshot_FullMethodName = "/snapshot.v1.SnapshotService/FetchSnapshot"
+	SnapshotService_PrepareSnapshot_FullMethodName = "/snapshot.v1.SnapshotService/PrepareSnapshot"
+	SnapshotService_FetchFile_FullMethodName       = "/snapshot.v1.SnapshotService/FetchFile"
+	SnapshotService_CloseSession_FullMethodName    = "/snapshot.v1.SnapshotService/CloseSession"
 )
 
 // SnapshotServiceClient is the client API for SnapshotService service.
@@ -27,10 +29,14 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
 // Service exposed by the leader (or any node hosting the snapshot).
+// Uses a session-based protocol for parallel file transfers:
+//  1. PrepareSnapshot creates a Pebble checkpoint and returns a manifest + session ID.
+//  2. FetchFile streams a single file from the session (called N times in parallel).
+//  3. CloseSession releases the checkpoint and session resources.
 type SnapshotServiceClient interface {
-	// Stream a fresh Pebble checkpoint as a tar archive.
-	// The leader creates the checkpoint on demand when called.
-	FetchSnapshot(ctx context.Context, in *FetchSnapshotRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[FetchSnapshotResponse], error)
+	PrepareSnapshot(ctx context.Context, in *PrepareSnapshotRequest, opts ...grpc.CallOption) (*PrepareSnapshotResponse, error)
+	FetchFile(ctx context.Context, in *FetchFileRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[FetchFileResponse], error)
+	CloseSession(ctx context.Context, in *CloseSessionRequest, opts ...grpc.CallOption) (*CloseSessionResponse, error)
 }
 
 type snapshotServiceClient struct {
@@ -41,13 +47,23 @@ func NewSnapshotServiceClient(cc grpc.ClientConnInterface) SnapshotServiceClient
 	return &snapshotServiceClient{cc}
 }
 
-func (c *snapshotServiceClient) FetchSnapshot(ctx context.Context, in *FetchSnapshotRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[FetchSnapshotResponse], error) {
+func (c *snapshotServiceClient) PrepareSnapshot(ctx context.Context, in *PrepareSnapshotRequest, opts ...grpc.CallOption) (*PrepareSnapshotResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &SnapshotService_ServiceDesc.Streams[0], SnapshotService_FetchSnapshot_FullMethodName, cOpts...)
+	out := new(PrepareSnapshotResponse)
+	err := c.cc.Invoke(ctx, SnapshotService_PrepareSnapshot_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[FetchSnapshotRequest, FetchSnapshotResponse]{ClientStream: stream}
+	return out, nil
+}
+
+func (c *snapshotServiceClient) FetchFile(ctx context.Context, in *FetchFileRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[FetchFileResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &SnapshotService_ServiceDesc.Streams[0], SnapshotService_FetchFile_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[FetchFileRequest, FetchFileResponse]{ClientStream: stream}
 	if err := x.ClientStream.SendMsg(in); err != nil {
 		return nil, err
 	}
@@ -58,17 +74,31 @@ func (c *snapshotServiceClient) FetchSnapshot(ctx context.Context, in *FetchSnap
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type SnapshotService_FetchSnapshotClient = grpc.ServerStreamingClient[FetchSnapshotResponse]
+type SnapshotService_FetchFileClient = grpc.ServerStreamingClient[FetchFileResponse]
+
+func (c *snapshotServiceClient) CloseSession(ctx context.Context, in *CloseSessionRequest, opts ...grpc.CallOption) (*CloseSessionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CloseSessionResponse)
+	err := c.cc.Invoke(ctx, SnapshotService_CloseSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
 
 // SnapshotServiceServer is the server API for SnapshotService service.
 // All implementations must embed UnimplementedSnapshotServiceServer
 // for forward compatibility.
 //
 // Service exposed by the leader (or any node hosting the snapshot).
+// Uses a session-based protocol for parallel file transfers:
+//  1. PrepareSnapshot creates a Pebble checkpoint and returns a manifest + session ID.
+//  2. FetchFile streams a single file from the session (called N times in parallel).
+//  3. CloseSession releases the checkpoint and session resources.
 type SnapshotServiceServer interface {
-	// Stream a fresh Pebble checkpoint as a tar archive.
-	// The leader creates the checkpoint on demand when called.
-	FetchSnapshot(*FetchSnapshotRequest, grpc.ServerStreamingServer[FetchSnapshotResponse]) error
+	PrepareSnapshot(context.Context, *PrepareSnapshotRequest) (*PrepareSnapshotResponse, error)
+	FetchFile(*FetchFileRequest, grpc.ServerStreamingServer[FetchFileResponse]) error
+	CloseSession(context.Context, *CloseSessionRequest) (*CloseSessionResponse, error)
 	mustEmbedUnimplementedSnapshotServiceServer()
 }
 
@@ -79,8 +109,14 @@ type SnapshotServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedSnapshotServiceServer struct{}
 
-func (UnimplementedSnapshotServiceServer) FetchSnapshot(*FetchSnapshotRequest, grpc.ServerStreamingServer[FetchSnapshotResponse]) error {
-	return status.Error(codes.Unimplemented, "method FetchSnapshot not implemented")
+func (UnimplementedSnapshotServiceServer) PrepareSnapshot(context.Context, *PrepareSnapshotRequest) (*PrepareSnapshotResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PrepareSnapshot not implemented")
+}
+func (UnimplementedSnapshotServiceServer) FetchFile(*FetchFileRequest, grpc.ServerStreamingServer[FetchFileResponse]) error {
+	return status.Error(codes.Unimplemented, "method FetchFile not implemented")
+}
+func (UnimplementedSnapshotServiceServer) CloseSession(context.Context, *CloseSessionRequest) (*CloseSessionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CloseSession not implemented")
 }
 func (UnimplementedSnapshotServiceServer) mustEmbedUnimplementedSnapshotServiceServer() {}
 func (UnimplementedSnapshotServiceServer) testEmbeddedByValue()                         {}
@@ -103,16 +139,52 @@ func RegisterSnapshotServiceServer(s grpc.ServiceRegistrar, srv SnapshotServiceS
 	s.RegisterService(&SnapshotService_ServiceDesc, srv)
 }
 
-func _SnapshotService_FetchSnapshot_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(FetchSnapshotRequest)
+func _SnapshotService_PrepareSnapshot_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PrepareSnapshotRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SnapshotServiceServer).PrepareSnapshot(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SnapshotService_PrepareSnapshot_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SnapshotServiceServer).PrepareSnapshot(ctx, req.(*PrepareSnapshotRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SnapshotService_FetchFile_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(FetchFileRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(SnapshotServiceServer).FetchSnapshot(m, &grpc.GenericServerStream[FetchSnapshotRequest, FetchSnapshotResponse]{ServerStream: stream})
+	return srv.(SnapshotServiceServer).FetchFile(m, &grpc.GenericServerStream[FetchFileRequest, FetchFileResponse]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type SnapshotService_FetchSnapshotServer = grpc.ServerStreamingServer[FetchSnapshotResponse]
+type SnapshotService_FetchFileServer = grpc.ServerStreamingServer[FetchFileResponse]
+
+func _SnapshotService_CloseSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CloseSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SnapshotServiceServer).CloseSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SnapshotService_CloseSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SnapshotServiceServer).CloseSession(ctx, req.(*CloseSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
 
 // SnapshotService_ServiceDesc is the grpc.ServiceDesc for SnapshotService service.
 // It's only intended for direct use with grpc.RegisterService,
@@ -120,11 +192,20 @@ type SnapshotService_FetchSnapshotServer = grpc.ServerStreamingServer[FetchSnaps
 var SnapshotService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "snapshot.v1.SnapshotService",
 	HandlerType: (*SnapshotServiceServer)(nil),
-	Methods:     []grpc.MethodDesc{},
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "PrepareSnapshot",
+			Handler:    _SnapshotService_PrepareSnapshot_Handler,
+		},
+		{
+			MethodName: "CloseSession",
+			Handler:    _SnapshotService_CloseSession_Handler,
+		},
+	},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "FetchSnapshot",
-			Handler:       _SnapshotService_FetchSnapshot_Handler,
+			StreamName:    "FetchFile",
+			Handler:       _SnapshotService_FetchFile_Handler,
 			ServerStreams: true,
 		},
 	},

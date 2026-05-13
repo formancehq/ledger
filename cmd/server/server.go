@@ -178,6 +178,12 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().Duration("idempotency-ttl", 24*time.Hour, "Idempotency key time-to-live (0 = never expire)")
 	runCmd.Flags().Duration("idempotency-eviction-interval", 60*time.Second, "How often the leader proposes idempotency eviction")
 
+	// Snapshot sync configuration
+	runCmd.Flags().Duration("snapshot-session-ttl", 5*time.Minute, "Server-side session TTL for snapshot sync (reaper cleans up expired sessions)")
+	runCmd.Flags().Int("snapshot-parallelism", 4, "Number of parallel file fetch workers during snapshot sync")
+	runCmd.Flags().Int("snapshot-retry-count", 5, "Session-level retry attempts for snapshot sync on transient errors")
+	runCmd.Flags().Int("snapshot-file-retry-count", 3, "Per-file retry attempts during snapshot sync on transient stream errors")
+
 	// Configuration safety
 	runCmd.Flags().Bool("unsafe-skip-config-validation", false, "Skip startup configuration safety checks (DANGEROUS: allows node-id/cluster-id changes)")
 
@@ -521,6 +527,14 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 	// Idempotency TTL
 	cfg.IdempotencyTTL = getDuration("idempotency-ttl", 24*time.Hour)
 	cfg.IdempotencyEvictionInterval = getDuration("idempotency-eviction-interval", 60*time.Second)
+
+	// Snapshot sync configuration
+	cfg.SnapshotSyncConfig = bootstrap.SnapshotSyncConfig{
+		SessionTTL:     getDuration("snapshot-session-ttl", 5*time.Minute),
+		Parallelism:    getInt("snapshot-parallelism", 4),
+		RetryCount:     getInt("snapshot-retry-count", 5),
+		FileRetryCount: getInt("snapshot-file-retry-count", 3),
+	}
 
 	// Configuration safety
 	cfg.UnsafeSkipConfigValidation = getBool("unsafe-skip-config-validation", false)

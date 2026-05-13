@@ -13,10 +13,10 @@ var ErrNotAvailable = errors.New("peer not available")
 // SnapshotFetcher fetches a fresh checkpoint from a peer.
 type SnapshotFetcher interface {
 	// FetchSnapshot requests a fresh checkpoint from the leader and writes it
-	// to targetDir. Returns the total size in bytes and SHA256 hash.
+	// to targetDir. Returns the total size in bytes.
 	// May return ErrNotAvailable if the peer is not reachable.
 	// If progress is non-nil, the fetcher reports transfer progress to it.
-	FetchSnapshot(ctx context.Context, targetDir string, progress *SyncProgress) (size uint64, hash string, err error)
+	FetchSnapshot(ctx context.Context, targetDir string, progress *SyncProgress) (size uint64, err error)
 }
 
 // SnapshotFetcherProvider provides snapshot fetchers for peers.

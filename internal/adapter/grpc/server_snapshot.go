@@ -1,11 +1,16 @@
 package grpc
 
 import (
+	"context"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"sync/atomic"
+	"time"
 
 	ggrpc "google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -19,71 +24,112 @@ type SnapshotServiceServerImpl struct {
 
 	logger     logging.Logger
 	store      *dal.Store
+	sessions   *snapshotSessionStore
 	nextSyncID atomic.Uint64
 }
 
 // NewSnapshotServiceServer creates a new SnapshotServiceServer.
-func NewSnapshotServiceServer(logger logging.Logger, s *dal.Store) snapshotpb.SnapshotServiceServer {
+func NewSnapshotServiceServer(logger logging.Logger, s *dal.Store, sessionTTL time.Duration) snapshotpb.SnapshotServiceServer {
+	l := logger.WithField("component", "snapshot-server")
+
+	if sessionTTL == 0 {
+		sessionTTL = defaultSessionTTL
+	}
+
 	return &SnapshotServiceServerImpl{
-		logger: logger.WithField("component", "snapshot-server"),
-		store:  s,
+		logger:   l,
+		store:    s,
+		sessions: newSnapshotSessionStore(s, l, sessionTTL),
 	}
 }
 
-// FetchSnapshot creates a fresh Pebble checkpoint and streams it as a tar archive.
-// Uses a temporary checkpoint to avoid interference with cleanupOldCheckpoints
-// running in the background goroutine (which only deletes numbered checkpoints).
-func (s *SnapshotServiceServerImpl) FetchSnapshot(req *snapshotpb.FetchSnapshotRequest, stream ggrpc.ServerStreamingServer[snapshotpb.FetchSnapshotResponse]) error {
+// StopSnapshotService stops the session reaper and cleans up all active sessions.
+func StopSnapshotService(server snapshotpb.SnapshotServiceServer) {
+	if impl, ok := server.(*SnapshotServiceServerImpl); ok {
+		impl.sessions.stop()
+	}
+}
+
+// PrepareSnapshot creates a fresh Pebble checkpoint, builds a manifest, and
+// returns a session ID that can be used for parallel FetchFile calls.
+func (s *SnapshotServiceServerImpl) PrepareSnapshot(_ context.Context, req *snapshotpb.PrepareSnapshotRequest) (*snapshotpb.PrepareSnapshotResponse, error) {
 	if s.logger.Enabled(logging.DebugLevel) {
 		s.logger.WithFields(map[string]any{
 			"node_id": req.GetNodeId(),
-		}).Debugf("FetchSnapshot request received")
+		}).Debugf("PrepareSnapshot request received")
 	}
 
-	// Use a temporary checkpoint with a unique name per call.
-	// Temporary checkpoints live in tmp/ and are not affected by
-	// cleanupOldCheckpoints (which only touches checkpoints/{N}/).
 	syncName := "follower-sync-" + strconv.FormatUint(s.nextSyncID.Add(1), 10)
 
 	checkpointPath, err := s.store.CreateTemporaryCheckpoint(syncName)
 	if err != nil {
-		return fmt.Errorf("creating temporary checkpoint: %w", err)
+		return nil, fmt.Errorf("creating temporary checkpoint: %w", err)
 	}
 
-	defer func() {
+	manifest, err := buildManifest(checkpointPath)
+	if err != nil {
+		// Clean up checkpoint on manifest build failure.
 		if rmErr := s.store.RemoveTemporaryCheckpoint(syncName); rmErr != nil {
-			s.logger.WithFields(map[string]any{
-				"error": rmErr,
-				"name":  syncName,
-			}).Errorf("Failed to remove temporary checkpoint after streaming")
+			s.logger.Errorf("Failed to remove checkpoint after manifest error: %v", rmErr)
 		}
-	}()
+
+		return nil, fmt.Errorf("building manifest: %w", err)
+	}
+
+	sessionID, err := s.sessions.create(syncName, checkpointPath)
+	if err != nil {
+		if rmErr := s.store.RemoveTemporaryCheckpoint(syncName); rmErr != nil {
+			s.logger.Errorf("Failed to remove checkpoint after session creation error: %v", rmErr)
+		}
+
+		return nil, fmt.Errorf("creating session: %w", err)
+	}
 
 	s.logger.WithFields(map[string]any{
-		"name": syncName,
-	}).Infof("Temporary checkpoint created for follower sync")
+		"sessionId": sessionID,
+		"files":     len(manifest.GetFiles()),
+	}).Infof("Snapshot session created")
 
-	err = StreamDirAsTar(checkpointPath, 0, func(chunk TarStreamChunk) error {
-		return stream.Send(&snapshotpb.FetchSnapshotResponse{
-			Header:        chunk.IsFirst,
-			ChunkOffset:   chunk.ChunkOffset,
-			Data:          chunk.Data,
-			Eof:           chunk.IsEOF,
-			ContentSha256: chunk.ContentSHA256,
-			ContentSize:   chunk.ContentSize,
-		})
-	})
-	if err != nil {
-		return fmt.Errorf("streaming snapshot: %w", err)
+	return &snapshotpb.PrepareSnapshotResponse{
+		SessionId: sessionID,
+		Manifest:  manifest,
+	}, nil
+}
+
+// FetchFile streams a single file from a prepared snapshot session.
+func (s *SnapshotServiceServerImpl) FetchFile(req *snapshotpb.FetchFileRequest, stream ggrpc.ServerStreamingServer[snapshotpb.FetchFileResponse]) error {
+	session, ok := s.sessions.get(req.GetSessionId())
+	if !ok {
+		return status.Errorf(codes.NotFound, "session %s not found or expired", req.GetSessionId())
 	}
+
+	// Validate the path stays within the checkpoint directory.
+	relPath := req.GetPath()
+	fullPath := filepath.Join(session.checkpointPath, relPath)
+
+	resolved, err := filepath.Rel(session.checkpointPath, fullPath)
+	if err != nil || resolved != relPath {
+		return status.Errorf(codes.InvalidArgument, "invalid file path: %s", relPath)
+	}
+
+	buf := make([]byte, defaultChunkSize)
+
+	return streamOneFile(session.checkpointPath, relPath, buf, func(resp *snapshotpb.FetchFileResponse) error {
+		return stream.Send(resp)
+	})
+}
+
+// CloseSession releases the snapshot session and its temporary checkpoint.
+func (s *SnapshotServiceServerImpl) CloseSession(_ context.Context, req *snapshotpb.CloseSessionRequest) (*snapshotpb.CloseSessionResponse, error) {
+	s.sessions.remove(req.GetSessionId())
 
 	if s.logger.Enabled(logging.DebugLevel) {
 		s.logger.WithFields(map[string]any{
-			"name": syncName,
-		}).Debugf("FetchSnapshot completed")
+			"sessionId": req.GetSessionId(),
+		}).Debugf("Session closed")
 	}
 
-	return nil
+	return &snapshotpb.CloseSessionResponse{}, nil
 }
 
 // RegisterSnapshotService registers the SnapshotService with a gRPC server.

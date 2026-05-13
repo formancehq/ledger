@@ -249,7 +249,14 @@ func Module() fx.Option {
 					}),
 				})
 			},
-			ctrl.GRPCSnapshotFetcherProvider,
+			func(cfg Config, transport *node.DefaultTransport) state.SnapshotFetcherProvider {
+				return ctrl.GRPCSnapshotFetcherProvider(
+					transport,
+					cfg.SnapshotSyncConfig.Parallelism,
+					cfg.SnapshotSyncConfig.RetryCount,
+					cfg.SnapshotSyncConfig.FileRetryCount,
+				)
+			},
 			func(
 				cfg node.NodeConfig,
 				logger logging.Logger,
@@ -458,7 +465,9 @@ func Module() fx.Option {
 			fx.Annotate(func(cfg Config, logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, ss *state.SharedState, signer *receipt.Signer, respSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool) servicepb.BucketServiceServer {
 				return grpcadp.NewBucketServiceServer(logger, c, localCtrl, s, rs, attrs, ss, signer, respSigner, authCfg, cfg.QueryProfileThreshold, meterProvider, n, servicePool)
 			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, `name:"service"`)),
-			grpcadp.NewSnapshotServiceServer,
+			func(cfg Config, logger logging.Logger, s *dal.Store) snapshotpb.SnapshotServiceServer {
+				return grpcadp.NewSnapshotServiceServer(logger, s, cfg.SnapshotSyncConfig.SessionTTL)
+			},
 			func(cfg Config, meterProvider metric.MeterProvider) *diskusage.Collector {
 				return diskusage.NewCollector(
 					cfg.RaftConfig.WalDir,
@@ -760,8 +769,15 @@ func Module() fx.Option {
 
 				return nil
 			},
-			func(raftServer *grpcadp.RaftServer, snapshotServiceServer snapshotpb.SnapshotServiceServer) error {
+			func(lc fx.Lifecycle, raftServer *grpcadp.RaftServer, snapshotServiceServer snapshotpb.SnapshotServiceServer) error {
 				grpcadp.RegisterSnapshotService(raftServer.GetServer(), snapshotServiceServer)
+				lc.Append(fx.Hook{
+					OnStop: func(_ context.Context) error {
+						grpcadp.StopSnapshotService(snapshotServiceServer)
+
+						return nil
+					},
+				})
 
 				return nil
 			},
