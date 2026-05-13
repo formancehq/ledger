@@ -243,7 +243,7 @@ func Module() fx.Option {
 			},
 			func(cfg Config, logger logging.Logger) (*spool.Default, error) {
 				return spool.NewDefault(spool.DefaultSpoolConfig{
-					Dir: filepath.Join(cfg.RaftConfig.WalDir, "spool"),
+					Dir: filepath.Join(cfg.DataDir, "spool"),
 					Logger: logger.WithFields(map[string]any{
 						"cmp": "spool",
 					}),
