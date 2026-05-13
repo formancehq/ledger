@@ -296,7 +296,6 @@ func Module() fx.Option {
 				cfg Config,
 				logger logging.Logger,
 				store *dal.Store,
-				w *wal.DefaultWAL,
 				meterProvider metric.MeterProvider,
 				c *cache.Cache,
 				attrs *attributes.Attributes,
@@ -314,7 +313,6 @@ func Module() fx.Option {
 				m, err := state.NewMachine(
 					logger,
 					store,
-					w,
 					meterProvider.Meter("raft.node"),
 					c,
 					attrs,
@@ -337,7 +335,7 @@ func Module() fx.Option {
 				}).Infof("FSM Machine created")
 
 				return m, nil
-			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, ``, `name:"events"`, `name:"mirror"`, `name:"index"`)),
+			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, `name:"events"`, `name:"mirror"`, `name:"index"`)),
 			func(
 				params struct {
 					fx.In
