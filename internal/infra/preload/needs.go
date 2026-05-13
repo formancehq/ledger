@@ -10,7 +10,6 @@ type Needs struct {
 	Ledgers           map[domain.LedgerKey]struct{}
 	Boundaries        map[domain.LedgerKey]struct{}
 	Volumes           map[domain.VolumeKey]struct{}
-	TransientVolumes  map[domain.VolumeKey]struct{} // Transient accounts: zero-initialized preload, no Pebble lookup
 	IdempotencyKeys   map[domain.IdempotencyKey]struct{}
 	References        map[domain.TransactionReferenceKey]struct{}
 	Metadata          map[domain.MetadataKey]struct{}
@@ -24,7 +23,7 @@ type Needs struct {
 // TotalKeys returns the total number of keys across all need types.
 func (n *Needs) TotalKeys() int {
 	return len(n.Ledgers) + len(n.Boundaries) + len(n.Volumes) +
-		len(n.TransientVolumes) + len(n.IdempotencyKeys) + len(n.References) +
+		len(n.IdempotencyKeys) + len(n.References) +
 		len(n.Metadata) + len(n.Transactions) +
 		len(n.SinkConfigs) + len(n.NumscriptVersions) +
 		len(n.NumscriptContents) + len(n.PreparedQueries)
@@ -36,7 +35,6 @@ func NewNeeds() *Needs {
 		Ledgers:           make(map[domain.LedgerKey]struct{}),
 		Boundaries:        make(map[domain.LedgerKey]struct{}),
 		Volumes:           make(map[domain.VolumeKey]struct{}),
-		TransientVolumes:  make(map[domain.VolumeKey]struct{}),
 		IdempotencyKeys:   make(map[domain.IdempotencyKey]struct{}),
 		References:        make(map[domain.TransactionReferenceKey]struct{}),
 		Metadata:          make(map[domain.MetadataKey]struct{}),
