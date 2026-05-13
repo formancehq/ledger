@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/protobuf/proto"
 
@@ -79,6 +80,7 @@ type Store struct {
 	oldestCheckpoint  uint64
 	maxCheckpoints    int
 	stallState        *WriteStallState
+	iopsCounters      *IOPSCounters
 }
 
 // getDB returns the current pebble.DB.
@@ -263,10 +265,14 @@ func NewStore(
 		DisableWAL:         cfg.DisableWAL,
 	}
 
-	// 7) Enable columnar blocks (required for value separation, also improves scans).
+	// 7) VFS wrapper for IOPS counting.
+	iopsCounters := &IOPSCounters{}
+	opts.FS = NewMetricsFS(vfs.Default, iopsCounters)
+
+	// 8) Enable columnar blocks (required for value separation, also improves scans).
 	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 
-	// 8) Value separation: store large values in blob files to reduce compaction IO.
+	// 9) Value separation: store large values in blob files to reduce compaction IO.
 	if cfg.ValueSeparation.Enabled {
 		vs := cfg.ValueSeparation
 		opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
@@ -359,6 +365,13 @@ func NewStore(
 		oldestCheckpoint:  oldestCheckpoint,
 		maxCheckpoints:    cfg.MaxCheckpoints,
 		stallState:        stallState,
+		iopsCounters:      iopsCounters,
+	}
+
+	if _, err = iopsCounters.RegisterMetrics(meter); err != nil {
+		_ = db.Close()
+
+		return nil, fmt.Errorf("registering IOPS metrics: %w", err)
 	}
 	store.db = db
 
