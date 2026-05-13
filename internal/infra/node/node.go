@@ -687,6 +687,27 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 		applied = walSnap.Metadata.Index
 	}
 
+	// Cap applied to the WAL's durable commit index. etcd's WAL skips fsync
+	// for commit-only HardState updates (MustSync checks entries/term/vote,
+	// not commit). A crash can lose uncommitted commit advances, leaving
+	// Pebble's lastAppliedIndex ahead of the WAL's HardState.Commit. Raft
+	// panics at startup if applied > committed. Capping here is safe because
+	// the FSM's ApplyEntries skips entries whose index <= lastAppliedIndex
+	// (loaded from Pebble), so re-delivered entries are no-ops.
+	hardState, _, err := node.wal.InitialState()
+	if err != nil {
+		return fmt.Errorf("reading WAL initial state for Applied: %w", err)
+	}
+
+	if hardState.Commit < applied {
+		node.logger.WithFields(map[string]any{
+			"storeApplied":     applied,
+			"walDurableCommit": hardState.Commit,
+		}).Infof("Pebble applied ahead of WAL durable commit, capping Applied")
+
+		applied = hardState.Commit
+	}
+
 	raftConfig := &raft.Config{
 		ID:                        node.config.NodeID,
 		ElectionTick:              node.config.ElectionTick,
