@@ -1563,7 +1563,7 @@ components:
                 type: string
               status:
                 type: string
-                enum: [ACTIVE, MIGRATING, DEPRECATED]
+                enum: [ACTIVE, DEPRECATED]
               persistence:
                 type: string
                 enum: [NORMAL, EPHEMERAL, TRANSIENT]

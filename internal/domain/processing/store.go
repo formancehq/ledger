@@ -91,9 +91,6 @@ type InMemoryStore interface {
 	// Metadata conversion requests
 	AddMetadataConvertRequest(ledgerName string, targetType commonpb.TargetType, key string, metadataType commonpb.MetadataType)
 
-	// Account migration requests
-	AddAccountMigrateRequest(ledgerName, accountTypeName, oldPattern, targetPattern string)
-
 	// Prepared query operations
 	GetPreparedQuery(ledger, name string) (*commonpb.PreparedQuery, error)
 	PutPreparedQuery(pq *commonpb.PreparedQuery)

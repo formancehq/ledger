@@ -18,7 +18,6 @@ func NewCommand() *cobra.Command {
 	cmd.AddCommand(NewGetCommand())
 	cmd.AddCommand(NewRemoveCommand())
 	cmd.AddCommand(NewSetDefaultEnforcementCommand())
-	cmd.AddCommand(NewMigrateCommand())
 
 	return cmd
 }

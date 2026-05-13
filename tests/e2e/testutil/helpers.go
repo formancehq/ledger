@@ -17,7 +17,6 @@ var (
 	CreateScriptTransactionAction      = actions.CreateScriptTransactionAction
 	AddAccountTypeAction               = actions.AddAccountTypeAction
 	RemoveAccountTypeAction            = actions.RemoveAccountTypeAction
-	MigrateAccountTypeAction           = actions.MigrateAccountTypeAction
 	SaveAccountMetadataAction          = actions.SaveAccountMetadataAction
 	DeleteAccountMetadataAction        = actions.DeleteAccountMetadataAction
 	SaveTransactionMetadataAction      = actions.SaveTransactionMetadataAction

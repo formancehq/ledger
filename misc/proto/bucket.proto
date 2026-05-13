@@ -218,9 +218,8 @@ message Request {
     SetDefaultEnforcementModeLedgerRequest set_default_enforcement_mode = 31;
     CreateQueryCheckpointRequest create_query_checkpoint = 32;
     DeleteQueryCheckpointRequest delete_query_checkpoint = 33;
-    MigrateAccountTypeLedgerRequest migrate_account_type = 34;
-    SetQueryCheckpointScheduleRequest set_query_checkpoint_schedule = 35;
-    DeleteQueryCheckpointScheduleRequest delete_query_checkpoint_schedule = 36;
+    SetQueryCheckpointScheduleRequest set_query_checkpoint_schedule = 34;
+    DeleteQueryCheckpointScheduleRequest delete_query_checkpoint_schedule = 35;
   }
   signature.RequestSignature signature = 5;
 }
@@ -458,7 +457,6 @@ message LedgerApplyRequest {
     AddAccountTypeRequest add_account_type = 6;
     RemoveAccountTypeRequest remove_account_type = 7;
     SetDefaultEnforcementModeRequest set_default_enforcement_mode = 8;
-    MigrateAccountTypeRequest migrate_account_type = 9;
   }
 }
 
@@ -493,19 +491,6 @@ message AddAccountTypeLedgerRequest {
 message RemoveAccountTypeLedgerRequest {
   string ledger = 1;
   string name = 2;
-}
-
-// MigrateAccountTypeLedgerRequest initiates a pattern migration (top-level request).
-message MigrateAccountTypeLedgerRequest {
-  string ledger = 1;
-  string name = 2;
-  string target_pattern = 3;
-}
-
-// MigrateAccountTypeRequest initiates a pattern migration within a LedgerApplyRequest.
-message MigrateAccountTypeRequest {
-  string name = 1;
-  string target_pattern = 2;
 }
 
 // ============================================================================

@@ -438,7 +438,6 @@ func (s *inMemoryStore) DeleteQueryCheckpointSchedule()                        {
 func (s *inMemoryStore) MarkLedgerForCleanup(ledger string) {
 	s.engine.pendingLedgerDeletions = append(s.engine.pendingLedgerDeletions, ledger)
 }
-func (s *inMemoryStore) AddAccountMigrateRequest(_, _, _, _ string) {}
 func (s *inMemoryStore) ResolveNumscriptContent(_, _, _ string) (*commonpb.NumscriptInfo, error) {
 	return nil, nil
 }

@@ -226,9 +226,6 @@ message LedgerApplyOrder {
     AddAccountTypeOrder add_account_type = 13;
     RemoveAccountTypeOrder remove_account_type = 14;
     UpdateDefaultEnforcementModeOrder update_default_enforcement_mode = 15;
-    StartAccountMigrationOrder start_account_migration = 16;
-    AccountMigrationBatchOrder account_migration_batch = 17;
-    CompleteAccountMigrationOrder complete_account_migration = 18;
   }
 }
 
@@ -272,33 +269,6 @@ message RemoveAccountTypeOrder {
 // UpdateDefaultEnforcementModeOrder updates the ledger's default enforcement mode for unmatched accounts.
 message UpdateDefaultEnforcementModeOrder {
   common.ChartEnforcementMode enforcement_mode = 1;
-}
-
-// StartAccountMigrationOrder initiates a pattern migration on an account type.
-message StartAccountMigrationOrder {
-  string account_type_name = 1;
-  string target_pattern = 2;
-}
-
-// AccountMigrationBatchOrder contains a batch of account renames.
-message AccountMigrationBatchOrder {
-  string account_type_name = 1;
-  string expected_old_pattern = 2;  // guard against stale batches
-  repeated AccountMigrationEntry entries = 3;
-}
-
-// AccountMigrationEntry represents a single account rename in a migration batch.
-message AccountMigrationEntry {
-  string old_address = 1;
-  string new_address = 2;
-  repeated string assets = 3;
-  repeated string metadata_keys = 4;
-}
-
-// CompleteAccountMigrationOrder finalizes a pattern migration.
-message CompleteAccountMigrationOrder {
-  string account_type_name = 1;
-  string expected_old_pattern = 2;  // guard against stale completion
 }
 
 message ConvertMetadataBatchOrder {

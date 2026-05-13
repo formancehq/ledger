@@ -42,18 +42,6 @@ func (m *MockInMemoryStore) EXPECT() *MockInMemoryStoreMockRecorder {
 	return m.recorder
 }
 
-// AddAccountMigrateRequest mocks base method.
-func (m *MockInMemoryStore) AddAccountMigrateRequest(ledgerName, accountTypeName, oldPattern, targetPattern string) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "AddAccountMigrateRequest", ledgerName, accountTypeName, oldPattern, targetPattern)
-}
-
-// AddAccountMigrateRequest indicates an expected call of AddAccountMigrateRequest.
-func (mr *MockInMemoryStoreMockRecorder) AddAccountMigrateRequest(ledgerName, accountTypeName, oldPattern, targetPattern any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddAccountMigrateRequest", reflect.TypeOf((*MockInMemoryStore)(nil).AddAccountMigrateRequest), ledgerName, accountTypeName, oldPattern, targetPattern)
-}
-
 // AddClosingPeriod mocks base method.
 func (m *MockInMemoryStore) AddClosingPeriod(period *commonpb.Period) {
 	m.ctrl.T.Helper()

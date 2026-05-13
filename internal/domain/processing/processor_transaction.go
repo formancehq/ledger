@@ -5,10 +5,7 @@ import (
 	"fmt"
 	"maps"
 
-	"github.com/holiman/uint256"
-
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/accounttype"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
@@ -34,13 +31,6 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 	var schema *commonpb.MetadataSchema
 	if info != nil {
 		schema = info.GetMetadataSchema()
-	}
-
-	// Pre-resolve migrating volumes: combine old-address volumes into new-address
-	// volumes for MIGRATING account types so applyPosting sees the correct balance.
-	// Both old and new volumes are preloaded; this uses cache-only lookups.
-	if info != nil {
-		resolveMigratingVolumes(s, ledger, order, info)
 	}
 
 	// Resolve script reference: load content from preloaded cache.
@@ -247,124 +237,4 @@ func (p *stdPostingProducer) produce(s InMemoryStore, ledger string, order *raft
 		Postings:            order.GetPostings(),
 		TransactionMetadata: nil, // No script metadata for standard postings
 	}, nil
-}
-
-// resolveMigratingVolumes combines old-address volumes into new-address volumes
-// for any posting address that matches a MIGRATING account type's target pattern.
-// Both old and new volumes are preloaded; this uses cache-only lookups (no Pebble reads).
-func resolveMigratingVolumes(
-	s InMemoryStore,
-	ledger string,
-	order *raftcmdpb.CreateTransactionOrder,
-	info *commonpb.LedgerInfo,
-) {
-	// Collect MIGRATING types with parsed patterns.
-	type migratingType struct {
-		targetSegments []accounttype.PatternSegment
-		oldSegments    []accounttype.PatternSegment
-	}
-
-	var migrating []migratingType
-
-	for _, at := range info.GetAccountTypes() {
-		if at.GetStatus() != commonpb.AccountTypeStatus_ACCOUNT_TYPE_MIGRATING || at.GetMigration() == nil {
-			continue
-		}
-
-		targetSegs, tErr := accounttype.ParsePattern(at.GetMigration().GetTargetPattern())
-		if tErr != nil {
-			continue
-		}
-
-		oldSegs, oErr := accounttype.ParsePattern(at.GetPattern())
-		if oErr != nil {
-			continue
-		}
-
-		migrating = append(migrating, migratingType{targetSegments: targetSegs, oldSegments: oldSegs})
-	}
-
-	if len(migrating) == 0 {
-		return
-	}
-
-	// Collect unique (address, asset) pairs from postings.
-	type addrAsset struct {
-		address string
-		asset   string
-	}
-
-	seen := make(map[addrAsset]struct{})
-
-	for _, posting := range order.GetPostings() {
-		for _, addr := range []string{posting.GetSource(), posting.GetDestination()} {
-			if addr == "world" {
-				continue
-			}
-
-			key := addrAsset{addr, posting.GetAsset()}
-			if _, ok := seen[key]; ok {
-				continue
-			}
-
-			seen[key] = struct{}{}
-
-			for _, mt := range migrating {
-				bindings, ok := accounttype.MatchAddress(addr, mt.targetSegments)
-				if !ok {
-					continue
-				}
-
-				oldAddr, rwErr := accounttype.RewriteAddress(&bindings, mt.oldSegments)
-				if rwErr != nil {
-					continue
-				}
-
-				oldKey := domain.VolumeKey{
-					AccountKey: domain.AccountKey{Ledger: ledger, Account: oldAddr},
-					Asset:      posting.GetAsset(),
-				}
-
-				oldVol, err := s.GetVolume(oldKey)
-				if err != nil || oldVol == nil {
-					continue
-				}
-
-				var oldInput, oldOutput uint256.Int
-				oldVol.GetInput().IntoUint256(&oldInput)
-				oldVol.GetOutput().IntoUint256(&oldOutput)
-
-				if oldInput.IsZero() && oldOutput.IsZero() {
-					continue
-				}
-
-				newKey := domain.VolumeKey{
-					AccountKey: domain.AccountKey{Ledger: ledger, Account: addr},
-					Asset:      posting.GetAsset(),
-				}
-
-				var newInput, newOutput uint256.Int
-				if newVol, err := s.GetVolume(newKey); err == nil && newVol != nil {
-					newVol.GetInput().IntoUint256(&newInput)
-					newVol.GetOutput().IntoUint256(&newOutput)
-				}
-
-				// Write a fresh VolumePair so we never alias oldVol: a later
-				// applyPosting that mutates the new key in place would otherwise
-				// leak back into the old key.
-				s.PutVolume(newKey, &raftcmdpb.VolumePair{
-					Input:  commonpb.NewUint256(new(uint256.Int).Add(&newInput, &oldInput)),
-					Output: commonpb.NewUint256(new(uint256.Int).Add(&newOutput, &oldOutput)),
-				})
-
-				// Zero the old key so it no longer contributes to aggregates.
-				s.PutVolume(oldKey, &raftcmdpb.VolumePair{
-					Input:  commonpb.NewUint256(new(uint256.Int)),
-					Output: commonpb.NewUint256(new(uint256.Int)),
-				})
-
-				break // Only one type can match an address.
-			}
-		}
-	}
 }

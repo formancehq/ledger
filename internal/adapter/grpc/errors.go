@@ -190,14 +190,6 @@ var errorMappings = []errorMapping{
 		return map[string]string{"name": e.Name}
 	}), codes.FailedPrecondition, domain.ErrReasonAccountTypeHasAccounts},
 
-	{matchAs(func(e *domain.ErrAccountTypeMigrationInProgress) map[string]string {
-		return map[string]string{"name": e.Name}
-	}), codes.FailedPrecondition, domain.ErrReasonAccountTypeMigrationInProgress},
-
-	{matchAs(func(e *domain.ErrAccountTypeMigrationNotCompatible) map[string]string {
-		return map[string]string{"source": e.Source, "target": e.Target, "details": e.Details}
-	}), codes.InvalidArgument, domain.ErrReasonAccountTypeMigrationNotCompatible},
-
 	{matchAs(func(e *domain.ErrTransientAccountNonZero) map[string]string {
 		return map[string]string{"account": e.Account, "asset": e.Asset}
 	}), codes.FailedPrecondition, domain.ErrReasonTransientAccountNonZero},

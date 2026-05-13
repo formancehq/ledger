@@ -2253,9 +2253,6 @@ type LedgerApplyOrder struct {
 	//	*LedgerApplyOrder_AddAccountType
 	//	*LedgerApplyOrder_RemoveAccountType
 	//	*LedgerApplyOrder_UpdateDefaultEnforcementMode
-	//	*LedgerApplyOrder_StartAccountMigration
-	//	*LedgerApplyOrder_AccountMigrationBatch
-	//	*LedgerApplyOrder_CompleteAccountMigration
 	Data          isLedgerApplyOrder_Data `protobuf_oneof:"data"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2431,33 +2428,6 @@ func (x *LedgerApplyOrder) GetUpdateDefaultEnforcementMode() *UpdateDefaultEnfor
 	return nil
 }
 
-func (x *LedgerApplyOrder) GetStartAccountMigration() *StartAccountMigrationOrder {
-	if x != nil {
-		if x, ok := x.Data.(*LedgerApplyOrder_StartAccountMigration); ok {
-			return x.StartAccountMigration
-		}
-	}
-	return nil
-}
-
-func (x *LedgerApplyOrder) GetAccountMigrationBatch() *AccountMigrationBatchOrder {
-	if x != nil {
-		if x, ok := x.Data.(*LedgerApplyOrder_AccountMigrationBatch); ok {
-			return x.AccountMigrationBatch
-		}
-	}
-	return nil
-}
-
-func (x *LedgerApplyOrder) GetCompleteAccountMigration() *CompleteAccountMigrationOrder {
-	if x != nil {
-		if x, ok := x.Data.(*LedgerApplyOrder_CompleteAccountMigration); ok {
-			return x.CompleteAccountMigration
-		}
-	}
-	return nil
-}
-
 type isLedgerApplyOrder_Data interface {
 	isLedgerApplyOrder_Data()
 }
@@ -2518,18 +2488,6 @@ type LedgerApplyOrder_UpdateDefaultEnforcementMode struct {
 	UpdateDefaultEnforcementMode *UpdateDefaultEnforcementModeOrder `protobuf:"bytes,15,opt,name=update_default_enforcement_mode,json=updateDefaultEnforcementMode,proto3,oneof"`
 }
 
-type LedgerApplyOrder_StartAccountMigration struct {
-	StartAccountMigration *StartAccountMigrationOrder `protobuf:"bytes,16,opt,name=start_account_migration,json=startAccountMigration,proto3,oneof"`
-}
-
-type LedgerApplyOrder_AccountMigrationBatch struct {
-	AccountMigrationBatch *AccountMigrationBatchOrder `protobuf:"bytes,17,opt,name=account_migration_batch,json=accountMigrationBatch,proto3,oneof"`
-}
-
-type LedgerApplyOrder_CompleteAccountMigration struct {
-	CompleteAccountMigration *CompleteAccountMigrationOrder `protobuf:"bytes,18,opt,name=complete_account_migration,json=completeAccountMigration,proto3,oneof"`
-}
-
 func (*LedgerApplyOrder_CreateTransaction) isLedgerApplyOrder_Data() {}
 
 func (*LedgerApplyOrder_AddMetadata) isLedgerApplyOrder_Data() {}
@@ -2557,12 +2515,6 @@ func (*LedgerApplyOrder_AddAccountType) isLedgerApplyOrder_Data() {}
 func (*LedgerApplyOrder_RemoveAccountType) isLedgerApplyOrder_Data() {}
 
 func (*LedgerApplyOrder_UpdateDefaultEnforcementMode) isLedgerApplyOrder_Data() {}
-
-func (*LedgerApplyOrder_StartAccountMigration) isLedgerApplyOrder_Data() {}
-
-func (*LedgerApplyOrder_AccountMigrationBatch) isLedgerApplyOrder_Data() {}
-
-func (*LedgerApplyOrder_CompleteAccountMigration) isLedgerApplyOrder_Data() {}
 
 // CreateIndexOrder requests the creation of a new index.
 type CreateIndexOrder struct {
@@ -2996,242 +2948,6 @@ func (x *UpdateDefaultEnforcementModeOrder) GetEnforcementMode() commonpb.ChartE
 	return commonpb.ChartEnforcementMode(0)
 }
 
-// StartAccountMigrationOrder initiates a pattern migration on an account type.
-type StartAccountMigrationOrder struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	AccountTypeName string                 `protobuf:"bytes,1,opt,name=account_type_name,json=accountTypeName,proto3" json:"account_type_name,omitempty"`
-	TargetPattern   string                 `protobuf:"bytes,2,opt,name=target_pattern,json=targetPattern,proto3" json:"target_pattern,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
-}
-
-func (x *StartAccountMigrationOrder) Reset() {
-	*x = StartAccountMigrationOrder{}
-	mi := &file_raft_cmd_proto_msgTypes[40]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *StartAccountMigrationOrder) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*StartAccountMigrationOrder) ProtoMessage() {}
-
-func (x *StartAccountMigrationOrder) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[40]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use StartAccountMigrationOrder.ProtoReflect.Descriptor instead.
-func (*StartAccountMigrationOrder) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{40}
-}
-
-func (x *StartAccountMigrationOrder) GetAccountTypeName() string {
-	if x != nil {
-		return x.AccountTypeName
-	}
-	return ""
-}
-
-func (x *StartAccountMigrationOrder) GetTargetPattern() string {
-	if x != nil {
-		return x.TargetPattern
-	}
-	return ""
-}
-
-// AccountMigrationBatchOrder contains a batch of account renames.
-type AccountMigrationBatchOrder struct {
-	state              protoimpl.MessageState   `protogen:"open.v1"`
-	AccountTypeName    string                   `protobuf:"bytes,1,opt,name=account_type_name,json=accountTypeName,proto3" json:"account_type_name,omitempty"`
-	ExpectedOldPattern string                   `protobuf:"bytes,2,opt,name=expected_old_pattern,json=expectedOldPattern,proto3" json:"expected_old_pattern,omitempty"` // guard against stale batches
-	Entries            []*AccountMigrationEntry `protobuf:"bytes,3,rep,name=entries,proto3" json:"entries,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
-}
-
-func (x *AccountMigrationBatchOrder) Reset() {
-	*x = AccountMigrationBatchOrder{}
-	mi := &file_raft_cmd_proto_msgTypes[41]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AccountMigrationBatchOrder) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AccountMigrationBatchOrder) ProtoMessage() {}
-
-func (x *AccountMigrationBatchOrder) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[41]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AccountMigrationBatchOrder.ProtoReflect.Descriptor instead.
-func (*AccountMigrationBatchOrder) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{41}
-}
-
-func (x *AccountMigrationBatchOrder) GetAccountTypeName() string {
-	if x != nil {
-		return x.AccountTypeName
-	}
-	return ""
-}
-
-func (x *AccountMigrationBatchOrder) GetExpectedOldPattern() string {
-	if x != nil {
-		return x.ExpectedOldPattern
-	}
-	return ""
-}
-
-func (x *AccountMigrationBatchOrder) GetEntries() []*AccountMigrationEntry {
-	if x != nil {
-		return x.Entries
-	}
-	return nil
-}
-
-// AccountMigrationEntry represents a single account rename in a migration batch.
-type AccountMigrationEntry struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	OldAddress    string                 `protobuf:"bytes,1,opt,name=old_address,json=oldAddress,proto3" json:"old_address,omitempty"`
-	NewAddress    string                 `protobuf:"bytes,2,opt,name=new_address,json=newAddress,proto3" json:"new_address,omitempty"`
-	Assets        []string               `protobuf:"bytes,3,rep,name=assets,proto3" json:"assets,omitempty"`
-	MetadataKeys  []string               `protobuf:"bytes,4,rep,name=metadata_keys,json=metadataKeys,proto3" json:"metadata_keys,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *AccountMigrationEntry) Reset() {
-	*x = AccountMigrationEntry{}
-	mi := &file_raft_cmd_proto_msgTypes[42]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AccountMigrationEntry) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AccountMigrationEntry) ProtoMessage() {}
-
-func (x *AccountMigrationEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[42]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AccountMigrationEntry.ProtoReflect.Descriptor instead.
-func (*AccountMigrationEntry) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{42}
-}
-
-func (x *AccountMigrationEntry) GetOldAddress() string {
-	if x != nil {
-		return x.OldAddress
-	}
-	return ""
-}
-
-func (x *AccountMigrationEntry) GetNewAddress() string {
-	if x != nil {
-		return x.NewAddress
-	}
-	return ""
-}
-
-func (x *AccountMigrationEntry) GetAssets() []string {
-	if x != nil {
-		return x.Assets
-	}
-	return nil
-}
-
-func (x *AccountMigrationEntry) GetMetadataKeys() []string {
-	if x != nil {
-		return x.MetadataKeys
-	}
-	return nil
-}
-
-// CompleteAccountMigrationOrder finalizes a pattern migration.
-type CompleteAccountMigrationOrder struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	AccountTypeName    string                 `protobuf:"bytes,1,opt,name=account_type_name,json=accountTypeName,proto3" json:"account_type_name,omitempty"`
-	ExpectedOldPattern string                 `protobuf:"bytes,2,opt,name=expected_old_pattern,json=expectedOldPattern,proto3" json:"expected_old_pattern,omitempty"` // guard against stale completion
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
-}
-
-func (x *CompleteAccountMigrationOrder) Reset() {
-	*x = CompleteAccountMigrationOrder{}
-	mi := &file_raft_cmd_proto_msgTypes[43]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *CompleteAccountMigrationOrder) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*CompleteAccountMigrationOrder) ProtoMessage() {}
-
-func (x *CompleteAccountMigrationOrder) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[43]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use CompleteAccountMigrationOrder.ProtoReflect.Descriptor instead.
-func (*CompleteAccountMigrationOrder) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{43}
-}
-
-func (x *CompleteAccountMigrationOrder) GetAccountTypeName() string {
-	if x != nil {
-		return x.AccountTypeName
-	}
-	return ""
-}
-
-func (x *CompleteAccountMigrationOrder) GetExpectedOldPattern() string {
-	if x != nil {
-		return x.ExpectedOldPattern
-	}
-	return ""
-}
-
 type ConvertMetadataBatchOrder struct {
 	state              protoimpl.MessageState  `protogen:"open.v1"`
 	TargetType         commonpb.TargetType     `protobuf:"varint,1,opt,name=target_type,json=targetType,proto3,enum=common.TargetType" json:"target_type,omitempty"`
@@ -3246,7 +2962,7 @@ type ConvertMetadataBatchOrder struct {
 
 func (x *ConvertMetadataBatchOrder) Reset() {
 	*x = ConvertMetadataBatchOrder{}
-	mi := &file_raft_cmd_proto_msgTypes[44]
+	mi := &file_raft_cmd_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3258,7 +2974,7 @@ func (x *ConvertMetadataBatchOrder) String() string {
 func (*ConvertMetadataBatchOrder) ProtoMessage() {}
 
 func (x *ConvertMetadataBatchOrder) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[44]
+	mi := &file_raft_cmd_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3271,7 +2987,7 @@ func (x *ConvertMetadataBatchOrder) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConvertMetadataBatchOrder.ProtoReflect.Descriptor instead.
 func (*ConvertMetadataBatchOrder) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{44}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *ConvertMetadataBatchOrder) GetTargetType() commonpb.TargetType {
@@ -3326,7 +3042,7 @@ type ConvertMetadataEntry struct {
 
 func (x *ConvertMetadataEntry) Reset() {
 	*x = ConvertMetadataEntry{}
-	mi := &file_raft_cmd_proto_msgTypes[45]
+	mi := &file_raft_cmd_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3338,7 +3054,7 @@ func (x *ConvertMetadataEntry) String() string {
 func (*ConvertMetadataEntry) ProtoMessage() {}
 
 func (x *ConvertMetadataEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[45]
+	mi := &file_raft_cmd_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3351,7 +3067,7 @@ func (x *ConvertMetadataEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConvertMetadataEntry.ProtoReflect.Descriptor instead.
 func (*ConvertMetadataEntry) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{45}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *ConvertMetadataEntry) GetCanonicalKey() []byte {
@@ -3379,7 +3095,7 @@ type MetadataConversionCompleteOrder struct {
 
 func (x *MetadataConversionCompleteOrder) Reset() {
 	*x = MetadataConversionCompleteOrder{}
-	mi := &file_raft_cmd_proto_msgTypes[46]
+	mi := &file_raft_cmd_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3391,7 +3107,7 @@ func (x *MetadataConversionCompleteOrder) String() string {
 func (*MetadataConversionCompleteOrder) ProtoMessage() {}
 
 func (x *MetadataConversionCompleteOrder) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[46]
+	mi := &file_raft_cmd_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3404,7 +3120,7 @@ func (x *MetadataConversionCompleteOrder) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MetadataConversionCompleteOrder.ProtoReflect.Descriptor instead.
 func (*MetadataConversionCompleteOrder) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{46}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *MetadataConversionCompleteOrder) GetTargetType() commonpb.TargetType {
@@ -3439,7 +3155,7 @@ type SetMetadataFieldTypeOrder struct {
 
 func (x *SetMetadataFieldTypeOrder) Reset() {
 	*x = SetMetadataFieldTypeOrder{}
-	mi := &file_raft_cmd_proto_msgTypes[47]
+	mi := &file_raft_cmd_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3451,7 +3167,7 @@ func (x *SetMetadataFieldTypeOrder) String() string {
 func (*SetMetadataFieldTypeOrder) ProtoMessage() {}
 
 func (x *SetMetadataFieldTypeOrder) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[47]
+	mi := &file_raft_cmd_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3464,7 +3180,7 @@ func (x *SetMetadataFieldTypeOrder) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetMetadataFieldTypeOrder.ProtoReflect.Descriptor instead.
 func (*SetMetadataFieldTypeOrder) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{47}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *SetMetadataFieldTypeOrder) GetTargetType() commonpb.TargetType {
@@ -3498,7 +3214,7 @@ type RemoveMetadataFieldTypeOrder struct {
 
 func (x *RemoveMetadataFieldTypeOrder) Reset() {
 	*x = RemoveMetadataFieldTypeOrder{}
-	mi := &file_raft_cmd_proto_msgTypes[48]
+	mi := &file_raft_cmd_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3510,7 +3226,7 @@ func (x *RemoveMetadataFieldTypeOrder) String() string {
 func (*RemoveMetadataFieldTypeOrder) ProtoMessage() {}
 
 func (x *RemoveMetadataFieldTypeOrder) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[48]
+	mi := &file_raft_cmd_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3523,7 +3239,7 @@ func (x *RemoveMetadataFieldTypeOrder) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveMetadataFieldTypeOrder.ProtoReflect.Descriptor instead.
 func (*RemoveMetadataFieldTypeOrder) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{48}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *RemoveMetadataFieldTypeOrder) GetTargetType() commonpb.TargetType {
@@ -3557,7 +3273,7 @@ type CreateTransactionOrder struct {
 
 func (x *CreateTransactionOrder) Reset() {
 	*x = CreateTransactionOrder{}
-	mi := &file_raft_cmd_proto_msgTypes[49]
+	mi := &file_raft_cmd_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3569,7 +3285,7 @@ func (x *CreateTransactionOrder) String() string {
 func (*CreateTransactionOrder) ProtoMessage() {}
 
 func (x *CreateTransactionOrder) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[49]
+	mi := &file_raft_cmd_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3582,7 +3298,7 @@ func (x *CreateTransactionOrder) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTransactionOrder.ProtoReflect.Descriptor instead.
 func (*CreateTransactionOrder) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{49}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *CreateTransactionOrder) GetPostings() []*commonpb.Posting {
@@ -3661,7 +3377,7 @@ type NumscriptReference struct {
 
 func (x *NumscriptReference) Reset() {
 	*x = NumscriptReference{}
-	mi := &file_raft_cmd_proto_msgTypes[50]
+	mi := &file_raft_cmd_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3673,7 +3389,7 @@ func (x *NumscriptReference) String() string {
 func (*NumscriptReference) ProtoMessage() {}
 
 func (x *NumscriptReference) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[50]
+	mi := &file_raft_cmd_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3686,7 +3402,7 @@ func (x *NumscriptReference) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NumscriptReference.ProtoReflect.Descriptor instead.
 func (*NumscriptReference) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{50}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *NumscriptReference) GetName() string {
@@ -3720,7 +3436,7 @@ type SaveMetadataOrder struct {
 
 func (x *SaveMetadataOrder) Reset() {
 	*x = SaveMetadataOrder{}
-	mi := &file_raft_cmd_proto_msgTypes[51]
+	mi := &file_raft_cmd_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3732,7 +3448,7 @@ func (x *SaveMetadataOrder) String() string {
 func (*SaveMetadataOrder) ProtoMessage() {}
 
 func (x *SaveMetadataOrder) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[51]
+	mi := &file_raft_cmd_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3745,7 +3461,7 @@ func (x *SaveMetadataOrder) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SaveMetadataOrder.ProtoReflect.Descriptor instead.
 func (*SaveMetadataOrder) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{51}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *SaveMetadataOrder) GetTarget() *commonpb.Target {
@@ -3776,7 +3492,7 @@ type RevertTransactionOrder struct {
 
 func (x *RevertTransactionOrder) Reset() {
 	*x = RevertTransactionOrder{}
-	mi := &file_raft_cmd_proto_msgTypes[52]
+	mi := &file_raft_cmd_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3788,7 +3504,7 @@ func (x *RevertTransactionOrder) String() string {
 func (*RevertTransactionOrder) ProtoMessage() {}
 
 func (x *RevertTransactionOrder) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[52]
+	mi := &file_raft_cmd_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3801,7 +3517,7 @@ func (x *RevertTransactionOrder) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevertTransactionOrder.ProtoReflect.Descriptor instead.
 func (*RevertTransactionOrder) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{52}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *RevertTransactionOrder) GetTransactionId() uint64 {
@@ -3856,7 +3572,7 @@ type DeleteMetadataOrder struct {
 
 func (x *DeleteMetadataOrder) Reset() {
 	*x = DeleteMetadataOrder{}
-	mi := &file_raft_cmd_proto_msgTypes[53]
+	mi := &file_raft_cmd_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3868,7 +3584,7 @@ func (x *DeleteMetadataOrder) String() string {
 func (*DeleteMetadataOrder) ProtoMessage() {}
 
 func (x *DeleteMetadataOrder) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[53]
+	mi := &file_raft_cmd_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3881,7 +3597,7 @@ func (x *DeleteMetadataOrder) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteMetadataOrder.ProtoReflect.Descriptor instead.
 func (*DeleteMetadataOrder) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{53}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *DeleteMetadataOrder) GetTarget() *commonpb.Target {
@@ -3923,7 +3639,7 @@ type Proposal struct {
 
 func (x *Proposal) Reset() {
 	*x = Proposal{}
-	mi := &file_raft_cmd_proto_msgTypes[54]
+	mi := &file_raft_cmd_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3935,7 +3651,7 @@ func (x *Proposal) String() string {
 func (*Proposal) ProtoMessage() {}
 
 func (x *Proposal) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[54]
+	mi := &file_raft_cmd_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3948,7 +3664,7 @@ func (x *Proposal) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Proposal.ProtoReflect.Descriptor instead.
 func (*Proposal) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{54}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *Proposal) GetId() uint64 {
@@ -4025,7 +3741,7 @@ type IdempotencyEviction struct {
 
 func (x *IdempotencyEviction) Reset() {
 	*x = IdempotencyEviction{}
-	mi := &file_raft_cmd_proto_msgTypes[55]
+	mi := &file_raft_cmd_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4037,7 +3753,7 @@ func (x *IdempotencyEviction) String() string {
 func (*IdempotencyEviction) ProtoMessage() {}
 
 func (x *IdempotencyEviction) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[55]
+	mi := &file_raft_cmd_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4050,7 +3766,7 @@ func (x *IdempotencyEviction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IdempotencyEviction.ProtoReflect.Descriptor instead.
 func (*IdempotencyEviction) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{55}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *IdempotencyEviction) GetCutoffMicros() uint64 {
@@ -4073,7 +3789,7 @@ type MirrorSyncUpdate struct {
 
 func (x *MirrorSyncUpdate) Reset() {
 	*x = MirrorSyncUpdate{}
-	mi := &file_raft_cmd_proto_msgTypes[56]
+	mi := &file_raft_cmd_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4085,7 +3801,7 @@ func (x *MirrorSyncUpdate) String() string {
 func (*MirrorSyncUpdate) ProtoMessage() {}
 
 func (x *MirrorSyncUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[56]
+	mi := &file_raft_cmd_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4098,7 +3814,7 @@ func (x *MirrorSyncUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MirrorSyncUpdate.ProtoReflect.Descriptor instead.
 func (*MirrorSyncUpdate) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{56}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *MirrorSyncUpdate) GetLedgerName() string {
@@ -4149,7 +3865,7 @@ type EventsSinkUpdate struct {
 
 func (x *EventsSinkUpdate) Reset() {
 	*x = EventsSinkUpdate{}
-	mi := &file_raft_cmd_proto_msgTypes[57]
+	mi := &file_raft_cmd_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4161,7 +3877,7 @@ func (x *EventsSinkUpdate) String() string {
 func (*EventsSinkUpdate) ProtoMessage() {}
 
 func (x *EventsSinkUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[57]
+	mi := &file_raft_cmd_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4174,7 +3890,7 @@ func (x *EventsSinkUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EventsSinkUpdate.ProtoReflect.Descriptor instead.
 func (*EventsSinkUpdate) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{57}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *EventsSinkUpdate) GetSinkName() string {
@@ -4218,7 +3934,7 @@ type CreatedLogOrReference struct {
 
 func (x *CreatedLogOrReference) Reset() {
 	*x = CreatedLogOrReference{}
-	mi := &file_raft_cmd_proto_msgTypes[58]
+	mi := &file_raft_cmd_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4230,7 +3946,7 @@ func (x *CreatedLogOrReference) String() string {
 func (*CreatedLogOrReference) ProtoMessage() {}
 
 func (x *CreatedLogOrReference) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[58]
+	mi := &file_raft_cmd_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4243,7 +3959,7 @@ func (x *CreatedLogOrReference) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatedLogOrReference.ProtoReflect.Descriptor instead.
 func (*CreatedLogOrReference) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{58}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *CreatedLogOrReference) GetType() isCreatedLogOrReference_Type {
@@ -4305,7 +4021,7 @@ type LedgerBoundaries struct {
 
 func (x *LedgerBoundaries) Reset() {
 	*x = LedgerBoundaries{}
-	mi := &file_raft_cmd_proto_msgTypes[59]
+	mi := &file_raft_cmd_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4317,7 +4033,7 @@ func (x *LedgerBoundaries) String() string {
 func (*LedgerBoundaries) ProtoMessage() {}
 
 func (x *LedgerBoundaries) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[59]
+	mi := &file_raft_cmd_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4330,7 +4046,7 @@ func (x *LedgerBoundaries) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LedgerBoundaries.ProtoReflect.Descriptor instead.
 func (*LedgerBoundaries) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{59}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *LedgerBoundaries) GetNextTransactionId() uint64 {
@@ -4413,7 +4129,7 @@ type VolumePair struct {
 
 func (x *VolumePair) Reset() {
 	*x = VolumePair{}
-	mi := &file_raft_cmd_proto_msgTypes[60]
+	mi := &file_raft_cmd_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4425,7 +4141,7 @@ func (x *VolumePair) String() string {
 func (*VolumePair) ProtoMessage() {}
 
 func (x *VolumePair) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[60]
+	mi := &file_raft_cmd_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4438,7 +4154,7 @@ func (x *VolumePair) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VolumePair.ProtoReflect.Descriptor instead.
 func (*VolumePair) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{60}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *VolumePair) GetInput() *commonpb.Uint256 {
@@ -4467,7 +4183,7 @@ type PreloadSet struct {
 
 func (x *PreloadSet) Reset() {
 	*x = PreloadSet{}
-	mi := &file_raft_cmd_proto_msgTypes[61]
+	mi := &file_raft_cmd_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4479,7 +4195,7 @@ func (x *PreloadSet) String() string {
 func (*PreloadSet) ProtoMessage() {}
 
 func (x *PreloadSet) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[61]
+	mi := &file_raft_cmd_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4492,7 +4208,7 @@ func (x *PreloadSet) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreloadSet.ProtoReflect.Descriptor instead.
 func (*PreloadSet) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{61}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *PreloadSet) GetLastPersistedIndex() uint64 {
@@ -4535,7 +4251,7 @@ type CacheTouch struct {
 
 func (x *CacheTouch) Reset() {
 	*x = CacheTouch{}
-	mi := &file_raft_cmd_proto_msgTypes[62]
+	mi := &file_raft_cmd_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4547,7 +4263,7 @@ func (x *CacheTouch) String() string {
 func (*CacheTouch) ProtoMessage() {}
 
 func (x *CacheTouch) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[62]
+	mi := &file_raft_cmd_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4560,7 +4276,7 @@ func (x *CacheTouch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CacheTouch.ProtoReflect.Descriptor instead.
 func (*CacheTouch) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{62}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *CacheTouch) GetId() []byte {
@@ -4599,7 +4315,7 @@ type Preload struct {
 
 func (x *Preload) Reset() {
 	*x = Preload{}
-	mi := &file_raft_cmd_proto_msgTypes[63]
+	mi := &file_raft_cmd_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4611,7 +4327,7 @@ func (x *Preload) String() string {
 func (*Preload) ProtoMessage() {}
 
 func (x *Preload) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[63]
+	mi := &file_raft_cmd_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4624,7 +4340,7 @@ func (x *Preload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Preload.ProtoReflect.Descriptor instead.
 func (*Preload) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{63}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *Preload) GetType() isPreload_Type {
@@ -4813,7 +4529,7 @@ type PreloadVolume struct {
 
 func (x *PreloadVolume) Reset() {
 	*x = PreloadVolume{}
-	mi := &file_raft_cmd_proto_msgTypes[64]
+	mi := &file_raft_cmd_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4825,7 +4541,7 @@ func (x *PreloadVolume) String() string {
 func (*PreloadVolume) ProtoMessage() {}
 
 func (x *PreloadVolume) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[64]
+	mi := &file_raft_cmd_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4838,7 +4554,7 @@ func (x *PreloadVolume) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreloadVolume.ProtoReflect.Descriptor instead.
 func (*PreloadVolume) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{64}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *PreloadVolume) GetId() *AttributeID {
@@ -4865,7 +4581,7 @@ type PreloadIdempotencyKey struct {
 
 func (x *PreloadIdempotencyKey) Reset() {
 	*x = PreloadIdempotencyKey{}
-	mi := &file_raft_cmd_proto_msgTypes[65]
+	mi := &file_raft_cmd_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4877,7 +4593,7 @@ func (x *PreloadIdempotencyKey) String() string {
 func (*PreloadIdempotencyKey) ProtoMessage() {}
 
 func (x *PreloadIdempotencyKey) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[65]
+	mi := &file_raft_cmd_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4890,7 +4606,7 @@ func (x *PreloadIdempotencyKey) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreloadIdempotencyKey.ProtoReflect.Descriptor instead.
 func (*PreloadIdempotencyKey) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{65}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *PreloadIdempotencyKey) GetKey() string {
@@ -4917,7 +4633,7 @@ type PreloadLedger struct {
 
 func (x *PreloadLedger) Reset() {
 	*x = PreloadLedger{}
-	mi := &file_raft_cmd_proto_msgTypes[66]
+	mi := &file_raft_cmd_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4929,7 +4645,7 @@ func (x *PreloadLedger) String() string {
 func (*PreloadLedger) ProtoMessage() {}
 
 func (x *PreloadLedger) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[66]
+	mi := &file_raft_cmd_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4942,7 +4658,7 @@ func (x *PreloadLedger) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreloadLedger.ProtoReflect.Descriptor instead.
 func (*PreloadLedger) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{66}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *PreloadLedger) GetId() *AttributeID {
@@ -4969,7 +4685,7 @@ type PreloadBoundary struct {
 
 func (x *PreloadBoundary) Reset() {
 	*x = PreloadBoundary{}
-	mi := &file_raft_cmd_proto_msgTypes[67]
+	mi := &file_raft_cmd_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4981,7 +4697,7 @@ func (x *PreloadBoundary) String() string {
 func (*PreloadBoundary) ProtoMessage() {}
 
 func (x *PreloadBoundary) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[67]
+	mi := &file_raft_cmd_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4994,7 +4710,7 @@ func (x *PreloadBoundary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreloadBoundary.ProtoReflect.Descriptor instead.
 func (*PreloadBoundary) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{67}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *PreloadBoundary) GetId() *AttributeID {
@@ -5021,7 +4737,7 @@ type PreloadTransactionReference struct {
 
 func (x *PreloadTransactionReference) Reset() {
 	*x = PreloadTransactionReference{}
-	mi := &file_raft_cmd_proto_msgTypes[68]
+	mi := &file_raft_cmd_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5033,7 +4749,7 @@ func (x *PreloadTransactionReference) String() string {
 func (*PreloadTransactionReference) ProtoMessage() {}
 
 func (x *PreloadTransactionReference) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[68]
+	mi := &file_raft_cmd_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5046,7 +4762,7 @@ func (x *PreloadTransactionReference) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreloadTransactionReference.ProtoReflect.Descriptor instead.
 func (*PreloadTransactionReference) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{68}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *PreloadTransactionReference) GetId() *AttributeID {
@@ -5073,7 +4789,7 @@ type PreloadSinkConfig struct {
 
 func (x *PreloadSinkConfig) Reset() {
 	*x = PreloadSinkConfig{}
-	mi := &file_raft_cmd_proto_msgTypes[69]
+	mi := &file_raft_cmd_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5085,7 +4801,7 @@ func (x *PreloadSinkConfig) String() string {
 func (*PreloadSinkConfig) ProtoMessage() {}
 
 func (x *PreloadSinkConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[69]
+	mi := &file_raft_cmd_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5098,7 +4814,7 @@ func (x *PreloadSinkConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreloadSinkConfig.ProtoReflect.Descriptor instead.
 func (*PreloadSinkConfig) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{69}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *PreloadSinkConfig) GetId() *AttributeID {
@@ -5125,7 +4841,7 @@ type PreloadAccountMetadata struct {
 
 func (x *PreloadAccountMetadata) Reset() {
 	*x = PreloadAccountMetadata{}
-	mi := &file_raft_cmd_proto_msgTypes[70]
+	mi := &file_raft_cmd_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5137,7 +4853,7 @@ func (x *PreloadAccountMetadata) String() string {
 func (*PreloadAccountMetadata) ProtoMessage() {}
 
 func (x *PreloadAccountMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[70]
+	mi := &file_raft_cmd_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5150,7 +4866,7 @@ func (x *PreloadAccountMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreloadAccountMetadata.ProtoReflect.Descriptor instead.
 func (*PreloadAccountMetadata) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{70}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *PreloadAccountMetadata) GetId() *AttributeID {
@@ -5177,7 +4893,7 @@ type PreloadNumscriptVersion struct {
 
 func (x *PreloadNumscriptVersion) Reset() {
 	*x = PreloadNumscriptVersion{}
-	mi := &file_raft_cmd_proto_msgTypes[71]
+	mi := &file_raft_cmd_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5189,7 +4905,7 @@ func (x *PreloadNumscriptVersion) String() string {
 func (*PreloadNumscriptVersion) ProtoMessage() {}
 
 func (x *PreloadNumscriptVersion) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[71]
+	mi := &file_raft_cmd_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5202,7 +4918,7 @@ func (x *PreloadNumscriptVersion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreloadNumscriptVersion.ProtoReflect.Descriptor instead.
 func (*PreloadNumscriptVersion) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{71}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *PreloadNumscriptVersion) GetId() *AttributeID {
@@ -5229,7 +4945,7 @@ type PreloadTransactionState struct {
 
 func (x *PreloadTransactionState) Reset() {
 	*x = PreloadTransactionState{}
-	mi := &file_raft_cmd_proto_msgTypes[72]
+	mi := &file_raft_cmd_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5241,7 +4957,7 @@ func (x *PreloadTransactionState) String() string {
 func (*PreloadTransactionState) ProtoMessage() {}
 
 func (x *PreloadTransactionState) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[72]
+	mi := &file_raft_cmd_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5254,7 +4970,7 @@ func (x *PreloadTransactionState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreloadTransactionState.ProtoReflect.Descriptor instead.
 func (*PreloadTransactionState) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{72}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *PreloadTransactionState) GetId() *AttributeID {
@@ -5281,7 +4997,7 @@ type PreloadNumscriptContent struct {
 
 func (x *PreloadNumscriptContent) Reset() {
 	*x = PreloadNumscriptContent{}
-	mi := &file_raft_cmd_proto_msgTypes[73]
+	mi := &file_raft_cmd_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5293,7 +5009,7 @@ func (x *PreloadNumscriptContent) String() string {
 func (*PreloadNumscriptContent) ProtoMessage() {}
 
 func (x *PreloadNumscriptContent) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[73]
+	mi := &file_raft_cmd_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5306,7 +5022,7 @@ func (x *PreloadNumscriptContent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreloadNumscriptContent.ProtoReflect.Descriptor instead.
 func (*PreloadNumscriptContent) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{73}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *PreloadNumscriptContent) GetId() *AttributeID {
@@ -5333,7 +5049,7 @@ type PreloadPreparedQuery struct {
 
 func (x *PreloadPreparedQuery) Reset() {
 	*x = PreloadPreparedQuery{}
-	mi := &file_raft_cmd_proto_msgTypes[74]
+	mi := &file_raft_cmd_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5345,7 +5061,7 @@ func (x *PreloadPreparedQuery) String() string {
 func (*PreloadPreparedQuery) ProtoMessage() {}
 
 func (x *PreloadPreparedQuery) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[74]
+	mi := &file_raft_cmd_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5358,7 +5074,7 @@ func (x *PreloadPreparedQuery) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreloadPreparedQuery.ProtoReflect.Descriptor instead.
 func (*PreloadPreparedQuery) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{74}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *PreloadPreparedQuery) GetId() *AttributeID {
@@ -5385,7 +5101,7 @@ type NodeSnapshot struct {
 
 func (x *NodeSnapshot) Reset() {
 	*x = NodeSnapshot{}
-	mi := &file_raft_cmd_proto_msgTypes[75]
+	mi := &file_raft_cmd_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5397,7 +5113,7 @@ func (x *NodeSnapshot) String() string {
 func (*NodeSnapshot) ProtoMessage() {}
 
 func (x *NodeSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[75]
+	mi := &file_raft_cmd_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5410,7 +5126,7 @@ func (x *NodeSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeSnapshot.ProtoReflect.Descriptor instead.
 func (*NodeSnapshot) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{75}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *NodeSnapshot) GetPeerAddresses() []*PeerAddress {
@@ -5430,7 +5146,7 @@ type CacheGenerationMeta struct {
 
 func (x *CacheGenerationMeta) Reset() {
 	*x = CacheGenerationMeta{}
-	mi := &file_raft_cmd_proto_msgTypes[76]
+	mi := &file_raft_cmd_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5442,7 +5158,7 @@ func (x *CacheGenerationMeta) String() string {
 func (*CacheGenerationMeta) ProtoMessage() {}
 
 func (x *CacheGenerationMeta) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[76]
+	mi := &file_raft_cmd_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5455,7 +5171,7 @@ func (x *CacheGenerationMeta) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CacheGenerationMeta.ProtoReflect.Descriptor instead.
 func (*CacheGenerationMeta) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{76}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *CacheGenerationMeta) GetBaseIndex() uint64 {
@@ -5475,7 +5191,7 @@ type CacheSnapshotMeta struct {
 
 func (x *CacheSnapshotMeta) Reset() {
 	*x = CacheSnapshotMeta{}
-	mi := &file_raft_cmd_proto_msgTypes[77]
+	mi := &file_raft_cmd_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5487,7 +5203,7 @@ func (x *CacheSnapshotMeta) String() string {
 func (*CacheSnapshotMeta) ProtoMessage() {}
 
 func (x *CacheSnapshotMeta) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[77]
+	mi := &file_raft_cmd_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5500,7 +5216,7 @@ func (x *CacheSnapshotMeta) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CacheSnapshotMeta.ProtoReflect.Descriptor instead.
 func (*CacheSnapshotMeta) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{77}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *CacheSnapshotMeta) GetCurrentGeneration() uint64 {
@@ -5522,7 +5238,7 @@ type PeerAddress struct {
 
 func (x *PeerAddress) Reset() {
 	*x = PeerAddress{}
-	mi := &file_raft_cmd_proto_msgTypes[78]
+	mi := &file_raft_cmd_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5534,7 +5250,7 @@ func (x *PeerAddress) String() string {
 func (*PeerAddress) ProtoMessage() {}
 
 func (x *PeerAddress) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[78]
+	mi := &file_raft_cmd_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5547,7 +5263,7 @@ func (x *PeerAddress) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PeerAddress.ProtoReflect.Descriptor instead.
 func (*PeerAddress) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{78}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *PeerAddress) GetNodeId() uint64 {
@@ -5587,7 +5303,7 @@ type GenerationSnapshot struct {
 
 func (x *GenerationSnapshot) Reset() {
 	*x = GenerationSnapshot{}
-	mi := &file_raft_cmd_proto_msgTypes[79]
+	mi := &file_raft_cmd_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5599,7 +5315,7 @@ func (x *GenerationSnapshot) String() string {
 func (*GenerationSnapshot) ProtoMessage() {}
 
 func (x *GenerationSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[79]
+	mi := &file_raft_cmd_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5612,7 +5328,7 @@ func (x *GenerationSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerationSnapshot.ProtoReflect.Descriptor instead.
 func (*GenerationSnapshot) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{79}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *GenerationSnapshot) GetBaseIndex() uint64 {
@@ -5683,7 +5399,7 @@ type VolumeAttributeSnapshotEntry struct {
 
 func (x *VolumeAttributeSnapshotEntry) Reset() {
 	*x = VolumeAttributeSnapshotEntry{}
-	mi := &file_raft_cmd_proto_msgTypes[80]
+	mi := &file_raft_cmd_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5695,7 +5411,7 @@ func (x *VolumeAttributeSnapshotEntry) String() string {
 func (*VolumeAttributeSnapshotEntry) ProtoMessage() {}
 
 func (x *VolumeAttributeSnapshotEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[80]
+	mi := &file_raft_cmd_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5708,7 +5424,7 @@ func (x *VolumeAttributeSnapshotEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VolumeAttributeSnapshotEntry.ProtoReflect.Descriptor instead.
 func (*VolumeAttributeSnapshotEntry) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{80}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *VolumeAttributeSnapshotEntry) GetId() *AttributeID {
@@ -5743,7 +5459,7 @@ type MetadataAttributeEntry struct {
 
 func (x *MetadataAttributeEntry) Reset() {
 	*x = MetadataAttributeEntry{}
-	mi := &file_raft_cmd_proto_msgTypes[81]
+	mi := &file_raft_cmd_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5755,7 +5471,7 @@ func (x *MetadataAttributeEntry) String() string {
 func (*MetadataAttributeEntry) ProtoMessage() {}
 
 func (x *MetadataAttributeEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[81]
+	mi := &file_raft_cmd_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5768,7 +5484,7 @@ func (x *MetadataAttributeEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MetadataAttributeEntry.ProtoReflect.Descriptor instead.
 func (*MetadataAttributeEntry) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{81}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *MetadataAttributeEntry) GetId() *AttributeID {
@@ -5796,7 +5512,7 @@ type LedgerAttributeEntry struct {
 
 func (x *LedgerAttributeEntry) Reset() {
 	*x = LedgerAttributeEntry{}
-	mi := &file_raft_cmd_proto_msgTypes[82]
+	mi := &file_raft_cmd_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5808,7 +5524,7 @@ func (x *LedgerAttributeEntry) String() string {
 func (*LedgerAttributeEntry) ProtoMessage() {}
 
 func (x *LedgerAttributeEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[82]
+	mi := &file_raft_cmd_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5821,7 +5537,7 @@ func (x *LedgerAttributeEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LedgerAttributeEntry.ProtoReflect.Descriptor instead.
 func (*LedgerAttributeEntry) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{82}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *LedgerAttributeEntry) GetId() *AttributeID {
@@ -5849,7 +5565,7 @@ type BoundaryAttributeEntry struct {
 
 func (x *BoundaryAttributeEntry) Reset() {
 	*x = BoundaryAttributeEntry{}
-	mi := &file_raft_cmd_proto_msgTypes[83]
+	mi := &file_raft_cmd_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5861,7 +5577,7 @@ func (x *BoundaryAttributeEntry) String() string {
 func (*BoundaryAttributeEntry) ProtoMessage() {}
 
 func (x *BoundaryAttributeEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[83]
+	mi := &file_raft_cmd_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5874,7 +5590,7 @@ func (x *BoundaryAttributeEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BoundaryAttributeEntry.ProtoReflect.Descriptor instead.
 func (*BoundaryAttributeEntry) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{83}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *BoundaryAttributeEntry) GetId() *AttributeID {
@@ -5902,7 +5618,7 @@ type TransactionReferenceAttributeEntry struct {
 
 func (x *TransactionReferenceAttributeEntry) Reset() {
 	*x = TransactionReferenceAttributeEntry{}
-	mi := &file_raft_cmd_proto_msgTypes[84]
+	mi := &file_raft_cmd_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5914,7 +5630,7 @@ func (x *TransactionReferenceAttributeEntry) String() string {
 func (*TransactionReferenceAttributeEntry) ProtoMessage() {}
 
 func (x *TransactionReferenceAttributeEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[84]
+	mi := &file_raft_cmd_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5927,7 +5643,7 @@ func (x *TransactionReferenceAttributeEntry) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use TransactionReferenceAttributeEntry.ProtoReflect.Descriptor instead.
 func (*TransactionReferenceAttributeEntry) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{84}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *TransactionReferenceAttributeEntry) GetId() *AttributeID {
@@ -5955,7 +5671,7 @@ type TransactionStateAttributeEntry struct {
 
 func (x *TransactionStateAttributeEntry) Reset() {
 	*x = TransactionStateAttributeEntry{}
-	mi := &file_raft_cmd_proto_msgTypes[85]
+	mi := &file_raft_cmd_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5967,7 +5683,7 @@ func (x *TransactionStateAttributeEntry) String() string {
 func (*TransactionStateAttributeEntry) ProtoMessage() {}
 
 func (x *TransactionStateAttributeEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[85]
+	mi := &file_raft_cmd_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5980,7 +5696,7 @@ func (x *TransactionStateAttributeEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransactionStateAttributeEntry.ProtoReflect.Descriptor instead.
 func (*TransactionStateAttributeEntry) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{85}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *TransactionStateAttributeEntry) GetId() *AttributeID {
@@ -6009,7 +5725,7 @@ type IdempotencyKeyAttributeEntry struct {
 
 func (x *IdempotencyKeyAttributeEntry) Reset() {
 	*x = IdempotencyKeyAttributeEntry{}
-	mi := &file_raft_cmd_proto_msgTypes[86]
+	mi := &file_raft_cmd_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6021,7 +5737,7 @@ func (x *IdempotencyKeyAttributeEntry) String() string {
 func (*IdempotencyKeyAttributeEntry) ProtoMessage() {}
 
 func (x *IdempotencyKeyAttributeEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[86]
+	mi := &file_raft_cmd_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6034,7 +5750,7 @@ func (x *IdempotencyKeyAttributeEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IdempotencyKeyAttributeEntry.ProtoReflect.Descriptor instead.
 func (*IdempotencyKeyAttributeEntry) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{86}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *IdempotencyKeyAttributeEntry) GetId() *AttributeID {
@@ -6061,7 +5777,7 @@ type AttributeID struct {
 
 func (x *AttributeID) Reset() {
 	*x = AttributeID{}
-	mi := &file_raft_cmd_proto_msgTypes[87]
+	mi := &file_raft_cmd_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6073,7 +5789,7 @@ func (x *AttributeID) String() string {
 func (*AttributeID) ProtoMessage() {}
 
 func (x *AttributeID) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_cmd_proto_msgTypes[87]
+	mi := &file_raft_cmd_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6086,7 +5802,7 @@ func (x *AttributeID) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttributeID.ProtoReflect.Descriptor instead.
 func (*AttributeID) Descriptor() ([]byte, []int) {
-	return file_raft_cmd_proto_rawDescGZIP(), []int{87}
+	return file_raft_cmd_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *AttributeID) GetId() []byte {
@@ -6254,7 +5970,7 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x12PromoteLedgerOrder\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\"'\n" +
 	"\x11DeleteLedgerOrder\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\x98\v\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xfb\b\n" +
 	"\x10LedgerApplyOrder\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12M\n" +
 	"\x12create_transaction\x18\x02 \x01(\v2\x1c.raft.CreateTransactionOrderH\x00R\x11createTransaction\x12<\n" +
@@ -6273,10 +5989,7 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"indexReady\x12E\n" +
 	"\x10add_account_type\x18\r \x01(\v2\x19.raft.AddAccountTypeOrderH\x00R\x0eaddAccountType\x12N\n" +
 	"\x13remove_account_type\x18\x0e \x01(\v2\x1c.raft.RemoveAccountTypeOrderH\x00R\x11removeAccountType\x12p\n" +
-	"\x1fupdate_default_enforcement_mode\x18\x0f \x01(\v2'.raft.UpdateDefaultEnforcementModeOrderH\x00R\x1cupdateDefaultEnforcementMode\x12Z\n" +
-	"\x17start_account_migration\x18\x10 \x01(\v2 .raft.StartAccountMigrationOrderH\x00R\x15startAccountMigration\x12Z\n" +
-	"\x17account_migration_batch\x18\x11 \x01(\v2 .raft.AccountMigrationBatchOrderH\x00R\x15accountMigrationBatch\x12c\n" +
-	"\x1acomplete_account_migration\x18\x12 \x01(\v2#.raft.CompleteAccountMigrationOrderH\x00R\x18completeAccountMigrationB\x06\n" +
+	"\x1fupdate_default_enforcement_mode\x18\x0f \x01(\v2'.raft.UpdateDefaultEnforcementModeOrderH\x00R\x1cupdateDefaultEnforcementModeB\x06\n" +
 	"\x04data\"\xc7\x01\n" +
 	"\x10CreateIndexOrder\x12:\n" +
 	"\vlog_builtin\x18\x01 \x01(\x0e2\x17.common.LogBuiltinIndexH\x00R\n" +
@@ -6301,24 +6014,7 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x16RemoveAccountTypeOrder\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"l\n" +
 	"!UpdateDefaultEnforcementModeOrder\x12G\n" +
-	"\x10enforcement_mode\x18\x01 \x01(\x0e2\x1c.common.ChartEnforcementModeR\x0fenforcementMode\"o\n" +
-	"\x1aStartAccountMigrationOrder\x12*\n" +
-	"\x11account_type_name\x18\x01 \x01(\tR\x0faccountTypeName\x12%\n" +
-	"\x0etarget_pattern\x18\x02 \x01(\tR\rtargetPattern\"\xb1\x01\n" +
-	"\x1aAccountMigrationBatchOrder\x12*\n" +
-	"\x11account_type_name\x18\x01 \x01(\tR\x0faccountTypeName\x120\n" +
-	"\x14expected_old_pattern\x18\x02 \x01(\tR\x12expectedOldPattern\x125\n" +
-	"\aentries\x18\x03 \x03(\v2\x1b.raft.AccountMigrationEntryR\aentries\"\x96\x01\n" +
-	"\x15AccountMigrationEntry\x12\x1f\n" +
-	"\vold_address\x18\x01 \x01(\tR\n" +
-	"oldAddress\x12\x1f\n" +
-	"\vnew_address\x18\x02 \x01(\tR\n" +
-	"newAddress\x12\x16\n" +
-	"\x06assets\x18\x03 \x03(\tR\x06assets\x12#\n" +
-	"\rmetadata_keys\x18\x04 \x03(\tR\fmetadataKeys\"}\n" +
-	"\x1dCompleteAccountMigrationOrder\x12*\n" +
-	"\x11account_type_name\x18\x01 \x01(\tR\x0faccountTypeName\x120\n" +
-	"\x14expected_old_pattern\x18\x02 \x01(\tR\x12expectedOldPattern\"\xa5\x02\n" +
+	"\x10enforcement_mode\x18\x01 \x01(\x0e2\x1c.common.ChartEnforcementModeR\x0fenforcementMode\"\xa5\x02\n" +
 	"\x19ConvertMetadataBatchOrder\x123\n" +
 	"\vtarget_type\x18\x01 \x01(\x0e2\x12.common.TargetTypeR\n" +
 	"targetType\x12\x10\n" +
@@ -6559,7 +6255,7 @@ func file_raft_cmd_proto_rawDescGZIP() []byte {
 	return file_raft_cmd_proto_rawDescData
 }
 
-var file_raft_cmd_proto_msgTypes = make([]protoimpl.MessageInfo, 98)
+var file_raft_cmd_proto_msgTypes = make([]protoimpl.MessageInfo, 94)
 var file_raft_cmd_proto_goTypes = []any{
 	(*Order)(nil),                                // 0: raft.Order
 	(*CreatePreparedQueryOrder)(nil),             // 1: raft.CreatePreparedQueryOrder
@@ -6601,99 +6297,95 @@ var file_raft_cmd_proto_goTypes = []any{
 	(*AddAccountTypeOrder)(nil),                  // 37: raft.AddAccountTypeOrder
 	(*RemoveAccountTypeOrder)(nil),               // 38: raft.RemoveAccountTypeOrder
 	(*UpdateDefaultEnforcementModeOrder)(nil),    // 39: raft.UpdateDefaultEnforcementModeOrder
-	(*StartAccountMigrationOrder)(nil),           // 40: raft.StartAccountMigrationOrder
-	(*AccountMigrationBatchOrder)(nil),           // 41: raft.AccountMigrationBatchOrder
-	(*AccountMigrationEntry)(nil),                // 42: raft.AccountMigrationEntry
-	(*CompleteAccountMigrationOrder)(nil),        // 43: raft.CompleteAccountMigrationOrder
-	(*ConvertMetadataBatchOrder)(nil),            // 44: raft.ConvertMetadataBatchOrder
-	(*ConvertMetadataEntry)(nil),                 // 45: raft.ConvertMetadataEntry
-	(*MetadataConversionCompleteOrder)(nil),      // 46: raft.MetadataConversionCompleteOrder
-	(*SetMetadataFieldTypeOrder)(nil),            // 47: raft.SetMetadataFieldTypeOrder
-	(*RemoveMetadataFieldTypeOrder)(nil),         // 48: raft.RemoveMetadataFieldTypeOrder
-	(*CreateTransactionOrder)(nil),               // 49: raft.CreateTransactionOrder
-	(*NumscriptReference)(nil),                   // 50: raft.NumscriptReference
-	(*SaveMetadataOrder)(nil),                    // 51: raft.SaveMetadataOrder
-	(*RevertTransactionOrder)(nil),               // 52: raft.RevertTransactionOrder
-	(*DeleteMetadataOrder)(nil),                  // 53: raft.DeleteMetadataOrder
-	(*Proposal)(nil),                             // 54: raft.Proposal
-	(*IdempotencyEviction)(nil),                  // 55: raft.IdempotencyEviction
-	(*MirrorSyncUpdate)(nil),                     // 56: raft.MirrorSyncUpdate
-	(*EventsSinkUpdate)(nil),                     // 57: raft.EventsSinkUpdate
-	(*CreatedLogOrReference)(nil),                // 58: raft.CreatedLogOrReference
-	(*LedgerBoundaries)(nil),                     // 59: raft.LedgerBoundaries
-	(*VolumePair)(nil),                           // 60: raft.VolumePair
-	(*PreloadSet)(nil),                           // 61: raft.PreloadSet
-	(*CacheTouch)(nil),                           // 62: raft.CacheTouch
-	(*Preload)(nil),                              // 63: raft.Preload
-	(*PreloadVolume)(nil),                        // 64: raft.PreloadVolume
-	(*PreloadIdempotencyKey)(nil),                // 65: raft.PreloadIdempotencyKey
-	(*PreloadLedger)(nil),                        // 66: raft.PreloadLedger
-	(*PreloadBoundary)(nil),                      // 67: raft.PreloadBoundary
-	(*PreloadTransactionReference)(nil),          // 68: raft.PreloadTransactionReference
-	(*PreloadSinkConfig)(nil),                    // 69: raft.PreloadSinkConfig
-	(*PreloadAccountMetadata)(nil),               // 70: raft.PreloadAccountMetadata
-	(*PreloadNumscriptVersion)(nil),              // 71: raft.PreloadNumscriptVersion
-	(*PreloadTransactionState)(nil),              // 72: raft.PreloadTransactionState
-	(*PreloadNumscriptContent)(nil),              // 73: raft.PreloadNumscriptContent
-	(*PreloadPreparedQuery)(nil),                 // 74: raft.PreloadPreparedQuery
-	(*NodeSnapshot)(nil),                         // 75: raft.NodeSnapshot
-	(*CacheGenerationMeta)(nil),                  // 76: raft.CacheGenerationMeta
-	(*CacheSnapshotMeta)(nil),                    // 77: raft.CacheSnapshotMeta
-	(*PeerAddress)(nil),                          // 78: raft.PeerAddress
-	(*GenerationSnapshot)(nil),                   // 79: raft.GenerationSnapshot
-	(*VolumeAttributeSnapshotEntry)(nil),         // 80: raft.VolumeAttributeSnapshotEntry
-	(*MetadataAttributeEntry)(nil),               // 81: raft.MetadataAttributeEntry
-	(*LedgerAttributeEntry)(nil),                 // 82: raft.LedgerAttributeEntry
-	(*BoundaryAttributeEntry)(nil),               // 83: raft.BoundaryAttributeEntry
-	(*TransactionReferenceAttributeEntry)(nil),   // 84: raft.TransactionReferenceAttributeEntry
-	(*TransactionStateAttributeEntry)(nil),       // 85: raft.TransactionStateAttributeEntry
-	(*IdempotencyKeyAttributeEntry)(nil),         // 86: raft.IdempotencyKeyAttributeEntry
-	(*AttributeID)(nil),                          // 87: raft.AttributeID
-	nil,                                          // 88: raft.CreateLedgerOrder.AccountTypesEntry
-	nil,                                          // 89: raft.MirrorCreatedTransaction.MetadataEntry
-	nil,                                          // 90: raft.MirrorCreatedTransaction.AccountMetadataEntry
-	nil,                                          // 91: raft.MirrorSavedMetadata.MetadataEntry
-	nil,                                          // 92: raft.MirrorRevertedTransaction.MetadataEntry
-	nil,                                          // 93: raft.CreateTransactionOrder.MetadataEntry
-	nil,                                          // 94: raft.CreateTransactionOrder.AccountMetadataEntry
-	nil,                                          // 95: raft.NumscriptReference.VarsEntry
-	nil,                                          // 96: raft.SaveMetadataOrder.MetadataEntry
-	nil,                                          // 97: raft.RevertTransactionOrder.MetadataEntry
-	(*commonpb.Idempotency)(nil),                 // 98: common.Idempotency
-	(*signaturepb.RequestSignature)(nil),         // 99: signature.RequestSignature
-	(*commonpb.PreparedQuery)(nil),               // 100: common.PreparedQuery
-	(*commonpb.QueryFilter)(nil),                 // 101: common.QueryFilter
-	(*commonpb.SinkConfig)(nil),                  // 102: common.SinkConfig
-	(*commonpb.Timestamp)(nil),                   // 103: common.Timestamp
-	(*commonpb.SetMetadataFieldTypeCommand)(nil), // 104: common.SetMetadataFieldTypeCommand
-	(commonpb.LedgerMode)(0),                     // 105: common.LedgerMode
-	(*commonpb.MirrorSourceConfig)(nil),          // 106: common.MirrorSourceConfig
-	(commonpb.ChartEnforcementMode)(0),           // 107: common.ChartEnforcementMode
-	(*commonpb.Posting)(nil),                     // 108: common.Posting
-	(*commonpb.Target)(nil),                      // 109: common.Target
-	(commonpb.LogBuiltinIndex)(0),                // 110: common.LogBuiltinIndex
-	(*commonpb.TransactionIndex)(nil),            // 111: common.TransactionIndex
-	(*commonpb.AccountIndex)(nil),                // 112: common.AccountIndex
-	(*commonpb.AccountType)(nil),                 // 113: common.AccountType
-	(commonpb.TargetType)(0),                     // 114: common.TargetType
-	(commonpb.MetadataType)(0),                   // 115: common.MetadataType
-	(*commonpb.MetadataValue)(nil),               // 116: common.MetadataValue
-	(*commonpb.Script)(nil),                      // 117: common.Script
-	(*commonpb.ClusterConfig)(nil),               // 118: common.ClusterConfig
-	(*commonpb.MirrorSyncError)(nil),             // 119: common.MirrorSyncError
-	(*commonpb.SinkError)(nil),                   // 120: common.SinkError
-	(*commonpb.Log)(nil),                         // 121: common.Log
-	(*commonpb.Uint256)(nil),                     // 122: common.Uint256
-	(*commonpb.IdempotencyKeyValue)(nil),         // 123: common.IdempotencyKeyValue
-	(*commonpb.LedgerInfo)(nil),                  // 124: common.LedgerInfo
-	(*commonpb.TransactionReferenceValue)(nil),   // 125: common.TransactionReferenceValue
-	(*commonpb.NumscriptVersionValue)(nil),       // 126: common.NumscriptVersionValue
-	(*commonpb.TransactionState)(nil),            // 127: common.TransactionState
-	(*commonpb.NumscriptInfo)(nil),               // 128: common.NumscriptInfo
-	(*commonpb.MetadataMap)(nil),                 // 129: common.MetadataMap
+	(*ConvertMetadataBatchOrder)(nil),            // 40: raft.ConvertMetadataBatchOrder
+	(*ConvertMetadataEntry)(nil),                 // 41: raft.ConvertMetadataEntry
+	(*MetadataConversionCompleteOrder)(nil),      // 42: raft.MetadataConversionCompleteOrder
+	(*SetMetadataFieldTypeOrder)(nil),            // 43: raft.SetMetadataFieldTypeOrder
+	(*RemoveMetadataFieldTypeOrder)(nil),         // 44: raft.RemoveMetadataFieldTypeOrder
+	(*CreateTransactionOrder)(nil),               // 45: raft.CreateTransactionOrder
+	(*NumscriptReference)(nil),                   // 46: raft.NumscriptReference
+	(*SaveMetadataOrder)(nil),                    // 47: raft.SaveMetadataOrder
+	(*RevertTransactionOrder)(nil),               // 48: raft.RevertTransactionOrder
+	(*DeleteMetadataOrder)(nil),                  // 49: raft.DeleteMetadataOrder
+	(*Proposal)(nil),                             // 50: raft.Proposal
+	(*IdempotencyEviction)(nil),                  // 51: raft.IdempotencyEviction
+	(*MirrorSyncUpdate)(nil),                     // 52: raft.MirrorSyncUpdate
+	(*EventsSinkUpdate)(nil),                     // 53: raft.EventsSinkUpdate
+	(*CreatedLogOrReference)(nil),                // 54: raft.CreatedLogOrReference
+	(*LedgerBoundaries)(nil),                     // 55: raft.LedgerBoundaries
+	(*VolumePair)(nil),                           // 56: raft.VolumePair
+	(*PreloadSet)(nil),                           // 57: raft.PreloadSet
+	(*CacheTouch)(nil),                           // 58: raft.CacheTouch
+	(*Preload)(nil),                              // 59: raft.Preload
+	(*PreloadVolume)(nil),                        // 60: raft.PreloadVolume
+	(*PreloadIdempotencyKey)(nil),                // 61: raft.PreloadIdempotencyKey
+	(*PreloadLedger)(nil),                        // 62: raft.PreloadLedger
+	(*PreloadBoundary)(nil),                      // 63: raft.PreloadBoundary
+	(*PreloadTransactionReference)(nil),          // 64: raft.PreloadTransactionReference
+	(*PreloadSinkConfig)(nil),                    // 65: raft.PreloadSinkConfig
+	(*PreloadAccountMetadata)(nil),               // 66: raft.PreloadAccountMetadata
+	(*PreloadNumscriptVersion)(nil),              // 67: raft.PreloadNumscriptVersion
+	(*PreloadTransactionState)(nil),              // 68: raft.PreloadTransactionState
+	(*PreloadNumscriptContent)(nil),              // 69: raft.PreloadNumscriptContent
+	(*PreloadPreparedQuery)(nil),                 // 70: raft.PreloadPreparedQuery
+	(*NodeSnapshot)(nil),                         // 71: raft.NodeSnapshot
+	(*CacheGenerationMeta)(nil),                  // 72: raft.CacheGenerationMeta
+	(*CacheSnapshotMeta)(nil),                    // 73: raft.CacheSnapshotMeta
+	(*PeerAddress)(nil),                          // 74: raft.PeerAddress
+	(*GenerationSnapshot)(nil),                   // 75: raft.GenerationSnapshot
+	(*VolumeAttributeSnapshotEntry)(nil),         // 76: raft.VolumeAttributeSnapshotEntry
+	(*MetadataAttributeEntry)(nil),               // 77: raft.MetadataAttributeEntry
+	(*LedgerAttributeEntry)(nil),                 // 78: raft.LedgerAttributeEntry
+	(*BoundaryAttributeEntry)(nil),               // 79: raft.BoundaryAttributeEntry
+	(*TransactionReferenceAttributeEntry)(nil),   // 80: raft.TransactionReferenceAttributeEntry
+	(*TransactionStateAttributeEntry)(nil),       // 81: raft.TransactionStateAttributeEntry
+	(*IdempotencyKeyAttributeEntry)(nil),         // 82: raft.IdempotencyKeyAttributeEntry
+	(*AttributeID)(nil),                          // 83: raft.AttributeID
+	nil,                                          // 84: raft.CreateLedgerOrder.AccountTypesEntry
+	nil,                                          // 85: raft.MirrorCreatedTransaction.MetadataEntry
+	nil,                                          // 86: raft.MirrorCreatedTransaction.AccountMetadataEntry
+	nil,                                          // 87: raft.MirrorSavedMetadata.MetadataEntry
+	nil,                                          // 88: raft.MirrorRevertedTransaction.MetadataEntry
+	nil,                                          // 89: raft.CreateTransactionOrder.MetadataEntry
+	nil,                                          // 90: raft.CreateTransactionOrder.AccountMetadataEntry
+	nil,                                          // 91: raft.NumscriptReference.VarsEntry
+	nil,                                          // 92: raft.SaveMetadataOrder.MetadataEntry
+	nil,                                          // 93: raft.RevertTransactionOrder.MetadataEntry
+	(*commonpb.Idempotency)(nil),                 // 94: common.Idempotency
+	(*signaturepb.RequestSignature)(nil),         // 95: signature.RequestSignature
+	(*commonpb.PreparedQuery)(nil),               // 96: common.PreparedQuery
+	(*commonpb.QueryFilter)(nil),                 // 97: common.QueryFilter
+	(*commonpb.SinkConfig)(nil),                  // 98: common.SinkConfig
+	(*commonpb.Timestamp)(nil),                   // 99: common.Timestamp
+	(*commonpb.SetMetadataFieldTypeCommand)(nil), // 100: common.SetMetadataFieldTypeCommand
+	(commonpb.LedgerMode)(0),                     // 101: common.LedgerMode
+	(*commonpb.MirrorSourceConfig)(nil),          // 102: common.MirrorSourceConfig
+	(commonpb.ChartEnforcementMode)(0),           // 103: common.ChartEnforcementMode
+	(*commonpb.Posting)(nil),                     // 104: common.Posting
+	(*commonpb.Target)(nil),                      // 105: common.Target
+	(commonpb.LogBuiltinIndex)(0),                // 106: common.LogBuiltinIndex
+	(*commonpb.TransactionIndex)(nil),            // 107: common.TransactionIndex
+	(*commonpb.AccountIndex)(nil),                // 108: common.AccountIndex
+	(*commonpb.AccountType)(nil),                 // 109: common.AccountType
+	(commonpb.TargetType)(0),                     // 110: common.TargetType
+	(commonpb.MetadataType)(0),                   // 111: common.MetadataType
+	(*commonpb.MetadataValue)(nil),               // 112: common.MetadataValue
+	(*commonpb.Script)(nil),                      // 113: common.Script
+	(*commonpb.ClusterConfig)(nil),               // 114: common.ClusterConfig
+	(*commonpb.MirrorSyncError)(nil),             // 115: common.MirrorSyncError
+	(*commonpb.SinkError)(nil),                   // 116: common.SinkError
+	(*commonpb.Log)(nil),                         // 117: common.Log
+	(*commonpb.Uint256)(nil),                     // 118: common.Uint256
+	(*commonpb.IdempotencyKeyValue)(nil),         // 119: common.IdempotencyKeyValue
+	(*commonpb.LedgerInfo)(nil),                  // 120: common.LedgerInfo
+	(*commonpb.TransactionReferenceValue)(nil),   // 121: common.TransactionReferenceValue
+	(*commonpb.NumscriptVersionValue)(nil),       // 122: common.NumscriptVersionValue
+	(*commonpb.TransactionState)(nil),            // 123: common.TransactionState
+	(*commonpb.NumscriptInfo)(nil),               // 124: common.NumscriptInfo
+	(*commonpb.MetadataMap)(nil),                 // 125: common.MetadataMap
 }
 var file_raft_cmd_proto_depIdxs = []int32{
-	98,  // 0: raft.Order.idempotency:type_name -> common.Idempotency
+	94,  // 0: raft.Order.idempotency:type_name -> common.Idempotency
 	33,  // 1: raft.Order.apply:type_name -> raft.LedgerApplyOrder
 	23,  // 2: raft.Order.create_ledger:type_name -> raft.CreateLedgerOrder
 	32,  // 3: raft.Order.delete_ledger:type_name -> raft.DeleteLedgerOrder
@@ -6720,165 +6412,161 @@ var file_raft_cmd_proto_depIdxs = []int32{
 	19,  // 24: raft.Order.delete_query_checkpoint:type_name -> raft.DeleteQueryCheckpointOrder
 	21,  // 25: raft.Order.set_query_checkpoint_schedule:type_name -> raft.SetQueryCheckpointScheduleOrder
 	22,  // 26: raft.Order.delete_query_checkpoint_schedule:type_name -> raft.DeleteQueryCheckpointScheduleOrder
-	99,  // 27: raft.Order.signature:type_name -> signature.RequestSignature
-	100, // 28: raft.CreatePreparedQueryOrder.query:type_name -> common.PreparedQuery
-	101, // 29: raft.UpdatePreparedQueryOrder.filter:type_name -> common.QueryFilter
-	102, // 30: raft.AddEventsSinkOrder.config:type_name -> common.SinkConfig
-	103, // 31: raft.QueryCheckpointState.created_at:type_name -> common.Timestamp
-	104, // 32: raft.CreateLedgerOrder.initial_schema:type_name -> common.SetMetadataFieldTypeCommand
-	105, // 33: raft.CreateLedgerOrder.mode:type_name -> common.LedgerMode
-	106, // 34: raft.CreateLedgerOrder.mirror_source:type_name -> common.MirrorSourceConfig
-	88,  // 35: raft.CreateLedgerOrder.account_types:type_name -> raft.CreateLedgerOrder.AccountTypesEntry
-	107, // 36: raft.CreateLedgerOrder.default_enforcement_mode:type_name -> common.ChartEnforcementMode
+	95,  // 27: raft.Order.signature:type_name -> signature.RequestSignature
+	96,  // 28: raft.CreatePreparedQueryOrder.query:type_name -> common.PreparedQuery
+	97,  // 29: raft.UpdatePreparedQueryOrder.filter:type_name -> common.QueryFilter
+	98,  // 30: raft.AddEventsSinkOrder.config:type_name -> common.SinkConfig
+	99,  // 31: raft.QueryCheckpointState.created_at:type_name -> common.Timestamp
+	100, // 32: raft.CreateLedgerOrder.initial_schema:type_name -> common.SetMetadataFieldTypeCommand
+	101, // 33: raft.CreateLedgerOrder.mode:type_name -> common.LedgerMode
+	102, // 34: raft.CreateLedgerOrder.mirror_source:type_name -> common.MirrorSourceConfig
+	84,  // 35: raft.CreateLedgerOrder.account_types:type_name -> raft.CreateLedgerOrder.AccountTypesEntry
+	103, // 36: raft.CreateLedgerOrder.default_enforcement_mode:type_name -> common.ChartEnforcementMode
 	25,  // 37: raft.MirrorIngestOrder.entry:type_name -> raft.MirrorLogEntry
 	27,  // 38: raft.MirrorLogEntry.created_transaction:type_name -> raft.MirrorCreatedTransaction
 	28,  // 39: raft.MirrorLogEntry.saved_metadata:type_name -> raft.MirrorSavedMetadata
 	29,  // 40: raft.MirrorLogEntry.reverted_transaction:type_name -> raft.MirrorRevertedTransaction
 	30,  // 41: raft.MirrorLogEntry.deleted_metadata:type_name -> raft.MirrorDeletedMetadata
 	26,  // 42: raft.MirrorLogEntry.fill_gap:type_name -> raft.MirrorFillGap
-	108, // 43: raft.MirrorCreatedTransaction.postings:type_name -> common.Posting
-	89,  // 44: raft.MirrorCreatedTransaction.metadata:type_name -> raft.MirrorCreatedTransaction.MetadataEntry
-	103, // 45: raft.MirrorCreatedTransaction.timestamp:type_name -> common.Timestamp
-	90,  // 46: raft.MirrorCreatedTransaction.account_metadata:type_name -> raft.MirrorCreatedTransaction.AccountMetadataEntry
-	109, // 47: raft.MirrorSavedMetadata.target:type_name -> common.Target
-	91,  // 48: raft.MirrorSavedMetadata.metadata:type_name -> raft.MirrorSavedMetadata.MetadataEntry
-	108, // 49: raft.MirrorRevertedTransaction.reverse_postings:type_name -> common.Posting
-	92,  // 50: raft.MirrorRevertedTransaction.metadata:type_name -> raft.MirrorRevertedTransaction.MetadataEntry
-	103, // 51: raft.MirrorRevertedTransaction.timestamp:type_name -> common.Timestamp
-	109, // 52: raft.MirrorDeletedMetadata.target:type_name -> common.Target
-	49,  // 53: raft.LedgerApplyOrder.create_transaction:type_name -> raft.CreateTransactionOrder
-	51,  // 54: raft.LedgerApplyOrder.add_metadata:type_name -> raft.SaveMetadataOrder
-	52,  // 55: raft.LedgerApplyOrder.revert_transaction:type_name -> raft.RevertTransactionOrder
-	53,  // 56: raft.LedgerApplyOrder.delete_metadata:type_name -> raft.DeleteMetadataOrder
-	47,  // 57: raft.LedgerApplyOrder.set_metadata_field_type:type_name -> raft.SetMetadataFieldTypeOrder
-	48,  // 58: raft.LedgerApplyOrder.remove_metadata_field_type:type_name -> raft.RemoveMetadataFieldTypeOrder
-	44,  // 59: raft.LedgerApplyOrder.convert_metadata_batch:type_name -> raft.ConvertMetadataBatchOrder
-	46,  // 60: raft.LedgerApplyOrder.conversion_complete:type_name -> raft.MetadataConversionCompleteOrder
+	104, // 43: raft.MirrorCreatedTransaction.postings:type_name -> common.Posting
+	85,  // 44: raft.MirrorCreatedTransaction.metadata:type_name -> raft.MirrorCreatedTransaction.MetadataEntry
+	99,  // 45: raft.MirrorCreatedTransaction.timestamp:type_name -> common.Timestamp
+	86,  // 46: raft.MirrorCreatedTransaction.account_metadata:type_name -> raft.MirrorCreatedTransaction.AccountMetadataEntry
+	105, // 47: raft.MirrorSavedMetadata.target:type_name -> common.Target
+	87,  // 48: raft.MirrorSavedMetadata.metadata:type_name -> raft.MirrorSavedMetadata.MetadataEntry
+	104, // 49: raft.MirrorRevertedTransaction.reverse_postings:type_name -> common.Posting
+	88,  // 50: raft.MirrorRevertedTransaction.metadata:type_name -> raft.MirrorRevertedTransaction.MetadataEntry
+	99,  // 51: raft.MirrorRevertedTransaction.timestamp:type_name -> common.Timestamp
+	105, // 52: raft.MirrorDeletedMetadata.target:type_name -> common.Target
+	45,  // 53: raft.LedgerApplyOrder.create_transaction:type_name -> raft.CreateTransactionOrder
+	47,  // 54: raft.LedgerApplyOrder.add_metadata:type_name -> raft.SaveMetadataOrder
+	48,  // 55: raft.LedgerApplyOrder.revert_transaction:type_name -> raft.RevertTransactionOrder
+	49,  // 56: raft.LedgerApplyOrder.delete_metadata:type_name -> raft.DeleteMetadataOrder
+	43,  // 57: raft.LedgerApplyOrder.set_metadata_field_type:type_name -> raft.SetMetadataFieldTypeOrder
+	44,  // 58: raft.LedgerApplyOrder.remove_metadata_field_type:type_name -> raft.RemoveMetadataFieldTypeOrder
+	40,  // 59: raft.LedgerApplyOrder.convert_metadata_batch:type_name -> raft.ConvertMetadataBatchOrder
+	42,  // 60: raft.LedgerApplyOrder.conversion_complete:type_name -> raft.MetadataConversionCompleteOrder
 	34,  // 61: raft.LedgerApplyOrder.create_index:type_name -> raft.CreateIndexOrder
 	35,  // 62: raft.LedgerApplyOrder.drop_index:type_name -> raft.DropIndexOrder
 	36,  // 63: raft.LedgerApplyOrder.index_ready:type_name -> raft.IndexReadyOrder
 	37,  // 64: raft.LedgerApplyOrder.add_account_type:type_name -> raft.AddAccountTypeOrder
 	38,  // 65: raft.LedgerApplyOrder.remove_account_type:type_name -> raft.RemoveAccountTypeOrder
 	39,  // 66: raft.LedgerApplyOrder.update_default_enforcement_mode:type_name -> raft.UpdateDefaultEnforcementModeOrder
-	40,  // 67: raft.LedgerApplyOrder.start_account_migration:type_name -> raft.StartAccountMigrationOrder
-	41,  // 68: raft.LedgerApplyOrder.account_migration_batch:type_name -> raft.AccountMigrationBatchOrder
-	43,  // 69: raft.LedgerApplyOrder.complete_account_migration:type_name -> raft.CompleteAccountMigrationOrder
-	110, // 70: raft.CreateIndexOrder.log_builtin:type_name -> common.LogBuiltinIndex
-	111, // 71: raft.CreateIndexOrder.transaction:type_name -> common.TransactionIndex
-	112, // 72: raft.CreateIndexOrder.account:type_name -> common.AccountIndex
-	110, // 73: raft.DropIndexOrder.log_builtin:type_name -> common.LogBuiltinIndex
-	111, // 74: raft.DropIndexOrder.transaction:type_name -> common.TransactionIndex
-	112, // 75: raft.DropIndexOrder.account:type_name -> common.AccountIndex
-	110, // 76: raft.IndexReadyOrder.log_builtin:type_name -> common.LogBuiltinIndex
-	111, // 77: raft.IndexReadyOrder.transaction:type_name -> common.TransactionIndex
-	112, // 78: raft.IndexReadyOrder.account:type_name -> common.AccountIndex
-	113, // 79: raft.AddAccountTypeOrder.account_type:type_name -> common.AccountType
-	107, // 80: raft.UpdateDefaultEnforcementModeOrder.enforcement_mode:type_name -> common.ChartEnforcementMode
-	42,  // 81: raft.AccountMigrationBatchOrder.entries:type_name -> raft.AccountMigrationEntry
-	114, // 82: raft.ConvertMetadataBatchOrder.target_type:type_name -> common.TargetType
-	115, // 83: raft.ConvertMetadataBatchOrder.expected_type:type_name -> common.MetadataType
-	45,  // 84: raft.ConvertMetadataBatchOrder.entries:type_name -> raft.ConvertMetadataEntry
-	116, // 85: raft.ConvertMetadataEntry.converted_value:type_name -> common.MetadataValue
-	114, // 86: raft.MetadataConversionCompleteOrder.target_type:type_name -> common.TargetType
-	115, // 87: raft.MetadataConversionCompleteOrder.expected_type:type_name -> common.MetadataType
-	114, // 88: raft.SetMetadataFieldTypeOrder.target_type:type_name -> common.TargetType
-	115, // 89: raft.SetMetadataFieldTypeOrder.type:type_name -> common.MetadataType
-	114, // 90: raft.RemoveMetadataFieldTypeOrder.target_type:type_name -> common.TargetType
-	108, // 91: raft.CreateTransactionOrder.postings:type_name -> common.Posting
-	117, // 92: raft.CreateTransactionOrder.script:type_name -> common.Script
-	103, // 93: raft.CreateTransactionOrder.timestamp:type_name -> common.Timestamp
-	93,  // 94: raft.CreateTransactionOrder.metadata:type_name -> raft.CreateTransactionOrder.MetadataEntry
-	94,  // 95: raft.CreateTransactionOrder.account_metadata:type_name -> raft.CreateTransactionOrder.AccountMetadataEntry
-	50,  // 96: raft.CreateTransactionOrder.numscript_reference:type_name -> raft.NumscriptReference
-	95,  // 97: raft.NumscriptReference.vars:type_name -> raft.NumscriptReference.VarsEntry
-	109, // 98: raft.SaveMetadataOrder.target:type_name -> common.Target
-	96,  // 99: raft.SaveMetadataOrder.metadata:type_name -> raft.SaveMetadataOrder.MetadataEntry
-	97,  // 100: raft.RevertTransactionOrder.metadata:type_name -> raft.RevertTransactionOrder.MetadataEntry
-	108, // 101: raft.RevertTransactionOrder.original_postings:type_name -> common.Posting
-	109, // 102: raft.DeleteMetadataOrder.target:type_name -> common.Target
-	0,   // 103: raft.Proposal.orders:type_name -> raft.Order
-	103, // 104: raft.Proposal.date:type_name -> common.Timestamp
-	61,  // 105: raft.Proposal.preload:type_name -> raft.PreloadSet
-	57,  // 106: raft.Proposal.events_sink_updates:type_name -> raft.EventsSinkUpdate
-	56,  // 107: raft.Proposal.mirror_sync_updates:type_name -> raft.MirrorSyncUpdate
-	55,  // 108: raft.Proposal.idempotency_eviction:type_name -> raft.IdempotencyEviction
-	118, // 109: raft.Proposal.cluster_config:type_name -> common.ClusterConfig
-	119, // 110: raft.MirrorSyncUpdate.error:type_name -> common.MirrorSyncError
-	120, // 111: raft.EventsSinkUpdate.error:type_name -> common.SinkError
-	121, // 112: raft.CreatedLogOrReference.created_log:type_name -> common.Log
-	122, // 113: raft.VolumePair.input:type_name -> common.Uint256
-	122, // 114: raft.VolumePair.output:type_name -> common.Uint256
-	63,  // 115: raft.PreloadSet.preloads:type_name -> raft.Preload
-	62,  // 116: raft.PreloadSet.touches:type_name -> raft.CacheTouch
-	64,  // 117: raft.Preload.volume:type_name -> raft.PreloadVolume
-	65,  // 118: raft.Preload.idempotency_key:type_name -> raft.PreloadIdempotencyKey
-	66,  // 119: raft.Preload.ledger:type_name -> raft.PreloadLedger
-	67,  // 120: raft.Preload.boundary:type_name -> raft.PreloadBoundary
-	68,  // 121: raft.Preload.transaction_reference:type_name -> raft.PreloadTransactionReference
-	69,  // 122: raft.Preload.sink_config:type_name -> raft.PreloadSinkConfig
-	70,  // 123: raft.Preload.account_metadata:type_name -> raft.PreloadAccountMetadata
-	71,  // 124: raft.Preload.numscript_version:type_name -> raft.PreloadNumscriptVersion
-	72,  // 125: raft.Preload.transaction_state:type_name -> raft.PreloadTransactionState
-	73,  // 126: raft.Preload.numscript_content:type_name -> raft.PreloadNumscriptContent
-	74,  // 127: raft.Preload.prepared_query:type_name -> raft.PreloadPreparedQuery
-	87,  // 128: raft.PreloadVolume.id:type_name -> raft.AttributeID
-	60,  // 129: raft.PreloadVolume.value:type_name -> raft.VolumePair
-	123, // 130: raft.PreloadIdempotencyKey.value:type_name -> common.IdempotencyKeyValue
-	87,  // 131: raft.PreloadLedger.id:type_name -> raft.AttributeID
-	124, // 132: raft.PreloadLedger.value:type_name -> common.LedgerInfo
-	87,  // 133: raft.PreloadBoundary.id:type_name -> raft.AttributeID
-	59,  // 134: raft.PreloadBoundary.value:type_name -> raft.LedgerBoundaries
-	87,  // 135: raft.PreloadTransactionReference.id:type_name -> raft.AttributeID
-	125, // 136: raft.PreloadTransactionReference.value:type_name -> common.TransactionReferenceValue
-	87,  // 137: raft.PreloadSinkConfig.id:type_name -> raft.AttributeID
-	102, // 138: raft.PreloadSinkConfig.value:type_name -> common.SinkConfig
-	87,  // 139: raft.PreloadAccountMetadata.id:type_name -> raft.AttributeID
-	116, // 140: raft.PreloadAccountMetadata.value:type_name -> common.MetadataValue
-	87,  // 141: raft.PreloadNumscriptVersion.id:type_name -> raft.AttributeID
-	126, // 142: raft.PreloadNumscriptVersion.value:type_name -> common.NumscriptVersionValue
-	87,  // 143: raft.PreloadTransactionState.id:type_name -> raft.AttributeID
-	127, // 144: raft.PreloadTransactionState.value:type_name -> common.TransactionState
-	87,  // 145: raft.PreloadNumscriptContent.id:type_name -> raft.AttributeID
-	128, // 146: raft.PreloadNumscriptContent.value:type_name -> common.NumscriptInfo
-	87,  // 147: raft.PreloadPreparedQuery.id:type_name -> raft.AttributeID
-	100, // 148: raft.PreloadPreparedQuery.value:type_name -> common.PreparedQuery
-	78,  // 149: raft.NodeSnapshot.peer_addresses:type_name -> raft.PeerAddress
-	80,  // 150: raft.GenerationSnapshot.volumes:type_name -> raft.VolumeAttributeSnapshotEntry
-	81,  // 151: raft.GenerationSnapshot.metadata:type_name -> raft.MetadataAttributeEntry
-	81,  // 152: raft.GenerationSnapshot.ledger_metadata:type_name -> raft.MetadataAttributeEntry
-	82,  // 153: raft.GenerationSnapshot.ledgers:type_name -> raft.LedgerAttributeEntry
-	83,  // 154: raft.GenerationSnapshot.boundaries:type_name -> raft.BoundaryAttributeEntry
-	84,  // 155: raft.GenerationSnapshot.references:type_name -> raft.TransactionReferenceAttributeEntry
-	85,  // 156: raft.GenerationSnapshot.transactions:type_name -> raft.TransactionStateAttributeEntry
-	87,  // 157: raft.VolumeAttributeSnapshotEntry.id:type_name -> raft.AttributeID
-	122, // 158: raft.VolumeAttributeSnapshotEntry.input:type_name -> common.Uint256
-	122, // 159: raft.VolumeAttributeSnapshotEntry.output:type_name -> common.Uint256
-	87,  // 160: raft.MetadataAttributeEntry.id:type_name -> raft.AttributeID
-	116, // 161: raft.MetadataAttributeEntry.value:type_name -> common.MetadataValue
-	87,  // 162: raft.LedgerAttributeEntry.id:type_name -> raft.AttributeID
-	124, // 163: raft.LedgerAttributeEntry.info:type_name -> common.LedgerInfo
-	87,  // 164: raft.BoundaryAttributeEntry.id:type_name -> raft.AttributeID
-	59,  // 165: raft.BoundaryAttributeEntry.boundaries:type_name -> raft.LedgerBoundaries
-	87,  // 166: raft.TransactionReferenceAttributeEntry.id:type_name -> raft.AttributeID
-	125, // 167: raft.TransactionReferenceAttributeEntry.value:type_name -> common.TransactionReferenceValue
-	87,  // 168: raft.TransactionStateAttributeEntry.id:type_name -> raft.AttributeID
-	127, // 169: raft.TransactionStateAttributeEntry.state:type_name -> common.TransactionState
-	87,  // 170: raft.IdempotencyKeyAttributeEntry.id:type_name -> raft.AttributeID
-	123, // 171: raft.IdempotencyKeyAttributeEntry.value:type_name -> common.IdempotencyKeyValue
-	113, // 172: raft.CreateLedgerOrder.AccountTypesEntry.value:type_name -> common.AccountType
-	116, // 173: raft.MirrorCreatedTransaction.MetadataEntry.value:type_name -> common.MetadataValue
-	129, // 174: raft.MirrorCreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataMap
-	116, // 175: raft.MirrorSavedMetadata.MetadataEntry.value:type_name -> common.MetadataValue
-	116, // 176: raft.MirrorRevertedTransaction.MetadataEntry.value:type_name -> common.MetadataValue
-	116, // 177: raft.CreateTransactionOrder.MetadataEntry.value:type_name -> common.MetadataValue
-	129, // 178: raft.CreateTransactionOrder.AccountMetadataEntry.value:type_name -> common.MetadataMap
-	116, // 179: raft.SaveMetadataOrder.MetadataEntry.value:type_name -> common.MetadataValue
-	116, // 180: raft.RevertTransactionOrder.MetadataEntry.value:type_name -> common.MetadataValue
-	181, // [181:181] is the sub-list for method output_type
-	181, // [181:181] is the sub-list for method input_type
-	181, // [181:181] is the sub-list for extension type_name
-	181, // [181:181] is the sub-list for extension extendee
-	0,   // [0:181] is the sub-list for field type_name
+	106, // 67: raft.CreateIndexOrder.log_builtin:type_name -> common.LogBuiltinIndex
+	107, // 68: raft.CreateIndexOrder.transaction:type_name -> common.TransactionIndex
+	108, // 69: raft.CreateIndexOrder.account:type_name -> common.AccountIndex
+	106, // 70: raft.DropIndexOrder.log_builtin:type_name -> common.LogBuiltinIndex
+	107, // 71: raft.DropIndexOrder.transaction:type_name -> common.TransactionIndex
+	108, // 72: raft.DropIndexOrder.account:type_name -> common.AccountIndex
+	106, // 73: raft.IndexReadyOrder.log_builtin:type_name -> common.LogBuiltinIndex
+	107, // 74: raft.IndexReadyOrder.transaction:type_name -> common.TransactionIndex
+	108, // 75: raft.IndexReadyOrder.account:type_name -> common.AccountIndex
+	109, // 76: raft.AddAccountTypeOrder.account_type:type_name -> common.AccountType
+	103, // 77: raft.UpdateDefaultEnforcementModeOrder.enforcement_mode:type_name -> common.ChartEnforcementMode
+	110, // 78: raft.ConvertMetadataBatchOrder.target_type:type_name -> common.TargetType
+	111, // 79: raft.ConvertMetadataBatchOrder.expected_type:type_name -> common.MetadataType
+	41,  // 80: raft.ConvertMetadataBatchOrder.entries:type_name -> raft.ConvertMetadataEntry
+	112, // 81: raft.ConvertMetadataEntry.converted_value:type_name -> common.MetadataValue
+	110, // 82: raft.MetadataConversionCompleteOrder.target_type:type_name -> common.TargetType
+	111, // 83: raft.MetadataConversionCompleteOrder.expected_type:type_name -> common.MetadataType
+	110, // 84: raft.SetMetadataFieldTypeOrder.target_type:type_name -> common.TargetType
+	111, // 85: raft.SetMetadataFieldTypeOrder.type:type_name -> common.MetadataType
+	110, // 86: raft.RemoveMetadataFieldTypeOrder.target_type:type_name -> common.TargetType
+	104, // 87: raft.CreateTransactionOrder.postings:type_name -> common.Posting
+	113, // 88: raft.CreateTransactionOrder.script:type_name -> common.Script
+	99,  // 89: raft.CreateTransactionOrder.timestamp:type_name -> common.Timestamp
+	89,  // 90: raft.CreateTransactionOrder.metadata:type_name -> raft.CreateTransactionOrder.MetadataEntry
+	90,  // 91: raft.CreateTransactionOrder.account_metadata:type_name -> raft.CreateTransactionOrder.AccountMetadataEntry
+	46,  // 92: raft.CreateTransactionOrder.numscript_reference:type_name -> raft.NumscriptReference
+	91,  // 93: raft.NumscriptReference.vars:type_name -> raft.NumscriptReference.VarsEntry
+	105, // 94: raft.SaveMetadataOrder.target:type_name -> common.Target
+	92,  // 95: raft.SaveMetadataOrder.metadata:type_name -> raft.SaveMetadataOrder.MetadataEntry
+	93,  // 96: raft.RevertTransactionOrder.metadata:type_name -> raft.RevertTransactionOrder.MetadataEntry
+	104, // 97: raft.RevertTransactionOrder.original_postings:type_name -> common.Posting
+	105, // 98: raft.DeleteMetadataOrder.target:type_name -> common.Target
+	0,   // 99: raft.Proposal.orders:type_name -> raft.Order
+	99,  // 100: raft.Proposal.date:type_name -> common.Timestamp
+	57,  // 101: raft.Proposal.preload:type_name -> raft.PreloadSet
+	53,  // 102: raft.Proposal.events_sink_updates:type_name -> raft.EventsSinkUpdate
+	52,  // 103: raft.Proposal.mirror_sync_updates:type_name -> raft.MirrorSyncUpdate
+	51,  // 104: raft.Proposal.idempotency_eviction:type_name -> raft.IdempotencyEviction
+	114, // 105: raft.Proposal.cluster_config:type_name -> common.ClusterConfig
+	115, // 106: raft.MirrorSyncUpdate.error:type_name -> common.MirrorSyncError
+	116, // 107: raft.EventsSinkUpdate.error:type_name -> common.SinkError
+	117, // 108: raft.CreatedLogOrReference.created_log:type_name -> common.Log
+	118, // 109: raft.VolumePair.input:type_name -> common.Uint256
+	118, // 110: raft.VolumePair.output:type_name -> common.Uint256
+	59,  // 111: raft.PreloadSet.preloads:type_name -> raft.Preload
+	58,  // 112: raft.PreloadSet.touches:type_name -> raft.CacheTouch
+	60,  // 113: raft.Preload.volume:type_name -> raft.PreloadVolume
+	61,  // 114: raft.Preload.idempotency_key:type_name -> raft.PreloadIdempotencyKey
+	62,  // 115: raft.Preload.ledger:type_name -> raft.PreloadLedger
+	63,  // 116: raft.Preload.boundary:type_name -> raft.PreloadBoundary
+	64,  // 117: raft.Preload.transaction_reference:type_name -> raft.PreloadTransactionReference
+	65,  // 118: raft.Preload.sink_config:type_name -> raft.PreloadSinkConfig
+	66,  // 119: raft.Preload.account_metadata:type_name -> raft.PreloadAccountMetadata
+	67,  // 120: raft.Preload.numscript_version:type_name -> raft.PreloadNumscriptVersion
+	68,  // 121: raft.Preload.transaction_state:type_name -> raft.PreloadTransactionState
+	69,  // 122: raft.Preload.numscript_content:type_name -> raft.PreloadNumscriptContent
+	70,  // 123: raft.Preload.prepared_query:type_name -> raft.PreloadPreparedQuery
+	83,  // 124: raft.PreloadVolume.id:type_name -> raft.AttributeID
+	56,  // 125: raft.PreloadVolume.value:type_name -> raft.VolumePair
+	119, // 126: raft.PreloadIdempotencyKey.value:type_name -> common.IdempotencyKeyValue
+	83,  // 127: raft.PreloadLedger.id:type_name -> raft.AttributeID
+	120, // 128: raft.PreloadLedger.value:type_name -> common.LedgerInfo
+	83,  // 129: raft.PreloadBoundary.id:type_name -> raft.AttributeID
+	55,  // 130: raft.PreloadBoundary.value:type_name -> raft.LedgerBoundaries
+	83,  // 131: raft.PreloadTransactionReference.id:type_name -> raft.AttributeID
+	121, // 132: raft.PreloadTransactionReference.value:type_name -> common.TransactionReferenceValue
+	83,  // 133: raft.PreloadSinkConfig.id:type_name -> raft.AttributeID
+	98,  // 134: raft.PreloadSinkConfig.value:type_name -> common.SinkConfig
+	83,  // 135: raft.PreloadAccountMetadata.id:type_name -> raft.AttributeID
+	112, // 136: raft.PreloadAccountMetadata.value:type_name -> common.MetadataValue
+	83,  // 137: raft.PreloadNumscriptVersion.id:type_name -> raft.AttributeID
+	122, // 138: raft.PreloadNumscriptVersion.value:type_name -> common.NumscriptVersionValue
+	83,  // 139: raft.PreloadTransactionState.id:type_name -> raft.AttributeID
+	123, // 140: raft.PreloadTransactionState.value:type_name -> common.TransactionState
+	83,  // 141: raft.PreloadNumscriptContent.id:type_name -> raft.AttributeID
+	124, // 142: raft.PreloadNumscriptContent.value:type_name -> common.NumscriptInfo
+	83,  // 143: raft.PreloadPreparedQuery.id:type_name -> raft.AttributeID
+	96,  // 144: raft.PreloadPreparedQuery.value:type_name -> common.PreparedQuery
+	74,  // 145: raft.NodeSnapshot.peer_addresses:type_name -> raft.PeerAddress
+	76,  // 146: raft.GenerationSnapshot.volumes:type_name -> raft.VolumeAttributeSnapshotEntry
+	77,  // 147: raft.GenerationSnapshot.metadata:type_name -> raft.MetadataAttributeEntry
+	77,  // 148: raft.GenerationSnapshot.ledger_metadata:type_name -> raft.MetadataAttributeEntry
+	78,  // 149: raft.GenerationSnapshot.ledgers:type_name -> raft.LedgerAttributeEntry
+	79,  // 150: raft.GenerationSnapshot.boundaries:type_name -> raft.BoundaryAttributeEntry
+	80,  // 151: raft.GenerationSnapshot.references:type_name -> raft.TransactionReferenceAttributeEntry
+	81,  // 152: raft.GenerationSnapshot.transactions:type_name -> raft.TransactionStateAttributeEntry
+	83,  // 153: raft.VolumeAttributeSnapshotEntry.id:type_name -> raft.AttributeID
+	118, // 154: raft.VolumeAttributeSnapshotEntry.input:type_name -> common.Uint256
+	118, // 155: raft.VolumeAttributeSnapshotEntry.output:type_name -> common.Uint256
+	83,  // 156: raft.MetadataAttributeEntry.id:type_name -> raft.AttributeID
+	112, // 157: raft.MetadataAttributeEntry.value:type_name -> common.MetadataValue
+	83,  // 158: raft.LedgerAttributeEntry.id:type_name -> raft.AttributeID
+	120, // 159: raft.LedgerAttributeEntry.info:type_name -> common.LedgerInfo
+	83,  // 160: raft.BoundaryAttributeEntry.id:type_name -> raft.AttributeID
+	55,  // 161: raft.BoundaryAttributeEntry.boundaries:type_name -> raft.LedgerBoundaries
+	83,  // 162: raft.TransactionReferenceAttributeEntry.id:type_name -> raft.AttributeID
+	121, // 163: raft.TransactionReferenceAttributeEntry.value:type_name -> common.TransactionReferenceValue
+	83,  // 164: raft.TransactionStateAttributeEntry.id:type_name -> raft.AttributeID
+	123, // 165: raft.TransactionStateAttributeEntry.state:type_name -> common.TransactionState
+	83,  // 166: raft.IdempotencyKeyAttributeEntry.id:type_name -> raft.AttributeID
+	119, // 167: raft.IdempotencyKeyAttributeEntry.value:type_name -> common.IdempotencyKeyValue
+	109, // 168: raft.CreateLedgerOrder.AccountTypesEntry.value:type_name -> common.AccountType
+	112, // 169: raft.MirrorCreatedTransaction.MetadataEntry.value:type_name -> common.MetadataValue
+	125, // 170: raft.MirrorCreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataMap
+	112, // 171: raft.MirrorSavedMetadata.MetadataEntry.value:type_name -> common.MetadataValue
+	112, // 172: raft.MirrorRevertedTransaction.MetadataEntry.value:type_name -> common.MetadataValue
+	112, // 173: raft.CreateTransactionOrder.MetadataEntry.value:type_name -> common.MetadataValue
+	125, // 174: raft.CreateTransactionOrder.AccountMetadataEntry.value:type_name -> common.MetadataMap
+	112, // 175: raft.SaveMetadataOrder.MetadataEntry.value:type_name -> common.MetadataValue
+	112, // 176: raft.RevertTransactionOrder.MetadataEntry.value:type_name -> common.MetadataValue
+	177, // [177:177] is the sub-list for method output_type
+	177, // [177:177] is the sub-list for method input_type
+	177, // [177:177] is the sub-list for extension type_name
+	177, // [177:177] is the sub-list for extension extendee
+	0,   // [0:177] is the sub-list for field type_name
 }
 
 func init() { file_raft_cmd_proto_init() }
@@ -6936,9 +6624,6 @@ func file_raft_cmd_proto_init() {
 		(*LedgerApplyOrder_AddAccountType)(nil),
 		(*LedgerApplyOrder_RemoveAccountType)(nil),
 		(*LedgerApplyOrder_UpdateDefaultEnforcementMode)(nil),
-		(*LedgerApplyOrder_StartAccountMigration)(nil),
-		(*LedgerApplyOrder_AccountMigrationBatch)(nil),
-		(*LedgerApplyOrder_CompleteAccountMigration)(nil),
 	}
 	file_raft_cmd_proto_msgTypes[34].OneofWrappers = []any{
 		(*CreateIndexOrder_LogBuiltin)(nil),
@@ -6955,11 +6640,11 @@ func file_raft_cmd_proto_init() {
 		(*IndexReadyOrder_Transaction)(nil),
 		(*IndexReadyOrder_Account)(nil),
 	}
-	file_raft_cmd_proto_msgTypes[58].OneofWrappers = []any{
+	file_raft_cmd_proto_msgTypes[54].OneofWrappers = []any{
 		(*CreatedLogOrReference_CreatedLog)(nil),
 		(*CreatedLogOrReference_ReferenceSequence)(nil),
 	}
-	file_raft_cmd_proto_msgTypes[63].OneofWrappers = []any{
+	file_raft_cmd_proto_msgTypes[59].OneofWrappers = []any{
 		(*Preload_Volume)(nil),
 		(*Preload_IdempotencyKey)(nil),
 		(*Preload_Ledger)(nil),
@@ -6978,7 +6663,7 @@ func file_raft_cmd_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_raft_cmd_proto_rawDesc), len(file_raft_cmd_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   98,
+			NumMessages:   94,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

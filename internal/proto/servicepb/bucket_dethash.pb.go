@@ -587,16 +587,6 @@ func (m *Request) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i--
 			dAtA[i] = 0x8a
 		}
-	case *Request_MigrateAccountType:
-		if v.MigrateAccountType != nil {
-			size, _ := v.MigrateAccountType.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x2
-			i--
-			dAtA[i] = 0x92
-		}
 	case *Request_SetQueryCheckpointSchedule:
 		if v.SetQueryCheckpointSchedule != nil {
 			size, _ := v.SetQueryCheckpointSchedule.MarshalToSizedBufferVT(dAtA[:i])
@@ -605,7 +595,7 @@ func (m *Request) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i--
 			dAtA[i] = 0x2
 			i--
-			dAtA[i] = 0x9a
+			dAtA[i] = 0x92
 		}
 	case *Request_DeleteQueryCheckpointSchedule:
 		if v.DeleteQueryCheckpointSchedule != nil {
@@ -615,7 +605,7 @@ func (m *Request) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i--
 			dAtA[i] = 0x2
 			i--
-			dAtA[i] = 0xa2
+			dAtA[i] = 0x9a
 		}
 	}
 	return len(dAtA) - i, nil
@@ -1311,14 +1301,6 @@ func (m *LedgerApplyRequest) MarshalToSizedBufferDeterministicVT(dAtA []byte) (i
 			i--
 			dAtA[i] = 0x42
 		}
-	case *LedgerApplyRequest_MigrateAccountType:
-		if v.MigrateAccountType != nil {
-			size, _ := v.MigrateAccountType.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x4a
-		}
 	}
 	return len(dAtA) - i, nil
 }
@@ -1379,28 +1361,6 @@ func (m *AddAccountTypeLedgerRequest) MarshalDeterministicVT(dAtA []byte) []byte
 }
 
 func (m *RemoveAccountTypeLedgerRequest) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *MigrateAccountTypeLedgerRequest) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *MigrateAccountTypeRequest) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
