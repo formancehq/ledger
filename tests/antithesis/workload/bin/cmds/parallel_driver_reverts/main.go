@@ -15,13 +15,13 @@ func main() {
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
-						Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 							CreateTransaction: &servicepb.CreateTransactionPayload{
 								Postings:      internal.RandomPostings(),
 								Force:         true,
 								ExpandVolumes: true,
 							},
-						},
+						}},
 					},
 				},
 			}},
@@ -45,13 +45,13 @@ func main() {
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
-						Data: &servicepb.LedgerApplyRequest_RevertTransaction{
+						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RevertTransaction{
 							RevertTransaction: &servicepb.RevertTransactionPayload{
 								TransactionId: txID,
 								Force:         true,
 								ExpandVolumes: true,
 							},
-						},
+						}},
 					},
 				},
 			}},

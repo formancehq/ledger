@@ -343,7 +343,7 @@ func TestHandleRevertTransaction_WithMetadataInBody(t *testing.T) {
 
 	applyType, ok := capturedRequest.GetType().(*servicepb.Request_Apply)
 	require.True(t, ok)
-	revertData, ok := applyType.Apply.GetData().(*servicepb.LedgerApplyRequest_RevertTransaction)
+	revertData, ok := applyType.Apply.GetAction().GetData().(*servicepb.LedgerAction_RevertTransaction)
 	require.True(t, ok)
 	revertPayload := revertData.RevertTransaction
 	require.True(t, revertPayload.GetForce())
@@ -825,8 +825,8 @@ func TestConvertBulkElementToRequest(t *testing.T) {
 
 	elem := &servicepb.BulkElement{
 		IdempotencyKey: "ik-123",
-		Action: &servicepb.LedgerApplyRequest{
-			Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+		Action: &servicepb.LedgerAction{
+			Data: &servicepb.LedgerAction_CreateTransaction{
 				CreateTransaction: &servicepb.CreateTransactionPayload{},
 			},
 		},
@@ -875,8 +875,8 @@ func TestRunBulk_Atomic(t *testing.T) {
 	srv := newTestServer(t, backend)
 
 	elements := []*servicepb.BulkElement{
-		{Action: &servicepb.LedgerApplyRequest{}},
-		{Action: &servicepb.LedgerApplyRequest{}},
+		{Action: &servicepb.LedgerAction{}},
+		{Action: &servicepb.LedgerAction{}},
 	}
 
 	results := srv.runBulk(context.Background(), "ledger1", elements, bulkOptions{atomic: true})
@@ -909,7 +909,7 @@ func TestRunBulk_Sequential(t *testing.T) {
 	srv := newTestServer(t, backend)
 
 	elements := []*servicepb.BulkElement{
-		{Action: &servicepb.LedgerApplyRequest{}},
+		{Action: &servicepb.LedgerAction{}},
 	}
 
 	results := srv.runBulk(context.Background(), "ledger1", elements, bulkOptions{atomic: false})
@@ -922,13 +922,13 @@ func TestWriteBulkResponse_WithErrors(t *testing.T) {
 	t.Parallel()
 
 	elements := []*servicepb.BulkElement{
-		{Action: &servicepb.LedgerApplyRequest{
-			Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+		{Action: &servicepb.LedgerAction{
+			Data: &servicepb.LedgerAction_CreateTransaction{
 				CreateTransaction: &servicepb.CreateTransactionPayload{},
 			},
 		}},
-		{Action: &servicepb.LedgerApplyRequest{
-			Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+		{Action: &servicepb.LedgerAction{
+			Data: &servicepb.LedgerAction_CreateTransaction{
 				CreateTransaction: &servicepb.CreateTransactionPayload{},
 			},
 		}},
@@ -960,8 +960,8 @@ func TestWriteBulkResponse_AllSuccess(t *testing.T) {
 	t.Parallel()
 
 	elements := []*servicepb.BulkElement{
-		{Action: &servicepb.LedgerApplyRequest{
-			Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+		{Action: &servicepb.LedgerAction{
+			Data: &servicepb.LedgerAction_CreateTransaction{
 				CreateTransaction: &servicepb.CreateTransactionPayload{},
 			},
 		}},
@@ -992,8 +992,8 @@ func TestWriteBulkResponse_NilLog(t *testing.T) {
 	t.Parallel()
 
 	elements := []*servicepb.BulkElement{
-		{Action: &servicepb.LedgerApplyRequest{
-			Data: &servicepb.LedgerApplyRequest_AddMetadata{},
+		{Action: &servicepb.LedgerAction{
+			Data: &servicepb.LedgerAction_AddMetadata{},
 		}},
 	}
 
@@ -1256,8 +1256,8 @@ func TestWriteBulkResponse_LogWithCreatedTransaction(t *testing.T) {
 	t.Parallel()
 
 	elements := []*servicepb.BulkElement{
-		{Action: &servicepb.LedgerApplyRequest{
-			Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+		{Action: &servicepb.LedgerAction{
+			Data: &servicepb.LedgerAction_CreateTransaction{
 				CreateTransaction: &servicepb.CreateTransactionPayload{},
 			},
 		}},
@@ -1289,8 +1289,8 @@ func TestWriteBulkResponse_LogWithoutData(t *testing.T) {
 	t.Parallel()
 
 	elements := []*servicepb.BulkElement{
-		{Action: &servicepb.LedgerApplyRequest{
-			Data: &servicepb.LedgerApplyRequest_AddMetadata{},
+		{Action: &servicepb.LedgerAction{
+			Data: &servicepb.LedgerAction_AddMetadata{},
 		}},
 	}
 

@@ -82,7 +82,7 @@ func TestProcessAddMetadata_WithSchema(t *testing.T) {
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Data: &servicepb.LedgerApplyRequest_AddMetadata{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
 					AddMetadata: &commonpb.SaveMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Account{
@@ -93,7 +93,7 @@ func TestProcessAddMetadata_WithSchema(t *testing.T) {
 							"age": commonpb.NewStringValue("25"),
 						},
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -122,7 +122,7 @@ func TestProcessAddMetadata_TransactionNotFound(t *testing.T) {
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Data: &servicepb.LedgerApplyRequest_AddMetadata{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
 					AddMetadata: &commonpb.SaveMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Transaction{
@@ -133,7 +133,7 @@ func TestProcessAddMetadata_TransactionNotFound(t *testing.T) {
 							"status": commonpb.NewStringValue("done"),
 						},
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -259,7 +259,7 @@ func TestProcessDeleteMetadata_Transaction(t *testing.T) {
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Data: &servicepb.LedgerApplyRequest_DeleteMetadata{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_DeleteMetadata{
 					DeleteMetadata: &commonpb.DeleteMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Transaction{
@@ -268,7 +268,7 @@ func TestProcessDeleteMetadata_Transaction(t *testing.T) {
 						},
 						Key: "category",
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -303,7 +303,7 @@ func TestProcessDeleteMetadata_TransactionNotFound(t *testing.T) {
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Data: &servicepb.LedgerApplyRequest_DeleteMetadata{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_DeleteMetadata{
 					DeleteMetadata: &commonpb.DeleteMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Transaction{
@@ -312,7 +312,7 @@ func TestProcessDeleteMetadata_TransactionNotFound(t *testing.T) {
 						},
 						Key: "status",
 					},
-				},
+				}},
 			},
 		},
 	}

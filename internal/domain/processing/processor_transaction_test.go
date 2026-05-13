@@ -72,7 +72,7 @@ func TestProcessCreateTransaction(t *testing.T) {
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Postings: []*commonpb.Posting{
 							{
@@ -83,7 +83,7 @@ func TestProcessCreateTransaction(t *testing.T) {
 							},
 						},
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -132,7 +132,7 @@ func TestProcessCreateTransaction_InsufficientFunds(t *testing.T) {
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Postings: []*commonpb.Posting{
 							{
@@ -143,7 +143,7 @@ func TestProcessCreateTransaction_InsufficientFunds(t *testing.T) {
 							},
 						},
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -202,7 +202,7 @@ func TestProcessCreateTransaction_WorldSource(t *testing.T) {
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Postings: []*commonpb.Posting{
 							{
@@ -213,7 +213,7 @@ func TestProcessCreateTransaction_WorldSource(t *testing.T) {
 							},
 						},
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -240,7 +240,7 @@ func TestProcessApply_LedgerNotFound(t *testing.T) {
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "nonexistent",
-				Data: &servicepb.LedgerApplyRequest_AddMetadata{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
 					AddMetadata: &commonpb.SaveMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Account{
@@ -249,7 +249,7 @@ func TestProcessApply_LedgerNotFound(t *testing.T) {
 						},
 						Metadata: map[string]*commonpb.MetadataValue{},
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -297,7 +297,7 @@ func TestProcessCreateTransaction_Numscript_WorldSource(t *testing.T) {
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: `
@@ -308,7 +308,7 @@ func TestProcessCreateTransaction_Numscript_WorldSource(t *testing.T) {
 							`,
 						},
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -358,7 +358,7 @@ func TestProcessCreateTransaction_Numscript_WithVariables(t *testing.T) {
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: `
@@ -377,7 +377,7 @@ func TestProcessCreateTransaction_Numscript_WithVariables(t *testing.T) {
 							},
 						},
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -426,7 +426,7 @@ func TestProcessCreateTransaction_Numscript_MultiplePostings(t *testing.T) {
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: `
@@ -441,7 +441,7 @@ func TestProcessCreateTransaction_Numscript_MultiplePostings(t *testing.T) {
 							`,
 						},
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -495,7 +495,7 @@ func TestProcessCreateTransaction_Numscript_UnboundedOverdraft(t *testing.T) {
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: `
@@ -506,7 +506,7 @@ func TestProcessCreateTransaction_Numscript_UnboundedOverdraft(t *testing.T) {
 							`,
 						},
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -547,7 +547,7 @@ func TestProcessCreateTransaction_Numscript_ParseError(t *testing.T) {
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: `
@@ -558,7 +558,7 @@ func TestProcessCreateTransaction_Numscript_ParseError(t *testing.T) {
 							`,
 						},
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -596,13 +596,13 @@ func TestProcessCreateTransaction_Numscript_EmptyScript(t *testing.T) {
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: "",
 						},
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -647,7 +647,7 @@ func TestProcessCreateTransaction_Numscript_SendToMultipleDestinations(t *testin
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: `
@@ -661,7 +661,7 @@ func TestProcessCreateTransaction_Numscript_SendToMultipleDestinations(t *testin
 							`,
 						},
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -714,7 +714,7 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: `
@@ -727,7 +727,7 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 							`,
 						},
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -792,7 +792,7 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: `
@@ -805,7 +805,7 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 							`,
 						},
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -890,7 +890,7 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Force: true, // Force flag bypasses balance check
 						Postings: []*commonpb.Posting{
@@ -902,7 +902,7 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 							},
 						},
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -972,7 +972,7 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Force: true,
 						Postings: []*commonpb.Posting{
@@ -984,7 +984,7 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 							},
 						},
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -1023,7 +1023,7 @@ func TestProcessCreateTransaction_Numscript_Force_InsufficientFunds(t *testing.T
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Force: true, // Force bypasses balance checks in Numscript
 						Script: &commonpb.Script{
@@ -1035,7 +1035,7 @@ func TestProcessCreateTransaction_Numscript_Force_InsufficientFunds(t *testing.T
 							`,
 						},
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -1082,7 +1082,7 @@ func TestProcessCreateTransaction_Numscript_OverflowUint256(t *testing.T) {
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: `
@@ -1099,7 +1099,7 @@ func TestProcessCreateTransaction_Numscript_OverflowUint256(t *testing.T) {
 							},
 						},
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -1130,7 +1130,7 @@ func TestProcessCreateTransaction_Numscript_NegativeAmount(t *testing.T) {
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: `
@@ -1147,7 +1147,7 @@ func TestProcessCreateTransaction_Numscript_NegativeAmount(t *testing.T) {
 							},
 						},
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -1200,7 +1200,7 @@ func TestProcessCreateTransaction_PeriodIdInCreatedTransaction(t *testing.T) {
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Postings: []*commonpb.Posting{
 							{
@@ -1212,7 +1212,7 @@ func TestProcessCreateTransaction_PeriodIdInCreatedTransaction(t *testing.T) {
 						},
 						Force: true,
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -1273,7 +1273,7 @@ func TestProcessCreateTransaction_PeriodIdZeroWhenNoPeriod(t *testing.T) {
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Postings: []*commonpb.Posting{
 							{
@@ -1285,7 +1285,7 @@ func TestProcessCreateTransaction_PeriodIdZeroWhenNoPeriod(t *testing.T) {
 						},
 						Force: true,
 					},
-				},
+				}},
 			},
 		},
 	}

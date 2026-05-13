@@ -1218,6 +1218,86 @@ func (m *RevertTransactionPayload) MarshalToSizedBufferDeterministicVT(dAtA []by
 	return len(dAtA) - i, nil
 }
 
+func (m *LedgerAction) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	sz := m.SizeVT()
+	buf := make([]byte, sz)
+	n, _ := m.MarshalToSizedBufferDeterministicVT(buf)
+	return append(dAtA, buf[sz-n:]...)
+}
+
+func (m *LedgerAction) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	switch v := m.Data.(type) {
+	case *LedgerAction_CreateTransaction:
+		if v.CreateTransaction != nil {
+			size, _ := v.CreateTransaction.MarshalToSizedBufferDeterministicVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0xa
+		}
+	case *LedgerAction_AddMetadata:
+		if v.AddMetadata != nil {
+			size, _ := v.AddMetadata.MarshalToSizedBufferDeterministicVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x12
+		}
+	case *LedgerAction_RevertTransaction:
+		if v.RevertTransaction != nil {
+			size, _ := v.RevertTransaction.MarshalToSizedBufferDeterministicVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x1a
+		}
+	case *LedgerAction_DeleteMetadata:
+		if v.DeleteMetadata != nil {
+			size, _ := v.DeleteMetadata.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x22
+		}
+	case *LedgerAction_AddAccountType:
+		if v.AddAccountType != nil {
+			size, _ := v.AddAccountType.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x2a
+		}
+	case *LedgerAction_RemoveAccountType:
+		if v.RemoveAccountType != nil {
+			size, _ := v.RemoveAccountType.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x32
+		}
+	case *LedgerAction_SetDefaultEnforcementMode:
+		if v.SetDefaultEnforcementMode != nil {
+			size, _ := v.SetDefaultEnforcementMode.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x3a
+		}
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *LedgerApplyRequest) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
@@ -1237,70 +1317,19 @@ func (m *LedgerApplyRequest) MarshalToSizedBufferDeterministicVT(dAtA []byte) (i
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.Action != nil {
+		size, _ := m.Action.MarshalToSizedBufferDeterministicVT(dAtA[:i])
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x12
+	}
 	if len(m.Ledger) > 0 {
 		i -= len(m.Ledger)
 		copy(dAtA[i:], m.Ledger)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
 		i--
 		dAtA[i] = 0xa
-	}
-	switch v := m.Data.(type) {
-	case *LedgerApplyRequest_CreateTransaction:
-		if v.CreateTransaction != nil {
-			size, _ := v.CreateTransaction.MarshalToSizedBufferDeterministicVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x12
-		}
-	case *LedgerApplyRequest_AddMetadata:
-		if v.AddMetadata != nil {
-			size, _ := v.AddMetadata.MarshalToSizedBufferDeterministicVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x1a
-		}
-	case *LedgerApplyRequest_RevertTransaction:
-		if v.RevertTransaction != nil {
-			size, _ := v.RevertTransaction.MarshalToSizedBufferDeterministicVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x22
-		}
-	case *LedgerApplyRequest_DeleteMetadata:
-		if v.DeleteMetadata != nil {
-			size, _ := v.DeleteMetadata.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x2a
-		}
-	case *LedgerApplyRequest_AddAccountType:
-		if v.AddAccountType != nil {
-			size, _ := v.AddAccountType.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x32
-		}
-	case *LedgerApplyRequest_RemoveAccountType:
-		if v.RemoveAccountType != nil {
-			size, _ := v.RemoveAccountType.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x3a
-		}
-	case *LedgerApplyRequest_SetDefaultEnforcementMode:
-		if v.SetDefaultEnforcementMode != nil {
-			size, _ := v.SetDefaultEnforcementMode.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x42
-		}
 	}
 	return len(dAtA) - i, nil
 }

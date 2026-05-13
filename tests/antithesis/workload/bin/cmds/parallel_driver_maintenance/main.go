@@ -44,14 +44,14 @@ func main() {
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
-						Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 							CreateTransaction: &servicepb.CreateTransactionPayload{
 								Postings: []*commonpb.Posting{
 									commonpb.NewPosting("world", "users:0", "USD/2", internal.RandomBigInt()),
 								},
 								Force: true,
 							},
-						},
+						}},
 					},
 				},
 			}},
@@ -87,14 +87,14 @@ func main() {
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
-						Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 							CreateTransaction: &servicepb.CreateTransactionPayload{
 								Postings: []*commonpb.Posting{
 									commonpb.NewPosting("world", "users:0", "USD/2", internal.RandomBigInt()),
 								},
 								Force: true,
 							},
-						},
+						}},
 					},
 				},
 			}},

@@ -33,8 +33,10 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
-					CreateTransaction: req,
+				Action: &servicepb.LedgerAction{
+					Data: &servicepb.LedgerAction_CreateTransaction{
+						CreateTransaction: req,
+					},
 				},
 			},
 		},

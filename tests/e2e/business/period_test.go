@@ -203,13 +203,13 @@ var _ = Describe("Receipts", Ordered, func() {
 						Type: &servicepb.Request_Apply{
 							Apply: &servicepb.LedgerApplyRequest{
 								Ledger: ledger,
-								Data: &servicepb.LedgerApplyRequest_RevertTransaction{
+								Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RevertTransaction{
 									RevertTransaction: &servicepb.RevertTransactionPayload{
 										TransactionId: txID,
 										Force:         true,
 										Receipt:       receipt,
 									},
-								},
+								}},
 							},
 						},
 					},
@@ -232,13 +232,13 @@ var _ = Describe("Receipts", Ordered, func() {
 						Type: &servicepb.Request_Apply{
 							Apply: &servicepb.LedgerApplyRequest{
 								Ledger: ledger,
-								Data: &servicepb.LedgerApplyRequest_RevertTransaction{
+								Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RevertTransaction{
 									RevertTransaction: &servicepb.RevertTransactionPayload{
 										TransactionId: txID,
 										Force:         true,
 										Receipt:       receipt,
 									},
-								},
+								}},
 							},
 						},
 					},

@@ -56,7 +56,7 @@ func main() {
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
-						Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 							CreateTransaction: &servicepb.CreateTransactionPayload{
 								ScriptReference: &servicepb.ScriptReference{
 									Name: scriptName,
@@ -64,7 +64,7 @@ func main() {
 								},
 								Force: true,
 							},
-						},
+						}},
 					},
 				},
 			}},

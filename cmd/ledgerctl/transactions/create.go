@@ -369,14 +369,16 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: ledgerName,
-					Data: &servicepb.LedgerApplyRequest_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings:      postings,
-							Script:        script,
-							Reference:     reference,
-							Metadata:      commonpb.MetadataFromGoMap(metadata),
-							Force:         force,
-							ExpandVolumes: expandVolumes,
+					Action: &servicepb.LedgerAction{
+						Data: &servicepb.LedgerAction_CreateTransaction{
+							CreateTransaction: &servicepb.CreateTransactionPayload{
+								Postings:      postings,
+								Script:        script,
+								Reference:     reference,
+								Metadata:      commonpb.MetadataFromGoMap(metadata),
+								Force:         force,
+								ExpandVolumes: expandVolumes,
+							},
 						},
 					},
 				},

@@ -126,14 +126,16 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledgerName,
-						Data: &servicepb.LedgerApplyRequest_AddMetadata{
-							AddMetadata: &commonpb.SaveMetadataCommand{
-								Target: &commonpb.Target{
-									Target: &commonpb.Target_Account{
-										Account: &commonpb.TargetAccount{Addr: address},
+						Action: &servicepb.LedgerAction{
+							Data: &servicepb.LedgerAction_AddMetadata{
+								AddMetadata: &commonpb.SaveMetadataCommand{
+									Target: &commonpb.Target{
+										Target: &commonpb.Target_Account{
+											Account: &commonpb.TargetAccount{Addr: address},
+										},
 									},
+									Metadata: commonpb.MetadataFromGoMap(metadata),
 								},
-								Metadata: commonpb.MetadataFromGoMap(metadata),
 							},
 						},
 					},

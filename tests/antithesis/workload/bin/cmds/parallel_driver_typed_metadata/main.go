@@ -74,7 +74,7 @@ func main() {
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
-						Data: &servicepb.LedgerApplyRequest_AddMetadata{
+						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
 							AddMetadata: &commonpb.SaveMetadataCommand{
 								Target: &commonpb.Target{
 									Target: &commonpb.Target_Account{
@@ -85,7 +85,7 @@ func main() {
 									metaKey: fmt.Sprintf("%d", metaValue),
 								}),
 							},
-						},
+						}},
 					},
 				},
 			}},
@@ -228,7 +228,7 @@ func main() {
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
-						Data: &servicepb.LedgerApplyRequest_AddMetadata{
+						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
 							AddMetadata: &commonpb.SaveMetadataCommand{
 								Target: &commonpb.Target{
 									Target: &commonpb.Target_Account{
@@ -239,7 +239,7 @@ func main() {
 									badKey: "not-a-number",
 								}),
 							},
-						},
+						}},
 					},
 				},
 			}},

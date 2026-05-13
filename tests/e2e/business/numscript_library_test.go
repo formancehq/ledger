@@ -623,7 +623,7 @@ send $amount (
 						Type: &servicepb.Request_Apply{
 							Apply: &servicepb.LedgerApplyRequest{
 								Ledger: txLedgerName,
-								Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+								Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 									CreateTransaction: &servicepb.CreateTransactionPayload{
 										Script: &commonpb.Script{
 											Plain: "send [USD/2 1] (source = @world destination = @x)",
@@ -632,7 +632,7 @@ send $amount (
 											Name: "some-script",
 										},
 									},
-								},
+								}},
 							},
 						},
 					},

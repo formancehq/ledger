@@ -26,8 +26,8 @@ func requestToOrder(req *servicepb.Request) *raftcmdpb.Order {
 		applyOrder := &raftcmdpb.LedgerApplyOrder{
 			Ledger: reqType.Apply.GetLedger(),
 		}
-		switch data := reqType.Apply.GetData().(type) {
-		case *servicepb.LedgerApplyRequest_CreateTransaction:
+		switch data := reqType.Apply.GetAction().GetData().(type) {
+		case *servicepb.LedgerAction_CreateTransaction:
 			applyOrder.Data = &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 				CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 					Postings:  data.CreateTransaction.GetPostings(),
@@ -38,21 +38,21 @@ func requestToOrder(req *servicepb.Request) *raftcmdpb.Order {
 					Force:     data.CreateTransaction.GetForce(),
 				},
 			}
-		case *servicepb.LedgerApplyRequest_AddMetadata:
+		case *servicepb.LedgerAction_AddMetadata:
 			applyOrder.Data = &raftcmdpb.LedgerApplyOrder_AddMetadata{
 				AddMetadata: &raftcmdpb.SaveMetadataOrder{
 					Target:   data.AddMetadata.GetTarget(),
 					Metadata: data.AddMetadata.GetMetadata(),
 				},
 			}
-		case *servicepb.LedgerApplyRequest_DeleteMetadata:
+		case *servicepb.LedgerAction_DeleteMetadata:
 			applyOrder.Data = &raftcmdpb.LedgerApplyOrder_DeleteMetadata{
 				DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
 					Target: data.DeleteMetadata.GetTarget(),
 					Key:    data.DeleteMetadata.GetKey(),
 				},
 			}
-		case *servicepb.LedgerApplyRequest_RevertTransaction:
+		case *servicepb.LedgerAction_RevertTransaction:
 			applyOrder.Data = &raftcmdpb.LedgerApplyOrder_RevertTransaction{
 				RevertTransaction: &raftcmdpb.RevertTransactionOrder{
 					TransactionId:   data.RevertTransaction.GetTransactionId(),

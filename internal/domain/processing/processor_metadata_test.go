@@ -41,7 +41,7 @@ func TestProcessAddMetadata_Account(t *testing.T) {
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Data: &servicepb.LedgerApplyRequest_AddMetadata{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
 					AddMetadata: &commonpb.SaveMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Account{
@@ -52,7 +52,7 @@ func TestProcessAddMetadata_Account(t *testing.T) {
 							"status": commonpb.NewStringValue("active"),
 						},
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -107,7 +107,7 @@ func TestProcessAddMetadata_Transaction(t *testing.T) {
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Data: &servicepb.LedgerApplyRequest_AddMetadata{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
 					AddMetadata: &commonpb.SaveMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Transaction{
@@ -118,7 +118,7 @@ func TestProcessAddMetadata_Transaction(t *testing.T) {
 							"category": commonpb.NewStringValue("payment"),
 						},
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -157,7 +157,7 @@ func TestProcessDeleteMetadata_Account(t *testing.T) {
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Data: &servicepb.LedgerApplyRequest_DeleteMetadata{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_DeleteMetadata{
 					DeleteMetadata: &commonpb.DeleteMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Account{
@@ -166,7 +166,7 @@ func TestProcessDeleteMetadata_Account(t *testing.T) {
 						},
 						Key: "status",
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -208,7 +208,7 @@ func TestProcessDeleteMetadata_Account_NotFound(t *testing.T) {
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Data: &servicepb.LedgerApplyRequest_DeleteMetadata{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_DeleteMetadata{
 					DeleteMetadata: &commonpb.DeleteMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Account{
@@ -217,7 +217,7 @@ func TestProcessDeleteMetadata_Account_NotFound(t *testing.T) {
 						},
 						Key: "status",
 					},
-				},
+				}},
 			},
 		},
 	}

@@ -60,14 +60,16 @@ func TestAdmitRejectsWhenUnhealthy(t *testing.T) {
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: "ledger1",
-						Data: &servicepb.LedgerApplyRequest_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings: []*commonpb.Posting{
-									{
-										Source:      "world",
-										Destination: "user:alice",
-										Amount:      commonpb.NewUint256FromUint64(0),
-										Asset:       "USD",
+						Action: &servicepb.LedgerAction{
+							Data: &servicepb.LedgerAction_CreateTransaction{
+								CreateTransaction: &servicepb.CreateTransactionPayload{
+									Postings: []*commonpb.Posting{
+										{
+											Source:      "world",
+											Destination: "user:alice",
+											Amount:      commonpb.NewUint256FromUint64(0),
+											Asset:       "USD",
+										},
 									},
 								},
 							},
@@ -95,14 +97,16 @@ func TestAdmitRejectsWhenUnhealthy(t *testing.T) {
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: testLedgerName,
-					Data: &servicepb.LedgerApplyRequest_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{
-								{
-									Source:      "world",
-									Destination: "user:bob",
-									Amount:      commonpb.NewUint256FromUint64(0),
-									Asset:       "EUR",
+					Action: &servicepb.LedgerAction{
+						Data: &servicepb.LedgerAction_CreateTransaction{
+							CreateTransaction: &servicepb.CreateTransactionPayload{
+								Postings: []*commonpb.Posting{
+									{
+										Source:      "world",
+										Destination: "user:bob",
+										Amount:      commonpb.NewUint256FromUint64(0),
+										Asset:       "EUR",
+									},
 								},
 							},
 						},

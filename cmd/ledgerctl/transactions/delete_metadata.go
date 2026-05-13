@@ -135,14 +135,16 @@ func runDeleteMetadata(cmd *cobra.Command, args []string) error {
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledgerName,
-						Data: &servicepb.LedgerApplyRequest_DeleteMetadata{
-							DeleteMetadata: &commonpb.DeleteMetadataCommand{
-								Target: &commonpb.Target{
-									Target: &commonpb.Target_Transaction{
-										Transaction: &commonpb.TargetTransaction{Id: txID},
+						Action: &servicepb.LedgerAction{
+							Data: &servicepb.LedgerAction_DeleteMetadata{
+								DeleteMetadata: &commonpb.DeleteMetadataCommand{
+									Target: &commonpb.Target{
+										Target: &commonpb.Target_Transaction{
+											Transaction: &commonpb.TargetTransaction{Id: txID},
+										},
 									},
+									Key: key,
 								},
-								Key: key,
 							},
 						},
 					},

@@ -29,14 +29,14 @@ func randomPostingsRequest(ledger string) *servicepb.Request {
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: ledger,
-				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Postings:      internal.RandomPostings(),
 						Metadata:      commonpb.MetadataFromGoMap(internal.RandomMetadata()),
 						Force:         true,
 						ExpandVolumes: true,
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -52,7 +52,7 @@ func randomNumscriptRequest(ledger string) *servicepb.Request {
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: ledger,
-				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: `
@@ -71,7 +71,7 @@ func randomNumscriptRequest(ledger string) *servicepb.Request {
 						Force:         true,
 						ExpandVolumes: true,
 					},
-				},
+				}},
 			},
 		},
 	}

@@ -446,18 +446,22 @@ message RevertTransactionPayload {
   bool expand_volumes = 6;
 }
 
-// LedgerAction represents a single ledger action
+// LedgerAction represents a single ledger action.
+message LedgerAction {
+  oneof data {
+    CreateTransactionPayload create_transaction = 1;
+    common.SaveMetadataCommand add_metadata = 2;
+    RevertTransactionPayload revert_transaction = 3;
+    common.DeleteMetadataCommand delete_metadata = 4;
+    AddAccountTypeRequest add_account_type = 5;
+    RemoveAccountTypeRequest remove_account_type = 6;
+    SetDefaultEnforcementModeRequest set_default_enforcement_mode = 7;
+  }
+}
+
 message LedgerApplyRequest {
   string ledger = 1;
-  oneof data {
-    CreateTransactionPayload create_transaction = 2;
-    common.SaveMetadataCommand add_metadata = 3;
-    RevertTransactionPayload revert_transaction = 4;
-    common.DeleteMetadataCommand delete_metadata = 5;
-    AddAccountTypeRequest add_account_type = 6;
-    RemoveAccountTypeRequest remove_account_type = 7;
-    SetDefaultEnforcementModeRequest set_default_enforcement_mode = 8;
-  }
+  LedgerAction action = 2;
 }
 
 // AddAccountTypeRequest adds an account type within a LedgerApplyRequest.

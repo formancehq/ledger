@@ -61,14 +61,14 @@ func requiredScopeForLedgerApply(req *servicepb.LedgerApplyRequest) Scope {
 		return ScopeOpsWrite
 	}
 
-	switch req.GetData().(type) {
-	case *servicepb.LedgerApplyRequest_CreateTransaction:
+	switch req.GetAction().GetData().(type) {
+	case *servicepb.LedgerAction_CreateTransaction:
 		return ScopeTransactionsWrite
-	case *servicepb.LedgerApplyRequest_RevertTransaction:
+	case *servicepb.LedgerAction_RevertTransaction:
 		return ScopeTransactionsWrite
-	case *servicepb.LedgerApplyRequest_AddMetadata:
+	case *servicepb.LedgerAction_AddMetadata:
 		return ScopeMetadataWrite
-	case *servicepb.LedgerApplyRequest_DeleteMetadata:
+	case *servicepb.LedgerAction_DeleteMetadata:
 		return ScopeMetadataWrite
 	default:
 		return ScopeOpsWrite

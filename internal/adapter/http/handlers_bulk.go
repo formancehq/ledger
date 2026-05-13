@@ -95,7 +95,7 @@ type bulkResult struct {
 func convertBulkElementToRequest(ledgerName string, elem *servicepb.BulkElement) *servicepb.Request {
 	applyRequest := &servicepb.LedgerApplyRequest{
 		Ledger: ledgerName,
-		Data:   elem.Action.GetData(),
+		Action: elem.Action,
 	}
 
 	return &servicepb.Request{
@@ -185,7 +185,7 @@ func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement,
 	apiResults := make([]bulkAPIResult, len(results))
 
 	for i, result := range results {
-		responseType := servicepb.GetLedgerApplyActionType(elements[i].Action)
+		responseType := servicepb.GetLedgerActionType(elements[i].Action)
 
 		var data any
 

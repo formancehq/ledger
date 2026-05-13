@@ -46,16 +46,18 @@ func (s *Server) handleSaveAccountMetadata(w http.ResponseWriter, r *http.Reques
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Data: &servicepb.LedgerApplyRequest_AddMetadata{
-					AddMetadata: &commonpb.SaveMetadataCommand{
-						Target: &commonpb.Target{
-							Target: &commonpb.Target_Account{
-								Account: &commonpb.TargetAccount{
-									Addr: address,
+				Action: &servicepb.LedgerAction{
+					Data: &servicepb.LedgerAction_AddMetadata{
+						AddMetadata: &commonpb.SaveMetadataCommand{
+							Target: &commonpb.Target{
+								Target: &commonpb.Target_Account{
+									Account: &commonpb.TargetAccount{
+										Addr: address,
+									},
 								},
 							},
+							Metadata: ms,
 						},
-						Metadata: ms,
 					},
 				},
 			},

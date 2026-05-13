@@ -70,8 +70,10 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Data: &servicepb.LedgerApplyRequest_RevertTransaction{
-					RevertTransaction: payload,
+				Action: &servicepb.LedgerAction{
+					Data: &servicepb.LedgerAction_RevertTransaction{
+						RevertTransaction: payload,
+					},
 				},
 			},
 		},

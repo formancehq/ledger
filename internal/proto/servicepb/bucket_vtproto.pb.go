@@ -1315,17 +1315,95 @@ func (m *RevertTransactionPayload) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
+func (m *LedgerAction) CloneVT() *LedgerAction {
+	if m == nil {
+		return (*LedgerAction)(nil)
+	}
+	r := new(LedgerAction)
+	if m.Data != nil {
+		r.Data = m.Data.(interface{ CloneVT() isLedgerAction_Data }).CloneVT()
+	}
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *LedgerAction) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *LedgerAction_CreateTransaction) CloneVT() isLedgerAction_Data {
+	if m == nil {
+		return (*LedgerAction_CreateTransaction)(nil)
+	}
+	r := new(LedgerAction_CreateTransaction)
+	r.CreateTransaction = m.CreateTransaction.CloneVT()
+	return r
+}
+
+func (m *LedgerAction_AddMetadata) CloneVT() isLedgerAction_Data {
+	if m == nil {
+		return (*LedgerAction_AddMetadata)(nil)
+	}
+	r := new(LedgerAction_AddMetadata)
+	r.AddMetadata = m.AddMetadata.CloneVT()
+	return r
+}
+
+func (m *LedgerAction_RevertTransaction) CloneVT() isLedgerAction_Data {
+	if m == nil {
+		return (*LedgerAction_RevertTransaction)(nil)
+	}
+	r := new(LedgerAction_RevertTransaction)
+	r.RevertTransaction = m.RevertTransaction.CloneVT()
+	return r
+}
+
+func (m *LedgerAction_DeleteMetadata) CloneVT() isLedgerAction_Data {
+	if m == nil {
+		return (*LedgerAction_DeleteMetadata)(nil)
+	}
+	r := new(LedgerAction_DeleteMetadata)
+	r.DeleteMetadata = m.DeleteMetadata.CloneVT()
+	return r
+}
+
+func (m *LedgerAction_AddAccountType) CloneVT() isLedgerAction_Data {
+	if m == nil {
+		return (*LedgerAction_AddAccountType)(nil)
+	}
+	r := new(LedgerAction_AddAccountType)
+	r.AddAccountType = m.AddAccountType.CloneVT()
+	return r
+}
+
+func (m *LedgerAction_RemoveAccountType) CloneVT() isLedgerAction_Data {
+	if m == nil {
+		return (*LedgerAction_RemoveAccountType)(nil)
+	}
+	r := new(LedgerAction_RemoveAccountType)
+	r.RemoveAccountType = m.RemoveAccountType.CloneVT()
+	return r
+}
+
+func (m *LedgerAction_SetDefaultEnforcementMode) CloneVT() isLedgerAction_Data {
+	if m == nil {
+		return (*LedgerAction_SetDefaultEnforcementMode)(nil)
+	}
+	r := new(LedgerAction_SetDefaultEnforcementMode)
+	r.SetDefaultEnforcementMode = m.SetDefaultEnforcementMode.CloneVT()
+	return r
+}
+
 func (m *LedgerApplyRequest) CloneVT() *LedgerApplyRequest {
 	if m == nil {
 		return (*LedgerApplyRequest)(nil)
 	}
 	r := new(LedgerApplyRequest)
 	r.Ledger = m.Ledger
-	if m.Data != nil {
-		r.Data = m.Data.(interface {
-			CloneVT() isLedgerApplyRequest_Data
-		}).CloneVT()
-	}
+	r.Action = m.Action.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1335,69 +1413,6 @@ func (m *LedgerApplyRequest) CloneVT() *LedgerApplyRequest {
 
 func (m *LedgerApplyRequest) CloneMessageVT() proto.Message {
 	return m.CloneVT()
-}
-
-func (m *LedgerApplyRequest_CreateTransaction) CloneVT() isLedgerApplyRequest_Data {
-	if m == nil {
-		return (*LedgerApplyRequest_CreateTransaction)(nil)
-	}
-	r := new(LedgerApplyRequest_CreateTransaction)
-	r.CreateTransaction = m.CreateTransaction.CloneVT()
-	return r
-}
-
-func (m *LedgerApplyRequest_AddMetadata) CloneVT() isLedgerApplyRequest_Data {
-	if m == nil {
-		return (*LedgerApplyRequest_AddMetadata)(nil)
-	}
-	r := new(LedgerApplyRequest_AddMetadata)
-	r.AddMetadata = m.AddMetadata.CloneVT()
-	return r
-}
-
-func (m *LedgerApplyRequest_RevertTransaction) CloneVT() isLedgerApplyRequest_Data {
-	if m == nil {
-		return (*LedgerApplyRequest_RevertTransaction)(nil)
-	}
-	r := new(LedgerApplyRequest_RevertTransaction)
-	r.RevertTransaction = m.RevertTransaction.CloneVT()
-	return r
-}
-
-func (m *LedgerApplyRequest_DeleteMetadata) CloneVT() isLedgerApplyRequest_Data {
-	if m == nil {
-		return (*LedgerApplyRequest_DeleteMetadata)(nil)
-	}
-	r := new(LedgerApplyRequest_DeleteMetadata)
-	r.DeleteMetadata = m.DeleteMetadata.CloneVT()
-	return r
-}
-
-func (m *LedgerApplyRequest_AddAccountType) CloneVT() isLedgerApplyRequest_Data {
-	if m == nil {
-		return (*LedgerApplyRequest_AddAccountType)(nil)
-	}
-	r := new(LedgerApplyRequest_AddAccountType)
-	r.AddAccountType = m.AddAccountType.CloneVT()
-	return r
-}
-
-func (m *LedgerApplyRequest_RemoveAccountType) CloneVT() isLedgerApplyRequest_Data {
-	if m == nil {
-		return (*LedgerApplyRequest_RemoveAccountType)(nil)
-	}
-	r := new(LedgerApplyRequest_RemoveAccountType)
-	r.RemoveAccountType = m.RemoveAccountType.CloneVT()
-	return r
-}
-
-func (m *LedgerApplyRequest_SetDefaultEnforcementMode) CloneVT() isLedgerApplyRequest_Data {
-	if m == nil {
-		return (*LedgerApplyRequest_SetDefaultEnforcementMode)(nil)
-	}
-	r := new(LedgerApplyRequest_SetDefaultEnforcementMode)
-	r.SetDefaultEnforcementMode = m.SetDefaultEnforcementMode.CloneVT()
-	return r
 }
 
 func (m *AddAccountTypeRequest) CloneVT() *AddAccountTypeRequest {
@@ -5241,7 +5256,7 @@ func (this *RevertTransactionPayload) EqualMessageVT(thatMsg proto.Message) bool
 	}
 	return this.EqualVT(that)
 }
-func (this *LedgerApplyRequest) EqualVT(that *LedgerApplyRequest) bool {
+func (this *LedgerAction) EqualVT(that *LedgerAction) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -5254,26 +5269,23 @@ func (this *LedgerApplyRequest) EqualVT(that *LedgerApplyRequest) bool {
 			return false
 		}
 		if !this.Data.(interface {
-			EqualVT(isLedgerApplyRequest_Data) bool
+			EqualVT(isLedgerAction_Data) bool
 		}).EqualVT(that.Data) {
 			return false
 		}
 	}
-	if this.Ledger != that.Ledger {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *LedgerApplyRequest) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*LedgerApplyRequest)
+func (this *LedgerAction) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*LedgerAction)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *LedgerApplyRequest_CreateTransaction) EqualVT(thatIface isLedgerApplyRequest_Data) bool {
-	that, ok := thatIface.(*LedgerApplyRequest_CreateTransaction)
+func (this *LedgerAction_CreateTransaction) EqualVT(thatIface isLedgerAction_Data) bool {
+	that, ok := thatIface.(*LedgerAction_CreateTransaction)
 	if !ok {
 		return false
 	}
@@ -5297,8 +5309,8 @@ func (this *LedgerApplyRequest_CreateTransaction) EqualVT(thatIface isLedgerAppl
 	return true
 }
 
-func (this *LedgerApplyRequest_AddMetadata) EqualVT(thatIface isLedgerApplyRequest_Data) bool {
-	that, ok := thatIface.(*LedgerApplyRequest_AddMetadata)
+func (this *LedgerAction_AddMetadata) EqualVT(thatIface isLedgerAction_Data) bool {
+	that, ok := thatIface.(*LedgerAction_AddMetadata)
 	if !ok {
 		return false
 	}
@@ -5322,8 +5334,8 @@ func (this *LedgerApplyRequest_AddMetadata) EqualVT(thatIface isLedgerApplyReque
 	return true
 }
 
-func (this *LedgerApplyRequest_RevertTransaction) EqualVT(thatIface isLedgerApplyRequest_Data) bool {
-	that, ok := thatIface.(*LedgerApplyRequest_RevertTransaction)
+func (this *LedgerAction_RevertTransaction) EqualVT(thatIface isLedgerAction_Data) bool {
+	that, ok := thatIface.(*LedgerAction_RevertTransaction)
 	if !ok {
 		return false
 	}
@@ -5347,8 +5359,8 @@ func (this *LedgerApplyRequest_RevertTransaction) EqualVT(thatIface isLedgerAppl
 	return true
 }
 
-func (this *LedgerApplyRequest_DeleteMetadata) EqualVT(thatIface isLedgerApplyRequest_Data) bool {
-	that, ok := thatIface.(*LedgerApplyRequest_DeleteMetadata)
+func (this *LedgerAction_DeleteMetadata) EqualVT(thatIface isLedgerAction_Data) bool {
+	that, ok := thatIface.(*LedgerAction_DeleteMetadata)
 	if !ok {
 		return false
 	}
@@ -5372,8 +5384,8 @@ func (this *LedgerApplyRequest_DeleteMetadata) EqualVT(thatIface isLedgerApplyRe
 	return true
 }
 
-func (this *LedgerApplyRequest_AddAccountType) EqualVT(thatIface isLedgerApplyRequest_Data) bool {
-	that, ok := thatIface.(*LedgerApplyRequest_AddAccountType)
+func (this *LedgerAction_AddAccountType) EqualVT(thatIface isLedgerAction_Data) bool {
+	that, ok := thatIface.(*LedgerAction_AddAccountType)
 	if !ok {
 		return false
 	}
@@ -5397,8 +5409,8 @@ func (this *LedgerApplyRequest_AddAccountType) EqualVT(thatIface isLedgerApplyRe
 	return true
 }
 
-func (this *LedgerApplyRequest_RemoveAccountType) EqualVT(thatIface isLedgerApplyRequest_Data) bool {
-	that, ok := thatIface.(*LedgerApplyRequest_RemoveAccountType)
+func (this *LedgerAction_RemoveAccountType) EqualVT(thatIface isLedgerAction_Data) bool {
+	that, ok := thatIface.(*LedgerAction_RemoveAccountType)
 	if !ok {
 		return false
 	}
@@ -5422,8 +5434,8 @@ func (this *LedgerApplyRequest_RemoveAccountType) EqualVT(thatIface isLedgerAppl
 	return true
 }
 
-func (this *LedgerApplyRequest_SetDefaultEnforcementMode) EqualVT(thatIface isLedgerApplyRequest_Data) bool {
-	that, ok := thatIface.(*LedgerApplyRequest_SetDefaultEnforcementMode)
+func (this *LedgerAction_SetDefaultEnforcementMode) EqualVT(thatIface isLedgerAction_Data) bool {
+	that, ok := thatIface.(*LedgerAction_SetDefaultEnforcementMode)
 	if !ok {
 		return false
 	}
@@ -5447,6 +5459,28 @@ func (this *LedgerApplyRequest_SetDefaultEnforcementMode) EqualVT(thatIface isLe
 	return true
 }
 
+func (this *LedgerApplyRequest) EqualVT(that *LedgerApplyRequest) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.Ledger != that.Ledger {
+		return false
+	}
+	if !this.Action.EqualVT(that.Action) {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *LedgerApplyRequest) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*LedgerApplyRequest)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
 func (this *AddAccountTypeRequest) EqualVT(that *AddAccountTypeRequest) bool {
 	if this == that {
 		return true
@@ -11134,6 +11168,181 @@ func (m *RevertTransactionPayload) MarshalToSizedBufferVT(dAtA []byte) (int, err
 	return len(dAtA) - i, nil
 }
 
+func (m *LedgerAction) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *LedgerAction) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *LedgerAction) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if vtmsg, ok := m.Data.(interface {
+		MarshalToSizedBufferVT([]byte) (int, error)
+	}); ok {
+		size, err := vtmsg.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *LedgerAction_CreateTransaction) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *LedgerAction_CreateTransaction) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.CreateTransaction != nil {
+		size, err := m.CreateTransaction.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+func (m *LedgerAction_AddMetadata) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *LedgerAction_AddMetadata) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.AddMetadata != nil {
+		size, err := m.AddMetadata.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x12
+	}
+	return len(dAtA) - i, nil
+}
+func (m *LedgerAction_RevertTransaction) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *LedgerAction_RevertTransaction) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.RevertTransaction != nil {
+		size, err := m.RevertTransaction.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *LedgerAction_DeleteMetadata) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *LedgerAction_DeleteMetadata) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.DeleteMetadata != nil {
+		size, err := m.DeleteMetadata.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x22
+	}
+	return len(dAtA) - i, nil
+}
+func (m *LedgerAction_AddAccountType) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *LedgerAction_AddAccountType) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.AddAccountType != nil {
+		size, err := m.AddAccountType.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x2a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *LedgerAction_RemoveAccountType) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *LedgerAction_RemoveAccountType) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.RemoveAccountType != nil {
+		size, err := m.RemoveAccountType.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x32
+	}
+	return len(dAtA) - i, nil
+}
+func (m *LedgerAction_SetDefaultEnforcementMode) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *LedgerAction_SetDefaultEnforcementMode) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.SetDefaultEnforcementMode != nil {
+		size, err := m.SetDefaultEnforcementMode.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x3a
+	}
+	return len(dAtA) - i, nil
+}
 func (m *LedgerApplyRequest) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -11164,14 +11373,15 @@ func (m *LedgerApplyRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if vtmsg, ok := m.Data.(interface {
-		MarshalToSizedBufferVT([]byte) (int, error)
-	}); ok {
-		size, err := vtmsg.MarshalToSizedBufferVT(dAtA[:i])
+	if m.Action != nil {
+		size, err := m.Action.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
 		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x12
 	}
 	if len(m.Ledger) > 0 {
 		i -= len(m.Ledger)
@@ -11183,139 +11393,6 @@ func (m *LedgerApplyRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *LedgerApplyRequest_CreateTransaction) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *LedgerApplyRequest_CreateTransaction) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.CreateTransaction != nil {
-		size, err := m.CreateTransaction.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x12
-	}
-	return len(dAtA) - i, nil
-}
-func (m *LedgerApplyRequest_AddMetadata) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *LedgerApplyRequest_AddMetadata) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.AddMetadata != nil {
-		size, err := m.AddMetadata.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1a
-	}
-	return len(dAtA) - i, nil
-}
-func (m *LedgerApplyRequest_RevertTransaction) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *LedgerApplyRequest_RevertTransaction) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.RevertTransaction != nil {
-		size, err := m.RevertTransaction.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x22
-	}
-	return len(dAtA) - i, nil
-}
-func (m *LedgerApplyRequest_DeleteMetadata) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *LedgerApplyRequest_DeleteMetadata) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.DeleteMetadata != nil {
-		size, err := m.DeleteMetadata.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x2a
-	}
-	return len(dAtA) - i, nil
-}
-func (m *LedgerApplyRequest_AddAccountType) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *LedgerApplyRequest_AddAccountType) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.AddAccountType != nil {
-		size, err := m.AddAccountType.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x32
-	}
-	return len(dAtA) - i, nil
-}
-func (m *LedgerApplyRequest_RemoveAccountType) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *LedgerApplyRequest_RemoveAccountType) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.RemoveAccountType != nil {
-		size, err := m.RemoveAccountType.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x3a
-	}
-	return len(dAtA) - i, nil
-}
-func (m *LedgerApplyRequest_SetDefaultEnforcementMode) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *LedgerApplyRequest_SetDefaultEnforcementMode) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.SetDefaultEnforcementMode != nil {
-		size, err := m.SetDefaultEnforcementMode.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x42
-	}
-	return len(dAtA) - i, nil
-}
 func (m *AddAccountTypeRequest) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -16922,16 +16999,12 @@ func (m *RevertTransactionPayload) SizeVT() (n int) {
 	return n
 }
 
-func (m *LedgerApplyRequest) SizeVT() (n int) {
+func (m *LedgerAction) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	l = len(m.Ledger)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	if vtmsg, ok := m.Data.(interface{ SizeVT() int }); ok {
 		n += vtmsg.SizeVT()
 	}
@@ -16939,7 +17012,7 @@ func (m *LedgerApplyRequest) SizeVT() (n int) {
 	return n
 }
 
-func (m *LedgerApplyRequest_CreateTransaction) SizeVT() (n int) {
+func (m *LedgerAction_CreateTransaction) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -16951,7 +17024,7 @@ func (m *LedgerApplyRequest_CreateTransaction) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *LedgerApplyRequest_AddMetadata) SizeVT() (n int) {
+func (m *LedgerAction_AddMetadata) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -16963,7 +17036,7 @@ func (m *LedgerApplyRequest_AddMetadata) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *LedgerApplyRequest_RevertTransaction) SizeVT() (n int) {
+func (m *LedgerAction_RevertTransaction) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -16975,7 +17048,7 @@ func (m *LedgerApplyRequest_RevertTransaction) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *LedgerApplyRequest_DeleteMetadata) SizeVT() (n int) {
+func (m *LedgerAction_DeleteMetadata) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -16987,7 +17060,7 @@ func (m *LedgerApplyRequest_DeleteMetadata) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *LedgerApplyRequest_AddAccountType) SizeVT() (n int) {
+func (m *LedgerAction_AddAccountType) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -16999,7 +17072,7 @@ func (m *LedgerApplyRequest_AddAccountType) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *LedgerApplyRequest_RemoveAccountType) SizeVT() (n int) {
+func (m *LedgerAction_RemoveAccountType) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -17011,7 +17084,7 @@ func (m *LedgerApplyRequest_RemoveAccountType) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *LedgerApplyRequest_SetDefaultEnforcementMode) SizeVT() (n int) {
+func (m *LedgerAction_SetDefaultEnforcementMode) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -17023,6 +17096,24 @@ func (m *LedgerApplyRequest_SetDefaultEnforcementMode) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *LedgerApplyRequest) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Ledger)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.Action != nil {
+		l = m.Action.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
 func (m *AddAccountTypeRequest) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -25969,6 +26060,344 @@ func (m *RevertTransactionPayload) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
+func (m *LedgerAction) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: LedgerAction: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: LedgerAction: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CreateTransaction", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Data.(*LedgerAction_CreateTransaction); ok {
+				if err := oneof.CreateTransaction.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &CreateTransactionPayload{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Data = &LedgerAction_CreateTransaction{CreateTransaction: v}
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AddMetadata", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Data.(*LedgerAction_AddMetadata); ok {
+				if err := oneof.AddMetadata.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &commonpb.SaveMetadataCommand{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Data = &LedgerAction_AddMetadata{AddMetadata: v}
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RevertTransaction", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Data.(*LedgerAction_RevertTransaction); ok {
+				if err := oneof.RevertTransaction.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &RevertTransactionPayload{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Data = &LedgerAction_RevertTransaction{RevertTransaction: v}
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DeleteMetadata", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Data.(*LedgerAction_DeleteMetadata); ok {
+				if err := oneof.DeleteMetadata.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &commonpb.DeleteMetadataCommand{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Data = &LedgerAction_DeleteMetadata{DeleteMetadata: v}
+			}
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AddAccountType", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Data.(*LedgerAction_AddAccountType); ok {
+				if err := oneof.AddAccountType.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &AddAccountTypeRequest{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Data = &LedgerAction_AddAccountType{AddAccountType: v}
+			}
+			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RemoveAccountType", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Data.(*LedgerAction_RemoveAccountType); ok {
+				if err := oneof.RemoveAccountType.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &RemoveAccountTypeRequest{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Data = &LedgerAction_RemoveAccountType{RemoveAccountType: v}
+			}
+			iNdEx = postIndex
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SetDefaultEnforcementMode", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Data.(*LedgerAction_SetDefaultEnforcementMode); ok {
+				if err := oneof.SetDefaultEnforcementMode.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &SetDefaultEnforcementModeRequest{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Data = &LedgerAction_SetDefaultEnforcementMode{SetDefaultEnforcementMode: v}
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
 func (m *LedgerApplyRequest) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -26032,7 +26461,7 @@ func (m *LedgerApplyRequest) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field CreateTransaction", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Action", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -26059,262 +26488,11 @@ func (m *LedgerApplyRequest) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Data.(*LedgerApplyRequest_CreateTransaction); ok {
-				if err := oneof.CreateTransaction.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &CreateTransactionPayload{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Data = &LedgerApplyRequest_CreateTransaction{CreateTransaction: v}
+			if m.Action == nil {
+				m.Action = &LedgerAction{}
 			}
-			iNdEx = postIndex
-		case 3:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AddMetadata", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Data.(*LedgerApplyRequest_AddMetadata); ok {
-				if err := oneof.AddMetadata.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &commonpb.SaveMetadataCommand{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Data = &LedgerApplyRequest_AddMetadata{AddMetadata: v}
-			}
-			iNdEx = postIndex
-		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field RevertTransaction", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Data.(*LedgerApplyRequest_RevertTransaction); ok {
-				if err := oneof.RevertTransaction.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &RevertTransactionPayload{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Data = &LedgerApplyRequest_RevertTransaction{RevertTransaction: v}
-			}
-			iNdEx = postIndex
-		case 5:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DeleteMetadata", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Data.(*LedgerApplyRequest_DeleteMetadata); ok {
-				if err := oneof.DeleteMetadata.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &commonpb.DeleteMetadataCommand{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Data = &LedgerApplyRequest_DeleteMetadata{DeleteMetadata: v}
-			}
-			iNdEx = postIndex
-		case 6:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AddAccountType", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Data.(*LedgerApplyRequest_AddAccountType); ok {
-				if err := oneof.AddAccountType.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &AddAccountTypeRequest{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Data = &LedgerApplyRequest_AddAccountType{AddAccountType: v}
-			}
-			iNdEx = postIndex
-		case 7:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field RemoveAccountType", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Data.(*LedgerApplyRequest_RemoveAccountType); ok {
-				if err := oneof.RemoveAccountType.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &RemoveAccountTypeRequest{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Data = &LedgerApplyRequest_RemoveAccountType{RemoveAccountType: v}
-			}
-			iNdEx = postIndex
-		case 8:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SetDefaultEnforcementMode", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Data.(*LedgerApplyRequest_SetDefaultEnforcementMode); ok {
-				if err := oneof.SetDefaultEnforcementMode.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &SetDefaultEnforcementModeRequest{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Data = &LedgerApplyRequest_SetDefaultEnforcementMode{SetDefaultEnforcementMode: v}
+			if err := m.Action.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
 			}
 			iNdEx = postIndex
 		default:

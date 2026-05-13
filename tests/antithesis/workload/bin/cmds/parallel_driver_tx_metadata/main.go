@@ -22,12 +22,12 @@ func main() {
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
-						Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 							CreateTransaction: &servicepb.CreateTransactionPayload{
 								Postings: internal.RandomPostings(),
 								Force:    true,
 							},
-						},
+						}},
 					},
 				},
 			}},
@@ -52,7 +52,7 @@ func main() {
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
-						Data: &servicepb.LedgerApplyRequest_AddMetadata{
+						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
 							AddMetadata: &commonpb.SaveMetadataCommand{
 								Target: &commonpb.Target{
 									Target: &commonpb.Target_Transaction{
@@ -61,7 +61,7 @@ func main() {
 								},
 								Metadata: commonpb.MetadataFromGoMap(map[string]string{key: value}),
 							},
-						},
+						}},
 					},
 				},
 			}},
@@ -93,7 +93,7 @@ func main() {
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
-						Data: &servicepb.LedgerApplyRequest_DeleteMetadata{
+						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_DeleteMetadata{
 							DeleteMetadata: &commonpb.DeleteMetadataCommand{
 								Target: &commonpb.Target{
 									Target: &commonpb.Target_Transaction{
@@ -102,7 +102,7 @@ func main() {
 								},
 								Key: key,
 							},
-						},
+						}},
 					},
 				},
 			}},

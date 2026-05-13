@@ -36,16 +36,18 @@ func (s *Server) handleDeleteAccountMetadata(w http.ResponseWriter, r *http.Requ
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Data: &servicepb.LedgerApplyRequest_DeleteMetadata{
-					DeleteMetadata: &commonpb.DeleteMetadataCommand{
-						Target: &commonpb.Target{
-							Target: &commonpb.Target_Account{
-								Account: &commonpb.TargetAccount{
-									Addr: address,
+				Action: &servicepb.LedgerAction{
+					Data: &servicepb.LedgerAction_DeleteMetadata{
+						DeleteMetadata: &commonpb.DeleteMetadataCommand{
+							Target: &commonpb.Target{
+								Target: &commonpb.Target_Account{
+									Account: &commonpb.TargetAccount{
+										Addr: address,
+									},
 								},
 							},
+							Key: key,
 						},
-						Key: key,
 					},
 				},
 			},

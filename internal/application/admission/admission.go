@@ -1284,8 +1284,8 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 		Ledger: apply.GetLedger(),
 	}
 
-	switch data := apply.GetData().(type) {
-	case *servicepb.LedgerApplyRequest_CreateTransaction:
+	switch data := apply.GetAction().GetData().(type) {
+	case *servicepb.LedgerAction_CreateTransaction:
 		ct := data.CreateTransaction
 		script := ct.GetScript()
 
@@ -1325,39 +1325,39 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 				NumscriptReference: numscriptRef,
 			},
 		}
-	case *servicepb.LedgerApplyRequest_AddMetadata:
+	case *servicepb.LedgerAction_AddMetadata:
 		order.Data = &raftcmdpb.LedgerApplyOrder_AddMetadata{
 			AddMetadata: &raftcmdpb.SaveMetadataOrder{
 				Target:   data.AddMetadata.GetTarget(),
 				Metadata: data.AddMetadata.GetMetadata(),
 			},
 		}
-	case *servicepb.LedgerApplyRequest_DeleteMetadata:
+	case *servicepb.LedgerAction_DeleteMetadata:
 		order.Data = &raftcmdpb.LedgerApplyOrder_DeleteMetadata{
 			DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
 				Target: data.DeleteMetadata.GetTarget(),
 				Key:    data.DeleteMetadata.GetKey(),
 			},
 		}
-	case *servicepb.LedgerApplyRequest_AddAccountType:
+	case *servicepb.LedgerAction_AddAccountType:
 		order.Data = &raftcmdpb.LedgerApplyOrder_AddAccountType{
 			AddAccountType: &raftcmdpb.AddAccountTypeOrder{
 				AccountType: data.AddAccountType.GetAccountType(),
 			},
 		}
-	case *servicepb.LedgerApplyRequest_RemoveAccountType:
+	case *servicepb.LedgerAction_RemoveAccountType:
 		order.Data = &raftcmdpb.LedgerApplyOrder_RemoveAccountType{
 			RemoveAccountType: &raftcmdpb.RemoveAccountTypeOrder{
 				Name: data.RemoveAccountType.GetName(),
 			},
 		}
-	case *servicepb.LedgerApplyRequest_SetDefaultEnforcementMode:
+	case *servicepb.LedgerAction_SetDefaultEnforcementMode:
 		order.Data = &raftcmdpb.LedgerApplyOrder_UpdateDefaultEnforcementMode{
 			UpdateDefaultEnforcementMode: &raftcmdpb.UpdateDefaultEnforcementModeOrder{
 				EnforcementMode: data.SetDefaultEnforcementMode.GetEnforcementMode(),
 			},
 		}
-	case *servicepb.LedgerApplyRequest_RevertTransaction:
+	case *servicepb.LedgerAction_RevertTransaction:
 		var originalPostings []*commonpb.Posting
 
 		if data.RevertTransaction.GetReceipt() != "" && a.receiptSigner != nil {
@@ -1397,7 +1397,7 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 			},
 		}
 	default:
-		return nil, fmt.Errorf("unsupported apply data type: %T", apply.GetData())
+		return nil, fmt.Errorf("unsupported apply data type: %T", apply.GetAction().GetData())
 	}
 
 	return order, nil

@@ -55,13 +55,13 @@ func CreateTransactionAction(ledgerName string, postings []*commonpb.Posting, me
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Postings:        postings,
 						Metadata:        commonpb.MetadataFromGoMap(metadata),
 						AccountMetadata: accountMetadata,
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -73,13 +73,13 @@ func CreateForceTransactionAction(ledgerName string, postings []*commonpb.Postin
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Postings: postings,
 						Metadata: commonpb.MetadataFromGoMap(metadata),
 						Force:    true,
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -91,7 +91,7 @@ func CreateForceScriptTransactionAction(ledgerName string, script string, vars m
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: script,
@@ -100,7 +100,7 @@ func CreateForceScriptTransactionAction(ledgerName string, script string, vars m
 						Metadata: commonpb.MetadataFromGoMap(metadata),
 						Force:    true,
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -112,7 +112,7 @@ func CreateScriptTransactionAction(ledgerName string, script string, vars map[st
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: script,
@@ -120,7 +120,7 @@ func CreateScriptTransactionAction(ledgerName string, script string, vars map[st
 						},
 						Metadata: commonpb.MetadataFromGoMap(metadata),
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -183,7 +183,7 @@ func SaveAccountMetadataAction(ledgerName, address string, metadata map[string]s
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Data: &servicepb.LedgerApplyRequest_AddMetadata{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
 					AddMetadata: &commonpb.SaveMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Account{
@@ -192,7 +192,7 @@ func SaveAccountMetadataAction(ledgerName, address string, metadata map[string]s
 						},
 						Metadata: commonpb.MetadataFromGoMap(metadata),
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -204,7 +204,7 @@ func DeleteAccountMetadataAction(ledgerName, address, key string) *servicepb.Req
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Data: &servicepb.LedgerApplyRequest_DeleteMetadata{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_DeleteMetadata{
 					DeleteMetadata: &commonpb.DeleteMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Account{
@@ -213,7 +213,7 @@ func DeleteAccountMetadataAction(ledgerName, address, key string) *servicepb.Req
 						},
 						Key: key,
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -225,7 +225,7 @@ func SaveTransactionMetadataAction(ledgerName string, transactionID uint64, meta
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Data: &servicepb.LedgerApplyRequest_AddMetadata{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
 					AddMetadata: &commonpb.SaveMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Transaction{
@@ -234,7 +234,7 @@ func SaveTransactionMetadataAction(ledgerName string, transactionID uint64, meta
 						},
 						Metadata: commonpb.MetadataFromGoMap(metadata),
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -246,7 +246,7 @@ func DeleteTransactionMetadataAction(ledgerName string, transactionID uint64, ke
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Data: &servicepb.LedgerApplyRequest_DeleteMetadata{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_DeleteMetadata{
 					DeleteMetadata: &commonpb.DeleteMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Transaction{
@@ -255,7 +255,7 @@ func DeleteTransactionMetadataAction(ledgerName string, transactionID uint64, ke
 						},
 						Key: key,
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -267,14 +267,14 @@ func RevertTransactionAction(ledgerName string, transactionID uint64, force, atE
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Data: &servicepb.LedgerApplyRequest_RevertTransaction{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RevertTransaction{
 					RevertTransaction: &servicepb.RevertTransactionPayload{
 						TransactionId:   transactionID,
 						Force:           force,
 						AtEffectiveDate: atEffectiveDate,
 						Metadata:        commonpb.MetadataFromGoMap(metadata),
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -283,7 +283,7 @@ func RevertTransactionAction(ledgerName string, transactionID uint64, force, atE
 // WithTimestamp sets the timestamp on a create transaction request.
 func WithTimestamp(req *servicepb.Request, t time.Time) *servicepb.Request {
 	if reqType, ok := req.GetType().(*servicepb.Request_Apply); ok {
-		if d, ok := reqType.Apply.GetData().(*servicepb.LedgerApplyRequest_CreateTransaction); ok {
+		if d, ok := reqType.Apply.GetAction().GetData().(*servicepb.LedgerAction_CreateTransaction); ok {
 			d.CreateTransaction.Timestamp = &commonpb.Timestamp{Data: uint64(t.UnixMicro())}
 		}
 	}
@@ -294,10 +294,10 @@ func WithTimestamp(req *servicepb.Request, t time.Time) *servicepb.Request {
 // WithExpandVolumes sets the ExpandVolumes flag on a create or revert transaction request.
 func WithExpandVolumes(req *servicepb.Request) *servicepb.Request {
 	if reqType, ok := req.GetType().(*servicepb.Request_Apply); ok {
-		switch d := reqType.Apply.GetData().(type) {
-		case *servicepb.LedgerApplyRequest_CreateTransaction:
+		switch d := reqType.Apply.GetAction().GetData().(type) {
+		case *servicepb.LedgerAction_CreateTransaction:
 			d.CreateTransaction.ExpandVolumes = true
-		case *servicepb.LedgerApplyRequest_RevertTransaction:
+		case *servicepb.LedgerAction_RevertTransaction:
 			d.RevertTransaction.ExpandVolumes = true
 		}
 	}
@@ -450,7 +450,7 @@ func SaveTypedAccountMetadataAction(ledgerName, address string, metadata map[str
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Data: &servicepb.LedgerApplyRequest_AddMetadata{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
 					AddMetadata: &commonpb.SaveMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Account{
@@ -459,7 +459,7 @@ func SaveTypedAccountMetadataAction(ledgerName, address string, metadata map[str
 						},
 						Metadata: metadata,
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -471,7 +471,7 @@ func SaveTypedTransactionMetadataAction(ledgerName string, txID uint64, metadata
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Data: &servicepb.LedgerApplyRequest_AddMetadata{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
 					AddMetadata: &commonpb.SaveMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Transaction{
@@ -480,7 +480,7 @@ func SaveTypedTransactionMetadataAction(ledgerName string, txID uint64, metadata
 						},
 						Metadata: metadata,
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -531,7 +531,7 @@ func CreateScriptRefTransactionAction(ledgerName, scriptName, version string, va
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						ScriptReference: &servicepb.ScriptReference{
 							Name:    scriptName,
@@ -540,7 +540,7 @@ func CreateScriptRefTransactionAction(ledgerName, scriptName, version string, va
 						},
 						Metadata: commonpb.MetadataFromGoMap(metadata),
 					},
-				},
+				}},
 			},
 		},
 	}
@@ -648,7 +648,7 @@ func ArchivePeriodAction(periodID uint64) *servicepb.Request {
 // WithReference sets the reference on a create transaction request.
 func WithReference(req *servicepb.Request, reference string) *servicepb.Request {
 	if reqType, ok := req.GetType().(*servicepb.Request_Apply); ok {
-		if d, ok := reqType.Apply.GetData().(*servicepb.LedgerApplyRequest_CreateTransaction); ok {
+		if d, ok := reqType.Apply.GetAction().GetData().(*servicepb.LedgerAction_CreateTransaction); ok {
 			d.CreateTransaction.Reference = reference
 		}
 	}

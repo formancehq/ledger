@@ -384,11 +384,13 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 		// Now convert a revert request
 		applyRequest := &servicepb.LedgerApplyRequest{
 			Ledger: testLedgerName,
-			Data: &servicepb.LedgerApplyRequest_RevertTransaction{
-				RevertTransaction: &servicepb.RevertTransactionPayload{
-					TransactionId:   1,
-					Force:           false,
-					AtEffectiveDate: true,
+			Action: &servicepb.LedgerAction{
+				Data: &servicepb.LedgerAction_RevertTransaction{
+					RevertTransaction: &servicepb.RevertTransactionPayload{
+						TransactionId:   1,
+						Force:           false,
+						AtEffectiveDate: true,
+					},
 				},
 			},
 		}
@@ -416,9 +418,11 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 
 		applyRequest := &servicepb.LedgerApplyRequest{
 			Ledger: testLedgerName,
-			Data: &servicepb.LedgerApplyRequest_RevertTransaction{
-				RevertTransaction: &servicepb.RevertTransactionPayload{
-					TransactionId: 999,
+			Action: &servicepb.LedgerAction{
+				Data: &servicepb.LedgerAction_RevertTransaction{
+					RevertTransaction: &servicepb.RevertTransactionPayload{
+						TransactionId: 999,
+					},
 				},
 			},
 		}
@@ -681,15 +685,17 @@ func TestConvertApplyRequest_CreateTransaction_Force(t *testing.T) {
 
 		applyRequest := &servicepb.LedgerApplyRequest{
 			Ledger: testLedgerName,
-			Data: &servicepb.LedgerApplyRequest_CreateTransaction{
-				CreateTransaction: &servicepb.CreateTransactionPayload{
-					Force: true,
-					Postings: []*commonpb.Posting{
-						{
-							Source:      "users:alice",
-							Destination: "users:bob",
-							Amount:      commonpb.NewUint256FromUint64(100),
-							Asset:       "USD",
+			Action: &servicepb.LedgerAction{
+				Data: &servicepb.LedgerAction_CreateTransaction{
+					CreateTransaction: &servicepb.CreateTransactionPayload{
+						Force: true,
+						Postings: []*commonpb.Posting{
+							{
+								Source:      "users:alice",
+								Destination: "users:bob",
+								Amount:      commonpb.NewUint256FromUint64(100),
+								Asset:       "USD",
+							},
 						},
 					},
 				},
@@ -742,10 +748,12 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: testLedgerName,
-					Data: &servicepb.LedgerApplyRequest_RevertTransaction{
-						RevertTransaction: &servicepb.RevertTransactionPayload{
-							TransactionId: 42,
-							Force:         true,
+					Action: &servicepb.LedgerAction{
+						Data: &servicepb.LedgerAction_RevertTransaction{
+							RevertTransaction: &servicepb.RevertTransactionPayload{
+								TransactionId: 42,
+								Force:         true,
+							},
 						},
 					},
 				},

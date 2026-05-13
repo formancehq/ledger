@@ -35,8 +35,8 @@ func FuzzBulkElementUnmarshalJSON(f *testing.F) {
 	})
 }
 
-// FuzzLedgerApplyRequestUnmarshalJSON fuzzes the LedgerApplyRequest JSON decoder.
-func FuzzLedgerApplyRequestUnmarshalJSON(f *testing.F) {
+// FuzzLedgerActionUnmarshalJSON fuzzes the LedgerAction JSON decoder.
+func FuzzLedgerActionUnmarshalJSON(f *testing.F) {
 	f.Add([]byte(`{"action":"CREATE_TRANSACTION","data":{"postings":[{"source":"world","destination":"users:bob","asset":"USD/2","amount":100}]}}`))
 	f.Add([]byte(`{"action":"ADD_METADATA","data":{"targetType":"ACCOUNT","targetId":"x","metadata":{"k":"v"}}}`))
 	f.Add([]byte(`{"action":"REVERT_TRANSACTION","data":{"id":0}}`))
@@ -45,7 +45,7 @@ func FuzzLedgerApplyRequestUnmarshalJSON(f *testing.F) {
 	f.Add([]byte(`{"action":""}`))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		var req LedgerApplyRequest
+		var req LedgerAction
 		_ = req.UnmarshalJSON(data)
 	})
 }

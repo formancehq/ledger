@@ -150,14 +150,16 @@ func runRevert(cmd *cobra.Command, args []string) error {
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledgerName,
-						Data: &servicepb.LedgerApplyRequest_RevertTransaction{
-							RevertTransaction: &servicepb.RevertTransactionPayload{
-								TransactionId:   txID,
-								Force:           force,
-								AtEffectiveDate: atEffectiveDate,
-								Metadata:        commonpb.MetadataFromGoMap(metadata),
-								Receipt:         receiptFlag,
-								ExpandVolumes:   expandVolumes,
+						Action: &servicepb.LedgerAction{
+							Data: &servicepb.LedgerAction_RevertTransaction{
+								RevertTransaction: &servicepb.RevertTransactionPayload{
+									TransactionId:   txID,
+									Force:           force,
+									AtEffectiveDate: atEffectiveDate,
+									Metadata:        commonpb.MetadataFromGoMap(metadata),
+									Receipt:         receiptFlag,
+									ExpandVolumes:   expandVolumes,
+								},
 							},
 						},
 					},

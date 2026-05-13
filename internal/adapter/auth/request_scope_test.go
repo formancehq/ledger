@@ -103,7 +103,9 @@ func TestRequiredScopeForLedgerApply_CreateTransaction(t *testing.T) {
 	req := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
-				Data: &servicepb.LedgerApplyRequest_CreateTransaction{},
+				Action: &servicepb.LedgerAction{
+					Data: &servicepb.LedgerAction_CreateTransaction{},
+				},
 			},
 		},
 	}
@@ -116,7 +118,9 @@ func TestRequiredScopeForLedgerApply_RevertTransaction(t *testing.T) {
 	req := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
-				Data: &servicepb.LedgerApplyRequest_RevertTransaction{},
+				Action: &servicepb.LedgerAction{
+					Data: &servicepb.LedgerAction_RevertTransaction{},
+				},
 			},
 		},
 	}
@@ -129,7 +133,9 @@ func TestRequiredScopeForLedgerApply_AddMetadata(t *testing.T) {
 	req := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
-				Data: &servicepb.LedgerApplyRequest_AddMetadata{},
+				Action: &servicepb.LedgerAction{
+					Data: &servicepb.LedgerAction_AddMetadata{},
+				},
 			},
 		},
 	}
@@ -142,7 +148,9 @@ func TestRequiredScopeForLedgerApply_DeleteMetadata(t *testing.T) {
 	req := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
-				Data: &servicepb.LedgerApplyRequest_DeleteMetadata{},
+				Action: &servicepb.LedgerAction{
+					Data: &servicepb.LedgerAction_DeleteMetadata{},
+				},
 			},
 		},
 	}

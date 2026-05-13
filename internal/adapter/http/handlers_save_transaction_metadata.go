@@ -40,16 +40,18 @@ func (s *Server) handleSaveTransactionMetadata(w http.ResponseWriter, r *http.Re
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Data: &servicepb.LedgerApplyRequest_AddMetadata{
-					AddMetadata: &commonpb.SaveMetadataCommand{
-						Target: &commonpb.Target{
-							Target: &commonpb.Target_Transaction{
-								Transaction: &commonpb.TargetTransaction{
-									Id: transactionID,
+				Action: &servicepb.LedgerAction{
+					Data: &servicepb.LedgerAction_AddMetadata{
+						AddMetadata: &commonpb.SaveMetadataCommand{
+							Target: &commonpb.Target{
+								Target: &commonpb.Target_Transaction{
+									Transaction: &commonpb.TargetTransaction{
+										Id: transactionID,
+									},
 								},
 							},
+							Metadata: ms,
 						},
-						Metadata: ms,
 					},
 				},
 			},
