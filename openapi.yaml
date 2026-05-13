@@ -1443,6 +1443,7 @@ paths:
       summary: Create a ledger
       operationId: v2CreateLedger
       x-speakeasy-name-override: CreateLedger
+      x-formance-resource: true
       tags:
         - ledger.v2
       requestBody:
@@ -5108,15 +5109,40 @@ components:
         - pageSize
     V2CreateLedgerRequest:
       type: object
+      # SPIKE GAP: the natural key for a Ledger is the `{ledger}` path
+      # parameter on POST /v2/{ledger}, not a property of this request body.
+      # The contract in terraform-hcp-proxy/docs/02-architecture/manifest-annotations.md
+      # defines `x-formance-name: <field>` as pointing to a property within
+      # the body schema. We declare `name` here as the manifest-surface name
+      # of the natural key, but no such property exists in the OpenAPI body.
+      # The taxonomy needs an explicit story for path-parameter-keyed
+      # resources (e.g. `x-formance-name-source: pathParam` with a name
+      # and a target manifest field) — flagged in the gap list.
+      x-formance-name: name
       properties:
         bucket:
           type: string
+          # bucket is an immutable physical-storage selector on create;
+          # there is no update endpoint that mutates it.
+          x-formance-immutable: true
+          # Not a cross-resource ref — buckets are an internal ledger
+          # storage primitive, not a Formance resource kind.
+          x-formance-no-ref: true
         metadata:
           $ref: "#/components/schemas/V2Metadata"
+          # Free-form key/value map (V2Metadata is additionalProperties:
+          # string). Author-facing manifest carries it as-is; the proxy
+          # emits it via json.Marshal into the HCL/SDK call.
+          x-formance-raw-json: true
         features:
           type: object
           additionalProperties:
             type: string
+          # Feature flags for the ledger (free-form map). Immutable
+          # after create — the ledger API rejects feature mutation on
+          # an existing ledger.
+          x-formance-immutable: true
+          x-formance-raw-json: true
     V2Ledger:
       type: object
       properties:
