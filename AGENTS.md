@@ -31,7 +31,7 @@ direnv allow && eval "$(direnv export bash)" && GOROOT= just pre-commit
 
 This runs `go generate ./...`, `go mod tidy`, and `golangci-lint run --fix`.
 
-Always verify compilation with `go build ./...` before submitting.
+Always verify compilation with `GOROOT= go build ./...` before submitting. The `GOROOT=` prefix is required to avoid Go toolchain version mismatch errors when nix is not active.
 
 ## Mock Generation
 

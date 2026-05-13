@@ -156,6 +156,12 @@ type Node struct {
 	// applied too, including anything the prior leader had applied.
 	leaderReady atomic.Pointer[chan struct{}]
 
+	// lastCheckpointPersistedIndex tracks the persisted index at the time of the
+	// last background Pebble checkpoint. doMaintenance skips checkpoint creation
+	// when no new entries have been persisted since the previous checkpoint,
+	// avoiding unnecessary I/O on the data volume.
+	lastCheckpointPersistedIndex uint64
+
 	// Metrics (kept on Node: WAL/transport/orchestrate-related)
 	processEntryHistogram             metric.Int64Histogram
 	appendEntriesHistogram            metric.Int64Histogram
@@ -661,9 +667,20 @@ func (node *Node) doMaintenance() {
 	}
 
 	// 2. Pebble checkpoint (for follower sync + disaster recovery)
+	// Skip if no entries have been persisted since the last checkpoint to avoid
+	// unnecessary disk I/O (hard-linking SSTs + dir.Sync can saturate IOPS on
+	// constrained volumes like gp3).
+	if lastPersistedIndex <= node.lastCheckpointPersistedIndex {
+		return
+	}
+
 	if _, err := store.CreateSnapshot(); err != nil {
 		node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to create Pebble checkpoint")
+
+		return
 	}
+
+	node.lastCheckpointPersistedIndex = lastPersistedIndex
 }
 
 func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
