@@ -1,0 +1,11 @@
+apiVersion: v2
+name: ledger
+description: ledger service
+type: application
+version: 0.1.0
+appVersion: "0.0.0"
+kubeVersion: ">=1.30.0-0"
+dependencies:
+  - name: core
+    version: "1.x"
+    repository: "oci://ghcr.io/formancehq/helm"
