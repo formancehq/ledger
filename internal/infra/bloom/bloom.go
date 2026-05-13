@@ -85,9 +85,26 @@ func (f *Filter) RecordFalsePositive() {
 // Add inserts a key into the bloom filter. Called from the FSM goroutine only.
 // Lock-free via atomic operations. The touched block is marked dirty.
 func (f *Filter) Add(id attributes.U128) {
+	f.add(id)
+	f.adds.Add(context.Background(), 1)
+}
+
+// addBatch inserts multiple keys into the bloom filter and increments the OTel
+// counter once for the entire batch. This avoids per-key OTel overhead on the
+// FSM hot path.
+func (f *Filter) addBatch(ids []attributes.U128) {
+	for _, id := range ids {
+		f.add(id)
+	}
+
+	if len(ids) > 0 {
+		f.adds.Add(context.Background(), int64(len(ids)))
+	}
+}
+
+func (f *Filter) add(id attributes.U128) {
 	idx := f.filter.Add(id.Hi())
 	atomic.OrUint64(&f.dirty[idx/64], 1<<(uint64(idx)%64))
-	f.adds.Add(context.Background(), 1)
 }
 
 // PersistDirtyBlocks writes all blocks modified since the last flush to
@@ -252,18 +269,20 @@ func (fs *FilterSet) SetReady(v bool) {
 	fs.readyGauge.Record(context.Background(), val)
 }
 
-// BloomUpdates holds canonical keys collected during Merge for bloom filter updates.
+// BloomUpdates holds pre-hashed U128 IDs collected during Merge for bloom filter updates.
+// Keys are hashed at collection time (in mergeAndTrackBloom) to avoid redundant hashing
+// in AddCanonicalKeys on the FSM hot path.
 type BloomUpdates struct {
-	Volumes           [][]byte
-	Metadata          [][]byte
-	References        [][]byte
-	Ledgers           [][]byte
-	Boundaries        [][]byte
-	Transactions      [][]byte
-	SinkConfigs       [][]byte
-	NumscriptVersions [][]byte
-	NumscriptContents [][]byte
-	PreparedQueries   [][]byte
+	Volumes           []attributes.U128
+	Metadata          []attributes.U128
+	References        []attributes.U128
+	Ledgers           []attributes.U128
+	Boundaries        []attributes.U128
+	Transactions      []attributes.U128
+	SinkConfigs       []attributes.U128
+	NumscriptVersions []attributes.U128
+	NumscriptContents []attributes.U128
+	PreparedQueries   []attributes.U128
 }
 
 // Reset clears all slices while preserving their backing arrays.
@@ -280,18 +299,16 @@ func (u *BloomUpdates) Reset() {
 	u.PreparedQueries = u.PreparedQueries[:0]
 }
 
-// AddCanonicalKeys hashes canonical keys and inserts them into the corresponding bloom filters.
+// AddCanonicalKeys inserts pre-hashed U128 IDs into the corresponding bloom filters.
 // Called from the FSM goroutine after buffer.Merge() and before batch.Commit().
+// OTel counters are incremented once per filter (not per key) to reduce hot-path overhead.
 func (fs *FilterSet) AddCanonicalKeys(updates *BloomUpdates) {
-	addKeys := func(f *Filter, keys [][]byte) {
+	addKeys := func(f *Filter, ids []attributes.U128) {
 		if f == nil {
 			return
 		}
 
-		for _, key := range keys {
-			id := attributes.HashU128(attributes.DefaultSeeds, key)
-			f.Add(id)
-		}
+		f.addBatch(ids)
 	}
 
 	addKeys(fs.Volume, updates.Volumes)

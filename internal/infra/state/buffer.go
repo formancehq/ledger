@@ -26,7 +26,7 @@ func mergeAndTrackBloom[K attributes.Key, V proto.Message](
 	batch *dal.Batch,
 	genByte byte,
 	cacheType byte,
-	bloomSlice *[][]byte,
+	bloomSlice *[]attributes.U128,
 	label string,
 ) ([]attributes.Update[K, V], []attributes.Deletion[K], error) {
 	updates, deletions, err := derived.Merge()
@@ -40,7 +40,7 @@ func mergeAndTrackBloom[K attributes.Key, V proto.Message](
 	}
 
 	for _, update := range updates {
-		*bloomSlice = append(*bloomSlice, update.CanonicalKey)
+		*bloomSlice = append(*bloomSlice, update.ID)
 	}
 
 	for _, deletion := range deletions {
@@ -167,7 +167,7 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	}
 
 	for _, update := range partResult.kept {
-		b.bloomUpdates.Volumes = append(b.bloomUpdates.Volumes, update.CanonicalKey)
+		b.bloomUpdates.Volumes = append(b.bloomUpdates.Volumes, update.ID)
 	}
 
 	if err := b.applyEphemeralPurge(batch, genByte, partResult.purged); err != nil {
