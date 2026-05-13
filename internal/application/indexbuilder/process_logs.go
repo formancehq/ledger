@@ -32,7 +32,7 @@ import (
 // When a batch produces no index writes, the Pebble batch is skipped
 // entirely. Progress is persisted once at the end, reducing fsyncs to O(1).
 func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error) {
-	handle, err := b.pebbleStore.NewReadHandle()
+	handle, err := b.pebbleStore.NewDirectReadHandle()
 	if err != nil {
 		return cursor, fmt.Errorf("creating read handle for log processing: %w", err)
 	}

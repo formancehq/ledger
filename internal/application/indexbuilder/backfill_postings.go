@@ -18,7 +18,7 @@ import (
 // This reduces allocations from ~32/op (UnmarshalVT + resetLogForReuse) to ~5/op
 // and avoids parsing ~70% of each log entry's bytes.
 func (b *Builder) processBackfillPostings(stop <-chan struct{}, task *backfillTask, deadline time.Time) error {
-	handle, err := b.pebbleStore.NewReadHandle()
+	handle, err := b.pebbleStore.NewDirectReadHandle()
 	if err != nil {
 		return fmt.Errorf("creating read handle for postings backfill: %w", err)
 	}

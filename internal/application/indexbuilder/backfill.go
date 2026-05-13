@@ -615,7 +615,7 @@ const backfillBatchSize = 10_000
 // overhead during catch-up. Processing continues until the deadline is reached
 // or EOF. Existence writes are skipped.
 func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask, deadline time.Time) error {
-	handle, err := b.pebbleStore.NewReadHandle()
+	handle, err := b.pebbleStore.NewDirectReadHandle()
 	if err != nil {
 		return fmt.Errorf("creating read handle for backfill: %w", err)
 	}

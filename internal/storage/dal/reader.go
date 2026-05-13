@@ -14,12 +14,19 @@ type PebbleReader interface {
 	NewIter(o *pebble.IterOptions) (*pebble.Iterator, error)
 }
 
-// ReadHandle provides point-in-time read access to the store via a Pebble snapshot.
+// ReadHandle provides read access to the store, optionally via a Pebble snapshot.
 // It holds dbMu.RLock for its lifetime to prevent RestoreCheckpoint/Close from
-// closing the DB while the snapshot is in use. The caller must call Close() when done.
+// closing the DB while reads are in progress. The caller must call Close() when done.
+//
+// Two modes:
+//   - Snapshot mode (NewReadHandle): point-in-time consistency via *pebble.Snapshot.
+//   - Direct mode (NewDirectReadHandle): reads from *pebble.DB directly. Iterators
+//     share the DB's keySpanCache (no per-snapshot re-initialization) and do not
+//     pin SSTs beyond iterator lifetime, so compactions are not blocked.
 type ReadHandle struct {
-	snap *pebble.Snapshot
-	mu   *sync.RWMutex
+	reader PebbleReader
+	snap   *pebble.Snapshot // nil in direct mode
+	mu     *sync.RWMutex
 }
 
 // NewReadHandle creates a new ReadHandle backed by a Pebble snapshot.
@@ -36,21 +43,47 @@ func (s *Store) NewReadHandle() (*ReadHandle, error) {
 		return nil, ErrStoreClosed
 	}
 
-	return &ReadHandle{snap: db.NewSnapshot(), mu: &s.dbMu}, nil
+	snap := db.NewSnapshot()
+
+	return &ReadHandle{reader: snap, snap: snap, mu: &s.dbMu}, nil
+}
+
+// NewDirectReadHandle creates a ReadHandle backed by the DB directly (no snapshot).
+// Iterators share the DB's keySpanCache, avoiding the per-snapshot sync.Once
+// initialization overhead in finishInitializingIter. This does not block
+// compactions beyond each iterator's lifetime.
+//
+// Safe for sequential, forward-only readers (e.g. log tailing) where
+// point-in-time snapshot consistency is not required.
+func (s *Store) NewDirectReadHandle() (*ReadHandle, error) {
+	s.dbMu.RLock()
+
+	db := s.getDB()
+	if db == nil {
+		s.dbMu.RUnlock()
+
+		return nil, ErrStoreClosed
+	}
+
+	return &ReadHandle{reader: db, mu: &s.dbMu}, nil
 }
 
 func (h *ReadHandle) Get(key []byte) ([]byte, io.Closer, error) {
-	return h.snap.Get(key)
+	return h.reader.Get(key)
 }
 
 func (h *ReadHandle) NewIter(opts *pebble.IterOptions) (*pebble.Iterator, error) {
-	return h.snap.NewIter(opts)
+	return h.reader.NewIter(opts)
 }
 
 func (h *ReadHandle) Close() error {
 	defer h.mu.RUnlock()
 
-	return h.snap.Close()
+	if h.snap != nil {
+		return h.snap.Close()
+	}
+
+	return nil
 }
 
 // Get performs a raw key lookup on the underlying Pebble database.
