@@ -20,6 +20,13 @@ type noopNotifier struct{}
 func (noopNotifier) NotifyLogsCommitted(uint64) {}
 func (noopNotifier) NotifyConfigChanged()       {}
 
+// noopCommitBarrier is a no-op CommitDurabilityBarrier for tests that don't
+// exercise the WAL fsync path. Tests targeting WAL durability semantics
+// should plug in a real wal.WAL.
+type noopCommitBarrier struct{}
+
+func (noopCommitBarrier) EnsureCommitDurable(uint64) {}
+
 func newTestStore(t *testing.T) *dal.Store {
 	t.Helper()
 

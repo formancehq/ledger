@@ -13,5 +13,11 @@ type WAL interface {
 	Compact(u uint64) error
 	Append(state raftpb.HardState, entries []raftpb.Entry) error
 	ApplySnapshot(snapshot raftpb.Snapshot) error
+	// EnsureCommitDurable blocks until HardState.Commit >= target is durably
+	// fsync'd. The FSM apply path calls this before committing a Pebble batch
+	// to ensure FSM.applied never outruns the WAL's durable commit pointer —
+	// if it did, a crash would leave the FSM ahead of raft and the next
+	// startup would panic with "applied(N) is out of range".
+	EnsureCommitDurable(target uint64)
 	Close() error
 }

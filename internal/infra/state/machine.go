@@ -35,9 +35,23 @@ type Notifier interface {
 	NotifyConfigChanged()
 }
 
+// CommitDurabilityBarrier represents the WAL's "fsync is caught up to this
+// commit index" guarantee. The Machine calls EnsureCommitDurable before
+// every Pebble batch commit so the FSM's persisted lastAppliedIndex never
+// outruns the WAL's durable commit pointer — if it did, the next startup
+// would panic with "applied(N) is out of range [..., committed(M)]" because
+// raft requires applied ≤ committed.
+//
+// Defined here so the state package doesn't take a hard dependency on the
+// wal package; wal.WAL satisfies it.
+type CommitDurabilityBarrier interface {
+	EnsureCommitDurable(target uint64)
+}
+
 type Machine struct {
 	logger    logging.Logger
 	dataStore *dal.Store
+	wal       CommitDurabilityBarrier
 
 	mu sync.Mutex
 
@@ -135,7 +149,7 @@ type Machine struct {
 	indexNotifier Notifier
 }
 
-func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, ks *keystore.KeyStore, sharedState *SharedState, eventNotifier Notifier, mirrorNotifier Notifier, indexNotifier Notifier, bloomFilters *bloom.FilterSet, numscriptCacheSize int, sentinelMode bool, idempotencyTTLMicros uint64) (*Machine, error) {
+func NewMachine(logger logging.Logger, dataStore *dal.Store, wal CommitDurabilityBarrier, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, ks *keystore.KeyStore, sharedState *SharedState, eventNotifier Notifier, mirrorNotifier Notifier, indexNotifier Notifier, bloomFilters *bloom.FilterSet, numscriptCacheSize int, sentinelMode bool, idempotencyTTLMicros uint64) (*Machine, error) {
 	logsAppendedCounter, err := meter.Int64Counter(
 		"raft.fsm.logs_appended",
 		metric.WithDescription("Total number of logs appended to the store. Use rate() to get logs per second."),
@@ -177,6 +191,7 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 	fsm := &Machine{
 		logger:                         logger,
 		dataStore:                      dataStore,
+		wal:                            wal,
 		BloomFilters:                   bloomFilters,
 		sentinelMode:                   sentinelMode,
 		logsAppendedCounter:            logsAppendedCounter,
@@ -620,6 +635,12 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 		return nil, fmt.Errorf("setting last applied timestamp: %w", err)
 	}
 
+	// Wait for the WAL to be durably fsync'd through lastAppliedIndex
+	// before persisting it to Pebble. Without this, a crash that loses
+	// the WAL's commit-only updates would leave FSM.applied > WAL.commit
+	// on the next boot, which raft refuses to start under.
+	fsm.wal.EnsureCommitDurable(fsm.lastAppliedIndex)
+
 	commitStart := time.Now()
 
 	err = batch.Commit()
@@ -740,6 +761,8 @@ func (fsm *Machine) commitAndRequestCheckpoint(
 	if err != nil {
 		return nil, fmt.Errorf("setting last applied timestamp: %w", err)
 	}
+
+	fsm.wal.EnsureCommitDurable(fsm.lastAppliedIndex)
 
 	err = batch.Commit()
 	if err != nil {

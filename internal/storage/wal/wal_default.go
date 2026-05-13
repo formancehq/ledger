@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.etcd.io/etcd/client/pkg/v3/fileutil"
@@ -63,6 +64,30 @@ type DefaultWAL struct {
 
 	// Zap logger for etcd WAL and purger
 	zapLogger *zap.Logger
+
+	// walOpLock serializes calls into the underlying etcd WAL. etcd's Save
+	// takes its own internal mutex but Sync does not, so concurrent
+	// Save+Sync from our async syncer would race on the encoder/tail.
+	walOpLock sync.Mutex
+
+	// durableCommit is the latest HardState.Commit value that has been
+	// durably fsync'd to disk. Updated either when MustSync fires inside
+	// a Save call (entries written or term/vote changed) or when the
+	// background syncer flushes after a commit-only Append.
+	durableCommit atomic.Uint64
+
+	// syncTrigger nudges the background syncer; capacity 1 so multiple
+	// commit advances coalesce into a single fsync.
+	syncTrigger chan struct{}
+
+	// syncCond broadcasts after durableCommit advances so EnsureCommitDurable
+	// can wake without polling.
+	syncCondMu sync.Mutex
+	syncCond   *sync.Cond
+
+	// syncerStop / syncerDone manage the background goroutine lifecycle.
+	syncerStop chan struct{}
+	syncerDone chan struct{}
 
 	// Metrics
 	appendSaveHistogram      metric.Int64Histogram
@@ -256,6 +281,18 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 			"snapshot.Term":    s.snapshot.Metadata.Term,
 		}).Infof("WAL replay completed")
 
+	// The HardState we just read came from disk, so it is by definition
+	// durable. Seed the watermark so the first EnsureCommitDurable call
+	// after replay doesn't trigger a redundant fsync.
+	s.durableCommit.Store(s.hardState.Commit)
+
+	s.syncTrigger = make(chan struct{}, 1)
+	s.syncerStop = make(chan struct{})
+	s.syncerDone = make(chan struct{})
+	s.syncCond = sync.NewCond(&s.syncCondMu)
+
+	go s.syncerLoop()
+
 	// Start background purger to delete old WAL segment files that have been
 	// unlocked by ReleaseLockTo during compaction.
 	s.stopPurge = make(chan struct{})
@@ -431,6 +468,8 @@ func (s *DefaultWAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) 
 		}
 	}
 
+	prevHardState := s.hardState
+
 	newHardState := s.hardState
 	if !raft.IsEmptyHardState(hardState) {
 		s.hardState = hardState
@@ -438,9 +477,12 @@ func (s *DefaultWAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) 
 	}
 	s.mu.Unlock()
 
-	// Save to DefaultWAL
+	// Save to etcd WAL. The walOpLock serializes us against the syncer
+	// goroutine, which calls Sync on the same encoder/tail.
 	saveStart := time.Now()
+	s.walOpLock.Lock()
 	err := s.wal.Save(newHardState, entries)
+	s.walOpLock.Unlock()
 	s.appendSaveHistogram.Record(context.Background(), time.Since(saveStart).Microseconds())
 	s.appendBatchSizeHistogram.Record(context.Background(), int64(len(entries)))
 
@@ -449,9 +491,106 @@ func (s *DefaultWAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) 
 			"error":            err,
 			"hardState.Commit": newHardState.Commit,
 		}).Errorf("WAL Save failed")
+
+		return err
 	}
 
-	return err
+	// raft.MustSync's contract mirrors what etcd's WAL does internally: if
+	// it returns true, Save just fsync'd. If false, the new state sits in
+	// the OS page cache and is vulnerable to crash. The commit-only path
+	// (no entries, no term/vote change) is exactly the case that loses
+	// durability and that the syncer goroutine has to mop up.
+	if raft.MustSync(newHardState, prevHardState, len(entries)) {
+		s.advanceDurableCommit(newHardState.Commit)
+	} else if newHardState.Commit > s.durableCommit.Load() {
+		select {
+		case s.syncTrigger <- struct{}{}:
+		default:
+			// Trigger already pending; the syncer will pick up the
+			// latest commit when it wakes.
+		}
+	}
+
+	return nil
+}
+
+// advanceDurableCommit moves the durable watermark forward to target and
+// wakes any EnsureCommitDurable waiters. Idempotent: callers can pass any
+// value and only an actual advance will broadcast.
+func (s *DefaultWAL) advanceDurableCommit(target uint64) {
+	for {
+		cur := s.durableCommit.Load()
+		if target <= cur {
+			return
+		}
+
+		if s.durableCommit.CompareAndSwap(cur, target) {
+			s.syncCondMu.Lock()
+			s.syncCond.Broadcast()
+			s.syncCondMu.Unlock()
+
+			return
+		}
+	}
+}
+
+// syncerLoop forces fsync on the etcd WAL when commit-only Saves leave the
+// commit pointer un-flushed. One iteration per syncTrigger nudge; the
+// nudges coalesce so a burst of commit advances only fires one fsync.
+func (s *DefaultWAL) syncerLoop() {
+	defer close(s.syncerDone)
+
+	for {
+		select {
+		case <-s.syncerStop:
+			return
+		case <-s.syncTrigger:
+		}
+
+		s.walOpLock.Lock()
+		err := s.wal.Sync()
+		s.walOpLock.Unlock()
+
+		if err != nil {
+			s.logger.WithFields(map[string]any{"error": err}).Errorf("WAL Sync failed")
+
+			continue
+		}
+
+		// Read the latest in-memory commit after the sync — the fsync
+		// covered everything Append had written to the file up to this
+		// point, which is whatever s.hardState currently holds.
+		s.mu.RLock()
+		commit := s.hardState.Commit
+		s.mu.RUnlock()
+		s.advanceDurableCommit(commit)
+	}
+}
+
+// EnsureCommitDurable blocks until HardState.Commit ≥ target has been fsync'd
+// to disk. The fast path is a single atomic load when the syncer has already
+// caught up — which is the steady-state case on a busy leader where apply
+// work takes longer than fsync. Only when apply outruns fsync does this
+// actually block.
+func (s *DefaultWAL) EnsureCommitDurable(target uint64) {
+	if s.durableCommit.Load() >= target {
+		return
+	}
+
+	// Make sure there's at least one fsync in flight. The syncer reads
+	// the latest commit after fsync, so a single nudge here will pull
+	// durableCommit up to the current in-memory commit (≥ target by the
+	// time the caller is asking for it).
+	select {
+	case s.syncTrigger <- struct{}{}:
+	default:
+	}
+
+	s.syncCondMu.Lock()
+	for s.durableCommit.Load() < target {
+		s.syncCond.Wait()
+	}
+	s.syncCondMu.Unlock()
 }
 
 // CreateSnapshot creates a snapshot at the given index.
@@ -517,13 +656,22 @@ func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []b
 	// is still on disk and LoadNewestAvailable will fall back to it.
 	// Without this ordering, a crash would leave zero matching snap files,
 	// causing the node to enter the fresh-start branch and lose cache state.
-	if err := s.wal.SaveSnapshot(walpb.Snapshot{
+	s.walOpLock.Lock()
+	err = s.wal.SaveSnapshot(walpb.Snapshot{
 		Index:     snap.Metadata.Index,
 		Term:      snap.Metadata.Term,
 		ConfState: cs,
-	}); err != nil {
+	})
+	s.walOpLock.Unlock()
+
+	if err != nil {
 		return fmt.Errorf("saving snapshot record: %w", err)
 	}
+
+	// SaveSnapshot fsyncs internally; the snapshot index is now durable.
+	// A snapshot implies all entries up to its index are committed, so the
+	// durable commit watermark moves with it.
+	s.advanceDurableCommit(snap.Metadata.Index)
 
 	// Safe to clean up old snap files now — the WAL record guarantees that
 	// LoadNewestAvailable will match the new snap file on restart.
@@ -558,11 +706,14 @@ func (s *DefaultWAL) UpdateSnapshotConfState(cs *raftpb.ConfState) error {
 		return fmt.Errorf("saving snapshot: %w", err)
 	}
 
+	s.walOpLock.Lock()
 	err = s.wal.SaveSnapshot(walpb.Snapshot{
 		Index:     snap.Metadata.Index,
 		Term:      snap.Metadata.Term,
 		ConfState: cs,
 	})
+	s.walOpLock.Unlock()
+
 	if err != nil {
 		return fmt.Errorf("saving snapshot: %w", err)
 	}
@@ -658,13 +809,24 @@ func (s *DefaultWAL) ApplySnapshot(snap raftpb.Snapshot) error {
 		Term:      snap.Metadata.Term,
 		ConfState: &snap.Metadata.ConfState,
 	}
+
+	s.walOpLock.Lock()
 	if err := s.wal.SaveSnapshot(walSnap); err != nil {
+		s.walOpLock.Unlock()
+
 		return fmt.Errorf("saving snapshot to WAL: %w", err)
 	}
 
 	if err := s.wal.Save(s.hardState, nil); err != nil {
+		s.walOpLock.Unlock()
+
 		return fmt.Errorf("saving HardState after snapshot to WAL: %w", err)
 	}
+	s.walOpLock.Unlock()
+
+	// SaveSnapshot fsynced; Save(HardState, nil) on its own would not have
+	// fsynced (commit-only, no entries), but the earlier SaveSnapshot did.
+	s.advanceDurableCommit(s.hardState.Commit)
 
 	// Safe to clean up old snap files now — the WAL record is persisted.
 	s.snapshotter.CleanupOlderThan(snap.Metadata.Index)
@@ -744,6 +906,16 @@ func (s *DefaultWAL) Close() error {
 	default:
 		close(s.stopPurge)
 		<-s.purgeDone
+	}
+
+	if s.syncerStop != nil {
+		select {
+		case <-s.syncerStop:
+			// Already stopped.
+		default:
+			close(s.syncerStop)
+			<-s.syncerDone
+		}
 	}
 
 	return s.wal.Close()
