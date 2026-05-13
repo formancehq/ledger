@@ -122,7 +122,7 @@ func Logger(cfg ModuleConfig) (logging.Logger, error) {
 
 	// Combine both cores.
 	core := zapcore.NewTee(consoleCore, otelCore)
-	l := zap.New(core)
+	l := zap.New(core, zap.IncreaseLevel(level))
 
 	ret := NewZapLogger(l.Sugar())
 	logger := ret.WithFields(cfg.Fields)
