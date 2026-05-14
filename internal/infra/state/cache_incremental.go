@@ -33,14 +33,22 @@ func fillCacheKey(genByte, cacheType byte, id attributes.U128) [3 + 16]byte {
 }
 
 // writeCacheRaw writes a [tag][valueBytes] entry to the 0xFF zone.
+// Uses batch.CacheBuffer to avoid allocating per call — Pebble copies
+// the value into its repr buffer, so reuse is safe.
 func writeCacheRaw(batch *dal.Batch, genByte, cacheType byte, id attributes.U128, tag uint64, valueBytes []byte) error {
-	val := make([]byte, 8+len(valueBytes))
-	binary.LittleEndian.PutUint64(val, tag)
-	copy(val[8:], valueBytes)
+	needed := 8 + len(valueBytes)
+	if cap(batch.CacheBuffer) >= needed {
+		batch.CacheBuffer = batch.CacheBuffer[:needed]
+	} else {
+		batch.CacheBuffer = make([]byte, needed)
+	}
+
+	binary.LittleEndian.PutUint64(batch.CacheBuffer, tag)
+	copy(batch.CacheBuffer[8:], valueBytes)
 
 	key := fillCacheKey(genByte, cacheType, id)
 
-	return batch.Set(key[:], val, pebble.NoSync)
+	return batch.Set(key[:], batch.CacheBuffer, pebble.NoSync)
 }
 
 // deleteCacheEntry clears the cache entry at id from both gen0Byte and

@@ -68,13 +68,31 @@ type cacheSnapshotSlot interface {
 type protoSnapshotSlot[V interface {
 	MarshalVT() ([]byte, error)
 	UnmarshalVT([]byte) error
+	SizeVT() int
+	MarshalToVT([]byte) (int, error)
 }] struct {
-	cacheType byte
-	ac        *cache.AttributeCache[V]
-	newValue  func() V
+	cacheType     byte
+	ac            *cache.AttributeCache[V]
+	newValue      func() V
+	marshalBuffer []byte // reusable buffer for MarshalToVT to avoid per-key allocations
 }
 
 func (s *protoSnapshotSlot[V]) CacheType() byte { return s.cacheType }
+
+// marshalValue marshals v into s.marshalBuffer, growing it if needed.
+// The returned slice is valid until the next marshalValue call.
+func (s *protoSnapshotSlot[V]) marshalValue(v V) ([]byte, error) {
+	size := v.SizeVT()
+	if cap(s.marshalBuffer) >= size {
+		s.marshalBuffer = s.marshalBuffer[:size]
+	} else {
+		s.marshalBuffer = make([]byte, size)
+	}
+
+	n, err := v.MarshalToVT(s.marshalBuffer)
+
+	return s.marshalBuffer[:n], err
+}
 
 func (s *protoSnapshotSlot[V]) selectGen(genIndex int) kv.KV[attributes.U128, attributes.Entry[V]] {
 	if genIndex == 0 {
@@ -102,7 +120,7 @@ func (s *protoSnapshotSlot[V]) MirrorTouch(batch *dal.Batch, gen0Byte byte, id a
 		return nil
 	}
 
-	valueBytes, err := entry.Data.MarshalVT()
+	valueBytes, err := s.marshalValue(entry.Data)
 	if err != nil {
 		return fmt.Errorf("marshaling touched value: %w", err)
 	}
@@ -137,7 +155,7 @@ func (s *protoSnapshotSlot[V]) MirrorPreload(
 		return nil
 	}
 
-	valueBytes, err := effective.MarshalVT()
+	valueBytes, err := s.marshalValue(effective)
 	if err != nil {
 		return fmt.Errorf("marshaling preloaded value: %w", err)
 	}
@@ -190,6 +208,8 @@ func (s *protoSnapshotSlot[V]) RestoreEntry(genIndex int) func(u128 attributes.U
 func newProtoSnapshotSlot[V interface {
 	MarshalVT() ([]byte, error)
 	UnmarshalVT([]byte) error
+	SizeVT() int
+	MarshalToVT([]byte) (int, error)
 }](cacheType byte, ac *cache.AttributeCache[V], newValue func() V) cacheSnapshotSlot {
 	return &protoSnapshotSlot[V]{cacheType: cacheType, ac: ac, newValue: newValue}
 }

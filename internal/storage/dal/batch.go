@@ -22,6 +22,7 @@ type Batch struct {
 	batch          *pebble.Batch
 	KeyBuilder     *KeyBuilder
 	protoBuffer    []byte
+	CacheBuffer    []byte // reusable buffer for 0xFF cache zone writes (tag+value)
 	committed      bool
 	marshalOptions proto.MarshalOptions
 }
@@ -52,6 +53,7 @@ func (s *Store) NewBatch() *Batch {
 		batch:       s.getDB().NewBatch(),
 		KeyBuilder:  NewKeyBuilder(),
 		protoBuffer: make([]byte, 0, 1024),
+		CacheBuffer: make([]byte, 0, 128),
 	}
 }
 

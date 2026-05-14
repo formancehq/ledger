@@ -86,6 +86,18 @@ func (kb *KeyBuilder) Build() []byte {
 	return result
 }
 
+// Consume returns the raw buffer contents and resets for reuse.
+// The returned slice shares the builder's backing array and is only valid
+// until the next KeyBuilder method call. Use this when the caller will
+// copy the key immediately (e.g. Pebble batch.Set copies key+value into
+// its repr buffer) to avoid an allocation.
+func (kb *KeyBuilder) Consume() []byte {
+	result := kb.buf
+	kb.buf = kb.buf[:0]
+
+	return result
+}
+
 // Snapshot returns a copy of the current key state without resetting.
 func (kb *KeyBuilder) Snapshot() []byte {
 	result := make([]byte, len(kb.buf))
