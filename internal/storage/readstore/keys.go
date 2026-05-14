@@ -94,7 +94,7 @@ func MetadataIndexKey(kb *dal.KeyBuilder, ledger, ns, metadataKey string, encode
 		PutStringNull(metadataKey).
 		PutBytes(encodedValue).
 		PutBytes(entityID).
-		Build()
+		Consume()
 }
 
 // AccountReverseMapKey builds a reverse map key for account metadata.
@@ -132,7 +132,7 @@ func AccountTxKey(kb *dal.KeyBuilder, prefix byte, ledger, account string, txID 
 		PutLedgerName(ledger).
 		PutStringNull(account).
 		PutUint64(txID).
-		Build()
+		Consume()
 }
 
 // AccountTxPrefix returns the prefix for scanning all transactions for an account.
@@ -162,7 +162,7 @@ func EntityExistsKey(kb *dal.KeyBuilder, ledger, ns, metaKey string, isNull bool
 		PutStringNull(metaKey).
 		PutByte(nullFlag).
 		PutBytes(entityID).
-		Build()
+		Consume()
 }
 
 // EntityExistsNonNullPrefix returns the prefix for scanning non-null entities
@@ -202,7 +202,7 @@ func TransactionReferenceKey(kb *dal.KeyBuilder, ledger, reference string, txID 
 		PutLedgerName(ledger).
 		PutStringNull(reference).
 		PutUint64(txID).
-		Build()
+		Consume()
 }
 
 // TransactionReferencePrefix returns the prefix for scanning all txIDs with a given reference.
@@ -225,7 +225,7 @@ func TransactionTimestampKey(kb *dal.KeyBuilder, ledger string, timestamp, txID 
 		PutLedgerName(ledger).
 		PutUint64(timestamp).
 		PutUint64(txID).
-		Build()
+		Consume()
 }
 
 // TransactionTimestampRangePrefix returns the ledger prefix for range scans in the timestamp index.
@@ -247,7 +247,7 @@ func TransactionInsertedAtKey(kb *dal.KeyBuilder, ledger string, timestamp, txID
 		PutLedgerName(ledger).
 		PutUint64(timestamp).
 		PutUint64(txID).
-		Build()
+		Consume()
 }
 
 // TransactionInsertedAtRangePrefix returns the ledger prefix for range scans in the inserted_at index.
@@ -268,7 +268,7 @@ func LedgerLogKey(kb *dal.KeyBuilder, ledger string, logID uint64) []byte {
 		PutByte(PrefixLedgerLogs).
 		PutLedgerName(ledger).
 		PutUint64(logID).
-		Build()
+		Consume()
 }
 
 // LedgerLogPrefix returns the ledger prefix for range scans in the ledger logs index.
@@ -290,7 +290,7 @@ func LedgerLogDateKey(kb *dal.KeyBuilder, ledger string, timestamp, logID uint64
 		PutLedgerName(ledger).
 		PutUint64(timestamp).
 		PutUint64(logID).
-		Build()
+		Consume()
 }
 
 // LedgerLogDateRangePrefix returns the ledger prefix for range scans in the log date index.
