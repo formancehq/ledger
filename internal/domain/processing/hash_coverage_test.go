@@ -49,7 +49,7 @@ func TestGoldenHashRevertedTransaction(t *testing.T) {
 		},
 	}
 
-	_, hashResult := ComputeLogHash(nil, nil, log)
+	_, hashResult := ComputeLogHash(nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "87c1190c86a2ccdb76a9ee7e64d14c364bbb83acccb34396e3c1a2ee3d764440", got)
 }
@@ -87,7 +87,7 @@ func TestGoldenHashSavedMetadata(t *testing.T) {
 		},
 	}
 
-	_, hashResult := ComputeLogHash(nil, nil, log)
+	_, hashResult := ComputeLogHash(nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "72f89815cf6511cb652f1bfb8cd6fb5474ac0369f57478541d8745953c6a9b57", got)
 }
@@ -123,7 +123,7 @@ func TestGoldenHashDeletedMetadata(t *testing.T) {
 		},
 	}
 
-	_, hashResult := ComputeLogHash(nil, nil, log)
+	_, hashResult := ComputeLogHash(nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "bddaafced883666a640e0cee69d804d55adca65d63719a5cc4ccbb867c4e5b24", got)
 }
@@ -156,7 +156,7 @@ func TestGoldenHashSetMetadataFieldType(t *testing.T) {
 		},
 	}
 
-	_, hashResult := ComputeLogHash(nil, nil, log)
+	_, hashResult := ComputeLogHash(nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "cc30616ca2bf1f5ad32bbe43e7591b6bfe1cfa4e97d4d32525c7f14366b835b7", got)
 }
@@ -188,7 +188,7 @@ func TestGoldenHashRemovedMetadataFieldType(t *testing.T) {
 		},
 	}
 
-	_, hashResult := ComputeLogHash(nil, nil, log)
+	_, hashResult := ComputeLogHash(nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "08c9d9062714d93436fd3fb6f1ce11d78bf7721c378377f50d48524ea53974d5", got)
 }
@@ -221,7 +221,7 @@ func TestGoldenHashConvertMetadataBatch(t *testing.T) {
 		},
 	}
 
-	_, hashResult := ComputeLogHash(nil, nil, log)
+	_, hashResult := ComputeLogHash(nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "fe4e4c2aa77f90b57103854c9e47d222b9e45463a42014dad4e2c7086688e42f", got)
 }
@@ -253,7 +253,7 @@ func TestGoldenHashMetadataConversionComplete(t *testing.T) {
 		},
 	}
 
-	_, hashResult := ComputeLogHash(nil, nil, log)
+	_, hashResult := ComputeLogHash(nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "ccf2431806499b41094b95f70f6ec187946c20a7fe19158329c9fba578178cba", got)
 }
@@ -282,7 +282,7 @@ func TestGoldenHashNatsSinkConfig(t *testing.T) {
 		},
 	}
 
-	_, hashResult := ComputeLogHash(nil, nil, log)
+	_, hashResult := ComputeLogHash(nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "3bed8097a8cea3df4f3b61c1c4400dde5456c1e7951b72a5e87d3b2f91ff1ddc", got)
 }
@@ -311,7 +311,7 @@ func TestGoldenHashClickHouseSinkConfig(t *testing.T) {
 		},
 	}
 
-	_, hashResult := ComputeLogHash(nil, nil, log)
+	_, hashResult := ComputeLogHash(nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "7fac4813c525f66514b73d4611868c7a7f096da3c67a30e8d01f89ab26667b0b", got)
 }
@@ -340,7 +340,7 @@ func TestGoldenHashHttpSinkConfig(t *testing.T) {
 		},
 	}
 
-	_, hashResult := ComputeLogHash(nil, nil, log)
+	_, hashResult := ComputeLogHash(nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "3e73c33ff4c38960a8efe3aae03c94eed6e19f62bae86c387ea5debb3d0426dc", got)
 }
@@ -503,7 +503,7 @@ func TestGoldenHashNilSubMessages(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, hashResult := ComputeLogHash(nil, nil, tc.log)
+			_, hashResult := ComputeLogHash(nil, nil, nil, tc.log)
 			got := hex.EncodeToString(hashResult)
 			require.NotEmpty(t, got)
 			require.Len(t, got, 64)
@@ -526,7 +526,7 @@ func TestGoldenHashPromoteLedger(t *testing.T) {
 		},
 	}
 
-	_, hashResult := ComputeLogHash(nil, nil, log)
+	_, hashResult := ComputeLogHash(nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "c16b2d84343f6d815d939842ac0cb503c96ed21bbebb9dc272a92131ce307a84", got)
 }
@@ -550,7 +550,7 @@ func TestGoldenHashCreatedPreparedQuery(t *testing.T) {
 		},
 	}
 
-	_, hashResult := ComputeLogHash(nil, nil, log)
+	_, hashResult := ComputeLogHash(nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "4b0fc5ac7ceb24020dc909044d5460116fcaa8a3296f045437359b4ef16efb60", got)
 }
@@ -571,7 +571,7 @@ func TestGoldenHashUpdatedPreparedQuery(t *testing.T) {
 		},
 	}
 
-	_, hashResult := ComputeLogHash(nil, nil, log)
+	_, hashResult := ComputeLogHash(nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "da8e7d8fc1ef2eb198d29f18dd84af8ebb1bfc591b8e128d6b368c3d63148e25", got)
 }
@@ -592,7 +592,7 @@ func TestGoldenHashDeletedPreparedQuery(t *testing.T) {
 		},
 	}
 
-	_, hashResult := ComputeLogHash(nil, nil, log)
+	_, hashResult := ComputeLogHash(nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "2603b3650a26c619a8f212a22fe20fb8ddc384e2ab11c25bdbd49c2d33e773c3", got)
 }
@@ -617,7 +617,7 @@ func TestGoldenHashSavedNumscript(t *testing.T) {
 		},
 	}
 
-	_, hashResult := ComputeLogHash(nil, nil, log)
+	_, hashResult := ComputeLogHash(nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "51a65de40cfeb9adf3b37141e686edfcee6358fbbd723ee7bf2c64e39a81822b", got)
 }
@@ -638,7 +638,7 @@ func TestGoldenHashDeletedNumscript(t *testing.T) {
 		},
 	}
 
-	_, hashResult := ComputeLogHash(nil, nil, log)
+	_, hashResult := ComputeLogHash(nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "ab867cbc315e523579aa4366d84a979af6200cd584f9e6c5b019d0918d04b107", got)
 }
@@ -659,7 +659,7 @@ func TestGoldenHashCreatedQueryCheckpoint(t *testing.T) {
 		},
 	}
 
-	_, hashResult := ComputeLogHash(nil, nil, log)
+	_, hashResult := ComputeLogHash(nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "66e2d3ff32e95f1f9e46bfad419b33a6684c4ae5990eda787fa8a319ed84292c", got)
 }
@@ -679,7 +679,7 @@ func TestGoldenHashDeletedQueryCheckpoint(t *testing.T) {
 		},
 	}
 
-	_, hashResult := ComputeLogHash(nil, nil, log)
+	_, hashResult := ComputeLogHash(nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "a08175b54275406ebf30a37ae4bfe3dc4903acaa830b34817b212d90c8d5968b", got)
 }
@@ -699,7 +699,7 @@ func TestGoldenHashSetQueryCheckpointSchedule(t *testing.T) {
 		},
 	}
 
-	_, hashResult := ComputeLogHash(nil, nil, log)
+	_, hashResult := ComputeLogHash(nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "9970c9c5110d2e5e87b4e433ad39206e0b98afed2a03f4774135a0d267eb753e", got)
 }
@@ -717,7 +717,7 @@ func TestGoldenHashDeleteQueryCheckpointSchedule(t *testing.T) {
 		},
 	}
 
-	_, hashResult := ComputeLogHash(nil, nil, log)
+	_, hashResult := ComputeLogHash(nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "819bbae03d0b9642dd0450db82eb651b4f523c8120e2df9198d2edf3f0b75181", got)
 }
@@ -748,7 +748,7 @@ func TestGoldenHashFillGap(t *testing.T) {
 		},
 	}
 
-	_, hashResult := ComputeLogHash(nil, nil, log)
+	_, hashResult := ComputeLogHash(nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "dba6a7128a96bbe705977de19250e7551b941199629aa7b8faa8c8cf0bd1bc55", got)
 }
@@ -785,7 +785,7 @@ func TestGoldenHashCreateIndex(t *testing.T) {
 		},
 	}
 
-	_, hashResult := ComputeLogHash(nil, nil, log)
+	_, hashResult := ComputeLogHash(nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "979a19c2822f7b729a0d3ee7fe6e499e6e5788807d20bf6dd9c5001d42c9d586", got)
 }
@@ -822,7 +822,7 @@ func TestGoldenHashDropIndex(t *testing.T) {
 		},
 	}
 
-	_, hashResult := ComputeLogHash(nil, nil, log)
+	_, hashResult := ComputeLogHash(nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "e915a716642f538c78f4e5ce8fdcb2b8a9a0e5969e223d43d819917b85c8486e", got)
 }
@@ -859,7 +859,7 @@ func TestGoldenHashIndexReady(t *testing.T) {
 		},
 	}
 
-	_, hashResult := ComputeLogHash(nil, nil, log)
+	_, hashResult := ComputeLogHash(nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "713fa14a6c7043125fb74c55ede92986f4d896ee5a1308f1a5429b08df722d5a", got)
 }
@@ -894,7 +894,7 @@ func TestGoldenHashAddedAccountType(t *testing.T) {
 		},
 	}
 
-	_, hashResult := ComputeLogHash(nil, nil, log)
+	_, hashResult := ComputeLogHash(nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "16d37c89a51faeb56aac12f304bff6b24a72f0418bc10f2e5d097d7ac4201597", got)
 }
@@ -925,7 +925,7 @@ func TestGoldenHashRemovedAccountType(t *testing.T) {
 		},
 	}
 
-	_, hashResult := ComputeLogHash(nil, nil, log)
+	_, hashResult := ComputeLogHash(nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "9b94c09cfe6331df76fd90fdbe8edc1915c0d9e20e9d304363c1522e1eb7448b", got)
 }
@@ -956,7 +956,7 @@ func TestGoldenHashUpdatedDefaultEnforcementMode(t *testing.T) {
 		},
 	}
 
-	_, hashResult := ComputeLogHash(nil, nil, log)
+	_, hashResult := ComputeLogHash(nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "a78ab400be721e162b4f5df9a6a34d802d742d031669e66d8574316b3f96548b", got)
 }

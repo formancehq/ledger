@@ -19,6 +19,7 @@ import (
 type RequestProcessor struct {
 	numscriptCache     *numscript.NumscriptCache
 	hashBuf            []byte // reusable buffer for deterministic hash serialization
+	logHasher          *blake3.Hasher
 	compiledTypesCache map[string][]accounttype.CompiledType
 }
 
@@ -40,6 +41,7 @@ func NewRequestProcessor(m metric.Meter, numscriptCacheSize int) (*RequestProces
 	return &RequestProcessor{
 		numscriptCache:     cache,
 		hashBuf:            make([]byte, 0, 1024),
+		logHasher:          blake3.New(),
 		compiledTypesCache: make(map[string][]accounttype.CompiledType),
 	}, nil
 }
@@ -118,7 +120,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 			Idempotency: order.GetIdempotency().CloneVT(),
 			Signature:   order.GetSignature().CloneVT(),
 		}
-		p.hashBuf, log.Hash = ComputeLogHash(p.hashBuf, s.GetLastLogHash(), log)
+		p.hashBuf, log.Hash = ComputeLogHash(p.logHasher, p.hashBuf, s.GetLastLogHash(), log)
 		s.SetLastLogHash(log.GetHash())
 
 		// After a ClosePeriod log, update the closing period's LastLogHash to

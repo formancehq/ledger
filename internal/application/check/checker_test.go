@@ -1050,7 +1050,7 @@ func deleteTransactionMetadataOrder(ledger string, txID uint64, key string) *raf
 
 // computeCorrectHash computes the correct hash for a log entry, matching the production logic.
 func computeCorrectHash(lastHash []byte, log *commonpb.Log) []byte {
-	_, hash := processing.ComputeLogHash(nil, lastHash, log)
+	_, hash := processing.ComputeLogHash(nil, nil, lastHash, log)
 
 	return hash
 }
@@ -1299,7 +1299,7 @@ func buildLog(lastHash *[]byte, seqID *uint64, payload *commonpb.LogPayload) *co
 		Sequence: *seqID,
 		Payload:  payload,
 	}
-	_, log.Hash = processing.ComputeLogHash(nil, *lastHash, log)
+	_, log.Hash = processing.ComputeLogHash(nil, nil, *lastHash, log)
 	*lastHash = log.GetHash()
 	*seqID++
 
