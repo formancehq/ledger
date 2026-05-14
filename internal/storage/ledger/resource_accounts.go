@@ -63,7 +63,8 @@ func (h accountsResourceHandler) ResolveFilter(opts common.ResourceQuery[any], o
 
 			return "address IN (?)", []any{bun.In(addresses)}, nil
 		default:
-			return filterAccountAddress(value.(string), "address"), nil, nil
+			where, args := filterAccountAddress(value.(string), "address")
+			return where, args, nil
 		}
 
 	case property == "first_usage" || property == "insertion_date" || property == "updated_at":

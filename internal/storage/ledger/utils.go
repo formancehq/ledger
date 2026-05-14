@@ -25,30 +25,42 @@ func isPartialAddress(address string) bool {
 	return false
 }
 
-func filterAccountAddress(address, key string) string {
+func filterAccountAddress(address, key string) (string, []any) {
 	parts := make([]string, 0)
+	args := make([]any, 0)
 
 	if isPartialAddress(address) {
 		src := strings.Split(address, ":")
 		if src[len(src)-1] != "" {
-			parts = append(parts, fmt.Sprintf("jsonb_array_length(%s_array) = %d", key, len(src)))
+			parts = append(parts, fmt.Sprintf("jsonb_array_length(%s_array) = ?", key))
+			args = append(args, len(src))
 		}
 
 		for i, segment := range src {
 			if len(segment) == 0 || segment == "..." {
 				continue
 			}
-			parts = append(parts, fmt.Sprintf("%s_array @@ ('$[%d] == \"%s\"')::jsonpath", key, i, segment))
+			parts = append(parts, fmt.Sprintf("%s_array @@ ?::jsonpath", key))
+			args = append(args, fmt.Sprintf("$[%d] == %s", i, jsonString(segment)))
 		}
 	} else {
-		parts = append(parts, fmt.Sprintf("%s = '%s'", key, address))
+		parts = append(parts, fmt.Sprintf("%s = ?", key))
+		args = append(args, address)
 	}
 
 	if len(parts) == 0 {
-		return "1 = 1"
+		return "1 = 1", nil
 	}
 
-	return strings.Join(parts, " and ")
+	return strings.Join(parts, " and "), args
+}
+
+func jsonString(value string) string {
+	data, err := json.Marshal(value)
+	if err != nil {
+		panic(err)
+	}
+	return string(data)
 }
 
 // collectAddressFilters visits all address filter values (without short-circuiting)
@@ -78,7 +90,8 @@ func collectAddressFilters(q interface {
 // LATERAL join subquery when canPush is true and there are addresses to filter.
 func applyLateralAddressFilter(subQuery *bun.SelectQuery, addresses []string, canPush bool) *bun.SelectQuery {
 	if len(addresses) > 0 && canPush {
-		subQuery = subQuery.Where(buildAddressFilterForLateral(addresses))
+		where, args := buildAddressFilterForLateral(addresses)
+		subQuery = subQuery.Where(where, args...)
 	}
 	return subQuery
 }
@@ -252,15 +265,18 @@ func isNodeSafeForLateral(node map[string]any, insideNot bool) bool {
 
 // buildAddressFilterForLateral builds an OR condition of all address filters
 // to push into a LATERAL join, allowing Postgres to use the GIN index on address_array.
-func buildAddressFilterForLateral(addresses []string) string {
+func buildAddressFilterForLateral(addresses []string) (string, []any) {
 	if len(addresses) == 1 {
 		return filterAccountAddress(addresses[0], "address")
 	}
 	conditions := make([]string, len(addresses))
+	args := make([]any, 0, len(addresses))
 	for i, addr := range addresses {
-		conditions[i] = "(" + filterAccountAddress(addr, "address") + ")"
+		where, whereArgs := filterAccountAddress(addr, "address")
+		conditions[i] = "(" + where + ")"
+		args = append(args, whereArgs...)
 	}
-	return strings.Join(conditions, " OR ")
+	return strings.Join(conditions, " OR "), args
 }
 
 func explodeAddress(address string) map[string]any {

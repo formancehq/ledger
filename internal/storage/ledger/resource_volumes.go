@@ -140,7 +140,8 @@ func (h volumesResourceHandler) ResolveFilter(
 
 			return "account IN (?)", []any{bun.In(addresses)}, nil
 		default:
-			return filterAccountAddress(value.(string), "account"), nil, nil
+			where, args := filterAccountAddress(value.(string), "account")
+			return where, args, nil
 		}
 	case property == "first_usage":
 		return fmt.Sprintf("first_usage %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
