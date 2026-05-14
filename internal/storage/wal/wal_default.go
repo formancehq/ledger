@@ -139,14 +139,20 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 		s.logger.Infof("WAL creation completed, opening existing DefaultWAL")
 
 		// List valid snapshot records from the etcd WAL (source of truth).
+		validStart := time.Now()
 		walSnaps, err := wal.ValidSnapshotEntries(zapLogger, s.etcdWalDir)
 		if err != nil {
 			return nil, fmt.Errorf("reading valid snapshot entries from WAL: %w", err)
 		}
+		s.logger.WithFields(map[string]any{
+			"duration": time.Since(validStart).String(),
+			"count":    len(walSnaps),
+		}).Infof("WAL valid snapshot entries scanned")
 
 		// Load the newest snap file that matches a WAL snapshot record.
 		// This ensures orphaned snap files (written before a crash, without
 		// a corresponding WAL record) are not used.
+		loadStart := time.Now()
 		loadedSnap, err := s.snapshotter.LoadNewestAvailable(walSnaps)
 		if err != nil {
 			return nil, fmt.Errorf("loading snapshot matching WAL: %w", err)
@@ -156,8 +162,9 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 			s.snapshot = *loadedSnap
 			s.logger.
 				WithFields(map[string]any{
-					"index": s.snapshot.Metadata.Index,
-					"term":  s.snapshot.Metadata.Term,
+					"index":    s.snapshot.Metadata.Index,
+					"term":     s.snapshot.Metadata.Term,
+					"duration": time.Since(loadStart).String(),
 				}).
 				Infof("Loaded snapshot from disk")
 			snap = walpb.Snapshot{
@@ -166,10 +173,14 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 			}
 		}
 
+		walOpenStart := time.Now()
 		s.wal, err = wal.Open(zapLogger, s.etcdWalDir, snap)
 		if err != nil {
 			return nil, fmt.Errorf("opening existing DefaultWAL: %w", err)
 		}
+		s.logger.WithFields(map[string]any{
+			"duration": time.Since(walOpenStart).String(),
+		}).Infof("WAL opened")
 	} else {
 		s.logger.Infof("DefaultWAL creation not completed, creating new DefaultWAL")
 

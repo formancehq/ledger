@@ -108,10 +108,19 @@ func New(dir string, logger logging.Logger, cfg Config) (*Store, error) {
 		return nil, fmt.Errorf("opening Pebble read index: %w", err)
 	}
 
+	m := db.Metrics()
 	logger.WithFields(map[string]any{
-		"duration": time.Since(openStart).String(),
-		"fileSize": fileSize,
-	}).Infof("Pebble read index opened")
+		"duration":          time.Since(openStart).String(),
+		"l0FileCount":       m.Levels[0].TablesCount,
+		"l0Size":            m.Levels[0].TablesSize,
+		"l1FileCount":       m.Levels[1].TablesCount,
+		"l1Size":            m.Levels[1].TablesSize,
+		"memTableCount":     m.MemTable.Count,
+		"memTableSize":      m.MemTable.Size,
+		"compactionCount":   m.Compact.Count,
+		"compactionEstDebt": m.Compact.EstimatedDebt,
+		"totalLevelsSize":   m.DiskSpaceUsage(),
+	}).Infof("Pebble read index opened — LSM state")
 
 	s := &Store{
 		db:     db,

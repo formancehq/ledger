@@ -881,7 +881,12 @@ func Module() fx.Option {
 					case node.ConfChangeEvent:
 						handleConfChangeEvent(e, defaultTransport, servicePool, logger)
 					case node.LeadershipChangeEvent:
-						handleLeadershipChangeEvent(e, eventsManager, mirrorManager, logger)
+						// Run asynchronously: reconciling event emitters and mirror
+						// workers involves a full Pebble attribute scan that can take
+						// minutes on large databases. Running it synchronously blocks
+						// processReady, preventing lastSoftState from being stored
+						// and stalling the readiness probe.
+						go handleLeadershipChangeEvent(e, eventsManager, mirrorManager, logger)
 					case node.LeaderReadyEvent:
 						proposeClusterConfigIfNeeded(n, store, cfg, logger)
 					default:

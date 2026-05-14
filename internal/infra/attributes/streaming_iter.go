@@ -24,13 +24,14 @@ import (
 //	}
 //	if err := iter.Err(); err != nil { return err }
 type StreamingIter[V proto.Message] struct {
-	ab        accumulatorBase[V]
-	iter      *pebble.Iterator
-	started   bool
-	flushed   bool
-	current   *ComputedEntry[V]
-	err       error
-	minKeyLen int
+	ab         accumulatorBase[V]
+	iter       *pebble.Iterator
+	started    bool
+	flushed    bool
+	current    *ComputedEntry[V]
+	err        error
+	minKeyLen  int
+	attrPrefix byte
 }
 
 // NewStreamingIter creates a pull-based iterator over computed entries for all
@@ -62,7 +63,8 @@ func (a *Attribute[V]) NewStreamingIter(reader dal.PebbleReader, canonicalPrefix
 		ab:   accumulatorBase[V]{attr: a},
 		iter: iter,
 		// Minimum key length: [0xF1 prefix][at least 1 byte canonical][attrType] = 3
-		minKeyLen: 1 + SuffixLen,
+		minKeyLen:  1 + SuffixLen,
+		attrPrefix: a.prefix,
 	}, nil
 }
 
@@ -102,6 +104,14 @@ func (si *StreamingIter[V]) Next() bool {
 
 		key := si.iter.Key()
 		if len(key) <= si.minKeyLen {
+			continue
+		}
+
+		// Check attribute type from the key suffix before reading the value.
+		// This avoids fetching (and decompressing) value data for entries
+		// belonging to other attribute types — critical when the attributes
+		// zone contains millions of keys across many types.
+		if key[len(key)-SuffixLen] != si.attrPrefix {
 			continue
 		}
 
