@@ -269,12 +269,13 @@ func (store *Store) DeleteTransactionMetadata(ctx context.Context, id uint64, ke
 	return tx, modified, err
 }
 
-func filterAccountAddressOnTransactions(address string, source, destination bool) string {
+func filterAccountAddressOnTransactions(address string, source, destination bool) (string, []any) {
 	src := strings.Split(address, ":")
 
 	if isPartialAddress(address) {
 		m := map[string]any{}
 		parts := make([]string, 0)
+		args := make([]any, 0, 2)
 
 		for i, segment := range src {
 			if len(segment) == 0 {
@@ -295,12 +296,14 @@ func filterAccountAddressOnTransactions(address string, source, destination bool
 		}
 
 		if source {
-			parts = append(parts, fmt.Sprintf("sources_arrays @> '%s'", string(data)))
+			parts = append(parts, "sources_arrays @> ?::jsonb")
+			args = append(args, string(data))
 		}
 		if destination {
-			parts = append(parts, fmt.Sprintf("destinations_arrays @> '%s'", string(data)))
+			parts = append(parts, "destinations_arrays @> ?::jsonb")
+			args = append(args, string(data))
 		}
-		return strings.Join(parts, " or ")
+		return strings.Join(parts, " or "), args
 	}
 
 	data, err := json.Marshal([]string{address})
@@ -309,13 +312,16 @@ func filterAccountAddressOnTransactions(address string, source, destination bool
 	}
 
 	parts := make([]string, 0)
+	args := make([]any, 0, 2)
 	if source {
-		parts = append(parts, fmt.Sprintf("sources @> '%s'", string(data)))
+		parts = append(parts, "sources @> ?::jsonb")
+		args = append(args, string(data))
 	}
 	if destination {
-		parts = append(parts, fmt.Sprintf("destinations @> '%s'", string(data)))
+		parts = append(parts, "destinations @> ?::jsonb")
+		args = append(args, string(data))
 	}
-	return strings.Join(parts, " or ")
+	return strings.Join(parts, " or "), args
 }
 
 func assetAddressArray(v any) ([]string, error) {

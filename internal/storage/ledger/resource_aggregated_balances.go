@@ -116,7 +116,8 @@ func (h aggregatedBalancesResourceRepositoryHandler) ResolveFilter(_ common.Reso
 
 			return "accounts_address IN (?)", []any{bun.In(addresses)}, nil
 		default:
-			return filterAccountAddress(value.(string), "accounts_address"), nil, nil
+			filter, args := filterAccountAddress(value.(string), "accounts_address")
+			return filter, args, nil
 		}
 	case common.MetadataRegex.Match([]byte(property)) || property == "metadata":
 		if property == "metadata" {
