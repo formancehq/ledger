@@ -89,7 +89,7 @@ func TestLendingLifecycle(t *testing.T) {
 				"borrower_wallet": fmt.Sprintf("borrower:%d:wallet", i),
 				"amount":          fmt.Sprintf("USD/2 %d", loanAmount),
 			}, nil)
-			action.GetApply().GetCreateTransaction().Reference = fmt.Sprintf("loan-disburse-%d", i)
+			action.GetApply().GetAction().GetCreateTransaction().Reference = fmt.Sprintf("loan-disburse-%d", i)
 			reqs = append(reqs, action)
 
 			fundingBalance.Sub(fundingBalance, big.NewInt(loanAmount))

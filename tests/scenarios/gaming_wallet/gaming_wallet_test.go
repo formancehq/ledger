@@ -96,7 +96,7 @@ func TestGamingWalletLifecycle(t *testing.T) {
 				"usd_amount":   fmt.Sprintf("USD/2 %d", topUpUSD),
 				"coin_amount":  fmt.Sprintf("COINS %d", topUpCoins),
 			}, map[string]string{"type": "initial-topup"})
-			action.GetApply().GetCreateTransaction().Reference = fmt.Sprintf("topup-initial-%d", i)
+			action.GetApply().GetAction().GetCreateTransaction().Reference = fmt.Sprintf("topup-initial-%d", i)
 			reqs = append(reqs, action)
 
 			playerCoins[i].Add(playerCoins[i], big.NewInt(topUpCoins))

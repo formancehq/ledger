@@ -397,7 +397,7 @@ send $amount (
 			"customer": "customer:1",
 			"amount":   "USD/2 100",
 		}, nil)
-		refAction.GetApply().GetCreateTransaction().Reference = "unique-ref-001"
+		refAction.GetApply().GetAction().GetCreateTransaction().Reference = "unique-ref-001"
 		scenariotest.ApplyActions(t, ctx, client, refAction)
 		customerBalance[1].Add(customerBalance[1], big.NewInt(100))
 
@@ -406,7 +406,7 @@ send $amount (
 			"customer": "customer:2",
 			"amount":   "USD/2 100",
 		}, nil)
-		refAction2.GetApply().GetCreateTransaction().Reference = "unique-ref-001"
+		refAction2.GetApply().GetAction().GetCreateTransaction().Reference = "unique-ref-001"
 		err := scenariotest.ApplyActionsExpectError(ctx, client, refAction2)
 		require.Error(t, err, "expected reference conflict error")
 
