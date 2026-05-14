@@ -9,10 +9,11 @@ Every log produced by the ledger is cryptographically chained to its predecessor
 ### Hash Formula
 
 ```
-hash = blake3(lastLogHash || deterministicSerialize(logWithoutHash))
+hash = H(lastLogHash || deterministicSerialize(logWithoutHash))
 ```
 
 Where:
+- `H` is the configured hash function (BLAKE3 or XXH3-128)
 - `lastLogHash` is the hash of the immediately preceding log (empty for the genesis log)
 - `deterministicSerialize(logWithoutHash)` is the Protocol Buffers deterministic serialization of the log **before** the hash field is set
 - `||` denotes concatenation
@@ -22,15 +23,27 @@ Where:
 The first log in the chain has no predecessor. In this case, `lastLogHash` is empty (zero-length), so the hash is simply:
 
 ```
-hash = blake3(deterministicSerialize(log))
+hash = H(deterministicSerialize(log))
 ```
+
+### Hash Algorithm Selection
+
+The hash algorithm is a cluster-wide setting configured via `--hash-algorithm` and replicated through Raft (stored in `ClusterConfig`). Each log records which algorithm was used in its `hash_version` field.
+
+| `hash_version` | Algorithm | Output Size | Properties |
+|----------------|-----------|-------------|------------|
+| `0` (default) | BLAKE3 | 32 bytes | Cryptographic — detects both corruption and intentional tampering |
+| `1` | XXH3-128 | 16 bytes | Non-cryptographic — detects corruption only, ~5-10x faster |
+
+Switching algorithms mid-stream is safe: each log is self-describing via `hash_version`, and the chain remains valid because the previous log's hash bytes (regardless of algorithm) are included in the current hash input.
 
 ### Implementation Details
 
-- **Hash algorithm**: BLAKE3 via `github.com/zeebo/blake3`
+- **BLAKE3**: `github.com/zeebo/blake3` — a shared `blake3.Hasher` is reused (with `Reset()`) across calls to avoid allocation overhead
+- **XXH3-128**: `github.com/zeebo/xxh3` — stateless, zero allocation
 - **Serialization**: `proto.MarshalOptions{Deterministic: true}` ensures stable byte output across runs
-- **Hasher reuse**: A shared `blake3.Hasher` is reused (with `Reset()`) across log hash computations to avoid allocation overhead
 - **Hash field**: Stored as `bytes hash` (field 4) in the `Log` protobuf message
+- **Version field**: Stored as `uint32 hash_version` (field 8) in the `Log` protobuf message
 
 ### State Persistence
 
@@ -202,7 +215,7 @@ See [Clock Skew Check](../dev/architecture/hybrid-logical-clock.md#clock-skew-ch
 
 ## Integrity Guarantees
 
-1. **Tamper detection**: Modifying any historical log invalidates all subsequent hashes in the chain
+1. **Tamper detection**: With BLAKE3 (default), modifying any historical log invalidates all subsequent hashes and an attacker cannot forge a valid chain. With XXH3, corruption is detected but a motivated attacker with direct storage access could theoretically construct collisions
 2. **Ordering proof**: The hash chain proves the exact ordering of all logs
 3. **Determinism**: Given the same initial state and the same sequence of operations, the exact same hash chain is produced (verified by tests)
 4. **Crash recovery**: The hash chain survives node restarts via Raft snapshot persistence

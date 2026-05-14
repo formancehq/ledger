@@ -369,6 +369,7 @@ func (fsm *Machine) RecoverState() error {
 		fsm.lastClusterConfig = clusterState.GetConfig()
 		fsm.Registry.Cache.SetGenerationThreshold(clusterState.GetConfig().GetRotationThreshold())
 		fsm.Registry.Cache.SetEpoch(clusterState.GetCacheEpoch())
+		fsm.processor.SetHashAlgorithm(clusterState.GetConfig().GetHashAlgorithm())
 	}
 
 	fsm.logger.WithFields(map[string]any{
@@ -946,6 +947,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			return nil, fmt.Errorf("saving cluster state: %w", err)
 		}
 
+		fsm.processor.SetHashAlgorithm(cfg.GetHashAlgorithm())
 		fsm.lastClusterConfig = cfg
 	}
 

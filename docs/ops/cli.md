@@ -3386,6 +3386,29 @@ Changing any bloom filter configuration triggers a full repopulation scan on nex
 
 ---
 
+### Server `--hash-algorithm` Flag
+
+Selects the hash function used for log chain integrity. This is a cluster-wide setting replicated via Raft.
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--hash-algorithm` | string | `blake3` | Hash algorithm for log chain (`blake3` or `xxh3`) |
+
+- **`blake3`** (default): Cryptographic hash, 32-byte output. Detects both corruption and intentional tampering.
+- **`xxh3`**: Non-cryptographic hash (XXH3-128), 16-byte output. ~5-10x faster. Detects corruption only.
+
+Each log records which algorithm was used in its `hash_version` field, so switching algorithms mid-stream is safe and the `store check` command verifies each log with the correct algorithm.
+
+```bash
+# Use XXH3 for write-heavy workloads (e.g., blockchain ingestion)
+ledger-v3-poc run --hash-algorithm xxh3
+
+# Default: BLAKE3
+ledger-v3-poc run --hash-algorithm blake3
+```
+
+---
+
 ### Server `--response-signing-key` Flag
 
 Enables Ed25519 response signing. When configured, the server signs every `Log` in `ApplyResponse` messages so clients can verify the response is authentic.

@@ -193,6 +193,9 @@ func NewRunCommand() *cobra.Command {
 	// Bloom filter per-attribute-type configuration
 	registerBloomFlags(runCmd)
 
+	// Hash algorithm for log chain integrity
+	runCmd.Flags().String("hash-algorithm", "blake3", "Hash algorithm for log chain (blake3 or xxh3)")
+
 	// Read index configuration
 	runCmd.Flags().String("read-index-dir", "", "Directory for the Pebble read index (default: <data-dir>/read-indexes/)")
 	runCmd.Flags().Int("read-index-batch-size", 0, "Number of log entries per Pebble batch commit (0 = default 1000)")
@@ -546,6 +549,14 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 	// Bloom filter per-type config
 	cfg.BloomConfig = &commonpb.ClusterConfig{}
 	loadBloomConfig(cmd, cfg.BloomConfig)
+
+	// Hash algorithm for log chain
+	switch getString("hash-algorithm", "blake3") {
+	case "xxh3":
+		cfg.BloomConfig.HashAlgorithm = commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3
+	default:
+		cfg.BloomConfig.HashAlgorithm = commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3
+	}
 
 	// Read index configuration
 	cfg.ReadIndexConfig = bootstrap.ReadIndexConfig{

@@ -242,7 +242,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 		// 2. Verify hash chain
 		var expectedHash []byte
-		hashBuf, expectedHash = processing.ComputeLogHash(nil, hashBuf, lastHash, log)
+		hashBuf, expectedHash = processing.ComputeLogHashByVersion(log.GetHashVersion(), hashBuf, lastHash, log)
 		if !bytes.Equal(expectedHash, log.GetHash()) {
 			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
 				fmt.Sprintf("hash mismatch at sequence %d: expected %x, got %x", seq, expectedHash, log.GetHash()),

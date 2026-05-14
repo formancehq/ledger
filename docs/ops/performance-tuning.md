@@ -276,11 +276,25 @@ Ledger, boundary, and transaction filters are disabled by default because these 
 
 See [CLI Reference](./cli.md#server-bloom-filter-flags) for all flags.
 
-### 5.5 Numscript Cache Size
+### 5.5 Hash Algorithm
+
+The log hash chain uses BLAKE3 by default (cryptographic, tamper-resistant). For write-heavy workloads where throughput matters more than tamper-resistance (e.g., blockchain ingestion, bulk imports), switching to XXH3-128 reduces hash computation CPU by ~5-10x.
+
+```bash
+# Use XXH3-128 for faster hashing (non-cryptographic)
+ledger-v3-poc run --hash-algorithm xxh3
+
+# Default: BLAKE3 (cryptographic)
+ledger-v3-poc run --hash-algorithm blake3
+```
+
+The setting is cluster-wide and replicated via Raft. Changing it takes effect on the next log produced — existing logs retain their original hash and remain verifiable via the `hash_version` field stored on each log. See [Log Integrity](./correctness.md#hash-algorithm-selection) for details.
+
+### 5.6 Numscript Cache Size
 
 Default: **1024** entries. Increase if your application uses more than 1024 distinct script texts (monitor `numscript.cache.size` gauge). In practice, most applications have fewer than 10 distinct scripts.
 
-### 5.6. Admission Metrics
+### 5.7. Admission Metrics
 
 Admission metrics (histograms, counters) are **disabled by default** because OpenTelemetry histogram internals can cause contention under high concurrency. Enable them (`--admission-metrics`) only when profiling, not in steady-state production.
 

@@ -20,7 +20,14 @@ type RequestProcessor struct {
 	numscriptCache     *numscript.NumscriptCache
 	hashBuf            []byte // reusable buffer for deterministic hash serialization
 	logHasher          *blake3.Hasher
+	hashAlgorithm      commonpb.HashAlgorithm
 	compiledTypesCache map[string][]accounttype.CompiledType
+}
+
+// SetHashAlgorithm updates the hash algorithm used for new logs.
+// Called by the FSM when a ClusterConfig change is applied via Raft.
+func (p *RequestProcessor) SetHashAlgorithm(algo commonpb.HashAlgorithm) {
+	p.hashAlgorithm = algo
 }
 
 // NewRequestProcessor creates a new RequestProcessor with the given meter.
@@ -120,7 +127,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 			Idempotency: order.GetIdempotency().CloneVT(),
 			Signature:   order.GetSignature().CloneVT(),
 		}
-		p.hashBuf, log.Hash = ComputeLogHash(p.logHasher, p.hashBuf, s.GetLastLogHash(), log)
+		p.hashBuf, log.Hash = computeLogHash(p.hashAlgorithm, p.logHasher, p.hashBuf, s.GetLastLogHash(), log)
 		s.SetLastLogHash(log.GetHash())
 
 		// After a ClosePeriod log, update the closing period's LastLogHash to

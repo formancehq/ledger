@@ -369,6 +369,12 @@ message BloomTypeConfig {
   double fp_rate = 2;
 }
 
+// HashAlgorithm selects the hash function used for log chain integrity.
+enum HashAlgorithm {
+  HASH_ALGORITHM_BLAKE3 = 0;  // Cryptographic (tamper-resistant), 32-byte output. Default.
+  HASH_ALGORITHM_XXH3 = 1;    // Non-cryptographic (corruption detection only), 16-byte output. ~5-10x faster.
+}
+
 // ClusterConfig holds mutable cluster-wide configuration parameters.
 // These are updated via Raft to ensure deterministic application across all nodes.
 message ClusterConfig {
@@ -382,6 +388,7 @@ message ClusterConfig {
   BloomTypeConfig bloom_sink_configs = 8;
   BloomTypeConfig bloom_numscript_versions = 9;
   BloomTypeConfig bloom_numscript_contents = 10;
+  HashAlgorithm hash_algorithm = 11;
 }
 
 // PersistedClusterState wraps ClusterConfig with internal FSM state that must
