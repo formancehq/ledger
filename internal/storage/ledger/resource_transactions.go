@@ -107,8 +107,8 @@ func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], 
 
 			return "sources \\?| " + placeholder + " OR destinations \\?| " + placeholder, args, nil
 		default:
-			filter, args := filterAccountAddressOnTransactions(value.(string), true, true)
-			return filter, args, nil
+			where, args := filterAccountAddressOnTransactions(value.(string), true, true)
+			return where, args, nil
 		}
 	case property == "source":
 		switch operator {
@@ -122,8 +122,8 @@ func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], 
 
 			return "sources \\?| " + placeholder, args, nil
 		default:
-			filter, args := filterAccountAddressOnTransactions(value.(string), true, false)
-			return filter, args, nil
+			where, args := filterAccountAddressOnTransactions(value.(string), true, false)
+			return where, args, nil
 		}
 	case property == "destination":
 		switch operator {
@@ -136,8 +136,8 @@ func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], 
 			placeholder, args := stringArrayToPostgresArray(addresses)
 			return "destinations \\?| " + placeholder, args, nil
 		default:
-			filter, args := filterAccountAddressOnTransactions(value.(string), false, true)
-			return filter, args, nil
+			where, args := filterAccountAddressOnTransactions(value.(string), false, true)
+			return where, args, nil
 		}
 	case common.MetadataRegex.Match([]byte(property)):
 		match := common.MetadataRegex.FindAllStringSubmatch(property, 3)

@@ -121,14 +121,14 @@ func TestBuildAddressFilterForLateral(t *testing.T) {
 	t.Run("single partial address", func(t *testing.T) {
 		t.Parallel()
 		result, args := buildAddressFilterForLateral([]string{"users:"})
-		assert.Contains(t, result, "address_array @@ (?)::jsonpath")
+		assert.Contains(t, result, "address_array @@ ?::jsonpath")
 		assert.Equal(t, []any{`$[0] == "users"`}, args)
 	})
 
 	t.Run("single partial address with fixed segment", func(t *testing.T) {
 		t.Parallel()
 		result, args := buildAddressFilterForLateral([]string{"system:cashier:"})
-		assert.Contains(t, result, "address_array @@ (?)::jsonpath")
+		assert.Contains(t, result, "address_array @@ ?::jsonpath")
 		assert.Equal(t, []any{`$[0] == "system"`, `$[1] == "cashier"`}, args)
 	})
 
@@ -137,7 +137,7 @@ func TestBuildAddressFilterForLateral(t *testing.T) {
 		result, args := buildAddressFilterForLateral([]string{"world", "users:"})
 		assert.Contains(t, result, "(address = ?)")
 		assert.Contains(t, result, " OR ")
-		assert.Contains(t, result, "address_array @@ (?)::jsonpath")
+		assert.Contains(t, result, "address_array @@ ?::jsonpath")
 		assert.Equal(t, []any{"world", `$[0] == "users"`}, args)
 	})
 
@@ -146,6 +146,22 @@ func TestBuildAddressFilterForLateral(t *testing.T) {
 		result, args := buildAddressFilterForLateral([]string{`users:\"') OR TRUE --:`})
 		assert.NotContains(t, result, `OR TRUE`)
 		assert.Equal(t, []any{`$[0] == "users"`, `$[1] == "\\\"') OR TRUE --"`}, args)
+	})
+
+	t.Run("malicious address remains bound parameter", func(t *testing.T) {
+		t.Parallel()
+		payload := "' OR 1=1 --"
+		result, args := buildAddressFilterForLateral([]string{payload})
+		assert.Equal(t, "address = ?", result)
+		assert.Equal(t, []any{payload}, args)
+	})
+
+	t.Run("malicious partial segment remains bound jsonpath", func(t *testing.T) {
+		t.Parallel()
+		payload := `users:evil" || true || "`
+		result, args := buildAddressFilterForLateral([]string{payload + ":"})
+		assert.Contains(t, result, "address_array @@ ?::jsonpath")
+		assert.Equal(t, []any{"$[0] == \"users\"", "$[1] == " + jsonString(`evil" || true || "`)}, args)
 	})
 }
 
@@ -242,4 +258,14 @@ func TestFilterAccountAddressOnTransactions(t *testing.T) {
 		assert.NotContains(t, result, "OR TRUE")
 		assert.Equal(t, []any{"[{\"0\":\"users\",\"1\":\"\\\"') OR TRUE --\",\"3\":null}]"}, args)
 	})
+}
+
+func TestFilterAccountAddressOnTransactionsBindsAddressJSON(t *testing.T) {
+	t.Parallel()
+
+	payload := "bank' OR true --"
+	where, args := filterAccountAddressOnTransactions(payload, true, true)
+
+	assert.Equal(t, "sources @> ?::jsonb or destinations @> ?::jsonb", where)
+	assert.Equal(t, []any{`["bank' OR true --"]`, `["bank' OR true --"]`}, args)
 }

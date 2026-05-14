@@ -40,12 +40,8 @@ func filterAccountAddress(address, key string) (string, []any) {
 			if len(segment) == 0 || segment == "..." {
 				continue
 			}
-			encodedSegment, err := json.Marshal(segment)
-			if err != nil {
-				panic(err)
-			}
-			parts = append(parts, fmt.Sprintf("%s_array @@ (?)::jsonpath", key))
-			args = append(args, fmt.Sprintf("$[%d] == %s", i, encodedSegment))
+			parts = append(parts, fmt.Sprintf("%s_array @@ ?::jsonpath", key))
+			args = append(args, fmt.Sprintf("$[%d] == %s", i, jsonString(segment)))
 		}
 	} else {
 		parts = append(parts, fmt.Sprintf("%s = ?", key))
@@ -57,6 +53,14 @@ func filterAccountAddress(address, key string) (string, []any) {
 	}
 
 	return strings.Join(parts, " and "), args
+}
+
+func jsonString(value string) string {
+	data, err := json.Marshal(value)
+	if err != nil {
+		panic(err)
+	}
+	return string(data)
 }
 
 // collectAddressFilters visits all address filter values (without short-circuiting)
@@ -86,8 +90,8 @@ func collectAddressFilters(q interface {
 // LATERAL join subquery when canPush is true and there are addresses to filter.
 func applyLateralAddressFilter(subQuery *bun.SelectQuery, addresses []string, canPush bool) *bun.SelectQuery {
 	if len(addresses) > 0 && canPush {
-		filter, args := buildAddressFilterForLateral(addresses)
-		subQuery = subQuery.Where(filter, args...)
+		where, args := buildAddressFilterForLateral(addresses)
+		subQuery = subQuery.Where(where, args...)
 	}
 	return subQuery
 }
@@ -268,9 +272,9 @@ func buildAddressFilterForLateral(addresses []string) (string, []any) {
 	conditions := make([]string, len(addresses))
 	args := make([]any, 0, len(addresses))
 	for i, addr := range addresses {
-		condition, conditionArgs := filterAccountAddress(addr, "address")
-		conditions[i] = "(" + condition + ")"
-		args = append(args, conditionArgs...)
+		where, whereArgs := filterAccountAddress(addr, "address")
+		conditions[i] = "(" + where + ")"
+		args = append(args, whereArgs...)
 	}
 	return strings.Join(conditions, " OR "), args
 }
