@@ -25,6 +25,19 @@ func isPartialAddress(address string) bool {
 	return false
 }
 
+// escapeSQL escapes a value for safe embedding in a SQL single-quoted string literal.
+func escapeSQL(s string) string {
+	return strings.ReplaceAll(s, "'", "''")
+}
+
+// escapeJSONPath escapes a value for safe embedding in a JSONPath double-quoted
+// string that itself lives inside a SQL single-quoted literal.
+func escapeJSONPath(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`) // must be first
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	return escapeSQL(s)
+}
+
 func filterAccountAddress(address, key string) string {
 	parts := make([]string, 0)
 
@@ -38,10 +51,10 @@ func filterAccountAddress(address, key string) string {
 			if len(segment) == 0 || segment == "..." {
 				continue
 			}
-			parts = append(parts, fmt.Sprintf("%s_array @@ ('$[%d] == \"%s\"')::jsonpath", key, i, segment))
+			parts = append(parts, fmt.Sprintf("%s_array @@ ('$[%d] == \"%s\"')::jsonpath", key, i, escapeJSONPath(segment)))
 		}
 	} else {
-		parts = append(parts, fmt.Sprintf("%s = '%s'", key, address))
+		parts = append(parts, fmt.Sprintf("%s = '%s'", key, escapeSQL(address)))
 	}
 
 	return strings.Join(parts, " and ")
