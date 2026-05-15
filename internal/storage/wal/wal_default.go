@@ -171,6 +171,37 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 				Index: s.snapshot.Metadata.Index,
 				Term:  s.snapshot.Metadata.Term,
 			}
+		} else if recovered := recoverConfStateFromWALRecords(walSnaps); recovered != nil {
+			// Snap file lost (crash during non-atomic write, corrupted, or deleted).
+			// Recover the ConfState from the latest WAL snapshot record so the node
+			// can rejoin the cluster instead of failing with "first start requires
+			// --bootstrap or --join".
+			s.logger.Errorf("========================================")
+			s.logger.Errorf("SNAP FILE RECOVERY: no snap file matches any of %d WAL snapshot records", len(walSnaps))
+			s.logger.Errorf("Recovering ConfState from WAL record (index=%d, term=%d, voters=%v)",
+				recovered.Index, recovered.Term, recovered.ConfState.Voters)
+			s.logger.Errorf("========================================")
+
+			s.snapshot = raftpb.Snapshot{
+				Metadata: raftpb.SnapshotMetadata{
+					Index:     recovered.Index,
+					Term:      recovered.Term,
+					ConfState: *recovered.ConfState,
+				},
+				// Data is empty: only peer addresses are lost (they will be
+				// rediscovered via etcd). The FSM state lives in Pebble
+				// (separate volume) and is not affected.
+			}
+			snap = walpb.Snapshot{
+				Index: recovered.Index,
+				Term:  recovered.Term,
+			}
+
+			// Persist the recovered snapshot so subsequent restarts succeed normally.
+			if saveErr := s.snapshotter.Save(s.snapshot); saveErr != nil {
+				s.logger.WithFields(map[string]any{"error": saveErr}).
+					Errorf("Failed to persist recovered snapshot (node will retry recovery on next restart)")
+			}
 		}
 
 		walOpenStart := time.Now()
@@ -276,6 +307,19 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 	s.purgeDone, _ = fileutil.PurgeFileWithDoneNotify(zap.NewNop(), s.etcdWalDir, ".wal", 1, s.purgeInterval, s.stopPurge)
 
 	return s, nil
+}
+
+// recoverConfStateFromWALRecords scans WAL snapshot records from newest to
+// oldest and returns the first one that carries a non-empty ConfState.
+// Returns nil if no usable record is found.
+func recoverConfStateFromWALRecords(walSnaps []walpb.Snapshot) *walpb.Snapshot {
+	for i := len(walSnaps) - 1; i >= 0; i-- {
+		if walSnaps[i].ConfState != nil && len(walSnaps[i].ConfState.Voters) > 0 {
+			return &walSnaps[i]
+		}
+	}
+
+	return nil
 }
 
 // InitialState returns the saved HardState and ConfState information.

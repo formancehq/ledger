@@ -300,7 +300,8 @@ func NewNode(
 			"peerCount":     len(cfg.Peers),
 		}).Infof("Restart detected: WAL already has ConfState (not a fresh start)")
 
-		if snapshot.Metadata.Index > 0 {
+		switch {
+		case snapshot.Metadata.Index > 0 && len(snapshot.Data) > 0:
 			logger.WithFields(map[string]any{
 				"index":        snapshot.Metadata.Index,
 				"snapshotSize": len(snapshot.Data),
@@ -335,7 +336,21 @@ func NewNode(
 			}
 
 			logger.Infof("Snapshot restored successfully")
-		} else {
+		case snapshot.Metadata.Index > 0:
+			// Recovered snapshot from WAL records (snap file was lost).
+			// ConfState is available but peer addresses are not — they will be
+			// rediscovered via etcd. The FSM state lives in Pebble (separate
+			// volume), so no data resync is needed.
+			logger.WithFields(map[string]any{
+				"index": snapshot.Metadata.Index,
+			}).Errorf("Snapshot at index %d has no peer addresses (snap file was lost); "+
+				"peers will be rediscovered via etcd",
+				snapshot.Metadata.Index)
+
+			if err := fsm.InstallSnapshot(context.Background(), snapshot); err != nil {
+				panic(err)
+			}
+		default:
 			logger.Infof("Empty snapshot found, starting with empty Machine")
 		}
 
