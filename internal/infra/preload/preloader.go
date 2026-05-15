@@ -460,6 +460,23 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot,
 		})
 	}
 
+	if len(needs.LedgerMetadata) > 0 {
+		launch(func(i int) {
+			var r *resolveResult
+			r, results[i].err = resolveAttributePreload(
+				needs.LedgerMetadata, nextIndex, boundary,
+				p.cache.LedgerMetadata, p.loaders.LedgerMetadata,
+				p.attrs.LedgerMetadata.Get, p.store,
+				buildLedgerMetadataPreload, false,
+				dal.AttributeCodeLedgerMetadata, nil,
+				p.bloomFilter(dal.AttributeCodeLedgerMetadata),
+				p.logger, "ledger_metadata",
+			)
+			results[i].resolve = r
+			results[i].loader = p.loaders.LedgerMetadata
+		})
+	}
+
 	wg.Wait()
 
 	// Build CleanupToken and merge results, returning first error encountered.

@@ -255,6 +255,48 @@ func (lk *LedgerKey) Unmarshal(data []byte) error {
 
 var _ CanonicalBytes = (*LedgerKey)(nil)
 
+// LedgerMetadataKey represents a metadata key scoped to a ledger.
+type LedgerMetadataKey struct {
+	Ledger string
+	Key    string
+}
+
+// Bytes returns a canonical byte representation of the ledger metadata key.
+// Format: [ledger]\x01[key].
+func (lmk LedgerMetadataKey) Bytes() []byte {
+	ret := make([]byte, len(lmk.Ledger)+1+len(lmk.Key))
+	n := copy(ret, lmk.Ledger)
+	ret[n] = 0x01
+	n++
+	copy(ret[n:], lmk.Key)
+
+	return ret
+}
+
+// Unmarshal parses canonical bytes into the LedgerMetadataKey.
+func (lmk *LedgerMetadataKey) Unmarshal(d []byte) error {
+	separator := -1
+
+	for i, b := range d {
+		if b == 0x01 {
+			separator = i
+
+			break
+		}
+	}
+
+	if separator == -1 {
+		return errors.New("invalid ledger metadata key bytes: missing separator")
+	}
+
+	lmk.Ledger = string(d[:separator])
+	lmk.Key = string(d[separator+1:])
+
+	return nil
+}
+
+var _ CanonicalBytes = (*LedgerMetadataKey)(nil)
+
 // SinkConfigKey uniquely identifies an event sink by name.
 type SinkConfigKey struct {
 	Name string

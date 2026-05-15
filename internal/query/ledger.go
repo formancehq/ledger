@@ -12,6 +12,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
@@ -65,4 +66,42 @@ func GetLedgerByName(ctx context.Context, reader dal.PebbleReader, name string) 
 	}
 
 	return info, nil
+}
+
+// EnrichLedgerMetadata populates the Metadata field on LedgerInfo by scanning
+// the ledger metadata attributes from Pebble. The metadata field on LedgerInfo
+// is read-time only (not stored as part of LedgerInfo in the attribute store).
+func EnrichLedgerMetadata(reader dal.PebbleReader, attrs *attributes.Attributes, info *commonpb.LedgerInfo) error {
+	if info == nil {
+		return nil
+	}
+
+	// Canonical prefix for this ledger's metadata: [ledger]\x01
+	prefix := make([]byte, len(info.GetName())+1)
+	n := copy(prefix, info.GetName())
+	prefix[n] = 0x01
+
+	entries, err := attrs.LedgerMetadata.ComputeAllForPrefix(reader, prefix)
+	if err != nil {
+		return fmt.Errorf("scanning ledger metadata for %q: %w", info.GetName(), err)
+	}
+
+	if len(entries) == 0 {
+		return nil
+	}
+
+	metadata := make(map[string]*commonpb.MetadataValue, len(entries))
+
+	for _, entry := range entries {
+		var key domain.LedgerMetadataKey
+		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
+			return fmt.Errorf("unmarshaling ledger metadata key: %w", err)
+		}
+
+		metadata[key.Key] = entry.Value
+	}
+
+	info.Metadata = metadata
+
+	return nil
 }

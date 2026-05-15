@@ -958,6 +958,26 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i--
 			dAtA[i] = 0xd2
 		}
+	case *LogPayload_SavedLedgerMetadata:
+		if v.SavedLedgerMetadata != nil {
+			size, _ := v.SavedLedgerMetadata.MarshalToSizedBufferDeterministicVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x1
+			i--
+			dAtA[i] = 0xda
+		}
+	case *LogPayload_DeletedLedgerMetadata:
+		if v.DeletedLedgerMetadata != nil {
+			size, _ := v.DeletedLedgerMetadata.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x1
+			i--
+			dAtA[i] = 0xe2
+		}
 	}
 	return len(dAtA) - i, nil
 }
@@ -1128,6 +1148,84 @@ func (m *UpdatedPreparedQueryLog) MarshalDeterministicVT(dAtA []byte) []byte {
 }
 
 func (m *DeletedPreparedQueryLog) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *SavedLedgerMetadataLog) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	sz := m.SizeVT()
+	buf := make([]byte, sz)
+	n, _ := m.MarshalToSizedBufferDeterministicVT(buf)
+	return append(dAtA, buf[sz-n:]...)
+}
+
+func (m *SavedLedgerMetadataLog) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.PreviousValues) > 0 {
+		for _, k := range slices.Sorted(maps.Keys(m.PreviousValues)) {
+			v := m.PreviousValues[k]
+			baseI := i
+			size, _ := v.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x12
+			i -= len(k)
+			copy(dAtA[i:], k)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(k)))
+			i--
+			dAtA[i] = 0xa
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
+	if len(m.Metadata) > 0 {
+		for _, k := range slices.Sorted(maps.Keys(m.Metadata)) {
+			v := m.Metadata[k]
+			baseI := i
+			size, _ := v.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x12
+			i -= len(k)
+			copy(dAtA[i:], k)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(k)))
+			i--
+			dAtA[i] = 0xa
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
+			i--
+			dAtA[i] = 0x12
+		}
+	}
+	if len(m.Ledger) > 0 {
+		i -= len(m.Ledger)
+		copy(dAtA[i:], m.Ledger)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *DeletedLedgerMetadataLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -2050,6 +2148,25 @@ func (m *LedgerInfo) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.Metadata) > 0 {
+		for _, k := range slices.Sorted(maps.Keys(m.Metadata)) {
+			v := m.Metadata[k]
+			baseI := i
+			size, _ := v.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x12
+			i -= len(k)
+			copy(dAtA[i:], k)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(k)))
+			i--
+			dAtA[i] = 0xa
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
+			i--
+			dAtA[i] = 0x62
+		}
 	}
 	if m.DefaultEnforcementMode != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DefaultEnforcementMode))

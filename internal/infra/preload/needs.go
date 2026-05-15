@@ -18,6 +18,7 @@ type Needs struct {
 	NumscriptVersions map[domain.NumscriptVersionKey]struct{}
 	NumscriptContents map[domain.NumscriptEntryKey]struct{}
 	PreparedQueries   map[domain.PreparedQueryKey]struct{}
+	LedgerMetadata    map[domain.LedgerMetadataKey]struct{}
 }
 
 // TotalKeys returns the total number of keys across all need types.
@@ -26,7 +27,8 @@ func (n *Needs) TotalKeys() int {
 		len(n.IdempotencyKeys) + len(n.References) +
 		len(n.Metadata) + len(n.Transactions) +
 		len(n.SinkConfigs) + len(n.NumscriptVersions) +
-		len(n.NumscriptContents) + len(n.PreparedQueries)
+		len(n.NumscriptContents) + len(n.PreparedQueries) +
+		len(n.LedgerMetadata)
 }
 
 // NewNeeds creates a Needs with all maps initialized.
@@ -43,5 +45,6 @@ func NewNeeds() *Needs {
 		NumscriptVersions: make(map[domain.NumscriptVersionKey]struct{}),
 		NumscriptContents: make(map[domain.NumscriptEntryKey]struct{}),
 		PreparedQueries:   make(map[domain.PreparedQueryKey]struct{}),
+		LedgerMetadata:    make(map[domain.LedgerMetadataKey]struct{}),
 	}
 }

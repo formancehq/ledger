@@ -191,6 +191,7 @@ var (
 	AttributeCodeNumscriptVersion = byte('N')
 	AttributeCodeNumscriptContent = byte('C')
 	AttributeCodePreparedQuery    = byte('P')
+	AttributeCodeLedgerMetadata   = byte('D') // 'D' for Descriptive metadata on ledgers
 
 	// --- Global system zone [0xF2, 0xFF] ---.
 

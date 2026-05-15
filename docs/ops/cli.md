@@ -300,6 +300,69 @@ ledgerctl ledgers stats --ledger my-ledger --json
 ledgerctl ledgers stats
 ```
 
+#### ledgers set-metadata
+
+Set metadata key-value pairs on a ledger. Metadata is stored separately from ledger configuration and is returned in `GET /ledger` responses.
+
+**Aliases:** `set-meta`, `sm`
+
+```bash
+ledgerctl ledgers set-metadata [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ledger` | | Name of the ledger |
+| `-m, --metadata` | | Metadata key=value pairs (can be repeated) |
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `10s` | Request timeout |
+
+**Example:**
+
+```bash
+# Set metadata on a ledger
+ledgerctl ledgers set-metadata --ledger my-ledger -m environment=production -m team=payments
+
+# Set multiple metadata pairs
+ledgerctl ledgers set-metadata --ledger my-ledger -m region=eu-west-1 -m version=v3
+
+# Interactive mode (will prompt for ledger and metadata)
+ledgerctl ledgers set-metadata
+```
+
+#### ledgers delete-metadata
+
+Delete a metadata key from a ledger.
+
+**Aliases:** `del-meta`, `dm`, `rm-meta`
+
+```bash
+ledgerctl ledgers delete-metadata [key] [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ledger` | | Name of the ledger |
+| `-y, --yes` | `false` | Skip confirmation prompt |
+| `--timeout` | `10s` | Request timeout |
+
+**Example:**
+
+```bash
+# Delete a metadata key
+ledgerctl ledgers delete-metadata region --ledger my-ledger
+
+# Delete without confirmation
+ledgerctl ledgers delete-metadata region --ledger my-ledger -y
+
+# Interactive mode
+ledgerctl ledgers delete-metadata
+```
+
 #### ledgers set-metadata-type
 
 Declare a typed metadata field on a ledger. Once set, all new metadata values for this key must conform to the declared type. Existing untyped values will be converted in the background.

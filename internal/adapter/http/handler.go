@@ -132,6 +132,8 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 				r.Delete("/{ledgerName}/transactions/{transactionId}/metadata/{key}", server.handleDeleteTransactionMetadata)
 				r.Post("/{ledgerName}/accounts/{address}/metadata", server.handleSaveAccountMetadata)
 				r.Delete("/{ledgerName}/accounts/{address}/metadata/{key}", server.handleDeleteAccountMetadata)
+				r.Post("/{ledgerName}/metadata", server.handleSaveLedgerMetadata)
+				r.Delete("/{ledgerName}/metadata/{key}", server.handleDeleteLedgerMetadata)
 				r.Put("/{ledgerName}/metadata-schema/{targetType}/{key}", server.handleSetMetadataType)
 				r.Delete("/{ledgerName}/metadata-schema/{targetType}/{key}", server.handleRemoveMetadataType)
 				r.Post("/{ledgerName}/account-types", server.handleAddAccountType)

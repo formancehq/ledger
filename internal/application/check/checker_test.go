@@ -276,6 +276,12 @@ func (s *inMemoryStore) DeleteAccountMetadata(key domain.MetadataKey) {
 	s.modifiedMetadata[k] = struct{}{}
 }
 
+func (s *inMemoryStore) GetLedgerMetadata(_ domain.LedgerMetadataKey) (*commonpb.MetadataValue, error) {
+	return nil, domain.ErrNotFound
+}
+func (s *inMemoryStore) PutLedgerMetadata(_ domain.LedgerMetadataKey, _ *commonpb.MetadataValue) {}
+func (s *inMemoryStore) DeleteLedgerMetadata(_ domain.LedgerMetadataKey)                         {}
+
 func (s *inMemoryStore) GetReverted(key domain.TransactionKey) (bool, error) {
 	return s.reverted[string(key.Bytes())], nil
 }

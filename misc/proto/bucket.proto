@@ -220,6 +220,8 @@ message Request {
     DeleteQueryCheckpointRequest delete_query_checkpoint = 33;
     SetQueryCheckpointScheduleRequest set_query_checkpoint_schedule = 34;
     DeleteQueryCheckpointScheduleRequest delete_query_checkpoint_schedule = 35;
+    SaveLedgerMetadataRequest save_ledger_metadata = 36;
+    DeleteLedgerMetadataRequest delete_ledger_metadata = 37;
   }
   signature.RequestSignature signature = 5;
 }
@@ -235,6 +237,18 @@ message DeleteQueryCheckpointRequest {
 
 message PromoteLedgerRequest {
   string ledger = 1;
+}
+
+// SaveLedgerMetadataRequest sets metadata key-value pairs on a ledger.
+message SaveLedgerMetadataRequest {
+  string ledger = 1;
+  map<string, common.MetadataValue> metadata = 2;
+}
+
+// DeleteLedgerMetadataRequest removes a single metadata key from a ledger.
+message DeleteLedgerMetadataRequest {
+  string ledger = 1;
+  string key = 2;
 }
 
 // AddEventsSinkRequest adds or updates a named sink configuration.

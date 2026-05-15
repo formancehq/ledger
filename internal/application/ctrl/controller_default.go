@@ -101,9 +101,16 @@ func (ctrl *DefaultController) ListLedgers(ctx context.Context) (dal.Cursor[*com
 
 		return nil, err
 	}
-	// Filter out soft-deleted ledgers, close handle when cursor closes
+	// Filter out soft-deleted ledgers, enrich with metadata, close handle when cursor closes
 	filtered := dal.NewFilteredCursor(cursor, func(ledger *commonpb.LedgerInfo) bool {
-		return ledger.GetDeletedAt() == nil
+		if ledger.GetDeletedAt() != nil {
+			return false
+		}
+
+		// Best-effort enrichment — metadata is decorative, not critical for listing
+		_ = query.EnrichLedgerMetadata(handle, ctrl.attrs, ledger)
+
+		return true
 	})
 
 	return dal.NewClosingCursor(filtered, handle), nil
@@ -503,6 +510,11 @@ func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string)
 		}
 
 		ledgerInfo.MirrorSyncProgress = progress
+	}
+
+	// Enrich with ledger metadata from separate attribute store
+	if err := query.EnrichLedgerMetadata(ctrl.store, ctrl.attrs, ledgerInfo); err != nil {
+		return nil, fmt.Errorf("enriching ledger metadata: %w", err)
 	}
 
 	return ledgerInfo, nil

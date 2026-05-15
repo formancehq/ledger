@@ -21,6 +21,8 @@ This document compares the POC's API with the original Formance ledger API and d
 | Delete account metadata | ✅ | ✅ | |
 | Save transaction metadata | ✅ | ✅ | |
 | Delete transaction metadata | ✅ | ✅ | |
+| Save ledger metadata | ✅ | ❌ | New in v3 |
+| Delete ledger metadata | ✅ | ❌ | New in v3 |
 | **Bulk** |
 | Bulk CREATE_TRANSACTION | ✅ | ✅ | |
 | Bulk ADD_METADATA | ✅ | ✅ | |
@@ -149,6 +151,8 @@ See [Numscript Guide](./numscript.md) for complete documentation.
 ### 3. Metadata Management
 
 **Endpoints:**
+- `POST /{ledgerName}/metadata` - Save ledger metadata (new in v3)
+- `DELETE /{ledgerName}/metadata/{key}` - Delete ledger metadata (new in v3)
 - `POST /{ledgerName}/accounts/{address}/metadata` - Save account metadata
 - `DELETE /{ledgerName}/accounts/{address}/metadata/{key}` - Delete account metadata
 - `POST /{ledgerName}/transactions/{transactionId}/metadata` - Save transaction metadata
@@ -156,6 +160,8 @@ See [Numscript Guide](./numscript.md) for complete documentation.
 - `GET /{ledgerName}/metadata-schema` - Get metadata schema status (field types and conversion progress)
 - `PUT /{ledgerName}/metadata-schema/{targetType}/{key}` - Set/change metadata field type
 - `DELETE /{ledgerName}/metadata-schema/{targetType}/{key}` - Remove metadata field type declaration
+
+Ledger metadata is stored separately from ledger configuration (LedgerInfo) and is populated at read time when calling `GET /{ledgerName}` or `GET /` (list ledgers). It uses the same typed value system as account/transaction metadata.
 
 ### 4. Bulk Operations
 

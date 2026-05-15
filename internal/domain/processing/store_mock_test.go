@@ -102,6 +102,18 @@ func (mr *MockInMemoryStoreMockRecorder) DeleteAccountMetadata(key any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAccountMetadata", reflect.TypeOf((*MockInMemoryStore)(nil).DeleteAccountMetadata), key)
 }
 
+// DeleteLedgerMetadata mocks base method.
+func (m *MockInMemoryStore) DeleteLedgerMetadata(key domain.LedgerMetadataKey) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "DeleteLedgerMetadata", key)
+}
+
+// DeleteLedgerMetadata indicates an expected call of DeleteLedgerMetadata.
+func (mr *MockInMemoryStoreMockRecorder) DeleteLedgerMetadata(key any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLedgerMetadata", reflect.TypeOf((*MockInMemoryStore)(nil).DeleteLedgerMetadata), key)
+}
+
 // DeleteNumscriptLatest mocks base method.
 func (m *MockInMemoryStore) DeleteNumscriptLatest(ledger, name string) {
 	m.ctrl.T.Helper()
@@ -292,6 +304,21 @@ func (m *MockInMemoryStore) GetLedger(name string) (*commonpb.LedgerInfo, bool) 
 func (mr *MockInMemoryStoreMockRecorder) GetLedger(name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLedger", reflect.TypeOf((*MockInMemoryStore)(nil).GetLedger), name)
+}
+
+// GetLedgerMetadata mocks base method.
+func (m *MockInMemoryStore) GetLedgerMetadata(key domain.LedgerMetadataKey) (*commonpb.MetadataValue, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLedgerMetadata", key)
+	ret0, _ := ret[0].(*commonpb.MetadataValue)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetLedgerMetadata indicates an expected call of GetLedgerMetadata.
+func (mr *MockInMemoryStoreMockRecorder) GetLedgerMetadata(key any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLedgerMetadata", reflect.TypeOf((*MockInMemoryStore)(nil).GetLedgerMetadata), key)
 }
 
 // GetNextAuditSequenceID mocks base method.
@@ -599,6 +626,18 @@ func (m *MockInMemoryStore) PutLedger(name string, info *commonpb.LedgerInfo) {
 func (mr *MockInMemoryStoreMockRecorder) PutLedger(name, info any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutLedger", reflect.TypeOf((*MockInMemoryStore)(nil).PutLedger), name, info)
+}
+
+// PutLedgerMetadata mocks base method.
+func (m *MockInMemoryStore) PutLedgerMetadata(key domain.LedgerMetadataKey, value *commonpb.MetadataValue) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "PutLedgerMetadata", key, value)
+}
+
+// PutLedgerMetadata indicates an expected call of PutLedgerMetadata.
+func (mr *MockInMemoryStoreMockRecorder) PutLedgerMetadata(key, value any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutLedgerMetadata", reflect.TypeOf((*MockInMemoryStore)(nil).PutLedgerMetadata), key, value)
 }
 
 // PutNumscript mocks base method.

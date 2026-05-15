@@ -213,3 +213,7 @@ func buildNumscriptContentPreload(id *raftcmdpb.AttributeID, value *commonpb.Num
 func buildPreparedQueryPreload(id *raftcmdpb.AttributeID, value *commonpb.PreparedQuery) *raftcmdpb.Preload {
 	return &raftcmdpb.Preload{Type: &raftcmdpb.Preload_PreparedQuery{PreparedQuery: &raftcmdpb.PreloadPreparedQuery{Id: id, Value: value}}}
 }
+
+func buildLedgerMetadataPreload(id *raftcmdpb.AttributeID, value *commonpb.MetadataValue) *raftcmdpb.Preload {
+	return &raftcmdpb.Preload{Type: &raftcmdpb.Preload_LedgerMetadata{LedgerMetadata: &raftcmdpb.PreloadLedgerMetadata{Id: id, Value: value}}}
+}

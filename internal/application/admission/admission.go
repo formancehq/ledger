@@ -866,6 +866,23 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 					}] = struct{}{}
 				}
 			}
+		case *raftcmdpb.Order_SaveLedgerMetadata:
+			ledgerName := orderType.SaveLedgerMetadata.GetLedger()
+			p.Ledgers[domain.LedgerKey{Name: ledgerName}] = struct{}{}
+
+			for key := range orderType.SaveLedgerMetadata.GetMetadata() {
+				p.LedgerMetadata[domain.LedgerMetadataKey{
+					Ledger: ledgerName,
+					Key:    key,
+				}] = struct{}{}
+			}
+		case *raftcmdpb.Order_DeleteLedgerMetadata:
+			ledgerName := orderType.DeleteLedgerMetadata.GetLedger()
+			p.Ledgers[domain.LedgerKey{Name: ledgerName}] = struct{}{}
+			p.LedgerMetadata[domain.LedgerMetadataKey{
+				Ledger: ledgerName,
+				Key:    orderType.DeleteLedgerMetadata.GetKey(),
+			}] = struct{}{}
 		}
 	}
 
@@ -1251,6 +1268,20 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 						EnforcementMode: reqType.SetDefaultEnforcementMode.GetEnforcementMode(),
 					},
 				},
+			},
+		}
+	case *servicepb.Request_SaveLedgerMetadata:
+		order.Type = &raftcmdpb.Order_SaveLedgerMetadata{
+			SaveLedgerMetadata: &raftcmdpb.SaveLedgerMetadataOrder{
+				Ledger:   reqType.SaveLedgerMetadata.GetLedger(),
+				Metadata: reqType.SaveLedgerMetadata.GetMetadata(),
+			},
+		}
+	case *servicepb.Request_DeleteLedgerMetadata:
+		order.Type = &raftcmdpb.Order_DeleteLedgerMetadata{
+			DeleteLedgerMetadata: &raftcmdpb.DeleteLedgerMetadataOrder{
+				Ledger: reqType.DeleteLedgerMetadata.GetLedger(),
+				Key:    reqType.DeleteLedgerMetadata.GetKey(),
 			},
 		}
 	default:

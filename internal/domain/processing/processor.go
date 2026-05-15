@@ -236,6 +236,10 @@ func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s InMemoryStore)
 		return p.processSetQueryCheckpointSchedule(orderType.SetQueryCheckpointSchedule, s)
 	case *raftcmdpb.Order_DeleteQueryCheckpointSchedule:
 		return p.processDeleteQueryCheckpointSchedule(s)
+	case *raftcmdpb.Order_SaveLedgerMetadata:
+		return p.processAddLedgerMetadata(orderType.SaveLedgerMetadata, s)
+	case *raftcmdpb.Order_DeleteLedgerMetadata:
+		return p.processDeleteLedgerMetadata(orderType.DeleteLedgerMetadata, s)
 	default:
 		return nil, errors.New("invalid order type")
 	}

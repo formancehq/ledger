@@ -38,6 +38,8 @@ message Order {
     DeleteQueryCheckpointOrder delete_query_checkpoint = 27;
     SetQueryCheckpointScheduleOrder set_query_checkpoint_schedule = 28;
     DeleteQueryCheckpointScheduleOrder delete_query_checkpoint_schedule = 29;
+    SaveLedgerMetadataOrder save_ledger_metadata = 30;
+    DeleteLedgerMetadataOrder delete_ledger_metadata = 31;
   }
   signature.RequestSignature signature = 5;
 }
@@ -341,6 +343,18 @@ message DeleteMetadataOrder {
   string key = 2;
 }
 
+// SaveLedgerMetadataOrder sets metadata key-value pairs on a ledger.
+message SaveLedgerMetadataOrder {
+  string ledger = 1;
+  map<string, common.MetadataValue> metadata = 2;
+}
+
+// DeleteLedgerMetadataOrder removes a single metadata key from a ledger.
+message DeleteLedgerMetadataOrder {
+  string ledger = 1;
+  string key = 2;
+}
+
 // ============================================================================
 // Raft Command Wrapper
 // ============================================================================
@@ -439,6 +453,7 @@ message Preload {
      PreloadTransactionState transaction_state = 10;
      PreloadNumscriptContent numscript_content = 11;
      PreloadPreparedQuery prepared_query = 12;
+     PreloadLedgerMetadata ledger_metadata = 13;
   }
 }
 
@@ -495,6 +510,11 @@ message PreloadNumscriptContent {
 message PreloadPreparedQuery {
   AttributeID id = 1;
   common.PreparedQuery value = 2;
+}
+
+message PreloadLedgerMetadata {
+  AttributeID id = 1;
+  common.MetadataValue value = 2;
 }
 
 // ============================================================================

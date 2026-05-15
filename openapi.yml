@@ -566,6 +566,86 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
+  /{ledgerName}/metadata:
+    post:
+      summary: Save ledger metadata
+      description: Saves metadata key-value pairs on the ledger itself. Requires `ledger:write` scope.
+      operationId: saveLedgerMetadata
+      tags:
+        - Ledgers
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                $ref: '#/components/schemas/MetadataValue'
+              description: Metadata key-value pairs (supports typed values)
+              example:
+                environment: production
+                team: payments
+                region: eu-west-1
+      responses:
+        '204':
+          description: Ledger metadata saved successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
+  /{ledgerName}/metadata/{key}:
+    delete:
+      summary: Delete ledger metadata
+      description: Deletes a metadata key from the ledger. Requires `ledger:write` scope.
+      operationId: deleteLedgerMetadata
+      tags:
+        - Ledgers
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/MetadataKey'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204':
+          description: Ledger metadata deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
   /{ledgerName}/accounts/{address}/metadata:
     post:
       summary: Save account metadata

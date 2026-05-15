@@ -260,6 +260,11 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 		return err
 	}
 
+	// Process LedgerMetadata updates
+	if _, _, err := mergeAndTrackBloom(b.Derived.LedgerMetadata, b.attrs.LedgerMetadata, batch, genByte, dal.AttributeCodeLedgerMetadata, &b.bloomUpdates.LedgerMetadata, "ledger metadata"); err != nil {
+		return err
+	}
+
 	err = AppendLogs(batch, logs...)
 	if err != nil {
 		return fmt.Errorf("failed appending pending logs: %w", err)
@@ -567,6 +572,18 @@ func (b *Buffered) PutAccountMetadata(key domain.MetadataKey, value *commonpb.Me
 
 func (b *Buffered) DeleteAccountMetadata(key domain.MetadataKey) {
 	b.Derived.AccountMetadata.Delete(key)
+}
+
+func (b *Buffered) GetLedgerMetadata(key domain.LedgerMetadataKey) (*commonpb.MetadataValue, error) {
+	return b.Derived.LedgerMetadata.Get(key)
+}
+
+func (b *Buffered) PutLedgerMetadata(key domain.LedgerMetadataKey, value *commonpb.MetadataValue) {
+	b.Derived.LedgerMetadata.Put(key, value)
+}
+
+func (b *Buffered) DeleteLedgerMetadata(key domain.LedgerMetadataKey) {
+	b.Derived.LedgerMetadata.Delete(key)
 }
 
 func (b *Buffered) GetReverted(key domain.TransactionKey) (bool, error) {

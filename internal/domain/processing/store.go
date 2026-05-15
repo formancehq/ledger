@@ -28,6 +28,11 @@ type InMemoryStore interface {
 	PutAccountMetadata(key domain.MetadataKey, value *commonpb.MetadataValue)
 	DeleteAccountMetadata(key domain.MetadataKey)
 
+	// Ledger metadata operations
+	GetLedgerMetadata(key domain.LedgerMetadataKey) (*commonpb.MetadataValue, error)
+	PutLedgerMetadata(key domain.LedgerMetadataKey, value *commonpb.MetadataValue)
+	DeleteLedgerMetadata(key domain.LedgerMetadataKey)
+
 	// Transaction reversion status operations
 	GetReverted(key domain.TransactionKey) (bool, error)
 	PutReverted(key domain.TransactionKey, reverted bool)

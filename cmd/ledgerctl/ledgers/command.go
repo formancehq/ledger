@@ -18,6 +18,8 @@ func NewCommand() *cobra.Command {
 	cmd.AddCommand(NewCreateCommand())
 	cmd.AddCommand(NewDeleteCommand())
 	cmd.AddCommand(NewPromoteCommand())
+	cmd.AddCommand(NewSetMetadataCommand())
+	cmd.AddCommand(NewDeleteMetadataCommand())
 	cmd.AddCommand(NewSetMetadataTypeCommand())
 	cmd.AddCommand(NewRemoveMetadataTypeCommand())
 	cmd.AddCommand(NewGetSchemaCommand())

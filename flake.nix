@@ -51,7 +51,6 @@
             k6
             kubernetes-helm
             nodejs_22
-            protobuf_27
             python314
             trufflehog
             uv
@@ -61,6 +60,7 @@
           unstablePackages = with pkgs-unstable; [
             go
             go-tools
+            protobuf_34
             goperf
             gotools
             mockgen

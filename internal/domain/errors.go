@@ -83,6 +83,7 @@ var (
 	ErrNumscriptContentRequired   = errors.New("numscript content is required")
 	ErrScriptAndReferenceConflict = errors.New("cannot specify both script and scriptReference")
 	ErrScriptRequired             = errors.New("numscript: script is required")
+	ErrLedgerNameRequired         = errors.New("ledger name is required")
 )
 
 // ErrLedgerAlreadyExists is returned when attempting to create a ledger that already exists.

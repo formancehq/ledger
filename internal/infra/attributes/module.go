@@ -21,6 +21,7 @@ type Attributes struct {
 	NumscriptVersion *Attribute[*commonpb.NumscriptVersionValue]
 	NumscriptContent *Attribute[*commonpb.NumscriptInfo]
 	PreparedQuery    *Attribute[*commonpb.PreparedQuery]
+	LedgerMetadata   *Attribute[*commonpb.MetadataValue]
 }
 
 // New creates a new Attributes instance with all attribute types initialized.
@@ -36,6 +37,7 @@ func New() *Attributes {
 		NumscriptVersion: NewNumscriptVersionAttribute(),
 		NumscriptContent: NewNumscriptContentAttribute(),
 		PreparedQuery:    NewPreparedQueryAttribute(),
+		LedgerMetadata:   NewLedgerMetadataAttribute(),
 	}
 }
 
@@ -125,6 +127,15 @@ func NewPreparedQueryAttribute() *Attribute[*commonpb.PreparedQuery] {
 	return &Attribute[*commonpb.PreparedQuery]{
 		prefix:   dal.AttributeCodePreparedQuery,
 		newValue: func() *commonpb.PreparedQuery { return &commonpb.PreparedQuery{} },
+		keyBuf:   make([]byte, 128),
+	}
+}
+
+// NewLedgerMetadataAttribute creates a new LedgerMetadata attribute for storing metadata on ledgers.
+func NewLedgerMetadataAttribute() *Attribute[*commonpb.MetadataValue] {
+	return &Attribute[*commonpb.MetadataValue]{
+		prefix:   dal.AttributeCodeLedgerMetadata,
+		newValue: func() *commonpb.MetadataValue { return &commonpb.MetadataValue{} },
 		keyBuf:   make([]byte, 128),
 	}
 }

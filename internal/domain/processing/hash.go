@@ -70,6 +70,7 @@ func serializeLogForHash(hashBuf []byte, lastHash []byte, log *commonpb.Log) []b
 func computeBLAKE3(hasher *blake3.Hasher, data []byte) []byte {
 	if hasher == nil {
 		h := blake3.Sum256(data)
+
 		return h[:]
 	}
 

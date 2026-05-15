@@ -220,6 +220,7 @@ type FilterSet struct {
 	SinkConfig       *Filter
 	NumscriptVersion *Filter
 	NumscriptContent *Filter
+	LedgerMetadata   *Filter
 
 	meter metric.Meter
 
@@ -247,6 +248,8 @@ func (fs *FilterSet) FilterForAttrType(attrType byte) *Filter {
 		return fs.NumscriptVersion
 	case dal.AttributeCodeNumscriptContent:
 		return fs.NumscriptContent
+	case dal.AttributeCodeLedgerMetadata:
+		return fs.LedgerMetadata
 	default:
 		return nil
 	}
@@ -283,6 +286,7 @@ type BloomUpdates struct {
 	NumscriptVersions []attributes.U128
 	NumscriptContents []attributes.U128
 	PreparedQueries   []attributes.U128
+	LedgerMetadata    []attributes.U128
 }
 
 // Reset clears all slices while preserving their backing arrays.
@@ -297,6 +301,7 @@ func (u *BloomUpdates) Reset() {
 	u.NumscriptVersions = u.NumscriptVersions[:0]
 	u.NumscriptContents = u.NumscriptContents[:0]
 	u.PreparedQueries = u.PreparedQueries[:0]
+	u.LedgerMetadata = u.LedgerMetadata[:0]
 }
 
 // AddCanonicalKeys inserts pre-hashed U128 IDs into the corresponding bloom filters.
@@ -320,6 +325,7 @@ func (fs *FilterSet) AddCanonicalKeys(updates *BloomUpdates) {
 	addKeys(fs.SinkConfig, updates.SinkConfigs)
 	addKeys(fs.NumscriptVersion, updates.NumscriptVersions)
 	addKeys(fs.NumscriptContent, updates.NumscriptContents)
+	addKeys(fs.LedgerMetadata, updates.LedgerMetadata)
 }
 
 // PersistDirtyBlocks writes all dirty blocks from all filters to the Pebble batch.
@@ -411,7 +417,7 @@ func (fs *FilterSet) allFilters() []*Filter {
 	return []*Filter{
 		fs.Volume, fs.Metadata, fs.Reference,
 		fs.Ledger, fs.Boundary, fs.Transaction, fs.SinkConfig,
-		fs.NumscriptVersion, fs.NumscriptContent,
+		fs.NumscriptVersion, fs.NumscriptContent, fs.LedgerMetadata,
 	}
 }
 
@@ -446,6 +452,7 @@ func bloomTypes(cfg *commonpb.ClusterConfig) []bloomType {
 		{cfg.GetBloomSinkConfigs(), dal.AttributeCodeSinkConfig, "sink_configs", func(fs *FilterSet) **Filter { return &fs.SinkConfig }},
 		{cfg.GetBloomNumscriptVersions(), dal.AttributeCodeNumscriptVersion, "numscript_versions", func(fs *FilterSet) **Filter { return &fs.NumscriptVersion }},
 		{cfg.GetBloomNumscriptContents(), dal.AttributeCodeNumscriptContent, "numscript_contents", func(fs *FilterSet) **Filter { return &fs.NumscriptContent }},
+		{cfg.GetBloomLedgerMetadata(), dal.AttributeCodeLedgerMetadata, "ledger_metadata", func(fs *FilterSet) **Filter { return &fs.LedgerMetadata }},
 	}
 }
 

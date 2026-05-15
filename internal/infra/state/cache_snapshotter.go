@@ -246,6 +246,7 @@ func NewCacheSnapshotter(logger logging.Logger, dataStore *dal.Store, registry *
 	numscriptVersions := newProtoSnapshotSlot(dal.AttributeCodeNumscriptVersion, c.NumscriptVersions, func() *commonpb.NumscriptVersionValue { return &commonpb.NumscriptVersionValue{} })
 	numscriptContents := newProtoSnapshotSlot(dal.AttributeCodeNumscriptContent, c.NumscriptContents, func() *commonpb.NumscriptInfo { return &commonpb.NumscriptInfo{} })
 	preparedQueries := newProtoSnapshotSlot(dal.AttributeCodePreparedQuery, c.PreparedQueries, func() *commonpb.PreparedQuery { return &commonpb.PreparedQuery{} })
+	ledgerMetadata := newProtoSnapshotSlot(dal.AttributeCodeLedgerMetadata, c.LedgerMetadata, func() *commonpb.MetadataValue { return &commonpb.MetadataValue{} })
 
 	return &CacheSnapshotter{
 		logger:       logger,
@@ -255,7 +256,7 @@ func NewCacheSnapshotter(logger logging.Logger, dataStore *dal.Store, registry *
 		slots: []cacheSnapshotSlot{
 			volumes, metadata, ledgers, boundaries, references,
 			transactions, sinks, numscriptVersions, numscriptContents,
-			preparedQueries,
+			preparedQueries, ledgerMetadata,
 		},
 		touchSlots: map[byte]cacheSnapshotSlot{
 			dal.AttributeCodeVolume:           volumes,
@@ -268,6 +269,7 @@ func NewCacheSnapshotter(logger logging.Logger, dataStore *dal.Store, registry *
 			dal.AttributeCodeNumscriptVersion: numscriptVersions,
 			dal.AttributeCodeNumscriptContent: numscriptContents,
 			dal.AttributeCodePreparedQuery:    preparedQueries,
+			dal.AttributeCodeLedgerMetadata:   ledgerMetadata,
 		},
 	}
 }
@@ -330,6 +332,8 @@ func extractPreload(p *raftcmdpb.Preload) (byte, *raftcmdpb.AttributeID, any) {
 		return dal.AttributeCodeNumscriptContent, v.NumscriptContent.GetId(), v.NumscriptContent.GetValue()
 	case *raftcmdpb.Preload_PreparedQuery:
 		return dal.AttributeCodePreparedQuery, v.PreparedQuery.GetId(), v.PreparedQuery.GetValue()
+	case *raftcmdpb.Preload_LedgerMetadata:
+		return dal.AttributeCodeLedgerMetadata, v.LedgerMetadata.GetId(), v.LedgerMetadata.GetValue()
 	}
 
 	return 0, nil, nil

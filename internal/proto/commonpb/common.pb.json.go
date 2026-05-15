@@ -386,6 +386,7 @@ func (x *LedgerInfo) MarshalJSON() ([]byte, error) {
 		LogBuiltinIndexes      json.RawValue `json:"logBuiltinIndexes,omitempty"`
 		AccountTypes           json.RawValue `json:"accountTypes,omitempty"`
 		DefaultEnforcementMode string        `json:"defaultEnforcementMode,omitempty"`
+		Metadata               json.RawValue `json:"metadata,omitempty"`
 	}
 
 	aux := Aux{
@@ -425,6 +426,15 @@ func (x *LedgerInfo) MarshalJSON() ([]byte, error) {
 		}
 
 		aux.AccountTypes = b
+	}
+
+	if len(x.GetMetadata()) > 0 {
+		b, err := json.Marshal(MetadataToAnyMap(x.GetMetadata()))
+		if err != nil {
+			return nil, err
+		}
+
+		aux.Metadata = b
 	}
 
 	return json.Marshal(aux)

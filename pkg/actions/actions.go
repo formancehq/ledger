@@ -261,6 +261,30 @@ func DeleteTransactionMetadataAction(ledgerName string, transactionID uint64, ke
 	}
 }
 
+// SaveLedgerMetadataAction creates an action for saving ledger metadata.
+func SaveLedgerMetadataAction(ledgerName string, metadata map[string]string) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_SaveLedgerMetadata{
+			SaveLedgerMetadata: &servicepb.SaveLedgerMetadataRequest{
+				Ledger:   ledgerName,
+				Metadata: commonpb.MetadataFromGoMap(metadata),
+			},
+		},
+	}
+}
+
+// DeleteLedgerMetadataAction creates an action for deleting a ledger metadata key.
+func DeleteLedgerMetadataAction(ledgerName, key string) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_DeleteLedgerMetadata{
+			DeleteLedgerMetadata: &servicepb.DeleteLedgerMetadataRequest{
+				Ledger: ledgerName,
+				Key:    key,
+			},
+		},
+	}
+}
+
 // RevertTransactionAction creates an action for reverting a transaction.
 func RevertTransactionAction(ledgerName string, transactionID uint64, force, atEffectiveDate bool, metadata map[string]string) *servicepb.Request {
 	return &servicepb.Request{

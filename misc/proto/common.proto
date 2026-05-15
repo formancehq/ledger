@@ -312,6 +312,8 @@ message LogPayload {
     DeletedQueryCheckpointLog deleted_query_checkpoint = 24;
     SetQueryCheckpointScheduleLog set_query_checkpoint_schedule = 25;
     DeleteQueryCheckpointScheduleLog delete_query_checkpoint_schedule = 26;
+    SavedLedgerMetadataLog saved_ledger_metadata = 27;
+    DeletedLedgerMetadataLog deleted_ledger_metadata = 28;
   }
 }
 
@@ -389,6 +391,7 @@ message ClusterConfig {
   BloomTypeConfig bloom_numscript_versions = 9;
   BloomTypeConfig bloom_numscript_contents = 10;
   HashAlgorithm hash_algorithm = 11;
+  BloomTypeConfig bloom_ledger_metadata = 12;
 }
 
 // PersistedClusterState wraps ClusterConfig with internal FSM state that must
@@ -424,6 +427,24 @@ message UpdatedPreparedQueryLog {
 message DeletedPreparedQueryLog {
   string ledger = 1;
   string name = 2;
+}
+
+// ============================================================================
+// Ledger Metadata Log Messages
+// ============================================================================
+
+// SavedLedgerMetadataLog records metadata being set on a ledger.
+message SavedLedgerMetadataLog {
+  string ledger = 1;
+  map<string, MetadataValue> metadata = 2;
+  map<string, MetadataValue> previous_values = 3;
+}
+
+// DeletedLedgerMetadataLog records a metadata key being removed from a ledger.
+message DeletedLedgerMetadataLog {
+  string ledger = 1;
+  string key = 2;
+  MetadataValue previous_value = 3;
 }
 
 // ============================================================================
@@ -799,6 +820,7 @@ message LedgerInfo {
   LogBuiltinIndexConfig log_builtin_indexes = 9;  // Built-in log field index config
   map<string, AccountType> account_types = 10; // Per-type account address validation
   ChartEnforcementMode default_enforcement_mode = 11; // Default enforcement for unmatched accounts
+  map<string, MetadataValue> metadata = 12; // Populated at read time from separate attribute store
 }
 
 // ============================================================================
