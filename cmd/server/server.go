@@ -216,7 +216,7 @@ func NewRunCommand() *cobra.Command {
 }
 
 func runServer(cmd *cobra.Command, _ []string) error {
-	cfg, err := LoadConfig(cmd)
+	cfg, err := LoadConfig(cmd.Context(), cmd)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
@@ -353,7 +353,7 @@ func runServer(cmd *cobra.Command, _ []string) error {
 	return service.NewWithLogger(logger, opts...).Run(cmd)
 }
 
-func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
+func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, error) {
 	cfg := &bootstrap.Config{}
 
 	// Helper function to get string value from flag (env vars are bound automatically by service.BindEnvToCommand)
@@ -591,7 +591,7 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 
 		cmd.Printf("Join mode: discovering peers from cluster via %s\n", joinAddr)
 
-		peers, err := discoverPeersFromClusterWithRetry(joinAddr, cfg.TLSConfig, cfg.ClusterSecret)
+		peers, err := discoverPeersFromClusterWithRetry(ctx, joinAddr, cfg.TLSConfig, cfg.ClusterSecret)
 		if err != nil {
 			return nil, fmt.Errorf("discovering peers from cluster: %w", err)
 		}
@@ -607,13 +607,9 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 }
 
 // discoverPeersFromClusterWithRetry retries peer discovery with exponential backoff
-// for up to 60 seconds, allowing the bootstrap node time to start.
-func discoverPeersFromClusterWithRetry(serviceAddr string, tlsCfg bootstrap.TLSConfig, clusterSecret string) ([]node.Peer, error) {
-	var (
-		lastErr  error
-		delay    = 500 * time.Millisecond
-		deadline = time.After(60 * time.Second)
-	)
+// indefinitely until peers are found or the context is cancelled (e.g. SIGTERM).
+func discoverPeersFromClusterWithRetry(ctx context.Context, serviceAddr string, tlsCfg bootstrap.TLSConfig, clusterSecret string) ([]node.Peer, error) {
+	delay := 500 * time.Millisecond
 
 	for {
 		peers, err := discoverPeersFromCluster(serviceAddr, tlsCfg, clusterSecret)
@@ -621,11 +617,9 @@ func discoverPeersFromClusterWithRetry(serviceAddr string, tlsCfg bootstrap.TLSC
 			return peers, nil
 		}
 
-		lastErr = err
-
 		select {
-		case <-deadline:
-			return nil, fmt.Errorf("timed out after 60s discovering peers from %s: %w", serviceAddr, lastErr)
+		case <-ctx.Done():
+			return nil, fmt.Errorf("discovering peers from %s: %w: %w", serviceAddr, ctx.Err(), err)
 		case <-time.After(delay):
 			if delay < 5*time.Second {
 				delay *= 2
