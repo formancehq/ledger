@@ -225,6 +225,168 @@ func TestBatch_SetProtoAfterCommit(t *testing.T) {
 	require.Contains(t, err.Error(), "already committed")
 }
 
+func TestBatch_SortedCommitOrder(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	batch := s.NewBatch()
+	batch.EnableSortedCommit()
+
+	// Write keys in reverse order — they should be applied sorted
+	// so that Pebble's Inserter splice optimization kicks in.
+	require.NoError(t, batch.SetBytes([]byte("zzz"), []byte("3")))
+	require.NoError(t, batch.SetBytes([]byte("aaa"), []byte("1")))
+	require.NoError(t, batch.SetBytes([]byte("mmm"), []byte("2")))
+	require.NoError(t, batch.Commit())
+
+	// All keys should be readable.
+	for _, tc := range []struct{ key, val string }{
+		{"aaa", "1"}, {"mmm", "2"}, {"zzz", "3"},
+	} {
+		val, closer, err := s.Get([]byte(tc.key))
+		require.NoError(t, err)
+		require.Equal(t, []byte(tc.val), val)
+		require.NoError(t, closer.Close())
+	}
+
+	// Verify iteration order is sorted (confirms correct Pebble state).
+	iter, err := s.NewIter(&pebble.IterOptions{
+		LowerBound: []byte("a"),
+		UpperBound: []byte("z\xff"),
+	})
+	require.NoError(t, err)
+	defer func() { _ = iter.Close() }()
+
+	var keys []string
+	for iter.First(); iter.Valid(); iter.Next() {
+		keys = append(keys, string(iter.Key()))
+	}
+	require.NoError(t, iter.Error())
+	require.Equal(t, []string{"aaa", "mmm", "zzz"}, keys)
+}
+
+func TestBatch_DeleteRangeWithDeferredSet(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+
+	// Pre-populate keys under prefix 0x01.
+	batch1 := s.NewBatch()
+	require.NoError(t, batch1.SetBytes([]byte{0x01, 'a'}, []byte("old-a")))
+	require.NoError(t, batch1.SetBytes([]byte{0x01, 'b'}, []byte("old-b")))
+	require.NoError(t, batch1.Commit())
+
+	// In a single batch: DeleteRange the prefix, then Set new values.
+	// This mirrors the cache rotation pattern: writeCacheRotation does
+	// DeleteRange on the gen byte, then Merge writes new entries.
+	batch2 := s.NewBatch()
+	batch2.EnableSortedCommit()
+	require.NoError(t, batch2.DeleteRangeNoSync([]byte{0x01}, []byte{0x02}))
+	require.NoError(t, batch2.SetBytes([]byte{0x01, 'a'}, []byte("new-a")))
+	require.NoError(t, batch2.SetBytes([]byte{0x01, 'c'}, []byte("new-c")))
+	require.NoError(t, batch2.Commit())
+
+	// 0x01,'a' should have the NEW value (Set overrides DeleteRange).
+	val, closer, err := s.Get([]byte{0x01, 'a'})
+	require.NoError(t, err)
+	require.Equal(t, []byte("new-a"), val)
+	require.NoError(t, closer.Close())
+
+	// 0x01,'b' should be GONE (covered by DeleteRange, no new Set).
+	_, _, err = s.Get([]byte{0x01, 'b'})
+	require.Error(t, err)
+
+	// 0x01,'c' should exist (new Set).
+	val, closer, err = s.Get([]byte{0x01, 'c'})
+	require.NoError(t, err)
+	require.Equal(t, []byte("new-c"), val)
+	require.NoError(t, closer.Close())
+}
+
+func TestBatch_MixedPrefixes(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	batch := s.NewBatch()
+	batch.EnableSortedCommit()
+
+	// Simulate the mixed-prefix pattern from FSM apply:
+	// 0xF0 (logs), 0xF1 (attributes), 0xFF (cache) — written interleaved.
+	require.NoError(t, batch.SetBytes([]byte{0xFF, 0x00, 0x01}, []byte("cache-1")))
+	require.NoError(t, batch.SetBytes([]byte{0xF1, 0x02, 0x01}, []byte("attr-1")))
+	require.NoError(t, batch.SetBytes([]byte{0xF0, 0x00, 0x00, 0x01}, []byte("log-1")))
+	require.NoError(t, batch.SetBytes([]byte{0xF1, 0x02, 0x02}, []byte("attr-2")))
+	require.NoError(t, batch.SetBytes([]byte{0xFF, 0x00, 0x02}, []byte("cache-2")))
+	require.NoError(t, batch.SetBytes([]byte{0xF0, 0x00, 0x00, 0x02}, []byte("log-2")))
+	require.NoError(t, batch.Commit())
+
+	// Verify all keys are present.
+	for _, key := range [][]byte{
+		{0xF0, 0x00, 0x00, 0x01},
+		{0xF0, 0x00, 0x00, 0x02},
+		{0xF1, 0x02, 0x01},
+		{0xF1, 0x02, 0x02},
+		{0xFF, 0x00, 0x01},
+		{0xFF, 0x00, 0x02},
+	} {
+		_, closer, err := s.Get(key)
+		require.NoError(t, err, "key %02X should exist", key)
+		require.NoError(t, closer.Close())
+	}
+}
+
+func benchmarkBatchCommit(b *testing.B, sorted bool, numEntries int) {
+	b.Helper()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("test")
+
+	dir := b.TempDir()
+
+	s, err := NewStore(dir, logger, meter, DefaultConfig())
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	defer func() { _ = s.Close() }()
+
+	for b.Loop() {
+		batch := s.NewBatch()
+		if sorted {
+			batch.EnableSortedCommit()
+		}
+
+		for i := range numEntries {
+			prefix := byte(0xF0 + (i % 3))
+			key := make([]byte, 40)
+			key[0] = prefix
+			key[1] = byte(i >> 8)
+			key[2] = byte(i)
+
+			for j := 3; j < 40; j++ {
+				key[j] = byte((i*31 + j*17) & 0xFF)
+			}
+
+			val := make([]byte, 80)
+			_ = batch.SetBytes(key, val)
+		}
+
+		if err := batch.Commit(); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkBatch_Direct_5(b *testing.B)     { benchmarkBatchCommit(b, false, 5) }
+func BenchmarkBatch_Sorted_5(b *testing.B)     { benchmarkBatchCommit(b, true, 5) }
+func BenchmarkBatch_Direct_100(b *testing.B)   { benchmarkBatchCommit(b, false, 100) }
+func BenchmarkBatch_Sorted_100(b *testing.B)   { benchmarkBatchCommit(b, true, 100) }
+func BenchmarkBatch_Direct_1000(b *testing.B)  { benchmarkBatchCommit(b, false, 1000) }
+func BenchmarkBatch_Sorted_1000(b *testing.B)  { benchmarkBatchCommit(b, true, 1000) }
+func BenchmarkBatch_Direct_10000(b *testing.B) { benchmarkBatchCommit(b, false, 10000) }
+func BenchmarkBatch_Sorted_10000(b *testing.B) { benchmarkBatchCommit(b, true, 10000) }
+
 func TestBatch_NewIter(t *testing.T) {
 	t.Parallel()
 
