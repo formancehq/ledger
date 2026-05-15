@@ -161,6 +161,16 @@ func (f *blockedFilter) SetBlock(idx uint64, b block) {
 	}
 }
 
+// OrBlock merges a persisted block into the in-memory block using OR,
+// preserving bits set by concurrent Add() calls during restore.
+// Bloom filters are monotone (bits are only added, never removed), so
+// ORing the persisted state with the live state is safe and correct.
+func (f *blockedFilter) OrBlock(idx uint64, b block) {
+	for j := range blockWords {
+		atomic.OrUint32(&f.blocks[idx][j], b[j])
+	}
+}
+
 // BlockCount returns the number of blocks.
 func (f *blockedFilter) BlockCount() uint64 {
 	return uint64(len(f.blocks))

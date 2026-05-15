@@ -1,6 +1,7 @@
 package state
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"iter"
@@ -14,6 +15,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/bloom"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/kv"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
@@ -227,9 +229,10 @@ type CacheSnapshotter struct {
 	// for the FSM apply path's MirrorTouch dispatch.
 	touchSlots map[byte]cacheSnapshotSlot
 
-	// bloomPopulateDone is closed when the background bloom populate goroutine
-	// finishes. Nil when no background work is running.
-	bloomPopulateDone chan struct{}
+	// bloomExecutor ensures at most one background bloom goroutine runs at a time.
+	// Interrupt cancels the current goroutine and waits for it to finish before
+	// starting a new one. This avoids multiple concurrent writers on bloom filters.
+	bloomExecutor *worker.SingleTaskExecutor
 }
 
 // NewCacheSnapshotter creates a CacheSnapshotter.
@@ -271,6 +274,7 @@ func NewCacheSnapshotter(logger logging.Logger, dataStore *dal.Store, registry *
 			dal.AttributeCodePreparedQuery:    preparedQueries,
 			dal.AttributeCodeLedgerMetadata:   ledgerMetadata,
 		},
+		bloomExecutor: worker.NewSingleTaskExecutor(logger),
 	}
 }
 
@@ -504,41 +508,67 @@ func (s *CacheSnapshotter) restoreGeneration(genByte byte, genIndex int) error {
 	return nil
 }
 
-// restoreBloomFilters launches a background goroutine to restore bloom filters.
+// restoreBloomFilters launches a background task to restore bloom filters.
 // If persisted blocks exist, loads them from Pebble and replays cache gen0+gen1
 // to fill the gap. Otherwise, falls back to a full attribute scan.
 // In both cases, IsReady() remains false until the background work completes.
 func (s *CacheSnapshotter) restoreBloomFilters() {
-	hasBlocks := s.hasPersistedBloomBlocks()
-
-	if !hasBlocks {
-		s.StartAsyncBloomPopulate("first boot: no persisted bloom blocks")
+	if s.hasPersistedBloomBlocks() {
+		s.runBloomTask("restore from Pebble blocks", s.bloomFilters.RestoreFromStore)
 
 		return
 	}
 
-	s.logger.Infof("Restoring bloom filters from Pebble blocks in background")
+	s.StartAsyncBloomPopulate("first boot: no persisted bloom blocks")
+}
 
-	s.bloomPopulateDone = make(chan struct{})
+// StartAsyncBloomPopulate interrupts any running bloom task and launches a
+// new one that populates the bloom filters from a full Pebble attribute scan.
+// Used on first boot and after bloom config changes.
+func (s *CacheSnapshotter) StartAsyncBloomPopulate(reason string) {
+	s.runBloomTask(reason, s.bloomFilters.PopulateFromStore)
+}
 
-	go func() {
-		defer close(s.bloomPopulateDone)
+// runBloomTask is the common entry point for background bloom work.
+// It interrupts any in-flight task, captures the current epoch, and runs
+// loadFn (restore or populate) via the SingleTaskExecutor. After loadFn,
+// it replays cache gen0+gen1 and marks the bloom as ready only if no
+// Rebuild occurred during the work.
+func (s *CacheSnapshotter) runBloomTask(reason string, loadFn func(context.Context, dal.PebbleReader) error) {
+	s.bloomExecutor.Interrupt()
 
+	s.logger.WithFields(map[string]any{
+		"reason": reason,
+	}).Infof("Bloom background task starting")
+
+	epoch := s.bloomFilters.Epoch()
+
+	s.bloomExecutor.Run(context.Background(), func(ctx context.Context) error {
 		start := time.Now()
 
-		if err := s.bloomFilters.RestoreFromStore(s.dataStore); err != nil {
-			s.logger.Errorf("Bloom restore from Pebble failed: %v", err)
-
-			return
+		if err := loadFn(ctx, s.dataStore); err != nil {
+			return err
 		}
 
-		s.replayBloomFromCache()
-		s.bloomFilters.SetReady(true)
+		if err := s.replayBloomFromCache(ctx); err != nil {
+			return err
+		}
+
+		if !s.bloomFilters.SetReadyIfEpoch(epoch) {
+			s.logger.WithFields(map[string]any{
+				"reason": reason,
+			}).Infof("Bloom background task skipped SetReady: Rebuild occurred")
+
+			return nil
+		}
 
 		s.logger.WithFields(map[string]any{
+			"reason":   reason,
 			"duration": time.Since(start).String(),
-		}).Infof("Bloom filters restored from Pebble blocks + cache replay")
-	}()
+		}).Infof("Bloom background task complete")
+
+		return nil
+	})
 }
 
 // hasPersistedBloomBlocks checks if any bloom block keys exist in Pebble.
@@ -563,63 +593,38 @@ func (s *CacheSnapshotter) hasPersistedBloomBlocks() bool {
 // their canonical keys to the bloom filters. This fills the gap between the
 // last rotation flush (when bloom blocks were persisted) and the current state.
 // Adding duplicates is harmless for a bloom filter.
-func (s *CacheSnapshotter) replayBloomFromCache() {
+//
+// The filter snapshot is captured once so that all attribute types are resolved
+// from the same snapshot. Without this, a concurrent Rebuild could swap the
+// pointer between slots, causing some replays to target the old snapshot and
+// others the new one.
+//
+// The context is checked periodically so that Interrupt() can cancel the
+// replay quickly without blocking the FSM goroutine.
+func (s *CacheSnapshotter) replayBloomFromCache(ctx context.Context) error {
+	snap := s.bloomFilters.Snapshot()
+
 	for _, slot := range s.slots {
-		f := s.bloomFilters.FilterForAttrType(slot.CacheType())
+		f := snap.FilterForAttrType(slot.CacheType())
 		if f == nil {
 			continue
 		}
 
 		for _, genIndex := range []int{0, 1} {
-			replayBloomFromSlot(slot, genIndex, f)
+			for u128 := range slot.IterKeys(genIndex) {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+
+				f.Add(u128)
+			}
 		}
 	}
+
+	return nil
 }
 
-// replayBloomFromSlot adds all U128 keys from a cache slot generation into the
-// bloom filter. The U128 is already a hash, so we use Hi() directly.
-func replayBloomFromSlot(slot cacheSnapshotSlot, genIndex int, f *bloom.Filter) {
-	for u128 := range slot.IterKeys(genIndex) {
-		f.Add(u128)
-	}
-}
-
-// StartAsyncBloomPopulate launches a background goroutine to populate the bloom
-// filters from a full Pebble attribute scan. Used on first boot and after
-// bloom config changes.
-func (s *CacheSnapshotter) StartAsyncBloomPopulate(reason string) {
-	// Wait for any previous populate to finish before starting a new one.
-	// This prevents two goroutines from writing to the same (or stale) filters.
-	if s.bloomPopulateDone != nil {
-		<-s.bloomPopulateDone
-	}
-
-	s.logger.WithFields(map[string]any{
-		"reason": reason,
-	}).Infof("Populating bloom filters from attribute scan in background")
-
-	s.bloomPopulateDone = make(chan struct{})
-
-	go func() {
-		defer close(s.bloomPopulateDone)
-
-		start := time.Now()
-
-		if err := s.bloomFilters.PopulateFromStore(s.dataStore); err != nil {
-			s.logger.Errorf("Background bloom populate failed: %v", err)
-
-			return
-		}
-
-		s.logger.WithFields(map[string]any{
-			"duration": time.Since(start).String(),
-		}).Infof("Background bloom populate complete")
-	}()
-}
-
-// Stop waits for any background bloom populate goroutine to finish.
+// Stop interrupts any running bloom task and waits for it to finish.
 func (s *CacheSnapshotter) Stop() {
-	if s.bloomPopulateDone != nil {
-		<-s.bloomPopulateDone
-	}
+	s.bloomExecutor.Interrupt()
 }

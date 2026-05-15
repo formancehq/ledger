@@ -18,6 +18,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/spool"
@@ -42,7 +43,7 @@ type Applier struct {
 	store                   *dal.Store
 	wal                     wal.WAL
 	futures                 *SyncMap[uint64, *futures.Future[state.ApplyResult]]
-	taskExecutor            *singleTaskExecutor
+	taskExecutor            *worker.SingleTaskExecutor
 	logger                  logging.Logger
 	compactionMargin        uint64
 	replayBatchSize         int
@@ -86,7 +87,7 @@ func NewApplier(
 		store:                   store,
 		wal:                     wal,
 		futures:                 &SyncMap[uint64, *futures.Future[state.ApplyResult]]{},
-		taskExecutor:            newSingleTaskExecutor(logger),
+		taskExecutor:            worker.NewSingleTaskExecutor(logger),
 		logger:                  logger,
 		compactionMargin:        compactionMargin,
 		replayBatchSize:         replayBatchSize,
@@ -224,12 +225,12 @@ func (a *Applier) DeleteFuture(commandID uint64) {
 
 // Interrupt interrupts any running maintenance task.
 func (a *Applier) Interrupt() {
-	a.taskExecutor.interrupt()
+	a.taskExecutor.Interrupt()
 }
 
 // TaskError returns the channel on which task executor errors are reported.
 func (a *Applier) TaskError() <-chan error {
-	return a.taskExecutor.error()
+	return a.taskExecutor.Error()
 }
 
 // SetSnapshotWrapper sets the function used to wrap FSM snapshots with cluster metadata.
@@ -376,7 +377,7 @@ func (a *Applier) Drain(stop chan struct{}) {
 // (e.g. before InstallSnapshot, which writes fsm.lastCheckpointID /
 // fsm.snapshotIndex that SynchronizeWithLeader reads).
 func (a *Applier) InterruptMaintenance() {
-	a.taskExecutor.interrupt()
+	a.taskExecutor.Interrupt()
 }
 
 // Status returns the current applier status (statusNormal, statusSyncing, etc.).
@@ -481,7 +482,7 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 			a.unspoolDurationHistogram.Record(context.Background(), float64(time.Since(unspoolStart).Microseconds()))
 			waitStart = time.Now()
 		case <-stop:
-			a.taskExecutor.interrupt()
+			a.taskExecutor.Interrupt()
 
 			return nil
 		}
@@ -791,8 +792,8 @@ func (a *Applier) startMaintenanceTask(
 ) chan struct{} {
 	gatingTerminated := make(chan struct{})
 
-	a.taskExecutor.interrupt()
-	a.taskExecutor.run(ctx, func(ctx context.Context) error {
+	a.taskExecutor.Interrupt()
+	a.taskExecutor.Run(ctx, func(ctx context.Context) error {
 		var closeOnce sync.Once
 
 		closeGating := func() { closeOnce.Do(func() { close(gatingTerminated) }) }

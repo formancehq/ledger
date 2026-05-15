@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"iter"
 	"math/bits"
+	"sync"
 	"sync/atomic"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -157,9 +158,10 @@ func (f *Filter) dirtyBlocks() iter.Seq2[uint64, block] {
 	}
 }
 
-// RestoreFromStore loads persisted bloom blocks from Pebble, replacing the
-// in-memory filter contents. Blocks not found in Pebble remain zeroed.
-func (f *Filter) RestoreFromStore(store dal.PebbleReader) error {
+// RestoreFromStore loads persisted bloom blocks from Pebble, merging them
+// into the in-memory filter via OR. This preserves bits set by concurrent
+// Add() calls from the FSM goroutine during the async restore window.
+func (f *Filter) RestoreFromStore(ctx context.Context, store dal.PebbleReader) error {
 	lower := []byte{dal.KeyPrefixBloom, f.attrCode}
 	upper := []byte{dal.KeyPrefixBloom, f.attrCode + 1}
 
@@ -174,6 +176,10 @@ func (f *Filter) RestoreFromStore(store dal.PebbleReader) error {
 	defer func() { _ = it.Close() }()
 
 	for it.First(); it.Valid(); it.Next() {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
 		key := it.Key()
 		// Key format: [0xE7][attrCode][blockIndex BE 8]
 		if len(key) < 1+1+8 {
@@ -194,7 +200,7 @@ func (f *Filter) RestoreFromStore(store dal.PebbleReader) error {
 			continue
 		}
 
-		f.filter.SetBlock(blockIdx, unmarshalBlock(val))
+		f.filter.OrBlock(blockIdx, unmarshalBlock(val))
 	}
 
 	if err := it.Error(); err != nil {
@@ -267,6 +273,14 @@ type FilterSet struct {
 	ready   atomic.Bool
 	filters atomic.Pointer[filterSnapshot]
 
+	// readyMu serializes Rebuild (which sets ready=false and bumps epoch) with
+	// background goroutines that want to set ready=true. Without this, the
+	// epoch check and SetReady in the background goroutine are not atomic and
+	// Rebuild can slip in between (TOCTOU).
+	// Readers of ready (IsReady) remain lock-free — only writers take this lock.
+	readyMu sync.Mutex
+	epoch   uint64
+
 	meter metric.Meter
 
 	readyGauge metric.Int64Gauge
@@ -283,12 +297,37 @@ func (fs *FilterSet) FilterForAttrType(attrType byte) *Filter {
 	return snap.filterForAttrType(attrType)
 }
 
+// Snapshot returns an opaque handle to the current filter snapshot.
+// Use with FilterFromSnapshot to get individual filters. This ensures
+// all attribute types are resolved from the same snapshot, avoiding
+// inconsistencies when Rebuild swaps the pointer between lookups.
+func (fs *FilterSet) Snapshot() FilterSnapshot {
+	return FilterSnapshot{snap: fs.filters.Load()}
+}
+
+// FilterSnapshot is an opaque handle to a consistent set of bloom filters.
+type FilterSnapshot struct {
+	snap *filterSnapshot
+}
+
+// FilterForAttrType returns the bloom filter for the given attribute type
+// from this snapshot.
+func (s FilterSnapshot) FilterForAttrType(attrType byte) *Filter {
+	if s.snap == nil {
+		return nil
+	}
+
+	return s.snap.filterForAttrType(attrType)
+}
+
 // IsReady returns true if the bloom filters are fully populated.
 func (fs *FilterSet) IsReady() bool {
 	return fs.ready.Load()
 }
 
-// SetReady marks the bloom filters as fully populated.
+// SetReady marks the bloom filters as fully populated (or not).
+// Callers that set ready=false (e.g. Rebuild) should use setReadyLocked
+// under readyMu instead.
 func (fs *FilterSet) SetReady(v bool) {
 	fs.ready.Store(v)
 
@@ -298,6 +337,42 @@ func (fs *FilterSet) SetReady(v bool) {
 	}
 
 	fs.readyGauge.Record(context.Background(), val)
+}
+
+func (fs *FilterSet) setReadyLocked(v bool) {
+	fs.ready.Store(v)
+
+	val := int64(0)
+	if v {
+		val = 1
+	}
+
+	fs.readyGauge.Record(context.Background(), val)
+}
+
+// Epoch returns the current rebuild epoch under readyMu.
+func (fs *FilterSet) Epoch() uint64 {
+	fs.readyMu.Lock()
+	defer fs.readyMu.Unlock()
+
+	return fs.epoch
+}
+
+// SetReadyIfEpoch atomically checks the epoch and sets ready=true only if
+// the epoch has not changed since the caller captured it. Returns true if
+// ready was set. This prevents a stale background goroutine from marking
+// empty post-Rebuild filters as ready (TOCTOU).
+func (fs *FilterSet) SetReadyIfEpoch(expected uint64) bool {
+	fs.readyMu.Lock()
+	defer fs.readyMu.Unlock()
+
+	if fs.epoch != expected {
+		return false
+	}
+
+	fs.setReadyLocked(true)
+
+	return true
 }
 
 // BloomUpdates holds pre-hashed U128 IDs collected during Merge for bloom filter updates.
@@ -383,7 +458,7 @@ func (fs *FilterSet) PersistDirtyBlocks(batch *dal.Batch) error {
 }
 
 // RestoreFromStore loads all persisted bloom blocks from Pebble.
-func (fs *FilterSet) RestoreFromStore(store dal.PebbleReader) error {
+func (fs *FilterSet) RestoreFromStore(ctx context.Context, store dal.PebbleReader) error {
 	snap := fs.filters.Load()
 	if snap == nil {
 		return nil
@@ -394,7 +469,7 @@ func (fs *FilterSet) RestoreFromStore(store dal.PebbleReader) error {
 			continue
 		}
 
-		if err := f.RestoreFromStore(store); err != nil {
+		if err := f.RestoreFromStore(ctx, store); err != nil {
 			return err
 		}
 	}
@@ -405,7 +480,7 @@ func (fs *FilterSet) RestoreFromStore(store dal.PebbleReader) error {
 // PopulateFromStore scans the Pebble attribute range and inserts all existing
 // canonical keys into the bloom filters. Used on first boot when no persisted
 // bloom blocks exist yet.
-func (fs *FilterSet) PopulateFromStore(store dal.PebbleReader) error {
+func (fs *FilterSet) PopulateFromStore(ctx context.Context, store dal.PebbleReader) error {
 	it, err := store.NewIter(&pebble.IterOptions{
 		LowerBound: []byte{dal.KeyPrefixAttributes},
 		UpperBound: []byte{dal.KeyPrefixAttributes + 1},
@@ -417,6 +492,10 @@ func (fs *FilterSet) PopulateFromStore(store dal.PebbleReader) error {
 	defer func() { _ = it.Close() }()
 
 	for it.First(); it.Valid(); it.Next() {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
 		pebbleKey := it.Key()
 
 		attrType, ok := attributes.AttrTypeFromKey(pebbleKey)
@@ -438,8 +517,6 @@ func (fs *FilterSet) PopulateFromStore(store dal.PebbleReader) error {
 		return fmt.Errorf("iterating attributes: %w", err)
 	}
 
-	fs.SetReady(true)
-
 	return nil
 }
 
@@ -447,9 +524,14 @@ func (fs *FilterSet) PopulateFromStore(store dal.PebbleReader) error {
 // ClusterConfig. Existing filter data is discarded. The caller must purge
 // persisted blocks (0xE7) and trigger a full attribute scan to repopulate.
 func (fs *FilterSet) Rebuild(cfg *commonpb.ClusterConfig) {
-	// Mark not-ready BEFORE replacing filters to avoid a window where
-	// concurrent readers see IsReady=true but get empty filters (false negatives).
-	fs.SetReady(false)
+	fs.readyMu.Lock()
+
+	// Mark not-ready and bump epoch under the lock so no background
+	// goroutine can sneak a SetReadyIfEpoch(true) in between.
+	fs.setReadyLocked(false)
+	fs.epoch++
+
+	fs.readyMu.Unlock()
 
 	snap := &filterSnapshot{}
 	for _, bt := range bloomTypes(cfg) {

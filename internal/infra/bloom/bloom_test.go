@@ -253,3 +253,74 @@ func TestFilter_PartialFlushCausesFalseNegatives(t *testing.T) {
 			"after full attribute scan (fix path), all keys must be present")
 	}
 }
+
+// TestFilter_OrBlockPreservesConcurrentAdds verifies that restoring blocks
+// via OrBlock does not destroy bits set by concurrent Add calls. This is the
+// regression test for the "insufficient funds after restart" bug where
+// SetBlock in RestoreFromStore overwrote bits added by the FSM goroutine.
+func TestFilter_OrBlockPreservesConcurrentAdds(t *testing.T) {
+	t.Parallel()
+
+	rng := rand.New(rand.NewPCG(42, 42^0xDEADBEEF))
+
+	// Phase 1: build "persisted" blocks from an older filter state.
+	original := newTestFilter(t)
+	oldKeys := make([]attributes.U128, 200)
+	for i := range oldKeys {
+		var buf [16]byte
+		binary.BigEndian.PutUint64(buf[:8], rng.Uint64())
+		binary.BigEndian.PutUint64(buf[8:], rng.Uint64())
+		oldKeys[i] = hashKey(buf[:])
+		original.Add(oldKeys[i])
+	}
+
+	persisted := make(map[uint64]block)
+	for idx, blk := range original.dirtyBlocks() {
+		persisted[idx] = blk
+	}
+
+	// Phase 2: fresh filter simulates restart. FSM adds keys BEFORE restore.
+	restored := newBlockedFilter(original.filter.NumBits(), original.filter.K())
+
+	newKeys := make([]uint64, 200)
+	for i := range newKeys {
+		newKeys[i] = rng.Uint64()
+		restored.Add(newKeys[i])
+	}
+
+	// Simulate RestoreFromStore with OrBlock — must not destroy the new keys.
+	for idx, blk := range persisted {
+		restored.OrBlock(idx, blk)
+	}
+
+	for i, key := range newKeys {
+		require.True(t, restored.Has(key),
+			"new key %d must survive OrBlock restore (concurrent Add bits preserved)", i)
+	}
+
+	for i, key := range oldKeys {
+		require.True(t, restored.Has(key.Hi()),
+			"old key %d must be restored from persisted blocks", i)
+	}
+
+	// Phase 3: demonstrate that SetBlock WOULD destroy new keys (the old bug).
+	buggy := newBlockedFilter(original.filter.NumBits(), original.filter.K())
+
+	for _, key := range newKeys {
+		buggy.Add(key)
+	}
+
+	for idx, blk := range persisted {
+		buggy.SetBlock(idx, blk) // overwrites bits from Add
+	}
+
+	falseNegatives := 0
+	for _, key := range newKeys {
+		if !buggy.Has(key) {
+			falseNegatives++
+		}
+	}
+
+	require.Greater(t, falseNegatives, 0,
+		"SetBlock must destroy some concurrent Add bits — this demonstrates the bug that OrBlock fixes")
+}

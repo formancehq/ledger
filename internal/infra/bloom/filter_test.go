@@ -152,6 +152,52 @@ func TestOptimize_SmallCapacity(t *testing.T) {
 // TestBlockedFilter_ConcurrentSetBlockAndHas verifies that SetBlock and Has
 // can run concurrently without data races. This reproduces the race between
 // background bloom restore (SetBlock) and preloader lookups (Has).
+// TestBlockedFilter_OrBlockPreservesConcurrentAdds verifies that OrBlock does
+// not destroy bits set by concurrent Add calls. This is the fix for the
+// RestoreFromStore vs FSM AddCanonicalKeys race that caused false negatives
+// ("insufficient funds") after restart.
+func TestBlockedFilter_OrBlockPreservesConcurrentAdds(t *testing.T) {
+	t.Parallel()
+
+	const nblocks = 64
+	f := newBlockedFilter(BlockBits*nblocks, 5)
+
+	// Keys added by the "FSM goroutine" during restore.
+	rng := testRNG(99)
+	addedKeys := make([]uint64, 500)
+	for i := range addedKeys {
+		addedKeys[i] = rng.Uint64()
+	}
+
+	// Persisted blocks: a zeroed filter (simulates empty Pebble bloom state).
+	var zeroBlock block
+
+	done := make(chan struct{})
+
+	// Background goroutine: simulates RestoreFromStore calling OrBlock.
+	go func() {
+		defer close(done)
+
+		for range 50 {
+			for blockIdx := range uint64(nblocks) {
+				f.OrBlock(blockIdx, zeroBlock)
+			}
+		}
+	}()
+
+	// FSM goroutine: concurrently adds keys (simulates AddCanonicalKeys).
+	for _, k := range addedKeys {
+		f.Add(k)
+	}
+
+	<-done
+
+	// All keys added by Add must still be present — no false negatives.
+	for i, k := range addedKeys {
+		assert.True(t, f.Has(k), "key %d (0x%x) lost after concurrent OrBlock", i, k)
+	}
+}
+
 // Run with -race to detect: go test -race -run TestBlockedFilter_ConcurrentSetBlockAndHas.
 func TestBlockedFilter_ConcurrentSetBlockAndHas(t *testing.T) {
 	t.Parallel()
