@@ -229,6 +229,78 @@ func TestEscapeJSONPath(t *testing.T) {
 	}
 }
 
+func TestFilterAccountAddress_NormalCases(t *testing.T) {
+	t.Parallel()
+
+	t.Run("exact address produces equality condition", func(t *testing.T) {
+		t.Parallel()
+		result := filterAccountAddress("world", "address")
+		assert.Equal(t, "address = 'world'", result)
+	})
+
+	t.Run("two-segment exact address", func(t *testing.T) {
+		t.Parallel()
+		result := filterAccountAddress("users:alice", "address")
+		assert.Equal(t, "address = 'users:alice'", result)
+	})
+
+	t.Run("partial address with trailing colon matches on segment", func(t *testing.T) {
+		t.Parallel()
+		result := filterAccountAddress("users:", "address")
+		assert.Equal(t, `address_array @@ ('$[0] == "users"')::jsonpath`, result)
+	})
+
+	t.Run("partial address with two fixed segments", func(t *testing.T) {
+		t.Parallel()
+		result := filterAccountAddress("users:alice:", "address")
+		assert.Contains(t, result, `$[0] == "users"`)
+		assert.Contains(t, result, `$[1] == "alice"`)
+	})
+
+	t.Run("wildcard suffix constrains length and segment", func(t *testing.T) {
+		t.Parallel()
+		// "users:..." means exactly 2 segments with "users" at position 0
+		result := filterAccountAddress("users:...", "address")
+		assert.Contains(t, result, "jsonb_array_length(address_array) = 2")
+		assert.Contains(t, result, `$[0] == "users"`)
+	})
+
+	t.Run("key prefix is applied correctly", func(t *testing.T) {
+		t.Parallel()
+		result := filterAccountAddress("world", "destination")
+		assert.Equal(t, "destination = 'world'", result)
+	})
+}
+
+func TestFilterAccountAddressOnTransactions_NormalCases(t *testing.T) {
+	t.Parallel()
+
+	t.Run("exact address source only", func(t *testing.T) {
+		t.Parallel()
+		result := filterAccountAddressOnTransactions("world", true, false)
+		assert.Equal(t, `sources @> '["world"]'`, result)
+	})
+
+	t.Run("exact address destination only", func(t *testing.T) {
+		t.Parallel()
+		result := filterAccountAddressOnTransactions("world", false, true)
+		assert.Equal(t, `destinations @> '["world"]'`, result)
+	})
+
+	t.Run("exact address source and destination joined with or", func(t *testing.T) {
+		t.Parallel()
+		result := filterAccountAddressOnTransactions("world", true, true)
+		assert.Equal(t, `sources @> '["world"]' or destinations @> '["world"]'`, result)
+	})
+
+	t.Run("partial address uses array containment", func(t *testing.T) {
+		t.Parallel()
+		result := filterAccountAddressOnTransactions("users:", true, false)
+		assert.Contains(t, result, "sources_arrays @> '")
+		assert.NotContains(t, result, "sources @> '")
+	})
+}
+
 func TestFilterAccountAddress_SQLInjection(t *testing.T) {
 	t.Parallel()
 
