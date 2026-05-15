@@ -407,10 +407,21 @@ func SetLastAppliedTimestamp(b *dal.Batch, timestamp uint64) error {
 	return b.SetBytes([]byte{dal.KeyPrefixLastAppliedTimestamp}, value)
 }
 
+// ledgerScopedAttrTypes lists attribute types that use ledger-scoped canonical keys
+// (format [ledger\x00]...). Used by DeleteLedgerData for per-type range deletes.
+var ledgerScopedAttrTypes = []byte{
+	dal.AttributeCodeVolume,
+	dal.AttributeCodeMetadata,
+	dal.AttributeCodeTransaction,
+	dal.AttributeCodeReference,
+	dal.AttributeCodeNumscriptVersion,
+	dal.AttributeCodeNumscriptContent,
+	dal.AttributeCodePreparedQuery,
+}
+
 // DeleteLedgerData removes all per-ledger data from Pebble for the given ledger.
-// This performs range deletes on:
-//   - Attributes zone (0xF1): volumes, metadata, transactions, references (keyed by [ledger\x00]...)
-//   - Per-ledger system zone: prepared queries (0xE0), numscript (0xE9), numscript latest (0xEA)
+// This performs per-type range deletes on:
+//   - Attributes zone (0xF1): one range delete per ledger-scoped attribute type
 //   - Point deletes: mirror source head (0xEB), mirror cursor (0xEC), mirror status (0xED)
 //
 // LedgerInfo and Boundaries are NOT deleted here — LedgerInfo is kept for "ledger deleted"
@@ -421,12 +432,21 @@ func DeleteLedgerData(b *dal.Batch, ledgerName string) error {
 	ledgerPrefix := append([]byte(ledgerName), 0x00)
 	ledgerPrefixUpper := attributes.IncrementBytes(ledgerPrefix)
 
-	// Range delete all attributes for this ledger: [0xF1][ledger\x00] -> [0xF1][ledger\x01]
-	start := append([]byte{dal.KeyPrefixAttributes}, ledgerPrefix...)
-	end := append([]byte{dal.KeyPrefixAttributes}, ledgerPrefixUpper...)
+	// Per-type range deletes: [0xF1][attrType][ledger\x00] -> [0xF1][attrType][ledger\x01]
+	for _, attrType := range ledgerScopedAttrTypes {
+		start := make([]byte, 2+len(ledgerPrefix))
+		start[0] = dal.KeyPrefixAttributes
+		start[1] = attrType
+		copy(start[2:], ledgerPrefix)
 
-	if err := b.DeleteRange(start, end, nil); err != nil {
-		return fmt.Errorf("deleting ledger attributes for %q: %w", ledgerName, err)
+		end := make([]byte, 2+len(ledgerPrefixUpper))
+		end[0] = dal.KeyPrefixAttributes
+		end[1] = attrType
+		copy(end[2:], ledgerPrefixUpper)
+
+		if err := b.DeleteRange(start, end, nil); err != nil {
+			return fmt.Errorf("deleting ledger attributes (type=%c) for %q: %w", attrType, ledgerName, err)
+		}
 	}
 
 	// Point deletes for mirror keys (keyed by [prefix][ledgerName], no null separator).

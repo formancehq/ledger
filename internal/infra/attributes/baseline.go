@@ -122,16 +122,16 @@ func writeBaselineAttr[V interface {
 			return fmt.Errorf("marshaling value: %w", marshalErr)
 		}
 
-		// Build Pebble key: [KeyPrefixAttributes][canonicalKey][attrType]
-		pLen := 2 + len(e.CanonicalKey) // 1 prefix + N canonical + 1 attrType
+		// Build Pebble key: [KeyPrefixAttributes][attrType][canonicalKey]
+		pLen := 2 + len(e.CanonicalKey) // 1 prefix + 1 attrType + N canonical
 
 		if len(keyBuf) < pLen {
 			keyBuf = make([]byte, pLen)
 		}
 
 		keyBuf[0] = dal.KeyPrefixAttributes
-		copy(keyBuf[1:], e.CanonicalKey)
-		keyBuf[1+len(e.CanonicalKey)] = attr.prefix
+		keyBuf[1] = attr.prefix
+		copy(keyBuf[2:], e.CanonicalKey)
 
 		if err := db.Set(keyBuf[:pLen], data, pebble.NoSync); err != nil {
 			return fmt.Errorf("writing entry: %w", err)

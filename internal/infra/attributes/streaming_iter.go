@@ -35,20 +35,27 @@ type StreamingIter[V proto.Message] struct {
 }
 
 // NewStreamingIter creates a pull-based iterator over computed entries for all
-// canonical keys sharing the given prefix. Pass nil for the full attribute space.
+// canonical keys sharing the given prefix. Pass nil for the full attribute space
+// of this attribute type.
 // Thread-safe: allocates its own iterator and buffer for concurrent access.
 func (a *Attribute[V]) NewStreamingIter(reader dal.PebbleReader, canonicalPrefix []byte) (*StreamingIter[V], error) {
-	lowerBound := make([]byte, 1+len(canonicalPrefix))
+	// Bounds include the attrType byte so Pebble only scans entries of this type.
+	// Lower: [0xF1][attrType][canonicalPrefix]
+	lowerBound := make([]byte, 2+len(canonicalPrefix))
 	lowerBound[0] = dal.KeyPrefixAttributes
-	copy(lowerBound[1:], canonicalPrefix)
+	lowerBound[1] = a.prefix
+	copy(lowerBound[2:], canonicalPrefix)
 
+	// Upper: [0xF1][attrType][IncrementBytes(canonicalPrefix)]
+	// or [0xF1][attrType+1] on overflow / nil prefix.
 	var upperBound []byte
 	if incPrefix := IncrementBytes(canonicalPrefix); incPrefix != nil {
-		upperBound = make([]byte, 1+len(incPrefix))
+		upperBound = make([]byte, 2+len(incPrefix))
 		upperBound[0] = dal.KeyPrefixAttributes
-		copy(upperBound[1:], incPrefix)
+		upperBound[1] = a.prefix
+		copy(upperBound[2:], incPrefix)
 	} else {
-		upperBound = []byte{dal.KeyPrefixAttributes + 1}
+		upperBound = []byte{dal.KeyPrefixAttributes, a.prefix + 1}
 	}
 
 	iter, err := reader.NewIter(&pebble.IterOptions{
@@ -62,8 +69,8 @@ func (a *Attribute[V]) NewStreamingIter(reader dal.PebbleReader, canonicalPrefix
 	return &StreamingIter[V]{
 		ab:   accumulatorBase[V]{attr: a},
 		iter: iter,
-		// Minimum key length: [0xF1 prefix][at least 1 byte canonical][attrType] = 3
-		minKeyLen:  1 + SuffixLen,
+		// Minimum key length: [0xF1][attrType][at least 1 byte canonical] = 3
+		minKeyLen:  1 + AttrTypeLen,
 		attrPrefix: a.prefix,
 	}, nil
 }
@@ -107,11 +114,10 @@ func (si *StreamingIter[V]) Next() bool {
 			continue
 		}
 
-		// Check attribute type from the key suffix before reading the value.
-		// This avoids fetching (and decompressing) value data for entries
-		// belonging to other attribute types — critical when the attributes
-		// zone contains millions of keys across many types.
-		if key[len(key)-SuffixLen] != si.attrPrefix {
+		// Safety check: attribute type is at fixed position 1.
+		// With type-prefixed bounds this should always match, but
+		// we keep the guard for defensiveness.
+		if key[1] != si.attrPrefix {
 			continue
 		}
 

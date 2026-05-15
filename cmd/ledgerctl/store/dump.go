@@ -200,13 +200,13 @@ func describeKey(key []byte) string {
 
 // describeAttributeKey returns a human-readable label for an attribute key.
 func describeAttributeKey(key []byte) string {
-	// Layout: [0xF1][canonicalKey...][attrType(1)]
-	if len(key) < 3 { // 1 prefix + at least 1 canonical + 1 type
+	// Layout: [0xF1][attrType(1)][canonicalKey...]
+	if len(key) < 3 { // 1 prefix + 1 type + at least 1 canonical
 		return "ATTR (short key)"
 	}
 
-	attrTypeByte := key[len(key)-1]
-	canonicalHex := hex.EncodeToString(key[1 : len(key)-1])
+	attrTypeByte := key[1]
+	canonicalHex := hex.EncodeToString(key[2:])
 
 	var attrType string
 	switch attrTypeByte {

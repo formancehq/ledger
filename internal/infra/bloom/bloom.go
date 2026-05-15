@@ -204,13 +204,11 @@ func (f *Filter) RestoreFromStore(store dal.PebbleReader) error {
 	return nil
 }
 
-// FilterSet holds per-attribute-type bloom filters.
-// The ready flag indicates whether the bloom filters have been fully populated
-// (from a Pebble restore + cache replay). While not ready, MayContain
-// always returns true (= "maybe present") to avoid false negatives.
-type FilterSet struct {
-	ready atomic.Bool
-
+// filterSnapshot holds per-attribute-type bloom filter pointers.
+// Accessed via atomic.Pointer in FilterSet so that Rebuild (writer on
+// the Raft goroutine) and FilterForAttrType (reader on the preloader
+// goroutine) never race on pointer fields.
+type filterSnapshot struct {
 	Volume           *Filter
 	Metadata         *Filter
 	Reference        *Filter
@@ -221,6 +219,53 @@ type FilterSet struct {
 	NumscriptVersion *Filter
 	NumscriptContent *Filter
 	LedgerMetadata   *Filter
+}
+
+func (s *filterSnapshot) filterForAttrType(attrType byte) *Filter {
+	switch attrType {
+	case dal.AttributeCodeVolume:
+		return s.Volume
+	case dal.AttributeCodeMetadata:
+		return s.Metadata
+	case dal.AttributeCodeReference:
+		return s.Reference
+	case dal.AttributeCodeLedger:
+		return s.Ledger
+	case dal.AttributeCodeBoundary:
+		return s.Boundary
+	case dal.AttributeCodeTransaction:
+		return s.Transaction
+	case dal.AttributeCodeSinkConfig:
+		return s.SinkConfig
+	case dal.AttributeCodeNumscriptVersion:
+		return s.NumscriptVersion
+	case dal.AttributeCodeNumscriptContent:
+		return s.NumscriptContent
+	case dal.AttributeCodeLedgerMetadata:
+		return s.LedgerMetadata
+	default:
+		return nil
+	}
+}
+
+func (s *filterSnapshot) allFilters() []*Filter {
+	return []*Filter{
+		s.Volume, s.Metadata, s.Reference,
+		s.Ledger, s.Boundary, s.Transaction, s.SinkConfig,
+		s.NumscriptVersion, s.NumscriptContent, s.LedgerMetadata,
+	}
+}
+
+// FilterSet holds per-attribute-type bloom filters.
+// The ready flag indicates whether the bloom filters have been fully populated
+// (from a Pebble restore + cache replay). While not ready, MayContain
+// always returns true (= "maybe present") to avoid false negatives.
+//
+// Filter pointers live inside a filterSnapshot swapped atomically, so
+// concurrent readers (preloader) never race with Rebuild (Raft goroutine).
+type FilterSet struct {
+	ready   atomic.Bool
+	filters atomic.Pointer[filterSnapshot]
 
 	meter metric.Meter
 
@@ -228,31 +273,14 @@ type FilterSet struct {
 }
 
 // FilterForAttrType returns the bloom filter for a given attribute type prefix byte.
+// Safe for concurrent use — reads an atomic snapshot of filter pointers.
 func (fs *FilterSet) FilterForAttrType(attrType byte) *Filter {
-	switch attrType {
-	case dal.AttributeCodeVolume:
-		return fs.Volume
-	case dal.AttributeCodeMetadata:
-		return fs.Metadata
-	case dal.AttributeCodeReference:
-		return fs.Reference
-	case dal.AttributeCodeLedger:
-		return fs.Ledger
-	case dal.AttributeCodeBoundary:
-		return fs.Boundary
-	case dal.AttributeCodeTransaction:
-		return fs.Transaction
-	case dal.AttributeCodeSinkConfig:
-		return fs.SinkConfig
-	case dal.AttributeCodeNumscriptVersion:
-		return fs.NumscriptVersion
-	case dal.AttributeCodeNumscriptContent:
-		return fs.NumscriptContent
-	case dal.AttributeCodeLedgerMetadata:
-		return fs.LedgerMetadata
-	default:
+	snap := fs.filters.Load()
+	if snap == nil {
 		return nil
 	}
+
+	return snap.filterForAttrType(attrType)
 }
 
 // IsReady returns true if the bloom filters are fully populated.
@@ -308,6 +336,11 @@ func (u *BloomUpdates) Reset() {
 // Called from the FSM goroutine after buffer.Merge() and before batch.Commit().
 // OTel counters are incremented once per filter (not per key) to reduce hot-path overhead.
 func (fs *FilterSet) AddCanonicalKeys(updates *BloomUpdates) {
+	snap := fs.filters.Load()
+	if snap == nil {
+		return
+	}
+
 	addKeys := func(f *Filter, ids []attributes.U128) {
 		if f == nil {
 			return
@@ -316,22 +349,27 @@ func (fs *FilterSet) AddCanonicalKeys(updates *BloomUpdates) {
 		f.addBatch(ids)
 	}
 
-	addKeys(fs.Volume, updates.Volumes)
-	addKeys(fs.Metadata, updates.Metadata)
-	addKeys(fs.Reference, updates.References)
-	addKeys(fs.Ledger, updates.Ledgers)
-	addKeys(fs.Boundary, updates.Boundaries)
-	addKeys(fs.Transaction, updates.Transactions)
-	addKeys(fs.SinkConfig, updates.SinkConfigs)
-	addKeys(fs.NumscriptVersion, updates.NumscriptVersions)
-	addKeys(fs.NumscriptContent, updates.NumscriptContents)
-	addKeys(fs.LedgerMetadata, updates.LedgerMetadata)
+	addKeys(snap.Volume, updates.Volumes)
+	addKeys(snap.Metadata, updates.Metadata)
+	addKeys(snap.Reference, updates.References)
+	addKeys(snap.Ledger, updates.Ledgers)
+	addKeys(snap.Boundary, updates.Boundaries)
+	addKeys(snap.Transaction, updates.Transactions)
+	addKeys(snap.SinkConfig, updates.SinkConfigs)
+	addKeys(snap.NumscriptVersion, updates.NumscriptVersions)
+	addKeys(snap.NumscriptContent, updates.NumscriptContents)
+	addKeys(snap.LedgerMetadata, updates.LedgerMetadata)
 }
 
 // PersistDirtyBlocks writes all dirty blocks from all filters to the Pebble batch.
 // Called during cache rotation to flush bloom state atomically with the rotation.
 func (fs *FilterSet) PersistDirtyBlocks(batch *dal.Batch) error {
-	for _, f := range fs.allFilters() {
+	snap := fs.filters.Load()
+	if snap == nil {
+		return nil
+	}
+
+	for _, f := range snap.allFilters() {
 		if f == nil {
 			continue
 		}
@@ -346,7 +384,12 @@ func (fs *FilterSet) PersistDirtyBlocks(batch *dal.Batch) error {
 
 // RestoreFromStore loads all persisted bloom blocks from Pebble.
 func (fs *FilterSet) RestoreFromStore(store dal.PebbleReader) error {
-	for _, f := range fs.allFilters() {
+	snap := fs.filters.Load()
+	if snap == nil {
+		return nil
+	}
+
+	for _, f := range snap.allFilters() {
 		if f == nil {
 			continue
 		}
@@ -408,17 +451,12 @@ func (fs *FilterSet) Rebuild(cfg *commonpb.ClusterConfig) {
 	// concurrent readers see IsReady=true but get empty filters (false negatives).
 	fs.SetReady(false)
 
+	snap := &filterSnapshot{}
 	for _, bt := range bloomTypes(cfg) {
-		bt.rebuild(fs)
+		bt.rebuild(snap, fs.meter)
 	}
-}
 
-func (fs *FilterSet) allFilters() []*Filter {
-	return []*Filter{
-		fs.Volume, fs.Metadata, fs.Reference,
-		fs.Ledger, fs.Boundary, fs.Transaction, fs.SinkConfig,
-		fs.NumscriptVersion, fs.NumscriptContent, fs.LedgerMetadata,
-	}
+	fs.filters.Store(snap)
 }
 
 // bloomType maps a proto bloom config field to its Filter field and metadata.
@@ -426,33 +464,33 @@ type bloomType struct {
 	cfg      *commonpb.BloomTypeConfig
 	attrCode byte
 	name     string
-	field    func(fs *FilterSet) **Filter
+	field    func(snap *filterSnapshot) **Filter
 }
 
-func (bt bloomType) rebuild(fs *FilterSet) {
-	dst := bt.field(fs)
+func (bt bloomType) rebuild(snap *filterSnapshot, meter metric.Meter) {
+	dst := bt.field(snap)
 	if bt.cfg.GetExpectedKeys() == 0 {
 		*dst = nil
 
 		return
 	}
 
-	*dst = newFilter(uint(bt.cfg.GetExpectedKeys()), bt.cfg.GetFpRate(), bt.attrCode, fs.meter, bt.name)
+	*dst = newFilter(uint(bt.cfg.GetExpectedKeys()), bt.cfg.GetFpRate(), bt.attrCode, meter, bt.name)
 }
 
 // bloomTypes returns the ordered list of bloom type descriptors from a ClusterConfig.
 func bloomTypes(cfg *commonpb.ClusterConfig) []bloomType {
 	return []bloomType{
-		{cfg.GetBloomVolumes(), dal.AttributeCodeVolume, "volumes", func(fs *FilterSet) **Filter { return &fs.Volume }},
-		{cfg.GetBloomMetadata(), dal.AttributeCodeMetadata, "metadata", func(fs *FilterSet) **Filter { return &fs.Metadata }},
-		{cfg.GetBloomReferences(), dal.AttributeCodeReference, "references", func(fs *FilterSet) **Filter { return &fs.Reference }},
-		{cfg.GetBloomLedgers(), dal.AttributeCodeLedger, "ledgers", func(fs *FilterSet) **Filter { return &fs.Ledger }},
-		{cfg.GetBloomBoundaries(), dal.AttributeCodeBoundary, "boundaries", func(fs *FilterSet) **Filter { return &fs.Boundary }},
-		{cfg.GetBloomTransactions(), dal.AttributeCodeTransaction, "transactions", func(fs *FilterSet) **Filter { return &fs.Transaction }},
-		{cfg.GetBloomSinkConfigs(), dal.AttributeCodeSinkConfig, "sink_configs", func(fs *FilterSet) **Filter { return &fs.SinkConfig }},
-		{cfg.GetBloomNumscriptVersions(), dal.AttributeCodeNumscriptVersion, "numscript_versions", func(fs *FilterSet) **Filter { return &fs.NumscriptVersion }},
-		{cfg.GetBloomNumscriptContents(), dal.AttributeCodeNumscriptContent, "numscript_contents", func(fs *FilterSet) **Filter { return &fs.NumscriptContent }},
-		{cfg.GetBloomLedgerMetadata(), dal.AttributeCodeLedgerMetadata, "ledger_metadata", func(fs *FilterSet) **Filter { return &fs.LedgerMetadata }},
+		{cfg.GetBloomVolumes(), dal.AttributeCodeVolume, "volumes", func(snap *filterSnapshot) **Filter { return &snap.Volume }},
+		{cfg.GetBloomMetadata(), dal.AttributeCodeMetadata, "metadata", func(snap *filterSnapshot) **Filter { return &snap.Metadata }},
+		{cfg.GetBloomReferences(), dal.AttributeCodeReference, "references", func(snap *filterSnapshot) **Filter { return &snap.Reference }},
+		{cfg.GetBloomLedgers(), dal.AttributeCodeLedger, "ledgers", func(snap *filterSnapshot) **Filter { return &snap.Ledger }},
+		{cfg.GetBloomBoundaries(), dal.AttributeCodeBoundary, "boundaries", func(snap *filterSnapshot) **Filter { return &snap.Boundary }},
+		{cfg.GetBloomTransactions(), dal.AttributeCodeTransaction, "transactions", func(snap *filterSnapshot) **Filter { return &snap.Transaction }},
+		{cfg.GetBloomSinkConfigs(), dal.AttributeCodeSinkConfig, "sink_configs", func(snap *filterSnapshot) **Filter { return &snap.SinkConfig }},
+		{cfg.GetBloomNumscriptVersions(), dal.AttributeCodeNumscriptVersion, "numscript_versions", func(snap *filterSnapshot) **Filter { return &snap.NumscriptVersion }},
+		{cfg.GetBloomNumscriptContents(), dal.AttributeCodeNumscriptContent, "numscript_contents", func(snap *filterSnapshot) **Filter { return &snap.NumscriptContent }},
+		{cfg.GetBloomLedgerMetadata(), dal.AttributeCodeLedgerMetadata, "ledger_metadata", func(snap *filterSnapshot) **Filter { return &snap.LedgerMetadata }},
 	}
 }
 
@@ -513,9 +551,12 @@ func NewFilterSet(cfg *commonpb.ClusterConfig, meter metric.Meter) *FilterSet {
 		readyGauge: readyGauge,
 	}
 
+	snap := &filterSnapshot{}
 	for _, bt := range bloomTypes(cfg) {
-		bt.rebuild(fs)
+		bt.rebuild(snap, meter)
 	}
+
+	fs.filters.Store(snap)
 
 	return fs
 }

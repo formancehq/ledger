@@ -14,8 +14,9 @@ import (
 // Attribute is the implementation for all attribute types.
 // It holds the Pebble key layout, serialization helpers, and entry write logic.
 //
-// Key layout: [KeyPrefixAttributes (1B)][CanonicalKey (NB)][AttrType (1B)]
-// The suffix is always 1 byte: [AttrType 1B].
+// Key layout: [KeyPrefixAttributes (1B)][AttrType (1B)][CanonicalKey (NB)]
+// The AttrType byte is at a fixed offset (position 1), enabling efficient
+// type-scoped Pebble range scans without scanning unrelated attribute types.
 // Each canonical key has at most one Pebble entry; Set overwrites in place.
 //
 // Thread-safety:
@@ -36,17 +37,17 @@ func (a *Attribute[V]) ensureKeyBuf(n int) {
 	}
 }
 
-// putPrefix writes [KeyPrefixAttributes][canonicalKey][a.prefix] into buf.
+// putPrefix writes [KeyPrefixAttributes][a.prefix][canonicalKey] into buf.
 // buf must have at least 2+len(canonicalKey) bytes.
 func (a *Attribute[V]) putPrefix(buf []byte, canonicalKey []byte) {
 	buf[0] = dal.KeyPrefixAttributes
-	copy(buf[1:], canonicalKey)
-	buf[1+len(canonicalKey)] = a.prefix
+	buf[1] = a.prefix
+	copy(buf[2:], canonicalKey)
 }
 
-// prefixLen returns the number of bytes for [KeyPrefixAttributes][canonicalKey][attrType].
+// prefixLen returns the number of bytes for [KeyPrefixAttributes][attrType][canonicalKey].
 func prefixLen(canonicalKey []byte) int {
-	return 2 + len(canonicalKey) // 1 for KeyPrefixAttributes + N for canonicalKey + 1 for attrType
+	return 2 + len(canonicalKey) // 1 for KeyPrefixAttributes + 1 for attrType + N for canonicalKey
 }
 
 // vtSizedMarshaler is implemented by vtprotobuf-generated messages.
@@ -92,7 +93,7 @@ func unmarshalProto(data []byte, msg proto.Message) error {
 }
 
 // Set stores a value for the given canonical key and returns the marshaled bytes.
-// Key format: [KeyPrefixAttributes][canonicalKey][prefix].
+// Key format: [KeyPrefixAttributes][prefix][canonicalKey].
 // A simple Set overwrites the previous value in place — no delete needed.
 // Uses the pre-allocated keyBuf — not safe for concurrent use.
 // The returned slice is valid until the next Set call on this Attribute.
@@ -111,12 +112,17 @@ func (a *Attribute[V]) Set(batch *dal.Batch, canonicalKey []byte, value V) ([]by
 	return valueBytes, batch.Set(a.keyBuf[:pLen], valueBytes, pebble.NoSync)
 }
 
-// SuffixLen is the fixed suffix length of an attribute Pebble key:
-// [AttrType(1)] = 1 byte.
-const SuffixLen = 1
+// AttrTypeLen is the size of the attribute type byte in a Pebble key: 1 byte.
+// Kept as a named constant for readability in key length checks.
+const AttrTypeLen = 1
+
+// SuffixLen is an alias for AttrTypeLen, preserved for call sites that
+// use it in minimum-key-length checks (the numeric value is unchanged).
+// Deprecated: prefer AttrTypeLen for new code.
+const SuffixLen = AttrTypeLen
 
 // Get retrieves the value for the given canonical key.
-// Key format: [KeyPrefixAttributes][canonicalKey][attrType].
+// Key format: [KeyPrefixAttributes][attrType][canonicalKey].
 // Returns the value and any error. Returns (zero, nil) if no entry found.
 // Note: This is a read operation — allocates its own buffer for concurrent safety.
 func (a *Attribute[V]) Get(reader dal.PebbleReader, canonicalKey []byte) (V, error) {
@@ -206,24 +212,26 @@ func (a *Attribute[V]) ComputeAllForPrefix(reader dal.PebbleReader, canonicalPre
 	return results, nil
 }
 
-// AttrTypeFromKey extracts the attribute type prefix byte from a Pebble attribute key.
+// AttrTypeFromKey extracts the attribute type byte from a Pebble attribute key.
+// Key layout: [0xF1][AttrType][CanonicalKey...] — AttrType is at fixed position 1.
 // Returns (attrType, true) on success, or (0, false) if the key is too short.
 func AttrTypeFromKey(pebbleKey []byte) (byte, bool) {
-	if len(pebbleKey) <= 1+SuffixLen {
+	if len(pebbleKey) <= 1+AttrTypeLen {
 		return 0, false
 	}
 
-	return pebbleKey[len(pebbleKey)-SuffixLen], true
+	return pebbleKey[1], true
 }
 
 // CanonicalKeyFromPebbleKey extracts the canonical key from a Pebble attribute key.
+// Key layout: [0xF1][AttrType][CanonicalKey...] — canonical starts at offset 2.
 // Returns nil if the key is too short.
 func CanonicalKeyFromPebbleKey(pebbleKey []byte) []byte {
-	if len(pebbleKey) <= 1+SuffixLen {
+	if len(pebbleKey) <= 1+AttrTypeLen {
 		return nil
 	}
 
-	return pebbleKey[1 : len(pebbleKey)-SuffixLen]
+	return pebbleKey[2:]
 }
 
 // IncrementBytes increments a byte slice by 1 (treating as big-endian unsigned integer).

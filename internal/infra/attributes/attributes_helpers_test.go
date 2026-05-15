@@ -19,11 +19,10 @@ func TestAttrTypeFromKey(t *testing.T) {
 
 	t.Run("valid key", func(t *testing.T) {
 		t.Parallel()
-		// Build a key: [0xF1][canonical][attrType][raftIndex 8B]
-		// SuffixLen = 9, so key must be > 1 + 9 = 10 bytes
+		// Build a key: [0xF1][attrType][canonical...]
 		key := make([]byte, 20)
 		key[0] = dal.KeyPrefixAttributes
-		key[len(key)-SuffixLen] = 0x42 // attr type
+		key[1] = 0x42 // attr type at fixed position 1
 		attrType, ok := AttrTypeFromKey(key)
 		require.True(t, ok)
 		require.Equal(t, byte(0x42), attrType)
@@ -53,10 +52,11 @@ func TestCanonicalKeyFromPebbleKey(t *testing.T) {
 		t.Parallel()
 
 		canonical := []byte("ledger:account:USD")
-		// Build: [prefix(1)][canonical][suffix(SuffixLen)]
-		key := make([]byte, 1+len(canonical)+SuffixLen)
+		// Build: [prefix(1)][attrType(1)][canonical]
+		key := make([]byte, 2+len(canonical))
 		key[0] = dal.KeyPrefixAttributes
-		copy(key[1:], canonical)
+		key[1] = 0x42 // attr type
+		copy(key[2:], canonical)
 
 		result := CanonicalKeyFromPebbleKey(key)
 		require.Equal(t, canonical, result)
@@ -400,12 +400,12 @@ func TestBoundaryAttribute(t *testing.T) {
 }
 
 // makePebbleKey builds a pebble attribute key for testing:
-// [KeyPrefixAttributes(1B)][canonical][attrType(1B)].
+// [KeyPrefixAttributes(1B)][attrType(1B)][canonical].
 func makePebbleKey(canonical []byte, attrType byte) []byte {
-	key := make([]byte, 1+len(canonical)+1)
+	key := make([]byte, 2+len(canonical))
 	key[0] = dal.KeyPrefixAttributes
-	copy(key[1:], canonical)
-	key[1+len(canonical)] = attrType
+	key[1] = attrType
+	copy(key[2:], canonical)
 
 	return key
 }

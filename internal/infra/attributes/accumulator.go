@@ -26,16 +26,16 @@ type accumulatorBase[V proto.Message] struct {
 // previous key as prev (non-nil). The caller must handle prev
 // before the next call.
 func (ab *accumulatorBase[V]) feed(pebbleKey, pebbleValue []byte) (matched bool, prev *ComputedEntry[V], err error) {
-	if len(pebbleKey) <= 1+SuffixLen {
+	if len(pebbleKey) <= 1+AttrTypeLen {
 		return false, nil, nil
 	}
 
-	attrType := pebbleKey[len(pebbleKey)-SuffixLen]
+	attrType := pebbleKey[1]
 	if attrType != ab.attr.prefix {
 		return false, nil, nil
 	}
 
-	canonical := string(pebbleKey[1 : len(pebbleKey)-SuffixLen])
+	canonical := string(pebbleKey[2:])
 
 	if canonical != ab.currentCanonical {
 		// Return the previous canonical key's result before resetting.

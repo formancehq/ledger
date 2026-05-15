@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
@@ -102,10 +100,9 @@ func enforceAccountSchema(schema *commonpb.MetadataSchema, metadata map[string]*
 	}
 }
 
-// scanAccount performs a single forward scan over all Volume and Metadata attributes
-// for one account and returns an assembled Account. The scan range is
-// [0xF1][ledger]\x00[address]\x00 .. [0xF1][ledger]\x00[address]\x02, covering both
-// volume (\x00) and metadata (\x01) canonical key separators.
+// scanAccount performs two forward scans — one for Volume and one for Metadata —
+// and returns an assembled Account. With the type-prefixed key layout, V and M
+// entries are in separate Pebble ranges.
 //
 // When diagLogger is non-nil, each Pebble entry is logged with its raft index
 // and attribute type to help diagnose snapshot divergence issues.
@@ -117,94 +114,37 @@ func scanAccount(
 	schema *commonpb.MetadataSchema,
 	diagLogger ...logging.Logger,
 ) (*commonpb.Account, error) {
-	// Build bounds: [0xF1][ledger]\x00[address]\x00 .. [0xF1][ledger]\x00[address]\x02
-	baseLen := 1 + len(ledger) + 1 + len(address)
-	buf := make([]byte, baseLen+1)
-	buf[0] = dal.KeyPrefixAttributes
-	n := 1
-	n += copy(buf[n:], ledger)
-	buf[n] = 0x00
-	n++
-	copy(buf[n:], address)
-
-	lowerBound := make([]byte, baseLen+1)
-	copy(lowerBound, buf)
-	lowerBound[baseLen] = dal.CanonicalKeySepVolume
-
-	upperBound := make([]byte, baseLen+1)
-	copy(upperBound, buf)
-	upperBound[baseLen] = dal.CanonicalKeySepMetadata + 1
-
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: lowerBound,
-		UpperBound: upperBound,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("creating iterator for account scan: %w", err)
-	}
-
-	defer func() { _ = iter.Close() }()
-
-	volAcc := attrs.Volume.NewAccumulator()
-	metaAcc := attrs.Metadata.NewAccumulator()
-
 	var logger logging.Logger
 	if len(diagLogger) > 0 {
 		logger = diagLogger[0]
 	}
 
-	entryCount := 0
+	// Build canonical prefix: [ledger\x00][address]
+	canonicalBase := make([]byte, len(ledger)+1+len(address))
+	n := copy(canonicalBase, ledger)
+	canonicalBase[n] = 0x00
+	n++
+	copy(canonicalBase[n:], address)
 
-	for iter.First(); iter.Valid(); iter.Next() {
-		key := iter.Key()
-
-		valueBytes, err := iter.ValueAndErr()
-		if err != nil {
-			return nil, fmt.Errorf("reading value: %w", err)
-		}
-
-		attrType, ok := attributes.AttrTypeFromKey(key)
-		if !ok {
-			continue
-		}
-
-		entryCount++
-
-		if logger != nil {
-			canonical := string(key[1 : len(key)-attributes.SuffixLen])
-			logger.WithFields(map[string]any{
-				"account":      address,
-				"attrType":     fmt.Sprintf("0x%02x", attrType),
-				"canonicalKey": canonical,
-				"valueLen":     len(valueBytes),
-			}).Infof("scanAccount entry")
-		}
-
-		switch attrType {
-		case dal.AttributeCodeVolume:
-			if _, err := volAcc.Feed(key, valueBytes); err != nil {
-				return nil, fmt.Errorf("feeding volume: %w", err)
-			}
-		case dal.AttributeCodeMetadata:
-			if _, err := metaAcc.Feed(key, valueBytes); err != nil {
-				return nil, fmt.Errorf("feeding metadata: %w", err)
-			}
-		}
+	// Volume scan: canonical prefix [ledger\x00][address]\x00
+	volPrefix := append(canonicalBase, dal.CanonicalKeySepVolume)
+	volEntries, err := attrs.Volume.ComputeAllForPrefix(reader, volPrefix)
+	if err != nil {
+		return nil, fmt.Errorf("scanning volumes: %w", err)
 	}
 
-	if err := iter.Error(); err != nil {
-		return nil, err
+	// Metadata scan: canonical prefix [ledger\x00][address]\x01
+	metaPrefix := append(canonicalBase, dal.CanonicalKeySepMetadata)
+	metaEntries, err := attrs.Metadata.ComputeAllForPrefix(reader, metaPrefix)
+	if err != nil {
+		return nil, fmt.Errorf("scanning metadata: %w", err)
 	}
-
-	volEntries := volAcc.Flush()
-	metaEntries := metaAcc.Flush()
 
 	if logger != nil {
 		logger.WithFields(map[string]any{
-			"account":      address,
-			"totalEntries": entryCount,
-			"volEntries":   len(volEntries),
-			"metaEntries":  len(metaEntries),
+			"account":     address,
+			"volEntries":  len(volEntries),
+			"metaEntries": len(metaEntries),
 		}).Infof("scanAccount complete")
 	}
 

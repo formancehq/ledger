@@ -13,49 +13,151 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
-// CompactAccountIterator wraps a Pebble iterator and yields CompactAccount
-// values by parsing attribute key bytes directly — no value deserialization.
-// All entries for a (ledger, account) are contiguous in Pebble key order:
-// volumes (separator \x00) sort before metadata (separator \x01).
+// CompactAccountIterator yields CompactAccount values by merging Volume and
+// Metadata attribute ranges. With the type-prefixed key layout, V and M entries
+// are in separate Pebble ranges, so two sub-iterators are merged by account address.
 type CompactAccountIterator struct {
+	v compactSubIter // Volume sub-iterator
+	m compactSubIter // Metadata sub-iterator
+
+	done bool
+}
+
+// compactSubIter iterates one attribute type, collecting all entries per account.
+type compactSubIter struct {
 	iter      *pebble.Iterator
-	ledgerLen int // length of "ledger\x00" prefix in the canonical key
+	ledgerLen int  // length of "ledger\x00" in canonical key
+	attrType  byte // dal.AttributeCodeVolume or dal.AttributeCodeMetadata
+	sepByte   byte // canonical key separator for this type
 
-	// State for the current account being accumulated.
-	currentAddr   []byte   // account address bytes (nil before first key)
-	assets        []string // deduplicated asset names
-	metadataKeys  []string // deduplicated metadata key names
-	lastCanonical []byte   // last canonical key seen (for dedup)
+	// Current account state — populated by advance().
+	addr          []byte
+	assets        []string // only for V type
+	metadataKeys  []string // only for M type
+	lastCanonical []byte   // for dedup
 
+	valid   bool
 	started bool
-	done    bool
 }
 
 // NewCompactAccountIterator creates an iterator that yields CompactAccount
-// values by scanning the Pebble attributes zone for the given ledger.
-// Scan range: [0xF1][ledger\x00] → [0xF1][ledger\x01].
+// values by scanning Volume and Metadata attribute ranges for the given ledger.
 func NewCompactAccountIterator(reader dal.PebbleReader, ledger string) (*CompactAccountIterator, error) {
-	// Lower bound: [0xF1][ledger]\x00
-	lowerBound := make([]byte, 1+len(ledger)+1)
-	lowerBound[0] = dal.KeyPrefixAttributes
-	copy(lowerBound[1:], ledger)
-	lowerBound[1+len(ledger)] = 0x00
+	ledgerLen := len(ledger) + 1
 
-	// Upper bound: [0xF1][ledger]\x01
-	upperBound := make([]byte, 1+len(ledger)+1)
+	vIter, err := newCompactSubIter(reader, dal.AttributeCodeVolume, dal.CanonicalKeySepVolume, ledger, ledgerLen)
+	if err != nil {
+		return nil, err
+	}
+
+	mIter, err := newCompactSubIter(reader, dal.AttributeCodeMetadata, dal.CanonicalKeySepMetadata, ledger, ledgerLen)
+	if err != nil {
+		_ = vIter.iter.Close()
+
+		return nil, err
+	}
+
+	return &CompactAccountIterator{v: *vIter, m: *mIter}, nil
+}
+
+func newCompactSubIter(reader dal.PebbleReader, attrType, sepByte byte, ledger string, ledgerLen int) (*compactSubIter, error) {
+	// Bounds: [0xF1][attrType][ledger\x00] → [0xF1][attrType][ledger\x01]
+	lowerBound := make([]byte, 2+len(ledger)+1)
+	lowerBound[0] = dal.KeyPrefixAttributes
+	lowerBound[1] = attrType
+	copy(lowerBound[2:], ledger)
+	lowerBound[2+len(ledger)] = 0x00
+
+	upperBound := make([]byte, 2+len(ledger)+1)
 	upperBound[0] = dal.KeyPrefixAttributes
-	copy(upperBound[1:], ledger)
-	upperBound[1+len(ledger)] = 0x01
+	upperBound[1] = attrType
+	copy(upperBound[2:], ledger)
+	upperBound[2+len(ledger)] = 0x01
 
 	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {
-		return nil, fmt.Errorf("creating compact account iterator: %w", err)
+		return nil, fmt.Errorf("creating compact sub-iterator for type 0x%02x: %w", attrType, err)
 	}
 
-	return &CompactAccountIterator{
+	return &compactSubIter{
 		iter:      iter,
-		ledgerLen: len(ledger) + 1, // "ledger\x00"
+		ledgerLen: ledgerLen,
+		attrType:  attrType,
+		sepByte:   sepByte,
 	}, nil
+}
+
+// advance moves the sub-iterator to the next account, collecting all entries for it.
+// Returns false when exhausted.
+func (si *compactSubIter) advance() bool {
+	si.assets = si.assets[:0]
+	si.metadataKeys = si.metadataKeys[:0]
+	si.lastCanonical = si.lastCanonical[:0]
+	si.addr = nil
+
+	if !si.started {
+		si.started = true
+		if !si.iter.First() {
+			si.valid = false
+
+			return false
+		}
+	}
+
+	for si.iter.Valid() {
+		key := si.iter.Key()
+
+		if len(key) <= 1+attributes.AttrTypeLen {
+			si.iter.Next()
+
+			continue
+		}
+
+		// Extract canonical key: key[2:] in new layout.
+		canonical := key[2:]
+		rest := canonical[si.ledgerLen:]
+
+		sep := bytes.IndexByte(rest, si.sepByte)
+		if sep < 0 {
+			si.iter.Next()
+
+			continue
+		}
+
+		accountBytes := rest[:sep]
+
+		if si.addr == nil {
+			// First account in this pass.
+			si.addr = append(si.addr[:0], accountBytes...)
+		} else if !bytes.Equal(accountBytes, si.addr) {
+			// Crossed account boundary — current account is complete.
+			si.valid = true
+
+			return true
+		}
+
+		// Deduplicate by canonical key.
+		if !bytes.Equal(canonical, si.lastCanonical) {
+			si.lastCanonical = append(si.lastCanonical[:0], canonical...)
+			nameBytes := rest[sep+1:]
+
+			switch si.attrType {
+			case dal.AttributeCodeVolume:
+				if len(nameBytes) >= 2 {
+					si.assets = append(si.assets, domain.FormatAsset(string(nameBytes[:len(nameBytes)-1]), nameBytes[len(nameBytes)-1]))
+				}
+			case dal.AttributeCodeMetadata:
+				si.metadataKeys = append(si.metadataKeys, string(nameBytes))
+			}
+		}
+
+		si.iter.Next()
+	}
+
+	// Exhausted — flush last account if any.
+	si.valid = si.addr != nil
+
+	return si.valid
 }
 
 // Next returns the next CompactAccount or io.EOF when exhausted.
@@ -64,139 +166,96 @@ func (it *CompactAccountIterator) Next() (analysis.CompactAccount, error) {
 		return analysis.CompactAccount{}, io.EOF
 	}
 
-	if !it.started {
-		it.started = true
-		if !it.iter.First() {
-			it.done = true
-
-			err := it.iter.Error()
-			if err != nil {
-				return analysis.CompactAccount{}, err
-			}
-
-			return analysis.CompactAccount{}, io.EOF
-		}
+	// Advance sub-iterators that were consumed in the previous call.
+	if !it.v.valid {
+		it.v.advance()
+	}
+	if !it.m.valid {
+		it.m.advance()
 	}
 
-	for it.iter.Valid() {
-		key := it.iter.Key()
+	if !it.v.valid && !it.m.valid {
+		it.done = true
 
-		// Skip malformed keys.
-		if len(key) <= 1+attributes.SuffixLen {
-			it.iter.Next()
-
-			continue
+		// Check for errors.
+		if err := it.v.iter.Error(); err != nil {
+			return analysis.CompactAccount{}, err
+		}
+		if err := it.m.iter.Error(); err != nil {
+			return analysis.CompactAccount{}, err
 		}
 
-		// Filter by attr type — only Volume and Metadata.
-		attrType := key[len(key)-attributes.SuffixLen]
+		return analysis.CompactAccount{}, io.EOF
+	}
 
-		var sepByte byte
+	var acc analysis.CompactAccount
 
-		switch attrType {
-		case dal.AttributeCodeVolume:
-			sepByte = dal.CanonicalKeySepVolume
-		case dal.AttributeCodeMetadata:
-			sepByte = dal.CanonicalKeySepMetadata
+	switch {
+	case it.v.valid && it.m.valid:
+		cmp := bytes.Compare(it.v.addr, it.m.addr)
+		switch {
+		case cmp < 0:
+			acc = it.yieldV()
+		case cmp > 0:
+			acc = it.yieldM()
 		default:
-			it.iter.Next()
-
-			continue
+			acc = it.yieldBoth()
 		}
-
-		// Extract canonical key and parse account/name.
-		canonical := key[1 : len(key)-attributes.SuffixLen]
-		rest := canonical[it.ledgerLen:]
-
-		sep := bytes.IndexByte(rest, sepByte)
-		if sep < 0 {
-			it.iter.Next()
-
-			continue
-		}
-
-		accountBytes := rest[:sep]
-
-		// Detect account boundary.
-		if it.currentAddr != nil && !bytes.Equal(accountBytes, it.currentAddr) {
-			acc := it.yieldCurrent()
-			it.startAccount(accountBytes)
-			it.addEntry(canonical, rest[sep+1:], attrType)
-			it.iter.Next()
-
-			return acc, nil
-		}
-
-		if it.currentAddr == nil {
-			it.startAccount(accountBytes)
-		}
-
-		it.addEntry(canonical, rest[sep+1:], attrType)
-		it.iter.Next()
+	case it.v.valid:
+		acc = it.yieldV()
+	default:
+		acc = it.yieldM()
 	}
 
-	// Iterator exhausted.
-	it.done = true
-
-	err := it.iter.Error()
-	if err != nil {
-		return analysis.CompactAccount{}, err
-	}
-
-	if it.currentAddr != nil {
-		acc := it.yieldCurrent()
-		it.currentAddr = nil
-
-		return acc, nil
-	}
-
-	return analysis.CompactAccount{}, io.EOF
+	return acc, nil
 }
 
-// Close releases the underlying Pebble iterator.
-func (it *CompactAccountIterator) Close() error {
-	return it.iter.Close()
-}
-
-func (it *CompactAccountIterator) startAccount(addr []byte) {
-	it.currentAddr = append(it.currentAddr[:0], addr...)
-	it.assets = it.assets[:0]
-	it.metadataKeys = it.metadataKeys[:0]
-	it.lastCanonical = it.lastCanonical[:0]
-}
-
-func (it *CompactAccountIterator) addEntry(canonical []byte, nameBytes []byte, attrType byte) {
-	// Deduplicate: skip if same canonical key as last (multiple raft index entries).
-	if bytes.Equal(canonical, it.lastCanonical) {
-		return
+func (it *CompactAccountIterator) yieldV() analysis.CompactAccount {
+	acc := analysis.CompactAccount{Address: string(it.v.addr)}
+	if len(it.v.assets) > 0 {
+		acc.Assets = make([]string, len(it.v.assets))
+		copy(acc.Assets, it.v.assets)
 	}
-
-	it.lastCanonical = append(it.lastCanonical[:0], canonical...)
-
-	switch attrType {
-	case dal.AttributeCodeVolume:
-		// nameBytes is [asset_base][precision_byte] — last byte is always precision.
-		if len(nameBytes) >= 2 {
-			it.assets = append(it.assets, domain.FormatAsset(string(nameBytes[:len(nameBytes)-1]), nameBytes[len(nameBytes)-1]))
-		}
-	case dal.AttributeCodeMetadata:
-		it.metadataKeys = append(it.metadataKeys, string(nameBytes))
-	}
-}
-
-func (it *CompactAccountIterator) yieldCurrent() analysis.CompactAccount {
-	acc := analysis.CompactAccount{
-		Address: string(it.currentAddr),
-	}
-	if len(it.assets) > 0 {
-		acc.Assets = make([]string, len(it.assets))
-		copy(acc.Assets, it.assets)
-	}
-
-	if len(it.metadataKeys) > 0 {
-		acc.MetadataKeys = make([]string, len(it.metadataKeys))
-		copy(acc.MetadataKeys, it.metadataKeys)
-	}
+	it.v.valid = false // mark for advance on next call
 
 	return acc
+}
+
+func (it *CompactAccountIterator) yieldM() analysis.CompactAccount {
+	acc := analysis.CompactAccount{Address: string(it.m.addr)}
+	if len(it.m.metadataKeys) > 0 {
+		acc.MetadataKeys = make([]string, len(it.m.metadataKeys))
+		copy(acc.MetadataKeys, it.m.metadataKeys)
+	}
+	it.m.valid = false
+
+	return acc
+}
+
+func (it *CompactAccountIterator) yieldBoth() analysis.CompactAccount {
+	acc := analysis.CompactAccount{Address: string(it.v.addr)}
+	if len(it.v.assets) > 0 {
+		acc.Assets = make([]string, len(it.v.assets))
+		copy(acc.Assets, it.v.assets)
+	}
+	if len(it.m.metadataKeys) > 0 {
+		acc.MetadataKeys = make([]string, len(it.m.metadataKeys))
+		copy(acc.MetadataKeys, it.m.metadataKeys)
+	}
+	it.v.valid = false
+	it.m.valid = false
+
+	return acc
+}
+
+// Close releases the underlying Pebble iterators.
+func (it *CompactAccountIterator) Close() error {
+	vErr := it.v.iter.Close()
+	mErr := it.m.iter.Close()
+
+	if vErr != nil {
+		return vErr
+	}
+
+	return mErr
 }

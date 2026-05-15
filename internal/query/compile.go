@@ -1181,44 +1181,62 @@ func checkBuiltinIndexed(cfg *commonpb.BuiltinIndexConfig, index commonpb.Transa
 // --- Helpers ---
 
 // pebbleAccountExists checks if at least one attribute key exists for the given
-// account in Pebble. Key prefix: [0xF1][ledger\x00][address\x00].
+// account in Pebble. Checks Volume keys first (most common), falls back to Metadata.
 func pebbleAccountExists(reader dal.PebbleReader, ledger, address string) (bool, error) {
-	// Attribute keys use two separators after the address:
-	//   0x00 (CanonicalKeySepVolume) and 0x01 (CanonicalKeySepMetadata).
-	// Scan [prefix][address\x00] to [prefix][address\x02) to cover both.
-	// Build lower and upper bounds directly to avoid appendAssign lint issues.
-	// Lower: [0xF1][ledger\x00][address][0x00]
-	// Upper: [0xF1][ledger\x00][address][0x02]
-	baseLen := 1 + len(ledger) + 1 + len(address)
-	lowerBound := make([]byte, baseLen+1)
-	lowerBound[0] = dal.KeyPrefixAttributes
-	n := 1
-	n += copy(lowerBound[n:], ledger)
-	lowerBound[n] = 0x00
+	// Check Volume keys: [0xF1][V][ledger\x00][address][0x00]
+	canonicalBase := make([]byte, len(ledger)+1+len(address))
+	n := copy(canonicalBase, ledger)
+	canonicalBase[n] = 0x00
 	n++
-	n += copy(lowerBound[n:], address)
-	lowerBound[n] = dal.CanonicalKeySepVolume
+	copy(canonicalBase[n:], address)
 
-	upperBound := make([]byte, baseLen+1)
-	copy(upperBound, lowerBound)
-	upperBound[baseLen] = dal.CanonicalKeySepMetadata + 1 // 0x02
+	volPrefix := make([]byte, 2+len(canonicalBase)+1)
+	volPrefix[0] = dal.KeyPrefixAttributes
+	volPrefix[1] = dal.AttributeCodeVolume
+	copy(volPrefix[2:], canonicalBase)
+	volPrefix[2+len(canonicalBase)] = dal.CanonicalKeySepVolume
 
-	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
+	volUpper := readstore.IncrementBytes(volPrefix)
+
+	vIter, err := dal.NewBoundedIter(reader, volPrefix, volUpper)
 	if err != nil {
 		return false, err
 	}
 
-	defer func() { _ = iter.Close() }()
+	if vIter.First() {
+		_ = vIter.Close()
 
-	return iter.First(), nil
+		return true, nil
+	}
+
+	_ = vIter.Close()
+
+	// Check Metadata keys: [0xF1][M][ledger\x00][address][0x01]
+	metaPrefix := make([]byte, 2+len(canonicalBase)+1)
+	metaPrefix[0] = dal.KeyPrefixAttributes
+	metaPrefix[1] = dal.AttributeCodeMetadata
+	copy(metaPrefix[2:], canonicalBase)
+	metaPrefix[2+len(canonicalBase)] = dal.CanonicalKeySepMetadata
+
+	metaUpper := readstore.IncrementBytes(metaPrefix)
+
+	mIter, err := dal.NewBoundedIter(reader, metaPrefix, metaUpper)
+	if err != nil {
+		return false, err
+	}
+
+	defer func() { _ = mIter.Close() }()
+
+	return mIter.First(), nil
 }
 
 // pebbleTxExists checks if at least one attribute key exists for the given
-// transaction in Pebble. Key prefix: [0xF1][ledger\x00\x02][txID(8B)].
+// transaction in Pebble. Key prefix: [0xF1][T][ledger\x00\x02][txID(8B)].
 func pebbleTxExists(reader dal.PebbleReader, ledger string, txID uint64) (bool, error) {
-	prefix := make([]byte, 1+len(ledger)+1+1+8)
+	prefix := make([]byte, 2+len(ledger)+1+1+8)
 	prefix[0] = dal.KeyPrefixAttributes
-	n := 1
+	prefix[1] = dal.AttributeCodeTransaction
+	n := 2
 	n += copy(prefix[n:], ledger)
 	prefix[n] = 0x00
 	n++

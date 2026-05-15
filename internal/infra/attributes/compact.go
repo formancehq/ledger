@@ -116,7 +116,7 @@ func CompactAllForBackup(s *dal.Store) error {
 		return fmt.Errorf("creating iterator for attributes: %w", err)
 	}
 
-	minKeyLen := 1 + SuffixLen
+	minKeyLen := 1 + AttrTypeLen
 
 	for iter.First(); iter.Valid(); iter.Next() {
 		iterKey := iter.Key()
@@ -124,7 +124,7 @@ func CompactAllForBackup(s *dal.Store) error {
 			continue
 		}
 
-		attrType := iterKey[len(iterKey)-SuffixLen]
+		attrType := iterKey[1]
 
 		handler, ok := dispatch[attrType]
 		if !ok {

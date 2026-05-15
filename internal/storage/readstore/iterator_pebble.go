@@ -34,12 +34,13 @@ func compareEntities(a, b []byte) int {
 	return bytes.Compare(a, b)
 }
 
-// PebbleAccountIterator iterates over unique account addresses stored in the
-// Pebble attributes zone. Keys have the format:
+// PebbleAccountIterator iterates over unique account addresses for a single
+// attribute type in the Pebble attributes zone. Keys have the format:
 //
-//	[0xF1][ledger\x00][address\x00][sep][...][attrType][raftIndex(8B)]
+//	[0xF1][attrType][ledger\x00][address][sep][field...]
 //
 // The iterator deduplicates by address, emitting each account at most once.
+// Use NewPebbleAccountIterator to merge V and M types for full enumeration.
 type PebbleAccountIterator struct {
 	iter   *pebble.Iterator
 	prefix []byte // [0xF1][ledger\x00]
@@ -49,24 +50,23 @@ type PebbleAccountIterator struct {
 	exhausted bool
 }
 
-// NewPebbleAccountIterator creates an iterator over all accounts in a ledger.
-// The caller must close it when done.
-func NewPebbleAccountIterator(reader dal.PebbleReader, ledger string) (*PebbleAccountIterator, error) {
-	// Prefix: [0xF1][ledger\x00]
-	prefix := make([]byte, 1+len(ledger)+1)
+// newSingleTypeAccountIterator creates a forward account iterator for one attribute type.
+// With the type-prefixed key layout [0xF1][attrType][...], each type has its own
+// contiguous key range — no need to skip transaction keys.
+func newSingleTypeAccountIterator(reader dal.PebbleReader, attrType byte, ledger, addrPrefix string) (*PebbleAccountIterator, error) {
+	// Prefix for address extraction: [0xF1][attrType][ledger\x00]
+	prefix := make([]byte, 2+len(ledger)+1)
 	prefix[0] = dal.KeyPrefixAttributes
-	copy(prefix[1:], ledger)
-	prefix[1+len(ledger)] = 0x00
+	prefix[1] = attrType
+	copy(prefix[2:], ledger)
+	prefix[2+len(ledger)] = 0x00
 
-	upperBound := IncrementBytes(prefix)
-
-	// LowerBound skips past the transaction sub-zone: tx keys start with
-	// CanonicalKeySepTransaction (0x02) after the prefix. Account addresses
-	// are ASCII (>= 0x20), so starting at [prefix][0x03] avoids a linear
-	// scan through potentially millions of transaction attribute keys.
-	lowerBound := make([]byte, len(prefix)+1)
+	// Lower bound: [prefix][addrPrefix]
+	lowerBound := make([]byte, len(prefix)+len(addrPrefix))
 	copy(lowerBound, prefix)
-	lowerBound[len(prefix)] = dal.CanonicalKeySepTransaction + 1
+	copy(lowerBound[len(prefix):], addrPrefix)
+
+	upperBound := IncrementBytes(lowerBound)
 
 	iter, err := reader.NewIter(&pebble.IterOptions{
 		LowerBound: lowerBound,
@@ -82,33 +82,34 @@ func NewPebbleAccountIterator(reader dal.PebbleReader, ledger string) (*PebbleAc
 	}, nil
 }
 
+// NewPebbleAccountIterator creates an iterator over all accounts in a ledger.
+// It merges accounts from Volume and Metadata attribute types via OrIterator.
+// The caller must close it when done.
+func NewPebbleAccountIterator(reader dal.PebbleReader, ledger string) (EntityIterator, error) {
+	return newMergedAccountIterator(reader, ledger, "")
+}
+
 // NewPebbleAccountPrefixIterator creates an iterator over accounts matching an
 // address prefix. Used for compileAddressPrefix.
-func NewPebbleAccountPrefixIterator(reader dal.PebbleReader, ledger, addrPrefix string) (*PebbleAccountIterator, error) {
-	// Lower: [0xF1][ledger\x00][addrPrefix]
-	lower := make([]byte, 1+len(ledger)+1+len(addrPrefix))
-	lower[0] = dal.KeyPrefixAttributes
-	copy(lower[1:], ledger)
-	lower[1+len(ledger)] = 0x00
-	copy(lower[1+len(ledger)+1:], addrPrefix)
+func NewPebbleAccountPrefixIterator(reader dal.PebbleReader, ledger, addrPrefix string) (EntityIterator, error) {
+	return newMergedAccountIterator(reader, ledger, addrPrefix)
+}
 
-	upperBound := IncrementBytes(lower)
-
-	// Prefix stays at [0xF1][ledger\x00] for extractAddress
-	prefix := lower[:1+len(ledger)+1]
-
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: lower,
-		UpperBound: upperBound,
-	})
+// newMergedAccountIterator creates a forward account iterator that merges V and M types.
+func newMergedAccountIterator(reader dal.PebbleReader, ledger, addrPrefix string) (EntityIterator, error) {
+	vIter, err := newSingleTypeAccountIterator(reader, dal.AttributeCodeVolume, ledger, addrPrefix)
 	if err != nil {
 		return nil, err
 	}
 
-	return &PebbleAccountIterator{
-		iter:   iter,
-		prefix: prefix,
-	}, nil
+	mIter, err := newSingleTypeAccountIterator(reader, dal.AttributeCodeMetadata, ledger, addrPrefix)
+	if err != nil {
+		vIter.Close()
+
+		return nil, err
+	}
+
+	return NewOrIterator(vIter, mIter), nil
 }
 
 func (it *PebbleAccountIterator) Next() bool {
@@ -215,9 +216,6 @@ func (it *PebbleAccountIterator) Close() {
 }
 
 // extractAddress extracts the account address from an attribute key.
-// Key format: [0xF1][ledger\x00][address][sep][field][attrType][raftIndex]
-// where sep is 0x00 (volume) or 0x01 (metadata).
-// Returns the address bytes, or nil if the key doesn't have the expected format.
 func (it *PebbleAccountIterator) extractAddress(key []byte) []byte {
 	return extractAccountAddress(key, it.prefix)
 }
@@ -233,22 +231,18 @@ type PebbleReverseAccountIterator struct {
 	exhausted bool
 }
 
-// NewPebbleReverseAccountIterator creates a reverse account iterator.
-func NewPebbleReverseAccountIterator(reader dal.PebbleReader, ledger string) (*PebbleReverseAccountIterator, error) {
-	prefix := make([]byte, 1+len(ledger)+1)
+// newSingleTypeReverseAccountIterator creates a reverse account iterator for one attribute type.
+func newSingleTypeReverseAccountIterator(reader dal.PebbleReader, attrType byte, ledger string) (*PebbleReverseAccountIterator, error) {
+	prefix := make([]byte, 2+len(ledger)+1)
 	prefix[0] = dal.KeyPrefixAttributes
-	copy(prefix[1:], ledger)
-	prefix[1+len(ledger)] = 0x00
+	prefix[1] = attrType
+	copy(prefix[2:], ledger)
+	prefix[2+len(ledger)] = 0x00
 
 	upperBound := IncrementBytes(prefix)
 
-	// Skip past the transaction sub-zone (same rationale as PebbleAccountIterator).
-	lowerBound := make([]byte, len(prefix)+1)
-	copy(lowerBound, prefix)
-	lowerBound[len(prefix)] = dal.CanonicalKeySepTransaction + 1
-
 	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: lowerBound,
+		LowerBound: prefix,
 		UpperBound: upperBound,
 	})
 	if err != nil {
@@ -259,6 +253,24 @@ func NewPebbleReverseAccountIterator(reader dal.PebbleReader, ledger string) (*P
 		iter:   iter,
 		prefix: prefix,
 	}, nil
+}
+
+// NewPebbleReverseAccountIterator creates a reverse account iterator that merges
+// V and M attribute types, yielding unique addresses in descending order.
+func NewPebbleReverseAccountIterator(reader dal.PebbleReader, ledger string) (*ReverseOrIterator, error) {
+	vIter, err := newSingleTypeReverseAccountIterator(reader, dal.AttributeCodeVolume, ledger)
+	if err != nil {
+		return nil, err
+	}
+
+	mIter, err := newSingleTypeReverseAccountIterator(reader, dal.AttributeCodeMetadata, ledger)
+	if err != nil {
+		vIter.Close()
+
+		return nil, err
+	}
+
+	return NewReverseOrIterator(vIter, mIter), nil
 }
 
 func (it *PebbleReverseAccountIterator) Next() bool {
@@ -391,10 +403,9 @@ func (it *PebbleReverseAccountIterator) extractAddress(key []byte) []byte {
 // PebbleTxIterator iterates over unique transaction IDs stored in the Pebble
 // attributes zone. Keys have the format:
 //
-//	[0xF1][ledger\x00\x02][txID(8B)]['T'][raftIndex(8B)]
+//	[0xF1][T][ledger\x00\x02][txID(8B)]
 //
-// The iterator deduplicates by txID, emitting each transaction at most once
-// (there may be multiple raft index entries per transaction).
+// The iterator deduplicates by txID, emitting each transaction at most once.
 type PebbleTxIterator struct {
 	iter     *pebble.Iterator
 	prefix   []byte // [0xF1][ledger\x00\x02]
@@ -843,13 +854,14 @@ func (it *PebbleTxRangeIterator) extractTxID(key []byte) []byte {
 
 // txAttributeCode builds the Pebble key prefix for scanning transactions
 // in a ledger within the attributes zone.
-// Format: [0xF1][ledger\x00\x02].
+// Format: [0xF1][T][ledger\x00\x02].
 func txAttributeCode(ledger string) []byte {
-	prefix := make([]byte, 1+len(ledger)+1+1)
+	prefix := make([]byte, 2+len(ledger)+1+1)
 	prefix[0] = dal.KeyPrefixAttributes
-	copy(prefix[1:], ledger)
-	prefix[1+len(ledger)] = 0x00
-	prefix[1+len(ledger)+1] = dal.CanonicalKeySepTransaction
+	prefix[1] = dal.AttributeCodeTransaction
+	copy(prefix[2:], ledger)
+	prefix[2+len(ledger)] = 0x00
+	prefix[2+len(ledger)+1] = dal.CanonicalKeySepTransaction
 
 	return prefix
 }
@@ -857,8 +869,9 @@ func txAttributeCode(ledger string) []byte {
 // --- account address extraction ---
 
 // extractAccountAddress extracts the account address from an attribute key.
-// Key format after prefix: [address][sep][field][attrType][raftIndex]
+// Key format: [0xF1][attrType][ledger\x00][address][sep][field...]
 // where sep is CanonicalKeySepVolume (0x00) or CanonicalKeySepMetadata (0x01).
+// The prefix parameter is [0xF1][attrType][ledger\x00].
 func extractAccountAddress(key, prefix []byte) []byte {
 	if len(key) <= len(prefix) {
 		return nil
