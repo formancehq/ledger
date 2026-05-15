@@ -469,7 +469,9 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 		_ = batch.Cancel()
 	}()
 
-	cmd := &raftcmdpb.Proposal{}
+	cmd := raftcmdpb.ProposalFromVTPool()
+	defer func() { cmd.ReturnToVTPool() }()
+
 	ret := &ApplyEntriesResult{
 		Results: make([]ApplyResult, 0, len(entries)),
 	}
@@ -540,7 +542,8 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 			continue
 		}
 
-		cmd.ResetVT()
+		cmd.ReturnToVTPool()
+		cmd = raftcmdpb.ProposalFromVTPool()
 
 		if err := cmd.UnmarshalVT(entry.Data); err != nil {
 			return nil, err
