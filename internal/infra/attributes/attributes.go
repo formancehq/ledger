@@ -118,6 +118,7 @@ const AttrTypeLen = 1
 
 // SuffixLen is an alias for AttrTypeLen, preserved for call sites that
 // use it in minimum-key-length checks (the numeric value is unchanged).
+//
 // Deprecated: prefer AttrTypeLen for new code.
 const SuffixLen = AttrTypeLen
 

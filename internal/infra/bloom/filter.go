@@ -154,8 +154,11 @@ func (f *blockedFilter) GetBlock(idx uint64) block {
 }
 
 // SetBlock loads a block from persistent storage at the given index.
+// Uses atomic stores to avoid racing with concurrent Has() readers.
 func (f *blockedFilter) SetBlock(idx uint64, b block) {
-	f.blocks[idx] = b
+	for j := range blockWords {
+		atomic.StoreUint32(&f.blocks[idx][j], b[j])
+	}
 }
 
 // BlockCount returns the number of blocks.

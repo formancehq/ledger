@@ -148,3 +148,39 @@ func TestOptimize_SmallCapacity(t *testing.T) {
 	require.GreaterOrEqual(t, nbits, uint64(BlockBits))
 	require.GreaterOrEqual(t, nhashes, 2)
 }
+
+// TestBlockedFilter_ConcurrentSetBlockAndHas verifies that SetBlock and Has
+// can run concurrently without data races. This reproduces the race between
+// background bloom restore (SetBlock) and preloader lookups (Has).
+// Run with -race to detect: go test -race -run TestBlockedFilter_ConcurrentSetBlockAndHas.
+func TestBlockedFilter_ConcurrentSetBlockAndHas(t *testing.T) {
+	t.Parallel()
+
+	f := newBlockedFilter(BlockBits*64, 5)
+
+	// Pre-populate some blocks with known data.
+	var blk block
+	for i := range blockWords {
+		blk[i] = 0xFFFFFFFF
+	}
+
+	done := make(chan struct{})
+
+	// Writer goroutine: continuously sets blocks (simulates RestoreFromStore).
+	go func() {
+		defer close(done)
+
+		for i := range 10_000 {
+			blockIdx := uint64(i) % f.BlockCount()
+			f.SetBlock(blockIdx, blk)
+		}
+	}()
+
+	// Reader goroutine (this goroutine): continuously checks membership (simulates preloader).
+	rng := testRNG(77)
+	for range 10_000 {
+		f.Has(rng.Uint64())
+	}
+
+	<-done
+}

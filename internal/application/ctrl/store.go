@@ -127,14 +127,19 @@ func scanAccount(
 	copy(canonicalBase[n:], address)
 
 	// Volume scan: canonical prefix [ledger\x00][address]\x00
-	volPrefix := append(canonicalBase, dal.CanonicalKeySepVolume)
+	volPrefix := make([]byte, len(canonicalBase)+1)
+	copy(volPrefix, canonicalBase)
+	volPrefix[len(canonicalBase)] = dal.CanonicalKeySepVolume
+
 	volEntries, err := attrs.Volume.ComputeAllForPrefix(reader, volPrefix)
 	if err != nil {
 		return nil, fmt.Errorf("scanning volumes: %w", err)
 	}
 
 	// Metadata scan: canonical prefix [ledger\x00][address]\x01
-	metaPrefix := append(canonicalBase, dal.CanonicalKeySepMetadata)
+	metaPrefix := make([]byte, len(canonicalBase)+1)
+	copy(metaPrefix, canonicalBase)
+	metaPrefix[len(canonicalBase)] = dal.CanonicalKeySepMetadata
 	metaEntries, err := attrs.Metadata.ComputeAllForPrefix(reader, metaPrefix)
 	if err != nil {
 		return nil, fmt.Errorf("scanning metadata: %w", err)
