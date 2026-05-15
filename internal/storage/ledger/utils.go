@@ -44,6 +44,9 @@ func filterAccountAddress(address, key string) string {
 		parts = append(parts, fmt.Sprintf("%s = '%s'", key, address))
 	}
 
+	if len(parts) == 0 {
+		return "TRUE"
+	}
 	return strings.Join(parts, " and ")
 }
 
