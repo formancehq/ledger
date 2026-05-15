@@ -527,7 +527,16 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 
 			// Flush dirty bloom blocks in the same batch as the rotation.
 			// At restart, bloom_pebble ∪ cache_gen0 ∪ cache_gen1 = complete set.
-			if fsm.BloomFilters != nil {
+			//
+			// Only flush when the bloom is fully populated (IsReady). During async
+			// population (first boot or after bloom config change), dirty blocks
+			// contain partial scan data. Persisting them would cause false negatives
+			// on restart: the restore path sees blocks in Pebble and skips the full
+			// attribute scan, but the blocks are incomplete. Cold entries (in Pebble
+			// but not in cache) then get MayContain=false → zero-value preloads.
+			// By skipping the flush while !IsReady, we guarantee that on restart
+			// hasPersistedBloomBlocks()=false → full attribute scan → no false negatives.
+			if fsm.BloomFilters != nil && fsm.BloomFilters.IsReady() {
 				if err := fsm.BloomFilters.PersistDirtyBlocks(batch); err != nil {
 					return nil, fmt.Errorf("persisting bloom dirty blocks: %w", err)
 				}
