@@ -169,6 +169,11 @@ func (s *Store) DB() *pebble.DB {
 	return s.db
 }
 
+// NewBatch creates a dal.Batch backed by the read store's Pebble DB.
+func (s *Store) NewBatch() *dal.Batch {
+	return dal.NewBatchFromDB(s.db)
+}
+
 // NewSnapshot returns a consistent snapshot for reads.
 // The caller must call snap.Close() when done.
 func (s *Store) NewSnapshot() *pebble.Snapshot {
@@ -202,11 +207,11 @@ func (s *Store) ReadProgress() (uint64, error) {
 }
 
 // WriteProgress stores the last indexed log sequence.
-func (s *Store) WriteProgress(batch *pebble.Batch, sequence uint64) error {
+func (s *Store) WriteProgress(batch *dal.Batch, sequence uint64) error {
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], sequence)
 
-	return batch.Set(progressKey, buf[:], pebble.NoSync)
+	return batch.SetBytes(progressKey, buf[:])
 }
 
 // LastIndexedSequence returns the last indexed log sequence (read-only).
@@ -242,15 +247,15 @@ func (s *Store) ReadAuditProgress() (uint64, error) {
 }
 
 // WriteAuditProgress stores the last consumed audit sequence.
-func (s *Store) WriteAuditProgress(batch *pebble.Batch, sequence uint64) error {
+func (s *Store) WriteAuditProgress(batch *dal.Batch, sequence uint64) error {
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], sequence)
 
-	return batch.Set([]byte{PrefixAuditProgress}, buf[:], pebble.NoSync)
+	return batch.SetBytes([]byte{PrefixAuditProgress}, buf[:])
 }
 
 // WriteBackfillProgress stores a backfill cursor.
-func (s *Store) WriteBackfillProgress(batch *pebble.Batch, key []byte, cursor uint64) error {
+func (s *Store) WriteBackfillProgress(batch *dal.Batch, key []byte, cursor uint64) error {
 	fullKey := make([]byte, 1+len(key))
 	fullKey[0] = PrefixBackfill
 	copy(fullKey[1:], key)
@@ -258,7 +263,7 @@ func (s *Store) WriteBackfillProgress(batch *pebble.Batch, key []byte, cursor ui
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], cursor)
 
-	return batch.Set(fullKey, buf[:], pebble.NoSync)
+	return batch.SetBytes(fullKey, buf[:])
 }
 
 // ReadBackfillProgress reads a backfill cursor.
@@ -283,12 +288,12 @@ func (s *Store) ReadBackfillProgress(key []byte) (uint64, bool) {
 }
 
 // WriteBackfillCursor stores a variable-length cursor ([]byte) for schema rewrite tasks.
-func (s *Store) WriteBackfillCursor(batch *pebble.Batch, key, cursor []byte) error {
+func (s *Store) WriteBackfillCursor(batch *dal.Batch, key, cursor []byte) error {
 	fullKey := make([]byte, 1+len(key))
 	fullKey[0] = PrefixBackfill
 	copy(fullKey[1:], key)
 
-	return batch.Set(fullKey, cursor, pebble.NoSync)
+	return batch.SetBytes(fullKey, cursor)
 }
 
 // ReadBackfillCursor reads a variable-length cursor.

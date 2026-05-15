@@ -3,7 +3,7 @@ package readstore
 import (
 	"fmt"
 
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // ledgerScopedPrefixes lists all readstore prefix bytes that contain
@@ -26,7 +26,7 @@ var ledgerScopedPrefixes = []byte{
 // DeleteLedgerIndexes removes all read index data for the given ledger.
 // It performs range deletes on all ledger-scoped prefixes:
 // [prefix][ledger\x00] -> [prefix][ledger\x01].
-func DeleteLedgerIndexes(batch *pebble.Batch, ledgerName string) error {
+func DeleteLedgerIndexes(batch *dal.Batch, ledgerName string) error {
 	ledgerPrefix := append([]byte(ledgerName), 0x00)
 	ledgerPrefixUpper := IncrementBytes(ledgerPrefix)
 
@@ -34,7 +34,7 @@ func DeleteLedgerIndexes(batch *pebble.Batch, ledgerName string) error {
 		start := append([]byte{prefix}, ledgerPrefix...)
 		end := append([]byte{prefix}, ledgerPrefixUpper...)
 
-		if err := batch.DeleteRange(start, end, pebble.NoSync); err != nil {
+		if err := batch.DeleteRangeNoSync(start, end); err != nil {
 			return fmt.Errorf("deleting readstore prefix 0x%02x for ledger %q: %w", prefix, ledgerName, err)
 		}
 	}

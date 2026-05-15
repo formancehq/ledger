@@ -60,7 +60,8 @@ func (b *Builder) processBackfillPostings(stop <-chan struct{}, task *backfillTa
 			eof        bool
 		)
 
-		batch := b.readStore.DB().NewIndexedBatch()
+		batch := b.readStore.NewBatch()
+		batch.EnableSortedCommit()
 		b.wb.Init(batch)
 
 		for batchCount < backfillBatchSize {
@@ -72,13 +73,13 @@ func (b *Builder) processBackfillPostings(stop <-chan struct{}, task *backfillTa
 
 			value, verr := iter.ValueAndErr()
 			if verr != nil {
-				_ = batch.Close()
+				_ = batch.Cancel()
 
 				return verr
 			}
 
 			if err := parsePostingsFromLog(value, &parsed); err != nil {
-				_ = batch.Close()
+				_ = batch.Cancel()
 
 				return err
 			}
@@ -101,13 +102,13 @@ func (b *Builder) processBackfillPostings(stop <-chan struct{}, task *backfillTa
 				p := &parsed.Postings[i]
 				if indexAny {
 					if err := wb.WriteAccountTxMapping(kb, parsed.Ledger, p.Source, parsed.TxID); err != nil {
-						_ = batch.Close()
+						_ = batch.Cancel()
 
 						return err
 					}
 
 					if err := wb.WriteAccountTxMapping(kb, parsed.Ledger, p.Destination, parsed.TxID); err != nil {
-						_ = batch.Close()
+						_ = batch.Cancel()
 
 						return err
 					}
@@ -115,7 +116,7 @@ func (b *Builder) processBackfillPostings(stop <-chan struct{}, task *backfillTa
 
 				if indexSrc {
 					if err := wb.WriteSourceAccountTxMapping(kb, parsed.Ledger, p.Source, parsed.TxID); err != nil {
-						_ = batch.Close()
+						_ = batch.Cancel()
 
 						return err
 					}
@@ -123,7 +124,7 @@ func (b *Builder) processBackfillPostings(stop <-chan struct{}, task *backfillTa
 
 				if indexDst {
 					if err := wb.WriteDestAccountTxMapping(kb, parsed.Ledger, p.Destination, parsed.TxID); err != nil {
-						_ = batch.Close()
+						_ = batch.Cancel()
 
 						return err
 					}
@@ -134,7 +135,7 @@ func (b *Builder) processBackfillPostings(stop <-chan struct{}, task *backfillTa
 		// Persist backfill cursor and flush.
 		if batchCount > 0 {
 			if err := b.readStore.WriteBackfillProgress(batch, task.bbKey, lastSeq); err != nil {
-				_ = batch.Close()
+				_ = batch.Cancel()
 
 				return err
 			}
@@ -143,7 +144,7 @@ func (b *Builder) processBackfillPostings(stop <-chan struct{}, task *backfillTa
 				return err
 			}
 		} else {
-			_ = batch.Close()
+			_ = batch.Cancel()
 		}
 
 		if batchCount == 0 {

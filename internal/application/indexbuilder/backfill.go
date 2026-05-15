@@ -301,8 +301,9 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int) 
 		return done, nil
 	}
 
-	batch := b.readStore.DB().NewIndexedBatch()
-	defer func() { _ = batch.Close() }()
+	batch := b.readStore.NewBatch()
+	batch.EnableSortedCommit()
+	defer func() { _ = batch.Cancel() }()
 
 	processed := 0
 	var lastKey []byte
@@ -347,7 +348,7 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int) 
 
 		// Delete old forward index entry.
 		oldFwdKey := readstore.MetadataIndexKey(kb, task.ledger, ns, task.key, oldEncoded, entityID)
-		if err := batch.Delete(oldFwdKey, pebble.NoSync); err != nil {
+		if err := batch.DeleteKey(oldFwdKey); err != nil {
 			return false, fmt.Errorf("deleting old forward index: %w", err)
 		}
 
@@ -357,24 +358,24 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int) 
 
 		if oldIsNull != newIsNull {
 			oldEidxKey := readstore.EntityExistsKey(kb, task.ledger, ns, task.key, oldIsNull, entityID)
-			if err := batch.Delete(oldEidxKey, pebble.NoSync); err != nil {
+			if err := batch.DeleteKey(oldEidxKey); err != nil {
 				return false, fmt.Errorf("deleting old eidx: %w", err)
 			}
 
 			newEidxKey := readstore.EntityExistsKey(kb, task.ledger, ns, task.key, newIsNull, entityID)
-			if err := batch.Set(newEidxKey, nil, pebble.NoSync); err != nil {
+			if err := batch.SetBytes(newEidxKey, nil); err != nil {
 				return false, fmt.Errorf("setting new eidx: %w", err)
 			}
 		}
 
 		// Write new forward index entry.
 		newFwdKey := readstore.MetadataIndexKey(kb, task.ledger, ns, task.key, newEncoded, entityID)
-		if err := batch.Set(newFwdKey, nil, pebble.NoSync); err != nil {
+		if err := batch.SetBytes(newFwdKey, nil); err != nil {
 			return false, fmt.Errorf("setting new forward index: %w", err)
 		}
 
 		// Update reverse map with new encoded value.
-		if err := batch.Set(cloneBytes(k), newEncoded, pebble.NoSync); err != nil {
+		if err := batch.SetBytes(cloneBytes(k), newEncoded); err != nil {
 			return false, fmt.Errorf("updating reverse map: %w", err)
 		}
 
@@ -402,7 +403,7 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int) 
 		}
 	}
 
-	if err := batch.Commit(pebble.NoSync); err != nil {
+	if err := batch.Commit(); err != nil {
 		return false, err
 	}
 
@@ -645,7 +646,8 @@ func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask, dead
 			eof        bool
 		)
 
-		batch := b.readStore.DB().NewIndexedBatch()
+		batch := b.readStore.NewBatch()
+		batch.EnableSortedCommit()
 		b.wb.Init(batch)
 
 		for batchCount < backfillBatchSize {
@@ -657,7 +659,7 @@ func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask, dead
 					break
 				}
 
-				_ = batch.Close()
+				_ = batch.Cancel()
 
 				return err
 			}
@@ -671,7 +673,7 @@ func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask, dead
 			}
 
 			if err := b.indexLogEntry(cfg, log); err != nil {
-				_ = batch.Close()
+				_ = batch.Cancel()
 
 				return err
 			}
@@ -683,7 +685,7 @@ func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask, dead
 		// Persist backfill cursor and flush.
 		if batchCount > 0 {
 			if err := b.readStore.WriteBackfillProgress(batch, task.bbKey, lastSeq); err != nil {
-				_ = batch.Close()
+				_ = batch.Cancel()
 
 				return err
 			}
@@ -692,7 +694,7 @@ func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask, dead
 				return err
 			}
 		} else {
-			_ = batch.Close()
+			_ = batch.Cancel()
 		}
 
 		if batchCount == 0 {

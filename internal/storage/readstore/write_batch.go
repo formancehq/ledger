@@ -3,21 +3,14 @@ package readstore
 import (
 	"encoding/binary"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
-// isNullEncoded returns true if the encoded value starts with TypeTagNull.
-func isNullEncoded(encodedValue []byte) bool {
-	return len(encodedValue) > 0 && encodedValue[0] == TypeTagNull
-}
-
-// WriteBatch buffers Pebble write operations using an indexed batch.
-// An indexed batch allows reads to see previously buffered writes,
-// which is needed for the reverse map overlay pattern.
+// WriteBatch buffers Pebble write operations using a dal.Batch.
+// When sorted commit is enabled on the underlying batch, entries are
+// sorted by key at Commit time for Pebble skiplist optimization.
 type WriteBatch struct {
-	batch *pebble.Batch
+	batch *dal.Batch
 	count int // number of operations buffered
 }
 
@@ -26,13 +19,13 @@ func NewWriteBatch() *WriteBatch {
 	return &WriteBatch{}
 }
 
-// Init binds the batch to a Pebble indexed batch.
-func (wb *WriteBatch) Init(batch *pebble.Batch) {
+// Init binds the batch to a dal.Batch.
+func (wb *WriteBatch) Init(batch *dal.Batch) {
 	wb.batch = batch
 }
 
-// Batch returns the underlying Pebble batch for direct operations (e.g., range deletes).
-func (wb *WriteBatch) Batch() *pebble.Batch {
+// Batch returns the underlying dal.Batch for direct operations (e.g., range deletes).
+func (wb *WriteBatch) Batch() *dal.Batch {
 	return wb.batch
 }
 
@@ -49,7 +42,7 @@ func (wb *WriteBatch) Reset() {
 
 // put sets a key-value pair in the batch.
 func (wb *WriteBatch) put(key, value []byte) error {
-	if err := wb.batch.Set(key, value, pebble.NoSync); err != nil {
+	if err := wb.batch.SetBytes(key, value); err != nil {
 		return err
 	}
 
@@ -60,7 +53,7 @@ func (wb *WriteBatch) put(key, value []byte) error {
 
 // del deletes a key in the batch.
 func (wb *WriteBatch) del(key []byte) error {
-	if err := wb.batch.Delete(key, pebble.NoSync); err != nil {
+	if err := wb.batch.DeleteKey(key); err != nil {
 		return err
 	}
 
@@ -75,40 +68,11 @@ func (wb *WriteBatch) Flush() error {
 		return nil
 	}
 
-	err := wb.batch.Commit(pebble.NoSync)
+	err := wb.batch.Commit()
 	wb.batch = nil
 	wb.count = 0
 
 	return err
-}
-
-// --- Reverse map reads via indexed batch ---
-
-// readReverseMap reads a reverse map value from the indexed batch,
-// which sees both committed data and uncommitted writes.
-func (wb *WriteBatch) readReverseMap(key []byte) []byte {
-	v, closer, err := wb.batch.Get(key)
-	if err != nil {
-		return nil
-	}
-
-	// Copy value since it's only valid until closer is closed.
-	result := make([]byte, len(v))
-	copy(result, v)
-	_ = closer.Close() // closer.Close() on Pebble batch Get never returns an error
-
-	return result
-}
-
-// putReverseMap sets a reverse map entry. The indexed batch makes it
-// visible to subsequent readReverseMap calls in the same batch.
-func (wb *WriteBatch) putReverseMap(key, value []byte) error {
-	return wb.put(key, value)
-}
-
-// deleteReverseMap deletes a reverse map entry.
-func (wb *WriteBatch) deleteReverseMap(key []byte) error {
-	return wb.del(key)
 }
 
 // --- High-level write helpers ---
@@ -162,44 +126,6 @@ func (wb *WriteBatch) DeleteEntityExists(kb *dal.KeyBuilder, ledger, ns, metaKey
 	return wb.del(key)
 }
 
-// UpdateMetadataIndex performs the atomic 4-step metadata index update:
-//  1. Read old value from reverse map (via indexed batch)
-//  2. Delete old forward index + eidx entry (if exists)
-//  3. Insert new forward index + eidx entry
-//  4. Update reverse map with new value
-func (wb *WriteBatch) UpdateMetadataIndex(
-	kb *dal.KeyBuilder,
-	reverseKey []byte,
-	ledger, ns, metadataKey string,
-	newEncodedValue, entityID []byte,
-) error {
-	// Step 1: Read old value from reverse map (batch-aware).
-	oldEncodedValue := wb.readReverseMap(reverseKey)
-
-	// Step 2: Delete old forward index + eidx entry (if exists).
-	if oldEncodedValue != nil {
-		if err := wb.DeleteMetadataIndex(kb, ledger, ns, metadataKey, oldEncodedValue, entityID); err != nil {
-			return err
-		}
-
-		if err := wb.DeleteEntityExists(kb, ledger, ns, metadataKey, isNullEncoded(oldEncodedValue), entityID); err != nil {
-			return err
-		}
-	}
-
-	// Step 3: Insert new forward index + eidx entry.
-	if err := wb.WriteMetadataIndex(kb, ledger, ns, metadataKey, newEncodedValue, entityID); err != nil {
-		return err
-	}
-
-	if err := wb.WriteEntityExists(kb, ledger, ns, metadataKey, isNullEncoded(newEncodedValue), entityID); err != nil {
-		return err
-	}
-
-	// Step 4: Update reverse map.
-	return wb.putReverseMap(reverseKey, newEncodedValue)
-}
-
 // ReplaceMetadataIndex replaces a metadata index entry using an explicit old value
 // from the log, avoiding a reverse map read.
 func (wb *WriteBatch) ReplaceMetadataIndex(
@@ -226,7 +152,7 @@ func (wb *WriteBatch) ReplaceMetadataIndex(
 		return err
 	}
 
-	return wb.putReverseMap(reverseKey, newEncodedValue)
+	return wb.put(reverseKey, newEncodedValue)
 }
 
 // DeleteMetadataEntryWithPrevious removes both the forward index and reverse map entries
@@ -247,7 +173,7 @@ func (wb *WriteBatch) DeleteMetadataEntryWithPrevious(
 		}
 	}
 
-	return wb.deleteReverseMap(reverseKey)
+	return wb.del(reverseKey)
 }
 
 // WriteTransactionReferenceIndex inserts an entry in the transaction reference index.
@@ -289,28 +215,7 @@ func (wb *WriteBatch) WriteLedgerLogIndex(kb *dal.KeyBuilder, ledger string, log
 	return wb.put(key, val[:])
 }
 
-// DeleteMetadataEntry removes both the forward index and reverse map entries
-// for a metadata key on a specific entity.
-func (wb *WriteBatch) DeleteMetadataEntry(
-	kb *dal.KeyBuilder,
-	reverseKey []byte,
-	ledger, ns, metadataKey string,
-	entityID []byte,
-) error {
-	// Read old value from reverse map (batch-aware).
-	oldEncodedValue := wb.readReverseMap(reverseKey)
-
-	// Delete forward index + eidx entry (if exists).
-	if oldEncodedValue != nil {
-		if err := wb.DeleteMetadataIndex(kb, ledger, ns, metadataKey, oldEncodedValue, entityID); err != nil {
-			return err
-		}
-
-		if err := wb.DeleteEntityExists(kb, ledger, ns, metadataKey, isNullEncoded(oldEncodedValue), entityID); err != nil {
-			return err
-		}
-	}
-
-	// Delete reverse map entry.
-	return wb.deleteReverseMap(reverseKey)
+// isNullEncoded returns true if the encoded value starts with TypeTagNull.
+func isNullEncoded(encodedValue []byte) bool {
+	return len(encodedValue) > 0 && encodedValue[0] == TypeTagNull
 }

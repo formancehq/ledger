@@ -87,6 +87,16 @@ func (s *Store) NewBatch() *Batch {
 	}
 }
 
+// NewBatchFromDB creates a Batch backed by the given Pebble DB without a Store.
+// Used by subsystems (e.g. readstore) that manage their own Pebble instance.
+func NewBatchFromDB(db *pebble.DB) *Batch {
+	return &Batch{
+		batch:       db.NewBatch(),
+		KeyBuilder:  NewKeyBuilder(),
+		protoBuffer: make([]byte, 0, 1024),
+	}
+}
+
 // EnableSortedCommit switches the batch to sorted mode: subsequent Set/Delete
 // operations are buffered in an arena and sorted by key at Commit time.
 // This should be called immediately after NewBatch, before any writes.

@@ -69,7 +69,8 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 		)
 
 		// Create an indexed batch up front so write methods have a valid target.
-		batch := b.readStore.DB().NewIndexedBatch()
+		batch := b.readStore.NewBatch()
+		batch.EnableSortedCommit()
 		b.wb.Init(batch)
 
 		// Iterate logs from Pebble and buffer index writes into the batch.
@@ -82,7 +83,7 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 					break
 				}
 
-				_ = batch.Close()
+				_ = batch.Cancel()
 
 				return cursor, err
 			}
@@ -98,7 +99,7 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 			if dl, ok := log.GetPayload().GetType().(*commonpb.LogPayload_DeleteLedger); ok {
 				if dl.DeleteLedger != nil {
 					if err := readstore.DeleteLedgerIndexes(batch, dl.DeleteLedger.GetName()); err != nil {
-						_ = batch.Close()
+						_ = batch.Cancel()
 
 						return cursor, err
 					}
@@ -144,7 +145,7 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 			// Index ledger log for per-ledger listing (opt-in via log builtin index).
 			if cfg.isLogBuiltinIndexed(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER) {
 				if err := b.wb.WriteLedgerLogIndex(b.kb, ledgerName, ledgerLog.GetId(), log.GetSequence()); err != nil {
-					_ = batch.Close()
+					_ = batch.Cancel()
 
 					return cursor, err
 				}
@@ -153,21 +154,21 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 			// Index log date for date range filtering (opt-in via log date builtin index).
 			if cfg.isLogBuiltinIndexed(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE) {
 				if err := b.wb.WriteLedgerLogDateIndex(b.kb, ledgerName, ledgerLog.GetDate().GetData(), ledgerLog.GetId()); err != nil {
-					_ = batch.Close()
+					_ = batch.Cancel()
 
 					return cursor, err
 				}
 			}
 
 			if err := b.indexPayload(b.kb, cfg, ledgerName, ledgerLog.GetData().GetPayload()); err != nil {
-				_ = batch.Close()
+				_ = batch.Cancel()
 
 				return cursor, err
 			}
 		}
 
 		if batchCount == 0 {
-			_ = batch.Close()
+			_ = batch.Cancel()
 
 			break
 		}
@@ -177,7 +178,7 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 		if !b.wb.Empty() || hasCheckpointAction {
 			// Write progress into the same batch before Flush commits it.
 			if err := b.readStore.WriteProgress(batch, lastSeq); err != nil {
-				_ = batch.Close()
+				_ = batch.Cancel()
 
 				return cursor, err
 			}
@@ -185,7 +186,7 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 			// Persist audit progress alongside log progress.
 			if auditSeq := audit.auditSequence(); auditSeq > b.lastAuditSeq {
 				if err := b.readStore.WriteAuditProgress(batch, auditSeq); err != nil {
-					_ = batch.Close()
+					_ = batch.Cancel()
 
 					return cursor, err
 				}
@@ -205,7 +206,7 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 
 			needsPersist = false
 		} else {
-			_ = batch.Close()
+			_ = batch.Cancel()
 			b.wb.Reset()
 			needsPersist = true
 		}
@@ -258,16 +259,16 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 	// Persist progress once if we advanced the cursor without any index writes.
 	// This reduces fsyncs from O(logs/batchSize) to O(1) when no indexes are active.
 	if needsPersist {
-		batch := b.readStore.DB().NewIndexedBatch()
+		batch := b.readStore.NewBatch()
 		if err := b.readStore.WriteProgress(batch, cursor); err != nil {
-			_ = batch.Close()
+			_ = batch.Cancel()
 
 			return cursor, fmt.Errorf("writing progress: %w", err)
 		}
 
 		if auditSeq := audit.auditSequence(); auditSeq > b.lastAuditSeq {
 			if err := b.readStore.WriteAuditProgress(batch, auditSeq); err != nil {
-				_ = batch.Close()
+				_ = batch.Cancel()
 
 				return cursor, fmt.Errorf("writing audit progress: %w", err)
 			}
@@ -275,14 +276,10 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 			b.lastAuditSeq = auditSeq
 		}
 
-		if err := batch.Commit(pebble.NoSync); err != nil {
-			_ = batch.Close()
+		if err := batch.Commit(); err != nil {
+			_ = batch.Cancel()
 
 			return cursor, fmt.Errorf("committing progress: %w", err)
-		}
-
-		if err := batch.Close(); err != nil {
-			return cursor, fmt.Errorf("closing progress batch: %w", err)
 		}
 	}
 
@@ -410,7 +407,7 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log) error
 			return err
 		}
 
-		batch := b.readStore.DB().NewIndexedBatch()
+		batch := b.readStore.NewBatch()
 		b.wb.Init(batch) // re-init with a new batch after flush
 
 		return b.indexSetMetadataFieldType(cfg, b.kb, ledgerName, p.SetMetadataFieldType)
