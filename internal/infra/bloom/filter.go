@@ -251,15 +251,6 @@ func optimize(capacity uint64, fpRate float64) (nbits uint64, nhashes int) {
 	return nbits, int(ceilK)
 }
 
-// FPRateEstimate computes the estimated FPR for a blocked Bloom filter.
-func FPRateEstimate(nkeys, nbits uint64, nhashes int) float64 {
-	if nkeys == 0 {
-		return 0
-	}
-
-	return fpRateEstimate(float64(nbits)/float64(nkeys), float64(nhashes))
-}
-
 // fpRateEstimate implements Putze et al.'s Equation (3).
 func fpRateEstimate(c, k float64) float64 {
 	const epsilon = 1e-9

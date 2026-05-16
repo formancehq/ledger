@@ -46,6 +46,58 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
+  /health:
+    get:
+      summary: Health check
+      description: Returns the health status of the node. Returns 503 if the node is not connected to the cluster.
+      operationId: health
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Node is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /livez:
+    get:
+      summary: Liveness probe
+      description: Returns 200 as long as the process is alive. Suitable for Kubernetes liveness probes.
+      operationId: livez
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Process is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /readyz:
+    get:
+      summary: Readiness probe
+      description: |
+        Returns 200 only when the node is part of a healthy cluster (Raft state healthy,
+        leader elected, disk/clock OK). Returns 503 if the node is not ready. Suitable for
+        Kubernetes readiness probes.
+      operationId: readyz
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Node is ready to serve traffic
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
   /{ledgerName}:
     get:
       summary: Get a ledger
@@ -1381,6 +1433,444 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
+  /{ledgerName}/bulk:
+    post:
+      summary: Bulk operations (alternate path)
+      description: |
+        Alias for `POST /{ledgerName}/_bulk`. Execute multiple operations
+        (create transactions, add metadata, revert transactions, delete metadata)
+        in a single request. Requires `ledger:write` scope.
+      operationId: bulkOperationsAlternate
+      tags:
+        - Transactions
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - name: continueOnFailure
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Continue processing remaining operations even if one fails
+        - name: atomic
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Execute all operations atomically (not yet supported)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/BulkElement'
+      responses:
+        '200':
+          description: Bulk operations completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkResponse'
+        '400':
+          description: Bulk operations completed with errors, or invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          description: Request entity too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
+  /{ledgerName}/prepared-queries:
+    post:
+      summary: Create a prepared query
+      description: |
+        Creates a new prepared query for a ledger. A prepared query defines a reusable
+        filter that can be executed later with parameter substitution. Requires `queries:write` scope.
+      operationId: createPreparedQuery
+      tags:
+        - Prepared Queries
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePreparedQueryRequest'
+      responses:
+        '204':
+          description: Prepared query created successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+    get:
+      summary: List prepared queries
+      description: Returns a list of all prepared queries for a ledger. Requires `queries:read` scope.
+      operationId: listPreparedQueries
+      tags:
+        - Prepared Queries
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+      responses:
+        '200':
+          description: List of prepared queries retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListPreparedQueriesResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
+  /{ledgerName}/prepared-queries/{queryName}:
+    put:
+      summary: Update a prepared query
+      description: |
+        Updates the filter of an existing prepared query. Requires `queries:write` scope.
+      operationId: updatePreparedQuery
+      tags:
+        - Prepared Queries
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/QueryName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePreparedQueryRequest'
+      responses:
+        '204':
+          description: Prepared query updated successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+    delete:
+      summary: Delete a prepared query
+      description: Deletes a prepared query from a ledger. Requires `queries:write` scope.
+      operationId: deletePreparedQuery
+      tags:
+        - Prepared Queries
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/QueryName'
+      responses:
+        '204':
+          description: Prepared query deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
+  /{ledgerName}/prepared-queries/{queryName}/execute:
+    post:
+      summary: Execute a prepared query
+      description: |
+        Executes a prepared query with optional parameter substitution. Supports LIST and
+        AGGREGATE_VOLUMES modes with cursor pagination. Also accepts pageSize and cursor
+        as query parameters. Requires `queries:read` scope.
+      operationId: executePreparedQuery
+      tags:
+        - Prepared Queries
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/QueryName'
+        - name: pageSize
+          in: query
+          description: Maximum number of results per page (overrides body value)
+          schema:
+            type: integer
+            format: uint32
+        - name: cursor
+          in: query
+          description: Cursor for pagination (overrides body value)
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecutePreparedQueryRequest'
+      responses:
+        '200':
+          description: Query executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutePreparedQueryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
+  /{ledgerName}/account-types:
+    post:
+      summary: Add an account type
+      description: |
+        Adds a new account type to a ledger's chart of accounts. Account types define
+        address patterns for account validation. Requires `metadata:write` scope.
+      operationId: addAccountType
+      tags:
+        - Account Types
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddAccountTypeRequest'
+      responses:
+        '201':
+          description: Account type added successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+    get:
+      summary: List account types
+      description: |
+        Returns all account types defined on a ledger, sorted by name.
+        Requires `accounts:read` scope.
+      operationId: listAccountTypes
+      tags:
+        - Account Types
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+      responses:
+        '200':
+          description: Account types retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListAccountTypesResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
+  /{ledgerName}/account-types/default-enforcement-mode:
+    put:
+      summary: Set default enforcement mode
+      description: |
+        Sets the default enforcement mode for accounts that do not match any defined
+        account type. Must be STRICT or AUDIT. Requires `metadata:write` scope.
+      operationId: setDefaultEnforcementMode
+      tags:
+        - Account Types
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetDefaultEnforcementModeRequest'
+      responses:
+        '204':
+          description: Default enforcement mode set successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
+  /{ledgerName}/account-types/{typeName}:
+    get:
+      summary: Get an account type
+      description: Retrieves a specific account type by name from a ledger. Requires `accounts:read` scope.
+      operationId: getAccountType
+      tags:
+        - Account Types
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/TypeName'
+      responses:
+        '200':
+          description: Account type retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAccountTypeResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+    delete:
+      summary: Remove an account type
+      description: Removes an account type from a ledger's chart of accounts. Requires `metadata:write` scope.
+      operationId: removeAccountType
+      tags:
+        - Account Types
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/TypeName'
+      responses:
+        '204':
+          description: Account type removed successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
 components:
   securitySchemes:
     BearerAuth:
@@ -1444,6 +1934,14 @@ components:
       schema:
         type: string
       description: Prepared query name
+
+    TypeName:
+      name: typeName
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Account type name
 
     IdempotencyKey:
       name: Idempotency-Key
@@ -2872,37 +3370,14 @@ components:
           description: Target entity type
         filter:
           $ref: '#/components/schemas/QueryFilter'
-        allowedModes:
-          type: array
-          items:
-            type: string
-            enum:
-              - LIST
-              - AGGREGATE_VOLUMES
-          description: Allowed execution modes (default LIST only)
 
     UpdatePreparedQueryRequest:
       type: object
       required:
-        - target
         - filter
       properties:
-        target:
-          type: string
-          enum:
-            - ACCOUNTS
-            - TRANSACTIONS
-          description: Target entity type
         filter:
           $ref: '#/components/schemas/QueryFilter'
-        allowedModes:
-          type: array
-          items:
-            type: string
-            enum:
-              - LIST
-              - AGGREGATE_VOLUMES
-          description: Allowed execution modes
 
     ExecutePreparedQueryRequest:
       type: object
@@ -3021,6 +3496,89 @@ components:
                   output:
                     type: string
                     description: Total output as big integer string
+
+    HealthResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - status
+          properties:
+            status:
+              type: string
+              description: Health status (e.g. "ok")
+
+    AddAccountTypeRequest:
+      type: object
+      required:
+        - name
+        - pattern
+      properties:
+        name:
+          type: string
+          description: Unique name for the account type
+        pattern:
+          type: string
+          description: Account address pattern for validation (e.g. "users:*")
+
+    AccountTypeInfo:
+      type: object
+      required:
+        - name
+        - pattern
+        - status
+      properties:
+        name:
+          type: string
+          description: Account type name
+        pattern:
+          type: string
+          description: Account address pattern
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - DEPRECATED
+          description: Account type status
+
+    ListAccountTypesResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - types
+          properties:
+            types:
+              type: array
+              items:
+                $ref: '#/components/schemas/AccountTypeInfo'
+              description: List of account types sorted by name
+
+    GetAccountTypeResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/AccountTypeInfo'
+
+    SetDefaultEnforcementModeRequest:
+      type: object
+      required:
+        - enforcementMode
+      properties:
+        enforcementMode:
+          type: string
+          enum:
+            - STRICT
+            - AUDIT
+          description: Default enforcement mode for accounts not matching any account type
 
     ErrorResponse:
       type: object

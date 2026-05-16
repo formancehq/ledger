@@ -274,10 +274,7 @@ func TestFilter_OrBlockPreservesConcurrentAdds(t *testing.T) {
 		original.Add(oldKeys[i])
 	}
 
-	persisted := make(map[uint64]block)
-	for idx, blk := range original.dirtyBlocks() {
-		persisted[idx] = blk
-	}
+	persisted := maps.Collect(original.dirtyBlocks())
 
 	// Phase 2: fresh filter simulates restart. FSM adds keys BEFORE restore.
 	restored := newBlockedFilter(original.filter.NumBits(), original.filter.K())

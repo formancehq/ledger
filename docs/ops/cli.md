@@ -3430,8 +3430,14 @@ Application-level bloom filters that avoid Pebble reads for keys known not to ex
 | `--bloom-boundaries-fp-rate` | float64 | `0.01` | False positive rate for boundaries |
 | `--bloom-transactions-expected-keys` | uint | `0` | Expected unique transaction keys (0 = disabled by default) |
 | `--bloom-transactions-fp-rate` | float64 | `0.01` | False positive rate for transactions |
+| `--bloom-sink-configs-expected-keys` | uint | `0` | Expected unique sink config keys (0 = disabled by default) |
+| `--bloom-sink-configs-fp-rate` | float64 | `0.01` | False positive rate for sink configs |
+| `--bloom-numscript-versions-expected-keys` | uint | `0` | Expected unique numscript version keys (0 = disabled by default) |
+| `--bloom-numscript-versions-fp-rate` | float64 | `0.01` | False positive rate for numscript versions |
+| `--bloom-numscript-contents-expected-keys` | uint | `0` | Expected unique numscript content keys (0 = disabled by default) |
+| `--bloom-numscript-contents-fp-rate` | float64 | `0.01` | False positive rate for numscript contents |
 
-Ledger, boundary, and transaction filters are disabled by default because these attribute types are rarely read and don't benefit from bloom filtering.
+Ledger, boundary, transaction, sink-config, and numscript filters are disabled by default because these attribute types are rarely read and don't benefit from bloom filtering.
 
 ```bash
 # Default config (volumes, metadata, references enabled)
@@ -3514,6 +3520,7 @@ The Pebble-based read index store is always active. An index builder tails the s
 | `--read-index-target-file-size` | ByteSize | `64Mi` | Read index SST file target size |
 | `--read-index-bytes-per-sync` | ByteSize | `512Ki` | Read index bytes written before sync |
 | `--read-index-max-concurrent-compactions` | int | `1` | Read index max concurrent compactions |
+| `--read-index-compression` | string | `fastest,...,fast,fast,balanced` | Read index per-level compression L0-L6, comma-separated (`none\|snappy\|zstd\|fastest\|fast\|balanced\|good\|default`) |
 
 ```bash
 # Use default directory (<data-dir>/read-indexes/)
@@ -3551,6 +3558,335 @@ Tune the Pebble (LSM-tree) storage engine. Size flags accept Kubernetes-style qu
 | `--pebble-wal-min-sync-interval` | duration | `0` | Minimum interval between WAL syncs (0 = immediate) |
 | `--pebble-disable-wal` | bool | `false` | Disable WAL entirely (WARNING: risks data loss) |
 | `--pebble-max-checkpoints` | int | `10` | Maximum number of Pebble checkpoints to keep |
+| `--pebble-compression` | string | `fastest,...,fast,fast,balanced` | Per-level compression L0-L6, comma-separated (`none\|snappy\|zstd\|fastest\|fast\|balanced\|good\|default`) |
+| `--pebble-value-separation` | bool | `false` | Enable value separation (large values stored in blob files) |
+| `--pebble-value-separation-min-size` | ByteSize | `256` | Minimum value size (bytes) for separation into blob files |
+| `--pebble-value-separation-max-depth` | int | `4` | Max blob reference depth per SSTable |
+| `--pebble-value-separation-rewrite-age` | duration | `1h` | Minimum blob file age before rewrite |
+| `--pebble-value-separation-garbage-ratio` | float64 | `0.20` | Blob garbage ratio before rewrite (0.20 = 20%) |
+
+Value separation moves large values into external blob files instead of storing them inline in SSTables. This reduces compaction I/O for write-heavy workloads at the cost of slightly higher read amplification.
+
+```bash
+# Enable value separation with defaults
+ledger-v3-poc run --pebble-value-separation [other flags...]
+
+# Tune value separation for larger values
+ledger-v3-poc run --pebble-value-separation --pebble-value-separation-min-size 1Ki \
+  --pebble-value-separation-garbage-ratio 0.10
+
+# Use zstd compression on all levels
+ledger-v3-poc run --pebble-compression zstd [other flags...]
+
+# Per-level compression (L0-L6)
+ledger-v3-poc run --pebble-compression "none,snappy,zstd,zstd,zstd,zstd,zstd" [other flags...]
+```
+
+---
+
+### Server Raft Consensus Flags
+
+Tune the Raft consensus layer. These flags control election timing, message sizes, compaction, and the propose queue.
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--raft-compaction-margin` | uint64 | `1000` | Minimum log entries between snapshots (0 = use default 1000) |
+| `--maintenance-interval` | duration | `30s` | Interval for background WAL snapshot + Pebble checkpoint (0 = use default 30s) |
+| `--raft-propose-queue-capacity` | int | `100` | Capacity of the propose queue (0 = use default 100) |
+| `--raft-processing-tick-interval` | duration | `tick-interval/10` | Interval for processing committed entries (0 = tick-interval/10) |
+| `--raft-replay-batch-size` | int | `1000` | Number of entries per batch during spool replay (0 = use default 1000) |
+
+```bash
+# Increase compaction margin for workloads with large snapshots
+ledger-v3-poc run --raft-compaction-margin 5000 [other flags...]
+
+# More frequent maintenance (WAL snapshot + Pebble checkpoint)
+ledger-v3-poc run --maintenance-interval 15s [other flags...]
+
+# Increase propose queue for high-throughput clusters
+ledger-v3-poc run --raft-propose-queue-capacity 500 [other flags...]
+```
+
+---
+
+### Server Raft Transport Flags
+
+Configure the inter-node Raft transport layer. These flags control per-priority queue capacities and per-peer buffer sizes.
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--raft-transport-reception-queues` | int slice | `10,512,512` | Comma-separated list of reception queue capacities per priority |
+| `--raft-transport-send-queues` | int slice | `10,512,512` | Comma-separated list of send queue capacities per priority |
+| `--raft-transport-buffer-size` | ByteSize | `10Mi` | Per-peer send buffer capacity (0 = use default 10Mi) |
+
+Each entry in the queue lists corresponds to a priority level. For example, `10,512,512,512,128` sets priority-0 to 10, priority-1 to 512, and so on.
+
+```bash
+# Custom queue capacities for 5 priority levels
+ledger-v3-poc run --raft-transport-reception-queues 10,512,512,512,128 \
+  --raft-transport-send-queues 10,512,512,512,128 [other flags...]
+
+# Increase per-peer buffer for large messages
+ledger-v3-poc run --raft-transport-buffer-size 50Mi [other flags...]
+```
+
+---
+
+### Server Caching Flags
+
+Configure in-memory caches used by the FSM and Numscript parser.
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--cache-rotation-threshold` | uint64 | `1000` | Cache rotation threshold: number of Raft entries applied before rotating the FSM attribute cache generation (0 = use default 1000) |
+
+The FSM attribute cache uses a two-generation scheme. After `cache-rotation-threshold` entries are applied, the active generation is rotated. Higher values use more memory but reduce cache misses. This setting is persisted in the startup config and validated on subsequent boots; changing it requires `--unsafe-skip-config-validation`.
+
+```bash
+# Default: rotate every 1000 entries
+ledger-v3-poc run [other flags...]
+
+# Increase for workloads with high key reuse
+ledger-v3-poc run --cache-rotation-threshold 5000 [other flags...]
+```
+
+---
+
+### Server gRPC Flags
+
+Configure gRPC server behavior.
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--grpc-compression` | bool | `false` | Enable gzip compression on gRPC calls |
+| `--grpc-slow-threshold` | duration | `1s` | Duration above which a gRPC call is logged as slow |
+
+```bash
+# Enable gRPC compression for bandwidth-constrained networks
+ledger-v3-poc run --grpc-compression [other flags...]
+
+# Log gRPC calls slower than 500ms
+ledger-v3-poc run --grpc-slow-threshold 500ms [other flags...]
+```
+
+---
+
+### Server Query Profiling Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--query-profile-threshold` | duration | `10ms` | Log and emit OTel attributes for queries exceeding this duration (0 to disable) |
+
+```bash
+# Log queries slower than 50ms
+ledger-v3-poc run --query-profile-threshold 50ms [other flags...]
+
+# Disable query profiling
+ledger-v3-poc run --query-profile-threshold 0 [other flags...]
+```
+
+---
+
+### Server Admission Metrics Flag
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--admission-metrics` | bool | `false` | Enable admission metrics (histograms/counters in the admission hot path) |
+
+Disabled by default to avoid contention under high concurrency. Enable for observability in staging or low-traffic environments.
+
+```bash
+ledger-v3-poc run --admission-metrics [other flags...]
+```
+
+---
+
+### Server Receipt Signing Flag
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--receipt-signing-key` | string | `""` | HMAC key for signing JWT transaction receipts (empty = disabled) |
+
+When set, each transaction receipt includes a signed JWT that clients can verify for tamper-proof audit.
+
+```bash
+ledger-v3-poc run --receipt-signing-key "my-hmac-secret" [other flags...]
+```
+
+---
+
+### Server Snapshot Sync Flags
+
+Configure the snapshot sync protocol used when new nodes join the cluster.
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--snapshot-session-ttl` | duration | `5m` | Server-side session TTL for snapshot sync (reaper cleans up expired sessions) |
+| `--snapshot-parallelism` | int | `4` | Number of parallel file fetch workers during snapshot sync |
+| `--snapshot-retry-count` | int | `5` | Session-level retry attempts for snapshot sync on transient errors |
+| `--snapshot-file-retry-count` | int | `3` | Per-file retry attempts during snapshot sync on transient stream errors |
+
+```bash
+# Increase parallelism for faster node joins
+ledger-v3-poc run --snapshot-parallelism 8 [other flags...]
+
+# Longer session TTL for large snapshots
+ledger-v3-poc run --snapshot-session-ttl 15m [other flags...]
+```
+
+---
+
+### Server Cold Storage Flags
+
+Configure cold storage for period archival. Logs and audit entries for closed periods are exported to the cold storage backend and purged from hot storage. Attributes (volumes, metadata) remain in Pebble.
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--cold-storage-driver` | string | `none` | Cold storage driver for period archival (`none`, `filesystem`, `s3`) |
+| `--cold-storage-path` | string | `""` | Base path for cold storage (default: `<data-dir>/cold-storage`) |
+| `--cold-storage-bucket-id` | string | `""` | Shared namespace prefix for archives (default: cluster-id) |
+| `--cold-storage-s3-bucket` | string | `""` | S3 bucket name (required when driver=s3) |
+| `--cold-storage-s3-region` | string | `""` | AWS region for S3 |
+| `--cold-storage-s3-endpoint` | string | `""` | Custom S3 endpoint (for MinIO) |
+| `--cold-cache-dir` | string | `""` | Directory for cold storage read cache (default: `<data-dir>/cold-cache`). Use a separate volume to avoid filling the data disk. |
+
+```bash
+# Filesystem cold storage
+ledger-v3-poc run --cold-storage-driver filesystem --cold-storage-path /mnt/archive [other flags...]
+
+# S3 cold storage
+ledger-v3-poc run --cold-storage-driver s3 \
+  --cold-storage-s3-bucket my-ledger-archive \
+  --cold-storage-s3-region eu-west-1 [other flags...]
+
+# S3 with MinIO endpoint
+ledger-v3-poc run --cold-storage-driver s3 \
+  --cold-storage-s3-bucket archive \
+  --cold-storage-s3-endpoint http://minio:9000 [other flags...]
+```
+
+---
+
+### Server Cluster Secret Flag
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--cluster-secret` | string | `""` | Shared secret for inter-node gRPC authentication (required when auth is enabled) |
+
+When authentication is enabled, all inter-node gRPC calls use this shared secret as a bearer token. Must be the same on all nodes in the cluster.
+
+```bash
+ledger-v3-poc run --cluster-secret "my-cluster-secret" --auth-enabled [other flags...]
+```
+
+---
+
+### Server Scope Mapping Flag
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--auth-scope-mapping-file` | string | `""` | Path to JSON file mapping virtual scopes (e.g. `ledger:read`) to granular scopes |
+
+Allows expanding virtual scopes into fine-grained scopes. For example, mapping `ledger:read` to a set of more specific scopes. The mapping can also be provided via the `AUTH_SCOPE_MAPPING` environment variable (JSON string).
+
+```bash
+ledger-v3-poc run --auth-scope-mapping-file /etc/ledger/scope-mapping.json [other flags...]
+```
+
+---
+
+### Server Flight Recorder Flags
+
+The flight recorder continuously buffers trace data in memory. When an error or slow operation occurs, the buffered traces provide context for debugging without requiring an always-on trace exporter.
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--flight-recorder-enabled` | bool | `false` | Enable the runtime flight recorder (continuous trace buffering) |
+| `--flight-recorder-min-age` | duration | `5s` | Minimum duration of trace data retained in the flight recorder buffer |
+| `--flight-recorder-max-bytes` | ByteSize | `10Mi` | Maximum memory for the flight recorder buffer |
+
+```bash
+# Enable flight recorder with defaults
+ledger-v3-poc run --flight-recorder-enabled [other flags...]
+
+# Enable with larger buffer
+ledger-v3-poc run --flight-recorder-enabled --flight-recorder-max-bytes 50Mi --flight-recorder-min-age 30s [other flags...]
+```
+
+---
+
+### Server Trace Sampling Flags
+
+Error-aware trace sampling: always export error spans, ratio-sample successful spans. This reduces trace volume without losing visibility into failures.
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--trace-sampling-enabled` | bool | `false` | Enable error-aware trace sampling (always sample errors, ratio-sample successes) |
+| `--trace-sampling-success-ratio` | float64 | `0.1` | Sampling ratio for successful spans (0.0-1.0). Error spans are always sampled. |
+
+```bash
+# Enable trace sampling, keep 10% of successful spans
+ledger-v3-poc run --trace-sampling-enabled [other flags...]
+
+# Keep 50% of successful spans
+ledger-v3-poc run --trace-sampling-enabled --trace-sampling-success-ratio 0.5 [other flags...]
+```
+
+---
+
+### Server OTLP Logs Flags
+
+Configure OpenTelemetry log export.
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--otel-logs-exporter` | string | `""` | OpenTelemetry logs exporter |
+| `--otel-logs-exporter-otlp-mode` | string | `grpc` | OpenTelemetry logs OTLP exporter mode (`grpc\|http`) |
+| `--otel-logs-exporter-otlp-endpoint` | string | `""` | OpenTelemetry logs OTLP endpoint |
+| `--otel-logs-exporter-otlp-insecure` | bool | `false` | OpenTelemetry logs OTLP insecure (no TLS) |
+
+```bash
+# Export logs to a gRPC OTLP collector
+ledger-v3-poc run --otel-logs-exporter otlp \
+  --otel-logs-exporter-otlp-endpoint localhost:4317 \
+  --otel-logs-exporter-otlp-insecure [other flags...]
+```
+
+---
+
+### Server Pyroscope Flags (build tag: `pyroscope`)
+
+Continuous profiling via Pyroscope. Only available when the binary is built with the `pyroscope` build tag (`just build-full` or `go build -tags pyroscope`).
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--pyroscope-enabled` | bool | `false` | Enable Pyroscope continuous profiling |
+| `--pyroscope-server-address` | string | `http://localhost:4040` | Pyroscope server address |
+| `--pyroscope-application-name` | string | `""` | Application name for Pyroscope (defaults to service name) |
+| `--pyroscope-auth-token` | string | `""` | Authentication token for Pyroscope (for Grafana Cloud) |
+| `--pyroscope-tenant-id` | string | `""` | Tenant ID for multi-tenant Pyroscope (for Grafana Cloud) |
+| `--pyroscope-basic-auth-user` | string | `""` | Basic auth username for Pyroscope |
+| `--pyroscope-basic-auth-password` | string | `""` | Basic auth password for Pyroscope |
+| `--pyroscope-upload-rate` | duration | `15s` | Profile upload rate |
+| `--pyroscope-tags` | string slice | `[]` | Additional tags for profiles (format: `key=value`, repeatable) |
+| `--pyroscope-profile-types` | string slice | all types | Profile types to enable (`cpu,alloc_objects,alloc_space,inuse_objects,inuse_space,goroutines,mutex_count,mutex_duration,block_count,block_duration`) |
+| `--pyroscope-mutex-profile-fraction` | int | `5` | Mutex profile fraction (0 to disable) |
+| `--pyroscope-block-profile-rate` | int | `5` | Block profile rate (0 to disable) |
+| `--pyroscope-disable-gc-runs` | bool | `false` | Disable automatic GC runs between heap profile uploads |
+
+```bash
+# Enable Pyroscope with local server
+ledger-v3-poc run --pyroscope-enabled --pyroscope-server-address http://pyroscope:4040 [other flags...]
+
+# Enable Pyroscope with Grafana Cloud
+ledger-v3-poc run --pyroscope-enabled \
+  --pyroscope-server-address https://profiles-prod-001.grafana.net \
+  --pyroscope-auth-token "glc_xxx" \
+  --pyroscope-tenant-id "12345" [other flags...]
+
+# Only CPU and allocation profiling
+ledger-v3-poc run --pyroscope-enabled --pyroscope-profile-types cpu,alloc_space [other flags...]
+```
 
 ---
 
