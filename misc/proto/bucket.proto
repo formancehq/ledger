@@ -747,6 +747,7 @@ message GetMetadataSchemaStatusRequest {
 message GetMetadataSchemaStatusResponse {
   map<string, MetadataFieldStatus> account_fields = 1;
   map<string, MetadataFieldStatus> transaction_fields = 2;
+  map<string, MetadataFieldStatus> ledger_fields = 3;
 }
 
 message MetadataFieldStatus {

@@ -19,6 +19,7 @@ type metadataFieldStatusJSON struct {
 type metadataSchemaStatusJSON struct {
 	AccountFields     map[string]*metadataFieldStatusJSON `json:"accountFields"`
 	TransactionFields map[string]*metadataFieldStatusJSON `json:"transactionFields"`
+	LedgerFields      map[string]*metadataFieldStatusJSON `json:"ledgerFields"`
 }
 
 func toFieldStatusJSON(fs *servicepb.MetadataFieldStatus) *metadataFieldStatusJSON {
@@ -34,6 +35,7 @@ func toSchemaStatusJSON(resp *servicepb.GetMetadataSchemaStatusResponse) *metada
 	result := &metadataSchemaStatusJSON{
 		AccountFields:     make(map[string]*metadataFieldStatusJSON, len(resp.GetAccountFields())),
 		TransactionFields: make(map[string]*metadataFieldStatusJSON, len(resp.GetTransactionFields())),
+		LedgerFields:      make(map[string]*metadataFieldStatusJSON, len(resp.GetLedgerFields())),
 	}
 	for k, v := range resp.GetAccountFields() {
 		result.AccountFields[k] = toFieldStatusJSON(v)
@@ -41,6 +43,10 @@ func toSchemaStatusJSON(resp *servicepb.GetMetadataSchemaStatusResponse) *metada
 
 	for k, v := range resp.GetTransactionFields() {
 		result.TransactionFields[k] = toFieldStatusJSON(v)
+	}
+
+	for k, v := range resp.GetLedgerFields() {
+		result.LedgerFields[k] = toFieldStatusJSON(v)
 	}
 
 	return result

@@ -19,9 +19,11 @@ func TestParseTargetType(t *testing.T) {
 	}{
 		{"account", "account", commonpb.TargetType_TARGET_TYPE_ACCOUNT, false},
 		{"transaction", "transaction", commonpb.TargetType_TARGET_TYPE_TRANSACTION, false},
+		{"ledger", "ledger", commonpb.TargetType_TARGET_TYPE_LEDGER, false},
 		{"Account uppercase", "Account", commonpb.TargetType_TARGET_TYPE_ACCOUNT, false},
 		{"TRANSACTION uppercase", "TRANSACTION", commonpb.TargetType_TARGET_TYPE_TRANSACTION, false},
-		{"invalid", "ledger", 0, true},
+		{"LEDGER uppercase", "LEDGER", commonpb.TargetType_TARGET_TYPE_LEDGER, false},
+		{"invalid", "unknown", 0, true},
 		{"empty", "", 0, true},
 	}
 
@@ -133,9 +135,10 @@ func TestTargetTypeOptions(t *testing.T) {
 	t.Parallel()
 
 	opts := TargetTypeOptions()
-	require.Len(t, opts, 2)
+	require.Len(t, opts, 3)
 	require.Contains(t, opts, "account")
 	require.Contains(t, opts, "transaction")
+	require.Contains(t, opts, "ledger")
 }
 
 func TestParseSchemaEntry(t *testing.T) {
@@ -176,8 +179,15 @@ func TestParseSchemaEntry(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name:       "ledger string",
+			input:      "ledger:env:string",
+			wantTarget: commonpb.TargetType_TARGET_TYPE_LEDGER,
+			wantKey:    "env",
+			wantType:   commonpb.MetadataType_METADATA_TYPE_STRING,
+		},
+		{
 			name:    "invalid target",
-			input:   "ledger:age:int64",
+			input:   "unknown:age:int64",
 			wantErr: true,
 		},
 		{

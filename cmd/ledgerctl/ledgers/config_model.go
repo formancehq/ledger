@@ -102,6 +102,16 @@ func ConfigFromProto(
 			}
 			cfg.MetadataSchema["transaction"] = m
 		}
+		if lf := schema.GetLedgerFields(); len(lf) > 0 {
+			m := make(map[string]EditableMetaField, len(lf))
+			for key, field := range lf {
+				m[key] = EditableMetaField{
+					Type:    commonpb.MetadataTypeToString(field.GetType()),
+					Indexed: field.GetIndexed(),
+				}
+			}
+			cfg.MetadataSchema["ledger"] = m
+		}
 	}
 
 	// Builtin indexes
@@ -334,7 +344,7 @@ func diffAccountTypes(ledgerName string, current, desired *EditableConfig) []Dif
 func diffMetadataSchema(ledgerName string, current, desired *EditableConfig) ([]DiffAction, error) {
 	var actions []DiffAction
 
-	for _, target := range []string{"account", "transaction"} {
+	for _, target := range []string{"account", "transaction", "ledger"} {
 		targetType, err := commonpb.ParseTargetType(target)
 		if err != nil {
 			return nil, err

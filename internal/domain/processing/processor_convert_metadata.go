@@ -41,20 +41,21 @@ func (p *RequestProcessor) processConvertMetadataBatch(
 	)
 
 	for _, entry := range order.GetEntries() {
-		var mk domain.MetadataKey
-		if err := mk.Unmarshal(entry.GetCanonicalKey()); err != nil {
-			return nil, fmt.Errorf("unmarshal metadata key: %w", err)
+		value, err := getConvertBatchValue(s, order.GetTargetType(), entry.GetCanonicalKey())
+		if err != nil {
+			return nil, err
 		}
 
-		value, err := s.GetAccountMetadata(mk)
-		if err != nil {
-			// Key may have been deleted since the scan; skip.
+		if value == nil {
+			// Key was deleted since the scan; skip.
 			continue
 		}
 
 		// Only overwrite if the value still needs conversion.
 		if !commonpb.TypeMatches(value, order.GetExpectedType()) {
-			s.PutAccountMetadata(mk, entry.GetConvertedValue())
+			if err := putConvertBatchValue(s, order.GetTargetType(), entry.GetCanonicalKey(), entry.GetConvertedValue()); err != nil {
+				return nil, err
+			}
 
 			logEntries = append(logEntries, &commonpb.ConvertMetadataBatchLogEntry{
 				CanonicalKey: entry.GetCanonicalKey(),
@@ -122,4 +123,61 @@ func (p *RequestProcessor) processMetadataConversionComplete(
 			},
 		},
 	}, nil
+}
+
+// getConvertBatchValue retrieves the current metadata value for a canonical key,
+// dispatching to the correct store method based on target type.
+// Returns (nil, nil) when the key no longer exists (deleted since the scan).
+func getConvertBatchValue(s InMemoryStore, targetType commonpb.TargetType, canonicalKey []byte) (*commonpb.MetadataValue, error) {
+	switch targetType {
+	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		var mk domain.MetadataKey
+		if err := mk.Unmarshal(canonicalKey); err != nil {
+			return nil, fmt.Errorf("unmarshal metadata key: %w", err)
+		}
+
+		v, err := s.GetAccountMetadata(mk)
+		if err != nil {
+			return nil, nil //nolint:nilerr // key deleted since scan
+		}
+
+		return v, nil
+	case commonpb.TargetType_TARGET_TYPE_LEDGER:
+		var lmk domain.LedgerMetadataKey
+		if err := lmk.Unmarshal(canonicalKey); err != nil {
+			return nil, fmt.Errorf("unmarshal ledger metadata key: %w", err)
+		}
+
+		v, err := s.GetLedgerMetadata(lmk)
+		if err != nil {
+			return nil, nil //nolint:nilerr // key deleted since scan
+		}
+
+		return v, nil
+	default:
+		return nil, nil
+	}
+}
+
+// putConvertBatchValue stores a converted metadata value, dispatching to the
+// correct store method based on target type.
+func putConvertBatchValue(s InMemoryStore, targetType commonpb.TargetType, canonicalKey []byte, value *commonpb.MetadataValue) error {
+	switch targetType {
+	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		var mk domain.MetadataKey
+		if err := mk.Unmarshal(canonicalKey); err != nil {
+			return fmt.Errorf("unmarshal metadata key: %w", err)
+		}
+
+		s.PutAccountMetadata(mk, value)
+	case commonpb.TargetType_TARGET_TYPE_LEDGER:
+		var lmk domain.LedgerMetadataKey
+		if err := lmk.Unmarshal(canonicalKey); err != nil {
+			return fmt.Errorf("unmarshal ledger metadata key: %w", err)
+		}
+
+		s.PutLedgerMetadata(lmk, value)
+	}
+
+	return nil
 }

@@ -160,6 +160,8 @@ func (mc *MetadataConverter) isFieldStillConverting(ctx context.Context, ledgerN
 		fields = ledgerInfo.GetMetadataSchema().GetAccountFields()
 	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
 		fields = ledgerInfo.GetMetadataSchema().GetTransactionFields()
+	case commonpb.TargetType_TARGET_TYPE_LEDGER:
+		fields = ledgerInfo.GetMetadataSchema().GetLedgerFields()
 	}
 
 	if fields == nil {
@@ -303,8 +305,8 @@ func (mc *MetadataConverter) convert(ctx context.Context, req MetadataConvertReq
 
 	mc.logger.WithFields(logFields).Infof("Starting metadata conversion")
 
-	// Build the canonical prefix for this ledger.
-	ledgerPrefix := []byte(req.LedgerName + "\x00")
+	// Select the attribute store and prefix based on target type.
+	attr, ledgerPrefix := mc.attrAndPrefixForTarget(req)
 
 	// Open a Pebble read handle for a point-in-time snapshot used by both passes.
 	reader, err := mc.dataStore.NewReadHandle()
@@ -317,7 +319,7 @@ func (mc *MetadataConverter) convert(ctx context.Context, req MetadataConvertReq
 	// Pass 1: count matching keys for progress tracking (O(1) memory).
 	var totalMatchingKeys uint64
 
-	countIter, err := mc.attrs.Metadata.NewStreamingIter(reader, ledgerPrefix)
+	countIter, err := attr.NewStreamingIter(reader, ledgerPrefix)
 	if err != nil {
 		return fmt.Errorf("creating count iterator for ledger %s: %w", req.LedgerName, err)
 	}
@@ -325,13 +327,12 @@ func (mc *MetadataConverter) convert(ctx context.Context, req MetadataConvertReq
 	for countIter.Next() {
 		entry := countIter.Entry()
 
-		var mk domain.MetadataKey
-
-		if mkErr := mk.Unmarshal(entry.CanonicalKey); mkErr != nil {
+		metaKeyName, mkErr := extractMetadataKeyName(req.TargetType, entry.CanonicalKey)
+		if mkErr != nil {
 			continue // skip unparseable keys
 		}
 
-		if mk.Key == req.Key {
+		if metaKeyName == req.Key {
 			totalMatchingKeys++
 		}
 	}
@@ -355,7 +356,7 @@ func (mc *MetadataConverter) convert(ctx context.Context, req MetadataConvertReq
 
 	var convertedSoFar uint64
 
-	convertIter, err := mc.attrs.Metadata.NewStreamingIter(reader, ledgerPrefix)
+	convertIter, err := attr.NewStreamingIter(reader, ledgerPrefix)
 	if err != nil {
 		return fmt.Errorf("creating convert iterator for ledger %s: %w", req.LedgerName, err)
 	}
@@ -365,15 +366,14 @@ func (mc *MetadataConverter) convert(ctx context.Context, req MetadataConvertReq
 	for convertIter.Next() {
 		entry := convertIter.Entry()
 
-		var mk domain.MetadataKey
-
-		if mkErr := mk.Unmarshal(entry.CanonicalKey); mkErr != nil {
+		metaKeyName, mkErr := extractMetadataKeyName(req.TargetType, entry.CanonicalKey)
+		if mkErr != nil {
 			mc.logger.Errorf("Failed to unmarshal metadata key %x: %v", entry.CanonicalKey, mkErr)
 
 			continue // skip unparseable keys
 		}
 
-		if mk.Key != req.Key {
+		if metaKeyName != req.Key {
 			continue
 		}
 
@@ -438,4 +438,38 @@ func (mc *MetadataConverter) convert(ctx context.Context, req MetadataConvertReq
 	mc.logger.WithFields(logFields).Infof("Metadata conversion complete, proposed completion")
 
 	return nil
+}
+
+// attrAndPrefixForTarget returns the attribute store and canonical prefix to
+// scan for the given target type.
+func (mc *MetadataConverter) attrAndPrefixForTarget(req MetadataConvertRequest) (*attributes.Attribute[*commonpb.MetadataValue], []byte) {
+	switch req.TargetType {
+	case commonpb.TargetType_TARGET_TYPE_LEDGER:
+		// LedgerMetadataKey format: [ledger]\x01[key]
+		return mc.attrs.LedgerMetadata, []byte(req.LedgerName + "\x01")
+	default:
+		// Account MetadataKey format: [ledger]\x00[account]\x01[key]
+		return mc.attrs.Metadata, []byte(req.LedgerName + "\x00")
+	}
+}
+
+// extractMetadataKeyName unmarshals a canonical key and returns the metadata
+// key name portion, dispatching based on target type.
+func extractMetadataKeyName(targetType commonpb.TargetType, canonicalKey []byte) (string, error) {
+	switch targetType {
+	case commonpb.TargetType_TARGET_TYPE_LEDGER:
+		var lmk domain.LedgerMetadataKey
+		if err := lmk.Unmarshal(canonicalKey); err != nil {
+			return "", err
+		}
+
+		return lmk.Key, nil
+	default:
+		var mk domain.MetadataKey
+		if err := mk.Unmarshal(canonicalKey); err != nil {
+			return "", err
+		}
+
+		return mk.Key, nil
+	}
 }

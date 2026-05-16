@@ -14,10 +14,12 @@ func (p *RequestProcessor) processAddLedgerMetadata(order *raftcmdpb.SaveLedgerM
 		return nil, domain.ErrLedgerNameRequired
 	}
 
-	_, ok := s.GetLedger(ledger)
+	info, ok := s.GetLedger(ledger)
 	if !ok {
 		return nil, &domain.ErrLedgerNotFound{Name: ledger}
 	}
+
+	enforceSchemaMap(info.GetMetadataSchema(), commonpb.TargetType_TARGET_TYPE_LEDGER, order.GetMetadata())
 
 	var previousValues map[string]*commonpb.MetadataValue
 

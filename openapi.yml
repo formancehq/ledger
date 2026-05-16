@@ -1925,7 +1925,8 @@ components:
         enum:
           - account
           - transaction
-      description: Target type (account or transaction)
+          - ledger
+      description: Target type (account, transaction, or ledger)
 
     QueryName:
       name: queryName
@@ -2972,6 +2973,7 @@ components:
           required:
             - accountFields
             - transactionFields
+            - ledgerFields
           properties:
             accountFields:
               type: object
@@ -2983,6 +2985,11 @@ components:
               additionalProperties:
                 $ref: '#/components/schemas/MetadataFieldStatus'
               description: Transaction metadata field statuses
+            ledgerFields:
+              type: object
+              additionalProperties:
+                $ref: '#/components/schemas/MetadataFieldStatus'
+              description: Ledger metadata field statuses
 
     MetadataFieldStatus:
       type: object

@@ -17,6 +17,8 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/crypto/keystore"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/health"
@@ -25,8 +27,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/receipt"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/commands"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/crypto/keystore"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/semver"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/vtmarshal"

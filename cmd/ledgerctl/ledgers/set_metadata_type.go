@@ -25,13 +25,14 @@ Existing untyped values will be converted in the background.
 Examples:
   ledgerctl ledgers set-metadata-type --ledger my-ledger --target account --key age --type int64
   ledgerctl ledgers smt --ledger my-ledger --target transaction --key priority --type uint64
+  ledgerctl ledgers smt --ledger my-ledger --target ledger --key env --type string
   ledgerctl ledgers set-metadata-type  # Interactive mode`,
 		Args: cobra.NoArgs,
 		RunE: runSetMetadataType,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")
-	cmd.Flags().String("target", "", "Target type: account or transaction")
+	cmd.Flags().String("target", "", "Target type: account, transaction, or ledger")
 	cmd.Flags().String("key", "", "Metadata key name")
 	cmd.Flags().String("type", "", "Metadata type: string, int64, bool, uint64, int8, int16, int32, uint8, uint16, uint32")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")

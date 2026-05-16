@@ -47,6 +47,12 @@ func (p *RequestProcessor) processSetMetadataFieldType(
 		}
 
 		info.MetadataSchema.TransactionFields[order.GetKey()] = field
+	case commonpb.TargetType_TARGET_TYPE_LEDGER:
+		if info.MetadataSchema.LedgerFields == nil {
+			info.MetadataSchema.LedgerFields = make(map[string]*commonpb.MetadataFieldSchema)
+		}
+
+		info.MetadataSchema.LedgerFields[order.GetKey()] = field
 	}
 
 	s.PutLedger(ledgerName, info)
@@ -89,6 +95,8 @@ func (p *RequestProcessor) processRemoveMetadataFieldType(
 		delete(info.GetMetadataSchema().GetAccountFields(), order.GetKey())
 	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
 		delete(info.GetMetadataSchema().GetTransactionFields(), order.GetKey())
+	case commonpb.TargetType_TARGET_TYPE_LEDGER:
+		delete(info.GetMetadataSchema().GetLedgerFields(), order.GetKey())
 	}
 
 	s.PutLedger(ledgerName, info)
@@ -118,6 +126,8 @@ func enforceSchemaMap(schema *commonpb.MetadataSchema, targetType commonpb.Targe
 		fields = schema.GetAccountFields()
 	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
 		fields = schema.GetTransactionFields()
+	case commonpb.TargetType_TARGET_TYPE_LEDGER:
+		fields = schema.GetLedgerFields()
 	}
 
 	if len(fields) == 0 {
@@ -164,6 +174,12 @@ func populateInitialSchema(commands []*commonpb.SetMetadataFieldTypeCommand) *co
 			}
 
 			schema.TransactionFields[cmd.GetKey()] = field
+		case commonpb.TargetType_TARGET_TYPE_LEDGER:
+			if schema.LedgerFields == nil {
+				schema.LedgerFields = make(map[string]*commonpb.MetadataFieldSchema)
+			}
+
+			schema.LedgerFields[cmd.GetKey()] = field
 		}
 	}
 
@@ -185,6 +201,8 @@ func schemaFieldForTarget(schema *commonpb.MetadataSchema, targetType commonpb.T
 		fields = schema.GetAccountFields()
 	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
 		fields = schema.GetTransactionFields()
+	case commonpb.TargetType_TARGET_TYPE_LEDGER:
+		fields = schema.GetLedgerFields()
 	}
 
 	if fields == nil {

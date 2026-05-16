@@ -129,6 +129,7 @@ message Account {
 enum TargetType {
   TARGET_TYPE_ACCOUNT = 0;
   TARGET_TYPE_TRANSACTION = 1;
+  TARGET_TYPE_LEDGER = 2;
 }
 
 message TargetAccount {
@@ -186,6 +187,7 @@ message MetadataFieldSchema {
 message MetadataSchema {
   map<string, MetadataFieldSchema> account_fields = 1;
   map<string, MetadataFieldSchema> transaction_fields = 2;
+  map<string, MetadataFieldSchema> ledger_fields = 3;
 }
 
 message SetMetadataFieldTypeCommand {

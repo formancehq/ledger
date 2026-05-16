@@ -14,9 +14,9 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/application/admission"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/health"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 

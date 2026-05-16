@@ -27,6 +27,14 @@ func TestHandleGetMetadataSchema_Success(t *testing.T) {
 					},
 				},
 				TransactionFields: map[string]*servicepb.MetadataFieldStatus{},
+				LedgerFields: map[string]*servicepb.MetadataFieldStatus{
+					"env": {
+						DeclaredType:  commonpb.MetadataType_METADATA_TYPE_STRING,
+						Status:        commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE,
+						TotalKeys:     1,
+						ConvertedKeys: 1,
+					},
+				},
 			}, nil
 		},
 	}

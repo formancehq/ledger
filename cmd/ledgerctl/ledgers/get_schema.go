@@ -20,7 +20,7 @@ func NewGetSchemaCommand() *cobra.Command {
 		Short:   "Get metadata schema status for a ledger",
 		Long: `Display the metadata schema for a ledger including conversion status.
 
-Shows two tables (Account Fields, Transaction Fields) with columns: KEY, TYPE, STATUS.
+Shows tables (Account Fields, Transaction Fields, Ledger Fields) with columns: KEY, TYPE, STATUS.
 The status shows COMPLETE or CONVERTING.
 
 Examples:
@@ -73,8 +73,9 @@ func runGetSchema(cmd *cobra.Command, args []string) error {
 
 	hasAccountFields := len(resp.GetAccountFields()) > 0
 	hasTransactionFields := len(resp.GetTransactionFields()) > 0
+	hasLedgerFields := len(resp.GetLedgerFields()) > 0
 
-	if !hasAccountFields && !hasTransactionFields {
+	if !hasAccountFields && !hasTransactionFields && !hasLedgerFields {
 		pterm.Println(pterm.Gray("(no schema defined)"))
 
 		return nil
@@ -89,6 +90,12 @@ func runGetSchema(cmd *cobra.Command, args []string) error {
 	if hasTransactionFields {
 		pterm.Println("Transaction Fields:")
 		renderSchemaStatusTable(resp.GetTransactionFields())
+		pterm.Println()
+	}
+
+	if hasLedgerFields {
+		pterm.Println("Ledger Fields:")
+		renderSchemaStatusTable(resp.GetLedgerFields())
 		pterm.Println()
 	}
 

@@ -1784,6 +1784,25 @@ func (m *GetMetadataSchemaStatusResponse) MarshalToSizedBufferDeterministicVT(dA
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.LedgerFields) > 0 {
+		for _, k := range slices.Sorted(maps.Keys(m.LedgerFields)) {
+			v := m.LedgerFields[k]
+			baseI := i
+			size, _ := v.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x12
+			i -= len(k)
+			copy(dAtA[i:], k)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(k)))
+			i--
+			dAtA[i] = 0xa
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
 	if len(m.TransactionFields) > 0 {
 		for _, k := range slices.Sorted(maps.Keys(m.TransactionFields)) {
 			v := m.TransactionFields[k]

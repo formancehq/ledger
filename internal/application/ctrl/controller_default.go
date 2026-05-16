@@ -534,6 +534,7 @@ func (ctrl *DefaultController) GetMetadataSchemaStatus(ctx context.Context, ledg
 	resp := &servicepb.GetMetadataSchemaStatusResponse{
 		AccountFields:     make(map[string]*servicepb.MetadataFieldStatus),
 		TransactionFields: make(map[string]*servicepb.MetadataFieldStatus),
+		LedgerFields:      make(map[string]*servicepb.MetadataFieldStatus),
 	}
 
 	if ledgerInfo.GetMetadataSchema() != nil {
@@ -548,6 +549,15 @@ func (ctrl *DefaultController) GetMetadataSchemaStatus(ctx context.Context, ledg
 
 		for key, field := range ledgerInfo.GetMetadataSchema().GetTransactionFields() {
 			resp.TransactionFields[key] = &servicepb.MetadataFieldStatus{
+				DeclaredType:  field.GetType(),
+				Status:        field.GetStatus(),
+				TotalKeys:     field.GetTotalKeys(),
+				ConvertedKeys: field.GetConvertedKeys(),
+			}
+		}
+
+		for key, field := range ledgerInfo.GetMetadataSchema().GetLedgerFields() {
+			resp.LedgerFields[key] = &servicepb.MetadataFieldStatus{
 				DeclaredType:  field.GetType(),
 				Status:        field.GetStatus(),
 				TotalKeys:     field.GetTotalKeys(),

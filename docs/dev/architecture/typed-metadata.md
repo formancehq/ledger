@@ -62,6 +62,7 @@ message MetadataFieldSchema {
 message MetadataSchema {
   map<string, MetadataFieldSchema> account_fields = 1;
   map<string, MetadataFieldSchema> transaction_fields = 2;
+  map<string, MetadataFieldSchema> ledger_fields = 3;
 }
 ```
 
@@ -228,7 +229,7 @@ The aggregate schema is also available on `LedgerInfo.metadata_schema` (returned
 | `PUT` | `/{ledgerName}/metadata-schema/{targetType}/{key}` | Set/change metadata field type |
 | `DELETE` | `/{ledgerName}/metadata-schema/{targetType}/{key}` | Remove metadata field type declaration |
 
-The `targetType` path parameter accepts `account` or `transaction`. The PUT body is `{ "type": "<metadataType>" }` where `metadataType` is one of: `string`, `int64`, `bool`, `uint64`, `int8`, `int16`, `int32`, `uint8`, `uint16`, `uint32`.
+The `targetType` path parameter accepts `account`, `transaction`, or `ledger`. The PUT body is `{ "type": "<metadataType>" }` where `metadataType` is one of: `string`, `int64`, `bool`, `uint64`, `int8`, `int16`, `int32`, `uint8`, `uint16`, `uint32`.
 
 ### JSON Type Inference
 

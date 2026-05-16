@@ -733,6 +733,232 @@ set_account_meta(@user, "account_type", "true")
 		})
 	})
 
+	Context("Schema Declaration Lifecycle for Ledger Metadata", Ordered, func() {
+		const ledgerName = "typed-meta-ledger-lifecycle"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("Should declare a ledger field type and verify via schema status", func() {
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.SetMetadataFieldTypeAction(ledgerName,
+						commonpb.TargetType_TARGET_TYPE_LEDGER, "env",
+						commonpb.MetadataType_METADATA_TYPE_STRING),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				resp, err := sharedClient.GetMetadataSchemaStatus(sharedCtx, &servicepb.GetMetadataSchemaStatusRequest{
+					Ledger: ledgerName,
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(resp.LedgerFields).To(HaveKey("env"))
+				g.Expect(resp.LedgerFields["env"].DeclaredType).To(Equal(commonpb.MetadataType_METADATA_TYPE_STRING))
+				g.Expect(resp.LedgerFields["env"].Status).To(Equal(
+					commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE))
+			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+
+		It("Should remove a ledger field type and verify it is absent", func() {
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.RemoveMetadataFieldTypeAction(ledgerName,
+						commonpb.TargetType_TARGET_TYPE_LEDGER, "env"),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				resp, err := sharedClient.GetMetadataSchemaStatus(sharedCtx, &servicepb.GetMetadataSchemaStatusRequest{
+					Ledger: ledgerName,
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(resp.LedgerFields).NotTo(HaveKey("env"))
+			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+	})
+
+	Context("Schema Enforcement on Ledger Metadata", Ordered, func() {
+		const ledgerName = "typed-meta-ledger-enforce"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_LEDGER,
+							Key:        "max_tx",
+							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+						},
+					}),
+				},
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("Should convert string ledger metadata to int64 on write", func() {
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.SaveLedgerMetadataAction(ledgerName, map[string]string{"max_tx": "1000"}),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			info, err := actions.GetLedger(sharedCtx, sharedClient, ledgerName)
+			Expect(err).To(Succeed())
+
+			v := actions.FindMetadataValue(info.Metadata, "max_tx")
+			Expect(v).NotTo(BeNil())
+			intVal, ok := v.Type.(*commonpb.MetadataValue_IntValue)
+			Expect(ok).To(BeTrue(), "expected int_value, got %T", v.Type)
+			Expect(intVal.IntValue).To(Equal(int64(1000)))
+		})
+
+		It("Should produce null_value for inconvertible ledger metadata", func() {
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.SaveLedgerMetadataAction(ledgerName, map[string]string{"max_tx": "not-a-number"}),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			info, err := actions.GetLedger(sharedCtx, sharedClient, ledgerName)
+			Expect(err).To(Succeed())
+
+			v := actions.FindMetadataValue(info.Metadata, "max_tx")
+			Expect(v).NotTo(BeNil())
+			nullVal, ok := v.Type.(*commonpb.MetadataValue_NullValue)
+			Expect(ok).To(BeTrue(), "expected null_value, got %T", v.Type)
+			Expect(nullVal.NullValue.Original).To(Equal("not-a-number"))
+		})
+
+		It("Should keep untyped ledger metadata as strings", func() {
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.SaveLedgerMetadataAction(ledgerName, map[string]string{"label": "production"}),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			info, err := actions.GetLedger(sharedCtx, sharedClient, ledgerName)
+			Expect(err).To(Succeed())
+
+			v := actions.FindMetadataValue(info.Metadata, "label")
+			Expect(v).NotTo(BeNil())
+			strVal, ok := v.Type.(*commonpb.MetadataValue_StringValue)
+			Expect(ok).To(BeTrue(), "expected string_value, got %T", v.Type)
+			Expect(strVal.StringValue).To(Equal("production"))
+		})
+	})
+
+	Context("Background Conversion of Existing Ledger Metadata", Ordered, func() {
+		const ledgerName = "typed-meta-ledger-bg"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("Should convert existing ledger metadata after schema declaration", func() {
+			// Save metadata before any schema exists (stored as string)
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.SaveLedgerMetadataAction(ledgerName, map[string]string{"version": "42"}),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			// Declare the type
+			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.SetMetadataFieldTypeAction(ledgerName,
+						commonpb.TargetType_TARGET_TYPE_LEDGER, "version",
+						commonpb.MetadataType_METADATA_TYPE_INT64),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			// Wait for background conversion to complete
+			Eventually(func(g Gomega) {
+				resp, err := sharedClient.GetMetadataSchemaStatus(sharedCtx, &servicepb.GetMetadataSchemaStatusRequest{
+					Ledger: ledgerName,
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(resp.LedgerFields).To(HaveKey("version"))
+				g.Expect(resp.LedgerFields["version"].Status).To(Equal(
+					commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE))
+			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+
+			// Verify the value was converted
+			info, err := actions.GetLedger(sharedCtx, sharedClient, ledgerName)
+			Expect(err).To(Succeed())
+
+			v := actions.FindMetadataValue(info.Metadata, "version")
+			Expect(v).NotTo(BeNil())
+			intVal, ok := v.Type.(*commonpb.MetadataValue_IntValue)
+			Expect(ok).To(BeTrue(), "expected int_value after background conversion, got %T", v.Type)
+			Expect(intVal.IntValue).To(Equal(int64(42)))
+		})
+	})
+
+	Context("Initial Schema with Ledger Fields", Ordered, func() {
+		const ledgerName = "typed-meta-initial-ledger"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "role",
+							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+						},
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_LEDGER,
+							Key:        "env",
+							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+						},
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_LEDGER,
+							Key:        "version",
+							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+						},
+					}),
+				},
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("Should have all fields present with status COMPLETE", func() {
+			resp, err := sharedClient.GetMetadataSchemaStatus(sharedCtx, &servicepb.GetMetadataSchemaStatusRequest{
+				Ledger: ledgerName,
+			})
+			Expect(err).To(Succeed())
+
+			Expect(resp.AccountFields).To(HaveKey("role"))
+			Expect(resp.AccountFields["role"].Status).To(Equal(
+				commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE))
+
+			Expect(resp.LedgerFields).To(HaveKey("env"))
+			Expect(resp.LedgerFields["env"].DeclaredType).To(Equal(commonpb.MetadataType_METADATA_TYPE_STRING))
+			Expect(resp.LedgerFields["env"].Status).To(Equal(
+				commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE))
+
+			Expect(resp.LedgerFields).To(HaveKey("version"))
+			Expect(resp.LedgerFields["version"].DeclaredType).To(Equal(commonpb.MetadataType_METADATA_TYPE_INT64))
+			Expect(resp.LedgerFields["version"].Status).To(Equal(
+				commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE))
+		})
+	})
+
 	Context("Typed Values via gRPC (Direct Proto Values)", Ordered, func() {
 		const ledgerName = "typed-meta-direct-proto"
 

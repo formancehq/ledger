@@ -24,13 +24,14 @@ After removal, the key will accept values of any type again.
 Examples:
   ledgerctl ledgers remove-metadata-type --ledger my-ledger --target account --key age
   ledgerctl ledgers rmt --ledger my-ledger --target transaction --key priority -y
+  ledgerctl ledgers rmt --ledger my-ledger --target ledger --key env -y
   ledgerctl ledgers remove-metadata-type  # Interactive mode`,
 		Args: cobra.NoArgs,
 		RunE: runRemoveMetadataType,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")
-	cmd.Flags().String("target", "", "Target type: account or transaction")
+	cmd.Flags().String("target", "", "Target type: account, transaction, or ledger")
 	cmd.Flags().String("key", "", "Metadata key name")
 	cmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")

@@ -9,11 +9,13 @@ var (
 	targetTypeMap = map[string]TargetType{
 		"account":     TargetType_TARGET_TYPE_ACCOUNT,
 		"transaction": TargetType_TARGET_TYPE_TRANSACTION,
+		"ledger":      TargetType_TARGET_TYPE_LEDGER,
 	}
 
 	targetTypeNames = map[TargetType]string{
 		TargetType_TARGET_TYPE_ACCOUNT:     "account",
 		TargetType_TARGET_TYPE_TRANSACTION: "transaction",
+		TargetType_TARGET_TYPE_LEDGER:      "ledger",
 	}
 
 	metadataTypeMap = map[string]MetadataType{
@@ -48,7 +50,7 @@ var (
 	}
 )
 
-// ParseTargetType converts "account"/"transaction" to TargetType.
+// ParseTargetType converts "account"/"transaction"/"ledger" to TargetType.
 func ParseTargetType(s string) (TargetType, error) {
 	t, ok := targetTypeMap[strings.ToLower(s)]
 	if !ok {
@@ -102,5 +104,5 @@ func MetadataTypeOptions() []string {
 
 // TargetTypeOptions returns valid target names.
 func TargetTypeOptions() []string {
-	return []string{"account", "transaction"}
+	return []string{"account", "transaction", "ledger"}
 }
