@@ -7,6 +7,8 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	ggrpc "google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -41,7 +43,7 @@ Examples:
 	cmd.Flags().String("mode", "list", "Query mode: list or aggregate")
 	cmd.Flags().Uint64("min-log-sequence", 0, "Minimum log sequence before reading")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
-	cmd.Flags().Bool("analyze", false, "Display query execution profile")
+	cmdutil.AddAnalyzeFlag(cmd)
 	cmd.Flags().Bool("all", false, "Fetch all results at once (no pagination)")
 	cmdutil.AddOutputFlags(cmd)
 
@@ -96,6 +98,8 @@ func runExecute(cmd *cobra.Command, args []string) error {
 			ctx = cmdutil.ProfileContext(ctx)
 		}
 
+		var trailer metadata.MD
+
 		resp, err := client.ExecutePreparedQuery(ctx, &servicepb.ExecutePreparedQueryRequest{
 			Ledger:         ledgerName,
 			QueryName:      queryName,
@@ -104,7 +108,7 @@ func runExecute(cmd *cobra.Command, args []string) error {
 			Cursor:         cursor,
 			MinLogSequence: minLogSeq,
 			Mode:           mode,
-		})
+		}, ggrpc.Trailer(&trailer))
 
 		cancel()
 
@@ -115,6 +119,10 @@ func runExecute(cmd *cobra.Command, args []string) error {
 		switch result := resp.GetResult().(type) {
 		case *servicepb.ExecutePreparedQueryResponse_Cursor:
 			renderCursorPage(cmd, result.Cursor, pageNum)
+
+			if showProfile {
+				cmdutil.RenderProfile(cmdutil.ExtractProfile(trailer))
+			}
 
 			if !result.Cursor.GetHasMore() || fetchAll {
 				return nil
@@ -140,7 +148,16 @@ func runExecute(cmd *cobra.Command, args []string) error {
 			pageNum++
 
 		case *servicepb.ExecutePreparedQueryResponse_Aggregate:
-			return renderAggregate(cmd, result.Aggregate)
+			err := renderAggregate(cmd, result.Aggregate)
+			if err != nil {
+				return err
+			}
+
+			if showProfile {
+				cmdutil.RenderProfile(cmdutil.ExtractProfile(trailer))
+			}
+
+			return nil
 
 		default:
 			pterm.Info.Println("No results.")

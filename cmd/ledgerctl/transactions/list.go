@@ -52,7 +52,7 @@ Examples:
 	cmd.Flags().Uint64("min-log-sequence", 0, "Minimum log sequence the server must have applied before reading (0 = no constraint)")
 	cmd.Flags().Uint64("checkpoint-id", 0, "Read from a query checkpoint instead of the live store")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
-	cmd.Flags().Bool("analyze", false, "Display query execution profile (iterator stats, timing)")
+	cmdutil.AddAnalyzeFlag(cmd)
 
 	return cmd
 }

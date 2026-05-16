@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 
@@ -18,6 +20,24 @@ const (
 	MetadataKeyQueryProfile       = "x-query-profile"
 	MetadataKeyQueryProfileResult = "x-query-profile-result-bin"
 )
+
+// AddAnalyzeFlag registers --analyze (with --analyse alias) on the command.
+func AddAnalyzeFlag(cmd *cobra.Command) {
+	cmd.Flags().Bool("analyze", false, "Display query execution profile (iterator stats, timing)")
+
+	prev := cmd.Flags().GetNormalizeFunc()
+	cmd.Flags().SetNormalizeFunc(func(f *pflag.FlagSet, name string) pflag.NormalizedName {
+		if name == "analyse" {
+			return "analyze"
+		}
+
+		if prev != nil {
+			return prev(f, name)
+		}
+
+		return pflag.NormalizedName(name)
+	})
+}
 
 // ProfileContext adds the "x-query-profile" metadata to the outgoing context
 // so the server will send back profiling information in trailing metadata.
