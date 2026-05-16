@@ -27,7 +27,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/receipt"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"

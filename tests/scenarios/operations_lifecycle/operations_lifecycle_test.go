@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/pkg/scenario"

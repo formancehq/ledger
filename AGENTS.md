@@ -65,11 +65,11 @@ Key rules:
 ## File Structure
 
 - **CLI**: `cmd/ledgerctl/` - one file per sub-command. See [docs/ops/cli.md](docs/ops/cli.md).
-- **Domain**: `internal/domain/` - value objects, errors, and domain services (`processing/`)
+- **Domain**: `internal/domain/` - value objects, errors, domain services (`processing/`), and cryptographic primitives (`crypto/signing/`, `crypto/keystore/`)
 - **Bootstrap**: `internal/bootstrap/` - composition root (fx wiring, config, TLS, persisted config)
 - **Application**: `internal/application/` - use cases (`admission/`, `ctrl/`, `events/`, `check/`)
 - **Infrastructure**: `internal/infra/` - consensus (`node/`, `state/`), caching (`cache/`, `attributes/`), transport, health, monitoring
-- **Utilities**: `internal/pkg/` - zero/low-dependency utilities (`kv/`, `signal/`, `futures/`, `commands/`, `crypto/`)
+- **Utilities**: `internal/pkg/` - zero/low-dependency utilities (`kv/`, `signal/`, `futures/`, `commands/`)
 - **Storage**: `internal/storage/` - Pebble DAL, WAL, spool
 - **Query**: `internal/query/` - CQRS read-side queries
 - **Adapters**: `internal/adapter/` - transport layer (`grpc/` primary API, `http/` REST compat, `json/` serialization)

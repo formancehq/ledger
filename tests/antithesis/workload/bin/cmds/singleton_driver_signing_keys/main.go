@@ -8,7 +8,7 @@ import (
 	"log"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/tests/antithesis/workload/internal"
 )

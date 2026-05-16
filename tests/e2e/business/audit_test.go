@@ -12,7 +12,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"

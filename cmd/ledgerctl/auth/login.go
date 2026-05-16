@@ -15,7 +15,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/crypto/signing"
 )
 
 // keyBundle is the JSON format for agent key bundles produced by

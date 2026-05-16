@@ -12,7 +12,7 @@ import (
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/crypto/signing"
 )
 
 func TestGenerateToken_RoundTrip(t *testing.T) {
