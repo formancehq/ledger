@@ -13,6 +13,7 @@ import (
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	io "io"
 	math "math"
+	sync "sync"
 )
 
 const (
@@ -26,7 +27,7 @@ func (m *Timestamp) CloneVT() *Timestamp {
 	if m == nil {
 		return (*Timestamp)(nil)
 	}
-	r := new(Timestamp)
+	r := TimestampFromVTPool()
 	r.Data = m.Data
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -222,7 +223,7 @@ func (m *Posting) CloneVT() *Posting {
 	if m == nil {
 		return (*Posting)(nil)
 	}
-	r := new(Posting)
+	r := PostingFromVTPool()
 	r.Source = m.Source
 	r.Destination = m.Destination
 	r.Amount = m.Amount.CloneVT()
@@ -730,7 +731,7 @@ func (m *Log) CloneVT() *Log {
 	if m == nil {
 		return (*Log)(nil)
 	}
-	r := new(Log)
+	r := LogFromVTPool()
 	r.Sequence = m.Sequence
 	r.Payload = m.Payload.CloneVT()
 	r.Idempotency = m.Idempotency.CloneVT()
@@ -18006,6 +18007,70 @@ func (m *LedgerStats) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+var vtprotoPool_Timestamp = sync.Pool{
+	New: func() interface{} {
+		return &Timestamp{}
+	},
+}
+
+func (m *Timestamp) ResetVT() {
+	if m != nil {
+		m.Reset()
+	}
+}
+func (m *Timestamp) ReturnToVTPool() {
+	if m != nil {
+		m.ResetVT()
+		vtprotoPool_Timestamp.Put(m)
+	}
+}
+func TimestampFromVTPool() *Timestamp {
+	return vtprotoPool_Timestamp.Get().(*Timestamp)
+}
+
+var vtprotoPool_Posting = sync.Pool{
+	New: func() interface{} {
+		return &Posting{}
+	},
+}
+
+func (m *Posting) ResetVT() {
+	if m != nil {
+		m.Reset()
+	}
+}
+func (m *Posting) ReturnToVTPool() {
+	if m != nil {
+		m.ResetVT()
+		vtprotoPool_Posting.Put(m)
+	}
+}
+func PostingFromVTPool() *Posting {
+	return vtprotoPool_Posting.Get().(*Posting)
+}
+
+var vtprotoPool_Log = sync.Pool{
+	New: func() interface{} {
+		return &Log{}
+	},
+}
+
+func (m *Log) ResetVT() {
+	if m != nil {
+		f0 := m.Hash[:0]
+		m.Reset()
+		m.Hash = f0
+	}
+}
+func (m *Log) ReturnToVTPool() {
+	if m != nil {
+		m.ResetVT()
+		vtprotoPool_Log.Put(m)
+	}
+}
+func LogFromVTPool() *Log {
+	return vtprotoPool_Log.Get().(*Log)
+}
 func (m *Timestamp) SizeVT() (n int) {
 	if m == nil {
 		return 0

@@ -252,8 +252,19 @@ generate-proto:
         --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.Preload \
         --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.CacheTouch \
         --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.Order \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.LedgerApplyOrder \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.CreateTransactionOrder \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.SaveMetadataOrder \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.RevertTransactionOrder \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.DeleteMetadataOrder \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.MirrorIngestOrder \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.MirrorLogEntry \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.MirrorCreatedTransaction \
         --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.EventsSinkUpdate \
         --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.MirrorSyncUpdate \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/commonpb.Posting \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/commonpb.Timestamp \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/commonpb.Log \
         --plugin=protoc-gen-dethash=build/protoc-gen-dethash \
         --dethash_out=. \
         --dethash_opt=module=github.com/formancehq/ledger-v3-poc \

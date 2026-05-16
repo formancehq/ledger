@@ -730,7 +730,7 @@ func (m *MirrorIngestOrder) CloneVT() *MirrorIngestOrder {
 	if m == nil {
 		return (*MirrorIngestOrder)(nil)
 	}
-	r := new(MirrorIngestOrder)
+	r := MirrorIngestOrderFromVTPool()
 	r.Ledger = m.Ledger
 	r.Entry = m.Entry.CloneVT()
 	if len(m.unknownFields) > 0 {
@@ -748,7 +748,7 @@ func (m *MirrorLogEntry) CloneVT() *MirrorLogEntry {
 	if m == nil {
 		return (*MirrorLogEntry)(nil)
 	}
-	r := new(MirrorLogEntry)
+	r := MirrorLogEntryFromVTPool()
 	r.V2LogId = m.V2LogId
 	if m.Data != nil {
 		r.Data = m.Data.(interface{ CloneVT() isMirrorLogEntry_Data }).CloneVT()
@@ -834,7 +834,7 @@ func (m *MirrorCreatedTransaction) CloneVT() *MirrorCreatedTransaction {
 	if m == nil {
 		return (*MirrorCreatedTransaction)(nil)
 	}
-	r := new(MirrorCreatedTransaction)
+	r := MirrorCreatedTransactionFromVTPool()
 	r.TransactionId = m.TransactionId
 	r.Timestamp = m.Timestamp.CloneVT()
 	r.Reference = m.Reference
@@ -983,7 +983,7 @@ func (m *LedgerApplyOrder) CloneVT() *LedgerApplyOrder {
 	if m == nil {
 		return (*LedgerApplyOrder)(nil)
 	}
-	r := new(LedgerApplyOrder)
+	r := LedgerApplyOrderFromVTPool()
 	r.Ledger = m.Ledger
 	if m.Data != nil {
 		r.Data = m.Data.(interface {
@@ -1430,7 +1430,7 @@ func (m *CreateTransactionOrder) CloneVT() *CreateTransactionOrder {
 	if m == nil {
 		return (*CreateTransactionOrder)(nil)
 	}
-	r := new(CreateTransactionOrder)
+	r := CreateTransactionOrderFromVTPool()
 	r.Script = m.Script.CloneVT()
 	r.Timestamp = m.Timestamp.CloneVT()
 	r.Reference = m.Reference
@@ -1498,7 +1498,7 @@ func (m *SaveMetadataOrder) CloneVT() *SaveMetadataOrder {
 	if m == nil {
 		return (*SaveMetadataOrder)(nil)
 	}
-	r := new(SaveMetadataOrder)
+	r := SaveMetadataOrderFromVTPool()
 	r.Target = m.Target.CloneVT()
 	if rhs := m.Metadata; rhs != nil {
 		tmpContainer := make(map[string]*commonpb.MetadataValue, len(rhs))
@@ -1522,7 +1522,7 @@ func (m *RevertTransactionOrder) CloneVT() *RevertTransactionOrder {
 	if m == nil {
 		return (*RevertTransactionOrder)(nil)
 	}
-	r := new(RevertTransactionOrder)
+	r := RevertTransactionOrderFromVTPool()
 	r.TransactionId = m.TransactionId
 	r.Force = m.Force
 	r.AtEffectiveDate = m.AtEffectiveDate
@@ -1556,7 +1556,7 @@ func (m *DeleteMetadataOrder) CloneVT() *DeleteMetadataOrder {
 	if m == nil {
 		return (*DeleteMetadataOrder)(nil)
 	}
-	r := new(DeleteMetadataOrder)
+	r := DeleteMetadataOrderFromVTPool()
 	r.Target = m.Target.CloneVT()
 	r.Key = m.Key
 	if len(m.unknownFields) > 0 {
@@ -12812,6 +12812,12 @@ var vtprotoPool_Order = sync.Pool{
 
 func (m *Order) ResetVT() {
 	if m != nil {
+		if oneof, ok := m.Type.(*Order_Apply); ok {
+			oneof.Apply.ReturnToVTPool()
+		}
+		if oneof, ok := m.Type.(*Order_MirrorIngest); ok {
+			oneof.MirrorIngest.ReturnToVTPool()
+		}
 		m.Reset()
 	}
 }
@@ -12823,6 +12829,207 @@ func (m *Order) ReturnToVTPool() {
 }
 func OrderFromVTPool() *Order {
 	return vtprotoPool_Order.Get().(*Order)
+}
+
+var vtprotoPool_MirrorIngestOrder = sync.Pool{
+	New: func() interface{} {
+		return &MirrorIngestOrder{}
+	},
+}
+
+func (m *MirrorIngestOrder) ResetVT() {
+	if m != nil {
+		m.Entry.ReturnToVTPool()
+		m.Reset()
+	}
+}
+func (m *MirrorIngestOrder) ReturnToVTPool() {
+	if m != nil {
+		m.ResetVT()
+		vtprotoPool_MirrorIngestOrder.Put(m)
+	}
+}
+func MirrorIngestOrderFromVTPool() *MirrorIngestOrder {
+	return vtprotoPool_MirrorIngestOrder.Get().(*MirrorIngestOrder)
+}
+
+var vtprotoPool_MirrorLogEntry = sync.Pool{
+	New: func() interface{} {
+		return &MirrorLogEntry{}
+	},
+}
+
+func (m *MirrorLogEntry) ResetVT() {
+	if m != nil {
+		if oneof, ok := m.Data.(*MirrorLogEntry_CreatedTransaction); ok {
+			oneof.CreatedTransaction.ReturnToVTPool()
+		}
+		m.Reset()
+	}
+}
+func (m *MirrorLogEntry) ReturnToVTPool() {
+	if m != nil {
+		m.ResetVT()
+		vtprotoPool_MirrorLogEntry.Put(m)
+	}
+}
+func MirrorLogEntryFromVTPool() *MirrorLogEntry {
+	return vtprotoPool_MirrorLogEntry.Get().(*MirrorLogEntry)
+}
+
+var vtprotoPool_MirrorCreatedTransaction = sync.Pool{
+	New: func() interface{} {
+		return &MirrorCreatedTransaction{}
+	},
+}
+
+func (m *MirrorCreatedTransaction) ResetVT() {
+	if m != nil {
+		for _, mm := range m.Postings {
+			mm.ResetVT()
+		}
+		f0 := m.Postings[:0]
+		m.Timestamp.ReturnToVTPool()
+		m.Reset()
+		m.Postings = f0
+	}
+}
+func (m *MirrorCreatedTransaction) ReturnToVTPool() {
+	if m != nil {
+		m.ResetVT()
+		vtprotoPool_MirrorCreatedTransaction.Put(m)
+	}
+}
+func MirrorCreatedTransactionFromVTPool() *MirrorCreatedTransaction {
+	return vtprotoPool_MirrorCreatedTransaction.Get().(*MirrorCreatedTransaction)
+}
+
+var vtprotoPool_LedgerApplyOrder = sync.Pool{
+	New: func() interface{} {
+		return &LedgerApplyOrder{}
+	},
+}
+
+func (m *LedgerApplyOrder) ResetVT() {
+	if m != nil {
+		if oneof, ok := m.Data.(*LedgerApplyOrder_CreateTransaction); ok {
+			oneof.CreateTransaction.ReturnToVTPool()
+		}
+		if oneof, ok := m.Data.(*LedgerApplyOrder_AddMetadata); ok {
+			oneof.AddMetadata.ReturnToVTPool()
+		}
+		if oneof, ok := m.Data.(*LedgerApplyOrder_RevertTransaction); ok {
+			oneof.RevertTransaction.ReturnToVTPool()
+		}
+		if oneof, ok := m.Data.(*LedgerApplyOrder_DeleteMetadata); ok {
+			oneof.DeleteMetadata.ReturnToVTPool()
+		}
+		m.Reset()
+	}
+}
+func (m *LedgerApplyOrder) ReturnToVTPool() {
+	if m != nil {
+		m.ResetVT()
+		vtprotoPool_LedgerApplyOrder.Put(m)
+	}
+}
+func LedgerApplyOrderFromVTPool() *LedgerApplyOrder {
+	return vtprotoPool_LedgerApplyOrder.Get().(*LedgerApplyOrder)
+}
+
+var vtprotoPool_CreateTransactionOrder = sync.Pool{
+	New: func() interface{} {
+		return &CreateTransactionOrder{}
+	},
+}
+
+func (m *CreateTransactionOrder) ResetVT() {
+	if m != nil {
+		for _, mm := range m.Postings {
+			mm.ResetVT()
+		}
+		f0 := m.Postings[:0]
+		m.Timestamp.ReturnToVTPool()
+		m.Reset()
+		m.Postings = f0
+	}
+}
+func (m *CreateTransactionOrder) ReturnToVTPool() {
+	if m != nil {
+		m.ResetVT()
+		vtprotoPool_CreateTransactionOrder.Put(m)
+	}
+}
+func CreateTransactionOrderFromVTPool() *CreateTransactionOrder {
+	return vtprotoPool_CreateTransactionOrder.Get().(*CreateTransactionOrder)
+}
+
+var vtprotoPool_SaveMetadataOrder = sync.Pool{
+	New: func() interface{} {
+		return &SaveMetadataOrder{}
+	},
+}
+
+func (m *SaveMetadataOrder) ResetVT() {
+	if m != nil {
+		m.Reset()
+	}
+}
+func (m *SaveMetadataOrder) ReturnToVTPool() {
+	if m != nil {
+		m.ResetVT()
+		vtprotoPool_SaveMetadataOrder.Put(m)
+	}
+}
+func SaveMetadataOrderFromVTPool() *SaveMetadataOrder {
+	return vtprotoPool_SaveMetadataOrder.Get().(*SaveMetadataOrder)
+}
+
+var vtprotoPool_RevertTransactionOrder = sync.Pool{
+	New: func() interface{} {
+		return &RevertTransactionOrder{}
+	},
+}
+
+func (m *RevertTransactionOrder) ResetVT() {
+	if m != nil {
+		for _, mm := range m.OriginalPostings {
+			mm.ResetVT()
+		}
+		f0 := m.OriginalPostings[:0]
+		m.Reset()
+		m.OriginalPostings = f0
+	}
+}
+func (m *RevertTransactionOrder) ReturnToVTPool() {
+	if m != nil {
+		m.ResetVT()
+		vtprotoPool_RevertTransactionOrder.Put(m)
+	}
+}
+func RevertTransactionOrderFromVTPool() *RevertTransactionOrder {
+	return vtprotoPool_RevertTransactionOrder.Get().(*RevertTransactionOrder)
+}
+
+var vtprotoPool_DeleteMetadataOrder = sync.Pool{
+	New: func() interface{} {
+		return &DeleteMetadataOrder{}
+	},
+}
+
+func (m *DeleteMetadataOrder) ResetVT() {
+	if m != nil {
+		m.Reset()
+	}
+}
+func (m *DeleteMetadataOrder) ReturnToVTPool() {
+	if m != nil {
+		m.ResetVT()
+		vtprotoPool_DeleteMetadataOrder.Put(m)
+	}
+}
+func DeleteMetadataOrderFromVTPool() *DeleteMetadataOrder {
+	return vtprotoPool_DeleteMetadataOrder.Get().(*DeleteMetadataOrder)
 }
 
 var vtprotoPool_Proposal = sync.Pool{
@@ -12837,6 +13044,7 @@ func (m *Proposal) ResetVT() {
 			mm.ResetVT()
 		}
 		f0 := m.Orders[:0]
+		m.Date.ReturnToVTPool()
 		m.Preload.ReturnToVTPool()
 		for _, mm := range m.EventsSinkUpdates {
 			mm.ResetVT()
@@ -15673,7 +15881,7 @@ func (m *Order) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 			} else {
-				v := &LedgerApplyOrder{}
+				v := LedgerApplyOrderFromVTPool()
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -16324,7 +16532,7 @@ func (m *Order) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 			} else {
-				v := &MirrorIngestOrder{}
+				v := MirrorIngestOrderFromVTPool()
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -19310,7 +19518,7 @@ func (m *MirrorIngestOrder) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Entry == nil {
-				m.Entry = &MirrorLogEntry{}
+				m.Entry = MirrorLogEntryFromVTPool()
 			}
 			if err := m.Entry.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -19420,7 +19628,7 @@ func (m *MirrorLogEntry) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 			} else {
-				v := &MirrorCreatedTransaction{}
+				v := MirrorCreatedTransactionFromVTPool()
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -19817,7 +20025,14 @@ func (m *MirrorCreatedTransaction) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Postings = append(m.Postings, &commonpb.Posting{})
+			if len(m.Postings) == cap(m.Postings) {
+				m.Postings = append(m.Postings, &commonpb.Posting{})
+			} else {
+				m.Postings = m.Postings[:len(m.Postings)+1]
+				if m.Postings[len(m.Postings)-1] == nil {
+					m.Postings[len(m.Postings)-1] = &commonpb.Posting{}
+				}
+			}
 			if err := m.Postings[len(m.Postings)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -19981,7 +20196,7 @@ func (m *MirrorCreatedTransaction) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Timestamp == nil {
-				m.Timestamp = &commonpb.Timestamp{}
+				m.Timestamp = commonpb.TimestampFromVTPool()
 			}
 			if err := m.Timestamp.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -21054,7 +21269,7 @@ func (m *LedgerApplyOrder) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 			} else {
-				v := &CreateTransactionOrder{}
+				v := CreateTransactionOrderFromVTPool()
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -21095,7 +21310,7 @@ func (m *LedgerApplyOrder) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 			} else {
-				v := &SaveMetadataOrder{}
+				v := SaveMetadataOrderFromVTPool()
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -21136,7 +21351,7 @@ func (m *LedgerApplyOrder) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 			} else {
-				v := &RevertTransactionOrder{}
+				v := RevertTransactionOrderFromVTPool()
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -21177,7 +21392,7 @@ func (m *LedgerApplyOrder) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 			} else {
-				v := &DeleteMetadataOrder{}
+				v := DeleteMetadataOrderFromVTPool()
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -23031,7 +23246,14 @@ func (m *CreateTransactionOrder) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Postings = append(m.Postings, &commonpb.Posting{})
+			if len(m.Postings) == cap(m.Postings) {
+				m.Postings = append(m.Postings, &commonpb.Posting{})
+			} else {
+				m.Postings = m.Postings[:len(m.Postings)+1]
+				if m.Postings[len(m.Postings)-1] == nil {
+					m.Postings[len(m.Postings)-1] = &commonpb.Posting{}
+				}
+			}
 			if err := m.Postings[len(m.Postings)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -23102,7 +23324,7 @@ func (m *CreateTransactionOrder) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Timestamp == nil {
-				m.Timestamp = &commonpb.Timestamp{}
+				m.Timestamp = commonpb.TimestampFromVTPool()
 			}
 			if err := m.Timestamp.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -24200,7 +24422,14 @@ func (m *RevertTransactionOrder) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.OriginalPostings = append(m.OriginalPostings, &commonpb.Posting{})
+			if len(m.OriginalPostings) == cap(m.OriginalPostings) {
+				m.OriginalPostings = append(m.OriginalPostings, &commonpb.Posting{})
+			} else {
+				m.OriginalPostings = m.OriginalPostings[:len(m.OriginalPostings)+1]
+				if m.OriginalPostings[len(m.OriginalPostings)-1] == nil {
+					m.OriginalPostings[len(m.OriginalPostings)-1] = &commonpb.Posting{}
+				}
+			}
 			if err := m.OriginalPostings[len(m.OriginalPostings)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -24812,7 +25041,7 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Date == nil {
-				m.Date = &commonpb.Timestamp{}
+				m.Date = commonpb.TimestampFromVTPool()
 			}
 			if err := m.Date.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
