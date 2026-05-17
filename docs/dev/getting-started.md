@@ -34,12 +34,12 @@ ledger-v3-poc/
 │   ├── bootstrap/             # Composition root (fx wiring, config, TLS)
 │   ├── domain/                # Business domain (processing/, crypto/, accounttype/, analysis/, replay/)
 │   ├── infra/                 # Infrastructure (node/, state/, cache/, attributes/, transport/, health/, monitoring/, backup/, bloom/, coldstorage/, preload/, receipt/)
-│   ├── pkg/                   # Internal utilities (kv/, signal/, futures/, commands/, bitset/, filterexpr/, semver/, worker/)
+│   ├── pkg/                   # Internal utilities (kv/, signal/, futures/, commands/, bitset/, bytesize/, filterexpr/, semver/, tarutil/, vtmarshal/, worker/)
 │   ├── proto/                 # Generated protobuf code
 │   ├── query/                 # CQRS read-side queries
 │   └── storage/               # Pebble persistence (dal/, wal/, spool/, readstore/, pebblecfg/)
 ├── pkg/                       # Public packages (actions/, scenario/, testserver/)
-├── tests/                     # Test suites (e2e/, scenarios/, antithesis/, perf/)
+├── tests/                     # Test suites (e2e/, scenarios/, antithesis/, perf/, schemathesis/)
 ├── misc/
 │   ├── proto/                 # Protocol Buffer definitions
 │   ├── demo/                  # VHS tape files for CLI demos

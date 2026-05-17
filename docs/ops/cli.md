@@ -1588,31 +1588,31 @@ ledgerctl version
 Offline dump of the Pebble store contents. This is a diagnostic tool that reads the store directly without starting a server.
 
 ```bash
-ledgerctl store dump --data-dir /path/to/data [flags]
+ledgerctl store dump <data-dir> [flags]
 ```
 
 **Flags:**
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--prefix` | | Filter keys by prefix |
-| `--limit` | `0` | Maximum number of entries to display (0 = unlimited) |
-| `--raw` | `false` | Output raw key/value bytes |
+| `--prefix` | | Only dump keys starting with this hex prefix (e.g. `01` for logs, `f1` for attributes) |
+| `--limit` | `0` | Maximum number of entries to print (0 = unlimited) |
+| `--raw` | `false` | Print raw hex values instead of decoded output |
 
 **Example:**
 
 ```bash
 # Dump all keys
-ledgerctl store dump --data-dir ./data
+ledgerctl store dump /path/to/data
 
 # Dump keys with a specific prefix
-ledgerctl store dump --data-dir ./data --prefix 0x01
+ledgerctl store dump /path/to/data --prefix 01
 
 # Dump first 100 entries
-ledgerctl store dump --data-dir ./data --limit 100
+ledgerctl store dump /path/to/data --limit 100
 
 # Raw output (for scripting)
-ledgerctl store dump --data-dir ./data --raw
+ledgerctl store dump /path/to/data --raw
 ```
 
 ---
@@ -1807,7 +1807,6 @@ ledgerctl store checkpoint [flags]
 
 **Behavior:**
 - Creates a new Pebble checkpoint from the current `live/` directory (node-local, not forwarded to leader)
-- Updates `CURRENT_CHECKPOINT` for follower sync tracking
 - Returns the new checkpoint ID
 
 **Example:**
@@ -1842,6 +1841,8 @@ ledgerctl store backup [flags]
 | `--s3-bucket` | | S3 bucket name (required) |
 | `--s3-region` | | AWS region for S3 bucket |
 | `--s3-endpoint` | | Custom S3 endpoint (for MinIO) |
+| `--s3-access-key-id` | | Static AWS access key ID (default: use default credential chain) |
+| `--s3-secret-access-key` | | Static AWS secret access key (default: use default credential chain) |
 | `--timeout` | `1000s` | Request timeout |
 
 **Behavior:**
@@ -1884,6 +1885,8 @@ ledgerctl store incremental-backup [flags]
 | `--s3-bucket` | | S3 bucket name (required) |
 | `--s3-region` | | AWS region for S3 bucket |
 | `--s3-endpoint` | | Custom S3 endpoint (for MinIO) |
+| `--s3-access-key-id` | | Static AWS access key ID (default: use default credential chain) |
+| `--s3-secret-access-key` | | Static AWS secret access key (default: use default credential chain) |
 | `--timeout` | `1000s` | Request timeout |
 
 **Behavior:**
@@ -1921,30 +1924,37 @@ ledgerctl store backup --driver s3 --s3-bucket my-bucket
 
 ### store bootstrap
 
-Build a data directory from a backup tar file without starting a server. This is a purely offline operation useful for scripted disaster recovery or bootstrapping from backups.
+Build a data directory from an S3 backup without starting a server. This is a purely offline operation useful for scripted disaster recovery or bootstrapping from backups.
 
 ```bash
-ledgerctl store bootstrap --input backup.tar --data-dir /path/to/data [flags]
+ledgerctl store bootstrap --s3-bucket <bucket> --data-dir /path/to/data [flags]
 ```
 
 **Flags:**
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-i, --input` | | Path to the backup tar file (required) |
+| `--s3-bucket` | | S3 bucket containing the backup (required) |
+| `--s3-region` | | AWS region for S3 bucket |
+| `--s3-endpoint` | | Custom S3 endpoint (for MinIO) |
+| `--s3-access-key-id` | | Static AWS access key ID (default: use default credential chain) |
+| `--s3-secret-access-key` | | Static AWS secret access key (default: use default credential chain) |
+| `--bucket-id` | `default` | Namespace prefix for backup files (default: uses cluster-id from config) |
 | `--data-dir` | | Target data directory (required, must be fresh) |
-| `--validate` | `false` | Run integrity checks after extraction |
+| `--validate` | `false` | Run integrity checks after download |
 | `-y, --yes` | `false` | Skip confirmation prompt |
 
 **Behavior:**
 
-1. Verifies the target data directory is fresh (no `CURRENT_CHECKPOINT` file)
-2. Extracts the tar archive into a staging directory
-3. Opens the staging as a read-only Pebble database and displays a preview (ledger count, timestamps)
-4. If `--validate` is set, runs the full integrity checker (same as `store check`)
-5. Prompts for confirmation (unless `--yes`)
-6. Hard-links staging to `checkpoints/0`, writes `CURRENT_CHECKPOINT` and `RESTORED` marker
-7. Cleans up the staging directory
+1. Verifies the target data directory is fresh (no existing checkpoints via `ScanLatestCheckpointID`)
+2. Downloads backup files from S3 into a staging directory
+3. Applies export segments and rebuilds derived state from logs (if any)
+4. Opens the staging as a read-only Pebble database and displays a preview (ledger count, timestamps)
+5. If `--validate` is set, runs the full integrity checker (same as `store check`)
+6. Prompts for confirmation (unless `--yes`)
+7. Compacts attributes for restore compatibility
+8. Hard-links staging to `checkpoints/0`, writes `RESTORED` marker
+9. Cleans up the staging directory
 
 After bootstrap, start the server with `--bootstrap` to use the restored data.
 
@@ -1952,10 +1962,13 @@ After bootstrap, start the server with `--bootstrap` to use the restored data.
 
 ```bash
 # Interactive with validation
-ledgerctl store bootstrap --input backup.tar --data-dir ./fresh-data --validate
+ledgerctl store bootstrap --s3-bucket my-bucket --s3-region us-east-1 --data-dir ./fresh-data --validate
 
 # Non-interactive (scripted)
-ledgerctl store bootstrap -i backup.tar --data-dir ./fresh-data --yes
+ledgerctl store bootstrap --s3-bucket my-bucket --data-dir ./fresh-data --yes
+
+# With MinIO
+ledgerctl store bootstrap --s3-bucket my-bucket --s3-endpoint http://minio:9000 --data-dir ./fresh-data --yes
 ```
 
 ---
@@ -3407,7 +3420,7 @@ ledger-v3-poc run --node-id 1 --data-dir ./data --restore --grpc-port 8888
 In restore mode:
 - Only the RestoreService gRPC endpoint and `/health` HTTP endpoint are available
 - No Raft, WAL, or other production services are started
-- Requires a fresh data directory (no `CURRENT_CHECKPOINT`)
+- Requires a fresh data directory (no existing checkpoints)
 
 After finalizing, restart without `--restore`:
 
@@ -4196,7 +4209,7 @@ ledgerctl events list
 
 Add or update (upsert) a named event sink configuration. The configuration is replicated via Raft consensus.
 
-Currently supported sink types: **NATS JetStream**, **ClickHouse**, **Kafka**, **HTTP**.
+Currently supported sink types: **NATS JetStream**, **ClickHouse**, **Kafka**, **HTTP**, **Databricks**.
 
 ```bash
 # Add a NATS sink with default settings
@@ -4248,8 +4261,8 @@ ledgerctl events add-sink --name webhook --http-endpoint https://example.com/web
 | `--databricks-token` | | Databricks personal access token (required for Databricks sinks) |
 | `--databricks-catalog` | | Databricks Unity Catalog name |
 | `--databricks-schema` | | Databricks schema name |
-| `--databricks-table` | | Databricks table name |
-| `--databricks-port` | | Databricks SQL warehouse port |
+| `--databricks-table` | `ledger_events` | Databricks table name |
+| `--databricks-port` | `443` | Databricks SQL warehouse port |
 | `--format` | `json` | Event serialization format (`json` or `protobuf`) |
 | `--batch-size` | `0` | Max events per batch (0 = effective default 64) |
 | `--batch-delay-ms` | `0` | Max delay before flush in ms (0 = effective default 10) |

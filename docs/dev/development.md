@@ -70,14 +70,24 @@ ledger-v3-poc/
 │       ├── signaturepb/   # Signature types
 │       └── snapshotpb/    # Snapshot service types
 ├── pkg/                    # Exported packages
+│   ├── actions/           # Action helpers
+│   ├── scenario/          # Scenario helpers
 │   └── testserver/        # Test helpers
 ├── misc/                   # Miscellaneous files
+│   ├── demo/              # VHS tape files for CLI demos
+│   ├── devenv/            # Development environment
+│   ├── numscript/         # Numscript examples
+│   ├── pg-import/         # PostgreSQL import tools
 │   └── proto/             # Protocol Buffer definitions
 ├── tests/                 # Tests
-│   └── e2e/               # End-to-end tests
-│       ├── business/      # Single-node business logic tests
-│       ├── cluster/       # Multi-node cluster tests
-│       └── testutil/      # E2E test utilities
+│   ├── antithesis/        # Antithesis tests
+│   ├── e2e/               # End-to-end tests
+│   │   ├── business/      # Single-node business logic tests
+│   │   ├── cluster/       # Multi-node cluster tests
+│   │   └── testutil/      # E2E test utilities
+│   ├── perf/              # Performance tests
+│   ├── scenarios/         # Scenario tests
+│   └── schemathesis/      # Schemathesis API tests
 └── docs/                  # Technical documentation
 ```
 
@@ -204,7 +214,7 @@ The package `pkg/testserver` provides helpers for creating test servers with con
 
 - **`misc/proto/common.proto`**: Common types (Posting, Transaction, Log, etc.)
 - **`misc/proto/raft_cmd.proto`**: FSM command types (CreateLedger, DeleteLedger, CreateLog, etc.)
-- **`misc/proto/bucket.proto`**: gRPC service definitions (LedgerService)
+- **`misc/proto/bucket.proto`**: gRPC service definitions (BucketService)
 - **`misc/proto/cluster.proto`**: Cluster state messages
 - **`misc/proto/snapshot.proto`**: Snapshot service definitions
 - **`misc/proto/raft_transport.proto`**: Raft transport messages
@@ -299,7 +309,6 @@ Use `pprof` for profiling by accessing the pprof endpoint at `/debug/pprof/profi
 - [ ] Documentation updated if necessary
 - [ ] OpenAPI updated if new API
 - [ ] Protobufs regenerated if modified
-- [ ] SDK regenerated if OpenAPI modified
 - [ ] No `time.Sleep` in tests (Use `Eventually`)
 - [ ] Error handling appropriate
 - [ ] Structured logs with context

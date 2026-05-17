@@ -231,7 +231,7 @@ func DiscoverNumscriptDependencies(
 The `DiscoveryResult` contains:
 - `SourceVolumes`: accounts queried via `GetBalances` (posting sources)
 - `DestinationVolumes`: accounts that only appear as posting destinations
-- `Metadata`: account metadata keys read during execution
+- `Metadata`: account metadata keys read during execution (**note:** this field exists in the struct but is currently never populated by `DiscoverNumscriptDependencies` -- scripts using `meta()` are rejected with `ErrMetaNotSupported` before any metadata keys can be recorded)
 - `WrittenMetadata`: account metadata keys written via `set_account_meta`
 
 **Known limitation:** With infinite balances, `oneof` may only query the first source, since the first source always has sufficient funds.

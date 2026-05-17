@@ -187,7 +187,10 @@ graph TB
 
     subgraph Admission["internal/application/admission"]
         adm_main[admission.go]
-        adm_loader[preload/loader.go]
+    end
+
+    subgraph Preload["internal/infra/preload"]
+        adm_loader[loader.go]
     end
 
     subgraph Cache["internal/infra/cache"]

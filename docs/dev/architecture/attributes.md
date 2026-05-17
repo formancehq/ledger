@@ -22,7 +22,7 @@ See [Deterministic FSM](./deterministic-fsm.md) for details on the caching and p
 | **Volumes** | ledger/account/asset | `VolumePair` (Input + Output) | Per-ledger | Last-write-wins (absolute values) |
 | **Account Metadata** | ledger/account/key | `MetadataValue` | Per-ledger | Last-write-wins |
 | **Ledger Metadata** | ledger/key | `MetadataValue` | Per-ledger | Last-write-wins |
-| **Reversions** | ledger + txID | `bit` | Per-ledger | In-memory bitset (not a Pebble attribute) |
+| **Reversions** | ledger + txID | `bit` | Per-ledger | In-memory bitset, persisted per-word in Pebble zone `0x03` |
 | **Transaction References** | ledger/reference | `uint64` (txID) | Per-ledger | Immutable once set |
 | **Ledgers** | ledger name | `LedgerInfo` | System-wide | Last-write-wins |
 | **Boundaries** | ledger ID | `LedgerBoundaries` | Per-ledger | Last-write-wins |
@@ -96,15 +96,16 @@ Value: "production"
 
 Track whether a transaction has been reverted using an **in-memory bitset** (`ReversionBitset`).
 
-Unlike other attributes, reversions are **not** stored as Pebble attributes. Instead, each ledger maintains a `[]uint64` bitset where bit N indicates whether transaction N has been reverted.
+Unlike other attributes, reversions are **not** stored as Pebble attributes under zone `0x01`. Instead, each ledger maintains a `[]uint64` bitset where bit N indicates whether transaction N has been reverted. Reversion words are persisted to Pebble under zone `0x03` (Per-Ledger) with key format `[0x03][0x01][ledger\x00][wordIndex BE 8 bytes]` via the `SaveReversionWord` function in `internal/infra/state/batch.go`.
 
 | Property | Description |
 |----------|-------------|
-| **Storage** | `map[string]*bitset.Bitset` — one bitset per ledger (from `internal/pkg/bitset/bitset.go`) |
-| **Lookup** | O(1) — `words[txID/64] & (1 << (txID%64))` |
+| **In-memory** | `map[string]*bitset.Bitset` -- one bitset per ledger (from `internal/pkg/bitset/bitset.go`) |
+| **Pebble persistence** | Per-word in zone `0x03` (`ZonePerLedger` + `SubPLReversions`), key: `[0x03][0x01][ledger\x00][wordIndex BE 8]`, value: `[uint64 LE 8]` |
+| **Lookup** | O(1) -- `words[txID/64] & (1 << (txID%64))` |
 | **Memory** | 1 bit per transaction (vs ~82 bytes per entry with the old KeyStore approach) |
-| **Persistence** | Reconstructed from WAL replay or snapshot restore (no Pebble storage) |
-| **Monotone** | Reversions only go `false → true`, never back |
+| **Restore** | Reconstructed from Pebble via `ReadReversions` (`internal/query/reversions.go`) on startup or snapshot restore |
+| **Monotone** | Reversions only go `false -> true`, never back |
 
 **Example:**
 ```
@@ -115,15 +116,12 @@ Ledger "main", txID=42:
 **Why a bitset?**
 - Reversions are **binary** (reverted or not), **monotone** (never unreverted), and **dense** (transaction IDs are sequential per ledger)
 - These three properties make a bitset the ideal data structure
-- Eliminates hashing, preloading, generation caching, and Pebble I/O for reversions
+- Eliminates hashing, preloading, and generation caching for reversions
 - Excellent cache locality for sequential transaction checks
-
-**Snapshot serialization:**
-The bitset is serialized per-ledger in `MemorySnapshot` as packed little-endian `uint64` bytes via `ReversionBitsetEntry`.
 
 **Usage:**
 - Prevent double reversions (O(1) check in the FSM)
-- No admission-layer preloading needed — the bitset is always authoritative in memory
+- No admission-layer preloading needed -- the bitset is always authoritative in memory
 
 ## Transaction References
 
@@ -206,7 +204,7 @@ All attributes are stored under the `ZoneAttributes` (`0x01`) zone. Each attribu
 | Numscript Contents | `SubAttrNumscriptContent` | `0x0A` |
 | Prepared Queries | `SubAttrPreparedQuery` | `0x0B` |
 
-> **Note:** Reversions are stored in-memory as a `bitset.Bitset` and are **not** persisted as Pebble attributes. They are reconstructed from WAL replay or snapshot restore. Idempotency keys have their own dedicated zone (`0x05`), not stored as attributes.
+> **Note:** Reversions are stored in-memory as a `bitset.Bitset` and are **not** stored as Pebble attributes in zone `0x01`. They are persisted per-word in zone `0x03` (`ZonePerLedger` + `SubPLReversions`) and reconstructed from Pebble on startup via `ReadReversions`. Idempotency keys have their own dedicated zone (`0x05`), not stored as attributes.
 
 ### Value Reads
 

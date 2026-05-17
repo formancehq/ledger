@@ -63,7 +63,9 @@ go install github.com/planetscale/vtprotobuf/cmd/protoc-gen-go-vtproto@v0.6.1-0.
 
 The project uses [vtprotobuf](https://github.com/planetscale/vtprotobuf) to generate reflection-free protobuf methods (~2-3x faster, fewer allocations).
 
-**Generated methods**: `MarshalVT()`, `UnmarshalVT()`, `SizeVT()`, `CloneVT()`, `EqualVT()`
+**Generated methods**: `MarshalVT()`, `UnmarshalVT()`, `SizeVT()`, `CloneVT()`, `EqualVT()`, `ResetVT()`, `ReturnToVTPool()`
+
+The `pool` feature is also enabled (generation command uses `features=marshal+unmarshal+size+clone+equal+pool`), which generates `ResetVT()` for zeroing a message in place and `ReturnToVTPool()` for returning it to a `sync.Pool`, reducing GC pressure on hot paths.
 
 **How it works**:
 - `*_vtproto.pb.go` files are generated alongside standard `*.pb.go` files
@@ -78,7 +80,8 @@ The project uses [vtprotobuf](https://github.com/planetscale/vtprotobuf) to gene
 | `internal/application/admission/admission.go` | Proposal marshal (`vtmarshal.MarshalCopy`) |
 | `internal/infra/state/machine.go` | Proposal unmarshal, snapshot marshal/unmarshal |
 | `internal/infra/attributes/attributes.go` | Attribute value marshal/unmarshal |
-| `internal/storage/dal/batch.go` | Batch marshal |
+| `internal/storage/dal/batch.go` | Batch size estimation (`SizeVT`) |
+| `internal/storage/dal/store.go` | Value unmarshal (`UnmarshalVT`) |
 | `internal/domain/processing/processor.go` | Order hash (`CloneVT`) |
 | `internal/infra/state/write_set_counters.go`, `internal/infra/state/registry_derived.go` | Clone functions (`CloneVT` references) |
 

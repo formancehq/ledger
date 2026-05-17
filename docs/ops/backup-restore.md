@@ -116,11 +116,14 @@ Attribute compaction is performed on the **restore side** (during `FinalizeResto
 
 The backup is a complete Pebble database that contains:
 
-| Zone | Key Range | Contents |
-|------|-----------|----------|
-| Cold | `[0x01, 0xF1)` | Transaction logs, audit entries, transaction updates |
-| Attributes | `[0xF1, 0xF2)` | Volumes, account metadata, ledger metadata, reversions, idempotency keys, references, ledger info, boundaries (compacted to index 0) |
-| System | `[0xF2, 0xFF]` | Last applied index (reset to 0), last applied timestamp, ledger info, signing keys, signing config, periods, sink configs, sink cursors, sink statuses |
+| Zone | Prefix | Contents |
+|------|--------|----------|
+| Attributes | `0x01` | Volumes, account metadata, ledger metadata, reversions, references, ledger info, boundaries (compacted to index 0) |
+| Cache | `0x02` | Derived/cached state |
+| Per-Ledger | `0x03` | Per-ledger data |
+| Cold | `0x04` | Transaction logs (`{0x04, 0x01}`), audit entries (`{0x04, 0x02}`) |
+| Idempotency | `0x05` | Idempotency keys |
+| Global | `0x06` | Last applied index (reset to 0), last applied timestamp, signing keys, signing config, periods, sink configs, sink cursors, sink statuses |
 
 > **Note**: If periods have been archived before the backup, the archived logs and audit entries are no longer in the backup (they have been purged to cold storage). Attributes remain.
 
@@ -164,11 +167,13 @@ ledgerctl store incremental-backup --driver s3 --s3-bucket my-bucket --s3-endpoi
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--driver` | (required) | Storage driver: `s3` |
+| `--driver` | `s3` | Storage driver: `s3` |
 | `--bucket-id` | cluster-id | Namespace prefix for backup files |
 | `--s3-bucket` | | S3 bucket name (required for s3 driver) |
 | `--s3-region` | | AWS region for S3 bucket |
 | `--s3-endpoint` | | Custom S3 endpoint (for MinIO) |
+| `--s3-access-key-id` | | Static AWS access key ID (default: use default credential chain) |
+| `--s3-secret-access-key` | | Static AWS secret access key (default: use default credential chain) |
 | `--timeout` | `1000s` | Request timeout |
 
 ### How It Works
@@ -178,7 +183,7 @@ The `store incremental-backup` command calls the `ClusterService.IncrementalBack
 1. **Read manifest**: Reads the existing manifest from S3 to determine the last exported sequences.
 2. **Snapshot**: Takes a `ReadHandle` (Pebble snapshot) for point-in-time consistency.
 3. **Determine delta**: Compares current sequences against the manifest's last exported sequences.
-4. **Stream entries**: Iterates new log entries (`0x01` prefix) and audit entries (`0x02` prefix) via raw Pebble range scan, writing them as a KV stream binary format to S3 segments.
+4. **Stream entries**: Iterates new log entries (`{0x04, 0x01}` prefix) and audit entries (`{0x04, 0x02}` prefix) via raw Pebble range scan, writing them as a KV stream binary format to S3 segments.
 5. **Update manifest**: Appends new export segments to the manifest.
 
 ### Prerequisites

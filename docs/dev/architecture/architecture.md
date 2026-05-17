@@ -139,22 +139,25 @@ The FSM (Finite State Machine) handles all commands:
 
 ### State Structure
 
-The FSM maintains a unified state containing all ledgers:
+The FSM maintains a unified state containing all ledgers. The actual in-memory state lives in the `Machine` struct (`internal/infra/state/machine.go`) and its `StateRegistry` (`internal/infra/state/registry.go`). Key fields include:
+
+- `nextSequenceID` -- next global log sequence number
+- `lastAppliedIndex` / `lastAppliedTimestamp` -- last Raft entry applied
+- `Registry.Boundaries` -- per-ledger `LedgerBoundaries` proto (next log ID, next transaction ID) stored as a KeyStore attribute
+- `Registry.Ledgers` -- per-ledger `LedgerInfo` tracked via KeyStore
+- `Registry.Reversions` -- per-ledger reversion bitsets
+- `Registry.Volumes`, `Registry.AccountMetadata`, `Registry.References`, etc. -- other KeyStore-backed attributes
+
+Per-ledger boundaries use the `LedgerBoundaries` protobuf message from `raft_cmd.proto`:
 
 ```protobuf
-message State {
-  map<uint32, LedgerState> ledgers = 1;   // All ledgers indexed by numeric ID
-  uint32 next_ledger_id = 2;              // Next available ledger ID
-  uint64 next_sequence = 3;               // Next global log sequence number
-  uint64 checkpoint_id = 4;               // Last checkpoint ID
-}
-
-message LedgerState {
-  LedgerInfo ledger_info = 1;
-  uint64 next_log_id = 2;                 // Next log sequence number
-  uint64 next_transaction_id = 3;         // Next transaction ID
+message LedgerBoundaries {
+  uint64 next_transaction_id = 1;
+  uint64 next_log_id = 2;
 }
 ```
+
+> **Note:** The `State` / `LedgerState` proto messages sometimes shown in older documentation are conceptual models, not actual proto definitions. The real FSM state is spread across the `Machine` struct fields and its `StateRegistry`.
 
 ### Benefits of Single Raft
 
@@ -304,9 +307,9 @@ All ledgers share a single Pebble key-value store with byte-prefixed keys organi
 
 | Zone | Byte | Purpose | Lifecycle |
 |------|------|---------|-----------|
-| **Attributes** | `0x01` | Volumes, metadata, boundaries, tx state, references, sink configs, numscript | Hot storage, hashed during seal |
+| **Attributes** | `0x01` | Volumes, metadata, boundaries, tx state, references, sink configs, numscript, prepared queries | Hot storage, hashed during seal |
 | **Cache** | `0x02` | Generation-based cache for fast restart | Rotated per generation |
-| **Per-Ledger** | `0x03` | Reversions, pending cleanups, mirror state | Per-ledger lifecycle |
+| **Per-Ledger** | `0x03` | Reversions, pending cleanups, prepared queries, mirror source head, mirror cursor, mirror status | Per-ledger lifecycle |
 | **Cold** | `0x04` | Logs + audit entries | Archived to cold storage then purged per period |
 | **Idempotency** | `0x05` | Deduplication keys + time index | TTL-based eviction |
 | **Global** | `0x06` | Applied index/timestamp, ledger info, signing, periods, cluster config, bloom | Lives forever |

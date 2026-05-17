@@ -4,7 +4,7 @@ Numscript is a domain-specific language (DSL) for expressing financial transacti
 
 ## Overview
 
-This ledger implementation uses the official Numscript interpreter from `github.com/formancehq/numscript` with **all experimental features enabled by default**.
+This ledger implementation uses the official Numscript interpreter from `github.com/formancehq/numscript`. All experimental features are **available** (the server imposes no restrictions), but each script must **explicitly opt in** using the `#![feature("...")]` pragma.
 
 ### Key Capabilities
 
@@ -17,7 +17,7 @@ This ledger implementation uses the official Numscript interpreter from `github.
 
 ## Enabled Features
 
-All experimental Numscript features are enabled by default. Features are declared in scripts via the `#![feature("...")]` pragma syntax (e.g., `#![feature("experimental-account-interpolation")]`).
+All experimental Numscript features are available but must be explicitly opted into per script via the `#![feature("...")]` pragma syntax (e.g., `#![feature("experimental-account-interpolation")]`).
 
 | Feature Flag | Description |
 |--------------|-------------|

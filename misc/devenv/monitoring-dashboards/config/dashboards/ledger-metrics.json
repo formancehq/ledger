@@ -7816,6 +7816,211 @@
           ],
           "title": "VFS Total ops (cumulative)",
           "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "description": "Number of slow disk operations detected by Pebble per second. A slow disk event fires when a write operation exceeds Pebble's disk slowness threshold.\n\nThis is a leading indicator: disk_slow events typically precede write stalls. If this metric spikes, investigate disk I/O before it escalates.\n\nConsider enabling --pebble-wal-failover-dir to mitigate transient disk slowness.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "showValues": false,
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 120
+          },
+          "id": 534,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "12.3.1",
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "sum by (op) (rate({__name__=\"pebble.disk_slow.total\", \"scope.name\"=\"pebble.runtime_store\", \"service.cluster\"=~\"$cluster\", \"service.node_id\"=~\"$node\"}[$__rate_interval]))",
+              "legendFormat": "{{op}}",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Disk slow events / second",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "description": "Duration of slow disk operations (P50, P95, P99). Shows how long disk operations have been stalled when Pebble detects slowness.\n\nHigh values (>1s) indicate severe disk issues. Correlate with write stall metrics to understand impact on transaction latency.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "showValues": false,
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  },
+                  {
+                    "color": "red",
+                    "value": 1000
+                  }
+                ]
+              },
+              "unit": "ms"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 120
+          },
+          "id": 535,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "12.3.1",
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.50, sum by (le, op) (rate({__name__=\"pebble.disk_slow.duration.milliseconds_bucket\", \"scope.name\"=\"pebble.runtime_store\", \"service.cluster\"=~\"$cluster\", \"service.node_id\"=~\"$node\"}[$__rate_interval])))",
+              "legendFormat": "p50 {{op}}",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.95, sum by (le, op) (rate({__name__=\"pebble.disk_slow.duration.milliseconds_bucket\", \"scope.name\"=\"pebble.runtime_store\", \"service.cluster\"=~\"$cluster\", \"service.node_id\"=~\"$node\"}[$__rate_interval])))",
+              "legendFormat": "p95 {{op}}",
+              "range": true,
+              "refId": "B"
+            },
+            {
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.99, sum by (le, op) (rate({__name__=\"pebble.disk_slow.duration.milliseconds_bucket\", \"scope.name\"=\"pebble.runtime_store\", \"service.cluster\"=~\"$cluster\", \"service.node_id\"=~\"$node\"}[$__rate_interval])))",
+              "legendFormat": "p99 {{op}}",
+              "range": true,
+              "refId": "C"
+            }
+          ],
+          "title": "Disk slow duration",
+          "type": "timeseries"
         }
       ],
       "title": "Pebble",

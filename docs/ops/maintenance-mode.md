@@ -33,7 +33,7 @@ When a write operation is attempted during maintenance mode:
 
 ### Persistence and Replication
 
-- The maintenance mode flag is stored in Pebble (key prefix `0x0B`) and cached in-memory in `SharedState`
+- The maintenance mode flag is stored in Pebble (compound key `{0x06, 0x0B}`, within the Global zone `0x06`) and cached in-memory in `SharedState`
 - The flag is replicated through Raft consensus (same path as signing config)
 - Changes take effect when the FSM applies the corresponding log entry
 

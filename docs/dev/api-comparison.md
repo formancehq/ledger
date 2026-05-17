@@ -127,7 +127,7 @@ This document compares the POC's API with the original Formance ledger API and d
 - ✅ Custom timestamp
 - ✅ Idempotency key
 
-**Numscript Experimental Features (all enabled by default):**
+**Numscript Experimental Features (available, require `#![feature(...)]` opt-in):**
 - ✅ Account interpolation (dynamic addresses like `@escrow:$order_id`)
 - ✅ Asset colors (fund origin tracking)
 - ✅ `get_amount()` / `get_asset()` functions
@@ -549,7 +549,8 @@ Read endpoints comparison with the original ledger:
 | `GET /{ledgerName}/accounts/{address}` | ✅ | ✅ | Get an account |
 | `GET /{ledgerName}/accounts/{address}/balances` | ❌ | ✅ | Get account balances |
 | `GET /{ledgerName}/accounts/{address}/volumes` | ❌ | ✅ | Get account volumes |
-| `GET /{ledgerName}/logs` | ✅ | ✅ | List per-ledger logs (requires builtin LOG index). Supports `?after=` for pagination |
+| `GET /{ledgerName}/volumes` | ✅ | ✅ | Aggregate volumes (per-asset, supports prefix filtering) |
+| `GET /{ledgerName}/logs` | ✅ | ✅ | List per-ledger logs. Supports `?after=` for pagination |
 | `GET /{ledgerName}/aggregate/balances` | ❌ | ✅ | Balance aggregation |
 | `GET /{ledgerName}/stats` | ✅ | ✅ | Ledger statistics (account + transaction count) |
 | `GET /{ledgerName}` | ✅ | ✅ | Get ledger info |
@@ -619,7 +620,22 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `ListLedgers` | Get all ledgers info | ✅ |
 | `GetLedger` | Get ledger by name or ID | ✅ |
 | `GetTransaction` | Get transaction by ID | ✅ |
-| `StreamLogs` | Stream logs from a ledger | ✅ |
+| `ListTransactions` | Stream transactions for a ledger | ✅ |
+| `ListAccounts` | Stream accounts for a ledger | ✅ |
+| `GetAccount` | Get account by address | ✅ |
+| `GetPrimaryMetrics` | Get primary Pebble store metrics | ✅ |
+| `GetSecondaryMetrics` | Get secondary (read index) Pebble store metrics | ✅ |
+| `CheckStore` | Verify store integrity (hash chain + derived data) | ✅ |
+| `GetEventsSinks` | Get per-sink configurations and statuses | ✅ |
+| `GetPeriodSchedule` | Get current period rotation schedule | ✅ |
+| `GetMetadataSchemaStatus` | Get metadata field conversion status | ✅ |
+| `AnalyzeTransactions` | Discover transaction flow patterns | ✅ |
+| `CreatePreparedQuery` | Create a named prepared query | ✅ |
+| `UpdatePreparedQuery` | Update an existing prepared query | ✅ |
+| `DeletePreparedQuery` | Remove a prepared query | ✅ |
+| `ListPreparedQueries` | List all prepared queries for a ledger | ✅ |
+| `ExecutePreparedQuery` | Execute a prepared query against the read index | ✅ |
+| `Barrier` | No-op Raft proposal to ensure all prior writes are applied | ✅ |
 | `Apply` | Apply a ledger action (write operations) | ✅ |
 | `Apply(CreateLedger)` with mirror mode | Create a mirror ledger | ✅ |
 | `Apply(PromoteLedger)` | Promote mirror ledger to normal mode | ✅ |
@@ -632,6 +648,7 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `ListAuditEntries` | Stream audit log entries (success + failure) | ✅ |
 | `GetAuditEntry` | Get a single audit entry by sequence number | ✅ |
 | `ListLogs` | Stream system logs (supports `ledger` and `log_id` filters for per-ledger listing and pagination) | ✅ |
+| `GetLog` | Get a single system log by sequence number | ✅ |
 | `ListSigningKeys` | Stream all registered signing keys | ✅ |
 | `Discovery` | Return server capabilities (response signing config) | ✅ |
 | `AnalyzeAccounts` | Analyze accounts and suggest Chart of Accounts | ✅ |
