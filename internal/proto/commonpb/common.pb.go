@@ -9823,6 +9823,7 @@ type PersistedConfig struct {
 	NodeId                uint64                 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
 	ClusterId             string                 `protobuf:"bytes,2,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
 	IdempotencyTtlSeconds uint64                 `protobuf:"varint,3,opt,name=idempotency_ttl_seconds,json=idempotencyTtlSeconds,proto3" json:"idempotency_ttl_seconds,omitempty"`
+	StorageSchemaVersion  uint32                 `protobuf:"varint,4,opt,name=storage_schema_version,json=storageSchemaVersion,proto3" json:"storage_schema_version,omitempty"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -9874,6 +9875,13 @@ func (x *PersistedConfig) GetClusterId() string {
 func (x *PersistedConfig) GetIdempotencyTtlSeconds() uint64 {
 	if x != nil {
 		return x.IdempotencyTtlSeconds
+	}
+	return 0
+}
+
+func (x *PersistedConfig) GetStorageSchemaVersion() uint32 {
+	if x != nil {
+		return x.StorageSchemaVersion
 	}
 	return 0
 }
@@ -10572,12 +10580,13 @@ const file_common_proto_rawDesc = "" +
 	"\frevert_count\x18\b \x01(\x04R\vrevertCount\x12:\n" +
 	"\x19numscript_execution_count\x18\t \x01(\x04R\x17numscriptExecutionCount\x12\x1b\n" +
 	"\tlog_count\x18\n" +
-	" \x01(\x04R\blogCount\"\x81\x01\n" +
+	" \x01(\x04R\blogCount\"\xb7\x01\n" +
 	"\x0fPersistedConfig\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12\x1d\n" +
 	"\n" +
 	"cluster_id\x18\x02 \x01(\tR\tclusterId\x126\n" +
-	"\x17idempotency_ttl_seconds\x18\x03 \x01(\x04R\x15idempotencyTtlSeconds*Z\n" +
+	"\x17idempotency_ttl_seconds\x18\x03 \x01(\x04R\x15idempotencyTtlSeconds\x124\n" +
+	"\x16storage_schema_version\x18\x04 \x01(\rR\x14storageSchemaVersion*Z\n" +
 	"\n" +
 	"TargetType\x12\x17\n" +
 	"\x13TARGET_TYPE_ACCOUNT\x10\x00\x12\x1b\n" +

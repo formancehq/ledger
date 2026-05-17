@@ -9,6 +9,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
@@ -39,12 +40,13 @@ func TestValidateOrPersistConfig_FirstBoot(t *testing.T) {
 	err := ValidateOrPersistConfig(store, cfg, logger, false)
 	require.NoError(t, err)
 
-	// Verify config was persisted
+	// Verify config was persisted with schema version
 	persisted, err := LoadPersistedConfig(store)
 	require.NoError(t, err)
 	require.NotNil(t, persisted)
 	require.Equal(t, uint64(1), persisted.GetNodeId())
 	require.Equal(t, "test-cluster", persisted.GetClusterId())
+	require.Equal(t, CurrentStorageSchemaVersion, persisted.GetStorageSchemaVersion())
 }
 
 func TestValidateOrPersistConfig_MatchingConfig(t *testing.T) {
@@ -143,4 +145,106 @@ func TestValidateOrPersistConfig_ForceOverride(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(2), persisted.GetNodeId())
 	require.Equal(t, "cluster-b", persisted.GetClusterId())
+}
+
+func TestValidateOrPersistConfig_SchemaVersionBackfill(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	logger := logging.Testing()
+
+	// Simulate a pre-versioning persisted config (schema_version == 0).
+	batch := store.NewBatch()
+	require.NoError(t, SavePersistedConfig(batch, &commonpb.PersistedConfig{
+		NodeId:    1,
+		ClusterId: "test",
+	}))
+	require.NoError(t, batch.Commit())
+
+	// Boot with current code should backfill to version 1 and succeed.
+	cfg := Config{
+		RaftConfig: node.NodeConfig{NodeID: 1},
+		ClusterID:  "test",
+	}
+	err := ValidateOrPersistConfig(store, cfg, logger, false)
+	require.NoError(t, err)
+
+	persisted, err := LoadPersistedConfig(store)
+	require.NoError(t, err)
+	require.Equal(t, uint32(1), persisted.GetStorageSchemaVersion())
+}
+
+func TestValidateOrPersistConfig_SchemaVersionTooNew(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	logger := logging.Testing()
+
+	// Persist a schema version higher than what the code supports (simulate downgrade).
+	batch := store.NewBatch()
+	require.NoError(t, SavePersistedConfig(batch, &commonpb.PersistedConfig{
+		NodeId:               1,
+		ClusterId:            "test",
+		StorageSchemaVersion: CurrentStorageSchemaVersion + 1,
+	}))
+	require.NoError(t, batch.Commit())
+
+	cfg := Config{
+		RaftConfig: node.NodeConfig{NodeID: 1},
+		ClusterID:  "test",
+	}
+	err := ValidateOrPersistConfig(store, cfg, logger, false)
+	require.Error(t, err)
+
+	var schemaErr *SchemaVersionError
+	require.ErrorAs(t, err, &schemaErr)
+	require.True(t, schemaErr.Downgrade)
+	require.Equal(t, CurrentStorageSchemaVersion+1, schemaErr.Persisted)
+	require.Equal(t, CurrentStorageSchemaVersion, schemaErr.Current)
+
+	// Force flag must NOT bypass schema version errors.
+	err = ValidateOrPersistConfig(store, cfg, logger, true)
+	require.Error(t, err)
+	require.ErrorAs(t, err, &schemaErr)
+}
+
+func TestValidateOrPersistConfig_SchemaVersionTooOld(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	logger := logging.Testing()
+
+	// Persist a schema version lower than current (simulate upgrade without migration).
+	batch := store.NewBatch()
+	require.NoError(t, SavePersistedConfig(batch, &commonpb.PersistedConfig{
+		NodeId:               1,
+		ClusterId:            "test",
+		StorageSchemaVersion: 1,
+	}))
+	require.NoError(t, batch.Commit())
+
+	// This test only fails when CurrentStorageSchemaVersion > 1.
+	// With version 1, persisted == current so it passes. We still keep
+	// this test to catch regressions when the version is bumped.
+	cfg := Config{
+		RaftConfig: node.NodeConfig{NodeID: 1},
+		ClusterID:  "test",
+	}
+
+	if CurrentStorageSchemaVersion > 1 {
+		err := ValidateOrPersistConfig(store, cfg, logger, false)
+		require.Error(t, err)
+
+		var schemaErr *SchemaVersionError
+		require.ErrorAs(t, err, &schemaErr)
+		require.False(t, schemaErr.Downgrade)
+		require.Equal(t, uint32(1), schemaErr.Persisted)
+		require.Equal(t, CurrentStorageSchemaVersion, schemaErr.Current)
+
+		// Force flag must NOT bypass schema version errors.
+		err = ValidateOrPersistConfig(store, cfg, logger, true)
+		require.Error(t, err)
+		require.ErrorAs(t, err, &schemaErr)
+	} else {
+		// Version 1 == current: should pass.
+		err := ValidateOrPersistConfig(store, cfg, logger, false)
+		require.NoError(t, err)
+	}
 }

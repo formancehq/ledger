@@ -3507,6 +3507,7 @@ func (m *PersistedConfig) CloneVT() *PersistedConfig {
 	r.NodeId = m.NodeId
 	r.ClusterId = m.ClusterId
 	r.IdempotencyTtlSeconds = m.IdempotencyTtlSeconds
+	r.StorageSchemaVersion = m.StorageSchemaVersion
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -9388,6 +9389,9 @@ func (this *PersistedConfig) EqualVT(that *PersistedConfig) bool {
 		return false
 	}
 	if this.IdempotencyTtlSeconds != that.IdempotencyTtlSeconds {
+		return false
+	}
+	if this.StorageSchemaVersion != that.StorageSchemaVersion {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -18129,6 +18133,11 @@ func (m *PersistedConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.StorageSchemaVersion != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.StorageSchemaVersion))
+		i--
+		dAtA[i] = 0x20
+	}
 	if m.IdempotencyTtlSeconds != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.IdempotencyTtlSeconds))
 		i--
@@ -21931,6 +21940,9 @@ func (m *PersistedConfig) SizeVT() (n int) {
 	}
 	if m.IdempotencyTtlSeconds != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.IdempotencyTtlSeconds))
+	}
+	if m.StorageSchemaVersion != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.StorageSchemaVersion))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -43163,6 +43175,25 @@ func (m *PersistedConfig) UnmarshalVT(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.IdempotencyTtlSeconds |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StorageSchemaVersion", wireType)
+			}
+			m.StorageSchemaVersion = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.StorageSchemaVersion |= uint32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

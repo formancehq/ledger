@@ -1109,4 +1109,5 @@ message PersistedConfig {
   uint64 node_id = 1;
   string cluster_id = 2;
   uint64 idempotency_ttl_seconds = 3;
+  uint32 storage_schema_version = 4;
 }
