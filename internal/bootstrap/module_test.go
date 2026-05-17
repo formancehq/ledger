@@ -12,6 +12,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
 func TestLoadScopeMapping_FromFile(t *testing.T) {
@@ -166,9 +167,9 @@ func TestPersistConfig_SaveAndLoad(t *testing.T) {
 
 	store := newTestStore(t)
 
-	cfg := &PersistedConfig{
-		NodeID:    42,
-		ClusterID: "my-cluster",
+	cfg := &commonpb.PersistedConfig{
+		NodeId:    42,
+		ClusterId: "my-cluster",
 	}
 
 	err := persistConfig(store, cfg)
@@ -177,8 +178,8 @@ func TestPersistConfig_SaveAndLoad(t *testing.T) {
 	loaded, err := LoadPersistedConfig(store)
 	require.NoError(t, err)
 	require.NotNil(t, loaded)
-	assert.Equal(t, uint64(42), loaded.NodeID)
-	assert.Equal(t, "my-cluster", loaded.ClusterID)
+	assert.Equal(t, uint64(42), loaded.GetNodeId())
+	assert.Equal(t, "my-cluster", loaded.GetClusterId())
 }
 
 func TestPersistConfig_Overwrite(t *testing.T) {
@@ -187,22 +188,22 @@ func TestPersistConfig_Overwrite(t *testing.T) {
 	store := newTestStore(t)
 
 	// First write
-	err := persistConfig(store, &PersistedConfig{
-		NodeID:    1,
-		ClusterID: "cluster-a",
+	err := persistConfig(store, &commonpb.PersistedConfig{
+		NodeId:    1,
+		ClusterId: "cluster-a",
 	})
 	require.NoError(t, err)
 
 	// Overwrite
-	err = persistConfig(store, &PersistedConfig{
-		NodeID:    2,
-		ClusterID: "cluster-b",
+	err = persistConfig(store, &commonpb.PersistedConfig{
+		NodeId:    2,
+		ClusterId: "cluster-b",
 	})
 	require.NoError(t, err)
 
 	loaded, err := LoadPersistedConfig(store)
 	require.NoError(t, err)
 	require.NotNil(t, loaded)
-	assert.Equal(t, uint64(2), loaded.NodeID)
-	assert.Equal(t, "cluster-b", loaded.ClusterID)
+	assert.Equal(t, uint64(2), loaded.GetNodeId())
+	assert.Equal(t, "cluster-b", loaded.GetClusterId())
 }

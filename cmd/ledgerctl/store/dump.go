@@ -278,7 +278,7 @@ func decodeValue(key, val []byte) string {
 	case dal.KeyPrefixPeriodSchedule:
 		return fmt.Sprintf("cron=%q", string(val))
 	case dal.KeyPrefixPersistedConfig:
-		return "json=" + string(val)
+		return tryProtoJSON(val, &commonpb.PersistedConfig{})
 	case dal.KeyPrefixAttributes:
 		return decodeAttributeValue(key, val)
 	default:

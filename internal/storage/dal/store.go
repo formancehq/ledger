@@ -206,7 +206,7 @@ var (
 	KeyPrefixEventsConfig         byte = 0xFB // [KeyPrefixEventsConfig][name] -> SinkConfig protobuf (per-sink)
 	KeyPrefixSinkStatus           byte = 0xFC // [KeyPrefixSinkStatus][name] -> SinkStatus protobuf
 	KeyPrefixMaintenanceMode      byte = 0xFD // [KeyPrefixMaintenanceMode] -> maintenance mode byte (0x00=false, 0x01=true)
-	KeyPrefixPersistedConfig      byte = 0xFE // [KeyPrefixPersistedConfig] -> PersistedConfig JSON (startup safety checks)
+	KeyPrefixPersistedConfig      byte = 0xFE // [KeyPrefixPersistedConfig] -> PersistedConfig protobuf (startup safety checks)
 	KeyPrefixCacheSnapshot        byte = 0xFF // [KeyPrefixCacheSnapshot][sub...] -> cache snapshot data
 )
 

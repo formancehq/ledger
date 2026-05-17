@@ -6,6 +6,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
@@ -19,10 +20,10 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 		return fmt.Errorf("loading persisted config: %w", err)
 	}
 
-	current := &PersistedConfig{
-		NodeID:                cfg.RaftConfig.NodeID,
-		ClusterID:             cfg.ClusterID,
-		IdempotencyTTLSeconds: uint64(cfg.IdempotencyTTL.Seconds()),
+	current := &commonpb.PersistedConfig{
+		NodeId:                cfg.RaftConfig.NodeID,
+		ClusterId:             cfg.ClusterID,
+		IdempotencyTtlSeconds: uint64(cfg.IdempotencyTTL.Seconds()),
 	}
 
 	if persisted == nil {
@@ -32,11 +33,11 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 		return persistConfig(store, current)
 	}
 
-	// Backfill IdempotencyTTLSeconds for configs persisted before this field existed.
-	if persisted.IdempotencyTTLSeconds == 0 && current.IdempotencyTTLSeconds != 0 {
-		persisted.IdempotencyTTLSeconds = current.IdempotencyTTLSeconds
+	// Backfill IdempotencyTtlSeconds for configs persisted before this field existed.
+	if persisted.GetIdempotencyTtlSeconds() == 0 && current.GetIdempotencyTtlSeconds() != 0 {
+		persisted.IdempotencyTtlSeconds = current.GetIdempotencyTtlSeconds()
 
-		logger.Infof("Backfilling idempotency-ttl-seconds=%d into persisted config", current.IdempotencyTTLSeconds)
+		logger.Infof("Backfilling idempotency-ttl-seconds=%d into persisted config", current.GetIdempotencyTtlSeconds())
 
 		if err := persistConfig(store, persisted); err != nil {
 			return fmt.Errorf("backfilling persisted config: %w", err)
@@ -46,28 +47,28 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 	// Subsequent boot: validate critical parameters
 	var mismatches []*ConfigMismatchError
 
-	if persisted.NodeID != current.NodeID {
+	if persisted.GetNodeId() != current.GetNodeId() {
 		mismatches = append(mismatches, &ConfigMismatchError{
 			Field:     "node-id",
-			Persisted: strconv.FormatUint(persisted.NodeID, 10),
-			Current:   strconv.FormatUint(current.NodeID, 10),
+			Persisted: strconv.FormatUint(persisted.GetNodeId(), 10),
+			Current:   strconv.FormatUint(current.GetNodeId(), 10),
 		})
 	}
 
-	if persisted.ClusterID != current.ClusterID {
+	if persisted.GetClusterId() != current.GetClusterId() {
 		mismatches = append(mismatches, &ConfigMismatchError{
 			Field:     "cluster-id",
-			Persisted: persisted.ClusterID,
-			Current:   current.ClusterID,
+			Persisted: persisted.GetClusterId(),
+			Current:   current.GetClusterId(),
 		})
 	}
 
-	// IdempotencyTTLSeconds: only validate if persisted value is non-zero (backward compat).
-	if persisted.IdempotencyTTLSeconds != 0 && persisted.IdempotencyTTLSeconds != current.IdempotencyTTLSeconds {
+	// IdempotencyTtlSeconds: only validate if persisted value is non-zero (backward compat).
+	if persisted.GetIdempotencyTtlSeconds() != 0 && persisted.GetIdempotencyTtlSeconds() != current.GetIdempotencyTtlSeconds() {
 		mismatches = append(mismatches, &ConfigMismatchError{
 			Field:     "idempotency-ttl",
-			Persisted: strconv.FormatUint(persisted.IdempotencyTTLSeconds, 10) + "s",
-			Current:   strconv.FormatUint(current.IdempotencyTTLSeconds, 10) + "s",
+			Persisted: strconv.FormatUint(persisted.GetIdempotencyTtlSeconds(), 10) + "s",
+			Current:   strconv.FormatUint(current.GetIdempotencyTtlSeconds(), 10) + "s",
 		})
 	}
 
@@ -91,7 +92,7 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 }
 
 // persistConfig writes the given configuration to Pebble.
-func persistConfig(store *dal.Store, cfg *PersistedConfig) error {
+func persistConfig(store *dal.Store, cfg *commonpb.PersistedConfig) error {
 	batch := store.NewBatch()
 
 	err := SavePersistedConfig(batch, cfg)

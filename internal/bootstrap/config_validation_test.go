@@ -43,8 +43,8 @@ func TestValidateOrPersistConfig_FirstBoot(t *testing.T) {
 	persisted, err := LoadPersistedConfig(store)
 	require.NoError(t, err)
 	require.NotNil(t, persisted)
-	require.Equal(t, uint64(1), persisted.NodeID)
-	require.Equal(t, "test-cluster", persisted.ClusterID)
+	require.Equal(t, uint64(1), persisted.GetNodeId())
+	require.Equal(t, "test-cluster", persisted.GetClusterId())
 }
 
 func TestValidateOrPersistConfig_MatchingConfig(t *testing.T) {
@@ -141,6 +141,6 @@ func TestValidateOrPersistConfig_ForceOverride(t *testing.T) {
 	// Verify config was overwritten
 	persisted, err := LoadPersistedConfig(store)
 	require.NoError(t, err)
-	require.Equal(t, uint64(2), persisted.NodeID)
-	require.Equal(t, "cluster-b", persisted.ClusterID)
+	require.Equal(t, uint64(2), persisted.GetNodeId())
+	require.Equal(t, "cluster-b", persisted.GetClusterId())
 }

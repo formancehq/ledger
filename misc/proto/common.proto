@@ -1102,3 +1102,11 @@ message LedgerStats {
   uint64 numscript_execution_count = 9;
   uint64 log_count = 10;
 }
+
+// PersistedConfig stores critical configuration parameters that must not change
+// between restarts with existing data. Stored at Pebble key 0xFE.
+message PersistedConfig {
+  uint64 node_id = 1;
+  string cluster_id = 2;
+  uint64 idempotency_ttl_seconds = 3;
+}
