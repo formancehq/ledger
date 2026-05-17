@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
@@ -16,8 +17,8 @@ import (
 // Returns the ledger name and true on success; writes a 400 response and returns false on failure.
 func requireLedgerName(w http.ResponseWriter, r *http.Request) (string, bool) {
 	ledgerName := chi.URLParam(r, "ledgerName")
-	if ledgerName == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("ledger name is required"))
+	if err := domain.ValidateLedgerName(ledgerName); err != nil {
+		writeBadRequest(w, "INVALID_REQUEST", err)
 
 		return "", false
 	}

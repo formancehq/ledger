@@ -1,0 +1,116 @@
+package admission
+
+import (
+	"fmt"
+
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+)
+
+// validateOrder validates storage-safety invariants on a fully-constructed order
+// before it enters the Raft pipeline. This is the single validation gate for all
+// write paths (gRPC, HTTP, bulk).
+func validateOrder(order *raftcmdpb.Order) error {
+	if err := validateOrderLedgerName(order); err != nil {
+		return &domain.BusinessError{Err: err}
+	}
+
+	if err := validateOrderMetadataKeys(order); err != nil {
+		return &domain.BusinessError{Err: err}
+	}
+
+	return nil
+}
+
+// validateOrderLedgerName extracts and validates the ledger name from any order type.
+func validateOrderLedgerName(order *raftcmdpb.Order) error {
+	var name string
+
+	switch o := order.GetType().(type) {
+	case *raftcmdpb.Order_CreateLedger:
+		name = o.CreateLedger.GetName()
+	case *raftcmdpb.Order_DeleteLedger:
+		name = o.DeleteLedger.GetName()
+	case *raftcmdpb.Order_Apply:
+		name = o.Apply.GetLedger()
+	case *raftcmdpb.Order_SaveNumscript:
+		name = o.SaveNumscript.GetLedger()
+	case *raftcmdpb.Order_DeleteNumscript:
+		name = o.DeleteNumscript.GetLedger()
+	case *raftcmdpb.Order_PromoteLedger:
+		name = o.PromoteLedger.GetLedger()
+	case *raftcmdpb.Order_SaveLedgerMetadata:
+		name = o.SaveLedgerMetadata.GetLedger()
+	case *raftcmdpb.Order_DeleteLedgerMetadata:
+		name = o.DeleteLedgerMetadata.GetLedger()
+	case *raftcmdpb.Order_UpdatePreparedQuery:
+		name = o.UpdatePreparedQuery.GetLedger()
+	case *raftcmdpb.Order_DeletePreparedQuery:
+		name = o.DeletePreparedQuery.GetLedger()
+	case *raftcmdpb.Order_CreatePreparedQuery:
+		name = o.CreatePreparedQuery.GetQuery().GetLedger()
+	case *raftcmdpb.Order_MirrorIngest:
+		name = o.MirrorIngest.GetLedger()
+	default:
+		return nil
+	}
+
+	return domain.ValidateLedgerName(name)
+}
+
+// validateOrderMetadataKeys validates that all metadata keys in the order are safe for
+// Pebble key encoding (no null bytes).
+func validateOrderMetadataKeys(order *raftcmdpb.Order) error {
+	switch o := order.GetType().(type) {
+	case *raftcmdpb.Order_Apply:
+		return validateApplyMetadataKeys(o.Apply)
+	case *raftcmdpb.Order_SaveLedgerMetadata:
+		return validateMetadataMap(o.SaveLedgerMetadata.GetMetadata())
+	case *raftcmdpb.Order_DeleteLedgerMetadata:
+		return domain.ValidateMetadataKey(o.DeleteLedgerMetadata.GetKey())
+	default:
+		return nil
+	}
+}
+
+// validateApplyMetadataKeys validates metadata keys within a LedgerApplyOrder.
+func validateApplyMetadataKeys(apply *raftcmdpb.LedgerApplyOrder) error {
+	switch d := apply.GetData().(type) {
+	case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
+		if err := validateMetadataMap(d.CreateTransaction.GetMetadata()); err != nil {
+			return err
+		}
+
+		for account, mm := range d.CreateTransaction.GetAccountMetadata() {
+			if mm != nil {
+				if err := validateMetadataMap(mm.GetValues()); err != nil {
+					return fmt.Errorf("account %q: %w", account, err)
+				}
+			}
+		}
+
+		return nil
+	case *raftcmdpb.LedgerApplyOrder_AddMetadata:
+		return validateMetadataMap(d.AddMetadata.GetMetadata())
+	case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
+		return domain.ValidateMetadataKey(d.DeleteMetadata.GetKey())
+	case *raftcmdpb.LedgerApplyOrder_SetMetadataFieldType:
+		return domain.ValidateMetadataKey(d.SetMetadataFieldType.GetKey())
+	case *raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType:
+		return domain.ValidateMetadataKey(d.RemoveMetadataFieldType.GetKey())
+	default:
+		return nil
+	}
+}
+
+// validateMetadataMap validates all keys in a metadata map.
+func validateMetadataMap(m map[string]*commonpb.MetadataValue) error {
+	for key := range m {
+		if err := domain.ValidateMetadataKey(key); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}

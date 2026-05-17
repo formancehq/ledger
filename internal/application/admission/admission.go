@@ -1288,6 +1288,11 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 		return nil, fmt.Errorf("unsupported request type: %T", req.GetType())
 	}
 
+	// Validate storage-safety invariants (null bytes in ledger names, metadata keys, etc.)
+	if err := validateOrder(order); err != nil {
+		return nil, err
+	}
+
 	// Set idempotency key if provided (hash will be computed in processor from payload)
 	if req.GetIdempotencyKey() != "" {
 		if len(req.GetIdempotencyKey()) > maxIdempotencyKeyLength {
