@@ -261,6 +261,12 @@ func NewDerivedKeyStore[K Key, T any](store *KeyStore[K, T], cloneFn func(T) T) 
 	}
 }
 
+// Reset clears the local overlay for reuse without reallocating maps.
+func (s *DerivedKeyStore[K, T]) Reset() {
+	clear(s.values)
+	clear(s.deletions)
+}
+
 type Update[K Key, T any] struct {
 	Key          K
 	ID           U128

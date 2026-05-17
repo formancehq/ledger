@@ -21,7 +21,7 @@ func newTestRegistry(t *testing.T) *StateRegistry {
 
 	attrs := attributes.New()
 
-	return NewStateRegistry(c, attrs)
+	return NewStateRegistry(c, attrs, 0)
 }
 
 func TestNewStateRegistryFieldsNotNil(t *testing.T) {

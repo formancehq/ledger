@@ -40,6 +40,11 @@ func (d *DerivedIdempotencyStore) Put(key string, value *commonpb.IdempotencyKey
 	d.pending[key] = value
 }
 
+// Reset clears the pending overlay for reuse without reallocating the map.
+func (d *DerivedIdempotencyStore) Reset() {
+	clear(d.pending)
+}
+
 // Merge flushes pending entries to Pebble (via SaveIdempotencyKey) and
 // updates the parent in-memory map.
 func (d *DerivedIdempotencyStore) Merge(batch *dal.Batch) error {

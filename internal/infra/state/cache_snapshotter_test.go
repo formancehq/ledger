@@ -115,7 +115,7 @@ func newTestCacheSnapshotter(t *testing.T, bloomFilters *bloom.FilterSet) (*Cach
 	c, err := cache.New(1000, meter)
 	require.NoError(t, err)
 
-	registry := NewStateRegistry(c, attrs)
+	registry := NewStateRegistry(c, attrs, 0)
 
 	snapshotter := NewCacheSnapshotter(logger, dataStore, registry, bloomFilters)
 

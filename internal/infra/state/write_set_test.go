@@ -14,7 +14,8 @@ import (
 func newTestBuffer(t *testing.T) (*WriteSet, *Machine) {
 	t.Helper()
 	machine, _, _ := newTestMachine(t)
-	buf := NewWriteSet(&commonpb.Timestamp{Data: 1700000000}, machine)
+	buf := NewWriteSet(machine)
+	buf.Reset(&commonpb.Timestamp{Data: 1700000000})
 
 	return buf, machine
 }
@@ -177,7 +178,8 @@ func TestWriteSetSigningKeyOperations(t *testing.T) {
 	machine.keyStore.AddPublicKey("child", []byte("pub-child"), "parent")
 
 	// In a fresh buffer, children should come from committed state
-	buf2 := NewWriteSet(&commonpb.Timestamp{Data: 1700000000}, machine)
+	buf2 := NewWriteSet(machine)
+	buf2.Reset(&commonpb.Timestamp{Data: 1700000000})
 	children := buf2.GetSigningKeyChildren("parent")
 	require.Contains(t, children, "child")
 

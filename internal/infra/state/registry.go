@@ -36,14 +36,8 @@ type StateRegistry struct {
 }
 
 // NewStateRegistry creates a StateRegistry with all KeyStores backed by the
-// given cache.
-func NewStateRegistry(c *cache.Cache, attrs *attributes.Attributes) *StateRegistry {
-	return newStateRegistryWithIdempotency(c, attrs, 0)
-}
-
-// newStateRegistryWithIdempotency creates a StateRegistry with a dedicated IdempotencyStore.
-// idempotencyTTLMicros is the TTL in HLC microseconds (0 = no expiration).
-func newStateRegistryWithIdempotency(c *cache.Cache, attrs *attributes.Attributes, idempotencyTTLMicros uint64) *StateRegistry {
+// given cache. idempotencyTTLMicros is the TTL in HLC microseconds (0 = no expiration).
+func NewStateRegistry(c *cache.Cache, attrs *attributes.Attributes, idempotencyTTLMicros uint64) *StateRegistry {
 	return &StateRegistry{
 		Cache: c,
 		Attrs: attrs,

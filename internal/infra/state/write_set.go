@@ -469,17 +469,44 @@ func (b *WriteSet) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	return nil
 }
 
-func NewWriteSet(at *commonpb.Timestamp, fsm *Machine) *WriteSet {
+func NewWriteSet(fsm *Machine) *WriteSet {
 	return &WriteSet{
-		fsm:                   fsm,
-		attrs:                 fsm.Registry.Attrs,
-		Date:                  at,
-		Derived:               NewDerivedRegistry(fsm.Registry),
-		NextSequenceID:        fsm.nextSequenceID,
-		NextAuditSequenceID:   fsm.nextAuditSequenceID,
-		NextQueryCheckpointID: fsm.nextQueryCheckpointID,
-		LastLogHash:           fsm.lastLogHash,
+		fsm:     fsm,
+		attrs:   fsm.Registry.Attrs,
+		Derived: NewDerivedRegistry(fsm.Registry),
 	}
+}
+
+// Reset prepares the WriteSet for a new proposal, clearing all per-proposal
+// state while preserving allocated maps and slice backing arrays.
+func (b *WriteSet) Reset(at *commonpb.Timestamp) {
+	b.Date = at
+	b.NextSequenceID = b.fsm.nextSequenceID
+	b.NextAuditSequenceID = b.fsm.nextAuditSequenceID
+	b.NextQueryCheckpointID = b.fsm.nextQueryCheckpointID
+	b.LastLogHash = b.fsm.lastLogHash
+	b.Derived.Reset()
+
+	b.pendingSigningKeyUpdates = b.pendingSigningKeyUpdates[:0]
+	b.pendingSigningConfigUpdate = nil
+	b.pendingMaintenanceModeUpdate = nil
+	b.pendingPeriodScheduleUpdate = nil
+	b.pendingQueryCheckpointScheduleUpdate = nil
+	b.sinkConfigChanged = false
+	b.periods = nil
+	b.changedPeriods = b.changedPeriods[:0]
+	b.purgeRanges = b.purgeRanges[:0]
+	b.pendingArchives = b.pendingArchives[:0]
+	b.pendingMetadataConvertRequests = b.pendingMetadataConvertRequests[:0]
+	b.pendingLedgerDeletions = b.pendingLedgerDeletions[:0]
+	b.allVolumeUpdates = b.allVolumeUpdates[:0]
+	b.keptVolumeUpdates = b.keptVolumeUpdates[:0]
+	b.purgedVolumeKeys = b.purgedVolumeKeys[:0]
+	b.transientAccounts = nil
+	b.purgedAccounts = nil
+	b.bloomUpdates.Reset()
+	b.pendingQueryCheckpointSaves = b.pendingQueryCheckpointSaves[:0]
+	b.pendingQueryCheckpointDeletes = b.pendingQueryCheckpointDeletes[:0]
 }
 
 // Store interface implementation for WriteSet

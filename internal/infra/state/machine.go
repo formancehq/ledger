@@ -107,6 +107,11 @@ type Machine struct {
 	batchCommitHistogram      metric.Int64Histogram
 	lastPersistedIndex        atomic.Uint64
 
+	// writeSet is a reusable WriteSet for applyProposal. Since the FSM is
+	// single-goroutine, we can avoid per-proposal allocations by resetting
+	// and reusing the same WriteSet across proposals.
+	writeSet *WriteSet
+
 	// sentinelMode enables runtime volume consistency checks
 	// (monotonicity, delta/posting cross-check, post-commit cache/Pebble verification).
 	sentinelMode bool
@@ -183,7 +188,7 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		indexNotifier:                  indexNotifier,
 		keyStore:                       ks,
 		sharedState:                    sharedState,
-		Registry:                       newStateRegistryWithIdempotency(cache, attrs, idempotencyTTLMicros),
+		Registry:                       NewStateRegistry(cache, attrs, idempotencyTTLMicros),
 		Periods:                        NewPeriodTracker(nil, nil, nil, 0, ""),
 		nextSequenceID:                 1,
 		nextAuditSequenceID:            1,
@@ -195,6 +200,7 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 	}
 	fsm.appliedCond = sync.NewCond(&fsm.appliedMu)
 	fsm.cacheSnapshotter = NewCacheSnapshotter(logger, dataStore, fsm.Registry, bloomFilters)
+	fsm.writeSet = NewWriteSet(fsm)
 
 	if err := fsm.RecoverState(); err != nil {
 		return nil, fmt.Errorf("recovering state: %w", err)
@@ -1101,8 +1107,9 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return nil, err
 	}
 
-	// Create buffer for this proposal
-	buffer := NewWriteSet(effectiveDate, fsm)
+	// Reset the reusable WriteSet for this proposal.
+	fsm.writeSet.Reset(effectiveDate)
+	buffer := fsm.writeSet
 
 	// Process the proposal
 	logs, err := fsm.processor.ProcessOrders(proposal.GetOrders(), buffer)

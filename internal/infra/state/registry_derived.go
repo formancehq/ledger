@@ -56,6 +56,23 @@ func NewDerivedRegistry(reg *StateRegistry) *DerivedRegistry {
 	}
 }
 
+// Reset clears all derived stores for reuse without reallocating.
+func (d *DerivedRegistry) Reset() {
+	d.Volumes.Reset()
+	d.AccountMetadata.Reset()
+	d.Idempotency.Reset()
+	d.References.Reset()
+	d.Ledgers.Reset()
+	d.Boundaries.Reset()
+	d.SinkConfigs.Reset()
+	d.NumscriptVersions.Reset()
+	d.Transactions.Reset()
+	d.NumscriptContents.Reset()
+	d.PreparedQueries.Reset()
+	d.LedgerMetadata.Reset()
+	d.PendingReversions = d.PendingReversions[:0]
+}
+
 // GetReverted checks pending reversions first, then the parent bitset.
 func (d *DerivedRegistry) GetReverted(key domain.TransactionKey) bool {
 	// Check pending reversions in this proposal
