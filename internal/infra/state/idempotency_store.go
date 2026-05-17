@@ -69,7 +69,7 @@ func (s *IdempotencyStore) Reset() {
 }
 
 // EvictBefore removes entries with created_at <= cutoffMicros from both
-// the in-memory map and Pebble [0x03, 0x04). Returns the count of evicted entries.
+// the in-memory map and Pebble [0x05, 0x06). Returns the count of evicted entries.
 func (s *IdempotencyStore) EvictBefore(batch *dal.Batch, reader dal.PebbleReader, cutoffMicros uint64) (int, error) {
 	evicted := 0
 
@@ -81,7 +81,15 @@ func (s *IdempotencyStore) EvictBefore(batch *dal.Batch, reader dal.PebbleReader
 		}
 	}
 
-	// 2. Scan Pebble time index [ZoneIdempotency][SubIdempTimeIdx]
+	// 2. Scan Pebble time index to find main key hashes, then bulk-delete the range.
+	//
+	// Main keys ([0x05][0x01][hash]) are hash-ordered and must be deleted individually
+	// via SingleDelete (write-once / delete-once lifecycle guaranteed by the FSM).
+	//
+	// Time index keys ([0x05][0x02][ts][hash]) are timestamp-ordered, so all expired
+	// entries form a contiguous prefix. A single DeleteRange replaces N individual
+	// deletes, halving the batch operation count and enabling Pebble's delete-only
+	// compactions (entire SSTables dropped without I/O).
 	iter, err := reader.NewIter(&pebble.IterOptions{
 		LowerBound: []byte{dal.ZoneIdempotency, dal.SubIdempTimeIdx},
 		UpperBound: []byte{dal.ZoneIdempotency, dal.SubIdempTimeIdx + 1},
@@ -93,6 +101,7 @@ func (s *IdempotencyStore) EvictBefore(batch *dal.Batch, reader dal.PebbleReader
 	defer func() { _ = iter.Close() }()
 
 	// Time index key format: [0x05][0x02][created_at BE 8 bytes][key_hash 16 bytes]
+	var pebbleEvicted int
 	for iter.First(); iter.Valid(); iter.Next() {
 		k := iter.Key()
 		// Minimum key length: 2 (zone+sub) + 8 (created_at) + 16 (key hash)
@@ -107,10 +116,7 @@ func (s *IdempotencyStore) EvictBefore(batch *dal.Batch, reader dal.PebbleReader
 
 		keyHash := k[10:26]
 
-		// Delete from main store [0x05][0x01][key_hash]
-		// SingleDelete is safe here: each idempotency key is written exactly once
-		// (SaveIdempotencyKey) and deleted exactly once (here). The write-once /
-		// delete-once lifecycle is guaranteed by the FSM's deduplication logic.
+		// SingleDelete main key — write-once / delete-once invariant holds.
 		mainKey := make([]byte, 2+16)
 		mainKey[0] = dal.ZoneIdempotency
 		mainKey[1] = dal.SubIdempKeys
@@ -120,17 +126,30 @@ func (s *IdempotencyStore) EvictBefore(batch *dal.Batch, reader dal.PebbleReader
 			return evicted, fmt.Errorf("deleting idempotency key: %w", err)
 		}
 
-		// Delete time index entry (also write-once / delete-once)
-		if err := batch.SingleDeleteKey(k); err != nil {
-			return evicted, fmt.Errorf("deleting idempotency time index: %w", err)
-		}
-
-		evicted++
+		pebbleEvicted++
 	}
 
 	if err := iter.Error(); err != nil {
 		return evicted, fmt.Errorf("iterating idempotency time index: %w", err)
 	}
+
+	// Bulk-delete the time index range up to (and including) cutoffMicros.
+	// The upper bound is [0x05][0x02][cutoff+1] which excludes entries newer than cutoff.
+	if pebbleEvicted > 0 {
+		var rangeEnd [10]byte
+		rangeEnd[0] = dal.ZoneIdempotency
+		rangeEnd[1] = dal.SubIdempTimeIdx
+		binary.BigEndian.PutUint64(rangeEnd[2:], cutoffMicros+1)
+
+		if err := batch.DeleteRangeNoSync(
+			[]byte{dal.ZoneIdempotency, dal.SubIdempTimeIdx},
+			rangeEnd[:],
+		); err != nil {
+			return evicted, fmt.Errorf("deleting idempotency time index range: %w", err)
+		}
+	}
+
+	evicted += pebbleEvicted
 
 	return evicted, nil
 }
