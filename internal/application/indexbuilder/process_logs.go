@@ -68,9 +68,8 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 			pendingCheckpointDelete uint64
 		)
 
-		// Create an indexed batch up front so write methods have a valid target.
+		// Create a batch up front so write methods have a valid target.
 		batch := b.readStore.NewBatch()
-		batch.EnableSortedCommit()
 		b.wb.Init(batch)
 
 		// Iterate logs from Pebble and buffer index writes into the batch.

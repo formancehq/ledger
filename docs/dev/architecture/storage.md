@@ -322,33 +322,18 @@ For detailed information on available storage backends and their configuration, 
 
 ### What the Store Persists
 
-Key prefixes are organized into three zones:
+All Pebble keys start with a zone byte that groups data by access pattern:
 
-**Cold-storable zone `[0x01, 0xF1)` — archived to cold storage then purged per period:**
+| Zone | Byte | Purpose | Lifecycle |
+|------|------|---------|-----------|
+| **Attributes** | `0x01` | Volumes, metadata, boundaries, tx state, references, sink configs, numscript | Hot storage, hashed during seal |
+| **Cache** | `0x02` | Generation-based 0xFF cache for fast restart | Rotated per generation |
+| **Per-Ledger** | `0x03` | Reversions, pending cleanups, mirror state | Per-ledger lifecycle |
+| **Cold** | `0x04` | Logs + audit entries | Archived to cold storage then purged per period |
+| **Idempotency** | `0x05` | Deduplication keys + time index | TTL-based eviction |
+| **Global** | `0x06` | Applied index/timestamp, ledger info, signing, periods, cluster config, bloom | Lives forever |
 
-- `0x01` **Transaction logs** - Immutable record of all ledger operations (global sequence)
-- `0x02` **Audit entries** - Audit trail of proposals (success/failure)
-- `0x03` **Transaction updates** - Track modifications per transaction (metadata, reverts)
-
-**Attributes zone `[0xF1, 0xF2)` — derived data hashed during seal, stays in hot storage:**
-
-- `0xF1` **Attributes** - Generation-based attribute data:
-  - Input/output volumes per account/asset
-  - Account and ledger metadata
-  - Ledger info entries
-  - Ledger boundaries (next IDs per ledger)
-  - Transaction references
-
-**System zone `[0xF2, 0xFF]` — metadata that lives forever:**
-
-- `0xF2` **Last applied Raft index** - For recovery after restart
-- `0xF3` **Last applied HLC timestamp** - Hybrid logical clock state
-- `0xF4` **Idempotency keys** - Deduplication keys (system-wide)
-- `0xF5` **Ledger info** - Ledger metadata entries
-- `0xF6` **Signing keys** - Ed25519 public keys (32 bytes per key)
-- `0xF7` **Periods state** - Period lifecycle, sealing hashes (one entry per period)
-- `0xF8` **Next period ID** - Counter for period ID generation
-- `0xF9` **Signing config** - Whether mandatory signatures are enabled (1 byte)
+See [Storage Drivers](./storage-drivers.md) for the complete key schema.
 
 ### Attribute Loading Coordination
 

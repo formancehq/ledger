@@ -184,24 +184,24 @@ const (
 
 // Global sub-prefixes (zone 0x06), ordered by hot-path write frequency.
 const (
-	SubGlobLastAppliedIndex         byte = 0x01
-	SubGlobLastAppliedTimestamp     byte = 0x02
-	SubGlobLedgerInfo               byte = 0x03
-	SubGlobSigningKey               byte = 0x04
-	SubGlobSigningConfig            byte = 0x05
-	SubGlobPeriods                  byte = 0x06
-	SubGlobNextPeriodID             byte = 0x07
-	SubGlobSinkCursor               byte = 0x08
-	SubGlobEventsConfig             byte = 0x09
-	SubGlobSinkStatus               byte = 0x0A
-	SubGlobMaintenanceMode          byte = 0x0B
-	SubGlobPersistedConfig          byte = 0x0C
-	SubGlobPeriodSchedule           byte = 0x0D
-	SubGlobQueryCheckpoint          byte = 0x0E
-	SubGlobNextQueryCheckpointID    byte = 0x0F
-	SubGlobQueryCheckpointSchedule  byte = 0x10
-	SubGlobClusterConfig            byte = 0x11
-	SubGlobBloom                    byte = 0x12
+	SubGlobLastAppliedIndex        byte = 0x01
+	SubGlobLastAppliedTimestamp    byte = 0x02
+	SubGlobLedgerInfo              byte = 0x03
+	SubGlobSigningKey              byte = 0x04
+	SubGlobSigningConfig           byte = 0x05
+	SubGlobPeriods                 byte = 0x06
+	SubGlobNextPeriodID            byte = 0x07
+	SubGlobSinkCursor              byte = 0x08
+	SubGlobEventsConfig            byte = 0x09
+	SubGlobSinkStatus              byte = 0x0A
+	SubGlobMaintenanceMode         byte = 0x0B
+	SubGlobPersistedConfig         byte = 0x0C
+	SubGlobPeriodSchedule          byte = 0x0D
+	SubGlobQueryCheckpoint         byte = 0x0E
+	SubGlobNextQueryCheckpointID   byte = 0x0F
+	SubGlobQueryCheckpointSchedule byte = 0x10
+	SubGlobClusterConfig           byte = 0x11
+	SubGlobBloom                   byte = 0x12
 )
 
 // ---------------------------------------------------------------------------
@@ -229,8 +229,6 @@ var (
 		{ZoneCold, SubColdAudit},
 	}
 )
-
-
 
 // NewStore creates a new Store instance.
 func NewStore(

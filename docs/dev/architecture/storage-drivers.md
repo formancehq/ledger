@@ -58,57 +58,113 @@ MaxConcurrentCompactions:    2          // Parallel compactions (balance CPU/IO)
 
 ### Key Schema
 
-Pebble uses single-byte prefixes for efficient key organization:
+Every Pebble key starts with a **zone byte** that groups data by access pattern, followed by a **sub-prefix** and type-specific fields. Zone bytes are defined in `internal/storage/dal/store.go`.
 
-| Prefix | Data Type | Key Format | Value |
-|--------|-----------|------------|-------|
-| `0x00` | Last Applied Index | `[0x00]` | `uint64` (8 bytes, big-endian) — Raft index |
-| `0x01` | System Logs | `[0x01][sequence]` | Protobuf-encoded `Log` message |
-| `0x02` | Idempotency | `[0x02][key_string]` | `uint64` (8 bytes) — log sequence |
-| `0x03` | Ledger Info | `[0x03][ledgerID]` | Protobuf-encoded `LedgerInfo` |
-| `0x04` | Last Applied Timestamp | `[0x04]` | `uint64` (8 bytes) — HLC microseconds |
-| `0x08` | Transaction Updates | `[ledgerPrefix][0x08][txID][byLog]` | Protobuf-encoded `TransactionUpdate` |
-| `0x09` | Attributes | `[0x09][attrPrefix][canonicalKey][raftIndex][entryType]` | Varies by attribute type |
-| `0x0A` | Audit Entries | `[0x0A][sequence]` | Protobuf-encoded `AuditEntry` |
+#### Zone layout
 
-**Key encoding details**:
-- `[sequence]`, `[txID]`, `[byLog]`, `[raftIndex]` — 8 bytes, big-endian uint64
-- `[ledgerID]` — 4 bytes, big-endian uint32
-- `[ledgerPrefix]` — 4 bytes, big-endian uint32 (ledger numeric ID)
-- `[attrPrefix]` — 1 byte ASCII letter (see [Attributes](./attributes.md))
-- `[entryType]` — 1 byte: `0` = base, `1` = diff
-- `[canonicalKey]` — variable-length, domain-specific (e.g., `[ledgerID][account]\x00[asset]` for volumes)
+| Zone | Byte | Description |
+|------|------|-------------|
+| Attributes | `0x01` | Hot-path attribute data (volumes, metadata, boundaries, etc.) |
+| Cache | `0x02` | Generation-based cache for fast restart (0xFF zone) |
+| Per-Ledger | `0x03` | Per-ledger state (reversions, pending cleanups, mirror cursors) |
+| Cold | `0x04` | Archivable data (logs, audit entries) |
+| Idempotency | `0x05` | Deduplication keys with TTL |
+| Global | `0x06` | Singleton system state (applied index, ledger info, signing, periods, config) |
 
-### Attribute Sub-Prefixes
+#### Attributes zone (`0x01`)
 
-Under the `0x09` attribute prefix, each attribute type uses an ASCII letter sub-prefix:
+Key format: `[0x01][SubAttr][canonicalKey]`
 
-| Sub-prefix | Attribute | Canonical Key |
-|------------|-----------|---------------|
-| `'I'` (0x49) | Input Volumes | `[ledgerID][account]\x00[asset]` |
-| `'O'` (0x4F) | Output Volumes | `[ledgerID][account]\x00[asset]` |
-| `'M'` (0x4D) | Account Metadata | `[ledgerID][account]\x01[key]` |
-| `'L'` (0x4C) | Ledger Metadata | `[ledgerID][key]` |
-| `'R'` (0x52) | Reversions | `[ledgerID][txID]` |
-| `'K'` (0x4B) | Idempotency Keys | `[key_string]` |
-| `'F'` (0x46) | Transaction References | `[ledgerID][reference]` |
-| `'G'` (0x47) | Ledgers | `[ledger_name]` |
-| `'B'` (0x42) | Boundaries | `[ledgerID]` |
+Each attribute type has a single entry per canonical key (last-write-wins).
 
-See [System Attributes](./attributes.md) for the complete attribute storage and caching model.
+| Sub-prefix | Attribute | Canonical Key Format |
+|------------|-----------|---------------------|
+| `0x01` | Volumes | `ledger\x00account\x00asset` |
+| `0x02` | Account Metadata | `ledger\x00account\x01key` |
+| `0x03` | Transaction State | `ledger\x00txID` |
+| `0x04` | Ledger Info | `ledger\x00` |
+| `0x05` | Boundaries | `ledger\x00` |
+| `0x06` | References | `ledger\x00reference` |
+| `0x07` | Ledger Metadata | `ledger\x00key` |
+| `0x08` | Sink Configs | `name` |
+| `0x09` | Numscript Versions | `ledger\x00name` |
+| `0x0A` | Numscript Contents | `ledger\x00name\x00version` |
+| `0x0B` | Prepared Queries | `ledger\x00name` |
+
+See [System Attributes](./attributes.md) and [Attribute Key Hashing](./attribute-key-hashing.md) for the caching model and U128 hash key system.
+
+#### Cache zone (`0x02`)
+
+Key format: `[0x02][genByte][SubAttr][16-byte U128]`
+
+Mirrors attribute values in a lean format (`[8-byte tag][proto bytes]`) for fast restart without scanning the full attributes zone. The gen byte alternates between 0 and 1 on generation rotation.
+
+Special keys:
+- `[0x02][0xFF]` — global cache snapshot metadata (`CacheSnapshotMeta`)
+- `[0x02][genByte][0x00]` — per-generation metadata (`CacheGenerationMeta`)
+
+#### Per-Ledger zone (`0x03`)
+
+Key format: `[0x03][SubPL][ledger\x00][...]`
+
+| Sub-prefix | Data |
+|------------|------|
+| `0x01` | Reversion bitset words |
+| `0x02` | Pending ledger cleanups |
+| `0x03` | Prepared queries (per-ledger) |
+| `0x04` | Mirror source head |
+| `0x05` | Mirror cursor |
+| `0x06` | Mirror status |
+
+#### Cold zone (`0x04`)
+
+Key format: `[0x04][SubCold][sequence (8 bytes BE)]`
+
+| Sub-prefix | Data |
+|------------|------|
+| `0x01` | Transaction logs (protobuf `Log`) |
+| `0x02` | Audit entries (protobuf `AuditEntry`) |
+
+Cold zone data is archived to cold storage per period, then purged via `DeleteRange`.
+
+#### Idempotency zone (`0x05`)
+
+| Sub-prefix | Key Format | Data |
+|------------|-----------|------|
+| `0x01` | `[0x05][0x01][key_string]` | `IdempotencyKeyValue` protobuf |
+| `0x02` | `[0x05][0x02][timestamp (8B BE)][key_string]` | Time index for TTL eviction |
+
+#### Global zone (`0x06`)
+
+Singleton keys for system-wide state:
+
+| Sub-prefix | Data |
+|------------|------|
+| `0x01` | Last applied Raft index (`uint64 BE`) |
+| `0x02` | Last applied HLC timestamp (`uint64 BE`) |
+| `0x03` | Ledger info entries (keyed by `ledger\x00`) |
+| `0x04` | Signing keys (Ed25519 public keys) |
+| `0x05` | Signing config (require signatures flag) |
+| `0x06` | Periods state (protobuf per period) |
+| `0x07` | Next period ID counter |
+| `0x08`-`0x0A` | Sink cursors, events config, sink status |
+| `0x0B` | Maintenance mode flag |
+| `0x0C` | Persisted config (node-id, cluster-id validation) |
+| `0x0D` | Period schedule (cron expression) |
+| `0x0E`-`0x10` | Query checkpoints, next checkpoint ID, checkpoint schedule |
+| `0x11` | Cluster config (rotation threshold, bloom config) |
+| `0x12` | Bloom filter persisted blocks |
 
 ### Balance Storage Model
 
-Pebble stores volumes using **last-write-wins** semantics:
-
-- Each volume attribute stores absolute `Known` values keyed by Raft index
-- Balance is the latest value at or before a given index
-- Old entry cleanup during merge keeps entries per key bounded
+Volumes use **last-write-wins** semantics with a single entry per canonical key:
 
 ```
-Key:   [0x09][ledgerID][account]\x00[asset]['V'][raftIndex]
-Value: VolumePair protobuf (Input + Output)
+Key:   [0x01][0x01][ledger\x00account\x00asset]
+Value: VolumePair protobuf (Input + Output as Uint256)
 ```
+
+Each write overwrites the previous value. The in-memory cache tracks two generations for eviction; see [Attribute Key Hashing](./attribute-key-hashing.md).
 
 ### Use Cases
 
@@ -135,7 +191,7 @@ data/runtime/
 
 ### Startup and Checkpoint System
 
-With incremental cache persistence (0xFF zone written in each Pebble batch), the `live/` directory is always up-to-date after each commit. On startup:
+With incremental cache persistence (cache zone written in each Pebble batch), the `live/` directory is always up-to-date after each commit. On startup:
 
 1. **Normal restart**: If `live/` exists, open it directly — no checkpoint restoration needed. Pebble's own WAL ensures crash safety.
 2. **Fresh start**: If `live/` does not exist, create a new Pebble database.
@@ -144,23 +200,24 @@ With incremental cache persistence (0xFF zone written in each Pebble batch), the
 
 ### L0 Compaction Management
 
-The `L0CompactionThreshold` is set low (default 4) so that Pebble auto-compacts aggressively and L0 never accumulates excessively. Combined with the extended block cache warmup covering `[0xF1, 0xFF)` on startup, this eliminates the need for manual startup or periodic compaction.
+The `L0CompactionThreshold` is set low (default 4) so that Pebble auto-compacts aggressively and L0 never accumulates excessively. This eliminates the need for manual startup or periodic compaction.
 
-The key space is divided into three zones with different compaction characteristics:
+The key space is divided into zones with different compaction characteristics:
 
-- **Cold zone** `[0x01, 0xF1)` — logs, audit, tx updates. Immutable, sequential, write-once data. Compacting this zone only benefits after a period purge deletes data.
-- **Attributes zone** `[0xF1, 0xF2)` — volumes, metadata, etc. `DeleteRange` tombstones from generation-rotation pruning are pushed down the LSM by Pebble's automatic compaction (triggered at L0 threshold).
-- **System zone** `[0xF2, 0xFF]` — tiny singleton keys, Pebble handles natively.
+- **Cold zone** (`0x04`) — logs, audit. Immutable, sequential, write-once data. Compacting this zone only benefits after a period purge deletes data.
+- **Attributes zone** (`0x01`) — volumes, metadata, etc. Last-write-wins entries are naturally compacted by Pebble.
+- **Cache zone** (`0x02`) — `DeleteRange` tombstones from generation-rotation pruning are pushed down the LSM by Pebble's automatic compaction.
+- **Global zone** (`0x06`) — tiny singleton keys, Pebble handles natively.
 
 Two mechanisms keep L0 under control:
 
-1. **Post-purge compaction — cold zone** (`smart_compactor.go`): When a `ConfirmArchivePeriod` is applied and period data is purged, the FSM signals the `SmartCompactor` via a channel. The compactor then runs `db.Compact` prefix-by-prefix over the cold zone to push the purge tombstones down the LSM and reclaim space.
+1. **Post-purge compaction — cold zone** (`smart_compactor.go`): When a `ConfirmArchivePeriod` is applied and period data is purged, the FSM signals the `SmartCompactor` via a channel. The compactor then runs `db.Compact` over the cold zone to push the purge tombstones down the LSM and reclaim space.
 
 2. **Pebble automatic compaction**: Pebble's built-in compaction runs when L0 reaches the threshold (default 4). This handles steady-state write workloads and keeps L0 clean at all times.
 
 | Mechanism | Zone | Trigger | Blocking | When |
 |-----------|------|---------|----------|------|
-| Post-purge compaction | Cold `[0x01, 0xF1)` | Period purge applied | No (background goroutine) | After period archival |
+| Post-purge compaction | Cold (`0x04`) | Period purge applied | No (background goroutine) | After period archival |
 | Pebble automatic | Full range | L0 >= threshold (4) | No (background) | During sustained writes |
 
 Source files: `internal/storage/dal/smart_compactor.go` (post-purge).

@@ -61,7 +61,6 @@ func (b *Builder) processBackfillPostings(stop <-chan struct{}, task *backfillTa
 		)
 
 		batch := b.readStore.NewBatch()
-		batch.EnableSortedCommit()
 		b.wb.Init(batch)
 
 		for batchCount < backfillBatchSize {

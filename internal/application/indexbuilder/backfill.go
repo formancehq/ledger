@@ -302,7 +302,6 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int) 
 	}
 
 	batch := b.readStore.NewBatch()
-	batch.EnableSortedCommit()
 	defer func() { _ = batch.Cancel() }()
 
 	processed := 0
@@ -647,7 +646,6 @@ func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask, dead
 		)
 
 		batch := b.readStore.NewBatch()
-		batch.EnableSortedCommit()
 		b.wb.Init(batch)
 
 		for batchCount < backfillBatchSize {

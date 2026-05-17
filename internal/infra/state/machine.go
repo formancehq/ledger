@@ -465,14 +465,6 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 
 	batch := fsm.dataStore.NewBatch()
 
-	// Enable sorted commit for large proposals. Each order generates ~4 Pebble
-	// writes (attribute + cache + log + bloom), so 256 orders ≈ 1000+ keys.
-	// At that scale, sorting the batch before commit lets Pebble's skiplist
-	// Inserter use its splice forward-scan (O(1) amortized) instead of full
-	// traversal (O(log N) with cache misses). For small proposals the overhead
-	// of the arena double-copy isn't worth it.
-	const sortedCommitOrderThreshold = 256
-
 	defer func() {
 		_ = batch.Cancel()
 	}()
@@ -564,10 +556,6 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 
 		if err := cmd.UnmarshalVT(entry.Data); err != nil {
 			return nil, err
-		}
-
-		if len(cmd.GetOrders()) >= sortedCommitOrderThreshold {
-			batch.EnableSortedCommit()
 		}
 
 		// Skip applyProposal for system-only proposals with no orders AND

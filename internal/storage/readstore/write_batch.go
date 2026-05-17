@@ -7,8 +7,6 @@ import (
 )
 
 // WriteBatch buffers Pebble write operations using a dal.Batch.
-// When sorted commit is enabled on the underlying batch, entries are
-// sorted by key at Commit time for Pebble skiplist optimization.
 type WriteBatch struct {
 	batch *dal.Batch
 	count int // number of operations buffered
