@@ -78,6 +78,11 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 		CreatedByLog: s.GetNextSequenceID(),
 	}
 
+	// Validate account addresses in resolved postings (covers Numscript-resolved addresses).
+	if err := validatePostingAddresses(result.Postings); err != nil {
+		return nil, err
+	}
+
 	// Validate postings against account types.
 	if compiled := p.getCompiledTypes(ledger, info); len(compiled) > 0 {
 		if typeErr := validatePostingsAgainstAccountTypes(result.Postings, compiled, info.GetDefaultEnforcementMode()); typeErr != nil {
@@ -136,6 +141,10 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 	var previousAccountMetadata map[string]*commonpb.MetadataMap
 
 	for account, mm := range accountMetadata {
+		if err := domain.ValidateAccountAddress(account); err != nil {
+			return nil, err
+		}
+
 		enforceSchemaMap(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, mm.GetValues())
 
 		for key, value := range mm.GetValues() {
@@ -208,6 +217,23 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 			},
 		},
 	}, nil
+}
+
+// validatePostingAddresses checks that all account addresses in the postings
+// contain only allowed characters. This runs after Numscript resolution so it
+// covers both explicit and script-resolved addresses.
+func validatePostingAddresses(postings []*commonpb.Posting) error {
+	for _, p := range postings {
+		if err := domain.ValidateAccountAddress(p.GetSource()); err != nil {
+			return err
+		}
+
+		if err := domain.ValidateAccountAddress(p.GetDestination()); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // produceResult holds the result of producing postings from an order.

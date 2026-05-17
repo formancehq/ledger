@@ -20,6 +20,10 @@ func validateOrder(order *raftcmdpb.Order) error {
 		return &domain.BusinessError{Err: err}
 	}
 
+	if err := validateOrderAccountAddresses(order); err != nil {
+		return &domain.BusinessError{Err: err}
+	}
+
 	return nil
 }
 
@@ -99,6 +103,33 @@ func validateApplyMetadataKeys(apply *raftcmdpb.LedgerApplyOrder) error {
 		return domain.ValidateMetadataKey(d.SetMetadataFieldType.GetKey())
 	case *raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType:
 		return domain.ValidateMetadataKey(d.RemoveMetadataFieldType.GetKey())
+	default:
+		return nil
+	}
+}
+
+// validateOrderAccountAddresses validates account addresses in non-transaction orders
+// (metadata targets). Transaction postings are validated in the processor after
+// Numscript resolution.
+func validateOrderAccountAddresses(order *raftcmdpb.Order) error {
+	apply, ok := order.GetType().(*raftcmdpb.Order_Apply)
+	if !ok {
+		return nil
+	}
+
+	switch d := apply.Apply.GetData().(type) {
+	case *raftcmdpb.LedgerApplyOrder_AddMetadata:
+		if t := d.AddMetadata.GetTarget().GetAccount(); t != nil {
+			return domain.ValidateAccountAddress(t.GetAddr())
+		}
+
+		return nil
+	case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
+		if t := d.DeleteMetadata.GetTarget().GetAccount(); t != nil {
+			return domain.ValidateAccountAddress(t.GetAddr())
+		}
+
+		return nil
 	default:
 		return nil
 	}
