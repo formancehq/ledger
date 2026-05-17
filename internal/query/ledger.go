@@ -43,7 +43,7 @@ func GetLedgerByName(ctx context.Context, reader dal.PebbleReader, name string) 
 	defer span.End()
 
 	kb := dal.NewKeyBuilder()
-	kb.PutByte(dal.KeyPrefixLedgerInfo).PutString(name)
+	kb.PutByte(dal.KeyPrefixLedgerInfo).PutLedgerName(name)
 
 	value, closer, err := reader.Get(kb.Build())
 	if err != nil {

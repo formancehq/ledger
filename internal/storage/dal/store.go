@@ -163,16 +163,16 @@ var (
 	// --- Per-ledger system zone [0xE0, 0xF1) ---.
 
 	KeyPrefixPreparedQuery           byte = 0xE0 // [KeyPrefixPreparedQuery][name\x00][queryName] -> PreparedQuery protobuf
-	KeyPrefixPendingLedgerCleanup    byte = 0xE1 // [KeyPrefixPendingLedgerCleanup][ledger_name] -> uint64 (delete log sequence)
+	KeyPrefixPendingLedgerCleanup    byte = 0xE1 // [KeyPrefixPendingLedgerCleanup][ledger_name\x00] -> uint64 (delete log sequence)
 	KeyPrefixQueryCheckpoint         byte = 0xE2 // [KeyPrefixQueryCheckpoint][checkpoint_id BE] -> QueryCheckpointState protobuf
 	KeyPrefixNextQueryCheckpointID   byte = 0xE3 // [KeyPrefixNextQueryCheckpointID] -> uint64 (next checkpoint ID)
 	KeyPrefixQueryCheckpointSchedule byte = 0xE4 // [KeyPrefixQueryCheckpointSchedule] -> cron expression string
 	KeyPrefixReversions              byte = 0xE5 // [KeyPrefixReversions][ledger_name] -> packed little-endian uint64 bitset
 	KeyPrefixClusterConfig           byte = 0xE6 // [KeyPrefixClusterConfig] -> ClusterConfig protobuf (mutable cluster-wide config)
 	KeyPrefixBloom                   byte = 0xE7 // [KeyPrefixBloom][attrCode][blockIndex BE 8] -> 64-byte block
-	KeyPrefixMirrorSourceHead        byte = 0xEB // [KeyPrefixMirrorSourceHead][ledger_name] -> uint64 (latest known v2 source log ID)
-	KeyPrefixMirrorCursor            byte = 0xEC // [KeyPrefixMirrorCursor][ledger_name] -> uint64 (last ingested v2 log ID)
-	KeyPrefixMirrorStatus            byte = 0xED // [KeyPrefixMirrorStatus][ledger_name] -> MirrorSyncError protobuf
+	KeyPrefixMirrorSourceHead        byte = 0xEB // [KeyPrefixMirrorSourceHead][ledger_name\x00] -> uint64 (latest known v2 source log ID)
+	KeyPrefixMirrorCursor            byte = 0xEC // [KeyPrefixMirrorCursor][ledger_name\x00] -> uint64 (last ingested v2 log ID)
+	KeyPrefixMirrorStatus            byte = 0xED // [KeyPrefixMirrorStatus][ledger_name\x00] -> MirrorSyncError protobuf
 	KeyPrefixPeriodSchedule          byte = 0xEF // [KeyPrefixPeriodSchedule] -> cron expression string
 
 	// --- Attributes zone [0xF1, 0xF2) — seal hash domain ---.
@@ -197,7 +197,7 @@ var (
 
 	KeyPrefixLastAppliedIndex     byte = 0xF2 // [KeyPrefixLastAppliedIndex] -> uint64
 	KeyPrefixLastAppliedTimestamp byte = 0xF3 // [KeyPrefixLastAppliedTimestamp] -> uint64 (HLC microseconds)
-	KeyPrefixLedgerInfo           byte = 0xF5 // [KeyPrefixLedgerInfo][name] -> LedgerInfo
+	KeyPrefixLedgerInfo           byte = 0xF5 // [KeyPrefixLedgerInfo][name\x00] -> LedgerInfo
 	KeyPrefixSigningKey           byte = 0xF6 // [KeyPrefixSigningKey][keyID] -> ed25519 public key (32 bytes)
 	KeyPrefixPeriods              byte = 0xF7 // [KeyPrefixPeriods][periodID] -> Period
 	KeyPrefixNextPeriodID         byte = 0xF8 // [KeyPrefixNextPeriodID] -> uint64 (next period ID)

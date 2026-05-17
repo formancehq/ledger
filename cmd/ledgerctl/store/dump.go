@@ -156,7 +156,7 @@ func describeKey(key []byte) string {
 	case dal.KeyPrefixLastAppliedTimestamp:
 		return "LAST_APPLIED_TIMESTAMP"
 	case dal.KeyPrefixLedgerInfo:
-		return "LEDGER_INFO name=" + safeString(key[1:])
+		return "LEDGER_INFO name=" + safeString(stripNull(key[1:]))
 	case dal.KeyPrefixSigningKey:
 		return "SIGNING_KEY id=" + safeString(key[1:])
 	case dal.KeyPrefixPeriods:
@@ -184,11 +184,11 @@ func describeKey(key []byte) string {
 	case dal.KeyPrefixPersistedConfig:
 		return "PERSISTED_CONFIG"
 	case dal.KeyPrefixMirrorCursor:
-		return "MIRROR_CURSOR ledger=" + safeString(key[1:])
+		return "MIRROR_CURSOR ledger=" + safeString(stripNull(key[1:]))
 	case dal.KeyPrefixMirrorStatus:
-		return "MIRROR_STATUS ledger=" + safeString(key[1:])
+		return "MIRROR_STATUS ledger=" + safeString(stripNull(key[1:]))
 	case dal.KeyPrefixMirrorSourceHead:
-		return "MIRROR_SOURCE_HEAD ledger=" + safeString(key[1:])
+		return "MIRROR_SOURCE_HEAD ledger=" + safeString(stripNull(key[1:]))
 	case dal.KeyPrefixPeriodSchedule:
 		return "PERIOD_SCHEDULE"
 	case dal.KeyPrefixCacheSnapshot:
@@ -333,6 +333,15 @@ func hexVal(val []byte) string {
 	}
 
 	return fmt.Sprintf("hex(%d bytes)=%s", len(val), hex.EncodeToString(val))
+}
+
+// stripNull removes a trailing null terminator if present.
+func stripNull(b []byte) []byte {
+	if len(b) > 0 && b[len(b)-1] == 0x00 {
+		return b[:len(b)-1]
+	}
+
+	return b
 }
 
 func safeString(b []byte) string {

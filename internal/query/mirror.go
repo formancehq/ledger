@@ -21,7 +21,7 @@ import (
 func ReadMirrorCursor(reader dal.PebbleReader, ledgerName string) (uint64, error) {
 	kb := dal.NewKeyBuilder()
 	kb.PutByte(dal.KeyPrefixMirrorCursor).
-		PutString(ledgerName)
+		PutLedgerName(ledgerName)
 
 	get, closer, err := reader.Get(kb.Build())
 	if err != nil {
@@ -46,7 +46,7 @@ func ReadMirrorCursor(reader dal.PebbleReader, ledgerName string) (uint64, error
 func ReadMirrorStatus(reader dal.PebbleReader, ledgerName string) (*commonpb.MirrorSyncError, error) {
 	kb := dal.NewKeyBuilder()
 	kb.PutByte(dal.KeyPrefixMirrorStatus).
-		PutString(ledgerName)
+		PutLedgerName(ledgerName)
 
 	get, closer, err := reader.Get(kb.Build())
 	if err != nil {
@@ -72,7 +72,7 @@ func ReadMirrorStatus(reader dal.PebbleReader, ledgerName string) (*commonpb.Mir
 func ReadMirrorSourceHead(reader dal.PebbleReader, ledgerName string) (uint64, error) {
 	kb := dal.NewKeyBuilder()
 	kb.PutByte(dal.KeyPrefixMirrorSourceHead).
-		PutString(ledgerName)
+		PutLedgerName(ledgerName)
 
 	get, closer, err := reader.Get(kb.Build())
 	if err != nil {

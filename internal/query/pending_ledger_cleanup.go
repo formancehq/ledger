@@ -20,8 +20,9 @@ func ReadPendingLedgerCleanups(reader dal.PebbleReader) (map[string]uint64, erro
 	result := make(map[string]uint64)
 
 	for iter.First(); iter.Valid(); iter.Next() {
-		// Key format: [prefix][ledger_name]
-		ledgerName := string(iter.Key()[1:])
+		// Key format: [prefix][ledger_name\x00]
+		raw := iter.Key()[1:]
+		ledgerName := string(raw[:len(raw)-1]) // strip null terminator
 
 		value, valErr := iter.ValueAndErr()
 		if valErr != nil {

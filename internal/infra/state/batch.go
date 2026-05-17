@@ -32,7 +32,7 @@ func AppendLogs(b *dal.Batch, logs ...*commonpb.Log) error {
 func SaveLedger(b *dal.Batch, info *commonpb.LedgerInfo) error {
 	b.KeyBuilder.
 		PutByte(dal.KeyPrefixLedgerInfo).
-		PutString(info.GetName())
+		PutLedgerName(info.GetName())
 
 	err := b.SetProto(b.KeyBuilder.Consume(), info)
 	if err != nil {
@@ -336,7 +336,7 @@ func StoreNextPeriodID(b *dal.Batch, id uint64) error {
 // SetMirrorSourceHead writes the latest known v2 source log count to the batch (Raft-replicated).
 func SetMirrorSourceHead(b *dal.Batch, ledgerName string, count uint64) error {
 	b.KeyBuilder.PutByte(dal.KeyPrefixMirrorSourceHead).
-		PutString(ledgerName)
+		PutLedgerName(ledgerName)
 
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], count)
@@ -352,7 +352,7 @@ func SetMirrorSourceHead(b *dal.Batch, ledgerName string, count uint64) error {
 // SetMirrorCursor writes a per-ledger mirror cursor to the batch (Raft-replicated).
 func SetMirrorCursor(b *dal.Batch, ledgerName string, cursor uint64) error {
 	b.KeyBuilder.PutByte(dal.KeyPrefixMirrorCursor).
-		PutString(ledgerName)
+		PutLedgerName(ledgerName)
 
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], cursor)
@@ -368,7 +368,7 @@ func SetMirrorCursor(b *dal.Batch, ledgerName string, cursor uint64) error {
 // SetMirrorStatus writes a per-ledger mirror sync error to the batch.
 func SetMirrorStatus(b *dal.Batch, ledgerName string, syncErr *commonpb.MirrorSyncError) error {
 	b.KeyBuilder.PutByte(dal.KeyPrefixMirrorStatus).
-		PutString(ledgerName)
+		PutLedgerName(ledgerName)
 
 	err := b.SetProto(b.KeyBuilder.Consume(), syncErr)
 	if err != nil {
@@ -381,7 +381,7 @@ func SetMirrorStatus(b *dal.Batch, ledgerName string, syncErr *commonpb.MirrorSy
 // ClearMirrorStatus removes a per-ledger mirror sync error from the batch.
 func ClearMirrorStatus(b *dal.Batch, ledgerName string) error {
 	b.KeyBuilder.PutByte(dal.KeyPrefixMirrorStatus).
-		PutString(ledgerName)
+		PutLedgerName(ledgerName)
 
 	err := b.DeleteKey(b.KeyBuilder.Consume())
 	if err != nil {
@@ -449,9 +449,13 @@ func DeleteLedgerData(b *dal.Batch, ledgerName string) error {
 		}
 	}
 
-	// Point deletes for mirror keys (keyed by [prefix][ledgerName], no null separator).
+	// Point deletes for mirror keys (keyed by [prefix][ledgerName\x00]).
 	for _, prefix := range []byte{dal.KeyPrefixMirrorSourceHead, dal.KeyPrefixMirrorCursor, dal.KeyPrefixMirrorStatus} {
-		key := append([]byte{prefix}, ledgerName...)
+		key := make([]byte, 1+len(ledgerName)+1)
+		key[0] = prefix
+		copy(key[1:], ledgerName)
+		key[len(key)-1] = 0x00
+
 		if err := b.DeleteKey(key); err != nil {
 			return fmt.Errorf("deleting mirror key 0x%02x for ledger %q: %w", prefix, ledgerName, err)
 		}
@@ -465,7 +469,7 @@ func DeleteLedgerData(b *dal.Batch, ledgerName string) error {
 func SavePendingLedgerCleanup(b *dal.Batch, ledgerName string, deleteSequence uint64) error {
 	b.KeyBuilder.
 		PutByte(dal.KeyPrefixPendingLedgerCleanup).
-		PutString(ledgerName)
+		PutLedgerName(ledgerName)
 
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], deleteSequence)
@@ -482,7 +486,7 @@ func SavePendingLedgerCleanup(b *dal.Batch, ledgerName string, deleteSequence ui
 func DeletePendingLedgerCleanup(b *dal.Batch, ledgerName string) error {
 	b.KeyBuilder.
 		PutByte(dal.KeyPrefixPendingLedgerCleanup).
-		PutString(ledgerName)
+		PutLedgerName(ledgerName)
 
 	err := b.DeleteKey(b.KeyBuilder.Consume())
 	if err != nil {
