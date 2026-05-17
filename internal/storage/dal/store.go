@@ -15,6 +15,7 @@ import (
 
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/cockroachdb/pebble/v2/vfs"
+	"github.com/cockroachdb/pebble/v2/wal"
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/protobuf/proto"
 
@@ -273,14 +274,36 @@ func NewStore(
 		DisableWAL:         cfg.DisableWAL,
 	}
 
-	// 7) VFS wrapper for IOPS counting.
+	// 7) WAL failover: automatically switch WAL writes to a secondary directory
+	// when the primary disk has high latency. Pebble monitors latency and
+	// switches back when the primary is healthy again.
+	if cfg.WALFailoverDir != "" {
+		if err := os.MkdirAll(cfg.WALFailoverDir, 0o750); err != nil {
+			return nil, fmt.Errorf("creating WAL failover directory: %w", err)
+		}
+
+		opts.WALFailover = &pebble.WALFailoverOptions{
+			Secondary: wal.Dir{
+				FS:      vfs.Default,
+				Dirname: cfg.WALFailoverDir,
+			},
+			// Use Pebble defaults for all thresholds:
+			// - UnhealthyOperationLatencyThreshold: 100ms
+			// - PrimaryDirProbeInterval: 1s
+			// - HealthyProbeLatencyThreshold: 25ms
+			// - HealthyInterval: 15s
+			// - ElevatedWriteStallThresholdLag: 60s
+		}
+	}
+
+	// 8) VFS wrapper for IOPS counting.
 	iopsCounters := &IOPSCounters{}
 	opts.FS = NewMetricsFS(vfs.Default, iopsCounters)
 
-	// 8) Enable columnar blocks (required for value separation, also improves scans).
+	// 9) Enable columnar blocks (required for value separation, also improves scans).
 	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 
-	// 9) Value separation: store large values in blob files to reduce compaction IO.
+	// 10) Value separation: store large values in blob files to reduce compaction IO.
 	if cfg.ValueSeparation.Enabled {
 		vs := cfg.ValueSeparation
 		opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {

@@ -67,6 +67,19 @@ type Config struct {
 	// Default: 10
 	MaxCheckpoints int `yaml:"maxCheckpoints"`
 
+	// WALFailoverDir is the secondary WAL directory for automatic failover
+	// when the primary disk experiences high latency. When set, Pebble monitors
+	// WAL write latency and switches to this directory if the primary becomes
+	// unhealthy (>100ms operation latency by default). It probes the primary
+	// every second and fails back when healthy for 15s.
+	//
+	// Useful in cloud environments where EBS/PD volumes have unpredictable
+	// latency spikes. Set to a path on a different physical volume (or tmpfs)
+	// for best results.
+	//
+	// Default: "" (disabled)
+	WALFailoverDir string `yaml:"walFailoverDir"`
+
 	// ValueSeparation controls Pebble's value separation (blob files) feature.
 	ValueSeparation ValueSeparationConfig `yaml:"valueSeparation"`
 }

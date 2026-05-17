@@ -118,6 +118,7 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().Duration("pebble-wal-min-sync-interval", 0, "Pebble minimum interval between WAL syncs (default: 0, immediate sync)")
 	runCmd.Flags().Bool("pebble-disable-wal", false, "Pebble disable WAL (WARNING: risks data loss)")
 	runCmd.Flags().Int("pebble-max-checkpoints", dal.DefaultConfig().MaxCheckpoints, "Maximum number of Pebble checkpoints to keep (default: 10)")
+	runCmd.Flags().String("pebble-wal-failover-dir", "", "Secondary WAL directory for automatic failover on primary disk latency spikes (disabled if empty)")
 	// Value separation flags
 	runCmd.Flags().Bool("pebble-value-separation", false, "Enable value separation (large values stored in blob files)")
 	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "pebble-value-separation-min-size", 256, "Minimum value size for separation (default: 256)")
@@ -847,6 +848,10 @@ func loadPebbleConfig(cmd *cobra.Command) dal.Config {
 
 	if disableWAL, _ := cmd.Flags().GetBool("pebble-disable-wal"); disableWAL {
 		cfg.DisableWAL = true
+	}
+
+	if dir, _ := cmd.Flags().GetString("pebble-wal-failover-dir"); dir != "" {
+		cfg.WALFailoverDir = dir
 	}
 
 	// Value separation
