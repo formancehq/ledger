@@ -50,3 +50,29 @@ func RunNotificationLoop(stop <-chan struct{}, notifications *Notifications, onL
 		}
 	}
 }
+
+// FanOut dispatches NotifyLogsCommitted and NotifyConfigChanged to multiple
+// Notifications targets. It decouples the FSM (single emitter) from the
+// consumers (events Manager, mirror Manager, index Builder).
+type FanOut struct {
+	targets []*Notifications
+}
+
+// NewFanOut creates a FanOut that dispatches to the given targets.
+func NewFanOut(targets ...*Notifications) *FanOut {
+	return &FanOut{targets: targets}
+}
+
+// NotifyLogsCommitted stores the latest sequence and signals all targets.
+func (f *FanOut) NotifyLogsCommitted(lastSeq uint64) {
+	for _, t := range f.targets {
+		t.NotifyLogsCommitted(lastSeq)
+	}
+}
+
+// NotifyConfigChanged signals all targets that configuration has changed.
+func (f *FanOut) NotifyConfigChanged() {
+	for _, t := range f.targets {
+		t.NotifyConfigChanged()
+	}
+}

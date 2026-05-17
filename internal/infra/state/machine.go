@@ -116,26 +116,20 @@ type Machine struct {
 	// (monotonicity, delta/posting cross-check, post-commit cache/Pebble verification).
 	sentinelMode bool
 
-	// eventNotifier is notified after new logs are committed and when events
-	// config changes. Used by the event Manager.
-	eventNotifier Notifier
+	// notifier is notified after new logs are committed and when configuration
+	// changes. A single notifier decouples the FSM from individual consumers;
+	// the bootstrap layer fans out to events Manager, mirror Manager, and index
+	// builder via signal.FanOut.
+	notifier Notifier
 
 	// appliedMu and appliedCond are used to notify waiters when lastPersistedIndex advances.
 	// This enables ReadIndex-based linearizable reads: callers wait until the FSM has caught up
 	// to a target commit index before reading local state.
 	appliedMu   sync.Mutex
 	appliedCond *sync.Cond
-
-	// mirrorNotifier is notified after new logs are committed and when mirror
-	// ledger config changes. Used by the mirror Manager.
-	mirrorNotifier Notifier
-
-	// indexNotifier is notified after new logs are committed.
-	// Used by the index builder to update the read store.
-	indexNotifier Notifier
 }
 
-func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, ks *keystore.KeyStore, sharedState *SharedState, eventNotifier Notifier, mirrorNotifier Notifier, indexNotifier Notifier, bloomFilters *bloom.FilterSet, numscriptCacheSize int, sentinelMode bool, idempotencyTTLMicros uint64) (*Machine, error) {
+func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, numscriptCacheSize int, sentinelMode bool, idempotencyTTLMicros uint64) (*Machine, error) {
 	logsAppendedCounter, err := meter.Int64Counter(
 		"raft.fsm.logs_appended",
 		metric.WithDescription("Total number of logs appended to the store. Use rate() to get logs per second."),
@@ -183,9 +177,7 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		rotationDurationHistogram:      rotationDurationHistogram,
 		batchCommitHistogram:           batchCommitHistogram,
 		processor:                      processor,
-		eventNotifier:                  eventNotifier,
-		mirrorNotifier:                 mirrorNotifier,
-		indexNotifier:                  indexNotifier,
+		notifier:                       notifier,
 		keyStore:                       ks,
 		sharedState:                    sharedState,
 		Registry:                       NewStateRegistry(cache, attrs, idempotencyTTLMicros),
@@ -704,22 +696,12 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 		}
 	}
 
-	// Notify event Manager that new logs are available.
+	// Notify consumers (events Manager, mirror Manager, index Builder) via fan-out.
 	lastSeq := fsm.nextSequenceID - 1
-	fsm.eventNotifier.NotifyLogsCommitted(lastSeq)
+	fsm.notifier.NotifyLogsCommitted(lastSeq)
 
-	if eventsConfigChanged {
-		fsm.eventNotifier.NotifyConfigChanged()
-	}
-
-	// Notify mirror Manager that new logs are available.
-	fsm.mirrorNotifier.NotifyLogsCommitted(lastSeq)
-
-	// Notify index builder that new logs are available.
-	fsm.indexNotifier.NotifyLogsCommitted(lastSeq)
-
-	if mirrorConfigChanged {
-		fsm.mirrorNotifier.NotifyConfigChanged()
+	if eventsConfigChanged || mirrorConfigChanged {
+		fsm.notifier.NotifyConfigChanged()
 	}
 
 	return ret, nil
@@ -758,9 +740,7 @@ func (fsm *Machine) commitAndRequestCheckpoint(
 	// would never trigger for logs committed in this batch, causing
 	// WaitForSequence to block indefinitely.
 	lastSeq := fsm.nextSequenceID - 1
-	fsm.eventNotifier.NotifyLogsCommitted(lastSeq)
-	fsm.mirrorNotifier.NotifyLogsCommitted(lastSeq)
-	fsm.indexNotifier.NotifyLogsCommitted(lastSeq)
+	fsm.notifier.NotifyLogsCommitted(lastSeq)
 
 	if needsArchiveDispatch {
 		fsm.dispatchArchiveRequests()

@@ -317,6 +317,10 @@ func Module() fx.Option {
 
 				idempotencyTTLMicros := uint64(cfg.IdempotencyTTL.Microseconds())
 
+				// Fan-out: Machine emits to a single Notifier; FanOut dispatches
+				// to the per-consumer Notifications (events, mirror, index).
+				fanOut := signal.NewFanOut(eventNotifications, mirrorNotifications, indexNotifications)
+
 				m, err := state.NewMachine(
 					logger,
 					store,
@@ -325,9 +329,7 @@ func Module() fx.Option {
 					attrs,
 					ks,
 					ss,
-					eventNotifications,
-					mirrorNotifications,
-					indexNotifications,
+					fanOut,
 					bloomFilters,
 					cfg.NumscriptCacheSize,
 					cfg.SentinelMode,
