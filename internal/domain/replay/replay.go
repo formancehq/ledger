@@ -241,7 +241,7 @@ func ApplyPostings(
 
 // SimulateEphemeralPurge checks if any account volumes affected by the postings
 // have reached zero balance (input == output) on an ephemeral account type.
-// If so, it deletes the volume, mirroring the real purge in Buffered.Merge().
+// If so, it deletes the volume, mirroring the real purge in WriteSet.Merge().
 func SimulateEphemeralPurge(
 	ledger string,
 	postings []*commonpb.Posting,

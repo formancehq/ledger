@@ -11,7 +11,7 @@ import (
 )
 
 // DerivedRegistry wraps DerivedKeyStores — one per attribute type — plus a
-// pending reversion set. It is the transactional overlay used by Buffered:
+// pending reversion set. It is the transactional overlay used by WriteSet:
 // writes go to the derived stores and are merged back into the parent
 // StateRegistry on commit.
 type DerivedRegistry struct {

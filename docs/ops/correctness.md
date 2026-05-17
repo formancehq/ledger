@@ -50,13 +50,13 @@ Switching algorithms mid-stream is safe: each log is self-describing via `hash_v
 The `lastLogHash` is maintained as volatile state in the `Machine` (FSM). It is:
 - **Persisted** in Raft snapshots via the `last_log_hash` field in `MemorySnapshot`
 - **Restored** when a node installs a snapshot from the leader
-- **Propagated** through the `Buffered` layer during proposal processing
+- **Propagated** through the `WriteSet` layer during proposal processing
 
 The chain is **not broken** by Raft snapshots: the snapshot captures the latest hash, and new logs computed after snapshot restoration continue the chain correctly.
 
 ### Failure Isolation
 
-If a proposal fails (e.g., insufficient funds, ledger not found), the `Buffered` state is discarded without being merged into the `Machine`. This means `lastLogHash` remains unchanged, preserving the chain's integrity.
+If a proposal fails (e.g., insufficient funds, ledger not found), the `WriteSet` state is discarded without being merged into the `Machine`. This means `lastLogHash` remains unchanged, preserving the chain's integrity.
 
 ### Idempotent Responses
 
@@ -64,7 +64,7 @@ When an idempotent request matches a previously processed order, the processor r
 
 ## Double-Entry Invariant Check
 
-A defensive check is performed at `Merge()` time in the `Buffered` layer to verify the fundamental accounting invariant: **the sum of all input deltas must equal the sum of all output deltas**.
+A defensive check is performed at `Merge()` time in the `WriteSet` layer to verify the fundamental accounting invariant: **the sum of all input deltas must equal the sum of all output deltas**.
 
 ### Rationale
 

@@ -130,7 +130,7 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 		}
 	}
 
-	// Write logs and attributes to the store (mimicking Buffered.Merge)
+	// Write logs and attributes to the store (mimicking WriteSet.Merge)
 	batch := e.store.NewBatch()
 
 	defer func() { _ = batch.Cancel() }()

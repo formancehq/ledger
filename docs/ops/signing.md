@@ -134,11 +134,11 @@ ledgerctl signing require true --signing-key /path/to/admin-seed
 
 ## Persistence
 
-Signing keys and configuration are persisted in **Pebble** (key prefixes `0x0B` for keys, `0x0C` for config) and applied atomically in the same batch as other state changes via `Buffered.Merge()`.
+Signing keys and configuration are persisted in **Pebble** (key prefixes `0x0B` for keys, `0x0C` for config) and applied atomically in the same batch as other state changes via `WriteSet.Merge()`.
 
 - **On startup**: keys are loaded from Pebble into the in-memory KeyStore
 - **On follower snapshot restore**: keys are reloaded from the restored Pebble checkpoint (`SynchronizeWithLeader`)
-- **On apply**: signing key changes flow through the `processing.Store` interface → `Buffered` → `Merge()`, consistent with how all other state (volumes, metadata, ledgers) is managed
+- **On apply**: signing key changes flow through the `processing.Store` interface → `WriteSet` → `Merge()`, consistent with how all other state (volumes, metadata, ledgers) is managed
 
 ## Signature Propagation
 

@@ -10,16 +10,16 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
 
-// newTestBuffer creates a Machine and returns a Buffered for testing accessor methods.
-func newTestBuffer(t *testing.T) (*Buffered, *Machine) {
+// newTestBuffer creates a Machine and returns a WriteSet for testing accessor methods.
+func newTestBuffer(t *testing.T) (*WriteSet, *Machine) {
 	t.Helper()
 	machine, _, _ := newTestMachine(t)
-	buf := NewBuffer(&commonpb.Timestamp{Data: 1700000000}, machine)
+	buf := NewWriteSet(&commonpb.Timestamp{Data: 1700000000}, machine)
 
 	return buf, machine
 }
 
-func TestBufferedGetPutLedger(t *testing.T) {
+func TestWriteSetGetPutLedger(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
@@ -35,7 +35,7 @@ func TestBufferedGetPutLedger(t *testing.T) {
 	require.Equal(t, "test", info.GetName())
 }
 
-func TestBufferedGetPutBoundaries(t *testing.T) {
+func TestWriteSetGetPutBoundaries(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
@@ -55,7 +55,7 @@ func TestBufferedGetPutBoundaries(t *testing.T) {
 	require.Equal(t, uint64(20), b.GetNextLogId())
 }
 
-func TestBufferedGetPutAccountMetadata(t *testing.T) {
+func TestWriteSetGetPutAccountMetadata(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
@@ -71,7 +71,7 @@ func TestBufferedGetPutAccountMetadata(t *testing.T) {
 	require.NotNil(t, val)
 }
 
-func TestBufferedDeleteAccountMetadata(t *testing.T) {
+func TestWriteSetDeleteAccountMetadata(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
@@ -90,7 +90,7 @@ func TestBufferedDeleteAccountMetadata(t *testing.T) {
 	require.Nil(t, val)
 }
 
-func TestBufferedGetPutReverted(t *testing.T) {
+func TestWriteSetGetPutReverted(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
@@ -107,7 +107,7 @@ func TestBufferedGetPutReverted(t *testing.T) {
 	require.True(t, reverted)
 }
 
-func TestBufferedGetPutIdempotencyKey(t *testing.T) {
+func TestWriteSetGetPutIdempotencyKey(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
@@ -124,7 +124,7 @@ func TestBufferedGetPutIdempotencyKey(t *testing.T) {
 	require.Equal(t, uint64(5), val.GetLogSequence())
 }
 
-func TestBufferedGetPutTransactionReference(t *testing.T) {
+func TestWriteSetGetPutTransactionReference(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
@@ -141,7 +141,7 @@ func TestBufferedGetPutTransactionReference(t *testing.T) {
 	require.Equal(t, uint64(100), val.GetTransactionId())
 }
 
-func TestBufferedTransactionState(t *testing.T) {
+func TestWriteSetTransactionState(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
@@ -157,7 +157,7 @@ func TestBufferedTransactionState(t *testing.T) {
 	require.Equal(t, uint64(5), got.GetCreatedByLog())
 }
 
-func TestBufferedSigningKeyOperations(t *testing.T) {
+func TestWriteSetSigningKeyOperations(t *testing.T) {
 	t.Parallel()
 	buf, machine := newTestBuffer(t)
 
@@ -177,7 +177,7 @@ func TestBufferedSigningKeyOperations(t *testing.T) {
 	machine.keyStore.AddPublicKey("child", []byte("pub-child"), "parent")
 
 	// In a fresh buffer, children should come from committed state
-	buf2 := NewBuffer(&commonpb.Timestamp{Data: 1700000000}, machine)
+	buf2 := NewWriteSet(&commonpb.Timestamp{Data: 1700000000}, machine)
 	children := buf2.GetSigningKeyChildren("parent")
 	require.Contains(t, children, "child")
 
@@ -194,7 +194,7 @@ func TestBufferedSigningKeyOperations(t *testing.T) {
 	require.Contains(t, children, "child-2")
 }
 
-func TestBufferedSetRequireSignatures(t *testing.T) {
+func TestWriteSetSetRequireSignatures(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
@@ -204,7 +204,7 @@ func TestBufferedSetRequireSignatures(t *testing.T) {
 	require.True(t, buf.pendingSigningConfigUpdate.requireSignatures)
 }
 
-func TestBufferedSetMaintenanceMode(t *testing.T) {
+func TestWriteSetSetMaintenanceMode(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
@@ -214,7 +214,7 @@ func TestBufferedSetMaintenanceMode(t *testing.T) {
 	require.True(t, buf.pendingMaintenanceModeUpdate.enabled)
 }
 
-func TestBufferedSetDeletePeriodSchedule(t *testing.T) {
+func TestWriteSetSetDeletePeriodSchedule(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
@@ -229,7 +229,7 @@ func TestBufferedSetDeletePeriodSchedule(t *testing.T) {
 	require.Empty(t, *buf.pendingPeriodScheduleUpdate)
 }
 
-func TestBufferedSinkConfigOperations(t *testing.T) {
+func TestWriteSetSinkConfigOperations(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
@@ -255,7 +255,7 @@ func TestBufferedSinkConfigOperations(t *testing.T) {
 	require.True(t, buf.HasPendingSinkChanges())
 }
 
-func TestBufferedSequenceIDOperations(t *testing.T) {
+func TestWriteSetSequenceIDOperations(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
@@ -266,7 +266,7 @@ func TestBufferedSequenceIDOperations(t *testing.T) {
 	require.Equal(t, startSeqID+1, buf.GetNextSequenceID())
 }
 
-func TestBufferedDateAndHash(t *testing.T) {
+func TestWriteSetDateAndHash(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
@@ -277,7 +277,7 @@ func TestBufferedDateAndHash(t *testing.T) {
 	require.Equal(t, []byte("hash123"), buf.GetLastLogHash())
 }
 
-func TestBufferedPeriodOperations(t *testing.T) {
+func TestWriteSetPeriodOperations(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
@@ -320,7 +320,7 @@ func TestBufferedPeriodOperations(t *testing.T) {
 	require.Empty(t, buf.GetClosingPeriods())
 }
 
-func TestBufferedRemoveClosingPeriodRecordsChange(t *testing.T) {
+func TestWriteSetRemoveClosingPeriodRecordsChange(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
@@ -343,7 +343,7 @@ func TestBufferedRemoveClosingPeriodRecordsChange(t *testing.T) {
 	require.True(t, found, "removed closing period should be in changedPeriods")
 }
 
-func TestBufferedMultipleClosingPeriodsAfterMerge(t *testing.T) {
+func TestWriteSetMultipleClosingPeriodsAfterMerge(t *testing.T) {
 	t.Parallel()
 	buf, machine := newTestBuffer(t)
 
@@ -366,7 +366,7 @@ func TestBufferedMultipleClosingPeriodsAfterMerge(t *testing.T) {
 	require.True(t, ok)
 }
 
-func TestBufferedGetNextPeriodIDAndIncrement(t *testing.T) {
+func TestWriteSetGetNextPeriodIDAndIncrement(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
@@ -376,7 +376,7 @@ func TestBufferedGetNextPeriodIDAndIncrement(t *testing.T) {
 	require.Equal(t, startID+1, buf.GetNextPeriodID())
 }
 
-func TestBufferedGetPeriodByID(t *testing.T) {
+func TestWriteSetGetPeriodByID(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
@@ -398,7 +398,7 @@ func TestBufferedGetPeriodByID(t *testing.T) {
 	require.Equal(t, commonpb.PeriodStatus_PERIOD_OPEN, p.GetStatus())
 }
 
-func TestBufferedUpdatePeriod(t *testing.T) {
+func TestWriteSetUpdatePeriod(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
@@ -408,7 +408,7 @@ func TestBufferedUpdatePeriod(t *testing.T) {
 	require.Equal(t, uint64(5), buf.changedPeriods[0].GetId())
 }
 
-func TestBufferedSetPurgeRange(t *testing.T) {
+func TestWriteSetSetPurgeRange(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
@@ -425,7 +425,7 @@ func TestBufferedSetPurgeRange(t *testing.T) {
 	require.True(t, buf.HasPurges())
 }
 
-func TestBufferedSetPendingArchive(t *testing.T) {
+func TestWriteSetSetPendingArchive(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
@@ -437,7 +437,7 @@ func TestBufferedSetPendingArchive(t *testing.T) {
 	require.Equal(t, uint64(50), buf.pendingArchives[0].CloseSequence)
 }
 
-func TestBufferedAddMetadataConvertRequest(t *testing.T) {
+func TestWriteSetAddMetadataConvertRequest(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 

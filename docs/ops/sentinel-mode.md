@@ -21,7 +21,7 @@ Sentinel mode runs four checks, in order, during every `applyProposal()`:
 
 Verifies that volumes **never decrease** (input and output can only grow). A shrinking volume indicates a stale base value was used during processing.
 
-- **Where**: `Buffered.Merge()`, before Pebble commit
+- **Where**: `WriteSet.Merge()`, before Pebble commit
 - **Catches**: Stale preloads, cache eviction bugs, concurrent processing errors
 
 ### 2. Delta / Posting Cross-Check

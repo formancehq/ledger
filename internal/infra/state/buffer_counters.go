@@ -76,7 +76,7 @@ func countVolumeDeltas(updates []attributes.Update[domain.VolumeKey, *raftcmdpb.
 
 // updateBoundaryCounters computes attribute key deltas and updates LedgerBoundaries
 // for each affected ledger. Must be called before Derived.Boundaries.Merge().
-func (b *Buffered) updateBoundaryCounters(
+func (b *WriteSet) updateBoundaryCounters(
 	volumeUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 	purgedVolumes []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 	transientVolumes []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],

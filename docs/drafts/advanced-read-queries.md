@@ -179,7 +179,7 @@ This index is populated during FSM log application (in `handleCreateLog`) — th
 
 #### Index Population
 
-In the FSM's `handleCreateLog` method (or equivalent in `Buffered.Merge`), add one Pebble `Set` per log applied:
+In the FSM's `handleCreateLog` method (or equivalent in `WriteSet.Merge`), add one Pebble `Set` per log applied:
 
 ```go
 // During log application
@@ -293,7 +293,7 @@ At first glance, the attribute system looks like it supports point-in-time reads
 
 In practice, **three compaction mechanisms destroy historical data**:
 
-1. **Old entry cleanup** (at merge): during `Buffered.Merge`, when a new value is written, the previous entry for the same key is deleted (point delete if index known, range delete otherwise). This keeps entries bounded.
+1. **Old entry cleanup** (at merge): during `WriteSet.Merge`, when a new value is written, the previous entry for the same key is deleted (point delete if index known, range delete otherwise). This keeps entries bounded.
 
 2. **Backup compaction** (`CompactAllForBackup`): consolidates all entries per key into a single entry at index 0 for portable backups.
 

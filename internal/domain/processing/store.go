@@ -9,7 +9,7 @@ import (
 //go:generate mockgen -source=store.go -destination=store_mock_test.go -package=processing -mock_names=InMemoryStore=MockInMemoryStore
 
 // InMemoryStore is the interface used by RequestProcessor to access data.
-// It abstracts the underlying storage mechanism (e.g., Buffered).
+// It abstracts the underlying storage mechanism (e.g., WriteSet).
 type InMemoryStore interface {
 	// Ledger operations
 	GetLedger(name string) (*commonpb.LedgerInfo, bool)

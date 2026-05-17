@@ -109,7 +109,7 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	buf := &Buffered{
+	buf := &WriteSet{
 		fsm: machine,
 	}
 
@@ -187,7 +187,7 @@ func TestPartitionVolumesTransient(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	buf := &Buffered{
+	buf := &WriteSet{
 		fsm: machine,
 	}
 

@@ -74,7 +74,7 @@ type maintenanceModeUpdate struct {
 	enabled bool
 }
 
-type Buffered struct {
+type WriteSet struct {
 	fsm                                  *Machine
 	attrs                                *attributes.Attributes
 	Date                                 *commonpb.Timestamp
@@ -89,11 +89,17 @@ type Buffered struct {
 	pendingPeriodScheduleUpdate          *string
 	pendingQueryCheckpointScheduleUpdate *string
 	sinkConfigChanged                    bool
-	periods                              *PeriodTracker
-	changedPeriods                       []*commonpb.Period
-	purgeRanges                          []purgeRange
-	pendingArchives                      []ArchiveRequest
-	pendingMetadataConvertRequests       []MetadataConvertRequest
+	// periods is a lazy clone of fsm.Periods, created on first period access.
+	// Nil means no period method was called — Merge() skips period propagation.
+	// Period orders (ClosePeriod, SealPeriod, etc.) read period protos and mutate
+	// them in-place, so the clone must happen before any read to avoid corrupting
+	// the FSM's state. CreateTransaction never touches periods, so the clone is
+	// avoided on the hot path.
+	periods                        *PeriodTracker
+	changedPeriods                 []*commonpb.Period
+	purgeRanges                    []purgeRange
+	pendingArchives                []ArchiveRequest
+	pendingMetadataConvertRequests []MetadataConvertRequest
 
 	// pendingLedgerDeletions holds ledger names scheduled for data cleanup during Merge.
 	pendingLedgerDeletions []string
@@ -135,7 +141,7 @@ type purgeRange struct {
 	closeAuditSequence uint64 // audit sequence range end
 }
 
-func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
+func (b *WriteSet) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	// gen0 byte for incremental 0xFF cache writes.
 	genByte := byte(b.fsm.Registry.Cache.CurrentGeneration() % 2)
 
@@ -370,8 +376,11 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 		}
 	}
 
-	if err := StoreNextPeriodID(batch, b.periods.NextPeriodID()); err != nil {
-		return fmt.Errorf("storing next period ID: %w", err)
+	// Persist next period ID only if periods were touched.
+	if b.periods != nil {
+		if err := StoreNextPeriodID(batch, b.periods.NextPeriodID()); err != nil {
+			return fmt.Errorf("storing next period ID: %w", err)
+		}
 	}
 
 	// Purge archived period data (logs + audit entries) if requested
@@ -448,15 +457,20 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 		b.fsm.Periods.DeletePeriod(pr.periodID)
 	}
 
-	b.fsm.Periods.SetCurrentOpenPeriod(b.periods.CurrentOpenPeriod())
-	b.fsm.Periods.SetClosingPeriods(b.periods.ClosingPeriods())
-	b.fsm.Periods.SetNextPeriodID(b.periods.NextPeriodID())
+	// Propagate period tracker state only if periods were touched (lazy clone occurred).
+	// On the hot transaction path (CreateTransaction, etc.), b.periods stays nil
+	// and the FSM's tracker is already correct.
+	if b.periods != nil {
+		b.fsm.Periods.SetCurrentOpenPeriod(b.periods.CurrentOpenPeriod())
+		b.fsm.Periods.SetClosingPeriods(b.periods.ClosingPeriods())
+		b.fsm.Periods.SetNextPeriodID(b.periods.NextPeriodID())
+	}
 
 	return nil
 }
 
-func NewBuffer(at *commonpb.Timestamp, fsm *Machine) *Buffered {
-	return &Buffered{
+func NewWriteSet(at *commonpb.Timestamp, fsm *Machine) *WriteSet {
+	return &WriteSet{
 		fsm:                   fsm,
 		attrs:                 fsm.Registry.Attrs,
 		Date:                  at,
@@ -465,13 +479,12 @@ func NewBuffer(at *commonpb.Timestamp, fsm *Machine) *Buffered {
 		NextAuditSequenceID:   fsm.nextAuditSequenceID,
 		NextQueryCheckpointID: fsm.nextQueryCheckpointID,
 		LastLogHash:           fsm.lastLogHash,
-		periods:               fsm.Periods.Clone(),
 	}
 }
 
-// Store interface implementation for Buffered
+// Store interface implementation for WriteSet
 
-func (b *Buffered) GetLedger(name string) (*commonpb.LedgerInfo, bool) {
+func (b *WriteSet) GetLedger(name string) (*commonpb.LedgerInfo, bool) {
 	info, err := b.Derived.Ledgers.Get(domain.LedgerKey{Name: name})
 	if err != nil || info == nil {
 		return nil, false
@@ -480,11 +493,11 @@ func (b *Buffered) GetLedger(name string) (*commonpb.LedgerInfo, bool) {
 	return info, true
 }
 
-func (b *Buffered) PutLedger(name string, info *commonpb.LedgerInfo) {
+func (b *WriteSet) PutLedger(name string, info *commonpb.LedgerInfo) {
 	b.Derived.Ledgers.Put(domain.LedgerKey{Name: name}, info)
 }
 
-func (b *Buffered) MarkLedgerForCleanup(ledger string) {
+func (b *WriteSet) MarkLedgerForCleanup(ledger string) {
 	b.pendingLedgerDeletions = append(b.pendingLedgerDeletions, ledger)
 	// Remove boundary from the in-memory overlay so that subsequent
 	// GetBoundaries calls return (nil, false) — both within this proposal
@@ -492,7 +505,7 @@ func (b *Buffered) MarkLedgerForCleanup(ledger string) {
 	b.Derived.Boundaries.Delete(domain.LedgerKey{Name: ledger})
 }
 
-func (b *Buffered) GetBoundaries(ledger string) (*raftcmdpb.LedgerBoundaries, bool) {
+func (b *WriteSet) GetBoundaries(ledger string) (*raftcmdpb.LedgerBoundaries, bool) {
 	boundaries, err := b.Derived.Boundaries.Get(domain.LedgerKey{Name: ledger})
 	if err != nil || boundaries == nil {
 		return nil, false
@@ -501,19 +514,19 @@ func (b *Buffered) GetBoundaries(ledger string) (*raftcmdpb.LedgerBoundaries, bo
 	return boundaries, true
 }
 
-func (b *Buffered) ResolveNumscriptContent(ledger, name, version string) (*commonpb.NumscriptInfo, error) {
+func (b *WriteSet) ResolveNumscriptContent(ledger, name, version string) (*commonpb.NumscriptInfo, error) {
 	return b.Derived.NumscriptContents.Get(domain.NumscriptEntryKey{Ledger: ledger, Name: name, Version: version})
 }
 
-func (b *Buffered) PutBoundaries(ledger string, boundaries *raftcmdpb.LedgerBoundaries) {
+func (b *WriteSet) PutBoundaries(ledger string, boundaries *raftcmdpb.LedgerBoundaries) {
 	b.Derived.Boundaries.Put(domain.LedgerKey{Name: ledger}, boundaries)
 }
 
-func (b *Buffered) GetVolume(key domain.VolumeKey) (*raftcmdpb.VolumePair, error) {
+func (b *WriteSet) GetVolume(key domain.VolumeKey) (*raftcmdpb.VolumePair, error) {
 	return b.Derived.Volumes.Get(key)
 }
 
-func (b *Buffered) PutVolume(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
+func (b *WriteSet) PutVolume(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
 	b.Derived.Volumes.Put(key, value)
 }
 
@@ -524,7 +537,7 @@ func (b *Buffered) PutVolume(key domain.VolumeKey, value *raftcmdpb.VolumePair) 
 // Transient validation only applies when the base volume (before this batch) is zero
 // or absent. Pre-existing non-zero volumes from before the account was marked transient
 // are treated as normal and skip the zero-balance check.
-func (b *Buffered) ValidateTransientVolumes() error {
+func (b *WriteSet) ValidateTransientVolumes() error {
 	ledgerTypes := make(map[string][]accounttype.CompiledType)
 
 	for key, vol := range b.Derived.Volumes.DirtyValues() {
@@ -562,41 +575,41 @@ func (b *Buffered) ValidateTransientVolumes() error {
 	return nil
 }
 
-func (b *Buffered) GetAccountMetadata(key domain.MetadataKey) (*commonpb.MetadataValue, error) {
+func (b *WriteSet) GetAccountMetadata(key domain.MetadataKey) (*commonpb.MetadataValue, error) {
 	return b.Derived.AccountMetadata.Get(key)
 }
 
-func (b *Buffered) PutAccountMetadata(key domain.MetadataKey, value *commonpb.MetadataValue) {
+func (b *WriteSet) PutAccountMetadata(key domain.MetadataKey, value *commonpb.MetadataValue) {
 	b.Derived.AccountMetadata.Put(key, value)
 }
 
-func (b *Buffered) DeleteAccountMetadata(key domain.MetadataKey) {
+func (b *WriteSet) DeleteAccountMetadata(key domain.MetadataKey) {
 	b.Derived.AccountMetadata.Delete(key)
 }
 
-func (b *Buffered) GetLedgerMetadata(key domain.LedgerMetadataKey) (*commonpb.MetadataValue, error) {
+func (b *WriteSet) GetLedgerMetadata(key domain.LedgerMetadataKey) (*commonpb.MetadataValue, error) {
 	return b.Derived.LedgerMetadata.Get(key)
 }
 
-func (b *Buffered) PutLedgerMetadata(key domain.LedgerMetadataKey, value *commonpb.MetadataValue) {
+func (b *WriteSet) PutLedgerMetadata(key domain.LedgerMetadataKey, value *commonpb.MetadataValue) {
 	b.Derived.LedgerMetadata.Put(key, value)
 }
 
-func (b *Buffered) DeleteLedgerMetadata(key domain.LedgerMetadataKey) {
+func (b *WriteSet) DeleteLedgerMetadata(key domain.LedgerMetadataKey) {
 	b.Derived.LedgerMetadata.Delete(key)
 }
 
-func (b *Buffered) GetReverted(key domain.TransactionKey) (bool, error) {
+func (b *WriteSet) GetReverted(key domain.TransactionKey) (bool, error) {
 	return b.Derived.GetReverted(key), nil
 }
 
-func (b *Buffered) PutReverted(key domain.TransactionKey, reverted bool) {
+func (b *WriteSet) PutReverted(key domain.TransactionKey, reverted bool) {
 	if reverted {
 		b.Derived.PutReverted(key)
 	}
 }
 
-func (b *Buffered) GetIdempotencyKey(key domain.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error) {
+func (b *WriteSet) GetIdempotencyKey(key domain.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error) {
 	value, err := b.Derived.Idempotency.Get(key.Key)
 	if err != nil || value == nil {
 		return nil, err
@@ -610,28 +623,28 @@ func (b *Buffered) GetIdempotencyKey(key domain.IdempotencyKey) (*commonpb.Idemp
 	return value, nil
 }
 
-func (b *Buffered) PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
+func (b *WriteSet) PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
 	value.CreatedAt = b.Date.GetData() // HLC timestamp
 	b.Derived.Idempotency.Put(key.Key, value)
 }
 
-func (b *Buffered) GetTransactionReference(key domain.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error) {
+func (b *WriteSet) GetTransactionReference(key domain.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error) {
 	return b.Derived.References.Get(key)
 }
 
-func (b *Buffered) PutTransactionReference(key domain.TransactionReferenceKey, value *commonpb.TransactionReferenceValue) {
+func (b *WriteSet) PutTransactionReference(key domain.TransactionReferenceKey, value *commonpb.TransactionReferenceValue) {
 	b.Derived.References.Put(key, value)
 }
 
-func (b *Buffered) GetTransactionState(key domain.TransactionKey) (*commonpb.TransactionState, error) {
+func (b *WriteSet) GetTransactionState(key domain.TransactionKey) (*commonpb.TransactionState, error) {
 	return b.Derived.Transactions.Get(key)
 }
 
-func (b *Buffered) PutTransactionState(key domain.TransactionKey, state *commonpb.TransactionState) {
+func (b *WriteSet) PutTransactionState(key domain.TransactionKey, state *commonpb.TransactionState) {
 	b.Derived.Transactions.Put(key, state)
 }
 
-func (b *Buffered) AddSigningKey(keyID string, publicKey []byte, parentKeyID string) {
+func (b *WriteSet) AddSigningKey(keyID string, publicKey []byte, parentKeyID string) {
 	b.pendingSigningKeyUpdates = append(b.pendingSigningKeyUpdates, signingKeyUpdate{
 		keyID:       keyID,
 		publicKey:   publicKey,
@@ -639,7 +652,7 @@ func (b *Buffered) AddSigningKey(keyID string, publicKey []byte, parentKeyID str
 	})
 }
 
-func (b *Buffered) RemoveSigningKey(keyID string) {
+func (b *WriteSet) RemoveSigningKey(keyID string) {
 	b.pendingSigningKeyUpdates = append(b.pendingSigningKeyUpdates, signingKeyUpdate{
 		keyID:  keyID,
 		remove: true,
@@ -648,7 +661,7 @@ func (b *Buffered) RemoveSigningKey(keyID string) {
 
 // GetSigningKeyChildren returns all key IDs that have keyID as their parent.
 // It checks the committed KeyStore and accounts for pending additions/removals.
-func (b *Buffered) GetSigningKeyChildren(keyID string) []string {
+func (b *WriteSet) GetSigningKeyChildren(keyID string) []string {
 	// Start from committed state
 	children := b.fsm.keyStore.GetChildren(keyID)
 
@@ -681,37 +694,37 @@ func (b *Buffered) GetSigningKeyChildren(keyID string) []string {
 	return filtered
 }
 
-func (b *Buffered) SetRequireSignatures(require bool) {
+func (b *WriteSet) SetRequireSignatures(require bool) {
 	b.pendingSigningConfigUpdate = &signingConfigUpdate{
 		requireSignatures: require,
 	}
 }
 
-func (b *Buffered) SetMaintenanceMode(enabled bool) {
+func (b *WriteSet) SetMaintenanceMode(enabled bool) {
 	b.pendingMaintenanceModeUpdate = &maintenanceModeUpdate{
 		enabled: enabled,
 	}
 }
 
-func (b *Buffered) SetPeriodSchedule(cronExpr string) {
+func (b *WriteSet) SetPeriodSchedule(cronExpr string) {
 	b.pendingPeriodScheduleUpdate = &cronExpr
 }
 
-func (b *Buffered) DeletePeriodSchedule() {
+func (b *WriteSet) DeletePeriodSchedule() {
 	empty := ""
 	b.pendingPeriodScheduleUpdate = &empty
 }
 
-func (b *Buffered) SetQueryCheckpointSchedule(cronExpr string) {
+func (b *WriteSet) SetQueryCheckpointSchedule(cronExpr string) {
 	b.pendingQueryCheckpointScheduleUpdate = &cronExpr
 }
 
-func (b *Buffered) DeleteQueryCheckpointSchedule() {
+func (b *WriteSet) DeleteQueryCheckpointSchedule() {
 	empty := ""
 	b.pendingQueryCheckpointScheduleUpdate = &empty
 }
 
-func (b *Buffered) GetSinkConfig(name string) (*commonpb.SinkConfig, error) {
+func (b *WriteSet) GetSinkConfig(name string) (*commonpb.SinkConfig, error) {
 	cfg, err := b.Derived.SinkConfigs.Get(domain.SinkConfigKey{Name: name})
 	if err != nil {
 		return nil, nil
@@ -720,56 +733,56 @@ func (b *Buffered) GetSinkConfig(name string) (*commonpb.SinkConfig, error) {
 	return cfg, nil
 }
 
-func (b *Buffered) AddSinkConfig(config *commonpb.SinkConfig) {
+func (b *WriteSet) AddSinkConfig(config *commonpb.SinkConfig) {
 	b.Derived.SinkConfigs.Put(domain.SinkConfigKey{Name: config.GetName()}, config)
 	b.sinkConfigChanged = true
 }
 
-func (b *Buffered) RemoveSinkConfig(name string) {
+func (b *WriteSet) RemoveSinkConfig(name string) {
 	b.Derived.SinkConfigs.Delete(domain.SinkConfigKey{Name: name})
 	b.sinkConfigChanged = true
 }
 
-func (b *Buffered) HasPendingSinkChanges() bool {
+func (b *WriteSet) HasPendingSinkChanges() bool {
 	return b.sinkConfigChanged
 }
 
 // AllVolumeUpdates returns all volume updates (kept + purged) captured during Merge.
 // Used for delta/posting cross-check which needs purged ephemeral entries too.
-func (b *Buffered) AllVolumeUpdates() []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] {
+func (b *WriteSet) AllVolumeUpdates() []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] {
 	return b.allVolumeUpdates
 }
 
 // KeptVolumeUpdates returns only kept volume updates (excluding ephemeral purges).
 // Used for post-commit Pebble verification where purged entries are intentionally absent.
-func (b *Buffered) KeptVolumeUpdates() []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] {
+func (b *WriteSet) KeptVolumeUpdates() []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] {
 	return b.keptVolumeUpdates
 }
 
-func (b *Buffered) GetNextSequenceID() uint64 {
+func (b *WriteSet) GetNextSequenceID() uint64 {
 	return b.NextSequenceID
 }
 
-func (b *Buffered) GetNextAuditSequenceID() uint64 {
+func (b *WriteSet) GetNextAuditSequenceID() uint64 {
 	return b.NextAuditSequenceID
 }
 
-func (b *Buffered) IncrementNextSequenceID() uint64 {
+func (b *WriteSet) IncrementNextSequenceID() uint64 {
 	id := b.NextSequenceID
 	b.NextSequenceID++
 
 	return id
 }
 
-func (b *Buffered) GetDate() *commonpb.Timestamp {
+func (b *WriteSet) GetDate() *commonpb.Timestamp {
 	return b.Date
 }
 
-func (b *Buffered) GetLastLogHash() []byte {
+func (b *WriteSet) GetLastLogHash() []byte {
 	return b.LastLogHash
 }
 
-func (b *Buffered) SetLastLogHash(hash []byte) {
+func (b *WriteSet) SetLastLogHash(hash []byte) {
 	b.LastLogHash = hash
 }
 
@@ -826,7 +839,20 @@ func checkDoubleEntryInvariant(
 
 // Period operations
 
-func (b *Buffered) GetCurrentOpenPeriod() (*commonpb.Period, bool) {
+// ensurePeriods clones the FSM's PeriodTracker on first access.
+// Period orders (ClosePeriod, SealPeriod, etc.) read period protos and mutate
+// them in-place, so the clone must happen before any read to protect the FSM.
+// CreateTransaction never calls period methods, so this is never triggered on
+// the hot transaction path.
+func (b *WriteSet) ensurePeriods() {
+	if b.periods == nil {
+		b.periods = b.fsm.Periods.Clone()
+	}
+}
+
+func (b *WriteSet) GetCurrentOpenPeriod() (*commonpb.Period, bool) {
+	b.ensurePeriods()
+
 	p := b.periods.CurrentOpenPeriod()
 	if p != nil {
 		return p, true
@@ -835,26 +861,34 @@ func (b *Buffered) GetCurrentOpenPeriod() (*commonpb.Period, bool) {
 	return nil, false
 }
 
-func (b *Buffered) GetClosingPeriods() []*commonpb.Period {
+func (b *WriteSet) GetClosingPeriods() []*commonpb.Period {
+	b.ensurePeriods()
+
 	return b.periods.ClosingPeriods()
 }
 
-func (b *Buffered) GetClosingPeriodByID(periodID uint64) (*commonpb.Period, bool) {
+func (b *WriteSet) GetClosingPeriodByID(periodID uint64) (*commonpb.Period, bool) {
+	b.ensurePeriods()
+
 	return b.periods.ClosingPeriodByID(periodID)
 }
 
-func (b *Buffered) SetCurrentOpenPeriod(period *commonpb.Period) {
+func (b *WriteSet) SetCurrentOpenPeriod(period *commonpb.Period) {
+	b.ensurePeriods()
 	b.periods.SetCurrentOpenPeriod(period)
 	b.changedPeriods = append(b.changedPeriods, period)
 }
 
-func (b *Buffered) AddClosingPeriod(period *commonpb.Period) {
+func (b *WriteSet) AddClosingPeriod(period *commonpb.Period) {
+	b.ensurePeriods()
 	b.periods.AddClosingPeriod(period)
 	b.changedPeriods = append(b.changedPeriods, period)
 }
 
 // RemoveClosingPeriod persists the closing period's final state and removes it from in-memory tracking.
-func (b *Buffered) RemoveClosingPeriod(periodID uint64) {
+func (b *WriteSet) RemoveClosingPeriod(periodID uint64) {
+	b.ensurePeriods()
+
 	if closing, ok := b.periods.ClosingPeriodByID(periodID); ok {
 		b.changedPeriods = append(b.changedPeriods, closing)
 	}
@@ -862,11 +896,15 @@ func (b *Buffered) RemoveClosingPeriod(periodID uint64) {
 	b.periods.RemoveClosingPeriod(periodID)
 }
 
-func (b *Buffered) GetNextPeriodID() uint64 {
+func (b *WriteSet) GetNextPeriodID() uint64 {
+	b.ensurePeriods()
+
 	return b.periods.NextPeriodID()
 }
 
-func (b *Buffered) IncrementNextPeriodID() uint64 {
+func (b *WriteSet) IncrementNextPeriodID() uint64 {
+	b.ensurePeriods()
+
 	id := b.periods.NextPeriodID()
 	b.periods.SetNextPeriodID(id + 1)
 
@@ -875,7 +913,7 @@ func (b *Buffered) IncrementNextPeriodID() uint64 {
 
 // GetPeriodByID looks up a period by ID from in-memory state only.
 // It checks changedPeriods first (most recent modifications), then the periods tracker.
-func (b *Buffered) GetPeriodByID(periodID uint64) (*commonpb.Period, bool) {
+func (b *WriteSet) GetPeriodByID(periodID uint64) (*commonpb.Period, bool) {
 	// Check changedPeriods (most recently changed first)
 	for i := len(b.changedPeriods) - 1; i >= 0; i-- {
 		if b.changedPeriods[i].GetId() == periodID {
@@ -883,18 +921,20 @@ func (b *Buffered) GetPeriodByID(periodID uint64) (*commonpb.Period, bool) {
 		}
 	}
 
+	b.ensurePeriods()
+
 	return b.periods.GetPeriodByID(periodID)
 }
 
 // UpdatePeriod records a period modification to be persisted in Merge().
-func (b *Buffered) UpdatePeriod(period *commonpb.Period) {
+func (b *WriteSet) UpdatePeriod(period *commonpb.Period) {
 	b.changedPeriods = append(b.changedPeriods, period)
 }
 
 // SetPurgeRange records sequence ranges to be purged during Merge().
 // Log and audit entries have independent sequence counters (audit advances
 // slower due to batching), so both ranges are needed for correct purging.
-func (b *Buffered) SetPurgeRange(periodID, startSequence, closeSequence, startAuditSequence, closeAuditSequence uint64) {
+func (b *WriteSet) SetPurgeRange(periodID, startSequence, closeSequence, startAuditSequence, closeAuditSequence uint64) {
 	b.purgeRanges = append(b.purgeRanges, purgeRange{
 		periodID:           periodID,
 		startSequence:      startSequence,
@@ -907,7 +947,7 @@ func (b *Buffered) SetPurgeRange(periodID, startSequence, closeSequence, startAu
 // SetPendingArchive records a period that needs archiving after the batch is committed.
 // The Machine reads this after Merge() to construct and send the ArchiveRequest.
 // Can be called multiple times to archive multiple periods in the same batch.
-func (b *Buffered) SetPendingArchive(periodID, startSequence, closeSequence uint64) {
+func (b *WriteSet) SetPendingArchive(periodID, startSequence, closeSequence uint64) {
 	b.pendingArchives = append(b.pendingArchives, ArchiveRequest{
 		PeriodID:      periodID,
 		StartSequence: startSequence,
@@ -918,7 +958,7 @@ func (b *Buffered) SetPendingArchive(periodID, startSequence, closeSequence uint
 // executePurge deletes cold-storable data for a single purge range.
 // It also cleans up per-ledger data for any deleted ledgers whose
 // DeleteLedger log falls within the purge range.
-func (b *Buffered) executePurge(batch *dal.Batch, pr *purgeRange) error {
+func (b *WriteSet) executePurge(batch *dal.Batch, pr *purgeRange) error {
 	// Logs: purge using log sequence range.
 	logStart := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(pr.startSequence).Build()
 	logEnd := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(pr.closeSequence + 1).Build()
@@ -956,7 +996,7 @@ func (b *Buffered) executePurge(batch *dal.Batch, pr *purgeRange) error {
 	return nil
 }
 
-func (b *Buffered) AddMetadataConvertRequest(ledgerName string, targetType commonpb.TargetType, key string, metadataType commonpb.MetadataType) {
+func (b *WriteSet) AddMetadataConvertRequest(ledgerName string, targetType commonpb.TargetType, key string, metadataType commonpb.MetadataType) {
 	b.pendingMetadataConvertRequests = append(b.pendingMetadataConvertRequests, MetadataConvertRequest{
 		LedgerName: ledgerName,
 		TargetType: targetType,
@@ -966,16 +1006,16 @@ func (b *Buffered) AddMetadataConvertRequest(ledgerName string, targetType commo
 }
 
 // MetadataConvertRequests returns the accumulated metadata conversion requests.
-func (b *Buffered) MetadataConvertRequests() []MetadataConvertRequest {
+func (b *WriteSet) MetadataConvertRequests() []MetadataConvertRequest {
 	return b.pendingMetadataConvertRequests
 }
 
 // HasPurges returns true if the buffer contains any pending purge ranges.
-func (b *Buffered) HasPurges() bool {
+func (b *WriteSet) HasPurges() bool {
 	return len(b.purgeRanges) > 0
 }
 
-func (b *Buffered) GetPreparedQuery(ledger, name string) (*commonpb.PreparedQuery, error) {
+func (b *WriteSet) GetPreparedQuery(ledger, name string) (*commonpb.PreparedQuery, error) {
 	pq, err := b.Derived.PreparedQueries.Get(domain.PreparedQueryKey{Ledger: ledger, Name: name})
 	// Treat a cache miss as "doesn't exist". A delete in an earlier entry of
 	// the same batch will have cleared the cache
@@ -986,17 +1026,17 @@ func (b *Buffered) GetPreparedQuery(ledger, name string) (*commonpb.PreparedQuer
 	return pq, err
 }
 
-func (b *Buffered) PutPreparedQuery(pq *commonpb.PreparedQuery) {
+func (b *WriteSet) PutPreparedQuery(pq *commonpb.PreparedQuery) {
 	b.Derived.PreparedQueries.Put(domain.PreparedQueryKey{Ledger: pq.GetLedger(), Name: pq.GetName()}, pq)
 }
 
-func (b *Buffered) DeletePreparedQuery(ledger, name string) {
+func (b *WriteSet) DeletePreparedQuery(ledger, name string) {
 	b.Derived.PreparedQueries.Delete(domain.PreparedQueryKey{Ledger: ledger, Name: name})
 }
 
 // Numscript library operations
 
-func (b *Buffered) GetNumscriptLatestVersion(ledger, name string) (string, error) {
+func (b *WriteSet) GetNumscriptLatestVersion(ledger, name string) (string, error) {
 	val, err := b.Derived.NumscriptVersions.Get(domain.NumscriptVersionKey{Ledger: ledger, Name: name})
 	if err != nil || val == nil {
 		return "", err
@@ -1005,16 +1045,16 @@ func (b *Buffered) GetNumscriptLatestVersion(ledger, name string) (string, error
 	return val.GetVersion(), nil
 }
 
-func (b *Buffered) PutNumscript(info *commonpb.NumscriptInfo) {
+func (b *WriteSet) PutNumscript(info *commonpb.NumscriptInfo) {
 	b.Derived.NumscriptVersions.Put(domain.NumscriptVersionKey{Ledger: info.GetLedger(), Name: info.GetName()}, &commonpb.NumscriptVersionValue{Version: info.GetVersion()})
 	b.Derived.NumscriptContents.Put(domain.NumscriptEntryKey{Ledger: info.GetLedger(), Name: info.GetName(), Version: info.GetVersion()}, info)
 }
 
-func (b *Buffered) DeleteNumscriptLatest(ledger, name string) {
+func (b *WriteSet) DeleteNumscriptLatest(ledger, name string) {
 	b.Derived.NumscriptVersions.Put(domain.NumscriptVersionKey{Ledger: ledger, Name: name}, &commonpb.NumscriptVersionValue{})
 }
 
-func (b *Buffered) NumscriptVersionExists(ledger, name, version string) (bool, error) {
+func (b *WriteSet) NumscriptVersionExists(ledger, name, version string) (bool, error) {
 	info, err := b.Derived.NumscriptContents.Get(domain.NumscriptEntryKey{Ledger: ledger, Name: name, Version: version})
 	if err != nil {
 		// Not in cache — treat as not existing (admission ensures preloading)
@@ -1024,11 +1064,11 @@ func (b *Buffered) NumscriptVersionExists(ledger, name, version string) (bool, e
 	return info != nil, nil
 }
 
-func (b *Buffered) GetNextQueryCheckpointID() uint64 {
+func (b *WriteSet) GetNextQueryCheckpointID() uint64 {
 	return b.NextQueryCheckpointID
 }
 
-func (b *Buffered) IncrementNextQueryCheckpointID() uint64 {
+func (b *WriteSet) IncrementNextQueryCheckpointID() uint64 {
 	id := b.NextQueryCheckpointID
 	b.NextQueryCheckpointID++
 
@@ -1036,36 +1076,36 @@ func (b *Buffered) IncrementNextQueryCheckpointID() uint64 {
 }
 
 // SaveQueryCheckpoint stores a query checkpoint for Merge.
-func (b *Buffered) SaveQueryCheckpoint(cp *raftcmdpb.QueryCheckpointState) {
+func (b *WriteSet) SaveQueryCheckpoint(cp *raftcmdpb.QueryCheckpointState) {
 	b.pendingQueryCheckpointSaves = append(b.pendingQueryCheckpointSaves, cp)
 }
 
 // DeleteQueryCheckpoint marks a query checkpoint for deletion during Merge.
-func (b *Buffered) DeleteQueryCheckpoint(checkpointID uint64) {
+func (b *WriteSet) DeleteQueryCheckpoint(checkpointID uint64) {
 	b.pendingQueryCheckpointDeletes = append(b.pendingQueryCheckpointDeletes, checkpointID)
 }
 
 // BloomUpdates returns the canonical keys collected during Merge for bloom filter updates.
-func (b *Buffered) BloomUpdates() *bloom.BloomUpdates {
+func (b *WriteSet) BloomUpdates() *bloom.BloomUpdates {
 	return &b.bloomUpdates
 }
 
 // PurgedVolumeKeys returns the keys of volumes that were purged by ephemeral purge.
 // Used to exclude these keys from post-commit Pebble verification when a later entry
 // in the same ApplyEntries batch purges a volume that was written by an earlier entry.
-func (b *Buffered) PurgedVolumeKeys() []domain.VolumeKey {
+func (b *WriteSet) PurgedVolumeKeys() []domain.VolumeKey {
 	return b.purgedVolumeKeys
 }
 
 // TransientAccounts returns unique transient account names per ledger,
 // collected during Merge from the transient volume partition.
-func (b *Buffered) TransientAccounts() map[string][]string {
+func (b *WriteSet) TransientAccounts() map[string][]string {
 	return b.transientAccounts
 }
 
 // PurgedAccounts returns unique ephemeral account names per ledger whose
 // volumes were purged (zero balance), collected during Merge.
-func (b *Buffered) PurgedAccounts() map[string][]string {
+func (b *WriteSet) PurgedAccounts() map[string][]string {
 	return b.purgedAccounts
 }
 
@@ -1099,5 +1139,5 @@ func collectUniqueAccounts(updates []attributes.Update[domain.VolumeKey, *raftcm
 	return result
 }
 
-// Ensure Buffered implements InMemoryStore.
-var _ processing.InMemoryStore = (*Buffered)(nil)
+// Ensure WriteSet implements InMemoryStore.
+var _ processing.InMemoryStore = (*WriteSet)(nil)

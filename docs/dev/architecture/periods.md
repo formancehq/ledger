@@ -298,7 +298,7 @@ data/
 
 All non-purged periods are kept in memory in the FSM's `allPeriods` map, eliminating Pebble reads for period lookups. The `currentOpenPeriod` and `closingPeriod` fields are convenience pointers into this map for fast access on the hot path.
 
-- `Buffered.GetPeriodByID()` reads from the in-memory map (no Pebble fallback).
+- `WriteSet.GetPeriodByID()` reads from the in-memory map (no Pebble fallback).
 - `DefaultController.ListPeriods()` reads from `Machine.AllPeriods()` via the `PeriodProvider` interface.
 - When a period is archived and purged, it is removed from the in-memory map.
 - Periods are still persisted to Pebble (for crash recovery and startup), but never read from Pebble during normal operation after startup.

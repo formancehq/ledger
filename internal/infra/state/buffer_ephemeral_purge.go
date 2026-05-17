@@ -41,7 +41,7 @@ type volumePartitionResult struct {
 //   - EPHEMERAL accounts with zero balance: purged (deleted from Pebble)
 //   - EPHEMERAL accounts with non-zero balance: kept
 //   - TRANSIENT accounts: always transient (never written to Pebble)
-func (b *Buffered) partitionVolumes(
+func (b *WriteSet) partitionVolumes(
 	updates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 ) volumePartitionResult {
 	// Build a cache of ledger → compiled account types to avoid repeated parsing.
@@ -109,7 +109,7 @@ func (b *Buffered) partitionVolumes(
 // evictTransientVolumes removes transient volumes from the in-memory parent KeyStore.
 // Unlike ephemeral purge, transient volumes were never written to Pebble, so only
 // the in-memory eviction is needed.
-func (b *Buffered) evictTransientVolumes(
+func (b *WriteSet) evictTransientVolumes(
 	transient []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 ) {
 	for _, update := range transient {
@@ -122,7 +122,7 @@ func (b *Buffered) evictTransientVolumes(
 // rather than deleting keeps the cache populated for any co-batched proposal
 // that was admitted with CacheGuaranteed and therefore carries no preload
 // for the key. The zero entry ages out via rotation.
-func (b *Buffered) applyEphemeralPurge(
+func (b *WriteSet) applyEphemeralPurge(
 	batch *dal.Batch,
 	genByte byte,
 	purged []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],

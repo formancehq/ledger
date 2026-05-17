@@ -492,7 +492,7 @@ FSM flushes at apply time (batch, no sync):
 
 ### 12.3 Old Entry Cleanup
 
-When a new value is written during `Buffered.Merge`, old entries for the same canonical key are cleaned up:
+When a new value is written during `WriteSet.Merge`, old entries for the same canonical key are cleaned up:
 - If the previous raft index is known (from cache), a point delete removes just that entry
 - If the previous index is unknown (cold preload), a range delete removes all entries before the current index
 

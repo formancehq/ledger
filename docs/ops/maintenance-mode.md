@@ -49,7 +49,7 @@ Write operations are rejected at **two levels** for safety:
 
 ```
 Client -> gRPC Apply() -> Admission (check maintenance mode) -> Proposal -> Raft consensus
-  -> FSM Apply (check maintenance mode again) -> Buffered.Merge() -> Pebble + KeyStore
+  -> FSM Apply (check maintenance mode again) -> WriteSet.Merge() -> Pebble + KeyStore
 ```
 
 ## Key Files

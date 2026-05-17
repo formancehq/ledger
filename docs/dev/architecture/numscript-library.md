@@ -223,7 +223,7 @@ Numscript data uses the same preloading pattern as other system attributes (see 
 | `NumscriptVersions` | `NumscriptVersionKey{Name}` | `string` | Latest version pointer per name |
 | `NumscriptEntries` | `NumscriptEntryKey{Name, Version}` | `bool` | Per-version existence (for semver immutability checks) |
 
-Both use `KeyStore` (Machine) + `DerivedKeyStore` (Buffered) + `AttributeCache` (Cache) + `AttributeLoader` (Admission).
+Both use `KeyStore` (Machine) + `DerivedKeyStore` (WriteSet) + `AttributeCache` (Cache) + `AttributeLoader` (Admission).
 
 ### Admission Preloading
 
@@ -248,7 +248,7 @@ message PreloadNumscriptEntry {
 
 ### Intra-Batch Propagation
 
-Multiple orders in a single Raft proposal share the same `Buffered` state. The `DerivedKeyStore` overlay ensures later orders see writes from earlier orders in the same batch. For example:
+Multiple orders in a single Raft proposal share the same `WriteSet` state. The `DerivedKeyStore` overlay ensures later orders see writes from earlier orders in the same batch. For example:
 
 1. Order 1: `SaveNumscript("transfer", "1.0.0")` — succeeds, entry cached
 2. Order 2: `SaveNumscript("transfer", "1.0.0")` — fails with `NUMSCRIPT_VERSION_ALREADY_EXISTS` (sees Order 1's write)
@@ -278,10 +278,10 @@ Raft replication (all nodes)
 FSM Apply: processSaveNumscript()
     ├── Validate name, content, syntax
     ├── Resolve version ("latest" or semver immutability check)
-    └── PutNumscript(info) → Buffered state
+    └── PutNumscript(info) → WriteSet state
     │
     ▼
-Buffered.Merge()
+WriteSet.Merge()
     ├── SaveNumscript → Pebble (versioned entry + latest pointer)
     └── DerivedKeyStore.Merge() → update Machine KeyStore
 ```
@@ -325,7 +325,7 @@ FSM Apply: processDeleteNumscript()
     └── DeleteNumscriptLatest(name) → clear latest pointer (soft delete)
     │
     ▼
-Buffered.Merge()
+WriteSet.Merge()
     └── ClearNumscriptLatestVersion → write empty value to Pebble
 ```
 
@@ -341,7 +341,7 @@ Buffered.Merge()
 | Business logic | `internal/domain/processing/processor_numscript_library.go` | Save/delete processors |
 | Errors | `internal/domain/errors.go` | Error types and reason codes |
 | Store interface | `internal/domain/processing/store.go` | `InMemoryStore` numscript methods |
-| State buffer | `internal/infra/state/buffer.go` | `Buffered` numscript operations |
+| State buffer | `internal/infra/state/buffer.go` | `WriteSet` numscript operations |
 | State registry | `internal/infra/state/registry.go` | `NumscriptVersions`, `NumscriptEntries` KeyStores |
 | Pebble batch | `internal/infra/state/batch.go` | `SaveNumscript`, `ClearNumscriptLatestVersion` |
 | Query | `internal/query/store.go` | `ReadNumscript`, `ReadNumscriptLatestVersion` |

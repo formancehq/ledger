@@ -354,12 +354,12 @@ The `Manager` component watches for config changes via a channel from the FSM an
 
 ```
 Client → gRPC Apply(AddEventsSinkRequest) → Admission → Raft consensus
-  → FSM Apply → Buffered.Merge() → PebbleDB ([0x0E][name])
+  → FSM Apply → WriteSet.Merge() → PebbleDB ([0x0E][name])
   → config change signal → Manager.reconcile()
   → Start/Stop Emitter + Sink
 
 Client → gRPC Apply(RemoveEventsSinkRequest) → Admission → Raft consensus
-  → FSM Apply → Buffered.Merge() → PebbleDB (delete [0x0E][name])
+  → FSM Apply → WriteSet.Merge() → PebbleDB (delete [0x0E][name])
   → config change signal → Manager.reconcile()
   → Tear down Emitter + Sink
 ```

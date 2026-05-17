@@ -881,7 +881,7 @@ func authorizedInMaintenanceMode(orders []*raftcmdpb.Order) bool {
 }
 
 // applyProposal processes all orders in a proposal atomically.
-// Uses RequestProcessor which handles rollback internally via Buffered.
+// Uses RequestProcessor which handles rollback internally via WriteSet.
 func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *dal.Batch, proposal *raftcmdpb.Proposal) (*ApplyResult, error) {
 	// Handle cluster config updates (Raft-replicated, no orders/logs needed).
 	// When the rotation threshold changes, the generation boundaries shift and the
@@ -1102,7 +1102,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	}
 
 	// Create buffer for this proposal
-	buffer := NewBuffer(effectiveDate, fsm)
+	buffer := NewWriteSet(effectiveDate, fsm)
 
 	// Process the proposal
 	logs, err := fsm.processor.ProcessOrders(proposal.GetOrders(), buffer)
