@@ -175,8 +175,9 @@ const (
 
 // Cold sub-prefixes (zone 0x04).
 const (
-	SubColdLog   byte = 0x01
-	SubColdAudit byte = 0x02
+	SubColdLog       byte = 0x01
+	SubColdAudit     byte = 0x02
+	SubColdAuditItem byte = 0x03 // [ZoneCold][SubColdAuditItem][audit_seq BE 8][order_idx BE 4] → AuditItem
 )
 
 // Idempotency sub-prefixes (zone 0x05).
@@ -230,6 +231,7 @@ var (
 	ColdSequencePrefixes = [][2]byte{
 		{ZoneCold, SubColdLog},
 		{ZoneCold, SubColdAudit},
+		{ZoneCold, SubColdAuditItem},
 	}
 )
 

@@ -28,14 +28,28 @@ func (m *AuditEntry) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.Orders) > 0 {
-		for iNdEx := len(m.Orders) - 1; iNdEx >= 0; iNdEx-- {
-			size, _ := m.Orders[iNdEx].MarshalToSizedBufferDeterministicVT(dAtA[:i])
+	if len(m.Ledgers) > 0 {
+		for iNdEx := len(m.Ledgers) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.Ledgers[iNdEx])
+			copy(dAtA[i:], m.Ledgers[iNdEx])
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledgers[iNdEx])))
+			i--
+			dAtA[i] = 0x42
+		}
+	}
+	if len(m.Items) > 0 {
+		for iNdEx := len(m.Items) - 1; iNdEx >= 0; iNdEx-- {
+			size, _ := m.Items[iNdEx].MarshalToSizedBufferDeterministicVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x22
+			dAtA[i] = 0x3a
 		}
+	}
+	if m.OrderCount != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.OrderCount))
+		i--
+		dAtA[i] = 0x30
 	}
 	if m.ProposalId != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ProposalId))
@@ -61,7 +75,7 @@ func (m *AuditEntry) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x2a
+			dAtA[i] = 0x22
 		}
 	case *AuditEntry_Failure:
 		if v.Failure != nil {
@@ -69,8 +83,47 @@ func (m *AuditEntry) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x32
+			dAtA[i] = 0x2a
 		}
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *AuditItem) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	sz := m.SizeVT()
+	buf := make([]byte, sz)
+	n, _ := m.MarshalToSizedBufferDeterministicVT(buf)
+	return append(dAtA, buf[sz-n:]...)
+}
+
+func (m *AuditItem) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.LogSequence != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogSequence))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.Order != nil {
+		size, _ := m.Order.MarshalToSizedBufferDeterministicVT(dAtA[:i])
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.OrderIndex != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.OrderIndex))
+		i--
+		dAtA[i] = 0x8
 	}
 	return len(dAtA) - i, nil
 }

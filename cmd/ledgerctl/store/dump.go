@@ -196,6 +196,10 @@ func decodeValue(key, val []byte) string {
 
 		return tryProtoJSON(val, &commonpb.IdempotencyKeyValue{})
 	case dal.ZoneCold:
+		if len(key) >= 2 && key[1] == dal.SubColdAuditItem {
+			return tryProtoJSON(val, &auditpb.AuditItem{})
+		}
+
 		if len(key) >= 2 && key[1] == dal.SubColdAudit {
 			return tryProtoJSON(val, &auditpb.AuditEntry{})
 		}
@@ -425,6 +429,15 @@ func describeColdKey(key []byte) string {
 		}
 
 		return "AUDIT (short key)"
+	case dal.SubColdAuditItem:
+		if len(key) >= 14 {
+			auditSeq := binary.BigEndian.Uint64(key[2:10])
+			orderIdx := binary.BigEndian.Uint32(key[10:14])
+
+			return fmt.Sprintf("AUDIT_ITEM audit_seq=%d order_idx=%d", auditSeq, orderIdx)
+		}
+
+		return "AUDIT_ITEM (short key)"
 	default:
 		return fmt.Sprintf("COLD(sub=0x%02X)", key[1])
 	}

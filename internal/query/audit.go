@@ -6,6 +6,7 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
@@ -53,6 +54,47 @@ func ReadAuditEntries(ctx context.Context, reader dal.PebbleReader, afterSequenc
 	}
 
 	return dal.NewProtoCursor[*auditpb.AuditEntry](iter), nil
+}
+
+// ReadAuditItems returns all audit items for the given audit sequence.
+// Items are returned sorted by order_index (natural Pebble key order).
+func ReadAuditItems(ctx context.Context, reader dal.PebbleReader, auditSequence uint64) ([]*auditpb.AuditItem, error) {
+	_, span := queryTracer.Start(ctx, "query.read_audit_items",
+		trace.WithAttributes(attribute.Int64("audit_sequence", int64(auditSequence))))
+	defer span.End()
+
+	kb := dal.NewKeyBuilder()
+	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).PutUint64(auditSequence)
+	lowerBound := kb.Snapshot()
+	kb.Reset()
+
+	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).PutUint64(auditSequence + 1)
+	upperBound := kb.Build()
+
+	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
+	if err != nil {
+		return nil, fmt.Errorf("creating iterator for audit items: %w", err)
+	}
+
+	defer func() { _ = iter.Close() }()
+
+	var items []*auditpb.AuditItem
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		value, valErr := iter.ValueAndErr()
+		if valErr != nil {
+			return nil, fmt.Errorf("reading audit item value: %w", valErr)
+		}
+
+		item := &auditpb.AuditItem{}
+		if unmarshalErr := proto.Unmarshal(value, item); unmarshalErr != nil {
+			return nil, fmt.Errorf("unmarshaling audit item: %w", unmarshalErr)
+		}
+
+		items = append(items, item)
+	}
+
+	return items, nil
 }
 
 // ReadAuditEntry returns a single audit entry by sequence number.

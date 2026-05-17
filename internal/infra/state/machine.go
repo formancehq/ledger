@@ -1100,16 +1100,20 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			Sequence:   fsm.nextAuditSequenceID,
 			Timestamp:  effectiveDate,
 			ProposalId: proposal.GetId(),
-			Orders:     proposal.GetOrders(),
+			OrderCount: uint32(len(proposal.GetOrders())),
+			Ledgers:    extractLedgers(proposal.GetOrders()),
 			Outcome: &auditpb.AuditEntry_Failure{
 				Failure: buildAuditFailure(err),
 			},
 		}
 		fsm.nextAuditSequenceID++
 
-		appendErr := AppendAuditEntries(batch, auditEntry)
-		if appendErr != nil {
+		if appendErr := AppendAuditEntries(batch, auditEntry); appendErr != nil {
 			return nil, fmt.Errorf("appending audit entry for failure: %w", appendErr)
+		}
+
+		if appendErr := AppendAuditItems(batch, auditEntry.GetSequence(), buildAuditItems(proposal.GetOrders(), nil)...); appendErr != nil {
+			return nil, fmt.Errorf("appending audit items for failure: %w", appendErr)
 		}
 
 		return &ApplyResult{
@@ -1125,16 +1129,20 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			Sequence:   fsm.nextAuditSequenceID,
 			Timestamp:  effectiveDate,
 			ProposalId: proposal.GetId(),
-			Orders:     proposal.GetOrders(),
+			OrderCount: uint32(len(proposal.GetOrders())),
+			Ledgers:    extractLedgers(proposal.GetOrders()),
 			Outcome: &auditpb.AuditEntry_Failure{
 				Failure: buildAuditFailure(err),
 			},
 		}
 		fsm.nextAuditSequenceID++
 
-		appendErr := AppendAuditEntries(batch, auditEntry)
-		if appendErr != nil {
+		if appendErr := AppendAuditEntries(batch, auditEntry); appendErr != nil {
 			return nil, fmt.Errorf("appending audit entry for transient validation failure: %w", appendErr)
+		}
+
+		if appendErr := AppendAuditItems(batch, auditEntry.GetSequence(), buildAuditItems(proposal.GetOrders(), nil)...); appendErr != nil {
+			return nil, fmt.Errorf("appending audit items for transient validation failure: %w", appendErr)
 		}
 
 		return &ApplyResult{
@@ -1215,7 +1223,8 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		Sequence:   fsm.nextAuditSequenceID,
 		Timestamp:  effectiveDate,
 		ProposalId: proposal.GetId(),
-		Orders:     proposal.GetOrders(),
+		OrderCount: uint32(len(proposal.GetOrders())),
+		Ledgers:    extractLedgers(proposal.GetOrders()),
 		Outcome: &auditpb.AuditEntry_Success{
 			Success: auditSuccess,
 		},
@@ -1224,6 +1233,10 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 	if err := AppendAuditEntries(batch, auditEntry); err != nil {
 		return nil, fmt.Errorf("appending audit entry for success: %w", err)
+	}
+
+	if err := AppendAuditItems(batch, auditEntry.GetSequence(), buildAuditItems(proposal.GetOrders(), logs)...); err != nil {
+		return nil, fmt.Errorf("appending audit items for success: %w", err)
 	}
 
 	fsm.logsAppendedCounter.Add(ctx, int64(len(createdLogs)))

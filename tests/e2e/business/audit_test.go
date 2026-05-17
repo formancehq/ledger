@@ -115,16 +115,15 @@ var _ = Describe("Audit Log", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		for _, entry := range filtered {
-			hasTargetLedger := false
-			for _, order := range entry.GetOrders() {
-				if apply := order.GetApply(); apply != nil && apply.GetLedger() == ledgerName {
-					hasTargetLedger = true
-				}
-				if cl := order.GetCreateLedger(); cl != nil && cl.GetName() == ledgerName {
-					hasTargetLedger = true
+			Expect(entry.GetLedgers()).NotTo(BeEmpty(), "filtered entry should have ledgers populated")
+			found := false
+			for _, l := range entry.GetLedgers() {
+				if l == ledgerName {
+					found = true
+					break
 				}
 			}
-			Expect(hasTargetLedger).To(BeTrue(), "filtered entry should target ledger %q", ledgerName)
+			Expect(found).To(BeTrue(), "filtered entry should target ledger %q", ledgerName)
 		}
 
 		// Filter by the other ledger — should include at least 2 entries (create + transaction)
@@ -192,7 +191,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 		Expect(len(afterEntries)).To(Equal(len(allEntries) - 1))
 	})
 
-	It("Should include order details in audit entries", func() {
+	It("Should include order details via GetAuditEntry with order_count on list and items on get", func() {
 		// Create a ledger — produces a CreateLedger order
 		ledgerForOrders := "audit-orders-test"
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
@@ -204,9 +203,16 @@ var _ = Describe("Audit Log", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		last := entries[len(entries)-1]
-		Expect(last.Orders).To(HaveLen(1))
-		Expect(last.Orders[0].GetCreateLedger()).NotTo(BeNil())
-		Expect(last.Orders[0].GetCreateLedger().Name).To(Equal(ledgerForOrders))
+		Expect(last.GetOrderCount()).To(Equal(uint32(1)))
+
+		// Get the full entry with items
+		full, err := sharedClient.GetAuditEntry(sharedCtx, &servicepb.GetAuditEntryRequest{
+			Sequence: last.Sequence,
+		})
+		Expect(err).To(Succeed())
+		Expect(full.GetItems()).To(HaveLen(1))
+		Expect(full.GetItems()[0].GetOrder().GetCreateLedger()).NotTo(BeNil())
+		Expect(full.GetItems()[0].GetOrder().GetCreateLedger().GetName()).To(Equal(ledgerForOrders))
 
 		// Create a transaction — produces an Apply/CreateTransaction order
 		_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
@@ -222,14 +228,20 @@ var _ = Describe("Audit Log", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		last = entries[len(entries)-1]
-		Expect(last.Orders).To(HaveLen(1))
-		apply := last.Orders[0].GetApply()
+		Expect(last.GetOrderCount()).To(Equal(uint32(1)))
+
+		full, err = sharedClient.GetAuditEntry(sharedCtx, &servicepb.GetAuditEntryRequest{
+			Sequence: last.Sequence,
+		})
+		Expect(err).To(Succeed())
+		Expect(full.GetItems()).To(HaveLen(1))
+		apply := full.GetItems()[0].GetOrder().GetApply()
 		Expect(apply).NotTo(BeNil())
-		Expect(apply.Ledger).To(Equal(ledgerForOrders))
+		Expect(apply.GetLedger()).To(Equal(ledgerForOrders))
 		Expect(apply.GetCreateTransaction()).NotTo(BeNil())
 	})
 
-	It("Should include signing key ID in audit entry orders", func() {
+	It("Should include signing key ID in items", func() {
 		// Create a fresh node for signing tests to avoid interfering with other tests
 		sigCtx, sigClient, _ := testutil.SetupSingleNode(9109, 8109)
 
@@ -255,23 +267,33 @@ var _ = Describe("Audit Log", Ordered, func() {
 		})
 		Expect(err).To(Succeed())
 
-		// Verify the audit entry contains the signing key
+		// Verify the audit entry items contain the signing key
 		entries, err := collectAuditEntries(sigCtx, sigClient, &servicepb.ListAuditEntriesRequest{})
 		Expect(err).To(Succeed())
 
 		last := entries[len(entries)-1]
-		Expect(last.Orders).To(HaveLen(1))
-		sig := last.Orders[0].GetSignature()
+
+		// Get full entry with items
+		full, err := sigClient.GetAuditEntry(sigCtx, &servicepb.GetAuditEntryRequest{
+			Sequence: last.Sequence,
+		})
+		Expect(err).To(Succeed())
+		Expect(full.GetItems()).To(HaveLen(1))
+		sig := full.GetItems()[0].GetOrder().GetSignature()
 		Expect(sig).NotTo(BeNil())
-		Expect(sig.KeyId).To(Equal(keyID))
+		Expect(sig.GetKeyId()).To(Equal(keyID))
 
 		// Verify unsigned orders have no signature (entries[0] = RegisterSigningKey)
 		Expect(len(entries)).To(BeNumerically(">=", 1))
-		regEntry := entries[0]
-		Expect(regEntry.Orders[0].GetSignature()).To(BeNil())
+		regFull, err := sigClient.GetAuditEntry(sigCtx, &servicepb.GetAuditEntryRequest{
+			Sequence: entries[0].Sequence,
+		})
+		Expect(err).To(Succeed())
+		Expect(regFull.GetItems()).NotTo(BeEmpty())
+		Expect(regFull.GetItems()[0].GetOrder().GetSignature()).To(BeNil())
 	})
 
-	It("Should include multiple orders in a batch audit entry", func() {
+	It("Should include multiple items in a batch audit entry", func() {
 		// Submit multiple requests in a single Apply (batch)
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
@@ -289,12 +311,18 @@ var _ = Describe("Audit Log", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		last := entries[len(entries)-1]
-		Expect(last.Orders).To(HaveLen(2))
-		Expect(last.Orders[0].GetApply()).NotTo(BeNil())
-		Expect(last.Orders[1].GetApply()).NotTo(BeNil())
+		Expect(last.GetOrderCount()).To(Equal(uint32(2)))
+
+		full, err := sharedClient.GetAuditEntry(sharedCtx, &servicepb.GetAuditEntryRequest{
+			Sequence: last.Sequence,
+		})
+		Expect(err).To(Succeed())
+		Expect(full.GetItems()).To(HaveLen(2))
+		Expect(full.GetItems()[0].GetOrder().GetApply()).NotTo(BeNil())
+		Expect(full.GetItems()[1].GetOrder().GetApply()).NotTo(BeNil())
 	})
 
-	It("Should get a single audit entry by sequence", func() {
+	It("Should get a single entry with items populated", func() {
 		// Get all entries first
 		allEntries, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{})
 		Expect(err).To(Succeed())
@@ -308,7 +336,146 @@ var _ = Describe("Audit Log", Ordered, func() {
 		Expect(err).To(Succeed())
 		Expect(entry.Sequence).To(Equal(target.Sequence))
 		Expect(entry.ProposalId).To(Equal(target.ProposalId))
-		Expect(entry.Orders).To(HaveLen(len(target.Orders)))
+		Expect(len(entry.GetItems())).To(Equal(int(target.GetOrderCount())))
+	})
+
+	It("Should have log_sequence=0 for failure items", func() {
+		// Create a failing transaction
+		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+			Requests: []*servicepb.Request{
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("empty:nofunds", "bank", big.NewInt(99999), "USD"),
+				}, nil, nil),
+			},
+		})
+		Expect(err).To(HaveOccurred())
+
+		entries, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
+			FailuresOnly: true,
+		})
+		Expect(err).To(Succeed())
+		Expect(entries).NotTo(BeEmpty())
+
+		last := entries[len(entries)-1]
+		Expect(last.GetFailure()).NotTo(BeNil())
+
+		full, err := sharedClient.GetAuditEntry(sharedCtx, &servicepb.GetAuditEntryRequest{
+			Sequence: last.Sequence,
+		})
+		Expect(err).To(Succeed())
+		Expect(full.GetItems()).NotTo(BeEmpty())
+		for _, item := range full.GetItems() {
+			Expect(item.GetLogSequence()).To(BeZero(), "failure items should have log_sequence=0")
+		}
+	})
+
+	It("Should have sequential order_index values", func() {
+		// Submit 3 requests in a single batch
+		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+			Requests: []*servicepb.Request{
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "seq:a", big.NewInt(10), "USD"),
+				}, nil, nil),
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "seq:b", big.NewInt(20), "USD"),
+				}, nil, nil),
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "seq:c", big.NewInt(30), "USD"),
+				}, nil, nil),
+			},
+		})
+		Expect(err).To(Succeed())
+
+		entries, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{})
+		Expect(err).To(Succeed())
+
+		last := entries[len(entries)-1]
+		full, err := sharedClient.GetAuditEntry(sharedCtx, &servicepb.GetAuditEntryRequest{
+			Sequence: last.Sequence,
+		})
+		Expect(err).To(Succeed())
+		Expect(full.GetItems()).To(HaveLen(3))
+		Expect(full.GetItems()[0].GetOrderIndex()).To(Equal(uint32(0)))
+		Expect(full.GetItems()[1].GetOrderIndex()).To(Equal(uint32(1)))
+		Expect(full.GetItems()[2].GetOrderIndex()).To(Equal(uint32(2)))
+	})
+
+	It("Should have item log_sequence that correlates to an actual log", func() {
+		// Create a transaction to get a log sequence
+		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+			Requests: []*servicepb.Request{
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "logcorr:dest", big.NewInt(500), "USD"),
+				}, nil, nil),
+			},
+		})
+		Expect(err).To(Succeed())
+
+		entries, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{})
+		Expect(err).To(Succeed())
+
+		last := entries[len(entries)-1]
+		Expect(last.GetSuccess()).NotTo(BeNil())
+
+		full, err := sharedClient.GetAuditEntry(sharedCtx, &servicepb.GetAuditEntryRequest{
+			Sequence: last.Sequence,
+		})
+		Expect(err).To(Succeed())
+		Expect(full.GetItems()).To(HaveLen(1))
+
+		logSeq := full.GetItems()[0].GetLogSequence()
+		Expect(logSeq).NotTo(BeZero())
+
+		// Verify the log exists via GetLog
+		log, err := actions.GetLog(sharedCtx, sharedClient, logSeq)
+		Expect(err).To(Succeed())
+		Expect(log).NotTo(BeNil())
+		Expect(log.GetSequence()).To(Equal(logSeq))
+	})
+
+	It("Should have empty items on list entries", func() {
+		entries, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{})
+		Expect(err).To(Succeed())
+		Expect(entries).NotTo(BeEmpty())
+
+		for _, entry := range entries {
+			Expect(entry.GetItems()).To(BeEmpty(), "list entries should not have items populated")
+			Expect(entry.GetOrderCount()).To(BeNumerically(">", 0), "order_count should be positive")
+		}
+	})
+
+	It("Should have ledgers field populated on list entries when filtering by ledger", func() {
+		filtered, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
+			Ledger: ledgerName,
+		})
+		Expect(err).To(Succeed())
+		Expect(filtered).NotTo(BeEmpty())
+
+		for _, entry := range filtered {
+			Expect(entry.GetLedgers()).NotTo(BeEmpty(), "ledgers field should be populated on list entries")
+		}
+	})
+
+	It("Should have multiple ledgers in a multi-ledger batch", func() {
+		ledgerA := "audit-multi-a"
+		ledgerB := "audit-multi-b"
+
+		// Create 2 ledgers in one Apply
+		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+			Requests: []*servicepb.Request{
+				actions.CreateLedgerAction(ledgerA, nil),
+				actions.CreateLedgerAction(ledgerB, nil),
+			},
+		})
+		Expect(err).To(Succeed())
+
+		entries, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{})
+		Expect(err).To(Succeed())
+
+		last := entries[len(entries)-1]
+		ledgers := last.GetLedgers()
+		Expect(ledgers).To(ContainElement(ledgerA))
+		Expect(ledgers).To(ContainElement(ledgerB))
 	})
 
 	It("Should return NOT_FOUND for non-existent audit entry", func() {
@@ -318,5 +485,4 @@ var _ = Describe("Audit Log", Ordered, func() {
 		Expect(err).To(HaveOccurred())
 		Expect(status.Code(err)).To(Equal(codes.NotFound))
 	})
-
 })

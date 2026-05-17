@@ -13,15 +13,35 @@ import "raft_cmd.proto";
 
 // AuditEntry represents a single audit trail entry for a proposal.
 // Each proposal (success or failure) generates exactly one audit entry.
+// Per-order details are stored as separate AuditItem entries in Pebble
+// (zone 0x04, sub 0x03) and populated on GetAuditEntry responses.
 message AuditEntry {
   uint64 sequence = 1;
   common.Timestamp timestamp = 2;
   uint64 proposal_id = 3;
-  repeated raft.Order orders = 4;
   oneof outcome {
-    AuditSuccess success = 5;
-    AuditFailure failure = 6;
+    AuditSuccess success = 4;
+    AuditFailure failure = 5;
   }
+  // Number of orders in the proposal (allows compact display without loading items).
+  uint32 order_count = 6;
+  // Per-order detail lines. Populated by GetAuditEntry, empty on ListAuditEntries.
+  repeated AuditItem items = 7;
+  // Distinct ledger names targeted by orders in this proposal.
+  // Used for efficient filtering without loading items.
+  repeated string ledgers = 8;
+}
+
+// AuditItem represents one order within a proposal, stored separately from the
+// AuditEntry header. Pebble key: [ZoneCold][SubColdAuditItem][audit_seq BE 8][order_idx BE 4].
+message AuditItem {
+  // Zero-based position of this order within the proposal.
+  uint32 order_index = 1;
+  // The original order.
+  raft.Order order = 2;
+  // Sequence of the log produced by this order. Zero if the order was
+  // an idempotent replay or if the proposal failed.
+  uint64 log_sequence = 3;
 }
 
 // AuditSuccess records the log sequence range created by a successful proposal

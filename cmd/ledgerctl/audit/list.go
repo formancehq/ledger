@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"time"
 
 	"github.com/pterm/pterm"
@@ -131,8 +132,17 @@ func printAuditEntry(entry *auditpb.AuditEntry) {
 		pterm.Gray(statusText),
 	)
 
-	// Group consecutive identical orders for compact display
-	printGroupedOrders(entry.GetOrders())
+	// Display items if populated (GetAuditEntry), otherwise show order count summary.
+	if items := entry.GetItems(); len(items) > 0 {
+		orders := make([]*raftcmdpb.Order, len(items))
+		for i, item := range items {
+			orders[i] = item.GetOrder()
+		}
+
+		printGroupedOrders(orders)
+	} else if entry.GetOrderCount() > 0 {
+		pterm.Printf("    └─ %s orders\n", pterm.Cyan(strconv.FormatUint(uint64(entry.GetOrderCount()), 10)))
+	}
 }
 
 // formatLogRange formats a log sequence range compactly.

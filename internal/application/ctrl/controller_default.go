@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"slices"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -1165,24 +1166,10 @@ func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, afterSequen
 	return result, nil
 }
 
-// auditEntryTargetsLedger returns true if any order in the audit entry targets the given ledger.
+// auditEntryTargetsLedger returns true if the audit entry targets the given ledger.
+// Uses the pre-computed ledgers field stored on the entry header.
 func auditEntryTargetsLedger(entry *auditpb.AuditEntry, ledger string) bool {
-	for _, order := range entry.GetOrders() {
-		switch {
-		case order.GetApply() != nil && order.GetApply().GetLedger() == ledger:
-			return true
-		case order.GetCreateLedger() != nil && order.GetCreateLedger().GetName() == ledger:
-			return true
-		case order.GetDeleteLedger() != nil && order.GetDeleteLedger().GetName() == ledger:
-			return true
-		case order.GetMirrorIngest() != nil && order.GetMirrorIngest().GetLedger() == ledger:
-			return true
-		case order.GetPromoteLedger() != nil && order.GetPromoteLedger().GetLedger() == ledger:
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(entry.GetLedgers(), ledger)
 }
 
 // GetLog returns a single system log by sequence number.
@@ -1207,7 +1194,7 @@ func (ctrl *DefaultController) GetLog(ctx context.Context, sequence uint64) (*co
 	return log, nil
 }
 
-// GetAuditEntry returns a single audit entry by sequence number.
+// GetAuditEntry returns a single audit entry by sequence number, with items populated.
 func (ctrl *DefaultController) GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
@@ -1224,6 +1211,13 @@ func (ctrl *DefaultController) GetAuditEntry(ctx context.Context, sequence uint6
 
 		return nil, fmt.Errorf("getting audit entry %d: %w", sequence, err)
 	}
+
+	items, err := query.ReadAuditItems(ctx, handle, sequence)
+	if err != nil {
+		return nil, fmt.Errorf("reading audit items for entry %d: %w", sequence, err)
+	}
+
+	entry.Items = items
 
 	return entry, nil
 }

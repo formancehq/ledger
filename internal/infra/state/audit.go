@@ -158,6 +158,72 @@ func buildAuditFailure(err error) *auditpb.AuditFailure {
 	return failure
 }
 
+// buildAuditItems creates AuditItem entries from orders and their associated logs.
+// For failure cases (logs is nil), all items get LogSequence=0.
+func buildAuditItems(orders []*raftcmdpb.Order, logs []*raftcmdpb.CreatedLogOrReference) []*auditpb.AuditItem {
+	items := make([]*auditpb.AuditItem, len(orders))
+
+	for i, order := range orders {
+		item := &auditpb.AuditItem{
+			OrderIndex: uint32(i),
+			Order:      order,
+		}
+
+		if i < len(logs) {
+			if created := logs[i].GetCreatedLog(); created != nil {
+				item.LogSequence = created.GetSequence()
+			} else if refSeq := logs[i].GetReferenceSequence(); refSeq > 0 {
+				item.LogSequence = refSeq
+			}
+		}
+
+		items[i] = item
+	}
+
+	return items
+}
+
+// extractLedgers returns the distinct ledger names targeted by a set of orders.
+func extractLedgers(orders []*raftcmdpb.Order) []string {
+	seen := make(map[string]struct{})
+
+	for _, order := range orders {
+		var ledger string
+
+		switch {
+		case order.GetApply() != nil:
+			ledger = order.GetApply().GetLedger()
+		case order.GetCreateLedger() != nil:
+			ledger = order.GetCreateLedger().GetName()
+		case order.GetDeleteLedger() != nil:
+			ledger = order.GetDeleteLedger().GetName()
+		case order.GetMirrorIngest() != nil:
+			ledger = order.GetMirrorIngest().GetLedger()
+		case order.GetPromoteLedger() != nil:
+			ledger = order.GetPromoteLedger().GetLedger()
+		case order.GetSaveLedgerMetadata() != nil:
+			ledger = order.GetSaveLedgerMetadata().GetLedger()
+		case order.GetDeleteLedgerMetadata() != nil:
+			ledger = order.GetDeleteLedgerMetadata().GetLedger()
+		}
+
+		if ledger != "" {
+			seen[ledger] = struct{}{}
+		}
+	}
+
+	if len(seen) == 0 {
+		return nil
+	}
+
+	ledgers := make([]string, 0, len(seen))
+	for l := range seen {
+		ledgers = append(ledgers, l)
+	}
+
+	return ledgers
+}
+
 // extractLogSequenceRange returns the min and max log sequence from a slice of
 // CreatedLogOrReference. For created logs it uses the log sequence; for
 // idempotent references it uses the reference sequence. Returns (0, 0) if empty.

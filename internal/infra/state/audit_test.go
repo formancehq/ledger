@@ -85,7 +85,7 @@ func TestAuditLogOnSuccess(t *testing.T) {
 	require.Equal(t, uint64(1), first.GetProposalId())
 	require.NotNil(t, first.GetSuccess(), "create ledger should be success")
 	require.NotZero(t, first.GetSuccess().GetMinLogSequence())
-	require.NotEmpty(t, first.GetOrders())
+	require.NotZero(t, first.GetOrderCount())
 
 	// Second entry: create transaction (success)
 	second := entries[1]
@@ -93,7 +93,7 @@ func TestAuditLogOnSuccess(t *testing.T) {
 	require.Equal(t, uint64(2), second.GetProposalId())
 	require.NotNil(t, second.GetSuccess(), "transaction should be success")
 	require.NotZero(t, second.GetSuccess().GetMinLogSequence())
-	require.NotEmpty(t, second.GetOrders())
+	require.NotZero(t, second.GetOrderCount())
 	require.NotNil(t, second.GetTimestamp())
 }
 

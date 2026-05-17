@@ -58,6 +58,24 @@ func AppendAuditEntries(b *dal.Batch, entries ...*auditpb.AuditEntry) error {
 	return nil
 }
 
+// AppendAuditItems appends per-order audit items to the batch.
+// Key format: [ZoneCold][SubColdAuditItem][audit_sequence BE 8][order_index BE 4].
+func AppendAuditItems(b *dal.Batch, auditSequence uint64, items ...*auditpb.AuditItem) error {
+	for _, item := range items {
+		b.KeyBuilder.
+			PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).
+			PutUint64(auditSequence).
+			PutUint32(item.GetOrderIndex())
+
+		err := b.SetProto(b.KeyBuilder.Consume(), item)
+		if err != nil {
+			return fmt.Errorf("inserting audit item: %w", err)
+		}
+	}
+
+	return nil
+}
+
 // SaveSigningKey stores an Ed25519 public key in the batch.
 // The value format is [publicKey (32 bytes)][parentKeyID (UTF-8 variable)].
 // Backward-compatible: existing 32-byte values are treated as root keys (no parent).
