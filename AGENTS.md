@@ -93,7 +93,7 @@ The default build (`go build .`) produces a **light binary** (~60 MB) without he
 | `s3` | S3 cold storage & backup | `aws-sdk-go-v2` |
 | `pyroscope` | Pyroscope continuous profiling | `grafana/pyroscope-go` |
 
-Build with all features: `just build-full` or `go build -tags "kafka,nats,clickhouse,s3,pyroscope" .`
+Build with all features: `just build-full` or `go build -tags "kafka,nats,clickhouse,databricks,s3,pyroscope" .`
 
 Scenario tests use a separate build tag: `go test -tags scenario ./tests/scenarios/... -timeout 20m`
 
@@ -113,11 +113,11 @@ Key rules:
 ```bash
 # Unit tests with all features
 just test-full
-# or: go test -tags "kafka,nats,clickhouse,s3,pyroscope" ./... -timeout 20m
+# or: go test -tags "kafka,nats,clickhouse,databricks,s3,pyroscope" ./... -timeout 20m
 
 # E2E tests with all features
 just test-e2e-full
-# or: go test -tags "e2e,kafka,nats,clickhouse,s3,pyroscope" ./tests/e2e/... -timeout 20m
+# or: go test -tags "e2e,kafka,nats,clickhouse,databricks,s3,pyroscope" ./tests/e2e/... -timeout 20m
 
 # E2E tests for a specific feature (e.g., ClickHouse sink)
 go test -tags "e2e,clickhouse" ./tests/e2e/... -timeout 20m

@@ -4,11 +4,11 @@
 
 ### One file per command (CLI)
 
-Each CLI sub-command has its own file in `cmd/ledgerctl/`:
-- `ledgers.go` - Parent command
-- `ledgers_create.go` - `ledgers create`
-- `ledgers_list.go` - `ledgers list`
-- `ledgers_get.go` - `ledgers get`
+Each CLI sub-command has its own file in a sub-package under `cmd/ledgerctl/`:
+- `cmd/ledgerctl/ledgers/root.go` - Parent command
+- `cmd/ledgerctl/ledgers/create.go` - `ledgers create`
+- `cmd/ledgerctl/ledgers/list.go` - `ledgers list`
+- `cmd/ledgerctl/ledgers/get.go` - `ledgers get`
 
 ### One file per HTTP handler
 
@@ -99,18 +99,18 @@ Interfaces with mockgen annotations:
 
 | Interface | File |
 |-----------|------|
-| `WAL` | `internal/infra/node/node.go` |
 | `Transport` | `internal/infra/node/transport.go` |
 | `Controller` | `internal/application/ctrl/controller.go` |
-| `Engine` | `internal/application/ctrl/controller_default.go` |
+| `Admission` | `internal/application/ctrl/controller_default.go` |
 | `Spool` | `internal/storage/spool/spool.go` |
 | `WAL` | `internal/storage/wal/wal.go` |
-| `Store` | `internal/domain/processing/processor.go` |
+| `InMemoryStore` | `internal/domain/processing/store.go` |
 | `Checker` | `internal/infra/health/healthcheck.go` |
+| `Proposer` | `internal/infra/state/metadata_converter.go` |
 
 ## Adding a New CLI Command
 
-1. Create `cmd/ledgerctl/<group>_<action>.go` with:
+1. Create `cmd/ledgerctl/<group>/<action>.go` with:
    - Command variable (`var fooBarCmd = &cobra.Command{...}`)
    - `init()` function to register it under the parent
    - `runFooBar()` function with the logic

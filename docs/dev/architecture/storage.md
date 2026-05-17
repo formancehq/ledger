@@ -201,49 +201,37 @@ Snapshots are created automatically when:
 
 ### Snapshot Contents
 
-The snapshot (`MemorySnapshot`) contains the complete in-memory FSM state:
-- Next ledger ID, global sequence, last log hash, checkpoint ID
+The snapshot captures the complete in-memory FSM cache state:
 - Dual-generation attribute cache (gen0 + gen1) with all:
   - Input/output volumes per account/asset
   - Account and ledger metadata
   - Ledger info entries
-  - Ledger boundaries (next log ID, next transaction ID per ledger)
-  - Transaction references
-- Per-ledger reversion bitsets (packed `uint64` arrays)
-- HLC timestamp of last applied entry
-- Next audit sequence ID
+  - Ledger boundaries (next log ID, next transaction ID, and per-ledger counters)
+  - Transaction references and transaction state
+- Per-ledger reversion bitsets (persisted separately in Pebble zone `0x03`, reconstructed on restore)
+- Global state (applied index, timestamp, sequence IDs) persisted in Pebble zone `0x06`
 
-### Snapshot Format
+### Snapshot Mechanism
 
-Snapshots are serialized using Protocol Buffers. The FSM snapshot captures the complete in-memory state:
+The FSM cache is persisted via `CacheSnapshotter` to Pebble zone `0x02`. There is no single `MemorySnapshot` protobuf message -- instead, the cache is serialized per generation using the `GenerationSnapshot` proto:
 
 ```protobuf
-message MemorySnapshot {
-  uint32 next_ledger_id = 1;
-  uint64 next_sequence_id = 2;
-  bytes last_log_hash = 3;
-  GenerationSnapshot gen0 = 4;           // Current generation
-  GenerationSnapshot gen1 = 5;           // Previous generation (may be nil)
-  uint64 checkpoint_id = 6;
-  uint64 current_generation = 7;
-  uint64 last_applied_timestamp = 8;     // HLC timestamp (microseconds since epoch)
-  uint64 next_audit_sequence_id = 9;     // Next audit log sequence ID
-  repeated ReversionBitsetEntry reversions = 14; // Per-ledger reversion bitsets
-}
-
 message GenerationSnapshot {
   uint64 base_index = 1;
-  repeated VolumeAttributeEntry input = 2;
-  repeated VolumeAttributeEntry output = 3;
-  repeated MetadataAttributeEntry metadata = 4;
-  repeated MetadataAttributeEntry ledger_metadata = 5;
-  repeated LedgerAttributeEntry ledgers = 6;
-  repeated BoundaryAttributeEntry boundaries = 7;
-  repeated TransactionReferenceAttributeEntry references = 8;
+  repeated VolumeAttributeSnapshotEntry volumes = 2;
+  repeated MetadataAttributeEntry metadata = 3;       // Account metadata
+  repeated MetadataAttributeEntry ledger_metadata = 4; // Ledger metadata
+  repeated LedgerAttributeEntry ledgers = 5;
+  repeated BoundaryAttributeEntry boundaries = 6;
+  repeated TransactionReferenceAttributeEntry references = 7;
+  repeated TransactionStateAttributeEntry transactions = 8;
+  reserved 9; // was: idempotency_keys (moved to dedicated prefix 0x03)
 }
 ```
 
-The snapshot contains the full attribute cache state (volumes, metadata, ledger info, boundaries, references) serialized per generation, plus per-ledger reversion bitsets, allowing fast in-memory restoration without reading from Pebble.
+Reversions are **not** included in `GenerationSnapshot`. They are stored per-word in Pebble zone `0x03` (`ZonePerLedger` + `SubPLReversions`) and reconstructed from Pebble via `ReadReversions` on startup or snapshot restore.
+
+The snapshot contains the full attribute cache state (volumes, metadata, ledger info, boundaries, references, transaction state) serialized per generation, allowing fast in-memory restoration.
 
 ### Restoration from Snapshot
 
@@ -268,14 +256,21 @@ When a node is synchronizing from a snapshot (e.g., after joining the cluster or
 **Spool Operations**:
 
 ```go
-// Append commands to the spool during synchronization
-func (s *spool) AppendCommittedEntries(ctx context.Context, commands ...Command) error
+// Append committed Raft entries to the spool during synchronization
+func (s *spool) AppendCommittedEntries(ctx context.Context, entries ...raftpb.Entry) error
 
-// Read the next command from the spool (iterator pattern)
-func (s *spool) Next() (Command, error) // Returns io.EOF when no more commands
+// End returns the current end position of the spool
+func (s *spool) End() (*Position, error)
 
-// Reset the spool after replay is complete
-func (s *spool) Reset() error
+// ReplayUntil replays spool entries up to the given position, skipping entries
+// already applied (index <= lastApplied), calling applyFn for each new entry
+func (s *spool) ReplayUntil(ctx context.Context, end Position, lastApplied uint64, applyFn func(raftpb.Entry) error) error
+
+// Prune removes spool segments where all entries have been applied
+func (s *spool) Prune(lastApplied uint64) error
+
+// Close releases spool resources
+func (s *spool) Close() error
 ```
 
 **Spool File Format**:

@@ -611,7 +611,7 @@ See [Global Log Architecture](./architecture/global-log.md) for details on how t
 
 The POC provides a gRPC API for internal service communication (Raft node forwarding to leader) and can be used by clients.
 
-### LedgerService Methods
+### BucketService Methods
 
 | Method | Description | Status |
 |--------|-------------|--------|

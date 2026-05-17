@@ -45,21 +45,21 @@ The single Raft group handles all commands through a unified FSM:
 
 ### State Management
 
-The FSM maintains a unified state for all ledgers:
+The FSM maintains a unified state for all ledgers via the `Machine` struct (`internal/infra/state/machine.go`) and its `StateRegistry` (`internal/infra/state/registry.go`). The following is a conceptual representation of the state -- these are **not** actual proto definitions but describe the Go struct fields:
 
-```protobuf
-message State {
-  map<uint32, LedgerState> ledgers = 1;  // All ledgers by numeric ID
-  uint32 next_ledger_id = 2;
-  uint64 next_sequence = 3;              // Global log sequence
-  uint64 checkpoint_id = 4;
-}
+```
+Machine state (conceptual):
+  nextSequenceID          uint64        // Global log sequence number
+  lastAppliedIndex        uint64        // Last Raft entry applied
+  lastAppliedTimestamp    uint64        // HLC timestamp of last applied entry
 
-message LedgerState {
-  LedgerInfo ledger_info = 1;
-  uint64 next_log_id = 2;
-  uint64 next_transaction_id = 3;
-}
+  Registry.Ledgers        KeyStore      // Per-ledger LedgerInfo
+  Registry.Boundaries     KeyStore      // Per-ledger LedgerBoundaries (next log/tx IDs, counters)
+  Registry.Volumes        KeyStore      // Per-ledger per-account per-asset VolumePair
+  Registry.AccountMetadata KeyStore     // Per-ledger per-account metadata
+  Registry.References     KeyStore      // Per-ledger transaction references
+  Registry.Reversions     map[string]*Bitset  // Per-ledger reversion bitsets
+  // ... and other attribute KeyStores (Transactions, SinkConfigs, etc.)
 ```
 
 ### Advantages of Single Raft
@@ -110,7 +110,7 @@ type Applier struct {
     store                   *dal.Store
     wal                     wal.WAL
     futures                 *SyncMap[uint64, *futures.Future[state.ApplyResult]]
-    taskExecutor            *singleTaskExecutor
+    taskExecutor            *worker.SingleTaskExecutor
     status                  *atomic.Int32       // statusNormal, statusSyncing, etc.
     ch                      chan applyWork       // buffered(1)
     // ... config, metrics, etc.

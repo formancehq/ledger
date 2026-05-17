@@ -43,13 +43,15 @@ client := servicepb.NewBucketServiceClient(conn)
 
 The main service is `BucketService`:
 
+> **Note:** The listing below is a partial excerpt. The actual `BucketService` in `misc/proto/bucket.proto` defines 30+ RPCs including prepared queries, numscript library, period management, signing keys, index management, analysis, and more. See `bucket.proto` for the full definition.
+
 ```protobuf
 service BucketService {
   // Read operations
   rpc ListLedgers(ListLedgersRequest) returns (stream LedgerInfo);
   rpc GetLedger(GetLedgerRequest) returns (LedgerInfo);
   rpc GetAccount(GetAccountRequest) returns (Account);
-  rpc GetTransaction(GetTransactionRequest) returns (Transaction);
+  rpc GetTransaction(GetTransactionRequest) returns (GetTransactionResponse);
   rpc ListTransactions(ListTransactionsRequest) returns (stream Transaction);
 
   // Write operations (unified Apply method)
@@ -62,6 +64,8 @@ service BucketService {
 
   // Audit
   rpc ListAuditEntries(ListAuditEntriesRequest) returns (stream AuditEntry);
+
+  // ... and 20+ more RPCs (see bucket.proto for the full list)
 }
 ```
 
@@ -128,7 +132,7 @@ for asset, volumes := range account.Volumes {
 Retrieves a transaction by ID.
 
 ```go
-tx, err := client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
+resp, err := client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
     Ledger:        "my-ledger",
     TransactionId: 1,
 })
@@ -136,6 +140,7 @@ if err != nil {
     return err
 }
 
+tx := resp.Transaction
 fmt.Printf("Transaction %d: %d postings\n", tx.Id, len(tx.Postings))
 for _, p := range tx.Postings {
     fmt.Printf("  %s -> %s: %s %s\n", p.Source, p.Destination, p.Amount, p.Asset)
@@ -706,7 +711,7 @@ The proto definitions are located in `misc/proto/`:
 
 | File | Description |
 |------|-------------|
-| `service.proto` | Main gRPC service definition |
+| `bucket.proto` | Main gRPC service definition (BucketService) |
 | `common.proto` | Shared data types (Transaction, Account, Log, etc.) |
 | `raft_transport.proto` | Raft inter-node communication |
 | `raftcmd.proto` | Internal Raft command types |

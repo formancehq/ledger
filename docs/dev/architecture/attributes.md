@@ -25,7 +25,7 @@ See [Deterministic FSM](./deterministic-fsm.md) for details on the caching and p
 | **Reversions** | ledger + txID | `bit` | Per-ledger | In-memory bitset, persisted per-word in Pebble zone `0x03` |
 | **Transaction References** | ledger/reference | `uint64` (txID) | Per-ledger | Immutable once set |
 | **Ledgers** | ledger name | `LedgerInfo` | System-wide | Last-write-wins |
-| **Boundaries** | ledger ID | `LedgerBoundaries` | Per-ledger | Last-write-wins |
+| **Boundaries** | ledger name | `LedgerBoundaries` | Per-ledger | Last-write-wins |
 
 ## Volumes (Input/Output)
 
@@ -159,8 +159,8 @@ Track per-ledger boundaries (next log ID, next transaction ID).
 
 | Property | Description |
 |----------|-------------|
-| **Key** | `LedgerID` (uint32) |
-| **Value** | `LedgerBoundaries` (next log ID, next transaction ID) |
+| **Key** | `LedgerKey` (string-based ledger name) |
+| **Value** | `LedgerBoundaries` (next log ID, next transaction ID, and per-ledger counters) |
 | **Computation** | Last-write-wins |
 | **Scope** | Per-ledger |
 

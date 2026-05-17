@@ -1892,7 +1892,7 @@ ledgerctl store incremental-backup [flags]
 **Behavior:**
 - Requires a prior full backup (fails if no checkpoint exists in manifest)
 - Takes a point-in-time Pebble snapshot for consistent reads
-- Streams new log entries (`0x01`) and audit entries (`0x02`) as KV stream segments
+- Streams new log entries (`{0x04, 0x01}`) and audit entries (`{0x04, 0x02}`) as KV stream segments
 - Appends new export segments to the manifest
 - No-op if no new entries since last export
 - Response includes `logEntriesExported`, `auditEntriesExported`, `lastLogSequence`, `lastAuditSequence`
