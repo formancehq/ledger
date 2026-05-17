@@ -83,6 +83,10 @@ func New(dir string, logger logging.Logger, cfg Config) (*Store, error) {
 	opts := &pebble.Options{
 		Logger:             dal.NewPebbleLogger(logger),
 		FormatMajorVersion: pebble.FormatNewest,
+		// Custom comparer: splits keys at [prefix][ledger\x00] boundary
+		// so bloom filters are built on ledger-scoped prefixes, enabling
+		// SeekPrefixGE to skip SSTables that don't contain the target ledger.
+		Comparer: ReadStoreComparer,
 		// The read index is a derived view rebuilt from the Raft log.
 		// We can safely disable WAL: on crash the index builder simply
 		// replays from its last progress cursor.
@@ -137,6 +141,7 @@ func New(dir string, logger logging.Logger, cfg Config) (*Store, error) {
 func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
 	db, err := pebble.Open(dirPath, &pebble.Options{
 		Logger:   dal.NewPebbleLogger(logger),
+		Comparer: ReadStoreComparer,
 		ReadOnly: true,
 	})
 	if err != nil {

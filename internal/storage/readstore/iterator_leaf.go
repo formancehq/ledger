@@ -53,7 +53,11 @@ func (it *PrefixIterator) Next() bool {
 
 	if !it.started {
 		it.started = true
-		if !it.iter.First() {
+		// SeekPrefixGE enables bloom filter checks: Pebble skips SSTables
+		// whose bloom filter does not contain the prefix extracted by
+		// Comparer.Split (the ledger-scoped prefix). This applies to
+		// the initial seek and all subsequent Next() calls.
+		if !it.iter.SeekPrefixGE(it.prefix) {
 			it.exhausted = true
 
 			return false
@@ -97,13 +101,13 @@ func (it *PrefixIterator) SeekGE(target []byte) bool {
 
 	it.started = true
 
-	if !it.iter.SeekGE(seekKey) {
+	if !it.iter.SeekPrefixGE(seekKey) {
 		it.exhausted = true
 
 		return false
 	}
 
-	// The Pebble iterator is bounded by UpperBound, so no need to check HasPrefix.
+	// SeekPrefixGE constrains iteration to the prefix; UpperBound is still respected.
 	for it.iter.Valid() {
 		entity := it.extractEntity(it.iter.Key())
 		if entity != nil && compareEntities(entity, target) >= 0 {
@@ -149,6 +153,7 @@ func (it *PrefixIterator) extractEntity(key []byte) []byte {
 // extracting entity IDs from each key.
 type RangeIterator struct {
 	iter         *pebble.Iterator
+	lowerBound   []byte // stored for SeekPrefixGE initial positioning
 	entityOffset int
 	entityLen    int
 	current      []byte
@@ -173,6 +178,7 @@ func NewRangeIterator(
 
 	return &RangeIterator{
 		iter:         iter,
+		lowerBound:   lower,
 		entityOffset: entityOffset,
 		entityLen:    entityLen,
 	}, nil
@@ -185,7 +191,7 @@ func (it *RangeIterator) Next() bool {
 
 	if !it.started {
 		it.started = true
-		if !it.iter.First() {
+		if !it.iter.SeekPrefixGE(it.lowerBound) {
 			it.exhausted = true
 
 			return false
@@ -223,19 +229,16 @@ func (it *RangeIterator) SeekGE(target []byte) bool {
 	}
 
 	seekKey := make([]byte, 0, it.entityOffset+len(target))
-	// Use the current iterator key prefix if available, otherwise use lower bound.
-	if it.iter.Valid() {
-		k := it.iter.Key()
-		if len(k) >= it.entityOffset {
-			seekKey = append(seekKey, k[:it.entityOffset]...)
-		}
+	// Use the stored lower bound prefix for seek key construction.
+	if len(it.lowerBound) >= it.entityOffset {
+		seekKey = append(seekKey, it.lowerBound[:it.entityOffset]...)
 	}
 
 	seekKey = append(seekKey[:min(len(seekKey), it.entityOffset)], target...)
 
 	it.started = true
 
-	if !it.iter.SeekGE(seekKey) {
+	if !it.iter.SeekPrefixGE(seekKey) {
 		it.exhausted = true
 
 		return false

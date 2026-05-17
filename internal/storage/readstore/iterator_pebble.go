@@ -119,7 +119,9 @@ func (it *PebbleAccountIterator) Next() bool {
 
 	if !it.started {
 		it.started = true
-		if !it.iter.First() {
+		// SeekPrefixGE enables bloom filter checks on the ledger-scoped prefix,
+		// skipping SSTables that don't contain keys for this ledger/type.
+		if !it.iter.SeekPrefixGE(it.prefix) {
 			it.exhausted = true
 
 			return false
@@ -145,7 +147,7 @@ func (it *PebbleAccountIterator) advance() bool {
 	n += copy(seekKey[n:], it.current)
 	seekKey[n] = dal.CanonicalKeySepMetadata + 1 // 0x02, past both separators
 
-	if !it.iter.SeekGE(seekKey) {
+	if !it.iter.SeekPrefixGE(seekKey) {
 		it.exhausted = true
 
 		return false
@@ -185,7 +187,7 @@ func (it *PebbleAccountIterator) SeekGE(target []byte) bool {
 	copy(seekKey, it.prefix)
 	copy(seekKey[len(it.prefix):], target)
 
-	if !it.iter.SeekGE(seekKey) {
+	if !it.iter.SeekPrefixGE(seekKey) {
 		it.exhausted = true
 
 		return false
@@ -443,7 +445,7 @@ func (it *PebbleTxIterator) Next() bool {
 
 	if !it.started {
 		it.started = true
-		if !it.iter.First() {
+		if !it.iter.SeekPrefixGE(it.prefix) {
 			it.exhausted = true
 
 			return false
@@ -468,7 +470,7 @@ func (it *PebbleTxIterator) advanceToNextTx() bool {
 	copy(seekKey, it.prefix)
 	copy(seekKey[len(it.prefix):], nextTxID)
 
-	if !it.iter.SeekGE(seekKey) {
+	if !it.iter.SeekPrefixGE(seekKey) {
 		it.exhausted = true
 
 		return false
@@ -501,7 +503,7 @@ func (it *PebbleTxIterator) SeekGE(target []byte) bool {
 	copy(seekKey, it.prefix)
 	copy(seekKey[len(it.prefix):], target)
 
-	if !it.iter.SeekGE(seekKey) {
+	if !it.iter.SeekPrefixGE(seekKey) {
 		it.exhausted = true
 
 		return false
@@ -705,8 +707,9 @@ func (it *LedgerLogIterator) Close()                    { it.inner.Close() }
 // PebbleTxRangeIterator iterates over transaction IDs within a [min, max) range.
 // Used for compileTxIDCondition range scans.
 type PebbleTxRangeIterator struct {
-	iter     *pebble.Iterator
-	idOffset int
+	iter       *pebble.Iterator
+	lowerBound []byte // stored for SeekPrefixGE initial positioning
+	idOffset   int
 
 	current   []byte
 	started   bool
@@ -739,8 +742,9 @@ func NewPebbleTxRangeIterator(reader dal.PebbleReader, ledger string, lower, upp
 	}
 
 	return &PebbleTxRangeIterator{
-		iter:     iter,
-		idOffset: len(prefix),
+		iter:       iter,
+		lowerBound: lowerBound,
+		idOffset:   len(prefix),
 	}, nil
 }
 
@@ -751,7 +755,7 @@ func (it *PebbleTxRangeIterator) Next() bool {
 
 	if !it.started {
 		it.started = true
-		if !it.iter.First() {
+		if !it.iter.SeekPrefixGE(it.lowerBound) {
 			it.exhausted = true
 
 			return false
@@ -775,7 +779,7 @@ func (it *PebbleTxRangeIterator) Next() bool {
 
 	copy(seekKey[it.idOffset:], nextTxID)
 
-	if !it.iter.SeekGE(seekKey) {
+	if !it.iter.SeekPrefixGE(seekKey) {
 		it.exhausted = true
 
 		return false
@@ -802,23 +806,12 @@ func (it *PebbleTxRangeIterator) SeekGE(target []byte) bool {
 
 	it.started = true
 
-	if !it.iter.First() {
-		it.exhausted = true
-
-		return false
-	}
-
-	// Build seek key from current iter key prefix + target
-	key := it.iter.Key()
+	// Build seek key from stored lower bound prefix + target
 	seekKey := make([]byte, it.idOffset+len(target))
-
-	if len(key) >= it.idOffset {
-		copy(seekKey, key[:it.idOffset])
-	}
-
+	copy(seekKey, it.lowerBound[:min(it.idOffset, len(it.lowerBound))])
 	copy(seekKey[it.idOffset:], target)
 
-	if !it.iter.SeekGE(seekKey) {
+	if !it.iter.SeekPrefixGE(seekKey) {
 		it.exhausted = true
 
 		return false
