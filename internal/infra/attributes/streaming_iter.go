@@ -42,7 +42,7 @@ func (a *Attribute[V]) NewStreamingIter(reader dal.PebbleReader, canonicalPrefix
 	// Bounds include the attrType byte so Pebble only scans entries of this type.
 	// Lower: [0xF1][attrType][canonicalPrefix]
 	lowerBound := make([]byte, 2+len(canonicalPrefix))
-	lowerBound[0] = dal.KeyPrefixAttributes
+	lowerBound[0] = dal.ZoneAttributes
 	lowerBound[1] = a.prefix
 	copy(lowerBound[2:], canonicalPrefix)
 
@@ -51,11 +51,11 @@ func (a *Attribute[V]) NewStreamingIter(reader dal.PebbleReader, canonicalPrefix
 	var upperBound []byte
 	if incPrefix := IncrementBytes(canonicalPrefix); incPrefix != nil {
 		upperBound = make([]byte, 2+len(incPrefix))
-		upperBound[0] = dal.KeyPrefixAttributes
+		upperBound[0] = dal.ZoneAttributes
 		upperBound[1] = a.prefix
 		copy(upperBound[2:], incPrefix)
 	} else {
-		upperBound = []byte{dal.KeyPrefixAttributes, a.prefix + 1}
+		upperBound = []byte{dal.ZoneAttributes, a.prefix + 1}
 	}
 
 	iter, err := reader.NewIter(&pebble.IterOptions{

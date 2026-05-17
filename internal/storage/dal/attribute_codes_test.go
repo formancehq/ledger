@@ -14,61 +14,36 @@ func TestAttributeCodesUnique(t *testing.T) {
 	t.Parallel()
 
 	codes := map[byte]string{
-		dal.AttributeCodeVolume:           "Volume",
-		dal.AttributeCodeMetadata:         "Metadata",
-		dal.AttributeCodeIdempotency:      "Idempotency",
-		dal.AttributeCodeReference:        "Reference",
-		dal.AttributeCodeLedger:           "Ledger",
-		dal.AttributeCodeBoundary:         "Boundary",
-		dal.AttributeCodeTransaction:      "Transaction",
-		dal.AttributeCodeSinkConfig:       "SinkConfig",
-		dal.AttributeCodeNumscriptVersion: "NumscriptVersion",
-		dal.AttributeCodeNumscriptContent: "NumscriptContent",
-		dal.AttributeCodePreparedQuery:    "PreparedQuery",
-		dal.AttributeCodeLedgerMetadata:   "LedgerMetadata",
+		dal.SubAttrVolume:           "Volume",
+		dal.SubAttrMetadata:         "Metadata",
+		dal.SubAttrReference:        "Reference",
+		dal.SubAttrLedger:           "Ledger",
+		dal.SubAttrBoundary:         "Boundary",
+		dal.SubAttrTransaction:      "Transaction",
+		dal.SubAttrSinkConfig:       "SinkConfig",
+		dal.SubAttrNumscriptVersion: "NumscriptVersion",
+		dal.SubAttrNumscriptContent: "NumscriptContent",
+		dal.SubAttrPreparedQuery:    "PreparedQuery",
+		dal.SubAttrLedgerMetadata:   "LedgerMetadata",
 	}
 
 	// If two codes mapped to the same byte, the map would silently keep only the last one.
 	// Verify by checking the expected count.
-	require.Len(t, codes, 12, "duplicate attribute code detected — map collapsed two entries with the same byte value")
+	require.Len(t, codes, 11, "duplicate attribute code detected — map collapsed two entries with the same byte value")
 }
 
-// TestKeyPrefixesUnique ensures no two key prefix constants share the same byte value.
-func TestKeyPrefixesUnique(t *testing.T) {
+// TestZonePrefixesUnique ensures no two zone prefix constants share the same byte value.
+func TestZonePrefixesUnique(t *testing.T) {
 	t.Parallel()
 
-	prefixes := map[byte]string{
-		dal.KeyPrefixLog:                      "Log",
-		dal.KeyPrefixAudit:                    "Audit",
-		dal.KeyPrefixIdempotency:              "Idempotency",
-		dal.KeyPrefixIdempotencyTimeIdx:       "IdempotencyTimeIdx",
-		dal.KeyPrefixPreparedQuery:            "PreparedQuery",
-		dal.KeyPrefixPendingLedgerCleanup:     "PendingLedgerCleanup",
-		dal.KeyPrefixQueryCheckpoint:          "QueryCheckpoint",
-		dal.KeyPrefixNextQueryCheckpointID:    "NextQueryCheckpointID",
-		dal.KeyPrefixQueryCheckpointSchedule:  "QueryCheckpointSchedule",
-		dal.KeyPrefixReversions:               "Reversions",
-		dal.KeyPrefixClusterConfig:            "ClusterConfig",
-		dal.KeyPrefixBloom:                    "Bloom",
-		dal.KeyPrefixMirrorSourceHead:         "MirrorSourceHead",
-		dal.KeyPrefixMirrorCursor:             "MirrorCursor",
-		dal.KeyPrefixMirrorStatus:             "MirrorStatus",
-		dal.KeyPrefixPeriodSchedule:           "PeriodSchedule",
-		dal.KeyPrefixAttributes:               "Attributes",
-		dal.KeyPrefixLastAppliedIndex:         "LastAppliedIndex",
-		dal.KeyPrefixLastAppliedTimestamp:      "LastAppliedTimestamp",
-		dal.KeyPrefixLedgerInfo:               "LedgerInfo",
-		dal.KeyPrefixSigningKey:               "SigningKey",
-		dal.KeyPrefixPeriods:                  "Periods",
-		dal.KeyPrefixNextPeriodID:             "NextPeriodID",
-		dal.KeyPrefixSigningConfig:            "SigningConfig",
-		dal.KeyPrefixSinkCursor:               "SinkCursor",
-		dal.KeyPrefixEventsConfig:             "EventsConfig",
-		dal.KeyPrefixSinkStatus:               "SinkStatus",
-		dal.KeyPrefixMaintenanceMode:          "MaintenanceMode",
-		dal.KeyPrefixPersistedConfig:          "PersistedConfig",
-		dal.KeyPrefixCacheSnapshot:            "CacheSnapshot",
+	zones := map[byte]string{
+		dal.ZoneAttributes:  "Attributes",
+		dal.ZoneCache:       "Cache",
+		dal.ZonePerLedger:   "PerLedger",
+		dal.ZoneCold:        "Cold",
+		dal.ZoneIdempotency: "Idempotency",
+		dal.ZoneGlobal:      "Global",
 	}
 
-	require.Len(t, prefixes, 30, "duplicate key prefix detected — map collapsed two entries with the same byte value")
+	require.Len(t, zones, 6, "duplicate zone prefix detected — map collapsed two entries with the same byte value")
 }

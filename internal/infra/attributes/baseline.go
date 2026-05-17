@@ -129,7 +129,7 @@ func writeBaselineAttr[V interface {
 			keyBuf = make([]byte, pLen)
 		}
 
-		keyBuf[0] = dal.KeyPrefixAttributes
+		keyBuf[0] = dal.ZoneAttributes
 		keyBuf[1] = attr.prefix
 		copy(keyBuf[2:], e.CanonicalKey)
 

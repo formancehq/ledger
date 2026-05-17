@@ -202,7 +202,7 @@ func TestStore_RestoreCheckpoint_PreservesPersistedConfig(t *testing.T) {
 	s := newTestStore(t)
 
 	// Write a persisted config key (simulates node identity)
-	configKey := []byte{KeyPrefixPersistedConfig}
+	configKey := []byte{ZoneGlobal, SubGlobPersistedConfig}
 	configVal := []byte(`{"nodeId":"node-1","clusterId":"cluster-1"}`)
 
 	batch := s.NewBatch()
@@ -302,17 +302,17 @@ func TestStore_IterateColdKVPairs(t *testing.T) {
 
 	// Write some cold-storable pairs (Log prefix)
 	batch := s.NewBatch()
-	key1 := kb.PutByte(KeyPrefixLog).PutUint64(1).Build()
-	key2 := kb.PutByte(KeyPrefixLog).PutUint64(2).Build()
-	key3 := kb.PutByte(KeyPrefixLog).PutUint64(3).Build()
+	key1 := kb.PutZonePrefix(ZoneCold, SubColdLog).PutUint64(1).Build()
+	key2 := kb.PutZonePrefix(ZoneCold, SubColdLog).PutUint64(2).Build()
+	key3 := kb.PutZonePrefix(ZoneCold, SubColdLog).PutUint64(3).Build()
 
 	require.NoError(t, batch.SetBytes(key1, []byte("log-1")))
 	require.NoError(t, batch.SetBytes(key2, []byte("log-2")))
 	require.NoError(t, batch.SetBytes(key3, []byte("log-3")))
 
 	// Write some audit pairs
-	key4 := kb.PutByte(KeyPrefixAudit).PutUint64(1).Build()
-	key5 := kb.PutByte(KeyPrefixAudit).PutUint64(2).Build()
+	key4 := kb.PutZonePrefix(ZoneCold, SubColdAudit).PutUint64(1).Build()
+	key5 := kb.PutZonePrefix(ZoneCold, SubColdAudit).PutUint64(2).Build()
 
 	require.NoError(t, batch.SetBytes(key4, []byte("audit-1")))
 	require.NoError(t, batch.SetBytes(key5, []byte("audit-2")))

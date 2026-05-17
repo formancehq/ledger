@@ -27,7 +27,7 @@ type CompactAccountIterator struct {
 type compactSubIter struct {
 	iter      *pebble.Iterator
 	ledgerLen int  // length of "ledger\x00" in canonical key
-	attrType  byte // dal.AttributeCodeVolume or dal.AttributeCodeMetadata
+	attrType  byte // dal.SubAttrVolume or dal.SubAttrMetadata
 	sepByte   byte // canonical key separator for this type
 
 	// Current account state — populated by advance().
@@ -45,12 +45,12 @@ type compactSubIter struct {
 func NewCompactAccountIterator(reader dal.PebbleReader, ledger string) (*CompactAccountIterator, error) {
 	ledgerLen := len(ledger) + 1
 
-	vIter, err := newCompactSubIter(reader, dal.AttributeCodeVolume, dal.CanonicalKeySepVolume, ledger, ledgerLen)
+	vIter, err := newCompactSubIter(reader, dal.SubAttrVolume, dal.CanonicalKeySepVolume, ledger, ledgerLen)
 	if err != nil {
 		return nil, err
 	}
 
-	mIter, err := newCompactSubIter(reader, dal.AttributeCodeMetadata, dal.CanonicalKeySepMetadata, ledger, ledgerLen)
+	mIter, err := newCompactSubIter(reader, dal.SubAttrMetadata, dal.CanonicalKeySepMetadata, ledger, ledgerLen)
 	if err != nil {
 		_ = vIter.iter.Close()
 
@@ -63,13 +63,13 @@ func NewCompactAccountIterator(reader dal.PebbleReader, ledger string) (*Compact
 func newCompactSubIter(reader dal.PebbleReader, attrType, sepByte byte, ledger string, ledgerLen int) (*compactSubIter, error) {
 	// Bounds: [0xF1][attrType][ledger\x00] → [0xF1][attrType][ledger\x01]
 	lowerBound := make([]byte, 2+len(ledger)+1)
-	lowerBound[0] = dal.KeyPrefixAttributes
+	lowerBound[0] = dal.ZoneAttributes
 	lowerBound[1] = attrType
 	copy(lowerBound[2:], ledger)
 	lowerBound[2+len(ledger)] = 0x00
 
 	upperBound := make([]byte, 2+len(ledger)+1)
-	upperBound[0] = dal.KeyPrefixAttributes
+	upperBound[0] = dal.ZoneAttributes
 	upperBound[1] = attrType
 	copy(upperBound[2:], ledger)
 	upperBound[2+len(ledger)] = 0x01
@@ -142,11 +142,11 @@ func (si *compactSubIter) advance() bool {
 			nameBytes := rest[sep+1:]
 
 			switch si.attrType {
-			case dal.AttributeCodeVolume:
+			case dal.SubAttrVolume:
 				if len(nameBytes) >= 2 {
 					si.assets = append(si.assets, domain.FormatAsset(string(nameBytes[:len(nameBytes)-1]), nameBytes[len(nameBytes)-1]))
 				}
-			case dal.AttributeCodeMetadata:
+			case dal.SubAttrMetadata:
 				si.metadataKeys = append(si.metadataKeys, string(nameBytes))
 			}
 		}

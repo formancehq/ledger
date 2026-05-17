@@ -17,7 +17,7 @@ import (
 // Returns 0 if no cursor has been persisted yet.
 func ReadSinkCursor(reader dal.PebbleReader, sinkName string) (uint64, error) {
 	kb := dal.NewKeyBuilder()
-	kb.PutByte(dal.KeyPrefixSinkCursor).
+	kb.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobSinkCursor).
 		PutString(sinkName)
 
 	get, closer, err := reader.Get(kb.Build())
@@ -42,8 +42,8 @@ func ReadSinkCursor(reader dal.PebbleReader, sinkName string) (uint64, error) {
 
 // ReadAllSinkStatuses returns all persisted sink statuses from the given reader.
 func ReadAllSinkStatuses(reader dal.PebbleReader) ([]*commonpb.SinkStatus, error) {
-	lowerBound := []byte{dal.KeyPrefixSinkStatus}
-	upperBound := []byte{dal.KeyPrefixSinkStatus + 1}
+	lowerBound := []byte{dal.ZoneGlobal, dal.SubGlobSinkStatus}
+	upperBound := []byte{dal.ZoneGlobal, dal.SubGlobSinkStatus + 1}
 
 	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {

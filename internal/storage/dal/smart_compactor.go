@@ -22,15 +22,16 @@ type compactPrefix struct {
 // coldPrefixes are write-once, immutable after creation. Safe to compact even
 // under active traffic — no concurrent writes target these ranges.
 var coldPrefixes = []compactPrefix{
-	{"logs", KeyPrefixLog, KeyPrefixLog + 1},
-	{"audit", KeyPrefixAudit, KeyPrefixAudit + 1},
+	{"logs", ZoneCold, ZoneCold + 1},
 }
 
-// allCompactPrefixes returns all prefix ranges for a full compaction (cold + system + attributes).
+// allCompactPrefixes returns all prefix ranges for a full compaction (all zones).
 var allCompactPrefixes = append(coldPrefixes,
-	compactPrefix{"per-ledger-system", ZonePerLedgerSysStart, ZonePerLedgerSysEnd},
-	compactPrefix{"attributes", ZoneAttributesStart, ZoneAttributesEnd},
-	compactPrefix{"global-system", ZoneGlobalSysStart, ZoneGlobalSysEnd},
+	compactPrefix{"attributes", ZoneAttributes, ZoneAttributes + 1},
+	compactPrefix{"cache", ZoneCache, ZoneCache + 1},
+	compactPrefix{"per-ledger", ZonePerLedger, ZonePerLedger + 1},
+	compactPrefix{"idempotency", ZoneIdempotency, ZoneIdempotency + 1},
+	compactPrefix{"global", ZoneGlobal, ZoneGlobal + 1},
 )
 
 // SmartCompactor triggers prefix-aware compaction of the cold zone (logs,

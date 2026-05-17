@@ -12,10 +12,10 @@ import (
 )
 
 // ReadReversions loads all per-ledger reversion bitsets from Pebble.
-// Key format: [0xE5][ledger\x00][wordIndex BE 8 bytes] → [uint64 LE 8 bytes].
+// Key format: [0x03][0x01][ledger\x00][wordIndex BE 8 bytes] → [uint64 LE 8 bytes].
 func ReadReversions(reader dal.PebbleReader) (map[string]*bitset.Bitset, error) {
-	lowerBound := []byte{dal.KeyPrefixReversions}
-	upperBound := []byte{dal.KeyPrefixReversions + 1}
+	lowerBound := []byte{dal.ZonePerLedger, dal.SubPLReversions}
+	upperBound := []byte{dal.ZonePerLedger, dal.SubPLReversions + 1}
 
 	iter, err := reader.NewIter(&pebble.IterOptions{
 		LowerBound: lowerBound,
@@ -31,15 +31,15 @@ func ReadReversions(reader dal.PebbleReader) (map[string]*bitset.Bitset, error) 
 
 	for iter.First(); iter.Valid(); iter.Next() {
 		key := iter.Key()
-		// Key format: [0xE5][ledger\x00][wordIndex BE 8 bytes]
-		// Find the null separator after the ledger name.
-		nullIdx := bytes.IndexByte(key[1:], 0x00)
-		if nullIdx < 0 || len(key) < 1+nullIdx+1+8 {
+		// Key format: [0x03][0x01][ledger\x00][wordIndex BE 8 bytes]
+		// Find the null separator after the ledger name (starts at offset 2).
+		nullIdx := bytes.IndexByte(key[2:], 0x00)
+		if nullIdx < 0 || len(key) < 2+nullIdx+1+8 {
 			continue
 		}
 
-		ledger := string(key[1 : 1+nullIdx])
-		wordIndex := binary.BigEndian.Uint64(key[1+nullIdx+1:])
+		ledger := string(key[2 : 2+nullIdx])
+		wordIndex := binary.BigEndian.Uint64(key[2+nullIdx+1:])
 
 		val, err := iter.ValueAndErr()
 		if err != nil {

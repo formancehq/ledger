@@ -78,8 +78,8 @@ func CompactAllForBackup(s *dal.Store) error {
 
 	// Bulk-delete the entire attribute range — compacted values are written back below.
 	if err := batch.DeleteRange(
-		[]byte{dal.ZoneAttributesStart},
-		[]byte{dal.ZoneAttributesEnd},
+		[]byte{dal.ZoneAttributes},
+		[]byte{dal.ZoneAttributes + 1},
 		pebble.NoSync,
 	); err != nil {
 		_ = batch.Cancel()
@@ -89,22 +89,22 @@ func CompactAllForBackup(s *dal.Store) error {
 
 	// Build dispatch table: attrType byte → compactor
 	dispatch := map[byte]compactor{
-		dal.AttributeCodeVolume:           newCompactor(attrs.Volume, batch),
-		dal.AttributeCodeMetadata:         newCompactor(attrs.Metadata, batch),
-		dal.AttributeCodeReference:        newCompactor(attrs.References, batch),
-		dal.AttributeCodeLedger:           newCompactor(attrs.Ledger, batch),
-		dal.AttributeCodeBoundary:         newCompactor(attrs.Boundary, batch),
-		dal.AttributeCodeTransaction:      newCompactor(attrs.Transaction, batch),
-		dal.AttributeCodeSinkConfig:       newCompactor(attrs.SinkConfig, batch),
-		dal.AttributeCodeNumscriptVersion: newCompactor(attrs.NumscriptVersion, batch),
-		dal.AttributeCodeNumscriptContent: newCompactor(attrs.NumscriptContent, batch),
-		dal.AttributeCodePreparedQuery:    newCompactor(attrs.PreparedQuery, batch),
+		dal.SubAttrVolume:           newCompactor(attrs.Volume, batch),
+		dal.SubAttrMetadata:         newCompactor(attrs.Metadata, batch),
+		dal.SubAttrReference:        newCompactor(attrs.References, batch),
+		dal.SubAttrLedger:           newCompactor(attrs.Ledger, batch),
+		dal.SubAttrBoundary:         newCompactor(attrs.Boundary, batch),
+		dal.SubAttrTransaction:      newCompactor(attrs.Transaction, batch),
+		dal.SubAttrSinkConfig:       newCompactor(attrs.SinkConfig, batch),
+		dal.SubAttrNumscriptVersion: newCompactor(attrs.NumscriptVersion, batch),
+		dal.SubAttrNumscriptContent: newCompactor(attrs.NumscriptContent, batch),
+		dal.SubAttrPreparedQuery:    newCompactor(attrs.PreparedQuery, batch),
 	}
 
 	// Single scan over the entire attribute range
 	buf := make([]byte, 2)
-	buf[0] = dal.ZoneAttributesStart
-	buf[1] = dal.ZoneAttributesEnd
+	buf[0] = dal.ZoneAttributes
+	buf[1] = dal.ZoneAttributes + 1
 
 	iter, err := s.NewIter(&pebble.IterOptions{
 		LowerBound: buf[:1],
@@ -167,14 +167,14 @@ func CompactAllForBackup(s *dal.Store) error {
 	}
 
 	// Reset lastAppliedIndex to 0 so the restored cluster starts fresh
-	if err := batch.SetBytes([]byte{dal.KeyPrefixLastAppliedIndex}, make([]byte, 8)); err != nil {
+	if err := batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex}, make([]byte, 8)); err != nil {
 		_ = batch.Cancel()
 
 		return fmt.Errorf("resetting applied index: %w", err)
 	}
 
 	// Remove persisted config (nodeId, clusterId) so the backup is portable to any cluster
-	if err := batch.DeleteKey([]byte{dal.KeyPrefixPersistedConfig}); err != nil {
+	if err := batch.DeleteKey([]byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig}); err != nil {
 		_ = batch.Cancel()
 
 		return fmt.Errorf("deleting persisted config: %w", err)

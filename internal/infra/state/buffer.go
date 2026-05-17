@@ -140,7 +140,7 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	genByte := byte(b.fsm.Registry.Cache.CurrentGeneration() % 2)
 
 	// Process Ledger updates
-	ledgerUpdates, _, err := mergeAndTrackBloom(b.Derived.Ledgers, b.attrs.Ledger, batch, genByte, dal.AttributeCodeLedger, &b.bloomUpdates.Ledgers, "ledgers")
+	ledgerUpdates, _, err := mergeAndTrackBloom(b.Derived.Ledgers, b.attrs.Ledger, batch, genByte, dal.SubAttrLedger, &b.bloomUpdates.Ledgers, "ledgers")
 	if err != nil {
 		return err
 	}
@@ -162,7 +162,7 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	partResult := b.partitionVolumes(volumeUpdates)
 
 	// Write kept volumes to 0xF1 + 0xFF in one pass (shared marshaled bytes).
-	if err := mergeSimpleWithCache(b.attrs.Volume, batch, genByte, dal.AttributeCodeVolume, partResult.kept); err != nil {
+	if err := mergeSimpleWithCache(b.attrs.Volume, batch, genByte, dal.SubAttrVolume, partResult.kept); err != nil {
 		return fmt.Errorf("failed merging volume attributes: %w", err)
 	}
 
@@ -211,7 +211,7 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	}
 
 	// Process AccountMetadata updates
-	metadataUpdates, metadataDeletions, err := mergeAndTrackBloom(b.Derived.AccountMetadata, b.attrs.Metadata, batch, genByte, dal.AttributeCodeMetadata, &b.bloomUpdates.Metadata, "account metadata")
+	metadataUpdates, metadataDeletions, err := mergeAndTrackBloom(b.Derived.AccountMetadata, b.attrs.Metadata, batch, genByte, dal.SubAttrMetadata, &b.bloomUpdates.Metadata, "account metadata")
 	if err != nil {
 		return err
 	}
@@ -242,7 +242,7 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	}
 
 	// Process References updates
-	referenceUpdates, _, err := mergeAndTrackBloom(b.Derived.References, b.attrs.References, batch, genByte, dal.AttributeCodeReference, &b.bloomUpdates.References, "references")
+	referenceUpdates, _, err := mergeAndTrackBloom(b.Derived.References, b.attrs.References, batch, genByte, dal.SubAttrReference, &b.bloomUpdates.References, "references")
 	if err != nil {
 		return err
 	}
@@ -251,17 +251,17 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	b.updateBoundaryCounters(volumeUpdates, partResult.purged, partResult.transient, metadataUpdates, metadataDeletions, referenceUpdates)
 
 	// Process Boundary updates (after counted attributes so counters are included).
-	if _, _, err := mergeAndTrackBloom(b.Derived.Boundaries, b.attrs.Boundary, batch, genByte, dal.AttributeCodeBoundary, &b.bloomUpdates.Boundaries, "boundaries"); err != nil {
+	if _, _, err := mergeAndTrackBloom(b.Derived.Boundaries, b.attrs.Boundary, batch, genByte, dal.SubAttrBoundary, &b.bloomUpdates.Boundaries, "boundaries"); err != nil {
 		return err
 	}
 
 	// Process Transaction state updates
-	if _, _, err := mergeAndTrackBloom(b.Derived.Transactions, b.attrs.Transaction, batch, genByte, dal.AttributeCodeTransaction, &b.bloomUpdates.Transactions, "transactions"); err != nil {
+	if _, _, err := mergeAndTrackBloom(b.Derived.Transactions, b.attrs.Transaction, batch, genByte, dal.SubAttrTransaction, &b.bloomUpdates.Transactions, "transactions"); err != nil {
 		return err
 	}
 
 	// Process LedgerMetadata updates
-	if _, _, err := mergeAndTrackBloom(b.Derived.LedgerMetadata, b.attrs.LedgerMetadata, batch, genByte, dal.AttributeCodeLedgerMetadata, &b.bloomUpdates.LedgerMetadata, "ledger metadata"); err != nil {
+	if _, _, err := mergeAndTrackBloom(b.Derived.LedgerMetadata, b.attrs.LedgerMetadata, batch, genByte, dal.SubAttrLedgerMetadata, &b.bloomUpdates.LedgerMetadata, "ledger metadata"); err != nil {
 		return err
 	}
 
@@ -344,22 +344,22 @@ func (b *Buffered) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	}
 
 	// Process SinkConfig updates
-	if _, _, err := mergeAndTrackBloom(b.Derived.SinkConfigs, b.attrs.SinkConfig, batch, genByte, dal.AttributeCodeSinkConfig, &b.bloomUpdates.SinkConfigs, "sink configs"); err != nil {
+	if _, _, err := mergeAndTrackBloom(b.Derived.SinkConfigs, b.attrs.SinkConfig, batch, genByte, dal.SubAttrSinkConfig, &b.bloomUpdates.SinkConfigs, "sink configs"); err != nil {
 		return err
 	}
 
 	// Process NumscriptVersion updates
-	if _, _, err := mergeAndTrackBloom(b.Derived.NumscriptVersions, b.attrs.NumscriptVersion, batch, genByte, dal.AttributeCodeNumscriptVersion, &b.bloomUpdates.NumscriptVersions, "numscript versions"); err != nil {
+	if _, _, err := mergeAndTrackBloom(b.Derived.NumscriptVersions, b.attrs.NumscriptVersion, batch, genByte, dal.SubAttrNumscriptVersion, &b.bloomUpdates.NumscriptVersions, "numscript versions"); err != nil {
 		return err
 	}
 
 	// Process NumscriptContent updates
-	if _, _, err := mergeAndTrackBloom(b.Derived.NumscriptContents, b.attrs.NumscriptContent, batch, genByte, dal.AttributeCodeNumscriptContent, &b.bloomUpdates.NumscriptContents, "numscript contents"); err != nil {
+	if _, _, err := mergeAndTrackBloom(b.Derived.NumscriptContents, b.attrs.NumscriptContent, batch, genByte, dal.SubAttrNumscriptContent, &b.bloomUpdates.NumscriptContents, "numscript contents"); err != nil {
 		return err
 	}
 
 	// Process PreparedQuery updates
-	if _, _, err := mergeAndTrackBloom(b.Derived.PreparedQueries, b.attrs.PreparedQuery, batch, genByte, dal.AttributeCodePreparedQuery, &b.bloomUpdates.PreparedQueries, "prepared queries"); err != nil {
+	if _, _, err := mergeAndTrackBloom(b.Derived.PreparedQueries, b.attrs.PreparedQuery, batch, genByte, dal.SubAttrPreparedQuery, &b.bloomUpdates.PreparedQueries, "prepared queries"); err != nil {
 		return err
 	}
 
@@ -920,8 +920,8 @@ func (b *Buffered) SetPendingArchive(periodID, startSequence, closeSequence uint
 // DeleteLedger log falls within the purge range.
 func (b *Buffered) executePurge(batch *dal.Batch, pr *purgeRange) error {
 	// Logs: purge using log sequence range.
-	logStart := dal.NewKeyBuilder().PutByte(dal.KeyPrefixLog).PutUint64(pr.startSequence).Build()
-	logEnd := dal.NewKeyBuilder().PutByte(dal.KeyPrefixLog).PutUint64(pr.closeSequence + 1).Build()
+	logStart := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(pr.startSequence).Build()
+	logEnd := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(pr.closeSequence + 1).Build()
 
 	if err := batch.DeleteRange(logStart, logEnd, nil); err != nil {
 		return fmt.Errorf("purging logs [%d, %d]: %w", pr.startSequence, pr.closeSequence, err)
@@ -929,8 +929,8 @@ func (b *Buffered) executePurge(batch *dal.Batch, pr *purgeRange) error {
 
 	// Audit: purge using audit sequence range (independent counter, advances slower).
 	if pr.closeAuditSequence >= pr.startAuditSequence {
-		auditStart := dal.NewKeyBuilder().PutByte(dal.KeyPrefixAudit).PutUint64(pr.startAuditSequence).Build()
-		auditEnd := dal.NewKeyBuilder().PutByte(dal.KeyPrefixAudit).PutUint64(pr.closeAuditSequence + 1).Build()
+		auditStart := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(pr.startAuditSequence).Build()
+		auditEnd := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(pr.closeAuditSequence + 1).Build()
 
 		if err := batch.DeleteRange(auditStart, auditEnd, nil); err != nil {
 			return fmt.Errorf("purging audit [%d, %d]: %w", pr.startAuditSequence, pr.closeAuditSequence, err)

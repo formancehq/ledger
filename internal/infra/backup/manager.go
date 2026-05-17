@@ -229,7 +229,7 @@ func RunIncrementalBackup(
 	if currentLogSeq > afterLogSeq {
 		count, err := exportEntries(
 			ctx, storage, readHandle, bucketID,
-			dal.KeyPrefixLog, afterLogSeq, currentLogSeq,
+			dal.ZoneCold, dal.SubColdLog, afterLogSeq, currentLogSeq,
 			ExportLogSegmentKey(bucketID, afterLogSeq+1, currentLogSeq),
 		)
 		if err != nil {
@@ -252,7 +252,7 @@ func RunIncrementalBackup(
 	if currentAuditSeq > afterAuditSeq {
 		count, err := exportEntries(
 			ctx, storage, readHandle, bucketID,
-			dal.KeyPrefixAudit, afterAuditSeq, currentAuditSeq,
+			dal.ZoneCold, dal.SubColdAudit, afterAuditSeq, currentAuditSeq,
 			ExportAuditSegmentKey(bucketID, afterAuditSeq+1, currentAuditSeq),
 		)
 		if err != nil {
@@ -304,12 +304,12 @@ func exportEntries(
 	storage Storage,
 	reader dal.PebbleReader,
 	_ string,
-	prefix byte,
+	zone, sub byte,
 	afterSeq, endSeq uint64,
 	segmentKey string,
 ) (uint64, error) {
 	kb := dal.NewKeyBuilder()
-	kb.PutByte(prefix)
+	kb.PutZonePrefix(zone, sub)
 
 	if afterSeq > 0 {
 		kb.PutUint64(afterSeq + 1)
@@ -318,7 +318,7 @@ func exportEntries(
 	lowerBound := kb.Build()
 
 	kb2 := dal.NewKeyBuilder()
-	kb2.PutByte(prefix).PutUint64(endSeq + 1)
+	kb2.PutZonePrefix(zone, sub).PutUint64(endSeq + 1)
 	upperBound := kb2.Build()
 
 	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)

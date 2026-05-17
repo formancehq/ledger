@@ -200,8 +200,8 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	// Pass 1: Single forward iterator over all logs.
 	logIter, err := snap.NewIter(&pebble.IterOptions{
-		LowerBound: []byte{dal.KeyPrefixLog},
-		UpperBound: []byte{dal.KeyPrefixLog, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
+		LowerBound: []byte{dal.ZoneCold, dal.SubColdLog},
+		UpperBound: []byte{dal.ZoneCold, dal.SubColdLog, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
 	})
 	if err != nil {
 		return fmt.Errorf("creating log iterator: %w", err)
@@ -217,8 +217,8 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			return ctx.Err()
 		}
 
-		// Extract sequence from key: [KeyPrefixLog(1)][sequence(8)]
-		seq := binary.BigEndian.Uint64(logIter.Key()[1:9])
+		// Extract sequence from key: [ZoneCold(1)][SubColdLog(1)][sequence(8)]
+		seq := binary.BigEndian.Uint64(logIter.Key()[2:10])
 
 		// 1. Detect gaps
 		for expectedSeq < seq {

@@ -38,12 +38,12 @@ func TestPreload_TouchIsPersistedToCacheZone(t *testing.T) {
 	infoBytes, err := info.MarshalVT()
 	require.NoError(t, err)
 	require.NoError(t,
-		writeCacheRaw(seedBatch, gen1Byte, dal.AttributeCodeLedger, id, 7, infoBytes))
+		writeCacheRaw(seedBatch, gen1Byte, dal.SubAttrLedger, id, 7, infoBytes))
 	require.NoError(t, seedBatch.Commit())
 
-	gen1Key := []byte{dal.KeyPrefixCacheSnapshot, gen1Byte, dal.AttributeCodeLedger}
+	gen1Key := []byte{dal.ZoneCache, gen1Byte, dal.SubAttrLedger}
 	gen1Key = append(gen1Key, id[:]...)
-	gen0Key := []byte{dal.KeyPrefixCacheSnapshot, gen0Byte, dal.AttributeCodeLedger}
+	gen0Key := []byte{dal.ZoneCache, gen0Byte, dal.SubAttrLedger}
 	gen0Key = append(gen0Key, id[:]...)
 
 	if val, closer, getErr := dataStore.Get(gen1Key); getErr == nil {
@@ -63,7 +63,7 @@ func TestPreload_TouchIsPersistedToCacheZone(t *testing.T) {
 		LastPersistedIndex: registry.Cache.BaseIndex.Gen0,
 		Touches: []*raftcmdpb.CacheTouch{{
 			Id:       id[:],
-			AttrType: uint32(dal.AttributeCodeLedger),
+			AttrType: uint32(dal.SubAttrLedger),
 		}},
 	}
 
@@ -122,9 +122,9 @@ func TestPreload_TouchSkipsWhenGen0HasFreshValue(t *testing.T) {
 	freshBytes, err := freshInfo.MarshalVT()
 	require.NoError(t, err)
 	require.NoError(t,
-		writeCacheRaw(seedBatch, gen1Byte, dal.AttributeCodeLedger, id, 1, staleBytes))
+		writeCacheRaw(seedBatch, gen1Byte, dal.SubAttrLedger, id, 1, staleBytes))
 	require.NoError(t,
-		writeCacheRaw(seedBatch, gen0Byte, dal.AttributeCodeLedger, id, 1, freshBytes))
+		writeCacheRaw(seedBatch, gen0Byte, dal.SubAttrLedger, id, 1, freshBytes))
 	require.NoError(t, seedBatch.Commit())
 
 	applyBatch := dataStore.NewBatch()
@@ -134,7 +134,7 @@ func TestPreload_TouchSkipsWhenGen0HasFreshValue(t *testing.T) {
 		LastPersistedIndex: registry.Cache.BaseIndex.Gen0,
 		Touches: []*raftcmdpb.CacheTouch{{
 			Id:       id[:],
-			AttrType: uint32(dal.AttributeCodeLedger),
+			AttrType: uint32(dal.SubAttrLedger),
 		}},
 	}
 	require.NoError(t, machine.Preload(preloadSet, applyBatch, gen0Byte))
@@ -144,7 +144,7 @@ func TestPreload_TouchSkipsWhenGen0HasFreshValue(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "gaming-fresh", got.Data.GetName(), "touch must not overwrite fresh gen0 value")
 
-	gen0Key := []byte{dal.KeyPrefixCacheSnapshot, gen0Byte, dal.AttributeCodeLedger}
+	gen0Key := []byte{dal.ZoneCache, gen0Byte, dal.SubAttrLedger}
 	gen0Key = append(gen0Key, id[:]...)
 	val, closer, err := dataStore.Get(gen0Key)
 	require.NoError(t, err)
@@ -194,7 +194,7 @@ func TestPreload_FullPreloadSkipsWhenGen0HasFreshValue(t *testing.T) {
 	freshBytes, err := freshInfo.MarshalVT()
 	require.NoError(t, err)
 	require.NoError(t,
-		writeCacheRaw(seedBatch, gen0Byte, dal.AttributeCodeNumscriptContent, hash, tag, freshBytes))
+		writeCacheRaw(seedBatch, gen0Byte, dal.SubAttrNumscriptContent, hash, tag, freshBytes))
 	require.NoError(t, seedBatch.Commit())
 
 	// Entry N+1's preload arrives with the leader's admission-time value
@@ -222,7 +222,7 @@ func TestPreload_FullPreloadSkipsWhenGen0HasFreshValue(t *testing.T) {
 	require.Equal(t, freshInfo.GetContent(), got.Data.GetContent(),
 		"in-memory gen0 must not be overwritten with stale preload")
 
-	gen0Key := []byte{dal.KeyPrefixCacheSnapshot, gen0Byte, dal.AttributeCodeNumscriptContent}
+	gen0Key := []byte{dal.ZoneCache, gen0Byte, dal.SubAttrNumscriptContent}
 	gen0Key = append(gen0Key, hash[:]...)
 	val, closer, err := dataStore.Get(gen0Key)
 	require.NoError(t, err)
@@ -232,7 +232,7 @@ func TestPreload_FullPreloadSkipsWhenGen0HasFreshValue(t *testing.T) {
 	require.Equal(t, freshBytes, val[8:],
 		"0xFF gen0 row must not be clobbered with stale preload value")
 
-	gen1Key := []byte{dal.KeyPrefixCacheSnapshot, gen1Byte, dal.AttributeCodeNumscriptContent}
+	gen1Key := []byte{dal.ZoneCache, gen1Byte, dal.SubAttrNumscriptContent}
 	gen1Key = append(gen1Key, hash[:]...)
 	gen1Val, gen1Closer, err := dataStore.Get(gen1Key)
 	require.NoError(t, err, "0xFF gen1 row should still be populated from the preload")
@@ -295,7 +295,7 @@ func TestPreload_FullPreloadIsPersistedToCacheZone(t *testing.T) {
 	require.Equal(t, scriptInfo.GetContent(), gotGen1.Data.GetContent())
 
 	for _, b := range []byte{gen0Byte, gen1Byte} {
-		key := []byte{dal.KeyPrefixCacheSnapshot, b, dal.AttributeCodeNumscriptContent}
+		key := []byte{dal.ZoneCache, b, dal.SubAttrNumscriptContent}
 		key = append(key, hash[:]...)
 
 		val, closer, getErr := dataStore.Get(key)

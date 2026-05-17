@@ -1191,8 +1191,8 @@ func pebbleAccountExists(reader dal.PebbleReader, ledger, address string) (bool,
 	copy(canonicalBase[n:], address)
 
 	volPrefix := make([]byte, 2+len(canonicalBase)+1)
-	volPrefix[0] = dal.KeyPrefixAttributes
-	volPrefix[1] = dal.AttributeCodeVolume
+	volPrefix[0] = dal.ZoneAttributes
+	volPrefix[1] = dal.SubAttrVolume
 	copy(volPrefix[2:], canonicalBase)
 	volPrefix[2+len(canonicalBase)] = dal.CanonicalKeySepVolume
 
@@ -1213,8 +1213,8 @@ func pebbleAccountExists(reader dal.PebbleReader, ledger, address string) (bool,
 
 	// Check Metadata keys: [0xF1][M][ledger\x00][address][0x01]
 	metaPrefix := make([]byte, 2+len(canonicalBase)+1)
-	metaPrefix[0] = dal.KeyPrefixAttributes
-	metaPrefix[1] = dal.AttributeCodeMetadata
+	metaPrefix[0] = dal.ZoneAttributes
+	metaPrefix[1] = dal.SubAttrMetadata
 	copy(metaPrefix[2:], canonicalBase)
 	metaPrefix[2+len(canonicalBase)] = dal.CanonicalKeySepMetadata
 
@@ -1234,8 +1234,8 @@ func pebbleAccountExists(reader dal.PebbleReader, ledger, address string) (bool,
 // transaction in Pebble. Key prefix: [0xF1][T][ledger\x00\x02][txID(8B)].
 func pebbleTxExists(reader dal.PebbleReader, ledger string, txID uint64) (bool, error) {
 	prefix := make([]byte, 2+len(ledger)+1+1+8)
-	prefix[0] = dal.KeyPrefixAttributes
-	prefix[1] = dal.AttributeCodeTransaction
+	prefix[0] = dal.ZoneAttributes
+	prefix[1] = dal.SubAttrTransaction
 	n := 2
 	n += copy(prefix[n:], ledger)
 	prefix[n] = 0x00

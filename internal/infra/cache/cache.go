@@ -517,17 +517,17 @@ func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
 
 	// Register touch dispatch map for attribute code byte -> cache.
 	ret.touchMap = map[byte]CacheOps{
-		dal.AttributeCodeVolume:           ret.Volumes,
-		dal.AttributeCodeReference:        ret.References,
-		dal.AttributeCodeLedger:           ret.Ledgers,
-		dal.AttributeCodeBoundary:         ret.Boundaries,
-		dal.AttributeCodeSinkConfig:       ret.SinkConfigs,
-		dal.AttributeCodeMetadata:         ret.AccountMetadata,
-		dal.AttributeCodeNumscriptVersion: ret.NumscriptVersions,
-		dal.AttributeCodeTransaction:      ret.Transactions,
-		dal.AttributeCodeNumscriptContent: ret.NumscriptContents,
-		dal.AttributeCodePreparedQuery:    ret.PreparedQueries,
-		dal.AttributeCodeLedgerMetadata:   ret.LedgerMetadata,
+		dal.SubAttrVolume:           ret.Volumes,
+		dal.SubAttrReference:        ret.References,
+		dal.SubAttrLedger:           ret.Ledgers,
+		dal.SubAttrBoundary:         ret.Boundaries,
+		dal.SubAttrSinkConfig:       ret.SinkConfigs,
+		dal.SubAttrMetadata:         ret.AccountMetadata,
+		dal.SubAttrNumscriptVersion: ret.NumscriptVersions,
+		dal.SubAttrTransaction:      ret.Transactions,
+		dal.SubAttrNumscriptContent: ret.NumscriptContents,
+		dal.SubAttrPreparedQuery:    ret.PreparedQueries,
+		dal.SubAttrLedgerMetadata:   ret.LedgerMetadata,
 	}
 
 	err := ret.initMetrics(m)

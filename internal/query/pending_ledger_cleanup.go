@@ -10,7 +10,7 @@ import (
 // ReadPendingLedgerCleanups reads all pending ledger cleanup entries from Pebble.
 // Returns a map of ledger name -> delete log sequence number.
 func ReadPendingLedgerCleanups(reader dal.PebbleReader) (map[string]uint64, error) {
-	iter, err := dal.NewBoundedIter(reader, []byte{dal.KeyPrefixPendingLedgerCleanup}, []byte{dal.KeyPrefixPendingLedgerCleanup + 1})
+	iter, err := dal.NewBoundedIter(reader, []byte{dal.ZonePerLedger, dal.SubPLPendingCleanup}, []byte{dal.ZonePerLedger, dal.SubPLPendingCleanup + 1})
 	if err != nil {
 		return nil, fmt.Errorf("creating pending ledger cleanup iterator: %w", err)
 	}
@@ -20,8 +20,8 @@ func ReadPendingLedgerCleanups(reader dal.PebbleReader) (map[string]uint64, erro
 	result := make(map[string]uint64)
 
 	for iter.First(); iter.Valid(); iter.Next() {
-		// Key format: [prefix][ledger_name\x00]
-		raw := iter.Key()[1:]
+		// Key format: [zone][sub][ledger_name\x00]
+		raw := iter.Key()[2:]
 		ledgerName := string(raw[:len(raw)-1]) // strip null terminator
 
 		value, valErr := iter.ValueAndErr()

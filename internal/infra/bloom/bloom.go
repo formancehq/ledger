@@ -109,13 +109,14 @@ func (f *Filter) add(id attributes.U128) {
 }
 
 // PersistDirtyBlocks writes all blocks modified since the last flush to
-// the Pebble batch. Key format: [KeyPrefixBloom][attrCode][blockIndex BE 8].
+// the Pebble batch. Key format: [ZoneGlobal][SubGlobBloom][attrCode][blockIndex BE 8].
 func (f *Filter) PersistDirtyBlocks(batch *dal.Batch) error {
 	for blockIdx, blk := range f.dirtyBlocks() {
-		key := make([]byte, 1+1+8)
-		key[0] = dal.KeyPrefixBloom
-		key[1] = f.attrCode
-		binary.BigEndian.PutUint64(key[2:], blockIdx)
+		key := make([]byte, 2+1+8)
+		key[0] = dal.ZoneGlobal
+		key[1] = dal.SubGlobBloom
+		key[2] = f.attrCode
+		binary.BigEndian.PutUint64(key[3:], blockIdx)
 
 		if err := batch.Set(key, marshalBlock(&blk), pebble.NoSync); err != nil {
 			return fmt.Errorf("persisting bloom block %d: %w", blockIdx, err)
@@ -162,8 +163,8 @@ func (f *Filter) dirtyBlocks() iter.Seq2[uint64, block] {
 // into the in-memory filter via OR. This preserves bits set by concurrent
 // Add() calls from the FSM goroutine during the async restore window.
 func (f *Filter) RestoreFromStore(ctx context.Context, store dal.PebbleReader) error {
-	lower := []byte{dal.KeyPrefixBloom, f.attrCode}
-	upper := []byte{dal.KeyPrefixBloom, f.attrCode + 1}
+	lower := []byte{dal.ZoneGlobal, dal.SubGlobBloom, f.attrCode}
+	upper := []byte{dal.ZoneGlobal, dal.SubGlobBloom, f.attrCode + 1}
 
 	it, err := store.NewIter(&pebble.IterOptions{
 		LowerBound: lower,
@@ -181,12 +182,12 @@ func (f *Filter) RestoreFromStore(ctx context.Context, store dal.PebbleReader) e
 		}
 
 		key := it.Key()
-		// Key format: [0xE7][attrCode][blockIndex BE 8]
-		if len(key) < 1+1+8 {
+		// Key format: [ZoneGlobal][SubGlobBloom][attrCode][blockIndex BE 8]
+		if len(key) < 2+1+8 {
 			continue
 		}
 
-		blockIdx := binary.BigEndian.Uint64(key[2:])
+		blockIdx := binary.BigEndian.Uint64(key[3:])
 		if blockIdx >= f.filter.BlockCount() {
 			continue
 		}
@@ -229,25 +230,25 @@ type filterSnapshot struct {
 
 func (s *filterSnapshot) filterForAttrType(attrType byte) *Filter {
 	switch attrType {
-	case dal.AttributeCodeVolume:
+	case dal.SubAttrVolume:
 		return s.Volume
-	case dal.AttributeCodeMetadata:
+	case dal.SubAttrMetadata:
 		return s.Metadata
-	case dal.AttributeCodeReference:
+	case dal.SubAttrReference:
 		return s.Reference
-	case dal.AttributeCodeLedger:
+	case dal.SubAttrLedger:
 		return s.Ledger
-	case dal.AttributeCodeBoundary:
+	case dal.SubAttrBoundary:
 		return s.Boundary
-	case dal.AttributeCodeTransaction:
+	case dal.SubAttrTransaction:
 		return s.Transaction
-	case dal.AttributeCodeSinkConfig:
+	case dal.SubAttrSinkConfig:
 		return s.SinkConfig
-	case dal.AttributeCodeNumscriptVersion:
+	case dal.SubAttrNumscriptVersion:
 		return s.NumscriptVersion
-	case dal.AttributeCodeNumscriptContent:
+	case dal.SubAttrNumscriptContent:
 		return s.NumscriptContent
-	case dal.AttributeCodeLedgerMetadata:
+	case dal.SubAttrLedgerMetadata:
 		return s.LedgerMetadata
 	default:
 		return nil
@@ -482,8 +483,8 @@ func (fs *FilterSet) RestoreFromStore(ctx context.Context, store dal.PebbleReade
 // bloom blocks exist yet.
 func (fs *FilterSet) PopulateFromStore(ctx context.Context, store dal.PebbleReader) error {
 	it, err := store.NewIter(&pebble.IterOptions{
-		LowerBound: []byte{dal.KeyPrefixAttributes},
-		UpperBound: []byte{dal.KeyPrefixAttributes + 1},
+		LowerBound: []byte{dal.ZoneAttributes},
+		UpperBound: []byte{dal.ZoneAttributes + 1},
 	})
 	if err != nil {
 		return fmt.Errorf("creating attribute iterator: %w", err)
@@ -563,16 +564,16 @@ func (bt bloomType) rebuild(snap *filterSnapshot, meter metric.Meter) {
 // bloomTypes returns the ordered list of bloom type descriptors from a ClusterConfig.
 func bloomTypes(cfg *commonpb.ClusterConfig) []bloomType {
 	return []bloomType{
-		{cfg.GetBloomVolumes(), dal.AttributeCodeVolume, "volumes", func(snap *filterSnapshot) **Filter { return &snap.Volume }},
-		{cfg.GetBloomMetadata(), dal.AttributeCodeMetadata, "metadata", func(snap *filterSnapshot) **Filter { return &snap.Metadata }},
-		{cfg.GetBloomReferences(), dal.AttributeCodeReference, "references", func(snap *filterSnapshot) **Filter { return &snap.Reference }},
-		{cfg.GetBloomLedgers(), dal.AttributeCodeLedger, "ledgers", func(snap *filterSnapshot) **Filter { return &snap.Ledger }},
-		{cfg.GetBloomBoundaries(), dal.AttributeCodeBoundary, "boundaries", func(snap *filterSnapshot) **Filter { return &snap.Boundary }},
-		{cfg.GetBloomTransactions(), dal.AttributeCodeTransaction, "transactions", func(snap *filterSnapshot) **Filter { return &snap.Transaction }},
-		{cfg.GetBloomSinkConfigs(), dal.AttributeCodeSinkConfig, "sink_configs", func(snap *filterSnapshot) **Filter { return &snap.SinkConfig }},
-		{cfg.GetBloomNumscriptVersions(), dal.AttributeCodeNumscriptVersion, "numscript_versions", func(snap *filterSnapshot) **Filter { return &snap.NumscriptVersion }},
-		{cfg.GetBloomNumscriptContents(), dal.AttributeCodeNumscriptContent, "numscript_contents", func(snap *filterSnapshot) **Filter { return &snap.NumscriptContent }},
-		{cfg.GetBloomLedgerMetadata(), dal.AttributeCodeLedgerMetadata, "ledger_metadata", func(snap *filterSnapshot) **Filter { return &snap.LedgerMetadata }},
+		{cfg.GetBloomVolumes(), dal.SubAttrVolume, "volumes", func(snap *filterSnapshot) **Filter { return &snap.Volume }},
+		{cfg.GetBloomMetadata(), dal.SubAttrMetadata, "metadata", func(snap *filterSnapshot) **Filter { return &snap.Metadata }},
+		{cfg.GetBloomReferences(), dal.SubAttrReference, "references", func(snap *filterSnapshot) **Filter { return &snap.Reference }},
+		{cfg.GetBloomLedgers(), dal.SubAttrLedger, "ledgers", func(snap *filterSnapshot) **Filter { return &snap.Ledger }},
+		{cfg.GetBloomBoundaries(), dal.SubAttrBoundary, "boundaries", func(snap *filterSnapshot) **Filter { return &snap.Boundary }},
+		{cfg.GetBloomTransactions(), dal.SubAttrTransaction, "transactions", func(snap *filterSnapshot) **Filter { return &snap.Transaction }},
+		{cfg.GetBloomSinkConfigs(), dal.SubAttrSinkConfig, "sink_configs", func(snap *filterSnapshot) **Filter { return &snap.SinkConfig }},
+		{cfg.GetBloomNumscriptVersions(), dal.SubAttrNumscriptVersion, "numscript_versions", func(snap *filterSnapshot) **Filter { return &snap.NumscriptVersion }},
+		{cfg.GetBloomNumscriptContents(), dal.SubAttrNumscriptContent, "numscript_contents", func(snap *filterSnapshot) **Filter { return &snap.NumscriptContent }},
+		{cfg.GetBloomLedgerMetadata(), dal.SubAttrLedgerMetadata, "ledger_metadata", func(snap *filterSnapshot) **Filter { return &snap.LedgerMetadata }},
 	}
 }
 

@@ -919,8 +919,8 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			// separately using the same pattern as writeCacheRotation.
 			for _, genByte := range []byte{0, 1} {
 				if err := batch.DeleteRangeNoSync(
-					[]byte{dal.KeyPrefixCacheSnapshot, genByte},
-					[]byte{dal.KeyPrefixCacheSnapshot, genByte + 1},
+					[]byte{dal.ZoneCache, genByte},
+					[]byte{dal.ZoneCache, genByte + 1},
 				); err != nil {
 					return nil, fmt.Errorf("purging cache gen %d: %w", genByte, err)
 				}
@@ -930,7 +930,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			// We must NOT delete it — RestoreFromStore tolerates a missing sentinel
 			// but other code paths may depend on it being present.
 			if err := batch.SetProto(
-				[]byte{dal.KeyPrefixCacheSnapshot, dal.CacheMetaKey},
+				[]byte{dal.ZoneCache, dal.SubCacheMeta},
 				&raftcmdpb.CacheSnapshotMeta{CurrentGeneration: 0},
 			); err != nil {
 				return nil, fmt.Errorf("resetting cache snapshot meta: %w", err)
@@ -947,8 +947,8 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 			// Purge all persisted bloom blocks.
 			if err := batch.DeleteRangeNoSync(
-				[]byte{dal.KeyPrefixBloom},
-				[]byte{dal.KeyPrefixBloom + 1},
+				[]byte{dal.ZoneGlobal, dal.SubGlobBloom},
+				[]byte{dal.ZoneGlobal, dal.SubGlobBloom + 1},
 			); err != nil {
 				return nil, fmt.Errorf("purging bloom blocks: %w", err)
 			}

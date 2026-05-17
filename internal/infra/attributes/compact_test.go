@@ -23,7 +23,7 @@ import (
 // readLastAppliedIndex reads the last applied Raft index directly from PebbleReader.
 // Defined here to avoid importing state (which imports attributes, creating a cycle).
 func readLastAppliedIndex(reader dal.PebbleReader) (uint64, error) {
-	get, closer, err := reader.Get([]byte{dal.KeyPrefixLastAppliedIndex})
+	get, closer, err := reader.Get([]byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex})
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return 0, nil
@@ -47,7 +47,7 @@ func setAppliedIndex(b *dal.Batch, index uint64) error {
 	value := make([]byte, 8)
 	binary.BigEndian.PutUint64(value, index)
 
-	return b.SetBytes([]byte{dal.KeyPrefixLastAppliedIndex}, value)
+	return b.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex}, value)
 }
 
 func TestCompactToBase(t *testing.T) {

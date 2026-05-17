@@ -56,7 +56,7 @@ type PebbleAccountIterator struct {
 func newSingleTypeAccountIterator(reader dal.PebbleReader, attrType byte, ledger, addrPrefix string) (*PebbleAccountIterator, error) {
 	// Prefix for address extraction: [0xF1][attrType][ledger\x00]
 	prefix := make([]byte, 2+len(ledger)+1)
-	prefix[0] = dal.KeyPrefixAttributes
+	prefix[0] = dal.ZoneAttributes
 	prefix[1] = attrType
 	copy(prefix[2:], ledger)
 	prefix[2+len(ledger)] = 0x00
@@ -97,12 +97,12 @@ func NewPebbleAccountPrefixIterator(reader dal.PebbleReader, ledger, addrPrefix 
 
 // newMergedAccountIterator creates a forward account iterator that merges V and M types.
 func newMergedAccountIterator(reader dal.PebbleReader, ledger, addrPrefix string) (EntityIterator, error) {
-	vIter, err := newSingleTypeAccountIterator(reader, dal.AttributeCodeVolume, ledger, addrPrefix)
+	vIter, err := newSingleTypeAccountIterator(reader, dal.SubAttrVolume, ledger, addrPrefix)
 	if err != nil {
 		return nil, err
 	}
 
-	mIter, err := newSingleTypeAccountIterator(reader, dal.AttributeCodeMetadata, ledger, addrPrefix)
+	mIter, err := newSingleTypeAccountIterator(reader, dal.SubAttrMetadata, ledger, addrPrefix)
 	if err != nil {
 		vIter.Close()
 
@@ -234,7 +234,7 @@ type PebbleReverseAccountIterator struct {
 // newSingleTypeReverseAccountIterator creates a reverse account iterator for one attribute type.
 func newSingleTypeReverseAccountIterator(reader dal.PebbleReader, attrType byte, ledger string) (*PebbleReverseAccountIterator, error) {
 	prefix := make([]byte, 2+len(ledger)+1)
-	prefix[0] = dal.KeyPrefixAttributes
+	prefix[0] = dal.ZoneAttributes
 	prefix[1] = attrType
 	copy(prefix[2:], ledger)
 	prefix[2+len(ledger)] = 0x00
@@ -258,12 +258,12 @@ func newSingleTypeReverseAccountIterator(reader dal.PebbleReader, attrType byte,
 // NewPebbleReverseAccountIterator creates a reverse account iterator that merges
 // V and M attribute types, yielding unique addresses in descending order.
 func NewPebbleReverseAccountIterator(reader dal.PebbleReader, ledger string) (*ReverseOrIterator, error) {
-	vIter, err := newSingleTypeReverseAccountIterator(reader, dal.AttributeCodeVolume, ledger)
+	vIter, err := newSingleTypeReverseAccountIterator(reader, dal.SubAttrVolume, ledger)
 	if err != nil {
 		return nil, err
 	}
 
-	mIter, err := newSingleTypeReverseAccountIterator(reader, dal.AttributeCodeMetadata, ledger)
+	mIter, err := newSingleTypeReverseAccountIterator(reader, dal.SubAttrMetadata, ledger)
 	if err != nil {
 		vIter.Close()
 
@@ -857,8 +857,8 @@ func (it *PebbleTxRangeIterator) extractTxID(key []byte) []byte {
 // Format: [0xF1][T][ledger\x00\x02].
 func txAttributeCode(ledger string) []byte {
 	prefix := make([]byte, 2+len(ledger)+1+1)
-	prefix[0] = dal.KeyPrefixAttributes
-	prefix[1] = dal.AttributeCodeTransaction
+	prefix[0] = dal.ZoneAttributes
+	prefix[1] = dal.SubAttrTransaction
 	copy(prefix[2:], ledger)
 	prefix[2+len(ledger)] = 0x00
 	prefix[2+len(ledger)+1] = dal.CanonicalKeySepTransaction

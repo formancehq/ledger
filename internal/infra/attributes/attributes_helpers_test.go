@@ -21,7 +21,7 @@ func TestAttrTypeFromKey(t *testing.T) {
 		t.Parallel()
 		// Build a key: [0xF1][attrType][canonical...]
 		key := make([]byte, 20)
-		key[0] = dal.KeyPrefixAttributes
+		key[0] = dal.ZoneAttributes
 		key[1] = 0x42 // attr type at fixed position 1
 		attrType, ok := AttrTypeFromKey(key)
 		require.True(t, ok)
@@ -54,7 +54,7 @@ func TestCanonicalKeyFromPebbleKey(t *testing.T) {
 		canonical := []byte("ledger:account:USD")
 		// Build: [prefix(1)][attrType(1)][canonical]
 		key := make([]byte, 2+len(canonical))
-		key[0] = dal.KeyPrefixAttributes
+		key[0] = dal.ZoneAttributes
 		key[1] = 0x42 // attr type
 		copy(key[2:], canonical)
 
@@ -229,10 +229,10 @@ func TestAccumulatorPrefix(t *testing.T) {
 
 	attrs := New()
 	acc := attrs.Volume.NewAccumulator()
-	require.Equal(t, dal.AttributeCodeVolume, acc.Prefix())
+	require.Equal(t, dal.SubAttrVolume, acc.Prefix())
 
 	metaAcc := attrs.Metadata.NewAccumulator()
-	require.Equal(t, dal.AttributeCodeMetadata, metaAcc.Prefix())
+	require.Equal(t, dal.SubAttrMetadata, metaAcc.Prefix())
 }
 
 func TestGetReturnsLatestSet(t *testing.T) {
@@ -403,7 +403,7 @@ func TestBoundaryAttribute(t *testing.T) {
 // [KeyPrefixAttributes(1B)][attrType(1B)][canonical].
 func makePebbleKey(canonical []byte, attrType byte) []byte {
 	key := make([]byte, 2+len(canonical))
-	key[0] = dal.KeyPrefixAttributes
+	key[0] = dal.ZoneAttributes
 	key[1] = attrType
 	copy(key[2:], canonical)
 
@@ -423,7 +423,7 @@ func TestAccumulatorFeedPublicMethod(t *testing.T) {
 	baseBytes, err := proto.Marshal(baseValue)
 	require.NoError(t, err)
 
-	pebbleKey := makePebbleKey(canonical, dal.AttributeCodeMetadata)
+	pebbleKey := makePebbleKey(canonical, dal.SubAttrMetadata)
 
 	matched, feedErr := acc.Feed(pebbleKey, baseBytes)
 	require.NoError(t, feedErr)
@@ -435,7 +435,7 @@ func TestAccumulatorFeedPublicMethod(t *testing.T) {
 	base2Bytes, err := proto.Marshal(base2Value)
 	require.NoError(t, err)
 
-	pebbleKey2 := makePebbleKey(canonical2, dal.AttributeCodeMetadata)
+	pebbleKey2 := makePebbleKey(canonical2, dal.SubAttrMetadata)
 
 	matched, feedErr = acc.Feed(pebbleKey2, base2Bytes)
 	require.NoError(t, feedErr)
@@ -458,7 +458,7 @@ func TestAccumulatorFeedNonMatchingPrefix(t *testing.T) {
 	baseBytes, err := proto.Marshal(baseValue)
 	require.NoError(t, err)
 
-	pebbleKey := makePebbleKey(canonical, dal.AttributeCodeVolume)
+	pebbleKey := makePebbleKey(canonical, dal.SubAttrVolume)
 
 	matched, feedErr := acc.Feed(pebbleKey, baseBytes)
 	require.NoError(t, feedErr)
@@ -549,7 +549,7 @@ func TestCompactAllForBackupAllTypes(t *testing.T) {
 	// Set lastAppliedIndex to a high value
 	idxBuf := make([]byte, 8)
 	binary.BigEndian.PutUint64(idxBuf, 200)
-	require.NoError(t, batch.SetBytes([]byte{dal.KeyPrefixLastAppliedIndex}, idxBuf))
+	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex}, idxBuf))
 	require.NoError(t, batch.Commit())
 
 	// Run compaction
@@ -650,7 +650,7 @@ func TestCompactAllForBackupEmpty(t *testing.T) {
 	batch := store.NewBatch()
 	idxBuf := make([]byte, 8)
 	binary.BigEndian.PutUint64(idxBuf, 42)
-	require.NoError(t, batch.SetBytes([]byte{dal.KeyPrefixLastAppliedIndex}, idxBuf))
+	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex}, idxBuf))
 	require.NoError(t, batch.Commit())
 
 	require.NoError(t, CompactAllForBackup(store))

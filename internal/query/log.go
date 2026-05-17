@@ -21,11 +21,11 @@ import (
 // ReadLastLog returns the full last log entry from the given reader. Returns nil if no logs exist.
 func ReadLastLog(reader dal.PebbleReader) (*commonpb.Log, error) {
 	kb := dal.NewKeyBuilder()
-	kb.PutByte(dal.KeyPrefixLog)
+	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdLog)
 	lowerBound := kb.Snapshot()
 	kb.Reset()
 
-	kb.PutByte(dal.KeyPrefixLog).
+	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdLog).
 		PutBytes(dal.MaxUint64Bytes)
 	upperBound := kb.Build()
 
@@ -75,7 +75,7 @@ func ReadLogBySequence(ctx context.Context, reader dal.PebbleReader, sequence ui
 	defer span.End()
 
 	kb := dal.NewKeyBuilder()
-	kb.PutByte(dal.KeyPrefixLog).
+	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdLog).
 		PutUint64(sequence)
 
 	value, closer, err := reader.Get(kb.Build())
@@ -170,7 +170,7 @@ func ReadLedgerLogsCompiled(
 // The iterator is already positioned at the first valid entry (via First()).
 func ReadLogsSinceRaw(_ context.Context, reader dal.PebbleReader, afterSequence uint64) (*pebble.Iterator, error) {
 	kb := dal.NewKeyBuilder()
-	kb.PutByte(dal.KeyPrefixLog)
+	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdLog)
 
 	if afterSequence > 0 {
 		kb.PutUint64(afterSequence + 1)
@@ -179,7 +179,7 @@ func ReadLogsSinceRaw(_ context.Context, reader dal.PebbleReader, afterSequence 
 	lowerBound := kb.Build()
 
 	kb2 := dal.NewKeyBuilder()
-	kb2.PutByte(dal.KeyPrefixLog).
+	kb2.PutZonePrefix(dal.ZoneCold, dal.SubColdLog).
 		PutBytes(dal.MaxUint64Bytes)
 	upperBound := kb2.Build()
 
@@ -198,7 +198,7 @@ func ReadLogsSince(ctx context.Context, reader dal.PebbleReader, afterSequence u
 	defer span.End()
 
 	kb := dal.NewKeyBuilder()
-	kb.PutByte(dal.KeyPrefixLog)
+	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdLog)
 
 	if afterSequence > 0 {
 		kb.PutUint64(afterSequence + 1)
@@ -207,7 +207,7 @@ func ReadLogsSince(ctx context.Context, reader dal.PebbleReader, afterSequence u
 	lowerBound := kb.Build()
 
 	kb2 := dal.NewKeyBuilder()
-	kb2.PutByte(dal.KeyPrefixLog).
+	kb2.PutZonePrefix(dal.ZoneCold, dal.SubColdLog).
 		PutBytes(dal.MaxUint64Bytes)
 	upperBound := kb2.Build()
 

@@ -12,8 +12,8 @@ import (
 
 func deleteAllSigningKeys(b *dal.Batch) error {
 	return b.DeleteRangeNoSync(
-		[]byte{dal.KeyPrefixSigningKey},
-		[]byte{dal.KeyPrefixSigningKey + 1},
+		[]byte{dal.ZoneGlobal, dal.SubGlobSigningKey},
+		[]byte{dal.ZoneGlobal, dal.SubGlobSigningKey + 1},
 	)
 }
 

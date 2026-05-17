@@ -40,7 +40,7 @@ func (a *Attribute[V]) ensureKeyBuf(n int) {
 // putPrefix writes [KeyPrefixAttributes][a.prefix][canonicalKey] into buf.
 // buf must have at least 2+len(canonicalKey) bytes.
 func (a *Attribute[V]) putPrefix(buf []byte, canonicalKey []byte) {
-	buf[0] = dal.KeyPrefixAttributes
+	buf[0] = dal.ZoneAttributes
 	buf[1] = a.prefix
 	copy(buf[2:], canonicalKey)
 }

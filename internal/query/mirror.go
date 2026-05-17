@@ -20,7 +20,7 @@ import (
 // Returns 0 if no cursor has been persisted yet.
 func ReadMirrorCursor(reader dal.PebbleReader, ledgerName string) (uint64, error) {
 	kb := dal.NewKeyBuilder()
-	kb.PutByte(dal.KeyPrefixMirrorCursor).
+	kb.PutZonePrefix(dal.ZonePerLedger, dal.SubPLMirrorCursor).
 		PutLedgerName(ledgerName)
 
 	get, closer, err := reader.Get(kb.Build())
@@ -45,7 +45,7 @@ func ReadMirrorCursor(reader dal.PebbleReader, ledgerName string) (uint64, error
 // Returns nil if no error is recorded.
 func ReadMirrorStatus(reader dal.PebbleReader, ledgerName string) (*commonpb.MirrorSyncError, error) {
 	kb := dal.NewKeyBuilder()
-	kb.PutByte(dal.KeyPrefixMirrorStatus).
+	kb.PutZonePrefix(dal.ZonePerLedger, dal.SubPLMirrorStatus).
 		PutLedgerName(ledgerName)
 
 	get, closer, err := reader.Get(kb.Build())
@@ -71,7 +71,7 @@ func ReadMirrorStatus(reader dal.PebbleReader, ledgerName string) (*commonpb.Mir
 // Returns 0 if no source head has been persisted yet.
 func ReadMirrorSourceHead(reader dal.PebbleReader, ledgerName string) (uint64, error) {
 	kb := dal.NewKeyBuilder()
-	kb.PutByte(dal.KeyPrefixMirrorSourceHead).
+	kb.PutZonePrefix(dal.ZonePerLedger, dal.SubPLMirrorSourceHead).
 		PutLedgerName(ledgerName)
 
 	get, closer, err := reader.Get(kb.Build())

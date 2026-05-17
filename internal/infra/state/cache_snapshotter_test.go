@@ -39,7 +39,7 @@ func persistGeneration(s *CacheSnapshotter, batch *dal.Batch, genByte byte, genI
 	}
 
 	if err := batch.SetProto(
-		[]byte{dal.KeyPrefixCacheSnapshot, genByte, dal.CacheGenMeta},
+		[]byte{dal.ZoneCache, genByte, dal.SubCacheGenMeta},
 		&raftcmdpb.CacheGenerationMeta{BaseIndex: baseIndex},
 	); err != nil {
 		return fmt.Errorf("writing gen meta: %w", err)
@@ -69,8 +69,8 @@ func persistToStore(s *CacheSnapshotter) error {
 	}
 
 	if err := batch.DeleteRangeNoSync(
-		[]byte{dal.KeyPrefixCacheSnapshot},
-		[]byte{dal.KeyPrefixCacheSnapshot, dal.CacheMetaKey, 0x01},
+		[]byte{dal.ZoneCache},
+		[]byte{dal.ZoneCache, dal.SubCacheMeta, 0x01},
 	); err != nil {
 		return fmt.Errorf("clearing cache snapshot range: %w", err)
 	}
@@ -88,7 +88,7 @@ func persistToStore(s *CacheSnapshotter) error {
 	}
 
 	if err := batch.SetProto(
-		[]byte{dal.KeyPrefixCacheSnapshot, dal.CacheMetaKey},
+		[]byte{dal.ZoneCache, dal.SubCacheMeta},
 		&raftcmdpb.CacheSnapshotMeta{
 			CurrentGeneration: s.registry.Cache.CurrentGeneration(),
 		},
@@ -480,15 +480,15 @@ func TestCacheSnapshotter_RestorePreRotation(t *testing.T) {
 	require.NoError(t, err)
 
 	batch := dataStore.NewBatch()
-	require.NoError(t, writeCacheRaw(batch, genByte, dal.AttributeCodeBoundary, boundaryU128, 11, boundaryBytes))
-	require.NoError(t, writeCacheRaw(batch, genByte, dal.AttributeCodeVolume, volU128, 22, volBytes))
+	require.NoError(t, writeCacheRaw(batch, genByte, dal.SubAttrBoundary, boundaryU128, 11, boundaryBytes))
+	require.NoError(t, writeCacheRaw(batch, genByte, dal.SubAttrVolume, volU128, 22, volBytes))
 	require.NoError(t, batch.Commit())
 
 	// Sanity: no meta keys written.
-	_, _, err = dataStore.Get([]byte{dal.KeyPrefixCacheSnapshot, dal.CacheMetaKey})
+	_, _, err = dataStore.Get([]byte{dal.ZoneCache, dal.SubCacheMeta})
 	require.Error(t, err, "CacheMetaKey must be absent pre-rotation")
 
-	_, _, err = dataStore.Get([]byte{dal.KeyPrefixCacheSnapshot, genByte, dal.CacheGenMeta})
+	_, _, err = dataStore.Get([]byte{dal.ZoneCache, genByte, dal.SubCacheGenMeta})
 	require.Error(t, err, "CacheGenMeta must be absent pre-rotation")
 
 	// Recovery must pick up the entries despite the missing sentinels.

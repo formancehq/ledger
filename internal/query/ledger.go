@@ -24,8 +24,8 @@ func ReadLedgers(ctx context.Context, reader dal.PebbleReader) (dal.Cursor[*comm
 	_, span := queryTracer.Start(ctx, "query.list_ledgers")
 	defer span.End()
 
-	lowerBound := []byte{dal.KeyPrefixLedgerInfo}
-	upperBound := []byte{dal.KeyPrefixLedgerInfo + 1}
+	lowerBound := []byte{dal.ZoneGlobal, dal.SubGlobLedgerInfo}
+	upperBound := []byte{dal.ZoneGlobal, dal.SubGlobLedgerInfo + 1}
 
 	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {
@@ -43,7 +43,7 @@ func GetLedgerByName(ctx context.Context, reader dal.PebbleReader, name string) 
 	defer span.End()
 
 	kb := dal.NewKeyBuilder()
-	kb.PutByte(dal.KeyPrefixLedgerInfo).PutLedgerName(name)
+	kb.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobLedgerInfo).PutLedgerName(name)
 
 	value, closer, err := reader.Get(kb.Build())
 	if err != nil {

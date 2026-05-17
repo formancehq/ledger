@@ -15,7 +15,7 @@ import (
 // Returns nil if the checkpoint does not exist.
 func ReadQueryCheckpoint(reader dal.PebbleReader, checkpointID uint64) (*raftcmdpb.QueryCheckpointState, error) {
 	kb := dal.NewKeyBuilder()
-	kb.PutByte(dal.KeyPrefixQueryCheckpoint)
+	kb.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobQueryCheckpoint)
 	kb.PutUint64(checkpointID)
 	key := kb.Build()
 
@@ -41,7 +41,7 @@ func ReadQueryCheckpoint(reader dal.PebbleReader, checkpointID uint64) (*raftcmd
 // ReadNextQueryCheckpointID reads the next checkpoint ID counter from Pebble.
 // Returns 1 if no counter has been stored yet.
 func ReadNextQueryCheckpointID(reader dal.PebbleReader) (uint64, error) {
-	value, closer, err := reader.Get([]byte{dal.KeyPrefixNextQueryCheckpointID})
+	value, closer, err := reader.Get([]byte{dal.ZoneGlobal, dal.SubGlobNextQueryCheckpointID})
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return 1, nil
@@ -58,7 +58,7 @@ func ReadNextQueryCheckpointID(reader dal.PebbleReader) (uint64, error) {
 // ReadQueryCheckpointSchedule loads the query checkpoint schedule cron expression from the given reader.
 // Returns an empty string if no schedule is configured.
 func ReadQueryCheckpointSchedule(reader dal.PebbleReader) (string, error) {
-	value, closer, err := reader.Get([]byte{dal.KeyPrefixQueryCheckpointSchedule})
+	value, closer, err := reader.Get([]byte{dal.ZoneGlobal, dal.SubGlobQueryCheckpointSchedule})
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return "", nil
@@ -74,8 +74,8 @@ func ReadQueryCheckpointSchedule(reader dal.PebbleReader) (string, error) {
 
 // ListQueryCheckpoints reads all query checkpoints from Pebble, sorted by checkpoint ID ascending.
 func ListQueryCheckpoints(reader dal.PebbleReader) ([]*raftcmdpb.QueryCheckpointState, error) {
-	lowerBound := []byte{dal.KeyPrefixQueryCheckpoint}
-	upperBound := []byte{dal.KeyPrefixQueryCheckpoint + 1}
+	lowerBound := []byte{dal.ZoneGlobal, dal.SubGlobQueryCheckpoint}
+	upperBound := []byte{dal.ZoneGlobal, dal.SubGlobQueryCheckpoint + 1}
 
 	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {

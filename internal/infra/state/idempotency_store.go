@@ -81,10 +81,10 @@ func (s *IdempotencyStore) EvictBefore(batch *dal.Batch, reader dal.PebbleReader
 		}
 	}
 
-	// 2. Scan Pebble [0x03, 0x04) — the time index prefix
+	// 2. Scan Pebble time index [ZoneIdempotency][SubIdempTimeIdx]
 	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: []byte{dal.KeyPrefixIdempotencyTimeIdx},
-		UpperBound: []byte{dal.KeyPrefixIdempotencyTimeIdx + 1},
+		LowerBound: []byte{dal.ZoneIdempotency, dal.SubIdempTimeIdx},
+		UpperBound: []byte{dal.ZoneIdempotency, dal.SubIdempTimeIdx + 1},
 	})
 	if err != nil {
 		return evicted, fmt.Errorf("creating idempotency time index iterator: %w", err)
@@ -92,25 +92,26 @@ func (s *IdempotencyStore) EvictBefore(batch *dal.Batch, reader dal.PebbleReader
 
 	defer func() { _ = iter.Close() }()
 
-	// Time index key format: [0x04][created_at BE 8 bytes][key_hash 16 bytes]
+	// Time index key format: [0x05][0x02][created_at BE 8 bytes][key_hash 16 bytes]
 	for iter.First(); iter.Valid(); iter.Next() {
 		k := iter.Key()
-		// Minimum key length: 1 (prefix) + 8 (created_at) + 16 (key hash)
-		if len(k) < 25 {
+		// Minimum key length: 2 (zone+sub) + 8 (created_at) + 16 (key hash)
+		if len(k) < 26 {
 			continue
 		}
 
-		createdAt := binary.BigEndian.Uint64(k[1:9])
+		createdAt := binary.BigEndian.Uint64(k[2:10])
 		if createdAt > cutoffMicros {
 			break // time index is sorted; all remaining entries are newer
 		}
 
-		keyHash := k[9:25]
+		keyHash := k[10:26]
 
-		// Delete from main store [0x03][key_hash]
-		mainKey := make([]byte, 1+16)
-		mainKey[0] = dal.KeyPrefixIdempotency
-		copy(mainKey[1:], keyHash)
+		// Delete from main store [0x05][0x01][key_hash]
+		mainKey := make([]byte, 2+16)
+		mainKey[0] = dal.ZoneIdempotency
+		mainKey[1] = dal.SubIdempKeys
+		copy(mainKey[2:], keyHash)
 
 		if err := batch.DeleteKey(mainKey); err != nil {
 			return evicted, fmt.Errorf("deleting idempotency key: %w", err)
@@ -136,10 +137,11 @@ func (s *IdempotencyStore) EvictBefore(batch *dal.Batch, reader dal.PebbleReader
 func SaveIdempotencyKey(batch *dal.Batch, key string, value *commonpb.IdempotencyKeyValue) error {
 	keyHash := HashIdempotencyKey(key)
 
-	// Main entry: [0x03][key_hash 16 bytes] -> marshaled IdempotencyKeyValue
-	mainKey := make([]byte, 1+16)
-	mainKey[0] = dal.KeyPrefixIdempotency
-	copy(mainKey[1:], keyHash[:])
+	// Main entry: [0x05][0x01][key_hash 16 bytes] -> marshaled IdempotencyKeyValue
+	mainKey := make([]byte, 2+16)
+	mainKey[0] = dal.ZoneIdempotency
+	mainKey[1] = dal.SubIdempKeys
+	copy(mainKey[2:], keyHash[:])
 
 	data, err := value.MarshalVT()
 	if err != nil {
@@ -150,11 +152,12 @@ func SaveIdempotencyKey(batch *dal.Batch, key string, value *commonpb.Idempotenc
 		return fmt.Errorf("writing idempotency key: %w", err)
 	}
 
-	// Time index: [0x04][created_at BE 8 bytes][key_hash 16 bytes] -> empty
-	timeKey := make([]byte, 1+8+16)
-	timeKey[0] = dal.KeyPrefixIdempotencyTimeIdx
-	binary.BigEndian.PutUint64(timeKey[1:9], value.GetCreatedAt())
-	copy(timeKey[9:], keyHash[:])
+	// Time index: [0x05][0x02][created_at BE 8 bytes][key_hash 16 bytes] -> empty
+	timeKey := make([]byte, 2+8+16)
+	timeKey[0] = dal.ZoneIdempotency
+	timeKey[1] = dal.SubIdempTimeIdx
+	binary.BigEndian.PutUint64(timeKey[2:10], value.GetCreatedAt())
+	copy(timeKey[10:], keyHash[:])
 
 	if err := batch.SetBytes(timeKey, nil); err != nil {
 		return fmt.Errorf("writing idempotency time index: %w", err)
@@ -168,9 +171,10 @@ func SaveIdempotencyKey(batch *dal.Batch, key string, value *commonpb.Idempotenc
 func LoadIdempotencyKey(reader dal.PebbleReader, key string) (*commonpb.IdempotencyKeyValue, error) {
 	keyHash := HashIdempotencyKey(key)
 
-	pebbleKey := make([]byte, 1+16)
-	pebbleKey[0] = dal.KeyPrefixIdempotency
-	copy(pebbleKey[1:], keyHash[:])
+	pebbleKey := make([]byte, 2+16)
+	pebbleKey[0] = dal.ZoneIdempotency
+	pebbleKey[1] = dal.SubIdempKeys
+	copy(pebbleKey[2:], keyHash[:])
 
 	val, closer, err := reader.Get(pebbleKey)
 	if err != nil {

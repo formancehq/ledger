@@ -667,7 +667,7 @@ func (impl *BucketServiceServerImpl) GetEventsSinks(ctx context.Context, _ *serv
 		return nil, fmt.Errorf("loading sink configs: %w", err)
 	}
 
-	// Build statuses by merging error statuses (KeyPrefixSinkStatus) with cursors (KeyPrefixSinkCursor).
+	// Build statuses by merging error statuses (SubGlobSinkStatus) with cursors (SubGlobSinkCursor).
 	errorStatuses, err := query.ReadAllSinkStatuses(impl.store)
 	if err != nil {
 		return nil, fmt.Errorf("loading sink statuses: %w", err)

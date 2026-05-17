@@ -27,6 +27,13 @@ func (kb *KeyBuilder) PutByte(value byte) *KeyBuilder {
 	return kb
 }
 
+// PutZonePrefix appends a 2-byte zone-prefixed key header [zone][sub].
+func (kb *KeyBuilder) PutZonePrefix(zone, sub byte) *KeyBuilder {
+	kb.buf = append(kb.buf, zone, sub)
+
+	return kb
+}
+
 // PutBytes appends raw bytes.
 func (kb *KeyBuilder) PutBytes(value []byte) *KeyBuilder {
 	kb.buf = append(kb.buf, value...)

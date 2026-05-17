@@ -239,17 +239,17 @@ type CacheSnapshotter struct {
 func NewCacheSnapshotter(logger logging.Logger, dataStore *dal.Store, registry *StateRegistry, bloomFilters *bloom.FilterSet) *CacheSnapshotter {
 	c := registry.Cache
 
-	volumes := newProtoSnapshotSlot(dal.AttributeCodeVolume, c.Volumes, func() *raftcmdpb.VolumePair { return &raftcmdpb.VolumePair{} })
-	metadata := newProtoSnapshotSlot(dal.AttributeCodeMetadata, c.AccountMetadata, func() *commonpb.MetadataValue { return &commonpb.MetadataValue{} })
-	ledgers := newProtoSnapshotSlot(dal.AttributeCodeLedger, c.Ledgers, func() *commonpb.LedgerInfo { return &commonpb.LedgerInfo{} })
-	boundaries := newProtoSnapshotSlot(dal.AttributeCodeBoundary, c.Boundaries, func() *raftcmdpb.LedgerBoundaries { return &raftcmdpb.LedgerBoundaries{} })
-	references := newProtoSnapshotSlot(dal.AttributeCodeReference, c.References, func() *commonpb.TransactionReferenceValue { return &commonpb.TransactionReferenceValue{} })
-	transactions := newProtoSnapshotSlot(dal.AttributeCodeTransaction, c.Transactions, func() *commonpb.TransactionState { return &commonpb.TransactionState{} })
-	sinks := newProtoSnapshotSlot(dal.AttributeCodeSinkConfig, c.SinkConfigs, func() *commonpb.SinkConfig { return &commonpb.SinkConfig{} })
-	numscriptVersions := newProtoSnapshotSlot(dal.AttributeCodeNumscriptVersion, c.NumscriptVersions, func() *commonpb.NumscriptVersionValue { return &commonpb.NumscriptVersionValue{} })
-	numscriptContents := newProtoSnapshotSlot(dal.AttributeCodeNumscriptContent, c.NumscriptContents, func() *commonpb.NumscriptInfo { return &commonpb.NumscriptInfo{} })
-	preparedQueries := newProtoSnapshotSlot(dal.AttributeCodePreparedQuery, c.PreparedQueries, func() *commonpb.PreparedQuery { return &commonpb.PreparedQuery{} })
-	ledgerMetadata := newProtoSnapshotSlot(dal.AttributeCodeLedgerMetadata, c.LedgerMetadata, func() *commonpb.MetadataValue { return &commonpb.MetadataValue{} })
+	volumes := newProtoSnapshotSlot(dal.SubAttrVolume, c.Volumes, func() *raftcmdpb.VolumePair { return &raftcmdpb.VolumePair{} })
+	metadata := newProtoSnapshotSlot(dal.SubAttrMetadata, c.AccountMetadata, func() *commonpb.MetadataValue { return &commonpb.MetadataValue{} })
+	ledgers := newProtoSnapshotSlot(dal.SubAttrLedger, c.Ledgers, func() *commonpb.LedgerInfo { return &commonpb.LedgerInfo{} })
+	boundaries := newProtoSnapshotSlot(dal.SubAttrBoundary, c.Boundaries, func() *raftcmdpb.LedgerBoundaries { return &raftcmdpb.LedgerBoundaries{} })
+	references := newProtoSnapshotSlot(dal.SubAttrReference, c.References, func() *commonpb.TransactionReferenceValue { return &commonpb.TransactionReferenceValue{} })
+	transactions := newProtoSnapshotSlot(dal.SubAttrTransaction, c.Transactions, func() *commonpb.TransactionState { return &commonpb.TransactionState{} })
+	sinks := newProtoSnapshotSlot(dal.SubAttrSinkConfig, c.SinkConfigs, func() *commonpb.SinkConfig { return &commonpb.SinkConfig{} })
+	numscriptVersions := newProtoSnapshotSlot(dal.SubAttrNumscriptVersion, c.NumscriptVersions, func() *commonpb.NumscriptVersionValue { return &commonpb.NumscriptVersionValue{} })
+	numscriptContents := newProtoSnapshotSlot(dal.SubAttrNumscriptContent, c.NumscriptContents, func() *commonpb.NumscriptInfo { return &commonpb.NumscriptInfo{} })
+	preparedQueries := newProtoSnapshotSlot(dal.SubAttrPreparedQuery, c.PreparedQueries, func() *commonpb.PreparedQuery { return &commonpb.PreparedQuery{} })
+	ledgerMetadata := newProtoSnapshotSlot(dal.SubAttrLedgerMetadata, c.LedgerMetadata, func() *commonpb.MetadataValue { return &commonpb.MetadataValue{} })
 
 	return &CacheSnapshotter{
 		logger:       logger,
@@ -262,17 +262,17 @@ func NewCacheSnapshotter(logger logging.Logger, dataStore *dal.Store, registry *
 			preparedQueries, ledgerMetadata,
 		},
 		touchSlots: map[byte]cacheSnapshotSlot{
-			dal.AttributeCodeVolume:           volumes,
-			dal.AttributeCodeMetadata:         metadata,
-			dal.AttributeCodeLedger:           ledgers,
-			dal.AttributeCodeBoundary:         boundaries,
-			dal.AttributeCodeReference:        references,
-			dal.AttributeCodeTransaction:      transactions,
-			dal.AttributeCodeSinkConfig:       sinks,
-			dal.AttributeCodeNumscriptVersion: numscriptVersions,
-			dal.AttributeCodeNumscriptContent: numscriptContents,
-			dal.AttributeCodePreparedQuery:    preparedQueries,
-			dal.AttributeCodeLedgerMetadata:   ledgerMetadata,
+			dal.SubAttrVolume:           volumes,
+			dal.SubAttrMetadata:         metadata,
+			dal.SubAttrLedger:           ledgers,
+			dal.SubAttrBoundary:         boundaries,
+			dal.SubAttrReference:        references,
+			dal.SubAttrTransaction:      transactions,
+			dal.SubAttrSinkConfig:       sinks,
+			dal.SubAttrNumscriptVersion: numscriptVersions,
+			dal.SubAttrNumscriptContent: numscriptContents,
+			dal.SubAttrPreparedQuery:    preparedQueries,
+			dal.SubAttrLedgerMetadata:   ledgerMetadata,
 		},
 		bloomExecutor: worker.NewSingleTaskExecutor(logger),
 	}
@@ -313,31 +313,31 @@ func (s *CacheSnapshotter) MirrorPreload(batch *dal.Batch, gen0Byte, gen1Byte by
 func extractPreload(p *raftcmdpb.Preload) (byte, *raftcmdpb.AttributeID, any) {
 	switch v := p.GetType().(type) {
 	case *raftcmdpb.Preload_Volume:
-		return dal.AttributeCodeVolume, v.Volume.GetId(), v.Volume.GetValue()
+		return dal.SubAttrVolume, v.Volume.GetId(), v.Volume.GetValue()
 	case *raftcmdpb.Preload_IdempotencyKey:
 		// Idempotency keys are no longer stored in the cache system.
 		// They are handled separately via the dedicated IdempotencyStore.
 		return 0, nil, nil
 	case *raftcmdpb.Preload_Ledger:
-		return dal.AttributeCodeLedger, v.Ledger.GetId(), v.Ledger.GetValue()
+		return dal.SubAttrLedger, v.Ledger.GetId(), v.Ledger.GetValue()
 	case *raftcmdpb.Preload_Boundary:
-		return dal.AttributeCodeBoundary, v.Boundary.GetId(), v.Boundary.GetValue()
+		return dal.SubAttrBoundary, v.Boundary.GetId(), v.Boundary.GetValue()
 	case *raftcmdpb.Preload_TransactionReference:
-		return dal.AttributeCodeReference, v.TransactionReference.GetId(), v.TransactionReference.GetValue()
+		return dal.SubAttrReference, v.TransactionReference.GetId(), v.TransactionReference.GetValue()
 	case *raftcmdpb.Preload_SinkConfig:
-		return dal.AttributeCodeSinkConfig, v.SinkConfig.GetId(), v.SinkConfig.GetValue()
+		return dal.SubAttrSinkConfig, v.SinkConfig.GetId(), v.SinkConfig.GetValue()
 	case *raftcmdpb.Preload_AccountMetadata:
-		return dal.AttributeCodeMetadata, v.AccountMetadata.GetId(), v.AccountMetadata.GetValue()
+		return dal.SubAttrMetadata, v.AccountMetadata.GetId(), v.AccountMetadata.GetValue()
 	case *raftcmdpb.Preload_NumscriptVersion:
-		return dal.AttributeCodeNumscriptVersion, v.NumscriptVersion.GetId(), v.NumscriptVersion.GetValue()
+		return dal.SubAttrNumscriptVersion, v.NumscriptVersion.GetId(), v.NumscriptVersion.GetValue()
 	case *raftcmdpb.Preload_TransactionState:
-		return dal.AttributeCodeTransaction, v.TransactionState.GetId(), v.TransactionState.GetValue()
+		return dal.SubAttrTransaction, v.TransactionState.GetId(), v.TransactionState.GetValue()
 	case *raftcmdpb.Preload_NumscriptContent:
-		return dal.AttributeCodeNumscriptContent, v.NumscriptContent.GetId(), v.NumscriptContent.GetValue()
+		return dal.SubAttrNumscriptContent, v.NumscriptContent.GetId(), v.NumscriptContent.GetValue()
 	case *raftcmdpb.Preload_PreparedQuery:
-		return dal.AttributeCodePreparedQuery, v.PreparedQuery.GetId(), v.PreparedQuery.GetValue()
+		return dal.SubAttrPreparedQuery, v.PreparedQuery.GetId(), v.PreparedQuery.GetValue()
 	case *raftcmdpb.Preload_LedgerMetadata:
-		return dal.AttributeCodeLedgerMetadata, v.LedgerMetadata.GetId(), v.LedgerMetadata.GetValue()
+		return dal.SubAttrLedgerMetadata, v.LedgerMetadata.GetId(), v.LedgerMetadata.GetValue()
 	}
 
 	return 0, nil, nil
@@ -380,7 +380,7 @@ func (s *CacheSnapshotter) RestoreFromStore() error {
 	// exist; default to currentGeneration=0.
 	currentGen := uint64(0)
 
-	metaVal, closer, err := s.dataStore.Get([]byte{dal.KeyPrefixCacheSnapshot, dal.CacheMetaKey})
+	metaVal, closer, err := s.dataStore.Get([]byte{dal.ZoneCache, dal.SubCacheMeta})
 	if err == nil {
 		meta := &raftcmdpb.CacheSnapshotMeta{}
 		if unmarshalErr := meta.UnmarshalVT(metaVal); unmarshalErr != nil {
@@ -435,7 +435,7 @@ func (s *CacheSnapshotter) restoreGeneration(genByte byte, genIndex int) error {
 	// Read generation metadata if present.
 	baseIndex := uint64(0)
 
-	genMetaKey := []byte{dal.KeyPrefixCacheSnapshot, genByte, dal.CacheGenMeta}
+	genMetaKey := []byte{dal.ZoneCache, genByte, dal.SubCacheGenMeta}
 
 	genMetaVal, closer, err := s.dataStore.Get(genMetaKey)
 	if err == nil {
@@ -462,8 +462,8 @@ func (s *CacheSnapshotter) restoreGeneration(genByte byte, genIndex int) error {
 	for _, slot := range s.slots {
 		restoreFn := slot.RestoreEntry(genIndex)
 
-		lower := []byte{dal.KeyPrefixCacheSnapshot, genByte, slot.CacheType()}
-		upper := []byte{dal.KeyPrefixCacheSnapshot, genByte, slot.CacheType() + 1}
+		lower := []byte{dal.ZoneCache, genByte, slot.CacheType()}
+		upper := []byte{dal.ZoneCache, genByte, slot.CacheType() + 1}
 
 		iter, err := s.dataStore.NewIter(&pebble.IterOptions{
 			LowerBound: lower,
@@ -573,8 +573,8 @@ func (s *CacheSnapshotter) runBloomTask(reason string, loadFn func(context.Conte
 
 // hasPersistedBloomBlocks checks if any bloom block keys exist in Pebble.
 func (s *CacheSnapshotter) hasPersistedBloomBlocks() bool {
-	lower := []byte{dal.KeyPrefixBloom}
-	upper := []byte{dal.KeyPrefixBloom + 1}
+	lower := []byte{dal.ZoneGlobal, dal.SubGlobBloom}
+	upper := []byte{dal.ZoneGlobal, dal.SubGlobBloom + 1}
 
 	iter, err := s.dataStore.NewIter(&pebble.IterOptions{
 		LowerBound: lower,

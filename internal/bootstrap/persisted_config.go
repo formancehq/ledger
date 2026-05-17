@@ -29,7 +29,7 @@ func (e *ConfigMismatchError) Error() string {
 // LoadPersistedConfig reads the persisted configuration from Pebble.
 // Returns nil if no configuration has been persisted yet (first boot).
 func LoadPersistedConfig(reader dal.PebbleReader) (*commonpb.PersistedConfig, error) {
-	value, closer, err := reader.Get([]byte{dal.KeyPrefixPersistedConfig})
+	value, closer, err := reader.Get([]byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig})
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return nil, nil
@@ -55,5 +55,5 @@ func SavePersistedConfig(b *dal.Batch, cfg *commonpb.PersistedConfig) error {
 		return fmt.Errorf("marshaling persisted config: %w", err)
 	}
 
-	return b.SetBytes([]byte{dal.KeyPrefixPersistedConfig}, value)
+	return b.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig}, value)
 }

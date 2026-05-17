@@ -157,7 +157,7 @@ func (b *Buffered) applyEphemeralPurge(
 
 		// Mirror the in-memory zero to 0xFF gen0Byte so the cache stays
 		// consistent across restore.
-		if err := writeCacheRaw(batch, genByte, dal.AttributeCodeVolume, update.ID, update.Tag, zeroBytes); err != nil {
+		if err := writeCacheRaw(batch, genByte, dal.SubAttrVolume, update.ID, update.Tag, zeroBytes); err != nil {
 			return err
 		}
 	}

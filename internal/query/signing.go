@@ -24,8 +24,8 @@ const ed25519PublicKeySize = 32
 // Returns a map of keyID → SigningKeyEntry.
 // Backward-compatible: values of exactly 32 bytes have no parent (root keys).
 func ReadSigningKeys(reader dal.PebbleReader) (map[string]SigningKeyEntry, error) {
-	lowerBound := []byte{dal.KeyPrefixSigningKey}
-	upperBound := []byte{dal.KeyPrefixSigningKey + 1}
+	lowerBound := []byte{dal.ZoneGlobal, dal.SubGlobSigningKey}
+	upperBound := []byte{dal.ZoneGlobal, dal.SubGlobSigningKey + 1}
 
 	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {
@@ -37,9 +37,9 @@ func ReadSigningKeys(reader dal.PebbleReader) (map[string]SigningKeyEntry, error
 	keys := make(map[string]SigningKeyEntry)
 
 	for iter.First(); iter.Valid(); iter.Next() {
-		// Key format: [KeyPrefixSigningKey(1)][keyID(variable)]
+		// Key format: [ZoneGlobal(1)][SubGlobSigningKey(1)][keyID(variable)]
 		key := iter.Key()
-		keyID := string(key[1:]) // skip the prefix byte
+		keyID := string(key[2:]) // skip the zone + sub prefix bytes
 
 		value, err := iter.ValueAndErr()
 		if err != nil {
@@ -88,7 +88,7 @@ func ReadSigningKeysCursor(ctx context.Context, reader dal.PebbleReader) (dal.Cu
 // ReadSigningConfig loads the require-signatures flag from the given reader.
 // Returns false if the config key does not exist.
 func ReadSigningConfig(reader dal.PebbleReader) (bool, error) {
-	value, closer, err := reader.Get([]byte{dal.KeyPrefixSigningConfig})
+	value, closer, err := reader.Get([]byte{dal.ZoneGlobal, dal.SubGlobSigningConfig})
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return false, nil

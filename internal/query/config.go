@@ -14,7 +14,7 @@ import (
 // ReadLastAppliedIndex returns the last applied Raft index from the given reader.
 // Returns 0 if not found.
 func ReadLastAppliedIndex(reader dal.PebbleReader) (uint64, error) {
-	get, closer, err := reader.Get([]byte{dal.KeyPrefixLastAppliedIndex})
+	get, closer, err := reader.Get([]byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex})
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return 0, nil
@@ -37,7 +37,7 @@ func ReadLastAppliedIndex(reader dal.PebbleReader) (uint64, error) {
 // ReadLastAppliedTimestamp returns the last applied HLC timestamp (microseconds since epoch) from the given reader.
 // Returns 0 if not found.
 func ReadLastAppliedTimestamp(reader dal.PebbleReader) (uint64, error) {
-	get, closer, err := reader.Get([]byte{dal.KeyPrefixLastAppliedTimestamp})
+	get, closer, err := reader.Get([]byte{dal.ZoneGlobal, dal.SubGlobLastAppliedTimestamp})
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return 0, nil
@@ -60,7 +60,7 @@ func ReadLastAppliedTimestamp(reader dal.PebbleReader) (uint64, error) {
 // ReadMaintenanceMode loads the maintenance mode flag from the given reader.
 // Returns false if the config key does not exist.
 func ReadMaintenanceMode(reader dal.PebbleReader) (bool, error) {
-	value, closer, err := reader.Get([]byte{dal.KeyPrefixMaintenanceMode})
+	value, closer, err := reader.Get([]byte{dal.ZoneGlobal, dal.SubGlobMaintenanceMode})
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return false, nil
@@ -81,7 +81,7 @@ func ReadMaintenanceMode(reader dal.PebbleReader) (bool, error) {
 // ReadClusterState loads the persisted cluster state from the given reader.
 // Returns nil if the key does not exist (first boot).
 func ReadClusterState(reader dal.PebbleReader) (*commonpb.PersistedClusterState, error) {
-	value, closer, err := reader.Get([]byte{dal.KeyPrefixClusterConfig})
+	value, closer, err := reader.Get([]byte{dal.ZoneGlobal, dal.SubGlobClusterConfig})
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return nil, nil

@@ -160,7 +160,7 @@ func TestSetSinkCursor(t *testing.T) {
 
 	// Read back via direct key access
 	kb := dal.NewKeyBuilder()
-	kb.PutByte(dal.KeyPrefixSinkCursor).PutString("my-sink")
+	kb.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobSinkCursor).PutString("my-sink")
 	val, closer, err := s.Get(kb.Build())
 	require.NoError(t, err)
 
@@ -184,7 +184,7 @@ func TestSetSinkStatus(t *testing.T) {
 
 	// Verify by reading back
 	kb := dal.NewKeyBuilder()
-	kb.PutByte(dal.KeyPrefixSinkStatus).PutString("test-sink")
+	kb.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobSinkStatus).PutString("test-sink")
 	val, closer, err := s.Get(kb.Build())
 	require.NoError(t, err)
 
@@ -213,7 +213,7 @@ func TestClearSinkStatus(t *testing.T) {
 
 	// Verify it's gone
 	kb := dal.NewKeyBuilder()
-	kb.PutByte(dal.KeyPrefixSinkStatus).PutString("clear-me")
+	kb.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobSinkStatus).PutString("clear-me")
 	_, _, err := s.Get(kb.Build())
 	require.ErrorIs(t, err, pebble.ErrNotFound)
 }

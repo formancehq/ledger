@@ -115,25 +115,99 @@ func (s *Store) IsWriteStalled() bool {
 	return s.stallState.IsStalled()
 }
 
-// Key prefixes for Pebble storage, organized into five zones:
+// Key prefixes for Pebble storage. Every key starts with a 2-byte prefix:
+// [zone_byte][sub_prefix_byte][...payload...].
 //
-//	Cold zone            [0x01, 0x04) — archived to cold storage then purged per period.
-//	Per-ledger system    [0xE0, 0xF1) — per-ledger data persisted forever (prepared queries, numscript, mirror, audit config, period schedule).
-//	Attributes zone      [0xF1, 0xF2) — derived data hashed during seal, stays in hot storage.
-//	Global system zone   [0xF2, 0xFF) — cluster-wide metadata persisted forever.
-//	Cache snapshot zone  [0xFF, ...)  — cache snapshot data (written before Pebble checkpoints).
+// Zone bytes (first byte of every key):
+//
+//	0x01  Attributes   — derived data hashed during seal (volumes, metadata, transactions, ...).
+//	0x02  Cache        — in-memory cache snapshot persisted before checkpoints.
+//	0x03  Per-ledger   — per-ledger config/state (prepared queries, reversions, mirror).
+//	0x04  Cold         — data archived to cold storage then purged per period (logs, audit).
+//	0x05  Idempotency  — TTL-managed idempotency keys (evicted by Raft command, not period archival).
+//	0x06  Global       — cluster-wide metadata persisted forever (applied index, signing, periods, sinks, ...).
+//	0x07..0xFF          — reserved for future zones.
 
-// Zone boundary constants define the contiguous key ranges.
+// Zone bytes — first byte of every Pebble key.
 const (
-	ZoneColdStart         byte = 0x01
-	ZoneColdEnd           byte = 0x04
-	ZonePerLedgerSysStart byte = 0xE0
-	ZonePerLedgerSysEnd   byte = 0xF1 // == KeyPrefixAttributes
-	ZoneAttributesStart   byte = 0xF1
-	ZoneAttributesEnd     byte = 0xF2
-	ZoneGlobalSysStart    byte = 0xF2
-	ZoneGlobalSysEnd      byte = 0xFF // exclusive: 0xFF is cache snapshot zone
+	ZoneAttributes  byte = 0x01
+	ZoneCache       byte = 0x02
+	ZonePerLedger   byte = 0x03
+	ZoneCold        byte = 0x04
+	ZoneIdempotency byte = 0x05
+	ZoneGlobal      byte = 0x06
 )
+
+// Attribute sub-prefixes (zone 0x01), ordered by hot-path write frequency.
+const (
+	SubAttrVolume           byte = 0x01
+	SubAttrMetadata         byte = 0x02
+	SubAttrTransaction      byte = 0x03
+	SubAttrLedger           byte = 0x04
+	SubAttrBoundary         byte = 0x05
+	SubAttrReference        byte = 0x06
+	SubAttrLedgerMetadata   byte = 0x07
+	SubAttrSinkConfig       byte = 0x08
+	SubAttrNumscriptVersion byte = 0x09
+	SubAttrNumscriptContent byte = 0x0A
+	SubAttrPreparedQuery    byte = 0x0B
+)
+
+// Cache sub-prefixes (zone 0x02).
+// Attribute entries reuse SubAttr* codes: [ZoneCache][gen][SubAttr*][U128].
+const (
+	SubCacheGenMeta byte = 0x00 // [ZoneCache][gen][SubCacheGenMeta] → CacheGenerationMeta
+	SubCacheMeta    byte = 0xFF // [ZoneCache][SubCacheMeta] → CacheSnapshotMeta (global)
+)
+
+// Per-ledger sub-prefixes (zone 0x03).
+const (
+	SubPLReversions       byte = 0x01
+	SubPLPendingCleanup   byte = 0x02
+	SubPLPreparedQuery    byte = 0x03
+	SubPLMirrorSourceHead byte = 0x04
+	SubPLMirrorCursor     byte = 0x05
+	SubPLMirrorStatus     byte = 0x06
+)
+
+// Cold sub-prefixes (zone 0x04).
+const (
+	SubColdLog   byte = 0x01
+	SubColdAudit byte = 0x02
+)
+
+// Idempotency sub-prefixes (zone 0x05).
+const (
+	SubIdempKeys    byte = 0x01
+	SubIdempTimeIdx byte = 0x02
+)
+
+// Global sub-prefixes (zone 0x06), ordered by hot-path write frequency.
+const (
+	SubGlobLastAppliedIndex         byte = 0x01
+	SubGlobLastAppliedTimestamp     byte = 0x02
+	SubGlobLedgerInfo               byte = 0x03
+	SubGlobSigningKey               byte = 0x04
+	SubGlobSigningConfig            byte = 0x05
+	SubGlobPeriods                  byte = 0x06
+	SubGlobNextPeriodID             byte = 0x07
+	SubGlobSinkCursor               byte = 0x08
+	SubGlobEventsConfig             byte = 0x09
+	SubGlobSinkStatus               byte = 0x0A
+	SubGlobMaintenanceMode          byte = 0x0B
+	SubGlobPersistedConfig          byte = 0x0C
+	SubGlobPeriodSchedule           byte = 0x0D
+	SubGlobQueryCheckpoint          byte = 0x0E
+	SubGlobNextQueryCheckpointID    byte = 0x0F
+	SubGlobQueryCheckpointSchedule  byte = 0x10
+	SubGlobClusterConfig            byte = 0x11
+	SubGlobBloom                    byte = 0x12
+)
+
+// ---------------------------------------------------------------------------
+// Legacy constants — kept as aliases for backward compatibility in call sites.
+// New code should use Zone* / SubAttr* / SubCache* directly.
+// ---------------------------------------------------------------------------
 
 // Canonical key separators used inside attribute canonical keys
 // to delimit volume and metadata sub-keys.
@@ -148,80 +222,15 @@ const (
 var MaxUint64Bytes = []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 
 var (
-	// --- Cold zone [0x01, 0x04) ---.
-
-	// Sequence-keyed prefixes: [prefix][sequence] — support efficient range scan/delete.
-	KeyPrefixLog                byte = 0x01 // [KeyPrefixLog][sequence] -> Log
-	KeyPrefixAudit              byte = 0x02 // [KeyPrefixAudit][sequence] -> AuditEntry
-	KeyPrefixIdempotency        byte = 0x03 // [KeyPrefixIdempotency][key_string_bytes] -> IdempotencyKeyValue
-	KeyPrefixIdempotencyTimeIdx byte = 0x04 // [KeyPrefixIdempotencyTimeIdx][created_at BE][key_string_bytes] -> empty (time index)
-
-	// ColdSequencePrefixes lists cold-storable prefixes keyed by sequence number.
-	// These support efficient range scan and range delete by [prefix][startSeq]..[prefix][endSeq].
-	ColdSequencePrefixes = []byte{KeyPrefixLog, KeyPrefixAudit}
-
-	// --- Per-ledger system zone [0xE0, 0xF1) ---.
-
-	KeyPrefixPreparedQuery           byte = 0xE0 // [KeyPrefixPreparedQuery][name\x00][queryName] -> PreparedQuery protobuf
-	KeyPrefixPendingLedgerCleanup    byte = 0xE1 // [KeyPrefixPendingLedgerCleanup][ledger_name\x00] -> uint64 (delete log sequence)
-	KeyPrefixQueryCheckpoint         byte = 0xE2 // [KeyPrefixQueryCheckpoint][checkpoint_id BE] -> QueryCheckpointState protobuf
-	KeyPrefixNextQueryCheckpointID   byte = 0xE3 // [KeyPrefixNextQueryCheckpointID] -> uint64 (next checkpoint ID)
-	KeyPrefixQueryCheckpointSchedule byte = 0xE4 // [KeyPrefixQueryCheckpointSchedule] -> cron expression string
-	KeyPrefixReversions              byte = 0xE5 // [KeyPrefixReversions][ledger_name] -> packed little-endian uint64 bitset
-	KeyPrefixClusterConfig           byte = 0xE6 // [KeyPrefixClusterConfig] -> ClusterConfig protobuf (mutable cluster-wide config)
-	KeyPrefixBloom                   byte = 0xE7 // [KeyPrefixBloom][attrCode][blockIndex BE 8] -> 64-byte block
-	KeyPrefixMirrorSourceHead        byte = 0xEB // [KeyPrefixMirrorSourceHead][ledger_name\x00] -> uint64 (latest known v2 source log ID)
-	KeyPrefixMirrorCursor            byte = 0xEC // [KeyPrefixMirrorCursor][ledger_name\x00] -> uint64 (last ingested v2 log ID)
-	KeyPrefixMirrorStatus            byte = 0xED // [KeyPrefixMirrorStatus][ledger_name\x00] -> MirrorSyncError protobuf
-	KeyPrefixPeriodSchedule          byte = 0xEF // [KeyPrefixPeriodSchedule] -> cron expression string
-
-	// --- Attributes zone [0xF1, 0xF2) — seal hash domain ---.
-
-	KeyPrefixAttributes byte = 0xF1
-
-	// Attribute type prefixes used within the attributes zone and cache snapshot zone.
-	AttributeCodeVolume           = byte('V')
-	AttributeCodeMetadata         = byte('M')
-	AttributeCodeIdempotency      = byte('I') // Deprecated: idempotency uses dedicated prefix 0x03. Kept for backward compatibility with existing Pebble data.
-	AttributeCodeReference        = byte('R')
-	AttributeCodeLedger           = byte('L')
-	AttributeCodeBoundary         = byte('B')
-	AttributeCodeTransaction      = byte('T')
-	AttributeCodeSinkConfig       = byte('S')
-	AttributeCodeNumscriptVersion = byte('N')
-	AttributeCodeNumscriptContent = byte('C')
-	AttributeCodePreparedQuery    = byte('P')
-	AttributeCodeLedgerMetadata   = byte('D') // 'D' for Descriptive metadata on ledgers
-
-	// --- Global system zone [0xF2, 0xFF] ---.
-
-	KeyPrefixLastAppliedIndex     byte = 0xF2 // [KeyPrefixLastAppliedIndex] -> uint64
-	KeyPrefixLastAppliedTimestamp byte = 0xF3 // [KeyPrefixLastAppliedTimestamp] -> uint64 (HLC microseconds)
-	KeyPrefixLedgerInfo           byte = 0xF5 // [KeyPrefixLedgerInfo][name\x00] -> LedgerInfo
-	KeyPrefixSigningKey           byte = 0xF6 // [KeyPrefixSigningKey][keyID] -> ed25519 public key (32 bytes)
-	KeyPrefixPeriods              byte = 0xF7 // [KeyPrefixPeriods][periodID] -> Period
-	KeyPrefixNextPeriodID         byte = 0xF8 // [KeyPrefixNextPeriodID] -> uint64 (next period ID)
-	KeyPrefixSigningConfig        byte = 0xF9 // [KeyPrefixSigningConfig] -> signing config byte (0x00=false, 0x01=true)
-	KeyPrefixSinkCursor           byte = 0xFA // [KeyPrefixSinkCursor][name] -> uint64 (per-sink last emitted log sequence)
-	KeyPrefixEventsConfig         byte = 0xFB // [KeyPrefixEventsConfig][name] -> SinkConfig protobuf (per-sink)
-	KeyPrefixSinkStatus           byte = 0xFC // [KeyPrefixSinkStatus][name] -> SinkStatus protobuf
-	KeyPrefixMaintenanceMode      byte = 0xFD // [KeyPrefixMaintenanceMode] -> maintenance mode byte (0x00=false, 0x01=true)
-	KeyPrefixPersistedConfig      byte = 0xFE // [KeyPrefixPersistedConfig] -> PersistedConfig protobuf (startup safety checks)
-	KeyPrefixCacheSnapshot        byte = 0xFF // [KeyPrefixCacheSnapshot][sub...] -> cache snapshot data
+	// ColdSequencePrefixes lists cold-storable zone+sub pairs keyed by sequence number.
+	// These support efficient range scan and range delete by [zone][sub][startSeq]..[zone][sub][endSeq].
+	ColdSequencePrefixes = [][2]byte{
+		{ZoneCold, SubColdLog},
+		{ZoneCold, SubColdAudit},
+	}
 )
 
-// Cache snapshot sub-prefixes within the 0xFF zone.
-// The type byte reuses AttributeCode* constants so there is a single set
-// of attribute type identifiers across the attributes zone and the cache zone.
-// Key format:
-//
-//	[0xFF][gen: 0x00|0x01][AttributeCode*][16-byte U128 key] → proto value (attribute entry)
-//	[0xFF][gen: 0x00|0x01][0x00]                               → CacheGenerationMeta (baseIndex)
-//	[0xFF][0xFF]                                               → CacheSnapshotMeta (currentGeneration)
-const (
-	CacheGenMeta byte = 0x00 // Generation metadata sub-key (under [0xFF][gen])
-	CacheMetaKey byte = 0xFF // [0xFF][0xFF] → CacheSnapshotMeta
-)
+
 
 // NewStore creates a new Store instance.
 func NewStore(
@@ -407,8 +416,8 @@ func (s *Store) WarmSystemKeys() {
 	db := s.getDB()
 
 	ranges := [][2]byte{
-		{ZonePerLedgerSysStart, ZonePerLedgerSysEnd}, // 0xE0..0xF0 (numscripts, mirror, audit, period schedule, etc.)
-		{ZoneGlobalSysStart, ZoneGlobalSysEnd},       // 0xF2..0xFE (applied index, ledger info, periods, signing, etc.)
+		{ZonePerLedger, ZonePerLedger + 1}, // zone 0x03 (per-ledger system keys)
+		{ZoneGlobal, ZoneGlobal + 1},       // zone 0x06 (global system keys)
 	}
 
 	var totalKeys int64
@@ -438,14 +447,14 @@ func (s *Store) WarmSystemKeys() {
 	}).Infof("System key warmup complete")
 }
 
-// WarmBlockCache iterates the attributes zone [0xF1, 0xF2) to preload
+// WarmBlockCache iterates the attributes zone [ZoneAttributes, ZoneAttributes+1) to preload
 // Pebble's block cache. This is the heavyweight warmup (volumes, metadata,
 // etc.) and should run in the background after servers are listening.
 func (s *Store) WarmBlockCache() {
 	start := time.Now()
 	db := s.getDB()
 
-	keys, err := s.warmRange(db, ZoneAttributesStart, ZoneAttributesEnd)
+	keys, err := s.warmRange(db, ZoneAttributes, ZoneAttributes+1)
 	if err != nil {
 		s.logger.WithFields(map[string]any{"error": err}).
 			Errorf("Block cache warmup failed")
@@ -832,7 +841,7 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	// In that case, skip config preservation and proceed with the restore.
 	var preservedConfig []byte
 	if oldDB != nil {
-		if value, closer, getErr := oldDB.Get([]byte{KeyPrefixPersistedConfig}); getErr == nil {
+		if value, closer, getErr := oldDB.Get([]byte{ZoneGlobal, SubGlobPersistedConfig}); getErr == nil {
 			preservedConfig = append([]byte(nil), value...)
 			_ = closer.Close()
 		}
@@ -871,7 +880,7 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	// The checkpoint originates from the leader and contains the leader's
 	// config (including its node-id). We must restore this node's identity.
 	if preservedConfig != nil {
-		err := newDB.Set([]byte{KeyPrefixPersistedConfig}, preservedConfig, pebble.Sync)
+		err := newDB.Set([]byte{ZoneGlobal, SubGlobPersistedConfig}, preservedConfig, pebble.Sync)
 		if err != nil {
 			return fmt.Errorf("re-writing persisted config after checkpoint restore: %w", err)
 		}
@@ -917,13 +926,13 @@ func (s *Store) IterateColdKVPairs(startSeq, closeSeq uint64, fn func(key, value
 		return ErrStoreClosed
 	}
 
-	for _, prefix := range ColdSequencePrefixes {
-		lowerBound := NewKeyBuilder().PutByte(prefix).PutUint64(startSeq).Build()
-		upperBound := NewKeyBuilder().PutByte(prefix).PutUint64(closeSeq + 1).Build()
+	for _, zp := range ColdSequencePrefixes {
+		lowerBound := NewKeyBuilder().PutZonePrefix(zp[0], zp[1]).PutUint64(startSeq).Build()
+		upperBound := NewKeyBuilder().PutZonePrefix(zp[0], zp[1]).PutUint64(closeSeq + 1).Build()
 
 		err := iterateRawRange(db, lowerBound, upperBound, fn)
 		if err != nil {
-			return fmt.Errorf("iterating prefix 0x%02x: %w", prefix, err)
+			return fmt.Errorf("iterating zone 0x%02x sub 0x%02x: %w", zp[0], zp[1], err)
 		}
 	}
 

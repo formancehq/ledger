@@ -18,11 +18,11 @@ import (
 // ReadLastAuditSequence returns the last audit entry sequence from the given reader. Returns 0 if no entries exist.
 func ReadLastAuditSequence(reader dal.PebbleReader) (uint64, error) {
 	kb := dal.NewKeyBuilder()
-	kb.PutByte(dal.KeyPrefixAudit)
+	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdAudit)
 	lowerBound := kb.Snapshot()
 	kb.Reset()
 
-	kb.PutByte(dal.KeyPrefixAudit).
+	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).
 		PutBytes(dal.MaxUint64Bytes)
 	upperBound := kb.Build()
 
@@ -57,7 +57,7 @@ func ReadAuditEntries(ctx context.Context, reader dal.PebbleReader, afterSequenc
 	defer span.End()
 
 	kb := dal.NewKeyBuilder()
-	kb.PutByte(dal.KeyPrefixAudit)
+	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdAudit)
 
 	if afterSequence != nil {
 		kb.PutUint64(*afterSequence + 1)
@@ -66,7 +66,7 @@ func ReadAuditEntries(ctx context.Context, reader dal.PebbleReader, afterSequenc
 	lowerBound := kb.Build()
 
 	kb2 := dal.NewKeyBuilder()
-	kb2.PutByte(dal.KeyPrefixAudit).
+	kb2.PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).
 		PutBytes(dal.MaxUint64Bytes)
 	upperBound := kb2.Build()
 
@@ -86,7 +86,7 @@ func ReadAuditEntry(ctx context.Context, reader dal.PebbleReader, sequence uint6
 	defer span.End()
 
 	kb := dal.NewKeyBuilder()
-	kb.PutByte(dal.KeyPrefixAudit).PutUint64(sequence)
+	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(sequence)
 	key := kb.Build()
 
 	value, closer, err := reader.Get(key)

@@ -24,7 +24,7 @@ import (
 // Format: [0xFF][genByte][cacheType][16-byte U128] = 19 bytes.
 func fillCacheKey(genByte, cacheType byte, id attributes.U128) [3 + 16]byte {
 	var buf [3 + 16]byte
-	buf[0] = dal.KeyPrefixCacheSnapshot
+	buf[0] = dal.ZoneCache
 	buf[1] = genByte
 	buf[2] = cacheType
 	copy(buf[3:], id[:])
@@ -96,8 +96,8 @@ func writeCacheRotation(batch *dal.Batch, currentGeneration uint64, baseIndexGen
 	gen1Byte := byte((currentGeneration + 1) % 2)
 
 	// 1. Purge old gen1 data (same byte position as new gen0).
-	clearStart := []byte{dal.KeyPrefixCacheSnapshot, newGenByte}
-	clearEnd := []byte{dal.KeyPrefixCacheSnapshot, newGenByte + 1}
+	clearStart := []byte{dal.ZoneCache, newGenByte}
+	clearEnd := []byte{dal.ZoneCache, newGenByte + 1}
 
 	if err := batch.DeleteRangeNoSync(clearStart, clearEnd); err != nil {
 		return fmt.Errorf("clearing old gen1 cache data: %w", err)
@@ -105,7 +105,7 @@ func writeCacheRotation(batch *dal.Batch, currentGeneration uint64, baseIndexGen
 
 	// 2. Global cache snapshot meta.
 	if err := batch.SetProto(
-		[]byte{dal.KeyPrefixCacheSnapshot, dal.CacheMetaKey},
+		[]byte{dal.ZoneCache, dal.SubCacheMeta},
 		&raftcmdpb.CacheSnapshotMeta{CurrentGeneration: currentGeneration},
 	); err != nil {
 		return fmt.Errorf("updating cache snapshot meta: %w", err)
@@ -113,7 +113,7 @@ func writeCacheRotation(batch *dal.Batch, currentGeneration uint64, baseIndexGen
 
 	// 3. New gen0 metadata (empty generation).
 	if err := batch.SetProto(
-		[]byte{dal.KeyPrefixCacheSnapshot, newGenByte, dal.CacheGenMeta},
+		[]byte{dal.ZoneCache, newGenByte, dal.SubCacheGenMeta},
 		&raftcmdpb.CacheGenerationMeta{BaseIndex: baseIndexGen0},
 	); err != nil {
 		return fmt.Errorf("updating gen0 meta: %w", err)
@@ -121,7 +121,7 @@ func writeCacheRotation(batch *dal.Batch, currentGeneration uint64, baseIndexGen
 
 	// 4. Gen1 metadata (old gen0 entries, now at gen1Byte).
 	if err := batch.SetProto(
-		[]byte{dal.KeyPrefixCacheSnapshot, gen1Byte, dal.CacheGenMeta},
+		[]byte{dal.ZoneCache, gen1Byte, dal.SubCacheGenMeta},
 		&raftcmdpb.CacheGenerationMeta{BaseIndex: baseIndexGen1},
 	); err != nil {
 		return fmt.Errorf("updating gen1 meta: %w", err)

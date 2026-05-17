@@ -18,7 +18,7 @@ func newTestFilter(t *testing.T) *Filter {
 
 	meter := noop.NewMeterProvider().Meter("test")
 
-	return newFilter(10000, 0.01, dal.AttributeCodeVolume, meter, "test")
+	return newFilter(10000, 0.01, dal.SubAttrVolume, meter, "test")
 }
 
 func hashKey(key []byte) attributes.U128 {

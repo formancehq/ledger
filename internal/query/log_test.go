@@ -336,7 +336,7 @@ func buildColdSST(t *testing.T, logs ...*commonpb.Log) []byte {
 
 	for _, log := range logs {
 		kb := dal.NewKeyBuilder()
-		kb.PutByte(dal.KeyPrefixLog).PutUint64(log.GetSequence())
+		kb.PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(log.GetSequence())
 
 		value, err := proto.Marshal(log)
 		require.NoError(t, err)
