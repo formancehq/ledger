@@ -577,24 +577,27 @@ config:
 
 ### Configuration Safety Checks at Startup
 
-The server persists critical configuration parameters in Pebble (key prefix `0xFE`) on first boot and validates them on every subsequent boot. This prevents silent data corruption from accidentally changing `node-id`, `cluster-id`, or `data-dir` between restarts.
+The server persists critical configuration parameters in Pebble under the Global zone (key `{0x06, 0x0C}`) on first boot and validates them on every subsequent boot. This prevents silent data corruption from accidentally changing critical parameters between restarts.
 
 #### Persisted Parameters
 
 | Parameter | Risk if changed | Behavior on mismatch |
 |-----------|----------------|---------------------|
-| `node-id` | Cluster confusion — node becomes invisible | **Fatal error** |
+| `node-id` | Cluster confusion -- node becomes invisible | **Fatal error** |
 | `cluster-id` | Breaks inter-node communication | **Fatal error** |
+| `idempotency-ttl` | Idempotency window mismatch | **Fatal error** |
+| `storage-schema-version` | Data layout incompatibility | **Fatal error** (never bypassable, even with `--unsafe-skip-config-validation`) |
 
 #### Edge Cases
 
-- **First boot**: No persisted config exists — current config is saved (no error)
+- **First boot**: No persisted config exists -- current config is saved (no error)
 - **Restore flow**: Validation is skipped in restore mode (`--restore`)
 - **Existing deployments upgrading**: Treated as first boot (no persisted config key yet)
+- **Schema version mismatch**: Always fatal regardless of `--unsafe-skip-config-validation`, because data corruption is certain
 
 #### Override
 
-Use `--unsafe-skip-config-validation` to bypass safety checks and overwrite the persisted config. **Use only for intentional migrations.** See [CLI Reference](./cli.md) for flag documentation.
+Use `--unsafe-skip-config-validation` to bypass safety checks for `node-id`, `cluster-id`, and `idempotency-ttl` mismatches and overwrite the persisted config. **Use only for intentional migrations.** Note that `storage-schema-version` mismatches are never bypassable. See [CLI Reference](./cli.md) for flag documentation.
 
 ## Scaling
 

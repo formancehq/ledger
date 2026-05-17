@@ -4,7 +4,7 @@
 
 Idempotency keys provide a mechanism to safely retry requests without risking duplicate operations. When a client includes an idempotency key with a request, the system guarantees that the operation will only be executed once, even if the request is sent multiple times.
 
-Idempotency keys are stored under a dedicated Pebble prefix (`0x03`) with an in-memory bridge map for inter-proposal visibility. They are not part of the shared attribute/cache system.
+Idempotency keys are stored under the dedicated `ZoneIdempotency` zone (`0x05`) with an in-memory bridge map for inter-proposal visibility. They are not part of the shared attribute/cache system.
 
 ## Key Characteristics
 
@@ -13,7 +13,7 @@ Idempotency keys are stored under a dedicated Pebble prefix (`0x03`) with an in-
 | **Scope** | System-level (not per-ledger) |
 | **Uniqueness** | Keys must be globally unique across all ledgers |
 | **Hash verification** | Content is hashed (BLAKE3) to detect conflicts |
-| **Persistence** | Stored under Pebble prefix `0x03` with a time index at `0x04` |
+| **Persistence** | Stored under `{0x05, 0x01}` (`ZoneIdempotency` + `SubIdempKeys`) with a time index at `{0x05, 0x02}` (`ZoneIdempotency` + `SubIdempTimeIdx`) |
 | **TTL** | Configurable time-to-live (default: 24h, 0 = no expiration) |
 | **Eviction** | Deterministic cleanup via Raft `IdempotencyEviction` commands |
 
@@ -94,8 +94,8 @@ The in-memory map grows between eviction commands and shrinks on each eviction:
 ### Pebble Layout
 
 ```
-[0x03][key_hash 16 bytes]        -> IdempotencyKeyValue protobuf
-[0x04][created_at BE][key_hash]  -> empty (time index for eviction scan)
+[0x05][0x01][key_hash 16 bytes]                -> IdempotencyKeyValue protobuf
+[0x05][0x02][created_at BE 8 bytes][key_hash 16 bytes]  -> empty (time index for eviction scan)
 ```
 
 The key hash is a 16-byte BLAKE3 truncation of the idempotency key string.
@@ -109,20 +109,25 @@ Admission (preload) ─── direct Pebble Get ──> PreloadSet
                                                   │
 FSM (apply) ─── in-memory map (bridge) ──────────>│
                 │                                  │
-                └── DerivedIdempotencyStore ───> Merge ──> Pebble [0x03]
+                └── DerivedIdempotencyStore ───> Merge ──> Pebble [0x05][0x01]
 ```
 
 ### Preloading
 
-During admission, idempotency keys are loaded directly from Pebble (no bloom filter, no dual-generation cache):
+During admission, idempotency keys are loaded directly from Pebble (no bloom filter, no dual-generation cache). The preload logic is in `internal/infra/preload/preloader.go`:
 
 ```go
-value, err := state.LoadIdempotencyKey(reader, key)
+value, err := state.LoadIdempotencyKey(reader, ik.Key)
+if err != nil {
+    results[i].err = err
+    return
+}
+
 if value != nil {
     preloads = append(preloads, &raftcmdpb.Preload{
         Type: &raftcmdpb.Preload_IdempotencyKey{
             IdempotencyKey: &raftcmdpb.PreloadIdempotencyKey{
-                Key:   key,
+                Key:   ik.Key,
                 Value: value,
             },
         },

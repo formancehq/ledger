@@ -18,7 +18,6 @@ ledger-v3-poc run \
 | `--auth-enabled` | bool | `false` | Enable JWT authentication and scope-based authorization |
 | `--auth-issuer` | string | `""` | OIDC issuer URL (used for discovery and token validation) |
 | `--auth-service` | string | `""` | Service name prefix for scopes (e.g., `ledger` for `ledger:read`) |
-| `--auth-read-key-set-max-retries` | int | `10` | Maximum retries when fetching the JWKS key set |
 
 When `--auth-enabled` is set:
 1. The server performs OIDC discovery at `<issuer>/.well-known/openid-configuration`

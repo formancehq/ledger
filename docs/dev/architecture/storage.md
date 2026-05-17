@@ -337,7 +337,7 @@ See [Storage Drivers](./storage-drivers.md) for the complete key schema.
 
 ### Attribute Loading Coordination
 
-**File**: `internal/application/admission/loader.go`
+**File**: `internal/infra/preload/loader.go`
 
 The `AttributeLoader` coordinates concurrent attribute loading to prevent duplicate store reads:
 

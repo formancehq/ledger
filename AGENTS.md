@@ -37,7 +37,7 @@ Always verify compilation with `GOROOT= go build ./...` before submitting. The `
 
 **CRITICAL**: After any change to interfaces annotated with `//go:generate mockgen`, regenerate mocks immediately with `go generate ./...`.
 
-Interfaces with mockgen: `WAL` (`internal/infra/node/node.go`), `Transport` (`internal/infra/node/transport.go`), `Controller` (`internal/application/ctrl/controller.go`), `Engine` (`internal/application/ctrl/controller_default.go`), `Spool` (`internal/storage/spool/spool.go`), `WAL` (`internal/storage/wal/wal.go`), `Store` (`internal/domain/processing/processor.go`), `Checker` (`internal/infra/health/healthcheck.go`).
+Interfaces with mockgen: `Transport` (`internal/infra/node/transport.go`), `Controller` (`internal/application/ctrl/controller.go`), `Admission` (`internal/application/ctrl/controller_default.go`), `Spool` (`internal/storage/spool/spool.go`), `WAL` (`internal/storage/wal/wal.go`), `InMemoryStore` (`internal/domain/processing/store.go`), `Checker` (`internal/infra/health/healthcheck.go`), `Proposer` (`internal/infra/state/metadata_converter.go`).
 
 ## JSON Property Naming
 
@@ -64,18 +64,21 @@ Key rules:
 
 ## File Structure
 
+- **Server**: `cmd/server/` - main server binary entry point
 - **CLI**: `cmd/ledgerctl/` - one file per sub-command. See [docs/ops/cli.md](docs/ops/cli.md).
-- **Domain**: `internal/domain/` - value objects, errors, domain services (`processing/`), and cryptographic primitives (`crypto/signing/`, `crypto/keystore/`)
+- **Domain**: `internal/domain/` - value objects, errors, domain services (`processing/`, `accounttype/`, `analysis/`, `replay/`), and cryptographic primitives (`crypto/signing/`, `crypto/keystore/`)
 - **Bootstrap**: `internal/bootstrap/` - composition root (fx wiring, config, TLS, persisted config)
-- **Application**: `internal/application/` - use cases (`admission/`, `ctrl/`, `events/`, `check/`)
-- **Infrastructure**: `internal/infra/` - consensus (`node/`, `state/`), caching (`cache/`, `attributes/`), transport, health, monitoring
-- **Utilities**: `internal/pkg/` - zero/low-dependency utilities (`kv/`, `signal/`, `futures/`, `commands/`)
-- **Storage**: `internal/storage/` - Pebble DAL, WAL, spool
+- **Application**: `internal/application/` - use cases (`admission/`, `ctrl/`, `events/`, `check/`, `indexbuilder/`, `mirror/`)
+- **Infrastructure**: `internal/infra/` - consensus (`node/`, `state/`), caching (`cache/`, `attributes/`), transport, health, monitoring, `backup/`, `bloom/`, `coldstorage/`, `preload/`, `receipt/`
+- **Utilities**: `internal/pkg/` - zero/low-dependency utilities (`kv/`, `signal/`, `futures/`, `commands/`, `bitset/`, `bytesize/`, `filterexpr/`, `semver/`, `tarutil/`, `vtmarshal/`, `worker/`)
+- **Storage**: `internal/storage/` - Pebble DAL, WAL, spool, `readstore/`, `pebblecfg/`
 - **Query**: `internal/query/` - CQRS read-side queries
-- **Adapters**: `internal/adapter/` - transport layer (`grpc/` primary API, `http/` REST compat, `json/` serialization)
+- **Adapters**: `internal/adapter/` - transport layer (`grpc/` primary API, `http/` REST compat, `json/` serialization, `auth/` JWT/Ed25519 authentication, `v2/` v2 compatibility layer)
 - **Proto definitions**: `misc/proto/` -> generated code in `internal/proto/`
 - **Demos**: `misc/demo/` - VHS tape files for CLI demos
 - **Numscript examples**: `misc/numscript/examples/`
+- **Public packages**: `pkg/` - public API (`actions/`, `scenario/`, `testserver/`)
+- **Tests**: `tests/` - test suites (`e2e/`, `scenarios/`, `antithesis/`, `perf/`, `schemathesis/`)
 
 ## Build Tags (Optional Features)
 
@@ -87,10 +90,12 @@ The default build (`go build .`) produces a **light binary** (~60 MB) without he
 | `nats` | NATS JetStream event sink | `nats-io/nats.go`, `nats-io/nats-server` |
 | `clickhouse` | ClickHouse event sink | `ClickHouse/clickhouse-go` |
 | `databricks` | Databricks event sink | `databricks/databricks-sql-go` |
-| `s3` | S3 cold storage | `aws-sdk-go-v2` |
+| `s3` | S3 cold storage & backup | `aws-sdk-go-v2` |
 | `pyroscope` | Pyroscope continuous profiling | `grafana/pyroscope-go` |
 
 Build with all features: `just build-full` or `go build -tags "kafka,nats,clickhouse,s3,pyroscope" .`
+
+Scenario tests use a separate build tag: `go test -tags scenario ./tests/scenarios/... -timeout 20m`
 
 ## Testing Conventions
 
@@ -99,9 +104,9 @@ See [docs/dev/testing.md](docs/dev/testing.md) for full testing guidelines.
 Key rules:
 - **Never use `time.Sleep`** in tests - use `require.Eventually`
 - **Always use `t.Parallel()`** in unit tests
-- **Use gRPC client** (`servicepb.LedgerServiceClient`) in integration tests
-- **Use helper functions** from `tests/e2e/helpers.go`
-- **E2E tests** use the `e2e` build tag: `go test -tags e2e ./tests/e2e/... -timeout=600s`
+- **Use gRPC client** (`servicepb.BucketServiceClient`) in integration tests
+- **Use helper functions** from `tests/e2e/testutil/` (helpers and server setup)
+- **E2E tests** use the `e2e` build tag and Ginkgo/Gomega framework: `go test -tags e2e ./tests/e2e/... -timeout=600s`
 
 ### Running all tests (with all optional features)
 
@@ -120,7 +125,7 @@ go test -tags "e2e,clickhouse" ./tests/e2e/... -timeout 20m
 
 ## Configuration Safety Checks
 
-The server persists critical config (`node-id`, `cluster-id`) in Pebble (key prefix `0xFE`) on first boot and validates on subsequent boots. Mismatch on `node-id`/`cluster-id` is fatal. Use `--unsafe-skip-config-validation` to bypass (dangerous). See [docs/ops/deployment.md](docs/ops/deployment.md) and [docs/ops/cli.md](docs/ops/cli.md) for details.
+The server persists critical config (`node-id`, `cluster-id`, `idempotency-ttl`, `storage-schema-version`) in Pebble under the Global zone on first boot and validates on subsequent boots. Mismatch on `node-id`/`cluster-id` is fatal. Use `--unsafe-skip-config-validation` to bypass (dangerous). Schema version mismatches are never bypassable, even with `--unsafe-skip-config-validation`. See [docs/ops/deployment.md](docs/ops/deployment.md) and [docs/ops/cli.md](docs/ops/cli.md) for details.
 
 Key files: `internal/bootstrap/persisted_config.go`, `internal/bootstrap/config_validation.go`, `internal/bootstrap/module.go`.
 

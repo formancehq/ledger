@@ -110,7 +110,7 @@ The event system consists of two main components in `internal/application/events
 │                          Raft Node (Leader)                            │
 ├───────────────────────────────────────────────────────────────────────┤
 │                                                                        │
-│  AddEventsSink ───► Raft ──► FSM ──► PebbleDB (0x0E][name])            │
+│  AddEventsSink ───► Raft ──► FSM ──► PebbleDB ([0x01][0x08][name])     │
 │                                  │                                     │
 │                          config change signal                          │
 │                                  ▼                                     │
@@ -125,11 +125,11 @@ The event system consists of two main components in `internal/application/events
 │                              │  log notify (fan-out to all emitters)   │
 │                     ┌────────┴────────┐                                │
 │                     ▼                 ▼                                 │
-│              ┌──────────────┐  ┌──────────────┐                        │
-│              │ Emitter "a"  │  │ Emitter "b"  │  ...                   │
-│              │ cursor: 0x0D │  │ cursor: 0x0D │                        │
-│              │ status: 0x0F │  │ status: 0x0F │                        │
-│              └──────┬───────┘  └──────┬───────┘                        │
+│              ┌────────────────────┐  ┌────────────────────┐              │
+│              │ Emitter "a"        │  │ Emitter "b"        │  ...        │
+│              │ cursor: [06][08]   │  │ cursor: [06][08]   │              │
+│              │ status: [06][0A]   │  │ status: [06][0A]   │              │
+│              └──────────┬─────────┘  └──────────┬─────────┘              │
 │                     ▼                 ▼                                 │
 │              ┌────────────┐    ┌────────────┐                          │
 │              │ NATS "a"   │    │ Kafka "b"  │                          │
@@ -152,12 +152,12 @@ This ensures:
 - **At-least-once**: Since the cursor is advanced after sink acknowledgment, a crash between publish and cursor commit may re-emit a small number of events (bounded by batch size).
 
 Key formats:
-- Per-sink cursor: `[0x0D][sink_name]` → `uint64` (big-endian encoded sequence)
-- Per-sink error status: `[0x0F][sink_name]` → `SinkStatus` protobuf
+- Per-sink cursor: `[0x06][0x08][sink_name]` (`ZoneGlobal` + `SubGlobSinkCursor`) → `uint64` (big-endian encoded sequence)
+- Per-sink error status: `[0x06][0x0A][sink_name]` (`ZoneGlobal` + `SubGlobSinkStatus`) → `SinkStatus` protobuf
 
 ### Sink Error Status
 
-When a sink publish fails, the emitter reports the error via Raft by proposing an `EventsSinkUpdate` with the error details. The FSM stores a `SinkStatus` protobuf under `[0x0F][sink_name]`. On subsequent successful publish, the emitter proposes an update with `clear_error = true`, which deletes the status entry.
+When a sink publish fails, the emitter reports the error via Raft by proposing an `EventsSinkUpdate` with the error details. The FSM stores a `SinkStatus` protobuf under `[0x06][0x0A][sink_name]` (`ZoneGlobal` + `SubGlobSinkStatus`). On subsequent successful publish, the emitter proposes an update with `clear_error = true`, which deletes the status entry.
 
 The `GetEventsSinks` gRPC endpoint returns all sink configs and their statuses, allowing operators to monitor sink health cluster-wide:
 
@@ -208,7 +208,7 @@ type Sink interface {
     // Publish sends events to the external system.
     // Returns an error if any event could not be delivered.
     // Events are provided in sequence order.
-    Publish(ctx context.Context, events []Event) error
+    Publish(ctx context.Context, events []*eventspb.Event) error
 
     // Close releases resources held by the sink.
     Close() error
@@ -233,6 +233,7 @@ The cursor is advanced only after the entire batch is successfully published to 
 | **ClickHouse** | `clickhouse` | Inserts events into a ClickHouse table for analytics. Requires `dsn`. Optional `table` (default: `ledger_events`). Uses experimental JSON type with Variant support. Always uses ClickHouse-native JSON format (ignores `format` setting). |
 | **Kafka** | `kafka` | Publishes to Apache Kafka topics. Requires `brokers` and `topic`. Optional TLS and SASL authentication (PLAIN, SCRAM-SHA-256, SCRAM-SHA-512). Uses synchronous producer for delivery guarantees. |
 | **HTTP Webhooks** | `http` | Sends individual HTTP POST requests per event. Requires `endpoint` URL. Optional `secret` for HMAC-SHA256 request signing (`X-Webhook-Signature` header). |
+| **Databricks** | `databricks` | Inserts events into a Databricks SQL Warehouse table via Unity Catalog. Requires `server_hostname`, `http_path`, `token`, `catalog`, `schema`, and `table`. |
 
 New sink types can be added by implementing the `Sink` interface and adding a variant to `SinkConfig.oneof type`.
 
@@ -244,6 +245,7 @@ Events are published to a configurable topic/subject per sink type:
 - **Kafka**: Configurable via `topic` field in `KafkaSinkConfig`.
 - **HTTP**: Events are sent to the configured `endpoint` URL.
 - **ClickHouse**: Events are inserted into the configured `table`.
+- **Databricks**: Events are inserted into the configured `catalog.schema.table`.
 
 ## Configuration
 
@@ -266,10 +268,12 @@ message SinkConfig {
     ClickHouseSinkConfig clickhouse = 6; // ClickHouse analytics sink
     KafkaSinkConfig kafka = 7;           // Apache Kafka sink
     HttpSinkConfig http = 8;             // HTTP webhook sink
+    DatabricksSinkConfig databricks = 10; // Databricks SQL Warehouse sink
   }
   string format = 3;                     // "json" or "protobuf" (default: "json")
   int32 batch_size = 4;                  // Max events per batch (default: 64)
   int64 batch_delay_ms = 5;              // Max delay before flush in ms (default: 10)
+  repeated EventType event_types = 9;    // Empty = all events (default)
 }
 
 message NatsSinkConfig {
@@ -297,7 +301,7 @@ message HttpSinkConfig {
 }
 ```
 
-Each `SinkConfig` carries its own `format`, `batch_size`, and `batch_delay_ms` — there is no global events config. The Manager creates **one Emitter per named sink**, each with its own cursor (`[0x0D][name]`) and status (`[0x0F][name]`). Sinks progress independently — a failing sink does not block others. New sink types can be added as additional variants in the `SinkConfig.oneof type`.
+Each `SinkConfig` carries its own `format`, `batch_size`, `batch_delay_ms`, and `event_types` — there is no global events config. The Manager creates **one Emitter per named sink**, each with its own cursor (`[0x06][0x08][name]`) and status (`[0x06][0x0A][name]`). Sinks progress independently — a failing sink does not block others. New sink types can be added as additional variants in the `SinkConfig.oneof type`.
 
 #### Adding and Removing Sinks
 
@@ -346,7 +350,7 @@ The response includes a list of `SinkConfig` entries and a list of `SinkStatus` 
 
 #### Config Persistence
 
-Each sink config is stored in PebbleDB under key `[0x0E][name]` and replicated via Raft. Sink configs follow the same **admission preload** pattern as other attributes (volumes, ledgers, etc.): they are cached in the dual-generation `AttributeCache` and preloaded from PebbleDB on demand by the admission layer when not guaranteed in cache. This avoids PebbleDB reads on the FSM hot path. On cache generation rotation, evicted sink configs are re-preloaded when next needed.
+Each sink config is stored in PebbleDB under key `[0x01][0x08][canonical_key]` (`ZoneAttributes` + `SubAttrSinkConfig`) and replicated via Raft. Sink configs follow the same **admission preload** pattern as other attributes (volumes, ledgers, etc.): they are cached in the dual-generation `AttributeCache` and preloaded from PebbleDB on demand by the admission layer when not guaranteed in cache. This avoids PebbleDB reads on the FSM hot path. On cache generation rotation, evicted sink configs are re-preloaded when next needed.
 
 The `Manager` component watches for config changes via a channel from the FSM and reconciles the emitters/sinks accordingly.
 
@@ -354,12 +358,12 @@ The `Manager` component watches for config changes via a channel from the FSM an
 
 ```
 Client → gRPC Apply(AddEventsSinkRequest) → Admission → Raft consensus
-  → FSM Apply → WriteSet.Merge() → PebbleDB ([0x0E][name])
+  → FSM Apply → WriteSet.Merge() → PebbleDB ([0x01][0x08][canonical_key])
   → config change signal → Manager.reconcile()
   → Start/Stop Emitter + Sink
 
 Client → gRPC Apply(RemoveEventsSinkRequest) → Admission → Raft consensus
-  → FSM Apply → WriteSet.Merge() → PebbleDB (delete [0x0E][name])
+  → FSM Apply → WriteSet.Merge() → PebbleDB (delete [0x01][0x08][canonical_key])
   → config change signal → Manager.reconcile()
   → Tear down Emitter + Sink
 ```
@@ -384,7 +388,7 @@ Client → gRPC Apply(RemoveEventsSinkRequest) → Admission → Raft consensus
                            └─────────┬──────────┘
                                      │
                                      ▼
-                              Sink (NATS/Kafka/HTTP/ClickHouse)
+                              Sink (NATS/Kafka/HTTP/ClickHouse/Databricks)
 ```
 
 1. **Normal operation**: Emitter tails the log, publishes events, advances cursor via Raft.
@@ -415,13 +419,13 @@ The FSM notifies the event system via a `signal.Notifications` struct (from `int
 
 ```go
 // After committing a batch with new logs:
-fsm.eventNotifier.NotifyLogsCommitted()
+fsm.notifier.NotifyLogsCommitted(lastSeq)
 if eventsConfigChanged {
-    fsm.eventNotifier.NotifyConfigChanged()
+    fsm.notifier.NotifyConfigChanged()
 }
 ```
 
-The `signal.Notifications` struct is created independently (no dependency on Node or Manager) to break the fx circular dependency between the Node (which contains the FSM) and the Manager (which needs the Node as a Proposer).
+The FSM emits to a single `Notifier` interface; the bootstrap layer wires a `signal.FanOut` that dispatches to three independent `*signal.Notifications` instances: `events`, `mirror`, and `index`. The `signal.Notifications` struct is created independently (no dependency on Node or Manager) to break the fx circular dependency between the Node (which contains the FSM) and the Manager (which needs the Node as a Proposer).
 
 ### fx Integration
 
@@ -438,7 +442,7 @@ fx.Invoke(func(lc fx.Lifecycle, manager *events.Manager) {
 })
 ```
 
-Named fx tags (`name:"events"` / `name:"mirror"`) disambiguate the two `*signal.Notifications` instances without requiring wrapper types. The Manager only activates emitters when the node becomes leader AND at least one sink is configured.
+Named fx tags (`name:"events"` / `name:"mirror"` / `name:"index"`) disambiguate the three `*signal.Notifications` instances without requiring wrapper types. The Manager only activates emitters when the node becomes leader AND at least one sink is configured.
 
 ## Package Structure
 
@@ -446,13 +450,14 @@ Named fx tags (`name:"events"` / `name:"mirror"`) disambiguate the two `*signal.
 internal/application/events/
   manager.go                            # Manager: one emitter per named sink, lifecycle, smart reconcile
   emitter.go                            # Emitter: tails log, converts, publishes, per-sink cursor
-  signal.go                             # Signal type: non-blocking coalescing notification
   sink.go                               # Sink interface definition
-  sink_noop.go                          # Noop sink (default when no sinks configured)
   sink_nats.go                          # NATS JetStream sink
   sink_clickhouse.go                    # ClickHouse analytics sink
   sink_kafka.go                         # Apache Kafka sink
   sink_http.go                          # HTTP webhook sink
+  sink_databricks.go                    # Databricks SQL Warehouse sink
+  sink_data_common.go                   # Shared data sink utilities (ClickHouse/Databricks)
+  registry.go                           # Sink registry (maps config type to constructor)
   event.go                              # Event type, conversion from Log, serialization
   manager_test.go                       # Manager lifecycle and config change tests
   emitter_test.go                       # Emitter lifecycle tests
@@ -496,7 +501,7 @@ sequenceDiagram
     participant FSM
     participant PebbleDB
     participant Emitter as EventEmitter
-    participant Sink as Sink (NATS/Kafka/HTTP/ClickHouse)
+    participant Sink as Sink (NATS/Kafka/HTTP/ClickHouse/Databricks)
 
     Client->>API: CreateTransaction
     API->>Admission: Admit()
@@ -515,7 +520,7 @@ sequenceDiagram
     Emitter->>Sink: Publish([Event seq=42])
     Sink-->>Emitter: ACK
     Emitter->>Raft: Propose EventsSinkUpdate(cursor=42, clear_error)
-    Raft->>FSM: Apply → PebbleDB [0x0D][sink_name] = 42
+    Raft->>FSM: Apply → PebbleDB [0x06][0x08][sink_name] = 42
 ```
 
 ## Sequence Diagram: Crash Recovery
@@ -524,7 +529,7 @@ sequenceDiagram
 sequenceDiagram
     participant PebbleDB
     participant Emitter as EventEmitter
-    participant Sink as Sink (NATS/Kafka/HTTP/ClickHouse)
+    participant Sink as Sink (NATS/Kafka/HTTP/ClickHouse/Databricks)
 
     Note over Emitter: Node restarts, becomes leader
     Emitter->>PebbleDB: Read cursor
@@ -537,7 +542,7 @@ sequenceDiagram
     Emitter->>Sink: Publish([Event seq=41, 42, 43])
     Sink-->>Emitter: ACK
     Emitter->>Raft: Propose EventsSinkUpdate(cursor=43, clear_error)
-    Raft->>FSM: Apply → PebbleDB [0x0D][sink_name] = 43
+    Raft->>FSM: Apply → PebbleDB [0x06][0x08][sink_name] = 43
 
     Note over Emitter: Switch to live tailing mode
 ```

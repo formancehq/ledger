@@ -17,7 +17,7 @@ This ledger implementation uses the official Numscript interpreter from `github.
 
 ## Enabled Features
 
-All experimental Numscript features are enabled by default. The feature flags are defined in `internal/domain/processing/processor.go`.
+All experimental Numscript features are enabled by default. Features are declared in scripts via the `#![feature("...")]` pragma syntax (e.g., `#![feature("experimental-account-interpolation")]`).
 
 | Feature Flag | Description |
 |--------------|-------------|
@@ -453,24 +453,24 @@ When a Numscript transaction is submitted, account balances must be preloaded at
 
 As a temporary workaround, the admission layer runs the Numscript once with a "discovery store" that returns infinite balances (`2^256`) for every account queried. This emulation run discovers which accounts and assets the script needs, without modifying any real state. The discovered volume keys are then preloaded normally from storage.
 
-The emulation is implemented in `internal/domain/processing/numscript_emulate.go`:
+The emulation is implemented in `internal/domain/processing/numscript/emulate.go`:
 
-1. **Parse** the script (no cache — the processor's cache handles the real execution)
+1. **Parse** the script using `cache.GetOrParse(script)` — the NumscriptCache is used for parsing during discovery
 2. **Execute** with a discovery store that records queried account/asset pairs and returns infinite balances
 3. **Collect** volume keys from both balance queries (sources) and result postings (sources + destinations)
 4. **Preload** the discovered volumes from the store as usual
 
 ### Determinism Constraint
 
-Scripts must be deterministic: the discovery store enforces that `GetBalances` and `GetAccountsMetadata` may each be called **at most once** during discovery. A second call to either method indicates a non-deterministic script (e.g., mid-script balance queries that depend on earlier execution results) which cannot be reliably preloaded.
+Scripts must be deterministic: the discovery store enforces that `GetBalances` may be called **at most once** during discovery. A second call indicates a non-deterministic script (e.g., mid-script balance queries that depend on earlier execution results) which cannot be reliably preloaded. `GetAccountsMetadata` always returns `ErrMetaNotSupported` — `meta()` calls are fully rejected, not constrained.
 
-If a script violates this constraint, `DiscoverNumscriptVolumes` returns `ErrNonDeterministicScript` with the offending method name. The admission layer logs this and skips volume preloading — the real execution will report the actual error.
+If a script violates the single `GetBalances` constraint, `DiscoverNumscriptDependencies` returns `ErrNonDeterministicScript` with the offending method name. If a script uses `meta()`, it returns `ErrMetaNotSupported`. The admission layer logs these and skips volume preloading — the real execution will report the actual error.
 
 ### Known Limitations
 
 - **`oneof` selectors**: With infinite balances, `oneof` may only query the first source account, since the first source always has sufficient funds. Other sources in the `oneof` list may not be discovered.
 - **Execution errors**: If the emulation fails (e.g., due to missing variables), the error is logged and volume discovery is skipped. The real execution will report the actual error.
-- **Double parsing**: The script is parsed once for emulation and once for real execution. This is negligible since parsing is CPU-only and the processor's cache handles the real execution.
+- **Shared parsing cache**: Both discovery and real execution use `cache.GetOrParse(script)`, so the script is parsed only once and cached for both paths.
 - **Non-deterministic scripts**: Scripts with multiple `send` statements that trigger separate `GetBalances` calls are rejected during discovery. Such scripts cannot have their volumes reliably preloaded.
 
 ### Long-term Solution

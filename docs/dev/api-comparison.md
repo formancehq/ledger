@@ -15,7 +15,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Create transaction with `force` | ✅ | ✅ | Bypasses balance checks |
 | **Transactions (Read)** |
 | Get transaction by ID | ✅ | ✅ | |
-| List transactions | ✅ | ✅ | gRPC stream with pagination; supports `source`/`destination` address filtering, `reference`, `startTime`/`endTime`, and `id` via prepared queries |
+| List transactions | ⚠️ | ✅ | gRPC stream only (no HTTP handler); supports `source`/`destination` address filtering, `reference`, `startTime`/`endTime`, and `id` via prepared queries |
 | **Metadata** |
 | Save account metadata | ✅ | ✅ | |
 | Delete account metadata | ✅ | ✅ | |
@@ -65,7 +65,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Delete numscript | ✅ | ❌ | Per-ledger, deletes latest version entry |
 | **Audit Log** |
 | Audit log (success + failure) | ✅ | ❌ | Replicated via Raft, stored in Pebble |
-| Audit log disable/enable | ✅ | ❌ | `ledgerctl audit enable/disable` (dynamic via RPC) |
+| Audit log disable/enable | ❌ | ❌ | Not implemented |
 | **Error Handling** |
 | Structured gRPC error codes | ✅ | ✅ | BusinessError with ErrorInfo details |
 | **Security** |
@@ -430,17 +430,15 @@ ledgerctl ledgers list-indexes --ledger my-ledger
 - Empty references are allowed and not validated
 - The same reference can exist in different ledgers
 
-### 4. ❌ Ledger Metadata Update
+### 4. ✅ Ledger Metadata Update
 
 **Description:** Ability to add/modify metadata on a ledger after creation.
 
-**Current status:**
-- Metadata supported at creation
-- No endpoint to modify ledger metadata after creation
-
-**To implement:**
+**Current status:** Fully implemented.
 - `POST /{ledgerName}/metadata` - Add/modify metadata
 - `DELETE /{ledgerName}/metadata/{key}` - Delete a metadata key
+
+These endpoints are documented in Section 3 (Metadata Management) above.
 
 ### 5. ❌ Ledger Configuration Update
 
@@ -546,7 +544,7 @@ Read endpoints comparison with the original ledger:
 | Endpoint | POC | Original | Notes |
 |----------|-----|----------|-------|
 | `GET /{ledgerName}/transactions/{id}` | ✅ | ✅ | Get a transaction by ID |
-| `GET /{ledgerName}/transactions` | ✅ | ✅ | List transactions (gRPC stream) |
+| `GET /{ledgerName}/transactions` | ⚠️ | ✅ | List transactions (gRPC stream only, no HTTP handler) |
 | `GET /{ledgerName}/accounts` | ✅ | ✅ | List accounts (rich boolean filter, cursor pagination) |
 | `GET /{ledgerName}/accounts/{address}` | ✅ | ✅ | Get an account |
 | `GET /{ledgerName}/accounts/{address}/balances` | ❌ | ✅ | Get account balances |
@@ -575,9 +573,9 @@ Read endpoints comparison with the original ledger:
 | `GET /{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Get account type |
 | `POST /{ledgerName}/account-types` | ✅ | ❌ | Add account type |
 | `DELETE /{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Remove account type |
-| `GET /{ledgerName}/chart-of-accounts` | ✅ | ❌ | Get chart of accounts |
-| `PUT /{ledgerName}/chart-of-accounts` | ✅ | ❌ | Set chart of accounts |
-| `PUT /{ledgerName}/chart-of-accounts/enforcement-mode` | ✅ | ❌ | Set enforcement mode |
+| `PUT /{ledgerName}/account-types/default-enforcement-mode` | ✅ | ❌ | Set default enforcement mode (STRICT/AUDIT) |
+| `GET /{ledgerName}/indexes/{metadataKey}` | ✅ | ❌ | Inspect metadata index (distinct values, facets, summary) |
+| `POST /{ledgerName}/bulk` | ✅ | ❌ | Bulk operations (alternate path without underscore) |
 
 ---
 
@@ -586,11 +584,8 @@ Read endpoints comparison with the original ledger:
 ### High Priority
 1. **Import/Export** - Critical for migration and backups
 
-### Medium Priority
-2. **Ledger metadata update** - Useful for ledger management
-
 ### Low Priority
-4. **Ledger config update** - Can be done manually via recreation
+2. **Ledger config update** - Can be done manually via recreation
 
 ---
 

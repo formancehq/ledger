@@ -421,7 +421,7 @@ The development environment includes pre-configured Grafana dashboards:
 
 ### Ledger Metrics Dashboard
 
-Located at `misc/devenv/config/grafana/provisioning/dashboards/ledger-metrics.json`
+Located at `misc/devenv/monitoring-dashboards/config/dashboards/ledger-metrics.json`
 
 The dashboard is organized into the following sections:
 
@@ -499,12 +499,6 @@ The dashboard is organized into the following sections:
 - Preload Cache Hit Ratio (%)
 - Preload Store Reads vs Cache Hits (by type)
 - Propose Queue Load
-
-### k6 Dashboard
-
-Located at `misc/devenv/config/grafana/provisioning/dashboards/k6.json`
-
-Displays k6 load test metrics in real-time.
 
 ## Alerting Recommendations
 

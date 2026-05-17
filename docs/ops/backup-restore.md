@@ -35,7 +35,7 @@ A restore combines the latest checkpoint with any incremental exports to reconst
 │ 2a. RESTORE (gRPC, 4-step)  │ │ 2b. OFFLINE BOOTSTRAP (single CLI)   │
 │                              │ │                                      │
 │  Start server with --restore │ │  ledgerctl store bootstrap           │
-│  a. restore upload           │ │    --s3-bucket ... --data-dir ./data │
+│  a. restore download         │ │    --s3-bucket ... --data-dir ./data │
 │  b. restore validate         │ │                                      │
 │  c. restore preview          │ │  No server needed.                   │
 │  d. restore finalize         │ │  Download → compact → finalize.      │
@@ -61,21 +61,19 @@ A restore combines the latest checkpoint with any incremental exports to reconst
 # Backup to S3
 ledgerctl store backup --driver s3 --s3-bucket my-bucket --s3-region us-east-1
 
-# Backup to filesystem
-ledgerctl store backup --driver filesystem --path /mnt/backups
-
 # Backup to MinIO
 ledgerctl store backup --driver s3 --s3-bucket my-bucket --s3-endpoint http://minio:9000
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--driver` | (required) | Storage driver: `filesystem` or `s3` |
-| `--path` | | Base path for filesystem driver |
+| `--driver` | `s3` | Storage driver (only `s3` is supported) |
 | `--bucket-id` | cluster-id | Namespace prefix for backup files |
-| `--s3-bucket` | | S3 bucket name (required for s3 driver) |
+| `--s3-bucket` | | S3 bucket name (required) |
 | `--s3-region` | | AWS region for S3 bucket |
 | `--s3-endpoint` | | Custom S3 endpoint (for MinIO) |
+| `--s3-access-key-id` | | Static AWS access key ID (default: use default credential chain) |
+| `--s3-secret-access-key` | | Static AWS secret access key (default: use default credential chain) |
 | `--timeout` | `1000s` | Request timeout |
 
 ### How It Works
@@ -134,7 +132,7 @@ sequenceDiagram
     participant Follower as Follower Node
     participant Leader as Raft Leader
     participant Pebble
-    participant Storage as S3 / Filesystem
+    participant Storage as S3
 
     Client->>Follower: Backup RPC
     Follower->>Leader: Forward to leader
@@ -224,7 +222,7 @@ When a new **full backup** is taken, old exports are cleaned up and the exports 
 
 ### Prerequisites
 
-- A **fresh data directory** (no `CURRENT_CHECKPOINT` file). Restore mode refuses to start on an existing database.
+- A **fresh data directory** (no existing checkpoints in `checkpoints/`). Restore mode refuses to start on an existing database.
 - The server must be started with the `--restore` flag. This flag is mutually exclusive with `--bootstrap` and `--join`.
 
 ### Starting the Server in Restore Mode
@@ -245,25 +243,28 @@ In restore mode, only a minimal subset of the application runs:
 
 **File**: `internal/bootstrap/module_restore.go` — `RestoreModule()`
 
-### Step 1: Upload
+### Step 1: Download
 
 ```bash
-ledgerctl restore upload --input backup.tar
+ledgerctl restore download --s3-bucket my-bucket --s3-region us-east-1
 ```
 
 | Flag | Required | Description |
 |------|----------|-------------|
-| `--input`, `-i` | Yes | Path to the backup tar file |
-| `--timeout` | No | Request timeout (default: 100s) |
+| `--s3-bucket` | Yes | S3 bucket containing the backup |
+| `--s3-region` | No | AWS region for S3 bucket |
+| `--s3-endpoint` | No | Custom S3 endpoint (for MinIO) |
+| `--s3-access-key-id` | No | Static AWS access key ID (default: use default credential chain) |
+| `--s3-secret-access-key` | No | Static AWS secret access key (default: use default credential chain) |
+| `--bucket-id` | No | Namespace prefix for backup files (default: cluster-id) |
+| `--timeout` | No | Request timeout (default: 1000s) |
 
-The client streams the tar file in 64 KB chunks to the `RestoreService.UploadBackup` RPC (client-streaming). The server:
+The client calls the `RestoreService.DownloadBackup` RPC, which downloads the backup files directly from S3 into the server's staging directory. The server:
 
-1. Validates state (no concurrent upload, no previous upload already staged).
+1. Validates state (no concurrent download, no previous download already staged).
 2. Creates a clean staging directory at `{dataDir}/restore-staging/`.
-3. Extracts the tar archive into the staging directory using a pipe-based concurrent reader.
-4. Computes SHA256 over the received data and verifies it against the client-provided hash.
-5. On hash mismatch, removes the staging directory and returns `DataLoss` error.
-6. On success, marks the staging as ready.
+3. Reads the manifest from S3 and downloads all checkpoint files and export segments.
+4. On success, marks the staging as ready.
 
 ### Step 2: Validate
 
@@ -324,20 +325,21 @@ Calls `RestoreService.FinalizeRestore` (unary). This commits the staged backup a
 2. Writes the **RESTORED marker** JSON file to `{dataDir}/RESTORED`.
 3. Creates `{dataDir}/checkpoints/` directory.
 4. **Atomically** hard-links the staging directory to `{dataDir}/checkpoints/0` (using a temp directory + `os.Rename` for crash safety).
-5. Writes `{dataDir}/CURRENT_CHECKPOINT` with content `"0"`.
-6. Removes the staging directory.
+5. Removes the staging directory.
+
+On next startup, `ScanLatestCheckpointID()` scans the `checkpoints/` directory for the highest numbered subdirectory to find the active checkpoint.
 
 After finalize, the server stays running but refuses new uploads. Restart without `--restore` to use the restored data.
 
 ### Data Flow
 
 ```
-Client                  Restore Server                     Disk
+Client                  Restore Server                     Disk / S3
   |                          |                               |
-  |--- UploadBackup -------->|                               |
-  |    (streaming tar)       |--- ExtractTar() ------------->|
+  |--- DownloadBackup ------>|                               |
+  |    (S3 params)           |--- Download from S3 --------->|
   |                          |    {dataDir}/restore-staging/  |
-  |<-- UploadBackupResponse--|                               |
+  |<-- DownloadResponse -----|                               |
   |                          |                               |
   |--- ValidateRestore ----->|                               |
   |    (stream events)       |--- check.Checker.Check() --->|
@@ -350,7 +352,6 @@ Client                  Restore Server                     Disk
   |                          |--- Write RESTORED marker ---->|
   |                          |--- HardLink staging --------->|
   |                          |    -> checkpoints/0           |
-  |                          |--- Write CURRENT_CHECKPOINT ->|
   |                          |--- Remove staging ----------->|
   |<-- response -------------|                               |
 ```
@@ -359,52 +360,58 @@ Client                  Restore Server                     Disk
 
 ## Offline Bootstrap
 
-An alternative to the 4-step gRPC restore flow. The `store bootstrap` command builds a ready-to-use data directory from a backup tar file entirely offline — no server required.
+An alternative to the 4-step gRPC restore flow. The `store bootstrap` command builds a ready-to-use data directory by downloading backup files directly from S3 — no server required.
 
 ### CLI Command
 
 ```bash
-ledgerctl store bootstrap --input backup.tar --data-dir ./fresh-data [--validate] [--yes]
+ledgerctl store bootstrap --s3-bucket my-bucket --s3-region us-east-1 --data-dir ./fresh-data [--validate] [--yes]
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-i, --input` | | Path to the backup tar file (required) |
+| `--s3-bucket` | | S3 bucket containing the backup (required) |
+| `--s3-region` | | AWS region for S3 bucket |
+| `--s3-endpoint` | | Custom S3 endpoint (for MinIO) |
+| `--s3-access-key-id` | | Static AWS access key ID (default: use default credential chain) |
+| `--s3-secret-access-key` | | Static AWS secret access key (default: use default credential chain) |
+| `--bucket-id` | | Namespace prefix for backup files (default: uses cluster-id from config) |
 | `--data-dir` | | Target data directory (required, must be fresh) |
-| `--validate` | `false` | Run integrity checks after extraction |
+| `--validate` | `false` | Run integrity checks after download |
 | `-y, --yes` | `false` | Skip confirmation prompt |
 
 ### How It Works
 
-1. **Fresh directory guard**: Verifies the target data directory does not contain a `CURRENT_CHECKPOINT` file.
-2. **Extract**: Creates `{data-dir}/restore-staging/` and extracts the tar archive using `tarutil.ExtractTar()`.
-3. **Preview**: Opens the staging as a read-only Pebble database, reads metadata (last applied index, timestamp, ledger list), and displays a summary table.
-4. **Validate** (optional): If `--validate` is set, runs the full integrity checker (`check.Checker`) — the same checker used by `store check` and `restore validate`.
-5. **Confirm**: Unless `--yes` is set, prompts for user confirmation.
-6. **Finalize**: Hard-links staging to `{data-dir}/checkpoints/0`, writes `CURRENT_CHECKPOINT` with `"0"`, writes the `RESTORED` marker JSON.
-7. **Cleanup**: Removes the staging directory.
+1. **Fresh directory guard**: Scans the target data directory's `checkpoints/` subdirectory for existing checkpoints using `ScanLatestCheckpointID()`. Refuses to overwrite.
+2. **Download**: Reads the manifest from S3, downloads all checkpoint files and export segments into `{data-dir}/restore-staging/`.
+3. **Apply exports**: If the manifest contains incremental export segments, applies them to the staging database and rebuilds derived state.
+4. **Preview**: Opens the staging as a read-only Pebble database, reads metadata (last applied index, timestamp, ledger list), and displays a summary table.
+5. **Validate** (optional): If `--validate` is set, runs the full integrity checker (`check.Checker`) -- the same checker used by `store check` and `restore validate`.
+6. **Confirm**: Unless `--yes` is set, prompts for user confirmation.
+7. **Compact**: Compacts all attributes for restore compatibility.
+8. **Finalize**: Hard-links staging to `{data-dir}/checkpoints/0`, writes the `RESTORED` marker JSON.
+9. **Cleanup**: Removes the staging directory.
 
 ### When to Use
 
 - **Scripted disaster recovery**: No need to start a server in `--restore` mode.
 - **CI/CD pipelines**: Single command, non-interactive with `--yes`.
-- **Air-gapped environments**: No network required.
 
-For the gRPC-based flow with streaming upload and remote validation, see the [Restore](#restore) section above.
+For the gRPC-based flow with S3 download and remote validation, see the [Restore](#restore) section above.
 
 ### Example
 
 ```bash
 # ── On a fresh machine ──
 
-# 1. Bootstrap from backup (with validation)
-ledgerctl store bootstrap --input backup.tar --data-dir ./fresh-data --validate --yes
+# 1. Bootstrap from S3 backup (with validation)
+ledgerctl store bootstrap --s3-bucket my-bucket --s3-region us-east-1 --data-dir ./fresh-data --validate --yes
 
 # 2. Start the server normally
 ledger-v3-poc run --node-id 1 --data-dir ./fresh-data --bootstrap --wal-dir ./fresh-wal --grpc-port 9999
 ```
 
-**File**: `cmd/ledgerctl/store_bootstrap.go`
+**File**: `cmd/ledgerctl/store/bootstrap.go`
 
 ---
 
@@ -459,7 +466,7 @@ The `RESTORED` file is a JSON file written to the data directory during `Finaliz
 | **Incremental efficiency** | SST files are immutable — same name means same content. Only new/changed files are uploaded; stale files are deleted. |
 | **Self-contained on restore** | During restore finalize, attributes are compacted to index 0 and `lastAppliedIndex` is reset. No dependency on the original cluster's Raft indices. |
 | **Data integrity (content)** | `ValidateRestore` runs the full integrity checker: log hash chain continuity, volume balance verification, metadata consistency. |
-| **Fresh directory required** | Restore mode refuses to start if `CURRENT_CHECKPOINT` exists, preventing accidental overwrites. |
+| **Fresh directory required** | Restore mode refuses to start if existing checkpoints are found in `checkpoints/`, preventing accidental overwrites. |
 | **Atomic finalize** | Checkpoint placement uses `HardLink()` (temp directory + atomic `os.Rename`) for crash safety. |
 | **Idempotent marker** | The RESTORED marker is consumed exactly once on the next normal boot, then deleted. |
 | **No data loss** | The original cluster is unaffected by the restore operation. Backup is a read-only operation on the source cluster. |
@@ -471,21 +478,18 @@ The `RESTORED` file is a JSON file written to the data directory during `Finaliz
 ```bash
 # ── On the running cluster ──
 
-# 1. Create an backup to S3
+# 1. Create a backup to S3
 ledgerctl store backup --driver s3 --s3-bucket my-bucket --s3-region us-east-1
 
 # ── On a fresh server ──
 
-# 2. Download backup files from S3 and create a tar archive
-# (use your preferred S3 tool: aws s3 sync, rclone, etc.)
-
-# 3a. OPTION A: Offline bootstrap (no server needed)
-ledgerctl store bootstrap --input backup.tar --data-dir ./fresh-data --validate --yes
+# 2a. OPTION A: Offline bootstrap (no server needed, downloads from S3)
+ledgerctl store bootstrap --s3-bucket my-bucket --s3-region us-east-1 --data-dir ./fresh-data --validate --yes
 ledger-v3-poc run --node-id 1 --data-dir ./fresh-data --bootstrap --wal-dir ./fresh-wal --grpc-port 9999
 
-# 3b. OPTION B: Online restore (4-step gRPC flow)
+# 2b. OPTION B: Online restore (4-step gRPC flow, downloads from S3)
 ledger-v3-poc run --node-id 1 --data-dir ./fresh-data --restore --grpc-port 9999
-ledgerctl --server localhost:9999 restore upload --input backup.tar
+ledgerctl --server localhost:9999 restore download --s3-bucket my-bucket --s3-region us-east-1
 ledgerctl --server localhost:9999 restore validate
 ledgerctl --server localhost:9999 restore finalize --yes
 # Stop restore server, then restart normally:
@@ -513,21 +517,22 @@ See [Periods](../dev/architecture/periods.md) for the full period lifecycle and 
 | File | Description |
 |------|-------------|
 | **Backup** | |
-| `cmd/ledgerctl/store/incremental_backup.go` | `store backup` CLI command |
+| `cmd/ledgerctl/store/backup.go` | `store backup` CLI command |
+| `cmd/ledgerctl/store/incremental_backup.go` | `store incremental-backup` CLI command |
 | `internal/adapter/grpc/server_cluster.go` | `ClusterService.Backup` gRPC implementation |
 | `internal/infra/backup/manager.go` | `RunBackup()` — diff, upload, manifest |
-| `internal/infra/backup/filesystem.go` | Filesystem storage driver |
 | `internal/infra/backup/s3.go` | S3 storage driver |
+| `internal/infra/backup/storage.go` | Storage interface and driver factory |
 | `internal/infra/attributes/compact.go` | `CompactAllForBackup()` — attribute compaction (used during restore) |
 | **Restore (gRPC)** | |
 | `misc/proto/restore.proto` | RestoreService proto definition |
 | `internal/proto/restorepb/` | Generated proto code |
 | `internal/adapter/grpc/server_restore.go` | RestoreService gRPC implementation |
 | `internal/bootstrap/module_restore.go` | Minimal fx module for restore mode |
-| `internal/storage/tarutil/extract.go` | Shared tar extraction utility |
+| `internal/pkg/tarutil/extract.go` | Shared tar extraction utility |
 | `internal/storage/dal/store_readonly.go` | Read-only Pebble store opener |
 | **Offline Bootstrap** | |
-| `cmd/ledgerctl/store_bootstrap.go` | `store bootstrap` CLI command (offline) |
+| `cmd/ledgerctl/store/bootstrap.go` | `store bootstrap` CLI command (offline) |
 | **Post-Restore Bootstrap** | |
 | `internal/infra/node/restored_marker.go` | RESTORED marker read/write/remove |
 | `internal/infra/state/machine.go` | `RecoverState()` — FSM state recovery from Pebble |

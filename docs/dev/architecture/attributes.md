@@ -23,7 +23,6 @@ See [Deterministic FSM](./deterministic-fsm.md) for details on the caching and p
 | **Account Metadata** | ledger/account/key | `MetadataValue` | Per-ledger | Last-write-wins |
 | **Ledger Metadata** | ledger/key | `MetadataValue` | Per-ledger | Last-write-wins |
 | **Reversions** | ledger + txID | `bit` | Per-ledger | In-memory bitset (not a Pebble attribute) |
-| **Idempotency Keys** | key string | `IdempotencyKeyValue` | System-wide | Immutable once set |
 | **Transaction References** | ledger/reference | `uint64` (txID) | Per-ledger | Immutable once set |
 | **Ledgers** | ledger name | `LedgerInfo` | System-wide | Last-write-wins |
 | **Boundaries** | ledger ID | `LedgerBoundaries` | Per-ledger | Last-write-wins |
@@ -101,7 +100,7 @@ Unlike other attributes, reversions are **not** stored as Pebble attributes. Ins
 
 | Property | Description |
 |----------|-------------|
-| **Storage** | `map[string]*ReversionBitset` — one bitset per ledger |
+| **Storage** | `map[string]*bitset.Bitset` — one bitset per ledger (from `internal/pkg/bitset/bitset.go`) |
 | **Lookup** | O(1) — `words[txID/64] & (1 << (txID%64))` |
 | **Memory** | 1 bit per transaction (vs ~82 bytes per entry with the old KeyStore approach) |
 | **Persistence** | Reconstructed from WAL replay or snapshot restore (no Pebble storage) |
@@ -125,30 +124,6 @@ The bitset is serialized per-ledger in `MemorySnapshot` as packed little-endian 
 **Usage:**
 - Prevent double reversions (O(1) check in the FSM)
 - No admission-layer preloading needed — the bitset is always authoritative in memory
-
-## Idempotency Keys
-
-Map idempotency keys to log sequences for request deduplication.
-
-| Property | Description |
-|----------|-------------|
-| **Key** | `IdempotencyKey` = key string (user-provided) |
-| **Value** | `IdempotencyKeyValue` = log sequence + content hash |
-| **Computation** | Immutable (first value wins) |
-| **Scope** | System-wide (not per-ledger) |
-
-**Example:**
-```
-Key: "payment-123"
-Value: { logSequence: 456, hash: <blake3 hash of request content> }
-```
-
-**Usage:**
-- Safe request retries
-- Duplicate detection
-- Conflict detection (same key, different content)
-
-See [Idempotency](./idempotency.md) for detailed documentation.
 
 ## Transaction References
 
@@ -202,31 +177,36 @@ Track per-ledger boundaries (next log ID, next transaction ID).
 All attributes use a unified key format in PebbleDB:
 
 ```
-[KeyPrefixAttributes][canonical key bytes][attribute prefix]
+[ZoneAttributes][attrType][canonical key bytes]
 ```
 
 | Component | Size | Description |
 |-----------|------|-------------|
-| `KeyPrefixAttributes` | 1 byte | Constant prefix (`0xF1`) for all attributes |
+| `ZoneAttributes` | 1 byte | Zone prefix (`0x01`) for all attributes |
+| `attrType` | 1 byte | Identifies attribute type (see table below) |
 | `canonical key bytes` | variable | Domain-specific key (e.g., ledger + account + asset for volumes) |
-| `attribute prefix` | 1 byte | Identifies attribute type (see table below) |
 
 Each canonical key has exactly one Pebble entry, overwritten in place via `Set`. This enables simple point lookups via `Get` and prefix scans via `List`.
 
-### Attribute Prefixes
+### Attribute Sub-Prefixes
 
-All attributes are stored under the `KeyPrefixAttributes` (`0xF1`) top-level prefix. Each attribute type uses an ASCII letter sub-prefix:
+All attributes are stored under the `ZoneAttributes` (`0x01`) zone. Each attribute type uses a sequential sub-prefix byte:
 
-| Attribute | Prefix | ASCII |
-|-----------|--------|-------|
-| Volumes | `'V'` | `0x56` |
-| Account Metadata | `'M'` | `0x4D` |
-| Idempotency Keys | `'I'` | `0x49` |
-| Transaction References | `'R'` | `0x52` |
-| Ledgers | `'L'` | `0x4C` |
-| Boundaries | `'B'` | `0x42` |
+| Attribute | Sub-Prefix | Hex |
+|-----------|------------|-----|
+| Volumes | `SubAttrVolume` | `0x01` |
+| Account Metadata | `SubAttrMetadata` | `0x02` |
+| Transactions | `SubAttrTransaction` | `0x03` |
+| Ledgers | `SubAttrLedger` | `0x04` |
+| Boundaries | `SubAttrBoundary` | `0x05` |
+| Transaction References | `SubAttrReference` | `0x06` |
+| Ledger Metadata | `SubAttrLedgerMetadata` | `0x07` |
+| Sink Configs | `SubAttrSinkConfig` | `0x08` |
+| Numscript Versions | `SubAttrNumscriptVersion` | `0x09` |
+| Numscript Contents | `SubAttrNumscriptContent` | `0x0A` |
+| Prepared Queries | `SubAttrPreparedQuery` | `0x0B` |
 
-> **Note:** Reversions are stored in-memory as a bitset and are **not** persisted as Pebble attributes. They are reconstructed from WAL replay or snapshot restore.
+> **Note:** Reversions are stored in-memory as a `bitset.Bitset` and are **not** persisted as Pebble attributes. They are reconstructed from WAL replay or snapshot restore. Idempotency keys have their own dedicated zone (`0x05`), not stored as attributes.
 
 ### Value Reads
 
@@ -234,12 +214,12 @@ Each canonical key has at most one Pebble entry. Reading a value is a simple poi
 
 ## Listing Attribute Keys
 
-The `List` method iterates over actual attribute entries in PebbleDB (prefix scan) and extracts unique canonical keys by stripping the prefix (1 byte) and suffix (1 byte: attr type) from each Pebble key.
+The `List` method iterates over actual attribute entries in PebbleDB (prefix scan) and extracts unique canonical keys by stripping the 2-byte prefix (`[ZoneAttributes][attrType]`) from each Pebble key.
 
 This enables:
 - Listing all accounts with volumes
 - Listing all metadata keys
-- Iterating over all idempotency keys
+- Iterating over all transaction references
 
 ## Cache Architecture
 
@@ -265,7 +245,7 @@ This enables:
 │                                                          │
 │   One cache per attribute type:                         │
 │   - Volumes, AccountMetadata, LedgerMetadata,           │
-│     IdempotencyKeys                                     │
+│     References, Ledgers, Boundaries, SinkConfigs, ...   │
 └─────────────────────────────────────────────────────────┘
                            │
                            ▼

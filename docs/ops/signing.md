@@ -134,7 +134,7 @@ ledgerctl signing require true --signing-key /path/to/admin-seed
 
 ## Persistence
 
-Signing keys and configuration are persisted in **Pebble** (key prefixes `0x0B` for keys, `0x0C` for config) and applied atomically in the same batch as other state changes via `WriteSet.Merge()`.
+Signing keys and configuration are persisted in **Pebble** (key prefixes `0x04` for keys, `0x05` for config) and applied atomically in the same batch as other state changes via `WriteSet.Merge()`.
 
 - **On startup**: keys are loaded from Pebble into the in-memory KeyStore
 - **On follower snapshot restore**: keys are reloaded from the restored Pebble checkpoint (`SynchronizeWithLeader`)
@@ -180,11 +180,11 @@ This is inherent to the Raft consensus model where all state changes are eventua
 
 | Package | Description |
 |---------|-------------|
-| `internal/pkg/crypto/signing/` | Core Ed25519 sign/verify logic (transport-agnostic), including `ResponseSigner` |
-| `internal/pkg/crypto/keystore/` | Thread-safe in-memory key cache (`sync.RWMutex`) |
+| `internal/domain/crypto/signing/` | Core Ed25519 sign/verify logic (transport-agnostic), including `ResponseSigner` |
+| `internal/domain/crypto/keystore/` | Thread-safe in-memory key cache (`sync.RWMutex`) |
 | `internal/application/admission/` | Signature verification, bootstrap logic, Request → Order conversion |
-| `internal/infra/state/buffer.go` | Signing key changes accumulated during processing, applied in `Merge()` |
-| `internal/storage/dal/` | Pebble persistence for signing keys (prefixes `0x0B`/`0x0C`) |
+| `internal/infra/state/write_set.go` | Signing key changes accumulated during processing, applied in `Merge()` |
+| `internal/storage/dal/` | Pebble persistence for signing keys (prefixes `0x04`/`0x05`) |
 | `misc/proto/signature.proto` | `RequestSignature` and `ResponseSignature` protobuf messages |
 
 ## CLI Reference

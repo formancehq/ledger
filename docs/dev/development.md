@@ -21,34 +21,53 @@ ledger-v3-poc/
 │   │   ├── events/        # Event dispatch
 │   │   └── check/         # Integrity checking
 │   ├── adapter/           # Transport adapters
+│   │   ├── auth/          # Authentication middleware
 │   │   ├── grpc/          # gRPC servers and client
 │   │   ├── http/          # HTTP REST handlers
-│   │   └── json/          # JSON serialization
+│   │   ├── json/          # JSON serialization
+│   │   └── v2/            # v2 API compatibility
 │   ├── infra/             # Infrastructure
-│   │   ├── node/          # Raft node lifecycle and transport
-│   │   ├── state/         # FSM state machine and snapshots
-│   │   ├── cache/         # FSM attribute cache (generation-based)
 │   │   ├── attributes/    # Attribute types, U128 hashing
-│   │   ├── transport/     # gRPC connection pool
+│   │   ├── backup/        # Backup support
+│   │   ├── bloom/         # Bloom filter
+│   │   ├── cache/         # FSM attribute cache (generation-based)
+│   │   ├── coldstorage/   # Cold storage (S3)
 │   │   ├── health/        # Health checks
-│   │   └── monitoring/    # Observability (OTLP, Pyroscope, tracing, diskusage)
+│   │   ├── monitoring/    # Observability (OTLP, Pyroscope, tracing, diskusage)
+│   │   ├── node/          # Raft node lifecycle and transport
+│   │   ├── preload/       # Preloading
+│   │   ├── receipt/       # Receipt handling
+│   │   ├── state/         # FSM state machine and snapshots
+│   │   └── transport/     # gRPC connection pool
 │   ├── pkg/               # Pure utilities (zero/low internal deps)
-│   │   ├── kv/            # Key-value map utilities
-│   │   ├── signal/        # Signal utilities
-│   │   ├── futures/       # Async futures for proposal results
+│   │   ├── bitset/        # Bitset utilities
+│   │   ├── bytesize/      # Byte size formatting
 │   │   ├── commands/      # Raft command builders
-│   │   ├── crypto/        # Ed25519 signing, keystore
-│   │   └── tarutil/       # Tar archive extraction
+│   │   ├── filterexpr/    # Filter expressions
+│   │   ├── futures/       # Async futures for proposal results
+│   │   ├── kv/            # Key-value map utilities
+│   │   ├── semver/        # Semantic versioning
+│   │   ├── signal/        # Signal utilities
+│   │   ├── tarutil/       # Tar archive extraction
+│   │   ├── vtmarshal/     # VT protobuf marshal utilities
+│   │   └── worker/        # Worker pool
 │   ├── query/             # CQRS read-side queries
 │   ├── storage/           # Storage layer
 │   │   ├── dal/           # Data access layer (Pebble)
+│   │   ├── pebblecfg/    # Pebble configuration
+│   │   ├── readstore/    # Read-side store
 │   │   ├── spool/         # Spool for sync buffering (Raft entries)
 │   │   └── wal/           # Write-ahead log (etcd/raft)
 │   └── proto/             # Generated protobuf types
-│       ├── commonpb/      # Common types (Posting, Transaction, Log)
-│       ├── raftcmdpb/     # FSM command types
-│       ├── servicepb/     # gRPC service definitions
+│       ├── auditpb/       # Audit types
 │       ├── clusterpb/     # Cluster state types
+│       ├── commonpb/      # Common types (Posting, Transaction, Log)
+│       ├── eventspb/      # Event types
+│       ├── raftcmdpb/     # FSM command types
+│       ├── rafttransportpb/ # Raft transport types
+│       ├── restorepb/     # Restore types
+│       ├── servicepb/     # gRPC service definitions
+│       ├── signaturepb/   # Signature types
 │       └── snapshotpb/    # Snapshot service types
 ├── pkg/                    # Exported packages
 │   └── testserver/        # Test helpers
@@ -56,6 +75,9 @@ ledger-v3-poc/
 │   └── proto/             # Protocol Buffer definitions
 ├── tests/                 # Tests
 │   └── e2e/               # End-to-end tests
+│       ├── business/      # Single-node business logic tests
+│       ├── cluster/       # Multi-node cluster tests
+│       └── testutil/      # E2E test utilities
 └── docs/                  # Technical documentation
 ```
 
@@ -79,18 +101,32 @@ Each HTTP handler has its own file:
 
 #### CLI Commands (`cmd/ledgerctl/`)
 
-Each CLI command has its own file:
-- `ledgers.go` - Parent command for ledger operations
-- `ledgers_create.go` - Create a ledger
-- `ledgers_list.go` - List all ledgers
-- `ledgers_get.go` - Get a specific ledger
-- `accounts.go` - Parent command for account operations
-- `accounts_get.go` - Get an account with volumes
-- `transactions.go` - Parent command for transaction operations
-- `transactions_create.go` - Create a transaction
-- `transactions_get.go` - Get a transaction by ID
-- `store.go` - Parent command for store operations
-- `store_metrics.go` - Get Pebble storage metrics
+Commands are organized into sub-packages, each containing their own command definitions:
+
+```
+cmd/ledgerctl/
+  main.go
+  accounts/       # Account commands
+  accounttypes/   # Account type commands
+  audit/          # Audit commands
+  auth/           # Authentication commands
+  cluster/        # Cluster management
+  cmdutil/        # Command utilities
+  events/         # Event/sink commands
+  ledgers/        # Ledger commands
+  logs/           # Log commands
+  numscripts/     # Numscript commands
+  periods/        # Period commands
+  profile/        # Profile commands
+  provision/      # Provisioning commands
+  queries/        # Prepared query commands
+  querycheckpoint/ # Query checkpoint commands
+  restore/        # Restore commands
+  signing/        # Signing commands
+  store/          # Store commands
+  transactions/   # Transaction commands
+  upgrade/        # Upgrade commands
+```
 
 ### Naming
 
@@ -126,7 +162,7 @@ All components with a lifecycle use `fx.Lifecycle` to register `OnStart` and `On
 
 ### Example: Adding an FSM Command
 
-1. **Define the protobuf** in `misc/proto/raftcmd.proto`
+1. **Define the protobuf** in `misc/proto/raft_cmd.proto`
 
 2. **Regenerate protobufs** using `just generate-proto`
 
@@ -142,7 +178,9 @@ All components with a lifecycle use `fx.Lifecycle` to register `OnStart` and `On
 
 - **Unit tests**: In the same package with suffix `_test.go`
 - **Integration tests**: In `*_integration_test.go`
-- **E2E tests**: In `tests/e2e/` with tag `//go:build e2e`
+- **E2E tests**: In `tests/e2e/` sub-packages with tag `//go:build e2e`
+  - `tests/e2e/business/` - Single-node business logic tests
+  - `tests/e2e/cluster/` - Multi-node cluster tests
 
 ### Write a Unit Test
 
@@ -150,7 +188,11 @@ Unit tests follow the Arrange-Act-Assert pattern and are placed in the same pack
 
 ### Write an E2E Test
 
-E2E tests are placed in `tests/e2e/` with the `//go:build e2e` tag. They typically set up a cluster, run tests, and clean up.
+E2E tests are organized in sub-packages under `tests/e2e/` with the `//go:build e2e` tag:
+- `tests/e2e/business/` for single-node business logic tests
+- `tests/e2e/cluster/` for multi-node cluster tests
+
+They typically set up a cluster, run tests, and clean up.
 
 ### Test Helpers
 
@@ -161,11 +203,15 @@ The package `pkg/testserver` provides helpers for creating test servers with con
 ### Structure
 
 - **`misc/proto/common.proto`**: Common types (Posting, Transaction, Log, etc.)
-- **`misc/proto/raftcmd.proto`**: FSM command types (CreateLedger, DeleteLedger, CreateLog, etc.)
-- **`misc/proto/service.proto`**: gRPC service definitions (LedgerService)
+- **`misc/proto/raft_cmd.proto`**: FSM command types (CreateLedger, DeleteLedger, CreateLog, etc.)
+- **`misc/proto/bucket.proto`**: gRPC service definitions (LedgerService)
 - **`misc/proto/cluster.proto`**: Cluster state messages
 - **`misc/proto/snapshot.proto`**: Snapshot service definitions
 - **`misc/proto/raft_transport.proto`**: Raft transport messages
+- **`misc/proto/audit.proto`**: Audit types
+- **`misc/proto/signature.proto`**: Signature types
+- **`misc/proto/events.proto`**: Event types
+- **`misc/proto/restore.proto`**: Restore types
 
 ### Regenerate protobufs
 
@@ -226,7 +272,7 @@ When a node receives a write request but is not the leader:
 
 ### Justfile
 
-The project uses `just` for common commands. See the `justfile` for available commands including `build`, `test`, `docker-up`, and `generate-proto`.
+The project uses `just` for common commands. See the `justfile` for available commands including `build`, `test`, `docker-build`, and `generate-proto`.
 
 ### Nix
 
@@ -257,7 +303,7 @@ Use `pprof` for profiling by accessing the pprof endpoint at `/debug/pprof/profi
 - [ ] No `time.Sleep` in tests (Use `Eventually`)
 - [ ] Error handling appropriate
 - [ ] Structured logs with context
-- [ ] No I/O in FSMs
+- [ ] Minimize I/O in FSMs -- I/O is not strictly forbidden but should be minimized and optimized
 
 ## References
 

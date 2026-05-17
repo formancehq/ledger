@@ -96,7 +96,7 @@ FSM.applyProposal()
     |       +-- if proposal.Date > lastAppliedTimestamp: use proposal.Date
     |       +-- else: lastAppliedTimestamp + 1
     |
-    +-- buffer = NewBuffer(effectiveDate, fsm)
+    +-- writeSet = NewWriteSet(fsm)
     |       |
     |       +-- All logs created by the processor use effectiveDate
     |
@@ -108,16 +108,16 @@ Logs and state persisted with monotonic timestamps
 
 The `lastAppliedTimestamp` is persisted through three mechanisms:
 
-1. **Per-batch persistence**: Written to PebbleDB in the same atomic batch as the applied index. Key prefix: `0xF3`. This ensures the timestamp survives node restarts.
+1. **Per-batch persistence**: Written to PebbleDB in the same atomic batch as the applied index. Key: `[0x06][0x02]` (`ZoneGlobal` + `SubGlobLastAppliedTimestamp`). This ensures the timestamp survives node restarts.
 
-2. **Snapshot inclusion**: Included in the `MemorySnapshot` protobuf (field `last_applied_timestamp = 8`). This ensures the timestamp is correctly transferred during Raft snapshot installation.
+2. **Snapshot inclusion**: Included in the `PreviewRestoreResponse` protobuf (field `last_applied_timestamp = 2` in `misc/proto/restore.proto`). This ensures the timestamp is correctly transferred during Raft snapshot installation.
 
 3. **Startup recovery**: Loaded from PebbleDB during `NewMachine()` initialization, alongside the last applied index.
 
 ### Storage Format
 
 ```
-Key:   [0x04]                    (1 byte prefix)
+Key:   [0x06][0x02]              (2-byte prefix: ZoneGlobal + SubGlobLastAppliedTimestamp)
 Value: [uint64 big-endian]       (8 bytes, microseconds since epoch)
 ```
 
@@ -200,7 +200,7 @@ Tests are located in `internal/infra/state/machine_hlc_test.go`:
 | File | Role |
 |------|------|
 | `internal/infra/state/machine.go` | HLC field, `hlcTimestamp()` method, integration in `applyProposal()` and `ApplyEntries()`, snapshot handling |
-| `internal/storage/dal/store.go` | `GetLastAppliedTimestamp()` for reading from PebbleDB |
-| `internal/storage/dal/batch.go` | `SetLastAppliedTimestamp()` for writing to PebbleDB |
-| `misc/proto/raftcmd.proto` | `last_applied_timestamp` field in `MemorySnapshot` |
+| `internal/query/config.go` | `ReadLastAppliedTimestamp()` for reading from PebbleDB |
+| `internal/infra/state/batch.go` | `SetLastAppliedTimestamp()` for writing to PebbleDB |
+| `misc/proto/restore.proto` | `last_applied_timestamp` field in `PreviewRestoreResponse` |
 | `internal/infra/state/machine_hlc_test.go` | Unit and integration tests |

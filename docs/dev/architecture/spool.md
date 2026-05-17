@@ -20,6 +20,9 @@ type Spool interface {
     
     // Prune removes segments where all entries have been applied
     Prune(lastApplied uint64) error
+    
+    // Close closes the spool and releases resources
+    Close() error
 }
 
 type Position struct {

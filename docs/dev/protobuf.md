@@ -10,9 +10,8 @@ The Raft transport layer and ledger service use gRPC for communication. Protocol
 |------|----------|
 | `raft_transport.proto` | Raft transport messages |
 | `common.proto` | Common types (Posting, Transaction, Log, Uint256, etc.) |
-| `raftcmd.proto` | FSM command types (CreateLedger, DeleteLedger, CreateLog, etc.) |
-| `bucket.proto` | Bucket service (includes mirror sync, promote) |
-| `service.proto` | gRPC service definitions (LedgerService) |
+| `raft_cmd.proto` | FSM command types (CreateLedger, DeleteLedger, CreateLog, etc.) |
+| `bucket.proto` | gRPC service definitions (BucketService), includes mirror sync, promote |
 | `cluster.proto` | Cluster management (ClusterService) |
 | `snapshot.proto` | Snapshot service definitions |
 | `audit.proto` | Audit log messages |
@@ -42,7 +41,7 @@ Raft transport generated code lives in `internal/proto/rafttransportpb/` (`raft_
 just generate-proto
 ```
 
-This reads `.proto` files, generates Go code using `protoc-gen-go`, `protoc-gen-go-grpc`, and `protoc-gen-go-vtproto`, and places files according to the `go_package` option.
+This reads `.proto` files, generates Go code using `protoc-gen-go`, `protoc-gen-go-grpc`, `protoc-gen-go-vtproto`, and the custom `protoc-gen-dethash` plugin (in `tools/protoc-gen-dethash/`), and places files according to the `go_package` option.
 
 ### Prerequisites
 
@@ -76,12 +75,12 @@ The project uses [vtprotobuf](https://github.com/planetscale/vtprotobuf) to gene
 
 | File | Usage |
 |------|-------|
-| `internal/application/admission/admission.go` | Proposal marshal (`SizeVT` + `MarshalToVT`) |
+| `internal/application/admission/admission.go` | Proposal marshal (`vtmarshal.MarshalCopy`) |
 | `internal/infra/state/machine.go` | Proposal unmarshal, snapshot marshal/unmarshal |
 | `internal/infra/attributes/attributes.go` | Attribute value marshal/unmarshal |
 | `internal/storage/dal/batch.go` | Batch marshal |
-| `internal/domain/processing/processor.go` | Order hash (`CloneVT` + `MarshalVT`) |
-| `internal/infra/state/buffer.go` | Clone functions (`CloneVT` references) |
+| `internal/domain/processing/processor.go` | Order hash (`CloneVT`) |
+| `internal/infra/state/write_set_counters.go`, `internal/infra/state/registry_derived.go` | Clone functions (`CloneVT` references) |
 
 ## Uint256 Wire Format
 
@@ -109,17 +108,17 @@ Mirror mode introduces several protobuf types across multiple files:
 - `MirrorIngestOrder` — Raft command to ingest a translated v2 log entry
 - `MirrorLogEntry` — Wrapper for a single v2 log entry (oneof: `CreatedTransaction`, `SavedMetadata`, `DeletedMetadata`, `RevertedTransaction`, `FillGap`)
 - `PromoteLedgerOrder` — Raft command to promote a mirror ledger to normal mode
+- `MirrorSyncUpdate` — Streaming update from the mirror worker (progress reporting)
 
 **`bucket.proto`:**
 - `CreateLedgerRequest.mode` and `CreateLedgerRequest.mirror_source` fields
 - `PromoteLedgerRequest` — gRPC request to promote a mirror ledger
-- `MirrorSyncUpdate` — Streaming update from the mirror worker (progress reporting)
 
 ## Adding New Command Models
 
-1. Add the message definition to `misc/proto/raftcmd.proto`
+1. Add the message definition to `misc/proto/raft_cmd.proto`
 2. Run `just generate-proto`
-3. Create a `NewXxxCommand` function in `internal/pkg/commands/command.go`
-4. Update `UnmarshalCommandData` in `internal/pkg/commands/command.go`
+3. Use the generic `NewCommand` function in `internal/pkg/commands/command.go`, which accepts variadic `*raftcmdpb.Order` args, to build proposals containing the new order type
+4. Command data is unmarshaled via vtprotobuf's generated `UnmarshalVT` on the `Proposal` type, then dispatched through the `Order.Type` oneof in the FSM
 5. Add a handler method in `internal/infra/state/machine.go`
 6. Rebuild and test: `go build ./... && go test ./...`

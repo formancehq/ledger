@@ -518,14 +518,14 @@ To change `--cache-rotation-threshold` from 1000 to 500 on a 3-node cluster:
 ```bash
 # 1. Restart each follower with the new flag
 #    (check cluster state to identify the leader first)
-ledgerctl cluster state
+ledgerctl cluster status
 
 # 2. Stop follower node 2, restart with new config
 # 3. Wait for node 2 to rejoin as follower
 # 4. Repeat for follower node 3
 
 # 5. Transfer leadership to an updated node
-ledgerctl cluster transfer-leadership --target 2
+ledgerctl cluster transfer-leader 2
 
 # 6. The new leader proposes the config change via Raft
 #    All nodes (including the old leader) apply it
@@ -538,7 +538,7 @@ ledgerctl cluster transfer-leadership --target 2
 Use `GetClusterState` to verify all nodes have converged to the new threshold:
 
 ```bash
-ledgerctl cluster state
+ledgerctl cluster status
 # Look for cluster_config.rotation_threshold in the output
 ```
 

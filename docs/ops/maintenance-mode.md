@@ -33,7 +33,7 @@ When a write operation is attempted during maintenance mode:
 
 ### Persistence and Replication
 
-- The maintenance mode flag is stored in Pebble (key prefix `0x10`) and cached in-memory in `KeyStore`
+- The maintenance mode flag is stored in Pebble (key prefix `0x0B`) and cached in-memory in `SharedState`
 - The flag is replicated through Raft consensus (same path as signing config)
 - Changes take effect when the FSM applies the corresponding log entry
 
@@ -56,12 +56,12 @@ Client -> gRPC Apply() -> Admission (check maintenance mode) -> Proposal -> Raft
 
 | File | Role |
 |------|------|
-| `internal/pkg/crypto/keystore/keystore.go` | In-memory flag (`MaintenanceMode()`, `SetMaintenanceMode()`) |
-| `internal/storage/dal/store.go` | Pebble persistence (`LoadMaintenanceMode()`) |
-| `internal/storage/dal/batch.go` | Pebble write (`SaveMaintenanceMode()`) |
+| `internal/infra/state/shared_state.go` | In-memory flag (`MaintenanceMode()`, `SetMaintenanceMode()`) |
+| `internal/query/config.go` | Pebble persistence (`ReadMaintenanceMode()`) |
+| `internal/infra/state/batch.go` | Pebble write (`SaveMaintenanceMode()`) |
 | `internal/application/admission/admission.go` | Admission-level check |
-| `internal/infra/state/machine.go` | FSM-level check (`allOrdersAreMaintenanceMode`) |
-| `internal/infra/state/buffer.go` | Atomic merge (persist + update KeyStore) |
+| `internal/infra/state/machine.go` | FSM-level check (`authorizedInMaintenanceMode`) |
+| `internal/infra/state/write_set.go` | Atomic merge (persist + update SharedState) |
 | `internal/domain/processing/processor.go` | `processSetMaintenanceMode()` |
-| `internal/domain/processing/errors.go` | `ErrMaintenanceMode` sentinel error |
-| `cmd/ledgerctl/cluster_maintenance.go` | CLI command |
+| `internal/domain/errors.go` | `ErrMaintenanceMode` sentinel error |
+| `cmd/ledgerctl/cluster/maintenance.go` | CLI command |

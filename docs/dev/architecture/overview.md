@@ -20,7 +20,7 @@ flowchart TB
     end
 
     subgraph Control["Control Layer"]
-        Controller[Controller<br/>internal/ctrl]
+        Controller[Controller<br/>internal/application/ctrl]
         RoutedCtrl[Routed Controller<br/>internal/bootstrap]
         Admission[Admission<br/>internal/application/admission]
     end
@@ -161,7 +161,7 @@ graph TB
         http_server[http/server.go]
     end
 
-    subgraph Ctrl["internal/ctrl"]
+    subgraph Ctrl["internal/application/ctrl"]
         ctrl_iface[controller.go]
         ctrl_default[controller_default.go]
         ctrl_store[store.go]
@@ -176,18 +176,18 @@ graph TB
 
     subgraph State["internal/infra/state"]
         state_machine[machine.go]
-        state_buffer[buffer.go]
+        state_buffer[batch.go]
         state_snapshot[snapshot.go]
     end
 
     subgraph Processing["internal/domain/processing"]
         proc_main[processor.go]
-        proc_cache[numscript_cache.go]
+        proc_cache[numscript/cache.go]
     end
 
     subgraph Admission["internal/application/admission"]
         adm_main[admission.go]
-        adm_loader[loader.go]
+        adm_loader[preload/loader.go]
     end
 
     subgraph Cache["internal/infra/cache"]
@@ -202,8 +202,8 @@ graph TB
     end
 
     subgraph Storage["internal/storage"]
-        data_store[data/store.go]
-        data_batch[data/batch.go]
+        data_store[dal/store.go]
+        data_batch[dal/batch.go]
         wal_main[wal/wal.go]
         spool_main[spool/spool.go]
     end
@@ -351,7 +351,7 @@ erDiagram
 - **HTTP Server**: REST compatibility layer for legacy clients
 - **Routed Controller**: Routes requests to leader node for writes, serves reads locally
 
-### 2. Control Layer (`internal/ctrl`, `internal/application/admission`)
+### 2. Control Layer (`internal/application/ctrl`, `internal/application/admission`)
 
 - **Controller**: Interface defining read and write operations
 - **DefaultController**: Local implementation reading from Pebble store

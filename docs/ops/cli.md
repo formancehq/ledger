@@ -673,14 +673,14 @@ VALUE          COUNT
 "enterprise"   12
 ```
 
-#### ledgers catalog
+#### ledgers configuration
 
-Show a ledger's full configuration catalog: chart of accounts, indexes, prepared queries, and numscript library.
+Show a ledger's full configuration: chart of accounts, indexes, prepared queries, and numscript library.
 
-**Aliases:** `cat`
+**Aliases:** `config`, `conf`
 
 ```bash
-ledgerctl ledgers catalog <name> [flags]
+ledgerctl ledgers configuration <name> [flags]
 ```
 
 **Flags:**
@@ -690,20 +690,62 @@ ledgerctl ledgers catalog <name> [flags]
 | `--expand` | `false` | Show full content of numscripts and prepared query filters |
 | `--timeout` | `10s` | Request timeout |
 
+**Subcommands:**
+
+| Subcommand | Description |
+|------------|-------------|
+| `export` | Export a ledger's configuration to stdout or a file |
+| `apply` | Apply a configuration from a file to a ledger |
+
+##### configuration export
+
+Export a ledger's configuration to stdout (or a file).
+
+```bash
+ledgerctl ledgers configuration export <name> [flags]
+```
+
+##### configuration apply
+
+Apply a configuration from a file to a ledger.
+
+```bash
+ledgerctl ledgers configuration apply <name> [flags]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--file` | | Path to the configuration file (required) |
+| `--dry-run` | `false` | Preview changes without applying |
+| `--yes` | `false` | Skip confirmation prompt |
+| `--timeout` | `10s` | Request timeout |
+
 **Example:**
 
 ```bash
 # Summary view (default)
-ledgerctl ledgers catalog myledger
+ledgerctl ledgers configuration myledger
 
 # Expanded view with numscript source code and query filters
-ledgerctl ledgers catalog myledger --expand
+ledgerctl ledgers configuration myledger --expand
+
+# Export configuration
+ledgerctl ledgers configuration export myledger > config.yaml
+
+# Apply configuration (preview first)
+ledgerctl ledgers configuration apply myledger --file config.yaml --dry-run
+
+# Apply configuration (with confirmation)
+ledgerctl ledgers configuration apply myledger --file config.yaml
+
+# Apply configuration (skip confirmation)
+ledgerctl ledgers configuration apply myledger --file config.yaml --yes
 ```
 
 **Sample output:**
 
 ```
-Catalog for ledger: myledger
+Configuration for ledger: myledger
 ═════════════════════════════════════
 
  Chart of Accounts (STRICT)
@@ -1463,6 +1505,116 @@ ledgerctl account-types remove <name> --ledger <ledger>
 
 **Aliases:** `rm`, `delete`
 
+#### account-types set-default-enforcement
+
+Set the default enforcement mode for account types on a ledger.
+
+```bash
+ledgerctl account-types set-default-enforcement [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ledger` | *(required)* | Target ledger name |
+| `--mode` | | Enforcement mode: `STRICT` (reject untyped accounts) or `AUDIT` (warn only) |
+
+**Example:**
+
+```bash
+# Set strict enforcement
+ledgerctl account-types set-default-enforcement --ledger my-ledger --mode STRICT
+
+# Set audit-only enforcement
+ledgerctl account-types set-default-enforcement --ledger my-ledger --mode AUDIT
+```
+
+---
+
+### accounts aggregate-volumes
+
+Aggregate volumes for accounts matching a filter, grouped by asset.
+
+**Aliases:** `agg`
+
+```bash
+ledgerctl accounts aggregate-volumes [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ledger` | | Name of the ledger |
+| `--prefix` | | Filter accounts by address prefix |
+| `--filter` | | Filter expression (same DSL as account list) |
+| `--min-log-sequence` | `0` | Minimum log sequence before reading |
+| `--checkpoint-id` | `0` | Query checkpoint ID (0 = live data) |
+| `--analyze` | `false` | Display query execution profile |
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `10s` | Request timeout |
+
+**Example:**
+
+```bash
+# Aggregate volumes for all accounts in a ledger
+ledgerctl accounts aggregate-volumes --ledger my-ledger
+
+# Aggregate volumes for accounts matching a prefix
+ledgerctl accounts aggregate-volumes --ledger my-ledger --prefix users:
+
+# Aggregate with filter
+ledgerctl accounts aggregate-volumes --ledger my-ledger --filter "metadata[category] == premium"
+
+# Output as JSON
+ledgerctl accounts aggregate-volumes --ledger my-ledger --json
+```
+
+---
+
+### version
+
+Print version information for ledgerctl.
+
+```bash
+ledgerctl version
+```
+
+---
+
+### store dump
+
+Offline dump of the Pebble store contents. This is a diagnostic tool that reads the store directly without starting a server.
+
+```bash
+ledgerctl store dump --data-dir /path/to/data [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--prefix` | | Filter keys by prefix |
+| `--limit` | `0` | Maximum number of entries to display (0 = unlimited) |
+| `--raw` | `false` | Output raw key/value bytes |
+
+**Example:**
+
+```bash
+# Dump all keys
+ledgerctl store dump --data-dir ./data
+
+# Dump keys with a specific prefix
+ledgerctl store dump --data-dir ./data --prefix 0x01
+
+# Dump first 100 entries
+ledgerctl store dump --data-dir ./data --limit 100
+
+# Raw output (for scripting)
+ledgerctl store dump --data-dir ./data --raw
+```
+
 ---
 
 ### store
@@ -1847,56 +1999,6 @@ ledgerctl store rebuild-indexes --data-dir ./data --read-index-dir ./custom-inde
 View the replicated audit log. The audit log captures every proposal (success and failure) that goes through Raft consensus, providing a complete audit trail.
 
 **Aliases:** `a`
-
-#### audit enable
-
-Enable audit logging on the server. When enabled, all Raft proposals are recorded in the audit log.
-
-```bash
-ledgerctl audit enable [flags]
-```
-
-**Flags:**
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--timeout` | `10s` | Request timeout |
-| `--signing-key` | | Path to Ed25519 seed file for request signing |
-
-**Example:**
-
-```bash
-# Enable audit logging
-ledgerctl audit enable
-
-# Enable with signed request
-ledgerctl audit enable --signing-key /path/to/seed
-```
-
-#### audit disable
-
-Disable audit logging on the server. When disabled, proposals are no longer recorded in the audit log.
-
-```bash
-ledgerctl audit disable [flags]
-```
-
-**Flags:**
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--timeout` | `10s` | Request timeout |
-| `--signing-key` | | Path to Ed25519 seed file for request signing |
-
-**Example:**
-
-```bash
-# Disable audit logging
-ledgerctl audit disable
-
-# Disable with signed request
-ledgerctl audit disable --signing-key /path/to/seed
-```
 
 #### audit list
 
@@ -3029,7 +3131,7 @@ ledgerctl periods archive 1
 
 Manage the numscript library (per-ledger reusable scripts with semver versioning).
 
-**Aliases:** `ns`
+**Aliases:** `numscript`, `ns`
 
 **Persistent Flags:**
 
@@ -3235,17 +3337,20 @@ ledgerctl queries execute filtered --ledger my-ledger --param status=active --pa
 
 Backup restore operations. Requires the server to be started with `--restore`.
 
-#### restore upload
+#### restore download
 
-Upload a backup tar archive to the restore staging area.
+Download a backup from S3 to the restore staging area.
 
 ```bash
-ledgerctl restore upload --input backup.tar
+ledgerctl restore download --s3-bucket my-bucket --s3-region us-east-1
 ```
 
 | Flag | Required | Description |
 |------|----------|-------------|
-| `--input`, `-i` | Yes | Input tar file path |
+| `--s3-bucket` | Yes | S3 bucket name |
+| `--s3-region` | No | AWS region for S3 bucket |
+| `--s3-endpoint` | No | Custom S3 endpoint (for MinIO) |
+| `--bucket-id` | No | Namespace prefix for backup files (default: cluster-id) |
 | `--timeout` | No | Request timeout (default: 100s) |
 
 #### restore validate
@@ -4068,7 +4173,9 @@ ledgerctl ledgers list
 
 ## Event Sinks
 
-Manage event sinks (NATS, ClickHouse, Kafka, HTTP) that receive domain events derived from the global log.
+Manage event sinks (NATS, ClickHouse, Kafka, HTTP, Databricks) that receive domain events derived from the global log.
+
+**Aliases:** `sinks`
 
 ### `events list`
 
@@ -4135,12 +4242,20 @@ ledgerctl events add-sink --name webhook --http-endpoint https://example.com/web
 | `--kafka-sasl-password` | | Kafka SASL password |
 | `--http-endpoint` | | HTTP webhook endpoint URL (required for HTTP sinks) |
 | `--http-secret` | | HMAC-SHA256 secret for `X-Webhook-Signature` header |
+| `--databricks-host` | | Databricks SQL warehouse host (required for Databricks sinks) |
+| `--databricks-http-path` | | Databricks SQL warehouse HTTP path (required for Databricks sinks) |
+| `--databricks-token` | | Databricks personal access token (required for Databricks sinks) |
+| `--databricks-catalog` | | Databricks Unity Catalog name |
+| `--databricks-schema` | | Databricks schema name |
+| `--databricks-table` | | Databricks table name |
+| `--databricks-port` | | Databricks SQL warehouse port |
 | `--format` | `json` | Event serialization format (`json` or `protobuf`) |
-| `--batch-size` | `64` | Max events per batch |
-| `--batch-delay-ms` | `10` | Max delay before flush in ms |
+| `--batch-size` | `0` | Max events per batch (0 = effective default 64) |
+| `--batch-delay-ms` | `0` | Max delay before flush in ms (0 = effective default 10) |
+| `--event-types` | | Comma-separated list of event types to forward (empty = all) |
 | `--timeout` | `10s` | Request timeout |
 
-You must specify exactly one sink type: NATS (`--nats-url` + `--nats-topic`), ClickHouse (`--ch-dsn`), Kafka (`--kafka-brokers` + `--kafka-topic`), or HTTP (`--http-endpoint`).
+You must specify exactly one sink type: NATS (`--nats-url` + `--nats-topic`), ClickHouse (`--ch-dsn`), Kafka (`--kafka-brokers` + `--kafka-topic`), HTTP (`--http-endpoint`), or Databricks (`--databricks-host` + `--databricks-http-path` + `--databricks-token`).
 
 The HTTP sink sends each event as an individual POST request with headers:
 - `Content-Type`: `application/json` or `application/protobuf`

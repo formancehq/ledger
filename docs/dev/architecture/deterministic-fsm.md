@@ -210,64 +210,31 @@ Admission runs outside FSM apply:
 
 To decide Preload correctly, Admission needs **ahead-of-time** information about which accounts require base values and metadata.
 
-Numscript performs static analysis and provides **exact** requirements:
+The dependency discovery uses an **emulation-based approach** via `DiscoverNumscriptDependencies` (in `internal/domain/processing/numscript/emulate.go`). Rather than static analysis, the script is executed against a `discoveryStore` that returns infinite balances, allowing the full script to run and recording which accounts/assets are queried.
 
-- list of accounts that will be accessed
-- for each account:
-  - `NeedBalances`: list of assets for which balances are required
-  - `NeedMetadataKeys`: list of metadata keys that will be read
+#### 7.2.1 Discovery Approach
 
-Numscript knows precisely what data will be needed during execution. There is no uncertainty - Apply must not read Pebble, so all required data must be known in advance.
-
-#### 7.2.1 Numscript Go Interface
+The `discoveryStore` implements the Numscript `Store` interface:
+- `GetBalances` returns `MaxForceBalance` (2^256) for every account/asset, and records each queried `VolumeKey`
+- `GetAccountsMetadata` is rejected with `ErrMetaNotSupported` (scripts using `meta()` cannot be preloaded)
+- A determinism check ensures `GetBalances` is called at most once; a second call indicates a non-deterministic script
 
 ```go
-package numscript
-
-// AccountRequirement represents the exact data requirements for an account.
-// Numscript performs static analysis and knows precisely what data will be needed
-// during execution - there is no uncertainty.
-type AccountRequirement struct {
-    // Account is the account address (e.g., "users:alice", "bank:main").
-    Account string
-
-    // NeedBalances lists the assets for which the balance is required.
-    // Numscript knows exactly which assets will be read for this account
-    // (e.g., for bounded sources, balance conditions).
-    // Empty slice means no balance is needed for this account.
-    //
-    // Example: ["USD", "EUR"] means balances for USD and EUR are required.
-    NeedBalances []string
-
-    // NeedMetadataKeys lists the specific metadata keys required for this account.
-    // Numscript knows exactly which metadata keys will be accessed
-    // (e.g., for conditions like `meta($account, "limit")`).
-    // Empty slice means no metadata is needed for this account.
-    //
-    // Example: ["limit", "tier"] means only these two metadata keys are needed.
-    NeedMetadataKeys []string
-}
-
-// AnalysisResult contains the result of static analysis on a numscript program.
-// This is used during Admission to determine what data to include in Preload.
-type AnalysisResult struct {
-    // Accounts lists all accounts that the script will interact with,
-    // along with their precise data requirements.
-    Accounts []AccountRequirement
-}
-
-// Program represents a parsed and analyzed numscript program.
-// It can be cached and reused for multiple executions with different variables.
-type Program interface {
-    // Analyze performs static analysis on the script with the given variables.
-    // Variables are needed because account names can be dynamic (e.g., $account).
-    // Returns the exact set of accounts and their data requirements.
-    //
-    // This MUST be called during Admission (before Raft propose) to determine
-    // what data to include in Preload.
-    Analyze(vars map[string]string) (*AnalysisResult, error)
-}
+func DiscoverNumscriptDependencies(
+    cache *NumscriptCache,
+    script string,
+    vars map[string]string,
+    ledger string,
+) (*DiscoveryResult, error)
 ```
+
+The `DiscoveryResult` contains:
+- `SourceVolumes`: accounts queried via `GetBalances` (posting sources)
+- `DestinationVolumes`: accounts that only appear as posting destinations
+- `Metadata`: account metadata keys read during execution
+- `WrittenMetadata`: account metadata keys written via `set_account_meta`
+
+**Known limitation:** With infinite balances, `oneof` may only query the first source, since the first source always has sufficient funds.
 
 ### 7.3 Deterministic Preload decision rule
 
@@ -309,18 +276,25 @@ Without coordination:
 
 #### Solution: AttributeLoader
 
-Each attribute type (Input, Output, IdempotencyKeys) has a dedicated `AttributeLoader[T]` that:
+Each attribute type (Volumes, References, Ledgers, Boundaries, SinkConfigs, AccountMetadata, etc.) has a dedicated `AttributeLoader[T]` that:
 
 1. **Tracks loading keys**: When a goroutine starts loading a key, it's marked as "loading"
 2. **Wait on pending loads**: Other goroutines needing the same key wait for the ongoing load
 3. **Cache loaded values**: Once loaded, the value is cached with its boundary
 4. **Cleanup after apply**: Values are removed from the loader after the command is applied (data is then in the FSM cache)
 
+The `AttributeLoader` uses 256-shard partitioning (`loaderShards = 256`) keyed by `U128.Lo()` to reduce contention under high concurrency. Each shard has its own `sync.RWMutex` and independent loading/loaded maps, with cache-line padding to prevent false sharing. Located in `internal/infra/preload/loader.go`.
+
 ```go
-type AttributeLoader[T any] struct {
+type loaderShard[T any] struct {
     mu      sync.RWMutex
-    loading map[attributes.U128]chan struct{}  // Keys being loaded
-    loaded  map[attributes.U128]*loadedEntry[T] // Cached loaded values
+    loading map[attributes.U128]chan struct{}
+    loaded  map[attributes.U128]*loadedEntry[T]
+    _       [64]byte // cache-line padding
+}
+
+type AttributeLoader[T any] struct {
+    shards [loaderShards]loaderShard[T]
 }
 
 type loadedEntry[T any] struct {
@@ -356,21 +330,24 @@ The loader uses `sync.RWMutex` for optimal concurrency:
 | Update loaded cache | `Lock` | Exclusive |
 | Remove from cache | `Lock` | Exclusive |
 
-#### Cleanup with LoadedKeysTracker
+#### Cleanup with CleanupToken
 
-The `LoadedKeysTracker` tracks which keys were loaded by a command:
+The `CleanupToken` tracks which keys were loaded for each attribute type during a preload build. It pairs each loader with the keys loaded through it:
 
 ```go
-type LoadedKeysTracker struct {
-    Input           []attributes.U128
-    Output          []attributes.U128
-    IdempotencyKeys []attributes.U128
+type trackedLoader struct {
+    loader LoaderOps
+    keys   []attributes.U128
+}
+
+type CleanupToken struct {
+    tracked []trackedLoader
 }
 ```
 
-> **Note:** Reversions do not use an `AttributeLoader` — they are stored as an in-memory bitset (`ReversionBitset`) that is always authoritative. No preloading or Pebble lookups are needed. See [Attributes - Reversions](./attributes.md#reversions) for details.
+> **Note:** Reversions do not use an `AttributeLoader` — they are stored as an in-memory `bitset.Bitset` (from `internal/pkg/bitset/bitset.go`) that is always authoritative. No preloading or Pebble lookups are needed. See [Attributes - Reversions](./attributes.md#reversions) for details.
 
-After the command is applied (success or error), `MarkApplied()` removes the keys from their respective loaders. This is safe because:
+After the command is applied (success or error), `CleanupToken.Release()` removes the keys from their respective loaders. This is safe because:
 - On success: The FSM cache now has the values
 - On error: The values should not be retained (stale boundary)
 

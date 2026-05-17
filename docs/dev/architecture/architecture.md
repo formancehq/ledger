@@ -300,10 +300,16 @@ Although all ledgers share the same Raft group and storage:
 
 ### Storage Organization
 
-All ledgers share a single Pebble key-value store with byte-prefixed keys organized into three zones:
-- **Cold-storable** `[0x01, 0xF1)`: Logs (`0x01`), audit entries (`0x02`), transaction updates (`0x03`) — archived to cold storage then purged per period
-- **Attributes** `[0xF1, 0xF2)`: prefix `0xF1` + attribute type byte + canonical key (volumes, metadata, ledgers, boundaries, etc.) — derived data hashed during seal
-- **System** `[0xF2, 0xFF]`: last applied index (`0xF2`), HLC timestamp (`0xF3`), idempotency (`0xF4`), ledger info (`0xF5`), periods (`0xF7`), next period ID (`0xF8`) — metadata that lives forever
+All ledgers share a single Pebble key-value store with byte-prefixed keys organized into six zones:
+
+| Zone | Byte | Purpose | Lifecycle |
+|------|------|---------|-----------|
+| **Attributes** | `0x01` | Volumes, metadata, boundaries, tx state, references, sink configs, numscript | Hot storage, hashed during seal |
+| **Cache** | `0x02` | Generation-based cache for fast restart | Rotated per generation |
+| **Per-Ledger** | `0x03` | Reversions, pending cleanups, mirror state | Per-ledger lifecycle |
+| **Cold** | `0x04` | Logs + audit entries | Archived to cold storage then purged per period |
+| **Idempotency** | `0x05` | Deduplication keys + time index | TTL-based eviction |
+| **Global** | `0x06` | Applied index/timestamp, ledger info, signing, periods, cluster config, bloom | Lives forever |
 
 ## Scalability
 

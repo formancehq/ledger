@@ -45,7 +45,7 @@ Key design decisions:
 - **Peers**: The leader polls peer nodes via the `GetDiskUsage` gRPC RPC on the `ClusterService`
 - **Atomic state**: The health state is stored as an `atomic.Bool` for lock-free reads from the admission layer
 
-### DiskUsage Collector (`internal/storage/diskusage/`)
+### DiskUsage Collector (`internal/infra/monitoring/diskusage/`)
 
 Each node runs a `diskusage.Collector` that periodically samples the disk usage of two volumes:
 - **WAL volume**: The Raft write-ahead log directory
@@ -145,10 +145,7 @@ Read operations continue to work normally:
 ### Metrics
 
 Disk usage metrics are exposed via OpenTelemetry:
-- `storage.disk.wal_volume.used_bytes` - WAL volume used bytes
-- `storage.disk.wal_volume.total_bytes` - WAL volume total capacity
-- `storage.disk.data_volume.used_bytes` - Data volume used bytes
-- `storage.disk.data_volume.total_bytes` - Data volume total capacity
+- `storage.disk.volume.bytes` - Disk space used on a storage volume (with `volume` attribute: `wal` or `data`). Only used bytes are emitted.
 
 ### Grafana Dashboard
 

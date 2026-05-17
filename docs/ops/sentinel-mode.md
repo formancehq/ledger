@@ -66,6 +66,6 @@ Sentinel mode adds measurable overhead:
 |------|------|
 | `internal/infra/state/sentinel.go` | All four verification functions and helper utilities |
 | `internal/infra/state/machine.go` | Guard conditions (`sentinelMode`) at apply and post-commit |
-| `internal/infra/state/buffer.go` | Guard condition for monotonicity check at merge time |
+| `internal/infra/state/write_set.go` | Guard condition for monotonicity check at merge time |
 | `internal/bootstrap/config.go` | `SentinelMode` configuration field |
 | `cmd/server/server.go` | `--sentinel-mode` flag definition |

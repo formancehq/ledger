@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- **Nix with Flakes enabled** (required) - provides Go 1.25+, Just, golangci-lint, protoc, and all other tools
+- **Nix with Flakes enabled** (required) - provides Go 1.26+, Just, golangci-lint, protoc, and all other tools
 - **direnv** - [Installation](https://direnv.net/) and [shell hook](https://direnv.net/docs/hook.html)
 
 ## Setup
@@ -24,31 +24,28 @@ After setup, `direnv` automatically loads the Nix development environment whenev
 
 ```
 ledger-v3-poc/
-├── cmd/                    # Entry points
-│   ├── server/            # Main server
-│   └── ledgerctl/         # CLI client (ledgerctl)
-├── internal/               # Internal code (not exported)
-│   ├── application/       # Application module (fx wiring, gRPC servers)
-│   ├── service/           # Business services
-│   │   ├── admission/     # Admission service (preload, AttributeLoader)
-│   │   ├── attributes/    # Attribute types, U128 hashing, collision detection
-│   │   ├── cache/         # FSM attribute cache (generation-based)
-│   │   ├── commands/      # Raft command builders
-│   │   ├── ctrl/          # Controller layer (transaction processing)
-│   │   ├── futures/       # Async futures for proposal results
-│   │   ├── node/          # Raft node lifecycle and transport
-│   │   ├── processing/    # Transaction/log processing
-│   │   └── state/         # FSM state machine and snapshots
-│   ├── compat/            # Compatibility layer (HTTP, JSON)
-│   ├── storage/           # Storage layer (Pebble, spool, WAL)
-│   ├── transport/         # gRPC transport and connection pool
-│   ├── monitoring/        # Observability (OTLP, Pyroscope, trace sampling)
-│   ├── proto/             # Generated protobuf types
-│   └── crypto/            # Signing and keystore
-├── misc/                   # Proto files, dev environment, demos
-├── tests/                 # End-to-end tests
-├── pkg/                    # Exported packages (testserver)
-└── docs/                  # Documentation
+├── main.go                    # Entry point
+├── cmd/
+│   ├── server/                # Server command
+│   └── ledgerctl/             # CLI tool (sub-packages per command)
+├── internal/
+│   ├── adapter/               # Transport layer (grpc/, http/, json/, auth/, v2/)
+│   ├── application/           # Use cases (admission/, ctrl/, events/, check/, indexbuilder/, mirror/)
+│   ├── bootstrap/             # Composition root (fx wiring, config, TLS)
+│   ├── domain/                # Business domain (processing/, crypto/, accounttype/, analysis/, replay/)
+│   ├── infra/                 # Infrastructure (node/, state/, cache/, attributes/, transport/, health/, monitoring/, backup/, bloom/, coldstorage/, preload/, receipt/)
+│   ├── pkg/                   # Internal utilities (kv/, signal/, futures/, commands/, bitset/, filterexpr/, semver/, worker/)
+│   ├── proto/                 # Generated protobuf code
+│   ├── query/                 # CQRS read-side queries
+│   └── storage/               # Pebble persistence (dal/, wal/, spool/, readstore/, pebblecfg/)
+├── pkg/                       # Public packages (actions/, scenario/, testserver/)
+├── tests/                     # Test suites (e2e/, scenarios/, antithesis/, perf/)
+├── misc/
+│   ├── proto/                 # Protocol Buffer definitions
+│   ├── demo/                  # VHS tape files for CLI demos
+│   ├── numscript/examples/    # Numscript examples
+│   └── devenv/                # Development environment
+└── docs/                      # Documentation
 ```
 
 ## Build and Run
@@ -65,8 +62,8 @@ just run
 go run . run \
   --node-id 1 \
   --bind-addr 127.0.0.1:8888 \
-  --data-dir ./data/node-1 \
-  --http-port 9000
+  --wal-dir ./wal/node-1 \
+  --data-dir ./data/node-1
 ```
 
 ## Run Tests
@@ -122,18 +119,18 @@ func NewComponent(lc fx.Lifecycle) *Component {
 
 ### Application Startup
 
-The server uses `github.com/formancehq/go-libs/v3/service` for lifecycle management:
+The server uses `github.com/formancehq/go-libs/v5/pkg/service` for lifecycle management:
 - `service.Execute()` binds environment variables to flags (e.g., `NODE_ID` -> `--node-id`)
-- `app.Run()` handles startup, signal handling (SIGTERM/SIGINT), and graceful shutdown
+- `service.NewWithLogger(logger, opts...).Run(cmd)` handles startup, signal handling (SIGTERM/SIGINT), and graceful shutdown
 
 ## Formance Libraries
 
 | Library | Purpose |
 |---------|---------|
-| `go-libs/v3/service` | Application lifecycle, env-to-flag binding |
-| `go-libs/v3/otlp` | OpenTelemetry configuration |
-| `go-libs/v3/otlp/otlptraces` | Trace exporter configuration |
-| `go-libs/v3/httpserver` | HTTP server lifecycle with `serverport` |
+| `go-libs/v5/pkg/service` | Application lifecycle, env-to-flag binding |
+| `go-libs/v5/pkg/observe` | OpenTelemetry configuration |
+| `go-libs/v5/pkg/observe/traces` | Trace exporter configuration |
+| `go-libs/v5/pkg/transport/httpserver` | HTTP server lifecycle with `serverport` |
 
 ## Debugging
 
