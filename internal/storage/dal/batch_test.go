@@ -170,6 +170,44 @@ func TestBatch_DeleteRange(t *testing.T) {
 	require.NoError(t, closer.Close())
 }
 
+func TestBatch_SingleDeleteKey(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+
+	// Write a key exactly once
+	batch := s.NewBatch()
+	require.NoError(t, batch.SetBytes([]byte("once-key"), []byte("value")))
+	require.NoError(t, batch.Commit())
+
+	// Verify it exists
+	val, closer, err := s.Get([]byte("once-key"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("value"), val)
+	require.NoError(t, closer.Close())
+
+	// SingleDelete the key
+	batch2 := s.NewBatch()
+	require.NoError(t, batch2.SingleDeleteKey([]byte("once-key")))
+	require.NoError(t, batch2.Commit())
+
+	// Verify it's gone
+	_, _, err = s.Get([]byte("once-key"))
+	require.Error(t, err)
+}
+
+func TestBatch_SingleDeleteKeyAfterCommit(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	batch := s.NewBatch()
+	require.NoError(t, batch.Commit())
+
+	err := batch.SingleDeleteKey([]byte("key"))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "already committed")
+}
+
 func TestBatch_DeleteRangeNoSync(t *testing.T) {
 	t.Parallel()
 

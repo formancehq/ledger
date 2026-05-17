@@ -108,17 +108,20 @@ func (s *IdempotencyStore) EvictBefore(batch *dal.Batch, reader dal.PebbleReader
 		keyHash := k[10:26]
 
 		// Delete from main store [0x05][0x01][key_hash]
+		// SingleDelete is safe here: each idempotency key is written exactly once
+		// (SaveIdempotencyKey) and deleted exactly once (here). The write-once /
+		// delete-once lifecycle is guaranteed by the FSM's deduplication logic.
 		mainKey := make([]byte, 2+16)
 		mainKey[0] = dal.ZoneIdempotency
 		mainKey[1] = dal.SubIdempKeys
 		copy(mainKey[2:], keyHash)
 
-		if err := batch.DeleteKey(mainKey); err != nil {
+		if err := batch.SingleDeleteKey(mainKey); err != nil {
 			return evicted, fmt.Errorf("deleting idempotency key: %w", err)
 		}
 
-		// Delete time index entry
-		if err := batch.DeleteKey(k); err != nil {
+		// Delete time index entry (also write-once / delete-once)
+		if err := batch.SingleDeleteKey(k); err != nil {
 			return evicted, fmt.Errorf("deleting idempotency time index: %w", err)
 		}
 

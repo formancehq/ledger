@@ -139,6 +139,21 @@ func (b *Batch) DeleteKey(key []byte) error {
 	return b.batch.Delete(key, pebble.NoSync)
 }
 
+// SingleDeleteKey deletes a key that was written exactly once (single SET) with NoSync.
+// Unlike DeleteKey, the tombstone is eliminated as soon as it meets the matching SET
+// during compaction at any level, avoiding tombstone accumulation in the LSM.
+//
+// SAFETY: Using SingleDelete on a key that was written more than once (multiple SETs)
+// produces undefined behavior — the key may reappear after compaction.
+// Only use for keys with a guaranteed write-once / delete-once lifecycle.
+func (b *Batch) SingleDeleteKey(key []byte) error {
+	if b.committed {
+		return errors.New("batch already committed")
+	}
+
+	return b.batch.SingleDelete(key, pebble.NoSync)
+}
+
 // DeleteRange deletes all keys in the range [start, end).
 func (b *Batch) DeleteRange(start, end []byte, options *pebble.WriteOptions) error {
 	return b.batch.DeleteRange(start, end, options)
