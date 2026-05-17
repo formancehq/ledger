@@ -11,6 +11,23 @@ import (
 )
 
 func NewMetricsListener(m metric.Meter, stallState *WriteStallState) *pebble.EventListener {
+	diskSlowTotal, err := m.Int64Counter(
+		"pebble.disk_slow.total",
+		metric.WithDescription("Number of Pebble disk slow events"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	diskSlowDurationMilliseconds, err := m.Int64Histogram(
+		"pebble.disk_slow.duration.milliseconds",
+		metric.WithUnit("ms"),
+		metric.WithDescription("Duration of slow disk operations detected by Pebble"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
 	flushTotal, err := m.Int64Counter(
 		"pebble.flush.total",
 		metric.WithDescription("Number of Pebble flush operations"),
@@ -88,6 +105,15 @@ func NewMetricsListener(m metric.Meter, stallState *WriteStallState) *pebble.Eve
 	)
 
 	return &pebble.EventListener{
+		DiskSlow: func(info pebble.DiskSlowInfo) {
+			attrs := []attribute.KeyValue{
+				attribute.String("op", info.OpType.String()),
+			}
+
+			diskSlowTotal.Add(ctx, 1, metric.WithAttributes(attrs...))
+			diskSlowDurationMilliseconds.Record(ctx, info.Duration.Milliseconds(), metric.WithAttributes(attrs...))
+		},
+
 		FlushEnd: func(info pebble.FlushInfo) {
 			attrs := []attribute.KeyValue{
 				attribute.String("reason", info.Reason),
