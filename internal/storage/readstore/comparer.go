@@ -120,9 +120,8 @@ func readStoreSplit(key []byte) int {
 		return len(key)
 	}
 
-	// Singleton prefixes — no ledger name, full key is the prefix.
-	switch key[0] {
-	case PrefixProgress, PrefixAuditProgress:
+	// Internal singleton keys (non-ledger-scoped) — full key is the prefix.
+	if key[0] == PrefixInternal {
 		return len(key)
 	}
 

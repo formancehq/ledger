@@ -16,9 +16,14 @@ const (
 	PrefixLedgerLogs            byte = 0x09 // llog — ledger log mapping
 	PrefixLedgerLogDate         byte = 0x0A // lldt — ledger log date
 	PrefixTransactionInsertedAt byte = 0x0B // txiat — transaction inserted_at
-	PrefixProgress              byte = 0xF0 // prog — progress (single key: last indexed log sequence)
-	PrefixBackfill              byte = 0xF1 // bfil — backfill cursors
-	PrefixAuditProgress         byte = 0xF2 // aprog — audit progress (single key: last consumed audit sequence)
+	PrefixBackfill byte = 0xF1 // bfil — backfill cursors (ledger-scoped: [0xF1][ledger\x00][kind][...])
+
+	// PrefixInternal groups all non-ledger-scoped singleton keys under a single
+	// prefix so that Comparer.Split can treat them uniformly (full key = prefix).
+	// New internal keys should be added as sub-prefixes here.
+	PrefixInternal         byte = 0xFE
+	SubInternalProgress    byte = 0x01 // [0xFE][0x01] — last indexed log sequence
+	SubInternalAuditProgress byte = 0x02 // [0xFE][0x02] — last consumed audit sequence
 )
 
 // Namespace prefixes to distinguish accounts, transactions, and logs in shared buckets.
@@ -324,11 +329,14 @@ func BackfillKeyPrefix() []byte {
 
 // ProgressKey returns the full key for the progress entry.
 //
-//	[0xF0]lastSeq
+//	[0xFE][0x01]
 func ProgressKey() []byte {
-	key := make([]byte, 0, 8)
-	key = append(key, PrefixProgress)
-	key = append(key, "lastSeq"...)
+	return []byte{PrefixInternal, SubInternalProgress}
+}
 
-	return key
+// AuditProgressKey returns the full key for the audit progress entry.
+//
+//	[0xFE][0x02]
+func AuditProgressKey() []byte {
+	return []byte{PrefixInternal, SubInternalAuditProgress}
 }

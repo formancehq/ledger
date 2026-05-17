@@ -25,14 +25,14 @@ func TestReadStoreSplit(t *testing.T) {
 			wantSplit: 5, // [0x02][bar\x00]
 		},
 		{
-			name:      "progress singleton",
-			key:       append([]byte{PrefixProgress}, "lastSeq"...),
-			wantSplit: 8, // full key
+			name:      "internal progress singleton",
+			key:       []byte{PrefixInternal, SubInternalProgress},
+			wantSplit: 2, // full key
 		},
 		{
-			name:      "audit progress singleton",
-			key:       []byte{PrefixAuditProgress},
-			wantSplit: 1, // full key
+			name:      "internal audit progress singleton",
+			key:       []byte{PrefixInternal, SubInternalAuditProgress},
+			wantSplit: 2, // full key
 		},
 		{
 			name:      "backfill with ledger",
@@ -75,8 +75,8 @@ func TestReadStoreComparerOrdering(t *testing.T) {
 		{0x01, 'a', 0x00, 'y'},
 		{0x01, 'b', 0x00, 'x'},
 		{0x08, 'a', 0x00, 0x01},
-		{PrefixProgress, 'l', 'a', 's', 't'},
-		{PrefixAuditProgress},
+		{PrefixInternal, SubInternalProgress},
+		{PrefixInternal, SubInternalAuditProgress},
 	}
 
 	cmp := ReadStoreComparer.Compare
@@ -103,9 +103,9 @@ func TestReadStoreComparerImmediateSuccessor(t *testing.T) {
 			want:   []byte{0x01, 'f', 'o', 'o', 0x01},
 		},
 		{
-			name:   "singleton prefix",
-			prefix: append([]byte{PrefixProgress}, "lastSeq"...),
-			want:   append(append([]byte{PrefixProgress}, "lastSeq"...), 0x00),
+			name:   "internal singleton prefix",
+			prefix: []byte{PrefixInternal, SubInternalProgress},
+			want:   []byte{PrefixInternal, SubInternalProgress, 0x00},
 		},
 	}
 

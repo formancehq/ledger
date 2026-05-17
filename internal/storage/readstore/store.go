@@ -233,7 +233,7 @@ func (s *Store) NotifyProgress() {
 // ReadAuditProgress returns the last consumed audit sequence.
 // Returns 0 if no audit progress has been recorded.
 func (s *Store) ReadAuditProgress() (uint64, error) {
-	v, closer, err := s.db.Get([]byte{PrefixAuditProgress})
+	v, closer, err := s.db.Get(AuditProgressKey())
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return 0, nil
@@ -256,7 +256,7 @@ func (s *Store) WriteAuditProgress(batch *dal.Batch, sequence uint64) error {
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], sequence)
 
-	return batch.SetBytes([]byte{PrefixAuditProgress}, buf[:])
+	return batch.SetBytes(AuditProgressKey(), buf[:])
 }
 
 // WriteBackfillProgress stores a backfill cursor.
