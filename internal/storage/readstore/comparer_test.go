@@ -36,8 +36,8 @@ func TestReadStoreSplit(t *testing.T) {
 		},
 		{
 			name:      "backfill with ledger",
-			key:       []byte{PrefixBackfill, 'l', 'e', 'd', 0x00, 'b', 0x01},
-			wantSplit: 5, // [0xF1][led\x00]
+			key:       []byte{PrefixInternal, SubInternalBackfill, 'l', 'e', 'd', 0x00, 'b', 0x01},
+			wantSplit: 8, // full key — internal prefix, no bloom split
 		},
 		{
 			name:      "empty key",

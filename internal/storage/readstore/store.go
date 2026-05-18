@@ -261,9 +261,10 @@ func (s *Store) WriteAuditProgress(batch *dal.Batch, sequence uint64) error {
 
 // WriteBackfillProgress stores a backfill cursor.
 func (s *Store) WriteBackfillProgress(batch *dal.Batch, key []byte, cursor uint64) error {
-	fullKey := make([]byte, 1+len(key))
-	fullKey[0] = PrefixBackfill
-	copy(fullKey[1:], key)
+	prefix := BackfillKeyPrefix()
+	fullKey := make([]byte, len(prefix)+len(key))
+	copy(fullKey, prefix)
+	copy(fullKey[len(prefix):], key)
 
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], cursor)
@@ -274,9 +275,10 @@ func (s *Store) WriteBackfillProgress(batch *dal.Batch, key []byte, cursor uint6
 // ReadBackfillProgress reads a backfill cursor.
 // Returns (cursor, true) if found, (0, false) if the key does not exist.
 func (s *Store) ReadBackfillProgress(key []byte) (uint64, bool) {
-	fullKey := make([]byte, 1+len(key))
-	fullKey[0] = PrefixBackfill
-	copy(fullKey[1:], key)
+	prefix := BackfillKeyPrefix()
+	fullKey := make([]byte, len(prefix)+len(key))
+	copy(fullKey, prefix)
+	copy(fullKey[len(prefix):], key)
 
 	v, closer, err := s.db.Get(fullKey)
 	if err != nil {
@@ -294,9 +296,10 @@ func (s *Store) ReadBackfillProgress(key []byte) (uint64, bool) {
 
 // WriteBackfillCursor stores a variable-length cursor ([]byte) for schema rewrite tasks.
 func (s *Store) WriteBackfillCursor(batch *dal.Batch, key, cursor []byte) error {
-	fullKey := make([]byte, 1+len(key))
-	fullKey[0] = PrefixBackfill
-	copy(fullKey[1:], key)
+	prefix := BackfillKeyPrefix()
+	fullKey := make([]byte, len(prefix)+len(key))
+	copy(fullKey, prefix)
+	copy(fullKey[len(prefix):], key)
 
 	return batch.SetBytes(fullKey, cursor)
 }
@@ -304,9 +307,10 @@ func (s *Store) WriteBackfillCursor(batch *dal.Batch, key, cursor []byte) error 
 // ReadBackfillCursor reads a variable-length cursor.
 // Returns (cursor, true) if found, (nil, false) if the key does not exist.
 func (s *Store) ReadBackfillCursor(key []byte) ([]byte, bool) {
-	fullKey := make([]byte, 1+len(key))
-	fullKey[0] = PrefixBackfill
-	copy(fullKey[1:], key)
+	prefix := BackfillKeyPrefix()
+	fullKey := make([]byte, len(prefix)+len(key))
+	copy(fullKey, prefix)
+	copy(fullKey[len(prefix):], key)
 
 	v, closer, err := s.db.Get(fullKey)
 	if err != nil {
@@ -323,9 +327,10 @@ func (s *Store) ReadBackfillCursor(key []byte) ([]byte, bool) {
 
 // DeleteBackfillProgress removes a backfill cursor.
 func (s *Store) DeleteBackfillProgress(key []byte) error {
-	fullKey := make([]byte, 1+len(key))
-	fullKey[0] = PrefixBackfill
-	copy(fullKey[1:], key)
+	prefix := BackfillKeyPrefix()
+	fullKey := make([]byte, len(prefix)+len(key))
+	copy(fullKey, prefix)
+	copy(fullKey[len(prefix):], key)
 
 	return s.db.Delete(fullKey, pebble.NoSync)
 }
@@ -357,10 +362,10 @@ func (s *Store) ReadAllBackfillProgress() (map[string]uint64, error) {
 			continue
 		}
 
-		// Strip the prefix byte from the key for the map key.
+		// Strip the prefix bytes from the key for the map key.
 		k := iter.Key()
-		if len(k) > 1 {
-			result[string(k[1:])] = binary.BigEndian.Uint64(v)
+		if len(k) > len(prefix) {
+			result[string(k[len(prefix):])] = binary.BigEndian.Uint64(v)
 		}
 	}
 
@@ -396,12 +401,12 @@ func (s *Store) ReadAllSchemaRewriteProgress() ([]SchemaRewriteEntry, error) {
 
 	for iter.First(); iter.Valid(); iter.Next() {
 		k := iter.Key()
-		if len(k) < 2 {
+		if len(k) < len(prefix)+1 {
 			continue
 		}
 
-		// Strip prefix byte.
-		innerKey := k[1:]
+		// Strip prefix bytes.
+		innerKey := k[len(prefix):]
 		ledger, kind, details, ok := ParseBackfillKey(innerKey)
 
 		if !ok || kind != BackfillKindSchemaRewrite {

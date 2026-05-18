@@ -16,14 +16,14 @@ const (
 	PrefixLedgerLogs            byte = 0x09 // llog — ledger log mapping
 	PrefixLedgerLogDate         byte = 0x0A // lldt — ledger log date
 	PrefixTransactionInsertedAt byte = 0x0B // txiat — transaction inserted_at
-	PrefixBackfill              byte = 0xF1 // bfil — backfill cursors (ledger-scoped: [0xF1][ledger\x00][kind][...])
 
-	// PrefixInternal groups all non-ledger-scoped singleton keys under a single
-	// prefix so that Comparer.Split can treat them uniformly (full key = prefix).
+	// PrefixInternal groups all non-ledger-scoped keys under a single prefix
+	// so that Comparer.Split can treat them uniformly (full key = prefix).
 	// New internal keys should be added as sub-prefixes here.
 	PrefixInternal           byte = 0xFE
 	SubInternalProgress      byte = 0x01 // [0xFE][0x01] — last indexed log sequence
 	SubInternalAuditProgress byte = 0x02 // [0xFE][0x02] — last consumed audit sequence
+	SubInternalBackfill      byte = 0x03 // [0xFE][0x03][ledger\x00][kind][...] — backfill cursors
 )
 
 // Namespace prefixes to distinguish accounts, transactions, and logs in shared buckets.
@@ -320,11 +320,11 @@ func ReverseMapPrefix(kb *dal.KeyBuilder, ledger, ns string) []byte {
 		Snapshot()
 }
 
-// BackfillKeyPrefix returns the prefix byte for backfill keys.
+// BackfillKeyPrefix returns the prefix bytes for backfill keys.
 //
-//	[0xF1]
+//	[0xFE][0x03]
 func BackfillKeyPrefix() []byte {
-	return []byte{PrefixBackfill}
+	return []byte{PrefixInternal, SubInternalBackfill}
 }
 
 // ProgressKey returns the full key for the progress entry.
