@@ -36,7 +36,7 @@ type VolumeKey struct {
 }
 
 // Bytes returns a canonical byte representation of the balance key.
-// Format: [ledger]\x00[account][0xFD][asset_base][precision_byte]
+// Format: [ledger]\x00[account]\x00[asset_base][precision_byte]
 // The last byte is always the precision. Asset bases are uppercase ASCII
 // (≥0x41), so there is no ambiguity with precision values (0x00–0xFF).
 func (bk VolumeKey) Bytes() []byte {
@@ -63,7 +63,7 @@ func (bk VolumeKey) Bytes() []byte {
 }
 
 // Unmarshal parses canonical bytes into the VolumeKey.
-// Expected format: [ledger]\x00[account][0xFD][asset_base][precision_byte]
+// Expected format: [ledger]\x00[account]\x00[asset_base][precision_byte]
 // The last byte is always the precision.
 func (bk *VolumeKey) Unmarshal(d []byte) error {
 	// Split ledger on first null byte.
@@ -75,7 +75,7 @@ func (bk *VolumeKey) Unmarshal(d []byte) error {
 	bk.Ledger = string(before)
 	rest := after
 
-	// Find the volume separator (0xFD) to split account from asset.
+	// Find the volume separator to split account from asset.
 	before0, after0, ok0 := bytes.Cut(rest, []byte{dal.CanonicalKeySepVolume})
 	if !ok0 {
 		return errors.New("invalid balance key bytes: missing volume separator")
@@ -104,7 +104,7 @@ type MetadataKey struct {
 }
 
 // Bytes returns a canonical byte representation of the metadata key.
-// Format: [ledger]\x00[account][0xFE][key].
+// Format: [ledger]\x00[account]\x01[key].
 func (mk MetadataKey) Bytes() []byte {
 	ret := make([]byte, len(mk.Ledger)+1+len(mk.Account)+1+len(mk.Key))
 	n := copy(ret, mk.Ledger)
@@ -128,7 +128,7 @@ func (mk *MetadataKey) Unmarshal(d []byte) error {
 
 	mk.Ledger = string(before)
 
-	// Rest is account + [0xFE] + key
+	// Rest is account + \x01 + key
 	rest := after
 
 	before0, after0, ok0 := bytes.Cut(rest, []byte{dal.CanonicalKeySepMetadata})
@@ -150,8 +150,8 @@ type TransactionKey struct {
 }
 
 // Bytes returns a canonical byte representation of the transaction key.
-// Format: [ledger]\x00[0xFF][txID (8 bytes)].
-// 0xFF = CanonicalKeySepTransaction.
+// Format: [ledger]\x00\x02[txID (8 bytes)].
+// \x02 = CanonicalKeySepTransaction.
 func (tk TransactionKey) Bytes() []byte {
 	ret := make([]byte, len(tk.Ledger)+1+1+8)
 	n := copy(ret, tk.Ledger)
@@ -166,7 +166,7 @@ func (tk TransactionKey) Bytes() []byte {
 
 // Unmarshal parses canonical bytes into the TransactionKey.
 func (tk *TransactionKey) Unmarshal(d []byte) error {
-	// Find the \x00[0xFF] separator between ledger name and txID.
+	// Find the \x00\x02 separator between ledger name and txID.
 	sep := -1
 
 	for i, b := range d {

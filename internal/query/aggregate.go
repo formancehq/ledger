@@ -250,7 +250,7 @@ func AggregateVolumes(
 	for accountIter.Next() {
 		account := string(accountIter.Current())
 
-		// Build canonical prefix: [ledger]\x00[account][0xFD]
+		// Build canonical prefix: [ledger]\x00[account]\x00
 		// This matches all volume keys for this (ledger, account) pair.
 		canonicalPrefix := make([]byte, len(ledger)+1+len(account)+1)
 		n := copy(canonicalPrefix, ledger)

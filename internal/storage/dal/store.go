@@ -215,12 +215,12 @@ const (
 
 // Canonical key separators used inside attribute canonical keys
 // to delimit volume and metadata sub-keys.
-// These occupy the high range (0xFD-0xFF) so that segment type tags
-// (0x00-0x03) in the typed key encoding never collide.
+// These must be BELOW all valid address-character bytes (lowest is '0' = 0x30)
+// so that Pebble key order matches lexicographic address order.
 const (
-	CanonicalKeySepVolume      byte = 0xFD
-	CanonicalKeySepMetadata    byte = 0xFE
-	CanonicalKeySepTransaction byte = 0xFF
+	CanonicalKeySepVolume      byte = 0x00
+	CanonicalKeySepMetadata    byte = 0x01
+	CanonicalKeySepTransaction byte = 0x02
 )
 
 // MaxUint64Bytes is the big-endian representation of math.MaxUint64,

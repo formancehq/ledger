@@ -142,8 +142,8 @@ func (it *PebbleAccountIterator) Next() bool {
 
 func (it *PebbleAccountIterator) advance() bool {
 	// Seek past all keys for the current address.
-	// Attribute keys use separators 0xFD (volume) and 0xFE (metadata),
-	// so [prefix][addr][0xFF] is past all entries for addr.
+	// Attribute keys use separators 0x00 (volume) and 0x01 (metadata),
+	// so [prefix][addr][0x02] is past all entries for addr.
 	seekKey := make([]byte, len(it.prefix)+len(it.current)+1)
 	n := copy(seekKey, it.prefix)
 	n += copy(seekKey[n:], it.current)
@@ -346,7 +346,7 @@ func (it *PebbleReverseAccountIterator) SeekLE(target []byte) bool {
 	it.started = true
 
 	// Seek to first key > all entries for target, then step back.
-	// [prefix][target][0xFF] is past both separators (0xFD volume, 0xFE metadata).
+	// [prefix][target][0x02] is past both separators (0x00 volume, 0x01 metadata).
 	seekKey := make([]byte, len(it.prefix)+len(target)+1)
 	n := copy(seekKey, it.prefix)
 	n += copy(seekKey[n:], target)
@@ -865,7 +865,7 @@ func txAttributeCode(ledger string) []byte {
 
 // extractAccountAddress extracts the account address from an attribute key.
 // Key format: [0xF1][attrType][ledger\x00][address][sep][field...]
-// where sep is CanonicalKeySepVolume (0xFD) or CanonicalKeySepMetadata (0xFE).
+// where sep is CanonicalKeySepVolume (0x00) or CanonicalKeySepMetadata (0x01).
 // The prefix parameter is [0xF1][attrType][ledger\x00].
 func extractAccountAddress(key, prefix []byte) []byte {
 	if len(key) <= len(prefix) {
@@ -880,7 +880,7 @@ func extractAccountAddress(key, prefix []byte) []byte {
 		return nil
 	}
 
-	// Find the first canonical key separator (0xFD for volume, 0xFE for metadata).
+	// Find the first canonical key separator (0x00 for volume, 0x01 for metadata).
 	idx0 := bytes.IndexByte(suffix, dal.CanonicalKeySepVolume)
 	idx1 := bytes.IndexByte(suffix, dal.CanonicalKeySepMetadata)
 

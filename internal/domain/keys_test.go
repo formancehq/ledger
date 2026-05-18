@@ -63,8 +63,8 @@ func TestVolumeKey_ByteFormat(t *testing.T) {
 	vk := newVolumeKey(AccountKey{Ledger: "l", Account: "a"}, "USD/4")
 
 	data := vk.Bytes()
-	// Expected: "l" \x00 "a" \xFD "USD" \x04
-	expected := []byte{'l', 0x00, 'a', 0xFD, 'U', 'S', 'D', 0x04}
+	// Expected: "l" \x00 "a" \x00 "USD" \x04
+	expected := []byte{'l', 0x00, 'a', 0x00, 'U', 'S', 'D', 0x04}
 	require.Equal(t, expected, data)
 }
 
@@ -78,6 +78,6 @@ func TestVolumeKey_StructLiteralFallback(t *testing.T) {
 	}
 
 	data := vk.Bytes()
-	expected := []byte{'l', 0x00, 'a', 0xFD, 'E', 'U', 'R', 0x02}
+	expected := []byte{'l', 0x00, 'a', 0x00, 'E', 'U', 'R', 0x02}
 	require.Equal(t, expected, data)
 }
