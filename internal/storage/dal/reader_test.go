@@ -6,6 +6,8 @@ import (
 
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
 )
 
 func TestReadHandle_GetAndClose(t *testing.T) {
@@ -131,9 +133,9 @@ func (c *errCloser) Close() error {
 func TestClosingCursor_ClosesInnerAndCloser(t *testing.T) {
 	t.Parallel()
 
-	inner := NewSliceCursor([]int{10, 20, 30})
+	inner := cursor.NewSliceCursor([]int{10, 20, 30})
 	closer := &errCloser{}
-	cursor := NewClosingCursor[int](inner, closer)
+	cursor := cursor.NewClosingCursor[int](inner, closer)
 
 	// Read all items
 	v, err := cursor.Next()
@@ -159,9 +161,9 @@ func TestClosingCursor_ClosesInnerAndCloser(t *testing.T) {
 func TestClosingCursor_EmptyInner(t *testing.T) {
 	t.Parallel()
 
-	inner := NewSliceCursor[string](nil)
+	inner := cursor.NewSliceCursor[string](nil)
 	closer := &errCloser{}
-	cursor := NewClosingCursor[string](inner, closer)
+	cursor := cursor.NewClosingCursor[string](inner, closer)
 
 	_, err := cursor.Next()
 	require.ErrorIs(t, err, io.EOF)

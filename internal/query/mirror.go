@@ -2,15 +2,12 @@ package query
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 
-	"github.com/cockroachdb/pebble/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
@@ -23,22 +20,12 @@ func ReadMirrorCursor(reader dal.PebbleReader, ledgerName string) (uint64, error
 	kb.PutZonePrefix(dal.ZonePerLedger, dal.SubPLMirrorCursor).
 		PutLedgerName(ledgerName)
 
-	get, closer, err := reader.Get(kb.Build())
+	v, err := dal.ReadUint64(reader, kb.Build(), 0)
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
-			return 0, nil
-		}
-
 		return 0, fmt.Errorf("reading mirror cursor: %w", err)
 	}
 
-	defer func() { _ = closer.Close() }()
-
-	if len(get) < 8 {
-		return 0, nil
-	}
-
-	return binary.BigEndian.Uint64(get[:8]), nil
+	return v, nil
 }
 
 // ReadMirrorStatus returns the last sync error for a mirror ledger.
@@ -48,20 +35,9 @@ func ReadMirrorStatus(reader dal.PebbleReader, ledgerName string) (*commonpb.Mir
 	kb.PutZonePrefix(dal.ZonePerLedger, dal.SubPLMirrorStatus).
 		PutLedgerName(ledgerName)
 
-	get, closer, err := reader.Get(kb.Build())
+	syncErr, err := dal.ReadProto[*commonpb.MirrorSyncError](reader, kb.Build())
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
-			return nil, nil
-		}
-
 		return nil, fmt.Errorf("reading mirror status: %w", err)
-	}
-
-	defer func() { _ = closer.Close() }()
-
-	syncErr := &commonpb.MirrorSyncError{}
-	if err := proto.Unmarshal(get, syncErr); err != nil {
-		return nil, fmt.Errorf("unmarshaling mirror status: %w", err)
 	}
 
 	return syncErr, nil
@@ -74,22 +50,12 @@ func ReadMirrorSourceHead(reader dal.PebbleReader, ledgerName string) (uint64, e
 	kb.PutZonePrefix(dal.ZonePerLedger, dal.SubPLMirrorSourceHead).
 		PutLedgerName(ledgerName)
 
-	get, closer, err := reader.Get(kb.Build())
+	v, err := dal.ReadUint64(reader, kb.Build(), 0)
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
-			return 0, nil
-		}
-
 		return 0, fmt.Errorf("reading mirror source head: %w", err)
 	}
 
-	defer func() { _ = closer.Close() }()
-
-	if len(get) < 8 {
-		return 0, nil
-	}
-
-	return binary.BigEndian.Uint64(get[:8]), nil
+	return v, nil
 }
 
 // ReadMirrorSyncProgress reads the cursor, source head, and error from Pebble

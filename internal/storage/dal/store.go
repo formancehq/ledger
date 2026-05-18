@@ -20,6 +20,8 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
 )
 
 // ErrStoreClosed is returned when a store operation is attempted after the
@@ -1103,6 +1105,95 @@ func (c *ProtoCursor[T]) Close() error {
 	}
 
 	return nil
+}
+
+// ReadProto reads a protobuf message from Pebble. Returns the zero value of T if not found.
+func ReadProto[T proto.Message](reader PebbleReader, key []byte) (T, error) {
+	var zero T
+
+	val, err := GetValue(reader, key)
+	if err != nil {
+		return zero, err
+	}
+
+	if val == nil {
+		return zero, nil
+	}
+
+	msg := reflect.New(reflect.TypeOf(zero).Elem()).Interface().(T)
+	if vu, ok := any(msg).(vtUnmarshaler); ok {
+		if err := vu.UnmarshalVT(val); err != nil {
+			return zero, err
+		}
+	} else if err := proto.Unmarshal(val, msg); err != nil {
+		return zero, err
+	}
+
+	return msg, nil
+}
+
+// ScanZone returns a ProtoCursor over all entries in a [zone][sub] prefix range.
+func ScanZone[T proto.Message](reader PebbleReader, zone, sub byte, opts ...ProtoCursorOption) (*ProtoCursor[T], error) {
+	lowerBound := []byte{zone, sub}
+	upperBound := []byte{zone, sub + 1}
+
+	iter, err := NewBoundedIter(reader, lowerBound, upperBound)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewProtoCursor[T](iter, opts...), nil
+}
+
+// CollectZone scans a [zone][sub] range and returns all proto entries as a slice.
+func CollectZone[T proto.Message](reader PebbleReader, zone, sub byte) ([]T, error) {
+	c, err := ScanZone[T](reader, zone, sub)
+	if err != nil {
+		return nil, err
+	}
+
+	return cursor.Collect[T](c)
+}
+
+// ReadLastEntry reads the last entry in a [zone][sub] prefix range using iter.Last().
+// Returns the zero value of T if no entries exist.
+func ReadLastEntry[T proto.Message](reader PebbleReader, zone, sub byte) (T, error) {
+	var zero T
+
+	kb := NewKeyBuilder()
+	kb.PutZonePrefix(zone, sub)
+	lowerBound := kb.Snapshot()
+	kb.Reset()
+
+	kb.PutZonePrefix(zone, sub).PutBytes(MaxUint64Bytes)
+	upperBound := kb.Build()
+
+	iter, err := NewBoundedIter(reader, lowerBound, upperBound)
+	if err != nil {
+		return zero, err
+	}
+
+	defer func() { _ = iter.Close() }()
+
+	if !iter.Last() {
+		return zero, nil
+	}
+
+	value, err := iter.ValueAndErr()
+	if err != nil {
+		return zero, err
+	}
+
+	msg := reflect.New(reflect.TypeOf(zero).Elem()).Interface().(T)
+	if vu, ok := any(msg).(vtUnmarshaler); ok {
+		if err := vu.UnmarshalVT(value); err != nil {
+			return zero, err
+		}
+	} else if err := proto.Unmarshal(value, msg); err != nil {
+		return zero, err
+	}
+
+	return msg, nil
 }
 
 func (s *Store) NewIter(p *pebble.IterOptions) (*pebble.Iterator, error) {

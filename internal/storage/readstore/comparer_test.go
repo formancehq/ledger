@@ -10,8 +10,8 @@ func TestReadStoreSplit(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		key      []byte
+		name      string
+		key       []byte
 		wantSplit int
 	}{
 		{
@@ -80,7 +80,7 @@ func TestReadStoreComparerOrdering(t *testing.T) {
 	}
 
 	cmp := ReadStoreComparer.Compare
-	for i := 0; i < len(keys)-1; i++ {
+	for i := range len(keys) - 1 {
 		for j := i + 1; j < len(keys); j++ {
 			result := cmp(keys[i], keys[j])
 			require.Equal(t, -1, result,

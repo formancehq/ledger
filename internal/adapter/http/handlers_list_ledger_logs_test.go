@@ -8,16 +8,16 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 func TestHandleListLedgerLogs_Success(t *testing.T) {
 	t.Parallel()
 
 	backend := &mockBackend{
-		listLogsFn: func(_ context.Context, _ uint64, _ uint32, _ *commonpb.QueryFilter) (dal.Cursor[*commonpb.Log], error) {
-			return dal.NewSliceCursor([]*commonpb.Log{
+		listLogsFn: func(_ context.Context, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
+			return cursor.NewSliceCursor([]*commonpb.Log{
 				{Sequence: 1},
 				{Sequence: 2},
 			}), nil
@@ -39,8 +39,8 @@ func TestHandleListLedgerLogs_Empty(t *testing.T) {
 	t.Parallel()
 
 	backend := &mockBackend{
-		listLogsFn: func(_ context.Context, _ uint64, _ uint32, _ *commonpb.QueryFilter) (dal.Cursor[*commonpb.Log], error) {
-			return dal.NewSliceCursor[*commonpb.Log](nil), nil
+		listLogsFn: func(_ context.Context, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
+			return cursor.NewSliceCursor[*commonpb.Log](nil), nil
 		},
 	}
 	srv := newTestServer(t, backend)
@@ -134,8 +134,8 @@ func TestHandleListLedgerLogs_WithDateFilters(t *testing.T) {
 	t.Parallel()
 
 	backend := &mockBackend{
-		listLogsFn: func(_ context.Context, _ uint64, _ uint32, _ *commonpb.QueryFilter) (dal.Cursor[*commonpb.Log], error) {
-			return dal.NewSliceCursor[*commonpb.Log](nil), nil
+		listLogsFn: func(_ context.Context, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
+			return cursor.NewSliceCursor[*commonpb.Log](nil), nil
 		},
 	}
 	srv := newTestServer(t, backend)
@@ -154,8 +154,8 @@ func TestHandleListLedgerLogs_WithAfterParam(t *testing.T) {
 	t.Parallel()
 
 	backend := &mockBackend{
-		listLogsFn: func(_ context.Context, _ uint64, _ uint32, _ *commonpb.QueryFilter) (dal.Cursor[*commonpb.Log], error) {
-			return dal.NewSliceCursor[*commonpb.Log](nil), nil
+		listLogsFn: func(_ context.Context, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
+			return cursor.NewSliceCursor[*commonpb.Log](nil), nil
 		},
 	}
 	srv := newTestServer(t, backend)

@@ -14,6 +14,7 @@ import (
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
@@ -54,13 +55,13 @@ func appendLogs(t *testing.T, s *dal.Store, lastAppliedIndex uint64, logs ...*co
 	require.NoError(t, batch.Commit())
 }
 
-func collectLedgers(cursor dal.Cursor[*commonpb.LedgerInfo]) ([]*commonpb.LedgerInfo, error) {
-	defer func() { _ = cursor.Close() }()
+func collectLedgers(c cursor.Cursor[*commonpb.LedgerInfo]) ([]*commonpb.LedgerInfo, error) {
+	defer func() { _ = c.Close() }()
 
 	var ledgers []*commonpb.LedgerInfo
 
 	for {
-		ledger, err := cursor.Next()
+		ledger, err := c.Next()
 		if errors.Is(err, io.EOF) {
 			break
 		}
@@ -75,15 +76,15 @@ func collectLedgers(cursor dal.Cursor[*commonpb.LedgerInfo]) ([]*commonpb.Ledger
 	return ledgers, nil
 }
 
-func collectLogs(t *testing.T, cursor dal.Cursor[*commonpb.Log]) []*commonpb.Log {
+func collectLogs(t *testing.T, c cursor.Cursor[*commonpb.Log]) []*commonpb.Log {
 	t.Helper()
 
-	defer func() { _ = cursor.Close() }()
+	defer func() { _ = c.Close() }()
 
 	var logs []*commonpb.Log
 
 	for {
-		log, err := cursor.Next()
+		log, err := c.Next()
 		if errors.Is(err, io.EOF) {
 			break
 		}

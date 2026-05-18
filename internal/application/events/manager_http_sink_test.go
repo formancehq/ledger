@@ -31,7 +31,7 @@ func saveHTTPSinkConfig(t *testing.T, s *dal.Store, name, endpoint string) {
 		},
 		Format: "json",
 	}
-	attr := attributes.NewSinkConfigAttribute()
+	attr := attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig)
 	batch := s.NewBatch()
 	_, err := attr.Set(batch, domain.SinkConfigKey{Name: name}.Bytes(), cfg)
 	require.NoError(t, err)
@@ -104,7 +104,7 @@ func TestManager_HTTPSink_ConfigChangeRemovesSink(t *testing.T) {
 
 	// Remove the sink config
 	batch := store.NewBatch()
-	require.NoError(t, attributes.NewSinkConfigAttribute().Delete(batch, domain.SinkConfigKey{Name: "http-sink"}.Bytes()))
+	require.NoError(t, attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig).Delete(batch, domain.SinkConfigKey{Name: "http-sink"}.Bytes()))
 	require.NoError(t, batch.Commit())
 
 	// Notify config change

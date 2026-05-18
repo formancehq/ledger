@@ -10,9 +10,9 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/infra/coldstorage"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
@@ -20,34 +20,9 @@ import (
 
 // ReadLastLog returns the full last log entry from the given reader. Returns nil if no logs exist.
 func ReadLastLog(reader dal.PebbleReader) (*commonpb.Log, error) {
-	kb := dal.NewKeyBuilder()
-	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdLog)
-	lowerBound := kb.Snapshot()
-	kb.Reset()
-
-	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdLog).
-		PutBytes(dal.MaxUint64Bytes)
-	upperBound := kb.Build()
-
-	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
+	log, err := dal.ReadLastEntry[*commonpb.Log](reader, dal.ZoneCold, dal.SubColdLog)
 	if err != nil {
-		return nil, fmt.Errorf("creating iterator: %w", err)
-	}
-
-	defer func() { _ = iter.Close() }()
-
-	if !iter.Last() {
-		return nil, nil
-	}
-
-	value, err := iter.ValueAndErr()
-	if err != nil {
-		return nil, fmt.Errorf("reading log value: %w", err)
-	}
-
-	log := &commonpb.Log{}
-	if err := proto.Unmarshal(value, log); err != nil {
-		return nil, fmt.Errorf("unmarshaling log: %w", err)
+		return nil, fmt.Errorf("reading last log: %w", err)
 	}
 
 	return log, nil
@@ -78,22 +53,9 @@ func ReadLogBySequence(ctx context.Context, reader dal.PebbleReader, sequence ui
 	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdLog).
 		PutUint64(sequence)
 
-	value, closer, err := reader.Get(kb.Build())
+	log, err := dal.ReadProto[*commonpb.Log](reader, kb.Build())
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
-			return nil, nil
-		}
-
 		return nil, fmt.Errorf("getting system log by sequence: %w", err)
-	}
-
-	defer func() {
-		_ = closer.Close()
-	}()
-
-	log := &commonpb.Log{}
-	if err := proto.Unmarshal(value, log); err != nil {
-		return nil, fmt.Errorf("unmarshaling system log from protobuf: %w", err)
 	}
 
 	return log, nil
@@ -137,7 +99,7 @@ func ReadLedgerLogsCompiled(
 	indexReader dal.PebbleReader,
 	ledger string,
 	logIDs [][]byte,
-) (dal.Cursor[*commonpb.Log], error) {
+) (cursor.Cursor[*commonpb.Log], error) {
 	kb := dal.NewKeyBuilder()
 	seqs := make([]uint64, 0, len(logIDs))
 
@@ -193,7 +155,7 @@ func ReadLogsSinceRaw(_ context.Context, reader dal.PebbleReader, afterSequence 
 
 // ReadLogsSince returns a cursor over global log entries after the given sequence from the given reader.
 // Pass afterSequence=0 to return all log entries.
-func ReadLogsSince(ctx context.Context, reader dal.PebbleReader, afterSequence uint64, opts ...dal.ProtoCursorOption) (dal.Cursor[*commonpb.Log], error) {
+func ReadLogsSince(ctx context.Context, reader dal.PebbleReader, afterSequence uint64, opts ...dal.ProtoCursorOption) (cursor.Cursor[*commonpb.Log], error) {
 	_, span := queryTracer.Start(ctx, "query.list_logs")
 	defer span.End()
 

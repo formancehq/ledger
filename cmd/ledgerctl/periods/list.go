@@ -1,9 +1,7 @@
 package periods
 
 import (
-	"errors"
 	"fmt"
-	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -46,19 +44,9 @@ func runList(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("listing periods: %w", err)
 	}
 
-	var periods []*commonpb.Period
-
-	for {
-		period, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-
-		if err != nil {
-			return fmt.Errorf("receiving period: %w", err)
-		}
-
-		periods = append(periods, period)
+	periods, err := cmdutil.CollectStream(stream)
+	if err != nil {
+		return fmt.Errorf("receiving periods: %w", err)
 	}
 
 	if handled, err := cmdutil.EncodeStructured(cmd, periods); handled || err != nil {

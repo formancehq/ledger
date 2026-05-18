@@ -2,12 +2,10 @@ package http
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
@@ -26,22 +24,12 @@ func (s *Server) handleSaveAccountMetadata(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Decode request body into typed metadata (supports string, number, boolean, null)
-	var inputMetadata map[string]any
-	if err := json.UnmarshalRead(r.Body, &inputMetadata); err != nil {
-		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
-
+	ms, ok := parseMetadataBody(w, r)
+	if !ok {
 		return
 	}
 
-	ms, err := commonpb.MetadataFromAnyMap(inputMetadata)
-	if err != nil {
-		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid metadata: %w", err))
-
-		return
-	}
-
-	_, err = s.backend.Apply(r.Context(), &servicepb.Request{
+	_, err := s.backend.Apply(r.Context(), &servicepb.Request{
 		IdempotencyKey: r.Header.Get("Idempotency-Key"),
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{

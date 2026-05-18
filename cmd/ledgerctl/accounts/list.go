@@ -156,24 +156,13 @@ func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, 
 		return cmdutil.FormatGRPCError("failed to list accounts", err)
 	}
 
-	var accounts []*commonpb.Account
-
-	for {
-		account, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-
-		if err != nil {
-			_ = spinner.Stop()
-
-			return cmdutil.FormatGRPCError("failed to receive account", err)
-		}
-
-		accounts = append(accounts, account)
-	}
+	accounts, err := cmdutil.CollectStream(stream)
 
 	_ = spinner.Stop()
+
+	if err != nil {
+		return cmdutil.FormatGRPCError("failed to receive account", err)
+	}
 
 	if handled, err := cmdutil.EncodeStructured(cmd, accounts); handled || err != nil {
 		return err

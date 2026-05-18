@@ -1,10 +1,8 @@
 package http
 
 import (
-	"fmt"
 	"net/http"
 
-	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
@@ -21,17 +19,8 @@ func (s *Server) handleSaveTransactionMetadata(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	var inputMetadata map[string]any
-	if err := json.UnmarshalRead(r.Body, &inputMetadata); err != nil {
-		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
-
-		return
-	}
-
-	ms, metaErr := commonpb.MetadataFromAnyMap(inputMetadata)
-	if metaErr != nil {
-		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid metadata: %w", metaErr))
-
+	ms, ok := parseMetadataBody(w, r)
+	if !ok {
 		return
 	}
 

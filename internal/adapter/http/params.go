@@ -9,8 +9,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
 // requireLedgerName extracts and validates the ledgerName URL parameter.
@@ -64,9 +66,29 @@ func parsePageSize(w http.ResponseWriter, r *http.Request) (uint32, bool) {
 	return uint32(parsed), true
 }
 
+// parseMetadataBody reads and validates a metadata JSON body from the request.
+// Returns the parsed metadata map and true on success; writes a 400 response and returns false on failure.
+func parseMetadataBody(w http.ResponseWriter, r *http.Request) (map[string]*commonpb.MetadataValue, bool) {
+	var inputMetadata map[string]any
+	if err := json.UnmarshalRead(r.Body, &inputMetadata); err != nil {
+		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
+
+		return nil, false
+	}
+
+	ms, err := commonpb.MetadataFromAnyMap(inputMetadata)
+	if err != nil {
+		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid metadata: %w", err))
+
+		return nil, false
+	}
+
+	return ms, true
+}
+
 // drainCursor collects all items from a cursor into a slice.
 // Closes the cursor and writes an error response on failure, returning false.
-func drainCursor[T any](w http.ResponseWriter, r *http.Request, cursor dal.Cursor[T]) ([]T, bool) {
+func drainCursor[T any](w http.ResponseWriter, r *http.Request, cursor cursor.Cursor[T]) ([]T, bool) {
 	defer func() {
 		_ = cursor.Close()
 	}()

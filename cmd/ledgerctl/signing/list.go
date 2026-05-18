@@ -2,15 +2,12 @@ package signing
 
 import (
 	"encoding/hex"
-	"errors"
 	"fmt"
-	"io"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
@@ -45,19 +42,9 @@ func runListKeys(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("listing signing keys: %w", err)
 	}
 
-	var keys []*commonpb.SigningKey
-
-	for {
-		key, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-
-		if err != nil {
-			return fmt.Errorf("receiving signing key: %w", err)
-		}
-
-		keys = append(keys, key)
+	keys, err := cmdutil.CollectStream(stream)
+	if err != nil {
+		return fmt.Errorf("receiving signing keys: %w", err)
 	}
 
 	if handled, err := cmdutil.EncodeStructured(cmd, keys); handled || err != nil {

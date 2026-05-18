@@ -2,49 +2,26 @@ package query
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
-	"github.com/cockroachdb/pebble/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // ReadLastAuditSequence returns the last audit entry sequence from the given reader. Returns 0 if no entries exist.
 func ReadLastAuditSequence(reader dal.PebbleReader) (uint64, error) {
-	kb := dal.NewKeyBuilder()
-	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdAudit)
-	lowerBound := kb.Snapshot()
-	kb.Reset()
-
-	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).
-		PutBytes(dal.MaxUint64Bytes)
-	upperBound := kb.Build()
-
-	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
+	entry, err := dal.ReadLastEntry[*auditpb.AuditEntry](reader, dal.ZoneCold, dal.SubColdAudit)
 	if err != nil {
-		return 0, fmt.Errorf("creating iterator: %w", err)
+		return 0, fmt.Errorf("reading last audit entry: %w", err)
 	}
 
-	defer func() { _ = iter.Close() }()
-
-	if !iter.Last() {
+	if entry == nil {
 		return 0, nil
-	}
-
-	value, err := iter.ValueAndErr()
-	if err != nil {
-		return 0, fmt.Errorf("reading audit value: %w", err)
-	}
-
-	entry := &auditpb.AuditEntry{}
-	if err := proto.Unmarshal(value, entry); err != nil {
-		return 0, fmt.Errorf("unmarshaling audit entry: %w", err)
 	}
 
 	return entry.GetSequence(), nil
@@ -52,7 +29,7 @@ func ReadLastAuditSequence(reader dal.PebbleReader) (uint64, error) {
 
 // ReadAuditEntries returns a cursor over audit entries after the given sequence from the given reader.
 // Use afterSequence=nil to return all entries, or a pointer to a sequence to filter.
-func ReadAuditEntries(ctx context.Context, reader dal.PebbleReader, afterSequence *uint64) (dal.Cursor[*auditpb.AuditEntry], error) {
+func ReadAuditEntries(ctx context.Context, reader dal.PebbleReader, afterSequence *uint64) (cursor.Cursor[*auditpb.AuditEntry], error) {
 	_, span := queryTracer.Start(ctx, "query.list_audit_entries")
 	defer span.End()
 
@@ -87,22 +64,14 @@ func ReadAuditEntry(ctx context.Context, reader dal.PebbleReader, sequence uint6
 
 	kb := dal.NewKeyBuilder()
 	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(sequence)
-	key := kb.Build()
 
-	value, closer, err := reader.Get(key)
+	entry, err := dal.ReadProto[*auditpb.AuditEntry](reader, kb.Build())
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
-			return nil, domain.ErrNotFound
-		}
-
 		return nil, fmt.Errorf("reading audit entry %d: %w", sequence, err)
 	}
 
-	defer func() { _ = closer.Close() }()
-
-	entry := &auditpb.AuditEntry{}
-	if err := proto.Unmarshal(value, entry); err != nil {
-		return nil, fmt.Errorf("unmarshaling audit entry %d: %w", sequence, err)
+	if entry == nil {
+		return nil, domain.ErrNotFound
 	}
 
 	return entry, nil

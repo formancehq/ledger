@@ -104,7 +104,7 @@ func TestSaveSinkConfig(t *testing.T) {
 
 	s := newTestStore(t)
 
-	attr := attributes.NewSinkConfigAttribute()
+	attr := attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig)
 
 	// Save a sink config via attribute
 	config := &commonpb.SinkConfig{
@@ -127,7 +127,7 @@ func TestDeleteSinkConfig(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
-	attr := attributes.NewSinkConfigAttribute()
+	attr := attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig)
 
 	// Save a config
 	batch := s.NewBatch()
@@ -272,7 +272,7 @@ func TestReadTransactionState(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
-	txAttr := attributes.NewTransactionAttribute()
+	txAttr := attributes.NewAttribute[*commonpb.TransactionState](dal.SubAttrTransaction)
 
 	// Store state for two different transactions
 	batch := s.NewBatch()
@@ -310,7 +310,7 @@ func TestFindTransactionCreationLog(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
-	txAttr := attributes.NewTransactionAttribute()
+	txAttr := attributes.NewAttribute[*commonpb.TransactionState](dal.SubAttrTransaction)
 
 	// Register a ledger
 	registerLedger(t, s, "find-tx-ledger")

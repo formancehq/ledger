@@ -19,6 +19,7 @@ import (
 	domainreplay "github.com/formancehq/ledger-v3-poc/internal/domain/replay"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/bitset"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -90,7 +91,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return fmt.Errorf("reading periods: %w", err)
 	}
 
-	periods, err := dal.Collect(periodsCursor)
+	periods, err := cursor.Collect(periodsCursor)
 	if err != nil {
 		return fmt.Errorf("collecting periods: %w", err)
 	}
@@ -149,7 +150,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			return fmt.Errorf("reading ledgers for archive recovery: %w", err)
 		}
 
-		ledgers, err := dal.Collect(ledgerCursor)
+		ledgers, err := cursor.Collect(ledgerCursor)
 		if err != nil {
 			return fmt.Errorf("collecting ledgers: %w", err)
 		}

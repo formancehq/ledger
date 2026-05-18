@@ -12,11 +12,11 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/application/ctrl"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 var routerTracer = otel.Tracer("router")
@@ -127,7 +127,7 @@ func (b *RoutedController) Barrier(ctx context.Context) (uint64, error) {
 
 // --- Read operations requiring leader state: forwarded to leader ---
 
-func (b *RoutedController) ListPeriods(ctx context.Context) (dal.Cursor[*commonpb.Period], error) {
+func (b *RoutedController) ListPeriods(ctx context.Context) (cursor.Cursor[*commonpb.Period], error) {
 	// Period state is in-memory on the leader — route to leader
 	leaderCtrl, err := b.getLeaderCtrl()
 	if err != nil {
@@ -148,7 +148,7 @@ func (b *RoutedController) GetLedgerByName(ctx context.Context, name string) (*c
 	return c.GetLedgerByName(ctx, name)
 }
 
-func (b *RoutedController) ListLedgers(ctx context.Context) (dal.Cursor[*commonpb.LedgerInfo], error) {
+func (b *RoutedController) ListLedgers(ctx context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -185,7 +185,7 @@ func (b *RoutedController) GetTransaction(ctx context.Context, ledgerName string
 	return tx, err
 }
 
-func (b *RoutedController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Transaction], error) {
+func (b *RoutedController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -194,7 +194,7 @@ func (b *RoutedController) ListTransactions(ctx context.Context, ledgerName stri
 	return c.ListTransactions(ctx, ledgerName, pageSize, afterTxID, filter, reverse)
 }
 
-func (b *RoutedController) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (dal.Cursor[*commonpb.Log], error) {
+func (b *RoutedController) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -212,7 +212,7 @@ func (b *RoutedController) GetLog(ctx context.Context, sequence uint64) (*common
 	return c.GetLog(ctx, sequence)
 }
 
-func (b *RoutedController) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32, ledger string) (dal.Cursor[*auditpb.AuditEntry], error) {
+func (b *RoutedController) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32, ledger string) (cursor.Cursor[*auditpb.AuditEntry], error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -251,7 +251,7 @@ func (b *RoutedController) GetAccount(ctx context.Context, ledgerName string, ad
 	return c.GetAccount(ctx, ledgerName, address)
 }
 
-func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Account], error) {
+func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Account], error) {
 	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -280,7 +280,7 @@ func (b *RoutedController) AggregateVolumes(ctx context.Context, ledgerName stri
 	return c.AggregateVolumes(ctx, ledgerName, filter, opts)
 }
 
-func (b *RoutedController) ListSigningKeys(ctx context.Context) (dal.Cursor[*commonpb.SigningKey], error) {
+func (b *RoutedController) ListSigningKeys(ctx context.Context) (cursor.Cursor[*commonpb.SigningKey], error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err

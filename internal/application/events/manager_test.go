@@ -19,7 +19,7 @@ import (
 func saveSinkConfig(t *testing.T, s *dal.Store, config *commonpb.SinkConfig) {
 	t.Helper()
 
-	attr := attributes.NewSinkConfigAttribute()
+	attr := attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig)
 	batch := s.NewBatch()
 	_, err := attr.Set(batch, domain.SinkConfigKey{Name: config.GetName()}.Bytes(), config)
 	require.NoError(t, err)
@@ -29,7 +29,7 @@ func saveSinkConfig(t *testing.T, s *dal.Store, config *commonpb.SinkConfig) {
 func deleteSinkConfig(t *testing.T, s *dal.Store, name string) {
 	t.Helper()
 
-	attr := attributes.NewSinkConfigAttribute()
+	attr := attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig)
 	batch := s.NewBatch()
 	require.NoError(t, attr.Delete(batch, domain.SinkConfigKey{Name: name}.Bytes()))
 	require.NoError(t, batch.Commit())

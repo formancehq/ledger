@@ -69,7 +69,7 @@ var ReadStoreComparer = &pebble.Comparer{
 	},
 
 	Successor: func(dst, a []byte) []byte {
-		for i := 0; i < len(a); i++ {
+		for i := range a {
 			if a[i] != 0xff {
 				dst = append(dst, a[:i+1]...)
 				dst[len(dst)-1]++
@@ -140,7 +140,7 @@ func readStoreSplit(key []byte) int {
 func commonPrefixLen(a, b []byte) int {
 	n := min(len(a), len(b))
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if a[i] != b[i] {
 			return i
 		}

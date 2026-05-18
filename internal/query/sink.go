@@ -1,12 +1,7 @@
 package query
 
 import (
-	"encoding/binary"
-	"errors"
 	"fmt"
-
-	"github.com/cockroachdb/pebble/v2"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -20,52 +15,19 @@ func ReadSinkCursor(reader dal.PebbleReader, sinkName string) (uint64, error) {
 	kb.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobSinkCursor).
 		PutString(sinkName)
 
-	get, closer, err := reader.Get(kb.Build())
+	v, err := dal.ReadUint64(reader, kb.Build(), 0)
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
-			return 0, nil
-		}
-
 		return 0, fmt.Errorf("reading sink cursor: %w", err)
 	}
 
-	defer func() {
-		_ = closer.Close()
-	}()
-
-	if len(get) < 8 {
-		return 0, nil
-	}
-
-	return binary.BigEndian.Uint64(get[:8]), nil
+	return v, nil
 }
 
 // ReadAllSinkStatuses returns all persisted sink statuses from the given reader.
 func ReadAllSinkStatuses(reader dal.PebbleReader) ([]*commonpb.SinkStatus, error) {
-	lowerBound := []byte{dal.ZoneGlobal, dal.SubGlobSinkStatus}
-	upperBound := []byte{dal.ZoneGlobal, dal.SubGlobSinkStatus + 1}
-
-	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
+	statuses, err := dal.CollectZone[*commonpb.SinkStatus](reader, dal.ZoneGlobal, dal.SubGlobSinkStatus)
 	if err != nil {
-		return nil, fmt.Errorf("creating iterator for sink statuses: %w", err)
-	}
-
-	defer func() { _ = iter.Close() }()
-
-	var statuses []*commonpb.SinkStatus
-
-	for iter.First(); iter.Valid(); iter.Next() {
-		value, err := iter.ValueAndErr()
-		if err != nil {
-			return nil, fmt.Errorf("reading sink status value: %w", err)
-		}
-
-		status := &commonpb.SinkStatus{}
-		if err := proto.Unmarshal(value, status); err != nil {
-			return nil, fmt.Errorf("unmarshaling sink status: %w", err)
-		}
-
-		statuses = append(statuses, status)
+		return nil, fmt.Errorf("reading sink statuses: %w", err)
 	}
 
 	return statuses, nil

@@ -2,17 +2,15 @@ package query
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
-	"github.com/cockroachdb/pebble/v2"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
@@ -20,19 +18,16 @@ import (
 var queryTracer = otel.Tracer("query")
 
 // ReadLedgers returns a cursor over all registered ledgers from the given reader.
-func ReadLedgers(ctx context.Context, reader dal.PebbleReader) (dal.Cursor[*commonpb.LedgerInfo], error) {
+func ReadLedgers(ctx context.Context, reader dal.PebbleReader) (cursor.Cursor[*commonpb.LedgerInfo], error) {
 	_, span := queryTracer.Start(ctx, "query.list_ledgers")
 	defer span.End()
 
-	lowerBound := []byte{dal.ZoneGlobal, dal.SubGlobLedgerInfo}
-	upperBound := []byte{dal.ZoneGlobal, dal.SubGlobLedgerInfo + 1}
-
-	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
+	cursor, err := dal.ScanZone[*commonpb.LedgerInfo](reader, dal.ZoneGlobal, dal.SubGlobLedgerInfo)
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator for ledger info: %w", err)
 	}
 
-	return dal.NewProtoCursor[*commonpb.LedgerInfo](iter), nil
+	return cursor, nil
 }
 
 // GetLedgerByName retrieves a ledger by its name from the given reader.
@@ -45,23 +40,12 @@ func GetLedgerByName(ctx context.Context, reader dal.PebbleReader, name string) 
 	kb := dal.NewKeyBuilder()
 	kb.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobLedgerInfo).PutLedgerName(name)
 
-	value, closer, err := reader.Get(kb.Build())
+	info, err := dal.ReadProto[*commonpb.LedgerInfo](reader, kb.Build())
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
-			return nil, domain.ErrNotFound
-		}
-
 		return nil, fmt.Errorf("getting ledger by name: %w", err)
 	}
 
-	defer func() { _ = closer.Close() }()
-
-	info := &commonpb.LedgerInfo{}
-	if err := proto.Unmarshal(value, info); err != nil {
-		return nil, fmt.Errorf("unmarshaling ledger info: %w", err)
-	}
-
-	if info.GetDeletedAt() != nil {
+	if info == nil || info.GetDeletedAt() != nil {
 		return nil, domain.ErrNotFound
 	}
 

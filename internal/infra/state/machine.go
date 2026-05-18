@@ -20,6 +20,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/bloom"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -274,7 +275,7 @@ func (fsm *Machine) RecoverState() error {
 		return fmt.Errorf("recovering periods: %w", err)
 	}
 
-	periodsFromStore, err := dal.Collect(periodsCursor)
+	periodsFromStore, err := cursor.Collect(periodsCursor)
 	if err != nil {
 		return fmt.Errorf("collecting periods: %w", err)
 	}

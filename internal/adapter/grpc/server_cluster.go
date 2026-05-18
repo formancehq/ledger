@@ -206,6 +206,22 @@ func (impl *ClusterServiceServerImpl) fetchPeerState(ctx context.Context, nodeID
 	return peerState
 }
 
+// leaderClient returns a ClusterServiceClient connected to the current leader.
+// Returns commonpb.ErrNoLeader if no leader is known or unreachable.
+func (impl *ClusterServiceServerImpl) leaderClient() (clusterpb.ClusterServiceClient, error) {
+	leaderID := impl.node.GetLeader()
+	if leaderID == 0 {
+		return nil, commonpb.ErrNoLeader
+	}
+
+	grpcConn := impl.servicePool.GetConnection(leaderID)
+	if grpcConn == nil {
+		return nil, commonpb.ErrNoLeader
+	}
+
+	return clusterpb.NewClusterServiceClient(grpcConn), nil
+}
+
 func (impl *ClusterServiceServerImpl) TransferLeadership(ctx context.Context, req *clusterpb.TransferLeadershipRequest) (*clusterpb.TransferLeadershipResponse, error) {
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
 		return nil, err
@@ -219,17 +235,10 @@ func (impl *ClusterServiceServerImpl) TransferLeadership(ctx context.Context, re
 
 	// If this node is not the leader, forward to the leader
 	if !impl.node.IsLeader() {
-		leaderID := impl.node.GetLeader()
-		if leaderID == 0 {
-			return nil, commonpb.ErrNoLeader
+		client, err := impl.leaderClient()
+		if err != nil {
+			return nil, err
 		}
-
-		grpcConn := impl.servicePool.GetConnection(leaderID)
-		if grpcConn == nil {
-			return nil, commonpb.ErrNoLeader
-		}
-
-		client := clusterpb.NewClusterServiceClient(grpcConn)
 
 		return client.TransferLeadership(ctx, req)
 	}
@@ -298,27 +307,14 @@ func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *clust
 
 	// Forward to leader if not leader
 	if !impl.node.IsLeader() {
-		leaderID := impl.node.GetLeader()
-		if leaderID == 0 {
-			impl.logger.Infof("AddLearner: not leader and no leader known, returning ErrNoLeader")
+		client, err := impl.leaderClient()
+		if err != nil {
+			impl.logger.Infof("AddLearner: not leader and leader unreachable, returning ErrNoLeader")
 
-			return nil, commonpb.ErrNoLeader
+			return nil, err
 		}
 
-		grpcConn := impl.servicePool.GetConnection(leaderID)
-		if grpcConn == nil {
-			impl.logger.WithFields(map[string]any{
-				"leaderID": leaderID,
-			}).Infof("AddLearner: no connection to leader, returning ErrNoLeader")
-
-			return nil, commonpb.ErrNoLeader
-		}
-
-		impl.logger.WithFields(map[string]any{
-			"leaderID": leaderID,
-		}).Infof("AddLearner: forwarding to leader")
-
-		client := clusterpb.NewClusterServiceClient(grpcConn)
+		impl.logger.Infof("AddLearner: forwarding to leader")
 
 		return client.AddLearner(ctx, req)
 	}
@@ -361,17 +357,10 @@ func (impl *ClusterServiceServerImpl) PromoteLearner(ctx context.Context, req *c
 
 	// Forward to leader if not leader
 	if !impl.node.IsLeader() {
-		leaderID := impl.node.GetLeader()
-		if leaderID == 0 {
-			return nil, commonpb.ErrNoLeader
+		client, err := impl.leaderClient()
+		if err != nil {
+			return nil, err
 		}
-
-		grpcConn := impl.servicePool.GetConnection(leaderID)
-		if grpcConn == nil {
-			return nil, commonpb.ErrNoLeader
-		}
-
-		client := clusterpb.NewClusterServiceClient(grpcConn)
 
 		return client.PromoteLearner(ctx, req)
 	}
@@ -410,17 +399,10 @@ func (impl *ClusterServiceServerImpl) RemoveNode(ctx context.Context, req *clust
 
 	// Forward to leader if not leader
 	if !impl.node.IsLeader() {
-		leaderID := impl.node.GetLeader()
-		if leaderID == 0 {
-			return nil, commonpb.ErrNoLeader
+		client, err := impl.leaderClient()
+		if err != nil {
+			return nil, err
 		}
-
-		grpcConn := impl.servicePool.GetConnection(leaderID)
-		if grpcConn == nil {
-			return nil, commonpb.ErrNoLeader
-		}
-
-		client := clusterpb.NewClusterServiceClient(grpcConn)
 
 		return client.RemoveNode(ctx, req)
 	}
@@ -618,17 +600,10 @@ func (impl *ClusterServiceServerImpl) Backup(ctx context.Context, req *clusterpb
 
 	// Forward to leader if not leader
 	if !impl.node.IsLeader() {
-		leaderID := impl.node.GetLeader()
-		if leaderID == 0 {
-			return nil, commonpb.ErrNoLeader
+		client, err := impl.leaderClient()
+		if err != nil {
+			return nil, err
 		}
-
-		grpcConn := impl.servicePool.GetConnection(leaderID)
-		if grpcConn == nil {
-			return nil, commonpb.ErrNoLeader
-		}
-
-		client := clusterpb.NewClusterServiceClient(grpcConn)
 
 		return client.Backup(ctx, req)
 	}

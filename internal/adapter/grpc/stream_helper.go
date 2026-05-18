@@ -10,7 +10,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	ggrpc "google.golang.org/grpc"
 
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
 )
 
 // sendCursorToStream drains a cursor into a gRPC server stream,
@@ -18,7 +18,7 @@ import (
 // matching the stream's Send(*Res) signature.
 //
 // It records stream.items_sent on the current span.
-func sendCursorToStream[Res any](ctx context.Context, cursor dal.Cursor[*Res], stream ggrpc.ServerStreamingServer[Res], itemName string) error {
+func sendCursorToStream[Res any](ctx context.Context, cursor cursor.Cursor[*Res], stream ggrpc.ServerStreamingServer[Res], itemName string) error {
 	defer func() {
 		_ = cursor.Close()
 	}()

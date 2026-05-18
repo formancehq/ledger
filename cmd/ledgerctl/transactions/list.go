@@ -131,24 +131,13 @@ func fetchAllTransactions(cmd *cobra.Command, client servicepb.BucketServiceClie
 		return cmdutil.FormatGRPCError("failed to list transactions", err)
 	}
 
-	var transactions []*commonpb.Transaction
-
-	for {
-		tx, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-
-		if err != nil {
-			_ = spinner.Stop()
-
-			return cmdutil.FormatGRPCError("failed to receive transaction", err)
-		}
-
-		transactions = append(transactions, tx)
-	}
+	transactions, err := cmdutil.CollectStream(stream)
 
 	_ = spinner.Stop()
+
+	if err != nil {
+		return cmdutil.FormatGRPCError("failed to receive transaction", err)
+	}
 
 	if handled, err := cmdutil.EncodeStructured(cmd, transactions); handled || err != nil {
 		return err

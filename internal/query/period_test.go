@@ -10,18 +10,19 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 func collectAllPeriods(reader dal.PebbleReader) ([]*commonpb.Period, error) {
-	cursor, err := query.ReadPeriods(context.Background(), reader)
+	c, err := query.ReadPeriods(context.Background(), reader)
 	if err != nil {
 		return nil, err
 	}
 
-	return dal.Collect(cursor)
+	return cursor.Collect(c)
 }
 
 func TestReadPeriods(t *testing.T) {

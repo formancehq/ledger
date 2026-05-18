@@ -7,11 +7,11 @@ import (
 	"io"
 
 	"github.com/formancehq/ledger-v3-poc/internal/application/ctrl"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // BucketGrpcClient implements Controller by forwarding requests via gRPC to the leader.
@@ -61,7 +61,7 @@ func (g *BucketGrpcClient) GetTransaction(ctx context.Context, ledgerName string
 	return resp.GetTransaction(), nil
 }
 
-func (g *BucketGrpcClient) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Transaction], error) {
+func (g *BucketGrpcClient) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
 	stream, err := g.client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
 		Ledger:    ledgerName,
 		PageSize:  pageSize,
@@ -73,9 +73,7 @@ func (g *BucketGrpcClient) ListTransactions(ctx context.Context, ledgerName stri
 		return nil, err
 	}
 
-	return dal.NewGRPCStreamCursor(stream, func(res *commonpb.Transaction) (*commonpb.Transaction, error) {
-		return res, nil
-	}), nil
+	return NewGRPCIdentityCursor(stream), nil
 }
 
 func (g *BucketGrpcClient) GetAccount(ctx context.Context, ledgerName string, address string) (*commonpb.Account, error) {
@@ -85,7 +83,7 @@ func (g *BucketGrpcClient) GetAccount(ctx context.Context, ledgerName string, ad
 	})
 }
 
-func (g *BucketGrpcClient) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Account], error) {
+func (g *BucketGrpcClient) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Account], error) {
 	stream, err := g.client.ListAccounts(ctx, &servicepb.ListAccountsRequest{
 		Ledger:       ledgerName,
 		PageSize:     pageSize,
@@ -97,12 +95,10 @@ func (g *BucketGrpcClient) ListAccounts(ctx context.Context, ledgerName string, 
 		return nil, err
 	}
 
-	return dal.NewGRPCStreamCursor(stream, func(res *commonpb.Account) (*commonpb.Account, error) {
-		return res, nil
-	}), nil
+	return NewGRPCIdentityCursor(stream), nil
 }
 
-func (g *BucketGrpcClient) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (dal.Cursor[*commonpb.Log], error) {
+func (g *BucketGrpcClient) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
 	req := &servicepb.ListLogsRequest{
 		PageSize: pageSize,
 		Filter:   filter,
@@ -116,20 +112,16 @@ func (g *BucketGrpcClient) ListLogs(ctx context.Context, afterSequence uint64, p
 		return nil, err
 	}
 
-	return dal.NewGRPCStreamCursor(stream, func(res *commonpb.Log) (*commonpb.Log, error) {
-		return res, nil
-	}), nil
+	return NewGRPCIdentityCursor(stream), nil
 }
 
-func (g *BucketGrpcClient) ListLedgers(ctx context.Context) (dal.Cursor[*commonpb.LedgerInfo], error) {
+func (g *BucketGrpcClient) ListLedgers(ctx context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {
 	stream, err := g.client.ListLedgers(ctx, &servicepb.ListLedgersRequest{})
 	if err != nil {
 		return nil, err
 	}
 
-	return dal.NewGRPCStreamCursor(stream, func(res *commonpb.LedgerInfo) (*commonpb.LedgerInfo, error) {
-		return res, nil
-	}), nil
+	return NewGRPCIdentityCursor(stream), nil
 }
 
 func (g *BucketGrpcClient) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
@@ -138,7 +130,7 @@ func (g *BucketGrpcClient) GetLedgerByName(ctx context.Context, name string) (*c
 	})
 }
 
-func (g *BucketGrpcClient) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32, ledger string) (dal.Cursor[*auditpb.AuditEntry], error) {
+func (g *BucketGrpcClient) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32, ledger string) (cursor.Cursor[*auditpb.AuditEntry], error) {
 	req := &servicepb.ListAuditEntriesRequest{
 		AfterSequence: afterSequence,
 		FailuresOnly:  failuresOnly,
@@ -151,9 +143,7 @@ func (g *BucketGrpcClient) ListAuditEntries(ctx context.Context, afterSequence *
 		return nil, err
 	}
 
-	return dal.NewGRPCStreamCursor(stream, func(res *auditpb.AuditEntry) (*auditpb.AuditEntry, error) {
-		return res, nil
-	}), nil
+	return NewGRPCIdentityCursor(stream), nil
 }
 
 func (g *BucketGrpcClient) GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
@@ -168,26 +158,22 @@ func (g *BucketGrpcClient) GetAuditEntry(ctx context.Context, sequence uint64) (
 	})
 }
 
-func (g *BucketGrpcClient) ListPeriods(ctx context.Context) (dal.Cursor[*commonpb.Period], error) {
+func (g *BucketGrpcClient) ListPeriods(ctx context.Context) (cursor.Cursor[*commonpb.Period], error) {
 	stream, err := g.client.ListPeriods(ctx, &servicepb.ListPeriodsRequest{})
 	if err != nil {
 		return nil, fmt.Errorf("gRPC ListPeriods call failed: %w", err)
 	}
 
-	return dal.NewGRPCStreamCursor(stream, func(res *commonpb.Period) (*commonpb.Period, error) {
-		return res, nil
-	}), nil
+	return NewGRPCIdentityCursor(stream), nil
 }
 
-func (g *BucketGrpcClient) ListSigningKeys(ctx context.Context) (dal.Cursor[*commonpb.SigningKey], error) {
+func (g *BucketGrpcClient) ListSigningKeys(ctx context.Context) (cursor.Cursor[*commonpb.SigningKey], error) {
 	stream, err := g.client.ListSigningKeys(ctx, &servicepb.ListSigningKeysRequest{})
 	if err != nil {
 		return nil, fmt.Errorf("gRPC ListSigningKeys call failed: %w", err)
 	}
 
-	return dal.NewGRPCStreamCursor(stream, func(res *commonpb.SigningKey) (*commonpb.SigningKey, error) {
-		return res, nil
-	}), nil
+	return NewGRPCIdentityCursor(stream), nil
 }
 
 func (g *BucketGrpcClient) GetMetadataSchemaStatus(ctx context.Context, ledgerName string) (*servicepb.GetMetadataSchemaStatusResponse, error) {

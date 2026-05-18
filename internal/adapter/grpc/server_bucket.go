@@ -28,6 +28,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/receipt"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -196,16 +197,16 @@ func (impl *BucketServiceServerImpl) ListPeriods(req *servicepb.ListPeriodsReque
 		return err
 	}
 
-	cursor, err := impl.ctrl.ListPeriods(ctx)
+	c, err := impl.ctrl.ListPeriods(ctx)
 	if err != nil {
 		return fmt.Errorf("listing periods: %w", err)
 	}
 
 	if req.GetPageSize() > 0 {
-		cursor = dal.NewLimitedCursor(cursor, req.GetPageSize())
+		c = cursor.NewLimitedCursor(c, req.GetPageSize())
 	}
 
-	return sendCursorToStream(ctx, cursor, stream, "period")
+	return sendCursorToStream(ctx, c, stream, "period")
 }
 
 func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *servicepb.GetTransactionRequest) (*servicepb.GetTransactionResponse, error) {
@@ -326,7 +327,7 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 	profileCtx, profile := query.WithProfile(ctx)
 
 	var (
-		cursor dal.Cursor[*commonpb.Transaction]
+		cursor cursor.Cursor[*commonpb.Transaction]
 		err    error
 	)
 
@@ -368,16 +369,16 @@ func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersReque
 		return err
 	}
 
-	cursor, err := impl.ctrl.ListLedgers(ctx)
+	c, err := impl.ctrl.ListLedgers(ctx)
 	if err != nil {
 		return fmt.Errorf("listing ledgers: %w", err)
 	}
 
 	if req.GetPageSize() > 0 {
-		cursor = dal.NewLimitedCursor(cursor, req.GetPageSize())
+		c = cursor.NewLimitedCursor(c, req.GetPageSize())
 	}
 
-	return sendCursorToStream(ctx, cursor, stream, "ledger")
+	return sendCursorToStream(ctx, c, stream, "ledger")
 }
 
 func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {

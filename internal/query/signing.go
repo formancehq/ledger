@@ -2,11 +2,9 @@ package query
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
-	"github.com/cockroachdb/pebble/v2"
-
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
@@ -64,7 +62,7 @@ func ReadSigningKeys(reader dal.PebbleReader) (map[string]SigningKeyEntry, error
 
 // ReadSigningKeysCursor returns a cursor over all registered signing keys.
 // The number of keys is always small, so we load them all and use a slice cursor.
-func ReadSigningKeysCursor(ctx context.Context, reader dal.PebbleReader) (dal.Cursor[*commonpb.SigningKey], error) {
+func ReadSigningKeysCursor(ctx context.Context, reader dal.PebbleReader) (cursor.Cursor[*commonpb.SigningKey], error) {
 	_, span := queryTracer.Start(ctx, "query.list_signing_keys")
 	defer span.End()
 
@@ -82,26 +80,16 @@ func ReadSigningKeysCursor(ctx context.Context, reader dal.PebbleReader) (dal.Cu
 		})
 	}
 
-	return dal.NewSliceCursor(items), nil
+	return cursor.NewSliceCursor(items), nil
 }
 
 // ReadSigningConfig loads the require-signatures flag from the given reader.
 // Returns false if the config key does not exist.
 func ReadSigningConfig(reader dal.PebbleReader) (bool, error) {
-	value, closer, err := reader.Get([]byte{dal.ZoneGlobal, dal.SubGlobSigningConfig})
+	v, err := dal.ReadBool(reader, []byte{dal.ZoneGlobal, dal.SubGlobSigningConfig})
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
-			return false, nil
-		}
-
 		return false, fmt.Errorf("loading signing config: %w", err)
 	}
 
-	defer func() { _ = closer.Close() }()
-
-	if len(value) == 0 {
-		return false, nil
-	}
-
-	return value[0] == 0x01, nil
+	return v, nil
 }

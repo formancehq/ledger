@@ -15,9 +15,9 @@ import (
 
 	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // --------------------------------------------------------------------------
@@ -732,7 +732,7 @@ func TestHandleListAccounts_BackendError(t *testing.T) {
 	t.Parallel()
 
 	backend := &mockBackend{
-		listAccountsFn: func(_ context.Context, _ string, _ uint32, _ string, _ *commonpb.QueryFilter, _ bool) (dal.Cursor[*commonpb.Account], error) {
+		listAccountsFn: func(_ context.Context, _ string, _ uint32, _ string, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Account], error) {
 			return nil, commonpb.ErrNoLeader
 		},
 	}
@@ -752,7 +752,7 @@ func TestHandleListAccounts_CursorIterationError(t *testing.T) {
 	t.Parallel()
 
 	backend := &mockBackend{
-		listAccountsFn: func(_ context.Context, _ string, _ uint32, _ string, _ *commonpb.QueryFilter, _ bool) (dal.Cursor[*commonpb.Account], error) {
+		listAccountsFn: func(_ context.Context, _ string, _ uint32, _ string, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Account], error) {
 			return &errorCursor[*commonpb.Account]{err: errors.New("cursor iteration failed")}, nil
 		},
 	}
@@ -774,10 +774,10 @@ func TestHandleListAccounts_WithPrefix(t *testing.T) {
 	var capturedFilter *commonpb.QueryFilter
 
 	backend := &mockBackend{
-		listAccountsFn: func(_ context.Context, _ string, _ uint32, _ string, filter *commonpb.QueryFilter, _ bool) (dal.Cursor[*commonpb.Account], error) {
+		listAccountsFn: func(_ context.Context, _ string, _ uint32, _ string, filter *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Account], error) {
 			capturedFilter = filter
 
-			return dal.NewSliceCursor[*commonpb.Account](nil), nil
+			return cursor.NewSliceCursor[*commonpb.Account](nil), nil
 		},
 	}
 	srv := newTestServer(t, backend)
@@ -802,7 +802,7 @@ func TestHandleListAllLedgers_CursorIterationError(t *testing.T) {
 	t.Parallel()
 
 	backend := &mockBackend{
-		listLedgersFn: func(_ context.Context) (dal.Cursor[*commonpb.LedgerInfo], error) {
+		listLedgersFn: func(_ context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {
 			return &errorCursor[*commonpb.LedgerInfo]{err: errors.New("cursor error")}, nil
 		},
 	}
@@ -1212,8 +1212,8 @@ func TestNewHandler_ListAllLedgersRoute(t *testing.T) {
 	t.Parallel()
 
 	backend := &mockBackend{
-		listLedgersFn: func(_ context.Context) (dal.Cursor[*commonpb.LedgerInfo], error) {
-			return dal.NewSliceCursor[*commonpb.LedgerInfo](nil), nil
+		listLedgersFn: func(_ context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {
+			return cursor.NewSliceCursor[*commonpb.LedgerInfo](nil), nil
 		},
 	}
 
@@ -1246,7 +1246,7 @@ func (c *errorCursor[T]) Close() error {
 	return nil
 }
 
-var _ dal.Cursor[any] = (*errorCursor[any])(nil)
+var _ cursor.Cursor[any] = (*errorCursor[any])(nil)
 
 // --------------------------------------------------------------------------
 // handlers_bulk.go: writeBulkResponse with log that has Data with created transaction

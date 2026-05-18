@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
@@ -37,7 +38,7 @@ type auditSync struct {
 	cachedExcluded map[string]struct{}
 
 	// Pebble iterator and cursor state.
-	cursor    dal.Cursor[*auditpb.AuditEntry]
+	cursor    cursor.Cursor[*auditpb.AuditEntry]
 	exhausted bool
 }
 

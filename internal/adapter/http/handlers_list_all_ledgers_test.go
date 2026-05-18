@@ -8,16 +8,16 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 func TestHandleListAllLedgers_Success(t *testing.T) {
 	t.Parallel()
 
 	backend := &mockBackend{
-		listLedgersFn: func(_ context.Context) (dal.Cursor[*commonpb.LedgerInfo], error) {
-			return dal.NewSliceCursor([]*commonpb.LedgerInfo{
+		listLedgersFn: func(_ context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {
+			return cursor.NewSliceCursor([]*commonpb.LedgerInfo{
 				{Name: "ledger-a"},
 				{Name: "ledger-b"},
 			}), nil
@@ -37,8 +37,8 @@ func TestHandleListAllLedgers_Empty(t *testing.T) {
 	t.Parallel()
 
 	backend := &mockBackend{
-		listLedgersFn: func(_ context.Context) (dal.Cursor[*commonpb.LedgerInfo], error) {
-			return dal.NewSliceCursor[*commonpb.LedgerInfo](nil), nil
+		listLedgersFn: func(_ context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {
+			return cursor.NewSliceCursor[*commonpb.LedgerInfo](nil), nil
 		},
 	}
 	srv := newTestServer(t, backend)
@@ -55,7 +55,7 @@ func TestHandleListAllLedgers_BackendError(t *testing.T) {
 	t.Parallel()
 
 	backend := &mockBackend{
-		listLedgersFn: func(_ context.Context) (dal.Cursor[*commonpb.LedgerInfo], error) {
+		listLedgersFn: func(_ context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {
 			return nil, commonpb.ErrNoLeader
 		},
 	}

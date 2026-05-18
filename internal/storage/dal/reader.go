@@ -1,6 +1,8 @@
 package dal
 
 import (
+	"encoding/binary"
+	"errors"
 	"io"
 	"sync"
 
@@ -108,26 +110,60 @@ func NewBoundedIter(reader PebbleReader, lower, upper []byte) (*pebble.Iterator,
 	})
 }
 
-// ClosingCursor wraps a cursor and closes additional resources on Close.
-type ClosingCursor[T any] struct {
-	inner  Cursor[T]
-	closer io.Closer
-}
+// GetValue reads a raw value from Pebble, returning nil if not found.
+// The returned bytes are a copy safe to use after the function returns.
+func GetValue(reader PebbleReader, key []byte) ([]byte, error) {
+	val, closer, err := reader.Get(key)
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return nil, nil
+		}
 
-func (c *ClosingCursor[T]) Next() (T, error) {
-	return c.inner.Next()
-}
-
-func (c *ClosingCursor[T]) Close() error {
-	err := c.inner.Close()
-	if closeErr := c.closer.Close(); err == nil {
-		err = closeErr
+		return nil, err
 	}
 
-	return err
+	defer func() { _ = closer.Close() }()
+
+	cp := make([]byte, len(val))
+	copy(cp, val)
+
+	return cp, nil
 }
 
-// NewClosingCursor creates a cursor that closes the given io.Closer when the cursor is closed.
-func NewClosingCursor[T any](inner Cursor[T], closer io.Closer) Cursor[T] {
-	return &ClosingCursor[T]{inner: inner, closer: closer}
+// ReadUint64 reads a big-endian uint64 from Pebble. Returns defaultValue if not found or too short.
+func ReadUint64(reader PebbleReader, key []byte, defaultValue uint64) (uint64, error) {
+	val, err := GetValue(reader, key)
+	if err != nil {
+		return 0, err
+	}
+
+	if len(val) < 8 {
+		return defaultValue, nil
+	}
+
+	return binary.BigEndian.Uint64(val[:8]), nil
+}
+
+// ReadString reads a string value from Pebble. Returns "" if not found.
+func ReadString(reader PebbleReader, key []byte) (string, error) {
+	val, err := GetValue(reader, key)
+	if err != nil {
+		return "", err
+	}
+
+	return string(val), nil
+}
+
+// ReadBool reads a boolean flag from Pebble (0x01 = true). Returns false if not found.
+func ReadBool(reader PebbleReader, key []byte) (bool, error) {
+	val, err := GetValue(reader, key)
+	if err != nil {
+		return false, err
+	}
+
+	if len(val) == 0 {
+		return false, nil
+	}
+
+	return val[0] == 0x01, nil
 }

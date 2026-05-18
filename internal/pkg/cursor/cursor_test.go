@@ -1,4 +1,4 @@
-package dal
+package cursor
 
 import (
 	"io"

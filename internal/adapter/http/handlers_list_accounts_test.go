@@ -12,18 +12,18 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 func TestHandleListAccounts_Success(t *testing.T) {
 	t.Parallel()
 
 	backend := &mockBackend{
-		listAccountsFn: func(_ context.Context, _ string, _ uint32, _ string, _ *commonpb.QueryFilter, _ bool) (dal.Cursor[*commonpb.Account], error) {
-			return dal.NewSliceCursor([]*commonpb.Account{
+		listAccountsFn: func(_ context.Context, _ string, _ uint32, _ string, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Account], error) {
+			return cursor.NewSliceCursor([]*commonpb.Account{
 				{Address: "users:001"},
 				{Address: "users:002"},
 			}), nil
@@ -50,11 +50,11 @@ func TestHandleListAccounts_WithPagination(t *testing.T) {
 	)
 
 	backend := &mockBackend{
-		listAccountsFn: func(_ context.Context, _ string, pageSize uint32, afterAddress string, _ *commonpb.QueryFilter, _ bool) (dal.Cursor[*commonpb.Account], error) {
+		listAccountsFn: func(_ context.Context, _ string, pageSize uint32, afterAddress string, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Account], error) {
 			capturedPageSize = pageSize
 			capturedAfter = afterAddress
 
-			return dal.NewSliceCursor[*commonpb.Account](nil), nil
+			return cursor.NewSliceCursor[*commonpb.Account](nil), nil
 		},
 	}
 	srv := newTestServer(t, backend)
@@ -105,14 +105,14 @@ func TestHandleListAccounts_WithProfileHeader(t *testing.T) {
 	t.Parallel()
 
 	backend := &mockBackend{
-		listAccountsFn: func(ctx context.Context, _ string, _ uint32, _ string, _ *commonpb.QueryFilter, _ bool) (dal.Cursor[*commonpb.Account], error) {
+		listAccountsFn: func(ctx context.Context, _ string, _ uint32, _ string, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Account], error) {
 			// Simulate what the real controller does: populate the profile from context
 			if profile := query.ProfileFromContext(ctx); profile != nil {
 				profile.IndexDuration = 2 * time.Millisecond
 				profile.ItemsCollected = 1
 			}
 
-			return dal.NewSliceCursor([]*commonpb.Account{
+			return cursor.NewSliceCursor([]*commonpb.Account{
 				{Address: "alice"},
 			}), nil
 		},
@@ -147,8 +147,8 @@ func TestHandleListAccounts_WithoutProfileHeader(t *testing.T) {
 	t.Parallel()
 
 	backend := &mockBackend{
-		listAccountsFn: func(_ context.Context, _ string, _ uint32, _ string, _ *commonpb.QueryFilter, _ bool) (dal.Cursor[*commonpb.Account], error) {
-			return dal.NewSliceCursor([]*commonpb.Account{
+		listAccountsFn: func(_ context.Context, _ string, _ uint32, _ string, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Account], error) {
+			return cursor.NewSliceCursor([]*commonpb.Account{
 				{Address: "alice"},
 			}), nil
 		},

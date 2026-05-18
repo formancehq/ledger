@@ -21,6 +21,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/domain/analysis"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/coldstorage"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -89,20 +90,20 @@ func NewDefaultController(
 }
 
 // ListLedgers returns a cursor over all active (non-deleted) ledgers.
-func (ctrl *DefaultController) ListLedgers(ctx context.Context) (dal.Cursor[*commonpb.LedgerInfo], error) {
+func (ctrl *DefaultController) ListLedgers(ctx context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
 
-	cursor, err := query.ReadLedgers(ctx, handle)
+	c, err := query.ReadLedgers(ctx, handle)
 	if err != nil {
 		_ = handle.Close()
 
 		return nil, err
 	}
 	// Filter out soft-deleted ledgers, enrich with metadata, close handle when cursor closes
-	filtered := dal.NewFilteredCursor(cursor, func(ledger *commonpb.LedgerInfo) bool {
+	filtered := cursor.NewFilteredCursor(c, func(ledger *commonpb.LedgerInfo) bool {
 		if ledger.GetDeletedAt() != nil {
 			return false
 		}
@@ -113,7 +114,7 @@ func (ctrl *DefaultController) ListLedgers(ctx context.Context) (dal.Cursor[*com
 		return true
 	})
 
-	return dal.NewClosingCursor(filtered, handle), nil
+	return cursor.NewClosingCursor(filtered, handle), nil
 }
 
 func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
@@ -237,12 +238,12 @@ func assembleTransactionFromState(ctx context.Context, reader dal.PebbleReader, 
 // ListTransactions returns a cursor over transactions for a ledger.
 // API convention: reverse=false means newest-first (descending), reverse=true means oldest-first.
 // Internally listEntities uses reverse=true for descending, so we invert the flag here.
-func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Transaction], error) {
+func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
 	return ctrl.ListTransactionsFrom(ctx, ctrl.store, ctrl.readStore, ledgerName, pageSize, afterTxID, filter, reverse)
 }
 
 // ListTransactionsFrom returns a cursor over transactions using the provided stores (live or checkpoint).
-func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *dal.Store, rs *readstore.Store, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Transaction], error) {
+func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *dal.Store, rs *readstore.Store, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
 	ctx, span := tracer.Start(ctx, "ctrl.list_transactions",
 		trace.WithAttributes(
 			attribute.String("ledger", ledgerName),
@@ -324,13 +325,13 @@ func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *
 		profile.ItemsCollected = len(result.entityIDs)
 	}
 
-	return dal.NewClosingCursor(dal.NewSliceCursor(txns), handle), nil
+	return cursor.NewClosingCursor(cursor.NewSliceCursor(txns), handle), nil
 }
 
 // ListAccounts returns a cursor over accounts for a ledger.
 // Default order (reverse=false) is ascending (A→Z); reverse=true gives reverse-alphabetical (Z→A).
 // Uses the Pebble read index for entity discovery and Pebble for enrichment.
-func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Account], error) {
+func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Account], error) {
 	ctx, span := tracer.Start(ctx, "ctrl.list_accounts",
 		trace.WithAttributes(
 			attribute.String("ledger", ledgerName),
@@ -409,7 +410,7 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 		profile.ItemsCollected = len(result.entityIDs)
 	}
 
-	return dal.NewClosingCursor(dal.NewSliceCursor(accounts), handle), nil
+	return cursor.NewClosingCursor(cursor.NewSliceCursor(accounts), handle), nil
 }
 
 func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string, address string) (*commonpb.Account, error) {
@@ -626,7 +627,7 @@ func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerNa
 
 	makeStreamIter := func() (func() (analysis.CompactTransaction, error), func()) {
 		var (
-			cursor dal.Cursor[*commonpb.Log]
+			cursor cursor.Cursor[*commonpb.Log]
 			done   bool
 		)
 
@@ -952,7 +953,7 @@ func encodeCursor(b []byte) string {
 // ListLogs returns a cursor over logs. When filter contains a ledger condition, only logs for
 // that ledger are returned using the Compile framework (supports boolean filters, date ranges).
 // Otherwise all logs are returned in global sequence order, paginated by afterSequence.
-func (ctrl *DefaultController) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (dal.Cursor[*commonpb.Log], error) {
+func (ctrl *DefaultController) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
@@ -1005,7 +1006,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, afterSequence uint6
 			return nil, fmt.Errorf("reading ledger logs: %w", err)
 		}
 
-		return dal.NewClosingCursor(c, handle), nil
+		return cursor.NewClosingCursor(c, handle), nil
 	}
 
 	c, err := query.ReadLogsSince(ctx, handle, afterSequence)
@@ -1015,12 +1016,12 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, afterSequence uint6
 		return nil, fmt.Errorf("listing logs: %w", err)
 	}
 
-	cursor := dal.NewClosingCursor(c, handle)
+	result := cursor.NewClosingCursor(c, handle)
 	if pageSize > 0 {
-		cursor = dal.NewLimitedCursor(cursor, pageSize)
+		result = cursor.NewLimitedCursor(result, pageSize)
 	}
 
-	return cursor, nil
+	return result, nil
 }
 
 // extractLedgerFilter walks a QueryFilter tree and returns the ledger name if a
@@ -1130,35 +1131,35 @@ func stripLedgerFilter(f *commonpb.QueryFilter) *commonpb.QueryFilter {
 }
 
 // ListAuditEntries returns a cursor over audit entries, applying optional filters.
-func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32, ledger string) (dal.Cursor[*auditpb.AuditEntry], error) {
+func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32, ledger string) (cursor.Cursor[*auditpb.AuditEntry], error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
 
-	cursor, err := query.ReadAuditEntries(ctx, handle, afterSequence)
+	c, err := query.ReadAuditEntries(ctx, handle, afterSequence)
 	if err != nil {
 		_ = handle.Close()
 
 		return nil, fmt.Errorf("listing audit entries: %w", err)
 	}
 
-	var result = dal.NewClosingCursor(cursor, handle)
+	var result = cursor.NewClosingCursor(c, handle)
 
 	if ledger != "" {
-		result = dal.NewFilteredCursor(result, func(entry *auditpb.AuditEntry) bool {
+		result = cursor.NewFilteredCursor(result, func(entry *auditpb.AuditEntry) bool {
 			return auditEntryTargetsLedger(entry, ledger)
 		})
 	}
 
 	if failuresOnly {
-		result = dal.NewFilteredCursor(result, func(entry *auditpb.AuditEntry) bool {
+		result = cursor.NewFilteredCursor(result, func(entry *auditpb.AuditEntry) bool {
 			return entry.GetFailure() != nil
 		})
 	}
 
 	if pageSize > 0 {
-		result = dal.NewLimitedCursor(result, pageSize)
+		result = cursor.NewLimitedCursor(result, pageSize)
 	}
 
 	return result, nil
@@ -1228,37 +1229,37 @@ func (ctrl *DefaultController) GetAuditEntry(ctx context.Context, sequence uint6
 }
 
 // ListPeriods returns a cursor over all non-purged periods from the store.
-func (ctrl *DefaultController) ListPeriods(ctx context.Context) (dal.Cursor[*commonpb.Period], error) {
+func (ctrl *DefaultController) ListPeriods(ctx context.Context) (cursor.Cursor[*commonpb.Period], error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
 
-	cursor, err := query.ReadPeriods(ctx, handle)
+	c, err := query.ReadPeriods(ctx, handle)
 	if err != nil {
 		_ = handle.Close()
 
 		return nil, err
 	}
 
-	return dal.NewClosingCursor(cursor, handle), nil
+	return cursor.NewClosingCursor(c, handle), nil
 }
 
 // ListSigningKeys returns a cursor over all registered signing keys.
-func (ctrl *DefaultController) ListSigningKeys(ctx context.Context) (dal.Cursor[*commonpb.SigningKey], error) {
+func (ctrl *DefaultController) ListSigningKeys(ctx context.Context) (cursor.Cursor[*commonpb.SigningKey], error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
 
-	cursor, err := query.ReadSigningKeysCursor(ctx, handle)
+	c, err := query.ReadSigningKeysCursor(ctx, handle)
 	if err != nil {
 		_ = handle.Close()
 
 		return nil, err
 	}
 
-	return dal.NewClosingCursor(cursor, handle), nil
+	return cursor.NewClosingCursor(c, handle), nil
 }
 
 // ListPreparedQueries returns all prepared queries for a ledger.

@@ -3,12 +3,12 @@ package http
 import (
 	"context"
 
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // mockBackend implements Backend for testing.
@@ -17,18 +17,18 @@ type mockBackend struct {
 	ready   bool
 
 	applyFn                   func(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error)
-	listLedgersFn             func(ctx context.Context) (dal.Cursor[*commonpb.LedgerInfo], error)
+	listLedgersFn             func(ctx context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error)
 	getLedgerByNameFn         func(ctx context.Context, name string) (*commonpb.LedgerInfo, error)
 	getTransactionFn          func(ctx context.Context, ledgerName string, txID uint64) (*commonpb.Transaction, error)
-	listTransactionsFn        func(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Transaction], error)
+	listTransactionsFn        func(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error)
 	getAccountFn              func(ctx context.Context, ledgerName string, address string) (*commonpb.Account, error)
-	listAccountsFn            func(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Account], error)
-	listLogsFn                func(ctx context.Context, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (dal.Cursor[*commonpb.Log], error)
+	listAccountsFn            func(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Account], error)
+	listLogsFn                func(ctx context.Context, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error)
 	getLogFn                  func(ctx context.Context, sequence uint64) (*commonpb.Log, error)
-	listAuditEntriesFn        func(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32, ledger string) (dal.Cursor[*auditpb.AuditEntry], error)
+	listAuditEntriesFn        func(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32, ledger string) (cursor.Cursor[*auditpb.AuditEntry], error)
 	getAuditEntryFn           func(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error)
-	listPeriodsFn             func(ctx context.Context) (dal.Cursor[*commonpb.Period], error)
-	listSigningKeysFn         func(ctx context.Context) (dal.Cursor[*commonpb.SigningKey], error)
+	listPeriodsFn             func(ctx context.Context) (cursor.Cursor[*commonpb.Period], error)
+	listSigningKeysFn         func(ctx context.Context) (cursor.Cursor[*commonpb.SigningKey], error)
 	getMetadataSchemaStatusFn func(ctx context.Context, ledgerName string) (*servicepb.GetMetadataSchemaStatusResponse, error)
 	analyzeAccountsFn         func(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeAccountsResponse, error)
 	analyzeTransactionsFn     func(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeTransactionsResponse, error)
@@ -67,12 +67,12 @@ func (m *mockBackend) Apply(ctx context.Context, requests ...*servicepb.Request)
 	return nil, nil
 }
 
-func (m *mockBackend) ListLedgers(ctx context.Context) (dal.Cursor[*commonpb.LedgerInfo], error) {
+func (m *mockBackend) ListLedgers(ctx context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {
 	if m.listLedgersFn != nil {
 		return m.listLedgersFn(ctx)
 	}
 
-	return dal.NewSliceCursor[*commonpb.LedgerInfo](nil), nil
+	return cursor.NewSliceCursor[*commonpb.LedgerInfo](nil), nil
 }
 
 func (m *mockBackend) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
@@ -91,12 +91,12 @@ func (m *mockBackend) GetTransaction(ctx context.Context, ledgerName string, txI
 	return nil, nil
 }
 
-func (m *mockBackend) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Transaction], error) {
+func (m *mockBackend) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
 	if m.listTransactionsFn != nil {
 		return m.listTransactionsFn(ctx, ledgerName, pageSize, afterTxID, filter, reverse)
 	}
 
-	return dal.NewSliceCursor[*commonpb.Transaction](nil), nil
+	return cursor.NewSliceCursor[*commonpb.Transaction](nil), nil
 }
 
 func (m *mockBackend) GetAccount(ctx context.Context, ledgerName string, address string) (*commonpb.Account, error) {
@@ -107,20 +107,20 @@ func (m *mockBackend) GetAccount(ctx context.Context, ledgerName string, address
 	return nil, nil
 }
 
-func (m *mockBackend) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Account], error) {
+func (m *mockBackend) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Account], error) {
 	if m.listAccountsFn != nil {
 		return m.listAccountsFn(ctx, ledgerName, pageSize, afterAddress, filter, reverse)
 	}
 
-	return dal.NewSliceCursor[*commonpb.Account](nil), nil
+	return cursor.NewSliceCursor[*commonpb.Account](nil), nil
 }
 
-func (m *mockBackend) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (dal.Cursor[*commonpb.Log], error) {
+func (m *mockBackend) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
 	if m.listLogsFn != nil {
 		return m.listLogsFn(ctx, afterSequence, pageSize, filter)
 	}
 
-	return dal.NewSliceCursor[*commonpb.Log](nil), nil
+	return cursor.NewSliceCursor[*commonpb.Log](nil), nil
 }
 
 func (m *mockBackend) GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
@@ -131,12 +131,12 @@ func (m *mockBackend) GetLog(ctx context.Context, sequence uint64) (*commonpb.Lo
 	return nil, nil
 }
 
-func (m *mockBackend) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32, ledger string) (dal.Cursor[*auditpb.AuditEntry], error) {
+func (m *mockBackend) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32, ledger string) (cursor.Cursor[*auditpb.AuditEntry], error) {
 	if m.listAuditEntriesFn != nil {
 		return m.listAuditEntriesFn(ctx, afterSequence, failuresOnly, pageSize, ledger)
 	}
 
-	return dal.NewSliceCursor[*auditpb.AuditEntry](nil), nil
+	return cursor.NewSliceCursor[*auditpb.AuditEntry](nil), nil
 }
 
 func (m *mockBackend) GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error) {
@@ -147,20 +147,20 @@ func (m *mockBackend) GetAuditEntry(ctx context.Context, sequence uint64) (*audi
 	return nil, nil
 }
 
-func (m *mockBackend) ListPeriods(ctx context.Context) (dal.Cursor[*commonpb.Period], error) {
+func (m *mockBackend) ListPeriods(ctx context.Context) (cursor.Cursor[*commonpb.Period], error) {
 	if m.listPeriodsFn != nil {
 		return m.listPeriodsFn(ctx)
 	}
 
-	return dal.NewSliceCursor[*commonpb.Period](nil), nil
+	return cursor.NewSliceCursor[*commonpb.Period](nil), nil
 }
 
-func (m *mockBackend) ListSigningKeys(ctx context.Context) (dal.Cursor[*commonpb.SigningKey], error) {
+func (m *mockBackend) ListSigningKeys(ctx context.Context) (cursor.Cursor[*commonpb.SigningKey], error) {
 	if m.listSigningKeysFn != nil {
 		return m.listSigningKeysFn(ctx)
 	}
 
-	return dal.NewSliceCursor[*commonpb.SigningKey](nil), nil
+	return cursor.NewSliceCursor[*commonpb.SigningKey](nil), nil
 }
 
 func (m *mockBackend) GetMetadataSchemaStatus(ctx context.Context, ledgerName string) (*servicepb.GetMetadataSchemaStatusResponse, error) {

@@ -1,12 +1,8 @@
-package dal
+package cursor
 
 import (
 	"errors"
 	"io"
-
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // Cursor provides a way to iterate over a stream of items.
@@ -16,36 +12,6 @@ type Cursor[T any] interface {
 	Next() (T, error)
 	// Close closes the cursor and releases any resources
 	Close() error
-}
-
-type GRPCStreamCursor[Res, To any] struct {
-	client grpc.ServerStreamingClient[Res]
-	mapper func(*Res) (To, error)
-}
-
-func (cursor GRPCStreamCursor[Res, To]) Next() (To, error) {
-	next, err := cursor.client.Recv()
-	if err != nil {
-		if status.Code(err) == codes.Canceled {
-			err = io.EOF
-		}
-
-		var zero To
-
-		return zero, err
-	}
-
-	return cursor.mapper(next)
-}
-
-func (cursor GRPCStreamCursor[Res, To]) Close() error {
-	return cursor.client.CloseSend()
-}
-
-var _ Cursor[any] = (*GRPCStreamCursor[any, any])(nil)
-
-func NewGRPCStreamCursor[Res, To any](client grpc.ServerStreamingClient[Res], mapper func(*Res) (To, error)) Cursor[To] {
-	return GRPCStreamCursor[Res, To]{client: client, mapper: mapper}
 }
 
 // SliceCursor wraps a slice to implement the Cursor interface.
@@ -148,14 +114,38 @@ func NewLimitedCursor[T any](inner Cursor[T], limit uint32) Cursor[T] {
 	return &LimitedCursor[T]{inner: inner, limit: limit}
 }
 
+// ClosingCursor wraps a cursor and closes additional resources on Close.
+type ClosingCursor[T any] struct {
+	inner  Cursor[T]
+	closer io.Closer
+}
+
+func (c *ClosingCursor[T]) Next() (T, error) {
+	return c.inner.Next()
+}
+
+func (c *ClosingCursor[T]) Close() error {
+	err := c.inner.Close()
+	if closeErr := c.closer.Close(); err == nil {
+		err = closeErr
+	}
+
+	return err
+}
+
+// NewClosingCursor creates a cursor that closes the given io.Closer when the cursor is closed.
+func NewClosingCursor[T any](inner Cursor[T], closer io.Closer) Cursor[T] {
+	return &ClosingCursor[T]{inner: inner, closer: closer}
+}
+
 // Collect drains a cursor into a slice and closes it.
-func Collect[T any](cursor Cursor[T]) ([]T, error) {
-	defer func() { _ = cursor.Close() }()
+func Collect[T any](c Cursor[T]) ([]T, error) {
+	defer func() { _ = c.Close() }()
 
 	var items []T
 
 	for {
-		item, err := cursor.Next()
+		item, err := c.Next()
 		if errors.Is(err, io.EOF) {
 			return items, nil
 		}
