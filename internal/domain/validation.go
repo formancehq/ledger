@@ -22,6 +22,8 @@ var (
 	ErrAccountAddressEmpty         = errors.New("account address must not be empty")
 	ErrAccountAddressInvalidChar   = errors.New("account address must contain only letters, digits, colons, underscores, and hyphens")
 	ErrAccountAddressTooLong       = fmt.Errorf("account address exceeds maximum length of %d bytes", maxAccountAddressLength)
+
+	ErrAssetInvalid = errors.New("asset must match [A-Z][A-Z0-9]{0,16}(_[A-Z]{1,16})?(/\\d{1,6})?")
 )
 
 // ValidateLedgerName checks that a ledger name is safe for use in Pebble key encoding.
@@ -81,6 +83,93 @@ func ValidateMetadataKey(key string) error {
 	}
 
 	return nil
+}
+
+// ValidateAsset checks that an asset string matches the expected format:
+// [A-Z][A-Z0-9]{0,16}(_[A-Z]{1,16})?(/\d{1,6})?
+// Examples: "USD", "EUR/2", "BTC/8", "CUSTOM_TOKEN/6".
+func ValidateAsset(asset string) error {
+	if len(asset) == 0 {
+		return ErrAssetInvalid
+	}
+
+	base, precisionStr, hasPrecision := strings.Cut(asset, "/")
+
+	if !validateAssetBase(base) {
+		return ErrAssetInvalid
+	}
+
+	if hasPrecision && !isDigits(precisionStr, 1, 6) {
+		return ErrAssetInvalid
+	}
+
+	return nil
+}
+
+// validateAssetBase checks the base part: [A-Z][A-Z0-9]{0,16}(_[A-Z]{1,16})?
+func validateAssetBase(base string) bool {
+	if len(base) == 0 {
+		return false
+	}
+
+	head, tail, hasUnderscore := strings.Cut(base, "_")
+
+	if !isUpperAlphaStart(head, 17) {
+		return false
+	}
+
+	if hasUnderscore && !isUpperAlpha(tail, 1, 16) {
+		return false
+	}
+
+	return true
+}
+
+func isUpperAlphaStart(s string, maxLen int) bool {
+	if len(s) == 0 || len(s) > maxLen {
+		return false
+	}
+
+	if s[0] < 'A' || s[0] > 'Z' {
+		return false
+	}
+
+	for i := 1; i < len(s); i++ {
+		c := s[i]
+		if !((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func isUpperAlpha(s string, minLen, maxLen int) bool {
+	if len(s) < minLen || len(s) > maxLen {
+		return false
+	}
+
+	for i := range s {
+		if s[i] < 'A' || s[i] > 'Z' {
+			return false
+		}
+	}
+
+	return true
+}
+
+func isDigits(s string, minLen, maxLen int) bool {
+	if len(s) < minLen || len(s) > maxLen {
+		return false
+	}
+
+	for i := range s {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+
+	return true
 }
 
 // ParseAssetPrecision splits an asset string into its base name and precision.

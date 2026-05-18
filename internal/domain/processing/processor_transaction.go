@@ -79,7 +79,7 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 	}
 
 	// Validate account addresses in resolved postings (covers Numscript-resolved addresses).
-	if err := validatePostingAddresses(result.Postings); err != nil {
+	if err := validatePostings(result.Postings); err != nil {
 		return nil, err
 	}
 
@@ -219,16 +219,20 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 	}, nil
 }
 
-// validatePostingAddresses checks that all account addresses in the postings
+// validatePostings checks that all account addresses and assets in the postings
 // contain only allowed characters. This runs after Numscript resolution so it
-// covers both explicit and script-resolved addresses.
-func validatePostingAddresses(postings []*commonpb.Posting) error {
+// covers both explicit and script-resolved values.
+func validatePostings(postings []*commonpb.Posting) error {
 	for _, p := range postings {
 		if err := domain.ValidateAccountAddress(p.GetSource()); err != nil {
 			return err
 		}
 
 		if err := domain.ValidateAccountAddress(p.GetDestination()); err != nil {
+			return err
+		}
+
+		if err := domain.ValidateAsset(p.GetAsset()); err != nil {
 			return err
 		}
 	}

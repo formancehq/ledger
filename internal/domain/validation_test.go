@@ -104,3 +104,46 @@ func TestValidateAccountAddress(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateAsset(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		input   string
+		wantErr error
+	}{
+		{name: "simple", input: "USD"},
+		{name: "with precision", input: "EUR/2"},
+		{name: "long precision", input: "BTC/8"},
+		{name: "max base length", input: "ABCDEFGHIJKLMNOPQ"},
+		{name: "with underscore", input: "CUSTOM_TOKEN"},
+		{name: "underscore and precision", input: "CUSTOM_TOKEN/6"},
+		{name: "single char", input: "A"},
+		{name: "alphanumeric base", input: "USD2"},
+		{name: "empty", input: "", wantErr: ErrAssetInvalid},
+		{name: "lowercase", input: "usd", wantErr: ErrAssetInvalid},
+		{name: "starts with digit", input: "1USD", wantErr: ErrAssetInvalid},
+		{name: "contains hyphen", input: "US-D", wantErr: ErrAssetInvalid},
+		{name: "contains space", input: "US D", wantErr: ErrAssetInvalid},
+		{name: "base too long", input: "ABCDEFGHIJKLMNOPQR", wantErr: ErrAssetInvalid},
+		{name: "precision too long", input: "USD/1234567", wantErr: ErrAssetInvalid},
+		{name: "underscore suffix lowercase", input: "USD_eur", wantErr: ErrAssetInvalid},
+		{name: "double slash", input: "USD//2", wantErr: ErrAssetInvalid},
+		{name: "trailing slash", input: "USD/", wantErr: ErrAssetInvalid},
+		{name: "leading underscore", input: "_USD", wantErr: ErrAssetInvalid},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := ValidateAsset(tt.input)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
