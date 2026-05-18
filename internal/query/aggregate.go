@@ -250,14 +250,14 @@ func AggregateVolumes(
 	for accountIter.Next() {
 		account := string(accountIter.Current())
 
-		// Build canonical prefix: [ledger]\x00[account]\x00
+		// Build canonical prefix: [ledger]\x00[account][0xFD]
 		// This matches all volume keys for this (ledger, account) pair.
 		canonicalPrefix := make([]byte, len(ledger)+1+len(account)+1)
 		n := copy(canonicalPrefix, ledger)
 		canonicalPrefix[n] = 0x00
 		n++
 		n += copy(canonicalPrefix[n:], account)
-		canonicalPrefix[n] = 0x00
+		canonicalPrefix[n] = dal.CanonicalKeySepVolume
 
 		iter, err := volumeAttr.NewStreamingIter(pebbleReader, canonicalPrefix)
 		if err != nil {

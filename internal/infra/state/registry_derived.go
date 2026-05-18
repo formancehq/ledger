@@ -5,7 +5,6 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/bitset"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
@@ -32,8 +31,11 @@ type DerivedRegistry struct {
 	// current proposal. These are flushed to the parent bitset on Merge.
 	PendingReversions []domain.TransactionKey
 
-	// parent is the authoritative reversion bitset map (from StateRegistry).
-	parentReversions map[string]*bitset.Bitset
+	// parent is the parent StateRegistry, used to access the authoritative
+	// reversion bitset. We store the registry pointer (not the map) so that
+	// if RecoverState replaces Registry.Reversions after the DerivedRegistry
+	// is created, GetReverted still reads from the current map.
+	parent *StateRegistry
 }
 
 // NewDerivedRegistry creates a DerivedRegistry from a parent StateRegistry.
@@ -52,7 +54,7 @@ func NewDerivedRegistry(reg *StateRegistry) *DerivedRegistry {
 		NumscriptContents: attributes.NewDerivedKeyStore(reg.NumscriptContents, (*commonpb.NumscriptInfo).CloneVT),
 		PreparedQueries:   attributes.NewDerivedKeyStore(reg.PreparedQueries, (*commonpb.PreparedQuery).CloneVT),
 		LedgerMetadata:    attributes.NewDerivedKeyStore(reg.LedgerMetadata, (*commonpb.MetadataValue).CloneVT),
-		parentReversions:  reg.Reversions,
+		parent:            reg,
 	}
 }
 
@@ -80,7 +82,7 @@ func (d *DerivedRegistry) GetReverted(key domain.TransactionKey) bool {
 		return true
 	}
 	// Check the authoritative bitset
-	bs, ok := d.parentReversions[key.Ledger]
+	bs, ok := d.parent.Reversions[key.Ledger]
 	if !ok {
 		return false
 	}

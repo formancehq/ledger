@@ -86,7 +86,7 @@ func TestMultiCurrencyTreasury(t *testing.T) {
 	}
 
 	var gbpPayments []vendorPayment
-	gbpVendors := []string{"vendor:brit-co", "vendor:london-ltd", "vendor:windsor", "vendor:thames"}
+	gbpVendors := []string{"vendor:britco", "vendor:londonltd", "vendor:windsor", "vendor:thames"}
 	for i := 0; i < 20; i++ {
 		gbpPayments = append(gbpPayments, vendorPayment{
 			treasury: "treasury:gbp",
