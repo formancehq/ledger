@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
-	"strconv"
 
 	"google.golang.org/protobuf/proto"
 
@@ -24,22 +23,16 @@ type BaseResponse[T any] struct {
 }
 
 // writeJSONResponse writes a JSON response with the given status code and data.
-// It pre-marshals to a byte buffer so that partial writes never corrupt the
-// chunked transfer encoding on the wire.
+// It streams JSON directly into the ResponseWriter to avoid allocating an
+// intermediate byte buffer.
 func writeJSONResponse(w http.ResponseWriter, statusCode int, data any) {
-	body, err := json.Marshal(data)
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = fmt.Fprintf(w, `{"errorCode":"INTERNAL_ERROR","errorMessage":"failed to marshal response: %s"}`, err.Error())
-
-		return
-	}
-
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 	w.WriteHeader(statusCode)
-	_, _ = w.Write(body)
+
+	if err := json.MarshalWrite(w, data); err != nil {
+		// Headers already sent; log but can't change the status code.
+		_, _ = fmt.Fprintf(w, `{"errorCode":"INTERNAL_ERROR","errorMessage":"failed to marshal response: %s"}`, err.Error())
+	}
 }
 
 // writeErrorResponse writes an error response with the given status code, error code, and error.

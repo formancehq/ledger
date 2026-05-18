@@ -19,37 +19,21 @@ func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse JSON array of bulk elements
-	var rawElements []json.RawValue
+	// Parse JSON array of bulk elements directly into typed structs.
+	var elements []*servicepb.BulkElement
 
-	err := json.UnmarshalRead(r.Body, &rawElements)
+	err := json.UnmarshalRead(r.Body, &elements)
 	if err != nil {
 		writeBulkErrorResponse(w, http.StatusBadRequest, "VALIDATION", err)
 
 		return
 	}
 
-	if s.bulkMaxSize > 0 && len(rawElements) > s.bulkMaxSize {
+	if s.bulkMaxSize > 0 && len(elements) > s.bulkMaxSize {
 		writeBulkErrorResponse(w, http.StatusRequestEntityTooLarge, "BULK_SIZE_EXCEEDED",
 			fmt.Errorf("bulk size exceeded, max size is %d", s.bulkMaxSize))
 
 		return
-	}
-
-	// Parse each element
-	elements := make([]*servicepb.BulkElement, 0, len(rawElements))
-	for i, rawElem := range rawElements {
-		elem := &servicepb.BulkElement{}
-
-		err := json.Unmarshal(rawElem, elem)
-		if err != nil {
-			writeBulkErrorResponse(w, http.StatusBadRequest, "VALIDATION",
-				fmt.Errorf("error parsing element %d: %w", i, err))
-
-			return
-		}
-
-		elements = append(elements, elem)
 	}
 
 	// Per-element scope check: verify the caller has the required scope for each element.

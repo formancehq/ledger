@@ -54,7 +54,6 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 			logger: logger,
 		}),
 		jsonRecoverer,
-		utf8BodyValidator,
 		internalauth.HTTPAuthMiddleware(authCfg),
 	)
 

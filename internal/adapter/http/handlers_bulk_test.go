@@ -53,7 +53,10 @@ func TestHandleBulk_SizeLimitExceeded(t *testing.T) {
 
 	// Two elements but limit is 1
 	w := httptest.NewRecorder()
-	body := strings.NewReader(`[{},{}]`)
+	body := strings.NewReader(`[
+		{"action":"CREATE_TRANSACTION","data":{"postings":[{"source":"world","destination":"bank","amount":100,"asset":"USD/2"}]}},
+		{"action":"CREATE_TRANSACTION","data":{"postings":[{"source":"world","destination":"bank","amount":100,"asset":"USD/2"}]}}
+	]`)
 	r := newRequest(t, http.MethodPost, "/ledger1/bulk", body, map[string]string{
 		"ledgerName": "ledger1",
 	})

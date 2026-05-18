@@ -24,6 +24,12 @@ func UnmarshalRead(r io.Reader, v any) error {
 	return sonic.ConfigStd.NewDecoder(r).Decode(v)
 }
 
+// MarshalWrite encodes v as JSON directly into the writer, avoiding
+// an intermediate byte-slice allocation.
+func MarshalWrite(w io.Writer, v any) error {
+	return sonic.ConfigStd.NewEncoder(w).Encode(v)
+}
+
 // RawValue represents a raw JSON value that can be stored and used later.
 // This is equivalent to encoding/json/v2's jsontext.Value.
 type RawValue []byte
