@@ -3,7 +3,6 @@ package accounttype
 import (
 	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 )
 
@@ -15,39 +14,25 @@ const (
 	SegmentVariable
 )
 
-// SegmentValueType controls how a variable segment is encoded in Pebble keys.
-type SegmentValueType int
-
-const (
-	SegmentValueString SegmentValueType = iota // UTF-8 string (default)
-	SegmentValueUUID                           // 16 bytes raw, RFC 4122
-	SegmentValueUint64                         // 8 bytes big-endian
-	SegmentValueBytes                          // variable-length raw bytes (hex in addresses)
-)
+// SegmentMatcher validates a variable segment value.
+type SegmentMatcher func(value string) bool
 
 // PatternSegment represents one colon-separated segment in an account type pattern.
 type PatternSegment struct {
-	Kind           SegmentKind
-	Value          string           // literal for Fixed, variable name for Variable
-	Pattern        string           // regex constraint for Variable (empty = match any non-empty)
-	CompiledRegexp *regexp.Regexp   // pre-compiled regexp for Pattern (nil when Pattern is empty)
-	ValueType      SegmentValueType // encoding type for Variable segments (ignored for Fixed)
+	Kind    SegmentKind
+	Value   string         // literal for Fixed, variable name for Variable
+	Matcher SegmentMatcher // constraint for Variable segments (nil = match any non-empty string)
 }
 
-// segmentNameRe validates fixed segment literals.
-var segmentNameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
-
-// variableNameRe validates variable names inside {name} or {name:regex}.
-var variableNameRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
-
 // ParsePattern parses a pattern string like "users:{id}:checking" into segments.
-// Colons inside braces are part of the variable regex, not segment delimiters.
+// Variable segments use the syntax {name}. Constraints are declared separately
+// via segment_types on the AccountType proto.
 func ParsePattern(pattern string) ([]PatternSegment, error) {
 	if pattern == "" {
 		return nil, errors.New("pattern must not be empty")
 	}
 
-	parts := splitPatternSegments(pattern)
+	parts := strings.Split(pattern, ":")
 	segments := make([]PatternSegment, 0, len(parts))
 	seenVars := make(map[string]struct{})
 
@@ -78,36 +63,10 @@ func ParsePattern(pattern string) ([]PatternSegment, error) {
 	return segments, nil
 }
 
-// splitPatternSegments splits a pattern on ':' while respecting '{...}' braces.
-// Colons inside braces are treated as part of the variable regex.
-func splitPatternSegments(pattern string) []string {
-	var parts []string
-	depth := 0
-	start := 0
-	for i, ch := range pattern {
-		switch ch {
-		case '{':
-			depth++
-		case '}':
-			if depth > 0 {
-				depth--
-			}
-		case ':':
-			if depth == 0 {
-				parts = append(parts, pattern[start:i])
-				start = i + 1
-			}
-		}
-	}
-	parts = append(parts, pattern[start:])
-
-	return parts
-}
-
-// parseSegment parses a single segment: either a literal or {name} or {name:regex}.
+// parseSegment parses a single segment: either a literal or {name}.
 func parseSegment(s string) (PatternSegment, error) {
 	if !strings.HasPrefix(s, "{") {
-		if !segmentNameRe.MatchString(s) {
+		if !isValidSegmentName(s) {
 			return PatternSegment{}, fmt.Errorf("invalid fixed segment %q: must match [a-zA-Z0-9_-]+", s)
 		}
 
@@ -118,30 +77,51 @@ func parseSegment(s string) (PatternSegment, error) {
 		return PatternSegment{}, fmt.Errorf("unclosed variable in segment %q", s)
 	}
 
-	inner := s[1 : len(s)-1]
-	if inner == "" {
+	name := s[1 : len(s)-1]
+	if name == "" {
 		return PatternSegment{}, fmt.Errorf("empty variable name in segment %q", s)
 	}
 
-	// Split on first colon to separate name from optional regex.
-	name, regex, _ := strings.Cut(inner, ":")
-
-	if !variableNameRe.MatchString(name) {
+	if !isValidVariableName(name) {
 		return PatternSegment{}, fmt.Errorf("invalid variable name %q: must match [a-zA-Z_][a-zA-Z0-9_]*", name)
 	}
 
-	var compiled *regexp.Regexp
+	return PatternSegment{Kind: SegmentVariable, Value: name}, nil
+}
 
-	if regex != "" {
-		var err error
+func isValidSegmentName(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
 
-		compiled, err = regexp.Compile("^(?:" + regex + ")$")
-		if err != nil {
-			return PatternSegment{}, fmt.Errorf("invalid regex in variable %q: %w", name, err)
+	for i := range len(s) {
+		c := s[i]
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+			return false
 		}
 	}
 
-	return PatternSegment{Kind: SegmentVariable, Value: name, Pattern: regex, CompiledRegexp: compiled}, nil
+	return true
+}
+
+func isValidVariableName(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+
+	c := s[0]
+	if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_') {
+		return false
+	}
+
+	for i := 1; i < len(s); i++ {
+		c = s[i]
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+			return false
+		}
+	}
+
+	return true
 }
 
 // MatchAddress matches an account address against parsed pattern segments.
@@ -179,7 +159,7 @@ func MatchAddress(address string, segments []PatternSegment) (Bindings, bool) {
 			if len(part) == 0 {
 				return bindings, false
 			}
-			if seg.CompiledRegexp != nil && !seg.CompiledRegexp.MatchString(part) {
+			if seg.Matcher != nil && !seg.Matcher(part) {
 				return bindings, false
 			}
 			bindings.set(seg.Value, part)

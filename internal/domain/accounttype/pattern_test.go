@@ -5,6 +5,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
 func TestParsePattern(t *testing.T) {
@@ -32,7 +34,7 @@ func TestParsePattern(t *testing.T) {
 			},
 		},
 		{
-			name:    "variable without regex",
+			name:    "variable",
 			pattern: "users:{id}:checking",
 			want: []PatternSegment{
 				{Kind: SegmentFixed, Value: "users"},
@@ -41,22 +43,13 @@ func TestParsePattern(t *testing.T) {
 			},
 		},
 		{
-			name:    "variable with regex",
-			pattern: "banks:{iban:^[A-Z]{2}[0-9]{14}$}:main",
-			want: []PatternSegment{
-				{Kind: SegmentFixed, Value: "banks"},
-				{Kind: SegmentVariable, Value: "iban", Pattern: "^[A-Z]{2}[0-9]{14}$"},
-				{Kind: SegmentFixed, Value: "main"},
-			},
-		},
-		{
 			name:    "multiple variables",
-			pattern: "org:{orgId}:departments:{deptId:^[0-9]+$}:main",
+			pattern: "org:{orgId}:departments:{deptId}:main",
 			want: []PatternSegment{
 				{Kind: SegmentFixed, Value: "org"},
 				{Kind: SegmentVariable, Value: "orgId"},
 				{Kind: SegmentFixed, Value: "departments"},
-				{Kind: SegmentVariable, Value: "deptId", Pattern: "^[0-9]+$"},
+				{Kind: SegmentVariable, Value: "deptId"},
 				{Kind: SegmentFixed, Value: "main"},
 			},
 		},
@@ -107,11 +100,6 @@ func TestParsePattern(t *testing.T) {
 			wantErr: "invalid variable name",
 		},
 		{
-			name:    "invalid regex in variable",
-			pattern: "users:{id:[invalid}:checking",
-			wantErr: "invalid regex",
-		},
-		{
 			name:    "duplicate variable name",
 			pattern: "users:{id}:{id}",
 			wantErr: "duplicate variable name",
@@ -138,12 +126,6 @@ func TestParsePattern(t *testing.T) {
 			for i, seg := range got {
 				assert.Equal(t, tt.want[i].Kind, seg.Kind)
 				assert.Equal(t, tt.want[i].Value, seg.Value)
-				assert.Equal(t, tt.want[i].Pattern, seg.Pattern)
-				if seg.Pattern != "" {
-					assert.NotNil(t, seg.CompiledRegexp, "CompiledRegexp should be set for pattern %q", seg.Pattern)
-				} else {
-					assert.Nil(t, seg.CompiledRegexp)
-				}
 			}
 		})
 	}
@@ -204,19 +186,6 @@ func TestMatchAddress(t *testing.T) {
 			wantMatch: false,
 		},
 		{
-			name:         "regex match",
-			pattern:      "banks:{iban:^[A-Z]{2}[0-9]{14}$}:main",
-			address:      "banks:FR76300060000112:main",
-			wantMatch:    true,
-			wantBindings: map[string]string{"iban": "FR76300060000112"},
-		},
-		{
-			name:      "regex mismatch",
-			pattern:   "banks:{iban:^[A-Z]{2}[0-9]{14}$}:main",
-			address:   "banks:invalid:main",
-			wantMatch: false,
-		},
-		{
 			name:         "multiple variables",
 			pattern:      "org:{orgId}:dept:{deptId}",
 			address:      "org:acme:dept:engineering",
@@ -266,8 +235,12 @@ func TestMatchAddress(t *testing.T) {
 func BenchmarkMatchAddress(b *testing.B) {
 	segments3Fixed, _ := ParsePattern("platform:fees:main")
 	segments3Var, _ := ParsePattern("users:{id}:checking")
-	segmentsRegex, _ := ParsePattern("banks:{iban:^[A-Z]{2}[0-9]{14}$}:main")
 	segments5Var, _ := ParsePattern("org:{a}:dept:{b}:team:{c}:proj:{d}:env:{e}")
+
+	segmentsUUID, _ := ParsePattern("player:{id}:wallet")
+	_ = ValidateSegmentTypes(segmentsUUID, map[string]*commonpb.SegmentType{
+		"id": {Constraint: &commonpb.SegmentType_Uuid{Uuid: &commonpb.UUIDConstraint{}}},
+	})
 
 	cases := []struct {
 		name     string
@@ -278,7 +251,7 @@ func BenchmarkMatchAddress(b *testing.B) {
 		{"no_match_fixed", "platform:other:main", segments3Fixed},
 		{"match_all_fixed", "platform:fees:main", segments3Fixed},
 		{"match_with_variable", "users:alice:checking", segments3Var},
-		{"match_with_regex", "banks:FR76300060000112:main", segmentsRegex},
+		{"match_with_uuid", "player:550e8400-e29b-41d4-a716-446655440000:wallet", segmentsUUID},
 		{"match_5_variables", "org:acme:dept:eng:team:core:proj:ledger:env:prod", segments5Var},
 	}
 
@@ -314,6 +287,84 @@ func TestSpecificity(t *testing.T) {
 			assert.Equal(t, tt.want, Specificity(segments))
 		})
 	}
+}
+
+func BenchmarkMatchWithConstraint(b *testing.B) {
+	uuid := "550e8400-e29b-41d4-a716-446655440000"
+
+	// Native UUID matcher via segment_types.
+	nativeSegs, _ := ParsePattern("player:{id}:wallet")
+	_ = ValidateSegmentTypes(nativeSegs, map[string]*commonpb.SegmentType{
+		"id": {Constraint: &commonpb.SegmentType_Uuid{Uuid: &commonpb.UUIDConstraint{}}},
+	})
+
+	// Regex UUID matcher via segment_types regex constraint.
+	regexSegs, _ := ParsePattern("player:{id}:wallet")
+	_ = ValidateSegmentTypes(regexSegs, map[string]*commonpb.SegmentType{
+		"id": {Constraint: &commonpb.SegmentType_Regex{Regex: "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"}},
+	})
+
+	addr := "player:" + uuid + ":wallet"
+	badAddr := "player:not-a-uuid:wallet"
+
+	b.Run("uuid_native/match", func(b *testing.B) {
+		b.ReportAllocs()
+
+		for b.Loop() {
+			MatchAddress(addr, nativeSegs)
+		}
+	})
+
+	b.Run("uuid_regex/match", func(b *testing.B) {
+		b.ReportAllocs()
+
+		for b.Loop() {
+			MatchAddress(addr, regexSegs)
+		}
+	})
+
+	b.Run("uuid_native/reject", func(b *testing.B) {
+		b.ReportAllocs()
+
+		for b.Loop() {
+			MatchAddress(badAddr, nativeSegs)
+		}
+	})
+
+	b.Run("uuid_regex/reject", func(b *testing.B) {
+		b.ReportAllocs()
+
+		for b.Loop() {
+			MatchAddress(badAddr, regexSegs)
+		}
+	})
+
+	// Native uint64 vs regex.
+	nativeUint, _ := ParsePattern("customer:{id}")
+	_ = ValidateSegmentTypes(nativeUint, map[string]*commonpb.SegmentType{
+		"id": {Constraint: &commonpb.SegmentType_Uint64{Uint64: &commonpb.Uint64Constraint{}}},
+	})
+
+	regexUint, _ := ParsePattern("customer:{id}")
+	_ = ValidateSegmentTypes(regexUint, map[string]*commonpb.SegmentType{
+		"id": {Constraint: &commonpb.SegmentType_Regex{Regex: "[0-9]+"}},
+	})
+
+	b.Run("uint64_native/match", func(b *testing.B) {
+		b.ReportAllocs()
+
+		for b.Loop() {
+			MatchAddress("customer:12345678", nativeUint)
+		}
+	})
+
+	b.Run("uint64_regex/match", func(b *testing.B) {
+		b.ReportAllocs()
+
+		for b.Loop() {
+			MatchAddress("customer:12345678", regexUint)
+		}
+	})
 }
 
 func TestValidatePattern(t *testing.T) {

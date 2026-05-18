@@ -67,23 +67,23 @@ func (bk VolumeKey) Bytes() []byte {
 // The last byte is always the precision.
 func (bk *VolumeKey) Unmarshal(d []byte) error {
 	// Split ledger on first null byte.
-	nullIdx := bytes.IndexByte(d, 0x00)
-	if nullIdx < 0 {
+	before, after, ok := bytes.Cut(d, []byte{0x00})
+	if !ok {
 		return errors.New("invalid balance key bytes: missing ledger separator")
 	}
 
-	bk.Ledger = string(d[:nullIdx])
-	rest := d[nullIdx+1:]
+	bk.Ledger = string(before)
+	rest := after
 
 	// Find the volume separator (0xFD) to split account from asset.
-	sepIdx := bytes.IndexByte(rest, dal.CanonicalKeySepVolume)
-	if sepIdx < 0 {
+	before0, after0, ok0 := bytes.Cut(rest, []byte{dal.CanonicalKeySepVolume})
+	if !ok0 {
 		return errors.New("invalid balance key bytes: missing volume separator")
 	}
 
-	bk.Account = string(rest[:sepIdx])
+	bk.Account = string(before0)
 
-	assetPart := rest[sepIdx+1:]
+	assetPart := after0
 	if len(assetPart) < 2 {
 		return errors.New("invalid balance key bytes: asset part too short")
 	}
@@ -104,7 +104,7 @@ type MetadataKey struct {
 }
 
 // Bytes returns a canonical byte representation of the metadata key.
-// Format: [ledger]\x00[account][0xFE][key]
+// Format: [ledger]\x00[account][0xFE][key].
 func (mk MetadataKey) Bytes() []byte {
 	ret := make([]byte, len(mk.Ledger)+1+len(mk.Account)+1+len(mk.Key))
 	n := copy(ret, mk.Ledger)
@@ -121,23 +121,23 @@ func (mk MetadataKey) Bytes() []byte {
 // Unmarshal parses canonical bytes into the MetadataKey.
 func (mk *MetadataKey) Unmarshal(d []byte) error {
 	// Split ledger on first null byte.
-	nullIdx := bytes.IndexByte(d, 0x00)
-	if nullIdx < 0 {
+	before, after, ok := bytes.Cut(d, []byte{0x00})
+	if !ok {
 		return errors.New("invalid metadata key bytes: missing ledger separator")
 	}
 
-	mk.Ledger = string(d[:nullIdx])
+	mk.Ledger = string(before)
 
 	// Rest is account + [0xFE] + key
-	rest := d[nullIdx+1:]
+	rest := after
 
-	sepIdx := bytes.IndexByte(rest, dal.CanonicalKeySepMetadata)
-	if sepIdx < 0 {
+	before0, after0, ok0 := bytes.Cut(rest, []byte{dal.CanonicalKeySepMetadata})
+	if !ok0 {
 		return errors.New("invalid metadata key bytes: missing metadata separator")
 	}
 
-	mk.Account = string(rest[:sepIdx])
-	mk.Key = string(rest[sepIdx+1:])
+	mk.Account = string(before0)
+	mk.Key = string(after0)
 
 	return nil
 }

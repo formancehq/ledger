@@ -14,7 +14,7 @@ type CompiledType struct {
 
 // CompileTypes pre-parses all non-deprecated account types into CompiledType
 // entries. Types with invalid patterns are silently skipped.
-// Variable segments are annotated with their ValueType from the proto segment_types map.
+// Variable segments are annotated with constraints from the proto segment_types map.
 func CompileTypes(types map[string]*commonpb.AccountType) []CompiledType {
 	compiled := make([]CompiledType, 0, len(types))
 
@@ -28,7 +28,9 @@ func CompileTypes(types map[string]*commonpb.AccountType) []CompiledType {
 			continue
 		}
 
-		applySegmentTypes(segments, at.GetSegmentTypes())
+		if err := ValidateSegmentTypes(segments, at.GetSegmentTypes()); err != nil {
+			continue
+		}
 
 		compiled = append(compiled, CompiledType{
 			Segments:    segments,
@@ -38,37 +40,6 @@ func CompileTypes(types map[string]*commonpb.AccountType) []CompiledType {
 	}
 
 	return compiled
-}
-
-// applySegmentTypes annotates variable segments with their ValueType
-// from the proto segment_types map.
-func applySegmentTypes(segments []PatternSegment, segTypes map[string]commonpb.SegmentValueType) {
-	if len(segTypes) == 0 {
-		return
-	}
-
-	for i := range segments {
-		if segments[i].Kind != SegmentVariable {
-			continue
-		}
-
-		if protoType, ok := segTypes[segments[i].Value]; ok {
-			segments[i].ValueType = protoToSegmentValueType(protoType)
-		}
-	}
-}
-
-func protoToSegmentValueType(pt commonpb.SegmentValueType) SegmentValueType {
-	switch pt {
-	case commonpb.SegmentValueType_SEGMENT_VALUE_UUID:
-		return SegmentValueUUID
-	case commonpb.SegmentValueType_SEGMENT_VALUE_UINT64:
-		return SegmentValueUint64
-	case commonpb.SegmentValueType_SEGMENT_VALUE_BYTES:
-		return SegmentValueBytes
-	default:
-		return SegmentValueString
-	}
 }
 
 // FindMatchingType finds the best matching account type for an address using

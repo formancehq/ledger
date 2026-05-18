@@ -15,17 +15,9 @@ func ValidatePattern(pattern string) error {
 	return err
 }
 
-// Implicit regex constraints for typed segments.
-var (
-	uuidRe   = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
-	uint64Re = regexp.MustCompile(`^[0-9]+$`)
-	bytesRe  = regexp.MustCompile(`^([0-9a-f]{2})+$`)
-)
-
 // ValidateSegmentTypes checks that segment_types references valid variable names
-// from the pattern and that existing regex constraints are compatible with the
-// declared types.
-func ValidateSegmentTypes(segments []PatternSegment, segTypes map[string]commonpb.SegmentValueType) error {
+// from the pattern and applies the constraint to each segment.
+func ValidateSegmentTypes(segments []PatternSegment, segTypes map[string]*commonpb.SegmentType) error {
 	vars := make(map[string]int, len(segments))
 
 	for i := range segments {
@@ -34,38 +26,107 @@ func ValidateSegmentTypes(segments []PatternSegment, segTypes map[string]commonp
 		}
 	}
 
-	for name, svt := range segTypes {
+	for name, st := range segTypes {
 		idx, ok := vars[name]
 		if !ok {
 			return fmt.Errorf("segment_types references unknown variable %q", name)
 		}
 
-		if svt == commonpb.SegmentValueType_SEGMENT_VALUE_STRING {
-			continue
+		matcher, err := buildMatcher(st)
+		if err != nil {
+			return fmt.Errorf("segment_types variable %q: %w", name, err)
 		}
 
-		implicitRe := implicitRegexp(svt)
-		if implicitRe == nil {
-			return fmt.Errorf("segment_types has unsupported type %d for variable %q", svt, name)
+		if matcher != nil {
+			segments[idx].Matcher = matcher
 		}
-
-		// The type's implicit regex replaces any explicit regex.
-		// The type constraint is authoritative for key encoding.
-		segments[idx].CompiledRegexp = implicitRe
 	}
 
 	return nil
 }
 
-func implicitRegexp(svt commonpb.SegmentValueType) *regexp.Regexp {
-	switch svt {
-	case commonpb.SegmentValueType_SEGMENT_VALUE_UUID:
-		return uuidRe
-	case commonpb.SegmentValueType_SEGMENT_VALUE_UINT64:
-		return uint64Re
-	case commonpb.SegmentValueType_SEGMENT_VALUE_BYTES:
-		return bytesRe
-	default:
-		return nil
+func buildMatcher(st *commonpb.SegmentType) (SegmentMatcher, error) {
+	if st == nil {
+		return nil, nil
 	}
+
+	switch c := st.GetConstraint().(type) {
+	case *commonpb.SegmentType_Regex:
+		compiled, err := regexp.Compile("^(?:" + c.Regex + ")$")
+		if err != nil {
+			return nil, fmt.Errorf("invalid regex %q: %w", c.Regex, err)
+		}
+
+		return compiled.MatchString, nil
+
+	case *commonpb.SegmentType_Uuid:
+		return matchUUID, nil
+
+	case *commonpb.SegmentType_Uint64:
+		return matchUint64, nil
+
+	case *commonpb.SegmentType_Bytes:
+		return matchHexBytes, nil
+
+	default:
+		return nil, nil
+	}
+}
+
+func isHexDigit(c byte) bool {
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+}
+
+// matchUUID validates RFC 4122 format: 8-4-4-4-12 lowercase hex with dashes.
+func matchUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+
+	for i := range 36 {
+		c := s[i]
+
+		switch i {
+		case 8, 13, 18, 23:
+			if c != '-' {
+				return false
+			}
+		default:
+			if !isHexDigit(c) {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+// matchUint64 validates a non-empty decimal digit string.
+func matchUint64(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+
+	for i := range len(s) {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+
+	return true
+}
+
+// matchHexBytes validates even-length lowercase hex.
+func matchHexBytes(s string) bool {
+	if len(s) == 0 || len(s)%2 != 0 {
+		return false
+	}
+
+	for i := range len(s) {
+		if !isHexDigit(s[i]) {
+			return false
+		}
+	}
+
+	return true
 }
