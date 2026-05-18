@@ -275,14 +275,14 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		It("Should produce null_value preserving the original string", func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					actions.SaveAccountMetadataAction(ledgerName, "bad:data", map[string]string{"age": "not-a-number"}),
+					actions.SaveAccountMetadataAction(ledgerName, "bad-data", map[string]string{"age": "not-a-number"}),
 				},
 			})
 			Expect(err).To(Succeed())
 
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "bad:data",
+				Address: "bad-data",
 			})
 			Expect(err).To(Succeed())
 
@@ -311,7 +311,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 			// Save metadata before any schema exists (stored as string)
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					actions.SaveAccountMetadataAction(ledgerName, "scored:user", map[string]string{"score": "99"}),
+					actions.SaveAccountMetadataAction(ledgerName, "scored-user", map[string]string{"score": "99"}),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -340,7 +340,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 			// Verify the value was converted
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "scored:user",
+				Address: "scored-user",
 			})
 			Expect(err).To(Succeed())
 
@@ -565,7 +565,7 @@ set_account_meta(@user, "account_type", "true")
 		It("Should convert string values to correct proto types", func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					actions.SaveAccountMetadataAction(ledgerName, "small:ints", map[string]string{
+					actions.SaveAccountMetadataAction(ledgerName, "small-ints", map[string]string{
 						"field_int8":   "-42",
 						"field_int16":  "1000",
 						"field_int32":  "100000",
@@ -579,7 +579,7 @@ set_account_meta(@user, "account_type", "true")
 
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "small:ints",
+				Address: "small-ints",
 			})
 			Expect(err).To(Succeed())
 
@@ -625,7 +625,7 @@ set_account_meta(@user, "account_type", "true")
 		It("Should return correct strings via ToMap()", func() {
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "small:ints",
+				Address: "small-ints",
 			})
 			Expect(err).To(Succeed())
 
@@ -983,14 +983,14 @@ set_account_meta(@user, "account_type", "true")
 			}
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					actions.SaveTypedAccountMetadataAction(ledgerName, "proto:user", typedMeta),
+					actions.SaveTypedAccountMetadataAction(ledgerName, "proto-user", typedMeta),
 				},
 			})
 			Expect(err).To(Succeed())
 
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "proto:user",
+				Address: "proto-user",
 			})
 			Expect(err).To(Succeed())
 

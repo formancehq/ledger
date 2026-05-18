@@ -241,7 +241,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("unfunded:source", "destination:only", big.NewInt(100), "USD"),
+						actions.NewPosting("unfunded-source", "destination-only", big.NewInt(100), "USD"),
 					}, nil),
 				},
 			})
@@ -251,7 +251,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "normal:account", big.NewInt(200), "USD"),
+						actions.NewPosting("world", "normal-account", big.NewInt(200), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -271,12 +271,12 @@ var _ = Describe("Accounts", Ordered, func() {
 					addresses[a.Address] = true
 				}
 
-				// unfunded:source has only Output (was source in force transaction)
-				g.Expect(addresses).To(HaveKey("unfunded:source"))
-				// destination:only has only Input
-				g.Expect(addresses).To(HaveKey("destination:only"))
-				// normal:account has Input
-				g.Expect(addresses).To(HaveKey("normal:account"))
+				// unfunded-source has only Output (was source in force transaction)
+				g.Expect(addresses).To(HaveKey("unfunded-source"))
+				// destination-only has only Input
+				g.Expect(addresses).To(HaveKey("destination-only"))
+				// normal-account has Input
+				g.Expect(addresses).To(HaveKey("normal-account"))
 				// world has Output
 				g.Expect(addresses).To(HaveKey("world"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
@@ -286,11 +286,11 @@ var _ = Describe("Accounts", Ordered, func() {
 			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", nil)
 			Expect(err).To(Succeed())
 
-			// Alphabetical: destination:only, normal:account, unfunded:source, world
+			// Alphabetical: destination-only, normal-account, unfunded-source, world
 			Expect(accounts).To(HaveLen(4))
-			Expect(accounts[0].Address).To(Equal("destination:only"))
-			Expect(accounts[1].Address).To(Equal("normal:account"))
-			Expect(accounts[2].Address).To(Equal("unfunded:source"))
+			Expect(accounts[0].Address).To(Equal("destination-only"))
+			Expect(accounts[1].Address).To(Equal("normal-account"))
+			Expect(accounts[2].Address).To(Equal("unfunded-source"))
 			Expect(accounts[3].Address).To(Equal("world"))
 		})
 	})
@@ -308,9 +308,9 @@ var _ = Describe("Accounts", Ordered, func() {
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "multi:asset", big.NewInt(100), "USD"),
-						actions.NewPosting("world", "multi:asset", big.NewInt(50), "EUR"),
-						actions.NewPosting("world", "multi:asset", big.NewInt(1000), "JPY"),
+						actions.NewPosting("world", "multi-asset", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "multi-asset", big.NewInt(50), "EUR"),
+						actions.NewPosting("world", "multi-asset", big.NewInt(1000), "JPY"),
 					}, nil, nil),
 				},
 			})
@@ -324,14 +324,14 @@ var _ = Describe("Accounts", Ordered, func() {
 				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", nil)
 				g.Expect(err).To(Succeed())
 
-				// Should have exactly 2 accounts: multi:asset and world
+				// Should have exactly 2 accounts: multi-asset and world
 				g.Expect(accounts).To(HaveLen(2))
 
 				addresses := make(map[string]int)
 				for _, a := range accounts {
 					addresses[a.Address]++
 				}
-				g.Expect(addresses["multi:asset"]).To(Equal(1))
+				g.Expect(addresses["multi-asset"]).To(Equal(1))
 				g.Expect(addresses["world"]).To(Equal(1))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
@@ -352,7 +352,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "account:1", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -362,17 +362,17 @@ var _ = Describe("Accounts", Ordered, func() {
 			Eventually(func(g Gomega) {
 				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", nil)
 				g.Expect(err).To(Succeed())
-				g.Expect(accounts).To(HaveLen(2)) // world + account:1
+				g.Expect(accounts).To(HaveLen(2)) // world + account-1
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
 			// Second batch
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "account:2", big.NewInt(200), "USD"),
+						actions.NewPosting("world", "account-2", big.NewInt(200), "USD"),
 					}, nil, nil),
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "account:3", big.NewInt(300), "USD"),
+						actions.NewPosting("world", "account-3", big.NewInt(300), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -381,7 +381,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			Eventually(func(g Gomega) {
 				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", nil)
 				g.Expect(err).To(Succeed())
-				g.Expect(accounts).To(HaveLen(4)) // world + account:1 + account:2 + account:3
+				g.Expect(accounts).To(HaveLen(4)) // world + account-1 + account-2 + account-3
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})

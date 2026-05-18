@@ -33,7 +33,7 @@ var _ = Describe("Reversions", Ordered, func() {
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "account:1", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -59,7 +59,7 @@ var _ = Describe("Reversions", Ordered, func() {
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "account:1", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -97,7 +97,7 @@ var _ = Describe("Reversions", Ordered, func() {
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "account:1", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -121,7 +121,7 @@ var _ = Describe("Reversions", Ordered, func() {
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "account:1", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -163,7 +163,7 @@ var _ = Describe("Reversions", Ordered, func() {
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "account:1", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -203,7 +203,7 @@ var _ = Describe("Reversions", Ordered, func() {
 				createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", fmt.Sprintf("account:%d", i+1), big.NewInt(100*int64(i+1)), "USD"),
+							actions.NewPosting("world", fmt.Sprintf("account-%d", i+1), big.NewInt(100*int64(i+1)), "USD"),
 						}, nil, nil),
 					},
 				})
@@ -243,7 +243,7 @@ var _ = Describe("Reversions", Ordered, func() {
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "account:1", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -252,7 +252,7 @@ var _ = Describe("Reversions", Ordered, func() {
 			// Verify initial balance
 			account1, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "account:1",
+				Address: "account-1",
 			})
 			Expect(err).To(Succeed())
 			Expect(account1.Volumes["USD"].Balance).To(Equal("100"))
@@ -270,7 +270,7 @@ var _ = Describe("Reversions", Ordered, func() {
 			// Verify balance is restored (should be 0)
 			account1After, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "account:1",
+				Address: "account-1",
 			})
 			Expect(err).To(Succeed())
 			Expect(account1After.Volumes["USD"].Balance).To(Equal("0"))
@@ -281,8 +281,8 @@ var _ = Describe("Reversions", Ordered, func() {
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "account:a", big.NewInt(100), "USD"),
-						actions.NewPosting("world", "account:b", big.NewInt(200), "USD"),
+						actions.NewPosting("world", "account-a", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "account-b", big.NewInt(200), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -291,14 +291,14 @@ var _ = Describe("Reversions", Ordered, func() {
 			// Verify initial balances
 			accountA, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "account:a",
+				Address: "account-a",
 			})
 			Expect(err).To(Succeed())
 			Expect(accountA.Volumes["USD"].Balance).To(Equal("100"))
 
 			accountB, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "account:b",
+				Address: "account-b",
 			})
 			Expect(err).To(Succeed())
 			Expect(accountB.Volumes["USD"].Balance).To(Equal("200"))
@@ -316,14 +316,14 @@ var _ = Describe("Reversions", Ordered, func() {
 			// Verify balances are restored
 			accountAAfter, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "account:a",
+				Address: "account-a",
 			})
 			Expect(err).To(Succeed())
 			Expect(accountAAfter.Volumes["USD"].Balance).To(Equal("0"))
 
 			accountBAfter, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "account:b",
+				Address: "account-b",
 			})
 			Expect(err).To(Succeed())
 			Expect(accountBAfter.Volumes["USD"].Balance).To(Equal("0"))
@@ -334,7 +334,7 @@ var _ = Describe("Reversions", Ordered, func() {
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "volume:account", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "volume-account", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -353,7 +353,7 @@ var _ = Describe("Reversions", Ordered, func() {
 			// Verify volumes: input=100, output=100, balance=0
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "volume:account",
+				Address: "volume-account",
 			})
 			Expect(err).To(Succeed())
 			Expect(account.Volumes["USD"].Input).To(Equal("100"))
@@ -377,7 +377,7 @@ var _ = Describe("Reversions", Ordered, func() {
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "account:1", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -415,7 +415,7 @@ var _ = Describe("Reversions", Ordered, func() {
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "account:1", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -443,7 +443,7 @@ var _ = Describe("Reversions", Ordered, func() {
 
 			// Verify the reverting transaction has opposite postings
 			Expect(revertedTx.RevertTransaction.Postings).To(HaveLen(1))
-			Expect(revertedTx.RevertTransaction.Postings[0].Source).To(Equal("account:1"))
+			Expect(revertedTx.RevertTransaction.Postings[0].Source).To(Equal("account-1"))
 			Expect(revertedTx.RevertTransaction.Postings[0].Destination).To(Equal("world"))
 		})
 	})
@@ -463,7 +463,7 @@ var _ = Describe("Reversions", Ordered, func() {
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "account:1", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -477,7 +477,7 @@ var _ = Describe("Reversions", Ordered, func() {
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("account:1", "account:2", big.NewInt(100), "USD"),
+						actions.NewPosting("account-1", "account-2", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -496,7 +496,7 @@ var _ = Describe("Reversions", Ordered, func() {
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "account:1", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -510,7 +510,7 @@ var _ = Describe("Reversions", Ordered, func() {
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("account:1", "account:2", big.NewInt(100), "USD"),
+						actions.NewPosting("account-1", "account-2", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -527,7 +527,7 @@ var _ = Describe("Reversions", Ordered, func() {
 			// Verify account-1 has negative balance
 			account1, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "account:1",
+				Address: "account-1",
 			})
 			Expect(err).To(Succeed())
 			Expect(account1.Volumes["USD"].Balance).To(Equal("-100"))
@@ -557,7 +557,7 @@ var _ = Describe("Reversions", Ordered, func() {
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "ev:rv:no:expand", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "ev-rv-no-expand", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -580,7 +580,7 @@ var _ = Describe("Reversions", Ordered, func() {
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "ev:rv:expand", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "ev-rv-expand", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -600,9 +600,9 @@ var _ = Describe("Reversions", Ordered, func() {
 
 			pcv := revertedTx.PostCommitVolumes.VolumesByAccount
 			// After revert: ev-rv-expand sent 100 back to world -> input=100, output=100
-			Expect(pcv).To(HaveKey("ev:rv:expand"))
-			Expect(pcv["ev:rv:expand"].Volumes["USD"].Input).To(Equal("100"))
-			Expect(pcv["ev:rv:expand"].Volumes["USD"].Output).To(Equal("100"))
+			Expect(pcv).To(HaveKey("ev-rv-expand"))
+			Expect(pcv["ev-rv-expand"].Volumes["USD"].Input).To(Equal("100"))
+			Expect(pcv["ev-rv-expand"].Volumes["USD"].Output).To(Equal("100"))
 
 			Expect(pcv).To(HaveKey("world"))
 		})
@@ -612,7 +612,7 @@ var _ = Describe("Reversions", Ordered, func() {
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "ev:rv:force", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "ev-rv-force", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -624,7 +624,7 @@ var _ = Describe("Reversions", Ordered, func() {
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("ev:rv:force", "ev:rv:force:other", big.NewInt(100), "USD"),
+						actions.NewPosting("ev-rv-force", "ev-rv-force-other", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -643,9 +643,9 @@ var _ = Describe("Reversions", Ordered, func() {
 
 			pcv := revertedTx.PostCommitVolumes.VolumesByAccount
 			// ev-rv-force: input=100 (original), output=200 (100 spent + 100 reverted)
-			Expect(pcv).To(HaveKey("ev:rv:force"))
-			Expect(pcv["ev:rv:force"].Volumes["USD"].Input).To(Equal("100"))
-			Expect(pcv["ev:rv:force"].Volumes["USD"].Output).To(Equal("200"))
+			Expect(pcv).To(HaveKey("ev-rv-force"))
+			Expect(pcv["ev-rv-force"].Volumes["USD"].Input).To(Equal("100"))
+			Expect(pcv["ev-rv-force"].Volumes["USD"].Output).To(Equal("200"))
 		})
 	})
 })

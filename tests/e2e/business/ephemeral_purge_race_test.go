@@ -49,7 +49,7 @@ var _ = Describe("EphemeralPurgeRace", Ordered, func() {
 		var raceHits []string
 
 		for i := 0; i < iterations; i++ {
-			account := fmt.Sprintf("wallets:race%d", i)
+			account := fmt.Sprintf("wallets:race-%d", i)
 
 			// Seed the ephemeral account with a non-zero balance so the leader's
 			// cache holds it at the moment admission inspects CheckCache.

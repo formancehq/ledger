@@ -31,7 +31,7 @@ var _ = Describe("Ledger Deletion Data Cleanup", Ordered, func() {
 				_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", fmt.Sprintf("user:%d", i), big.NewInt(100*int64(i+1)), "USD"),
+							actions.NewPosting("world", fmt.Sprintf("user-%d", i), big.NewInt(100*int64(i+1)), "USD"),
 						}, nil, nil),
 					},
 				})
@@ -41,7 +41,7 @@ var _ = Describe("Ledger Deletion Data Cleanup", Ordered, func() {
 			// Set account metadata
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					actions.SaveAccountMetadataAction(ledgerName, "user:0", map[string]string{
+					actions.SaveAccountMetadataAction(ledgerName, "user-0", map[string]string{
 						"role": "admin",
 						"tier": "premium",
 					}),
@@ -53,7 +53,7 @@ var _ = Describe("Ledger Deletion Data Cleanup", Ordered, func() {
 			Eventually(func(g Gomega) {
 				account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 					Ledger:  ledgerName,
-					Address: "user:0",
+					Address: "user-0",
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(account.Volumes).To(HaveKey("USD"))
@@ -82,7 +82,7 @@ var _ = Describe("Ledger Deletion Data Cleanup", Ordered, func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "new:user", big.NewInt(50), "USD"),
+						actions.NewPosting("world", "new-user", big.NewInt(50), "USD"),
 					}, nil, nil),
 				},
 			})

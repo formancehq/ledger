@@ -130,10 +130,10 @@ var _ = Describe("Response Signing", func() {
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "bulk:1", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "bulk-1", big.NewInt(100), "USD"),
 					}, nil, nil),
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "bulk:2", big.NewInt(200), "USD"),
+						actions.NewPosting("world", "bulk-2", big.NewInt(200), "USD"),
 					}, nil, nil),
 				},
 			})

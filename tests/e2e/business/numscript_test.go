@@ -516,7 +516,7 @@ send [USD/2 1000] (
 				Requests: []*servicepb.Request{
 					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 						"buyer":    "users:henry",
-						"order_id": "order12345",
+						"order_id": "order-12345",
 						"amount":   "USD/2 500",
 					}, nil),
 				},
@@ -527,7 +527,7 @@ send [USD/2 1000] (
 			// Verify the escrow account was created with the dynamic address
 			escrow, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "escrow:order12345",
+				Address: "escrow:order-12345",
 			})
 			Expect(err).To(Succeed())
 			Expect(escrow.Volumes["USD/2"].Balance).To(Equal("500"))

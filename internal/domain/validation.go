@@ -20,7 +20,7 @@ var (
 	ErrMetadataKeyContainsNullByte = errors.New("metadata key must not contain null bytes")
 	ErrMetadataKeyEmpty            = errors.New("metadata key must not be empty")
 	ErrAccountAddressEmpty         = errors.New("account address must not be empty")
-	ErrAccountAddressInvalidChar   = errors.New("account address must contain only letters, digits, and colons")
+	ErrAccountAddressInvalidChar   = errors.New("account address must contain only letters, digits, colons, underscores, and hyphens")
 	ErrAccountAddressTooLong       = fmt.Errorf("account address exceeds maximum length of %d bytes", maxAccountAddressLength)
 )
 
@@ -44,12 +44,13 @@ func ValidateLedgerName(name string) error {
 }
 
 // isAccountAddressChar returns true if the rune is allowed in an account address.
+// Segments are [a-zA-Z0-9_-]+, separated by colons.
 func isAccountAddressChar(r rune) bool {
-	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == ':'
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == ':' || r == '_' || r == '-'
 }
 
 // ValidateAccountAddress checks that an account address contains only allowed characters
-// (letters, digits, colons) and is within length limits.
+// (letters, digits, colons, underscores, hyphens) and is within length limits.
 func ValidateAccountAddress(address string) error {
 	if address == "" {
 		return ErrAccountAddressEmpty

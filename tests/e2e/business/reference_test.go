@@ -35,7 +35,7 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 				Requests: []*servicepb.Request{
 					actions.WithReference(
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "account:1", big.NewInt(100), "USD"),
+							actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 						}, nil, nil),
 						"ref-001",
 					),
@@ -52,7 +52,7 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 				Requests: []*servicepb.Request{
 					actions.WithReference(
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "account:1", big.NewInt(100), "USD"),
+							actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 						}, nil, nil),
 						"dup-ref",
 					),
@@ -66,7 +66,7 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 				Requests: []*servicepb.Request{
 					actions.WithReference(
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "account:2", big.NewInt(200), "USD"),
+							actions.NewPosting("world", "account-2", big.NewInt(200), "USD"),
 						}, nil, nil),
 						"dup-ref",
 					),
@@ -90,10 +90,10 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "account:1", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "account:2", big.NewInt(200), "USD"),
+						actions.NewPosting("world", "account-2", big.NewInt(200), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -106,13 +106,13 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 				Requests: []*servicepb.Request{
 					actions.WithReference(
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "account:1", big.NewInt(100), "USD"),
+							actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 						}, nil, nil),
 						"ref-a",
 					),
 					actions.WithReference(
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "account:2", big.NewInt(200), "USD"),
+							actions.NewPosting("world", "account-2", big.NewInt(200), "USD"),
 						}, nil, nil),
 						"ref-b",
 					),
@@ -146,7 +146,7 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 				Requests: []*servicepb.Request{
 					actions.WithReference(
 						actions.CreateTransactionAction(ledgerA, []*commonpb.Posting{
-							actions.NewPosting("world", "account:1", big.NewInt(100), "USD"),
+							actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 						}, nil, nil),
 						"shared-ref",
 					),
@@ -160,7 +160,7 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 				Requests: []*servicepb.Request{
 					actions.WithReference(
 						actions.CreateTransactionAction(ledgerB, []*commonpb.Posting{
-							actions.NewPosting("world", "account:1", big.NewInt(100), "USD"),
+							actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 						}, nil, nil),
 						"shared-ref",
 					),

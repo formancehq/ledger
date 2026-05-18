@@ -37,7 +37,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "account:1", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -59,7 +59,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "ts:default", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "ts-default", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -77,7 +77,7 @@ var _ = Describe("Transactions", Ordered, func() {
 		It("Should use the user-provided timestamp when specified", func() {
 			customTime := time.Date(2020, 6, 15, 12, 0, 0, 0, time.UTC)
 			req := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				actions.NewPosting("world", "ts:custom", big.NewInt(100), "USD"),
+				actions.NewPosting("world", "ts-custom", big.NewInt(100), "USD"),
 			}, nil, nil)
 			actions.WithTimestamp(req, customTime)
 
@@ -105,7 +105,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "account:metadata", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "account-metadata", big.NewInt(100), "USD"),
 					}, metadata, nil),
 				},
 			})
@@ -125,7 +125,7 @@ var _ = Describe("Transactions", Ordered, func() {
 
 		It("Should create a transaction with account metadata", func() {
 			accountMetadata := map[string]*commonpb.MetadataMap{
-				"account:with:meta": commonpb.MetadataMapFromGoMap(map[string]string{
+				"account-with-meta": commonpb.MetadataMapFromGoMap(map[string]string{
 					"account_type": "asset",
 					"label":        "Account with Metadata",
 				}),
@@ -134,7 +134,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "account:with:meta", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "account-with-meta", big.NewInt(100), "USD"),
 					}, nil, accountMetadata),
 				},
 			})
@@ -145,10 +145,10 @@ var _ = Describe("Transactions", Ordered, func() {
 			// Verify account exists and has correct balance
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "account:with:meta",
+				Address: "account-with-meta",
 			})
 			Expect(err).To(Succeed())
-			Expect(account.Address).To(Equal("account:with:meta"))
+			Expect(account.Address).To(Equal("account-with-meta"))
 			Expect(account.Volumes["USD"].Balance).To(Equal("100"))
 		})
 
@@ -159,9 +159,9 @@ var _ = Describe("Transactions", Ordered, func() {
 				amount      *big.Int
 				asset       string
 			}{
-				{"world", "seq:account:1", big.NewInt(100), "USD"},
-				{"world", "seq:account:2", big.NewInt(200), "USD"},
-				{"seq:account:1", "seq:account:2", big.NewInt(50), "USD"},
+				{"world", "seq-account-1", big.NewInt(100), "USD"},
+				{"world", "seq-account-2", big.NewInt(200), "USD"},
+				{"seq-account-1", "seq-account-2", big.NewInt(50), "USD"},
 			}
 
 			for i, tx := range transactions {
@@ -180,14 +180,14 @@ var _ = Describe("Transactions", Ordered, func() {
 			// Verify final balances
 			account1, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "seq:account:1",
+				Address: "seq-account-1",
 			})
 			Expect(err).To(Succeed())
 			Expect(account1.Volumes["USD"].Balance).To(Equal("50")) // 100 - 50
 
 			account2, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "seq:account:2",
+				Address: "seq-account-2",
 			})
 			Expect(err).To(Succeed())
 			Expect(account2.Volumes["USD"].Balance).To(Equal("250")) // 200 + 50
@@ -197,9 +197,9 @@ var _ = Describe("Transactions", Ordered, func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "account:a", big.NewInt(100), "USD"),
-						actions.NewPosting("world", "account:b", big.NewInt(200), "USD"),
-						actions.NewPosting("world", "account:c", big.NewInt(300), "USD"),
+						actions.NewPosting("world", "account-a", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "account-b", big.NewInt(200), "USD"),
+						actions.NewPosting("world", "account-c", big.NewInt(300), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -216,21 +216,21 @@ var _ = Describe("Transactions", Ordered, func() {
 			// Verify all accounts have correct balances
 			accountA, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "account:a",
+				Address: "account-a",
 			})
 			Expect(err).To(Succeed())
 			Expect(accountA.Volumes["USD"].Balance).To(Equal("100"))
 
 			accountB, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "account:b",
+				Address: "account-b",
 			})
 			Expect(err).To(Succeed())
 			Expect(accountB.Volumes["USD"].Balance).To(Equal("200"))
 
 			accountC, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "account:c",
+				Address: "account-c",
 			})
 			Expect(err).To(Succeed())
 			Expect(accountC.Volumes["USD"].Balance).To(Equal("300"))
@@ -240,9 +240,9 @@ var _ = Describe("Transactions", Ordered, func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "multi:asset:account", big.NewInt(100), "USD"),
-						actions.NewPosting("world", "multi:asset:account", big.NewInt(50), "EUR"),
-						actions.NewPosting("world", "multi:asset:account", big.NewInt(1000), "JPY"),
+						actions.NewPosting("world", "multi-asset-account", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "multi-asset-account", big.NewInt(50), "EUR"),
+						actions.NewPosting("world", "multi-asset-account", big.NewInt(1000), "JPY"),
 					}, nil, nil),
 				},
 			})
@@ -253,7 +253,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			// Verify account has balances in all assets
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "multi:asset:account",
+				Address: "multi-asset-account",
 			})
 			Expect(err).To(Succeed())
 			Expect(account.Volumes).To(HaveLen(3))
@@ -266,13 +266,13 @@ var _ = Describe("Transactions", Ordered, func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "bulk:account:1", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "bulk-account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "bulk:account:2", big.NewInt(200), "USD"),
+						actions.NewPosting("world", "bulk-account-2", big.NewInt(200), "USD"),
 					}, nil, nil),
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "bulk:account:3", big.NewInt(300), "USD"),
+						actions.NewPosting("world", "bulk-account-3", big.NewInt(300), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -295,7 +295,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "implicit:account", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "implicit-account", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -304,10 +304,10 @@ var _ = Describe("Transactions", Ordered, func() {
 			// The account should now exist
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "implicit:account",
+				Address: "implicit-account",
 			})
 			Expect(err).To(Succeed())
-			Expect(account.Address).To(Equal("implicit:account"))
+			Expect(account.Address).To(Equal("implicit-account"))
 			Expect(account.Volumes["USD"].Balance).To(Equal("100"))
 		})
 
@@ -319,7 +319,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "large:amount:account", largeAmount, "USD"),
+						actions.NewPosting("world", "large-amount-account", largeAmount, "USD"),
 					}, nil, nil),
 				},
 			})
@@ -330,7 +330,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			// Verify the amount is stored correctly
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "large:amount:account",
+				Address: "large-amount-account",
 			})
 			Expect(err).To(Succeed())
 			Expect(account.Volumes["USD"].Balance).To(Equal("99999999999999999999999999999"))
@@ -352,7 +352,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "limited:account", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "limited-account", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -362,7 +362,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("limited:account", "destination", big.NewInt(150), "USD"),
+						actions.NewPosting("limited-account", "destination", big.NewInt(150), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -376,7 +376,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(info).NotTo(BeNil())
 			Expect(info.Reason).To(Equal(domain.ErrReasonInsufficientFunds))
 			Expect(info.Domain).To(Equal("ledger"))
-			Expect(info.Metadata["account"]).To(Equal("limited:account"))
+			Expect(info.Metadata["account"]).To(Equal("limited-account"))
 			Expect(info.Metadata["asset"]).To(Equal("USD"))
 		})
 
@@ -445,7 +445,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "read:account", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "read-account", big.NewInt(100), "USD"),
 					}, map[string]string{"description": "Test transaction"}, nil),
 				},
 			})
@@ -467,7 +467,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(getResp.Transaction.Id).To(Equal(transactionID))
 			Expect(getResp.Transaction.Postings).To(HaveLen(1))
 			Expect(getResp.Transaction.Postings[0].Source).To(Equal("world"))
-			Expect(getResp.Transaction.Postings[0].Destination).To(Equal("read:account"))
+			Expect(getResp.Transaction.Postings[0].Destination).To(Equal("read-account"))
 			Expect(getResp.Transaction.Postings[0].Asset).To(Equal("USD"))
 			Expect(commonpb.MetadataToGoMap(getResp.Transaction.Metadata)["description"]).To(Equal("Test transaction"))
 		})
@@ -496,7 +496,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "volume:account", big.NewInt(1000), "USD"),
+						actions.NewPosting("world", "volume-account", big.NewInt(1000), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -506,7 +506,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("volume:account", "other", big.NewInt(300), "USD"),
+						actions.NewPosting("volume-account", "other", big.NewInt(300), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -515,7 +515,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			// Verify volumes
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "volume:account",
+				Address: "volume-account",
 			})
 			Expect(err).To(Succeed())
 			Expect(account.Volumes["USD"].Input).To(Equal("1000"))
@@ -528,7 +528,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "cycle:a", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "cycle-a", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -537,7 +537,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("cycle:a", "cycle:b", big.NewInt(100), "USD"),
+						actions.NewPosting("cycle-a", "cycle-b", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -546,7 +546,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("cycle:b", "cycle:c", big.NewInt(100), "USD"),
+						actions.NewPosting("cycle-b", "cycle-c", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -555,7 +555,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("cycle:c", "cycle:a", big.NewInt(100), "USD"),
+						actions.NewPosting("cycle-c", "cycle-a", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -564,7 +564,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			// cycle-a should have input=200, output=100, balance=100
 			accountA, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "cycle:a",
+				Address: "cycle-a",
 			})
 			Expect(err).To(Succeed())
 			Expect(accountA.Volumes["USD"].Input).To(Equal("200"))  // from world + cycle-c
@@ -590,7 +590,7 @@ var _ = Describe("Transactions", Ordered, func() {
 				resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "list:account", big.NewInt(int64(100*(i+1))), "USD"),
+							actions.NewPosting("world", "list-account", big.NewInt(int64(100*(i+1))), "USD"),
 						}, map[string]string{"index": string(rune('A' + i))}, nil),
 					},
 				})
@@ -691,7 +691,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(tx.Id).To(Equal(createdTxIDs[4]))
 			Expect(tx.Postings).To(HaveLen(1))
 			Expect(tx.Postings[0].Source).To(Equal("world"))
-			Expect(tx.Postings[0].Destination).To(Equal("list:account"))
+			Expect(tx.Postings[0].Destination).To(Equal("list-account"))
 			Expect(tx.Postings[0].Asset).To(Equal("USD"))
 			Expect(tx.Metadata).NotTo(BeNil())
 			Expect(commonpb.MetadataToGoMap(tx.Metadata)["index"]).To(Equal("E"))
@@ -724,13 +724,13 @@ var _ = Describe("Transactions", Ordered, func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(bulkLedgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "bulk:1", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "bulk-1", big.NewInt(100), "USD"),
 					}, nil, nil),
 					actions.CreateTransactionAction(bulkLedgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "bulk:2", big.NewInt(200), "USD"),
+						actions.NewPosting("world", "bulk-2", big.NewInt(200), "USD"),
 					}, nil, nil),
 					actions.CreateTransactionAction(bulkLedgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "bulk:3", big.NewInt(300), "USD"),
+						actions.NewPosting("world", "bulk-3", big.NewInt(300), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -761,7 +761,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "ev:no:expand", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "ev-no-expand", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -775,7 +775,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.WithExpandVolumes(actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "ev:simple", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "ev-simple", big.NewInt(100), "USD"),
 					}, nil, nil)),
 				},
 			})
@@ -786,23 +786,23 @@ var _ = Describe("Transactions", Ordered, func() {
 
 			pcv := createdTx.PostCommitVolumes.VolumesByAccount
 			Expect(pcv).To(HaveKey("world"))
-			Expect(pcv).To(HaveKey("ev:simple"))
+			Expect(pcv).To(HaveKey("ev-simple"))
 
 			// world is shared across tests in this Ordered context, so only check presence
 			Expect(pcv["world"].Volumes).To(HaveKey("USD"))
 
 			// ev-simple is fresh — exact values are predictable
-			Expect(pcv["ev:simple"].Volumes).To(HaveKey("USD"))
-			Expect(pcv["ev:simple"].Volumes["USD"].Input).To(Equal("100"))
-			Expect(pcv["ev:simple"].Volumes["USD"].Output).To(Equal("0"))
+			Expect(pcv["ev-simple"].Volumes).To(HaveKey("USD"))
+			Expect(pcv["ev-simple"].Volumes["USD"].Input).To(Equal("100"))
+			Expect(pcv["ev-simple"].Volumes["USD"].Output).To(Equal("0"))
 		})
 
 		It("Should include correct volumes for multiple postings", func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.WithExpandVolumes(actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "ev:multi:a", big.NewInt(100), "USD"),
-						actions.NewPosting("world", "ev:multi:b", big.NewInt(200), "USD"),
+						actions.NewPosting("world", "ev-multi-a", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "ev-multi-b", big.NewInt(200), "USD"),
 					}, nil, nil)),
 				},
 			})
@@ -810,30 +810,30 @@ var _ = Describe("Transactions", Ordered, func() {
 
 			pcv := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().PostCommitVolumes.VolumesByAccount
 			Expect(pcv).To(HaveKey("world"))
-			Expect(pcv).To(HaveKey("ev:multi:a"))
-			Expect(pcv).To(HaveKey("ev:multi:b"))
+			Expect(pcv).To(HaveKey("ev-multi-a"))
+			Expect(pcv).To(HaveKey("ev-multi-b"))
 
-			Expect(pcv["ev:multi:a"].Volumes["USD"].Input).To(Equal("100"))
-			Expect(pcv["ev:multi:a"].Volumes["USD"].Output).To(Equal("0"))
-			Expect(pcv["ev:multi:b"].Volumes["USD"].Input).To(Equal("200"))
-			Expect(pcv["ev:multi:b"].Volumes["USD"].Output).To(Equal("0"))
+			Expect(pcv["ev-multi-a"].Volumes["USD"].Input).To(Equal("100"))
+			Expect(pcv["ev-multi-a"].Volumes["USD"].Output).To(Equal("0"))
+			Expect(pcv["ev-multi-b"].Volumes["USD"].Input).To(Equal("200"))
+			Expect(pcv["ev-multi-b"].Volumes["USD"].Output).To(Equal("0"))
 		})
 
 		It("Should include correct volumes for multiple assets", func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.WithExpandVolumes(actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "ev:multi:asset", big.NewInt(100), "USD"),
-						actions.NewPosting("world", "ev:multi:asset", big.NewInt(50), "EUR"),
+						actions.NewPosting("world", "ev-multi-asset", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "ev-multi-asset", big.NewInt(50), "EUR"),
 					}, nil, nil)),
 				},
 			})
 			Expect(err).To(Succeed())
 
 			pcv := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().PostCommitVolumes.VolumesByAccount
-			Expect(pcv).To(HaveKey("ev:multi:asset"))
+			Expect(pcv).To(HaveKey("ev-multi-asset"))
 
-			vols := pcv["ev:multi:asset"].Volumes
+			vols := pcv["ev-multi-asset"].Volumes
 			Expect(vols).To(HaveKey("USD"))
 			Expect(vols).To(HaveKey("EUR"))
 			Expect(vols["USD"].Input).To(Equal("100"))
@@ -846,35 +846,35 @@ var _ = Describe("Transactions", Ordered, func() {
 			resp1, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.WithExpandVolumes(actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "ev:cumul", big.NewInt(500), "USD"),
+						actions.NewPosting("world", "ev-cumul", big.NewInt(500), "USD"),
 					}, nil, nil)),
 				},
 			})
 			Expect(err).To(Succeed())
 
 			pcv1 := resp1.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().PostCommitVolumes.VolumesByAccount
-			Expect(pcv1["ev:cumul"].Volumes["USD"].Input).To(Equal("500"))
-			Expect(pcv1["ev:cumul"].Volumes["USD"].Output).To(Equal("0"))
+			Expect(pcv1["ev-cumul"].Volumes["USD"].Input).To(Equal("500"))
+			Expect(pcv1["ev-cumul"].Volumes["USD"].Output).To(Equal("0"))
 
 			resp2, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.WithExpandVolumes(actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("ev:cumul", "ev:cumul:dest", big.NewInt(200), "USD"),
+						actions.NewPosting("ev-cumul", "ev-cumul-dest", big.NewInt(200), "USD"),
 					}, nil, nil)),
 				},
 			})
 			Expect(err).To(Succeed())
 
 			pcv2 := resp2.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().PostCommitVolumes.VolumesByAccount
-			Expect(pcv2["ev:cumul"].Volumes["USD"].Input).To(Equal("500"))
-			Expect(pcv2["ev:cumul"].Volumes["USD"].Output).To(Equal("200"))
-			Expect(pcv2["ev:cumul:dest"].Volumes["USD"].Input).To(Equal("200"))
-			Expect(pcv2["ev:cumul:dest"].Volumes["USD"].Output).To(Equal("0"))
+			Expect(pcv2["ev-cumul"].Volumes["USD"].Input).To(Equal("500"))
+			Expect(pcv2["ev-cumul"].Volumes["USD"].Output).To(Equal("200"))
+			Expect(pcv2["ev-cumul-dest"].Volumes["USD"].Input).To(Equal("200"))
+			Expect(pcv2["ev-cumul-dest"].Volumes["USD"].Output).To(Equal("0"))
 		})
 
 		It("Should work with force flag and expandVolumes", func() {
 			req := actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-				actions.NewPosting("ev:force:src", "ev:force:dst", big.NewInt(100), "USD"),
+				actions.NewPosting("ev-force-src", "ev-force-dst", big.NewInt(100), "USD"),
 			}, nil)
 			actions.WithExpandVolumes(req)
 
@@ -884,13 +884,13 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			pcv := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().PostCommitVolumes.VolumesByAccount
-			Expect(pcv).To(HaveKey("ev:force:src"))
-			Expect(pcv).To(HaveKey("ev:force:dst"))
+			Expect(pcv).To(HaveKey("ev-force-src"))
+			Expect(pcv).To(HaveKey("ev-force-dst"))
 
-			Expect(pcv["ev:force:src"].Volumes["USD"].Input).To(Equal("0"))
-			Expect(pcv["ev:force:src"].Volumes["USD"].Output).To(Equal("100"))
-			Expect(pcv["ev:force:dst"].Volumes["USD"].Input).To(Equal("100"))
-			Expect(pcv["ev:force:dst"].Volumes["USD"].Output).To(Equal("0"))
+			Expect(pcv["ev-force-src"].Volumes["USD"].Input).To(Equal("0"))
+			Expect(pcv["ev-force-src"].Volumes["USD"].Output).To(Equal("100"))
+			Expect(pcv["ev-force-dst"].Volumes["USD"].Input).To(Equal("100"))
+			Expect(pcv["ev-force-dst"].Volumes["USD"].Output).To(Equal("0"))
 		})
 
 		It("Should include postCommitVolumes with Numscript transaction", func() {
@@ -920,10 +920,10 @@ var _ = Describe("Transactions", Ordered, func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.WithExpandVolumes(actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "ev:bulk:a", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "ev-bulk-a", big.NewInt(100), "USD"),
 					}, nil, nil)),
 					actions.WithExpandVolumes(actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "ev:bulk:b", big.NewInt(200), "USD"),
+						actions.NewPosting("world", "ev-bulk-b", big.NewInt(200), "USD"),
 					}, nil, nil)),
 				},
 			})
@@ -931,20 +931,20 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(resp.Logs).To(HaveLen(2))
 
 			pcv1 := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().PostCommitVolumes.VolumesByAccount
-			Expect(pcv1["ev:bulk:a"].Volumes["USD"].Input).To(Equal("100"))
+			Expect(pcv1["ev-bulk-a"].Volumes["USD"].Input).To(Equal("100"))
 
 			pcv2 := resp.Logs[1].Payload.GetApply().Log.Data.GetCreatedTransaction().PostCommitVolumes.VolumesByAccount
-			Expect(pcv2["ev:bulk:b"].Volumes["USD"].Input).To(Equal("200"))
+			Expect(pcv2["ev-bulk-b"].Volumes["USD"].Input).To(Equal("200"))
 		})
 
 		It("Should allow mixing expandVolumes=true and expandVolumes=false in bulk", func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.WithExpandVolumes(actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "ev:bulk:mix:a", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "ev-bulk-mix-a", big.NewInt(100), "USD"),
 					}, nil, nil)),
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "ev:bulk:mix:b", big.NewInt(200), "USD"),
+						actions.NewPosting("world", "ev-bulk-mix-b", big.NewInt(200), "USD"),
 					}, nil, nil),
 				},
 			})

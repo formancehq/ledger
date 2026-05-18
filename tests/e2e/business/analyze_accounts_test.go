@@ -113,7 +113,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 			// Create 15 user accounts with UUID-like IDs to trigger variable detection
 			requests := make([]*servicepb.Request, 0, 15)
 			for i := range 15 {
-				userAddr := fmt.Sprintf("users:%08d%04d%04d%04d%012d", i, i, i, i, i)
+				userAddr := fmt.Sprintf("users:%08d-%04d-%04d-%04d-%012d", i, i, i, i, i)
 				requests = append(requests, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", userAddr, big.NewInt(int64(100+i)), "USD"),
 				}, nil, nil))
@@ -335,7 +335,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 			// Create 12 users with main and savings accounts
 			for i := range 12 {
-				userID := fmt.Sprintf("%08d%04d%04d%04d%012d", i+1, 0, 0, 0, i+1)
+				userID := fmt.Sprintf("%08d-%04d-%04d-%04d-%012d", i+1, 0, 0, 0, i+1)
 				requests = append(requests,
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("bank:main", fmt.Sprintf("users:%s:main", userID), big.NewInt(1000), "USD"),

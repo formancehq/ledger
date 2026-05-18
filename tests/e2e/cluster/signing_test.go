@@ -301,13 +301,13 @@ var _ = Describe("Request Signing", func() {
 
 		It("should handle signed bulk operations", func() {
 			req1 := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				actions.NewPosting("world", "bulk:alice", big.NewInt(100), "USD"),
+				actions.NewPosting("world", "bulk-alice", big.NewInt(100), "USD"),
 			}, nil, nil)
 			_, err := actions.SignRequest(req1, keyID, privKey)
 			Expect(err).To(Succeed())
 
 			req2 := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				actions.NewPosting("world", "bulk:bob", big.NewInt(200), "USD"),
+				actions.NewPosting("world", "bulk-bob", big.NewInt(200), "USD"),
 			}, nil, nil)
 			_, err = actions.SignRequest(req2, keyID, privKey)
 			Expect(err).To(Succeed())
@@ -327,13 +327,13 @@ var _ = Describe("Request Signing", func() {
 
 		It("should accept mixed signed and unsigned requests when signatures are not required", func() {
 			signedReq := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				actions.NewPosting("world", "mixed:signed", big.NewInt(100), "USD"),
+				actions.NewPosting("world", "mixed-signed", big.NewInt(100), "USD"),
 			}, nil, nil)
 			_, err := actions.SignRequest(signedReq, keyID, privKey)
 			Expect(err).To(Succeed())
 
 			unsignedReq := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				actions.NewPosting("world", "mixed:unsigned", big.NewInt(100), "USD"),
+				actions.NewPosting("world", "mixed-unsigned", big.NewInt(100), "USD"),
 			}, nil, nil)
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
@@ -421,7 +421,7 @@ var _ = Describe("Request Signing", func() {
 
 		It("should accept requests signed with the second key", func() {
 			req := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				actions.NewPosting("world", "multi:key:test", big.NewInt(100), "USD"),
+				actions.NewPosting("world", "multi-key-test", big.NewInt(100), "USD"),
 			}, nil, nil)
 			_, err := actions.SignRequest(req, keyID2, privKey2)
 			Expect(err).To(Succeed())
@@ -436,13 +436,13 @@ var _ = Describe("Request Signing", func() {
 
 		It("should accept bulk with different signing keys", func() {
 			req1 := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				actions.NewPosting("world", "multi:key:1", big.NewInt(100), "USD"),
+				actions.NewPosting("world", "multi-key-1", big.NewInt(100), "USD"),
 			}, nil, nil)
 			_, err := actions.SignRequest(req1, keyID1, privKey1)
 			Expect(err).To(Succeed())
 
 			req2 := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				actions.NewPosting("world", "multi:key:2", big.NewInt(200), "USD"),
+				actions.NewPosting("world", "multi-key-2", big.NewInt(200), "USD"),
 			}, nil, nil)
 			_, err = actions.SignRequest(req2, keyID2, privKey2)
 			Expect(err).To(Succeed())
@@ -644,7 +644,7 @@ var _ = Describe("Request Signing", func() {
 
 		It("should accept requests signed by child key B", func() {
 			req := actions.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
-				actions.NewPosting("world", "h:bob", big.NewInt(100), "USD"),
+				actions.NewPosting("world", "h-bob", big.NewInt(100), "USD"),
 			}, nil, nil)
 			_, err := actions.SignRequest(req, keyIDB, privKeyB)
 			Expect(err).To(Succeed())
@@ -658,7 +658,7 @@ var _ = Describe("Request Signing", func() {
 
 		It("should accept requests signed by grandchild key C", func() {
 			req := actions.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
-				actions.NewPosting("world", "h:charlie", big.NewInt(100), "USD"),
+				actions.NewPosting("world", "h-charlie", big.NewInt(100), "USD"),
 			}, nil, nil)
 			_, err := actions.SignRequest(req, keyIDC, privKeyC)
 			Expect(err).To(Succeed())
@@ -703,7 +703,7 @@ var _ = Describe("Request Signing", func() {
 
 		It("should still accept requests signed by root key A", func() {
 			req := actions.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
-				actions.NewPosting("world", "h:post:revoke", big.NewInt(50), "USD"),
+				actions.NewPosting("world", "h-post-revoke", big.NewInt(50), "USD"),
 			}, nil, nil)
 			_, err := actions.SignRequest(req, keyIDA, privKeyA)
 			Expect(err).To(Succeed())
@@ -717,7 +717,7 @@ var _ = Describe("Request Signing", func() {
 
 		It("should reject requests signed by revoked key B", func() {
 			req := actions.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
-				actions.NewPosting("world", "h:revoked:b", big.NewInt(50), "USD"),
+				actions.NewPosting("world", "h-revoked-b", big.NewInt(50), "USD"),
 			}, nil, nil)
 			_, err := actions.SignRequest(req, keyIDB, privKeyB)
 			Expect(err).To(Succeed())
@@ -733,7 +733,7 @@ var _ = Describe("Request Signing", func() {
 
 		It("should reject requests signed by cascade-revoked key C", func() {
 			req := actions.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
-				actions.NewPosting("world", "h:revoked:c", big.NewInt(50), "USD"),
+				actions.NewPosting("world", "h-revoked-c", big.NewInt(50), "USD"),
 			}, nil, nil)
 			_, err := actions.SignRequest(req, keyIDC, privKeyC)
 			Expect(err).To(Succeed())

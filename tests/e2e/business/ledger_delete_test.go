@@ -96,7 +96,7 @@ var _ = Describe("Ledger Deletion", Ordered, func() {
 				_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", fmt.Sprintf("account:%d", i), big.NewInt(100*int64(i+1)), "USD"),
+							actions.NewPosting("world", fmt.Sprintf("account-%d", i), big.NewInt(100*int64(i+1)), "USD"),
 						}, nil, nil),
 					},
 				})
