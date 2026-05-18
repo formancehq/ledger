@@ -28,7 +28,7 @@ var _ = Describe("Metadata", Ordered, func() {
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "test-account", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "test:account", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -43,14 +43,14 @@ var _ = Describe("Metadata", Ordered, func() {
 				"tier":  "premium",
 			}
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "test-account", metadata)},
+				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "test:account", metadata)},
 			})
 			Expect(err).To(Succeed())
 
 			// Verify metadata via GetAccount
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "test-account",
+				Address: "test:account",
 			})
 			Expect(err).To(Succeed())
 			Expect(account.Metadata).NotTo(BeNil())
@@ -63,7 +63,7 @@ var _ = Describe("Metadata", Ordered, func() {
 		It("Should update existing metadata", func() {
 			// Set initial metadata
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "test-account", map[string]string{
+				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "test:account", map[string]string{
 					"key1": "value1",
 					"key2": "value2",
 				})},
@@ -72,7 +72,7 @@ var _ = Describe("Metadata", Ordered, func() {
 
 			// Update metadata (should merge)
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "test-account", map[string]string{
+				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "test:account", map[string]string{
 					"key2": "updated_value2",
 					"key3": "value3",
 				})},
@@ -82,7 +82,7 @@ var _ = Describe("Metadata", Ordered, func() {
 			// Verify merged metadata
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "test-account",
+				Address: "test:account",
 			})
 			Expect(err).To(Succeed())
 			metaMap := commonpb.MetadataToGoMap(account.Metadata)
@@ -94,7 +94,7 @@ var _ = Describe("Metadata", Ordered, func() {
 		It("Should delete metadata and verify removal", func() {
 			// Set metadata
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "test-account", map[string]string{
+				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "test:account", map[string]string{
 					"keep":   "this",
 					"delete": "this",
 				})},
@@ -103,14 +103,14 @@ var _ = Describe("Metadata", Ordered, func() {
 
 			// Delete one key
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.DeleteAccountMetadataAction(ledgerName, "test-account", "delete")},
+				Requests: []*servicepb.Request{actions.DeleteAccountMetadataAction(ledgerName, "test:account", "delete")},
 			})
 			Expect(err).To(Succeed())
 
 			// Verify deletion (deleted keys should not exist)
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "test-account",
+				Address: "test:account",
 			})
 			Expect(err).To(Succeed())
 			metaMap := commonpb.MetadataToGoMap(account.Metadata)
@@ -123,7 +123,7 @@ var _ = Describe("Metadata", Ordered, func() {
 		It("Should set metadata on account that doesn't have transactions yet", func() {
 			// Set metadata on a new account (creates account implicitly)
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "new-account", map[string]string{
+				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "new:account", map[string]string{
 					"created": "via-metadata",
 				})},
 			})
@@ -132,7 +132,7 @@ var _ = Describe("Metadata", Ordered, func() {
 			// Verify account exists with metadata
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "new-account",
+				Address: "new:account",
 			})
 			Expect(err).To(Succeed())
 			Expect(commonpb.MetadataToGoMap(account.Metadata)["created"]).To(Equal("via-metadata"))
@@ -146,14 +146,14 @@ var _ = Describe("Metadata", Ordered, func() {
 				"json":        `{"key": "value"}`,
 			}
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "test-account", metadata)},
+				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "test:account", metadata)},
 			})
 			Expect(err).To(Succeed())
 
 			// Verify
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "test-account",
+				Address: "test:account",
 			})
 			Expect(err).To(Succeed())
 			metaMap := commonpb.MetadataToGoMap(account.Metadata)
@@ -165,7 +165,7 @@ var _ = Describe("Metadata", Ordered, func() {
 		It("Should delete multiple metadata keys sequentially", func() {
 			// Set multiple metadata keys
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "test-account", map[string]string{
+				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "test:account", map[string]string{
 					"key1": "value1",
 					"key2": "value2",
 					"key3": "value3",
@@ -175,19 +175,19 @@ var _ = Describe("Metadata", Ordered, func() {
 
 			// Delete keys one by one
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.DeleteAccountMetadataAction(ledgerName, "test-account", "key1")},
+				Requests: []*servicepb.Request{actions.DeleteAccountMetadataAction(ledgerName, "test:account", "key1")},
 			})
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.DeleteAccountMetadataAction(ledgerName, "test-account", "key2")},
+				Requests: []*servicepb.Request{actions.DeleteAccountMetadataAction(ledgerName, "test:account", "key2")},
 			})
 			Expect(err).To(Succeed())
 
 			// Verify: key1 and key2 should not exist, key3 should remain
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "test-account",
+				Address: "test:account",
 			})
 			Expect(err).To(Succeed())
 			metaMap := commonpb.MetadataToGoMap(account.Metadata)

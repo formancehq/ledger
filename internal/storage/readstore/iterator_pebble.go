@@ -119,9 +119,11 @@ func (it *PebbleAccountIterator) Next() bool {
 
 	if !it.started {
 		it.started = true
-		// SeekPrefixGE enables bloom filter checks on the ledger-scoped prefix,
-		// skipping SSTables that don't contain keys for this ledger/type.
-		if !it.iter.SeekPrefixGE(it.prefix) {
+		// SeekGE positions at the first key >= prefix within the iterator bounds.
+		// Note: we use SeekGE (not SeekPrefixGE) because the main Pebble store
+		// uses DefaultComparer whose Split returns len(key), making
+		// SeekPrefixGE's implicit upper bound too restrictive.
+		if !it.iter.SeekGE(it.prefix) {
 			it.exhausted = true
 
 			return false
@@ -147,7 +149,7 @@ func (it *PebbleAccountIterator) advance() bool {
 	n += copy(seekKey[n:], it.current)
 	seekKey[n] = dal.CanonicalKeySepMetadata + 1 // 0x02, past both separators
 
-	if !it.iter.SeekPrefixGE(seekKey) {
+	if !it.iter.SeekGE(seekKey) {
 		it.exhausted = true
 
 		return false
@@ -187,7 +189,7 @@ func (it *PebbleAccountIterator) SeekGE(target []byte) bool {
 	copy(seekKey, it.prefix)
 	copy(seekKey[len(it.prefix):], target)
 
-	if !it.iter.SeekPrefixGE(seekKey) {
+	if !it.iter.SeekGE(seekKey) {
 		it.exhausted = true
 
 		return false
@@ -445,7 +447,7 @@ func (it *PebbleTxIterator) Next() bool {
 
 	if !it.started {
 		it.started = true
-		if !it.iter.SeekPrefixGE(it.prefix) {
+		if !it.iter.SeekGE(it.prefix) {
 			it.exhausted = true
 
 			return false
@@ -470,7 +472,7 @@ func (it *PebbleTxIterator) advanceToNextTx() bool {
 	copy(seekKey, it.prefix)
 	copy(seekKey[len(it.prefix):], nextTxID)
 
-	if !it.iter.SeekPrefixGE(seekKey) {
+	if !it.iter.SeekGE(seekKey) {
 		it.exhausted = true
 
 		return false
@@ -503,7 +505,7 @@ func (it *PebbleTxIterator) SeekGE(target []byte) bool {
 	copy(seekKey, it.prefix)
 	copy(seekKey[len(it.prefix):], target)
 
-	if !it.iter.SeekPrefixGE(seekKey) {
+	if !it.iter.SeekGE(seekKey) {
 		it.exhausted = true
 
 		return false
@@ -708,7 +710,7 @@ func (it *LedgerLogIterator) Close()                    { it.inner.Close() }
 // Used for compileTxIDCondition range scans.
 type PebbleTxRangeIterator struct {
 	iter       *pebble.Iterator
-	lowerBound []byte // stored for SeekPrefixGE initial positioning
+	lowerBound []byte // stored for SeekGE initial positioning
 	idOffset   int
 
 	current   []byte
@@ -755,7 +757,7 @@ func (it *PebbleTxRangeIterator) Next() bool {
 
 	if !it.started {
 		it.started = true
-		if !it.iter.SeekPrefixGE(it.lowerBound) {
+		if !it.iter.SeekGE(it.lowerBound) {
 			it.exhausted = true
 
 			return false
@@ -779,7 +781,7 @@ func (it *PebbleTxRangeIterator) Next() bool {
 
 	copy(seekKey[it.idOffset:], nextTxID)
 
-	if !it.iter.SeekPrefixGE(seekKey) {
+	if !it.iter.SeekGE(seekKey) {
 		it.exhausted = true
 
 		return false
@@ -811,7 +813,7 @@ func (it *PebbleTxRangeIterator) SeekGE(target []byte) bool {
 	copy(seekKey, it.lowerBound[:min(it.idOffset, len(it.lowerBound))])
 	copy(seekKey[it.idOffset:], target)
 
-	if !it.iter.SeekPrefixGE(seekKey) {
+	if !it.iter.SeekGE(seekKey) {
 		it.exhausted = true
 
 		return false

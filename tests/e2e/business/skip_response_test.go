@@ -26,7 +26,7 @@ var _ = Describe("SkipResponse", Ordered, func() {
 		resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					actions.NewPosting("world", "skip-resp-1", big.NewInt(100), "USD"),
+					actions.NewPosting("world", "skip:resp:1", big.NewInt(100), "USD"),
 				}, nil, nil),
 			},
 			SkipResponse: true,
@@ -49,7 +49,7 @@ var _ = Describe("SkipResponse", Ordered, func() {
 		resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					actions.NewPosting("world", "skip-resp-2", big.NewInt(200), "USD"),
+					actions.NewPosting("world", "skip:resp:2", big.NewInt(200), "USD"),
 				}, nil, nil),
 			},
 		})
@@ -68,13 +68,13 @@ var _ = Describe("SkipResponse", Ordered, func() {
 		resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					actions.NewPosting("world", "skip-resp-batch-1", big.NewInt(100), "USD"),
+					actions.NewPosting("world", "skip:resp:batch:1", big.NewInt(100), "USD"),
 				}, nil, nil),
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					actions.NewPosting("world", "skip-resp-batch-2", big.NewInt(200), "USD"),
+					actions.NewPosting("world", "skip:resp:batch:2", big.NewInt(200), "USD"),
 				}, nil, nil),
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					actions.NewPosting("world", "skip-resp-batch-3", big.NewInt(300), "USD"),
+					actions.NewPosting("world", "skip:resp:batch:3", big.NewInt(300), "USD"),
 				}, nil, nil),
 			},
 			SkipResponse: true,
@@ -94,7 +94,7 @@ var _ = Describe("SkipResponse", Ordered, func() {
 		resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					actions.NewPosting("world", "skip-resp-verify", big.NewInt(500), "USD"),
+					actions.NewPosting("world", "skip:resp:verify", big.NewInt(500), "USD"),
 				}, nil, nil),
 			},
 			SkipResponse: true,
@@ -105,7 +105,7 @@ var _ = Describe("SkipResponse", Ordered, func() {
 		// Verify the transaction was actually applied by reading the account
 		account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 			Ledger:  ledgerName,
-			Address: "skip-resp-verify",
+			Address: "skip:resp:verify",
 		})
 		Expect(err).To(Succeed())
 		Expect(account).NotTo(BeNil())

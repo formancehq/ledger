@@ -103,7 +103,7 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 				Requests: []*servicepb.Request{
 					actions.WithIdempotencyKey(
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
+							actions.NewPosting("world", "account:1", big.NewInt(100), "USD"),
 						}, nil, nil),
 						"tx-key-1",
 					),
@@ -122,7 +122,7 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 				Requests: []*servicepb.Request{
 					actions.WithIdempotencyKey(
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "account-dup", big.NewInt(100), "USD"),
+							actions.NewPosting("world", "account:dup", big.NewInt(100), "USD"),
 						}, nil, nil),
 						idempotencyKey,
 					),
@@ -138,7 +138,7 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 				Requests: []*servicepb.Request{
 					actions.WithIdempotencyKey(
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "account-dup", big.NewInt(100), "USD"),
+							actions.NewPosting("world", "account:dup", big.NewInt(100), "USD"),
 						}, nil, nil),
 						idempotencyKey,
 					),
@@ -154,7 +154,7 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 			// Verify the account balance - should only have 100, not 200
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "account-dup",
+				Address: "account:dup",
 			})
 			Expect(err).To(Succeed())
 			Expect(account.Volumes["USD"].Input).To(Equal("100"))
@@ -168,7 +168,7 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 				Requests: []*servicepb.Request{
 					actions.WithIdempotencyKey(
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "account-conflict", big.NewInt(100), "USD"),
+							actions.NewPosting("world", "account:conflict", big.NewInt(100), "USD"),
 						}, nil, nil),
 						idempotencyKey,
 					),
@@ -182,7 +182,7 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 				Requests: []*servicepb.Request{
 					actions.WithIdempotencyKey(
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "account-conflict", big.NewInt(200), "USD"),
+							actions.NewPosting("world", "account:conflict", big.NewInt(200), "USD"),
 						}, nil, nil),
 						idempotencyKey,
 					),
@@ -198,7 +198,7 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 				Requests: []*servicepb.Request{
 					actions.WithIdempotencyKey(
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "account-multi", big.NewInt(100), "USD"),
+							actions.NewPosting("world", "account:multi", big.NewInt(100), "USD"),
 						}, nil, nil),
 						"key-a",
 					),
@@ -212,7 +212,7 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 				Requests: []*servicepb.Request{
 					actions.WithIdempotencyKey(
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "account-multi", big.NewInt(100), "USD"),
+							actions.NewPosting("world", "account:multi", big.NewInt(100), "USD"),
 						}, nil, nil),
 						"key-b",
 					),
@@ -227,7 +227,7 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 			// Account should have 200 (100 + 100)
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "account-multi",
+				Address: "account:multi",
 			})
 			Expect(err).To(Succeed())
 			Expect(account.Volumes["USD"].Input).To(Equal("200"))
@@ -266,7 +266,7 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 				Requests: []*servicepb.Request{
 					actions.WithIdempotencyKey(
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "ttl-account", big.NewInt(100), "USD"),
+							actions.NewPosting("world", "ttl:account", big.NewInt(100), "USD"),
 						}, nil, nil),
 						idempotencyKey,
 					),
@@ -281,7 +281,7 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 				Requests: []*servicepb.Request{
 					actions.WithIdempotencyKey(
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "ttl-account", big.NewInt(100), "USD"),
+							actions.NewPosting("world", "ttl:account", big.NewInt(100), "USD"),
 						}, nil, nil),
 						idempotencyKey,
 					),
@@ -298,7 +298,7 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 				Requests: []*servicepb.Request{
 					actions.WithIdempotencyKey(
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "ttl-account", big.NewInt(100), "USD"),
+							actions.NewPosting("world", "ttl:account", big.NewInt(100), "USD"),
 						}, nil, nil),
 						idempotencyKey,
 					),
@@ -312,7 +312,7 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 			// Verify: account should have 200 total (100 from first tx + 100 from new tx)
 			account, err := ttlClient.GetAccount(ttlCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "ttl-account",
+				Address: "ttl:account",
 			})
 			Expect(err).To(Succeed())
 			Expect(account.Volumes["USD"].Input).To(Equal("200"))
@@ -335,13 +335,13 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 				Requests: []*servicepb.Request{
 					actions.WithIdempotencyKey(
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "bulk-account-1", big.NewInt(100), "USD"),
+							actions.NewPosting("world", "bulk:account:1", big.NewInt(100), "USD"),
 						}, nil, nil),
 						"bulk-tx-1",
 					),
 					actions.WithIdempotencyKey(
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "bulk-account-2", big.NewInt(200), "USD"),
+							actions.NewPosting("world", "bulk:account:2", big.NewInt(200), "USD"),
 						}, nil, nil),
 						"bulk-tx-2",
 					),
@@ -356,13 +356,13 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 				Requests: []*servicepb.Request{
 					actions.WithIdempotencyKey(
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "bulk-account-1", big.NewInt(100), "USD"),
+							actions.NewPosting("world", "bulk:account:1", big.NewInt(100), "USD"),
 						}, nil, nil),
 						"bulk-tx-1",
 					),
 					actions.WithIdempotencyKey(
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "bulk-account-2", big.NewInt(200), "USD"),
+							actions.NewPosting("world", "bulk:account:2", big.NewInt(200), "USD"),
 						}, nil, nil),
 						"bulk-tx-2",
 					),
@@ -379,14 +379,14 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 			// Verify balances are correct (not doubled)
 			account1, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "bulk-account-1",
+				Address: "bulk:account:1",
 			})
 			Expect(err).To(Succeed())
 			Expect(account1.Volumes["USD"].Input).To(Equal("100"))
 
 			account2, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "bulk-account-2",
+				Address: "bulk:account:2",
 			})
 			Expect(err).To(Succeed())
 			Expect(account2.Volumes["USD"].Input).To(Equal("200"))

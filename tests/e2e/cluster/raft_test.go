@@ -62,7 +62,7 @@ var _ = Describe("Simple cluster", func() {
 				_, err := servers[i].Client.Apply(ctx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", fmt.Sprintf("node-%d", i+1), big.NewInt(100*int64(i+1)), "USD"),
+							actions.NewPosting("world", fmt.Sprintf("node:%d", i+1), big.NewInt(100*int64(i+1)), "USD"),
 						}, nil, nil),
 					},
 				})

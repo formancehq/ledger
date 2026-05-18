@@ -29,7 +29,7 @@ var _ = Describe("Ledger", Ordered, func() {
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "test-account", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "test:account", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -43,7 +43,7 @@ var _ = Describe("Ledger", Ordered, func() {
 			}
 
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "test-account", metadata)},
+				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "test:account", metadata)},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
@@ -54,9 +54,9 @@ var _ = Describe("Ledger", Ordered, func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "merge-account", big.NewInt(50), "USD"),
+						actions.NewPosting("world", "merge:account", big.NewInt(50), "USD"),
 					}, nil, map[string]*commonpb.MetadataMap{
-						"merge-account": commonpb.MetadataMapFromGoMap(map[string]string{
+						"merge:account": commonpb.MetadataMapFromGoMap(map[string]string{
 							"key1": "value1",
 							"key2": "value2",
 						}),
@@ -71,7 +71,7 @@ var _ = Describe("Ledger", Ordered, func() {
 			}
 
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "merge-account", metadata)},
+				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "merge:account", metadata)},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
@@ -84,13 +84,13 @@ var _ = Describe("Ledger", Ordered, func() {
 			}
 
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "test-account", metadata)},
+				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "test:account", metadata)},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 
 			deleteResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.DeleteAccountMetadataAction(ledgerName, "test-account", "to_delete")},
+				Requests: []*servicepb.Request{actions.DeleteAccountMetadataAction(ledgerName, "test:account", "to_delete")},
 			})
 			Expect(err).To(Succeed())
 			Expect(deleteResp).NotTo(BeNil())
@@ -110,7 +110,7 @@ var _ = Describe("Ledger", Ordered, func() {
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "bulk-account", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "bulk:account", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -120,7 +120,7 @@ var _ = Describe("Ledger", Ordered, func() {
 		It("Should save account metadata via bulk endpoint", func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					actions.SaveAccountMetadataAction(ledgerName, "bulk-account", map[string]string{
+					actions.SaveAccountMetadataAction(ledgerName, "bulk:account", map[string]string{
 						"account_type": "asset",
 						"label":        "Bulk Account",
 					}),
@@ -135,7 +135,7 @@ var _ = Describe("Ledger", Ordered, func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "bulk-account-2", big.NewInt(50), "USD"),
+						actions.NewPosting("world", "bulk:account:2", big.NewInt(50), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -143,8 +143,8 @@ var _ = Describe("Ledger", Ordered, func() {
 
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					actions.SaveAccountMetadataAction(ledgerName, "bulk-account", map[string]string{"key1": "value1"}),
-					actions.SaveAccountMetadataAction(ledgerName, "bulk-account-2", map[string]string{"key2": "value2"}),
+					actions.SaveAccountMetadataAction(ledgerName, "bulk:account", map[string]string{"key1": "value1"}),
+					actions.SaveAccountMetadataAction(ledgerName, "bulk:account:2", map[string]string{"key2": "value2"}),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -155,8 +155,8 @@ var _ = Describe("Ledger", Ordered, func() {
 		It("Should delete account metadata via bulk endpoint", func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					actions.SaveAccountMetadataAction(ledgerName, "bulk-account", map[string]string{"to_delete": "value"}),
-					actions.DeleteAccountMetadataAction(ledgerName, "bulk-account", "to_delete"),
+					actions.SaveAccountMetadataAction(ledgerName, "bulk:account", map[string]string{"to_delete": "value"}),
+					actions.DeleteAccountMetadataAction(ledgerName, "bulk:account", "to_delete"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -222,7 +222,7 @@ var _ = Describe("Ledger", Ordered, func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "transaction-metadata-account", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "transaction:metadata:account", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -252,7 +252,7 @@ var _ = Describe("Ledger", Ordered, func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "transaction-metadata-account", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "transaction:metadata:account", big.NewInt(100), "USD"),
 					}, map[string]string{"to_delete": "value"}, nil),
 				},
 			})
@@ -288,7 +288,7 @@ var _ = Describe("Ledger", Ordered, func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "transaction-bulk-account", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "transaction:bulk:account", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -317,7 +317,7 @@ var _ = Describe("Ledger", Ordered, func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "transaction-bulk-account", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "transaction:bulk:account", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})

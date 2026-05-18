@@ -29,7 +29,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "limited-account", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "limited:account", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -38,7 +38,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			// Verify the account has 100 USD
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "limited-account",
+				Address: "limited:account",
 			})
 			Expect(err).To(Succeed())
 			Expect(account.Volumes["USD"].Balance).To(Equal("100"))
@@ -47,7 +47,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("limited-account", "destination", big.NewInt(500), "USD"),
+						actions.NewPosting("limited:account", "destination", big.NewInt(500), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -58,7 +58,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("limited-account", "destination", big.NewInt(500), "USD"),
+						actions.NewPosting("limited:account", "destination", big.NewInt(500), "USD"),
 					}, nil),
 				},
 			})
@@ -80,7 +80,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("empty-account", "zero-dest", big.NewInt(100), "USD"),
+						actions.NewPosting("empty:account", "zero:dest", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -90,7 +90,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("empty-account", "zero-dest", big.NewInt(100), "USD"),
+						actions.NewPosting("empty:account", "zero:dest", big.NewInt(100), "USD"),
 					}, nil),
 				},
 			})
@@ -101,7 +101,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			// The source account should have negative balance
 			sourceAccount, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "empty-account",
+				Address: "empty:account",
 			})
 			Expect(err).To(Succeed())
 			Expect(sourceAccount.Volumes["USD"].Balance).To(Equal("-100"))
@@ -109,7 +109,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			// The destination account should have positive balance
 			destAccount, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "zero-dest",
+				Address: "zero:dest",
 			})
 			Expect(err).To(Succeed())
 			Expect(destAccount.Volumes["USD"].Balance).To(Equal("100"))
@@ -120,9 +120,9 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("source-a", "dest-1", big.NewInt(100), "USD"),
-						actions.NewPosting("source-b", "dest-2", big.NewInt(200), "EUR"),
-						actions.NewPosting("source-c", "dest-3", big.NewInt(300), "GBP"),
+						actions.NewPosting("source:a", "dest:1", big.NewInt(100), "USD"),
+						actions.NewPosting("source:b", "dest:2", big.NewInt(200), "EUR"),
+						actions.NewPosting("source:c", "dest:3", big.NewInt(300), "GBP"),
 					}, nil),
 				},
 			})
@@ -136,9 +136,9 @@ var _ = Describe("Force Transactions", Ordered, func() {
 				asset   string
 				balance string
 			}{
-				{"source-a", "USD", "-100"},
-				{"source-b", "EUR", "-200"},
-				{"source-c", "GBP", "-300"},
+				{"source:a", "USD", "-100"},
+				{"source:b", "EUR", "-200"},
+				{"source:c", "GBP", "-300"},
 			} {
 				account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 					Ledger:  ledgerName,
@@ -158,7 +158,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("meta-source", "meta-dest", big.NewInt(100), "USD"),
+						actions.NewPosting("meta:source", "meta:dest", big.NewInt(100), "USD"),
 					}, metadata),
 				},
 			})
@@ -179,7 +179,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "funded-account", big.NewInt(1000), "USD"),
+						actions.NewPosting("world", "funded:account", big.NewInt(1000), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -190,11 +190,11 @@ var _ = Describe("Force Transactions", Ordered, func() {
 				Requests: []*servicepb.Request{
 					// Normal transaction - should succeed because account has funds
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("funded-account", "recipient-1", big.NewInt(500), "USD"),
+						actions.NewPosting("funded:account", "recipient:1", big.NewInt(500), "USD"),
 					}, nil, nil),
 					// Force transaction - should succeed despite no funds
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("unfunded-account", "recipient-2", big.NewInt(500), "USD"),
+						actions.NewPosting("unfunded:account", "recipient:2", big.NewInt(500), "USD"),
 					}, nil),
 				},
 			})
@@ -321,7 +321,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("empty-source", "target", big.NewInt(500), "USD"),
+						actions.NewPosting("empty:source", "target", big.NewInt(500), "USD"),
 					}, nil),
 				},
 			})
@@ -330,7 +330,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			// Check source account has negative balance
 			source, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "empty-source",
+				Address: "empty:source",
 			})
 			Expect(err).To(Succeed())
 			Expect(source.Volumes["USD"].Input).To(Equal("0"))
@@ -354,7 +354,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 				_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
 						actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("debt-source", "receiver", big.NewInt(100), "USD"),
+							actions.NewPosting("debt:source", "receiver", big.NewInt(100), "USD"),
 						}, nil),
 					},
 				})
@@ -364,7 +364,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			// Check accumulated debt
 			source, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "debt-source",
+				Address: "debt:source",
 			})
 			Expect(err).To(Succeed())
 			Expect(source.Volumes["USD"].Output).To(Equal("300"))
@@ -376,7 +376,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("recovery-account", "some-dest", big.NewInt(500), "USD"),
+						actions.NewPosting("recovery:account", "some:dest", big.NewInt(500), "USD"),
 					}, nil),
 				},
 			})
@@ -385,7 +385,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			// Check negative balance
 			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "recovery-account",
+				Address: "recovery:account",
 			})
 			Expect(err).To(Succeed())
 			Expect(account.Volumes["USD"].Balance).To(Equal("-500"))
@@ -394,7 +394,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						actions.NewPosting("world", "recovery-account", big.NewInt(1000), "USD"),
+						actions.NewPosting("world", "recovery:account", big.NewInt(1000), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -403,7 +403,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			// Check balance is now positive (1000 - 500 = 500)
 			account, err = sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
-				Address: "recovery-account",
+				Address: "recovery:account",
 			})
 			Expect(err).To(Succeed())
 			Expect(account.Volumes["USD"].Input).To(Equal("1000"))

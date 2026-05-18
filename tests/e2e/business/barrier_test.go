@@ -32,7 +32,7 @@ var _ = Describe("Barrier", Ordered, func() {
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					actions.NewPosting("world", "barrier-test-account", big.NewInt(500), "USD"),
+					actions.NewPosting("world", "barrier:test:account", big.NewInt(500), "USD"),
 				}, nil, nil),
 			},
 		})
@@ -45,7 +45,7 @@ var _ = Describe("Barrier", Ordered, func() {
 		// The account should be visible with correct balance
 		account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 			Ledger:  ledgerName,
-			Address: "barrier-test-account",
+			Address: "barrier:test:account",
 		})
 		Expect(err).To(Succeed())
 		Expect(account).NotTo(BeNil())

@@ -86,7 +86,7 @@ var _ = Describe("Remove node", func() {
 				_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", fmt.Sprintf("user-%d", i), big.NewInt(100), "USD"),
+							actions.NewPosting("world", fmt.Sprintf("user:%d", i), big.NewInt(100), "USD"),
 						}, nil, nil),
 					},
 				})
@@ -205,7 +205,7 @@ var _ = Describe("Remove node", func() {
 				_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", fmt.Sprintf("user-%d", i), big.NewInt(100), "USD"),
+							actions.NewPosting("world", fmt.Sprintf("user:%d", i), big.NewInt(100), "USD"),
 						}, nil, nil),
 					},
 				})

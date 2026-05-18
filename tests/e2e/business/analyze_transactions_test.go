@@ -139,7 +139,7 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 			}, nil, nil))
 
 			for i := range 12 {
-				userID := fmt.Sprintf("%08d-%04d-%04d-%04d-%012d", i+1, 0, 0, 0, i+1)
+				userID := fmt.Sprintf("%08d%04d%04d%04d%012d", i+1, 0, 0, 0, i+1)
 				requests = append(requests, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("bank:main", fmt.Sprintf("users:%s:main", userID), big.NewInt(100), "USD"),
 				}, nil, nil))

@@ -287,7 +287,7 @@ var _ = Describe("Maintenance Mode", func() {
 
 		It("should reject signed write requests in maintenance mode", func() {
 			req := actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-				actions.NewPosting("world", "signed-user", big.NewInt(100), "USD"),
+				actions.NewPosting("world", "signed:user", big.NewInt(100), "USD"),
 			}, nil)
 			_, err := actions.SignRequest(req, keyID, privKey)
 			Expect(err).To(Succeed())
@@ -315,7 +315,7 @@ var _ = Describe("Maintenance Mode", func() {
 
 		It("should allow signed write requests after maintenance mode is disabled", func() {
 			req := actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-				actions.NewPosting("world", "signed-user", big.NewInt(200), "USD"),
+				actions.NewPosting("world", "signed:user", big.NewInt(200), "USD"),
 			}, nil)
 			_, err := actions.SignRequest(req, keyID, privKey)
 			Expect(err).To(Succeed())
