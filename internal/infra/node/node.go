@@ -1250,6 +1250,20 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 				continue
 			}
 
+			// Diagnostic: log messages stepped while a Ready is being processed,
+			// as they can mutate rawNode state before Advance is called.
+			if node.readyTerminated != nil && (msg.Type == raftpb.MsgApp || msg.Type == raftpb.MsgSnap) {
+				node.logger.WithFields(map[string]any{
+					"type":       msg.Type.String(),
+					"from":       msg.From,
+					"term":       msg.Term,
+					"logTerm":    msg.LogTerm,
+					"index":      msg.Index,
+					"commit":     msg.Commit,
+					"entryCount": len(msg.Entries),
+				}).Infof("Stepping MsgApp/MsgSnap while Ready in flight")
+			}
+
 			err := node.rawNode.Step(msg)
 			if err != nil {
 				if errors.Is(err, raft.ErrStepPeerNotFound) {
@@ -1325,6 +1339,22 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 				case result := <-node.readyTerminated:
 					if err := node.finishReady(result, stop); err != nil {
 						return err
+					}
+
+					// Diagnostic: log the applied cursor that Advance will
+					// pass to raftLog.appliedTo, so we can trace regressions.
+					if len(result.rd.CommittedEntries) > 0 {
+						cursor := result.rd.CommittedEntries[len(result.rd.CommittedEntries)-1].Index
+						status := node.rawNode.Status()
+						node.logger.WithFields(map[string]any{
+							"appliedCursor":     cursor,
+							"raftApplied":       status.Applied,
+							"raftCommitted":     status.Commit,
+							"committedCount":    len(result.rd.CommittedEntries),
+							"firstCommitted":    result.rd.CommittedEntries[0].Index,
+							"hasSnapshot":       !raft.IsEmptySnap(result.rd.Snapshot),
+							"snapshotIndex":     result.rd.Snapshot.Metadata.Index,
+						}).Infof("Pre-Advance diagnostic")
 					}
 
 					node.rawNode.Advance(result.rd)
