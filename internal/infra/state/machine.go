@@ -653,6 +653,25 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 				return nil, fmt.Errorf("post-commit volume assertion failed: %w", err)
 			}
 		}
+
+		// Post-commit aggregated balance check: verify input == output per asset
+		// for every ledger touched by this batch. This runs after batch.Commit()
+		// so it reads the actual committed state, avoiding false positives from
+		// stale pre-commit reads that depend on batch boundaries.
+		allLedgerNames := collectLedgerNamesFromResults(ret.Results)
+		if len(allLedgerNames) > 0 {
+			if fsm.logger.Enabled(logging.DebugLevel) {
+				fsm.logger.Debugf("Verifying aggregated volume balance for %d ledgers at raft index %d", len(allLedgerNames), fsm.lastAppliedIndex)
+			}
+
+			if err := verifyAggregatedVolumesBalanced(
+				fsm.dataStore, fsm.Registry.Attrs.Volume, allLedgerNames, fsm.lastAppliedIndex, fsm.logger,
+			); err != nil {
+				fsm.logger.Errorf("AGGREGATED VOLUME BALANCE CHECK FAILED: %v", err)
+
+				return nil, fmt.Errorf("aggregated volume balance check failed: %w", err)
+			}
+		}
 	}
 
 	previousPersisted := fsm.lastPersistedIndex.Load()
@@ -1180,23 +1199,13 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		if err := verifyVolumeDeltasMatchPostings(buffer.AllVolumeUpdates(), createdLogs); err != nil {
 			return nil, fmt.Errorf("volume delta/posting cross-check failed at raft index %d: %w", raftIndex, err)
 		}
-
-		// Global check: aggregated volumes must be balanced (input == output per asset).
-		ledgerNames := collectLedgerNames(proposal.GetOrders())
-		if len(ledgerNames) > 0 {
-			if fsm.logger.Enabled(logging.DebugLevel) {
-				fsm.logger.Debugf("Verifying aggregated volume balance for %d ledgers at raft index %d", len(ledgerNames), raftIndex)
-			}
-
-			if err := verifyAggregatedVolumesBalanced(
-				fsm.dataStore, fsm.Registry.Attrs.Volume, ledgerNames, raftIndex,
-			); err != nil {
-				fsm.logger.Errorf("AGGREGATED VOLUME BALANCE CHECK FAILED: %v", err)
-
-				return nil, fmt.Errorf("aggregated volume balance check failed: %w", err)
-			}
-		}
 	}
+
+	// Collect ledger names for post-commit aggregated balance verification.
+	// The check must run after batch.Commit() — reading from fsm.dataStore
+	// before commit sees stale committed state that excludes the current batch,
+	// which produces false positives when batch boundaries differ across nodes.
+	ledgerNames := collectLedgerNames(proposal.GetOrders())
 
 	// SUCCESS: write audit entry with batch-level side effects.
 	minLogSeq, maxLogSeq := extractLogSequenceRange(logs)
@@ -1268,6 +1277,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		volumeUpdates:           buffer.KeptVolumeUpdates(),
 		purgedVolumeKeys:        buffer.PurgedVolumeKeys(),
 		createdLogs:             createdLogs,
+		ledgerNames:             ledgerNames,
 	}, nil
 }
 
@@ -1643,6 +1653,7 @@ type ApplyResult struct {
 	volumeUpdates    []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
 	purgedVolumeKeys []domain.VolumeKey // keys removed by ephemeral purge
 	createdLogs      []*commonpb.Log
+	ledgerNames      []string // ledger names touched by this proposal (for post-commit balance check)
 }
 
 type ApplyEntriesResult struct {

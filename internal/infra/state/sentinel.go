@@ -6,6 +6,8 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -341,6 +343,27 @@ func collectLedgerNames(orders []*raftcmdpb.Order) []string {
 	return names
 }
 
+// collectLedgerNamesFromResults extracts unique ledger names from all
+// ApplyResults in the batch. Used for post-commit aggregated balance checks.
+func collectLedgerNamesFromResults(results []ApplyResult) []string {
+	seen := make(map[string]struct{})
+
+	for _, r := range results {
+		for _, name := range r.ledgerNames {
+			if name != "" {
+				seen[name] = struct{}{}
+			}
+		}
+	}
+
+	names := make([]string, 0, len(seen))
+	for name := range seen {
+		names = append(names, name)
+	}
+
+	return names
+}
+
 // verifyAggregatedVolumesBalanced checks that for every ledger touched by the
 // current proposal, the global aggregated volumes satisfy input == output per
 // asset (double-entry invariant). This is a heavy but thorough check that
@@ -350,6 +373,7 @@ func verifyAggregatedVolumesBalanced(
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
 	ledgerNames []string,
 	raftIndex uint64,
+	logger logging.Logger,
 ) error {
 	for _, ledger := range ledgerNames {
 		result, err := query.AggregateAllVolumes(store, volumeAttr, ledger, query.AggregateOptions{})
@@ -362,6 +386,10 @@ func verifyAggregatedVolumesBalanced(
 			outputVal := vol.GetOutput().ToBigInt()
 
 			if inputVal.Cmp(outputVal) != 0 {
+				// Dump per-account volumes for the imbalanced asset to help
+				// identify which account(s) are responsible.
+				dumpPerAccountVolumes(store, volumeAttr, ledger, vol.GetAsset(), raftIndex, logger)
+
 				assert.Unreachable("aggregated volume imbalance", map[string]any{
 					"ledger":    ledger,
 					"asset":     vol.GetAsset(),
@@ -379,4 +407,72 @@ func verifyAggregatedVolumesBalanced(
 	}
 
 	return nil
+}
+
+// dumpPerAccountVolumes logs every individual account volume for the given
+// ledger and asset. Called when an aggregated imbalance is detected.
+func dumpPerAccountVolumes(
+	store *dal.Store,
+	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
+	ledger string,
+	asset string,
+	raftIndex uint64,
+	logger logging.Logger,
+) {
+	ledgerPrefix := make([]byte, len(ledger)+1)
+	copy(ledgerPrefix, ledger)
+	ledgerPrefix[len(ledger)] = 0x00
+
+	iter, err := volumeAttr.NewStreamingIter(store, ledgerPrefix)
+	if err != nil {
+		logger.Errorf("dumpPerAccountVolumes: failed to create iterator: %v", err)
+
+		return
+	}
+
+	var count int
+
+	for iter.Next() {
+		entry := iter.Entry()
+
+		var vk domain.VolumeKey
+		if err := vk.Unmarshal(entry.CanonicalKey); err != nil {
+			logger.Errorf("dumpPerAccountVolumes: unmarshal error: %v", err)
+
+			continue
+		}
+
+		if vk.Asset != asset {
+			continue
+		}
+
+		inputVal := entry.Value.GetInput().ToBigInt()
+		outputVal := entry.Value.GetOutput().ToBigInt()
+
+		logger.WithFields(map[string]any{
+			"ledger":    ledger,
+			"account":   vk.Account,
+			"asset":     vk.Asset,
+			"input":     inputVal.String(),
+			"output":    outputVal.String(),
+			"raftIndex": raftIndex,
+		}).Errorf("VOLUME DUMP: per-account volume at imbalance")
+
+		count++
+	}
+
+	if err := iter.Close(); err != nil {
+		logger.Errorf("dumpPerAccountVolumes: close error: %v", err)
+	}
+
+	if err := iter.Err(); err != nil {
+		logger.Errorf("dumpPerAccountVolumes: iteration error: %v", err)
+	}
+
+	logger.WithFields(map[string]any{
+		"ledger":    ledger,
+		"asset":     asset,
+		"raftIndex": raftIndex,
+		"count":     count,
+	}).Errorf("VOLUME DUMP: total accounts dumped for imbalanced asset")
 }
