@@ -1080,10 +1080,6 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		node.applier.SyncSnapshot(node.lastSoftState.Load().Lead, stop)
 	}
 
-	// Send messages via transport
-	if node.logger.Enabled(logging.DebugLevel) {
-		node.logger.Debugf("Sending messages via transport")
-	}
 	node.transport.Send(rd.Messages)
 
 	// Extract conf changes from committed entries. The actual rawNode.ApplyConfChange
