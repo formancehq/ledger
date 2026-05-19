@@ -77,10 +77,14 @@ SELECT * FROM dataset ORDER BY id DESC`,
 	t.Log("\n=== Current query plan (row_number window function) ===")
 	currentPlan := explainAnalyze(t, ctx, store, currentSQL)
 	t.Log(currentPlan)
+	require.Contains(t, currentPlan, "WindowAgg",
+		"expected the row_number() query to use a WindowAgg node")
 
 	t.Log("\n=== Proposed query plan (plain ORDER BY) ===")
 	proposedPlan := explainAnalyze(t, ctx, store, proposedSQL)
 	t.Log(proposedPlan)
+	require.NotContains(t, proposedPlan, "WindowAgg",
+		"expected the plain ORDER BY query to avoid a WindowAgg node")
 
 	currentTime := extractPlanningExecutionTime(currentPlan)
 	proposedTime := extractPlanningExecutionTime(proposedPlan)
