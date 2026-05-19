@@ -342,7 +342,7 @@ func (r *PaginatedResourceRepository[ResourceType, OptionsType]) Paginate(
 	if err != nil {
 		return nil, fmt.Errorf("expanding results: %w", err)
 	}
-	finalQuery = finalQuery.Order("row_number")
+	finalQuery = finalQuery.Order(paginator.OrderExpression())
 
 	ret := make([]ResourceType, 0)
 	err = finalQuery.Model(&ret).Scan(ctx)

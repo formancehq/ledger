@@ -9,4 +9,5 @@ import (
 type Paginator[ResourceType any] interface {
 	Paginate(selectQuery *bun.SelectQuery) (*bun.SelectQuery, error)
 	BuildCursor(ret []ResourceType) (*bunpaginate.Cursor[ResourceType], error)
+	OrderExpression() string
 }
