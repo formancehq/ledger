@@ -2,7 +2,7 @@ package attributes
 
 type Key interface {
 	comparable
-	Bytes() []byte
+	AppendBytes(dst []byte) []byte
 }
 
 type IDWithTag struct {

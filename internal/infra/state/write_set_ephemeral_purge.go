@@ -54,8 +54,8 @@ func (b *WriteSet) partitionVolumes(
 	for _, update := range updates {
 		compiled, ok := ledgerTypes[update.Key.Ledger]
 		if !ok {
-			info, _, err := b.fsm.Registry.Ledgers.Get(
-				domain.LedgerKey{Name: update.Key.Ledger}.Bytes(),
+			info, _, err := b.fsm.Registry.Ledgers.GetKey(
+				domain.LedgerKey{Name: update.Key.Ledger},
 			)
 			if err != nil || info == nil {
 				result.kept = append(result.kept, update)

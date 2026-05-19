@@ -79,8 +79,9 @@ func (kh *KeyHasher) MakeKey(canonical []byte) (U128, uint64) {
 // Store is a thin wrapper around map[U128]Entry[T] that enforces
 // the (u128, tag64) collision check on Get/Put.
 type KeyStore[K Key, T any] struct {
-	hasher *KeyHasher
-	M      kv.KV[U128, Entry[T]]
+	hasher  *KeyHasher
+	M       kv.KV[U128, Entry[T]]
+	scratch []byte // reusable buffer for GetKey — single-goroutine use only
 }
 
 func NewKeyStore[K Key, T any](seeds Seeds, m kv.KV[U128, Entry[T]]) *KeyStore[K, T] {
@@ -88,6 +89,15 @@ func NewKeyStore[K Key, T any](seeds Seeds, m kv.KV[U128, Entry[T]]) *KeyStore[K
 		hasher: NewKeyHasher(seeds),
 		M:      m,
 	}
+}
+
+// GetKey retrieves a value by typed key, reusing an internal scratch buffer
+// to avoid allocating canonical bytes on every call.
+// Not safe for concurrent use.
+func (s *KeyStore[K, T]) GetKey(key K) (value T, id U128, err error) {
+	s.scratch = key.AppendBytes(s.scratch[:0])
+
+	return s.Get(s.scratch)
 }
 
 // Put inserts or overwrites the entry for canonical key.
@@ -169,6 +179,7 @@ type DerivedKeyStore[K Key, T any] struct {
 	values    map[K]T
 	deletions map[K]struct{}
 	cloneFn   func(T) T
+	scratch   []byte // reusable buffer for Get — single-goroutine use only
 }
 
 func (s *DerivedKeyStore[K, T]) Put(canonical K, value T) {
@@ -189,8 +200,10 @@ func (s *DerivedKeyStore[K, T]) Get(canonical K) (value T, err error) {
 		return localV, nil
 	}
 
-	// Then check underlying store
-	v, _, err := s.KeyStore.Get(canonical.Bytes())
+	// Then check underlying store (reuse scratch buffer to avoid allocation)
+	s.scratch = canonical.AppendBytes(s.scratch[:0])
+
+	v, _, err := s.KeyStore.Get(s.scratch)
 	if err != nil {
 		return v, err
 	}
@@ -211,7 +224,7 @@ func (s *DerivedKeyStore[K, T]) Delete(canonical K) {
 func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], []Deletion[K], error) {
 	touched := make([]Update[K, T], 0, len(s.values))
 	for k, v := range s.values {
-		canonical := k.Bytes()
+		canonical := k.AppendBytes(nil)
 
 		overwrite, idWithTag, err := s.KeyStore.Put(canonical, v)
 		if err != nil {
@@ -230,7 +243,7 @@ func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], []Deletion[K], error) {
 
 	deletions := make([]Deletion[K], 0, len(s.deletions))
 	for k := range s.deletions {
-		canonical := k.Bytes()
+		canonical := k.AppendBytes(nil)
 
 		id, err := s.KeyStore.Delete(canonical)
 		if err != nil && !errors.Is(err, domain.ErrNotFound) {

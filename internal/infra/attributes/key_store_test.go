@@ -14,7 +14,7 @@ type testKey struct {
 	name string
 }
 
-func (k testKey) Bytes() []byte { return []byte(k.name) }
+func (k testKey) AppendBytes(dst []byte) []byte { return append(dst, k.name...) }
 
 // newTestKV creates a simple KV store for tests using ShardedMap with a hash function for U128.
 func newTestKV[V any]() kv.KV[U128, V] {

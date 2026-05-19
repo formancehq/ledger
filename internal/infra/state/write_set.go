@@ -626,7 +626,7 @@ func (b *WriteSet) ValidateTransientVolumes() error {
 
 		// Check if the parent KeyStore has a pre-existing non-zero volume.
 		// If so, the account had volumes before being marked transient — skip validation.
-		baseVol, _, baseErr := b.fsm.Registry.Volumes.Get(key.Bytes())
+		baseVol, _, baseErr := b.fsm.Registry.Volumes.GetKey(key)
 		if baseErr == nil && !isVolumeZeroBalance(baseVol) {
 			continue
 		}

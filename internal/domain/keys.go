@@ -35,11 +35,9 @@ type VolumeKey struct {
 	AssetPrecision uint8
 }
 
-// Bytes returns a canonical byte representation of the balance key.
-// Format: [ledger]\x00[account]\x00[asset_base][precision_byte]
-// The last byte is always the precision. Asset bases are uppercase ASCII
-// (≥0x41), so there is no ambiguity with precision values (0x00–0xFF).
-func (bk VolumeKey) Bytes() []byte {
+// AppendBytes appends the canonical byte representation to dst and returns the
+// extended slice. Format: [ledger]\x00[account]\x00[asset_base][precision_byte]
+func (bk VolumeKey) AppendBytes(dst []byte) []byte {
 	base := bk.AssetBase
 	precision := bk.AssetPrecision
 
@@ -48,18 +46,19 @@ func (bk VolumeKey) Bytes() []byte {
 		base, precision = ParseAssetPrecision(bk.Asset)
 	}
 
-	// [ledger]\x00[account][sep][base][precision]
-	ret := make([]byte, len(bk.Ledger)+1+len(bk.Account)+1+len(base)+1)
-	n := copy(ret, bk.Ledger)
-	ret[n] = 0x00
-	n++
-	n += copy(ret[n:], bk.Account)
-	ret[n] = dal.CanonicalKeySepVolume
-	n++
-	n += copy(ret[n:], base)
-	ret[n] = precision
+	dst = append(dst, bk.Ledger...)
+	dst = append(dst, 0x00)
+	dst = append(dst, bk.Account...)
+	dst = append(dst, dal.CanonicalKeySepVolume)
+	dst = append(dst, base...)
+	dst = append(dst, precision)
 
-	return ret
+	return dst
+}
+
+// Bytes returns a canonical byte representation of the balance key.
+func (bk VolumeKey) Bytes() []byte {
+	return bk.AppendBytes(nil)
 }
 
 // Unmarshal parses canonical bytes into the VolumeKey.
@@ -103,19 +102,21 @@ type MetadataKey struct {
 	Key string
 }
 
-// Bytes returns a canonical byte representation of the metadata key.
+// AppendBytes appends the canonical byte representation to dst.
 // Format: [ledger]\x00[account]\x01[key].
-func (mk MetadataKey) Bytes() []byte {
-	ret := make([]byte, len(mk.Ledger)+1+len(mk.Account)+1+len(mk.Key))
-	n := copy(ret, mk.Ledger)
-	ret[n] = 0x00
-	n++
-	n += copy(ret[n:], mk.Account)
-	ret[n] = dal.CanonicalKeySepMetadata
-	n++
-	copy(ret[n:], mk.Key)
+func (mk MetadataKey) AppendBytes(dst []byte) []byte {
+	dst = append(dst, mk.Ledger...)
+	dst = append(dst, 0x00)
+	dst = append(dst, mk.Account...)
+	dst = append(dst, dal.CanonicalKeySepMetadata)
+	dst = append(dst, mk.Key...)
 
-	return ret
+	return dst
+}
+
+// Bytes returns a canonical byte representation of the metadata key.
+func (mk MetadataKey) Bytes() []byte {
+	return mk.AppendBytes(nil)
 }
 
 // Unmarshal parses canonical bytes into the MetadataKey.
@@ -149,19 +150,22 @@ type TransactionKey struct {
 	ID     uint64
 }
 
-// Bytes returns a canonical byte representation of the transaction key.
+// AppendBytes appends the canonical byte representation to dst.
 // Format: [ledger]\x00\x02[txID (8 bytes)].
-// \x02 = CanonicalKeySepTransaction.
-func (tk TransactionKey) Bytes() []byte {
-	ret := make([]byte, len(tk.Ledger)+1+1+8)
-	n := copy(ret, tk.Ledger)
-	ret[n] = 0x00
-	n++
-	ret[n] = dal.CanonicalKeySepTransaction
-	n++
-	binary.BigEndian.PutUint64(ret[n:], tk.ID)
+func (tk TransactionKey) AppendBytes(dst []byte) []byte {
+	dst = append(dst, tk.Ledger...)
+	dst = append(dst, 0x00, dal.CanonicalKeySepTransaction)
 
-	return ret
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], tk.ID)
+	dst = append(dst, buf[:]...)
+
+	return dst
+}
+
+// Bytes returns a canonical byte representation of the transaction key.
+func (tk TransactionKey) Bytes() []byte {
+	return tk.AppendBytes(nil)
 }
 
 // Unmarshal parses canonical bytes into the TransactionKey.
@@ -193,9 +197,14 @@ type IdempotencyKey struct {
 	Key string
 }
 
+// AppendBytes appends the canonical byte representation to dst.
+func (ik IdempotencyKey) AppendBytes(dst []byte) []byte {
+	return append(dst, ik.Key...)
+}
+
 // Bytes returns a canonical byte representation of the idempotency key.
 func (ik IdempotencyKey) Bytes() []byte {
-	return []byte(ik.Key)
+	return ik.AppendBytes(nil)
 }
 
 // Unmarshal parses canonical bytes into the IdempotencyKey.
@@ -213,16 +222,19 @@ type TransactionReferenceKey struct {
 	Reference string
 }
 
-// Bytes returns a canonical byte representation of the transaction reference key.
+// AppendBytes appends the canonical byte representation to dst.
 // Format: [ledger]\x00[reference].
-func (trk TransactionReferenceKey) Bytes() []byte {
-	ret := make([]byte, len(trk.Ledger)+1+len(trk.Reference))
-	n := copy(ret, trk.Ledger)
-	ret[n] = 0x00
-	n++
-	copy(ret[n:], trk.Reference)
+func (trk TransactionReferenceKey) AppendBytes(dst []byte) []byte {
+	dst = append(dst, trk.Ledger...)
+	dst = append(dst, 0x00)
+	dst = append(dst, trk.Reference...)
 
-	return ret
+	return dst
+}
+
+// Bytes returns a canonical byte representation of the transaction reference key.
+func (trk TransactionReferenceKey) Bytes() []byte {
+	return trk.AppendBytes(nil)
 }
 
 // Unmarshal parses canonical bytes into the TransactionReferenceKey.
@@ -244,9 +256,14 @@ type LedgerKey struct {
 	Name string
 }
 
+// AppendBytes appends the canonical byte representation to dst.
+func (lk LedgerKey) AppendBytes(dst []byte) []byte {
+	return append(dst, lk.Name...)
+}
+
 // Bytes returns a canonical byte representation of the ledger key.
 func (lk LedgerKey) Bytes() []byte {
-	return []byte(lk.Name)
+	return lk.AppendBytes(nil)
 }
 
 // Unmarshal parses canonical bytes into the LedgerKey.
@@ -264,16 +281,19 @@ type LedgerMetadataKey struct {
 	Key    string
 }
 
-// Bytes returns a canonical byte representation of the ledger metadata key.
+// AppendBytes appends the canonical byte representation to dst.
 // Format: [ledger]\x01[key].
-func (lmk LedgerMetadataKey) Bytes() []byte {
-	ret := make([]byte, len(lmk.Ledger)+1+len(lmk.Key))
-	n := copy(ret, lmk.Ledger)
-	ret[n] = 0x01
-	n++
-	copy(ret[n:], lmk.Key)
+func (lmk LedgerMetadataKey) AppendBytes(dst []byte) []byte {
+	dst = append(dst, lmk.Ledger...)
+	dst = append(dst, 0x01)
+	dst = append(dst, lmk.Key...)
 
-	return ret
+	return dst
+}
+
+// Bytes returns a canonical byte representation of the ledger metadata key.
+func (lmk LedgerMetadataKey) Bytes() []byte {
+	return lmk.AppendBytes(nil)
 }
 
 // Unmarshal parses canonical bytes into the LedgerMetadataKey.
@@ -305,8 +325,12 @@ type SinkConfigKey struct {
 	Name string
 }
 
+func (k SinkConfigKey) AppendBytes(dst []byte) []byte {
+	return append(dst, k.Name...)
+}
+
 func (k SinkConfigKey) Bytes() []byte {
-	return []byte(k.Name)
+	return k.AppendBytes(nil)
 }
 
 // PreparedQueryKey uniquely identifies a prepared query by ledger and name.
@@ -315,14 +339,16 @@ type PreparedQueryKey struct {
 	Name   string
 }
 
-func (k PreparedQueryKey) Bytes() []byte {
-	ret := make([]byte, len(k.Ledger)+1+len(k.Name))
-	n := copy(ret, k.Ledger)
-	ret[n] = 0x00
-	n++
-	copy(ret[n:], k.Name)
+func (k PreparedQueryKey) AppendBytes(dst []byte) []byte {
+	dst = append(dst, k.Ledger...)
+	dst = append(dst, 0x00)
+	dst = append(dst, k.Name...)
 
-	return ret
+	return dst
+}
+
+func (k PreparedQueryKey) Bytes() []byte {
+	return k.AppendBytes(nil)
 }
 
 // NumscriptVersionKey uniquely identifies a numscript by ledger and name for version tracking.
@@ -331,14 +357,16 @@ type NumscriptVersionKey struct {
 	Name   string
 }
 
-func (k NumscriptVersionKey) Bytes() []byte {
-	ret := make([]byte, len(k.Ledger)+1+len(k.Name))
-	n := copy(ret, k.Ledger)
-	ret[n] = 0x00
-	n++
-	copy(ret[n:], k.Name)
+func (k NumscriptVersionKey) AppendBytes(dst []byte) []byte {
+	dst = append(dst, k.Ledger...)
+	dst = append(dst, 0x00)
+	dst = append(dst, k.Name...)
 
-	return ret
+	return dst
+}
+
+func (k NumscriptVersionKey) Bytes() []byte {
+	return k.AppendBytes(nil)
 }
 
 // NumscriptEntryKey uniquely identifies a specific numscript version entry scoped to a ledger.
@@ -348,17 +376,18 @@ type NumscriptEntryKey struct {
 	Version string
 }
 
-func (k NumscriptEntryKey) Bytes() []byte {
-	ret := make([]byte, len(k.Ledger)+1+len(k.Name)+1+len(k.Version))
-	n := copy(ret, k.Ledger)
-	ret[n] = 0x00
-	n++
-	n += copy(ret[n:], k.Name)
-	ret[n] = 0x00
-	n++
-	copy(ret[n:], k.Version)
+func (k NumscriptEntryKey) AppendBytes(dst []byte) []byte {
+	dst = append(dst, k.Ledger...)
+	dst = append(dst, 0x00)
+	dst = append(dst, k.Name...)
+	dst = append(dst, 0x00)
+	dst = append(dst, k.Version...)
 
-	return ret
+	return dst
+}
+
+func (k NumscriptEntryKey) Bytes() []byte {
+	return k.AppendBytes(nil)
 }
 
 const (
