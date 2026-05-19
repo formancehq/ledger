@@ -198,14 +198,15 @@ func (b *WriteSet) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 		return err
 	}
 
-	// Defensive check: kept-only volume deltas must also be balanced.
-	// The all-volumes check above passes by construction (total deltas balanced),
-	// but if a kept volume's Old value is stale (e.g. read from uncommitted Pebble
-	// after a cache rotation), the kept-only deltas can diverge. This check
-	// catches the exact entry responsible for the imbalance.
+	// Defensive check: persisted volume deltas must be balanced.
+	// This includes kept volumes (written to Pebble) and ephemeral purged volumes
+	// (deleted from Pebble, but their deltas must still balance).
+	// Transient volumes are excluded: they are never written to Pebble and their
+	// individual zero-balance is verified separately by ValidateTransientVolumes.
 	if b.fsm.sentinelMode {
-		if err := checkDoubleEntryInvariant(partResult.kept); err != nil {
-			for _, u := range partResult.kept {
+		persistedUpdates := append(partResult.kept, partResult.purged...)
+		if err := checkDoubleEntryInvariant(persistedUpdates); err != nil {
+			for _, u := range persistedUpdates {
 				var oldIn, oldOut string
 				if u.Old.IsDefined() && u.Old.Value() != nil {
 					oldIn = u.Old.Value().GetInput().ToBigInt().String()
@@ -220,7 +221,7 @@ func (b *WriteSet) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 					"oldOutput": oldOut,
 					"newInput":  u.New.GetInput().ToBigInt().String(),
 					"newOutput": u.New.GetOutput().ToBigInt().String(),
-				}).Errorf("KEPT VOLUME UPDATE at kept-only invariant violation")
+				}).Errorf("PERSISTED VOLUME UPDATE at invariant violation")
 			}
 
 			for _, u := range partResult.transient {
@@ -230,10 +231,10 @@ func (b *WriteSet) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 					"asset":   u.Key.Asset,
 					"input":   u.New.GetInput().ToBigInt().String(),
 					"output":  u.New.GetOutput().ToBigInt().String(),
-				}).Errorf("TRANSIENT VOLUME at kept-only invariant violation")
+				}).Errorf("TRANSIENT VOLUME at invariant violation")
 			}
 
-			return fmt.Errorf("kept-only double-entry invariant violated (transient excluded): %w", err)
+			return fmt.Errorf("persisted double-entry invariant violated (transient excluded): %w", err)
 		}
 	}
 
