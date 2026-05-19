@@ -642,7 +642,7 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 	// place). We must deduplicate by canonical key, keeping only the latest
 	// update, before comparing with Pebble.
 	if fsm.sentinelMode {
-		finalUpdates := deduplicateVolumeUpdates(ret.Results)
+		finalUpdates := deduplicateVolumeUpdates(ret.Results, fsm.logger)
 		if len(finalUpdates) > 0 {
 			if err := verifyPostCommitVolumes(
 				fsm.dataStore, fsm.Registry.Attrs.Volume,
