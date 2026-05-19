@@ -23,9 +23,8 @@ import (
 //
 //	go test -v -tags it -run TestListTransactionsQueryPlan ./internal/storage/ledger/
 func TestListTransactionsQueryPlan(t *testing.T) {
-	// Not parallel: EXPLAIN ANALYZE measures real wall-clock time, and the
-	// ANALYZE call takes a table-level lock. Concurrent tests would add noise
-	// to the timing output and could cause lock contention.
+	// Not parallel: EXPLAIN ANALYZE timing numbers are wall-clock measurements.
+	// Concurrent test activity would add noise and make the comparison less readable.
 	store := newLedgerStore(t)
 	ctx := logging.TestingContext()
 
