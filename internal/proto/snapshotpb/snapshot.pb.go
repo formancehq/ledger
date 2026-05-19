@@ -24,9 +24,14 @@ const (
 type PrepareSnapshotRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Calling node identity (for logging/quotas).
-	NodeId        string `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	NodeId string `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	// Minimum applied index the checkpoint must include. The leader waits
+	// until its FSM has applied at least this index before creating the
+	// Pebble checkpoint. Prevents the follower from receiving a checkpoint
+	// older than the Raft snapshot it needs to catch up to.
+	MinAppliedIndex uint64 `protobuf:"varint,2,opt,name=minAppliedIndex,proto3" json:"minAppliedIndex,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *PrepareSnapshotRequest) Reset() {
@@ -64,6 +69,13 @@ func (x *PrepareSnapshotRequest) GetNodeId() string {
 		return x.NodeId
 	}
 	return ""
+}
+
+func (x *PrepareSnapshotRequest) GetMinAppliedIndex() uint64 {
+	if x != nil {
+		return x.MinAppliedIndex
+	}
+	return 0
 }
 
 type PrepareSnapshotResponse struct {
@@ -417,9 +429,10 @@ var File_snapshot_proto protoreflect.FileDescriptor
 
 const file_snapshot_proto_rawDesc = "" +
 	"\n" +
-	"\x0esnapshot.proto\x12\vsnapshot.v1\"1\n" +
+	"\x0esnapshot.proto\x12\vsnapshot.v1\"[\n" +
 	"\x16PrepareSnapshotRequest\x12\x17\n" +
-	"\anode_id\x18\x01 \x01(\tR\x06nodeId\"s\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12(\n" +
+	"\x0fminAppliedIndex\x18\x02 \x01(\x04R\x0fminAppliedIndex\"s\n" +
 	"\x17PrepareSnapshotResponse\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x129\n" +

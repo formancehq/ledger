@@ -18,6 +18,11 @@ service SnapshotService {
 message PrepareSnapshotRequest {
   // Calling node identity (for logging/quotas).
   string node_id = 1;
+  // Minimum applied index the checkpoint must include. The leader waits
+  // until its FSM has applied at least this index before creating the
+  // Pebble checkpoint. Prevents the follower from receiving a checkpoint
+  // older than the Raft snapshot it needs to catch up to.
+  uint64 minAppliedIndex = 2;
 }
 
 message PrepareSnapshotResponse {

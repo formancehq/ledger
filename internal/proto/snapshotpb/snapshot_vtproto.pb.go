@@ -25,6 +25,7 @@ func (m *PrepareSnapshotRequest) CloneVT() *PrepareSnapshotRequest {
 	}
 	r := new(PrepareSnapshotRequest)
 	r.NodeId = m.NodeId
+	r.MinAppliedIndex = m.MinAppliedIndex
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -176,6 +177,9 @@ func (this *PrepareSnapshotRequest) EqualVT(that *PrepareSnapshotRequest) bool {
 		return false
 	}
 	if this.NodeId != that.NodeId {
+		return false
+	}
+	if this.MinAppliedIndex != that.MinAppliedIndex {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -376,6 +380,11 @@ func (m *PrepareSnapshotRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.MinAppliedIndex != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MinAppliedIndex))
+		i--
+		dAtA[i] = 0x10
 	}
 	if len(m.NodeId) > 0 {
 		i -= len(m.NodeId)
@@ -714,6 +723,9 @@ func (m *PrepareSnapshotRequest) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	if m.MinAppliedIndex != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.MinAppliedIndex))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -893,6 +905,25 @@ func (m *PrepareSnapshotRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			m.NodeId = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MinAppliedIndex", wireType)
+			}
+			m.MinAppliedIndex = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.MinAppliedIndex |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

@@ -63,9 +63,9 @@ func isSessionExpired(err error) bool {
 	return false
 }
 
-func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir string, progress *state.SyncProgress) (uint64, error) {
+func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir string, progress *state.SyncProgress, minAppliedIndex uint64) (uint64, error) {
 	for attempt := range f.retryCount {
-		size, err := f.fetchWithSession(ctx, targetDir, progress)
+		size, err := f.fetchWithSession(ctx, targetDir, progress, minAppliedIndex)
 		if err == nil {
 			return size, nil
 		}
@@ -88,9 +88,11 @@ func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir strin
 	return 0, fmt.Errorf("snapshot fetch failed after %d attempts", f.retryCount)
 }
 
-func (f *grpcSnapshotFetcher) fetchWithSession(ctx context.Context, targetDir string, progress *state.SyncProgress) (uint64, error) {
+func (f *grpcSnapshotFetcher) fetchWithSession(ctx context.Context, targetDir string, progress *state.SyncProgress, minAppliedIndex uint64) (uint64, error) {
 	// 1. Prepare session (create checkpoint + get manifest).
-	resp, err := f.client.PrepareSnapshot(ctx, &snapshotpb.PrepareSnapshotRequest{})
+	resp, err := f.client.PrepareSnapshot(ctx, &snapshotpb.PrepareSnapshotRequest{
+		MinAppliedIndex: minAppliedIndex,
+	})
 	if err != nil {
 		return 0, fmt.Errorf("preparing snapshot: %w", err)
 	}

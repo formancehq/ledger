@@ -1325,7 +1325,7 @@ func (fsm *Machine) InstallSnapshot(_ context.Context, snapshot raftpb.Snapshot)
 }
 
 func (fsm *Machine) SynchronizeWithLeader(ctx context.Context, snapshotFetcher SnapshotFetcher, progress *SyncProgress) (uint64, error) {
-	if err := fsm.restoreCheckpoint(ctx, snapshotFetcher, progress); err != nil {
+	if err := fsm.restoreCheckpoint(ctx, snapshotFetcher, progress, fsm.snapshotIndex); err != nil {
 		return 0, fmt.Errorf("restoring checkpoint from leader: %w", err)
 	}
 
@@ -1355,7 +1355,7 @@ func (fsm *Machine) SynchronizeWithLeader(ctx context.Context, snapshotFetcher S
 // The fetch writes to a staging directory ("incoming") that cannot collide with
 // the numbered checkpoints created by the background goroutine. After the fetch,
 // ActivateIncomingRestore atomically reserves a checkpoint ID and renames.
-func (fsm *Machine) restoreCheckpoint(ctx context.Context, snapshotFetcher SnapshotFetcher, progress *SyncProgress) error {
+func (fsm *Machine) restoreCheckpoint(ctx context.Context, snapshotFetcher SnapshotFetcher, progress *SyncProgress, minAppliedIndex uint64) error {
 	fsm.logger.Infof("Fetching fresh checkpoint from leader")
 
 	// Prepare a staging directory outside the numbered checkpoint space.
@@ -1365,7 +1365,7 @@ func (fsm *Machine) restoreCheckpoint(ctx context.Context, snapshotFetcher Snaps
 	}
 
 	// Fetch a fresh checkpoint from the leader into the staging directory.
-	size, err := snapshotFetcher.FetchSnapshot(ctx, incomingDir, progress)
+	size, err := snapshotFetcher.FetchSnapshot(ctx, incomingDir, progress, minAppliedIndex)
 	if err != nil {
 		return fmt.Errorf("fetching snapshot from leader: %w", err)
 	}

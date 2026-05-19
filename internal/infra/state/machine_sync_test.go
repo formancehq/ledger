@@ -22,7 +22,7 @@ type copyDirFetcher struct {
 	srcDir string
 }
 
-func (f *copyDirFetcher) FetchSnapshot(_ context.Context, targetDir string, _ *SyncProgress) (uint64, error) {
+func (f *copyDirFetcher) FetchSnapshot(_ context.Context, targetDir string, _ *SyncProgress, _ uint64) (uint64, error) {
 	if err := os.CopyFS(targetDir, os.DirFS(f.srcDir)); err != nil {
 		return 0, err
 	}

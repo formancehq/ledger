@@ -136,7 +136,7 @@ func TestGRPCSnapshotFetcher_HappyPath(t *testing.T) {
 	client := buildMockClient(files)
 	fetcher := &grpcSnapshotFetcher{client: client, parallelism: 2, retryCount: 5, fileRetryCount: 3}
 
-	size, err := fetcher.FetchSnapshot(t.Context(), dir, nil)
+	size, err := fetcher.FetchSnapshot(t.Context(), dir, nil, 0)
 	require.NoError(t, err)
 	require.Equal(t, uint64(6), size)
 
@@ -163,7 +163,7 @@ func TestGRPCSnapshotFetcher_ParallelFetch(t *testing.T) {
 	client := buildMockClient(files)
 	fetcher := &grpcSnapshotFetcher{client: client, parallelism: 4, retryCount: 5, fileRetryCount: 3}
 
-	size, err := fetcher.FetchSnapshot(t.Context(), dir, nil)
+	size, err := fetcher.FetchSnapshot(t.Context(), dir, nil, 0)
 	require.NoError(t, err)
 	require.Equal(t, uint64(12), size)
 
@@ -197,7 +197,7 @@ func TestGRPCSnapshotFetcher_HashMismatch(t *testing.T) {
 	}
 
 	fetcher := &grpcSnapshotFetcher{client: client, parallelism: 1, retryCount: 5, fileRetryCount: 3}
-	_, err := fetcher.FetchSnapshot(t.Context(), dir, nil)
+	_, err := fetcher.FetchSnapshot(t.Context(), dir, nil, 0)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "hash mismatch")
 }
@@ -210,7 +210,7 @@ func TestGRPCSnapshotFetcher_UnavailableWrapsErrNotAvailable(t *testing.T) {
 	}
 
 	fetcher := &grpcSnapshotFetcher{client: client, parallelism: 1, retryCount: 5, fileRetryCount: 3}
-	_, err := fetcher.FetchSnapshot(t.Context(), t.TempDir(), nil)
+	_, err := fetcher.FetchSnapshot(t.Context(), t.TempDir(), nil, 0)
 	require.Error(t, err)
 	require.ErrorIs(t, err, state.ErrNotAvailable)
 }
@@ -228,7 +228,7 @@ func TestGRPCSnapshotFetcher_ProgressTracking(t *testing.T) {
 	progress := state.NewSyncProgress()
 	fetcher := &grpcSnapshotFetcher{client: client, parallelism: 2, retryCount: 5, fileRetryCount: 3}
 
-	_, err := fetcher.FetchSnapshot(t.Context(), dir, progress)
+	_, err := fetcher.FetchSnapshot(t.Context(), dir, progress, 0)
 	require.NoError(t, err)
 
 	require.Equal(t, uint64(6), progress.BytesTotal())
@@ -269,7 +269,7 @@ func TestGRPCSnapshotFetcher_ResumeSkipsCompletedFiles(t *testing.T) {
 	}
 
 	fetcher := &grpcSnapshotFetcher{client: client, parallelism: 2, retryCount: 5, fileRetryCount: 3}
-	_, err := fetcher.FetchSnapshot(t.Context(), dir, nil)
+	_, err := fetcher.FetchSnapshot(t.Context(), dir, nil, 0)
 	require.NoError(t, err)
 
 	// Only b.txt should have been fetched (a.txt was already on disk).
@@ -302,7 +302,7 @@ func TestGRPCSnapshotFetcher_CloseSessionAlwaysCalled(t *testing.T) {
 	}
 
 	fetcher := &grpcSnapshotFetcher{client: client, parallelism: 1, retryCount: 5, fileRetryCount: 3}
-	_, err := fetcher.FetchSnapshot(t.Context(), t.TempDir(), nil)
+	_, err := fetcher.FetchSnapshot(t.Context(), t.TempDir(), nil, 0)
 	require.Error(t, err)
 	require.GreaterOrEqual(t, client.closeCalled.Load(), int32(1))
 }
