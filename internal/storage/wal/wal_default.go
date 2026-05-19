@@ -461,7 +461,7 @@ func (s *DefaultWAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) 
 		logger.Debugf("WAL Append")
 	}
 
-	// Update in-memory cache
+	// Update in-memory cache.
 	if len(entries) > 0 {
 		if len(s.entries) > 0 {
 			offset := s.entries[0].Index
@@ -475,11 +475,20 @@ func (s *DefaultWAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) 
 				s.entries = append(s.entries, entries...)
 			} else {
 				truncateIndex := entries[0].Index
+				var kept []raftpb.Entry
 				if truncateIndex > offset {
-					s.entries = s.entries[:truncateIndex-offset]
+					kept = s.entries[:truncateIndex-offset]
 				}
 
-				s.entries = append(s.entries, entries...)
+				// Allocate a new slice instead of appending into the old
+				// backing array. Entries() returns sub-slices of s.entries
+				// that end up in MsgApp messages serialized asynchronously
+				// by the transport. Reusing the backing array after truncation
+				// would overwrite entries the transport is still reading.
+				merged := make([]raftpb.Entry, len(kept)+len(entries))
+				copy(merged, kept)
+				copy(merged[len(kept):], entries)
+				s.entries = merged
 			}
 		} else {
 			s.entries = append(s.entries, entries...)
