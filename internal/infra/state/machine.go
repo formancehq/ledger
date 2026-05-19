@@ -1403,6 +1403,13 @@ func (fsm *Machine) SealRequestCh() chan SealRequest {
 	return fsm.sealRequestCh
 }
 
+// StopBackgroundTasks interrupts background tasks (bloom restore) that may hold
+// Pebble iterators. Must be called during shutdown, after the Raft node tasks
+// are stopped and before the Pebble store is closed.
+func (fsm *Machine) StopBackgroundTasks() {
+	fsm.cacheSnapshotter.Stop()
+}
+
 // ArchiveRequestCh returns the channel used to dispatch archive requests to the Archiver.
 func (fsm *Machine) ArchiveRequestCh() chan ArchiveRequest {
 	return fsm.archiveRequestCh

@@ -820,6 +820,11 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 			node.logger.Errorf("Error stopping task pool: %v", err)
 		}
 
+		// Stop background bloom tasks that may hold Pebble iterators.
+		// Must run after tasks.stop() (which stops the applier that can
+		// trigger new bloom tasks) and before the fx hook closes the DB.
+		node.fsm.StopBackgroundTasks()
+
 		close(ch)
 
 		return nil
@@ -828,6 +833,8 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 		if stopErr != nil {
 			node.logger.Errorf("Error stopping remaining tasks after failure: %v", stopErr)
 		}
+
+		node.fsm.StopBackgroundTasks()
 
 		return fmt.Errorf("task pool error: %w", err)
 	}
@@ -877,7 +884,7 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		// trigger its own syncSnapshot. Doing it here too would start a background
 		// task that is immediately interrupted by the second syncSnapshot call,
 		// which corrupts the spool read cache (entries read but never applied).
-		if ss.Lead != 0 && node.applier.Status() == statusOutOfSync && raft.IsEmptySnap(rd.Snapshot) {
+		if ss.Lead != 0 && node.applier.Status() == statusOutOfSync && raft.IsEmptySnap(rd.Snapshot) && !isStopping(stop) {
 			node.applier.SyncSnapshot(ss.Lead, stop)
 		}
 
@@ -1077,7 +1084,12 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		// fails (network issue, leader unavailable, etc.), the node transitions to
 		// statusOutOfSync and will retry automatically when a leader is detected
 		// via SoftState or on restart (isStoreUpToDate check).
-		node.applier.SyncSnapshot(node.lastSoftState.Load().Lead, stop)
+		// Skip sync if the node is shutting down — RestoreCheckpoint reopens the
+		// Pebble DB, and background tasks (bloom restore) would create iterators
+		// that outlive the DB.Close() in the fx shutdown hook.
+		if !isStopping(stop) {
+			node.applier.SyncSnapshot(node.lastSoftState.Load().Lead, stop)
+		}
 	}
 
 	node.transport.Send(rd.Messages)
@@ -1215,6 +1227,16 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 	}
 
 	return nil
+}
+
+// isStopping returns true if the stop channel has been closed or a signal is pending.
+func isStopping(stop chan struct{}) bool {
+	select {
+	case <-stop:
+		return true
+	default:
+		return false
+	}
 }
 
 func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
