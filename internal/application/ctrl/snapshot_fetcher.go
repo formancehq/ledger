@@ -9,6 +9,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/snapshotpb"
@@ -130,12 +132,33 @@ func (f *grpcSnapshotFetcher) fetchWithSession(ctx context.Context, targetDir st
 		maxRetries: f.fileRetryCount,
 	}
 
+	logger := logging.FromContext(ctx)
+
 	g, gCtx := errgroup.WithContext(ctx)
 	g.SetLimit(f.parallelism)
 
 	for _, entry := range pending {
 		g.Go(func() error {
-			return ff.fetchFile(gCtx, entry, targetDir, progress)
+			logger.WithFields(map[string]any{
+				"path": entry.GetPath(),
+				"size": entry.GetSize(),
+			}).Infof("Downloading snapshot file")
+
+			if err := ff.fetchFile(gCtx, entry, targetDir, progress); err != nil {
+				return err
+			}
+
+			fields := map[string]any{
+				"path": entry.GetPath(),
+				"size": entry.GetSize(),
+			}
+			if progress != nil {
+				fields["filesCompleted"] = progress.FilesCompleted()
+				fields["filesTotal"] = progress.FilesTotal()
+			}
+			logger.WithFields(fields).Infof("Snapshot file downloaded")
+
+			return nil
 		})
 	}
 
