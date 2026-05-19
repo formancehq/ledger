@@ -161,7 +161,7 @@ func findPaginationFieldPath(v any, paginationColumn string) []reflect.StructFie
 		//     *AnotherObject
 		// }
 		for {
-			if field.Type.Kind() == reflect.Ptr {
+			if field.Type.Kind() == reflect.Pointer {
 				fieldType = field.Type.Elem()
 			}
 			break
