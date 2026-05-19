@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"iter"
 
 	"github.com/zeebo/blake3"
 	"github.com/zeebo/xxh3"
@@ -173,36 +174,53 @@ type Entry[T any] struct {
 	Data T
 }
 
+// derivedEntry pairs a typed key with its value so that the overlay map can
+// be keyed by U128 (fast [16]byte hash) while still carrying the original K
+// for Merge output and DirtyValues iteration.
+type derivedEntry[K Key, T any] struct {
+	key   K
+	value T
+}
+
 type DerivedKeyStore[K Key, T any] struct {
 	*KeyStore[K, T]
 
-	values    map[K]T
-	deletions map[K]struct{}
+	values    map[U128]derivedEntry[K, T]
+	deletions map[U128]K
 	cloneFn   func(T) T
-	scratch   []byte // reusable buffer for Get — single-goroutine use only
+	scratch   []byte // reusable buffer — single-goroutine use only
+}
+
+// keyID computes the U128 for key, leaving canonical bytes in s.scratch.
+func (s *DerivedKeyStore[K, T]) keyID(key K) U128 {
+	s.scratch = key.AppendBytes(s.scratch[:0])
+	id, _ := s.hasher.MakeKey(s.scratch)
+
+	return id
 }
 
 func (s *DerivedKeyStore[K, T]) Put(canonical K, value T) {
-	delete(s.deletions, canonical)
-	s.values[canonical] = value
+	id := s.keyID(canonical)
+	delete(s.deletions, id)
+	s.values[id] = derivedEntry[K, T]{key: canonical, value: value}
 }
 
 func (s *DerivedKeyStore[K, T]) Get(canonical K) (value T, err error) {
+	id := s.keyID(canonical)
+
 	// Check if deleted in this batch
-	if _, ok := s.deletions[canonical]; ok {
+	if _, ok := s.deletions[id]; ok {
 		var zero T
 
 		return zero, nil
 	}
 
 	// Check local values (uncommitted changes)
-	if localV, ok := s.values[canonical]; ok {
-		return localV, nil
+	if entry, ok := s.values[id]; ok {
+		return entry.value, nil
 	}
 
-	// Then check underlying store (reuse scratch buffer to avoid allocation)
-	s.scratch = canonical.AppendBytes(s.scratch[:0])
-
+	// Then check underlying store (scratch already holds canonical bytes)
 	v, _, err := s.KeyStore.Get(s.scratch)
 	if err != nil {
 		return v, err
@@ -217,32 +235,33 @@ func (s *DerivedKeyStore[K, T]) Get(canonical K) (value T, err error) {
 }
 
 func (s *DerivedKeyStore[K, T]) Delete(canonical K) {
-	delete(s.values, canonical)
-	s.deletions[canonical] = struct{}{}
+	id := s.keyID(canonical)
+	delete(s.values, id)
+	s.deletions[id] = canonical
 }
 
 func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], []Deletion[K], error) {
 	touched := make([]Update[K, T], 0, len(s.values))
-	for k, v := range s.values {
-		canonical := k.AppendBytes(nil)
+	for _, entry := range s.values {
+		canonical := entry.key.AppendBytes(nil)
 
-		overwrite, idWithTag, err := s.KeyStore.Put(canonical, v)
+		overwrite, idWithTag, err := s.KeyStore.Put(canonical, entry.value)
 		if err != nil {
 			return nil, nil, err
 		}
 
 		touched = append(touched, Update[K, T]{
-			Key:          k,
+			Key:          entry.key,
 			ID:           idWithTag.ID,
 			Tag:          idWithTag.Tag,
 			CanonicalKey: canonical,
 			Old:          overwrite,
-			New:          v,
+			New:          entry.value,
 		})
 	}
 
 	deletions := make([]Deletion[K], 0, len(s.deletions))
-	for k := range s.deletions {
+	for _, k := range s.deletions {
 		canonical := k.AppendBytes(nil)
 
 		id, err := s.KeyStore.Delete(canonical)
@@ -260,16 +279,22 @@ func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], []Deletion[K], error) {
 	return touched, deletions, nil
 }
 
-// DirtyValues returns the uncommitted local values written during the current batch.
-func (s *DerivedKeyStore[K, T]) DirtyValues() map[K]T {
-	return s.values
+// DirtyValues iterates over the uncommitted local values written during the current batch.
+func (s *DerivedKeyStore[K, T]) DirtyValues() iter.Seq2[K, T] {
+	return func(yield func(K, T) bool) {
+		for _, entry := range s.values {
+			if !yield(entry.key, entry.value) {
+				return
+			}
+		}
+	}
 }
 
 func NewDerivedKeyStore[K Key, T any](store *KeyStore[K, T], cloneFn func(T) T) *DerivedKeyStore[K, T] {
 	return &DerivedKeyStore[K, T]{
 		KeyStore:  store,
-		values:    make(map[K]T),
-		deletions: make(map[K]struct{}),
+		values:    make(map[U128]derivedEntry[K, T]),
+		deletions: make(map[U128]K),
 		cloneFn:   cloneFn,
 	}
 }
