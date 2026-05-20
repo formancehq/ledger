@@ -108,7 +108,7 @@ func (x *DownloadBackupRequest) GetS3SecretAccessKey() string {
 type DownloadBackupResponse struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	FilesDownloaded uint32                 `protobuf:"varint,1,opt,name=files_downloaded,json=filesDownloaded,proto3" json:"files_downloaded,omitempty"` // Number of files downloaded
-	TotalBytes      uint64                 `protobuf:"varint,2,opt,name=total_bytes,json=totalBytes,proto3" json:"total_bytes,omitempty"`                // Total bytes downloaded
+	TotalBytes      uint64                 `protobuf:"fixed64,2,opt,name=total_bytes,json=totalBytes,proto3" json:"total_bytes,omitempty"`               // Total bytes downloaded
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -321,8 +321,8 @@ func (x *ValidateRestoreError) GetMessage() string {
 
 type ValidateRestoreProgress struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	LogsChecked   uint64                 `protobuf:"varint,1,opt,name=logs_checked,json=logsChecked,proto3" json:"logs_checked,omitempty"`
-	TotalLogs     uint64                 `protobuf:"varint,2,opt,name=total_logs,json=totalLogs,proto3" json:"total_logs,omitempty"`
+	LogsChecked   uint64                 `protobuf:"fixed64,1,opt,name=logs_checked,json=logsChecked,proto3" json:"logs_checked,omitempty"`
+	TotalLogs     uint64                 `protobuf:"fixed64,2,opt,name=total_logs,json=totalLogs,proto3" json:"total_logs,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -409,15 +409,15 @@ func (*PreviewRestoreRequest) Descriptor() ([]byte, []int) {
 
 type PreviewRestoreResponse struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
-	LastAppliedIndex     uint64                 `protobuf:"varint,1,opt,name=last_applied_index,json=lastAppliedIndex,proto3" json:"last_applied_index,omitempty"`             // Last Raft index applied
-	LastAppliedTimestamp uint64                 `protobuf:"varint,2,opt,name=last_applied_timestamp,json=lastAppliedTimestamp,proto3" json:"last_applied_timestamp,omitempty"` // Last applied timestamp (HLC microseconds)
-	LastSequence         uint64                 `protobuf:"varint,3,opt,name=last_sequence,json=lastSequence,proto3" json:"last_sequence,omitempty"`                           // Last log sequence number
-	LedgerCount          uint32                 `protobuf:"varint,4,opt,name=ledger_count,json=ledgerCount,proto3" json:"ledger_count,omitempty"`                              // Number of ledgers in the backup
-	LedgerNames          []string               `protobuf:"bytes,5,rep,name=ledger_names,json=ledgerNames,proto3" json:"ledger_names,omitempty"`                               // Names of all ledgers
-	FirstLogSequence     uint64                 `protobuf:"varint,6,opt,name=first_log_sequence,json=firstLogSequence,proto3" json:"first_log_sequence,omitempty"`             // First log sequence in the backup
-	FirstAuditSequence   uint64                 `protobuf:"varint,7,opt,name=first_audit_sequence,json=firstAuditSequence,proto3" json:"first_audit_sequence,omitempty"`       // First audit sequence in the backup
-	HasExports           bool                   `protobuf:"varint,8,opt,name=has_exports,json=hasExports,proto3" json:"has_exports,omitempty"`                                 // Whether incremental exports are present
-	ExportCount          uint32                 `protobuf:"varint,9,opt,name=export_count,json=exportCount,proto3" json:"export_count,omitempty"`                              // Number of export segments
+	LastAppliedIndex     uint64                 `protobuf:"fixed64,1,opt,name=last_applied_index,json=lastAppliedIndex,proto3" json:"last_applied_index,omitempty"`             // Last Raft index applied
+	LastAppliedTimestamp uint64                 `protobuf:"fixed64,2,opt,name=last_applied_timestamp,json=lastAppliedTimestamp,proto3" json:"last_applied_timestamp,omitempty"` // Last applied timestamp (HLC microseconds)
+	LastSequence         uint64                 `protobuf:"fixed64,3,opt,name=last_sequence,json=lastSequence,proto3" json:"last_sequence,omitempty"`                           // Last log sequence number
+	LedgerCount          uint32                 `protobuf:"varint,4,opt,name=ledger_count,json=ledgerCount,proto3" json:"ledger_count,omitempty"`                               // Number of ledgers in the backup
+	LedgerNames          []string               `protobuf:"bytes,5,rep,name=ledger_names,json=ledgerNames,proto3" json:"ledger_names,omitempty"`                                // Names of all ledgers
+	FirstLogSequence     uint64                 `protobuf:"fixed64,6,opt,name=first_log_sequence,json=firstLogSequence,proto3" json:"first_log_sequence,omitempty"`             // First log sequence in the backup
+	FirstAuditSequence   uint64                 `protobuf:"fixed64,7,opt,name=first_audit_sequence,json=firstAuditSequence,proto3" json:"first_audit_sequence,omitempty"`       // First audit sequence in the backup
+	HasExports           bool                   `protobuf:"varint,8,opt,name=has_exports,json=hasExports,proto3" json:"has_exports,omitempty"`                                  // Whether incremental exports are present
+	ExportCount          uint32                 `protobuf:"varint,9,opt,name=export_count,json=exportCount,proto3" json:"export_count,omitempty"`                               // Number of export segments
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -610,7 +610,7 @@ const file_restore_proto_rawDesc = "" +
 	"\x14s3_secret_access_key\x18\x06 \x01(\tR\x11s3SecretAccessKey\"d\n" +
 	"\x16DownloadBackupResponse\x12)\n" +
 	"\x10files_downloaded\x18\x01 \x01(\rR\x0ffilesDownloaded\x12\x1f\n" +
-	"\vtotal_bytes\x18\x02 \x01(\x04R\n" +
+	"\vtotal_bytes\x18\x02 \x01(\x06R\n" +
 	"totalBytes\"\x18\n" +
 	"\x16ValidateRestoreRequest\"\x95\x01\n" +
 	"\x14ValidateRestoreEvent\x125\n" +
@@ -620,18 +620,18 @@ const file_restore_proto_rawDesc = "" +
 	"\x14ValidateRestoreError\x12\x18\n" +
 	"\amessage\x18\x01 \x01(\tR\amessage\"[\n" +
 	"\x17ValidateRestoreProgress\x12!\n" +
-	"\flogs_checked\x18\x01 \x01(\x04R\vlogsChecked\x12\x1d\n" +
+	"\flogs_checked\x18\x01 \x01(\x06R\vlogsChecked\x12\x1d\n" +
 	"\n" +
-	"total_logs\x18\x02 \x01(\x04R\ttotalLogs\"\x17\n" +
+	"total_logs\x18\x02 \x01(\x06R\ttotalLogs\"\x17\n" +
 	"\x15PreviewRestoreRequest\"\x8b\x03\n" +
 	"\x16PreviewRestoreResponse\x12,\n" +
-	"\x12last_applied_index\x18\x01 \x01(\x04R\x10lastAppliedIndex\x124\n" +
-	"\x16last_applied_timestamp\x18\x02 \x01(\x04R\x14lastAppliedTimestamp\x12#\n" +
-	"\rlast_sequence\x18\x03 \x01(\x04R\flastSequence\x12!\n" +
+	"\x12last_applied_index\x18\x01 \x01(\x06R\x10lastAppliedIndex\x124\n" +
+	"\x16last_applied_timestamp\x18\x02 \x01(\x06R\x14lastAppliedTimestamp\x12#\n" +
+	"\rlast_sequence\x18\x03 \x01(\x06R\flastSequence\x12!\n" +
 	"\fledger_count\x18\x04 \x01(\rR\vledgerCount\x12!\n" +
 	"\fledger_names\x18\x05 \x03(\tR\vledgerNames\x12,\n" +
-	"\x12first_log_sequence\x18\x06 \x01(\x04R\x10firstLogSequence\x120\n" +
-	"\x14first_audit_sequence\x18\a \x01(\x04R\x12firstAuditSequence\x12\x1f\n" +
+	"\x12first_log_sequence\x18\x06 \x01(\x06R\x10firstLogSequence\x120\n" +
+	"\x14first_audit_sequence\x18\a \x01(\x06R\x12firstAuditSequence\x12\x1f\n" +
 	"\vhas_exports\x18\b \x01(\bR\n" +
 	"hasExports\x12!\n" +
 	"\fexport_count\x18\t \x01(\rR\vexportCount\"\x18\n" +

@@ -152,16 +152,16 @@ Per-ledger boundaries use the `LedgerBoundaries` protobuf message from `raft_cmd
 
 ```protobuf
 message LedgerBoundaries {
-  uint64 next_transaction_id = 1;
-  uint64 next_log_id = 2;
-  uint64 volume_count = 3;
-  uint64 metadata_count = 4;
-  uint64 reference_count = 5;
-  uint64 posting_count = 6;
-  uint64 ephemeral_evicted_count = 7;
-  uint64 transient_used_count = 8;
-  uint64 revert_count = 9;
-  uint64 numscript_execution_count = 10;
+  fixed64 next_transaction_id = 1;
+  fixed64 next_log_id = 2;
+  fixed64 volume_count = 3;
+  fixed64 metadata_count = 4;
+  fixed64 reference_count = 5;
+  fixed64 posting_count = 6;
+  fixed64 ephemeral_evicted_count = 7;
+  fixed64 transient_used_count = 8;
+  fixed64 revert_count = 9;
+  fixed64 numscript_execution_count = 10;
 }
 ```
 

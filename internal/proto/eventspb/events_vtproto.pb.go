@@ -5,6 +5,7 @@
 package eventspb
 
 import (
+	binary "encoding/binary"
 	fmt "fmt"
 	commonpb "github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
@@ -113,9 +114,10 @@ func (m *Event) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		dAtA[i] = 0x2a
 	}
 	if m.LogSequence != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogSequence))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.LogSequence))
 		i--
-		dAtA[i] = 0x20
+		dAtA[i] = 0x21
 	}
 	if m.Date != nil {
 		size, err := m.Date.MarshalToSizedBufferVT(dAtA[:i])
@@ -160,7 +162,7 @@ func (m *Event) SizeVT() (n int) {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	if m.LogSequence != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.LogSequence))
+		n += 9
 	}
 	if m.Log != nil {
 		l = m.Log.SizeVT()
@@ -287,24 +289,15 @@ func (m *Event) UnmarshalVT(dAtA []byte) error {
 			}
 			iNdEx = postIndex
 		case 4:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field LogSequence", wireType)
 			}
 			m.LogSequence = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.LogSequence |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.LogSequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 5:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Log", wireType)

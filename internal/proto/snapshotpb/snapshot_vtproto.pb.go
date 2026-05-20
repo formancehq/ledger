@@ -5,6 +5,7 @@
 package snapshotpb
 
 import (
+	binary "encoding/binary"
 	fmt "fmt"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
 	proto "google.golang.org/protobuf/proto"
@@ -382,9 +383,10 @@ func (m *PrepareSnapshotRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if m.MinAppliedIndex != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MinAppliedIndex))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MinAppliedIndex))
 		i--
-		dAtA[i] = 0x10
+		dAtA[i] = 0x11
 	}
 	if len(m.NodeId) > 0 {
 		i -= len(m.NodeId)
@@ -699,9 +701,10 @@ func (m *FileEntry) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		dAtA[i] = 0x1a
 	}
 	if m.Size != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Size))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Size))
 		i--
-		dAtA[i] = 0x10
+		dAtA[i] = 0x11
 	}
 	if len(m.Path) > 0 {
 		i -= len(m.Path)
@@ -724,7 +727,7 @@ func (m *PrepareSnapshotRequest) SizeVT() (n int) {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	if m.MinAppliedIndex != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.MinAppliedIndex))
+		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -834,7 +837,7 @@ func (m *FileEntry) SizeVT() (n int) {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	if m.Size != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Size))
+		n += 9
 	}
 	l = len(m.Sha256)
 	if l > 0 {
@@ -906,24 +909,15 @@ func (m *PrepareSnapshotRequest) UnmarshalVT(dAtA []byte) error {
 			m.NodeId = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		case 2:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MinAppliedIndex", wireType)
 			}
 			m.MinAppliedIndex = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.MinAppliedIndex |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.MinAppliedIndex = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -1566,24 +1560,15 @@ func (m *FileEntry) UnmarshalVT(dAtA []byte) error {
 			m.Path = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		case 2:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Size", wireType)
 			}
 			m.Size = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Size |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.Size = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Sha256", wireType)

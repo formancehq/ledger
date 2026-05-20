@@ -11,7 +11,7 @@ import "signature.proto";
 // ============================================================================
 
 message Timestamp {
-  uint64 data = 1;
+  fixed64 data = 1;
 }
 
 // NullValue represents a metadata value that could not be converted to the
@@ -68,7 +68,7 @@ message Transaction {
   map<string, MetadataValue> metadata = 2;
   Timestamp timestamp = 3;
   string reference = 4;
-  uint64 id = 5;
+  fixed64 id = 5;
   bool reverted = 6;
   Timestamp inserted_at = 7;
   Timestamp updated_at = 8;
@@ -137,7 +137,7 @@ message TargetAccount {
 }
 
 message TargetTransaction {
-  uint64 id = 1;
+  fixed64 id = 1;
 }
 
 message Target {
@@ -178,8 +178,8 @@ enum IndexBuildStatus {
 message MetadataFieldSchema {
   MetadataType type = 1;
   MetadataConversionStatus status = 2;
-  uint64 total_keys = 3;
-  uint64 converted_keys = 4;
+  fixed64 total_keys = 3;
+  fixed64 converted_keys = 4;
   bool indexed = 5;
   IndexBuildStatus index_build_status = 6;
 }
@@ -269,7 +269,7 @@ message Idempotency {
 // IdempotencyEntry represents an idempotency key entry stored in Pebble
 message IdempotencyEntry {
   bytes hash = 1;                          // Idempotency hash
-  uint64 log_id = 2;                        // Log ID
+  fixed64 log_id = 2;                        // Log ID
 }
 
 // ============================================================================
@@ -277,7 +277,7 @@ message IdempotencyEntry {
 // ============================================================================
 
 message Log {
-  uint64 sequence = 1;
+  fixed64 sequence = 1;
   LogPayload payload = 2;
   Idempotency idempotency = 3;
   bytes hash = 4;
@@ -400,7 +400,7 @@ message ClusterConfig {
 // be persisted for deterministic restore but is not part of the config proposal.
 message PersistedClusterState {
   ClusterConfig config = 1;
-  uint64 cache_epoch = 2;  // Incremented on each config-driven cache reset
+  fixed64 cache_epoch = 2;  // Incremented on each config-driven cache reset
 }
 
 
@@ -497,13 +497,13 @@ message DeleteQueryCheckpointScheduleLog {}
 
 // CreatedQueryCheckpointLog records a query checkpoint being created.
 message CreatedQueryCheckpointLog {
-  uint64 checkpoint_id = 1;
-  uint64 max_sequence = 2;
+  fixed64 checkpoint_id = 1;
+  fixed64 max_sequence = 2;
 }
 
 // DeletedQueryCheckpointLog records a query checkpoint being deleted.
 message DeletedQueryCheckpointLog {
-  uint64 checkpoint_id = 1;
+  fixed64 checkpoint_id = 1;
 }
 
 // SinkConfig wraps a single sink configuration with per-sink settings.
@@ -525,7 +525,7 @@ message SinkConfig {
 // SinkStatus tracks per-sink operational state (replicated via Raft).
 message SinkStatus {
   string sink_name = 1;
-  uint64 cursor = 2;         // Last published sequence
+  fixed64 cursor = 2;         // Last published sequence
   SinkError error = 3;       // Most recent error (nil = healthy)
 }
 
@@ -601,7 +601,7 @@ message ApplyLedgerLog {
 message LedgerLog {
   LedgerLogPayload data = 1;
   Timestamp date = 2;
-  uint64 id = 3;
+  fixed64 id = 3;
 }
 
 message LedgerLogPayload {
@@ -652,7 +652,7 @@ message IndexReadyLog {
 }
 
 message FillGapLog {
-  uint64 original_id = 1;  // v2 log ID that this gap fills
+  fixed64 original_id = 1;  // v2 log ID that this gap fills
 }
 
 message ConvertMetadataBatchLog {
@@ -675,13 +675,13 @@ message MetadataConversionCompleteLog {
 message CreatedTransaction {
   Transaction transaction = 1;
   map<string, MetadataMap> account_metadata = 2;
-  uint64 period_id = 3;  // Period that was OPEN when this transaction was created
+  fixed64 period_id = 3;  // Period that was OPEN when this transaction was created
   PostCommitVolumes post_commit_volumes = 4;  // Opt-in: volumes after commit (only when expand_volumes is true)
   map<string, MetadataMap> previous_account_metadata = 5;  // previous account metadata values (for index replay)
 }
 
 message RevertedTransaction {
-  uint64 reverted_transaction_id = 1;
+  fixed64 reverted_transaction_id = 1;
   Transaction revert_transaction = 2;
   PostCommitVolumes post_commit_volumes = 3;  // Opt-in: volumes after commit (only when expand_volumes is true)
 }
@@ -724,17 +724,17 @@ enum PeriodStatus {
 }
 
 message Period {
-  uint64 id = 1;
+  fixed64 id = 1;
   Timestamp start = 2;
   Timestamp end = 3;
   PeriodStatus status = 4;
-  uint64 close_sequence = 5;
+  fixed64 close_sequence = 5;
   bytes sealing_hash = 6;
   bytes last_log_hash = 7;    // Log chain hash at the time the period was closed (for crash recovery)
-  uint64 start_sequence = 8;  // First log sequence in this period (previous close_sequence + 1, or 1 for the first period)
+  fixed64 start_sequence = 8;  // First log sequence in this period (previous close_sequence + 1, or 1 for the first period)
   bytes state_hash = 9;       // BLAKE3 hash of computed attributes (V+M+T) at seal time
-  uint64 start_audit_sequence = 10; // First audit sequence in this period
-  uint64 close_audit_sequence = 11; // Last audit sequence when period was closed
+  fixed64 start_audit_sequence = 10; // First audit sequence in this period
+  fixed64 close_audit_sequence = 11; // Last audit sequence when period was closed
 }
 
 message ClosePeriodLog {
@@ -800,9 +800,9 @@ enum MirrorSyncState {
 
 message MirrorSyncProgress {
   MirrorSyncState state = 1;
-  uint64 cursor = 2;
-  uint64 source_log_count = 3;
-  uint64 remaining_logs = 4;
+  fixed64 cursor = 2;
+  fixed64 source_log_count = 3;
+  fixed64 remaining_logs = 4;
   MirrorSyncError error = 5;
 }
 
@@ -845,22 +845,22 @@ message DeleteMetadataCommand {
 
 // TransactionState stores the current state of a transaction as a single value.
 message TransactionState {
-  uint64 created_by_log = 1;
-  uint64 reverted_by_transaction = 2;  // 0 = not reverted
+  fixed64 created_by_log = 1;
+  fixed64 reverted_by_transaction = 2;  // 0 = not reverted
   map<string, MetadataValue> metadata = 3;
 }
 
 // IdempotencyKeyValue stores the log sequence associated with an idempotency key.
 message IdempotencyKeyValue {
-  uint64 log_sequence = 1;
+  fixed64 log_sequence = 1;
   bytes hash = 2;
   uint32 hash_version = 3;  // Hash algorithm version (0 = legacy = v1)
-  uint64 created_at = 4;    // HLC microseconds (from Raft entry timestamp)
+  fixed64 created_at = 4;    // HLC microseconds (from Raft entry timestamp)
 }
 
 // TransactionReferenceValue stores the transaction ID associated with a unique reference within a ledger.
 message TransactionReferenceValue {
-  uint64 transaction_id = 1;
+  fixed64 transaction_id = 1;
 }
 
 // NumscriptVersionValue stores the latest version pointer for a named numscript.
@@ -1024,8 +1024,8 @@ message IntCondition {
 }
 
 message UintCondition {
-  optional uint64 min = 1;
-  optional uint64 max = 2;
+  optional fixed64 min = 1;
+  optional fixed64 max = 2;
   bool min_exclusive = 3;
   bool max_exclusive = 4;
   string param_min = 5;
@@ -1109,16 +1109,16 @@ message PreparedQueryCursor {
 
 // LedgerStats contains aggregate statistics for a ledger.
 message LedgerStats {
-  uint64 transaction_count = 1;
-  uint64 volume_count = 2;
-  uint64 metadata_count = 3;
-  uint64 reference_count = 4;
-  uint64 posting_count = 5;
-  uint64 ephemeral_evicted_count = 6;
-  uint64 transient_used_count = 7;
-  uint64 revert_count = 8;
-  uint64 numscript_execution_count = 9;
-  uint64 log_count = 10;
+  fixed64 transaction_count = 1;
+  fixed64 volume_count = 2;
+  fixed64 metadata_count = 3;
+  fixed64 reference_count = 4;
+  fixed64 posting_count = 5;
+  fixed64 ephemeral_evicted_count = 6;
+  fixed64 transient_used_count = 7;
+  fixed64 revert_count = 8;
+  fixed64 numscript_execution_count = 9;
+  fixed64 log_count = 10;
 }
 
 // PersistedConfig stores critical configuration parameters that must not change

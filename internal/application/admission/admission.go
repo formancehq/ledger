@@ -549,7 +549,7 @@ func (a *Admission) marshalCommand(ctx context.Context, cmd *raftcmdpb.Proposal)
 }
 
 // appendProposalPredictedIndex appends the raw protobuf wire encoding of
-// Proposal.predicted_index (field 7, varint) to an already-marshaled Proposal.
+// Proposal.predicted_index (field 7, fixed64) to an already-marshaled Proposal.
 //
 // Why this works — proto3 "last value wins":
 //
@@ -563,28 +563,32 @@ func (a *Admission) marshalCommand(ctx context.Context, cmd *raftcmdpb.Proposal)
 //
 // Wire layout of the appended bytes:
 //
-//	[0x38]              — tag: field 7, wire type 0 (varint) = (7 << 3) | 0
-//	[varint bytes...]   — base-128 varint encoding of the predicted index
+//	[0x39]              — tag: field 7, wire type 1 (fixed64) = (7 << 3) | 1
+//	[8 bytes LE]        — little-endian uint64 encoding of the predicted index
 //
 // This saves re-marshaling the entire Proposal (which can be megabytes for
 // large batches) while holding the proposal lock. The lock is only needed
 // to read a stable PredictedIndex from the IndexTracker; the append itself
-// is a ~10-byte memcpy with no allocations (MarshalCopy reserves slack).
+// is a 9-byte memcpy with no allocations (MarshalCopy reserves slack).
 func appendProposalPredictedIndex(data []byte, index uint64) []byte {
 	if index == 0 {
 		return data // zero is the proto3 default — already absent from the wire
 	}
 
-	// Tag: field 7, wire type 0 (varint).
-	data = append(data, 0x38)
+	// Tag: field 7, wire type 1 (fixed64).
+	data = append(data, 0x39)
 
-	// Varint encoding (identical to protobuf / encoding/binary.PutUvarint).
-	for index >= 0x80 {
-		data = append(data, byte(index)|0x80)
-		index >>= 7
-	}
-
-	data = append(data, byte(index))
+	// Fixed64 little-endian encoding.
+	data = append(data,
+		byte(index),
+		byte(index>>8),
+		byte(index>>16),
+		byte(index>>24),
+		byte(index>>32),
+		byte(index>>40),
+		byte(index>>48),
+		byte(index>>56),
+	)
 
 	return data
 }

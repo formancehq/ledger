@@ -20,6 +20,8 @@ var (
 	slicesPkg       = protogen.GoImportPath("slices")
 	mapsPkg         = protogen.GoImportPath("maps")
 	protohelpersPkg = protogen.GoImportPath("github.com/planetscale/vtprotobuf/protohelpers")
+	binaryPkg       = protogen.GoImportPath("encoding/binary")
+	mathPkg         = protogen.GoImportPath("math")
 )
 
 func main() {
@@ -366,9 +368,9 @@ func genRepeatedMarshal(g *protogen.GeneratedFile, f *protogen.Field, hasMap map
 		g.P("    i -= 8 * len(m.", goName, ")")
 		g.P("    for iNdEx, v := range m.", goName, " {")
 		if kind == protoreflect.DoubleKind {
-			g.P("      binary.LittleEndian.PutUint64(dAtA[i+iNdEx*8:], math.Float64bits(v))")
+			g.P("      ", binaryPkg.Ident("LittleEndian"), ".PutUint64(dAtA[i+iNdEx*8:], ", mathPkg.Ident("Float64bits"), "(v))")
 		} else {
-			g.P("      binary.LittleEndian.PutUint64(dAtA[i+iNdEx*8:], uint64(v))")
+			g.P("      ", binaryPkg.Ident("LittleEndian"), ".PutUint64(dAtA[i+iNdEx*8:], uint64(v))")
 		}
 		g.P("    }")
 		g.P("    i = ", protohelpersPkg.Ident("EncodeVarint"), "(dAtA, i, uint64(8*len(m.", goName, ")))")
@@ -378,9 +380,9 @@ func genRepeatedMarshal(g *protogen.GeneratedFile, f *protogen.Field, hasMap map
 		g.P("    i -= 4 * len(m.", goName, ")")
 		g.P("    for iNdEx, v := range m.", goName, " {")
 		if kind == protoreflect.FloatKind {
-			g.P("      binary.LittleEndian.PutUint32(dAtA[i+iNdEx*4:], math.Float32bits(v))")
+			g.P("      ", binaryPkg.Ident("LittleEndian"), ".PutUint32(dAtA[i+iNdEx*4:], ", mathPkg.Ident("Float32bits"), "(v))")
 		} else {
-			g.P("      binary.LittleEndian.PutUint32(dAtA[i+iNdEx*4:], uint32(v))")
+			g.P("      ", binaryPkg.Ident("LittleEndian"), ".PutUint32(dAtA[i+iNdEx*4:], uint32(v))")
 		}
 		g.P("    }")
 		g.P("    i = ", protohelpersPkg.Ident("EncodeVarint"), "(dAtA, i, uint64(4*len(m.", goName, ")))")
@@ -442,22 +444,22 @@ func marshalScalarField(g *protogen.GeneratedFile, access string, kind protorefl
 
 	case protoreflect.Fixed32Kind, protoreflect.Sfixed32Kind:
 		g.P("    i -= 4")
-		g.P("    binary.LittleEndian.PutUint32(dAtA[i:], uint32(", access, "))")
+		g.P("    ", binaryPkg.Ident("LittleEndian"), ".PutUint32(dAtA[i:], uint32(", access, "))")
 		writeTag(g, tag)
 
 	case protoreflect.Fixed64Kind, protoreflect.Sfixed64Kind:
 		g.P("    i -= 8")
-		g.P("    binary.LittleEndian.PutUint64(dAtA[i:], uint64(", access, "))")
+		g.P("    ", binaryPkg.Ident("LittleEndian"), ".PutUint64(dAtA[i:], uint64(", access, "))")
 		writeTag(g, tag)
 
 	case protoreflect.FloatKind:
 		g.P("    i -= 4")
-		g.P("    binary.LittleEndian.PutUint32(dAtA[i:], math.Float32bits(", access, "))")
+		g.P("    ", binaryPkg.Ident("LittleEndian"), ".PutUint32(dAtA[i:], ", mathPkg.Ident("Float32bits"), "(", access, "))")
 		writeTag(g, tag)
 
 	case protoreflect.DoubleKind:
 		g.P("    i -= 8")
-		g.P("    binary.LittleEndian.PutUint64(dAtA[i:], math.Float64bits(", access, "))")
+		g.P("    ", binaryPkg.Ident("LittleEndian"), ".PutUint64(dAtA[i:], ", mathPkg.Ident("Float64bits"), "(", access, "))")
 		writeTag(g, tag)
 
 	case protoreflect.StringKind:

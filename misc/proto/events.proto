@@ -15,6 +15,6 @@ message Event {
   common.EventType type = 1;
   string ledger = 2;
   common.Timestamp date = 3;
-  uint64 log_sequence = 4;
+  fixed64 log_sequence = 4;
   common.Log log = 5;
 }

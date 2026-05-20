@@ -4,6 +4,7 @@
 package clusterpb
 
 import (
+	binary "encoding/binary"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
 	maps "maps"
 	slices "slices"
@@ -84,19 +85,22 @@ func (m *RaftStatus) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 		dAtA[i] = 0x38
 	}
 	if m.LastIndex != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LastIndex))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.LastIndex))
 		i--
-		dAtA[i] = 0x30
+		dAtA[i] = 0x31
 	}
 	if m.Commit != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Commit))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Commit))
 		i--
-		dAtA[i] = 0x28
+		dAtA[i] = 0x29
 	}
 	if m.Applied != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Applied))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Applied))
 		i--
-		dAtA[i] = 0x20
+		dAtA[i] = 0x21
 	}
 	if m.Leader != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Leader))
@@ -104,9 +108,10 @@ func (m *RaftStatus) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 		dAtA[i] = 0x18
 	}
 	if m.Term != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Term))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Term))
 		i--
-		dAtA[i] = 0x10
+		dAtA[i] = 0x11
 	}
 	if len(m.State) > 0 {
 		i -= len(m.State)

@@ -5,6 +5,7 @@
 package restorepb
 
 import (
+	binary "encoding/binary"
 	fmt "fmt"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
 	proto "google.golang.org/protobuf/proto"
@@ -624,9 +625,10 @@ func (m *DownloadBackupResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if m.TotalBytes != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.TotalBytes))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.TotalBytes))
 		i--
-		dAtA[i] = 0x10
+		dAtA[i] = 0x11
 	}
 	if m.FilesDownloaded != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.FilesDownloaded))
@@ -820,14 +822,16 @@ func (m *ValidateRestoreProgress) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if m.TotalLogs != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.TotalLogs))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.TotalLogs))
 		i--
-		dAtA[i] = 0x10
+		dAtA[i] = 0x11
 	}
 	if m.LogsChecked != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogsChecked))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.LogsChecked))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -911,14 +915,16 @@ func (m *PreviewRestoreResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error
 		dAtA[i] = 0x40
 	}
 	if m.FirstAuditSequence != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.FirstAuditSequence))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.FirstAuditSequence))
 		i--
-		dAtA[i] = 0x38
+		dAtA[i] = 0x39
 	}
 	if m.FirstLogSequence != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.FirstLogSequence))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.FirstLogSequence))
 		i--
-		dAtA[i] = 0x30
+		dAtA[i] = 0x31
 	}
 	if len(m.LedgerNames) > 0 {
 		for iNdEx := len(m.LedgerNames) - 1; iNdEx >= 0; iNdEx-- {
@@ -935,19 +941,22 @@ func (m *PreviewRestoreResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error
 		dAtA[i] = 0x20
 	}
 	if m.LastSequence != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LastSequence))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.LastSequence))
 		i--
-		dAtA[i] = 0x18
+		dAtA[i] = 0x19
 	}
 	if m.LastAppliedTimestamp != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LastAppliedTimestamp))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.LastAppliedTimestamp))
 		i--
-		dAtA[i] = 0x10
+		dAtA[i] = 0x11
 	}
 	if m.LastAppliedIndex != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LastAppliedIndex))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.LastAppliedIndex))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -1069,7 +1078,7 @@ func (m *DownloadBackupResponse) SizeVT() (n int) {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.FilesDownloaded))
 	}
 	if m.TotalBytes != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.TotalBytes))
+		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -1143,10 +1152,10 @@ func (m *ValidateRestoreProgress) SizeVT() (n int) {
 	var l int
 	_ = l
 	if m.LogsChecked != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.LogsChecked))
+		n += 9
 	}
 	if m.TotalLogs != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.TotalLogs))
+		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -1169,13 +1178,13 @@ func (m *PreviewRestoreResponse) SizeVT() (n int) {
 	var l int
 	_ = l
 	if m.LastAppliedIndex != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.LastAppliedIndex))
+		n += 9
 	}
 	if m.LastAppliedTimestamp != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.LastAppliedTimestamp))
+		n += 9
 	}
 	if m.LastSequence != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.LastSequence))
+		n += 9
 	}
 	if m.LedgerCount != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.LedgerCount))
@@ -1187,10 +1196,10 @@ func (m *PreviewRestoreResponse) SizeVT() (n int) {
 		}
 	}
 	if m.FirstLogSequence != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.FirstLogSequence))
+		n += 9
 	}
 	if m.FirstAuditSequence != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.FirstAuditSequence))
+		n += 9
 	}
 	if m.HasExports {
 		n += 2
@@ -1518,24 +1527,15 @@ func (m *DownloadBackupResponse) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 		case 2:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field TotalBytes", wireType)
 			}
 			m.TotalBytes = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.TotalBytes |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.TotalBytes = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -1855,43 +1855,25 @@ func (m *ValidateRestoreProgress) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field LogsChecked", wireType)
 			}
 			m.LogsChecked = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.LogsChecked |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.LogsChecked = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 2:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field TotalLogs", wireType)
 			}
 			m.TotalLogs = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.TotalLogs |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.TotalLogs = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -1995,62 +1977,35 @@ func (m *PreviewRestoreResponse) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field LastAppliedIndex", wireType)
 			}
 			m.LastAppliedIndex = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.LastAppliedIndex |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.LastAppliedIndex = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 2:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field LastAppliedTimestamp", wireType)
 			}
 			m.LastAppliedTimestamp = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.LastAppliedTimestamp |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.LastAppliedTimestamp = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 3:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field LastSequence", wireType)
 			}
 			m.LastSequence = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.LastSequence |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.LastSequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 4:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field LedgerCount", wireType)
@@ -2103,43 +2058,25 @@ func (m *PreviewRestoreResponse) UnmarshalVT(dAtA []byte) error {
 			m.LedgerNames = append(m.LedgerNames, string(dAtA[iNdEx:postIndex]))
 			iNdEx = postIndex
 		case 6:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field FirstLogSequence", wireType)
 			}
 			m.FirstLogSequence = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.FirstLogSequence |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.FirstLogSequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 7:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field FirstAuditSequence", wireType)
 			}
 			m.FirstAuditSequence = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.FirstAuditSequence |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.FirstAuditSequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 8:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field HasExports", wireType)

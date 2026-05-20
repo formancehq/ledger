@@ -28,7 +28,7 @@ type Event struct {
 	Type          commonpb.EventType     `protobuf:"varint,1,opt,name=type,proto3,enum=common.EventType" json:"type,omitempty"`
 	Ledger        string                 `protobuf:"bytes,2,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	Date          *commonpb.Timestamp    `protobuf:"bytes,3,opt,name=date,proto3" json:"date,omitempty"`
-	LogSequence   uint64                 `protobuf:"varint,4,opt,name=log_sequence,json=logSequence,proto3" json:"log_sequence,omitempty"`
+	LogSequence   uint64                 `protobuf:"fixed64,4,opt,name=log_sequence,json=logSequence,proto3" json:"log_sequence,omitempty"`
 	Log           *commonpb.Log          `protobuf:"bytes,5,opt,name=log,proto3" json:"log,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -108,7 +108,7 @@ const file_events_proto_rawDesc = "" +
 	"\x04type\x18\x01 \x01(\x0e2\x11.common.EventTypeR\x04type\x12\x16\n" +
 	"\x06ledger\x18\x02 \x01(\tR\x06ledger\x12%\n" +
 	"\x04date\x18\x03 \x01(\v2\x11.common.TimestampR\x04date\x12!\n" +
-	"\flog_sequence\x18\x04 \x01(\x04R\vlogSequence\x12\x1d\n" +
+	"\flog_sequence\x18\x04 \x01(\x06R\vlogSequence\x12\x1d\n" +
 	"\x03log\x18\x05 \x01(\v2\v.common.LogR\x03logB=Z;github.com/formancehq/ledger-v3-poc/internal/proto/eventspbb\x06proto3"
 
 var (

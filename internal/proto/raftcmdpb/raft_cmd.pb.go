@@ -978,7 +978,7 @@ func (*ClosePeriodOrder) Descriptor() ([]byte, []int) {
 
 type SealPeriodOrder struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	PeriodId      uint64                 `protobuf:"varint,1,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`
+	PeriodId      uint64                 `protobuf:"fixed64,1,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`
 	SealingHash   []byte                 `protobuf:"bytes,2,opt,name=sealing_hash,json=sealingHash,proto3" json:"sealing_hash,omitempty"`
 	StateHash     []byte                 `protobuf:"bytes,3,opt,name=state_hash,json=stateHash,proto3" json:"state_hash,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -1038,7 +1038,7 @@ func (x *SealPeriodOrder) GetStateHash() []byte {
 
 type ArchivePeriodOrder struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	PeriodId      uint64                 `protobuf:"varint,1,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`
+	PeriodId      uint64                 `protobuf:"fixed64,1,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1082,7 +1082,7 @@ func (x *ArchivePeriodOrder) GetPeriodId() uint64 {
 
 type ConfirmArchivePeriodOrder struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	PeriodId      uint64                 `protobuf:"varint,1,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`
+	PeriodId      uint64                 `protobuf:"fixed64,1,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1412,7 +1412,7 @@ func (*CreateQueryCheckpointOrder) Descriptor() ([]byte, []int) {
 // Physical checkpoint files are cleaned up after the batch is committed.
 type DeleteQueryCheckpointOrder struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	CheckpointId  uint64                 `protobuf:"varint,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	CheckpointId  uint64                 `protobuf:"fixed64,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1458,9 +1458,9 @@ func (x *DeleteQueryCheckpointOrder) GetCheckpointId() uint64 {
 // The actual data lives in physical Pebble checkpoint directories.
 type QueryCheckpointState struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	CheckpointId  uint64                 `protobuf:"varint,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
-	MaxSequence   uint64                 `protobuf:"varint,2,opt,name=max_sequence,json=maxSequence,proto3" json:"max_sequence,omitempty"` // next_sequence - 1 at creation
-	CreatedAt     *commonpb.Timestamp    `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`        // Creation timestamp (from proposal date)
+	CheckpointId  uint64                 `protobuf:"fixed64,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	MaxSequence   uint64                 `protobuf:"fixed64,2,opt,name=max_sequence,json=maxSequence,proto3" json:"max_sequence,omitempty"` // next_sequence - 1 at creation
+	CreatedAt     *commonpb.Timestamp    `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`         // Creation timestamp (from proposal date)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1734,7 +1734,7 @@ func (x *MirrorIngestOrder) GetEntry() *MirrorLogEntry {
 
 type MirrorLogEntry struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
-	V2LogId uint64                 `protobuf:"varint,1,opt,name=v2_log_id,json=v2LogId,proto3" json:"v2_log_id,omitempty"`
+	V2LogId uint64                 `protobuf:"fixed64,1,opt,name=v2_log_id,json=v2LogId,proto3" json:"v2_log_id,omitempty"`
 	// Types that are valid to be assigned to Data:
 	//
 	//	*MirrorLogEntry_CreatedTransaction
@@ -1872,7 +1872,7 @@ func (*MirrorLogEntry_FillGap) isMirrorLogEntry_Data() {}
 
 type MirrorFillGap struct {
 	state                 protoimpl.MessageState `protogen:"open.v1"`
-	SkippedTransactionIds []uint64               `protobuf:"varint,1,rep,packed,name=skipped_transaction_ids,json=skippedTransactionIds,proto3" json:"skipped_transaction_ids,omitempty"`
+	SkippedTransactionIds []uint64               `protobuf:"fixed64,1,rep,packed,name=skipped_transaction_ids,json=skippedTransactionIds,proto3" json:"skipped_transaction_ids,omitempty"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -1916,7 +1916,7 @@ func (x *MirrorFillGap) GetSkippedTransactionIds() []uint64 {
 
 type MirrorCreatedTransaction struct {
 	state           protoimpl.MessageState             `protogen:"open.v1"`
-	TransactionId   uint64                             `protobuf:"varint,1,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
+	TransactionId   uint64                             `protobuf:"fixed64,1,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
 	Postings        []*commonpb.Posting                `protobuf:"bytes,2,rep,name=postings,proto3" json:"postings,omitempty"`
 	Metadata        map[string]*commonpb.MetadataValue `protobuf:"bytes,3,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Timestamp       *commonpb.Timestamp                `protobuf:"bytes,4,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
@@ -2052,8 +2052,8 @@ func (x *MirrorSavedMetadata) GetMetadata() map[string]*commonpb.MetadataValue {
 
 type MirrorRevertedTransaction struct {
 	state                 protoimpl.MessageState             `protogen:"open.v1"`
-	RevertedTransactionId uint64                             `protobuf:"varint,1,opt,name=reverted_transaction_id,json=revertedTransactionId,proto3" json:"reverted_transaction_id,omitempty"`
-	NewTransactionId      uint64                             `protobuf:"varint,2,opt,name=new_transaction_id,json=newTransactionId,proto3" json:"new_transaction_id,omitempty"`
+	RevertedTransactionId uint64                             `protobuf:"fixed64,1,opt,name=reverted_transaction_id,json=revertedTransactionId,proto3" json:"reverted_transaction_id,omitempty"`
+	NewTransactionId      uint64                             `protobuf:"fixed64,2,opt,name=new_transaction_id,json=newTransactionId,proto3" json:"new_transaction_id,omitempty"`
 	ReversePostings       []*commonpb.Posting                `protobuf:"bytes,3,rep,name=reverse_postings,json=reversePostings,proto3" json:"reverse_postings,omitempty"`
 	Metadata              map[string]*commonpb.MetadataValue `protobuf:"bytes,4,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Timestamp             *commonpb.Timestamp                `protobuf:"bytes,5,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
@@ -2986,8 +2986,8 @@ type ConvertMetadataBatchOrder struct {
 	Key                string                  `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
 	ExpectedType       commonpb.MetadataType   `protobuf:"varint,3,opt,name=expected_type,json=expectedType,proto3,enum=common.MetadataType" json:"expected_type,omitempty"`
 	Entries            []*ConvertMetadataEntry `protobuf:"bytes,4,rep,name=entries,proto3" json:"entries,omitempty"`
-	TotalKeys          uint64                  `protobuf:"varint,5,opt,name=total_keys,json=totalKeys,proto3" json:"total_keys,omitempty"`
-	ConvertedKeysSoFar uint64                  `protobuf:"varint,6,opt,name=converted_keys_so_far,json=convertedKeysSoFar,proto3" json:"converted_keys_so_far,omitempty"`
+	TotalKeys          uint64                  `protobuf:"fixed64,5,opt,name=total_keys,json=totalKeys,proto3" json:"total_keys,omitempty"`
+	ConvertedKeysSoFar uint64                  `protobuf:"fixed64,6,opt,name=converted_keys_so_far,json=convertedKeysSoFar,proto3" json:"converted_keys_so_far,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -3512,7 +3512,7 @@ func (x *SaveMetadataOrder) GetMetadata() map[string]*commonpb.MetadataValue {
 
 type RevertTransactionOrder struct {
 	state            protoimpl.MessageState             `protogen:"open.v1"`
-	TransactionId    uint64                             `protobuf:"varint,1,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
+	TransactionId    uint64                             `protobuf:"fixed64,1,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
 	Force            bool                               `protobuf:"varint,2,opt,name=force,proto3" json:"force,omitempty"`
 	AtEffectiveDate  bool                               `protobuf:"varint,3,opt,name=at_effective_date,json=atEffectiveDate,proto3" json:"at_effective_date,omitempty"`
 	Metadata         map[string]*commonpb.MetadataValue `protobuf:"bytes,4,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
@@ -3756,7 +3756,7 @@ func (x *DeleteLedgerMetadataOrder) GetKey() string {
 // A proposal can contain multiple orders that will be executed atomically
 type Proposal struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
-	Id                uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`        // Random proposal ID
+	Id                uint64                 `protobuf:"fixed64,1,opt,name=id,proto3" json:"id,omitempty"`       // Random proposal ID
 	Orders            []*Order               `protobuf:"bytes,2,rep,name=orders,proto3" json:"orders,omitempty"` // List of orders to execute atomically
 	Date              *commonpb.Timestamp    `protobuf:"bytes,3,opt,name=date,proto3" json:"date,omitempty"`     // Creation date in UTC
 	Preload           *PreloadSet            `protobuf:"bytes,4,opt,name=preload,proto3" json:"preload,omitempty"`
@@ -3768,7 +3768,7 @@ type Proposal struct {
 	// preloadSet is invalid. The entry is rejected without audit and the caller
 	// receives Unavailable so it can retry with fresh preloads.
 	// A value of 0 means no prediction (e.g. barrier, mirror sync).
-	PredictedIndex      uint64                  `protobuf:"varint,7,opt,name=predicted_index,json=predictedIndex,proto3" json:"predicted_index,omitempty"`
+	PredictedIndex      uint64                  `protobuf:"fixed64,7,opt,name=predicted_index,json=predictedIndex,proto3" json:"predicted_index,omitempty"`
 	IdempotencyEviction *IdempotencyEviction    `protobuf:"bytes,8,opt,name=idempotency_eviction,json=idempotencyEviction,proto3" json:"idempotency_eviction,omitempty"`
 	ClusterConfig       *commonpb.ClusterConfig `protobuf:"bytes,9,opt,name=cluster_config,json=clusterConfig,proto3" json:"cluster_config,omitempty"` // Cluster-wide config update (technical, no log entry)
 	unknownFields       protoimpl.UnknownFields
@@ -3872,7 +3872,7 @@ func (x *Proposal) GetClusterConfig() *commonpb.ClusterConfig {
 // All nodes apply it identically: entries with created_at <= cutoff_micros are removed.
 type IdempotencyEviction struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	CutoffMicros  uint64                 `protobuf:"varint,1,opt,name=cutoff_micros,json=cutoffMicros,proto3" json:"cutoff_micros,omitempty"`
+	CutoffMicros  uint64                 `protobuf:"fixed64,1,opt,name=cutoff_micros,json=cutoffMicros,proto3" json:"cutoff_micros,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3917,10 +3917,10 @@ func (x *IdempotencyEviction) GetCutoffMicros() uint64 {
 type MirrorSyncUpdate struct {
 	state          protoimpl.MessageState    `protogen:"open.v1"`
 	LedgerName     string                    `protobuf:"bytes,1,opt,name=ledger_name,json=ledgerName,proto3" json:"ledger_name,omitempty"`
-	Cursor         uint64                    `protobuf:"varint,2,opt,name=cursor,proto3" json:"cursor,omitempty"`
+	Cursor         uint64                    `protobuf:"fixed64,2,opt,name=cursor,proto3" json:"cursor,omitempty"`
 	Error          *commonpb.MirrorSyncError `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
 	ClearError     bool                      `protobuf:"varint,4,opt,name=clear_error,json=clearError,proto3" json:"clear_error,omitempty"`
-	SourceLogCount uint64                    `protobuf:"varint,5,opt,name=source_log_count,json=sourceLogCount,proto3" json:"source_log_count,omitempty"` // Latest known log ID in v2 source
+	SourceLogCount uint64                    `protobuf:"fixed64,5,opt,name=source_log_count,json=sourceLogCount,proto3" json:"source_log_count,omitempty"` // Latest known log ID in v2 source
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -3994,7 +3994,7 @@ func (x *MirrorSyncUpdate) GetSourceLogCount() uint64 {
 type EventsSinkUpdate struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SinkName      string                 `protobuf:"bytes,1,opt,name=sink_name,json=sinkName,proto3" json:"sink_name,omitempty"`
-	Cursor        uint64                 `protobuf:"varint,2,opt,name=cursor,proto3" json:"cursor,omitempty"`                           // New cursor position (0 = no change)
+	Cursor        uint64                 `protobuf:"fixed64,2,opt,name=cursor,proto3" json:"cursor,omitempty"`                          // New cursor position (0 = no change)
 	Error         *commonpb.SinkError    `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`                              // Set error (nil = no change unless clear_error)
 	ClearError    bool                   `protobuf:"varint,4,opt,name=clear_error,json=clearError,proto3" json:"clear_error,omitempty"` // If true, clear any existing error
 	unknownFields protoimpl.UnknownFields
@@ -4134,7 +4134,7 @@ type CreatedLogOrReference_CreatedLog struct {
 }
 
 type CreatedLogOrReference_ReferenceSequence struct {
-	ReferenceSequence uint64 `protobuf:"varint,2,opt,name=reference_sequence,json=referenceSequence,proto3,oneof"`
+	ReferenceSequence uint64 `protobuf:"fixed64,2,opt,name=reference_sequence,json=referenceSequence,proto3,oneof"`
 }
 
 func (*CreatedLogOrReference_CreatedLog) isCreatedLogOrReference_Type() {}
@@ -4143,16 +4143,16 @@ func (*CreatedLogOrReference_ReferenceSequence) isCreatedLogOrReference_Type() {
 
 type LedgerBoundaries struct {
 	state                   protoimpl.MessageState `protogen:"open.v1"`
-	NextTransactionId       uint64                 `protobuf:"varint,1,opt,name=next_transaction_id,json=nextTransactionId,proto3" json:"next_transaction_id,omitempty"`
-	NextLogId               uint64                 `protobuf:"varint,2,opt,name=next_log_id,json=nextLogId,proto3" json:"next_log_id,omitempty"`
-	VolumeCount             uint64                 `protobuf:"varint,3,opt,name=volume_count,json=volumeCount,proto3" json:"volume_count,omitempty"`
-	MetadataCount           uint64                 `protobuf:"varint,4,opt,name=metadata_count,json=metadataCount,proto3" json:"metadata_count,omitempty"`
-	ReferenceCount          uint64                 `protobuf:"varint,5,opt,name=reference_count,json=referenceCount,proto3" json:"reference_count,omitempty"`
-	PostingCount            uint64                 `protobuf:"varint,6,opt,name=posting_count,json=postingCount,proto3" json:"posting_count,omitempty"`
-	EphemeralEvictedCount   uint64                 `protobuf:"varint,7,opt,name=ephemeral_evicted_count,json=ephemeralEvictedCount,proto3" json:"ephemeral_evicted_count,omitempty"`
-	TransientUsedCount      uint64                 `protobuf:"varint,8,opt,name=transient_used_count,json=transientUsedCount,proto3" json:"transient_used_count,omitempty"`
-	RevertCount             uint64                 `protobuf:"varint,9,opt,name=revert_count,json=revertCount,proto3" json:"revert_count,omitempty"`
-	NumscriptExecutionCount uint64                 `protobuf:"varint,10,opt,name=numscript_execution_count,json=numscriptExecutionCount,proto3" json:"numscript_execution_count,omitempty"`
+	NextTransactionId       uint64                 `protobuf:"fixed64,1,opt,name=next_transaction_id,json=nextTransactionId,proto3" json:"next_transaction_id,omitempty"`
+	NextLogId               uint64                 `protobuf:"fixed64,2,opt,name=next_log_id,json=nextLogId,proto3" json:"next_log_id,omitempty"`
+	VolumeCount             uint64                 `protobuf:"fixed64,3,opt,name=volume_count,json=volumeCount,proto3" json:"volume_count,omitempty"`
+	MetadataCount           uint64                 `protobuf:"fixed64,4,opt,name=metadata_count,json=metadataCount,proto3" json:"metadata_count,omitempty"`
+	ReferenceCount          uint64                 `protobuf:"fixed64,5,opt,name=reference_count,json=referenceCount,proto3" json:"reference_count,omitempty"`
+	PostingCount            uint64                 `protobuf:"fixed64,6,opt,name=posting_count,json=postingCount,proto3" json:"posting_count,omitempty"`
+	EphemeralEvictedCount   uint64                 `protobuf:"fixed64,7,opt,name=ephemeral_evicted_count,json=ephemeralEvictedCount,proto3" json:"ephemeral_evicted_count,omitempty"`
+	TransientUsedCount      uint64                 `protobuf:"fixed64,8,opt,name=transient_used_count,json=transientUsedCount,proto3" json:"transient_used_count,omitempty"`
+	RevertCount             uint64                 `protobuf:"fixed64,9,opt,name=revert_count,json=revertCount,proto3" json:"revert_count,omitempty"`
+	NumscriptExecutionCount uint64                 `protobuf:"fixed64,10,opt,name=numscript_execution_count,json=numscriptExecutionCount,proto3" json:"numscript_execution_count,omitempty"`
 	unknownFields           protoimpl.UnknownFields
 	sizeCache               protoimpl.SizeCache
 }
@@ -4311,10 +4311,10 @@ func (x *VolumePair) GetOutput() *commonpb.Uint256 {
 
 type PreloadSet struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
-	LastPersistedIndex uint64                 `protobuf:"varint,1,opt,name=lastPersistedIndex,proto3" json:"lastPersistedIndex,omitempty"`
+	LastPersistedIndex uint64                 `protobuf:"fixed64,1,opt,name=lastPersistedIndex,proto3" json:"lastPersistedIndex,omitempty"`
 	Preloads           []*Preload             `protobuf:"bytes,2,rep,name=preloads,proto3" json:"preloads,omitempty"`
 	Touches            []*CacheTouch          `protobuf:"bytes,3,rep,name=touches,proto3" json:"touches,omitempty"`
-	CacheEpoch         uint64                 `protobuf:"varint,4,opt,name=cache_epoch,json=cacheEpoch,proto3" json:"cache_epoch,omitempty"` // Cache epoch at admission time; FSM rejects on mismatch (cache was reset)
+	CacheEpoch         uint64                 `protobuf:"fixed64,4,opt,name=cache_epoch,json=cacheEpoch,proto3" json:"cache_epoch,omitempty"` // Cache epoch at admission time; FSM rejects on mismatch (cache was reset)
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -5345,7 +5345,7 @@ func (x *NodeSnapshot) GetPeerAddresses() []*PeerAddress {
 // CacheGenerationMeta stores per-generation metadata in Pebble.
 type CacheGenerationMeta struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	BaseIndex     uint64                 `protobuf:"varint,1,opt,name=base_index,json=baseIndex,proto3" json:"base_index,omitempty"`
+	BaseIndex     uint64                 `protobuf:"fixed64,1,opt,name=base_index,json=baseIndex,proto3" json:"base_index,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5390,7 +5390,7 @@ func (x *CacheGenerationMeta) GetBaseIndex() uint64 {
 // CacheSnapshotMeta stores cache-level metadata in Pebble.
 type CacheSnapshotMeta struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
-	CurrentGeneration uint64                 `protobuf:"varint,1,opt,name=current_generation,json=currentGeneration,proto3" json:"current_generation,omitempty"`
+	CurrentGeneration uint64                 `protobuf:"fixed64,1,opt,name=current_generation,json=currentGeneration,proto3" json:"current_generation,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -5495,7 +5495,7 @@ func (x *PeerAddress) GetServiceAddress() string {
 
 type GenerationSnapshot struct {
 	state          protoimpl.MessageState                `protogen:"open.v1"`
-	BaseIndex      uint64                                `protobuf:"varint,1,opt,name=base_index,json=baseIndex,proto3" json:"base_index,omitempty"`
+	BaseIndex      uint64                                `protobuf:"fixed64,1,opt,name=base_index,json=baseIndex,proto3" json:"base_index,omitempty"`
 	Volumes        []*VolumeAttributeSnapshotEntry       `protobuf:"bytes,2,rep,name=volumes,proto3" json:"volumes,omitempty"`
 	Metadata       []*MetadataAttributeEntry             `protobuf:"bytes,3,rep,name=metadata,proto3" json:"metadata,omitempty"`                                   // Account metadata
 	LedgerMetadata []*MetadataAttributeEntry             `protobuf:"bytes,4,rep,name=ledger_metadata,json=ledgerMetadata,proto3" json:"ledger_metadata,omitempty"` // Ledger metadata
@@ -6089,14 +6089,14 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x12require_signatures\x18\x01 \x01(\bR\x11requireSignatures\"\x12\n" +
 	"\x10ClosePeriodOrder\"p\n" +
 	"\x0fSealPeriodOrder\x12\x1b\n" +
-	"\tperiod_id\x18\x01 \x01(\x04R\bperiodId\x12!\n" +
+	"\tperiod_id\x18\x01 \x01(\x06R\bperiodId\x12!\n" +
 	"\fsealing_hash\x18\x02 \x01(\fR\vsealingHash\x12\x1d\n" +
 	"\n" +
 	"state_hash\x18\x03 \x01(\fR\tstateHash\"1\n" +
 	"\x12ArchivePeriodOrder\x12\x1b\n" +
-	"\tperiod_id\x18\x01 \x01(\x04R\bperiodId\"8\n" +
+	"\tperiod_id\x18\x01 \x01(\x06R\bperiodId\"8\n" +
 	"\x19ConfirmArchivePeriodOrder\x12\x1b\n" +
-	"\tperiod_id\x18\x01 \x01(\x04R\bperiodId\"3\n" +
+	"\tperiod_id\x18\x01 \x01(\x06R\bperiodId\"3\n" +
 	"\x17SetMaintenanceModeOrder\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\",\n" +
 	"\x16SetPeriodScheduleOrder\x12\x12\n" +
@@ -6112,10 +6112,10 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x06ledger\x18\x02 \x01(\tR\x06ledger\"\x1c\n" +
 	"\x1aCreateQueryCheckpointOrder\"A\n" +
 	"\x1aDeleteQueryCheckpointOrder\x12#\n" +
-	"\rcheckpoint_id\x18\x01 \x01(\x04R\fcheckpointId\"\x90\x01\n" +
+	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\"\x90\x01\n" +
 	"\x14QueryCheckpointState\x12#\n" +
-	"\rcheckpoint_id\x18\x01 \x01(\x04R\fcheckpointId\x12!\n" +
-	"\fmax_sequence\x18\x02 \x01(\x04R\vmaxSequence\x120\n" +
+	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\x12!\n" +
+	"\fmax_sequence\x18\x02 \x01(\x06R\vmaxSequence\x120\n" +
 	"\n" +
 	"created_at\x18\x03 \x01(\v2\x11.common.TimestampR\tcreatedAt\"5\n" +
 	"\x1fSetQueryCheckpointScheduleOrder\x12\x12\n" +
@@ -6135,7 +6135,7 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12*\n" +
 	"\x05entry\x18\x02 \x01(\v2\x14.raft.MirrorLogEntryR\x05entry\"\x9d\x03\n" +
 	"\x0eMirrorLogEntry\x12\x1a\n" +
-	"\tv2_log_id\x18\x01 \x01(\x04R\av2LogId\x12Q\n" +
+	"\tv2_log_id\x18\x01 \x01(\x06R\av2LogId\x12Q\n" +
 	"\x13created_transaction\x18\x02 \x01(\v2\x1e.raft.MirrorCreatedTransactionH\x00R\x12createdTransaction\x12B\n" +
 	"\x0esaved_metadata\x18\x03 \x01(\v2\x19.raft.MirrorSavedMetadataH\x00R\rsavedMetadata\x12T\n" +
 	"\x14reverted_transaction\x18\x04 \x01(\v2\x1f.raft.MirrorRevertedTransactionH\x00R\x13revertedTransaction\x12H\n" +
@@ -6143,9 +6143,9 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\bfill_gap\x18\x06 \x01(\v2\x13.raft.MirrorFillGapH\x00R\afillGapB\x06\n" +
 	"\x04data\"G\n" +
 	"\rMirrorFillGap\x126\n" +
-	"\x17skipped_transaction_ids\x18\x01 \x03(\x04R\x15skippedTransactionIds\"\x94\x04\n" +
+	"\x17skipped_transaction_ids\x18\x01 \x03(\x06R\x15skippedTransactionIds\"\x94\x04\n" +
 	"\x18MirrorCreatedTransaction\x12%\n" +
-	"\x0etransaction_id\x18\x01 \x01(\x04R\rtransactionId\x12+\n" +
+	"\x0etransaction_id\x18\x01 \x01(\x06R\rtransactionId\x12+\n" +
 	"\bpostings\x18\x02 \x03(\v2\x0f.common.PostingR\bpostings\x12H\n" +
 	"\bmetadata\x18\x03 \x03(\v2,.raft.MirrorCreatedTransaction.MetadataEntryR\bmetadata\x12/\n" +
 	"\ttimestamp\x18\x04 \x01(\v2\x11.common.TimestampR\ttimestamp\x12\x1c\n" +
@@ -6164,8 +6164,8 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"\x8d\x03\n" +
 	"\x19MirrorRevertedTransaction\x126\n" +
-	"\x17reverted_transaction_id\x18\x01 \x01(\x04R\x15revertedTransactionId\x12,\n" +
-	"\x12new_transaction_id\x18\x02 \x01(\x04R\x10newTransactionId\x12:\n" +
+	"\x17reverted_transaction_id\x18\x01 \x01(\x06R\x15revertedTransactionId\x12,\n" +
+	"\x12new_transaction_id\x18\x02 \x01(\x06R\x10newTransactionId\x12:\n" +
 	"\x10reverse_postings\x18\x03 \x03(\v2\x0f.common.PostingR\x0freversePostings\x12I\n" +
 	"\bmetadata\x18\x04 \x03(\v2-.raft.MirrorRevertedTransaction.MetadataEntryR\bmetadata\x12/\n" +
 	"\ttimestamp\x18\x05 \x01(\v2\x11.common.TimestampR\ttimestamp\x1aR\n" +
@@ -6230,8 +6230,8 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\rexpected_type\x18\x03 \x01(\x0e2\x14.common.MetadataTypeR\fexpectedType\x124\n" +
 	"\aentries\x18\x04 \x03(\v2\x1a.raft.ConvertMetadataEntryR\aentries\x12\x1d\n" +
 	"\n" +
-	"total_keys\x18\x05 \x01(\x04R\ttotalKeys\x121\n" +
-	"\x15converted_keys_so_far\x18\x06 \x01(\x04R\x12convertedKeysSoFar\"{\n" +
+	"total_keys\x18\x05 \x01(\x06R\ttotalKeys\x121\n" +
+	"\x15converted_keys_so_far\x18\x06 \x01(\x06R\x12convertedKeysSoFar\"{\n" +
 	"\x14ConvertMetadataEntry\x12#\n" +
 	"\rcanonical_key\x18\x01 \x01(\fR\fcanonicalKey\x12>\n" +
 	"\x0fconverted_value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x0econvertedValue\"\xa3\x01\n" +
@@ -6279,7 +6279,7 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"\x82\x03\n" +
 	"\x16RevertTransactionOrder\x12%\n" +
-	"\x0etransaction_id\x18\x01 \x01(\x04R\rtransactionId\x12\x14\n" +
+	"\x0etransaction_id\x18\x01 \x01(\x06R\rtransactionId\x12\x14\n" +
 	"\x05force\x18\x02 \x01(\bR\x05force\x12*\n" +
 	"\x11at_effective_date\x18\x03 \x01(\bR\x0fatEffectiveDate\x12F\n" +
 	"\bmetadata\x18\x04 \x03(\v2*.raft.RevertTransactionOrder.MetadataEntryR\bmetadata\x12<\n" +
@@ -6301,58 +6301,58 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\"\xd7\x03\n" +
 	"\bProposal\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x04R\x02id\x12#\n" +
+	"\x02id\x18\x01 \x01(\x06R\x02id\x12#\n" +
 	"\x06orders\x18\x02 \x03(\v2\v.raft.OrderR\x06orders\x12%\n" +
 	"\x04date\x18\x03 \x01(\v2\x11.common.TimestampR\x04date\x12*\n" +
 	"\apreload\x18\x04 \x01(\v2\x10.raft.PreloadSetR\apreload\x12F\n" +
 	"\x13events_sink_updates\x18\x05 \x03(\v2\x16.raft.EventsSinkUpdateR\x11eventsSinkUpdates\x12F\n" +
 	"\x13mirror_sync_updates\x18\x06 \x03(\v2\x16.raft.MirrorSyncUpdateR\x11mirrorSyncUpdates\x12'\n" +
-	"\x0fpredicted_index\x18\a \x01(\x04R\x0epredictedIndex\x12L\n" +
+	"\x0fpredicted_index\x18\a \x01(\x06R\x0epredictedIndex\x12L\n" +
 	"\x14idempotency_eviction\x18\b \x01(\v2\x19.raft.IdempotencyEvictionR\x13idempotencyEviction\x12<\n" +
 	"\x0ecluster_config\x18\t \x01(\v2\x15.common.ClusterConfigR\rclusterConfig\":\n" +
 	"\x13IdempotencyEviction\x12#\n" +
-	"\rcutoff_micros\x18\x01 \x01(\x04R\fcutoffMicros\"\xc5\x01\n" +
+	"\rcutoff_micros\x18\x01 \x01(\x06R\fcutoffMicros\"\xc5\x01\n" +
 	"\x10MirrorSyncUpdate\x12\x1f\n" +
 	"\vledger_name\x18\x01 \x01(\tR\n" +
 	"ledgerName\x12\x16\n" +
-	"\x06cursor\x18\x02 \x01(\x04R\x06cursor\x12-\n" +
+	"\x06cursor\x18\x02 \x01(\x06R\x06cursor\x12-\n" +
 	"\x05error\x18\x03 \x01(\v2\x17.common.MirrorSyncErrorR\x05error\x12\x1f\n" +
 	"\vclear_error\x18\x04 \x01(\bR\n" +
 	"clearError\x12(\n" +
-	"\x10source_log_count\x18\x05 \x01(\x04R\x0esourceLogCount\"\x91\x01\n" +
+	"\x10source_log_count\x18\x05 \x01(\x06R\x0esourceLogCount\"\x91\x01\n" +
 	"\x10EventsSinkUpdate\x12\x1b\n" +
 	"\tsink_name\x18\x01 \x01(\tR\bsinkName\x12\x16\n" +
-	"\x06cursor\x18\x02 \x01(\x04R\x06cursor\x12'\n" +
+	"\x06cursor\x18\x02 \x01(\x06R\x06cursor\x12'\n" +
 	"\x05error\x18\x03 \x01(\v2\x11.common.SinkErrorR\x05error\x12\x1f\n" +
 	"\vclear_error\x18\x04 \x01(\bR\n" +
 	"clearError\"\x80\x01\n" +
 	"\x15CreatedLogOrReference\x12.\n" +
 	"\vcreated_log\x18\x01 \x01(\v2\v.common.LogH\x00R\n" +
 	"createdLog\x12/\n" +
-	"\x12reference_sequence\x18\x02 \x01(\x04H\x00R\x11referenceSequenceB\x06\n" +
+	"\x12reference_sequence\x18\x02 \x01(\x06H\x00R\x11referenceSequenceB\x06\n" +
 	"\x04type\"\xc3\x03\n" +
 	"\x10LedgerBoundaries\x12.\n" +
-	"\x13next_transaction_id\x18\x01 \x01(\x04R\x11nextTransactionId\x12\x1e\n" +
-	"\vnext_log_id\x18\x02 \x01(\x04R\tnextLogId\x12!\n" +
-	"\fvolume_count\x18\x03 \x01(\x04R\vvolumeCount\x12%\n" +
-	"\x0emetadata_count\x18\x04 \x01(\x04R\rmetadataCount\x12'\n" +
-	"\x0freference_count\x18\x05 \x01(\x04R\x0ereferenceCount\x12#\n" +
-	"\rposting_count\x18\x06 \x01(\x04R\fpostingCount\x126\n" +
-	"\x17ephemeral_evicted_count\x18\a \x01(\x04R\x15ephemeralEvictedCount\x120\n" +
-	"\x14transient_used_count\x18\b \x01(\x04R\x12transientUsedCount\x12!\n" +
-	"\frevert_count\x18\t \x01(\x04R\vrevertCount\x12:\n" +
+	"\x13next_transaction_id\x18\x01 \x01(\x06R\x11nextTransactionId\x12\x1e\n" +
+	"\vnext_log_id\x18\x02 \x01(\x06R\tnextLogId\x12!\n" +
+	"\fvolume_count\x18\x03 \x01(\x06R\vvolumeCount\x12%\n" +
+	"\x0emetadata_count\x18\x04 \x01(\x06R\rmetadataCount\x12'\n" +
+	"\x0freference_count\x18\x05 \x01(\x06R\x0ereferenceCount\x12#\n" +
+	"\rposting_count\x18\x06 \x01(\x06R\fpostingCount\x126\n" +
+	"\x17ephemeral_evicted_count\x18\a \x01(\x06R\x15ephemeralEvictedCount\x120\n" +
+	"\x14transient_used_count\x18\b \x01(\x06R\x12transientUsedCount\x12!\n" +
+	"\frevert_count\x18\t \x01(\x06R\vrevertCount\x12:\n" +
 	"\x19numscript_execution_count\x18\n" +
-	" \x01(\x04R\x17numscriptExecutionCount\"\\\n" +
+	" \x01(\x06R\x17numscriptExecutionCount\"\\\n" +
 	"\n" +
 	"VolumePair\x12%\n" +
 	"\x05input\x18\x01 \x01(\v2\x0f.common.Uint256R\x05input\x12'\n" +
 	"\x06output\x18\x02 \x01(\v2\x0f.common.Uint256R\x06output\"\xb4\x01\n" +
 	"\n" +
 	"PreloadSet\x12.\n" +
-	"\x12lastPersistedIndex\x18\x01 \x01(\x04R\x12lastPersistedIndex\x12)\n" +
+	"\x12lastPersistedIndex\x18\x01 \x01(\x06R\x12lastPersistedIndex\x12)\n" +
 	"\bpreloads\x18\x02 \x03(\v2\r.raft.PreloadR\bpreloads\x12*\n" +
 	"\atouches\x18\x03 \x03(\v2\x10.raft.CacheTouchR\atouches\x12\x1f\n" +
-	"\vcache_epoch\x18\x04 \x01(\x04R\n" +
+	"\vcache_epoch\x18\x04 \x01(\x06R\n" +
 	"cacheEpoch\"9\n" +
 	"\n" +
 	"CacheTouch\x12\x0e\n" +
@@ -6414,16 +6414,16 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x0epeer_addresses\x18\x01 \x03(\v2\x11.raft.PeerAddressR\rpeerAddresses\"4\n" +
 	"\x13CacheGenerationMeta\x12\x1d\n" +
 	"\n" +
-	"base_index\x18\x01 \x01(\x04R\tbaseIndex\"B\n" +
+	"base_index\x18\x01 \x01(\x06R\tbaseIndex\"B\n" +
 	"\x11CacheSnapshotMeta\x12-\n" +
-	"\x12current_generation\x18\x01 \x01(\x04R\x11currentGeneration\"r\n" +
+	"\x12current_generation\x18\x01 \x01(\x06R\x11currentGeneration\"r\n" +
 	"\vPeerAddress\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12!\n" +
 	"\fraft_address\x18\x02 \x01(\tR\vraftAddress\x12'\n" +
 	"\x0fservice_address\x18\x03 \x01(\tR\x0eserviceAddress\"\x80\x04\n" +
 	"\x12GenerationSnapshot\x12\x1d\n" +
 	"\n" +
-	"base_index\x18\x01 \x01(\x04R\tbaseIndex\x12<\n" +
+	"base_index\x18\x01 \x01(\x06R\tbaseIndex\x12<\n" +
 	"\avolumes\x18\x02 \x03(\v2\".raft.VolumeAttributeSnapshotEntryR\avolumes\x128\n" +
 	"\bmetadata\x18\x03 \x03(\v2\x1c.raft.MetadataAttributeEntryR\bmetadata\x12E\n" +
 	"\x0fledger_metadata\x18\x04 \x03(\v2\x1c.raft.MetadataAttributeEntryR\x0eledgerMetadata\x124\n" +

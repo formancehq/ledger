@@ -240,7 +240,7 @@ type GetAccountRequest struct {
 	Ledger  string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	Address string                 `protobuf:"bytes,2,opt,name=address,proto3" json:"address,omitempty"`
 	// checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-	CheckpointId  uint64 `protobuf:"varint,3,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	CheckpointId  uint64 `protobuf:"fixed64,3,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -299,9 +299,9 @@ func (x *GetAccountRequest) GetCheckpointId() uint64 {
 type GetTransactionRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Ledger        string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
-	TransactionId uint64                 `protobuf:"varint,2,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
+	TransactionId uint64                 `protobuf:"fixed64,2,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
 	// checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-	CheckpointId  uint64 `protobuf:"varint,3,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	CheckpointId  uint64 `protobuf:"fixed64,3,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -416,16 +416,16 @@ type ListTransactionsRequest struct {
 	PageSize uint32 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	// after_tx_id is the transaction ID to start after (for pagination, exclusive)
 	// Use 0 or omit to start from the latest transaction
-	AfterTxId uint64 `protobuf:"varint,3,opt,name=after_tx_id,json=afterTxId,proto3" json:"after_tx_id,omitempty"`
+	AfterTxId uint64 `protobuf:"fixed64,3,opt,name=after_tx_id,json=afterTxId,proto3" json:"after_tx_id,omitempty"`
 	// filter is a rich boolean filter (metadata conditions, address matching, AND/OR/NOT)
 	Filter *commonpb.QueryFilter `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
 	// reverse inverts the default iteration order (newest-first becomes oldest-first)
 	Reverse bool `protobuf:"varint,5,opt,name=reverse,proto3" json:"reverse,omitempty"`
 	// min_log_sequence requires the store to have applied at least this log sequence before reading.
 	// If the store has not caught up, the server returns FailedPrecondition.
-	MinLogSequence uint64 `protobuf:"varint,6,opt,name=min_log_sequence,json=minLogSequence,proto3" json:"min_log_sequence,omitempty"`
+	MinLogSequence uint64 `protobuf:"fixed64,6,opt,name=min_log_sequence,json=minLogSequence,proto3" json:"min_log_sequence,omitempty"`
 	// checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-	CheckpointId  uint64 `protobuf:"varint,7,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	CheckpointId  uint64 `protobuf:"fixed64,7,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -522,9 +522,9 @@ type ListAccountsRequest struct {
 	Reverse bool `protobuf:"varint,5,opt,name=reverse,proto3" json:"reverse,omitempty"`
 	// min_log_sequence requires the store to have applied at least this log sequence before reading.
 	// If the store has not caught up, the server returns FailedPrecondition.
-	MinLogSequence uint64 `protobuf:"varint,6,opt,name=min_log_sequence,json=minLogSequence,proto3" json:"min_log_sequence,omitempty"`
+	MinLogSequence uint64 `protobuf:"fixed64,6,opt,name=min_log_sequence,json=minLogSequence,proto3" json:"min_log_sequence,omitempty"`
 	// checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-	CheckpointId  uint64 `protobuf:"varint,7,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	CheckpointId  uint64 `protobuf:"fixed64,7,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -777,7 +777,7 @@ type ListLedgersRequest struct {
 	// page_size is the maximum number of ledgers to return (0 = no limit)
 	PageSize uint32 `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	// checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-	CheckpointId  uint64 `protobuf:"varint,2,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	CheckpointId  uint64 `protobuf:"fixed64,2,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -830,7 +830,7 @@ type GetLedgerRequest struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	Ledger string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	// checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-	CheckpointId  uint64 `protobuf:"varint,2,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	CheckpointId  uint64 `protobuf:"fixed64,2,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1629,7 +1629,7 @@ func (*CreateQueryCheckpointRequest) Descriptor() ([]byte, []int) {
 // DeleteQueryCheckpointRequest removes a query checkpoint via Raft.
 type DeleteQueryCheckpointRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	CheckpointId  uint64                 `protobuf:"varint,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	CheckpointId  uint64                 `protobuf:"fixed64,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2140,7 +2140,7 @@ func (*ClosePeriodRequest) Descriptor() ([]byte, []int) {
 
 type SealPeriodRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	PeriodId      uint64                 `protobuf:"varint,1,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`
+	PeriodId      uint64                 `protobuf:"fixed64,1,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`
 	SealingHash   []byte                 `protobuf:"bytes,2,opt,name=sealing_hash,json=sealingHash,proto3" json:"sealing_hash,omitempty"`
 	StateHash     []byte                 `protobuf:"bytes,3,opt,name=state_hash,json=stateHash,proto3" json:"state_hash,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -2200,7 +2200,7 @@ func (x *SealPeriodRequest) GetStateHash() []byte {
 
 type ArchivePeriodRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	PeriodId      uint64                 `protobuf:"varint,1,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`
+	PeriodId      uint64                 `protobuf:"fixed64,1,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2244,7 +2244,7 @@ func (x *ArchivePeriodRequest) GetPeriodId() uint64 {
 
 type ConfirmArchivePeriodRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	PeriodId      uint64                 `protobuf:"varint,1,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`
+	PeriodId      uint64                 `protobuf:"fixed64,1,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2935,7 +2935,7 @@ type GetNumscriptRequest struct {
 	Version string                 `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"` // "" = latest
 	Ledger  string                 `protobuf:"bytes,3,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	// checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-	CheckpointId  uint64 `protobuf:"varint,4,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	CheckpointId  uint64 `protobuf:"fixed64,4,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3003,7 +3003,7 @@ type ListNumscriptsRequest struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	Ledger string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	// checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-	CheckpointId  uint64 `protobuf:"varint,2,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	CheckpointId  uint64 `protobuf:"fixed64,2,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3520,7 +3520,7 @@ func (x *CreateTransactionPayload) GetScriptReference() *ScriptReference {
 // RevertTransactionPayload contains the data for reverting a transaction
 type RevertTransactionPayload struct {
 	state           protoimpl.MessageState             `protogen:"open.v1"`
-	TransactionId   uint64                             `protobuf:"varint,1,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
+	TransactionId   uint64                             `protobuf:"fixed64,1,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
 	Force           bool                               `protobuf:"varint,2,opt,name=force,proto3" json:"force,omitempty"`
 	AtEffectiveDate bool                               `protobuf:"varint,3,opt,name=at_effective_date,json=atEffectiveDate,proto3" json:"at_effective_date,omitempty"`
 	Metadata        map[string]*commonpb.MetadataValue `protobuf:"bytes,4,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
@@ -4322,7 +4322,7 @@ type PebbleMetrics struct {
 	Wal            *WALMetrics            `protobuf:"bytes,8,opt,name=wal,proto3" json:"wal,omitempty"`
 	Keys           *KeysMetrics           `protobuf:"bytes,9,opt,name=keys,proto3" json:"keys,omitempty"`
 	Levels         []*LevelMetrics        `protobuf:"bytes,10,rep,name=levels,proto3" json:"levels,omitempty"`
-	DiskSpaceUsage uint64                 `protobuf:"varint,11,opt,name=disk_space_usage,json=diskSpaceUsage,proto3" json:"disk_space_usage,omitempty"`
+	DiskSpaceUsage uint64                 `protobuf:"fixed64,11,opt,name=disk_space_usage,json=diskSpaceUsage,proto3" json:"disk_space_usage,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -4512,7 +4512,7 @@ type CompactMetrics struct {
 	ReadCount        int64                  `protobuf:"varint,6,opt,name=read_count,json=readCount,proto3" json:"read_count,omitempty"`
 	RewriteCount     int64                  `protobuf:"varint,7,opt,name=rewrite_count,json=rewriteCount,proto3" json:"rewrite_count,omitempty"`
 	MultiLevelCount  int64                  `protobuf:"varint,8,opt,name=multi_level_count,json=multiLevelCount,proto3" json:"multi_level_count,omitempty"`
-	EstimatedDebt    uint64                 `protobuf:"varint,9,opt,name=estimated_debt,json=estimatedDebt,proto3" json:"estimated_debt,omitempty"`
+	EstimatedDebt    uint64                 `protobuf:"fixed64,9,opt,name=estimated_debt,json=estimatedDebt,proto3" json:"estimated_debt,omitempty"`
 	InProgressBytes  int64                  `protobuf:"varint,10,opt,name=in_progress_bytes,json=inProgressBytes,proto3" json:"in_progress_bytes,omitempty"`
 	NumInProgress    int64                  `protobuf:"varint,11,opt,name=num_in_progress,json=numInProgress,proto3" json:"num_in_progress,omitempty"`
 	MarkedFiles      int32                  `protobuf:"varint,12,opt,name=marked_files,json=markedFiles,proto3" json:"marked_files,omitempty"`
@@ -4638,9 +4638,9 @@ type FlushMetrics struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	Count              int64                  `protobuf:"varint,1,opt,name=count,proto3" json:"count,omitempty"`
 	NumInProgress      int64                  `protobuf:"varint,2,opt,name=num_in_progress,json=numInProgress,proto3" json:"num_in_progress,omitempty"`
-	AsIngestCount      uint64                 `protobuf:"varint,3,opt,name=as_ingest_count,json=asIngestCount,proto3" json:"as_ingest_count,omitempty"`
-	AsIngestTableCount uint64                 `protobuf:"varint,4,opt,name=as_ingest_table_count,json=asIngestTableCount,proto3" json:"as_ingest_table_count,omitempty"`
-	AsIngestBytes      uint64                 `protobuf:"varint,5,opt,name=as_ingest_bytes,json=asIngestBytes,proto3" json:"as_ingest_bytes,omitempty"`
+	AsIngestCount      uint64                 `protobuf:"fixed64,3,opt,name=as_ingest_count,json=asIngestCount,proto3" json:"as_ingest_count,omitempty"`
+	AsIngestTableCount uint64                 `protobuf:"fixed64,4,opt,name=as_ingest_table_count,json=asIngestTableCount,proto3" json:"as_ingest_table_count,omitempty"`
+	AsIngestBytes      uint64                 `protobuf:"fixed64,5,opt,name=as_ingest_bytes,json=asIngestBytes,proto3" json:"as_ingest_bytes,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -4712,9 +4712,9 @@ func (x *FlushMetrics) GetAsIngestBytes() uint64 {
 
 type MemTableMetrics struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Size          uint64                 `protobuf:"varint,1,opt,name=size,proto3" json:"size,omitempty"`
+	Size          uint64                 `protobuf:"fixed64,1,opt,name=size,proto3" json:"size,omitempty"`
 	Count         int64                  `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
-	ZombieSize    uint64                 `protobuf:"varint,3,opt,name=zombie_size,json=zombieSize,proto3" json:"zombie_size,omitempty"`
+	ZombieSize    uint64                 `protobuf:"fixed64,3,opt,name=zombie_size,json=zombieSize,proto3" json:"zombie_size,omitempty"`
 	ZombieCount   int64                  `protobuf:"varint,4,opt,name=zombie_count,json=zombieCount,proto3" json:"zombie_count,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -4781,9 +4781,9 @@ func (x *MemTableMetrics) GetZombieCount() int64 {
 type SnapshotsMetrics struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Count          int32                  `protobuf:"varint,1,opt,name=count,proto3" json:"count,omitempty"`
-	EarliestSeqNum uint64                 `protobuf:"varint,2,opt,name=earliest_seq_num,json=earliestSeqNum,proto3" json:"earliest_seq_num,omitempty"`
-	PinnedKeys     uint64                 `protobuf:"varint,3,opt,name=pinned_keys,json=pinnedKeys,proto3" json:"pinned_keys,omitempty"`
-	PinnedSize     uint64                 `protobuf:"varint,4,opt,name=pinned_size,json=pinnedSize,proto3" json:"pinned_size,omitempty"`
+	EarliestSeqNum uint64                 `protobuf:"fixed64,2,opt,name=earliest_seq_num,json=earliestSeqNum,proto3" json:"earliest_seq_num,omitempty"`
+	PinnedKeys     uint64                 `protobuf:"fixed64,3,opt,name=pinned_keys,json=pinnedKeys,proto3" json:"pinned_keys,omitempty"`
+	PinnedSize     uint64                 `protobuf:"fixed64,4,opt,name=pinned_size,json=pinnedSize,proto3" json:"pinned_size,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -4848,10 +4848,10 @@ func (x *SnapshotsMetrics) GetPinnedSize() uint64 {
 
 type TableMetrics struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
-	ZombieSize        uint64                 `protobuf:"varint,1,opt,name=zombie_size,json=zombieSize,proto3" json:"zombie_size,omitempty"`
+	ZombieSize        uint64                 `protobuf:"fixed64,1,opt,name=zombie_size,json=zombieSize,proto3" json:"zombie_size,omitempty"`
 	ZombieCount       int64                  `protobuf:"varint,2,opt,name=zombie_count,json=zombieCount,proto3" json:"zombie_count,omitempty"`
-	BackingTableCount uint64                 `protobuf:"varint,3,opt,name=backing_table_count,json=backingTableCount,proto3" json:"backing_table_count,omitempty"`
-	BackingTableSize  uint64                 `protobuf:"varint,4,opt,name=backing_table_size,json=backingTableSize,proto3" json:"backing_table_size,omitempty"`
+	BackingTableCount uint64                 `protobuf:"fixed64,3,opt,name=backing_table_count,json=backingTableCount,proto3" json:"backing_table_count,omitempty"`
+	BackingTableSize  uint64                 `protobuf:"fixed64,4,opt,name=backing_table_size,json=backingTableSize,proto3" json:"backing_table_size,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -4986,9 +4986,9 @@ type WALMetrics struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Files         int64                  `protobuf:"varint,1,opt,name=files,proto3" json:"files,omitempty"`
 	ObsoleteFiles int64                  `protobuf:"varint,2,opt,name=obsolete_files,json=obsoleteFiles,proto3" json:"obsolete_files,omitempty"`
-	Size          uint64                 `protobuf:"varint,3,opt,name=size,proto3" json:"size,omitempty"`
-	BytesIn       uint64                 `protobuf:"varint,4,opt,name=bytes_in,json=bytesIn,proto3" json:"bytes_in,omitempty"`
-	BytesWritten  uint64                 `protobuf:"varint,5,opt,name=bytes_written,json=bytesWritten,proto3" json:"bytes_written,omitempty"`
+	Size          uint64                 `protobuf:"fixed64,3,opt,name=size,proto3" json:"size,omitempty"`
+	BytesIn       uint64                 `protobuf:"fixed64,4,opt,name=bytes_in,json=bytesIn,proto3" json:"bytes_in,omitempty"`
+	BytesWritten  uint64                 `protobuf:"fixed64,5,opt,name=bytes_written,json=bytesWritten,proto3" json:"bytes_written,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5060,8 +5060,8 @@ func (x *WALMetrics) GetBytesWritten() uint64 {
 
 type KeysMetrics struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
-	RangeKeySetsCount uint64                 `protobuf:"varint,1,opt,name=range_key_sets_count,json=rangeKeySetsCount,proto3" json:"range_key_sets_count,omitempty"`
-	TombstoneCount    uint64                 `protobuf:"varint,2,opt,name=tombstone_count,json=tombstoneCount,proto3" json:"tombstone_count,omitempty"`
+	RangeKeySetsCount uint64                 `protobuf:"fixed64,1,opt,name=range_key_sets_count,json=rangeKeySetsCount,proto3" json:"range_key_sets_count,omitempty"`
+	TombstoneCount    uint64                 `protobuf:"fixed64,2,opt,name=tombstone_count,json=tombstoneCount,proto3" json:"tombstone_count,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -5116,16 +5116,16 @@ type LevelMetrics struct {
 	NumFiles        int64                  `protobuf:"varint,2,opt,name=num_files,json=numFiles,proto3" json:"num_files,omitempty"`
 	Size            int64                  `protobuf:"varint,3,opt,name=size,proto3" json:"size,omitempty"`
 	Score           float64                `protobuf:"fixed64,4,opt,name=score,proto3" json:"score,omitempty"`
-	BytesIn         uint64                 `protobuf:"varint,5,opt,name=bytes_in,json=bytesIn,proto3" json:"bytes_in,omitempty"`
-	BytesIngested   uint64                 `protobuf:"varint,6,opt,name=bytes_ingested,json=bytesIngested,proto3" json:"bytes_ingested,omitempty"`
-	BytesMoved      uint64                 `protobuf:"varint,7,opt,name=bytes_moved,json=bytesMoved,proto3" json:"bytes_moved,omitempty"`
-	BytesRead       uint64                 `protobuf:"varint,8,opt,name=bytes_read,json=bytesRead,proto3" json:"bytes_read,omitempty"`
-	BytesCompacted  uint64                 `protobuf:"varint,9,opt,name=bytes_compacted,json=bytesCompacted,proto3" json:"bytes_compacted,omitempty"`
-	BytesFlushed    uint64                 `protobuf:"varint,10,opt,name=bytes_flushed,json=bytesFlushed,proto3" json:"bytes_flushed,omitempty"`
-	TablesCompacted uint64                 `protobuf:"varint,11,opt,name=tables_compacted,json=tablesCompacted,proto3" json:"tables_compacted,omitempty"`
-	TablesFlushed   uint64                 `protobuf:"varint,12,opt,name=tables_flushed,json=tablesFlushed,proto3" json:"tables_flushed,omitempty"`
-	TablesIngested  uint64                 `protobuf:"varint,13,opt,name=tables_ingested,json=tablesIngested,proto3" json:"tables_ingested,omitempty"`
-	TablesMoved     uint64                 `protobuf:"varint,14,opt,name=tables_moved,json=tablesMoved,proto3" json:"tables_moved,omitempty"`
+	BytesIn         uint64                 `protobuf:"fixed64,5,opt,name=bytes_in,json=bytesIn,proto3" json:"bytes_in,omitempty"`
+	BytesIngested   uint64                 `protobuf:"fixed64,6,opt,name=bytes_ingested,json=bytesIngested,proto3" json:"bytes_ingested,omitempty"`
+	BytesMoved      uint64                 `protobuf:"fixed64,7,opt,name=bytes_moved,json=bytesMoved,proto3" json:"bytes_moved,omitempty"`
+	BytesRead       uint64                 `protobuf:"fixed64,8,opt,name=bytes_read,json=bytesRead,proto3" json:"bytes_read,omitempty"`
+	BytesCompacted  uint64                 `protobuf:"fixed64,9,opt,name=bytes_compacted,json=bytesCompacted,proto3" json:"bytes_compacted,omitempty"`
+	BytesFlushed    uint64                 `protobuf:"fixed64,10,opt,name=bytes_flushed,json=bytesFlushed,proto3" json:"bytes_flushed,omitempty"`
+	TablesCompacted uint64                 `protobuf:"fixed64,11,opt,name=tables_compacted,json=tablesCompacted,proto3" json:"tables_compacted,omitempty"`
+	TablesFlushed   uint64                 `protobuf:"fixed64,12,opt,name=tables_flushed,json=tablesFlushed,proto3" json:"tables_flushed,omitempty"`
+	TablesIngested  uint64                 `protobuf:"fixed64,13,opt,name=tables_ingested,json=tablesIngested,proto3" json:"tables_ingested,omitempty"`
+	TablesMoved     uint64                 `protobuf:"fixed64,14,opt,name=tables_moved,json=tablesMoved,proto3" json:"tables_moved,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -5380,11 +5380,11 @@ type CheckStoreError struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ErrorType     CheckStoreErrorType    `protobuf:"varint,1,opt,name=error_type,json=errorType,proto3,enum=ledger.CheckStoreErrorType" json:"error_type,omitempty"`
 	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
-	LogSequence   uint64                 `protobuf:"varint,3,opt,name=log_sequence,json=logSequence,proto3" json:"log_sequence,omitempty"`
+	LogSequence   uint64                 `protobuf:"fixed64,3,opt,name=log_sequence,json=logSequence,proto3" json:"log_sequence,omitempty"`
 	Ledger        string                 `protobuf:"bytes,4,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	Account       string                 `protobuf:"bytes,5,opt,name=account,proto3" json:"account,omitempty"`
 	Asset         string                 `protobuf:"bytes,6,opt,name=asset,proto3" json:"asset,omitempty"`
-	TransactionId uint64                 `protobuf:"varint,7,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
+	TransactionId uint64                 `protobuf:"fixed64,7,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5470,8 +5470,8 @@ func (x *CheckStoreError) GetTransactionId() uint64 {
 
 type CheckStoreProgress struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	LogsChecked   uint64                 `protobuf:"varint,1,opt,name=logs_checked,json=logsChecked,proto3" json:"logs_checked,omitempty"`
-	TotalLogs     uint64                 `protobuf:"varint,2,opt,name=total_logs,json=totalLogs,proto3" json:"total_logs,omitempty"`
+	LogsChecked   uint64                 `protobuf:"fixed64,1,opt,name=logs_checked,json=logsChecked,proto3" json:"logs_checked,omitempty"`
+	TotalLogs     uint64                 `protobuf:"fixed64,2,opt,name=total_logs,json=totalLogs,proto3" json:"total_logs,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5522,13 +5522,13 @@ func (x *CheckStoreProgress) GetTotalLogs() uint64 {
 
 type ListAuditEntriesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	AfterSequence *uint64                `protobuf:"varint,1,opt,name=after_sequence,json=afterSequence,proto3,oneof" json:"after_sequence,omitempty"`
+	AfterSequence *uint64                `protobuf:"fixed64,1,opt,name=after_sequence,json=afterSequence,proto3,oneof" json:"after_sequence,omitempty"`
 	FailuresOnly  bool                   `protobuf:"varint,2,opt,name=failures_only,json=failuresOnly,proto3" json:"failures_only,omitempty"`
 	// page_size is the maximum number of audit entries to return (0 = no limit)
 	PageSize uint32 `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	// min_log_sequence requires the store to have applied at least this log sequence before reading.
 	// If the store has not caught up, the server returns FailedPrecondition.
-	MinLogSequence uint64 `protobuf:"varint,4,opt,name=min_log_sequence,json=minLogSequence,proto3" json:"min_log_sequence,omitempty"`
+	MinLogSequence uint64 `protobuf:"fixed64,4,opt,name=min_log_sequence,json=minLogSequence,proto3" json:"min_log_sequence,omitempty"`
 	// ledger filters audit entries to only those containing orders targeting this ledger.
 	Ledger        string `protobuf:"bytes,5,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -5602,7 +5602,7 @@ func (x *ListAuditEntriesRequest) GetLedger() string {
 
 type GetAuditEntryRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Sequence      uint64                 `protobuf:"varint,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	Sequence      uint64                 `protobuf:"fixed64,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5647,16 +5647,16 @@ func (x *GetAuditEntryRequest) GetSequence() uint64 {
 type ListLogsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// after_sequence is the global sequence to start after (exclusive). Used when no ledger filter is set.
-	AfterSequence *uint64 `protobuf:"varint,1,opt,name=after_sequence,json=afterSequence,proto3,oneof" json:"after_sequence,omitempty"`
+	AfterSequence *uint64 `protobuf:"fixed64,1,opt,name=after_sequence,json=afterSequence,proto3,oneof" json:"after_sequence,omitempty"`
 	PageSize      uint32  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	// min_log_sequence requires the store to have applied at least this log sequence before reading.
-	MinLogSequence uint64 `protobuf:"varint,3,opt,name=min_log_sequence,json=minLogSequence,proto3" json:"min_log_sequence,omitempty"`
+	MinLogSequence uint64 `protobuf:"fixed64,3,opt,name=min_log_sequence,json=minLogSequence,proto3" json:"min_log_sequence,omitempty"`
 	// filter is an optional filter (e.g. ledger == "foo", log_id > 42). When a ledger filter
 	// is present, results are ordered by ledger-local log ID ascending. Use a log_id condition
 	// for pagination. When absent, all logs are returned ordered by global sequence ascending.
 	Filter *commonpb.QueryFilter `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
 	// checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-	CheckpointId  uint64 `protobuf:"varint,5,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	CheckpointId  uint64 `protobuf:"fixed64,5,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5728,9 +5728,9 @@ func (x *ListLogsRequest) GetCheckpointId() uint64 {
 
 type GetLogRequest struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
-	Sequence uint64                 `protobuf:"varint,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	Sequence uint64                 `protobuf:"fixed64,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
 	// checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-	CheckpointId  uint64 `protobuf:"varint,2,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	CheckpointId  uint64 `protobuf:"fixed64,2,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5975,8 +5975,8 @@ type MetadataFieldStatus struct {
 	state         protoimpl.MessageState            `protogen:"open.v1"`
 	DeclaredType  commonpb.MetadataType             `protobuf:"varint,1,opt,name=declared_type,json=declaredType,proto3,enum=common.MetadataType" json:"declared_type,omitempty"`
 	Status        commonpb.MetadataConversionStatus `protobuf:"varint,2,opt,name=status,proto3,enum=common.MetadataConversionStatus" json:"status,omitempty"`
-	TotalKeys     uint64                            `protobuf:"varint,3,opt,name=total_keys,json=totalKeys,proto3" json:"total_keys,omitempty"`
-	ConvertedKeys uint64                            `protobuf:"varint,4,opt,name=converted_keys,json=convertedKeys,proto3" json:"converted_keys,omitempty"`
+	TotalKeys     uint64                            `protobuf:"fixed64,3,opt,name=total_keys,json=totalKeys,proto3" json:"total_keys,omitempty"`
+	ConvertedKeys uint64                            `protobuf:"fixed64,4,opt,name=converted_keys,json=convertedKeys,proto3" json:"converted_keys,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6096,7 +6096,7 @@ func (x *AnalyzeAccountsRequest) GetVariableThreshold() uint32 {
 type AnalyzeAccountsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Patterns      []*AccountPattern      `protobuf:"bytes,1,rep,name=patterns,proto3" json:"patterns,omitempty"`
-	TotalAccounts uint64                 `protobuf:"varint,2,opt,name=total_accounts,json=totalAccounts,proto3" json:"total_accounts,omitempty"`
+	TotalAccounts uint64                 `protobuf:"fixed64,2,opt,name=total_accounts,json=totalAccounts,proto3" json:"total_accounts,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6148,8 +6148,8 @@ func (x *AnalyzeAccountsResponse) GetTotalAccounts() uint64 {
 // AnalyzeProgress reports scan progress for long-running analysis operations.
 type AnalyzeProgress struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Processed     uint64                 `protobuf:"varint,1,opt,name=processed,proto3" json:"processed,omitempty"`
-	Total         uint64                 `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
+	Processed     uint64                 `protobuf:"fixed64,1,opt,name=processed,proto3" json:"processed,omitempty"`
+	Total         uint64                 `protobuf:"fixed64,2,opt,name=total,proto3" json:"total,omitempty"`
 	Phase         string                 `protobuf:"bytes,3,opt,name=phase,proto3" json:"phase,omitempty"` // "scanning", "pass1", "pass2"
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -6375,10 +6375,10 @@ func (*AnalyzeTransactionsEvent_Result) isAnalyzeTransactionsEvent_Type() {}
 // AccountPattern describes a discovered address pattern and its statistics.
 type AccountPattern struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Pattern       string                 `protobuf:"bytes,1,opt,name=pattern,proto3" json:"pattern,omitempty"`                                // Human-readable pattern (e.g. "users:{userId}")
-	AccountCount  uint64                 `protobuf:"varint,2,opt,name=account_count,json=accountCount,proto3" json:"account_count,omitempty"` // Number of accounts matching this pattern
-	Assets        []string               `protobuf:"bytes,3,rep,name=assets,proto3" json:"assets,omitempty"`                                  // Distinct assets observed for matching accounts
-	MetadataKeys  []string               `protobuf:"bytes,4,rep,name=metadata_keys,json=metadataKeys,proto3" json:"metadata_keys,omitempty"`  // Distinct metadata keys observed
+	Pattern       string                 `protobuf:"bytes,1,opt,name=pattern,proto3" json:"pattern,omitempty"`                                 // Human-readable pattern (e.g. "users:{userId}")
+	AccountCount  uint64                 `protobuf:"fixed64,2,opt,name=account_count,json=accountCount,proto3" json:"account_count,omitempty"` // Number of accounts matching this pattern
+	Assets        []string               `protobuf:"bytes,3,rep,name=assets,proto3" json:"assets,omitempty"`                                   // Distinct assets observed for matching accounts
+	MetadataKeys  []string               `protobuf:"bytes,4,rep,name=metadata_keys,json=metadataKeys,proto3" json:"metadata_keys,omitempty"`   // Distinct metadata keys observed
 	Segments      []*PatternSegment      `protobuf:"bytes,5,rep,name=segments,proto3" json:"segments,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -6457,7 +6457,7 @@ type PatternSegment struct {
 	FixedValue      string                 `protobuf:"bytes,3,opt,name=fixed_value,json=fixedValue,proto3" json:"fixed_value,omitempty"`                // Set when type=FIXED
 	VariableName    string                 `protobuf:"bytes,4,opt,name=variable_name,json=variableName,proto3" json:"variable_name,omitempty"`          // Set when type=VARIABLE
 	InferredPattern string                 `protobuf:"bytes,5,opt,name=inferred_pattern,json=inferredPattern,proto3" json:"inferred_pattern,omitempty"` // Regex for variable segments
-	UniqueValues    uint64                 `protobuf:"varint,6,opt,name=unique_values,json=uniqueValues,proto3" json:"unique_values,omitempty"`         // Count of distinct values for this segment
+	UniqueValues    uint64                 `protobuf:"fixed64,6,opt,name=unique_values,json=uniqueValues,proto3" json:"unique_values,omitempty"`        // Count of distinct values for this segment
 	Examples        []string               `protobuf:"bytes,7,rep,name=examples,proto3" json:"examples,omitempty"`                                      // Up to 5 example values
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
@@ -6599,8 +6599,8 @@ func (x *AnalyzeTransactionsRequest) GetVariableThreshold() uint32 {
 type AnalyzeTransactionsResponse struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	FlowPatterns      []*FlowPattern         `protobuf:"bytes,1,rep,name=flow_patterns,json=flowPatterns,proto3" json:"flow_patterns,omitempty"`
-	TotalTransactions uint64                 `protobuf:"varint,2,opt,name=total_transactions,json=totalTransactions,proto3" json:"total_transactions,omitempty"`
-	TotalReverted     uint64                 `protobuf:"varint,3,opt,name=total_reverted,json=totalReverted,proto3" json:"total_reverted,omitempty"`
+	TotalTransactions uint64                 `protobuf:"fixed64,2,opt,name=total_transactions,json=totalTransactions,proto3" json:"total_transactions,omitempty"`
+	TotalReverted     uint64                 `protobuf:"fixed64,3,opt,name=total_reverted,json=totalReverted,proto3" json:"total_reverted,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -6660,7 +6660,7 @@ type FlowPattern struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	Signature        string                 `protobuf:"bytes,1,opt,name=signature,proto3" json:"signature,omitempty"` // e.g. "users:{id}:main -> bank:fees [USD]"
 	Structure        PostingStructure       `protobuf:"varint,2,opt,name=structure,proto3,enum=ledger.PostingStructure" json:"structure,omitempty"`
-	TransactionCount uint64                 `protobuf:"varint,3,opt,name=transaction_count,json=transactionCount,proto3" json:"transaction_count,omitempty"`
+	TransactionCount uint64                 `protobuf:"fixed64,3,opt,name=transaction_count,json=transactionCount,proto3" json:"transaction_count,omitempty"`
 	Postings         []*NormalizedPosting   `protobuf:"bytes,4,rep,name=postings,proto3" json:"postings,omitempty"`
 	Temporal         *TemporalStats         `protobuf:"bytes,5,opt,name=temporal,proto3" json:"temporal,omitempty"`
 	VolumeStats      []*AssetVolumeStats    `protobuf:"bytes,6,rep,name=volume_stats,json=volumeStats,proto3" json:"volume_stats,omitempty"`
@@ -6879,7 +6879,7 @@ func (x *TemporalStats) GetPeakHours() []*HourBucket {
 type HourBucket struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Hour          uint32                 `protobuf:"varint,1,opt,name=hour,proto3" json:"hour,omitempty"` // 0-23
-	Count         uint64                 `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
+	Count         uint64                 `protobuf:"fixed64,2,opt,name=count,proto3" json:"count,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6935,7 +6935,7 @@ type AssetVolumeStats struct {
 	AverageVolume    string                 `protobuf:"bytes,3,opt,name=average_volume,json=averageVolume,proto3" json:"average_volume,omitempty"`
 	MinVolume        string                 `protobuf:"bytes,4,opt,name=min_volume,json=minVolume,proto3" json:"min_volume,omitempty"`
 	MaxVolume        string                 `protobuf:"bytes,5,opt,name=max_volume,json=maxVolume,proto3" json:"max_volume,omitempty"`
-	TransactionCount uint64                 `protobuf:"varint,6,opt,name=transaction_count,json=transactionCount,proto3" json:"transaction_count,omitempty"`
+	TransactionCount uint64                 `protobuf:"fixed64,6,opt,name=transaction_count,json=transactionCount,proto3" json:"transaction_count,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -7371,7 +7371,7 @@ type ExecutePreparedQueryRequest struct {
 	Parameters     map[string]*commonpb.ParameterValue `protobuf:"bytes,3,rep,name=parameters,proto3" json:"parameters,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	PageSize       uint32                              `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	Cursor         string                              `protobuf:"bytes,5,opt,name=cursor,proto3" json:"cursor,omitempty"`
-	MinLogSequence uint64                              `protobuf:"varint,6,opt,name=min_log_sequence,json=minLogSequence,proto3" json:"min_log_sequence,omitempty"`
+	MinLogSequence uint64                              `protobuf:"fixed64,6,opt,name=min_log_sequence,json=minLogSequence,proto3" json:"min_log_sequence,omitempty"`
 	Mode           commonpb.QueryMode                  `protobuf:"varint,7,opt,name=mode,proto3,enum=common.QueryMode" json:"mode,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
@@ -7576,10 +7576,10 @@ func (*GetIndexStatusRequest) Descriptor() ([]byte, []int) {
 
 type GetIndexStatusResponse struct {
 	state               protoimpl.MessageState   `protogen:"open.v1"`
-	LastIndexedSequence uint64                   `protobuf:"varint,1,opt,name=last_indexed_sequence,json=lastIndexedSequence,proto3" json:"last_indexed_sequence,omitempty"`
-	LastLogSequence     uint64                   `protobuf:"varint,2,opt,name=last_log_sequence,json=lastLogSequence,proto3" json:"last_log_sequence,omitempty"`
-	Lag                 uint64                   `protobuf:"varint,3,opt,name=lag,proto3" json:"lag,omitempty"`
-	IndexFileSize       uint64                   `protobuf:"varint,4,opt,name=index_file_size,json=indexFileSize,proto3" json:"index_file_size,omitempty"`
+	LastIndexedSequence uint64                   `protobuf:"fixed64,1,opt,name=last_indexed_sequence,json=lastIndexedSequence,proto3" json:"last_indexed_sequence,omitempty"`
+	LastLogSequence     uint64                   `protobuf:"fixed64,2,opt,name=last_log_sequence,json=lastLogSequence,proto3" json:"last_log_sequence,omitempty"`
+	Lag                 uint64                   `protobuf:"fixed64,3,opt,name=lag,proto3" json:"lag,omitempty"`
+	IndexFileSize       uint64                   `protobuf:"fixed64,4,opt,name=index_file_size,json=indexFileSize,proto3" json:"index_file_size,omitempty"`
 	BackfillProgress    []*IndexBackfillProgress `protobuf:"bytes,5,rep,name=backfill_progress,json=backfillProgress,proto3" json:"backfill_progress,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
@@ -7660,7 +7660,7 @@ type IndexBackfillProgress struct {
 	//	*IndexBackfillProgress_Transaction
 	//	*IndexBackfillProgress_Account
 	Index         isIndexBackfillProgress_Index `protobuf_oneof:"index"`
-	Cursor        uint64                        `protobuf:"varint,5,opt,name=cursor,proto3" json:"cursor,omitempty"`
+	Cursor        uint64                        `protobuf:"fixed64,5,opt,name=cursor,proto3" json:"cursor,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -7769,7 +7769,7 @@ type GetLedgerStatsRequest struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	Ledger string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	// checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-	CheckpointId  uint64 `protobuf:"varint,2,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	CheckpointId  uint64 `protobuf:"fixed64,2,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -7822,7 +7822,7 @@ type AggregateVolumesRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Ledger         string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	Filter         *commonpb.QueryFilter  `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
-	MinLogSequence uint64                 `protobuf:"varint,3,opt,name=min_log_sequence,json=minLogSequence,proto3" json:"min_log_sequence,omitempty"`
+	MinLogSequence uint64                 `protobuf:"fixed64,3,opt,name=min_log_sequence,json=minLogSequence,proto3" json:"min_log_sequence,omitempty"`
 	// When true, assets sharing the same base (e.g. USD/2, USD/4) are merged
 	// under the highest precision observed, with lower-precision amounts rescaled.
 	UseMaxPrecision bool `protobuf:"varint,4,opt,name=use_max_precision,json=useMaxPrecision,proto3" json:"use_max_precision,omitempty"`
@@ -7830,7 +7830,7 @@ type AggregateVolumesRequest struct {
 	// to the first matching prefix. Accounts not matching any prefix are excluded.
 	GroupByPrefixes []string `protobuf:"bytes,5,rep,name=group_by_prefixes,json=groupByPrefixes,proto3" json:"group_by_prefixes,omitempty"`
 	// checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-	CheckpointId  uint64 `protobuf:"varint,6,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	CheckpointId  uint64 `protobuf:"fixed64,6,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -8094,7 +8094,7 @@ type InspectIndexRequest struct {
 	Mode          InspectIndexMode       `protobuf:"varint,4,opt,name=mode,proto3,enum=ledger.InspectIndexMode" json:"mode,omitempty"`
 	PageSize      uint32                 `protobuf:"varint,5,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	Cursor        string                 `protobuf:"bytes,6,opt,name=cursor,proto3" json:"cursor,omitempty"`
-	CheckpointId  uint64                 `protobuf:"varint,7,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	CheckpointId  uint64                 `protobuf:"fixed64,7,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -8339,7 +8339,7 @@ func (x *InspectDistinctValues) GetNextCursor() string {
 type InspectFacet struct {
 	state         protoimpl.MessageState  `protogen:"open.v1"`
 	Value         *commonpb.MetadataValue `protobuf:"bytes,1,opt,name=value,proto3" json:"value,omitempty"`
-	Count         uint64                  `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
+	Count         uint64                  `protobuf:"fixed64,2,opt,name=count,proto3" json:"count,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -8450,11 +8450,11 @@ func (x *InspectFacets) GetNextCursor() string {
 
 type InspectSummary struct {
 	state            protoimpl.MessageState  `protogen:"open.v1"`
-	Cardinality      uint64                  `protobuf:"varint,1,opt,name=cardinality,proto3" json:"cardinality,omitempty"`
+	Cardinality      uint64                  `protobuf:"fixed64,1,opt,name=cardinality,proto3" json:"cardinality,omitempty"`
 	Min              *commonpb.MetadataValue `protobuf:"bytes,2,opt,name=min,proto3" json:"min,omitempty"`
 	Max              *commonpb.MetadataValue `protobuf:"bytes,3,opt,name=max,proto3" json:"max,omitempty"`
-	EntitiesWithKey  uint64                  `protobuf:"varint,4,opt,name=entities_with_key,json=entitiesWithKey,proto3" json:"entities_with_key,omitempty"`
-	EntitiesWithNull uint64                  `protobuf:"varint,5,opt,name=entities_with_null,json=entitiesWithNull,proto3" json:"entities_with_null,omitempty"`
+	EntitiesWithKey  uint64                  `protobuf:"fixed64,4,opt,name=entities_with_key,json=entitiesWithKey,proto3" json:"entities_with_key,omitempty"`
+	EntitiesWithNull uint64                  `protobuf:"fixed64,5,opt,name=entities_with_null,json=entitiesWithNull,proto3" json:"entities_with_null,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -8566,7 +8566,7 @@ type BarrierResponse struct {
 	// Callers can compare successive barrier responses to detect quiescence:
 	// if two barriers return the same commit_index, no proposals were committed
 	// between them.
-	CommitIndex   uint64 `protobuf:"varint,1,opt,name=commit_index,json=commitIndex,proto3" json:"commit_index,omitempty"`
+	CommitIndex   uint64 `protobuf:"fixed64,1,opt,name=commit_index,json=commitIndex,proto3" json:"commit_index,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -8616,30 +8616,30 @@ const file_bucket_proto_rawDesc = "" +
 	"\x11GetAccountRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x18\n" +
 	"\aaddress\x18\x02 \x01(\tR\aaddress\x12#\n" +
-	"\rcheckpoint_id\x18\x03 \x01(\x04R\fcheckpointId\"{\n" +
+	"\rcheckpoint_id\x18\x03 \x01(\x06R\fcheckpointId\"{\n" +
 	"\x15GetTransactionRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12%\n" +
-	"\x0etransaction_id\x18\x02 \x01(\x04R\rtransactionId\x12#\n" +
-	"\rcheckpoint_id\x18\x03 \x01(\x04R\fcheckpointId\"i\n" +
+	"\x0etransaction_id\x18\x02 \x01(\x06R\rtransactionId\x12#\n" +
+	"\rcheckpoint_id\x18\x03 \x01(\x06R\fcheckpointId\"i\n" +
 	"\x16GetTransactionResponse\x125\n" +
 	"\vtransaction\x18\x01 \x01(\v2\x13.common.TransactionR\vtransaction\x12\x18\n" +
 	"\areceipt\x18\x02 \x01(\tR\areceipt\"\x84\x02\n" +
 	"\x17ListTransactionsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\rR\bpageSize\x12\x1e\n" +
-	"\vafter_tx_id\x18\x03 \x01(\x04R\tafterTxId\x12+\n" +
+	"\vafter_tx_id\x18\x03 \x01(\x06R\tafterTxId\x12+\n" +
 	"\x06filter\x18\x04 \x01(\v2\x13.common.QueryFilterR\x06filter\x12\x18\n" +
 	"\areverse\x18\x05 \x01(\bR\areverse\x12(\n" +
-	"\x10min_log_sequence\x18\x06 \x01(\x04R\x0eminLogSequence\x12#\n" +
-	"\rcheckpoint_id\x18\a \x01(\x04R\fcheckpointId\"\x85\x02\n" +
+	"\x10min_log_sequence\x18\x06 \x01(\x06R\x0eminLogSequence\x12#\n" +
+	"\rcheckpoint_id\x18\a \x01(\x06R\fcheckpointId\"\x85\x02\n" +
 	"\x13ListAccountsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\rR\bpageSize\x12#\n" +
 	"\rafter_address\x18\x03 \x01(\tR\fafterAddress\x12+\n" +
 	"\x06filter\x18\x04 \x01(\v2\x13.common.QueryFilterR\x06filter\x12\x18\n" +
 	"\areverse\x18\x05 \x01(\bR\areverse\x12(\n" +
-	"\x10min_log_sequence\x18\x06 \x01(\x04R\x0eminLogSequence\x12#\n" +
-	"\rcheckpoint_id\x18\a \x01(\x04R\fcheckpointId\"\xe0\x03\n" +
+	"\x10min_log_sequence\x18\x06 \x01(\x06R\x0eminLogSequence\x12#\n" +
+	"\rcheckpoint_id\x18\a \x01(\x06R\fcheckpointId\"\xe0\x03\n" +
 	"\x13CreateLedgerRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12J\n" +
 	"\x0einitial_schema\x18\x02 \x03(\v2#.common.SetMetadataFieldTypeCommandR\rinitialSchema\x12&\n" +
@@ -8655,10 +8655,10 @@ const file_bucket_proto_rawDesc = "" +
 	"\x14DeleteLedgerResponse\"V\n" +
 	"\x12ListLedgersRequest\x12\x1b\n" +
 	"\tpage_size\x18\x01 \x01(\rR\bpageSize\x12#\n" +
-	"\rcheckpoint_id\x18\x02 \x01(\x04R\fcheckpointId\"O\n" +
+	"\rcheckpoint_id\x18\x02 \x01(\x06R\fcheckpointId\"O\n" +
 	"\x10GetLedgerRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12#\n" +
-	"\rcheckpoint_id\x18\x02 \x01(\x04R\fcheckpointId\"`\n" +
+	"\rcheckpoint_id\x18\x02 \x01(\x06R\fcheckpointId\"`\n" +
 	"\fApplyRequest\x12+\n" +
 	"\brequests\x18\x01 \x03(\v2\x0f.ledger.RequestR\brequests\x12#\n" +
 	"\rskip_response\x18\x02 \x01(\bR\fskipResponse\"0\n" +
@@ -8707,7 +8707,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x04type\"\x1e\n" +
 	"\x1cCreateQueryCheckpointRequest\"C\n" +
 	"\x1cDeleteQueryCheckpointRequest\x12#\n" +
-	"\rcheckpoint_id\x18\x01 \x01(\x04R\fcheckpointId\".\n" +
+	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\".\n" +
 	"\x14PromoteLedgerRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\"\xd4\x01\n" +
 	"\x19SaveLedgerMetadataRequest\x12\x16\n" +
@@ -8735,14 +8735,14 @@ const file_bucket_proto_rawDesc = "" +
 	"\x16ListSigningKeysRequest\"\x14\n" +
 	"\x12ClosePeriodRequest\"r\n" +
 	"\x11SealPeriodRequest\x12\x1b\n" +
-	"\tperiod_id\x18\x01 \x01(\x04R\bperiodId\x12!\n" +
+	"\tperiod_id\x18\x01 \x01(\x06R\bperiodId\x12!\n" +
 	"\fsealing_hash\x18\x02 \x01(\fR\vsealingHash\x12\x1d\n" +
 	"\n" +
 	"state_hash\x18\x03 \x01(\fR\tstateHash\"3\n" +
 	"\x14ArchivePeriodRequest\x12\x1b\n" +
-	"\tperiod_id\x18\x01 \x01(\x04R\bperiodId\":\n" +
+	"\tperiod_id\x18\x01 \x01(\x06R\bperiodId\":\n" +
 	"\x1bConfirmArchivePeriodRequest\x12\x1b\n" +
-	"\tperiod_id\x18\x01 \x01(\x04R\bperiodId\"1\n" +
+	"\tperiod_id\x18\x01 \x01(\x06R\bperiodId\"1\n" +
 	"\x12ListPeriodsRequest\x12\x1b\n" +
 	"\tpage_size\x18\x01 \x01(\rR\bpageSize\"5\n" +
 	"\x19SetMaintenanceModeRequest\x12\x18\n" +
@@ -8787,10 +8787,10 @@ const file_bucket_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12\x16\n" +
 	"\x06ledger\x18\x03 \x01(\tR\x06ledger\x12#\n" +
-	"\rcheckpoint_id\x18\x04 \x01(\x04R\fcheckpointId\"T\n" +
+	"\rcheckpoint_id\x18\x04 \x01(\x06R\fcheckpointId\"T\n" +
 	"\x15ListNumscriptsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12#\n" +
-	"\rcheckpoint_id\x18\x02 \x01(\x04R\fcheckpointId\"\xaf\x01\n" +
+	"\rcheckpoint_id\x18\x02 \x01(\x06R\fcheckpointId\"\xaf\x01\n" +
 	"\x0fScriptReference\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x125\n" +
@@ -8828,7 +8828,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
 	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01\"\xe4\x02\n" +
 	"\x18RevertTransactionPayload\x12%\n" +
-	"\x0etransaction_id\x18\x01 \x01(\x04R\rtransactionId\x12\x14\n" +
+	"\x0etransaction_id\x18\x01 \x01(\x06R\rtransactionId\x12\x14\n" +
 	"\x05force\x18\x02 \x01(\bR\x05force\x12*\n" +
 	"\x11at_effective_date\x18\x03 \x01(\bR\x0fatEffectiveDate\x12J\n" +
 	"\bmetadata\x18\x04 \x03(\v2..ledger.RevertTransactionPayload.MetadataEntryR\bmetadata\x12\x18\n" +
@@ -8888,7 +8888,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x04keys\x18\t \x01(\v2\x13.ledger.KeysMetricsR\x04keys\x12,\n" +
 	"\x06levels\x18\n" +
 	" \x03(\v2\x14.ledger.LevelMetricsR\x06levels\x12(\n" +
-	"\x10disk_space_usage\x18\v \x01(\x04R\x0ediskSpaceUsage\"i\n" +
+	"\x10disk_space_usage\x18\v \x01(\x06R\x0ediskSpaceUsage\"i\n" +
 	"\x11BlockCacheMetrics\x12\x12\n" +
 	"\x04size\x18\x01 \x01(\x03R\x04size\x12\x14\n" +
 	"\x05count\x18\x02 \x01(\x03R\x05count\x12\x12\n" +
@@ -8905,7 +8905,7 @@ const file_bucket_proto_rawDesc = "" +
 	"read_count\x18\x06 \x01(\x03R\treadCount\x12#\n" +
 	"\rrewrite_count\x18\a \x01(\x03R\frewriteCount\x12*\n" +
 	"\x11multi_level_count\x18\b \x01(\x03R\x0fmultiLevelCount\x12%\n" +
-	"\x0eestimated_debt\x18\t \x01(\x04R\restimatedDebt\x12*\n" +
+	"\x0eestimated_debt\x18\t \x01(\x06R\restimatedDebt\x12*\n" +
 	"\x11in_progress_bytes\x18\n" +
 	" \x01(\x03R\x0finProgressBytes\x12&\n" +
 	"\x0fnum_in_progress\x18\v \x01(\x03R\rnumInProgress\x12!\n" +
@@ -8913,28 +8913,28 @@ const file_bucket_proto_rawDesc = "" +
 	"\fFlushMetrics\x12\x14\n" +
 	"\x05count\x18\x01 \x01(\x03R\x05count\x12&\n" +
 	"\x0fnum_in_progress\x18\x02 \x01(\x03R\rnumInProgress\x12&\n" +
-	"\x0fas_ingest_count\x18\x03 \x01(\x04R\rasIngestCount\x121\n" +
-	"\x15as_ingest_table_count\x18\x04 \x01(\x04R\x12asIngestTableCount\x12&\n" +
-	"\x0fas_ingest_bytes\x18\x05 \x01(\x04R\rasIngestBytes\"\x7f\n" +
+	"\x0fas_ingest_count\x18\x03 \x01(\x06R\rasIngestCount\x121\n" +
+	"\x15as_ingest_table_count\x18\x04 \x01(\x06R\x12asIngestTableCount\x12&\n" +
+	"\x0fas_ingest_bytes\x18\x05 \x01(\x06R\rasIngestBytes\"\x7f\n" +
 	"\x0fMemTableMetrics\x12\x12\n" +
-	"\x04size\x18\x01 \x01(\x04R\x04size\x12\x14\n" +
+	"\x04size\x18\x01 \x01(\x06R\x04size\x12\x14\n" +
 	"\x05count\x18\x02 \x01(\x03R\x05count\x12\x1f\n" +
-	"\vzombie_size\x18\x03 \x01(\x04R\n" +
+	"\vzombie_size\x18\x03 \x01(\x06R\n" +
 	"zombieSize\x12!\n" +
 	"\fzombie_count\x18\x04 \x01(\x03R\vzombieCount\"\x94\x01\n" +
 	"\x10SnapshotsMetrics\x12\x14\n" +
 	"\x05count\x18\x01 \x01(\x05R\x05count\x12(\n" +
-	"\x10earliest_seq_num\x18\x02 \x01(\x04R\x0eearliestSeqNum\x12\x1f\n" +
-	"\vpinned_keys\x18\x03 \x01(\x04R\n" +
+	"\x10earliest_seq_num\x18\x02 \x01(\x06R\x0eearliestSeqNum\x12\x1f\n" +
+	"\vpinned_keys\x18\x03 \x01(\x06R\n" +
 	"pinnedKeys\x12\x1f\n" +
-	"\vpinned_size\x18\x04 \x01(\x04R\n" +
+	"\vpinned_size\x18\x04 \x01(\x06R\n" +
 	"pinnedSize\"\xb0\x01\n" +
 	"\fTableMetrics\x12\x1f\n" +
-	"\vzombie_size\x18\x01 \x01(\x04R\n" +
+	"\vzombie_size\x18\x01 \x01(\x06R\n" +
 	"zombieSize\x12!\n" +
 	"\fzombie_count\x18\x02 \x01(\x03R\vzombieCount\x12.\n" +
-	"\x13backing_table_count\x18\x03 \x01(\x04R\x11backingTableCount\x12,\n" +
-	"\x12backing_table_size\x18\x04 \x01(\x04R\x10backingTableSize\"i\n" +
+	"\x13backing_table_count\x18\x03 \x01(\x06R\x11backingTableCount\x12,\n" +
+	"\x12backing_table_size\x18\x04 \x01(\x06R\x10backingTableSize\"i\n" +
 	"\x11TableCacheMetrics\x12\x12\n" +
 	"\x04size\x18\x01 \x01(\x03R\x04size\x12\x14\n" +
 	"\x05count\x18\x02 \x01(\x03R\x05count\x12\x12\n" +
@@ -8944,30 +8944,30 @@ const file_bucket_proto_rawDesc = "" +
 	"WALMetrics\x12\x14\n" +
 	"\x05files\x18\x01 \x01(\x03R\x05files\x12%\n" +
 	"\x0eobsolete_files\x18\x02 \x01(\x03R\robsoleteFiles\x12\x12\n" +
-	"\x04size\x18\x03 \x01(\x04R\x04size\x12\x19\n" +
-	"\bbytes_in\x18\x04 \x01(\x04R\abytesIn\x12#\n" +
-	"\rbytes_written\x18\x05 \x01(\x04R\fbytesWritten\"g\n" +
+	"\x04size\x18\x03 \x01(\x06R\x04size\x12\x19\n" +
+	"\bbytes_in\x18\x04 \x01(\x06R\abytesIn\x12#\n" +
+	"\rbytes_written\x18\x05 \x01(\x06R\fbytesWritten\"g\n" +
 	"\vKeysMetrics\x12/\n" +
-	"\x14range_key_sets_count\x18\x01 \x01(\x04R\x11rangeKeySetsCount\x12'\n" +
-	"\x0ftombstone_count\x18\x02 \x01(\x04R\x0etombstoneCount\"\xd9\x03\n" +
+	"\x14range_key_sets_count\x18\x01 \x01(\x06R\x11rangeKeySetsCount\x12'\n" +
+	"\x0ftombstone_count\x18\x02 \x01(\x06R\x0etombstoneCount\"\xd9\x03\n" +
 	"\fLevelMetrics\x12\x14\n" +
 	"\x05level\x18\x01 \x01(\x05R\x05level\x12\x1b\n" +
 	"\tnum_files\x18\x02 \x01(\x03R\bnumFiles\x12\x12\n" +
 	"\x04size\x18\x03 \x01(\x03R\x04size\x12\x14\n" +
 	"\x05score\x18\x04 \x01(\x01R\x05score\x12\x19\n" +
-	"\bbytes_in\x18\x05 \x01(\x04R\abytesIn\x12%\n" +
-	"\x0ebytes_ingested\x18\x06 \x01(\x04R\rbytesIngested\x12\x1f\n" +
-	"\vbytes_moved\x18\a \x01(\x04R\n" +
+	"\bbytes_in\x18\x05 \x01(\x06R\abytesIn\x12%\n" +
+	"\x0ebytes_ingested\x18\x06 \x01(\x06R\rbytesIngested\x12\x1f\n" +
+	"\vbytes_moved\x18\a \x01(\x06R\n" +
 	"bytesMoved\x12\x1d\n" +
 	"\n" +
-	"bytes_read\x18\b \x01(\x04R\tbytesRead\x12'\n" +
-	"\x0fbytes_compacted\x18\t \x01(\x04R\x0ebytesCompacted\x12#\n" +
+	"bytes_read\x18\b \x01(\x06R\tbytesRead\x12'\n" +
+	"\x0fbytes_compacted\x18\t \x01(\x06R\x0ebytesCompacted\x12#\n" +
 	"\rbytes_flushed\x18\n" +
-	" \x01(\x04R\fbytesFlushed\x12)\n" +
-	"\x10tables_compacted\x18\v \x01(\x04R\x0ftablesCompacted\x12%\n" +
-	"\x0etables_flushed\x18\f \x01(\x04R\rtablesFlushed\x12'\n" +
-	"\x0ftables_ingested\x18\r \x01(\x04R\x0etablesIngested\x12!\n" +
-	"\ftables_moved\x18\x0e \x01(\x04R\vtablesMoved\"\x13\n" +
+	" \x01(\x06R\fbytesFlushed\x12)\n" +
+	"\x10tables_compacted\x18\v \x01(\x06R\x0ftablesCompacted\x12%\n" +
+	"\x0etables_flushed\x18\f \x01(\x06R\rtablesFlushed\x12'\n" +
+	"\x0ftables_ingested\x18\r \x01(\x06R\x0etablesIngested\x12!\n" +
+	"\ftables_moved\x18\x0e \x01(\x06R\vtablesMoved\"\x13\n" +
 	"\x11CheckStoreRequest\"\x84\x01\n" +
 	"\x0fCheckStoreEvent\x12/\n" +
 	"\x05error\x18\x01 \x01(\v2\x17.ledger.CheckStoreErrorH\x00R\x05error\x128\n" +
@@ -8977,34 +8977,34 @@ const file_bucket_proto_rawDesc = "" +
 	"\n" +
 	"error_type\x18\x01 \x01(\x0e2\x1b.ledger.CheckStoreErrorTypeR\terrorType\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12!\n" +
-	"\flog_sequence\x18\x03 \x01(\x04R\vlogSequence\x12\x16\n" +
+	"\flog_sequence\x18\x03 \x01(\x06R\vlogSequence\x12\x16\n" +
 	"\x06ledger\x18\x04 \x01(\tR\x06ledger\x12\x18\n" +
 	"\aaccount\x18\x05 \x01(\tR\aaccount\x12\x14\n" +
 	"\x05asset\x18\x06 \x01(\tR\x05asset\x12%\n" +
-	"\x0etransaction_id\x18\a \x01(\x04R\rtransactionId\"V\n" +
+	"\x0etransaction_id\x18\a \x01(\x06R\rtransactionId\"V\n" +
 	"\x12CheckStoreProgress\x12!\n" +
-	"\flogs_checked\x18\x01 \x01(\x04R\vlogsChecked\x12\x1d\n" +
+	"\flogs_checked\x18\x01 \x01(\x06R\vlogsChecked\x12\x1d\n" +
 	"\n" +
-	"total_logs\x18\x02 \x01(\x04R\ttotalLogs\"\xdc\x01\n" +
+	"total_logs\x18\x02 \x01(\x06R\ttotalLogs\"\xdc\x01\n" +
 	"\x17ListAuditEntriesRequest\x12*\n" +
-	"\x0eafter_sequence\x18\x01 \x01(\x04H\x00R\rafterSequence\x88\x01\x01\x12#\n" +
+	"\x0eafter_sequence\x18\x01 \x01(\x06H\x00R\rafterSequence\x88\x01\x01\x12#\n" +
 	"\rfailures_only\x18\x02 \x01(\bR\ffailuresOnly\x12\x1b\n" +
 	"\tpage_size\x18\x03 \x01(\rR\bpageSize\x12(\n" +
-	"\x10min_log_sequence\x18\x04 \x01(\x04R\x0eminLogSequence\x12\x16\n" +
+	"\x10min_log_sequence\x18\x04 \x01(\x06R\x0eminLogSequence\x12\x16\n" +
 	"\x06ledger\x18\x05 \x01(\tR\x06ledgerB\x11\n" +
 	"\x0f_after_sequence\"2\n" +
 	"\x14GetAuditEntryRequest\x12\x1a\n" +
-	"\bsequence\x18\x01 \x01(\x04R\bsequence\"\xe9\x01\n" +
+	"\bsequence\x18\x01 \x01(\x06R\bsequence\"\xe9\x01\n" +
 	"\x0fListLogsRequest\x12*\n" +
-	"\x0eafter_sequence\x18\x01 \x01(\x04H\x00R\rafterSequence\x88\x01\x01\x12\x1b\n" +
+	"\x0eafter_sequence\x18\x01 \x01(\x06H\x00R\rafterSequence\x88\x01\x01\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\rR\bpageSize\x12(\n" +
-	"\x10min_log_sequence\x18\x03 \x01(\x04R\x0eminLogSequence\x12+\n" +
+	"\x10min_log_sequence\x18\x03 \x01(\x06R\x0eminLogSequence\x12+\n" +
 	"\x06filter\x18\x04 \x01(\v2\x13.common.QueryFilterR\x06filter\x12#\n" +
-	"\rcheckpoint_id\x18\x05 \x01(\x04R\fcheckpointIdB\x11\n" +
+	"\rcheckpoint_id\x18\x05 \x01(\x06R\fcheckpointIdB\x11\n" +
 	"\x0f_after_sequence\"P\n" +
 	"\rGetLogRequest\x12\x1a\n" +
-	"\bsequence\x18\x01 \x01(\x04R\bsequence\x12#\n" +
-	"\rcheckpoint_id\x18\x02 \x01(\x04R\fcheckpointId\"\x17\n" +
+	"\bsequence\x18\x01 \x01(\x06R\bsequence\x12#\n" +
+	"\rcheckpoint_id\x18\x02 \x01(\x06R\fcheckpointId\"\x17\n" +
 	"\x15GetEventsSinksRequest\"{\n" +
 	"\x16GetEventsSinksResponse\x12(\n" +
 	"\x05sinks\x18\x01 \x03(\v2\x12.common.SinkConfigR\x05sinks\x127\n" +
@@ -9028,17 +9028,17 @@ const file_bucket_proto_rawDesc = "" +
 	"\rdeclared_type\x18\x01 \x01(\x0e2\x14.common.MetadataTypeR\fdeclaredType\x128\n" +
 	"\x06status\x18\x02 \x01(\x0e2 .common.MetadataConversionStatusR\x06status\x12\x1d\n" +
 	"\n" +
-	"total_keys\x18\x03 \x01(\x04R\ttotalKeys\x12%\n" +
-	"\x0econverted_keys\x18\x04 \x01(\x04R\rconvertedKeys\"_\n" +
+	"total_keys\x18\x03 \x01(\x06R\ttotalKeys\x12%\n" +
+	"\x0econverted_keys\x18\x04 \x01(\x06R\rconvertedKeys\"_\n" +
 	"\x16AnalyzeAccountsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12-\n" +
 	"\x12variable_threshold\x18\x02 \x01(\rR\x11variableThreshold\"t\n" +
 	"\x17AnalyzeAccountsResponse\x122\n" +
 	"\bpatterns\x18\x01 \x03(\v2\x16.ledger.AccountPatternR\bpatterns\x12%\n" +
-	"\x0etotal_accounts\x18\x02 \x01(\x04R\rtotalAccounts\"[\n" +
+	"\x0etotal_accounts\x18\x02 \x01(\x06R\rtotalAccounts\"[\n" +
 	"\x0fAnalyzeProgress\x12\x1c\n" +
-	"\tprocessed\x18\x01 \x01(\x04R\tprocessed\x12\x14\n" +
-	"\x05total\x18\x02 \x01(\x04R\x05total\x12\x14\n" +
+	"\tprocessed\x18\x01 \x01(\x06R\tprocessed\x12\x14\n" +
+	"\x05total\x18\x02 \x01(\x06R\x05total\x12\x14\n" +
 	"\x05phase\x18\x03 \x01(\tR\x05phase\"\x90\x01\n" +
 	"\x14AnalyzeAccountsEvent\x125\n" +
 	"\bprogress\x18\x01 \x01(\v2\x17.ledger.AnalyzeProgressH\x00R\bprogress\x129\n" +
@@ -9050,7 +9050,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x04type\"\xc0\x01\n" +
 	"\x0eAccountPattern\x12\x18\n" +
 	"\apattern\x18\x01 \x01(\tR\apattern\x12#\n" +
-	"\raccount_count\x18\x02 \x01(\x04R\faccountCount\x12\x16\n" +
+	"\raccount_count\x18\x02 \x01(\x06R\faccountCount\x12\x16\n" +
 	"\x06assets\x18\x03 \x03(\tR\x06assets\x12#\n" +
 	"\rmetadata_keys\x18\x04 \x03(\tR\fmetadataKeys\x122\n" +
 	"\bsegments\x18\x05 \x03(\v2\x16.ledger.PatternSegmentR\bsegments\"\x8e\x02\n" +
@@ -9061,19 +9061,19 @@ const file_bucket_proto_rawDesc = "" +
 	"fixedValue\x12#\n" +
 	"\rvariable_name\x18\x04 \x01(\tR\fvariableName\x12)\n" +
 	"\x10inferred_pattern\x18\x05 \x01(\tR\x0finferredPattern\x12#\n" +
-	"\runique_values\x18\x06 \x01(\x04R\funiqueValues\x12\x1a\n" +
+	"\runique_values\x18\x06 \x01(\x06R\funiqueValues\x12\x1a\n" +
 	"\bexamples\x18\a \x03(\tR\bexamples\"c\n" +
 	"\x1aAnalyzeTransactionsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12-\n" +
 	"\x12variable_threshold\x18\x02 \x01(\rR\x11variableThreshold\"\xad\x01\n" +
 	"\x1bAnalyzeTransactionsResponse\x128\n" +
 	"\rflow_patterns\x18\x01 \x03(\v2\x13.ledger.FlowPatternR\fflowPatterns\x12-\n" +
-	"\x12total_transactions\x18\x02 \x01(\x04R\x11totalTransactions\x12%\n" +
-	"\x0etotal_reverted\x18\x03 \x01(\x04R\rtotalReverted\"\xdc\x02\n" +
+	"\x12total_transactions\x18\x02 \x01(\x06R\x11totalTransactions\x12%\n" +
+	"\x0etotal_reverted\x18\x03 \x01(\x06R\rtotalReverted\"\xdc\x02\n" +
 	"\vFlowPattern\x12\x1c\n" +
 	"\tsignature\x18\x01 \x01(\tR\tsignature\x126\n" +
 	"\tstructure\x18\x02 \x01(\x0e2\x18.ledger.PostingStructureR\tstructure\x12+\n" +
-	"\x11transaction_count\x18\x03 \x01(\x04R\x10transactionCount\x125\n" +
+	"\x11transaction_count\x18\x03 \x01(\x06R\x10transactionCount\x125\n" +
 	"\bpostings\x18\x04 \x03(\v2\x19.ledger.NormalizedPostingR\bpostings\x121\n" +
 	"\btemporal\x18\x05 \x01(\v2\x15.ledger.TemporalStatsR\btemporal\x12;\n" +
 	"\fvolume_stats\x18\x06 \x03(\v2\x18.ledger.AssetVolumeStatsR\vvolumeStats\x12#\n" +
@@ -9092,7 +9092,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\n" +
 	"HourBucket\x12\x12\n" +
 	"\x04hour\x18\x01 \x01(\rR\x04hour\x12\x14\n" +
-	"\x05count\x18\x02 \x01(\x04R\x05count\"\xdd\x01\n" +
+	"\x05count\x18\x02 \x01(\x06R\x05count\"\xdd\x01\n" +
 	"\x10AssetVolumeStats\x12\x14\n" +
 	"\x05asset\x18\x01 \x01(\tR\x05asset\x12!\n" +
 	"\ftotal_volume\x18\x02 \x01(\tR\vtotalVolume\x12%\n" +
@@ -9101,7 +9101,7 @@ const file_bucket_proto_rawDesc = "" +
 	"min_volume\x18\x04 \x01(\tR\tminVolume\x12\x1d\n" +
 	"\n" +
 	"max_volume\x18\x05 \x01(\tR\tmaxVolume\x12+\n" +
-	"\x11transaction_count\x18\x06 \x01(\x04R\x10transactionCount\"I\n" +
+	"\x11transaction_count\x18\x06 \x01(\x06R\x10transactionCount\"I\n" +
 	"\x1aCreatePreparedQueryRequest\x12+\n" +
 	"\x05query\x18\x01 \x01(\v2\x15.common.PreparedQueryR\x05query\"\x1d\n" +
 	"\x1bCreatePreparedQueryResponse\"u\n" +
@@ -9127,7 +9127,7 @@ const file_bucket_proto_rawDesc = "" +
 	"parameters\x12\x1b\n" +
 	"\tpage_size\x18\x04 \x01(\rR\bpageSize\x12\x16\n" +
 	"\x06cursor\x18\x05 \x01(\tR\x06cursor\x12(\n" +
-	"\x10min_log_sequence\x18\x06 \x01(\x04R\x0eminLogSequence\x12%\n" +
+	"\x10min_log_sequence\x18\x06 \x01(\x06R\x0eminLogSequence\x12%\n" +
 	"\x04mode\x18\a \x01(\x0e2\x11.common.QueryModeR\x04mode\x1aU\n" +
 	"\x0fParametersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
@@ -9138,10 +9138,10 @@ const file_bucket_proto_rawDesc = "" +
 	"\x06result\"\x17\n" +
 	"\x15GetIndexStatusRequest\"\xfe\x01\n" +
 	"\x16GetIndexStatusResponse\x122\n" +
-	"\x15last_indexed_sequence\x18\x01 \x01(\x04R\x13lastIndexedSequence\x12*\n" +
-	"\x11last_log_sequence\x18\x02 \x01(\x04R\x0flastLogSequence\x12\x10\n" +
-	"\x03lag\x18\x03 \x01(\x04R\x03lag\x12&\n" +
-	"\x0findex_file_size\x18\x04 \x01(\x04R\rindexFileSize\x12J\n" +
+	"\x15last_indexed_sequence\x18\x01 \x01(\x06R\x13lastIndexedSequence\x12*\n" +
+	"\x11last_log_sequence\x18\x02 \x01(\x06R\x0flastLogSequence\x12\x10\n" +
+	"\x03lag\x18\x03 \x01(\x06R\x03lag\x12&\n" +
+	"\x0findex_file_size\x18\x04 \x01(\x06R\rindexFileSize\x12J\n" +
 	"\x11backfill_progress\x18\x05 \x03(\v2\x1d.ledger.IndexBackfillProgressR\x10backfillProgress\"\xfc\x01\n" +
 	"\x15IndexBackfillProgress\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12:\n" +
@@ -9149,18 +9149,18 @@ const file_bucket_proto_rawDesc = "" +
 	"logBuiltin\x12<\n" +
 	"\vtransaction\x18\x03 \x01(\v2\x18.common.TransactionIndexH\x00R\vtransaction\x120\n" +
 	"\aaccount\x18\x04 \x01(\v2\x14.common.AccountIndexH\x00R\aaccount\x12\x16\n" +
-	"\x06cursor\x18\x05 \x01(\x04R\x06cursorB\a\n" +
+	"\x06cursor\x18\x05 \x01(\x06R\x06cursorB\a\n" +
 	"\x05index\"T\n" +
 	"\x15GetLedgerStatsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12#\n" +
-	"\rcheckpoint_id\x18\x02 \x01(\x04R\fcheckpointId\"\x85\x02\n" +
+	"\rcheckpoint_id\x18\x02 \x01(\x06R\fcheckpointId\"\x85\x02\n" +
 	"\x17AggregateVolumesRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12+\n" +
 	"\x06filter\x18\x02 \x01(\v2\x13.common.QueryFilterR\x06filter\x12(\n" +
-	"\x10min_log_sequence\x18\x03 \x01(\x04R\x0eminLogSequence\x12*\n" +
+	"\x10min_log_sequence\x18\x03 \x01(\x06R\x0eminLogSequence\x12*\n" +
 	"\x11use_max_precision\x18\x04 \x01(\bR\x0fuseMaxPrecision\x12*\n" +
 	"\x11group_by_prefixes\x18\x05 \x03(\tR\x0fgroupByPrefixes\x12#\n" +
-	"\rcheckpoint_id\x18\x06 \x01(\x04R\fcheckpointId\"\xde\x02\n" +
+	"\rcheckpoint_id\x18\x06 \x01(\x06R\fcheckpointId\"\xde\x02\n" +
 	"\fQueryProfile\x12*\n" +
 	"\x11index_duration_us\x18\x01 \x01(\x03R\x0findexDurationUs\x124\n" +
 	"\x16enrichment_duration_us\x18\x02 \x01(\x03R\x14enrichmentDurationUs\x12'\n" +
@@ -9186,7 +9186,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x04mode\x18\x04 \x01(\x0e2\x18.ledger.InspectIndexModeR\x04mode\x12\x1b\n" +
 	"\tpage_size\x18\x05 \x01(\rR\bpageSize\x12\x16\n" +
 	"\x06cursor\x18\x06 \x01(\tR\x06cursor\x12#\n" +
-	"\rcheckpoint_id\x18\a \x01(\x04R\fcheckpointId\"\xcf\x01\n" +
+	"\rcheckpoint_id\x18\a \x01(\x06R\fcheckpointId\"\xcf\x01\n" +
 	"\x14InspectIndexResponse\x12H\n" +
 	"\x0fdistinct_values\x18\x01 \x01(\v2\x1d.ledger.InspectDistinctValuesH\x00R\x0edistinctValues\x12/\n" +
 	"\x06facets\x18\x02 \x01(\v2\x15.ledger.InspectFacetsH\x00R\x06facets\x122\n" +
@@ -9199,21 +9199,21 @@ const file_bucket_proto_rawDesc = "" +
 	"nextCursor\"Q\n" +
 	"\fInspectFacet\x12+\n" +
 	"\x05value\x18\x01 \x01(\v2\x15.common.MetadataValueR\x05value\x12\x14\n" +
-	"\x05count\x18\x02 \x01(\x04R\x05count\"y\n" +
+	"\x05count\x18\x02 \x01(\x06R\x05count\"y\n" +
 	"\rInspectFacets\x12,\n" +
 	"\x06facets\x18\x01 \x03(\v2\x14.ledger.InspectFacetR\x06facets\x12\x19\n" +
 	"\bhas_more\x18\x02 \x01(\bR\ahasMore\x12\x1f\n" +
 	"\vnext_cursor\x18\x03 \x01(\tR\n" +
 	"nextCursor\"\xde\x01\n" +
 	"\x0eInspectSummary\x12 \n" +
-	"\vcardinality\x18\x01 \x01(\x04R\vcardinality\x12'\n" +
+	"\vcardinality\x18\x01 \x01(\x06R\vcardinality\x12'\n" +
 	"\x03min\x18\x02 \x01(\v2\x15.common.MetadataValueR\x03min\x12'\n" +
 	"\x03max\x18\x03 \x01(\v2\x15.common.MetadataValueR\x03max\x12*\n" +
-	"\x11entities_with_key\x18\x04 \x01(\x04R\x0fentitiesWithKey\x12,\n" +
-	"\x12entities_with_null\x18\x05 \x01(\x04R\x10entitiesWithNull\"\x10\n" +
+	"\x11entities_with_key\x18\x04 \x01(\x06R\x0fentitiesWithKey\x12,\n" +
+	"\x12entities_with_null\x18\x05 \x01(\x06R\x10entitiesWithNull\"\x10\n" +
 	"\x0eBarrierRequest\"4\n" +
 	"\x0fBarrierResponse\x12!\n" +
-	"\fcommit_index\x18\x01 \x01(\x04R\vcommitIndex*\xfb\x02\n" +
+	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xfb\x02\n" +
 	"\x13CheckStoreErrorType\x12&\n" +
 	"\"CHECK_STORE_ERROR_TYPE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$CHECK_STORE_ERROR_TYPE_HASH_MISMATCH\x10\x01\x12'\n" +

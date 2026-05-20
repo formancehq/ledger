@@ -95,14 +95,14 @@ message GetAccountRequest {
   string ledger = 1;
   string address = 2;
   // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-  uint64 checkpoint_id = 3;
+  fixed64 checkpoint_id = 3;
 }
 
 message GetTransactionRequest {
   string ledger = 1;
-  uint64 transaction_id = 2;
+  fixed64 transaction_id = 2;
   // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-  uint64 checkpoint_id = 3;
+  fixed64 checkpoint_id = 3;
 }
 
 message GetTransactionResponse {
@@ -116,16 +116,16 @@ message ListTransactionsRequest {
   uint32 page_size = 2;
   // after_tx_id is the transaction ID to start after (for pagination, exclusive)
   // Use 0 or omit to start from the latest transaction
-  uint64 after_tx_id = 3;
+  fixed64 after_tx_id = 3;
   // filter is a rich boolean filter (metadata conditions, address matching, AND/OR/NOT)
   common.QueryFilter filter = 4;
   // reverse inverts the default iteration order (newest-first becomes oldest-first)
   bool reverse = 5;
   // min_log_sequence requires the store to have applied at least this log sequence before reading.
   // If the store has not caught up, the server returns FailedPrecondition.
-  uint64 min_log_sequence = 6;
+  fixed64 min_log_sequence = 6;
   // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-  uint64 checkpoint_id = 7;
+  fixed64 checkpoint_id = 7;
 }
 
 message ListAccountsRequest {
@@ -140,9 +140,9 @@ message ListAccountsRequest {
   bool reverse = 5;
   // min_log_sequence requires the store to have applied at least this log sequence before reading.
   // If the store has not caught up, the server returns FailedPrecondition.
-  uint64 min_log_sequence = 6;
+  fixed64 min_log_sequence = 6;
   // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-  uint64 checkpoint_id = 7;
+  fixed64 checkpoint_id = 7;
 }
 
 message CreateLedgerRequest {
@@ -164,13 +164,13 @@ message ListLedgersRequest {
   // page_size is the maximum number of ledgers to return (0 = no limit)
   uint32 page_size = 1;
   // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-  uint64 checkpoint_id = 2;
+  fixed64 checkpoint_id = 2;
 }
 
 message GetLedgerRequest {
   string ledger = 1;
   // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-  uint64 checkpoint_id = 2;
+  fixed64 checkpoint_id = 2;
 }
 
 message ApplyRequest {
@@ -232,7 +232,7 @@ message CreateQueryCheckpointRequest {}
 
 // DeleteQueryCheckpointRequest removes a query checkpoint via Raft.
 message DeleteQueryCheckpointRequest {
-  uint64 checkpoint_id = 1;
+  fixed64 checkpoint_id = 1;
 }
 
 message PromoteLedgerRequest {
@@ -291,17 +291,17 @@ message ListSigningKeysRequest {}
 message ClosePeriodRequest {}
 
 message SealPeriodRequest {
-  uint64 period_id = 1;
+  fixed64 period_id = 1;
   bytes sealing_hash = 2;
   bytes state_hash = 3;
 }
 
 message ArchivePeriodRequest {
-  uint64 period_id = 1;
+  fixed64 period_id = 1;
 }
 
 message ConfirmArchivePeriodRequest {
-  uint64 period_id = 1;
+  fixed64 period_id = 1;
 }
 
 message ListPeriodsRequest {
@@ -386,14 +386,14 @@ message GetNumscriptRequest {
   string version = 2; // "" = latest
   string ledger = 3;
   // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-  uint64 checkpoint_id = 4;
+  fixed64 checkpoint_id = 4;
 }
 
 // ListNumscriptsRequest lists all numscripts for a ledger (latest version of each).
 message ListNumscriptsRequest {
   string ledger = 1;
   // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-  uint64 checkpoint_id = 2;
+  fixed64 checkpoint_id = 2;
 }
 
 // ScriptReference references a numscript from the library by name and optional version.
@@ -452,7 +452,7 @@ message CreateTransactionPayload {
 
 // RevertTransactionPayload contains the data for reverting a transaction
 message RevertTransactionPayload {
-  uint64 transaction_id = 1;
+  fixed64 transaction_id = 1;
   bool force = 2;
   bool at_effective_date = 3;
   map<string, common.MetadataValue> metadata = 4;
@@ -551,7 +551,7 @@ message PebbleMetrics {
   WALMetrics wal = 8;
   KeysMetrics keys = 9;
   repeated LevelMetrics levels = 10;
-  uint64 disk_space_usage = 11;
+  fixed64 disk_space_usage = 11;
 }
 
 message BlockCacheMetrics {
@@ -570,7 +570,7 @@ message CompactMetrics {
   int64 read_count = 6;
   int64 rewrite_count = 7;
   int64 multi_level_count = 8;
-  uint64 estimated_debt = 9;
+  fixed64 estimated_debt = 9;
   int64 in_progress_bytes = 10;
   int64 num_in_progress = 11;
   int32 marked_files = 12;
@@ -579,30 +579,30 @@ message CompactMetrics {
 message FlushMetrics {
   int64 count = 1;
   int64 num_in_progress = 2;
-  uint64 as_ingest_count = 3;
-  uint64 as_ingest_table_count = 4;
-  uint64 as_ingest_bytes = 5;
+  fixed64 as_ingest_count = 3;
+  fixed64 as_ingest_table_count = 4;
+  fixed64 as_ingest_bytes = 5;
 }
 
 message MemTableMetrics {
-  uint64 size = 1;
+  fixed64 size = 1;
   int64 count = 2;
-  uint64 zombie_size = 3;
+  fixed64 zombie_size = 3;
   int64 zombie_count = 4;
 }
 
 message SnapshotsMetrics {
   int32 count = 1;
-  uint64 earliest_seq_num = 2;
-  uint64 pinned_keys = 3;
-  uint64 pinned_size = 4;
+  fixed64 earliest_seq_num = 2;
+  fixed64 pinned_keys = 3;
+  fixed64 pinned_size = 4;
 }
 
 message TableMetrics {
-  uint64 zombie_size = 1;
+  fixed64 zombie_size = 1;
   int64 zombie_count = 2;
-  uint64 backing_table_count = 3;
-  uint64 backing_table_size = 4;
+  fixed64 backing_table_count = 3;
+  fixed64 backing_table_size = 4;
 }
 
 message TableCacheMetrics {
@@ -615,14 +615,14 @@ message TableCacheMetrics {
 message WALMetrics {
   int64 files = 1;
   int64 obsolete_files = 2;
-  uint64 size = 3;
-  uint64 bytes_in = 4;
-  uint64 bytes_written = 5;
+  fixed64 size = 3;
+  fixed64 bytes_in = 4;
+  fixed64 bytes_written = 5;
 }
 
 message KeysMetrics {
-  uint64 range_key_sets_count = 1;
-  uint64 tombstone_count = 2;
+  fixed64 range_key_sets_count = 1;
+  fixed64 tombstone_count = 2;
 }
 
 message LevelMetrics {
@@ -630,16 +630,16 @@ message LevelMetrics {
   int64 num_files = 2;
   int64 size = 3;
   double score = 4;
-  uint64 bytes_in = 5;
-  uint64 bytes_ingested = 6;
-  uint64 bytes_moved = 7;
-  uint64 bytes_read = 8;
-  uint64 bytes_compacted = 9;
-  uint64 bytes_flushed = 10;
-  uint64 tables_compacted = 11;
-  uint64 tables_flushed = 12;
-  uint64 tables_ingested = 13;
-  uint64 tables_moved = 14;
+  fixed64 bytes_in = 5;
+  fixed64 bytes_ingested = 6;
+  fixed64 bytes_moved = 7;
+  fixed64 bytes_read = 8;
+  fixed64 bytes_compacted = 9;
+  fixed64 bytes_flushed = 10;
+  fixed64 tables_compacted = 11;
+  fixed64 tables_flushed = 12;
+  fixed64 tables_ingested = 13;
+  fixed64 tables_moved = 14;
 }
 
 // ============================================================================
@@ -669,16 +669,16 @@ enum CheckStoreErrorType {
 message CheckStoreError {
   CheckStoreErrorType error_type = 1;
   string message = 2;
-  uint64 log_sequence = 3;
+  fixed64 log_sequence = 3;
   string ledger = 4;
   string account = 5;
   string asset = 6;
-  uint64 transaction_id = 7;
+  fixed64 transaction_id = 7;
 }
 
 message CheckStoreProgress {
-  uint64 logs_checked = 1;
-  uint64 total_logs = 2;
+  fixed64 logs_checked = 1;
+  fixed64 total_logs = 2;
 }
 
 // ============================================================================
@@ -686,19 +686,19 @@ message CheckStoreProgress {
 // ============================================================================
 
 message ListAuditEntriesRequest {
-  optional uint64 after_sequence = 1;
+  optional fixed64 after_sequence = 1;
   bool failures_only = 2;
   // page_size is the maximum number of audit entries to return (0 = no limit)
   uint32 page_size = 3;
   // min_log_sequence requires the store to have applied at least this log sequence before reading.
   // If the store has not caught up, the server returns FailedPrecondition.
-  uint64 min_log_sequence = 4;
+  fixed64 min_log_sequence = 4;
   // ledger filters audit entries to only those containing orders targeting this ledger.
   string ledger = 5;
 }
 
 message GetAuditEntryRequest {
-  uint64 sequence = 1;
+  fixed64 sequence = 1;
 }
 
 // ============================================================================
@@ -707,22 +707,22 @@ message GetAuditEntryRequest {
 
 message ListLogsRequest {
   // after_sequence is the global sequence to start after (exclusive). Used when no ledger filter is set.
-  optional uint64 after_sequence = 1;
+  optional fixed64 after_sequence = 1;
   uint32 page_size = 2;
   // min_log_sequence requires the store to have applied at least this log sequence before reading.
-  uint64 min_log_sequence = 3;
+  fixed64 min_log_sequence = 3;
   // filter is an optional filter (e.g. ledger == "foo", log_id > 42). When a ledger filter
   // is present, results are ordered by ledger-local log ID ascending. Use a log_id condition
   // for pagination. When absent, all logs are returned ordered by global sequence ascending.
   common.QueryFilter filter = 4;
   // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-  uint64 checkpoint_id = 5;
+  fixed64 checkpoint_id = 5;
 }
 
 message GetLogRequest {
-  uint64 sequence = 1;
+  fixed64 sequence = 1;
   // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-  uint64 checkpoint_id = 2;
+  fixed64 checkpoint_id = 2;
 }
 
 // ============================================================================
@@ -753,8 +753,8 @@ message GetMetadataSchemaStatusResponse {
 message MetadataFieldStatus {
   common.MetadataType declared_type = 1;
   common.MetadataConversionStatus status = 2;
-  uint64 total_keys = 3;
-  uint64 converted_keys = 4;
+  fixed64 total_keys = 3;
+  fixed64 converted_keys = 4;
 }
 
 // ============================================================================
@@ -770,13 +770,13 @@ message AnalyzeAccountsRequest {
 
 message AnalyzeAccountsResponse {
   repeated AccountPattern patterns = 1;
-  uint64 total_accounts = 2;
+  fixed64 total_accounts = 2;
 }
 
 // AnalyzeProgress reports scan progress for long-running analysis operations.
 message AnalyzeProgress {
-  uint64 processed = 1;
-  uint64 total = 2;
+  fixed64 processed = 1;
+  fixed64 total = 2;
   string phase = 3;  // "scanning", "pass1", "pass2"
 }
 
@@ -799,7 +799,7 @@ message AnalyzeTransactionsEvent {
 // AccountPattern describes a discovered address pattern and its statistics.
 message AccountPattern {
   string pattern = 1;             // Human-readable pattern (e.g. "users:{userId}")
-  uint64 account_count = 2;       // Number of accounts matching this pattern
+  fixed64 account_count = 2;       // Number of accounts matching this pattern
   repeated string assets = 3;     // Distinct assets observed for matching accounts
   repeated string metadata_keys = 4; // Distinct metadata keys observed
   repeated PatternSegment segments = 5;
@@ -812,7 +812,7 @@ message PatternSegment {
   string fixed_value = 3;        // Set when type=FIXED
   string variable_name = 4;      // Set when type=VARIABLE
   string inferred_pattern = 5;   // Regex for variable segments
-  uint64 unique_values = 6;      // Count of distinct values for this segment
+  fixed64 unique_values = 6;      // Count of distinct values for this segment
   repeated string examples = 7;  // Up to 5 example values
 }
 
@@ -834,14 +834,14 @@ message AnalyzeTransactionsRequest {
 
 message AnalyzeTransactionsResponse {
   repeated FlowPattern flow_patterns = 1;
-  uint64 total_transactions = 2;
-  uint64 total_reverted = 3;
+  fixed64 total_transactions = 2;
+  fixed64 total_reverted = 3;
 }
 
 message FlowPattern {
   string signature = 1;                    // e.g. "users:{id}:main -> bank:fees [USD]"
   PostingStructure structure = 2;
-  uint64 transaction_count = 3;
+  fixed64 transaction_count = 3;
   repeated NormalizedPosting postings = 4;
   TemporalStats temporal = 5;
   repeated AssetVolumeStats volume_stats = 6;
@@ -870,7 +870,7 @@ message TemporalStats {
 
 message HourBucket {
   uint32 hour = 1;    // 0-23
-  uint64 count = 2;
+  fixed64 count = 2;
 }
 
 message AssetVolumeStats {
@@ -879,7 +879,7 @@ message AssetVolumeStats {
   string average_volume = 3;
   string min_volume = 4;
   string max_volume = 5;
-  uint64 transaction_count = 6;
+  fixed64 transaction_count = 6;
 }
 
 // ============================================================================
@@ -921,7 +921,7 @@ message ExecutePreparedQueryRequest {
   map<string, common.ParameterValue> parameters = 3;
   uint32 page_size = 4;
   string cursor = 5;
-  uint64 min_log_sequence = 6;
+  fixed64 min_log_sequence = 6;
   common.QueryMode mode = 7;
 }
 
@@ -939,10 +939,10 @@ message ExecutePreparedQueryResponse {
 message GetIndexStatusRequest {}
 
 message GetIndexStatusResponse {
-  uint64 last_indexed_sequence = 1;
-  uint64 last_log_sequence = 2;
-  uint64 lag = 3;
-  uint64 index_file_size = 4;
+  fixed64 last_indexed_sequence = 1;
+  fixed64 last_log_sequence = 2;
+  fixed64 lag = 3;
+  fixed64 index_file_size = 4;
   repeated IndexBackfillProgress backfill_progress = 5;
 }
 
@@ -954,19 +954,19 @@ message IndexBackfillProgress {
     common.TransactionIndex transaction = 3;
     common.AccountIndex account = 4;
   }
-  uint64 cursor = 5;
+  fixed64 cursor = 5;
 }
 
 message GetLedgerStatsRequest {
   string ledger = 1;
   // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-  uint64 checkpoint_id = 2;
+  fixed64 checkpoint_id = 2;
 }
 
 message AggregateVolumesRequest {
   string ledger = 1;
   common.QueryFilter filter = 2;
-  uint64 min_log_sequence = 3;
+  fixed64 min_log_sequence = 3;
   // When true, assets sharing the same base (e.g. USD/2, USD/4) are merged
   // under the highest precision observed, with lower-precision amounts rescaled.
   bool use_max_precision = 4;
@@ -974,7 +974,7 @@ message AggregateVolumesRequest {
   // to the first matching prefix. Accounts not matching any prefix are excluded.
   repeated string group_by_prefixes = 5;
   // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-  uint64 checkpoint_id = 6;
+  fixed64 checkpoint_id = 6;
 }
 
 // ============================================================================
@@ -1020,7 +1020,7 @@ message InspectIndexRequest {
   InspectIndexMode mode = 4;
   uint32 page_size = 5;
   string cursor = 6;
-  uint64 checkpoint_id = 7;
+  fixed64 checkpoint_id = 7;
 }
 
 message InspectIndexResponse {
@@ -1039,7 +1039,7 @@ message InspectDistinctValues {
 
 message InspectFacet {
   common.MetadataValue value = 1;
-  uint64 count = 2;
+  fixed64 count = 2;
 }
 
 message InspectFacets {
@@ -1049,11 +1049,11 @@ message InspectFacets {
 }
 
 message InspectSummary {
-  uint64 cardinality = 1;
+  fixed64 cardinality = 1;
   common.MetadataValue min = 2;
   common.MetadataValue max = 3;
-  uint64 entities_with_key = 4;
-  uint64 entities_with_null = 5;
+  fixed64 entities_with_key = 4;
+  fixed64 entities_with_null = 5;
 }
 
 // ============================================================================
@@ -1067,5 +1067,5 @@ message BarrierResponse {
   // Callers can compare successive barrier responses to detect quiescence:
   // if two barriers return the same commit_index, no proposals were committed
   // between them.
-  uint64 commit_index = 1;
+  fixed64 commit_index = 1;
 }

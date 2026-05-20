@@ -210,7 +210,7 @@ The existing `ListLogsRequest` (global listing) is already implemented:
 ```protobuf
 // Existing — global listing by sequence
 message ListLogsRequest {
-  optional uint64 after_sequence = 1;
+  optional fixed64 after_sequence = 1;
   uint32 page_size = 2;
 }
 rpc ListLogs(ListLogsRequest) returns (stream common.Log);
@@ -223,7 +223,7 @@ For per-ledger listing, extend or add a new RPC:
 message ListLedgerLogsRequest {
   string ledger = 1;
   uint32 page_size = 2;
-  uint64 after_log_id = 3;     // Cursor: start after this ledger log ID (exclusive)
+  fixed64 after_log_id = 3;    // Cursor: start after this ledger log ID (exclusive)
 }
 rpc ListLedgerLogs(ListLedgerLogsRequest) returns (stream common.Log);
 ```
@@ -242,8 +242,8 @@ Current proto definition (field 3 is reserved from the old `ledger_id` removal):
 ```protobuf
 // Current state in raft_cmd.proto
 message LedgerBoundaries {
-  uint64 next_transaction_id = 1;
-  uint64 next_log_id = 2;
+  fixed64 next_transaction_id = 1;
+  fixed64 next_log_id = 2;
   reserved 3;  // Was: uint32 ledger_id (removed: ledger name used as key)
 }
 ```
@@ -252,10 +252,10 @@ For **account count**, add a new field (use field 4 since 3 is reserved):
 
 ```protobuf
 message LedgerBoundaries {
-  uint64 next_transaction_id = 1;
-  uint64 next_log_id = 2;
+  fixed64 next_transaction_id = 1;
+  fixed64 next_log_id = 2;
   reserved 3;
-  uint64 account_count = 4;       // NEW: number of distinct accounts
+  fixed64 account_count = 4;      // NEW: number of distinct accounts
 }
 ```
 
@@ -277,9 +277,9 @@ message GetLedgerStatsRequest {
 }
 
 message GetLedgerStatsResponse {
-  uint64 transaction_count = 1;
-  uint64 log_count = 2;
-  uint64 account_count = 3;
+  fixed64 transaction_count = 1;
+  fixed64 log_count = 2;
+  fixed64 account_count = 3;
 }
 
 rpc GetLedgerStats(GetLedgerStatsRequest) returns (GetLedgerStatsResponse);
@@ -380,7 +380,7 @@ message ListAccountTransactionsRequest {
   string ledger = 1;
   string address = 2;
   uint32 page_size = 3;
-  uint64 after_tx_id = 4;      // Cursor (exclusive, for pagination)
+  fixed64 after_tx_id = 4;     // Cursor (exclusive, for pagination)
 }
 
 rpc ListAccountTransactions(ListAccountTransactionsRequest) returns (stream common.Transaction);
@@ -824,7 +824,7 @@ The read index store is **eventually consistent** with a bounded lag:
 ```protobuf
 message ExecutePreparedQueryRequest {
   // ...existing fields...
-  uint64 min_raft_index = 6;  // Optional: wait until indexes catch up to this index
+  fixed64 min_raft_index = 6; // Optional: wait until indexes catch up to this index
 }
 ```
 

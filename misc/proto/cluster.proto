@@ -101,10 +101,10 @@ message NodeInfo {
 
 // ProgressInfo represents the progress information for a node
 message ProgressInfo {
-  uint64 match = 1;             // Match index: highest log entry known to be replicated to this node
-  uint64 next = 2;              // Next index: index of the next log entry to send to this node
+  fixed64 match = 1;             // Match index: highest log entry known to be replicated to this node
+  fixed64 next = 2;              // Next index: index of the next log entry to send to this node
   string state = 3;             // State: Probe, Replicate, or Snapshot
-  uint64 pending_snapshot = 4;  // Index of pending snapshot (0 if none)
+  fixed64 pending_snapshot = 4;  // Index of pending snapshot (0 if none)
   bool recent_active = 5;       // Whether this node is recently active
   bool msg_app_flow_paused = 6; // Whether MsgApp flow to this node is paused
   bool is_paused = 7;           // Whether this node is paused
@@ -114,11 +114,11 @@ message ProgressInfo {
 // RaftStatus represents the complete Raft status information
 message RaftStatus {
   string state = 1;             // Current Raft state (Leader, Follower, Candidate, PreCandidate)
-  uint64 term = 2;              // Current term
+  fixed64 term = 2;              // Current term
   uint64 leader = 3;            // ID of the current leader (0 if no leader)
-  uint64 applied = 4;           // Index of the last applied entry
-  uint64 commit = 5;            // Index of the last committed entry
-  uint64 last_index = 6;        // Index of the last entry in the log
+  fixed64 applied = 4;           // Index of the last applied entry
+  fixed64 commit = 5;            // Index of the last committed entry
+  fixed64 last_index = 6;        // Index of the last entry in the log
   uint64 vote = 7;              // ID of the node that received the vote (0 if no vote)
   map<uint64, ProgressInfo> progress = 8;  // Progress information for each node
 }
@@ -138,15 +138,15 @@ message ClusterState {
 
 // IndexProgress tracks the index builder's position relative to Pebble.
 message IndexProgress {
-  uint64 last_indexed_sequence = 1;  // Pebble progress cursor
-  uint64 pebble_last_sequence = 2;   // latest Pebble log sequence
+  fixed64 last_indexed_sequence = 1;  // Pebble progress cursor
+  fixed64 pebble_last_sequence = 2;   // latest Pebble log sequence
 }
 
 // SyncProgress tracks the progress of a checkpoint fetch on the local node.
 message SyncProgress {
   string status = 1;              // "normal", "syncing", "snapshotting", "out_of_sync"
-  uint64 bytes_received = 2;      // Bytes received so far during checkpoint fetch
-  uint64 bytes_total = 3;         // Total bytes to fetch (0 if unknown)
+  fixed64 bytes_received = 2;      // Bytes received so far during checkpoint fetch
+  fixed64 bytes_total = 3;         // Total bytes to fetch (0 if unknown)
 }
 
 // ============================================================================
@@ -171,13 +171,13 @@ message GetNodeTimeRequest {}
 
 // NodeTime represents the current physical clock time of a node
 message NodeTime {
-  uint64 timestamp_us = 1;  // Current time in microseconds since epoch
+  fixed64 timestamp_us = 1;  // Current time in microseconds since epoch
 }
 
 // VolumeUsage represents the disk usage of a single filesystem volume.
 message VolumeUsage {
-  int64 used_bytes = 1;   // Used bytes on the filesystem
-  int64 total_bytes = 2;  // Total capacity of the filesystem in bytes
+  sfixed64 used_bytes = 1;   // Used bytes on the filesystem
+  sfixed64 total_bytes = 2;  // Total capacity of the filesystem in bytes
 }
 
 // DiskUsage represents the filesystem-level disk usage on a node.
@@ -239,9 +239,9 @@ message BackupResponse {
   uint32 files_deleted = 2;       // Number of stale files deleted
   uint32 total_files = 3;         // Total files in the backup after this run
   int64 duration_ms = 4;          // Wall-clock duration in milliseconds
-  uint64 last_log_sequence = 5;   // Log sequence at checkpoint time
-  uint64 last_audit_sequence = 6; // Audit sequence at checkpoint time
-  uint64 last_applied_index = 7;  // Raft applied index at checkpoint time
+  fixed64 last_log_sequence = 5;   // Log sequence at checkpoint time
+  fixed64 last_audit_sequence = 6; // Audit sequence at checkpoint time
+  fixed64 last_applied_index = 7;  // Raft applied index at checkpoint time
 }
 
 // ============================================================================
@@ -260,12 +260,12 @@ message IncrementalBackupRequest {
 }
 
 message IncrementalBackupResponse {
-  uint64 log_entries_exported = 1;   // Number of log entries exported
-  uint64 audit_entries_exported = 2; // Number of audit entries exported
+  fixed64 log_entries_exported = 1;   // Number of log entries exported
+  fixed64 audit_entries_exported = 2; // Number of audit entries exported
   uint32 segments_uploaded = 3;      // Number of segments uploaded
   int64 duration_ms = 4;             // Wall-clock duration in milliseconds
-  uint64 last_log_sequence = 5;      // Last exported log sequence
-  uint64 last_audit_sequence = 6;    // Last exported audit sequence
+  fixed64 last_log_sequence = 5;      // Last exported log sequence
+  fixed64 last_audit_sequence = 6;    // Last exported audit sequence
 }
 
 // ============================================================================
@@ -286,8 +286,8 @@ message CompactSecondaryRequest {}
 
 message CompactSecondaryResponse {
   int64 duration_ms = 1;       // Wall-clock duration of the compaction in milliseconds
-  int64 size_before_bytes = 2; // Read index file size before compaction in bytes
-  int64 size_after_bytes = 3;  // Read index file size after compaction in bytes
+  sfixed64 size_before_bytes = 2; // Read index file size before compaction in bytes
+  sfixed64 size_after_bytes = 3;  // Read index file size after compaction in bytes
 }
 
 // ============================================================================
@@ -297,7 +297,7 @@ message CompactSecondaryResponse {
 message CreateCheckpointRequest {}
 
 message CreateCheckpointResponse {
-  uint64 checkpoint_id = 1;  // ID of the newly created checkpoint
+  fixed64 checkpoint_id = 1;  // ID of the newly created checkpoint
 }
 
 // ============================================================================
@@ -307,12 +307,12 @@ message CreateCheckpointResponse {
 message CreateQueryCheckpointRequest {}
 
 message CreateQueryCheckpointResponse {
-  uint64 checkpoint_id = 1;  // Sequential checkpoint identifier
-  uint64 max_sequence = 2;   // Max global log sequence at checkpoint time
+  fixed64 checkpoint_id = 1;  // Sequential checkpoint identifier
+  fixed64 max_sequence = 2;   // Max global log sequence at checkpoint time
 }
 
 message DeleteQueryCheckpointRequest {
-  uint64 checkpoint_id = 1;  // ID of the query checkpoint to delete
+  fixed64 checkpoint_id = 1;  // ID of the query checkpoint to delete
 }
 
 message DeleteQueryCheckpointResponse {}
@@ -324,7 +324,7 @@ message ListQueryCheckpointsResponse {
 }
 
 message GetQueryCheckpointInfoRequest {
-  uint64 checkpoint_id = 1;
+  fixed64 checkpoint_id = 1;
 }
 
 message GetQueryCheckpointScheduleRequest {}
@@ -334,7 +334,7 @@ message GetQueryCheckpointScheduleResponse {
 }
 
 message QueryCheckpointInfo {
-  uint64 checkpoint_id = 1;           // Sequential checkpoint identifier
-  uint64 max_sequence = 2;            // Max global log sequence at checkpoint time
+  fixed64 checkpoint_id = 1;           // Sequential checkpoint identifier
+  fixed64 max_sequence = 2;            // Max global log sequence at checkpoint time
   common.Timestamp created_at = 3;    // Creation timestamp
 }

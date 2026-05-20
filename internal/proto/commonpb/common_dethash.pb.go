@@ -4,6 +4,7 @@
 package commonpb
 
 import (
+	binary "encoding/binary"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
 	maps "maps"
 	slices "slices"
@@ -167,9 +168,10 @@ func (m *Transaction) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, err
 		dAtA[i] = 0x30
 	}
 	if m.Id != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Id))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Id))
 		i--
-		dAtA[i] = 0x28
+		dAtA[i] = 0x29
 	}
 	if len(m.Reference) > 0 {
 		i -= len(m.Reference)
@@ -730,9 +732,10 @@ func (m *Log) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
 		dAtA[i] = 0x12
 	}
 	if m.Sequence != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Sequence))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Sequence))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -1571,9 +1574,10 @@ func (m *LedgerLog) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if m.Id != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Id))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Id))
 		i--
-		dAtA[i] = 0x18
+		dAtA[i] = 0x19
 	}
 	if m.Date != nil {
 		size, _ := m.Date.MarshalToSizedBufferVT(dAtA[:i])
@@ -1859,9 +1863,10 @@ func (m *CreatedTransaction) MarshalToSizedBufferDeterministicVT(dAtA []byte) (i
 		dAtA[i] = 0x22
 	}
 	if m.PeriodId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PeriodId))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.PeriodId))
 		i--
-		dAtA[i] = 0x18
+		dAtA[i] = 0x19
 	}
 	if len(m.AccountMetadata) > 0 {
 		for _, k := range slices.Sorted(maps.Keys(m.AccountMetadata)) {
@@ -1926,9 +1931,10 @@ func (m *RevertedTransaction) MarshalToSizedBufferDeterministicVT(dAtA []byte) (
 		dAtA[i] = 0x12
 	}
 	if m.RevertedTransactionId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.RevertedTransactionId))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.RevertedTransactionId))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -2383,14 +2389,16 @@ func (m *TransactionState) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 		}
 	}
 	if m.RevertedByTransaction != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.RevertedByTransaction))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.RevertedByTransaction))
 		i--
-		dAtA[i] = 0x10
+		dAtA[i] = 0x11
 	}
 	if m.CreatedByLog != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.CreatedByLog))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CreatedByLog))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }

@@ -934,7 +934,7 @@ func (QueryMode) EnumDescriptor() ([]byte, []int) {
 
 type Timestamp struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Data          uint64                 `protobuf:"varint,1,opt,name=data,proto3" json:"data,omitempty"`
+	Data          uint64                 `protobuf:"fixed64,1,opt,name=data,proto3" json:"data,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1458,7 +1458,7 @@ type Transaction struct {
 	Metadata      map[string]*MetadataValue `protobuf:"bytes,2,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Timestamp     *Timestamp                `protobuf:"bytes,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	Reference     string                    `protobuf:"bytes,4,opt,name=reference,proto3" json:"reference,omitempty"`
-	Id            uint64                    `protobuf:"varint,5,opt,name=id,proto3" json:"id,omitempty"`
+	Id            uint64                    `protobuf:"fixed64,5,opt,name=id,proto3" json:"id,omitempty"`
 	Reverted      bool                      `protobuf:"varint,6,opt,name=reverted,proto3" json:"reverted,omitempty"`
 	InsertedAt    *Timestamp                `protobuf:"bytes,7,opt,name=inserted_at,json=insertedAt,proto3" json:"inserted_at,omitempty"`
 	UpdatedAt     *Timestamp                `protobuf:"bytes,8,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
@@ -1955,7 +1955,7 @@ func (x *TargetAccount) GetAddr() string {
 
 type TargetTransaction struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Id            uint64                 `protobuf:"fixed64,1,opt,name=id,proto3" json:"id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2083,8 +2083,8 @@ type MetadataFieldSchema struct {
 	state            protoimpl.MessageState   `protogen:"open.v1"`
 	Type             MetadataType             `protobuf:"varint,1,opt,name=type,proto3,enum=common.MetadataType" json:"type,omitempty"`
 	Status           MetadataConversionStatus `protobuf:"varint,2,opt,name=status,proto3,enum=common.MetadataConversionStatus" json:"status,omitempty"`
-	TotalKeys        uint64                   `protobuf:"varint,3,opt,name=total_keys,json=totalKeys,proto3" json:"total_keys,omitempty"`
-	ConvertedKeys    uint64                   `protobuf:"varint,4,opt,name=converted_keys,json=convertedKeys,proto3" json:"converted_keys,omitempty"`
+	TotalKeys        uint64                   `protobuf:"fixed64,3,opt,name=total_keys,json=totalKeys,proto3" json:"total_keys,omitempty"`
+	ConvertedKeys    uint64                   `protobuf:"fixed64,4,opt,name=converted_keys,json=convertedKeys,proto3" json:"converted_keys,omitempty"`
 	Indexed          bool                     `protobuf:"varint,5,opt,name=indexed,proto3" json:"indexed,omitempty"`
 	IndexBuildStatus IndexBuildStatus         `protobuf:"varint,6,opt,name=index_build_status,json=indexBuildStatus,proto3,enum=common.IndexBuildStatus" json:"index_build_status,omitempty"`
 	unknownFields    protoimpl.UnknownFields
@@ -2698,8 +2698,8 @@ func (x *Idempotency) GetKey() string {
 // IdempotencyEntry represents an idempotency key entry stored in Pebble
 type IdempotencyEntry struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Hash          []byte                 `protobuf:"bytes,1,opt,name=hash,proto3" json:"hash,omitempty"`                 // Idempotency hash
-	LogId         uint64                 `protobuf:"varint,2,opt,name=log_id,json=logId,proto3" json:"log_id,omitempty"` // Log ID
+	Hash          []byte                 `protobuf:"bytes,1,opt,name=hash,proto3" json:"hash,omitempty"`                  // Idempotency hash
+	LogId         uint64                 `protobuf:"fixed64,2,opt,name=log_id,json=logId,proto3" json:"log_id,omitempty"` // Log ID
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2750,7 +2750,7 @@ func (x *IdempotencyEntry) GetLogId() uint64 {
 
 type Log struct {
 	state             protoimpl.MessageState         `protogen:"open.v1"`
-	Sequence          uint64                         `protobuf:"varint,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	Sequence          uint64                         `protobuf:"fixed64,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
 	Payload           *LogPayload                    `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"`
 	Idempotency       *Idempotency                   `protobuf:"bytes,3,opt,name=idempotency,proto3" json:"idempotency,omitempty"`
 	Hash              []byte                         `protobuf:"bytes,4,opt,name=hash,proto3" json:"hash,omitempty"`
@@ -3921,7 +3921,7 @@ func (x *ClusterConfig) GetBloomLedgerMetadata() *BloomTypeConfig {
 type PersistedClusterState struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Config        *ClusterConfig         `protobuf:"bytes,1,opt,name=config,proto3" json:"config,omitempty"`
-	CacheEpoch    uint64                 `protobuf:"varint,2,opt,name=cache_epoch,json=cacheEpoch,proto3" json:"cache_epoch,omitempty"` // Incremented on each config-driven cache reset
+	CacheEpoch    uint64                 `protobuf:"fixed64,2,opt,name=cache_epoch,json=cacheEpoch,proto3" json:"cache_epoch,omitempty"` // Incremented on each config-driven cache reset
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4601,8 +4601,8 @@ func (*DeleteQueryCheckpointScheduleLog) Descriptor() ([]byte, []int) {
 // CreatedQueryCheckpointLog records a query checkpoint being created.
 type CreatedQueryCheckpointLog struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	CheckpointId  uint64                 `protobuf:"varint,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
-	MaxSequence   uint64                 `protobuf:"varint,2,opt,name=max_sequence,json=maxSequence,proto3" json:"max_sequence,omitempty"`
+	CheckpointId  uint64                 `protobuf:"fixed64,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	MaxSequence   uint64                 `protobuf:"fixed64,2,opt,name=max_sequence,json=maxSequence,proto3" json:"max_sequence,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4654,7 +4654,7 @@ func (x *CreatedQueryCheckpointLog) GetMaxSequence() uint64 {
 // DeletedQueryCheckpointLog records a query checkpoint being deleted.
 type DeletedQueryCheckpointLog struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	CheckpointId  uint64                 `protobuf:"varint,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	CheckpointId  uint64                 `protobuf:"fixed64,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4871,8 +4871,8 @@ func (*SinkConfig_Databricks) isSinkConfig_Type() {}
 type SinkStatus struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SinkName      string                 `protobuf:"bytes,1,opt,name=sink_name,json=sinkName,proto3" json:"sink_name,omitempty"`
-	Cursor        uint64                 `protobuf:"varint,2,opt,name=cursor,proto3" json:"cursor,omitempty"` // Last published sequence
-	Error         *SinkError             `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`    // Most recent error (nil = healthy)
+	Cursor        uint64                 `protobuf:"fixed64,2,opt,name=cursor,proto3" json:"cursor,omitempty"` // Last published sequence
+	Error         *SinkError             `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`     // Most recent error (nil = healthy)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5529,7 +5529,7 @@ type LedgerLog struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Data          *LedgerLogPayload      `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`
 	Date          *Timestamp             `protobuf:"bytes,2,opt,name=date,proto3" json:"date,omitempty"`
-	Id            uint64                 `protobuf:"varint,3,opt,name=id,proto3" json:"id,omitempty"`
+	Id            uint64                 `protobuf:"fixed64,3,opt,name=id,proto3" json:"id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6174,7 +6174,7 @@ func (*IndexReadyLog_Account) isIndexReadyLog_Index() {}
 
 type FillGapLog struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	OriginalId    uint64                 `protobuf:"varint,1,opt,name=original_id,json=originalId,proto3" json:"original_id,omitempty"` // v2 log ID that this gap fills
+	OriginalId    uint64                 `protobuf:"fixed64,1,opt,name=original_id,json=originalId,proto3" json:"original_id,omitempty"` // v2 log ID that this gap fills
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6392,7 +6392,7 @@ type CreatedTransaction struct {
 	state                   protoimpl.MessageState  `protogen:"open.v1"`
 	Transaction             *Transaction            `protobuf:"bytes,1,opt,name=transaction,proto3" json:"transaction,omitempty"`
 	AccountMetadata         map[string]*MetadataMap `protobuf:"bytes,2,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	PeriodId                uint64                  `protobuf:"varint,3,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`                                                                                                                         // Period that was OPEN when this transaction was created
+	PeriodId                uint64                  `protobuf:"fixed64,3,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`                                                                                                                        // Period that was OPEN when this transaction was created
 	PostCommitVolumes       *PostCommitVolumes      `protobuf:"bytes,4,opt,name=post_commit_volumes,json=postCommitVolumes,proto3" json:"post_commit_volumes,omitempty"`                                                                                             // Opt-in: volumes after commit (only when expand_volumes is true)
 	PreviousAccountMetadata map[string]*MetadataMap `protobuf:"bytes,5,rep,name=previous_account_metadata,json=previousAccountMetadata,proto3" json:"previous_account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // previous account metadata values (for index replay)
 	unknownFields           protoimpl.UnknownFields
@@ -6466,7 +6466,7 @@ func (x *CreatedTransaction) GetPreviousAccountMetadata() map[string]*MetadataMa
 
 type RevertedTransaction struct {
 	state                 protoimpl.MessageState `protogen:"open.v1"`
-	RevertedTransactionId uint64                 `protobuf:"varint,1,opt,name=reverted_transaction_id,json=revertedTransactionId,proto3" json:"reverted_transaction_id,omitempty"`
+	RevertedTransactionId uint64                 `protobuf:"fixed64,1,opt,name=reverted_transaction_id,json=revertedTransactionId,proto3" json:"reverted_transaction_id,omitempty"`
 	RevertTransaction     *Transaction           `protobuf:"bytes,2,opt,name=revert_transaction,json=revertTransaction,proto3" json:"revert_transaction,omitempty"`
 	PostCommitVolumes     *PostCommitVolumes     `protobuf:"bytes,3,opt,name=post_commit_volumes,json=postCommitVolumes,proto3" json:"post_commit_volumes,omitempty"` // Opt-in: volumes after commit (only when expand_volumes is true)
 	unknownFields         protoimpl.UnknownFields
@@ -6760,17 +6760,17 @@ func (x *RemovedMetadataFieldTypeLog) GetKey() string {
 
 type Period struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
-	Id                 uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Id                 uint64                 `protobuf:"fixed64,1,opt,name=id,proto3" json:"id,omitempty"`
 	Start              *Timestamp             `protobuf:"bytes,2,opt,name=start,proto3" json:"start,omitempty"`
 	End                *Timestamp             `protobuf:"bytes,3,opt,name=end,proto3" json:"end,omitempty"`
 	Status             PeriodStatus           `protobuf:"varint,4,opt,name=status,proto3,enum=common.PeriodStatus" json:"status,omitempty"`
-	CloseSequence      uint64                 `protobuf:"varint,5,opt,name=close_sequence,json=closeSequence,proto3" json:"close_sequence,omitempty"`
+	CloseSequence      uint64                 `protobuf:"fixed64,5,opt,name=close_sequence,json=closeSequence,proto3" json:"close_sequence,omitempty"`
 	SealingHash        []byte                 `protobuf:"bytes,6,opt,name=sealing_hash,json=sealingHash,proto3" json:"sealing_hash,omitempty"`
-	LastLogHash        []byte                 `protobuf:"bytes,7,opt,name=last_log_hash,json=lastLogHash,proto3" json:"last_log_hash,omitempty"`                        // Log chain hash at the time the period was closed (for crash recovery)
-	StartSequence      uint64                 `protobuf:"varint,8,opt,name=start_sequence,json=startSequence,proto3" json:"start_sequence,omitempty"`                   // First log sequence in this period (previous close_sequence + 1, or 1 for the first period)
-	StateHash          []byte                 `protobuf:"bytes,9,opt,name=state_hash,json=stateHash,proto3" json:"state_hash,omitempty"`                                // BLAKE3 hash of computed attributes (V+M+T) at seal time
-	StartAuditSequence uint64                 `protobuf:"varint,10,opt,name=start_audit_sequence,json=startAuditSequence,proto3" json:"start_audit_sequence,omitempty"` // First audit sequence in this period
-	CloseAuditSequence uint64                 `protobuf:"varint,11,opt,name=close_audit_sequence,json=closeAuditSequence,proto3" json:"close_audit_sequence,omitempty"` // Last audit sequence when period was closed
+	LastLogHash        []byte                 `protobuf:"bytes,7,opt,name=last_log_hash,json=lastLogHash,proto3" json:"last_log_hash,omitempty"`                         // Log chain hash at the time the period was closed (for crash recovery)
+	StartSequence      uint64                 `protobuf:"fixed64,8,opt,name=start_sequence,json=startSequence,proto3" json:"start_sequence,omitempty"`                   // First log sequence in this period (previous close_sequence + 1, or 1 for the first period)
+	StateHash          []byte                 `protobuf:"bytes,9,opt,name=state_hash,json=stateHash,proto3" json:"state_hash,omitempty"`                                 // BLAKE3 hash of computed attributes (V+M+T) at seal time
+	StartAuditSequence uint64                 `protobuf:"fixed64,10,opt,name=start_audit_sequence,json=startAuditSequence,proto3" json:"start_audit_sequence,omitempty"` // First audit sequence in this period
+	CloseAuditSequence uint64                 `protobuf:"fixed64,11,opt,name=close_audit_sequence,json=closeAuditSequence,proto3" json:"close_audit_sequence,omitempty"` // Last audit sequence when period was closed
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -7383,9 +7383,9 @@ func (x *MirrorSyncError) GetOccurredAt() *Timestamp {
 type MirrorSyncProgress struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	State          MirrorSyncState        `protobuf:"varint,1,opt,name=state,proto3,enum=common.MirrorSyncState" json:"state,omitempty"`
-	Cursor         uint64                 `protobuf:"varint,2,opt,name=cursor,proto3" json:"cursor,omitempty"`
-	SourceLogCount uint64                 `protobuf:"varint,3,opt,name=source_log_count,json=sourceLogCount,proto3" json:"source_log_count,omitempty"`
-	RemainingLogs  uint64                 `protobuf:"varint,4,opt,name=remaining_logs,json=remainingLogs,proto3" json:"remaining_logs,omitempty"`
+	Cursor         uint64                 `protobuf:"fixed64,2,opt,name=cursor,proto3" json:"cursor,omitempty"`
+	SourceLogCount uint64                 `protobuf:"fixed64,3,opt,name=source_log_count,json=sourceLogCount,proto3" json:"source_log_count,omitempty"`
+	RemainingLogs  uint64                 `protobuf:"fixed64,4,opt,name=remaining_logs,json=remainingLogs,proto3" json:"remaining_logs,omitempty"`
 	Error          *MirrorSyncError       `protobuf:"bytes,5,opt,name=error,proto3" json:"error,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
@@ -7706,8 +7706,8 @@ func (x *DeleteMetadataCommand) GetKey() string {
 // TransactionState stores the current state of a transaction as a single value.
 type TransactionState struct {
 	state                 protoimpl.MessageState    `protogen:"open.v1"`
-	CreatedByLog          uint64                    `protobuf:"varint,1,opt,name=created_by_log,json=createdByLog,proto3" json:"created_by_log,omitempty"`
-	RevertedByTransaction uint64                    `protobuf:"varint,2,opt,name=reverted_by_transaction,json=revertedByTransaction,proto3" json:"reverted_by_transaction,omitempty"` // 0 = not reverted
+	CreatedByLog          uint64                    `protobuf:"fixed64,1,opt,name=created_by_log,json=createdByLog,proto3" json:"created_by_log,omitempty"`
+	RevertedByTransaction uint64                    `protobuf:"fixed64,2,opt,name=reverted_by_transaction,json=revertedByTransaction,proto3" json:"reverted_by_transaction,omitempty"` // 0 = not reverted
 	Metadata              map[string]*MetadataValue `protobuf:"bytes,3,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
@@ -7767,10 +7767,10 @@ func (x *TransactionState) GetMetadata() map[string]*MetadataValue {
 // IdempotencyKeyValue stores the log sequence associated with an idempotency key.
 type IdempotencyKeyValue struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	LogSequence   uint64                 `protobuf:"varint,1,opt,name=log_sequence,json=logSequence,proto3" json:"log_sequence,omitempty"`
+	LogSequence   uint64                 `protobuf:"fixed64,1,opt,name=log_sequence,json=logSequence,proto3" json:"log_sequence,omitempty"`
 	Hash          []byte                 `protobuf:"bytes,2,opt,name=hash,proto3" json:"hash,omitempty"`
 	HashVersion   uint32                 `protobuf:"varint,3,opt,name=hash_version,json=hashVersion,proto3" json:"hash_version,omitempty"` // Hash algorithm version (0 = legacy = v1)
-	CreatedAt     uint64                 `protobuf:"varint,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`       // HLC microseconds (from Raft entry timestamp)
+	CreatedAt     uint64                 `protobuf:"fixed64,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`      // HLC microseconds (from Raft entry timestamp)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -7836,7 +7836,7 @@ func (x *IdempotencyKeyValue) GetCreatedAt() uint64 {
 // TransactionReferenceValue stores the transaction ID associated with a unique reference within a ledger.
 type TransactionReferenceValue struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	TransactionId uint64                 `protobuf:"varint,1,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
+	TransactionId uint64                 `protobuf:"fixed64,1,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -9296,8 +9296,8 @@ func (x *IntCondition) GetParamMax() string {
 
 type UintCondition struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Min           *uint64                `protobuf:"varint,1,opt,name=min,proto3,oneof" json:"min,omitempty"`
-	Max           *uint64                `protobuf:"varint,2,opt,name=max,proto3,oneof" json:"max,omitempty"`
+	Min           *uint64                `protobuf:"fixed64,1,opt,name=min,proto3,oneof" json:"min,omitempty"`
+	Max           *uint64                `protobuf:"fixed64,2,opt,name=max,proto3,oneof" json:"max,omitempty"`
 	MinExclusive  bool                   `protobuf:"varint,3,opt,name=min_exclusive,json=minExclusive,proto3" json:"min_exclusive,omitempty"`
 	MaxExclusive  bool                   `protobuf:"varint,4,opt,name=max_exclusive,json=maxExclusive,proto3" json:"max_exclusive,omitempty"`
 	ParamMin      string                 `protobuf:"bytes,5,opt,name=param_min,json=paramMin,proto3" json:"param_min,omitempty"`
@@ -9950,16 +9950,16 @@ func (x *PreparedQueryCursor) GetTransactionData() []*Transaction {
 // LedgerStats contains aggregate statistics for a ledger.
 type LedgerStats struct {
 	state                   protoimpl.MessageState `protogen:"open.v1"`
-	TransactionCount        uint64                 `protobuf:"varint,1,opt,name=transaction_count,json=transactionCount,proto3" json:"transaction_count,omitempty"`
-	VolumeCount             uint64                 `protobuf:"varint,2,opt,name=volume_count,json=volumeCount,proto3" json:"volume_count,omitempty"`
-	MetadataCount           uint64                 `protobuf:"varint,3,opt,name=metadata_count,json=metadataCount,proto3" json:"metadata_count,omitempty"`
-	ReferenceCount          uint64                 `protobuf:"varint,4,opt,name=reference_count,json=referenceCount,proto3" json:"reference_count,omitempty"`
-	PostingCount            uint64                 `protobuf:"varint,5,opt,name=posting_count,json=postingCount,proto3" json:"posting_count,omitempty"`
-	EphemeralEvictedCount   uint64                 `protobuf:"varint,6,opt,name=ephemeral_evicted_count,json=ephemeralEvictedCount,proto3" json:"ephemeral_evicted_count,omitempty"`
-	TransientUsedCount      uint64                 `protobuf:"varint,7,opt,name=transient_used_count,json=transientUsedCount,proto3" json:"transient_used_count,omitempty"`
-	RevertCount             uint64                 `protobuf:"varint,8,opt,name=revert_count,json=revertCount,proto3" json:"revert_count,omitempty"`
-	NumscriptExecutionCount uint64                 `protobuf:"varint,9,opt,name=numscript_execution_count,json=numscriptExecutionCount,proto3" json:"numscript_execution_count,omitempty"`
-	LogCount                uint64                 `protobuf:"varint,10,opt,name=log_count,json=logCount,proto3" json:"log_count,omitempty"`
+	TransactionCount        uint64                 `protobuf:"fixed64,1,opt,name=transaction_count,json=transactionCount,proto3" json:"transaction_count,omitempty"`
+	VolumeCount             uint64                 `protobuf:"fixed64,2,opt,name=volume_count,json=volumeCount,proto3" json:"volume_count,omitempty"`
+	MetadataCount           uint64                 `protobuf:"fixed64,3,opt,name=metadata_count,json=metadataCount,proto3" json:"metadata_count,omitempty"`
+	ReferenceCount          uint64                 `protobuf:"fixed64,4,opt,name=reference_count,json=referenceCount,proto3" json:"reference_count,omitempty"`
+	PostingCount            uint64                 `protobuf:"fixed64,5,opt,name=posting_count,json=postingCount,proto3" json:"posting_count,omitempty"`
+	EphemeralEvictedCount   uint64                 `protobuf:"fixed64,6,opt,name=ephemeral_evicted_count,json=ephemeralEvictedCount,proto3" json:"ephemeral_evicted_count,omitempty"`
+	TransientUsedCount      uint64                 `protobuf:"fixed64,7,opt,name=transient_used_count,json=transientUsedCount,proto3" json:"transient_used_count,omitempty"`
+	RevertCount             uint64                 `protobuf:"fixed64,8,opt,name=revert_count,json=revertCount,proto3" json:"revert_count,omitempty"`
+	NumscriptExecutionCount uint64                 `protobuf:"fixed64,9,opt,name=numscript_execution_count,json=numscriptExecutionCount,proto3" json:"numscript_execution_count,omitempty"`
+	LogCount                uint64                 `protobuf:"fixed64,10,opt,name=log_count,json=logCount,proto3" json:"log_count,omitempty"`
 	unknownFields           protoimpl.UnknownFields
 	sizeCache               protoimpl.SizeCache
 }
@@ -10141,7 +10141,7 @@ const file_common_proto_rawDesc = "" +
 	"\n" +
 	"\fcommon.proto\x12\x06common\x1a\x0fsignature.proto\"\x1f\n" +
 	"\tTimestamp\x12\x12\n" +
-	"\x04data\x18\x01 \x01(\x04R\x04data\"'\n" +
+	"\x04data\x18\x01 \x01(\x06R\x04data\"'\n" +
 	"\tNullValue\x12\x1a\n" +
 	"\boriginal\x18\x01 \x01(\tR\boriginal\"\xd1\x01\n" +
 	"\rMetadataValue\x12#\n" +
@@ -10182,7 +10182,7 @@ const file_common_proto_rawDesc = "" +
 	"\bmetadata\x18\x02 \x03(\v2!.common.Transaction.MetadataEntryR\bmetadata\x12/\n" +
 	"\ttimestamp\x18\x03 \x01(\v2\x11.common.TimestampR\ttimestamp\x12\x1c\n" +
 	"\treference\x18\x04 \x01(\tR\treference\x12\x0e\n" +
-	"\x02id\x18\x05 \x01(\x04R\x02id\x12\x1a\n" +
+	"\x02id\x18\x05 \x01(\x06R\x02id\x12\x1a\n" +
 	"\breverted\x18\x06 \x01(\bR\breverted\x122\n" +
 	"\vinserted_at\x18\a \x01(\v2\x11.common.TimestampR\n" +
 	"insertedAt\x120\n" +
@@ -10235,7 +10235,7 @@ const file_common_proto_rawDesc = "" +
 	"\rTargetAccount\x12\x12\n" +
 	"\x04addr\x18\x01 \x01(\tR\x04addr\"#\n" +
 	"\x11TargetTransaction\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x04R\x02id\"\x84\x01\n" +
+	"\x02id\x18\x01 \x01(\x06R\x02id\"\x84\x01\n" +
 	"\x06Target\x121\n" +
 	"\aaccount\x18\x01 \x01(\v2\x15.common.TargetAccountH\x00R\aaccount\x12=\n" +
 	"\vtransaction\x18\x02 \x01(\v2\x19.common.TargetTransactionH\x00R\vtransactionB\b\n" +
@@ -10244,8 +10244,8 @@ const file_common_proto_rawDesc = "" +
 	"\x04type\x18\x01 \x01(\x0e2\x14.common.MetadataTypeR\x04type\x128\n" +
 	"\x06status\x18\x02 \x01(\x0e2 .common.MetadataConversionStatusR\x06status\x12\x1d\n" +
 	"\n" +
-	"total_keys\x18\x03 \x01(\x04R\ttotalKeys\x12%\n" +
-	"\x0econverted_keys\x18\x04 \x01(\x04R\rconvertedKeys\x12\x18\n" +
+	"total_keys\x18\x03 \x01(\x06R\ttotalKeys\x12%\n" +
+	"\x0econverted_keys\x18\x04 \x01(\x06R\rconvertedKeys\x12\x18\n" +
 	"\aindexed\x18\x05 \x01(\bR\aindexed\x12F\n" +
 	"\x12index_build_status\x18\x06 \x01(\x0e2\x18.common.IndexBuildStatusR\x10indexBuildStatus\"\xaf\x04\n" +
 	"\x0eMetadataSchema\x12P\n" +
@@ -10299,9 +10299,9 @@ const file_common_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\"=\n" +
 	"\x10IdempotencyEntry\x12\x12\n" +
 	"\x04hash\x18\x01 \x01(\fR\x04hash\x12\x15\n" +
-	"\x06log_id\x18\x02 \x01(\x04R\x05logId\"\xdf\x02\n" +
+	"\x06log_id\x18\x02 \x01(\x06R\x05logId\"\xdf\x02\n" +
 	"\x03Log\x12\x1a\n" +
-	"\bsequence\x18\x01 \x01(\x04R\bsequence\x12,\n" +
+	"\bsequence\x18\x01 \x01(\x06R\bsequence\x12,\n" +
 	"\apayload\x18\x02 \x01(\v2\x12.common.LogPayloadR\apayload\x125\n" +
 	"\vidempotency\x18\x03 \x01(\v2\x13.common.IdempotencyR\vidempotency\x12\x12\n" +
 	"\x04hash\x18\x04 \x01(\fR\x04hash\x129\n" +
@@ -10384,7 +10384,7 @@ const file_common_proto_rawDesc = "" +
 	"\x15bloom_ledger_metadata\x18\f \x01(\v2\x17.common.BloomTypeConfigR\x13bloomLedgerMetadata\"g\n" +
 	"\x15PersistedClusterState\x12-\n" +
 	"\x06config\x18\x01 \x01(\v2\x15.common.ClusterConfigR\x06config\x12\x1f\n" +
-	"\vcache_epoch\x18\x02 \x01(\x04R\n" +
+	"\vcache_epoch\x18\x02 \x01(\x06R\n" +
 	"cacheEpoch\"*\n" +
 	"\x14SetPeriodScheduleLog\x12\x12\n" +
 	"\x04cron\x18\x01 \x01(\tR\x04cron\"\x19\n" +
@@ -10430,10 +10430,10 @@ const file_common_proto_rawDesc = "" +
 	"\x04cron\x18\x01 \x01(\tR\x04cron\"\"\n" +
 	" DeleteQueryCheckpointScheduleLog\"c\n" +
 	"\x19CreatedQueryCheckpointLog\x12#\n" +
-	"\rcheckpoint_id\x18\x01 \x01(\x04R\fcheckpointId\x12!\n" +
-	"\fmax_sequence\x18\x02 \x01(\x04R\vmaxSequence\"@\n" +
+	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\x12!\n" +
+	"\fmax_sequence\x18\x02 \x01(\x06R\vmaxSequence\"@\n" +
 	"\x19DeletedQueryCheckpointLog\x12#\n" +
-	"\rcheckpoint_id\x18\x01 \x01(\x04R\fcheckpointId\"\xc6\x03\n" +
+	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\"\xc6\x03\n" +
 	"\n" +
 	"SinkConfig\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12,\n" +
@@ -10457,7 +10457,7 @@ const file_common_proto_rawDesc = "" +
 	"\n" +
 	"SinkStatus\x12\x1b\n" +
 	"\tsink_name\x18\x01 \x01(\tR\bsinkName\x12\x16\n" +
-	"\x06cursor\x18\x02 \x01(\x04R\x06cursor\x12'\n" +
+	"\x06cursor\x18\x02 \x01(\x06R\x06cursor\x12'\n" +
 	"\x05error\x18\x03 \x01(\v2\x11.common.SinkErrorR\x05error\"Y\n" +
 	"\tSinkError\x12\x18\n" +
 	"\amessage\x18\x01 \x01(\tR\amessage\x122\n" +
@@ -10511,7 +10511,7 @@ const file_common_proto_rawDesc = "" +
 	"\tLedgerLog\x12,\n" +
 	"\x04data\x18\x01 \x01(\v2\x18.common.LedgerLogPayloadR\x04data\x12%\n" +
 	"\x04date\x18\x02 \x01(\v2\x11.common.TimestampR\x04date\x12\x0e\n" +
-	"\x02id\x18\x03 \x01(\x04R\x02id\"\xbc\t\n" +
+	"\x02id\x18\x03 \x01(\x06R\x02id\"\xbc\t\n" +
 	"\x10LedgerLogPayload\x12M\n" +
 	"\x13created_transaction\x18\x01 \x01(\v2\x1a.common.CreatedTransactionH\x00R\x12createdTransaction\x12P\n" +
 	"\x14reverted_transaction\x18\x02 \x01(\v2\x1b.common.RevertedTransactionH\x00R\x13revertedTransaction\x12>\n" +
@@ -10552,7 +10552,7 @@ const file_common_proto_rawDesc = "" +
 	"\x05index\"-\n" +
 	"\n" +
 	"FillGapLog\x12\x1f\n" +
-	"\voriginal_id\x18\x01 \x01(\x04R\n" +
+	"\voriginal_id\x18\x01 \x01(\x06R\n" +
 	"originalId\"\xb6\x01\n" +
 	"\x17ConvertMetadataBatchLog\x123\n" +
 	"\vtarget_type\x18\x01 \x01(\x0e2\x12.common.TargetTypeR\n" +
@@ -10570,7 +10570,7 @@ const file_common_proto_rawDesc = "" +
 	"\x12CreatedTransaction\x125\n" +
 	"\vtransaction\x18\x01 \x01(\v2\x13.common.TransactionR\vtransaction\x12Z\n" +
 	"\x10account_metadata\x18\x02 \x03(\v2/.common.CreatedTransaction.AccountMetadataEntryR\x0faccountMetadata\x12\x1b\n" +
-	"\tperiod_id\x18\x03 \x01(\x04R\bperiodId\x12I\n" +
+	"\tperiod_id\x18\x03 \x01(\x06R\bperiodId\x12I\n" +
 	"\x13post_commit_volumes\x18\x04 \x01(\v2\x19.common.PostCommitVolumesR\x11postCommitVolumes\x12s\n" +
 	"\x19previous_account_metadata\x18\x05 \x03(\v27.common.CreatedTransaction.PreviousAccountMetadataEntryR\x17previousAccountMetadata\x1aW\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
@@ -10580,7 +10580,7 @@ const file_common_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
 	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01\"\xdc\x01\n" +
 	"\x13RevertedTransaction\x126\n" +
-	"\x17reverted_transaction_id\x18\x01 \x01(\x04R\x15revertedTransactionId\x12B\n" +
+	"\x17reverted_transaction_id\x18\x01 \x01(\x06R\x15revertedTransactionId\x12B\n" +
 	"\x12revert_transaction\x18\x02 \x01(\v2\x13.common.TransactionR\x11revertTransaction\x12I\n" +
 	"\x13post_commit_volumes\x18\x03 \x01(\v2\x19.common.PostCommitVolumesR\x11postCommitVolumes\"\xfa\x02\n" +
 	"\rSavedMetadata\x12&\n" +
@@ -10607,19 +10607,19 @@ const file_common_proto_rawDesc = "" +
 	"targetType\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\"\xac\x03\n" +
 	"\x06Period\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x04R\x02id\x12'\n" +
+	"\x02id\x18\x01 \x01(\x06R\x02id\x12'\n" +
 	"\x05start\x18\x02 \x01(\v2\x11.common.TimestampR\x05start\x12#\n" +
 	"\x03end\x18\x03 \x01(\v2\x11.common.TimestampR\x03end\x12,\n" +
 	"\x06status\x18\x04 \x01(\x0e2\x14.common.PeriodStatusR\x06status\x12%\n" +
-	"\x0eclose_sequence\x18\x05 \x01(\x04R\rcloseSequence\x12!\n" +
+	"\x0eclose_sequence\x18\x05 \x01(\x06R\rcloseSequence\x12!\n" +
 	"\fsealing_hash\x18\x06 \x01(\fR\vsealingHash\x12\"\n" +
 	"\rlast_log_hash\x18\a \x01(\fR\vlastLogHash\x12%\n" +
-	"\x0estart_sequence\x18\b \x01(\x04R\rstartSequence\x12\x1d\n" +
+	"\x0estart_sequence\x18\b \x01(\x06R\rstartSequence\x12\x1d\n" +
 	"\n" +
 	"state_hash\x18\t \x01(\fR\tstateHash\x120\n" +
 	"\x14start_audit_sequence\x18\n" +
-	" \x01(\x04R\x12startAuditSequence\x120\n" +
-	"\x14close_audit_sequence\x18\v \x01(\x04R\x12closeAuditSequence\"t\n" +
+	" \x01(\x06R\x12startAuditSequence\x120\n" +
+	"\x14close_audit_sequence\x18\v \x01(\x06R\x12closeAuditSequence\"t\n" +
 	"\x0eClosePeriodLog\x123\n" +
 	"\rclosed_period\x18\x01 \x01(\v2\x0e.common.PeriodR\fclosedPeriod\x12-\n" +
 	"\n" +
@@ -10654,9 +10654,9 @@ const file_common_proto_rawDesc = "" +
 	"occurredAt\"\xdb\x01\n" +
 	"\x12MirrorSyncProgress\x12-\n" +
 	"\x05state\x18\x01 \x01(\x0e2\x17.common.MirrorSyncStateR\x05state\x12\x16\n" +
-	"\x06cursor\x18\x02 \x01(\x04R\x06cursor\x12(\n" +
-	"\x10source_log_count\x18\x03 \x01(\x04R\x0esourceLogCount\x12%\n" +
-	"\x0eremaining_logs\x18\x04 \x01(\x04R\rremainingLogs\x12-\n" +
+	"\x06cursor\x18\x02 \x01(\x06R\x06cursor\x12(\n" +
+	"\x10source_log_count\x18\x03 \x01(\x06R\x0esourceLogCount\x12%\n" +
+	"\x0eremaining_logs\x18\x04 \x01(\x06R\rremainingLogs\x12-\n" +
 	"\x05error\x18\x05 \x01(\v2\x17.common.MirrorSyncErrorR\x05error\"\xab\a\n" +
 	"\n" +
 	"LedgerInfo\x12\x12\n" +
@@ -10692,20 +10692,20 @@ const file_common_proto_rawDesc = "" +
 	"\x06target\x18\x01 \x01(\v2\x0e.common.TargetR\x06target\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\"\x88\x02\n" +
 	"\x10TransactionState\x12$\n" +
-	"\x0ecreated_by_log\x18\x01 \x01(\x04R\fcreatedByLog\x126\n" +
-	"\x17reverted_by_transaction\x18\x02 \x01(\x04R\x15revertedByTransaction\x12B\n" +
+	"\x0ecreated_by_log\x18\x01 \x01(\x06R\fcreatedByLog\x126\n" +
+	"\x17reverted_by_transaction\x18\x02 \x01(\x06R\x15revertedByTransaction\x12B\n" +
 	"\bmetadata\x18\x03 \x03(\v2&.common.TransactionState.MetadataEntryR\bmetadata\x1aR\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"\x8e\x01\n" +
 	"\x13IdempotencyKeyValue\x12!\n" +
-	"\flog_sequence\x18\x01 \x01(\x04R\vlogSequence\x12\x12\n" +
+	"\flog_sequence\x18\x01 \x01(\x06R\vlogSequence\x12\x12\n" +
 	"\x04hash\x18\x02 \x01(\fR\x04hash\x12!\n" +
 	"\fhash_version\x18\x03 \x01(\rR\vhashVersion\x12\x1d\n" +
 	"\n" +
-	"created_at\x18\x04 \x01(\x04R\tcreatedAt\"B\n" +
+	"created_at\x18\x04 \x01(\x06R\tcreatedAt\"B\n" +
 	"\x19TransactionReferenceValue\x12%\n" +
-	"\x0etransaction_id\x18\x01 \x01(\x04R\rtransactionId\"1\n" +
+	"\x0etransaction_id\x18\x01 \x01(\x06R\rtransactionId\"1\n" +
 	"\x15NumscriptVersionValue\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\"\xc6\x01\n" +
 	"\vSegmentType\x12\x16\n" +
@@ -10790,8 +10790,8 @@ const file_common_proto_rawDesc = "" +
 	"\x04_minB\x06\n" +
 	"\x04_max\"\xd1\x01\n" +
 	"\rUintCondition\x12\x15\n" +
-	"\x03min\x18\x01 \x01(\x04H\x00R\x03min\x88\x01\x01\x12\x15\n" +
-	"\x03max\x18\x02 \x01(\x04H\x01R\x03max\x88\x01\x01\x12#\n" +
+	"\x03min\x18\x01 \x01(\x06H\x00R\x03min\x88\x01\x01\x12\x15\n" +
+	"\x03max\x18\x02 \x01(\x06H\x01R\x03max\x88\x01\x01\x12#\n" +
 	"\rmin_exclusive\x18\x03 \x01(\bR\fminExclusive\x12#\n" +
 	"\rmax_exclusive\x18\x04 \x01(\bR\fmaxExclusive\x12\x1b\n" +
 	"\tparam_min\x18\x05 \x01(\tR\bparamMin\x12\x1b\n" +
@@ -10835,17 +10835,17 @@ const file_common_proto_rawDesc = "" +
 	"\faccount_data\x18\x05 \x03(\v2\x0f.common.AccountR\vaccountData\x12>\n" +
 	"\x10transaction_data\x18\x06 \x03(\v2\x13.common.TransactionR\x0ftransactionData\"\xb8\x03\n" +
 	"\vLedgerStats\x12+\n" +
-	"\x11transaction_count\x18\x01 \x01(\x04R\x10transactionCount\x12!\n" +
-	"\fvolume_count\x18\x02 \x01(\x04R\vvolumeCount\x12%\n" +
-	"\x0emetadata_count\x18\x03 \x01(\x04R\rmetadataCount\x12'\n" +
-	"\x0freference_count\x18\x04 \x01(\x04R\x0ereferenceCount\x12#\n" +
-	"\rposting_count\x18\x05 \x01(\x04R\fpostingCount\x126\n" +
-	"\x17ephemeral_evicted_count\x18\x06 \x01(\x04R\x15ephemeralEvictedCount\x120\n" +
-	"\x14transient_used_count\x18\a \x01(\x04R\x12transientUsedCount\x12!\n" +
-	"\frevert_count\x18\b \x01(\x04R\vrevertCount\x12:\n" +
-	"\x19numscript_execution_count\x18\t \x01(\x04R\x17numscriptExecutionCount\x12\x1b\n" +
+	"\x11transaction_count\x18\x01 \x01(\x06R\x10transactionCount\x12!\n" +
+	"\fvolume_count\x18\x02 \x01(\x06R\vvolumeCount\x12%\n" +
+	"\x0emetadata_count\x18\x03 \x01(\x06R\rmetadataCount\x12'\n" +
+	"\x0freference_count\x18\x04 \x01(\x06R\x0ereferenceCount\x12#\n" +
+	"\rposting_count\x18\x05 \x01(\x06R\fpostingCount\x126\n" +
+	"\x17ephemeral_evicted_count\x18\x06 \x01(\x06R\x15ephemeralEvictedCount\x120\n" +
+	"\x14transient_used_count\x18\a \x01(\x06R\x12transientUsedCount\x12!\n" +
+	"\frevert_count\x18\b \x01(\x06R\vrevertCount\x12:\n" +
+	"\x19numscript_execution_count\x18\t \x01(\x06R\x17numscriptExecutionCount\x12\x1b\n" +
 	"\tlog_count\x18\n" +
-	" \x01(\x04R\blogCount\"\xb7\x01\n" +
+	" \x01(\x06R\blogCount\"\xb7\x01\n" +
 	"\x0fPersistedConfig\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12\x1d\n" +
 	"\n" +

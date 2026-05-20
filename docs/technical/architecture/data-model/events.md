@@ -51,7 +51,7 @@ message Event {
   EventType type = 1;                // Event type enum
   string ledger = 2;                 // Ledger name (empty for system events like CREATED_LEDGER)
   common.Timestamp date = 3;         // Event timestamp (HLC)
-  uint64 log_sequence = 4;           // Global log sequence (monotonic, unique)
+  fixed64 log_sequence = 4;          // Global log sequence (monotonic, unique)
   common.Log log = 5;                // Full log entry with payload
 }
 ```
@@ -164,7 +164,7 @@ The `GetEventsSinks` gRPC endpoint returns all sink configs and their statuses, 
 ```protobuf
 message SinkStatus {
   string sink_name = 1;
-  uint64 cursor = 2;         // Last published sequence
+  fixed64 cursor = 2;        // Last published sequence
   SinkError error = 3;       // Most recent error (nil = healthy)
 }
 

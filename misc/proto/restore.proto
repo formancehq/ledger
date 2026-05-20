@@ -39,7 +39,7 @@ message DownloadBackupRequest {
 
 message DownloadBackupResponse {
   uint32 files_downloaded = 1; // Number of files downloaded
-  uint64 total_bytes = 2;     // Total bytes downloaded
+  fixed64 total_bytes = 2;     // Total bytes downloaded
 }
 
 // ============================================================================
@@ -60,8 +60,8 @@ message ValidateRestoreError {
 }
 
 message ValidateRestoreProgress {
-  uint64 logs_checked = 1;
-  uint64 total_logs = 2;
+  fixed64 logs_checked = 1;
+  fixed64 total_logs = 2;
 }
 
 // ============================================================================
@@ -71,13 +71,13 @@ message ValidateRestoreProgress {
 message PreviewRestoreRequest {}
 
 message PreviewRestoreResponse {
-  uint64 last_applied_index = 1;      // Last Raft index applied
-  uint64 last_applied_timestamp = 2;  // Last applied timestamp (HLC microseconds)
-  uint64 last_sequence = 3;           // Last log sequence number
+  fixed64 last_applied_index = 1;      // Last Raft index applied
+  fixed64 last_applied_timestamp = 2;  // Last applied timestamp (HLC microseconds)
+  fixed64 last_sequence = 3;           // Last log sequence number
   uint32 ledger_count = 4;            // Number of ledgers in the backup
   repeated string ledger_names = 5;   // Names of all ledgers
-  uint64 first_log_sequence = 6;      // First log sequence in the backup
-  uint64 first_audit_sequence = 7;    // First audit sequence in the backup
+  fixed64 first_log_sequence = 6;      // First log sequence in the backup
+  fixed64 first_audit_sequence = 7;    // First audit sequence in the backup
   bool has_exports = 8;               // Whether incremental exports are present
   uint32 export_count = 9;            // Number of export segments
 }

@@ -7813,9 +7813,10 @@ func (m *SealPeriodOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		dAtA[i] = 0x12
 	}
 	if m.PeriodId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PeriodId))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.PeriodId))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -7851,9 +7852,10 @@ func (m *ArchivePeriodOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if m.PeriodId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PeriodId))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.PeriodId))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -7889,9 +7891,10 @@ func (m *ConfirmArchivePeriodOrder) MarshalToSizedBufferVT(dAtA []byte) (int, er
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if m.PeriodId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PeriodId))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.PeriodId))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -8184,9 +8187,10 @@ func (m *DeleteQueryCheckpointOrder) MarshalToSizedBufferVT(dAtA []byte) (int, e
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if m.CheckpointId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.CheckpointId))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CheckpointId))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -8232,14 +8236,16 @@ func (m *QueryCheckpointState) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 		dAtA[i] = 0x1a
 	}
 	if m.MaxSequence != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MaxSequence))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MaxSequence))
 		i--
-		dAtA[i] = 0x10
+		dAtA[i] = 0x11
 	}
 	if m.CheckpointId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.CheckpointId))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CheckpointId))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -8501,9 +8507,10 @@ func (m *MirrorLogEntry) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= size
 	}
 	if m.V2LogId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.V2LogId))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.V2LogId))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -8634,22 +8641,11 @@ func (m *MirrorFillGap) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.SkippedTransactionIds) > 0 {
-		var pksize2 int
-		for _, num := range m.SkippedTransactionIds {
-			pksize2 += protohelpers.SizeOfVarint(uint64(num))
+		for iNdEx := len(m.SkippedTransactionIds) - 1; iNdEx >= 0; iNdEx-- {
+			i -= 8
+			binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.SkippedTransactionIds[iNdEx]))
 		}
-		i -= pksize2
-		j1 := i
-		for _, num := range m.SkippedTransactionIds {
-			for num >= 1<<7 {
-				dAtA[j1] = uint8(uint64(num)&0x7f | 0x80)
-				num >>= 7
-				j1++
-			}
-			dAtA[j1] = uint8(num)
-			j1++
-		}
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(pksize2))
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.SkippedTransactionIds)*8))
 		i--
 		dAtA[i] = 0xa
 	}
@@ -8760,9 +8756,10 @@ func (m *MirrorCreatedTransaction) MarshalToSizedBufferVT(dAtA []byte) (int, err
 		}
 	}
 	if m.TransactionId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.TransactionId))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.TransactionId))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -8907,14 +8904,16 @@ func (m *MirrorRevertedTransaction) MarshalToSizedBufferVT(dAtA []byte) (int, er
 		}
 	}
 	if m.NewTransactionId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NewTransactionId))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.NewTransactionId))
 		i--
-		dAtA[i] = 0x10
+		dAtA[i] = 0x11
 	}
 	if m.RevertedTransactionId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.RevertedTransactionId))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.RevertedTransactionId))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -9792,14 +9791,16 @@ func (m *ConvertMetadataBatchOrder) MarshalToSizedBufferVT(dAtA []byte) (int, er
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if m.ConvertedKeysSoFar != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ConvertedKeysSoFar))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ConvertedKeysSoFar))
 		i--
-		dAtA[i] = 0x30
+		dAtA[i] = 0x31
 	}
 	if m.TotalKeys != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.TotalKeys))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.TotalKeys))
 		i--
-		dAtA[i] = 0x28
+		dAtA[i] = 0x29
 	}
 	if len(m.Entries) > 0 {
 		for iNdEx := len(m.Entries) - 1; iNdEx >= 0; iNdEx-- {
@@ -10400,9 +10401,10 @@ func (m *RevertTransactionOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error
 		dAtA[i] = 0x10
 	}
 	if m.TransactionId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.TransactionId))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.TransactionId))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -10617,9 +10619,10 @@ func (m *Proposal) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		dAtA[i] = 0x42
 	}
 	if m.PredictedIndex != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PredictedIndex))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.PredictedIndex))
 		i--
-		dAtA[i] = 0x38
+		dAtA[i] = 0x39
 	}
 	if len(m.MirrorSyncUpdates) > 0 {
 		for iNdEx := len(m.MirrorSyncUpdates) - 1; iNdEx >= 0; iNdEx-- {
@@ -10678,9 +10681,10 @@ func (m *Proposal) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		}
 	}
 	if m.Id != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Id))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Id))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -10716,9 +10720,10 @@ func (m *IdempotencyEviction) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if m.CutoffMicros != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.CutoffMicros))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CutoffMicros))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -10754,9 +10759,10 @@ func (m *MirrorSyncUpdate) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if m.SourceLogCount != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.SourceLogCount))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.SourceLogCount))
 		i--
-		dAtA[i] = 0x28
+		dAtA[i] = 0x29
 	}
 	if m.ClearError {
 		i--
@@ -10779,9 +10785,10 @@ func (m *MirrorSyncUpdate) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		dAtA[i] = 0x1a
 	}
 	if m.Cursor != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Cursor))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Cursor))
 		i--
-		dAtA[i] = 0x10
+		dAtA[i] = 0x11
 	}
 	if len(m.LedgerName) > 0 {
 		i -= len(m.LedgerName)
@@ -10844,9 +10851,10 @@ func (m *EventsSinkUpdate) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		dAtA[i] = 0x1a
 	}
 	if m.Cursor != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Cursor))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Cursor))
 		i--
-		dAtA[i] = 0x10
+		dAtA[i] = 0x11
 	}
 	if len(m.SinkName) > 0 {
 		i -= len(m.SinkName)
@@ -10926,9 +10934,10 @@ func (m *CreatedLogOrReference_ReferenceSequence) MarshalToVT(dAtA []byte) (int,
 
 func (m *CreatedLogOrReference_ReferenceSequence) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ReferenceSequence))
+	i -= 8
+	binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ReferenceSequence))
 	i--
-	dAtA[i] = 0x10
+	dAtA[i] = 0x11
 	return len(dAtA) - i, nil
 }
 func (m *LedgerBoundaries) MarshalVT() (dAtA []byte, err error) {
@@ -10962,54 +10971,64 @@ func (m *LedgerBoundaries) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if m.NumscriptExecutionCount != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NumscriptExecutionCount))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.NumscriptExecutionCount))
 		i--
-		dAtA[i] = 0x50
+		dAtA[i] = 0x51
 	}
 	if m.RevertCount != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.RevertCount))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.RevertCount))
 		i--
-		dAtA[i] = 0x48
+		dAtA[i] = 0x49
 	}
 	if m.TransientUsedCount != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.TransientUsedCount))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.TransientUsedCount))
 		i--
-		dAtA[i] = 0x40
+		dAtA[i] = 0x41
 	}
 	if m.EphemeralEvictedCount != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.EphemeralEvictedCount))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.EphemeralEvictedCount))
 		i--
-		dAtA[i] = 0x38
+		dAtA[i] = 0x39
 	}
 	if m.PostingCount != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PostingCount))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.PostingCount))
 		i--
-		dAtA[i] = 0x30
+		dAtA[i] = 0x31
 	}
 	if m.ReferenceCount != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ReferenceCount))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ReferenceCount))
 		i--
-		dAtA[i] = 0x28
+		dAtA[i] = 0x29
 	}
 	if m.MetadataCount != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MetadataCount))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MetadataCount))
 		i--
-		dAtA[i] = 0x20
+		dAtA[i] = 0x21
 	}
 	if m.VolumeCount != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.VolumeCount))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.VolumeCount))
 		i--
-		dAtA[i] = 0x18
+		dAtA[i] = 0x19
 	}
 	if m.NextLogId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NextLogId))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.NextLogId))
 		i--
-		dAtA[i] = 0x10
+		dAtA[i] = 0x11
 	}
 	if m.NextTransactionId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NextTransactionId))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.NextTransactionId))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -11098,9 +11117,10 @@ func (m *PreloadSet) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if m.CacheEpoch != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.CacheEpoch))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CacheEpoch))
 		i--
-		dAtA[i] = 0x20
+		dAtA[i] = 0x21
 	}
 	if len(m.Touches) > 0 {
 		for iNdEx := len(m.Touches) - 1; iNdEx >= 0; iNdEx-- {
@@ -11127,9 +11147,10 @@ func (m *PreloadSet) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		}
 	}
 	if m.LastPersistedIndex != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LastPersistedIndex))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.LastPersistedIndex))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -12158,9 +12179,10 @@ func (m *CacheGenerationMeta) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if m.BaseIndex != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.BaseIndex))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.BaseIndex))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -12196,9 +12218,10 @@ func (m *CacheSnapshotMeta) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if m.CurrentGeneration != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.CurrentGeneration))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CurrentGeneration))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -12370,9 +12393,10 @@ func (m *GenerationSnapshot) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		}
 	}
 	if m.BaseIndex != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.BaseIndex))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.BaseIndex))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -13486,7 +13510,7 @@ func (m *SealPeriodOrder) SizeVT() (n int) {
 	var l int
 	_ = l
 	if m.PeriodId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.PeriodId))
+		n += 9
 	}
 	l = len(m.SealingHash)
 	if l > 0 {
@@ -13507,7 +13531,7 @@ func (m *ArchivePeriodOrder) SizeVT() (n int) {
 	var l int
 	_ = l
 	if m.PeriodId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.PeriodId))
+		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -13520,7 +13544,7 @@ func (m *ConfirmArchivePeriodOrder) SizeVT() (n int) {
 	var l int
 	_ = l
 	if m.PeriodId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.PeriodId))
+		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -13624,7 +13648,7 @@ func (m *DeleteQueryCheckpointOrder) SizeVT() (n int) {
 	var l int
 	_ = l
 	if m.CheckpointId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.CheckpointId))
+		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -13637,10 +13661,10 @@ func (m *QueryCheckpointState) SizeVT() (n int) {
 	var l int
 	_ = l
 	if m.CheckpointId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.CheckpointId))
+		n += 9
 	}
 	if m.MaxSequence != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.MaxSequence))
+		n += 9
 	}
 	if m.CreatedAt != nil {
 		l = m.CreatedAt.SizeVT()
@@ -13742,7 +13766,7 @@ func (m *MirrorLogEntry) SizeVT() (n int) {
 	var l int
 	_ = l
 	if m.V2LogId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.V2LogId))
+		n += 9
 	}
 	if vtmsg, ok := m.Data.(interface{ SizeVT() int }); ok {
 		n += vtmsg.SizeVT()
@@ -13818,11 +13842,7 @@ func (m *MirrorFillGap) SizeVT() (n int) {
 	var l int
 	_ = l
 	if len(m.SkippedTransactionIds) > 0 {
-		l = 0
-		for _, e := range m.SkippedTransactionIds {
-			l += protohelpers.SizeOfVarint(uint64(e))
-		}
-		n += 1 + protohelpers.SizeOfVarint(uint64(l)) + l
+		n += 1 + protohelpers.SizeOfVarint(uint64(len(m.SkippedTransactionIds)*8)) + len(m.SkippedTransactionIds)*8
 	}
 	n += len(m.unknownFields)
 	return n
@@ -13835,7 +13855,7 @@ func (m *MirrorCreatedTransaction) SizeVT() (n int) {
 	var l int
 	_ = l
 	if m.TransactionId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.TransactionId))
+		n += 9
 	}
 	if len(m.Postings) > 0 {
 		for _, e := range m.Postings {
@@ -13915,10 +13935,10 @@ func (m *MirrorRevertedTransaction) SizeVT() (n int) {
 	var l int
 	_ = l
 	if m.RevertedTransactionId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.RevertedTransactionId))
+		n += 9
 	}
 	if m.NewTransactionId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.NewTransactionId))
+		n += 9
 	}
 	if len(m.ReversePostings) > 0 {
 		for _, e := range m.ReversePostings {
@@ -14380,10 +14400,10 @@ func (m *ConvertMetadataBatchOrder) SizeVT() (n int) {
 		}
 	}
 	if m.TotalKeys != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.TotalKeys))
+		n += 9
 	}
 	if m.ConvertedKeysSoFar != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ConvertedKeysSoFar))
+		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -14588,7 +14608,7 @@ func (m *RevertTransactionOrder) SizeVT() (n int) {
 	var l int
 	_ = l
 	if m.TransactionId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.TransactionId))
+		n += 9
 	}
 	if m.Force {
 		n += 2
@@ -14692,7 +14712,7 @@ func (m *Proposal) SizeVT() (n int) {
 	var l int
 	_ = l
 	if m.Id != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Id))
+		n += 9
 	}
 	if len(m.Orders) > 0 {
 		for _, e := range m.Orders {
@@ -14721,7 +14741,7 @@ func (m *Proposal) SizeVT() (n int) {
 		}
 	}
 	if m.PredictedIndex != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.PredictedIndex))
+		n += 9
 	}
 	if m.IdempotencyEviction != nil {
 		l = m.IdempotencyEviction.SizeVT()
@@ -14742,7 +14762,7 @@ func (m *IdempotencyEviction) SizeVT() (n int) {
 	var l int
 	_ = l
 	if m.CutoffMicros != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.CutoffMicros))
+		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -14759,7 +14779,7 @@ func (m *MirrorSyncUpdate) SizeVT() (n int) {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	if m.Cursor != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Cursor))
+		n += 9
 	}
 	if m.Error != nil {
 		l = m.Error.SizeVT()
@@ -14769,7 +14789,7 @@ func (m *MirrorSyncUpdate) SizeVT() (n int) {
 		n += 2
 	}
 	if m.SourceLogCount != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.SourceLogCount))
+		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -14786,7 +14806,7 @@ func (m *EventsSinkUpdate) SizeVT() (n int) {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	if m.Cursor != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Cursor))
+		n += 9
 	}
 	if m.Error != nil {
 		l = m.Error.SizeVT()
@@ -14830,7 +14850,7 @@ func (m *CreatedLogOrReference_ReferenceSequence) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	n += 1 + protohelpers.SizeOfVarint(uint64(m.ReferenceSequence))
+	n += 9
 	return n
 }
 func (m *LedgerBoundaries) SizeVT() (n int) {
@@ -14840,34 +14860,34 @@ func (m *LedgerBoundaries) SizeVT() (n int) {
 	var l int
 	_ = l
 	if m.NextTransactionId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.NextTransactionId))
+		n += 9
 	}
 	if m.NextLogId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.NextLogId))
+		n += 9
 	}
 	if m.VolumeCount != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.VolumeCount))
+		n += 9
 	}
 	if m.MetadataCount != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.MetadataCount))
+		n += 9
 	}
 	if m.ReferenceCount != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ReferenceCount))
+		n += 9
 	}
 	if m.PostingCount != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.PostingCount))
+		n += 9
 	}
 	if m.EphemeralEvictedCount != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.EphemeralEvictedCount))
+		n += 9
 	}
 	if m.TransientUsedCount != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.TransientUsedCount))
+		n += 9
 	}
 	if m.RevertCount != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.RevertCount))
+		n += 9
 	}
 	if m.NumscriptExecutionCount != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.NumscriptExecutionCount))
+		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -14898,7 +14918,7 @@ func (m *PreloadSet) SizeVT() (n int) {
 	var l int
 	_ = l
 	if m.LastPersistedIndex != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.LastPersistedIndex))
+		n += 9
 	}
 	if len(m.Preloads) > 0 {
 		for _, e := range m.Preloads {
@@ -14913,7 +14933,7 @@ func (m *PreloadSet) SizeVT() (n int) {
 		}
 	}
 	if m.CacheEpoch != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.CacheEpoch))
+		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -15332,7 +15352,7 @@ func (m *CacheGenerationMeta) SizeVT() (n int) {
 	var l int
 	_ = l
 	if m.BaseIndex != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.BaseIndex))
+		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -15345,7 +15365,7 @@ func (m *CacheSnapshotMeta) SizeVT() (n int) {
 	var l int
 	_ = l
 	if m.CurrentGeneration != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.CurrentGeneration))
+		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -15379,7 +15399,7 @@ func (m *GenerationSnapshot) SizeVT() (n int) {
 	var l int
 	_ = l
 	if m.BaseIndex != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.BaseIndex))
+		n += 9
 	}
 	if len(m.Volumes) > 0 {
 		for _, e := range m.Volumes {
@@ -17772,24 +17792,15 @@ func (m *SealPeriodOrder) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field PeriodId", wireType)
 			}
 			m.PeriodId = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.PeriodId |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.PeriodId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SealingHash", wireType)
@@ -17910,24 +17921,15 @@ func (m *ArchivePeriodOrder) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field PeriodId", wireType)
 			}
 			m.PeriodId = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.PeriodId |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.PeriodId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -17980,24 +17982,15 @@ func (m *ConfirmArchivePeriodOrder) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field PeriodId", wireType)
 			}
 			m.PeriodId = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.PeriodId |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.PeriodId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -18600,24 +18593,15 @@ func (m *DeleteQueryCheckpointOrder) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CheckpointId", wireType)
 			}
 			m.CheckpointId = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.CheckpointId |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.CheckpointId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -18670,43 +18654,25 @@ func (m *QueryCheckpointState) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CheckpointId", wireType)
 			}
 			m.CheckpointId = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.CheckpointId |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.CheckpointId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 2:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MaxSequence", wireType)
 			}
 			m.MaxSequence = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.MaxSequence |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.MaxSequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CreatedAt", wireType)
@@ -19368,24 +19334,15 @@ func (m *MirrorLogEntry) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field V2LogId", wireType)
 			}
 			m.V2LogId = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.V2LogId |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.V2LogId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CreatedTransaction", wireType)
@@ -19643,22 +19600,13 @@ func (m *MirrorFillGap) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType == 0 {
+			if wireType == 1 {
 				var v uint64
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return protohelpers.ErrIntOverflow
-					}
-					if iNdEx >= l {
-						return io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					v |= uint64(b&0x7F) << shift
-					if b < 0x80 {
-						break
-					}
+				if (iNdEx + 8) > l {
+					return io.ErrUnexpectedEOF
 				}
+				v = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+				iNdEx += 8
 				m.SkippedTransactionIds = append(m.SkippedTransactionIds, v)
 			} else if wireType == 2 {
 				var packedLen int
@@ -19687,32 +19635,17 @@ func (m *MirrorFillGap) UnmarshalVT(dAtA []byte) error {
 					return io.ErrUnexpectedEOF
 				}
 				var elementCount int
-				var count int
-				for _, integer := range dAtA[iNdEx:postIndex] {
-					if integer < 128 {
-						count++
-					}
-				}
-				elementCount = count
+				elementCount = packedLen / 8
 				if elementCount != 0 && len(m.SkippedTransactionIds) == 0 {
 					m.SkippedTransactionIds = make([]uint64, 0, elementCount)
 				}
 				for iNdEx < postIndex {
 					var v uint64
-					for shift := uint(0); ; shift += 7 {
-						if shift >= 64 {
-							return protohelpers.ErrIntOverflow
-						}
-						if iNdEx >= l {
-							return io.ErrUnexpectedEOF
-						}
-						b := dAtA[iNdEx]
-						iNdEx++
-						v |= uint64(b&0x7F) << shift
-						if b < 0x80 {
-							break
-						}
+					if (iNdEx + 8) > l {
+						return io.ErrUnexpectedEOF
 					}
+					v = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+					iNdEx += 8
 					m.SkippedTransactionIds = append(m.SkippedTransactionIds, v)
 				}
 			} else {
@@ -19770,24 +19703,15 @@ func (m *MirrorCreatedTransaction) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field TransactionId", wireType)
 			}
 			m.TransactionId = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.TransactionId |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.TransactionId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Postings", wireType)
@@ -20416,43 +20340,25 @@ func (m *MirrorRevertedTransaction) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field RevertedTransactionId", wireType)
 			}
 			m.RevertedTransactionId = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.RevertedTransactionId |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.RevertedTransactionId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 2:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NewTransactionId", wireType)
 			}
 			m.NewTransactionId = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.NewTransactionId |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.NewTransactionId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ReversePostings", wireType)
@@ -22449,43 +22355,25 @@ func (m *ConvertMetadataBatchOrder) UnmarshalVT(dAtA []byte) error {
 			}
 			iNdEx = postIndex
 		case 5:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field TotalKeys", wireType)
 			}
 			m.TotalKeys = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.TotalKeys |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.TotalKeys = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 6:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ConvertedKeysSoFar", wireType)
 			}
 			m.ConvertedKeysSoFar = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.ConvertedKeysSoFar |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.ConvertedKeysSoFar = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -23984,24 +23872,15 @@ func (m *RevertTransactionOrder) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field TransactionId", wireType)
 			}
 			m.TransactionId = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.TransactionId |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.TransactionId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 2:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Force", wireType)
@@ -24723,24 +24602,15 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
 			}
 			m.Id = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Id |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.Id = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Orders", wireType)
@@ -24937,24 +24807,15 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 			}
 			iNdEx = postIndex
 		case 7:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field PredictedIndex", wireType)
 			}
 			m.PredictedIndex = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.PredictedIndex |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.PredictedIndex = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 8:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field IdempotencyEviction", wireType)
@@ -25079,24 +24940,15 @@ func (m *IdempotencyEviction) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CutoffMicros", wireType)
 			}
 			m.CutoffMicros = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.CutoffMicros |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.CutoffMicros = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -25181,24 +25033,15 @@ func (m *MirrorSyncUpdate) UnmarshalVT(dAtA []byte) error {
 			m.LedgerName = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		case 2:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Cursor", wireType)
 			}
 			m.Cursor = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Cursor |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.Cursor = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Error", wireType)
@@ -25256,24 +25099,15 @@ func (m *MirrorSyncUpdate) UnmarshalVT(dAtA []byte) error {
 			}
 			m.ClearError = bool(v != 0)
 		case 5:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SourceLogCount", wireType)
 			}
 			m.SourceLogCount = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.SourceLogCount |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.SourceLogCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -25358,24 +25192,15 @@ func (m *EventsSinkUpdate) UnmarshalVT(dAtA []byte) error {
 			m.SinkName = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		case 2:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Cursor", wireType)
 			}
 			m.Cursor = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Cursor |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.Cursor = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Error", wireType)
@@ -25525,24 +25350,15 @@ func (m *CreatedLogOrReference) UnmarshalVT(dAtA []byte) error {
 			}
 			iNdEx = postIndex
 		case 2:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ReferenceSequence", wireType)
 			}
 			var v uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			v = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 			m.Type = &CreatedLogOrReference_ReferenceSequence{ReferenceSequence: v}
 		default:
 			iNdEx = preIndex
@@ -25596,195 +25412,105 @@ func (m *LedgerBoundaries) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NextTransactionId", wireType)
 			}
 			m.NextTransactionId = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.NextTransactionId |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.NextTransactionId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 2:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NextLogId", wireType)
 			}
 			m.NextLogId = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.NextLogId |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.NextLogId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 3:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field VolumeCount", wireType)
 			}
 			m.VolumeCount = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.VolumeCount |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.VolumeCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 4:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MetadataCount", wireType)
 			}
 			m.MetadataCount = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.MetadataCount |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.MetadataCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 5:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ReferenceCount", wireType)
 			}
 			m.ReferenceCount = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.ReferenceCount |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.ReferenceCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 6:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field PostingCount", wireType)
 			}
 			m.PostingCount = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.PostingCount |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.PostingCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 7:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field EphemeralEvictedCount", wireType)
 			}
 			m.EphemeralEvictedCount = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.EphemeralEvictedCount |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.EphemeralEvictedCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 8:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field TransientUsedCount", wireType)
 			}
 			m.TransientUsedCount = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.TransientUsedCount |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.TransientUsedCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 9:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field RevertCount", wireType)
 			}
 			m.RevertCount = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.RevertCount |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.RevertCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 10:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptExecutionCount", wireType)
 			}
 			m.NumscriptExecutionCount = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.NumscriptExecutionCount |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.NumscriptExecutionCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -25960,24 +25686,15 @@ func (m *PreloadSet) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field LastPersistedIndex", wireType)
 			}
 			m.LastPersistedIndex = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.LastPersistedIndex |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.LastPersistedIndex = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Preloads", wireType)
@@ -26061,24 +25778,15 @@ func (m *PreloadSet) UnmarshalVT(dAtA []byte) error {
 			}
 			iNdEx = postIndex
 		case 4:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CacheEpoch", wireType)
 			}
 			m.CacheEpoch = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.CacheEpoch |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.CacheEpoch = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -28335,24 +28043,15 @@ func (m *CacheGenerationMeta) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field BaseIndex", wireType)
 			}
 			m.BaseIndex = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.BaseIndex |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.BaseIndex = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -28405,24 +28104,15 @@ func (m *CacheSnapshotMeta) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CurrentGeneration", wireType)
 			}
 			m.CurrentGeneration = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.CurrentGeneration |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.CurrentGeneration = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -28609,24 +28299,15 @@ func (m *GenerationSnapshot) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field BaseIndex", wireType)
 			}
 			m.BaseIndex = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.BaseIndex |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.BaseIndex = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Volumes", wireType)

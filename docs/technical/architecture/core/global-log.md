@@ -19,7 +19,7 @@ The global log captures all system-wide events in a single ordered sequence:
 
 ```protobuf
 message Log {
-  uint64 sequence = 1;                    // Global sequence number (system-wide)
+  fixed64 sequence = 1;                   // Global sequence number (system-wide)
   LogPayload payload = 2;                 // Payload containing the log data
   Idempotency idempotency = 3;            // Idempotency information
 }
@@ -43,7 +43,7 @@ Each ledger maintains its own log with entries specific to that ledger:
 message LedgerLog {
   LedgerLogPayload data = 1;                    // Log payload (transaction, metadata, etc.)
   Timestamp date = 2;                     // Log date
-  uint64 id = 3;                          // Per-ledger log ID
+  fixed64 id = 3;                         // Per-ledger log ID
 }
 
 message LedgerLogPayload {
@@ -157,7 +157,7 @@ In v3, a single **Raft proposal** can contain multiple **orders**:
 
 ```protobuf
 message Proposal {
-  uint64 id = 1;                    // Random proposal ID
+  fixed64 id = 1;                   // Random proposal ID
   repeated Order orders = 2;        // List of orders to execute atomically
   Timestamp date = 3;               // Creation date in UTC
   PreloadSet preload = 4;           // Preloaded attributes for deterministic execution

@@ -4,6 +4,7 @@
 package raftcmdpb
 
 import (
+	binary "encoding/binary"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
 	maps "maps"
 	slices "slices"
@@ -673,9 +674,10 @@ func (m *MirrorLogEntry) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, 
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if m.V2LogId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.V2LogId))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.V2LogId))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	switch v := m.Data.(type) {
 	case *MirrorLogEntry_CreatedTransaction:
@@ -814,9 +816,10 @@ func (m *MirrorCreatedTransaction) MarshalToSizedBufferDeterministicVT(dAtA []by
 		}
 	}
 	if m.TransactionId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.TransactionId))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.TransactionId))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -924,14 +927,16 @@ func (m *MirrorRevertedTransaction) MarshalToSizedBufferDeterministicVT(dAtA []b
 		}
 	}
 	if m.NewTransactionId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NewTransactionId))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.NewTransactionId))
 		i--
-		dAtA[i] = 0x10
+		dAtA[i] = 0x11
 	}
 	if m.RevertedTransactionId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.RevertedTransactionId))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.RevertedTransactionId))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -1549,9 +1554,10 @@ func (m *RevertTransactionOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte
 		dAtA[i] = 0x10
 	}
 	if m.TransactionId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.TransactionId))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.TransactionId))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -1660,9 +1666,10 @@ func (m *Proposal) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error)
 		dAtA[i] = 0x42
 	}
 	if m.PredictedIndex != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PredictedIndex))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.PredictedIndex))
 		i--
-		dAtA[i] = 0x38
+		dAtA[i] = 0x39
 	}
 	if len(m.MirrorSyncUpdates) > 0 {
 		for iNdEx := len(m.MirrorSyncUpdates) - 1; iNdEx >= 0; iNdEx-- {
@@ -1706,9 +1713,10 @@ func (m *Proposal) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error)
 		}
 	}
 	if m.Id != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Id))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Id))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -1775,9 +1783,10 @@ func (m *CreatedLogOrReference) MarshalToSizedBufferDeterministicVT(dAtA []byte)
 			dAtA[i] = 0xa
 		}
 	case *CreatedLogOrReference_ReferenceSequence:
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(v.ReferenceSequence))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(v.ReferenceSequence))
 		i--
-		dAtA[i] = 0x10
+		dAtA[i] = 0x11
 	}
 	return len(dAtA) - i, nil
 }
@@ -1824,9 +1833,10 @@ func (m *PreloadSet) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if m.CacheEpoch != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.CacheEpoch))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CacheEpoch))
 		i--
-		dAtA[i] = 0x20
+		dAtA[i] = 0x21
 	}
 	if len(m.Touches) > 0 {
 		for iNdEx := len(m.Touches) - 1; iNdEx >= 0; iNdEx-- {
@@ -1847,9 +1857,10 @@ func (m *PreloadSet) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 		}
 	}
 	if m.LastPersistedIndex != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LastPersistedIndex))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.LastPersistedIndex))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -2294,9 +2305,10 @@ func (m *GenerationSnapshot) MarshalToSizedBufferDeterministicVT(dAtA []byte) (i
 		}
 	}
 	if m.BaseIndex != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.BaseIndex))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.BaseIndex))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }

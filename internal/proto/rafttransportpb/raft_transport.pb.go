@@ -23,7 +23,7 @@ const (
 
 type RaftRequestMessage struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Id            uint64                 `protobuf:"fixed64,1,opt,name=id,proto3" json:"id,omitempty"`
 	Message       []byte                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -120,7 +120,7 @@ func (x *RaftRequestBatch) GetMessages() []*RaftRequestMessage {
 
 type RaftResponseMessage struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	RequestId     uint64                 `protobuf:"varint,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	RequestId     uint64                 `protobuf:"fixed64,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
 	Success       bool                   `protobuf:"varint,2,opt,name=success,proto3" json:"success,omitempty"`
 	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -225,7 +225,7 @@ func (x *RaftResponseBatch) GetMessages() []*RaftResponseMessage {
 
 type PingMessage struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	SeqId         uint64                 `protobuf:"varint,1,opt,name=seq_id,json=seqId,proto3" json:"seq_id,omitempty"`
+	SeqId         uint64                 `protobuf:"fixed64,1,opt,name=seq_id,json=seqId,proto3" json:"seq_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -269,7 +269,7 @@ func (x *PingMessage) GetSeqId() uint64 {
 
 type PongResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	SeqId         uint64                 `protobuf:"varint,1,opt,name=seq_id,json=seqId,proto3" json:"seq_id,omitempty"`
+	SeqId         uint64                 `protobuf:"fixed64,1,opt,name=seq_id,json=seqId,proto3" json:"seq_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -483,21 +483,21 @@ const file_raft_transport_proto_rawDesc = "" +
 	"\n" +
 	"\x14raft_transport.proto\x12\x0eraft_transport\">\n" +
 	"\x12RaftRequestMessage\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x18\n" +
+	"\x02id\x18\x01 \x01(\x06R\x02id\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\fR\amessage\"R\n" +
 	"\x10RaftRequestBatch\x12>\n" +
 	"\bmessages\x18\x01 \x03(\v2\".raft_transport.RaftRequestMessageR\bmessages\"d\n" +
 	"\x13RaftResponseMessage\x12\x1d\n" +
 	"\n" +
-	"request_id\x18\x01 \x01(\x04R\trequestId\x12\x18\n" +
+	"request_id\x18\x01 \x01(\x06R\trequestId\x12\x18\n" +
 	"\asuccess\x18\x02 \x01(\bR\asuccess\x12\x14\n" +
 	"\x05error\x18\x03 \x01(\tR\x05error\"T\n" +
 	"\x11RaftResponseBatch\x12?\n" +
 	"\bmessages\x18\x01 \x03(\v2#.raft_transport.RaftResponseMessageR\bmessages\"$\n" +
 	"\vPingMessage\x12\x15\n" +
-	"\x06seq_id\x18\x01 \x01(\x04R\x05seqId\"%\n" +
+	"\x06seq_id\x18\x01 \x01(\x06R\x05seqId\"%\n" +
 	"\fPongResponse\x12\x15\n" +
-	"\x06seq_id\x18\x01 \x01(\x04R\x05seqId\"\x8a\x01\n" +
+	"\x06seq_id\x18\x01 \x01(\x06R\x05seqId\"\x8a\x01\n" +
 	"\x12SendMessageRequest\x126\n" +
 	"\x04raft\x18\x01 \x01(\v2 .raft_transport.RaftRequestBatchH\x00R\x04raft\x121\n" +
 	"\x04ping\x18\x02 \x01(\v2\x1b.raft_transport.PingMessageH\x00R\x04pingB\t\n" +

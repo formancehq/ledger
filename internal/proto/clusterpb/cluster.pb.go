@@ -163,10 +163,10 @@ func (x *NodeInfo) GetIndexProgress() *IndexProgress {
 // ProgressInfo represents the progress information for a node
 type ProgressInfo struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
-	Match            uint64                 `protobuf:"varint,1,opt,name=match,proto3" json:"match,omitempty"`                                                   // Match index: highest log entry known to be replicated to this node
-	Next             uint64                 `protobuf:"varint,2,opt,name=next,proto3" json:"next,omitempty"`                                                     // Next index: index of the next log entry to send to this node
+	Match            uint64                 `protobuf:"fixed64,1,opt,name=match,proto3" json:"match,omitempty"`                                                  // Match index: highest log entry known to be replicated to this node
+	Next             uint64                 `protobuf:"fixed64,2,opt,name=next,proto3" json:"next,omitempty"`                                                    // Next index: index of the next log entry to send to this node
 	State            string                 `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`                                                    // State: Probe, Replicate, or Snapshot
-	PendingSnapshot  uint64                 `protobuf:"varint,4,opt,name=pending_snapshot,json=pendingSnapshot,proto3" json:"pending_snapshot,omitempty"`        // Index of pending snapshot (0 if none)
+	PendingSnapshot  uint64                 `protobuf:"fixed64,4,opt,name=pending_snapshot,json=pendingSnapshot,proto3" json:"pending_snapshot,omitempty"`       // Index of pending snapshot (0 if none)
 	RecentActive     bool                   `protobuf:"varint,5,opt,name=recent_active,json=recentActive,proto3" json:"recent_active,omitempty"`                 // Whether this node is recently active
 	MsgAppFlowPaused bool                   `protobuf:"varint,6,opt,name=msg_app_flow_paused,json=msgAppFlowPaused,proto3" json:"msg_app_flow_paused,omitempty"` // Whether MsgApp flow to this node is paused
 	IsPaused         bool                   `protobuf:"varint,7,opt,name=is_paused,json=isPaused,proto3" json:"is_paused,omitempty"`                             // Whether this node is paused
@@ -265,11 +265,11 @@ func (x *ProgressInfo) GetIsLearner() bool {
 type RaftStatus struct {
 	state         protoimpl.MessageState   `protogen:"open.v1"`
 	State         string                   `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"`                                                                                  // Current Raft state (Leader, Follower, Candidate, PreCandidate)
-	Term          uint64                   `protobuf:"varint,2,opt,name=term,proto3" json:"term,omitempty"`                                                                                   // Current term
+	Term          uint64                   `protobuf:"fixed64,2,opt,name=term,proto3" json:"term,omitempty"`                                                                                  // Current term
 	Leader        uint64                   `protobuf:"varint,3,opt,name=leader,proto3" json:"leader,omitempty"`                                                                               // ID of the current leader (0 if no leader)
-	Applied       uint64                   `protobuf:"varint,4,opt,name=applied,proto3" json:"applied,omitempty"`                                                                             // Index of the last applied entry
-	Commit        uint64                   `protobuf:"varint,5,opt,name=commit,proto3" json:"commit,omitempty"`                                                                               // Index of the last committed entry
-	LastIndex     uint64                   `protobuf:"varint,6,opt,name=last_index,json=lastIndex,proto3" json:"last_index,omitempty"`                                                        // Index of the last entry in the log
+	Applied       uint64                   `protobuf:"fixed64,4,opt,name=applied,proto3" json:"applied,omitempty"`                                                                            // Index of the last applied entry
+	Commit        uint64                   `protobuf:"fixed64,5,opt,name=commit,proto3" json:"commit,omitempty"`                                                                              // Index of the last committed entry
+	LastIndex     uint64                   `protobuf:"fixed64,6,opt,name=last_index,json=lastIndex,proto3" json:"last_index,omitempty"`                                                       // Index of the last entry in the log
 	Vote          uint64                   `protobuf:"varint,7,opt,name=vote,proto3" json:"vote,omitempty"`                                                                                   // ID of the node that received the vote (0 if no vote)
 	Progress      map[uint64]*ProgressInfo `protobuf:"bytes,8,rep,name=progress,proto3" json:"progress,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Progress information for each node
 	unknownFields protoimpl.UnknownFields
@@ -474,8 +474,8 @@ func (x *ClusterState) GetClusterConfig() *commonpb.ClusterConfig {
 // IndexProgress tracks the index builder's position relative to Pebble.
 type IndexProgress struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
-	LastIndexedSequence uint64                 `protobuf:"varint,1,opt,name=last_indexed_sequence,json=lastIndexedSequence,proto3" json:"last_indexed_sequence,omitempty"` // Pebble progress cursor
-	PebbleLastSequence  uint64                 `protobuf:"varint,2,opt,name=pebble_last_sequence,json=pebbleLastSequence,proto3" json:"pebble_last_sequence,omitempty"`    // latest Pebble log sequence
+	LastIndexedSequence uint64                 `protobuf:"fixed64,1,opt,name=last_indexed_sequence,json=lastIndexedSequence,proto3" json:"last_indexed_sequence,omitempty"` // Pebble progress cursor
+	PebbleLastSequence  uint64                 `protobuf:"fixed64,2,opt,name=pebble_last_sequence,json=pebbleLastSequence,proto3" json:"pebble_last_sequence,omitempty"`    // latest Pebble log sequence
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -527,9 +527,9 @@ func (x *IndexProgress) GetPebbleLastSequence() uint64 {
 // SyncProgress tracks the progress of a checkpoint fetch on the local node.
 type SyncProgress struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Status        string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`                                     // "normal", "syncing", "snapshotting", "out_of_sync"
-	BytesReceived uint64                 `protobuf:"varint,2,opt,name=bytes_received,json=bytesReceived,proto3" json:"bytes_received,omitempty"` // Bytes received so far during checkpoint fetch
-	BytesTotal    uint64                 `protobuf:"varint,3,opt,name=bytes_total,json=bytesTotal,proto3" json:"bytes_total,omitempty"`          // Total bytes to fetch (0 if unknown)
+	Status        string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`                                      // "normal", "syncing", "snapshotting", "out_of_sync"
+	BytesReceived uint64                 `protobuf:"fixed64,2,opt,name=bytes_received,json=bytesReceived,proto3" json:"bytes_received,omitempty"` // Bytes received so far during checkpoint fetch
+	BytesTotal    uint64                 `protobuf:"fixed64,3,opt,name=bytes_total,json=bytesTotal,proto3" json:"bytes_total,omitempty"`          // Total bytes to fetch (0 if unknown)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -748,7 +748,7 @@ func (*GetNodeTimeRequest) Descriptor() ([]byte, []int) {
 // NodeTime represents the current physical clock time of a node
 type NodeTime struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	TimestampUs   uint64                 `protobuf:"varint,1,opt,name=timestamp_us,json=timestampUs,proto3" json:"timestamp_us,omitempty"` // Current time in microseconds since epoch
+	TimestampUs   uint64                 `protobuf:"fixed64,1,opt,name=timestamp_us,json=timestampUs,proto3" json:"timestamp_us,omitempty"` // Current time in microseconds since epoch
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -793,8 +793,8 @@ func (x *NodeTime) GetTimestampUs() uint64 {
 // VolumeUsage represents the disk usage of a single filesystem volume.
 type VolumeUsage struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	UsedBytes     int64                  `protobuf:"varint,1,opt,name=used_bytes,json=usedBytes,proto3" json:"used_bytes,omitempty"`    // Used bytes on the filesystem
-	TotalBytes    int64                  `protobuf:"varint,2,opt,name=total_bytes,json=totalBytes,proto3" json:"total_bytes,omitempty"` // Total capacity of the filesystem in bytes
+	UsedBytes     int64                  `protobuf:"fixed64,1,opt,name=used_bytes,json=usedBytes,proto3" json:"used_bytes,omitempty"`    // Used bytes on the filesystem
+	TotalBytes    int64                  `protobuf:"fixed64,2,opt,name=total_bytes,json=totalBytes,proto3" json:"total_bytes,omitempty"` // Total capacity of the filesystem in bytes
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1262,13 +1262,13 @@ func (x *BackupRequest) GetS3SecretAccessKey() string {
 
 type BackupResponse struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
-	FilesUploaded     uint32                 `protobuf:"varint,1,opt,name=files_uploaded,json=filesUploaded,proto3" json:"files_uploaded,omitempty"`               // Number of new/changed files uploaded
-	FilesDeleted      uint32                 `protobuf:"varint,2,opt,name=files_deleted,json=filesDeleted,proto3" json:"files_deleted,omitempty"`                  // Number of stale files deleted
-	TotalFiles        uint32                 `protobuf:"varint,3,opt,name=total_files,json=totalFiles,proto3" json:"total_files,omitempty"`                        // Total files in the backup after this run
-	DurationMs        int64                  `protobuf:"varint,4,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`                        // Wall-clock duration in milliseconds
-	LastLogSequence   uint64                 `protobuf:"varint,5,opt,name=last_log_sequence,json=lastLogSequence,proto3" json:"last_log_sequence,omitempty"`       // Log sequence at checkpoint time
-	LastAuditSequence uint64                 `protobuf:"varint,6,opt,name=last_audit_sequence,json=lastAuditSequence,proto3" json:"last_audit_sequence,omitempty"` // Audit sequence at checkpoint time
-	LastAppliedIndex  uint64                 `protobuf:"varint,7,opt,name=last_applied_index,json=lastAppliedIndex,proto3" json:"last_applied_index,omitempty"`    // Raft applied index at checkpoint time
+	FilesUploaded     uint32                 `protobuf:"varint,1,opt,name=files_uploaded,json=filesUploaded,proto3" json:"files_uploaded,omitempty"`                // Number of new/changed files uploaded
+	FilesDeleted      uint32                 `protobuf:"varint,2,opt,name=files_deleted,json=filesDeleted,proto3" json:"files_deleted,omitempty"`                   // Number of stale files deleted
+	TotalFiles        uint32                 `protobuf:"varint,3,opt,name=total_files,json=totalFiles,proto3" json:"total_files,omitempty"`                         // Total files in the backup after this run
+	DurationMs        int64                  `protobuf:"varint,4,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`                         // Wall-clock duration in milliseconds
+	LastLogSequence   uint64                 `protobuf:"fixed64,5,opt,name=last_log_sequence,json=lastLogSequence,proto3" json:"last_log_sequence,omitempty"`       // Log sequence at checkpoint time
+	LastAuditSequence uint64                 `protobuf:"fixed64,6,opt,name=last_audit_sequence,json=lastAuditSequence,proto3" json:"last_audit_sequence,omitempty"` // Audit sequence at checkpoint time
+	LastAppliedIndex  uint64                 `protobuf:"fixed64,7,opt,name=last_applied_index,json=lastAppliedIndex,proto3" json:"last_applied_index,omitempty"`    // Raft applied index at checkpoint time
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -1454,12 +1454,12 @@ func (x *IncrementalBackupRequest) GetS3SecretAccessKey() string {
 
 type IncrementalBackupResponse struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
-	LogEntriesExported   uint64                 `protobuf:"varint,1,opt,name=log_entries_exported,json=logEntriesExported,proto3" json:"log_entries_exported,omitempty"`       // Number of log entries exported
-	AuditEntriesExported uint64                 `protobuf:"varint,2,opt,name=audit_entries_exported,json=auditEntriesExported,proto3" json:"audit_entries_exported,omitempty"` // Number of audit entries exported
-	SegmentsUploaded     uint32                 `protobuf:"varint,3,opt,name=segments_uploaded,json=segmentsUploaded,proto3" json:"segments_uploaded,omitempty"`               // Number of segments uploaded
-	DurationMs           int64                  `protobuf:"varint,4,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`                                 // Wall-clock duration in milliseconds
-	LastLogSequence      uint64                 `protobuf:"varint,5,opt,name=last_log_sequence,json=lastLogSequence,proto3" json:"last_log_sequence,omitempty"`                // Last exported log sequence
-	LastAuditSequence    uint64                 `protobuf:"varint,6,opt,name=last_audit_sequence,json=lastAuditSequence,proto3" json:"last_audit_sequence,omitempty"`          // Last exported audit sequence
+	LogEntriesExported   uint64                 `protobuf:"fixed64,1,opt,name=log_entries_exported,json=logEntriesExported,proto3" json:"log_entries_exported,omitempty"`       // Number of log entries exported
+	AuditEntriesExported uint64                 `protobuf:"fixed64,2,opt,name=audit_entries_exported,json=auditEntriesExported,proto3" json:"audit_entries_exported,omitempty"` // Number of audit entries exported
+	SegmentsUploaded     uint32                 `protobuf:"varint,3,opt,name=segments_uploaded,json=segmentsUploaded,proto3" json:"segments_uploaded,omitempty"`                // Number of segments uploaded
+	DurationMs           int64                  `protobuf:"varint,4,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`                                  // Wall-clock duration in milliseconds
+	LastLogSequence      uint64                 `protobuf:"fixed64,5,opt,name=last_log_sequence,json=lastLogSequence,proto3" json:"last_log_sequence,omitempty"`                // Last exported log sequence
+	LastAuditSequence    uint64                 `protobuf:"fixed64,6,opt,name=last_audit_sequence,json=lastAuditSequence,proto3" json:"last_audit_sequence,omitempty"`          // Last exported audit sequence
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -1654,9 +1654,9 @@ func (*CompactSecondaryRequest) Descriptor() ([]byte, []int) {
 
 type CompactSecondaryResponse struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
-	DurationMs      int64                  `protobuf:"varint,1,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`                  // Wall-clock duration of the compaction in milliseconds
-	SizeBeforeBytes int64                  `protobuf:"varint,2,opt,name=size_before_bytes,json=sizeBeforeBytes,proto3" json:"size_before_bytes,omitempty"` // Read index file size before compaction in bytes
-	SizeAfterBytes  int64                  `protobuf:"varint,3,opt,name=size_after_bytes,json=sizeAfterBytes,proto3" json:"size_after_bytes,omitempty"`    // Read index file size after compaction in bytes
+	DurationMs      int64                  `protobuf:"varint,1,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`                   // Wall-clock duration of the compaction in milliseconds
+	SizeBeforeBytes int64                  `protobuf:"fixed64,2,opt,name=size_before_bytes,json=sizeBeforeBytes,proto3" json:"size_before_bytes,omitempty"` // Read index file size before compaction in bytes
+	SizeAfterBytes  int64                  `protobuf:"fixed64,3,opt,name=size_after_bytes,json=sizeAfterBytes,proto3" json:"size_after_bytes,omitempty"`    // Read index file size after compaction in bytes
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -1750,7 +1750,7 @@ func (*CreateCheckpointRequest) Descriptor() ([]byte, []int) {
 
 type CreateCheckpointResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	CheckpointId  uint64                 `protobuf:"varint,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"` // ID of the newly created checkpoint
+	CheckpointId  uint64                 `protobuf:"fixed64,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"` // ID of the newly created checkpoint
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1830,8 +1830,8 @@ func (*CreateQueryCheckpointRequest) Descriptor() ([]byte, []int) {
 
 type CreateQueryCheckpointResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	CheckpointId  uint64                 `protobuf:"varint,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"` // Sequential checkpoint identifier
-	MaxSequence   uint64                 `protobuf:"varint,2,opt,name=max_sequence,json=maxSequence,proto3" json:"max_sequence,omitempty"`    // Max global log sequence at checkpoint time
+	CheckpointId  uint64                 `protobuf:"fixed64,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"` // Sequential checkpoint identifier
+	MaxSequence   uint64                 `protobuf:"fixed64,2,opt,name=max_sequence,json=maxSequence,proto3" json:"max_sequence,omitempty"`    // Max global log sequence at checkpoint time
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1882,7 +1882,7 @@ func (x *CreateQueryCheckpointResponse) GetMaxSequence() uint64 {
 
 type DeleteQueryCheckpointRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	CheckpointId  uint64                 `protobuf:"varint,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"` // ID of the query checkpoint to delete
+	CheckpointId  uint64                 `protobuf:"fixed64,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"` // ID of the query checkpoint to delete
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2042,7 +2042,7 @@ func (x *ListQueryCheckpointsResponse) GetCheckpoints() []*QueryCheckpointInfo {
 
 type GetQueryCheckpointInfoRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	CheckpointId  uint64                 `protobuf:"varint,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	CheckpointId  uint64                 `protobuf:"fixed64,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2166,9 +2166,9 @@ func (x *GetQueryCheckpointScheduleResponse) GetCron() string {
 
 type QueryCheckpointInfo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	CheckpointId  uint64                 `protobuf:"varint,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"` // Sequential checkpoint identifier
-	MaxSequence   uint64                 `protobuf:"varint,2,opt,name=max_sequence,json=maxSequence,proto3" json:"max_sequence,omitempty"`    // Max global log sequence at checkpoint time
-	CreatedAt     *commonpb.Timestamp    `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`           // Creation timestamp
+	CheckpointId  uint64                 `protobuf:"fixed64,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"` // Sequential checkpoint identifier
+	MaxSequence   uint64                 `protobuf:"fixed64,2,opt,name=max_sequence,json=maxSequence,proto3" json:"max_sequence,omitempty"`    // Max global log sequence at checkpoint time
+	CreatedAt     *commonpb.Timestamp    `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`            // Creation timestamp
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2240,10 +2240,10 @@ const file_cluster_proto_rawDesc = "" +
 	"\rsync_progress\x18\x06 \x01(\v2\x15.cluster.SyncProgressR\fsyncProgress\x12=\n" +
 	"\x0eindex_progress\x18\a \x01(\v2\x16.cluster.IndexProgressR\rindexProgress\"\x89\x02\n" +
 	"\fProgressInfo\x12\x14\n" +
-	"\x05match\x18\x01 \x01(\x04R\x05match\x12\x12\n" +
-	"\x04next\x18\x02 \x01(\x04R\x04next\x12\x14\n" +
+	"\x05match\x18\x01 \x01(\x06R\x05match\x12\x12\n" +
+	"\x04next\x18\x02 \x01(\x06R\x04next\x12\x14\n" +
 	"\x05state\x18\x03 \x01(\tR\x05state\x12)\n" +
-	"\x10pending_snapshot\x18\x04 \x01(\x04R\x0fpendingSnapshot\x12#\n" +
+	"\x10pending_snapshot\x18\x04 \x01(\x06R\x0fpendingSnapshot\x12#\n" +
 	"\rrecent_active\x18\x05 \x01(\bR\frecentActive\x12-\n" +
 	"\x13msg_app_flow_paused\x18\x06 \x01(\bR\x10msgAppFlowPaused\x12\x1b\n" +
 	"\tis_paused\x18\a \x01(\bR\bisPaused\x12\x1d\n" +
@@ -2252,12 +2252,12 @@ const file_cluster_proto_rawDesc = "" +
 	"\n" +
 	"RaftStatus\x12\x14\n" +
 	"\x05state\x18\x01 \x01(\tR\x05state\x12\x12\n" +
-	"\x04term\x18\x02 \x01(\x04R\x04term\x12\x16\n" +
+	"\x04term\x18\x02 \x01(\x06R\x04term\x12\x16\n" +
 	"\x06leader\x18\x03 \x01(\x04R\x06leader\x12\x18\n" +
-	"\aapplied\x18\x04 \x01(\x04R\aapplied\x12\x16\n" +
-	"\x06commit\x18\x05 \x01(\x04R\x06commit\x12\x1d\n" +
+	"\aapplied\x18\x04 \x01(\x06R\aapplied\x12\x16\n" +
+	"\x06commit\x18\x05 \x01(\x06R\x06commit\x12\x1d\n" +
 	"\n" +
-	"last_index\x18\x06 \x01(\x04R\tlastIndex\x12\x12\n" +
+	"last_index\x18\x06 \x01(\x06R\tlastIndex\x12\x12\n" +
 	"\x04vote\x18\a \x01(\x04R\x04vote\x12=\n" +
 	"\bprogress\x18\b \x03(\v2!.cluster.RaftStatus.ProgressEntryR\bprogress\x1aR\n" +
 	"\rProgressEntry\x12\x10\n" +
@@ -2276,12 +2276,12 @@ const file_cluster_proto_rawDesc = "" +
 	"\x0eindex_progress\x18\b \x01(\v2\x16.cluster.IndexProgressR\rindexProgress\x12<\n" +
 	"\x0ecluster_config\x18\t \x01(\v2\x15.common.ClusterConfigR\rclusterConfig\"u\n" +
 	"\rIndexProgress\x122\n" +
-	"\x15last_indexed_sequence\x18\x01 \x01(\x04R\x13lastIndexedSequence\x120\n" +
-	"\x14pebble_last_sequence\x18\x02 \x01(\x04R\x12pebbleLastSequence\"n\n" +
+	"\x15last_indexed_sequence\x18\x01 \x01(\x06R\x13lastIndexedSequence\x120\n" +
+	"\x14pebble_last_sequence\x18\x02 \x01(\x06R\x12pebbleLastSequence\"n\n" +
 	"\fSyncProgress\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12%\n" +
-	"\x0ebytes_received\x18\x02 \x01(\x04R\rbytesReceived\x12\x1f\n" +
-	"\vbytes_total\x18\x03 \x01(\x04R\n" +
+	"\x0ebytes_received\x18\x02 \x01(\x06R\rbytesReceived\x12\x1f\n" +
+	"\vbytes_total\x18\x03 \x01(\x06R\n" +
 	"bytesTotal\";\n" +
 	"\x19TransferLeadershipRequest\x12\x1e\n" +
 	"\n" +
@@ -2293,11 +2293,11 @@ const file_cluster_proto_rawDesc = "" +
 	"\x13GetDiskUsageRequest\"\x14\n" +
 	"\x12GetNodeTimeRequest\"-\n" +
 	"\bNodeTime\x12!\n" +
-	"\ftimestamp_us\x18\x01 \x01(\x04R\vtimestampUs\"M\n" +
+	"\ftimestamp_us\x18\x01 \x01(\x06R\vtimestampUs\"M\n" +
 	"\vVolumeUsage\x12\x1d\n" +
 	"\n" +
-	"used_bytes\x18\x01 \x01(\x03R\tusedBytes\x12\x1f\n" +
-	"\vtotal_bytes\x18\x02 \x01(\x03R\n" +
+	"used_bytes\x18\x01 \x01(\x10R\tusedBytes\x12\x1f\n" +
+	"\vtotal_bytes\x18\x02 \x01(\x10R\n" +
 	"totalBytes\"w\n" +
 	"\tDiskUsage\x123\n" +
 	"\n" +
@@ -2333,9 +2333,9 @@ const file_cluster_proto_rawDesc = "" +
 	"totalFiles\x12\x1f\n" +
 	"\vduration_ms\x18\x04 \x01(\x03R\n" +
 	"durationMs\x12*\n" +
-	"\x11last_log_sequence\x18\x05 \x01(\x04R\x0flastLogSequence\x12.\n" +
-	"\x13last_audit_sequence\x18\x06 \x01(\x04R\x11lastAuditSequence\x12,\n" +
-	"\x12last_applied_index\x18\a \x01(\x04R\x10lastAppliedIndex\"\xa1\x02\n" +
+	"\x11last_log_sequence\x18\x05 \x01(\x06R\x0flastLogSequence\x12.\n" +
+	"\x13last_audit_sequence\x18\x06 \x01(\x06R\x11lastAuditSequence\x12,\n" +
+	"\x12last_applied_index\x18\a \x01(\x06R\x10lastAppliedIndex\"\xa1\x02\n" +
 	"\x18IncrementalBackupRequest\x12\x16\n" +
 	"\x06driver\x18\x01 \x01(\tR\x06driver\x12\x1b\n" +
 	"\tbase_path\x18\x02 \x01(\tR\bbasePath\x12\x1b\n" +
@@ -2347,13 +2347,13 @@ const file_cluster_proto_rawDesc = "" +
 	"\x10s3_access_key_id\x18\a \x01(\tR\rs3AccessKeyId\x12/\n" +
 	"\x14s3_secret_access_key\x18\b \x01(\tR\x11s3SecretAccessKey\"\xad\x02\n" +
 	"\x19IncrementalBackupResponse\x120\n" +
-	"\x14log_entries_exported\x18\x01 \x01(\x04R\x12logEntriesExported\x124\n" +
-	"\x16audit_entries_exported\x18\x02 \x01(\x04R\x14auditEntriesExported\x12+\n" +
+	"\x14log_entries_exported\x18\x01 \x01(\x06R\x12logEntriesExported\x124\n" +
+	"\x16audit_entries_exported\x18\x02 \x01(\x06R\x14auditEntriesExported\x12+\n" +
 	"\x11segments_uploaded\x18\x03 \x01(\rR\x10segmentsUploaded\x12\x1f\n" +
 	"\vduration_ms\x18\x04 \x01(\x03R\n" +
 	"durationMs\x12*\n" +
-	"\x11last_log_sequence\x18\x05 \x01(\x04R\x0flastLogSequence\x12.\n" +
-	"\x13last_audit_sequence\x18\x06 \x01(\x04R\x11lastAuditSequence\"\x17\n" +
+	"\x11last_log_sequence\x18\x05 \x01(\x06R\x0flastLogSequence\x12.\n" +
+	"\x13last_audit_sequence\x18\x06 \x01(\x06R\x11lastAuditSequence\"\x17\n" +
 	"\x15CompactPrimaryRequest\"9\n" +
 	"\x16CompactPrimaryResponse\x12\x1f\n" +
 	"\vduration_ms\x18\x01 \x01(\x03R\n" +
@@ -2362,29 +2362,29 @@ const file_cluster_proto_rawDesc = "" +
 	"\x18CompactSecondaryResponse\x12\x1f\n" +
 	"\vduration_ms\x18\x01 \x01(\x03R\n" +
 	"durationMs\x12*\n" +
-	"\x11size_before_bytes\x18\x02 \x01(\x03R\x0fsizeBeforeBytes\x12(\n" +
-	"\x10size_after_bytes\x18\x03 \x01(\x03R\x0esizeAfterBytes\"\x19\n" +
+	"\x11size_before_bytes\x18\x02 \x01(\x10R\x0fsizeBeforeBytes\x12(\n" +
+	"\x10size_after_bytes\x18\x03 \x01(\x10R\x0esizeAfterBytes\"\x19\n" +
 	"\x17CreateCheckpointRequest\"?\n" +
 	"\x18CreateCheckpointResponse\x12#\n" +
-	"\rcheckpoint_id\x18\x01 \x01(\x04R\fcheckpointId\"\x1e\n" +
+	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\"\x1e\n" +
 	"\x1cCreateQueryCheckpointRequest\"g\n" +
 	"\x1dCreateQueryCheckpointResponse\x12#\n" +
-	"\rcheckpoint_id\x18\x01 \x01(\x04R\fcheckpointId\x12!\n" +
-	"\fmax_sequence\x18\x02 \x01(\x04R\vmaxSequence\"C\n" +
+	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\x12!\n" +
+	"\fmax_sequence\x18\x02 \x01(\x06R\vmaxSequence\"C\n" +
 	"\x1cDeleteQueryCheckpointRequest\x12#\n" +
-	"\rcheckpoint_id\x18\x01 \x01(\x04R\fcheckpointId\"\x1f\n" +
+	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\"\x1f\n" +
 	"\x1dDeleteQueryCheckpointResponse\"\x1d\n" +
 	"\x1bListQueryCheckpointsRequest\"^\n" +
 	"\x1cListQueryCheckpointsResponse\x12>\n" +
 	"\vcheckpoints\x18\x01 \x03(\v2\x1c.cluster.QueryCheckpointInfoR\vcheckpoints\"D\n" +
 	"\x1dGetQueryCheckpointInfoRequest\x12#\n" +
-	"\rcheckpoint_id\x18\x01 \x01(\x04R\fcheckpointId\"#\n" +
+	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\"#\n" +
 	"!GetQueryCheckpointScheduleRequest\"8\n" +
 	"\"GetQueryCheckpointScheduleResponse\x12\x12\n" +
 	"\x04cron\x18\x01 \x01(\tR\x04cron\"\x8f\x01\n" +
 	"\x13QueryCheckpointInfo\x12#\n" +
-	"\rcheckpoint_id\x18\x01 \x01(\x04R\fcheckpointId\x12!\n" +
-	"\fmax_sequence\x18\x02 \x01(\x04R\vmaxSequence\x120\n" +
+	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\x12!\n" +
+	"\fmax_sequence\x18\x02 \x01(\x06R\vmaxSequence\x120\n" +
 	"\n" +
 	"created_at\x18\x03 \x01(\v2\x11.common.TimestampR\tcreatedAt2\xc4\v\n" +
 	"\x0eClusterService\x12I\n" +

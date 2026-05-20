@@ -29,7 +29,7 @@ type PrepareSnapshotRequest struct {
 	// until its FSM has applied at least this index before creating the
 	// Pebble checkpoint. Prevents the follower from receiving a checkpoint
 	// older than the Raft snapshot it needs to catch up to.
-	MinAppliedIndex uint64 `protobuf:"varint,2,opt,name=minAppliedIndex,proto3" json:"minAppliedIndex,omitempty"`
+	MinAppliedIndex uint64 `protobuf:"fixed64,2,opt,name=minAppliedIndex,proto3" json:"minAppliedIndex,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -368,7 +368,7 @@ func (x *SnapshotManifest) GetFiles() []*FileEntry {
 type FileEntry struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
-	Size          uint64                 `protobuf:"varint,2,opt,name=size,proto3" json:"size,omitempty"`
+	Size          uint64                 `protobuf:"fixed64,2,opt,name=size,proto3" json:"size,omitempty"`
 	Sha256        string                 `protobuf:"bytes,3,opt,name=sha256,proto3" json:"sha256,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -432,7 +432,7 @@ const file_snapshot_proto_rawDesc = "" +
 	"\x0esnapshot.proto\x12\vsnapshot.v1\"[\n" +
 	"\x16PrepareSnapshotRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12(\n" +
-	"\x0fminAppliedIndex\x18\x02 \x01(\x04R\x0fminAppliedIndex\"s\n" +
+	"\x0fminAppliedIndex\x18\x02 \x01(\x06R\x0fminAppliedIndex\"s\n" +
 	"\x17PrepareSnapshotResponse\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x129\n" +
@@ -452,7 +452,7 @@ const file_snapshot_proto_rawDesc = "" +
 	"\x05files\x18\x01 \x03(\v2\x16.snapshot.v1.FileEntryR\x05files\"K\n" +
 	"\tFileEntry\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x12\n" +
-	"\x04size\x18\x02 \x01(\x04R\x04size\x12\x16\n" +
+	"\x04size\x18\x02 \x01(\x06R\x04size\x12\x16\n" +
 	"\x06sha256\x18\x03 \x01(\tR\x06sha2562\x92\x02\n" +
 	"\x0fSnapshotService\x12\\\n" +
 	"\x0fPrepareSnapshot\x12#.snapshot.v1.PrepareSnapshotRequest\x1a$.snapshot.v1.PrepareSnapshotResponse\x12L\n" +

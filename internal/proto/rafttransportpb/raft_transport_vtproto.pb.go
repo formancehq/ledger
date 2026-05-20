@@ -5,6 +5,7 @@
 package rafttransportpb
 
 import (
+	binary "encoding/binary"
 	fmt "fmt"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
 	proto "google.golang.org/protobuf/proto"
@@ -563,9 +564,10 @@ func (m *RaftRequestMessage) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		dAtA[i] = 0x12
 	}
 	if m.Id != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Id))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Id))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -663,9 +665,10 @@ func (m *RaftResponseMessage) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		dAtA[i] = 0x10
 	}
 	if m.RequestId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.RequestId))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.RequestId))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -746,9 +749,10 @@ func (m *PingMessage) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if m.SeqId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.SeqId))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.SeqId))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -784,9 +788,10 @@ func (m *PongResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if m.SeqId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.SeqId))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.SeqId))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -958,7 +963,7 @@ func (m *RaftRequestMessage) SizeVT() (n int) {
 	var l int
 	_ = l
 	if m.Id != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Id))
+		n += 9
 	}
 	l = len(m.Message)
 	if l > 0 {
@@ -991,7 +996,7 @@ func (m *RaftResponseMessage) SizeVT() (n int) {
 	var l int
 	_ = l
 	if m.RequestId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.RequestId))
+		n += 9
 	}
 	if m.Success {
 		n += 2
@@ -1027,7 +1032,7 @@ func (m *PingMessage) SizeVT() (n int) {
 	var l int
 	_ = l
 	if m.SeqId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.SeqId))
+		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -1040,7 +1045,7 @@ func (m *PongResponse) SizeVT() (n int) {
 	var l int
 	_ = l
 	if m.SeqId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.SeqId))
+		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -1150,24 +1155,15 @@ func (m *RaftRequestMessage) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
 			}
 			m.Id = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Id |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.Id = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Message", wireType)
@@ -1339,24 +1335,15 @@ func (m *RaftResponseMessage) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field RequestId", wireType)
 			}
 			m.RequestId = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.RequestId |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.RequestId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 2:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Success", wireType)
@@ -1546,24 +1533,15 @@ func (m *PingMessage) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SeqId", wireType)
 			}
 			m.SeqId = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.SeqId |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.SeqId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -1616,24 +1594,15 @@ func (m *PongResponse) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SeqId", wireType)
 			}
 			m.SeqId = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.SeqId |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.SeqId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

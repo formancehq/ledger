@@ -12,7 +12,7 @@ service RaftTransportService {
 }
 
 message RaftRequestMessage {
-  uint64 id = 1;
+  fixed64 id = 1;
   bytes message = 2;
 }
 
@@ -22,7 +22,7 @@ message RaftRequestBatch {
 }
 
 message RaftResponseMessage {
-  uint64 request_id = 1;
+  fixed64 request_id = 1;
   bool success = 2;
   string error = 3;
 }
@@ -33,11 +33,11 @@ message RaftResponseBatch {
 }
 
 message PingMessage {
-  uint64 seq_id = 1;
+  fixed64 seq_id = 1;
 }
 
 message PongResponse {
-  uint64 seq_id = 1;
+  fixed64 seq_id = 1;
 }
 
 // SendMessageRequest contains Raft messages to send

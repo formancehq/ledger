@@ -57,10 +57,10 @@ func parsePostingsFromLog(data []byte, out *parsedLog) error {
 		data = data[n:]
 
 		switch {
-		case num == 1 && typ == protowire.VarintType:
-			v, vn := protowire.ConsumeVarint(data)
+		case num == 1 && typ == protowire.Fixed64Type:
+			v, vn := protowire.ConsumeFixed64(data)
 			if vn < 0 {
-				return errors.New("protowire: invalid varint for Log.sequence")
+				return errors.New("protowire: invalid fixed64 for Log.sequence")
 			}
 
 			out.Sequence = v
@@ -242,10 +242,10 @@ func parseTransaction(data []byte, postings []rawPosting) (txID uint64, result [
 
 			result = append(result, rawPosting{Source: src, Destination: dst})
 			data = data[bn:]
-		case num == 5 && typ == protowire.VarintType:
-			v, vn := protowire.ConsumeVarint(data)
+		case num == 5 && typ == protowire.Fixed64Type:
+			v, vn := protowire.ConsumeFixed64(data)
 			if vn < 0 {
-				return 0, result, errors.New("protowire: invalid varint for Transaction.id")
+				return 0, result, errors.New("protowire: invalid fixed64 for Transaction.id")
 			}
 
 			txID = v

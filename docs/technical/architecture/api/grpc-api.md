@@ -443,7 +443,7 @@ message ApplyResponse {
 }
 
 message Log {
-  uint64 sequence = 1;      // Global log sequence number
+  fixed64 sequence = 1;     // Global log sequence number
   LogPayload payload = 2;   // Log content (varies by operation type)
   Idempotency idempotency = 3;
 }

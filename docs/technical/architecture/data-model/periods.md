@@ -51,11 +51,11 @@ enum PeriodStatus {
 }
 
 message Period {
-  uint64 id = 1;
+  fixed64 id = 1;
   Timestamp start = 2;
   Timestamp end = 3;
   PeriodStatus status = 4;
-  uint64 close_sequence = 5;    // Global sequence at close time
+  fixed64 close_sequence = 5;   // Global sequence at close time
   bytes sealing_hash = 6;       // Set when CLOSED
   bytes last_log_hash = 7;      // Log chain hash at close time
 }
@@ -323,7 +323,7 @@ message MemorySnapshot {
   // ... other fields ...
   common.Period open_period = 10;               // Current open period
   common.Period closing_period = 11;            // Period being sealed (nil when idle)
-  uint64 next_period_id = 12;
+  fixed64 next_period_id = 12;
   repeated common.Period closed_periods = 13;   // CLOSED + ARCHIVED periods (non-purged)
 }
 ```

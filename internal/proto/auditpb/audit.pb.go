@@ -29,9 +29,9 @@ const (
 // (zone 0x04, sub 0x03) and populated on GetAuditEntry responses.
 type AuditEntry struct {
 	state      protoimpl.MessageState `protogen:"open.v1"`
-	Sequence   uint64                 `protobuf:"varint,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	Sequence   uint64                 `protobuf:"fixed64,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
 	Timestamp  *commonpb.Timestamp    `protobuf:"bytes,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
-	ProposalId uint64                 `protobuf:"varint,3,opt,name=proposal_id,json=proposalId,proto3" json:"proposal_id,omitempty"`
+	ProposalId uint64                 `protobuf:"fixed64,3,opt,name=proposal_id,json=proposalId,proto3" json:"proposal_id,omitempty"`
 	// Types that are valid to be assigned to Outcome:
 	//
 	//	*AuditEntry_Success
@@ -171,7 +171,7 @@ type AuditItem struct {
 	Order *raftcmdpb.Order `protobuf:"bytes,2,opt,name=order,proto3" json:"order,omitempty"`
 	// Sequence of the log produced by this order. Zero if the order was
 	// an idempotent replay or if the proposal failed.
-	LogSequence   uint64 `protobuf:"varint,3,opt,name=log_sequence,json=logSequence,proto3" json:"log_sequence,omitempty"`
+	LogSequence   uint64 `protobuf:"fixed64,3,opt,name=log_sequence,json=logSequence,proto3" json:"log_sequence,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -234,8 +234,8 @@ type AuditSuccess struct {
 	// Contiguous log sequence range [min_log_sequence, max_log_sequence] produced
 	// by this proposal. Both are inclusive. When a proposal produces a single log,
 	// min == max. When it produces no logs (all idempotent), both are 0.
-	MinLogSequence uint64 `protobuf:"varint,1,opt,name=min_log_sequence,json=minLogSequence,proto3" json:"min_log_sequence,omitempty"`
-	MaxLogSequence uint64 `protobuf:"varint,2,opt,name=max_log_sequence,json=maxLogSequence,proto3" json:"max_log_sequence,omitempty"`
+	MinLogSequence uint64 `protobuf:"fixed64,1,opt,name=min_log_sequence,json=minLogSequence,proto3" json:"min_log_sequence,omitempty"`
+	MaxLogSequence uint64 `protobuf:"fixed64,2,opt,name=max_log_sequence,json=maxLogSequence,proto3" json:"max_log_sequence,omitempty"`
 	// Accounts whose volumes were transient in this proposal, keyed by ledger.
 	// The index builder uses this to skip account→transaction mappings for
 	// transient accounts without any Pebble reads.
@@ -419,9 +419,9 @@ const file_audit_proto_rawDesc = "" +
 	"\vaudit.proto\x12\x05audit\x1a\fcommon.proto\x1a\x0eraft_cmd.proto\"\xca\x02\n" +
 	"\n" +
 	"AuditEntry\x12\x1a\n" +
-	"\bsequence\x18\x01 \x01(\x04R\bsequence\x12/\n" +
+	"\bsequence\x18\x01 \x01(\x06R\bsequence\x12/\n" +
 	"\ttimestamp\x18\x02 \x01(\v2\x11.common.TimestampR\ttimestamp\x12\x1f\n" +
-	"\vproposal_id\x18\x03 \x01(\x04R\n" +
+	"\vproposal_id\x18\x03 \x01(\x06R\n" +
 	"proposalId\x12/\n" +
 	"\asuccess\x18\x04 \x01(\v2\x13.audit.AuditSuccessH\x00R\asuccess\x12/\n" +
 	"\afailure\x18\x05 \x01(\v2\x13.audit.AuditFailureH\x00R\afailure\x12\x1f\n" +
@@ -434,10 +434,10 @@ const file_audit_proto_rawDesc = "" +
 	"\vorder_index\x18\x01 \x01(\rR\n" +
 	"orderIndex\x12!\n" +
 	"\x05order\x18\x02 \x01(\v2\v.raft.OrderR\x05order\x12!\n" +
-	"\flog_sequence\x18\x03 \x01(\x04R\vlogSequence\"\xc0\x03\n" +
+	"\flog_sequence\x18\x03 \x01(\x06R\vlogSequence\"\xc0\x03\n" +
 	"\fAuditSuccess\x12(\n" +
-	"\x10min_log_sequence\x18\x01 \x01(\x04R\x0eminLogSequence\x12(\n" +
-	"\x10max_log_sequence\x18\x02 \x01(\x04R\x0emaxLogSequence\x12Y\n" +
+	"\x10min_log_sequence\x18\x01 \x01(\x06R\x0eminLogSequence\x12(\n" +
+	"\x10max_log_sequence\x18\x02 \x01(\x06R\x0emaxLogSequence\x12Y\n" +
 	"\x12transient_accounts\x18\x03 \x03(\v2*.audit.AuditSuccess.TransientAccountsEntryR\x11transientAccounts\x12P\n" +
 	"\x0fpurged_accounts\x18\x04 \x03(\v2'.audit.AuditSuccess.PurgedAccountsEntryR\x0epurgedAccounts\x1aX\n" +
 	"\x16TransientAccountsEntry\x12\x10\n" +

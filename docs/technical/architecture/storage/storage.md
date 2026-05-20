@@ -215,7 +215,7 @@ The FSM cache is persisted via `CacheSnapshotter` to Pebble zone `0x02`. There i
 
 ```protobuf
 message GenerationSnapshot {
-  uint64 base_index = 1;
+  fixed64 base_index = 1;
   repeated VolumeAttributeSnapshotEntry volumes = 2;
   repeated MetadataAttributeEntry metadata = 3;       // Account metadata
   repeated MetadataAttributeEntry ledger_metadata = 4; // Ledger metadata

@@ -66,8 +66,8 @@ message LedgerInfo {
 // raftcmd.proto
 message LedgerState {
   LedgerInfo ledger_info = 1;
-  uint64 next_log_id = 2;        // Next log sequence number
-  uint64 next_transaction_id = 3; // Next transaction ID
+  fixed64 next_log_id = 2;       // Next log sequence number
+  fixed64 next_transaction_id = 3; // Next transaction ID
 }
 ```
 
@@ -155,7 +155,7 @@ message Transaction {
   MetadataSet metadata = 2;
   Timestamp timestamp = 3;
   string reference = 4;
-  uint64 id = 5;                // Sequential ID within the ledger
+  fixed64 id = 5;               // Sequential ID within the ledger
   bool reverted = 6;
   Timestamp inserted_at = 7;
   Timestamp updated_at = 8;
@@ -428,8 +428,8 @@ The system records an audit trail of every proposal (success and failure) proces
 ```protobuf
 // audit.proto
 message AuditEntry {
-  uint64 sequence = 1;              // Monotonically increasing audit sequence
-  uint64 proposal_id = 2;           // ID of the Raft proposal
+  fixed64 sequence = 1;             // Monotonically increasing audit sequence
+  fixed64 proposal_id = 2;          // ID of the Raft proposal
   repeated Order orders = 3;        // Orders in the proposal
   Timestamp timestamp = 4;          // When the proposal was applied
   oneof outcome {

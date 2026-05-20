@@ -309,8 +309,8 @@ message IntCondition {
 
 // UintCondition: range/equality on unsigned integer field (uint8 through uint64).
 message UintCondition {
-  optional uint64 min = 1;
-  optional uint64 max = 2;
+  optional fixed64 min = 1;
+  optional fixed64 max = 2;
   bool min_exclusive = 3;
   bool max_exclusive = 4;
   string param_min = 5;
@@ -388,7 +388,7 @@ message ExecutePreparedQueryRequest {
                                               // e.g., "50000" → int64(50000) for IntCondition.param_min
   uint32 page_size = 4;                      // max results per page (default 15, max 1000); ignored for AGGREGATE_VOLUMES
   string cursor = 5;                         // opaque cursor from previous response (if set, other fields are ignored); ignored for AGGREGATE_VOLUMES
-  uint64 min_log_sequence = 6;               // optional: wait until read store has indexed up to this log sequence
+  fixed64 min_log_sequence = 6;              // optional: wait until read store has indexed up to this log sequence
   QueryMode mode = 7;                        // LIST (default) or AGGREGATE_VOLUMES
 }
 
@@ -862,7 +862,7 @@ message ExecutePreparedQueryRequest {
   map<string, string> parameters = 3;
   uint32 page_size = 4;                            // ignored for aggregate mode
   string cursor = 5;                               // ignored for aggregate mode
-  uint64 min_log_sequence = 6;
+  fixed64 min_log_sequence = 6;
   QueryMode mode = 7;                              // LIST (default) or AGGREGATE_VOLUMES
 }
 

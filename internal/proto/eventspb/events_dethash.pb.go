@@ -4,6 +4,7 @@
 package eventspb
 
 import (
+	binary "encoding/binary"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
 )
 
@@ -34,9 +35,10 @@ func (m *Event) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
 		dAtA[i] = 0x2a
 	}
 	if m.LogSequence != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogSequence))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.LogSequence))
 		i--
-		dAtA[i] = 0x20
+		dAtA[i] = 0x21
 	}
 	if m.Date != nil {
 		size, _ := m.Date.MarshalToSizedBufferVT(dAtA[:i])

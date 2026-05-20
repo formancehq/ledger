@@ -22,7 +22,7 @@ message PrepareSnapshotRequest {
   // until its FSM has applied at least this index before creating the
   // Pebble checkpoint. Prevents the follower from receiving a checkpoint
   // older than the Raft snapshot it needs to catch up to.
-  uint64 minAppliedIndex = 2;
+  fixed64 minAppliedIndex = 2;
 }
 
 message PrepareSnapshotResponse {
@@ -59,6 +59,6 @@ message SnapshotManifest {
 
 message FileEntry {
   string path = 1;
-  uint64 size = 2;
+  fixed64 size = 2;
   string sha256 = 3;
 }

@@ -86,17 +86,17 @@ message SetSigningConfigOrder {
 message ClosePeriodOrder {}
 
 message SealPeriodOrder {
-  uint64 period_id = 1;
+  fixed64 period_id = 1;
   bytes sealing_hash = 2;
   bytes state_hash = 3;
 }
 
 message ArchivePeriodOrder {
-  uint64 period_id = 1;
+  fixed64 period_id = 1;
 }
 
 message ConfirmArchivePeriodOrder {
-  uint64 period_id = 1;
+  fixed64 period_id = 1;
 }
 
 message SetMaintenanceModeOrder {
@@ -130,14 +130,14 @@ message CreateQueryCheckpointOrder {}
 // DeleteQueryCheckpointOrder removes a previously created query checkpoint.
 // Physical checkpoint files are cleaned up after the batch is committed.
 message DeleteQueryCheckpointOrder {
-  uint64 checkpoint_id = 1;
+  fixed64 checkpoint_id = 1;
 }
 
 // QueryCheckpointState stores metadata for a query checkpoint in Pebble.
 // The actual data lives in physical Pebble checkpoint directories.
 message QueryCheckpointState {
-  uint64 checkpoint_id = 1;
-  uint64 max_sequence = 2;            // next_sequence - 1 at creation
+  fixed64 checkpoint_id = 1;
+  fixed64 max_sequence = 2;            // next_sequence - 1 at creation
   common.Timestamp created_at = 3;    // Creation timestamp (from proposal date)
 }
 
@@ -162,7 +162,7 @@ message MirrorIngestOrder {
 }
 
 message MirrorLogEntry {
-  uint64 v2_log_id = 1;
+  fixed64 v2_log_id = 1;
   oneof data {
     MirrorCreatedTransaction created_transaction = 2;
     MirrorSavedMetadata saved_metadata = 3;
@@ -173,11 +173,11 @@ message MirrorLogEntry {
 }
 
 message MirrorFillGap {
-  repeated uint64 skipped_transaction_ids = 1;
+  repeated fixed64 skipped_transaction_ids = 1;
 }
 
 message MirrorCreatedTransaction {
-  uint64 transaction_id = 1;
+  fixed64 transaction_id = 1;
   repeated common.Posting postings = 2;
   map<string, common.MetadataValue> metadata = 3;
   common.Timestamp timestamp = 4;
@@ -191,8 +191,8 @@ message MirrorSavedMetadata {
 }
 
 message MirrorRevertedTransaction {
-  uint64 reverted_transaction_id = 1;
-  uint64 new_transaction_id = 2;
+  fixed64 reverted_transaction_id = 1;
+  fixed64 new_transaction_id = 2;
   repeated common.Posting reverse_postings = 3;
   map<string, common.MetadataValue> metadata = 4;
   common.Timestamp timestamp = 5;
@@ -278,8 +278,8 @@ message ConvertMetadataBatchOrder {
   string key = 2;
   common.MetadataType expected_type = 3;
   repeated ConvertMetadataEntry entries = 4;
-  uint64 total_keys = 5;
-  uint64 converted_keys_so_far = 6;
+  fixed64 total_keys = 5;
+  fixed64 converted_keys_so_far = 6;
 }
 
 message ConvertMetadataEntry {
@@ -330,7 +330,7 @@ message SaveMetadataOrder {
 }
 
 message RevertTransactionOrder {
-  uint64 transaction_id = 1;
+  fixed64 transaction_id = 1;
   bool force = 2;
   bool at_effective_date = 3;
   map<string, common.MetadataValue> metadata = 4;
@@ -362,7 +362,7 @@ message DeleteLedgerMetadataOrder {
 // Proposal represents a batch of orders to be executed in the FSM (protobuf serialization format)
 // A proposal can contain multiple orders that will be executed atomically
 message Proposal {
-  uint64 id = 1;                    // Random proposal ID
+  fixed64 id = 1;                    // Random proposal ID
   repeated Order orders = 2;        // List of orders to execute atomically
   common.Timestamp date = 3;        // Creation date in UTC
   PreloadSet preload = 4;
@@ -374,7 +374,7 @@ message Proposal {
   // preloadSet is invalid. The entry is rejected without audit and the caller
   // receives Unavailable so it can retry with fresh preloads.
   // A value of 0 means no prediction (e.g. barrier, mirror sync).
-  uint64 predicted_index = 7;
+  fixed64 predicted_index = 7;
   IdempotencyEviction idempotency_eviction = 8;
   common.ClusterConfig cluster_config = 9;  // Cluster-wide config update (technical, no log entry)
 }
@@ -382,21 +382,21 @@ message Proposal {
 // IdempotencyEviction is a deterministic cleanup command proposed by the leader.
 // All nodes apply it identically: entries with created_at <= cutoff_micros are removed.
 message IdempotencyEviction {
-  uint64 cutoff_micros = 1;
+  fixed64 cutoff_micros = 1;
 }
 
 message MirrorSyncUpdate {
   string ledger_name = 1;
-  uint64 cursor = 2;
+  fixed64 cursor = 2;
   common.MirrorSyncError error = 3;
   bool clear_error = 4;
-  uint64 source_log_count = 5;  // Latest known log ID in v2 source
+  fixed64 source_log_count = 5;  // Latest known log ID in v2 source
 }
 
 // EventsSinkUpdate carries a per-sink cursor advance or error status change.
 message EventsSinkUpdate {
   string sink_name = 1;
-  uint64 cursor = 2;              // New cursor position (0 = no change)
+  fixed64 cursor = 2;              // New cursor position (0 = no change)
   common.SinkError error = 3;     // Set error (nil = no change unless clear_error)
   bool clear_error = 4;           // If true, clear any existing error
 }
@@ -404,21 +404,21 @@ message EventsSinkUpdate {
 message CreatedLogOrReference {
   oneof type {
     common.Log created_log = 1;
-    uint64 reference_sequence = 2;
+    fixed64 reference_sequence = 2;
   }
 }
 
 message LedgerBoundaries {
-  uint64 next_transaction_id = 1;
-  uint64 next_log_id = 2;
-  uint64 volume_count = 3;
-  uint64 metadata_count = 4;
-  uint64 reference_count = 5;
-  uint64 posting_count = 6;
-  uint64 ephemeral_evicted_count = 7;
-  uint64 transient_used_count = 8;
-  uint64 revert_count = 9;
-  uint64 numscript_execution_count = 10;
+  fixed64 next_transaction_id = 1;
+  fixed64 next_log_id = 2;
+  fixed64 volume_count = 3;
+  fixed64 metadata_count = 4;
+  fixed64 reference_count = 5;
+  fixed64 posting_count = 6;
+  fixed64 ephemeral_evicted_count = 7;
+  fixed64 transient_used_count = 8;
+  fixed64 revert_count = 9;
+  fixed64 numscript_execution_count = 10;
 }
 
 message VolumePair {
@@ -427,10 +427,10 @@ message VolumePair {
 }
 
 message PreloadSet {
-  uint64 lastPersistedIndex = 1;
+  fixed64 lastPersistedIndex = 1;
   repeated Preload preloads = 2;
   repeated CacheTouch touches = 3;
-  uint64 cache_epoch = 4;  // Cache epoch at admission time; FSM rejects on mismatch (cache was reset)
+  fixed64 cache_epoch = 4;  // Cache epoch at admission time; FSM rejects on mismatch (cache was reset)
 }
 
 // CacheTouch tells the FSM to promote a key from Gen1 to Gen0 (no value payload).
@@ -528,12 +528,12 @@ message NodeSnapshot {
 
 // CacheGenerationMeta stores per-generation metadata in Pebble.
 message CacheGenerationMeta {
-  uint64 base_index = 1;
+  fixed64 base_index = 1;
 }
 
 // CacheSnapshotMeta stores cache-level metadata in Pebble.
 message CacheSnapshotMeta {
-  uint64 current_generation = 1;
+  fixed64 current_generation = 1;
 }
 
 // PeerAddress stores a peer's raft and service addresses in snapshots.
@@ -544,7 +544,7 @@ message PeerAddress {
 }
 
 message GenerationSnapshot {
-  uint64 base_index = 1;
+  fixed64 base_index = 1;
   repeated VolumeAttributeSnapshotEntry volumes = 2;
   repeated MetadataAttributeEntry metadata = 3;  // Account metadata
   repeated MetadataAttributeEntry ledger_metadata = 4;  // Ledger metadata

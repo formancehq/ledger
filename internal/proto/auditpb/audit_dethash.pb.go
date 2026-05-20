@@ -4,6 +4,7 @@
 package auditpb
 
 import (
+	binary "encoding/binary"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
 	maps "maps"
 	slices "slices"
@@ -52,9 +53,10 @@ func (m *AuditEntry) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 		dAtA[i] = 0x30
 	}
 	if m.ProposalId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ProposalId))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ProposalId))
 		i--
-		dAtA[i] = 0x18
+		dAtA[i] = 0x19
 	}
 	if m.Timestamp != nil {
 		size, _ := m.Timestamp.MarshalToSizedBufferVT(dAtA[:i])
@@ -64,9 +66,10 @@ func (m *AuditEntry) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 		dAtA[i] = 0x12
 	}
 	if m.Sequence != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Sequence))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Sequence))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	switch v := m.Outcome.(type) {
 	case *AuditEntry_Success:
@@ -109,9 +112,10 @@ func (m *AuditItem) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if m.LogSequence != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogSequence))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.LogSequence))
 		i--
-		dAtA[i] = 0x18
+		dAtA[i] = 0x19
 	}
 	if m.Order != nil {
 		size, _ := m.Order.MarshalToSizedBufferDeterministicVT(dAtA[:i])
@@ -186,14 +190,16 @@ func (m *AuditSuccess) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, er
 		}
 	}
 	if m.MaxLogSequence != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MaxLogSequence))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MaxLogSequence))
 		i--
-		dAtA[i] = 0x10
+		dAtA[i] = 0x11
 	}
 	if m.MinLogSequence != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MinLogSequence))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MinLogSequence))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }

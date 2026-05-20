@@ -26,7 +26,7 @@ func TestGoldenHashCreateLedger(t *testing.T) {
 
 	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
-	require.Equal(t, "4c3a6bfe05fec9cba8609d5ef3ec2ee8bd1900ad07c6848177954dee2da4a74d", got)
+	require.Equal(t, "dbb896be5c7c694acbde9bb08c889caaf912630789bc81772f6d779cb79db771", got)
 }
 
 func TestGoldenHashApplyCreatedTransaction(t *testing.T) {
@@ -74,7 +74,7 @@ func TestGoldenHashApplyCreatedTransaction(t *testing.T) {
 
 	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
-	require.Equal(t, "d93e91d45ac362c62d7b60b0b339c424f53284bbde9cf8e49fdc04dd7a7d6393", got)
+	require.Equal(t, "909c487d0e63c00414c0bf107e62fed47e8460fecbcd8af753639cf4523b1595", got)
 }
 
 func TestGoldenHashRegisterSigningKey(t *testing.T) {
@@ -94,7 +94,7 @@ func TestGoldenHashRegisterSigningKey(t *testing.T) {
 
 	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
-	require.Equal(t, "f04073764b0943de1bc9a2d3f029617859b870fb980a6246f962c8dbc7597281", got)
+	require.Equal(t, "30b9a454f7df0fa382ee0e9ceed7b7a3de8ba549b2fe5f40faa3583f54e53b0f", got)
 }
 
 func TestGoldenHashClosePeriod(t *testing.T) {
@@ -128,7 +128,7 @@ func TestGoldenHashClosePeriod(t *testing.T) {
 
 	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
-	require.Equal(t, "156dc03db4090c12f312d91932f8f2960cf50358072cb971a967bdfaa8099bc3", got)
+	require.Equal(t, "2bde6d515d3f70c55d726efbc6e1280948dd05496cd642c4a82a80f8902f5f2b", got)
 }
 
 func TestGoldenHashChain(t *testing.T) {
@@ -163,8 +163,8 @@ func TestGoldenHashChain(t *testing.T) {
 	gotHash1 := hex.EncodeToString(hash1)
 	gotHash2 := hex.EncodeToString(hash2)
 
-	require.Equal(t, "1b39681428080739048fb5c4c10c7a7ee8a8457b7900b2738806f5512a73f04a", gotHash1)
-	require.Equal(t, "9d0ef52b62bea8aa341a09ced470247d53fdcb707d3f3b631109cf30b625f22f", gotHash2)
+	require.Equal(t, "78b8cf873e73aed74a33b6bc2f0d0a801d4e05427d0d5a666c32593ce3afdab2", gotHash1)
+	require.Equal(t, "9e6b8c771a347426339fd3da2323286d1ee9c212c5aad83a82f7de9bc13d0a72", gotHash2)
 }
 
 func TestGoldenHashAddedEventsSink(t *testing.T) {
@@ -198,7 +198,7 @@ func TestGoldenHashAddedEventsSink(t *testing.T) {
 
 	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
-	require.Equal(t, "0be9ea6b42614612fed58b404e15492d3749932e354fcfbcd08d75fceea5f603", got)
+	require.Equal(t, "ff164d8de230fd1a23e86ebb5d9cb4f376bc24d3efcda1c63eebc05ec98cb74f", got)
 }
 
 func TestGoldenHashDeleteLedger(t *testing.T) {
@@ -218,7 +218,7 @@ func TestGoldenHashDeleteLedger(t *testing.T) {
 
 	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
-	require.Equal(t, "5ecb640d59b7ccf95196cfe150254ca6c26b92bed122457586ef41df10d44a80", got)
+	require.Equal(t, "f197d929f90f258186f78921efbe7a4bf01e45b15ff61226cfca230963e2a086", got)
 }
 
 func TestGoldenHashRevokeSigningKey(t *testing.T) {
@@ -237,7 +237,7 @@ func TestGoldenHashRevokeSigningKey(t *testing.T) {
 
 	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
-	require.Equal(t, "0a3c5bbfb95e0cb05ab69604378e4efb2c7d5ff8e793802cf1b4a00fdbf3deff", got)
+	require.Equal(t, "330062794947902d3bf1327edb3e14201673bdd5a92ceaf43a5c641081c91315", got)
 }
 
 func TestGoldenHashSetSigningConfig(t *testing.T) {
@@ -256,7 +256,7 @@ func TestGoldenHashSetSigningConfig(t *testing.T) {
 
 	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
-	require.Equal(t, "46499e88a7e3af506d10420fb1afefebc988906e3900c193a53fb41731243ac4", got)
+	require.Equal(t, "fe35366406e12f89c11d1facd2257228e97eee58708a53098af26b57168e3258", got)
 }
 
 func TestGoldenHashRemovedEventsSink(t *testing.T) {
@@ -275,7 +275,7 @@ func TestGoldenHashRemovedEventsSink(t *testing.T) {
 
 	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
-	require.Equal(t, "8a4b0ef9a4cfbb44888488d1ef4a81eac64ac400d0b85b46884c7753b6e1d072", got)
+	require.Equal(t, "8427133cd815e495d9ec27083916c4998925a19164863f5a5108580c7bd922bf", got)
 }
 
 func TestGoldenHashSealPeriod(t *testing.T) {
@@ -303,7 +303,7 @@ func TestGoldenHashSealPeriod(t *testing.T) {
 
 	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
-	require.Equal(t, "4dfaa042ee56fb64425efde50eecc866c68ac069d1c99c25eec434dde2b0bc8a", got)
+	require.Equal(t, "ef0413138e5199d8b7f2d899a4d2d563aed30612738aac4ddfd7b0786f2e9abf", got)
 }
 
 func TestGoldenHashArchivePeriod(t *testing.T) {
@@ -329,7 +329,7 @@ func TestGoldenHashArchivePeriod(t *testing.T) {
 
 	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
-	require.Equal(t, "57ebde89fce9b769b7aa8d05e51407e1019893290c5f5545c83162071f24ab08", got)
+	require.Equal(t, "f665d3f1d645ee4b55e1640526611cc31ad9422df9f0f2f92877a21b9108d781", got)
 }
 
 func TestGoldenHashConfirmArchivePeriod(t *testing.T) {
@@ -355,7 +355,7 @@ func TestGoldenHashConfirmArchivePeriod(t *testing.T) {
 
 	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
-	require.Equal(t, "48d6b6508309e58f9f8261a305145c42c39258efd8d69f9969d5460f0bd01da6", got)
+	require.Equal(t, "a5baf6a4b7c856d2a4265c64aa6ac16eb4be3bba6c2f351f610a1b0204cc392f", got)
 }
 
 func TestGoldenHashSetMaintenanceMode(t *testing.T) {
@@ -374,7 +374,7 @@ func TestGoldenHashSetMaintenanceMode(t *testing.T) {
 
 	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
-	require.Equal(t, "1cae9c8d4b4a448b5dd90d8a96a03a49cd404b5d9e69c62492bf24057d87cedf", got)
+	require.Equal(t, "e16ff13d3b4e8d3d4c34dfd269fe88d4bdca590dd640ccbca8d75fee3ddb6e14", got)
 }
 
 func TestGoldenHashSetPeriodSchedule(t *testing.T) {
@@ -393,7 +393,7 @@ func TestGoldenHashSetPeriodSchedule(t *testing.T) {
 
 	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
-	require.Equal(t, "9b33ffed56648e735e783c97c28910b06f8d2aa1fda191d07da2556a8a922ade", got)
+	require.Equal(t, "3b2cd931b91ae22f4a3d196a66e8a2a027a1e046ed2e06d1e7822d2aa03483fa", got)
 }
 
 func TestGoldenHashDeletePeriodSchedule(t *testing.T) {
@@ -410,7 +410,7 @@ func TestGoldenHashDeletePeriodSchedule(t *testing.T) {
 
 	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
-	require.Equal(t, "ec1fa38ae983e8a790e721aebc26fe43f389bb561a7e1d38cb408c3d7e3ff50c", got)
+	require.Equal(t, "bc0ba8aebc620252ec766348175e82ee56ce1aa4d5bcd71d21e800ec75b3d568", got)
 }
 
 func TestGoldenHashNilPayload(t *testing.T) {
@@ -422,7 +422,7 @@ func TestGoldenHashNilPayload(t *testing.T) {
 
 	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
-	require.Equal(t, "694ffc71c585ffe6e555885384da6e05cd990c9ed138c0ca48525abb1c7ce5fd", got)
+	require.Equal(t, "32d22664264af36e4c52cd1a1dac9c68966fe776c68189f736242bfaf11184d7", got)
 }
 
 func TestGoldenHashXXH3CreateLedger(t *testing.T) {

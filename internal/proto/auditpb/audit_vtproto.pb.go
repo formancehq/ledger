@@ -5,6 +5,7 @@
 package auditpb
 
 import (
+	binary "encoding/binary"
 	fmt "fmt"
 	commonpb "github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	raftcmdpb "github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
@@ -499,9 +500,10 @@ func (m *AuditEntry) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		dAtA[i] = 0x30
 	}
 	if m.ProposalId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ProposalId))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ProposalId))
 		i--
-		dAtA[i] = 0x18
+		dAtA[i] = 0x19
 	}
 	if m.Timestamp != nil {
 		size, err := m.Timestamp.MarshalToSizedBufferVT(dAtA[:i])
@@ -514,9 +516,10 @@ func (m *AuditEntry) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		dAtA[i] = 0x12
 	}
 	if m.Sequence != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Sequence))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Sequence))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -590,9 +593,10 @@ func (m *AuditItem) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if m.LogSequence != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogSequence))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.LogSequence))
 		i--
-		dAtA[i] = 0x18
+		dAtA[i] = 0x19
 	}
 	if m.Order != nil {
 		size, err := m.Order.MarshalToSizedBufferVT(dAtA[:i])
@@ -687,14 +691,16 @@ func (m *AuditSuccess) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		}
 	}
 	if m.MaxLogSequence != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MaxLogSequence))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MaxLogSequence))
 		i--
-		dAtA[i] = 0x10
+		dAtA[i] = 0x11
 	}
 	if m.MinLogSequence != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MinLogSequence))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MinLogSequence))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -814,14 +820,14 @@ func (m *AuditEntry) SizeVT() (n int) {
 	var l int
 	_ = l
 	if m.Sequence != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Sequence))
+		n += 9
 	}
 	if m.Timestamp != nil {
 		l = m.Timestamp.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	if m.ProposalId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ProposalId))
+		n += 9
 	}
 	if vtmsg, ok := m.Outcome.(interface{ SizeVT() int }); ok {
 		n += vtmsg.SizeVT()
@@ -883,7 +889,7 @@ func (m *AuditItem) SizeVT() (n int) {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	if m.LogSequence != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.LogSequence))
+		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -896,10 +902,10 @@ func (m *AuditSuccess) SizeVT() (n int) {
 	var l int
 	_ = l
 	if m.MinLogSequence != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.MinLogSequence))
+		n += 9
 	}
 	if m.MaxLogSequence != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.MaxLogSequence))
+		n += 9
 	}
 	if len(m.TransientAccounts) > 0 {
 		for k, v := range m.TransientAccounts {
@@ -1003,24 +1009,15 @@ func (m *AuditEntry) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Sequence", wireType)
 			}
 			m.Sequence = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Sequence |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.Sequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Timestamp", wireType)
@@ -1058,24 +1055,15 @@ func (m *AuditEntry) UnmarshalVT(dAtA []byte) error {
 			}
 			iNdEx = postIndex
 		case 3:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ProposalId", wireType)
 			}
 			m.ProposalId = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.ProposalId |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.ProposalId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Success", wireType)
@@ -1350,24 +1338,15 @@ func (m *AuditItem) UnmarshalVT(dAtA []byte) error {
 			}
 			iNdEx = postIndex
 		case 3:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field LogSequence", wireType)
 			}
 			m.LogSequence = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.LogSequence |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.LogSequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -1420,43 +1399,25 @@ func (m *AuditSuccess) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MinLogSequence", wireType)
 			}
 			m.MinLogSequence = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.MinLogSequence |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.MinLogSequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 2:
-			if wireType != 0 {
+			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MaxLogSequence", wireType)
 			}
 			m.MaxLogSequence = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.MaxLogSequence |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
 			}
+			m.MaxLogSequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field TransientAccounts", wireType)

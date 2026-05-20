@@ -16,9 +16,9 @@ import "raft_cmd.proto";
 // Per-order details are stored as separate AuditItem entries in Pebble
 // (zone 0x04, sub 0x03) and populated on GetAuditEntry responses.
 message AuditEntry {
-  uint64 sequence = 1;
+  fixed64 sequence = 1;
   common.Timestamp timestamp = 2;
-  uint64 proposal_id = 3;
+  fixed64 proposal_id = 3;
   oneof outcome {
     AuditSuccess success = 4;
     AuditFailure failure = 5;
@@ -41,7 +41,7 @@ message AuditItem {
   raft.Order order = 2;
   // Sequence of the log produced by this order. Zero if the order was
   // an idempotent replay or if the proposal failed.
-  uint64 log_sequence = 3;
+  fixed64 log_sequence = 3;
 }
 
 // AuditSuccess records the log sequence range created by a successful proposal
@@ -50,8 +50,8 @@ message AuditSuccess {
   // Contiguous log sequence range [min_log_sequence, max_log_sequence] produced
   // by this proposal. Both are inclusive. When a proposal produces a single log,
   // min == max. When it produces no logs (all idempotent), both are 0.
-  uint64 min_log_sequence = 1;
-  uint64 max_log_sequence = 2;
+  fixed64 min_log_sequence = 1;
+  fixed64 max_log_sequence = 2;
 
   // Accounts whose volumes were transient in this proposal, keyed by ledger.
   // The index builder uses this to skip account→transaction mappings for

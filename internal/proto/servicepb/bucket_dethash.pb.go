@@ -4,6 +4,7 @@
 package servicepb
 
 import (
+	binary "encoding/binary"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
 	maps "maps"
 	slices "slices"
@@ -1290,9 +1291,10 @@ func (m *RevertTransactionPayload) MarshalToSizedBufferDeterministicVT(dAtA []by
 		dAtA[i] = 0x10
 	}
 	if m.TransactionId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.TransactionId))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.TransactionId))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -2165,9 +2167,10 @@ func (m *ExecutePreparedQueryRequest) MarshalToSizedBufferDeterministicVT(dAtA [
 		dAtA[i] = 0x38
 	}
 	if m.MinLogSequence != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MinLogSequence))
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MinLogSequence))
 		i--
-		dAtA[i] = 0x30
+		dAtA[i] = 0x31
 	}
 	if len(m.Cursor) > 0 {
 		i -= len(m.Cursor)
