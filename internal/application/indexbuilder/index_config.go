@@ -100,7 +100,7 @@ func (b *Builder) initIndexConfig() {
 	} else {
 		for _, e := range entries {
 			b.schemaRewriteTasks = append(b.schemaRewriteTasks, &schemaRewriteTask{
-				ledger:     e.Ledger,
+				ledgerID:   e.LedgerID,
 				targetType: commonpb.TargetType(e.TargetType),
 				key:        e.Key,
 				toType:     commonpb.MetadataType(e.ToType),
@@ -125,8 +125,8 @@ func (b *Builder) loadLedgerIndexConfig(info *commonpb.LedgerInfo) {
 
 	// Metadata indexes — include both READY and BUILDING.
 	if info.GetMetadataSchema() != nil {
-		b.loadMetadataIndexes(cfg, info.GetName(), commonpb.TargetType_TARGET_TYPE_ACCOUNT, info.GetMetadataSchema().GetAccountFields())
-		b.loadMetadataIndexes(cfg, info.GetName(), commonpb.TargetType_TARGET_TYPE_TRANSACTION, info.GetMetadataSchema().GetTransactionFields())
+		b.loadMetadataIndexes(cfg, info.GetName(), info.GetId(), commonpb.TargetType_TARGET_TYPE_ACCOUNT, info.GetMetadataSchema().GetAccountFields())
+		b.loadMetadataIndexes(cfg, info.GetName(), info.GetId(), commonpb.TargetType_TARGET_TYPE_TRANSACTION, info.GetMetadataSchema().GetTransactionFields())
 	}
 
 	// Builtin transaction indexes (including address indexes) — include both READY and BUILDING.
@@ -149,7 +149,7 @@ func (b *Builder) loadLedgerIndexConfig(info *commonpb.LedgerInfo) {
 
 			cfg.txBuiltinIndexed[entry.index] = true
 			if entry.status == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
-				b.addBackfillTaskForTxBuiltin(info.GetName(), entry.index)
+				b.addBackfillTaskForTxBuiltin(info.GetName(), info.GetId(), entry.index)
 			}
 		}
 	}
@@ -170,7 +170,7 @@ func (b *Builder) loadLedgerIndexConfig(info *commonpb.LedgerInfo) {
 
 			cfg.logBuiltinIndexed[entry.index] = true
 			if entry.status == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
-				b.addBackfillTaskForLogBuiltin(info.GetName(), entry.index)
+				b.addBackfillTaskForLogBuiltin(info.GetName(), info.GetId(), entry.index)
 			}
 		}
 	}
@@ -243,7 +243,8 @@ func (b *Builder) stripBuildingIndexes() func() {
 // loadMetadataIndexes loads metadata indexes for a given target type.
 func (b *Builder) loadMetadataIndexes(
 	cfg *ledgerIndexConfig,
-	ledger string,
+	ledgerName string,
+	ledgerID uint32,
 	target commonpb.TargetType,
 	fields map[string]*commonpb.MetadataFieldSchema,
 ) {
@@ -256,12 +257,12 @@ func (b *Builder) loadMetadataIndexes(
 		case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
 			cfg.acctMetadataIndexed[key] = true
 			if field.GetIndexBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
-				b.addBackfillTaskForAcctMetadata(ledger, key)
+				b.addBackfillTaskForAcctMetadata(ledgerName, ledgerID, key)
 			}
 		case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
 			cfg.txMetadataIndexed[key] = true
 			if field.GetIndexBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
-				b.addBackfillTaskForTxMetadata(ledger, key)
+				b.addBackfillTaskForTxMetadata(ledgerName, ledgerID, key)
 			}
 		}
 	}
@@ -323,7 +324,7 @@ func (b *Builder) getOrCreateLedgerConfig(ledger string) *ledgerIndexConfig {
 // handleCreateIndexLog updates the index config cache when a CreateIndex log is processed.
 // The index starts in BUILDING state — it is NOT marked as ready here.
 // A backfill task is created to replay historical logs for the new index.
-func (b *Builder) handleCreateIndexLog(ledger string, log *commonpb.CreateIndexLog) {
+func (b *Builder) handleCreateIndexLog(ledger string, ledgerID uint32, log *commonpb.CreateIndexLog) {
 	cfg := b.getOrCreateLedgerConfig(ledger)
 
 	switch idx := log.GetIndex().(type) {
@@ -331,10 +332,10 @@ func (b *Builder) handleCreateIndexLog(ledger string, log *commonpb.CreateIndexL
 		switch txIdx := idx.Transaction.GetKind().(type) {
 		case *commonpb.TransactionIndex_Builtin:
 			cfg.txBuiltinIndexed[txIdx.Builtin] = true
-			b.addBackfillTaskForTxBuiltin(ledger, txIdx.Builtin)
+			b.addBackfillTaskForTxBuiltin(ledger, ledgerID, txIdx.Builtin)
 		case *commonpb.TransactionIndex_MetadataKey:
 			cfg.txMetadataIndexed[txIdx.MetadataKey] = true
-			b.addBackfillTaskForTxMetadata(ledger, txIdx.MetadataKey)
+			b.addBackfillTaskForTxMetadata(ledger, ledgerID, txIdx.MetadataKey)
 		}
 	case *commonpb.CreateIndexLog_Account:
 		switch acctIdx := idx.Account.GetKind().(type) {
@@ -343,11 +344,11 @@ func (b *Builder) handleCreateIndexLog(ledger string, log *commonpb.CreateIndexL
 			// No backfill function for account builtins yet — add when needed.
 		case *commonpb.AccountIndex_MetadataKey:
 			cfg.acctMetadataIndexed[acctIdx.MetadataKey] = true
-			b.addBackfillTaskForAcctMetadata(ledger, acctIdx.MetadataKey)
+			b.addBackfillTaskForAcctMetadata(ledger, ledgerID, acctIdx.MetadataKey)
 		}
 	case *commonpb.CreateIndexLog_LogBuiltin:
 		cfg.logBuiltinIndexed[idx.LogBuiltin] = true
-		b.addBackfillTaskForLogBuiltin(ledger, idx.LogBuiltin)
+		b.addBackfillTaskForLogBuiltin(ledger, ledgerID, idx.LogBuiltin)
 	}
 }
 

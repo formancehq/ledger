@@ -23,7 +23,7 @@ func TestProcessSetMetadataFieldType_Account(t *testing.T) {
 
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
-	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger"}
+	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 1}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true).AnyTimes()
@@ -81,7 +81,7 @@ func TestProcessSetMetadataFieldType_Transaction(t *testing.T) {
 
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
-	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger"}
+	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 1}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true).AnyTimes()
@@ -130,7 +130,7 @@ func TestProcessSetMetadataFieldType_Ledger(t *testing.T) {
 
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
-	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger"}
+	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 1}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true).AnyTimes()
@@ -227,6 +227,7 @@ func TestProcessRemoveMetadataFieldType_Account(t *testing.T) {
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "test-ledger",
+		Id:   1,
 		MetadataSchema: &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"amount": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
@@ -285,6 +286,7 @@ func TestProcessRemoveMetadataFieldType_Transaction(t *testing.T) {
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "test-ledger",
+		Id:   1,
 		MetadataSchema: &commonpb.MetadataSchema{
 			TransactionFields: map[string]*commonpb.MetadataFieldSchema{
 				"priority": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
@@ -331,6 +333,7 @@ func TestProcessRemoveMetadataFieldType_Ledger(t *testing.T) {
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "test-ledger",
+		Id:   1,
 		MetadataSchema: &commonpb.MetadataSchema{
 			LedgerFields: map[string]*commonpb.MetadataFieldSchema{
 				"env": {Type: commonpb.MetadataType_METADATA_TYPE_STRING},

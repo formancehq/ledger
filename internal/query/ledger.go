@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 
 	"go.opentelemetry.io/otel"
@@ -60,10 +61,10 @@ func EnrichLedgerMetadata(reader dal.PebbleReader, attrs *attributes.Attributes,
 		return nil
 	}
 
-	// Canonical prefix for this ledger's metadata: [ledger]\x01
-	prefix := make([]byte, len(info.GetName())+1)
-	n := copy(prefix, info.GetName())
-	prefix[n] = 0x01
+	// Canonical prefix for this ledger's metadata: [ledgerID BE 4B]\x01
+	prefix := make([]byte, 4+1)
+	binary.BigEndian.PutUint32(prefix[0:4], info.GetId())
+	prefix[4] = 0x01
 
 	entries, err := attrs.LedgerMetadata.ComputeAllForPrefix(reader, prefix)
 	if err != nil {
@@ -100,4 +101,15 @@ func EnrichLedgerMetadata(reader dal.PebbleReader, attrs *attributes.Attributes,
 	info.Metadata = metadata
 
 	return nil
+}
+
+// ReadNextLedgerID reads the next ledger ID counter from Pebble.
+// Returns 1 if no counter has been stored yet.
+func ReadNextLedgerID(reader dal.PebbleReader) (uint32, error) {
+	v, err := dal.ReadUint32(reader, []byte{dal.ZoneGlobal, dal.SubGlobNextLedgerID}, 1)
+	if err != nil {
+		return 0, fmt.Errorf("getting next ledger ID: %w", err)
+	}
+
+	return v, nil
 }

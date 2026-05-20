@@ -161,7 +161,7 @@ func (m *Manager) reconcile() {
 			batchSize = m.maxBatchSize
 		}
 
-		w := NewWorker(name, batchSize, source, m.store, m.proposer, m.preloader, m.logger, m.meterProvider)
+		w := NewWorker(name, info.GetId(), batchSize, source, m.store, m.proposer, m.preloader, m.logger, m.meterProvider)
 		w.Start()
 		m.workers[name] = w
 	}

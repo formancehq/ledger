@@ -11,7 +11,7 @@ import (
 func TestDiscoverNumscriptDependencies(t *testing.T) {
 	t.Parallel()
 
-	const ledgerID = "test-ledger"
+	const ledgerID uint32 = 1
 	testCache := NewNumscriptCache(0)
 
 	t.Run("simple transfer discovers source and destination", func(t *testing.T) {
@@ -30,11 +30,11 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 		require.Len(t, result.DestinationVolumes, 1)
 
 		_, hasAlice := result.SourceVolumes[domain.VolumeKey{
-			AccountKey: domain.AccountKey{Ledger: ledgerID, Account: "users:alice"},
+			AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: "users:alice"},
 			Asset:      "USD/2",
 		}]
 		_, hasBob := result.DestinationVolumes[domain.VolumeKey{
-			AccountKey: domain.AccountKey{Ledger: ledgerID, Account: "users:bob"},
+			AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: "users:bob"},
 			Asset:      "USD/2",
 		}]
 
@@ -58,11 +58,11 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 		require.Len(t, result.DestinationVolumes, 1)
 
 		_, hasWorld := result.SourceVolumes[domain.VolumeKey{
-			AccountKey: domain.AccountKey{Ledger: ledgerID, Account: "world"},
+			AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: "world"},
 			Asset:      "EUR/2",
 		}]
 		_, hasTreasury := result.DestinationVolumes[domain.VolumeKey{
-			AccountKey: domain.AccountKey{Ledger: ledgerID, Account: "treasury"},
+			AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: "treasury"},
 			Asset:      "EUR/2",
 		}]
 
@@ -95,7 +95,7 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 		require.Len(t, result.DestinationVolumes, 1)
 
 		_, hasEscrow := result.DestinationVolumes[domain.VolumeKey{
-			AccountKey: domain.AccountKey{Ledger: ledgerID, Account: "escrow:order-123"},
+			AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: "escrow:order-123"},
 			Asset:      "USD/2",
 		}]
 		require.True(t, hasEscrow, "should discover interpolated account address")
@@ -118,15 +118,15 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 		require.NoError(t, err)
 
 		_, hasChecking := result.SourceVolumes[domain.VolumeKey{
-			AccountKey: domain.AccountKey{Ledger: ledgerID, Account: "users:alice:checking"},
+			AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: "users:alice:checking"},
 			Asset:      "USD/2",
 		}]
 		_, hasSavings := result.SourceVolumes[domain.VolumeKey{
-			AccountKey: domain.AccountKey{Ledger: ledgerID, Account: "users:alice:savings"},
+			AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: "users:alice:savings"},
 			Asset:      "USD/2",
 		}]
 		_, hasMerchant := result.DestinationVolumes[domain.VolumeKey{
-			AccountKey: domain.AccountKey{Ledger: ledgerID, Account: "merchant"},
+			AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: "merchant"},
 			Asset:      "USD/2",
 		}]
 
@@ -152,11 +152,11 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 		require.NoError(t, err)
 
 		_, hasAlice := result.DestinationVolumes[domain.VolumeKey{
-			AccountKey: domain.AccountKey{Ledger: ledgerID, Account: "users:alice"},
+			AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: "users:alice"},
 			Asset:      "USD/2",
 		}]
 		_, hasBob := result.DestinationVolumes[domain.VolumeKey{
-			AccountKey: domain.AccountKey{Ledger: ledgerID, Account: "users:bob"},
+			AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: "users:bob"},
 			Asset:      "USD/2",
 		}]
 
@@ -214,11 +214,11 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 		require.NoError(t, err)
 
 		for key := range result.SourceVolumes {
-			require.Equal(t, ledgerID, key.Ledger, "all source volume keys should have the correct ledger ID")
+			require.Equal(t, ledgerID, key.LedgerID, "all source volume keys should have the correct ledger ID")
 		}
 
 		for key := range result.DestinationVolumes {
-			require.Equal(t, ledgerID, key.Ledger, "all destination volume keys should have the correct ledger ID")
+			require.Equal(t, ledgerID, key.LedgerID, "all destination volume keys should have the correct ledger ID")
 		}
 	})
 

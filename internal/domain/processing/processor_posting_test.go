@@ -20,11 +20,11 @@ func TestApplyPosting_WorldAccount_SkipsBalanceCheck(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	sourceKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "world"},
+		AccountKey: domain.AccountKey{LedgerID: 0, Account: "world"},
 		Asset:      "USD",
 	}
 	destKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "users:001"},
+		AccountKey: domain.AccountKey{LedgerID: 0, Account: "users:001"},
 		Asset:      "USD",
 	}
 
@@ -46,7 +46,7 @@ func TestApplyPosting_WorldAccount_SkipsBalanceCheck(t *testing.T) {
 		Asset:       "USD",
 	}
 
-	err := applyPosting(mockStore, "test-ledger", posting, false)
+	err := applyPosting(mockStore, 0, posting, false)
 	require.NoError(t, err)
 }
 
@@ -59,7 +59,7 @@ func TestApplyPosting_InsufficientFunds(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	sourceKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "bank"},
+		AccountKey: domain.AccountKey{LedgerID: 0, Account: "bank"},
 		Asset:      "USD",
 	}
 
@@ -78,7 +78,7 @@ func TestApplyPosting_InsufficientFunds(t *testing.T) {
 		Asset:       "USD",
 	}
 
-	err := applyPosting(mockStore, "test-ledger", posting, false)
+	err := applyPosting(mockStore, 0, posting, false)
 	require.Error(t, err)
 
 	var insufficientFunds *domain.ErrInsufficientFunds
@@ -96,7 +96,7 @@ func TestApplyPosting_ZeroInputBalance(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	sourceKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "bank"},
+		AccountKey: domain.AccountKey{LedgerID: 0, Account: "bank"},
 		Asset:      "USD",
 	}
 
@@ -116,7 +116,7 @@ func TestApplyPosting_ZeroInputBalance(t *testing.T) {
 	}
 
 	// Zero input means posting amount > 0 triggers ErrInsufficientFunds
-	err := applyPosting(mockStore, "test-ledger", posting, false)
+	err := applyPosting(mockStore, 0, posting, false)
 	require.Error(t, err)
 
 	var insufficientFunds *domain.ErrInsufficientFunds
@@ -134,11 +134,11 @@ func TestApplyPosting_ForceSkipsBalanceCheck(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	sourceKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "bank"},
+		AccountKey: domain.AccountKey{LedgerID: 0, Account: "bank"},
 		Asset:      "USD",
 	}
 	destKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "users:001"},
+		AccountKey: domain.AccountKey{LedgerID: 0, Account: "users:001"},
 		Asset:      "USD",
 	}
 
@@ -164,7 +164,7 @@ func TestApplyPosting_ForceSkipsBalanceCheck(t *testing.T) {
 		Asset:       "USD",
 	}
 
-	err := applyPosting(mockStore, "test-ledger", posting, true)
+	err := applyPosting(mockStore, 0, posting, true)
 	require.NoError(t, err)
 }
 
@@ -177,7 +177,7 @@ func TestApplyPosting_NotPreloaded(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	sourceKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "bank"},
+		AccountKey: domain.AccountKey{LedgerID: 0, Account: "bank"},
 		Asset:      "USD",
 	}
 
@@ -190,7 +190,7 @@ func TestApplyPosting_NotPreloaded(t *testing.T) {
 		Asset:       "USD",
 	}
 
-	err := applyPosting(mockStore, "test-ledger", posting, false)
+	err := applyPosting(mockStore, 0, posting, false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not fully preloaded")
 }

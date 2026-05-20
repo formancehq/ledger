@@ -12,18 +12,18 @@ import (
 func countKeyDeltas[K attributes.Key, T any](
 	updates []attributes.Update[K, T],
 	deletions []attributes.Deletion[K],
-	getLedger func(K) string,
-) map[string]int64 {
-	deltas := make(map[string]int64)
+	getLedgerID func(K) uint32,
+) map[uint32]int64 {
+	deltas := make(map[uint32]int64)
 
 	for i := range updates {
 		if !updates[i].Old.IsDefined() {
-			deltas[getLedger(updates[i].Key)]++
+			deltas[getLedgerID(updates[i].Key)]++
 		}
 	}
 
 	for i := range deletions {
-		deltas[getLedger(deletions[i].Key)]--
+		deltas[getLedgerID(deletions[i].Key)]--
 	}
 
 	return deltas
@@ -61,13 +61,13 @@ func isVolumePreloadZero(v *raftcmdpb.VolumePair) bool {
 // countVolumeDeltas counts per-ledger new volume keys.
 // A volume is "new" if Old is either undefined or a zero preload placeholder
 // (the preloader always seeds missing volumes with {0,0} in the cache).
-func countVolumeDeltas(updates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]) map[string]int64 {
-	deltas := make(map[string]int64)
+func countVolumeDeltas(updates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]) map[uint32]int64 {
+	deltas := make(map[uint32]int64)
 
 	for i := range updates {
 		old := updates[i].Old
 		if !old.IsDefined() || isVolumePreloadZero(old.Value()) {
-			deltas[updates[i].Key.Ledger]++
+			deltas[updates[i].Key.LedgerID]++
 		}
 	}
 
@@ -87,27 +87,27 @@ func (b *WriteSet) updateBoundaryCounters(
 	volumeDeltas := countVolumeDeltas(volumeUpdates)
 
 	// Per-ledger ephemeral/transient counters (monotonic).
-	ephemeralEvicted := make(map[string]uint64)
-	transientUsed := make(map[string]uint64)
+	ephemeralEvicted := make(map[uint32]uint64)
+	transientUsed := make(map[uint32]uint64)
 
 	// Ephemeral volumes are purged after commit — subtract from volume count.
 	for i := range purgedVolumes {
-		ledger := purgedVolumes[i].Key.Ledger
+		ledger := purgedVolumes[i].Key.LedgerID
 		volumeDeltas[ledger]--
 		ephemeralEvicted[ledger]++
 	}
 	// Transient volumes are never persisted — subtract from volume count.
 	for i := range transientVolumes {
-		ledger := transientVolumes[i].Key.Ledger
+		ledger := transientVolumes[i].Key.LedgerID
 		volumeDeltas[ledger]--
 		transientUsed[ledger]++
 	}
 
-	metadataDeltas := countKeyDeltas(metadataUpdates, metadataDeletions, func(k domain.MetadataKey) string { return k.Ledger })
-	referenceDeltas := countKeyDeltas(referenceUpdates, nil, func(k domain.TransactionReferenceKey) string { return k.Ledger })
+	metadataDeltas := countKeyDeltas(metadataUpdates, metadataDeletions, func(k domain.MetadataKey) uint32 { return k.LedgerID })
+	referenceDeltas := countKeyDeltas(referenceUpdates, nil, func(k domain.TransactionReferenceKey) uint32 { return k.LedgerID })
 
 	// Collect all affected ledgers.
-	affected := make(map[string]struct{})
+	affected := make(map[uint32]struct{})
 	for ledger := range volumeDeltas {
 		affected[ledger] = struct{}{}
 	}
@@ -124,18 +124,26 @@ func (b *WriteSet) updateBoundaryCounters(
 		affected[ledger] = struct{}{}
 	}
 
-	for ledger := range affected {
-		boundaries, ok := b.GetBoundaries(ledger)
+	for ledgerID := range affected {
+		// Resolve ledger ID → name for boundaries lookup (LedgerKey uses name).
+		info, ok := b.GetLedgerByID(ledgerID)
+		if !ok {
+			continue
+		}
+
+		ledgerName := info.GetName()
+
+		boundaries, ok := b.GetBoundaries(ledgerName)
 		if !ok {
 			continue
 		}
 
 		boundaries = boundaries.CloneVT()
-		boundaries.VolumeCount = applyDelta(boundaries.GetVolumeCount(), volumeDeltas[ledger])
-		boundaries.MetadataCount = applyDelta(boundaries.GetMetadataCount(), metadataDeltas[ledger])
-		boundaries.ReferenceCount = applyDelta(boundaries.GetReferenceCount(), referenceDeltas[ledger])
-		boundaries.EphemeralEvictedCount += ephemeralEvicted[ledger]
-		boundaries.TransientUsedCount += transientUsed[ledger]
-		b.PutBoundaries(ledger, boundaries)
+		boundaries.VolumeCount = applyDelta(boundaries.GetVolumeCount(), volumeDeltas[ledgerID])
+		boundaries.MetadataCount = applyDelta(boundaries.GetMetadataCount(), metadataDeltas[ledgerID])
+		boundaries.ReferenceCount = applyDelta(boundaries.GetReferenceCount(), referenceDeltas[ledgerID])
+		boundaries.EphemeralEvictedCount += ephemeralEvicted[ledgerID]
+		boundaries.TransientUsedCount += transientUsed[ledgerID]
+		b.PutBoundaries(ledgerName, boundaries)
 	}
 }

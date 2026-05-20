@@ -80,18 +80,18 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 
 	// Add some data
 	batch = s.NewBatch()
-	worldKey := domain.VolumeKey{AccountKey: domain.AccountKey{Ledger: ledgerName, Account: "world"}, Asset: "USD"}
+	worldKey := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "world"}, Asset: "USD"}
 	worldCanonicalKey := worldKey.Bytes()
 	_, err = attrs.Volume.Set(batch, worldCanonicalKey, &raftcmdpb.VolumePair{
 		Output: commonpb.NewUint256FromUint64(100),
 	})
 	require.NoError(t, err)
 
-	metadataKey := domain.MetadataKey{AccountKey: domain.AccountKey{Ledger: ledgerName, Account: "bank"}, Key: "key"}
+	metadataKey := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "bank"}, Key: "key"}
 	metadataCanonicalKey := metadataKey.Bytes()
 	_, err = attrs.Metadata.Set(batch, metadataCanonicalKey, commonpb.NewStringValue("value"))
 	require.NoError(t, err)
-	txKey := domain.TransactionKey{Ledger: ledgerName, ID: 1}
+	txKey := domain.TransactionKey{LedgerID: 1, ID: 1}
 	_, err = attrs.Transaction.Set(batch, txKey.Bytes(), &commonpb.TransactionState{
 		CreatedByLog: 1,
 	})

@@ -82,7 +82,7 @@ func (d *DerivedRegistry) GetReverted(key domain.TransactionKey) bool {
 		return true
 	}
 	// Check the authoritative bitset
-	bs, ok := d.parent.Reversions[key.Ledger]
+	bs, ok := d.parent.Reversions[key.LedgerID]
 	if !ok {
 		return false
 	}

@@ -1,6 +1,7 @@
 package indexbuilder
 
 import (
+	"encoding/binary"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,14 +11,21 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
 )
 
+func uint32BE(v uint32) []byte {
+	var buf [4]byte
+	binary.BigEndian.PutUint32(buf[:], v)
+
+	return buf[:]
+}
+
 func TestSchemaRewriteBBKey_Account(t *testing.T) {
 	t.Parallel()
 
-	key := schemaRewriteBBKey("myledger", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status")
+	key := schemaRewriteBBKey(1, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status")
 
-	// Expected format: [ledger\x00]S[targetType_byte][key]
-	expected := []byte("myledger")
-	expected = append(expected, 0x00, readstore.BackfillKindSchemaRewrite, byte(commonpb.TargetType_TARGET_TYPE_ACCOUNT))
+	// Expected format: [ledgerID_BE_4B]S[targetType_byte][key]
+	expected := uint32BE(1)
+	expected = append(expected, readstore.BackfillKindSchemaRewrite, byte(commonpb.TargetType_TARGET_TYPE_ACCOUNT))
 	expected = append(expected, "status"...)
 
 	assert.Equal(t, expected, key)
@@ -26,10 +34,10 @@ func TestSchemaRewriteBBKey_Account(t *testing.T) {
 func TestSchemaRewriteBBKey_Transaction(t *testing.T) {
 	t.Parallel()
 
-	key := schemaRewriteBBKey("prod", commonpb.TargetType_TARGET_TYPE_TRANSACTION, "category")
+	key := schemaRewriteBBKey(2, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "category")
 
-	expected := []byte("prod")
-	expected = append(expected, 0x00, readstore.BackfillKindSchemaRewrite, byte(commonpb.TargetType_TARGET_TYPE_TRANSACTION))
+	expected := uint32BE(2)
+	expected = append(expected, readstore.BackfillKindSchemaRewrite, byte(commonpb.TargetType_TARGET_TYPE_TRANSACTION))
 	expected = append(expected, "category"...)
 
 	assert.Equal(t, expected, key)
@@ -38,10 +46,10 @@ func TestSchemaRewriteBBKey_Transaction(t *testing.T) {
 func TestSchemaRewriteBBKey_EmptyMetadataKey(t *testing.T) {
 	t.Parallel()
 
-	key := schemaRewriteBBKey("ledger", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "")
+	key := schemaRewriteBBKey(3, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "")
 
-	expected := []byte("ledger")
-	expected = append(expected, 0x00, readstore.BackfillKindSchemaRewrite, byte(commonpb.TargetType_TARGET_TYPE_ACCOUNT))
+	expected := uint32BE(3)
+	expected = append(expected, readstore.BackfillKindSchemaRewrite, byte(commonpb.TargetType_TARGET_TYPE_ACCOUNT))
 
 	assert.Equal(t, expected, key)
 }
@@ -49,8 +57,8 @@ func TestSchemaRewriteBBKey_EmptyMetadataKey(t *testing.T) {
 func TestSchemaRewriteBBKey_DifferentTargetTypesProduceDifferentKeys(t *testing.T) {
 	t.Parallel()
 
-	keyAcct := schemaRewriteBBKey("ledger", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "key")
-	keyTx := schemaRewriteBBKey("ledger", commonpb.TargetType_TARGET_TYPE_TRANSACTION, "key")
+	keyAcct := schemaRewriteBBKey(1, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "key")
+	keyTx := schemaRewriteBBKey(1, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "key")
 
 	assert.NotEqual(t, keyAcct, keyTx)
 }
@@ -66,10 +74,10 @@ func TestBackfillBBKey_TxBuiltin(t *testing.T) {
 		},
 	}
 
-	key := backfillBBKey("myledger", id)
+	key := backfillBBKey(1, id)
 
-	expected := []byte("myledger")
-	expected = append(expected, 0x00, readstore.BackfillKindTxBuiltin, byte(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
+	expected := uint32BE(1)
+	expected = append(expected, readstore.BackfillKindTxBuiltin, byte(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
 
 	assert.Equal(t, expected, key)
 }
@@ -85,10 +93,10 @@ func TestBackfillBBKey_TxMetadata(t *testing.T) {
 		},
 	}
 
-	key := backfillBBKey("prod", id)
+	key := backfillBBKey(2, id)
 
-	expected := []byte("prod")
-	expected = append(expected, 0x00, readstore.BackfillKindTxMetadata)
+	expected := uint32BE(2)
+	expected = append(expected, readstore.BackfillKindTxMetadata)
 	expected = append(expected, "category"...)
 
 	assert.Equal(t, expected, key)
@@ -105,10 +113,10 @@ func TestBackfillBBKey_AcctBuiltin(t *testing.T) {
 		},
 	}
 
-	key := backfillBBKey("myledger", id)
+	key := backfillBBKey(1, id)
 
-	expected := []byte("myledger")
-	expected = append(expected, 0x00, readstore.BackfillKindAcctBuiltin, byte(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED))
+	expected := uint32BE(1)
+	expected = append(expected, readstore.BackfillKindAcctBuiltin, byte(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED))
 
 	assert.Equal(t, expected, key)
 }
@@ -124,10 +132,10 @@ func TestBackfillBBKey_AcctMetadata(t *testing.T) {
 		},
 	}
 
-	key := backfillBBKey("ledger1", id)
+	key := backfillBBKey(1, id)
 
-	expected := []byte("ledger1")
-	expected = append(expected, 0x00, readstore.BackfillKindAcctMetadata)
+	expected := uint32BE(1)
+	expected = append(expected, readstore.BackfillKindAcctMetadata)
 	expected = append(expected, "role"...)
 
 	assert.Equal(t, expected, key)
@@ -139,10 +147,10 @@ func TestBackfillBBKey_LogBuiltin(t *testing.T) {
 	logIdx := commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER
 	id := indexID{logBuiltin: &logIdx}
 
-	key := backfillBBKey("myledger", id)
+	key := backfillBBKey(1, id)
 
-	expected := []byte("myledger")
-	expected = append(expected, 0x00, readstore.BackfillKindLogBuiltin, byte(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER))
+	expected := uint32BE(1)
+	expected = append(expected, readstore.BackfillKindLogBuiltin, byte(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER))
 
 	assert.Equal(t, expected, key)
 }
@@ -150,7 +158,7 @@ func TestBackfillBBKey_LogBuiltin(t *testing.T) {
 func TestBackfillBBKey_EmptyIndexID_ReturnsNil(t *testing.T) {
 	t.Parallel()
 
-	key := backfillBBKey("ledger", indexID{})
+	key := backfillBBKey(1, indexID{})
 	assert.Nil(t, key)
 }
 

@@ -89,6 +89,7 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 	// Register a ledger with an ephemeral account type.
 	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "test",
+		Id:   1,
 		AccountTypes: map[string]*commonpb.AccountType{
 			"clearing": {
 				Name:        "clearing",
@@ -109,15 +110,19 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 	)
 	require.NoError(t, err)
 
+	derived := NewDerivedRegistry(machine.Registry)
+	derived.Ledgers.Put(domain.LedgerKey{Name: "test"}, ledgerInfo)
+
 	buf := &WriteSet{
-		fsm: machine,
+		fsm:     machine,
+		Derived: derived,
 	}
 
 	updates := []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{
 		{
 			// Ephemeral + zero balance → should be purged
-			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{Ledger: "test", Account: "clearing:tx1"}, Asset: "USD"},
-			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{Ledger: "test", Account: "clearing:tx1"}, Asset: "USD"}).Bytes(),
+			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "clearing:tx1"}, Asset: "USD"},
+			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "clearing:tx1"}, Asset: "USD"}).Bytes(),
 			New: &raftcmdpb.VolumePair{
 				Input:  commonpb.NewUint256FromUint64(100),
 				Output: commonpb.NewUint256FromUint64(100),
@@ -125,8 +130,8 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 		},
 		{
 			// Ephemeral + non-zero balance → should be kept
-			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{Ledger: "test", Account: "clearing:tx2"}, Asset: "EUR"},
-			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{Ledger: "test", Account: "clearing:tx2"}, Asset: "EUR"}).Bytes(),
+			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "clearing:tx2"}, Asset: "EUR"},
+			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "clearing:tx2"}, Asset: "EUR"}).Bytes(),
 			New: &raftcmdpb.VolumePair{
 				Input:  commonpb.NewUint256FromUint64(200),
 				Output: commonpb.NewUint256FromUint64(50),
@@ -134,8 +139,8 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 		},
 		{
 			// Non-ephemeral + zero balance → should be kept
-			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{Ledger: "test", Account: "users:alice"}, Asset: "USD"},
-			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{Ledger: "test", Account: "users:alice"}, Asset: "USD"}).Bytes(),
+			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:alice"}, Asset: "USD"},
+			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:alice"}, Asset: "USD"}).Bytes(),
 			New: &raftcmdpb.VolumePair{
 				Input:  commonpb.NewUint256FromUint64(0),
 				Output: commonpb.NewUint256FromUint64(0),
@@ -143,8 +148,8 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 		},
 		{
 			// No matching type + zero balance → should be kept
-			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{Ledger: "test", Account: "unknown:addr"}, Asset: "USD"},
-			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{Ledger: "test", Account: "unknown:addr"}, Asset: "USD"}).Bytes(),
+			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "unknown:addr"}, Asset: "USD"},
+			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "unknown:addr"}, Asset: "USD"}).Bytes(),
 			New: &raftcmdpb.VolumePair{
 				Input:  commonpb.NewUint256FromUint64(50),
 				Output: commonpb.NewUint256FromUint64(50),
@@ -168,6 +173,7 @@ func TestPartitionVolumesTransient(t *testing.T) {
 
 	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "test",
+		Id:   1,
 		AccountTypes: map[string]*commonpb.AccountType{
 			"staging": {
 				Name:        "staging",
@@ -187,15 +193,19 @@ func TestPartitionVolumesTransient(t *testing.T) {
 	)
 	require.NoError(t, err)
 
+	derived := NewDerivedRegistry(machine.Registry)
+	derived.Ledgers.Put(domain.LedgerKey{Name: "test"}, ledgerInfo)
+
 	buf := &WriteSet{
-		fsm: machine,
+		fsm:     machine,
+		Derived: derived,
 	}
 
 	updates := []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{
 		{
 			// Transient + zero balance → transient partition
-			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{Ledger: "test", Account: "staging:tx1"}, Asset: "USD"},
-			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{Ledger: "test", Account: "staging:tx1"}, Asset: "USD"}).Bytes(),
+			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "staging:tx1"}, Asset: "USD"},
+			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "staging:tx1"}, Asset: "USD"}).Bytes(),
 			New: &raftcmdpb.VolumePair{
 				Input:  commonpb.NewUint256FromUint64(100),
 				Output: commonpb.NewUint256FromUint64(100),
@@ -203,8 +213,8 @@ func TestPartitionVolumesTransient(t *testing.T) {
 		},
 		{
 			// Transient + non-zero balance → transient partition (validation catches this later)
-			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{Ledger: "test", Account: "staging:tx2"}, Asset: "EUR"},
-			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{Ledger: "test", Account: "staging:tx2"}, Asset: "EUR"}).Bytes(),
+			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "staging:tx2"}, Asset: "EUR"},
+			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "staging:tx2"}, Asset: "EUR"}).Bytes(),
 			New: &raftcmdpb.VolumePair{
 				Input:  commonpb.NewUint256FromUint64(200),
 				Output: commonpb.NewUint256FromUint64(50),
@@ -212,8 +222,8 @@ func TestPartitionVolumesTransient(t *testing.T) {
 		},
 		{
 			// Normal account → kept
-			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{Ledger: "test", Account: "users:alice"}, Asset: "USD"},
-			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{Ledger: "test", Account: "users:alice"}, Asset: "USD"}).Bytes(),
+			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:alice"}, Asset: "USD"},
+			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:alice"}, Asset: "USD"}).Bytes(),
 			New: &raftcmdpb.VolumePair{
 				Input:  commonpb.NewUint256FromUint64(100),
 				Output: commonpb.NewUint256FromUint64(0),

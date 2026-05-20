@@ -1,13 +1,14 @@
 package readstore
 
 import (
+	"encoding/binary"
 	"fmt"
 
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // ledgerScopedPrefixes lists all readstore key prefixes that contain
-// ledger-scoped data (keyed by [prefix...][ledger\x00]...).
+// ledger-scoped data (keyed by [prefix...][ledgerID_BE_4B]...).
 var ledgerScopedPrefixes = [][]byte{
 	{PrefixMetadataIndex},
 	{PrefixEntityExists},
@@ -25,22 +26,25 @@ var ledgerScopedPrefixes = [][]byte{
 
 // DeleteLedgerIndexes removes all read index data for the given ledger.
 // It performs range deletes on all ledger-scoped prefixes:
-// [prefix...][ledger\x00] -> [prefix...][ledger\x01].
-func DeleteLedgerIndexes(batch *dal.Batch, ledgerName string) error {
-	ledgerPrefix := append([]byte(ledgerName), 0x00)
-	ledgerPrefixUpper := IncrementBytes(ledgerPrefix)
+// [prefix...][ledgerID_BE_4B] -> [prefix...][(ledgerID+1)_BE_4B].
+func DeleteLedgerIndexes(batch *dal.Batch, ledgerID uint32) error {
+	var ledgerPrefix [4]byte
+	binary.BigEndian.PutUint32(ledgerPrefix[:], ledgerID)
+
+	var ledgerPrefixUpper [4]byte
+	binary.BigEndian.PutUint32(ledgerPrefixUpper[:], ledgerID+1)
 
 	for _, prefix := range ledgerScopedPrefixes {
-		start := make([]byte, 0, len(prefix)+len(ledgerPrefix))
+		start := make([]byte, 0, len(prefix)+4)
 		start = append(start, prefix...)
-		start = append(start, ledgerPrefix...)
+		start = append(start, ledgerPrefix[:]...)
 
-		end := make([]byte, 0, len(prefix)+len(ledgerPrefixUpper))
+		end := make([]byte, 0, len(prefix)+4)
 		end = append(end, prefix...)
-		end = append(end, ledgerPrefixUpper...)
+		end = append(end, ledgerPrefixUpper[:]...)
 
 		if err := batch.DeleteRangeNoSync(start, end); err != nil {
-			return fmt.Errorf("deleting readstore prefix %x for ledger %q: %w", prefix, ledgerName, err)
+			return fmt.Errorf("deleting readstore prefix %x for ledger %d: %w", prefix, ledgerID, err)
 		}
 	}
 

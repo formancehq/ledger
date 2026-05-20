@@ -1,6 +1,7 @@
 package ctrl
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math/big"
 
@@ -109,7 +110,7 @@ func enforceAccountSchema(schema *commonpb.MetadataSchema, metadata map[string]*
 func scanAccount(
 	reader dal.PebbleReader,
 	attrs *attributes.Attributes,
-	ledger string,
+	ledgerID uint32,
 	address string,
 	schema *commonpb.MetadataSchema,
 	diagLogger ...logging.Logger,
@@ -119,12 +120,10 @@ func scanAccount(
 		logger = diagLogger[0]
 	}
 
-	// Build canonical prefix: [ledger\x00][address]
-	canonicalBase := make([]byte, len(ledger)+1+len(address))
-	n := copy(canonicalBase, ledger)
-	canonicalBase[n] = 0x00
-	n++
-	copy(canonicalBase[n:], address)
+	// Build canonical prefix: [ledgerID BE 4B][address]
+	canonicalBase := make([]byte, 4+len(address))
+	binary.BigEndian.PutUint32(canonicalBase[0:4], ledgerID)
+	copy(canonicalBase[4:], address)
 
 	// Volume scan: canonical prefix [ledger\x00][address]\x00
 	volPrefix := make([]byte, len(canonicalBase)+1)

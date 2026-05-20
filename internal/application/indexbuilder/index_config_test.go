@@ -145,7 +145,7 @@ func TestHandleCreateIndexLog_TxBuiltin(t *testing.T) {
 
 	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
 
-	b.handleCreateIndexLog("ledger1", &commonpb.CreateIndexLog{
+	b.handleCreateIndexLog("ledger1", 1, &commonpb.CreateIndexLog{
 		Index: &commonpb.CreateIndexLog_Transaction{
 			Transaction: &commonpb.TransactionIndex{
 				Kind: &commonpb.TransactionIndex_Builtin{
@@ -168,7 +168,7 @@ func TestHandleCreateIndexLog_TxMetadata(t *testing.T) {
 
 	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
 
-	b.handleCreateIndexLog("ledger1", &commonpb.CreateIndexLog{
+	b.handleCreateIndexLog("ledger1", 1, &commonpb.CreateIndexLog{
 		Index: &commonpb.CreateIndexLog_Transaction{
 			Transaction: &commonpb.TransactionIndex{
 				Kind: &commonpb.TransactionIndex_MetadataKey{MetadataKey: "category"},
@@ -187,7 +187,7 @@ func TestHandleCreateIndexLog_AcctMetadata(t *testing.T) {
 
 	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
 
-	b.handleCreateIndexLog("ledger1", &commonpb.CreateIndexLog{
+	b.handleCreateIndexLog("ledger1", 1, &commonpb.CreateIndexLog{
 		Index: &commonpb.CreateIndexLog_Account{
 			Account: &commonpb.AccountIndex{
 				Kind: &commonpb.AccountIndex_MetadataKey{MetadataKey: "role"},
@@ -206,7 +206,7 @@ func TestHandleCreateIndexLog_AcctBuiltin(t *testing.T) {
 
 	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
 
-	b.handleCreateIndexLog("ledger1", &commonpb.CreateIndexLog{
+	b.handleCreateIndexLog("ledger1", 1, &commonpb.CreateIndexLog{
 		Index: &commonpb.CreateIndexLog_Account{
 			Account: &commonpb.AccountIndex{
 				Kind: &commonpb.AccountIndex_Builtin{
@@ -228,7 +228,7 @@ func TestHandleCreateIndexLog_LogBuiltin(t *testing.T) {
 
 	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
 
-	b.handleCreateIndexLog("ledger1", &commonpb.CreateIndexLog{
+	b.handleCreateIndexLog("ledger1", 1, &commonpb.CreateIndexLog{
 		Index: &commonpb.CreateIndexLog_LogBuiltin{
 			LogBuiltin: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
 		},
@@ -267,7 +267,7 @@ func TestHandleDropIndexLog_TxBuiltin(t *testing.T) {
 	b.indexConfig["ledger1"] = cfg
 
 	// Add a backfill task that should be removed.
-	b.addBackfillTaskForTxBuiltin("ledger1", commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 	require.Len(t, b.backfillTasks, 1)
 
 	b.handleDropIndexLog("ledger1", &commonpb.DropIndexLog{
@@ -292,7 +292,7 @@ func TestHandleDropIndexLog_TxMetadata(t *testing.T) {
 	cfg.txMetadataIndexed["category"] = true
 	b.indexConfig["ledger1"] = cfg
 
-	b.addBackfillTaskForTxMetadata("ledger1", "category")
+	b.addBackfillTaskForTxMetadata("ledger1", 1, "category")
 	require.Len(t, b.backfillTasks, 1)
 
 	b.handleDropIndexLog("ledger1", &commonpb.DropIndexLog{
@@ -336,7 +336,7 @@ func TestHandleDropIndexLog_AcctMetadata(t *testing.T) {
 	cfg.acctMetadataIndexed["role"] = true
 	b.indexConfig["ledger1"] = cfg
 
-	b.addBackfillTaskForAcctMetadata("ledger1", "role")
+	b.addBackfillTaskForAcctMetadata("ledger1", 1, "role")
 	require.Len(t, b.backfillTasks, 1)
 
 	b.handleDropIndexLog("ledger1", &commonpb.DropIndexLog{
@@ -359,7 +359,7 @@ func TestHandleDropIndexLog_LogBuiltin(t *testing.T) {
 	cfg.logBuiltinIndexed[commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER] = true
 	b.indexConfig["ledger1"] = cfg
 
-	b.addBackfillTaskForLogBuiltin("ledger1", commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER)
+	b.addBackfillTaskForLogBuiltin("ledger1", 1, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER)
 	require.Len(t, b.backfillTasks, 1)
 
 	b.handleDropIndexLog("ledger1", &commonpb.DropIndexLog{
@@ -470,7 +470,7 @@ func TestHandleIndexReadyLog_RemovesBackfillTask(t *testing.T) {
 	b := newTestBuilderWithStore(t)
 
 	// Create an index and its backfill task.
-	b.handleCreateIndexLog("ledger1", &commonpb.CreateIndexLog{
+	b.handleCreateIndexLog("ledger1", 1, &commonpb.CreateIndexLog{
 		Index: &commonpb.CreateIndexLog_Transaction{
 			Transaction: &commonpb.TransactionIndex{
 				Kind: &commonpb.TransactionIndex_Builtin{
@@ -500,8 +500,8 @@ func TestAddBackfillTask_NoDuplicates(t *testing.T) {
 
 	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
 
-	b.addBackfillTaskForTxBuiltin("ledger1", commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
-	b.addBackfillTaskForTxBuiltin("ledger1", commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 
 	assert.Len(t, b.backfillTasks, 1)
 }
@@ -511,11 +511,11 @@ func TestAddBackfillTask_DifferentIndexes(t *testing.T) {
 
 	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
 
-	b.addBackfillTaskForTxBuiltin("ledger1", commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
-	b.addBackfillTaskForTxBuiltin("ledger1", commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
-	b.addBackfillTaskForTxMetadata("ledger1", "category")
-	b.addBackfillTaskForAcctMetadata("ledger1", "role")
-	b.addBackfillTaskForLogBuiltin("ledger1", commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER)
+	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
+	b.addBackfillTaskForTxMetadata("ledger1", 1, "category")
+	b.addBackfillTaskForAcctMetadata("ledger1", 1, "role")
+	b.addBackfillTaskForLogBuiltin("ledger1", 1, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER)
 
 	assert.Len(t, b.backfillTasks, 5)
 }
@@ -534,10 +534,10 @@ func TestStripBuildingIndexes(t *testing.T) {
 	b.indexConfig["ledger1"] = cfg
 
 	// Add backfill tasks for some of the indexes (simulating BUILDING state).
-	b.addBackfillTaskForTxBuiltin("ledger1", commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
-	b.addBackfillTaskForTxMetadata("ledger1", "category")
-	b.addBackfillTaskForAcctMetadata("ledger1", "role")
-	b.addBackfillTaskForLogBuiltin("ledger1", commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER)
+	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	b.addBackfillTaskForTxMetadata("ledger1", 1, "category")
+	b.addBackfillTaskForAcctMetadata("ledger1", 1, "role")
+	b.addBackfillTaskForLogBuiltin("ledger1", 1, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER)
 
 	restore := b.stripBuildingIndexes()
 
@@ -573,7 +573,7 @@ func TestStripBuildingIndexes_NilConfig(t *testing.T) {
 				Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
 			},
 		}},
-		bbKey: backfillBBKey("missing", indexID{transaction: &commonpb.TransactionIndex{
+		bbKey: backfillBBKey(99, indexID{transaction: &commonpb.TransactionIndex{
 			Kind: &commonpb.TransactionIndex_Builtin{
 				Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
 			},
@@ -746,7 +746,7 @@ func TestAddSchemaRewriteTask_NotIndexed(t *testing.T) {
 
 	cfg := newLedgerIndexConfig()
 
-	b.addSchemaRewriteTask(cfg, "ledger1", &commonpb.SetMetadataFieldTypeLog{
+	b.addSchemaRewriteTask(cfg, 1, &commonpb.SetMetadataFieldTypeLog{
 		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 		Key:        "status",
 		Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
@@ -763,19 +763,19 @@ func TestAddSchemaRewriteTask_Indexed(t *testing.T) {
 	cfg := newLedgerIndexConfig()
 	cfg.acctMetadataIndexed["status"] = true
 
-	b.addSchemaRewriteTask(cfg, "ledger1", &commonpb.SetMetadataFieldTypeLog{
+	b.addSchemaRewriteTask(cfg, 1, &commonpb.SetMetadataFieldTypeLog{
 		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 		Key:        "status",
 		Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
 	})
 
 	require.Len(t, b.schemaRewriteTasks, 1)
-	assert.Equal(t, "ledger1", b.schemaRewriteTasks[0].ledger)
+	assert.Equal(t, uint32(1), b.schemaRewriteTasks[0].ledgerID)
 	assert.Equal(t, commonpb.TargetType_TARGET_TYPE_ACCOUNT, b.schemaRewriteTasks[0].targetType)
 	assert.Equal(t, "status", b.schemaRewriteTasks[0].key)
 	assert.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, b.schemaRewriteTasks[0].toType)
 
-	expectedBBKey := schemaRewriteBBKey("ledger1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status")
+	expectedBBKey := schemaRewriteBBKey(1, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status")
 	assert.Equal(t, expectedBBKey, b.schemaRewriteTasks[0].bbKey)
 }
 
@@ -787,7 +787,7 @@ func TestAddSchemaRewriteTask_DuplicateResetsProgress(t *testing.T) {
 	cfg := newLedgerIndexConfig()
 	cfg.acctMetadataIndexed["status"] = true
 
-	b.addSchemaRewriteTask(cfg, "ledger1", &commonpb.SetMetadataFieldTypeLog{
+	b.addSchemaRewriteTask(cfg, 1, &commonpb.SetMetadataFieldTypeLog{
 		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 		Key:        "status",
 		Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
@@ -797,7 +797,7 @@ func TestAddSchemaRewriteTask_DuplicateResetsProgress(t *testing.T) {
 	b.schemaRewriteTasks[0].rmapCursor = []byte("some-cursor")
 	b.schemaRewriteTasks[0].processedCount = 100
 
-	b.addSchemaRewriteTask(cfg, "ledger1", &commonpb.SetMetadataFieldTypeLog{
+	b.addSchemaRewriteTask(cfg, 1, &commonpb.SetMetadataFieldTypeLog{
 		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 		Key:        "status",
 		Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
@@ -817,7 +817,7 @@ func TestAddSchemaRewriteTask_Transaction(t *testing.T) {
 	cfg := newLedgerIndexConfig()
 	cfg.txMetadataIndexed["tag"] = true
 
-	b.addSchemaRewriteTask(cfg, "ledger1", &commonpb.SetMetadataFieldTypeLog{
+	b.addSchemaRewriteTask(cfg, 1, &commonpb.SetMetadataFieldTypeLog{
 		TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
 		Key:        "tag",
 		Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
@@ -842,9 +842,9 @@ func TestRemoveSchemaRewriteTask(t *testing.T) {
 		readStore:   store,
 	}
 
-	bbKey1 := schemaRewriteBBKey("ledger1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "key1")
-	bbKey2 := schemaRewriteBBKey("ledger1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "key2")
-	bbKey3 := schemaRewriteBBKey("ledger1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "key3")
+	bbKey1 := schemaRewriteBBKey(1, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "key1")
+	bbKey2 := schemaRewriteBBKey(1, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "key2")
+	bbKey3 := schemaRewriteBBKey(1, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "key3")
 
 	b.schemaRewriteTasks = []*schemaRewriteTask{
 		{ledger: "ledger1", key: "key1", bbKey: bbKey1},
@@ -882,9 +882,9 @@ func TestRemoveBackfillTask(t *testing.T) {
 		readStore:   store,
 	}
 
-	b.addBackfillTaskForTxBuiltin("ledger1", commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
-	b.addBackfillTaskForTxBuiltin("ledger1", commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
-	b.addBackfillTaskForTxMetadata("ledger1", "category")
+	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
+	b.addBackfillTaskForTxMetadata("ledger1", 1, "category")
 	require.Len(t, b.backfillTasks, 3)
 
 	b.removeBackfillTask(indexID{transaction: &commonpb.TransactionIndex{

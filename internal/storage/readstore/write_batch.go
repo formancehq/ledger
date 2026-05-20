@@ -76,50 +76,50 @@ func (wb *WriteBatch) Flush() error {
 // --- High-level write helpers ---
 
 // WriteAccountTxMapping records that a transaction involves an account (any role).
-func (wb *WriteBatch) WriteAccountTxMapping(kb *dal.KeyBuilder, ledger, account string, txID uint64) error {
-	key := AccountTxKey(kb, PrefixAccountTx, ledger, account, txID)
+func (wb *WriteBatch) WriteAccountTxMapping(kb *dal.KeyBuilder, ledgerID uint32, account string, txID uint64) error {
+	key := AccountTxKey(kb, PrefixAccountTx, ledgerID, account, txID)
 
 	return wb.put(key, nil)
 }
 
 // WriteSourceAccountTxMapping records that an account is a source in a transaction.
-func (wb *WriteBatch) WriteSourceAccountTxMapping(kb *dal.KeyBuilder, ledger, account string, txID uint64) error {
-	key := AccountTxKey(kb, PrefixSourceAccountTx, ledger, account, txID)
+func (wb *WriteBatch) WriteSourceAccountTxMapping(kb *dal.KeyBuilder, ledgerID uint32, account string, txID uint64) error {
+	key := AccountTxKey(kb, PrefixSourceAccountTx, ledgerID, account, txID)
 
 	return wb.put(key, nil)
 }
 
 // WriteDestAccountTxMapping records that an account is a destination in a transaction.
-func (wb *WriteBatch) WriteDestAccountTxMapping(kb *dal.KeyBuilder, ledger, account string, txID uint64) error {
-	key := AccountTxKey(kb, PrefixDestAccountTx, ledger, account, txID)
+func (wb *WriteBatch) WriteDestAccountTxMapping(kb *dal.KeyBuilder, ledgerID uint32, account string, txID uint64) error {
+	key := AccountTxKey(kb, PrefixDestAccountTx, ledgerID, account, txID)
 
 	return wb.put(key, nil)
 }
 
 // WriteMetadataIndex inserts a forward index entry in the metadata inverted index.
-func (wb *WriteBatch) WriteMetadataIndex(kb *dal.KeyBuilder, ledger, ns, metadataKey string, encodedValue, entityID []byte) error {
-	key := MetadataIndexKey(kb, ledger, ns, metadataKey, encodedValue, entityID)
+func (wb *WriteBatch) WriteMetadataIndex(kb *dal.KeyBuilder, ledgerID uint32, ns, metadataKey string, encodedValue, entityID []byte) error {
+	key := MetadataIndexKey(kb, ledgerID, ns, metadataKey, encodedValue, entityID)
 
 	return wb.put(key, nil)
 }
 
 // DeleteMetadataIndex removes a forward index entry from the metadata inverted index.
-func (wb *WriteBatch) DeleteMetadataIndex(kb *dal.KeyBuilder, ledger, ns, metadataKey string, encodedValue, entityID []byte) error {
-	key := MetadataIndexKey(kb, ledger, ns, metadataKey, encodedValue, entityID)
+func (wb *WriteBatch) DeleteMetadataIndex(kb *dal.KeyBuilder, ledgerID uint32, ns, metadataKey string, encodedValue, entityID []byte) error {
+	key := MetadataIndexKey(kb, ledgerID, ns, metadataKey, encodedValue, entityID)
 
 	return wb.del(key)
 }
 
 // WriteEntityExists inserts an entry in the entity-ordered existence index.
-func (wb *WriteBatch) WriteEntityExists(kb *dal.KeyBuilder, ledger, ns, metaKey string, isNull bool, entityID []byte) error {
-	key := EntityExistsKey(kb, ledger, ns, metaKey, isNull, entityID)
+func (wb *WriteBatch) WriteEntityExists(kb *dal.KeyBuilder, ledgerID uint32, ns, metaKey string, isNull bool, entityID []byte) error {
+	key := EntityExistsKey(kb, ledgerID, ns, metaKey, isNull, entityID)
 
 	return wb.put(key, nil)
 }
 
 // DeleteEntityExists removes an entry from the entity-ordered existence index.
-func (wb *WriteBatch) DeleteEntityExists(kb *dal.KeyBuilder, ledger, ns, metaKey string, isNull bool, entityID []byte) error {
-	key := EntityExistsKey(kb, ledger, ns, metaKey, isNull, entityID)
+func (wb *WriteBatch) DeleteEntityExists(kb *dal.KeyBuilder, ledgerID uint32, ns, metaKey string, isNull bool, entityID []byte) error {
+	key := EntityExistsKey(kb, ledgerID, ns, metaKey, isNull, entityID)
 
 	return wb.del(key)
 }
@@ -129,24 +129,24 @@ func (wb *WriteBatch) DeleteEntityExists(kb *dal.KeyBuilder, ledger, ns, metaKey
 func (wb *WriteBatch) ReplaceMetadataIndex(
 	kb *dal.KeyBuilder,
 	reverseKey []byte,
-	ledger, ns, metadataKey string,
+	ledgerID uint32, ns, metadataKey string,
 	newEncodedValue, oldEncodedValue, entityID []byte,
 ) error {
 	if oldEncodedValue != nil {
-		if err := wb.DeleteMetadataIndex(kb, ledger, ns, metadataKey, oldEncodedValue, entityID); err != nil {
+		if err := wb.DeleteMetadataIndex(kb, ledgerID, ns, metadataKey, oldEncodedValue, entityID); err != nil {
 			return err
 		}
 
-		if err := wb.DeleteEntityExists(kb, ledger, ns, metadataKey, isNullEncoded(oldEncodedValue), entityID); err != nil {
+		if err := wb.DeleteEntityExists(kb, ledgerID, ns, metadataKey, isNullEncoded(oldEncodedValue), entityID); err != nil {
 			return err
 		}
 	}
 
-	if err := wb.WriteMetadataIndex(kb, ledger, ns, metadataKey, newEncodedValue, entityID); err != nil {
+	if err := wb.WriteMetadataIndex(kb, ledgerID, ns, metadataKey, newEncodedValue, entityID); err != nil {
 		return err
 	}
 
-	if err := wb.WriteEntityExists(kb, ledger, ns, metadataKey, isNullEncoded(newEncodedValue), entityID); err != nil {
+	if err := wb.WriteEntityExists(kb, ledgerID, ns, metadataKey, isNullEncoded(newEncodedValue), entityID); err != nil {
 		return err
 	}
 
@@ -158,15 +158,15 @@ func (wb *WriteBatch) ReplaceMetadataIndex(
 func (wb *WriteBatch) DeleteMetadataEntryWithPrevious(
 	kb *dal.KeyBuilder,
 	reverseKey []byte,
-	ledger, ns, metadataKey string,
+	ledgerID uint32, ns, metadataKey string,
 	oldEncodedValue, entityID []byte,
 ) error {
 	if oldEncodedValue != nil {
-		if err := wb.DeleteMetadataIndex(kb, ledger, ns, metadataKey, oldEncodedValue, entityID); err != nil {
+		if err := wb.DeleteMetadataIndex(kb, ledgerID, ns, metadataKey, oldEncodedValue, entityID); err != nil {
 			return err
 		}
 
-		if err := wb.DeleteEntityExists(kb, ledger, ns, metadataKey, isNullEncoded(oldEncodedValue), entityID); err != nil {
+		if err := wb.DeleteEntityExists(kb, ledgerID, ns, metadataKey, isNullEncoded(oldEncodedValue), entityID); err != nil {
 			return err
 		}
 	}
@@ -175,37 +175,37 @@ func (wb *WriteBatch) DeleteMetadataEntryWithPrevious(
 }
 
 // WriteTransactionReferenceIndex inserts an entry in the transaction reference index.
-func (wb *WriteBatch) WriteTransactionReferenceIndex(kb *dal.KeyBuilder, ledger, reference string, txID uint64) error {
-	key := TransactionReferenceKey(kb, ledger, reference, txID)
+func (wb *WriteBatch) WriteTransactionReferenceIndex(kb *dal.KeyBuilder, ledgerID uint32, reference string, txID uint64) error {
+	key := TransactionReferenceKey(kb, ledgerID, reference, txID)
 
 	return wb.put(key, nil)
 }
 
 // WriteTransactionTimestampIndex inserts an entry in the transaction timestamp index.
-func (wb *WriteBatch) WriteTransactionTimestampIndex(kb *dal.KeyBuilder, ledger string, timestamp, txID uint64) error {
-	key := TransactionTimestampKey(kb, ledger, timestamp, txID)
+func (wb *WriteBatch) WriteTransactionTimestampIndex(kb *dal.KeyBuilder, ledgerID uint32, timestamp, txID uint64) error {
+	key := TransactionTimestampKey(kb, ledgerID, timestamp, txID)
 
 	return wb.put(key, nil)
 }
 
 // WriteTransactionInsertedAtIndex inserts an entry in the transaction inserted_at index.
-func (wb *WriteBatch) WriteTransactionInsertedAtIndex(kb *dal.KeyBuilder, ledger string, timestamp, txID uint64) error {
-	key := TransactionInsertedAtKey(kb, ledger, timestamp, txID)
+func (wb *WriteBatch) WriteTransactionInsertedAtIndex(kb *dal.KeyBuilder, ledgerID uint32, timestamp, txID uint64) error {
+	key := TransactionInsertedAtKey(kb, ledgerID, timestamp, txID)
 
 	return wb.put(key, nil)
 }
 
 // WriteLedgerLogDateIndex inserts an entry in the per-ledger log date index.
-func (wb *WriteBatch) WriteLedgerLogDateIndex(kb *dal.KeyBuilder, ledger string, timestamp, logID uint64) error {
-	key := LedgerLogDateKey(kb, ledger, timestamp, logID)
+func (wb *WriteBatch) WriteLedgerLogDateIndex(kb *dal.KeyBuilder, ledgerID uint32, timestamp, logID uint64) error {
+	key := LedgerLogDateKey(kb, ledgerID, timestamp, logID)
 
 	return wb.put(key, nil)
 }
 
 // WriteLedgerLogIndex inserts an entry in the per-ledger log index.
 // The value is the global sequence, encoded as big-endian uint64.
-func (wb *WriteBatch) WriteLedgerLogIndex(kb *dal.KeyBuilder, ledger string, logID, globalSequence uint64) error {
-	key := LedgerLogKey(kb, ledger, logID)
+func (wb *WriteBatch) WriteLedgerLogIndex(kb *dal.KeyBuilder, ledgerID uint32, logID, globalSequence uint64) error {
+	key := LedgerLogKey(kb, ledgerID, logID)
 
 	var val [8]byte
 	binary.BigEndian.PutUint64(val[:], globalSequence)

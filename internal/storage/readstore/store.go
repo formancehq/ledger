@@ -374,8 +374,8 @@ func (s *Store) ReadAllBackfillProgress() (map[string]uint64, error) {
 
 // SchemaRewriteEntry is a decoded schema rewrite progress entry.
 type SchemaRewriteEntry struct {
-	Ledger     string
-	TargetType byte   // from key: [ledger\x00]S[targetType_byte][key]
+	LedgerID   uint32
+	TargetType byte   // from key: [ledgerID_BE_4B]S[targetType_byte][key]
 	Key        string // metadata field name
 	BBKey      []byte // key without the prefix byte (for backfill operations)
 	ToType     byte   // first byte of value
@@ -407,7 +407,7 @@ func (s *Store) ReadAllSchemaRewriteProgress() ([]SchemaRewriteEntry, error) {
 
 		// Strip prefix bytes.
 		innerKey := k[len(prefix):]
-		ledger, kind, details, ok := ParseBackfillKey(innerKey)
+		ledgerID, kind, details, ok := ParseBackfillKey(innerKey)
 
 		if !ok || kind != BackfillKindSchemaRewrite {
 			continue
@@ -440,7 +440,7 @@ func (s *Store) ReadAllSchemaRewriteProgress() ([]SchemaRewriteEntry, error) {
 		copy(bbKey, innerKey)
 
 		entries = append(entries, SchemaRewriteEntry{
-			Ledger:     ledger,
+			LedgerID:   ledgerID,
 			TargetType: targetType,
 			Key:        metaKey,
 			BBKey:      bbKey,
@@ -454,10 +454,10 @@ func (s *Store) ReadAllSchemaRewriteProgress() ([]SchemaRewriteEntry, error) {
 
 // BackfillEntry is a decoded backfill progress entry returned by ListBackfillProgress.
 type BackfillEntry struct {
-	Ledger  string
-	Kind    byte   // BackfillKindTxBuiltin, etc.
-	Details []byte // kind-specific payload
-	Cursor  uint64
+	LedgerID uint32
+	Kind     byte   // BackfillKindTxBuiltin, etc.
+	Details  []byte // kind-specific payload
+	Cursor   uint64
 }
 
 // ListBackfillProgress reads and decodes all backfill progress entries.
@@ -470,16 +470,16 @@ func (s *Store) ListBackfillProgress() ([]BackfillEntry, error) {
 	var entries []BackfillEntry
 
 	for key, cursor := range all {
-		ledger, kind, details, ok := ParseBackfillKey([]byte(key))
+		ledgerID, kind, details, ok := ParseBackfillKey([]byte(key))
 		if !ok {
 			continue
 		}
 
 		entries = append(entries, BackfillEntry{
-			Ledger:  ledger,
-			Kind:    kind,
-			Details: details,
-			Cursor:  cursor,
+			LedgerID: ledgerID,
+			Kind:     kind,
+			Details:  details,
+			Cursor:   cursor,
 		})
 	}
 

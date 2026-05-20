@@ -9,7 +9,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processAddMetadata(ledger string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.SaveMetadataOrder, s InMemoryStore, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, error) {
+func (p *RequestProcessor) processAddMetadata(ledger string, ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.SaveMetadataOrder, s InMemoryStore, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, error) {
 	if order.GetTarget() == nil {
 		return nil, domain.ErrTargetRequired
 	}
@@ -40,8 +40,8 @@ func (p *RequestProcessor) processAddMetadata(ledger string, boundaries *raftcmd
 		for key, value := range order.GetMetadata() {
 			metaKey := domain.MetadataKey{
 				AccountKey: domain.AccountKey{
-					Ledger:  ledger,
-					Account: target.Account.GetAddr(),
+					LedgerID: ledgerID,
+					Account:  target.Account.GetAddr(),
 				},
 				Key: key,
 			}
@@ -62,7 +62,7 @@ func (p *RequestProcessor) processAddMetadata(ledger string, boundaries *raftcmd
 			return nil, &domain.ErrTransactionNotFound{TransactionID: target.Transaction.GetId()}
 		}
 
-		txKey := domain.TransactionKey{Ledger: ledger, ID: target.Transaction.GetId()}
+		txKey := domain.TransactionKey{LedgerID: ledgerID, ID: target.Transaction.GetId()}
 
 		state, err := s.GetTransactionState(txKey)
 		if err != nil {
@@ -105,7 +105,7 @@ func (p *RequestProcessor) processAddMetadata(ledger string, boundaries *raftcmd
 	}, nil
 }
 
-func (p *RequestProcessor) processDeleteMetadata(ledger string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.DeleteMetadataOrder, s InMemoryStore) (*commonpb.LedgerLogPayload, error) {
+func (p *RequestProcessor) processDeleteMetadata(ledger string, ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.DeleteMetadataOrder, s InMemoryStore) (*commonpb.LedgerLogPayload, error) {
 	if order.GetTarget() == nil {
 		return nil, domain.ErrTargetRequired
 	}
@@ -120,8 +120,8 @@ func (p *RequestProcessor) processDeleteMetadata(ledger string, boundaries *raft
 	case *commonpb.Target_Account:
 		metaKey := domain.MetadataKey{
 			AccountKey: domain.AccountKey{
-				Ledger:  ledger,
-				Account: target.Account.GetAddr(),
+				LedgerID: ledgerID,
+				Account:  target.Account.GetAddr(),
 			},
 			Key: order.GetKey(),
 		}
@@ -145,7 +145,7 @@ func (p *RequestProcessor) processDeleteMetadata(ledger string, boundaries *raft
 			return nil, &domain.ErrTransactionNotFound{TransactionID: target.Transaction.GetId()}
 		}
 
-		txKey := domain.TransactionKey{Ledger: ledger, ID: target.Transaction.GetId()}
+		txKey := domain.TransactionKey{LedgerID: ledgerID, ID: target.Transaction.GetId()}
 
 		state, err := s.GetTransactionState(txKey)
 		if err != nil {

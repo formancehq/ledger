@@ -44,6 +44,7 @@ func TestProcessOrders_WithIdempotencyKey_NewRequest(t *testing.T) {
 
 	// Process the order normally
 	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false)
+	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
@@ -196,6 +197,7 @@ func TestProcessOrders_WithoutIdempotencyKey(t *testing.T) {
 	// No idempotency check should be made
 	// Process the order normally
 	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false)
+	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
@@ -212,6 +214,127 @@ func TestProcessOrders_WithoutIdempotencyKey(t *testing.T) {
 	require.NotNil(t, createdLog)
 	require.Equal(t, uint64(100), createdLog.GetSequence())
 	require.NotEmpty(t, createdLog.GetHash(), "log should have a hash")
+}
+
+// TestCreateLedgerAndTransactInSameBatch verifies that a batch containing
+// CreateLedger + CreateTransaction (on the same ledger) succeeds and that
+// the transaction uses the correct LedgerID in its volume keys.
+func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockInMemoryStore(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	now := &commonpb.Timestamp{Data: 1234567890}
+
+	// Track the ledger info stored by CreateLedger so GetLedger can return it.
+	var storedLedgerInfo *commonpb.LedgerInfo
+
+	// Order 1: CreateLedger("myled")
+	mockStore.EXPECT().GetLedger("myled").Return(nil, false) // does not exist yet
+	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
+	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
+	mockStore.EXPECT().PutLedger("myled", gomock.Any()).Do(
+		func(_ string, info *commonpb.LedgerInfo) {
+			storedLedgerInfo = info
+		},
+	)
+	mockStore.EXPECT().PutBoundaries("myled", gomock.Any())
+
+	// Order 2: CreateTransaction on "myled"
+	// After order 1 runs, GetLedger should return the stored info.
+	mockStore.EXPECT().GetLedger("myled").DoAndReturn(func(_ string) (*commonpb.LedgerInfo, bool) {
+		return storedLedgerInfo, storedLedgerInfo != nil
+	}).AnyTimes()
+	mockStore.EXPECT().GetBoundaries("myled").Return(&raftcmdpb.LedgerBoundaries{
+		NextTransactionId: 1,
+		NextLogId:         1,
+	}, true)
+	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
+	mockStore.EXPECT().PutBoundaries("myled", gomock.Any())
+
+	// Volume operations: the LedgerID should be 1 (assigned by CreateLedger).
+	srcKey := domain.VolumeKey{
+		AccountKey: domain.AccountKey{LedgerID: 1, Account: "world"},
+		Asset:      "USD",
+	}
+	dstKey := domain.VolumeKey{
+		AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:bob"},
+		Asset:      "USD",
+	}
+
+	zeroVol := &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
+	}
+
+	mockStore.EXPECT().GetVolume(srcKey).Return(zeroVol, nil)
+	mockStore.EXPECT().PutVolume(srcKey, gomock.Any())
+	mockStore.EXPECT().GetVolume(dstKey).Return(zeroVol, nil)
+	mockStore.EXPECT().PutVolume(dstKey, gomock.Any())
+	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
+	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
+
+	// Hash chaining for 2 logs.
+	var capturedHashes [][]byte
+
+	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(1))
+	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(2))
+
+	gomock.InOrder(
+		mockStore.EXPECT().GetLastLogHash().Return(nil),
+		mockStore.EXPECT().SetLastLogHash(gomock.Any()).Do(func(hash []byte) {
+			capturedHashes = append(capturedHashes, hash)
+		}),
+		mockStore.EXPECT().GetLastLogHash().DoAndReturn(func() []byte {
+			return capturedHashes[0]
+		}),
+		mockStore.EXPECT().SetLastLogHash(gomock.Any()).Do(func(hash []byte) {
+			capturedHashes = append(capturedHashes, hash)
+		}),
+	)
+
+	orders := []*raftcmdpb.Order{
+		{Type: &raftcmdpb.Order_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{Name: "myled"}}},
+		{Type: &raftcmdpb.Order_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Ledger: "myled",
+			Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+				CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+					Postings: []*commonpb.Posting{
+						{
+							Source:      "world",
+							Destination: "users:bob",
+							Amount:      commonpb.NewUint256FromUint64(100),
+							Asset:       "USD",
+						},
+					},
+					Force: true,
+				},
+			},
+		}}},
+	}
+
+	response, err := processor.ProcessOrders(orders, mockStore)
+	require.NoError(t, err)
+	require.Len(t, response, 2)
+
+	// Verify order 1: CreateLedger log with Id=1.
+	createLog := response[0].GetCreatedLog()
+	require.NotNil(t, createLog)
+	require.Equal(t, uint32(1), createLog.GetPayload().GetCreateLedger().GetId())
+
+	// Verify order 2: CreateTransaction succeeded.
+	txLog := response[1].GetCreatedLog()
+	require.NotNil(t, txLog)
+	applyLog := txLog.GetPayload().GetApply()
+	require.NotNil(t, applyLog)
+	createdTx := applyLog.GetLog().GetData().GetCreatedTransaction()
+	require.NotNil(t, createdTx)
+	require.Equal(t, uint64(1), createdTx.GetTransaction().GetId())
 }
 
 func TestProcessOrders_HashChaining(t *testing.T) {
@@ -242,6 +365,7 @@ func TestProcessOrders_HashChaining(t *testing.T) {
 	// For each of the 3 orders: GetLedger, GetDate, PutLedger, PutBoundaries, IncrementNextSequenceID
 	for i, name := range []string{"ledger-1", "ledger-2", "ledger-3"} {
 		mockStore.EXPECT().GetLedger(name).Return(nil, false)
+		mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(i + 1))
 		mockStore.EXPECT().GetDate().Return(now)
 		mockStore.EXPECT().PutLedger(name, gomock.Any())
 		mockStore.EXPECT().PutBoundaries(name, gomock.Any())
@@ -299,6 +423,7 @@ func TestProcessOrders_HashChaining(t *testing.T) {
 
 	for i, name := range []string{"ledger-1", "ledger-2", "ledger-3"} {
 		mockStore2.EXPECT().GetLedger(name).Return(nil, false)
+		mockStore2.EXPECT().IncrementNextLedgerID().Return(uint32(i + 1))
 		mockStore2.EXPECT().GetDate().Return(now)
 		mockStore2.EXPECT().PutLedger(name, gomock.Any())
 		mockStore2.EXPECT().PutBoundaries(name, gomock.Any())

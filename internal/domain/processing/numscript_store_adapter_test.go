@@ -23,9 +23,9 @@ func TestGetBalances_ForceMode(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	adapter := &numscriptStoreAdapter{
-		store:  mockStore,
-		ledger: "test-ledger",
-		force:  true,
+		store:    mockStore,
+		ledgerID: 0,
+		force:    true,
 	}
 
 	query := numscriptlib.BalanceQuery{
@@ -51,13 +51,13 @@ func TestGetBalances_PreloadedVolumes(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	adapter := &numscriptStoreAdapter{
-		store:  mockStore,
-		ledger: "test-ledger",
-		force:  false,
+		store:    mockStore,
+		ledgerID: 0,
+		force:    false,
 	}
 
 	volumeKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "bank"},
+		AccountKey: domain.AccountKey{LedgerID: 0, Account: "bank"},
 		Asset:      "USD",
 	}
 
@@ -86,13 +86,13 @@ func TestGetBalances_NotPreloaded(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	adapter := &numscriptStoreAdapter{
-		store:  mockStore,
-		ledger: "test-ledger",
-		force:  false,
+		store:    mockStore,
+		ledgerID: 0,
+		force:    false,
 	}
 
 	volumeKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "bank"},
+		AccountKey: domain.AccountKey{LedgerID: 0, Account: "bank"},
 		Asset:      "USD",
 	}
 
@@ -117,13 +117,13 @@ func TestGetBalances_VolumeNotFound_ReturnsError(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	adapter := &numscriptStoreAdapter{
-		store:  mockStore,
-		ledger: "test-ledger",
-		force:  false,
+		store:    mockStore,
+		ledgerID: 0,
+		force:    false,
 	}
 
 	volumeKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "bank"},
+		AccountKey: domain.AccountKey{LedgerID: 0, Account: "bank"},
 		Asset:      "USD",
 	}
 
@@ -152,13 +152,13 @@ func TestGetAccountsMetadata_Basic(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	adapter := &numscriptStoreAdapter{
-		store:  mockStore,
-		ledger: "test-ledger",
-		force:  false,
+		store:    mockStore,
+		ledgerID: 0,
+		force:    false,
 	}
 
 	metaKey := domain.MetadataKey{
-		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "users:001"},
+		AccountKey: domain.AccountKey{LedgerID: 0, Account: "users:001"},
 		Key:        "status",
 	}
 
@@ -183,13 +183,13 @@ func TestGetAccountsMetadata_NotFound(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	adapter := &numscriptStoreAdapter{
-		store:  mockStore,
-		ledger: "test-ledger",
-		force:  false,
+		store:    mockStore,
+		ledgerID: 0,
+		force:    false,
 	}
 
 	metaKey := domain.MetadataKey{
-		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "users:001"},
+		AccountKey: domain.AccountKey{LedgerID: 0, Account: "users:001"},
 		Key:        "status",
 	}
 
@@ -215,9 +215,9 @@ func TestGetAccountsMetadata_WithSchemaConversion(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	adapter := &numscriptStoreAdapter{
-		store:  mockStore,
-		ledger: "test-ledger",
-		force:  false,
+		store:    mockStore,
+		ledgerID: 0,
+		force:    false,
 		schema: &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"age": {
@@ -229,7 +229,7 @@ func TestGetAccountsMetadata_WithSchemaConversion(t *testing.T) {
 	}
 
 	metaKey := domain.MetadataKey{
-		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "users:001"},
+		AccountKey: domain.AccountKey{LedgerID: 0, Account: "users:001"},
 		Key:        "age",
 	}
 
@@ -257,13 +257,13 @@ func TestGetAccountsMetadata_NoSchemaLedger(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	adapter := &numscriptStoreAdapter{
-		store:  mockStore,
-		ledger: "test-ledger",
-		force:  false,
+		store:    mockStore,
+		ledgerID: 0,
+		force:    false,
 	}
 
 	metaKey := domain.MetadataKey{
-		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "users:001"},
+		AccountKey: domain.AccountKey{LedgerID: 0, Account: "users:001"},
 		Key:        "age",
 	}
 

@@ -585,6 +585,7 @@ message CreateLedgerLog {
   MirrorSourceConfig mirror_source = 5;
   map<string, AccountType> account_types = 6;
   ChartEnforcementMode default_enforcement_mode = 7;
+  uint32 id = 8;                              // Numeric ledger ID assigned by FSM
 }
 
 message DeleteLedgerLog {
@@ -823,6 +824,7 @@ message LedgerInfo {
   map<string, AccountType> account_types = 10; // Per-type account address validation
   ChartEnforcementMode default_enforcement_mode = 11; // Default enforcement for unmatched accounts
   map<string, MetadataValue> metadata = 12; // Populated at read time from separate attribute store
+  uint32 id = 13;                           // Unique numeric ledger ID (assigned by FSM, used as Pebble key prefix)
 }
 
 // ============================================================================

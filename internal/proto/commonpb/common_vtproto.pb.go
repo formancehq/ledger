@@ -1726,6 +1726,7 @@ func (m *CreateLedgerLog) CloneVT() *CreateLedgerLog {
 	r.Mode = m.Mode
 	r.MirrorSource = m.MirrorSource.CloneVT()
 	r.DefaultEnforcementMode = m.DefaultEnforcementMode
+	r.Id = m.Id
 	if rhs := m.AccountTypes; rhs != nil {
 		tmpContainer := make(map[string]*AccountType, len(rhs))
 		for k, v := range rhs {
@@ -2577,6 +2578,7 @@ func (m *LedgerInfo) CloneVT() *LedgerInfo {
 	r.BuiltinIndexes = m.BuiltinIndexes.CloneVT()
 	r.LogBuiltinIndexes = m.LogBuiltinIndexes.CloneVT()
 	r.DefaultEnforcementMode = m.DefaultEnforcementMode
+	r.Id = m.Id
 	if rhs := m.AccountTypes; rhs != nil {
 		tmpContainer := make(map[string]*AccountType, len(rhs))
 		for k, v := range rhs {
@@ -6519,6 +6521,9 @@ func (this *CreateLedgerLog) EqualVT(that *CreateLedgerLog) bool {
 	if this.DefaultEnforcementMode != that.DefaultEnforcementMode {
 		return false
 	}
+	if this.Id != that.Id {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -8027,6 +8032,9 @@ func (this *LedgerInfo) EqualVT(that *LedgerInfo) bool {
 				return false
 			}
 		}
+	}
+	if this.Id != that.Id {
+		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -14054,6 +14062,11 @@ func (m *CreateLedgerLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.Id != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Id))
+		i--
+		dAtA[i] = 0x40
+	}
 	if m.DefaultEnforcementMode != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DefaultEnforcementMode))
 		i--
@@ -16157,6 +16170,11 @@ func (m *LedgerInfo) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Id != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Id))
+		i--
+		dAtA[i] = 0x68
 	}
 	if len(m.Metadata) > 0 {
 		for k := range m.Metadata {
@@ -20602,6 +20620,9 @@ func (m *CreateLedgerLog) SizeVT() (n int) {
 	if m.DefaultEnforcementMode != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.DefaultEnforcementMode))
 	}
+	if m.Id != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Id))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -21560,6 +21581,9 @@ func (m *LedgerInfo) SizeVT() (n int) {
 			mapEntrySize := 1 + len(k) + protohelpers.SizeOfVarint(uint64(len(k))) + l
 			n += mapEntrySize + 1 + protohelpers.SizeOfVarint(uint64(mapEntrySize))
 		}
+	}
+	if m.Id != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Id))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -33566,6 +33590,25 @@ func (m *CreateLedgerLog) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
+		case 8:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
+			}
+			m.Id = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Id |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -38985,6 +39028,25 @@ func (m *LedgerInfo) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Metadata[mapkey] = mapvalue
 			iNdEx = postIndex
+		case 13:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
+			}
+			m.Id = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Id |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

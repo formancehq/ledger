@@ -115,15 +115,15 @@ func (mr *MockInMemoryStoreMockRecorder) DeleteLedgerMetadata(key any) *gomock.C
 }
 
 // DeleteNumscriptLatest mocks base method.
-func (m *MockInMemoryStore) DeleteNumscriptLatest(ledger, name string) {
+func (m *MockInMemoryStore) DeleteNumscriptLatest(ledgerID uint32, name string) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "DeleteNumscriptLatest", ledger, name)
+	m.ctrl.Call(m, "DeleteNumscriptLatest", ledgerID, name)
 }
 
 // DeleteNumscriptLatest indicates an expected call of DeleteNumscriptLatest.
-func (mr *MockInMemoryStoreMockRecorder) DeleteNumscriptLatest(ledger, name any) *gomock.Call {
+func (mr *MockInMemoryStoreMockRecorder) DeleteNumscriptLatest(ledgerID, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteNumscriptLatest", reflect.TypeOf((*MockInMemoryStore)(nil).DeleteNumscriptLatest), ledger, name)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteNumscriptLatest", reflect.TypeOf((*MockInMemoryStore)(nil).DeleteNumscriptLatest), ledgerID, name)
 }
 
 // DeletePeriodSchedule mocks base method.
@@ -139,15 +139,15 @@ func (mr *MockInMemoryStoreMockRecorder) DeletePeriodSchedule() *gomock.Call {
 }
 
 // DeletePreparedQuery mocks base method.
-func (m *MockInMemoryStore) DeletePreparedQuery(ledger, name string) {
+func (m *MockInMemoryStore) DeletePreparedQuery(ledgerID uint32, name string) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "DeletePreparedQuery", ledger, name)
+	m.ctrl.Call(m, "DeletePreparedQuery", ledgerID, name)
 }
 
 // DeletePreparedQuery indicates an expected call of DeletePreparedQuery.
-func (mr *MockInMemoryStoreMockRecorder) DeletePreparedQuery(ledger, name any) *gomock.Call {
+func (mr *MockInMemoryStoreMockRecorder) DeletePreparedQuery(ledgerID, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePreparedQuery", reflect.TypeOf((*MockInMemoryStore)(nil).DeletePreparedQuery), ledger, name)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePreparedQuery", reflect.TypeOf((*MockInMemoryStore)(nil).DeletePreparedQuery), ledgerID, name)
 }
 
 // DeleteQueryCheckpoint mocks base method.
@@ -335,6 +335,20 @@ func (mr *MockInMemoryStoreMockRecorder) GetNextAuditSequenceID() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNextAuditSequenceID", reflect.TypeOf((*MockInMemoryStore)(nil).GetNextAuditSequenceID))
 }
 
+// GetNextLedgerID mocks base method.
+func (m *MockInMemoryStore) GetNextLedgerID() uint32 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetNextLedgerID")
+	ret0, _ := ret[0].(uint32)
+	return ret0
+}
+
+// GetNextLedgerID indicates an expected call of GetNextLedgerID.
+func (mr *MockInMemoryStoreMockRecorder) GetNextLedgerID() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNextLedgerID", reflect.TypeOf((*MockInMemoryStore)(nil).GetNextLedgerID))
+}
+
 // GetNextPeriodID mocks base method.
 func (m *MockInMemoryStore) GetNextPeriodID() uint64 {
 	m.ctrl.T.Helper()
@@ -378,18 +392,18 @@ func (mr *MockInMemoryStoreMockRecorder) GetNextSequenceID() *gomock.Call {
 }
 
 // GetNumscriptLatestVersion mocks base method.
-func (m *MockInMemoryStore) GetNumscriptLatestVersion(ledger, name string) (string, error) {
+func (m *MockInMemoryStore) GetNumscriptLatestVersion(ledgerID uint32, name string) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetNumscriptLatestVersion", ledger, name)
+	ret := m.ctrl.Call(m, "GetNumscriptLatestVersion", ledgerID, name)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetNumscriptLatestVersion indicates an expected call of GetNumscriptLatestVersion.
-func (mr *MockInMemoryStoreMockRecorder) GetNumscriptLatestVersion(ledger, name any) *gomock.Call {
+func (mr *MockInMemoryStoreMockRecorder) GetNumscriptLatestVersion(ledgerID, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNumscriptLatestVersion", reflect.TypeOf((*MockInMemoryStore)(nil).GetNumscriptLatestVersion), ledger, name)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNumscriptLatestVersion", reflect.TypeOf((*MockInMemoryStore)(nil).GetNumscriptLatestVersion), ledgerID, name)
 }
 
 // GetPeriodByID mocks base method.
@@ -408,18 +422,18 @@ func (mr *MockInMemoryStoreMockRecorder) GetPeriodByID(periodID any) *gomock.Cal
 }
 
 // GetPreparedQuery mocks base method.
-func (m *MockInMemoryStore) GetPreparedQuery(ledger, name string) (*commonpb.PreparedQuery, error) {
+func (m *MockInMemoryStore) GetPreparedQuery(ledgerID uint32, name string) (*commonpb.PreparedQuery, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetPreparedQuery", ledger, name)
+	ret := m.ctrl.Call(m, "GetPreparedQuery", ledgerID, name)
 	ret0, _ := ret[0].(*commonpb.PreparedQuery)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetPreparedQuery indicates an expected call of GetPreparedQuery.
-func (mr *MockInMemoryStoreMockRecorder) GetPreparedQuery(ledger, name any) *gomock.Call {
+func (mr *MockInMemoryStoreMockRecorder) GetPreparedQuery(ledgerID, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPreparedQuery", reflect.TypeOf((*MockInMemoryStore)(nil).GetPreparedQuery), ledger, name)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPreparedQuery", reflect.TypeOf((*MockInMemoryStore)(nil).GetPreparedQuery), ledgerID, name)
 }
 
 // GetReverted mocks base method.
@@ -511,6 +525,20 @@ func (mr *MockInMemoryStoreMockRecorder) GetVolume(key any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVolume", reflect.TypeOf((*MockInMemoryStore)(nil).GetVolume), key)
 }
 
+// IncrementNextLedgerID mocks base method.
+func (m *MockInMemoryStore) IncrementNextLedgerID() uint32 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IncrementNextLedgerID")
+	ret0, _ := ret[0].(uint32)
+	return ret0
+}
+
+// IncrementNextLedgerID indicates an expected call of IncrementNextLedgerID.
+func (mr *MockInMemoryStoreMockRecorder) IncrementNextLedgerID() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IncrementNextLedgerID", reflect.TypeOf((*MockInMemoryStore)(nil).IncrementNextLedgerID))
+}
+
 // IncrementNextPeriodID mocks base method.
 func (m *MockInMemoryStore) IncrementNextPeriodID() uint64 {
 	m.ctrl.T.Helper()
@@ -566,18 +594,18 @@ func (mr *MockInMemoryStoreMockRecorder) MarkLedgerForCleanup(ledger any) *gomoc
 }
 
 // NumscriptVersionExists mocks base method.
-func (m *MockInMemoryStore) NumscriptVersionExists(ledger, name, version string) (bool, error) {
+func (m *MockInMemoryStore) NumscriptVersionExists(ledgerID uint32, name, version string) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "NumscriptVersionExists", ledger, name, version)
+	ret := m.ctrl.Call(m, "NumscriptVersionExists", ledgerID, name, version)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // NumscriptVersionExists indicates an expected call of NumscriptVersionExists.
-func (mr *MockInMemoryStoreMockRecorder) NumscriptVersionExists(ledger, name, version any) *gomock.Call {
+func (mr *MockInMemoryStoreMockRecorder) NumscriptVersionExists(ledgerID, name, version any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NumscriptVersionExists", reflect.TypeOf((*MockInMemoryStore)(nil).NumscriptVersionExists), ledger, name, version)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NumscriptVersionExists", reflect.TypeOf((*MockInMemoryStore)(nil).NumscriptVersionExists), ledgerID, name, version)
 }
 
 // PutAccountMetadata mocks base method.
@@ -641,27 +669,27 @@ func (mr *MockInMemoryStoreMockRecorder) PutLedgerMetadata(key, value any) *gomo
 }
 
 // PutNumscript mocks base method.
-func (m *MockInMemoryStore) PutNumscript(info *commonpb.NumscriptInfo) {
+func (m *MockInMemoryStore) PutNumscript(ledgerID uint32, info *commonpb.NumscriptInfo) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "PutNumscript", info)
+	m.ctrl.Call(m, "PutNumscript", ledgerID, info)
 }
 
 // PutNumscript indicates an expected call of PutNumscript.
-func (mr *MockInMemoryStoreMockRecorder) PutNumscript(info any) *gomock.Call {
+func (mr *MockInMemoryStoreMockRecorder) PutNumscript(ledgerID, info any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutNumscript", reflect.TypeOf((*MockInMemoryStore)(nil).PutNumscript), info)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutNumscript", reflect.TypeOf((*MockInMemoryStore)(nil).PutNumscript), ledgerID, info)
 }
 
 // PutPreparedQuery mocks base method.
-func (m *MockInMemoryStore) PutPreparedQuery(pq *commonpb.PreparedQuery) {
+func (m *MockInMemoryStore) PutPreparedQuery(ledgerID uint32, pq *commonpb.PreparedQuery) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "PutPreparedQuery", pq)
+	m.ctrl.Call(m, "PutPreparedQuery", ledgerID, pq)
 }
 
 // PutPreparedQuery indicates an expected call of PutPreparedQuery.
-func (mr *MockInMemoryStoreMockRecorder) PutPreparedQuery(pq any) *gomock.Call {
+func (mr *MockInMemoryStoreMockRecorder) PutPreparedQuery(ledgerID, pq any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutPreparedQuery", reflect.TypeOf((*MockInMemoryStore)(nil).PutPreparedQuery), pq)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutPreparedQuery", reflect.TypeOf((*MockInMemoryStore)(nil).PutPreparedQuery), ledgerID, pq)
 }
 
 // PutReverted mocks base method.
@@ -749,18 +777,18 @@ func (mr *MockInMemoryStoreMockRecorder) RemoveSinkConfig(name any) *gomock.Call
 }
 
 // ResolveNumscriptContent mocks base method.
-func (m *MockInMemoryStore) ResolveNumscriptContent(ledger, name, version string) (*commonpb.NumscriptInfo, error) {
+func (m *MockInMemoryStore) ResolveNumscriptContent(ledgerID uint32, name, version string) (*commonpb.NumscriptInfo, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ResolveNumscriptContent", ledger, name, version)
+	ret := m.ctrl.Call(m, "ResolveNumscriptContent", ledgerID, name, version)
 	ret0, _ := ret[0].(*commonpb.NumscriptInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ResolveNumscriptContent indicates an expected call of ResolveNumscriptContent.
-func (mr *MockInMemoryStoreMockRecorder) ResolveNumscriptContent(ledger, name, version any) *gomock.Call {
+func (mr *MockInMemoryStoreMockRecorder) ResolveNumscriptContent(ledgerID, name, version any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveNumscriptContent", reflect.TypeOf((*MockInMemoryStore)(nil).ResolveNumscriptContent), ledger, name, version)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveNumscriptContent", reflect.TypeOf((*MockInMemoryStore)(nil).ResolveNumscriptContent), ledgerID, name, version)
 }
 
 // SaveQueryCheckpoint mocks base method.

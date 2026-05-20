@@ -18,12 +18,12 @@ import (
 )
 
 type numscriptPostingProducer struct {
-	cache  *numscript.NumscriptCache
-	ledger string
-	schema *commonpb.MetadataSchema
+	cache    *numscript.NumscriptCache
+	ledgerID uint32
+	schema   *commonpb.MetadataSchema
 }
 
-func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error) {
+func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error) {
 	if order.GetScript() == nil || order.GetScript().GetPlain() == "" {
 		return nil, domain.ErrScriptRequired
 	}
@@ -41,10 +41,10 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order
 	// Create the store adapter
 	// When Force is true, the adapter returns unlimited balances to bypass balance checks
 	storeAdapter := &numscriptStoreAdapter{
-		store:  s,
-		ledger: ledger,
-		force:  order.GetForce(),
-		schema: p.schema,
+		store:    s,
+		ledgerID: ledgerID,
+		force:    order.GetForce(),
+		schema:   p.schema,
 	}
 
 	// Execute the script (experimental features are declared directly in scripts)
@@ -80,8 +80,8 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order
 		// Update source output (money going out)
 		sourceKey := domain.VolumeKey{
 			AccountKey: domain.AccountKey{
-				Ledger:  ledger,
-				Account: posting.Source,
+				LedgerID: ledgerID,
+				Account:  posting.Source,
 			},
 			Asset: posting.Asset,
 		}
@@ -106,8 +106,8 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order
 		// Update destination input (money coming in)
 		destKey := domain.VolumeKey{
 			AccountKey: domain.AccountKey{
-				Ledger:  ledger,
-				Account: posting.Destination,
+				LedgerID: ledgerID,
+				Account:  posting.Destination,
 			},
 			Asset: posting.Asset,
 		}
@@ -141,8 +141,8 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order
 				mdMap[key] = mv
 				s.PutAccountMetadata(domain.MetadataKey{
 					AccountKey: domain.AccountKey{
-						Ledger:  ledger,
-						Account: account,
+						LedgerID: ledgerID,
+						Account:  account,
 					},
 					Key: key,
 				}, mv)
@@ -170,10 +170,10 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order
 
 // numscriptStoreAdapter adapts the Store interface to the numscript.Store interface.
 type numscriptStoreAdapter struct {
-	store  InMemoryStore
-	ledger string
-	force  bool // When true, return unlimited balances to bypass balance checks
-	schema *commonpb.MetadataSchema
+	store    InMemoryStore
+	ledgerID uint32
+	force    bool // When true, return unlimited balances to bypass balance checks
+	schema   *commonpb.MetadataSchema
 }
 
 func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscriptlib.BalanceQuery) (numscriptlib.Balances, error) {
@@ -196,8 +196,8 @@ func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscriptli
 
 			volumeKey := domain.VolumeKey{
 				AccountKey: domain.AccountKey{
-					Ledger:  s.ledger,
-					Account: account,
+					LedgerID: s.ledgerID,
+					Account:  account,
 				},
 				Asset: asset,
 			}
@@ -239,8 +239,8 @@ func (s *numscriptStoreAdapter) GetAccountsMetadata(_ context.Context, query num
 		for _, key := range keys {
 			metaKey := domain.MetadataKey{
 				AccountKey: domain.AccountKey{
-					Ledger:  s.ledger,
-					Account: account,
+					LedgerID: s.ledgerID,
+					Account:  account,
 				},
 				Key: key,
 			}

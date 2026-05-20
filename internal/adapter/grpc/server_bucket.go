@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -257,7 +258,12 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 // computeTransactionReceipt computes a JWT receipt for an existing transaction
 // by looking up its creation log to extract the period ID.
 func (impl *BucketServiceServerImpl) computeTransactionReceipt(ctx context.Context, ledger string, txID uint64, tx *commonpb.Transaction) (string, error) {
-	log, err := query.FindTransactionCreationLog(ctx, impl.store, impl.attrs.Transaction, ledger, txID)
+	ledgerInfo, err := query.GetLedgerByName(ctx, impl.store, ledger)
+	if err != nil {
+		return "", err
+	}
+
+	log, err := query.FindTransactionCreationLog(ctx, impl.store, impl.attrs.Transaction, ledgerInfo.GetId(), txID)
 	if err != nil {
 		return "", err
 	}
@@ -525,7 +531,7 @@ func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, _ *serv
 	progress := make([]*servicepb.IndexBackfillProgress, 0, len(backfillEntries))
 	for _, e := range backfillEntries {
 		entry := &servicepb.IndexBackfillProgress{
-			Ledger: e.Ledger,
+			Ledger: strconv.FormatUint(uint64(e.LedgerID), 10),
 			Cursor: e.Cursor,
 		}
 		switch e.Kind {

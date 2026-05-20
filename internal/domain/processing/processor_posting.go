@@ -14,11 +14,11 @@ import (
 // It checks the source balance (unless skipBalanceCheck is true or source is "world"),
 // increases Output for source and Input for destination.
 // All volumes must be preloaded by the admission layer — nil volumes return an error.
-func applyPosting(s InMemoryStore, ledger string, posting *commonpb.Posting, skipBalanceCheck bool) error {
+func applyPosting(s InMemoryStore, ledgerID uint32, posting *commonpb.Posting, skipBalanceCheck bool) error {
 	sourceKey := domain.VolumeKey{
 		AccountKey: domain.AccountKey{
-			Ledger:  ledger,
-			Account: posting.GetSource(),
+			LedgerID: ledgerID,
+			Account:  posting.GetSource(),
 		},
 		Asset: posting.GetAsset(),
 	}
@@ -70,8 +70,8 @@ func applyPosting(s InMemoryStore, ledger string, posting *commonpb.Posting, ski
 	// Destination receives credit - increase Input
 	destKey := domain.VolumeKey{
 		AccountKey: domain.AccountKey{
-			Ledger:  ledger,
-			Account: posting.GetDestination(),
+			LedgerID: ledgerID,
+			Account:  posting.GetDestination(),
 		},
 		Asset: posting.GetAsset(),
 	}

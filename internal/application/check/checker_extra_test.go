@@ -25,11 +25,11 @@ func TestApplyPostingsSinglePosting(t *testing.T) {
 		newPosting("alice", "bob", "USD", 100),
 	}
 
-	require.NoError(t, domainreplay.ApplyPostings("ledger", postings, rs))
+	require.NoError(t, domainreplay.ApplyPostings(1, postings, rs))
 
 	// Source (alice): output increased by 100
 	sourceKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: "ledger", Account: "alice"},
+		AccountKey: domain.AccountKey{LedgerID: 1, Account: "alice"},
 		Asset:      "USD",
 	}
 	srcPair := readVolume(t, rs, sourceKey.Bytes())
@@ -38,7 +38,7 @@ func TestApplyPostingsSinglePosting(t *testing.T) {
 
 	// Destination (bob): input increased by 100
 	destKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: "ledger", Account: "bob"},
+		AccountKey: domain.AccountKey{LedgerID: 1, Account: "bob"},
 		Asset:      "USD",
 	}
 	dstPair := readVolume(t, rs, destKey.Bytes())
@@ -56,11 +56,11 @@ func TestApplyPostingsMultiplePostings(t *testing.T) {
 		newPosting("treasury", "bob", "USD", 300),
 	}
 
-	require.NoError(t, domainreplay.ApplyPostings("ledger", postings, rs))
+	require.NoError(t, domainreplay.ApplyPostings(1, postings, rs))
 
 	// Treasury: output = 500 + 300 = 800
 	treasuryKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: "ledger", Account: "treasury"},
+		AccountKey: domain.AccountKey{LedgerID: 1, Account: "treasury"},
 		Asset:      "USD",
 	}
 	pair := readVolume(t, rs, treasuryKey.Bytes())
@@ -73,15 +73,15 @@ func TestApplyPostingsAccumulatesAcrossCalls(t *testing.T) {
 
 	rs := newTestReplayStore(t)
 
-	require.NoError(t, domainreplay.ApplyPostings("ledger", []*commonpb.Posting{
+	require.NoError(t, domainreplay.ApplyPostings(1, []*commonpb.Posting{
 		newPosting("world", "alice", "USD", 100),
 	}, rs))
-	require.NoError(t, domainreplay.ApplyPostings("ledger", []*commonpb.Posting{
+	require.NoError(t, domainreplay.ApplyPostings(1, []*commonpb.Posting{
 		newPosting("world", "alice", "USD", 200),
 	}, rs))
 
 	aliceKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: "ledger", Account: "alice"},
+		AccountKey: domain.AccountKey{LedgerID: 1, Account: "alice"},
 		Asset:      "USD",
 	}
 	pair := readVolume(t, rs, aliceKey.Bytes())
@@ -110,13 +110,13 @@ func TestSimulateEphemeralPurgeDeletesZeroBalance(t *testing.T) {
 	postings := []*commonpb.Posting{
 		newPosting("world", "orders:123", "USD", 100),
 	}
-	require.NoError(t, domainreplay.ApplyPostings("ledger", postings, rs))
+	require.NoError(t, domainreplay.ApplyPostings(1, postings, rs))
 
 	// Purge should NOT delete (input=100, output=0 => not zero balance)
-	require.NoError(t, domainreplay.SimulateEphemeralPurge("ledger", postings, rs, ledgerAccountTypes))
+	require.NoError(t, domainreplay.SimulateEphemeralPurge("ledger", 1, postings, rs, ledgerAccountTypes))
 
 	orderKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: "ledger", Account: "orders:123"},
+		AccountKey: domain.AccountKey{LedgerID: 1, Account: "orders:123"},
 		Asset:      "USD",
 	}
 	pair, err := rs.GetVolume(orderKey.Bytes())
@@ -127,10 +127,10 @@ func TestSimulateEphemeralPurgeDeletesZeroBalance(t *testing.T) {
 	drainPostings := []*commonpb.Posting{
 		newPosting("orders:123", "world", "USD", 100),
 	}
-	require.NoError(t, domainreplay.ApplyPostings("ledger", drainPostings, rs))
+	require.NoError(t, domainreplay.ApplyPostings(1, drainPostings, rs))
 
 	// After drain, orders:123/USD has input=100, output=100 => zero balance
-	require.NoError(t, domainreplay.SimulateEphemeralPurge("ledger", drainPostings, rs, ledgerAccountTypes))
+	require.NoError(t, domainreplay.SimulateEphemeralPurge("ledger", 1, drainPostings, rs, ledgerAccountTypes))
 
 	pair, err = rs.GetVolume(orderKey.Bytes())
 	require.NoError(t, err)
@@ -156,18 +156,18 @@ func TestSimulateEphemeralPurgeSkipsNonEphemeral(t *testing.T) {
 	postings := []*commonpb.Posting{
 		newPosting("world", "users:alice", "USD", 100),
 	}
-	require.NoError(t, domainreplay.ApplyPostings("ledger", postings, rs))
+	require.NoError(t, domainreplay.ApplyPostings(1, postings, rs))
 
 	drainPostings := []*commonpb.Posting{
 		newPosting("users:alice", "world", "USD", 100),
 	}
-	require.NoError(t, domainreplay.ApplyPostings("ledger", drainPostings, rs))
+	require.NoError(t, domainreplay.ApplyPostings(1, drainPostings, rs))
 
 	// Purge should NOT delete because account type is not ephemeral
-	require.NoError(t, domainreplay.SimulateEphemeralPurge("ledger", drainPostings, rs, ledgerAccountTypes))
+	require.NoError(t, domainreplay.SimulateEphemeralPurge("ledger", 1, drainPostings, rs, ledgerAccountTypes))
 
 	userKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: "ledger", Account: "users:alice"},
+		AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:alice"},
 		Asset:      "USD",
 	}
 	pair, err := rs.GetVolume(userKey.Bytes())
@@ -186,12 +186,12 @@ func TestSimulateEphemeralPurgeNoAccountTypes(t *testing.T) {
 	postings := []*commonpb.Posting{
 		newPosting("world", "account", "USD", 100),
 	}
-	require.NoError(t, domainreplay.ApplyPostings("ledger", postings, rs))
-	require.NoError(t, domainreplay.SimulateEphemeralPurge("ledger", postings, rs, ledgerAccountTypes))
+	require.NoError(t, domainreplay.ApplyPostings(1, postings, rs))
+	require.NoError(t, domainreplay.SimulateEphemeralPurge("ledger", 1, postings, rs, ledgerAccountTypes))
 
 	// Volume should still exist
 	key := domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: "ledger", Account: "account"},
+		AccountKey: domain.AccountKey{LedgerID: 1, Account: "account"},
 		Asset:      "USD",
 	}
 	pair, err := rs.GetVolume(key.Bytes())
@@ -217,10 +217,10 @@ func TestSimulateEphemeralPurgeSkipsWorldAccount(t *testing.T) {
 	postings := []*commonpb.Posting{
 		newPosting("world", "alice", "USD", 100),
 	}
-	require.NoError(t, domainreplay.ApplyPostings("ledger", postings, rs))
+	require.NoError(t, domainreplay.ApplyPostings(1, postings, rs))
 
 	// Should not error — world is explicitly skipped
-	require.NoError(t, domainreplay.SimulateEphemeralPurge("ledger", postings, rs, ledgerAccountTypes))
+	require.NoError(t, domainreplay.SimulateEphemeralPurge("ledger", 1, postings, rs, ledgerAccountTypes))
 }
 
 // --- checkReversionInvariants tests ---
@@ -228,8 +228,8 @@ func TestSimulateEphemeralPurgeSkipsWorldAccount(t *testing.T) {
 func TestCheckReversionInvariantsValidCreationAndRevert(t *testing.T) {
 	t.Parallel()
 
-	knownTxIDs := make(map[string]*bitset.Bitset)
-	revertedTxIDs := make(map[string]*bitset.Bitset)
+	knownTxIDs := make(map[uint32]*bitset.Bitset)
+	revertedTxIDs := make(map[uint32]*bitset.Bitset)
 	var errors []*servicepb.CheckStoreError
 
 	callback := func(event *servicepb.CheckStoreEvent) {
@@ -239,7 +239,7 @@ func TestCheckReversionInvariantsValidCreationAndRevert(t *testing.T) {
 	}
 
 	// Create tx 1
-	checkReversionInvariants("ledger", 1, &commonpb.LedgerLogPayload{
+	checkReversionInvariants("ledger", 1, 1, &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 			CreatedTransaction: &commonpb.CreatedTransaction{
 				Transaction: &commonpb.Transaction{Id: 1},
@@ -250,7 +250,7 @@ func TestCheckReversionInvariantsValidCreationAndRevert(t *testing.T) {
 	require.Empty(t, errors)
 
 	// Revert tx 1 (valid)
-	checkReversionInvariants("ledger", 2, &commonpb.LedgerLogPayload{
+	checkReversionInvariants("ledger", 1, 2, &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
 			RevertedTransaction: &commonpb.RevertedTransaction{
 				RevertedTransactionId: 1,
@@ -262,16 +262,16 @@ func TestCheckReversionInvariantsValidCreationAndRevert(t *testing.T) {
 	require.Empty(t, errors, "valid revert should produce no errors")
 
 	// Verify tx 1 is tracked as reverted
-	require.True(t, revertedTxIDs["ledger"].Test(1))
+	require.True(t, revertedTxIDs[1].Test(1))
 	// Verify revert tx (ID 2) is tracked as known
-	require.True(t, knownTxIDs["ledger"].Test(2))
+	require.True(t, knownTxIDs[1].Test(2))
 }
 
 func TestCheckReversionInvariantsDoubleRevert(t *testing.T) {
 	t.Parallel()
 
-	knownTxIDs := make(map[string]*bitset.Bitset)
-	revertedTxIDs := make(map[string]*bitset.Bitset)
+	knownTxIDs := make(map[uint32]*bitset.Bitset)
+	revertedTxIDs := make(map[uint32]*bitset.Bitset)
 	var errors []*servicepb.CheckStoreError
 
 	callback := func(event *servicepb.CheckStoreEvent) {
@@ -281,7 +281,7 @@ func TestCheckReversionInvariantsDoubleRevert(t *testing.T) {
 	}
 
 	// Create tx 1
-	checkReversionInvariants("ledger", 1, &commonpb.LedgerLogPayload{
+	checkReversionInvariants("ledger", 1, 1, &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 			CreatedTransaction: &commonpb.CreatedTransaction{
 				Transaction: &commonpb.Transaction{Id: 1},
@@ -290,7 +290,7 @@ func TestCheckReversionInvariantsDoubleRevert(t *testing.T) {
 	}, knownTxIDs, revertedTxIDs, callback)
 
 	// Revert tx 1 (valid)
-	checkReversionInvariants("ledger", 2, &commonpb.LedgerLogPayload{
+	checkReversionInvariants("ledger", 1, 2, &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
 			RevertedTransaction: &commonpb.RevertedTransaction{
 				RevertedTransactionId: 1,
@@ -302,7 +302,7 @@ func TestCheckReversionInvariantsDoubleRevert(t *testing.T) {
 	require.Empty(t, errors)
 
 	// Double-revert tx 1
-	checkReversionInvariants("ledger", 3, &commonpb.LedgerLogPayload{
+	checkReversionInvariants("ledger", 1, 3, &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
 			RevertedTransaction: &commonpb.RevertedTransaction{
 				RevertedTransactionId: 1,
@@ -319,8 +319,8 @@ func TestCheckReversionInvariantsDoubleRevert(t *testing.T) {
 func TestCheckReversionInvariantsRevertNonExistent(t *testing.T) {
 	t.Parallel()
 
-	knownTxIDs := make(map[string]*bitset.Bitset)
-	revertedTxIDs := make(map[string]*bitset.Bitset)
+	knownTxIDs := make(map[uint32]*bitset.Bitset)
+	revertedTxIDs := make(map[uint32]*bitset.Bitset)
 	var errors []*servicepb.CheckStoreError
 
 	callback := func(event *servicepb.CheckStoreEvent) {
@@ -330,7 +330,7 @@ func TestCheckReversionInvariantsRevertNonExistent(t *testing.T) {
 	}
 
 	// Revert tx 999 without ever creating it
-	checkReversionInvariants("ledger", 1, &commonpb.LedgerLogPayload{
+	checkReversionInvariants("ledger", 1, 1, &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
 			RevertedTransaction: &commonpb.RevertedTransaction{
 				RevertedTransactionId: 999,
@@ -347,8 +347,8 @@ func TestCheckReversionInvariantsRevertNonExistent(t *testing.T) {
 func TestCheckReversionInvariantsMultipleLedgersIsolated(t *testing.T) {
 	t.Parallel()
 
-	knownTxIDs := make(map[string]*bitset.Bitset)
-	revertedTxIDs := make(map[string]*bitset.Bitset)
+	knownTxIDs := make(map[uint32]*bitset.Bitset)
+	revertedTxIDs := make(map[uint32]*bitset.Bitset)
 	var errors []*servicepb.CheckStoreError
 
 	callback := func(event *servicepb.CheckStoreEvent) {
@@ -358,7 +358,7 @@ func TestCheckReversionInvariantsMultipleLedgersIsolated(t *testing.T) {
 	}
 
 	// Create tx 1 in ledger-a
-	checkReversionInvariants("ledger-a", 1, &commonpb.LedgerLogPayload{
+	checkReversionInvariants("ledger-a", 1, 1, &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 			CreatedTransaction: &commonpb.CreatedTransaction{
 				Transaction: &commonpb.Transaction{Id: 1},
@@ -367,7 +367,7 @@ func TestCheckReversionInvariantsMultipleLedgersIsolated(t *testing.T) {
 	}, knownTxIDs, revertedTxIDs, callback)
 
 	// Try to revert tx 1 from ledger-b (different ledger — tx 1 doesn't exist there)
-	checkReversionInvariants("ledger-b", 2, &commonpb.LedgerLogPayload{
+	checkReversionInvariants("ledger-b", 2, 2, &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
 			RevertedTransaction: &commonpb.RevertedTransaction{
 				RevertedTransactionId: 1,
@@ -383,8 +383,8 @@ func TestCheckReversionInvariantsMultipleLedgersIsolated(t *testing.T) {
 func TestCheckReversionInvariantsNilPayload(t *testing.T) {
 	t.Parallel()
 
-	knownTxIDs := make(map[string]*bitset.Bitset)
-	revertedTxIDs := make(map[string]*bitset.Bitset)
+	knownTxIDs := make(map[uint32]*bitset.Bitset)
+	revertedTxIDs := make(map[uint32]*bitset.Bitset)
 	var errors []*servicepb.CheckStoreError
 
 	callback := func(event *servicepb.CheckStoreEvent) {
@@ -394,7 +394,7 @@ func TestCheckReversionInvariantsNilPayload(t *testing.T) {
 	}
 
 	// Nil RevertedTransaction payload should not panic
-	checkReversionInvariants("ledger", 1, &commonpb.LedgerLogPayload{
+	checkReversionInvariants("ledger", 1, 1, &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
 			RevertedTransaction: nil,
 		},
@@ -413,14 +413,14 @@ func TestApplyPostingsMultipleAssets(t *testing.T) {
 		newPosting("world", "alice", "EUR", 200),
 	}
 
-	require.NoError(t, domainreplay.ApplyPostings("ledger", postings, rs))
+	require.NoError(t, domainreplay.ApplyPostings(1, postings, rs))
 
 	usdKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: "ledger", Account: "alice"},
+		AccountKey: domain.AccountKey{LedgerID: 1, Account: "alice"},
 		Asset:      "USD",
 	}
 	eurKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: "ledger", Account: "alice"},
+		AccountKey: domain.AccountKey{LedgerID: 1, Account: "alice"},
 		Asset:      "EUR",
 	}
 
@@ -451,18 +451,18 @@ func TestSimulateEphemeralPurgeMultipleAssets(t *testing.T) {
 		newPosting("world", "orders:1", "USD", 100),
 		newPosting("world", "orders:1", "EUR", 200),
 	}
-	require.NoError(t, domainreplay.ApplyPostings("ledger", fundPostings, rs))
+	require.NoError(t, domainreplay.ApplyPostings(1, fundPostings, rs))
 
 	// Drain only USD
 	drainPostings := []*commonpb.Posting{
 		newPosting("orders:1", "world", "USD", 100),
 	}
-	require.NoError(t, domainreplay.ApplyPostings("ledger", drainPostings, rs))
-	require.NoError(t, domainreplay.SimulateEphemeralPurge("ledger", drainPostings, rs, ledgerAccountTypes))
+	require.NoError(t, domainreplay.ApplyPostings(1, drainPostings, rs))
+	require.NoError(t, domainreplay.SimulateEphemeralPurge("ledger", 1, drainPostings, rs, ledgerAccountTypes))
 
 	// USD should be purged (input==output==100)
 	usdKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: "ledger", Account: "orders:1"},
+		AccountKey: domain.AccountKey{LedgerID: 1, Account: "orders:1"},
 		Asset:      "USD",
 	}
 	pair, err := rs.GetVolume(usdKey.Bytes())
@@ -471,7 +471,7 @@ func TestSimulateEphemeralPurgeMultipleAssets(t *testing.T) {
 
 	// EUR should remain (input=200, output=0)
 	eurKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: "ledger", Account: "orders:1"},
+		AccountKey: domain.AccountKey{LedgerID: 1, Account: "orders:1"},
 		Asset:      "EUR",
 	}
 	pair, err = rs.GetVolume(eurKey.Bytes())
@@ -489,11 +489,11 @@ func TestApplyPostingsZeroAmount(t *testing.T) {
 		newPosting("alice", "bob", "USD", 0),
 	}
 
-	require.NoError(t, domainreplay.ApplyPostings("ledger", postings, rs))
+	require.NoError(t, domainreplay.ApplyPostings(1, postings, rs))
 
 	// Both source and dest should have zero volumes
 	srcKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: "ledger", Account: "alice"},
+		AccountKey: domain.AccountKey{LedgerID: 1, Account: "alice"},
 		Asset:      "USD",
 	}
 	srcPair := readVolume(t, rs, srcKey.Bytes())

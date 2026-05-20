@@ -47,6 +47,7 @@ func RebuildDelta(
 
 	rawLedgerTypes := make(map[string]map[string]*commonpb.AccountType)
 	ledgerAccountTypes := make(map[string][]accounttype.CompiledType)
+	ledgerNameToID := make(map[string]uint32)
 
 	logCursor, err := query.ReadLogsSince(ctx, store, fromLogSeq)
 	if err != nil {
@@ -76,7 +77,7 @@ func RebuildDelta(
 
 			ledgerName := p.Apply.GetLedgerName()
 
-			if err := replay.ReplayLedgerLog(ledgerName, seq, p.Apply.GetLog().GetData(), writer, rawLedgerTypes, ledgerAccountTypes); err != nil {
+			if err := replay.ReplayLedgerLog(ledgerName, ledgerNameToID[ledgerName], seq, p.Apply.GetLog().GetData(), writer, rawLedgerTypes, ledgerAccountTypes); err != nil {
 				_ = batch.Cancel()
 
 				return fmt.Errorf("replaying ledger log %d: %w", seq, err)
@@ -87,8 +88,11 @@ func RebuildDelta(
 				continue
 			}
 
+			ledgerNameToID[p.CreateLedger.GetName()] = p.CreateLedger.GetId()
+
 			info := &commonpb.LedgerInfo{
 				Name:      p.CreateLedger.GetName(),
+				Id:        p.CreateLedger.GetId(),
 				CreatedAt: p.CreateLedger.GetCreatedAt(),
 				Mode:      p.CreateLedger.GetMode(),
 			}
@@ -159,14 +163,15 @@ func RebuildDelta(
 		case *commonpb.LogPayload_SavedNumscript:
 			if p.SavedNumscript != nil && p.SavedNumscript.GetInfo() != nil {
 				info := p.SavedNumscript.GetInfo()
-				entryKey := domain.NumscriptEntryKey{Ledger: info.GetLedger(), Name: info.GetName(), Version: info.GetVersion()}
+				nsLedgerID := ledgerNameToID[info.GetLedger()]
+				entryKey := domain.NumscriptEntryKey{LedgerID: nsLedgerID, Name: info.GetName(), Version: info.GetVersion()}
 				if _, err := numscriptContent.Set(batch, entryKey.Bytes(), info); err != nil {
 					_ = batch.Cancel()
 
 					return fmt.Errorf("saving numscript at log %d: %w", seq, err)
 				}
 
-				versionKey := domain.NumscriptVersionKey{Ledger: info.GetLedger(), Name: info.GetName()}
+				versionKey := domain.NumscriptVersionKey{LedgerID: nsLedgerID, Name: info.GetName()}
 				versionVal := &commonpb.NumscriptVersionValue{Version: info.GetVersion()}
 				if _, err := numscriptVersion.Set(batch, versionKey.Bytes(), versionVal); err != nil {
 					_ = batch.Cancel()

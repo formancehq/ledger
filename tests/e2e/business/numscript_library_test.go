@@ -538,8 +538,15 @@ send $amount (
 		})
 	})
 
-	Context("Error cases", func() {
+	Context("Error cases", Ordered, func() {
 		const ledgerName = "numscript-err-ledger"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+			})
+			Expect(err).To(Succeed())
+		})
 
 		It("Should reject saving a numscript with empty name", func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{

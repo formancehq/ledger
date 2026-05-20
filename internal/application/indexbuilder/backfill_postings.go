@@ -100,13 +100,13 @@ func (b *Builder) processBackfillPostings(stop <-chan struct{}, task *backfillTa
 			for i := range parsed.Postings {
 				p := &parsed.Postings[i]
 				if indexAny {
-					if err := wb.WriteAccountTxMapping(kb, parsed.Ledger, p.Source, parsed.TxID); err != nil {
+					if err := wb.WriteAccountTxMapping(kb, parsed.LedgerID, p.Source, parsed.TxID); err != nil {
 						_ = batch.Cancel()
 
 						return err
 					}
 
-					if err := wb.WriteAccountTxMapping(kb, parsed.Ledger, p.Destination, parsed.TxID); err != nil {
+					if err := wb.WriteAccountTxMapping(kb, parsed.LedgerID, p.Destination, parsed.TxID); err != nil {
 						_ = batch.Cancel()
 
 						return err
@@ -114,7 +114,7 @@ func (b *Builder) processBackfillPostings(stop <-chan struct{}, task *backfillTa
 				}
 
 				if indexSrc {
-					if err := wb.WriteSourceAccountTxMapping(kb, parsed.Ledger, p.Source, parsed.TxID); err != nil {
+					if err := wb.WriteSourceAccountTxMapping(kb, parsed.LedgerID, p.Source, parsed.TxID); err != nil {
 						_ = batch.Cancel()
 
 						return err
@@ -122,7 +122,7 @@ func (b *Builder) processBackfillPostings(stop <-chan struct{}, task *backfillTa
 				}
 
 				if indexDst {
-					if err := wb.WriteDestAccountTxMapping(kb, parsed.Ledger, p.Destination, parsed.TxID); err != nil {
+					if err := wb.WriteDestAccountTxMapping(kb, parsed.LedgerID, p.Destination, parsed.TxID); err != nil {
 						_ = batch.Cancel()
 
 						return err

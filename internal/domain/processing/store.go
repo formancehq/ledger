@@ -75,6 +75,8 @@ type InMemoryStore interface {
 	GetNextSequenceID() uint64
 	IncrementNextSequenceID() uint64
 	GetNextAuditSequenceID() uint64
+	GetNextLedgerID() uint32
+	IncrementNextLedgerID() uint32
 	GetDate() *commonpb.Timestamp
 
 	// Period operations
@@ -97,15 +99,15 @@ type InMemoryStore interface {
 	AddMetadataConvertRequest(ledgerName string, targetType commonpb.TargetType, key string, metadataType commonpb.MetadataType)
 
 	// Prepared query operations
-	GetPreparedQuery(ledger, name string) (*commonpb.PreparedQuery, error)
-	PutPreparedQuery(pq *commonpb.PreparedQuery)
-	DeletePreparedQuery(ledger, name string)
+	GetPreparedQuery(ledgerID uint32, name string) (*commonpb.PreparedQuery, error)
+	PutPreparedQuery(ledgerID uint32, pq *commonpb.PreparedQuery)
+	DeletePreparedQuery(ledgerID uint32, name string)
 
 	// Numscript library operations
-	GetNumscriptLatestVersion(ledger, name string) (string, error)
-	NumscriptVersionExists(ledger, name, version string) (bool, error)
-	PutNumscript(info *commonpb.NumscriptInfo)
-	DeleteNumscriptLatest(ledger, name string)
+	GetNumscriptLatestVersion(ledgerID uint32, name string) (string, error)
+	NumscriptVersionExists(ledgerID uint32, name, version string) (bool, error)
+	PutNumscript(ledgerID uint32, info *commonpb.NumscriptInfo)
+	DeleteNumscriptLatest(ledgerID uint32, name string)
 
 	// Query checkpoint operations
 	GetNextQueryCheckpointID() uint64
@@ -121,5 +123,5 @@ type InMemoryStore interface {
 	MarkLedgerForCleanup(ledger string)
 
 	// Numscript content resolution
-	ResolveNumscriptContent(ledger, name, version string) (*commonpb.NumscriptInfo, error)
+	ResolveNumscriptContent(ledgerID uint32, name, version string) (*commonpb.NumscriptInfo, error)
 }

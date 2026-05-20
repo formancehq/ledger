@@ -60,7 +60,7 @@ func TestWriteSetGetPutAccountMetadata(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
-	key := domain.MetadataKey{AccountKey: domain.AccountKey{Ledger: "test", Account: "alice"}, Key: "role"}
+	key := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "alice"}, Key: "role"}
 
 	// Non-existent key falls through to KeyStore which returns ErrNotFound
 	_, err := buf.GetAccountMetadata(key)
@@ -76,7 +76,7 @@ func TestWriteSetDeleteAccountMetadata(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
-	key := domain.MetadataKey{AccountKey: domain.AccountKey{Ledger: "test", Account: "bob"}, Key: "label"}
+	key := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "bob"}, Key: "label"}
 	buf.PutAccountMetadata(key, commonpb.NewStringValue("value"))
 
 	val, err := buf.GetAccountMetadata(key)
@@ -95,7 +95,7 @@ func TestWriteSetGetPutReverted(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
-	key := domain.TransactionKey{Ledger: "test", ID: 42}
+	key := domain.TransactionKey{LedgerID: 1, ID: 42}
 
 	// Non-existent key returns false (not reverted)
 	reverted, err := buf.GetReverted(key)
@@ -129,7 +129,7 @@ func TestWriteSetGetPutTransactionReference(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
-	key := domain.TransactionReferenceKey{Ledger: "test", Reference: "ref-1"}
+	key := domain.TransactionReferenceKey{LedgerID: 1, Reference: "ref-1"}
 
 	// Non-existent key returns ErrNotFound
 	_, err := buf.GetTransactionReference(key)
@@ -146,7 +146,7 @@ func TestWriteSetTransactionState(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
-	key := domain.TransactionKey{Ledger: "test", ID: 1}
+	key := domain.TransactionKey{LedgerID: 1, ID: 1}
 	state := &commonpb.TransactionState{
 		CreatedByLog: 5,
 	}

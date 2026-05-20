@@ -57,6 +57,7 @@ type testEngine struct {
 	transactionStates      map[string]*commonpb.TransactionState
 	currentOpenPeriod      *commonpb.Period
 	closingPeriods         []*commonpb.Period
+	nextLedgerID           uint32
 	nextPeriodID           uint64
 	raftIndex              uint64
 	pendingLedgerDeletions []string
@@ -82,6 +83,7 @@ func newTestEngine(t *testing.T) *testEngine {
 		processor:         proc,
 		cache:             c,
 		nextSequenceID:    1,
+		nextLedgerID:      1,
 		ledgers:           make(map[string]*commonpb.LedgerInfo),
 		boundaries:        make(map[string]*raftcmdpb.LedgerBoundaries),
 		volumes:           make(map[string]*raftcmdpb.VolumePair),
@@ -356,6 +358,17 @@ func (s *inMemoryStore) IncrementNextSequenceID() uint64 {
 	return id
 }
 
+func (s *inMemoryStore) GetNextLedgerID() uint32 {
+	return s.engine.nextLedgerID
+}
+
+func (s *inMemoryStore) IncrementNextLedgerID() uint32 {
+	id := s.engine.nextLedgerID
+	s.engine.nextLedgerID++
+
+	return id
+}
+
 func (s *inMemoryStore) GetDate() *commonpb.Timestamp {
 	return s.date
 }
@@ -426,15 +439,17 @@ func (s *inMemoryStore) SetPendingArchive(_, _, _ uint64) {}
 func (s *inMemoryStore) AddMetadataConvertRequest(_ string, _ commonpb.TargetType, _ string, _ commonpb.MetadataType) {
 }
 
-func (s *inMemoryStore) GetPreparedQuery(_, _ string) (*commonpb.PreparedQuery, error) {
+func (s *inMemoryStore) GetPreparedQuery(_ uint32, _ string) (*commonpb.PreparedQuery, error) {
 	return nil, nil
 }
-func (s *inMemoryStore) PutPreparedQuery(_ *commonpb.PreparedQuery)            {}
-func (s *inMemoryStore) DeletePreparedQuery(_, _ string)                       {}
-func (s *inMemoryStore) GetNumscriptLatestVersion(_, _ string) (string, error) { return "", nil }
-func (s *inMemoryStore) NumscriptVersionExists(_, _, _ string) (bool, error)   { return false, nil }
-func (s *inMemoryStore) PutNumscript(_ *commonpb.NumscriptInfo)                {}
-func (s *inMemoryStore) DeleteNumscriptLatest(_, _ string)                     {}
+func (s *inMemoryStore) PutPreparedQuery(_ uint32, _ *commonpb.PreparedQuery)         {}
+func (s *inMemoryStore) DeletePreparedQuery(_ uint32, _ string)                       {}
+func (s *inMemoryStore) GetNumscriptLatestVersion(_ uint32, _ string) (string, error) { return "", nil }
+func (s *inMemoryStore) NumscriptVersionExists(_ uint32, _, _ string) (bool, error) {
+	return false, nil
+}
+func (s *inMemoryStore) PutNumscript(_ uint32, _ *commonpb.NumscriptInfo)      {}
+func (s *inMemoryStore) DeleteNumscriptLatest(_ uint32, _ string)              {}
 func (s *inMemoryStore) GetNextQueryCheckpointID() uint64                      { return 1 }
 func (s *inMemoryStore) IncrementNextQueryCheckpointID() uint64                { return 1 }
 func (s *inMemoryStore) SaveQueryCheckpoint(_ *raftcmdpb.QueryCheckpointState) {}
@@ -444,7 +459,7 @@ func (s *inMemoryStore) DeleteQueryCheckpointSchedule()                        {
 func (s *inMemoryStore) MarkLedgerForCleanup(ledger string) {
 	s.engine.pendingLedgerDeletions = append(s.engine.pendingLedgerDeletions, ledger)
 }
-func (s *inMemoryStore) ResolveNumscriptContent(_, _, _ string) (*commonpb.NumscriptInfo, error) {
+func (s *inMemoryStore) ResolveNumscriptContent(_ uint32, _, _ string) (*commonpb.NumscriptInfo, error) {
 	return nil, nil
 }
 
@@ -1076,7 +1091,7 @@ func TestCheckerDetectsTransactionUpdateMismatch(t *testing.T) {
 	// Write a spurious transaction state to Pebble for tx 1.
 	// Use a high raft index so it overrides the correct state.
 	batch := engine.store.NewBatch()
-	txKey := domain.TransactionKey{Ledger: "test", ID: 1}
+	txKey := domain.TransactionKey{LedgerID: 1, ID: 1}
 	_, err := engine.attrs.Transaction.Set(batch, txKey.Bytes(), &commonpb.TransactionState{
 		CreatedByLog: 999,
 	})
@@ -1325,11 +1340,11 @@ func reversePosting(p *commonpb.Posting) *commonpb.Posting {
 // writeVolumes writes volume attributes for a posting to make the store consistent.
 func writeVolumes(batch *dal.Batch, attrs *attributes.Attributes, posting *commonpb.Posting, ledger string) error {
 	sourceKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: ledger, Account: posting.GetSource()},
+		AccountKey: domain.AccountKey{LedgerID: 0, Account: posting.GetSource()},
 		Asset:      posting.GetAsset(),
 	}
 	destKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: ledger, Account: posting.GetDestination()},
+		AccountKey: domain.AccountKey{LedgerID: 0, Account: posting.GetDestination()},
 		Asset:      posting.GetAsset(),
 	}
 
