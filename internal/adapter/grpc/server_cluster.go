@@ -260,12 +260,12 @@ func (impl *ClusterServiceServerImpl) GetDiskUsage(ctx context.Context, _ *clust
 
 	return &clusterpb.DiskUsage{
 		WalVolume: &clusterpb.VolumeUsage{
-			UsedBytes:  impl.collector.WALVolume.UsedBytes(),
-			TotalBytes: impl.collector.WALVolume.TotalBytes(),
+			UsedBytes:  uint64(impl.collector.WALVolume.UsedBytes()),
+			TotalBytes: uint64(impl.collector.WALVolume.TotalBytes()),
 		},
 		DataVolume: &clusterpb.VolumeUsage{
-			UsedBytes:  impl.collector.DataVolume.UsedBytes(),
-			TotalBytes: impl.collector.DataVolume.TotalBytes(),
+			UsedBytes:  uint64(impl.collector.DataVolume.UsedBytes()),
+			TotalBytes: uint64(impl.collector.DataVolume.TotalBytes()),
 		},
 	}, nil
 }
@@ -446,8 +446,8 @@ func (impl *ClusterServiceServerImpl) CompactSecondary(ctx context.Context, _ *c
 
 	return &clusterpb.CompactSecondaryResponse{
 		DurationMs:      time.Since(start).Milliseconds(),
-		SizeBeforeBytes: sizeBefore,
-		SizeAfterBytes:  sizeAfter,
+		SizeBeforeBytes: uint64(sizeBefore),
+		SizeAfterBytes:  uint64(sizeAfter),
 	}, nil
 }
 

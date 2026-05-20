@@ -103,11 +103,11 @@ func (hc *HealthChecker) IsHealthy() bool {
 // nodeUsageReport holds the disk usage data for a single node, used for info logging.
 type nodeUsageReport struct {
 	nodeID      uint64
-	walUsed     int64
-	walTotal    int64
+	walUsed     uint64
+	walTotal    uint64
 	walPercent  float64
-	dataUsed    int64
-	dataTotal   int64
+	dataUsed    uint64
+	dataTotal   uint64
 	dataPercent float64
 	fetchErr    error
 }
@@ -137,10 +137,10 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 
 	var reports []nodeUsageReport
 
-	localWalUsed := hc.collector.WALVolume.UsedBytes()
-	localWalTotal := hc.collector.WALVolume.TotalBytes()
-	localDataUsed := hc.collector.DataVolume.UsedBytes()
-	localDataTotal := hc.collector.DataVolume.TotalBytes()
+	localWalUsed := uint64(hc.collector.WALVolume.UsedBytes())
+	localWalTotal := uint64(hc.collector.WALVolume.TotalBytes())
+	localDataUsed := uint64(hc.collector.DataVolume.UsedBytes())
+	localDataTotal := uint64(hc.collector.DataVolume.TotalBytes())
 
 	healthy := !hc.exceedsThreshold(
 		hc.node.GetNodeID(),
@@ -250,8 +250,8 @@ func (hc *HealthChecker) logDiskUsageSummary(reports []nodeUsageReport, healthy 
 }
 
 // safePercent returns the percentage of used/total as a float (0-100), or 0 if total is zero.
-func safePercent(used, total int64) float64 {
-	if total <= 0 {
+func safePercent(used, total uint64) float64 {
+	if total == 0 {
 		return 0
 	}
 
@@ -260,7 +260,7 @@ func safePercent(used, total int64) float64 {
 
 // exceedsThreshold checks the WAL and data volume usage for a given node,
 // logs a warning if either exceeds its respective threshold, and returns true if so.
-func (hc *HealthChecker) exceedsThreshold(nodeID uint64, walUsed, walTotal, dataUsed, dataTotal int64) bool {
+func (hc *HealthChecker) exceedsThreshold(nodeID uint64, walUsed, walTotal, dataUsed, dataTotal uint64) bool {
 	exceeded := false
 
 	if walTotal > 0 {

@@ -57,9 +57,9 @@ func runSecondaryCompact(cmd *cobra.Command, _ []string) error {
 	}
 
 	if handled, err := cmdutil.EncodeStructured(cmd, struct {
-		DurationMs      int64 `json:"durationMs"`
-		SizeBeforeBytes int64 `json:"sizeBeforeBytes"`
-		SizeAfterBytes  int64 `json:"sizeAfterBytes"`
+		DurationMs      int64  `json:"durationMs"`
+		SizeBeforeBytes uint64 `json:"sizeBeforeBytes"`
+		SizeAfterBytes  uint64 `json:"sizeAfterBytes"`
 	}{
 		DurationMs:      resp.GetDurationMs(),
 		SizeBeforeBytes: resp.GetSizeBeforeBytes(),

@@ -793,8 +793,8 @@ func (x *NodeTime) GetTimestampUs() uint64 {
 // VolumeUsage represents the disk usage of a single filesystem volume.
 type VolumeUsage struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	UsedBytes     int64                  `protobuf:"fixed64,1,opt,name=used_bytes,json=usedBytes,proto3" json:"used_bytes,omitempty"`    // Used bytes on the filesystem
-	TotalBytes    int64                  `protobuf:"fixed64,2,opt,name=total_bytes,json=totalBytes,proto3" json:"total_bytes,omitempty"` // Total capacity of the filesystem in bytes
+	UsedBytes     uint64                 `protobuf:"fixed64,1,opt,name=used_bytes,json=usedBytes,proto3" json:"used_bytes,omitempty"`    // Used bytes on the filesystem
+	TotalBytes    uint64                 `protobuf:"fixed64,2,opt,name=total_bytes,json=totalBytes,proto3" json:"total_bytes,omitempty"` // Total capacity of the filesystem in bytes
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -829,14 +829,14 @@ func (*VolumeUsage) Descriptor() ([]byte, []int) {
 	return file_cluster_proto_rawDescGZIP(), []int{12}
 }
 
-func (x *VolumeUsage) GetUsedBytes() int64 {
+func (x *VolumeUsage) GetUsedBytes() uint64 {
 	if x != nil {
 		return x.UsedBytes
 	}
 	return 0
 }
 
-func (x *VolumeUsage) GetTotalBytes() int64 {
+func (x *VolumeUsage) GetTotalBytes() uint64 {
 	if x != nil {
 		return x.TotalBytes
 	}
@@ -1655,8 +1655,8 @@ func (*CompactSecondaryRequest) Descriptor() ([]byte, []int) {
 type CompactSecondaryResponse struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	DurationMs      int64                  `protobuf:"varint,1,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`                   // Wall-clock duration of the compaction in milliseconds
-	SizeBeforeBytes int64                  `protobuf:"fixed64,2,opt,name=size_before_bytes,json=sizeBeforeBytes,proto3" json:"size_before_bytes,omitempty"` // Read index file size before compaction in bytes
-	SizeAfterBytes  int64                  `protobuf:"fixed64,3,opt,name=size_after_bytes,json=sizeAfterBytes,proto3" json:"size_after_bytes,omitempty"`    // Read index file size after compaction in bytes
+	SizeBeforeBytes uint64                 `protobuf:"fixed64,2,opt,name=size_before_bytes,json=sizeBeforeBytes,proto3" json:"size_before_bytes,omitempty"` // Read index file size before compaction in bytes
+	SizeAfterBytes  uint64                 `protobuf:"fixed64,3,opt,name=size_after_bytes,json=sizeAfterBytes,proto3" json:"size_after_bytes,omitempty"`    // Read index file size after compaction in bytes
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -1698,14 +1698,14 @@ func (x *CompactSecondaryResponse) GetDurationMs() int64 {
 	return 0
 }
 
-func (x *CompactSecondaryResponse) GetSizeBeforeBytes() int64 {
+func (x *CompactSecondaryResponse) GetSizeBeforeBytes() uint64 {
 	if x != nil {
 		return x.SizeBeforeBytes
 	}
 	return 0
 }
 
-func (x *CompactSecondaryResponse) GetSizeAfterBytes() int64 {
+func (x *CompactSecondaryResponse) GetSizeAfterBytes() uint64 {
 	if x != nil {
 		return x.SizeAfterBytes
 	}
@@ -2296,8 +2296,8 @@ const file_cluster_proto_rawDesc = "" +
 	"\ftimestamp_us\x18\x01 \x01(\x06R\vtimestampUs\"M\n" +
 	"\vVolumeUsage\x12\x1d\n" +
 	"\n" +
-	"used_bytes\x18\x01 \x01(\x10R\tusedBytes\x12\x1f\n" +
-	"\vtotal_bytes\x18\x02 \x01(\x10R\n" +
+	"used_bytes\x18\x01 \x01(\x06R\tusedBytes\x12\x1f\n" +
+	"\vtotal_bytes\x18\x02 \x01(\x06R\n" +
 	"totalBytes\"w\n" +
 	"\tDiskUsage\x123\n" +
 	"\n" +
@@ -2362,8 +2362,8 @@ const file_cluster_proto_rawDesc = "" +
 	"\x18CompactSecondaryResponse\x12\x1f\n" +
 	"\vduration_ms\x18\x01 \x01(\x03R\n" +
 	"durationMs\x12*\n" +
-	"\x11size_before_bytes\x18\x02 \x01(\x10R\x0fsizeBeforeBytes\x12(\n" +
-	"\x10size_after_bytes\x18\x03 \x01(\x10R\x0esizeAfterBytes\"\x19\n" +
+	"\x11size_before_bytes\x18\x02 \x01(\x06R\x0fsizeBeforeBytes\x12(\n" +
+	"\x10size_after_bytes\x18\x03 \x01(\x06R\x0esizeAfterBytes\"\x19\n" +
 	"\x17CreateCheckpointRequest\"?\n" +
 	"\x18CreateCheckpointResponse\x12#\n" +
 	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\"\x1e\n" +

@@ -6101,7 +6101,7 @@ func (m *VolumeUsage) UnmarshalVT(dAtA []byte) error {
 			if (iNdEx + 8) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.UsedBytes = int64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			m.UsedBytes = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 		case 2:
 			if wireType != 1 {
@@ -6111,7 +6111,7 @@ func (m *VolumeUsage) UnmarshalVT(dAtA []byte) error {
 			if (iNdEx + 8) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.TotalBytes = int64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			m.TotalBytes = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 		default:
 			iNdEx = preIndex
@@ -7833,7 +7833,7 @@ func (m *CompactSecondaryResponse) UnmarshalVT(dAtA []byte) error {
 			if (iNdEx + 8) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.SizeBeforeBytes = int64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			m.SizeBeforeBytes = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 		case 3:
 			if wireType != 1 {
@@ -7843,7 +7843,7 @@ func (m *CompactSecondaryResponse) UnmarshalVT(dAtA []byte) error {
 			if (iNdEx + 8) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.SizeAfterBytes = int64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			m.SizeAfterBytes = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 		default:
 			iNdEx = preIndex
