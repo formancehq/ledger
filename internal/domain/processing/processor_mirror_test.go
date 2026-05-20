@@ -28,11 +28,15 @@ func TestMirrorIngest_FillGap(t *testing.T) {
 		Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 	}
 
+	var putBoundaries *raftcmdpb.LedgerBoundaries
+
 	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo, true).AnyTimes()
 	mockStore.EXPECT().PutLedger("mirror-ledger", ledgerInfo)
 	mockStore.EXPECT().GetBoundaries("mirror-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now)
-	mockStore.EXPECT().PutBoundaries("mirror-ledger", gomock.Any())
+	mockStore.EXPECT().PutBoundaries("mirror-ledger", gomock.Any()).Do(
+		func(_ string, b *raftcmdpb.LedgerBoundaries) { putBoundaries = b },
+	)
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_MirrorIngest{
@@ -64,7 +68,8 @@ func TestMirrorIngest_FillGap(t *testing.T) {
 	require.Equal(t, uint64(5), fillGap.GetOriginalId())
 
 	// NextTransactionId should have advanced by 2 (two skipped IDs)
-	require.Equal(t, uint64(3), boundaries.GetNextTransactionId())
+	require.NotNil(t, putBoundaries)
+	require.Equal(t, uint64(3), putBoundaries.GetNextTransactionId())
 }
 
 func TestMirrorIngest_CreatedTransaction(t *testing.T) {
@@ -84,13 +89,17 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 		Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 	}
 
+	var putBoundaries *raftcmdpb.LedgerBoundaries
+
 	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo, true).AnyTimes()
 	mockStore.EXPECT().PutLedger("mirror-ledger", ledgerInfo)
 	mockStore.EXPECT().GetBoundaries("mirror-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(100))
 	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
-	mockStore.EXPECT().PutBoundaries("mirror-ledger", gomock.Any())
+	mockStore.EXPECT().PutBoundaries("mirror-ledger", gomock.Any()).Do(
+		func(_ string, b *raftcmdpb.LedgerBoundaries) { putBoundaries = b },
+	)
 
 	// Expect volume operations for source and destination (force=true, no balance checks)
 	zeroVol := &raftcmdpb.VolumePair{
@@ -151,7 +160,8 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 	require.Equal(t, "tx-ref-v2", createdTx.GetTransaction().GetReference())
 
 	// NextTransactionId should be past 42
-	require.Equal(t, uint64(43), boundaries.GetNextTransactionId())
+	require.NotNil(t, putBoundaries)
+	require.Equal(t, uint64(43), putBoundaries.GetNextTransactionId())
 }
 
 func TestMirrorIngest_NotMirrorMode(t *testing.T) {

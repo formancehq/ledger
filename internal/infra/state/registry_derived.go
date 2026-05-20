@@ -42,18 +42,21 @@ type DerivedRegistry struct {
 // Each DerivedKeyStore reads from the parent KeyStore and buffers writes locally.
 func NewDerivedRegistry(reg *StateRegistry) *DerivedRegistry {
 	return &DerivedRegistry{
-		Volumes:           attributes.NewDerivedKeyStore(reg.Volumes, (*raftcmdpb.VolumePair).CloneVT),
-		AccountMetadata:   attributes.NewDerivedKeyStore(reg.AccountMetadata, (*commonpb.MetadataValue).CloneVT),
+		// Clone on Get for types mutated in-place before Put (hot path safety).
+		Volumes:    attributes.NewDerivedKeyStore(reg.Volumes, (*raftcmdpb.VolumePair).CloneVT),
+		Boundaries: attributes.NewDerivedKeyStore(reg.Boundaries, (*raftcmdpb.LedgerBoundaries).CloneVT),
+		// No clone for types where the hot path is read-only.
+		// Cold-path processors that mutate must clone explicitly before Put.
+		AccountMetadata:   attributes.NewDerivedKeyStore[domain.MetadataKey, *commonpb.MetadataValue](reg.AccountMetadata, nil),
 		Idempotency:       NewDerivedIdempotencyStore(reg.Idempotency),
-		References:        attributes.NewDerivedKeyStore(reg.References, (*commonpb.TransactionReferenceValue).CloneVT),
-		Ledgers:           attributes.NewDerivedKeyStore(reg.Ledgers, (*commonpb.LedgerInfo).CloneVT),
-		Boundaries:        attributes.NewDerivedKeyStore(reg.Boundaries, (*raftcmdpb.LedgerBoundaries).CloneVT),
-		SinkConfigs:       attributes.NewDerivedKeyStore(reg.SinkConfigs, (*commonpb.SinkConfig).CloneVT),
-		NumscriptVersions: attributes.NewDerivedKeyStore(reg.NumscriptVersions, (*commonpb.NumscriptVersionValue).CloneVT),
-		Transactions:      attributes.NewDerivedKeyStore(reg.Transactions, (*commonpb.TransactionState).CloneVT),
-		NumscriptContents: attributes.NewDerivedKeyStore(reg.NumscriptContents, (*commonpb.NumscriptInfo).CloneVT),
-		PreparedQueries:   attributes.NewDerivedKeyStore(reg.PreparedQueries, (*commonpb.PreparedQuery).CloneVT),
-		LedgerMetadata:    attributes.NewDerivedKeyStore(reg.LedgerMetadata, (*commonpb.MetadataValue).CloneVT),
+		References:        attributes.NewDerivedKeyStore[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue](reg.References, nil),
+		Ledgers:           attributes.NewDerivedKeyStore[domain.LedgerKey, *commonpb.LedgerInfo](reg.Ledgers, nil),
+		SinkConfigs:       attributes.NewDerivedKeyStore[domain.SinkConfigKey, *commonpb.SinkConfig](reg.SinkConfigs, nil),
+		NumscriptVersions: attributes.NewDerivedKeyStore[domain.NumscriptVersionKey, *commonpb.NumscriptVersionValue](reg.NumscriptVersions, nil),
+		Transactions:      attributes.NewDerivedKeyStore[domain.TransactionKey, *commonpb.TransactionState](reg.Transactions, nil),
+		NumscriptContents: attributes.NewDerivedKeyStore[domain.NumscriptEntryKey, *commonpb.NumscriptInfo](reg.NumscriptContents, nil),
+		PreparedQueries:   attributes.NewDerivedKeyStore[domain.PreparedQueryKey, *commonpb.PreparedQuery](reg.PreparedQueries, nil),
+		LedgerMetadata:    attributes.NewDerivedKeyStore[domain.LedgerMetadataKey, *commonpb.MetadataValue](reg.LedgerMetadata, nil),
 		parent:            reg,
 	}
 }

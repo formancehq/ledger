@@ -1748,8 +1748,8 @@ type PreparedBatch struct {
 	Result *ApplyEntriesResult
 
 	// State captured during prepare for post-commit use.
-	lastAppliedIndex    uint64
-	lastSequenceID      uint64
+	lastAppliedIndex     uint64
+	lastSequenceID       uint64
 	needsArchiveDispatch bool
 	needsColdCompaction  bool
 	eventsConfigChanged  bool

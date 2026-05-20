@@ -16,6 +16,8 @@ func (p *RequestProcessor) processSetMetadataFieldType(
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 	}
 
+	info = info.CloneVT()
+
 	if info.GetMetadataSchema() == nil {
 		info.MetadataSchema = &commonpb.MetadataSchema{}
 	}
@@ -82,6 +84,8 @@ func (p *RequestProcessor) processRemoveMetadataFieldType(
 	if !ok {
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 	}
+
+	info = info.CloneVT()
 
 	if info.GetMetadataSchema() == nil {
 		info.MetadataSchema = &commonpb.MetadataSchema{}

@@ -18,6 +18,8 @@ func (p *RequestProcessor) processConvertMetadataBatch(
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 	}
 
+	info = info.CloneVT()
+
 	// Staleness check: the field must still be CONVERTING with the expected type.
 	_, fieldSchema := schemaFieldForTarget(info.GetMetadataSchema(), order.GetTargetType(), order.GetKey())
 	if fieldSchema == nil ||
@@ -93,6 +95,8 @@ func (p *RequestProcessor) processMetadataConversionComplete(
 	if !ok {
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 	}
+
+	info = info.CloneVT()
 
 	// Staleness check: the field must still be CONVERTING with the expected type.
 	_, fieldSchema := schemaFieldForTarget(info.GetMetadataSchema(), order.GetTargetType(), order.GetKey())

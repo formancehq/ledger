@@ -52,9 +52,10 @@ type Applier struct {
 	status           *atomic.Int32
 	syncProgress     atomic.Pointer[state.SyncProgress]
 	gatingTerminated chan struct{}
-	ch               chan applyWork // buffered(1)
+	ch               chan applyWork  // buffered(1)
+	commitCh         chan commitWork // buffered(1), read by the committer goroutine
 
-	// pending holds the in-flight commit from the previous batch, if any.
+	// pending holds the in-flight commit result channel, if any.
 	// At most one at a time. Drained before barriers, checkpoints, and shutdown.
 	pending *pendingCommit
 
@@ -78,8 +79,14 @@ type pendingFuture struct {
 	future     *futures.Future[state.ApplyResult]
 }
 
+type commitWork struct {
+	prepared *state.PreparedBatch
+	futures  []pendingFuture
+	done     chan error
+}
+
 type pendingCommit struct {
-	done chan error // signaled when commit goroutine finishes
+	done chan error // signaled when the committer goroutine finishes this work
 }
 
 // NewApplier creates a new Applier with all metrics registered on the provided meter.
@@ -110,6 +117,7 @@ func NewApplier(
 		snapshotFetcherProvider: snapshotFetcherProvider,
 		status:                  &initialStatus,
 		ch:                      make(chan applyWork, 1),
+		commitCh:                make(chan commitWork, 1),
 	}
 
 	var err error
@@ -432,6 +440,24 @@ func (a *Applier) SetStatus(s int32) {
 // Run is the Applier goroutine. It processes submitted work items and
 // handles gating termination (unspool after maintenance tasks).
 func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
+	// Start the dedicated committer goroutine. It exits when commitCh is closed.
+	committerDone := make(chan struct{})
+
+	go func() {
+		a.runCommitter(ctx)
+		close(committerDone)
+	}()
+
+	defer func() {
+		// Drain any pending commit, then shut down the committer.
+		if a.pending != nil {
+			_ = a.waitPendingCommit(ctx)
+		}
+
+		close(a.commitCh)
+		<-committerDone
+	}()
+
 	var (
 		readiesDuringGating int64
 		gatingStart         time.Time
@@ -536,14 +562,9 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 			a.unspoolDurationHistogram.Record(context.Background(), float64(time.Since(unspoolStart).Microseconds()))
 			waitStart = time.Now()
 		case <-stop:
-			// Drain pending commit on shutdown.
-			if a.pending != nil {
-				_ = a.waitPendingCommit(ctx)
-			}
-
 			a.taskExecutor.Interrupt()
 
-			return nil
+			return nil // defer handles pending commit drain and committer shutdown
 		}
 	}
 }
@@ -664,21 +685,28 @@ func (a *Applier) waitPendingCommit(ctx context.Context) error {
 
 // startAsyncCommit launches a goroutine that commits the batch and resolves
 // futures. The caller must call waitPendingCommit before starting another.
-func (a *Applier) startAsyncCommit(ctx context.Context, pb *state.PreparedBatch, pfs []pendingFuture) {
+// submitAsyncCommit sends a commit to the dedicated committer goroutine.
+func (a *Applier) submitAsyncCommit(pb *state.PreparedBatch, pfs []pendingFuture) {
 	done := make(chan error, 1)
 	a.pending = &pendingCommit{done: done}
+	a.commitCh <- commitWork{prepared: pb, futures: pfs, done: done}
+}
 
-	go func() {
-		err := a.fsm.CommitPreparedBatch(ctx, pb)
+// runCommitter is the dedicated goroutine that processes commits sequentially.
+// It reads from commitCh and commits each batch, resolving futures on success.
+// Exits when commitCh is closed.
+func (a *Applier) runCommitter(ctx context.Context) {
+	for work := range a.commitCh {
+		err := a.fsm.CommitPreparedBatch(ctx, work.prepared)
 		if err == nil {
-			for _, pf := range pfs {
+			for _, pf := range work.futures {
 				pf.future.Resolve(pf.result, pf.result.Error)
 				a.futures.Delete(pf.proposalID)
 			}
 		}
 
-		done <- err
-	}()
+		work.done <- err
+	}
 }
 
 // applyEntriesPipelined prepares entries (CPU-bound) and starts the commit
@@ -736,9 +764,9 @@ func (a *Applier) applyEntriesPipelined(ctx context.Context, entries ...raftpb.E
 		return pb.Result, nil
 	}
 
-	// Launch the commit in background. Futures are resolved by the goroutine
-	// when the commit completes. No need to wait for the next batch.
-	a.startAsyncCommit(ctx, pb, pfs)
+	// Send to the committer goroutine. Futures are resolved when the
+	// commit completes. No need to wait for the next batch.
+	a.submitAsyncCommit(pb, pfs)
 
 	return pb.Result, nil
 }

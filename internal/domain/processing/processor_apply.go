@@ -22,6 +22,8 @@ func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s InM
 		return nil, &domain.ErrLedgerNotFound{Name: apply.GetLedger()}
 	}
 
+	boundaries = boundaries.CloneVT()
+
 	// Block writes on mirror-mode ledgers.
 	if infoOk && ledgerInfo.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR && !isMirrorSafeApply(apply) {
 		return nil, &domain.ErrLedgerInMirrorMode{Name: apply.GetLedger()}

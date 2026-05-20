@@ -18,6 +18,8 @@ func (p *RequestProcessor) processAddAccountType(
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 	}
 
+	info = info.CloneVT()
+
 	at := order.GetAccountType()
 	if at == nil || at.GetName() == "" {
 		return nil, &domain.ErrInvalidPattern{Pattern: "", Details: "account type name is required"}
@@ -62,6 +64,8 @@ func (p *RequestProcessor) processRemoveAccountType(
 	if !ok {
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 	}
+
+	info = info.CloneVT()
 
 	if _, exists := info.GetAccountTypes()[order.GetName()]; !exists {
 		return nil, &domain.ErrAccountTypeNotFound{Name: order.GetName()}
@@ -150,6 +154,8 @@ func (p *RequestProcessor) processUpdateDefaultEnforcementMode(
 	if !ok {
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 	}
+
+	info = info.CloneVT()
 
 	info.DefaultEnforcementMode = order.GetEnforcementMode()
 	s.PutLedger(ledgerName, info)

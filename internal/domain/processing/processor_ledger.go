@@ -79,6 +79,8 @@ func (p *RequestProcessor) processDeleteLedger(order *raftcmdpb.DeleteLedgerOrde
 		return nil, &domain.ErrLedgerNotFound{Name: order.GetName()}
 	}
 
+	l = l.CloneVT()
+
 	l.DeletedAt = s.GetDate()
 
 	s.PutLedger(order.GetName(), l)

@@ -16,6 +16,8 @@ func (p *RequestProcessor) processCreateIndex(
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 	}
 
+	info = info.CloneVT()
+
 	logPayload := &commonpb.CreateIndexLog{}
 
 	switch idx := order.GetIndex().(type) {
@@ -82,6 +84,8 @@ func (p *RequestProcessor) processDropIndex(
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 	}
 
+	info = info.CloneVT()
+
 	logPayload := &commonpb.DropIndexLog{}
 
 	switch idx := order.GetIndex().(type) {
@@ -136,6 +140,8 @@ func (p *RequestProcessor) processIndexReady(
 	if !ok {
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 	}
+
+	info = info.CloneVT()
 
 	logPayload := &commonpb.IndexReadyLog{}
 

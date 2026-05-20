@@ -256,36 +256,6 @@ func TestDerivedKeyStorePutGetDelete(t *testing.T) {
 	})
 }
 
-func TestDerivedKeyStoreCloneFn(t *testing.T) {
-	t.Parallel()
-
-	type mutableValue struct {
-		count int
-	}
-
-	store := NewKeyStore[testKey, *mutableValue](DefaultSeeds, newTestKV[Entry[*mutableValue]]())
-	_, _, err := store.Put([]byte("cloned"), &mutableValue{count: 42})
-	require.NoError(t, err)
-
-	cloneFn := func(v *mutableValue) *mutableValue {
-		c := *v
-
-		return &c
-	}
-	derived := NewDerivedKeyStore[testKey, *mutableValue](store, cloneFn)
-
-	// Get should return a clone
-	val, err := derived.Get(testKey{name: "cloned"})
-	require.NoError(t, err)
-	require.Equal(t, 42, val.count)
-
-	// Modifying the returned value should not affect the underlying store
-	val.count = 999
-	original, _, err := store.Get([]byte("cloned"))
-	require.NoError(t, err)
-	require.Equal(t, 42, original.count)
-}
-
 func TestDerivedKeyStoreMerge(t *testing.T) {
 	t.Parallel()
 

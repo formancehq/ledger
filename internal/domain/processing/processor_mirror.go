@@ -30,6 +30,8 @@ func (p *RequestProcessor) processMirrorIngest(order *raftcmdpb.MirrorIngestOrde
 		return nil, &domain.ErrLedgerNotFound{Name: order.GetLedger()}
 	}
 
+	boundaries = boundaries.CloneVT()
+
 	entry := order.GetEntry()
 	if entry == nil {
 		return nil, &domain.ErrLedgerNotInMirrorMode{Name: order.GetLedger()}
@@ -232,6 +234,8 @@ func (p *RequestProcessor) processMirrorSavedMetadata(ledger string, ledgerID ui
 
 				state, _ := s.GetTransactionState(txKey)
 				if state != nil {
+					state = state.CloneVT()
+
 					if state.GetMetadata() == nil {
 						state.Metadata = make(map[string]*commonpb.MetadataValue)
 					}
@@ -288,6 +292,8 @@ func (p *RequestProcessor) processMirrorDeletedMetadata(ledger string, ledgerID 
 
 			state, _ := s.GetTransactionState(txKey)
 			if state != nil && state.GetMetadata() != nil {
+				state = state.CloneVT()
+
 				if val, ok := state.GetMetadata()[dm.GetKey()]; ok {
 					previousValue = val
 					delete(state.GetMetadata(), dm.GetKey())
@@ -335,6 +341,7 @@ func (p *RequestProcessor) processMirrorRevertedTransaction(ledger string, ledge
 
 	origState, _ := s.GetTransactionState(origKey)
 	if origState != nil {
+		origState = origState.CloneVT()
 		origState.RevertedByTransaction = revertTxID
 		s.PutTransactionState(origKey, origState)
 	}
@@ -378,6 +385,7 @@ func (p *RequestProcessor) processPromoteLedger(order *raftcmdpb.PromoteLedgerOr
 		return nil, &domain.ErrLedgerNotInMirrorMode{Name: order.GetLedger()}
 	}
 
+	info = info.CloneVT()
 	info.Mode = commonpb.LedgerMode_LEDGER_MODE_NORMAL
 	info.MirrorSource = nil
 	s.PutLedger(order.GetLedger(), info)
