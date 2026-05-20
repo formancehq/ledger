@@ -57,9 +57,9 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, ledgerID uint
 	var producer postingProducer
 	isNumscript := script != nil && script.GetPlain() != ""
 	if isNumscript {
-		producer = &numscriptPostingProducer{cache: p.numscriptCache, ledgerID: ledgerID, schema: schema}
+		producer = &numscriptPostingProducer{cache: p.numscriptCache, ledgerID: ledgerID, schema: schema, assetCache: p.assetCache}
 	} else {
-		producer = &stdPostingProducer{}
+		producer = &stdPostingProducer{assetCache: p.assetCache}
 	}
 
 	// Produce postings (handles balance checks and buffer updates)
@@ -255,12 +255,14 @@ type postingProducer interface {
 	produce(s InMemoryStore, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, error)
 }
 
-type stdPostingProducer struct{}
+type stdPostingProducer struct {
+	assetCache map[string]cachedAssetPrecision
+}
 
 func (p *stdPostingProducer) produce(s InMemoryStore, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder, _ *commonpb.Script) (*produceResult, error) {
 	for _, posting := range order.GetPostings() {
 		// Skip balance check when Force is true
-		err := applyPosting(s, ledgerID, posting, order.GetForce())
+		err := applyPosting(s, ledgerID, posting, order.GetForce(), p.assetCache)
 		if err != nil {
 			return nil, err
 		}

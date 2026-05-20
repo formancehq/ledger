@@ -40,7 +40,7 @@ func TestApplyPosting_WorldAccount_SkipsBalanceCheck(t *testing.T) {
 		Asset:       "USD",
 	}
 
-	err := applyPosting(mockStore, 0, posting, false)
+	err := applyPosting(mockStore, 0, posting, false, nil)
 	require.NoError(t, err)
 }
 
@@ -69,7 +69,7 @@ func TestApplyPosting_InsufficientFunds(t *testing.T) {
 		Asset:       "USD",
 	}
 
-	err := applyPosting(mockStore, 0, posting, false)
+	err := applyPosting(mockStore, 0, posting, false, nil)
 	require.Error(t, err)
 
 	var insufficientFunds *domain.ErrInsufficientFunds
@@ -104,7 +104,7 @@ func TestApplyPosting_ZeroInputBalance(t *testing.T) {
 	}
 
 	// Zero input means posting amount > 0 triggers ErrInsufficientFunds
-	err := applyPosting(mockStore, 0, posting, false)
+	err := applyPosting(mockStore, 0, posting, false, nil)
 	require.Error(t, err)
 
 	var insufficientFunds *domain.ErrInsufficientFunds
@@ -146,7 +146,7 @@ func TestApplyPosting_ForceSkipsBalanceCheck(t *testing.T) {
 		Asset:       "USD",
 	}
 
-	err := applyPosting(mockStore, 0, posting, true)
+	err := applyPosting(mockStore, 0, posting, true, nil)
 	require.NoError(t, err)
 }
 
@@ -169,7 +169,7 @@ func TestApplyPosting_NotPreloaded(t *testing.T) {
 		Asset:       "USD",
 	}
 
-	err := applyPosting(mockStore, 0, posting, false)
+	err := applyPosting(mockStore, 0, posting, false, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not fully preloaded")
 }

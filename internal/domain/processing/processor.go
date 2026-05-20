@@ -22,7 +22,8 @@ type RequestProcessor struct {
 	logHasher          *blake3.Hasher
 	hashAlgorithm      commonpb.HashAlgorithm
 	compiledTypesCache map[string][]accounttype.CompiledType
-	logArena           logBytesArena // reusable arena for pre-marshaled log bytes
+	logArena   logBytesArena                   // reusable arena for pre-marshaled log bytes
+	assetCache map[string]cachedAssetPrecision // per-batch cache for ParseAssetPrecision
 }
 
 // SetHashAlgorithm updates the hash algorithm used for new logs.
@@ -51,7 +52,8 @@ func NewRequestProcessor(m metric.Meter, numscriptCacheSize int) (*RequestProces
 		hashBuf:            make([]byte, 0, 1024),
 		logHasher:          blake3.New(),
 		compiledTypesCache: make(map[string][]accounttype.CompiledType),
-		logArena:           newLogBytesArena(),
+		logArena:   newLogBytesArena(),
+		assetCache: make(map[string]cachedAssetPrecision),
 	}, nil
 }
 
@@ -78,12 +80,14 @@ func (p *RequestProcessor) invalidateCompiledTypes(ledger string) {
 	delete(p.compiledTypesCache, ledger)
 }
 
+
 // ProcessOrders processes a list of orders and returns the resulting logs.
 // The returned preMarshaledLogBytes is a parallel slice: for each created log,
 // it contains the pre-assembled protobuf bytes ready for Pebble persistence
 // (nil for idempotent reference sequences).
 func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemoryStore) ([]*raftcmdpb.CreatedLogOrReference, [][]byte, error) {
 	clear(p.compiledTypesCache)
+	clear(p.assetCache)
 
 	p.logArena.Reset()
 

@@ -51,7 +51,7 @@ func (p *RequestProcessor) processRevertTransaction(ledger string, ledgerID uint
 
 	for _, posting := range revertPostings {
 		// Apply the reversed posting (skip balance check if force is set)
-		err := applyPosting(s, ledgerID, posting, order.GetForce())
+		err := applyPosting(s, ledgerID, posting, order.GetForce(), p.assetCache)
 		if err != nil {
 			return nil, err
 		}

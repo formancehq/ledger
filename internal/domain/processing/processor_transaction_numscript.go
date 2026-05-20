@@ -18,9 +18,10 @@ import (
 )
 
 type numscriptPostingProducer struct {
-	cache    *numscript.NumscriptCache
-	ledgerID uint32
-	schema   *commonpb.MetadataSchema
+	cache      *numscript.NumscriptCache
+	ledgerID   uint32
+	schema     *commonpb.MetadataSchema
+	assetCache map[string]cachedAssetPrecision
 }
 
 func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, error) {

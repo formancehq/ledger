@@ -113,7 +113,7 @@ func (p *RequestProcessor) processMirrorFillGap(ledger string, boundaries *raftc
 func (p *RequestProcessor) processMirrorCreatedTransaction(ledger string, ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, ct *raftcmdpb.MirrorCreatedTransaction, s InMemoryStore) (*commonpb.LedgerLogPayload, error) {
 	// Apply each posting with force=true (skip balance checks, auto-init missing volumes)
 	for _, posting := range ct.GetPostings() {
-		if err := applyPosting(s, ledgerID, posting, true); err != nil {
+		if err := applyPosting(s, ledgerID, posting, true, p.assetCache); err != nil {
 			return nil, fmt.Errorf("applying mirror posting: %w", err)
 		}
 	}
@@ -320,7 +320,7 @@ func (p *RequestProcessor) processMirrorDeletedMetadata(ledger string, ledgerID 
 func (p *RequestProcessor) processMirrorRevertedTransaction(ledger string, ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, rt *raftcmdpb.MirrorRevertedTransaction, s InMemoryStore) (*commonpb.LedgerLogPayload, error) {
 	// Apply reversed postings with force=true (auto-init missing volumes)
 	for _, posting := range rt.GetReversePostings() {
-		if err := applyPosting(s, ledgerID, posting, true); err != nil {
+		if err := applyPosting(s, ledgerID, posting, true, p.assetCache); err != nil {
 			return nil, fmt.Errorf("applying mirror reverse posting: %w", err)
 		}
 	}
