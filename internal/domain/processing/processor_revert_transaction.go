@@ -8,10 +8,10 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processRevertTransaction(ledger string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.RevertTransactionOrder, s InMemoryStore, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, error) {
+func (p *RequestProcessor) processRevertTransaction(ledger string, ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.RevertTransactionOrder, s InMemoryStore, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, error) {
 	txKey := domain.TransactionKey{
-		Ledger: ledger,
-		ID:     order.GetTransactionId(),
+		LedgerID: ledgerID,
+		ID:       order.GetTransactionId(),
 	}
 
 	// Check if transaction exists (ID must be less than next transaction ID)
@@ -51,7 +51,7 @@ func (p *RequestProcessor) processRevertTransaction(ledger string, boundaries *r
 
 	for _, posting := range revertPostings {
 		// Apply the reversed posting (skip balance check if force is set)
-		err := applyPosting(s, ledger, posting, order.GetForce())
+		err := applyPosting(s, ledgerID, posting, order.GetForce())
 		if err != nil {
 			return nil, err
 		}
@@ -80,7 +80,7 @@ func (p *RequestProcessor) processRevertTransaction(ledger string, boundaries *r
 	s.PutTransactionState(txKey, origState)
 
 	// Store the revert transaction's state (include metadata from the revert order)
-	s.PutTransactionState(domain.TransactionKey{Ledger: ledger, ID: revertTxID}, &commonpb.TransactionState{
+	s.PutTransactionState(domain.TransactionKey{LedgerID: ledgerID, ID: revertTxID}, &commonpb.TransactionState{
 		CreatedByLog: s.GetNextSequenceID(),
 		Metadata:     order.GetMetadata(),
 	})
@@ -88,7 +88,7 @@ func (p *RequestProcessor) processRevertTransaction(ledger string, boundaries *r
 	// Compute post-commit volumes if requested
 	var postCommitVolumes *commonpb.PostCommitVolumes
 	if order.GetExpandVolumes() {
-		postCommitVolumes = buildPostCommitVolumes(s, ledger, revertPostings)
+		postCommitVolumes = buildPostCommitVolumes(s, ledgerID, revertPostings)
 	}
 
 	return &commonpb.LedgerLogPayload{

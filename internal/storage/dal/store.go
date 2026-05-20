@@ -206,6 +206,7 @@ const (
 	SubGlobQueryCheckpointSchedule byte = 0x10
 	SubGlobClusterConfig           byte = 0x11
 	SubGlobBloom                   byte = 0x12
+	SubGlobNextLedgerID            byte = 0x13
 )
 
 // ---------------------------------------------------------------------------

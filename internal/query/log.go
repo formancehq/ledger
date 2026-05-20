@@ -97,7 +97,7 @@ func (c *ledgerLogCursor) Close() error { return nil }
 func ReadLedgerLogsCompiled(
 	pebbleReader dal.PebbleReader,
 	indexReader dal.PebbleReader,
-	ledger string,
+	ledgerID uint32,
 	logIDs [][]byte,
 ) (cursor.Cursor[*commonpb.Log], error) {
 	kb := dal.NewKeyBuilder()
@@ -109,7 +109,7 @@ func ReadLedgerLogsCompiled(
 		}
 
 		logID := binary.BigEndian.Uint64(logIDBytes)
-		key := readstore.LedgerLogKey(kb, ledger, logID)
+		key := readstore.LedgerLogKey(kb, ledgerID, logID)
 
 		v, closer, err := indexReader.Get(key)
 		if err != nil {

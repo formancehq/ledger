@@ -3,7 +3,7 @@ package state
 import (
 	"context"
 	"fmt"
-	"strings"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -48,14 +48,15 @@ type Machine struct {
 	Periods  *PeriodTracker // Period lifecycle
 
 	// pendingLedgerCleanups tracks deleted ledgers whose Pebble data has not
-	// yet been purged. Map key is the ledger name; value is the sequence number
+	// yet been purged. Map key is the ledger ID; value is the sequence number
 	// of the DeleteLedger log. Data is cleaned up when the purge range covers
 	// the delete sequence.
-	pendingLedgerCleanups map[string]uint64
+	pendingLedgerCleanups map[uint32]uint64
 
 	// FSM mechanics
 	nextSequenceID                 uint64
 	nextAuditSequenceID            uint64
+	nextLedgerID                   uint32
 	nextQueryCheckpointID          uint64
 	queryCheckpointSchedule        string
 	queryCheckpointScheduleChanged signal.Signal
@@ -186,6 +187,7 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		Periods:                        NewPeriodTracker(nil, nil, nil, 0, ""),
 		nextSequenceID:                 1,
 		nextAuditSequenceID:            1,
+		nextLedgerID:                   1,
 		queryCheckpointScheduleChanged: signal.New(),
 		sealRequestCh:                  make(chan SealRequest, 10),
 		archiveRequestCh:               make(chan ArchiveRequest, 1),
@@ -328,6 +330,14 @@ func (fsm *Machine) RecoverState() error {
 	}
 
 	fsm.pendingLedgerCleanups = pendingCleanups
+
+	// Recover nextLedgerID from persisted counter
+	nextLedgerID, err := query.ReadNextLedgerID(fsm.dataStore)
+	if err != nil {
+		return fmt.Errorf("recovering next ledger ID: %w", err)
+	}
+
+	fsm.nextLedgerID = nextLedgerID
 
 	// Recover signing keys from Pebble
 	if fsm.keyStore != nil {
@@ -659,14 +669,14 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 		// for every ledger touched by this batch. This runs after batch.Commit()
 		// so it reads the actual committed state, avoiding false positives from
 		// stale pre-commit reads that depend on batch boundaries.
-		allLedgerNames := collectLedgerNamesFromResults(ret.Results)
-		if len(allLedgerNames) > 0 {
+		allLedgerIDs := collectLedgerIDsFromResults(ret.Results)
+		if len(allLedgerIDs) > 0 {
 			if fsm.logger.Enabled(logging.DebugLevel) {
-				fsm.logger.Debugf("Verifying aggregated volume balance for %d ledgers at raft index %d", len(allLedgerNames), fsm.lastAppliedIndex)
+				fsm.logger.Debugf("Verifying aggregated volume balance for %d ledgers at raft index %d", len(allLedgerIDs), fsm.lastAppliedIndex)
 			}
 
 			if err := verifyAggregatedVolumesBalanced(
-				fsm.dataStore, fsm.Registry.Attrs.Volume, allLedgerNames, fsm.lastAppliedIndex, fsm.logger,
+				fsm.dataStore, fsm.Registry.Attrs.Volume, allLedgerIDs, fsm.lastAppliedIndex, fsm.logger,
 			); err != nil {
 				fsm.logger.Errorf("AGGREGATED VOLUME BALANCE CHECK FAILED: %v", err)
 
@@ -998,27 +1008,34 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 	// Handle per-ledger mirror cursor and status updates (Raft-replicated)
 	for _, update := range proposal.GetMirrorSyncUpdates() {
+		ledgerInfo, _, err := fsm.Registry.Ledgers.Get(domain.LedgerKey{Name: update.GetLedgerName()}.Bytes())
+		if err != nil || ledgerInfo == nil {
+			continue // ledger not found (may have been deleted)
+		}
+
+		ledgerID := ledgerInfo.GetId()
+
 		if update.GetCursor() > 0 {
-			err := SetMirrorCursor(batch, update.GetLedgerName(), update.GetCursor())
+			err := SetMirrorCursor(batch, ledgerID, update.GetCursor())
 			if err != nil {
 				return nil, fmt.Errorf("setting mirror cursor: %w", err)
 			}
 		}
 
 		if update.GetSourceLogCount() > 0 {
-			err := SetMirrorSourceHead(batch, update.GetLedgerName(), update.GetSourceLogCount())
+			err := SetMirrorSourceHead(batch, ledgerID, update.GetSourceLogCount())
 			if err != nil {
 				return nil, fmt.Errorf("setting mirror source head: %w", err)
 			}
 		}
 
 		if update.GetClearError() {
-			err := ClearMirrorStatus(batch, update.GetLedgerName())
+			err := ClearMirrorStatus(batch, ledgerID)
 			if err != nil {
 				return nil, fmt.Errorf("clearing mirror status: %w", err)
 			}
 		} else if update.GetError() != nil {
-			err := SetMirrorStatus(batch, update.GetLedgerName(), update.GetError())
+			err := SetMirrorStatus(batch, ledgerID, update.GetError())
 			if err != nil {
 				return nil, fmt.Errorf("setting mirror status: %w", err)
 			}
@@ -1197,32 +1214,29 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 	// Cross-check: volume deltas must match postings in the committed logs.
 	if fsm.sentinelMode {
-		if err := verifyVolumeDeltasMatchPostings(buffer.AllVolumeUpdates(), createdLogs); err != nil {
+		// Build ledger name → ID map for sentinel cross-check.
+		sentinelNameToID := make(map[string]uint32)
+		for _, log := range createdLogs {
+			if apply, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply); ok && apply.Apply != nil {
+				name := apply.Apply.GetLedgerName()
+				if _, exists := sentinelNameToID[name]; !exists {
+					if info, ok := buffer.GetLedger(name); ok {
+						sentinelNameToID[name] = info.GetId()
+					}
+				}
+			}
+		}
+
+		if err := verifyVolumeDeltasMatchPostings(buffer.AllVolumeUpdates(), createdLogs, sentinelNameToID); err != nil {
 			return nil, fmt.Errorf("volume delta/posting cross-check failed at raft index %d: %w", raftIndex, err)
 		}
 	}
 
-	// Diagnostic: after each entry, log cumulative world volume for dept-* ledgers.
-	// This pinpoints the exact entry where the aggregate diverges.
-	if fsm.sentinelMode {
-		for _, u := range buffer.KeptVolumeUpdates() {
-			if strings.HasPrefix(u.Key.Ledger, "dept-") && u.Key.Account == "world" {
-				fsm.logger.WithFields(map[string]any{
-					"raftIndex": raftIndex,
-					"ledger":    u.Key.Ledger,
-					"asset":     u.Key.Asset,
-					"newInput":  u.New.GetInput().ToBigInt().String(),
-					"newOutput": u.New.GetOutput().ToBigInt().String(),
-				}).Infof("SENTINEL: world volume after entry")
-			}
-		}
-	}
-
-	// Collect ledger names for post-commit aggregated balance verification.
+	// Collect ledger IDs for post-commit aggregated balance verification.
 	// The check must run after batch.Commit() — reading from fsm.dataStore
 	// before commit sees stale committed state that excludes the current batch,
 	// which produces false positives when batch boundaries differ across nodes.
-	ledgerNames := collectLedgerNames(proposal.GetOrders())
+	ledgerIDs := collectLedgerIDs(proposal.GetOrders(), buffer)
 
 	// SUCCESS: write audit entry with batch-level side effects.
 	minLogSeq, maxLogSeq := extractLogSequenceRange(logs)
@@ -1233,15 +1247,25 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 	if ta := buffer.TransientAccounts(); len(ta) > 0 {
 		auditSuccess.TransientAccounts = make(map[string]*auditpb.AccountList, len(ta))
-		for ledger, accounts := range ta {
-			auditSuccess.TransientAccounts[ledger] = &auditpb.AccountList{Accounts: accounts}
+		for ledgerID, accounts := range ta {
+			ledgerName := strconv.FormatUint(uint64(ledgerID), 10)
+			if info, ok := buffer.GetLedgerByID(ledgerID); ok {
+				ledgerName = info.GetName()
+			}
+
+			auditSuccess.TransientAccounts[ledgerName] = &auditpb.AccountList{Accounts: accounts}
 		}
 	}
 
 	if pa := buffer.PurgedAccounts(); len(pa) > 0 {
 		auditSuccess.PurgedAccounts = make(map[string]*auditpb.AccountList, len(pa))
-		for ledger, accounts := range pa {
-			auditSuccess.PurgedAccounts[ledger] = &auditpb.AccountList{Accounts: accounts}
+		for ledgerID, accounts := range pa {
+			ledgerName := strconv.FormatUint(uint64(ledgerID), 10)
+			if info, ok := buffer.GetLedgerByID(ledgerID); ok {
+				ledgerName = info.GetName()
+			}
+
+			auditSuccess.PurgedAccounts[ledgerName] = &auditpb.AccountList{Accounts: accounts}
 		}
 	}
 
@@ -1294,7 +1318,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		volumeUpdates:           buffer.KeptVolumeUpdates(),
 		purgedVolumeKeys:        buffer.PurgedVolumeKeys(),
 		createdLogs:             createdLogs,
-		ledgerNames:             ledgerNames,
+		ledgerIDs:               ledgerIDs,
 	}, nil
 }
 
@@ -1677,7 +1701,7 @@ type ApplyResult struct {
 	volumeUpdates    []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
 	purgedVolumeKeys []domain.VolumeKey // keys removed by ephemeral purge
 	createdLogs      []*commonpb.Log
-	ledgerNames      []string // ledger names touched by this proposal (for post-commit balance check)
+	ledgerIDs        []uint32 // ledger IDs touched by this proposal (for post-commit balance check)
 }
 
 type ApplyEntriesResult struct {

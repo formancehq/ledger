@@ -277,31 +277,31 @@ func TestReadTransactionState(t *testing.T) {
 	// Store state for two different transactions
 	batch := s.NewBatch()
 	_, err := txAttr.Set(batch,
-		domain.TransactionKey{Ledger: "test", ID: 100}.Bytes(),
+		domain.TransactionKey{LedgerID: 1, ID: 100}.Bytes(),
 		&commonpb.TransactionState{CreatedByLog: 1},
 	)
 	require.NoError(t, err)
 	_, err = txAttr.Set(batch,
-		domain.TransactionKey{Ledger: "test", ID: 200}.Bytes(),
+		domain.TransactionKey{LedgerID: 1, ID: 200}.Bytes(),
 		&commonpb.TransactionState{CreatedByLog: 2},
 	)
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
 	// Read state for transaction 100
-	state, err := query.ReadTransactionState(context.Background(), s, txAttr, "test", 100)
+	state, err := query.ReadTransactionState(context.Background(), s, txAttr, 1, 100)
 	require.NoError(t, err)
 	require.NotNil(t, state)
 	require.Equal(t, uint64(1), state.GetCreatedByLog())
 
 	// Read state for transaction 200
-	state, err = query.ReadTransactionState(context.Background(), s, txAttr, "test", 200)
+	state, err = query.ReadTransactionState(context.Background(), s, txAttr, 1, 200)
 	require.NoError(t, err)
 	require.NotNil(t, state)
 	require.Equal(t, uint64(2), state.GetCreatedByLog())
 
 	// Read state for non-existent transaction
-	state, err = query.ReadTransactionState(context.Background(), s, txAttr, "test", 999)
+	state, err = query.ReadTransactionState(context.Background(), s, txAttr, 1, 999)
 	require.NoError(t, err)
 	require.Nil(t, state)
 }
@@ -318,7 +318,7 @@ func TestFindTransactionCreationLog(t *testing.T) {
 	// Store a transaction state via the attribute system
 	batch := s.NewBatch()
 	_, err := txAttr.Set(batch,
-		domain.TransactionKey{Ledger: "find-tx-ledger", ID: 1}.Bytes(),
+		domain.TransactionKey{LedgerID: 1, ID: 1}.Bytes(),
 		&commonpb.TransactionState{CreatedByLog: 5},
 	)
 	require.NoError(t, err)
@@ -336,17 +336,17 @@ func TestFindTransactionCreationLog(t *testing.T) {
 	appendLogs(t, s, 1, logs...)
 
 	// Find the creation log
-	log, err := query.FindTransactionCreationLog(context.Background(), s, txAttr, "find-tx-ledger", 1)
+	log, err := query.FindTransactionCreationLog(context.Background(), s, txAttr, 1, 1)
 	require.NoError(t, err)
 	require.NotNil(t, log)
 	require.Equal(t, uint64(5), log.GetSequence())
 
 	// Non-existent transaction should return ErrNotFound
-	_, err = query.FindTransactionCreationLog(context.Background(), s, txAttr, "find-tx-ledger", 999)
+	_, err = query.FindTransactionCreationLog(context.Background(), s, txAttr, 1, 999)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 
 	// Non-existent ledger should return error
-	_, err = query.FindTransactionCreationLog(context.Background(), s, txAttr, "non-existent", 1)
+	_, err = query.FindTransactionCreationLog(context.Background(), s, txAttr, 99, 1)
 	require.Error(t, err)
 }
 

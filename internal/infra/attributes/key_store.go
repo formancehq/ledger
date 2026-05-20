@@ -290,6 +290,11 @@ func (s *DerivedKeyStore[K, T]) DirtyValues() iter.Seq2[K, T] {
 	}
 }
 
+// Parent returns the underlying KeyStore.
+func (s *DerivedKeyStore[K, T]) Parent() *KeyStore[K, T] {
+	return s.KeyStore
+}
+
 func NewDerivedKeyStore[K Key, T any](store *KeyStore[K, T], cloneFn func(T) T) *DerivedKeyStore[K, T] {
 	return &DerivedKeyStore[K, T]{
 		KeyStore:  store,

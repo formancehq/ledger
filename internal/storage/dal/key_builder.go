@@ -79,6 +79,11 @@ func (kb *KeyBuilder) PutLedgerName(name string) *KeyBuilder {
 	return kb.PutStringNull(name)
 }
 
+// PutLedgerID appends a uint32 ledger ID in big-endian order.
+func (kb *KeyBuilder) PutLedgerID(id uint32) *KeyBuilder {
+	return kb.PutUint32(id)
+}
+
 // PutNamespace appends a namespace prefix (e.g., "a:" or "t:").
 func (kb *KeyBuilder) PutNamespace(ns string) *KeyBuilder {
 	return kb.PutString(ns)

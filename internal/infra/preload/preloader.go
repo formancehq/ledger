@@ -6,6 +6,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/bloom"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
@@ -107,6 +108,34 @@ func New(tracker *node.IndexTracker, c *cache.Cache, attrs *attributes.Attribute
 // tokens from a PreloadBuild on error paths.
 func (p *Preloader) Loaders() *Loaders {
 	return p.loaders
+}
+
+// ResolveLedgerID resolves a ledger name to its uint32 ID using the standard
+// attribute resolution path: bloom → cache → Pebble.
+// Returns (0, false) if the ledger does not exist.
+func (p *Preloader) ResolveLedgerID(name string) (uint32, bool) {
+	canonical := domain.LedgerKey{Name: name}.Bytes()
+	id, _ := attributes.MakeKey(attributes.DefaultSeeds, canonical)
+
+	// 1. Bloom filter: if definitely absent, skip.
+	if p.bloomFilters != nil {
+		if bf := p.bloomFilters.FilterForAttrType(dal.SubAttrLedger); bf != nil && !bf.MayContain(id) {
+			return 0, false
+		}
+	}
+
+	// 2. Cache: check gen0/gen1.
+	if entry, ok := p.cache.Ledgers.Get(id); ok && entry.Data != nil {
+		return entry.Data.GetId(), true
+	}
+
+	// 3. Pebble fallback (single point read, no snapshot needed).
+	info, err := p.attrs.Ledger.Get(p.store, canonical)
+	if err != nil || info == nil {
+		return 0, false
+	}
+
+	return info.GetId(), true
 }
 
 // ReadBoundaries reads the current LedgerBoundaries for the given ledger

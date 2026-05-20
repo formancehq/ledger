@@ -322,14 +322,14 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	}
 
 	// Step 1: Extract preload needs from orders (excludes script-dependent needs)
-	needs, err := a.extractPreloadNeeds(ctx, orders)
+	needs, nameToID, err := a.extractPreloadNeeds(ctx, orders)
 	if err != nil {
 		return nil, err
 	}
 
 	// Step 2: Resolve script references and discover script dependencies.
 	// This enriches needs with volumes/metadata discovered from scripts.
-	if err := a.resolveScriptsAndEnrichNeeds(ctx, orders, overlay, needs); err != nil {
+	if err := a.resolveScriptsAndEnrichNeeds(ctx, orders, overlay, needs, nameToID); err != nil {
 		return nil, err
 	}
 
@@ -689,16 +689,76 @@ func allRequestsAreMaintenanceMode(requests []*servicepb.Request) bool {
 }
 
 // addVolumeNeed adds a volume key to the preload needs.
-func addVolumeNeed(p *preload.Needs, ledgerName, account, asset string) {
+func addVolumeNeed(p *preload.Needs, ledgerID uint32, account, asset string) {
 	p.Volumes[domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: ledgerName, Account: account},
+		AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: account},
 		Asset:      asset,
 	}] = struct{}{}
 }
 
+// resolveLedgerIDs builds a name-to-ID map for all ledger names referenced in orders.
+// Ledger names from CreateLedger orders are excluded since the ledger doesn't exist yet.
+func (a *Admission) resolveLedgerIDs(orders []*raftcmdpb.Order) (map[string]uint32, error) {
+	nameToID := make(map[string]uint32)
+	createNames := make(map[string]struct{})
+
+	// First pass: collect all unique ledger names and track CreateLedger names.
+	for _, order := range orders {
+		switch orderType := order.GetType().(type) {
+		case *raftcmdpb.Order_CreateLedger:
+			createNames[orderType.CreateLedger.GetName()] = struct{}{}
+		case *raftcmdpb.Order_DeleteLedger:
+			nameToID[orderType.DeleteLedger.GetName()] = 0
+		case *raftcmdpb.Order_MirrorIngest:
+			nameToID[orderType.MirrorIngest.GetLedger()] = 0
+		case *raftcmdpb.Order_Apply:
+			nameToID[orderType.Apply.GetLedger()] = 0
+		case *raftcmdpb.Order_CreatePreparedQuery:
+			nameToID[orderType.CreatePreparedQuery.GetQuery().GetLedger()] = 0
+		case *raftcmdpb.Order_UpdatePreparedQuery:
+			nameToID[orderType.UpdatePreparedQuery.GetLedger()] = 0
+		case *raftcmdpb.Order_DeletePreparedQuery:
+			nameToID[orderType.DeletePreparedQuery.GetLedger()] = 0
+		case *raftcmdpb.Order_SaveNumscript:
+			nameToID[orderType.SaveNumscript.GetLedger()] = 0
+		case *raftcmdpb.Order_DeleteNumscript:
+			nameToID[orderType.DeleteNumscript.GetLedger()] = 0
+		case *raftcmdpb.Order_SaveLedgerMetadata:
+			nameToID[orderType.SaveLedgerMetadata.GetLedger()] = 0
+		case *raftcmdpb.Order_DeleteLedgerMetadata:
+			nameToID[orderType.DeleteLedgerMetadata.GetLedger()] = 0
+		case *raftcmdpb.Order_PromoteLedger:
+			nameToID[orderType.PromoteLedger.GetLedger()] = 0
+		}
+	}
+
+	// Resolve names to IDs. Skip names that are only in CreateLedger or
+	// that don't exist yet — the FSM will return the appropriate error.
+	for name := range nameToID {
+		if _, isCreate := createNames[name]; isCreate {
+			continue
+		}
+
+		id, ok := a.preloader.ResolveLedgerID(name)
+		if !ok {
+			// Ledger doesn't exist; skip preload. The FSM will return ErrLedgerNotFound.
+			continue
+		}
+
+		nameToID[name] = id
+	}
+
+	return nameToID, nil
+}
+
 // extractPreloadNeeds extracts all preload keys from orders in a single pass.
-func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb.Order) (*preload.Needs, error) {
+func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb.Order) (*preload.Needs, map[string]uint32, error) {
 	p := preload.NewNeeds()
+
+	nameToID, err := a.resolveLedgerIDs(orders)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	for _, order := range orders {
 		// Idempotency keys apply to all order types.
@@ -720,6 +780,7 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 			p.Boundaries[domain.LedgerKey{Name: orderType.MirrorIngest.GetLedger()}] = struct{}{}
 
 			ledgerName := orderType.MirrorIngest.GetLedger()
+			ledgerID := nameToID[ledgerName]
 
 			var postings []*commonpb.Posting
 			if ct := orderType.MirrorIngest.GetEntry().GetCreatedTransaction(); ct != nil {
@@ -729,8 +790,8 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 			}
 
 			for _, posting := range postings {
-				addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset())
-				addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset())
+				addVolumeNeed(p, ledgerID, posting.GetSource(), posting.GetAsset())
+				addVolumeNeed(p, ledgerID, posting.GetDestination(), posting.GetAsset())
 			}
 
 			// Preload account metadata for previous value capture in logs.
@@ -739,7 +800,7 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 				for account, mm := range ct.GetAccountMetadata() {
 					for key := range mm.GetValues() {
 						p.Metadata[domain.MetadataKey{
-							AccountKey: domain.AccountKey{Ledger: ledgerName, Account: account},
+							AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: account},
 							Key:        key,
 						}] = struct{}{}
 					}
@@ -750,7 +811,7 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 				if target, ok := sm.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
 					for key := range sm.GetMetadata() {
 						p.Metadata[domain.MetadataKey{
-							AccountKey: domain.AccountKey{Ledger: ledgerName, Account: target.Account.GetAddr()},
+							AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: target.Account.GetAddr()},
 							Key:        key,
 						}] = struct{}{}
 					}
@@ -760,40 +821,41 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 			if dm := mi.GetEntry().GetDeletedMetadata(); dm != nil {
 				if target, ok := dm.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
 					p.Metadata[domain.MetadataKey{
-						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: target.Account.GetAddr()},
+						AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: target.Account.GetAddr()},
 						Key:        dm.GetKey(),
 					}] = struct{}{}
 				}
 			}
 		case *raftcmdpb.Order_CreatePreparedQuery:
-			p.PreparedQueries[domain.PreparedQueryKey{Ledger: orderType.CreatePreparedQuery.GetQuery().GetLedger(), Name: orderType.CreatePreparedQuery.GetQuery().GetName()}] = struct{}{}
+			p.PreparedQueries[domain.PreparedQueryKey{LedgerID: nameToID[orderType.CreatePreparedQuery.GetQuery().GetLedger()], Name: orderType.CreatePreparedQuery.GetQuery().GetName()}] = struct{}{}
 		case *raftcmdpb.Order_UpdatePreparedQuery:
-			p.PreparedQueries[domain.PreparedQueryKey{Ledger: orderType.UpdatePreparedQuery.GetLedger(), Name: orderType.UpdatePreparedQuery.GetName()}] = struct{}{}
+			p.PreparedQueries[domain.PreparedQueryKey{LedgerID: nameToID[orderType.UpdatePreparedQuery.GetLedger()], Name: orderType.UpdatePreparedQuery.GetName()}] = struct{}{}
 		case *raftcmdpb.Order_DeletePreparedQuery:
-			p.PreparedQueries[domain.PreparedQueryKey{Ledger: orderType.DeletePreparedQuery.GetLedger(), Name: orderType.DeletePreparedQuery.GetName()}] = struct{}{}
+			p.PreparedQueries[domain.PreparedQueryKey{LedgerID: nameToID[orderType.DeletePreparedQuery.GetLedger()], Name: orderType.DeletePreparedQuery.GetName()}] = struct{}{}
 		case *raftcmdpb.Order_PromoteLedger:
 			p.Ledgers[domain.LedgerKey{Name: orderType.PromoteLedger.GetLedger()}] = struct{}{}
 		case *raftcmdpb.Order_SaveNumscript:
-			p.NumscriptVersions[domain.NumscriptVersionKey{Ledger: orderType.SaveNumscript.GetLedger(), Name: orderType.SaveNumscript.GetName()}] = struct{}{}
+			p.NumscriptVersions[domain.NumscriptVersionKey{LedgerID: nameToID[orderType.SaveNumscript.GetLedger()], Name: orderType.SaveNumscript.GetName()}] = struct{}{}
 			// For semver saves, preload the specific version content for immutability check
 			version := orderType.SaveNumscript.GetVersion()
 			if version != "" && version != "latest" {
-				p.NumscriptContents[domain.NumscriptEntryKey{Ledger: orderType.SaveNumscript.GetLedger(), Name: orderType.SaveNumscript.GetName(), Version: version}] = struct{}{}
+				p.NumscriptContents[domain.NumscriptEntryKey{LedgerID: nameToID[orderType.SaveNumscript.GetLedger()], Name: orderType.SaveNumscript.GetName(), Version: version}] = struct{}{}
 			}
 		case *raftcmdpb.Order_DeleteNumscript:
-			p.NumscriptVersions[domain.NumscriptVersionKey{Ledger: orderType.DeleteNumscript.GetLedger(), Name: orderType.DeleteNumscript.GetName()}] = struct{}{}
+			p.NumscriptVersions[domain.NumscriptVersionKey{LedgerID: nameToID[orderType.DeleteNumscript.GetLedger()], Name: orderType.DeleteNumscript.GetName()}] = struct{}{}
 		case *raftcmdpb.Order_Apply:
 			ledgerKey := domain.LedgerKey{Name: orderType.Apply.GetLedger()}
 			p.Boundaries[ledgerKey] = struct{}{}
 			p.Ledgers[ledgerKey] = struct{}{}
 
 			ledgerName := orderType.Apply.GetLedger()
+			ledgerID := nameToID[ledgerName]
 
 			switch applyData := orderType.Apply.GetData().(type) {
 			case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
 				if applyData.CreateTransaction.GetReference() != "" {
 					p.References[domain.TransactionReferenceKey{
-						Ledger:    ledgerName,
+						LedgerID:  ledgerID,
 						Reference: applyData.CreateTransaction.GetReference(),
 					}] = struct{}{}
 				}
@@ -809,15 +871,15 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 				}
 
 				for _, posting := range applyData.CreateTransaction.GetPostings() {
-					addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset())
-					addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset())
+					addVolumeNeed(p, ledgerID, posting.GetSource(), posting.GetAsset())
+					addVolumeNeed(p, ledgerID, posting.GetDestination(), posting.GetAsset())
 				}
 
 				// Preload account metadata for previous value capture.
 				for account, mm := range applyData.CreateTransaction.GetAccountMetadata() {
 					for key := range mm.GetValues() {
 						p.Metadata[domain.MetadataKey{
-							AccountKey: domain.AccountKey{Ledger: ledgerName, Account: account},
+							AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: account},
 							Key:        key,
 						}] = struct{}{}
 					}
@@ -825,20 +887,20 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 
 			case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
 				p.Transactions[domain.TransactionKey{
-					Ledger: ledgerName,
-					ID:     applyData.RevertTransaction.GetTransactionId(),
+					LedgerID: ledgerID,
+					ID:       applyData.RevertTransaction.GetTransactionId(),
 				}] = struct{}{}
 
 				for _, posting := range applyData.RevertTransaction.GetOriginalPostings() {
-					addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset())
-					addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset())
+					addVolumeNeed(p, ledgerID, posting.GetDestination(), posting.GetAsset())
+					addVolumeNeed(p, ledgerID, posting.GetSource(), posting.GetAsset())
 				}
 
 			case *raftcmdpb.LedgerApplyOrder_AddMetadata:
 				if target, ok := applyData.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
 					for key := range applyData.AddMetadata.GetMetadata() {
 						p.Metadata[domain.MetadataKey{
-							AccountKey: domain.AccountKey{Ledger: ledgerName, Account: target.Account.GetAddr()},
+							AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: target.Account.GetAddr()},
 							Key:        key,
 						}] = struct{}{}
 					}
@@ -846,23 +908,23 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 
 				if target, ok := applyData.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_Transaction); ok {
 					p.Transactions[domain.TransactionKey{
-						Ledger: ledgerName,
-						ID:     target.Transaction.GetId(),
+						LedgerID: ledgerID,
+						ID:       target.Transaction.GetId(),
 					}] = struct{}{}
 				}
 
 			case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
 				if target, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
 					p.Metadata[domain.MetadataKey{
-						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: target.Account.GetAddr()},
+						AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: target.Account.GetAddr()},
 						Key:        applyData.DeleteMetadata.GetKey(),
 					}] = struct{}{}
 				}
 
 				if target, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_Transaction); ok {
 					p.Transactions[domain.TransactionKey{
-						Ledger: ledgerName,
-						ID:     target.Transaction.GetId(),
+						LedgerID: ledgerID,
+						ID:       target.Transaction.GetId(),
 					}] = struct{}{}
 				}
 			}
@@ -872,21 +934,21 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 
 			for key := range orderType.SaveLedgerMetadata.GetMetadata() {
 				p.LedgerMetadata[domain.LedgerMetadataKey{
-					Ledger: ledgerName,
-					Key:    key,
+					LedgerID: nameToID[ledgerName],
+					Key:      key,
 				}] = struct{}{}
 			}
 		case *raftcmdpb.Order_DeleteLedgerMetadata:
 			ledgerName := orderType.DeleteLedgerMetadata.GetLedger()
 			p.Ledgers[domain.LedgerKey{Name: ledgerName}] = struct{}{}
 			p.LedgerMetadata[domain.LedgerMetadataKey{
-				Ledger: ledgerName,
-				Key:    orderType.DeleteLedgerMetadata.GetKey(),
+				LedgerID: nameToID[ledgerName],
+				Key:      orderType.DeleteLedgerMetadata.GetKey(),
 			}] = struct{}{}
 		}
 	}
 
-	return p, nil
+	return p, nameToID, nil
 }
 
 // resolveScriptsAndEnrichNeeds resolves ScriptReferences and discovers volume/metadata
@@ -894,7 +956,7 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 // Needs with the discovered dependencies so that a single BuildPreloads call covers everything.
 //
 // This runs after extractPreloadNeeds (which skips script-based orders) and before BuildPreloads.
-func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*raftcmdpb.Order, overlay *bulkOverlay, p *preload.Needs) error {
+func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*raftcmdpb.Order, overlay *bulkOverlay, p *preload.Needs, nameToID map[string]uint32) error {
 	for _, order := range orders {
 		applyOrder, ok := order.GetType().(*raftcmdpb.Order_Apply)
 		if !ok {
@@ -907,6 +969,7 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		}
 
 		ledgerName := applyOrder.Apply.GetLedger()
+		ledgerID := nameToID[ledgerName]
 
 		var scriptText string
 		isReference := false
@@ -915,7 +978,7 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		var resolvedVersion string
 
 		if ref := createTx.CreateTransaction.GetNumscriptReference(); ref != nil && ref.GetName() != "" {
-			content, rv, err := a.resolveNumscriptReference(overlay, ledgerName, ref.GetName(), ref.GetVersion())
+			content, rv, err := a.resolveNumscriptReference(overlay, ledgerName, ledgerID, ref.GetName(), ref.GetVersion())
 			if err != nil {
 				return err
 			}
@@ -941,7 +1004,7 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			a.numscriptCache,
 			scriptText,
 			createTx.CreateTransaction.GetScript().GetVars(),
-			ledgerName,
+			ledgerID,
 		)
 		if err != nil {
 			if errors.Is(err, numscript.ErrMetaNotSupported) {
@@ -957,11 +1020,11 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 
 		if discovered != nil {
 			for key := range discovered.SourceVolumes {
-				addVolumeNeed(p, key.Ledger, key.Account, key.Asset)
+				addVolumeNeed(p, key.LedgerID, key.Account, key.Asset)
 			}
 
 			for key := range discovered.DestinationVolumes {
-				addVolumeNeed(p, key.Ledger, key.Account, key.Asset)
+				addVolumeNeed(p, key.LedgerID, key.Account, key.Asset)
 			}
 
 			for key := range discovered.WrittenMetadata {
@@ -975,9 +1038,9 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		if isReference {
 			ref := createTx.CreateTransaction.GetNumscriptReference()
 			p.NumscriptContents[domain.NumscriptEntryKey{
-				Ledger:  ledgerName,
-				Name:    ref.GetName(),
-				Version: resolvedVersion,
+				LedgerID: ledgerID,
+				Name:     ref.GetName(),
+				Version:  resolvedVersion,
 			}] = struct{}{}
 			// Ensure the order's reference has the resolved version for FSM cache lookup.
 			_ = ref
@@ -1441,7 +1504,7 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 
 // requestsToOrders converts a slice of servicepb.Request to raftcmdpb.Order.
 // resolveNumscriptReference resolves a numscript reference from the overlay (intra-bulk) or Pebble.
-func (a *Admission) resolveNumscriptReference(overlay *bulkOverlay, ledger, name, version string) (string, string, error) {
+func (a *Admission) resolveNumscriptReference(overlay *bulkOverlay, ledger string, ledgerID uint32, name, version string) (string, string, error) {
 	if content, resolvedVersion, found := a.resolveNumscriptFromOverlay(overlay, ledger, name, version); found {
 		return content, resolvedVersion, nil
 	}
@@ -1450,7 +1513,7 @@ func (a *Admission) resolveNumscriptReference(overlay *bulkOverlay, ledger, name
 		return "", "", &domain.BusinessError{Err: &domain.ErrNumscriptNotFound{Name: name}}
 	}
 
-	info, err := query.ReadNumscript(a.attrs.NumscriptVersion, a.attrs.NumscriptContent, a.store, ledger, name, version)
+	info, err := query.ReadNumscript(a.attrs.NumscriptVersion, a.attrs.NumscriptContent, a.store, ledgerID, name, version)
 	if err != nil {
 		return "", "", fmt.Errorf("reading numscript %q: %w", name, err)
 	}
@@ -1559,7 +1622,12 @@ func (a *Admission) requestsToOrders(ctx context.Context, reqs []*servicepb.Requ
 // getTransactionPostings retrieves the postings of an original transaction from the store.
 // It uses FindTransactionCreationLog to locate the creation log and extract postings.
 func (a *Admission) getTransactionPostings(ledgerName string, transactionID uint64) ([]*commonpb.Posting, error) {
-	log, err := query.FindTransactionCreationLog(context.Background(), a.store, a.attrs.Transaction, ledgerName, transactionID)
+	ledgerID, ok := a.preloader.ResolveLedgerID(ledgerName)
+	if !ok {
+		return nil, &domain.BusinessError{Err: &domain.ErrLedgerNotFound{Name: ledgerName}}
+	}
+
+	log, err := query.FindTransactionCreationLog(context.Background(), a.store, a.attrs.Transaction, ledgerID, transactionID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, &domain.BusinessError{Err: &domain.ErrTransactionNotFound{TransactionID: transactionID}}

@@ -19,11 +19,11 @@ See [Deterministic FSM](../core/deterministic-fsm.md) for details on the caching
 
 | Attribute | Key | Value | Scope | Behavior |
 |-----------|-----|-------|-------|----------|
-| **Volumes** | ledger/account/asset | `VolumePair` (Input + Output) | Per-ledger | Last-write-wins (absolute values) |
-| **Account Metadata** | ledger/account/key | `MetadataValue` | Per-ledger | Last-write-wins |
-| **Ledger Metadata** | ledger/key | `MetadataValue` | Per-ledger | Last-write-wins |
-| **Reversions** | ledger + txID | `bit` | Per-ledger | In-memory bitset, persisted per-word in Pebble zone `0x03` |
-| **Transaction References** | ledger/reference | `uint64` (txID) | Per-ledger | Immutable once set |
+| **Volumes** | ledgerID/account/asset | `VolumePair` (Input + Output) | Per-ledger | Last-write-wins (absolute values) |
+| **Account Metadata** | ledgerID/account/key | `MetadataValue` | Per-ledger | Last-write-wins |
+| **Ledger Metadata** | ledgerID/key | `MetadataValue` | Per-ledger | Last-write-wins |
+| **Reversions** | ledgerID + txID | `bit` | Per-ledger | In-memory bitset, persisted per-word in Pebble zone `0x03` |
+| **Transaction References** | ledgerID/reference | `uint64` (txID) | Per-ledger | Immutable once set |
 | **Ledgers** | ledger name | `LedgerInfo` | System-wide | Last-write-wins |
 | **Boundaries** | ledger name | `LedgerBoundaries` | Per-ledger | Last-write-wins |
 
@@ -33,7 +33,7 @@ Track funds flow for each account and asset combination. Volumes are always prel
 
 | Property | Description |
 |----------|-------------|
-| **Key** | `VolumeKey` = ledger name + account address + asset |
+| **Key** | `VolumeKey` = ledger ID (uint32) + account address + asset |
 | **Value** | `VolumePair` (Input + Output as Uint256) |
 | **Computation** | Last-write-wins (latest absolute value) |
 | **Balance** | `Input - Output` |
@@ -57,7 +57,7 @@ Key-value metadata attached to accounts.
 
 | Property | Description |
 |----------|-------------|
-| **Key** | `MetadataKey` = ledger name + account address + metadata key |
+| **Key** | `MetadataKey` = ledger ID (uint32) + account address + metadata key |
 | **Value** | `MetadataValue` (string) |
 | **Computation** | Last-write-wins |
 
@@ -78,7 +78,7 @@ Key-value metadata attached to ledgers.
 
 | Property | Description |
 |----------|-------------|
-| **Key** | `LedgerMetadataKey` = ledger name + metadata key |
+| **Key** | `LedgerMetadataKey` = ledger ID (uint32) + metadata key |
 | **Value** | `MetadataValue` (string) |
 | **Computation** | Last-write-wins |
 
@@ -96,12 +96,12 @@ Value: "production"
 
 Track whether a transaction has been reverted using an **in-memory bitset** (`ReversionBitset`).
 
-Unlike other attributes, reversions are **not** stored as Pebble attributes under zone `0x01`. Instead, each ledger maintains a `[]uint64` bitset where bit N indicates whether transaction N has been reverted. Reversion words are persisted to Pebble under zone `0x03` (Per-Ledger) with key format `[0x03][0x01][ledger\x00][wordIndex BE 8 bytes]` via the `SaveReversionWord` function in `internal/infra/state/batch.go`.
+Unlike other attributes, reversions are **not** stored as Pebble attributes under zone `0x01`. Instead, each ledger maintains a `[]uint64` bitset where bit N indicates whether transaction N has been reverted. Reversion words are persisted to Pebble under zone `0x03` (Per-Ledger) with key format `[0x03][0x01][ledgerID BE 4B][wordIndex BE 8 bytes]` via the `SaveReversionWord` function in `internal/infra/state/batch.go`.
 
 | Property | Description |
 |----------|-------------|
-| **In-memory** | `map[string]*bitset.Bitset` -- one bitset per ledger (from `internal/pkg/bitset/bitset.go`) |
-| **Pebble persistence** | Per-word in zone `0x03` (`ZonePerLedger` + `SubPLReversions`), key: `[0x03][0x01][ledger\x00][wordIndex BE 8]`, value: `[uint64 LE 8]` |
+| **In-memory** | `map[uint32]*bitset.Bitset` -- one bitset per ledger (from `internal/pkg/bitset/bitset.go`) |
+| **Pebble persistence** | Per-word in zone `0x03` (`ZonePerLedger` + `SubPLReversions`), key: `[0x03][0x01][ledgerID BE 4B][wordIndex BE 8]`, value: `[uint64 LE 8]` |
 | **Lookup** | O(1) -- `words[txID/64] & (1 << (txID%64))` |
 | **Memory** | 1 bit per transaction (vs ~82 bytes per entry with the old KeyStore approach) |
 | **Restore** | Reconstructed from Pebble via `ReadReversions` (`internal/query/reversions.go`) on startup or snapshot restore |

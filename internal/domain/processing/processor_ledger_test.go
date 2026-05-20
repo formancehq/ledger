@@ -25,11 +25,13 @@ func TestProcessCreateLedger(t *testing.T) {
 
 	// Setup expectations
 	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false)
+	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
 		func(name string, info *commonpb.LedgerInfo) {
 			require.Equal(t, "test-ledger", info.GetName())
 			require.Equal(t, now, info.GetCreatedAt())
+			require.Equal(t, uint32(1), info.GetId(), "LedgerInfo should have Id == 1")
 		},
 	)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any()).Do(
@@ -54,6 +56,7 @@ func TestProcessCreateLedger(t *testing.T) {
 	createLedgerLog := result.GetCreateLedger()
 	require.NotNil(t, createLedgerLog)
 	require.Equal(t, "test-ledger", createLedgerLog.GetName())
+	require.Equal(t, uint32(1), createLedgerLog.GetId(), "CreateLedgerLog should have Id == 1")
 }
 
 func TestProcessCreateLedger_AlreadyExists(t *testing.T) {

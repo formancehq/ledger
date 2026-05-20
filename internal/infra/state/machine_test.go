@@ -55,7 +55,9 @@ func newTestMachine(t *testing.T) (*Machine, *dal.Store, *attributes.Attributes)
 // It automatically generates volume preloads with zero values for all
 // accounts referenced in postings (simulating what the admission layer does).
 func makeProposal(id uint64, orders ...*raftcmdpb.Order) *raftcmdpb.Proposal {
-	preloads := buildVolumePreloads(orders)
+	// The FSM assigns ledger IDs starting from 1. In single-ledger tests,
+	// the first ledger always gets ID 1.
+	preloads := buildVolumePreloads(orders, 1)
 
 	return &raftcmdpb.Proposal{
 		Id:      id,
@@ -67,7 +69,7 @@ func makeProposal(id uint64, orders ...*raftcmdpb.Order) *raftcmdpb.Proposal {
 
 // buildVolumePreloads extracts all (ledger, account, asset) tuples from posting
 // orders and creates zero-value volume preloads for each unique combination.
-func buildVolumePreloads(orders []*raftcmdpb.Order) []*raftcmdpb.Preload {
+func buildVolumePreloads(orders []*raftcmdpb.Order, ledgerID uint32) []*raftcmdpb.Preload {
 	type volumeKey struct {
 		ledger  string
 		account string
@@ -103,7 +105,7 @@ func buildVolumePreloads(orders []*raftcmdpb.Order) []*raftcmdpb.Preload {
 				seen[key] = struct{}{}
 
 				canonicalKey := domain.VolumeKey{
-					AccountKey: domain.AccountKey{Ledger: ledger, Account: account},
+					AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: account},
 					Asset:      p.GetAsset(),
 				}
 				id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey.Bytes())
@@ -357,8 +359,8 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 	getVolumeFromCache := func(account, asset string) (input, output int64) {
 		key := domain.VolumeKey{
 			AccountKey: domain.AccountKey{
-				Ledger:  ledgerName,
-				Account: account,
+				LedgerID: 1,
+				Account:  account,
 			},
 			Asset: asset,
 		}
@@ -399,8 +401,8 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 		for _, exp := range expectations {
 			key := domain.VolumeKey{
 				AccountKey: domain.AccountKey{
-					Ledger:  ledgerName,
-					Account: exp.account,
+					LedgerID: 1,
+					Account:  exp.account,
 				},
 				Asset: exp.asset,
 			}
@@ -447,7 +449,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 
 		// Store: same verification
 		canonicalKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{Ledger: ledgerName, Account: "merchant:bob"},
+			AccountKey: domain.AccountKey{LedgerID: 1, Account: "merchant:bob"},
 			Asset:      "EUR",
 		}.Bytes()
 
@@ -469,7 +471,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 
 		// Store: same verification
 		canonicalKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{Ledger: ledgerName, Account: "customer:dave"},
+			AccountKey: domain.AccountKey{LedgerID: 1, Account: "customer:dave"},
 			Asset:      "EUR",
 		}.Bytes()
 
@@ -491,7 +493,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 
 		// Store: same verification
 		canonicalKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{Ledger: ledgerName, Account: "platform:revenue"},
+			AccountKey: domain.AccountKey{LedgerID: 1, Account: "platform:revenue"},
 			Asset:      "EUR",
 		}.Bytes()
 
@@ -502,4 +504,82 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 		require.Equal(t, int64(50), pair.GetInput().ToBigInt().Int64(),
 			"platform:revenue store input should be 50 (20+30)")
 	})
+}
+
+// TestNextLedgerIDRecovery verifies that the nextLedgerID counter is correctly
+// persisted to Pebble and recovered when a new Machine is created on the same store.
+func TestNextLedgerIDRecovery(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("test")
+
+	dataStore, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = dataStore.Close() })
+
+	attrs := attributes.New()
+
+	c, err := cache.New(1000, meter)
+	require.NoError(t, err)
+
+	// Create first machine and 3 ledgers.
+	machine1, err := NewMachine(logger, dataStore, meter, c, attrs, keystore.NewKeyStore(), NewSharedState(), noopNotifier{}, nil, 0, false, 0)
+	require.NoError(t, err)
+
+	result, err := machine1.ApplyEntries(ctx,
+		makeEntry(t, 1, makeProposal(1, createLedgerOrder("ledger-a"))),
+	)
+	require.NoError(t, err)
+	require.Len(t, result.Results, 1)
+	require.NoError(t, result.Results[0].Error)
+
+	result, err = machine1.ApplyEntries(ctx,
+		makeEntry(t, 2, makeProposal(2, createLedgerOrder("ledger-b"))),
+	)
+	require.NoError(t, err)
+	require.Len(t, result.Results, 1)
+	require.NoError(t, result.Results[0].Error)
+
+	result, err = machine1.ApplyEntries(ctx,
+		makeEntry(t, 3, makeProposal(3, createLedgerOrder("ledger-c"))),
+	)
+	require.NoError(t, err)
+	require.Len(t, result.Results, 1)
+	require.NoError(t, result.Results[0].Error)
+
+	// Verify nextLedgerID is 4 (1, 2, 3 assigned, next is 4).
+	require.Equal(t, uint32(4), machine1.nextLedgerID)
+
+	// Simulate restart: create a new Machine on the same Pebble store.
+	c2, err := cache.New(1000, meter)
+	require.NoError(t, err)
+
+	attrs2 := attributes.New()
+
+	machine2, err := NewMachine(logger, dataStore, meter, c2, attrs2, keystore.NewKeyStore(), NewSharedState(), noopNotifier{}, nil, 0, false, 0)
+	require.NoError(t, err)
+
+	// The recovered machine should have nextLedgerID = 4.
+	require.Equal(t, uint32(4), machine2.nextLedgerID)
+
+	// Create another ledger — it should get ID=4.
+	result, err = machine2.ApplyEntries(ctx,
+		makeEntry(t, 4, makeProposal(4, createLedgerOrder("ledger-d"))),
+	)
+	require.NoError(t, err)
+	require.Len(t, result.Results, 1)
+	require.NoError(t, result.Results[0].Error)
+
+	// Verify the new ledger got ID=4 by checking the log.
+	require.Len(t, result.Results[0].Logs, 1)
+	createLog := result.Results[0].Logs[0].GetCreatedLog()
+	require.NotNil(t, createLog)
+	createLedgerLog := createLog.GetPayload().GetCreateLedger()
+	require.NotNil(t, createLedgerLog)
+	require.Equal(t, uint32(4), createLedgerLog.GetId())
+
+	// And nextLedgerID should now be 5.
+	require.Equal(t, uint32(5), machine2.nextLedgerID)
 }

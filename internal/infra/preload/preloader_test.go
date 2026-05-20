@@ -5,11 +5,17 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
 
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 func TestProposalGuard_ReleaseLoaders(t *testing.T) {
@@ -157,4 +163,53 @@ func TestPreloader_Loaders(t *testing.T) {
 
 	// Verify it returns the same instance
 	assert.Same(t, p.loaders, loaders)
+}
+
+// TestResolveLedgerID verifies the Preloader.ResolveLedgerID resolution path:
+// bloom miss, Pebble fallback, and cache hit.
+func TestResolveLedgerID(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("test")
+
+	store, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	attrs := attributes.New()
+	c, err := cache.New(1000, meter)
+	require.NoError(t, err)
+
+	// Write a LedgerInfo{Name: "test", Id: 42} to Pebble via the Ledger attribute.
+	ledgerInfo := &commonpb.LedgerInfo{Name: "test", Id: 42}
+	canonical := domain.LedgerKey{Name: "test"}.Bytes()
+
+	batch := store.NewBatch()
+	_, err = attrs.Ledger.Set(batch, canonical, ledgerInfo)
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	tracker := node.NewIndexTracker(1)
+
+	p := New(tracker, c, attrs, store, nil, logger)
+
+	// 1. Bloom miss: resolve a name that does not exist.
+	id, ok := p.ResolveLedgerID("nonexistent")
+	require.False(t, ok)
+	require.Equal(t, uint32(0), id)
+
+	// 2. Pebble fallback: resolve "test" (cache is empty, falls through to Pebble).
+	id, ok = p.ResolveLedgerID("test")
+	require.True(t, ok)
+	require.Equal(t, uint32(42), id)
+
+	// 3. Populate the cache with the LedgerInfo entry and verify cache hit.
+	attrID, _ := attributes.MakeKey(attributes.DefaultSeeds, canonical)
+	c.Ledgers.Put(attrID, attributes.Entry[*commonpb.LedgerInfo]{Data: ledgerInfo})
+
+	id, ok = p.ResolveLedgerID("test")
+	require.True(t, ok)
+	require.Equal(t, uint32(42), id)
 }

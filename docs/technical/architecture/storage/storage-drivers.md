@@ -79,17 +79,19 @@ Each attribute type has a single entry per canonical key (last-write-wins).
 
 | Sub-prefix | Attribute | Canonical Key Format |
 |------------|-----------|---------------------|
-| `0x01` | Volumes | `ledger\x00account\x00asset` |
-| `0x02` | Account Metadata | `ledger\x00account\x01key` |
-| `0x03` | Transaction State | `ledger\x00txID` |
-| `0x04` | Ledger Info | `ledger\x00` |
-| `0x05` | Boundaries | `ledger\x00` |
-| `0x06` | References | `ledger\x00reference` |
-| `0x07` | Ledger Metadata | `ledger\x00key` |
-| `0x08` | Sink Configs | `name` |
-| `0x09` | Numscript Versions | `ledger\x00name` |
-| `0x0A` | Numscript Contents | `ledger\x00name\x00version` |
-| `0x0B` | Prepared Queries | `ledger\x00name` |
+| `0x01` | Volumes | `[ledgerID BE 4B][account]\x00[asset_base][precision]` |
+| `0x02` | Account Metadata | `[ledgerID BE 4B][account]\x01[key]` |
+| `0x03` | Transaction State | `[ledgerID BE 4B]\x02[txID 8B]` |
+| `0x04` | Ledger Info | `[ledger name]` |
+| `0x05` | Boundaries | `[ledger name]` |
+| `0x06` | References | `[ledgerID BE 4B][reference]` |
+| `0x07` | Ledger Metadata | `[ledgerID BE 4B]\x01[key]` |
+| `0x08` | Sink Configs | `[name]` |
+| `0x09` | Numscript Versions | `[ledgerID BE 4B][name]` |
+| `0x0A` | Numscript Contents | `[ledgerID BE 4B][name]\x00[version]` |
+| `0x0B` | Prepared Queries | `[ledgerID BE 4B][name]` |
+
+> **Note:** `LedgerKey` (used for Ledger Info and Boundaries) uses the string-based ledger name, because those entries are looked up by name. All other ledger-scoped keys use the numeric `uint32` ledger ID (big-endian, 4 bytes) for compact encoding and to support future ledger renames without rewriting data.
 
 See [System Attributes](./attributes.md) and [Attribute Key Hashing](./attribute-key-hashing.md) for the caching model and U128 hash key system.
 
@@ -105,7 +107,7 @@ Special keys:
 
 #### Per-Ledger zone (`0x03`)
 
-Key format: `[0x03][SubPL][ledger\x00][...]`
+Key format: `[0x03][SubPL][ledgerID BE 4B][...]`
 
 | Sub-prefix | Data |
 |------------|------|
@@ -142,7 +144,7 @@ Singleton keys for system-wide state:
 |------------|------|
 | `0x01` | Last applied Raft index (`uint64 BE`) |
 | `0x02` | Last applied HLC timestamp (`uint64 BE`) |
-| `0x03` | Ledger info entries (keyed by `ledger\x00`) |
+| `0x03` | Ledger info entries (keyed by ledger name string) |
 | `0x04` | Signing keys (Ed25519 public keys) |
 | `0x05` | Signing config (require signatures flag) |
 | `0x06` | Periods state (protobuf per period) |
@@ -154,13 +156,14 @@ Singleton keys for system-wide state:
 | `0x0E`-`0x10` | Query checkpoints, next checkpoint ID, checkpoint schedule |
 | `0x11` | Cluster config (rotation threshold, bloom config) |
 | `0x12` | Bloom filter persisted blocks |
+| `0x13` | Next ledger ID counter (`uint32`) |
 
 ### Balance Storage Model
 
 Volumes use **last-write-wins** semantics with a single entry per canonical key:
 
 ```
-Key:   [0x01][0x01][ledger\x00account\x00asset]
+Key:   [0x01][0x01][ledgerID BE 4B][account]\x00[asset_base][precision]
 Value: VolumePair protobuf (Input + Output as Uint256)
 ```
 

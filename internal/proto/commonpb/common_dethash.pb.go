@@ -1439,6 +1439,11 @@ func (m *CreateLedgerLog) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int,
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.Id != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Id))
+		i--
+		dAtA[i] = 0x40
+	}
 	if m.DefaultEnforcementMode != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DefaultEnforcementMode))
 		i--
@@ -2167,6 +2172,11 @@ func (m *LedgerInfo) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Id != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Id))
+		i--
+		dAtA[i] = 0x68
 	}
 	if len(m.Metadata) > 0 {
 		for _, k := range slices.Sorted(maps.Keys(m.Metadata)) {

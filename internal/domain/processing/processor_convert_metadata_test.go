@@ -64,6 +64,7 @@ func TestProcessConvertMetadataBatch_StaleSchema(t *testing.T) {
 	// Ledger exists but the schema field is no longer CONVERTING
 	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "test-ledger",
+		Id:   1,
 		MetadataSchema: &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"age": {
@@ -121,6 +122,7 @@ func TestProcessConvertMetadataBatch_Success(t *testing.T) {
 
 	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "test-ledger",
+		Id:   1,
 		MetadataSchema: &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"age": {
@@ -133,7 +135,7 @@ func TestProcessConvertMetadataBatch_Success(t *testing.T) {
 
 	// Build a canonical key for the metadata entry
 	mk := domain.MetadataKey{
-		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "user:001"},
+		AccountKey: domain.AccountKey{LedgerID: 1, Account: "user:001"},
 		Key:        "age",
 	}
 	canonicalKey := mk.Bytes()
@@ -199,6 +201,7 @@ func TestProcessConvertMetadataBatch_AlreadyMatchesType(t *testing.T) {
 
 	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "test-ledger",
+		Id:   1,
 		MetadataSchema: &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"age": {
@@ -210,7 +213,7 @@ func TestProcessConvertMetadataBatch_AlreadyMatchesType(t *testing.T) {
 	}
 
 	mk := domain.MetadataKey{
-		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "user:001"},
+		AccountKey: domain.AccountKey{LedgerID: 1, Account: "user:001"},
 		Key:        "age",
 	}
 	canonicalKey := mk.Bytes()
@@ -309,6 +312,7 @@ func TestProcessMetadataConversionComplete_Stale(t *testing.T) {
 	// Schema is COMPLETE, so the completion order is stale
 	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "test-ledger",
+		Id:   1,
 		MetadataSchema: &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"age": {
@@ -366,6 +370,7 @@ func TestProcessMetadataConversionComplete_Success(t *testing.T) {
 
 	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "test-ledger",
+		Id:   1,
 		MetadataSchema: &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"age": {

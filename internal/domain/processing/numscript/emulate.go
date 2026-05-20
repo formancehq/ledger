@@ -79,7 +79,7 @@ func (s *discoveryStore) GetAccountsMetadata(_ context.Context, _ numscriptlib.M
 
 // DiscoverNumscriptDependencies runs a Numscript script with a discovery store that
 // returns infinite balances, solely to discover which accounts/assets the script
-// queries. The returned keys have their Ledger set to the provided value.
+// queries. The returned keys have their LedgerID set to the provided value.
 //
 // Scripts must be deterministic: GetBalances may be called at most once. If a
 // script calls it more than once (e.g., via mid-script balance queries),
@@ -92,7 +92,7 @@ func (s *discoveryStore) GetAccountsMetadata(_ context.Context, _ numscriptlib.M
 // accounts were queried before the error occurred.
 //
 // Known limitation: with infinite balances, `oneof` may only query the first source.
-func DiscoverNumscriptDependencies(cache *NumscriptCache, script string, vars map[string]string, ledger string) (*DiscoveryResult, error) {
+func DiscoverNumscriptDependencies(cache *NumscriptCache, script string, vars map[string]string, ledgerID uint32) (*DiscoveryResult, error) {
 	parsed, err := cache.GetOrParse(script)
 	if err != nil {
 		return nil, err
@@ -122,10 +122,10 @@ func DiscoverNumscriptDependencies(cache *NumscriptCache, script string, vars ma
 		return nil, store.nonDeterministic
 	}
 
-	// Collect source volume keys from balance queries with the real ledger name
+	// Collect source volume keys from balance queries with the real ledger ID
 	sourceVolumes := make(map[domain.VolumeKey]struct{}, len(store.queriedVolumes))
 	for key := range store.queriedVolumes {
-		key.Ledger = ledger
+		key.LedgerID = ledgerID
 		sourceVolumes[key] = struct{}{}
 	}
 
@@ -136,7 +136,7 @@ func DiscoverNumscriptDependencies(cache *NumscriptCache, script string, vars ma
 	if len(execResult.Postings) > 0 {
 		for _, posting := range execResult.Postings {
 			sourceVolumes[domain.VolumeKey{
-				AccountKey: domain.AccountKey{Ledger: ledger, Account: posting.Source},
+				AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: posting.Source},
 				Asset:      posting.Asset,
 			}] = struct{}{}
 
@@ -145,7 +145,7 @@ func DiscoverNumscriptDependencies(cache *NumscriptCache, script string, vars ma
 			}
 
 			destinationVolumes[domain.VolumeKey{
-				AccountKey: domain.AccountKey{Ledger: ledger, Account: posting.Destination},
+				AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: posting.Destination},
 				Asset:      posting.Asset,
 			}] = struct{}{}
 		}
@@ -158,7 +158,7 @@ func DiscoverNumscriptDependencies(cache *NumscriptCache, script string, vars ma
 		for account, acctMeta := range execResult.AccountsMetadata {
 			for key := range acctMeta {
 				writtenMetadata[domain.MetadataKey{
-					AccountKey: domain.AccountKey{Ledger: ledger, Account: account},
+					AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: account},
 					Key:        key,
 				}] = struct{}{}
 			}

@@ -1,6 +1,7 @@
 package state
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math/big"
 
@@ -9,6 +10,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
@@ -29,8 +31,8 @@ type ErrVolumeCachePebbleDivergence struct {
 
 func (e *ErrVolumeCachePebbleDivergence) Error() string {
 	return fmt.Sprintf(
-		"cache/pebble volume divergence for %s/%s/%s at raft index %d: cache(input=%s, output=%s) != pebble(input=%s, output=%s)",
-		e.Key.Ledger, e.Key.Account, e.Key.Asset, e.RaftIndex,
+		"cache/pebble volume divergence for %d/%s/%s at raft index %d: cache(input=%s, output=%s) != pebble(input=%s, output=%s)",
+		e.Key.LedgerID, e.Key.Account, e.Key.Asset, e.RaftIndex,
 		e.CacheInput, e.CacheOutput, e.PebbleInput, e.PebbleOutput,
 	)
 }
@@ -54,7 +56,7 @@ func deduplicateVolumeUpdates(results []ApplyResult, logger logging.Logger) []at
 			if idx, ok := seen[update.Key]; ok {
 				prev := deduped[idx]
 				logger.WithFields(map[string]any{
-					"ledger":       update.Key.Ledger,
+					"ledger":       update.Key.LedgerID,
 					"account":      update.Key.Account,
 					"asset":        update.Key.Asset,
 					"entryIndex":   i,
@@ -119,8 +121,8 @@ func verifyPostCommitVolumes(
 		}
 
 		if pebbleValue == nil {
-			return fmt.Errorf("volume missing from pebble after commit for %s/%s/%s at raft index %d",
-				update.Key.Ledger, update.Key.Account, update.Key.Asset, raftIndex)
+			return fmt.Errorf("volume missing from pebble after commit for %d/%s/%s at raft index %d",
+				update.Key.LedgerID, update.Key.Account, update.Key.Asset, raftIndex)
 		}
 
 		// Compare Pebble value with the expected value from Merge
@@ -131,7 +133,7 @@ func verifyPostCommitVolumes(
 
 		if pebbleInput.Cmp(expectedInput) != 0 || pebbleOutput.Cmp(expectedOutput) != 0 {
 			assert.Unreachable("cache pebble volume divergence", map[string]any{
-				"ledger":         update.Key.Ledger,
+				"ledger":         update.Key.LedgerID,
 				"account":        update.Key.Account,
 				"asset":          update.Key.Asset,
 				"expectedInput":  expectedInput.String(),
@@ -164,16 +166,16 @@ func verifyVolumeUpdateMonotonicity(
 	for _, update := range volumeUpdates {
 		if !update.Old.IsDefined() {
 			return fmt.Errorf(
-				"volume update has no old value for %s/%s/%s (preload missing)",
-				update.Key.Ledger, update.Key.Account, update.Key.Asset,
+				"volume update has no old value for %d/%s/%s (preload missing)",
+				update.Key.LedgerID, update.Key.Account, update.Key.Asset,
 			)
 		}
 
 		old := update.Old.Value()
 		if old == nil {
 			return fmt.Errorf(
-				"volume update has nil old value for %s/%s/%s (preload missing)",
-				update.Key.Ledger, update.Key.Account, update.Key.Asset,
+				"volume update has nil old value for %d/%s/%s (preload missing)",
+				update.Key.LedgerID, update.Key.Account, update.Key.Asset,
 			)
 		}
 
@@ -184,7 +186,7 @@ func verifyVolumeUpdateMonotonicity(
 
 		if newInput.Cmp(oldInput) < 0 {
 			assert.Unreachable("volume input decreased", map[string]any{
-				"ledger":   update.Key.Ledger,
+				"ledger":   update.Key.LedgerID,
 				"account":  update.Key.Account,
 				"asset":    update.Key.Asset,
 				"oldInput": oldInput.String(),
@@ -192,15 +194,15 @@ func verifyVolumeUpdateMonotonicity(
 			})
 
 			return fmt.Errorf(
-				"volume input decreased for %s/%s/%s: old=%s, new=%s (stale base value suspected)",
-				update.Key.Ledger, update.Key.Account, update.Key.Asset,
+				"volume input decreased for %d/%s/%s: old=%s, new=%s (stale base value suspected)",
+				update.Key.LedgerID, update.Key.Account, update.Key.Asset,
 				oldInput.String(), newInput.String(),
 			)
 		}
 
 		if newOutput.Cmp(oldOutput) < 0 {
 			assert.Unreachable("volume output decreased", map[string]any{
-				"ledger":    update.Key.Ledger,
+				"ledger":    update.Key.LedgerID,
 				"account":   update.Key.Account,
 				"asset":     update.Key.Asset,
 				"oldOutput": oldOutput.String(),
@@ -208,8 +210,8 @@ func verifyVolumeUpdateMonotonicity(
 			})
 
 			return fmt.Errorf(
-				"volume output decreased for %s/%s/%s: old=%s, new=%s (stale base value suspected)",
-				update.Key.Ledger, update.Key.Account, update.Key.Asset,
+				"volume output decreased for %d/%s/%s: old=%s, new=%s (stale base value suspected)",
+				update.Key.LedgerID, update.Key.Account, update.Key.Asset,
 				oldOutput.String(), newOutput.String(),
 			)
 		}
@@ -225,6 +227,7 @@ func verifyVolumeUpdateMonotonicity(
 func verifyVolumeDeltasMatchPostings(
 	volumeUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 	logs []*commonpb.Log,
+	ledgerNameToID map[string]uint32,
 ) error {
 	// Compute expected deltas from postings
 	type delta struct {
@@ -244,7 +247,8 @@ func verifyVolumeDeltasMatchPostings(
 			continue
 		}
 
-		ledger := apply.Apply.GetLedgerName()
+		ledgerName := apply.Apply.GetLedgerName()
+		ledgerID := ledgerNameToID[ledgerName]
 		data := apply.Apply.GetLog().GetData()
 
 		var postings []*commonpb.Posting
@@ -264,12 +268,12 @@ func verifyVolumeDeltasMatchPostings(
 			amount := posting.GetAmount().ToBigInt()
 
 			srcKey := domain.VolumeKey{
-				AccountKey: domain.AccountKey{Ledger: ledger, Account: posting.GetSource()},
+				AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: posting.GetSource()},
 				Asset:      posting.GetAsset(),
 			}
 
 			dstKey := domain.VolumeKey{
-				AccountKey: domain.AccountKey{Ledger: ledger, Account: posting.GetDestination()},
+				AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: posting.GetDestination()},
 				Asset:      posting.GetAsset(),
 			}
 
@@ -298,8 +302,8 @@ func verifyVolumeDeltasMatchPostings(
 
 		if !update.Old.IsDefined() || update.Old.Value() == nil {
 			return fmt.Errorf(
-				"volume delta computation has no old value for %s/%s/%s (preload missing)",
-				update.Key.Ledger, update.Key.Account, update.Key.Asset,
+				"volume delta computation has no old value for %d/%s/%s (preload missing)",
+				update.Key.LedgerID, update.Key.Account, update.Key.Asset,
 			)
 		}
 
@@ -317,15 +321,15 @@ func verifyVolumeDeltasMatchPostings(
 		act, ok := actual[key]
 		if !ok {
 			return fmt.Errorf(
-				"volume delta missing for %s/%s/%s: expected input_delta=%s output_delta=%s",
-				key.Ledger, key.Account, key.Asset, exp.input.String(), exp.output.String(),
+				"volume delta missing for %d/%s/%s: expected input_delta=%s output_delta=%s",
+				key.LedgerID, key.Account, key.Asset, exp.input.String(), exp.output.String(),
 			)
 		}
 
 		if exp.input.Cmp(act.input) != 0 || exp.output.Cmp(act.output) != 0 {
 			return fmt.Errorf(
-				"volume delta mismatch for %s/%s/%s: expected(input_delta=%s, output_delta=%s), actual(input_delta=%s, output_delta=%s)",
-				key.Ledger, key.Account, key.Asset,
+				"volume delta mismatch for %d/%s/%s: expected(input_delta=%s, output_delta=%s), actual(input_delta=%s, output_delta=%s)",
+				key.LedgerID, key.Account, key.Asset,
 				exp.input.String(), exp.output.String(),
 				act.input.String(), act.output.String(),
 			)
@@ -335,48 +339,55 @@ func verifyVolumeDeltasMatchPostings(
 	return nil
 }
 
-// collectLedgerNames extracts unique ledger names from proposal orders.
-func collectLedgerNames(orders []*raftcmdpb.Order) []string {
-	seen := make(map[string]struct{})
+// collectLedgerIDs extracts unique ledger IDs from proposal orders,
+// resolving names to IDs via the store.
+func collectLedgerIDs(orders []*raftcmdpb.Order, store processing.InMemoryStore) []uint32 {
+	seen := make(map[uint32]struct{})
 
 	for _, order := range orders {
+		var name string
 		switch {
 		case order.GetCreateLedger() != nil:
-			seen[order.GetCreateLedger().GetName()] = struct{}{}
+			name = order.GetCreateLedger().GetName()
 		case order.GetApply() != nil:
-			seen[order.GetApply().GetLedger()] = struct{}{}
+			name = order.GetApply().GetLedger()
+		}
+
+		if name == "" {
+			continue
+		}
+
+		info, ok := store.GetLedger(name)
+		if ok {
+			seen[info.GetId()] = struct{}{}
 		}
 	}
 
-	names := make([]string, 0, len(seen))
-	for name := range seen {
-		if name != "" {
-			names = append(names, name)
-		}
+	ids := make([]uint32, 0, len(seen))
+	for id := range seen {
+		ids = append(ids, id)
 	}
 
-	return names
+	return ids
 }
 
-// collectLedgerNamesFromResults extracts unique ledger names from all
+// collectLedgerIDsFromResults extracts unique ledger IDs from all
 // ApplyResults in the batch. Used for post-commit aggregated balance checks.
-func collectLedgerNamesFromResults(results []ApplyResult) []string {
-	seen := make(map[string]struct{})
+func collectLedgerIDsFromResults(results []ApplyResult) []uint32 {
+	seen := make(map[uint32]struct{})
 
 	for _, r := range results {
-		for _, name := range r.ledgerNames {
-			if name != "" {
-				seen[name] = struct{}{}
-			}
+		for _, id := range r.ledgerIDs {
+			seen[id] = struct{}{}
 		}
 	}
 
-	names := make([]string, 0, len(seen))
-	for name := range seen {
-		names = append(names, name)
+	ids := make([]uint32, 0, len(seen))
+	for id := range seen {
+		ids = append(ids, id)
 	}
 
-	return names
+	return ids
 }
 
 // verifyAggregatedVolumesBalanced checks that for every ledger touched by the
@@ -386,14 +397,14 @@ func collectLedgerNamesFromResults(results []ApplyResult) []string {
 func verifyAggregatedVolumesBalanced(
 	store *dal.Store,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
-	ledgerNames []string,
+	ledgerIDs []uint32,
 	raftIndex uint64,
 	logger logging.Logger,
 ) error {
-	for _, ledger := range ledgerNames {
-		result, err := query.AggregateAllVolumes(store, volumeAttr, ledger, query.AggregateOptions{})
+	for _, ledgerID := range ledgerIDs {
+		result, err := query.AggregateAllVolumes(store, volumeAttr, ledgerID, query.AggregateOptions{})
 		if err != nil {
-			return fmt.Errorf("aggregating volumes for ledger %s at raft index %d: %w", ledger, raftIndex, err)
+			return fmt.Errorf("aggregating volumes for ledger %d at raft index %d: %w", ledgerID, raftIndex, err)
 		}
 
 		for _, vol := range result.GetVolumes() {
@@ -403,10 +414,10 @@ func verifyAggregatedVolumesBalanced(
 			if inputVal.Cmp(outputVal) != 0 {
 				// Dump per-account volumes for the imbalanced asset to help
 				// identify which account(s) are responsible.
-				dumpPerAccountVolumes(store, volumeAttr, ledger, vol.GetAsset(), raftIndex, logger)
+				dumpPerAccountVolumes(store, volumeAttr, ledgerID, vol.GetAsset(), raftIndex, logger)
 
 				assert.Unreachable("aggregated volume imbalance", map[string]any{
-					"ledger":    ledger,
+					"ledger":    ledgerID,
 					"asset":     vol.GetAsset(),
 					"raftIndex": raftIndex,
 					"input":     inputVal.String(),
@@ -414,8 +425,8 @@ func verifyAggregatedVolumesBalanced(
 				})
 
 				return fmt.Errorf(
-					"aggregated volume imbalance for ledger %s asset %s at raft index %d: input=%s output=%s",
-					ledger, vol.GetAsset(), raftIndex, inputVal.String(), outputVal.String(),
+					"aggregated volume imbalance for ledger %d asset %s at raft index %d: input=%s output=%s",
+					ledgerID, vol.GetAsset(), raftIndex, inputVal.String(), outputVal.String(),
 				)
 			}
 		}
@@ -429,14 +440,13 @@ func verifyAggregatedVolumesBalanced(
 func dumpPerAccountVolumes(
 	store *dal.Store,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
-	ledger string,
+	ledgerID uint32,
 	asset string,
 	raftIndex uint64,
 	logger logging.Logger,
 ) {
-	ledgerPrefix := make([]byte, len(ledger)+1)
-	copy(ledgerPrefix, ledger)
-	ledgerPrefix[len(ledger)] = 0x00
+	ledgerPrefix := make([]byte, 4)
+	binary.BigEndian.PutUint32(ledgerPrefix, ledgerID)
 
 	iter, err := volumeAttr.NewStreamingIter(store, ledgerPrefix)
 	if err != nil {
@@ -465,7 +475,7 @@ func dumpPerAccountVolumes(
 		outputVal := entry.Value.GetOutput().ToBigInt()
 
 		logger.WithFields(map[string]any{
-			"ledger":    ledger,
+			"ledger":    ledgerID,
 			"account":   vk.Account,
 			"asset":     vk.Asset,
 			"input":     inputVal.String(),
@@ -485,7 +495,7 @@ func dumpPerAccountVolumes(
 	}
 
 	logger.WithFields(map[string]any{
-		"ledger":    ledger,
+		"ledger":    ledgerID,
 		"asset":     asset,
 		"raftIndex": raftIndex,
 		"count":     count,

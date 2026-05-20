@@ -10,10 +10,10 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.CreateTransactionOrder, s InMemoryStore, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, error) {
+func (p *RequestProcessor) processCreateTransaction(ledger string, ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.CreateTransactionOrder, s InMemoryStore, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, error) {
 	// Check transaction reference uniqueness if reference is provided
 	if order.GetReference() != "" {
-		refKey := domain.TransactionReferenceKey{Ledger: ledger, Reference: order.GetReference()}
+		refKey := domain.TransactionReferenceKey{LedgerID: ledgerID, Reference: order.GetReference()}
 
 		existingRef, err := s.GetTransactionReference(refKey)
 		if err != nil && !errors.Is(err, domain.ErrNotFound) {
@@ -35,7 +35,7 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 
 	// Resolve script reference: load content from preloaded cache.
 	if ref := order.GetNumscriptReference(); ref != nil {
-		info, err := s.ResolveNumscriptContent(ledger, ref.GetName(), ref.GetVersion())
+		info, err := s.ResolveNumscriptContent(ledgerID, ref.GetName(), ref.GetVersion())
 		if err != nil {
 			return nil, fmt.Errorf("resolving numscript %q v%s: %w", ref.GetName(), ref.GetVersion(), err)
 		}
@@ -54,13 +54,13 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 	var producer postingProducer
 	isNumscript := order.GetScript() != nil && order.GetScript().GetPlain() != ""
 	if isNumscript {
-		producer = &numscriptPostingProducer{cache: p.numscriptCache, ledger: ledger, schema: schema}
+		producer = &numscriptPostingProducer{cache: p.numscriptCache, ledgerID: ledgerID, schema: schema}
 	} else {
 		producer = &stdPostingProducer{}
 	}
 
 	// Produce postings (handles balance checks and buffer updates)
-	result, err := producer.produce(s, ledger, order)
+	result, err := producer.produce(s, ledgerID, order)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 		boundaries.NumscriptExecutionCount++
 	}
 
-	txKey := domain.TransactionKey{Ledger: ledger, ID: nextTransactionID}
+	txKey := domain.TransactionKey{LedgerID: ledgerID, ID: nextTransactionID}
 	txState := &commonpb.TransactionState{
 		CreatedByLog: s.GetNextSequenceID(),
 	}
@@ -149,7 +149,7 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 
 		for key, value := range mm.GetValues() {
 			metaKey := domain.MetadataKey{
-				AccountKey: domain.AccountKey{Ledger: ledger, Account: account},
+				AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: account},
 				Key:        key,
 			}
 
@@ -175,7 +175,7 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 	// Store transaction reference if provided
 	if order.GetReference() != "" {
 		s.PutTransactionReference(
-			domain.TransactionReferenceKey{Ledger: ledger, Reference: order.GetReference()},
+			domain.TransactionReferenceKey{LedgerID: ledgerID, Reference: order.GetReference()},
 			&commonpb.TransactionReferenceValue{TransactionId: nextTransactionID},
 		)
 	}
@@ -189,7 +189,7 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 	// Compute post-commit volumes if requested
 	var postCommitVolumes *commonpb.PostCommitVolumes
 	if order.GetExpandVolumes() {
-		postCommitVolumes = buildPostCommitVolumes(s, ledger, result.Postings)
+		postCommitVolumes = buildPostCommitVolumes(s, ledgerID, result.Postings)
 	}
 
 	// Get the current open period ID for the receipt
@@ -249,15 +249,15 @@ type produceResult struct {
 }
 
 type postingProducer interface {
-	produce(s InMemoryStore, ledger string, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error)
+	produce(s InMemoryStore, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error)
 }
 
 type stdPostingProducer struct{}
 
-func (p *stdPostingProducer) produce(s InMemoryStore, ledger string, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error) {
+func (p *stdPostingProducer) produce(s InMemoryStore, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error) {
 	for _, posting := range order.GetPostings() {
 		// Skip balance check when Force is true
-		err := applyPosting(s, ledger, posting, order.GetForce())
+		err := applyPosting(s, ledgerID, posting, order.GetForce())
 		if err != nil {
 			return nil, err
 		}

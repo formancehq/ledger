@@ -1,6 +1,7 @@
 package query
 
 import (
+	"encoding/binary"
 	"fmt"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
@@ -13,10 +14,10 @@ import (
 // ReadNumscriptLatestVersion reads the latest version string for a numscript by ledger and name
 // from the attributes zone (0xF1).
 // Returns "" if the numscript does not exist.
-func ReadNumscriptLatestVersion(attr *attributes.Attribute[*commonpb.NumscriptVersionValue], reader dal.PebbleReader, ledger, name string) (string, error) {
-	val, err := attr.Get(reader, domain.NumscriptVersionKey{Ledger: ledger, Name: name}.Bytes())
+func ReadNumscriptLatestVersion(attr *attributes.Attribute[*commonpb.NumscriptVersionValue], reader dal.PebbleReader, ledgerID uint32, name string) (string, error) {
+	val, err := attr.Get(reader, domain.NumscriptVersionKey{LedgerID: ledgerID, Name: name}.Bytes())
 	if err != nil {
-		return "", fmt.Errorf("reading numscript latest version for %s/%q: %w", ledger, name, err)
+		return "", fmt.Errorf("reading numscript latest version for %d/%q: %w", ledgerID, name, err)
 	}
 
 	if val == nil {
@@ -38,16 +39,16 @@ func ReadNumscript(
 	versionAttr *attributes.Attribute[*commonpb.NumscriptVersionValue],
 	contentAttr *attributes.Attribute[*commonpb.NumscriptInfo],
 	reader dal.PebbleReader,
-	ledger, name string,
+	ledgerID uint32, name string,
 	version string,
 ) (*commonpb.NumscriptInfo, error) {
 	if version == "latest" {
 		// Direct lookup for the "latest" slot content.
-		return readNumscriptExact(contentAttr, reader, ledger, name, "latest")
+		return readNumscriptExact(contentAttr, reader, ledgerID, name, "latest")
 	}
 
 	if version == "" {
-		latestVersion, err := ReadNumscriptLatestVersion(versionAttr, reader, ledger, name)
+		latestVersion, err := ReadNumscriptLatestVersion(versionAttr, reader, ledgerID, name)
 		if err != nil {
 			return nil, err
 		}
@@ -56,7 +57,7 @@ func ReadNumscript(
 			return nil, nil
 		}
 
-		return readNumscriptExact(contentAttr, reader, ledger, name, latestVersion)
+		return readNumscriptExact(contentAttr, reader, ledgerID, name, latestVersion)
 	}
 
 	major, minor, patch, depth, err := semver.ParsePartial(version)
@@ -65,10 +66,10 @@ func ReadNumscript(
 	}
 
 	if depth == 3 {
-		return readNumscriptExact(contentAttr, reader, ledger, name, fmt.Sprintf("%d.%d.%d", major, minor, patch))
+		return readNumscriptExact(contentAttr, reader, ledgerID, name, fmt.Sprintf("%d.%d.%d", major, minor, patch))
 	}
 
-	return resolvePartialVersion(contentAttr, reader, ledger, name, major, minor, depth)
+	return resolvePartialVersion(contentAttr, reader, ledgerID, name, major, minor, depth)
 }
 
 // ReadAllNumscripts lists all numscripts for a ledger by scanning the latest version pointers
@@ -77,13 +78,15 @@ func ReadAllNumscripts(
 	versionAttr *attributes.Attribute[*commonpb.NumscriptVersionValue],
 	contentAttr *attributes.Attribute[*commonpb.NumscriptInfo],
 	reader dal.PebbleReader,
-	ledger string,
+	ledgerID uint32,
 ) ([]*commonpb.NumscriptInfo, error) {
 	// Scan all version pointers for this ledger.
-	prefix := []byte(ledger + "\x00")
+	// The canonical key prefix is [ledgerID BE 4B].
+	prefix := make([]byte, 4)
+	binary.BigEndian.PutUint32(prefix, ledgerID)
 	entries, err := versionAttr.ComputeAllForPrefix(reader, prefix)
 	if err != nil {
-		return nil, fmt.Errorf("scanning numscript versions for ledger %q: %w", ledger, err)
+		return nil, fmt.Errorf("scanning numscript versions for ledger %d: %w", ledgerID, err)
 	}
 
 	var scripts []*commonpb.NumscriptInfo
@@ -99,7 +102,7 @@ func ReadAllNumscripts(
 		nameBytes := entry.CanonicalKey[len(prefix):]
 		name := string(nameBytes)
 
-		info, err := readNumscriptExact(contentAttr, reader, ledger, name, version)
+		info, err := readNumscriptExact(contentAttr, reader, ledgerID, name, version)
 		if err != nil {
 			return nil, err
 		}
@@ -113,19 +116,19 @@ func ReadAllNumscripts(
 }
 
 // readNumscriptExact does a direct Get on the exact version key in the attributes zone.
-func readNumscriptExact(attr *attributes.Attribute[*commonpb.NumscriptInfo], reader dal.PebbleReader, ledger, name, version string) (*commonpb.NumscriptInfo, error) {
-	return attr.Get(reader, domain.NumscriptEntryKey{Ledger: ledger, Name: name, Version: version}.Bytes())
+func readNumscriptExact(attr *attributes.Attribute[*commonpb.NumscriptInfo], reader dal.PebbleReader, ledgerID uint32, name, version string) (*commonpb.NumscriptInfo, error) {
+	return attr.Get(reader, domain.NumscriptEntryKey{LedgerID: ledgerID, Name: name, Version: version}.Bytes())
 }
 
 // resolvePartialVersion scans all versions for (ledger, name) from the attributes zone
 // and finds the highest matching semver.
-func resolvePartialVersion(attr *attributes.Attribute[*commonpb.NumscriptInfo], reader dal.PebbleReader, ledger, name string, targetMajor, targetMinor uint32, depth int) (*commonpb.NumscriptInfo, error) {
+func resolvePartialVersion(attr *attributes.Attribute[*commonpb.NumscriptInfo], reader dal.PebbleReader, ledgerID uint32, name string, targetMajor, targetMinor uint32, depth int) (*commonpb.NumscriptInfo, error) {
 	// Scan all versions for this (ledger, name) by using the common prefix.
-	prefix := domain.NumscriptEntryKey{Ledger: ledger, Name: name, Version: ""}.Bytes()
+	prefix := domain.NumscriptEntryKey{LedgerID: ledgerID, Name: name, Version: ""}.Bytes()
 
 	entries, err := attr.ComputeAllForPrefix(reader, prefix)
 	if err != nil {
-		return nil, fmt.Errorf("scanning numscript versions for %s/%q: %w", ledger, name, err)
+		return nil, fmt.Errorf("scanning numscript versions for %d/%q: %w", ledgerID, name, err)
 	}
 
 	var (

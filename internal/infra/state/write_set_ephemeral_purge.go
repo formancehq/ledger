@@ -45,26 +45,24 @@ func (b *WriteSet) partitionVolumes(
 	updates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 ) volumePartitionResult {
 	// Build a cache of ledger → compiled account types to avoid repeated parsing.
-	ledgerTypes := make(map[string][]accounttype.CompiledType)
+	ledgerTypes := make(map[uint32][]accounttype.CompiledType)
 
 	result := volumePartitionResult{
 		kept: make([]attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair], 0, len(updates)),
 	}
 
 	for _, update := range updates {
-		compiled, ok := ledgerTypes[update.Key.Ledger]
+		compiled, ok := ledgerTypes[update.Key.LedgerID]
 		if !ok {
-			info, _, err := b.fsm.Registry.Ledgers.GetKey(
-				domain.LedgerKey{Name: update.Key.Ledger},
-			)
-			if err != nil || info == nil {
+			info, infoOK := b.GetLedgerByID(update.Key.LedgerID)
+			if !infoOK {
 				result.kept = append(result.kept, update)
 
 				continue
 			}
 
 			compiled = accounttype.CompileTypes(info.GetAccountTypes())
-			ledgerTypes[update.Key.Ledger] = compiled
+			ledgerTypes[update.Key.LedgerID] = compiled
 		}
 
 		if len(compiled) == 0 {
@@ -90,7 +88,7 @@ func (b *WriteSet) partitionVolumes(
 			} else {
 				if b.fsm.sentinelMode {
 					b.fsm.logger.WithFields(map[string]any{
-						"ledger":   update.Key.Ledger,
+						"ledger":   update.Key.LedgerID,
 						"account":  update.Key.Account,
 						"asset":    update.Key.Asset,
 						"pattern":  matched.GetPattern(),

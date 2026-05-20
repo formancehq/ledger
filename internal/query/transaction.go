@@ -14,15 +14,15 @@ import (
 )
 
 // ReadTransactionState reads the current state of a transaction from the attributes zone.
-func ReadTransactionState(ctx context.Context, reader dal.PebbleReader, attrs *attributes.Attribute[*commonpb.TransactionState], ledger string, txID uint64) (*commonpb.TransactionState, error) {
+func ReadTransactionState(ctx context.Context, reader dal.PebbleReader, attrs *attributes.Attribute[*commonpb.TransactionState], ledgerID uint32, txID uint64) (*commonpb.TransactionState, error) {
 	_, span := queryTracer.Start(ctx, "query.read_tx_state",
 		trace.WithAttributes(
-			attribute.String("ledger", ledger),
+			attribute.Int64("ledger_id", int64(ledgerID)),
 			attribute.Int64("transaction_id", int64(txID)),
 		))
 	defer span.End()
 
-	txKey := domain.TransactionKey{Ledger: ledger, ID: txID}
+	txKey := domain.TransactionKey{LedgerID: ledgerID, ID: txID}
 
 	state, err := attrs.Get(reader, txKey.Bytes())
 	if err != nil {
@@ -34,8 +34,8 @@ func ReadTransactionState(ctx context.Context, reader dal.PebbleReader, attrs *a
 
 // FindTransactionCreationLog returns the system log that created a transaction.
 // It reads the TransactionState to find the creation log sequence.
-func FindTransactionCreationLog(ctx context.Context, reader dal.PebbleReader, attrs *attributes.Attribute[*commonpb.TransactionState], ledgerName string, txID uint64) (*commonpb.Log, error) {
-	state, err := ReadTransactionState(ctx, reader, attrs, ledgerName, txID)
+func FindTransactionCreationLog(ctx context.Context, reader dal.PebbleReader, attrs *attributes.Attribute[*commonpb.TransactionState], ledgerID uint32, txID uint64) (*commonpb.Log, error) {
+	state, err := ReadTransactionState(ctx, reader, attrs, ledgerID, txID)
 	if err != nil {
 		return nil, fmt.Errorf("reading transaction state for %d: %w", txID, err)
 	}

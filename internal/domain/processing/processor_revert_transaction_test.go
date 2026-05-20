@@ -24,7 +24,7 @@ func TestProcessRevertTransaction_Success(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 5, NextLogId: 10}
 
-	txKey := domain.TransactionKey{Ledger: "test-ledger", ID: 3}
+	txKey := domain.TransactionKey{LedgerID: 1, ID: 3}
 
 	// Source had balance: input=1000, output=0
 	sourceVol := &raftcmdpb.VolumePair{
@@ -37,7 +37,7 @@ func TestProcessRevertTransaction_Success(t *testing.T) {
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger"}, true).AnyTimes()
+	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true).AnyTimes()
 	mockStore.EXPECT().GetReverted(txKey).Return(false, nil)
 	mockStore.EXPECT().GetDate().Return(now).Times(4) // ledger date + revert tx timestamps
 
@@ -45,19 +45,19 @@ func TestProcessRevertTransaction_Success(t *testing.T) {
 	// Original: bank -> users:123 for 100 USD
 	// Revert:   users:123 -> bank for 100 USD
 	mockStore.EXPECT().GetVolume(domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "users:123"},
+		AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:123"},
 		Asset:      "USD",
 	}).Return(sourceVol, nil)
 	mockStore.EXPECT().PutVolume(domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "users:123"},
+		AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:123"},
 		Asset:      "USD",
 	}, gomock.Any())
 	mockStore.EXPECT().GetVolume(domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "bank"},
+		AccountKey: domain.AccountKey{LedgerID: 1, Account: "bank"},
 		Asset:      "USD",
 	}).Return(destVol, nil)
 	mockStore.EXPECT().PutVolume(domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "bank"},
+		AccountKey: domain.AccountKey{LedgerID: 1, Account: "bank"},
 		Asset:      "USD",
 	}, gomock.Any())
 
@@ -71,7 +71,7 @@ func TestProcessRevertTransaction_Success(t *testing.T) {
 
 	// Processor stores the new revert transaction state
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(50))
-	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{Ledger: "test-ledger", ID: 5}, gomock.Any())
+	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{LedgerID: 1, ID: 5}, gomock.Any())
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 
 	order := &raftcmdpb.Order{
@@ -127,7 +127,7 @@ func TestProcessRevertTransaction_NotFound(t *testing.T) {
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 5, NextLogId: 10}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false).AnyTimes()
+	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true).AnyTimes()
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_Apply{
@@ -162,10 +162,10 @@ func TestProcessRevertTransaction_AlreadyReverted(t *testing.T) {
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 5, NextLogId: 10}
-	txKey := domain.TransactionKey{Ledger: "test-ledger", ID: 3}
+	txKey := domain.TransactionKey{LedgerID: 1, ID: 3}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false).AnyTimes()
+	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true).AnyTimes()
 	mockStore.EXPECT().GetReverted(txKey).Return(true, nil)
 
 	order := &raftcmdpb.Order{

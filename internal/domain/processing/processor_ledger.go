@@ -27,9 +27,11 @@ func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrde
 	}
 
 	createdAt := s.GetDate()
+	ledgerID := s.IncrementNextLedgerID()
 
 	info := &commonpb.LedgerInfo{
 		Name:                   order.GetName(),
+		Id:                     ledgerID,
 		CreatedAt:              createdAt,
 		MetadataSchema:         populateInitialSchema(order.GetInitialSchema()),
 		Mode:                   order.GetMode(),
@@ -59,6 +61,7 @@ func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrde
 		Type: &commonpb.LogPayload_CreateLedger{
 			CreateLedger: &commonpb.CreateLedgerLog{
 				Name:                   order.GetName(),
+				Id:                     ledgerID,
 				CreatedAt:              createdAt,
 				MetadataSchema:         populateInitialSchema(order.GetInitialSchema()),
 				Mode:                   order.GetMode(),

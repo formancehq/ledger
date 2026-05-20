@@ -7,7 +7,14 @@ import (
 )
 
 func (p *RequestProcessor) processCreatePreparedQuery(order *raftcmdpb.CreatePreparedQueryOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
-	existing, err := s.GetPreparedQuery(order.GetQuery().GetLedger(), order.GetQuery().GetName())
+	info, ok := s.GetLedger(order.GetQuery().GetLedger())
+	if !ok {
+		return nil, &domain.ErrLedgerNotFound{Name: order.GetQuery().GetLedger()}
+	}
+
+	ledgerID := info.GetId()
+
+	existing, err := s.GetPreparedQuery(ledgerID, order.GetQuery().GetName())
 	if err != nil {
 		return nil, err
 	}
@@ -19,7 +26,7 @@ func (p *RequestProcessor) processCreatePreparedQuery(order *raftcmdpb.CreatePre
 		}
 	}
 
-	s.PutPreparedQuery(order.GetQuery())
+	s.PutPreparedQuery(ledgerID, order.GetQuery())
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_CreatedPreparedQuery{
@@ -31,7 +38,14 @@ func (p *RequestProcessor) processCreatePreparedQuery(order *raftcmdpb.CreatePre
 }
 
 func (p *RequestProcessor) processUpdatePreparedQuery(order *raftcmdpb.UpdatePreparedQueryOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
-	existing, err := s.GetPreparedQuery(order.GetLedger(), order.GetName())
+	info, ok := s.GetLedger(order.GetLedger())
+	if !ok {
+		return nil, &domain.ErrLedgerNotFound{Name: order.GetLedger()}
+	}
+
+	ledgerID := info.GetId()
+
+	existing, err := s.GetPreparedQuery(ledgerID, order.GetName())
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +60,7 @@ func (p *RequestProcessor) processUpdatePreparedQuery(order *raftcmdpb.UpdatePre
 	previousFilter := existing.GetFilter()
 	updated := existing.CloneVT()
 	updated.Filter = order.GetFilter()
-	s.PutPreparedQuery(updated)
+	s.PutPreparedQuery(ledgerID, updated)
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_UpdatedPreparedQuery{
@@ -61,7 +75,14 @@ func (p *RequestProcessor) processUpdatePreparedQuery(order *raftcmdpb.UpdatePre
 }
 
 func (p *RequestProcessor) processDeletePreparedQuery(order *raftcmdpb.DeletePreparedQueryOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
-	existing, err := s.GetPreparedQuery(order.GetLedger(), order.GetName())
+	info, ok := s.GetLedger(order.GetLedger())
+	if !ok {
+		return nil, &domain.ErrLedgerNotFound{Name: order.GetLedger()}
+	}
+
+	ledgerID := info.GetId()
+
+	existing, err := s.GetPreparedQuery(ledgerID, order.GetName())
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +94,7 @@ func (p *RequestProcessor) processDeletePreparedQuery(order *raftcmdpb.DeletePre
 		}
 	}
 
-	s.DeletePreparedQuery(order.GetLedger(), order.GetName())
+	s.DeletePreparedQuery(ledgerID, order.GetName())
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_DeletedPreparedQuery{

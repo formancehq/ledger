@@ -5330,6 +5330,7 @@ type CreateLedgerLog struct {
 	MirrorSource           *MirrorSourceConfig     `protobuf:"bytes,5,opt,name=mirror_source,json=mirrorSource,proto3" json:"mirror_source,omitempty"`
 	AccountTypes           map[string]*AccountType `protobuf:"bytes,6,rep,name=account_types,json=accountTypes,proto3" json:"account_types,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	DefaultEnforcementMode ChartEnforcementMode    `protobuf:"varint,7,opt,name=default_enforcement_mode,json=defaultEnforcementMode,proto3,enum=common.ChartEnforcementMode" json:"default_enforcement_mode,omitempty"`
+	Id                     uint32                  `protobuf:"varint,8,opt,name=id,proto3" json:"id,omitempty"` // Numeric ledger ID assigned by FSM
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -5411,6 +5412,13 @@ func (x *CreateLedgerLog) GetDefaultEnforcementMode() ChartEnforcementMode {
 		return x.DefaultEnforcementMode
 	}
 	return ChartEnforcementMode_CHART_ENFORCEMENT_STRICT
+}
+
+func (x *CreateLedgerLog) GetId() uint32 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
 }
 
 type DeleteLedgerLog struct {
@@ -7463,6 +7471,7 @@ type LedgerInfo struct {
 	AccountTypes           map[string]*AccountType   `protobuf:"bytes,10,rep,name=account_types,json=accountTypes,proto3" json:"account_types,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Per-type account address validation
 	DefaultEnforcementMode ChartEnforcementMode      `protobuf:"varint,11,opt,name=default_enforcement_mode,json=defaultEnforcementMode,proto3,enum=common.ChartEnforcementMode" json:"default_enforcement_mode,omitempty"`         // Default enforcement for unmatched accounts
 	Metadata               map[string]*MetadataValue `protobuf:"bytes,12,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`                             // Populated at read time from separate attribute store
+	Id                     uint32                    `protobuf:"varint,13,opt,name=id,proto3" json:"id,omitempty"`                                                                                                                  // Unique numeric ledger ID (assigned by FSM, used as Pebble key prefix)
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -7579,6 +7588,13 @@ func (x *LedgerInfo) GetMetadata() map[string]*MetadataValue {
 		return x.Metadata
 	}
 	return nil
+}
+
+func (x *LedgerInfo) GetId() uint32 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
 }
 
 // SaveMetadataCommand is used for adding metadata
@@ -10470,7 +10486,7 @@ const file_common_proto_rawDesc = "" +
 	"\acatalog\x18\x04 \x01(\tR\acatalog\x12\x16\n" +
 	"\x06schema\x18\x05 \x01(\tR\x06schema\x12\x14\n" +
 	"\x05table\x18\x06 \x01(\tR\x05table\x12\x12\n" +
-	"\x04port\x18\a \x01(\x05R\x04port\"\xff\x03\n" +
+	"\x04port\x18\a \x01(\x05R\x04port\"\x8f\x04\n" +
 	"\x0fCreateLedgerLog\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x120\n" +
 	"\n" +
@@ -10479,7 +10495,8 @@ const file_common_proto_rawDesc = "" +
 	"\x04mode\x18\x04 \x01(\x0e2\x12.common.LedgerModeR\x04mode\x12?\n" +
 	"\rmirror_source\x18\x05 \x01(\v2\x1a.common.MirrorSourceConfigR\fmirrorSource\x12N\n" +
 	"\raccount_types\x18\x06 \x03(\v2).common.CreateLedgerLog.AccountTypesEntryR\faccountTypes\x12V\n" +
-	"\x18default_enforcement_mode\x18\a \x01(\x0e2\x1c.common.ChartEnforcementModeR\x16defaultEnforcementMode\x1aT\n" +
+	"\x18default_enforcement_mode\x18\a \x01(\x0e2\x1c.common.ChartEnforcementModeR\x16defaultEnforcementMode\x12\x0e\n" +
+	"\x02id\x18\b \x01(\rR\x02id\x1aT\n" +
 	"\x11AccountTypesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
 	"\x05value\x18\x02 \x01(\v2\x13.common.AccountTypeR\x05value:\x028\x01\"W\n" +
@@ -10640,7 +10657,7 @@ const file_common_proto_rawDesc = "" +
 	"\x06cursor\x18\x02 \x01(\x04R\x06cursor\x12(\n" +
 	"\x10source_log_count\x18\x03 \x01(\x04R\x0esourceLogCount\x12%\n" +
 	"\x0eremaining_logs\x18\x04 \x01(\x04R\rremainingLogs\x12-\n" +
-	"\x05error\x18\x05 \x01(\v2\x17.common.MirrorSyncErrorR\x05error\"\x9b\a\n" +
+	"\x05error\x18\x05 \x01(\v2\x17.common.MirrorSyncErrorR\x05error\"\xab\a\n" +
 	"\n" +
 	"LedgerInfo\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x120\n" +
@@ -10657,7 +10674,8 @@ const file_common_proto_rawDesc = "" +
 	"\raccount_types\x18\n" +
 	" \x03(\v2$.common.LedgerInfo.AccountTypesEntryR\faccountTypes\x12V\n" +
 	"\x18default_enforcement_mode\x18\v \x01(\x0e2\x1c.common.ChartEnforcementModeR\x16defaultEnforcementMode\x12<\n" +
-	"\bmetadata\x18\f \x03(\v2 .common.LedgerInfo.MetadataEntryR\bmetadata\x1aT\n" +
+	"\bmetadata\x18\f \x03(\v2 .common.LedgerInfo.MetadataEntryR\bmetadata\x12\x0e\n" +
+	"\x02id\x18\r \x01(\rR\x02id\x1aT\n" +
 	"\x11AccountTypesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
 	"\x05value\x18\x02 \x01(\v2\x13.common.AccountTypeR\x05value:\x028\x01\x1aR\n" +

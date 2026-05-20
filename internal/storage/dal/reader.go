@@ -144,6 +144,20 @@ func ReadUint64(reader PebbleReader, key []byte, defaultValue uint64) (uint64, e
 	return binary.BigEndian.Uint64(val[:8]), nil
 }
 
+// ReadUint32 reads a big-endian uint32 from Pebble. Returns defaultValue if not found or too short.
+func ReadUint32(reader PebbleReader, key []byte, defaultValue uint32) (uint32, error) {
+	val, err := GetValue(reader, key)
+	if err != nil {
+		return 0, err
+	}
+
+	if len(val) < 4 {
+		return defaultValue, nil
+	}
+
+	return binary.BigEndian.Uint32(val[:4]), nil
+}
+
 // ReadString reads a string value from Pebble. Returns "" if not found.
 func ReadString(reader PebbleReader, key []byte) (string, error) {
 	val, err := GetValue(reader, key)

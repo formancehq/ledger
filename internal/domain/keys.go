@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -17,8 +16,8 @@ type CanonicalBytes interface {
 }
 
 type AccountKey struct {
-	Ledger  string
-	Account string
+	LedgerID uint32
+	Account  string
 }
 
 type VolumeKey struct {
@@ -35,8 +34,16 @@ type VolumeKey struct {
 	AssetPrecision uint8
 }
 
+// appendLedgerID appends a uint32 ledger ID in big-endian order to dst.
+func appendLedgerID(dst []byte, id uint32) []byte {
+	var buf [4]byte
+	binary.BigEndian.PutUint32(buf[:], id)
+
+	return append(dst, buf[:]...)
+}
+
 // AppendBytes appends the canonical byte representation to dst and returns the
-// extended slice. Format: [ledger]\x00[account]\x00[asset_base][precision_byte]
+// extended slice. Format: [ledgerID BE 4B][account][sep][asset_base][precision_byte]
 func (bk VolumeKey) AppendBytes(dst []byte) []byte {
 	base := bk.AssetBase
 	precision := bk.AssetPrecision
@@ -46,8 +53,7 @@ func (bk VolumeKey) AppendBytes(dst []byte) []byte {
 		base, precision = ParseAssetPrecision(bk.Asset)
 	}
 
-	dst = append(dst, bk.Ledger...)
-	dst = append(dst, 0x00)
+	dst = appendLedgerID(dst, bk.LedgerID)
 	dst = append(dst, bk.Account...)
 	dst = append(dst, dal.CanonicalKeySepVolume)
 	dst = append(dst, base...)
@@ -62,27 +68,22 @@ func (bk VolumeKey) Bytes() []byte {
 }
 
 // Unmarshal parses canonical bytes into the VolumeKey.
-// Expected format: [ledger]\x00[account]\x00[asset_base][precision_byte]
-// The last byte is always the precision.
 func (bk *VolumeKey) Unmarshal(d []byte) error {
-	// Split ledger on first null byte.
-	before, after, ok := bytes.Cut(d, []byte{0x00})
-	if !ok {
-		return errors.New("invalid balance key bytes: missing ledger separator")
+	if len(d) < 4 {
+		return errors.New("invalid balance key bytes: too short for ledger ID")
 	}
 
-	bk.Ledger = string(before)
-	rest := after
+	bk.LedgerID = binary.BigEndian.Uint32(d[0:4])
 
-	// Find the volume separator to split account from asset.
-	before0, after0, ok0 := bytes.Cut(rest, []byte{dal.CanonicalKeySepVolume})
-	if !ok0 {
-		return errors.New("invalid balance key bytes: missing volume separator")
+	rest := d[4:]
+	parts := splitNullBytes(rest, 2)
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid balance key bytes: expected 2 parts after ledger ID, got %d", len(parts))
 	}
 
-	bk.Account = string(before0)
+	bk.Account = string(parts[0])
 
-	assetPart := after0
+	assetPart := parts[1]
 	if len(assetPart) < 2 {
 		return errors.New("invalid balance key bytes: asset part too short")
 	}
@@ -103,10 +104,9 @@ type MetadataKey struct {
 }
 
 // AppendBytes appends the canonical byte representation to dst.
-// Format: [ledger]\x00[account]\x01[key].
+// Format: [ledgerID BE 4B][account]\x01[key].
 func (mk MetadataKey) AppendBytes(dst []byte) []byte {
-	dst = append(dst, mk.Ledger...)
-	dst = append(dst, 0x00)
+	dst = appendLedgerID(dst, mk.LedgerID)
 	dst = append(dst, mk.Account...)
 	dst = append(dst, dal.CanonicalKeySepMetadata)
 	dst = append(dst, mk.Key...)
@@ -121,24 +121,29 @@ func (mk MetadataKey) Bytes() []byte {
 
 // Unmarshal parses canonical bytes into the MetadataKey.
 func (mk *MetadataKey) Unmarshal(d []byte) error {
-	// Split ledger on first null byte.
-	before, after, ok := bytes.Cut(d, []byte{0x00})
-	if !ok {
-		return errors.New("invalid metadata key bytes: missing ledger separator")
+	if len(d) < 4 {
+		return errors.New("invalid metadata key bytes: too short for ledger ID")
 	}
 
-	mk.Ledger = string(before)
+	mk.LedgerID = binary.BigEndian.Uint32(d[0:4])
 
-	// Rest is account + \x01 + key
-	rest := after
+	rest := d[4:]
+	separator := -1
 
-	before0, after0, ok0 := bytes.Cut(rest, []byte{dal.CanonicalKeySepMetadata})
-	if !ok0 {
-		return errors.New("invalid metadata key bytes: missing metadata separator")
+	for i, b := range rest {
+		if b == dal.CanonicalKeySepMetadata {
+			separator = i
+
+			break
+		}
 	}
 
-	mk.Account = string(before0)
-	mk.Key = string(after0)
+	if separator == -1 {
+		return errors.New("invalid metadata key bytes: missing account/key separator")
+	}
+
+	mk.Account = string(rest[:separator])
+	mk.Key = string(rest[separator+1:])
 
 	return nil
 }
@@ -146,15 +151,15 @@ func (mk *MetadataKey) Unmarshal(d []byte) error {
 var _ CanonicalBytes = (*MetadataKey)(nil)
 
 type TransactionKey struct {
-	Ledger string
-	ID     uint64
+	LedgerID uint32
+	ID       uint64
 }
 
 // AppendBytes appends the canonical byte representation to dst.
-// Format: [ledger]\x00\x02[txID (8 bytes)].
+// Format: [ledgerID BE 4B]\x02[txID (8 bytes)].
 func (tk TransactionKey) AppendBytes(dst []byte) []byte {
-	dst = append(dst, tk.Ledger...)
-	dst = append(dst, 0x00, dal.CanonicalKeySepTransaction)
+	dst = appendLedgerID(dst, tk.LedgerID)
+	dst = append(dst, dal.CanonicalKeySepTransaction)
 
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], tk.ID)
@@ -170,23 +175,17 @@ func (tk TransactionKey) Bytes() []byte {
 
 // Unmarshal parses canonical bytes into the TransactionKey.
 func (tk *TransactionKey) Unmarshal(d []byte) error {
-	// Find the \x00\x02 separator between ledger name and txID.
-	sep := -1
-
-	for i, b := range d {
-		if b == 0x00 && i+1 < len(d) && d[i+1] == dal.CanonicalKeySepTransaction {
-			sep = i
-
-			break
-		}
+	if len(d) < 4+1+8 {
+		return fmt.Errorf("invalid transaction key bytes: expected [ledgerID(4)]\\x%02X[txID(8)]", dal.CanonicalKeySepTransaction)
 	}
 
-	if sep == -1 || len(d) < sep+2+8 {
-		return fmt.Errorf("invalid transaction key bytes: expected [ledger]\\x00[0x%02X][txID(8)]", dal.CanonicalKeySepTransaction)
+	tk.LedgerID = binary.BigEndian.Uint32(d[0:4])
+
+	if d[4] != dal.CanonicalKeySepTransaction {
+		return fmt.Errorf("invalid transaction key bytes: expected separator 0x%02X, got 0x%02x", dal.CanonicalKeySepTransaction, d[4])
 	}
 
-	tk.Ledger = string(d[:sep])
-	tk.ID = binary.BigEndian.Uint64(d[sep+2 : sep+2+8])
+	tk.ID = binary.BigEndian.Uint64(d[5:13])
 
 	return nil
 }
@@ -218,15 +217,14 @@ var _ CanonicalBytes = (*IdempotencyKey)(nil)
 
 // TransactionReferenceKey represents a unique reference scoped to a ledger.
 type TransactionReferenceKey struct {
-	Ledger    string
+	LedgerID  uint32
 	Reference string
 }
 
 // AppendBytes appends the canonical byte representation to dst.
-// Format: [ledger]\x00[reference].
+// Format: [ledgerID BE 4B][reference].
 func (trk TransactionReferenceKey) AppendBytes(dst []byte) []byte {
-	dst = append(dst, trk.Ledger...)
-	dst = append(dst, 0x00)
+	dst = appendLedgerID(dst, trk.LedgerID)
 	dst = append(dst, trk.Reference...)
 
 	return dst
@@ -239,19 +237,20 @@ func (trk TransactionReferenceKey) Bytes() []byte {
 
 // Unmarshal parses canonical bytes into the TransactionReferenceKey.
 func (trk *TransactionReferenceKey) Unmarshal(d []byte) error {
-	parts := splitNullBytes(d, 2)
-	if len(parts) != 2 {
-		return fmt.Errorf("invalid transaction reference key bytes: expected 2 parts, got %d", len(parts))
+	if len(d) < 4 {
+		return errors.New("invalid transaction reference key bytes: too short for ledger ID")
 	}
 
-	trk.Ledger = string(parts[0])
-	trk.Reference = string(parts[1])
+	trk.LedgerID = binary.BigEndian.Uint32(d[0:4])
+	trk.Reference = string(d[4:])
 
 	return nil
 }
 
 var _ CanonicalBytes = (*TransactionReferenceKey)(nil)
 
+// LedgerKey identifies a ledger by name. Used as the attribute key for
+// LedgerInfo and Boundaries (keyed by name for name-based lookups).
 type LedgerKey struct {
 	Name string
 }
@@ -277,14 +276,14 @@ var _ CanonicalBytes = (*LedgerKey)(nil)
 
 // LedgerMetadataKey represents a metadata key scoped to a ledger.
 type LedgerMetadataKey struct {
-	Ledger string
-	Key    string
+	LedgerID uint32
+	Key      string
 }
 
 // AppendBytes appends the canonical byte representation to dst.
-// Format: [ledger]\x01[key].
+// Format: [ledgerID BE 4B]\x01[key].
 func (lmk LedgerMetadataKey) AppendBytes(dst []byte) []byte {
-	dst = append(dst, lmk.Ledger...)
+	dst = appendLedgerID(dst, lmk.LedgerID)
 	dst = append(dst, 0x01)
 	dst = append(dst, lmk.Key...)
 
@@ -298,22 +297,17 @@ func (lmk LedgerMetadataKey) Bytes() []byte {
 
 // Unmarshal parses canonical bytes into the LedgerMetadataKey.
 func (lmk *LedgerMetadataKey) Unmarshal(d []byte) error {
-	separator := -1
-
-	for i, b := range d {
-		if b == 0x01 {
-			separator = i
-
-			break
-		}
+	if len(d) < 5 {
+		return errors.New("invalid ledger metadata key bytes: too short")
 	}
 
-	if separator == -1 {
-		return errors.New("invalid ledger metadata key bytes: missing separator")
+	lmk.LedgerID = binary.BigEndian.Uint32(d[0:4])
+
+	if d[4] != 0x01 {
+		return fmt.Errorf("invalid ledger metadata key bytes: expected separator 0x01, got 0x%02x", d[4])
 	}
 
-	lmk.Ledger = string(d[:separator])
-	lmk.Key = string(d[separator+1:])
+	lmk.Key = string(d[5:])
 
 	return nil
 }
@@ -335,13 +329,12 @@ func (k SinkConfigKey) Bytes() []byte {
 
 // PreparedQueryKey uniquely identifies a prepared query by ledger and name.
 type PreparedQueryKey struct {
-	Ledger string
-	Name   string
+	LedgerID uint32
+	Name     string
 }
 
 func (k PreparedQueryKey) AppendBytes(dst []byte) []byte {
-	dst = append(dst, k.Ledger...)
-	dst = append(dst, 0x00)
+	dst = appendLedgerID(dst, k.LedgerID)
 	dst = append(dst, k.Name...)
 
 	return dst
@@ -353,13 +346,12 @@ func (k PreparedQueryKey) Bytes() []byte {
 
 // NumscriptVersionKey uniquely identifies a numscript by ledger and name for version tracking.
 type NumscriptVersionKey struct {
-	Ledger string
-	Name   string
+	LedgerID uint32
+	Name     string
 }
 
 func (k NumscriptVersionKey) AppendBytes(dst []byte) []byte {
-	dst = append(dst, k.Ledger...)
-	dst = append(dst, 0x00)
+	dst = appendLedgerID(dst, k.LedgerID)
 	dst = append(dst, k.Name...)
 
 	return dst
@@ -371,14 +363,13 @@ func (k NumscriptVersionKey) Bytes() []byte {
 
 // NumscriptEntryKey uniquely identifies a specific numscript version entry scoped to a ledger.
 type NumscriptEntryKey struct {
-	Ledger  string
-	Name    string
-	Version string
+	LedgerID uint32
+	Name     string
+	Version  string
 }
 
 func (k NumscriptEntryKey) AppendBytes(dst []byte) []byte {
-	dst = append(dst, k.Ledger...)
-	dst = append(dst, 0x00)
+	dst = appendLedgerID(dst, k.LedgerID)
 	dst = append(dst, k.Name...)
 	dst = append(dst, 0x00)
 	dst = append(dst, k.Version...)
