@@ -27,9 +27,9 @@ RFC for declarative account address validation. Defines a per-ledger chart of ac
 
 ## Graduated to Documentation
 
-- **Typed Metadata** — moved to [architecture/typed-metadata.md](../dev/architecture/typed-metadata.md)
-- **Data Retention & Cold Storage** — moved to [architecture/periods.md](../dev/architecture/periods.md)
-- **Numscript Library** — moved to [architecture/numscript-library.md](../dev/architecture/numscript-library.md)
+- **Typed Metadata** — moved to [architecture/typed-metadata.md](../technical/architecture/data-model/typed-metadata.md)
+- **Data Retention & Cold Storage** — moved to [architecture/periods.md](../technical/architecture/data-model/periods.md)
+- **Numscript Library** — moved to [architecture/numscript-library.md](../technical/architecture/api/numscript-library.md)
 
 ---
 

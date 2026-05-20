@@ -348,7 +348,7 @@ The `AttributeLoader` coordinates concurrent attribute loading to prevent duplic
 
 > **Note:** Reversions do not use an `AttributeLoader` — they are stored as an in-memory bitset that is always authoritative. No preloading from Pebble is needed.
 
-For detailed documentation on the `AttributeLoader` design, see [Deterministic FSM - Concurrent Load Coordination](./deterministic-fsm.md#76-concurrent-load-coordination-attributeloader).
+For detailed documentation on the `AttributeLoader` design, see [Deterministic FSM - Concurrent Load Coordination](../core/deterministic-fsm.md#76-concurrent-load-coordination-attributeloader).
 
 ## Directory Structure
 
@@ -367,7 +367,7 @@ data/
     └── CURRENT_CHECKPOINT         # Current checkpoint ID file
 ```
 
-The `seal/` directory contains a temporary Pebble checkpoint created when a period is being closed. It is used by the background Sealer to compute the sealing hash and is removed after the hash is computed. See [Periods](./periods.md) for details on the sealing process.
+The `seal/` directory contains a temporary Pebble checkpoint created when a period is being closed. It is used by the background Sealer to compute the sealing hash and is removed after the hash is computed. See [Periods](../data-model/periods.md) for details on the sealing process.
 
 ## Durability and Guarantees
 
@@ -410,7 +410,7 @@ The WAL is compacted after snapshots to prevent unbounded growth:
 2. The `CompactionMargin` keeps a buffer for slow followers to catch up
 3. Old WAL segment files are removed from disk
 
-For detailed explanation, see [WAL Compaction in Data Flows](./data-flows.md#wal-compaction).
+For detailed explanation, see [WAL Compaction in Data Flows](../data-model/data-flows.md#wal-compaction).
 
 #### Spool Compaction
 
@@ -427,7 +427,7 @@ Pebble performs automatic LSM-tree compaction:
 
 - **L0 → L1 compaction**: Triggered when L0 files exceed threshold
 - **Background compaction**: Runs concurrently with writes
-- **Write stalls**: May occur if compaction falls behind (see [Metrics](../../ops/monitoring.md#write-stall-metrics))
+- **Write stalls**: May occur if compaction falls behind (see [Metrics](../../../ops/monitoring.md#write-stall-metrics))
 
 ### Indexing
 
@@ -440,6 +440,6 @@ Pebble performs automatic LSM-tree compaction:
 To deepen your understanding:
 
 1. [Storage Drivers](./storage-drivers.md) - Detailed documentation on the Pebble storage driver
-2. [Consensus Raft](./raft-consensus.md) - How Raft uses storage
-3. [Buckets and Ledgers](./buckets-ledgers.md) - Data organization
-4. [Deployment](../../ops/deployment.md) - Storage configuration in production
+2. [Consensus Raft](../core/raft-consensus.md) - How Raft uses storage
+3. [Buckets and Ledgers](../data-model/buckets-ledgers.md) - Data organization
+4. [Deployment](../../../ops/deployment.md) - Storage configuration in production

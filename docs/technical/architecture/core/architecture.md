@@ -372,7 +372,7 @@ To deepen your understanding:
 
 1. [Global Log Architecture](./global-log.md) - Two-level log architecture and atomic bulk operations
 2. [Raft Consensus](./raft-consensus.md) - Details on Raft implementation
-3. [Ledgers](./buckets-ledgers.md) - Data organization
-4. [API and Interfaces](./api.md) - API documentation
-5. [Storage and Persistence](./storage.md) - Storage management
-6. [gRPC Connections](./grpc-connections.md) - Inter-node communication and reconnection strategies
+3. [Ledgers](../data-model/buckets-ledgers.md) - Data organization
+4. [API and Interfaces](../api/api.md) - API documentation
+5. [Storage and Persistence](../storage/storage.md) - Storage management
+6. [gRPC Connections](../api/grpc-connections.md) - Inter-node communication and reconnection strategies

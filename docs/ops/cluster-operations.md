@@ -568,9 +568,9 @@ After the reset, the preloader falls back to Pebble reads (0xF1 zone) for all ca
 
 ## Related Documentation
 
-- [Raft Consensus](../dev/architecture/raft-consensus.md) - Raft protocol details, elections, replication
-- [Data Flows](../dev/architecture/data-flows.md) - Spool mechanics, entry processing
-- [Spool](../dev/architecture/spool.md) - Spool technical implementation
+- [Raft Consensus](../technical/architecture/core/raft-consensus.md) - Raft protocol details, elections, replication
+- [Data Flows](../technical/architecture/data-model/data-flows.md) - Spool mechanics, entry processing
+- [Spool](../technical/architecture/storage/spool.md) - Spool technical implementation
 - [Deployment](./deployment.md) - Helm chart configuration, CLI flags
 - [CLI Reference](./cli.md) - `cluster add-learner`, `cluster promote-learner` commands
 - [Memory Management](./memory.md) - Cache rotation threshold memory impact

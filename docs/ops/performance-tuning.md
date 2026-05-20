@@ -390,11 +390,11 @@ Current balance = `base + latest cumulative diff`. Pebble range scans are effici
 ## Related Documentation
 
 - [Benchmark Results](../sales/benchmarks.md) - 106K tx/s benchmark details
-- [Numscript Reference](../dev/numscript.md) - Full Numscript language documentation
-- [Deterministic FSM Cache](../dev/architecture/deterministic-fsm.md) - Cache and preload architecture
-- [Uint256 Wire Format](../dev/architecture/uint256-wire-format.md) - Zero-allocation monetary amounts
-- [Attribute Key Hashing](../dev/architecture/attribute-key-hashing.md) - XXH3 vs BLAKE3 performance
-- [Storage Drivers](../dev/architecture/storage-drivers.md) - Pebble configuration details
+- [Numscript Reference](../technical/contributing/numscript.md) - Full Numscript language documentation
+- [Deterministic FSM Cache](../technical/architecture/core/deterministic-fsm.md) - Cache and preload architecture
+- [Uint256 Wire Format](../technical/architecture/data-model/uint256-wire-format.md) - Zero-allocation monetary amounts
+- [Attribute Key Hashing](../technical/architecture/storage/attribute-key-hashing.md) - XXH3 vs BLAKE3 performance
+- [Storage Drivers](../technical/architecture/storage/storage-drivers.md) - Pebble configuration details
 - [Metrics Reference](./monitoring.md) - Complete metrics catalog and alerting rules
 - [Deployment Guide](./deployment.md) - Production deployment recommendations
 - [V2 Problems Solved](../sales/v2-vs-v3.md) - Hot account contention eliminated

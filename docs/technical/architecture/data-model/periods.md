@@ -505,6 +505,6 @@ The signing key should be rotatable. Receipts would include a `kid` (key ID) fie
 
 ## Related Documentation
 
-- [Storage](./storage.md) — Key prefix details and Pebble persistence
+- [Storage](../storage/storage.md) — Key prefix details and Pebble persistence
 - [Data Flows](./data-flows.md) — ClosePeriod and SealPeriod flow diagrams
-- [Deterministic FSM](./deterministic-fsm.md) — How the FSM ensures deterministic state across nodes
+- [Deterministic FSM](../core/deterministic-fsm.md) — How the FSM ensures deterministic state across nodes

@@ -1,18 +1,20 @@
 # Ledger v3 Documentation
 
-## I want to...
+Formance Ledger v3 is a distributed, high-performance financial ledger built on Raft consensus with embedded Pebble storage. Single binary, no external dependencies, 106K+ transactions per second.
 
-### Deploy & operate the ledger → [Operations Guide](./ops/)
-Deployment, monitoring, backup/restore, cluster management, CLI reference, request signing, maintenance mode, sentinel mode.
+## Documentation
 
-### Develop on the project → [Developer Guide](./dev/)
-Getting started, conventions, testing, protobuf, Numscript, and detailed architecture documentation.
+### [Operations Guide](./ops/)
+Deploy, monitor, and run the ledger in production. Covers deployment, CLI reference, cluster management, backup/restore, monitoring, authentication, and security.
 
-### Understand features & performance → [Product Overview](./sales/)
-Feature matrix, benchmarks, v2 vs v3 comparison, system limitations.
+### [Product Overview](./sales/)
+Features, performance benchmarks, and key differentiators. For understanding what Ledger v3 offers and how it compares to v2.
 
-### Explore design RFCs → [Drafts](./drafts/)
-Experimental ideas, advanced concepts, and future directions.
+### [Technical Documentation](./technical/)
+Architecture, internals, and contributor guides. Start with the [Architecture Overview](./technical/architecture-overview.md) for the 10,000-foot view, then dive into specific topics.
+
+### [Design RFCs](./drafts/)
+Experimental ideas, advanced concepts, and future design proposals.
 
 ---
 
@@ -22,7 +24,7 @@ Experimental ideas, advanced concepts, and future directions.
 |-------|------|
 | CLI reference | [ops/cli.md](./ops/cli.md) |
 | Deployment guide | [ops/deployment.md](./ops/deployment.md) |
-| Architecture overview | [dev/architecture/overview.md](./dev/architecture/overview.md) |
-| API comparison (v2 parity) | [dev/api-comparison.md](./dev/api-comparison.md) |
+| Architecture overview | [technical/architecture-overview.md](./technical/architecture-overview.md) |
+| API comparison (v2 parity) | [technical/contributing/api-comparison.md](./technical/contributing/api-comparison.md) |
 | Benchmarks (106K tx/s) | [sales/benchmarks.md](./sales/benchmarks.md) |
-| Dev environment URLs | [devenv-ledger-exp.md](./devenv-ledger-exp.md) |
+| Getting started | [technical/contributing/getting-started.md](./technical/contributing/getting-started.md) |

@@ -194,11 +194,11 @@ When a follower joins the cluster or recovers after a failure, it must synchroni
 1. **Raft log synchronization** via the Spool (committed but not yet applied entries)
 2. **Business log synchronization** via gRPC streaming (per-ledger transaction logs)
 
-> **🔗 Raft Mechanics**: The synchronization is triggered when the Raft leader detects that a follower is too far behind (entries have been compacted from the WAL). The leader then sends a **MsgSnap** message containing the FSM snapshot. See [Desynchronized Follower Detection](./raft-consensus.md#desynchronized-follower-detection) for details on how Raft detects and handles this scenario.
+> **🔗 Raft Mechanics**: The synchronization is triggered when the Raft leader detects that a follower is too far behind (entries have been compacted from the WAL). The leader then sends a **MsgSnap** message containing the FSM snapshot. See [Desynchronized Follower Detection](../core/raft-consensus.md#desynchronized-follower-detection) for details on how Raft detects and handles this scenario.
 
 ### Node Synchronization State Machine
 
-The **Applier** (owned by the Node) manages the synchronization process through a four-state machine. For the complete cluster lifecycle (bootstrap, join, synchronization, and learner promotion), see [Cluster Lifecycle](../../ops/cluster-operations.md).
+The **Applier** (owned by the Node) manages the synchronization process through a four-state machine. For the complete cluster lifecycle (bootstrap, join, synchronization, and learner promotion), see [Cluster Lifecycle](../../../ops/cluster-operations.md).
 
 | Status | Value | Description |
 |--------|-------|-------------|
@@ -363,7 +363,7 @@ The **Spool** is a temporary buffer that stores committed Raft entries that have
 3. **Replay**: `ReplayUntil()` replays entries from the cached read position to the watermark
 4. **Prune**: Old segments are pruned when all entries have been applied
 
-For detailed implementation, see [Spool Technical Documentation](./spool.md).
+For detailed implementation, see [Spool Technical Documentation](../storage/spool.md).
 
 ### Synchronization Flow
 
@@ -634,7 +634,7 @@ sequenceDiagram
 
 Bulk operations allow sending multiple operations in a single request. Unlike v2, v3 supports **system-level atomic bulk operations** that can span multiple ledgers.
 
-> **📋 Related**: See [Global Log Architecture](./global-log.md) for details on how the global log enables cross-ledger atomic operations.
+> **📋 Related**: See [Global Log Architecture](../core/global-log.md) for details on how the global log enables cross-ledger atomic operations.
 
 ### Sequential Bulk Flow
 
@@ -774,8 +774,8 @@ Two crash windows are handled automatically on restart:
 
 To deepen your understanding:
 
-1. [Raft Consensus](./raft-consensus.md) - Details on Raft replication
-2. [Storage and Persistence](./storage.md) - How data is persisted
-3. [API and Interfaces](./api.md) - API endpoint documentation
-4. [Spool](./spool.md) - Technical details of the Spool component
+1. [Raft Consensus](../core/raft-consensus.md) - Details on Raft replication
+2. [Storage and Persistence](../storage/storage.md) - How data is persisted
+3. [API and Interfaces](../api/api.md) - API endpoint documentation
+4. [Spool](../storage/spool.md) - Technical details of the Spool component
 5. [Periods](./periods.md) - Period lifecycle, sealing, and crash recovery

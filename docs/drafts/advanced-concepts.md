@@ -223,7 +223,7 @@ type Idempotency struct {
 
 ### Example Flow
 
-> **Note**: This example uses the deprecated `KeySetLocker` pattern. The current implementation uses `AttributeLoader` for concurrent load coordination. See [Deterministic FSM - Concurrent Load Coordination](../dev/architecture/deterministic-fsm.md#76-concurrent-load-coordination-attributeloader) for the current approach.
+> **Note**: This example uses the deprecated `KeySetLocker` pattern. The current implementation uses `AttributeLoader` for concurrent load coordination. See [Deterministic FSM - Concurrent Load Coordination](../technical/architecture/core/deterministic-fsm.md#76-concurrent-load-coordination-attributeloader) for the current approach.
 
 ```go
 // All action types go through the same idempotency check
@@ -435,6 +435,6 @@ Authorization can be added:
 
 To deepen your understanding:
 
-1. [Raft Consensus](../dev/architecture/raft-consensus.md) - Details on Raft
-2. [Storage and Persistence](../dev/architecture/storage.md) - Storage optimizations
-3. [Development](../dev/development.md) - Implementing new features
+1. [Raft Consensus](../technical/architecture/core/raft-consensus.md) - Details on Raft
+2. [Storage and Persistence](../technical/architecture/storage/storage.md) - Storage optimizations
+3. [Development](../technical/contributing/development.md) - Implementing new features

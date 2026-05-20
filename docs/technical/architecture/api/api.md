@@ -27,7 +27,7 @@ Both paths are equivalent and point to the same handlers. This allows for:
 
 ### Authentication
 
-The server supports optional JWT/OIDC authentication with scope-based authorization. When enabled via `--auth-enabled`, all API requests must carry a valid Bearer token in the `Authorization` header. See [Authentication Guide](../../ops/authentication.md) for configuration details.
+The server supports optional JWT/OIDC authentication with scope-based authorization. When enabled via `--auth-enabled`, all API requests must carry a valid Bearer token in the `Authorization` header. See [Authentication Guide](../../../ops/authentication.md) for configuration details.
 
 ### Response Format
 
@@ -461,6 +461,6 @@ npx @redocly/cli preview-docs openapi.yml
 To deepen your understanding:
 
 1. [gRPC API](./grpc-api.md) - Programmatic API for clients and CLI
-2. [General Architecture](./architecture.md) - How the APIs integrate
-3. [Data Flows](./data-flows.md) - Detailed flows of requests
-4. [Development](../development.md) - Add new endpoints
+2. [General Architecture](../core/architecture.md) - How the APIs integrate
+3. [Data Flows](../data-model/data-flows.md) - Detailed flows of requests
+4. [Development](../../contributing/development.md) - Add new endpoints

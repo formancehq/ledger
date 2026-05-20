@@ -666,7 +666,7 @@ message SetChartEnforcementModeLog {
 | `internal/ctrl/controller_default.go` | Engine interface extension |
 | `internal/compat/http/router.go` | Register new chart routes |
 | `openapi.yml` | New endpoints and schemas |
-| `docs/dev/api-comparison.md` | Document new endpoints |
+| `docs/technical/contributing/api-comparison.md` | Document new endpoints |
 
 ---
 

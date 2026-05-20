@@ -283,6 +283,6 @@ If a segment referenced by the read cache has been pruned:
 
 ## Next Steps
 
-- [Data Flows](./data-flows.md) - How the Spool fits in the synchronization flow
+- [Data Flows](../data-model/data-flows.md) - How the Spool fits in the synchronization flow
 - [Storage](./storage.md) - Persistent storage architecture
-- [Raft Consensus](./raft-consensus.md) - Raft protocol details
+- [Raft Consensus](../core/raft-consensus.md) - Raft protocol details

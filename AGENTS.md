@@ -10,7 +10,7 @@ This document contains rules and conventions for AI agents working on this codeb
 
 **CRITICAL**: Always maintain documentation when making changes.
 
-- **Update `docs/dev/api-comparison.md`** when adding, modifying, or removing API endpoints
+- **Update `docs/technical/contributing/api-comparison.md`** when adding, modifying, or removing API endpoints
 - **Update `docs/ops/cli.md`** when modifying CLI commands, flags, or behavior
 - **Update `openapi.yml`** if HTTP endpoints change
 - **Update code comments** if interfaces or behavior change
@@ -47,11 +47,11 @@ Interfaces with mockgen: `Transport` (`internal/infra/node/transport.go`), `Cont
 
 **CRITICAL**: After modifying any `.proto` file, **immediately** run `just generate-proto`. Realign field numbers sequentially when adding/removing fields.
 
-See [docs/dev/protobuf.md](docs/dev/protobuf.md) for full details (file locations, vtprotobuf, Uint256 wire format, adding new command models).
+See [docs/technical/contributing/protobuf.md](docs/technical/contributing/protobuf.md) for full details (file locations, vtprotobuf, Uint256 wire format, adding new command models).
 
 ## Conventions
 
-For full conventions with examples, see [docs/dev/conventions.md](docs/dev/conventions.md).
+For full conventions with examples, see [docs/technical/contributing/conventions.md](docs/technical/contributing/conventions.md).
 
 Key rules:
 1. **One file per command** and **one file per HTTP handler**
@@ -99,7 +99,7 @@ Scenario tests use a separate build tag: `go test -tags scenario ./tests/scenari
 
 ## Testing Conventions
 
-See [docs/dev/testing.md](docs/dev/testing.md) for full testing guidelines.
+See [docs/technical/contributing/testing.md](docs/technical/contributing/testing.md) for full testing guidelines.
 
 Key rules:
 - **Never use `time.Sleep`** in tests - use `require.Eventually`
@@ -135,11 +135,11 @@ Ed25519 request signing for authenticity and integrity. See [docs/ops/signing.md
 
 ## Architecture
 
-See [docs/dev/architecture/](docs/dev/architecture/) for detailed architecture documentation. Key design principles:
+See [docs/technical/architecture/](docs/technical/architecture/) for detailed architecture documentation. Key design principles:
 
 - **Single Raft group** manages all ledgers
 - **FSMs must be fast** - they run in the critical path of Raft consensus
-- **Uber fx** for dependency injection - see [docs/dev/getting-started.md](docs/dev/getting-started.md)
+- **Uber fx** for dependency injection - see [docs/technical/contributing/getting-started.md](docs/technical/contributing/getting-started.md)
 - **Formance go-libs** for service lifecycle, OTLP, HTTP server
 
 - I would like you to respect the concepts of DRY (Don't Repeat Yourself).

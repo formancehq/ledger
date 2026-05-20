@@ -143,5 +143,5 @@ The server uses `github.com/formancehq/go-libs/v5/pkg/service` for lifecycle man
 ## Next Steps
 
 - Read [conventions.md](./conventions.md) for coding standards
-- Explore [architecture/overview.md](./architecture/overview.md) for the system design
+- Explore [architecture-overview.md](../architecture-overview.md) for the system design
 - See [testing.md](./testing.md) for testing guidelines

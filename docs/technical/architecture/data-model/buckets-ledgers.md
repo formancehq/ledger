@@ -449,6 +449,6 @@ Audit entries can be queried via:
 
 To deepen your understanding:
 
-1. [API and Interfaces](./api.md) - API documentation for ledgers
-2. [Storage and Persistence](./storage.md) - How data is stored
+1. [API and Interfaces](../api/api.md) - API documentation for ledgers
+2. [Storage and Persistence](../storage/storage.md) - How data is stored
 3. [Data Flows](./data-flows.md) - Detailed operation flows

@@ -31,15 +31,7 @@ Ledger v2 required an external PostgreSQL database:
 
 ### v3 Solution
 
-Ledger v3 uses **embedded storage** with no external dependencies:
-
-```bash
-# v2: Required PostgreSQL connection
-./ledger serve --postgres-uri "postgres://user:pass@host:5432/ledger"
-
-# v3: Self-contained with embedded Pebble storage
-./ledger serve --data-dir ./data
-```
+Ledger v3 uses **embedded storage** with no external dependencies. Where v2 required a PostgreSQL connection string, v3 simply points to a local data directory and manages its own storage. See [Architecture Overview](../technical/architecture-overview.md) for implementation details.
 
 **Benefits**:
 - Zero external dependencies
@@ -96,13 +88,7 @@ Managing multiple ledgers in v2 could lead to:
 
 ### v3 Solution
 
-v3 uses a **single Raft group** for all ledgers:
-
-```go
-type State struct {
-    Ledgers map[string]*LedgerState  // All ledgers in one Raft group
-}
-```
+v3 uses a **single Raft group** for all ledgers. The FSM state holds every ledger in one unified structure, so all operations are ordered by a single consensus group. See [Architecture Overview](../technical/architecture-overview.md) for implementation details.
 
 **Benefits**:
 - **Simplified operations**: One Raft group to manage
@@ -120,17 +106,7 @@ v2 with PostgreSQL required an external database server, but the Go binary itsel
 
 ### v3 Solution
 
-v3 uses **Pebble** as its embedded storage engine, a high-performance LSM-tree based key-value store from CockroachDB that requires no CGO:
-
-```bash
-# Pure Go build - no CGO required
-CGO_ENABLED=0 go build -o ledger .
-
-# Minimal Docker image
-FROM scratch
-COPY ledger /ledger
-ENTRYPOINT ["/ledger"]
-```
+v3 uses **Pebble** as its embedded storage engine, a high-performance LSM-tree based key-value store from CockroachDB that requires no CGO. The binary can be built with `CGO_ENABLED=0` and runs from a minimal scratch or distroless Docker image.
 
 **Benefits**:
 - Easy cross-compilation (Linux, macOS, Windows, ARM)
@@ -222,31 +198,7 @@ v2 had limited observability:
 
 ### v3 Solution
 
-v3 has **comprehensive observability**:
-
-### OpenTelemetry Integration
-
-```yaml
-# Traces, metrics, and logs - all in one
-OTEL_TRACES_EXPORTER_OTLP_ENDPOINT: "http://tempo:4317"
-OTEL_METRICS_EXPORTER_OTLP_ENDPOINT: "http://victoriametrics:4317"
-OTEL_LOGS_EXPORTER_OTLP_ENDPOINT: "http://loki:4317"
-```
-
-### Pyroscope Continuous Profiling
-
-```yaml
-PYROSCOPE_ENABLED: true
-PYROSCOPE_SERVER_ADDRESS: "http://pyroscope:4040"
-PYROSCOPE_PROFILE_TYPES: "cpu,alloc_objects,alloc_space,inuse_objects,inuse_space,goroutines"
-```
-
-### Storage Metrics (Pebble)
-
-- Compaction metrics (count, duration, bytes)
-- Write stall metrics
-- Cache hit rates
-- Level statistics
+v3 has **comprehensive observability**. OpenTelemetry is built in for traces, metrics, and logs -- configure the standard OTLP environment variables to send telemetry to your backend of choice. Optional Pyroscope continuous profiling is available via build tag for CPU, allocation, and goroutine profiling. Pebble storage metrics (compaction, write stalls, cache hit rates, level statistics) are exposed alongside application metrics. See [Architecture Overview](../technical/architecture-overview.md) for implementation details.
 
 **Benefits**:
 - End-to-end request tracing
@@ -282,17 +234,7 @@ v3 uses **Pebble**, an LSM-tree storage engine optimized for high-throughput wor
 
 ### v2 Problem
 
-v2 transaction responses included volume calculations:
-
-```json
-{
-  "transaction": { ... },
-  "postCommitVolumes": { ... },
-  "preCommitVolumes": { ... },
-  "postCommitEffectiveVolumes": { ... },
-  "preCommitEffectiveVolumes": { ... }
-}
-```
+v2 transaction responses included pre- and post-commit volume calculations for every affected account, adding four extra nested objects to every response.
 
 **Issues**:
 - **Performance overhead**: Required additional reads to compute volumes
@@ -301,13 +243,7 @@ v2 transaction responses included volume calculations:
 
 ### v3 Solution
 
-v3 **removes pre/post commit volumes** from responses:
-
-```json
-{
-  "transaction": { ... }
-}
-```
+v3 **removes pre/post commit volumes** from transaction creation responses. The response contains only the transaction itself. Volumes are available via dedicated read endpoints when needed.
 
 **Benefits**:
 - Simpler, faster transaction creation
@@ -354,16 +290,7 @@ Pebble's LSM-tree architecture handles UUID v4 account addresses efficiently.
 
 ### v2 Problem
 
-In v2 with PostgreSQL, updating an account balance required a **read-modify-write** cycle:
-
-```sql
--- v2: Read current balance, then update
-BEGIN;
-SELECT balance FROM balances WHERE account = 'bank' AND asset = 'USD' FOR UPDATE;
--- Application computes new balance
-UPDATE balances SET balance = new_balance WHERE account = 'bank' AND asset = 'USD';
-COMMIT;
-```
+In v2 with PostgreSQL, updating an account balance required a **read-modify-write** cycle: begin a transaction, select the current balance with a row lock, compute the new balance, update the row, and commit. Every concurrent transaction targeting the same account had to wait for the lock.
 
 **Contention issues**:
 
@@ -420,71 +347,11 @@ v3 with Pebble uses **balance diffs** instead of absolute balances, eliminating 
 
 #### How It Works
 
-**Write path** (no contention):
+On the **write path**, each transaction appends a new balance diff entry keyed by ledger, account, asset, and log ID. Multiple transactions debiting the same account write in parallel with no locking -- each simply appends its own diff.
 
-```go
-// Each transaction appends a new balance diff entry
-// Key format: {ledger}/{prefix}{account}{asset}{logID}
-// Value: balance delta (can be negative for debits)
+On the **read path**, the current balance is reconstructed by iterating over all diffs for a given account/asset and summing them. Pebble's efficient range scans make this fast even with many entries.
 
-// Transaction 1: debit 100 from bank
-AppendBalanceDiff(ledger, "bank", "USD", -100, raftIndex=1)
-
-// Transaction 2: debit 50 from bank (parallel, no lock needed)
-AppendBalanceDiff(ledger, "bank", "USD", -50, raftIndex=2)
-
-// Transaction 3: debit 75 from bank (parallel, no lock needed)
-AppendBalanceDiff(ledger, "bank", "USD", -75, raftIndex=3)
-```
-
-**Read path** (balance reconstruction):
-
-```go
-// GetBalances iterates over all diffs and sums them
-func (s *Store) GetBalances(ctx context.Context, ledger uint32, query map[string][]string) {
-    for account, assets := range query {
-        for _, asset := range assets {
-            balance := big.NewInt(0)
-            
-            // Iterate over all diffs for this account/asset
-            iter := s.db.NewIter(&pebble.IterOptions{
-                LowerBound: makeKey(ledger, account, asset),
-                UpperBound: makeKey(ledger, account, asset, 0xFF),
-            })
-            
-            // Sum all diffs to get current balance
-            for iter.First(); iter.Valid(); iter.Next() {
-                diff := unmarshalBigInt(iter.Value())
-                balance.Add(balance, diff)
-            }
-            
-            result[account][asset] = balance
-        }
-    }
-}
-```
-
-#### Storage Structure
-
-Each balance diff is stored with a unique key:
-
-```
-Key:   {ledger_id}/{0x02}{account}{asset}{log_id}
-Value: big.Int (delta, can be positive or negative)
-
-Example entries for bank/USD:
-┌─────────────────────────────────────────────────────────────┐
-│ Key                              │ Value                    │
-├──────────────────────────────────┼──────────────────────────┤
-│ 0001/0x02/bank/USD/0000000001    │ +1000000  (initial)      │
-│ 0001/0x02/bank/USD/0000000005    │ -100      (tx debit)     │
-│ 0001/0x02/bank/USD/0000000008    │ -50       (tx debit)     │
-│ 0001/0x02/bank/USD/0000000012    │ +200      (tx credit)    │
-│ 0001/0x02/bank/USD/0000000015    │ -75       (tx debit)     │
-└──────────────────────────────────┴──────────────────────────┘
-
-Balance = SUM(values) = 1000000 - 100 - 50 + 200 - 75 = 999975
-```
+See [Architecture Overview](../technical/architecture-overview.md) for implementation details on the storage key format and balance reconstruction.
 
 #### Performance Comparison
 
@@ -519,20 +386,6 @@ When migrating from v2 to v3, consider:
 3. **Infrastructure**: Remove PostgreSQL from your infrastructure
 4. **Cluster Setup**: Configure Raft cluster (odd number of nodes for quorum)
 5. **Storage Selection**: Choose appropriate storage backend for your workload
-
----
-
-## Features Not Yet Implemented
-
-Some v2 features are still being implemented in v3:
-
-| Feature | Status |
-|---------|--------|
-| Log import/export | Interface defined |
-| Force parameter on transaction creation | Not implemented |
-| Ledger metadata update | Not implemented |
-
-See [API Comparison](../dev/api-comparison.md) for detailed feature comparison.
 
 ---
 
@@ -594,33 +447,9 @@ v3 introduces **system-level atomic bulk operations** thanks to the global log a
 3. **Multi-Action Commands**: A single Raft command can contain actions on multiple ledgers
 4. **Atomic FSM Application**: The FSM applies all actions atomically
 
-#### Usage (gRPC)
+#### Usage
 
-The gRPC service accepts multiple actions targeting different ledgers in a single `Apply` call:
-
-```go
-// Multiple actions on different ledgers in one atomic operation
-logs, err := service.Apply(ctx,
-    &servicepb.Action{Apply: &servicepb.LedgerApplyAction{Ledger: "ledger-a", ...}},
-    &servicepb.Action{Apply: &servicepb.LedgerApplyAction{Ledger: "ledger-b", ...}},
-    &servicepb.Action{Apply: &servicepb.LedgerApplyAction{Ledger: "ledger-c", ...}},
-)
-// All succeed or all fail together
-```
-
-#### Usage (HTTP Bulk)
-
-The HTTP bulk endpoint supports atomic mode:
-
-```http
-POST /ledger-a/_bulk?atomic=true
-Content-Type: application/json
-
-[
-  {"action": "CREATE_TRANSACTION", "data": {...}},
-  {"action": "CREATE_TRANSACTION", "ledger": "ledger-b", "data": {...}}
-]
-```
+Via **gRPC**, the `Apply` call accepts multiple actions targeting different ledgers in a single request -- all actions succeed or all fail together. Via **HTTP**, the bulk endpoint supports an `atomic=true` query parameter that wraps all operations in the request into a single Raft command, even when individual operations target different ledgers. See [Architecture Overview](../technical/architecture-overview.md) for implementation details.
 
 **Benefits**:
 - **Cross-ledger transfers**: Atomic transfers between accounts in different ledgers
@@ -628,7 +457,7 @@ Content-Type: application/json
 - **Simplified error handling**: No need to handle partial failures across ledgers
 - **Audit trail**: Single global sequence for all operations
 
-See [Global Log Architecture](../dev/architecture/global-log.md) for detailed documentation on the two-level log architecture that enables this feature.
+See [Global Log Architecture](../technical/architecture/data-model/global-log.md) for detailed documentation on the two-level log architecture that enables this feature.
 
 ---
 

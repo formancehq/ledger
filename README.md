@@ -65,14 +65,14 @@ just generate-proto  # Generate protobuf code
 just pre-commit      # Run all checks (generate, tidy, lint)
 ```
 
-For more details, see the [Developer Guide](./docs/dev/).
+For more details, see the [Developer Guide](./docs/technical/).
 
 ## Documentation
 
 | Guide                             | Audience                               |
 | --------------------------------- | -------------------------------------- |
 | [Operations](./docs/ops/)         | Deploy, monitor, backup, CLI reference |
-| [Development](./docs/dev/)        | Architecture, conventions, testing     |
+| [Development](./docs/technical/)   | Architecture, conventions, testing     |
 | [Product Overview](./docs/sales/) | Features, benchmarks, v2 vs v3         |
 | [Drafts & RFCs](./docs/drafts/)   | Experimental designs                   |
 

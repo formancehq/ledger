@@ -81,4 +81,4 @@
 
 ---
 
-For the full technical comparison, see [dev/api-comparison.md](../dev/api-comparison.md).
+For the full technical comparison, see [api-comparison.md](../technical/contributing/api-comparison.md).

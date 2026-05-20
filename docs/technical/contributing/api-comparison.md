@@ -177,7 +177,7 @@ Ledger metadata is stored separately from ledger configuration (LedgerInfo) and 
 - ✅ `continueOnFailure` - Continue even on error
 - ✅ `atomic` - All operations or nothing (supports cross-ledger operations)
 
-> **Note:** Unlike v2, v3 supports **system-level atomic bulk operations** that can span multiple ledgers. This is enabled by the [Global Log Architecture](./architecture/global-log.md).
+> **Note:** Unlike v2, v3 supports **system-level atomic bulk operations** that can span multiple ledgers. This is enabled by the [Global Log Architecture](../architecture/core/global-log.md).
 
 ### 5. Ledger Management
 
@@ -229,7 +229,7 @@ ledgerctl transactions get --ledger <ledger-name> --id <transaction-id>
 
 ### 7. Periods
 
-Periods partition a ledger's transaction history into discrete, sealed segments. See [Periods Architecture](./architecture/periods.md) for full documentation.
+Periods partition a ledger's transaction history into discrete, sealed segments. See [Periods Architecture](../architecture/data-model/periods.md) for full documentation.
 
 **gRPC Methods:**
 - `Apply(ClosePeriodRequest)` - Close the current open period (write, leader-only)
@@ -533,7 +533,7 @@ The response will include a `postCommitVolumes` field:
 
 **Status:** ✅ Compliant
 
-See [Idempotency](./architecture/idempotency.md) for detailed documentation.
+See [Idempotency](../architecture/data-model/idempotency.md) for detailed documentation.
 
 ---
 
@@ -603,7 +603,7 @@ This architecture impacts certain implementation decisions:
 - Import must respect log sequence
 - Export can be done from any node (local read)
 
-See [Global Log Architecture](./architecture/global-log.md) for details on how the two-level log architecture enables cross-ledger atomic operations.
+See [Global Log Architecture](../architecture/core/global-log.md) for details on how the two-level log architecture enables cross-ledger atomic operations.
 
 ---
 

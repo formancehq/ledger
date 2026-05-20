@@ -45,7 +45,7 @@ Extend Numscript so that:
 ### 0.3 Relation to Other Documents
 
 - **[Static Inputs RFC](./numscript-static-inputs-rfc.md)** — `meta()` reads are declared in `Requirements.accountMetadataReads`. This RFC does not change that contract; it changes the **value type** flowing through the declared reads.
-- **[Typed Metadata Architecture](../../dev/architecture/typed-metadata.md)** — This RFC builds on the existing typed metadata system and reuses its `MetadataValue` oneof, `MetadataType` enum, and conversion matrix.
+- **[Typed Metadata Architecture](../../technical/architecture/data-model/typed-metadata.md)** — This RFC builds on the existing typed metadata system and reuses its `MetadataValue` oneof, `MetadataType` enum, and conversion matrix.
 
 ### 0.4 Scope
 

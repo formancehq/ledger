@@ -13,7 +13,7 @@ All attributes share:
 
 **Exception:** Reversions use a dedicated in-memory bitset instead of the attribute system. See [Reversions](#reversions) below.
 
-See [Deterministic FSM](./deterministic-fsm.md) for details on the caching and preloading mechanisms.
+See [Deterministic FSM](../core/deterministic-fsm.md) for details on the caching and preloading mechanisms.
 
 ## Attribute Types
 
@@ -255,6 +255,6 @@ This enables:
 
 ## Related Documentation
 
-- [Deterministic FSM](./deterministic-fsm.md) - Generation-based caching and preloading
-- [Idempotency](./idempotency.md) - Idempotency keys in detail
+- [Deterministic FSM](../core/deterministic-fsm.md) - Generation-based caching and preloading
+- [Idempotency](../data-model/idempotency.md) - Idempotency keys in detail
 - [Storage](./storage.md) - Pebble storage architecture

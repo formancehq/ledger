@@ -475,7 +475,7 @@ If a script violates the single `GetBalances` constraint, `DiscoverNumscriptDepe
 
 ### Long-term Solution
 
-The emulation approach is a temporary workaround. The long-term solution is static analysis of Numscript scripts to declare all required inputs at parse time. See the [Static Inputs RFC](../drafts/numscript/numscript-static-inputs-rfc.md) for details.
+The emulation approach is a temporary workaround. The long-term solution is static analysis of Numscript scripts to declare all required inputs at parse time. See the [Static Inputs RFC](../../drafts/numscript/numscript-static-inputs-rfc.md) for details.
 
 ## Performance Considerations
 
@@ -494,7 +494,7 @@ Cache metrics are exposed via OpenTelemetry:
 
 ## Related Documentation
 
-- [CLI Reference](../ops/cli.md) - CLI usage and examples
-- [Numscript Examples](../../misc/numscript/examples/README.md) - Ready-to-use example scripts
+- [CLI Reference](../../ops/cli.md) - CLI usage and examples
+- [Numscript Examples](../../../misc/numscript/examples/README.md) - Ready-to-use example scripts
 - [API Comparison](./api-comparison.md) - Feature parity with original ledger
-- [Static Inputs RFC](../drafts/numscript/numscript-static-inputs-rfc.md) - RFC for static input declaration
+- [Static Inputs RFC](../../drafts/numscript/numscript-static-inputs-rfc.md) - RFC for static input declaration

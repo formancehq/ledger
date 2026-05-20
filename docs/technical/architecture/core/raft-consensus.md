@@ -18,7 +18,7 @@ A Raft node can be in one of the following states:
 - **Candidate**: Transient state during leader election
 - **PreCandidate**: Transient state before becoming candidate (optional)
 
-Nodes join the cluster as **learners** and are automatically promoted to **voters** (followers) once they catch up. See [Cluster Lifecycle](../../ops/cluster-operations.md) for the complete bootstrap/join/promotion flow.
+Nodes join the cluster as **learners** and are automatically promoted to **voters** (followers) once they catch up. See [Cluster Lifecycle](../../../ops/cluster-operations.md) for the complete bootstrap/join/promotion flow.
 
 ```mermaid
 stateDiagram-v2
@@ -390,7 +390,7 @@ The snapshot contains only the **FSM state** (ledger metadata, next IDs). After 
 
 This two-level approach avoids embedding large transaction data in Raft snapshots.
 
-See [Follower Synchronization](./data-flows.md#follower-synchronization) for the detailed synchronization flow
+See [Follower Synchronization](../data-model/data-flows.md#follower-synchronization) for the detailed synchronization flow
 
 #### Network Partition
 
@@ -455,8 +455,8 @@ All reads use the etcd/raft **ReadIndex** mechanism to provide linearizable cons
 
 To deepen your understanding:
 
-1. [Cluster Lifecycle](../../ops/cluster-operations.md) - Bootstrap, join, synchronization, and learner promotion
-2. [Ledgers](./buckets-ledgers.md) - How ledgers are managed
-3. [Storage and Persistence](./storage.md) - Raft storage implementation
-4. [Data Flows](./data-flows.md) - Detailed Raft operation flows
-5. [gRPC Connections](./grpc-connections.md) - Transport layer, reconnection strategies, and rolling deployment optimizations
+1. [Cluster Lifecycle](../../../ops/cluster-operations.md) - Bootstrap, join, synchronization, and learner promotion
+2. [Ledgers](../data-model/buckets-ledgers.md) - How ledgers are managed
+3. [Storage and Persistence](../storage/storage.md) - Raft storage implementation
+4. [Data Flows](../data-model/data-flows.md) - Detailed Raft operation flows
+5. [gRPC Connections](../api/grpc-connections.md) - Transport layer, reconnection strategies, and rolling deployment optimizations

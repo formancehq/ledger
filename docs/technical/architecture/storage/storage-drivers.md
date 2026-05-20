@@ -319,5 +319,5 @@ The `Batch` (`internal/storage/dal/batch.go`) provides atomic write operations:
 ## See Also
 
 - [Storage and Persistence](./storage.md) - Overview of storage architecture
-- [Architecture](./architecture.md) - System architecture overview
-- [API Reference](./api.md) - API documentation
+- [Architecture](../core/architecture.md) - System architecture overview
+- [API Reference](../api/api.md) - API documentation

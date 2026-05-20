@@ -4079,7 +4079,7 @@ ledgerctl --server ledger.example.com:8888 --insecure ledgers list
 The CLI supports creating transactions using Numscript files. All experimental Numscript features are **enabled by default**.
 
 For complete documentation, see:
-- [Numscript Guide](../dev/numscript.md) - Complete guide with all features
+- [Numscript Guide](../technical/contributing/numscript.md) - Complete guide with all features
 - [Numscript Examples](../../misc/numscript/examples/README.md) - Ready-to-use scripts
 
 ### Enabled Features
@@ -4293,7 +4293,7 @@ ledgerctl events remove-sink --name primary
 | `--name` | *(required)* | Name of the sink to remove |
 | `--timeout` | `10s` | Request timeout |
 
-See [Event System Architecture](../dev/architecture/events.md) for details on the event system design.
+See [Event System Architecture](../technical/architecture/data-model/events.md) for details on the event system design.
 
 ---
 
