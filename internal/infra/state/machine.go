@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -1198,6 +1199,22 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	if fsm.sentinelMode {
 		if err := verifyVolumeDeltasMatchPostings(buffer.AllVolumeUpdates(), createdLogs); err != nil {
 			return nil, fmt.Errorf("volume delta/posting cross-check failed at raft index %d: %w", raftIndex, err)
+		}
+	}
+
+	// Diagnostic: after each entry, log cumulative world volume for dept-* ledgers.
+	// This pinpoints the exact entry where the aggregate diverges.
+	if fsm.sentinelMode {
+		for _, u := range buffer.KeptVolumeUpdates() {
+			if strings.HasPrefix(u.Key.Ledger, "dept-") && u.Key.Account == "world" {
+				fsm.logger.WithFields(map[string]any{
+					"raftIndex": raftIndex,
+					"ledger":    u.Key.Ledger,
+					"asset":     u.Key.Asset,
+					"newInput":  u.New.GetInput().ToBigInt().String(),
+					"newOutput": u.New.GetOutput().ToBigInt().String(),
+				}).Infof("SENTINEL: world volume after entry")
+			}
 		}
 	}
 
