@@ -15,13 +15,7 @@ import (
 // increases Output for source and Input for destination.
 // All volumes must be preloaded by the admission layer — nil volumes return an error.
 func applyPosting(s InMemoryStore, ledgerID uint32, posting *commonpb.Posting, skipBalanceCheck bool) error {
-	sourceKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{
-			LedgerID: ledgerID,
-			Account:  posting.GetSource(),
-		},
-		Asset: posting.GetAsset(),
-	}
+	sourceKey := domain.NewVolumeKey(ledgerID, posting.GetSource(), posting.GetAsset())
 
 	// Decode posting amount into stack variable to avoid heap allocation
 	var amount uint256.Int
@@ -68,13 +62,7 @@ func applyPosting(s InMemoryStore, ledgerID uint32, posting *commonpb.Posting, s
 	s.PutVolume(sourceKey, sourceVol)
 
 	// Destination receives credit - increase Input
-	destKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{
-			LedgerID: ledgerID,
-			Account:  posting.GetDestination(),
-		},
-		Asset: posting.GetAsset(),
-	}
+	destKey := domain.NewVolumeKey(ledgerID, posting.GetDestination(), posting.GetAsset())
 
 	destVol, err := s.GetVolume(destKey)
 	if err != nil {

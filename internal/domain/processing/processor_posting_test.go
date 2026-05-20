@@ -19,14 +19,8 @@ func TestApplyPosting_WorldAccount_SkipsBalanceCheck(t *testing.T) {
 
 	mockStore := NewMockInMemoryStore(ctrl)
 
-	sourceKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{LedgerID: 0, Account: "world"},
-		Asset:      "USD",
-	}
-	destKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{LedgerID: 0, Account: "users:001"},
-		Asset:      "USD",
-	}
+	sourceKey := domain.NewVolumeKey(0, "world", "USD")
+	destKey := domain.NewVolumeKey(0, "users:001", "USD")
 
 	zeroVol := &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(0),
@@ -58,10 +52,7 @@ func TestApplyPosting_InsufficientFunds(t *testing.T) {
 
 	mockStore := NewMockInMemoryStore(ctrl)
 
-	sourceKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{LedgerID: 0, Account: "bank"},
-		Asset:      "USD",
-	}
+	sourceKey := domain.NewVolumeKey(0, "bank", "USD")
 
 	// Source has input=100, output=50, balance=50, but posting is 200
 	sourceVol := &raftcmdpb.VolumePair{
@@ -95,10 +86,7 @@ func TestApplyPosting_ZeroInputBalance(t *testing.T) {
 
 	mockStore := NewMockInMemoryStore(ctrl)
 
-	sourceKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{LedgerID: 0, Account: "bank"},
-		Asset:      "USD",
-	}
+	sourceKey := domain.NewVolumeKey(0, "bank", "USD")
 
 	// Source has zero input balance, Output=0
 	sourceVol := &raftcmdpb.VolumePair{
@@ -133,14 +121,8 @@ func TestApplyPosting_ForceSkipsBalanceCheck(t *testing.T) {
 
 	mockStore := NewMockInMemoryStore(ctrl)
 
-	sourceKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{LedgerID: 0, Account: "bank"},
-		Asset:      "USD",
-	}
-	destKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{LedgerID: 0, Account: "users:001"},
-		Asset:      "USD",
-	}
+	sourceKey := domain.NewVolumeKey(0, "bank", "USD")
+	destKey := domain.NewVolumeKey(0, "users:001", "USD")
 
 	// Source has insufficient balance, but force=true skips the check
 	sourceVol := &raftcmdpb.VolumePair{
@@ -176,10 +158,7 @@ func TestApplyPosting_NotPreloaded(t *testing.T) {
 
 	mockStore := NewMockInMemoryStore(ctrl)
 
-	sourceKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{LedgerID: 0, Account: "bank"},
-		Asset:      "USD",
-	}
+	sourceKey := domain.NewVolumeKey(0, "bank", "USD")
 
 	mockStore.EXPECT().GetVolume(sourceKey).Return(nil, nil)
 

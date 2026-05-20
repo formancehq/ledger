@@ -252,15 +252,8 @@ func verifyVolumeDeltasMatchPostings(
 		for _, posting := range postings {
 			amount := posting.GetAmount().ToBigInt()
 
-			srcKey := domain.VolumeKey{
-				AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: posting.GetSource()},
-				Asset:      posting.GetAsset(),
-			}
-
-			dstKey := domain.VolumeKey{
-				AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: posting.GetDestination()},
-				Asset:      posting.GetAsset(),
-			}
+			srcKey := domain.NewVolumeKey(ledgerID, posting.GetSource(), posting.GetAsset())
+			dstKey := domain.NewVolumeKey(ledgerID, posting.GetDestination(), posting.GetAsset())
 
 			if _, ok := expected[srcKey]; !ok {
 				expected[srcKey] = &delta{input: big.NewInt(0), output: big.NewInt(0)}

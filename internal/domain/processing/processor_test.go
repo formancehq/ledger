@@ -258,14 +258,8 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 	mockStore.EXPECT().PutBoundaries("myled", gomock.Any())
 
 	// Volume operations: the LedgerID should be 1 (assigned by CreateLedger).
-	srcKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{LedgerID: 1, Account: "world"},
-		Asset:      "USD",
-	}
-	dstKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:bob"},
-		Asset:      "USD",
-	}
+	srcKey := domain.NewVolumeKey(1, "world", "USD")
+	dstKey := domain.NewVolumeKey(1, "users:bob", "USD")
 
 	zeroVol := &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(0),

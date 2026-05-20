@@ -43,10 +43,7 @@ func buildPostCommitVolumes(s InMemoryStore, ledgerID uint32, postings []*common
 	var scratch uint256.Int
 
 	for _, pair := range pairs {
-		vol, err := s.GetVolume(domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: pair.account},
-			Asset:      pair.asset,
-		})
+		vol, err := s.GetVolume(domain.NewVolumeKey(ledgerID, pair.account, pair.asset))
 		if err != nil && !errors.Is(err, domain.ErrNotFound) {
 			continue
 		}

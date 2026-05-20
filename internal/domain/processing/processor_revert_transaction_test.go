@@ -44,22 +44,10 @@ func TestProcessRevertTransaction_Success(t *testing.T) {
 	// Reversed posting: destination becomes source, source becomes destination
 	// Original: bank -> users:123 for 100 USD
 	// Revert:   users:123 -> bank for 100 USD
-	mockStore.EXPECT().GetVolume(domain.VolumeKey{
-		AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:123"},
-		Asset:      "USD",
-	}).Return(sourceVol, nil)
-	mockStore.EXPECT().PutVolume(domain.VolumeKey{
-		AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:123"},
-		Asset:      "USD",
-	}, gomock.Any())
-	mockStore.EXPECT().GetVolume(domain.VolumeKey{
-		AccountKey: domain.AccountKey{LedgerID: 1, Account: "bank"},
-		Asset:      "USD",
-	}).Return(destVol, nil)
-	mockStore.EXPECT().PutVolume(domain.VolumeKey{
-		AccountKey: domain.AccountKey{LedgerID: 1, Account: "bank"},
-		Asset:      "USD",
-	}, gomock.Any())
+	mockStore.EXPECT().GetVolume(domain.NewVolumeKey(1, "users:123", "USD")).Return(sourceVol, nil)
+	mockStore.EXPECT().PutVolume(domain.NewVolumeKey(1, "users:123", "USD"), gomock.Any())
+	mockStore.EXPECT().GetVolume(domain.NewVolumeKey(1, "bank", "USD")).Return(destVol, nil)
+	mockStore.EXPECT().PutVolume(domain.NewVolumeKey(1, "bank", "USD"), gomock.Any())
 
 	mockStore.EXPECT().PutReverted(txKey, true)
 

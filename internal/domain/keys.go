@@ -42,6 +42,19 @@ func appendLedgerID(dst []byte, id uint32) []byte {
 	return append(dst, buf[:]...)
 }
 
+// NewVolumeKey creates a VolumeKey with pre-parsed AssetBase and AssetPrecision,
+// avoiding re-parsing on every AppendBytes call in the hot path.
+func NewVolumeKey(ledgerID uint32, account, asset string) VolumeKey {
+	base, precision := ParseAssetPrecision(asset)
+
+	return VolumeKey{
+		AccountKey:     AccountKey{LedgerID: ledgerID, Account: account},
+		Asset:          asset,
+		AssetBase:      base,
+		AssetPrecision: precision,
+	}
+}
+
 // AppendBytes appends the canonical byte representation to dst and returns the
 // extended slice. Format: [ledgerID BE 4B][account][sep][asset_base][precision_byte].
 func (bk VolumeKey) AppendBytes(dst []byte) []byte {
