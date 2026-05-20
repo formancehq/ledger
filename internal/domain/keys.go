@@ -43,7 +43,7 @@ func appendLedgerID(dst []byte, id uint32) []byte {
 }
 
 // AppendBytes appends the canonical byte representation to dst and returns the
-// extended slice. Format: [ledgerID BE 4B][account][sep][asset_base][precision_byte]
+// extended slice. Format: [ledgerID BE 4B][account][sep][asset_base][precision_byte].
 func (bk VolumeKey) AppendBytes(dst []byte) []byte {
 	base := bk.AssetBase
 	precision := bk.AssetPrecision

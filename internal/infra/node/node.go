@@ -1365,13 +1365,13 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 						cursor := result.rd.CommittedEntries[len(result.rd.CommittedEntries)-1].Index
 						status := node.rawNode.Status()
 						node.logger.WithFields(map[string]any{
-							"appliedCursor":     cursor,
-							"raftApplied":       status.Applied,
-							"raftCommitted":     status.Commit,
-							"committedCount":    len(result.rd.CommittedEntries),
-							"firstCommitted":    result.rd.CommittedEntries[0].Index,
-							"hasSnapshot":       !raft.IsEmptySnap(result.rd.Snapshot),
-							"snapshotIndex":     result.rd.Snapshot.Metadata.Index,
+							"appliedCursor":  cursor,
+							"raftApplied":    status.Applied,
+							"raftCommitted":  status.Commit,
+							"committedCount": len(result.rd.CommittedEntries),
+							"firstCommitted": result.rd.CommittedEntries[0].Index,
+							"hasSnapshot":    !raft.IsEmptySnap(result.rd.Snapshot),
+							"snapshotIndex":  result.rd.Snapshot.Metadata.Index,
 						}).Infof("Pre-Advance diagnostic")
 					}
 

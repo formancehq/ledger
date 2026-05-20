@@ -122,10 +122,10 @@ func TestReadStoreComparerOrdering(t *testing.T) {
 
 	// Verify that the custom comparer produces the same ordering as bytes.Compare.
 	keys := [][]byte{
-		ledgerIDKey(0x01, 1, 'x'),           // [0x01][00 00 00 01][x]
-		ledgerIDKey(0x01, 1, 'y'),           // [0x01][00 00 00 01][y]
-		ledgerIDKey(0x01, 2, 'x'),           // [0x01][00 00 00 02][x]
-		ledgerIDKey(0x08, 1, 0x01),          // [0x08][00 00 00 01][01]
+		ledgerIDKey(0x01, 1, 'x'),                  // [0x01][00 00 00 01][x]
+		ledgerIDKey(0x01, 1, 'y'),                  // [0x01][00 00 00 01][y]
+		ledgerIDKey(0x01, 2, 'x'),                  // [0x01][00 00 00 02][x]
+		ledgerIDKey(0x08, 1, 0x01),                 // [0x08][00 00 00 01][01]
 		{PrefixInternal, SubInternalProgress},      // [0xFE][0x01]
 		{PrefixInternal, SubInternalAuditProgress}, // [0xFE][0x02]
 	}
@@ -187,8 +187,8 @@ func TestReadStoreComparerSplitProperties(t *testing.T) {
 
 	pairs := [][2][]byte{
 		{
-			ledgerIDKey(0x01, 1),                    // prefix-only
-			ledgerIDKey(0x01, 1, 'a', ':', 'x'),     // prefix + suffix
+			ledgerIDKey(0x01, 1),                // prefix-only
+			ledgerIDKey(0x01, 1, 'a', ':', 'x'), // prefix + suffix
 		},
 		{
 			ledgerIDKey(0x01, 1, 'x'),

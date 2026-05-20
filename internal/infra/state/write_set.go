@@ -205,7 +205,9 @@ func (b *WriteSet) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	// Transient volumes are excluded: they are never written to Pebble and their
 	// individual zero-balance is verified separately by ValidateTransientVolumes.
 	if b.fsm.sentinelMode {
-		persistedUpdates := append(partResult.kept, partResult.purged...)
+		persistedUpdates := make([]attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair], 0, len(partResult.kept)+len(partResult.purged))
+		persistedUpdates = append(persistedUpdates, partResult.kept...)
+		persistedUpdates = append(persistedUpdates, partResult.purged...)
 		if err := checkDoubleEntryInvariant(persistedUpdates); err != nil {
 			for _, u := range persistedUpdates {
 				var oldIn, oldOut string

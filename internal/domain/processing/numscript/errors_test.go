@@ -6,8 +6,9 @@ import (
 	"math/big"
 	"testing"
 
-	numscriptlib "github.com/formancehq/numscript"
 	"github.com/stretchr/testify/require"
+
+	numscriptlib "github.com/formancehq/numscript"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 )
@@ -66,7 +67,7 @@ func TestConvertNumscriptError_MissingFunds_WrappedPreservesErrorsAs(t *testing.
 func TestConvertNumscriptError_OtherError(t *testing.T) {
 	t.Parallel()
 
-	other := fmt.Errorf("some other error")
+	other := errors.New("some other error")
 	require.Equal(t, other, convertNumscriptError(other))
 }
 

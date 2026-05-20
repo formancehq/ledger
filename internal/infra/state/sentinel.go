@@ -56,11 +56,11 @@ func deduplicateVolumeUpdates(results []ApplyResult, logger logging.Logger) []at
 			if idx, ok := seen[update.Key]; ok {
 				prev := deduped[idx]
 				logger.WithFields(map[string]any{
-					"ledger":       update.Key.LedgerID,
-					"account":      update.Key.Account,
-					"asset":        update.Key.Asset,
-					"entryIndex":   i,
-					"appliedIndex": r.AppliedIndex,
+					"ledger":        update.Key.LedgerID,
+					"account":       update.Key.Account,
+					"asset":         update.Key.Asset,
+					"entryIndex":    i,
+					"appliedIndex":  r.AppliedIndex,
 					"prevNewInput":  prev.New.GetInput().ToBigInt().String(),
 					"prevNewOutput": prev.New.GetOutput().ToBigInt().String(),
 					"currOldInput":  update.Old.Value().GetInput().ToBigInt().String(),
