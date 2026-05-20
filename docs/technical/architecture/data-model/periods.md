@@ -10,8 +10,19 @@ Once sealed, a period can be **archived to cold storage** (S3 or filesystem): lo
 
 A period transitions through five states:
 
-```
-OPEN  ──ClosePeriod──►  CLOSING  ──SealPeriod──►  CLOSED  ──ArchivePeriod──►  ARCHIVING  ──ConfirmArchivePeriod──►  ARCHIVED
+```mermaid
+stateDiagram-v2
+    [*] --> OPEN : Ledger created
+    OPEN --> CLOSING : ClosePeriod command
+    CLOSING --> CLOSED : SealPeriod<br/>sealing_hash + state_hash computed
+    CLOSED --> ARCHIVING : ArchivePeriod command
+    ARCHIVING --> ARCHIVED : ConfirmArchivePeriod<br/>cold storage export complete
+    
+    note right of OPEN : Accepting transactions
+    note right of CLOSING : Writes blocked, hash chain captured
+    note right of CLOSED : Sealed with BLAKE3 state hash
+    note right of ARCHIVING : Exporting to cold storage
+    note right of ARCHIVED : Logs purged from Pebble
 ```
 
 | Status | Description |

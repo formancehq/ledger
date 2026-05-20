@@ -20,33 +20,45 @@ Three data paths define the runtime behavior:
 
 ```mermaid
 flowchart TB
-    Client["gRPC Client"] -->|ApplyRequest| GRPC["gRPC Server<br/><i>adapter/grpc/server_bucket.go</i>"]
-    GRPC -->|ctrl.Apply| CTRL["Controller<br/><i>application/ctrl/controller_default.go</i>"]
-    CTRL -->|admission.Admit| ADM["Admission<br/><i>application/admission/admission.go</i>"]
+    Client["gRPC / HTTP Client"] --> API["API Server<br/><code>internal/adapter/grpc</code>"]
+    API --> Ctrl["Controller.Apply<br/><code>internal/application/ctrl</code>"]
+    Ctrl --> Adm
 
-    ADM --> HC{"Health &<br/>Maintenance<br/>Check"}
-    HC -->|pass| SIG["Verify Signatures"]
-    SIG --> ORDERS["requestsToOrders()"]
-    ORDERS --> NEEDS["extractPreloadNeeds()"]
-    NEEDS --> SCRIPTS["resolveScriptsAndEnrichNeeds()<br/><i>parse Numscript, discover deps</i>"]
-    SCRIPTS --> PRELOAD["preloader.BuildPreloads()<br/><i>cache + Pebble reads</i>"]
-    PRELOAD --> GUARD["preloader.AcquireProposalGuard()<br/><i>cache consistency lock</i>"]
-    GUARD --> MARSHAL["marshalCommand()<br/><i>vtprotobuf serialize</i>"]
-    MARSHAL --> PROPOSE["proposer.Propose()<br/><i>submit to Raft</i>"]
+    subgraph Adm["Phase 1 — Validation"]
+        direction TB
+        HealthCheck["Health & Maintenance Check"]
+        SigVerify["Verify Request Signatures"]
+        ToOrders["requestsToOrders"]
+        HealthCheck --> SigVerify --> ToOrders
+    end
 
-    PROPOSE -->|Raft log| NODE["Node<br/><i>infra/node/node.go</i>"]
-    NODE -->|WAL append +<br/>replicate| APPLIER["Applier goroutine<br/><i>infra/node/applier.go</i>"]
-    APPLIER -->|committed entries| FSM["FSM.ApplyEntries()<br/><i>infra/state/machine.go</i>"]
-    FSM --> PROC["RequestProcessor<br/><i>domain/processing</i>"]
-    PROC --> BATCH["Batch.Commit()<br/><i>Pebble write</i>"]
-    BATCH --> NOTIFY["notifier.NotifyLogsCommitted()"]
-    NOTIFY --> FUTURE["Resolve FSM Future<br/><i>return logs to caller</i>"]
+    ToOrders --> Preload
 
-    FUTURE -.->|response| Client
+    subgraph Preload["Phase 2 — Preloading"]
+        direction TB
+        ExtractNeeds["extractPreloadNeeds"]
+        ResolveScripts["resolveScriptsAndEnrichNeeds<br/>parse Numscript, discover dependencies"]
+        BuildPreloads["preloader.BuildPreloads<br/>cache + Pebble reads"]
+        Guard["AcquireProposalGuard<br/>lock tracker, check generation boundary"]
+        ExtractNeeds --> ResolveScripts --> BuildPreloads --> Guard
+    end
 
-    style HC fill:#fff3cd,stroke:#856404
-    style PROPOSE fill:#d4edda,stroke:#155724
-    style FSM fill:#cce5ff,stroke:#004085
+    Guard --> Consensus
+
+    subgraph Consensus["Phase 3 — Consensus & Apply"]
+        direction TB
+        Marshal["marshalCommand<br/>vtprotobuf serialize"]
+        Propose["proposer.Propose → Raft<br/><code>internal/infra/node</code>"]
+        Replicate["WAL append + replicate to followers"]
+        Apply["Applier → FSM.ApplyEntries<br/><code>internal/infra/state</code>"]
+        Process["RequestProcessor<br/>Numscript execution, postings, metadata"]
+        Commit["Batch.Commit → Pebble"]
+        Notify["notifier.NotifyLogsCommitted"]
+        Marshal --> Propose --> Replicate --> Apply --> Process --> Commit --> Notify
+    end
+
+    Notify -.->|signal| IndexBuilder["Index Builder"]
+    Commit -.->|future resolved| Ctrl
 ```
 
 The write path begins at `BucketServiceServerImpl.Apply()` in `internal/adapter/grpc/server_bucket.go`, which authenticates the request and delegates to `DefaultController.Apply()`. The controller is a thin forwarding layer; the real work happens in `Admission.Admit()` (`internal/application/admission/admission.go`).
@@ -134,6 +146,40 @@ Every read operation begins with a linearizability barrier. The gRPC server (`in
 After the barrier, the controller opens a Pebble snapshot via `store.NewReadHandle()`, which provides a point-in-time consistent view. It resolves the ledger schema via `query.GetLedgerByName()`, then calls the generic `listEntities()` function (`internal/application/ctrl/list_entities.go`), which builds a composable iterator pipeline over the read store.
 
 The read store iterators (`internal/storage/readstore/iterator.go`) support AND, OR, NOT, address prefix matching, and reverse traversal. They operate over inverted indexes to produce candidate entity keys, which are then enriched with volumes and metadata from the main Pebble store (`internal/storage/dal/`). Results are paginated into a `Cursor[T]` and streamed back to the client via gRPC.
+
+---
+
+## Beyond the Hot Path
+
+The three data paths above handle the core read/write lifecycle. Several additional subsystems extend the architecture:
+
+### Event Sinks
+
+The leader node can stream ledger events to external systems (NATS JetStream, Kafka, ClickHouse, Databricks, HTTP webhooks). Each named sink runs an independent emitter that tails the global log from a persisted cursor, batches events, and publishes them with at-least-once delivery. Cursor advances are Raft-replicated; on failure, the emitter reports error status via Raft so it is visible cluster-wide. See [Event System](architecture/data-model/events.md).
+
+### Periods and Archiving
+
+Ledger history is divided into periods. A period progresses through five states: **open** (accepting writes) → **closing** (writes blocked, hash chain captured) → **closed** (sealed with a BLAKE3 state hash) → **archiving** (exporting to cold storage) → **archived** (logs purged from Pebble). Sealing produces a cryptographic proof that the period's data has not been tampered with. See [Periods](architecture/data-model/periods.md).
+
+### Mirror Replication
+
+A ledger can be created in **mirror mode**, ingesting transactions from an external source (HTTP or PostgreSQL). A per-ledger worker on the leader polls the source, translates logs into `MirrorIngest` Raft commands, and replicates them through consensus. Mirror ledgers can later be promoted to normal mode. See [Architecture](architecture/core/architecture.md).
+
+### Dual-Generation Cache
+
+The in-memory attribute cache uses two generations (gen0 and gen1) that rotate at Raft index intervals. During admission, a proposal guard ensures preloaded values remain consistent across generation boundaries -- if a rotation occurs between preload and proposal, the guard triggers a rebuild. This avoids stale balance reads without global locking. See [Attributes](architecture/storage/attributes.md) and [Deterministic FSM](architecture/core/deterministic-fsm.md).
+
+### Bloom Filters
+
+Per-attribute bloom filters in the ReadStore allow point lookups to skip Pebble reads entirely when a key is definitely absent. Bloom blocks are persisted to Pebble and restored on startup, with dirty blocks flushed during cache rotation.
+
+### Query Checkpoints
+
+A query checkpoint freezes both the main store and read index at a specific Raft index, creating a consistent point-in-time snapshot. Clients can then execute queries against this frozen state, useful for reconciliation or auditing. See [Query Checkpoints](architecture/data-model/query-checkpoints.md).
+
+### Typed Metadata
+
+Accounts and transactions carry typed metadata with a schema per ledger. When a new type is declared for a metadata key, the system gradually converts existing values in the background. Queries can filter on metadata fields once indexed. See [Typed Metadata](architecture/data-model/typed-metadata.md).
 
 ---
 

@@ -197,6 +197,38 @@ The event system is gated by both the node's leader status and the presence of s
 
 This is managed via the existing `SoftState` leader detection in the Raft node, with the `Manager` acting as the orchestrator.
 
+### Emitter Delivery Flow
+
+```mermaid
+sequenceDiagram
+    participant FSM as FSM (Leader)
+    participant Mgr as Manager
+    participant E as Emitter
+    participant Sink as External Sink
+    participant Raft as Raft
+
+    Note over Mgr: On leadership change
+    Mgr->>Mgr: reconcile() — start/stop emitters<br/>based on Raft-replicated sink configs
+
+    FSM->>Mgr: NotifyLogsCommitted(lastSeq)
+    Mgr->>E: signal (non-blocking)
+
+    E->>E: ReadLogsSince(cursor)
+    E->>E: Filter by event types, batch by size
+    E->>Sink: Publish(events)
+
+    alt Success
+        E->>Raft: proposeSinkUpdate(cursor, clearError)
+        Raft->>FSM: Persist cursor at {0x06, 0x08}
+    else Failure
+        E->>Raft: reportError(message, timestamp)
+        Raft->>FSM: Persist error at {0x06, 0x0A}
+        E->>E: Retry with backoff
+    end
+```
+
+The Manager reconciles emitter lifecycles on leadership changes and config updates. Each emitter independently tails the log, publishes to its sink, and advances its cursor via Raft. Failed publishes are recorded as sink errors in Pebble (visible via `GetEventsSinks`), and the emitter retries with exponential backoff.
+
 ## Sink Interface
 
 The sink is the pluggable transport layer for event delivery:

@@ -253,6 +253,41 @@ This enables:
 └─────────────────────────────────────────────────────────┘
 ```
 
+### Dual-Generation Rotation
+
+```mermaid
+flowchart TB
+    subgraph Cache["Dual-Generation Cache"]
+        Gen0["Gen0 (current generation)<br/>New writes go here"]
+        Gen1["Gen1 (previous generation)<br/>Read fallback, evicted on next rotation"]
+    end
+
+    subgraph Rotation["Rotation (at Raft index multiples of threshold)"]
+        direction LR
+        R1["Gen1 ← Gen0 (promote)"]
+        R2["Gen0 ← empty (reset)"]
+        R3["Persist dirty bloom blocks"]
+        R1 --> R2 --> R3
+    end
+
+    subgraph Preload["Preload Guard (admission)"]
+        direction TB
+        P1["BuildPreloads: read from Gen0 + Gen1 + Pebble"]
+        P2["AcquireProposalGuard: lock tracker"]
+        P3{"Generation boundary\ncrossed?"}
+        P4["Rebuild preloads under lock"]
+        P5["Propose with PredictedIndex"]
+        P1 --> P2 --> P3
+        P3 -->|Yes| P4 --> P5
+        P3 -->|No| P5
+    end
+
+    Cache --> Rotation
+    Cache --> Preload
+```
+
+The generation threshold is configurable via `--cache-rotation-threshold` (default 1000). The current generation is determined by `Gen(index) = (index - 1) / threshold`, where `index` is the Raft applied index. Rotation is triggered during FSM apply when the generation number changes -- Gen0 is promoted to Gen1, Gen0 is reset to empty, and any dirty bloom filter blocks are persisted.
+
 ## Related Documentation
 
 - [Deterministic FSM](../core/deterministic-fsm.md) - Generation-based caching and preloading
