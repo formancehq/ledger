@@ -255,14 +255,17 @@ While synchronization is in progress (`status != statusNormal`), entry processin
 case work := <-a.ch:
     switch a.status.Load() {
     case statusNormal:
-        // Normal: apply directly to FSM
-        a.applyEntriesToFSM(ctx, work.confState, work.entries...)
+        // Normal: pipelined apply (PrepareEntries + async CommitPreparedBatch)
+        a.applyEntriesPipelined(ctx, work.entries...)
 
     default: // statusSyncing, statusSnapshotting
-        // Syncing/Snapshotting: spool entries for later
+        // Drain any pending commit, then spool entries for later
+        a.waitPendingCommit(ctx)
         a.spool.AppendCommittedEntries(ctx, work.entries...)
     }
 ```
+
+In normal mode, the Applier uses a pipelined approach: `PrepareEntries()` (CPU-bound: process orders, build Pebble batch) runs immediately while the previous batch's `CommitPreparedBatch()` (I/O-bound) completes in a dedicated committer goroutine. At most one commit is in-flight at a time. Before switching to spool mode, the Applier drains any pending commit to ensure consistency.
 
 The `processReadies` goroutine submits entries asynchronously via `node.applier.Submit()`, allowing WAL writes to overlap with FSM application across consecutive Ready cycles. This ensures that new Raft entries committed during synchronization are not lost -- they are buffered in the Spool.
 

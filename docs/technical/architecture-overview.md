@@ -50,9 +50,9 @@ flowchart TB
         Marshal["marshalCommand<br/>vtprotobuf serialize"]
         Propose["proposer.Propose → Raft<br/><code>internal/infra/node</code>"]
         Replicate["WAL append + replicate to followers"]
-        Apply["Applier → FSM.ApplyEntries<br/><code>internal/infra/state</code>"]
+        Apply["Applier → FSM.PrepareEntries<br/>(CPU-bound: process orders, merge WriteSet)"]
         Process["RequestProcessor<br/>Numscript execution, postings, metadata"]
-        Commit["Batch.Commit → Pebble"]
+        Commit["CommitPreparedBatch → Pebble<br/>(I/O-bound, pipelined with next prepare)"]
         Notify["notifier.NotifyLogsCommitted"]
         Marshal --> Propose --> Replicate --> Apply --> Process --> Commit --> Notify
     end
@@ -67,7 +67,7 @@ Admission performs health and maintenance-mode checks, then verifies Ed25519 req
 
 The preloader (`internal/infra/preload/`) fetches required data from the in-memory cache first, falling back to Pebble for cache misses. It then acquires a proposal guard -- a short-lived lock that ensures no concurrent proposal can invalidate the preloaded cache entries. Under this lock, the command is serialized with vtprotobuf, the predicted Raft index is appended cheaply via a raw protobuf wire-format trick, and the proposal is submitted to `Node.Propose()`.
 
-The node writes the entry to the WAL (`internal/storage/wal/`), replicates to followers, and hands committed entries to the Applier (`internal/infra/node/applier.go`), a dedicated goroutine that decouples WAL persistence from FSM application. The FSM (`internal/infra/state/machine.go`) runs `ApplyEntries()` under a mutex, delegating business logic to the `RequestProcessor` (`internal/domain/processing/`), and commits all resulting state changes in a single Pebble batch. After commit, the notifier signals the index builder and the FSM future is resolved, allowing the original gRPC handler to return the created logs to the client.
+The node writes the entry to the WAL (`internal/storage/wal/`), replicates to followers, and hands committed entries to the Applier (`internal/infra/node/applier.go`), a dedicated goroutine that decouples WAL persistence from FSM application. The Applier pipelines batch processing: the FSM (`internal/infra/state/machine.go`) runs `PrepareEntries()` (CPU-bound: unmarshal proposals, execute business logic via `RequestProcessor`, merge state into a WriteSet, build a Pebble batch) while the previous batch's `CommitPreparedBatch()` (I/O-bound: Pebble `batch.Commit()`) runs concurrently in a dedicated committer goroutine. This overlaps prepare and commit across consecutive batches, reducing per-batch latency from `prepare_time + commit_time` to `max(prepare_time, commit_time)`. After commit, the committer resolves proposal futures immediately and signals the index builder, allowing the gRPC handler to return without waiting for the next batch.
 
 ---
 
@@ -171,7 +171,7 @@ The in-memory attribute cache uses two generations (gen0 and gen1) that rotate a
 
 ### Bloom Filters
 
-Per-attribute bloom filters in the ReadStore allow point lookups to skip Pebble reads entirely when a key is definitely absent. Bloom blocks are persisted to Pebble and restored on startup, with dirty blocks flushed during cache rotation.
+Per-attribute bloom filters sit in the preload path (`internal/infra/preload/`) and short-circuit Pebble point lookups during admission when a key is definitely absent from the main store. Each attribute type (volumes, metadata, references, etc.) has its own filter with independent sizing. Bloom blocks are persisted to Pebble (Global zone) and restored asynchronously on startup; during the restore scan (`bloom.ready = 0`), `MayContain` always returns true so correctness is never compromised. Dirty blocks are flushed during cache generation rotation. See [Performance Tuning](../ops/performance-tuning.md) for configuration flags.
 
 ### Query Checkpoints
 

@@ -101,7 +101,11 @@ type Node struct {
 
 #### Applier
 
-`internal/infra/node/applier.go` decouples WAL writes from FSM application by running as a dedicated goroutine. This allows WAL write of Ready N+1 to overlap with FSM application of Ready N, reducing each Raft cycle from `WAL_time + FSM_time` to `max(WAL_time, FSM_time)`.
+`internal/infra/node/applier.go` decouples WAL writes from FSM application by running as a dedicated goroutine. This provides two levels of pipelining:
+
+1. **WAL ↔ FSM overlap**: WAL write of Ready N+1 overlaps with FSM application of Ready N, reducing each Raft cycle from `WAL_time + FSM_time` to `max(WAL_time, FSM_time)`.
+
+2. **Prepare ↔ Commit pipeline**: Within the FSM, batch processing is split into `PrepareEntries()` (CPU-bound: unmarshal, execute business logic, merge WriteSet, build Pebble batch) and `CommitPreparedBatch()` (I/O-bound: `batch.Commit()` to Pebble). A dedicated committer goroutine (`runCommitter`) reads from a buffered(1) `commitCh` channel, so batch N's commit runs concurrently with batch N+1's prepare. Futures are resolved by the committer immediately after commit completes.
 
 ```go
 type Applier struct {
@@ -112,7 +116,9 @@ type Applier struct {
     futures                 *SyncMap[uint64, *futures.Future[state.ApplyResult]]
     taskExecutor            *worker.SingleTaskExecutor
     status                  *atomic.Int32       // statusNormal, statusSyncing, etc.
-    ch                      chan applyWork       // buffered(1)
+    ch                      chan applyWork       // buffered(1), read by Run goroutine
+    commitCh                chan commitWork      // buffered(1), read by committer goroutine
+    pending                 *pendingCommit       // at most one in-flight commit
     // ... config, metrics, etc.
 }
 ```
@@ -120,8 +126,10 @@ type Applier struct {
 The Applier provides three key methods:
 
 - **`Submit(entries, confState, stop)`**: Asynchronously sends committed entries for FSM application (or spooling)
-- **`Drain(stop)`**: Blocks until all previously submitted work is processed (used before snapshot install and leadership acquisition)
-- **`Run(ctx, stop)`**: The goroutine loop that processes work items and handles gating termination
+- **`Drain(stop)`**: Blocks until all previously submitted work is processed, including any in-flight commit (used before snapshot install, barriers, and leadership acquisition)
+- **`Run(ctx, stop)`**: The goroutine loop that processes work items, orchestrates the prepare/commit pipeline, and handles gating termination
+
+Drain points ensure the pending commit completes before barriers, checkpoints, status transitions, and shutdown. Replay paths (WAL replay, spool replay) use the synchronous `applyEntriesAndResolveCommands()` which does not pipeline, since they are off the hot path.
 
 #### Storage
 
