@@ -48,7 +48,7 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order
 	}
 
 	// Execute the script (experimental features are declared directly in scripts)
-	result, err := parsed.Run(context.Background(), vars, storeAdapter)
+	result, err := numscript.SafeRun(parsed, context.Background(), vars, storeAdapter)
 	if err != nil {
 		return nil, fmt.Errorf("numscript execution error: %w", err)
 	}

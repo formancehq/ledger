@@ -1,8 +1,11 @@
 package numscript
 
 import (
+	"context"
 	"errors"
 	"fmt"
+
+	numscriptlib "github.com/formancehq/numscript"
 )
 
 // ErrNonDeterministicScript is returned when a Numscript script calls
@@ -20,3 +23,18 @@ func (e *ErrNonDeterministicScript) Error() string {
 // resolve variables dynamically. meta() prevents the admission layer from
 // statically discovering all accounts needed for preloading.
 var ErrMetaNotSupported = errors.New("meta() is not supported: scripts must use static account references")
+
+// SafeRun wraps ParseResult.Run with a deferred recover to catch panics from the
+// numscript library and convert them into regular errors.
+func SafeRun(parsed numscriptlib.ParseResult, ctx context.Context, vars numscriptlib.VariablesMap, store numscriptlib.Store) (result numscriptlib.ExecutionResult, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			result = numscriptlib.ExecutionResult{}
+			err = fmt.Errorf("numscript panic: %v", r)
+		}
+	}()
+
+	result, err = parsed.Run(ctx, vars, store)
+
+	return
+}

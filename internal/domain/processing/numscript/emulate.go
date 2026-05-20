@@ -108,7 +108,7 @@ func DiscoverNumscriptDependencies(cache *NumscriptCache, script string, vars ma
 	// Run the script. The discovery store captures source accounts via GetBalances
 	// and we extract destinations from the resulting postings.
 	// Experimental features are declared directly in scripts via #![feature "..."].
-	execResult, _ := parsed.Run(context.Background(), variablesMap, store)
+	execResult, _ := SafeRun(parsed, context.Background(), variablesMap, store)
 
 	// Reject scripts that use meta() — cannot preload dynamic accounts.
 	if store.metaCalled {
