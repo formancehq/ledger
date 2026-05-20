@@ -64,6 +64,20 @@ func (s *ShardedMap[K, V]) Put(k K, v V) {
 	}
 }
 
+func (s *ShardedMap[K, V]) GetAndPut(k K, v V) (old V, existed bool) {
+	sh := s.shard(k)
+	sh.mu.Lock()
+	old, existed = sh.m[k]
+	sh.m[k] = v
+	sh.mu.Unlock()
+
+	if !existed {
+		s.size.Add(1)
+	}
+
+	return old, existed
+}
+
 func (s *ShardedMap[K, V]) Del(k K) {
 	sh := s.shard(k)
 	sh.mu.Lock()

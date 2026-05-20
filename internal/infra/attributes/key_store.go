@@ -107,20 +107,22 @@ func (s *KeyStore[K, T]) GetKey(key K) (value T, id U128, err error) {
 func (s *KeyStore[K, T]) Put(canonical []byte, value T) (oldValue kv.Optional[T], idWithTag IDWithTag, err error) {
 	id, tag := s.hasher.MakeKey(canonical)
 
-	if existing, ok := s.M.Get(id); ok {
+	newEntry := Entry[T]{Tag: tag, Data: value}
+
+	existing, existed := s.M.GetAndPut(id, newEntry)
+	if existed {
 		if existing.Tag != tag {
+			// Collision: roll back by restoring the old entry.
+			s.M.Put(id, existing)
+
 			return kv.None[T](), IDWithTag{}, newErrCollisionDetected(canonical, existing.Tag, tag)
 		}
-		// same key (as far as we can tell) -> overwrite data
-		s.M.Put(id, Entry[T]{Tag: tag, Data: value})
 
 		return kv.Some(existing.Data), IDWithTag{
 			ID:  id,
 			Tag: tag,
 		}, nil
 	}
-
-	s.M.Put(id, Entry[T]{Tag: tag, Data: value})
 
 	return kv.None[T](), IDWithTag{
 		ID:  id,
