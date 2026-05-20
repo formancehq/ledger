@@ -260,14 +260,13 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 
-	// Restore cache from Pebble (store is up to date, checkpoint has cache data)
+	// Restore cache from Pebble (store is up to date, checkpoint has cache data).
+	// FSM counters (sequences, periods, reversions, etc.) are already loaded by
+	// NewMachine → RecoverState in the constructor and Pebble has not changed
+	// since (InstallSnapshot only touches in-memory state, and the
+	// SynchronizeWithLeader path exits earlier via SetOutOfSync).
 	if err := a.fsm.RestoreCacheFromStore(); err != nil {
 		return false, fmt.Errorf("restoring cache from store on restart: %w", err)
-	}
-
-	// Recover all FSM state (counters, periods, reversions, etc.) from Pebble.
-	if err := a.fsm.RecoverState(); err != nil {
-		return false, fmt.Errorf("recovering state from store on restart: %w", err)
 	}
 
 	// Recovery: if periods are in CLOSING state but no seal checkpoint exists,
