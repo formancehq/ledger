@@ -47,28 +47,13 @@ func (e *ErrVolumeCachePebbleDivergence) Error() string {
 // Volumes purged by ephemeral purge in a later entry are excluded: the purge
 // deletes the Pebble entry written by the earlier entry, so verifying the
 // earlier entry's expected value would fail with "volume missing from pebble".
-func deduplicateVolumeUpdates(results []ApplyResult, logger logging.Logger) []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] {
+func deduplicateVolumeUpdates(results []ApplyResult) []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] {
 	seen := make(map[domain.VolumeKey]int) // key -> index in deduped slice
 	var deduped []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
 
-	for i, r := range results {
+	for _, r := range results {
 		for _, update := range r.volumeUpdates {
 			if idx, ok := seen[update.Key]; ok {
-				prev := deduped[idx]
-				logger.WithFields(map[string]any{
-					"ledger":        update.Key.LedgerID,
-					"account":       update.Key.Account,
-					"asset":         update.Key.Asset,
-					"entryIndex":    i,
-					"appliedIndex":  r.AppliedIndex,
-					"prevNewInput":  prev.New.GetInput().ToBigInt().String(),
-					"prevNewOutput": prev.New.GetOutput().ToBigInt().String(),
-					"currOldInput":  update.Old.Value().GetInput().ToBigInt().String(),
-					"currOldOutput": update.Old.Value().GetOutput().ToBigInt().String(),
-					"currNewInput":  update.New.GetInput().ToBigInt().String(),
-					"currNewOutput": update.New.GetOutput().ToBigInt().String(),
-				}).Errorf("DEDUP: same volume key in two entries — later entry overwrites earlier")
-
 				deduped[idx] = update
 			} else {
 				seen[update.Key] = len(deduped)
@@ -429,6 +414,16 @@ func verifyAggregatedVolumesBalanced(
 					ledgerID, vol.GetAsset(), raftIndex, inputVal.String(), outputVal.String(),
 				)
 			}
+
+			// Log aggregated totals for every checked ledger/asset.
+			// This traces the exact entry where cumulative volumes diverge.
+			logger.WithFields(map[string]any{
+				"ledger":    ledgerID,
+				"asset":     vol.GetAsset(),
+				"raftIndex": raftIndex,
+				"input":     inputVal.String(),
+				"output":    outputVal.String(),
+			}).Infof("SENTINEL: aggregated volume OK")
 		}
 	}
 

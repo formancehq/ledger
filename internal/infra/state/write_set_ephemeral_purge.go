@@ -86,17 +86,6 @@ func (b *WriteSet) partitionVolumes(
 			if update.Old.IsDefined() && !isVolumeZeroBalance(update.Old.Value()) {
 				result.kept = append(result.kept, update)
 			} else {
-				if b.fsm.sentinelMode {
-					b.fsm.logger.WithFields(map[string]any{
-						"ledger":    update.Key.LedgerID,
-						"account":   update.Key.Account,
-						"asset":     update.Key.Asset,
-						"pattern":   matched.GetPattern(),
-						"newInput":  update.New.GetInput().ToBigInt().String(),
-						"newOutput": update.New.GetOutput().ToBigInt().String(),
-					}).Infof("Volume classified as TRANSIENT")
-				}
-
 				result.transient = append(result.transient, update)
 			}
 
