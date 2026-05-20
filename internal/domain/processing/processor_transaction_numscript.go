@@ -79,13 +79,7 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 		}
 
 		// Update source output (money going out)
-		sourceKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{
-				LedgerID: ledgerID,
-				Account:  posting.Source,
-			},
-			Asset: posting.Asset,
-		}
+		sourceKey := domain.NewVolumeKey(ledgerID, posting.Source, posting.Asset)
 
 		sourceVol, err := s.GetVolume(sourceKey)
 		if err != nil {
@@ -105,13 +99,7 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 		s.PutVolume(sourceKey, sourceVol)
 
 		// Update destination input (money coming in)
-		destKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{
-				LedgerID: ledgerID,
-				Account:  posting.Destination,
-			},
-			Asset: posting.Asset,
-		}
+		destKey := domain.NewVolumeKey(ledgerID, posting.Destination, posting.Asset)
 
 		destVol, err := s.GetVolume(destKey)
 		if err != nil {
@@ -195,13 +183,7 @@ func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscriptli
 				continue
 			}
 
-			volumeKey := domain.VolumeKey{
-				AccountKey: domain.AccountKey{
-					LedgerID: s.ledgerID,
-					Account:  account,
-				},
-				Asset: asset,
-			}
+			volumeKey := domain.NewVolumeKey(s.ledgerID, account, asset)
 
 			vol, err := s.store.GetVolume(volumeKey)
 			if err != nil {

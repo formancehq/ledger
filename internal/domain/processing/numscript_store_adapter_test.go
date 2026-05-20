@@ -56,10 +56,7 @@ func TestGetBalances_PreloadedVolumes(t *testing.T) {
 		force:    false,
 	}
 
-	volumeKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{LedgerID: 0, Account: "bank"},
-		Asset:      "USD",
-	}
+	volumeKey := domain.NewVolumeKey(0, "bank", "USD")
 
 	// Input=1000, Output=300, Balance=700
 	mockStore.EXPECT().GetVolume(volumeKey).Return(&raftcmdpb.VolumePair{
@@ -91,10 +88,7 @@ func TestGetBalances_NotPreloaded(t *testing.T) {
 		force:    false,
 	}
 
-	volumeKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{LedgerID: 0, Account: "bank"},
-		Asset:      "USD",
-	}
+	volumeKey := domain.NewVolumeKey(0, "bank", "USD")
 
 	// Volume exists but has no input values (not preloaded)
 	mockStore.EXPECT().GetVolume(volumeKey).Return(&raftcmdpb.VolumePair{}, nil)
@@ -122,10 +116,7 @@ func TestGetBalances_VolumeNotFound_ReturnsError(t *testing.T) {
 		force:    false,
 	}
 
-	volumeKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{LedgerID: 0, Account: "bank"},
-		Asset:      "USD",
-	}
+	volumeKey := domain.NewVolumeKey(0, "bank", "USD")
 
 	// Volume not found — the adapter returns ErrBalanceNotPreloaded
 	mockStore.EXPECT().GetVolume(volumeKey).Return(nil, domain.ErrNotFound)
