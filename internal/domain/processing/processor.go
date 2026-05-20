@@ -22,6 +22,7 @@ type RequestProcessor struct {
 	logHasher          *blake3.Hasher
 	hashAlgorithm      commonpb.HashAlgorithm
 	compiledTypesCache map[string][]accounttype.CompiledType
+	logArena           logBytesArena // reusable arena for pre-marshaled log bytes
 }
 
 // SetHashAlgorithm updates the hash algorithm used for new logs.
@@ -50,6 +51,7 @@ func NewRequestProcessor(m metric.Meter, numscriptCacheSize int) (*RequestProces
 		hashBuf:            make([]byte, 0, 1024),
 		logHasher:          blake3.New(),
 		compiledTypesCache: make(map[string][]accounttype.CompiledType),
+		logArena:           newLogBytesArena(),
 	}, nil
 }
 
@@ -82,6 +84,8 @@ func (p *RequestProcessor) invalidateCompiledTypes(ledger string) {
 // (nil for idempotent reference sequences).
 func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemoryStore) ([]*raftcmdpb.CreatedLogOrReference, [][]byte, error) {
 	clear(p.compiledTypesCache)
+
+	p.logArena.Reset()
 
 	logs := make([]*raftcmdpb.CreatedLogOrReference, len(orders))
 	preMarshaledLogBytes := make([][]byte, len(orders))
@@ -135,12 +139,10 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 		p.hashBuf, log.Hash, logBytesLen = computeLogHash(p.hashAlgorithm, p.logHasher, p.hashBuf, s.GetLastLogHash(), log)
 		s.SetLastLogHash(log.GetHash())
 
-		// Capture the deterministic base bytes and append the missing fields
-		// (hash, hashVersion, signature) to produce ready-to-persist Pebble bytes.
-		// This avoids a full second marshal of the entire Log.
-		logBase := make([]byte, logBytesLen, logBytesLen+64)
-		copy(logBase, p.hashBuf[:logBytesLen])
-		preMarshaledLogBytes[i] = AppendLogFieldsForPersist(logBase, log)
+		// Append the deterministic base bytes and the missing fields
+		// (hash, hashVersion, signature) into the reusable arena.
+		// Sub-slices are created after the loop once the arena is stable.
+		p.logArena.Append(i, p.hashBuf[:logBytesLen], log)
 
 		// After a ClosePeriod log, update the closing period's LastLogHash to
 		// include this log's hash. The log payload holds a cloned snapshot, so
@@ -171,6 +173,8 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 			)
 		}
 	}
+
+	p.logArena.AssignSlices(preMarshaledLogBytes)
 
 	return logs, preMarshaledLogBytes, nil
 }
