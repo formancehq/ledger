@@ -443,22 +443,32 @@ func (fsm *Machine) WaitForApplied(ctx context.Context, targetIndex uint64) erro
 	return nil
 }
 
-func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (*ApplyEntriesResult, error) {
+// PrepareEntries processes Raft entries and builds a Pebble batch without
+// committing it. All in-memory state (cache, KeyStore, counters) is updated.
+// The caller must either call CommitPreparedBatch or PreparedBatch.Close.
+//
+// This is the first half of the pipelining split: PrepareEntries is CPU-bound
+// and can run while a previous batch's commit is in-flight.
+func (fsm *Machine) PrepareEntries(ctx context.Context, entries ...raftpb.Entry) (*PreparedBatch, error) {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
 
+	// With pipelining, lastPersistedIndex may lag lastAppliedIndex by one batch
+	// (the pending commit). This is expected and safe.
 	persistedIdx := fsm.lastPersistedIndex.Load()
 	if persistedIdx != fsm.lastAppliedIndex {
-		fsm.logger.WithFields(map[string]any{
-			"lastPersistedIndex": persistedIdx,
-			"lastAppliedIndex":   fsm.lastAppliedIndex,
-			"snapshotIndex":      fsm.snapshotIndex,
-			"entryCount":         len(entries),
-			"firstEntryIndex":    entries[0].Index,
-			"gen0":               fsm.Registry.Cache.BaseIndex.Gen0,
-			"gen1":               fsm.Registry.Cache.BaseIndex.Gen1,
-			"currentGeneration":  fsm.Registry.Cache.CurrentGeneration(),
-		}).Errorf("ApplyEntries: lastPersistedIndex != lastAppliedIndex")
+		if fsm.logger.Enabled(logging.DebugLevel) {
+			fsm.logger.WithFields(map[string]any{
+				"lastPersistedIndex": persistedIdx,
+				"lastAppliedIndex":   fsm.lastAppliedIndex,
+				"snapshotIndex":      fsm.snapshotIndex,
+				"entryCount":         len(entries),
+				"firstEntryIndex":    entries[0].Index,
+				"gen0":               fsm.Registry.Cache.BaseIndex.Gen0,
+				"gen1":               fsm.Registry.Cache.BaseIndex.Gen1,
+				"currentGeneration":  fsm.Registry.Cache.CurrentGeneration(),
+			}).Debugf("PrepareEntries: lastPersistedIndex lags (pending commit in-flight)")
+		}
 	}
 
 	if fsm.snapshotIndex > fsm.lastAppliedIndex {
@@ -474,10 +484,6 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 	}
 
 	batch := fsm.dataStore.NewBatch()
-
-	defer func() {
-		_ = batch.Cancel()
-	}()
 
 	cmd := raftcmdpb.ProposalFromVTPool()
 	defer func() { cmd.ReturnToVTPool() }()
@@ -505,6 +511,8 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 				"expectedIndex": fsm.lastAppliedIndex + 1,
 			})
 
+			_ = batch.Cancel()
+
 			return nil, &ErrInvalidEntryIndex{
 				ReceivedIndex: entry.Index,
 				ExpectedIndex: fsm.lastAppliedIndex + 1,
@@ -525,29 +533,21 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 			}
 			rotationStart := time.Now()
 
-			// Persist rotation to the 0xFF cache zone: purge old gen1, update metadata.
 			if err := writeCacheRotation(
 				batch,
 				fsm.Registry.Cache.CurrentGeneration(),
 				fsm.Registry.Cache.BaseIndex.Gen0,
 				fsm.Registry.Cache.BaseIndex.Gen1,
 			); err != nil {
+				_ = batch.Cancel()
+
 				return nil, fmt.Errorf("writing cache rotation: %w", err)
 			}
 
-			// Flush dirty bloom blocks in the same batch as the rotation.
-			// At restart, bloom_pebble ∪ cache_gen0 ∪ cache_gen1 = complete set.
-			//
-			// Only flush when the bloom is fully populated (IsReady). During async
-			// population (first boot or after bloom config change), dirty blocks
-			// contain partial scan data. Persisting them would cause false negatives
-			// on restart: the restore path sees blocks in Pebble and skips the full
-			// attribute scan, but the blocks are incomplete. Cold entries (in Pebble
-			// but not in cache) then get MayContain=false → zero-value preloads.
-			// By skipping the flush while !IsReady, we guarantee that on restart
-			// hasPersistedBloomBlocks()=false → full attribute scan → no false negatives.
 			if fsm.BloomFilters != nil && fsm.BloomFilters.IsReady() {
 				if err := fsm.BloomFilters.PersistDirtyBlocks(batch); err != nil {
+					_ = batch.Cancel()
+
 					return nil, fmt.Errorf("persisting bloom dirty blocks: %w", err)
 				}
 			}
@@ -565,11 +565,11 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 		cmd = raftcmdpb.ProposalFromVTPool()
 
 		if err := cmd.UnmarshalVT(entry.Data); err != nil {
+			_ = batch.Cancel()
+
 			return nil, err
 		}
 
-		// Skip applyProposal for system-only proposals with no orders AND
-		// no sink/mirror/config/eviction updates.
 		if len(cmd.GetOrders()) == 0 && len(cmd.GetMirrorSyncUpdates()) == 0 && len(cmd.GetEventsSinkUpdates()) == 0 && cmd.GetIdempotencyEviction() == nil && cmd.GetClusterConfig() == nil {
 			ret.Results = append(ret.Results, ApplyResult{ProposalID: cmd.GetId(), AppliedIndex: entry.Index})
 
@@ -578,6 +578,8 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 
 		result, err := fsm.applyProposal(ctx, entry.Index, batch, cmd)
 		if err != nil {
+			_ = batch.Cancel()
+
 			return nil, err
 		}
 
@@ -616,8 +618,6 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 		}
 
 		// If CreateQueryCheckpoint was detected, stop processing and enter gating.
-		// The Applier will spool remaining entries and create the main store checkpoint.
-		// The read index checkpoint is created later by the index builder.
 		if cpID := result.QueryCheckpointCreated; cpID > 0 {
 			ret.QueryCheckpointID = cpID
 
@@ -627,119 +627,178 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 
 	err := SetAppliedIndex(batch, fsm.lastAppliedIndex)
 	if err != nil {
+		_ = batch.Cancel()
+
 		return nil, fmt.Errorf("setting applied index: %w", err)
 	}
 
 	err = SetLastAppliedTimestamp(batch, fsm.lastAppliedTimestamp)
 	if err != nil {
+		_ = batch.Cancel()
+
 		return nil, fmt.Errorf("setting last applied timestamp: %w", err)
 	}
 
+	// Capture all post-commit data now, so CommitPreparedBatch does not
+	// need to read mutable fsm fields.
+	pb := &PreparedBatch{
+		batch:                batch,
+		Result:               ret,
+		lastAppliedIndex:     fsm.lastAppliedIndex,
+		lastSequenceID:       fsm.nextSequenceID - 1,
+		needsArchiveDispatch: needsArchiveDispatch,
+		needsColdCompaction:  needsColdCompaction,
+		eventsConfigChanged:  eventsConfigChanged,
+		mirrorConfigChanged:  mirrorConfigChanged,
+		convertRequests:      pendingConvertRequests,
+		entryCount:           len(entries),
+	}
+
+	// Capture sentinel data before releasing the lock.
+	if fsm.sentinelMode {
+		pb.sentinelMode = true
+		pb.sentinelUpdates = deduplicateVolumeUpdates(ret.Results)
+		pb.sentinelLedgerIDs = collectLedgerIDsFromResults(ret.Results)
+	}
+
+	// Capture archive requests from current period state.
+	if needsArchiveDispatch {
+		for _, p := range fsm.Periods.AllPeriods() {
+			if p.GetStatus() == commonpb.PeriodStatus_PERIOD_ARCHIVING {
+				pb.archiveRequests = append(pb.archiveRequests, ArchiveRequest{
+					PeriodID:      p.GetId(),
+					StartSequence: p.GetStartSequence(),
+					CloseSequence: p.GetCloseSequence(),
+				})
+			}
+		}
+	}
+
+	// Capture query checkpoint deletions.
+	for _, r := range ret.Results {
+		if cpID := r.QueryCheckpointDeleted; cpID > 0 {
+			pb.checkpointDeletes = append(pb.checkpointDeletes, cpID)
+		}
+	}
+
+	return pb, nil
+}
+
+// CommitPreparedBatch commits the Pebble batch from a PreparedBatch and runs
+// all post-commit side effects (sentinel checks, notifications, dispatches).
+//
+// This is the second half of the pipelining split. It does NOT hold fsm.mu
+// and only uses atomic fields, captured data from PreparedBatch, and
+// thread-safe notifier/channel operations.
+func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) error {
 	commitStart := time.Now()
 
-	err = batch.Commit()
+	err := pb.batch.Commit()
 	if err != nil {
-		return nil, fmt.Errorf("committing batch: %w", err)
+		return fmt.Errorf("committing batch: %w", err)
 	}
+
+	pb.batch = nil // committed, prevent double-close
 
 	fsm.batchCommitHistogram.Record(context.Background(), time.Since(commitStart).Microseconds())
 
-	// Post-commit assertion: verify cache/Pebble volume consistency.
-	// This catches bugs where the cache diverges from Pebble (stale preloads,
-	// lost updates, snapshot issues). Runs only when there are volume updates.
-	//
-	// When multiple entries in the same ApplyEntries batch touch the same volume
-	// key, only the last entry's value survives in Pebble (Set overwrites in
-	// place). We must deduplicate by canonical key, keeping only the latest
-	// update, before comparing with Pebble.
-	if fsm.sentinelMode {
-		finalUpdates := deduplicateVolumeUpdates(ret.Results)
-		if len(finalUpdates) > 0 {
+	// Post-commit sentinel checks.
+	if pb.sentinelMode {
+		if len(pb.sentinelUpdates) > 0 {
 			if err := verifyPostCommitVolumes(
 				fsm.dataStore, fsm.Registry.Attrs.Volume,
-				finalUpdates, fsm.lastAppliedIndex,
+				pb.sentinelUpdates, pb.lastAppliedIndex,
 			); err != nil {
 				fsm.logger.Errorf("POST-COMMIT VOLUME ASSERTION FAILED: %v", err)
 
-				return nil, fmt.Errorf("post-commit volume assertion failed: %w", err)
+				return fmt.Errorf("post-commit volume assertion failed: %w", err)
 			}
 		}
 
-		// Post-commit aggregated balance check: verify input == output per asset
-		// for every ledger touched by this batch. This runs after batch.Commit()
-		// so it reads the actual committed state, avoiding false positives from
-		// stale pre-commit reads that depend on batch boundaries.
-		allLedgerIDs := collectLedgerIDsFromResults(ret.Results)
-		if len(allLedgerIDs) > 0 {
+		if len(pb.sentinelLedgerIDs) > 0 {
 			if fsm.logger.Enabled(logging.DebugLevel) {
-				fsm.logger.Debugf("Verifying aggregated volume balance for %d ledgers at raft index %d", len(allLedgerIDs), fsm.lastAppliedIndex)
+				fsm.logger.Debugf("Verifying aggregated volume balance for %d ledgers at raft index %d", len(pb.sentinelLedgerIDs), pb.lastAppliedIndex)
 			}
 
 			if err := verifyAggregatedVolumesBalanced(
-				fsm.dataStore, fsm.Registry.Attrs.Volume, allLedgerIDs, fsm.lastAppliedIndex, fsm.logger,
+				fsm.dataStore, fsm.Registry.Attrs.Volume, pb.sentinelLedgerIDs, pb.lastAppliedIndex, fsm.logger,
 			); err != nil {
 				fsm.logger.Errorf("AGGREGATED VOLUME BALANCE CHECK FAILED: %v", err)
 
-				return nil, fmt.Errorf("aggregated volume balance check failed: %w", err)
+				return fmt.Errorf("aggregated volume balance check failed: %w", err)
 			}
 		}
 	}
 
 	previousPersisted := fsm.lastPersistedIndex.Load()
-	fsm.lastPersistedIndex.Store(fsm.lastAppliedIndex)
+	fsm.lastPersistedIndex.Store(pb.lastAppliedIndex)
 	fsm.appliedCond.Broadcast()
 
-	if fsm.lastAppliedIndex != previousPersisted+uint64(len(entries)) {
+	if pb.lastAppliedIndex != previousPersisted+uint64(pb.entryCount) {
 		if fsm.logger.Enabled(logging.DebugLevel) {
 			fsm.logger.WithFields(map[string]any{
 				"previousPersisted": previousPersisted,
-				"newPersisted":      fsm.lastAppliedIndex,
-				"entryCount":        len(entries),
-				"gen0":              fsm.Registry.Cache.BaseIndex.Gen0,
-				"gen1":              fsm.Registry.Cache.BaseIndex.Gen1,
-				"currentGeneration": fsm.Registry.Cache.CurrentGeneration(),
+				"newPersisted":      pb.lastAppliedIndex,
+				"entryCount":        pb.entryCount,
 			}).Debugf("lastPersistedIndex updated (non-trivial jump)")
 		}
 	}
 
-	if needsArchiveDispatch {
-		fsm.dispatchArchiveRequests()
-	}
-
-	// Clean up physical files for deleted query checkpoints.
-	for _, r := range ret.Results {
-		if cpID := r.QueryCheckpointDeleted; cpID > 0 {
-			fsm.deleteQueryCheckpointFiles(cpID)
+	// Dispatch post-commit side effects using captured data.
+	for _, req := range pb.archiveRequests {
+		select {
+		case fsm.archiveRequestCh <- req:
+		default:
 		}
 	}
 
-	if needsColdCompaction {
+	for _, cpID := range pb.checkpointDeletes {
+		fsm.deleteQueryCheckpointFiles(cpID)
+	}
+
+	if pb.needsColdCompaction {
 		select {
 		case fsm.coldCompactionCh <- struct{}{}:
 		default:
 		}
 	}
 
-	for _, req := range pendingConvertRequests {
+	for _, req := range pb.convertRequests {
 		select {
 		case fsm.metadataConvertRequestCh <- req:
 		default:
 		}
 	}
 
-	// Notify consumers (events Manager, mirror Manager, index Builder) via fan-out.
-	lastSeq := fsm.nextSequenceID - 1
-	fsm.notifier.NotifyLogsCommitted(lastSeq)
+	fsm.notifier.NotifyLogsCommitted(pb.lastSequenceID)
 
-	if eventsConfigChanged || mirrorConfigChanged {
+	if pb.eventsConfigChanged || pb.mirrorConfigChanged {
 		fsm.notifier.NotifyConfigChanged()
 	}
 
-	return ret, nil
+	return nil
 }
 
-// commitAndRequestCheckpoint commits the current batch, stores remaining entries,
-// and returns with CheckpointRequired = true. Used by ClosePeriod (seal checkpoint).
+// ApplyEntries processes entries and commits synchronously. This is a
+// convenience wrapper around PrepareEntries + CommitPreparedBatch for
+// callers that do not need pipelining (spool replay, WAL replay).
+func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (*ApplyEntriesResult, error) {
+	pb, err := fsm.PrepareEntries(ctx, entries...)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := fsm.CommitPreparedBatch(ctx, pb); err != nil {
+		return nil, err
+	}
+
+	return pb.Result, nil
+}
+
+// commitAndRequestCheckpoint commits the current batch synchronously, stores
+// remaining entries, and returns a PreparedBatch with CheckpointRequired = true.
+// The batch is already committed (batch field is nil) since checkpoint boundaries
+// require synchronous persistence.
 func (fsm *Machine) commitAndRequestCheckpoint(
 	batch *dal.Batch,
 	ret *ApplyEntriesResult,
@@ -747,14 +806,18 @@ func (fsm *Machine) commitAndRequestCheckpoint(
 	needsArchiveDispatch bool,
 	checkpointPeriodID uint64,
 	onCheckpointDone func(checkpointPath string),
-) (*ApplyEntriesResult, error) {
+) (*PreparedBatch, error) {
 	err := SetAppliedIndex(batch, fsm.lastAppliedIndex)
 	if err != nil {
+		_ = batch.Cancel()
+
 		return nil, fmt.Errorf("setting applied index: %w", err)
 	}
 
 	err = SetLastAppliedTimestamp(batch, fsm.lastAppliedTimestamp)
 	if err != nil {
+		_ = batch.Cancel()
+
 		return nil, fmt.Errorf("setting last applied timestamp: %w", err)
 	}
 
@@ -766,10 +829,6 @@ func (fsm *Machine) commitAndRequestCheckpoint(
 	fsm.lastPersistedIndex.Store(fsm.lastAppliedIndex)
 	fsm.appliedCond.Broadcast()
 
-	// Notify all log consumers that new logs are available.
-	// Without this, the index builder's fast-path check (LastSequence > cursor)
-	// would never trigger for logs committed in this batch, causing
-	// WaitForSequence to block indefinitely.
 	lastSeq := fsm.nextSequenceID - 1
 	fsm.notifier.NotifyLogsCommitted(lastSeq)
 
@@ -787,7 +846,11 @@ func (fsm *Machine) commitAndRequestCheckpoint(
 
 	ret.OnCheckpointDone = onCheckpointDone
 
-	return ret, nil
+	// Return a PreparedBatch with batch=nil (already committed).
+	return &PreparedBatch{
+		Result:           ret,
+		lastAppliedIndex: fsm.lastAppliedIndex,
+	}, nil
 }
 
 // deleteQueryCheckpointFiles removes the physical files for a deleted checkpoint.
@@ -1672,6 +1735,46 @@ func SealRequestFromPeriod(period *commonpb.Period) *SealRequest {
 		PeriodID:      period.GetId(),
 		CloseSequence: period.GetCloseSequence(),
 		LastLogHash:   period.GetLastLogHash(),
+	}
+}
+
+// PreparedBatch holds an uncommitted Pebble batch and all data needed for
+// the post-commit phase. Created by PrepareEntries, consumed by CommitPreparedBatch.
+// This separation enables pipelining: the applier can process batch N+1 while
+// batch N's commit is in-flight.
+type PreparedBatch struct {
+	batch *dal.Batch
+	// Result holds the per-entry apply results. Exported for the applier to read.
+	Result *ApplyEntriesResult
+
+	// State captured during prepare for post-commit use.
+	lastAppliedIndex    uint64
+	lastSequenceID      uint64
+	needsArchiveDispatch bool
+	needsColdCompaction  bool
+	eventsConfigChanged  bool
+	mirrorConfigChanged  bool
+	convertRequests      []MetadataConvertRequest
+	checkpointDeletes    []uint64
+
+	// Sentinel data (captured during prepare, validated after commit).
+	sentinelMode    bool
+	sentinelUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
+	sentinelLedgerIDs []uint32
+
+	// archiveRequests is captured during prepare so CommitPreparedBatch
+	// does not need to read fsm.Periods (which may be mutated by the next prepare).
+	archiveRequests []ArchiveRequest
+
+	entryCount int
+}
+
+// Close cancels the uncommitted batch. Must be called if CommitPreparedBatch
+// will not be called (e.g. on error in the caller).
+func (pb *PreparedBatch) Close() {
+	if pb.batch != nil {
+		_ = pb.batch.Cancel()
+		pb.batch = nil
 	}
 }
 

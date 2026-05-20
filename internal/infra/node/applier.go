@@ -54,6 +54,10 @@ type Applier struct {
 	gatingTerminated chan struct{}
 	ch               chan applyWork // buffered(1)
 
+	// pending holds the in-flight commit from the previous batch, if any.
+	// At most one at a time. Drained before barriers, checkpoints, and shutdown.
+	pending *pendingCommit
+
 	// Metrics
 	applyEntriesHistogram           metric.Int64Histogram
 	applyEntriesBatchSizeCounter    metric.Int64Counter
@@ -64,6 +68,18 @@ type Applier struct {
 	maintenanceSnapshotHistogram    metric.Float64Histogram
 	maintenanceReplaySpoolHistogram metric.Float64Histogram
 	batchWaitDurationHistogram      metric.Int64Histogram
+	commitWaitHistogram             metric.Int64Histogram
+	prepareDurationHistogram        metric.Int64Histogram
+}
+
+type pendingFuture struct {
+	proposalID uint64
+	result     state.ApplyResult
+	future     *futures.Future[state.ApplyResult]
+}
+
+type pendingCommit struct {
+	done chan error // signaled when commit goroutine finishes
 }
 
 // NewApplier creates a new Applier with all metrics registered on the provided meter.
@@ -198,6 +214,30 @@ func NewApplier(
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating batch_wait histogram: %w", err)
+	}
+
+	a.commitWaitHistogram, err = meter.Int64Histogram(
+		"raft.applier.commit_wait.duration",
+		metric.WithDescription("Time spent waiting for the previous batch's commit to finish before starting the next prepare"),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000,
+		),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating commit_wait histogram: %w", err)
+	}
+
+	a.prepareDurationHistogram, err = meter.Int64Histogram(
+		"raft.fsm.prepare.duration",
+		metric.WithDescription("Time spent in PrepareEntries (processing + merge, without commit)"),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000,
+		),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating prepare_duration histogram: %w", err)
 	}
 
 	return a, nil
@@ -404,6 +444,11 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 			a.batchWaitDurationHistogram.Record(ctx, time.Since(waitStart).Microseconds())
 
 			if work.barrier != nil {
+				// Drain pending commit before signaling barrier completion.
+				if err := a.waitPendingCommit(ctx); err != nil {
+					return err
+				}
+
 				close(work.barrier)
 				waitStart = time.Now()
 
@@ -411,6 +456,11 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 			}
 
 			if work.syncLeader != 0 {
+				// Drain pending commit before starting sync.
+				if err := a.waitPendingCommit(ctx); err != nil {
+					return err
+				}
+
 				a.startSyncSnapshot(ctx, work.syncLeader)
 				waitStart = time.Now()
 
@@ -432,6 +482,11 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 					return err
 				}
 			default:
+				// Drain pending commit before switching to spool mode.
+				if err := a.waitPendingCommit(ctx); err != nil {
+					return err
+				}
+
 				if a.logger.Enabled(logging.DebugLevel) {
 					a.logger.Debugf("Spool committed entries")
 				}
@@ -481,6 +536,11 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 			a.unspoolDurationHistogram.Record(context.Background(), float64(time.Since(unspoolStart).Microseconds()))
 			waitStart = time.Now()
 		case <-stop:
+			// Drain pending commit on shutdown.
+			if a.pending != nil {
+				_ = a.waitPendingCommit(ctx)
+			}
+
 			a.taskExecutor.Interrupt()
 
 			return nil
@@ -567,6 +627,8 @@ func (a *Applier) GetSyncProgress() *state.SyncProgress {
 	return a.syncProgress.Load()
 }
 
+// applyEntriesAndResolveCommands applies entries synchronously and resolves
+// futures. Used by replay paths (spool, WAL) that do not need pipelining.
 func (a *Applier) applyEntriesAndResolveCommands(ctx context.Context, entries ...raftpb.Entry) (*state.ApplyEntriesResult, error) {
 	start := time.Now()
 
@@ -579,9 +641,112 @@ func (a *Applier) applyEntriesAndResolveCommands(ctx context.Context, entries ..
 	a.applyEntriesBatchSizeCounter.Add(ctx, int64(len(result.Results)))
 	a.applyEntriesBatchSizeHistogram.Record(ctx, int64(len(result.Results)))
 
-	// Resolve all proposal futures. When CheckpointRequired, the last result
-	// is the checkpoint-triggering entry -- its future is resolved later by
-	// handleCheckpointRequired once the checkpoint path is known.
+	a.resolveFutures(result)
+
+	return result, nil
+}
+
+// waitPendingCommit blocks until the in-flight commit goroutine finishes.
+// Returns the commit error, if any.
+func (a *Applier) waitPendingCommit(ctx context.Context) error {
+	if a.pending == nil {
+		return nil
+	}
+
+	waitStart := time.Now()
+	err := <-a.pending.done
+	a.commitWaitHistogram.Record(ctx, time.Since(waitStart).Microseconds())
+
+	a.pending = nil
+
+	return err
+}
+
+// startAsyncCommit launches a goroutine that commits the batch and resolves
+// futures. The caller must call waitPendingCommit before starting another.
+func (a *Applier) startAsyncCommit(ctx context.Context, pb *state.PreparedBatch, pfs []pendingFuture) {
+	done := make(chan error, 1)
+	a.pending = &pendingCommit{done: done}
+
+	go func() {
+		err := a.fsm.CommitPreparedBatch(ctx, pb)
+		if err == nil {
+			for _, pf := range pfs {
+				pf.future.Resolve(pf.result, pf.result.Error)
+				a.futures.Delete(pf.proposalID)
+			}
+		}
+
+		done <- err
+	}()
+}
+
+// applyEntriesPipelined prepares entries (CPU-bound) and starts the commit
+// asynchronously. The previous batch's commit runs concurrently with this
+// batch's prepare. Used by the hot path in Run (statusNormal).
+func (a *Applier) applyEntriesPipelined(ctx context.Context, entries ...raftpb.Entry) (*state.ApplyEntriesResult, error) {
+	prepareStart := time.Now()
+
+	pb, err := a.fsm.PrepareEntries(ctx, entries...)
+	if err != nil {
+		_ = a.waitPendingCommit(ctx)
+
+		return nil, fmt.Errorf("preparing entries: %w", err)
+	}
+
+	a.prepareDurationHistogram.Record(ctx, time.Since(prepareStart).Microseconds())
+	a.applyEntriesBatchSizeCounter.Add(ctx, int64(len(pb.Result.Results)))
+	a.applyEntriesBatchSizeHistogram.Record(ctx, int64(len(pb.Result.Results)))
+
+	// Wait for the PREVIOUS batch's commit to finish before launching a new one.
+	if err := a.waitPendingCommit(ctx); err != nil {
+		pb.Close()
+
+		return nil, fmt.Errorf("waiting for previous commit: %w", err)
+	}
+
+	// Collect futures for THIS batch.
+	resolveCount := len(pb.Result.Results)
+	if pb.Result.CheckpointRequired && resolveCount > 0 {
+		resolveCount--
+	}
+
+	var pfs []pendingFuture
+	for _, r := range pb.Result.Results[:resolveCount] {
+		future, exists := a.futures.Load(r.ProposalID)
+		if !exists {
+			continue
+		}
+
+		pfs = append(pfs, pendingFuture{
+			proposalID: r.ProposalID,
+			result:     r,
+			future:     future,
+		})
+	}
+
+	// Checkpoint boundaries are already committed synchronously inside
+	// PrepareEntries (via commitAndRequestCheckpoint). Resolve futures now.
+	if pb.Result.CheckpointRequired {
+		for _, pf := range pfs {
+			pf.future.Resolve(pf.result, pf.result.Error)
+			a.futures.Delete(pf.proposalID)
+		}
+
+		return pb.Result, nil
+	}
+
+	// Launch the commit in background. Futures are resolved by the goroutine
+	// when the commit completes. No need to wait for the next batch.
+	a.startAsyncCommit(ctx, pb, pfs)
+
+	return pb.Result, nil
+}
+
+// resolveFutures resolves proposal futures from an ApplyEntriesResult.
+// When CheckpointRequired, the last result is deferred (resolved later
+// by handleCheckpointRequired).
+func (a *Applier) resolveFutures(result *state.ApplyEntriesResult) {
 	resolveCount := len(result.Results)
 	if result.CheckpointRequired && resolveCount > 0 {
 		resolveCount--
@@ -596,19 +761,21 @@ func (a *Applier) applyEntriesAndResolveCommands(ctx context.Context, entries ..
 		future.Resolve(r, r.Error)
 		a.futures.Delete(r.ProposalID)
 	}
-
-	return result, nil
 }
 
-// applyEntriesToFSM applies entries directly to the Machine.
+// applyEntriesToFSM applies entries to the Machine using pipelined commits.
+// The prepare phase (CPU-bound) runs immediately while the previous batch's
+// commit may still be in-flight. The commit is deferred until the next batch
+// arrives or a drain is required.
 func (a *Applier) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfState, entries ...raftpb.Entry) error {
-	result, err := a.applyEntriesAndResolveCommands(ctx, entries...)
+	result, err := a.applyEntriesPipelined(ctx, entries...)
 	if err != nil {
 		return err
 	}
 
 	// If Machine stopped at a checkpoint boundary (ClosePeriod or CreateQueryCheckpoint),
 	// enter maintenance mode and create the checkpoint off the Raft hot path.
+	// The pipelined path already committed this batch synchronously.
 	if result.CheckpointRequired {
 		if result.QueryCheckpointID > 0 {
 			return a.handleQueryCheckpointRequired(ctx, entries, result)
