@@ -28,6 +28,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/commands"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/protowireutil"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/semver"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/vtmarshal"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -551,46 +552,17 @@ func (a *Admission) marshalCommand(ctx context.Context, cmd *raftcmdpb.Proposal)
 // appendProposalPredictedIndex appends the raw protobuf wire encoding of
 // Proposal.predicted_index (field 7, fixed64) to an already-marshaled Proposal.
 //
-// Why this works — proto3 "last value wins":
-//
-//	In protobuf's wire format, scalar fields may appear more than once in a
-//	message. When the decoder encounters duplicates, the last occurrence wins
-//	(see https://protobuf.dev/programming-guides/encoding/#last-one-wins).
-//	Because PredictedIndex was zero when we pre-marshaled the command (and
-//	proto3 omits zero-valued scalars from the wire), the field is absent from
-//	the buffer. Appending it at the end makes the decoder see exactly one
-//	occurrence — the correct value set under the proposal lock.
-//
-// Wire layout of the appended bytes:
-//
-//	[0x39]              — tag: field 7, wire type 1 (fixed64) = (7 << 3) | 1
-//	[8 bytes LE]        — little-endian uint64 encoding of the predicted index
+// PredictedIndex was zero when we pre-marshaled the command (proto3 omits
+// zero-valued scalars), so appending it produces exactly one occurrence.
 //
 // This saves re-marshaling the entire Proposal (which can be megabytes for
-// large batches) while holding the proposal lock. The lock is only needed
-// to read a stable PredictedIndex from the IndexTracker; the append itself
-// is a 9-byte memcpy with no allocations (MarshalCopy reserves slack).
+// large batches) while holding the proposal lock.
 func appendProposalPredictedIndex(data []byte, index uint64) []byte {
 	if index == 0 {
-		return data // zero is the proto3 default — already absent from the wire
+		return data
 	}
 
-	// Tag: field 7, wire type 1 (fixed64).
-	data = append(data, 0x39)
-
-	// Fixed64 little-endian encoding.
-	data = append(data,
-		byte(index),
-		byte(index>>8),
-		byte(index>>16),
-		byte(index>>24),
-		byte(index>>32),
-		byte(index>>40),
-		byte(index>>48),
-		byte(index>>56),
-	)
-
-	return data
+	return protowireutil.AppendFixed64(data, 7, index)
 }
 
 // verifyAndResolveSignatures verifies signatures on requests and resolves signed payloads.

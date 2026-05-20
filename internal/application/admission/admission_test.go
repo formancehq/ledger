@@ -149,7 +149,7 @@ func TestGetTransactionPostings(t *testing.T) {
 		txLog := createTransactionLog(1, testLedgerName, 1, 1, expectedPostings)
 
 		batch := store.NewBatch()
-		err := state.AppendLogs(batch, txLog)
+		err := state.AppendLogs(batch, []*commonpb.Log{txLog}, nil)
 		require.NoError(t, err)
 
 		// Store TransactionState to link transaction ID to its creating log
@@ -375,7 +375,7 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 		txLog := createTransactionLog(1, testLedgerName, 1, 1, expectedPostings)
 
 		batch := store.NewBatch()
-		err := state.AppendLogs(batch, txLog)
+		err := state.AppendLogs(batch, []*commonpb.Log{txLog}, nil)
 		require.NoError(t, err)
 		// Store TransactionState to link transaction ID to its creating log
 		_, err = attrs.Transaction.Set(batch, domain.TransactionKey{LedgerID: 1, ID: 1}.Bytes(), &commonpb.TransactionState{
@@ -736,7 +736,7 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 		txLog := createTransactionLog(1, testLedgerName, 1, 42, expectedPostings)
 
 		batch := store.NewBatch()
-		err := state.AppendLogs(batch, txLog)
+		err := state.AppendLogs(batch, []*commonpb.Log{txLog}, nil)
 		require.NoError(t, err)
 		// Store TransactionState to link transaction ID to its creating log
 		_, err = attrs.Transaction.Set(batch, domain.TransactionKey{LedgerID: 1, ID: 42}.Bytes(), &commonpb.TransactionState{

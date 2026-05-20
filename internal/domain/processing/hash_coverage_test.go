@@ -49,7 +49,7 @@ func TestGoldenHashRevertedTransaction(t *testing.T) {
 		},
 	}
 
-	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
+	_, hashResult, _ := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "11c884cb920d451c85c00d0a588ce0b6affc23620fafd15716e89ce49cc058bb", got)
 }
@@ -87,7 +87,7 @@ func TestGoldenHashSavedMetadata(t *testing.T) {
 		},
 	}
 
-	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
+	_, hashResult, _ := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "4e6be16ea75450d8143f2f58d1a343ee752164bb3b5d5c8db159a828ed5ddf37", got)
 }
@@ -123,7 +123,7 @@ func TestGoldenHashDeletedMetadata(t *testing.T) {
 		},
 	}
 
-	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
+	_, hashResult, _ := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "be50e75c5fdf7c8025fbba2019c5c9c8ca570a61c3ca1dd5ea302948dff4eebb", got)
 }
@@ -156,7 +156,7 @@ func TestGoldenHashSetMetadataFieldType(t *testing.T) {
 		},
 	}
 
-	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
+	_, hashResult, _ := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "882e4eb88286ccb3cbfda83a9d16033862287aeea64d288ede0aa00ef8f609f2", got)
 }
@@ -188,7 +188,7 @@ func TestGoldenHashRemovedMetadataFieldType(t *testing.T) {
 		},
 	}
 
-	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
+	_, hashResult, _ := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "ab35cebe66064b348d06d1e8fddbc2ec3cb9e512bd4df6f65e2e342afa999b1e", got)
 }
@@ -221,7 +221,7 @@ func TestGoldenHashConvertMetadataBatch(t *testing.T) {
 		},
 	}
 
-	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
+	_, hashResult, _ := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "f1039526dae38cc313585cce9f2d178375675a5eb0cadc6df4108c76a136d88e", got)
 }
@@ -253,7 +253,7 @@ func TestGoldenHashMetadataConversionComplete(t *testing.T) {
 		},
 	}
 
-	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
+	_, hashResult, _ := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "c614d5c6c7d417e5a50beb327b130381939b61078131783ddcea486de21a63a1", got)
 }
@@ -282,7 +282,7 @@ func TestGoldenHashNatsSinkConfig(t *testing.T) {
 		},
 	}
 
-	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
+	_, hashResult, _ := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "1517017f74752f3073863836ca1d0258ec3ddece8f39ace457dc4c663c4b123b", got)
 }
@@ -311,7 +311,7 @@ func TestGoldenHashClickHouseSinkConfig(t *testing.T) {
 		},
 	}
 
-	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
+	_, hashResult, _ := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "3e69e88a510c926dfeb1dd3093de08301bd7caac2e14db619b3922aaecc8abc8", got)
 }
@@ -340,7 +340,7 @@ func TestGoldenHashHttpSinkConfig(t *testing.T) {
 		},
 	}
 
-	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
+	_, hashResult, _ := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "0970146048716837ccdd519aa2b4a449eef423f8d74409c6f099dc1b92dc6f14", got)
 }
@@ -503,7 +503,7 @@ func TestGoldenHashNilSubMessages(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, tc.log)
+			_, hashResult, _ := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, tc.log)
 			got := hex.EncodeToString(hashResult)
 			require.NotEmpty(t, got)
 			require.Len(t, got, 64)
@@ -526,7 +526,7 @@ func TestGoldenHashPromoteLedger(t *testing.T) {
 		},
 	}
 
-	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
+	_, hashResult, _ := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "ea391f1dc496e5889aaa567a663b4cdb6a1034675d709aead508c22987287ff2", got)
 }
@@ -550,7 +550,7 @@ func TestGoldenHashCreatedPreparedQuery(t *testing.T) {
 		},
 	}
 
-	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
+	_, hashResult, _ := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "af456396e806aefa641b20b9445ad841760e44cc42c777e4d7e1046bd3faefc7", got)
 }
@@ -571,7 +571,7 @@ func TestGoldenHashUpdatedPreparedQuery(t *testing.T) {
 		},
 	}
 
-	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
+	_, hashResult, _ := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "d1eb7185fc8dd4dfdd5dded9e5d847ac7d72c68d9bd94824ed7f213374f76fba", got)
 }
@@ -592,7 +592,7 @@ func TestGoldenHashDeletedPreparedQuery(t *testing.T) {
 		},
 	}
 
-	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
+	_, hashResult, _ := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "c8f33c8914815f495ed54f12ccb4b0c50b83799b3787a60762e92eb79dd0b281", got)
 }
@@ -617,7 +617,7 @@ func TestGoldenHashSavedNumscript(t *testing.T) {
 		},
 	}
 
-	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
+	_, hashResult, _ := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "b31496fb297f64b9a813ba0e87e06f76b9927b26014901834189575c274b9641", got)
 }
@@ -638,7 +638,7 @@ func TestGoldenHashDeletedNumscript(t *testing.T) {
 		},
 	}
 
-	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
+	_, hashResult, _ := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "e9a0aad8a32da10aa572ddf31db63a36ef03852e9a500fe59436e46efe2b0026", got)
 }
@@ -659,7 +659,7 @@ func TestGoldenHashCreatedQueryCheckpoint(t *testing.T) {
 		},
 	}
 
-	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
+	_, hashResult, _ := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "d19871295138c46b1ea9401a56ba08790c4c1bcf5f16626428e0f0e48aa5c685", got)
 }
@@ -679,7 +679,7 @@ func TestGoldenHashDeletedQueryCheckpoint(t *testing.T) {
 		},
 	}
 
-	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
+	_, hashResult, _ := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "cc290ba7545e963d4ecd4b057989266361fd3bf18dda0b84603d431825758402", got)
 }
@@ -699,7 +699,7 @@ func TestGoldenHashSetQueryCheckpointSchedule(t *testing.T) {
 		},
 	}
 
-	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
+	_, hashResult, _ := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "f2777dcc8a713dc669538d70aa72f95dbbd6ce8a44ec82b2467d9a091986dd6c", got)
 }
@@ -717,7 +717,7 @@ func TestGoldenHashDeleteQueryCheckpointSchedule(t *testing.T) {
 		},
 	}
 
-	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
+	_, hashResult, _ := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "cc07d0c981655c4559e7d6ed46fc8f05b1ffc31cf035d50ac32b5b91e6a4275f", got)
 }
@@ -748,7 +748,7 @@ func TestGoldenHashFillGap(t *testing.T) {
 		},
 	}
 
-	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
+	_, hashResult, _ := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "e7b32ee61ae220325f5509c39c4f4f1286e8f24c46352cd8dc5c661c3e116b15", got)
 }
@@ -785,7 +785,7 @@ func TestGoldenHashCreateIndex(t *testing.T) {
 		},
 	}
 
-	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
+	_, hashResult, _ := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "52fc5b8a3332f86093d8eca5b96ef0727ec63ff87745b1360b74447f895637a0", got)
 }
@@ -822,7 +822,7 @@ func TestGoldenHashDropIndex(t *testing.T) {
 		},
 	}
 
-	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
+	_, hashResult, _ := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "ac025f278ce97d110cb4e6a864f2ed31f0d476caf23519b4720ff578086775d4", got)
 }
@@ -859,7 +859,7 @@ func TestGoldenHashIndexReady(t *testing.T) {
 		},
 	}
 
-	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
+	_, hashResult, _ := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "5678667be0edc8ed25ff1713de9d85e348b2fd548dd1bfc032977c3235308e48", got)
 }
@@ -894,7 +894,7 @@ func TestGoldenHashAddedAccountType(t *testing.T) {
 		},
 	}
 
-	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
+	_, hashResult, _ := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "eebf38243cf56cddfedfa96629cb3839cd90c011cb5484153266688230bf4db0", got)
 }
@@ -925,7 +925,7 @@ func TestGoldenHashRemovedAccountType(t *testing.T) {
 		},
 	}
 
-	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
+	_, hashResult, _ := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "689a8fdd04c12d315c00e1ac534c16ed3758962afcf558627251950e820938dd", got)
 }
@@ -956,7 +956,7 @@ func TestGoldenHashUpdatedDefaultEnforcementMode(t *testing.T) {
 		},
 	}
 
-	_, hashResult := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
+	_, hashResult, _ := computeLogHash(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, nil, nil, nil, log)
 	got := hex.EncodeToString(hashResult)
 	require.Equal(t, "7c3a4f59485c4dc7507b44414e621d1cbbaa5de349689a0c6047658d614cf622", got)
 }

@@ -142,7 +142,7 @@ type purgeRange struct {
 	closeAuditSequence uint64 // audit sequence range end
 }
 
-func (b *WriteSet) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
+func (b *WriteSet) Merge(batch *dal.Batch, logs []*commonpb.Log, preMarshaledLogBytes [][]byte) error {
 	// gen0 byte for incremental 0xFF cache writes.
 	genByte := byte(b.fsm.Registry.Cache.CurrentGeneration() % 2)
 
@@ -314,7 +314,7 @@ func (b *WriteSet) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 		return err
 	}
 
-	err = AppendLogs(batch, logs...)
+	err = AppendLogs(batch, logs, preMarshaledLogBytes)
 	if err != nil {
 		return fmt.Errorf("failed appending pending logs: %w", err)
 	}

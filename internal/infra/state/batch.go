@@ -12,15 +12,24 @@ import (
 )
 
 // AppendLogs appends system logs to the batch.
-func AppendLogs(b *dal.Batch, logs ...*commonpb.Log) error {
-	for _, log := range logs {
+// When preMarshaledBytes is non-nil, pre-assembled bytes are used instead of
+// re-marshaling each log (optimization for the FSM hot path).
+func AppendLogs(b *dal.Batch, logs []*commonpb.Log, preMarshaledBytes [][]byte) error {
+	for i, log := range logs {
 		b.KeyBuilder.
 			PutZonePrefix(dal.ZoneCold, dal.SubColdLog).
 			PutUint64(log.GetSequence())
 
-		err := b.SetProto(b.KeyBuilder.Consume(), log)
-		if err != nil {
-			return fmt.Errorf("inserting system log: %w", err)
+		key := b.KeyBuilder.Consume()
+
+		if preMarshaledBytes != nil && preMarshaledBytes[i] != nil {
+			if err := b.SetBytes(key, preMarshaledBytes[i]); err != nil {
+				return fmt.Errorf("inserting system log: %w", err)
+			}
+		} else {
+			if err := b.SetProto(key, log); err != nil {
+				return fmt.Errorf("inserting system log: %w", err)
+			}
 		}
 	}
 

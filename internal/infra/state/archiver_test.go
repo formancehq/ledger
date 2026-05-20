@@ -110,10 +110,10 @@ func TestArchiverArchivesAndProposes(t *testing.T) {
 
 	// Store a log so IterateColdKVPairs finds something
 	batch := dataStore.NewBatch()
-	require.NoError(t, AppendLogs(batch, &commonpb.Log{
+	require.NoError(t, AppendLogs(batch, []*commonpb.Log{{
 		Sequence: 1,
 		Payload:  &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreateLedgerLog{Name: "test", CreatedAt: commonpb.NewTimestamp(libtime.Now())}}},
-	}))
+	}}, nil))
 	require.NoError(t, batch.Commit())
 
 	cs := newMockColdStorage()
@@ -277,10 +277,10 @@ func TestArchiverNonLeaderRetries(t *testing.T) {
 
 	// Store a log so buildArchive has data
 	batch := dataStore.NewBatch()
-	require.NoError(t, AppendLogs(batch, &commonpb.Log{
+	require.NoError(t, AppendLogs(batch, []*commonpb.Log{{
 		Sequence: 1,
 		Payload:  &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreateLedgerLog{Name: "test", CreatedAt: commonpb.NewTimestamp(libtime.Now())}}},
-	}))
+	}}, nil))
 	require.NoError(t, batch.Commit())
 
 	require.Eventually(t, func() bool {
@@ -303,14 +303,14 @@ func TestArchiverSSTRoundtrip(t *testing.T) {
 
 	// Store a log so IterateColdKVPairs finds something
 	batch := dataStore.NewBatch()
-	require.NoError(t, AppendLogs(batch, &commonpb.Log{
+	require.NoError(t, AppendLogs(batch, []*commonpb.Log{{
 		Sequence: 1,
 		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
 			CreateLedger: &commonpb.CreateLedgerLog{
 				Name: "test-ledger", CreatedAt: commonpb.NewTimestamp(libtime.Now()),
 			},
 		}},
-	}))
+	}}, nil))
 	require.NoError(t, batch.Commit())
 
 	cs := newMockColdStorage()

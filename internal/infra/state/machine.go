@@ -1193,7 +1193,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	buffer := fsm.writeSet
 
 	// Process the proposal
-	logs, err := fsm.processor.ProcessOrders(proposal.GetOrders(), buffer)
+	logs, preMarshaledLogBytes, err := fsm.processor.ProcessOrders(proposal.GetOrders(), buffer)
 	if err != nil {
 		// FAILURE: write audit entry and return business error
 		auditEntry := &auditpb.AuditEntry{
@@ -1251,13 +1251,17 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		}, nil
 	}
 
-	// Extract created logs for the write buffer (reference sequences are idempotent
-	// responses that don't produce new logs)
-	var createdLogs []*commonpb.Log
+	// Extract created logs and their pre-marshaled bytes for the write buffer
+	// (reference sequences are idempotent responses that don't produce new logs)
+	var (
+		createdLogs     []*commonpb.Log
+		createdLogBytes [][]byte
+	)
 
-	for _, logOrRef := range logs {
+	for i, logOrRef := range logs {
 		if created := logOrRef.GetCreatedLog(); created != nil {
 			createdLogs = append(createdLogs, created)
+			createdLogBytes = append(createdLogBytes, preMarshaledLogBytes[i])
 		}
 	}
 
@@ -1266,7 +1270,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	hasArchiveRequests := len(buffer.pendingArchives) > 0
 	hasPurges := buffer.HasPurges()
 
-	if err := buffer.Merge(batch, createdLogs); err != nil {
+	if err := buffer.Merge(batch, createdLogs, createdLogBytes); err != nil {
 		return nil, err
 	}
 

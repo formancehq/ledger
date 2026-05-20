@@ -61,7 +61,7 @@ func TestProcessOrders_WithIdempotencyKey_NewRequest(t *testing.T) {
 		require.NotEmpty(t, value.GetHash())
 	})
 
-	response, err := processor.ProcessOrders(proposal.GetOrders(), mockStore)
+	response, _, err := processor.ProcessOrders(proposal.GetOrders(), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, response)
 	require.Len(t, response, 1)
@@ -115,7 +115,7 @@ func TestProcessOrders_WithIdempotencyKey_DuplicateRequest(t *testing.T) {
 
 	// No other calls should be made - the order should not be processed
 
-	response, err := processor.ProcessOrders(proposal.GetOrders(), mockStore)
+	response, _, err := processor.ProcessOrders(proposal.GetOrders(), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, response)
 	require.Len(t, response, 1)
@@ -162,7 +162,7 @@ func TestProcessOrders_WithIdempotencyKey_Conflict(t *testing.T) {
 
 	// No other calls should be made - should fail immediately
 
-	response, err := processor.ProcessOrders(proposal.GetOrders(), mockStore)
+	response, _, err := processor.ProcessOrders(proposal.GetOrders(), mockStore)
 	require.Error(t, err)
 	require.Nil(t, response)
 	require.ErrorAs(t, err, new(*domain.ErrIdempotencyKeyConflict))
@@ -205,7 +205,7 @@ func TestProcessOrders_WithoutIdempotencyKey(t *testing.T) {
 	mockStore.EXPECT().GetLastLogHash().Return(nil)
 	mockStore.EXPECT().SetLastLogHash(gomock.Any())
 
-	response, err := processor.ProcessOrders(proposal.GetOrders(), mockStore)
+	response, _, err := processor.ProcessOrders(proposal.GetOrders(), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, response)
 	require.Len(t, response, 1)
@@ -312,7 +312,7 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 		}}},
 	}
 
-	response, err := processor.ProcessOrders(orders, mockStore)
+	response, _, err := processor.ProcessOrders(orders, mockStore)
 	require.NoError(t, err)
 	require.Len(t, response, 2)
 
@@ -386,7 +386,7 @@ func TestProcessOrders_HashChaining(t *testing.T) {
 		}),
 	)
 
-	response, err := processor.ProcessOrders(proposal.GetOrders(), mockStore)
+	response, _, err := processor.ProcessOrders(proposal.GetOrders(), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, response)
 	require.Len(t, response, 3)
@@ -443,7 +443,7 @@ func TestProcessOrders_HashChaining(t *testing.T) {
 		}),
 	)
 
-	response2, err := processor2.ProcessOrders(proposal.GetOrders(), mockStore2)
+	response2, _, err := processor2.ProcessOrders(proposal.GetOrders(), mockStore2)
 	require.NoError(t, err)
 
 	// Hashes should be identical for same inputs

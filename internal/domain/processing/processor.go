@@ -77,10 +77,14 @@ func (p *RequestProcessor) invalidateCompiledTypes(ledger string) {
 }
 
 // ProcessOrders processes a list of orders and returns the resulting logs.
-func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemoryStore) ([]*raftcmdpb.CreatedLogOrReference, error) {
+// The returned preMarshaledLogBytes is a parallel slice: for each created log,
+// it contains the pre-assembled protobuf bytes ready for Pebble persistence
+// (nil for idempotent reference sequences).
+func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemoryStore) ([]*raftcmdpb.CreatedLogOrReference, [][]byte, error) {
 	clear(p.compiledTypesCache)
 
 	logs := make([]*raftcmdpb.CreatedLogOrReference, len(orders))
+	preMarshaledLogBytes := make([][]byte, len(orders))
 
 	for i, order := range orders {
 		// Compute idempotency hash once if needed (reused for check + store).
@@ -94,13 +98,13 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 
 			storedValue, err := s.GetIdempotencyKey(ikKey)
 			if err != nil && !errors.Is(err, domain.ErrNotFound) {
-				return nil, fmt.Errorf("checking idempotency key: %w", err)
+				return nil, nil, fmt.Errorf("checking idempotency key: %w", err)
 			}
 
 			// Check if idempotency key exists
 			if storedValue != nil {
 				if !bytes.Equal(orderHash, storedValue.GetHash()) {
-					return nil, &domain.ErrIdempotencyKeyConflict{Key: order.GetIdempotency().GetKey()}
+					return nil, nil, &domain.ErrIdempotencyKeyConflict{Key: order.GetIdempotency().GetKey()}
 				}
 
 				// Hash matches - return reference to existing log without processing
@@ -117,7 +121,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 		// No idempotency key or key not found - process normally
 		payload, err := p.ProcessOrder(order, s)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		nextSequenceID := s.IncrementNextSequenceID()
@@ -127,8 +131,16 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 			Idempotency: order.GetIdempotency().CloneVT(),
 			Signature:   order.GetSignature().CloneVT(),
 		}
-		p.hashBuf, log.Hash = computeLogHash(p.hashAlgorithm, p.logHasher, p.hashBuf, s.GetLastLogHash(), log)
+		var logBytesLen int
+		p.hashBuf, log.Hash, logBytesLen = computeLogHash(p.hashAlgorithm, p.logHasher, p.hashBuf, s.GetLastLogHash(), log)
 		s.SetLastLogHash(log.GetHash())
+
+		// Capture the deterministic base bytes and append the missing fields
+		// (hash, hashVersion, signature) to produce ready-to-persist Pebble bytes.
+		// This avoids a full second marshal of the entire Log.
+		logBase := make([]byte, logBytesLen, logBytesLen+64)
+		copy(logBase, p.hashBuf[:logBytesLen])
+		preMarshaledLogBytes[i] = AppendLogFieldsForPersist(logBase, log)
 
 		// After a ClosePeriod log, update the closing period's LastLogHash to
 		// include this log's hash. The log payload holds a cloned snapshot, so
@@ -160,7 +172,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 		}
 	}
 
-	return logs, nil
+	return logs, preMarshaledLogBytes, nil
 }
 
 // computeOrderHash computes a blake3 hash of the order content (excluding
