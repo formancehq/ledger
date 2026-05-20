@@ -10,7 +10,6 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
-	"github.com/zeebo/blake3"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
 
@@ -63,8 +62,7 @@ type Machine struct {
 	queryCheckpointScheduleChanged signal.Signal
 	lastAuditHash                  []byte
 	hashAlgorithm                  commonpb.HashAlgorithm
-	auditHasher                    *blake3.Hasher
-	auditHashBuf                   []byte
+	auditHashBuf                   []byte // scratch buffer for background hash goroutine
 
 	lastAppliedIndex     uint64
 	lastAppliedTimestamp uint64
@@ -197,7 +195,6 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		archiveRequestCh:               make(chan ArchiveRequest, 1),
 		metadataConvertRequestCh:       make(chan MetadataConvertRequest, 16),
 		coldCompactionCh:               make(chan struct{}, 1),
-		auditHasher:                    blake3.New(),
 		auditHashBuf:                   make([]byte, 0, 4096),
 	}
 	fsm.appliedCond = sync.NewCond(&fsm.appliedMu)
@@ -1194,33 +1191,58 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	fsm.writeSet.Reset(effectiveDate)
 	buffer := fsm.writeSet
 
-	// Process the proposal
-	logs, err := fsm.processor.ProcessOrders(proposal.GetOrders(), buffer)
-	if err != nil {
-		// FAILURE: write audit entry and return business error
-		auditEntry := &auditpb.AuditEntry{
-			Sequence:   fsm.nextAuditSequenceID,
-			Timestamp:  effectiveDate,
-			ProposalId: proposal.GetId(),
-			OrderCount: uint32(len(proposal.GetOrders())),
-			Ledgers:    extractLedgers(proposal.GetOrders()),
-			Outcome: &auditpb.AuditEntry_Failure{
-				Failure: buildAuditFailure(err),
-			},
-		}
-		fsm.auditHashBuf, auditEntry.Hash = processing.ComputeAuditHashForFailure(
-			fsm.hashAlgorithm, fsm.auditHasher, fsm.auditHashBuf, fsm.lastAuditHash, auditEntry,
-		)
-		auditEntry.HashVersion = uint32(fsm.hashAlgorithm)
-		fsm.lastAuditHash = auditEntry.GetHash()
+	orders := proposal.GetOrders()
+
+	// Compute audit hash in a background goroutine while ProcessOrders runs.
+	// The hash covers the orders (source of truth), not the logs (derived output).
+	// This enables parallel CPU utilization: hash computation on one core,
+	// business logic on another.
+	type auditHashResult struct {
+		buf  []byte
+		hash []byte
+	}
+
+	auditHashCh := make(chan auditHashResult, 1)
+
+	go func() {
+		buf, hash := processing.ComputeAuditHash(fsm.hashAlgorithm, fsm.auditHashBuf, fsm.lastAuditHash, orders)
+		auditHashCh <- auditHashResult{buf: buf, hash: hash}
+	}()
+
+	// Process the proposal (CPU-heavy business logic, runs in parallel with hash)
+	logs, err := fsm.processor.ProcessOrders(orders, buffer)
+
+	// Wait for the hash result (likely already done by now).
+	hashResult := <-auditHashCh
+	fsm.auditHashBuf = hashResult.buf
+
+	// Helper to build and write the audit entry (shared by success and failure paths).
+	writeAuditEntry := func(entry *auditpb.AuditEntry, logs []*raftcmdpb.CreatedLogOrReference, label string) error {
+		entry.Sequence = fsm.nextAuditSequenceID
+		entry.Timestamp = effectiveDate
+		entry.ProposalId = proposal.GetId()
+		entry.OrderCount = uint32(len(orders))
+		entry.Ledgers = extractLedgers(orders)
+		entry.Hash = hashResult.hash
+		entry.HashVersion = uint32(fsm.hashAlgorithm)
+		fsm.lastAuditHash = entry.GetHash()
 		fsm.nextAuditSequenceID++
 
-		if appendErr := AppendAuditEntries(batch, auditEntry); appendErr != nil {
-			return nil, fmt.Errorf("appending audit entry for failure: %w", appendErr)
+		if appendErr := AppendAuditEntries(batch, entry); appendErr != nil {
+			return fmt.Errorf("appending audit entry for %s: %w", label, appendErr)
 		}
 
-		if appendErr := AppendAuditItems(batch, auditEntry.GetSequence(), buildAuditItems(proposal.GetOrders(), nil)...); appendErr != nil {
-			return nil, fmt.Errorf("appending audit items for failure: %w", appendErr)
+		if appendErr := AppendAuditItems(batch, entry.GetSequence(), buildAuditItems(orders, logs)...); appendErr != nil {
+			return fmt.Errorf("appending audit items for %s: %w", label, appendErr)
+		}
+
+		return nil
+	}
+
+	if err != nil {
+		// FAILURE: write audit entry and return business error
+		if appendErr := writeAuditEntry(&auditpb.AuditEntry{Outcome: &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(err)}}, nil, "failure"); appendErr != nil {
+			return nil, appendErr
 		}
 
 		return &ApplyResult{
@@ -1232,29 +1254,8 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// Validate transient volumes have zero balance. This is a business error
 	// (rejected proposal), not a fatal FSM error, so it must be checked before Commit.
 	if err := buffer.ValidateTransientVolumes(); err != nil {
-		auditEntry := &auditpb.AuditEntry{
-			Sequence:   fsm.nextAuditSequenceID,
-			Timestamp:  effectiveDate,
-			ProposalId: proposal.GetId(),
-			OrderCount: uint32(len(proposal.GetOrders())),
-			Ledgers:    extractLedgers(proposal.GetOrders()),
-			Outcome: &auditpb.AuditEntry_Failure{
-				Failure: buildAuditFailure(err),
-			},
-		}
-		fsm.auditHashBuf, auditEntry.Hash = processing.ComputeAuditHashForFailure(
-			fsm.hashAlgorithm, fsm.auditHasher, fsm.auditHashBuf, fsm.lastAuditHash, auditEntry,
-		)
-		auditEntry.HashVersion = uint32(fsm.hashAlgorithm)
-		fsm.lastAuditHash = auditEntry.GetHash()
-		fsm.nextAuditSequenceID++
-
-		if appendErr := AppendAuditEntries(batch, auditEntry); appendErr != nil {
-			return nil, fmt.Errorf("appending audit entry for transient validation failure: %w", appendErr)
-		}
-
-		if appendErr := AppendAuditItems(batch, auditEntry.GetSequence(), buildAuditItems(proposal.GetOrders(), nil)...); appendErr != nil {
-			return nil, fmt.Errorf("appending audit items for transient validation failure: %w", appendErr)
+		if appendErr := writeAuditEntry(&auditpb.AuditEntry{Outcome: &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(err)}}, nil, "transient validation failure"); appendErr != nil {
+			return nil, appendErr
 		}
 
 		return &ApplyResult{
@@ -1344,40 +1345,19 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		}
 	}
 
-	auditEntry := &auditpb.AuditEntry{
-		Sequence:   fsm.nextAuditSequenceID,
-		Timestamp:  effectiveDate,
-		ProposalId: proposal.GetId(),
-		OrderCount: uint32(len(proposal.GetOrders())),
-		Ledgers:    extractLedgers(proposal.GetOrders()),
-		Outcome: &auditpb.AuditEntry_Success{
-			Success: auditSuccess,
-		},
+	if appendErr := writeAuditEntry(&auditpb.AuditEntry{Outcome: &auditpb.AuditEntry_Success{Success: auditSuccess}}, logs, "success"); appendErr != nil {
+		return nil, appendErr
 	}
-	fsm.auditHashBuf, auditEntry.Hash = processing.ComputeAuditHash(
-		fsm.hashAlgorithm, fsm.auditHasher, fsm.auditHashBuf, fsm.lastAuditHash, createdLogs,
-	)
-	auditEntry.HashVersion = uint32(fsm.hashAlgorithm)
-	fsm.lastAuditHash = auditEntry.GetHash()
-	fsm.nextAuditSequenceID++
 
 	// Update closing period's LastAuditHash if this batch contains a ClosePeriod.
 	for _, logOrRef := range logs {
 		if created := logOrRef.GetCreatedLog(); created != nil {
 			if cp := created.GetPayload().GetClosePeriod(); cp != nil {
 				if closingPeriod := fsm.Periods.LatestClosingPeriod(); closingPeriod != nil {
-					closingPeriod.LastAuditHash = auditEntry.GetHash()
+					closingPeriod.LastAuditHash = fsm.lastAuditHash
 				}
 			}
 		}
-	}
-
-	if err := AppendAuditEntries(batch, auditEntry); err != nil {
-		return nil, fmt.Errorf("appending audit entry for success: %w", err)
-	}
-
-	if err := AppendAuditItems(batch, auditEntry.GetSequence(), buildAuditItems(proposal.GetOrders(), logs)...); err != nil {
-		return nil, fmt.Errorf("appending audit items for success: %w", err)
 	}
 
 	fsm.logsAppendedCounter.Add(ctx, int64(len(createdLogs)))

@@ -8,22 +8,16 @@ Integrity verification uses a **batch-level hash chain on audit entries** rather
 
 ### Hash Formula
 
-For **success** audit entries (proposals that produce logs):
-
 ```
-audit_hash = H(concat(all_pre_marshaled_log_bytes_in_batch) + previous_audit_hash)
-```
-
-For **failure** audit entries (rejected proposals):
-
-```
-audit_hash = H(serialize(audit_entry_without_hash) + previous_audit_hash)
+audit_hash = H(concat(MarshalDeterministic(order) for each order) + previous_audit_hash)
 ```
 
 Where:
 - `H` is the configured hash function (BLAKE3 or XXH3-128)
 - `previous_audit_hash` is the hash of the immediately preceding audit entry (empty for the first entry)
-- `||` denotes concatenation
+- Orders are the source of truth — logs are a deterministic derivation
+
+The same formula applies to both success and failure entries: the hash covers what was *attempted* (orders), not what *resulted* (logs). The outcome (success/failure) is recorded in the audit entry itself.
 
 ### Why Batch-Level (Not Per-Log)
 
@@ -48,7 +42,7 @@ The hash algorithm is a cluster-wide setting configured via `--hash-algorithm` a
 - **XXH3-128**: `github.com/zeebo/xxh3` — stateless, zero allocation
 - **Hash field**: Stored as `bytes hash` (field 9) in the `AuditEntry` protobuf message
 - **Version field**: Stored as `uint32 hash_version` (field 10) in the `AuditEntry` protobuf message
-- **Computation**: Performed in `applyProposal()` on the FSM, after `ProcessOrders` and `Merge` complete
+- **Computation**: Launched in a background goroutine at the start of `applyProposal()`, runs in parallel with `ProcessOrders`
 
 ### State Persistence
 
@@ -60,7 +54,7 @@ The chain is **not broken** by Raft snapshots: the snapshot contains all Pebble 
 
 ### Failure Isolation
 
-If a proposal fails (e.g., insufficient funds, ledger not found), a failure audit entry is created and hashed into the chain. The `WriteSet` state is discarded without being merged into the `Machine`, but the audit chain advances. This ensures failed proposals are tamper-evident.
+If a proposal fails (e.g., insufficient funds, ledger not found), a failure audit entry is created with the same pre-computed hash (the hash covers the orders, which are the same regardless of outcome). The `WriteSet` state is discarded without being merged into the `Machine`, but the audit chain advances. This ensures failed proposals are tamper-evident.
 
 ### Idempotent Responses
 
