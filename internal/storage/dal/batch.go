@@ -8,10 +8,10 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// vtSizedMarshaler is implemented by vtprotobuf-generated messages.
-type vtSizedMarshaler interface {
+// vtSizedBufferMarshaler is implemented by vtprotobuf-generated messages.
+type vtSizedBufferMarshaler interface {
 	SizeVT() int
-	MarshalToVT([]byte) (int, error)
+	MarshalToSizedBufferVT([]byte) (int, error)
 }
 
 // Batch provides atomic operations on the store using a pebble.Batch with NoSync.
@@ -32,8 +32,11 @@ type Batch struct {
 
 // MarshalProto marshals a proto message using vtprotobuf when available,
 // falling back to standard MarshalAppend otherwise.
+//
+// Calls SizeVT once and uses MarshalToSizedBufferVT directly, avoiding the
+// double SizeVT that MarshalToVT would do internally.
 func (b *Batch) MarshalProto(msg proto.Message) ([]byte, error) {
-	if m, ok := msg.(vtSizedMarshaler); ok {
+	if m, ok := msg.(vtSizedBufferMarshaler); ok {
 		size := m.SizeVT()
 		if cap(b.protoBuffer) >= size {
 			b.protoBuffer = b.protoBuffer[:size]
@@ -41,9 +44,9 @@ func (b *Batch) MarshalProto(msg proto.Message) ([]byte, error) {
 			b.protoBuffer = make([]byte, size)
 		}
 
-		n, err := m.MarshalToVT(b.protoBuffer)
+		n, err := m.MarshalToSizedBufferVT(b.protoBuffer)
 
-		return b.protoBuffer[:n], err
+		return b.protoBuffer[size-n:], err
 	}
 
 	return b.marshalOptions.MarshalAppend(b.protoBuffer, msg)
