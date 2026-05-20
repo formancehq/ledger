@@ -258,9 +258,10 @@ The Spool is used by the **Applier** component (owned by the Node). The Applier 
 │       - end := spool.End()                                      │
 │       - spool.ReplayUntil(end, lastApplied, fsm.Apply)          │
 │       - spool.Prune(lastApplied)                                │
-│    4. If snapshot threshold reached:                            │
-│       - Create snapshot (maintenance task)                      │
-│       - wal.Compact()                                           │
+│    4. Background maintenance (periodic timer):                  │
+│       - Create WAL snapshot if lastPersistedIndex advanced      │
+│       - wal.Compact() with compaction margin                    │
+│       - Create Pebble checkpoint                                │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```

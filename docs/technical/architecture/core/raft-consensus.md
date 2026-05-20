@@ -178,8 +178,8 @@ type NodeConfig struct {
     MaxSizePerMsg        uint64        // Maximum size per message in bytes (default: 1MB)
     MaxInflightMsgs      int           // Maximum number of in-flight messages (default: 256)
     TickInterval         time.Duration // Interval between ticks
-    SnapshotThreshold    uint64        // Number of logs before triggering a snapshot
-    CompactionMargin     uint64        // Compaction margin in number of logs
+    MaintenanceInterval  time.Duration // Periodic maintenance interval for snapshots, compaction, and checkpoints (default: 30s)
+    CompactionMargin     uint64        // Minimum WAL entries retained after compaction for follower catch-up (default: 1000)
     ProposeQueueCapacity int           // Capacity of the propose queue
 }
 ```
@@ -261,8 +261,7 @@ Raft logs grow indefinitely. Snapshots allow:
 
 ### Snapshot Creation
 
-Snapshots are created automatically when:
-- The number of logs exceeds `SnapshotThreshold`
+Snapshots are created automatically by a periodic background maintenance timer (`--maintenance-interval`, default 30s). On each tick, if `lastPersistedIndex` has advanced since the last snapshot, a new snapshot is created, followed by WAL compaction and Pebble checkpoint creation.
 
 ### Snapshot Contents
 

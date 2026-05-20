@@ -195,9 +195,7 @@ Snapshots are restoration points that contain:
 
 ### Snapshot Creation
 
-Snapshots are created automatically when:
-
-1. **Log threshold reached**: `SnapshotThreshold` entries from the last snapshot
+Snapshots are created automatically by a periodic background maintenance timer (`--maintenance-interval`, default 30s). On each tick, if `lastPersistedIndex` has advanced since the last snapshot, a new snapshot is created. The maintenance cycle also compacts the WAL and creates Pebble checkpoints.
 
 ### Snapshot Contents
 

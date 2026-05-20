@@ -171,7 +171,7 @@ The Grafana dashboard includes panels for disk usage visualization. See the `mis
 
 ### Volume Sizing
 
-- **WAL volume**: Size based on snapshot threshold and write throughput. The WAL grows between snapshots and is truncated after each snapshot.
+- **WAL volume**: Size based on maintenance interval, compaction margin, and write throughput. The WAL grows between maintenance cycles and is compacted periodically, retaining at least `compactionMargin` entries.
 - **Data volume**: Size based on total data retention. Pebble compaction reclaims space over time, but peak usage can be higher during compaction.
 
 ### Operational Response

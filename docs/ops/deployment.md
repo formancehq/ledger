@@ -124,8 +124,8 @@ spec:
     dataDir: "/data/app"
     walDir: "/data/raft"
     raft:
-      snapshotThreshold: 5000
-      snapshotInterval: "30s"
+      maintenanceInterval: "30s"
+      compactionMargin: 1000
       electionTick: 10
       heartbeatTick: 1
       maxSizePerMsg: 1048576
@@ -553,27 +553,20 @@ config:
     maxInflightMsgs: 256      # Max number of messages in flight
 ```
 
-### Snapshots
+### Maintenance (Snapshots, Compaction, Checkpoints)
 
 #### Global Configuration
 
 ```yaml
 config:
   raft:
-    snapshotThreshold: 5000     # Number of logs before triggering a snapshot
-    snapshotInterval: "30s"     # Minimum interval between snapshots
+    maintenanceInterval: "30s"  # Periodic maintenance interval (default: 30s)
+    compactionMargin: 1000      # Minimum WAL entries retained after compaction (default: 1000)
 ```
 
-> **📊 Calibrating Snapshot Threshold**: The `snapshotThreshold` should be calibrated based on your expected throughput to avoid excessive snapshotting. A snapshot every ~2 seconds is generally sufficient.
+> **Tuning maintenance interval**: The `maintenanceInterval` controls how often the background maintenance cycle runs. Each cycle creates a WAL snapshot (if new entries were applied), compacts old WAL entries, and creates a Pebble checkpoint. Shorter intervals reduce recovery time but increase I/O overhead. The default of 30s is suitable for most workloads.
 >
-> **Formula**: `snapshotThreshold = expected_transactions_per_second × 2`
->
-> **Examples**:
-> - 100 tx/s → `snapshotThreshold: 200`
-> - 1000 tx/s → `snapshotThreshold: 2000`
-> - 5000 tx/s → `snapshotThreshold: 10000`
->
-> Setting the threshold too low will cause constant snapshotting, impacting performance. Setting it too high will increase recovery time after a restart.
+> **Tuning compaction margin**: The `compactionMargin` controls how many WAL entries are retained after compaction, allowing followers that are slightly behind to catch up without needing a full snapshot transfer. Increase this value if followers frequently fall behind.
 
 ### Configuration Safety Checks at Startup
 

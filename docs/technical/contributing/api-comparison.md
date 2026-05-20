@@ -442,7 +442,7 @@ These endpoints are documented in Section 3 (Metadata Management) above.
 
 ### 5. ❌ Ledger Configuration Update
 
-**Description:** Modify certain ledger parameters after creation (e.g., snapshotThreshold).
+**Description:** Modify certain ledger parameters after creation (e.g., maintenanceInterval).
 
 **To implement:**
 - `PATCH /{ledgerName}` or `PUT /{ledgerName}/config`

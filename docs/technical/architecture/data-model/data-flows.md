@@ -444,8 +444,8 @@ sequenceDiagram
     participant FSM as FSM
     participant SnapshotStore as WAL Storage
     
-    Node->>Node: Check Snapshot Conditions
-    Note over Node: Threshold reached
+    Node->>Node: Periodic Maintenance Timer Fires
+    Note over Node: Maintenance interval elapsed
     
     Node->>FSM: Create Snapshot
     FSM->>FSM: Serialize State (all ledgers)
@@ -462,9 +462,10 @@ sequenceDiagram
 
 ### Creation Conditions
 
-1. **Log Threshold**
-   - If `SnapshotThreshold` logs have been created since the last snapshot
-   - Configurable globally via command line flags
+1. **Periodic Maintenance Timer**
+   - A background goroutine runs on a configurable interval (`--maintenance-interval`, default 30s)
+   - On each tick, if `lastPersistedIndex` has advanced since the last snapshot, a new snapshot is created
+   - The timer also triggers WAL compaction and Pebble checkpoint creation
 
 ### Snapshot Contents
 
@@ -536,12 +537,13 @@ Because old WAL entries are compacted:
 ```yaml
 config:
   raft:
-    snapshotThreshold: 5000   # Create snapshot every 5000 entries
-    compactionMargin: 500     # Keep 500 entries before snapshot as margin
+    maintenanceInterval: "30s"  # Periodic maintenance interval (snapshots, compaction, checkpoints)
+    compactionMargin: 1000      # Minimum WAL entries retained after compaction for follower catch-up
 ```
 
 **Recommendations**:
-- `compactionMargin` should be at least 1-2× the typical replication lag
+- `maintenanceInterval` controls how often snapshots and compaction occur; shorter intervals reduce recovery time but increase I/O
+- `compactionMargin` should be at least 1-2x the typical replication lag
 - Larger margins use more disk but allow slower followers to catch up
 - Smaller margins save disk but may force more snapshot transfers
 
