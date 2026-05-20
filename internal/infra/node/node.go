@@ -13,9 +13,9 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
-	"go.etcd.io/etcd/raft/v3"
-	"go.etcd.io/etcd/raft/v3/raftpb"
-	"go.etcd.io/etcd/raft/v3/tracker"
+	"go.etcd.io/raft/v3"
+	"go.etcd.io/raft/v3/raftpb"
+	"go.etcd.io/raft/v3/tracker"
 	"go.opentelemetry.io/otel/metric"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -1671,14 +1671,14 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 			}
 
 			progress[id] = &clusterpb.ProgressInfo{
-				Match:           prog.Match,
-				Next:            prog.Next,
-				State:           stateStr,
-				PendingSnapshot: prog.PendingSnapshot,
-				RecentActive:    prog.RecentActive,
-				ProbeSent:       prog.ProbeSent,
-				IsPaused:        prog.IsPaused(),
-				IsLearner:       prog.IsLearner,
+				Match:            prog.Match,
+				Next:             prog.Next,
+				State:            stateStr,
+				PendingSnapshot:  prog.PendingSnapshot,
+				RecentActive:     prog.RecentActive,
+				MsgAppFlowPaused: prog.MsgAppFlowPaused,
+				IsPaused:         prog.IsPaused(),
+				IsLearner:        prog.IsLearner,
 			}
 		}
 

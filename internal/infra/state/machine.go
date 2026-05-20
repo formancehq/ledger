@@ -10,7 +10,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
-	"go.etcd.io/etcd/raft/v3/raftpb"
+	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -1758,8 +1758,8 @@ type PreparedBatch struct {
 	checkpointDeletes    []uint64
 
 	// Sentinel data (captured during prepare, validated after commit).
-	sentinelMode    bool
-	sentinelUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
+	sentinelMode      bool
+	sentinelUpdates   []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
 	sentinelLedgerIDs []uint32
 
 	// archiveRequests is captured during prepare so CommitPreparedBatch

@@ -162,17 +162,17 @@ func (x *NodeInfo) GetIndexProgress() *IndexProgress {
 
 // ProgressInfo represents the progress information for a node
 type ProgressInfo struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	Match           uint64                 `protobuf:"varint,1,opt,name=match,proto3" json:"match,omitempty"`                                            // Match index: highest log entry known to be replicated to this node
-	Next            uint64                 `protobuf:"varint,2,opt,name=next,proto3" json:"next,omitempty"`                                              // Next index: index of the next log entry to send to this node
-	State           string                 `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`                                             // State: Probe, Replicate, or Snapshot
-	PendingSnapshot uint64                 `protobuf:"varint,4,opt,name=pending_snapshot,json=pendingSnapshot,proto3" json:"pending_snapshot,omitempty"` // Index of pending snapshot (0 if none)
-	RecentActive    bool                   `protobuf:"varint,5,opt,name=recent_active,json=recentActive,proto3" json:"recent_active,omitempty"`          // Whether this node is recently active
-	ProbeSent       bool                   `protobuf:"varint,6,opt,name=probe_sent,json=probeSent,proto3" json:"probe_sent,omitempty"`                   // Whether probe message was sent (paused)
-	IsPaused        bool                   `protobuf:"varint,7,opt,name=is_paused,json=isPaused,proto3" json:"is_paused,omitempty"`                      // Whether this node is paused
-	IsLearner       bool                   `protobuf:"varint,8,opt,name=is_learner,json=isLearner,proto3" json:"is_learner,omitempty"`                   // Whether this node is a learner (non-voting)
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Match            uint64                 `protobuf:"varint,1,opt,name=match,proto3" json:"match,omitempty"`                                                   // Match index: highest log entry known to be replicated to this node
+	Next             uint64                 `protobuf:"varint,2,opt,name=next,proto3" json:"next,omitempty"`                                                     // Next index: index of the next log entry to send to this node
+	State            string                 `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`                                                    // State: Probe, Replicate, or Snapshot
+	PendingSnapshot  uint64                 `protobuf:"varint,4,opt,name=pending_snapshot,json=pendingSnapshot,proto3" json:"pending_snapshot,omitempty"`        // Index of pending snapshot (0 if none)
+	RecentActive     bool                   `protobuf:"varint,5,opt,name=recent_active,json=recentActive,proto3" json:"recent_active,omitempty"`                 // Whether this node is recently active
+	MsgAppFlowPaused bool                   `protobuf:"varint,6,opt,name=msg_app_flow_paused,json=msgAppFlowPaused,proto3" json:"msg_app_flow_paused,omitempty"` // Whether MsgApp flow to this node is paused
+	IsPaused         bool                   `protobuf:"varint,7,opt,name=is_paused,json=isPaused,proto3" json:"is_paused,omitempty"`                             // Whether this node is paused
+	IsLearner        bool                   `protobuf:"varint,8,opt,name=is_learner,json=isLearner,proto3" json:"is_learner,omitempty"`                          // Whether this node is a learner (non-voting)
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *ProgressInfo) Reset() {
@@ -240,9 +240,9 @@ func (x *ProgressInfo) GetRecentActive() bool {
 	return false
 }
 
-func (x *ProgressInfo) GetProbeSent() bool {
+func (x *ProgressInfo) GetMsgAppFlowPaused() bool {
 	if x != nil {
-		return x.ProbeSent
+		return x.MsgAppFlowPaused
 	}
 	return false
 }
@@ -2238,15 +2238,14 @@ const file_cluster_proto_rawDesc = "" +
 	"\fraft_address\x18\x04 \x01(\tR\vraftAddress\x12'\n" +
 	"\x0fservice_address\x18\x05 \x01(\tR\x0eserviceAddress\x12:\n" +
 	"\rsync_progress\x18\x06 \x01(\v2\x15.cluster.SyncProgressR\fsyncProgress\x12=\n" +
-	"\x0eindex_progress\x18\a \x01(\v2\x16.cluster.IndexProgressR\rindexProgress\"\xf9\x01\n" +
+	"\x0eindex_progress\x18\a \x01(\v2\x16.cluster.IndexProgressR\rindexProgress\"\x89\x02\n" +
 	"\fProgressInfo\x12\x14\n" +
 	"\x05match\x18\x01 \x01(\x04R\x05match\x12\x12\n" +
 	"\x04next\x18\x02 \x01(\x04R\x04next\x12\x14\n" +
 	"\x05state\x18\x03 \x01(\tR\x05state\x12)\n" +
 	"\x10pending_snapshot\x18\x04 \x01(\x04R\x0fpendingSnapshot\x12#\n" +
-	"\rrecent_active\x18\x05 \x01(\bR\frecentActive\x12\x1d\n" +
-	"\n" +
-	"probe_sent\x18\x06 \x01(\bR\tprobeSent\x12\x1b\n" +
+	"\rrecent_active\x18\x05 \x01(\bR\frecentActive\x12-\n" +
+	"\x13msg_app_flow_paused\x18\x06 \x01(\bR\x10msgAppFlowPaused\x12\x1b\n" +
 	"\tis_paused\x18\a \x01(\bR\bisPaused\x12\x1d\n" +
 	"\n" +
 	"is_learner\x18\b \x01(\bR\tisLearner\"\xc6\x02\n" +

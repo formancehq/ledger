@@ -1,7 +1,7 @@
 package node
 
 import (
-	"go.etcd.io/etcd/raft/v3/raftpb"
+	"go.etcd.io/raft/v3/raftpb"
 )
 
 // ConfChangeEvent is emitted when a Raft configuration change is committed.

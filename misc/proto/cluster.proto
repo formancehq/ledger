@@ -106,7 +106,7 @@ message ProgressInfo {
   string state = 3;             // State: Probe, Replicate, or Snapshot
   uint64 pending_snapshot = 4;  // Index of pending snapshot (0 if none)
   bool recent_active = 5;       // Whether this node is recently active
-  bool probe_sent = 6;          // Whether probe message was sent (paused)
+  bool msg_app_flow_paused = 6; // Whether MsgApp flow to this node is paused
   bool is_paused = 7;           // Whether this node is paused
   bool is_learner = 8;          // Whether this node is a learner (non-voting)
 }

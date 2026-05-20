@@ -3,7 +3,7 @@ package node
 import (
 	"fmt"
 
-	"go.etcd.io/etcd/raft/v3"
+	"go.etcd.io/raft/v3"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )

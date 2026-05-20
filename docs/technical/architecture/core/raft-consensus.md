@@ -73,7 +73,7 @@ Machine state (conceptual):
 
 ### Library Used
 
-The system uses `go.etcd.io/etcd/raft/v3`, a high-quality Raft implementation used by etcd.
+The system uses `go.etcd.io/raft/v3`, the standalone Raft implementation extracted from etcd.
 
 ### Main Components
 

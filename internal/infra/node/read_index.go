@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.etcd.io/etcd/raft/v3"
+	"go.etcd.io/raft/v3"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"

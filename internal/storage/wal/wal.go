@@ -1,8 +1,8 @@
 package wal
 
 import (
-	"go.etcd.io/etcd/raft/v3"
-	"go.etcd.io/etcd/raft/v3/raftpb"
+	"go.etcd.io/raft/v3"
+	"go.etcd.io/raft/v3/raftpb"
 )
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source wal.go -destination wal_generated.go -typed -package wal . WAL
