@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
@@ -79,9 +80,22 @@ func main() {
 	assert.Reachable("leadership transfer completed", details)
 
 	// 3. Verify the cluster is still functional by getting state again.
-	stateAfter, err := client.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
-	if err != nil {
-		return
+	//    A concurrent network fault may trigger a new election right after the
+	//    transfer, so we retry a few times before giving up.
+	var stateAfter *clusterpb.ClusterState
+	for attempt := range 5 {
+		if attempt > 0 {
+			time.Sleep(200 * time.Millisecond)
+		}
+
+		stateAfter, err = client.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		if err != nil {
+			return
+		}
+
+		if stateAfter.GetLeader() != 0 {
+			break
+		}
 	}
 
 	assert.AlwaysOrUnreachable(stateAfter.GetLeader() != 0,
