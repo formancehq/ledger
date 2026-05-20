@@ -23,20 +23,20 @@ type numscriptPostingProducer struct {
 	schema   *commonpb.MetadataSchema
 }
 
-func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error) {
-	if order.GetScript() == nil || order.GetScript().GetPlain() == "" {
+func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, error) {
+	if script == nil || script.GetPlain() == "" {
 		return nil, domain.ErrScriptRequired
 	}
 
 	// Parse the script (uses cache to avoid re-parsing)
-	parsed, err := p.cache.GetOrParse(order.GetScript().GetPlain())
+	parsed, err := p.cache.GetOrParse(script.GetPlain())
 	if err != nil {
 		return nil, err
 	}
 
 	// Build variables map from script vars
 	vars := make(numscriptlib.VariablesMap)
-	maps.Copy(vars, order.GetScript().GetVars())
+	maps.Copy(vars, script.GetVars())
 
 	// Create the store adapter
 	// When Force is true, the adapter returns unlimited balances to bypass balance checks

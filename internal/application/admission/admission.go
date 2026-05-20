@@ -963,9 +963,13 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			resolvedVersion = rv
 			isReference = true
 
-			// Update the order's reference with the resolved version so the FSM
-			// uses an exact key for cache lookup.
-			ref.Version = resolvedVersion
+			// Replace the entire NumscriptReference rather than mutating a field
+			// on the committed order's shared pointer.
+			createTx.CreateTransaction.NumscriptReference = &raftcmdpb.NumscriptReference{
+				Name:    ref.GetName(),
+				Version: resolvedVersion,
+				Vars:    ref.GetVars(),
+			}
 		} else if createTx.CreateTransaction.GetScript() != nil &&
 			createTx.CreateTransaction.GetScript().GetPlain() != "" &&
 			len(createTx.CreateTransaction.GetPostings()) == 0 {

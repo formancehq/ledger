@@ -34,6 +34,7 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, ledgerID uint
 	}
 
 	// Resolve script reference: load content from preloaded cache.
+	var script *commonpb.Script
 	if ref := order.GetNumscriptReference(); ref != nil {
 		info, err := s.ResolveNumscriptContent(ledgerID, ref.GetName(), ref.GetVersion())
 		if err != nil {
@@ -44,15 +45,17 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, ledgerID uint
 			return nil, &domain.ErrNumscriptNotFound{Name: ref.GetName()}
 		}
 
-		order.Script = &commonpb.Script{
+		script = &commonpb.Script{
 			Plain: info.GetContent(),
 			Vars:  ref.GetVars(),
 		}
+	} else {
+		script = order.GetScript()
 	}
 
 	// Select the appropriate posting producer
 	var producer postingProducer
-	isNumscript := order.GetScript() != nil && order.GetScript().GetPlain() != ""
+	isNumscript := script != nil && script.GetPlain() != ""
 	if isNumscript {
 		producer = &numscriptPostingProducer{cache: p.numscriptCache, ledgerID: ledgerID, schema: schema}
 	} else {
@@ -60,7 +63,7 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, ledgerID uint
 	}
 
 	// Produce postings (handles balance checks and buffer updates)
-	result, err := producer.produce(s, ledgerID, order)
+	result, err := producer.produce(s, ledgerID, order, script)
 	if err != nil {
 		return nil, err
 	}
@@ -249,12 +252,12 @@ type produceResult struct {
 }
 
 type postingProducer interface {
-	produce(s InMemoryStore, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error)
+	produce(s InMemoryStore, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, error)
 }
 
 type stdPostingProducer struct{}
 
-func (p *stdPostingProducer) produce(s InMemoryStore, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error) {
+func (p *stdPostingProducer) produce(s InMemoryStore, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder, _ *commonpb.Script) (*produceResult, error) {
 	for _, posting := range order.GetPostings() {
 		// Skip balance check when Force is true
 		err := applyPosting(s, ledgerID, posting, order.GetForce())
