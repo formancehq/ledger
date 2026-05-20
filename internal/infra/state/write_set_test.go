@@ -273,10 +273,6 @@ func TestWriteSetDateAndHash(t *testing.T) {
 	buf, _ := newTestBuffer(t)
 
 	require.Equal(t, uint64(1700000000), buf.GetDate().GetData())
-
-	require.Nil(t, buf.GetLastLogHash())
-	buf.SetLastLogHash([]byte("hash123"))
-	require.Equal(t, []byte("hash123"), buf.GetLastLogHash())
 }
 
 func TestWriteSetPeriodOperations(t *testing.T) {
@@ -357,7 +353,7 @@ func TestWriteSetMultipleClosingPeriodsAfterMerge(t *testing.T) {
 
 	// After Merge, the machine should have both closing periods
 	batch := machine.dataStore.NewBatch()
-	err := buf.Merge(batch, nil, nil)
+	err := buf.Merge(batch, nil)
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
@@ -486,7 +482,6 @@ func TestWriteSetResetIsolation(t *testing.T) {
 	buf.SetPurgeRange(1, 10, 50, 5, 25)
 	buf.SetPendingArchive(1, 10, 50)
 	buf.AddMetadataConvertRequest("ledger-1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "email", commonpb.MetadataType_METADATA_TYPE_STRING)
-	buf.SetLastLogHash([]byte("hash-leak"))
 
 	// Verify data is present before Reset
 	_, ok := buf.GetLedger("leaked")
@@ -529,5 +524,4 @@ func TestWriteSetResetIsolation(t *testing.T) {
 
 	// Scalar state must be refreshed
 	require.Equal(t, uint64(1700000001), buf.GetDate().GetData(), "date must be updated after Reset")
-	require.Nil(t, buf.GetLastLogHash(), "last log hash must come from FSM, not previous proposal")
 }

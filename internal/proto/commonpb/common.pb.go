@@ -2753,11 +2753,9 @@ type Log struct {
 	Sequence          uint64                         `protobuf:"fixed64,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
 	Payload           *LogPayload                    `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"`
 	Idempotency       *Idempotency                   `protobuf:"bytes,3,opt,name=idempotency,proto3" json:"idempotency,omitempty"`
-	Hash              []byte                         `protobuf:"bytes,4,opt,name=hash,proto3" json:"hash,omitempty"`
 	Signature         *signaturepb.RequestSignature  `protobuf:"bytes,5,opt,name=signature,proto3" json:"signature,omitempty"`
 	Receipt           string                         `protobuf:"bytes,6,opt,name=receipt,proto3" json:"receipt,omitempty"`
 	ResponseSignature *signaturepb.ResponseSignature `protobuf:"bytes,7,opt,name=response_signature,json=responseSignature,proto3" json:"response_signature,omitempty"`
-	HashVersion       uint32                         `protobuf:"varint,8,opt,name=hash_version,json=hashVersion,proto3" json:"hash_version,omitempty"` // Hash algorithm version (0 = legacy = v1)
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -2813,13 +2811,6 @@ func (x *Log) GetIdempotency() *Idempotency {
 	return nil
 }
 
-func (x *Log) GetHash() []byte {
-	if x != nil {
-		return x.Hash
-	}
-	return nil
-}
-
 func (x *Log) GetSignature() *signaturepb.RequestSignature {
 	if x != nil {
 		return x.Signature
@@ -2839,13 +2830,6 @@ func (x *Log) GetResponseSignature() *signaturepb.ResponseSignature {
 		return x.ResponseSignature
 	}
 	return nil
-}
-
-func (x *Log) GetHashVersion() uint32 {
-	if x != nil {
-		return x.HashVersion
-	}
-	return 0
 }
 
 type LogPayload struct {
@@ -6766,7 +6750,7 @@ type Period struct {
 	Status             PeriodStatus           `protobuf:"varint,4,opt,name=status,proto3,enum=common.PeriodStatus" json:"status,omitempty"`
 	CloseSequence      uint64                 `protobuf:"fixed64,5,opt,name=close_sequence,json=closeSequence,proto3" json:"close_sequence,omitempty"`
 	SealingHash        []byte                 `protobuf:"bytes,6,opt,name=sealing_hash,json=sealingHash,proto3" json:"sealing_hash,omitempty"`
-	LastLogHash        []byte                 `protobuf:"bytes,7,opt,name=last_log_hash,json=lastLogHash,proto3" json:"last_log_hash,omitempty"`                         // Log chain hash at the time the period was closed (for crash recovery)
+	LastAuditHash      []byte                 `protobuf:"bytes,7,opt,name=last_audit_hash,json=lastAuditHash,proto3" json:"last_audit_hash,omitempty"`                   // Audit chain hash at the time the period was closed (for integrity recovery)
 	StartSequence      uint64                 `protobuf:"fixed64,8,opt,name=start_sequence,json=startSequence,proto3" json:"start_sequence,omitempty"`                   // First log sequence in this period (previous close_sequence + 1, or 1 for the first period)
 	StateHash          []byte                 `protobuf:"bytes,9,opt,name=state_hash,json=stateHash,proto3" json:"state_hash,omitempty"`                                 // BLAKE3 hash of computed attributes (V+M+T) at seal time
 	StartAuditSequence uint64                 `protobuf:"fixed64,10,opt,name=start_audit_sequence,json=startAuditSequence,proto3" json:"start_audit_sequence,omitempty"` // First audit sequence in this period
@@ -6847,9 +6831,9 @@ func (x *Period) GetSealingHash() []byte {
 	return nil
 }
 
-func (x *Period) GetLastLogHash() []byte {
+func (x *Period) GetLastAuditHash() []byte {
 	if x != nil {
-		return x.LastLogHash
+		return x.LastAuditHash
 	}
 	return nil
 }
@@ -10299,16 +10283,14 @@ const file_common_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\"=\n" +
 	"\x10IdempotencyEntry\x12\x12\n" +
 	"\x04hash\x18\x01 \x01(\fR\x04hash\x12\x15\n" +
-	"\x06log_id\x18\x02 \x01(\x06R\x05logId\"\xdf\x02\n" +
+	"\x06log_id\x18\x02 \x01(\x06R\x05logId\"\xb4\x02\n" +
 	"\x03Log\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x06R\bsequence\x12,\n" +
 	"\apayload\x18\x02 \x01(\v2\x12.common.LogPayloadR\apayload\x125\n" +
-	"\vidempotency\x18\x03 \x01(\v2\x13.common.IdempotencyR\vidempotency\x12\x12\n" +
-	"\x04hash\x18\x04 \x01(\fR\x04hash\x129\n" +
+	"\vidempotency\x18\x03 \x01(\v2\x13.common.IdempotencyR\vidempotency\x129\n" +
 	"\tsignature\x18\x05 \x01(\v2\x1b.signature.RequestSignatureR\tsignature\x12\x18\n" +
 	"\areceipt\x18\x06 \x01(\tR\areceipt\x12K\n" +
-	"\x12response_signature\x18\a \x01(\v2\x1c.signature.ResponseSignatureR\x11responseSignature\x12!\n" +
-	"\fhash_version\x18\b \x01(\rR\vhashVersion\"\x8b\x11\n" +
+	"\x12response_signature\x18\a \x01(\v2\x1c.signature.ResponseSignatureR\x11responseSignatureJ\x04\b\x04\x10\x05J\x04\b\b\x10\t\"\x8b\x11\n" +
 	"\n" +
 	"LogPayload\x12>\n" +
 	"\rcreate_ledger\x18\x01 \x01(\v2\x17.common.CreateLedgerLogH\x00R\fcreateLedger\x12>\n" +
@@ -10605,15 +10587,15 @@ const file_common_proto_rawDesc = "" +
 	"\x1bRemovedMetadataFieldTypeLog\x123\n" +
 	"\vtarget_type\x18\x01 \x01(\x0e2\x12.common.TargetTypeR\n" +
 	"targetType\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\"\xac\x03\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\"\xb0\x03\n" +
 	"\x06Period\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x06R\x02id\x12'\n" +
 	"\x05start\x18\x02 \x01(\v2\x11.common.TimestampR\x05start\x12#\n" +
 	"\x03end\x18\x03 \x01(\v2\x11.common.TimestampR\x03end\x12,\n" +
 	"\x06status\x18\x04 \x01(\x0e2\x14.common.PeriodStatusR\x06status\x12%\n" +
 	"\x0eclose_sequence\x18\x05 \x01(\x06R\rcloseSequence\x12!\n" +
-	"\fsealing_hash\x18\x06 \x01(\fR\vsealingHash\x12\"\n" +
-	"\rlast_log_hash\x18\a \x01(\fR\vlastLogHash\x12%\n" +
+	"\fsealing_hash\x18\x06 \x01(\fR\vsealingHash\x12&\n" +
+	"\x0flast_audit_hash\x18\a \x01(\fR\rlastAuditHash\x12%\n" +
 	"\x0estart_sequence\x18\b \x01(\x06R\rstartSequence\x12\x1d\n" +
 	"\n" +
 	"state_hash\x18\t \x01(\fR\tstateHash\x120\n" +

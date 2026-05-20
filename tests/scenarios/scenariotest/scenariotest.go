@@ -318,7 +318,6 @@ func CheckAuditTrail(t *testing.T, ctx context.Context, client servicepb.BucketS
 
 	for i, log := range logs {
 		require.NotZero(t, log.Sequence, "log %d has zero sequence", i)
-		require.NotEmpty(t, log.Hash, "log %d (seq=%d) has empty hash", i, log.Sequence)
 
 		if i > 0 {
 			require.Greater(t, log.Sequence, logs[i-1].Sequence,

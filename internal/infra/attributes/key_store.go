@@ -178,9 +178,9 @@ type DerivedKeyStore[K Key, T any] struct {
 
 	values    map[K]T
 	deletions map[K]struct{}
-	readCache map[K]T    // cloned values from parent, avoids re-cloning on repeated reads
-	cloneFn   func(T) T  // optional: clone on Get from parent to protect against in-place mutation
-	scratch   []byte     // reusable buffer for Get — single-goroutine use only
+	readCache map[K]T   // cloned values from parent, avoids re-cloning on repeated reads
+	cloneFn   func(T) T // optional: clone on Get from parent to protect against in-place mutation
+	scratch   []byte    // reusable buffer for Get — single-goroutine use only
 }
 
 func (s *DerivedKeyStore[K, T]) Put(canonical K, value T) {

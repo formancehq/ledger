@@ -19,7 +19,7 @@ import (
 type SealRequest struct {
 	PeriodID       uint64
 	CloseSequence  uint64
-	LastLogHash    []byte
+	LastAuditHash  []byte
 	CheckpointPath string
 }
 
@@ -188,8 +188,8 @@ func (s *Sealer) seal(req SealRequest) error {
 	binary.BigEndian.PutUint64(buf, req.CloseSequence)
 	_, _ = hasher.Write(buf)
 
-	if len(req.LastLogHash) > 0 {
-		_, _ = hasher.Write(req.LastLogHash)
+	if len(req.LastAuditHash) > 0 {
+		_, _ = hasher.Write(req.LastAuditHash)
 	}
 
 	_, _ = hasher.Write(stateHash)

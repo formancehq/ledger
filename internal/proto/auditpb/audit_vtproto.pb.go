@@ -31,6 +31,7 @@ func (m *AuditEntry) CloneVT() *AuditEntry {
 	r.Timestamp = m.Timestamp.CloneVT()
 	r.ProposalId = m.ProposalId
 	r.OrderCount = m.OrderCount
+	r.HashVersion = m.HashVersion
 	if m.Outcome != nil {
 		r.Outcome = m.Outcome.(interface{ CloneVT() isAuditEntry_Outcome }).CloneVT()
 	}
@@ -45,6 +46,11 @@ func (m *AuditEntry) CloneVT() *AuditEntry {
 		tmpContainer := make([]string, len(rhs))
 		copy(tmpContainer, rhs)
 		r.Ledgers = tmpContainer
+	}
+	if rhs := m.Hash; rhs != nil {
+		tmpBytes := make([]byte, len(rhs))
+		copy(tmpBytes, rhs)
+		r.Hash = tmpBytes
 	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -227,6 +233,12 @@ func (this *AuditEntry) EqualVT(that *AuditEntry) bool {
 		if vx != vy {
 			return false
 		}
+	}
+	if string(this.Hash) != string(that.Hash) {
+		return false
+	}
+	if this.HashVersion != that.HashVersion {
+		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -472,6 +484,18 @@ func (m *AuditEntry) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
+	}
+	if m.HashVersion != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.HashVersion))
+		i--
+		dAtA[i] = 0x50
+	}
+	if len(m.Hash) > 0 {
+		i -= len(m.Hash)
+		copy(dAtA[i:], m.Hash)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Hash)))
+		i--
+		dAtA[i] = 0x4a
 	}
 	if len(m.Ledgers) > 0 {
 		for iNdEx := len(m.Ledgers) - 1; iNdEx >= 0; iNdEx-- {
@@ -846,6 +870,13 @@ func (m *AuditEntry) SizeVT() (n int) {
 			l = len(s)
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
+	}
+	l = len(m.Hash)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.HashVersion != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.HashVersion))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -1231,6 +1262,59 @@ func (m *AuditEntry) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Ledgers = append(m.Ledgers, string(dAtA[iNdEx:postIndex]))
 			iNdEx = postIndex
+		case 9:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Hash", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Hash = append(m.Hash[:0], dAtA[iNdEx:postIndex]...)
+			if m.Hash == nil {
+				m.Hash = []byte{}
+			}
+			iNdEx = postIndex
+		case 10:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field HashVersion", wireType)
+			}
+			m.HashVersion = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.HashVersion |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

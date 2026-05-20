@@ -120,7 +120,7 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 		modifiedTxStates: modifiedTxStates,
 		reverted:         make(map[string]bool),
 	}
-	resp, _, err := e.processor.ProcessOrders(proposal.GetOrders(), store)
+	resp, err := e.processor.ProcessOrders(proposal.GetOrders(), store)
 	require.NoError(e.t, err)
 
 	// Collect actual logs from the response
@@ -137,7 +137,7 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 
 	defer func() { _ = batch.Cancel() }()
 
-	err = state.AppendLogs(batch, logs, nil)
+	err = state.AppendLogs(batch, logs)
 	require.NoError(e.t, err)
 
 	// Write only modified volume attributes.
@@ -764,62 +764,6 @@ func TestCheckerComprehensive(t *testing.T) {
 	require.Empty(t, errors, "store built from valid operations should have no integrity errors")
 }
 
-// TestCheckerDetectsHashMismatch verifies the checker detects a corrupted hash chain.
-func TestCheckerDetectsHashMismatch(t *testing.T) {
-	t.Parallel()
-
-	store := createTestStore(t)
-	attrs := attributes.New()
-
-	// Manually write a log with a bad hash
-	log1 := &commonpb.Log{
-		Sequence: 1,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_CreateLedger{
-				CreateLedger: &commonpb.CreateLedgerLog{
-					Name:      "test",
-					CreatedAt: &commonpb.Timestamp{Data: 1700000000},
-				},
-			},
-		},
-	}
-	// Compute correct hash for log1
-	log1.Hash = computeCorrectHash(nil, log1)
-
-	// Create log2 with WRONG hash
-	log2 := &commonpb.Log{
-		Sequence: 2,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_CreateLedger{
-				CreateLedger: &commonpb.CreateLedgerLog{
-					Name:      "test2",
-					CreatedAt: &commonpb.Timestamp{Data: 1700000001},
-				},
-			},
-		},
-	}
-	log2.Hash = []byte("this-is-a-bad-hash")
-
-	batch := store.NewBatch()
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{log1, log2}, nil))
-	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().ToLedgerInfo()))
-	require.NoError(t, state.SaveLedger(batch, log2.GetPayload().GetCreateLedger().ToLedgerInfo()))
-	require.NoError(t, batch.Commit())
-
-	// Write ledger attributes
-	batch2 := store.NewBatch()
-	_, err := attrs.Ledger.Set(batch2, domain.LedgerKey{Name: "test"}.Bytes(), log1.GetPayload().GetCreateLedger().ToLedgerInfo())
-	require.NoError(t, err)
-	_, err = attrs.Ledger.Set(batch2, domain.LedgerKey{Name: "test2"}.Bytes(), log2.GetPayload().GetCreateLedger().ToLedgerInfo())
-	require.NoError(t, err)
-	require.NoError(t, batch2.Commit())
-
-	errors := collectCheckErrors(t, store, attrs)
-	require.Len(t, errors, 1, "should detect exactly one hash mismatch")
-	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH, errors[0].GetErrorType())
-	require.Equal(t, uint64(2), errors[0].GetLogSequence())
-}
-
 // TestCheckerDetectsSequenceGap verifies the checker detects missing log entries.
 func TestCheckerDetectsSequenceGap(t *testing.T) {
 	t.Parallel()
@@ -839,7 +783,7 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 			},
 		},
 	}
-	log1.Hash = computeCorrectHash(nil, log1)
+	// Hash chain is now verified via audit entries, not per-log.
 
 	// Skip sequence 2 and write log at sequence 3
 	log3 := &commonpb.Log{
@@ -853,11 +797,10 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 			},
 		},
 	}
-	// Even with correct hash chaining from log1, the gap will be detected
-	log3.Hash = computeCorrectHash(log1.GetHash(), log3)
+	// Even with correct chaining from log1, the gap will be detected
 
 	batch := store.NewBatch()
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{log1, log3}, nil))
+	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{log1, log3}))
 	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().ToLedgerInfo()))
 	require.NoError(t, state.SaveLedger(batch, log3.GetPayload().GetCreateLedger().ToLedgerInfo()))
 	require.NoError(t, batch.Commit())
@@ -1069,13 +1012,6 @@ func deleteTransactionMetadataOrder(ledger string, txID uint64, key string) *raf
 	}
 }
 
-// computeCorrectHash computes the correct hash for a log entry, matching the production logic.
-func computeCorrectHash(lastHash []byte, log *commonpb.Log) []byte {
-	_, hash := processing.ComputeLogHashByVersion(0, nil, lastHash, log)
-
-	return hash
-}
-
 // TestCheckerDetectsTransactionUpdateMismatch verifies the checker detects
 // corrupted transaction updates.
 func TestCheckerDetectsTransactionUpdateMismatch(t *testing.T) {
@@ -1235,7 +1171,7 @@ func TestCheckerDetectsDoubleRevert(t *testing.T) {
 	})
 
 	batch := store.NewBatch()
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{log1, log2, log3, log4}, nil))
+	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{log1, log2, log3, log4}))
 	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().ToLedgerInfo()))
 	require.NoError(t, writeVolumes(batch, attrs, posting, "test"))
 	require.NoError(t, batch.Commit())
@@ -1296,7 +1232,7 @@ func TestCheckerDetectsRevertOfNonExistentTransaction(t *testing.T) {
 	})
 
 	batch := store.NewBatch()
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{log1, log2}, nil))
+	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{log1, log2}))
 	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().ToLedgerInfo()))
 	require.NoError(t, batch.Commit())
 
@@ -1314,14 +1250,12 @@ func TestCheckerDetectsRevertOfNonExistentTransaction(t *testing.T) {
 	require.Contains(t, revertErrors[0].GetMessage(), "non-existent")
 }
 
-// buildLog creates a log entry with the correct hash chain.
-func buildLog(lastHash *[]byte, seqID *uint64, payload *commonpb.LogPayload) *commonpb.Log {
+// buildLog creates a log entry for testing.
+func buildLog(_ *[]byte, seqID *uint64, payload *commonpb.LogPayload) *commonpb.Log {
 	log := &commonpb.Log{
 		Sequence: *seqID,
 		Payload:  payload,
 	}
-	_, log.Hash = processing.ComputeLogHashByVersion(0, nil, *lastHash, log)
-	*lastHash = log.GetHash()
 	*seqID++
 
 	return log

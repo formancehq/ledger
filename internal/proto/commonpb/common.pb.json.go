@@ -37,7 +37,6 @@ func (x *Log) MarshalJSON() ([]byte, error) {
 		Sequence          uint64        `json:"sequence,omitempty"`
 		Payload           *LogPayload   `json:"payload,omitempty"`
 		Idempotency       json.RawValue `json:"idempotency,omitempty"`
-		Hash              string        `json:"hash,omitempty"`
 		Signature         json.RawValue `json:"signature,omitempty"`
 		Receipt           string        `json:"receipt,omitempty"`
 		ResponseSignature json.RawValue `json:"responseSignature,omitempty"`
@@ -50,10 +49,6 @@ func (x *Log) MarshalJSON() ([]byte, error) {
 		Signature:         protoFieldJSON(x.GetSignature()),
 		ResponseSignature: protoFieldJSON(x.GetResponseSignature()),
 		Receipt:           x.GetReceipt(),
-	}
-
-	if len(x.GetHash()) > 0 {
-		aux.Hash = hex.EncodeToString(x.GetHash())
 	}
 
 	return json.Marshal(aux)
@@ -449,7 +444,7 @@ func (x *Period) MarshalJSON() ([]byte, error) {
 		Status             string     `json:"status,omitempty"`
 		CloseSequence      uint64     `json:"closeSequence,omitempty"`
 		SealingHash        string     `json:"sealingHash,omitempty"`
-		LastLogHash        string     `json:"lastLogHash,omitempty"`
+		LastAuditHash      string     `json:"lastAuditHash,omitempty"`
 		StartSequence      uint64     `json:"startSequence,omitempty"`
 		StateHash          string     `json:"stateHash,omitempty"`
 		StartAuditSequence uint64     `json:"startAuditSequence,omitempty"`
@@ -479,8 +474,8 @@ func (x *Period) MarshalJSON() ([]byte, error) {
 		aux.SealingHash = hex.EncodeToString(x.GetSealingHash())
 	}
 
-	if len(x.GetLastLogHash()) > 0 {
-		aux.LastLogHash = hex.EncodeToString(x.GetLastLogHash())
+	if len(x.GetLastAuditHash()) > 0 {
+		aux.LastAuditHash = hex.EncodeToString(x.GetLastAuditHash())
 	}
 
 	if len(x.GetStateHash()) > 0 {

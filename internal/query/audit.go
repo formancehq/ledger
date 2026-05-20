@@ -16,9 +16,9 @@ import (
 
 // ReadLastAuditSequence returns the last audit entry sequence from the given reader. Returns 0 if no entries exist.
 func ReadLastAuditSequence(reader dal.PebbleReader) (uint64, error) {
-	entry, err := dal.ReadLastEntry[*auditpb.AuditEntry](reader, dal.ZoneCold, dal.SubColdAudit)
+	entry, err := ReadLastAuditEntry(reader)
 	if err != nil {
-		return 0, fmt.Errorf("reading last audit entry: %w", err)
+		return 0, err
 	}
 
 	if entry == nil {
@@ -26,6 +26,16 @@ func ReadLastAuditSequence(reader dal.PebbleReader) (uint64, error) {
 	}
 
 	return entry.GetSequence(), nil
+}
+
+// ReadLastAuditEntry returns the last audit entry from the given reader, or nil if none exist.
+func ReadLastAuditEntry(reader dal.PebbleReader) (*auditpb.AuditEntry, error) {
+	entry, err := dal.ReadLastEntry[*auditpb.AuditEntry](reader, dal.ZoneCold, dal.SubColdAudit)
+	if err != nil {
+		return nil, fmt.Errorf("reading last audit entry: %w", err)
+	}
+
+	return entry, nil
 }
 
 // ReadAuditEntries returns a cursor over audit entries after the given sequence from the given reader.

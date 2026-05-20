@@ -67,10 +67,6 @@ type InMemoryStore interface {
 	AddSinkConfig(config *commonpb.SinkConfig)
 	RemoveSinkConfig(name string)
 
-	// Log hash chaining
-	GetLastLogHash() []byte
-	SetLastLogHash(hash []byte)
-
 	// Counters and timestamps
 	GetNextSequenceID() uint64
 	IncrementNextSequenceID() uint64

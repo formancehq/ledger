@@ -277,20 +277,6 @@ func (mr *MockInMemoryStoreMockRecorder) GetIdempotencyKey(key any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIdempotencyKey", reflect.TypeOf((*MockInMemoryStore)(nil).GetIdempotencyKey), key)
 }
 
-// GetLastLogHash mocks base method.
-func (m *MockInMemoryStore) GetLastLogHash() []byte {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetLastLogHash")
-	ret0, _ := ret[0].([]byte)
-	return ret0
-}
-
-// GetLastLogHash indicates an expected call of GetLastLogHash.
-func (mr *MockInMemoryStoreMockRecorder) GetLastLogHash() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLastLogHash", reflect.TypeOf((*MockInMemoryStore)(nil).GetLastLogHash))
-}
-
 // GetLedger mocks base method.
 func (m *MockInMemoryStore) GetLedger(name string) (*commonpb.LedgerInfo, bool) {
 	m.ctrl.T.Helper()
@@ -813,18 +799,6 @@ func (m *MockInMemoryStore) SetCurrentOpenPeriod(period *commonpb.Period) {
 func (mr *MockInMemoryStoreMockRecorder) SetCurrentOpenPeriod(period any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetCurrentOpenPeriod", reflect.TypeOf((*MockInMemoryStore)(nil).SetCurrentOpenPeriod), period)
-}
-
-// SetLastLogHash mocks base method.
-func (m *MockInMemoryStore) SetLastLogHash(hash []byte) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "SetLastLogHash", hash)
-}
-
-// SetLastLogHash indicates an expected call of SetLastLogHash.
-func (mr *MockInMemoryStoreMockRecorder) SetLastLogHash(hash any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLastLogHash", reflect.TypeOf((*MockInMemoryStore)(nil).SetLastLogHash), hash)
 }
 
 // SetMaintenanceMode mocks base method.

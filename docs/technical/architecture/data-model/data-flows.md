@@ -752,14 +752,14 @@ sequenceDiagram
 
 2. **ClosePeriod FSM Application**
    - The current `OPEN` period transitions to `CLOSING`
-   - `close_sequence`, `end` timestamp, and `last_log_hash` are recorded
+   - `close_sequence`, `end` timestamp, and `last_audit_hash` are recorded
    - A new `OPEN` period is created (transactions continue immediately)
    - A Pebble checkpoint is created in the `seal/` directory
 
 3. **Background Sealing**
    - The Sealer opens the checkpoint as a read-only Pebble database
    - Iterates all attribute entries in `[0x09, 0x0A)` to compute `state_hash`
-   - Computes `sealing_hash = BLAKE3(period_id || close_sequence || last_log_hash || state_hash)`
+   - Computes `sealing_hash = BLAKE3(period_id || close_sequence || last_audit_hash || state_hash)`
    - Removes the seal checkpoint from disk
 
 4. **SealPeriod Proposal**

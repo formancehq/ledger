@@ -18,7 +18,7 @@ func (p *RequestProcessor) processClosePeriod(_ *raftcmdpb.ClosePeriodOrder, s I
 	currentPeriod.Status = commonpb.PeriodStatus_PERIOD_CLOSING
 	currentPeriod.CloseSequence = s.GetNextSequenceID()
 	currentPeriod.End = s.GetDate()
-	currentPeriod.LastLogHash = s.GetLastLogHash()
+	// LastAuditHash is set later in applyProposal after the audit hash is computed.
 	// Capture the audit sequence at close time. The next audit sequence ID is
 	// one past the last written, so close_audit_sequence = next - 1.
 	// If no audit entries were written (nextAudit == startAudit), close equals
@@ -38,8 +38,8 @@ func (p *RequestProcessor) processClosePeriod(_ *raftcmdpb.ClosePeriodOrder, s I
 	s.SetCurrentOpenPeriod(newPeriod)
 
 	// Clone the period for the log payload so the log's snapshot is immutable.
-	// processOrders will then update the FSM state's LastLogHash to the
-	// ClosePeriod log's hash (needed for CheckStore after archive purge).
+	// applyProposal will set LastAuditHash on the FSM period after computing
+	// the batch-level audit hash.
 	closedPeriodSnapshot := currentPeriod.CloneVT()
 
 	return &commonpb.LogPayload{

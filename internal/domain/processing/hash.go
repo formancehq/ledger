@@ -6,104 +6,101 @@ import (
 	"github.com/zeebo/blake3"
 	"github.com/zeebo/xxh3"
 
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/protowireutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
-// computeLogHash computes a hash for log chaining using the specified algorithm.
-//
-// The log's Hash, HashVersion, Signature, Receipt, and ResponseSignature
-// fields are excluded (they are populated after the hash is computed).
-// The blake3Hasher is reused across calls to avoid per-call allocation (may be nil).
-//
-// logBytesLen is the length of the deterministic log marshal within buf
-// (before lastHash is appended). Callers can use buf[:logBytesLen] as a
-// pre-marshaled base for Pebble persistence via AppendLogFieldsForPersist.
-func computeLogHash(algo commonpb.HashAlgorithm, blake3Hasher *blake3.Hasher, hashBuf []byte, lastHash []byte, log *commonpb.Log) (buf []byte, hash []byte, logBytesLen int) {
-	hashBuf, logBytesLen = serializeLogForHash(hashBuf, lastHash, log)
-	log.HashVersion = uint32(algo)
+// ComputeAuditHash computes a batch-level integrity hash for an audit entry.
+// It deterministically marshals each log, concatenates the bytes, appends the
+// previous audit hash for chaining, and hashes the result.
+// The hasher is reused across calls to avoid per-call allocation (may be nil).
+func ComputeAuditHash(algo commonpb.HashAlgorithm, hasher *blake3.Hasher, buf []byte, lastAuditHash []byte, logs []*commonpb.Log) (resBuf []byte, hash []byte) {
+	buf = buf[:0]
+	for _, log := range logs {
+		buf = log.MarshalDeterministicVT(buf)
+	}
+
+	if len(lastAuditHash) > 0 {
+		buf = append(buf, lastAuditHash...)
+	}
 
 	switch algo {
 	case commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3:
-		return hashBuf, computeXXH3(hashBuf), logBytesLen
+		return buf, computeXXH3(buf)
 	default:
-		return hashBuf, computeBLAKE3(blake3Hasher, hashBuf), logBytesLen
+		return buf, computeBLAKE3(hasher, buf)
 	}
 }
 
-// ComputeLogHashByVersion computes a hash using the algorithm indicated by hash_version.
-// Used by the checker to verify existing logs.
-func ComputeLogHashByVersion(hashVersion uint32, hashBuf []byte, lastHash []byte, log *commonpb.Log) (buf []byte, hash []byte) {
-	hashBuf, _ = serializeLogForHash(hashBuf, lastHash, log)
+// ComputeAuditHashForFailure computes an integrity hash for a failure audit entry.
+// Since failure entries produce no logs, the hash covers the serialized audit entry
+// itself (with hash/hash_version zeroed) chained to the previous audit hash.
+func ComputeAuditHashForFailure(algo commonpb.HashAlgorithm, hasher *blake3.Hasher, buf []byte, lastAuditHash []byte, entry *auditpb.AuditEntry) (resBuf []byte, hash []byte) {
+	savedHash := entry.GetHash()
+	savedHashVersion := entry.GetHashVersion()
+	entry.Hash = nil
+	entry.HashVersion = 0
+
+	buf = entry.MarshalDeterministicVT(buf[:0])
+
+	entry.Hash = savedHash
+	entry.HashVersion = savedHashVersion
+
+	if len(lastAuditHash) > 0 {
+		buf = append(buf, lastAuditHash...)
+	}
+
+	switch algo {
+	case commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3:
+		return buf, computeXXH3(buf)
+	default:
+		return buf, computeBLAKE3(hasher, buf)
+	}
+}
+
+// ComputeAuditHashByVersion computes an audit hash using the algorithm indicated
+// by hash_version. Used by the checker to verify existing audit entries.
+func ComputeAuditHashByVersion(hashVersion uint32, buf []byte, lastAuditHash []byte, logs []*commonpb.Log) (resBuf []byte, hash []byte) {
+	buf = buf[:0]
+	for _, log := range logs {
+		buf = log.MarshalDeterministicVT(buf)
+	}
+
+	if len(lastAuditHash) > 0 {
+		buf = append(buf, lastAuditHash...)
+	}
 
 	switch commonpb.HashAlgorithm(hashVersion) {
 	case commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3:
-		return hashBuf, computeXXH3(hashBuf)
+		return buf, computeXXH3(buf)
 	default:
-		return hashBuf, computeBLAKE3(nil, hashBuf)
+		return buf, computeBLAKE3(nil, buf)
 	}
 }
 
-// serializeLogForHash produces the deterministic byte representation for hashing.
-// Returns the buffer (with lastHash appended) and the length of the log bytes
-// before lastHash was appended.
-func serializeLogForHash(hashBuf []byte, lastHash []byte, log *commonpb.Log) ([]byte, int) {
-	savedHash := log.GetHash()
-	savedHashVersion := log.GetHashVersion()
-	savedSig := log.GetSignature()
-	savedReceipt := log.GetReceipt()
-	savedRespSig := log.GetResponseSignature()
+// ComputeAuditHashForFailureByVersion computes a failure audit hash using the
+// algorithm indicated by hash_version. Used by the checker.
+func ComputeAuditHashForFailureByVersion(hashVersion uint32, buf []byte, lastAuditHash []byte, entry *auditpb.AuditEntry) (resBuf []byte, hash []byte) {
+	savedHash := entry.GetHash()
+	savedHashVersion := entry.GetHashVersion()
+	entry.Hash = nil
+	entry.HashVersion = 0
 
-	log.Hash = nil
-	log.HashVersion = 0
-	log.Signature = nil
-	log.Receipt = ""
-	log.ResponseSignature = nil
+	buf = entry.MarshalDeterministicVT(buf[:0])
 
-	hashBuf = log.MarshalDeterministicVT(hashBuf[:0])
-	logBytesLen := len(hashBuf)
+	entry.Hash = savedHash
+	entry.HashVersion = savedHashVersion
 
-	if len(lastHash) > 0 {
-		hashBuf = append(hashBuf, lastHash...)
+	if len(lastAuditHash) > 0 {
+		buf = append(buf, lastAuditHash...)
 	}
 
-	log.Hash = savedHash
-	log.HashVersion = savedHashVersion
-	log.Signature = savedSig
-	log.Receipt = savedReceipt
-	log.ResponseSignature = savedRespSig
-
-	return hashBuf, logBytesLen
-}
-
-// AppendLogFieldsForPersist appends the hash, hash_version, and optional
-// signature fields to deterministic log base bytes, producing a complete
-// protobuf-encoded Log suitable for Pebble storage. This avoids a second
-// full marshal of the entire Log message.
-//
-// The base bytes must come from MarshalDeterministicVT with Hash, HashVersion,
-// Signature, Receipt, and ResponseSignature zeroed (as produced by
-// serializeLogForHash). These fields are then appended here.
-func AppendLogFieldsForPersist(base []byte, log *commonpb.Log) []byte {
-	// Field 4: hash (bytes)
-	if h := log.GetHash(); len(h) > 0 {
-		base = protowireutil.AppendBytes(base, 4, h)
+	switch commonpb.HashAlgorithm(hashVersion) {
+	case commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3:
+		return buf, computeXXH3(buf)
+	default:
+		return buf, computeBLAKE3(nil, buf)
 	}
-
-	// Field 8: hash_version (uint32, varint)
-	if hv := log.GetHashVersion(); hv != 0 {
-		base = protowireutil.AppendVarint(base, 8, uint64(hv))
-	}
-
-	// Field 5: signature (embedded message)
-	if sig := log.GetSignature(); sig != nil {
-		base = protowireutil.AppendMessage(base, 5, sig)
-	}
-
-	// Fields 6 (receipt) and 7 (response_signature) are empty/nil at
-	// persist time in the FSM hot path — proto3 omits them.
-
-	return base
 }
 
 func computeBLAKE3(hasher *blake3.Hasher, data []byte) []byte {

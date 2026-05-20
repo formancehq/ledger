@@ -150,7 +150,6 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 		for _, log := range logs {
 			log.Payload = nil
 			log.Idempotency = nil
-			log.Hash = nil
 			log.Signature = nil
 			log.Receipt = ""
 			log.ResponseSignature = nil

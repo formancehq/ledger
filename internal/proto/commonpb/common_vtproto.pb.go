@@ -744,12 +744,6 @@ func (m *Log) CloneVT() *Log {
 	r.Signature = m.Signature.CloneVT()
 	r.Receipt = m.Receipt
 	r.ResponseSignature = m.ResponseSignature.CloneVT()
-	r.HashVersion = m.HashVersion
-	if rhs := m.Hash; rhs != nil {
-		tmpBytes := make([]byte, len(rhs))
-		copy(tmpBytes, rhs)
-		r.Hash = tmpBytes
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2334,10 +2328,10 @@ func (m *Period) CloneVT() *Period {
 		copy(tmpBytes, rhs)
 		r.SealingHash = tmpBytes
 	}
-	if rhs := m.LastLogHash; rhs != nil {
+	if rhs := m.LastAuditHash; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
-		r.LastLogHash = tmpBytes
+		r.LastAuditHash = tmpBytes
 	}
 	if rhs := m.StateHash; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
@@ -4784,9 +4778,6 @@ func (this *Log) EqualVT(that *Log) bool {
 	if !this.Idempotency.EqualVT(that.Idempotency) {
 		return false
 	}
-	if string(this.Hash) != string(that.Hash) {
-		return false
-	}
 	if !this.Signature.EqualVT(that.Signature) {
 		return false
 	}
@@ -4794,9 +4785,6 @@ func (this *Log) EqualVT(that *Log) bool {
 		return false
 	}
 	if !this.ResponseSignature.EqualVT(that.ResponseSignature) {
-		return false
-	}
-	if this.HashVersion != that.HashVersion {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -7641,7 +7629,7 @@ func (this *Period) EqualVT(that *Period) bool {
 	if string(this.SealingHash) != string(that.SealingHash) {
 		return false
 	}
-	if string(this.LastLogHash) != string(that.LastLogHash) {
+	if string(this.LastAuditHash) != string(that.LastAuditHash) {
 		return false
 	}
 	if this.StartSequence != that.StartSequence {
@@ -11517,11 +11505,6 @@ func (m *Log) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.HashVersion != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.HashVersion))
-		i--
-		dAtA[i] = 0x40
-	}
 	if m.ResponseSignature != nil {
 		size, err := m.ResponseSignature.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
@@ -11548,13 +11531,6 @@ func (m *Log) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
 		dAtA[i] = 0x2a
-	}
-	if len(m.Hash) > 0 {
-		i -= len(m.Hash)
-		copy(dAtA[i:], m.Hash)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Hash)))
-		i--
-		dAtA[i] = 0x22
 	}
 	if m.Idempotency != nil {
 		size, err := m.Idempotency.MarshalToSizedBufferVT(dAtA[:i])
@@ -15568,10 +15544,10 @@ func (m *Period) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x41
 	}
-	if len(m.LastLogHash) > 0 {
-		i -= len(m.LastLogHash)
-		copy(dAtA[i:], m.LastLogHash)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.LastLogHash)))
+	if len(m.LastAuditHash) > 0 {
+		i -= len(m.LastAuditHash)
+		copy(dAtA[i:], m.LastAuditHash)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.LastAuditHash)))
 		i--
 		dAtA[i] = 0x3a
 	}
@@ -19521,10 +19497,6 @@ func (m *Log) SizeVT() (n int) {
 		l = m.Idempotency.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	l = len(m.Hash)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	if m.Signature != nil {
 		l = m.Signature.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
@@ -19536,9 +19508,6 @@ func (m *Log) SizeVT() (n int) {
 	if m.ResponseSignature != nil {
 		l = m.ResponseSignature.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.HashVersion != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.HashVersion))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -21324,7 +21293,7 @@ func (m *Period) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	l = len(m.LastLogHash)
+	l = len(m.LastAuditHash)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
@@ -27204,40 +27173,6 @@ func (m *Log) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Hash", wireType)
-			}
-			var byteLen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				byteLen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if byteLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + byteLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Hash = append(m.Hash[:0], dAtA[iNdEx:postIndex]...)
-			if m.Hash == nil {
-				m.Hash = []byte{}
-			}
-			iNdEx = postIndex
 		case 5:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Signature", wireType)
@@ -27342,25 +27277,6 @@ func (m *Log) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 8:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field HashVersion", wireType)
-			}
-			m.HashVersion = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.HashVersion |= uint32(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -36922,7 +36838,7 @@ func (m *Period) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 7:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LastLogHash", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field LastAuditHash", wireType)
 			}
 			var byteLen int
 			for shift := uint(0); ; shift += 7 {
@@ -36949,9 +36865,9 @@ func (m *Period) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.LastLogHash = append(m.LastLogHash[:0], dAtA[iNdEx:postIndex]...)
-			if m.LastLogHash == nil {
-				m.LastLogHash = []byte{}
+			m.LastAuditHash = append(m.LastAuditHash[:0], dAtA[iNdEx:postIndex]...)
+			if m.LastAuditHash == nil {
+				m.LastAuditHash = []byte{}
 			}
 			iNdEx = postIndex
 		case 8:

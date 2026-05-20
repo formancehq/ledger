@@ -249,7 +249,6 @@ func buildTestLog() *commonpb.Log {
 		Idempotency: &commonpb.Idempotency{
 			Key: "test-key",
 		},
-		Hash: []byte("test-hash"),
 		Payload: &commonpb.LogPayload{
 			Type: &commonpb.LogPayload_Apply{
 				Apply: &commonpb.ApplyLedgerLog{

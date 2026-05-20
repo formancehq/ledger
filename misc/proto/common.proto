@@ -280,11 +280,11 @@ message Log {
   fixed64 sequence = 1;
   LogPayload payload = 2;
   Idempotency idempotency = 3;
-  bytes hash = 4;
+  reserved 4; // was: bytes hash (moved to AuditEntry)
   signature.RequestSignature signature = 5;
   string receipt = 6;
   signature.ResponseSignature response_signature = 7;
-  uint32 hash_version = 8;  // Hash algorithm version (0 = legacy = v1)
+  reserved 8; // was: uint32 hash_version (moved to AuditEntry)
 }
 
 message LogPayload {
@@ -730,7 +730,7 @@ message Period {
   PeriodStatus status = 4;
   fixed64 close_sequence = 5;
   bytes sealing_hash = 6;
-  bytes last_log_hash = 7;    // Log chain hash at the time the period was closed (for crash recovery)
+  bytes last_audit_hash = 7;  // Audit chain hash at the time the period was closed (for integrity recovery)
   fixed64 start_sequence = 8;  // First log sequence in this period (previous close_sequence + 1, or 1 for the first period)
   bytes state_hash = 9;       // BLAKE3 hash of computed attributes (V+M+T) at seal time
   fixed64 start_audit_sequence = 10; // First audit sequence in this period

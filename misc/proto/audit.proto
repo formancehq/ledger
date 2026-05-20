@@ -30,6 +30,12 @@ message AuditEntry {
   // Distinct ledger names targeted by orders in this proposal.
   // Used for efficient filtering without loading items.
   repeated string ledgers = 8;
+  // Batch-level integrity hash chaining audit entries.
+  // For success entries: H(concat(all_pre_marshaled_log_bytes) + previous_audit_hash)
+  // For failure entries: H(serialize(audit_entry_without_hash) + previous_audit_hash)
+  bytes hash = 9;
+  // Hash algorithm version (matches common.HashAlgorithm enum).
+  uint32 hash_version = 10;
 }
 
 // AuditItem represents one order within a proposal, stored separately from the

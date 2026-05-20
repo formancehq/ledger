@@ -43,7 +43,13 @@ type AuditEntry struct {
 	Items []*AuditItem `protobuf:"bytes,7,rep,name=items,proto3" json:"items,omitempty"`
 	// Distinct ledger names targeted by orders in this proposal.
 	// Used for efficient filtering without loading items.
-	Ledgers       []string `protobuf:"bytes,8,rep,name=ledgers,proto3" json:"ledgers,omitempty"`
+	Ledgers []string `protobuf:"bytes,8,rep,name=ledgers,proto3" json:"ledgers,omitempty"`
+	// Batch-level integrity hash chaining audit entries.
+	// For success entries: H(concat(all_pre_marshaled_log_bytes) + previous_audit_hash)
+	// For failure entries: H(serialize(audit_entry_without_hash) + previous_audit_hash)
+	Hash []byte `protobuf:"bytes,9,opt,name=hash,proto3" json:"hash,omitempty"`
+	// Hash algorithm version (matches common.HashAlgorithm enum).
+	HashVersion   uint32 `protobuf:"varint,10,opt,name=hash_version,json=hashVersion,proto3" json:"hash_version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -143,6 +149,20 @@ func (x *AuditEntry) GetLedgers() []string {
 		return x.Ledgers
 	}
 	return nil
+}
+
+func (x *AuditEntry) GetHash() []byte {
+	if x != nil {
+		return x.Hash
+	}
+	return nil
+}
+
+func (x *AuditEntry) GetHashVersion() uint32 {
+	if x != nil {
+		return x.HashVersion
+	}
+	return 0
 }
 
 type isAuditEntry_Outcome interface {
@@ -416,7 +436,7 @@ var File_audit_proto protoreflect.FileDescriptor
 
 const file_audit_proto_rawDesc = "" +
 	"\n" +
-	"\vaudit.proto\x12\x05audit\x1a\fcommon.proto\x1a\x0eraft_cmd.proto\"\xca\x02\n" +
+	"\vaudit.proto\x12\x05audit\x1a\fcommon.proto\x1a\x0eraft_cmd.proto\"\x81\x03\n" +
 	"\n" +
 	"AuditEntry\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x06R\bsequence\x12/\n" +
@@ -428,7 +448,10 @@ const file_audit_proto_rawDesc = "" +
 	"\vorder_count\x18\x06 \x01(\rR\n" +
 	"orderCount\x12&\n" +
 	"\x05items\x18\a \x03(\v2\x10.audit.AuditItemR\x05items\x12\x18\n" +
-	"\aledgers\x18\b \x03(\tR\aledgersB\t\n" +
+	"\aledgers\x18\b \x03(\tR\aledgers\x12\x12\n" +
+	"\x04hash\x18\t \x01(\fR\x04hash\x12!\n" +
+	"\fhash_version\x18\n" +
+	" \x01(\rR\vhashVersionB\t\n" +
 	"\aoutcome\"r\n" +
 	"\tAuditItem\x12\x1f\n" +
 	"\vorder_index\x18\x01 \x01(\rR\n" +

@@ -684,11 +684,6 @@ func (m *Log) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.HashVersion != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.HashVersion))
-		i--
-		dAtA[i] = 0x40
-	}
 	if m.ResponseSignature != nil {
 		size, _ := m.ResponseSignature.MarshalToSizedBufferVT(dAtA[:i])
 		i -= size
@@ -709,13 +704,6 @@ func (m *Log) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
 		dAtA[i] = 0x2a
-	}
-	if len(m.Hash) > 0 {
-		i -= len(m.Hash)
-		copy(dAtA[i:], m.Hash)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Hash)))
-		i--
-		dAtA[i] = 0x22
 	}
 	if m.Idempotency != nil {
 		size, _ := m.Idempotency.MarshalToSizedBufferVT(dAtA[:i])

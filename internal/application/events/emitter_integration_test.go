@@ -140,7 +140,7 @@ func appendTestLogs(t *testing.T, s *dal.Store, logs ...*commonpb.Log) {
 	t.Helper()
 
 	batch := s.NewBatch()
-	require.NoError(t, state.AppendLogs(batch, logs, nil))
+	require.NoError(t, state.AppendLogs(batch, logs))
 	require.NoError(t, state.SetAppliedIndex(batch, 1))
 	require.NoError(t, batch.Commit())
 }

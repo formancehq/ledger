@@ -10,6 +10,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
+	"github.com/zeebo/blake3"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
 
@@ -60,7 +61,10 @@ type Machine struct {
 	nextQueryCheckpointID          uint64
 	queryCheckpointSchedule        string
 	queryCheckpointScheduleChanged signal.Signal
-	lastLogHash                    []byte
+	lastAuditHash                  []byte
+	hashAlgorithm                  commonpb.HashAlgorithm
+	auditHasher                    *blake3.Hasher
+	auditHashBuf                   []byte
 
 	lastAppliedIndex     uint64
 	lastAppliedTimestamp uint64
@@ -193,6 +197,8 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		archiveRequestCh:               make(chan ArchiveRequest, 1),
 		metadataConvertRequestCh:       make(chan MetadataConvertRequest, 16),
 		coldCompactionCh:               make(chan struct{}, 1),
+		auditHasher:                    blake3.New(),
+		auditHashBuf:                   make([]byte, 0, 4096),
 	}
 	fsm.appliedCond = sync.NewCond(&fsm.appliedMu)
 	fsm.cacheSnapshotter = NewCacheSnapshotter(logger, dataStore, fsm.Registry, bloomFilters)
@@ -228,24 +234,15 @@ func (fsm *Machine) RecoverState() error {
 		fsm.nextSequenceID = lastSeq + 1
 	}
 
-	// Recover lastLogHash from the last log entry
-	lastLog, err := query.ReadLastLog(fsm.dataStore)
+	// Recover lastAuditHash and nextAuditSequenceID from last audit entry
+	lastAuditEntry, err := query.ReadLastAuditEntry(fsm.dataStore)
 	if err != nil {
-		return fmt.Errorf("recovering last log: %w", err)
+		return fmt.Errorf("recovering last audit entry: %w", err)
 	}
 
-	if lastLog != nil {
-		fsm.lastLogHash = lastLog.GetHash()
-	}
-
-	// Recover nextAuditSequenceID from last audit entry
-	lastAuditSeq, err := query.ReadLastAuditSequence(fsm.dataStore)
-	if err != nil {
-		return fmt.Errorf("recovering last audit sequence: %w", err)
-	}
-
-	if lastAuditSeq > 0 {
-		fsm.nextAuditSequenceID = lastAuditSeq + 1
+	if lastAuditEntry != nil {
+		fsm.lastAuditHash = lastAuditEntry.GetHash()
+		fsm.nextAuditSequenceID = lastAuditEntry.GetSequence() + 1
 	}
 
 	// Recover nextQueryCheckpointID from persisted counter
@@ -379,14 +376,14 @@ func (fsm *Machine) RecoverState() error {
 		fsm.lastClusterConfig = clusterState.GetConfig()
 		fsm.Registry.Cache.SetGenerationThreshold(clusterState.GetConfig().GetRotationThreshold())
 		fsm.Registry.Cache.SetEpoch(clusterState.GetCacheEpoch())
-		fsm.processor.SetHashAlgorithm(clusterState.GetConfig().GetHashAlgorithm())
+		fsm.hashAlgorithm = (clusterState.GetConfig().GetHashAlgorithm())
 	}
 
 	fsm.logger.WithFields(map[string]any{
 		"nextSequenceID":        fsm.nextSequenceID,
 		"nextAuditSequenceID":   fsm.nextAuditSequenceID,
 		"nextQueryCheckpointID": fsm.nextQueryCheckpointID,
-		"hasLogHash":            len(fsm.lastLogHash) > 0,
+		"hasAuditHash":          len(fsm.lastAuditHash) > 0,
 		"periodCount":           len(allPeriods),
 		"reversionLedgers":      len(reversions),
 		"pendingCleanups":       len(pendingCleanups),
@@ -788,8 +785,13 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 		return nil, err
 	}
 
-	if err := fsm.CommitPreparedBatch(ctx, pb); err != nil {
-		return nil, err
+	// When a ClosePeriod entry triggers commitAndRequestCheckpoint, the batch
+	// is already committed synchronously and pb.batch is nil. Skip the commit
+	// in that case — the caller handles the checkpoint via Result flags.
+	if pb.batch != nil {
+		if err := fsm.CommitPreparedBatch(ctx, pb); err != nil {
+			return nil, err
+		}
 	}
 
 	return pb.Result, nil
@@ -1039,7 +1041,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			return nil, fmt.Errorf("saving cluster state: %w", err)
 		}
 
-		fsm.processor.SetHashAlgorithm(cfg.GetHashAlgorithm())
+		fsm.hashAlgorithm = (cfg.GetHashAlgorithm())
 		fsm.lastClusterConfig = cfg
 	}
 
@@ -1193,7 +1195,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	buffer := fsm.writeSet
 
 	// Process the proposal
-	logs, preMarshaledLogBytes, err := fsm.processor.ProcessOrders(proposal.GetOrders(), buffer)
+	logs, err := fsm.processor.ProcessOrders(proposal.GetOrders(), buffer)
 	if err != nil {
 		// FAILURE: write audit entry and return business error
 		auditEntry := &auditpb.AuditEntry{
@@ -1206,6 +1208,11 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 				Failure: buildAuditFailure(err),
 			},
 		}
+		fsm.auditHashBuf, auditEntry.Hash = processing.ComputeAuditHashForFailure(
+			fsm.hashAlgorithm, fsm.auditHasher, fsm.auditHashBuf, fsm.lastAuditHash, auditEntry,
+		)
+		auditEntry.HashVersion = uint32(fsm.hashAlgorithm)
+		fsm.lastAuditHash = auditEntry.GetHash()
 		fsm.nextAuditSequenceID++
 
 		if appendErr := AppendAuditEntries(batch, auditEntry); appendErr != nil {
@@ -1235,6 +1242,11 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 				Failure: buildAuditFailure(err),
 			},
 		}
+		fsm.auditHashBuf, auditEntry.Hash = processing.ComputeAuditHashForFailure(
+			fsm.hashAlgorithm, fsm.auditHasher, fsm.auditHashBuf, fsm.lastAuditHash, auditEntry,
+		)
+		auditEntry.HashVersion = uint32(fsm.hashAlgorithm)
+		fsm.lastAuditHash = auditEntry.GetHash()
 		fsm.nextAuditSequenceID++
 
 		if appendErr := AppendAuditEntries(batch, auditEntry); appendErr != nil {
@@ -1251,17 +1263,13 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		}, nil
 	}
 
-	// Extract created logs and their pre-marshaled bytes for the write buffer
-	// (reference sequences are idempotent responses that don't produce new logs)
-	var (
-		createdLogs     []*commonpb.Log
-		createdLogBytes [][]byte
-	)
+	// Extract created logs (reference sequences are idempotent responses
+	// that don't produce new logs).
+	var createdLogs []*commonpb.Log
 
-	for i, logOrRef := range logs {
+	for _, logOrRef := range logs {
 		if created := logOrRef.GetCreatedLog(); created != nil {
 			createdLogs = append(createdLogs, created)
-			createdLogBytes = append(createdLogBytes, preMarshaledLogBytes[i])
 		}
 	}
 
@@ -1270,7 +1278,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	hasArchiveRequests := len(buffer.pendingArchives) > 0
 	hasPurges := buffer.HasPurges()
 
-	if err := buffer.Merge(batch, createdLogs, createdLogBytes); err != nil {
+	if err := buffer.Merge(batch, createdLogs); err != nil {
 		return nil, err
 	}
 
@@ -1346,7 +1354,23 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			Success: auditSuccess,
 		},
 	}
+	fsm.auditHashBuf, auditEntry.Hash = processing.ComputeAuditHash(
+		fsm.hashAlgorithm, fsm.auditHasher, fsm.auditHashBuf, fsm.lastAuditHash, createdLogs,
+	)
+	auditEntry.HashVersion = uint32(fsm.hashAlgorithm)
+	fsm.lastAuditHash = auditEntry.GetHash()
 	fsm.nextAuditSequenceID++
+
+	// Update closing period's LastAuditHash if this batch contains a ClosePeriod.
+	for _, logOrRef := range logs {
+		if created := logOrRef.GetCreatedLog(); created != nil {
+			if cp := created.GetPayload().GetClosePeriod(); cp != nil {
+				if closingPeriod := fsm.Periods.LatestClosingPeriod(); closingPeriod != nil {
+					closingPeriod.LastAuditHash = auditEntry.GetHash()
+				}
+			}
+		}
+	}
 
 	if err := AppendAuditEntries(batch, auditEntry); err != nil {
 		return nil, fmt.Errorf("appending audit entry for success: %w", err)
@@ -1709,10 +1733,9 @@ func (fsm *Machine) QueryCheckpointScheduleChanged() signal.Signal {
 // responses that already triggered sealing when first applied.
 //
 // Uses the FSM state's closing period (not the log payload snapshot) because
-// processor.go updates closingPeriod.LastLogHash to include the ClosePeriod
-// log's own hash after creating the log. The Pebble-stored period also has
-// this updated hash, so the sealer must use the same value for the sealing
-// hash to be verifiable by the checker.
+// applyProposal updates closingPeriod.LastAuditHash after computing the batch
+// audit hash. The sealer must use the same value for the sealing hash to be
+// verifiable by the checker.
 func (fsm *Machine) checkClosePeriod(result *ApplyResult) *SealRequest {
 	if result == nil {
 		return nil
@@ -1721,8 +1744,6 @@ func (fsm *Machine) checkClosePeriod(result *ApplyResult) *SealRequest {
 	for _, logOrRef := range result.Logs {
 		if created := logOrRef.GetCreatedLog(); created != nil {
 			if created.GetPayload().GetClosePeriod() != nil {
-				// Use the FSM state's latest closing period which has LastLogHash
-				// updated to include the ClosePeriod log's hash.
 				closingPeriod := fsm.Periods.LatestClosingPeriod()
 				if closingPeriod != nil {
 					return SealRequestFromPeriod(closingPeriod)
@@ -1738,7 +1759,7 @@ func SealRequestFromPeriod(period *commonpb.Period) *SealRequest {
 	return &SealRequest{
 		PeriodID:      period.GetId(),
 		CloseSequence: period.GetCloseSequence(),
-		LastLogHash:   period.GetLastLogHash(),
+		LastAuditHash: period.GetLastAuditHash(),
 	}
 }
 

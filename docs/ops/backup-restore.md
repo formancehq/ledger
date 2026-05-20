@@ -283,7 +283,7 @@ ledgerctl restore validate
 
 Calls `RestoreService.ValidateRestore` (server-streaming). The server opens the staging directory as a read-only Pebble database and runs the full integrity checker (`check.Checker`). The checker performs three passes:
 
-1. **Log chain verification**: Iterates all logs from sequence 1 to the last sequence. Verifies sequence continuity (no gaps) and recomputes the BLAKE3 hash chain (each log's hash depends on the previous log's hash).
+1. **Log sequence verification**: Iterates all logs from sequence 1 to the last sequence. Verifies sequence continuity (no gaps).
 
 2. **Volume verification**: For every (account, asset) pair accumulated during log replay, computes the expected input/output from the attribute storage and compares against the replayed totals.
 
@@ -434,8 +434,7 @@ On startup, the node detects the `RESTORED` marker in `NewNode()`:
    - Calls `fsm.RecoverState()` to recover in-memory FSM counters from Pebble:
      - `nextLedgerID` from the highest existing ledger ID
      - `nextSequenceID` from the last log sequence
-     - `lastLogHash` from the last log entry's hash
-     - `nextAuditSequenceID` from the last audit entry
+     - `lastAuditHash` and `nextAuditSequenceID` from the last audit entry
    - Creates an FSM snapshot (`fsm.CreateSnapshot()`)
    - Creates a WAL snapshot at `marker.LastAppliedIndex` with `ConfState{Voters: [nodeID]}` (single-node bootstrap)
    - Removes the RESTORED marker
@@ -470,7 +469,7 @@ The `RESTORED` file is a JSON file written to the data directory during `Finaliz
 | **Consistent snapshot** | Backup checkpoint is created as a direct Pebble checkpoint. Boundaries are always up-to-date in Pebble (written on every commit), so the checkpoint is consistent without Raft consensus or FSM gating. |
 | **Incremental efficiency** | SST files are immutable — same name means same content. Only new/changed files are uploaded; stale files are deleted. |
 | **Self-contained on restore** | During restore finalize, attributes are compacted to index 0 and `lastAppliedIndex` is reset. No dependency on the original cluster's Raft indices. |
-| **Data integrity (content)** | `ValidateRestore` runs the full integrity checker: log hash chain continuity, volume balance verification, metadata consistency. |
+| **Data integrity (content)** | `ValidateRestore` runs the full integrity checker: log sequence continuity, volume balance verification, metadata consistency. |
 | **Fresh directory required** | Restore mode refuses to start if existing checkpoints are found in `checkpoints/`, preventing accidental overwrites. |
 | **Atomic finalize** | Checkpoint placement uses `HardLink()` (temp directory + atomic `os.Rename`) for crash safety. |
 | **Idempotent marker** | The RESTORED marker is consumed exactly once on the next normal boot, then deleted. |

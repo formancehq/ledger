@@ -54,8 +54,6 @@ type sinkEventData struct {
 	// Sink events
 	SinkName *string `json:"sinkName,omitempty"`
 
-	// Audit trail
-	Hash           *string `json:"hash,omitempty"`
 	IdempotencyKey *string `json:"idempotencyKey,omitempty"`
 }
 
@@ -87,12 +85,6 @@ func eventToSinkJSON(event *eventspb.Event) ([]byte, error) {
 	log := event.GetLog()
 	if log == nil {
 		return json.Marshal(data)
-	}
-
-	// Audit trail
-	if len(log.GetHash()) > 0 {
-		h := hex.EncodeToString(log.GetHash())
-		data.Hash = &h
 	}
 
 	if log.GetIdempotency() != nil && log.GetIdempotency().GetKey() != "" {

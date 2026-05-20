@@ -75,14 +75,14 @@ type maintenanceModeUpdate struct {
 }
 
 type WriteSet struct {
-	fsm                                  *Machine
-	attrs                                *attributes.Attributes
-	Date                                 *commonpb.Timestamp
-	NextSequenceID                       uint64
-	NextAuditSequenceID                  uint64
-	NextLedgerID                         uint32
-	NextQueryCheckpointID                uint64
-	LastLogHash                          []byte
+	fsm                   *Machine
+	attrs                 *attributes.Attributes
+	Date                  *commonpb.Timestamp
+	NextSequenceID        uint64
+	NextAuditSequenceID   uint64
+	NextLedgerID          uint32
+	NextQueryCheckpointID uint64
+
 	Derived                              *DerivedRegistry
 	pendingSigningKeyUpdates             []signingKeyUpdate
 	pendingSigningConfigUpdate           *signingConfigUpdate
@@ -142,7 +142,7 @@ type purgeRange struct {
 	closeAuditSequence uint64 // audit sequence range end
 }
 
-func (b *WriteSet) Merge(batch *dal.Batch, logs []*commonpb.Log, preMarshaledLogBytes [][]byte) error {
+func (b *WriteSet) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	// gen0 byte for incremental 0xFF cache writes.
 	genByte := byte(b.fsm.Registry.Cache.CurrentGeneration() % 2)
 
@@ -314,7 +314,7 @@ func (b *WriteSet) Merge(batch *dal.Batch, logs []*commonpb.Log, preMarshaledLog
 		return err
 	}
 
-	err = AppendLogs(batch, logs, preMarshaledLogBytes)
+	err = AppendLogs(batch, logs)
 	if err != nil {
 		return fmt.Errorf("failed appending pending logs: %w", err)
 	}
@@ -503,7 +503,6 @@ func (b *WriteSet) Merge(batch *dal.Batch, logs []*commonpb.Log, preMarshaledLog
 	b.fsm.nextSequenceID = b.NextSequenceID
 	b.fsm.nextLedgerID = b.NextLedgerID
 	b.fsm.nextQueryCheckpointID = b.NextQueryCheckpointID
-	b.fsm.lastLogHash = b.LastLogHash
 
 	// Apply changed periods to Machine's Periods tracker
 	for _, p := range b.changedPeriods {
@@ -543,7 +542,6 @@ func (b *WriteSet) Reset(at *commonpb.Timestamp) {
 	b.NextAuditSequenceID = b.fsm.nextAuditSequenceID
 	b.NextLedgerID = b.fsm.nextLedgerID
 	b.NextQueryCheckpointID = b.fsm.nextQueryCheckpointID
-	b.LastLogHash = b.fsm.lastLogHash
 	b.Derived.Reset()
 
 	b.pendingSigningKeyUpdates = b.pendingSigningKeyUpdates[:0]
@@ -893,14 +891,6 @@ func (b *WriteSet) IncrementNextLedgerID() uint32 {
 
 func (b *WriteSet) GetDate() *commonpb.Timestamp {
 	return b.Date
-}
-
-func (b *WriteSet) GetLastLogHash() []byte {
-	return b.LastLogHash
-}
-
-func (b *WriteSet) SetLastLogHash(hash []byte) {
-	b.LastLogHash = hash
 }
 
 // addVolumeSideDelta extracts the net delta for one side (input or output) of a VolumePair update.

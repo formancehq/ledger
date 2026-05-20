@@ -28,20 +28,16 @@ func TestProcessClosePeriod_Success(t *testing.T) {
 		Status: commonpb.PeriodStatus_PERIOD_OPEN,
 	}
 
-	lastLogHash := []byte("test-log-hash")
-
 	mockStore.EXPECT().GetCurrentOpenPeriod().Return(openPeriod, true)
 	// GetNextSequenceID is called twice: once for CloseSequence, once for StartSequence
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(42)).Times(2)
 	mockStore.EXPECT().GetDate().Return(now).Times(2)
-	mockStore.EXPECT().GetLastLogHash().Return(lastLogHash)
 	mockStore.EXPECT().GetNextAuditSequenceID().Return(uint64(10)).Times(2)
 	mockStore.EXPECT().IncrementNextPeriodID().Return(uint64(2))
 	mockStore.EXPECT().AddClosingPeriod(gomock.Any()).Do(func(period *commonpb.Period) {
 		require.Equal(t, commonpb.PeriodStatus_PERIOD_CLOSING, period.GetStatus())
 		require.Equal(t, uint64(42), period.GetCloseSequence())
 		require.Equal(t, uint64(9), period.GetCloseAuditSequence()) // nextAuditSeq - 1
-		require.Equal(t, lastLogHash, period.GetLastLogHash())
 	})
 	mockStore.EXPECT().SetCurrentOpenPeriod(gomock.Any()).Do(func(period *commonpb.Period) {
 		require.Equal(t, commonpb.PeriodStatus_PERIOD_OPEN, period.GetStatus())
@@ -96,13 +92,10 @@ func TestProcessClosePeriod_SucceedsWhileAnotherPeriodIsClosing(t *testing.T) {
 		Status: commonpb.PeriodStatus_PERIOD_OPEN,
 	}
 
-	lastLogHash := []byte("hash-2")
-
 	// Another period is already closing — this should NOT prevent the new close
 	mockStore.EXPECT().GetCurrentOpenPeriod().Return(openPeriod, true)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(100)).Times(2)
 	mockStore.EXPECT().GetDate().Return(now).Times(2)
-	mockStore.EXPECT().GetLastLogHash().Return(lastLogHash)
 	mockStore.EXPECT().GetNextAuditSequenceID().Return(uint64(20)).Times(2)
 	mockStore.EXPECT().IncrementNextPeriodID().Return(uint64(3))
 	mockStore.EXPECT().AddClosingPeriod(gomock.Any()).Do(func(period *commonpb.Period) {

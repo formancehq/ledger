@@ -18,18 +18,9 @@ import (
 
 type RequestProcessor struct {
 	numscriptCache     *numscript.NumscriptCache
-	hashBuf            []byte // reusable buffer for deterministic hash serialization
-	logHasher          *blake3.Hasher
-	hashAlgorithm      commonpb.HashAlgorithm
+	hashBuf            []byte // reusable buffer for idempotency hash serialization
 	compiledTypesCache map[string][]accounttype.CompiledType
-	logArena   logBytesArena                   // reusable arena for pre-marshaled log bytes
-	assetCache map[string]cachedAssetPrecision // per-batch cache for ParseAssetPrecision
-}
-
-// SetHashAlgorithm updates the hash algorithm used for new logs.
-// Called by the FSM when a ClusterConfig change is applied via Raft.
-func (p *RequestProcessor) SetHashAlgorithm(algo commonpb.HashAlgorithm) {
-	p.hashAlgorithm = algo
+	assetCache         map[string]cachedAssetPrecision // per-batch cache for ParseAssetPrecision
 }
 
 // NewRequestProcessor creates a new RequestProcessor with the given meter.
@@ -50,10 +41,8 @@ func NewRequestProcessor(m metric.Meter, numscriptCacheSize int) (*RequestProces
 	return &RequestProcessor{
 		numscriptCache:     cache,
 		hashBuf:            make([]byte, 0, 1024),
-		logHasher:          blake3.New(),
 		compiledTypesCache: make(map[string][]accounttype.CompiledType),
-		logArena:   newLogBytesArena(),
-		assetCache: make(map[string]cachedAssetPrecision),
+		assetCache:         make(map[string]cachedAssetPrecision),
 	}, nil
 }
 
@@ -80,19 +69,12 @@ func (p *RequestProcessor) invalidateCompiledTypes(ledger string) {
 	delete(p.compiledTypesCache, ledger)
 }
 
-
 // ProcessOrders processes a list of orders and returns the resulting logs.
-// The returned preMarshaledLogBytes is a parallel slice: for each created log,
-// it contains the pre-assembled protobuf bytes ready for Pebble persistence
-// (nil for idempotent reference sequences).
-func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemoryStore) ([]*raftcmdpb.CreatedLogOrReference, [][]byte, error) {
+func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemoryStore) ([]*raftcmdpb.CreatedLogOrReference, error) {
 	clear(p.compiledTypesCache)
 	clear(p.assetCache)
 
-	p.logArena.Reset()
-
 	logs := make([]*raftcmdpb.CreatedLogOrReference, len(orders))
-	preMarshaledLogBytes := make([][]byte, len(orders))
 
 	for i, order := range orders {
 		// Compute idempotency hash once if needed (reused for check + store).
@@ -106,13 +88,13 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 
 			storedValue, err := s.GetIdempotencyKey(ikKey)
 			if err != nil && !errors.Is(err, domain.ErrNotFound) {
-				return nil, nil, fmt.Errorf("checking idempotency key: %w", err)
+				return nil, fmt.Errorf("checking idempotency key: %w", err)
 			}
 
 			// Check if idempotency key exists
 			if storedValue != nil {
 				if !bytes.Equal(orderHash, storedValue.GetHash()) {
-					return nil, nil, &domain.ErrIdempotencyKeyConflict{Key: order.GetIdempotency().GetKey()}
+					return nil, &domain.ErrIdempotencyKeyConflict{Key: order.GetIdempotency().GetKey()}
 				}
 
 				// Hash matches - return reference to existing log without processing
@@ -129,7 +111,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 		// No idempotency key or key not found - process normally
 		payload, err := p.ProcessOrder(order, s)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 
 		nextSequenceID := s.IncrementNextSequenceID()
@@ -138,24 +120,6 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 			Payload:     payload,
 			Idempotency: order.GetIdempotency().CloneVT(),
 			Signature:   order.GetSignature().CloneVT(),
-		}
-		var logBytesLen int
-		p.hashBuf, log.Hash, logBytesLen = computeLogHash(p.hashAlgorithm, p.logHasher, p.hashBuf, s.GetLastLogHash(), log)
-		s.SetLastLogHash(log.GetHash())
-
-		// Append the deterministic base bytes and the missing fields
-		// (hash, hashVersion, signature) into the reusable arena.
-		// Sub-slices are created after the loop once the arena is stable.
-		p.logArena.Append(i, p.hashBuf[:logBytesLen], log)
-
-		// After a ClosePeriod log, update the closing period's LastLogHash to
-		// include this log's hash. The log payload holds a cloned snapshot, so
-		// this mutation only affects the FSM state (persisted to Pebble).
-		// CheckStore uses this to resume the hash chain after purged logs.
-		if cpLog, ok := payload.GetType().(*commonpb.LogPayload_ClosePeriod); ok {
-			if closingPeriod, hasClosing := s.GetClosingPeriodByID(cpLog.ClosePeriod.GetClosedPeriod().GetId()); hasClosing {
-				closingPeriod.LastLogHash = log.GetHash()
-			}
 		}
 
 		logs[i] = &raftcmdpb.CreatedLogOrReference{
@@ -178,9 +142,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 		}
 	}
 
-	p.logArena.AssignSlices(preMarshaledLogBytes)
-
-	return logs, preMarshaledLogBytes, nil
+	return logs, nil
 }
 
 // computeOrderHash computes a blake3 hash of the order content (excluding

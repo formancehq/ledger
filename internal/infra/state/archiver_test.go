@@ -113,7 +113,7 @@ func TestArchiverArchivesAndProposes(t *testing.T) {
 	require.NoError(t, AppendLogs(batch, []*commonpb.Log{{
 		Sequence: 1,
 		Payload:  &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreateLedgerLog{Name: "test", CreatedAt: commonpb.NewTimestamp(libtime.Now())}}},
-	}}, nil))
+	}}))
 	require.NoError(t, batch.Commit())
 
 	cs := newMockColdStorage()
@@ -280,7 +280,7 @@ func TestArchiverNonLeaderRetries(t *testing.T) {
 	require.NoError(t, AppendLogs(batch, []*commonpb.Log{{
 		Sequence: 1,
 		Payload:  &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreateLedgerLog{Name: "test", CreatedAt: commonpb.NewTimestamp(libtime.Now())}}},
-	}}, nil))
+	}}))
 	require.NoError(t, batch.Commit())
 
 	require.Eventually(t, func() bool {
@@ -310,7 +310,7 @@ func TestArchiverSSTRoundtrip(t *testing.T) {
 				Name: "test-ledger", CreatedAt: commonpb.NewTimestamp(libtime.Now()),
 			},
 		}},
-	}}, nil))
+	}}))
 	require.NoError(t, batch.Commit())
 
 	cs := newMockColdStorage()

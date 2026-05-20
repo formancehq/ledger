@@ -53,7 +53,7 @@ func appendLogs(t *testing.T, s *dal.Store, lastAppliedIndex uint64, logs ...*co
 	t.Helper()
 
 	batch := s.NewBatch()
-	err := state.AppendLogs(batch, logs, nil)
+	err := state.AppendLogs(batch, logs)
 	require.NoError(t, err)
 	require.NoError(t, state.SetAppliedIndex(batch, lastAppliedIndex))
 	require.NoError(t, batch.Commit())

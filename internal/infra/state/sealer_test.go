@@ -133,7 +133,7 @@ func TestSealerDeterministic(t *testing.T) {
 		err = sealer.seal(SealRequest{
 			PeriodID:       42,
 			CloseSequence:  100,
-			LastLogHash:    []byte("chain-hash"),
+			LastAuditHash:  []byte("chain-hash"),
 			CheckpointPath: checkpointPath,
 		})
 		require.NoError(t, err)
@@ -165,7 +165,7 @@ func TestSealerCheckpointIsolation(t *testing.T) {
 	err = sealer.seal(SealRequest{
 		PeriodID:       1,
 		CloseSequence:  10,
-		LastLogHash:    nil,
+		LastAuditHash:  nil,
 		CheckpointPath: checkpointPath,
 	})
 	require.NoError(t, err)
@@ -187,7 +187,7 @@ func TestSealerCheckpointIsolation(t *testing.T) {
 	err = sealer2.seal(SealRequest{
 		PeriodID:       1,
 		CloseSequence:  10,
-		LastLogHash:    nil,
+		LastAuditHash:  nil,
 		CheckpointPath: checkpointPath2,
 	})
 	require.NoError(t, err)
@@ -211,7 +211,7 @@ func TestSealerEmptyStore(t *testing.T) {
 	err := sealer.seal(SealRequest{
 		PeriodID:       1,
 		CloseSequence:  10,
-		LastLogHash:    nil,
+		LastAuditHash:  nil,
 		CheckpointPath: checkpointPath,
 	})
 	require.NoError(t, err)
@@ -250,7 +250,7 @@ func TestSealerRetryOnFailure(t *testing.T) {
 	sealRequestCh <- SealRequest{
 		PeriodID:       7,
 		CloseSequence:  50,
-		LastLogHash:    []byte("test-hash"),
+		LastAuditHash:  []byte("test-hash"),
 		CheckpointPath: realPath,
 	}
 
@@ -275,8 +275,8 @@ func TestSealerRecoverPendingSealMultiplePeriods(t *testing.T) {
 
 	store := createSealerTestStore(t)
 
-	p1 := &commonpb.Period{Id: 5, CloseSequence: 100, LastLogHash: []byte("h1"), Status: commonpb.PeriodStatus_PERIOD_CLOSING}
-	p2 := &commonpb.Period{Id: 8, CloseSequence: 200, LastLogHash: []byte("h2"), Status: commonpb.PeriodStatus_PERIOD_CLOSING}
+	p1 := &commonpb.Period{Id: 5, CloseSequence: 100, LastAuditHash: []byte("h1"), Status: commonpb.PeriodStatus_PERIOD_CLOSING}
+	p2 := &commonpb.Period{Id: 8, CloseSequence: 200, LastAuditHash: []byte("h2"), Status: commonpb.PeriodStatus_PERIOD_CLOSING}
 
 	// Create seal checkpoints for both periods
 	_, err := store.CreateTemporaryCheckpoint(SealCheckpointName(5))
@@ -318,7 +318,7 @@ func TestSealerRecoverPendingSealSkipsMissingCheckpoint(t *testing.T) {
 	store := createSealerTestStore(t)
 
 	p1 := &commonpb.Period{Id: 5, Status: commonpb.PeriodStatus_PERIOD_CLOSING}
-	p2 := &commonpb.Period{Id: 8, CloseSequence: 200, LastLogHash: []byte("h2"), Status: commonpb.PeriodStatus_PERIOD_CLOSING}
+	p2 := &commonpb.Period{Id: 8, CloseSequence: 200, LastAuditHash: []byte("h2"), Status: commonpb.PeriodStatus_PERIOD_CLOSING}
 
 	// Only create a checkpoint for period 8, not period 5
 	_, err := store.CreateTemporaryCheckpoint(SealCheckpointName(8))

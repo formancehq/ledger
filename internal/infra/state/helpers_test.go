@@ -50,7 +50,7 @@ func appendLogs(t *testing.T, s *dal.Store, lastAppliedIndex uint64, logs ...*co
 	t.Helper()
 
 	batch := s.NewBatch()
-	err := AppendLogs(batch, logs, nil)
+	err := AppendLogs(batch, logs)
 	require.NoError(t, err)
 	require.NoError(t, SetAppliedIndex(batch, lastAppliedIndex))
 	require.NoError(t, batch.Commit())

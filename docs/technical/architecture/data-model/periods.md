@@ -57,7 +57,7 @@ message Period {
   PeriodStatus status = 4;
   fixed64 close_sequence = 5;   // Global sequence at close time
   bytes sealing_hash = 6;       // Set when CLOSED
-  bytes last_log_hash = 7;      // Log chain hash at close time
+  bytes last_audit_hash = 7;    // Audit chain hash at close time
 }
 ```
 
@@ -69,7 +69,7 @@ Closing a period is split into two Raft commands to avoid blocking the consensus
 
 The `ClosePeriod` order is a lightweight Raft command that:
 
-1. Transitions the current `OPEN` period to `CLOSING`, recording `close_sequence`, `end` timestamp, and `last_log_hash`.
+1. Transitions the current `OPEN` period to `CLOSING`, recording `close_sequence` and `end` timestamp. The `last_audit_hash` is set by `applyProposal` after the batch-level audit hash is computed.
 2. Creates a new `OPEN` period (transactions continue flowing into the new period immediately).
 3. Triggers a **maintenance task** that creates a Pebble seal checkpoint — a frozen snapshot of the database at the exact close boundary.
 4. Sends a `SealRequest` to the background Sealer.
@@ -91,7 +91,7 @@ The Sealer runs outside the Raft critical path:
 
 ```
 state_hash   = BLAKE3(all attribute key+value pairs in the checkpoint)
-sealing_hash = BLAKE3(period_id || close_sequence || last_log_hash || state_hash)
+sealing_hash = BLAKE3(period_id || close_sequence || last_audit_hash || state_hash)
 ```
 
 The state hash is deterministic because:

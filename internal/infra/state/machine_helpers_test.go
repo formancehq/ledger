@@ -59,13 +59,13 @@ func TestSealRequestFromPeriod(t *testing.T) {
 	period := &commonpb.Period{
 		Id:            5,
 		CloseSequence: 42,
-		LastLogHash:   []byte("hash-abc"),
+		LastAuditHash: []byte("hash-abc"),
 	}
 
 	req := SealRequestFromPeriod(period)
 	require.Equal(t, uint64(5), req.PeriodID)
 	require.Equal(t, uint64(42), req.CloseSequence)
-	require.Equal(t, []byte("hash-abc"), req.LastLogHash)
+	require.Equal(t, []byte("hash-abc"), req.LastAuditHash)
 }
 
 func TestMachineAllPeriods(t *testing.T) {
@@ -303,7 +303,7 @@ func TestCheckClosePeriod(t *testing.T) {
 	closedPeriod := &commonpb.Period{
 		Id:            5,
 		CloseSequence: 42,
-		LastLogHash:   []byte("hash"),
+		LastAuditHash: []byte("hash"),
 	}
 	// Add the closing period on the machine so checkClosePeriod can find it.
 	machine.Periods.AddClosingPeriod(closedPeriod)
@@ -325,7 +325,7 @@ func TestCheckClosePeriod(t *testing.T) {
 	require.NotNil(t, sealReq)
 	require.Equal(t, uint64(5), sealReq.PeriodID)
 	require.Equal(t, uint64(42), sealReq.CloseSequence)
-	require.Equal(t, []byte("hash"), sealReq.LastLogHash)
+	require.Equal(t, []byte("hash"), sealReq.LastAuditHash)
 }
 
 func TestCheckClosePeriodReturnsLatestWhenMultiple(t *testing.T) {
@@ -337,12 +337,12 @@ func TestCheckClosePeriodReturnsLatestWhenMultiple(t *testing.T) {
 	firstPeriod := &commonpb.Period{
 		Id:            3,
 		CloseSequence: 30,
-		LastLogHash:   []byte("old-hash"),
+		LastAuditHash: []byte("old-hash"),
 	}
 	latestPeriod := &commonpb.Period{
 		Id:            7,
 		CloseSequence: 70,
-		LastLogHash:   []byte("new-hash"),
+		LastAuditHash: []byte("new-hash"),
 	}
 	machine.Periods.AddClosingPeriod(firstPeriod)
 	machine.Periods.AddClosingPeriod(latestPeriod)
@@ -367,5 +367,5 @@ func TestCheckClosePeriodReturnsLatestWhenMultiple(t *testing.T) {
 	// Should return the latest closing period (period 7), not the first one
 	require.Equal(t, uint64(7), sealReq.PeriodID)
 	require.Equal(t, uint64(70), sealReq.CloseSequence)
-	require.Equal(t, []byte("new-hash"), sealReq.LastLogHash)
+	require.Equal(t, []byte("new-hash"), sealReq.LastAuditHash)
 }

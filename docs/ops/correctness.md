@@ -2,65 +2,69 @@
 
 This document describes the mechanisms ensuring the integrity and immutability of the ledger's log chain.
 
-## Log Hash Chaining
+## Audit Hash Chaining
 
-Every log produced by the ledger is cryptographically chained to its predecessor using BLAKE3 hashing. This creates a verifiable chain where any tampering with a historical log invalidates all subsequent hashes.
+Integrity verification uses a **batch-level hash chain on audit entries** rather than per-log hashing. Each audit entry (one per Raft proposal) is cryptographically chained to its predecessor, providing tamper detection and ordering proof at the proposal level.
 
 ### Hash Formula
 
+For **success** audit entries (proposals that produce logs):
+
 ```
-hash = H(lastLogHash || deterministicSerialize(logWithoutHash))
+audit_hash = H(concat(all_pre_marshaled_log_bytes_in_batch) + previous_audit_hash)
+```
+
+For **failure** audit entries (rejected proposals):
+
+```
+audit_hash = H(serialize(audit_entry_without_hash) + previous_audit_hash)
 ```
 
 Where:
 - `H` is the configured hash function (BLAKE3 or XXH3-128)
-- `lastLogHash` is the hash of the immediately preceding log (empty for the genesis log)
-- `deterministicSerialize(logWithoutHash)` is the Protocol Buffers deterministic serialization of the log **before** the hash field is set
+- `previous_audit_hash` is the hash of the immediately preceding audit entry (empty for the first entry)
 - `||` denotes concatenation
 
-### Genesis Case
+### Why Batch-Level (Not Per-Log)
 
-The first log in the chain has no predecessor. In this case, `lastLogHash` is empty (zero-length), so the hash is simply:
+Per-log hashing creates a strict sequential dependency in the FSM hot path: each log's hash depends on the previous log's hash, preventing any parallelism in `ProcessOrders`. Moving the hash chain to audit entries means:
 
-```
-hash = H(deterministicSerialize(log))
-```
+1. The hash is computed **once per batch** (after all business logic completes), not per log
+2. `ProcessOrders` is free of sequential hash dependencies
+3. Failure entries are included in the chain, preventing silent removal of error records
 
 ### Hash Algorithm Selection
 
-The hash algorithm is a cluster-wide setting configured via `--hash-algorithm` and replicated through Raft (stored in `ClusterConfig`). Each log records which algorithm was used in its `hash_version` field.
+The hash algorithm is a cluster-wide setting configured via `--hash-algorithm` and replicated through Raft (stored in `ClusterConfig`). Each audit entry records which algorithm was used in its `hash_version` field.
 
 | `hash_version` | Algorithm | Output Size | Properties |
 |----------------|-----------|-------------|------------|
 | `0` (default) | BLAKE3 | 32 bytes | Cryptographic — detects both corruption and intentional tampering |
 | `1` | XXH3-128 | 16 bytes | Non-cryptographic — detects corruption only, ~5-10x faster |
 
-Switching algorithms mid-stream is safe: each log is self-describing via `hash_version`, and the chain remains valid because the previous log's hash bytes (regardless of algorithm) are included in the current hash input.
-
 ### Implementation Details
 
 - **BLAKE3**: `github.com/zeebo/blake3` — a shared `blake3.Hasher` is reused (with `Reset()`) across calls to avoid allocation overhead
 - **XXH3-128**: `github.com/zeebo/xxh3` — stateless, zero allocation
-- **Serialization**: `proto.MarshalOptions{Deterministic: true}` ensures stable byte output across runs
-- **Hash field**: Stored as `bytes hash` (field 4) in the `Log` protobuf message
-- **Version field**: Stored as `uint32 hash_version` (field 8) in the `Log` protobuf message
+- **Hash field**: Stored as `bytes hash` (field 9) in the `AuditEntry` protobuf message
+- **Version field**: Stored as `uint32 hash_version` (field 10) in the `AuditEntry` protobuf message
+- **Computation**: Performed in `applyProposal()` on the FSM, after `ProcessOrders` and `Merge` complete
 
 ### State Persistence
 
-The `lastLogHash` is maintained as volatile state in the `Machine` (FSM). It is:
-- **Persisted** in Raft snapshots via the `last_log_hash` field in `MemorySnapshot`
-- **Restored** when a node installs a snapshot from the leader
-- **Propagated** through the `WriteSet` layer during proposal processing
+The `lastAuditHash` is maintained as volatile state in the `Machine` (FSM). It is:
+- **Recovered** on startup from the last `AuditEntry` in Pebble
+- **Updated** after each audit entry is written (success or failure)
 
-The chain is **not broken** by Raft snapshots: the snapshot captures the latest hash, and new logs computed after snapshot restoration continue the chain correctly.
+The chain is **not broken** by Raft snapshots: the snapshot contains all Pebble data including audit entries, and recovery reads the last entry's hash.
 
 ### Failure Isolation
 
-If a proposal fails (e.g., insufficient funds, ledger not found), the `WriteSet` state is discarded without being merged into the `Machine`. This means `lastLogHash` remains unchanged, preserving the chain's integrity.
+If a proposal fails (e.g., insufficient funds, ledger not found), a failure audit entry is created and hashed into the chain. The `WriteSet` state is discarded without being merged into the `Machine`, but the audit chain advances. This ensures failed proposals are tamper-evident.
 
 ### Idempotent Responses
 
-When an idempotent request matches a previously processed order, the processor returns a **reference** to the existing log rather than creating a new one. References do not advance the hash chain.
+When an idempotent request matches a previously processed order, the processor returns a **reference** to the existing log rather than creating a new one. References do not produce new logs, but the audit entry still covers the batch.
 
 ## Double-Entry Invariant Check
 
@@ -92,13 +96,12 @@ The `store check` command performs a comprehensive offline verification of the e
 
 The check runs in three passes:
 
-**Pass 1 — Log replay and hash chain verification:**
+**Pass 1 — Log replay and state verification:**
 
 For each log from sequence 1 to the last sequence:
 
 1. **Sequence continuity**: Verifies that no log sequence numbers are missing (gaps)
-2. **Hash chain integrity**: Recomputes the expected BLAKE3 hash for each log and compares it to the stored hash. The hash is computed over the deterministic protobuf serialization of the log (without the hash field), chained to the previous log's hash
-3. **State replay**: Replays each log payload to build expected state:
+2. **State replay**: Replays each log payload to build expected state:
    - `CreateLedger` logs register ledger name-to-ID mappings
    - `CreatedTransaction` logs accumulate expected input/output volumes per account/asset, and track account metadata set during the transaction
    - `RevertedTransaction` logs accumulate reversed posting volumes
@@ -117,7 +120,7 @@ For each account metadata key/value encountered during replay (excluding deleted
 
 | Error Type | Description |
 |------------|-------------|
-| `HASH_MISMATCH` | Log hash does not match recomputed hash (corruption or tampering) |
+| `HASH_MISMATCH` | Audit entry hash does not match recomputed hash (corruption or tampering) |
 | `SEQUENCE_GAP` | A log sequence number is missing |
 | `VOLUME_MISMATCH` | Account input or output volume does not match log replay |
 | `METADATA_MISMATCH` | Account metadata value does not match log replay |
@@ -215,10 +218,10 @@ See [Clock Skew Check](../technical/architecture/core/hybrid-logical-clock.md#cl
 
 ## Integrity Guarantees
 
-1. **Tamper detection**: With BLAKE3 (default), modifying any historical log invalidates all subsequent hashes and an attacker cannot forge a valid chain. With XXH3, corruption is detected but a motivated attacker with direct storage access could theoretically construct collisions
-2. **Ordering proof**: The hash chain proves the exact ordering of all logs
-3. **Determinism**: Given the same initial state and the same sequence of operations, the exact same hash chain is produced (verified by tests)
-4. **Crash recovery**: The hash chain survives node restarts via Raft snapshot persistence
+1. **Tamper detection**: With BLAKE3 (default), modifying any historical audit entry or its covered logs invalidates all subsequent hashes and an attacker cannot forge a valid chain. With XXH3, corruption is detected but a motivated attacker with direct storage access could theoretically construct collisions
+2. **Ordering proof**: The audit hash chain proves the exact ordering of all proposals (and their logs)
+3. **Determinism**: Given the same initial state and the same sequence of operations, the exact same audit hash chain is produced
+4. **Crash recovery**: The audit hash chain survives node restarts — recovered from the last audit entry in Pebble
 5. **Double-entry balance**: Every merge verifies that the sum of inputs equals the sum of outputs, catching any accounting inconsistency before it is persisted
-6. **Full store verification**: The `store check` command validates the entire log chain and all derived data (volumes, metadata) against the source of truth (logs)
+6. **Full store verification**: The `store check` command validates the entire log sequence and all derived data (volumes, metadata) against the source of truth (logs)
 7. **Timestamp monotonicity**: The Hybrid Logical Clock guarantees that every log has a strictly increasing timestamp, even across leader changes and clock skew

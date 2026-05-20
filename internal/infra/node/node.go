@@ -1372,7 +1372,7 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 							"firstCommitted": result.rd.CommittedEntries[0].Index,
 							"hasSnapshot":    !raft.IsEmptySnap(result.rd.Snapshot),
 							"snapshotIndex":  result.rd.Snapshot.Metadata.Index,
-						}).Infof("Pre-Advance diagnostic")
+						}).Debugf("Pre-Advance diagnostic")
 					}
 
 					node.rawNode.Advance(result.rd)

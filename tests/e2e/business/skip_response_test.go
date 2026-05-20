@@ -39,7 +39,6 @@ var _ = Describe("SkipResponse", Ordered, func() {
 		Expect(log.Sequence).NotTo(BeZero())
 		Expect(log.Payload).To(BeNil())
 		Expect(log.Idempotency).To(BeNil())
-		Expect(log.Hash).To(BeEmpty())
 		Expect(log.Signature).To(BeNil())
 		Expect(log.Receipt).To(BeEmpty())
 		Expect(log.ResponseSignature).To(BeNil())

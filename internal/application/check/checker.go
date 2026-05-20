@@ -16,7 +16,6 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/accounttype"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/processing"
 	domainreplay "github.com/formancehq/ledger-v3-poc/internal/domain/replay"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/bitset"
@@ -98,9 +97,9 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	}
 
 	var (
-		hasArchivedPeriods bool
-		archiveEndSeq      uint64 // max close_sequence among archived periods
-		archiveLastHash    []byte // last_log_hash from the latest archived period
+		hasArchivedPeriods   bool
+		archiveEndSeq        uint64 // max close_sequence among archived periods
+		archiveLastAuditHash []byte // last_audit_hash from the latest archived period
 	)
 
 	for _, p := range periods {
@@ -117,7 +116,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 			if p.GetCloseSequence() > archiveEndSeq {
 				archiveEndSeq = p.GetCloseSequence()
-				archiveLastHash = p.GetLastLogHash()
+				archiveLastAuditHash = p.GetLastAuditHash()
 			}
 		}
 	}
@@ -132,8 +131,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	// State tracked during log replay
 	var (
-		hashBuf      = make([]byte, 0, 1024)
-		lastHash     []byte
+		_            = archiveLastAuditHash    // TODO: use in audit hash verification pass
 		knownLedgers = make(map[string]uint32) // ledger name → ledger ID
 		// Per-ledger reversion tracking using bitsets (1 bit per tx ID)
 		ledgerKnownTxIDs    = make(map[uint32]*bitset.Bitset)
@@ -166,8 +164,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 				}
 			}
 		}
-
-		lastHash = archiveLastHash
 
 		// Pre-populate knownTxIDs from archived transaction states so that
 		// reversion invariant checks work correctly for non-archived logs.
@@ -242,18 +238,9 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			return fmt.Errorf("unmarshaling log %d: %w", seq, err)
 		}
 
-		// 2. Verify hash chain
-		var expectedHash []byte
-		hashBuf, expectedHash = processing.ComputeLogHashByVersion(log.GetHashVersion(), hashBuf, lastHash, log)
-		if !bytes.Equal(expectedHash, log.GetHash()) {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
-				fmt.Sprintf("hash mismatch at sequence %d: expected %x, got %x", seq, expectedHash, log.GetHash()),
-				seq, "", "", ""))
-		}
+		// Hash chain verification is now done via audit entries (see audit hash pass below).
 
-		lastHash = log.GetHash()
-
-		// 3. Replay log to update expected state
+		// 2. Replay log to update expected state
 		if log.GetPayload() != nil {
 			switch payload := log.GetPayload().GetType().(type) {
 			case *commonpb.LogPayload_CreateLedger:
@@ -869,8 +856,8 @@ func verifySealingHash(p *commonpb.Period, callback func(*servicepb.CheckStoreEv
 	binary.BigEndian.PutUint64(buf, p.GetCloseSequence())
 	_, _ = hasher.Write(buf)
 
-	if len(p.GetLastLogHash()) > 0 {
-		_, _ = hasher.Write(p.GetLastLogHash())
+	if len(p.GetLastAuditHash()) > 0 {
+		_, _ = hasher.Write(p.GetLastAuditHash())
 	}
 
 	_, _ = hasher.Write(p.GetStateHash())

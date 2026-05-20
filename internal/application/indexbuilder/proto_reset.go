@@ -29,7 +29,6 @@ func resetLogForReuse(msg proto.Message) {
 
 	// Log-level fields.
 	m.Sequence = 0
-	m.Hash = m.GetHash()[:0]
 	m.Receipt = ""
 	m.Idempotency = nil
 	m.Signature = nil
