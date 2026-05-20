@@ -11,8 +11,15 @@ import (
 // requires rebuilding the read index from the Raft log.
 const readStoreComparerName = "formance.readstore.v1"
 
+// ledgerIDSize is the fixed size of a uint32 big-endian ledger ID in keys.
+const ledgerIDSize = 4
+
+// ledgerScopedPrefixLen is the split point for ledger-scoped keys:
+// 1 byte prefix + 4 bytes uint32 ledger ID.
+const ledgerScopedPrefixLen = 1 + ledgerIDSize
+
 // ReadStoreComparer is a Pebble comparer that splits keys at the
-// [prefix_byte][ledger_name\x00] boundary so that bloom filters are built on
+// [prefix_byte][ledger_id_BE_4B] boundary so that bloom filters are built on
 // the ledger-scoped prefix rather than the full key.
 //
 // This enables SeekPrefixGE to check bloom filters during range scans,
@@ -83,26 +90,27 @@ var ReadStoreComparer = &pebble.Comparer{
 
 	// Split extracts the ledger-scoped prefix from a read store key.
 	//
-	// For keys following [prefix_byte][ledger_name\x00][...], Split returns
-	// the position after the null terminator (len of [prefix][ledger\x00]).
+	// For keys following [prefix_byte][ledger_id_BE_4B][...], Split returns
+	// ledgerScopedPrefixLen (= 5): 1 byte prefix + 4 bytes uint32 ledger ID.
 	//
-	// For singleton keys (0xF0 progress, 0xF2 audit progress) that have no
-	// null-terminated ledger name, Split returns len(key) — the entire key
-	// is the prefix (same as the default comparer).
+	// For singleton keys (PrefixInternal) that have no ledger ID, Split
+	// returns len(key) — the entire key is the prefix (same as the default
+	// comparer).
 	Split: readStoreSplit,
 
 	// ImmediateSuccessor returns the smallest prefix larger than the given prefix.
 	//
-	// For ledger-scoped prefixes ending in \x00 (e.g. [0x01][foo\x00]),
-	// increment the null byte → [0x01][foo\x01]. All keys with the original
-	// prefix sort between [0x01][foo\x00] and [0x01][foo\x01].
+	// For ledger-scoped prefixes (5 bytes: [prefix_byte][ledger_id_BE_4B]),
+	// increment the uint32 ledger ID. All keys with the original ledger ID
+	// sort between [prefix][id] and [prefix][id+1].
 	//
-	// For fallback prefixes (no null terminator), append \x00.
+	// For fallback prefixes (singleton keys), append 0x00.
 	ImmediateSuccessor: func(dst, prefix []byte) []byte {
 		dst = append(dst[:0], prefix...)
-		if len(dst) > 1 && dst[len(dst)-1] == 0x00 {
-			// Ledger-scoped prefix: increment the null terminator.
-			dst[len(dst)-1]++
+		if len(dst) == ledgerScopedPrefixLen {
+			// Ledger-scoped prefix: increment the uint32 ledger ID.
+			id := binary.BigEndian.Uint32(dst[1:])
+			binary.BigEndian.PutUint32(dst[1:], id+1)
 
 			return dst
 		}
@@ -125,14 +133,13 @@ func readStoreSplit(key []byte) int {
 		return len(key)
 	}
 
-	// Find null terminator after position 1 (end of ledger name).
-	for i := 1; i < len(key); i++ {
-		if key[i] == 0x00 {
-			return i + 1 // include the null terminator in the prefix
-		}
+	// Ledger-scoped keys: [prefix_byte][ledger_id_BE_4B][...].
+	// The prefix is the first 5 bytes (1 + 4).
+	if len(key) >= ledgerScopedPrefixLen {
+		return ledgerScopedPrefixLen
 	}
 
-	// No null found — treat entire key as prefix (safety fallback).
+	// Key shorter than expected — treat entire key as prefix (safety fallback).
 	return len(key)
 }
 
