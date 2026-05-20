@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"iter"
 
 	"github.com/zeebo/blake3"
 	"github.com/zeebo/xxh3"
@@ -174,60 +173,43 @@ type Entry[T any] struct {
 	Data T
 }
 
-// derivedEntry pairs a typed key with its value so that the overlay map can
-// be keyed by U128 (fast [16]byte hash) while still carrying the original K
-// for Merge output and DirtyValues iteration.
-type derivedEntry[K Key, T any] struct {
-	key   K
-	value T
-}
-
 type DerivedKeyStore[K Key, T any] struct {
 	*KeyStore[K, T]
 
-	values    map[U128]derivedEntry[K, T]
-	deletions map[U128]K
-	readCache map[U128]T // cloned values from parent, avoids re-cloning on repeated reads
+	values    map[K]T
+	deletions map[K]struct{}
+	readCache map[K]T    // cloned values from parent, avoids re-cloning on repeated reads
 	cloneFn   func(T) T  // optional: clone on Get from parent to protect against in-place mutation
-	scratch   []byte     // reusable buffer — single-goroutine use only
-}
-
-// keyID computes the U128 for key, leaving canonical bytes in s.scratch.
-func (s *DerivedKeyStore[K, T]) keyID(key K) U128 {
-	s.scratch = key.AppendBytes(s.scratch[:0])
-	id, _ := s.hasher.MakeKey(s.scratch)
-
-	return id
+	scratch   []byte     // reusable buffer for Get — single-goroutine use only
 }
 
 func (s *DerivedKeyStore[K, T]) Put(canonical K, value T) {
-	id := s.keyID(canonical)
-	delete(s.deletions, id)
-	delete(s.readCache, id)
-	s.values[id] = derivedEntry[K, T]{key: canonical, value: value}
+	delete(s.deletions, canonical)
+	delete(s.readCache, canonical)
+	s.values[canonical] = value
 }
 
 func (s *DerivedKeyStore[K, T]) Get(canonical K) (value T, err error) {
-	id := s.keyID(canonical)
-
 	// Check if deleted in this batch
-	if _, ok := s.deletions[id]; ok {
+	if _, ok := s.deletions[canonical]; ok {
 		var zero T
 
 		return zero, nil
 	}
 
 	// Check local values (uncommitted changes)
-	if entry, ok := s.values[id]; ok {
-		return entry.value, nil
+	if localV, ok := s.values[canonical]; ok {
+		return localV, nil
 	}
 
 	// Check read cache (previously cloned from parent in this batch)
-	if cached, ok := s.readCache[id]; ok {
+	if cached, ok := s.readCache[canonical]; ok {
 		return cached, nil
 	}
 
-	// Then check underlying store (scratch already holds canonical bytes)
+	// Then check underlying store (reuse scratch buffer to avoid allocation)
+	s.scratch = canonical.AppendBytes(s.scratch[:0])
+
 	v, _, err := s.KeyStore.Get(s.scratch)
 	if err != nil {
 		return v, err
@@ -236,41 +218,40 @@ func (s *DerivedKeyStore[K, T]) Get(canonical K) (value T, err error) {
 	// Clone once and cache to avoid re-cloning on subsequent reads.
 	if s.cloneFn != nil {
 		v = s.cloneFn(v)
-		s.readCache[id] = v
+		s.readCache[canonical] = v
 	}
 
 	return v, nil
 }
 
 func (s *DerivedKeyStore[K, T]) Delete(canonical K) {
-	id := s.keyID(canonical)
-	delete(s.values, id)
-	delete(s.readCache, id)
-	s.deletions[id] = canonical
+	delete(s.values, canonical)
+	delete(s.readCache, canonical)
+	s.deletions[canonical] = struct{}{}
 }
 
 func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], []Deletion[K], error) {
 	touched := make([]Update[K, T], 0, len(s.values))
-	for _, entry := range s.values {
-		canonical := entry.key.AppendBytes(nil)
+	for k, v := range s.values {
+		canonical := k.AppendBytes(nil)
 
-		overwrite, idWithTag, err := s.KeyStore.Put(canonical, entry.value)
+		overwrite, idWithTag, err := s.KeyStore.Put(canonical, v)
 		if err != nil {
 			return nil, nil, err
 		}
 
 		touched = append(touched, Update[K, T]{
-			Key:          entry.key,
+			Key:          k,
 			ID:           idWithTag.ID,
 			Tag:          idWithTag.Tag,
 			CanonicalKey: canonical,
 			Old:          overwrite,
-			New:          entry.value,
+			New:          v,
 		})
 	}
 
 	deletions := make([]Deletion[K], 0, len(s.deletions))
-	for _, k := range s.deletions {
+	for k := range s.deletions {
 		canonical := k.AppendBytes(nil)
 
 		id, err := s.KeyStore.Delete(canonical)
@@ -288,15 +269,9 @@ func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], []Deletion[K], error) {
 	return touched, deletions, nil
 }
 
-// DirtyValues iterates over the uncommitted local values written during the current batch.
-func (s *DerivedKeyStore[K, T]) DirtyValues() iter.Seq2[K, T] {
-	return func(yield func(K, T) bool) {
-		for _, entry := range s.values {
-			if !yield(entry.key, entry.value) {
-				return
-			}
-		}
-	}
+// DirtyValues returns the uncommitted local values written during the current batch.
+func (s *DerivedKeyStore[K, T]) DirtyValues() map[K]T {
+	return s.values
 }
 
 // Parent returns the underlying KeyStore.
@@ -307,9 +282,9 @@ func (s *DerivedKeyStore[K, T]) Parent() *KeyStore[K, T] {
 func NewDerivedKeyStore[K Key, T any](store *KeyStore[K, T], cloneFn func(T) T) *DerivedKeyStore[K, T] {
 	return &DerivedKeyStore[K, T]{
 		KeyStore:  store,
-		values:    make(map[U128]derivedEntry[K, T]),
-		deletions: make(map[U128]K),
-		readCache: make(map[U128]T),
+		values:    make(map[K]T),
+		deletions: make(map[K]struct{}),
+		readCache: make(map[K]T),
 		cloneFn:   cloneFn,
 	}
 }
