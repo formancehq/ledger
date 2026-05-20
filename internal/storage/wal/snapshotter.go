@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"sort"
 
-	"go.etcd.io/etcd/raft/v3/raftpb"
-	"go.etcd.io/etcd/server/v3/wal/walpb"
+	"go.etcd.io/etcd/server/v3/storage/wal/walpb"
+	"go.etcd.io/raft/v3/raftpb"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )

@@ -365,7 +365,14 @@ send $amount (
 				},
 			})
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("Not enough funds"))
+
+			st, ok := status.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(st.Code()).To(Equal(codes.FailedPrecondition))
+
+			info := actions.ExtractGRPCErrorInfo(err)
+			Expect(info).NotTo(BeNil())
+			Expect(info.Reason).To(Equal(domain.ErrReasonInsufficientFunds))
 		})
 
 		It("Should create a transaction with unbounded overdraft", func() {

@@ -48,7 +48,7 @@ graph TB
 
 ### Concept
 
-The WAL is the main log used by Raft to guarantee entry durability. It uses the `etcd/wal` library which provides:
+The WAL is the main log used by Raft to guarantee entry durability. It uses the `etcd/server/v3/storage/wal` library which provides:
 
 - **Durability**: All writes are synchronized on disk
 - **Performance**: Sequential writes optimized
@@ -115,7 +115,7 @@ When a new WAL is created, the system uses a marker file (`WAL_CREATION_COMPLETE
 3. **If marker does not exist**:
    - Delete any existing WAL directory (incomplete previous creation)
    - Create a new WAL using `wal.Create()`
-   - Close and reopen the WAL (required by etcd/wal)
+   - Close and reopen the WAL (required by etcd/server WAL)
    - Create the marker file
    - Sync and close the marker file
    - Open the WAL for use

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/aws/smithy-go"
-	"go.etcd.io/etcd/raft/v3"
+	"go.etcd.io/raft/v3"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"

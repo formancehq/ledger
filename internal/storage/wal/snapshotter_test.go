@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"go.etcd.io/etcd/raft/v3/raftpb"
+	"go.etcd.io/raft/v3/raftpb"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )

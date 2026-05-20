@@ -36,9 +36,8 @@ require (
 	github.com/zalando/go-keyring v0.2.6
 	github.com/zeebo/blake3 v0.2.4
 	github.com/zeebo/xxh3 v1.1.0
-	go.etcd.io/etcd/client/pkg/v3 v3.5.25
-	go.etcd.io/etcd/raft/v3 v3.5.25
-	go.etcd.io/etcd/server/v3 v3.5.25
+	go.etcd.io/etcd/client/pkg/v3 v3.6.11
+	go.etcd.io/etcd/server/v3 v3.6.11
 	go.opentelemetry.io/contrib/bridges/otelzap v0.16.0
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.62.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.66.0
@@ -68,6 +67,7 @@ require (
 	github.com/databricks/databricks-sql-go v1.10.0
 	github.com/formancehq/go-libs/v5 v5.0.1
 	github.com/testcontainers/testcontainers-go v0.40.0
+	go.etcd.io/raft/v3 v3.6.0
 	golang.org/x/sync v0.20.0
 )
 
@@ -134,6 +134,7 @@ require (
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/containerd/platforms v0.2.1 // indirect
 	github.com/coreos/go-oidc/v3 v3.5.0 // indirect
+	github.com/coreos/go-semver v0.3.1 // indirect
 	github.com/cpuguy83/dockercfg v0.3.2 // indirect
 	github.com/danieljoos/wincred v1.2.2 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
@@ -275,7 +276,8 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	github.com/zitadel/oidc/v3 v3.45.3 // indirect
 	github.com/zitadel/schema v1.3.2 // indirect
-	go.etcd.io/etcd/pkg/v3 v3.5.25 // indirect
+	go.etcd.io/etcd/api/v3 v3.6.11 // indirect
+	go.etcd.io/etcd/pkg/v3 v3.6.11 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/host v0.66.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/runtime v0.66.0 // indirect
@@ -294,13 +296,13 @@ require (
 	golang.org/x/arch v0.0.0-20210923205945-b76863e36670 // indirect
 	golang.org/x/crypto v0.49.0 // indirect
 	golang.org/x/exp v0.0.0-20250819193227-8b4c13bb791b // indirect
-	golang.org/x/mod v0.33.0 // indirect
-	golang.org/x/net v0.51.0 // indirect
+	golang.org/x/mod v0.34.0 // indirect
+	golang.org/x/net v0.52.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
-	golang.org/x/telemetry v0.0.0-20260209163413-e7419c687ee4 // indirect
-	golang.org/x/text v0.35.0 // indirect
+	golang.org/x/telemetry v0.0.0-20260311193753-579e4da9a98c // indirect
+	golang.org/x/text v0.36.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
-	golang.org/x/tools v0.42.0 // indirect
+	golang.org/x/tools v0.43.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220609144429-65e65417b02f // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260209200024-4cfbd4190f57 // indirect
 	gotest.tools/gotestsum v1.8.2 // indirect

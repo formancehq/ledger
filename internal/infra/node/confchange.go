@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"go.etcd.io/etcd/raft/v3/raftpb"
+	"go.etcd.io/raft/v3/raftpb"
 )
 
 // ConfChangeContext carries peer addresses alongside a Raft ConfChange so that

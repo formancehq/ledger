@@ -10,7 +10,7 @@ package wal
 import (
 	reflect "reflect"
 
-	raftpb "go.etcd.io/etcd/raft/v3/raftpb"
+	raftpb "go.etcd.io/raft/v3/raftpb"
 	gomock "go.uber.org/mock/gomock"
 )
 

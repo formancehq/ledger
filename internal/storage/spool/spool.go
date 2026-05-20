@@ -3,7 +3,7 @@ package spool
 import (
 	"context"
 
-	"go.etcd.io/etcd/raft/v3/raftpb"
+	"go.etcd.io/raft/v3/raftpb"
 )
 
 type Position struct {

@@ -13,7 +13,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/pkg/testserver"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"go.etcd.io/etcd/raft/v3/raftpb"
+	"go.etcd.io/raft/v3/raftpb"
 	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 )

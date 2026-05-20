@@ -70,7 +70,7 @@ func (m *ProgressInfo) CloneVT() *ProgressInfo {
 	r.State = m.State
 	r.PendingSnapshot = m.PendingSnapshot
 	r.RecentActive = m.RecentActive
-	r.ProbeSent = m.ProbeSent
+	r.MsgAppFlowPaused = m.MsgAppFlowPaused
 	r.IsPaused = m.IsPaused
 	r.IsLearner = m.IsLearner
 	if len(m.unknownFields) > 0 {
@@ -849,7 +849,7 @@ func (this *ProgressInfo) EqualVT(that *ProgressInfo) bool {
 	if this.RecentActive != that.RecentActive {
 		return false
 	}
-	if this.ProbeSent != that.ProbeSent {
+	if this.MsgAppFlowPaused != that.MsgAppFlowPaused {
 		return false
 	}
 	if this.IsPaused != that.IsPaused {
@@ -1916,9 +1916,9 @@ func (m *ProgressInfo) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x38
 	}
-	if m.ProbeSent {
+	if m.MsgAppFlowPaused {
 		i--
-		if m.ProbeSent {
+		if m.MsgAppFlowPaused {
 			dAtA[i] = 1
 		} else {
 			dAtA[i] = 0
@@ -3762,7 +3762,7 @@ func (m *ProgressInfo) SizeVT() (n int) {
 	if m.RecentActive {
 		n += 2
 	}
-	if m.ProbeSent {
+	if m.MsgAppFlowPaused {
 		n += 2
 	}
 	if m.IsPaused {
@@ -4908,7 +4908,7 @@ func (m *ProgressInfo) UnmarshalVT(dAtA []byte) error {
 			m.RecentActive = bool(v != 0)
 		case 6:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ProbeSent", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field MsgAppFlowPaused", wireType)
 			}
 			var v int
 			for shift := uint(0); ; shift += 7 {
@@ -4925,7 +4925,7 @@ func (m *ProgressInfo) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-			m.ProbeSent = bool(v != 0)
+			m.MsgAppFlowPaused = bool(v != 0)
 		case 7:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field IsPaused", wireType)
