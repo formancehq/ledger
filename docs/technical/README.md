@@ -26,7 +26,6 @@ Technical reference for the Ledger v3 distributed ledger system.
 | Work with Protocol Buffers | [contributing/protobuf.md](contributing/protobuf.md) |
 | Understand Numscript language | [contributing/numscript.md](contributing/numscript.md) |
 | Track v2 API parity | [contributing/api-comparison.md](contributing/api-comparison.md) |
-| Set up the Nix dev environment | [contributing/devenv-ledger-exp.md](contributing/devenv-ledger-exp.md) |
 
 ## Directory Layout
 

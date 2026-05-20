@@ -411,9 +411,8 @@ Authorization can be added:
 
 ### Maximum Ledgers
 
-- Limited to **65,535 ledgers** per cluster
-- Each ledger is assigned a unique numeric ID (16-bit)
-- This limit is intentional to keep the system simple and efficient
+- Each ledger is assigned a unique numeric uint32 ID (~4.3 billion max per cluster)
+- In practice limited by available memory, since each ledger maintains in-memory state
 
 ### Message Size
 

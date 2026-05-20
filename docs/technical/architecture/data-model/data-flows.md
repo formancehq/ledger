@@ -202,10 +202,11 @@ The **Applier** (owned by the Node) manages the synchronization process through 
 
 | Status | Value | Description |
 |--------|-------|-------------|
-| `statusNormal` | 0 | Normal operation: committed entries applied directly to FSM |
-| `statusSyncing` | 1 | Checkpoint fetch in progress: entries spooled |
-| `statusSnapshotting` | 2 | Local snapshot creation in progress: entries spooled |
+| `statusNormal` | 0 | Normal operation: committed entries applied directly to FSM (pipelined) |
+| `statusSyncing` | 1 | Pebble checkpoint fetch from leader in progress: entries spooled |
+| `statusSnapshotting` | 2 | Local checkpoint creation in progress (ClosePeriod / QueryCheckpoint): entries spooled |
 | `statusOutOfSync` | 3 | Store behind FSM snapshot: waiting for leader discovery |
+| `statusInstallingSnapshot` | 4 | Leader snapshot being installed by processReadies: entries spooled, unspool skipped |
 
 #### State Transitions
 
@@ -217,9 +218,9 @@ The **Applier** (owned by the Node) manages the synchronization process through 
   startup ──►│ statusNormal │◄──────────────────────┐           │
              └──────┬───────┘                       │           │
                     │                               │           │
-        snapshot    │                    replay      │           │
-        threshold   │                    complete    │           │
-        reached     │                               │           │
+    checkpoint      │                    replay      │           │
+    required        │                    complete    │           │
+    (ClosePeriod)   │                               │           │
                     ▼                               │           │
            ┌─────────────────┐               ┌──────┴──────┐   │
            │statusSnapshotting│──── done ────►│ unspool &   │   │

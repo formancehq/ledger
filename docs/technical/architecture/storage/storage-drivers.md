@@ -10,7 +10,7 @@ The Store is responsible for persisting:
 - **Idempotency entries** - Track processed requests to prevent duplicates (direct prefix)
 - **Transaction updates** - Per-ledger transaction state (init, revert, metadata changes)
 - **Attributes** - Generation-cached key-value pairs for volumes, metadata, reversions, etc.
-- **Audit entries** - Optional audit trail for every proposal outcome
+- **Audit entries** - Audit trail for every proposal outcome
 - **Last applied index/timestamp** - Raft index and HLC timestamp for crash recovery
 
 The storage backend is **Pebble**, a high-performance LSM-tree based storage engine from CockroachDB.

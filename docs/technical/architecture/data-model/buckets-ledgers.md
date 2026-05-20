@@ -59,7 +59,7 @@ All data types are defined as Protocol Buffers messages:
 message LedgerInfo {
   string name = 1;              // Ledger name (unique identifier)
   Timestamp created_at = 2;     // Creation timestamp
-  uint32 id = 3;                // Numeric ledger ID (auto-assigned, max 65535)
+  uint32 id = 3;                // Numeric ledger ID (auto-assigned)
   Timestamp deleted_at = 4;     // Soft delete timestamp (nil if not deleted)
 }
 
@@ -88,9 +88,9 @@ Each ledger is assigned a unique numeric ID (`uint32`) when created. This ID is 
 
 | Resource | Maximum | Notes |
 |----------|---------|-------|
-| Ledgers | **65,535** | Stored as uint32, application-level limit to 65535 |
+| Ledgers | **~4.3 billion** | Stored as uint32 (max 4,294,967,295) |
 
-> **Note**: The maximum number of ledgers is limited to 65,535 per cluster. Each ledger is assigned a unique numeric ID (stored as uint32 but limited to 65535 by application logic). This limit is intentional to keep the system simple and efficient.
+> **Note**: Each ledger is assigned a unique monotonic uint32 ID. The theoretical maximum is ~4.3 billion ledgers per cluster. In practice, the number of ledgers is limited by available memory and storage, since each ledger maintains in-memory state (boundaries, reversions, metadata schema).
 
 ### Ledger Creation
 
@@ -300,11 +300,15 @@ sequenceDiagram
 2. Node reads directly from the **attribute system** (cache + Pebble, no Raft consensus needed)
 3. Since attributes are updated during writes, they always reflect the latest committed state
 
-**Recovery Flow**:
-1. On startup, the Pebble store is restored from its last checkpoint
-2. The FSM loads the Raft snapshot and uses `Store.GetLastAppliedIndex()` to determine where to resume
-3. If the store is behind, a Pebble checkpoint is fetched from the leader via the SnapshotService gRPC
-4. Spooled entries (committed during sync) are replayed to bring the node up to date
+**Recovery Flow** (see `Applier.RecoverAndReplay()` in `internal/infra/node/applier.go`):
+1. On startup, the Pebble store opens from its `live/` directory (the last committed state, not a checkpoint)
+2. The FSM loads in-memory state (sequences, periods, reversions) from Pebble via `RecoverState()`
+3. The Applier checks `IsStoreUpToDate()` — if the store's applied index matches the FSM snapshot index, recovery proceeds locally:
+   - Restores the in-memory cache from Pebble (`RestoreCacheFromStore()`)
+   - Recovers any periods stuck in CLOSING state (creates seal checkpoint if missing)
+   - Replays committed WAL entries not yet applied (`replayWAL()`)
+   - Replays spooled entries up to the WAL commit index (`replaySpoolUntil()`)
+4. If the store is behind (e.g., crash after receiving a leader snapshot but before syncing), the Applier is marked `statusOutOfSync` and waits for a leader to fetch a Pebble checkpoint via SnapshotService gRPC
 
 ### Why One Shared Store?
 
@@ -371,14 +375,14 @@ The system supports idempotency keys to avoid duplicate operations:
 - The key is provided in the `Idempotency-Key` header or in the action payload
 - If an operation with the same key already exists, the cached result is returned
 - **All operation types** are covered: ledger creation, ledger deletion, transactions, metadata changes
-- Verification is done at the controller level before proposing to Raft
+- Verification is done in the **hot path** (preload + FSM apply), not at the controller level: the key is preloaded from Pebble during admission, then checked deterministically inside the FSM to guarantee consistency across all nodes
 
 ### Storage
 
-Idempotency keys are stored as attributes in the generation-based cache and persisted to Pebble:
-- Keyed by a 128-bit XXH3 hash of the key string (system-wide, no ledger prefix)
+Idempotency keys are stored in a dedicated Pebble zone (`0x05`) with an in-memory bridge map for inter-proposal visibility (not part of the shared attribute/cache system):
+- Keyed by a 16-byte BLAKE3 truncation of the key string (system-wide, no ledger prefix)
 - Linked to the **global sequence number** of the resulting log and a content hash for conflict detection
-- Use `GetSequenceForIdempotencyKey()` to retrieve the associated sequence from Pebble
+- Preloaded directly from Pebble during admission (no bloom filter, no dual-generation cache)
 - See [Idempotency](./idempotency.md) for detailed documentation
 
 ### Benefits of System-Level Idempotency
@@ -417,11 +421,7 @@ Transactions can be batched to improve throughput:
 
 ## Audit Log
 
-The system supports an optional audit trail that records every proposal (success and failure) processed by the FSM.
-
-### Configuration
-
-Audit logging is controlled dynamically via the `SetAuditConfig` RPC (accessible via `ledgerctl audit enable/disable`). Audit starts **disabled** by default. When disabled, no audit entries are written and the `ListAuditEntries` RPC returns `FAILED_PRECONDITION`.
+The system records an audit trail of every proposal (success and failure) processed by the FSM. Audit logging is always enabled and cannot be disabled.
 
 ### Audit Entry Structure
 
