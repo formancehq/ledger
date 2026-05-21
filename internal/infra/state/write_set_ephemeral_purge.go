@@ -104,7 +104,6 @@ func (b *WriteSet) partitionVolumes(
 	return result
 }
 
-
 // applyEphemeralPurge deletes purged volumes from 0xF1 and overwrites the
 // cache (in-memory + 0xFF gen0Byte) with a zero VolumePair. Overwriting
 // rather than deleting keeps the cache populated for any co-batched proposal
