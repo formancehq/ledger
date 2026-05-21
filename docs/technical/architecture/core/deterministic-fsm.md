@@ -14,7 +14,7 @@ We achieve this with:
 
 1. A **deterministic working set** based on Raft log **generations** (`gen0/gen1`) derived only from Raft indexes.
 2. An **Admission** path (leader-side, parallel) that builds a **Preload** payload at a **canonical generation boundary** `B(i)` and attaches it to the Raft entry.
-3. A storage model that persists **indexed values** (last-write-wins), enabling Admission to rebuild values at the canonical boundary.
+3. A storage model that persists **absolute values** (single-entry, last-write-wins per canonical key), enabling Admission to read the latest known values for Preload.
 
 Snapshots are **not synchronized** across nodes (etcd/raft), therefore snapshots must include `gen0 + gen1`.
 
@@ -73,8 +73,8 @@ During in-flight replication/apply:
 The **FSM** is the deterministic state transition function:
 
 - Consumes committed Raft entries sequentially (strict index order).
-- Updates ledger state (balances, metadata, internal indexes, etc.).
-- Maintains the deterministic working set and in-memory overlays.
+- Updates ledger state (volumes, metadata, internal indexes, etc.).
+- Maintains the deterministic working set (in-memory cache).
 
 **FSM constraints:**
 
@@ -94,7 +94,7 @@ The **FSM** is the deterministic state transition function:
 
 **Preload** is data attached to the Raft entry so that Apply can execute decisions without store reads.
 
-Preload provides **base values** (balance and optionally metadata) aligned to a **canonical boundary index**.
+Preload provides **base values** (volumes and optionally metadata) aligned to a **canonical boundary index**.
 
 ---
 
@@ -164,12 +164,12 @@ B(i) = genEndIndex(g - 1)   // end of gen1
 B(i) = 0   // initial state
 ```
 
-**Key property:** Preload may embed a balance that is older than the latest value, as long as it is correct at boundary `B(i)` and the overlay since `B(i)` is applied deterministically by Raft.
+**Key property:** Preload may embed a volume that is older than the latest value, as long as it is correct at boundary `B(i)`. All Raft entries since `B(i)` have already been applied in the in-memory cache (absolute volume updates), so the preloaded value is only used to seed the cache for accounts not yet present.
 
 Correctness model:
 
 ```
-Balance@apply(i) = PreloadedBalance@B(i) + OverlayDeltaRAM(since B(i))
+Volume@apply(i) = absolute VolumePair in cache (seeded from Preload@B(i) if not yet present, then updated in place by each Apply)
 ```
 
 ---
@@ -181,13 +181,13 @@ Balance@apply(i) = PreloadedBalance@B(i) + OverlayDeltaRAM(since B(i))
 A Raft entry includes:
 
 - `preload_index = B(i)` (canonical boundary for this entry)
-- `preload_balances[acct]` (base balance at `preload_index`)
+- `preload_volumes[acct]` (absolute `VolumePair {input, output}` at `preload_index`)
 - optional `preload_meta[acct]` (metadata required for decisions)
 - optionally: additional base material needed for deterministic script execution
 
-### 6.2 Why “older balance” is OK
+### 6.2 Why “older volume” is OK
 
-Preload is a consistent snapshot at boundary `B(i)`. All nodes will apply the same Raft entries after `B(i)` in the same order, producing identical final state.
+Preload is a consistent snapshot at boundary `B(i)`. All nodes will apply the same Raft entries after `B(i)` in the same order, updating volumes in place identically, producing identical final state.
 
 ---
 
@@ -238,10 +238,10 @@ The `DiscoveryResult` contains:
 
 ### 7.3 Deterministic Preload decision rule
 
-For each account with `NeedBalances` or `NeedMetadataKeys`:
+For each account with volume or metadata needs:
 
 - if it is not guaranteed in `Cache(nextIndex)` (i.e., outside `gen0 ∪ gen1` at `nextIndex`)  
-  → include the required balances/metadata in Preload.
+  → include the required volumes/metadata in Preload.
 
 This rule is deterministic (index-based) and must not depend on best-effort caches.
 
@@ -251,11 +251,11 @@ This rule is deterministic (index-based) and must not depend on best-effort cach
 2) Sort accounts canonically and lock them  
 3) Read `nextIndex` (serialize via an append mutex if needed)  
 4) Compute `B(nextIndex)` and cache-guaranteed set `Cache(nextIndex)`  
-5) For each account outside cache with `NeedBalances` or `NeedMetadataKeys`:
-   - build `base@B(nextIndex)` from Pebble (bases+diffs) for required assets/keys  
+5) For each account outside cache with volume or metadata needs:
+   - read absolute value from Pebble (`Get` on canonical key) for required assets/keys  
 6) Propose Raft entry embedding:
    - `preload_index = B(nextIndex)`
-   - `preload_payload` for required accounts (balances per asset, metadata per key)
+   - `preload_payload` for required accounts (volumes per asset, metadata per key)
 
 ### 7.5 Admission invariants
 
@@ -368,7 +368,7 @@ For each account requiring base/meta:
 Then:
 
 - execute checks (`balance >= threshold`, etc.)
-- apply deltas
+- update absolute volumes in place (increase Output for sources, Input for destinations)
 - touch accounts into `gen0`
 
 ### 8.2 Rejections
@@ -377,21 +377,22 @@ Business rejection (e.g., insufficient funds) is a deterministic outcome of appl
 
 ---
 
-## 9. RAM Overlays relative to boundary
+## 9. Absolute Volumes in RAM Cache
 
-We store RAM overlays relative to the canonical boundary.
+The in-memory cache stores **absolute volumes** (`VolumePair {input, output}`), not deltas.
 
 Model:
 
 ```
-Balance = PreloadedValue@B + OverlayDeltaRAM(since B)
+Volume@apply(i) = absolute VolumePair in gen0/gen1 cache, updated in place by each Apply
+Balance = Volume.Input - Volume.Output
 ```
 
-When a check becomes necessary for a previously uncached account:
+When a previously uncached account is needed at apply time:
 
-- use Preload value at `B`
-- apply overlay deltas
-- materialize in `gen0`
+- seed the cache entry from the Preload value (absolute volume at `B`)
+- subsequent applies update the cached volume in place (add to Input or Output)
+- the account is touched into `gen0`
 
 ---
 
@@ -426,61 +427,47 @@ Restore:
 Used for:
 
 - observability: persistence lag
-- admission guardrail: ensure the store is up-to-date enough for building bases at boundary `B`
+- admission guardrail: ensure the store is up-to-date enough for reading values at boundary `B`
 - restart diagnostics
 
 It must never drive rotation/eviction.
 
 ### 11.2 Backpressure condition
 
-If the store is too far behind to produce a coherent base for the required boundary:
+If the store is too far behind to provide coherent values for accounts not in the cache:
 
-- condition: `storeIndex < baseIndex(gen1)` (equivalently: cannot build base at `B(i)`)
+- condition: `storeIndex < baseIndex(gen1)` (equivalently: cannot read values at `B(i)`)
 - Admission must apply backpressure (queue/retry) until catch-up
 
 In practice: expected negligible with continuous Pebble flush (batch + no sync).
 
 ---
 
-## 12. Storage model (Pebble): indexed values (last-write-wins)
-
-We need to reconstruct balances at boundary `B`.
+## 12. Storage model (Pebble): single-entry last-write-wins
 
 ### 12.1 Data model
 
-For each account `acct`, all attributes (including volumes) use **last-write-wins** semantics:
+Each canonical key has **exactly one Pebble entry**, overwritten in place on every apply. There is no Raft index in the key and no per-index history.
 
-- `value[acct, index] = { balance, meta }` keyed by Raft index
-
-Reconstruction for boundary `B`:
-
-```
-Balance@B = LatestValue(index ≤ B)
-```
-
-All volumes are always preloaded (sources AND destinations) before processing, so the FSM always has absolute Known values. This eliminates the need for diff accumulation.
+All volumes are always preloaded (sources AND destinations) before processing, so the FSM always has absolute values. Admission reads the latest persisted value via a simple `Get` on the canonical key.
 
 ### 12.2 FSM writes
 
 FSM flushes at apply time (batch, no sync):
 
-- write the absolute volume value `value[acct, i]` for entry index `i`
-- old entries for the same key are cleaned up during merge (point or range delete)
+- overwrite the absolute volume value for each touched canonical key (a single `Set` per key)
+- no cleanup needed: `Set` overwrites the previous value in place
 
-### 12.3 Old Entry Cleanup
+### 12.3 Compaction (backup only)
 
-When a new value is written during `WriteSet.Merge`, old entries for the same canonical key are cleaned up:
-- If the previous raft index is known (from cache), a point delete removes just that entry
-- If the previous index is unknown (cold preload), a range delete removes all entries before the current index
+During normal operation, there is only one entry per canonical key, so no per-key cleanup is needed. The only bulk cleanup happens during backup compaction (`CompactAllForBackup`): a single `DeleteRange` over the entire attribute zone `[0xF1, 0xF2)` followed by rewriting compacted values.
 
-This keeps the number of entries per key bounded without requiring a separate compaction step.
-
-### 12.4 Practical Pebble key layout
+### 12.4 Pebble key layout
 
 All attributes use a unified key format:
 
 ```
-[KeyPrefixAttributes(1B)][canonical key(NB)][attr type(1B)]
+[KeyPrefixAttributes(1B)][attr type(1B)][canonical key(NB)]
 ```
 
 Each canonical key has exactly one Pebble entry, overwritten in place. Reads are simple point lookups via `Get`.
@@ -510,8 +497,7 @@ flowchart TD
   A -->|Numscript analysis<br/>Build Preload| P[Raft Propose Entry]
   P --> R[Raft Replication / Commit]
   R -->|CommittedEntries| F[FSM Apply - all nodes<br/>Sequential + deterministic<br/>RAM-only checks]
-  F -->|Flush - batch, no sync<br/>Write absolute values| S[Pebble Storage<br/>Indexed values - last-write-wins]
-  S --> BG[Old entry cleanup at merge<br/>Point or range delete]
+  F -->|Flush - batch, no sync<br/>Overwrite absolute values| S[Pebble Storage<br/>Single entry per canonical key<br/>Last-write-wins]
 ```
 
 ### 14.2 Generations and canonical boundary
@@ -541,8 +527,8 @@ flowchart LR
 - Deterministic cache uses `gen0/gen1`, derived only from Raft index.
 - Admission (leader, parallel) builds Preload aligned to canonical boundary `B(i)`.
 - Apply is RAM-only and enforces checks on every node deterministically.
-- Preload may include an “older” balance at `B(i)`; overlays since `B(i)` ensure correctness.
+- Preload may include an “older” volume at `B(i)`; subsequent applies update absolute volumes in place, ensuring correctness.
 - Snapshots are not aligned across nodes → snapshot must embed `gen0 + gen1`.
-- Pebble stores indexed values (last-write-wins); old entry cleanup at merge keeps reads bounded.
+- Pebble stores one entry per canonical key (last-write-wins, overwritten in place).
 - `persistedIndex` is an operational guardrail and backpressure signal (rare), not a rotation input.
 - `AttributeLoader` coordinates concurrent attribute loads to prevent duplicate store reads.
