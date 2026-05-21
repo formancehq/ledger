@@ -53,11 +53,6 @@ func deduplicateVolumeUpdates(results []ApplyResult) []attributes.Update[domain.
 
 	for _, r := range results {
 		for _, update := range r.volumeUpdates {
-			// Copy CanonicalKey to decouple from the DerivedKeyStore scratch
-			// buffer, which is reused by the next PrepareEntries call running
-			// concurrently with our CommitPreparedBatch.
-			update.CanonicalKey = append([]byte(nil), update.CanonicalKey...)
-
 			if idx, ok := seen[update.Key]; ok {
 				deduped[idx] = update
 			} else {

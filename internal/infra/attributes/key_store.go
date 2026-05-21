@@ -233,17 +233,15 @@ func (s *DerivedKeyStore[K, T]) Delete(canonical K) {
 }
 
 func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], []Deletion[K], error) {
-	// Reuse scratch as an arena for canonical key bytes during merge.
-	// Each key is appended contiguously; sub-slices remain valid because
-	// earlier sub-slices reference their backing array independently of
-	// any subsequent growth.
-	s.scratch = s.scratch[:0]
+	// Reuse scratch for serializing canonical keys during Put/Delete,
+	// but allocate independent copies for each Update.CanonicalKey.
+	// The scratch buffer is shared with Get(), which may overwrite it
+	// when processing a subsequent entry in the same PrepareEntries batch.
 
 	touched := make([]Update[K, T], 0, len(s.values))
 	for k, v := range s.values {
-		start := len(s.scratch)
-		s.scratch = k.AppendBytes(s.scratch)
-		canonical := s.scratch[start:len(s.scratch):len(s.scratch)]
+		s.scratch = k.AppendBytes(s.scratch[:0])
+		canonical := append([]byte(nil), s.scratch...)
 
 		overwrite, idWithTag, err := s.KeyStore.Put(canonical, v)
 		if err != nil {
@@ -262,9 +260,8 @@ func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], []Deletion[K], error) {
 
 	deletions := make([]Deletion[K], 0, len(s.deletions))
 	for k := range s.deletions {
-		start := len(s.scratch)
-		s.scratch = k.AppendBytes(s.scratch)
-		canonical := s.scratch[start:len(s.scratch):len(s.scratch)]
+		s.scratch = k.AppendBytes(s.scratch[:0])
+		canonical := append([]byte(nil), s.scratch...)
 
 		id, err := s.KeyStore.Delete(canonical)
 		if err != nil && !errors.Is(err, domain.ErrNotFound) {
