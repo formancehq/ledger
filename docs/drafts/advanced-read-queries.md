@@ -318,7 +318,7 @@ Pebble checkpoints are cheap copy-on-write snapshots (hard links). The system al
 
 **Option B — Log Replay from Period Boundary**
 
-If the [data retention draft](./data-retention-cold-storage.md) is implemented, balance snapshots at period boundaries provide known-good starting points. PIT at sequence N = load period boundary snapshot + replay logs from boundary to N.
+If data retention cold storage is implemented, balance snapshots at period boundaries provide known-good starting points. PIT at sequence N = load period boundary snapshot + replay logs from boundary to N.
 
 - **Pro**: exact PIT at any sequence, correct by construction
 - **Con**: replay cost is O(logs between boundary and target), requires period infrastructure

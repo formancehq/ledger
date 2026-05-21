@@ -97,6 +97,8 @@ Build with all features: `just build-full` or `go build -tags "kafka,nats,clickh
 
 Scenario tests use a separate build tag: `go test -tags scenario ./tests/scenarios/... -timeout 20m`
 
+Tests with event-sink feature tags (`kafka`, `clickhouse`) start Testcontainers from `TestMain`, so Docker access is required even for compile-only checks such as `-run '^$'`.
+
 ## Testing Conventions
 
 See [docs/technical/contributing/testing.md](docs/technical/contributing/testing.md) for full testing guidelines.

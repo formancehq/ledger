@@ -6,6 +6,9 @@ The ledger supports optional JWT/OIDC authentication with scope-based authorizat
 
 ```bash
 ledger-v3-poc run \
+  --node-id 1 \
+  --cluster-id prod-ledger \
+  --bootstrap \
   --auth-enabled \
   --auth-issuer https://auth.example.com \
   --auth-service ledger

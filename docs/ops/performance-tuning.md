@@ -257,15 +257,18 @@ Each attribute type has its own filter with independent `expected-keys` and `fp-
 
 | Type | Expected Keys | FP Rate | Enabled |
 |------|--------------|---------|---------|
-| Volumes | 100M | 1% | Yes |
-| Metadata | 10M | 1% | Yes |
-| Idempotency | 10M | 1% | Yes |
-| References | 10M | 1% | Yes |
+| Volumes | 0 | — | No |
+| Metadata | 0 | — | No |
+| References | 0 | — | No |
 | Ledgers | 0 | — | No |
 | Boundaries | 0 | — | No |
 | Transactions | 0 | — | No |
+| Sink configs | 0 | — | No |
+| Numscript versions | 0 | — | No |
+| Numscript contents | 0 | — | No |
+| Ledger metadata | 0 | — | No |
 
-Ledger, boundary, and transaction filters are disabled by default because these attribute types are rarely read during the hot path.
+Bloom filters are disabled by default. Enable only the attribute types that are expected to avoid enough missing-key Pebble reads to justify the memory cost.
 
 **Tuning guidelines:**
 
@@ -282,10 +285,10 @@ The log hash chain uses BLAKE3 by default (cryptographic, tamper-resistant). For
 
 ```bash
 # Use XXH3-128 for faster hashing (non-cryptographic)
-ledger-v3-poc run --hash-algorithm xxh3
+ledger-v3-poc run --hash-algorithm xxh3 [other flags...]
 
 # Default: BLAKE3 (cryptographic)
-ledger-v3-poc run --hash-algorithm blake3
+ledger-v3-poc run --hash-algorithm blake3 [other flags...]
 ```
 
 The setting is cluster-wide and replicated via Raft. Changing it takes effect on the next log produced — existing logs retain their original hash and remain verifiable via the `hash_version` field stored on each log. See [Log Integrity](./correctness.md#hash-algorithm-selection) for details.
@@ -348,7 +351,7 @@ Pebble Batch Commit (single commit per batch of entries)
 
 ### Local Reads
 
-Read operations (`GetLedger`, `ListAccounts`, `GetTransaction`, `GetBalances`) are served **locally** on any node (leader or follower). No Raft consensus required. This allows read scaling by adding follower nodes.
+Read operations (`GetLedger`, `ListAccounts`, `GetTransaction`, `GetBalances`) are served **locally** on any node (leader or follower). By default they first use a Raft ReadIndex barrier to guarantee linearizability, then read from the local store. Requests that explicitly use stale consistency skip the barrier. This allows read scaling by adding follower nodes without routing every read to the leader.
 
 ### Balance Reconstruction
 

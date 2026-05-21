@@ -87,6 +87,8 @@ A threshold of `0.8` means the volume is considered full when 80% of its total c
 ```bash
 ledger-v3-poc run \
   --node-id 1 \
+  --cluster-id prod-ledger \
+  --bootstrap \
   --health-check-interval 30s \
   --health-wal-threshold 0.9 \
   --health-data-threshold 0.8

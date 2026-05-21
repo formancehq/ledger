@@ -19,6 +19,7 @@ The first node in the cluster must start with the `--bootstrap` flag:
 ```bash
 ledger-v3-poc run \
   --node-id 1 \
+  --cluster-id prod-ledger \
   --bootstrap \
   --bind-addr 127.0.0.1:7777 \
   --grpc-port 8888
@@ -53,6 +54,7 @@ Subsequent nodes join the cluster with `--join`, pointing to any existing cluste
 ```bash
 ledger-v3-poc run \
   --node-id 2 \
+  --cluster-id prod-ledger \
   --join 127.0.0.1:8888 \
   --bind-addr 127.0.0.1:7778 \
   --grpc-port 8889

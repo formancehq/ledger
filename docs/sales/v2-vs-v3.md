@@ -457,7 +457,7 @@ Via **gRPC**, the `Apply` call accepts multiple actions targeting different ledg
 - **Simplified error handling**: No need to handle partial failures across ledgers
 - **Audit trail**: Single global sequence for all operations
 
-See [Global Log Architecture](../technical/architecture/data-model/global-log.md) for detailed documentation on the two-level log architecture that enables this feature.
+See [Global Log Architecture](../technical/architecture/core/global-log.md) for detailed documentation on the two-level log architecture that enables this feature.
 
 ---
 

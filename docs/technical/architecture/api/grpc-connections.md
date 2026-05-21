@@ -26,11 +26,11 @@ Peers are discovered dynamically using the bootstrap/join model:
 
 ```bash
 # First node bootstraps a new cluster
-./ledger-v3-poc run --node-id 1 --bootstrap
+./ledger-v3-poc run --node-id 1 --cluster-id prod-ledger --bootstrap
 
 # Other nodes join the bootstrap node
-./ledger-v3-poc run --node-id 2 --join node-1:8888
-./ledger-v3-poc run --node-id 3 --join node-1:8888
+./ledger-v3-poc run --node-id 2 --cluster-id prod-ledger --join node-1:8888
+./ledger-v3-poc run --node-id 3 --cluster-id prod-ledger --join node-1:8888
 ```
 
 When a node joins, it discovers all existing cluster members via `GetClusterState` and registers itself as a learner. The leader auto-promotes caught-up learners to voters (configurable via `--learner-promotion-threshold`).

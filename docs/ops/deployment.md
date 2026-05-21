@@ -8,7 +8,7 @@ This document describes the different deployment methods for Ledger v3 POC, from
 
 ### Prerequisites
 
-- Go 1.25+
+- Go 1.26+
 - Just (command runner)
 - Optional: Nix with Flakes
 
@@ -20,6 +20,7 @@ just run
 # or manually
 go run . run \
   --node-id 1 \
+  --cluster-id local-dev \
   --bind-addr 127.0.0.1:7777 \
   --grpc-port 8888 \
   --wal-dir ./wal/node-1 \
@@ -28,7 +29,7 @@ go run . run \
   --bootstrap
 ```
 
-The `--bootstrap` flag initializes a new single-node cluster. It must be used only on the first node and only on the first start.
+The `--cluster-id` value identifies the cluster and is persisted in the data directory. The `--bootstrap` flag initializes a new single-node cluster. It must be used only on the first node and only on the first start.
 
 ### Command Structure
 
@@ -40,6 +41,7 @@ ledger-v3-poc run [flags]
 
 Available flags for `run`:
 - `--node-id`: Numeric node ID for this instance (must be non-zero)
+- `--cluster-id`: Cluster ID for inter-node communication and persisted configuration validation (required)
 - `--bind-addr`: Address to bind to for Raft transport (internal inter-node communication, default: `0.0.0.0:7777`)
 - `--grpc-port`: Port for gRPC service API (external client-facing, default: `8888`)
 - `--advertise-addr`: Address to advertise to other nodes (defaults to bind-addr)
@@ -69,10 +71,12 @@ Options can be provided via:
 Example with environment variables:
 ```bash
 export NODE_ID=1
+export CLUSTER_ID=local-dev
 export BIND_ADDR=127.0.0.1:7777
 export GRPC_PORT=8888
 export DATA_DIR=./data/node-1
 export HTTP_PORT=9000
+export BOOTSTRAP=true
 
 go run . run
 ```
@@ -468,6 +472,9 @@ The application supports intelligent trace sampling that prioritizes error trace
 ```bash
 # Enable error-aware sampling with 10% success rate
 go run . run \
+  --node-id 1 \
+  --cluster-id prod-ledger \
+  --bootstrap \
   --trace-sampling-enabled \
   --trace-sampling-success-ratio 0.1
 

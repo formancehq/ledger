@@ -322,6 +322,8 @@ go test ./...
 go test -tags integration ./...
 ```
 
+Tests built with event-sink feature tags such as `kafka` or `clickhouse` start Testcontainers from package `TestMain`, so they require Docker access even when using `-run '^$'` for compile-only checks.
+
 ### E2E Tests
 
 ```bash

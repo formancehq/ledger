@@ -26,9 +26,9 @@
 | Get account (with volumes) | ✅ | Input/output/balance per asset |
 | List accounts | ✅ | Prefix filter, cursor pagination |
 | Get/list ledgers | ✅ | |
-| List logs | ❌ | Not implemented |
-| Balance aggregation | ❌ | Not implemented |
-| Ledger statistics | ❌ | Not implemented |
+| List logs | ✅ | System-wide and per-ledger listing |
+| Balance aggregation | ✅ | Per-asset aggregation for filtered accounts |
+| Ledger statistics | ✅ | Account and transaction counts |
 
 ## Numscript Features (all enabled by default)
 
@@ -76,8 +76,9 @@
 
 | Feature | Reason |
 |---------|--------|
-| `postCommitVolumes` in responses | Performance: avoids extra reads during writes |
 | `preCommitVolumes` in responses | Same - volumes available via dedicated read endpoints |
+
+`postCommitVolumes` is still available as an opt-in response field for transaction creation and reverts when `expandVolumes` is enabled.
 
 ---
 

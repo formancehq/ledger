@@ -3414,7 +3414,7 @@ ledgerctl restore finalize --yes
 Start the server in restore mode:
 
 ```bash
-ledger-v3-poc run --node-id 1 --data-dir ./data --restore --grpc-port 8888
+ledger-v3-poc run --node-id 1 --cluster-id prod-ledger --data-dir ./data --restore --grpc-port 8888
 ```
 
 In restore mode:
@@ -3425,7 +3425,7 @@ In restore mode:
 After finalizing, restart without `--restore`:
 
 ```bash
-ledger-v3-poc run --node-id 1 --data-dir ./data --bootstrap --wal-dir ./wal --grpc-port 8888
+ledger-v3-poc run --node-id 1 --cluster-id prod-ledger --data-dir ./data --bootstrap --wal-dir ./wal --grpc-port 8888
 ```
 
 ### Server `--numscript-cache-size` Flag
@@ -3438,10 +3438,10 @@ Controls the maximum number of parsed Numscript programs kept in an LRU cache. W
 
 ```bash
 # Use default (1024 entries)
-ledger-v3-poc run --node-id 1 --bootstrap ...
+ledger-v3-poc run --node-id 1 --cluster-id prod-ledger --bootstrap ...
 
 # Increase cache for workloads with many distinct scripts
-ledger-v3-poc run --node-id 1 --bootstrap --numscript-cache-size 4096 ...
+ledger-v3-poc run --node-id 1 --cluster-id prod-ledger --bootstrap --numscript-cache-size 4096 ...
 ```
 
 ### Server `--mirror-max-batch-size` Flag
@@ -3454,10 +3454,10 @@ Server-side cap on the mirror batch size. Each mirror ledger can request a custo
 
 ```bash
 # Default: mirror workers use at most 500 logs per batch
-ledger-v3-poc run --node-id 1 --bootstrap ...
+ledger-v3-poc run --node-id 1 --cluster-id prod-ledger --bootstrap ...
 
 # Allow larger batches for high-throughput mirror workloads
-ledger-v3-poc run --node-id 1 --bootstrap --mirror-max-batch-size 1000 ...
+ledger-v3-poc run --node-id 1 --cluster-id prod-ledger --bootstrap --mirror-max-batch-size 1000 ...
 ```
 
 ---
@@ -3478,10 +3478,10 @@ On first boot, the server persists `node-id` and `cluster-id` into Pebble. On su
 
 ```bash
 # Normal operation: server refuses to start if node-id changed
-ledger-v3-poc run --node-id 2 --data-dir ./data  # ERROR if data was created with --node-id 1
+ledger-v3-poc run --node-id 2 --cluster-id prod-ledger --data-dir ./data  # ERROR if data was created with --node-id 1
 
 # Override with explicit flag
-ledger-v3-poc run --node-id 2 --data-dir ./data --unsafe-skip-config-validation
+ledger-v3-poc run --node-id 2 --cluster-id prod-ledger --data-dir ./data --unsafe-skip-config-validation
 ```
 
 ---
@@ -3522,10 +3522,10 @@ The TTL is persisted in the startup config and validated on subsequent boots (sa
 ledger-v3-poc run [other flags...]
 
 # Short TTL for development/testing
-ledger-v3-poc run --idempotency-ttl 5m --idempotency-eviction-interval 30s
+ledger-v3-poc run --idempotency-ttl 5m --idempotency-eviction-interval 30s [other flags...]
 
 # Disable TTL (idempotency keys never expire)
-ledger-v3-poc run --idempotency-ttl 0
+ledger-v3-poc run --idempotency-ttl 0 [other flags...]
 ```
 
 ---
@@ -3536,37 +3536,41 @@ Application-level bloom filters that avoid Pebble reads for keys known not to ex
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--bloom-volumes-expected-keys` | uint | `100000000` | Expected unique volume keys (0 = disable) |
-| `--bloom-volumes-fp-rate` | float64 | `0.01` | False positive rate for volumes (0.01 = 1%) |
-| `--bloom-metadata-expected-keys` | uint | `10000000` | Expected unique metadata keys (0 = disable) |
-| `--bloom-metadata-fp-rate` | float64 | `0.01` | False positive rate for metadata |
-| `--bloom-references-expected-keys` | uint | `10000000` | Expected unique reference keys (0 = disable) |
-| `--bloom-references-fp-rate` | float64 | `0.01` | False positive rate for references |
+| `--bloom-volumes-expected-keys` | uint | `0` | Expected unique volume keys (0 = disabled by default) |
+| `--bloom-volumes-fp-rate` | float64 | `0` | False positive rate for volumes (0 = use 0.01 when enabled) |
+| `--bloom-metadata-expected-keys` | uint | `0` | Expected unique metadata keys (0 = disabled by default) |
+| `--bloom-metadata-fp-rate` | float64 | `0` | False positive rate for metadata (0 = use 0.01 when enabled) |
+| `--bloom-references-expected-keys` | uint | `0` | Expected unique reference keys (0 = disabled by default) |
+| `--bloom-references-fp-rate` | float64 | `0` | False positive rate for references (0 = use 0.01 when enabled) |
 | `--bloom-ledgers-expected-keys` | uint | `0` | Expected unique ledger keys (0 = disabled by default) |
-| `--bloom-ledgers-fp-rate` | float64 | `0.01` | False positive rate for ledgers |
+| `--bloom-ledgers-fp-rate` | float64 | `0` | False positive rate for ledgers (0 = use 0.01 when enabled) |
 | `--bloom-boundaries-expected-keys` | uint | `0` | Expected unique boundary keys (0 = disabled by default) |
-| `--bloom-boundaries-fp-rate` | float64 | `0.01` | False positive rate for boundaries |
+| `--bloom-boundaries-fp-rate` | float64 | `0` | False positive rate for boundaries (0 = use 0.01 when enabled) |
 | `--bloom-transactions-expected-keys` | uint | `0` | Expected unique transaction keys (0 = disabled by default) |
-| `--bloom-transactions-fp-rate` | float64 | `0.01` | False positive rate for transactions |
+| `--bloom-transactions-fp-rate` | float64 | `0` | False positive rate for transactions (0 = use 0.01 when enabled) |
 | `--bloom-sink-configs-expected-keys` | uint | `0` | Expected unique sink config keys (0 = disabled by default) |
-| `--bloom-sink-configs-fp-rate` | float64 | `0.01` | False positive rate for sink configs |
+| `--bloom-sink-configs-fp-rate` | float64 | `0` | False positive rate for sink configs (0 = use 0.01 when enabled) |
 | `--bloom-numscript-versions-expected-keys` | uint | `0` | Expected unique numscript version keys (0 = disabled by default) |
-| `--bloom-numscript-versions-fp-rate` | float64 | `0.01` | False positive rate for numscript versions |
+| `--bloom-numscript-versions-fp-rate` | float64 | `0` | False positive rate for numscript versions (0 = use 0.01 when enabled) |
 | `--bloom-numscript-contents-expected-keys` | uint | `0` | Expected unique numscript content keys (0 = disabled by default) |
-| `--bloom-numscript-contents-fp-rate` | float64 | `0.01` | False positive rate for numscript contents |
+| `--bloom-numscript-contents-fp-rate` | float64 | `0` | False positive rate for numscript contents (0 = use 0.01 when enabled) |
+| `--bloom-ledger-metadata-expected-keys` | uint | `0` | Expected unique ledger metadata keys (0 = disabled by default) |
+| `--bloom-ledger-metadata-fp-rate` | float64 | `0` | False positive rate for ledger metadata (0 = use 0.01 when enabled) |
 
-Ledger, boundary, transaction, sink-config, and numscript filters are disabled by default because these attribute types are rarely read and don't benefit from bloom filtering.
+Bloom filters are disabled by default. Enable only the attribute types that avoid enough missing-key Pebble reads to justify the memory cost.
 
 ```bash
-# Default config (volumes, metadata, references enabled)
+# Default config (all bloom filters disabled)
 ledger-v3-poc run [other flags...]
 
-# Disable all bloom filters
-ledger-v3-poc run --bloom-volumes-expected-keys 0 --bloom-metadata-expected-keys 0 \
-  --bloom-references-expected-keys 0
+# Enable filters for common hot-path misses
+ledger-v3-poc run --bloom-volumes-expected-keys 100000000 \
+  --bloom-metadata-expected-keys 10000000 \
+  --bloom-references-expected-keys 10000000 \
+  [other flags...]
 
 # Enable transaction filter for a specific workload
-ledger-v3-poc run --bloom-transactions-expected-keys 50000000
+ledger-v3-poc run --bloom-transactions-expected-keys 50000000 [other flags...]
 ```
 
 Changing any bloom filter configuration triggers a full repopulation scan on next startup.
@@ -3588,10 +3592,10 @@ Each log records which algorithm was used in its `hash_version` field, so switch
 
 ```bash
 # Use XXH3 for write-heavy workloads (e.g., blockchain ingestion)
-ledger-v3-poc run --hash-algorithm xxh3
+ledger-v3-poc run --hash-algorithm xxh3 [other flags...]
 
 # Default: BLAKE3
-ledger-v3-poc run --hash-algorithm blake3
+ledger-v3-poc run --hash-algorithm blake3 [other flags...]
 ```
 
 ---

@@ -730,6 +730,7 @@ func logMemoryEstimate(logger logging.Logger, cfg *bootstrap.Config, memlimit in
 		cfg.BloomConfig.GetBloomBoundaries(), cfg.BloomConfig.GetBloomTransactions(),
 		cfg.BloomConfig.GetBloomSinkConfigs(), cfg.BloomConfig.GetBloomNumscriptVersions(),
 		cfg.BloomConfig.GetBloomNumscriptContents(),
+		cfg.BloomConfig.GetBloomLedgerMetadata(),
 	} {
 		if tc.GetExpectedKeys() > 0 && tc.GetFpRate() > 0 {
 			bits := -float64(tc.GetExpectedKeys()) * math.Log(tc.GetFpRate()) / (math.Ln2 * math.Ln2)
@@ -876,7 +877,18 @@ func loadReadIndexPebbleConfig(cmd *cobra.Command) readstore.Config {
 }
 
 // bloomFlagNames lists per-attribute-type names for bloom filter flag registration.
-var bloomFlagNames = []string{"volumes", "metadata", "references", "ledgers", "boundaries", "transactions", "sink-configs", "numscript-versions", "numscript-contents"}
+var bloomFlagNames = []string{
+	"volumes",
+	"metadata",
+	"references",
+	"ledgers",
+	"boundaries",
+	"transactions",
+	"sink-configs",
+	"numscript-versions",
+	"numscript-contents",
+	"ledger-metadata",
+}
 
 // registerBloomFlags registers per-attribute-type bloom filter flags.
 func registerBloomFlags(cmd *cobra.Command) {
@@ -887,7 +899,7 @@ func registerBloomFlags(cmd *cobra.Command) {
 		)
 		cmd.Flags().Float64(
 			fmt.Sprintf("bloom-%s-fp-rate", name), 0,
-			fmt.Sprintf("False positive rate for %s bloom filter", name),
+			fmt.Sprintf("False positive rate for %s bloom filter (0 = use 0.01 when enabled)", name),
 		)
 	}
 }
@@ -923,4 +935,5 @@ func loadBloomConfig(cmd *cobra.Command, cfg *commonpb.ClusterConfig) {
 	cfg.BloomSinkConfigs = load("sink-configs")
 	cfg.BloomNumscriptVersions = load("numscript-versions")
 	cfg.BloomNumscriptContents = load("numscript-contents")
+	cfg.BloomLedgerMetadata = load("ledger-metadata")
 }
