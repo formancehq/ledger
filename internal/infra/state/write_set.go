@@ -181,9 +181,10 @@ func (b *WriteSet) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 		return fmt.Errorf("failed purging ephemeral volumes: %w", err)
 	}
 
-	// Evict transient volumes from the in-memory KeyStore. Merge() pushed them
-	// to the parent, but they must not persist across batches.
-	b.evictTransientVolumes(partResult.transient)
+	// Transient volumes remain in the in-memory cache after Merge() — they are
+	// simply not written to Pebble. Keeping them in cache is necessary: co-batched
+	// proposals admitted with CacheGuaranteed carry no preload for keys assumed
+	// to be in cache. The values age out naturally via cache generation rotation.
 
 	// Collect unique transient/purged account names per ledger for the audit entry.
 	if len(partResult.transient) > 0 {

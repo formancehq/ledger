@@ -104,16 +104,6 @@ func (b *WriteSet) partitionVolumes(
 	return result
 }
 
-// evictTransientVolumes removes transient volumes from the in-memory parent KeyStore.
-// Unlike ephemeral purge, transient volumes were never written to Pebble, so only
-// the in-memory eviction is needed.
-func (b *WriteSet) evictTransientVolumes(
-	transient []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
-) {
-	for _, update := range transient {
-		_, _ = b.fsm.Registry.Volumes.Delete(update.CanonicalKey)
-	}
-}
 
 // applyEphemeralPurge deletes purged volumes from 0xF1 and overwrites the
 // cache (in-memory + 0xFF gen0Byte) with a zero VolumePair. Overwriting
