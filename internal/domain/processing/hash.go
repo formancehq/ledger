@@ -13,7 +13,6 @@ import (
 // ComputeAuditHash computes a batch-level integrity hash over the proposal's
 // orders. Orders are the source of truth — logs are a deterministic derivation.
 // The hash covers what was attempted regardless of success or failure.
-// Thread-safe: uses blake3.Sum256 (no shared state).
 func ComputeAuditHash(algo commonpb.HashAlgorithm, buf []byte, lastAuditHash []byte, orders []*raftcmdpb.Order) (resBuf []byte, hash []byte) {
 	buf = buf[:0]
 	for _, order := range orders {

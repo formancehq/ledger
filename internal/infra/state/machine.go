@@ -62,7 +62,7 @@ type Machine struct {
 	queryCheckpointScheduleChanged signal.Signal
 	lastAuditHash                  []byte
 	hashAlgorithm                  commonpb.HashAlgorithm
-	auditHashBuf                   []byte // scratch buffer for background hash goroutine
+	auditHashBuf                   []byte
 
 	lastAppliedIndex     uint64
 	lastAppliedTimestamp uint64
@@ -552,6 +552,14 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, entries ...raftpb.Entry)
 		fsm.lastAppliedIndex++
 
 		if entry.Type != raftpb.EntryNormal || len(entry.Data) == 0 {
+			if fsm.sentinelMode {
+				fsm.logger.WithFields(map[string]any{
+					"raftIndex": entry.Index,
+					"entryType": entry.Type.String(),
+					"dataLen":   len(entry.Data),
+				}).Infof("SENTINEL: skipping non-normal/empty entry")
+			}
+
 			continue
 		}
 
@@ -565,6 +573,13 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, entries ...raftpb.Entry)
 		}
 
 		if len(cmd.GetOrders()) == 0 && len(cmd.GetMirrorSyncUpdates()) == 0 && len(cmd.GetEventsSinkUpdates()) == 0 && cmd.GetIdempotencyEviction() == nil && cmd.GetClusterConfig() == nil {
+			if fsm.sentinelMode {
+				fsm.logger.WithFields(map[string]any{
+					"raftIndex":  entry.Index,
+					"proposalID": cmd.GetId(),
+				}).Infof("SENTINEL: skipping no-op proposal")
+			}
+
 			ret.Results = append(ret.Results, ApplyResult{ProposalID: cmd.GetId(), AppliedIndex: entry.Index})
 
 			continue
@@ -578,6 +593,25 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, entries ...raftpb.Entry)
 		}
 
 		result.AppliedIndex = entry.Index
+
+		if fsm.sentinelMode {
+			if result.Error != nil {
+				fsm.logger.WithFields(map[string]any{
+					"raftIndex":  entry.Index,
+					"proposalID": cmd.GetId(),
+					"error":      result.Error.Error(),
+					"orderCount": len(cmd.GetOrders()),
+				}).Infof("SENTINEL: proposal rejected (business error)")
+			} else {
+				fsm.logger.WithFields(map[string]any{
+					"raftIndex":  entry.Index,
+					"proposalID": cmd.GetId(),
+					"orderCount": len(cmd.GetOrders()),
+					"ledgerIDs":  result.ledgerIDs,
+					"logCount":   len(result.createdLogs),
+				}).Infof("SENTINEL: proposal applied")
+			}
+		}
 
 		if result.ConfigChanged {
 			eventsConfigChanged = true
@@ -1193,28 +1227,13 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 	orders := proposal.GetOrders()
 
-	// Compute audit hash in a background goroutine while ProcessOrders runs.
-	// The hash covers the orders (source of truth), not the logs (derived output).
-	// This enables parallel CPU utilization: hash computation on one core,
-	// business logic on another.
-	type auditHashResult struct {
-		buf  []byte
-		hash []byte
-	}
-
-	auditHashCh := make(chan auditHashResult, 1)
-
-	go func() {
-		buf, hash := processing.ComputeAuditHash(fsm.hashAlgorithm, fsm.auditHashBuf, fsm.lastAuditHash, orders)
-		auditHashCh <- auditHashResult{buf: buf, hash: hash}
-	}()
-
-	// Process the proposal (CPU-heavy business logic, runs in parallel with hash)
+	// Process the proposal
 	logs, err := fsm.processor.ProcessOrders(orders, buffer)
 
-	// Wait for the hash result (likely already done by now).
-	hashResult := <-auditHashCh
-	fsm.auditHashBuf = hashResult.buf
+	// Compute audit hash synchronously. The hash covers the orders (source of
+	// truth), not the logs (deterministic derivation).
+	var auditHash []byte
+	fsm.auditHashBuf, auditHash = processing.ComputeAuditHash(fsm.hashAlgorithm, fsm.auditHashBuf, fsm.lastAuditHash, orders)
 
 	// Helper to build and write the audit entry (shared by success and failure paths).
 	writeAuditEntry := func(entry *auditpb.AuditEntry, logs []*raftcmdpb.CreatedLogOrReference, label string) error {
@@ -1223,7 +1242,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		entry.ProposalId = proposal.GetId()
 		entry.OrderCount = uint32(len(orders))
 		entry.Ledgers = extractLedgers(orders)
-		entry.Hash = hashResult.hash
+		entry.Hash = auditHash
 		entry.HashVersion = uint32(fsm.hashAlgorithm)
 		fsm.lastAuditHash = entry.GetHash()
 		fsm.nextAuditSequenceID++

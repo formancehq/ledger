@@ -38,11 +38,11 @@ The hash algorithm is a cluster-wide setting configured via `--hash-algorithm` a
 
 ### Implementation Details
 
-- **BLAKE3**: `github.com/zeebo/blake3` — a shared `blake3.Hasher` is reused (with `Reset()`) across calls to avoid allocation overhead
+- **BLAKE3**: `github.com/zeebo/blake3` — stateless `blake3.Sum256`, zero shared state
 - **XXH3-128**: `github.com/zeebo/xxh3` — stateless, zero allocation
 - **Hash field**: Stored as `bytes hash` (field 9) in the `AuditEntry` protobuf message
 - **Version field**: Stored as `uint32 hash_version` (field 10) in the `AuditEntry` protobuf message
-- **Computation**: Launched in a background goroutine at the start of `applyProposal()`, runs in parallel with `ProcessOrders`
+- **Computation**: Performed synchronously in `applyProposal()` on the FSM goroutine, after `ProcessOrders`
 
 ### State Persistence
 
