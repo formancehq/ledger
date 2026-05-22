@@ -32,11 +32,11 @@ func TestCacheHitBeforeTTL(t *testing.T) {
 }
 
 func TestCacheMissAfterTTL(t *testing.T) {
-	d := newTestDriver(time.Nanosecond)
+	d := newTestDriver(time.Millisecond)
 	l := ledger.MustNewWithDefault("test-ledger")
 
 	d.setCachedLedger(l)
-	time.Sleep(2 * time.Nanosecond)
+	time.Sleep(2 * time.Millisecond)
 
 	_, ok := d.getCachedLedger(l.Name)
 	require.False(t, ok)
@@ -91,6 +91,16 @@ func TestCacheConcurrentAccess(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+
+	// After concurrent set/get/evict, the cache must be in a consistent state:
+	// either empty (evict won last) or holding the correct ledger (set won last).
+	// Any other value indicates corruption.
+	got, ok := d.getCachedLedger(l.Name)
+	if ok {
+		require.Equal(t, l.Name, got.Name, "cached ledger must equal the one that was written")
+	}
+	// Both outcomes (present or absent) are valid; no panic and no corrupted
+	// state is the invariant this test enforces under -race.
 }
 
 func TestCacheIsolationBetweenLedgers(t *testing.T) {
@@ -130,4 +140,31 @@ func TestCacheUpdateEntry(t *testing.T) {
 	got, ok := d.getCachedLedger(l.Name)
 	require.True(t, ok)
 	require.Equal(t, "prod", got.Metadata["env"])
+}
+
+func TestCacheGenerationPreventsStaleWrites(t *testing.T) {
+	d := newTestDriver(time.Minute)
+	l := ledger.MustNewWithDefault("test-ledger")
+
+	d.setCachedLedger(l)
+
+	// Snapshot the generation before any eviction.
+	d.mu.RLock()
+	genBefore := d.cacheGens[l.Name]
+	d.mu.RUnlock()
+
+	d.evictCachedLedger(l.Name)
+
+	// Generation must have been bumped.
+	d.mu.RLock()
+	genAfter := d.cacheGens[l.Name]
+	d.mu.RUnlock()
+	require.Greater(t, genAfter, genBefore, "eviction must increment the invalidation generation")
+
+	// Simulate the singleflight write-back arriving with the stale generation.
+	d.setCachedLedgerGen(l, genBefore)
+
+	// The stale write must be silently rejected.
+	_, ok := d.getCachedLedger(l.Name)
+	require.False(t, ok, "write with stale generation must not populate the cache")
 }

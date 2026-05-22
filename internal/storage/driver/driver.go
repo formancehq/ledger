@@ -139,6 +139,24 @@ func (d *Driver) setCachedLedger(l ledger.Ledger) {
 	}
 }
 
+// setCachedLedgerGen stores l only if cacheGens[l.Name] still equals gen.
+// A mismatched generation means evictCachedLedger ran while the DB query
+// was in-flight; in that case the snapshot is stale and must be dropped.
+func (d *Driver) setCachedLedgerGen(l ledger.Ledger, gen uint64) {
+	if d.cacheTTL <= 0 {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.cacheGens[l.Name] != gen {
+		return
+	}
+	d.ledgerCache[l.Name] = cachedLedger{
+		ledger:    l,
+		expiresAt: time.Now().Add(d.cacheTTL),
+	}
+}
+
 func (d *Driver) evictCachedLedger(name string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -192,16 +210,7 @@ func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Stor
 		}
 
 		// Write back only if no eviction occurred during the DB queries.
-		if d.cacheTTL > 0 {
-			d.mu.Lock()
-			if d.cacheGens[name] == gen {
-				d.ledgerCache[name] = cachedLedger{
-					ledger:    *ret,
-					expiresAt: time.Now().Add(d.cacheTTL),
-				}
-			}
-			d.mu.Unlock()
-		}
+		d.setCachedLedgerGen(*ret, gen)
 
 		alone := count == 1
 		return &openLedgerResult{ledger: *ret, aloneInBucket: &alone}, nil
