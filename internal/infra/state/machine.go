@@ -1244,6 +1244,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		entry.Ledgers = extractLedgers(orders)
 		entry.Hash = auditHash
 		entry.HashVersion = uint32(fsm.hashAlgorithm)
+		entry.Caller = proposal.GetCaller()
 		fsm.lastAuditHash = entry.GetHash()
 		fsm.nextAuditSequenceID++
 

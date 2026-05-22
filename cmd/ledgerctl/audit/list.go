@@ -14,6 +14,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
@@ -141,13 +142,47 @@ func printAuditEntry(entry *auditpb.AuditEntry, verbose bool) {
 		statusText = fmt.Sprintf("[%s] %s", f.GetErrorType(), f.GetMessage())
 	}
 
-	pterm.Printf("  #%-6d %s  proposal=%-4d %s  %s\n",
+	// Caller info (compact or verbose)
+	callerText := ""
+	if caller := entry.GetCaller(); caller != nil && caller.GetSubject() != "" {
+		callerText = "  caller=" + pterm.Yellow(caller.GetSubject())
+	}
+
+	pterm.Printf("  #%-6d %s  proposal=%-4d %s  %s%s\n",
 		entry.GetSequence(),
 		pterm.Gray(ts),
 		entry.GetProposalId(),
 		statusIcon,
 		pterm.Gray(statusText),
+		callerText,
 	)
+
+	// Verbose caller details
+	if verbose {
+		if caller := entry.GetCaller(); caller != nil && caller.GetSubject() != "" {
+			var source string
+
+			switch s := caller.GetSource().(type) {
+			case *commonpb.CallerIdentity_Issuer:
+				source = "issuer=" + s.Issuer
+			case *commonpb.CallerIdentity_KeyId:
+				source = "key_id=" + s.KeyId
+			}
+
+			godText := ""
+			if caller.GetGod() {
+				godText = " god=true"
+			}
+
+			pterm.Printf("    %s subject=%s %s scopes=[%s]%s\n",
+				pterm.Gray("caller:"),
+				pterm.Yellow(caller.GetSubject()),
+				pterm.Gray(source),
+				pterm.Gray(strings.Join(caller.GetScopes(), ",")),
+				pterm.Red(godText),
+			)
+		}
+	}
 
 	// Display items if populated (GetAuditEntry), otherwise show order count summary.
 	if items := entry.GetItems(); len(items) > 0 {

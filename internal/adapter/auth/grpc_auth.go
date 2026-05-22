@@ -63,6 +63,7 @@ func Authenticate(ctx context.Context, cfg AuthConfig, scopes ...Scope) (context
 	}
 
 	keyID := extractKeyID(token)
+	ctx = WithKeyID(ctx, keyID)
 
 	claims, err := validateToken(ctx, token, cfg)
 	if err != nil {

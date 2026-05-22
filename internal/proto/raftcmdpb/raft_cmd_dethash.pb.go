@@ -1627,6 +1627,13 @@ func (m *Proposal) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error)
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.Caller != nil {
+		size, _ := m.Caller.MarshalToSizedBufferVT(dAtA[:i])
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x6a
+	}
 	if len(m.IndexReadyUpdates) > 0 {
 		for iNdEx := len(m.IndexReadyUpdates) - 1; iNdEx >= 0; iNdEx-- {
 			size, _ := m.IndexReadyUpdates[iNdEx].MarshalToSizedBufferVT(dAtA[:i])

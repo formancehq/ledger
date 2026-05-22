@@ -43,7 +43,9 @@ func HTTPAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 
 			keyID := extractKeyID(token)
 
-			claims, err := validateToken(r.Context(), token, cfg)
+			ctx := WithKeyID(r.Context(), keyID)
+
+			claims, err := validateToken(ctx, token, cfg)
 			if err != nil {
 				logHTTPAuthFailure(r, keyID, "invalid_token", err)
 				http.Error(w, "invalid token: "+err.Error(), http.StatusUnauthorized)
@@ -51,7 +53,7 @@ func HTTPAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 				return
 			}
 
-			ctx := WithClaims(r.Context(), claims)
+			ctx = WithClaims(ctx, claims)
 
 			// Expand scopes through the mapping and store in context.
 			// God-mode tokens get all granular scopes.

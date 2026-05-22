@@ -36,6 +36,8 @@ message AuditEntry {
   bytes hash = 9;
   // Hash algorithm version (matches common.HashAlgorithm enum).
   uint32 hash_version = 10;
+  // Authenticated caller identity. Nil when auth is disabled or for system-initiated proposals.
+  common.CallerIdentity caller = 11;
 }
 
 // AuditItem represents one order within a proposal, stored separately from the

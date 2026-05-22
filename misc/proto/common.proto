@@ -1102,3 +1102,16 @@ message PersistedConfig {
   uint64 idempotency_ttl_seconds = 3;
   uint32 storage_schema_version = 4;
 }
+
+// CallerIdentity captures the authenticated caller for audit trail purposes.
+// Carried on Proposals through Raft, then copied to AuditEntry by the FSM.
+// Nil when authentication is disabled or for system-initiated proposals.
+message CallerIdentity {
+  string subject = 1;
+  repeated string scopes = 2;
+  bool god = 3;
+  oneof source {
+    string issuer = 4;   // OIDC token issuer URL
+    string key_id = 5;   // Ed25519 signing key ID
+  }
+}

@@ -49,7 +49,9 @@ type AuditEntry struct {
 	// For failure entries: H(serialize(audit_entry_without_hash) + previous_audit_hash)
 	Hash []byte `protobuf:"bytes,9,opt,name=hash,proto3" json:"hash,omitempty"`
 	// Hash algorithm version (matches common.HashAlgorithm enum).
-	HashVersion   uint32 `protobuf:"varint,10,opt,name=hash_version,json=hashVersion,proto3" json:"hash_version,omitempty"`
+	HashVersion uint32 `protobuf:"varint,10,opt,name=hash_version,json=hashVersion,proto3" json:"hash_version,omitempty"`
+	// Authenticated caller identity. Nil when auth is disabled or for system-initiated proposals.
+	Caller        *commonpb.CallerIdentity `protobuf:"bytes,11,opt,name=caller,proto3" json:"caller,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -163,6 +165,13 @@ func (x *AuditEntry) GetHashVersion() uint32 {
 		return x.HashVersion
 	}
 	return 0
+}
+
+func (x *AuditEntry) GetCaller() *commonpb.CallerIdentity {
+	if x != nil {
+		return x.Caller
+	}
+	return nil
 }
 
 type isAuditEntry_Outcome interface {
@@ -436,7 +445,7 @@ var File_audit_proto protoreflect.FileDescriptor
 
 const file_audit_proto_rawDesc = "" +
 	"\n" +
-	"\vaudit.proto\x12\x05audit\x1a\fcommon.proto\x1a\x0eraft_cmd.proto\"\x81\x03\n" +
+	"\vaudit.proto\x12\x05audit\x1a\fcommon.proto\x1a\x0eraft_cmd.proto\"\xb1\x03\n" +
 	"\n" +
 	"AuditEntry\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x06R\bsequence\x12/\n" +
@@ -451,7 +460,8 @@ const file_audit_proto_rawDesc = "" +
 	"\aledgers\x18\b \x03(\tR\aledgers\x12\x12\n" +
 	"\x04hash\x18\t \x01(\fR\x04hash\x12!\n" +
 	"\fhash_version\x18\n" +
-	" \x01(\rR\vhashVersionB\t\n" +
+	" \x01(\rR\vhashVersion\x12.\n" +
+	"\x06caller\x18\v \x01(\v2\x16.common.CallerIdentityR\x06callerB\t\n" +
 	"\aoutcome\"r\n" +
 	"\tAuditItem\x12\x1f\n" +
 	"\vorder_index\x18\x01 \x01(\rR\n" +
@@ -494,33 +504,35 @@ func file_audit_proto_rawDescGZIP() []byte {
 
 var file_audit_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_audit_proto_goTypes = []any{
-	(*AuditEntry)(nil),         // 0: audit.AuditEntry
-	(*AuditItem)(nil),          // 1: audit.AuditItem
-	(*AuditSuccess)(nil),       // 2: audit.AuditSuccess
-	(*AccountList)(nil),        // 3: audit.AccountList
-	(*AuditFailure)(nil),       // 4: audit.AuditFailure
-	nil,                        // 5: audit.AuditSuccess.TransientAccountsEntry
-	nil,                        // 6: audit.AuditSuccess.PurgedAccountsEntry
-	nil,                        // 7: audit.AuditFailure.ContextEntry
-	(*commonpb.Timestamp)(nil), // 8: common.Timestamp
-	(*raftcmdpb.Order)(nil),    // 9: raft.Order
+	(*AuditEntry)(nil),              // 0: audit.AuditEntry
+	(*AuditItem)(nil),               // 1: audit.AuditItem
+	(*AuditSuccess)(nil),            // 2: audit.AuditSuccess
+	(*AccountList)(nil),             // 3: audit.AccountList
+	(*AuditFailure)(nil),            // 4: audit.AuditFailure
+	nil,                             // 5: audit.AuditSuccess.TransientAccountsEntry
+	nil,                             // 6: audit.AuditSuccess.PurgedAccountsEntry
+	nil,                             // 7: audit.AuditFailure.ContextEntry
+	(*commonpb.Timestamp)(nil),      // 8: common.Timestamp
+	(*commonpb.CallerIdentity)(nil), // 9: common.CallerIdentity
+	(*raftcmdpb.Order)(nil),         // 10: raft.Order
 }
 var file_audit_proto_depIdxs = []int32{
 	8,  // 0: audit.AuditEntry.timestamp:type_name -> common.Timestamp
 	2,  // 1: audit.AuditEntry.success:type_name -> audit.AuditSuccess
 	4,  // 2: audit.AuditEntry.failure:type_name -> audit.AuditFailure
 	1,  // 3: audit.AuditEntry.items:type_name -> audit.AuditItem
-	9,  // 4: audit.AuditItem.order:type_name -> raft.Order
-	5,  // 5: audit.AuditSuccess.transient_accounts:type_name -> audit.AuditSuccess.TransientAccountsEntry
-	6,  // 6: audit.AuditSuccess.purged_accounts:type_name -> audit.AuditSuccess.PurgedAccountsEntry
-	7,  // 7: audit.AuditFailure.context:type_name -> audit.AuditFailure.ContextEntry
-	3,  // 8: audit.AuditSuccess.TransientAccountsEntry.value:type_name -> audit.AccountList
-	3,  // 9: audit.AuditSuccess.PurgedAccountsEntry.value:type_name -> audit.AccountList
-	10, // [10:10] is the sub-list for method output_type
-	10, // [10:10] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	9,  // 4: audit.AuditEntry.caller:type_name -> common.CallerIdentity
+	10, // 5: audit.AuditItem.order:type_name -> raft.Order
+	5,  // 6: audit.AuditSuccess.transient_accounts:type_name -> audit.AuditSuccess.TransientAccountsEntry
+	6,  // 7: audit.AuditSuccess.purged_accounts:type_name -> audit.AuditSuccess.PurgedAccountsEntry
+	7,  // 8: audit.AuditFailure.context:type_name -> audit.AuditFailure.ContextEntry
+	3,  // 9: audit.AuditSuccess.TransientAccountsEntry.value:type_name -> audit.AccountList
+	3,  // 10: audit.AuditSuccess.PurgedAccountsEntry.value:type_name -> audit.AccountList
+	11, // [11:11] is the sub-list for method output_type
+	11, // [11:11] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_audit_proto_init() }

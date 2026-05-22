@@ -29,6 +29,13 @@ func (m *AuditEntry) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.Caller != nil {
+		size, _ := m.Caller.MarshalToSizedBufferVT(dAtA[:i])
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x5a
+	}
 	if m.HashVersion != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.HashVersion))
 		i--

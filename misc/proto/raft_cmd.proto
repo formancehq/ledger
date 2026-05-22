@@ -385,6 +385,7 @@ message Proposal {
   repeated MetadataConversionBatch metadata_conversion_batches = 10;  // Background metadata conversion batches (no log entry)
   repeated MetadataConversionCompletion metadata_conversions_complete = 11;  // Background metadata conversion completions (no log entry)
   repeated IndexReadyUpdate index_ready_updates = 12;  // Index ready signals from index builder (no log entry)
+  common.CallerIdentity caller = 13;  // Authenticated caller identity (nil for system proposals)
 }
 
 // IdempotencyEviction is a deterministic cleanup command proposed by the leader.
