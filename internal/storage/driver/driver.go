@@ -45,6 +45,7 @@ type Driver struct {
 
 	mu          sync.RWMutex
 	ledgerCache map[string]cachedLedger
+	cacheGens   map[string]uint64 // invalidation generation per ledger; bumped on every eviction
 	cacheTTL    time.Duration
 	group       singleflight.Group
 }
@@ -142,6 +143,7 @@ func (d *Driver) evictCachedLedger(name string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	delete(d.ledgerCache, name)
+	d.cacheGens[name]++
 }
 
 type openLedgerResult struct {
@@ -168,6 +170,13 @@ func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Stor
 			return &openLedgerResult{store: store, ledger: &l}, nil
 		}
 
+		// Snapshot the invalidation generation before hitting the DB.
+		// If evictCachedLedger runs while our query is in-flight, the generation
+		// will have advanced and we must not write the now-stale snapshot back.
+		d.mu.RLock()
+		gen := d.cacheGens[name]
+		d.mu.RUnlock()
+
 		dbCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
@@ -183,7 +192,17 @@ func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Stor
 			return nil, fmt.Errorf("counting ledgers in bucket: %w", err)
 		}
 
-		d.setCachedLedger(*ret)
+		// Write back only if no eviction occurred during the DB queries.
+		if d.cacheTTL > 0 {
+			d.mu.Lock()
+			if d.cacheGens[name] == gen {
+				d.ledgerCache[name] = cachedLedger{
+					ledger:    *ret,
+					expiresAt: time.Now().Add(d.cacheTTL),
+				}
+			}
+			d.mu.Unlock()
+		}
 
 		store := d.ledgerStoreFactory.Create(d.bucketFactory.Create(ret.Bucket), *ret)
 		store.SetAloneInBucket(count == 1)
@@ -411,6 +430,7 @@ func New(
 		bucketFactory:      bucketFactory,
 		systemStoreFactory: systemStoreFactory,
 		ledgerCache:        make(map[string]cachedLedger),
+		cacheGens:          make(map[string]uint64),
 	}
 	for _, opt := range append(defaultOptions, opts...) {
 		opt(ret)

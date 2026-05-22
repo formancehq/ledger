@@ -15,6 +15,7 @@ import (
 func newTestDriver(ttl time.Duration) *Driver {
 	return &Driver{
 		ledgerCache: make(map[string]cachedLedger),
+		cacheGens:   make(map[string]uint64),
 		cacheTTL:    ttl,
 	}
 }
