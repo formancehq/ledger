@@ -136,11 +136,10 @@ func TestCacheEvictionDoesNotBumpGenWhenDisabled(t *testing.T) {
 	d.evictCachedLedger("test-ledger")
 
 	d.mu.RLock()
-	gen, exists := d.cacheGens["test-ledger"]
+	_, exists := d.cacheGens["test-ledger"]
 	d.mu.RUnlock()
 
 	require.False(t, exists, "cacheGens must not accumulate entries when cache is disabled")
-	require.Equal(t, uint64(0), gen)
 }
 
 func TestCacheUpdateEntry(t *testing.T) {
