@@ -512,6 +512,9 @@ func WithPipelineOptions(options ...PipelineOption) Option {
 
 func WithSyncPeriod(period time.Duration) Option {
 	return func(r *Manager) {
+		if period < 2 {
+			period = 2
+		}
 		r.syncPeriod = period
 	}
 }

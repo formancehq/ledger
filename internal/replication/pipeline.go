@@ -31,12 +31,18 @@ type PipelineOption func(config *PipelineHandlerConfig)
 
 func WithPullPeriod(v time.Duration) PipelineOption {
 	return func(config *PipelineHandlerConfig) {
+		if v < 2 {
+			v = 2
+		}
 		config.PullInterval = v
 	}
 }
 
 func WithPushRetryPeriod(v time.Duration) PipelineOption {
 	return func(config *PipelineHandlerConfig) {
+		if v < 2 {
+			v = 2
+		}
 		config.PushRetryPeriod = v
 	}
 }

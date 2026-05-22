@@ -90,6 +90,9 @@ func (c *DriverFacade) Accept(ctx context.Context, logs ...drivers.LogWithLedger
 var _ drivers.Driver = (*DriverFacade)(nil)
 
 func newDriverFacade(driver drivers.Driver, logger logging.Logger, retryInterval time.Duration) *DriverFacade {
+	if retryInterval < 2 {
+		retryInterval = 2
+	}
 	return &DriverFacade{
 		Driver:        driver,
 		readyChan:     make(chan struct{}),
