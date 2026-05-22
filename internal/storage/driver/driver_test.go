@@ -369,4 +369,3 @@ func TestOpenLedgerCacheTTLExpiry(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "yes", got.Metadata["ttl-test"], "stale cache entry should have expired")
 }
-}
