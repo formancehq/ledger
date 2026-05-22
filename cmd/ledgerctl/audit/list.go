@@ -178,13 +178,14 @@ func formatLogRange(minSeq, maxSeq uint64) string {
 // orderDescription holds the display info extracted from a single order.
 type orderDescription struct {
 	orderType string
-	detail    string     // scalar fields on the main line
+	detail    string      // scalar fields on the main line
 	mapLines  [][2]string // key/value pairs for indented multi-line display
 }
 
 // orderGroup represents a run of consecutive identical order types.
 type orderGroup struct {
 	orderDescription
+
 	keyStr string
 	count  int
 }

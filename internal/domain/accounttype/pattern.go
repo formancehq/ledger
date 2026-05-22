@@ -96,7 +96,7 @@ func isValidSegmentName(s string) bool {
 
 	for i := range len(s) {
 		c := s[i]
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '_' && c != '-' {
 			return false
 		}
 	}
@@ -110,13 +110,13 @@ func isValidVariableName(s string) bool {
 	}
 
 	c := s[0]
-	if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_') {
+	if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && c != '_' {
 		return false
 	}
 
 	for i := 1; i < len(s); i++ {
 		c = s[i]
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '_' {
 			return false
 		}
 	}
