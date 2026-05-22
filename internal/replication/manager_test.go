@@ -57,6 +57,42 @@ func TestNewDriverFacadeMinimumRetryInterval(t *testing.T) {
 	require.Equal(t, time.Duration(2), facade.retryInterval)
 }
 
+// TestDriverFacadeStopContextExpiresDuringStart covers the ctx.Done branch in
+// DriverFacade.Stop: when Stop is called while the start goroutine is still
+// running and the stop context expires before the goroutine finishes, Stop must
+// return ctx.Err().
+func TestDriverFacadeStopContextExpiresDuringStart(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	blockStart := make(chan struct{})
+
+	mockDriver := drivers.NewMockDriver(ctrl)
+	// Start blocks on blockStart regardless of context cancellation, keeping
+	// startingChan open while Stop's inner select runs.
+	mockDriver.EXPECT().Start(gomock.Any()).DoAndReturn(func(ctx context.Context) error {
+		<-blockStart
+		return ctx.Err()
+	}).AnyTimes()
+
+	facade := newDriverFacade(mockDriver, logging.Testing(), time.Minute)
+
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
+	facade.Run(runCtx)
+
+	// Pre-cancel the stop context so the inner select picks ctx.Done()
+	// before startingChan can close.
+	stopCtx, cancelStop := context.WithCancel(context.Background())
+	cancelStop()
+
+	err := facade.Stop(stopCtx)
+	require.ErrorIs(t, err, context.Canceled)
+
+	// Unblock the start goroutine so it can exit cleanly.
+	close(blockStart)
+}
+
 func TestManagerExportersNominal(t *testing.T) {
 	t.Parallel()
 
@@ -426,4 +462,28 @@ func TestManagerStop(t *testing.T) {
 		require.NoError(t, manager.Stop(ctx))
 	})
 
+}
+
+// TestManagerSynchronizePipelinesError covers manager.go lines 260-262:
+// synchronizePipelines returns an error during Run's initial sync; the manager logs
+// the error and continues running normally.
+func TestManagerSynchronizePipelinesError(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	ctrl := gomock.NewController(t)
+	storage := NewMockStorage(ctrl)
+	exporterConfigValidator := NewMockConfigValidator(ctrl)
+	driverFactory := drivers.NewMockFactory(ctrl)
+
+	storage.EXPECT().
+		ListEnabledPipelines(gomock.Any()).
+		AnyTimes().
+		Return(nil, errors.New("database unavailable"))
+
+	manager := startManager(t, ctx, storage, driverFactory, exporterConfigValidator)
+	<-manager.Started()
+
+	require.NoError(t, manager.Stop(ctx))
+	require.Eventually(t, ctrl.Satisfied, time.Second, 10*time.Millisecond)
 }
