@@ -96,9 +96,13 @@ var _ = Describe("Log date index", Ordered, func() {
 			g.Expect(err).To(Succeed())
 
 			logs := collectLogs(stream)
-			// We expect at least the 3 transaction logs + 2 index creation logs = 5 logs.
-			// There may also be the create ledger log, so check >= 5.
-			g.Expect(len(logs)).To(BeNumerically(">=", 5))
+			// Expected logs: 1 create_ledger + 2 create_index + 3 transactions = 6.
+			// IndexReady updates are no longer orders and produce no log entries.
+			// The log ledger index is populated incrementally: processLogs indexes
+			// logs arriving after the index is created, and the backfill task
+			// indexes historical logs. At minimum 4 logs are immediately visible
+			// (those processed after the CreateIndex log).
+			g.Expect(len(logs)).To(BeNumerically(">=", 4))
 		}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 	})
 

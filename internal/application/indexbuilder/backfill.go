@@ -521,6 +521,23 @@ func (b *Builder) processBackfills(stop <-chan struct{}, globalCursor uint64) {
 		task := b.backfillTasks[b.nextBackfillIdx]
 
 		if task.cursor >= globalCursor {
+			// Check if the index is already READY (e.g., applied by the FSM
+			// from another leader's proposal). If so, skip proposing and just
+			// clean up the task. This prevents follower nodes from getting
+			// stuck retrying a proposal they can never send.
+			if b.isIndexAlreadyReady(task) {
+				b.logger.WithFields(map[string]any{
+					"ledger": task.ledger,
+					"index":  backfillIndexName(task.index),
+				}).Infof("Index already READY in Pebble, cleaning up backfill task")
+
+				_ = b.readStore.DeleteBackfillProgress(task.bbKey)
+				b.backfillTasks[b.nextBackfillIdx] = b.backfillTasks[len(b.backfillTasks)-1]
+				b.backfillTasks = b.backfillTasks[:len(b.backfillTasks)-1]
+
+				continue
+			}
+
 			// Backfill is caught up — propose IndexReady.
 			if !b.proposeIndexReady(task) {
 				// Proposal failed (not leader or Raft error) — keep the task
@@ -778,49 +795,36 @@ func isDataLog(log *commonpb.Log) bool {
 	}
 }
 
-// proposeIndexReady proposes an IndexReady order through Raft (leader only).
-// Returns true if the proposal was submitted successfully, false otherwise.
+// proposeIndexReady proposes an IndexReadyUpdate through Raft as a direct
+// Proposal field (leader only). Returns true if the proposal was submitted
+// successfully, false otherwise.
 func (b *Builder) proposeIndexReady(task *backfillTask) bool {
 	if b.proposer == nil || b.isLeader == nil || !b.isLeader() {
 		return false
 	}
 
-	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
-				Ledger: task.ledger,
-			},
-		},
+	update := &raftcmdpb.IndexReadyUpdate{
+		Ledger: task.ledger,
 	}
 
 	switch {
 	case task.index.transaction != nil:
-		order.GetApply().Data = &raftcmdpb.LedgerApplyOrder_IndexReady{
-			IndexReady: &raftcmdpb.IndexReadyOrder{
-				Index: &raftcmdpb.IndexReadyOrder_Transaction{
-					Transaction: task.index.transaction,
-				},
-			},
+		update.Index = &raftcmdpb.IndexReadyUpdate_Transaction{
+			Transaction: task.index.transaction,
 		}
 	case task.index.account != nil:
-		order.GetApply().Data = &raftcmdpb.LedgerApplyOrder_IndexReady{
-			IndexReady: &raftcmdpb.IndexReadyOrder{
-				Index: &raftcmdpb.IndexReadyOrder_Account{
-					Account: task.index.account,
-				},
-			},
+		update.Index = &raftcmdpb.IndexReadyUpdate_Account{
+			Account: task.index.account,
 		}
 	case task.index.logBuiltin != nil:
-		order.GetApply().Data = &raftcmdpb.LedgerApplyOrder_IndexReady{
-			IndexReady: &raftcmdpb.IndexReadyOrder{
-				Index: &raftcmdpb.IndexReadyOrder_LogBuiltin{
-					LogBuiltin: *task.index.logBuiltin,
-				},
-			},
+		update.Index = &raftcmdpb.IndexReadyUpdate_LogBuiltin{
+			LogBuiltin: *task.index.logBuiltin,
 		}
 	}
 
-	if err := b.proposer.ProposeOrders(order); err != nil {
+	if err := b.proposer.ProposeProposal(&raftcmdpb.Proposal{
+		IndexReadyUpdates: []*raftcmdpb.IndexReadyUpdate{update},
+	}); err != nil {
 		b.logger.WithFields(map[string]any{
 			"ledger": task.ledger,
 			"error":  err,
@@ -830,4 +834,99 @@ func (b *Builder) proposeIndexReady(task *backfillTask) bool {
 	}
 
 	return true
+}
+
+// isIndexAlreadyReady checks if the index for this backfill task is already
+// marked READY in Pebble (e.g. applied by the FSM from another leader's
+// proposal). This prevents follower nodes from retrying IndexReady proposals
+// forever when no new logs arrive.
+func (b *Builder) isIndexAlreadyReady(task *backfillTask) bool {
+	info, err := query.GetLedgerByName(context.Background(), b.pebbleStore, task.ledger)
+	if err != nil {
+		return false // ledger not found or error; assume not ready
+	}
+
+	switch {
+	case task.index.transaction != nil:
+		switch kind := task.index.transaction.GetKind().(type) {
+		case *commonpb.TransactionIndex_Builtin:
+			bi := info.GetBuiltinIndexes()
+			if bi == nil {
+				return false
+			}
+
+			return isBuiltinReady(bi, kind.Builtin)
+		case *commonpb.TransactionIndex_MetadataKey:
+			return isMetadataIndexReady(info, commonpb.TargetType_TARGET_TYPE_TRANSACTION, kind.MetadataKey)
+		}
+	case task.index.account != nil:
+		if kind, ok := task.index.account.GetKind().(*commonpb.AccountIndex_MetadataKey); ok {
+			return isMetadataIndexReady(info, commonpb.TargetType_TARGET_TYPE_ACCOUNT, kind.MetadataKey)
+		}
+	case task.index.logBuiltin != nil:
+		li := info.GetLogBuiltinIndexes()
+		if li == nil {
+			return false
+		}
+
+		return isLogBuiltinReady(li, *task.index.logBuiltin)
+	}
+
+	return false
+}
+
+func isBuiltinReady(cfg *commonpb.BuiltinIndexConfig, builtin commonpb.TransactionBuiltinIndex) bool {
+	switch builtin {
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE:
+		return cfg.GetReferenceStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
+		return cfg.GetTimestampStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS:
+		return cfg.GetAddressStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS:
+		return cfg.GetSourceAddressStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS:
+		return cfg.GetDestAddressStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
+		return cfg.GetInsertedAtStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
+	}
+
+	return false
+}
+
+func isLogBuiltinReady(cfg *commonpb.LogBuiltinIndexConfig, builtin commonpb.LogBuiltinIndex) bool {
+	switch builtin {
+	case commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER:
+		return cfg.GetLedgerStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
+	case commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE:
+		return cfg.GetDateStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
+	}
+
+	return false
+}
+
+func isMetadataIndexReady(info *commonpb.LedgerInfo, target commonpb.TargetType, key string) bool {
+	if info.GetMetadataSchema() == nil {
+		return false
+	}
+
+	var fields map[string]*commonpb.MetadataFieldSchema
+
+	switch target {
+	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		fields = info.GetMetadataSchema().GetAccountFields()
+	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		fields = info.GetMetadataSchema().GetTransactionFields()
+	}
+
+	if fields == nil {
+		return false
+	}
+
+	field, ok := fields[key]
+	if !ok {
+		return false
+	}
+
+	return field.GetIndexBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
 }

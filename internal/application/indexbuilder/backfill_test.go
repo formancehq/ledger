@@ -468,23 +468,6 @@ func TestIsDataLog(t *testing.T) {
 			},
 			expected: false,
 		},
-		{
-			name: "index ready (config mutation)",
-			log: &commonpb.Log{
-				Payload: &commonpb.LogPayload{
-					Type: &commonpb.LogPayload_Apply{
-						Apply: &commonpb.ApplyLedgerLog{
-							Log: &commonpb.LedgerLog{
-								Data: &commonpb.LedgerLogPayload{
-									Payload: &commonpb.LedgerLogPayload_IndexReady{},
-								},
-							},
-						},
-					},
-				},
-			},
-			expected: false,
-		},
 	}
 
 	for _, tc := range tests {

@@ -65,10 +65,6 @@ func (lt LogType) String() string {
 		return "SET_METADATA_FIELD_TYPE"
 	case RemovedMetadataFieldTypeLogType:
 		return "REMOVED_METADATA_FIELD_TYPE"
-	case ConvertMetadataBatchLogType:
-		return "CONVERT_METADATA_BATCH"
-	case MetadataConversionCompleteLogType:
-		return "METADATA_CONVERSION_COMPLETE"
 	}
 
 	return ""
@@ -88,10 +84,6 @@ func LogTypeFromString(logType string) (LogType, error) {
 		return SetMetadataFieldTypeLogType, nil
 	case "REMOVED_METADATA_FIELD_TYPE":
 		return RemovedMetadataFieldTypeLogType, nil
-	case "CONVERT_METADATA_BATCH":
-		return ConvertMetadataBatchLogType, nil
-	case "METADATA_CONVERSION_COMPLETE":
-		return MetadataConversionCompleteLogType, nil
 	}
 
 	return 0, fmt.Errorf("invalid log type: %q", logType)
@@ -116,10 +108,6 @@ func GetLogType(payload *LedgerLogPayload) LogType {
 		return SetMetadataFieldTypeLogType
 	case *LedgerLogPayload_RemovedMetadataFieldType:
 		return RemovedMetadataFieldTypeLogType
-	case *LedgerLogPayload_ConvertMetadataBatch:
-		return ConvertMetadataBatchLogType
-	case *LedgerLogPayload_MetadataConversionComplete:
-		return MetadataConversionCompleteLogType
 	default:
 		return 0
 	}

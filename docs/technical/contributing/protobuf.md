@@ -125,3 +125,14 @@ Mirror mode introduces several protobuf types across multiple files:
 4. Command data is unmarshaled via vtprotobuf's generated `UnmarshalVT` on the `Proposal` type, then dispatched through the `Order.Type` oneof in the FSM
 5. Add a handler method in `internal/infra/state/machine.go`
 6. Rebuild and test: `go build ./... && go test ./...`
+
+### Technical Proposal Fields (Non-Order Pattern)
+
+Not all FSM operations are modeled as orders. Internal, background operations that do not produce log entries can be added as **direct repeated fields on the `Proposal` message** instead. This avoids polluting the `Order`/`LedgerApplyOrder` oneofs with types that have no user-visible log semantics.
+
+Examples of this pattern:
+- `repeated MetadataConversionBatch metadata_conversion_batches` -- background metadata value conversion batches
+- `repeated MetadataConversionCompletion metadata_conversions_complete` -- signals that a metadata conversion is done
+- `repeated IndexReadyUpdate index_ready_updates` -- signals from the index builder that a new index is queryable
+
+These fields are processed by the FSM alongside orders but do not produce `Log` entries and do not carry idempotency keys.

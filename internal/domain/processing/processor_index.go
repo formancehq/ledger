@@ -131,63 +131,6 @@ func (p *RequestProcessor) processDropIndex(
 	}, nil
 }
 
-func (p *RequestProcessor) processIndexReady(
-	ledgerName string,
-	order *raftcmdpb.IndexReadyOrder,
-	s InMemoryStore,
-) (*commonpb.LedgerLogPayload, error) {
-	info, ok := s.GetLedger(ledgerName)
-	if !ok {
-		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
-	}
-
-	info = info.CloneVT()
-
-	logPayload := &commonpb.IndexReadyLog{}
-
-	switch idx := order.GetIndex().(type) {
-	case *raftcmdpb.IndexReadyOrder_Transaction:
-		switch kind := idx.Transaction.GetKind().(type) {
-		case *commonpb.TransactionIndex_Builtin:
-			if info.GetBuiltinIndexes() != nil {
-				setBuiltinStatus(info.GetBuiltinIndexes(), kind.Builtin, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY)
-			}
-
-		case *commonpb.TransactionIndex_MetadataKey:
-			processIndexReadyMetadata(info, commonpb.TargetType_TARGET_TYPE_TRANSACTION, kind.MetadataKey)
-		}
-
-		logPayload.Index = &commonpb.IndexReadyLog_Transaction{Transaction: idx.Transaction}
-
-	case *raftcmdpb.IndexReadyOrder_Account:
-		switch kind := idx.Account.GetKind().(type) {
-		case *commonpb.AccountIndex_Builtin:
-			// No account builtins yet; ignore.
-			_ = kind
-
-		case *commonpb.AccountIndex_MetadataKey:
-			processIndexReadyMetadata(info, commonpb.TargetType_TARGET_TYPE_ACCOUNT, kind.MetadataKey)
-		}
-
-		logPayload.Index = &commonpb.IndexReadyLog_Account{Account: idx.Account}
-
-	case *raftcmdpb.IndexReadyOrder_LogBuiltin:
-		if info.GetLogBuiltinIndexes() != nil {
-			setLogBuiltinStatus(info.GetLogBuiltinIndexes(), idx.LogBuiltin, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY)
-		}
-
-		logPayload.Index = &commonpb.IndexReadyLog_LogBuiltin{LogBuiltin: idx.LogBuiltin}
-	}
-
-	s.PutLedger(ledgerName, info)
-
-	return &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_IndexReady{
-			IndexReady: logPayload,
-		},
-	}, nil
-}
-
 // processCreateMetadataIndex handles the metadata index creation logic shared
 // by both transaction and account index types. It returns true if the index is
 // already built and ready (i.e. no log entry is needed).
@@ -196,7 +139,7 @@ func processCreateMetadataIndex(info *commonpb.LedgerInfo, target commonpb.Targe
 		info.MetadataSchema = &commonpb.MetadataSchema{}
 	}
 
-	fields, field := schemaFieldForTarget(info.GetMetadataSchema(), target, key)
+	fields, field := SchemaFieldForTarget(info.GetMetadataSchema(), target, key)
 	if field != nil && field.GetIndexed() && field.GetIndexBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY {
 		return true
 	}
@@ -229,17 +172,17 @@ func processCreateMetadataIndex(info *commonpb.LedgerInfo, target commonpb.Targe
 // processDropMetadataIndex handles the metadata index removal logic shared
 // by both transaction and account index types.
 func processDropMetadataIndex(info *commonpb.LedgerInfo, target commonpb.TargetType, key string) {
-	_, field := schemaFieldForTarget(info.GetMetadataSchema(), target, key)
+	_, field := SchemaFieldForTarget(info.GetMetadataSchema(), target, key)
 	if field != nil {
 		field.Indexed = false
 		field.IndexBuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_UNSPECIFIED
 	}
 }
 
-// processIndexReadyMetadata handles the metadata index ready notification logic
+// ProcessIndexReadyMetadata handles the metadata index ready notification logic
 // shared by both transaction and account index types.
-func processIndexReadyMetadata(info *commonpb.LedgerInfo, target commonpb.TargetType, key string) {
-	_, field := schemaFieldForTarget(info.GetMetadataSchema(), target, key)
+func ProcessIndexReadyMetadata(info *commonpb.LedgerInfo, target commonpb.TargetType, key string) {
+	_, field := SchemaFieldForTarget(info.GetMetadataSchema(), target, key)
 	if field != nil {
 		field.IndexBuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
 	}
@@ -299,7 +242,7 @@ func setBuiltinIndexed(cfg *commonpb.BuiltinIndexConfig, builtin commonpb.Transa
 	}
 }
 
-func setBuiltinStatus(cfg *commonpb.BuiltinIndexConfig, builtin commonpb.TransactionBuiltinIndex, status commonpb.IndexBuildStatus) {
+func SetBuiltinStatus(cfg *commonpb.BuiltinIndexConfig, builtin commonpb.TransactionBuiltinIndex, status commonpb.IndexBuildStatus) {
 	switch builtin {
 	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE:
 		cfg.ReferenceStatus = status
@@ -342,7 +285,7 @@ func setLogBuiltinIndexed(cfg *commonpb.LogBuiltinIndexConfig, builtin commonpb.
 	}
 }
 
-func setLogBuiltinStatus(cfg *commonpb.LogBuiltinIndexConfig, builtin commonpb.LogBuiltinIndex, status commonpb.IndexBuildStatus) {
+func SetLogBuiltinStatus(cfg *commonpb.LogBuiltinIndexConfig, builtin commonpb.LogBuiltinIndex, status commonpb.IndexBuildStatus) {
 	switch builtin {
 	case commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER:
 		cfg.LedgerStatus = status

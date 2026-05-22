@@ -88,7 +88,7 @@ flowchart TB
     LOOP -->|if backfill needed| BF["Backfill<br/><i>application/indexbuilder/backfill.go</i>"]
     BF -->|scan historical logs| MAIN
     BF -->|write indexes| RS
-    BF -->|leader only| PROPOSE["Propose IndexReady<br/><i>via Raft</i>"]
+    BF -->|leader only| PROPOSE["Propose IndexReadyUpdate<br/><i>via Raft (Proposal field)</i>"]
 
     style SIG fill:#d4edda,stroke:#155724
     style RS fill:#e2d5f1,stroke:#6f42c1
@@ -101,7 +101,7 @@ On each tick, `processLogs()` (`internal/application/indexbuilder/process_logs.g
 
 The read store (`internal/storage/readstore/store.go`) is a separate Pebble database with WAL disabled -- it stores only derived inverted indexes for metadata keys, account addresses, and typed metadata fields. Because it is fully derived from the log, it can be rebuilt from scratch on startup or when a new index type is introduced.
 
-When a new index is created (e.g., a new metadata field type), the builder enters backfill mode (`internal/application/indexbuilder/backfill.go`), scanning the full history of committed logs to populate the new index. Only the leader node proposes an `IndexReady` command through Raft once backfill completes, ensuring all nodes agree on when a new index becomes queryable.
+When a new index is created (e.g., a new metadata field type), the builder enters backfill mode (`internal/application/indexbuilder/backfill.go`), scanning the full history of committed logs to populate the new index. Only the leader node proposes an `IndexReadyUpdate` through Raft (as a direct `Proposal` field, not an order) once backfill completes, ensuring all nodes agree on when a new index becomes queryable.
 
 ---
 

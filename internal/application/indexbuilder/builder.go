@@ -24,7 +24,7 @@ const DefaultBatchSize = 1000
 // Proposer proposes Raft commands to the cluster.
 // Implemented by a thin adapter around *node.Node (bootstrap.NodeProposer).
 type Proposer interface {
-	ProposeOrders(orders ...*raftcmdpb.Order) error
+	ProposeProposal(cmd *raftcmdpb.Proposal) error
 }
 
 // Builder tails the system log and populates the Pebble read store indexes.

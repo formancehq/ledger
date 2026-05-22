@@ -283,14 +283,6 @@ func describeApplyOrder(apply *raftcmdpb.LedgerApplyOrder) (string, string) {
 		o := apply.GetRemoveMetadataFieldType()
 
 		return "RemoveMetadataFieldType", fmt.Sprintf("target=%s key=%s", o.GetTargetType(), o.GetKey())
-	case apply.GetConvertMetadataBatch() != nil:
-		o := apply.GetConvertMetadataBatch()
-
-		return "ConvertMetadataBatch", fmt.Sprintf("target=%s key=%s %d/%d", o.GetTargetType(), o.GetKey(), o.GetConvertedKeysSoFar(), o.GetTotalKeys())
-	case apply.GetConversionComplete() != nil:
-		o := apply.GetConversionComplete()
-
-		return "ConversionComplete", fmt.Sprintf("target=%s key=%s type=%s", o.GetTargetType(), o.GetKey(), o.GetExpectedType())
 	default:
 		return "Apply", ""
 	}

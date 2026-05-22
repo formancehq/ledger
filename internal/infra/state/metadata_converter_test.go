@@ -121,8 +121,8 @@ func TestMetadataConverterFieldNoLongerConverting(t *testing.T) {
 	}
 
 	// Wait for the converter to process the request. Since the field is
-	// already COMPLETE, it should exit without calling ProposeOrders.
-	// gomock will fail if ProposeOrders is called.
+	// already COMPLETE, it should exit without calling ProposeProposal.
+	// gomock will fail if ProposeProposal is called.
 	require.Eventually(t, func() bool {
 		return len(requestCh) == 0
 	}, 2*time.Second, 50*time.Millisecond)
@@ -167,7 +167,7 @@ func TestMetadataConverterNonLeaderWaits(t *testing.T) {
 	})
 
 	// The non-leader should eventually notice and exit.
-	// gomock verifies ProposeOrders was never called.
+	// gomock verifies ProposeProposal was never called.
 	require.Eventually(t, func() bool {
 		return len(requestCh) == 0
 	}, 5*time.Second, 100*time.Millisecond)
@@ -190,17 +190,17 @@ func TestMetadataConverterLeaderProposesCompletion(t *testing.T) {
 		},
 	})
 
-	// Expect exactly one ProposeOrders call: the ConversionComplete order.
+	// Expect exactly one ProposeProposal call: the ConversionComplete proposal.
 	var (
-		mu             sync.Mutex
-		capturedOrders []*raftcmdpb.Order
+		mu                sync.Mutex
+		capturedProposals []*raftcmdpb.Proposal
 	)
 
-	proposer.EXPECT().ProposeOrders(gomock.Any()).DoAndReturn(func(orders ...*raftcmdpb.Order) error {
+	proposer.EXPECT().ProposeProposal(gomock.Any()).DoAndReturn(func(cmd *raftcmdpb.Proposal) error {
 		mu.Lock()
 		defer mu.Unlock()
 
-		capturedOrders = append(capturedOrders, orders...)
+		capturedProposals = append(capturedProposals, cmd)
 
 		return nil
 	}).AnyTimes()
@@ -220,19 +220,15 @@ func TestMetadataConverterLeaderProposesCompletion(t *testing.T) {
 		mu.Lock()
 		defer mu.Unlock()
 
-		return len(capturedOrders) > 0
+		return len(capturedProposals) > 0
 	}, 5*time.Second, 50*time.Millisecond)
 
-	// The last order should be a ConversionComplete.
+	// The last proposal should contain a MetadataConversionsComplete entry.
 	mu.Lock()
-	lastOrder := capturedOrders[len(capturedOrders)-1]
+	lastProposal := capturedProposals[len(capturedProposals)-1]
 	mu.Unlock()
 
-	applyOrder, ok := lastOrder.GetType().(*raftcmdpb.Order_Apply)
-	require.True(t, ok)
-
-	_, isComplete := applyOrder.Apply.GetData().(*raftcmdpb.LedgerApplyOrder_ConversionComplete)
-	assert.True(t, isComplete, "expected ConversionComplete order")
+	assert.NotEmpty(t, lastProposal.GetMetadataConversionsComplete(), "expected MetadataConversionsComplete in proposal")
 }
 
 func TestMetadataConverterPoolConcurrency(t *testing.T) {
@@ -261,15 +257,15 @@ func TestMetadataConverterPoolConcurrency(t *testing.T) {
 	})
 
 	var (
-		mu         sync.Mutex
-		orderCount int
+		mu            sync.Mutex
+		proposalCount int
 	)
 
-	proposer.EXPECT().ProposeOrders(gomock.Any()).DoAndReturn(func(orders ...*raftcmdpb.Order) error {
+	proposer.EXPECT().ProposeProposal(gomock.Any()).DoAndReturn(func(cmd *raftcmdpb.Proposal) error {
 		mu.Lock()
 		defer mu.Unlock()
 
-		orderCount += len(orders)
+		proposalCount++
 
 		return nil
 	}).AnyTimes()
@@ -296,12 +292,12 @@ func TestMetadataConverterPoolConcurrency(t *testing.T) {
 		}
 	}
 
-	// All 3 should complete (each producing at least a ConversionComplete order).
+	// All 3 should complete (each producing at least a ConversionComplete proposal).
 	require.Eventually(t, func() bool {
 		mu.Lock()
 		defer mu.Unlock()
 
-		return orderCount >= 3
+		return proposalCount >= 3
 	}, 5*time.Second, 50*time.Millisecond)
 }
 
@@ -338,7 +334,7 @@ func TestMetadataConverterQueueDrainsOnStop(t *testing.T) {
 	store := newConverterTestStore(t)
 	proposer := NewMockProposer(ctrl)
 	// Allow any calls (fields are COMPLETE so no proposals, but allow for safety).
-	proposer.EXPECT().ProposeOrders(gomock.Any()).Return(nil).AnyTimes()
+	proposer.EXPECT().ProposeProposal(gomock.Any()).Return(nil).AnyTimes()
 
 	// Register ledger with schema that is complete — requests will be processed
 	// quickly (exit on isFieldStillConverting=false).

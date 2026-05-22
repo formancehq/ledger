@@ -220,11 +220,8 @@ message LedgerApplyOrder {
     DeleteMetadataOrder delete_metadata = 5;
     SetMetadataFieldTypeOrder set_metadata_field_type = 6;
     RemoveMetadataFieldTypeOrder remove_metadata_field_type = 7;
-    ConvertMetadataBatchOrder convert_metadata_batch = 8;
-    MetadataConversionCompleteOrder conversion_complete = 9;
     CreateIndexOrder create_index = 10;
     DropIndexOrder drop_index = 11;
-    IndexReadyOrder index_ready = 12;
     AddAccountTypeOrder add_account_type = 13;
     RemoveAccountTypeOrder remove_account_type = 14;
     UpdateDefaultEnforcementModeOrder update_default_enforcement_mode = 15;
@@ -249,12 +246,14 @@ message DropIndexOrder {
   }
 }
 
-// IndexReadyOrder signals that an index has finished building.
-message IndexReadyOrder {
+// IndexReadyUpdate signals that an index has finished building.
+// Applied directly as a Proposal field (no log entry produced).
+message IndexReadyUpdate {
+  string ledger = 1;
   oneof index {
-    common.LogBuiltinIndex log_builtin = 1;
-    common.TransactionIndex transaction = 2;
-    common.AccountIndex account = 3;
+    common.LogBuiltinIndex log_builtin = 2;
+    common.TransactionIndex transaction = 3;
+    common.AccountIndex account = 4;
   }
 }
 
@@ -273,13 +272,16 @@ message UpdateDefaultEnforcementModeOrder {
   common.ChartEnforcementMode enforcement_mode = 1;
 }
 
-message ConvertMetadataBatchOrder {
-  common.TargetType target_type = 1;
-  string key = 2;
-  common.MetadataType expected_type = 3;
-  repeated ConvertMetadataEntry entries = 4;
-  fixed64 total_keys = 5;
-  fixed64 converted_keys_so_far = 6;
+// MetadataConversionBatch carries a batch of metadata value conversions.
+// Applied directly as a Proposal field (no log entry produced).
+message MetadataConversionBatch {
+  string ledger = 1;
+  common.TargetType target_type = 2;
+  string key = 3;
+  common.MetadataType expected_type = 4;
+  repeated ConvertMetadataEntry entries = 5;
+  fixed64 total_keys = 6;
+  fixed64 converted_keys_so_far = 7;
 }
 
 message ConvertMetadataEntry {
@@ -287,10 +289,13 @@ message ConvertMetadataEntry {
   common.MetadataValue converted_value = 2;
 }
 
-message MetadataConversionCompleteOrder {
-  common.TargetType target_type = 1;
-  string key = 2;
-  common.MetadataType expected_type = 3;
+// MetadataConversionCompletion signals that a metadata conversion is done.
+// Applied directly as a Proposal field (no log entry produced).
+message MetadataConversionCompletion {
+  string ledger = 1;
+  common.TargetType target_type = 2;
+  string key = 3;
+  common.MetadataType expected_type = 4;
 }
 
 message SetMetadataFieldTypeOrder {
@@ -377,6 +382,9 @@ message Proposal {
   fixed64 predicted_index = 7;
   IdempotencyEviction idempotency_eviction = 8;
   common.ClusterConfig cluster_config = 9;  // Cluster-wide config update (technical, no log entry)
+  repeated MetadataConversionBatch metadata_conversion_batches = 10;  // Background metadata conversion batches (no log entry)
+  repeated MetadataConversionCompletion metadata_conversions_complete = 11;  // Background metadata conversion completions (no log entry)
+  repeated IndexReadyUpdate index_ready_updates = 12;  // Index ready signals from index builder (no log entry)
 }
 
 // IdempotencyEviction is a deterministic cleanup command proposed by the leader.

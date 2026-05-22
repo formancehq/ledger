@@ -161,6 +161,10 @@ message Proposal {
   repeated Order orders = 2;        // List of orders to execute atomically
   Timestamp date = 3;               // Creation date in UTC
   PreloadSet preload = 4;           // Preloaded attributes for deterministic execution
+  // ... other fields ...
+  repeated MetadataConversionBatch metadata_conversion_batches = 10;   // Background metadata conversion (no log entry)
+  repeated MetadataConversionCompletion metadata_conversions_complete = 11; // Conversion complete signals (no log entry)
+  repeated IndexReadyUpdate index_ready_updates = 12;                  // Index ready signals (no log entry)
 }
 
 message Order {
@@ -172,6 +176,8 @@ message Order {
   }
 }
 ```
+
+> **Note**: Technical operations like metadata conversion and index readiness are modeled as direct `Proposal` fields rather than orders. They are processed by the FSM but do not produce log entries.
 
 Each order can target a different ledger:
 

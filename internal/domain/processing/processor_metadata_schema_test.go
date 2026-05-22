@@ -567,7 +567,7 @@ func TestSchemaFieldForTarget(t *testing.T) {
 	t.Run("NilSchema", func(t *testing.T) {
 		t.Parallel()
 
-		fields, field := schemaFieldForTarget(nil, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "key")
+		fields, field := SchemaFieldForTarget(nil, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "key")
 		require.Nil(t, fields)
 		require.Nil(t, field)
 	})
@@ -576,7 +576,7 @@ func TestSchemaFieldForTarget(t *testing.T) {
 		t.Parallel()
 
 		schema := &commonpb.MetadataSchema{} // No AccountFields or TransactionFields
-		fields, field := schemaFieldForTarget(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "key")
+		fields, field := SchemaFieldForTarget(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "key")
 		require.Nil(t, fields)
 		require.Nil(t, field)
 	})
@@ -589,7 +589,7 @@ func TestSchemaFieldForTarget(t *testing.T) {
 				"amount": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
 			},
 		}
-		fields, field := schemaFieldForTarget(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "nonexistent")
+		fields, field := SchemaFieldForTarget(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "nonexistent")
 		require.NotNil(t, fields)
 		require.Nil(t, field)
 	})
@@ -602,7 +602,7 @@ func TestSchemaFieldForTarget(t *testing.T) {
 				"amount": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
 			},
 		}
-		fields, field := schemaFieldForTarget(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "amount")
+		fields, field := SchemaFieldForTarget(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "amount")
 		require.NotNil(t, fields)
 		require.NotNil(t, field)
 		require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, field.GetType())
@@ -616,7 +616,7 @@ func TestSchemaFieldForTarget(t *testing.T) {
 				"priority": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
 			},
 		}
-		fields, field := schemaFieldForTarget(schema, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "priority")
+		fields, field := SchemaFieldForTarget(schema, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "priority")
 		require.NotNil(t, fields)
 		require.NotNil(t, field)
 	})
@@ -629,7 +629,7 @@ func TestSchemaFieldForTarget(t *testing.T) {
 				"env": {Type: commonpb.MetadataType_METADATA_TYPE_STRING},
 			},
 		}
-		fields, field := schemaFieldForTarget(schema, commonpb.TargetType_TARGET_TYPE_LEDGER, "env")
+		fields, field := SchemaFieldForTarget(schema, commonpb.TargetType_TARGET_TYPE_LEDGER, "env")
 		require.NotNil(t, fields)
 		require.NotNil(t, field)
 		require.Equal(t, commonpb.MetadataType_METADATA_TYPE_STRING, field.GetType())

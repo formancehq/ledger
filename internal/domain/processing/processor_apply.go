@@ -49,16 +49,10 @@ func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s InM
 		logPayload, err = p.processSetMetadataFieldType(apply.GetLedger(), applyData.SetMetadataFieldType, s)
 	case *raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType:
 		logPayload, err = p.processRemoveMetadataFieldType(apply.GetLedger(), applyData.RemoveMetadataFieldType, s)
-	case *raftcmdpb.LedgerApplyOrder_ConvertMetadataBatch:
-		logPayload, err = p.processConvertMetadataBatch(apply.GetLedger(), applyData.ConvertMetadataBatch, s)
-	case *raftcmdpb.LedgerApplyOrder_ConversionComplete:
-		logPayload, err = p.processMetadataConversionComplete(apply.GetLedger(), applyData.ConversionComplete, s)
 	case *raftcmdpb.LedgerApplyOrder_CreateIndex:
 		logPayload, err = p.processCreateIndex(apply.GetLedger(), applyData.CreateIndex, s)
 	case *raftcmdpb.LedgerApplyOrder_DropIndex:
 		logPayload, err = p.processDropIndex(apply.GetLedger(), applyData.DropIndex, s)
-	case *raftcmdpb.LedgerApplyOrder_IndexReady:
-		logPayload, err = p.processIndexReady(apply.GetLedger(), applyData.IndexReady, s)
 	case *raftcmdpb.LedgerApplyOrder_AddAccountType:
 		logPayload, err = p.processAddAccountType(apply.GetLedger(), applyData.AddAccountType, s)
 	case *raftcmdpb.LedgerApplyOrder_RemoveAccountType:
@@ -100,11 +94,8 @@ func isMirrorSafeApply(apply *raftcmdpb.LedgerApplyOrder) bool {
 	switch apply.GetData().(type) {
 	case *raftcmdpb.LedgerApplyOrder_SetMetadataFieldType,
 		*raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType,
-		*raftcmdpb.LedgerApplyOrder_ConvertMetadataBatch,
-		*raftcmdpb.LedgerApplyOrder_ConversionComplete,
 		*raftcmdpb.LedgerApplyOrder_CreateIndex,
 		*raftcmdpb.LedgerApplyOrder_DropIndex,
-		*raftcmdpb.LedgerApplyOrder_IndexReady,
 		*raftcmdpb.LedgerApplyOrder_AddAccountType,
 		*raftcmdpb.LedgerApplyOrder_RemoveAccountType,
 		*raftcmdpb.LedgerApplyOrder_UpdateDefaultEnforcementMode:

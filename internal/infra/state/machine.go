@@ -572,7 +572,7 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, entries ...raftpb.Entry)
 			return nil, err
 		}
 
-		if len(cmd.GetOrders()) == 0 && len(cmd.GetMirrorSyncUpdates()) == 0 && len(cmd.GetEventsSinkUpdates()) == 0 && cmd.GetIdempotencyEviction() == nil && cmd.GetClusterConfig() == nil {
+		if len(cmd.GetOrders()) == 0 && len(cmd.GetMirrorSyncUpdates()) == 0 && len(cmd.GetEventsSinkUpdates()) == 0 && len(cmd.GetMetadataConversionBatches()) == 0 && len(cmd.GetMetadataConversionsComplete()) == 0 && len(cmd.GetIndexReadyUpdates()) == 0 && cmd.GetIdempotencyEviction() == nil && cmd.GetClusterConfig() == nil {
 			if fsm.sentinelMode {
 				fsm.logger.WithFields(map[string]any{
 					"raftIndex":  entry.Index,
@@ -1150,9 +1150,9 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		}
 	}
 
-	// If this proposal only carries sink updates, skip order processing
+	// If this proposal only carries technical updates, skip order processing
 	if len(proposal.GetOrders()) == 0 {
-		return &ApplyResult{ProposalID: proposal.GetId()}, nil
+		return fsm.applyTechnicalUpdates(batch, proposal)
 	}
 
 	// FSM-level maintenance mode check: reject proposals containing non-maintenance

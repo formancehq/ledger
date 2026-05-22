@@ -1049,22 +1049,6 @@ func (m *LedgerApplyOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 			i--
 			dAtA[i] = 0x3a
 		}
-	case *LedgerApplyOrder_ConvertMetadataBatch:
-		if v.ConvertMetadataBatch != nil {
-			size, _ := v.ConvertMetadataBatch.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x42
-		}
-	case *LedgerApplyOrder_ConversionComplete:
-		if v.ConversionComplete != nil {
-			size, _ := v.ConversionComplete.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x4a
-		}
 	case *LedgerApplyOrder_CreateIndex:
 		if v.CreateIndex != nil {
 			size, _ := v.CreateIndex.MarshalToSizedBufferVT(dAtA[:i])
@@ -1080,14 +1064,6 @@ func (m *LedgerApplyOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
 			dAtA[i] = 0x5a
-		}
-	case *LedgerApplyOrder_IndexReady:
-		if v.IndexReady != nil {
-			size, _ := v.IndexReady.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x62
 		}
 	case *LedgerApplyOrder_AddAccountType:
 		if v.AddAccountType != nil {
@@ -1139,7 +1115,7 @@ func (m *DropIndexOrder) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *IndexReadyOrder) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *IndexReadyUpdate) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -1201,7 +1177,7 @@ func (m *UpdateDefaultEnforcementModeOrder) MarshalDeterministicVT(dAtA []byte) 
 	return append(dAtA, b...)
 }
 
-func (m *ConvertMetadataBatchOrder) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *MetadataConversionBatch) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -1223,7 +1199,7 @@ func (m *ConvertMetadataEntry) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *MetadataConversionCompleteOrder) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *MetadataConversionCompletion) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -1650,6 +1626,33 @@ func (m *Proposal) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error)
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.IndexReadyUpdates) > 0 {
+		for iNdEx := len(m.IndexReadyUpdates) - 1; iNdEx >= 0; iNdEx-- {
+			size, _ := m.IndexReadyUpdates[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x62
+		}
+	}
+	if len(m.MetadataConversionsComplete) > 0 {
+		for iNdEx := len(m.MetadataConversionsComplete) - 1; iNdEx >= 0; iNdEx-- {
+			size, _ := m.MetadataConversionsComplete[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x5a
+		}
+	}
+	if len(m.MetadataConversionBatches) > 0 {
+		for iNdEx := len(m.MetadataConversionBatches) - 1; iNdEx >= 0; iNdEx-- {
+			size, _ := m.MetadataConversionBatches[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x52
+		}
 	}
 	if m.ClusterConfig != nil {
 		size, _ := m.ClusterConfig.MarshalToSizedBufferVT(dAtA[:i])

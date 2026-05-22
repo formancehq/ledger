@@ -172,29 +172,15 @@ func ReplayLedgerLog(
 			}
 		}
 
-	case *commonpb.LedgerLogPayload_ConvertMetadataBatch:
-		if p.ConvertMetadataBatch != nil {
-			for _, entry := range p.ConvertMetadataBatch.GetEntries() {
-				valueStr := commonpb.MetadataValueToString(entry.GetNewValue())
-				if err := w.SetMetadata(entry.GetCanonicalKey(), valueStr); err != nil {
-					return fmt.Errorf("replaying metadata conversion: %w", err)
-				}
-			}
-		}
-
 	case *commonpb.LedgerLogPayload_SetMetadataFieldType:
 		// Schema operations — no state to track
 	case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
 		// Schema operations — no state to track
-	case *commonpb.LedgerLogPayload_MetadataConversionComplete:
-		// Background conversion — no state to track
 	case *commonpb.LedgerLogPayload_FillGap:
 		// No state to track
 	case *commonpb.LedgerLogPayload_CreateIndex:
 		// Index operations — no state to track
 	case *commonpb.LedgerLogPayload_DropIndex:
-		// Index operations — no state to track
-	case *commonpb.LedgerLogPayload_IndexReady:
 		// Index operations — no state to track
 	case *commonpb.LedgerLogPayload_UpdatedDefaultEnforcementMode:
 		// No state to track

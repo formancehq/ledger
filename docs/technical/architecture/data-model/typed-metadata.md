@@ -163,8 +163,8 @@ When the FSM applies a `SetMetadataFieldTypeOrder`, the type declaration is upda
 1. Type declaration Raft entry applied -> `LedgerInfo.metadata_schema` updated, status set to `CONVERTING`
 2. Background goroutine on the leader receives the conversion task via channel
 3. Goroutine scans Pebble for metadata entries matching (ledger, key) that don't match the declared type
-4. Groups entries into batches and proposes each as a `ConvertMetadataBatchOrder` Raft entry
-5. After all batches, proposes `MetadataConversionCompleteOrder`
+4. Groups entries into batches and proposes each as a `MetadataConversionBatch` entry (via a direct `Proposal` field, not an order)
+5. After all batches, proposes a `MetadataConversionCompletion` (also a direct `Proposal` field)
 6. FSM marks that key's status as `COMPLETE`
 
 Concurrent conversions are bounded by a configurable pool size (default: 2). Excess conversions are queued.
@@ -195,10 +195,15 @@ The `GetMetadataSchemaStatus` RPC returns per-key status (`CONVERTING` or `COMPL
 |-------|---------|
 | `SetMetadataFieldTypeOrder` | Declares/changes type for a key, starts conversion |
 | `RemoveMetadataFieldTypeOrder` | Removes type declaration, converts values back to string |
-| `ConvertMetadataBatchOrder` | Batch of converted entries (proposed by background worker) |
-| `MetadataConversionCompleteOrder` | Marks conversion complete for a key |
 
-`ConvertMetadataBatchOrder` and `MetadataConversionCompleteOrder` include an `expected_type` field for staleness validation — if the declared type has changed since the batch was prepared, the batch is silently dropped.
+### Direct Proposal fields (not orders, no log entries)
+
+| Field | Purpose |
+|-------|---------|
+| `MetadataConversionBatch` | Batch of converted entries (proposed by background worker) |
+| `MetadataConversionCompletion` | Marks conversion complete for a key |
+
+`MetadataConversionBatch` and `MetadataConversionCompletion` are direct `repeated` fields on the `Proposal` message rather than entries in the `Order`/`LedgerApplyOrder` oneofs. They do not produce log entries. Both include an `expected_type` field for staleness validation — if the declared type has changed since the batch was prepared, the batch is silently dropped.
 
 ## gRPC API
 

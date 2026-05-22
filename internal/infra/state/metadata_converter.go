@@ -19,10 +19,10 @@ import (
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source=metadata_converter.go -destination=metadata_converter_generated_test.go -package=state -mock_names=Proposer=MockProposer
 
 // Proposer proposes Raft commands to the cluster.
-// Implemented by a thin adapter around *node.Node that serializes orders into a
-// raftcmdpb.Proposal, marshals them, and calls Node.Propose.
+// Implemented by a thin adapter around *node.Node that serializes a
+// raftcmdpb.Proposal and calls Node.Propose.
 type Proposer interface {
-	ProposeOrders(orders ...*raftcmdpb.Order) error
+	ProposeProposal(cmd *raftcmdpb.Proposal) error
 }
 
 // MetadataConvertRequest contains the data needed to convert existing metadata
@@ -201,7 +201,7 @@ func (mc *MetadataConverter) convertWithRetry(ctx context.Context, stop <-chan s
 	})
 }
 
-// proposeBatch proposes a ConvertMetadataBatch order to Raft.
+// proposeBatch proposes a MetadataConversionBatch to Raft as a direct Proposal field.
 func (mc *MetadataConverter) proposeBatch(
 	ledgerName string,
 	targetType commonpb.TargetType,
@@ -211,45 +211,33 @@ func (mc *MetadataConverter) proposeBatch(
 	totalKeys uint64,
 	convertedKeysSoFar uint64,
 ) {
-	_ = mc.proposer.ProposeOrders(&raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
-				Ledger: ledgerName,
-				Data: &raftcmdpb.LedgerApplyOrder_ConvertMetadataBatch{
-					ConvertMetadataBatch: &raftcmdpb.ConvertMetadataBatchOrder{
-						TargetType:         targetType,
-						Key:                key,
-						ExpectedType:       expectedType,
-						Entries:            entries,
-						TotalKeys:          totalKeys,
-						ConvertedKeysSoFar: convertedKeysSoFar,
-					},
-				},
-			},
-		},
+	_ = mc.proposer.ProposeProposal(&raftcmdpb.Proposal{
+		MetadataConversionBatches: []*raftcmdpb.MetadataConversionBatch{{
+			Ledger:             ledgerName,
+			TargetType:         targetType,
+			Key:                key,
+			ExpectedType:       expectedType,
+			Entries:            entries,
+			TotalKeys:          totalKeys,
+			ConvertedKeysSoFar: convertedKeysSoFar,
+		}},
 	})
 }
 
-// proposeComplete proposes a MetadataConversionComplete order to Raft.
+// proposeComplete proposes a MetadataConversionCompletion to Raft as a direct Proposal field.
 func (mc *MetadataConverter) proposeComplete(
 	ledgerName string,
 	targetType commonpb.TargetType,
 	key string,
 	expectedType commonpb.MetadataType,
 ) {
-	_ = mc.proposer.ProposeOrders(&raftcmdpb.Order{
-		Type: &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
-				Ledger: ledgerName,
-				Data: &raftcmdpb.LedgerApplyOrder_ConversionComplete{
-					ConversionComplete: &raftcmdpb.MetadataConversionCompleteOrder{
-						TargetType:   targetType,
-						Key:          key,
-						ExpectedType: expectedType,
-					},
-				},
-			},
-		},
+	_ = mc.proposer.ProposeProposal(&raftcmdpb.Proposal{
+		MetadataConversionsComplete: []*raftcmdpb.MetadataConversionCompletion{{
+			Ledger:       ledgerName,
+			TargetType:   targetType,
+			Key:          key,
+			ExpectedType: expectedType,
+		}},
 	})
 }
 

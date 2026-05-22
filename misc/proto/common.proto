@@ -612,12 +612,9 @@ message LedgerLogPayload {
     DeletedMetadata deleted_metadata = 4;
     SetMetadataFieldTypeLog set_metadata_field_type = 5;
     RemovedMetadataFieldTypeLog removed_metadata_field_type = 6;
-    ConvertMetadataBatchLog convert_metadata_batch = 7;
-    MetadataConversionCompleteLog metadata_conversion_complete = 8;
     FillGapLog fill_gap = 9;
     CreateIndexLog create_index = 10;
     DropIndexLog drop_index = 11;
-    IndexReadyLog index_ready = 12;
     AddedAccountTypeLog added_account_type = 13;
     RemovedAccountTypeLog removed_account_type = 14;
     UpdatedDefaultEnforcementModeLog updated_default_enforcement_mode = 15;
@@ -642,35 +639,10 @@ message DropIndexLog {
   }
 }
 
-// IndexReadyLog records that an index has finished building.
-message IndexReadyLog {
-  oneof index {
-    LogBuiltinIndex log_builtin = 1;
-    TransactionIndex transaction = 2;
-    AccountIndex account = 3;
-  }
-}
-
 message FillGapLog {
   fixed64 original_id = 1;  // v2 log ID that this gap fills
 }
 
-message ConvertMetadataBatchLog {
-  TargetType target_type = 1;
-  string key = 2;
-  uint32 count = 3;
-  repeated ConvertMetadataBatchLogEntry entries = 4;
-}
-
-message ConvertMetadataBatchLogEntry {
-  bytes canonical_key = 1;
-  MetadataValue new_value = 2;
-}
-
-message MetadataConversionCompleteLog {
-  TargetType target_type = 1;
-  string key = 2;
-}
 
 message CreatedTransaction {
   Transaction transaction = 1;

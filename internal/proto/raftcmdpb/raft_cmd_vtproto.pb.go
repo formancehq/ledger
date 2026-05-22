@@ -1055,24 +1055,6 @@ func (m *LedgerApplyOrder_RemoveMetadataFieldType) CloneVT() isLedgerApplyOrder_
 	return r
 }
 
-func (m *LedgerApplyOrder_ConvertMetadataBatch) CloneVT() isLedgerApplyOrder_Data {
-	if m == nil {
-		return (*LedgerApplyOrder_ConvertMetadataBatch)(nil)
-	}
-	r := new(LedgerApplyOrder_ConvertMetadataBatch)
-	r.ConvertMetadataBatch = m.ConvertMetadataBatch.CloneVT()
-	return r
-}
-
-func (m *LedgerApplyOrder_ConversionComplete) CloneVT() isLedgerApplyOrder_Data {
-	if m == nil {
-		return (*LedgerApplyOrder_ConversionComplete)(nil)
-	}
-	r := new(LedgerApplyOrder_ConversionComplete)
-	r.ConversionComplete = m.ConversionComplete.CloneVT()
-	return r
-}
-
 func (m *LedgerApplyOrder_CreateIndex) CloneVT() isLedgerApplyOrder_Data {
 	if m == nil {
 		return (*LedgerApplyOrder_CreateIndex)(nil)
@@ -1088,15 +1070,6 @@ func (m *LedgerApplyOrder_DropIndex) CloneVT() isLedgerApplyOrder_Data {
 	}
 	r := new(LedgerApplyOrder_DropIndex)
 	r.DropIndex = m.DropIndex.CloneVT()
-	return r
-}
-
-func (m *LedgerApplyOrder_IndexReady) CloneVT() isLedgerApplyOrder_Data {
-	if m == nil {
-		return (*LedgerApplyOrder_IndexReady)(nil)
-	}
-	r := new(LedgerApplyOrder_IndexReady)
-	r.IndexReady = m.IndexReady.CloneVT()
 	return r
 }
 
@@ -1221,14 +1194,15 @@ func (m *DropIndexOrder_Account) CloneVT() isDropIndexOrder_Index {
 	return r
 }
 
-func (m *IndexReadyOrder) CloneVT() *IndexReadyOrder {
+func (m *IndexReadyUpdate) CloneVT() *IndexReadyUpdate {
 	if m == nil {
-		return (*IndexReadyOrder)(nil)
+		return (*IndexReadyUpdate)(nil)
 	}
-	r := new(IndexReadyOrder)
+	r := new(IndexReadyUpdate)
+	r.Ledger = m.Ledger
 	if m.Index != nil {
 		r.Index = m.Index.(interface {
-			CloneVT() isIndexReadyOrder_Index
+			CloneVT() isIndexReadyUpdate_Index
 		}).CloneVT()
 	}
 	if len(m.unknownFields) > 0 {
@@ -1238,33 +1212,33 @@ func (m *IndexReadyOrder) CloneVT() *IndexReadyOrder {
 	return r
 }
 
-func (m *IndexReadyOrder) CloneMessageVT() proto.Message {
+func (m *IndexReadyUpdate) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *IndexReadyOrder_LogBuiltin) CloneVT() isIndexReadyOrder_Index {
+func (m *IndexReadyUpdate_LogBuiltin) CloneVT() isIndexReadyUpdate_Index {
 	if m == nil {
-		return (*IndexReadyOrder_LogBuiltin)(nil)
+		return (*IndexReadyUpdate_LogBuiltin)(nil)
 	}
-	r := new(IndexReadyOrder_LogBuiltin)
+	r := new(IndexReadyUpdate_LogBuiltin)
 	r.LogBuiltin = m.LogBuiltin
 	return r
 }
 
-func (m *IndexReadyOrder_Transaction) CloneVT() isIndexReadyOrder_Index {
+func (m *IndexReadyUpdate_Transaction) CloneVT() isIndexReadyUpdate_Index {
 	if m == nil {
-		return (*IndexReadyOrder_Transaction)(nil)
+		return (*IndexReadyUpdate_Transaction)(nil)
 	}
-	r := new(IndexReadyOrder_Transaction)
+	r := new(IndexReadyUpdate_Transaction)
 	r.Transaction = m.Transaction.CloneVT()
 	return r
 }
 
-func (m *IndexReadyOrder_Account) CloneVT() isIndexReadyOrder_Index {
+func (m *IndexReadyUpdate_Account) CloneVT() isIndexReadyUpdate_Index {
 	if m == nil {
-		return (*IndexReadyOrder_Account)(nil)
+		return (*IndexReadyUpdate_Account)(nil)
 	}
-	r := new(IndexReadyOrder_Account)
+	r := new(IndexReadyUpdate_Account)
 	r.Account = m.Account.CloneVT()
 	return r
 }
@@ -1320,11 +1294,12 @@ func (m *UpdateDefaultEnforcementModeOrder) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *ConvertMetadataBatchOrder) CloneVT() *ConvertMetadataBatchOrder {
+func (m *MetadataConversionBatch) CloneVT() *MetadataConversionBatch {
 	if m == nil {
-		return (*ConvertMetadataBatchOrder)(nil)
+		return (*MetadataConversionBatch)(nil)
 	}
-	r := new(ConvertMetadataBatchOrder)
+	r := new(MetadataConversionBatch)
+	r.Ledger = m.Ledger
 	r.TargetType = m.TargetType
 	r.Key = m.Key
 	r.ExpectedType = m.ExpectedType
@@ -1344,7 +1319,7 @@ func (m *ConvertMetadataBatchOrder) CloneVT() *ConvertMetadataBatchOrder {
 	return r
 }
 
-func (m *ConvertMetadataBatchOrder) CloneMessageVT() proto.Message {
+func (m *MetadataConversionBatch) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -1370,11 +1345,12 @@ func (m *ConvertMetadataEntry) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *MetadataConversionCompleteOrder) CloneVT() *MetadataConversionCompleteOrder {
+func (m *MetadataConversionCompletion) CloneVT() *MetadataConversionCompletion {
 	if m == nil {
-		return (*MetadataConversionCompleteOrder)(nil)
+		return (*MetadataConversionCompletion)(nil)
 	}
-	r := new(MetadataConversionCompleteOrder)
+	r := new(MetadataConversionCompletion)
+	r.Ledger = m.Ledger
 	r.TargetType = m.TargetType
 	r.Key = m.Key
 	r.ExpectedType = m.ExpectedType
@@ -1385,7 +1361,7 @@ func (m *MetadataConversionCompleteOrder) CloneVT() *MetadataConversionCompleteO
 	return r
 }
 
-func (m *MetadataConversionCompleteOrder) CloneMessageVT() proto.Message {
+func (m *MetadataConversionCompletion) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -1643,6 +1619,27 @@ func (m *Proposal) CloneVT() *Proposal {
 			tmpContainer[k] = v.CloneVT()
 		}
 		r.MirrorSyncUpdates = tmpContainer
+	}
+	if rhs := m.MetadataConversionBatches; rhs != nil {
+		tmpContainer := make([]*MetadataConversionBatch, len(rhs))
+		for k, v := range rhs {
+			tmpContainer[k] = v.CloneVT()
+		}
+		r.MetadataConversionBatches = tmpContainer
+	}
+	if rhs := m.MetadataConversionsComplete; rhs != nil {
+		tmpContainer := make([]*MetadataConversionCompletion, len(rhs))
+		for k, v := range rhs {
+			tmpContainer[k] = v.CloneVT()
+		}
+		r.MetadataConversionsComplete = tmpContainer
+	}
+	if rhs := m.IndexReadyUpdates; rhs != nil {
+		tmpContainer := make([]*IndexReadyUpdate, len(rhs))
+		for k, v := range rhs {
+			tmpContainer[k] = v.CloneVT()
+		}
+		r.IndexReadyUpdates = tmpContainer
 	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -4356,56 +4353,6 @@ func (this *LedgerApplyOrder_RemoveMetadataFieldType) EqualVT(thatIface isLedger
 	return true
 }
 
-func (this *LedgerApplyOrder_ConvertMetadataBatch) EqualVT(thatIface isLedgerApplyOrder_Data) bool {
-	that, ok := thatIface.(*LedgerApplyOrder_ConvertMetadataBatch)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.ConvertMetadataBatch, that.ConvertMetadataBatch; p != q {
-		if p == nil {
-			p = &ConvertMetadataBatchOrder{}
-		}
-		if q == nil {
-			q = &ConvertMetadataBatchOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *LedgerApplyOrder_ConversionComplete) EqualVT(thatIface isLedgerApplyOrder_Data) bool {
-	that, ok := thatIface.(*LedgerApplyOrder_ConversionComplete)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.ConversionComplete, that.ConversionComplete; p != q {
-		if p == nil {
-			p = &MetadataConversionCompleteOrder{}
-		}
-		if q == nil {
-			q = &MetadataConversionCompleteOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
 func (this *LedgerApplyOrder_CreateIndex) EqualVT(thatIface isLedgerApplyOrder_Data) bool {
 	that, ok := thatIface.(*LedgerApplyOrder_CreateIndex)
 	if !ok {
@@ -4448,31 +4395,6 @@ func (this *LedgerApplyOrder_DropIndex) EqualVT(thatIface isLedgerApplyOrder_Dat
 		}
 		if q == nil {
 			q = &DropIndexOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *LedgerApplyOrder_IndexReady) EqualVT(thatIface isLedgerApplyOrder_Data) bool {
-	that, ok := thatIface.(*LedgerApplyOrder_IndexReady)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.IndexReady, that.IndexReady; p != q {
-		if p == nil {
-			p = &IndexReadyOrder{}
-		}
-		if q == nil {
-			q = &IndexReadyOrder{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -4746,7 +4668,7 @@ func (this *DropIndexOrder_Account) EqualVT(thatIface isDropIndexOrder_Index) bo
 	return true
 }
 
-func (this *IndexReadyOrder) EqualVT(that *IndexReadyOrder) bool {
+func (this *IndexReadyUpdate) EqualVT(that *IndexReadyUpdate) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -4759,23 +4681,26 @@ func (this *IndexReadyOrder) EqualVT(that *IndexReadyOrder) bool {
 			return false
 		}
 		if !this.Index.(interface {
-			EqualVT(isIndexReadyOrder_Index) bool
+			EqualVT(isIndexReadyUpdate_Index) bool
 		}).EqualVT(that.Index) {
 			return false
 		}
 	}
+	if this.Ledger != that.Ledger {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *IndexReadyOrder) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*IndexReadyOrder)
+func (this *IndexReadyUpdate) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*IndexReadyUpdate)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *IndexReadyOrder_LogBuiltin) EqualVT(thatIface isIndexReadyOrder_Index) bool {
-	that, ok := thatIface.(*IndexReadyOrder_LogBuiltin)
+func (this *IndexReadyUpdate_LogBuiltin) EqualVT(thatIface isIndexReadyUpdate_Index) bool {
+	that, ok := thatIface.(*IndexReadyUpdate_LogBuiltin)
 	if !ok {
 		return false
 	}
@@ -4791,8 +4716,8 @@ func (this *IndexReadyOrder_LogBuiltin) EqualVT(thatIface isIndexReadyOrder_Inde
 	return true
 }
 
-func (this *IndexReadyOrder_Transaction) EqualVT(thatIface isIndexReadyOrder_Index) bool {
-	that, ok := thatIface.(*IndexReadyOrder_Transaction)
+func (this *IndexReadyUpdate_Transaction) EqualVT(thatIface isIndexReadyUpdate_Index) bool {
+	that, ok := thatIface.(*IndexReadyUpdate_Transaction)
 	if !ok {
 		return false
 	}
@@ -4816,8 +4741,8 @@ func (this *IndexReadyOrder_Transaction) EqualVT(thatIface isIndexReadyOrder_Ind
 	return true
 }
 
-func (this *IndexReadyOrder_Account) EqualVT(thatIface isIndexReadyOrder_Index) bool {
-	that, ok := thatIface.(*IndexReadyOrder_Account)
+func (this *IndexReadyUpdate_Account) EqualVT(thatIface isIndexReadyUpdate_Index) bool {
+	that, ok := thatIface.(*IndexReadyUpdate_Account)
 	if !ok {
 		return false
 	}
@@ -4898,10 +4823,13 @@ func (this *UpdateDefaultEnforcementModeOrder) EqualMessageVT(thatMsg proto.Mess
 	}
 	return this.EqualVT(that)
 }
-func (this *ConvertMetadataBatchOrder) EqualVT(that *ConvertMetadataBatchOrder) bool {
+func (this *MetadataConversionBatch) EqualVT(that *MetadataConversionBatch) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
+		return false
+	}
+	if this.Ledger != that.Ledger {
 		return false
 	}
 	if this.TargetType != that.TargetType {
@@ -4939,8 +4867,8 @@ func (this *ConvertMetadataBatchOrder) EqualVT(that *ConvertMetadataBatchOrder) 
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *ConvertMetadataBatchOrder) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*ConvertMetadataBatchOrder)
+func (this *MetadataConversionBatch) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*MetadataConversionBatch)
 	if !ok {
 		return false
 	}
@@ -4968,10 +4896,13 @@ func (this *ConvertMetadataEntry) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *MetadataConversionCompleteOrder) EqualVT(that *MetadataConversionCompleteOrder) bool {
+func (this *MetadataConversionCompletion) EqualVT(that *MetadataConversionCompletion) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
+		return false
+	}
+	if this.Ledger != that.Ledger {
 		return false
 	}
 	if this.TargetType != that.TargetType {
@@ -4986,8 +4917,8 @@ func (this *MetadataConversionCompleteOrder) EqualVT(that *MetadataConversionCom
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *MetadataConversionCompleteOrder) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*MetadataConversionCompleteOrder)
+func (this *MetadataConversionCompletion) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*MetadataConversionCompletion)
 	if !ok {
 		return false
 	}
@@ -5426,6 +5357,57 @@ func (this *Proposal) EqualVT(that *Proposal) bool {
 	}
 	if !this.ClusterConfig.EqualVT(that.ClusterConfig) {
 		return false
+	}
+	if len(this.MetadataConversionBatches) != len(that.MetadataConversionBatches) {
+		return false
+	}
+	for i, vx := range this.MetadataConversionBatches {
+		vy := that.MetadataConversionBatches[i]
+		if p, q := vx, vy; p != q {
+			if p == nil {
+				p = &MetadataConversionBatch{}
+			}
+			if q == nil {
+				q = &MetadataConversionBatch{}
+			}
+			if !p.EqualVT(q) {
+				return false
+			}
+		}
+	}
+	if len(this.MetadataConversionsComplete) != len(that.MetadataConversionsComplete) {
+		return false
+	}
+	for i, vx := range this.MetadataConversionsComplete {
+		vy := that.MetadataConversionsComplete[i]
+		if p, q := vx, vy; p != q {
+			if p == nil {
+				p = &MetadataConversionCompletion{}
+			}
+			if q == nil {
+				q = &MetadataConversionCompletion{}
+			}
+			if !p.EqualVT(q) {
+				return false
+			}
+		}
+	}
+	if len(this.IndexReadyUpdates) != len(that.IndexReadyUpdates) {
+		return false
+	}
+	for i, vx := range this.IndexReadyUpdates {
+		vy := that.IndexReadyUpdates[i]
+		if p, q := vx, vy; p != q {
+			if p == nil {
+				p = &IndexReadyUpdate{}
+			}
+			if q == nil {
+				q = &IndexReadyUpdate{}
+			}
+			if !p.EqualVT(q) {
+				return false
+			}
+		}
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -9211,44 +9193,6 @@ func (m *LedgerApplyOrder_RemoveMetadataFieldType) MarshalToSizedBufferVT(dAtA [
 	}
 	return len(dAtA) - i, nil
 }
-func (m *LedgerApplyOrder_ConvertMetadataBatch) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *LedgerApplyOrder_ConvertMetadataBatch) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.ConvertMetadataBatch != nil {
-		size, err := m.ConvertMetadataBatch.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x42
-	}
-	return len(dAtA) - i, nil
-}
-func (m *LedgerApplyOrder_ConversionComplete) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *LedgerApplyOrder_ConversionComplete) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.ConversionComplete != nil {
-		size, err := m.ConversionComplete.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x4a
-	}
-	return len(dAtA) - i, nil
-}
 func (m *LedgerApplyOrder_CreateIndex) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
@@ -9284,25 +9228,6 @@ func (m *LedgerApplyOrder_DropIndex) MarshalToSizedBufferVT(dAtA []byte) (int, e
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
 		dAtA[i] = 0x5a
-	}
-	return len(dAtA) - i, nil
-}
-func (m *LedgerApplyOrder_IndexReady) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *LedgerApplyOrder_IndexReady) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.IndexReady != nil {
-		size, err := m.IndexReady.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x62
 	}
 	return len(dAtA) - i, nil
 }
@@ -9547,7 +9472,7 @@ func (m *DropIndexOrder_Account) MarshalToSizedBufferVT(dAtA []byte) (int, error
 	}
 	return len(dAtA) - i, nil
 }
-func (m *IndexReadyOrder) MarshalVT() (dAtA []byte, err error) {
+func (m *IndexReadyUpdate) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -9560,12 +9485,12 @@ func (m *IndexReadyOrder) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *IndexReadyOrder) MarshalToVT(dAtA []byte) (int, error) {
+func (m *IndexReadyUpdate) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *IndexReadyOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *IndexReadyUpdate) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -9586,27 +9511,34 @@ func (m *IndexReadyOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		}
 		i -= size
 	}
+	if len(m.Ledger) > 0 {
+		i -= len(m.Ledger)
+		copy(dAtA[i:], m.Ledger)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
+		i--
+		dAtA[i] = 0xa
+	}
 	return len(dAtA) - i, nil
 }
 
-func (m *IndexReadyOrder_LogBuiltin) MarshalToVT(dAtA []byte) (int, error) {
+func (m *IndexReadyUpdate_LogBuiltin) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *IndexReadyOrder_LogBuiltin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *IndexReadyUpdate_LogBuiltin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogBuiltin))
 	i--
-	dAtA[i] = 0x8
+	dAtA[i] = 0x10
 	return len(dAtA) - i, nil
 }
-func (m *IndexReadyOrder_Transaction) MarshalToVT(dAtA []byte) (int, error) {
+func (m *IndexReadyUpdate_Transaction) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *IndexReadyOrder_Transaction) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *IndexReadyUpdate_Transaction) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	if m.Transaction != nil {
 		size, err := m.Transaction.MarshalToSizedBufferVT(dAtA[:i])
@@ -9616,16 +9548,16 @@ func (m *IndexReadyOrder_Transaction) MarshalToSizedBufferVT(dAtA []byte) (int, 
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x12
+		dAtA[i] = 0x1a
 	}
 	return len(dAtA) - i, nil
 }
-func (m *IndexReadyOrder_Account) MarshalToVT(dAtA []byte) (int, error) {
+func (m *IndexReadyUpdate_Account) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *IndexReadyOrder_Account) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *IndexReadyUpdate_Account) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	if m.Account != nil {
 		size, err := m.Account.MarshalToSizedBufferVT(dAtA[:i])
@@ -9635,7 +9567,7 @@ func (m *IndexReadyOrder_Account) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x1a
+		dAtA[i] = 0x22
 	}
 	return len(dAtA) - i, nil
 }
@@ -9760,7 +9692,7 @@ func (m *UpdateDefaultEnforcementModeOrder) MarshalToSizedBufferVT(dAtA []byte) 
 	return len(dAtA) - i, nil
 }
 
-func (m *ConvertMetadataBatchOrder) MarshalVT() (dAtA []byte, err error) {
+func (m *MetadataConversionBatch) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -9773,12 +9705,12 @@ func (m *ConvertMetadataBatchOrder) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ConvertMetadataBatchOrder) MarshalToVT(dAtA []byte) (int, error) {
+func (m *MetadataConversionBatch) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *ConvertMetadataBatchOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *MetadataConversionBatch) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -9794,13 +9726,13 @@ func (m *ConvertMetadataBatchOrder) MarshalToSizedBufferVT(dAtA []byte) (int, er
 		i -= 8
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ConvertedKeysSoFar))
 		i--
-		dAtA[i] = 0x31
+		dAtA[i] = 0x39
 	}
 	if m.TotalKeys != 0 {
 		i -= 8
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.TotalKeys))
 		i--
-		dAtA[i] = 0x29
+		dAtA[i] = 0x31
 	}
 	if len(m.Entries) > 0 {
 		for iNdEx := len(m.Entries) - 1; iNdEx >= 0; iNdEx-- {
@@ -9811,25 +9743,32 @@ func (m *ConvertMetadataBatchOrder) MarshalToSizedBufferVT(dAtA []byte) (int, er
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x22
+			dAtA[i] = 0x2a
 		}
 	}
 	if m.ExpectedType != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ExpectedType))
 		i--
-		dAtA[i] = 0x18
+		dAtA[i] = 0x20
 	}
 	if len(m.Key) > 0 {
 		i -= len(m.Key)
 		copy(dAtA[i:], m.Key)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Key)))
 		i--
-		dAtA[i] = 0x12
+		dAtA[i] = 0x1a
 	}
 	if m.TargetType != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.TargetType))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x10
+	}
+	if len(m.Ledger) > 0 {
+		i -= len(m.Ledger)
+		copy(dAtA[i:], m.Ledger)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
+		i--
+		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -9884,7 +9823,7 @@ func (m *ConvertMetadataEntry) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 	return len(dAtA) - i, nil
 }
 
-func (m *MetadataConversionCompleteOrder) MarshalVT() (dAtA []byte, err error) {
+func (m *MetadataConversionCompletion) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -9897,12 +9836,12 @@ func (m *MetadataConversionCompleteOrder) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *MetadataConversionCompleteOrder) MarshalToVT(dAtA []byte) (int, error) {
+func (m *MetadataConversionCompletion) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *MetadataConversionCompleteOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *MetadataConversionCompletion) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -9917,19 +9856,26 @@ func (m *MetadataConversionCompleteOrder) MarshalToSizedBufferVT(dAtA []byte) (i
 	if m.ExpectedType != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ExpectedType))
 		i--
-		dAtA[i] = 0x18
+		dAtA[i] = 0x20
 	}
 	if len(m.Key) > 0 {
 		i -= len(m.Key)
 		copy(dAtA[i:], m.Key)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Key)))
 		i--
-		dAtA[i] = 0x12
+		dAtA[i] = 0x1a
 	}
 	if m.TargetType != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.TargetType))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x10
+	}
+	if len(m.Ledger) > 0 {
+		i -= len(m.Ledger)
+		copy(dAtA[i:], m.Ledger)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
+		i--
+		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -10597,6 +10543,42 @@ func (m *Proposal) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.IndexReadyUpdates) > 0 {
+		for iNdEx := len(m.IndexReadyUpdates) - 1; iNdEx >= 0; iNdEx-- {
+			size, err := m.IndexReadyUpdates[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x62
+		}
+	}
+	if len(m.MetadataConversionsComplete) > 0 {
+		for iNdEx := len(m.MetadataConversionsComplete) - 1; iNdEx >= 0; iNdEx-- {
+			size, err := m.MetadataConversionsComplete[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x5a
+		}
+	}
+	if len(m.MetadataConversionBatches) > 0 {
+		for iNdEx := len(m.MetadataConversionBatches) - 1; iNdEx >= 0; iNdEx-- {
+			size, err := m.MetadataConversionBatches[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x52
+		}
 	}
 	if m.ClusterConfig != nil {
 		size, err := m.ClusterConfig.MarshalToSizedBufferVT(dAtA[:i])
@@ -12870,10 +12852,25 @@ func (m *Proposal) ResetVT() {
 			mm.ResetVT()
 		}
 		f2 := m.MirrorSyncUpdates[:0]
+		for _, mm := range m.MetadataConversionBatches {
+			mm.Reset()
+		}
+		f3 := m.MetadataConversionBatches[:0]
+		for _, mm := range m.MetadataConversionsComplete {
+			mm.Reset()
+		}
+		f4 := m.MetadataConversionsComplete[:0]
+		for _, mm := range m.IndexReadyUpdates {
+			mm.Reset()
+		}
+		f5 := m.IndexReadyUpdates[:0]
 		m.Reset()
 		m.Orders = f0
 		m.EventsSinkUpdates = f1
 		m.MirrorSyncUpdates = f2
+		m.MetadataConversionBatches = f3
+		m.MetadataConversionsComplete = f4
+		m.IndexReadyUpdates = f5
 	}
 }
 func (m *Proposal) ReturnToVTPool() {
@@ -14102,30 +14099,6 @@ func (m *LedgerApplyOrder_RemoveMetadataFieldType) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *LedgerApplyOrder_ConvertMetadataBatch) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.ConvertMetadataBatch != nil {
-		l = m.ConvertMetadataBatch.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *LedgerApplyOrder_ConversionComplete) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.ConversionComplete != nil {
-		l = m.ConversionComplete.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
 func (m *LedgerApplyOrder_CreateIndex) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -14146,18 +14119,6 @@ func (m *LedgerApplyOrder_DropIndex) SizeVT() (n int) {
 	_ = l
 	if m.DropIndex != nil {
 		l = m.DropIndex.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *LedgerApplyOrder_IndexReady) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.IndexReady != nil {
-		l = m.IndexReady.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
@@ -14290,12 +14251,16 @@ func (m *DropIndexOrder_Account) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *IndexReadyOrder) SizeVT() (n int) {
+func (m *IndexReadyUpdate) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
+	l = len(m.Ledger)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	if vtmsg, ok := m.Index.(interface{ SizeVT() int }); ok {
 		n += vtmsg.SizeVT()
 	}
@@ -14303,7 +14268,7 @@ func (m *IndexReadyOrder) SizeVT() (n int) {
 	return n
 }
 
-func (m *IndexReadyOrder_LogBuiltin) SizeVT() (n int) {
+func (m *IndexReadyUpdate_LogBuiltin) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -14312,7 +14277,7 @@ func (m *IndexReadyOrder_LogBuiltin) SizeVT() (n int) {
 	n += 1 + protohelpers.SizeOfVarint(uint64(m.LogBuiltin))
 	return n
 }
-func (m *IndexReadyOrder_Transaction) SizeVT() (n int) {
+func (m *IndexReadyUpdate_Transaction) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -14324,7 +14289,7 @@ func (m *IndexReadyOrder_Transaction) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *IndexReadyOrder_Account) SizeVT() (n int) {
+func (m *IndexReadyUpdate_Account) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -14377,12 +14342,16 @@ func (m *UpdateDefaultEnforcementModeOrder) SizeVT() (n int) {
 	return n
 }
 
-func (m *ConvertMetadataBatchOrder) SizeVT() (n int) {
+func (m *MetadataConversionBatch) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
+	l = len(m.Ledger)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	if m.TargetType != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.TargetType))
 	}
@@ -14427,12 +14396,16 @@ func (m *ConvertMetadataEntry) SizeVT() (n int) {
 	return n
 }
 
-func (m *MetadataConversionCompleteOrder) SizeVT() (n int) {
+func (m *MetadataConversionCompletion) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
+	l = len(m.Ledger)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	if m.TargetType != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.TargetType))
 	}
@@ -14750,6 +14723,24 @@ func (m *Proposal) SizeVT() (n int) {
 	if m.ClusterConfig != nil {
 		l = m.ClusterConfig.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if len(m.MetadataConversionBatches) > 0 {
+		for _, e := range m.MetadataConversionBatches {
+			l = e.SizeVT()
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
+	}
+	if len(m.MetadataConversionsComplete) > 0 {
+		for _, e := range m.MetadataConversionsComplete {
+			l = e.SizeVT()
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
+	}
+	if len(m.IndexReadyUpdates) > 0 {
+		for _, e := range m.IndexReadyUpdates {
+			l = e.SizeVT()
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
 	}
 	n += len(m.unknownFields)
 	return n
@@ -21172,88 +21163,6 @@ func (m *LedgerApplyOrder) UnmarshalVT(dAtA []byte) error {
 				m.Data = &LedgerApplyOrder_RemoveMetadataFieldType{RemoveMetadataFieldType: v}
 			}
 			iNdEx = postIndex
-		case 8:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ConvertMetadataBatch", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Data.(*LedgerApplyOrder_ConvertMetadataBatch); ok {
-				if err := oneof.ConvertMetadataBatch.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &ConvertMetadataBatchOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Data = &LedgerApplyOrder_ConvertMetadataBatch{ConvertMetadataBatch: v}
-			}
-			iNdEx = postIndex
-		case 9:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ConversionComplete", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Data.(*LedgerApplyOrder_ConversionComplete); ok {
-				if err := oneof.ConversionComplete.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &MetadataConversionCompleteOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Data = &LedgerApplyOrder_ConversionComplete{ConversionComplete: v}
-			}
-			iNdEx = postIndex
 		case 10:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CreateIndex", wireType)
@@ -21334,47 +21243,6 @@ func (m *LedgerApplyOrder) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 				m.Data = &LedgerApplyOrder_DropIndex{DropIndex: v}
-			}
-			iNdEx = postIndex
-		case 12:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field IndexReady", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Data.(*LedgerApplyOrder_IndexReady); ok {
-				if err := oneof.IndexReady.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &IndexReadyOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Data = &LedgerApplyOrder_IndexReady{IndexReady: v}
 			}
 			iNdEx = postIndex
 		case 13:
@@ -21828,7 +21696,7 @@ func (m *DropIndexOrder) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *IndexReadyOrder) UnmarshalVT(dAtA []byte) error {
+func (m *IndexReadyUpdate) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -21851,13 +21719,45 @@ func (m *IndexReadyOrder) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: IndexReadyOrder: wiretype end group for non-group")
+			return fmt.Errorf("proto: IndexReadyUpdate: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: IndexReadyOrder: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: IndexReadyUpdate: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Ledger = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field LogBuiltin", wireType)
 			}
@@ -21876,8 +21776,8 @@ func (m *IndexReadyOrder) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-			m.Index = &IndexReadyOrder_LogBuiltin{LogBuiltin: v}
-		case 2:
+			m.Index = &IndexReadyUpdate_LogBuiltin{LogBuiltin: v}
+		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Transaction", wireType)
 			}
@@ -21906,7 +21806,7 @@ func (m *IndexReadyOrder) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Index.(*IndexReadyOrder_Transaction); ok {
+			if oneof, ok := m.Index.(*IndexReadyUpdate_Transaction); ok {
 				if err := oneof.Transaction.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -21915,10 +21815,10 @@ func (m *IndexReadyOrder) UnmarshalVT(dAtA []byte) error {
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Index = &IndexReadyOrder_Transaction{Transaction: v}
+				m.Index = &IndexReadyUpdate_Transaction{Transaction: v}
 			}
 			iNdEx = postIndex
-		case 3:
+		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
 			}
@@ -21947,7 +21847,7 @@ func (m *IndexReadyOrder) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Index.(*IndexReadyOrder_Account); ok {
+			if oneof, ok := m.Index.(*IndexReadyUpdate_Account); ok {
 				if err := oneof.Account.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -21956,7 +21856,7 @@ func (m *IndexReadyOrder) UnmarshalVT(dAtA []byte) error {
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Index = &IndexReadyOrder_Account{Account: v}
+				m.Index = &IndexReadyUpdate_Account{Account: v}
 			}
 			iNdEx = postIndex
 		default:
@@ -22221,7 +22121,7 @@ func (m *UpdateDefaultEnforcementModeOrder) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *ConvertMetadataBatchOrder) UnmarshalVT(dAtA []byte) error {
+func (m *MetadataConversionBatch) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -22244,13 +22144,45 @@ func (m *ConvertMetadataBatchOrder) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ConvertMetadataBatchOrder: wiretype end group for non-group")
+			return fmt.Errorf("proto: MetadataConversionBatch: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ConvertMetadataBatchOrder: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: MetadataConversionBatch: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Ledger = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field TargetType", wireType)
 			}
@@ -22269,7 +22201,7 @@ func (m *ConvertMetadataBatchOrder) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 2:
+		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
 			}
@@ -22301,7 +22233,7 @@ func (m *ConvertMetadataBatchOrder) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Key = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 3:
+		case 4:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ExpectedType", wireType)
 			}
@@ -22320,7 +22252,7 @@ func (m *ConvertMetadataBatchOrder) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 4:
+		case 5:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Entries", wireType)
 			}
@@ -22354,7 +22286,7 @@ func (m *ConvertMetadataBatchOrder) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 5:
+		case 6:
 			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field TotalKeys", wireType)
 			}
@@ -22364,7 +22296,7 @@ func (m *ConvertMetadataBatchOrder) UnmarshalVT(dAtA []byte) error {
 			}
 			m.TotalKeys = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
-		case 6:
+		case 7:
 			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ConvertedKeysSoFar", wireType)
 			}
@@ -22517,7 +22449,7 @@ func (m *ConvertMetadataEntry) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *MetadataConversionCompleteOrder) UnmarshalVT(dAtA []byte) error {
+func (m *MetadataConversionCompletion) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -22540,13 +22472,45 @@ func (m *MetadataConversionCompleteOrder) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: MetadataConversionCompleteOrder: wiretype end group for non-group")
+			return fmt.Errorf("proto: MetadataConversionCompletion: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: MetadataConversionCompleteOrder: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: MetadataConversionCompletion: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Ledger = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field TargetType", wireType)
 			}
@@ -22565,7 +22529,7 @@ func (m *MetadataConversionCompleteOrder) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 2:
+		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
 			}
@@ -22597,7 +22561,7 @@ func (m *MetadataConversionCompleteOrder) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Key = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 3:
+		case 4:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ExpectedType", wireType)
 			}
@@ -24885,6 +24849,129 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 				m.ClusterConfig = &commonpb.ClusterConfig{}
 			}
 			if err := m.ClusterConfig.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 10:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MetadataConversionBatches", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if len(m.MetadataConversionBatches) == cap(m.MetadataConversionBatches) {
+				m.MetadataConversionBatches = append(m.MetadataConversionBatches, &MetadataConversionBatch{})
+			} else {
+				m.MetadataConversionBatches = m.MetadataConversionBatches[:len(m.MetadataConversionBatches)+1]
+				if m.MetadataConversionBatches[len(m.MetadataConversionBatches)-1] == nil {
+					m.MetadataConversionBatches[len(m.MetadataConversionBatches)-1] = &MetadataConversionBatch{}
+				}
+			}
+			if err := m.MetadataConversionBatches[len(m.MetadataConversionBatches)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 11:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MetadataConversionsComplete", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if len(m.MetadataConversionsComplete) == cap(m.MetadataConversionsComplete) {
+				m.MetadataConversionsComplete = append(m.MetadataConversionsComplete, &MetadataConversionCompletion{})
+			} else {
+				m.MetadataConversionsComplete = m.MetadataConversionsComplete[:len(m.MetadataConversionsComplete)+1]
+				if m.MetadataConversionsComplete[len(m.MetadataConversionsComplete)-1] == nil {
+					m.MetadataConversionsComplete[len(m.MetadataConversionsComplete)-1] = &MetadataConversionCompletion{}
+				}
+			}
+			if err := m.MetadataConversionsComplete[len(m.MetadataConversionsComplete)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 12:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field IndexReadyUpdates", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if len(m.IndexReadyUpdates) == cap(m.IndexReadyUpdates) {
+				m.IndexReadyUpdates = append(m.IndexReadyUpdates, &IndexReadyUpdate{})
+			} else {
+				m.IndexReadyUpdates = m.IndexReadyUpdates[:len(m.IndexReadyUpdates)+1]
+				if m.IndexReadyUpdates[len(m.IndexReadyUpdates)-1] == nil {
+					m.IndexReadyUpdates[len(m.IndexReadyUpdates)-1] = &IndexReadyUpdate{}
+				}
+			}
+			if err := m.IndexReadyUpdates[len(m.IndexReadyUpdates)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex

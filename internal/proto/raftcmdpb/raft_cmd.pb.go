@@ -2277,11 +2277,8 @@ type LedgerApplyOrder struct {
 	//	*LedgerApplyOrder_DeleteMetadata
 	//	*LedgerApplyOrder_SetMetadataFieldType
 	//	*LedgerApplyOrder_RemoveMetadataFieldType
-	//	*LedgerApplyOrder_ConvertMetadataBatch
-	//	*LedgerApplyOrder_ConversionComplete
 	//	*LedgerApplyOrder_CreateIndex
 	//	*LedgerApplyOrder_DropIndex
-	//	*LedgerApplyOrder_IndexReady
 	//	*LedgerApplyOrder_AddAccountType
 	//	*LedgerApplyOrder_RemoveAccountType
 	//	*LedgerApplyOrder_UpdateDefaultEnforcementMode
@@ -2388,24 +2385,6 @@ func (x *LedgerApplyOrder) GetRemoveMetadataFieldType() *RemoveMetadataFieldType
 	return nil
 }
 
-func (x *LedgerApplyOrder) GetConvertMetadataBatch() *ConvertMetadataBatchOrder {
-	if x != nil {
-		if x, ok := x.Data.(*LedgerApplyOrder_ConvertMetadataBatch); ok {
-			return x.ConvertMetadataBatch
-		}
-	}
-	return nil
-}
-
-func (x *LedgerApplyOrder) GetConversionComplete() *MetadataConversionCompleteOrder {
-	if x != nil {
-		if x, ok := x.Data.(*LedgerApplyOrder_ConversionComplete); ok {
-			return x.ConversionComplete
-		}
-	}
-	return nil
-}
-
 func (x *LedgerApplyOrder) GetCreateIndex() *CreateIndexOrder {
 	if x != nil {
 		if x, ok := x.Data.(*LedgerApplyOrder_CreateIndex); ok {
@@ -2419,15 +2398,6 @@ func (x *LedgerApplyOrder) GetDropIndex() *DropIndexOrder {
 	if x != nil {
 		if x, ok := x.Data.(*LedgerApplyOrder_DropIndex); ok {
 			return x.DropIndex
-		}
-	}
-	return nil
-}
-
-func (x *LedgerApplyOrder) GetIndexReady() *IndexReadyOrder {
-	if x != nil {
-		if x, ok := x.Data.(*LedgerApplyOrder_IndexReady); ok {
-			return x.IndexReady
 		}
 	}
 	return nil
@@ -2488,24 +2458,12 @@ type LedgerApplyOrder_RemoveMetadataFieldType struct {
 	RemoveMetadataFieldType *RemoveMetadataFieldTypeOrder `protobuf:"bytes,7,opt,name=remove_metadata_field_type,json=removeMetadataFieldType,proto3,oneof"`
 }
 
-type LedgerApplyOrder_ConvertMetadataBatch struct {
-	ConvertMetadataBatch *ConvertMetadataBatchOrder `protobuf:"bytes,8,opt,name=convert_metadata_batch,json=convertMetadataBatch,proto3,oneof"`
-}
-
-type LedgerApplyOrder_ConversionComplete struct {
-	ConversionComplete *MetadataConversionCompleteOrder `protobuf:"bytes,9,opt,name=conversion_complete,json=conversionComplete,proto3,oneof"`
-}
-
 type LedgerApplyOrder_CreateIndex struct {
 	CreateIndex *CreateIndexOrder `protobuf:"bytes,10,opt,name=create_index,json=createIndex,proto3,oneof"`
 }
 
 type LedgerApplyOrder_DropIndex struct {
 	DropIndex *DropIndexOrder `protobuf:"bytes,11,opt,name=drop_index,json=dropIndex,proto3,oneof"`
-}
-
-type LedgerApplyOrder_IndexReady struct {
-	IndexReady *IndexReadyOrder `protobuf:"bytes,12,opt,name=index_ready,json=indexReady,proto3,oneof"`
 }
 
 type LedgerApplyOrder_AddAccountType struct {
@@ -2532,15 +2490,9 @@ func (*LedgerApplyOrder_SetMetadataFieldType) isLedgerApplyOrder_Data() {}
 
 func (*LedgerApplyOrder_RemoveMetadataFieldType) isLedgerApplyOrder_Data() {}
 
-func (*LedgerApplyOrder_ConvertMetadataBatch) isLedgerApplyOrder_Data() {}
-
-func (*LedgerApplyOrder_ConversionComplete) isLedgerApplyOrder_Data() {}
-
 func (*LedgerApplyOrder_CreateIndex) isLedgerApplyOrder_Data() {}
 
 func (*LedgerApplyOrder_DropIndex) isLedgerApplyOrder_Data() {}
-
-func (*LedgerApplyOrder_IndexReady) isLedgerApplyOrder_Data() {}
 
 func (*LedgerApplyOrder_AddAccountType) isLedgerApplyOrder_Data() {}
 
@@ -2746,33 +2698,35 @@ func (*DropIndexOrder_Transaction) isDropIndexOrder_Index() {}
 
 func (*DropIndexOrder_Account) isDropIndexOrder_Index() {}
 
-// IndexReadyOrder signals that an index has finished building.
-type IndexReadyOrder struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
+// IndexReadyUpdate signals that an index has finished building.
+// Applied directly as a Proposal field (no log entry produced).
+type IndexReadyUpdate struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Ledger string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	// Types that are valid to be assigned to Index:
 	//
-	//	*IndexReadyOrder_LogBuiltin
-	//	*IndexReadyOrder_Transaction
-	//	*IndexReadyOrder_Account
-	Index         isIndexReadyOrder_Index `protobuf_oneof:"index"`
+	//	*IndexReadyUpdate_LogBuiltin
+	//	*IndexReadyUpdate_Transaction
+	//	*IndexReadyUpdate_Account
+	Index         isIndexReadyUpdate_Index `protobuf_oneof:"index"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *IndexReadyOrder) Reset() {
-	*x = IndexReadyOrder{}
+func (x *IndexReadyUpdate) Reset() {
+	*x = IndexReadyUpdate{}
 	mi := &file_raft_cmd_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *IndexReadyOrder) String() string {
+func (x *IndexReadyUpdate) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*IndexReadyOrder) ProtoMessage() {}
+func (*IndexReadyUpdate) ProtoMessage() {}
 
-func (x *IndexReadyOrder) ProtoReflect() protoreflect.Message {
+func (x *IndexReadyUpdate) ProtoReflect() protoreflect.Message {
 	mi := &file_raft_cmd_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -2784,66 +2738,73 @@ func (x *IndexReadyOrder) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use IndexReadyOrder.ProtoReflect.Descriptor instead.
-func (*IndexReadyOrder) Descriptor() ([]byte, []int) {
+// Deprecated: Use IndexReadyUpdate.ProtoReflect.Descriptor instead.
+func (*IndexReadyUpdate) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{36}
 }
 
-func (x *IndexReadyOrder) GetIndex() isIndexReadyOrder_Index {
+func (x *IndexReadyUpdate) GetLedger() string {
+	if x != nil {
+		return x.Ledger
+	}
+	return ""
+}
+
+func (x *IndexReadyUpdate) GetIndex() isIndexReadyUpdate_Index {
 	if x != nil {
 		return x.Index
 	}
 	return nil
 }
 
-func (x *IndexReadyOrder) GetLogBuiltin() commonpb.LogBuiltinIndex {
+func (x *IndexReadyUpdate) GetLogBuiltin() commonpb.LogBuiltinIndex {
 	if x != nil {
-		if x, ok := x.Index.(*IndexReadyOrder_LogBuiltin); ok {
+		if x, ok := x.Index.(*IndexReadyUpdate_LogBuiltin); ok {
 			return x.LogBuiltin
 		}
 	}
 	return commonpb.LogBuiltinIndex(0)
 }
 
-func (x *IndexReadyOrder) GetTransaction() *commonpb.TransactionIndex {
+func (x *IndexReadyUpdate) GetTransaction() *commonpb.TransactionIndex {
 	if x != nil {
-		if x, ok := x.Index.(*IndexReadyOrder_Transaction); ok {
+		if x, ok := x.Index.(*IndexReadyUpdate_Transaction); ok {
 			return x.Transaction
 		}
 	}
 	return nil
 }
 
-func (x *IndexReadyOrder) GetAccount() *commonpb.AccountIndex {
+func (x *IndexReadyUpdate) GetAccount() *commonpb.AccountIndex {
 	if x != nil {
-		if x, ok := x.Index.(*IndexReadyOrder_Account); ok {
+		if x, ok := x.Index.(*IndexReadyUpdate_Account); ok {
 			return x.Account
 		}
 	}
 	return nil
 }
 
-type isIndexReadyOrder_Index interface {
-	isIndexReadyOrder_Index()
+type isIndexReadyUpdate_Index interface {
+	isIndexReadyUpdate_Index()
 }
 
-type IndexReadyOrder_LogBuiltin struct {
-	LogBuiltin commonpb.LogBuiltinIndex `protobuf:"varint,1,opt,name=log_builtin,json=logBuiltin,proto3,enum=common.LogBuiltinIndex,oneof"`
+type IndexReadyUpdate_LogBuiltin struct {
+	LogBuiltin commonpb.LogBuiltinIndex `protobuf:"varint,2,opt,name=log_builtin,json=logBuiltin,proto3,enum=common.LogBuiltinIndex,oneof"`
 }
 
-type IndexReadyOrder_Transaction struct {
-	Transaction *commonpb.TransactionIndex `protobuf:"bytes,2,opt,name=transaction,proto3,oneof"`
+type IndexReadyUpdate_Transaction struct {
+	Transaction *commonpb.TransactionIndex `protobuf:"bytes,3,opt,name=transaction,proto3,oneof"`
 }
 
-type IndexReadyOrder_Account struct {
-	Account *commonpb.AccountIndex `protobuf:"bytes,3,opt,name=account,proto3,oneof"`
+type IndexReadyUpdate_Account struct {
+	Account *commonpb.AccountIndex `protobuf:"bytes,4,opt,name=account,proto3,oneof"`
 }
 
-func (*IndexReadyOrder_LogBuiltin) isIndexReadyOrder_Index() {}
+func (*IndexReadyUpdate_LogBuiltin) isIndexReadyUpdate_Index() {}
 
-func (*IndexReadyOrder_Transaction) isIndexReadyOrder_Index() {}
+func (*IndexReadyUpdate_Transaction) isIndexReadyUpdate_Index() {}
 
-func (*IndexReadyOrder_Account) isIndexReadyOrder_Index() {}
+func (*IndexReadyUpdate_Account) isIndexReadyUpdate_Index() {}
 
 // AddAccountTypeOrder adds a new account type to the ledger.
 type AddAccountTypeOrder struct {
@@ -2980,32 +2941,35 @@ func (x *UpdateDefaultEnforcementModeOrder) GetEnforcementMode() commonpb.ChartE
 	return commonpb.ChartEnforcementMode(0)
 }
 
-type ConvertMetadataBatchOrder struct {
+// MetadataConversionBatch carries a batch of metadata value conversions.
+// Applied directly as a Proposal field (no log entry produced).
+type MetadataConversionBatch struct {
 	state              protoimpl.MessageState  `protogen:"open.v1"`
-	TargetType         commonpb.TargetType     `protobuf:"varint,1,opt,name=target_type,json=targetType,proto3,enum=common.TargetType" json:"target_type,omitempty"`
-	Key                string                  `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
-	ExpectedType       commonpb.MetadataType   `protobuf:"varint,3,opt,name=expected_type,json=expectedType,proto3,enum=common.MetadataType" json:"expected_type,omitempty"`
-	Entries            []*ConvertMetadataEntry `protobuf:"bytes,4,rep,name=entries,proto3" json:"entries,omitempty"`
-	TotalKeys          uint64                  `protobuf:"fixed64,5,opt,name=total_keys,json=totalKeys,proto3" json:"total_keys,omitempty"`
-	ConvertedKeysSoFar uint64                  `protobuf:"fixed64,6,opt,name=converted_keys_so_far,json=convertedKeysSoFar,proto3" json:"converted_keys_so_far,omitempty"`
+	Ledger             string                  `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
+	TargetType         commonpb.TargetType     `protobuf:"varint,2,opt,name=target_type,json=targetType,proto3,enum=common.TargetType" json:"target_type,omitempty"`
+	Key                string                  `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
+	ExpectedType       commonpb.MetadataType   `protobuf:"varint,4,opt,name=expected_type,json=expectedType,proto3,enum=common.MetadataType" json:"expected_type,omitempty"`
+	Entries            []*ConvertMetadataEntry `protobuf:"bytes,5,rep,name=entries,proto3" json:"entries,omitempty"`
+	TotalKeys          uint64                  `protobuf:"fixed64,6,opt,name=total_keys,json=totalKeys,proto3" json:"total_keys,omitempty"`
+	ConvertedKeysSoFar uint64                  `protobuf:"fixed64,7,opt,name=converted_keys_so_far,json=convertedKeysSoFar,proto3" json:"converted_keys_so_far,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
 
-func (x *ConvertMetadataBatchOrder) Reset() {
-	*x = ConvertMetadataBatchOrder{}
+func (x *MetadataConversionBatch) Reset() {
+	*x = MetadataConversionBatch{}
 	mi := &file_raft_cmd_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ConvertMetadataBatchOrder) String() string {
+func (x *MetadataConversionBatch) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ConvertMetadataBatchOrder) ProtoMessage() {}
+func (*MetadataConversionBatch) ProtoMessage() {}
 
-func (x *ConvertMetadataBatchOrder) ProtoReflect() protoreflect.Message {
+func (x *MetadataConversionBatch) ProtoReflect() protoreflect.Message {
 	mi := &file_raft_cmd_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -3017,47 +2981,54 @@ func (x *ConvertMetadataBatchOrder) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ConvertMetadataBatchOrder.ProtoReflect.Descriptor instead.
-func (*ConvertMetadataBatchOrder) Descriptor() ([]byte, []int) {
+// Deprecated: Use MetadataConversionBatch.ProtoReflect.Descriptor instead.
+func (*MetadataConversionBatch) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{40}
 }
 
-func (x *ConvertMetadataBatchOrder) GetTargetType() commonpb.TargetType {
+func (x *MetadataConversionBatch) GetLedger() string {
+	if x != nil {
+		return x.Ledger
+	}
+	return ""
+}
+
+func (x *MetadataConversionBatch) GetTargetType() commonpb.TargetType {
 	if x != nil {
 		return x.TargetType
 	}
 	return commonpb.TargetType(0)
 }
 
-func (x *ConvertMetadataBatchOrder) GetKey() string {
+func (x *MetadataConversionBatch) GetKey() string {
 	if x != nil {
 		return x.Key
 	}
 	return ""
 }
 
-func (x *ConvertMetadataBatchOrder) GetExpectedType() commonpb.MetadataType {
+func (x *MetadataConversionBatch) GetExpectedType() commonpb.MetadataType {
 	if x != nil {
 		return x.ExpectedType
 	}
 	return commonpb.MetadataType(0)
 }
 
-func (x *ConvertMetadataBatchOrder) GetEntries() []*ConvertMetadataEntry {
+func (x *MetadataConversionBatch) GetEntries() []*ConvertMetadataEntry {
 	if x != nil {
 		return x.Entries
 	}
 	return nil
 }
 
-func (x *ConvertMetadataBatchOrder) GetTotalKeys() uint64 {
+func (x *MetadataConversionBatch) GetTotalKeys() uint64 {
 	if x != nil {
 		return x.TotalKeys
 	}
 	return 0
 }
 
-func (x *ConvertMetadataBatchOrder) GetConvertedKeysSoFar() uint64 {
+func (x *MetadataConversionBatch) GetConvertedKeysSoFar() uint64 {
 	if x != nil {
 		return x.ConvertedKeysSoFar
 	}
@@ -3116,29 +3087,32 @@ func (x *ConvertMetadataEntry) GetConvertedValue() *commonpb.MetadataValue {
 	return nil
 }
 
-type MetadataConversionCompleteOrder struct {
+// MetadataConversionCompletion signals that a metadata conversion is done.
+// Applied directly as a Proposal field (no log entry produced).
+type MetadataConversionCompletion struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	TargetType    commonpb.TargetType    `protobuf:"varint,1,opt,name=target_type,json=targetType,proto3,enum=common.TargetType" json:"target_type,omitempty"`
-	Key           string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
-	ExpectedType  commonpb.MetadataType  `protobuf:"varint,3,opt,name=expected_type,json=expectedType,proto3,enum=common.MetadataType" json:"expected_type,omitempty"`
+	Ledger        string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
+	TargetType    commonpb.TargetType    `protobuf:"varint,2,opt,name=target_type,json=targetType,proto3,enum=common.TargetType" json:"target_type,omitempty"`
+	Key           string                 `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
+	ExpectedType  commonpb.MetadataType  `protobuf:"varint,4,opt,name=expected_type,json=expectedType,proto3,enum=common.MetadataType" json:"expected_type,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *MetadataConversionCompleteOrder) Reset() {
-	*x = MetadataConversionCompleteOrder{}
+func (x *MetadataConversionCompletion) Reset() {
+	*x = MetadataConversionCompletion{}
 	mi := &file_raft_cmd_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *MetadataConversionCompleteOrder) String() string {
+func (x *MetadataConversionCompletion) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*MetadataConversionCompleteOrder) ProtoMessage() {}
+func (*MetadataConversionCompletion) ProtoMessage() {}
 
-func (x *MetadataConversionCompleteOrder) ProtoReflect() protoreflect.Message {
+func (x *MetadataConversionCompletion) ProtoReflect() protoreflect.Message {
 	mi := &file_raft_cmd_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -3150,26 +3124,33 @@ func (x *MetadataConversionCompleteOrder) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use MetadataConversionCompleteOrder.ProtoReflect.Descriptor instead.
-func (*MetadataConversionCompleteOrder) Descriptor() ([]byte, []int) {
+// Deprecated: Use MetadataConversionCompletion.ProtoReflect.Descriptor instead.
+func (*MetadataConversionCompletion) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{42}
 }
 
-func (x *MetadataConversionCompleteOrder) GetTargetType() commonpb.TargetType {
+func (x *MetadataConversionCompletion) GetLedger() string {
+	if x != nil {
+		return x.Ledger
+	}
+	return ""
+}
+
+func (x *MetadataConversionCompletion) GetTargetType() commonpb.TargetType {
 	if x != nil {
 		return x.TargetType
 	}
 	return commonpb.TargetType(0)
 }
 
-func (x *MetadataConversionCompleteOrder) GetKey() string {
+func (x *MetadataConversionCompletion) GetKey() string {
 	if x != nil {
 		return x.Key
 	}
 	return ""
 }
 
-func (x *MetadataConversionCompleteOrder) GetExpectedType() commonpb.MetadataType {
+func (x *MetadataConversionCompletion) GetExpectedType() commonpb.MetadataType {
 	if x != nil {
 		return x.ExpectedType
 	}
@@ -3768,11 +3749,14 @@ type Proposal struct {
 	// preloadSet is invalid. The entry is rejected without audit and the caller
 	// receives Unavailable so it can retry with fresh preloads.
 	// A value of 0 means no prediction (e.g. barrier, mirror sync).
-	PredictedIndex      uint64                  `protobuf:"fixed64,7,opt,name=predicted_index,json=predictedIndex,proto3" json:"predicted_index,omitempty"`
-	IdempotencyEviction *IdempotencyEviction    `protobuf:"bytes,8,opt,name=idempotency_eviction,json=idempotencyEviction,proto3" json:"idempotency_eviction,omitempty"`
-	ClusterConfig       *commonpb.ClusterConfig `protobuf:"bytes,9,opt,name=cluster_config,json=clusterConfig,proto3" json:"cluster_config,omitempty"` // Cluster-wide config update (technical, no log entry)
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	PredictedIndex              uint64                          `protobuf:"fixed64,7,opt,name=predicted_index,json=predictedIndex,proto3" json:"predicted_index,omitempty"`
+	IdempotencyEviction         *IdempotencyEviction            `protobuf:"bytes,8,opt,name=idempotency_eviction,json=idempotencyEviction,proto3" json:"idempotency_eviction,omitempty"`
+	ClusterConfig               *commonpb.ClusterConfig         `protobuf:"bytes,9,opt,name=cluster_config,json=clusterConfig,proto3" json:"cluster_config,omitempty"`                                              // Cluster-wide config update (technical, no log entry)
+	MetadataConversionBatches   []*MetadataConversionBatch      `protobuf:"bytes,10,rep,name=metadata_conversion_batches,json=metadataConversionBatches,proto3" json:"metadata_conversion_batches,omitempty"`       // Background metadata conversion batches (no log entry)
+	MetadataConversionsComplete []*MetadataConversionCompletion `protobuf:"bytes,11,rep,name=metadata_conversions_complete,json=metadataConversionsComplete,proto3" json:"metadata_conversions_complete,omitempty"` // Background metadata conversion completions (no log entry)
+	IndexReadyUpdates           []*IndexReadyUpdate             `protobuf:"bytes,12,rep,name=index_ready_updates,json=indexReadyUpdates,proto3" json:"index_ready_updates,omitempty"`                               // Index ready signals from index builder (no log entry)
+	unknownFields               protoimpl.UnknownFields
+	sizeCache                   protoimpl.SizeCache
 }
 
 func (x *Proposal) Reset() {
@@ -3864,6 +3848,27 @@ func (x *Proposal) GetIdempotencyEviction() *IdempotencyEviction {
 func (x *Proposal) GetClusterConfig() *commonpb.ClusterConfig {
 	if x != nil {
 		return x.ClusterConfig
+	}
+	return nil
+}
+
+func (x *Proposal) GetMetadataConversionBatches() []*MetadataConversionBatch {
+	if x != nil {
+		return x.MetadataConversionBatches
+	}
+	return nil
+}
+
+func (x *Proposal) GetMetadataConversionsComplete() []*MetadataConversionCompletion {
+	if x != nil {
+		return x.MetadataConversionsComplete
+	}
+	return nil
+}
+
+func (x *Proposal) GetIndexReadyUpdates() []*IndexReadyUpdate {
+	if x != nil {
+		return x.IndexReadyUpdates
 	}
 	return nil
 }
@@ -6178,7 +6183,7 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x12PromoteLedgerOrder\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\"'\n" +
 	"\x11DeleteLedgerOrder\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\xfb\b\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\x8e\a\n" +
 	"\x10LedgerApplyOrder\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12M\n" +
 	"\x12create_transaction\x18\x02 \x01(\v2\x1c.raft.CreateTransactionOrderH\x00R\x11createTransaction\x12<\n" +
@@ -6186,15 +6191,11 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x12revert_transaction\x18\x04 \x01(\v2\x1c.raft.RevertTransactionOrderH\x00R\x11revertTransaction\x12D\n" +
 	"\x0fdelete_metadata\x18\x05 \x01(\v2\x19.raft.DeleteMetadataOrderH\x00R\x0edeleteMetadata\x12X\n" +
 	"\x17set_metadata_field_type\x18\x06 \x01(\v2\x1f.raft.SetMetadataFieldTypeOrderH\x00R\x14setMetadataFieldType\x12a\n" +
-	"\x1aremove_metadata_field_type\x18\a \x01(\v2\".raft.RemoveMetadataFieldTypeOrderH\x00R\x17removeMetadataFieldType\x12W\n" +
-	"\x16convert_metadata_batch\x18\b \x01(\v2\x1f.raft.ConvertMetadataBatchOrderH\x00R\x14convertMetadataBatch\x12X\n" +
-	"\x13conversion_complete\x18\t \x01(\v2%.raft.MetadataConversionCompleteOrderH\x00R\x12conversionComplete\x12;\n" +
+	"\x1aremove_metadata_field_type\x18\a \x01(\v2\".raft.RemoveMetadataFieldTypeOrderH\x00R\x17removeMetadataFieldType\x12;\n" +
 	"\fcreate_index\x18\n" +
 	" \x01(\v2\x16.raft.CreateIndexOrderH\x00R\vcreateIndex\x125\n" +
 	"\n" +
-	"drop_index\x18\v \x01(\v2\x14.raft.DropIndexOrderH\x00R\tdropIndex\x128\n" +
-	"\vindex_ready\x18\f \x01(\v2\x15.raft.IndexReadyOrderH\x00R\n" +
-	"indexReady\x12E\n" +
+	"drop_index\x18\v \x01(\v2\x14.raft.DropIndexOrderH\x00R\tdropIndex\x12E\n" +
 	"\x10add_account_type\x18\r \x01(\v2\x19.raft.AddAccountTypeOrderH\x00R\x0eaddAccountType\x12N\n" +
 	"\x13remove_account_type\x18\x0e \x01(\v2\x1c.raft.RemoveAccountTypeOrderH\x00R\x11removeAccountType\x12p\n" +
 	"\x1fupdate_default_enforcement_mode\x18\x0f \x01(\v2'.raft.UpdateDefaultEnforcementModeOrderH\x00R\x1cupdateDefaultEnforcementModeB\x06\n" +
@@ -6210,36 +6211,39 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"logBuiltin\x12<\n" +
 	"\vtransaction\x18\x02 \x01(\v2\x18.common.TransactionIndexH\x00R\vtransaction\x120\n" +
 	"\aaccount\x18\x03 \x01(\v2\x14.common.AccountIndexH\x00R\aaccountB\a\n" +
-	"\x05index\"\xc6\x01\n" +
-	"\x0fIndexReadyOrder\x12:\n" +
-	"\vlog_builtin\x18\x01 \x01(\x0e2\x17.common.LogBuiltinIndexH\x00R\n" +
+	"\x05index\"\xdf\x01\n" +
+	"\x10IndexReadyUpdate\x12\x16\n" +
+	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12:\n" +
+	"\vlog_builtin\x18\x02 \x01(\x0e2\x17.common.LogBuiltinIndexH\x00R\n" +
 	"logBuiltin\x12<\n" +
-	"\vtransaction\x18\x02 \x01(\v2\x18.common.TransactionIndexH\x00R\vtransaction\x120\n" +
-	"\aaccount\x18\x03 \x01(\v2\x14.common.AccountIndexH\x00R\aaccountB\a\n" +
+	"\vtransaction\x18\x03 \x01(\v2\x18.common.TransactionIndexH\x00R\vtransaction\x120\n" +
+	"\aaccount\x18\x04 \x01(\v2\x14.common.AccountIndexH\x00R\aaccountB\a\n" +
 	"\x05index\"M\n" +
 	"\x13AddAccountTypeOrder\x126\n" +
 	"\faccount_type\x18\x01 \x01(\v2\x13.common.AccountTypeR\vaccountType\",\n" +
 	"\x16RemoveAccountTypeOrder\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"l\n" +
 	"!UpdateDefaultEnforcementModeOrder\x12G\n" +
-	"\x10enforcement_mode\x18\x01 \x01(\x0e2\x1c.common.ChartEnforcementModeR\x0fenforcementMode\"\xa5\x02\n" +
-	"\x19ConvertMetadataBatchOrder\x123\n" +
-	"\vtarget_type\x18\x01 \x01(\x0e2\x12.common.TargetTypeR\n" +
+	"\x10enforcement_mode\x18\x01 \x01(\x0e2\x1c.common.ChartEnforcementModeR\x0fenforcementMode\"\xbb\x02\n" +
+	"\x17MetadataConversionBatch\x12\x16\n" +
+	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x123\n" +
+	"\vtarget_type\x18\x02 \x01(\x0e2\x12.common.TargetTypeR\n" +
 	"targetType\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\x129\n" +
-	"\rexpected_type\x18\x03 \x01(\x0e2\x14.common.MetadataTypeR\fexpectedType\x124\n" +
-	"\aentries\x18\x04 \x03(\v2\x1a.raft.ConvertMetadataEntryR\aentries\x12\x1d\n" +
+	"\x03key\x18\x03 \x01(\tR\x03key\x129\n" +
+	"\rexpected_type\x18\x04 \x01(\x0e2\x14.common.MetadataTypeR\fexpectedType\x124\n" +
+	"\aentries\x18\x05 \x03(\v2\x1a.raft.ConvertMetadataEntryR\aentries\x12\x1d\n" +
 	"\n" +
-	"total_keys\x18\x05 \x01(\x06R\ttotalKeys\x121\n" +
-	"\x15converted_keys_so_far\x18\x06 \x01(\x06R\x12convertedKeysSoFar\"{\n" +
+	"total_keys\x18\x06 \x01(\x06R\ttotalKeys\x121\n" +
+	"\x15converted_keys_so_far\x18\a \x01(\x06R\x12convertedKeysSoFar\"{\n" +
 	"\x14ConvertMetadataEntry\x12#\n" +
 	"\rcanonical_key\x18\x01 \x01(\fR\fcanonicalKey\x12>\n" +
-	"\x0fconverted_value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x0econvertedValue\"\xa3\x01\n" +
-	"\x1fMetadataConversionCompleteOrder\x123\n" +
-	"\vtarget_type\x18\x01 \x01(\x0e2\x12.common.TargetTypeR\n" +
+	"\x0fconverted_value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x0econvertedValue\"\xb8\x01\n" +
+	"\x1cMetadataConversionCompletion\x12\x16\n" +
+	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x123\n" +
+	"\vtarget_type\x18\x02 \x01(\x0e2\x12.common.TargetTypeR\n" +
 	"targetType\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\x129\n" +
-	"\rexpected_type\x18\x03 \x01(\x0e2\x14.common.MetadataTypeR\fexpectedType\"\x8c\x01\n" +
+	"\x03key\x18\x03 \x01(\tR\x03key\x129\n" +
+	"\rexpected_type\x18\x04 \x01(\x0e2\x14.common.MetadataTypeR\fexpectedType\"\x8c\x01\n" +
 	"\x19SetMetadataFieldTypeOrder\x123\n" +
 	"\vtarget_type\x18\x01 \x01(\x0e2\x12.common.TargetTypeR\n" +
 	"targetType\x12\x10\n" +
@@ -6299,7 +6303,7 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"E\n" +
 	"\x19DeleteLedgerMetadataOrder\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\"\xd7\x03\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\"\xe6\x05\n" +
 	"\bProposal\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x06R\x02id\x12#\n" +
 	"\x06orders\x18\x02 \x03(\v2\v.raft.OrderR\x06orders\x12%\n" +
@@ -6309,7 +6313,11 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x13mirror_sync_updates\x18\x06 \x03(\v2\x16.raft.MirrorSyncUpdateR\x11mirrorSyncUpdates\x12'\n" +
 	"\x0fpredicted_index\x18\a \x01(\x06R\x0epredictedIndex\x12L\n" +
 	"\x14idempotency_eviction\x18\b \x01(\v2\x19.raft.IdempotencyEvictionR\x13idempotencyEviction\x12<\n" +
-	"\x0ecluster_config\x18\t \x01(\v2\x15.common.ClusterConfigR\rclusterConfig\":\n" +
+	"\x0ecluster_config\x18\t \x01(\v2\x15.common.ClusterConfigR\rclusterConfig\x12]\n" +
+	"\x1bmetadata_conversion_batches\x18\n" +
+	" \x03(\v2\x1d.raft.MetadataConversionBatchR\x19metadataConversionBatches\x12f\n" +
+	"\x1dmetadata_conversions_complete\x18\v \x03(\v2\".raft.MetadataConversionCompletionR\x1bmetadataConversionsComplete\x12F\n" +
+	"\x13index_ready_updates\x18\f \x03(\v2\x16.raft.IndexReadyUpdateR\x11indexReadyUpdates\":\n" +
 	"\x13IdempotencyEviction\x12#\n" +
 	"\rcutoff_micros\x18\x01 \x01(\x06R\fcutoffMicros\"\xc5\x01\n" +
 	"\x10MirrorSyncUpdate\x12\x1f\n" +
@@ -6514,13 +6522,13 @@ var file_raft_cmd_proto_goTypes = []any{
 	(*LedgerApplyOrder)(nil),                     // 33: raft.LedgerApplyOrder
 	(*CreateIndexOrder)(nil),                     // 34: raft.CreateIndexOrder
 	(*DropIndexOrder)(nil),                       // 35: raft.DropIndexOrder
-	(*IndexReadyOrder)(nil),                      // 36: raft.IndexReadyOrder
+	(*IndexReadyUpdate)(nil),                     // 36: raft.IndexReadyUpdate
 	(*AddAccountTypeOrder)(nil),                  // 37: raft.AddAccountTypeOrder
 	(*RemoveAccountTypeOrder)(nil),               // 38: raft.RemoveAccountTypeOrder
 	(*UpdateDefaultEnforcementModeOrder)(nil),    // 39: raft.UpdateDefaultEnforcementModeOrder
-	(*ConvertMetadataBatchOrder)(nil),            // 40: raft.ConvertMetadataBatchOrder
+	(*MetadataConversionBatch)(nil),              // 40: raft.MetadataConversionBatch
 	(*ConvertMetadataEntry)(nil),                 // 41: raft.ConvertMetadataEntry
-	(*MetadataConversionCompleteOrder)(nil),      // 42: raft.MetadataConversionCompleteOrder
+	(*MetadataConversionCompletion)(nil),         // 42: raft.MetadataConversionCompletion
 	(*SetMetadataFieldTypeOrder)(nil),            // 43: raft.SetMetadataFieldTypeOrder
 	(*RemoveMetadataFieldTypeOrder)(nil),         // 44: raft.RemoveMetadataFieldTypeOrder
 	(*CreateTransactionOrder)(nil),               // 45: raft.CreateTransactionOrder
@@ -6671,54 +6679,54 @@ var file_raft_cmd_proto_depIdxs = []int32{
 	49,  // 58: raft.LedgerApplyOrder.delete_metadata:type_name -> raft.DeleteMetadataOrder
 	43,  // 59: raft.LedgerApplyOrder.set_metadata_field_type:type_name -> raft.SetMetadataFieldTypeOrder
 	44,  // 60: raft.LedgerApplyOrder.remove_metadata_field_type:type_name -> raft.RemoveMetadataFieldTypeOrder
-	40,  // 61: raft.LedgerApplyOrder.convert_metadata_batch:type_name -> raft.ConvertMetadataBatchOrder
-	42,  // 62: raft.LedgerApplyOrder.conversion_complete:type_name -> raft.MetadataConversionCompleteOrder
-	34,  // 63: raft.LedgerApplyOrder.create_index:type_name -> raft.CreateIndexOrder
-	35,  // 64: raft.LedgerApplyOrder.drop_index:type_name -> raft.DropIndexOrder
-	36,  // 65: raft.LedgerApplyOrder.index_ready:type_name -> raft.IndexReadyOrder
-	37,  // 66: raft.LedgerApplyOrder.add_account_type:type_name -> raft.AddAccountTypeOrder
-	38,  // 67: raft.LedgerApplyOrder.remove_account_type:type_name -> raft.RemoveAccountTypeOrder
-	39,  // 68: raft.LedgerApplyOrder.update_default_enforcement_mode:type_name -> raft.UpdateDefaultEnforcementModeOrder
-	110, // 69: raft.CreateIndexOrder.log_builtin:type_name -> common.LogBuiltinIndex
-	111, // 70: raft.CreateIndexOrder.transaction:type_name -> common.TransactionIndex
-	112, // 71: raft.CreateIndexOrder.account:type_name -> common.AccountIndex
-	110, // 72: raft.DropIndexOrder.log_builtin:type_name -> common.LogBuiltinIndex
-	111, // 73: raft.DropIndexOrder.transaction:type_name -> common.TransactionIndex
-	112, // 74: raft.DropIndexOrder.account:type_name -> common.AccountIndex
-	110, // 75: raft.IndexReadyOrder.log_builtin:type_name -> common.LogBuiltinIndex
-	111, // 76: raft.IndexReadyOrder.transaction:type_name -> common.TransactionIndex
-	112, // 77: raft.IndexReadyOrder.account:type_name -> common.AccountIndex
-	113, // 78: raft.AddAccountTypeOrder.account_type:type_name -> common.AccountType
-	107, // 79: raft.UpdateDefaultEnforcementModeOrder.enforcement_mode:type_name -> common.ChartEnforcementMode
-	114, // 80: raft.ConvertMetadataBatchOrder.target_type:type_name -> common.TargetType
-	115, // 81: raft.ConvertMetadataBatchOrder.expected_type:type_name -> common.MetadataType
-	41,  // 82: raft.ConvertMetadataBatchOrder.entries:type_name -> raft.ConvertMetadataEntry
-	116, // 83: raft.ConvertMetadataEntry.converted_value:type_name -> common.MetadataValue
-	114, // 84: raft.MetadataConversionCompleteOrder.target_type:type_name -> common.TargetType
-	115, // 85: raft.MetadataConversionCompleteOrder.expected_type:type_name -> common.MetadataType
-	114, // 86: raft.SetMetadataFieldTypeOrder.target_type:type_name -> common.TargetType
-	115, // 87: raft.SetMetadataFieldTypeOrder.type:type_name -> common.MetadataType
-	114, // 88: raft.RemoveMetadataFieldTypeOrder.target_type:type_name -> common.TargetType
-	108, // 89: raft.CreateTransactionOrder.postings:type_name -> common.Posting
-	117, // 90: raft.CreateTransactionOrder.script:type_name -> common.Script
-	103, // 91: raft.CreateTransactionOrder.timestamp:type_name -> common.Timestamp
-	92,  // 92: raft.CreateTransactionOrder.metadata:type_name -> raft.CreateTransactionOrder.MetadataEntry
-	93,  // 93: raft.CreateTransactionOrder.account_metadata:type_name -> raft.CreateTransactionOrder.AccountMetadataEntry
-	46,  // 94: raft.CreateTransactionOrder.numscript_reference:type_name -> raft.NumscriptReference
-	94,  // 95: raft.NumscriptReference.vars:type_name -> raft.NumscriptReference.VarsEntry
-	109, // 96: raft.SaveMetadataOrder.target:type_name -> common.Target
-	95,  // 97: raft.SaveMetadataOrder.metadata:type_name -> raft.SaveMetadataOrder.MetadataEntry
-	96,  // 98: raft.RevertTransactionOrder.metadata:type_name -> raft.RevertTransactionOrder.MetadataEntry
-	108, // 99: raft.RevertTransactionOrder.original_postings:type_name -> common.Posting
-	109, // 100: raft.DeleteMetadataOrder.target:type_name -> common.Target
-	97,  // 101: raft.SaveLedgerMetadataOrder.metadata:type_name -> raft.SaveLedgerMetadataOrder.MetadataEntry
-	0,   // 102: raft.Proposal.orders:type_name -> raft.Order
-	103, // 103: raft.Proposal.date:type_name -> common.Timestamp
-	59,  // 104: raft.Proposal.preload:type_name -> raft.PreloadSet
-	55,  // 105: raft.Proposal.events_sink_updates:type_name -> raft.EventsSinkUpdate
-	54,  // 106: raft.Proposal.mirror_sync_updates:type_name -> raft.MirrorSyncUpdate
-	53,  // 107: raft.Proposal.idempotency_eviction:type_name -> raft.IdempotencyEviction
-	118, // 108: raft.Proposal.cluster_config:type_name -> common.ClusterConfig
+	34,  // 61: raft.LedgerApplyOrder.create_index:type_name -> raft.CreateIndexOrder
+	35,  // 62: raft.LedgerApplyOrder.drop_index:type_name -> raft.DropIndexOrder
+	37,  // 63: raft.LedgerApplyOrder.add_account_type:type_name -> raft.AddAccountTypeOrder
+	38,  // 64: raft.LedgerApplyOrder.remove_account_type:type_name -> raft.RemoveAccountTypeOrder
+	39,  // 65: raft.LedgerApplyOrder.update_default_enforcement_mode:type_name -> raft.UpdateDefaultEnforcementModeOrder
+	110, // 66: raft.CreateIndexOrder.log_builtin:type_name -> common.LogBuiltinIndex
+	111, // 67: raft.CreateIndexOrder.transaction:type_name -> common.TransactionIndex
+	112, // 68: raft.CreateIndexOrder.account:type_name -> common.AccountIndex
+	110, // 69: raft.DropIndexOrder.log_builtin:type_name -> common.LogBuiltinIndex
+	111, // 70: raft.DropIndexOrder.transaction:type_name -> common.TransactionIndex
+	112, // 71: raft.DropIndexOrder.account:type_name -> common.AccountIndex
+	110, // 72: raft.IndexReadyUpdate.log_builtin:type_name -> common.LogBuiltinIndex
+	111, // 73: raft.IndexReadyUpdate.transaction:type_name -> common.TransactionIndex
+	112, // 74: raft.IndexReadyUpdate.account:type_name -> common.AccountIndex
+	113, // 75: raft.AddAccountTypeOrder.account_type:type_name -> common.AccountType
+	107, // 76: raft.UpdateDefaultEnforcementModeOrder.enforcement_mode:type_name -> common.ChartEnforcementMode
+	114, // 77: raft.MetadataConversionBatch.target_type:type_name -> common.TargetType
+	115, // 78: raft.MetadataConversionBatch.expected_type:type_name -> common.MetadataType
+	41,  // 79: raft.MetadataConversionBatch.entries:type_name -> raft.ConvertMetadataEntry
+	116, // 80: raft.ConvertMetadataEntry.converted_value:type_name -> common.MetadataValue
+	114, // 81: raft.MetadataConversionCompletion.target_type:type_name -> common.TargetType
+	115, // 82: raft.MetadataConversionCompletion.expected_type:type_name -> common.MetadataType
+	114, // 83: raft.SetMetadataFieldTypeOrder.target_type:type_name -> common.TargetType
+	115, // 84: raft.SetMetadataFieldTypeOrder.type:type_name -> common.MetadataType
+	114, // 85: raft.RemoveMetadataFieldTypeOrder.target_type:type_name -> common.TargetType
+	108, // 86: raft.CreateTransactionOrder.postings:type_name -> common.Posting
+	117, // 87: raft.CreateTransactionOrder.script:type_name -> common.Script
+	103, // 88: raft.CreateTransactionOrder.timestamp:type_name -> common.Timestamp
+	92,  // 89: raft.CreateTransactionOrder.metadata:type_name -> raft.CreateTransactionOrder.MetadataEntry
+	93,  // 90: raft.CreateTransactionOrder.account_metadata:type_name -> raft.CreateTransactionOrder.AccountMetadataEntry
+	46,  // 91: raft.CreateTransactionOrder.numscript_reference:type_name -> raft.NumscriptReference
+	94,  // 92: raft.NumscriptReference.vars:type_name -> raft.NumscriptReference.VarsEntry
+	109, // 93: raft.SaveMetadataOrder.target:type_name -> common.Target
+	95,  // 94: raft.SaveMetadataOrder.metadata:type_name -> raft.SaveMetadataOrder.MetadataEntry
+	96,  // 95: raft.RevertTransactionOrder.metadata:type_name -> raft.RevertTransactionOrder.MetadataEntry
+	108, // 96: raft.RevertTransactionOrder.original_postings:type_name -> common.Posting
+	109, // 97: raft.DeleteMetadataOrder.target:type_name -> common.Target
+	97,  // 98: raft.SaveLedgerMetadataOrder.metadata:type_name -> raft.SaveLedgerMetadataOrder.MetadataEntry
+	0,   // 99: raft.Proposal.orders:type_name -> raft.Order
+	103, // 100: raft.Proposal.date:type_name -> common.Timestamp
+	59,  // 101: raft.Proposal.preload:type_name -> raft.PreloadSet
+	55,  // 102: raft.Proposal.events_sink_updates:type_name -> raft.EventsSinkUpdate
+	54,  // 103: raft.Proposal.mirror_sync_updates:type_name -> raft.MirrorSyncUpdate
+	53,  // 104: raft.Proposal.idempotency_eviction:type_name -> raft.IdempotencyEviction
+	118, // 105: raft.Proposal.cluster_config:type_name -> common.ClusterConfig
+	40,  // 106: raft.Proposal.metadata_conversion_batches:type_name -> raft.MetadataConversionBatch
+	42,  // 107: raft.Proposal.metadata_conversions_complete:type_name -> raft.MetadataConversionCompletion
+	36,  // 108: raft.Proposal.index_ready_updates:type_name -> raft.IndexReadyUpdate
 	119, // 109: raft.MirrorSyncUpdate.error:type_name -> common.MirrorSyncError
 	120, // 110: raft.EventsSinkUpdate.error:type_name -> common.SinkError
 	121, // 111: raft.CreatedLogOrReference.created_log:type_name -> common.Log
@@ -6850,11 +6858,8 @@ func file_raft_cmd_proto_init() {
 		(*LedgerApplyOrder_DeleteMetadata)(nil),
 		(*LedgerApplyOrder_SetMetadataFieldType)(nil),
 		(*LedgerApplyOrder_RemoveMetadataFieldType)(nil),
-		(*LedgerApplyOrder_ConvertMetadataBatch)(nil),
-		(*LedgerApplyOrder_ConversionComplete)(nil),
 		(*LedgerApplyOrder_CreateIndex)(nil),
 		(*LedgerApplyOrder_DropIndex)(nil),
-		(*LedgerApplyOrder_IndexReady)(nil),
 		(*LedgerApplyOrder_AddAccountType)(nil),
 		(*LedgerApplyOrder_RemoveAccountType)(nil),
 		(*LedgerApplyOrder_UpdateDefaultEnforcementMode)(nil),
@@ -6870,9 +6875,9 @@ func file_raft_cmd_proto_init() {
 		(*DropIndexOrder_Account)(nil),
 	}
 	file_raft_cmd_proto_msgTypes[36].OneofWrappers = []any{
-		(*IndexReadyOrder_LogBuiltin)(nil),
-		(*IndexReadyOrder_Transaction)(nil),
-		(*IndexReadyOrder_Account)(nil),
+		(*IndexReadyUpdate_LogBuiltin)(nil),
+		(*IndexReadyUpdate_Transaction)(nil),
+		(*IndexReadyUpdate_Account)(nil),
 	}
 	file_raft_cmd_proto_msgTypes[56].OneofWrappers = []any{
 		(*CreatedLogOrReference_CreatedLog)(nil),

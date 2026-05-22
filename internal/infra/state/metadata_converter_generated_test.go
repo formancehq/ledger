@@ -38,20 +38,16 @@ func (m *MockProposer) EXPECT() *MockProposerMockRecorder {
 	return m.recorder
 }
 
-// ProposeOrders mocks base method.
-func (m *MockProposer) ProposeOrders(orders ...*raftcmdpb.Order) error {
+// ProposeProposal mocks base method.
+func (m *MockProposer) ProposeProposal(cmd *raftcmdpb.Proposal) error {
 	m.ctrl.T.Helper()
-	varargs := []any{}
-	for _, a := range orders {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "ProposeOrders", varargs...)
+	ret := m.ctrl.Call(m, "ProposeProposal", cmd)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// ProposeOrders indicates an expected call of ProposeOrders.
-func (mr *MockProposerMockRecorder) ProposeOrders(orders ...any) *gomock.Call {
+// ProposeProposal indicates an expected call of ProposeProposal.
+func (mr *MockProposerMockRecorder) ProposeProposal(cmd any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProposeOrders", reflect.TypeOf((*MockProposer)(nil).ProposeOrders), orders...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProposeProposal", reflect.TypeOf((*MockProposer)(nil).ProposeProposal), cmd)
 }

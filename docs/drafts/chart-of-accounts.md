@@ -476,10 +476,11 @@ message LedgerApplyOrder {
     DeleteMetadataOrder delete_metadata = 5;
     SetMetadataFieldTypeOrder set_metadata_field_type = 6;
     RemoveMetadataFieldTypeOrder remove_metadata_field_type = 7;
-    ConvertMetadataBatchOrder convert_metadata_batch = 8;
-    MetadataConversionCompleteOrder conversion_complete = 9;
-    SetChartOfAccountsOrder set_chart_of_accounts = 10;        // NEW (field 10)
-    SetChartEnforcementModeOrder set_chart_enforcement_mode = 11; // NEW (field 11)
+    // NOTE: ConvertMetadataBatchOrder and MetadataConversionCompleteOrder
+    // have been moved to direct Proposal fields (metadata_conversion_batches,
+    // metadata_conversions_complete) -- they are no longer LedgerApplyOrder variants.
+    SetChartOfAccountsOrder set_chart_of_accounts = 8;             // NEW (field 8)
+    SetChartEnforcementModeOrder set_chart_enforcement_mode = 9;   // NEW (field 9)
   }
 }
 

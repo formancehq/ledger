@@ -30,7 +30,7 @@ func (p *RequestProcessor) processSetMetadataFieldType(
 	// Preserve indexed flag from any existing field schema. If the field
 	// is currently indexed, set status to BUILDING because index entries
 	// have a mix of old and new encodings during type conversion.
-	_, existing := schemaFieldForTarget(info.GetMetadataSchema(), order.GetTargetType(), order.GetKey())
+	_, existing := SchemaFieldForTarget(info.GetMetadataSchema(), order.GetTargetType(), order.GetKey())
 	if existing != nil && existing.GetIndexed() {
 		field.Indexed = true
 		field.IndexBuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING
@@ -190,10 +190,10 @@ func populateInitialSchema(commands []*commonpb.SetMetadataFieldTypeCommand) *co
 	return schema
 }
 
-// schemaFieldForTarget returns the field map and field schema for the given
+// SchemaFieldForTarget returns the field map and field schema for the given
 // target type and key. Returns nil field if the schema, field map, or key
 // does not exist.
-func schemaFieldForTarget(schema *commonpb.MetadataSchema, targetType commonpb.TargetType, key string) (map[string]*commonpb.MetadataFieldSchema, *commonpb.MetadataFieldSchema) {
+func SchemaFieldForTarget(schema *commonpb.MetadataSchema, targetType commonpb.TargetType, key string) (map[string]*commonpb.MetadataFieldSchema, *commonpb.MetadataFieldSchema) {
 	if schema == nil {
 		return nil, nil
 	}

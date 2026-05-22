@@ -382,36 +382,6 @@ func (b *Builder) handleDropIndexLog(ledger string, log *commonpb.DropIndexLog) 
 	}
 }
 
-// handleIndexReadyLog updates the index config cache when an IndexReady log is processed.
-// This marks the index as READY and removes any residual backfill task.
-func (b *Builder) handleIndexReadyLog(ledger string, log *commonpb.IndexReadyLog) {
-	cfg := b.getOrCreateLedgerConfig(ledger)
-
-	switch idx := log.GetIndex().(type) {
-	case *commonpb.IndexReadyLog_Transaction:
-		switch txIdx := idx.Transaction.GetKind().(type) {
-		case *commonpb.TransactionIndex_Builtin:
-			cfg.txBuiltinIndexed[txIdx.Builtin] = true
-		case *commonpb.TransactionIndex_MetadataKey:
-			cfg.txMetadataIndexed[txIdx.MetadataKey] = true
-		}
-
-		b.removeBackfillTask(indexID{transaction: idx.Transaction})
-	case *commonpb.IndexReadyLog_Account:
-		switch acctIdx := idx.Account.GetKind().(type) {
-		case *commonpb.AccountIndex_Builtin:
-			cfg.acctBuiltinIndexed[acctIdx.Builtin] = true
-		case *commonpb.AccountIndex_MetadataKey:
-			cfg.acctMetadataIndexed[acctIdx.MetadataKey] = true
-		}
-
-		b.removeBackfillTask(indexID{account: idx.Account})
-	case *commonpb.IndexReadyLog_LogBuiltin:
-		cfg.logBuiltinIndexed[idx.LogBuiltin] = true
-		b.removeBackfillTask(indexID{logBuiltin: &idx.LogBuiltin})
-	}
-}
-
 // matchesBackfillIndex checks if two indexIDs represent the same index.
 func matchesBackfillIndex(a, b indexID) bool {
 	if a.transaction != nil && b.transaction != nil {

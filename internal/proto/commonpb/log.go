@@ -103,18 +103,6 @@ func (l *LedgerLog) UnmarshalJSON(data []byte) error {
 					RemovedMetadataFieldType: p,
 				},
 			}
-		case *ConvertMetadataBatchLog:
-			l.Data = &LedgerLogPayload{
-				Payload: &LedgerLogPayload_ConvertMetadataBatch{
-					ConvertMetadataBatch: p,
-				},
-			}
-		case *MetadataConversionCompleteLog:
-			l.Data = &LedgerLogPayload{
-				Payload: &LedgerLogPayload_MetadataConversionComplete{
-					MetadataConversionComplete: p,
-				},
-			}
 		}
 	}
 

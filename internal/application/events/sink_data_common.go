@@ -156,10 +156,6 @@ func sinkPopulateApply(data *sinkEventData, apply *commonpb.ApplyLedgerLog) {
 		// Schema operations — no sink-specific data
 	case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
 		// Schema operations — no sink-specific data
-	case *commonpb.LedgerLogPayload_ConvertMetadataBatch:
-		// Background conversion — no sink-specific data
-	case *commonpb.LedgerLogPayload_MetadataConversionComplete:
-		// Background conversion — no sink-specific data
 	}
 }
 

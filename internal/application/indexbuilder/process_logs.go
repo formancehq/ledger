@@ -312,8 +312,6 @@ func (b *Builder) indexPayload(kb *dal.KeyBuilder, cfg *ledgerIndexConfig, ledge
 		b.handleCreateIndexLog(ledgerName, ledgerID, p.CreateIndex)
 	case *commonpb.LedgerLogPayload_DropIndex:
 		b.handleDropIndexLog(ledgerName, p.DropIndex)
-	case *commonpb.LedgerLogPayload_IndexReady:
-		b.handleIndexReadyLog(ledgerName, p.IndexReady)
 	}
 
 	return nil
@@ -425,8 +423,6 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log) error
 		b.handleCreateIndexLog(ledgerName, ledgerID, p.CreateIndex)
 	case *commonpb.LedgerLogPayload_DropIndex:
 		b.handleDropIndexLog(ledgerName, p.DropIndex)
-	case *commonpb.LedgerLogPayload_IndexReady:
-		b.handleIndexReadyLog(ledgerName, p.IndexReady)
 	}
 
 	return nil

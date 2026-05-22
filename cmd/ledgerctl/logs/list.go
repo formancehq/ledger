@@ -161,10 +161,6 @@ func describeLogPayload(log *commonpb.Log) (string, string) {
 			return "SET_META_FIELD_TYPE", ledgerName
 		case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
 			return "REMOVE_META_FIELD_TYPE", ledgerName
-		case *commonpb.LedgerLogPayload_ConvertMetadataBatch:
-			return "CONVERT_META_BATCH", ledgerName
-		case *commonpb.LedgerLogPayload_MetadataConversionComplete:
-			return "META_CONVERSION_DONE", ledgerName
 		default:
 			return "APPLY", ledgerName
 		}

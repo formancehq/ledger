@@ -1652,22 +1652,6 @@ func (m *LedgerLogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 			i--
 			dAtA[i] = 0x32
 		}
-	case *LedgerLogPayload_ConvertMetadataBatch:
-		if v.ConvertMetadataBatch != nil {
-			size, _ := v.ConvertMetadataBatch.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x3a
-		}
-	case *LedgerLogPayload_MetadataConversionComplete:
-		if v.MetadataConversionComplete != nil {
-			size, _ := v.MetadataConversionComplete.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x42
-		}
 	case *LedgerLogPayload_FillGap:
 		if v.FillGap != nil {
 			size, _ := v.FillGap.MarshalToSizedBufferVT(dAtA[:i])
@@ -1691,14 +1675,6 @@ func (m *LedgerLogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
 			dAtA[i] = 0x5a
-		}
-	case *LedgerLogPayload_IndexReady:
-		if v.IndexReady != nil {
-			size, _ := v.IndexReady.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x62
 		}
 	case *LedgerLogPayload_AddedAccountType:
 		if v.AddedAccountType != nil {
@@ -1750,51 +1726,7 @@ func (m *DropIndexLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *IndexReadyLog) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
 func (m *FillGapLog) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *ConvertMetadataBatchLog) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *ConvertMetadataBatchLogEntry) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *MetadataConversionCompleteLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}

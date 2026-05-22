@@ -38,29 +38,6 @@ func TestLogToEvent_SchemaOperations(t *testing.T) {
 				},
 			},
 		},
-		{
-			name: "convert_metadata_batch",
-			payload: &commonpb.LedgerLogPayload{
-				Payload: &commonpb.LedgerLogPayload_ConvertMetadataBatch{
-					ConvertMetadataBatch: &commonpb.ConvertMetadataBatchLog{
-						TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-						Key:        "age",
-						Count:      10,
-					},
-				},
-			},
-		},
-		{
-			name: "metadata_conversion_complete",
-			payload: &commonpb.LedgerLogPayload{
-				Payload: &commonpb.LedgerLogPayload_MetadataConversionComplete{
-					MetadataConversionComplete: &commonpb.MetadataConversionCompleteLog{
-						TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-						Key:        "age",
-					},
-				},
-			},
-		},
 	}
 
 	for _, tc := range tests {
