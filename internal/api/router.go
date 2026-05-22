@@ -19,7 +19,7 @@ import (
 	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
 	"github.com/formancehq/go-libs/v5/pkg/transport/api"
 	"github.com/formancehq/go-libs/v5/pkg/transport/httpserver"
-	"github.com/formancehq/go-libs/v5/pkg/transport/httpserver/audit"
+	"github.com/formancehq/go-libs/v5/pkg/audit/httpaudit"
 
 	"github.com/formancehq/ledger/internal/api/bulking"
 	"github.com/formancehq/ledger/internal/api/common"
@@ -62,7 +62,7 @@ func NewRouter(
 		common.LogID(),
 		middleware.RequestLogger(api.NewLogFormatter()),
 		httpserver.OTLPMiddleware("ledger", debug),
-		audit.Middleware(publisher, "audit-events", "ledger"),
+		httpaudit.Middleware(publisher, "audit-events", "ledger", nil),
 		otelchimetric.NewRequestDurationMillis(baseCfg),
 		otelchimetric.NewRequestInFlight(baseCfg),
 		otelchimetric.NewResponseSizeBytes(baseCfg),
