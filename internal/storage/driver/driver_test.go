@@ -369,3 +369,78 @@ func TestOpenLedgerCacheTTLExpiry(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "yes", got.Metadata["ttl-test"], "stale cache entry should have expired")
 }
+
+// TestDeleteBucketEvictsCache verifies that Driver.DeleteBucket evicts all
+// cached ledgers in the bucket. After soft-deletion, GetLedger (which filters
+// WHERE deleted_at IS NULL) returns not-found. If the cache were NOT evicted,
+// OpenLedger would return the stale cached entry without error instead.
+func TestDeleteBucketEvictsCache(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	bucketName := uuid.NewString()[:8]
+
+	d := driver.New(db, ledgerstore.NewFactory(db), bucket.NewDefaultFactory(), systemstore.NewStoreFactory())
+
+	l := ledger.MustNewWithDefault(uuid.NewString())
+	l2, err := ledger.New(uuid.NewString(), ledger.Configuration{Bucket: bucketName})
+	require.NoError(t, err)
+
+	// Use default bucket for l, custom bucket for l2.
+	_, err = d.CreateLedger(ctx, &l)
+	require.NoError(t, err)
+	_, err = d.CreateLedger(ctx, l2)
+	require.NoError(t, err)
+
+	// Warm the cache for l2.
+	_, _, err = d.OpenLedger(ctx, l2.Name)
+	require.NoError(t, err)
+
+	// Delete the bucket — must evict l2 from cache.
+	require.NoError(t, d.DeleteBucket(ctx, bucketName))
+
+	// Next OpenLedger for l2 must hit the DB (cache evicted) and return an
+	// error because deleted_at IS NULL filters out soft-deleted rows.
+	_, _, err = d.OpenLedger(ctx, l2.Name)
+	require.Error(t, err, "OpenLedger must fail for a soft-deleted ledger, proving the cache was evicted")
+
+	// Ledger in a different bucket must be unaffected.
+	_, got, err := d.OpenLedger(ctx, l.Name)
+	require.NoError(t, err)
+	require.Equal(t, l.Name, got.Name)
+}
+
+// TestRestoreBucketEvictsCache verifies that Driver.RestoreBucket evicts cached
+// ledgers in the bucket so the next OpenLedger re-reads from DB.
+func TestRestoreBucketEvictsCache(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	bucketName := uuid.NewString()[:8]
+
+	d := driver.New(db, ledgerstore.NewFactory(db), bucket.NewDefaultFactory(), systemstore.NewStoreFactory())
+
+	l, err := ledger.New(uuid.NewString(), ledger.Configuration{Bucket: bucketName})
+	require.NoError(t, err)
+
+	_, err = d.CreateLedger(ctx, l)
+	require.NoError(t, err)
+
+	// Warm the cache.
+	_, _, err = d.OpenLedger(ctx, l.Name)
+	require.NoError(t, err)
+
+	// Soft-delete then restore the bucket using a separate driver so d's cache
+	// is not evicted by the delete step.
+	other := driver.New(db, ledgerstore.NewFactory(db), bucket.NewDefaultFactory(), systemstore.NewStoreFactory())
+	require.NoError(t, other.DeleteBucket(ctx, bucketName))
+
+	// RestoreBucket on d must evict d's cached entry.
+	require.NoError(t, d.RestoreBucket(ctx, bucketName))
+
+	// Cache was evicted; next OpenLedger must re-read from DB and succeed
+	// (row is active again after restore).
+	_, got, err := d.OpenLedger(ctx, l.Name)
+	require.NoError(t, err)
+	require.Equal(t, l.Name, got.Name)
+}

@@ -168,3 +168,121 @@ func TestCacheGenerationPreventsStaleWrites(t *testing.T) {
 	_, ok := d.getCachedLedger(l.Name)
 	require.False(t, ok, "write with stale generation must not populate the cache")
 }
+
+func TestSetCachedLedgerGenValidGeneration(t *testing.T) {
+	d := newTestDriver(time.Minute)
+	l := ledger.MustNewWithDefault("test-ledger")
+
+	// Current generation is 0 (zero value); write with matching generation must succeed.
+	d.setCachedLedgerGen(l, 0)
+
+	got, ok := d.getCachedLedger(l.Name)
+	require.True(t, ok, "write with current generation must populate the cache")
+	require.Equal(t, l.Name, got.Name)
+}
+
+func TestSetCachedLedgerGenDisabledWhenTTLZero(t *testing.T) {
+	d := newTestDriver(0)
+	l := ledger.MustNewWithDefault("test-ledger")
+
+	d.setCachedLedgerGen(l, 0)
+
+	_, ok := d.getCachedLedger(l.Name)
+	require.False(t, ok, "setCachedLedgerGen must be a no-op when TTL is zero")
+}
+
+func TestEvictCachedLedgersByBucketEvictsMatchingEntries(t *testing.T) {
+	d := newTestDriver(time.Minute)
+
+	la := ledger.MustNewWithDefault("ledger-a")
+	la.Bucket = "target"
+	lb := ledger.MustNewWithDefault("ledger-b")
+	lb.Bucket = "target"
+
+	d.setCachedLedger(la)
+	d.setCachedLedger(lb)
+
+	d.evictCachedLedgersByBucket("target")
+
+	_, okA := d.getCachedLedger(la.Name)
+	_, okB := d.getCachedLedger(lb.Name)
+	require.False(t, okA, "ledger-a in target bucket must be evicted")
+	require.False(t, okB, "ledger-b in target bucket must be evicted")
+}
+
+func TestEvictCachedLedgersByBucketPreservesOtherBuckets(t *testing.T) {
+	d := newTestDriver(time.Minute)
+
+	la := ledger.MustNewWithDefault("ledger-in-target")
+	la.Bucket = "target"
+	lo := ledger.MustNewWithDefault("ledger-in-other")
+	lo.Bucket = "other"
+
+	d.setCachedLedger(la)
+	d.setCachedLedger(lo)
+
+	d.evictCachedLedgersByBucket("target")
+
+	_, okTarget := d.getCachedLedger(la.Name)
+	require.False(t, okTarget)
+
+	gotOther, okOther := d.getCachedLedger(lo.Name)
+	require.True(t, okOther, "ledger in other bucket must be preserved")
+	require.Equal(t, lo.Name, gotOther.Name)
+}
+
+func TestEvictCachedLedgersByBucketBumpsGenerations(t *testing.T) {
+	d := newTestDriver(time.Minute)
+
+	la := ledger.MustNewWithDefault("ledger-a")
+	la.Bucket = "target"
+	d.setCachedLedger(la)
+
+	d.mu.RLock()
+	genBefore := d.cacheGens[la.Name]
+	d.mu.RUnlock()
+
+	d.evictCachedLedgersByBucket("target")
+
+	d.mu.RLock()
+	genAfter := d.cacheGens[la.Name]
+	d.mu.RUnlock()
+
+	require.Greater(t, genAfter, genBefore, "bucket eviction must increment per-ledger generation")
+}
+
+func TestEvictCachedLedgersByBucketGenerationPreventsStaleWrites(t *testing.T) {
+	d := newTestDriver(time.Minute)
+
+	la := ledger.MustNewWithDefault("ledger-a")
+	la.Bucket = "target"
+	d.setCachedLedger(la)
+
+	d.mu.RLock()
+	genBefore := d.cacheGens[la.Name]
+	d.mu.RUnlock()
+
+	d.evictCachedLedgersByBucket("target")
+
+	// Simulate a singleflight write-back that captured the old generation.
+	d.setCachedLedgerGen(la, genBefore)
+
+	_, ok := d.getCachedLedger(la.Name)
+	require.False(t, ok, "stale-generation write after bucket eviction must be rejected")
+}
+
+func TestEvictCachedLedgersByBucketEmptyBucketIsNoOp(t *testing.T) {
+	d := newTestDriver(time.Minute)
+
+	l := ledger.MustNewWithDefault("ledger-other")
+	l.Bucket = "other"
+	d.setCachedLedger(l)
+
+	require.NotPanics(t, func() {
+		d.evictCachedLedgersByBucket("does-not-exist")
+	})
+
+	got, ok := d.getCachedLedger(l.Name)
+	require.True(t, ok, "unrelated ledger must survive eviction of empty bucket")
+	require.Equal(t, l.Name, got.Name)
+}
