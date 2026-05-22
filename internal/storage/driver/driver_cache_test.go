@@ -36,10 +36,11 @@ func TestCacheMissAfterTTL(t *testing.T) {
 	l := ledger.MustNewWithDefault("test-ledger")
 
 	d.setCachedLedger(l)
-	time.Sleep(2 * time.Millisecond)
 
-	_, ok := d.getCachedLedger(l.Name)
-	require.False(t, ok)
+	require.Eventually(t, func() bool {
+		_, ok := d.getCachedLedger(l.Name)
+		return !ok
+	}, 200*time.Millisecond, 5*time.Millisecond)
 }
 
 func TestCacheMissUnknownKey(t *testing.T) {

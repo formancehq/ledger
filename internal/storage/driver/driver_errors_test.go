@@ -173,6 +173,7 @@ func TestOpenLedgerCountLedgersInBucketError(t *testing.T) {
 func TestOpenLedgerColdCacheSuccess(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	l := ledger.MustNewWithDefault("test-ledger")
+	getLedgerCalls := 0
 
 	mockBucket := NewMockBucket(ctrl)
 
@@ -183,7 +184,10 @@ func TestOpenLedgerColdCacheSuccess(t *testing.T) {
 	ledgerFact.EXPECT().Create(gomock.Any(), gomock.Any()).Return(&ledgerstore.Store{}).AnyTimes()
 
 	stub := &stubSystemStore{
-		getLedgerFn:        func() (*ledger.Ledger, error) { return &l, nil },
+		getLedgerFn: func() (*ledger.Ledger, error) {
+			getLedgerCalls++
+			return &l, nil
+		},
 		countLedgersResult: 1,
 	}
 
@@ -194,10 +198,11 @@ func TestOpenLedgerColdCacheSuccess(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, l.Name, got.Name)
 
-	// Warm call — exercises the outer cache-hit branch (no DB queries).
+	// Warm call — must serve from cache without touching the backing store.
 	_, got2, err := d.OpenLedger(context.Background(), l.Name)
 	require.NoError(t, err)
 	require.Equal(t, l.Name, got2.Name)
+	require.Equal(t, 1, getLedgerCalls, "warm cache hit should not call GetLedger again")
 }
 
 // TestOpenLedgerContextCancelled verifies that a pre-cancelled context causes
