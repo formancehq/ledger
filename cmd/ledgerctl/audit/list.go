@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
@@ -32,6 +34,7 @@ func NewListCommand() *cobra.Command {
 	cmd.Flags().Uint32("page-size", cmdutil.DefaultPageSize, "Number of entries per page (0 = unlimited)")
 	cmd.Flags().Uint64("min-log-sequence", 0, "Minimum log sequence the server must have applied before reading (0 = no constraint)")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
+	cmd.Flags().Bool("expand", false, "Expand orders within each audit entry")
 
 	return cmd
 }
@@ -52,6 +55,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 		after, _        = cmd.Flags().GetUint64("after")
 		pageSize, _     = cmd.Flags().GetUint32("page-size")
 		minLogSeq, _    = cmd.Flags().GetUint64("min-log-sequence")
+		expand, _       = cmd.Flags().GetBool("expand")
 	)
 
 	req := &servicepb.ListAuditEntriesRequest{
@@ -86,6 +90,19 @@ func runList(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
+	if expand {
+		for i, entry := range entries {
+			full, err := client.GetAuditEntry(ctx, &servicepb.GetAuditEntryRequest{
+				Sequence: entry.GetSequence(),
+			})
+			if err != nil {
+				return cmdutil.FormatGRPCError("expanding audit entry", err)
+			}
+
+			entries[i] = full
+		}
+	}
+
 	if handled, err := cmdutil.EncodeStructured(cmd, entries); handled || err != nil {
 		return err
 	}
@@ -97,7 +114,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	}
 
 	for _, entry := range entries {
-		printAuditEntry(entry)
+		printAuditEntry(entry, expand)
 	}
 
 	pterm.Println()
@@ -107,7 +124,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 }
 
 // printAuditEntry prints a single audit entry in a human-readable format.
-func printAuditEntry(entry *auditpb.AuditEntry) {
+func printAuditEntry(entry *auditpb.AuditEntry, verbose bool) {
 	ts := "-"
 	if entry.GetTimestamp() != nil {
 		ts = entry.GetTimestamp().AsTime().Format(time.RFC3339)
@@ -139,7 +156,7 @@ func printAuditEntry(entry *auditpb.AuditEntry) {
 			orders[i] = item.GetOrder()
 		}
 
-		printGroupedOrders(orders)
+		printGroupedOrders(orders, verbose)
 	} else if entry.GetOrderCount() > 0 {
 		pterm.Printf("    └─ %s orders\n", pterm.Cyan(strconv.FormatUint(uint64(entry.GetOrderCount()), 10)))
 	}
@@ -158,16 +175,22 @@ func formatLogRange(minSeq, maxSeq uint64) string {
 	return fmt.Sprintf("logs=%d..%d", minSeq, maxSeq)
 }
 
+// orderDescription holds the display info extracted from a single order.
+type orderDescription struct {
+	orderType string
+	detail    string     // scalar fields on the main line
+	mapLines  [][2]string // key/value pairs for indented multi-line display
+}
+
 // orderGroup represents a run of consecutive identical order types.
 type orderGroup struct {
-	orderType   string
-	orderDetail string
-	keyStr      string
-	count       int
+	orderDescription
+	keyStr string
+	count  int
 }
 
 // printGroupedOrders groups consecutive identical orders and prints them compactly.
-func printGroupedOrders(orders []*raftcmdpb.Order) {
+func printGroupedOrders(orders []*raftcmdpb.Order, verbose bool) {
 	if len(orders) == 0 {
 		return
 	}
@@ -175,29 +198,29 @@ func printGroupedOrders(orders []*raftcmdpb.Order) {
 	var groups []orderGroup
 
 	for _, order := range orders {
-		orderType, orderDetail := describeOrder(order)
+		desc := describeOrder(order, verbose)
 
 		keyStr := pterm.Gray("unsigned")
 		if sig := order.GetSignature(); sig != nil && sig.GetKeyId() != "" {
 			keyStr = pterm.Yellow(sig.GetKeyId())
 		}
 
-		// Merge with previous group if same type+detail+key
-		if len(groups) > 0 {
+		// Merge with previous group if same type+detail+key and no map lines
+		if len(groups) > 0 && len(desc.mapLines) == 0 {
 			last := &groups[len(groups)-1]
-			if last.orderType == orderType && last.orderDetail == orderDetail && last.keyStr == keyStr {
+			if last.orderType == desc.orderType && last.detail == desc.detail && last.keyStr == keyStr && len(last.mapLines) == 0 {
 				last.count++
 
 				continue
 			}
 		}
 
-		groups = append(groups, orderGroup{orderType, orderDetail, keyStr, 1})
+		groups = append(groups, orderGroup{desc, keyStr, 1})
 	}
 
 	for i, g := range groups {
 		prefix := "├─"
-		if i == len(groups)-1 {
+		if i == len(groups)-1 && len(g.mapLines) == 0 {
 			prefix = "└─"
 		}
 
@@ -206,84 +229,146 @@ func printGroupedOrders(orders []*raftcmdpb.Order) {
 			countStr = fmt.Sprintf(" x%d", g.count)
 		}
 
-		if g.orderDetail != "" {
-			pterm.Printf("    %s %s%s %s  key=%s\n", prefix, pterm.Cyan(g.orderType), countStr, pterm.Gray(g.orderDetail), g.keyStr)
+		if g.detail != "" {
+			pterm.Printf("    %s %s%s %s  key=%s\n", prefix, pterm.Cyan(g.orderType), countStr, pterm.Gray(g.detail), g.keyStr)
 		} else {
 			pterm.Printf("    %s %s%s  key=%s\n", prefix, pterm.Cyan(g.orderType), countStr, g.keyStr)
 		}
+
+		if len(g.mapLines) > 0 {
+			// Find max key length for alignment.
+			maxKeyLen := 0
+			for _, kv := range g.mapLines {
+				if len(kv[0]) > maxKeyLen {
+					maxKeyLen = len(kv[0])
+				}
+			}
+
+			for j, kv := range g.mapLines {
+				linePrefix := "│  "
+				if i == len(groups)-1 {
+					linePrefix = "   "
+				}
+				bullet := "├─"
+				if j == len(g.mapLines)-1 {
+					bullet = "└─"
+				}
+				pterm.Printf("    %s %s %s %s %s\n",
+					pterm.Gray(linePrefix), pterm.Gray(bullet),
+					pterm.Yellow(fmt.Sprintf("%-*s", maxKeyLen, kv[0])),
+					pterm.Gray("="),
+					kv[1],
+				)
+			}
+		}
 	}
 }
 
-// describeOrder returns a human-readable type and detail string for an order.
-func describeOrder(order *raftcmdpb.Order) (string, string) {
-	switch {
-	case order.GetApply() != nil:
-		apply := order.GetApply()
-		subType, subDetail := describeApplyOrder(apply)
-
-		return subType, fmt.Sprintf("ledger=%s %s", apply.GetLedger(), subDetail)
-	case order.GetCreateLedger() != nil:
-		return "CreateLedger", "name=" + order.GetCreateLedger().GetName()
-	case order.GetDeleteLedger() != nil:
-		return "DeleteLedger", "name=" + order.GetDeleteLedger().GetName()
-	case order.GetRegisterSigningKey() != nil:
-		return "RegisterSigningKey", "keyId=" + order.GetRegisterSigningKey().GetKeyId()
-	case order.GetRevokeSigningKey() != nil:
-		return "RevokeSigningKey", "keyId=" + order.GetRevokeSigningKey().GetKeyId()
-	case order.GetSetSigningConfig() != nil:
-		return "SetSigningConfig", fmt.Sprintf("requireSignatures=%v", order.GetSetSigningConfig().GetRequireSignatures())
-	case order.GetAddEventsSink() != nil:
-		return "AddEventsSink", ""
-	case order.GetRemoveEventsSink() != nil:
-		return "RemoveEventsSink", "name=" + order.GetRemoveEventsSink().GetName()
-	case order.GetClosePeriod() != nil:
-		return "ClosePeriod", ""
-	case order.GetSealPeriod() != nil:
-		return "SealPeriod", fmt.Sprintf("periodId=%d", order.GetSealPeriod().GetPeriodId())
-	case order.GetArchivePeriod() != nil:
-		return "ArchivePeriod", fmt.Sprintf("periodId=%d", order.GetArchivePeriod().GetPeriodId())
-	case order.GetConfirmArchivePeriod() != nil:
-		return "ConfirmArchivePeriod", fmt.Sprintf("periodId=%d", order.GetConfirmArchivePeriod().GetPeriodId())
-	case order.GetSetMaintenanceMode() != nil:
-		return "SetMaintenanceMode", fmt.Sprintf("enabled=%v", order.GetSetMaintenanceMode().GetEnabled())
-	case order.GetSetPeriodSchedule() != nil:
-		return "SetPeriodSchedule", "cron=" + order.GetSetPeriodSchedule().GetCron()
-	case order.GetDeletePeriodSchedule() != nil:
-		return "DeletePeriodSchedule", ""
-	case order.GetMirrorIngest() != nil:
-		return "MirrorIngest", "ledger=" + order.GetMirrorIngest().GetLedger()
-	case order.GetPromoteLedger() != nil:
-		return "PromoteLedger", "ledger=" + order.GetPromoteLedger().GetLedger()
-	default:
-		return "Unknown", ""
-	}
-}
-
-// describeApplyOrder returns a human-readable sub-type and detail for a LedgerApplyOrder.
-func describeApplyOrder(apply *raftcmdpb.LedgerApplyOrder) (string, string) {
-	switch {
-	case apply.GetCreateTransaction() != nil:
-		tx := apply.GetCreateTransaction()
-		if tx.GetReference() != "" {
-			return "CreateTransaction", "ref=" + tx.GetReference()
+// describeOrder returns the display description for a single order.
+func describeOrder(order *raftcmdpb.Order, verbose bool) orderDescription {
+	if apply := order.GetApply(); apply != nil {
+		desc := describeOneofField(apply.ProtoReflect(), "data", verbose)
+		if desc.detail != "" {
+			desc.detail = "ledger=" + apply.GetLedger() + " " + desc.detail
+		} else {
+			desc.detail = "ledger=" + apply.GetLedger()
 		}
 
-		return "CreateTransaction", ""
-	case apply.GetAddMetadata() != nil:
-		return "AddMetadata", ""
-	case apply.GetRevertTransaction() != nil:
-		return "RevertTransaction", ""
-	case apply.GetDeleteMetadata() != nil:
-		return "DeleteMetadata", ""
-	case apply.GetSetMetadataFieldType() != nil:
-		o := apply.GetSetMetadataFieldType()
-
-		return "SetMetadataFieldType", fmt.Sprintf("target=%s key=%s type=%s", o.GetTargetType(), o.GetKey(), o.GetType())
-	case apply.GetRemoveMetadataFieldType() != nil:
-		o := apply.GetRemoveMetadataFieldType()
-
-		return "RemoveMetadataFieldType", fmt.Sprintf("target=%s key=%s", o.GetTargetType(), o.GetKey())
-	default:
-		return "Apply", ""
+		return desc
 	}
+
+	return describeOneofField(order.ProtoReflect(), "type", verbose)
+}
+
+// describeOneofField uses protobuf reflection to extract the active oneof
+// variant name, its scalar fields, and string map entries. This avoids maintaining
+// a switch that must be updated every time a new order type is added to the proto.
+func describeOneofField(msg protoreflect.Message, oneofName protoreflect.Name, verbose bool) orderDescription {
+	od := msg.Descriptor().Oneofs().ByName(oneofName)
+	if od == nil {
+		return orderDescription{orderType: "Unknown"}
+	}
+
+	fd := msg.WhichOneof(od)
+	if fd == nil {
+		return orderDescription{orderType: "Unknown"}
+	}
+
+	typeName := strings.TrimSuffix(string(fd.Message().Name()), "Order")
+
+	desc := orderDescription{orderType: typeName}
+	if fd.Kind() == protoreflect.MessageKind {
+		innerMsg := msg.Get(fd).Message()
+		desc.detail = extractScalarFields(innerMsg, verbose)
+		desc.mapLines = extractStringMapEntries(innerMsg)
+	}
+
+	return desc
+}
+
+// extractScalarFields returns a compact "key=value" representation of all
+// populated scalar fields in a protobuf message, recursing into nested messages.
+// Lists, maps, and bytes are skipped. When verbose is false, multiline strings
+// are also skipped.
+func extractScalarFields(msg protoreflect.Message, verbose bool) string {
+	var parts []string
+	collectScalarFields(msg, verbose, &parts)
+
+	return strings.Join(parts, " ")
+}
+
+// extractStringMapEntries recursively collects all string-to-string map entries
+// from a protobuf message, returning them as key/value pairs.
+func extractStringMapEntries(msg protoreflect.Message) [][2]string {
+	var entries [][2]string
+	collectStringMapEntries(msg, &entries)
+
+	return entries
+}
+
+func collectScalarFields(msg protoreflect.Message, verbose bool, parts *[]string) {
+	msg.Range(func(fd protoreflect.FieldDescriptor, v protoreflect.Value) bool {
+		if fd.IsList() || fd.IsMap() || fd.Kind() == protoreflect.BytesKind || fd.Kind() == protoreflect.GroupKind {
+			return true
+		}
+
+		if fd.Kind() == protoreflect.MessageKind {
+			collectScalarFields(v.Message(), verbose, parts)
+
+			return true
+		}
+
+		s := fmt.Sprintf("%v", v.Interface())
+		if fd.Kind() == protoreflect.EnumKind {
+			s = string(fd.Enum().Values().ByNumber(v.Enum()).Name())
+		}
+
+		if !verbose && strings.Contains(s, "\n") {
+			return true
+		}
+
+		*parts = append(*parts, fmt.Sprintf("%s=%s", fd.JSONName(), s))
+
+		return true
+	})
+}
+
+func collectStringMapEntries(msg protoreflect.Message, entries *[][2]string) {
+	msg.Range(func(fd protoreflect.FieldDescriptor, v protoreflect.Value) bool {
+		if fd.IsMap() && fd.MapKey().Kind() == protoreflect.StringKind && fd.MapValue().Kind() == protoreflect.StringKind {
+			v.Map().Range(func(mk protoreflect.MapKey, mv protoreflect.Value) bool {
+				*entries = append(*entries, [2]string{mk.String(), mv.String()})
+
+				return true
+			})
+
+			return true
+		}
+
+		if fd.Kind() == protoreflect.MessageKind && !fd.IsList() && !fd.IsMap() {
+			collectStringMapEntries(v.Message(), entries)
+		}
+
+		return true
+	})
 }

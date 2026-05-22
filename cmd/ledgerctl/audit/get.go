@@ -53,7 +53,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	printAuditEntry(entry)
+	printAuditEntry(entry, true)
 
 	return nil
 }

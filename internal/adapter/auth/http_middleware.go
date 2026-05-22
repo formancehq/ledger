@@ -6,9 +6,10 @@ import (
 	"net/http"
 	"strings"
 
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
 
 // HTTPAuthMiddleware returns an HTTP middleware that validates JWT tokens,

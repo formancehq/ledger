@@ -2033,10 +2033,12 @@ ledgerctl audit list [flags]
 | `--after` | `0` | Show entries after this sequence number |
 | `--page-size` | `10` | Number of entries per page (0 = unlimited) |
 | `--timeout` | `10s` | Request timeout |
+| `--expand` | `false` | Expand orders within each audit entry |
 
 **Behavior:**
 - Streams audit entries from the server
 - Each entry shows: sequence number, timestamp, proposal ID, and outcome (OK/FAIL)
+- By default, shows the order count summary; use `--expand` to show full order details
 - Below each entry, all orders are listed in a tree structure with:
   - Order type and details (ledger name, reference, etc.)
   - Signing key ID used (`key=<id>`) or `unsigned` if the order was not signed
@@ -2060,6 +2062,9 @@ ledgerctl audit list --after 100
 
 # Show 20 entries per page
 ledgerctl audit list --page-size 20
+
+# Expand orders within entries
+ledgerctl audit list --expand
 
 # Output as JSON
 ledgerctl audit list --json
