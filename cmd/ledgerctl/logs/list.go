@@ -109,38 +109,49 @@ func runList(cmd *cobra.Command, _ []string) error {
 func printLog(log *commonpb.Log, expand bool) {
 	desc := describeLog(log, expand)
 
-	if desc.Detail != "" {
-		pterm.Printf("  #%-6d %s %s\n",
-			log.GetSequence(),
-			pterm.Cyan(desc.Type),
-			pterm.Gray(desc.Detail),
-		)
-	} else {
+	if expand {
 		pterm.Printf("  #%-6d %s\n",
 			log.GetSequence(),
 			pterm.Cyan(desc.Type),
 		)
-	}
 
-	if expand && len(desc.MapLines) > 0 {
-		maxKeyLen := 0
-		for _, kv := range desc.MapLines {
-			if len(kv[0]) > maxKeyLen {
-				maxKeyLen = len(kv[0])
+		allLines := make([][2]string, 0, len(desc.Fields)+len(desc.MapLines))
+		allLines = append(allLines, desc.Fields...)
+		allLines = append(allLines, desc.MapLines...)
+
+		if len(allLines) > 0 {
+			maxKeyLen := 0
+			for _, kv := range allLines {
+				if len(kv[0]) > maxKeyLen {
+					maxKeyLen = len(kv[0])
+				}
+			}
+
+			for j, kv := range allLines {
+				bullet := "├─"
+				if j == len(allLines)-1 {
+					bullet = "└─"
+				}
+
+				pterm.Printf("    %s %s %s %s\n",
+					pterm.Gray(bullet),
+					pterm.Yellow(fmt.Sprintf("%-*s", maxKeyLen, kv[0])),
+					pterm.Gray("="),
+					kv[1],
+				)
 			}
 		}
-
-		for j, kv := range desc.MapLines {
-			bullet := "├─"
-			if j == len(desc.MapLines)-1 {
-				bullet = "└─"
-			}
-
-			pterm.Printf("    %s %s %s %s\n",
-				pterm.Gray(bullet),
-				pterm.Yellow(fmt.Sprintf("%-*s", maxKeyLen, kv[0])),
-				pterm.Gray("="),
-				kv[1],
+	} else {
+		if desc.Detail != "" {
+			pterm.Printf("  #%-6d %s %s\n",
+				log.GetSequence(),
+				pterm.Cyan(desc.Type),
+				pterm.Gray(desc.Detail),
+			)
+		} else {
+			pterm.Printf("  #%-6d %s\n",
+				log.GetSequence(),
+				pterm.Cyan(desc.Type),
 			)
 		}
 	}
@@ -158,17 +169,16 @@ func describeLog(log *commonpb.Log, expand bool) cmdutil.OneofDescription {
 		innerLog := apply.GetLog()
 		if innerLog != nil && innerLog.GetData() != nil {
 			desc := cmdutil.DescribeOneofField(innerLog.GetData().ProtoReflect(), "payload", "Log", expand)
-			prefix := "ledger=" + apply.GetLedgerName()
-			if desc.Detail != "" {
-				desc.Detail = prefix + " " + desc.Detail
-			} else {
-				desc.Detail = prefix
-			}
+			desc.PrependField("ledger", apply.GetLedgerName())
 
 			return desc
 		}
 
-		return cmdutil.OneofDescription{Type: "Apply", Detail: "ledger=" + apply.GetLedgerName()}
+		return cmdutil.OneofDescription{
+			Type:   "Apply",
+			Detail: "ledger=" + apply.GetLedgerName(),
+			Fields: [][2]string{{"ledger", apply.GetLedgerName()}},
+		}
 	}
 
 	return cmdutil.DescribeOneofField(payload.ProtoReflect(), "type", "Log", expand)

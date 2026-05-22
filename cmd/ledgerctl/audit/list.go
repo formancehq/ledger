@@ -299,15 +299,10 @@ func printGroupedOrders(orders []*raftcmdpb.Order, verbose bool) {
 func describeOrder(order *raftcmdpb.Order, verbose bool) cmdutil.OneofDescription {
 	if apply := order.GetApply(); apply != nil {
 		desc := cmdutil.DescribeOneofField(apply.ProtoReflect(), "data", "Order", verbose)
-		if desc.Detail != "" {
-			desc.Detail = "ledger=" + apply.GetLedger() + " " + desc.Detail
-		} else {
-			desc.Detail = "ledger=" + apply.GetLedger()
-		}
+		desc.PrependField("ledger", apply.GetLedger())
 
 		return desc
 	}
 
 	return cmdutil.DescribeOneofField(order.ProtoReflect(), "type", "Order", verbose)
 }
-
