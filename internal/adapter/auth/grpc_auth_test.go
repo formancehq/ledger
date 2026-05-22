@@ -454,6 +454,86 @@ func TestAuthenticate_GranularScopePassThrough(t *testing.T) {
 	assert.False(t, HasScope(effective, ScopeLedgersRead))
 }
 
+func TestAuthenticate_GodMode_OIDC(t *testing.T) {
+	t.Parallel()
+
+	privKey, keySet := testKeyPair(t)
+	cfg := testAuthConfig(t, keySet)
+
+	// Token has no scopes but claims god mode — should get all scopes.
+	claims := newTestClaims()
+	claims.Claims = map[string]any{"god": true}
+	token := signToken(t, privKey, claims)
+	ctx := ctxWithBearer(token)
+
+	newCtx, err := Authenticate(ctx, cfg, ScopeClusterWrite)
+	require.NoError(t, err)
+
+	effective := ExpandedScopesFromContext(newCtx)
+	for scope := range AllGranularScopes {
+		assert.True(t, HasScope(effective, scope), "missing scope %s", scope)
+	}
+}
+
+func TestAuthenticate_GodMode_EdDSA_Allowed(t *testing.T) {
+	t.Parallel()
+
+	edPriv, edKeySet := ed25519TestKeyPair(t, "admin-key")
+	cfg := AuthConfig{
+		Enabled:      true,
+		KeySet:       edKeySet,
+		Service:      "ledger",
+		ScopeMapping: DefaultMapping("ledger"),
+		Ed25519AllowedScopes: map[string][]string{
+			"admin-key": {},
+		},
+		Ed25519GodKeys: map[string]bool{"admin-key": true},
+	}
+
+	claims := newTestClaims()
+	claims.Issuer = ""
+	claims.Claims = map[string]any{"god": true}
+	token := signEdDSA(t, edPriv, "admin-key", claims)
+	ctx := ctxWithBearer(token)
+
+	newCtx, err := Authenticate(ctx, cfg, ScopeClusterWrite)
+	require.NoError(t, err)
+
+	effective := ExpandedScopesFromContext(newCtx)
+	for scope := range AllGranularScopes {
+		assert.True(t, HasScope(effective, scope), "missing scope %s", scope)
+	}
+}
+
+func TestAuthenticate_GodMode_EdDSA_NotAllowed(t *testing.T) {
+	t.Parallel()
+
+	edPriv, edKeySet := ed25519TestKeyPair(t, "bot-key")
+	cfg := AuthConfig{
+		Enabled:      true,
+		KeySet:       edKeySet,
+		Service:      "ledger",
+		ScopeMapping: DefaultMapping("ledger"),
+		Ed25519AllowedScopes: map[string][]string{
+			"bot-key": {"ledger:read"},
+		},
+		Ed25519GodKeys: map[string]bool{},
+	}
+
+	// Token claims god mode but the key is not in the god keys list.
+	claims := newTestClaims("ledger:read")
+	claims.Issuer = ""
+	claims.Claims = map[string]any{"god": true}
+	token := signEdDSA(t, edPriv, "bot-key", claims)
+	ctx := ctxWithBearer(token)
+
+	_, err := Authenticate(ctx, cfg)
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.Unauthenticated, st.Code())
+}
+
 func TestAuthenticate_ClusterSecret_GrantsAllScopes(t *testing.T) {
 	t.Parallel()
 

@@ -50,8 +50,15 @@ func HTTPAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 
 			ctx := WithClaims(r.Context(), claims)
 
-			// Expand scopes through the mapping and store in context
-			effective := cfg.ScopeMapping.ExpandScopes(claims.Scopes)
+			// Expand scopes through the mapping and store in context.
+			// God-mode tokens get all granular scopes.
+			var effective map[Scope]struct{}
+			if isGodMode(claims) {
+				effective = allScopes()
+			} else {
+				effective = cfg.ScopeMapping.ExpandScopes(claims.Scopes)
+			}
+
 			ctx = WithExpandedScopes(ctx, effective)
 
 			next.ServeHTTP(w, r.WithContext(ctx))

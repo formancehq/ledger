@@ -47,18 +47,42 @@ func TestLoadEd25519KeySet_Valid(t *testing.T) {
 	err := os.WriteFile(configPath, []byte(config), 0644)
 	require.NoError(t, err)
 
-	keySet, allowedScopes, err := LoadEd25519KeySet(configPath)
+	result, err := LoadEd25519KeySet(configPath)
 	require.NoError(t, err)
-	require.NotNil(t, keySet)
-	require.Len(t, allowedScopes, 2)
-	assert.Equal(t, []string{"ledger:read"}, allowedScopes["key1"])
-	assert.Equal(t, []string{"ledger:read", "ledger:write"}, allowedScopes["key2"])
+	require.NotNil(t, result.KeySet)
+	require.Len(t, result.AllowedScopes, 2)
+	assert.Equal(t, []string{"ledger:read"}, result.AllowedScopes["key1"])
+	assert.Equal(t, []string{"ledger:read", "ledger:write"}, result.AllowedScopes["key2"])
+	assert.Empty(t, result.GodKeys)
+}
+
+func TestLoadEd25519KeySet_GodKey(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeTestKey(t, dir, "admin")
+	writeTestKey(t, dir, "bot")
+
+	configPath := filepath.Join(dir, "auth-keys.json")
+	config := `{
+		"keys": [
+			{"keyId": "admin", "publicKeyFile": "` + filepath.Join(dir, "admin.pubkey.hex") + `", "scopes": [], "god": true},
+			{"keyId": "bot", "publicKeyFile": "` + filepath.Join(dir, "bot.pubkey.hex") + `", "scopes": ["ledger:read"]}
+		]
+	}`
+	err := os.WriteFile(configPath, []byte(config), 0644)
+	require.NoError(t, err)
+
+	result, err := LoadEd25519KeySet(configPath)
+	require.NoError(t, err)
+	assert.True(t, result.GodKeys["admin"])
+	assert.False(t, result.GodKeys["bot"])
 }
 
 func TestLoadEd25519KeySet_MissingFile(t *testing.T) {
 	t.Parallel()
 
-	_, _, err := LoadEd25519KeySet("/nonexistent/path.json")
+	_, err := LoadEd25519KeySet("/nonexistent/path.json")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "reading Ed25519 keys config")
 }
@@ -71,7 +95,7 @@ func TestLoadEd25519KeySet_EmptyKeys(t *testing.T) {
 	err := os.WriteFile(configPath, []byte(`{"keys": []}`), 0644)
 	require.NoError(t, err)
 
-	_, _, err = LoadEd25519KeySet(configPath)
+	_, err = LoadEd25519KeySet(configPath)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "contains no keys")
 }
@@ -87,7 +111,7 @@ func TestLoadEd25519KeySet_MissingKeyID(t *testing.T) {
 	err := os.WriteFile(configPath, []byte(config), 0644)
 	require.NoError(t, err)
 
-	_, _, err = LoadEd25519KeySet(configPath)
+	_, err = LoadEd25519KeySet(configPath)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing keyId")
 }
@@ -99,10 +123,10 @@ func TestEnforceAllowedScopes_Valid(t *testing.T) {
 		"bot": {"ledger:read", "ledger:write"},
 	}
 
-	err := enforceAllowedScopes([]string{"ledger:read"}, "bot", allowed)
+	err := enforceAllowedScopes([]string{"ledger:read"}, "bot", allowed, nil)
 	require.NoError(t, err)
 
-	err = enforceAllowedScopes([]string{"ledger:read", "ledger:write"}, "bot", allowed)
+	err = enforceAllowedScopes([]string{"ledger:read", "ledger:write"}, "bot", allowed, nil)
 	require.NoError(t, err)
 }
 
@@ -113,7 +137,7 @@ func TestEnforceAllowedScopes_ExcessiveScope(t *testing.T) {
 		"bot": {"ledger:read"},
 	}
 
-	err := enforceAllowedScopes([]string{"ledger:read", "ledger:admin"}, "bot", allowed)
+	err := enforceAllowedScopes([]string{"ledger:read", "ledger:admin"}, "bot", allowed, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ledger:admin")
 	assert.Contains(t, err.Error(), "not allowed")
@@ -126,7 +150,39 @@ func TestEnforceAllowedScopes_UnknownKey(t *testing.T) {
 		"bot": {"ledger:read"},
 	}
 
-	err := enforceAllowedScopes([]string{"ledger:read"}, "unknown-key", allowed)
+	err := enforceAllowedScopes([]string{"ledger:read"}, "unknown-key", allowed, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown key ID")
+}
+
+func TestEnforceAllowedScopes_GodKeyBypassesCheck(t *testing.T) {
+	t.Parallel()
+
+	allowed := map[string][]string{
+		"admin": {},
+	}
+	godKeys := map[string]bool{"admin": true}
+
+	// God key can claim any scope regardless of allowlist.
+	err := enforceAllowedScopes([]string{"ledger:admin", "ledger:write"}, "admin", allowed, godKeys)
+	require.NoError(t, err)
+}
+
+func TestEnforceGodClaim_Allowed(t *testing.T) {
+	t.Parallel()
+
+	godKeys := map[string]bool{"admin": true}
+
+	err := enforceGodClaim("admin", godKeys)
+	require.NoError(t, err)
+}
+
+func TestEnforceGodClaim_NotAllowed(t *testing.T) {
+	t.Parallel()
+
+	godKeys := map[string]bool{"admin": true}
+
+	err := enforceGodClaim("bot", godKeys)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not allowed to claim god mode")
 }

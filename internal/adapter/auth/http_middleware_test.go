@@ -434,6 +434,71 @@ func TestRequireScope_EdDSA_MatchingScope(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
+func TestHTTPAuthMiddleware_GodMode_GrantsAllScopes(t *testing.T) {
+	t.Parallel()
+
+	privKey, keySet := testKeyPair(t)
+
+	var capturedScopes map[Scope]struct{}
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedScopes = ExpandedScopesFromContext(r.Context())
+
+		w.WriteHeader(http.StatusOK)
+	})
+
+	cfg := AuthConfig{
+		Enabled:      true,
+		KeySet:       keySet,
+		Issuer:       testIssuer,
+		Service:      "ledger",
+		ScopeMapping: DefaultMapping("ledger"),
+	}
+	handler := HTTPAuthMiddleware(cfg)(inner)
+
+	claims := newTestClaims()
+	claims.Claims = map[string]any{"god": true}
+	token := signToken(t, privKey, claims)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/test-ledger", nil)
+	r.Header.Set("Authorization", "Bearer "+token)
+	handler.ServeHTTP(w, r)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	require.NotNil(t, capturedScopes)
+
+	for scope := range AllGranularScopes {
+		assert.True(t, HasScope(capturedScopes, scope), "missing scope %s", scope)
+	}
+}
+
+func TestRequireScope_GodMode_PassesAnyScope(t *testing.T) {
+	t.Parallel()
+
+	privKey, keySet := testKeyPair(t)
+	cfg := AuthConfig{
+		Enabled:      true,
+		KeySet:       keySet,
+		Issuer:       testIssuer,
+		Service:      "ledger",
+		ScopeMapping: DefaultMapping("ledger"),
+	}
+
+	// Token has no scopes but claims god mode — should pass any scope check.
+	handler := HTTPAuthMiddleware(cfg)(RequireScope(cfg, ScopeClusterWrite)(ok200))
+
+	claims := newTestClaims()
+	claims.Claims = map[string]any{"god": true}
+	token := signToken(t, privKey, claims)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/test", nil)
+	r.Header.Set("Authorization", "Bearer "+token)
+	handler.ServeHTTP(w, r)
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
 func TestRequireScope_EdDSA_WrongScope(t *testing.T) {
 	t.Parallel()
 

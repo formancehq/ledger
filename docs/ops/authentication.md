@@ -143,10 +143,40 @@ ledgerctl --auth-token @token.txt ledgers list
 | `--subject` | yes | | JWT subject claim |
 | `--scopes` | no | | Comma-separated scopes |
 | `--expiration` | no | `1h` | Token validity duration |
+| `--god` | no | `false` | Include god-mode claim (grants all scopes; key must allow it) |
 
 ### Scope Enforcement
 
 Ed25519 keys have a per-key scope allowlist defined in `auth-keys.json`. A token cannot claim scopes beyond what the key allows, even if the JWT payload contains them. This provides defense-in-depth: the server restricts what each key can do, independent of what the client requests.
+
+### God Mode
+
+A key can be configured with `"god": true` in `auth-keys.json` to allow it to emit tokens that bypass all scope checks. When a JWT contains the custom claim `"god": true` and is signed by a god-enabled key, the token is granted all granular scopes regardless of the `scopes` claim.
+
+```json
+{
+  "keys": [
+    {
+      "keyId": "admin-key",
+      "publicKeyFile": "./keys/admin-pubkey.hex",
+      "scopes": [],
+      "god": true
+    }
+  ]
+}
+```
+
+Generate a god-mode token:
+
+```bash
+TOKEN=$(ledgerctl auth generate-token \
+  --signing-key ./keys/seed.hex \
+  --key-id admin-key \
+  --subject admin \
+  --god)
+```
+
+For OIDC tokens, the god claim is trusted if present in the JWT issued by the configured OIDC provider. For Ed25519 tokens, only keys with `"god": true` in the server config are allowed to claim god mode; tokens signed by non-god keys that contain the claim are rejected.
 
 ### Security Notes
 

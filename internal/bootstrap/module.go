@@ -1249,16 +1249,18 @@ func buildAuthConfig(cfg Config, logger logging.Logger, oidcKeySet oidc.KeySet) 
 	}
 
 	if cfg.AuthConfig.Ed25519KeysFile != "" {
-		ed25519KeySet, allowedScopes, err := internalauth.LoadEd25519KeySet(cfg.AuthConfig.Ed25519KeysFile)
+		result, err := internalauth.LoadEd25519KeySet(cfg.AuthConfig.Ed25519KeysFile)
 		if err != nil {
 			return authCfg, fmt.Errorf("loading Ed25519 keys: %w", err)
 		}
 
-		authCfg.KeySet = internalauth.NewCompositeKeySet(ed25519KeySet, oidcKeySet)
-		authCfg.Ed25519AllowedScopes = allowedScopes
+		authCfg.KeySet = internalauth.NewCompositeKeySet(result.KeySet, oidcKeySet)
+		authCfg.Ed25519AllowedScopes = result.AllowedScopes
+		authCfg.Ed25519GodKeys = result.GodKeys
 
 		logger.WithFields(map[string]any{
-			"keys_count": len(allowedScopes),
+			"keys_count": len(result.AllowedScopes),
+			"god_keys":   len(result.GodKeys),
 			"enabled":    authCfg.Enabled,
 		}).Infof("Ed25519 keys loaded")
 	} else {

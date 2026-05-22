@@ -469,3 +469,202 @@ var _ = Describe("Ed25519 Auth Scope Restrictions", Ordered, func() {
 		})
 	})
 })
+
+// Dedicated port range for Ed25519 god-mode tests.
+const (
+	ed25519GodTestHTTPPort = 15830
+	ed25519GodTestGRPCPort = 15930
+	ed25519GodTestRaftPort = 14830
+)
+
+// writeEd25519GodKeysConfig generates two Ed25519 keypairs — one god-mode key and one regular key —
+// and writes the auth-keys.json config file. Returns both private keys and the config file path.
+func writeEd25519GodKeysConfig(dir string) (godPriv, regularPriv ed25519.PrivateKey, configPath string, err error) {
+	// God key
+	_, godPriv, err = ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	godPub := godPriv.Public().(ed25519.PublicKey)
+	godPubFile := filepath.Join(dir, "god-pubkey.hex")
+	if err := os.WriteFile(godPubFile, []byte(fmt.Sprintf("%x\n", godPub)), 0644); err != nil {
+		return nil, nil, "", err
+	}
+
+	// Regular key
+	_, regularPriv, err = ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	regularPub := regularPriv.Public().(ed25519.PublicKey)
+	regularPubFile := filepath.Join(dir, "regular-pubkey.hex")
+	if err := os.WriteFile(regularPubFile, []byte(fmt.Sprintf("%x\n", regularPub)), 0644); err != nil {
+		return nil, nil, "", err
+	}
+
+	cfg := internalauth.Ed25519KeysConfig{
+		Keys: []internalauth.Ed25519KeyEntry{
+			{
+				KeyID:         "god-key",
+				PublicKeyFile: godPubFile,
+				Scopes:        []string{},
+				God:           true,
+			},
+			{
+				KeyID:         "regular-key",
+				PublicKeyFile: regularPubFile,
+				Scopes:        []string{"ledger:read"},
+			},
+		},
+	}
+	configData, err := json.Marshal(cfg)
+	if err != nil {
+		return nil, nil, "", err
+	}
+
+	configPath = filepath.Join(dir, "auth-keys.json")
+	if err := os.WriteFile(configPath, configData, 0644); err != nil {
+		return nil, nil, "", err
+	}
+
+	return godPriv, regularPriv, configPath, nil
+}
+
+var _ = Describe("Ed25519 Auth God Mode", Ordered, func() {
+	var (
+		ctx            context.Context
+		grpcConn       *grpc.ClientConn
+		client         servicepb.BucketServiceClient
+		clusterClient  clusterpb.ClusterServiceClient
+		godPrivKey     ed25519.PrivateKey
+		regularPrivKey ed25519.PrivateKey
+	)
+
+	BeforeAll(func() {
+		ctx = logging.TestingContext()
+
+		keysDir := GinkgoT().TempDir()
+
+		var configPath string
+		var err error
+		godPrivKey, regularPrivKey, configPath, err = writeEd25519GodKeysConfig(keysDir)
+		Expect(err).To(Succeed())
+
+		walTmpDir := GinkgoT().TempDir()
+		dataTmpDir := GinkgoT().TempDir()
+		DeferCleanup(func() {
+			Expect(os.RemoveAll(walTmpDir)).To(Succeed())
+			Expect(os.RemoveAll(dataTmpDir)).To(Succeed())
+		})
+
+		instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
+			NodeID:    1,
+			ClusterID: "test-cluster",
+			HTTPPort:  ed25519GodTestHTTPPort,
+			RaftPort:  ed25519GodTestRaftPort,
+			GRPCPort:  ed25519GodTestGRPCPort,
+			WalDir:    walTmpDir,
+			DataDir:   dataTmpDir,
+			Debug:     testutil.Debug,
+			Output:    GinkgoWriter,
+		})
+		instruments = append(instruments,
+			testserver.WithBootstrap(),
+			testserver.WithAuthEnabled(),
+			testserver.WithAuthEd25519Keys(configPath),
+			testserver.WithAuthService("ledger"),
+		)
+
+		server := testservice.New(cmdserver.NewRunCommand,
+			testservice.WithInstruments(instruments...),
+		)
+		Expect(server.Start(ctx)).To(Succeed())
+
+		DeferCleanup(func() {
+			stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			Expect(server.Stop(stopCtx)).To(Succeed())
+		})
+
+		grpcConn, err = grpc.NewClient(
+			fmt.Sprintf("localhost:%d", ed25519GodTestGRPCPort),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithDefaultServiceConfig(actions.GRPCRetryPolicy),
+		)
+		Expect(err).To(Succeed())
+		DeferCleanup(func() { _ = grpcConn.Close() })
+
+		client = servicepb.NewBucketServiceClient(grpcConn)
+		clusterClient = clusterpb.NewClusterServiceClient(grpcConn)
+
+		// Wait for leader election
+		Eventually(func(g Gomega) bool {
+			godClaims := makeEdDSAClaims()
+			godClaims.Claims = map[string]any{"god": true}
+			token, err := signEdDSAJWT(godPrivKey, "god-key", godClaims)
+			g.Expect(err).To(Succeed())
+			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
+
+			state, err := clusterClient.GetClusterState(authCtx, &clusterpb.GetClusterStateRequest{})
+			g.Expect(err).To(Succeed())
+			return state.Leader != 0
+		}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(BeTrue())
+	})
+
+	Context("with god-mode key", func() {
+		It("should allow admin operations without any scopes", func() {
+			claims := makeEdDSAClaims() // no scopes at all
+			claims.Claims = map[string]any{"god": true}
+			token, err := signEdDSAJWT(godPrivKey, "god-key", claims)
+			Expect(err).To(Succeed())
+			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
+
+			state, err := clusterClient.GetClusterState(authCtx, &clusterpb.GetClusterStateRequest{})
+			Expect(err).To(Succeed())
+			Expect(state.Leader).NotTo(BeZero())
+		})
+
+		It("should allow write operations without any scopes", func() {
+			claims := makeEdDSAClaims()
+			claims.Claims = map[string]any{"god": true}
+			token, err := signEdDSAJWT(godPrivKey, "god-key", claims)
+			Expect(err).To(Succeed())
+			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
+
+			resp, err := client.Apply(authCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.CreateLedgerAction("god-mode-test-ledger", nil),
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(resp).NotTo(BeNil())
+		})
+
+		It("should allow read operations without any scopes", func() {
+			claims := makeEdDSAClaims()
+			claims.Claims = map[string]any{"god": true}
+			token, err := signEdDSAJWT(godPrivKey, "god-key", claims)
+			Expect(err).To(Succeed())
+			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
+
+			_, err = client.GetLedger(authCtx, &servicepb.GetLedgerRequest{Ledger: "god-mode-test-ledger"})
+			Expect(err).To(Succeed())
+		})
+	})
+
+	Context("with regular key claiming god mode", func() {
+		It("should reject the token", func() {
+			claims := makeEdDSAClaims("ledger:read")
+			claims.Claims = map[string]any{"god": true}
+			token, err := signEdDSAJWT(regularPrivKey, "regular-key", claims)
+			Expect(err).To(Succeed())
+			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
+
+			_, err = client.GetLedger(authCtx, &servicepb.GetLedgerRequest{Ledger: "test"})
+			Expect(err).To(HaveOccurred())
+			st, ok := status.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(st.Code()).To(Equal(codes.Unauthenticated))
+		})
+	})
+})

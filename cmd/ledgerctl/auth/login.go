@@ -181,12 +181,15 @@ func resolveLoginParams(cmd *cobra.Command) (tokenParams, error) {
 		return tokenParams{}, errors.New("required flag \"subject\" not set")
 	}
 
+	god, _ := cmd.Flags().GetBool("god")
+
 	return tokenParams{
 		seed:       seed,
 		keyID:      keyID,
 		subject:    subject,
 		scopes:     scopes,
 		expiration: expiration,
+		god:        god,
 	}, nil
 }
 
@@ -263,6 +266,10 @@ func printTokenSummary(tokenStr string) {
 
 	if scopes, ok := claims["scope"].(string); ok && scopes != "" {
 		rows = append(rows, []string{"Scopes", scopes})
+	}
+
+	if god, ok := claims["god"].(bool); ok && god {
+		rows = append(rows, []string{"God mode", pterm.Yellow("enabled")})
 	}
 
 	if exp, _ := claims.GetExpirationTime(); exp != nil {

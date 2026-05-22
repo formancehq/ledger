@@ -29,6 +29,7 @@ type AuthConfig struct {
 	Service              string
 	ScopeMapping         ScopeMapping
 	Ed25519AllowedScopes map[string][]string // keyID -> allowed scopes (nil = no Ed25519 auth)
+	Ed25519GodKeys       map[string]bool     // keyID -> true if the key can emit god-mode tokens
 	ClusterSecret        string              // shared secret for inter-node auth bypass (empty = disabled)
 }
 
@@ -58,12 +59,7 @@ func Authenticate(ctx context.Context, cfg AuthConfig, scopes ...Scope) (context
 	if cfg.ClusterSecret != "" && token == cfg.ClusterSecret {
 		span.SetAttributes(attribute.Bool("auth.cluster_internal", true))
 
-		allScopes := make(map[Scope]struct{}, len(AllGranularScopes))
-		for s := range AllGranularScopes {
-			allScopes[s] = struct{}{}
-		}
-
-		return WithExpandedScopes(ctx, allScopes), nil
+		return WithExpandedScopes(ctx, allScopes()), nil
 	}
 
 	keyID := extractKeyID(token)
@@ -77,7 +73,13 @@ func Authenticate(ctx context.Context, cfg AuthConfig, scopes ...Scope) (context
 
 	ctx = WithClaims(ctx, claims)
 
-	effective := cfg.ScopeMapping.ExpandScopes(claims.Scopes)
+	var effective map[Scope]struct{}
+	if isGodMode(claims) {
+		effective = allScopes()
+	} else {
+		effective = cfg.ScopeMapping.ExpandScopes(claims.Scopes)
+	}
+
 	ctx = WithExpandedScopes(ctx, effective)
 
 	if !HasScope(effective, scopes...) {
@@ -88,6 +90,29 @@ func Authenticate(ctx context.Context, cfg AuthConfig, scopes ...Scope) (context
 	}
 
 	return ctx, nil
+}
+
+// isGodMode checks whether the token contains the custom "god": true claim,
+// which grants all granular scopes regardless of what scopes the token carries.
+func isGodMode(claims *oidc.AccessTokenClaims) bool {
+	god, ok := claims.Claims["god"]
+	if !ok {
+		return false
+	}
+
+	godBool, ok := god.(bool)
+
+	return ok && godBool
+}
+
+// allScopes returns a set containing every granular scope.
+func allScopes() map[Scope]struct{} {
+	result := make(map[Scope]struct{}, len(AllGranularScopes))
+	for s := range AllGranularScopes {
+		result[s] = struct{}{}
+	}
+
+	return result
 }
 
 // bearerTokenFromContext extracts the Bearer token from gRPC incoming metadata.
@@ -143,9 +168,16 @@ func validateToken(ctx context.Context, token string, cfg AuthConfig) (*oidc.Acc
 		if cfg.Ed25519AllowedScopes != nil {
 			keyID := extractKeyID(decrypted)
 
-			err := enforceAllowedScopes(claims.Scopes, keyID, cfg.Ed25519AllowedScopes)
+			err := enforceAllowedScopes(claims.Scopes, keyID, cfg.Ed25519AllowedScopes, cfg.Ed25519GodKeys)
 			if err != nil {
 				return nil, err
+			}
+
+			// If the token claims god mode, verify the signing key is allowed.
+			if isGodMode(claims) {
+				if err := enforceGodClaim(keyID, cfg.Ed25519GodKeys); err != nil {
+					return nil, err
+				}
 			}
 		}
 	} else {
