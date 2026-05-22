@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -18,6 +19,7 @@ import (
 	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
 	"github.com/formancehq/go-libs/v5/pkg/transport/api"
 	"github.com/formancehq/go-libs/v5/pkg/transport/httpserver"
+	"github.com/formancehq/go-libs/v5/pkg/transport/httpserver/audit"
 
 	"github.com/formancehq/ledger/internal/api/bulking"
 	"github.com/formancehq/ledger/internal/api/common"
@@ -31,6 +33,7 @@ import (
 func NewRouter(
 	systemController system.Controller,
 	authenticator jwt.Authenticator,
+	publisher message.Publisher,
 	version string,
 	debug bool,
 	opts ...RouterOption,
@@ -59,6 +62,7 @@ func NewRouter(
 		common.LogID(),
 		middleware.RequestLogger(api.NewLogFormatter()),
 		httpserver.OTLPMiddleware("ledger", debug),
+		audit.Middleware(publisher, "audit-events", "ledger"),
 		otelchimetric.NewRequestDurationMillis(baseCfg),
 		otelchimetric.NewRequestInFlight(baseCfg),
 		otelchimetric.NewResponseSizeBytes(baseCfg),

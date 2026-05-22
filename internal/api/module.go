@@ -3,6 +3,7 @@ package api
 import (
 	_ "embed"
 
+	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/go-chi/chi/v5"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
@@ -33,11 +34,13 @@ func Module(cfg Config) fx.Option {
 		fx.Provide(func(
 			backend system.Controller,
 			authenticator jwt.Authenticator,
+			publisher message.Publisher,
 			tracerProvider trace.TracerProvider,
 		) chi.Router {
 			return NewRouter(
 				backend,
 				authenticator,
+				publisher,
 				cfg.Version,
 				cfg.Debug,
 				WithTracer(tracerProvider.Tracer("api")),
