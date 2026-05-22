@@ -147,8 +147,8 @@ func (d *Driver) evictCachedLedger(name string) {
 }
 
 type openLedgerResult struct {
-	store  *ledgerstore.Store
-	ledger *ledger.Ledger
+	ledger        ledger.Ledger
+	aloneInBucket *bool // non-nil only when derived from a count query; nil → shared atomic already correct
 }
 
 func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Store, *ledger.Ledger, error) {
@@ -166,8 +166,7 @@ func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Stor
 	ch := d.group.DoChan(name, func() (any, error) {
 		// Re-check the cache: a previous waiter may have already populated it.
 		if l, ok := d.getCachedLedger(name); ok {
-			store := d.ledgerStoreFactory.Create(d.bucketFactory.Create(l.Bucket), l)
-			return &openLedgerResult{store: store, ledger: &l}, nil
+			return &openLedgerResult{ledger: l}, nil
 		}
 
 		// Snapshot the invalidation generation before hitting the DB.
@@ -204,10 +203,8 @@ func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Stor
 			d.mu.Unlock()
 		}
 
-		store := d.ledgerStoreFactory.Create(d.bucketFactory.Create(ret.Bucket), *ret)
-		store.SetAloneInBucket(count == 1)
-
-		return &openLedgerResult{store: store, ledger: ret}, nil
+		alone := count == 1
+		return &openLedgerResult{ledger: *ret, aloneInBucket: &alone}, nil
 	})
 
 	select {
@@ -218,7 +215,12 @@ func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Stor
 			return nil, nil, result.Err
 		}
 		res := result.Val.(*openLedgerResult)
-		return res.store, res.ledger, nil
+		l := res.ledger
+		store := d.ledgerStoreFactory.Create(d.bucketFactory.Create(l.Bucket), l)
+		if res.aloneInBucket != nil {
+			store.SetAloneInBucket(*res.aloneInBucket)
+		}
+		return store, &l, nil
 	}
 }
 
