@@ -158,21 +158,27 @@ func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Stor
 	}
 
 	// Collapse concurrent cache-miss requests for the same ledger into one DB call.
-	v, err, _ := d.group.Do(name, func() (any, error) {
+	// DoChan is used so each caller can honour its own ctx while the shared DB
+	// work runs under an independent context — a single request cancellation
+	// must not abort the in-flight query for all other waiters.
+	ch := d.group.DoChan(name, func() (any, error) {
 		// Re-check the cache: a previous waiter may have already populated it.
 		if l, ok := d.getCachedLedger(name); ok {
 			store := d.ledgerStoreFactory.Create(d.bucketFactory.Create(l.Bucket), l)
 			return &openLedgerResult{store: store, ledger: &l}, nil
 		}
 
+		dbCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
 		systemStore := d.systemStoreFactory.Create(d.db)
 
-		ret, err := systemStore.GetLedger(ctx, name)
+		ret, err := systemStore.GetLedger(dbCtx, name)
 		if err != nil {
 			return nil, err
 		}
 
-		count, err := systemStore.CountLedgersInBucket(ctx, ret.Bucket)
+		count, err := systemStore.CountLedgersInBucket(dbCtx, ret.Bucket)
 		if err != nil {
 			return nil, fmt.Errorf("counting ledgers in bucket: %w", err)
 		}
@@ -184,12 +190,17 @@ func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Stor
 
 		return &openLedgerResult{store: store, ledger: ret}, nil
 	})
-	if err != nil {
-		return nil, nil, err
-	}
 
-	res := v.(*openLedgerResult)
-	return res.store, res.ledger, nil
+	select {
+	case <-ctx.Done():
+		return nil, nil, ctx.Err()
+	case result := <-ch:
+		if result.Err != nil {
+			return nil, nil, result.Err
+		}
+		res := result.Val.(*openLedgerResult)
+		return res.store, res.ledger, nil
+	}
 }
 
 func (d *Driver) Initialize(ctx context.Context) error {
