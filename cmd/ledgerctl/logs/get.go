@@ -57,7 +57,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	printLog(log)
+	printLog(log, true)
 
 	return nil
 }

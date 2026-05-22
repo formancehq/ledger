@@ -10,7 +10,6 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
-	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
@@ -213,16 +212,9 @@ func formatLogRange(minSeq, maxSeq uint64) string {
 	return fmt.Sprintf("logs=%d..%d", minSeq, maxSeq)
 }
 
-// orderDescription holds the display info extracted from a single order.
-type orderDescription struct {
-	orderType string
-	detail    string      // scalar fields on the main line
-	mapLines  [][2]string // key/value pairs for indented multi-line display
-}
-
 // orderGroup represents a run of consecutive identical order types.
 type orderGroup struct {
-	orderDescription
+	cmdutil.OneofDescription
 
 	keyStr string
 	count  int
@@ -245,9 +237,9 @@ func printGroupedOrders(orders []*raftcmdpb.Order, verbose bool) {
 		}
 
 		// Merge with previous group if same type+detail+key and no map lines
-		if len(groups) > 0 && len(desc.mapLines) == 0 {
+		if len(groups) > 0 && len(desc.MapLines) == 0 {
 			last := &groups[len(groups)-1]
-			if last.orderType == desc.orderType && last.detail == desc.detail && last.keyStr == keyStr && len(last.mapLines) == 0 {
+			if last.Type == desc.Type && last.Detail == desc.Detail && last.keyStr == keyStr && len(last.MapLines) == 0 {
 				last.count++
 
 				continue
@@ -259,7 +251,7 @@ func printGroupedOrders(orders []*raftcmdpb.Order, verbose bool) {
 
 	for i, g := range groups {
 		prefix := "├─"
-		if i == len(groups)-1 && len(g.mapLines) == 0 {
+		if i == len(groups)-1 && len(g.MapLines) == 0 {
 			prefix = "└─"
 		}
 
@@ -268,28 +260,28 @@ func printGroupedOrders(orders []*raftcmdpb.Order, verbose bool) {
 			countStr = fmt.Sprintf(" x%d", g.count)
 		}
 
-		if g.detail != "" {
-			pterm.Printf("    %s %s%s %s  key=%s\n", prefix, pterm.Cyan(g.orderType), countStr, pterm.Gray(g.detail), g.keyStr)
+		if g.Detail != "" {
+			pterm.Printf("    %s %s%s %s  key=%s\n", prefix, pterm.Cyan(g.Type), countStr, pterm.Gray(g.Detail), g.keyStr)
 		} else {
-			pterm.Printf("    %s %s%s  key=%s\n", prefix, pterm.Cyan(g.orderType), countStr, g.keyStr)
+			pterm.Printf("    %s %s%s  key=%s\n", prefix, pterm.Cyan(g.Type), countStr, g.keyStr)
 		}
 
-		if len(g.mapLines) > 0 {
+		if len(g.MapLines) > 0 {
 			// Find max key length for alignment.
 			maxKeyLen := 0
-			for _, kv := range g.mapLines {
+			for _, kv := range g.MapLines {
 				if len(kv[0]) > maxKeyLen {
 					maxKeyLen = len(kv[0])
 				}
 			}
 
-			for j, kv := range g.mapLines {
+			for j, kv := range g.MapLines {
 				linePrefix := "│  "
 				if i == len(groups)-1 {
 					linePrefix = "   "
 				}
 				bullet := "├─"
-				if j == len(g.mapLines)-1 {
+				if j == len(g.MapLines)-1 {
 					bullet = "└─"
 				}
 				pterm.Printf("    %s %s %s %s %s\n",
@@ -304,110 +296,18 @@ func printGroupedOrders(orders []*raftcmdpb.Order, verbose bool) {
 }
 
 // describeOrder returns the display description for a single order.
-func describeOrder(order *raftcmdpb.Order, verbose bool) orderDescription {
+func describeOrder(order *raftcmdpb.Order, verbose bool) cmdutil.OneofDescription {
 	if apply := order.GetApply(); apply != nil {
-		desc := describeOneofField(apply.ProtoReflect(), "data", verbose)
-		if desc.detail != "" {
-			desc.detail = "ledger=" + apply.GetLedger() + " " + desc.detail
+		desc := cmdutil.DescribeOneofField(apply.ProtoReflect(), "data", "Order", verbose)
+		if desc.Detail != "" {
+			desc.Detail = "ledger=" + apply.GetLedger() + " " + desc.Detail
 		} else {
-			desc.detail = "ledger=" + apply.GetLedger()
+			desc.Detail = "ledger=" + apply.GetLedger()
 		}
 
 		return desc
 	}
 
-	return describeOneofField(order.ProtoReflect(), "type", verbose)
+	return cmdutil.DescribeOneofField(order.ProtoReflect(), "type", "Order", verbose)
 }
 
-// describeOneofField uses protobuf reflection to extract the active oneof
-// variant name, its scalar fields, and string map entries. This avoids maintaining
-// a switch that must be updated every time a new order type is added to the proto.
-func describeOneofField(msg protoreflect.Message, oneofName protoreflect.Name, verbose bool) orderDescription {
-	od := msg.Descriptor().Oneofs().ByName(oneofName)
-	if od == nil {
-		return orderDescription{orderType: "Unknown"}
-	}
-
-	fd := msg.WhichOneof(od)
-	if fd == nil {
-		return orderDescription{orderType: "Unknown"}
-	}
-
-	typeName := strings.TrimSuffix(string(fd.Message().Name()), "Order")
-
-	desc := orderDescription{orderType: typeName}
-	if fd.Kind() == protoreflect.MessageKind {
-		innerMsg := msg.Get(fd).Message()
-		desc.detail = extractScalarFields(innerMsg, verbose)
-		desc.mapLines = extractStringMapEntries(innerMsg)
-	}
-
-	return desc
-}
-
-// extractScalarFields returns a compact "key=value" representation of all
-// populated scalar fields in a protobuf message, recursing into nested messages.
-// Lists, maps, and bytes are skipped. When verbose is false, multiline strings
-// are also skipped.
-func extractScalarFields(msg protoreflect.Message, verbose bool) string {
-	var parts []string
-	collectScalarFields(msg, verbose, &parts)
-
-	return strings.Join(parts, " ")
-}
-
-// extractStringMapEntries recursively collects all string-to-string map entries
-// from a protobuf message, returning them as key/value pairs.
-func extractStringMapEntries(msg protoreflect.Message) [][2]string {
-	var entries [][2]string
-	collectStringMapEntries(msg, &entries)
-
-	return entries
-}
-
-func collectScalarFields(msg protoreflect.Message, verbose bool, parts *[]string) {
-	msg.Range(func(fd protoreflect.FieldDescriptor, v protoreflect.Value) bool {
-		if fd.IsList() || fd.IsMap() || fd.Kind() == protoreflect.BytesKind || fd.Kind() == protoreflect.GroupKind {
-			return true
-		}
-
-		if fd.Kind() == protoreflect.MessageKind {
-			collectScalarFields(v.Message(), verbose, parts)
-
-			return true
-		}
-
-		s := fmt.Sprintf("%v", v.Interface())
-		if fd.Kind() == protoreflect.EnumKind {
-			s = string(fd.Enum().Values().ByNumber(v.Enum()).Name())
-		}
-
-		if !verbose && strings.Contains(s, "\n") {
-			return true
-		}
-
-		*parts = append(*parts, fmt.Sprintf("%s=%s", fd.JSONName(), s))
-
-		return true
-	})
-}
-
-func collectStringMapEntries(msg protoreflect.Message, entries *[][2]string) {
-	msg.Range(func(fd protoreflect.FieldDescriptor, v protoreflect.Value) bool {
-		if fd.IsMap() && fd.MapKey().Kind() == protoreflect.StringKind && fd.MapValue().Kind() == protoreflect.StringKind {
-			v.Map().Range(func(mk protoreflect.MapKey, mv protoreflect.Value) bool {
-				*entries = append(*entries, [2]string{mk.String(), mv.String()})
-
-				return true
-			})
-
-			return true
-		}
-
-		if fd.Kind() == protoreflect.MessageKind && !fd.IsList() && !fd.IsMap() {
-			collectStringMapEntries(v.Message(), entries)
-		}
-
-		return true
-	})
-}
