@@ -37,6 +37,22 @@ func runPipeline(t *testing.T, ctx context.Context, pipeline ledger.Pipeline, st
 	return handler, lastLogIDChannel
 }
 
+func TestWithPullPeriodMinimum(t *testing.T) {
+	t.Parallel()
+
+	config := PipelineHandlerConfig{}
+	WithPullPeriod(1)(&config)
+	require.Equal(t, time.Duration(2), config.PullInterval)
+}
+
+func TestWithPushRetryPeriodMinimum(t *testing.T) {
+	t.Parallel()
+
+	config := PipelineHandlerConfig{}
+	WithPushRetryPeriod(1)(&config)
+	require.Equal(t, time.Duration(2), config.PushRetryPeriod)
+}
+
 func TestPipeline(t *testing.T) {
 	t.Parallel()
 

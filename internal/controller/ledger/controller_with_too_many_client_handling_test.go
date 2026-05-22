@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -50,6 +51,32 @@ func TestNewControllerWithTooManyClientHandling(t *testing.T) {
 		ledgerController := NewControllerWithTooManyClientHandling(underlyingLedgerController, noop.Tracer{}, delayCalculator)
 		_, _, _, err := ledgerController.CreateTransaction(ctx, parameters)
 		require.NoError(t, err)
+	})
+
+	t.Run("context canceled during retry wait", func(t *testing.T) {
+		t.Parallel()
+
+		ctrl := gomock.NewController(t)
+		underlyingLedgerController := NewMockController(ctrl)
+		delayCalculator := NewMockDelayCalculator(ctrl)
+		ctx, cancel := context.WithCancel(logging.TestingContext())
+
+		parameters := Parameters[CreateTransaction]{}
+
+		underlyingLedgerController.EXPECT().
+			CreateTransaction(gomock.Any(), parameters).
+			Return(nil, nil, false, postgres.ErrTooManyClient{})
+
+		delayCalculator.EXPECT().
+			Next(0).
+			DoAndReturn(func(int) time.Duration {
+				cancel()
+				return time.Hour
+			})
+
+		ledgerController := NewControllerWithTooManyClientHandling(underlyingLedgerController, noop.Tracer{}, delayCalculator)
+		_, _, _, err := ledgerController.CreateTransaction(ctx, parameters)
+		require.ErrorIs(t, err, context.Canceled)
 	})
 
 	t.Run("finally failing", func(t *testing.T) {

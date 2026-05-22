@@ -39,6 +39,24 @@ func startManager(
 	return manager
 }
 
+func TestWithSyncPeriodMinimum(t *testing.T) {
+	t.Parallel()
+
+	m := &Manager{}
+	WithSyncPeriod(1)(m)
+	require.Equal(t, time.Duration(2), m.syncPeriod)
+}
+
+func TestNewDriverFacadeMinimumRetryInterval(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	driver := drivers.NewMockDriver(ctrl)
+
+	facade := newDriverFacade(driver, logging.Testing(), 1)
+	require.Equal(t, time.Duration(2), facade.retryInterval)
+}
+
 func TestManagerExportersNominal(t *testing.T) {
 	t.Parallel()
 
