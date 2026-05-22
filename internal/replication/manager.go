@@ -3,6 +3,7 @@ package replication
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -274,7 +275,7 @@ func (m *Manager) Run(ctx context.Context) {
 			m.pipelinesWaitGroup.Wait()
 			close(signalChannel)
 			return
-		case <-time.After(m.syncPeriod):
+		case <-time.After(m.syncPeriod + time.Duration(rand.Int63n(int64(m.syncPeriod/2)))):
 			withLock(func() {
 				if err := m.synchronizePipelines(ctx); err != nil {
 					m.logger.Errorf("synchronizing pipelines: %s", err)

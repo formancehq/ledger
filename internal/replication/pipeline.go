@@ -2,6 +2,7 @@ package replication
 
 import (
 	"context"
+	"math/rand"
 	"time"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -97,7 +98,7 @@ func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan uint64) {
 				case ch := <-p.stopChannel:
 					stop(ch)
 					return
-				case <-time.After(p.pipelineConfig.PullInterval):
+				case <-time.After(p.pipelineConfig.PullInterval + time.Duration(rand.Int63n(int64(p.pipelineConfig.PullInterval/2)))):
 					continue
 				}
 			}
@@ -130,7 +131,7 @@ func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan uint64) {
 						case ch := <-p.stopChannel:
 							stop(ch)
 							return
-						case <-time.After(p.pipelineConfig.PushRetryPeriod):
+						case <-time.After(p.pipelineConfig.PushRetryPeriod + time.Duration(rand.Int63n(int64(p.pipelineConfig.PushRetryPeriod/2)))):
 							continue
 						}
 					}

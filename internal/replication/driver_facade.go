@@ -2,6 +2,7 @@ package replication
 
 import (
 	"context"
+	"math/rand"
 	"time"
 
 	"github.com/pkg/errors"
@@ -41,7 +42,7 @@ func (c *DriverFacade) Run(ctx context.Context) {
 				select {
 				case <-c.startContext.Done():
 					return
-				case <-time.After(c.retryInterval):
+				case <-time.After(c.retryInterval + time.Duration(rand.Int63n(int64(c.retryInterval/2)))):
 				}
 				continue
 			}
