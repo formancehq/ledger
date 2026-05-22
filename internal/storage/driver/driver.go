@@ -106,16 +106,28 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 
 func (d *Driver) getCachedLedger(name string) (ledger.Ledger, bool) {
 	d.mu.RLock()
-	defer d.mu.RUnlock()
 	entry, ok := d.ledgerCache[name]
-	if !ok || time.Now().After(entry.expiresAt) {
+	d.mu.RUnlock()
+
+	if !ok {
 		return ledger.Ledger{}, false
 	}
+
+	if time.Now().After(entry.expiresAt) {
+		d.mu.Lock()
+		// Double-check: another goroutine may have refreshed the entry.
+		if e, still := d.ledgerCache[name]; still && time.Now().After(e.expiresAt) {
+			delete(d.ledgerCache, name)
+		}
+		d.mu.Unlock()
+		return ledger.Ledger{}, false
+	}
+
 	return entry.ledger, true
 }
 
 func (d *Driver) setCachedLedger(l ledger.Ledger) {
-	if d.cacheTTL == 0 {
+	if d.cacheTTL <= 0 {
 		return
 	}
 	d.mu.Lock()
@@ -258,13 +270,19 @@ func (d *Driver) detectRollbacks(ctx context.Context) error {
 }
 
 func (d *Driver) UpdateLedgerMetadata(ctx context.Context, name string, m metadata.Metadata) error {
+	if err := d.systemStoreFactory.Create(d.db).UpdateLedgerMetadata(ctx, name, m); err != nil {
+		return err
+	}
 	d.evictCachedLedger(name)
-	return d.systemStoreFactory.Create(d.db).UpdateLedgerMetadata(ctx, name, m)
+	return nil
 }
 
 func (d *Driver) DeleteLedgerMetadata(ctx context.Context, name string, key string) error {
+	if err := d.systemStoreFactory.Create(d.db).DeleteLedgerMetadata(ctx, name, key); err != nil {
+		return err
+	}
 	d.evictCachedLedger(name)
-	return d.systemStoreFactory.Create(d.db).DeleteLedgerMetadata(ctx, name, key)
+	return nil
 }
 
 func (d *Driver) ListLedgers(ctx context.Context, q common.PaginatedQuery[systemstore.ListLedgersQueryPayload]) (*paginate.Cursor[ledger.Ledger], error) {

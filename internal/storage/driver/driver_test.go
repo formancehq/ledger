@@ -331,11 +331,10 @@ func TestOpenLedgerConcurrentColdCacheCoalesces(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Singleflight collapses concurrent cache misses: DB query count should be
-	// well below goroutines (ideally 2 — GetLedger + CountLedgersInBucket).
-	t.Logf("DB queries for %d concurrent cold-cache OpenLedger calls: %d", goroutines, counter.n.Load())
-	require.Less(t, counter.n.Load(), int64(goroutines),
-		"singleflight should collapse concurrent cache misses")
+	// Singleflight must collapse all concurrent cache misses into a single DB
+	// round-trip: GetLedger (1) + CountLedgersInBucket (1) = 2 queries total.
+	require.LessOrEqual(t, counter.n.Load(), int64(2),
+		"singleflight should reduce concurrent cache misses to a single DB call")
 }
 
 // TestOpenLedgerCacheTTLExpiry verifies that after the TTL elapses, OpenLedger
