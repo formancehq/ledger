@@ -313,7 +313,7 @@ func TestCheckClosePeriod(t *testing.T) {
 				CreatedLog: &commonpb.Log{
 					Sequence: 10,
 					Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_ClosePeriod{
-						ClosePeriod: &commonpb.ClosePeriodLog{
+						ClosePeriod: &commonpb.ClosedPeriodLog{
 							ClosedPeriod: closedPeriod,
 						},
 					}},
@@ -353,7 +353,7 @@ func TestCheckClosePeriodReturnsLatestWhenMultiple(t *testing.T) {
 				CreatedLog: &commonpb.Log{
 					Sequence: 10,
 					Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_ClosePeriod{
-						ClosePeriod: &commonpb.ClosePeriodLog{
+						ClosePeriod: &commonpb.ClosedPeriodLog{
 							ClosedPeriod: latestPeriod,
 						},
 					}},

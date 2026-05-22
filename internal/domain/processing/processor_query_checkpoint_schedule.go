@@ -34,7 +34,7 @@ func (p *RequestProcessor) processDeleteQueryCheckpointSchedule(s InMemoryStore)
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_DeleteQueryCheckpointSchedule{
-			DeleteQueryCheckpointSchedule: &commonpb.DeleteQueryCheckpointScheduleLog{},
+			DeleteQueryCheckpointSchedule: &commonpb.DeletedQueryCheckpointScheduleLog{},
 		},
 	}, nil
 }

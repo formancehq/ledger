@@ -67,7 +67,7 @@ func TestEventToClickHouseJSON_CreateLedger(t *testing.T) {
 			Sequence: 1,
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_CreateLedger{
-					CreateLedger: &commonpb.CreateLedgerLog{
+					CreateLedger: &commonpb.CreatedLedgerLog{
 						Name: "orders",
 					},
 				},
@@ -95,7 +95,7 @@ func TestEventToClickHouseJSON_DeleteLedger(t *testing.T) {
 			Sequence: 2,
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_DeleteLedger{
-					DeleteLedger: &commonpb.DeleteLedgerLog{
+					DeleteLedger: &commonpb.DeletedLedgerLog{
 						Name: "old-ledger",
 					},
 				},
@@ -349,7 +349,7 @@ func TestEventToClickHouseJSON_RegisterSigningKey(t *testing.T) {
 			Sequence: 7,
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_RegisterSigningKey{
-					RegisterSigningKey: &commonpb.RegisterSigningKeyLog{
+					RegisterSigningKey: &commonpb.RegisteredSigningKeyLog{
 						KeyId:     "key-001",
 						PublicKey: []byte{0xab, 0xcd},
 					},
@@ -379,7 +379,7 @@ func TestEventToClickHouseJSON_RevokeSigningKey(t *testing.T) {
 			Sequence: 8,
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_RevokeSigningKey{
-					RevokeSigningKey: &commonpb.RevokeSigningKeyLog{
+					RevokeSigningKey: &commonpb.RevokedSigningKeyLog{
 						KeyId: "key-001",
 					},
 				},

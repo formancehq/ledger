@@ -21,7 +21,7 @@ func TestHandlePromoteLedger_Success(t *testing.T) {
 			return []*commonpb.Log{{
 				Payload: &commonpb.LogPayload{
 					Type: &commonpb.LogPayload_PromoteLedger{
-						PromoteLedger: &commonpb.PromoteLedgerLog{
+						PromoteLedger: &commonpb.PromotedLedgerLog{
 							Name: "mirror-ledger",
 						},
 					},

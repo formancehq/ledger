@@ -122,7 +122,7 @@ func TestParsePostingsFromLog_NonDataLog(t *testing.T) {
 						Id: 1,
 						Data: &commonpb.LedgerLogPayload{
 							Payload: &commonpb.LedgerLogPayload_CreateIndex{
-								CreateIndex: &commonpb.CreateIndexLog{},
+								CreateIndex: &commonpb.CreatedIndexLog{},
 							},
 						},
 					},
@@ -150,7 +150,7 @@ func TestParsePostingsFromLog_NonApplyLog(t *testing.T) {
 		Sequence: 5,
 		Payload: &commonpb.LogPayload{
 			Type: &commonpb.LogPayload_CreateLedger{
-				CreateLedger: &commonpb.CreateLedgerLog{},
+				CreateLedger: &commonpb.CreatedLedgerLog{},
 			},
 		},
 	}

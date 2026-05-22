@@ -48,7 +48,7 @@ func TestResponseSigner(t *testing.T) {
 			Sequence: 42,
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_CreateLedger{
-					CreateLedger: &commonpb.CreateLedgerLog{
+					CreateLedger: &commonpb.CreatedLedgerLog{
 						Name: "test-ledger",
 					},
 				},
@@ -73,7 +73,7 @@ func TestResponseSigner(t *testing.T) {
 			Sequence: 1,
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_CreateLedger{
-					CreateLedger: &commonpb.CreateLedgerLog{
+					CreateLedger: &commonpb.CreatedLedgerLog{
 						Name: "test",
 					},
 				},
@@ -101,7 +101,7 @@ func TestResponseSigner(t *testing.T) {
 			Sequence: 1,
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_CreateLedger{
-					CreateLedger: &commonpb.CreateLedgerLog{
+					CreateLedger: &commonpb.CreatedLedgerLog{
 						Name: "test",
 					},
 				},
@@ -133,7 +133,7 @@ func TestResponseSigner(t *testing.T) {
 			Receipt:  "some-jwt-token",
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_CreateLedger{
-					CreateLedger: &commonpb.CreateLedgerLog{
+					CreateLedger: &commonpb.CreatedLedgerLog{
 						Name: "test",
 					},
 				},
@@ -145,7 +145,7 @@ func TestResponseSigner(t *testing.T) {
 			Receipt:  "different-jwt-token",
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_CreateLedger{
-					CreateLedger: &commonpb.CreateLedgerLog{
+					CreateLedger: &commonpb.CreatedLedgerLog{
 						Name: "test",
 					},
 				},

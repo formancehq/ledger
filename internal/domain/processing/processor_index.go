@@ -18,7 +18,7 @@ func (p *RequestProcessor) processCreateIndex(
 
 	info = info.CloneVT()
 
-	logPayload := &commonpb.CreateIndexLog{}
+	logPayload := &commonpb.CreatedIndexLog{}
 
 	switch idx := order.GetIndex().(type) {
 	case *raftcmdpb.CreateIndexOrder_Transaction:
@@ -29,18 +29,18 @@ func (p *RequestProcessor) processCreateIndex(
 			}
 
 			if isBuiltinIndexedAndReady(info.GetBuiltinIndexes(), kind.Builtin) {
-				return buildCreateIndexLogPayload(logPayload), nil
+				return buildCreatedIndexLogPayload(logPayload), nil
 			}
 
 			setBuiltinIndexed(info.GetBuiltinIndexes(), kind.Builtin, true, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING)
 
 		case *commonpb.TransactionIndex_MetadataKey:
 			if alreadyReady := processCreateMetadataIndex(info, commonpb.TargetType_TARGET_TYPE_TRANSACTION, kind.MetadataKey); alreadyReady {
-				return buildCreateIndexLogPayload(logPayload), nil
+				return buildCreatedIndexLogPayload(logPayload), nil
 			}
 		}
 
-		logPayload.Index = &commonpb.CreateIndexLog_Transaction{Transaction: idx.Transaction}
+		logPayload.Index = &commonpb.CreatedIndexLog_Transaction{Transaction: idx.Transaction}
 
 	case *raftcmdpb.CreateIndexOrder_Account:
 		switch kind := idx.Account.GetKind().(type) {
@@ -50,11 +50,11 @@ func (p *RequestProcessor) processCreateIndex(
 
 		case *commonpb.AccountIndex_MetadataKey:
 			if alreadyReady := processCreateMetadataIndex(info, commonpb.TargetType_TARGET_TYPE_ACCOUNT, kind.MetadataKey); alreadyReady {
-				return buildCreateIndexLogPayload(logPayload), nil
+				return buildCreatedIndexLogPayload(logPayload), nil
 			}
 		}
 
-		logPayload.Index = &commonpb.CreateIndexLog_Account{Account: idx.Account}
+		logPayload.Index = &commonpb.CreatedIndexLog_Account{Account: idx.Account}
 
 	case *raftcmdpb.CreateIndexOrder_LogBuiltin:
 		if info.GetLogBuiltinIndexes() == nil {
@@ -62,16 +62,16 @@ func (p *RequestProcessor) processCreateIndex(
 		}
 
 		if isLogBuiltinIndexedAndReady(info.GetLogBuiltinIndexes(), idx.LogBuiltin) {
-			return buildCreateIndexLogPayload(logPayload), nil
+			return buildCreatedIndexLogPayload(logPayload), nil
 		}
 
 		setLogBuiltinIndexed(info.GetLogBuiltinIndexes(), idx.LogBuiltin, true, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING)
-		logPayload.Index = &commonpb.CreateIndexLog_LogBuiltin{LogBuiltin: idx.LogBuiltin}
+		logPayload.Index = &commonpb.CreatedIndexLog_LogBuiltin{LogBuiltin: idx.LogBuiltin}
 	}
 
 	s.PutLedger(ledgerName, info)
 
-	return buildCreateIndexLogPayload(logPayload), nil
+	return buildCreatedIndexLogPayload(logPayload), nil
 }
 
 func (p *RequestProcessor) processDropIndex(
@@ -86,7 +86,7 @@ func (p *RequestProcessor) processDropIndex(
 
 	info = info.CloneVT()
 
-	logPayload := &commonpb.DropIndexLog{}
+	logPayload := &commonpb.DroppedIndexLog{}
 
 	switch idx := order.GetIndex().(type) {
 	case *raftcmdpb.DropIndexOrder_Transaction:
@@ -100,7 +100,7 @@ func (p *RequestProcessor) processDropIndex(
 			processDropMetadataIndex(info, commonpb.TargetType_TARGET_TYPE_TRANSACTION, kind.MetadataKey)
 		}
 
-		logPayload.Index = &commonpb.DropIndexLog_Transaction{Transaction: idx.Transaction}
+		logPayload.Index = &commonpb.DroppedIndexLog_Transaction{Transaction: idx.Transaction}
 
 	case *raftcmdpb.DropIndexOrder_Account:
 		switch kind := idx.Account.GetKind().(type) {
@@ -112,14 +112,14 @@ func (p *RequestProcessor) processDropIndex(
 			processDropMetadataIndex(info, commonpb.TargetType_TARGET_TYPE_ACCOUNT, kind.MetadataKey)
 		}
 
-		logPayload.Index = &commonpb.DropIndexLog_Account{Account: idx.Account}
+		logPayload.Index = &commonpb.DroppedIndexLog_Account{Account: idx.Account}
 
 	case *raftcmdpb.DropIndexOrder_LogBuiltin:
 		if info.GetLogBuiltinIndexes() != nil {
 			setLogBuiltinIndexed(info.GetLogBuiltinIndexes(), idx.LogBuiltin, false, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_UNSPECIFIED)
 		}
 
-		logPayload.Index = &commonpb.DropIndexLog_LogBuiltin{LogBuiltin: idx.LogBuiltin}
+		logPayload.Index = &commonpb.DroppedIndexLog_LogBuiltin{LogBuiltin: idx.LogBuiltin}
 	}
 
 	s.PutLedger(ledgerName, info)
@@ -188,7 +188,7 @@ func ProcessIndexReadyMetadata(info *commonpb.LedgerInfo, target commonpb.Target
 	}
 }
 
-func buildCreateIndexLogPayload(log *commonpb.CreateIndexLog) *commonpb.LedgerLogPayload {
+func buildCreatedIndexLogPayload(log *commonpb.CreatedIndexLog) *commonpb.LedgerLogPayload {
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_CreateIndex{
 			CreateIndex: log,

@@ -726,7 +726,7 @@ sequenceDiagram
     FSM->>Store: Commit batch (period state update)
     FSM->>Store: Maintenance task: CreateSealCheckpoint()
     FSM-->>Sealer: SealRequest (via channel)
-    FSM-->>Admission: ClosePeriodLog
+    FSM-->>Admission: ClosedPeriodLog
 
     Ctrl-->>API: ApplyResponse
     API-->>Client: Response (period is now CLOSING)
@@ -741,7 +741,7 @@ sequenceDiagram
     Admission->>FSM: SealPeriod via Raft
     FSM->>FSM: CLOSING → CLOSED + set sealing_hash
     FSM->>Store: Commit batch (period state update)
-    FSM-->>Admission: SealPeriodLog
+    FSM-->>Admission: SealedPeriodLog
 ```
 
 ### Detailed Steps

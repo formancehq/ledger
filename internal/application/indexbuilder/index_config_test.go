@@ -140,13 +140,13 @@ func TestGetOrCreateLedgerConfig(t *testing.T) {
 	assert.Same(t, cfg, cfg2)
 }
 
-func TestHandleCreateIndexLog_TxBuiltin(t *testing.T) {
+func TestHandleCreatedIndexLog_TxBuiltin(t *testing.T) {
 	t.Parallel()
 
 	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
 
-	b.handleCreateIndexLog("ledger1", 1, &commonpb.CreateIndexLog{
-		Index: &commonpb.CreateIndexLog_Transaction{
+	b.handleCreatedIndexLog("ledger1", 1, &commonpb.CreatedIndexLog{
+		Index: &commonpb.CreatedIndexLog_Transaction{
 			Transaction: &commonpb.TransactionIndex{
 				Kind: &commonpb.TransactionIndex_Builtin{
 					Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
@@ -163,13 +163,13 @@ func TestHandleCreateIndexLog_TxBuiltin(t *testing.T) {
 	assert.Equal(t, "ledger1", b.backfillTasks[0].ledger)
 }
 
-func TestHandleCreateIndexLog_TxMetadata(t *testing.T) {
+func TestHandleCreatedIndexLog_TxMetadata(t *testing.T) {
 	t.Parallel()
 
 	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
 
-	b.handleCreateIndexLog("ledger1", 1, &commonpb.CreateIndexLog{
-		Index: &commonpb.CreateIndexLog_Transaction{
+	b.handleCreatedIndexLog("ledger1", 1, &commonpb.CreatedIndexLog{
+		Index: &commonpb.CreatedIndexLog_Transaction{
 			Transaction: &commonpb.TransactionIndex{
 				Kind: &commonpb.TransactionIndex_MetadataKey{MetadataKey: "category"},
 			},
@@ -182,13 +182,13 @@ func TestHandleCreateIndexLog_TxMetadata(t *testing.T) {
 	require.Len(t, b.backfillTasks, 1)
 }
 
-func TestHandleCreateIndexLog_AcctMetadata(t *testing.T) {
+func TestHandleCreatedIndexLog_AcctMetadata(t *testing.T) {
 	t.Parallel()
 
 	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
 
-	b.handleCreateIndexLog("ledger1", 1, &commonpb.CreateIndexLog{
-		Index: &commonpb.CreateIndexLog_Account{
+	b.handleCreatedIndexLog("ledger1", 1, &commonpb.CreatedIndexLog{
+		Index: &commonpb.CreatedIndexLog_Account{
 			Account: &commonpb.AccountIndex{
 				Kind: &commonpb.AccountIndex_MetadataKey{MetadataKey: "role"},
 			},
@@ -201,13 +201,13 @@ func TestHandleCreateIndexLog_AcctMetadata(t *testing.T) {
 	require.Len(t, b.backfillTasks, 1)
 }
 
-func TestHandleCreateIndexLog_AcctBuiltin(t *testing.T) {
+func TestHandleCreatedIndexLog_AcctBuiltin(t *testing.T) {
 	t.Parallel()
 
 	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
 
-	b.handleCreateIndexLog("ledger1", 1, &commonpb.CreateIndexLog{
-		Index: &commonpb.CreateIndexLog_Account{
+	b.handleCreatedIndexLog("ledger1", 1, &commonpb.CreatedIndexLog{
+		Index: &commonpb.CreatedIndexLog_Account{
 			Account: &commonpb.AccountIndex{
 				Kind: &commonpb.AccountIndex_Builtin{
 					Builtin: commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED,
@@ -223,13 +223,13 @@ func TestHandleCreateIndexLog_AcctBuiltin(t *testing.T) {
 	assert.Empty(t, b.backfillTasks)
 }
 
-func TestHandleCreateIndexLog_LogBuiltin(t *testing.T) {
+func TestHandleCreatedIndexLog_LogBuiltin(t *testing.T) {
 	t.Parallel()
 
 	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
 
-	b.handleCreateIndexLog("ledger1", 1, &commonpb.CreateIndexLog{
-		Index: &commonpb.CreateIndexLog_LogBuiltin{
+	b.handleCreatedIndexLog("ledger1", 1, &commonpb.CreatedIndexLog{
+		Index: &commonpb.CreatedIndexLog_LogBuiltin{
 			LogBuiltin: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
 		},
 	})
@@ -258,7 +258,7 @@ func newTestBuilderWithStore(t *testing.T) *Builder {
 	}
 }
 
-func TestHandleDropIndexLog_TxBuiltin(t *testing.T) {
+func TestHandleDroppedIndexLog_TxBuiltin(t *testing.T) {
 	t.Parallel()
 
 	b := newTestBuilderWithStore(t)
@@ -270,8 +270,8 @@ func TestHandleDropIndexLog_TxBuiltin(t *testing.T) {
 	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 	require.Len(t, b.backfillTasks, 1)
 
-	b.handleDropIndexLog("ledger1", &commonpb.DropIndexLog{
-		Index: &commonpb.DropIndexLog_Transaction{
+	b.handleDroppedIndexLog("ledger1", &commonpb.DroppedIndexLog{
+		Index: &commonpb.DroppedIndexLog_Transaction{
 			Transaction: &commonpb.TransactionIndex{
 				Kind: &commonpb.TransactionIndex_Builtin{
 					Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
@@ -284,7 +284,7 @@ func TestHandleDropIndexLog_TxBuiltin(t *testing.T) {
 	assert.Empty(t, b.backfillTasks)
 }
 
-func TestHandleDropIndexLog_TxMetadata(t *testing.T) {
+func TestHandleDroppedIndexLog_TxMetadata(t *testing.T) {
 	t.Parallel()
 
 	b := newTestBuilderWithStore(t)
@@ -295,8 +295,8 @@ func TestHandleDropIndexLog_TxMetadata(t *testing.T) {
 	b.addBackfillTaskForTxMetadata("ledger1", 1, "category")
 	require.Len(t, b.backfillTasks, 1)
 
-	b.handleDropIndexLog("ledger1", &commonpb.DropIndexLog{
-		Index: &commonpb.DropIndexLog_Transaction{
+	b.handleDroppedIndexLog("ledger1", &commonpb.DroppedIndexLog{
+		Index: &commonpb.DroppedIndexLog_Transaction{
 			Transaction: &commonpb.TransactionIndex{
 				Kind: &commonpb.TransactionIndex_MetadataKey{MetadataKey: "category"},
 			},
@@ -307,7 +307,7 @@ func TestHandleDropIndexLog_TxMetadata(t *testing.T) {
 	assert.Empty(t, b.backfillTasks)
 }
 
-func TestHandleDropIndexLog_AcctBuiltin(t *testing.T) {
+func TestHandleDroppedIndexLog_AcctBuiltin(t *testing.T) {
 	t.Parallel()
 
 	b := newTestBuilderWithStore(t)
@@ -315,8 +315,8 @@ func TestHandleDropIndexLog_AcctBuiltin(t *testing.T) {
 	cfg.acctBuiltinIndexed[commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED] = true
 	b.indexConfig["ledger1"] = cfg
 
-	b.handleDropIndexLog("ledger1", &commonpb.DropIndexLog{
-		Index: &commonpb.DropIndexLog_Account{
+	b.handleDroppedIndexLog("ledger1", &commonpb.DroppedIndexLog{
+		Index: &commonpb.DroppedIndexLog_Account{
 			Account: &commonpb.AccountIndex{
 				Kind: &commonpb.AccountIndex_Builtin{
 					Builtin: commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED,
@@ -328,7 +328,7 @@ func TestHandleDropIndexLog_AcctBuiltin(t *testing.T) {
 	assert.False(t, cfg.acctBuiltinIndexed[commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED])
 }
 
-func TestHandleDropIndexLog_AcctMetadata(t *testing.T) {
+func TestHandleDroppedIndexLog_AcctMetadata(t *testing.T) {
 	t.Parallel()
 
 	b := newTestBuilderWithStore(t)
@@ -339,8 +339,8 @@ func TestHandleDropIndexLog_AcctMetadata(t *testing.T) {
 	b.addBackfillTaskForAcctMetadata("ledger1", 1, "role")
 	require.Len(t, b.backfillTasks, 1)
 
-	b.handleDropIndexLog("ledger1", &commonpb.DropIndexLog{
-		Index: &commonpb.DropIndexLog_Account{
+	b.handleDroppedIndexLog("ledger1", &commonpb.DroppedIndexLog{
+		Index: &commonpb.DroppedIndexLog_Account{
 			Account: &commonpb.AccountIndex{
 				Kind: &commonpb.AccountIndex_MetadataKey{MetadataKey: "role"},
 			},
@@ -351,7 +351,7 @@ func TestHandleDropIndexLog_AcctMetadata(t *testing.T) {
 	assert.Empty(t, b.backfillTasks)
 }
 
-func TestHandleDropIndexLog_LogBuiltin(t *testing.T) {
+func TestHandleDroppedIndexLog_LogBuiltin(t *testing.T) {
 	t.Parallel()
 
 	b := newTestBuilderWithStore(t)
@@ -362,8 +362,8 @@ func TestHandleDropIndexLog_LogBuiltin(t *testing.T) {
 	b.addBackfillTaskForLogBuiltin("ledger1", 1, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER)
 	require.Len(t, b.backfillTasks, 1)
 
-	b.handleDropIndexLog("ledger1", &commonpb.DropIndexLog{
-		Index: &commonpb.DropIndexLog_LogBuiltin{
+	b.handleDroppedIndexLog("ledger1", &commonpb.DroppedIndexLog{
+		Index: &commonpb.DroppedIndexLog_LogBuiltin{
 			LogBuiltin: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER,
 		},
 	})

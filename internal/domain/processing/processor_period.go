@@ -44,7 +44,7 @@ func (p *RequestProcessor) processClosePeriod(_ *raftcmdpb.ClosePeriodOrder, s I
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_ClosePeriod{
-			ClosePeriod: &commonpb.ClosePeriodLog{
+			ClosePeriod: &commonpb.ClosedPeriodLog{
 				ClosedPeriod: closedPeriodSnapshot,
 				NewPeriod:    newPeriod,
 			},
@@ -73,7 +73,7 @@ func (p *RequestProcessor) processSealPeriod(order *raftcmdpb.SealPeriodOrder, s
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_SealPeriod{
-			SealPeriod: &commonpb.SealPeriodLog{
+			SealPeriod: &commonpb.SealedPeriodLog{
 				Period: closingPeriod,
 			},
 		},
@@ -81,7 +81,7 @@ func (p *RequestProcessor) processSealPeriod(order *raftcmdpb.SealPeriodOrder, s
 }
 
 // processArchivePeriod handles the ArchivePeriod order.
-// It transitions the period from CLOSED → ARCHIVING and returns an ArchivePeriodLog
+// It transitions the period from CLOSED → ARCHIVING and returns an ArchivedPeriodLog
 // to signal the background Archiver (leader-only dispatch happens in Node).
 func (p *RequestProcessor) processArchivePeriod(order *raftcmdpb.ArchivePeriodOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
 	period, ok := s.GetPeriodByID(order.GetPeriodId())
@@ -102,7 +102,7 @@ func (p *RequestProcessor) processArchivePeriod(order *raftcmdpb.ArchivePeriodOr
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_ArchivePeriod{
-			ArchivePeriod: &commonpb.ArchivePeriodLog{
+			ArchivePeriod: &commonpb.ArchivedPeriodLog{
 				Period: period,
 			},
 		},
@@ -131,7 +131,7 @@ func (p *RequestProcessor) processConfirmArchivePeriod(order *raftcmdpb.ConfirmA
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_ConfirmArchivePeriod{
-			ConfirmArchivePeriod: &commonpb.ConfirmArchivePeriodLog{
+			ConfirmArchivePeriod: &commonpb.ConfirmedArchivePeriodLog{
 				Period: period,
 			},
 		},

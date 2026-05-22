@@ -992,7 +992,7 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 	return len(dAtA) - i, nil
 }
 
-func (m *PromoteLedgerLog) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *PromotedLedgerLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -1003,7 +1003,7 @@ func (m *PromoteLedgerLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *RegisterSigningKeyLog) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *RegisteredSigningKeyLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -1014,7 +1014,7 @@ func (m *RegisterSigningKeyLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *RevokeSigningKeyLog) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *RevokedSigningKeyLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -1124,7 +1124,7 @@ func (m *SetPeriodScheduleLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *DeletePeriodScheduleLog) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *DeletedPeriodScheduleLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -1290,7 +1290,7 @@ func (m *SetQueryCheckpointScheduleLog) MarshalDeterministicVT(dAtA []byte) []by
 	return append(dAtA, b...)
 }
 
-func (m *DeleteQueryCheckpointScheduleLog) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *DeletedQueryCheckpointScheduleLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -1411,7 +1411,7 @@ func (m *DatabricksSinkConfig) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *CreateLedgerLog) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *CreatedLedgerLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -1421,7 +1421,7 @@ func (m *CreateLedgerLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, buf[sz-n:]...)
 }
 
-func (m *CreateLedgerLog) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
+func (m *CreatedLedgerLog) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -1495,7 +1495,7 @@ func (m *CreateLedgerLog) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int,
 	return len(dAtA) - i, nil
 }
 
-func (m *DeleteLedgerLog) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *DeletedLedgerLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -1704,7 +1704,7 @@ func (m *LedgerLogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 	return len(dAtA) - i, nil
 }
 
-func (m *CreateIndexLog) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *CreatedIndexLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -1715,7 +1715,7 @@ func (m *CreateIndexLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *DropIndexLog) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *DroppedIndexLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -1726,7 +1726,7 @@ func (m *DropIndexLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *FillGapLog) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *FilledGapLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -1970,7 +1970,7 @@ func (m *Period) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *ClosePeriodLog) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *ClosedPeriodLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -1981,7 +1981,7 @@ func (m *ClosePeriodLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *SealPeriodLog) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *SealedPeriodLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -1992,7 +1992,7 @@ func (m *SealPeriodLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *ArchivePeriodLog) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *ArchivedPeriodLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -2003,7 +2003,7 @@ func (m *ArchivePeriodLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *ConfirmArchivePeriodLog) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *ConfirmedArchivePeriodLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}

@@ -56,7 +56,7 @@ func TestProcessCreateLedger(t *testing.T) {
 	createLedgerLog := result.GetCreateLedger()
 	require.NotNil(t, createLedgerLog)
 	require.Equal(t, "test-ledger", createLedgerLog.GetName())
-	require.Equal(t, uint32(1), createLedgerLog.GetId(), "CreateLedgerLog should have Id == 1")
+	require.Equal(t, uint32(1), createLedgerLog.GetId(), "CreatedLedgerLog should have Id == 1")
 }
 
 func TestProcessCreateLedger_AlreadyExists(t *testing.T) {

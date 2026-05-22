@@ -24,8 +24,8 @@ Events map directly to the global log payload types:
 | `REVERTED_TRANSACTION` | Transaction reverted | `RevertedTransaction` |
 | `SAVED_METADATA` | Metadata saved on account or transaction | `SavedMetadata` |
 | `DELETED_METADATA` | Metadata key deleted | `DeletedMetadata` |
-| `CREATED_LEDGER` | Ledger created | `CreateLedgerLog` |
-| `DELETED_LEDGER` | Ledger deleted | `DeleteLedgerLog` |
+| `CREATED_LEDGER` | Ledger created | `CreatedLedgerLog` |
+| `DELETED_LEDGER` | Ledger deleted | `DeletedLedgerLog` |
 
 ### Compatibility with Reference Implementation
 

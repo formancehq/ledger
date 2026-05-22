@@ -321,14 +321,14 @@ func (b *Builder) getOrCreateLedgerConfig(ledger string) *ledgerIndexConfig {
 	return cfg
 }
 
-// handleCreateIndexLog updates the index config cache when a CreateIndex log is processed.
+// handleCreatedIndexLog updates the index config cache when a CreateIndex log is processed.
 // The index starts in BUILDING state — it is NOT marked as ready here.
 // A backfill task is created to replay historical logs for the new index.
-func (b *Builder) handleCreateIndexLog(ledger string, ledgerID uint32, log *commonpb.CreateIndexLog) {
+func (b *Builder) handleCreatedIndexLog(ledger string, ledgerID uint32, log *commonpb.CreatedIndexLog) {
 	cfg := b.getOrCreateLedgerConfig(ledger)
 
 	switch idx := log.GetIndex().(type) {
-	case *commonpb.CreateIndexLog_Transaction:
+	case *commonpb.CreatedIndexLog_Transaction:
 		switch txIdx := idx.Transaction.GetKind().(type) {
 		case *commonpb.TransactionIndex_Builtin:
 			cfg.txBuiltinIndexed[txIdx.Builtin] = true
@@ -337,7 +337,7 @@ func (b *Builder) handleCreateIndexLog(ledger string, ledgerID uint32, log *comm
 			cfg.txMetadataIndexed[txIdx.MetadataKey] = true
 			b.addBackfillTaskForTxMetadata(ledger, ledgerID, txIdx.MetadataKey)
 		}
-	case *commonpb.CreateIndexLog_Account:
+	case *commonpb.CreatedIndexLog_Account:
 		switch acctIdx := idx.Account.GetKind().(type) {
 		case *commonpb.AccountIndex_Builtin:
 			cfg.acctBuiltinIndexed[acctIdx.Builtin] = true
@@ -346,19 +346,19 @@ func (b *Builder) handleCreateIndexLog(ledger string, ledgerID uint32, log *comm
 			cfg.acctMetadataIndexed[acctIdx.MetadataKey] = true
 			b.addBackfillTaskForAcctMetadata(ledger, ledgerID, acctIdx.MetadataKey)
 		}
-	case *commonpb.CreateIndexLog_LogBuiltin:
+	case *commonpb.CreatedIndexLog_LogBuiltin:
 		cfg.logBuiltinIndexed[idx.LogBuiltin] = true
 		b.addBackfillTaskForLogBuiltin(ledger, ledgerID, idx.LogBuiltin)
 	}
 }
 
-// handleDropIndexLog updates the index config cache when a DropIndex log is processed.
+// handleDroppedIndexLog updates the index config cache when a DropIndex log is processed.
 // It also removes any active backfill task for the dropped index.
-func (b *Builder) handleDropIndexLog(ledger string, log *commonpb.DropIndexLog) {
+func (b *Builder) handleDroppedIndexLog(ledger string, log *commonpb.DroppedIndexLog) {
 	cfg := b.getOrCreateLedgerConfig(ledger)
 
 	switch idx := log.GetIndex().(type) {
-	case *commonpb.DropIndexLog_Transaction:
+	case *commonpb.DroppedIndexLog_Transaction:
 		switch txIdx := idx.Transaction.GetKind().(type) {
 		case *commonpb.TransactionIndex_Builtin:
 			delete(cfg.txBuiltinIndexed, txIdx.Builtin)
@@ -367,7 +367,7 @@ func (b *Builder) handleDropIndexLog(ledger string, log *commonpb.DropIndexLog) 
 			delete(cfg.txMetadataIndexed, txIdx.MetadataKey)
 			b.removeBackfillTask(indexID{transaction: idx.Transaction})
 		}
-	case *commonpb.DropIndexLog_Account:
+	case *commonpb.DroppedIndexLog_Account:
 		switch acctIdx := idx.Account.GetKind().(type) {
 		case *commonpb.AccountIndex_Builtin:
 			delete(cfg.acctBuiltinIndexed, acctIdx.Builtin)
@@ -376,7 +376,7 @@ func (b *Builder) handleDropIndexLog(ledger string, log *commonpb.DropIndexLog) 
 			delete(cfg.acctMetadataIndexed, acctIdx.MetadataKey)
 			b.removeBackfillTask(indexID{account: idx.Account})
 		}
-	case *commonpb.DropIndexLog_LogBuiltin:
+	case *commonpb.DroppedIndexLog_LogBuiltin:
 		delete(cfg.logBuiltinIndexed, idx.LogBuiltin)
 		b.removeBackfillTask(indexID{logBuiltin: &idx.LogBuiltin})
 	}

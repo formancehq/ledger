@@ -309,9 +309,9 @@ func (b *Builder) indexPayload(kb *dal.KeyBuilder, cfg *ledgerIndexConfig, ledge
 		// the reverse map inline during the hot path.
 		b.addSchemaRewriteTask(cfg, ledgerID, p.SetMetadataFieldType)
 	case *commonpb.LedgerLogPayload_CreateIndex:
-		b.handleCreateIndexLog(ledgerName, ledgerID, p.CreateIndex)
+		b.handleCreatedIndexLog(ledgerName, ledgerID, p.CreateIndex)
 	case *commonpb.LedgerLogPayload_DropIndex:
-		b.handleDropIndexLog(ledgerName, p.DropIndex)
+		b.handleDroppedIndexLog(ledgerName, p.DropIndex)
 	}
 
 	return nil
@@ -420,9 +420,9 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log) error
 
 		return b.indexSetMetadataFieldType(cfg, b.kb, ledgerID, p.SetMetadataFieldType)
 	case *commonpb.LedgerLogPayload_CreateIndex:
-		b.handleCreateIndexLog(ledgerName, ledgerID, p.CreateIndex)
+		b.handleCreatedIndexLog(ledgerName, ledgerID, p.CreateIndex)
 	case *commonpb.LedgerLogPayload_DropIndex:
-		b.handleDropIndexLog(ledgerName, p.DropIndex)
+		b.handleDroppedIndexLog(ledgerName, p.DropIndex)
 	}
 
 	return nil

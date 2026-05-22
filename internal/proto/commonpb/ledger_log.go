@@ -3,7 +3,7 @@ package commonpb
 // ToLedgerInfo reconstructs a LedgerInfo from the creation-time fields
 // captured in the log. Useful for HTTP/CLI responses that need a full
 // LedgerInfo after a CreateLedger operation.
-func (x *CreateLedgerLog) ToLedgerInfo() *LedgerInfo {
+func (x *CreatedLedgerLog) ToLedgerInfo() *LedgerInfo {
 	if x == nil {
 		return nil
 	}

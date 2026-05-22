@@ -90,7 +90,7 @@ func (p *RequestProcessor) processMirrorIngest(order *raftcmdpb.MirrorIngestOrde
 	}, nil
 }
 
-// processMirrorFillGap creates a FillGapLog for a v2 log that has no v3 equivalent.
+// processMirrorFillGap creates a FilledGapLog for a v2 log that has no v3 equivalent.
 // It also advances NextTransactionId for any skipped transaction IDs.
 func (p *RequestProcessor) processMirrorFillGap(ledger string, boundaries *raftcmdpb.LedgerBoundaries, gap *raftcmdpb.MirrorFillGap, v2LogID uint64, s InMemoryStore) *commonpb.LedgerLogPayload {
 	// Advance NextTransactionId for each skipped transaction
@@ -100,7 +100,7 @@ func (p *RequestProcessor) processMirrorFillGap(ledger string, boundaries *raftc
 
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_FillGap{
-			FillGap: &commonpb.FillGapLog{
+			FillGap: &commonpb.FilledGapLog{
 				OriginalId: v2LogID,
 			},
 		},
@@ -392,7 +392,7 @@ func (p *RequestProcessor) processPromoteLedger(order *raftcmdpb.PromoteLedgerOr
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_PromoteLedger{
-			PromoteLedger: &commonpb.PromoteLedgerLog{
+			PromoteLedger: &commonpb.PromotedLedgerLog{
 				Name: info.GetName(),
 			},
 		},

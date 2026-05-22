@@ -453,8 +453,8 @@ message Log {
 
 | Operation | Payload Type | Content |
 |-----------|--------------|---------|
-| Create ledger | `CreateLedgerLog` | `LedgerInfo` |
-| Delete ledger | `DeleteLedgerLog` | `LedgerInfo` (with `deleted_at`) |
+| Create ledger | `CreatedLedgerLog` | `LedgerInfo` |
+| Delete ledger | `DeletedLedgerLog` | `LedgerInfo` (with `deleted_at`) |
 | Create transaction | `ApplyLedgerLog` → `CreatedTransaction` | `Transaction` + account metadata |
 | Revert transaction | `ApplyLedgerLog` → `RevertedTransaction` | Reverted ID + revert transaction |
 | Save metadata | `ApplyLedgerLog` → `SavedMetadata` | Target + metadata |

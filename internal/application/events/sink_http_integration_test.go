@@ -88,7 +88,7 @@ func TestHTTPSinkIntegration_PublishAndReceive(t *testing.T) {
 			Sequence: 1,
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_CreateLedger{
-					CreateLedger: &commonpb.CreateLedgerLog{
+					CreateLedger: &commonpb.CreatedLedgerLog{
 						Name: "orders", CreatedAt: commonpb.NewTimestamp(now),
 					},
 				},

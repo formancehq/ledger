@@ -1017,11 +1017,11 @@ func (m *LogPayload_DeletedLedgerMetadata) CloneVT() isLogPayload_Type {
 	return r
 }
 
-func (m *PromoteLedgerLog) CloneVT() *PromoteLedgerLog {
+func (m *PromotedLedgerLog) CloneVT() *PromotedLedgerLog {
 	if m == nil {
-		return (*PromoteLedgerLog)(nil)
+		return (*PromotedLedgerLog)(nil)
 	}
-	r := new(PromoteLedgerLog)
+	r := new(PromotedLedgerLog)
 	r.Name = m.Name
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -1030,15 +1030,15 @@ func (m *PromoteLedgerLog) CloneVT() *PromoteLedgerLog {
 	return r
 }
 
-func (m *PromoteLedgerLog) CloneMessageVT() proto.Message {
+func (m *PromotedLedgerLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *RegisterSigningKeyLog) CloneVT() *RegisterSigningKeyLog {
+func (m *RegisteredSigningKeyLog) CloneVT() *RegisteredSigningKeyLog {
 	if m == nil {
-		return (*RegisterSigningKeyLog)(nil)
+		return (*RegisteredSigningKeyLog)(nil)
 	}
-	r := new(RegisterSigningKeyLog)
+	r := new(RegisteredSigningKeyLog)
 	r.KeyId = m.KeyId
 	r.ParentKeyId = m.ParentKeyId
 	if rhs := m.PublicKey; rhs != nil {
@@ -1053,15 +1053,15 @@ func (m *RegisterSigningKeyLog) CloneVT() *RegisterSigningKeyLog {
 	return r
 }
 
-func (m *RegisterSigningKeyLog) CloneMessageVT() proto.Message {
+func (m *RegisteredSigningKeyLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *RevokeSigningKeyLog) CloneVT() *RevokeSigningKeyLog {
+func (m *RevokedSigningKeyLog) CloneVT() *RevokedSigningKeyLog {
 	if m == nil {
-		return (*RevokeSigningKeyLog)(nil)
+		return (*RevokedSigningKeyLog)(nil)
 	}
-	r := new(RevokeSigningKeyLog)
+	r := new(RevokedSigningKeyLog)
 	r.KeyId = m.KeyId
 	if rhs := m.CascadedKeyIds; rhs != nil {
 		tmpContainer := make([]string, len(rhs))
@@ -1075,7 +1075,7 @@ func (m *RevokeSigningKeyLog) CloneVT() *RevokeSigningKeyLog {
 	return r
 }
 
-func (m *RevokeSigningKeyLog) CloneMessageVT() proto.Message {
+func (m *RevokedSigningKeyLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -1251,11 +1251,11 @@ func (m *SetPeriodScheduleLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *DeletePeriodScheduleLog) CloneVT() *DeletePeriodScheduleLog {
+func (m *DeletedPeriodScheduleLog) CloneVT() *DeletedPeriodScheduleLog {
 	if m == nil {
-		return (*DeletePeriodScheduleLog)(nil)
+		return (*DeletedPeriodScheduleLog)(nil)
 	}
-	r := new(DeletePeriodScheduleLog)
+	r := new(DeletedPeriodScheduleLog)
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1263,7 +1263,7 @@ func (m *DeletePeriodScheduleLog) CloneVT() *DeletePeriodScheduleLog {
 	return r
 }
 
-func (m *DeletePeriodScheduleLog) CloneMessageVT() proto.Message {
+func (m *DeletedPeriodScheduleLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -1445,11 +1445,11 @@ func (m *SetQueryCheckpointScheduleLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *DeleteQueryCheckpointScheduleLog) CloneVT() *DeleteQueryCheckpointScheduleLog {
+func (m *DeletedQueryCheckpointScheduleLog) CloneVT() *DeletedQueryCheckpointScheduleLog {
 	if m == nil {
-		return (*DeleteQueryCheckpointScheduleLog)(nil)
+		return (*DeletedQueryCheckpointScheduleLog)(nil)
 	}
-	r := new(DeleteQueryCheckpointScheduleLog)
+	r := new(DeletedQueryCheckpointScheduleLog)
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1457,7 +1457,7 @@ func (m *DeleteQueryCheckpointScheduleLog) CloneVT() *DeleteQueryCheckpointSched
 	return r
 }
 
-func (m *DeleteQueryCheckpointScheduleLog) CloneMessageVT() proto.Message {
+func (m *DeletedQueryCheckpointScheduleLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -1709,11 +1709,11 @@ func (m *DatabricksSinkConfig) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *CreateLedgerLog) CloneVT() *CreateLedgerLog {
+func (m *CreatedLedgerLog) CloneVT() *CreatedLedgerLog {
 	if m == nil {
-		return (*CreateLedgerLog)(nil)
+		return (*CreatedLedgerLog)(nil)
 	}
-	r := new(CreateLedgerLog)
+	r := new(CreatedLedgerLog)
 	r.Name = m.Name
 	r.CreatedAt = m.CreatedAt.CloneVT()
 	r.MetadataSchema = m.MetadataSchema.CloneVT()
@@ -1735,15 +1735,15 @@ func (m *CreateLedgerLog) CloneVT() *CreateLedgerLog {
 	return r
 }
 
-func (m *CreateLedgerLog) CloneMessageVT() proto.Message {
+func (m *CreatedLedgerLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *DeleteLedgerLog) CloneVT() *DeleteLedgerLog {
+func (m *DeletedLedgerLog) CloneVT() *DeletedLedgerLog {
 	if m == nil {
-		return (*DeleteLedgerLog)(nil)
+		return (*DeletedLedgerLog)(nil)
 	}
-	r := new(DeleteLedgerLog)
+	r := new(DeletedLedgerLog)
 	r.Name = m.Name
 	r.DeletedAt = m.DeletedAt.CloneVT()
 	if len(m.unknownFields) > 0 {
@@ -1753,7 +1753,7 @@ func (m *DeleteLedgerLog) CloneVT() *DeleteLedgerLog {
 	return r
 }
 
-func (m *DeleteLedgerLog) CloneMessageVT() proto.Message {
+func (m *DeletedLedgerLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -1923,13 +1923,15 @@ func (m *LedgerLogPayload_UpdatedDefaultEnforcementMode) CloneVT() isLedgerLogPa
 	return r
 }
 
-func (m *CreateIndexLog) CloneVT() *CreateIndexLog {
+func (m *CreatedIndexLog) CloneVT() *CreatedIndexLog {
 	if m == nil {
-		return (*CreateIndexLog)(nil)
+		return (*CreatedIndexLog)(nil)
 	}
-	r := new(CreateIndexLog)
+	r := new(CreatedIndexLog)
 	if m.Index != nil {
-		r.Index = m.Index.(interface{ CloneVT() isCreateIndexLog_Index }).CloneVT()
+		r.Index = m.Index.(interface {
+			CloneVT() isCreatedIndexLog_Index
+		}).CloneVT()
 	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -1938,44 +1940,46 @@ func (m *CreateIndexLog) CloneVT() *CreateIndexLog {
 	return r
 }
 
-func (m *CreateIndexLog) CloneMessageVT() proto.Message {
+func (m *CreatedIndexLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *CreateIndexLog_LogBuiltin) CloneVT() isCreateIndexLog_Index {
+func (m *CreatedIndexLog_LogBuiltin) CloneVT() isCreatedIndexLog_Index {
 	if m == nil {
-		return (*CreateIndexLog_LogBuiltin)(nil)
+		return (*CreatedIndexLog_LogBuiltin)(nil)
 	}
-	r := new(CreateIndexLog_LogBuiltin)
+	r := new(CreatedIndexLog_LogBuiltin)
 	r.LogBuiltin = m.LogBuiltin
 	return r
 }
 
-func (m *CreateIndexLog_Transaction) CloneVT() isCreateIndexLog_Index {
+func (m *CreatedIndexLog_Transaction) CloneVT() isCreatedIndexLog_Index {
 	if m == nil {
-		return (*CreateIndexLog_Transaction)(nil)
+		return (*CreatedIndexLog_Transaction)(nil)
 	}
-	r := new(CreateIndexLog_Transaction)
+	r := new(CreatedIndexLog_Transaction)
 	r.Transaction = m.Transaction.CloneVT()
 	return r
 }
 
-func (m *CreateIndexLog_Account) CloneVT() isCreateIndexLog_Index {
+func (m *CreatedIndexLog_Account) CloneVT() isCreatedIndexLog_Index {
 	if m == nil {
-		return (*CreateIndexLog_Account)(nil)
+		return (*CreatedIndexLog_Account)(nil)
 	}
-	r := new(CreateIndexLog_Account)
+	r := new(CreatedIndexLog_Account)
 	r.Account = m.Account.CloneVT()
 	return r
 }
 
-func (m *DropIndexLog) CloneVT() *DropIndexLog {
+func (m *DroppedIndexLog) CloneVT() *DroppedIndexLog {
 	if m == nil {
-		return (*DropIndexLog)(nil)
+		return (*DroppedIndexLog)(nil)
 	}
-	r := new(DropIndexLog)
+	r := new(DroppedIndexLog)
 	if m.Index != nil {
-		r.Index = m.Index.(interface{ CloneVT() isDropIndexLog_Index }).CloneVT()
+		r.Index = m.Index.(interface {
+			CloneVT() isDroppedIndexLog_Index
+		}).CloneVT()
 	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -1984,42 +1988,42 @@ func (m *DropIndexLog) CloneVT() *DropIndexLog {
 	return r
 }
 
-func (m *DropIndexLog) CloneMessageVT() proto.Message {
+func (m *DroppedIndexLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *DropIndexLog_LogBuiltin) CloneVT() isDropIndexLog_Index {
+func (m *DroppedIndexLog_LogBuiltin) CloneVT() isDroppedIndexLog_Index {
 	if m == nil {
-		return (*DropIndexLog_LogBuiltin)(nil)
+		return (*DroppedIndexLog_LogBuiltin)(nil)
 	}
-	r := new(DropIndexLog_LogBuiltin)
+	r := new(DroppedIndexLog_LogBuiltin)
 	r.LogBuiltin = m.LogBuiltin
 	return r
 }
 
-func (m *DropIndexLog_Transaction) CloneVT() isDropIndexLog_Index {
+func (m *DroppedIndexLog_Transaction) CloneVT() isDroppedIndexLog_Index {
 	if m == nil {
-		return (*DropIndexLog_Transaction)(nil)
+		return (*DroppedIndexLog_Transaction)(nil)
 	}
-	r := new(DropIndexLog_Transaction)
+	r := new(DroppedIndexLog_Transaction)
 	r.Transaction = m.Transaction.CloneVT()
 	return r
 }
 
-func (m *DropIndexLog_Account) CloneVT() isDropIndexLog_Index {
+func (m *DroppedIndexLog_Account) CloneVT() isDroppedIndexLog_Index {
 	if m == nil {
-		return (*DropIndexLog_Account)(nil)
+		return (*DroppedIndexLog_Account)(nil)
 	}
-	r := new(DropIndexLog_Account)
+	r := new(DroppedIndexLog_Account)
 	r.Account = m.Account.CloneVT()
 	return r
 }
 
-func (m *FillGapLog) CloneVT() *FillGapLog {
+func (m *FilledGapLog) CloneVT() *FilledGapLog {
 	if m == nil {
-		return (*FillGapLog)(nil)
+		return (*FilledGapLog)(nil)
 	}
-	r := new(FillGapLog)
+	r := new(FilledGapLog)
 	r.OriginalId = m.OriginalId
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -2028,7 +2032,7 @@ func (m *FillGapLog) CloneVT() *FillGapLog {
 	return r
 }
 
-func (m *FillGapLog) CloneMessageVT() proto.Message {
+func (m *FilledGapLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -2210,11 +2214,11 @@ func (m *Period) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *ClosePeriodLog) CloneVT() *ClosePeriodLog {
+func (m *ClosedPeriodLog) CloneVT() *ClosedPeriodLog {
 	if m == nil {
-		return (*ClosePeriodLog)(nil)
+		return (*ClosedPeriodLog)(nil)
 	}
-	r := new(ClosePeriodLog)
+	r := new(ClosedPeriodLog)
 	r.ClosedPeriod = m.ClosedPeriod.CloneVT()
 	r.NewPeriod = m.NewPeriod.CloneVT()
 	if len(m.unknownFields) > 0 {
@@ -2224,15 +2228,15 @@ func (m *ClosePeriodLog) CloneVT() *ClosePeriodLog {
 	return r
 }
 
-func (m *ClosePeriodLog) CloneMessageVT() proto.Message {
+func (m *ClosedPeriodLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *SealPeriodLog) CloneVT() *SealPeriodLog {
+func (m *SealedPeriodLog) CloneVT() *SealedPeriodLog {
 	if m == nil {
-		return (*SealPeriodLog)(nil)
+		return (*SealedPeriodLog)(nil)
 	}
-	r := new(SealPeriodLog)
+	r := new(SealedPeriodLog)
 	r.Period = m.Period.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -2241,15 +2245,15 @@ func (m *SealPeriodLog) CloneVT() *SealPeriodLog {
 	return r
 }
 
-func (m *SealPeriodLog) CloneMessageVT() proto.Message {
+func (m *SealedPeriodLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *ArchivePeriodLog) CloneVT() *ArchivePeriodLog {
+func (m *ArchivedPeriodLog) CloneVT() *ArchivedPeriodLog {
 	if m == nil {
-		return (*ArchivePeriodLog)(nil)
+		return (*ArchivedPeriodLog)(nil)
 	}
-	r := new(ArchivePeriodLog)
+	r := new(ArchivedPeriodLog)
 	r.Period = m.Period.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -2258,15 +2262,15 @@ func (m *ArchivePeriodLog) CloneVT() *ArchivePeriodLog {
 	return r
 }
 
-func (m *ArchivePeriodLog) CloneMessageVT() proto.Message {
+func (m *ArchivedPeriodLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *ConfirmArchivePeriodLog) CloneVT() *ConfirmArchivePeriodLog {
+func (m *ConfirmedArchivePeriodLog) CloneVT() *ConfirmedArchivePeriodLog {
 	if m == nil {
-		return (*ConfirmArchivePeriodLog)(nil)
+		return (*ConfirmedArchivePeriodLog)(nil)
 	}
-	r := new(ConfirmArchivePeriodLog)
+	r := new(ConfirmedArchivePeriodLog)
 	r.Period = m.Period.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -2275,7 +2279,7 @@ func (m *ConfirmArchivePeriodLog) CloneVT() *ConfirmArchivePeriodLog {
 	return r
 }
 
-func (m *ConfirmArchivePeriodLog) CloneMessageVT() proto.Message {
+func (m *ConfirmedArchivePeriodLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -4743,10 +4747,10 @@ func (this *LogPayload_CreateLedger) EqualVT(thatIface isLogPayload_Type) bool {
 	}
 	if p, q := this.CreateLedger, that.CreateLedger; p != q {
 		if p == nil {
-			p = &CreateLedgerLog{}
+			p = &CreatedLedgerLog{}
 		}
 		if q == nil {
-			q = &CreateLedgerLog{}
+			q = &CreatedLedgerLog{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -4768,10 +4772,10 @@ func (this *LogPayload_DeleteLedger) EqualVT(thatIface isLogPayload_Type) bool {
 	}
 	if p, q := this.DeleteLedger, that.DeleteLedger; p != q {
 		if p == nil {
-			p = &DeleteLedgerLog{}
+			p = &DeletedLedgerLog{}
 		}
 		if q == nil {
-			q = &DeleteLedgerLog{}
+			q = &DeletedLedgerLog{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -4818,10 +4822,10 @@ func (this *LogPayload_RegisterSigningKey) EqualVT(thatIface isLogPayload_Type) 
 	}
 	if p, q := this.RegisterSigningKey, that.RegisterSigningKey; p != q {
 		if p == nil {
-			p = &RegisterSigningKeyLog{}
+			p = &RegisteredSigningKeyLog{}
 		}
 		if q == nil {
-			q = &RegisterSigningKeyLog{}
+			q = &RegisteredSigningKeyLog{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -4843,10 +4847,10 @@ func (this *LogPayload_RevokeSigningKey) EqualVT(thatIface isLogPayload_Type) bo
 	}
 	if p, q := this.RevokeSigningKey, that.RevokeSigningKey; p != q {
 		if p == nil {
-			p = &RevokeSigningKeyLog{}
+			p = &RevokedSigningKeyLog{}
 		}
 		if q == nil {
-			q = &RevokeSigningKeyLog{}
+			q = &RevokedSigningKeyLog{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -4943,10 +4947,10 @@ func (this *LogPayload_ClosePeriod) EqualVT(thatIface isLogPayload_Type) bool {
 	}
 	if p, q := this.ClosePeriod, that.ClosePeriod; p != q {
 		if p == nil {
-			p = &ClosePeriodLog{}
+			p = &ClosedPeriodLog{}
 		}
 		if q == nil {
-			q = &ClosePeriodLog{}
+			q = &ClosedPeriodLog{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -4968,10 +4972,10 @@ func (this *LogPayload_SealPeriod) EqualVT(thatIface isLogPayload_Type) bool {
 	}
 	if p, q := this.SealPeriod, that.SealPeriod; p != q {
 		if p == nil {
-			p = &SealPeriodLog{}
+			p = &SealedPeriodLog{}
 		}
 		if q == nil {
-			q = &SealPeriodLog{}
+			q = &SealedPeriodLog{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -4993,10 +4997,10 @@ func (this *LogPayload_ArchivePeriod) EqualVT(thatIface isLogPayload_Type) bool 
 	}
 	if p, q := this.ArchivePeriod, that.ArchivePeriod; p != q {
 		if p == nil {
-			p = &ArchivePeriodLog{}
+			p = &ArchivedPeriodLog{}
 		}
 		if q == nil {
-			q = &ArchivePeriodLog{}
+			q = &ArchivedPeriodLog{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -5018,10 +5022,10 @@ func (this *LogPayload_ConfirmArchivePeriod) EqualVT(thatIface isLogPayload_Type
 	}
 	if p, q := this.ConfirmArchivePeriod, that.ConfirmArchivePeriod; p != q {
 		if p == nil {
-			p = &ConfirmArchivePeriodLog{}
+			p = &ConfirmedArchivePeriodLog{}
 		}
 		if q == nil {
-			q = &ConfirmArchivePeriodLog{}
+			q = &ConfirmedArchivePeriodLog{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -5093,10 +5097,10 @@ func (this *LogPayload_DeletePeriodSchedule) EqualVT(thatIface isLogPayload_Type
 	}
 	if p, q := this.DeletePeriodSchedule, that.DeletePeriodSchedule; p != q {
 		if p == nil {
-			p = &DeletePeriodScheduleLog{}
+			p = &DeletedPeriodScheduleLog{}
 		}
 		if q == nil {
-			q = &DeletePeriodScheduleLog{}
+			q = &DeletedPeriodScheduleLog{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -5118,10 +5122,10 @@ func (this *LogPayload_PromoteLedger) EqualVT(thatIface isLogPayload_Type) bool 
 	}
 	if p, q := this.PromoteLedger, that.PromoteLedger; p != q {
 		if p == nil {
-			p = &PromoteLedgerLog{}
+			p = &PromotedLedgerLog{}
 		}
 		if q == nil {
-			q = &PromoteLedgerLog{}
+			q = &PromotedLedgerLog{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -5343,10 +5347,10 @@ func (this *LogPayload_DeleteQueryCheckpointSchedule) EqualVT(thatIface isLogPay
 	}
 	if p, q := this.DeleteQueryCheckpointSchedule, that.DeleteQueryCheckpointSchedule; p != q {
 		if p == nil {
-			p = &DeleteQueryCheckpointScheduleLog{}
+			p = &DeletedQueryCheckpointScheduleLog{}
 		}
 		if q == nil {
-			q = &DeleteQueryCheckpointScheduleLog{}
+			q = &DeletedQueryCheckpointScheduleLog{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -5405,7 +5409,7 @@ func (this *LogPayload_DeletedLedgerMetadata) EqualVT(thatIface isLogPayload_Typ
 	return true
 }
 
-func (this *PromoteLedgerLog) EqualVT(that *PromoteLedgerLog) bool {
+func (this *PromotedLedgerLog) EqualVT(that *PromotedLedgerLog) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -5417,14 +5421,14 @@ func (this *PromoteLedgerLog) EqualVT(that *PromoteLedgerLog) bool {
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *PromoteLedgerLog) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*PromoteLedgerLog)
+func (this *PromotedLedgerLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*PromotedLedgerLog)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *RegisterSigningKeyLog) EqualVT(that *RegisterSigningKeyLog) bool {
+func (this *RegisteredSigningKeyLog) EqualVT(that *RegisteredSigningKeyLog) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -5442,14 +5446,14 @@ func (this *RegisterSigningKeyLog) EqualVT(that *RegisterSigningKeyLog) bool {
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *RegisterSigningKeyLog) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*RegisterSigningKeyLog)
+func (this *RegisteredSigningKeyLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*RegisteredSigningKeyLog)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *RevokeSigningKeyLog) EqualVT(that *RevokeSigningKeyLog) bool {
+func (this *RevokedSigningKeyLog) EqualVT(that *RevokedSigningKeyLog) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -5470,8 +5474,8 @@ func (this *RevokeSigningKeyLog) EqualVT(that *RevokeSigningKeyLog) bool {
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *RevokeSigningKeyLog) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*RevokeSigningKeyLog)
+func (this *RevokedSigningKeyLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*RevokedSigningKeyLog)
 	if !ok {
 		return false
 	}
@@ -5693,7 +5697,7 @@ func (this *SetPeriodScheduleLog) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *DeletePeriodScheduleLog) EqualVT(that *DeletePeriodScheduleLog) bool {
+func (this *DeletedPeriodScheduleLog) EqualVT(that *DeletedPeriodScheduleLog) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -5702,8 +5706,8 @@ func (this *DeletePeriodScheduleLog) EqualVT(that *DeletePeriodScheduleLog) bool
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *DeletePeriodScheduleLog) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*DeletePeriodScheduleLog)
+func (this *DeletedPeriodScheduleLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*DeletedPeriodScheduleLog)
 	if !ok {
 		return false
 	}
@@ -5953,7 +5957,7 @@ func (this *SetQueryCheckpointScheduleLog) EqualMessageVT(thatMsg proto.Message)
 	}
 	return this.EqualVT(that)
 }
-func (this *DeleteQueryCheckpointScheduleLog) EqualVT(that *DeleteQueryCheckpointScheduleLog) bool {
+func (this *DeletedQueryCheckpointScheduleLog) EqualVT(that *DeletedQueryCheckpointScheduleLog) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -5962,8 +5966,8 @@ func (this *DeleteQueryCheckpointScheduleLog) EqualVT(that *DeleteQueryCheckpoin
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *DeleteQueryCheckpointScheduleLog) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*DeleteQueryCheckpointScheduleLog)
+func (this *DeletedQueryCheckpointScheduleLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*DeletedQueryCheckpointScheduleLog)
 	if !ok {
 		return false
 	}
@@ -6372,7 +6376,7 @@ func (this *DatabricksSinkConfig) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *CreateLedgerLog) EqualVT(that *CreateLedgerLog) bool {
+func (this *CreatedLedgerLog) EqualVT(that *CreatedLedgerLog) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -6422,14 +6426,14 @@ func (this *CreateLedgerLog) EqualVT(that *CreateLedgerLog) bool {
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *CreateLedgerLog) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*CreateLedgerLog)
+func (this *CreatedLedgerLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*CreatedLedgerLog)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *DeleteLedgerLog) EqualVT(that *DeleteLedgerLog) bool {
+func (this *DeletedLedgerLog) EqualVT(that *DeletedLedgerLog) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -6444,8 +6448,8 @@ func (this *DeleteLedgerLog) EqualVT(that *DeleteLedgerLog) bool {
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *DeleteLedgerLog) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*DeleteLedgerLog)
+func (this *DeletedLedgerLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*DeletedLedgerLog)
 	if !ok {
 		return false
 	}
@@ -6689,10 +6693,10 @@ func (this *LedgerLogPayload_FillGap) EqualVT(thatIface isLedgerLogPayload_Paylo
 	}
 	if p, q := this.FillGap, that.FillGap; p != q {
 		if p == nil {
-			p = &FillGapLog{}
+			p = &FilledGapLog{}
 		}
 		if q == nil {
-			q = &FillGapLog{}
+			q = &FilledGapLog{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -6714,10 +6718,10 @@ func (this *LedgerLogPayload_CreateIndex) EqualVT(thatIface isLedgerLogPayload_P
 	}
 	if p, q := this.CreateIndex, that.CreateIndex; p != q {
 		if p == nil {
-			p = &CreateIndexLog{}
+			p = &CreatedIndexLog{}
 		}
 		if q == nil {
-			q = &CreateIndexLog{}
+			q = &CreatedIndexLog{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -6739,10 +6743,10 @@ func (this *LedgerLogPayload_DropIndex) EqualVT(thatIface isLedgerLogPayload_Pay
 	}
 	if p, q := this.DropIndex, that.DropIndex; p != q {
 		if p == nil {
-			p = &DropIndexLog{}
+			p = &DroppedIndexLog{}
 		}
 		if q == nil {
-			q = &DropIndexLog{}
+			q = &DroppedIndexLog{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -6826,7 +6830,7 @@ func (this *LedgerLogPayload_UpdatedDefaultEnforcementMode) EqualVT(thatIface is
 	return true
 }
 
-func (this *CreateIndexLog) EqualVT(that *CreateIndexLog) bool {
+func (this *CreatedIndexLog) EqualVT(that *CreatedIndexLog) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -6839,7 +6843,7 @@ func (this *CreateIndexLog) EqualVT(that *CreateIndexLog) bool {
 			return false
 		}
 		if !this.Index.(interface {
-			EqualVT(isCreateIndexLog_Index) bool
+			EqualVT(isCreatedIndexLog_Index) bool
 		}).EqualVT(that.Index) {
 			return false
 		}
@@ -6847,15 +6851,15 @@ func (this *CreateIndexLog) EqualVT(that *CreateIndexLog) bool {
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *CreateIndexLog) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*CreateIndexLog)
+func (this *CreatedIndexLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*CreatedIndexLog)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *CreateIndexLog_LogBuiltin) EqualVT(thatIface isCreateIndexLog_Index) bool {
-	that, ok := thatIface.(*CreateIndexLog_LogBuiltin)
+func (this *CreatedIndexLog_LogBuiltin) EqualVT(thatIface isCreatedIndexLog_Index) bool {
+	that, ok := thatIface.(*CreatedIndexLog_LogBuiltin)
 	if !ok {
 		return false
 	}
@@ -6871,8 +6875,8 @@ func (this *CreateIndexLog_LogBuiltin) EqualVT(thatIface isCreateIndexLog_Index)
 	return true
 }
 
-func (this *CreateIndexLog_Transaction) EqualVT(thatIface isCreateIndexLog_Index) bool {
-	that, ok := thatIface.(*CreateIndexLog_Transaction)
+func (this *CreatedIndexLog_Transaction) EqualVT(thatIface isCreatedIndexLog_Index) bool {
+	that, ok := thatIface.(*CreatedIndexLog_Transaction)
 	if !ok {
 		return false
 	}
@@ -6896,8 +6900,8 @@ func (this *CreateIndexLog_Transaction) EqualVT(thatIface isCreateIndexLog_Index
 	return true
 }
 
-func (this *CreateIndexLog_Account) EqualVT(thatIface isCreateIndexLog_Index) bool {
-	that, ok := thatIface.(*CreateIndexLog_Account)
+func (this *CreatedIndexLog_Account) EqualVT(thatIface isCreatedIndexLog_Index) bool {
+	that, ok := thatIface.(*CreatedIndexLog_Account)
 	if !ok {
 		return false
 	}
@@ -6921,7 +6925,7 @@ func (this *CreateIndexLog_Account) EqualVT(thatIface isCreateIndexLog_Index) bo
 	return true
 }
 
-func (this *DropIndexLog) EqualVT(that *DropIndexLog) bool {
+func (this *DroppedIndexLog) EqualVT(that *DroppedIndexLog) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -6934,7 +6938,7 @@ func (this *DropIndexLog) EqualVT(that *DropIndexLog) bool {
 			return false
 		}
 		if !this.Index.(interface {
-			EqualVT(isDropIndexLog_Index) bool
+			EqualVT(isDroppedIndexLog_Index) bool
 		}).EqualVT(that.Index) {
 			return false
 		}
@@ -6942,15 +6946,15 @@ func (this *DropIndexLog) EqualVT(that *DropIndexLog) bool {
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *DropIndexLog) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*DropIndexLog)
+func (this *DroppedIndexLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*DroppedIndexLog)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *DropIndexLog_LogBuiltin) EqualVT(thatIface isDropIndexLog_Index) bool {
-	that, ok := thatIface.(*DropIndexLog_LogBuiltin)
+func (this *DroppedIndexLog_LogBuiltin) EqualVT(thatIface isDroppedIndexLog_Index) bool {
+	that, ok := thatIface.(*DroppedIndexLog_LogBuiltin)
 	if !ok {
 		return false
 	}
@@ -6966,8 +6970,8 @@ func (this *DropIndexLog_LogBuiltin) EqualVT(thatIface isDropIndexLog_Index) boo
 	return true
 }
 
-func (this *DropIndexLog_Transaction) EqualVT(thatIface isDropIndexLog_Index) bool {
-	that, ok := thatIface.(*DropIndexLog_Transaction)
+func (this *DroppedIndexLog_Transaction) EqualVT(thatIface isDroppedIndexLog_Index) bool {
+	that, ok := thatIface.(*DroppedIndexLog_Transaction)
 	if !ok {
 		return false
 	}
@@ -6991,8 +6995,8 @@ func (this *DropIndexLog_Transaction) EqualVT(thatIface isDropIndexLog_Index) bo
 	return true
 }
 
-func (this *DropIndexLog_Account) EqualVT(thatIface isDropIndexLog_Index) bool {
-	that, ok := thatIface.(*DropIndexLog_Account)
+func (this *DroppedIndexLog_Account) EqualVT(thatIface isDroppedIndexLog_Index) bool {
+	that, ok := thatIface.(*DroppedIndexLog_Account)
 	if !ok {
 		return false
 	}
@@ -7016,7 +7020,7 @@ func (this *DropIndexLog_Account) EqualVT(thatIface isDropIndexLog_Index) bool {
 	return true
 }
 
-func (this *FillGapLog) EqualVT(that *FillGapLog) bool {
+func (this *FilledGapLog) EqualVT(that *FilledGapLog) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -7028,8 +7032,8 @@ func (this *FillGapLog) EqualVT(that *FillGapLog) bool {
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *FillGapLog) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*FillGapLog)
+func (this *FilledGapLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*FilledGapLog)
 	if !ok {
 		return false
 	}
@@ -7305,7 +7309,7 @@ func (this *Period) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *ClosePeriodLog) EqualVT(that *ClosePeriodLog) bool {
+func (this *ClosedPeriodLog) EqualVT(that *ClosedPeriodLog) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -7320,14 +7324,14 @@ func (this *ClosePeriodLog) EqualVT(that *ClosePeriodLog) bool {
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *ClosePeriodLog) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*ClosePeriodLog)
+func (this *ClosedPeriodLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*ClosedPeriodLog)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *SealPeriodLog) EqualVT(that *SealPeriodLog) bool {
+func (this *SealedPeriodLog) EqualVT(that *SealedPeriodLog) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -7339,14 +7343,14 @@ func (this *SealPeriodLog) EqualVT(that *SealPeriodLog) bool {
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *SealPeriodLog) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*SealPeriodLog)
+func (this *SealedPeriodLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*SealedPeriodLog)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *ArchivePeriodLog) EqualVT(that *ArchivePeriodLog) bool {
+func (this *ArchivedPeriodLog) EqualVT(that *ArchivedPeriodLog) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -7358,14 +7362,14 @@ func (this *ArchivePeriodLog) EqualVT(that *ArchivePeriodLog) bool {
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *ArchivePeriodLog) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*ArchivePeriodLog)
+func (this *ArchivedPeriodLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*ArchivedPeriodLog)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *ConfirmArchivePeriodLog) EqualVT(that *ConfirmArchivePeriodLog) bool {
+func (this *ConfirmedArchivePeriodLog) EqualVT(that *ConfirmedArchivePeriodLog) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -7377,8 +7381,8 @@ func (this *ConfirmArchivePeriodLog) EqualVT(that *ConfirmArchivePeriodLog) bool
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *ConfirmArchivePeriodLog) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*ConfirmArchivePeriodLog)
+func (this *ConfirmedArchivePeriodLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*ConfirmedArchivePeriodLog)
 	if !ok {
 		return false
 	}
@@ -11868,7 +11872,7 @@ func (m *LogPayload_DeletedLedgerMetadata) MarshalToSizedBufferVT(dAtA []byte) (
 	}
 	return len(dAtA) - i, nil
 }
-func (m *PromoteLedgerLog) MarshalVT() (dAtA []byte, err error) {
+func (m *PromotedLedgerLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -11881,12 +11885,12 @@ func (m *PromoteLedgerLog) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *PromoteLedgerLog) MarshalToVT(dAtA []byte) (int, error) {
+func (m *PromotedLedgerLog) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *PromoteLedgerLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *PromotedLedgerLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -11908,7 +11912,7 @@ func (m *PromoteLedgerLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *RegisterSigningKeyLog) MarshalVT() (dAtA []byte, err error) {
+func (m *RegisteredSigningKeyLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -11921,12 +11925,12 @@ func (m *RegisterSigningKeyLog) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *RegisterSigningKeyLog) MarshalToVT(dAtA []byte) (int, error) {
+func (m *RegisteredSigningKeyLog) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *RegisterSigningKeyLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *RegisteredSigningKeyLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -11962,7 +11966,7 @@ func (m *RegisterSigningKeyLog) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 	return len(dAtA) - i, nil
 }
 
-func (m *RevokeSigningKeyLog) MarshalVT() (dAtA []byte, err error) {
+func (m *RevokedSigningKeyLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -11975,12 +11979,12 @@ func (m *RevokeSigningKeyLog) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *RevokeSigningKeyLog) MarshalToVT(dAtA []byte) (int, error) {
+func (m *RevokedSigningKeyLog) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *RevokeSigningKeyLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *RevokedSigningKeyLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -12510,7 +12514,7 @@ func (m *SetPeriodScheduleLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 	return len(dAtA) - i, nil
 }
 
-func (m *DeletePeriodScheduleLog) MarshalVT() (dAtA []byte, err error) {
+func (m *DeletedPeriodScheduleLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -12523,12 +12527,12 @@ func (m *DeletePeriodScheduleLog) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *DeletePeriodScheduleLog) MarshalToVT(dAtA []byte) (int, error) {
+func (m *DeletedPeriodScheduleLog) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *DeletePeriodScheduleLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *DeletedPeriodScheduleLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -13042,7 +13046,7 @@ func (m *SetQueryCheckpointScheduleLog) MarshalToSizedBufferVT(dAtA []byte) (int
 	return len(dAtA) - i, nil
 }
 
-func (m *DeleteQueryCheckpointScheduleLog) MarshalVT() (dAtA []byte, err error) {
+func (m *DeletedQueryCheckpointScheduleLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -13055,12 +13059,12 @@ func (m *DeleteQueryCheckpointScheduleLog) MarshalVT() (dAtA []byte, err error) 
 	return dAtA[:n], nil
 }
 
-func (m *DeleteQueryCheckpointScheduleLog) MarshalToVT(dAtA []byte) (int, error) {
+func (m *DeletedQueryCheckpointScheduleLog) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *DeleteQueryCheckpointScheduleLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *DeletedQueryCheckpointScheduleLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -13748,7 +13752,7 @@ func (m *DatabricksSinkConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 	return len(dAtA) - i, nil
 }
 
-func (m *CreateLedgerLog) MarshalVT() (dAtA []byte, err error) {
+func (m *CreatedLedgerLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -13761,12 +13765,12 @@ func (m *CreateLedgerLog) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *CreateLedgerLog) MarshalToVT(dAtA []byte) (int, error) {
+func (m *CreatedLedgerLog) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *CreateLedgerLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *CreatedLedgerLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -13855,7 +13859,7 @@ func (m *CreateLedgerLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *DeleteLedgerLog) MarshalVT() (dAtA []byte, err error) {
+func (m *DeletedLedgerLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -13868,12 +13872,12 @@ func (m *DeleteLedgerLog) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *DeleteLedgerLog) MarshalToVT(dAtA []byte) (int, error) {
+func (m *DeletedLedgerLog) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *DeleteLedgerLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *DeletedLedgerLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -14284,7 +14288,7 @@ func (m *LedgerLogPayload_UpdatedDefaultEnforcementMode) MarshalToSizedBufferVT(
 	}
 	return len(dAtA) - i, nil
 }
-func (m *CreateIndexLog) MarshalVT() (dAtA []byte, err error) {
+func (m *CreatedIndexLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -14297,12 +14301,12 @@ func (m *CreateIndexLog) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *CreateIndexLog) MarshalToVT(dAtA []byte) (int, error) {
+func (m *CreatedIndexLog) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *CreateIndexLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *CreatedIndexLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -14326,24 +14330,24 @@ func (m *CreateIndexLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *CreateIndexLog_LogBuiltin) MarshalToVT(dAtA []byte) (int, error) {
+func (m *CreatedIndexLog_LogBuiltin) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *CreateIndexLog_LogBuiltin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *CreatedIndexLog_LogBuiltin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogBuiltin))
 	i--
 	dAtA[i] = 0x8
 	return len(dAtA) - i, nil
 }
-func (m *CreateIndexLog_Transaction) MarshalToVT(dAtA []byte) (int, error) {
+func (m *CreatedIndexLog_Transaction) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *CreateIndexLog_Transaction) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *CreatedIndexLog_Transaction) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	if m.Transaction != nil {
 		size, err := m.Transaction.MarshalToSizedBufferVT(dAtA[:i])
@@ -14357,12 +14361,12 @@ func (m *CreateIndexLog_Transaction) MarshalToSizedBufferVT(dAtA []byte) (int, e
 	}
 	return len(dAtA) - i, nil
 }
-func (m *CreateIndexLog_Account) MarshalToVT(dAtA []byte) (int, error) {
+func (m *CreatedIndexLog_Account) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *CreateIndexLog_Account) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *CreatedIndexLog_Account) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	if m.Account != nil {
 		size, err := m.Account.MarshalToSizedBufferVT(dAtA[:i])
@@ -14376,7 +14380,7 @@ func (m *CreateIndexLog_Account) MarshalToSizedBufferVT(dAtA []byte) (int, error
 	}
 	return len(dAtA) - i, nil
 }
-func (m *DropIndexLog) MarshalVT() (dAtA []byte, err error) {
+func (m *DroppedIndexLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -14389,12 +14393,12 @@ func (m *DropIndexLog) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *DropIndexLog) MarshalToVT(dAtA []byte) (int, error) {
+func (m *DroppedIndexLog) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *DropIndexLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *DroppedIndexLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -14418,24 +14422,24 @@ func (m *DropIndexLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *DropIndexLog_LogBuiltin) MarshalToVT(dAtA []byte) (int, error) {
+func (m *DroppedIndexLog_LogBuiltin) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *DropIndexLog_LogBuiltin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *DroppedIndexLog_LogBuiltin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogBuiltin))
 	i--
 	dAtA[i] = 0x8
 	return len(dAtA) - i, nil
 }
-func (m *DropIndexLog_Transaction) MarshalToVT(dAtA []byte) (int, error) {
+func (m *DroppedIndexLog_Transaction) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *DropIndexLog_Transaction) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *DroppedIndexLog_Transaction) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	if m.Transaction != nil {
 		size, err := m.Transaction.MarshalToSizedBufferVT(dAtA[:i])
@@ -14449,12 +14453,12 @@ func (m *DropIndexLog_Transaction) MarshalToSizedBufferVT(dAtA []byte) (int, err
 	}
 	return len(dAtA) - i, nil
 }
-func (m *DropIndexLog_Account) MarshalToVT(dAtA []byte) (int, error) {
+func (m *DroppedIndexLog_Account) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *DropIndexLog_Account) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *DroppedIndexLog_Account) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	if m.Account != nil {
 		size, err := m.Account.MarshalToSizedBufferVT(dAtA[:i])
@@ -14468,7 +14472,7 @@ func (m *DropIndexLog_Account) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 	}
 	return len(dAtA) - i, nil
 }
-func (m *FillGapLog) MarshalVT() (dAtA []byte, err error) {
+func (m *FilledGapLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -14481,12 +14485,12 @@ func (m *FillGapLog) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *FillGapLog) MarshalToVT(dAtA []byte) (int, error) {
+func (m *FilledGapLog) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *FillGapLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *FilledGapLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -15020,7 +15024,7 @@ func (m *Period) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *ClosePeriodLog) MarshalVT() (dAtA []byte, err error) {
+func (m *ClosedPeriodLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -15033,12 +15037,12 @@ func (m *ClosePeriodLog) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ClosePeriodLog) MarshalToVT(dAtA []byte) (int, error) {
+func (m *ClosedPeriodLog) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *ClosePeriodLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *ClosedPeriodLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -15073,7 +15077,7 @@ func (m *ClosePeriodLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *SealPeriodLog) MarshalVT() (dAtA []byte, err error) {
+func (m *SealedPeriodLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -15086,12 +15090,12 @@ func (m *SealPeriodLog) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *SealPeriodLog) MarshalToVT(dAtA []byte) (int, error) {
+func (m *SealedPeriodLog) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *SealPeriodLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *SealedPeriodLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -15116,7 +15120,7 @@ func (m *SealPeriodLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *ArchivePeriodLog) MarshalVT() (dAtA []byte, err error) {
+func (m *ArchivedPeriodLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -15129,12 +15133,12 @@ func (m *ArchivePeriodLog) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ArchivePeriodLog) MarshalToVT(dAtA []byte) (int, error) {
+func (m *ArchivedPeriodLog) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *ArchivePeriodLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *ArchivedPeriodLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -15159,7 +15163,7 @@ func (m *ArchivePeriodLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *ConfirmArchivePeriodLog) MarshalVT() (dAtA []byte, err error) {
+func (m *ConfirmedArchivePeriodLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -15172,12 +15176,12 @@ func (m *ConfirmArchivePeriodLog) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ConfirmArchivePeriodLog) MarshalToVT(dAtA []byte) (int, error) {
+func (m *ConfirmedArchivePeriodLog) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *ConfirmArchivePeriodLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *ConfirmedArchivePeriodLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -19368,7 +19372,7 @@ func (m *LogPayload_DeletedLedgerMetadata) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *PromoteLedgerLog) SizeVT() (n int) {
+func (m *PromotedLedgerLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -19382,7 +19386,7 @@ func (m *PromoteLedgerLog) SizeVT() (n int) {
 	return n
 }
 
-func (m *RegisterSigningKeyLog) SizeVT() (n int) {
+func (m *RegisteredSigningKeyLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -19404,7 +19408,7 @@ func (m *RegisterSigningKeyLog) SizeVT() (n int) {
 	return n
 }
 
-func (m *RevokeSigningKeyLog) SizeVT() (n int) {
+func (m *RevokedSigningKeyLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -19603,7 +19607,7 @@ func (m *SetPeriodScheduleLog) SizeVT() (n int) {
 	return n
 }
 
-func (m *DeletePeriodScheduleLog) SizeVT() (n int) {
+func (m *DeletedPeriodScheduleLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -19809,7 +19813,7 @@ func (m *SetQueryCheckpointScheduleLog) SizeVT() (n int) {
 	return n
 }
 
-func (m *DeleteQueryCheckpointScheduleLog) SizeVT() (n int) {
+func (m *DeletedQueryCheckpointScheduleLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -20107,7 +20111,7 @@ func (m *DatabricksSinkConfig) SizeVT() (n int) {
 	return n
 }
 
-func (m *CreateLedgerLog) SizeVT() (n int) {
+func (m *CreatedLedgerLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -20155,7 +20159,7 @@ func (m *CreateLedgerLog) SizeVT() (n int) {
 	return n
 }
 
-func (m *DeleteLedgerLog) SizeVT() (n int) {
+func (m *DeletedLedgerLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -20369,7 +20373,7 @@ func (m *LedgerLogPayload_UpdatedDefaultEnforcementMode) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *CreateIndexLog) SizeVT() (n int) {
+func (m *CreatedIndexLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -20382,7 +20386,7 @@ func (m *CreateIndexLog) SizeVT() (n int) {
 	return n
 }
 
-func (m *CreateIndexLog_LogBuiltin) SizeVT() (n int) {
+func (m *CreatedIndexLog_LogBuiltin) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -20391,7 +20395,7 @@ func (m *CreateIndexLog_LogBuiltin) SizeVT() (n int) {
 	n += 1 + protohelpers.SizeOfVarint(uint64(m.LogBuiltin))
 	return n
 }
-func (m *CreateIndexLog_Transaction) SizeVT() (n int) {
+func (m *CreatedIndexLog_Transaction) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -20403,7 +20407,7 @@ func (m *CreateIndexLog_Transaction) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *CreateIndexLog_Account) SizeVT() (n int) {
+func (m *CreatedIndexLog_Account) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -20415,7 +20419,7 @@ func (m *CreateIndexLog_Account) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *DropIndexLog) SizeVT() (n int) {
+func (m *DroppedIndexLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -20428,7 +20432,7 @@ func (m *DropIndexLog) SizeVT() (n int) {
 	return n
 }
 
-func (m *DropIndexLog_LogBuiltin) SizeVT() (n int) {
+func (m *DroppedIndexLog_LogBuiltin) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -20437,7 +20441,7 @@ func (m *DropIndexLog_LogBuiltin) SizeVT() (n int) {
 	n += 1 + protohelpers.SizeOfVarint(uint64(m.LogBuiltin))
 	return n
 }
-func (m *DropIndexLog_Transaction) SizeVT() (n int) {
+func (m *DroppedIndexLog_Transaction) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -20449,7 +20453,7 @@ func (m *DropIndexLog_Transaction) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *DropIndexLog_Account) SizeVT() (n int) {
+func (m *DroppedIndexLog_Account) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -20461,7 +20465,7 @@ func (m *DropIndexLog_Account) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *FillGapLog) SizeVT() (n int) {
+func (m *FilledGapLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -20689,7 +20693,7 @@ func (m *Period) SizeVT() (n int) {
 	return n
 }
 
-func (m *ClosePeriodLog) SizeVT() (n int) {
+func (m *ClosedPeriodLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -20707,7 +20711,7 @@ func (m *ClosePeriodLog) SizeVT() (n int) {
 	return n
 }
 
-func (m *SealPeriodLog) SizeVT() (n int) {
+func (m *SealedPeriodLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -20721,7 +20725,7 @@ func (m *SealPeriodLog) SizeVT() (n int) {
 	return n
 }
 
-func (m *ArchivePeriodLog) SizeVT() (n int) {
+func (m *ArchivedPeriodLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -20735,7 +20739,7 @@ func (m *ArchivePeriodLog) SizeVT() (n int) {
 	return n
 }
 
-func (m *ConfirmArchivePeriodLog) SizeVT() (n int) {
+func (m *ConfirmedArchivePeriodLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -26783,7 +26787,7 @@ func (m *LogPayload) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 			} else {
-				v := &CreateLedgerLog{}
+				v := &CreatedLedgerLog{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -26824,7 +26828,7 @@ func (m *LogPayload) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 			} else {
-				v := &DeleteLedgerLog{}
+				v := &DeletedLedgerLog{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -26906,7 +26910,7 @@ func (m *LogPayload) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 			} else {
-				v := &RegisterSigningKeyLog{}
+				v := &RegisteredSigningKeyLog{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -26947,7 +26951,7 @@ func (m *LogPayload) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 			} else {
-				v := &RevokeSigningKeyLog{}
+				v := &RevokedSigningKeyLog{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -27111,7 +27115,7 @@ func (m *LogPayload) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 			} else {
-				v := &ClosePeriodLog{}
+				v := &ClosedPeriodLog{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -27152,7 +27156,7 @@ func (m *LogPayload) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 			} else {
-				v := &SealPeriodLog{}
+				v := &SealedPeriodLog{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -27193,7 +27197,7 @@ func (m *LogPayload) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 			} else {
-				v := &ArchivePeriodLog{}
+				v := &ArchivedPeriodLog{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -27234,7 +27238,7 @@ func (m *LogPayload) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 			} else {
-				v := &ConfirmArchivePeriodLog{}
+				v := &ConfirmedArchivePeriodLog{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -27357,7 +27361,7 @@ func (m *LogPayload) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 			} else {
-				v := &DeletePeriodScheduleLog{}
+				v := &DeletedPeriodScheduleLog{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -27398,7 +27402,7 @@ func (m *LogPayload) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 			} else {
-				v := &PromoteLedgerLog{}
+				v := &PromotedLedgerLog{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -27767,7 +27771,7 @@ func (m *LogPayload) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 			} else {
-				v := &DeleteQueryCheckpointScheduleLog{}
+				v := &DeletedQueryCheckpointScheduleLog{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -27878,7 +27882,7 @@ func (m *LogPayload) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *PromoteLedgerLog) UnmarshalVT(dAtA []byte) error {
+func (m *PromotedLedgerLog) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -27901,10 +27905,10 @@ func (m *PromoteLedgerLog) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: PromoteLedgerLog: wiretype end group for non-group")
+			return fmt.Errorf("proto: PromotedLedgerLog: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: PromoteLedgerLog: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: PromotedLedgerLog: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -27961,7 +27965,7 @@ func (m *PromoteLedgerLog) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *RegisterSigningKeyLog) UnmarshalVT(dAtA []byte) error {
+func (m *RegisteredSigningKeyLog) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -27984,10 +27988,10 @@ func (m *RegisterSigningKeyLog) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: RegisterSigningKeyLog: wiretype end group for non-group")
+			return fmt.Errorf("proto: RegisteredSigningKeyLog: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: RegisterSigningKeyLog: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: RegisteredSigningKeyLog: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -28110,7 +28114,7 @@ func (m *RegisterSigningKeyLog) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *RevokeSigningKeyLog) UnmarshalVT(dAtA []byte) error {
+func (m *RevokedSigningKeyLog) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -28133,10 +28137,10 @@ func (m *RevokeSigningKeyLog) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: RevokeSigningKeyLog: wiretype end group for non-group")
+			return fmt.Errorf("proto: RevokedSigningKeyLog: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: RevokeSigningKeyLog: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: RevokedSigningKeyLog: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -29396,7 +29400,7 @@ func (m *SetPeriodScheduleLog) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *DeletePeriodScheduleLog) UnmarshalVT(dAtA []byte) error {
+func (m *DeletedPeriodScheduleLog) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -29419,10 +29423,10 @@ func (m *DeletePeriodScheduleLog) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: DeletePeriodScheduleLog: wiretype end group for non-group")
+			return fmt.Errorf("proto: DeletedPeriodScheduleLog: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: DeletePeriodScheduleLog: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: DeletedPeriodScheduleLog: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		default:
@@ -30828,7 +30832,7 @@ func (m *SetQueryCheckpointScheduleLog) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *DeleteQueryCheckpointScheduleLog) UnmarshalVT(dAtA []byte) error {
+func (m *DeletedQueryCheckpointScheduleLog) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -30851,10 +30855,10 @@ func (m *DeleteQueryCheckpointScheduleLog) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: DeleteQueryCheckpointScheduleLog: wiretype end group for non-group")
+			return fmt.Errorf("proto: DeletedQueryCheckpointScheduleLog: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: DeleteQueryCheckpointScheduleLog: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: DeletedQueryCheckpointScheduleLog: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		default:
@@ -32524,7 +32528,7 @@ func (m *DatabricksSinkConfig) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *CreateLedgerLog) UnmarshalVT(dAtA []byte) error {
+func (m *CreatedLedgerLog) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -32547,10 +32551,10 @@ func (m *CreateLedgerLog) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: CreateLedgerLog: wiretype end group for non-group")
+			return fmt.Errorf("proto: CreatedLedgerLog: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: CreateLedgerLog: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: CreatedLedgerLog: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -32901,7 +32905,7 @@ func (m *CreateLedgerLog) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *DeleteLedgerLog) UnmarshalVT(dAtA []byte) error {
+func (m *DeletedLedgerLog) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -32924,10 +32928,10 @@ func (m *DeleteLedgerLog) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: DeleteLedgerLog: wiretype end group for non-group")
+			return fmt.Errorf("proto: DeletedLedgerLog: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: DeleteLedgerLog: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: DeletedLedgerLog: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -33581,7 +33585,7 @@ func (m *LedgerLogPayload) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 			} else {
-				v := &FillGapLog{}
+				v := &FilledGapLog{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -33622,7 +33626,7 @@ func (m *LedgerLogPayload) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 			} else {
-				v := &CreateIndexLog{}
+				v := &CreatedIndexLog{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -33663,7 +33667,7 @@ func (m *LedgerLogPayload) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 			} else {
-				v := &DropIndexLog{}
+				v := &DroppedIndexLog{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -33815,7 +33819,7 @@ func (m *LedgerLogPayload) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *CreateIndexLog) UnmarshalVT(dAtA []byte) error {
+func (m *CreatedIndexLog) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -33838,10 +33842,10 @@ func (m *CreateIndexLog) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: CreateIndexLog: wiretype end group for non-group")
+			return fmt.Errorf("proto: CreatedIndexLog: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: CreateIndexLog: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: CreatedIndexLog: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -33863,7 +33867,7 @@ func (m *CreateIndexLog) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-			m.Index = &CreateIndexLog_LogBuiltin{LogBuiltin: v}
+			m.Index = &CreatedIndexLog_LogBuiltin{LogBuiltin: v}
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Transaction", wireType)
@@ -33893,7 +33897,7 @@ func (m *CreateIndexLog) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Index.(*CreateIndexLog_Transaction); ok {
+			if oneof, ok := m.Index.(*CreatedIndexLog_Transaction); ok {
 				if err := oneof.Transaction.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -33902,7 +33906,7 @@ func (m *CreateIndexLog) UnmarshalVT(dAtA []byte) error {
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Index = &CreateIndexLog_Transaction{Transaction: v}
+				m.Index = &CreatedIndexLog_Transaction{Transaction: v}
 			}
 			iNdEx = postIndex
 		case 3:
@@ -33934,7 +33938,7 @@ func (m *CreateIndexLog) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Index.(*CreateIndexLog_Account); ok {
+			if oneof, ok := m.Index.(*CreatedIndexLog_Account); ok {
 				if err := oneof.Account.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -33943,7 +33947,7 @@ func (m *CreateIndexLog) UnmarshalVT(dAtA []byte) error {
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Index = &CreateIndexLog_Account{Account: v}
+				m.Index = &CreatedIndexLog_Account{Account: v}
 			}
 			iNdEx = postIndex
 		default:
@@ -33968,7 +33972,7 @@ func (m *CreateIndexLog) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *DropIndexLog) UnmarshalVT(dAtA []byte) error {
+func (m *DroppedIndexLog) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -33991,10 +33995,10 @@ func (m *DropIndexLog) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: DropIndexLog: wiretype end group for non-group")
+			return fmt.Errorf("proto: DroppedIndexLog: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: DropIndexLog: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: DroppedIndexLog: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -34016,7 +34020,7 @@ func (m *DropIndexLog) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-			m.Index = &DropIndexLog_LogBuiltin{LogBuiltin: v}
+			m.Index = &DroppedIndexLog_LogBuiltin{LogBuiltin: v}
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Transaction", wireType)
@@ -34046,7 +34050,7 @@ func (m *DropIndexLog) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Index.(*DropIndexLog_Transaction); ok {
+			if oneof, ok := m.Index.(*DroppedIndexLog_Transaction); ok {
 				if err := oneof.Transaction.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -34055,7 +34059,7 @@ func (m *DropIndexLog) UnmarshalVT(dAtA []byte) error {
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Index = &DropIndexLog_Transaction{Transaction: v}
+				m.Index = &DroppedIndexLog_Transaction{Transaction: v}
 			}
 			iNdEx = postIndex
 		case 3:
@@ -34087,7 +34091,7 @@ func (m *DropIndexLog) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Index.(*DropIndexLog_Account); ok {
+			if oneof, ok := m.Index.(*DroppedIndexLog_Account); ok {
 				if err := oneof.Account.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
@@ -34096,7 +34100,7 @@ func (m *DropIndexLog) UnmarshalVT(dAtA []byte) error {
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Index = &DropIndexLog_Account{Account: v}
+				m.Index = &DroppedIndexLog_Account{Account: v}
 			}
 			iNdEx = postIndex
 		default:
@@ -34121,7 +34125,7 @@ func (m *DropIndexLog) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *FillGapLog) UnmarshalVT(dAtA []byte) error {
+func (m *FilledGapLog) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -34144,10 +34148,10 @@ func (m *FillGapLog) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: FillGapLog: wiretype end group for non-group")
+			return fmt.Errorf("proto: FilledGapLog: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: FillGapLog: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: FilledGapLog: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -35723,7 +35727,7 @@ func (m *Period) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *ClosePeriodLog) UnmarshalVT(dAtA []byte) error {
+func (m *ClosedPeriodLog) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -35746,10 +35750,10 @@ func (m *ClosePeriodLog) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ClosePeriodLog: wiretype end group for non-group")
+			return fmt.Errorf("proto: ClosedPeriodLog: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ClosePeriodLog: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: ClosedPeriodLog: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -35846,7 +35850,7 @@ func (m *ClosePeriodLog) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *SealPeriodLog) UnmarshalVT(dAtA []byte) error {
+func (m *SealedPeriodLog) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -35869,10 +35873,10 @@ func (m *SealPeriodLog) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: SealPeriodLog: wiretype end group for non-group")
+			return fmt.Errorf("proto: SealedPeriodLog: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: SealPeriodLog: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: SealedPeriodLog: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -35933,7 +35937,7 @@ func (m *SealPeriodLog) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *ArchivePeriodLog) UnmarshalVT(dAtA []byte) error {
+func (m *ArchivedPeriodLog) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -35956,10 +35960,10 @@ func (m *ArchivePeriodLog) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ArchivePeriodLog: wiretype end group for non-group")
+			return fmt.Errorf("proto: ArchivedPeriodLog: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ArchivePeriodLog: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: ArchivedPeriodLog: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -36020,7 +36024,7 @@ func (m *ArchivePeriodLog) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *ConfirmArchivePeriodLog) UnmarshalVT(dAtA []byte) error {
+func (m *ConfirmedArchivePeriodLog) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -36043,10 +36047,10 @@ func (m *ConfirmArchivePeriodLog) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ConfirmArchivePeriodLog: wiretype end group for non-group")
+			return fmt.Errorf("proto: ConfirmedArchivePeriodLog: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ConfirmArchivePeriodLog: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: ConfirmedArchivePeriodLog: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:

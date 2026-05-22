@@ -112,7 +112,7 @@ sequenceDiagram
     FSM->>FSM: OPEN → CLOSING + new OPEN period
     FSM->>FSM: Maintenance task: create seal checkpoint
     FSM-->>Sealer: SealRequest (via channel)
-    FSM-->>Leader: ClosePeriodLog
+    FSM-->>Leader: ClosedPeriodLog
 
     Note over Sealer: Background (off critical path)
     Sealer->>Sealer: Open checkpoint read-only
@@ -122,7 +122,7 @@ sequenceDiagram
 
     Leader->>FSM: SealPeriod order
     FSM->>FSM: CLOSING → CLOSED + set sealing_hash
-    FSM-->>Leader: SealPeriodLog
+    FSM-->>Leader: SealedPeriodLog
 ```
 
 ## Crash Recovery
@@ -240,7 +240,7 @@ The period granularity is configurable and can be changed at any time. Changing 
 message SetPeriodScheduleLog {
   string cron = 1;
 }
-message DeletePeriodScheduleLog {}
+message DeletedPeriodScheduleLog {}
 
 // gRPC requests (via Apply)
 message SetPeriodScheduleRequest {
@@ -422,7 +422,7 @@ sequenceDiagram
     Client->>Leader: Apply(ArchivePeriod{period_id})
     Leader->>FSM: ArchivePeriod order
     FSM->>FSM: Validate period is CLOSED → ARCHIVING
-    FSM-->>Leader: ArchivePeriodLog
+    FSM-->>Leader: ArchivedPeriodLog
 
     Note over Leader: Leader-only: dispatch archive request
     Leader-->>Archiver: ArchiveRequest (via channel, leader only)
@@ -436,7 +436,7 @@ sequenceDiagram
     Leader->>FSM: ConfirmArchivePeriod order
     FSM->>FSM: ARCHIVING → ARCHIVED
     FSM->>FSM: Purge logs + audit entries (DeleteRange)
-    FSM-->>Leader: ConfirmArchivePeriodLog
+    FSM-->>Leader: ConfirmedArchivedPeriodLog
 ```
 
 ## Deployment Configuration

@@ -289,22 +289,22 @@ message Log {
 
 message LogPayload {
   oneof type {
-    CreateLedgerLog create_ledger = 1;
-    DeleteLedgerLog delete_ledger = 2;
+    CreatedLedgerLog create_ledger = 1;
+    DeletedLedgerLog delete_ledger = 2;
     ApplyLedgerLog apply = 3;
-    RegisterSigningKeyLog register_signing_key = 4;
-    RevokeSigningKeyLog revoke_signing_key = 5;
+    RegisteredSigningKeyLog register_signing_key = 4;
+    RevokedSigningKeyLog revoke_signing_key = 5;
     SetSigningConfigLog set_signing_config = 6;
     AddedEventsSinkLog added_events_sink = 7;
     RemovedEventsSinkLog removed_events_sink = 8;
-    ClosePeriodLog close_period = 9;
-    SealPeriodLog seal_period = 10;
-    ArchivePeriodLog archive_period = 11;
-    ConfirmArchivePeriodLog confirm_archive_period = 12;
+    ClosedPeriodLog close_period = 9;
+    SealedPeriodLog seal_period = 10;
+    ArchivedPeriodLog archive_period = 11;
+    ConfirmedArchivePeriodLog confirm_archive_period = 12;
     SetMaintenanceModeLog set_maintenance_mode = 13;
     SetPeriodScheduleLog set_period_schedule = 14;
-    DeletePeriodScheduleLog delete_period_schedule = 15;
-    PromoteLedgerLog promote_ledger = 17;
+    DeletedPeriodScheduleLog delete_period_schedule = 15;
+    PromotedLedgerLog promote_ledger = 17;
     CreatedPreparedQueryLog created_prepared_query = 18;
     UpdatedPreparedQueryLog updated_prepared_query = 19;
     DeletedPreparedQueryLog deleted_prepared_query = 20;
@@ -313,13 +313,13 @@ message LogPayload {
     CreatedQueryCheckpointLog created_query_checkpoint = 23;
     DeletedQueryCheckpointLog deleted_query_checkpoint = 24;
     SetQueryCheckpointScheduleLog set_query_checkpoint_schedule = 25;
-    DeleteQueryCheckpointScheduleLog delete_query_checkpoint_schedule = 26;
+    DeletedQueryCheckpointScheduleLog delete_query_checkpoint_schedule = 26;
     SavedLedgerMetadataLog saved_ledger_metadata = 27;
     DeletedLedgerMetadataLog deleted_ledger_metadata = 28;
   }
 }
 
-message PromoteLedgerLog {
+message PromotedLedgerLog {
   string name = 1;
 }
 
@@ -327,15 +327,15 @@ message PromoteLedgerLog {
 // Signing Key Log Messages
 // ============================================================================
 
-// RegisterSigningKeyLog records a signing key registration.
-message RegisterSigningKeyLog {
+// RegisteredSigningKeyLog records a signing key registration.
+message RegisteredSigningKeyLog {
   string key_id = 1;
   bytes public_key = 2;
   string parent_key_id = 3;
 }
 
-// RevokeSigningKeyLog records a signing key revocation.
-message RevokeSigningKeyLog {
+// RevokedSigningKeyLog records a signing key revocation.
+message RevokedSigningKeyLog {
   string key_id = 1;
   repeated string cascaded_key_ids = 2;
 }
@@ -409,8 +409,8 @@ message SetPeriodScheduleLog {
   string cron = 1;
 }
 
-// DeletePeriodScheduleLog records the removal of the period schedule.
-message DeletePeriodScheduleLog {}
+// DeletedPeriodScheduleLog records the removal of the period schedule.
+message DeletedPeriodScheduleLog {}
 
 // CreatedPreparedQueryLog records the creation of a prepared query.
 message CreatedPreparedQueryLog {
@@ -492,8 +492,8 @@ message SetQueryCheckpointScheduleLog {
   string cron = 1;
 }
 
-// DeleteQueryCheckpointScheduleLog records the removal of the query checkpoint schedule.
-message DeleteQueryCheckpointScheduleLog {}
+// DeletedQueryCheckpointScheduleLog records the removal of the query checkpoint schedule.
+message DeletedQueryCheckpointScheduleLog {}
 
 // CreatedQueryCheckpointLog records a query checkpoint being created.
 message CreatedQueryCheckpointLog {
@@ -574,10 +574,10 @@ message DatabricksSinkConfig {
   int32 port = 7;               // Port number (default: 443)
 }
 
-// CreateLedgerLog captures the creation-time parameters of a ledger.
+// CreatedLedgerLog captures the creation-time parameters of a ledger.
 // Uses dedicated fields instead of embedding LedgerInfo to avoid sharing
 // a mutable pointer between the FSM store and the immutable log payload.
-message CreateLedgerLog {
+message CreatedLedgerLog {
   string name = 1;
   Timestamp created_at = 2;
   MetadataSchema metadata_schema = 3;
@@ -588,7 +588,7 @@ message CreateLedgerLog {
   uint32 id = 8;                              // Numeric ledger ID assigned by FSM
 }
 
-message DeleteLedgerLog {
+message DeletedLedgerLog {
   string name = 1;
   Timestamp deleted_at = 2;
 }
@@ -612,17 +612,17 @@ message LedgerLogPayload {
     DeletedMetadata deleted_metadata = 4;
     SetMetadataFieldTypeLog set_metadata_field_type = 5;
     RemovedMetadataFieldTypeLog removed_metadata_field_type = 6;
-    FillGapLog fill_gap = 9;
-    CreateIndexLog create_index = 10;
-    DropIndexLog drop_index = 11;
+    FilledGapLog fill_gap = 9;
+    CreatedIndexLog create_index = 10;
+    DroppedIndexLog drop_index = 11;
     AddedAccountTypeLog added_account_type = 13;
     RemovedAccountTypeLog removed_account_type = 14;
     UpdatedDefaultEnforcementModeLog updated_default_enforcement_mode = 15;
   }
 }
 
-// CreateIndexLog records the creation of an index.
-message CreateIndexLog {
+// CreatedIndexLog records the creation of an index.
+message CreatedIndexLog {
   oneof index {
     LogBuiltinIndex log_builtin = 1;
     TransactionIndex transaction = 2;
@@ -630,8 +630,8 @@ message CreateIndexLog {
   }
 }
 
-// DropIndexLog records the removal of an index.
-message DropIndexLog {
+// DroppedIndexLog records the removal of an index.
+message DroppedIndexLog {
   oneof index {
     LogBuiltinIndex log_builtin = 1;
     TransactionIndex transaction = 2;
@@ -639,7 +639,7 @@ message DropIndexLog {
   }
 }
 
-message FillGapLog {
+message FilledGapLog {
   fixed64 original_id = 1;  // v2 log ID that this gap fills
 }
 
@@ -709,20 +709,20 @@ message Period {
   fixed64 close_audit_sequence = 11; // Last audit sequence when period was closed
 }
 
-message ClosePeriodLog {
+message ClosedPeriodLog {
   Period closed_period = 1;
   Period new_period = 2;
 }
 
-message SealPeriodLog {
+message SealedPeriodLog {
   Period period = 1;
 }
 
-message ArchivePeriodLog {
+message ArchivedPeriodLog {
   Period period = 1;  // The period being archived (still CLOSED at this point)
 }
 
-message ConfirmArchivePeriodLog {
+message ConfirmedArchivePeriodLog {
   Period period = 1;  // Period now in ARCHIVED status
 }
 

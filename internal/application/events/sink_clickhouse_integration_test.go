@@ -110,7 +110,7 @@ func TestClickHouseSinkIntegration_PublishAndConsume(t *testing.T) {
 			Sequence: 1,
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_CreateLedger{
-					CreateLedger: &commonpb.CreateLedgerLog{
+					CreateLedger: &commonpb.CreatedLedgerLog{
 						Name: "orders", CreatedAt: commonpb.NewTimestamp(now),
 					},
 				},
@@ -212,7 +212,7 @@ func TestClickHouseSinkIntegration_TypedSubColumnQueries(t *testing.T) {
 			Sequence: 1,
 			Payload: &commonpb.LogPayload{
 				Type: &commonpb.LogPayload_CreateLedger{
-					CreateLedger: &commonpb.CreateLedgerLog{
+					CreateLedger: &commonpb.CreatedLedgerLog{
 						Name: "analytics", CreatedAt: commonpb.NewTimestamp(now),
 					},
 				},

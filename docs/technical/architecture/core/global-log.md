@@ -26,8 +26,8 @@ message Log {
 
 message LogPayload {
   oneof type {
-    CreateLedgerLog create_ledger = 1;    // Ledger creation
-    DeleteLedgerLog delete_ledger = 2;    // Ledger deletion
+    CreatedLedgerLog create_ledger = 1;    // Ledger creation
+    DeletedLedgerLog delete_ledger = 2;    // Ledger deletion
     ApplyLedgerLog apply = 3;                   // Ledger-level log entry
   }
 }

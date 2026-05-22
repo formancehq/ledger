@@ -59,7 +59,7 @@ func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrde
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_CreateLedger{
-			CreateLedger: &commonpb.CreateLedgerLog{
+			CreateLedger: &commonpb.CreatedLedgerLog{
 				Name:                   order.GetName(),
 				Id:                     ledgerID,
 				CreatedAt:              createdAt,
@@ -88,7 +88,7 @@ func (p *RequestProcessor) processDeleteLedger(order *raftcmdpb.DeleteLedgerOrde
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_DeleteLedger{
-			DeleteLedger: &commonpb.DeleteLedgerLog{
+			DeleteLedger: &commonpb.DeletedLedgerLog{
 				Name:      l.GetName(),
 				DeletedAt: l.GetDeletedAt(),
 			},

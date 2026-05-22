@@ -24,7 +24,7 @@ func TestLogToEvent(t *testing.T) {
 				Sequence: 1,
 				Payload: &commonpb.LogPayload{
 					Type: &commonpb.LogPayload_CreateLedger{
-						CreateLedger: &commonpb.CreateLedgerLog{
+						CreateLedger: &commonpb.CreatedLedgerLog{
 							Name:      "orders",
 							CreatedAt: &commonpb.Timestamp{Data: 1000},
 						},
@@ -40,7 +40,7 @@ func TestLogToEvent(t *testing.T) {
 				Sequence: 2,
 				Payload: &commonpb.LogPayload{
 					Type: &commonpb.LogPayload_DeleteLedger{
-						DeleteLedger: &commonpb.DeleteLedgerLog{
+						DeleteLedger: &commonpb.DeletedLedgerLog{
 							Name:      "orders",
 							DeletedAt: &commonpb.Timestamp{Data: 2000},
 						},

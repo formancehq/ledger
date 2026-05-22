@@ -59,11 +59,11 @@ func (x *LogPayload) MarshalJSON() ([]byte, error) {
 	switch p := x.GetType().(type) {
 	case *LogPayload_CreateLedger:
 		return json.Marshal(&struct {
-			CreateLedger *CreateLedgerLog `json:"createLedger,omitempty"`
+			CreateLedger *CreatedLedgerLog `json:"createLedger,omitempty"`
 		}{CreateLedger: p.CreateLedger})
 	case *LogPayload_DeleteLedger:
 		return json.Marshal(&struct {
-			DeleteLedger *DeleteLedgerLog `json:"deleteLedger,omitempty"`
+			DeleteLedger *DeletedLedgerLog `json:"deleteLedger,omitempty"`
 		}{DeleteLedger: p.DeleteLedger})
 	case *LogPayload_Apply:
 		return json.Marshal(&struct {
@@ -75,8 +75,8 @@ func (x *LogPayload) MarshalJSON() ([]byte, error) {
 	}
 }
 
-// MarshalJSON implements json.Marshaler for CreateLedgerLog.
-func (x *CreateLedgerLog) MarshalJSON() ([]byte, error) {
+// MarshalJSON implements json.Marshaler for CreatedLedgerLog.
+func (x *CreatedLedgerLog) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		Name                   string                  `json:"name,omitempty"`
 		CreatedAt              *Timestamp              `json:"createdAt,omitempty"`
@@ -96,8 +96,8 @@ func (x *CreateLedgerLog) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// MarshalJSON implements json.Marshaler for DeleteLedgerLog.
-func (x *DeleteLedgerLog) MarshalJSON() ([]byte, error) {
+// MarshalJSON implements json.Marshaler for DeletedLedgerLog.
+func (x *DeletedLedgerLog) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		Name      string     `json:"name,omitempty"`
 		DeletedAt *Timestamp `json:"deletedAt,omitempty"`

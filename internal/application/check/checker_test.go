@@ -776,7 +776,7 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 		Sequence: 1,
 		Payload: &commonpb.LogPayload{
 			Type: &commonpb.LogPayload_CreateLedger{
-				CreateLedger: &commonpb.CreateLedgerLog{
+				CreateLedger: &commonpb.CreatedLedgerLog{
 					Name:      "test",
 					CreatedAt: &commonpb.Timestamp{Data: 1700000000},
 				},
@@ -790,7 +790,7 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 		Sequence: 3,
 		Payload: &commonpb.LogPayload{
 			Type: &commonpb.LogPayload_CreateLedger{
-				CreateLedger: &commonpb.CreateLedgerLog{
+				CreateLedger: &commonpb.CreatedLedgerLog{
 					Name:      "test2",
 					CreatedAt: &commonpb.Timestamp{Data: 1700000002},
 				},
@@ -1107,7 +1107,7 @@ func TestCheckerDetectsDoubleRevert(t *testing.T) {
 	// Log 1: Create ledger
 	log1 := buildLog(&lastHash, &seqID, &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_CreateLedger{
-			CreateLedger: &commonpb.CreateLedgerLog{
+			CreateLedger: &commonpb.CreatedLedgerLog{
 				Name: "test", CreatedAt: &commonpb.Timestamp{Data: 1700000000},
 			},
 		},
@@ -1205,7 +1205,7 @@ func TestCheckerDetectsRevertOfNonExistentTransaction(t *testing.T) {
 	// Log 1: Create ledger
 	log1 := buildLog(&lastHash, &seqID, &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_CreateLedger{
-			CreateLedger: &commonpb.CreateLedgerLog{
+			CreateLedger: &commonpb.CreatedLedgerLog{
 				Name: "test", CreatedAt: &commonpb.Timestamp{Data: 1700000000},
 			},
 		},

@@ -68,7 +68,7 @@ func NewArchiver(
 
 // Start launches the background archiving goroutine.
 // Crash recovery is automatic via WAL replay: if the node crashes between
-// ArchivePeriodLog and ConfirmArchivePeriodLog, WAL replay re-sends the
+// ArchivedPeriodLog and ConfirmedArchivePeriodLog, WAL replay re-sends the
 // ArchiveRequest to the channel, and the export is idempotent.
 func (a *Archiver) Start() {
 	a.w.Run(func(stop <-chan struct{}) {

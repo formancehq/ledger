@@ -41,7 +41,7 @@ func (p *RequestProcessor) processDeletePeriodSchedule(s InMemoryStore) (*common
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_DeletePeriodSchedule{
-			DeletePeriodSchedule: &commonpb.DeletePeriodScheduleLog{},
+			DeletePeriodSchedule: &commonpb.DeletedPeriodScheduleLog{},
 		},
 	}, nil
 }

@@ -60,7 +60,7 @@ Checkpoints accumulate over time. Old checkpoints are **not** automatically clea
 message SetQueryCheckpointScheduleLog {
   string cron = 1;
 }
-message DeleteQueryCheckpointScheduleLog {}
+message DeletedQueryCheckpointScheduleLog {}
 
 // gRPC requests (via Apply)
 message SetQueryCheckpointScheduleRequest {

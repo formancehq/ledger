@@ -10,7 +10,7 @@ func (p *RequestProcessor) processRegisterSigningKey(order *raftcmdpb.RegisterSi
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_RegisterSigningKey{
-			RegisterSigningKey: &commonpb.RegisterSigningKeyLog{
+			RegisterSigningKey: &commonpb.RegisteredSigningKeyLog{
 				KeyId:       order.GetKeyId(),
 				PublicKey:   order.GetPublicKey(),
 				ParentKeyId: order.GetParentKeyId(),
@@ -43,7 +43,7 @@ func (p *RequestProcessor) processRevokeSigningKey(order *raftcmdpb.RevokeSignin
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_RevokeSigningKey{
-			RevokeSigningKey: &commonpb.RevokeSigningKeyLog{
+			RevokeSigningKey: &commonpb.RevokedSigningKeyLog{
 				KeyId:          order.GetKeyId(),
 				CascadedKeyIds: cascaded,
 			},

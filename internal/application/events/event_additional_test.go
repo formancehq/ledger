@@ -77,7 +77,7 @@ func TestLogToEvent_RegisterSigningKey(t *testing.T) {
 		Sequence: 200,
 		Payload: &commonpb.LogPayload{
 			Type: &commonpb.LogPayload_RegisterSigningKey{
-				RegisterSigningKey: &commonpb.RegisterSigningKeyLog{
+				RegisterSigningKey: &commonpb.RegisteredSigningKeyLog{
 					KeyId:     "key-001",
 					PublicKey: []byte{0xab, 0xcd},
 				},
