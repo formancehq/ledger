@@ -11,13 +11,13 @@ import (
 	"github.com/formancehq/ledger/internal/storage/system"
 )
 
+// Store is the read-only view of _system that the controller receives via
+// GetSystemStore. All mutation paths must go through the cache-aware Driver
+// methods (UpdateLedgerMetadata, DeleteLedgerMetadata, DeleteBucket,
+// RestoreBucket) so that cache eviction is never bypassed.
 type Store interface {
 	GetLedger(ctx context.Context, name string) (*ledger.Ledger, error)
 	Ledgers() common.PaginatedResource[ledger.Ledger, system.ListLedgersQueryPayload]
-	UpdateLedgerMetadata(ctx context.Context, name string, m metadata.Metadata) error
-	DeleteLedgerMetadata(ctx context.Context, param string, key string) error
-	DeleteBucket(ctx context.Context, bucket string) error
-	RestoreBucket(ctx context.Context, bucket string) error
 }
 
 type Driver interface {
