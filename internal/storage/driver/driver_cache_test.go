@@ -7,8 +7,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
+
+	ledger "github.com/formancehq/ledger/internal"
 )
 
 func newTestDriver(ttl time.Duration) *Driver {
