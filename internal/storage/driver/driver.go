@@ -326,6 +326,33 @@ func (d *Driver) DeleteLedgerMetadata(ctx context.Context, name string, key stri
 	return nil
 }
 
+func (d *Driver) evictCachedLedgersByBucket(bucket string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for name, entry := range d.ledgerCache {
+		if entry.ledger.Bucket == bucket {
+			delete(d.ledgerCache, name)
+			d.cacheGens[name]++
+		}
+	}
+}
+
+func (d *Driver) DeleteBucket(ctx context.Context, name string) error {
+	if err := d.systemStoreFactory.Create(d.db).DeleteBucket(ctx, name); err != nil {
+		return err
+	}
+	d.evictCachedLedgersByBucket(name)
+	return nil
+}
+
+func (d *Driver) RestoreBucket(ctx context.Context, name string) error {
+	if err := d.systemStoreFactory.Create(d.db).RestoreBucket(ctx, name); err != nil {
+		return err
+	}
+	d.evictCachedLedgersByBucket(name)
+	return nil
+}
+
 func (d *Driver) ListLedgers(ctx context.Context, q common.PaginatedQuery[systemstore.ListLedgersQueryPayload]) (*paginate.Cursor[ledger.Ledger], error) {
 	return d.systemStoreFactory.Create(d.db).Ledgers().Paginate(ctx, q)
 }

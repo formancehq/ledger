@@ -23,5 +23,9 @@ type Store interface {
 type Driver interface {
 	OpenLedger(context.Context, string) (ledgercontroller.Store, *ledger.Ledger, error)
 	CreateLedger(context.Context, *ledger.Ledger) error
+	UpdateLedgerMetadata(ctx context.Context, name string, m metadata.Metadata) error
+	DeleteLedgerMetadata(ctx context.Context, name string, key string) error
+	DeleteBucket(ctx context.Context, bucket string) error
+	RestoreBucket(ctx context.Context, bucket string) error
 	GetSystemStore() Store
 }

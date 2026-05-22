@@ -226,25 +226,25 @@ func (ctrl *DefaultController) ListLedgers(ctx context.Context, query common.Pag
 
 func (ctrl *DefaultController) UpdateLedgerMetadata(ctx context.Context, name string, m map[string]string) error {
 	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "UpdateLedgerMetadata", tracing.NoResult(func(ctx context.Context) error {
-		return ctrl.driver.GetSystemStore().UpdateLedgerMetadata(ctx, name, m)
+		return ctrl.driver.UpdateLedgerMetadata(ctx, name, m)
 	})))
 }
 
 func (ctrl *DefaultController) DeleteLedgerMetadata(ctx context.Context, param string, key string) error {
 	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "DeleteLedgerMetadata", tracing.NoResult(func(ctx context.Context) error {
-		return ctrl.driver.GetSystemStore().DeleteLedgerMetadata(ctx, param, key)
+		return ctrl.driver.DeleteLedgerMetadata(ctx, param, key)
 	})))
 }
 
 func (ctrl *DefaultController) DeleteBucket(ctx context.Context, bucket string) error {
 	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "DeleteBucket", tracing.NoResult(func(ctx context.Context) error {
-		return ctrl.driver.GetSystemStore().DeleteBucket(ctx, bucket)
+		return ctrl.driver.DeleteBucket(ctx, bucket)
 	})))
 }
 
 func (ctrl *DefaultController) RestoreBucket(ctx context.Context, bucket string) error {
 	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "RestoreBucket", tracing.NoResult(func(ctx context.Context) error {
-		return ctrl.driver.GetSystemStore().RestoreBucket(ctx, bucket)
+		return ctrl.driver.RestoreBucket(ctx, bucket)
 	})))
 }
 
