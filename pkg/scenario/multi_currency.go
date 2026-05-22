@@ -263,50 +263,45 @@ func RunMultiCurrency(r *Runner) error {
 		return err
 	}
 
-	// --- FX Operations ---
-	numFXOps := min(r.Iterations(len(fxOps)), len(fxOps))
-	for i, fx := range fxOps[:numFXOps] {
-		// Leg 1: source -> fx:clearing (balance-checked)
-		if _, err := r.Step(fmt.Sprintf("FX/%d/Leg1", i),
-			actions.CreateScriptRefTransactionAction(ledger, "fx_convert", "1.0.0", map[string]string{
-				"source_account":   fx.sourceAccount,
-				"clearing_account": "fx:clearing",
-				"amount":           fmt.Sprintf("%s %d", fx.sourceAsset, fx.sourceAmount),
-			}, nil),
-		); err != nil {
-			return err
+	// --- FX Operations (batched: leg1+leg2 pairs) ---
+	{
+		numFXOps := min(r.Iterations(len(fxOps)), len(fxOps))
+		reqs := make([]*servicepb.Request, 0, numFXOps*2)
+		for _, fx := range fxOps[:numFXOps] {
+			reqs = append(reqs,
+				actions.CreateScriptRefTransactionAction(ledger, "fx_convert", "1.0.0", map[string]string{
+					"source_account":   fx.sourceAccount,
+					"clearing_account": "fx:clearing",
+					"amount":           fmt.Sprintf("%s %d", fx.sourceAsset, fx.sourceAmount),
+				}, nil),
+				actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{
+					actions.NewPosting("fx:clearing", fx.targetAccount, big.NewInt(fx.targetAmount), fx.targetAsset),
+				}, nil),
+			)
 		}
-
-		// Leg 2: fx:clearing -> target (force, different currency)
-		if _, err := r.Step(fmt.Sprintf("FX/%d/Leg2", i),
-			actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{
-				actions.NewPosting("fx:clearing", fx.targetAccount, big.NewInt(fx.targetAmount), fx.targetAsset),
-			}, nil),
-		); err != nil {
+		if _, err := r.Step("FXOperations", reqs...); err != nil {
 			return err
 		}
 	}
 
-	// --- Vendor Payments (30 EUR + 20 GBP) ---
-	for i, vp := range eurPayments {
-		if _, err := r.Step(fmt.Sprintf("VendorPayment/EUR/%d", i),
-			actions.CreateScriptRefTransactionAction(ledger, "vendor_payment", "1.0.0", map[string]string{
+	// --- Vendor Payments (batched) ---
+	{
+		reqs := make([]*servicepb.Request, 0, len(eurPayments)+len(gbpPayments))
+		for _, vp := range eurPayments {
+			reqs = append(reqs, actions.CreateScriptRefTransactionAction(ledger, "vendor_payment", "1.0.0", map[string]string{
 				"treasury": vp.treasury,
 				"vendor":   vp.vendor,
 				"amount":   fmt.Sprintf("%s %d", vp.asset, vp.amount),
-			}, nil),
-		); err != nil {
-			return err
+			}, nil))
 		}
-	}
-	for i, vp := range gbpPayments {
-		if _, err := r.Step(fmt.Sprintf("VendorPayment/GBP/%d", i),
-			actions.CreateScriptRefTransactionAction(ledger, "vendor_payment", "1.0.0", map[string]string{
+		for _, vp := range gbpPayments {
+			reqs = append(reqs, actions.CreateScriptRefTransactionAction(ledger, "vendor_payment", "1.0.0", map[string]string{
 				"treasury": vp.treasury,
 				"vendor":   vp.vendor,
 				"amount":   fmt.Sprintf("%s %d", vp.asset, vp.amount),
-			}, nil),
-		); err != nil {
+			}, nil))
+		}
+		if _, err := r.Step("VendorPayments", reqs...); err != nil {
 			return err
 		}
 	}

@@ -704,3 +704,21 @@ func GetCreatedTransactionID(resp *servicepb.ApplyResponse) (uint64, bool) {
 
 	return tx.GetTransaction().GetId(), true
 }
+
+// GetAllCreatedTransactionIDs extracts all created transaction IDs from a batched ApplyResponse.
+func GetAllCreatedTransactionIDs(resp *servicepb.ApplyResponse) []uint64 {
+	var ids []uint64
+	for _, entry := range resp.GetLogs() {
+		applyLog := entry.GetPayload().GetApply()
+		if applyLog == nil {
+			continue
+		}
+		tx := applyLog.GetLog().GetData().GetCreatedTransaction()
+		if tx == nil {
+			continue
+		}
+		ids = append(ids, tx.GetTransaction().GetId())
+	}
+
+	return ids
+}

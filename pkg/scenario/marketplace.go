@@ -204,7 +204,7 @@ func RunMarketplace(r *Runner) error {
 		amount   int64
 		reverted bool
 	}
-	purchaseTxIDs := make([]uint64, 0, numPurchases)
+	var purchaseTxIDs []uint64
 	purchaseRecords := make([]purchaseRecord, 0, numPurchases)
 
 	// --- Setup ---
@@ -226,37 +226,37 @@ func RunMarketplace(r *Runner) error {
 		}
 	}
 
-	// --- Purchases with Fees ---
-	for i := range numPurchases {
-		customer := 1 + i%numCustomers
-		merchant := 1 + i%numMerchants
-		amount := int64(1000 + i*100)
+	// --- Purchases with Fees (batched) ---
+	{
+		reqs := make([]*servicepb.Request, 0, numPurchases)
+		for i := range numPurchases {
+			customer := 1 + i%numCustomers
+			merchant := 1 + i%numMerchants
+			amount := int64(1000 + i*100)
 
-		resp, err := r.Step(fmt.Sprintf("Purchase/%d", i),
-			actions.CreateScriptRefTransactionAction(MarketplaceLedger, "purchase", "1.0.0", map[string]string{
+			reqs = append(reqs, actions.CreateScriptRefTransactionAction(MarketplaceLedger, "purchase", "1.0.0", map[string]string{
 				"customer": fmt.Sprintf("customer:%d", customer),
 				"merchant": fmt.Sprintf("merchant:%d", merchant),
 				"amount":   fmt.Sprintf("USD/2 %d", amount),
-			}, nil),
-		)
+			}, nil))
+
+			purchaseRecords = append(purchaseRecords, purchaseRecord{
+				customer: customer,
+				merchant: merchant,
+				amount:   amount,
+			})
+
+			fee := amount * feePercent / 100
+			net := amount - fee
+			merchantBalance[merchant].Add(merchantBalance[merchant], big.NewInt(net))
+			totalFees.Add(totalFees, big.NewInt(fee))
+		}
+
+		resp, err := r.Step("Purchases", reqs...)
 		if err != nil {
 			return err
 		}
-
-		txID, ok := actions.GetCreatedTransactionID(resp)
-		if ok {
-			purchaseTxIDs = append(purchaseTxIDs, txID)
-		}
-		purchaseRecords = append(purchaseRecords, purchaseRecord{
-			customer: customer,
-			merchant: merchant,
-			amount:   amount,
-		})
-
-		fee := amount * feePercent / 100
-		net := amount - fee
-		merchantBalance[merchant].Add(merchantBalance[merchant], big.NewInt(net))
-		totalFees.Add(totalFees, big.NewInt(fee))
+		purchaseTxIDs = actions.GetAllCreatedTransactionIDs(resp)
 	}
 
 	// --- Reverts ---
