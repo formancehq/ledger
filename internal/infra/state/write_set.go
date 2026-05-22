@@ -181,10 +181,13 @@ func (b *WriteSet) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 		return fmt.Errorf("failed purging ephemeral volumes: %w", err)
 	}
 
-	// Transient volumes remain in the in-memory cache after Merge() — they are
-	// simply not written to Pebble. Keeping them in cache is necessary: co-batched
-	// proposals admitted with CacheGuaranteed carry no preload for keys assumed
-	// to be in cache. The values age out naturally via cache generation rotation.
+	// Transient volumes are NOT written to 0xF1 (attributes) but ARE written to
+	// 0xFF (cache). They must survive cache restores after node restart: without
+	// the 0xFF entry, a restarted node's cache won't have the transient volume,
+	// causing CacheGuaranteed proposals to fail with ErrBalanceNotPreloaded.
+	if err := writeCacheOnly(batch, genByte, dal.SubAttrVolume, partResult.transient); err != nil {
+		return fmt.Errorf("failed writing transient volumes to cache: %w", err)
+	}
 
 	// Collect unique transient/purged account names per ledger for the audit entry.
 	if len(partResult.transient) > 0 {
