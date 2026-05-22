@@ -160,7 +160,9 @@ func (d *Driver) setCachedLedgerGen(l ledger.Ledger, gen uint64) {
 func (d *Driver) evictCachedLedger(name string) {
 	d.mu.Lock()
 	delete(d.ledgerCache, name)
-	d.cacheGens[name]++
+	if d.cacheTTL > 0 {
+		d.cacheGens[name]++
+	}
 	d.mu.Unlock()
 
 	d.group.Forget(name)
@@ -334,7 +336,9 @@ func (d *Driver) evictCachedLedgersByBucket(bucket string) {
 	for name, entry := range d.ledgerCache {
 		if entry.ledger.Bucket == bucket {
 			delete(d.ledgerCache, name)
-			d.cacheGens[name]++
+			if d.cacheTTL > 0 {
+				d.cacheGens[name]++
+			}
 			evicted = append(evicted, name)
 		}
 	}

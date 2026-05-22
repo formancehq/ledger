@@ -128,6 +128,22 @@ func TestCacheEvictNonExistentKey(t *testing.T) {
 	})
 }
 
+func TestCacheEvictionDoesNotBumpGenWhenDisabled(t *testing.T) {
+	d := newTestDriver(0) // caching disabled
+
+	// Repeated evictions must not accumulate entries in cacheGens.
+	d.evictCachedLedger("test-ledger")
+	d.evictCachedLedger("test-ledger")
+
+	d.mu.RLock()
+	gen, exists := d.cacheGens["test-ledger"]
+	d.mu.RUnlock()
+
+	if exists {
+		require.Equal(t, uint64(0), gen, "cacheGens must not be bumped when cache is disabled")
+	}
+}
+
 func TestCacheUpdateEntry(t *testing.T) {
 	d := newTestDriver(time.Minute)
 	l := ledger.MustNewWithDefault("test-ledger")

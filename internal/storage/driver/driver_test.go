@@ -411,36 +411,45 @@ func TestDeleteBucketEvictsCache(t *testing.T) {
 }
 
 // TestRestoreBucketEvictsCache verifies that Driver.RestoreBucket evicts cached
-// ledgers in the bucket so the next OpenLedger re-reads from DB.
+// ledgers in the bucket so the next OpenLedger re-reads from DB. The test uses
+// a query counter to prove that a DB round-trip occurs after eviction, ruling
+// out the false-positive where a stale cache hit returns the same ledger name.
 func TestRestoreBucketEvictsCache(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
 	bucketName := uuid.NewString()[:8]
 
-	d := driver.New(db, ledgerstore.NewFactory(db), bucket.NewDefaultFactory(), systemstore.NewStoreFactory())
-
+	// Create the ledger using the shared DB so the schema/migration state is
+	// shared with subsequent drivers.
+	setup := driver.New(db, ledgerstore.NewFactory(db), bucket.NewDefaultFactory(), systemstore.NewStoreFactory())
 	l, err := ledger.New(uuid.NewString(), ledger.Configuration{Bucket: bucketName})
 	require.NoError(t, err)
-
-	_, err = d.CreateLedger(ctx, l)
+	_, err = setup.CreateLedger(ctx, l)
 	require.NoError(t, err)
 
-	// Warm the cache.
+	// Build d with a query-counting bun.DB so we can observe DB round-trips.
+	cdb, counter := countingDB(t)
+	d := driver.New(cdb, ledgerstore.NewFactory(cdb), bucket.NewDefaultFactory(), systemstore.NewStoreFactory())
+
+	// Warm the cache so the subsequent OpenLedger is a cache hit without eviction.
 	_, _, err = d.OpenLedger(ctx, l.Name)
 	require.NoError(t, err)
 
-	// Soft-delete then restore the bucket using a separate driver so d's cache
-	// is not evicted by the delete step.
+	// Soft-delete via a separate driver so d's cache is not evicted by that step.
 	other := driver.New(db, ledgerstore.NewFactory(db), bucket.NewDefaultFactory(), systemstore.NewStoreFactory())
 	require.NoError(t, other.DeleteBucket(ctx, bucketName))
 
 	// RestoreBucket on d must evict d's cached entry.
 	require.NoError(t, d.RestoreBucket(ctx, bucketName))
 
-	// Cache was evicted; next OpenLedger must re-read from DB and succeed
-	// (row is active again after restore).
+	// Snapshot the query counter after RestoreBucket so its own DB work is
+	// excluded from the assertion.
+	before := counter.n.Load()
+
+	// Cache was evicted; OpenLedger must hit the DB (counter must increase).
 	_, got, err := d.OpenLedger(ctx, l.Name)
 	require.NoError(t, err)
 	require.Equal(t, l.Name, got.Name)
+	require.Greater(t, counter.n.Load(), before, "eviction must cause OpenLedger to re-read from the DB")
 }
