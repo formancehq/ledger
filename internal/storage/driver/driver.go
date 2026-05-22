@@ -159,9 +159,11 @@ func (d *Driver) setCachedLedgerGen(l ledger.Ledger, gen uint64) {
 
 func (d *Driver) evictCachedLedger(name string) {
 	d.mu.Lock()
-	defer d.mu.Unlock()
 	delete(d.ledgerCache, name)
 	d.cacheGens[name]++
+	d.mu.Unlock()
+
+	d.group.Forget(name)
 }
 
 type openLedgerResult struct {
@@ -327,13 +329,19 @@ func (d *Driver) DeleteLedgerMetadata(ctx context.Context, name string, key stri
 }
 
 func (d *Driver) evictCachedLedgersByBucket(bucket string) {
+	var evicted []string
 	d.mu.Lock()
-	defer d.mu.Unlock()
 	for name, entry := range d.ledgerCache {
 		if entry.ledger.Bucket == bucket {
 			delete(d.ledgerCache, name)
 			d.cacheGens[name]++
+			evicted = append(evicted, name)
 		}
+	}
+	d.mu.Unlock()
+
+	for _, name := range evicted {
+		d.group.Forget(name)
 	}
 }
 
