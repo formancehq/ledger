@@ -250,7 +250,7 @@ func RunLendingLifecycle(r *Runner) error {
 	earlyRepayer := 5
 
 	// --- Setup ---
-	if _, err := r.Step("Setup", LendingLifecycleSetupActions()...); err != nil {
+	if err := r.Setup(LendingLifecycleSetupActions()...); err != nil {
 		return err
 	}
 

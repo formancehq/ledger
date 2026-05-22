@@ -208,7 +208,7 @@ func RunMarketplace(r *Runner) error {
 	purchaseRecords := make([]purchaseRecord, 0, numPurchases)
 
 	// --- Setup ---
-	if _, err := r.Step("Setup", MarketplaceSetupActions()...); err != nil {
+	if err := r.Setup(MarketplaceSetupActions()...); err != nil {
 		return err
 	}
 

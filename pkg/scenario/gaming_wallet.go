@@ -221,7 +221,7 @@ func RunGamingWallet(r *Runner) error {
 	}
 
 	// --- Setup ---
-	if _, err := r.Step("Setup", GamingWalletSetupActions()...); err != nil {
+	if err := r.Setup(GamingWalletSetupActions()...); err != nil {
 		return err
 	}
 

@@ -198,7 +198,7 @@ func RunMultiLedgerPayroll(r *Runner) error {
 	departments := MultiLedgerPayrollDepartments()
 
 	// --- Setup ---
-	if _, err := r.Step("Setup", MultiLedgerPayrollSetupActions()...); err != nil {
+	if err := r.Setup(MultiLedgerPayrollSetupActions()...); err != nil {
 		return err
 	}
 

@@ -241,7 +241,7 @@ func RunSubscription(r *Runner) error {
 	)
 
 	// --- Setup ---
-	if _, err := r.Step("Setup", SubscriptionSetupActions()...); err != nil {
+	if err := r.Setup(SubscriptionSetupActions()...); err != nil {
 		return err
 	}
 

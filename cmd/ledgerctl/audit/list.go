@@ -169,18 +169,21 @@ func printAuditEntry(entry *auditpb.AuditEntry, verbose bool) {
 				source = "key_id=" + s.KeyId
 			}
 
-			godText := ""
 			if caller.GetGod() {
-				godText = " god=true"
+				pterm.Printf("    %s subject=%s %s %s\n",
+					pterm.Gray("caller:"),
+					pterm.Yellow(caller.GetSubject()),
+					pterm.Gray(source),
+					pterm.Red("god=true"),
+				)
+			} else {
+				pterm.Printf("    %s subject=%s %s scopes=[%s]\n",
+					pterm.Gray("caller:"),
+					pterm.Yellow(caller.GetSubject()),
+					pterm.Gray(source),
+					pterm.Gray(strings.Join(caller.GetScopes(), ",")),
+				)
 			}
-
-			pterm.Printf("    %s subject=%s %s scopes=[%s]%s\n",
-				pterm.Gray("caller:"),
-				pterm.Yellow(caller.GetSubject()),
-				pterm.Gray(source),
-				pterm.Gray(strings.Join(caller.GetScopes(), ",")),
-				pterm.Red(godText),
-			)
 		}
 	}
 

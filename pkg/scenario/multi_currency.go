@@ -241,7 +241,7 @@ func RunMultiCurrency(r *Runner) error {
 	}
 
 	// --- Setup ---
-	if _, err := r.Step("Setup", MultiCurrencySetupActions()...); err != nil {
+	if err := r.Setup(MultiCurrencySetupActions()...); err != nil {
 		return err
 	}
 

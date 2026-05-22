@@ -4,6 +4,9 @@ import (
 	"context"
 	"math"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
@@ -60,4 +63,22 @@ func (r *Runner) Step(name string, actions ...*servicepb.Request) (*servicepb.Ap
 	r.log(name)
 
 	return r.Apply(actions...)
+}
+
+// Setup sends each action individually and ignores AlreadyExists errors,
+// making provisioning idempotent (safe to re-run against an existing cluster).
+func (r *Runner) Setup(actions ...*servicepb.Request) error {
+	r.log("Setup")
+
+	for _, action := range actions {
+		if _, err := r.Apply(action); err != nil {
+			if status.Code(err) == codes.AlreadyExists {
+				continue
+			}
+
+			return err
+		}
+	}
+
+	return nil
 }
