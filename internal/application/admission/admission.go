@@ -806,22 +806,32 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 				}
 			}
 		case *raftcmdpb.Order_CreatePreparedQuery:
-			p.PreparedQueries[domain.PreparedQueryKey{LedgerID: nameToID[orderType.CreatePreparedQuery.GetQuery().GetLedger()], Name: orderType.CreatePreparedQuery.GetQuery().GetName()}] = struct{}{}
+			ledgerName := orderType.CreatePreparedQuery.GetQuery().GetLedger()
+			p.Ledgers[domain.LedgerKey{Name: ledgerName}] = struct{}{}
+			p.PreparedQueries[domain.PreparedQueryKey{LedgerID: nameToID[ledgerName], Name: orderType.CreatePreparedQuery.GetQuery().GetName()}] = struct{}{}
 		case *raftcmdpb.Order_UpdatePreparedQuery:
-			p.PreparedQueries[domain.PreparedQueryKey{LedgerID: nameToID[orderType.UpdatePreparedQuery.GetLedger()], Name: orderType.UpdatePreparedQuery.GetName()}] = struct{}{}
+			ledgerName := orderType.UpdatePreparedQuery.GetLedger()
+			p.Ledgers[domain.LedgerKey{Name: ledgerName}] = struct{}{}
+			p.PreparedQueries[domain.PreparedQueryKey{LedgerID: nameToID[ledgerName], Name: orderType.UpdatePreparedQuery.GetName()}] = struct{}{}
 		case *raftcmdpb.Order_DeletePreparedQuery:
-			p.PreparedQueries[domain.PreparedQueryKey{LedgerID: nameToID[orderType.DeletePreparedQuery.GetLedger()], Name: orderType.DeletePreparedQuery.GetName()}] = struct{}{}
+			ledgerName := orderType.DeletePreparedQuery.GetLedger()
+			p.Ledgers[domain.LedgerKey{Name: ledgerName}] = struct{}{}
+			p.PreparedQueries[domain.PreparedQueryKey{LedgerID: nameToID[ledgerName], Name: orderType.DeletePreparedQuery.GetName()}] = struct{}{}
 		case *raftcmdpb.Order_PromoteLedger:
 			p.Ledgers[domain.LedgerKey{Name: orderType.PromoteLedger.GetLedger()}] = struct{}{}
 		case *raftcmdpb.Order_SaveNumscript:
-			p.NumscriptVersions[domain.NumscriptVersionKey{LedgerID: nameToID[orderType.SaveNumscript.GetLedger()], Name: orderType.SaveNumscript.GetName()}] = struct{}{}
+			ledgerName := orderType.SaveNumscript.GetLedger()
+			p.Ledgers[domain.LedgerKey{Name: ledgerName}] = struct{}{}
+			p.NumscriptVersions[domain.NumscriptVersionKey{LedgerID: nameToID[ledgerName], Name: orderType.SaveNumscript.GetName()}] = struct{}{}
 			// For semver saves, preload the specific version content for immutability check
 			version := orderType.SaveNumscript.GetVersion()
 			if version != "" && version != "latest" {
-				p.NumscriptContents[domain.NumscriptEntryKey{LedgerID: nameToID[orderType.SaveNumscript.GetLedger()], Name: orderType.SaveNumscript.GetName(), Version: version}] = struct{}{}
+				p.NumscriptContents[domain.NumscriptEntryKey{LedgerID: nameToID[ledgerName], Name: orderType.SaveNumscript.GetName(), Version: version}] = struct{}{}
 			}
 		case *raftcmdpb.Order_DeleteNumscript:
-			p.NumscriptVersions[domain.NumscriptVersionKey{LedgerID: nameToID[orderType.DeleteNumscript.GetLedger()], Name: orderType.DeleteNumscript.GetName()}] = struct{}{}
+			ledgerName := orderType.DeleteNumscript.GetLedger()
+			p.Ledgers[domain.LedgerKey{Name: ledgerName}] = struct{}{}
+			p.NumscriptVersions[domain.NumscriptVersionKey{LedgerID: nameToID[ledgerName], Name: orderType.DeleteNumscript.GetName()}] = struct{}{}
 		case *raftcmdpb.Order_Apply:
 			ledgerKey := domain.LedgerKey{Name: orderType.Apply.GetLedger()}
 			p.Boundaries[ledgerKey] = struct{}{}
