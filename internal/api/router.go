@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -13,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
+	"github.com/formancehq/go-libs/v5/pkg/audit/httpaudit"
 	"github.com/formancehq/go-libs/v5/pkg/authn/jwt"
 	"github.com/formancehq/go-libs/v5/pkg/observe"
 	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
@@ -31,6 +33,7 @@ import (
 func NewRouter(
 	systemController system.Controller,
 	authenticator jwt.Authenticator,
+	publisher message.Publisher,
 	version string,
 	debug bool,
 	opts ...RouterOption,
@@ -59,6 +62,7 @@ func NewRouter(
 		common.LogID(),
 		middleware.RequestLogger(api.NewLogFormatter()),
 		httpserver.OTLPMiddleware("ledger", debug),
+		httpaudit.Middleware(publisher, "audit-events", "ledger", nil),
 		otelchimetric.NewRequestDurationMillis(baseCfg),
 		otelchimetric.NewRequestInFlight(baseCfg),
 		otelchimetric.NewResponseSizeBytes(baseCfg),
