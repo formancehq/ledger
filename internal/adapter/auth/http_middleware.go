@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // HTTPAuthMiddleware returns an HTTP middleware that validates JWT tokens,
@@ -52,8 +54,11 @@ func HTTPAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 
 			// Expand scopes through the mapping and store in context.
 			// God-mode tokens get all granular scopes.
+			god := isGodMode(claims)
+			trace.SpanFromContext(ctx).SetAttributes(attribute.Bool("auth.god_mode", god))
+
 			var effective map[Scope]struct{}
-			if isGodMode(claims) {
+			if god {
 				effective = allScopes()
 			} else {
 				effective = cfg.ScopeMapping.ExpandScopes(claims.Scopes)

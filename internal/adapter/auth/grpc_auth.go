@@ -73,8 +73,11 @@ func Authenticate(ctx context.Context, cfg AuthConfig, scopes ...Scope) (context
 
 	ctx = WithClaims(ctx, claims)
 
+	god := isGodMode(claims)
+	span.SetAttributes(attribute.Bool("auth.god_mode", god))
+
 	var effective map[Scope]struct{}
-	if isGodMode(claims) {
+	if god {
 		effective = allScopes()
 	} else {
 		effective = cfg.ScopeMapping.ExpandScopes(claims.Scopes)
