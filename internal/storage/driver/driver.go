@@ -11,6 +11,7 @@ import (
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
+	"golang.org/x/sync/singleflight"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
@@ -27,6 +28,11 @@ import (
 
 var ErrBucketOutdated = errors.New("bucket is outdated, you need to upgrade it before adding a new ledger")
 
+type cachedLedger struct {
+	ledger    ledger.Ledger
+	expiresAt time.Time
+}
+
 type Driver struct {
 	ledgerStoreFactory ledgerstore.Factory
 	db                 *bun.DB
@@ -36,6 +42,11 @@ type Driver struct {
 
 	migrationRetryPeriod     time.Duration
 	parallelBucketMigrations int
+
+	mu          sync.RWMutex
+	ledgerCache map[string]cachedLedger
+	cacheTTL    time.Duration
+	group       singleflight.Group
 }
 
 func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgerstore.Store, error) {
@@ -93,26 +104,80 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 	return ret, nil
 }
 
-func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Store, *ledger.Ledger, error) {
-	// todo: keep the ledger in cache somewhere to avoid read the ledger at each request, maybe in the factory
-	// NOTE: the aloneInBucket flag is now shared per bucket via the Factory,
-	// so all stores in the same bucket see updates immediately.
-	systemStore := d.systemStoreFactory.Create(d.db)
+func (d *Driver) getCachedLedger(name string) (ledger.Ledger, bool) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	entry, ok := d.ledgerCache[name]
+	if !ok || time.Now().After(entry.expiresAt) {
+		return ledger.Ledger{}, false
+	}
+	return entry.ledger, true
+}
 
-	ret, err := systemStore.GetLedger(ctx, name)
+func (d *Driver) setCachedLedger(l ledger.Ledger) {
+	if d.cacheTTL == 0 {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.ledgerCache[l.Name] = cachedLedger{
+		ledger:    l,
+		expiresAt: time.Now().Add(d.cacheTTL),
+	}
+}
+
+func (d *Driver) evictCachedLedger(name string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	delete(d.ledgerCache, name)
+}
+
+type openLedgerResult struct {
+	store  *ledgerstore.Store
+	ledger *ledger.Ledger
+}
+
+func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Store, *ledger.Ledger, error) {
+	// aloneInBucket is shared per bucket via the Factory — all stores in the same
+	// bucket see updates immediately, so no count query is needed on cache hits.
+	if l, ok := d.getCachedLedger(name); ok {
+		store := d.ledgerStoreFactory.Create(d.bucketFactory.Create(l.Bucket), l)
+		return store, &l, nil
+	}
+
+	// Collapse concurrent cache-miss requests for the same ledger into one DB call.
+	v, err, _ := d.group.Do(name, func() (any, error) {
+		// Re-check the cache: a previous waiter may have already populated it.
+		if l, ok := d.getCachedLedger(name); ok {
+			store := d.ledgerStoreFactory.Create(d.bucketFactory.Create(l.Bucket), l)
+			return &openLedgerResult{store: store, ledger: &l}, nil
+		}
+
+		systemStore := d.systemStoreFactory.Create(d.db)
+
+		ret, err := systemStore.GetLedger(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+
+		count, err := systemStore.CountLedgersInBucket(ctx, ret.Bucket)
+		if err != nil {
+			return nil, fmt.Errorf("counting ledgers in bucket: %w", err)
+		}
+
+		d.setCachedLedger(*ret)
+
+		store := d.ledgerStoreFactory.Create(d.bucketFactory.Create(ret.Bucket), *ret)
+		store.SetAloneInBucket(count == 1)
+
+		return &openLedgerResult{store: store, ledger: ret}, nil
+	})
 	if err != nil {
 		return nil, nil, err
 	}
 
-	count, err := systemStore.CountLedgersInBucket(ctx, ret.Bucket)
-	if err != nil {
-		return nil, nil, fmt.Errorf("counting ledgers in bucket: %w", err)
-	}
-
-	store := d.ledgerStoreFactory.Create(d.bucketFactory.Create(ret.Bucket), *ret)
-	store.SetAloneInBucket(count == 1)
-
-	return store, ret, err
+	res := v.(*openLedgerResult)
+	return res.store, res.ledger, nil
 }
 
 func (d *Driver) Initialize(ctx context.Context) error {
@@ -193,10 +258,12 @@ func (d *Driver) detectRollbacks(ctx context.Context) error {
 }
 
 func (d *Driver) UpdateLedgerMetadata(ctx context.Context, name string, m metadata.Metadata) error {
+	d.evictCachedLedger(name)
 	return d.systemStoreFactory.Create(d.db).UpdateLedgerMetadata(ctx, name, m)
 }
 
 func (d *Driver) DeleteLedgerMetadata(ctx context.Context, name string, key string) error {
+	d.evictCachedLedger(name)
 	return d.systemStoreFactory.Create(d.db).DeleteLedgerMetadata(ctx, name, key)
 }
 
@@ -314,6 +381,7 @@ func New(
 		ledgerStoreFactory: ledgerStoreFactory,
 		bucketFactory:      bucketFactory,
 		systemStoreFactory: systemStoreFactory,
+		ledgerCache:        make(map[string]cachedLedger),
 	}
 	for _, opt := range append(defaultOptions, opts...) {
 		opt(ret)
@@ -341,8 +409,15 @@ func WithTracer(tracer trace.Tracer) Option {
 	}
 }
 
+func WithCacheTTL(ttl time.Duration) Option {
+	return func(d *Driver) {
+		d.cacheTTL = ttl
+	}
+}
+
 var defaultOptions = []Option{
 	WithParallelBucketMigration(10),
 	WithMigrationRetryPeriod(5 * time.Second),
 	WithTracer(noop.Tracer{}),
+	WithCacheTTL(60 * time.Second),
 }
