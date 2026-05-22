@@ -25,6 +25,7 @@ type keyBundle struct {
 	KeyID      string   `json:"keyId"`
 	Scopes     []string `json:"scopes"`
 	Subject    string   `json:"subject"`
+	God        bool     `json:"god"`
 }
 
 // NewLoginCommand returns the "auth login" command.
@@ -182,6 +183,9 @@ func resolveLoginParams(cmd *cobra.Command) (tokenParams, error) {
 	}
 
 	god, _ := cmd.Flags().GetBool("god")
+	if !cmd.Flags().Changed("god") && bundle != nil {
+		god = bundle.God
+	}
 
 	return tokenParams{
 		seed:       seed,
