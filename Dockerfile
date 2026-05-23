@@ -31,11 +31,14 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     go build -tags "${BUILD_TAGS}" -o ledgerctl ./cmd/ledgerctl
 
 FROM alpine:latest
-RUN apk --no-cache add ca-certificates tzdata
+RUN apk --no-cache add ca-certificates tzdata bash bash-completion && \
+    sed -i 's|/bin/ash|/bin/bash|' /etc/passwd
 ENV TZ=UTC
 ENV PATH=$PATH:/app
 ENV INSECURE=true
+SHELL ["/bin/bash", "-c"]
 WORKDIR /app
 COPY --from=build-server /build/ledger .
 COPY --from=build-ledgerctl /build/ledgerctl .
+RUN ./ledgerctl completion bash > /etc/bash_completion.d/ledgerctl
 ENTRYPOINT ["./ledger"]
