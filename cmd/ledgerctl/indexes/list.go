@@ -1,4 +1,4 @@
-package ledgers
+package indexes
 
 import (
 	"fmt"
@@ -12,16 +12,16 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
-// NewListIndexesCommand creates the ledgers list-indexes command.
-func NewListIndexesCommand() *cobra.Command {
+// NewListCommand creates the indexes list command.
+func NewListCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "list-indexes [flags]",
-		Aliases: []string{"li", "indexes"},
+		Use:     "list [flags]",
+		Aliases: []string{"ls"},
 		Short:   "List indexes on a ledger",
 		Long: `List all configured indexes on a ledger, including their build status.
 
 Examples:
-  ledgerctl ledgers list-indexes --ledger my-ledger`,
+  ledgerctl indexes list --ledger my-ledger`,
 		Args: cobra.NoArgs,
 		RunE: runListIndexes,
 	}
@@ -135,7 +135,7 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 	if len(table) == 1 {
 		pterm.Println("No indexes configured.")
 		pterm.Println(pterm.Gray("Hint: Create an index using:"))
-		pterm.FgCyan.Println("  ledgerctl ledgers create-index --ledger " + ledgerName + " --type address")
+		pterm.FgCyan.Println("  ledgerctl indexes create --ledger " + ledgerName + " --type address")
 
 		return nil
 	}

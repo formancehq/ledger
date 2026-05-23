@@ -19,6 +19,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cluster"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/events"
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/indexes"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/ledgers"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/logs"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/numscripts"
@@ -127,6 +128,7 @@ func newRootCommand() *cobra.Command {
 
 	// Add subcommands.
 	rootCmd.AddCommand(ledgers.NewCommand())
+	rootCmd.AddCommand(indexes.NewCommand())
 	rootCmd.AddCommand(accounts.NewCommand())
 	rootCmd.AddCommand(accounttypes.NewCommand())
 	rootCmd.AddCommand(transactions.NewCommand())

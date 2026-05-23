@@ -124,11 +124,11 @@ func printErrorDetails(err error) {
 	case errors.As(err, &indexMissing):
 		pterm.Println()
 		pterm.Printf("  Index: %s\n", pterm.Yellow(indexMissing.Index))
-		pterm.Println(pterm.Gray("  hint: create the index with 'ledgerctl ledgers create-index'"))
+		pterm.Println(pterm.Gray("  hint: create the index with 'ledgerctl indexes create'"))
 	case errors.As(err, &indexBuild):
 		pterm.Println()
 		pterm.Printf("  Index: %s\n", pterm.Yellow(indexBuild.Index))
-		pterm.Println(pterm.Gray("  hint: wait for the index to finish building, check status with 'ledgerctl ledgers list-indexes'"))
+		pterm.Println(pterm.Gray("  hint: wait for the index to finish building, check status with 'ledgerctl indexes list'"))
 	}
 }
 

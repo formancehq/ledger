@@ -1,7 +1,6 @@
-package ledgers
+package indexes
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/pterm/pterm"
@@ -12,34 +11,26 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
-// NewCreateIndexCommand creates the ledgers create-index command.
-func NewCreateIndexCommand() *cobra.Command {
+// NewDropCommand creates the indexes drop command.
+func NewDropCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "create-index [flags]",
-		Aliases: []string{"ci"},
-		Short:   "Create an index on a ledger",
-		Long: `Create an opt-in index on a ledger.
+		Use:     "drop [flags]",
+		Aliases: []string{"d"},
+		Short:   "Drop an index from a ledger",
+		Long: `Drop an opt-in index from a ledger. This stops the index from being updated
+and frees the associated storage.
 
 Index types:
   address              Account→transaction mapping (any role)
   source-address       Source account→transaction mapping
   dest-address         Destination account→transaction mapping
   metadata             Metadata field index (requires --target and --key)
-  reference            Transaction reference index (exact-match filter)
-  timestamp            Transaction timestamp index (range filter)
-  inserted-at          Transaction inserted_at (creation date) index (range filter)
-  log-ledger           Per-ledger log index (enables filtered log listing)
 
 Examples:
-  ledgerctl ledgers create-index --ledger my-ledger --type address
-  ledgerctl ledgers create-index --ledger my-ledger --type source-address
-  ledgerctl ledgers create-index --ledger my-ledger --type metadata --target account --key category
-  ledgerctl ledgers create-index --ledger my-ledger --type reference
-  ledgerctl ledgers create-index --ledger my-ledger --type timestamp
-  ledgerctl ledgers create-index --ledger my-ledger --type inserted-at
-  ledgerctl ledgers create-index --ledger my-ledger --type log-ledger`,
+  ledgerctl indexes drop --ledger my-ledger --type address
+  ledgerctl indexes drop --ledger my-ledger --type metadata --target account --key category`,
 		Args: cobra.NoArgs,
-		RunE: runCreateIndex,
+		RunE: runDropIndex,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")
@@ -51,7 +42,7 @@ Examples:
 	return cmd
 }
 
-func runCreateIndex(cmd *cobra.Command, _ []string) error {
+func runDropIndex(cmd *cobra.Command, _ []string) error {
 	client, conn, err := cmdutil.GetClient(cmd)
 	if err != nil {
 		return err
@@ -70,7 +61,7 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 	if indexType == "" {
 		result, err := pterm.DefaultInteractiveSelect.
 			WithOptions([]string{"address", "source-address", "dest-address", "metadata", "reference", "timestamp", "inserted-at", "log-ledger"}).
-			WithDefaultText("Select index type").
+			WithDefaultText("Select index type to drop").
 			Show()
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
@@ -79,7 +70,7 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 		indexType = result
 	}
 
-	req := &servicepb.CreateIndexRequest{
+	req := &servicepb.DropIndexRequest{
 		Ledger: ledgerName,
 	}
 
@@ -87,7 +78,7 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 
 	switch indexType {
 	case "address":
-		req.Index = &servicepb.CreateIndexRequest_Transaction{
+		req.Index = &servicepb.DropIndexRequest_Transaction{
 			Transaction: &commonpb.TransactionIndex{
 				Kind: &commonpb.TransactionIndex_Builtin{
 					Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS,
@@ -96,7 +87,7 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 		}
 		indexDesc = "address (any role)"
 	case "source-address":
-		req.Index = &servicepb.CreateIndexRequest_Transaction{
+		req.Index = &servicepb.DropIndexRequest_Transaction{
 			Transaction: &commonpb.TransactionIndex{
 				Kind: &commonpb.TransactionIndex_Builtin{
 					Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS,
@@ -105,7 +96,7 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 		}
 		indexDesc = "source-address"
 	case "dest-address":
-		req.Index = &servicepb.CreateIndexRequest_Transaction{
+		req.Index = &servicepb.DropIndexRequest_Transaction{
 			Transaction: &commonpb.TransactionIndex{
 				Kind: &commonpb.TransactionIndex_Builtin{
 					Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS,
@@ -121,13 +112,13 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 
 		switch target {
 		case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
-			req.Index = &servicepb.CreateIndexRequest_Transaction{
+			req.Index = &servicepb.DropIndexRequest_Transaction{
 				Transaction: &commonpb.TransactionIndex{
 					Kind: &commonpb.TransactionIndex_MetadataKey{MetadataKey: key},
 				},
 			}
 		case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-			req.Index = &servicepb.CreateIndexRequest_Account{
+			req.Index = &servicepb.DropIndexRequest_Account{
 				Account: &commonpb.AccountIndex{
 					Kind: &commonpb.AccountIndex_MetadataKey{MetadataKey: key},
 				},
@@ -136,7 +127,7 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 
 		indexDesc = fmt.Sprintf("metadata %s.%s", cmdutil.TargetTypeString(target), key)
 	case "reference":
-		req.Index = &servicepb.CreateIndexRequest_Transaction{
+		req.Index = &servicepb.DropIndexRequest_Transaction{
 			Transaction: &commonpb.TransactionIndex{
 				Kind: &commonpb.TransactionIndex_Builtin{
 					Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
@@ -145,7 +136,7 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 		}
 		indexDesc = "reference"
 	case "timestamp":
-		req.Index = &servicepb.CreateIndexRequest_Transaction{
+		req.Index = &servicepb.DropIndexRequest_Transaction{
 			Transaction: &commonpb.TransactionIndex{
 				Kind: &commonpb.TransactionIndex_Builtin{
 					Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
@@ -154,7 +145,7 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 		}
 		indexDesc = "timestamp"
 	case "inserted-at":
-		req.Index = &servicepb.CreateIndexRequest_Transaction{
+		req.Index = &servicepb.DropIndexRequest_Transaction{
 			Transaction: &commonpb.TransactionIndex{
 				Kind: &commonpb.TransactionIndex_Builtin{
 					Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
@@ -163,7 +154,7 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 		}
 		indexDesc = "inserted-at"
 	case "log-ledger":
-		req.Index = &servicepb.CreateIndexRequest_LogBuiltin{
+		req.Index = &servicepb.DropIndexRequest_LogBuiltin{
 			LogBuiltin: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER,
 		}
 		indexDesc = "log-ledger"
@@ -174,12 +165,12 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Creating index %s on %s...", indexDesc, ledgerName))
+	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Dropping index %s on %s...", indexDesc, ledgerName))
 
 	requests := []*servicepb.Request{
 		{
-			Type: &servicepb.Request_CreateIndex{
-				CreateIndex: req,
+			Type: &servicepb.Request_DropIndex{
+				DropIndex: req,
 			},
 		},
 	}
@@ -194,7 +185,7 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		_ = spinner.Stop()
 
-		return cmdutil.FormatGRPCError("failed to create index", err)
+		return cmdutil.FormatGRPCError("failed to drop index", err)
 	}
 
 	if err := cmdutil.VerifyResponseSignatures(cmd, resp.GetLogs()); err != nil {
@@ -203,45 +194,7 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 		return cmdutil.Displayed(fmt.Errorf("response signature verification failed: %w", err))
 	}
 
-	spinner.Success(fmt.Sprintf("Created index %s on ledger %s", indexDesc, ledgerName))
+	spinner.Success(fmt.Sprintf("Dropped index %s from ledger %s", indexDesc, ledgerName))
 
 	return nil
-}
-
-// resolveMetadataIndexFlags resolves the target and key for a metadata index.
-func resolveMetadataIndexFlags(cmd *cobra.Command) (commonpb.TargetType, string, error) {
-	targetStr, _ := cmd.Flags().GetString("target")
-	if targetStr == "" {
-		result, err := pterm.DefaultInteractiveSelect.
-			WithOptions(cmdutil.TargetTypeOptions()).
-			WithDefaultText("Select target type").
-			Show()
-		if err != nil {
-			return 0, "", fmt.Errorf("failed to read input: %w", err)
-		}
-
-		targetStr = result
-	}
-
-	target, err := cmdutil.ParseTargetType(targetStr)
-	if err != nil {
-		return 0, "", err
-	}
-
-	key, _ := cmd.Flags().GetString("key")
-	if key == "" {
-		result, err := pterm.DefaultInteractiveTextInput.
-			WithDefaultText("Enter metadata key name").
-			Show()
-		if err != nil {
-			return 0, "", fmt.Errorf("failed to read input: %w", err)
-		}
-
-		key = result
-		if key == "" {
-			return 0, "", errors.New("metadata key is required")
-		}
-	}
-
-	return target, key, nil
 }

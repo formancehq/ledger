@@ -380,8 +380,8 @@ Prepared queries are reusable, named filter queries stored per-ledger. They can 
 **CLI commands:**
 ```bash
 # Create and use a reference index
-ledgerctl ledgers create-index --ledger my-ledger --type reference
-ledgerctl ledgers list-indexes --ledger my-ledger
+ledgerctl indexes create --ledger my-ledger --type reference
+ledgerctl indexes list --ledger my-ledger
 
 # Create a prepared query that filters by reference
 # (done via gRPC / HTTP — no direct CLI for query creation)

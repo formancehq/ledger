@@ -474,14 +474,20 @@ ledgerctl ledgers get-schema my-ledger --json
 ledgerctl ledgers schema my-ledger
 ```
 
-#### ledgers create-index
+### indexes
+
+Commands for creating, dropping, listing, and inspecting indexes on ledgers.
+
+**Aliases:** `index`, `idx`
+
+#### indexes create
 
 Create an opt-in index on a ledger. Indexes are built in the background and queries will be rejected until the index reaches READY status.
 
-**Aliases:** `ci`
+**Aliases:** `c`
 
 ```bash
-ledgerctl ledgers create-index [flags]
+ledgerctl indexes create [flags]
 ```
 
 **Flags:**
@@ -517,35 +523,35 @@ ledgerctl ledgers create-index [flags]
 
 ```bash
 # Create address index (any role)
-ledgerctl ledgers create-index --ledger my-ledger --type address
+ledgerctl indexes create --ledger my-ledger --type address
 
 # Create source-only address index
-ledgerctl ledgers create-index --ledger my-ledger --type source-address
+ledgerctl indexes create --ledger my-ledger --type source-address
 
 # Create metadata index
-ledgerctl ledgers create-index --ledger my-ledger --type metadata --target account --key category
+ledgerctl indexes create --ledger my-ledger --type metadata --target account --key category
 
 # Create reference index (enables filtering transactions by reference)
-ledgerctl ledgers create-index --ledger my-ledger --type reference
+ledgerctl indexes create --ledger my-ledger --type reference
 
 # Create timestamp index (enables filtering transactions by effective date range)
-ledgerctl ledgers create-index --ledger my-ledger --type timestamp
+ledgerctl indexes create --ledger my-ledger --type timestamp
 
 # Create inserted-at index (enables filtering transactions by creation date range)
-ledgerctl ledgers create-index --ledger my-ledger --type inserted-at
+ledgerctl indexes create --ledger my-ledger --type inserted-at
 
 # Interactive mode
-ledgerctl ledgers create-index
+ledgerctl indexes create
 ```
 
-#### ledgers drop-index
+#### indexes drop
 
 Drop an opt-in index from a ledger. This stops the index from being updated.
 
-**Aliases:** `di`
+**Aliases:** `d`
 
 ```bash
-ledgerctl ledgers drop-index [flags]
+ledgerctl indexes drop [flags]
 ```
 
 **Flags:**
@@ -566,23 +572,23 @@ ledgerctl ledgers drop-index [flags]
 
 ```bash
 # Drop address index
-ledgerctl ledgers drop-index --ledger my-ledger --type address
+ledgerctl indexes drop --ledger my-ledger --type address
 
 # Drop metadata index
-ledgerctl ledgers drop-index --ledger my-ledger --type metadata --target account --key category
+ledgerctl indexes drop --ledger my-ledger --type metadata --target account --key category
 
 # Drop reference index
-ledgerctl ledgers drop-index --ledger my-ledger --type reference
+ledgerctl indexes drop --ledger my-ledger --type reference
 ```
 
-#### ledgers list-indexes
+#### indexes list
 
 List all configured indexes on a ledger with their build status.
 
-**Aliases:** `li`, `indexes`
+**Aliases:** `ls`
 
 ```bash
-ledgerctl ledgers list-indexes [flags]
+ledgerctl indexes list [flags]
 ```
 
 **Flags:**
@@ -600,7 +606,7 @@ ledgerctl ledgers list-indexes [flags]
 
 ```bash
 # List all indexes
-ledgerctl ledgers list-indexes --ledger my-ledger
+ledgerctl indexes list --ledger my-ledger
 ```
 
 **Sample output:**
@@ -614,14 +620,14 @@ reference        -            -          READY
 timestamp        -            -          BUILDING (starting...)
 ```
 
-#### ledgers inspect-index
+#### indexes inspect
 
 Inspect a metadata index to see distinct values, facets (value + count), or a summary (cardinality, min, max, existence counts).
 
-**Aliases:** `ii`
+**Aliases:** `i`
 
 ```bash
-ledgerctl ledgers inspect-index [flags]
+ledgerctl indexes inspect [flags]
 ```
 
 **Flags:**
@@ -640,16 +646,16 @@ ledgerctl ledgers inspect-index [flags]
 
 ```bash
 # Get a summary of the "category" index
-ledgerctl ledgers inspect-index --ledger my-ledger --key category
+ledgerctl indexes inspect --ledger my-ledger --key category
 
 # List distinct values
-ledgerctl ledgers inspect-index --ledger my-ledger --key category --mode distinct-values
+ledgerctl indexes inspect --ledger my-ledger --key category --mode distinct-values
 
 # List facets (value + count)
-ledgerctl ledgers inspect-index --ledger my-ledger --key status --mode facets --target transaction
+ledgerctl indexes inspect --ledger my-ledger --key status --mode facets --target transaction
 
 # Paginate through distinct values
-ledgerctl ledgers inspect-index --ledger my-ledger --key category --mode distinct-values --page-size 10
+ledgerctl indexes inspect --ledger my-ledger --key category --mode distinct-values --page-size 10
 ```
 
 **Sample output (summary mode):**

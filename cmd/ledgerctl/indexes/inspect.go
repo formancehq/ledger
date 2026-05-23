@@ -1,4 +1,4 @@
-package ledgers
+package indexes
 
 import (
 	"fmt"
@@ -13,23 +13,23 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
-// NewInspectIndexCommand creates the ledgers inspect-index command.
-func NewInspectIndexCommand() *cobra.Command {
+// NewInspectCommand creates the indexes inspect command.
+func NewInspectCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "inspect-index [flags]",
-		Aliases: []string{"ii"},
+		Use:     "inspect [flags]",
+		Aliases: []string{"i"},
 		Short:   "Inspect a metadata index",
 		Long: `Scan a metadata index to see distinct values, facets, or a summary.
 
 Examples:
   # Get a summary of the "category" index
-  ledgerctl ledgers inspect-index --ledger my-ledger --key category
+  ledgerctl indexes inspect --ledger my-ledger --key category
 
   # List distinct values
-  ledgerctl ledgers inspect-index --ledger my-ledger --key category --mode distinct-values
+  ledgerctl indexes inspect --ledger my-ledger --key category --mode distinct-values
 
   # List facets (value + count)
-  ledgerctl ledgers inspect-index --ledger my-ledger --key status --mode facets --target transaction`,
+  ledgerctl indexes inspect --ledger my-ledger --key status --mode facets --target transaction`,
 		Args: cobra.NoArgs,
 		RunE: runInspectIndex,
 	}
