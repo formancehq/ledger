@@ -732,6 +732,12 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 
 	fsm.batchCommitHistogram.Record(context.Background(), time.Since(commitStart).Microseconds())
 
+	lifecycle.SendEvent("batch_committed", map[string]any{
+		"lastAppliedIndex": pb.lastAppliedIndex,
+		"entryCount":       pb.entryCount,
+		"volumeUpdates":    len(pb.sentinelUpdates),
+	})
+
 	// Post-commit sentinel checks.
 	if pb.sentinelMode {
 		if len(pb.sentinelUpdates) > 0 {
@@ -1457,6 +1463,10 @@ func (fsm *Machine) InstallSnapshot(_ context.Context, snapshot raftpb.Snapshot)
 		"snapshotIndex": snapshot.Metadata.Index,
 	}).Infof("InstallSnapshot complete")
 
+	lifecycle.SendEvent("install_snapshot", map[string]any{
+		"snapshotIndex": snapshot.Metadata.Index,
+	})
+
 	return nil
 }
 
@@ -1483,6 +1493,11 @@ func (fsm *Machine) SynchronizeWithLeader(ctx context.Context, snapshotFetcher S
 	if err != nil {
 		return 0, fmt.Errorf("recovering state after sync: %w", err)
 	}
+
+	lifecycle.SendEvent("sync_with_leader_complete", map[string]any{
+		"lastAppliedIndex": fsm.lastAppliedIndex,
+		"snapshotIndex":    fsm.snapshotIndex,
+	})
 
 	return fsm.lastAppliedIndex, nil
 }

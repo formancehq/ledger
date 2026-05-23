@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
+
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
@@ -12,7 +14,8 @@ import (
 )
 
 // SentinelTracer accumulates diagnostic data during PrepareEntries in sentinel mode.
-// It logs each entry as it is processed (proposal applied/rejected) and accumulates
+// It logs each entry as it is processed (proposal applied/rejected), emits
+// lifecycle.SendEvent for Antithesis causality analysis, and accumulates
 // volume details for a full dump only when a post-commit sentinel check fails.
 type SentinelTracer struct {
 	logger  logging.Logger
@@ -89,6 +92,16 @@ func (t *SentinelTracer) RecordApplied(ledgerIDs []uint32, logCount, volumeCount
 		"volumeUpdates": volumeCount,
 		"purgedVolumes": purgedCount,
 	}).Infof("SENTINEL: proposal applied")
+
+	lifecycle.SendEvent("proposal_applied", map[string]any{
+		"raftIndex":     e.RaftIndex,
+		"proposalID":    e.ProposalID,
+		"orderCount":    e.OrderCount,
+		"ledgerIDs":     ledgerIDs,
+		"logCount":      logCount,
+		"volumeUpdates": volumeCount,
+		"purgedVolumes": purgedCount,
+	})
 }
 
 // RecordRejected records a rejected proposal and logs it.
@@ -107,6 +120,13 @@ func (t *SentinelTracer) RecordRejected(errMsg string) {
 		"error":      errMsg,
 		"orderCount": e.OrderCount,
 	}).Infof("SENTINEL: proposal rejected (business error)")
+
+	lifecycle.SendEvent("proposal_rejected", map[string]any{
+		"raftIndex":  e.RaftIndex,
+		"proposalID": e.ProposalID,
+		"error":      errMsg,
+		"orderCount": e.OrderCount,
+	})
 }
 
 // SetCacheRotated marks the current entry as triggering a cache rotation.
@@ -115,10 +135,16 @@ func (t *SentinelTracer) SetCacheRotated() {
 		return
 	}
 
-	t.entries[len(t.entries)-1].CacheRotated = true
+	e := &t.entries[len(t.entries)-1]
+	e.CacheRotated = true
+
+	lifecycle.SendEvent("cache_rotation", map[string]any{
+		"raftIndex": e.RaftIndex,
+	})
 }
 
 // TraceVolumeUpdates records volume updates with their partition classification.
+// Emits a SendEvent per entry for causality analysis with aggregated counts.
 func (t *SentinelTracer) TraceVolumeUpdates(
 	kept []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 	transient []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
@@ -141,6 +167,13 @@ func (t *SentinelTracer) TraceVolumeUpdates(
 	for _, u := range purged {
 		e.Volumes = append(e.Volumes, traceUpdate(u, "purged"))
 	}
+
+	lifecycle.SendEvent("volume_partition", map[string]any{
+		"raftIndex": e.RaftIndex,
+		"kept":      len(kept),
+		"transient": len(transient),
+		"purged":    len(purged),
+	})
 }
 
 func traceUpdate(u attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair], partition string) sentinelVolumeTrace {
