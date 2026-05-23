@@ -126,7 +126,7 @@ func createRandomBulkTransactions(ctx context.Context, client servicepb.BucketSe
 		return
 	}
 
-	assert.AlwaysOrUnreachable(len(resp.GetLogs()) == size, "bulk Apply should return one log per request", internal.Details{
+	assert.AlwaysOrUnreachable(uint64(len(resp.GetLogs())) == size, "bulk Apply should return one log per request", internal.Details{
 		"ledger":   ledger,
 		"expected": size,
 		"got":      len(resp.GetLogs()),
