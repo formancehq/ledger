@@ -119,7 +119,8 @@ type Machine struct {
 
 	// sentinelMode enables runtime volume consistency checks
 	// (monotonicity, delta/posting cross-check, post-commit cache/Pebble verification).
-	sentinelMode bool
+	sentinelMode    bool
+	sentinelTracer  SentinelTracer
 
 	// notifier is notified after new logs are committed and when configuration
 	// changes. A single notifier decouples the FSM from individual consumers;
@@ -200,6 +201,7 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 	fsm.appliedCond = sync.NewCond(&fsm.appliedMu)
 	fsm.cacheSnapshotter = NewCacheSnapshotter(logger, dataStore, fsm.Registry, bloomFilters)
 	fsm.writeSet = NewWriteSet(fsm)
+	fsm.sentinelTracer.Init(logger)
 
 	if err := fsm.RecoverState(); err != nil {
 		return nil, fmt.Errorf("recovering state: %w", err)
@@ -447,6 +449,10 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, entries ...raftpb.Entry)
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
 
+	if fsm.sentinelMode {
+		fsm.sentinelTracer.Reset()
+	}
+
 	// With pipelining, lastPersistedIndex may lag lastAppliedIndex by one batch
 	// (the pending commit). This is expected and safe.
 	persistedIdx := fsm.lastPersistedIndex.Load()
@@ -514,6 +520,9 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, entries ...raftpb.Entry)
 		}
 
 		if rotated, _ := fsm.Registry.Cache.CheckRotationNeeded(entry.Index); rotated {
+			if fsm.sentinelMode {
+				fsm.sentinelTracer.SetCacheRotated()
+			}
 			lifecycle.SendEvent("spool replay completed", map[string]any{
 				"entryIndex": entry.Index,
 			})
@@ -553,11 +562,7 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, entries ...raftpb.Entry)
 
 		if entry.Type != raftpb.EntryNormal || len(entry.Data) == 0 {
 			if fsm.sentinelMode {
-				fsm.logger.WithFields(map[string]any{
-					"raftIndex": entry.Index,
-					"entryType": entry.Type.String(),
-					"dataLen":   len(entry.Data),
-				}).Infof("SENTINEL: skipping non-normal/empty entry")
+				fsm.sentinelTracer.SkipEntry(entry.Index, entry.Type.String(), len(entry.Data))
 			}
 
 			continue
@@ -585,6 +590,10 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, entries ...raftpb.Entry)
 			continue
 		}
 
+		if fsm.sentinelMode {
+			fsm.sentinelTracer.StartEntry(entry.Index, cmd.GetId(), len(cmd.GetOrders()))
+		}
+
 		result, err := fsm.applyProposal(ctx, entry.Index, batch, cmd)
 		if err != nil {
 			_ = batch.Cancel()
@@ -596,20 +605,12 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, entries ...raftpb.Entry)
 
 		if fsm.sentinelMode {
 			if result.Error != nil {
-				fsm.logger.WithFields(map[string]any{
-					"raftIndex":  entry.Index,
-					"proposalID": cmd.GetId(),
-					"error":      result.Error.Error(),
-					"orderCount": len(cmd.GetOrders()),
-				}).Infof("SENTINEL: proposal rejected (business error)")
+				fsm.sentinelTracer.RecordRejected(result.Error.Error())
 			} else {
-				fsm.logger.WithFields(map[string]any{
-					"raftIndex":  entry.Index,
-					"proposalID": cmd.GetId(),
-					"orderCount": len(cmd.GetOrders()),
-					"ledgerIDs":  result.ledgerIDs,
-					"logCount":   len(result.createdLogs),
-				}).Infof("SENTINEL: proposal applied")
+				fsm.sentinelTracer.RecordApplied(
+					result.ledgerIDs, len(result.createdLogs),
+					len(result.volumeUpdates), len(result.purgedVolumeKeys),
+				)
 			}
 		}
 
@@ -687,6 +688,7 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, entries ...raftpb.Entry)
 		pb.sentinelMode = true
 		pb.sentinelUpdates = deduplicateVolumeUpdates(ret.Results)
 		pb.sentinelLedgerIDs = collectLedgerIDsFromResults(ret.Results)
+		pb.sentinelTracer = &fsm.sentinelTracer
 	}
 
 	// Capture archive requests from current period state.
@@ -735,9 +737,10 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 		if len(pb.sentinelUpdates) > 0 {
 			if err := verifyPostCommitVolumes(
 				fsm.dataStore, fsm.Registry.Attrs.Volume,
-				pb.sentinelUpdates, pb.lastAppliedIndex,
+				pb.sentinelUpdates, pb.lastAppliedIndex, fsm.logger,
 			); err != nil {
 				fsm.logger.Errorf("POST-COMMIT VOLUME ASSERTION FAILED: %v", err)
+				pb.sentinelTracer.Dump(fsm.logger)
 
 				return fmt.Errorf("post-commit volume assertion failed: %w", err)
 			}
@@ -752,6 +755,7 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 				fsm.dataStore, fsm.Registry.Attrs.Volume, pb.sentinelLedgerIDs, pb.lastAppliedIndex, fsm.logger,
 			); err != nil {
 				fsm.logger.Errorf("AGGREGATED VOLUME BALANCE CHECK FAILED: %v", err)
+				pb.sentinelTracer.Dump(fsm.logger)
 
 				return fmt.Errorf("aggregated volume balance check failed: %w", err)
 			}
@@ -1786,6 +1790,7 @@ type PreparedBatch struct {
 	sentinelMode      bool
 	sentinelUpdates   []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
 	sentinelLedgerIDs []uint32
+	sentinelTracer    *SentinelTracer
 
 	// archiveRequests is captured during prepare so CommitPreparedBatch
 	// does not need to read fsm.Periods (which may be mutated by the next prepare).

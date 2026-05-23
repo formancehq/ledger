@@ -189,6 +189,11 @@ func (b *WriteSet) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 		return fmt.Errorf("failed writing transient volumes to cache: %w", err)
 	}
 
+	// Trace volume partitions for sentinel diagnostics.
+	if b.fsm.sentinelMode {
+		b.fsm.sentinelTracer.TraceVolumeUpdates(partResult.kept, partResult.transient, partResult.purged)
+	}
+
 	// Collect unique transient/purged account names per ledger for the audit entry.
 	if len(partResult.transient) > 0 {
 		b.transientAccounts = collectUniqueAccounts(partResult.transient)

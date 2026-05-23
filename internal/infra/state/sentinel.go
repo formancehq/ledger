@@ -97,6 +97,7 @@ func verifyPostCommitVolumes(
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
 	volumeUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 	raftIndex uint64,
+	logger logging.Logger,
 ) error {
 	for _, update := range volumeUpdates {
 		// Read from Pebble (the committed value)
@@ -106,8 +107,17 @@ func verifyPostCommitVolumes(
 		}
 
 		if pebbleValue == nil {
-			return fmt.Errorf("volume missing from pebble after commit for %d/%s/%s at raft index %d",
-				update.Key.LedgerID, update.Key.Account, update.Key.Asset, raftIndex)
+			logger.WithFields(map[string]any{
+				"ledger":       update.Key.LedgerID,
+				"account":      update.Key.Account,
+				"asset":        update.Key.Asset,
+				"raftIndex":    raftIndex,
+				"canonicalKey": fmt.Sprintf("%x", update.CanonicalKey),
+				"id":           fmt.Sprintf("%x", update.ID),
+			}).Errorf("SENTINEL DIAG: volume missing from pebble after commit")
+
+			return fmt.Errorf("volume missing from pebble after commit for %d/%s/%s at raft index %d (canonicalKey=%x)",
+				update.Key.LedgerID, update.Key.Account, update.Key.Asset, raftIndex, update.CanonicalKey)
 		}
 
 		// Compare Pebble value with the expected value from Merge
@@ -117,6 +127,20 @@ func verifyPostCommitVolumes(
 		expectedOutput := update.New.GetOutput().ToBigInt()
 
 		if pebbleInput.Cmp(expectedInput) != 0 || pebbleOutput.Cmp(expectedOutput) != 0 {
+			// Log full diagnostic before asserting
+			logger.WithFields(map[string]any{
+				"ledger":         update.Key.LedgerID,
+				"account":        update.Key.Account,
+				"asset":          update.Key.Asset,
+				"expectedInput":  expectedInput.String(),
+				"expectedOutput": expectedOutput.String(),
+				"pebbleInput":    pebbleInput.String(),
+				"pebbleOutput":   pebbleOutput.String(),
+				"raftIndex":      raftIndex,
+				"canonicalKey":   fmt.Sprintf("%x", update.CanonicalKey),
+				"id":             fmt.Sprintf("%x", update.ID),
+			}).Errorf("SENTINEL DIAG: cache/pebble volume divergence")
+
 			assert.Unreachable("cache pebble volume divergence", map[string]any{
 				"ledger":         update.Key.LedgerID,
 				"account":        update.Key.Account,
@@ -463,11 +487,12 @@ func dumpPerAccountVolumes(
 		outputVal := entry.Value.GetOutput().ToBigInt()
 
 		logger.WithFields(map[string]any{
-			"ledger":    ledgerID,
-			"account":   vk.Account,
-			"asset":     vk.Asset,
-			"input":     inputVal.String(),
-			"output":    outputVal.String(),
+			"ledger":       ledgerID,
+			"account":      vk.Account,
+			"asset":        vk.Asset,
+			"input":        inputVal.String(),
+			"output":       outputVal.String(),
+			"canonicalKey": fmt.Sprintf("%x", entry.CanonicalKey),
 			"raftIndex": raftIndex,
 		}).Errorf("VOLUME DUMP: per-account volume at imbalance")
 
