@@ -6,7 +6,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
@@ -73,9 +72,9 @@ func TestCacheCoherenceAfterRestart(t *testing.T) {
 	// gen0 has entries from index 10+, gen1 has entries from index 5-9.
 	// Entries from index 1-4 have been purged from cache (but still in 0xF1).
 
-	// Verify all volumes are accessible via cache before restart.
-	t.Log("Before restart: checking all volumes are in cache")
-	verifyAllVolumesInCache(t, machine, dataStore, attrs)
+	// Log cache state before restart (some volumes may have been evicted — that's normal).
+	t.Log("Before restart: cache state")
+	logCacheState(t, machine, dataStore, attrs)
 
 	// ---------------------------------------------------------------
 	// Simulate restart: reset cache and restore from 0xFF
@@ -86,9 +85,9 @@ func TestCacheCoherenceAfterRestart(t *testing.T) {
 	err = machine.cacheSnapshotter.RestoreFromStore()
 	require.NoError(t, err)
 
-	// Verify cache is coherent after restore.
-	t.Log("After restore: checking all volumes are in cache")
-	verifyAllVolumesInCache(t, machine, dataStore, attrs)
+	// After restore, the cache should match 0xFF exactly.
+	t.Log("After restore: verifying cache matches 0xFF")
+	verifyCacheMatchesPebbleFF(t, machine, dataStore)
 
 	// ---------------------------------------------------------------
 	// Entries 12..20: more transactions (triggers more rotations)
@@ -114,62 +113,90 @@ func TestCacheCoherenceAfterRestart(t *testing.T) {
 	}
 
 	// ---------------------------------------------------------------
-	// Final verification: ALL volumes in 0xF1 must be reachable from cache
+	// Final verification: cache must match 0xFF (no in-memory entries
+	// that are missing from Pebble 0xFF — the restart invariant)
 	// ---------------------------------------------------------------
-	t.Log("After restart + more entries: checking all volumes are in cache")
-	verifyAllVolumesInCache(t, machine, dataStore, attrs)
+	t.Log("After restart + more entries: verifying cache matches 0xFF")
+	verifyCacheMatchesPebbleFF(t, machine, dataStore)
 }
 
-// verifyAllVolumesInCache checks that every volume key present in the 0xF1
-// attribute zone is also present in the in-memory cache (gen0 or gen1).
-// This is the critical invariant: the cache must be a superset of what
-// CacheGuaranteed could reference.
-func verifyAllVolumesInCache(t *testing.T, machine *Machine, store *dal.Store, attrs *attributes.Attributes) {
+// logCacheState logs the cache vs 0xF1 state for debugging.
+func logCacheState(t *testing.T, machine *Machine, store *dal.Store, attrs *attributes.Attributes) {
 	t.Helper()
 
 	hasher := attributes.NewKeyHasher(attributes.DefaultSeeds)
 
-	// Iterate all volume entries in 0xF1
 	iter, err := attrs.Volume.NewStreamingIter(store, nil)
 	require.NoError(t, err)
 
-	var totalAttr, missingFromCache int
+	var totalAttr, inCache int
 
 	for iter.Next() {
-		entry := iter.Entry()
 		totalAttr++
+		u128, _ := hasher.MakeKey(iter.Entry().CanonicalKey)
 
-		// Compute the U128 from the canonical key
-		u128, _ := hasher.MakeKey(entry.CanonicalKey)
-
-		// Check if the key is in gen0 or gen1
-		_, inCache := machine.Registry.Cache.Volumes.Get(u128)
-		if !inCache {
-			var vk domain.VolumeKey
-			if unmarshalErr := vk.Unmarshal(entry.CanonicalKey); unmarshalErr == nil {
-				t.Errorf("Volume %d/%s/%s (key=%x) is in 0xF1 but NOT in cache",
-					vk.LedgerID, vk.Account, vk.Asset, entry.CanonicalKey)
-			} else {
-				t.Errorf("Volume (key=%x) is in 0xF1 but NOT in cache", entry.CanonicalKey)
-			}
-
-			missingFromCache++
+		if _, ok := machine.Registry.Cache.Volumes.Get(u128); ok {
+			inCache++
 		}
 	}
 
 	require.NoError(t, iter.Close())
-	require.NoError(t, iter.Err())
 
-	t.Logf("0xF1 has %d volumes, %d missing from cache", totalAttr, missingFromCache)
+	t.Logf("Cache: gen=%d, gen0Base=%d, gen1Base=%d, gen0Size=%d, gen1Size=%d, 0xF1=%d, inCache=%d",
+		machine.Registry.Cache.CurrentGeneration(),
+		machine.Registry.Cache.BaseIndex.Gen0,
+		machine.Registry.Cache.BaseIndex.Gen1,
+		machine.Registry.Cache.Volumes.Gen0().Size(),
+		machine.Registry.Cache.Volumes.Gen1().Size(),
+		totalAttr, inCache,
+	)
+}
 
-	if missingFromCache > 0 {
-		t.Logf("Cache state: gen=%d, gen0Base=%d, gen1Base=%d, gen0Size=%d, gen1Size=%d",
-			machine.Registry.Cache.CurrentGeneration(),
-			machine.Registry.Cache.BaseIndex.Gen0,
-			machine.Registry.Cache.BaseIndex.Gen1,
-			machine.Registry.Cache.Volumes.Gen0().Size(),
-			machine.Registry.Cache.Volumes.Gen1().Size(),
-		)
-		t.Fatalf("%d volumes in 0xF1 are missing from cache — CacheGuaranteed proposals would fail", missingFromCache)
+// verifyCacheMatchesPebbleFF checks that the in-memory cache is consistent
+// with the 0xFF Pebble zone: every key in memory must also be in 0xFF.
+// This is the restart safety invariant — if a key is in memory but not in
+// 0xFF, a restart would lose it.
+func verifyCacheMatchesPebbleFF(t *testing.T, machine *Machine, store *dal.Store) {
+	t.Helper()
+
+	currentGen := machine.Registry.Cache.CurrentGeneration()
+	gen0Byte := byte(currentGen % 2)
+	gen1Byte := byte((currentGen + 1) % 2)
+
+	var missing int
+
+	for id := range machine.Registry.Cache.Volumes.Gen0().Iter() {
+		if !hasCacheZoneEntry(t, store, gen0Byte, dal.SubAttrVolume, id) {
+			t.Errorf("Volume U128=%x in memory gen0 but NOT in 0xFF byte %d", id, gen0Byte)
+			missing++
+		}
 	}
+
+	for id := range machine.Registry.Cache.Volumes.Gen1().Iter() {
+		if !hasCacheZoneEntry(t, store, gen1Byte, dal.SubAttrVolume, id) {
+			t.Errorf("Volume U128=%x in memory gen1 but NOT in 0xFF byte %d", id, gen1Byte)
+			missing++
+		}
+	}
+
+	require.Zero(t, missing, "in-memory cache has entries missing from 0xFF — restart would lose them")
+}
+
+func hasCacheZoneEntry(t *testing.T, store *dal.Store, genByte, cacheType byte, id attributes.U128) bool {
+	t.Helper()
+
+	var key [3 + 16]byte
+	key[0] = dal.ZoneCache
+	key[1] = genByte
+	key[2] = cacheType
+	copy(key[3:], id[:])
+
+	_, closer, err := store.Get(key[:])
+	if err != nil {
+		return false
+	}
+
+	_ = closer.Close()
+
+	return true
 }

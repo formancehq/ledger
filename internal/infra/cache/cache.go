@@ -140,11 +140,17 @@ const (
 // predicted generation matches the actual Raft index progression.
 //
 // This method only takes a brief shared RLock on a single shard.
+// CheckCache determines whether a key will survive in cache until the future
+// raft index `at`. Takes a read lock on the cache to ensure a consistent view
+// of currentGeneration and the gen0/gen1 data during the check.
 func (a *AttributeCache[T]) CheckCache(at uint64, k attributes.U128) CacheStatus {
 	threshold := a.Cache.GenerationThreshold()
 	if threshold == 0 {
 		return CacheMiss
 	}
+
+	a.Cache.mu.RLock()
+	defer a.Cache.mu.RUnlock()
 
 	actualGeneration := a.Cache.currentGeneration.Load()
 	futureGeneration := Gen(at, threshold)
@@ -231,8 +237,7 @@ type CacheOps interface {
 }
 
 type Cache struct {
-	// todo: recheck all app locks for opportunity of using RWLock instead of Mutex
-	mu                  sync.Mutex
+	mu sync.RWMutex
 	Volumes             *AttributeCache[*raftcmdpb.VolumePair]
 	AccountMetadata     *AttributeCache[*commonpb.MetadataValue]
 	References          *AttributeCache[*commonpb.TransactionReferenceValue]
@@ -272,17 +277,9 @@ type Cache struct {
 }
 
 // rotateLocked performs the actual rotation of all cache generations.
-// Must be called with c.mu held.
-//
-// IMPORTANT: currentGeneration must be updated BEFORE rotating the cache
-// structures. IsGuaranteedInCache reads currentGeneration atomically (without
-// the mutex) to decide whether data will survive until a future Raft index.
-// If we rotated first and updated the generation counter second, a concurrent
-// IsGuaranteedInCache call could see the old generation number but the
-// already-rotated cache — leading it to believe data is "guaranteed" when it
-// has in fact moved to Gen1 and will be evicted on the next rotation.
-// By storing the new generation first, concurrent readers see the higher
-// generation and conservatively include the preload, which is always safe.
+// Must be called with c.mu held (write lock). CheckCache takes a read lock,
+// ensuring it always sees a consistent snapshot of currentGeneration and
+// the gen0/gen1 cache data.
 func (c *Cache) rotateLocked(index uint64, newGeneration uint64) {
 	c.currentGeneration.Store(newGeneration)
 
