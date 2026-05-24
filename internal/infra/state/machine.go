@@ -761,6 +761,7 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 				fsm.dataStore, fsm.Registry.Attrs.Volume, pb.sentinelLedgerIDs, pb.lastAppliedIndex, fsm.logger,
 			); err != nil {
 				fsm.logger.Errorf("AGGREGATED VOLUME BALANCE CHECK FAILED: %v", err)
+				dumpCacheVsPebbleCoherence(fsm.dataStore, fsm.Registry.Cache, pb.lastAppliedIndex, fsm.logger)
 				pb.sentinelTracer.Dump(fsm.logger)
 
 				return fmt.Errorf("aggregated volume balance check failed: %w", err)

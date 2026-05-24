@@ -22,6 +22,7 @@ func NewCommand() *cobra.Command {
 	cmd.AddCommand(NewDumpCommand())
 	cmd.AddCommand(NewBackupCommand())
 	cmd.AddCommand(NewIncrementalBackupCommand())
+	cmd.AddCommand(NewCacheStatsCommand())
 
 	return cmd
 }

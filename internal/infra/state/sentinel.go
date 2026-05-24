@@ -6,12 +6,14 @@ import (
 	"math/big"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"github.com/cockroachdb/pebble/v2"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
@@ -513,4 +515,137 @@ func dumpPerAccountVolumes(
 		"raftIndex": raftIndex,
 		"count":     count,
 	}).Errorf("VOLUME DUMP: total accounts dumped for imbalanced asset")
+}
+
+// dumpCacheVsPebbleCoherence compares the in-memory volume cache (gen0 + gen1)
+// against the 0xFF Pebble cache zone. Logs the sizes and any keys that are in
+// one but not the other. Called only on sentinel check failure.
+func dumpCacheVsPebbleCoherence(
+	store dal.PebbleReader,
+	c *cache.Cache,
+	raftIndex uint64,
+	logger logging.Logger,
+) {
+	currentGen := c.CurrentGeneration()
+	gen0Byte := byte(currentGen % 2)
+	gen1Byte := byte((currentGen + 1) % 2)
+
+	// Count in-memory entries
+	memGen0 := c.Volumes.Gen0().Size()
+	memGen1 := c.Volumes.Gen1().Size()
+
+	// Count 0xFF entries for each gen byte
+	pebbleGen0 := countCacheZoneEntries(store, gen0Byte, dal.SubAttrVolume)
+	pebbleGen1 := countCacheZoneEntries(store, gen1Byte, dal.SubAttrVolume)
+
+	// Count 0xF1 attribute entries (ground truth)
+	pebbleAttr := countAttributeEntries(store, dal.SubAttrVolume)
+
+	logger.WithFields(map[string]any{
+		"raftIndex":         raftIndex,
+		"currentGeneration": currentGen,
+		"gen0Base":          c.BaseIndex.Gen0,
+		"gen1Base":          c.BaseIndex.Gen1,
+		"memGen0":           memGen0,
+		"memGen1":           memGen1,
+		"pebbleGen0_0xFF":   pebbleGen0,
+		"pebbleGen1_0xFF":   pebbleGen1,
+		"pebbleAttr_0xF1":   pebbleAttr,
+		"memTotal":          memGen0 + memGen1,
+		"pebbleTotal_0xFF":  pebbleGen0 + pebbleGen1,
+	}).Errorf("CACHE COHERENCE: volume cache vs Pebble sizes")
+
+	// Find keys in memory but NOT in 0xFF (the smoking gun for the bug)
+	inMemNotInPebble := 0
+
+	for id := range c.Volumes.Gen0().Iter() {
+		if !cacheZoneHasKey(store, gen0Byte, dal.SubAttrVolume, id) {
+			inMemNotInPebble++
+			if inMemNotInPebble <= 10 {
+				logger.WithFields(map[string]any{
+					"id":  fmt.Sprintf("%x", id),
+					"gen": "gen0",
+				}).Errorf("CACHE COHERENCE: key in memory gen0 but NOT in 0xFF")
+			}
+		}
+	}
+
+	for id := range c.Volumes.Gen1().Iter() {
+		if !cacheZoneHasKey(store, gen1Byte, dal.SubAttrVolume, id) {
+			inMemNotInPebble++
+			if inMemNotInPebble <= 10 {
+				logger.WithFields(map[string]any{
+					"id":  fmt.Sprintf("%x", id),
+					"gen": "gen1",
+				}).Errorf("CACHE COHERENCE: key in memory gen1 but NOT in 0xFF")
+			}
+		}
+	}
+
+	logger.WithFields(map[string]any{
+		"inMemNotInPebble": inMemNotInPebble,
+	}).Errorf("CACHE COHERENCE: summary (keys in memory but missing from 0xFF)")
+}
+
+func countCacheZoneEntries(store dal.PebbleReader, genByte, cacheType byte) uint64 {
+	lower := []byte{dal.ZoneCache, genByte, cacheType}
+	upper := []byte{dal.ZoneCache, genByte, cacheType + 1}
+
+	iter, err := store.NewIter(&pebble.IterOptions{
+		LowerBound: lower,
+		UpperBound: upper,
+	})
+	if err != nil {
+		return 0
+	}
+
+	var count uint64
+	for iter.First(); iter.Valid(); iter.Next() {
+		if len(iter.Key()) >= 3+16 {
+			count++
+		}
+	}
+
+	_ = iter.Close()
+
+	return count
+}
+
+func countAttributeEntries(store dal.PebbleReader, attrType byte) uint64 {
+	lower := []byte{dal.ZoneAttributes, attrType}
+	upper := []byte{dal.ZoneAttributes, attrType + 1}
+
+	iter, err := store.NewIter(&pebble.IterOptions{
+		LowerBound: lower,
+		UpperBound: upper,
+	})
+	if err != nil {
+		return 0
+	}
+
+	var count uint64
+	for iter.First(); iter.Valid(); iter.Next() {
+		count++
+	}
+
+	_ = iter.Close()
+
+	return count
+}
+
+func cacheZoneHasKey(store dal.PebbleReader, genByte, cacheType byte, id attributes.U128) bool {
+	var key [3 + 16]byte
+	key[0] = dal.ZoneCache
+	key[1] = genByte
+	key[2] = cacheType
+	copy(key[3:], id[:])
+
+	_, closer, err := store.Get(key[:])
+	if err != nil {
+		return false
+	}
+
+	_ = closer.Close()
+
+	return true
 }
