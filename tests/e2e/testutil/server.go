@@ -82,6 +82,7 @@ func NewGRPCClientWithRetry(grpcPort int, withRetry bool) (servicepb.BucketServi
 type MultiNodeOptions struct {
 	WithGateway      bool
 	RaftTickInterval time.Duration
+	ExtraInstruments []testservice.Instrumentation
 }
 
 // MultiNodeOption is a functional option for SetupMultiNodeCluster.
@@ -98,6 +99,20 @@ func WithGateway() MultiNodeOption {
 func WithTickInterval(d time.Duration) MultiNodeOption {
 	return func(o *MultiNodeOptions) {
 		o.RaftTickInterval = d
+	}
+}
+
+// WithCacheRotationThreshold sets the cache rotation threshold for all nodes.
+func WithCacheRotationThreshold(threshold uint64) MultiNodeOption {
+	return func(o *MultiNodeOptions) {
+		o.ExtraInstruments = append(o.ExtraInstruments, testserver.WithCacheRotationThreshold(threshold))
+	}
+}
+
+// WithSentinelMode enables sentinel mode (runtime volume consistency checks) on all nodes.
+func WithSentinelMode() MultiNodeOption {
+	return func(o *MultiNodeOptions) {
+		o.ExtraInstruments = append(o.ExtraInstruments, testserver.WithSentinelMode())
 	}
 }
 
@@ -154,10 +169,13 @@ func SetupMultiNodeCluster(
 			TickInterval: options.RaftTickInterval,
 		})
 
-		return append(instruments,
+		instruments = append(instruments,
 			testserver.WithRaftCompactionMargin(1),
 			testserver.WithAutoPromoteThreshold(10),
 		)
+		instruments = append(instruments, options.ExtraInstruments...)
+
+		return instruments
 	}
 
 	servers := make([]*ServiceWithClient, 0, countInstances)

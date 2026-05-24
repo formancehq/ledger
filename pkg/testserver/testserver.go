@@ -293,6 +293,14 @@ func WithCacheRotationThreshold(threshold uint64) testservice.InstrumentationFun
 	}
 }
 
+func WithSentinelMode() testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--sentinel-mode")
+
+		return nil
+	}
+}
+
 func WithBloomTestConfig() testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs(
