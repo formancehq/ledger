@@ -19,6 +19,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+
+	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
 )
 
 // parseLeanValue extracts the tag and raw value bytes from a lean cache entry.
@@ -119,6 +121,16 @@ func (s *protoSnapshotSlot[V]) MirrorTouch(batch *dal.Batch, gen0Byte byte, id a
 
 	entry, ok := s.ac.Gen0().Get(id)
 	if !ok {
+		// Touch was a no-op: key was NOT in gen1. This means the preloader
+		// (on the leader) believed the key was in gen1 (CacheNeedsTouch),
+		// but this node's gen1 does not have it.
+		lifecycle.SendEvent("touch_noop", map[string]any{
+			"id":        fmt.Sprintf("%x", id),
+			"cacheType": s.cacheType,
+			"gen0Size":  s.ac.Gen0().Size(),
+			"gen1Size":  s.ac.Gen1().Size(),
+		})
+
 		return nil
 	}
 
