@@ -114,6 +114,12 @@ func (s *protoSnapshotSlot[V]) MirrorTouch(batch *dal.Batch, gen0Byte byte, id a
 	// Skip when gen0 already holds the key — Touch is a no-op then, and
 	// the 0xFF gen0Byte row may hold a fresher in-batch Merge value.
 	if _, ok := s.ac.Gen0().Get(id); ok {
+		if s.cacheType == dal.SubAttrLedger {
+			lifecycle.SendEvent("touch_skip_gen0", map[string]any{
+				"id": fmt.Sprintf("%x", id),
+			})
+		}
+
 		return nil
 	}
 
@@ -121,9 +127,7 @@ func (s *protoSnapshotSlot[V]) MirrorTouch(batch *dal.Batch, gen0Byte byte, id a
 
 	entry, ok := s.ac.Gen0().Get(id)
 	if !ok {
-		// Touch was a no-op: key was NOT in gen1. This means the preloader
-		// (on the leader) believed the key was in gen1 (CacheNeedsTouch),
-		// but this node's gen1 does not have it.
+		// Touch was a no-op: key was NOT in gen1.
 		lifecycle.SendEvent("touch_noop", map[string]any{
 			"id":        fmt.Sprintf("%x", id),
 			"cacheType": s.cacheType,
@@ -132,6 +136,12 @@ func (s *protoSnapshotSlot[V]) MirrorTouch(batch *dal.Batch, gen0Byte byte, id a
 		})
 
 		return nil
+	}
+
+	if s.cacheType == dal.SubAttrLedger {
+		lifecycle.SendEvent("touch_ok", map[string]any{
+			"id": fmt.Sprintf("%x", id),
+		})
 	}
 
 	valueBytes, err := s.marshalValue(entry.Data)
@@ -166,7 +176,21 @@ func (s *protoSnapshotSlot[V]) MirrorPreload(
 	_, gen0Set := putAttributeIfAbsent(s.ac.Gen0(), id, tag, effective)
 
 	if !gen0Set && !gen1Set {
+		if s.cacheType == dal.SubAttrLedger {
+			lifecycle.SendEvent("preload_skip", map[string]any{
+				"id": fmt.Sprintf("%x", id),
+			})
+		}
+
 		return nil
+	}
+
+	if s.cacheType == dal.SubAttrLedger {
+		lifecycle.SendEvent("preload_ok", map[string]any{
+			"id":      fmt.Sprintf("%x", id),
+			"gen0Set": gen0Set,
+			"gen1Set": gen1Set,
+		})
 	}
 
 	valueBytes, err := s.marshalValue(effective)
