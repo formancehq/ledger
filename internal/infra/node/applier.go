@@ -796,7 +796,7 @@ func (a *Applier) resolveFutures(result *state.ApplyEntriesResult) {
 // commit may still be in-flight. The commit is deferred until the next batch
 // arrives or a drain is required.
 func (a *Applier) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfState, entries ...raftpb.Entry) error {
-	result, err := a.applyEntriesPipelined(ctx, entries...)
+	result, err := a.applyEntriesAndResolveCommands(ctx, entries...)
 	if err != nil {
 		return err
 	}
