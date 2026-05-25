@@ -9,10 +9,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/iancoleman/strcase"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	. "github.com/formancehq/go-libs/v4/collectionutils"
-	"github.com/formancehq/go-libs/v4/query"
-	"github.com/formancehq/go-libs/v4/time"
+	"github.com/formancehq/go-libs/v5/pkg/query"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	. "github.com/formancehq/go-libs/v5/pkg/types/collections"
+	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 )
@@ -76,7 +76,7 @@ func getPaginatedQuery[Options any](
 	r *http.Request,
 	paginationConfig storagecommon.PaginationConfig,
 	column string,
-	order bunpaginate.Order,
+	order paginate.Order,
 	modifiers ...func(resourceQuery *storagecommon.ResourceQuery[Options]),
 ) (storagecommon.PaginatedQuery[Options], error) {
 	return storagecommon.Extract[Options](
@@ -91,10 +91,10 @@ func getPaginatedQuery[Options any](
 				modifier(rq)
 			}
 
-			pageSize, err := bunpaginate.GetPageSize(
+			pageSize, err := paginate.GetPageSize(
 				r,
-				bunpaginate.WithMaxPageSize(paginationConfig.MaxPageSize),
-				bunpaginate.WithDefaultPageSize(paginationConfig.DefaultPageSize),
+				paginate.WithMaxPageSize(paginationConfig.MaxPageSize),
+				paginate.WithDefaultPageSize(paginationConfig.DefaultPageSize),
 			)
 			if err != nil {
 				return nil, err
@@ -106,9 +106,9 @@ func getPaginatedQuery[Options any](
 				if len(parts) > 1 {
 					switch {
 					case strings.ToLower(parts[1]) == "desc":
-						order = bunpaginate.OrderDesc
+						order = paginate.OrderDesc
 					case strings.ToLower(parts[1]) == "asc":
-						order = bunpaginate.OrderAsc
+						order = paginate.OrderAsc
 					default:
 						return nil, fmt.Errorf("invalid order: %s", parts[1])
 					}
@@ -124,10 +124,10 @@ func getPaginatedQuery[Options any](
 		},
 		func(query *storagecommon.InitialPaginatedQuery[Options]) error {
 			var err error
-			query.PageSize, err = bunpaginate.GetPageSize(
+			query.PageSize, err = paginate.GetPageSize(
 				r,
-				bunpaginate.WithMaxPageSize(paginationConfig.MaxPageSize),
-				bunpaginate.WithDefaultPageSize(query.PageSize),
+				paginate.WithMaxPageSize(paginationConfig.MaxPageSize),
+				paginate.WithDefaultPageSize(query.PageSize),
 			)
 			return err
 		},

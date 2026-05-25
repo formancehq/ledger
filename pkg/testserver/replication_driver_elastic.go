@@ -7,7 +7,7 @@ import (
 
 	"github.com/olivere/elastic/v7"
 
-	"github.com/formancehq/go-libs/v4/collectionutils"
+	"github.com/formancehq/go-libs/v5/pkg/types/collections"
 
 	"github.com/formancehq/ledger/internal/replication/drivers"
 	"github.com/formancehq/ledger/internal/replication/drivers/elasticsearch"
@@ -45,7 +45,7 @@ func (h *ElasticDriver) ReadMessages(ctx context.Context) ([]drivers.LogWithLedg
 		return nil, err
 	}
 
-	return collectionutils.Map(response.Hits.Hits, func(from *elastic.SearchHit) drivers.LogWithLedger {
+	return collections.Map(response.Hits.Hits, func(from *elastic.SearchHit) drivers.LogWithLedger {
 		ret := drivers.LogWithLedger{}
 		if err := json.Unmarshal(from.Source, &ret); err != nil {
 			panic(err)

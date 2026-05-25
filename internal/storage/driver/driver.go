@@ -12,10 +12,10 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/storage/postgres"
+	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
@@ -200,7 +200,7 @@ func (d *Driver) DeleteLedgerMetadata(ctx context.Context, name string, key stri
 	return d.systemStoreFactory.Create(d.db).DeleteLedgerMetadata(ctx, name, key)
 }
 
-func (d *Driver) ListLedgers(ctx context.Context, q common.PaginatedQuery[systemstore.ListLedgersQueryPayload]) (*bunpaginate.Cursor[ledger.Ledger], error) {
+func (d *Driver) ListLedgers(ctx context.Context, q common.PaginatedQuery[systemstore.ListLedgersQueryPayload]) (*paginate.Cursor[ledger.Ledger], error) {
 	return d.systemStoreFactory.Create(d.db).Ledgers().Paginate(ctx, q)
 }
 

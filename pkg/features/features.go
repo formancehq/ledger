@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/formancehq/go-libs/v4/collectionutils"
+	"github.com/formancehq/go-libs/v5/pkg/types/collections"
 )
 
 const (
@@ -75,7 +75,7 @@ func (f FeatureSet) With(feature, value string) FeatureSet {
 }
 
 func (f FeatureSet) SortedKeys() []string {
-	ret := collectionutils.Keys(f)
+	ret := collections.Keys(f)
 	slices.Sort(ret)
 
 	return ret
@@ -104,7 +104,7 @@ func (f FeatureSet) Match(features FeatureSet) bool {
 }
 
 func shortenFeature(feature string) string {
-	return strings.Join(collectionutils.Map(strings.Split(feature, "_"), func(from string) string {
+	return strings.Join(collections.Map(strings.Split(feature, "_"), func(from string) string {
 		return from[:1]
 	}), "")
 }

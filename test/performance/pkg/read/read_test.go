@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/pointer"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
 
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	"github.com/formancehq/ledger/test/performance/pkg/env"

@@ -6,7 +6,7 @@ import (
 
 	"github.com/uptrace/bun"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
 )
 
 type OffsetPaginator[ResourceType, OptionsType any] struct {
@@ -36,7 +36,7 @@ func (o OffsetPaginator[ResourceType, OptionsType]) Paginate(sb *bun.SelectQuery
 }
 
 //nolint:unused
-func (o OffsetPaginator[ResourceType, OptionsType]) BuildCursor(ret []ResourceType) (*bunpaginate.Cursor[ResourceType], error) {
+func (o OffsetPaginator[ResourceType, OptionsType]) BuildCursor(ret []ResourceType) (*paginate.Cursor[ResourceType], error) {
 
 	var previous, next *OffsetPaginatedQuery[OptionsType]
 
@@ -63,7 +63,7 @@ func (o OffsetPaginator[ResourceType, OptionsType]) BuildCursor(ret []ResourceTy
 		ret = ret[:len(ret)-1]
 	}
 
-	return &bunpaginate.Cursor[ResourceType]{
+	return &paginate.Cursor[ResourceType]{
 		PageSize: int(o.query.PageSize),
 		HasMore:  next != nil,
 		Previous: encodeCursor[OptionsType, OffsetPaginatedQuery[OptionsType]](previous),

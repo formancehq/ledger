@@ -9,9 +9,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	. "github.com/formancehq/go-libs/v4/testing/deferred/ginkgo"
-	"github.com/formancehq/go-libs/v4/testing/platform/pgtesting"
-	"github.com/formancehq/go-libs/v4/testing/testservice"
+	. "github.com/formancehq/go-libs/v5/pkg/testing/deferred/ginkgo"
+	"github.com/formancehq/go-libs/v5/pkg/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 
 	. "github.com/formancehq/ledger/pkg/testserver"
 	"github.com/formancehq/ledger/pkg/testserver/ginkgo"

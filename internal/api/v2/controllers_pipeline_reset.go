@@ -5,7 +5,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/formancehq/go-libs/v4/api"
+	"github.com/formancehq/go-libs/v5/pkg/transport/api"
 
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"

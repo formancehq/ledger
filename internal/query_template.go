@@ -9,9 +9,9 @@ import (
 
 	"github.com/iancoleman/strcase"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/pointer"
-	"github.com/formancehq/go-libs/v4/time"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
+	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	"github.com/formancehq/ledger/internal/queries"
 )
@@ -33,7 +33,7 @@ type QueryTemplateParams[Opts any] struct {
 	Expand     []string
 	Opts       Opts
 	SortColumn string
-	SortOrder  *bunpaginate.Order
+	SortOrder  *paginate.Order
 	PageSize   uint
 }
 
@@ -63,9 +63,9 @@ func (p *QueryTemplateParams[Opts]) UnmarshalJSON(b []byte) error {
 		if len(parts) > 1 {
 			switch {
 			case strings.ToLower(parts[1]) == "desc":
-				p.SortOrder = pointer.For(bunpaginate.Order(bunpaginate.OrderDesc))
+				p.SortOrder = pointer.For(paginate.Order(paginate.OrderDesc))
 			case strings.ToLower(parts[1]) == "asc":
-				p.SortOrder = pointer.For(bunpaginate.Order(bunpaginate.OrderAsc))
+				p.SortOrder = pointer.For(paginate.Order(paginate.OrderAsc))
 			default:
 				return fmt.Errorf("invalid order: %s", parts[1])
 			}

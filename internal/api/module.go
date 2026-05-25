@@ -3,12 +3,13 @@ package api
 import (
 	_ "embed"
 
+	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/go-chi/chi/v5"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
 
-	"github.com/formancehq/go-libs/v4/auth"
-	"github.com/formancehq/go-libs/v4/health"
+	"github.com/formancehq/go-libs/v5/pkg/authn/jwt"
+	"github.com/formancehq/go-libs/v5/pkg/fx/servicefx"
 
 	"github.com/formancehq/ledger/internal/api/bulking"
 	"github.com/formancehq/ledger/internal/controller/system"
@@ -33,12 +34,14 @@ func Module(cfg Config) fx.Option {
 	return fx.Options(
 		fx.Provide(func(
 			backend system.Controller,
-			authenticator auth.Authenticator,
+			authenticator jwt.Authenticator,
+			publisher message.Publisher,
 			tracerProvider trace.TracerProvider,
 		) chi.Router {
 			return NewRouter(
 				backend,
 				authenticator,
+				publisher,
 				cfg.Version,
 				cfg.Debug,
 				WithTracer(tracerProvider.Tracer("api")),
@@ -52,6 +55,6 @@ func Module(cfg Config) fx.Option {
 				WithExperimentalFeatures(cfg.ExperimentalFeatures),
 			)
 		}),
-		health.Module(),
+		servicefx.HealthModule(),
 	)
 }

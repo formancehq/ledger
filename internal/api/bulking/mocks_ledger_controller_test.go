@@ -12,8 +12,8 @@ import (
 	sql "database/sql"
 	reflect "reflect"
 
-	bunpaginate "github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	migrations "github.com/formancehq/go-libs/v4/migrations"
+	paginate "github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	migrations "github.com/formancehq/go-libs/v5/pkg/storage/migrations"
 	ledger "github.com/formancehq/ledger/internal"
 	ledger0 "github.com/formancehq/ledger/internal/controller/ledger"
 	queries "github.com/formancehq/ledger/internal/queries"
@@ -596,10 +596,10 @@ func (c *LedgerControllerGetTransactionCall) DoAndReturn(f func(context.Context,
 }
 
 // GetVolumesWithBalances mocks base method.
-func (m *LedgerController) GetVolumesWithBalances(ctx context.Context, q common.PaginatedQuery[ledger.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+func (m *LedgerController) GetVolumesWithBalances(ctx context.Context, q common.PaginatedQuery[ledger.GetVolumesOptions]) (*paginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetVolumesWithBalances", ctx, q)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -617,19 +617,19 @@ type LedgerControllerGetVolumesWithBalancesCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *LedgerControllerGetVolumesWithBalancesCall) Return(arg0 *bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], arg1 error) *LedgerControllerGetVolumesWithBalancesCall {
+func (c *LedgerControllerGetVolumesWithBalancesCall) Return(arg0 *paginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], arg1 error) *LedgerControllerGetVolumesWithBalancesCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *LedgerControllerGetVolumesWithBalancesCall) Do(f func(context.Context, common.PaginatedQuery[ledger.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)) *LedgerControllerGetVolumesWithBalancesCall {
+func (c *LedgerControllerGetVolumesWithBalancesCall) Do(f func(context.Context, common.PaginatedQuery[ledger.GetVolumesOptions]) (*paginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)) *LedgerControllerGetVolumesWithBalancesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *LedgerControllerGetVolumesWithBalancesCall) DoAndReturn(f func(context.Context, common.PaginatedQuery[ledger.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)) *LedgerControllerGetVolumesWithBalancesCall {
+func (c *LedgerControllerGetVolumesWithBalancesCall) DoAndReturn(f func(context.Context, common.PaginatedQuery[ledger.GetVolumesOptions]) (*paginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)) *LedgerControllerGetVolumesWithBalancesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -791,10 +791,10 @@ func (c *LedgerControllerIsDatabaseUpToDateCall) DoAndReturn(f func(context.Cont
 }
 
 // ListAccounts mocks base method.
-func (m *LedgerController) ListAccounts(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Account], error) {
+func (m *LedgerController) ListAccounts(ctx context.Context, query common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Account], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListAccounts", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Account])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.Account])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -812,28 +812,28 @@ type LedgerControllerListAccountsCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *LedgerControllerListAccountsCall) Return(arg0 *bunpaginate.Cursor[ledger.Account], arg1 error) *LedgerControllerListAccountsCall {
+func (c *LedgerControllerListAccountsCall) Return(arg0 *paginate.Cursor[ledger.Account], arg1 error) *LedgerControllerListAccountsCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *LedgerControllerListAccountsCall) Do(f func(context.Context, common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Account], error)) *LedgerControllerListAccountsCall {
+func (c *LedgerControllerListAccountsCall) Do(f func(context.Context, common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Account], error)) *LedgerControllerListAccountsCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *LedgerControllerListAccountsCall) DoAndReturn(f func(context.Context, common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Account], error)) *LedgerControllerListAccountsCall {
+func (c *LedgerControllerListAccountsCall) DoAndReturn(f func(context.Context, common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Account], error)) *LedgerControllerListAccountsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // ListLogs mocks base method.
-func (m *LedgerController) ListLogs(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
+func (m *LedgerController) ListLogs(ctx context.Context, query common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Log], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListLogs", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Log])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.Log])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -851,28 +851,28 @@ type LedgerControllerListLogsCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *LedgerControllerListLogsCall) Return(arg0 *bunpaginate.Cursor[ledger.Log], arg1 error) *LedgerControllerListLogsCall {
+func (c *LedgerControllerListLogsCall) Return(arg0 *paginate.Cursor[ledger.Log], arg1 error) *LedgerControllerListLogsCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *LedgerControllerListLogsCall) Do(f func(context.Context, common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error)) *LedgerControllerListLogsCall {
+func (c *LedgerControllerListLogsCall) Do(f func(context.Context, common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Log], error)) *LedgerControllerListLogsCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *LedgerControllerListLogsCall) DoAndReturn(f func(context.Context, common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error)) *LedgerControllerListLogsCall {
+func (c *LedgerControllerListLogsCall) DoAndReturn(f func(context.Context, common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Log], error)) *LedgerControllerListLogsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // ListSchemas mocks base method.
-func (m *LedgerController) ListSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error) {
+func (m *LedgerController) ListSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Schema], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListSchemas", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Schema])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.Schema])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -890,28 +890,28 @@ type LedgerControllerListSchemasCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *LedgerControllerListSchemasCall) Return(arg0 *bunpaginate.Cursor[ledger.Schema], arg1 error) *LedgerControllerListSchemasCall {
+func (c *LedgerControllerListSchemasCall) Return(arg0 *paginate.Cursor[ledger.Schema], arg1 error) *LedgerControllerListSchemasCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *LedgerControllerListSchemasCall) Do(f func(context.Context, common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error)) *LedgerControllerListSchemasCall {
+func (c *LedgerControllerListSchemasCall) Do(f func(context.Context, common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Schema], error)) *LedgerControllerListSchemasCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *LedgerControllerListSchemasCall) DoAndReturn(f func(context.Context, common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error)) *LedgerControllerListSchemasCall {
+func (c *LedgerControllerListSchemasCall) DoAndReturn(f func(context.Context, common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Schema], error)) *LedgerControllerListSchemasCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // ListTransactions mocks base method.
-func (m *LedgerController) ListTransactions(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error) {
+func (m *LedgerController) ListTransactions(ctx context.Context, query common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Transaction], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListTransactions", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Transaction])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.Transaction])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -929,19 +929,19 @@ type LedgerControllerListTransactionsCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *LedgerControllerListTransactionsCall) Return(arg0 *bunpaginate.Cursor[ledger.Transaction], arg1 error) *LedgerControllerListTransactionsCall {
+func (c *LedgerControllerListTransactionsCall) Return(arg0 *paginate.Cursor[ledger.Transaction], arg1 error) *LedgerControllerListTransactionsCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *LedgerControllerListTransactionsCall) Do(f func(context.Context, common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error)) *LedgerControllerListTransactionsCall {
+func (c *LedgerControllerListTransactionsCall) Do(f func(context.Context, common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Transaction], error)) *LedgerControllerListTransactionsCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *LedgerControllerListTransactionsCall) DoAndReturn(f func(context.Context, common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error)) *LedgerControllerListTransactionsCall {
+func (c *LedgerControllerListTransactionsCall) DoAndReturn(f func(context.Context, common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Transaction], error)) *LedgerControllerListTransactionsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -1067,11 +1067,11 @@ func (c *LedgerControllerRollbackCall) DoAndReturn(f func(context.Context) error
 }
 
 // RunQuery mocks base method.
-func (m *LedgerController) RunQuery(ctx context.Context, schemaVersion, queryId string, runQuery common.RunQuery, defaultPageSize common.PaginationConfig) (*queries.ResourceKind, *bunpaginate.Cursor[any], error) {
+func (m *LedgerController) RunQuery(ctx context.Context, schemaVersion, queryId string, runQuery common.RunQuery, defaultPageSize common.PaginationConfig) (*queries.ResourceKind, *paginate.Cursor[any], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RunQuery", ctx, schemaVersion, queryId, runQuery, defaultPageSize)
 	ret0, _ := ret[0].(*queries.ResourceKind)
-	ret1, _ := ret[1].(*bunpaginate.Cursor[any])
+	ret1, _ := ret[1].(*paginate.Cursor[any])
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
@@ -1089,19 +1089,19 @@ type LedgerControllerRunQueryCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *LedgerControllerRunQueryCall) Return(arg0 *queries.ResourceKind, arg1 *bunpaginate.Cursor[any], arg2 error) *LedgerControllerRunQueryCall {
+func (c *LedgerControllerRunQueryCall) Return(arg0 *queries.ResourceKind, arg1 *paginate.Cursor[any], arg2 error) *LedgerControllerRunQueryCall {
 	c.Call = c.Call.Return(arg0, arg1, arg2)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *LedgerControllerRunQueryCall) Do(f func(context.Context, string, string, common.RunQuery, common.PaginationConfig) (*queries.ResourceKind, *bunpaginate.Cursor[any], error)) *LedgerControllerRunQueryCall {
+func (c *LedgerControllerRunQueryCall) Do(f func(context.Context, string, string, common.RunQuery, common.PaginationConfig) (*queries.ResourceKind, *paginate.Cursor[any], error)) *LedgerControllerRunQueryCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *LedgerControllerRunQueryCall) DoAndReturn(f func(context.Context, string, string, common.RunQuery, common.PaginationConfig) (*queries.ResourceKind, *bunpaginate.Cursor[any], error)) *LedgerControllerRunQueryCall {
+func (c *LedgerControllerRunQueryCall) DoAndReturn(f func(context.Context, string, string, common.RunQuery, common.PaginationConfig) (*queries.ResourceKind, *paginate.Cursor[any], error)) *LedgerControllerRunQueryCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

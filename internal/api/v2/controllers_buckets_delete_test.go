@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	sharedapi "github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/auth"
-	"github.com/formancehq/go-libs/v4/logging"
+	"github.com/formancehq/go-libs/v5/pkg/authn/jwt"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	sharedapi "github.com/formancehq/go-libs/v5/pkg/transport/api"
 )
 
 func TestDeleteBucket(t *testing.T) {
@@ -49,7 +49,7 @@ func TestDeleteBucket(t *testing.T) {
 				DeleteBucket(gomock.Any(), testCase.bucket).
 				Return(testCase.returnError)
 
-			router := NewRouter(systemController, auth.NewNoAuth(), "develop")
+			router := NewRouter(systemController, jwt.NewNoAuth(), "develop")
 
 			req := httptest.NewRequest(http.MethodDelete, "/_/buckets/"+testCase.bucket, nil)
 			req = req.WithContext(ctx)

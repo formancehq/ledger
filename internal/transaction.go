@@ -8,9 +8,9 @@ import (
 	"github.com/invopop/jsonschema"
 	"github.com/uptrace/bun"
 
-	"github.com/formancehq/go-libs/v4/collectionutils"
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/time"
+	"github.com/formancehq/go-libs/v5/pkg/types/collections"
+	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
+	"github.com/formancehq/go-libs/v5/pkg/types/time"
 )
 
 type Transactions struct {
@@ -242,12 +242,12 @@ func (tx *Transaction) AccountsWithDefaultMetadata(schema *Schema, accountMetada
 		accountMetadata = make(map[string]metadata.Metadata)
 	}
 	accountsToUpsert := tx.InvolvedAccounts()
-	accountsToUpsert = append(accountsToUpsert, collectionutils.Keys(accountMetadata)...)
+	accountsToUpsert = append(accountsToUpsert, collections.Keys(accountMetadata)...)
 
 	slices.Sort(accountsToUpsert)
 	accountsToUpsert = slices.Compact(accountsToUpsert)
 
-	return collectionutils.Map(accountsToUpsert, func(address string) AccountWithDefaultMetadata {
+	return collections.Map(accountsToUpsert, func(address string) AccountWithDefaultMetadata {
 		defaultMetadata := metadata.Metadata{}
 		if schema != nil {
 			accountSchema, _ := schema.Chart.FindAccountSchema(address)

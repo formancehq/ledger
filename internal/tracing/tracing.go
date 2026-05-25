@@ -7,8 +7,8 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/formancehq/go-libs/v4/otlp"
-	"github.com/formancehq/go-libs/v4/time"
+	"github.com/formancehq/go-libs/v5/pkg/observe"
+	"github.com/formancehq/go-libs/v5/pkg/types/time"
 )
 
 func LegacyMetricsName(operationName string) string {
@@ -140,7 +140,7 @@ func Trace[RET any](
 
 	ret, err := fn(ctx)
 	if err != nil {
-		otlp.RecordError(ctx, err)
+		observe.RecordError(ctx, err)
 		return ret, err
 	}
 

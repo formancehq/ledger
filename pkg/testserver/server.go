@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/formancehq/go-libs/v4/bun/bunconnect"
-	"github.com/formancehq/go-libs/v4/testing/deferred"
-	"github.com/formancehq/go-libs/v4/testing/testservice"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/connect"
+	"github.com/formancehq/go-libs/v5/pkg/testing/deferred"
+	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 
 	"github.com/formancehq/ledger/cmd"
 )
 
-func GetTestServerOptions(postgresConnectionOptions *deferred.Deferred[bunconnect.ConnectionOptions]) testservice.Option {
+func GetTestServerOptions(postgresConnectionOptions *deferred.Deferred[connect.ConnectionOptions]) testservice.Option {
 	return testservice.WithInstruments(
 		testservice.AppendArgsInstrumentation("serve", "--"+cmd.BindFlag, ":0", "--schema-enforcement-mode", "strict"),
 		testservice.PostgresInstrumentation(postgresConnectionOptions),
@@ -20,7 +20,7 @@ func GetTestServerOptions(postgresConnectionOptions *deferred.Deferred[bunconnec
 	)
 }
 
-func NewTestServer(postgresConnectionOptions *deferred.Deferred[bunconnect.ConnectionOptions], options ...testservice.Option) *testservice.Service {
+func NewTestServer(postgresConnectionOptions *deferred.Deferred[connect.ConnectionOptions], options ...testservice.Option) *testservice.Service {
 	return testservice.New(
 		cmd.NewRootCommand,
 		append([]testservice.Option{

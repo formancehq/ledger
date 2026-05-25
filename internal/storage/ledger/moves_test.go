@@ -13,10 +13,10 @@ import (
 	"github.com/alitto/pond"
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
-	"github.com/formancehq/go-libs/v4/time"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/storage/postgres"
+	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/common"
@@ -57,7 +57,7 @@ func TestMovesInsert(t *testing.T) {
 		m1 := ledger.Move{
 			IsSource:      true,
 			Account:       "world",
-			Amount:        (*bunpaginate.BigInt)(big.NewInt(100)),
+			Amount:        (*paginate.BigInt)(big.NewInt(100)),
 			Asset:         "USD",
 			InsertionDate: t0,
 			EffectiveDate: t0,
@@ -74,7 +74,7 @@ func TestMovesInsert(t *testing.T) {
 		m2 := ledger.Move{
 			IsSource:      false,
 			Account:       "world",
-			Amount:        (*bunpaginate.BigInt)(big.NewInt(50)),
+			Amount:        (*paginate.BigInt)(big.NewInt(50)),
 			Asset:         "USD",
 			InsertionDate: t3,
 			EffectiveDate: t3,
@@ -91,7 +91,7 @@ func TestMovesInsert(t *testing.T) {
 		m3 := ledger.Move{
 			IsSource:      true,
 			Account:       "world",
-			Amount:        (*bunpaginate.BigInt)(big.NewInt(200)),
+			Amount:        (*paginate.BigInt)(big.NewInt(200)),
 			Asset:         "USD",
 			InsertionDate: t1,
 			EffectiveDate: t1,
@@ -108,7 +108,7 @@ func TestMovesInsert(t *testing.T) {
 		m4 := ledger.Move{
 			IsSource:      false,
 			Account:       "world",
-			Amount:        (*bunpaginate.BigInt)(big.NewInt(50)),
+			Amount:        (*paginate.BigInt)(big.NewInt(50)),
 			Asset:         "USD",
 			InsertionDate: t2,
 			EffectiveDate: t2,
@@ -125,7 +125,7 @@ func TestMovesInsert(t *testing.T) {
 		m5 := ledger.Move{
 			IsSource:      false,
 			Account:       "world",
-			Amount:        (*bunpaginate.BigInt)(big.NewInt(50)),
+			Amount:        (*paginate.BigInt)(big.NewInt(50)),
 			Asset:         "USD",
 			InsertionDate: t4,
 			EffectiveDate: t4,

@@ -13,9 +13,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/migrations"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/storage/migrations"
+	"github.com/formancehq/go-libs/v5/pkg/storage/postgres"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
@@ -62,7 +62,7 @@ func (store *Store) Volumes() common.PaginatedResource[
 	return common.NewPaginatedResourceRepository[
 		ledger.VolumesWithBalanceByAssetByAccount,
 		ledger.GetVolumesOptions,
-	](&volumesResourceHandler{store: store}, "account", bunpaginate.OrderAsc)
+	](&volumesResourceHandler{store: store}, "account", paginate.OrderAsc)
 }
 
 func (store *Store) AggregatedVolumes() common.Resource[ledger.AggregatedVolumes, ledger.GetAggregatedVolumesOptions] {
@@ -74,7 +74,7 @@ func (store *Store) AggregatedVolumes() common.Resource[ledger.AggregatedVolumes
 func (store *Store) Transactions() common.PaginatedResource[
 	ledger.Transaction,
 	any] {
-	return common.NewPaginatedResourceRepository[ledger.Transaction, any](&transactionsResourceHandler{store: store}, "id", bunpaginate.OrderDesc)
+	return common.NewPaginatedResourceRepository[ledger.Transaction, any](&transactionsResourceHandler{store: store}, "id", paginate.OrderDesc)
 }
 
 func (store *Store) Logs() common.PaginatedResource[
@@ -82,7 +82,7 @@ func (store *Store) Logs() common.PaginatedResource[
 	any] {
 	return common.NewPaginatedResourceRepositoryMapper[ledger.Log, Log, any](&logsResourceHandler{
 		store: store,
-	}, "id", bunpaginate.OrderDesc)
+	}, "id", paginate.OrderDesc)
 }
 
 func (store *Store) Accounts() common.PaginatedResource[
@@ -90,7 +90,7 @@ func (store *Store) Accounts() common.PaginatedResource[
 	any] {
 	return common.NewPaginatedResourceRepository[ledger.Account, any](&accountsResourceHandler{
 		store: store,
-	}, "address", bunpaginate.OrderAsc)
+	}, "address", paginate.OrderAsc)
 }
 
 func (store *Store) Schemas() common.PaginatedResource[
@@ -98,7 +98,7 @@ func (store *Store) Schemas() common.PaginatedResource[
 	any] {
 	return common.NewPaginatedResourceRepository[ledger.Schema, any](&schemasResourceHandler{
 		store: store,
-	}, "created_at", bunpaginate.OrderDesc)
+	}, "created_at", paginate.OrderDesc)
 }
 
 func (store *Store) BeginTX(ctx context.Context, options *sql.TxOptions) (*Store, *bun.Tx, error) {

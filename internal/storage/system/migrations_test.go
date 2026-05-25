@@ -11,11 +11,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 
-	"github.com/formancehq/go-libs/v4/bun/bunconnect"
-	"github.com/formancehq/go-libs/v4/bun/bundebug"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/testing/migrations"
-	"github.com/formancehq/go-libs/v4/time"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/connect"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/debug"
+	"github.com/formancehq/go-libs/v5/pkg/testing/migrations"
+	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/pkg/features"
@@ -29,10 +29,10 @@ func TestMigrations(t *testing.T) {
 
 	hooks := make([]bun.QueryHook, 0)
 	if os.Getenv("DEBUG") == "true" {
-		hooks = append(hooks, bundebug.NewQueryHook())
+		hooks = append(hooks, debug.NewQueryHook())
 	}
 
-	db, err := bunconnect.OpenSQLDB(ctx, pgServer.ConnectionOptions(), hooks...)
+	db, err := connect.OpenSQLDB(ctx, pgServer.ConnectionOptions(), hooks...)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, db.Close())

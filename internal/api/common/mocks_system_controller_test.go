@@ -11,7 +11,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	bunpaginate "github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	paginate "github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
 	ledger "github.com/formancehq/ledger/internal"
 	ledger0 "github.com/formancehq/ledger/internal/controller/ledger"
 	common "github.com/formancehq/ledger/internal/storage/common"
@@ -132,10 +132,10 @@ func (mr *MockReplicationBackendMockRecorder) GetPipeline(ctx, id any) *gomock.C
 }
 
 // ListExporters mocks base method.
-func (m *MockReplicationBackend) ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error) {
+func (m *MockReplicationBackend) ListExporters(ctx context.Context) (*paginate.Cursor[ledger.Exporter], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListExporters", ctx)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Exporter])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.Exporter])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -147,10 +147,10 @@ func (mr *MockReplicationBackendMockRecorder) ListExporters(ctx any) *gomock.Cal
 }
 
 // ListPipelines mocks base method.
-func (m *MockReplicationBackend) ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error) {
+func (m *MockReplicationBackend) ListPipelines(ctx context.Context) (*paginate.Cursor[ledger.Pipeline], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListPipelines", ctx)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Pipeline])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.Pipeline])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -416,10 +416,10 @@ func (mr *SystemControllerMockRecorder) GetSchemaEnforcementMode(ctx any) *gomoc
 }
 
 // ListExporters mocks base method.
-func (m *SystemController) ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error) {
+func (m *SystemController) ListExporters(ctx context.Context) (*paginate.Cursor[ledger.Exporter], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListExporters", ctx)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Exporter])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.Exporter])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -431,10 +431,10 @@ func (mr *SystemControllerMockRecorder) ListExporters(ctx any) *gomock.Call {
 }
 
 // ListLedgers mocks base method.
-func (m *SystemController) ListLedgers(ctx context.Context, query common.PaginatedQuery[system.ListLedgersQueryPayload]) (*bunpaginate.Cursor[ledger.Ledger], error) {
+func (m *SystemController) ListLedgers(ctx context.Context, query common.PaginatedQuery[system.ListLedgersQueryPayload]) (*paginate.Cursor[ledger.Ledger], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListLedgers", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Ledger])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.Ledger])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -446,10 +446,10 @@ func (mr *SystemControllerMockRecorder) ListLedgers(ctx, query any) *gomock.Call
 }
 
 // ListPipelines mocks base method.
-func (m *SystemController) ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error) {
+func (m *SystemController) ListPipelines(ctx context.Context) (*paginate.Cursor[ledger.Pipeline], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListPipelines", ctx)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Pipeline])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.Pipeline])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

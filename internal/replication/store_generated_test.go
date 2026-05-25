@@ -11,7 +11,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	bunpaginate "github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	paginate "github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
 	ledger "github.com/formancehq/ledger/internal"
 	common "github.com/formancehq/ledger/internal/storage/common"
 	gomock "go.uber.org/mock/gomock"
@@ -42,10 +42,10 @@ func (m *MockLogFetcher) EXPECT() *MockLogFetcherMockRecorder {
 }
 
 // ListLogs mocks base method.
-func (m *MockLogFetcher) ListLogs(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
+func (m *MockLogFetcher) ListLogs(ctx context.Context, query common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Log], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListLogs", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Log])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.Log])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -182,10 +182,10 @@ func (mr *MockStorageMockRecorder) ListEnabledPipelines(ctx any) *gomock.Call {
 }
 
 // ListExporters mocks base method.
-func (m *MockStorage) ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error) {
+func (m *MockStorage) ListExporters(ctx context.Context) (*paginate.Cursor[ledger.Exporter], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListExporters", ctx)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Exporter])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.Exporter])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -197,10 +197,10 @@ func (mr *MockStorageMockRecorder) ListExporters(ctx any) *gomock.Call {
 }
 
 // ListPipelines mocks base method.
-func (m *MockStorage) ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error) {
+func (m *MockStorage) ListPipelines(ctx context.Context) (*paginate.Cursor[ledger.Pipeline], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListPipelines", ctx)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Pipeline])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.Pipeline])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

@@ -3,8 +3,8 @@ package v1
 import (
 	"net/http"
 
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/transport/api"
 
 	"github.com/formancehq/ledger/internal/api/common"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
@@ -16,7 +16,7 @@ func listTransactions(w http.ResponseWriter, r *http.Request) {
 	paginatedQuery, err := getPaginatedQuery[any](
 		r,
 		"id",
-		bunpaginate.OrderDesc,
+		paginate.OrderDesc,
 		func(resourceQuery *storagecommon.ResourceQuery[any]) error {
 			resourceQuery.Expand = append(resourceQuery.Expand, "volumes")
 			resourceQuery.Builder = buildGetTransactionsQuery(r)
@@ -34,5 +34,5 @@ func listTransactions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	api.RenderCursor(w, *bunpaginate.MapCursor(cursor, mapTransactionToV1))
+	api.RenderCursor(w, *paginate.MapCursor(cursor, mapTransactionToV1))
 }

@@ -17,8 +17,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"gopkg.in/yaml.v3"
 
-	"github.com/formancehq/go-libs/v4/migrations"
-	"github.com/formancehq/go-libs/v4/otlp"
+	"github.com/formancehq/go-libs/v5/pkg/observe"
+	"github.com/formancehq/go-libs/v5/pkg/storage/migrations"
 )
 
 //go:embed migrations
@@ -58,7 +58,7 @@ func runMigrate(ctx context.Context, tracer trace.Tracer, db bun.IDB, name strin
 			if errors.Is(err, migrations.ErrAlreadyUpToDate) {
 				return nil
 			}
-			otlp.RecordError(ctx, err)
+			observe.RecordError(ctx, err)
 
 			return err
 		}

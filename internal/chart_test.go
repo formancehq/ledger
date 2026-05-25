@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/go-libs/v4/pointer"
+	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
 )
 
 func TestChartValidation(t *testing.T) {

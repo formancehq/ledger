@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/go-libs/v4/auth"
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v5/pkg/authn/jwt"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/queries"
@@ -24,10 +24,10 @@ func TestQueriesRun(t *testing.T) {
 	t.Parallel()
 
 	systemController, ledgerController := newTestingSystemController(t, true)
-	router := NewRouter(systemController, auth.NewNoAuth(), "develop")
+	router := NewRouter(systemController, jwt.NewNoAuth(), "develop")
 
 	expectedResourceKind := queries.ResourceKindTransaction
-	expectedCursor := bunpaginate.Cursor[any]{
+	expectedCursor := paginate.Cursor[any]{
 		Data: []any{
 			ledger.NewTransaction().WithPostings(
 				ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
@@ -64,8 +64,8 @@ func TestQueriesRun(t *testing.T) {
 				"bar": "barnacle",
 			},
 		}, storagecommon.PaginationConfig{
-			MaxPageSize:     bunpaginate.MaxPageSize,
-			DefaultPageSize: bunpaginate.QueryDefaultPageSize,
+			MaxPageSize:     paginate.MaxPageSize,
+			DefaultPageSize: paginate.QueryDefaultPageSize,
 		}).
 		Return(&expectedResourceKind, &expectedCursor, nil)
 
