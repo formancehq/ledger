@@ -12,10 +12,10 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/storage/postgres"
+	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
@@ -42,16 +42,9 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 
 	var ret *ledgerstore.Store
 	err := d.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		systemStore := d.systemStoreFactory.Create(tx)
-
-		if err := systemStore.CreateLedger(ctx, l); err != nil {
-			if errors.Is(postgres.ResolveError(err), postgres.ErrConstraintsFailed{}) {
-				return systemstore.ErrLedgerAlreadyExists
-			}
-			return postgres.ResolveError(err)
-		}
-
 		b := d.bucketFactory.Create(l.Bucket)
+
+		// Bring the bucket up to date before inserting the _system.ledgers row.
 		isInitialized, err := b.IsInitialized(ctx, tx)
 		if err != nil {
 			return fmt.Errorf("checking if bucket is initialized: %w", err)
@@ -65,14 +58,22 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 			if !upToDate {
 				return ErrBucketOutdated
 			}
-
-			if err := b.AddLedger(ctx, tx, *l); err != nil {
-				return fmt.Errorf("adding ledger to bucket: %w", err)
-			}
 		} else {
 			if err := b.Migrate(ctx, tx); err != nil {
 				return fmt.Errorf("migrating bucket: %w", err)
 			}
+		}
+
+		systemStore := d.systemStoreFactory.Create(tx)
+		if err := systemStore.CreateLedger(ctx, l); err != nil {
+			if errors.Is(postgres.ResolveError(err), postgres.ErrConstraintsFailed{}) {
+				return systemstore.ErrLedgerAlreadyExists
+			}
+			return postgres.ResolveError(err)
+		}
+
+		if err := b.AddLedger(ctx, tx, *l); err != nil {
+			return fmt.Errorf("adding ledger to bucket: %w", err)
 		}
 
 		count, err := systemStore.CountLedgersInBucket(ctx, l.Bucket)
@@ -199,7 +200,7 @@ func (d *Driver) DeleteLedgerMetadata(ctx context.Context, name string, key stri
 	return d.systemStoreFactory.Create(d.db).DeleteLedgerMetadata(ctx, name, key)
 }
 
-func (d *Driver) ListLedgers(ctx context.Context, q common.PaginatedQuery[systemstore.ListLedgersQueryPayload]) (*bunpaginate.Cursor[ledger.Ledger], error) {
+func (d *Driver) ListLedgers(ctx context.Context, q common.PaginatedQuery[systemstore.ListLedgersQueryPayload]) (*paginate.Cursor[ledger.Ledger], error) {
 	return d.systemStoreFactory.Create(d.db).Ledgers().Paginate(ctx, q)
 }
 

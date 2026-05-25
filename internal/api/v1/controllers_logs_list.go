@@ -3,9 +3,9 @@ package v1
 import (
 	"net/http"
 
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/query"
+	"github.com/formancehq/go-libs/v5/pkg/query"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/transport/api"
 
 	"github.com/formancehq/ledger/internal/api/common"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
@@ -40,7 +40,7 @@ func getLogs(w http.ResponseWriter, r *http.Request) {
 	paginatedQuery, err := getPaginatedQuery[any](
 		r,
 		"id",
-		bunpaginate.OrderDesc,
+		paginate.OrderDesc,
 		func(resourceQuery *storagecommon.ResourceQuery[any]) error {
 			resourceQuery.Builder = buildGetLogsQuery(r)
 			return nil

@@ -19,14 +19,14 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/uptrace/bun"
 
-	"github.com/formancehq/go-libs/v4/bun/bunconnect"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/testing/deferred"
-	"github.com/formancehq/go-libs/v4/testing/docker"
-	"github.com/formancehq/go-libs/v4/testing/platform/clickhousetesting"
-	"github.com/formancehq/go-libs/v4/testing/platform/natstesting"
-	. "github.com/formancehq/go-libs/v4/testing/platform/pgtesting"
-	"github.com/formancehq/go-libs/v4/testing/testservice"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/connect"
+	"github.com/formancehq/go-libs/v5/pkg/testing/deferred"
+	"github.com/formancehq/go-libs/v5/pkg/testing/docker"
+	"github.com/formancehq/go-libs/v5/pkg/testing/platform/clickhousetesting"
+	"github.com/formancehq/go-libs/v5/pkg/testing/platform/natstesting"
+	. "github.com/formancehq/go-libs/v5/pkg/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
@@ -126,7 +126,7 @@ var _ = SynchronizedBeforeSuite(func(specContext SpecContext) []byte {
 		templateDatabase := ret.NewDatabase(GinkgoT(), WithName(DBTemplate))
 
 		By("Connecting to database...")
-		bunDB, err := bunconnect.OpenSQLDB(context.Background(), templateDatabase.ConnectionOptions())
+		bunDB, err := connect.OpenSQLDB(context.Background(), templateDatabase.ConnectionOptions())
 		Expect(err).To(BeNil())
 
 		By("Creating system schema")
@@ -208,8 +208,8 @@ func UseTemplatedDatabase() *deferred.Deferred[*Database] {
 	return UsePostgresDatabase(pgServer, CreateWithTemplate(DBTemplate))
 }
 
-func ConnectToDatabase(ctx context.Context, dbOptions *deferred.Deferred[bunconnect.ConnectionOptions]) *bun.DB {
-	db, err := bunconnect.OpenSQLDB(ctx, dbOptions.GetValue())
+func ConnectToDatabase(ctx context.Context, dbOptions *deferred.Deferred[connect.ConnectionOptions]) *bun.DB {
+	db, err := connect.OpenSQLDB(ctx, dbOptions.GetValue())
 	Expect(err).To(BeNil())
 
 	DeferCleanup(db.Close)

@@ -8,8 +8,9 @@ import (
 	"go.uber.org/fx"
 	"google.golang.org/grpc"
 
-	"github.com/formancehq/go-libs/v4/grpcserver"
-	"github.com/formancehq/go-libs/v4/serverport"
+	"github.com/formancehq/go-libs/v5/pkg/fx/transportfx"
+	"github.com/formancehq/go-libs/v5/pkg/transport/grpcserver"
+	"github.com/formancehq/go-libs/v5/pkg/transport/serverport"
 
 	"github.com/formancehq/ledger/internal/replication"
 	innergrpc "github.com/formancehq/ledger/internal/replication/grpc"
@@ -42,7 +43,7 @@ func NewFXModule(cfg ModuleConfig) fx.Option {
 func NewGRPCServerFXModule(cfg GRPCServerModuleConfig) fx.Option {
 	return fx.Options(
 		fx.Invoke(func(lc fx.Lifecycle, replicationServer innergrpc.ReplicationServer, traceProvider trace.TracerProvider) {
-			lc.Append(grpcserver.NewHook(
+			lc.Append(transportfx.GRPCFXHook(grpcserver.NewHook(
 				grpcserver.WithServerPortOptions(
 					serverport.WithAddress(cfg.Address),
 				),
@@ -52,7 +53,7 @@ func NewGRPCServerFXModule(cfg GRPCServerModuleConfig) fx.Option {
 				grpcserver.WithGRPCServerOptions(
 					grpc.StatsHandler(otelgrpc.NewServerHandler(otelgrpc.WithTracerProvider(traceProvider))),
 				),
-			))
+			)))
 		}),
 	)
 }

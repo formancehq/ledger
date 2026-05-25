@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/pprof"
@@ -13,19 +14,23 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	apilib "github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/auth"
-	"github.com/formancehq/go-libs/v4/aws/iam"
-	"github.com/formancehq/go-libs/v4/ballast"
-	"github.com/formancehq/go-libs/v4/bun/bunconnect"
-	"github.com/formancehq/go-libs/v4/health"
-	"github.com/formancehq/go-libs/v4/httpserver"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/otlp"
-	"github.com/formancehq/go-libs/v4/otlp/otlpmetrics"
-	"github.com/formancehq/go-libs/v4/otlp/otlptraces"
-	"github.com/formancehq/go-libs/v4/publish"
-	"github.com/formancehq/go-libs/v4/service"
+	"github.com/formancehq/go-libs/v5/pkg/authn/jwt"
+	"github.com/formancehq/go-libs/v5/pkg/cloud/aws/iam"
+	"github.com/formancehq/go-libs/v5/pkg/fx/authnfx"
+	"github.com/formancehq/go-libs/v5/pkg/fx/messagingfx"
+	"github.com/formancehq/go-libs/v5/pkg/fx/observefx"
+	"github.com/formancehq/go-libs/v5/pkg/fx/storagefx"
+	"github.com/formancehq/go-libs/v5/pkg/fx/transportfx"
+	"github.com/formancehq/go-libs/v5/pkg/messaging/publish"
+	"github.com/formancehq/go-libs/v5/pkg/observe"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/observe/metrics"
+	"github.com/formancehq/go-libs/v5/pkg/observe/traces"
+	"github.com/formancehq/go-libs/v5/pkg/service"
+	"github.com/formancehq/go-libs/v5/pkg/service/health"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/connect"
+	apilib "github.com/formancehq/go-libs/v5/pkg/transport/api"
+	"github.com/formancehq/go-libs/v5/pkg/transport/httpserver"
 
 	"github.com/formancehq/ledger/internal/api"
 	"github.com/formancehq/ledger/internal/bus"
@@ -87,7 +92,7 @@ func NewServeCommand() *cobra.Command {
 				return err
 			}
 
-			connectionOptions, err := bunconnect.ConnectionOptionsFromFlags(cmd)
+			connectionOptions, err := connect.ConnectionOptionsFromFlags(cmd.Flags(), cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -95,10 +100,10 @@ func NewServeCommand() *cobra.Command {
 			options := []fx.Option{
 				fx.NopLogger,
 				otlpModule(cmd, cfg.commonConfig),
-				publish.FXModuleFromFlags(cmd, service.IsDebug(cmd)),
-				auth.FXModuleFromFlags(cmd),
+				messagingfx.PublishModuleFromFlags(cmd, service.IsDebug(cmd)),
+				authnfx.JWTModuleFromFlags(cmd),
 				fx.Supply(connectionOptions),
-				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
+				storagefx.BunConnectModule(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(storage.ModuleConfig{
 					AutoUpgrade: cfg.AutoUpgrade,
 				}),
@@ -118,7 +123,7 @@ func NewServeCommand() *cobra.Command {
 					SchemaEnforcementMode: cfg.commonConfig.SchemaEnforcementMode,
 				}),
 				bus.NewFxModule(),
-				ballast.Module(cfg.BallastSizeInBytes),
+				ballastModule(cfg.BallastSizeInBytes),
 				api.Module(api.Config{
 					Version: Version,
 					Debug:   service.IsDebug(cmd),
@@ -140,8 +145,8 @@ func NewServeCommand() *cobra.Command {
 						HealthController *health.HealthController
 						Logger           logging.Logger
 
-						MeterProvider *metric.MeterProvider         `optional:"true"`
-						Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
+						MeterProvider *metric.MeterProvider     `optional:"true"`
+						Exporter      *metrics.InMemoryExporter `optional:"true"`
 					},
 				) chi.Router {
 					return assembleFinalRouter(
@@ -154,7 +159,7 @@ func NewServeCommand() *cobra.Command {
 					)
 				}),
 				fx.Invoke(func(lc fx.Lifecycle, h chi.Router) {
-					lc.Append(httpserver.NewHook(h, httpserver.WithAddress(cfg.Bind)))
+					lc.Append(transportfx.FXHook(httpserver.NewHook(h, httpserver.WithAddress(cfg.Bind))))
 				}),
 			}
 
@@ -193,11 +198,11 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().String(SchemaEnforcementMode, "audit", "Schema enforcement mode. Values: `audit`, `strict`")
 
 	addWorkerFlags(cmd)
-	bunconnect.AddFlags(cmd.Flags())
-	otlp.AddFlags(cmd.Flags())
-	otlpmetrics.AddFlags(cmd.Flags())
-	otlptraces.AddFlags(cmd.Flags())
-	auth.AddFlags(cmd.Flags())
+	connect.AddFlags(cmd.Flags())
+	observe.AddFlags(cmd.Flags())
+	metrics.AddFlags(cmd.Flags())
+	traces.AddFlags(cmd.Flags())
+	jwt.AddFlags(cmd.Flags())
 	publish.AddFlags(ServiceName, cmd.Flags(), func(cd *publish.ConfigDefault) {
 		cd.PublisherCircuitBreakerSchema = systemstore.SchemaSystem
 	})
@@ -209,7 +214,7 @@ func NewServeCommand() *cobra.Command {
 func assembleFinalRouter(
 	exportPProf bool,
 	meterProvider *metric.MeterProvider,
-	exporter *otlpmetrics.InMemoryExporter,
+	exporter *metrics.InMemoryExporter,
 	healthController *health.HealthController,
 	logger logging.Logger,
 	handler http.Handler,
@@ -225,7 +230,7 @@ func assembleFinalRouter(
 	})
 	wrappedRouter.Route("/_/", func(r chi.Router) {
 		if exporter != nil {
-			r.Handle("/metrics", otlpmetrics.NewInMemoryExporterHandler(
+			r.Handle("/metrics", metrics.NewInMemoryExporterHandler(
 				meterProvider,
 				exporter,
 			))
@@ -253,11 +258,31 @@ func assembleFinalRouter(
 	return wrappedRouter
 }
 
+func ballastModule(sizeInBytes uint) fx.Option {
+	if sizeInBytes == 0 {
+		return fx.Options()
+	}
+	return fx.Invoke(func(lc fx.Lifecycle) {
+		var ballast []byte
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				ballast = make([]byte, 0, sizeInBytes)
+				_ = ballast
+				return nil
+			},
+			OnStop: func(ctx context.Context) error {
+				ballast = nil
+				return nil
+			},
+		})
+	})
+}
+
 func otlpModule(cmd *cobra.Command, cfg commonConfig) fx.Option {
 	return fx.Options(
-		otlp.FXModuleFromFlags(cmd, otlp.WithServiceVersion(Version)),
-		otlptraces.FXModuleFromFlags(cmd),
-		otlpmetrics.ProvideMetricsProviderOption(func() metric.Option {
+		observefx.ResourceModuleFromFlags(cmd, observe.WithServiceVersion(Version)),
+		observefx.TracesModuleFromFlags(cmd),
+		observefx.ProvideMetricsProviderOption(func() metric.Option {
 			return metric.WithView(func(instrument metric.Instrument) (metric.Stream, bool) {
 				if cfg.SemconvMetricsNames {
 					return metric.Stream{}, false
@@ -269,6 +294,6 @@ func otlpModule(cmd *cobra.Command, cfg commonConfig) fx.Option {
 				}, true
 			})
 		}),
-		otlpmetrics.FXModuleFromFlags(cmd),
+		observefx.MetricsModuleFromFlags(cmd),
 	)
 }

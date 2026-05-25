@@ -5,7 +5,7 @@ package env
 import (
 	"sort"
 
-	. "github.com/formancehq/go-libs/v4/collectionutils"
+	. "github.com/formancehq/go-libs/v5/pkg/types/collections"
 
 	"github.com/formancehq/ledger/pkg/features"
 )

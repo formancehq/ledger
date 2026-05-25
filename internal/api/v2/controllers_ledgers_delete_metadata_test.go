@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/auth"
-	"github.com/formancehq/go-libs/v4/logging"
+	"github.com/formancehq/go-libs/v5/pkg/authn/jwt"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/transport/api"
 )
 
 func TestLedgersDeleteMetadata(t *testing.T) {
@@ -53,7 +53,7 @@ func TestLedgersDeleteMetadata(t *testing.T) {
 					Return(tc.returnErr)
 			}
 
-			router := NewRouter(systemController, auth.NewNoAuth(), "develop")
+			router := NewRouter(systemController, jwt.NewNoAuth(), "develop")
 
 			req := httptest.NewRequest(http.MethodDelete, "/"+name+"/metadata/foo", nil)
 			req = req.WithContext(ctx)

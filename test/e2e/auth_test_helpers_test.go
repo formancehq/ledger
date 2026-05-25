@@ -11,8 +11,8 @@ import (
 	"github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
 
-	"github.com/formancehq/go-libs/v4/oidc"
-	libtime "github.com/formancehq/go-libs/v4/time"
+	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
+	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
 )
 
 const (

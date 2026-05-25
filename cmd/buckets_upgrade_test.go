@@ -8,10 +8,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/go-libs/v4/bun/bunconnect"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/testing/docker"
-	"github.com/formancehq/go-libs/v4/testing/platform/pgtesting"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/connect"
+	"github.com/formancehq/go-libs/v5/pkg/testing/docker"
+	"github.com/formancehq/go-libs/v5/pkg/testing/platform/pgtesting"
 )
 
 func TestBucketsUpgrade(t *testing.T) {
@@ -42,7 +42,7 @@ func TestBucketsUpgrade(t *testing.T) {
 			db := srv.NewDatabase(t)
 
 			args := []string{
-				"--" + bunconnect.PostgresURIFlag, db.ConnString(),
+				"--" + connect.PostgresURIFlag, db.ConnString(),
 			}
 			args = append(args, tc.args...)
 

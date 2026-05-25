@@ -16,12 +16,12 @@ import (
 	"github.com/uptrace/bun"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/formancehq/go-libs/v4/bun/bunconnect"
-	"github.com/formancehq/go-libs/v4/bun/bundebug"
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/testing/docker"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/connect"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/debug"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/testing/docker"
+	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
 
 	ledger "github.com/formancehq/ledger/internal"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
@@ -103,7 +103,7 @@ func TestLedgersList(t *testing.T) {
 
 	for i := pageSize; i < count; i += pageSize {
 		query := storagecommon.ColumnPaginatedQuery[ListLedgersQueryPayload]{}
-		require.NoError(t, bunpaginate.UnmarshalCursor(cursor.Next, &query))
+		require.NoError(t, paginate.UnmarshalCursor(cursor.Next, &query))
 
 		cursor, err = store.Ledgers().Paginate(ctx, query)
 		require.NoError(t, err)
@@ -311,10 +311,10 @@ func newStore(t docker.T) *DefaultStore {
 	pgDatabase := srv.NewDatabase(t)
 
 	hooks := make([]bun.QueryHook, 0)
-	debugHook := bundebug.NewQueryHook()
+	debugHook := debug.NewQueryHook()
 	debugHook.Debug = os.Getenv("DEBUG") == "true"
 	hooks = append(hooks, debugHook)
-	db, err := bunconnect.OpenSQLDB(ctx, pgDatabase.ConnectionOptions(), hooks...)
+	db, err := connect.OpenSQLDB(ctx, pgDatabase.ConnectionOptions(), hooks...)
 	require.NoError(t, err)
 
 	ret := New(db)

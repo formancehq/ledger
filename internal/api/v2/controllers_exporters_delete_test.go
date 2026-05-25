@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	sharedapi "github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/auth"
-	"github.com/formancehq/go-libs/v4/logging"
+	"github.com/formancehq/go-libs/v5/pkg/authn/jwt"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	sharedapi "github.com/formancehq/go-libs/v5/pkg/transport/api"
 
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 )
@@ -62,7 +62,7 @@ func TestDeleteExporter(t *testing.T) {
 				DeleteExporter(gomock.Any(), exporterID).
 				Return(testCase.returnError)
 
-			router := NewRouter(systemController, auth.NewNoAuth(), "develop", WithExporters(true))
+			router := NewRouter(systemController, jwt.NewNoAuth(), "develop", WithExporters(true))
 
 			req := httptest.NewRequest(http.MethodDelete, "/_/exporters/"+exporterID, nil)
 			req = req.WithContext(ctx)

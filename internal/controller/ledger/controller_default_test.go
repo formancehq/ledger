@@ -10,13 +10,13 @@ import (
 	"github.com/uptrace/bun"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/migrations"
-	"github.com/formancehq/go-libs/v4/pointer"
-	"github.com/formancehq/go-libs/v4/query"
-	"github.com/formancehq/go-libs/v4/time"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/query"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/storage/migrations"
+	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
+	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
+	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/machine/vm"
@@ -392,20 +392,20 @@ func TestListTransactions(t *testing.T) {
 
 	transactions := NewMockPaginatedResource[ledger.Transaction, any](ctrl)
 
-	cursor := &bunpaginate.Cursor[ledger.Transaction]{}
+	cursor := &paginate.Cursor[ledger.Transaction]{}
 	store.EXPECT().Transactions().Return(transactions)
 	transactions.EXPECT().
 		Paginate(gomock.Any(), common.InitialPaginatedQuery[any]{
-			PageSize: bunpaginate.QueryDefaultPageSize,
-			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+			PageSize: paginate.QueryDefaultPageSize,
+			Order:    pointer.For(paginate.Order(paginate.OrderDesc)),
 			Column:   "id",
 		}).
 		Return(cursor, nil)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
 	ret, err := l.ListTransactions(ctx, common.InitialPaginatedQuery[any]{
-		PageSize: bunpaginate.QueryDefaultPageSize,
-		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+		PageSize: paginate.QueryDefaultPageSize,
+		Order:    pointer.For(paginate.Order(paginate.OrderDesc)),
 		Column:   "id",
 	})
 	require.NoError(t, err)
@@ -513,17 +513,17 @@ func TestListAccounts(t *testing.T) {
 	ctx := logging.TestingContext()
 	accounts := NewMockPaginatedResource[ledger.Account, any](ctrl)
 
-	cursor := &bunpaginate.Cursor[ledger.Account]{}
+	cursor := &paginate.Cursor[ledger.Account]{}
 	store.EXPECT().Accounts().Return(accounts)
 	accounts.EXPECT().Paginate(gomock.Any(), common.InitialPaginatedQuery[any]{
-		PageSize: bunpaginate.QueryDefaultPageSize,
-		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+		PageSize: paginate.QueryDefaultPageSize,
+		Order:    pointer.For(paginate.Order(paginate.OrderAsc)),
 	}).Return(cursor, nil)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
 	ret, err := l.ListAccounts(ctx, common.InitialPaginatedQuery[any]{
-		PageSize: bunpaginate.QueryDefaultPageSize,
-		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+		PageSize: paginate.QueryDefaultPageSize,
+		Order:    pointer.For(paginate.Order(paginate.OrderAsc)),
 	})
 	require.NoError(t, err)
 	require.Equal(t, cursor, ret)
@@ -561,18 +561,18 @@ func TestListLogs(t *testing.T) {
 	ctx := logging.TestingContext()
 	logs := NewMockPaginatedResource[ledger.Log, any](ctrl)
 
-	cursor := &bunpaginate.Cursor[ledger.Log]{}
+	cursor := &paginate.Cursor[ledger.Log]{}
 	store.EXPECT().Logs().Return(logs)
 	logs.EXPECT().Paginate(gomock.Any(), common.InitialPaginatedQuery[any]{
-		PageSize: bunpaginate.QueryDefaultPageSize,
-		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+		PageSize: paginate.QueryDefaultPageSize,
+		Order:    pointer.For(paginate.Order(paginate.OrderDesc)),
 		Column:   "id",
 	}).Return(cursor, nil)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
 	ret, err := l.ListLogs(ctx, common.InitialPaginatedQuery[any]{
-		PageSize: bunpaginate.QueryDefaultPageSize,
-		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
+		PageSize: paginate.QueryDefaultPageSize,
+		Order:    pointer.For(paginate.Order(paginate.OrderDesc)),
 		Column:   "id",
 	})
 	require.NoError(t, err)
@@ -590,17 +590,17 @@ func TestGetVolumesWithBalances(t *testing.T) {
 	ctx := logging.TestingContext()
 	volumes := NewMockPaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, ledger.GetVolumesOptions](ctrl)
 
-	balancesByAssets := &bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount]{}
+	balancesByAssets := &paginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount]{}
 	store.EXPECT().Volumes().Return(volumes)
 	volumes.EXPECT().Paginate(gomock.Any(), common.InitialPaginatedQuery[ledger.GetVolumesOptions]{
-		PageSize: bunpaginate.QueryDefaultPageSize,
-		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+		PageSize: paginate.QueryDefaultPageSize,
+		Order:    pointer.For(paginate.Order(paginate.OrderAsc)),
 	}).Return(balancesByAssets, nil)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
 	ret, err := l.GetVolumesWithBalances(ctx, common.InitialPaginatedQuery[ledger.GetVolumesOptions]{
-		PageSize: bunpaginate.QueryDefaultPageSize,
-		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+		PageSize: paginate.QueryDefaultPageSize,
+		Order:    pointer.For(paginate.Order(paginate.OrderAsc)),
 	})
 	require.NoError(t, err)
 	require.Equal(t, balancesByAssets, ret)
@@ -681,11 +681,11 @@ func TestRunQuery(t *testing.T) {
 
 	expectedQuery, err := query.ParseJSON(`{"$match": {"address": "bbb"}}`)
 	require.NoError(t, err)
-	cursor := &bunpaginate.Cursor[ledger.Account]{}
+	cursor := &paginate.Cursor[ledger.Account]{}
 	accounts.EXPECT().Paginate(gomock.Any(), common.InitialPaginatedQuery[any]{
-		PageSize: bunpaginate.QueryDefaultPageSize,
+		PageSize: paginate.QueryDefaultPageSize,
 		Column:   "address",
-		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+		Order:    pointer.For(paginate.Order(paginate.OrderAsc)),
 		Options: common.ResourceQuery[any]{
 			Builder: expectedQuery,
 		},
@@ -696,12 +696,12 @@ func TestRunQuery(t *testing.T) {
 			"aaa": "bbb",
 		},
 	}, storagecommon.PaginationConfig{
-		MaxPageSize:     bunpaginate.MaxPageSize,
-		DefaultPageSize: bunpaginate.QueryDefaultPageSize,
+		MaxPageSize:     paginate.MaxPageSize,
+		DefaultPageSize: paginate.QueryDefaultPageSize,
 	})
 	require.NoError(t, err)
 	require.Equal(t, queries.ResourceKindAccount, *resource)
-	require.Equal(t, &bunpaginate.Cursor[any]{
+	require.Equal(t, &paginate.Cursor[any]{
 		Data: []any{},
 	}, ret)
 

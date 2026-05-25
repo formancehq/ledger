@@ -10,8 +10,8 @@ import (
 	"github.com/pkg/errors"
 	"go.vallahaye.net/batcher"
 
-	"github.com/formancehq/go-libs/v4/collectionutils"
-	"github.com/formancehq/go-libs/v4/logging"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/types/collections"
 )
 
 type Batcher struct {
@@ -56,7 +56,7 @@ func (b *Batcher) commit(ctx context.Context, logs batcher.Operations[LogWithLed
 	b.logger.WithFields(map[string]any{
 		"len": len(logs),
 	}).Debugf("commit batch")
-	itemsErrors, err := b.Driver.Accept(ctx, collectionutils.Map(logs, func(from *batcher.Operation[LogWithLedger, error]) LogWithLedger {
+	itemsErrors, err := b.Driver.Accept(ctx, collections.Map(logs, func(from *batcher.Operation[LogWithLedger, error]) LogWithLedger {
 		return from.Value
 	})...)
 	if err != nil {

@@ -11,11 +11,11 @@ import (
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 
-	"github.com/formancehq/go-libs/v4/bun/bundebug"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/testing/docker"
-	"github.com/formancehq/go-libs/v4/testing/platform/pgtesting"
-	. "github.com/formancehq/go-libs/v4/testing/utils"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/debug"
+	"github.com/formancehq/go-libs/v5/pkg/testing/docker"
+	"github.com/formancehq/go-libs/v5/pkg/testing/platform/pgtesting"
+	. "github.com/formancehq/go-libs/v5/pkg/testing/utils"
 
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 )
@@ -33,7 +33,7 @@ func TestMain(m *testing.M) {
 
 		db = bun.NewDB(sqlDB, pgdialect.New(), bun.WithDiscardUnknownColumns())
 		if os.Getenv("DEBUG") == "true" {
-			queryHook := bundebug.NewQueryHook()
+			queryHook := debug.NewQueryHook()
 			queryHook.Debug = true
 			db.AddQueryHook(queryHook)
 		}

@@ -7,7 +7,7 @@ import (
 
 	"github.com/uptrace/bun"
 
-	"github.com/formancehq/go-libs/v4/query"
+	"github.com/formancehq/go-libs/v5/pkg/query"
 )
 
 func isPartialAddress(address string) bool {
@@ -42,6 +42,10 @@ func filterAccountAddress(address, key string) string {
 		}
 	} else {
 		parts = append(parts, fmt.Sprintf("%s = '%s'", key, address))
+	}
+
+	if len(parts) == 0 {
+		return "1 = 1"
 	}
 
 	return strings.Join(parts, " and ")

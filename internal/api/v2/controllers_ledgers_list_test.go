@@ -12,11 +12,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/auth"
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/pointer"
+	"github.com/formancehq/go-libs/v5/pkg/authn/jwt"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/transport/api"
+	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
@@ -90,17 +90,17 @@ func TestLedgersList(t *testing.T) {
 					ListLedgers(gomock.Any(), storagecommon.InitialPaginatedQuery[systemstore.ListLedgersQueryPayload]{
 						PageSize: 15,
 						Column:   "id",
-						Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+						Order:    pointer.For(paginate.Order(paginate.OrderAsc)),
 						Options: storagecommon.ResourceQuery[systemstore.ListLedgersQueryPayload]{
 							Expand: []string{},
 						},
 					}).
-					Return(&bunpaginate.Cursor[ledger.Ledger]{
+					Return(&paginate.Cursor[ledger.Ledger]{
 						Data: tc.returnData,
 					}, tc.returnErr)
 			}
 
-			router := NewRouter(systemController, auth.NewNoAuth(), "develop")
+			router := NewRouter(systemController, jwt.NewNoAuth(), "develop")
 
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			req = req.WithContext(ctx)

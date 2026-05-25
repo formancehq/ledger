@@ -12,8 +12,8 @@ import (
 	sql "database/sql"
 	reflect "reflect"
 
-	bunpaginate "github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	migrations "github.com/formancehq/go-libs/v4/migrations"
+	paginate "github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	migrations "github.com/formancehq/go-libs/v5/pkg/storage/migrations"
 	ledger "github.com/formancehq/ledger/internal"
 	ledger0 "github.com/formancehq/ledger/internal/controller/ledger"
 	queries "github.com/formancehq/ledger/internal/queries"
@@ -260,10 +260,10 @@ func (mr *LedgerControllerMockRecorder) GetTransaction(ctx, query any) *gomock.C
 }
 
 // GetVolumesWithBalances mocks base method.
-func (m *LedgerController) GetVolumesWithBalances(ctx context.Context, q common.PaginatedQuery[ledger.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+func (m *LedgerController) GetVolumesWithBalances(ctx context.Context, q common.PaginatedQuery[ledger.GetVolumesOptions]) (*paginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetVolumesWithBalances", ctx, q)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -335,10 +335,10 @@ func (mr *LedgerControllerMockRecorder) IsDatabaseUpToDate(ctx any) *gomock.Call
 }
 
 // ListAccounts mocks base method.
-func (m *LedgerController) ListAccounts(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Account], error) {
+func (m *LedgerController) ListAccounts(ctx context.Context, query common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Account], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListAccounts", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Account])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.Account])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -350,10 +350,10 @@ func (mr *LedgerControllerMockRecorder) ListAccounts(ctx, query any) *gomock.Cal
 }
 
 // ListLogs mocks base method.
-func (m *LedgerController) ListLogs(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
+func (m *LedgerController) ListLogs(ctx context.Context, query common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Log], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListLogs", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Log])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.Log])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -365,10 +365,10 @@ func (mr *LedgerControllerMockRecorder) ListLogs(ctx, query any) *gomock.Call {
 }
 
 // ListSchemas mocks base method.
-func (m *LedgerController) ListSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error) {
+func (m *LedgerController) ListSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Schema], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListSchemas", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Schema])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.Schema])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -380,10 +380,10 @@ func (mr *LedgerControllerMockRecorder) ListSchemas(ctx, query any) *gomock.Call
 }
 
 // ListTransactions mocks base method.
-func (m *LedgerController) ListTransactions(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error) {
+func (m *LedgerController) ListTransactions(ctx context.Context, query common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Transaction], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListTransactions", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Transaction])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.Transaction])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -443,11 +443,11 @@ func (mr *LedgerControllerMockRecorder) Rollback(ctx any) *gomock.Call {
 }
 
 // RunQuery mocks base method.
-func (m *LedgerController) RunQuery(ctx context.Context, schemaVersion, queryId string, runQuery common.RunQuery, defaultPageSize common.PaginationConfig) (*queries.ResourceKind, *bunpaginate.Cursor[any], error) {
+func (m *LedgerController) RunQuery(ctx context.Context, schemaVersion, queryId string, runQuery common.RunQuery, defaultPageSize common.PaginationConfig) (*queries.ResourceKind, *paginate.Cursor[any], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RunQuery", ctx, schemaVersion, queryId, runQuery, defaultPageSize)
 	ret0, _ := ret[0].(*queries.ResourceKind)
-	ret1, _ := ret[1].(*bunpaginate.Cursor[any])
+	ret1, _ := ret[1].(*paginate.Cursor[any])
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }

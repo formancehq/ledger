@@ -8,7 +8,7 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
 
-	"github.com/formancehq/go-libs/v4/collectionutils"
+	"github.com/formancehq/go-libs/v5/pkg/types/collections"
 
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/utils"
 )
@@ -90,7 +90,7 @@ func (args *Args) GetEnvVars(ctx *pulumi.Context) corev1.EnvVarArray {
 			rawResourceAttributes["com.formance.stack/pulumi-organization"] = ctx.Organization()
 
 			ret := ""
-			keys := collectionutils.Keys(rawResourceAttributes)
+			keys := collections.Keys(rawResourceAttributes)
 			slices.Sort(keys)
 			for _, key := range keys {
 				ret += key + "=" + rawResourceAttributes[key] + ","

@@ -7,7 +7,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/formancehq/go-libs/v4/auth"
+	"github.com/formancehq/go-libs/v5/pkg/authn/jwt"
 
 	"github.com/formancehq/ledger/internal/api/common"
 	"github.com/formancehq/ledger/internal/controller/system"
@@ -15,7 +15,7 @@ import (
 
 func NewRouter(
 	systemController system.Controller,
-	authenticator auth.Authenticator,
+	authenticator jwt.Authenticator,
 	version string,
 	debug bool,
 	opts ...RouterOption,
@@ -31,7 +31,7 @@ func NewRouter(
 	router.Get("/_info", GetInfo(systemController, version))
 
 	router.Group(func(router chi.Router) {
-		router.Use(auth.Middleware(authenticator))
+		router.Use(jwt.Middleware(authenticator))
 
 		router.Route("/{ledger}", func(router chi.Router) {
 			router.Use(func(handler http.Handler) http.Handler {
