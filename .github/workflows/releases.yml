@@ -10,7 +10,7 @@ jobs:
   GoReleaser:
     runs-on: "namespace-profile-linux-amd64-4vcpu"
     steps:
-      - uses: namespacelabs/nscloud-checkout-action@v8
+      - uses: namespacelabs/nscloud-checkout-action@v9
         with:
           fetch-depth: 0
           dissociate: true
