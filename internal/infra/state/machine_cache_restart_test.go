@@ -94,7 +94,7 @@ func TestCacheCoherenceAfterRestart(t *testing.T) {
 	// Rotations at index 16, 21. The rotation at 16 will purge
 	// old gen1 data from before the restart.
 	// ---------------------------------------------------------------
-	for i := 0; i < 9; i++ {
+	for i := range 9 {
 		index := uint64(12 + i)
 		proposalID := uint64(200 + i)
 		account := accounts[i%len(accounts)]

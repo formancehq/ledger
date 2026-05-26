@@ -237,7 +237,7 @@ type CacheOps interface {
 }
 
 type Cache struct {
-	mu sync.RWMutex
+	mu                  sync.RWMutex
 	Volumes             *AttributeCache[*raftcmdpb.VolumePair]
 	AccountMetadata     *AttributeCache[*commonpb.MetadataValue]
 	References          *AttributeCache[*commonpb.TransactionReferenceValue]

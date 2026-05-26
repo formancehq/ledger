@@ -40,12 +40,3 @@ func (s *CacheSnapshotter) verifyCacheRestoreCoherence() int {
 
 	return 0
 }
-
-func (s *CacheSnapshotter) verifyCacheRestoreCoherenceFormatted() string {
-	violations := s.verifyCacheRestoreCoherence()
-	if violations == 0 {
-		return ""
-	}
-
-	return fmt.Sprintf("%d cache restore violations detected", violations)
-}

@@ -2,6 +2,7 @@ package state
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"math/big"
 
@@ -115,7 +116,7 @@ func verifyPostCommitVolumes(
 				"account":      update.Key.Account,
 				"asset":        update.Key.Asset,
 				"raftIndex":    raftIndex,
-				"canonicalKey": fmt.Sprintf("%x", update.CanonicalKey),
+				"canonicalKey": hex.EncodeToString(update.CanonicalKey),
 				"id":           fmt.Sprintf("%x", update.ID),
 			}).Errorf("SENTINEL DIAG: volume missing from pebble after commit")
 
@@ -140,7 +141,7 @@ func verifyPostCommitVolumes(
 				"pebbleInput":    pebbleInput.String(),
 				"pebbleOutput":   pebbleOutput.String(),
 				"raftIndex":      raftIndex,
-				"canonicalKey":   fmt.Sprintf("%x", update.CanonicalKey),
+				"canonicalKey":   hex.EncodeToString(update.CanonicalKey),
 				"id":             fmt.Sprintf("%x", update.ID),
 			}).Errorf("SENTINEL DIAG: cache/pebble volume divergence")
 
@@ -495,8 +496,8 @@ func dumpPerAccountVolumes(
 			"asset":        vk.Asset,
 			"input":        inputVal.String(),
 			"output":       outputVal.String(),
-			"canonicalKey": fmt.Sprintf("%x", entry.CanonicalKey),
-			"raftIndex": raftIndex,
+			"canonicalKey": hex.EncodeToString(entry.CanonicalKey),
+			"raftIndex":    raftIndex,
 		}).Errorf("VOLUME DUMP: per-account volume at imbalance")
 
 		count++

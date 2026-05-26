@@ -7,6 +7,8 @@ import (
 	"iter"
 	"time"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
 	"github.com/cockroachdb/pebble/v2"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -19,9 +21,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-
-	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
 )
 
 // parseLeanValue extracts the tag and raw value bytes from a lean cache entry.

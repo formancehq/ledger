@@ -1,6 +1,7 @@
 package state
 
 import (
+	"encoding/hex"
 	"fmt"
 	"strings"
 
@@ -179,7 +180,7 @@ func (t *SentinelTracer) TraceVolumeUpdates(
 func traceUpdate(u attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair], partition string) sentinelVolumeTrace {
 	trace := sentinelVolumeTrace{
 		Key:          u.Key,
-		CanonicalKey: fmt.Sprintf("%x", u.CanonicalKey),
+		CanonicalKey: hex.EncodeToString(u.CanonicalKey),
 		ID:           fmt.Sprintf("%x", u.ID),
 		NewInput:     u.New.GetInput().ToBigInt().String(),
 		NewOutput:    u.New.GetOutput().ToBigInt().String(),
@@ -205,7 +206,7 @@ func (t *SentinelTracer) Dump(logger logging.Logger) {
 	for _, e := range t.entries {
 		var status string
 		if e.Rejected {
-			status = fmt.Sprintf("REJECTED: %s", e.Error)
+			status = "REJECTED: " + e.Error
 		} else {
 			status = "applied"
 		}

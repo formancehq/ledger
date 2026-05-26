@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"testing"
 
@@ -68,7 +69,7 @@ func TestCacheDivergenceAfterRestart(t *testing.T) {
 
 	// Step 2: Run several transactions to populate cache and trigger rotations
 	accounts := []string{"users:a", "users:b", "users:c", "users:d", "users:e"}
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		account := accounts[i%len(accounts)]
 		applyOnBoth(t,
 			createTransactionOrder(ledgerName, true,
@@ -98,7 +99,7 @@ func TestCacheDivergenceAfterRestart(t *testing.T) {
 	// Step 4: Continue applying entries post-restart
 	// The leader computes preloads from its live cache (which has all keys).
 	// The follower uses the restored cache (which might be missing keys).
-	for i := 0; i < 30; i++ {
+	for i := range 30 {
 		account := accounts[i%len(accounts)]
 		applyOnBoth(t,
 			createTransactionOrder(ledgerName, true,
@@ -156,7 +157,7 @@ func TestCacheDivergenceWithPipeliningBatches(t *testing.T) {
 		accounts[i] = fmt.Sprintf("users:%03d", i)
 	}
 
-	for i := 0; i < 40; i++ {
+	for i := range 40 {
 		applyOnBoth(t,
 			createTransactionOrder(ledgerName, true,
 				newPosting("world", accounts[i%len(accounts)], "COIN", 100),
@@ -194,7 +195,7 @@ func TestCacheDivergenceWithPipeliningBatches(t *testing.T) {
 	require.NoError(t, err)
 
 	// Apply more entries that cross the rotation boundary
-	for i := 0; i < 30; i++ {
+	for i := range 30 {
 		applyOnBoth(t,
 			createTransactionOrder(ledgerName, true,
 				newPosting("world", accounts[i%len(accounts)], "COIN", 25),
@@ -248,7 +249,7 @@ func TestCacheDivergenceBatchReplay(t *testing.T) {
 	}
 
 	// Apply 15 entries on both (several rotations with threshold=3)
-	for i := 0; i < 15; i++ {
+	for i := range 15 {
 		applyOnBoth(t,
 			createTransactionOrder(ledgerName, true,
 				newPosting("world", accounts[i%len(accounts)], "COIN", 100),
@@ -261,7 +262,7 @@ func TestCacheDivergenceBatchReplay(t *testing.T) {
 
 	// Now: leader continues alone for many entries, follower is "dead"
 	leaderEntries := make([]raftpb.Entry, 0, 30)
-	for i := 0; i < 30; i++ {
+	for i := range 30 {
 		account := accounts[i%len(accounts)]
 		proposal := buildProposalWithLeaderPreloads(t, leader, nextIndex, threshold,
 			createTransactionOrder(ledgerName, true,
@@ -358,7 +359,7 @@ func TestCacheDivergencePipelinedAdmission(t *testing.T) {
 	applyOnBoth(t, createLedgerOrder(ledgerName))
 
 	// Step 2: Build up state with several rotations
-	for i := 0; i < 12; i++ {
+	for i := range 12 {
 		applyOnBoth(t,
 			createTransactionOrder(ledgerName, true,
 				newPosting("world", fmt.Sprintf("users:%d", i), "COIN", 100),
@@ -380,13 +381,13 @@ func TestCacheDivergencePipelinedAdmission(t *testing.T) {
 	// The admission goroutine and FSM goroutine run concurrently. The admission
 	// reads the cache (CheckCache) while the FSM modifies it (rotation, touch).
 	// We simulate this by alternating: admit some entries, apply some, admit more.
-	for batch := 0; batch < 5; batch++ {
+	for batch := range 5 {
 		// Phase A: Leader admits several proposals from CURRENT cache state
 		// (before any are applied - simulates admission pipeline depth)
 		pipelineDepth := threshold + 1 // cross 1 rotation boundary
 
 		admittedEntries := make([]raftpb.Entry, 0, pipelineDepth)
-		for i := uint64(0); i < uint64(pipelineDepth); i++ {
+		for i := range uint64(pipelineDepth) {
 			idx := nextIndex + i
 			account := fmt.Sprintf("users:%d", int(idx)%5)
 			proposal := buildProposalWithLeaderPreloads(t, leader, idx, threshold,
@@ -450,7 +451,6 @@ func TestCacheDivergenceStress(t *testing.T) {
 				name := fmt.Sprintf("threshold=%d/crash=%d/pipeline=%d", threshold, crashAt, pipelineDepth)
 				threshold := threshold
 				crashAt := crashAt
-				pipelineDepth := pipelineDepth
 
 				t.Run(name, func(t *testing.T) {
 					t.Parallel()
@@ -487,7 +487,7 @@ func runCacheDivergenceScenario(t *testing.T, threshold uint64, crashAfterN, pip
 	applyOnBoth(createLedgerOrder(ledgerName))
 
 	// Build up state
-	for i := 0; i < crashAfterN; i++ {
+	for i := range crashAfterN {
 		applyOnBoth(createTransactionOrder(ledgerName, true,
 			newPosting("world", fmt.Sprintf("u:%d", i%3), "COIN", 100),
 		))
@@ -499,10 +499,10 @@ func runCacheDivergenceScenario(t *testing.T, threshold uint64, crashAfterN, pip
 	require.NoError(t, err)
 
 	// Leader continues with pipelined admission
-	for batch := 0; batch < 3; batch++ {
+	for range 3 {
 		// Admit pipelineDepth entries from SAME leader cache state
 		entries := make([]raftpb.Entry, 0, pipelineDepth)
-		for i := 0; i < pipelineDepth; i++ {
+		for i := range pipelineDepth {
 			idx := nextIndex + uint64(i)
 			proposal := buildProposalWithLeaderPreloads(t, leader, idx, threshold,
 				createTransactionOrder(ledgerName, true,
@@ -784,7 +784,7 @@ func readAllVolumes(t *testing.T, store *dal.Store) map[string]string {
 		val, err := iter.ValueAndErr()
 		require.NoError(t, err)
 
-		volumes[fmt.Sprintf("%x", key)] = fmt.Sprintf("%x", val)
+		volumes[hex.EncodeToString(key)] = hex.EncodeToString(val)
 		iter.Next()
 	}
 
