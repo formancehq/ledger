@@ -119,8 +119,8 @@ type Machine struct {
 
 	// sentinelMode enables runtime volume consistency checks
 	// (monotonicity, delta/posting cross-check, post-commit cache/Pebble verification).
-	sentinelMode    bool
-	sentinelTracer  SentinelTracer
+	sentinelMode   bool
+	sentinelTracer SentinelTracer
 
 	// notifier is notified after new logs are committed and when configuration
 	// changes. A single notifier decouples the FSM from individual consumers;
@@ -375,7 +375,7 @@ func (fsm *Machine) RecoverState() error {
 		fsm.lastClusterConfig = clusterState.GetConfig()
 		fsm.Registry.Cache.SetGenerationThreshold(clusterState.GetConfig().GetRotationThreshold())
 		fsm.Registry.Cache.SetEpoch(clusterState.GetCacheEpoch())
-		fsm.hashAlgorithm = (clusterState.GetConfig().GetHashAlgorithm())
+		fsm.hashAlgorithm = clusterState.GetConfig().GetHashAlgorithm()
 	}
 
 	fsm.logger.WithFields(map[string]any{
@@ -529,18 +529,18 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, entries ...raftpb.Entry)
 			lifecycle.SendEvent("cache_rotation", map[string]any{
 				"preRotationPQGen0": preRotationPQGen0,
 				"preRotationPQGen1": preRotationPQGen1,
-				"entryIndex":          entry.Index,
-				"currentGeneration":   fsm.Registry.Cache.CurrentGeneration(),
-				"gen0Base":            fsm.Registry.Cache.BaseIndex.Gen0,
-				"gen1Base":            fsm.Registry.Cache.BaseIndex.Gen1,
-				"volumeGen0Size":      fsm.Registry.Cache.Volumes.Gen0().Size(),
-				"volumeGen1Size":      fsm.Registry.Cache.Volumes.Gen1().Size(),
-				"ledgerGen0Size":      fsm.Registry.Cache.Ledgers.Gen0().Size(),
-				"ledgerGen1Size":      fsm.Registry.Cache.Ledgers.Gen1().Size(),
-				"prepQueryGen0Size":   fsm.Registry.Cache.PreparedQueries.Gen0().Size(),
-				"prepQueryGen1Size":   fsm.Registry.Cache.PreparedQueries.Gen1().Size(),
-				"boundaryGen0Size":    fsm.Registry.Cache.Boundaries.Gen0().Size(),
-				"boundaryGen1Size":    fsm.Registry.Cache.Boundaries.Gen1().Size(),
+				"entryIndex":        entry.Index,
+				"currentGeneration": fsm.Registry.Cache.CurrentGeneration(),
+				"gen0Base":          fsm.Registry.Cache.BaseIndex.Gen0,
+				"gen1Base":          fsm.Registry.Cache.BaseIndex.Gen1,
+				"volumeGen0Size":    fsm.Registry.Cache.Volumes.Gen0().Size(),
+				"volumeGen1Size":    fsm.Registry.Cache.Volumes.Gen1().Size(),
+				"ledgerGen0Size":    fsm.Registry.Cache.Ledgers.Gen0().Size(),
+				"ledgerGen1Size":    fsm.Registry.Cache.Ledgers.Gen1().Size(),
+				"prepQueryGen0Size": fsm.Registry.Cache.PreparedQueries.Gen0().Size(),
+				"prepQueryGen1Size": fsm.Registry.Cache.PreparedQueries.Gen1().Size(),
+				"boundaryGen0Size":  fsm.Registry.Cache.Boundaries.Gen0().Size(),
+				"boundaryGen1Size":  fsm.Registry.Cache.Boundaries.Gen1().Size(),
 			})
 			if fsm.logger.Enabled(logging.DebugLevel) {
 				fsm.logger.WithFields(map[string]any{
@@ -1100,7 +1100,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			return nil, fmt.Errorf("saving cluster state: %w", err)
 		}
 
-		fsm.hashAlgorithm = (cfg.GetHashAlgorithm())
+		fsm.hashAlgorithm = cfg.GetHashAlgorithm()
 		fsm.lastClusterConfig = cfg
 	}
 
@@ -1179,6 +1179,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	}
 
 	// If this proposal only carries technical updates, skip order processing
+	// todo: move other technical updates
 	if len(proposal.GetOrders()) == 0 {
 		return fsm.applyTechnicalUpdates(batch, proposal)
 	}

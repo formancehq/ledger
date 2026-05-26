@@ -170,21 +170,7 @@ func (s *protoSnapshotSlot[V]) MirrorPreload(
 	_, gen0Set := putAttributeIfAbsent(s.ac.Gen0(), id, tag, effective)
 
 	if !gen0Set && !gen1Set {
-		if s.cacheType == dal.SubAttrLedger {
-			lifecycle.SendEvent("preload_skip", map[string]any{
-				"id": fmt.Sprintf("%x", id),
-			})
-		}
-
 		return nil
-	}
-
-	if s.cacheType == dal.SubAttrLedger {
-		lifecycle.SendEvent("preload_ok", map[string]any{
-			"id":      fmt.Sprintf("%x", id),
-			"gen0Set": gen0Set,
-			"gen1Set": gen1Set,
-		})
 	}
 
 	valueBytes, err := s.marshalValue(effective)

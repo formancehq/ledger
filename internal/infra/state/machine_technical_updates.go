@@ -10,6 +10,35 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
+// saveLedgerWithCache updates a LedgerInfo in the in-memory cache, the 0xFF
+// cache zone, and the ZoneGlobal durable store — all in the same Pebble batch.
+// This replaces the previous pattern of Registry.Ledgers.Put + SaveLedger which
+// wrote to memory and ZoneGlobal but skipped 0xFF, causing cache divergence
+// after checkpoint restores.
+func (fsm *Machine) saveLedgerWithCache(batch *dal.Batch, ledgerKey domain.LedgerKey, info *commonpb.LedgerInfo) error {
+	_, idWithTag, err := fsm.Registry.Ledgers.Put(ledgerKey.Bytes(), info)
+	if err != nil {
+		return fmt.Errorf("updating ledger info in cache: %w", err)
+	}
+
+	genByte := byte(fsm.Registry.Cache.CurrentGeneration() % 2)
+
+	valueBytes, err := info.MarshalVT()
+	if err != nil {
+		return fmt.Errorf("marshaling ledger info for cache: %w", err)
+	}
+
+	if err := writeCacheRaw(batch, genByte, dal.SubAttrLedger, idWithTag.ID, idWithTag.Tag, valueBytes); err != nil {
+		return fmt.Errorf("persisting ledger info to cache zone: %w", err)
+	}
+
+	if err := SaveLedger(batch, info); err != nil {
+		return fmt.Errorf("persisting ledger info: %w", err)
+	}
+
+	return nil
+}
+
 // applyTechnicalUpdates applies Proposal-level technical updates (metadata
 // conversions, index ready notifications) that bypass the Order/Log system.
 // These are applied directly to Pebble, similar to mirror/sink updates.
@@ -72,15 +101,7 @@ func (fsm *Machine) applyMetadataConversionBatch(batch *dal.Batch, b *raftcmdpb.
 	fieldSchema.TotalKeys = b.GetTotalKeys()
 	fieldSchema.ConvertedKeys = b.GetConvertedKeysSoFar()
 
-	if _, _, err := fsm.Registry.Ledgers.Put(ledgerKey.Bytes(), info); err != nil {
-		return fmt.Errorf("updating ledger info in cache: %w", err)
-	}
-
-	if err := SaveLedger(batch, info); err != nil {
-		return fmt.Errorf("persisting ledger info: %w", err)
-	}
-
-	return nil
+	return fsm.saveLedgerWithCache(batch, ledgerKey, info)
 }
 
 // applyMetadataConversionCompletion applies a metadata conversion completion.
@@ -105,8 +126,7 @@ func (fsm *Machine) applyMetadataConversionCompletion(batch *dal.Batch, complete
 	fieldSchema.Status = commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE
 	fieldSchema.ConvertedKeys = fieldSchema.GetTotalKeys()
 
-	_, _, _ = fsm.Registry.Ledgers.Put(ledgerKey.Bytes(), info)
-	_ = SaveLedger(batch, info)
+	_ = fsm.saveLedgerWithCache(batch, ledgerKey, info)
 }
 
 // applyIndexReady applies an index-ready notification. No log entry is produced.
@@ -144,8 +164,7 @@ func (fsm *Machine) applyIndexReady(batch *dal.Batch, ready *raftcmdpb.IndexRead
 		}
 	}
 
-	_, _, _ = fsm.Registry.Ledgers.Put(ledgerKey.Bytes(), info)
-	_ = SaveLedger(batch, info)
+	_ = fsm.saveLedgerWithCache(batch, ledgerKey, info)
 }
 
 // getConvertBatchValue retrieves the current metadata value for a canonical key,
