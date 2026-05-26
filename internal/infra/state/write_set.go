@@ -289,7 +289,7 @@ func (b *WriteSet) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 
 	for _, dw := range dirtyWords {
 		word := b.fsm.Registry.Reversions[dw.ledgerID].Word(dw.wordIndex)
-		if err := SaveReversionWord(batch, dw.ledgerID, dw.wordIndex, word); err != nil {
+		if err := saveReversionWord(batch, dw.ledgerID, dw.wordIndex, word); err != nil {
 			return fmt.Errorf("saving reversion word for %d: %w", dw.ledgerID, err)
 		}
 	}
@@ -371,7 +371,7 @@ func (b *WriteSet) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 
 	if b.pendingPeriodScheduleUpdate != nil {
 		if *b.pendingPeriodScheduleUpdate == "" {
-			err := BatchDeletePeriodSchedule(batch)
+			err := batchDeletePeriodSchedule(batch)
 			if err != nil {
 				return fmt.Errorf("deleting period schedule: %w", err)
 			}
@@ -387,7 +387,7 @@ func (b *WriteSet) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 
 	if b.pendingQueryCheckpointScheduleUpdate != nil {
 		if *b.pendingQueryCheckpointScheduleUpdate == "" {
-			err := BatchDeleteQueryCheckpointSchedule(batch)
+			err := batchDeleteQueryCheckpointSchedule(batch)
 			if err != nil {
 				return fmt.Errorf("deleting query checkpoint schedule: %w", err)
 			}
@@ -445,13 +445,13 @@ func (b *WriteSet) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 
 	// Process query checkpoint writes/deletes
 	for _, cp := range b.pendingQueryCheckpointSaves {
-		if err := SaveQueryCheckpoint(batch, cp); err != nil {
+		if err := saveQueryCheckpoint(batch, cp); err != nil {
 			return fmt.Errorf("saving query checkpoint %d: %w", cp.GetCheckpointId(), err)
 		}
 	}
 
 	for _, cpID := range b.pendingQueryCheckpointDeletes {
-		if err := DeleteQueryCheckpointFromBatch(batch, cpID); err != nil {
+		if err := deleteQueryCheckpointFromBatch(batch, cpID); err != nil {
 			return fmt.Errorf("deleting query checkpoint %d: %w", cpID, err)
 		}
 	}
@@ -477,7 +477,7 @@ func (b *WriteSet) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 
 			ledgerID := info.GetId()
 
-			if err := SavePendingLedgerCleanup(batch, ledgerID, seq); err != nil {
+			if err := savePendingLedgerCleanup(batch, ledgerID, seq); err != nil {
 				return fmt.Errorf("saving pending ledger cleanup for %q: %w", ledgerName, err)
 			}
 
@@ -489,7 +489,7 @@ func (b *WriteSet) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 			// Clean in-memory reversion bitset and Pebble words — not needed after deletion.
 			delete(b.fsm.Registry.Reversions, ledgerID)
 
-			if err := DeleteReversionsByLedger(batch, ledgerID); err != nil {
+			if err := deleteReversionsByLedger(batch, ledgerID); err != nil {
 				return fmt.Errorf("deleting reversions for %q: %w", ledgerName, err)
 			}
 		}
@@ -497,14 +497,14 @@ func (b *WriteSet) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 
 	// Persist next query checkpoint ID if it changed.
 	if b.NextQueryCheckpointID != b.fsm.nextQueryCheckpointID {
-		if err := StoreNextQueryCheckpointID(batch, b.NextQueryCheckpointID); err != nil {
+		if err := storeNextQueryCheckpointID(batch, b.NextQueryCheckpointID); err != nil {
 			return fmt.Errorf("storing next query checkpoint ID: %w", err)
 		}
 	}
 
 	// Persist next ledger ID if it changed.
 	if b.NextLedgerID != b.fsm.nextLedgerID {
-		if err := SaveNextLedgerID(batch, b.NextLedgerID); err != nil {
+		if err := saveNextLedgerID(batch, b.NextLedgerID); err != nil {
 			return fmt.Errorf("storing next ledger ID: %w", err)
 		}
 	}
@@ -1097,11 +1097,11 @@ func (b *WriteSet) executePurge(batch *dal.Batch, pr *purgeRange) error {
 	// falls within this purge range.
 	for ledgerID, deleteSeq := range b.fsm.pendingLedgerCleanups {
 		if deleteSeq >= pr.startSequence && deleteSeq <= pr.closeSequence {
-			if err := DeleteLedgerData(batch, ledgerID); err != nil {
+			if err := deleteLedgerData(batch, ledgerID); err != nil {
 				return fmt.Errorf("purging ledger data for ledger %d: %w", ledgerID, err)
 			}
 
-			if err := DeletePendingLedgerCleanup(batch, ledgerID); err != nil {
+			if err := deletePendingLedgerCleanup(batch, ledgerID); err != nil {
 				return fmt.Errorf("removing pending cleanup entry for ledger %d: %w", ledgerID, err)
 			}
 

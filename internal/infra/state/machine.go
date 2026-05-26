@@ -677,7 +677,7 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, entries ...raftpb.Entry)
 		return nil, fmt.Errorf("setting applied index: %w", err)
 	}
 
-	err = SetLastAppliedTimestamp(batch, fsm.lastAppliedTimestamp)
+	err = setLastAppliedTimestamp(batch, fsm.lastAppliedTimestamp)
 	if err != nil {
 		_ = batch.Cancel()
 
@@ -746,7 +746,7 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 
 	pb.batch = nil // committed, prevent double-close
 
-	fsm.batchCommitHistogram.Record(context.Background(), time.Since(commitStart).Microseconds())
+	fsm.batchCommitHistogram.Record(ctx, time.Since(commitStart).Microseconds())
 
 	lifecycle.SendEvent("batch_committed", map[string]any{
 		"lastAppliedIndex": pb.lastAppliedIndex,
@@ -874,7 +874,7 @@ func (fsm *Machine) commitAndRequestCheckpoint(
 		return nil, fmt.Errorf("setting applied index: %w", err)
 	}
 
-	err = SetLastAppliedTimestamp(batch, fsm.lastAppliedTimestamp)
+	err = setLastAppliedTimestamp(batch, fsm.lastAppliedTimestamp)
 	if err != nil {
 		_ = batch.Cancel()
 
@@ -1021,183 +1021,10 @@ func authorizedInMaintenanceMode(orders []*raftcmdpb.Order) bool {
 	return true
 }
 
-// applyProposal processes all orders in a proposal atomically.
-// Uses RequestProcessor which handles rollback internally via WriteSet.
-func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *dal.Batch, proposal *raftcmdpb.Proposal) (*ApplyResult, error) {
-	// Handle cluster config updates (Raft-replicated, no orders/logs needed).
-	// When the rotation threshold changes, the generation boundaries shift and the
-	// alternating-byte persistence scheme in 0xFF can lose data on even-generation
-	// skips. Reset the cache and purge 0xFF entirely — the preloader falls back to
-	// Pebble reads (0xF1) and the cache rebuilds naturally.
-	if cfg := proposal.GetClusterConfig(); cfg != nil {
-		oldThreshold := fsm.Registry.Cache.GenerationThreshold()
-		newThreshold := cfg.GetRotationThreshold()
-
-		if newThreshold != oldThreshold {
-			fsm.logger.WithFields(map[string]any{
-				"oldThreshold": oldThreshold,
-				"newThreshold": newThreshold,
-				"raftIndex":    raftIndex,
-			}).Infof("Applying cluster config change: resetting cache and purging 0xFF")
-
-			fsm.Registry.Cache.ResetWithThreshold(newThreshold)
-
-			// Purge both generation byte positions (0 and 1) in the 0xFF cache zone.
-			// We can't use a single DeleteRange from [0xFF] to [0xFF+1] because
-			// 0xFF+1 overflows to 0x00 as a byte. Instead, purge each gen byte
-			// separately using the same pattern as writeCacheRotation.
-			for _, genByte := range []byte{0, 1} {
-				if err := batch.DeleteRangeNoSync(
-					[]byte{dal.ZoneCache, genByte},
-					[]byte{dal.ZoneCache, genByte + 1},
-				); err != nil {
-					return nil, fmt.Errorf("purging cache gen %d: %w", genByte, err)
-				}
-			}
-
-			// Reset the cache metadata sentinel to currentGeneration=0 (post-reset state).
-			// We must NOT delete it — RestoreFromStore tolerates a missing sentinel
-			// but other code paths may depend on it being present.
-			if err := batch.SetProto(
-				[]byte{dal.ZoneCache, dal.SubCacheMeta},
-				&raftcmdpb.CacheSnapshotMeta{CurrentGeneration: 0},
-			); err != nil {
-				return nil, fmt.Errorf("resetting cache snapshot meta: %w", err)
-			}
-		}
-
-		// Check if bloom filter config changed. If so, purge persisted blocks
-		// and rebuild filters with new dimensions. The preloader falls back to
-		// Pebble Gets while IsReady() returns false.
-		if fsm.BloomFilters != nil && !bloom.BloomConfigEqual(cfg, fsm.lastClusterConfig) {
-			fsm.logger.WithFields(map[string]any{
-				"raftIndex": raftIndex,
-			}).Infof("Bloom filter config changed: purging blocks and rebuilding")
-
-			// Purge all persisted bloom blocks.
-			if err := batch.DeleteRangeNoSync(
-				[]byte{dal.ZoneGlobal, dal.SubGlobBloom},
-				[]byte{dal.ZoneGlobal, dal.SubGlobBloom + 1},
-			); err != nil {
-				return nil, fmt.Errorf("purging bloom blocks: %w", err)
-			}
-
-			// Rebuild filters with new dimensions (sets IsReady=false).
-			fsm.BloomFilters.Rebuild(cfg)
-
-			// Launch async repopulation from attribute scan.
-			fsm.cacheSnapshotter.StartAsyncBloomPopulate("bloom config changed via cluster config")
-		}
-
-		// Persist the cluster state with the current cache epoch.
-		// The epoch is deterministic (incremented only by ResetWithThreshold
-		// in the FSM apply path) and must be persisted so that nodes
-		// restoring from a checkpoint have the correct epoch.
-		if err := SaveClusterState(batch, &commonpb.PersistedClusterState{
-			Config:     cfg,
-			CacheEpoch: fsm.Registry.Cache.Epoch(),
-		}); err != nil {
-			return nil, fmt.Errorf("saving cluster state: %w", err)
-		}
-
-		fsm.hashAlgorithm = cfg.GetHashAlgorithm()
-		fsm.lastClusterConfig = cfg
-	}
-
-	// Handle per-sink cursor and status updates (Raft-replicated, no orders needed)
-	for _, update := range proposal.GetEventsSinkUpdates() {
-		if update.GetCursor() > 0 {
-			err := SetSinkCursor(batch, update.GetSinkName(), update.GetCursor())
-			if err != nil {
-				return nil, fmt.Errorf("setting sink cursor: %w", err)
-			}
-		}
-
-		if update.GetClearError() {
-			err := ClearSinkStatus(batch, update.GetSinkName())
-			if err != nil {
-				return nil, fmt.Errorf("clearing sink status: %w", err)
-			}
-		} else if update.GetError() != nil {
-			err := SetSinkStatus(batch, &commonpb.SinkStatus{
-				SinkName: update.GetSinkName(),
-				Cursor:   update.GetCursor(),
-				Error:    update.GetError(),
-			})
-			if err != nil {
-				return nil, fmt.Errorf("setting sink status: %w", err)
-			}
-		}
-	}
-
-	// Handle per-ledger mirror cursor and status updates (Raft-replicated)
-	for _, update := range proposal.GetMirrorSyncUpdates() {
-		ledgerInfo, _, err := fsm.Registry.Ledgers.Get(domain.LedgerKey{Name: update.GetLedgerName()}.Bytes())
-		if err != nil || ledgerInfo == nil {
-			continue // ledger not found (may have been deleted)
-		}
-
-		ledgerID := ledgerInfo.GetId()
-
-		if update.GetCursor() > 0 {
-			err := SetMirrorCursor(batch, ledgerID, update.GetCursor())
-			if err != nil {
-				return nil, fmt.Errorf("setting mirror cursor: %w", err)
-			}
-		}
-
-		if update.GetSourceLogCount() > 0 {
-			err := SetMirrorSourceHead(batch, ledgerID, update.GetSourceLogCount())
-			if err != nil {
-				return nil, fmt.Errorf("setting mirror source head: %w", err)
-			}
-		}
-
-		if update.GetClearError() {
-			err := ClearMirrorStatus(batch, ledgerID)
-			if err != nil {
-				return nil, fmt.Errorf("clearing mirror status: %w", err)
-			}
-		} else if update.GetError() != nil {
-			err := SetMirrorStatus(batch, ledgerID, update.GetError())
-			if err != nil {
-				return nil, fmt.Errorf("setting mirror status: %w", err)
-			}
-		}
-	}
-
-	// Handle idempotency eviction (deterministic cleanup via Raft)
-	if eviction := proposal.GetIdempotencyEviction(); eviction != nil {
-		evicted, err := fsm.Registry.Idempotency.EvictBefore(batch, fsm.dataStore, eviction.GetCutoffMicros())
-		if err != nil {
-			return nil, fmt.Errorf("evicting idempotency keys: %w", err)
-		}
-
-		if evicted > 0 {
-			fsm.logger.Infof("Evicted %d expired idempotency keys (cutoff=%d)", evicted, eviction.GetCutoffMicros())
-		}
-	}
-
-	// If this proposal only carries technical updates, skip order processing
-	// todo: move other technical updates
-	if len(proposal.GetOrders()) == 0 {
-		return fsm.applyTechnicalUpdates(batch, proposal)
-	}
-
-	// FSM-level maintenance mode check: reject proposals containing non-maintenance
-	// orders that were admitted before maintenance mode was enabled but batched into
-	// a Raft entry applied after the maintenance mode flag was set.
-	if fsm.sharedState.MaintenanceMode() && !authorizedInMaintenanceMode(proposal.GetOrders()) {
-		return &ApplyResult{
-			ProposalID: proposal.GetId(),
-			Error:      &domain.BusinessError{Err: domain.ErrMaintenanceMode},
-		}, nil
-	}
-
-	// Reject proposals whose predicted index doesn't match the actual Raft index.
-	// This detects stale proposals admitted with an inflated IndexTracker (e.g.
-	// after leadership transition). The preloadSet is invalid — reject cleanly
-	// so the caller retries with fresh preloads.
+// checkStaleProposal rejects proposals whose predicted index or cache epoch
+// doesn't match the current state. This detects stale proposals admitted with
+// an inflated IndexTracker or before a cache reset.
+func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Proposal) error {
 	if predicted := proposal.GetPredictedIndex(); predicted != 0 && predicted != raftIndex {
 		if fsm.logger.Enabled(logging.DebugLevel) {
 			fsm.logger.WithFields(map[string]any{
@@ -1212,15 +1039,9 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			"actualIndex":    raftIndex,
 		})
 
-		return &ApplyResult{
-			ProposalID: proposal.GetId(),
-			Error:      &domain.BusinessError{Err: domain.ErrStaleProposal},
-		}, nil
+		return domain.ErrStaleProposal
 	}
 
-	// Reject proposals whose cache epoch doesn't match. This detects proposals
-	// admitted before a cache reset (e.g. cluster config change). The preloads
-	// were built against stale cache state — keys assumed to be in cache are gone.
 	if preloadEpoch := proposal.GetPreload().GetCacheEpoch(); preloadEpoch != 0 && preloadEpoch != fsm.Registry.Cache.Epoch() {
 		if fsm.logger.Enabled(logging.DebugLevel) {
 			fsm.logger.WithFields(map[string]any{
@@ -1231,9 +1052,37 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			}).Debugf("Rejecting proposal: cache epoch mismatch (cache was reset)")
 		}
 
+		return domain.ErrStaleProposal
+	}
+
+	return nil
+}
+
+// applyProposal processes all orders in a proposal atomically.
+// Uses RequestProcessor which handles rollback internally via WriteSet.
+func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *dal.Batch, proposal *raftcmdpb.Proposal) (*ApplyResult, error) {
+	if err := fsm.applyTechnicalUpdates(batch, raftIndex, proposal); err != nil {
+		return nil, err
+	}
+
+	if len(proposal.GetOrders()) == 0 {
+		return &ApplyResult{ProposalID: proposal.GetId()}, nil
+	}
+
+	// FSM-level maintenance mode check: reject proposals containing non-maintenance
+	// orders that were admitted before maintenance mode was enabled but batched into
+	// a Raft entry applied after the maintenance mode flag was set.
+	if fsm.sharedState.MaintenanceMode() && !authorizedInMaintenanceMode(proposal.GetOrders()) {
 		return &ApplyResult{
 			ProposalID: proposal.GetId(),
-			Error:      &domain.BusinessError{Err: domain.ErrStaleProposal},
+			Error:      &domain.BusinessError{Err: domain.ErrMaintenanceMode},
+		}, nil
+	}
+
+	if err := fsm.checkStaleProposal(raftIndex, proposal); err != nil {
+		return &ApplyResult{
+			ProposalID: proposal.GetId(),
+			Error:      &domain.BusinessError{Err: err},
 		}, nil
 	}
 
@@ -1284,11 +1133,11 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		fsm.lastAuditHash = entry.GetHash()
 		fsm.nextAuditSequenceID++
 
-		if appendErr := AppendAuditEntries(batch, entry); appendErr != nil {
+		if appendErr := appendAuditEntries(batch, entry); appendErr != nil {
 			return fmt.Errorf("appending audit entry for %s: %w", label, appendErr)
 		}
 
-		if appendErr := AppendAuditItems(batch, entry.GetSequence(), buildAuditItems(orders, logs)...); appendErr != nil {
+		if appendErr := appendAuditItems(batch, entry.GetSequence(), buildAuditItems(orders, logs)...); appendErr != nil {
 			return fmt.Errorf("appending audit items for %s: %w", label, appendErr)
 		}
 

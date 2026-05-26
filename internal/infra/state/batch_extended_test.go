@@ -91,7 +91,7 @@ func TestBatchDeletePeriodScheduleFunc(t *testing.T) {
 
 	// Delete the schedule
 	batch = s.NewBatch()
-	require.NoError(t, BatchDeletePeriodSchedule(batch))
+	require.NoError(t, batchDeletePeriodSchedule(batch))
 	require.NoError(t, batch.Commit())
 
 	schedule, err = query.ReadPeriodSchedule(s)
@@ -218,7 +218,7 @@ func TestClearSinkStatus(t *testing.T) {
 	require.ErrorIs(t, err, pebble.ErrNotFound)
 }
 
-func TestAppendAuditEntries(t *testing.T) {
+func Test_appendAuditEntries(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
@@ -230,7 +230,7 @@ func TestAppendAuditEntries(t *testing.T) {
 	}
 
 	batch := s.NewBatch()
-	require.NoError(t, AppendAuditEntries(batch, entries...))
+	require.NoError(t, appendAuditEntries(batch, entries...))
 	require.NoError(t, batch.Commit())
 
 	// Verify we can read them back
@@ -256,7 +256,7 @@ func TestSetAppliedIndexAndTimestamp(t *testing.T) {
 
 	batch := s.NewBatch()
 	require.NoError(t, SetAppliedIndex(batch, 42))
-	require.NoError(t, SetLastAppliedTimestamp(batch, 1700000000))
+	require.NoError(t, setLastAppliedTimestamp(batch, 1700000000))
 	require.NoError(t, batch.Commit())
 
 	idx, err := query.ReadLastAppliedIndex(s)
@@ -362,7 +362,7 @@ func TestReadLastAuditSequence(t *testing.T) {
 
 	// Add audit entries
 	batch := s.NewBatch()
-	require.NoError(t, AppendAuditEntries(batch,
+	require.NoError(t, appendAuditEntries(batch,
 		&auditpb.AuditEntry{Sequence: 10, Timestamp: commonpb.NewTimestamp(libtime.Now())},
 		&auditpb.AuditEntry{Sequence: 20, Timestamp: commonpb.NewTimestamp(libtime.Now())},
 		&auditpb.AuditEntry{Sequence: 30, Timestamp: commonpb.NewTimestamp(libtime.Now())},
@@ -456,7 +456,7 @@ func TestReadAuditEntry(t *testing.T) {
 
 	// Add entry and read back
 	batch := s.NewBatch()
-	require.NoError(t, AppendAuditEntries(batch,
+	require.NoError(t, appendAuditEntries(batch,
 		&auditpb.AuditEntry{
 			Sequence:   42,
 			ProposalId: 100,

@@ -5,6 +5,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/processing"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/bloom"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
@@ -39,29 +40,208 @@ func (fsm *Machine) saveLedgerWithCache(batch *dal.Batch, ledgerKey domain.Ledge
 	return nil
 }
 
-// applyTechnicalUpdates applies Proposal-level technical updates (metadata
-// conversions, index ready notifications) that bypass the Order/Log system.
-// These are applied directly to Pebble, similar to mirror/sink updates.
-func (fsm *Machine) applyTechnicalUpdates(batch *dal.Batch, proposal *raftcmdpb.Proposal) (*ApplyResult, error) {
+// applyTechnicalUpdates applies Proposal-level technical updates that bypass
+// the Order/Log system. These are applied directly to Pebble and run on every
+// proposal, regardless of whether it also carries orders.
+func (fsm *Machine) applyTechnicalUpdates(batch *dal.Batch, raftIndex uint64, proposal *raftcmdpb.Proposal) error {
+	if cfg := proposal.GetClusterConfig(); cfg != nil {
+		if err := fsm.applyClusterConfig(batch, raftIndex, cfg); err != nil {
+			return fmt.Errorf("applying cluster config: %w", err)
+		}
+	}
+
+	for _, update := range proposal.GetEventsSinkUpdates() {
+		if err := fsm.applyEventsSinkUpdate(batch, update); err != nil {
+			return fmt.Errorf("applying events sink update: %w", err)
+		}
+	}
+
+	for _, update := range proposal.GetMirrorSyncUpdates() {
+		if err := fsm.applyMirrorSyncUpdate(batch, update); err != nil {
+			return fmt.Errorf("applying mirror sync update: %w", err)
+		}
+	}
+
+	if eviction := proposal.GetIdempotencyEviction(); eviction != nil {
+		if err := fsm.applyIdempotencyEviction(batch, eviction); err != nil {
+			return fmt.Errorf("applying idempotency eviction: %w", err)
+		}
+	}
+
 	for _, convBatch := range proposal.GetMetadataConversionBatches() {
 		if err := fsm.applyMetadataConversionBatch(batch, convBatch); err != nil {
-			return nil, fmt.Errorf("applying metadata conversion batch: %w", err)
+			return fmt.Errorf("applying metadata conversion batch: %w", err)
 		}
 	}
 
 	for _, complete := range proposal.GetMetadataConversionsComplete() {
 		if err := fsm.applyMetadataConversionCompletion(batch, complete); err != nil {
-			return nil, fmt.Errorf("applying metadata conversion completion: %w", err)
+			return fmt.Errorf("applying metadata conversion completion: %w", err)
 		}
 	}
 
 	for _, ready := range proposal.GetIndexReadyUpdates() {
 		if err := fsm.applyIndexReady(batch, ready); err != nil {
-			return nil, fmt.Errorf("applying index ready: %w", err)
+			return fmt.Errorf("applying index ready: %w", err)
 		}
 	}
 
-	return &ApplyResult{ProposalID: proposal.GetId()}, nil
+	return nil
+}
+
+// applyClusterConfig handles cluster config updates (Raft-replicated).
+// When the rotation threshold changes, the generation boundaries shift and the
+// alternating-byte persistence scheme in 0xFF can lose data on even-generation
+// skips. Reset the cache and purge 0xFF entirely — the preloader falls back to
+// Pebble reads (0xF1) and the cache rebuilds naturally.
+func (fsm *Machine) applyClusterConfig(batch *dal.Batch, raftIndex uint64, cfg *commonpb.ClusterConfig) error {
+	oldThreshold := fsm.Registry.Cache.GenerationThreshold()
+	newThreshold := cfg.GetRotationThreshold()
+
+	if newThreshold != oldThreshold {
+		fsm.logger.WithFields(map[string]any{
+			"oldThreshold": oldThreshold,
+			"newThreshold": newThreshold,
+			"raftIndex":    raftIndex,
+		}).Infof("Applying cluster config change: resetting cache and purging 0xFF")
+
+		fsm.Registry.Cache.ResetWithThreshold(newThreshold)
+
+		// Purge both generation byte positions (0 and 1) in the 0xFF cache zone.
+		// We can't use a single DeleteRange from [0xFF] to [0xFF+1] because
+		// 0xFF+1 overflows to 0x00 as a byte. Instead, purge each gen byte
+		// separately using the same pattern as writeCacheRotation.
+		for _, genByte := range []byte{0, 1} {
+			if err := batch.DeleteRangeNoSync(
+				[]byte{dal.ZoneCache, genByte},
+				[]byte{dal.ZoneCache, genByte + 1},
+			); err != nil {
+				return fmt.Errorf("purging cache gen %d: %w", genByte, err)
+			}
+		}
+
+		// Reset the cache metadata sentinel to currentGeneration=0 (post-reset state).
+		// We must NOT delete it — RestoreFromStore tolerates a missing sentinel
+		// but other code paths may depend on it being present.
+		if err := batch.SetProto(
+			[]byte{dal.ZoneCache, dal.SubCacheMeta},
+			&raftcmdpb.CacheSnapshotMeta{CurrentGeneration: 0},
+		); err != nil {
+			return fmt.Errorf("resetting cache snapshot meta: %w", err)
+		}
+	}
+
+	// Check if bloom filter config changed. If so, purge persisted blocks
+	// and rebuild filters with new dimensions. The preloader falls back to
+	// Pebble Gets while IsReady() returns false.
+	if fsm.BloomFilters != nil && !bloom.BloomConfigEqual(cfg, fsm.lastClusterConfig) {
+		fsm.logger.WithFields(map[string]any{
+			"raftIndex": raftIndex,
+		}).Infof("Bloom filter config changed: purging blocks and rebuilding")
+
+		// Purge all persisted bloom blocks.
+		if err := batch.DeleteRangeNoSync(
+			[]byte{dal.ZoneGlobal, dal.SubGlobBloom},
+			[]byte{dal.ZoneGlobal, dal.SubGlobBloom + 1},
+		); err != nil {
+			return fmt.Errorf("purging bloom blocks: %w", err)
+		}
+
+		// Rebuild filters with new dimensions (sets IsReady=false).
+		fsm.BloomFilters.Rebuild(cfg)
+
+		// Launch async repopulation from attribute scan.
+		fsm.cacheSnapshotter.StartAsyncBloomPopulate("bloom config changed via cluster config")
+	}
+
+	// Persist the cluster state with the current cache epoch.
+	// The epoch is deterministic (incremented only by ResetWithThreshold
+	// in the FSM apply path) and must be persisted so that nodes
+	// restoring from a checkpoint have the correct epoch.
+	if err := saveClusterState(batch, &commonpb.PersistedClusterState{
+		Config:     cfg,
+		CacheEpoch: fsm.Registry.Cache.Epoch(),
+	}); err != nil {
+		return fmt.Errorf("saving cluster state: %w", err)
+	}
+
+	fsm.hashAlgorithm = cfg.GetHashAlgorithm()
+	fsm.lastClusterConfig = cfg
+
+	return nil
+}
+
+// applyEventsSinkUpdate applies a per-sink cursor and status update. No log entry is produced.
+func (fsm *Machine) applyEventsSinkUpdate(batch *dal.Batch, update *raftcmdpb.EventsSinkUpdate) error {
+	if update.GetCursor() > 0 {
+		if err := SetSinkCursor(batch, update.GetSinkName(), update.GetCursor()); err != nil {
+			return fmt.Errorf("setting sink cursor: %w", err)
+		}
+	}
+
+	if update.GetClearError() {
+		if err := ClearSinkStatus(batch, update.GetSinkName()); err != nil {
+			return fmt.Errorf("clearing sink status: %w", err)
+		}
+	} else if update.GetError() != nil {
+		if err := SetSinkStatus(batch, &commonpb.SinkStatus{
+			SinkName: update.GetSinkName(),
+			Cursor:   update.GetCursor(),
+			Error:    update.GetError(),
+		}); err != nil {
+			return fmt.Errorf("setting sink status: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// applyMirrorSyncUpdate applies a per-ledger mirror cursor and status update. No log entry is produced.
+func (fsm *Machine) applyMirrorSyncUpdate(batch *dal.Batch, update *raftcmdpb.MirrorSyncUpdate) error {
+	ledgerInfo, _, err := fsm.Registry.Ledgers.Get(domain.LedgerKey{Name: update.GetLedgerName()}.Bytes())
+	if err != nil || ledgerInfo == nil {
+		return nil // ledger not found (may have been deleted)
+	}
+
+	ledgerID := ledgerInfo.GetId()
+
+	if update.GetCursor() > 0 {
+		if err := SetMirrorCursor(batch, ledgerID, update.GetCursor()); err != nil {
+			return fmt.Errorf("setting mirror cursor: %w", err)
+		}
+	}
+
+	if update.GetSourceLogCount() > 0 {
+		if err := SetMirrorSourceHead(batch, ledgerID, update.GetSourceLogCount()); err != nil {
+			return fmt.Errorf("setting mirror source head: %w", err)
+		}
+	}
+
+	if update.GetClearError() {
+		if err := clearMirrorStatus(batch, ledgerID); err != nil {
+			return fmt.Errorf("clearing mirror status: %w", err)
+		}
+	} else if update.GetError() != nil {
+		if err := SetMirrorStatus(batch, ledgerID, update.GetError()); err != nil {
+			return fmt.Errorf("setting mirror status: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// applyIdempotencyEviction evicts expired idempotency keys. No log entry is produced.
+func (fsm *Machine) applyIdempotencyEviction(batch *dal.Batch, eviction *raftcmdpb.IdempotencyEviction) error {
+	evicted, err := fsm.Registry.Idempotency.EvictBefore(batch, fsm.dataStore, eviction.GetCutoffMicros())
+	if err != nil {
+		return fmt.Errorf("evicting idempotency keys: %w", err)
+	}
+
+	if evicted > 0 {
+		fsm.logger.Infof("Evicted %d expired idempotency keys (cutoff=%d)", evicted, eviction.GetCutoffMicros())
+	}
+
+	return nil
 }
 
 // applyMetadataConversionBatch applies a background metadata conversion batch.

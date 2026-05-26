@@ -62,7 +62,7 @@ func persistToStore(s *CacheSnapshotter) error {
 
 	for ledger, bs := range s.registry.Reversions {
 		for i := range bs.WordCount() {
-			if err := SaveReversionWord(batch, ledger, i, bs.Word(i)); err != nil {
+			if err := saveReversionWord(batch, ledger, i, bs.Word(i)); err != nil {
 				return fmt.Errorf("saving reversion word for %d: %w", ledger, err)
 			}
 		}

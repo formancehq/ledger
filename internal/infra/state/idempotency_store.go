@@ -14,7 +14,7 @@ import (
 
 // HashIdempotencyKey returns a 16-byte hash of the idempotency key string.
 // This is used as the Pebble key suffix for the dedicated 0x03 prefix.
-func HashIdempotencyKey(key string) [16]byte {
+func hashIdempotencyKey(key string) [16]byte {
 	h := blake3.Sum256([]byte(key))
 
 	var out [16]byte
@@ -156,8 +156,8 @@ func (s *IdempotencyStore) EvictBefore(batch *dal.Batch, reader dal.PebbleReader
 
 // SaveIdempotencyKey writes an idempotency key-value pair to Pebble under prefix 0x03,
 // and creates a time index entry under prefix 0x04 for efficient eviction.
-func SaveIdempotencyKey(batch *dal.Batch, key string, value *commonpb.IdempotencyKeyValue) error {
-	keyHash := HashIdempotencyKey(key)
+func saveIdempotencyKey(batch *dal.Batch, key string, value *commonpb.IdempotencyKeyValue) error {
+	keyHash := hashIdempotencyKey(key)
 
 	// Main entry: [0x05][0x01][key_hash 16 bytes] -> marshaled IdempotencyKeyValue
 	mainKey := make([]byte, 2+16)
@@ -191,7 +191,7 @@ func SaveIdempotencyKey(batch *dal.Batch, key string, value *commonpb.Idempotenc
 // LoadIdempotencyKey reads an idempotency key from Pebble under prefix 0x03.
 // Returns nil if the key does not exist.
 func LoadIdempotencyKey(reader dal.PebbleReader, key string) (*commonpb.IdempotencyKeyValue, error) {
-	keyHash := HashIdempotencyKey(key)
+	keyHash := hashIdempotencyKey(key)
 
 	pebbleKey := make([]byte, 2+16)
 	pebbleKey[0] = dal.ZoneIdempotency
