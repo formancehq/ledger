@@ -66,11 +66,13 @@ func TestDriverFacadeStopContextExpiresDuringStart(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	blockStart := make(chan struct{})
+	startedChan := make(chan struct{}, 1)
 
 	mockDriver := drivers.NewMockDriver(ctrl)
 	// Start blocks on blockStart regardless of context cancellation, keeping
 	// startingChan open while Stop's inner select runs.
 	mockDriver.EXPECT().Start(gomock.Any()).DoAndReturn(func(ctx context.Context) error {
+		startedChan <- struct{}{}
 		<-blockStart
 		return ctx.Err()
 	}).AnyTimes()
@@ -80,6 +82,9 @@ func TestDriverFacadeStopContextExpiresDuringStart(t *testing.T) {
 	runCtx, cancelRun := context.WithCancel(context.Background())
 	defer cancelRun()
 	facade.Run(runCtx)
+
+	// Wait for Start to actually begin before proceeding.
+	<-startedChan
 
 	// Pre-cancel the stop context so the inner select picks ctx.Done()
 	// before startingChan can close.
