@@ -51,13 +51,13 @@ func writeCacheRaw(batch *dal.Batch, genByte, cacheType byte, id attributes.U128
 	return batch.Set(key[:], batch.CacheBuffer, pebble.NoSync)
 }
 
-// deleteCacheEntry clears the cache entry at id from both gen0Byte and
-// gen1Byte 0xFF rows, matching AttributeCache.Del's both-gens semantic.
-func deleteCacheEntry(batch *dal.Batch, cacheType byte, id attributes.U128) error {
+// writeCacheTombstone writes a tombstone (tag + empty value bytes) to both
+// gen bytes in 0xFF, matching AttributeCache.Del's tombstone semantic.
+// On restore, empty value bytes signal a tombstone entry.
+func writeCacheTombstone(batch *dal.Batch, cacheType byte, id attributes.U128) error {
 	for _, genByte := range []byte{0, 1} {
-		key := fillCacheKey(genByte, cacheType, id)
-		if err := batch.DeleteKey(key[:]); err != nil {
-			return fmt.Errorf("deleting cache entry: %w", err)
+		if err := writeCacheRaw(batch, genByte, cacheType, id, 0, nil); err != nil {
+			return fmt.Errorf("writing cache tombstone: %w", err)
 		}
 	}
 

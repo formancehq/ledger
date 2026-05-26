@@ -38,7 +38,7 @@ func putAttributeIfAbsent[V any](
 	tag uint64,
 	value V,
 ) (V, bool) {
-	if existing, ok := store.Get(id); ok {
+	if existing, ok := store.Get(id); ok && !existing.Deleted {
 		return existing.Data, false
 	}
 
@@ -209,6 +209,16 @@ func (s *protoSnapshotSlot[V]) RestoreEntry(genIndex int) func(u128 attributes.U
 
 	return func(u128 attributes.U128, rawValue []byte) error {
 		tag, valueBytes := parseLeanValue(rawValue)
+
+		// Empty value bytes = tombstone (key was deleted but kept in cache
+		// to prevent pipelined MirrorTouch failures).
+		if len(valueBytes) == 0 {
+			var zero V
+			store.Put(u128, attributes.Entry[V]{Tag: tag, Data: zero, Deleted: true})
+
+			return nil
+		}
+
 		v := s.newValue()
 
 		if err := v.UnmarshalVT(valueBytes); err != nil {

@@ -157,12 +157,17 @@ func TestAttributeCache_Del(t *testing.T) {
 	}
 
 	ac.Put(key, entry)
-	_, ok := ac.Get(key)
+	result, ok := ac.Get(key)
 	require.True(t, ok)
+	assert.False(t, result.Deleted)
 
 	ac.Del(key)
-	_, ok = ac.Get(key)
-	assert.False(t, ok)
+	// Del marks as tombstone — the entry is still present but flagged as deleted.
+	// KeyStore.Get filters tombstones, but AttributeCache.Get returns them
+	// so that CheckCache/MirrorTouch still see the key as present.
+	result, ok = ac.Get(key)
+	assert.True(t, ok)
+	assert.True(t, result.Deleted)
 }
 
 func TestAttributeCache_Size(t *testing.T) {

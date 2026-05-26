@@ -74,9 +74,20 @@ func (a *AttributeCache[T]) GetAndPut(k attributes.U128, v attributes.Entry[T]) 
 	return a.gen1.Load().Get(k)
 }
 
+// Del marks the entry as a tombstone in both Gen0 and Gen1 instead of
+// removing it. This prevents pipelined MirrorTouch from failing when
+// the leader admitted a touch before the FSM processed the deletion.
+// Tombstones age out naturally via rotation.
 func (a *AttributeCache[T]) Del(k attributes.U128) {
-	a.gen0.Load().Del(k)
-	a.gen1.Load().Del(k)
+	if entry, ok := a.gen0.Load().Get(k); ok {
+		entry.Deleted = true
+		a.gen0.Load().Put(k, entry)
+	}
+
+	if entry, ok := a.gen1.Load().Get(k); ok {
+		entry.Deleted = true
+		a.gen1.Load().Put(k, entry)
+	}
 }
 
 func (a *AttributeCache[T]) Size() uint64 {

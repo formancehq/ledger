@@ -111,6 +111,14 @@ func (s *KeyStore[K, T]) Put(canonical []byte, value T) (oldValue kv.Optional[T]
 
 	existing, existed := s.M.GetAndPut(id, newEntry)
 	if existed {
+		if existing.Deleted {
+			// Tombstone: overwrite without collision check.
+			return kv.None[T](), IDWithTag{
+				ID:  id,
+				Tag: tag,
+			}, nil
+		}
+
 		if existing.Tag != tag {
 			// Collision: roll back by restoring the old entry.
 			s.M.Put(id, existing)
@@ -131,12 +139,13 @@ func (s *KeyStore[K, T]) Put(canonical []byte, value T) (oldValue kv.Optional[T]
 }
 
 // Get retrieves a value by canonical key.
+// Tombstoned entries (Deleted=true) are treated as not found.
 // If U128 exists but tag mismatches, collision is detected locally.
 func (s *KeyStore[K, T]) Get(canonical []byte) (value T, id U128, err error) {
 	id, tag := s.hasher.MakeKey(canonical)
 
 	entry, ok := s.M.Get(id)
-	if !ok {
+	if !ok || entry.Deleted {
 		var zero T
 
 		return zero, id, domain.ErrNotFound
@@ -151,8 +160,10 @@ func (s *KeyStore[K, T]) Get(canonical []byte) (value T, id U128, err error) {
 	return entry.Data, id, nil
 }
 
-// Delete removes the entry for canonical key.
-// If U128 exists but tag mismatches, collision is detected locally.
+// Delete marks the entry as a tombstone instead of removing it.
+// The entry stays in the cache (surviving MirrorTouch during pipelined
+// proposals) but reads via Get return nil. Tombstones age out naturally
+// via cache generation rotation.
 func (s *KeyStore[K, T]) Delete(canonical []byte) (id U128, err error) {
 	id, tag := s.hasher.MakeKey(canonical)
 
@@ -165,14 +176,16 @@ func (s *KeyStore[K, T]) Delete(canonical []byte) (id U128, err error) {
 		return id, newErrCollisionDetected(canonical, entry.Tag, tag)
 	}
 
-	s.M.Del(id)
+	entry.Deleted = true
+	s.M.Put(id, entry)
 
 	return id, nil
 }
 
 type Entry[T any] struct {
-	Tag  uint64
-	Data T
+	Tag     uint64
+	Data    T
+	Deleted bool
 }
 
 type DerivedKeyStore[K Key, T any] struct {
