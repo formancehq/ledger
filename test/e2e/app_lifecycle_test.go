@@ -55,6 +55,7 @@ var _ = Context("Ledger application lifecycle tests", func() {
 				testservice.NatsInstrumentation(natsURL),
 				testservice.DebugInstrumentation(debug),
 				testservice.OutputInstrumentation(GinkgoWriter),
+				TotalStopTimeoutInstrumentation(45*time.Second),
 			),
 			testservice.WithLogger(GinkgoT()),
 		)
@@ -86,10 +87,12 @@ var _ = Context("Ledger application lifecycle tests", func() {
 				// Explicitly stop the restarted service with a generous timeout.
 				// This DeferCleanup runs before DeferNew's 10-second cleanup (LIFO),
 				// so the service is already stopped when DeferNew's cleanup fires
-				// (no-op since cancel == nil). Under CI load the full fx shutdown
-				// chain (watermill router, nats subscriber, etc.) can exceed 10s.
+				// (no-op since cancel == nil). Under CI load the NATS subscriber
+				// drain (100 goroutines) can exceed the default 15s fx stop timeout,
+				// causing fx to skip markAsAppStopped. We set --total-stop-timeout=45s
+				// on the server and give testservice.Stop 60s to match.
 				DeferCleanup(func() {
-					ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+					ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 					defer cancel()
 
 					Expect(srv.Stop(ctx)).To(Succeed())

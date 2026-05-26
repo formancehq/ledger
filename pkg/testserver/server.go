@@ -110,6 +110,17 @@ func WorkerAddressInstrumentation(addr *deferred.Deferred[string]) testservice.I
 	}
 }
 
+// TotalStopTimeoutInstrumentation sets the fx stop timeout, giving all OnStop
+// hooks the specified duration to complete before fx cancels the context. The
+// default is 15s; increase this in tests whose shutdown chain (NATS subscriber
+// drain, watermill router close, etc.) reliably exceeds that budget.
+func TotalStopTimeoutInstrumentation(duration time.Duration) testservice.InstrumentationFunc {
+	return func(_ context.Context, runConfiguration *testservice.RunConfiguration) error {
+		runConfiguration.AppendArgs("--total-stop-timeout", fmt.Sprint(duration))
+		return nil
+	}
+}
+
 // AuthInstrumentation enables authentication for testing
 // This is used for integration tests to verify authentication works correctly
 // The auth module from go-libs uses flags declared in auth/cli.go:
