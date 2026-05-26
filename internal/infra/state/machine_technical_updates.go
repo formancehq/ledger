@@ -50,11 +50,15 @@ func (fsm *Machine) applyTechnicalUpdates(batch *dal.Batch, proposal *raftcmdpb.
 	}
 
 	for _, complete := range proposal.GetMetadataConversionsComplete() {
-		fsm.applyMetadataConversionCompletion(batch, complete)
+		if err := fsm.applyMetadataConversionCompletion(batch, complete); err != nil {
+			return nil, fmt.Errorf("applying metadata conversion completion: %w", err)
+		}
 	}
 
 	for _, ready := range proposal.GetIndexReadyUpdates() {
-		fsm.applyIndexReady(batch, ready)
+		if err := fsm.applyIndexReady(batch, ready); err != nil {
+			return nil, fmt.Errorf("applying index ready: %w", err)
+		}
 	}
 
 	return &ApplyResult{ProposalID: proposal.GetId()}, nil
@@ -66,8 +70,12 @@ func (fsm *Machine) applyMetadataConversionBatch(batch *dal.Batch, b *raftcmdpb.
 	ledgerKey := domain.LedgerKey{Name: b.GetLedger()}
 
 	info, _, err := fsm.Registry.Ledgers.Get(ledgerKey.Bytes())
-	if err != nil || info == nil {
-		return nil // ledger not found or deleted; ignore
+	if err != nil {
+		return fmt.Errorf("getting ledger %q for metadata conversion batch: %w", b.GetLedger(), err)
+	}
+
+	if info == nil {
+		return fmt.Errorf("ledger %q not found in cache during metadata conversion batch", b.GetLedger())
 	}
 
 	info = info.CloneVT()
@@ -106,12 +114,16 @@ func (fsm *Machine) applyMetadataConversionBatch(batch *dal.Batch, b *raftcmdpb.
 
 // applyMetadataConversionCompletion applies a metadata conversion completion.
 // No log entry is produced.
-func (fsm *Machine) applyMetadataConversionCompletion(batch *dal.Batch, complete *raftcmdpb.MetadataConversionCompletion) {
+func (fsm *Machine) applyMetadataConversionCompletion(batch *dal.Batch, complete *raftcmdpb.MetadataConversionCompletion) error {
 	ledgerKey := domain.LedgerKey{Name: complete.GetLedger()}
 
 	info, _, err := fsm.Registry.Ledgers.Get(ledgerKey.Bytes())
-	if err != nil || info == nil {
-		return // ledger not found; ignore
+	if err != nil {
+		return fmt.Errorf("getting ledger %q for metadata conversion completion: %w", complete.GetLedger(), err)
+	}
+
+	if info == nil {
+		return fmt.Errorf("ledger %q not found in cache during metadata conversion completion", complete.GetLedger())
 	}
 
 	info = info.CloneVT()
@@ -120,23 +132,27 @@ func (fsm *Machine) applyMetadataConversionCompletion(batch *dal.Batch, complete
 	if fieldSchema == nil ||
 		fieldSchema.GetStatus() != commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING ||
 		fieldSchema.GetType() != complete.GetExpectedType() {
-		return // stale
+		return nil // stale
 	}
 
 	fieldSchema.Status = commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE
 	fieldSchema.ConvertedKeys = fieldSchema.GetTotalKeys()
 
-	_ = fsm.saveLedgerWithCache(batch, ledgerKey, info)
+	return fsm.saveLedgerWithCache(batch, ledgerKey, info)
 }
 
 // applyIndexReady applies an index-ready notification. No log entry is produced.
 // The index builder detects the status change by reading LedgerInfo on its next tick.
-func (fsm *Machine) applyIndexReady(batch *dal.Batch, ready *raftcmdpb.IndexReadyUpdate) {
+func (fsm *Machine) applyIndexReady(batch *dal.Batch, ready *raftcmdpb.IndexReadyUpdate) error {
 	ledgerKey := domain.LedgerKey{Name: ready.GetLedger()}
 
 	info, _, err := fsm.Registry.Ledgers.Get(ledgerKey.Bytes())
-	if err != nil || info == nil {
-		return // ledger not found; ignore
+	if err != nil {
+		return fmt.Errorf("getting ledger %q for index ready: %w", ready.GetLedger(), err)
+	}
+
+	if info == nil {
+		return fmt.Errorf("ledger %q not found in cache during index ready", ready.GetLedger())
 	}
 
 	info = info.CloneVT()
@@ -164,7 +180,7 @@ func (fsm *Machine) applyIndexReady(batch *dal.Batch, ready *raftcmdpb.IndexRead
 		}
 	}
 
-	_ = fsm.saveLedgerWithCache(batch, ledgerKey, info)
+	return fsm.saveLedgerWithCache(batch, ledgerKey, info)
 }
 
 // getConvertBatchValue retrieves the current metadata value for a canonical key,
