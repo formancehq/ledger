@@ -137,7 +137,7 @@ func createRandomBulkTransactions(ctx context.Context, client servicepb.BucketSe
 	}
 
 	// Verify read-after-write for a random entry in the bulk.
-	i := int(internal.Rand().Uint64()) % len(resp.GetLogs())
+	i := int(internal.Rand().Uint64()>>1) % len(resp.GetLogs())
 	applyLog := resp.Logs[i].Payload.GetApply()
 	if applyLog == nil {
 		return

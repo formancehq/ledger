@@ -41,10 +41,18 @@ func main() {
 		txID := createdTx.Transaction.Id
 		details := internal.Details{"ledger": ledger, "txId": txID}
 
+		// Extract the log sequence from the Apply response to guarantee
+		// read-after-write consistency on subsequent queries.
+		var minLogSeq uint64
+		if logs := resp.GetLogs(); len(logs) > 0 {
+			minLogSeq = logs[len(logs)-1].GetSequence()
+		}
+
 		// 2. List transactions (forward order, small page).
 		stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
-			Ledger:   ledger,
-			PageSize: 50,
+			Ledger:         ledger,
+			PageSize:       50,
+			MinLogSequence: minLogSeq,
 		})
 		if err != nil {
 			if internal.IsTransient(err) {

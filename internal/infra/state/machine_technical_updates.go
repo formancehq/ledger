@@ -71,11 +71,15 @@ func (fsm *Machine) applyMetadataConversionBatch(batch *dal.Batch, b *raftcmdpb.
 
 	info, _, err := fsm.Registry.Ledgers.Get(ledgerKey.Bytes())
 	if err != nil {
-		return fmt.Errorf("getting ledger %q for metadata conversion batch: %w", b.GetLedger(), err)
+		return fmt.Errorf("getting ledger %q for metadata conversion batch: %w (cache miss — key absent from cache)", b.GetLedger(), err)
 	}
 
 	if info == nil {
-		return fmt.Errorf("ledger %q not found in cache during metadata conversion batch", b.GetLedger())
+		return nil // ledger entry is nil — should not happen, skip silently
+	}
+
+	if info.GetDeletedAt() != nil {
+		return nil // ledger was deleted — stale conversion, skip
 	}
 
 	info = info.CloneVT()
@@ -119,11 +123,15 @@ func (fsm *Machine) applyMetadataConversionCompletion(batch *dal.Batch, complete
 
 	info, _, err := fsm.Registry.Ledgers.Get(ledgerKey.Bytes())
 	if err != nil {
-		return fmt.Errorf("getting ledger %q for metadata conversion completion: %w", complete.GetLedger(), err)
+		return fmt.Errorf("getting ledger %q for metadata conversion completion: %w (cache miss — key absent from cache)", complete.GetLedger(), err)
 	}
 
 	if info == nil {
-		return fmt.Errorf("ledger %q not found in cache during metadata conversion completion", complete.GetLedger())
+		return nil // ledger entry is nil — should not happen, skip silently
+	}
+
+	if info.GetDeletedAt() != nil {
+		return nil // ledger was deleted — stale conversion, skip
 	}
 
 	info = info.CloneVT()
@@ -148,11 +156,15 @@ func (fsm *Machine) applyIndexReady(batch *dal.Batch, ready *raftcmdpb.IndexRead
 
 	info, _, err := fsm.Registry.Ledgers.Get(ledgerKey.Bytes())
 	if err != nil {
-		return fmt.Errorf("getting ledger %q for index ready: %w", ready.GetLedger(), err)
+		return fmt.Errorf("getting ledger %q for index ready: %w (cache miss — key absent from cache)", ready.GetLedger(), err)
 	}
 
 	if info == nil {
-		return fmt.Errorf("ledger %q not found in cache during index ready", ready.GetLedger())
+		return nil // ledger entry is nil — should not happen, skip silently
+	}
+
+	if info.GetDeletedAt() != nil {
+		return nil // ledger was deleted — stale index ready, skip
 	}
 
 	info = info.CloneVT()
