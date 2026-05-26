@@ -20,6 +20,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
 )
 
@@ -114,12 +115,6 @@ func (s *protoSnapshotSlot[V]) MirrorTouch(batch *dal.Batch, gen0Byte byte, id a
 	// Skip when gen0 already holds the key — Touch is a no-op then, and
 	// the 0xFF gen0Byte row may hold a fresher in-batch Merge value.
 	if _, ok := s.ac.Gen0().Get(id); ok {
-		if s.cacheType == dal.SubAttrLedger {
-			lifecycle.SendEvent("touch_skip_gen0", map[string]any{
-				"id": fmt.Sprintf("%x", id),
-			})
-		}
-
 		return nil
 	}
 
@@ -128,20 +123,19 @@ func (s *protoSnapshotSlot[V]) MirrorTouch(batch *dal.Batch, gen0Byte byte, id a
 	entry, ok := s.ac.Gen0().Get(id)
 	if !ok {
 		// Touch was a no-op: key was NOT in gen1.
-		lifecycle.SendEvent("touch_noop", map[string]any{
+		// The leader thought this key was in gen1 (CacheNeedsTouch) but this
+		// node doesn't have it.
+		details := map[string]any{
 			"id":        fmt.Sprintf("%x", id),
 			"cacheType": s.cacheType,
 			"gen0Size":  s.ac.Gen0().Size(),
 			"gen1Size":  s.ac.Gen1().Size(),
-		})
+		}
+		lifecycle.SendEvent("touch_noop", details)
+		assert.Unreachable("touch_noop: key missing from gen1 — cache divergence imminent", details)
 
-		return nil
-	}
-
-	if s.cacheType == dal.SubAttrLedger {
-		lifecycle.SendEvent("touch_ok", map[string]any{
-			"id": fmt.Sprintf("%x", id),
-		})
+		return fmt.Errorf("cache divergence: touch_noop for key %x (cacheType=%d) — key missing from gen1, gen0Size=%d gen1Size=%d",
+			id, s.cacheType, s.ac.Gen0().Size(), s.ac.Gen1().Size())
 	}
 
 	valueBytes, err := s.marshalValue(entry.Data)

@@ -519,12 +519,28 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, entries ...raftpb.Entry)
 			}
 		}
 
+		preRotationPQGen0 := fsm.Registry.Cache.PreparedQueries.Gen0().Size()
+		preRotationPQGen1 := fsm.Registry.Cache.PreparedQueries.Gen1().Size()
+
 		if rotated, _ := fsm.Registry.Cache.CheckRotationNeeded(entry.Index); rotated {
 			if fsm.sentinelMode {
 				fsm.sentinelTracer.SetCacheRotated()
 			}
-			lifecycle.SendEvent("spool replay completed", map[string]any{
-				"entryIndex": entry.Index,
+			lifecycle.SendEvent("cache_rotation", map[string]any{
+				"preRotationPQGen0": preRotationPQGen0,
+				"preRotationPQGen1": preRotationPQGen1,
+				"entryIndex":          entry.Index,
+				"currentGeneration":   fsm.Registry.Cache.CurrentGeneration(),
+				"gen0Base":            fsm.Registry.Cache.BaseIndex.Gen0,
+				"gen1Base":            fsm.Registry.Cache.BaseIndex.Gen1,
+				"volumeGen0Size":      fsm.Registry.Cache.Volumes.Gen0().Size(),
+				"volumeGen1Size":      fsm.Registry.Cache.Volumes.Gen1().Size(),
+				"ledgerGen0Size":      fsm.Registry.Cache.Ledgers.Gen0().Size(),
+				"ledgerGen1Size":      fsm.Registry.Cache.Ledgers.Gen1().Size(),
+				"prepQueryGen0Size":   fsm.Registry.Cache.PreparedQueries.Gen0().Size(),
+				"prepQueryGen1Size":   fsm.Registry.Cache.PreparedQueries.Gen1().Size(),
+				"boundaryGen0Size":    fsm.Registry.Cache.Boundaries.Gen0().Size(),
+				"boundaryGen1Size":    fsm.Registry.Cache.Boundaries.Gen1().Size(),
 			})
 			if fsm.logger.Enabled(logging.DebugLevel) {
 				fsm.logger.WithFields(map[string]any{
@@ -942,6 +958,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet, batch *dal.Batch, 
 		}
 		fsm.logger.WithFields(details).Errorf("Preload boundary mismatch: LastPersistedIndex does not match Gen0 or Gen1")
 		assert.Unreachable("preload boundary mismatch should be prevented by predicted_index check", details)
+		lifecycle.SendEvent("preload_boundary_mismatch", details)
 
 		return fmt.Errorf("preloading preloaded index is invalid: lastPersistedIndex=%d gen0=%d gen1=%d currentGen=%d lastApplied=%d",
 			preloadSet.GetLastPersistedIndex(),
@@ -1225,6 +1242,13 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return nil, fmt.Errorf("raftIndex=%d: %w", raftIndex, err)
 	}
 
+	// Sentinel: verify that all ledgers referenced by orders are accessible
+	// in the cache after preloads. A missing ledger here means CacheGuaranteed
+	// was wrong — the leader assumed the key was cached, but it's not on this node.
+	if fsm.sentinelMode {
+		fsm.verifyPostPreloadLedgerAccess(raftIndex, proposal.GetOrders())
+	}
+
 	// Compute the effective date using the HLC to guarantee monotonicity
 	effectiveDate := fsm.hlcTimestamp(proposal.GetDate())
 
@@ -1442,8 +1466,17 @@ func hasMirrorConfigChange(proposal *raftcmdpb.Proposal) bool {
 
 // RestoreCacheFromStore delegates to the CacheSnapshotter.
 // Kept as a Machine method for external callers (e.g. applier).
+// In sentinel mode, verifies cache coherence after restore.
 func (fsm *Machine) RestoreCacheFromStore() error {
-	return fsm.cacheSnapshotter.RestoreFromStore()
+	if err := fsm.cacheSnapshotter.RestoreFromStore(); err != nil {
+		return err
+	}
+
+	if fsm.sentinelMode {
+		fsm.cacheSnapshotter.verifyCacheRestoreCoherence()
+	}
+
+	return nil
 }
 
 // Close stops background work owned by the Machine (e.g. bloom populate).
@@ -1479,6 +1512,10 @@ func (fsm *Machine) SynchronizeWithLeader(ctx context.Context, snapshotFetcher S
 	// Restore cache from Pebble (the checkpoint contains the leader's cache data)
 	if err := fsm.cacheSnapshotter.RestoreFromStore(); err != nil {
 		return 0, fmt.Errorf("restoring cache after sync: %w", err)
+	}
+
+	if fsm.sentinelMode {
+		fsm.cacheSnapshotter.verifyCacheRestoreCoherence()
 	}
 
 	// Reload all FSM state from Pebble (the checkpoint contains the leader's state).
