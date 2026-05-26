@@ -88,7 +88,9 @@ func resolveAttributePreload[K interface {
 
 		case cache.CacheMiss:
 			// Bloom filter short-circuit: if the key is definitely not in Pebble,
-			// skip the goroutine + Pebble Get and return a zero value directly.
+			// skip the goroutine + Pebble Get. For volumes, inject a zero value
+			// (new accounts start with zero balances). For other types, skip
+			// entirely — the key doesn't exist and that's an error.
 			if bloomFilter != nil && !bloomFilter.MayContain(id) {
 				if includeZeroValue {
 					var zero T
