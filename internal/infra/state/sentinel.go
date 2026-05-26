@@ -444,7 +444,7 @@ func verifyAggregatedVolumesBalanced(
 				"raftIndex": raftIndex,
 				"input":     inputVal.String(),
 				"output":    outputVal.String(),
-			}).Infof("SENTINEL: aggregated volume OK")
+			}).Debugf("SENTINEL: aggregated volume OK")
 		}
 	}
 

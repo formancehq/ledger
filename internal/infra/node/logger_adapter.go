@@ -42,24 +42,28 @@ func (l *loggerAdapter) Errorf(format string, v ...any) {
 	l.logger.Errorf(format, v...)
 }
 
-// Info logs an info message.
+// Info logs an info message from etcd/raft as debug.
 func (l *loggerAdapter) Info(v ...any) {
-	l.logger.Infof("%s", fmt.Sprint(v...))
+	if l.logger.Enabled(logging.DebugLevel) {
+		l.logger.Debugf("%s", fmt.Sprint(v...))
+	}
 }
 
-// Infof logs a formatted info message.
+// Infof logs a formatted info message from etcd/raft as debug.
 func (l *loggerAdapter) Infof(format string, v ...any) {
-	l.logger.Infof(format, v...)
+	if l.logger.Enabled(logging.DebugLevel) {
+		l.logger.Debugf(format, v...)
+	}
 }
 
-// Warning logs a warning message.
+// Warning logs a warning message from etcd/raft as info.
 func (l *loggerAdapter) Warning(v ...any) {
-	l.logger.Infof("WARN: %s", fmt.Sprint(v...))
+	l.logger.Infof("raft: %s", fmt.Sprint(v...))
 }
 
-// Warningf logs a formatted warning message.
+// Warningf logs a formatted warning message from etcd/raft as info.
 func (l *loggerAdapter) Warningf(format string, v ...any) {
-	l.logger.Infof("WARN: "+format, v...)
+	l.logger.Infof("raft: "+format, v...)
 }
 
 // Fatal logs a fatal message and exits.

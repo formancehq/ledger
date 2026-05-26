@@ -598,7 +598,7 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, entries ...raftpb.Entry)
 				fsm.logger.WithFields(map[string]any{
 					"raftIndex":  entry.Index,
 					"proposalID": cmd.GetId(),
-				}).Infof("SENTINEL: skipping no-op proposal")
+				}).Debugf("SENTINEL: skipping no-op proposal")
 			}
 
 			ret.Results = append(ret.Results, ApplyResult{ProposalID: cmd.GetId(), AppliedIndex: entry.Index})
