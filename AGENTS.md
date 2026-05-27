@@ -2,6 +2,22 @@
 
 This document contains rules and conventions for AI agents working on this codebase. Detailed documentation lives in `docs/` - see [docs/README.md](docs/README.md) for navigation.
 
+## Invariants
+
+**CRITICAL**: These rules are non-negotiable and must never be violated.
+
+### Architecture
+
+1. **Cache is the source of authority** — The in-memory cache must NEVER diverge between nodes. Every node must see identical cache state for the same applied index.
+2. **FSM must be deterministic** — The finite state machine (Raft apply path) must produce identical results on every node for the same input. No randomness, no time-dependent logic, no node-local state.
+3. **No Pebble reads in FSM / hot path** — The FSM apply path must never read from Pebble. All data needed for apply must come from the cache or the command itself. Pebble is write-only on the hot path.
+4. **Never delete cache entries outside of rotations** — Cache entries must only be evicted during generation rotations (Gen0 → Gen1 → discard). Deleting individual entries breaks the cache prediction mechanism (bloom filters, tombstones).
+
+### Code style
+
+5. **Prefer parameters over separate methods** — When adding a boolean mode (dry run, force, preview), add it as a parameter to the existing method rather than creating a new method.
+6. **Numscript syntax** — Literal account names require `@` prefix (e.g., `@funding:pool`). Multiple `send` blocks per script are supported. Variables don't use `@`.
+
 ## Reference Implementation
 
 **The reference implementation is `github.com/formancehq/ledger`.** Follow its patterns for application structure, dependency injection (fx), lifecycle management, HTTP/gRPC servers, OpenTelemetry, and error handling.
@@ -59,7 +75,7 @@ Key rules:
 3. **Group variable declarations** in `var (...)` blocks
 4. **No type aliases** - use original types directly
 5. **Never ignore errors** - handle explicitly or `_ = ...` with comment
-6. **Struct methods colocation** - all methods in same file as struct
+6. **Struct methods colocation** - all methods in same file as struct. If a file grows large, extract sub-types (composition) rather than splitting methods across files
 7. **Build into `build/`** directory - never leave binaries in repo root
 
 ## File Structure

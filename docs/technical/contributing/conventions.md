@@ -19,7 +19,7 @@ Each HTTP handler has its own file in `internal/adapter/http/`:
 
 ### Struct methods colocation
 
-All methods (receiver functions) for a given struct must be defined in the **same file** as the struct definition. Standalone functions (constructors, helpers) may live in separate files within the same package.
+All methods (receiver functions) for a given struct must be defined in the **same file** as the struct definition. Standalone functions (constructors, helpers) may live in separate files within the same package. If a file grows large because its struct has many methods, extract sub-types (composition) rather than splitting methods across files.
 
 ## Naming
 
@@ -64,6 +64,10 @@ _ = file.Close() // Best effort cleanup
 // Bad - silent ignore
 data, _ := json.Marshal(obj)
 ```
+
+## Method Design
+
+Prefer adding parameters to existing methods over creating separate methods. When adding a boolean mode (dry run, force, preview), add it as a parameter to the existing method rather than creating a new method.
 
 ## No Type Aliases
 
