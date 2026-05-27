@@ -1348,6 +1348,10 @@ func (fsm *Machine) InstallSnapshot(_ context.Context, snapshot raftpb.Snapshot)
 }
 
 func (fsm *Machine) SynchronizeWithLeader(ctx context.Context, snapshotFetcher SnapshotFetcher, progress *SyncProgress) (uint64, error) {
+	// Stop background tasks (bloom restore, etc.) that may hold Pebble iterators.
+	// RestoreCheckpoint closes and reopens the DB — outstanding references cause a panic.
+	fsm.StopBackgroundTasks()
+
 	if err := fsm.restoreCheckpoint(ctx, snapshotFetcher, progress, fsm.snapshotIndex); err != nil {
 		return 0, fmt.Errorf("restoring checkpoint from leader: %w", err)
 	}

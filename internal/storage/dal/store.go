@@ -480,9 +480,12 @@ func (s *Store) WarmSystemKeys() {
 // etc.) and should run in the background after servers are listening.
 func (s *Store) WarmBlockCache() {
 	start := time.Now()
+
+	s.dbMu.RLock()
 	db := s.getDB()
 
 	keys, err := s.warmRange(db, ZoneAttributes, ZoneAttributes+1)
+	s.dbMu.RUnlock()
 	if err != nil {
 		s.logger.WithFields(map[string]any{"error": err}).
 			Errorf("Block cache warmup failed")
@@ -1201,6 +1204,20 @@ func ReadLastEntry[T proto.Message](reader PebbleReader, zone, sub byte) (T, err
 	return msg, nil
 }
 
+// NewIter creates a Pebble iterator. The dbMu.RLock is held only during
+// iterator creation, NOT for the iterator's lifetime. This means the caller
+// must ensure the DB won't be closed (via RestoreCheckpoint/Close) while
+// the iterator is open.
+//
+// Safe callers:
+//   - FSM goroutine (PrepareEntries, sentinel checks): RestoreCheckpoint runs
+//     in a maintenance task that's mutually exclusive with entry processing.
+//   - Code called AFTER RestoreCheckpoint (RestoreFromStore, bloom restore):
+//     sequential, no concurrent close possible.
+//
+// For concurrent/background callers that may overlap with RestoreCheckpoint,
+// use NewReadHandle() or NewDirectReadHandle() instead — they hold dbMu.RLock
+// for the full handle lifetime.
 func (s *Store) NewIter(p *pebble.IterOptions) (*pebble.Iterator, error) {
 	s.dbMu.RLock()
 	defer s.dbMu.RUnlock()
