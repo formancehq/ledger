@@ -148,9 +148,24 @@ func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name str
 			attribute.String("ledger", name),
 		}
 
-		meter := ctrl.meterProvider.Meter("ledger", metric.WithInstrumentationAttributes(
+		// The ledger name is injected as a datapoint attribute (a real metric
+		// label) via tracing.MeterWithAttributes, NOT as a metrics
+		// instrumentation-scope attribute. Scope attributes are dropped by the
+		// OTLP -> Prometheus/VictoriaMetrics translation (not promoted to labels),
+		// which collapsed every ledger's per-operation histogram (e.g.
+		// controller.create_transaction -> CreateTransaction) into a single series
+		// holding the conflicting cumulative values of many ledgers; VM read the
+		// downward jumps as counter resets and turned rate() into garbage.
+		//
+		// The underlying meter is intentionally created without instrumentation
+		// attributes: a single shared "ledger" meter is reused across all ledgers
+		// (the per-ledger identity rides on the datapoint), which avoids retaining
+		// a distinct meter + instrument set per ledger in memory and removes any
+		// double-label risk should scope-attribute promotion ever be enabled.
+		meter := tracing.MeterWithAttributes(
+			ctrl.meterProvider.Meter("ledger"),
 			instrumentationAttributes...,
-		))
+		)
 		tracer := ctrl.tracerProvider.Tracer("ledger", trace.WithInstrumentationAttributes(
 			instrumentationAttributes...,
 		))
