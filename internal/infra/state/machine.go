@@ -1092,13 +1092,6 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return nil, fmt.Errorf("raftIndex=%d: %w", raftIndex, err)
 	}
 
-	// Sentinel: verify that all ledgers referenced by orders are accessible
-	// in the cache after preloads. A missing ledger here means CacheGuaranteed
-	// was wrong — the leader assumed the key was cached, but it's not on this node.
-	if fsm.sentinelMode {
-		fsm.verifyPostPreloadLedgerAccess(raftIndex, proposal.GetOrders())
-	}
-
 	// Compute the effective date using the HLC to guarantee monotonicity
 	effectiveDate := fsm.hlcTimestamp(proposal.GetDate())
 
