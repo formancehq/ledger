@@ -571,8 +571,20 @@ func (s *CacheSnapshotter) runBloomTask(reason string, loadFn func(context.Conte
 	s.bloomExecutor.Run(context.Background(), func(ctx context.Context) error {
 		start := time.Now()
 
-		if err := loadFn(ctx, s.dataStore); err != nil {
-			return err
+		// Hold dbMu.RLock for the entire bloom load to prevent RestoreCheckpoint
+		// from closing the DB while iterators are open. StopBackgroundTasks cancels
+		// the context first, so the bloom iteration exits and releases the lock
+		// before RestoreCheckpoint acquires the exclusive lock.
+		reader, err := s.dataStore.NewDirectReadHandle()
+		if err != nil {
+			return fmt.Errorf("creating read handle for bloom task: %w", err)
+		}
+
+		loadErr := loadFn(ctx, reader)
+		_ = reader.Close()
+
+		if loadErr != nil {
+			return loadErr
 		}
 
 		if err := s.replayBloomFromCache(ctx); err != nil {
