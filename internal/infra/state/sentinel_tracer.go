@@ -138,10 +138,6 @@ func (t *SentinelTracer) SetCacheRotated() {
 
 	e := &t.entries[len(t.entries)-1]
 	e.CacheRotated = true
-
-	lifecycle.SendEvent("cache_rotation", map[string]any{
-		"raftIndex": e.RaftIndex,
-	})
 }
 
 // TraceVolumeUpdates records volume updates with their partition classification.

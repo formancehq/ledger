@@ -7,7 +7,6 @@ import (
 	"math/big"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
 	"github.com/cockroachdb/pebble/v2"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -652,68 +651,3 @@ func cacheZoneHasKey(store dal.PebbleReader, genByte, cacheType byte, id attribu
 	return true
 }
 
-// verifyPostPreloadLedgerAccess checks that every ledger referenced by the
-// proposal's orders is accessible in the cache after preloads are applied.
-// A missing ledger means the leader emitted CacheGuaranteed but the follower's
-// cache doesn't have the key — this is the root cause of volume divergence.
-func (fsm *Machine) verifyPostPreloadLedgerAccess(raftIndex uint64, orders []*raftcmdpb.Order) {
-	for _, order := range orders {
-		var ledgerName string
-
-		switch o := order.GetType().(type) {
-		case *raftcmdpb.Order_Apply:
-			ledgerName = o.Apply.GetLedger()
-		case *raftcmdpb.Order_MirrorIngest:
-			ledgerName = o.MirrorIngest.GetLedger()
-		case *raftcmdpb.Order_SaveLedgerMetadata:
-			ledgerName = o.SaveLedgerMetadata.GetLedger()
-		case *raftcmdpb.Order_DeleteLedgerMetadata:
-			ledgerName = o.DeleteLedgerMetadata.GetLedger()
-		case *raftcmdpb.Order_SaveNumscript:
-			ledgerName = o.SaveNumscript.GetLedger()
-		case *raftcmdpb.Order_DeleteNumscript:
-			ledgerName = o.DeleteNumscript.GetLedger()
-		case *raftcmdpb.Order_PromoteLedger:
-			ledgerName = o.PromoteLedger.GetLedger()
-		default:
-			continue
-		}
-
-		if ledgerName == "" {
-			continue
-		}
-
-		info, _ := fsm.writeSet.GetLedger(ledgerName)
-		if info != nil {
-			continue // ledger accessible — OK
-		}
-
-		// Ledger NOT accessible after preloads. This will cause the proposal
-		// to fail with ErrLedgerNotFound on this node, while it may succeed
-		// on the leader (which has the key in its live cache).
-		canonicalKey := domain.LedgerKey{Name: ledgerName}.Bytes()
-		u128, _ := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
-
-		details := map[string]any{
-			"raftIndex":         raftIndex,
-			"ledger":            ledgerName,
-			"id":                fmt.Sprintf("%x", u128),
-			"currentGeneration": fsm.Registry.Cache.CurrentGeneration(),
-			"gen0Base":          fsm.Registry.Cache.BaseIndex.Gen0,
-			"gen1Base":          fsm.Registry.Cache.BaseIndex.Gen1,
-			"ledgerGen0Size":    fsm.Registry.Cache.Ledgers.Gen0().Size(),
-			"ledgerGen1Size":    fsm.Registry.Cache.Ledgers.Gen1().Size(),
-			"volumeGen0Size":    fsm.Registry.Cache.Volumes.Gen0().Size(),
-			"volumeGen1Size":    fsm.Registry.Cache.Volumes.Gen1().Size(),
-		}
-
-		fsm.logger.WithFields(details).Errorf(
-			"SENTINEL: ledger %q not in cache after preloads — CacheGuaranteed was WRONG",
-			ledgerName,
-		)
-
-		assert.Unreachable("ledger missing from cache after preloads", details)
-
-		lifecycle.SendEvent("ledger_missing_after_preload", details)
-	}
-}
