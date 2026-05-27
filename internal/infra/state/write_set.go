@@ -48,7 +48,7 @@ func mergeAndTrackBloom[K attributes.Key, V proto.Message](
 			return nil, nil, fmt.Errorf("failed deleting %s attribute: %w", label, err)
 		}
 
-		if err := writeCacheTombstone(batch, cacheType, deletion.ID); err != nil {
+		if err := writeCacheTombstone(batch, cacheType, deletion.ID, deletion.Tag); err != nil {
 			return nil, nil, fmt.Errorf("failed writing %s cache tombstone: %w", label, err)
 		}
 	}

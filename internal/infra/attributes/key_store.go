@@ -164,22 +164,22 @@ func (s *KeyStore[K, T]) Get(canonical []byte) (value T, id U128, err error) {
 // The entry stays in the cache (surviving MirrorTouch during pipelined
 // proposals) but reads via Get return nil. Tombstones age out naturally
 // via cache generation rotation.
-func (s *KeyStore[K, T]) Delete(canonical []byte) (id U128, err error) {
-	id, tag := s.hasher.MakeKey(canonical)
+func (s *KeyStore[K, T]) Delete(canonical []byte) (id U128, tag uint64, err error) {
+	id, tag = s.hasher.MakeKey(canonical)
 
 	entry, ok := s.M.Get(id)
 	if !ok {
-		return id, domain.ErrNotFound
+		return id, tag, domain.ErrNotFound
 	}
 
 	if entry.Tag != tag {
-		return id, newErrCollisionDetected(canonical, entry.Tag, tag)
+		return id, tag, newErrCollisionDetected(canonical, entry.Tag, tag)
 	}
 
 	entry.Deleted = true
 	s.M.Put(id, entry)
 
-	return id, nil
+	return id, tag, nil
 }
 
 type Entry[T any] struct {
@@ -276,7 +276,7 @@ func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], []Deletion[K], error) {
 		s.scratch = k.AppendBytes(s.scratch[:0])
 		canonical := append([]byte(nil), s.scratch...)
 
-		id, err := s.KeyStore.Delete(canonical)
+		id, tag, err := s.KeyStore.Delete(canonical)
 		if err != nil && !errors.Is(err, domain.ErrNotFound) {
 			return nil, nil, err
 		}
@@ -284,6 +284,7 @@ func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], []Deletion[K], error) {
 		deletions = append(deletions, Deletion[K]{
 			Key:          k,
 			ID:           id,
+			Tag:          tag,
 			CanonicalKey: canonical,
 		})
 	}
@@ -330,5 +331,6 @@ type Update[K Key, T any] struct {
 type Deletion[K Key] struct {
 	Key          K
 	ID           U128
+	Tag          uint64
 	CanonicalKey []byte
 }
