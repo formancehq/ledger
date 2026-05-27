@@ -39,7 +39,7 @@ func (o columnPaginator[ResourceType, OptionsType]) Paginate(sb *bun.SelectQuery
 		order = order.Reverse()
 	}
 	orderExpression := fmt.Sprintf("%s %s", paginationColumn, order)
-	sb = sb.ColumnExpr("row_number() OVER (ORDER BY " + orderExpression + ")")
+	sb = sb.Order(orderExpression)
 
 	if o.query.PaginationID != nil {
 		paginationID := convertPaginationIDToSQLType(o.fieldType, o.query.PaginationID)
@@ -136,6 +136,15 @@ func (o columnPaginator[ResourceType, OptionsType]) BuildCursor(ret []ResourceTy
 	}, nil
 }
 
+//nolint:unused
+func (o columnPaginator[ResourceType, OptionsType]) OrderExpression() string {
+	order := *o.query.Order
+	if o.query.Reverse {
+		order = order.Reverse()
+	}
+	return fmt.Sprintf("%s %s", o.fieldName, order)
+}
+
 var _ Paginator[any] = &columnPaginator[any, any]{}
 
 //nolint:unused
@@ -152,7 +161,7 @@ func findPaginationFieldPath(v any, paginationColumn string) []reflect.StructFie
 		//     *AnotherObject
 		// }
 		for {
-			if field.Type.Kind() == reflect.Ptr {
+			if field.Type.Kind() == reflect.Pointer {
 				fieldType = field.Type.Elem()
 			}
 			break

@@ -342,7 +342,12 @@ func (r *PaginatedResourceRepository[ResourceType, OptionsType]) Paginate(
 	if err != nil {
 		return nil, fmt.Errorf("expanding results: %w", err)
 	}
-	finalQuery = finalQuery.Order("row_number")
+	// Qualify the sort column with "dataset." so that LEFT JOINed expand CTEs
+	// cannot introduce an ambiguous column name (e.g. a future expand that also
+	// selects "id"). No expand today conflicts, but this makes it safe by construction.
+	orderExpr := paginator.OrderExpression()
+	col, dir, _ := strings.Cut(orderExpr, " ")
+	finalQuery = finalQuery.Order(fmt.Sprintf("dataset.%s %s", col, dir))
 
 	ret := make([]ResourceType, 0)
 	err = finalQuery.Model(&ret).Scan(ctx)
