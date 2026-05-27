@@ -251,7 +251,7 @@ func (fsm *Machine) applyMetadataConversionBatch(batch *dal.Batch, b *raftcmdpb.
 
 	info, _, err := fsm.Registry.Ledgers.Get(ledgerKey.Bytes())
 	if err != nil {
-		return fmt.Errorf("getting ledger %q for metadata conversion batch: %w (cache miss — key absent from cache)", b.GetLedger(), err)
+		return nil // ledger not in cache — stale conversion batch, skip
 	}
 
 	if info == nil {
@@ -303,7 +303,7 @@ func (fsm *Machine) applyMetadataConversionCompletion(batch *dal.Batch, complete
 
 	info, _, err := fsm.Registry.Ledgers.Get(ledgerKey.Bytes())
 	if err != nil {
-		return fmt.Errorf("getting ledger %q for metadata conversion completion: %w (cache miss — key absent from cache)", complete.GetLedger(), err)
+		return nil // ledger not in cache — stale conversion completion, skip
 	}
 
 	if info == nil {
@@ -336,7 +336,7 @@ func (fsm *Machine) applyIndexReady(batch *dal.Batch, ready *raftcmdpb.IndexRead
 
 	info, _, err := fsm.Registry.Ledgers.Get(ledgerKey.Bytes())
 	if err != nil {
-		return fmt.Errorf("getting ledger %q for index ready: %w (cache miss — key absent from cache)", ready.GetLedger(), err)
+		return nil // ledger not in cache — stale index ready, skip
 	}
 
 	if info == nil {
