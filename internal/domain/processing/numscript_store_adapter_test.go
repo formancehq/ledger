@@ -59,10 +59,10 @@ func TestGetBalances_PreloadedVolumes(t *testing.T) {
 	volumeKey := domain.NewVolumeKey(0, "bank", "USD")
 
 	// Input=1000, Output=300, Balance=700
-	mockStore.EXPECT().GetVolume(volumeKey).Return(&raftcmdpb.VolumePair{
+	mockStore.EXPECT().GetVolume(volumeKey).Return((&raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(1000),
 		Output: commonpb.NewUint256FromUint64(300),
-	}, nil)
+	}).AsReader(), nil)
 
 	query := numscriptlib.BalanceQuery{
 		"bank": {"USD"},
@@ -91,7 +91,7 @@ func TestGetBalances_NotPreloaded(t *testing.T) {
 	volumeKey := domain.NewVolumeKey(0, "bank", "USD")
 
 	// Volume exists but has no input values (not preloaded)
-	mockStore.EXPECT().GetVolume(volumeKey).Return(&raftcmdpb.VolumePair{}, nil)
+	mockStore.EXPECT().GetVolume(volumeKey).Return((&raftcmdpb.VolumePair{}).AsReader(), nil)
 
 	query := numscriptlib.BalanceQuery{
 		"bank": {"USD"},

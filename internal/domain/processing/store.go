@@ -16,11 +16,11 @@ type InMemoryStore interface {
 	PutLedger(name string, info *commonpb.LedgerInfo)
 
 	// Boundaries operations
-	GetBoundaries(ledger string) (*raftcmdpb.LedgerBoundaries, bool)
+	GetBoundaries(ledger string) (raftcmdpb.LedgerBoundariesReader, bool)
 	PutBoundaries(ledger string, boundaries *raftcmdpb.LedgerBoundaries)
 
 	// Volume operations (merged Input+Output)
-	GetVolume(key domain.VolumeKey) (*raftcmdpb.VolumePair, error)
+	GetVolume(key domain.VolumeKey) (raftcmdpb.VolumePairReader, error)
 	PutVolume(key domain.VolumeKey, value *raftcmdpb.VolumePair)
 
 	// Account metadata operations

@@ -244,10 +244,10 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 	mockStore.EXPECT().GetLedger("myled").DoAndReturn(func(_ string) (*commonpb.LedgerInfo, bool) {
 		return storedLedgerInfo, storedLedgerInfo != nil
 	}).AnyTimes()
-	mockStore.EXPECT().GetBoundaries("myled").Return(&raftcmdpb.LedgerBoundaries{
+	mockStore.EXPECT().GetBoundaries("myled").Return((&raftcmdpb.LedgerBoundaries{
 		NextTransactionId: 1,
 		NextLogId:         1,
-	}, true)
+	}).AsReader(), true)
 	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("myled", gomock.Any())
 
@@ -260,9 +260,9 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 		Output: commonpb.NewUint256FromUint64(0),
 	}
 
-	mockStore.EXPECT().GetVolume(srcKey).Return(zeroVol, nil)
+	mockStore.EXPECT().GetVolume(srcKey).Return(zeroVol.AsReader(), nil)
 	mockStore.EXPECT().PutVolume(srcKey, gomock.Any())
-	mockStore.EXPECT().GetVolume(dstKey).Return(zeroVol, nil)
+	mockStore.EXPECT().GetVolume(dstKey).Return(zeroVol.AsReader(), nil)
 	mockStore.EXPECT().PutVolume(dstKey, gomock.Any())
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())

@@ -53,21 +53,21 @@ func applyPosting(s InMemoryStore, ledgerID uint32, posting *commonpb.Posting, s
 	posting.GetAmount().IntoUint256(&amount)
 
 	// Get current volume pair for source — must be preloaded
-	sourceVol, err := s.GetVolume(sourceKey)
+	sourceReader, err := s.GetVolume(sourceKey)
 	if err != nil {
 		return fmt.Errorf("source volume %s/%s not preloaded: %w", posting.GetSource(), posting.GetAsset(), err)
 	}
-	if sourceVol == nil || sourceVol.GetInput() == nil || sourceVol.GetOutput() == nil {
+	if sourceReader == nil || sourceReader.GetInput() == nil || sourceReader.GetOutput() == nil {
 		return fmt.Errorf("source volume %s/%s not fully preloaded", posting.GetSource(), posting.GetAsset())
 	}
 
 	// Balance check (skip for "world" account and when skipBalanceCheck is true)
 	if !skipBalanceCheck && posting.GetSource() != "world" {
 		var inputValue uint256.Int
-		sourceVol.GetInput().IntoUint256(&inputValue)
+		sourceReader.GetInput().IntoUint256(&inputValue)
 
 		var outputValue, outputPlusAmount uint256.Int
-		sourceVol.GetOutput().IntoUint256(&outputValue)
+		sourceReader.GetOutput().IntoUint256(&outputValue)
 
 		sum, overflow := outputPlusAmount.AddOverflow(&outputValue, &amount)
 		if overflow || inputValue.Lt(sum) {
@@ -87,6 +87,7 @@ func applyPosting(s InMemoryStore, ledgerID uint32, posting *commonpb.Posting, s
 	var scratch uint256.Int
 
 	// Increase Output for source (money going out)
+	sourceVol := sourceReader.Mutate()
 	sourceVol.GetOutput().IntoUint256(&scratch)
 	scratch.Add(&scratch, &amount)
 	sourceVol.GetOutput().SetFromUint256(&scratch)
@@ -95,14 +96,15 @@ func applyPosting(s InMemoryStore, ledgerID uint32, posting *commonpb.Posting, s
 	// Destination receives credit - increase Input
 	destKey := cachedVolumeKey(ledgerID, posting.GetDestination(), posting.GetAsset(), assetCache)
 
-	destVol, err := s.GetVolume(destKey)
+	destReader, err := s.GetVolume(destKey)
 	if err != nil {
 		return fmt.Errorf("destination volume %s/%s not preloaded: %w", posting.GetDestination(), posting.GetAsset(), err)
 	}
-	if destVol == nil || destVol.GetInput() == nil || destVol.GetOutput() == nil {
+	if destReader == nil || destReader.GetInput() == nil || destReader.GetOutput() == nil {
 		return fmt.Errorf("destination volume %s/%s not fully preloaded", posting.GetDestination(), posting.GetAsset())
 	}
 
+	destVol := destReader.Mutate()
 	destVol.GetInput().IntoUint256(&scratch)
 	scratch.Add(&scratch, &amount)
 	destVol.GetInput().SetFromUint256(&scratch)

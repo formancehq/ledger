@@ -32,7 +32,7 @@ func TestMirrorIngest_FillGap(t *testing.T) {
 
 	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo, true).AnyTimes()
 	mockStore.EXPECT().PutLedger("mirror-ledger", ledgerInfo)
-	mockStore.EXPECT().GetBoundaries("mirror-ledger").Return(boundaries, true)
+	mockStore.EXPECT().GetBoundaries("mirror-ledger").Return(boundaries.AsReader(), true)
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutBoundaries("mirror-ledger", gomock.Any()).Do(
 		func(_ string, b *raftcmdpb.LedgerBoundaries) { putBoundaries = b },
@@ -93,7 +93,7 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 
 	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo, true).AnyTimes()
 	mockStore.EXPECT().PutLedger("mirror-ledger", ledgerInfo)
-	mockStore.EXPECT().GetBoundaries("mirror-ledger").Return(boundaries, true)
+	mockStore.EXPECT().GetBoundaries("mirror-ledger").Return(boundaries.AsReader(), true)
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(100))
 	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
@@ -106,7 +106,7 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 		Input:  commonpb.NewUint256FromUint64(0),
 		Output: commonpb.NewUint256FromUint64(0),
 	}
-	mockStore.EXPECT().GetVolume(gomock.Any()).Return(zeroVol, nil).Times(2)
+	mockStore.EXPECT().GetVolume(gomock.Any()).Return(zeroVol.AsReader(), nil).Times(2)
 	mockStore.EXPECT().PutVolume(gomock.Any(), gomock.Any()).Times(2)
 
 	// Transaction state update
@@ -369,7 +369,7 @@ func TestMirrorIngest_CreatedTransaction_MissingVolumes(t *testing.T) {
 
 	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo, true).AnyTimes()
 	mockStore.EXPECT().PutLedger("mirror-ledger", ledgerInfo)
-	mockStore.EXPECT().GetBoundaries("mirror-ledger").Return(boundaries, true)
+	mockStore.EXPECT().GetBoundaries("mirror-ledger").Return(boundaries.AsReader(), true)
 
 	// Simulate cache miss: GetVolume returns ErrNotFound for the source volume.
 	// This happens when a volume was evicted from the dual-generation cache
@@ -427,7 +427,7 @@ func TestMirrorIngest_RevertedTransaction_MissingVolumes(t *testing.T) {
 
 	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo, true).AnyTimes()
 	mockStore.EXPECT().PutLedger("mirror-ledger", ledgerInfo)
-	mockStore.EXPECT().GetBoundaries("mirror-ledger").Return(boundaries, true)
+	mockStore.EXPECT().GetBoundaries("mirror-ledger").Return(boundaries.AsReader(), true)
 
 	// Simulate cache miss for volumes
 	mockStore.EXPECT().GetVolume(gomock.Any()).Return(nil, domain.ErrNotFound)
@@ -480,7 +480,7 @@ func TestWriteGuard_MirrorModeBlocksApply(t *testing.T) {
 		Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 	}
 
-	mockStore.EXPECT().GetBoundaries("mirror-ledger").Return(boundaries, true)
+	mockStore.EXPECT().GetBoundaries("mirror-ledger").Return(boundaries.AsReader(), true)
 	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo, true)
 
 	order := &raftcmdpb.Order{

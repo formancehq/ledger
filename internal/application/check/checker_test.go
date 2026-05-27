@@ -6,7 +6,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
-	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -228,27 +227,30 @@ func (s *inMemoryStore) PutLedger(name string, info *commonpb.LedgerInfo) {
 	s.engine.ledgers[name] = info
 }
 
-func (s *inMemoryStore) GetBoundaries(ledger string) (*raftcmdpb.LedgerBoundaries, bool) {
+func (s *inMemoryStore) GetBoundaries(ledger string) (raftcmdpb.LedgerBoundariesReader, bool) {
 	b, ok := s.engine.boundaries[ledger]
+	if !ok {
+		return nil, false
+	}
 
-	return b, ok
+	return b.AsReader(), true
 }
 
 func (s *inMemoryStore) PutBoundaries(ledger string, boundaries *raftcmdpb.LedgerBoundaries) {
 	s.engine.boundaries[ledger] = boundaries
 }
 
-func (s *inMemoryStore) GetVolume(key domain.VolumeKey) (*raftcmdpb.VolumePair, error) {
+func (s *inMemoryStore) GetVolume(key domain.VolumeKey) (raftcmdpb.VolumePairReader, error) {
 	vp, ok := s.engine.volumes[string(key.Bytes())]
 	if !ok {
 		// Simulate preloaded zero volumes (in production, admission always preloads)
-		return &raftcmdpb.VolumePair{
+		vp = &raftcmdpb.VolumePair{
 			Input:  commonpb.NewUint256FromUint64(0),
 			Output: commonpb.NewUint256FromUint64(0),
-		}, nil
+		}
 	}
 
-	return proto.CloneOf(vp), nil
+	return vp.AsReader(), nil
 }
 
 func (s *inMemoryStore) PutVolume(key domain.VolumeKey, value *raftcmdpb.VolumePair) {

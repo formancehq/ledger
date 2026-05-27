@@ -121,7 +121,7 @@ func TestKeyStoreDelete(t *testing.T) {
 		_, _, err := store.Put([]byte("to-delete"), "some-value")
 		require.NoError(t, err)
 
-		id, err := store.Delete([]byte("to-delete"))
+		id, _, err := store.Delete([]byte("to-delete"))
 		require.NoError(t, err)
 		require.NotEqual(t, U128{}, id)
 
@@ -135,7 +135,7 @@ func TestKeyStoreDelete(t *testing.T) {
 
 		store := newTestKeyStore()
 
-		_, err := store.Delete([]byte("never-existed"))
+		_, _, err := store.Delete([]byte("never-existed"))
 		require.ErrorIs(t, err, domain.ErrNotFound)
 	})
 }
@@ -185,7 +185,7 @@ func TestDerivedKeyStorePutGetDelete(t *testing.T) {
 		t.Parallel()
 
 		store := newTestKeyStore()
-		derived := NewDerivedKeyStore[testKey, string](store, nil)
+		derived := NewDerivedKeyStore[testKey, string](store)
 
 		derived.Put(testKey{name: "key1"}, "value1")
 		val, err := derived.Get(testKey{name: "key1"})
@@ -200,7 +200,7 @@ func TestDerivedKeyStorePutGetDelete(t *testing.T) {
 		_, _, err := store.Put([]byte("key2"), "from-store")
 		require.NoError(t, err)
 
-		derived := NewDerivedKeyStore[testKey, string](store, nil)
+		derived := NewDerivedKeyStore[testKey, string](store)
 		val, err := derived.Get(testKey{name: "key2"})
 		require.NoError(t, err)
 		require.Equal(t, "from-store", val)
@@ -213,7 +213,7 @@ func TestDerivedKeyStorePutGetDelete(t *testing.T) {
 		_, _, err := store.Put([]byte("key3"), "exists")
 		require.NoError(t, err)
 
-		derived := NewDerivedKeyStore[testKey, string](store, nil)
+		derived := NewDerivedKeyStore[testKey, string](store)
 		derived.Delete(testKey{name: "key3"})
 
 		val, err := derived.Get(testKey{name: "key3"})
@@ -225,7 +225,7 @@ func TestDerivedKeyStorePutGetDelete(t *testing.T) {
 		t.Parallel()
 
 		store := newTestKeyStore()
-		derived := NewDerivedKeyStore[testKey, string](store, nil)
+		derived := NewDerivedKeyStore[testKey, string](store)
 
 		derived.Put(testKey{name: "k"}, "first")
 		derived.Delete(testKey{name: "k"})
@@ -247,7 +247,7 @@ func TestDerivedKeyStorePutGetDelete(t *testing.T) {
 		_, _, err := store.Put([]byte("shadow-key"), "original")
 		require.NoError(t, err)
 
-		derived := NewDerivedKeyStore[testKey, string](store, nil)
+		derived := NewDerivedKeyStore[testKey, string](store)
 		derived.Put(testKey{name: "shadow-key"}, "override")
 
 		val, err := derived.Get(testKey{name: "shadow-key"})
@@ -263,7 +263,7 @@ func TestDerivedKeyStoreMerge(t *testing.T) {
 		t.Parallel()
 
 		store := newTestKeyStore()
-		derived := NewDerivedKeyStore[testKey, string](store, nil)
+		derived := NewDerivedKeyStore[testKey, string](store)
 
 		derived.Put(testKey{name: "a"}, "alpha")
 		derived.Put(testKey{name: "b"}, "beta")
@@ -290,7 +290,7 @@ func TestDerivedKeyStoreMerge(t *testing.T) {
 		_, _, err := store.Put([]byte("existing"), "old")
 		require.NoError(t, err)
 
-		derived := NewDerivedKeyStore[testKey, string](store, nil)
+		derived := NewDerivedKeyStore[testKey, string](store)
 		derived.Put(testKey{name: "existing"}, "new")
 
 		updates, _, err := derived.Merge()
@@ -308,7 +308,7 @@ func TestDerivedKeyStoreMerge(t *testing.T) {
 		_, _, err := store.Put([]byte("to-remove"), "value")
 		require.NoError(t, err)
 
-		derived := NewDerivedKeyStore[testKey, string](store, nil)
+		derived := NewDerivedKeyStore[testKey, string](store)
 		derived.Delete(testKey{name: "to-remove"})
 
 		updates, deletions, err := derived.Merge()
@@ -326,7 +326,7 @@ func TestDerivedKeyStoreMerge(t *testing.T) {
 		t.Parallel()
 
 		store := newTestKeyStore()
-		derived := NewDerivedKeyStore[testKey, string](store, nil)
+		derived := NewDerivedKeyStore[testKey, string](store)
 
 		derived.Delete(testKey{name: "ghost"})
 

@@ -133,12 +133,12 @@ func (b *WriteSet) updateBoundaryCounters(
 
 		ledgerName := info.GetName()
 
-		boundaries, ok := b.GetBoundaries(ledgerName)
+		boundariesReader, ok := b.GetBoundaries(ledgerName)
 		if !ok {
 			continue
 		}
 
-		boundaries = boundaries.CloneVT()
+		boundaries := boundariesReader.Mutate()
 		boundaries.VolumeCount = applyDelta(boundaries.GetVolumeCount(), volumeDeltas[ledgerID])
 		boundaries.MetadataCount = applyDelta(boundaries.GetMetadataCount(), metadataDeltas[ledgerID])
 		boundaries.ReferenceCount = applyDelta(boundaries.GetReferenceCount(), referenceDeltas[ledgerID])

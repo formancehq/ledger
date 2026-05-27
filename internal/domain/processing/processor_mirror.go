@@ -25,12 +25,12 @@ func (p *RequestProcessor) processMirrorIngest(order *raftcmdpb.MirrorIngestOrde
 	// cache rotations because mirror proposals bypass the admission preloader.
 	s.PutLedger(order.GetLedger(), info)
 
-	boundaries, ok := s.GetBoundaries(order.GetLedger())
+	boundariesReader, ok := s.GetBoundaries(order.GetLedger())
 	if !ok {
 		return nil, &domain.ErrLedgerNotFound{Name: order.GetLedger()}
 	}
 
-	boundaries = boundaries.CloneVT()
+	boundaries := boundariesReader.Mutate()
 
 	entry := order.GetEntry()
 	if entry == nil {

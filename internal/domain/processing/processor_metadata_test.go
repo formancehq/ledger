@@ -30,7 +30,7 @@ func TestProcessAddMetadata_Account(t *testing.T) {
 		Key:        "status",
 	}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
@@ -89,7 +89,7 @@ func TestProcessAddMetadata_Transaction(t *testing.T) {
 		CreatedByLog: 1,
 	}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
@@ -146,7 +146,7 @@ func TestProcessDeleteMetadata_Account(t *testing.T) {
 		Key:        "status",
 	}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true).AnyTimes()
 	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(&commonpb.MetadataValue{}, nil)
 	mockStore.EXPECT().GetDate().Return(now)
@@ -200,7 +200,7 @@ func TestProcessDeleteMetadata_Account_NotFound(t *testing.T) {
 		Key:        "status",
 	}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true).AnyTimes()
 	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(nil, domain.ErrNotFound)
 

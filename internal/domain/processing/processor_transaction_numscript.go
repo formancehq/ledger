@@ -81,7 +81,7 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 		// Update source output (money going out)
 		sourceKey := domain.NewVolumeKey(ledgerID, posting.Source, posting.Asset)
 
-		sourceVol, err := s.GetVolume(sourceKey)
+		sourceReader, err := s.GetVolume(sourceKey)
 		if err != nil {
 			if errors.Is(err, domain.ErrNotFound) {
 				return nil, &domain.ErrBalanceNotPreloaded{Account: posting.Source, Asset: posting.Asset}
@@ -89,10 +89,11 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 
 			return nil, fmt.Errorf("source volume %s/%s: %w", posting.Source, posting.Asset, err)
 		}
-		if sourceVol.GetInput() == nil || sourceVol.GetOutput() == nil {
+		if sourceReader == nil || sourceReader.GetInput() == nil || sourceReader.GetOutput() == nil {
 			return nil, fmt.Errorf("source volume %s/%s not fully materialized", posting.Source, posting.Asset)
 		}
 
+		sourceVol := sourceReader.Mutate()
 		sourceVol.GetOutput().IntoUint256(&scratch)
 		scratch.Add(&scratch, &u256Amount)
 		sourceVol.GetOutput().SetFromUint256(&scratch)
@@ -101,7 +102,7 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 		// Update destination input (money coming in)
 		destKey := domain.NewVolumeKey(ledgerID, posting.Destination, posting.Asset)
 
-		destVol, err := s.GetVolume(destKey)
+		destReader, err := s.GetVolume(destKey)
 		if err != nil {
 			if errors.Is(err, domain.ErrNotFound) {
 				return nil, &domain.ErrBalanceNotPreloaded{Account: posting.Destination, Asset: posting.Asset}
@@ -109,10 +110,11 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 
 			return nil, fmt.Errorf("destination volume %s/%s: %w", posting.Destination, posting.Asset, err)
 		}
-		if destVol.GetInput() == nil || destVol.GetOutput() == nil {
+		if destReader == nil || destReader.GetInput() == nil || destReader.GetOutput() == nil {
 			return nil, fmt.Errorf("destination volume %s/%s not fully materialized", posting.Destination, posting.Asset)
 		}
 
+		destVol := destReader.Mutate()
 		destVol.GetInput().IntoUint256(&scratch)
 		scratch.Add(&scratch, &u256Amount)
 		destVol.GetInput().SetFromUint256(&scratch)

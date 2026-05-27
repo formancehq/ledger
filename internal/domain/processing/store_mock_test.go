@@ -190,10 +190,10 @@ func (mr *MockInMemoryStoreMockRecorder) GetAccountMetadata(key any) *gomock.Cal
 }
 
 // GetBoundaries mocks base method.
-func (m *MockInMemoryStore) GetBoundaries(ledger string) (*raftcmdpb.LedgerBoundaries, bool) {
+func (m *MockInMemoryStore) GetBoundaries(ledger string) (raftcmdpb.LedgerBoundariesReader, bool) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetBoundaries", ledger)
-	ret0, _ := ret[0].(*raftcmdpb.LedgerBoundaries)
+	ret0, _ := ret[0].(raftcmdpb.LedgerBoundariesReader)
 	ret1, _ := ret[1].(bool)
 	return ret0, ret1
 }
@@ -497,10 +497,10 @@ func (mr *MockInMemoryStoreMockRecorder) GetTransactionState(key any) *gomock.Ca
 }
 
 // GetVolume mocks base method.
-func (m *MockInMemoryStore) GetVolume(key domain.VolumeKey) (*raftcmdpb.VolumePair, error) {
+func (m *MockInMemoryStore) GetVolume(key domain.VolumeKey) (raftcmdpb.VolumePairReader, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetVolume", key)
-	ret0, _ := ret[0].(*raftcmdpb.VolumePair)
+	ret0, _ := ret[0].(raftcmdpb.VolumePairReader)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

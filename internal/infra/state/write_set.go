@@ -618,13 +618,13 @@ func (b *WriteSet) MarkLedgerForCleanup(ledger string) {
 	b.Derived.Boundaries.Delete(domain.LedgerKey{Name: ledger})
 }
 
-func (b *WriteSet) GetBoundaries(ledger string) (*raftcmdpb.LedgerBoundaries, bool) {
+func (b *WriteSet) GetBoundaries(ledger string) (raftcmdpb.LedgerBoundariesReader, bool) {
 	boundaries, err := b.Derived.Boundaries.Get(domain.LedgerKey{Name: ledger})
 	if err != nil || boundaries == nil {
 		return nil, false
 	}
 
-	return boundaries, true
+	return boundaries.AsReader(), true
 }
 
 func (b *WriteSet) ResolveNumscriptContent(ledgerID uint32, name, version string) (*commonpb.NumscriptInfo, error) {
@@ -635,8 +635,13 @@ func (b *WriteSet) PutBoundaries(ledger string, boundaries *raftcmdpb.LedgerBoun
 	b.Derived.Boundaries.Put(domain.LedgerKey{Name: ledger}, boundaries)
 }
 
-func (b *WriteSet) GetVolume(key domain.VolumeKey) (*raftcmdpb.VolumePair, error) {
-	return b.Derived.Volumes.Get(key)
+func (b *WriteSet) GetVolume(key domain.VolumeKey) (raftcmdpb.VolumePairReader, error) {
+	v, err := b.Derived.Volumes.Get(key)
+	if err != nil || v == nil {
+		return nil, err
+	}
+
+	return v.AsReader(), nil
 }
 
 func (b *WriteSet) PutVolume(key domain.VolumeKey, value *raftcmdpb.VolumePair) {

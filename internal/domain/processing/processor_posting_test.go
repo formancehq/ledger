@@ -27,10 +27,10 @@ func TestApplyPosting_WorldAccount_SkipsBalanceCheck(t *testing.T) {
 		Output: commonpb.NewUint256FromUint64(0),
 	}
 
-	mockStore.EXPECT().GetVolume(sourceKey).Return(zeroVol, nil)
+	mockStore.EXPECT().GetVolume(sourceKey).Return(zeroVol.AsReader(), nil)
 	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any())
 
-	mockStore.EXPECT().GetVolume(destKey).Return(zeroVol, nil)
+	mockStore.EXPECT().GetVolume(destKey).Return(zeroVol.AsReader(), nil)
 	mockStore.EXPECT().PutVolume(destKey, gomock.Any())
 
 	posting := &commonpb.Posting{
@@ -60,7 +60,7 @@ func TestApplyPosting_InsufficientFunds(t *testing.T) {
 		Output: commonpb.NewUint256FromUint64(50),
 	}
 
-	mockStore.EXPECT().GetVolume(sourceKey).Return(sourceVol, nil)
+	mockStore.EXPECT().GetVolume(sourceKey).Return(sourceVol.AsReader(), nil)
 
 	posting := &commonpb.Posting{
 		Source:      "bank",
@@ -94,7 +94,7 @@ func TestApplyPosting_ZeroInputBalance(t *testing.T) {
 		Output: commonpb.NewUint256FromUint64(0),
 	}
 
-	mockStore.EXPECT().GetVolume(sourceKey).Return(sourceVol, nil)
+	mockStore.EXPECT().GetVolume(sourceKey).Return(sourceVol.AsReader(), nil)
 
 	posting := &commonpb.Posting{
 		Source:      "bank",
@@ -134,9 +134,9 @@ func TestApplyPosting_ForceSkipsBalanceCheck(t *testing.T) {
 		Output: commonpb.NewUint256FromUint64(0),
 	}
 
-	mockStore.EXPECT().GetVolume(sourceKey).Return(sourceVol, nil)
+	mockStore.EXPECT().GetVolume(sourceKey).Return(sourceVol.AsReader(), nil)
 	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any())
-	mockStore.EXPECT().GetVolume(destKey).Return(destVol, nil)
+	mockStore.EXPECT().GetVolume(destKey).Return(destVol.AsReader(), nil)
 	mockStore.EXPECT().PutVolume(destKey, gomock.Any())
 
 	posting := &commonpb.Posting{
@@ -160,7 +160,7 @@ func TestApplyPosting_NotPreloaded(t *testing.T) {
 
 	sourceKey := domain.NewVolumeKey(0, "bank", "USD")
 
-	mockStore.EXPECT().GetVolume(sourceKey).Return(nil, nil)
+	mockStore.EXPECT().GetVolume(sourceKey).Return(nil, nil) //nolint:nilnil // test: nil volume
 
 	posting := &commonpb.Posting{
 		Source:      "bank",

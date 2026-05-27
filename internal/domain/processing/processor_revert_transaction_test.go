@@ -36,7 +36,7 @@ func TestProcessRevertTransaction_Success(t *testing.T) {
 		Output: commonpb.NewUint256FromUint64(0),
 	}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true).AnyTimes()
 	mockStore.EXPECT().GetReverted(txKey).Return(false, nil)
 	mockStore.EXPECT().GetDate().Return(now).Times(4) // ledger date + revert tx timestamps
@@ -44,9 +44,9 @@ func TestProcessRevertTransaction_Success(t *testing.T) {
 	// Reversed posting: destination becomes source, source becomes destination
 	// Original: bank -> users:123 for 100 USD
 	// Revert:   users:123 -> bank for 100 USD
-	mockStore.EXPECT().GetVolume(domain.NewVolumeKey(1, "users:123", "USD")).Return(sourceVol, nil)
+	mockStore.EXPECT().GetVolume(domain.NewVolumeKey(1, "users:123", "USD")).Return(sourceVol.AsReader(), nil)
 	mockStore.EXPECT().PutVolume(domain.NewVolumeKey(1, "users:123", "USD"), gomock.Any())
-	mockStore.EXPECT().GetVolume(domain.NewVolumeKey(1, "bank", "USD")).Return(destVol, nil)
+	mockStore.EXPECT().GetVolume(domain.NewVolumeKey(1, "bank", "USD")).Return(destVol.AsReader(), nil)
 	mockStore.EXPECT().PutVolume(domain.NewVolumeKey(1, "bank", "USD"), gomock.Any())
 
 	mockStore.EXPECT().PutReverted(txKey, true)
@@ -114,7 +114,7 @@ func TestProcessRevertTransaction_NotFound(t *testing.T) {
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 5, NextLogId: 10}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true).AnyTimes()
 
 	order := &raftcmdpb.Order{
@@ -152,7 +152,7 @@ func TestProcessRevertTransaction_AlreadyReverted(t *testing.T) {
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 5, NextLogId: 10}
 	txKey := domain.TransactionKey{LedgerID: 1, ID: 3}
 
-	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true).AnyTimes()
 	mockStore.EXPECT().GetReverted(txKey).Return(true, nil)
 

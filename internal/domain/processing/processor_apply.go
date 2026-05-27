@@ -17,12 +17,12 @@ func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s InM
 		return nil, &domain.ErrLedgerDeleted{Name: apply.GetLedger()}
 	}
 
-	boundaries, ok := s.GetBoundaries(apply.GetLedger())
+	boundariesReader, ok := s.GetBoundaries(apply.GetLedger())
 	if !ok {
 		return nil, &domain.ErrLedgerNotFound{Name: apply.GetLedger()}
 	}
 
-	boundaries = boundaries.CloneVT()
+	boundaries := boundariesReader.Mutate()
 
 	// Block writes on mirror-mode ledgers.
 	if infoOk && ledgerInfo.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR && !isMirrorSafeApply(apply) {

@@ -193,55 +193,37 @@ type DerivedKeyStore[K Key, T any] struct {
 
 	values    map[K]T
 	deletions map[K]struct{}
-	readCache map[K]T   // cloned values from parent, avoids re-cloning on repeated reads
-	cloneFn   func(T) T // optional: clone on Get from parent to protect against in-place mutation
-	scratch   []byte    // reusable buffer for Get — single-goroutine use only
+	scratch   []byte // reusable buffer for Get — single-goroutine use only
 }
 
 func (s *DerivedKeyStore[K, T]) Put(canonical K, value T) {
 	delete(s.deletions, canonical)
-	delete(s.readCache, canonical)
 	s.values[canonical] = value
 }
 
+// Get returns a value from local writes, or falls back to the parent store.
+// The returned value MUST NOT be mutated in place — use AsReader()/Mutate()
+// on the proto type to obtain a safe mutable clone.
 func (s *DerivedKeyStore[K, T]) Get(canonical K) (value T, err error) {
-	// Check if deleted in this batch
 	if _, ok := s.deletions[canonical]; ok {
 		var zero T
 
 		return zero, nil
 	}
 
-	// Check local values (uncommitted changes)
 	if localV, ok := s.values[canonical]; ok {
 		return localV, nil
 	}
 
-	// Check read cache (previously cloned from parent in this batch)
-	if cached, ok := s.readCache[canonical]; ok {
-		return cached, nil
-	}
-
-	// Then check underlying store (reuse scratch buffer to avoid allocation)
 	s.scratch = canonical.AppendBytes(s.scratch[:0])
 
 	v, _, err := s.KeyStore.Get(s.scratch)
-	if err != nil {
-		return v, err
-	}
 
-	// Clone once and cache to avoid re-cloning on subsequent reads.
-	if s.cloneFn != nil {
-		v = s.cloneFn(v)
-		s.readCache[canonical] = v
-	}
-
-	return v, nil
+	return v, err
 }
 
 func (s *DerivedKeyStore[K, T]) Delete(canonical K) {
 	delete(s.values, canonical)
-	delete(s.readCache, canonical)
 	s.deletions[canonical] = struct{}{}
 }
 
@@ -302,13 +284,11 @@ func (s *DerivedKeyStore[K, T]) Parent() *KeyStore[K, T] {
 	return s.KeyStore
 }
 
-func NewDerivedKeyStore[K Key, T any](store *KeyStore[K, T], cloneFn func(T) T) *DerivedKeyStore[K, T] {
+func NewDerivedKeyStore[K Key, T any](store *KeyStore[K, T]) *DerivedKeyStore[K, T] {
 	return &DerivedKeyStore[K, T]{
 		KeyStore:  store,
 		values:    make(map[K]T),
 		deletions: make(map[K]struct{}),
-		readCache: make(map[K]T),
-		cloneFn:   cloneFn,
 	}
 }
 
@@ -316,7 +296,6 @@ func NewDerivedKeyStore[K Key, T any](store *KeyStore[K, T], cloneFn func(T) T) 
 func (s *DerivedKeyStore[K, T]) Reset() {
 	clear(s.values)
 	clear(s.deletions)
-	clear(s.readCache)
 }
 
 type Update[K Key, T any] struct {
