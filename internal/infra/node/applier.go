@@ -1286,30 +1286,38 @@ func (a *Applier) createReplayCheckpoint(result *state.ApplyEntriesResult) error
 }
 
 // handleQueryCheckpointDuringReplay creates query checkpoint stores synchronously
-// during spool/WAL replay.
+// during spool/WAL replay. It loops to handle cascading checkpoints (multiple
+// CreateQueryCheckpoint entries in the same spool batch).
 func (a *Applier) handleQueryCheckpointDuringReplay(ctx context.Context, applyResult *state.ApplyEntriesResult) error {
-	if err := a.createMainStoreCheckpoint(applyResult.QueryCheckpointID); err != nil {
-		return fmt.Errorf("during replay: %w", err)
-	}
-
-	// Resolve the deferred future.
-	if len(applyResult.Results) > 0 {
-		lastResult := &applyResult.Results[len(applyResult.Results)-1]
-		if f, ok := a.futures.Load(lastResult.ProposalID); ok {
-			f.Resolve(*lastResult, nil)
-			a.futures.Delete(lastResult.ProposalID)
+	for {
+		if err := a.createMainStoreCheckpoint(applyResult.QueryCheckpointID); err != nil {
+			return fmt.Errorf("during replay: %w", err)
 		}
-	}
 
-	// Apply remaining entries directly.
-	if len(applyResult.RemainingEntries) > 0 {
-		_, err := a.applyEntriesAndResolveCommands(ctx, applyResult.RemainingEntries...)
+		// Resolve the deferred future.
+		if len(applyResult.Results) > 0 {
+			lastResult := &applyResult.Results[len(applyResult.Results)-1]
+			if f, ok := a.futures.Load(lastResult.ProposalID); ok {
+				f.Resolve(*lastResult, nil)
+				a.futures.Delete(lastResult.ProposalID)
+			}
+		}
+
+		if len(applyResult.RemainingEntries) == 0 {
+			return nil
+		}
+
+		remainResult, err := a.applyEntriesAndResolveCommands(ctx, applyResult.RemainingEntries...)
 		if err != nil {
 			return fmt.Errorf("applying remaining entries after query checkpoint replay: %w", err)
 		}
-	}
 
-	return nil
+		if !remainResult.CheckpointRequired {
+			return nil
+		}
+
+		applyResult = remainResult
+	}
 }
 
 // createMainStoreCheckpoint creates a physical Pebble checkpoint of the main store.

@@ -371,6 +371,74 @@ func TestApplierFutureResolution(t *testing.T) {
 	}
 }
 
+// makeCreateQueryCheckpointEntry creates a valid raftpb.Entry containing a CreateQueryCheckpointOrder.
+func makeCreateQueryCheckpointEntry(t *testing.T, index uint64) (raftpb.Entry, uint64) {
+	t.Helper()
+
+	cmd := commands.NewCommand(&raftcmdpb.Order{
+		Type: &raftcmdpb.Order_CreateQueryCheckpoint{
+			CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{},
+		},
+	})
+
+	data, err := cmd.MarshalVT()
+	require.NoError(t, err)
+
+	return raftpb.Entry{
+		Term:  1,
+		Index: index,
+		Type:  raftpb.EntryNormal,
+		Data:  data,
+	}, cmd.GetId()
+}
+
+// TestApplierCascadingQueryCheckpointsDuringReplay verifies that entries after
+// a second CreateQueryCheckpoint are not lost during spool replay.
+//
+// Regression test: handleQueryCheckpointDuringReplay did not loop on cascading
+// checkpoints, so RemainingEntries from the second checkpoint were silently
+// dropped.
+//
+// The test bypasses the Run loop to avoid timing issues: it applies the first
+// entry directly, fills the spool with entries containing two query checkpoints,
+// then calls replaySpool to exercise the exact buggy code path.
+func TestApplierCascadingQueryCheckpointsDuringReplay(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	setup := newTestApplierSetup(t)
+
+	// Entry 1: CreateLedger — applied directly so the FSM has lastAppliedIndex=1.
+	e1, _ := makeCreateLedgerEntry(t, 1, "qcp-ledger")
+	_, err := setup.fsm.ApplyEntries(ctx, e1)
+	require.NoError(t, err)
+
+	// Entries 2-5: fill the spool as if they arrived during a maintenance task.
+	//   2 = CreateLedger "before-first-cp"
+	//   3 = CreateQueryCheckpoint (first)
+	//   4 = CreateLedger "between-cps"
+	//   5 = CreateQueryCheckpoint (second, cascading)
+	//   6 = CreateLedger "after-second-cp"  ← lost without the fix
+	e2, _ := makeCreateLedgerEntry(t, 2, "before-first-cp")
+	e3, _ := makeCreateQueryCheckpointEntry(t, 3)
+	e4, _ := makeCreateLedgerEntry(t, 4, "between-cps")
+	e5, _ := makeCreateQueryCheckpointEntry(t, 5)
+	e6, _ := makeCreateLedgerEntry(t, 6, "after-second-cp")
+
+	require.NoError(t, setup.spool.AppendCommittedEntries(ctx, e2, e3, e4, e5, e6))
+
+	// Replay the spool starting after lastAppliedIndex=1.
+	err = setup.applier.replaySpool(ctx, 1)
+	require.NoError(t, err)
+
+	// All ledgers must exist — including "after-second-cp".
+	require.True(t, listLedgerContains(setup.store, "qcp-ledger"), "qcp-ledger should exist")
+	require.True(t, listLedgerContains(setup.store, "before-first-cp"), "before-first-cp should exist")
+	require.True(t, listLedgerContains(setup.store, "between-cps"), "between-cps should exist")
+	require.True(t, listLedgerContains(setup.store, "after-second-cp"),
+		"after-second-cp should exist — it was lost before the cascading checkpoint fix")
+}
+
 func TestApplierSnapshotGatingCycle(t *testing.T) {
 	t.Parallel()
 
