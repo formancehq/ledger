@@ -899,7 +899,13 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 		return fmt.Errorf("hard linking checkpoint to live directory: %w", err)
 	}
 
-	// Reopen the database with the same options
+	// Reopen the database with the same options.
+	// Clear FileCache so pebble.Open creates a fresh one. The first Open mutates
+	// opts.FileCache in-place; reusing the stale pointer causes a panic in
+	// shard.Close ("element has outstanding references") because the old
+	// FileCache was already closed when the old DB was closed.
+	s.opts.FileCache = nil
+
 	newDB, err := pebble.Open(liveDirectory, s.opts)
 	if err != nil {
 		return fmt.Errorf("reopening database: %w", err)
