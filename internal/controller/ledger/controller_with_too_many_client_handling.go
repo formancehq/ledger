@@ -10,8 +10,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/storage/postgres"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/queries"
@@ -159,9 +159,9 @@ func (c *ControllerWithTooManyClientHandling) GetSchema(ctx context.Context, ver
 	return schema, err
 }
 
-func (c *ControllerWithTooManyClientHandling) ListSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error) {
+func (c *ControllerWithTooManyClientHandling) ListSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Schema], error) {
 	var (
-		schemas *bunpaginate.Cursor[ledger.Schema]
+		schemas *paginate.Cursor[ledger.Schema]
 		err     error
 	)
 	err = handleRetry(ctx, c.tracer, c.delayCalculator, func(ctx context.Context) error {
@@ -172,10 +172,10 @@ func (c *ControllerWithTooManyClientHandling) ListSchemas(ctx context.Context, q
 	return schemas, err
 }
 
-func (c *ControllerWithTooManyClientHandling) RunQuery(ctx context.Context, schemaVersion string, id string, q common.RunQuery, paginationConfig common.PaginationConfig) (*queries.ResourceKind, *bunpaginate.Cursor[any], error) {
+func (c *ControllerWithTooManyClientHandling) RunQuery(ctx context.Context, schemaVersion string, id string, q common.RunQuery, paginationConfig common.PaginationConfig) (*queries.ResourceKind, *paginate.Cursor[any], error) {
 	var (
 		resource *queries.ResourceKind
-		cursor   *bunpaginate.Cursor[any]
+		cursor   *paginate.Cursor[any]
 		err      error
 	)
 	err = handleRetry(ctx, c.tracer, c.delayCalculator, func(ctx context.Context) error {

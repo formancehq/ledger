@@ -11,12 +11,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/auth"
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/pointer"
-	"github.com/formancehq/go-libs/v4/query"
-	"github.com/formancehq/go-libs/v4/time"
+	"github.com/formancehq/go-libs/v5/pkg/authn/jwt"
+	"github.com/formancehq/go-libs/v5/pkg/query"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/transport/api"
+	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
+	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
@@ -40,41 +40,41 @@ func TestVolumesList(t *testing.T) {
 		{
 			name: "basic",
 			expectQuery: storagecommon.InitialPaginatedQuery[ledger.GetVolumesOptions]{
-				PageSize: bunpaginate.QueryDefaultPageSize,
+				PageSize: paginate.QueryDefaultPageSize,
 				Options: storagecommon.ResourceQuery[ledger.GetVolumesOptions]{
 					PIT:    &before,
 					Expand: make([]string, 0),
 				},
 				Column: "account",
-				Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+				Order:  pointer.For(paginate.Order(paginate.OrderAsc)),
 			},
 		},
 		{
 			name: "using metadata",
 			body: `{"$match": { "metadata[roles]": "admin" }}`,
 			expectQuery: storagecommon.InitialPaginatedQuery[ledger.GetVolumesOptions]{
-				PageSize: bunpaginate.QueryDefaultPageSize,
+				PageSize: paginate.QueryDefaultPageSize,
 				Options: storagecommon.ResourceQuery[ledger.GetVolumesOptions]{
 					PIT:     &before,
 					Builder: query.Match("metadata[roles]", "admin"),
 					Expand:  make([]string, 0),
 				},
 				Column: "account",
-				Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+				Order:  pointer.For(paginate.Order(paginate.OrderAsc)),
 			},
 		},
 		{
 			name: "using account",
 			body: `{"$match": { "account": "foo" }}`,
 			expectQuery: storagecommon.InitialPaginatedQuery[ledger.GetVolumesOptions]{
-				PageSize: bunpaginate.QueryDefaultPageSize,
+				PageSize: paginate.QueryDefaultPageSize,
 				Options: storagecommon.ResourceQuery[ledger.GetVolumesOptions]{
 					PIT:     &before,
 					Builder: query.Match("account", "foo"),
 					Expand:  make([]string, 0),
 				},
 				Column: "account",
-				Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+				Order:  pointer.For(paginate.Order(paginate.OrderAsc)),
 			},
 		},
 		{
@@ -90,7 +90,7 @@ func TestVolumesList(t *testing.T) {
 				"groupBy": []string{"3"},
 			},
 			expectQuery: storagecommon.InitialPaginatedQuery[ledger.GetVolumesOptions]{
-				PageSize: bunpaginate.QueryDefaultPageSize,
+				PageSize: paginate.QueryDefaultPageSize,
 				Options: storagecommon.ResourceQuery[ledger.GetVolumesOptions]{
 					PIT:    &before,
 					Expand: make([]string, 0),
@@ -99,35 +99,35 @@ func TestVolumesList(t *testing.T) {
 					},
 				},
 				Column: "account",
-				Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+				Order:  pointer.For(paginate.Order(paginate.OrderAsc)),
 			},
 		},
 		{
 			name: "using exists metadata filter",
 			body: `{"$exists": { "metadata": "foo" }}`,
 			expectQuery: storagecommon.InitialPaginatedQuery[ledger.GetVolumesOptions]{
-				PageSize: bunpaginate.QueryDefaultPageSize,
+				PageSize: paginate.QueryDefaultPageSize,
 				Options: storagecommon.ResourceQuery[ledger.GetVolumesOptions]{
 					PIT:     &before,
 					Builder: query.Exists("metadata", "foo"),
 					Expand:  make([]string, 0),
 				},
 				Column: "account",
-				Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+				Order:  pointer.For(paginate.Order(paginate.OrderAsc)),
 			},
 		},
 		{
 			name: "using balance filter",
 			body: `{"$gte": { "balance[EUR]": 50 }}`,
 			expectQuery: storagecommon.InitialPaginatedQuery[ledger.GetVolumesOptions]{
-				PageSize: bunpaginate.QueryDefaultPageSize,
+				PageSize: paginate.QueryDefaultPageSize,
 				Options: storagecommon.ResourceQuery[ledger.GetVolumesOptions]{
 					PIT:     &before,
 					Builder: query.Gte("balance[EUR]", big.NewInt(50)),
 					Expand:  make([]string, 0),
 				},
 				Column: "account",
-				Order:  pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+				Order:  pointer.For(paginate.Order(paginate.OrderAsc)),
 			},
 		},
 	}
@@ -140,7 +140,7 @@ func TestVolumesList(t *testing.T) {
 				testCase.expectStatusCode = http.StatusOK
 			}
 
-			expectedCursor := bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount]{
+			expectedCursor := paginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount]{
 				Data: []ledger.VolumesWithBalanceByAssetByAccount{
 					{
 						Account: "user:1",
@@ -161,7 +161,7 @@ func TestVolumesList(t *testing.T) {
 					Return(&expectedCursor, nil)
 			}
 
-			router := NewRouter(systemController, auth.NewNoAuth(), "develop")
+			router := NewRouter(systemController, jwt.NewNoAuth(), "develop")
 
 			req := httptest.NewRequest(http.MethodGet, "/xxx/volumes?endTime="+before.Format(time.RFC3339Nano), bytes.NewBufferString(testCase.body))
 			rec := httptest.NewRecorder()

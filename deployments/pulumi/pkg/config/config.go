@@ -14,7 +14,7 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
 	"gopkg.in/yaml.v3"
 
-	. "github.com/formancehq/go-libs/v4/collectionutils"
+	. "github.com/formancehq/go-libs/v5/pkg/types/collections"
 
 	pulumi_ledger "github.com/formancehq/ledger/deployments/pulumi/pkg"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
@@ -497,7 +497,7 @@ type MonitoringTraces struct {
 	Jaeger *MonitoringTracesJaeger `json:"jaeger" yaml:"jaeger"`
 
 	// OTLP is the OTLP configuration for traces
-	OTLP *MonitoringTracesOTLP `json:"otlp" yaml:"otlp"`
+	OTLP *MonitoringTracesOTLP `json:"observe" yaml:"observe"`
 }
 
 func (t *MonitoringTraces) toInput() *monitoring.TracesArgs {
@@ -551,7 +551,7 @@ type MonitoringMetrics struct {
 	KeepInMemory bool `json:"keep-in-memory" yaml:"keep-in-memory"`
 
 	// OTLP is the OTLP configuration for metrics
-	MonitoringMetricsOTLP *MonitoringMetricsOTLP `json:"otlp" yaml:"otlp"`
+	MonitoringMetricsOTLP *MonitoringMetricsOTLP `json:"observe" yaml:"observe"`
 }
 
 func (m *MonitoringMetrics) toInput() *monitoring.MetricsArgs {

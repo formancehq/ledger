@@ -5,8 +5,8 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/time"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/replication/grpc"
@@ -62,7 +62,7 @@ func mapPipelineFromGRPC(pipeline *grpc.Pipeline) ledger.Pipeline {
 	}
 }
 
-func mapCursor[V any](ret *bunpaginate.Cursor[V]) *grpc.Cursor {
+func mapCursor[V any](ret *paginate.Cursor[V]) *grpc.Cursor {
 	return &grpc.Cursor{
 		Next:    ret.Next,
 		HasMore: ret.HasMore,
@@ -70,8 +70,8 @@ func mapCursor[V any](ret *bunpaginate.Cursor[V]) *grpc.Cursor {
 	}
 }
 
-func mapCursorFromGRPC[V any](ret *grpc.Cursor, data []V) *bunpaginate.Cursor[V] {
-	return &bunpaginate.Cursor[V]{
+func mapCursorFromGRPC[V any](ret *grpc.Cursor, data []V) *paginate.Cursor[V] {
+	return &paginate.Cursor[V]{
 		Next:     ret.Next,
 		HasMore:  ret.HasMore,
 		Previous: ret.Prev,

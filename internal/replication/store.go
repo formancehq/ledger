@@ -3,7 +3,7 @@ package replication
 import (
 	"context"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/common"
@@ -14,12 +14,12 @@ import (
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated_test.go -package replication . LogFetcher
 
 type LogFetcher interface {
-	ListLogs(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error)
+	ListLogs(ctx context.Context, query common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Log], error)
 }
 
-type LogFetcherFn func(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error)
+type LogFetcherFn func(ctx context.Context, query common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Log], error)
 
-func (fn LogFetcherFn) ListLogs(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
+func (fn LogFetcherFn) ListLogs(ctx context.Context, query common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Log], error) {
 	return fn(ctx, query)
 }
 
@@ -29,7 +29,7 @@ type Storage interface {
 	OpenLedger(context.Context, string) (LogFetcher, *ledger.Ledger, error)
 	StorePipelineState(ctx context.Context, id string, lastLogID uint64) error
 
-	ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error)
+	ListExporters(ctx context.Context) (*paginate.Cursor[ledger.Exporter], error)
 	CreateExporter(ctx context.Context, exporter ledger.Exporter) error
 	DeleteExporter(ctx context.Context, id string) error
 	GetExporter(ctx context.Context, id string) (*ledger.Exporter, error)
@@ -38,7 +38,7 @@ type Storage interface {
 	CreatePipeline(ctx context.Context, pipeline ledger.Pipeline) error
 	DeletePipeline(ctx context.Context, id string) error
 	UpdatePipeline(ctx context.Context, id string, o map[string]any) (*ledger.Pipeline, error)
-	ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error)
+	ListPipelines(ctx context.Context) (*paginate.Cursor[ledger.Pipeline], error)
 	ListEnabledPipelines(ctx context.Context) ([]ledger.Pipeline, error)
 	GetPipeline(ctx context.Context, id string) (*ledger.Pipeline, error)
 }
@@ -59,7 +59,7 @@ func (s *storageAdapter) GetPipeline(ctx context.Context, id string) (*ledger.Pi
 func (s *storageAdapter) OpenLedger(ctx context.Context, name string) (LogFetcher, *ledger.Ledger, error) {
 	store, l, err := s.storageDriver.OpenLedger(ctx, name)
 
-	return LogFetcherFn(func(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
+	return LogFetcherFn(func(ctx context.Context, query common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Log], error) {
 		return store.Logs().Paginate(ctx, query)
 	}), l, err
 }

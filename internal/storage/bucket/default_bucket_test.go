@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/formancehq/go-libs/v4/bun/bunconnect"
-	"github.com/formancehq/go-libs/v4/bun/bundebug"
-	"github.com/formancehq/go-libs/v4/logging"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/connect"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/debug"
 
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/system"
@@ -22,11 +22,11 @@ func TestBuckets(t *testing.T) {
 	name := uuid.NewString()[:8]
 
 	pgDatabase := srv.NewDatabase(t)
-	db, err := bunconnect.OpenSQLDB(ctx, pgDatabase.ConnectionOptions())
+	db, err := connect.OpenSQLDB(ctx, pgDatabase.ConnectionOptions())
 	require.NoError(t, err)
 
 	if testing.Verbose() {
-		db.AddQueryHook(bundebug.NewQueryHook())
+		db.AddQueryHook(debug.NewQueryHook())
 	}
 
 	require.NoError(t, system.Migrate(ctx, db))

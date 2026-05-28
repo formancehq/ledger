@@ -8,9 +8,9 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/formancehq/go-libs/v4/collectionutils"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/pointer"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/types/collections"
+	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
 
 	"github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/components"
@@ -61,7 +61,7 @@ func (s *GeneratorSet) Run(ctx context.Context) error {
 				}
 
 				if s.untilLogID != 0 {
-					maxLogID := collectionutils.Reduce(ret, func(acc int64, r components.V2BulkElementResult) int64 {
+					maxLogID := collections.Reduce(ret, func(acc int64, r components.V2BulkElementResult) int64 {
 						var logID int64
 						switch r.Type {
 						case components.V2BulkElementResultTypeCreateTransaction:

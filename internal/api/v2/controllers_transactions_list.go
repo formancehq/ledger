@@ -3,8 +3,8 @@ package v2
 import (
 	"net/http"
 
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/transport/api"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
@@ -20,9 +20,9 @@ func listTransactions(paginationConfig storagecommon.PaginationConfig) http.Hand
 			paginationColumn = "timestamp"
 		}
 
-		order := bunpaginate.Order(bunpaginate.OrderDesc)
+		order := paginate.Order(paginate.OrderDesc)
 		if api.QueryParamBool(r, "reverse") {
-			order = bunpaginate.OrderAsc
+			order = paginate.OrderAsc
 		}
 
 		rq, err := getPaginatedQuery[any](r, paginationConfig, paginationColumn, order)
@@ -37,7 +37,7 @@ func listTransactions(paginationConfig storagecommon.PaginationConfig) http.Hand
 			return
 		}
 
-		api.RenderCursor(w, *bunpaginate.MapCursor(cursor, func(tx ledger.Transaction) any {
+		api.RenderCursor(w, *paginate.MapCursor(cursor, func(tx ledger.Transaction) any {
 			return renderTransaction(r, tx)
 		}))
 	}

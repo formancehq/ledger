@@ -7,7 +7,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/formancehq/go-libs/v4/logging"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/internal/replication/drivers"
 )

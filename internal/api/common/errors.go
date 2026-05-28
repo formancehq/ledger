@@ -4,10 +4,10 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/otlp"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
+	"github.com/formancehq/go-libs/v5/pkg/observe"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/storage/postgres"
+	"github.com/formancehq/go-libs/v5/pkg/transport/api"
 
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
@@ -80,7 +80,7 @@ func HandleCommonPaginationErrors(w http.ResponseWriter, r *http.Request, err er
 }
 
 func InternalServerError(w http.ResponseWriter, r *http.Request, err error) {
-	otlp.RecordError(r.Context(), err)
+	observe.RecordError(r.Context(), err)
 	logging.FromContext(r.Context()).Error(err)
 	//nolint:staticcheck
 	api.WriteErrorResponse(w, http.StatusInternalServerError, api.ErrorInternal, errors.New("Internal error. Consult logs/traces to have more details."))

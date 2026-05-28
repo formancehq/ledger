@@ -7,8 +7,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
 
-	"github.com/formancehq/go-libs/v4/health"
-	"github.com/formancehq/go-libs/v4/logging"
+	"github.com/formancehq/go-libs/v5/pkg/fx/servicefx"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/service/health"
 
 	"github.com/formancehq/ledger/internal/storage/driver"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
@@ -28,7 +29,7 @@ func NewFXModule(config ModuleConfig) fx.Option {
 			return store
 		}),
 		driver.NewFXModule(),
-		health.ProvideHealthCheck(func(driver *driver.Driver, tracer trace.TracerProvider) health.NamedCheck {
+		servicefx.ProvideHealthCheck(func(driver *driver.Driver, tracer trace.TracerProvider) health.NamedCheck {
 			hasReachedMinimalVersion := false
 			return health.NewNamedCheck(HealthCheckName, health.CheckFn(func(ctx context.Context) error {
 				_, err := tracing.Trace(ctx, tracer.Tracer("HealthCheck"), "HealthCheckStorage", tracing.NoResult(func(ctx context.Context) error {

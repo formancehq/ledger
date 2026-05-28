@@ -13,12 +13,12 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	. "github.com/formancehq/go-libs/v4/collectionutils"
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
-	"github.com/formancehq/go-libs/v4/pointer"
-	"github.com/formancehq/go-libs/v4/time"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/storage/postgres"
+	. "github.com/formancehq/go-libs/v5/pkg/types/collections"
+	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
+	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
+	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/tracing"
@@ -47,7 +47,7 @@ func (store *Store) CommitTransaction(ctx context.Context, tx *ledger.Transactio
 		for _, posting := range postings {
 			moves = append(moves, &ledger.Move{
 				Account:           posting.Destination,
-				Amount:            (*bunpaginate.BigInt)(posting.Amount),
+				Amount:            (*paginate.BigInt)(posting.Amount),
 				Asset:             posting.Asset,
 				InsertionDate:     tx.InsertedAt,
 				EffectiveDate:     tx.Timestamp,
@@ -59,7 +59,7 @@ func (store *Store) CommitTransaction(ctx context.Context, tx *ledger.Transactio
 			moves = append(moves, &ledger.Move{
 				IsSource:          true,
 				Account:           posting.Source,
-				Amount:            (*bunpaginate.BigInt)(posting.Amount),
+				Amount:            (*paginate.BigInt)(posting.Amount),
 				Asset:             posting.Asset,
 				InsertionDate:     tx.InsertedAt,
 				EffectiveDate:     tx.Timestamp,

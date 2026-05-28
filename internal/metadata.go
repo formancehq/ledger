@@ -3,7 +3,7 @@ package ledger
 import (
 	"fmt"
 
-	"github.com/formancehq/go-libs/v4/metadata"
+	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
 )
 
 const (

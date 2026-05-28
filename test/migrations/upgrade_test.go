@@ -12,10 +12,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/xo/dburl"
 
-	"github.com/formancehq/go-libs/v4/bun/bunconnect"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/testing/docker"
-	"github.com/formancehq/go-libs/v4/testing/platform/pgtesting"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/connect"
+	"github.com/formancehq/go-libs/v5/pkg/testing/docker"
+	"github.com/formancehq/go-libs/v5/pkg/testing/platform/pgtesting"
 
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
@@ -59,7 +59,7 @@ func TestMigrations(t *testing.T) {
 		fmt.Println("Database copied")
 	}
 
-	db, err := bunconnect.OpenSQLDB(ctx, bunconnect.ConnectionOptions{
+	db, err := connect.OpenSQLDB(ctx, connect.ConnectionOptions{
 		DatabaseSourceName: destinationDatabase,
 	})
 	require.NoError(t, err)

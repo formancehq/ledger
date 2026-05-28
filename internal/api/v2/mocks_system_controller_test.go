@@ -11,7 +11,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	bunpaginate "github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	paginate "github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
 	ledger "github.com/formancehq/ledger/internal"
 	ledger0 "github.com/formancehq/ledger/internal/controller/ledger"
 	common "github.com/formancehq/ledger/internal/storage/common"
@@ -276,10 +276,10 @@ func (c *MockReplicationBackendGetPipelineCall) DoAndReturn(f func(context.Conte
 }
 
 // ListExporters mocks base method.
-func (m *MockReplicationBackend) ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error) {
+func (m *MockReplicationBackend) ListExporters(ctx context.Context) (*paginate.Cursor[ledger.Exporter], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListExporters", ctx)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Exporter])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.Exporter])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -297,28 +297,28 @@ type MockReplicationBackendListExportersCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockReplicationBackendListExportersCall) Return(arg0 *bunpaginate.Cursor[ledger.Exporter], arg1 error) *MockReplicationBackendListExportersCall {
+func (c *MockReplicationBackendListExportersCall) Return(arg0 *paginate.Cursor[ledger.Exporter], arg1 error) *MockReplicationBackendListExportersCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockReplicationBackendListExportersCall) Do(f func(context.Context) (*bunpaginate.Cursor[ledger.Exporter], error)) *MockReplicationBackendListExportersCall {
+func (c *MockReplicationBackendListExportersCall) Do(f func(context.Context) (*paginate.Cursor[ledger.Exporter], error)) *MockReplicationBackendListExportersCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockReplicationBackendListExportersCall) DoAndReturn(f func(context.Context) (*bunpaginate.Cursor[ledger.Exporter], error)) *MockReplicationBackendListExportersCall {
+func (c *MockReplicationBackendListExportersCall) DoAndReturn(f func(context.Context) (*paginate.Cursor[ledger.Exporter], error)) *MockReplicationBackendListExportersCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // ListPipelines mocks base method.
-func (m *MockReplicationBackend) ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error) {
+func (m *MockReplicationBackend) ListPipelines(ctx context.Context) (*paginate.Cursor[ledger.Pipeline], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListPipelines", ctx)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Pipeline])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.Pipeline])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -336,19 +336,19 @@ type MockReplicationBackendListPipelinesCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockReplicationBackendListPipelinesCall) Return(arg0 *bunpaginate.Cursor[ledger.Pipeline], arg1 error) *MockReplicationBackendListPipelinesCall {
+func (c *MockReplicationBackendListPipelinesCall) Return(arg0 *paginate.Cursor[ledger.Pipeline], arg1 error) *MockReplicationBackendListPipelinesCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockReplicationBackendListPipelinesCall) Do(f func(context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error)) *MockReplicationBackendListPipelinesCall {
+func (c *MockReplicationBackendListPipelinesCall) Do(f func(context.Context) (*paginate.Cursor[ledger.Pipeline], error)) *MockReplicationBackendListPipelinesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockReplicationBackendListPipelinesCall) DoAndReturn(f func(context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error)) *MockReplicationBackendListPipelinesCall {
+func (c *MockReplicationBackendListPipelinesCall) DoAndReturn(f func(context.Context) (*paginate.Cursor[ledger.Pipeline], error)) *MockReplicationBackendListPipelinesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -992,10 +992,10 @@ func (c *SystemControllerGetSchemaEnforcementModeCall) DoAndReturn(f func(contex
 }
 
 // ListExporters mocks base method.
-func (m *SystemController) ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error) {
+func (m *SystemController) ListExporters(ctx context.Context) (*paginate.Cursor[ledger.Exporter], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListExporters", ctx)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Exporter])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.Exporter])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -1013,28 +1013,28 @@ type SystemControllerListExportersCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *SystemControllerListExportersCall) Return(arg0 *bunpaginate.Cursor[ledger.Exporter], arg1 error) *SystemControllerListExportersCall {
+func (c *SystemControllerListExportersCall) Return(arg0 *paginate.Cursor[ledger.Exporter], arg1 error) *SystemControllerListExportersCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *SystemControllerListExportersCall) Do(f func(context.Context) (*bunpaginate.Cursor[ledger.Exporter], error)) *SystemControllerListExportersCall {
+func (c *SystemControllerListExportersCall) Do(f func(context.Context) (*paginate.Cursor[ledger.Exporter], error)) *SystemControllerListExportersCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *SystemControllerListExportersCall) DoAndReturn(f func(context.Context) (*bunpaginate.Cursor[ledger.Exporter], error)) *SystemControllerListExportersCall {
+func (c *SystemControllerListExportersCall) DoAndReturn(f func(context.Context) (*paginate.Cursor[ledger.Exporter], error)) *SystemControllerListExportersCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // ListLedgers mocks base method.
-func (m *SystemController) ListLedgers(ctx context.Context, query common.PaginatedQuery[system.ListLedgersQueryPayload]) (*bunpaginate.Cursor[ledger.Ledger], error) {
+func (m *SystemController) ListLedgers(ctx context.Context, query common.PaginatedQuery[system.ListLedgersQueryPayload]) (*paginate.Cursor[ledger.Ledger], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListLedgers", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Ledger])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.Ledger])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -1052,28 +1052,28 @@ type SystemControllerListLedgersCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *SystemControllerListLedgersCall) Return(arg0 *bunpaginate.Cursor[ledger.Ledger], arg1 error) *SystemControllerListLedgersCall {
+func (c *SystemControllerListLedgersCall) Return(arg0 *paginate.Cursor[ledger.Ledger], arg1 error) *SystemControllerListLedgersCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *SystemControllerListLedgersCall) Do(f func(context.Context, common.PaginatedQuery[system.ListLedgersQueryPayload]) (*bunpaginate.Cursor[ledger.Ledger], error)) *SystemControllerListLedgersCall {
+func (c *SystemControllerListLedgersCall) Do(f func(context.Context, common.PaginatedQuery[system.ListLedgersQueryPayload]) (*paginate.Cursor[ledger.Ledger], error)) *SystemControllerListLedgersCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *SystemControllerListLedgersCall) DoAndReturn(f func(context.Context, common.PaginatedQuery[system.ListLedgersQueryPayload]) (*bunpaginate.Cursor[ledger.Ledger], error)) *SystemControllerListLedgersCall {
+func (c *SystemControllerListLedgersCall) DoAndReturn(f func(context.Context, common.PaginatedQuery[system.ListLedgersQueryPayload]) (*paginate.Cursor[ledger.Ledger], error)) *SystemControllerListLedgersCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // ListPipelines mocks base method.
-func (m *SystemController) ListPipelines(ctx context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error) {
+func (m *SystemController) ListPipelines(ctx context.Context) (*paginate.Cursor[ledger.Pipeline], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListPipelines", ctx)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Pipeline])
+	ret0, _ := ret[0].(*paginate.Cursor[ledger.Pipeline])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -1091,19 +1091,19 @@ type SystemControllerListPipelinesCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *SystemControllerListPipelinesCall) Return(arg0 *bunpaginate.Cursor[ledger.Pipeline], arg1 error) *SystemControllerListPipelinesCall {
+func (c *SystemControllerListPipelinesCall) Return(arg0 *paginate.Cursor[ledger.Pipeline], arg1 error) *SystemControllerListPipelinesCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *SystemControllerListPipelinesCall) Do(f func(context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error)) *SystemControllerListPipelinesCall {
+func (c *SystemControllerListPipelinesCall) Do(f func(context.Context) (*paginate.Cursor[ledger.Pipeline], error)) *SystemControllerListPipelinesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *SystemControllerListPipelinesCall) DoAndReturn(f func(context.Context) (*bunpaginate.Cursor[ledger.Pipeline], error)) *SystemControllerListPipelinesCall {
+func (c *SystemControllerListPipelinesCall) DoAndReturn(f func(context.Context) (*paginate.Cursor[ledger.Pipeline], error)) *SystemControllerListPipelinesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

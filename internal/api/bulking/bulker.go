@@ -12,8 +12,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/otlp"
+	"github.com/formancehq/go-libs/v5/pkg/observe"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
@@ -64,7 +64,7 @@ func (b *Bulker) run(ctx context.Context, ctrl ledgercontroller.Controller, sche
 				ret, logID, err := b.processElement(ctx, ctrl, schemaVersion, element)
 				if err != nil {
 					hasError.Store(true)
-					otlp.RecordError(ctx, err)
+					observe.RecordError(ctx, err)
 
 					result <- BulkElementResult{
 						Error: err,

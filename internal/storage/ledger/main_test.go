@@ -14,12 +14,12 @@ import (
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 
-	"github.com/formancehq/go-libs/v4/bun/bundebug"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/testing/deferred"
-	"github.com/formancehq/go-libs/v4/testing/docker"
-	"github.com/formancehq/go-libs/v4/testing/platform/pgtesting"
-	. "github.com/formancehq/go-libs/v4/testing/utils"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/debug"
+	"github.com/formancehq/go-libs/v5/pkg/testing/deferred"
+	"github.com/formancehq/go-libs/v5/pkg/testing/docker"
+	"github.com/formancehq/go-libs/v5/pkg/testing/platform/pgtesting"
+	. "github.com/formancehq/go-libs/v5/pkg/testing/utils"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
@@ -46,7 +46,7 @@ func TestMain(m *testing.M) {
 				require.NoError(t, err)
 
 				bunDB := bun.NewDB(db, pgdialect.New(), bun.WithDiscardUnknownColumns())
-				hook := bundebug.NewQueryHook()
+				hook := debug.NewQueryHook()
 				hook.Debug = os.Getenv("DEBUG") == "true"
 				bunDB.AddQueryHook(hook)
 				bunDB.SetMaxOpenConns(100)

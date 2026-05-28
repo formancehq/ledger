@@ -7,11 +7,11 @@ import (
 
 	"github.com/uptrace/bun"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/migrations"
-	"github.com/formancehq/go-libs/v4/query"
-	"github.com/formancehq/go-libs/v4/time"
+	"github.com/formancehq/go-libs/v5/pkg/query"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+	"github.com/formancehq/go-libs/v5/pkg/storage/migrations"
+	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
+	"github.com/formancehq/go-libs/v5/pkg/types/time"
 	"github.com/formancehq/numscript"
 
 	ledger "github.com/formancehq/ledger/internal"
@@ -48,7 +48,7 @@ type Store interface {
 	DeleteAccountMetadata(ctx context.Context, address, key string) error
 	InsertSchema(ctx context.Context, data *ledger.Schema) error
 	FindSchema(ctx context.Context, version string) (*ledger.Schema, error)
-	FindSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error)
+	FindSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Schema], error)
 	FindLatestSchemaVersion(ctx context.Context) (*string, error)
 	InsertLog(ctx context.Context, log *ledger.Log) error
 
