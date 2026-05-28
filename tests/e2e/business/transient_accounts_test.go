@@ -398,18 +398,19 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 			Expect(err).To(Succeed())
 		})
 
-		It("Should preserve pre-existing volumes on staging:a after transient eviction", func() {
+		It("Should purge staging:a once the pre-existing balance is fully drained", func() {
+			// The rebalancing batch (staging:a → wallet:b 100) brings the running
+			// cumulative back to zero balance. Mirroring ephemeral, the 0xF1 entry
+			// is purged at that point — staging:a returns to "fresh transient"
+			// state and GetAccount returns empty.
 			Eventually(func(g Gomega) {
 				account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: "staging:a",
 				})
 				g.Expect(err).To(Succeed())
-				usdVol, ok := account.GetVolumes()["USD"]
-				g.Expect(ok).To(BeTrue(), "staging:a should still have USD volumes from before it was transient")
-				g.Expect(usdVol.GetInput()).To(Equal("100"))
-				g.Expect(usdVol.GetOutput()).To(Equal("100"))
-				g.Expect(usdVol.GetBalance()).To(Equal("0"))
+				g.Expect(account.GetVolumes()).To(BeEmpty(),
+					"staging:a should be purged after the rebalancing transfer")
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
@@ -520,18 +521,19 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 			Expect(err).To(Succeed())
 		})
 
-		It("Should preserve staging:x volumes after cache-evicted transient batch", func() {
+		It("Should purge staging:x after the cache-evicted rebalancing transient batch", func() {
+			// The rebalancing transfer (staging:x → wallet:y 200) rebuilds Old
+			// from Pebble (since staging:x was evicted from cache), sees
+			// {200, 0}, computes New = {200, 200}, and the partition mirrors
+			// ephemeral: 0xF1 purged, KS.M zeroed. GetAccount must return empty.
 			Eventually(func(g Gomega) {
 				account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: "staging:x",
 				})
 				g.Expect(err).To(Succeed())
-				usdVol, ok := account.GetVolumes()["USD"]
-				g.Expect(ok).To(BeTrue(), "staging:x should still have USD volumes")
-				g.Expect(usdVol.GetInput()).To(Equal("200"))
-				g.Expect(usdVol.GetOutput()).To(Equal("200"))
-				g.Expect(usdVol.GetBalance()).To(Equal("0"))
+				g.Expect(account.GetVolumes()).To(BeEmpty(),
+					"staging:x should be purged after the rebalancing transfer")
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
@@ -547,6 +549,79 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 				g.Expect(usdVol.GetInput()).To(Equal("200"))
 				g.Expect(usdVol.GetBalance()).To(Equal("200"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+	})
+
+	// Re-touching the same transient address in a later batch must not accumulate.
+	// The transient slot must read {0, 0} into the second batch's PCV — anything
+	// else means the prior cumulative value leaked through the cache.
+	Context("When the same transient address is re-touched across batches", Ordered, func() {
+		const ledgerName = "transient-cross-batch-pcv"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+			})
+			Expect(err).To(Succeed())
+
+			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.AddAccountTypeWithPersistenceAction(ledgerName, "staging", "staging:{id}",
+						commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
+					actions.AddAccountTypeAction(ledgerName, "wallet", "wallet:{id}"),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			// Batch 1: world → staging:reuse 100 USD, staging:reuse → wallet:a 100 USD.
+			// Zero-balance bulk on staging:reuse.
+			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "staging:reuse", big.NewInt(100), "USD"),
+					}, nil),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("staging:reuse", "wallet:a", big.NewInt(100), "USD"),
+					}, nil, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("Should report fresh PCV (not cumulative) on the second batch", func() {
+			// Batch 2: same staging:reuse, balanced again with a different amount.
+			// expandVolumes on both postings so we can read the PCV from the response.
+			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.WithExpandVolumes(actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "staging:reuse", big.NewInt(50), "USD"),
+					}, nil)),
+					actions.WithExpandVolumes(actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("staging:reuse", "wallet:b", big.NewInt(50), "USD"),
+					}, nil, nil)),
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(resp.Logs).To(HaveLen(2))
+
+			// First transaction's PCV: world → staging:reuse 50.
+			// staging:reuse should read {50, 0} — fresh, not cumulative {150, 100}.
+			pcv1 := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().PostCommitVolumes.VolumesByAccount
+			Expect(pcv1).To(HaveKey("staging:reuse"))
+			Expect(pcv1["staging:reuse"].Volumes["USD"].Input).To(Equal("50"),
+				"transient input should reflect this batch only, not accumulate across batches")
+			Expect(pcv1["staging:reuse"].Volumes["USD"].Output).To(Equal("0"))
+
+			// Second transaction's PCV: staging:reuse → wallet:b 50.
+			// staging:reuse now {50, 50} — the per-batch zero-balance — not {150, 150}.
+			pcv2 := resp.Logs[1].Payload.GetApply().Log.Data.GetCreatedTransaction().PostCommitVolumes.VolumesByAccount
+			Expect(pcv2).To(HaveKey("staging:reuse"))
+			Expect(pcv2["staging:reuse"].Volumes["USD"].Input).To(Equal("50"))
+			Expect(pcv2["staging:reuse"].Volumes["USD"].Output).To(Equal("50"))
+
+			// And the wallet sees its fresh +50.
+			Expect(pcv2["wallet:b"].Volumes["USD"].Input).To(Equal("50"))
+			Expect(pcv2["wallet:b"].Volumes["USD"].Output).To(Equal("0"))
 		})
 	})
 })

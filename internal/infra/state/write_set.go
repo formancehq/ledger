@@ -181,12 +181,16 @@ func (b *WriteSet) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 		return fmt.Errorf("failed purging ephemeral volumes: %w", err)
 	}
 
-	// Transient volumes are NOT written to 0xF1 (attributes) but ARE written to
-	// 0xFF (cache). They must survive cache restores after node restart: without
-	// the 0xFF entry, a restarted node's cache won't have the transient volume,
-	// causing CacheGuaranteed proposals to fail with ErrBalanceNotPreloaded.
-	if err := writeCacheOnly(batch, genByte, dal.SubAttrVolume, partResult.transient); err != nil {
-		return fmt.Errorf("failed writing transient volumes to cache: %w", err)
+	// Transient volumes are NOT written to 0xF1 (attributes). The in-memory
+	// KeyStore and 0xFF cache are overwritten with {0, 0} — matching the
+	// documented "never persisted, must be zero at end of batch" semantic.
+	// Writing the cumulative update.New here would silently accumulate across
+	// batches: the next GetVolume would return the prior cumulative value,
+	// causing PCVs on re-touched transient cells to drift. A populated cache
+	// entry (rather than a delete) is still required for any co-batched
+	// proposal admitted with CacheGuaranteed.
+	if err := b.zeroVolumeCache(batch, genByte, partResult.transient); err != nil {
+		return fmt.Errorf("failed zeroing transient volumes in cache: %w", err)
 	}
 
 	// Trace volume partitions for sentinel diagnostics.
@@ -652,9 +656,12 @@ func (b *WriteSet) PutVolume(key domain.VolumeKey, value *raftcmdpb.VolumePair) 
 // Must be called after ProcessOrders and before Commit, so that failures are
 // treated as business errors (rejected proposals) rather than fatal FSM errors.
 //
-// Transient validation only applies when the base volume (before this batch) is zero
-// or absent. Pre-existing non-zero volumes from before the account was marked transient
-// are treated as normal and skip the zero-balance check.
+// The end-of-batch zero-balance check only applies when the base volume (before
+// this batch) is itself zero-balance or absent — the steady-state transient case.
+// Pre-existing non-zero volumes (from before the transient pattern started matching
+// the account) are exempt: partitionVolumes routes those batches to the ephemeral-
+// mirror lifecycle (kept while unbalanced, purged once the running cumulative
+// returns to zero), so a balance check here would double-up with that flow.
 func (b *WriteSet) ValidateTransientVolumes() error {
 	ledgerTypes := make(map[uint32][]accounttype.CompiledType)
 

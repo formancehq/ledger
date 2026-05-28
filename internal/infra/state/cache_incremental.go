@@ -88,29 +88,6 @@ func mergeSimpleWithCache[K attributes.Key, V proto.Message](
 	return nil
 }
 
-// writeCacheOnly writes updates to the 0xFF cache zone WITHOUT writing to the
-// 0xF1 attribute zone. Used for transient volumes that must survive cache
-// restores (after node restart) but should not be persisted as durable attributes.
-func writeCacheOnly[K attributes.Key, V proto.Message](
-	batch *dal.Batch,
-	genByte byte,
-	cacheType byte,
-	updates []attributes.Update[K, V],
-) error {
-	for _, u := range updates {
-		valueBytes, err := proto.Marshal(u.New)
-		if err != nil {
-			return err
-		}
-
-		if err := writeCacheRaw(batch, genByte, cacheType, u.ID, u.Tag, valueBytes); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 // writeCacheRotation writes the 0xFF metadata and purges old gen1 data on a cache generation rotation.
 // Must be called AFTER CheckRotationNeeded (which performs the in-memory rotation),
 // so CurrentGeneration() and BaseIndex reflect the post-rotation state.

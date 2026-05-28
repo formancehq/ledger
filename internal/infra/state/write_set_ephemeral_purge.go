@@ -30,9 +30,9 @@ func isVolumeZeroBalance(v *raftcmdpb.VolumePair) bool {
 
 // volumePartitionResult holds the result of partitioning volume updates by persistence mode.
 type volumePartitionResult struct {
-	kept      []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] // NORMAL + non-zero ephemeral
-	purged    []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] // EPHEMERAL with zero balance
-	transient []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] // TRANSIENT — never written to Pebble
+	kept      []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] // NORMAL + non-zero ephemeral + draining-transient
+	purged    []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] // EPHEMERAL or draining-TRANSIENT once back to zero balance
+	transient []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] // steady-state TRANSIENT — never written to Pebble
 }
 
 // partitionVolumes splits volume updates into kept, purged, and transient sets.
@@ -40,7 +40,11 @@ type volumePartitionResult struct {
 //   - NORMAL accounts: always kept
 //   - EPHEMERAL accounts with zero balance: purged (deleted from Pebble)
 //   - EPHEMERAL accounts with non-zero balance: kept
-//   - TRANSIENT accounts: always transient (never written to Pebble)
+//   - TRANSIENT accounts with a pre-existing non-zero balance (from before the
+//     transient pattern started matching them): mirror EPHEMERAL — kept while
+//     the running cumulative is still unbalanced, purged once it returns to
+//     zero balance. Steady-state TRANSIENT (no pre-existing balance, or already
+//     purged): never written to Pebble.
 func (b *WriteSet) partitionVolumes(
 	updates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 ) volumePartitionResult {
@@ -80,11 +84,18 @@ func (b *WriteSet) partitionVolumes(
 
 		switch matched.GetPersistence() {
 		case commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT:
-			// Transient behavior only activates when the base volume is zero (or absent).
-			// Pre-existing non-zero volumes (from before the account was marked transient)
-			// are treated as normal to avoid losing persisted data.
+			// Pre-existing non-zero balance (e.g., account was funded under a
+			// default-normal policy before the transient pattern started matching
+			// it): mirror the ephemeral lifecycle. Keep the running cumulative in
+			// 0xF1 while it's still unbalanced; purge once it returns to zero
+			// balance. Once purged, KS.M is zeroed and the account behaves as
+			// steady-state transient (Old.IsZero) from then on.
 			if update.Old.IsDefined() && !isVolumeZeroBalance(update.Old.Value()) {
-				result.kept = append(result.kept, update)
+				if isVolumeZeroBalance(update.New) {
+					result.purged = append(result.purged, update)
+				} else {
+					result.kept = append(result.kept, update)
+				}
 			} else {
 				result.transient = append(result.transient, update)
 			}
@@ -104,17 +115,47 @@ func (b *WriteSet) partitionVolumes(
 	return result
 }
 
-// applyEphemeralPurge deletes purged volumes from 0xF1 and overwrites the
-// cache (in-memory + 0xFF gen0Byte) with a zero VolumePair. Overwriting
-// rather than deleting keeps the cache populated for any co-batched proposal
-// that was admitted with CacheGuaranteed and therefore carries no preload
-// for the key. The zero entry ages out via rotation.
+// applyEphemeralPurge deletes purged volumes from 0xF1 then zeroes the cache.
+// Deleting saves storage; the cache is zeroed (rather than deleted) so any
+// co-batched proposal admitted with CacheGuaranteed still sees a populated
+// entry.
 func (b *WriteSet) applyEphemeralPurge(
 	batch *dal.Batch,
 	genByte byte,
 	purged []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 ) error {
 	if len(purged) == 0 {
+		return nil
+	}
+
+	for _, update := range purged {
+		if err := b.attrs.Volume.Delete(batch, update.CanonicalKey); err != nil {
+			return err
+		}
+	}
+
+	return b.zeroVolumeCache(batch, genByte, purged)
+}
+
+// zeroVolumeCache overwrites the in-memory KeyStore and the 0xFF cache zone
+// with a zero VolumePair for each update. It does NOT touch 0xF1 — callers
+// that need a Pebble delete must do it themselves before invoking this.
+//
+// Used by:
+//   - applyEphemeralPurge after deleting the persistent entry.
+//   - the transient flow, which never writes the persistent entry but still
+//     needs the cache populated with zero so that the next batch's GetVolume
+//     reads {0, 0} rather than the prior cumulative value, and so cache
+//     restore after restart honours the documented "never persisted, must be
+//     zero at end of batch" semantic.
+//
+// The zero entry ages out via cache generation rotation.
+func (b *WriteSet) zeroVolumeCache(
+	batch *dal.Batch,
+	genByte byte,
+	updates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
+) error {
+	if len(updates) == 0 {
 		return nil
 	}
 
@@ -126,15 +167,9 @@ func (b *WriteSet) applyEphemeralPurge(
 		return err
 	}
 
-	for _, update := range purged {
-		// Delete the entry from Pebble attributes zone (storage saving).
-		if err := b.attrs.Volume.Delete(batch, update.CanonicalKey); err != nil {
-			return err
-		}
-
-		// Overwrite the in-memory cache with a fresh zero VolumePair and mirror
-		// to 0xFF gen0Byte so the cache stays consistent across restore.
-		// One zero per entry to avoid shared-pointer mutations leaking across keys.
+	for _, update := range updates {
+		// Allocate a fresh zero VolumePair per entry to avoid shared-pointer
+		// mutations leaking across keys.
 		zeroVol := &raftcmdpb.VolumePair{
 			Input:  commonpb.NewUint256FromUint64(0),
 			Output: commonpb.NewUint256FromUint64(0),

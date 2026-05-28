@@ -540,6 +540,7 @@ func (s *Store) warmRange(db *pebble.DB, lower, upper byte) (int64, error) {
 // Fixed upstream (master only, not released in any v2.1.x tag as of v2.1.6):
 //   - https://github.com/cockroachdb/pebble/pull/5813
 //   - https://github.com/cockroachdb/pebble/pull/5854
+//
 // Recovering here is safe because the old data is being replaced.
 func closeDBSafe(db *pebble.DB) (err error) {
 	defer func() {
