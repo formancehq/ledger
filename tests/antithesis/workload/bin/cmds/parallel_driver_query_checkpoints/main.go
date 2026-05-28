@@ -1,0 +1,131 @@
+package main
+
+import (
+	"context"
+	"log"
+
+	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
+	"github.com/formancehq/ledger-v3-poc/tests/antithesis/workload/internal"
+)
+
+func main() {
+	log.Println("composer: parallel_driver_query_checkpoints")
+
+	ctx := context.Background()
+	conn, err := internal.NewGRPCConn()
+	if err != nil {
+		log.Printf("error creating connection: %s", err)
+		return
+	}
+	defer conn.Close()
+
+	client := clusterpb.NewClusterServiceClient(conn)
+
+	// 1. Create a query checkpoint.
+	createResp, err := client.CreateQueryCheckpoint(ctx, &clusterpb.CreateQueryCheckpointRequest{})
+	if err != nil {
+		if internal.IsTransient(err) {
+			log.Printf("CreateQueryCheckpoint transient: %v", err)
+			return
+		}
+
+		assert.Unreachable("CreateQueryCheckpoint should not fail",
+			internal.Details{"error": err})
+
+		return
+	}
+
+	cpID := createResp.GetCheckpointId()
+	maxSeq := createResp.GetMaxSequence()
+	details := internal.Details{"checkpointId": cpID, "maxSequence": maxSeq}
+
+	assert.Reachable("query checkpoint created", details)
+
+	// 2. List query checkpoints — the one we just created should appear.
+	listResp, err := client.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
+	if err != nil {
+		if internal.IsTransient(err) {
+			return
+		}
+
+		assert.Unreachable("ListQueryCheckpoints should not fail",
+			details.With(internal.Details{"error": err}))
+
+		return
+	}
+
+	found := false
+	for _, cp := range listResp.GetCheckpoints() {
+		if cp.GetCheckpointId() == cpID {
+			found = true
+
+			break
+		}
+	}
+
+	assert.AlwaysOrUnreachable(found,
+		"created checkpoint should appear in list", details)
+
+	// 3. Get checkpoint info.
+	infoResp, err := client.GetQueryCheckpointInfo(ctx, &clusterpb.GetQueryCheckpointInfoRequest{
+		CheckpointId: cpID,
+	})
+	if err != nil {
+		if internal.IsTransient(err) {
+			return
+		}
+
+		assert.Unreachable("GetQueryCheckpointInfo should not fail",
+			details.With(internal.Details{"error": err}))
+
+		return
+	}
+
+	assert.AlwaysOrUnreachable(infoResp.GetCheckpointId() == cpID,
+		"checkpoint info should match requested ID",
+		details.With(internal.Details{"returnedId": infoResp.GetCheckpointId()}))
+
+	assert.AlwaysOrUnreachable(infoResp.GetMaxSequence() == maxSeq,
+		"checkpoint max sequence should be consistent",
+		details.With(internal.Details{
+			"expectedMaxSeq": maxSeq,
+			"returnedMaxSeq": infoResp.GetMaxSequence(),
+		}))
+
+	// 4. Delete the checkpoint.
+	_, err = client.DeleteQueryCheckpoint(ctx, &clusterpb.DeleteQueryCheckpointRequest{
+		CheckpointId: cpID,
+	})
+	if err != nil {
+		if internal.IsTransient(err) {
+			return
+		}
+
+		assert.Unreachable("DeleteQueryCheckpoint should not fail",
+			details.With(internal.Details{"error": err}))
+
+		return
+	}
+
+	// 5. Verify deletion — should no longer appear in list.
+	listAfter, err := client.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
+	if err != nil {
+		return
+	}
+
+	foundAfterDelete := false
+	for _, cp := range listAfter.GetCheckpoints() {
+		if cp.GetCheckpointId() == cpID {
+			foundAfterDelete = true
+
+			break
+		}
+	}
+
+	assert.AlwaysOrUnreachable(!foundAfterDelete,
+		"deleted checkpoint should not appear in list", details)
+
+	assert.Reachable("query checkpoint lifecycle completed", details)
+	log.Printf("Query checkpoint lifecycle: created %d (maxSeq=%d), verified, deleted", cpID, maxSeq)
+}

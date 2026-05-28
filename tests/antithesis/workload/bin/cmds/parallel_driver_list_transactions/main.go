@@ -48,10 +48,11 @@ func main() {
 			minLogSeq = logs[len(logs)-1].GetSequence()
 		}
 
-		// 2. List transactions (forward order, small page).
+		// 2. List transactions (reverse order so the just-created tx is in the first page).
 		stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
 			Ledger:         ledger,
 			PageSize:       50,
+			Reverse:        true,
 			MinLogSequence: minLogSeq,
 		})
 		if err != nil {
