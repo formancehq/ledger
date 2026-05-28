@@ -49,7 +49,7 @@ func TestStateRegistryKeyStoresPutAndGet(t *testing.T) {
 	// Ledgers: Put and Get via canonical bytes
 	ledgerKey := domain.LedgerKey{Name: "my-ledger"}
 	ledgerInfo := &commonpb.LedgerInfo{Name: "my-ledger"}
-	_, _, err := reg.Ledgers.Put(ledgerKey.Bytes(), ledgerInfo)
+	_, _, err := reg.Ledgers.KeyStore().Put(ledgerKey.Bytes(), ledgerInfo)
 	require.NoError(t, err)
 	gotLedger, _, err := reg.Ledgers.Get(ledgerKey.Bytes())
 	require.NoError(t, err)
@@ -77,7 +77,7 @@ func TestDerivedRegistryReadsFromParent(t *testing.T) {
 
 	reg := newTestRegistry(t)
 	ledgerKey := domain.LedgerKey{Name: "ledger-a"}
-	_, _, err := reg.Ledgers.Put(ledgerKey.Bytes(), &commonpb.LedgerInfo{Name: "ledger-a"})
+	_, _, err := reg.Ledgers.KeyStore().Put(ledgerKey.Bytes(), &commonpb.LedgerInfo{Name: "ledger-a"})
 	require.NoError(t, err)
 
 	derived := NewDerivedRegistry(reg)

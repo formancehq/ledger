@@ -11,26 +11,15 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
-// saveLedgerWithCache updates a LedgerInfo in the in-memory cache, the 0xFF
-// cache zone, and the ZoneGlobal durable store — all in the same Pebble batch.
-// This replaces the previous pattern of Registry.Ledgers.Put + SaveLedger which
-// wrote to memory and ZoneGlobal but skipped 0xFF, causing cache divergence
-// after checkpoint restores.
+// saveLedgerWithCache updates a LedgerInfo in the in-memory cache, the 0xF1
+// attribute zone, the 0xFF cache zone, and the ZoneGlobal durable store — all
+// in the same Pebble batch. Uses CacheAwareEntry.PutWithCache for the first
+// three writes, then SaveLedger for the Ledger-specific ZoneGlobal store.
 func (fsm *Machine) saveLedgerWithCache(batch *dal.Batch, ledgerKey domain.LedgerKey, info *commonpb.LedgerInfo) error {
-	_, idWithTag, err := fsm.Registry.Ledgers.Put(ledgerKey.Bytes(), info)
-	if err != nil {
-		return fmt.Errorf("updating ledger info in cache: %w", err)
-	}
-
 	genByte := byte(fsm.Registry.Cache.CurrentGeneration() % 2)
 
-	valueBytes, err := info.MarshalVT()
-	if err != nil {
-		return fmt.Errorf("marshaling ledger info for cache: %w", err)
-	}
-
-	if err := writeCacheRaw(batch, genByte, dal.SubAttrLedger, idWithTag.ID, idWithTag.Tag, valueBytes); err != nil {
-		return fmt.Errorf("persisting ledger info to cache zone: %w", err)
+	if _, _, err := fsm.Registry.Ledgers.PutWithCache(batch, genByte, ledgerKey.Bytes(), info); err != nil {
+		return fmt.Errorf("updating ledger with cache: %w", err)
 	}
 
 	if err := SaveLedger(batch, info); err != nil {
@@ -398,25 +387,19 @@ func (fsm *Machine) getConvertBatchValue(targetType commonpb.TargetType, canonic
 	}
 }
 
-// putConvertBatchValue stores a converted metadata value in the Registry,
-// dispatching to the correct store based on target type.
+// putConvertBatchValue stores a converted metadata value via PutWithCache,
+// which atomically writes to the in-memory KeyStore, 0xF1, and 0xFF cache zone.
 func (fsm *Machine) putConvertBatchValue(batch *dal.Batch, targetType commonpb.TargetType, canonicalKey []byte, value *commonpb.MetadataValue) error {
+	genByte := byte(fsm.Registry.Cache.CurrentGeneration() % 2)
+
 	switch targetType {
 	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-		if _, _, err := fsm.Registry.AccountMetadata.Put(canonicalKey, value); err != nil {
-			return fmt.Errorf("setting account metadata in cache: %w", err)
-		}
-
-		if _, err := fsm.Registry.Attrs.Metadata.Set(batch, canonicalKey, value); err != nil {
-			return fmt.Errorf("persisting account metadata: %w", err)
+		if _, _, err := fsm.Registry.AccountMetadata.PutWithCache(batch, genByte, canonicalKey, value); err != nil {
+			return fmt.Errorf("setting account metadata with cache: %w", err)
 		}
 	case commonpb.TargetType_TARGET_TYPE_LEDGER:
-		if _, _, err := fsm.Registry.LedgerMetadata.Put(canonicalKey, value); err != nil {
-			return fmt.Errorf("setting ledger metadata in cache: %w", err)
-		}
-
-		if _, err := fsm.Registry.Attrs.LedgerMetadata.Set(batch, canonicalKey, value); err != nil {
-			return fmt.Errorf("persisting ledger metadata: %w", err)
+		if _, _, err := fsm.Registry.LedgerMetadata.PutWithCache(batch, genByte, canonicalKey, value); err != nil {
+			return fmt.Errorf("setting ledger metadata with cache: %w", err)
 		}
 	}
 

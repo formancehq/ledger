@@ -132,19 +132,14 @@ func (b *WriteSet) applyEphemeralPurge(
 			return err
 		}
 
-		// Overwrite the in-memory cache with a fresh zero VolumePair (one per
-		// entry, to avoid shared-pointer mutations leaking across keys).
+		// Overwrite the in-memory cache with a fresh zero VolumePair and mirror
+		// to 0xFF gen0Byte so the cache stays consistent across restore.
+		// One zero per entry to avoid shared-pointer mutations leaking across keys.
 		zeroVol := &raftcmdpb.VolumePair{
 			Input:  commonpb.NewUint256FromUint64(0),
 			Output: commonpb.NewUint256FromUint64(0),
 		}
-		if _, _, err := b.fsm.Registry.Volumes.Put(update.CanonicalKey, zeroVol); err != nil {
-			return err
-		}
-
-		// Mirror the in-memory zero to 0xFF gen0Byte so the cache stays
-		// consistent across restore.
-		if err := writeCacheRaw(batch, genByte, dal.SubAttrVolume, update.ID, update.Tag, zeroBytes); err != nil {
+		if err := b.fsm.Registry.Volumes.PutCacheOnly(batch, genByte, update.CanonicalKey, zeroVol, zeroBytes); err != nil {
 			return err
 		}
 	}

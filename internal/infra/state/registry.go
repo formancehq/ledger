@@ -7,27 +7,34 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/bitset"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
-// StateRegistry groups the KeyStores, Cache, Attributes, and ReversionBitsets
-// that hold the Machine's volatile in-memory state. Extracting them into a
-// single struct reduces Machine's field count and gives a clear boundary around
-// the "what data lives in memory" concern.
+// StateRegistry groups the CacheAwareEntries, Cache, Attributes, and
+// ReversionBitsets that hold the Machine's volatile in-memory state.
+// Extracting them into a single struct reduces Machine's field count and gives
+// a clear boundary around the "what data lives in memory" concern.
+//
+// Each attribute type is wrapped in a CacheAwareEntry that bundles the
+// in-memory KeyStore, its Pebble Attribute (0xF1), and the 0xFF cache type
+// byte. This makes it structurally impossible to write to the in-memory cache
+// without also writing to the 0xFF cache zone — preventing cache divergence
+// bugs after node restart.
 type StateRegistry struct {
 	Cache             *cache.Cache
 	Attrs             *attributes.Attributes
-	Volumes           *attributes.KeyStore[domain.VolumeKey, *raftcmdpb.VolumePair]
-	AccountMetadata   *attributes.KeyStore[domain.MetadataKey, *commonpb.MetadataValue]
+	Volumes           *CacheAwareEntry[domain.VolumeKey, *raftcmdpb.VolumePair]
+	AccountMetadata   *CacheAwareEntry[domain.MetadataKey, *commonpb.MetadataValue]
 	Idempotency       *IdempotencyStore
-	References        *attributes.KeyStore[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
-	Ledgers           *attributes.KeyStore[domain.LedgerKey, *commonpb.LedgerInfo]
-	Boundaries        *attributes.KeyStore[domain.LedgerKey, *raftcmdpb.LedgerBoundaries]
-	SinkConfigs       *attributes.KeyStore[domain.SinkConfigKey, *commonpb.SinkConfig]
-	NumscriptVersions *attributes.KeyStore[domain.NumscriptVersionKey, *commonpb.NumscriptVersionValue]
-	Transactions      *attributes.KeyStore[domain.TransactionKey, *commonpb.TransactionState]
-	NumscriptContents *attributes.KeyStore[domain.NumscriptEntryKey, *commonpb.NumscriptInfo]
-	PreparedQueries   *attributes.KeyStore[domain.PreparedQueryKey, *commonpb.PreparedQuery]
-	LedgerMetadata    *attributes.KeyStore[domain.LedgerMetadataKey, *commonpb.MetadataValue]
+	References        *CacheAwareEntry[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
+	Ledgers           *CacheAwareEntry[domain.LedgerKey, *commonpb.LedgerInfo]
+	Boundaries        *CacheAwareEntry[domain.LedgerKey, *raftcmdpb.LedgerBoundaries]
+	SinkConfigs       *CacheAwareEntry[domain.SinkConfigKey, *commonpb.SinkConfig]
+	NumscriptVersions *CacheAwareEntry[domain.NumscriptVersionKey, *commonpb.NumscriptVersionValue]
+	Transactions      *CacheAwareEntry[domain.TransactionKey, *commonpb.TransactionState]
+	NumscriptContents *CacheAwareEntry[domain.NumscriptEntryKey, *commonpb.NumscriptInfo]
+	PreparedQueries   *CacheAwareEntry[domain.PreparedQueryKey, *commonpb.PreparedQuery]
+	LedgerMetadata    *CacheAwareEntry[domain.LedgerMetadataKey, *commonpb.MetadataValue]
 
 	// Reversions uses a compact bitset per ledger instead of a KeyStore.
 	// Bit N being set means transaction N in that ledger has been reverted.
@@ -35,56 +42,67 @@ type StateRegistry struct {
 	Reversions map[uint32]*bitset.Bitset
 }
 
-// NewStateRegistry creates a StateRegistry with all KeyStores backed by the
-// given cache. idempotencyTTLMicros is the TTL in HLC microseconds (0 = no expiration).
+// NewStateRegistry creates a StateRegistry with all CacheAwareEntries backed
+// by the given cache. idempotencyTTLMicros is the TTL in HLC microseconds (0 = no expiration).
 func NewStateRegistry(c *cache.Cache, attrs *attributes.Attributes, idempotencyTTLMicros uint64) *StateRegistry {
 	return &StateRegistry{
 		Cache: c,
 		Attrs: attrs,
-		Volumes: attributes.NewKeyStore[domain.VolumeKey, *raftcmdpb.VolumePair](
-			attributes.DefaultSeeds,
-			c.Volumes,
+		Volumes: NewCacheAwareEntry(
+			attributes.NewKeyStore[domain.VolumeKey, *raftcmdpb.VolumePair](attributes.DefaultSeeds, c.Volumes),
+			attrs.Volume,
+			dal.SubAttrVolume,
 		),
-		AccountMetadata: attributes.NewKeyStore[domain.MetadataKey, *commonpb.MetadataValue](
-			attributes.DefaultSeeds,
-			c.AccountMetadata,
+		AccountMetadata: NewCacheAwareEntry(
+			attributes.NewKeyStore[domain.MetadataKey, *commonpb.MetadataValue](attributes.DefaultSeeds, c.AccountMetadata),
+			attrs.Metadata,
+			dal.SubAttrMetadata,
 		),
 		Idempotency: NewIdempotencyStore(idempotencyTTLMicros),
-		References: attributes.NewKeyStore[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue](
-			attributes.DefaultSeeds,
-			c.References,
+		References: NewCacheAwareEntry(
+			attributes.NewKeyStore[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue](attributes.DefaultSeeds, c.References),
+			attrs.References,
+			dal.SubAttrReference,
 		),
-		Ledgers: attributes.NewKeyStore[domain.LedgerKey, *commonpb.LedgerInfo](
-			attributes.DefaultSeeds,
-			c.Ledgers,
+		Ledgers: NewCacheAwareEntry(
+			attributes.NewKeyStore[domain.LedgerKey, *commonpb.LedgerInfo](attributes.DefaultSeeds, c.Ledgers),
+			attrs.Ledger,
+			dal.SubAttrLedger,
 		),
-		Boundaries: attributes.NewKeyStore[domain.LedgerKey, *raftcmdpb.LedgerBoundaries](
-			attributes.DefaultSeeds,
-			c.Boundaries,
+		Boundaries: NewCacheAwareEntry(
+			attributes.NewKeyStore[domain.LedgerKey, *raftcmdpb.LedgerBoundaries](attributes.DefaultSeeds, c.Boundaries),
+			attrs.Boundary,
+			dal.SubAttrBoundary,
 		),
-		SinkConfigs: attributes.NewKeyStore[domain.SinkConfigKey, *commonpb.SinkConfig](
-			attributes.DefaultSeeds,
-			c.SinkConfigs,
+		SinkConfigs: NewCacheAwareEntry(
+			attributes.NewKeyStore[domain.SinkConfigKey, *commonpb.SinkConfig](attributes.DefaultSeeds, c.SinkConfigs),
+			attrs.SinkConfig,
+			dal.SubAttrSinkConfig,
 		),
-		NumscriptVersions: attributes.NewKeyStore[domain.NumscriptVersionKey, *commonpb.NumscriptVersionValue](
-			attributes.DefaultSeeds,
-			c.NumscriptVersions,
+		NumscriptVersions: NewCacheAwareEntry(
+			attributes.NewKeyStore[domain.NumscriptVersionKey, *commonpb.NumscriptVersionValue](attributes.DefaultSeeds, c.NumscriptVersions),
+			attrs.NumscriptVersion,
+			dal.SubAttrNumscriptVersion,
 		),
-		Transactions: attributes.NewKeyStore[domain.TransactionKey, *commonpb.TransactionState](
-			attributes.DefaultSeeds,
-			c.Transactions,
+		Transactions: NewCacheAwareEntry(
+			attributes.NewKeyStore[domain.TransactionKey, *commonpb.TransactionState](attributes.DefaultSeeds, c.Transactions),
+			attrs.Transaction,
+			dal.SubAttrTransaction,
 		),
-		NumscriptContents: attributes.NewKeyStore[domain.NumscriptEntryKey, *commonpb.NumscriptInfo](
-			attributes.DefaultSeeds,
-			c.NumscriptContents,
+		NumscriptContents: NewCacheAwareEntry(
+			attributes.NewKeyStore[domain.NumscriptEntryKey, *commonpb.NumscriptInfo](attributes.DefaultSeeds, c.NumscriptContents),
+			attrs.NumscriptContent,
+			dal.SubAttrNumscriptContent,
 		),
-		PreparedQueries: attributes.NewKeyStore[domain.PreparedQueryKey, *commonpb.PreparedQuery](
-			attributes.DefaultSeeds,
-			c.PreparedQueries,
+		PreparedQueries: NewCacheAwareEntry(
+			attributes.NewKeyStore[domain.PreparedQueryKey, *commonpb.PreparedQuery](attributes.DefaultSeeds, c.PreparedQueries),
+			attrs.PreparedQuery,
+			dal.SubAttrPreparedQuery,
 		),
-		LedgerMetadata: attributes.NewKeyStore[domain.LedgerMetadataKey, *commonpb.MetadataValue](
-			attributes.DefaultSeeds,
-			c.LedgerMetadata,
+		LedgerMetadata: NewCacheAwareEntry(
+			attributes.NewKeyStore[domain.LedgerMetadataKey, *commonpb.MetadataValue](attributes.DefaultSeeds, c.LedgerMetadata),
+			attrs.LedgerMetadata,
+			dal.SubAttrLedgerMetadata,
 		),
 		Reversions: make(map[uint32]*bitset.Bitset),
 	}

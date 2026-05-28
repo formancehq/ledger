@@ -39,21 +39,22 @@ type DerivedRegistry struct {
 }
 
 // NewDerivedRegistry creates a DerivedRegistry from a parent StateRegistry.
-// Each DerivedKeyStore reads from the parent KeyStore and buffers writes locally.
+// Each DerivedKeyStore reads from the parent KeyStore (extracted via .KeyStore())
+// and buffers writes locally.
 func NewDerivedRegistry(reg *StateRegistry) *DerivedRegistry {
 	return &DerivedRegistry{
-		Volumes:           attributes.NewDerivedKeyStore(reg.Volumes),
-		Boundaries:        attributes.NewDerivedKeyStore(reg.Boundaries),
-		AccountMetadata:   attributes.NewDerivedKeyStore(reg.AccountMetadata),
+		Volumes:           attributes.NewDerivedKeyStore(reg.Volumes.KeyStore()),
+		Boundaries:        attributes.NewDerivedKeyStore(reg.Boundaries.KeyStore()),
+		AccountMetadata:   attributes.NewDerivedKeyStore(reg.AccountMetadata.KeyStore()),
 		Idempotency:       NewDerivedIdempotencyStore(reg.Idempotency),
-		References:        attributes.NewDerivedKeyStore(reg.References),
-		Ledgers:           attributes.NewDerivedKeyStore(reg.Ledgers),
-		SinkConfigs:       attributes.NewDerivedKeyStore(reg.SinkConfigs),
-		NumscriptVersions: attributes.NewDerivedKeyStore(reg.NumscriptVersions),
-		Transactions:      attributes.NewDerivedKeyStore(reg.Transactions),
-		NumscriptContents: attributes.NewDerivedKeyStore(reg.NumscriptContents),
-		PreparedQueries:   attributes.NewDerivedKeyStore(reg.PreparedQueries),
-		LedgerMetadata:    attributes.NewDerivedKeyStore(reg.LedgerMetadata),
+		References:        attributes.NewDerivedKeyStore(reg.References.KeyStore()),
+		Ledgers:           attributes.NewDerivedKeyStore(reg.Ledgers.KeyStore()),
+		SinkConfigs:       attributes.NewDerivedKeyStore(reg.SinkConfigs.KeyStore()),
+		NumscriptVersions: attributes.NewDerivedKeyStore(reg.NumscriptVersions.KeyStore()),
+		Transactions:      attributes.NewDerivedKeyStore(reg.Transactions.KeyStore()),
+		NumscriptContents: attributes.NewDerivedKeyStore(reg.NumscriptContents.KeyStore()),
+		PreparedQueries:   attributes.NewDerivedKeyStore(reg.PreparedQueries.KeyStore()),
+		LedgerMetadata:    attributes.NewDerivedKeyStore(reg.LedgerMetadata.KeyStore()),
 		parent:            reg,
 	}
 }
