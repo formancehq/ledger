@@ -531,6 +531,26 @@ func (s *Store) warmRange(db *pebble.DB, lower, upper byte) (int64, error) {
 	return keys, nil
 }
 
+// closeDBSafe closes a Pebble DB, recovering from panics.
+// In Pebble v2.1.x, DB.Close can panic with "element has outstanding
+// references" in genericcache/shard.Close. The root cause is a race in
+// Pebble's internal collectTableStats goroutine: it uses
+// context.Background() (table_stats.go:96) and can hold FileCache refs
+// after DB.Close releases d.mu and before it calls fileCache.Close().
+// Fixed upstream (master only, not released in any v2.1.x tag as of v2.1.6):
+//   - https://github.com/cockroachdb/pebble/pull/5813
+//   - https://github.com/cockroachdb/pebble/pull/5854
+// Recovering here is safe because the old data is being replaced.
+func closeDBSafe(db *pebble.DB) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic during DB close (recovered): %v", r)
+		}
+	}()
+
+	return db.Close()
+}
+
 // Close closes the Pebble database.
 func (s *Store) Close() error {
 	s.dbMu.Lock()
@@ -877,9 +897,10 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 			_ = closer.Close()
 		}
 
-		if closeErr := oldDB.Close(); closeErr != nil {
-			// Pebble closes the DB even on error (e.g. leaked iterators).
-			// Log but continue — the old data is stale anyway.
+		if closeErr := closeDBSafe(oldDB); closeErr != nil {
+			// Pebble v2.1.x can panic here due to an internal race in
+			// collectTableStats (see closeDBSafe). Log and continue — the
+			// old data is stale and being replaced.
 			s.logger.WithFields(map[string]any{
 				"error": closeErr,
 			}).Errorf("Error closing old database during checkpoint restore (continuing)")
