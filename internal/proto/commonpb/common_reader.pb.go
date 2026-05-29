@@ -4,7 +4,7 @@
 package commonpb
 
 import (
-	signaturepb "github.com/formancehq/ledger-v3-poc/internal/proto/signaturepb"
+	signaturepb "github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 	uint256 "github.com/holiman/uint256"
 )
 

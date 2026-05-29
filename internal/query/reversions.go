@@ -6,8 +6,8 @@ import (
 
 	"github.com/cockroachdb/pebble/v2"
 
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/bitset"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // ReadReversions loads all per-ledger reversion bitsets from Pebble.

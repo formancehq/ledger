@@ -8,7 +8,7 @@ This mode is designed for **testing environments** (e.g., Antithesis chaos testi
 
 ```bash
 # Enable sentinel mode at startup
-ledger-v3-poc run --sentinel-mode [other flags...]
+ledger run --sentinel-mode [other flags...]
 ```
 
 Environment variable: `SENTINEL_MODE=true`

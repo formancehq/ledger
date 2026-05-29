@@ -7,7 +7,7 @@ import (
 	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
 	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
-	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
+	"github.com/formancehq/ledger/v3/internal/adapter/json"
 )
 
 // NewTransaction creates a new Transaction with empty metadata.

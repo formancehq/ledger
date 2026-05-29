@@ -7,7 +7,7 @@ This guide provides the information needed to contribute to the Ledger v3 POC pr
 ## Project Structure
 
 ```
-ledger-v3-poc/
+ledger/
 ├── cmd/                    # Entry points
 │   ├── server/            # Main server
 │   └── ledgerctl/         # CLI client (ledgerctl)

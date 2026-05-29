@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package common;
 
-option go_package = "github.com/formancehq/ledger-v3-poc/internal/proto/commonpb";
+option go_package = "github.com/formancehq/ledger/v3/internal/proto/commonpb";
 
 import "signature.proto";
 

@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/formancehq/ledger-v3-poc/internal/application/ctrl"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/query"
+	"github.com/formancehq/ledger/v3/internal/application/ctrl"
+	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
+	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/query"
 )
 
 // BucketGrpcClient implements Controller by forwarding requests via gRPC to the leader.

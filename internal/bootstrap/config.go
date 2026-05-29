@@ -6,12 +6,12 @@ import (
 	"net"
 	"time"
 
-	"github.com/formancehq/ledger-v3-poc/internal/infra/coldstorage"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/pebblecfg"
+	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
+	"github.com/formancehq/ledger/v3/internal/infra/node"
+	"github.com/formancehq/ledger/v3/internal/infra/transport"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/pebblecfg"
 )
 
 // AuthFlagConfig captures the authentication flag values without runtime objects.

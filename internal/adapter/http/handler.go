@@ -14,7 +14,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
+	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 )
 
 // NewHandler creates a new HTTP handler (router) for the ledger service.

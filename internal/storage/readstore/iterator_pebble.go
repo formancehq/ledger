@@ -6,7 +6,7 @@ import (
 
 	"github.com/cockroachdb/pebble/v2"
 
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // EntityIterator iterates over sorted entity IDs (account addresses or

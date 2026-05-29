@@ -5,9 +5,9 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/kv"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/pkg/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // CacheAwareEntry bundles a KeyStore, its Pebble Attribute, and the 0xFF cache

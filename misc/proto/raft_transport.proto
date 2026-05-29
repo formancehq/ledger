@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package raft_transport;
 
-option go_package = "github.com/formancehq/ledger-v3-poc/internal/proto/rafttransportpb";
+option go_package = "github.com/formancehq/ledger/v3/internal/proto/rafttransportpb";
 
 // RaftTransportService handles Raft message transport between nodes
 service RaftTransportService {

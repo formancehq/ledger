@@ -7,8 +7,8 @@
 package auditpb
 
 import (
-	commonpb "github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	raftcmdpb "github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	raftcmdpb "github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -488,7 +488,7 @@ const file_audit_proto_rawDesc = "" +
 	"\acontext\x18\x03 \x03(\v2 .audit.AuditFailure.ContextEntryR\acontext\x1a:\n" +
 	"\fContextEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B<Z:github.com/formancehq/ledger-v3-poc/internal/proto/auditpbb\x06proto3"
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B8Z6github.com/formancehq/ledger/v3/internal/proto/auditpbb\x06proto3"
 
 var (
 	file_audit_proto_rawDescOnce sync.Once

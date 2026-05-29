@@ -17,8 +17,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/snapshotpb"
+	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/proto/snapshotpb"
 )
 
 // mockFileStream implements grpc.ServerStreamingClient[snapshotpb.FetchFileResponse].

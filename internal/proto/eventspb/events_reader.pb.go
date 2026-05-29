@@ -4,7 +4,7 @@
 package eventspb
 
 import (
-	commonpb "github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // EventReader provides read-only access to Event.

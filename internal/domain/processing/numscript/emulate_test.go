@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain"
 )
 
 func TestDiscoverNumscriptDependencies(t *testing.T) {

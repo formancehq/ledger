@@ -1,4 +1,4 @@
-module github.com/formancehq/ledger-v3-poc/tests/perf
+module github.com/formancehq/ledger/v3/tests/perf
 
 go 1.26.1
 

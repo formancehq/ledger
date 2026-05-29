@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package restore;
 
-option go_package = "github.com/formancehq/ledger-v3-poc/internal/proto/restorepb";
+option go_package = "github.com/formancehq/ledger/v3/internal/proto/restorepb";
 
 // ============================================================================
 // gRPC Service

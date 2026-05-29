@@ -5,8 +5,8 @@ import (
 	"errors"
 	"io"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/query"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/query"
 )
 
 // indexID identifies a specific index (transaction, account, or log builtin).

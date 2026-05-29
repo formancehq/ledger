@@ -5,7 +5,7 @@ import (
 	"errors"
 	"io"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // CheckStoreResult holds the errors and progress events from a CheckStore RPC call.

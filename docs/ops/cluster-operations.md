@@ -17,7 +17,7 @@ This model is dynamic: nodes discover the cluster at startup, no static peer lis
 The first node in the cluster must start with the `--bootstrap` flag:
 
 ```bash
-ledger-v3-poc run \
+ledger run \
   --node-id 1 \
   --cluster-id prod-ledger \
   --bootstrap \
@@ -52,7 +52,7 @@ The `--bootstrap` flag must only be used **once**, on the **first node**, on its
 Subsequent nodes join the cluster with `--join`, pointing to any existing cluster member's gRPC service address:
 
 ```bash
-ledger-v3-poc run \
+ledger run \
   --node-id 2 \
   --cluster-id prod-ledger \
   --join 127.0.0.1:8888 \

@@ -7,7 +7,7 @@
 package eventspb
 
 import (
-	commonpb "github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -109,7 +109,7 @@ const file_events_proto_rawDesc = "" +
 	"\x06ledger\x18\x02 \x01(\tR\x06ledger\x12%\n" +
 	"\x04date\x18\x03 \x01(\v2\x11.common.TimestampR\x04date\x12!\n" +
 	"\flog_sequence\x18\x04 \x01(\x06R\vlogSequence\x12\x1d\n" +
-	"\x03log\x18\x05 \x01(\v2\v.common.LogR\x03logB=Z;github.com/formancehq/ledger-v3-poc/internal/proto/eventspbb\x06proto3"
+	"\x03log\x18\x05 \x01(\v2\v.common.LogR\x03logB9Z7github.com/formancehq/ledger/v3/internal/proto/eventspbb\x06proto3"
 
 var (
 	file_events_proto_rawDescOnce sync.Once

@@ -1,7 +1,7 @@
 package actions
 
 import (
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // StringMetadataFilter creates a filter matching a metadata string field with an exact value.

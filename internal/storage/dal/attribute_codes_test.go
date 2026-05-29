@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // TestAttributeCodesUnique ensures no two attribute codes share the same byte value.

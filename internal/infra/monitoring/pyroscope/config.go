@@ -58,7 +58,7 @@ func DefaultConfig() Config {
 	return Config{
 		Enabled:              false,
 		ServerAddress:        "http://localhost:4040",
-		ApplicationName:      "ledger-v3-poc",
+		ApplicationName:      "ledger",
 		Tags:                 make(map[string]string),
 		UploadRate:           15 * time.Second,
 		MutexProfileFraction: 5,

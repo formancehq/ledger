@@ -6,8 +6,8 @@ import (
 
 	"github.com/holiman/uint256"
 
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // cachedAssetPrecision holds pre-parsed asset base and precision to avoid

@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // analyzeTransactions is a test helper that wraps AnalyzeTransactionsFromIterators

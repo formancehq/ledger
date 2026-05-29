@@ -3,9 +3,9 @@ package events
 import (
 	"fmt"
 
-	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/eventspb"
+	"github.com/formancehq/ledger/v3/internal/adapter/json"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
 
 // Format specifies the serialization format for events.

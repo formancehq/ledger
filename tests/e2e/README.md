@@ -1,6 +1,6 @@
 # E2E Tests
 
-End-to-end tests for ledger-v3-poc using Ginkgo.
+End-to-end tests for ledger using Ginkgo.
 
 ## Prerequisites
 

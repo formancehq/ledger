@@ -457,7 +457,7 @@ const file_snapshot_proto_rawDesc = "" +
 	"\x0fSnapshotService\x12\\\n" +
 	"\x0fPrepareSnapshot\x12#.snapshot.v1.PrepareSnapshotRequest\x1a$.snapshot.v1.PrepareSnapshotResponse\x12L\n" +
 	"\tFetchFile\x12\x1d.snapshot.v1.FetchFileRequest\x1a\x1e.snapshot.v1.FetchFileResponse0\x01\x12S\n" +
-	"\fCloseSession\x12 .snapshot.v1.CloseSessionRequest\x1a!.snapshot.v1.CloseSessionResponseB?Z=github.com/formancehq/ledger-v3-poc/internal/proto/snapshotpbb\x06proto3"
+	"\fCloseSession\x12 .snapshot.v1.CloseSessionRequest\x1a!.snapshot.v1.CloseSessionResponseB;Z9github.com/formancehq/ledger/v3/internal/proto/snapshotpbb\x06proto3"
 
 var (
 	file_snapshot_proto_rawDescOnce sync.Once

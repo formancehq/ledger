@@ -1,7 +1,7 @@
 package auth
 
 import (
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // RequiredScopeForRequest returns the granular scope required to execute the given Request.

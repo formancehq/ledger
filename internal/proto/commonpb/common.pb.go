@@ -7,7 +7,7 @@
 package commonpb
 
 import (
-	signaturepb "github.com/formancehq/ledger-v3-poc/internal/proto/signaturepb"
+	signaturepb "github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -10687,7 +10687,7 @@ const file_common_proto_rawDesc = "" +
 	"\x11QUERY_TARGET_LOGS\x10\x02*B\n" +
 	"\tQueryMode\x12\x13\n" +
 	"\x0fQUERY_MODE_LIST\x10\x00\x12 \n" +
-	"\x1cQUERY_MODE_AGGREGATE_VOLUMES\x10\x01B=Z;github.com/formancehq/ledger-v3-poc/internal/proto/commonpbb\x06proto3"
+	"\x1cQUERY_MODE_AGGREGATE_VOLUMES\x10\x01B9Z7github.com/formancehq/ledger/v3/internal/proto/commonpbb\x06proto3"
 
 var (
 	file_common_proto_rawDescOnce sync.Once

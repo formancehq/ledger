@@ -7,8 +7,8 @@
 package raftcmdpb
 
 import (
-	commonpb "github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	signaturepb "github.com/formancehq/ledger-v3-poc/internal/proto/signaturepb"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	signaturepb "github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -6479,7 +6479,7 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x1b.common.IdempotencyKeyValueR\x05value\"/\n" +
 	"\vAttributeID\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\fR\x02id\x12\x10\n" +
-	"\x03tag\x18\x02 \x01(\x06R\x03tagB>Z<github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpbb\x06proto3"
+	"\x03tag\x18\x02 \x01(\x06R\x03tagB:Z8github.com/formancehq/ledger/v3/internal/proto/raftcmdpbb\x06proto3"
 
 var (
 	file_raft_cmd_proto_rawDescOnce sync.Once

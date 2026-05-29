@@ -10,7 +10,7 @@ import (
 
 	numscriptlib "github.com/formancehq/numscript"
 
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain"
 )
 
 func TestErrNumscriptParse_Error(t *testing.T) {

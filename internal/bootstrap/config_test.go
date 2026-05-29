@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
+	"github.com/formancehq/ledger/v3/internal/infra/node"
 )
 
 func TestServiceAdvertiseAddr_WithPort(t *testing.T) {

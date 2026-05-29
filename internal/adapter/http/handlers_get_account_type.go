@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain"
 )
 
 // handleGetAccountType handles GET /{ledgerName}/account-types/{typeName}.

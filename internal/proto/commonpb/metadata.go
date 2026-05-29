@@ -6,7 +6,7 @@ import (
 
 	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
 
-	jsonPkg "github.com/formancehq/ledger-v3-poc/internal/adapter/json"
+	jsonPkg "github.com/formancehq/ledger/v3/internal/adapter/json"
 )
 
 // Target type constants.

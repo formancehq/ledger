@@ -642,7 +642,7 @@ const file_restore_proto_rawDesc = "" +
 	"\x0eDownloadBackup\x12\x1e.restore.DownloadBackupRequest\x1a\x1f.restore.DownloadBackupResponse\x12S\n" +
 	"\x0fValidateRestore\x12\x1f.restore.ValidateRestoreRequest\x1a\x1d.restore.ValidateRestoreEvent0\x01\x12Q\n" +
 	"\x0ePreviewRestore\x12\x1e.restore.PreviewRestoreRequest\x1a\x1f.restore.PreviewRestoreResponse\x12T\n" +
-	"\x0fFinalizeRestore\x12\x1f.restore.FinalizeRestoreRequest\x1a .restore.FinalizeRestoreResponseB>Z<github.com/formancehq/ledger-v3-poc/internal/proto/restorepbb\x06proto3"
+	"\x0fFinalizeRestore\x12\x1f.restore.FinalizeRestoreRequest\x1a .restore.FinalizeRestoreResponseB:Z8github.com/formancehq/ledger/v3/internal/proto/restorepbb\x06proto3"
 
 var (
 	file_restore_proto_rawDescOnce sync.Once

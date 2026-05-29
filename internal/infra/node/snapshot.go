@@ -1,7 +1,7 @@
 package node
 
 import (
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
 // snapshotUnwrapResult holds the result of unwrapping a NodeSnapshot.

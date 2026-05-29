@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // handleListLedgerLogs handles GET /{ledgerName}/logs to list logs for a specific ledger.

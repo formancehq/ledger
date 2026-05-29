@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/formancehq/ledger-v3-poc/pkg/testserver"
+	"github.com/formancehq/ledger/v3/pkg/testserver"
 )
 
 func TestServerCredentials_Disabled(t *testing.T) {

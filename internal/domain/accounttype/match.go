@@ -1,7 +1,7 @@
 package accounttype
 
 import (
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // CompiledType holds an account type with its pre-parsed pattern segments,

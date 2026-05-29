@@ -8,7 +8,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/service"
 
-	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/otlplogs"
+	"github.com/formancehq/ledger/v3/internal/infra/monitoring/otlplogs"
 )
 
 const (

@@ -11,7 +11,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
+	"github.com/formancehq/ledger/v3/internal/adapter/json"
 )
 
 // newTestServer creates a Server with a mock backend for testing.

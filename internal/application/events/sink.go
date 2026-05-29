@@ -3,7 +3,7 @@ package events
 import (
 	"context"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/eventspb"
+	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
 
 // Sink publishes events to an external system.

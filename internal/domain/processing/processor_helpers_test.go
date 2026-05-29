@@ -1,8 +1,8 @@
 package processing
 
 import (
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // requestToOrder converts a servicepb.Request to a raftcmdpb.Order for test purposes.

@@ -1,6 +1,6 @@
 package query
 
-import "github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
+import "github.com/formancehq/ledger/v3/internal/storage/readstore"
 
 // TrackedIterator wraps an EntityIterator and counts Next/SeekGE calls
 // in the associated IteratorStats. The overhead is a single int64 increment

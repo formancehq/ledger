@@ -9,7 +9,7 @@
 
 ```bash
 # Clone the repository
-git clone <repo-url> && cd ledger-v3-poc
+git clone <repo-url> && cd ledger
 
 # Generate flake.lock (first time only)
 nix flake update
@@ -23,7 +23,7 @@ After setup, `direnv` automatically loads the Nix development environment whenev
 ## Project Structure
 
 ```
-ledger-v3-poc/
+ledger/
 ├── main.go                    # Entry point
 ├── cmd/
 │   ├── server/                # Server command

@@ -11,8 +11,8 @@ import (
 	"github.com/IBM/sarama"
 	"github.com/xdg-go/scram"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/eventspb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
 
 func init() {

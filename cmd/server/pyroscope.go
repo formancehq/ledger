@@ -12,7 +12,7 @@ import (
 
 	collectionutils "github.com/formancehq/go-libs/v5/pkg/types/collections"
 
-	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/pyroscope"
+	"github.com/formancehq/ledger/v3/internal/infra/monitoring/pyroscope"
 )
 
 const (

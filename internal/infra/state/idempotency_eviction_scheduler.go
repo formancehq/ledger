@@ -5,7 +5,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
+	"github.com/formancehq/ledger/v3/internal/pkg/worker"
 )
 
 // IdempotencyEvictionScheduler periodically proposes an IdempotencyEviction

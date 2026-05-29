@@ -14,8 +14,8 @@ import (
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/crypto/signing"
+	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 )
 
 // tokenParams holds the parameters for signing a JWT token.

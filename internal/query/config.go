@@ -3,8 +3,8 @@ package query
 import (
 	"fmt"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // ReadLastAppliedIndex returns the last applied Raft index from the given reader.

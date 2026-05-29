@@ -7,8 +7,8 @@ package servicepb
 import (
 	binary "encoding/binary"
 	fmt "fmt"
-	commonpb "github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	signaturepb "github.com/formancehq/ledger-v3-poc/internal/proto/signaturepb"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	signaturepb "github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
 	proto "google.golang.org/protobuf/proto"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"

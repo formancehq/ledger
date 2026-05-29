@@ -5,7 +5,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
+	"github.com/formancehq/ledger/v3/internal/adapter/json"
 )
 
 // LogType constants for log payload types.

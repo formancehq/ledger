@@ -1,4 +1,4 @@
-module github.com/formancehq/ledger-v3-poc/tools/protoc-gen-reader
+module github.com/formancehq/ledger/v3/tools/protoc-gen-reader
 
 go 1.26.0
 

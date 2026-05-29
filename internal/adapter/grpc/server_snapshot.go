@@ -14,8 +14,8 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/snapshotpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/proto/snapshotpb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // WaitForAppliedFunc blocks until the FSM has applied entries up to targetIndex.

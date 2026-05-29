@@ -7,7 +7,7 @@ package commonpb
 import (
 	binary "encoding/binary"
 	fmt "fmt"
-	signaturepb "github.com/formancehq/ledger-v3-poc/internal/proto/signaturepb"
+	signaturepb "github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
 	proto "google.golang.org/protobuf/proto"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"

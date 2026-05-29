@@ -4,7 +4,7 @@ package cluster;
 
 import "common.proto";
 
-option go_package = "github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb";
+option go_package = "github.com/formancehq/ledger/v3/internal/proto/clusterpb";
 
 // ============================================================================
 // gRPC Service

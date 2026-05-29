@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package snapshot.v1;
 
-option go_package = "github.com/formancehq/ledger-v3-poc/internal/proto/snapshotpb";
+option go_package = "github.com/formancehq/ledger/v3/internal/proto/snapshotpb";
 
 // Service exposed by the leader (or any node hosting the snapshot).
 // Uses a session-based protocol for parallel file transfers:

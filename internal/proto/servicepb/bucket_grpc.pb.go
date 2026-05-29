@@ -8,8 +8,8 @@ package servicepb
 
 import (
 	context "context"
-	auditpb "github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
-	commonpb "github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	auditpb "github.com/formancehq/ledger/v3/internal/proto/auditpb"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"

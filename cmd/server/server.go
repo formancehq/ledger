@@ -27,18 +27,18 @@ import (
 	otlptraces "github.com/formancehq/go-libs/v5/pkg/observe/traces"
 	"github.com/formancehq/go-libs/v5/pkg/service"
 
-	"github.com/formancehq/ledger-v3-poc/internal/bootstrap"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/flightrecorder"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/pyroscope"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/tracesampling"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/bytesize"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/pebblecfg"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
+	"github.com/formancehq/ledger/v3/internal/bootstrap"
+	"github.com/formancehq/ledger/v3/internal/infra/monitoring/flightrecorder"
+	"github.com/formancehq/ledger/v3/internal/infra/monitoring/pyroscope"
+	"github.com/formancehq/ledger/v3/internal/infra/monitoring/tracesampling"
+	"github.com/formancehq/ledger/v3/internal/infra/node"
+	"github.com/formancehq/ledger/v3/internal/infra/transport"
+	"github.com/formancehq/ledger/v3/internal/pkg/bytesize"
+	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/pebblecfg"
+	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
 var (
@@ -48,9 +48,9 @@ var (
 
 func NewRootCommand() *cobra.Command {
 	rootCmd := &cobra.Command{
-		Use:   "ledger-v3-poc",
-		Short: "Ledger v3 POC with Raft cluster",
-		Long:  "A proof of concept for Ledger v3 with Raft consensus cluster",
+		Use:   "ledger",
+		Short: "Ledger v3 with Raft cluster",
+		Long:  "Ledger v3 with Raft consensus cluster",
 	}
 
 	rootCmd.AddCommand(NewRunCommand())
@@ -237,7 +237,7 @@ func runServer(cmd *cobra.Command, _ []string) error {
 	serviceName, _ := cmd.Flags().GetString(otlp.OtelServiceNameFlag)
 	if serviceName == "" {
 		// Set default service name based on node ID
-		defaultServiceName := fmt.Sprintf("ledger-v3-poc-node-%d", cfg.RaftConfig.NodeID)
+		defaultServiceName := fmt.Sprintf("ledger-node-%d", cfg.RaftConfig.NodeID)
 
 		err := cmd.Flags().Set(otlp.OtelServiceNameFlag, defaultServiceName)
 		if err != nil {

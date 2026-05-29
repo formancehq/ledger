@@ -10,7 +10,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	ggrpc "google.golang.org/grpc"
 
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
+	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 )
 
 // sendCursorToStream drains a cursor into a gRPC server stream,

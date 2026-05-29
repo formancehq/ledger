@@ -3,8 +3,8 @@ package http
 import (
 	"net/http"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // handlePromoteLedger handles POST /{ledgerName}/promote to promote a mirror ledger to normal mode.

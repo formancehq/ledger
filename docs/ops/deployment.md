@@ -36,7 +36,7 @@ The `--cluster-id` value identifies the cluster and is persisted in the data dir
 The CLI uses a subcommand structure:
 
 ```bash
-ledger-v3-poc run [flags]
+ledger run [flags]
 ```
 
 Available flags for `run`:
@@ -119,7 +119,7 @@ metadata:
 spec:
   replicas: 3  # Must be odd for Raft
   image:
-    repository: ghcr.io/formancehq/ledger-v3-poc
+    repository: ghcr.io/formancehq/ledger
     tag: latest
   config:
     bindAddr: "0.0.0.0:7777"
@@ -363,7 +363,7 @@ The operator supports comprehensive OpenTelemetry integration via the CR spec:
 ```yaml
 config:
   monitoring:
-    serviceName: "ledger-v3-poc"
+    serviceName: "ledger"
     
     # Traces configuration
     traces:
@@ -662,8 +662,8 @@ curl http://localhost:9000/cluster/state
 
 ```bash
 # Kubernetes
-kubectl exec -it ledger-v3-poc-0 -- tar czf /tmp/backup.tar.gz /data/raft
-kubectl cp ledger-v3-poc-0:/tmp/backup.tar.gz ./backup.tar.gz
+kubectl exec -it ledger-0 -- tar czf /tmp/backup.tar.gz /data/raft
+kubectl cp ledger-0:/tmp/backup.tar.gz ./backup.tar.gz
 ```
 
 ### Restoration

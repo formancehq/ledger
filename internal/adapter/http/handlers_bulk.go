@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"net/http"
 
-	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
-	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
+	"github.com/formancehq/ledger/v3/internal/adapter/json"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // handleBulk handles POST /{ledgerName}/_bulk to create multiple transactions/operations.

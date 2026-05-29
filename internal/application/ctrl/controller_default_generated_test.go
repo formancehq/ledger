@@ -11,8 +11,8 @@ import (
 	context "context"
 	reflect "reflect"
 
-	commonpb "github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	servicepb "github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	servicepb "github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	gomock "go.uber.org/mock/gomock"
 )
 

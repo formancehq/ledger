@@ -3,8 +3,8 @@ package http
 import (
 	"net/http"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/query"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/query"
 )
 
 // handleListAccounts handles GET /{ledgerName}/accounts to list accounts.

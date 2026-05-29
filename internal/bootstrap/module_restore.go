@@ -13,9 +13,9 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/transport/httpserver"
 
-	grpcadp "github.com/formancehq/ledger-v3-poc/internal/adapter/grpc"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/otlplogs"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
+	"github.com/formancehq/ledger/v3/internal/infra/monitoring/otlplogs"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // RestoreModule returns a minimal fx module for restore mode.

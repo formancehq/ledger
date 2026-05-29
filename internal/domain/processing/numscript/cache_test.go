@@ -7,7 +7,7 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain"
 )
 
 func TestNewNumscriptCache_DefaultSize(t *testing.T) {

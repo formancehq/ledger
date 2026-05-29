@@ -13,7 +13,7 @@ import (
 
 	"github.com/pterm/pterm"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
 
 // parseChecksums parses a checksums.txt file (goreleaser format: "<sha256>  <filename>")

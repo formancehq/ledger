@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain"
 )
 
 // buildGRPCError creates a gRPC status error with an ErrorInfo detail, simulating what the server sends.

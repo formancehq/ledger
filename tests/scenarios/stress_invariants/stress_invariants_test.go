@@ -7,12 +7,12 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/pkg/scenario"
-	"github.com/formancehq/ledger-v3-poc/pkg/actions"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/scenario"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger-v3-poc/tests/scenarios/scenariotest"
+	"github.com/formancehq/ledger/v3/tests/scenarios/scenariotest"
 )
 
 // TestStressInvariants is a pure stress test focusing on cache eviction and

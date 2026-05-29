@@ -507,7 +507,7 @@ const file_raft_transport_proto_rawDesc = "" +
 	"\x04pong\x18\x02 \x01(\v2\x1c.raft_transport.PongResponseH\x00R\x04pongB\t\n" +
 	"\amessage2u\n" +
 	"\x14RaftTransportService\x12]\n" +
-	"\x0eStreamMessages\x12\".raft_transport.SendMessageRequest\x1a#.raft_transport.SendMessageResponse(\x010\x01BDZBgithub.com/formancehq/ledger-v3-poc/internal/proto/rafttransportpbb\x06proto3"
+	"\x0eStreamMessages\x12\".raft_transport.SendMessageRequest\x1a#.raft_transport.SendMessageResponse(\x010\x01B@Z>github.com/formancehq/ledger/v3/internal/proto/rafttransportpbb\x06proto3"
 
 var (
 	file_raft_transport_proto_rawDescOnce sync.Once

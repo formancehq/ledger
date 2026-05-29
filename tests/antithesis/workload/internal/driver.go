@@ -4,7 +4,7 @@ import (
 	"context"
 	"log"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // RunDriver is the common boilerplate for parallel drivers:

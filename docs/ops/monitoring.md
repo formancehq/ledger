@@ -568,7 +568,7 @@ Enable Pyroscope profiling via environment variables or command-line flags:
 # Enable Pyroscope profiling
 export PYROSCOPE_ENABLED=true
 export PYROSCOPE_SERVER_ADDRESS=http://pyroscope:4040
-export PYROSCOPE_APPLICATION_NAME=ledger-v3-poc
+export PYROSCOPE_APPLICATION_NAME=ledger
 
 # Optional: Authentication for Grafana Cloud
 export PYROSCOPE_AUTH_TOKEN=your-grafana-cloud-token
@@ -636,7 +636,7 @@ config:
   pyroscope:
     enabled: true
     serverAddress: "http://pyroscope.monitoring.svc.cluster.local:4040"
-    applicationName: "ledger-v3-poc"
+    applicationName: "ledger"
     tags: "env=production"
     profileTypes: "cpu,alloc_objects,alloc_space,inuse_objects,inuse_space"
 ```
@@ -650,7 +650,7 @@ config:
     serverAddress: "https://profiles-prod-001.grafana.net"
     authToken: "${GRAFANA_CLOUD_PYROSCOPE_TOKEN}"
     tenantId: "your-tenant-id"
-    applicationName: "ledger-v3-poc"
+    applicationName: "ledger"
 ```
 
 ### Automatic Tags

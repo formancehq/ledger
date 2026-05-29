@@ -284,7 +284,7 @@ ledgerctl signing generate-key ./response-keys
 2. Start the server with the response signing key:
 
 ```bash
-ledger-v3-poc run --response-signing-key ./response-keys/seed.hex [other flags...]
+ledger run --response-signing-key ./response-keys/seed.hex [other flags...]
 ```
 
 3. The server will sign every `Log` in `ApplyResponse` messages. The key ID (SHA256 fingerprint of the public key) is included in each signature.

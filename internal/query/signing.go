@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // SigningKeyEntry holds a signing key's public key and optional parent key ID.

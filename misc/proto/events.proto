@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package events;
 
-option go_package = "github.com/formancehq/ledger-v3-poc/internal/proto/eventspb";
+option go_package = "github.com/formancehq/ledger/v3/internal/proto/eventspb";
 
 import "common.proto";
 

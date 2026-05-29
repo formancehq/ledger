@@ -15,7 +15,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // ColdReader provides read access to archived period data by downloading SST files

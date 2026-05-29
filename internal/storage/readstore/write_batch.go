@@ -3,7 +3,7 @@ package readstore
 import (
 	"encoding/binary"
 
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // WriteBatch buffers Pebble write operations using a dal.Batch.

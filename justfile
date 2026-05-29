@@ -127,7 +127,7 @@ fuzz-one target duration="30s":
 coverage_dir := "build/coverage"
 
 # Packages to instrument for coverage (exclude generated proto, test infra, misc)
-coverage_pkgs := "github.com/formancehq/ledger-v3-poc/internal/..."
+coverage_pkgs := "github.com/formancehq/ledger/v3/internal/..."
 
 # Run unit tests with coverage
 test-coverage:
@@ -221,7 +221,7 @@ release-ci:
 
 # Clean build artifacts
 clean:
-    rm -rf ledgerctl ledger-v3-poc
+    rm -rf ledgerctl ledger
     rm $(find ./ -name '*.test') || true
 
 clean-benchmarks-data:
@@ -242,25 +242,25 @@ generate-proto:
     mkdir -p internal/proto/clusterpb internal/proto/rafttransportpb internal/proto/auditpb internal/proto/signaturepb internal/proto/eventspb internal/proto/restorepb
     @cd tools/protoc-gen-dethash && go build -o ../../build/protoc-gen-dethash .
     @cd tools/protoc-gen-reader && go build -o ../../build/protoc-gen-reader .
-    @protoc --go_out=. --go_opt=module=github.com/formancehq/ledger-v3-poc \
+    @protoc --go_out=. --go_opt=module=github.com/formancehq/ledger/v3 \
         --go-grpc_out=. \
-        --go-grpc_opt=module=github.com/formancehq/ledger-v3-poc \
+        --go-grpc_opt=module=github.com/formancehq/ledger/v3 \
         --go-vtproto_out=. \
-        --go-vtproto_opt=module=github.com/formancehq/ledger-v3-poc \
+        --go-vtproto_opt=module=github.com/formancehq/ledger/v3 \
         --go-vtproto_opt=features=marshal+unmarshal+size+clone+equal+pool \
-        --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.Proposal \
-        --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.PreloadSet \
-        --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.Preload \
-        --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.CacheTouch \
-        --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.Order \
-        --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.EventsSinkUpdate \
-        --go-vtproto_opt=pool=github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb.MirrorSyncUpdate \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.Proposal \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.PreloadSet \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.Preload \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.CacheTouch \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.Order \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.EventsSinkUpdate \
+        --go-vtproto_opt=pool=github.com/formancehq/ledger/v3/internal/proto/raftcmdpb.MirrorSyncUpdate \
         --plugin=protoc-gen-dethash=build/protoc-gen-dethash \
         --dethash_out=. \
-        --dethash_opt=module=github.com/formancehq/ledger-v3-poc \
+        --dethash_opt=module=github.com/formancehq/ledger/v3 \
         --plugin=protoc-gen-reader=build/protoc-gen-reader \
         --reader_out=. \
-        --reader_opt=module=github.com/formancehq/ledger-v3-poc \
+        --reader_opt=module=github.com/formancehq/ledger/v3 \
         -I misc/proto \
         misc/proto/raft_transport.proto \
         misc/proto/common.proto \
@@ -275,7 +275,7 @@ generate-proto:
 
 # Build and push multi-arch Docker image
 docker-build *ARGS:
-    docker buildx build -t ghcr.io/formancehq/ledger-v3-poc --platform linux/amd64,linux/arm64 --push --build-arg BUILD_TAGS=kafka,clickhouse,s3,pyroscope {{ARGS}} .
+    docker buildx build -t ghcr.io/formancehq/ledger --platform linux/amd64,linux/arm64 --push --build-arg BUILD_TAGS=kafka,clickhouse,s3,pyroscope {{ARGS}} .
 
 # Docker builds are handled via Pulumi
 

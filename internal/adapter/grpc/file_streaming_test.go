@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/snapshotpb"
+	"github.com/formancehq/ledger/v3/internal/proto/snapshotpb"
 )
 
 func TestBuildManifest_SingleFile(t *testing.T) {

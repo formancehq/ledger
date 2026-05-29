@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/commands"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/infra/node"
+	"github.com/formancehq/ledger/v3/internal/pkg/commands"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
 // NodeProposer adapts *node.Node to the state.Proposer interface by serializing

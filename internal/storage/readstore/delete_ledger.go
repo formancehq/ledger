@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // ledgerScopedPrefixes lists all readstore key prefixes that contain

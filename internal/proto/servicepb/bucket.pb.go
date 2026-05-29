@@ -7,9 +7,9 @@
 package servicepb
 
 import (
-	auditpb "github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
-	commonpb "github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	signaturepb "github.com/formancehq/ledger-v3-poc/internal/proto/signaturepb"
+	auditpb "github.com/formancehq/ledger/v3/internal/proto/auditpb"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	signaturepb "github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -9271,7 +9271,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\fGetNumscript\x12\x1b.ledger.GetNumscriptRequest\x1a\x15.common.NumscriptInfo\x12H\n" +
 	"\x0eListNumscripts\x12\x1d.ledger.ListNumscriptsRequest\x1a\x15.common.NumscriptInfo0\x01\x12I\n" +
 	"\fInspectIndex\x12\x1b.ledger.InspectIndexRequest\x1a\x1c.ledger.InspectIndexResponse\x12:\n" +
-	"\aBarrier\x12\x16.ledger.BarrierRequest\x1a\x17.ledger.BarrierResponseB>Z<github.com/formancehq/ledger-v3-poc/internal/proto/servicepbb\x06proto3"
+	"\aBarrier\x12\x16.ledger.BarrierRequest\x1a\x17.ledger.BarrierResponseB:Z8github.com/formancehq/ledger/v3/internal/proto/servicepbb\x06proto3"
 
 var (
 	file_bucket_proto_rawDescOnce sync.Once

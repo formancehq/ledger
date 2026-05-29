@@ -1,4 +1,4 @@
-module github.com/formancehq/ledger-v3-poc/tools/protoc-gen-dethash
+module github.com/formancehq/ledger/v3/tools/protoc-gen-dethash
 
 go 1.26.0
 

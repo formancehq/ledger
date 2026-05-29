@@ -1,6 +1,6 @@
 # k6 Performance Tests
 
-This directory contains k6 performance tests for the ledger-v3-poc service, deployed to Kubernetes via Pulumi.
+This directory contains k6 performance tests for the ledger service, deployed to Kubernetes via Pulumi.
 
 ## Prerequisites
 

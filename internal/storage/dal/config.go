@@ -3,7 +3,7 @@ package dal
 import (
 	"time"
 
-	"github.com/formancehq/ledger-v3-poc/internal/storage/pebblecfg"
+	"github.com/formancehq/ledger/v3/internal/storage/pebblecfg"
 )
 
 // ValueSeparationConfig controls Pebble's value separation feature.

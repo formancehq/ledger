@@ -1,8 +1,8 @@
 package gaming
 
 import (
-	"github.com/formancehq/ledger-v3-poc/pkg/scenario"
-	"github.com/formancehq/ledger-v3-poc/tests/antithesis/workload/internal/block"
+	"github.com/formancehq/ledger/v3/pkg/scenario"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/block"
 )
 
 func init() {

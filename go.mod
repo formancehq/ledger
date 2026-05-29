@@ -1,4 +1,4 @@
-module github.com/formancehq/ledger-v3-poc
+module github.com/formancehq/ledger/v3
 
 go 1.26.0
 

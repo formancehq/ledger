@@ -10,7 +10,7 @@ import (
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 
-	"github.com/formancehq/ledger-v3-poc/internal/domain/crypto/signing"
+	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 )
 
 // Ed25519KeyEntry represents a single Ed25519 public key entry in the authentication config file.

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // CanonicalBytes is implemented by key types that can be serialized

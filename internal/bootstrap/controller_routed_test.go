@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/formancehq/ledger-v3-poc/internal/application/ctrl"
+	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 )
 
 func TestNewRoutedController(t *testing.T) {

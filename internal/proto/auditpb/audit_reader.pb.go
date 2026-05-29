@@ -4,8 +4,8 @@
 package auditpb
 
 import (
-	commonpb "github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	raftcmdpb "github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	raftcmdpb "github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
 // AuditEntryReader provides read-only access to AuditEntry.

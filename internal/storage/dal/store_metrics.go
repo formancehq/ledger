@@ -1,7 +1,7 @@
 package dal
 
 import (
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // GetMetrics returns the current metrics from the Pebble database as proto message.

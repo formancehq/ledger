@@ -85,7 +85,7 @@ A threshold of `0.8` means the volume is considered full when 80% of its total c
 ### CLI Example
 
 ```bash
-ledger-v3-poc run \
+ledger run \
   --node-id 1 \
   --cluster-id prod-ledger \
   --bootstrap \

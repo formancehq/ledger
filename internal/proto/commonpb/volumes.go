@@ -8,7 +8,7 @@ import (
 
 	"github.com/invopop/jsonschema"
 
-	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
+	"github.com/formancehq/ledger/v3/internal/adapter/json"
 )
 
 // Value implements driver.Valuer for Volumes (for database storage).

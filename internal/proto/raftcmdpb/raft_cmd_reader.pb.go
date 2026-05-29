@@ -4,8 +4,8 @@
 package raftcmdpb
 
 import (
-	commonpb "github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	signaturepb "github.com/formancehq/ledger-v3-poc/internal/proto/signaturepb"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	signaturepb "github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 )
 
 // OrderReader provides read-only access to Order.

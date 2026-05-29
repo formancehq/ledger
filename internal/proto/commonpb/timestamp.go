@@ -7,7 +7,7 @@ import (
 
 	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
-	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
+	"github.com/formancehq/ledger/v3/internal/adapter/json"
 )
 
 // ErrTimestampBeforeEpoch is returned when a timestamp before the Unix epoch is provided.

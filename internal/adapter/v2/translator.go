@@ -10,8 +10,8 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/holiman/uint256"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
 // Pools for V2 data structs. sonic.Unmarshal reuses existing slice capacity,

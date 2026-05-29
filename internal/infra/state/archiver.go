@@ -14,9 +14,9 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	"github.com/formancehq/ledger-v3-poc/internal/infra/coldstorage"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
+	"github.com/formancehq/ledger/v3/internal/pkg/worker"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // ArchiveRequest contains the data needed to archive a period.

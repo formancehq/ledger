@@ -7,7 +7,7 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
+	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 )
 
 func TestReadHandle_GetAndClose(t *testing.T) {

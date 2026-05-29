@@ -285,10 +285,10 @@ The log hash chain uses BLAKE3 by default (cryptographic, tamper-resistant). For
 
 ```bash
 # Use XXH3-128 for faster hashing (non-cryptographic)
-ledger-v3-poc run --hash-algorithm xxh3 [other flags...]
+ledger run --hash-algorithm xxh3 [other flags...]
 
 # Default: BLAKE3 (cryptographic)
-ledger-v3-poc run --hash-algorithm blake3 [other flags...]
+ledger run --hash-algorithm blake3 [other flags...]
 ```
 
 The setting is cluster-wide and replicated via Raft. Changing it takes effect on the next log produced — existing logs retain their original hash and remain verifiable via the `hash_version` field stored on each log. See [Log Integrity](./correctness.md#hash-algorithm-selection) for details.

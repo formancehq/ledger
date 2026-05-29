@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	cryptosigning "github.com/formancehq/ledger-v3-poc/internal/domain/crypto/signing"
+	cryptosigning "github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 )
 
 func NewGenerateKeyCommand() *cobra.Command {

@@ -11,7 +11,7 @@ import (
 
 	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
-	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
+	"github.com/formancehq/ledger/v3/internal/adapter/json"
 )
 
 // protoFieldJSON marshals a proto.Message field to json.RawValue using protojson,

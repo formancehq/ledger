@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/snapshotpb"
+	"github.com/formancehq/ledger/v3/internal/proto/snapshotpb"
 )
 
 const (

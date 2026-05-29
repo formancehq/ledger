@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/formancehq/ledger-v3-poc/internal/domain/crypto/signing"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // GenerateTestKeypair generates an Ed25519 keypair for testing.

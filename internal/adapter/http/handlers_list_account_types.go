@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"sort"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 type accountTypeJSON struct {

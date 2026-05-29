@@ -10,7 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
-	"github.com/formancehq/ledger-v3-poc/internal/infra/coldstorage"
+	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
 )
 
 // S3Storage implements Storage using Amazon S3 (or S3-compatible stores like MinIO).

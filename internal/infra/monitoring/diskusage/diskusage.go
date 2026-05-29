@@ -10,7 +10,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
+	"github.com/formancehq/ledger/v3/internal/pkg/worker"
 )
 
 // toInt64 converts any integer type to int64. This avoids unconvert lint errors

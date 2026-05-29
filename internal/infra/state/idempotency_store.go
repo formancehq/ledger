@@ -8,8 +8,8 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/zeebo/blake3"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // HashIdempotencyKey returns a 16-byte hash of the idempotency key string.

@@ -5,7 +5,7 @@ The ledger supports optional JWT/OIDC authentication with scope-based authorizat
 ## Quick Start
 
 ```bash
-ledger-v3-poc run \
+ledger run \
   --node-id 1 \
   --cluster-id prod-ledger \
   --bootstrap \
@@ -95,7 +95,7 @@ ledgerctl auth generate-key ./keys
 3. Start the server with Ed25519 authentication:
 
 ```bash
-ledger-v3-poc run --auth-ed25519-keys auth-keys.json --bootstrap --node-id 1 --cluster-id test
+ledger run --auth-ed25519-keys auth-keys.json --bootstrap --node-id 1 --cluster-id test
 ```
 
 Setting `--auth-ed25519-keys` automatically enables `--auth-enabled` unless `--auth-enabled=false` is explicitly set.

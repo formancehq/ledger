@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // CreateMetadataIndexAction creates a request for creating a metadata index on the given target type.

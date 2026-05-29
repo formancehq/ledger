@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	githubRepo  = "formancehq/ledger-v3-poc"
-	projectName = "ledger-v3"
+	githubRepo  = "formancehq/ledger"
+	projectName = "ledger"
 )
 
 type releaseInfo struct {

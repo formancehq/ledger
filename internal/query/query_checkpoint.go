@@ -3,8 +3,8 @@ package query
 import (
 	"fmt"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // ReadQueryCheckpoint reads a single query checkpoint by ID from Pebble.

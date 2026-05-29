@@ -1,7 +1,7 @@
 package testutil
 
 import (
-	"github.com/formancehq/ledger-v3-poc/pkg/actions"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 // Re-exports from pkg/scenario/actions for backward compatibility.

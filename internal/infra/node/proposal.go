@@ -1,6 +1,6 @@
 package node
 
-import "github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
+import "github.com/formancehq/ledger/v3/internal/pkg/futures"
 
 type Proposal struct {
 	*futures.Future[any]

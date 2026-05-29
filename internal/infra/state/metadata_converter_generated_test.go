@@ -10,7 +10,7 @@ package state
 import (
 	reflect "reflect"
 
-	raftcmdpb "github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	raftcmdpb "github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	gomock "go.uber.org/mock/gomock"
 )
 

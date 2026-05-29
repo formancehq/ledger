@@ -7,7 +7,7 @@ import (
 	"math/rand"
 
 	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // GeometricBulkSize returns a value in [min, max] drawn from a Geometric(p) distribution

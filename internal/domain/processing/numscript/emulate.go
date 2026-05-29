@@ -7,7 +7,7 @@ import (
 
 	numscriptlib "github.com/formancehq/numscript"
 
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain"
 )
 
 // MaxForceBalance is returned for all accounts when force mode is enabled.

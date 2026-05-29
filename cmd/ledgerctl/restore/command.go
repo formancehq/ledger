@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/restorepb"
+	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
 )
 
 func NewCommand() *cobra.Command {

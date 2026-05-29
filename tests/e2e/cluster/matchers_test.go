@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/onsi/gomega/types"
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 )
 
 type beFollowerMatcher struct{}

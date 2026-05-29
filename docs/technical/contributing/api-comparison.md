@@ -1,4 +1,4 @@
-# API Comparison: ledger-v3-poc vs github.com/formancehq/ledger
+# API Comparison: ledger vs github.com/formancehq/ledger
 
 This document compares the POC's API with the original Formance ledger API and documents missing features.
 

@@ -3,7 +3,7 @@ package http
 import (
 	"errors"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // parseEnforcementMode converts a string to a ChartEnforcementMode proto enum.

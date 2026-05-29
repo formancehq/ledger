@@ -4,7 +4,7 @@ import (
 	"math/big"
 	"sort"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // CompactAccount holds only the fields needed for account analysis.

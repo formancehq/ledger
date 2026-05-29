@@ -3,8 +3,8 @@ package node
 import (
 	"context"
 
-	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
+	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 )
 
 // LockedProposer wraps a Node to acquire the IndexTracker lock around Propose.

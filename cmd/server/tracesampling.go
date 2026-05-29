@@ -4,7 +4,7 @@ import (
 	"github.com/spf13/cobra"
 	flag "github.com/spf13/pflag"
 
-	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/tracesampling"
+	"github.com/formancehq/ledger/v3/internal/infra/monitoring/tracesampling"
 )
 
 const (

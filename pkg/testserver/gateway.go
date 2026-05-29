@@ -15,8 +15,8 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/rafttransportpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/snapshotpb"
+	"github.com/formancehq/ledger/v3/internal/proto/rafttransportpb"
+	"github.com/formancehq/ledger/v3/internal/proto/snapshotpb"
 )
 
 // MessageInterceptor allows intercepting messages between nodes

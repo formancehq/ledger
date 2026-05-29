@@ -9,7 +9,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
+	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 )
 
 func TestPeriodSchedulerStartStop(t *testing.T) {

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/eventspb"
+	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
 
 // HTTPSinkConfig holds configuration for the HTTP webhook sink.

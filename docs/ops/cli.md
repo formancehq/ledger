@@ -3427,7 +3427,7 @@ ledgerctl restore finalize --yes
 Start the server in restore mode:
 
 ```bash
-ledger-v3-poc run --node-id 1 --cluster-id prod-ledger --data-dir ./data --restore --grpc-port 8888
+ledger run --node-id 1 --cluster-id prod-ledger --data-dir ./data --restore --grpc-port 8888
 ```
 
 In restore mode:
@@ -3438,7 +3438,7 @@ In restore mode:
 After finalizing, restart without `--restore`:
 
 ```bash
-ledger-v3-poc run --node-id 1 --cluster-id prod-ledger --data-dir ./data --bootstrap --wal-dir ./wal --grpc-port 8888
+ledger run --node-id 1 --cluster-id prod-ledger --data-dir ./data --bootstrap --wal-dir ./wal --grpc-port 8888
 ```
 
 ### Server `--numscript-cache-size` Flag
@@ -3451,10 +3451,10 @@ Controls the maximum number of parsed Numscript programs kept in an LRU cache. W
 
 ```bash
 # Use default (1024 entries)
-ledger-v3-poc run --node-id 1 --cluster-id prod-ledger --bootstrap ...
+ledger run --node-id 1 --cluster-id prod-ledger --bootstrap ...
 
 # Increase cache for workloads with many distinct scripts
-ledger-v3-poc run --node-id 1 --cluster-id prod-ledger --bootstrap --numscript-cache-size 4096 ...
+ledger run --node-id 1 --cluster-id prod-ledger --bootstrap --numscript-cache-size 4096 ...
 ```
 
 ### Server `--mirror-max-batch-size` Flag
@@ -3467,10 +3467,10 @@ Server-side cap on the mirror batch size. Each mirror ledger can request a custo
 
 ```bash
 # Default: mirror workers use at most 500 logs per batch
-ledger-v3-poc run --node-id 1 --cluster-id prod-ledger --bootstrap ...
+ledger run --node-id 1 --cluster-id prod-ledger --bootstrap ...
 
 # Allow larger batches for high-throughput mirror workloads
-ledger-v3-poc run --node-id 1 --cluster-id prod-ledger --bootstrap --mirror-max-batch-size 1000 ...
+ledger run --node-id 1 --cluster-id prod-ledger --bootstrap --mirror-max-batch-size 1000 ...
 ```
 
 ---
@@ -3491,10 +3491,10 @@ On first boot, the server persists `node-id` and `cluster-id` into Pebble. On su
 
 ```bash
 # Normal operation: server refuses to start if node-id changed
-ledger-v3-poc run --node-id 2 --cluster-id prod-ledger --data-dir ./data  # ERROR if data was created with --node-id 1
+ledger run --node-id 2 --cluster-id prod-ledger --data-dir ./data  # ERROR if data was created with --node-id 1
 
 # Override with explicit flag
-ledger-v3-poc run --node-id 2 --cluster-id prod-ledger --data-dir ./data --unsafe-skip-config-validation
+ledger run --node-id 2 --cluster-id prod-ledger --data-dir ./data --unsafe-skip-config-validation
 ```
 
 ---
@@ -3511,10 +3511,10 @@ When enabled, four checks run in the write path: volume monotonicity, delta/post
 
 ```bash
 # Enable sentinel mode
-ledger-v3-poc run --sentinel-mode [other flags...]
+ledger run --sentinel-mode [other flags...]
 
 # Via environment variable
-SENTINEL_MODE=true ledger-v3-poc run [other flags...]
+SENTINEL_MODE=true ledger run [other flags...]
 ```
 
 ---
@@ -3532,13 +3532,13 @@ The TTL is persisted in the startup config and validated on subsequent boots (sa
 
 ```bash
 # Default: 24h TTL, eviction every 60s
-ledger-v3-poc run [other flags...]
+ledger run [other flags...]
 
 # Short TTL for development/testing
-ledger-v3-poc run --idempotency-ttl 5m --idempotency-eviction-interval 30s [other flags...]
+ledger run --idempotency-ttl 5m --idempotency-eviction-interval 30s [other flags...]
 
 # Disable TTL (idempotency keys never expire)
-ledger-v3-poc run --idempotency-ttl 0 [other flags...]
+ledger run --idempotency-ttl 0 [other flags...]
 ```
 
 ---
@@ -3574,16 +3574,16 @@ Bloom filters are disabled by default. Enable only the attribute types that avoi
 
 ```bash
 # Default config (all bloom filters disabled)
-ledger-v3-poc run [other flags...]
+ledger run [other flags...]
 
 # Enable filters for common hot-path misses
-ledger-v3-poc run --bloom-volumes-expected-keys 100000000 \
+ledger run --bloom-volumes-expected-keys 100000000 \
   --bloom-metadata-expected-keys 10000000 \
   --bloom-references-expected-keys 10000000 \
   [other flags...]
 
 # Enable transaction filter for a specific workload
-ledger-v3-poc run --bloom-transactions-expected-keys 50000000 [other flags...]
+ledger run --bloom-transactions-expected-keys 50000000 [other flags...]
 ```
 
 Changing any bloom filter configuration triggers a full repopulation scan on next startup.
@@ -3605,10 +3605,10 @@ Each log records which algorithm was used in its `hash_version` field, so switch
 
 ```bash
 # Use XXH3 for write-heavy workloads (e.g., blockchain ingestion)
-ledger-v3-poc run --hash-algorithm xxh3 [other flags...]
+ledger run --hash-algorithm xxh3 [other flags...]
 
 # Default: BLAKE3
-ledger-v3-poc run --hash-algorithm blake3 [other flags...]
+ledger run --hash-algorithm blake3 [other flags...]
 ```
 
 ---
@@ -3628,7 +3628,7 @@ The seed file must contain 32 bytes (raw binary) or 64 hex characters. Generate 
 ledgerctl signing generate-key ./response-keys
 
 # Start server with response signing
-ledger-v3-poc run --response-signing-key ./response-keys/seed.hex [other flags...]
+ledger run --response-signing-key ./response-keys/seed.hex [other flags...]
 
 # Client-side: verify response signatures
 ledgerctl --response-verify-key ./response-keys/pubkey.hex transactions create --ledger my-ledger --posting "world,bank,1000,USD"
@@ -3659,13 +3659,13 @@ The Pebble-based read index store is always active. An index builder tails the s
 
 ```bash
 # Use default directory (<data-dir>/read-indexes/)
-ledger-v3-poc run [other flags...]
+ledger run [other flags...]
 
 # Use custom directory
-ledger-v3-poc run --read-index-dir /ssd/read-indexes [other flags...]
+ledger run --read-index-dir /ssd/read-indexes [other flags...]
 
 # Increase read index cache for better read performance
-ledger-v3-poc run --read-index-cache-size 128Mi [other flags...]
+ledger run --read-index-cache-size 128Mi [other flags...]
 ```
 
 The index builder runs on ALL nodes (not just the leader), so follower nodes can also serve prepared query reads. Listings are eventually consistent (the read index may lag behind the latest Raft commits).
@@ -3705,17 +3705,17 @@ Value separation moves large values into external blob files instead of storing 
 
 ```bash
 # Enable value separation with defaults
-ledger-v3-poc run --pebble-value-separation [other flags...]
+ledger run --pebble-value-separation [other flags...]
 
 # Tune value separation for larger values
-ledger-v3-poc run --pebble-value-separation --pebble-value-separation-min-size 1Ki \
+ledger run --pebble-value-separation --pebble-value-separation-min-size 1Ki \
   --pebble-value-separation-garbage-ratio 0.10
 
 # Use zstd compression on all levels
-ledger-v3-poc run --pebble-compression zstd [other flags...]
+ledger run --pebble-compression zstd [other flags...]
 
 # Per-level compression (L0-L6)
-ledger-v3-poc run --pebble-compression "none,snappy,zstd,zstd,zstd,zstd,zstd" [other flags...]
+ledger run --pebble-compression "none,snappy,zstd,zstd,zstd,zstd,zstd" [other flags...]
 ```
 
 ---
@@ -3734,13 +3734,13 @@ Tune the Raft consensus layer. These flags control election timing, message size
 
 ```bash
 # Increase compaction margin for workloads with large snapshots
-ledger-v3-poc run --raft-compaction-margin 5000 [other flags...]
+ledger run --raft-compaction-margin 5000 [other flags...]
 
 # More frequent maintenance (WAL snapshot + Pebble checkpoint)
-ledger-v3-poc run --maintenance-interval 15s [other flags...]
+ledger run --maintenance-interval 15s [other flags...]
 
 # Increase propose queue for high-throughput clusters
-ledger-v3-poc run --raft-propose-queue-capacity 500 [other flags...]
+ledger run --raft-propose-queue-capacity 500 [other flags...]
 ```
 
 ---
@@ -3759,11 +3759,11 @@ Each entry in the queue lists corresponds to a priority level. For example, `10,
 
 ```bash
 # Custom queue capacities for 5 priority levels
-ledger-v3-poc run --raft-transport-reception-queues 10,512,512,512,128 \
+ledger run --raft-transport-reception-queues 10,512,512,512,128 \
   --raft-transport-send-queues 10,512,512,512,128 [other flags...]
 
 # Increase per-peer buffer for large messages
-ledger-v3-poc run --raft-transport-buffer-size 50Mi [other flags...]
+ledger run --raft-transport-buffer-size 50Mi [other flags...]
 ```
 
 ---
@@ -3780,10 +3780,10 @@ The FSM attribute cache uses a two-generation scheme. After `cache-rotation-thre
 
 ```bash
 # Default: rotate every 1000 entries
-ledger-v3-poc run [other flags...]
+ledger run [other flags...]
 
 # Increase for workloads with high key reuse
-ledger-v3-poc run --cache-rotation-threshold 5000 [other flags...]
+ledger run --cache-rotation-threshold 5000 [other flags...]
 ```
 
 ---
@@ -3799,10 +3799,10 @@ Configure gRPC server behavior.
 
 ```bash
 # Enable gRPC compression for bandwidth-constrained networks
-ledger-v3-poc run --grpc-compression [other flags...]
+ledger run --grpc-compression [other flags...]
 
 # Log gRPC calls slower than 500ms
-ledger-v3-poc run --grpc-slow-threshold 500ms [other flags...]
+ledger run --grpc-slow-threshold 500ms [other flags...]
 ```
 
 ---
@@ -3815,10 +3815,10 @@ ledger-v3-poc run --grpc-slow-threshold 500ms [other flags...]
 
 ```bash
 # Log queries slower than 50ms
-ledger-v3-poc run --query-profile-threshold 50ms [other flags...]
+ledger run --query-profile-threshold 50ms [other flags...]
 
 # Disable query profiling
-ledger-v3-poc run --query-profile-threshold 0 [other flags...]
+ledger run --query-profile-threshold 0 [other flags...]
 ```
 
 ---
@@ -3832,7 +3832,7 @@ ledger-v3-poc run --query-profile-threshold 0 [other flags...]
 Disabled by default to avoid contention under high concurrency. Enable for observability in staging or low-traffic environments.
 
 ```bash
-ledger-v3-poc run --admission-metrics [other flags...]
+ledger run --admission-metrics [other flags...]
 ```
 
 ---
@@ -3846,7 +3846,7 @@ ledger-v3-poc run --admission-metrics [other flags...]
 When set, each transaction receipt includes a signed JWT that clients can verify for tamper-proof audit.
 
 ```bash
-ledger-v3-poc run --receipt-signing-key "my-hmac-secret" [other flags...]
+ledger run --receipt-signing-key "my-hmac-secret" [other flags...]
 ```
 
 ---
@@ -3864,10 +3864,10 @@ Configure the snapshot sync protocol used when new nodes join the cluster.
 
 ```bash
 # Increase parallelism for faster node joins
-ledger-v3-poc run --snapshot-parallelism 8 [other flags...]
+ledger run --snapshot-parallelism 8 [other flags...]
 
 # Longer session TTL for large snapshots
-ledger-v3-poc run --snapshot-session-ttl 15m [other flags...]
+ledger run --snapshot-session-ttl 15m [other flags...]
 ```
 
 ---
@@ -3888,15 +3888,15 @@ Configure cold storage for period archival. Logs and audit entries for closed pe
 
 ```bash
 # Filesystem cold storage
-ledger-v3-poc run --cold-storage-driver filesystem --cold-storage-path /mnt/archive [other flags...]
+ledger run --cold-storage-driver filesystem --cold-storage-path /mnt/archive [other flags...]
 
 # S3 cold storage
-ledger-v3-poc run --cold-storage-driver s3 \
+ledger run --cold-storage-driver s3 \
   --cold-storage-s3-bucket my-ledger-archive \
   --cold-storage-s3-region eu-west-1 [other flags...]
 
 # S3 with MinIO endpoint
-ledger-v3-poc run --cold-storage-driver s3 \
+ledger run --cold-storage-driver s3 \
   --cold-storage-s3-bucket archive \
   --cold-storage-s3-endpoint http://minio:9000 [other flags...]
 ```
@@ -3912,7 +3912,7 @@ ledger-v3-poc run --cold-storage-driver s3 \
 When authentication is enabled, all inter-node gRPC calls use this shared secret as a bearer token. Must be the same on all nodes in the cluster.
 
 ```bash
-ledger-v3-poc run --cluster-secret "my-cluster-secret" --auth-enabled [other flags...]
+ledger run --cluster-secret "my-cluster-secret" --auth-enabled [other flags...]
 ```
 
 ---
@@ -3926,7 +3926,7 @@ ledger-v3-poc run --cluster-secret "my-cluster-secret" --auth-enabled [other fla
 Allows expanding virtual scopes into fine-grained scopes. For example, mapping `ledger:read` to a set of more specific scopes. The mapping can also be provided via the `AUTH_SCOPE_MAPPING` environment variable (JSON string).
 
 ```bash
-ledger-v3-poc run --auth-scope-mapping-file /etc/ledger/scope-mapping.json [other flags...]
+ledger run --auth-scope-mapping-file /etc/ledger/scope-mapping.json [other flags...]
 ```
 
 ---
@@ -3943,10 +3943,10 @@ The flight recorder continuously buffers trace data in memory. When an error or 
 
 ```bash
 # Enable flight recorder with defaults
-ledger-v3-poc run --flight-recorder-enabled [other flags...]
+ledger run --flight-recorder-enabled [other flags...]
 
 # Enable with larger buffer
-ledger-v3-poc run --flight-recorder-enabled --flight-recorder-max-bytes 50Mi --flight-recorder-min-age 30s [other flags...]
+ledger run --flight-recorder-enabled --flight-recorder-max-bytes 50Mi --flight-recorder-min-age 30s [other flags...]
 ```
 
 ---
@@ -3962,10 +3962,10 @@ Error-aware trace sampling: always export error spans, ratio-sample successful s
 
 ```bash
 # Enable trace sampling, keep 10% of successful spans
-ledger-v3-poc run --trace-sampling-enabled [other flags...]
+ledger run --trace-sampling-enabled [other flags...]
 
 # Keep 50% of successful spans
-ledger-v3-poc run --trace-sampling-enabled --trace-sampling-success-ratio 0.5 [other flags...]
+ledger run --trace-sampling-enabled --trace-sampling-success-ratio 0.5 [other flags...]
 ```
 
 ---
@@ -3983,7 +3983,7 @@ Configure OpenTelemetry log export.
 
 ```bash
 # Export logs to a gRPC OTLP collector
-ledger-v3-poc run --otel-logs-exporter otlp \
+ledger run --otel-logs-exporter otlp \
   --otel-logs-exporter-otlp-endpoint localhost:4317 \
   --otel-logs-exporter-otlp-insecure [other flags...]
 ```
@@ -4012,16 +4012,16 @@ Continuous profiling via Pyroscope. Only available when the binary is built with
 
 ```bash
 # Enable Pyroscope with local server
-ledger-v3-poc run --pyroscope-enabled --pyroscope-server-address http://pyroscope:4040 [other flags...]
+ledger run --pyroscope-enabled --pyroscope-server-address http://pyroscope:4040 [other flags...]
 
 # Enable Pyroscope with Grafana Cloud
-ledger-v3-poc run --pyroscope-enabled \
+ledger run --pyroscope-enabled \
   --pyroscope-server-address https://profiles-prod-001.grafana.net \
   --pyroscope-auth-token "glc_xxx" \
   --pyroscope-tenant-id "12345" [other flags...]
 
 # Only CPU and allocation profiling
-ledger-v3-poc run --pyroscope-enabled --pyroscope-profile-types cpu,alloc_space [other flags...]
+ledger run --pyroscope-enabled --pyroscope-profile-types cpu,alloc_space [other flags...]
 ```
 
 ---
@@ -4040,14 +4040,14 @@ Enable JWT/OIDC authentication with scope-based authorization. See [Authenticati
 
 ```bash
 # Start server with OIDC authentication
-ledger-v3-poc run \
+ledger run \
   --auth-enabled \
   --auth-issuer https://auth.example.com \
   --auth-service ledger \
   [other flags...]
 
 # Start server with Ed25519 key-based authentication
-ledger-v3-poc run \
+ledger run \
   --auth-ed25519-keys auth-keys.json \
   [other flags...]
 ```
@@ -4331,7 +4331,7 @@ ledgerctl upgrade [flags]
 | `--dry-run` | `false` | Check for updates without installing |
 
 **Behavior:**
-- Downloads the latest release from `formancehq/ledger-v3-poc` GitHub releases
+- Downloads the latest release from `formancehq/ledger` GitHub releases
 - Verifies the archive's SHA256 checksum against `checksums.txt`
 - Extracts the `ledgerctl` binary and atomically replaces the current binary
 - If the current version is `dev` (built without ldflags), warns and requires `--force`

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package raft;
 
-option go_package = "github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb";
+option go_package = "github.com/formancehq/ledger/v3/internal/proto/raftcmdpb";
 
 import "common.proto";
 import "signature.proto";

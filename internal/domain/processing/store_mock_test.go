@@ -12,9 +12,9 @@ package processing
 import (
 	reflect "reflect"
 
-	domain "github.com/formancehq/ledger-v3-poc/internal/domain"
-	commonpb "github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	raftcmdpb "github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	domain "github.com/formancehq/ledger/v3/internal/domain"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	raftcmdpb "github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	gomock "go.uber.org/mock/gomock"
 )
 

@@ -3,7 +3,7 @@ syntax = "proto3";
 
 package ledger;
 
-option go_package = "github.com/formancehq/ledger-v3-poc/internal/proto/servicepb";
+option go_package = "github.com/formancehq/ledger/v3/internal/proto/servicepb";
 
 import "common.proto";
 import "audit.proto";

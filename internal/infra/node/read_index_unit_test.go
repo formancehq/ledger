@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
+	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 )
 
 func TestParseReadIndexContext_Valid(t *testing.T) {

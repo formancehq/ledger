@@ -161,7 +161,7 @@ const file_signature_proto_rawDesc = "" +
 	"\x11ResponseSignature\x12\x15\n" +
 	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12\x1c\n" +
 	"\tsignature\x18\x02 \x01(\fR\tsignature\x12%\n" +
-	"\x0esigned_payload\x18\x03 \x01(\fR\rsignedPayloadB@Z>github.com/formancehq/ledger-v3-poc/internal/proto/signaturepbb\x06proto3"
+	"\x0esigned_payload\x18\x03 \x01(\fR\rsignedPayloadB<Z:github.com/formancehq/ledger/v3/internal/proto/signaturepbb\x06proto3"
 
 var (
 	file_signature_proto_rawDescOnce sync.Once

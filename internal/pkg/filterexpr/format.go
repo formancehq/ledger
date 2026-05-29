@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // Precedence levels for parenthesization.

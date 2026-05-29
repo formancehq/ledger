@@ -233,7 +233,7 @@ When a new **full backup** is taken, old exports are cleaned up and the exports 
 ### Starting the Server in Restore Mode
 
 ```bash
-ledger-v3-poc run --node-id 1 --cluster-id prod-ledger --data-dir ./data --restore --grpc-port 8888
+ledger run --node-id 1 --cluster-id prod-ledger --data-dir ./data --restore --grpc-port 8888
 ```
 
 In restore mode, only a minimal subset of the application runs:
@@ -413,7 +413,7 @@ For the gRPC-based flow with S3 download and remote validation, see the [Restore
 ledgerctl store bootstrap --s3-bucket my-bucket --s3-region us-east-1 --data-dir ./fresh-data --validate --yes
 
 # 2. Start the server normally
-ledger-v3-poc run --node-id 1 --cluster-id prod-ledger --data-dir ./fresh-data --bootstrap --wal-dir ./fresh-wal --grpc-port 9999
+ledger run --node-id 1 --cluster-id prod-ledger --data-dir ./fresh-data --bootstrap --wal-dir ./fresh-wal --grpc-port 9999
 ```
 
 **File**: `cmd/ledgerctl/store/bootstrap.go`
@@ -425,7 +425,7 @@ ledger-v3-poc run --node-id 1 --cluster-id prod-ledger --data-dir ./fresh-data -
 After finalize (either via `restore finalize` or `store bootstrap`), restart the server in normal mode:
 
 ```bash
-ledger-v3-poc run --node-id 1 --cluster-id prod-ledger --data-dir ./data --bootstrap --wal-dir ./wal --grpc-port 8888
+ledger run --node-id 1 --cluster-id prod-ledger --data-dir ./data --bootstrap --wal-dir ./wal --grpc-port 8888
 ```
 
 On startup, the node detects the `RESTORED` marker in `NewNode()`:
@@ -489,15 +489,15 @@ ledgerctl store backup --driver s3 --s3-bucket my-bucket --s3-region us-east-1
 
 # 2a. OPTION A: Offline bootstrap (no server needed, downloads from S3)
 ledgerctl store bootstrap --s3-bucket my-bucket --s3-region us-east-1 --data-dir ./fresh-data --validate --yes
-ledger-v3-poc run --node-id 1 --cluster-id prod-ledger --data-dir ./fresh-data --bootstrap --wal-dir ./fresh-wal --grpc-port 9999
+ledger run --node-id 1 --cluster-id prod-ledger --data-dir ./fresh-data --bootstrap --wal-dir ./fresh-wal --grpc-port 9999
 
 # 2b. OPTION B: Online restore (4-step gRPC flow, downloads from S3)
-ledger-v3-poc run --node-id 1 --cluster-id prod-ledger --data-dir ./fresh-data --restore --grpc-port 9999
+ledger run --node-id 1 --cluster-id prod-ledger --data-dir ./fresh-data --restore --grpc-port 9999
 ledgerctl --server localhost:9999 restore download --s3-bucket my-bucket --s3-region us-east-1
 ledgerctl --server localhost:9999 restore validate
 ledgerctl --server localhost:9999 restore finalize --yes
 # Stop restore server, then restart normally:
-ledger-v3-poc run --node-id 1 --cluster-id prod-ledger --data-dir ./fresh-data --bootstrap --wal-dir ./fresh-wal --grpc-port 9999
+ledger run --node-id 1 --cluster-id prod-ledger --data-dir ./fresh-data --bootstrap --wal-dir ./fresh-wal --grpc-port 9999
 ```
 
 ---

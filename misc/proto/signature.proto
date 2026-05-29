@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package signature;
 
-option go_package = "github.com/formancehq/ledger-v3-poc/internal/proto/signaturepb";
+option go_package = "github.com/formancehq/ledger/v3/internal/proto/signaturepb";
 
 // RequestSignature contains the Ed25519 signature of a Request.
 // The client serializes the Request (without signature), signs the bytes,

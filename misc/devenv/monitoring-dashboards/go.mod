@@ -1,4 +1,4 @@
-module github.com/formancehq/ledger-v3-poc/deployments/devenv/monitoring-ledger-dashboards
+module github.com/formancehq/ledger/v3/deployments/devenv/monitoring-ledger-dashboards
 
 go 1.26.0
 

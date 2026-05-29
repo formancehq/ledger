@@ -9,8 +9,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/signaturepb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 )
 
 // ResponseSigner signs Log messages with an Ed25519 key for server-side response signing.

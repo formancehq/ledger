@@ -1,16 +1,16 @@
-module github.com/formancehq/ledger-v3-poc/tests/antithesis/workload
+module github.com/formancehq/ledger/v3/tests/antithesis/workload
 
 go 1.26.0
 
-// replace github.com/formancehq/ledger-v3-poc/pkg/client => ../../pkg/client
-replace github.com/formancehq/ledger-v3-poc => ../../../
+// replace github.com/formancehq/ledger/v3/pkg/client => ../../pkg/client
+replace github.com/formancehq/ledger/v3 => ../../../
 
-// replace github.com/formancehq/ledger-v3-poc/tests/antithesis/workload => .
+// replace github.com/formancehq/ledger/v3/tests/antithesis/workload => .
 
 require github.com/antithesishq/antithesis-sdk-go v0.7.0
 
 require (
-	github.com/formancehq/ledger-v3-poc v0.0.0-00010101000000-000000000000
+	github.com/formancehq/ledger/v3 v0.0.0-00010101000000-000000000000
 	google.golang.org/grpc v1.79.3
 )
 

@@ -7,7 +7,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
+	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 )
 
 // GRPCStreamCursor implements cursor.Cursor[To] by reading from a gRPC server stream.

@@ -4,7 +4,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	"github.com/formancehq/ledger-v3-poc/pkg/scenario"
+	"github.com/formancehq/ledger/v3/pkg/scenario"
 )
 
 func NewListCommand() *cobra.Command {

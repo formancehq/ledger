@@ -21,7 +21,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
+	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 )
 
 // ErrStoreClosed is returned when a store operation is attempted after the

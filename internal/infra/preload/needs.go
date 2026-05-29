@@ -1,7 +1,7 @@
 package preload
 
 import (
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain"
 )
 
 // Needs describes the preload requirements for a command.

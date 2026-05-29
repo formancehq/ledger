@@ -11,11 +11,11 @@ import (
 	context "context"
 	reflect "reflect"
 
-	cursor "github.com/formancehq/ledger-v3-poc/internal/pkg/cursor"
-	auditpb "github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
-	commonpb "github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	servicepb "github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	query "github.com/formancehq/ledger-v3-poc/internal/query"
+	cursor "github.com/formancehq/ledger/v3/internal/pkg/cursor"
+	auditpb "github.com/formancehq/ledger/v3/internal/proto/auditpb"
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	servicepb "github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	query "github.com/formancehq/ledger/v3/internal/query"
 	gomock "go.uber.org/mock/gomock"
 )
 

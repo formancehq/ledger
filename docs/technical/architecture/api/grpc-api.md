@@ -24,7 +24,7 @@ The gRPC service server listens on port `8888` by default (configurable via `--g
 import (
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials/insecure"
-    "github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+    "github.com/formancehq/ledger/internal/proto/servicepb"
 )
 
 conn, err := grpc.NewClient(
