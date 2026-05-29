@@ -457,14 +457,6 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 	)
 
 	for {
-		if a.logger.Enabled(logging.DebugLevel) {
-			a.logger.WithFields(map[string]any{
-				"status":       a.StatusString(),
-				"hasGating":    a.gatingTerminated != nil,
-				"gatingReason": a.gatingReason,
-			}).Debugf("Applier: waiting for work")
-		}
-
 		select {
 		case work := <-a.ch:
 			a.batchWaitDurationHistogram.Record(ctx, time.Since(waitStart).Microseconds())
@@ -526,18 +518,9 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 
 			switch a.status.Load() {
 			case statusNormal:
-				applyStart := time.Now()
-
 				err := a.applyEntriesToFSM(ctx, work.confState, work.entries...)
 				if err != nil {
 					return err
-				}
-
-				if elapsed := time.Since(applyStart); elapsed > time.Second {
-					a.logger.WithFields(map[string]any{
-						"duration":   elapsed.String(),
-						"entryCount": len(work.entries),
-					}).Infof("Applier: slow applyEntriesToFSM")
 				}
 			default:
 				// Drain pending commit before switching to spool mode.
@@ -586,16 +569,11 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 			}
 
 			unspoolStart := time.Now()
-			a.logger.Infof("Applier: starting unspoolAndResume")
 
 			err := a.unspoolAndResume(ctx)
 			if err != nil {
 				return err
 			}
-
-			a.logger.WithFields(map[string]any{
-				"duration": time.Since(unspoolStart).String(),
-			}).Infof("Applier: unspoolAndResume complete")
 
 			a.unspoolDurationHistogram.Record(context.Background(), float64(time.Since(unspoolStart).Microseconds()))
 			waitStart = time.Now()
