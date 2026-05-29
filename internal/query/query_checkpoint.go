@@ -9,7 +9,7 @@ import (
 
 // ReadQueryCheckpoint reads a single query checkpoint by ID from Pebble.
 // Returns nil if the checkpoint does not exist.
-func ReadQueryCheckpoint(reader dal.PebbleReader, checkpointID uint64) (*raftcmdpb.QueryCheckpointState, error) {
+func ReadQueryCheckpoint(reader dal.PebbleGetter, checkpointID uint64) (*raftcmdpb.QueryCheckpointState, error) {
 	kb := dal.NewKeyBuilder()
 	kb.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobQueryCheckpoint)
 	kb.PutUint64(checkpointID)
@@ -24,7 +24,7 @@ func ReadQueryCheckpoint(reader dal.PebbleReader, checkpointID uint64) (*raftcmd
 
 // ReadNextQueryCheckpointID reads the next checkpoint ID counter from Pebble.
 // Returns 1 if no counter has been stored yet.
-func ReadNextQueryCheckpointID(reader dal.PebbleReader) (uint64, error) {
+func ReadNextQueryCheckpointID(reader dal.PebbleGetter) (uint64, error) {
 	v, err := dal.ReadUint64(reader, []byte{dal.ZoneGlobal, dal.SubGlobNextQueryCheckpointID}, 1)
 	if err != nil {
 		return 0, fmt.Errorf("getting next query checkpoint ID: %w", err)
@@ -35,7 +35,7 @@ func ReadNextQueryCheckpointID(reader dal.PebbleReader) (uint64, error) {
 
 // ReadQueryCheckpointSchedule loads the query checkpoint schedule cron expression from the given reader.
 // Returns an empty string if no schedule is configured.
-func ReadQueryCheckpointSchedule(reader dal.PebbleReader) (string, error) {
+func ReadQueryCheckpointSchedule(reader dal.PebbleGetter) (string, error) {
 	v, err := dal.ReadString(reader, []byte{dal.ZoneGlobal, dal.SubGlobQueryCheckpointSchedule})
 	if err != nil {
 		return "", fmt.Errorf("loading query checkpoint schedule: %w", err)

@@ -85,7 +85,7 @@ func ReadSigningKeysCursor(ctx context.Context, reader dal.PebbleReader) (cursor
 
 // ReadSigningConfig loads the require-signatures flag from the given reader.
 // Returns false if the config key does not exist.
-func ReadSigningConfig(reader dal.PebbleReader) (bool, error) {
+func ReadSigningConfig(reader dal.PebbleGetter) (bool, error) {
 	v, err := dal.ReadBool(reader, []byte{dal.ZoneGlobal, dal.SubGlobSigningConfig})
 	if err != nil {
 		return false, fmt.Errorf("loading signing config: %w", err)

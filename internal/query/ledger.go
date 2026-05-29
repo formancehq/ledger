@@ -33,7 +33,7 @@ func ReadLedgers(ctx context.Context, reader dal.PebbleReader) (cursor.Cursor[*c
 
 // GetLedgerByName retrieves a ledger by its name from the given reader.
 // Returns domain.ErrNotFound if the ledger does not exist or is soft-deleted.
-func GetLedgerByName(ctx context.Context, reader dal.PebbleReader, name string) (*commonpb.LedgerInfo, error) {
+func GetLedgerByName(ctx context.Context, reader dal.PebbleGetter, name string) (*commonpb.LedgerInfo, error) {
 	_, span := queryTracer.Start(ctx, "query.get_ledger",
 		trace.WithAttributes(attribute.String("ledger", name)))
 	defer span.End()
@@ -105,7 +105,7 @@ func EnrichLedgerMetadata(reader dal.PebbleReader, attrs *attributes.Attributes,
 
 // ReadNextLedgerID reads the next ledger ID counter from Pebble.
 // Returns 1 if no counter has been stored yet.
-func ReadNextLedgerID(reader dal.PebbleReader) (uint32, error) {
+func ReadNextLedgerID(reader dal.PebbleGetter) (uint32, error) {
 	v, err := dal.ReadUint32(reader, []byte{dal.ZoneGlobal, dal.SubGlobNextLedgerID}, 1)
 	if err != nil {
 		return 0, fmt.Errorf("getting next ledger ID: %w", err)

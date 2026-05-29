@@ -362,7 +362,11 @@ func TestStore_NewIter(t *testing.T) {
 	require.NoError(t, batch.SetBytes([]byte("iter-b"), []byte("2")))
 	require.NoError(t, batch.Commit())
 
-	iter, err := s.NewIter(&pebble.IterOptions{
+	handle, err := s.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	iter, err := handle.NewIter(&pebble.IterOptions{
 		LowerBound: []byte("iter-"),
 		UpperBound: []byte("iter-\xff"),
 	})

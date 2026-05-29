@@ -767,7 +767,12 @@ func readAllVolumes(t *testing.T, store *dal.Store) map[string]string {
 	lower := []byte{dal.ZoneAttributes, dal.SubAttrVolume}
 	upper := []byte{dal.ZoneAttributes, dal.SubAttrVolume + 1}
 
-	iter, err := store.NewIter(nil)
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+
+	defer func() { _ = handle.Close() }()
+
+	iter, err := handle.NewIter(nil)
 	require.NoError(t, err)
 
 	defer func() { _ = iter.Close() }()

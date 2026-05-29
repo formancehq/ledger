@@ -116,7 +116,16 @@ func (m *Manager) reconcile() {
 		return
 	}
 
-	mirrorLedgers, err := query.ReadMirrorLedgers(context.Background(), m.store)
+	mirrorHandle, handleErr := m.store.NewDirectReadHandle()
+	if handleErr != nil {
+		m.logger.Errorf("Failed to create read handle: %v", handleErr)
+
+		return
+	}
+
+	mirrorLedgers, err := query.ReadMirrorLedgers(context.Background(), mirrorHandle)
+	_ = mirrorHandle.Close()
+
 	if err != nil {
 		m.logger.Errorf("Failed to load mirror ledgers: %v", err)
 

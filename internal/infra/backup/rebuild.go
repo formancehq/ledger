@@ -49,7 +49,15 @@ func RebuildDelta(
 	ledgerAccountTypes := make(map[string][]accounttype.CompiledType)
 	ledgerNameToID := make(map[string]uint32)
 
-	logCursor, err := query.ReadLogsSince(ctx, store, fromLogSeq)
+	readHandle, err := store.NewDirectReadHandle()
+	if err != nil {
+		_ = batch.Cancel()
+
+		return fmt.Errorf("creating read handle: %w", err)
+	}
+	defer func() { _ = readHandle.Close() }()
+
+	logCursor, err := query.ReadLogsSince(ctx, readHandle, fromLogSeq)
 	if err != nil {
 		_ = batch.Cancel()
 

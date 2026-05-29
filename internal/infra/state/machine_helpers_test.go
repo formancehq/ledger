@@ -195,8 +195,12 @@ func TestReadLastLog(t *testing.T) {
 	t.Parallel()
 	s := newTestStore(t)
 
+	handle, err := s.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
 	// Empty store
-	log, err := query.ReadLastLog(s)
+	log, err := query.ReadLastLog(handle)
 	require.NoError(t, err)
 	require.Nil(t, log)
 
@@ -206,7 +210,7 @@ func TestReadLastLog(t *testing.T) {
 	testLogs := createTestLogs("test-ledger")
 	appendLogs(t, s, 1, testLogs...)
 
-	log, err = query.ReadLastLog(s)
+	log, err = query.ReadLastLog(handle)
 	require.NoError(t, err)
 	require.NotNil(t, log)
 	require.Equal(t, uint64(4), log.GetSequence())
@@ -216,8 +220,12 @@ func TestReadAuditEntriesCursor(t *testing.T) {
 	t.Parallel()
 	s := newTestStore(t)
 
+	handle, err := s.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
 	// Empty store
-	cursor, err := query.ReadAuditEntries(context.Background(), s, nil)
+	cursor, err := query.ReadAuditEntries(context.Background(), handle, nil)
 	require.NoError(t, err)
 
 	_, curErr := cursor.Next()
@@ -235,7 +243,7 @@ func TestReadAuditEntriesCursor(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Read all
-	cursor, err = query.ReadAuditEntries(context.Background(), s, nil)
+	cursor, err = query.ReadAuditEntries(context.Background(), handle, nil)
 	require.NoError(t, err)
 
 	var entries []*auditpb.AuditEntry
@@ -255,7 +263,7 @@ func TestReadAuditEntriesCursor(t *testing.T) {
 
 	// Read after sequence 1
 	afterSeq := uint64(1)
-	cursor, err = query.ReadAuditEntries(context.Background(), s, &afterSeq)
+	cursor, err = query.ReadAuditEntries(context.Background(), handle, &afterSeq)
 	require.NoError(t, err)
 
 	entries = nil

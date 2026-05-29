@@ -114,7 +114,11 @@ func TestSinkStatus(t *testing.T) {
 		t.Parallel()
 		s := newTestStore(t)
 
-		statuses, err := query.ReadAllSinkStatuses(s)
+		handle, err := s.NewDirectReadHandle()
+		require.NoError(t, err)
+		defer func() { _ = handle.Close() }()
+
+		statuses, err := query.ReadAllSinkStatuses(handle)
 		require.NoError(t, err)
 		require.Empty(t, statuses)
 	})
@@ -134,7 +138,11 @@ func TestSinkStatus(t *testing.T) {
 		}))
 		require.NoError(t, batch.Commit())
 
-		statuses, err := query.ReadAllSinkStatuses(s)
+		handle, err := s.NewDirectReadHandle()
+		require.NoError(t, err)
+		defer func() { _ = handle.Close() }()
+
+		statuses, err := query.ReadAllSinkStatuses(handle)
 		require.NoError(t, err)
 		require.Len(t, statuses, 1)
 		require.Equal(t, "nats-1", statuses[0].GetSinkName())
@@ -159,7 +167,11 @@ func TestSinkStatus(t *testing.T) {
 		require.NoError(t, state.ClearSinkStatus(batch, "nats-1"))
 		require.NoError(t, batch.Commit())
 
-		statuses, err := query.ReadAllSinkStatuses(s)
+		handle, err := s.NewDirectReadHandle()
+		require.NoError(t, err)
+		defer func() { _ = handle.Close() }()
+
+		statuses, err := query.ReadAllSinkStatuses(handle)
 		require.NoError(t, err)
 		require.Empty(t, statuses)
 	})
@@ -179,7 +191,11 @@ func TestSinkStatus(t *testing.T) {
 		}))
 		require.NoError(t, batch.Commit())
 
-		statuses, err := query.ReadAllSinkStatuses(s)
+		handle, err := s.NewDirectReadHandle()
+		require.NoError(t, err)
+		defer func() { _ = handle.Close() }()
+
+		statuses, err := query.ReadAllSinkStatuses(handle)
 		require.NoError(t, err)
 		require.Len(t, statuses, 2)
 	})
@@ -192,7 +208,11 @@ func TestSinkConfig(t *testing.T) {
 		t.Parallel()
 		s := newTestStore(t)
 
-		configs, err := query.ReadAllSinkConfigs(attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig), s)
+		handle, err := s.NewDirectReadHandle()
+		require.NoError(t, err)
+		defer func() { _ = handle.Close() }()
+
+		configs, err := query.ReadAllSinkConfigs(attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig), handle)
 		require.NoError(t, err)
 		require.Empty(t, configs)
 	})
@@ -216,7 +236,11 @@ func TestSinkConfig(t *testing.T) {
 		}))
 		require.NoError(t, batch.Commit())
 
-		cfg, err := readSinkConfig(attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig), s, "primary-nats")
+		handle, err := s.NewDirectReadHandle()
+		require.NoError(t, err)
+		defer func() { _ = handle.Close() }()
+
+		cfg, err := readSinkConfig(attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig), handle, "primary-nats")
 		require.NoError(t, err)
 		require.NotNil(t, cfg)
 		require.Equal(t, "primary-nats", cfg.GetName())
@@ -250,7 +274,11 @@ func TestSinkConfig(t *testing.T) {
 		}))
 		require.NoError(t, batch.Commit())
 
-		configs, err := query.ReadAllSinkConfigs(attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig), s)
+		handle, err := s.NewDirectReadHandle()
+		require.NoError(t, err)
+		defer func() { _ = handle.Close() }()
+
+		configs, err := query.ReadAllSinkConfigs(attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig), handle)
 		require.NoError(t, err)
 		require.Len(t, configs, 2)
 	})
@@ -282,13 +310,17 @@ func TestSinkConfig(t *testing.T) {
 		require.NoError(t, deleteSinkConfigBatch(batch, "sink-a"))
 		require.NoError(t, batch.Commit())
 
-		configs, err := query.ReadAllSinkConfigs(attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig), s)
+		handle, err := s.NewDirectReadHandle()
+		require.NoError(t, err)
+		defer func() { _ = handle.Close() }()
+
+		configs, err := query.ReadAllSinkConfigs(attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig), handle)
 		require.NoError(t, err)
 		require.Len(t, configs, 1)
 		require.Equal(t, "sink-b", configs[0].GetName())
 
 		// Verify the deleted one returns nil
-		cfg, err := readSinkConfig(attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig), s, "sink-a")
+		cfg, err := readSinkConfig(attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig), handle, "sink-a")
 		require.NoError(t, err)
 		require.Nil(t, cfg)
 	})
@@ -319,14 +351,18 @@ func TestSinkConfig(t *testing.T) {
 		}))
 		require.NoError(t, batch.Commit())
 
-		cfg, err := readSinkConfig(attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig), s, "my-sink")
+		handle, err := s.NewDirectReadHandle()
+		require.NoError(t, err)
+		defer func() { _ = handle.Close() }()
+
+		cfg, err := readSinkConfig(attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig), handle, "my-sink")
 		require.NoError(t, err)
 		require.NotNil(t, cfg)
 		require.Equal(t, "protobuf", cfg.GetFormat())
 		require.Equal(t, "nats://new:4222", cfg.GetNats().GetUrl())
 
 		// Should still be only one config
-		configs, err := query.ReadAllSinkConfigs(attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig), s)
+		configs, err := query.ReadAllSinkConfigs(attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig), handle)
 		require.NoError(t, err)
 		require.Len(t, configs, 1)
 	})

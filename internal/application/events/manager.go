@@ -109,7 +109,16 @@ func (m *Manager) reconcile() {
 		return
 	}
 
-	sinkCfgs, err := query.ReadAllSinkConfigs(m.sinkConfigAttr, m.store)
+	cfgHandle, handleErr := m.store.NewDirectReadHandle()
+	if handleErr != nil {
+		m.logger.Errorf("Failed to create read handle: %v", handleErr)
+
+		return
+	}
+
+	sinkCfgs, err := query.ReadAllSinkConfigs(m.sinkConfigAttr, cfgHandle)
+	_ = cfgHandle.Close()
+
 	if err != nil {
 		m.logger.Errorf("Failed to load sink configs: %v", err)
 

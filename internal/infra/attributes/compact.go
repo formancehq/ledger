@@ -102,11 +102,19 @@ func CompactAllForBackup(s *dal.Store) error {
 	}
 
 	// Single scan over the entire attribute range
+	handle, err := s.NewDirectReadHandle()
+	if err != nil {
+		_ = batch.Cancel()
+
+		return fmt.Errorf("creating read handle: %w", err)
+	}
+	defer func() { _ = handle.Close() }()
+
 	buf := make([]byte, 2)
 	buf[0] = dal.ZoneAttributes
 	buf[1] = dal.ZoneAttributes + 1
 
-	iter, err := s.NewIter(&pebble.IterOptions{
+	iter, err := handle.NewIter(&pebble.IterOptions{
 		LowerBound: buf[:1],
 		UpperBound: buf[1:2],
 	})

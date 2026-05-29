@@ -26,12 +26,19 @@ import (
 )
 
 // applyWork represents a unit of work for the Applier goroutine.
-// Exactly one of (entries, barrier, syncLeader) is set per work item.
+// Exactly one of (entries, barrier, syncLeader, installSnapshot) is set per work item.
 type applyWork struct {
-	entries    []raftpb.Entry
-	confState  *raftpb.ConfState
-	barrier    chan struct{} // non-nil = drain; closed when processed
-	syncLeader uint64        // non-zero = trigger SyncSnapshot from Run goroutine
+	entries         []raftpb.Entry
+	confState       *raftpb.ConfState
+	barrier         chan struct{} // non-nil = drain; closed when processed
+	syncLeader      uint64        // non-zero = trigger SyncSnapshot from Run goroutine
+	installSnapshot chan struct{} // non-nil = prepare for snapshot install; closed when ready
+}
+
+// gatingResult carries the outcome of a maintenance task back to the Run
+// goroutine so it can decide whether to unspool or mark the node out-of-sync.
+type gatingResult struct {
+	syncFailed bool // true if the sync task failed, node should be marked out-of-sync
 }
 
 // Applier owns all FSM application logic and gating/spool lifecycle.
@@ -50,8 +57,9 @@ type Applier struct {
 	snapshotFetcherProvider state.SnapshotFetcherProvider
 
 	status           *atomic.Int32
+	gatingReason     string // "syncing", "snapshotting", "query-checkpoint" — for observability
 	syncProgress     atomic.Pointer[state.SyncProgress]
-	gatingTerminated chan struct{}
+	gatingTerminated chan gatingResult
 	ch               chan applyWork  // buffered(1)
 	commitCh         chan commitWork // buffered(1), read by the committer goroutine
 
@@ -281,9 +289,9 @@ func (a *Applier) TaskError() <-chan error {
 	return a.taskExecutor.Error()
 }
 
-// SetSnapshotWrapper sets the function used to wrap FSM snapshots with cluster metadata.
-// SetOutOfSync transitions the applier to the out-of-sync status.
-func (a *Applier) SetOutOfSync() {
+// setOutOfSync transitions the applier to the out-of-sync status.
+// Only called from RecoverAndReplay (startup, before Run starts).
+func (a *Applier) setOutOfSync() {
 	a.status.Store(statusOutOfSync)
 }
 
@@ -303,7 +311,7 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 		if a.logger.Enabled(logging.DebugLevel) {
 			a.logger.Debugf("Store is not up to date, resuming from snapshot and tagging node as out of sync")
 		}
-		a.SetOutOfSync()
+		a.setOutOfSync()
 
 		return false, nil
 	}
@@ -312,7 +320,7 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 	// FSM counters (sequences, periods, reversions, etc.) are already loaded by
 	// NewMachine → RecoverState in the constructor and Pebble has not changed
 	// since (InstallSnapshot only touches in-memory state, and the
-	// SynchronizeWithLeader path exits earlier via SetOutOfSync).
+	// SynchronizeWithLeader path exits earlier via setOutOfSync).
 	if err := a.fsm.RestoreCacheFromStore(); err != nil {
 		return false, fmt.Errorf("restoring cache from store on restart: %w", err)
 	}
@@ -404,8 +412,7 @@ func (a *Applier) Submit(entries []raftpb.Entry, confState *raftpb.ConfState, st
 }
 
 // Drain blocks until all previously submitted work has been processed.
-// Used before operations that require the FSM to be idle (snapshot install,
-// leadership acquisition).
+// Used before operations that require the FSM to be idle (leadership acquisition).
 func (a *Applier) Drain(stop chan struct{}) {
 	barrier := make(chan struct{})
 	select {
@@ -418,23 +425,28 @@ func (a *Applier) Drain(stop chan struct{}) {
 	}
 }
 
-// InterruptMaintenance cancels any in-flight maintenance task (sync, checkpoint
-// creation, etc.) and blocks until the task goroutine has exited. Must be
-// called before mutating FSM state that a running maintenance task may read
-// (e.g. before InstallSnapshot, which writes fsm.lastCheckpointID /
-// fsm.snapshotIndex that SynchronizeWithLeader reads).
-func (a *Applier) InterruptMaintenance() {
-	a.taskExecutor.Interrupt()
+// PrepareForSnapshotInstall asks the Run goroutine to drain pending work,
+// interrupt any maintenance task, and set statusInstallingSnapshot. Blocks
+// until Run has completed all of this. After this returns, the caller
+// (processReadies) can safely call InstallSnapshot on the FSM.
+//
+// This is the single-writer protocol: only Run writes status, so there is
+// no race between status writes and entry processing.
+func (a *Applier) PrepareForSnapshotInstall(stop chan struct{}) {
+	ack := make(chan struct{})
+	select {
+	case a.ch <- applyWork{installSnapshot: ack}:
+		select {
+		case <-ack:
+		case <-stop:
+		}
+	case <-stop:
+	}
 }
 
-// Status returns the current applier status (statusNormal, statusSyncing, etc.).
+// Status returns the current applier status.
 func (a *Applier) Status() int32 {
 	return a.status.Load()
-}
-
-// SetStatus stores the applier status.
-func (a *Applier) SetStatus(s int32) {
-	a.status.Store(s)
 }
 
 // Run is the Applier goroutine. It processes submitted work items and
@@ -487,7 +499,30 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 					return err
 				}
 
+				a.status.Store(statusGated)
+				a.gatingReason = "syncing"
 				a.startSyncSnapshot(ctx, work.syncLeader)
+				waitStart = time.Now()
+
+				continue
+			}
+
+			if work.installSnapshot != nil {
+				// Drain pending commit and interrupt any maintenance task,
+				// then mark the node as installing a snapshot. Only after
+				// all of this is done do we signal processReadies (via ack)
+				// that it is safe to call InstallSnapshot on the FSM.
+				//
+				// Because this runs in the Run goroutine AFTER all prior
+				// work items (including entries that may trigger
+				// handleCheckpointRequired), there is no status race.
+				if err := a.waitPendingCommit(ctx); err != nil {
+					return err
+				}
+
+				a.taskExecutor.Interrupt()
+				a.status.Store(statusInstallingSnapshot)
+				close(work.installSnapshot)
 				waitStart = time.Now()
 
 				continue
@@ -524,28 +559,29 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 			}
 
 			waitStart = time.Now()
-		case <-a.gatingTerminated:
+		case result := <-a.gatingTerminated:
 			a.gatingWaitDurationHistogram.Record(context.Background(), time.Since(gatingStart).Microseconds())
 			a.readiesDuringGatingHistogram.Record(context.Background(), readiesDuringGating)
 			readiesDuringGating = 0
 			gatingStart = time.Time{}
 			a.gatingTerminated = nil
 
-			switch a.status.Load() {
-			case statusOutOfSync:
+			if a.status.Load() == statusInstallingSnapshot {
+				// Run set this status via the installSnapshot command.
+				// processReadies is about to (or already has) called
+				// InstallSnapshot on the FSM — skip unspoolAndResume.
 				if a.logger.Enabled(logging.DebugLevel) {
-					a.logger.Debugf("Background operation failed, node is out of sync — waiting for next sync")
+					a.logger.Debugf("Skipping unspoolAndResume: leader snapshot installation in progress")
 				}
 				waitStart = time.Now()
 
 				continue
-			case statusInstallingSnapshot:
-				// processReadies set this status before interrupting the
-				// previous maintenance task. InstallSnapshot is about to (or
-				// already has) write fsm.snapshotIndex on the processReadies
-				// goroutine; calling unspoolAndResume here would race.
+			}
+
+			if result.syncFailed {
+				a.status.Store(statusOutOfSync)
 				if a.logger.Enabled(logging.DebugLevel) {
-					a.logger.Debugf("Skipping unspoolAndResume: leader snapshot installation in progress")
+					a.logger.Debugf("Background operation failed, node is out of sync — waiting for next sync")
 				}
 				waitStart = time.Now()
 
@@ -570,11 +606,9 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 }
 
 // SyncSnapshot enqueues a snapshot synchronization with the leader for
-// processing by the Run goroutine. This ensures that gatingTerminated is
-// always assigned from Run, avoiding data races.
+// processing by the Run goroutine. Run sets the status to statusGated
+// when it processes this command — no cross-goroutine status write needed.
 func (a *Applier) SyncSnapshot(leader uint64, stop chan struct{}) {
-	a.status.Store(statusSyncing)
-
 	select {
 	case a.ch <- applyWork{syncLeader: leader}:
 	case <-stop:
@@ -594,7 +628,7 @@ func (a *Applier) startSyncSnapshot(ctx context.Context, leader uint64) {
 	progress := state.NewSyncProgress()
 	a.syncProgress.Store(progress)
 
-	a.gatingTerminated = a.startMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
+	a.gatingTerminated = a.startMaintenanceTask(ctx, func(ctx context.Context) (maintenanceTaskResult, error) {
 		snapshotFetcher, err := a.snapshotFetcherProvider.GetForPeer(leader)
 		if err != nil {
 			a.logger.WithFields(map[string]any{
@@ -602,9 +636,8 @@ func (a *Applier) startSyncSnapshot(ctx context.Context, leader uint64) {
 				"error":  err,
 			}).Errorf("Failed to get snapshot fetcher, marking node as out of sync")
 			a.syncProgress.Store(nil)
-			a.status.Store(statusOutOfSync)
 
-			return 0, nil
+			return maintenanceTaskResult{syncFailed: true}, nil
 		}
 
 		syncedIndex, err := a.fsm.SynchronizeWithLeader(ctx, snapshotFetcher, progress)
@@ -614,14 +647,13 @@ func (a *Applier) startSyncSnapshot(ctx context.Context, leader uint64) {
 				"error":  err,
 			}).Errorf("Failed to synchronize with leader, marking node as out of sync")
 			a.syncProgress.Store(nil)
-			a.status.Store(statusOutOfSync)
 
-			return 0, nil
+			return maintenanceTaskResult{syncFailed: true}, nil
 		}
 
 		a.syncProgress.Store(nil)
 
-		return syncedIndex, nil
+		return maintenanceTaskResult{frozenAtIndex: syncedIndex}, nil
 	}, nil)
 }
 
@@ -630,10 +662,12 @@ func (a *Applier) StatusString() string {
 	switch a.status.Load() {
 	case statusNormal:
 		return "normal"
-	case statusSyncing:
-		return "syncing"
-	case statusSnapshotting:
-		return "snapshotting"
+	case statusGated:
+		if a.gatingReason != "" {
+			return a.gatingReason
+		}
+
+		return "gated"
 	case statusOutOfSync:
 		return "out_of_sync"
 	case statusInstallingSnapshot:
@@ -641,6 +675,11 @@ func (a *Applier) StatusString() string {
 	default:
 		return "unknown"
 	}
+}
+
+// IsSyncing returns true if the applier is gated due to a leader sync.
+func (a *Applier) IsSyncing() bool {
+	return a.status.Load() == statusGated && a.gatingReason == "syncing"
 }
 
 // GetSyncProgress returns the current sync progress, or nil if not syncing.
@@ -839,7 +878,8 @@ func (a *Applier) handleCheckpointRequired(
 		frozenAtIndex = entries[len(entries)-1].Index
 	}
 
-	a.status.Store(statusSnapshotting)
+	a.status.Store(statusGated)
+	a.gatingReason = "snapshotting"
 
 	// Resolve the deferred future for the checkpoint-triggering proposal.
 	// The last result in applyResult.Results is the entry that set CheckpointRequired.
@@ -858,14 +898,14 @@ func (a *Applier) handleCheckpointRequired(
 	}
 
 	// Called from Run goroutine — assign gating directly.
-	a.gatingTerminated = a.startMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
+	a.gatingTerminated = a.startMaintenanceTask(ctx, func(ctx context.Context) (maintenanceTaskResult, error) {
 		path, err := a.store.CreateTemporaryCheckpoint(fmt.Sprintf("checkpoint-%d", applyResult.CheckpointPeriodID))
 		if err != nil {
 			if deferredFuture != nil {
 				deferredFuture.Resolve(state.ApplyResult{}, err)
 			}
 
-			return 0, fmt.Errorf("creating checkpoint: %w", err)
+			return maintenanceTaskResult{}, fmt.Errorf("creating checkpoint: %w", err)
 		}
 
 		if applyResult.OnCheckpointDone != nil {
@@ -883,7 +923,7 @@ func (a *Applier) handleCheckpointRequired(
 			deferredFuture.Resolve(*deferredResult, nil)
 		}
 
-		return frozenAtIndex, nil
+		return maintenanceTaskResult{frozenAtIndex: frozenAtIndex}, nil
 	}, nil)
 
 	return nil
@@ -914,7 +954,8 @@ func (a *Applier) handleQueryCheckpointRequired(
 		frozenAtIndex = entries[len(entries)-1].Index
 	}
 
-	a.status.Store(statusSnapshotting)
+	a.status.Store(statusGated)
+	a.gatingReason = "query-checkpoint"
 
 	// Resolve the deferred future for the checkpoint-triggering proposal.
 	var (
@@ -934,20 +975,20 @@ func (a *Applier) handleQueryCheckpointRequired(
 	checkpointID := applyResult.QueryCheckpointID
 
 	// Called from Run goroutine — assign gating directly.
-	a.gatingTerminated = a.startMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
+	a.gatingTerminated = a.startMaintenanceTask(ctx, func(ctx context.Context) (maintenanceTaskResult, error) {
 		if err := a.createMainStoreCheckpoint(checkpointID); err != nil {
 			if deferredFuture != nil {
 				deferredFuture.Resolve(state.ApplyResult{}, err)
 			}
 
-			return 0, err
+			return maintenanceTaskResult{}, err
 		}
 
 		if deferredFuture != nil {
 			deferredFuture.Resolve(*deferredResult, nil)
 		}
 
-		return frozenAtIndex, nil
+		return maintenanceTaskResult{frozenAtIndex: frozenAtIndex}, nil
 	}, nil)
 
 	return nil
@@ -975,42 +1016,55 @@ func slicesEqual(a, b []uint64) bool {
 	return true
 }
 
+// maintenanceTaskResult is returned by the task function to indicate the outcome.
+type maintenanceTaskResult struct {
+	frozenAtIndex uint64
+	syncFailed    bool // if true, skip spool replay and mark node out-of-sync
+}
+
 // startMaintenanceTask creates a gating channel and runs the maintenance task
 // in the background. Returns the gating channel so the caller can deliver it
 // to Run — either by direct assignment (when called from Run itself) or via
 // a.gatingCh (when called from another goroutine like processReadies).
 func (a *Applier) startMaintenanceTask(
 	ctx context.Context,
-	task func(ctx context.Context) (uint64, error),
+	task func(ctx context.Context) (maintenanceTaskResult, error),
 	postGating func(ctx context.Context),
-) chan struct{} {
-	gatingTerminated := make(chan struct{})
+) chan gatingResult {
+	gatingTerminated := make(chan gatingResult, 1)
 
 	a.taskExecutor.Interrupt()
 	a.taskExecutor.Run(ctx, func(ctx context.Context) error {
-		var closeOnce sync.Once
+		var sendOnce sync.Once
 
-		closeGating := func() { closeOnce.Do(func() { close(gatingTerminated) }) }
-		defer closeGating()
+		sendResult := func(result gatingResult) {
+			sendOnce.Do(func() {
+				gatingTerminated <- result
+				close(gatingTerminated)
+			})
+		}
+		defer sendResult(gatingResult{})
 
 		snapshotStart := time.Now()
 
-		frozenAtIndex, err := task(ctx)
+		taskResult, err := task(ctx)
 		if err != nil {
 			return err
 		}
 
 		a.maintenanceSnapshotHistogram.Record(context.Background(), float64(time.Since(snapshotStart).Microseconds()))
 
-		// If the task marked the node as out of sync (e.g. failed sync with leader),
-		// skip spool replay — the node must wait for a new sync attempt.
-		if a.status.Load() == statusOutOfSync {
+		// If the task failed (e.g. failed sync with leader), signal Run to
+		// mark the node out-of-sync. Don't replay the spool.
+		if taskResult.syncFailed {
+			sendResult(gatingResult{syncFailed: true})
+
 			return nil
 		}
 
 		replayStart := time.Now()
 
-		if err := a.replaySpool(ctx, frozenAtIndex); err != nil {
+		if err := a.replaySpool(ctx, taskResult.frozenAtIndex); err != nil {
 			return err
 		}
 
@@ -1019,7 +1073,7 @@ func (a *Applier) startMaintenanceTask(
 		// End gating before post-gating work (e.g. WAL compaction).
 		// Post-gating work doesn't need the FSM to be frozen and would
 		// unnecessarily extend the spooling window, increasing latency.
-		closeGating()
+		sendResult(gatingResult{})
 
 		if postGating != nil {
 			postGating(ctx)
@@ -1346,5 +1400,11 @@ func (a *Applier) createBaselineSnapshot() error {
 		return err
 	}
 
-	return attributes.CreateBaselineSnapshot(a.store, a.fsm.Registry.Attrs, destPath)
+	handle, handleErr := a.store.NewDirectReadHandle()
+	if handleErr != nil {
+		return fmt.Errorf("creating read handle for baseline snapshot: %w", handleErr)
+	}
+	defer func() { _ = handle.Close() }()
+
+	return attributes.CreateBaselineSnapshot(handle, a.fsm.Registry.Attrs, destPath)
 }

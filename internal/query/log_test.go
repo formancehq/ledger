@@ -49,8 +49,12 @@ func TestReadLastSequence(t *testing.T) {
 
 	registerLedger(t, s, "test-ledger")
 
+	handle, err := s.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
 	// Test with no logs - should return 0
-	lastSequence, err := query.ReadLastSequence(s)
+	lastSequence, err := query.ReadLastSequence(handle)
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), lastSequence)
 
@@ -58,7 +62,7 @@ func TestReadLastSequence(t *testing.T) {
 	testLogs := createTestLogs("test-ledger")
 	appendLogs(t, s, 0, testLogs...)
 
-	lastSequence, err = query.ReadLastSequence(s)
+	lastSequence, err = query.ReadLastSequence(handle)
 	require.NoError(t, err)
 	require.Equal(t, uint64(4), lastSequence) // Last log has sequence 4
 }
@@ -79,7 +83,11 @@ func TestReadLastSequenceAfterSnapshot(t *testing.T) {
 	require.Equal(t, uint64(1), checkpointID)
 
 	// Verify data still accessible after snapshot
-	lastSequence, err := query.ReadLastSequence(s)
+	handle, err := s.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	lastSequence, err := query.ReadLastSequence(handle)
 	require.NoError(t, err)
 	require.Equal(t, uint64(4), lastSequence)
 }
@@ -91,7 +99,11 @@ func TestReadLogsSince(t *testing.T) {
 		t.Parallel()
 		s := newTestStore(t)
 
-		cursor, err := query.ReadLogsSince(context.Background(), s, 0)
+		handle, err := s.NewDirectReadHandle()
+		require.NoError(t, err)
+		defer func() { _ = handle.Close() }()
+
+		cursor, err := query.ReadLogsSince(context.Background(), handle, 0)
 		require.NoError(t, err)
 		logs := collectLogs(t, cursor)
 		require.Empty(t, logs)
@@ -106,8 +118,12 @@ func TestReadLogsSince(t *testing.T) {
 		testLogs := createTestLogs("test-ledger")
 		appendLogs(t, s, 1, testLogs...)
 
+		handle, err := s.NewDirectReadHandle()
+		require.NoError(t, err)
+		defer func() { _ = handle.Close() }()
+
 		// afterSequence=0 should return all logs
-		cursor, err := query.ReadLogsSince(context.Background(), s, 0)
+		cursor, err := query.ReadLogsSince(context.Background(), handle, 0)
 		require.NoError(t, err)
 		logs := collectLogs(t, cursor)
 		require.Len(t, logs, 4)
@@ -124,8 +140,12 @@ func TestReadLogsSince(t *testing.T) {
 		testLogs := createTestLogs("test-ledger")
 		appendLogs(t, s, 1, testLogs...)
 
+		handle, err := s.NewDirectReadHandle()
+		require.NoError(t, err)
+		defer func() { _ = handle.Close() }()
+
 		// afterSequence=2 should return logs 3 and 4
-		cursor, err := query.ReadLogsSince(context.Background(), s, 2)
+		cursor, err := query.ReadLogsSince(context.Background(), handle, 2)
 		require.NoError(t, err)
 		logs := collectLogs(t, cursor)
 		require.Len(t, logs, 2)
@@ -142,8 +162,12 @@ func TestReadLogsSince(t *testing.T) {
 		testLogs := createTestLogs("test-ledger")
 		appendLogs(t, s, 1, testLogs...)
 
+		handle, err := s.NewDirectReadHandle()
+		require.NoError(t, err)
+		defer func() { _ = handle.Close() }()
+
 		// afterSequence=4 (last log) should return empty
-		cursor, err := query.ReadLogsSince(context.Background(), s, 4)
+		cursor, err := query.ReadLogsSince(context.Background(), handle, 4)
 		require.NoError(t, err)
 		logs := collectLogs(t, cursor)
 		require.Empty(t, logs)
@@ -158,7 +182,11 @@ func TestReadLogsSince(t *testing.T) {
 		testLogs := createTestLogs("test-ledger")
 		appendLogs(t, s, 1, testLogs...)
 
-		cursor, err := query.ReadLogsSince(context.Background(), s, 999)
+		handle, err := s.NewDirectReadHandle()
+		require.NoError(t, err)
+		defer func() { _ = handle.Close() }()
+
+		cursor, err := query.ReadLogsSince(context.Background(), handle, 999)
 		require.NoError(t, err)
 		logs := collectLogs(t, cursor)
 		require.Empty(t, logs)
@@ -173,8 +201,12 @@ func TestReadLogsSince(t *testing.T) {
 		testLogs := createTestLogs("test-ledger")
 		appendLogs(t, s, 1, testLogs...)
 
+		handle, err := s.NewDirectReadHandle()
+		require.NoError(t, err)
+		defer func() { _ = handle.Close() }()
+
 		// Simulate emitter: read all, then read after cursor
-		cursor, err := query.ReadLogsSince(context.Background(), s, 0)
+		cursor, err := query.ReadLogsSince(context.Background(), handle, 0)
 		require.NoError(t, err)
 		logs := collectLogs(t, cursor)
 		require.Len(t, logs, 4)
@@ -186,7 +218,7 @@ func TestReadLogsSince(t *testing.T) {
 		appendLogs(t, s, 2, moreLogs...)
 
 		// Read only new logs
-		cursor, err = query.ReadLogsSince(context.Background(), s, lastSeq)
+		cursor, err = query.ReadLogsSince(context.Background(), handle, lastSeq)
 		require.NoError(t, err)
 		newLogs := collectLogs(t, cursor)
 		require.Len(t, newLogs, 4) // 4 new logs starting from sequence 5
@@ -200,6 +232,10 @@ func TestReadLogsSince(t *testing.T) {
 		now := libtime.Now()
 
 		registerLedger(t, s, "test-ledger")
+
+		handle, err := s.NewDirectReadHandle()
+		require.NoError(t, err)
+		defer func() { _ = handle.Close() }()
 
 		// Create logs with different payload types
 		mixedLogs := []*commonpb.Log{
@@ -250,7 +286,7 @@ func TestReadLogsSince(t *testing.T) {
 		}
 		appendLogs(t, s, 1, mixedLogs...)
 
-		cursor, err := query.ReadLogsSince(context.Background(), s, 0)
+		cursor, err := query.ReadLogsSince(context.Background(), handle, 0)
 		require.NoError(t, err)
 		logs := collectLogs(t, cursor)
 		require.Len(t, logs, 3)
@@ -365,8 +401,12 @@ func TestReadLogBySequenceWithCold_HotHit(t *testing.T) {
 	testLogs := createTestLogs("test-ledger")
 	appendLogs(t, s, 0, testLogs...)
 
+	handle, err := s.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
 	// Hot storage has the log → should return it without touching cold
-	log, err := query.ReadLogBySequenceWithCold(context.Background(), s, nil, 1)
+	log, err := query.ReadLogBySequenceWithCold(context.Background(), handle, nil, 1)
 	require.NoError(t, err)
 	require.NotNil(t, log)
 	require.Equal(t, uint64(1), log.GetSequence())
@@ -377,8 +417,12 @@ func TestReadLogBySequenceWithCold_NilColdReader(t *testing.T) {
 
 	s := newTestStore(t)
 
+	handle, err := s.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
 	// Not in hot, no cold reader → nil
-	log, err := query.ReadLogBySequenceWithCold(context.Background(), s, nil, 999)
+	log, err := query.ReadLogBySequenceWithCold(context.Background(), handle, nil, 999)
 	require.NoError(t, err)
 	require.Nil(t, log)
 }
@@ -390,6 +434,10 @@ func TestReadLogBySequenceWithCold_ColdFallback(t *testing.T) {
 	logger := logging.FromContext(ctx)
 
 	s := newTestStore(t)
+
+	handle, err := s.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
 
 	// Create a log to put in cold storage
 	coldLog := &commonpb.Log{
@@ -418,7 +466,7 @@ func TestReadLogBySequenceWithCold_ColdFallback(t *testing.T) {
 	t.Cleanup(func() { _ = coldReader.Close() })
 
 	// Log is NOT in hot storage, but IS in cold storage
-	log, err := query.ReadLogBySequenceWithCold(ctx, s, coldReader, 5)
+	log, err := query.ReadLogBySequenceWithCold(ctx, handle, coldReader, 5)
 	require.NoError(t, err)
 	require.NotNil(t, log)
 	require.Equal(t, uint64(5), log.GetSequence())
@@ -431,6 +479,10 @@ func TestReadLogBySequenceWithCold_NotInCold(t *testing.T) {
 	logger := logging.FromContext(ctx)
 
 	s := newTestStore(t)
+
+	handle, err := s.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
 
 	// Store an archived period, but the cold storage has no data for it
 	storePeriod(t, s, &commonpb.Period{
@@ -456,7 +508,7 @@ func TestReadLogBySequenceWithCold_NotInCold(t *testing.T) {
 	t.Cleanup(func() { _ = coldReader.Close() })
 
 	// Log 5 is NOT in hot storage and NOT in the cold SST
-	log, err := query.ReadLogBySequenceWithCold(ctx, s, coldReader, 5)
+	log, err := query.ReadLogBySequenceWithCold(ctx, handle, coldReader, 5)
 	require.NoError(t, err)
 	require.Nil(t, log)
 }
@@ -468,6 +520,10 @@ func TestReadLogBySequenceWithCold_NoPeriodMatch(t *testing.T) {
 	logger := logging.FromContext(ctx)
 
 	s := newTestStore(t)
+
+	handle, err := s.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
 
 	// Store a period that does NOT cover the requested sequence
 	storePeriod(t, s, &commonpb.Period{
@@ -482,7 +538,7 @@ func TestReadLogBySequenceWithCold_NoPeriodMatch(t *testing.T) {
 	t.Cleanup(func() { _ = coldReader.Close() })
 
 	// Sequence 5 is not covered by any archived period → nil
-	log, err := query.ReadLogBySequenceWithCold(ctx, s, coldReader, 5)
+	log, err := query.ReadLogBySequenceWithCold(ctx, handle, coldReader, 5)
 	require.NoError(t, err)
 	require.Nil(t, log)
 }
@@ -494,6 +550,10 @@ func TestReadLogBySequenceWithCold_NonArchivedPeriodIgnored(t *testing.T) {
 	logger := logging.FromContext(ctx)
 
 	s := newTestStore(t)
+
+	handle, err := s.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
 
 	// Period covers the sequence but is CLOSED (not ARCHIVED) → should not attempt cold read
 	storePeriod(t, s, &commonpb.Period{
@@ -508,7 +568,7 @@ func TestReadLogBySequenceWithCold_NonArchivedPeriodIgnored(t *testing.T) {
 	t.Cleanup(func() { _ = coldReader.Close() })
 
 	// Not in hot, period not archived → nil (no cold fetch attempted)
-	log, err := query.ReadLogBySequenceWithCold(ctx, s, coldReader, 5)
+	log, err := query.ReadLogBySequenceWithCold(ctx, handle, coldReader, 5)
 	require.NoError(t, err)
 	require.Nil(t, log)
 }

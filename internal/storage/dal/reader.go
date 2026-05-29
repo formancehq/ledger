@@ -9,10 +9,24 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 )
 
-// PebbleReader provides read access for Pebble queries.
-// Implemented by *pebble.DB, *pebble.Snapshot, *ReadHandle, and *Store.
-type PebbleReader interface {
+// PebbleGetter provides point-lookup access to Pebble.
+// Implemented by *pebble.DB, *pebble.Snapshot, *ReadHandle, *Batch, and *Store.
+//
+// *Store holds dbMu.RLock only for the duration of the Get call, which is safe
+// because Get is atomic and short-lived.
+type PebbleGetter interface {
 	Get(key []byte) ([]byte, io.Closer, error)
+}
+
+// PebbleReader provides full read access (point lookups + iteration).
+// Implemented by *pebble.DB, *pebble.Snapshot, *ReadHandle, and *Batch.
+//
+// *Store does NOT implement this interface. Callers that need iterators must
+// use NewReadHandle() or NewDirectReadHandle() — these hold dbMu.RLock for
+// their entire lifetime, preventing RestoreCheckpoint from closing the DB
+// while iterators are active.
+type PebbleReader interface {
+	PebbleGetter
 	NewIter(o *pebble.IterOptions) (*pebble.Iterator, error)
 }
 
@@ -89,7 +103,7 @@ func (h *ReadHandle) Close() error {
 }
 
 // Get performs a raw key lookup on the underlying Pebble database.
-// This makes *Store implement PebbleReader.
+// This makes *Store implement PebbleGetter.
 func (s *Store) Get(key []byte) ([]byte, io.Closer, error) {
 	s.dbMu.RLock()
 	defer s.dbMu.RUnlock()
@@ -112,7 +126,7 @@ func NewBoundedIter(reader PebbleReader, lower, upper []byte) (*pebble.Iterator,
 
 // GetValue reads a raw value from Pebble, returning nil if not found.
 // The returned bytes are a copy safe to use after the function returns.
-func GetValue(reader PebbleReader, key []byte) ([]byte, error) {
+func GetValue(reader PebbleGetter, key []byte) ([]byte, error) {
 	val, closer, err := reader.Get(key)
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
@@ -131,7 +145,7 @@ func GetValue(reader PebbleReader, key []byte) ([]byte, error) {
 }
 
 // ReadUint64 reads a big-endian uint64 from Pebble. Returns defaultValue if not found or too short.
-func ReadUint64(reader PebbleReader, key []byte, defaultValue uint64) (uint64, error) {
+func ReadUint64(reader PebbleGetter, key []byte, defaultValue uint64) (uint64, error) {
 	val, err := GetValue(reader, key)
 	if err != nil {
 		return 0, err
@@ -145,7 +159,7 @@ func ReadUint64(reader PebbleReader, key []byte, defaultValue uint64) (uint64, e
 }
 
 // ReadUint32 reads a big-endian uint32 from Pebble. Returns defaultValue if not found or too short.
-func ReadUint32(reader PebbleReader, key []byte, defaultValue uint32) (uint32, error) {
+func ReadUint32(reader PebbleGetter, key []byte, defaultValue uint32) (uint32, error) {
 	val, err := GetValue(reader, key)
 	if err != nil {
 		return 0, err
@@ -159,7 +173,7 @@ func ReadUint32(reader PebbleReader, key []byte, defaultValue uint32) (uint32, e
 }
 
 // ReadString reads a string value from Pebble. Returns "" if not found.
-func ReadString(reader PebbleReader, key []byte) (string, error) {
+func ReadString(reader PebbleGetter, key []byte) (string, error) {
 	val, err := GetValue(reader, key)
 	if err != nil {
 		return "", err
@@ -169,7 +183,7 @@ func ReadString(reader PebbleReader, key []byte) (string, error) {
 }
 
 // ReadBool reads a boolean flag from Pebble (0x01 = true). Returns false if not found.
-func ReadBool(reader PebbleReader, key []byte) (bool, error) {
+func ReadBool(reader PebbleGetter, key []byte) (bool, error) {
 	val, err := GetValue(reader, key)
 	if err != nil {
 		return false, err

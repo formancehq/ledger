@@ -234,7 +234,11 @@ func Test_appendAuditEntries(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Verify we can read them back
-	lastSeq, err := query.ReadLastAuditSequence(s)
+	handle, err := s.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	lastSeq, err := query.ReadLastAuditSequence(handle)
 	require.NoError(t, err)
 	require.Equal(t, uint64(3), lastSeq)
 
@@ -355,8 +359,12 @@ func TestReadLastAuditSequence(t *testing.T) {
 
 	s := newTestStore(t)
 
+	handle, err := s.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
 	// Empty store
-	seq, err := query.ReadLastAuditSequence(s)
+	seq, err := query.ReadLastAuditSequence(handle)
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), seq)
 
@@ -369,7 +377,7 @@ func TestReadLastAuditSequence(t *testing.T) {
 	))
 	require.NoError(t, batch.Commit())
 
-	seq, err = query.ReadLastAuditSequence(s)
+	seq, err = query.ReadLastAuditSequence(handle)
 	require.NoError(t, err)
 	require.Equal(t, uint64(30), seq)
 }
@@ -379,8 +387,12 @@ func TestReadSigningKeysCursorFunc(t *testing.T) {
 
 	s := newTestStore(t)
 
+	handle, err := s.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
 	// Empty store
-	cursor, err := query.ReadSigningKeysCursor(context.Background(), s)
+	cursor, err := query.ReadSigningKeysCursor(context.Background(), handle)
 	require.NoError(t, err)
 
 	var keys []*commonpb.SigningKey
@@ -412,7 +424,7 @@ func TestReadSigningKeysCursorFunc(t *testing.T) {
 	require.NoError(t, SaveSigningKey(batch, "child-key", pubKey2, "root-key"))
 	require.NoError(t, batch.Commit())
 
-	cursor, err = query.ReadSigningKeysCursor(context.Background(), s)
+	cursor, err = query.ReadSigningKeysCursor(context.Background(), handle)
 	require.NoError(t, err)
 
 	keys = nil

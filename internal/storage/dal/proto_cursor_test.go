@@ -41,7 +41,11 @@ func TestProtoCursor_Basic(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Create iterator and proto cursor
-	iter, err := s.NewIter(&pebble.IterOptions{
+	handle, err := s.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	iter, err := handle.NewIter(&pebble.IterOptions{
 		LowerBound: []byte{0xAA},
 		UpperBound: []byte{0xAB},
 	})
@@ -75,7 +79,11 @@ func TestProtoCursor_Empty(t *testing.T) {
 	s := newTestStore(t)
 
 	// Create iterator over empty range
-	iter, err := s.NewIter(&pebble.IterOptions{
+	handle, err := s.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	iter, err := handle.NewIter(&pebble.IterOptions{
 		LowerBound: []byte{0xBB},
 		UpperBound: []byte{0xBC},
 	})
@@ -113,7 +121,11 @@ func TestProtoCursor_MultipleCallsAfterEOF(t *testing.T) {
 	require.NoError(t, batch.SetBytes(key, data))
 	require.NoError(t, batch.Commit())
 
-	iter, err := s.NewIter(&pebble.IterOptions{
+	handle, err := s.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	iter, err := handle.NewIter(&pebble.IterOptions{
 		LowerBound: []byte{0xCC},
 		UpperBound: []byte{0xCD},
 	})

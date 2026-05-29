@@ -126,7 +126,7 @@ const SuffixLen = AttrTypeLen
 // Key format: [KeyPrefixAttributes][attrType][canonicalKey].
 // Returns the value and any error. Returns (zero, nil) if no entry found.
 // Note: This is a read operation — allocates its own buffer for concurrent safety.
-func (a *Attribute[V]) Get(reader dal.PebbleReader, canonicalKey []byte) (V, error) {
+func (a *Attribute[V]) Get(reader dal.PebbleGetter, canonicalKey []byte) (V, error) {
 	var zeroValue V
 
 	pLen := prefixLen(canonicalKey)
@@ -171,7 +171,7 @@ type ScanResult[V proto.Message] struct {
 
 // ScanEntries reads the entry for a canonical key and returns the result.
 // Thread-safe: allocates its own buffer for concurrent access.
-func (a *Attribute[V]) ScanEntries(reader dal.PebbleReader, canonicalKey []byte) (*ScanResult[V], error) {
+func (a *Attribute[V]) ScanEntries(reader dal.PebbleGetter, canonicalKey []byte) (*ScanResult[V], error) {
 	value, err := a.Get(reader, canonicalKey)
 	if err != nil {
 		return nil, err

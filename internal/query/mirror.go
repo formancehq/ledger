@@ -23,7 +23,7 @@ func mirrorPointKey(kb *dal.KeyBuilder, sub byte, ledgerID uint32) []byte {
 
 // ReadMirrorCursor returns the last ingested v2 log ID for a mirror ledger.
 // Returns 0 if no cursor has been persisted yet.
-func ReadMirrorCursor(reader dal.PebbleReader, ledgerID uint32) (uint64, error) {
+func ReadMirrorCursor(reader dal.PebbleGetter, ledgerID uint32) (uint64, error) {
 	kb := dal.NewKeyBuilder()
 	key := mirrorPointKey(kb, dal.SubPLMirrorCursor, ledgerID)
 
@@ -37,7 +37,7 @@ func ReadMirrorCursor(reader dal.PebbleReader, ledgerID uint32) (uint64, error) 
 
 // ReadMirrorStatus returns the last sync error for a mirror ledger.
 // Returns nil if no error is recorded.
-func ReadMirrorStatus(reader dal.PebbleReader, ledgerID uint32) (*commonpb.MirrorSyncError, error) {
+func ReadMirrorStatus(reader dal.PebbleGetter, ledgerID uint32) (*commonpb.MirrorSyncError, error) {
 	kb := dal.NewKeyBuilder()
 	key := mirrorPointKey(kb, dal.SubPLMirrorStatus, ledgerID)
 
@@ -51,7 +51,7 @@ func ReadMirrorStatus(reader dal.PebbleReader, ledgerID uint32) (*commonpb.Mirro
 
 // ReadMirrorSourceHead returns the latest known v2 source log count for a mirror ledger.
 // Returns 0 if no source head has been persisted yet.
-func ReadMirrorSourceHead(reader dal.PebbleReader, ledgerID uint32) (uint64, error) {
+func ReadMirrorSourceHead(reader dal.PebbleGetter, ledgerID uint32) (uint64, error) {
 	kb := dal.NewKeyBuilder()
 	key := mirrorPointKey(kb, dal.SubPLMirrorSourceHead, ledgerID)
 
@@ -65,7 +65,7 @@ func ReadMirrorSourceHead(reader dal.PebbleReader, ledgerID uint32) (uint64, err
 
 // ReadMirrorSyncProgress reads the cursor, source head, and error from Pebble
 // and computes the sync progress for a mirror ledger.
-func ReadMirrorSyncProgress(ctx context.Context, reader dal.PebbleReader, ledgerID uint32, ledgerName string) (*commonpb.MirrorSyncProgress, error) {
+func ReadMirrorSyncProgress(ctx context.Context, reader dal.PebbleGetter, ledgerID uint32, ledgerName string) (*commonpb.MirrorSyncProgress, error) {
 	_, span := queryTracer.Start(ctx, "query.read_mirror_sync_progress",
 		trace.WithAttributes(attribute.String("ledger", ledgerName)))
 	defer span.End()

@@ -140,7 +140,11 @@ func TestDeleteRemovesAllEntries(t *testing.T) {
 	require.Nil(t, result)
 
 	// Verify no entries remain for this prefix
-	entries, err := attrs.Metadata.ComputeAllForPrefix(store, testKey)
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	entries, err := attrs.Metadata.ComputeAllForPrefix(handle, testKey)
 	require.NoError(t, err)
 	require.Empty(t, entries)
 }

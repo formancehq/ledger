@@ -125,12 +125,18 @@ func main() {
 		})
 
 		if err == nil {
-			// The delete may not have been committed yet (Raft ordering).
-			// This is acceptable — the key invariant is that we never crash.
+			assert.Unreachable("write after delete should fail",
+				details.With(internal.Details{
+					"deletedSeen":   deletedSeen,
+					"writeAttempts": writeAttempts,
+				}))
+
 			return
 		}
 
 		if internal.IsTransient(err) {
+			assert.Reachable("concurrent ledger delete path exercised", details)
+
 			return
 		}
 

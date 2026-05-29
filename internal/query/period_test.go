@@ -39,7 +39,11 @@ func TestReadPeriods(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = s.Close() })
 
-		periods, err := collectAllPeriods(s)
+		handle, err := s.NewDirectReadHandle()
+		require.NoError(t, err)
+		defer func() { _ = handle.Close() }()
+
+		periods, err := collectAllPeriods(handle)
 		require.NoError(t, err)
 		require.Nil(t, periods)
 
@@ -64,7 +68,11 @@ func TestReadPeriods(t *testing.T) {
 		require.NoError(t, state.StoreNextPeriodID(batch, 2))
 		require.NoError(t, batch.Commit())
 
-		periods, err := collectAllPeriods(s)
+		handle, err := s.NewDirectReadHandle()
+		require.NoError(t, err)
+		defer func() { _ = handle.Close() }()
+
+		periods, err := collectAllPeriods(handle)
 		require.NoError(t, err)
 		require.Len(t, periods, 1)
 		require.Equal(t, uint64(1), periods[0].GetId())
@@ -107,8 +115,12 @@ func TestReadPeriods(t *testing.T) {
 		require.NoError(t, state.StoreNextPeriodID(batch, 4))
 		require.NoError(t, batch.Commit())
 
+		handle, err := s.NewDirectReadHandle()
+		require.NoError(t, err)
+		defer func() { _ = handle.Close() }()
+
 		// Verify periods are returned ordered by ID
-		periods, err := collectAllPeriods(s)
+		periods, err := collectAllPeriods(handle)
 		require.NoError(t, err)
 		require.Len(t, periods, 3)
 		require.Equal(t, uint64(1), periods[0].GetId())
@@ -156,7 +168,11 @@ func TestReadPeriods(t *testing.T) {
 		}))
 		require.NoError(t, batch.Commit())
 
-		periods, err := collectAllPeriods(s)
+		handle, err := s.NewDirectReadHandle()
+		require.NoError(t, err)
+		defer func() { _ = handle.Close() }()
+
+		periods, err := collectAllPeriods(handle)
 		require.NoError(t, err)
 		require.Len(t, periods, 1)
 		require.Equal(t, commonpb.PeriodStatus_PERIOD_CLOSED, periods[0].GetStatus())
@@ -197,7 +213,11 @@ func TestReadPeriods(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = s2.Close() })
 
-		periods, err := collectAllPeriods(s2)
+		handle, err := s2.NewDirectReadHandle()
+		require.NoError(t, err)
+		defer func() { _ = handle.Close() }()
+
+		periods, err := collectAllPeriods(handle)
 		require.NoError(t, err)
 		require.Len(t, periods, 2)
 		require.Equal(t, uint64(1), periods[0].GetId())
@@ -254,8 +274,12 @@ func TestReadPeriods(t *testing.T) {
 		require.NoError(t, state.SetAppliedIndex(batch, 42))
 		require.NoError(t, batch.Commit())
 
+		handle, err := s.NewDirectReadHandle()
+		require.NoError(t, err)
+		defer func() { _ = handle.Close() }()
+
 		// Verify all data was written atomically
-		periods, err := collectAllPeriods(s)
+		periods, err := collectAllPeriods(handle)
 		require.NoError(t, err)
 		require.Len(t, periods, 1)
 

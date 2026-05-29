@@ -96,7 +96,7 @@ func deduplicateVolumeUpdates(results []ApplyResult) []attributes.Update[domain.
 // before this verification runs (e.g., during replay of large batches spanning
 // multiple generation thresholds).
 func verifyPostCommitVolumes(
-	store *dal.Store,
+	store dal.PebbleGetter,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
 	volumeUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 	raftIndex uint64,
@@ -400,7 +400,7 @@ func collectLedgerIDsFromResults(results []ApplyResult) []uint32 {
 // asset (double-entry invariant). This is a heavy but thorough check that
 // catches any volume corruption regardless of root cause.
 func verifyAggregatedVolumesBalanced(
-	store *dal.Store,
+	store dal.PebbleReader,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
 	ledgerIDs []uint32,
 	raftIndex uint64,
@@ -453,7 +453,7 @@ func verifyAggregatedVolumesBalanced(
 // dumpPerAccountVolumes logs every individual account volume for the given
 // ledger and asset. Called when an aggregated imbalance is detected.
 func dumpPerAccountVolumes(
-	store *dal.Store,
+	store dal.PebbleReader,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
 	ledgerID uint32,
 	asset string,

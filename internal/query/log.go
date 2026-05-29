@@ -44,7 +44,7 @@ func ReadLastSequence(reader dal.PebbleReader) (uint64, error) {
 }
 
 // ReadLogBySequence retrieves a log by its sequence number from the given reader.
-func ReadLogBySequence(ctx context.Context, reader dal.PebbleReader, sequence uint64) (*commonpb.Log, error) {
+func ReadLogBySequence(ctx context.Context, reader dal.PebbleGetter, sequence uint64) (*commonpb.Log, error) {
 	_, span := queryTracer.Start(ctx, "query.get_log",
 		trace.WithAttributes(attribute.Int64("sequence", int64(sequence))))
 	defer span.End()
@@ -64,7 +64,7 @@ func ReadLogBySequence(ctx context.Context, reader dal.PebbleReader, sequence ui
 // ledgerLogCursor iterates over pre-fetched global sequences and fetches full
 // Log entries from Pebble on demand. It holds no long-lived resources.
 type ledgerLogCursor struct {
-	pebble dal.PebbleReader
+	pebble dal.PebbleGetter
 	seqs   []uint64
 	pos    int
 }
@@ -95,8 +95,8 @@ func (c *ledgerLogCursor) Close() error { return nil }
 // logID bytes from the Compile framework. It resolves logIDs → global sequences
 // via the read index, then fetches the full Log from Pebble for each entry.
 func ReadLedgerLogsCompiled(
-	pebbleReader dal.PebbleReader,
-	indexReader dal.PebbleReader,
+	pebbleReader dal.PebbleGetter,
+	indexReader dal.PebbleGetter,
 	ledgerID uint32,
 	logIDs [][]byte,
 ) (cursor.Cursor[*commonpb.Log], error) {

@@ -195,7 +195,7 @@ services:
     hostname: workload
     init: true
     environment:
-      LEDGER_GRPC_ADDR: "ledger-0:8888"
+      LEDGER_GRPC_ADDR: "ledger-0:8888,ledger-1:8888,ledger-2:8888"
       EXPECTED_VOTERS: "3"
       ETCD_ENDPOINTS: "http://etcd-0:2379,http://etcd-1:2379,http://etcd-2:2379"
     annotations:

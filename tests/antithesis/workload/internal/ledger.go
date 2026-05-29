@@ -3,11 +3,17 @@ package internal
 import (
 	"context"
 	"io"
+	"strings"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
+
+// restrictedPrefixes lists ledger name prefixes created by specialized drivers
+// that set account type restrictions or have specific balance assumptions.
+// Generic drivers (via RunDriver) must not pick these ledgers.
+var restrictedPrefixes = []string{"transient-", "insuf-", "deltest-"}
 
 // CreateLedger creates a ledger via the Apply RPC and verifies it can be read back.
 func CreateLedger(ctx context.Context, client servicepb.BucketServiceClient, name string) error {
@@ -51,15 +57,33 @@ func ListLedgers(ctx context.Context, client servicepb.BucketServiceClient) ([]s
 	return names, nil
 }
 
-// GetRandomLedger returns a random ledger name from the existing ledgers.
+// GetRandomLedger returns a random unrestricted ledger name. Ledgers created
+// by specialized drivers (transient-, insuf-, deltest-) are filtered out to
+// prevent cross-driver interference (e.g. account type violations).
 func GetRandomLedger(ctx context.Context, client servicepb.BucketServiceClient) (string, error) {
 	ledgers, err := ListLedgers(ctx, client)
 	assert.Sometimes(err == nil || IsUnavailable(err), "should be able to get a random ledger", Details{"error": err})
 	if err != nil {
 		return "", err
 	}
-	if len(ledgers) == 0 {
+
+	filtered := ledgers[:0]
+	for _, name := range ledgers {
+		restricted := false
+		for _, prefix := range restrictedPrefixes {
+			if strings.HasPrefix(name, prefix) {
+				restricted = true
+				break
+			}
+		}
+		if !restricted {
+			filtered = append(filtered, name)
+		}
+	}
+
+	if len(filtered) == 0 {
 		return "", io.EOF
 	}
-	return ledgers[Rand().Uint64()%uint64(len(ledgers))], nil
+
+	return filtered[Rand().Uint64()%uint64(len(filtered))], nil
 }

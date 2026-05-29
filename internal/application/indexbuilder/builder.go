@@ -223,12 +223,21 @@ func (b *Builder) loop(stop <-chan struct{}) {
 	}
 
 	// Seed pebble last sequence.
-	if pebbleLast, err := query.ReadLastSequence(b.pebbleStore); err == nil {
+	handle, err := b.pebbleStore.NewDirectReadHandle()
+	if err != nil {
+		b.logger.Errorf("Failed to create read handle: %v", err)
+
+		return
+	}
+
+	defer func() { _ = handle.Close() }()
+
+	if pebbleLast, err := query.ReadLastSequence(handle); err == nil {
 		b.pebbleLastSeq.Store(pebbleLast)
 	}
 
 	// Log both the read index cursor and the Pebble last sequence for diagnostics.
-	pebbleLast, _ := query.ReadLastSequence(b.pebbleStore)
+	pebbleLast, _ := query.ReadLastSequence(handle)
 	b.logger.WithFields(map[string]any{
 		"cursor":     cursor,
 		"pebbleLast": pebbleLast,

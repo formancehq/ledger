@@ -41,7 +41,7 @@ func main() {
 			}},
 		})
 		if err != nil {
-			if internal.IsTransient(err) {
+			if internal.IsTransient(err) || internal.IsAlreadyExists(err) {
 				return
 			}
 

@@ -14,7 +14,7 @@ import (
 // ReadNumscriptLatestVersion reads the latest version string for a numscript by ledger and name
 // from the attributes zone (0xF1).
 // Returns "" if the numscript does not exist.
-func ReadNumscriptLatestVersion(attr *attributes.Attribute[*commonpb.NumscriptVersionValue], reader dal.PebbleReader, ledgerID uint32, name string) (string, error) {
+func ReadNumscriptLatestVersion(attr *attributes.Attribute[*commonpb.NumscriptVersionValue], reader dal.PebbleGetter, ledgerID uint32, name string) (string, error) {
 	val, err := attr.Get(reader, domain.NumscriptVersionKey{LedgerID: ledgerID, Name: name}.Bytes())
 	if err != nil {
 		return "", fmt.Errorf("reading numscript latest version for %d/%q: %w", ledgerID, name, err)
@@ -116,7 +116,7 @@ func ReadAllNumscripts(
 }
 
 // readNumscriptExact does a direct Get on the exact version key in the attributes zone.
-func readNumscriptExact(attr *attributes.Attribute[*commonpb.NumscriptInfo], reader dal.PebbleReader, ledgerID uint32, name, version string) (*commonpb.NumscriptInfo, error) {
+func readNumscriptExact(attr *attributes.Attribute[*commonpb.NumscriptInfo], reader dal.PebbleGetter, ledgerID uint32, name, version string) (*commonpb.NumscriptInfo, error) {
 	return attr.Get(reader, domain.NumscriptEntryKey{LedgerID: ledgerID, Name: name, Version: version}.Bytes())
 }
 

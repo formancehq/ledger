@@ -3,6 +3,7 @@ package events
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -181,7 +182,13 @@ func (e *Emitter) run(ctx context.Context) {
 // processLogs reads logs from the store starting after the given cursor,
 // publishes them, and returns the updated cursor position.
 func (e *Emitter) processLogs(ctx context.Context, cursor uint64) (uint64, error) {
-	logsCursor, err := query.ReadLogsSince(ctx, e.store, cursor)
+	handle, err := e.store.NewDirectReadHandle()
+	if err != nil {
+		return cursor, fmt.Errorf("creating read handle: %w", err)
+	}
+	defer func() { _ = handle.Close() }()
+
+	logsCursor, err := query.ReadLogsSince(ctx, handle, cursor)
 	if err != nil {
 		return cursor, err
 	}

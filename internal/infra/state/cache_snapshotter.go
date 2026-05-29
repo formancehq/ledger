@@ -423,11 +423,18 @@ func (s *CacheSnapshotter) RestoreFromStore() error {
 	gen0Byte := byte(currentGen % 2)
 	gen1Byte := byte((currentGen + 1) % 2)
 
-	if err := s.restoreGeneration(gen0Byte, 0); err != nil {
+	reader, err := s.dataStore.NewDirectReadHandle()
+	if err != nil {
+		return fmt.Errorf("creating read handle for cache restore: %w", err)
+	}
+
+	defer func() { _ = reader.Close() }()
+
+	if err := s.restoreGeneration(reader, gen0Byte, 0); err != nil {
 		return fmt.Errorf("restoring cache gen0 from byte %d: %w", gen0Byte, err)
 	}
 
-	if err := s.restoreGeneration(gen1Byte, 1); err != nil {
+	if err := s.restoreGeneration(reader, gen1Byte, 1); err != nil {
 		return fmt.Errorf("restoring cache gen1 from byte %d: %w", gen1Byte, err)
 	}
 
@@ -456,7 +463,7 @@ func (s *CacheSnapshotter) RestoreFromStore() error {
 // rotation. When absent, BaseIndex defaults to 0 (the pre-rotation value) and
 // we still iterate the per-entry rows that mergeSimpleWithCache emits every
 // batch.
-func (s *CacheSnapshotter) restoreGeneration(genByte byte, genIndex int) error {
+func (s *CacheSnapshotter) restoreGeneration(reader dal.PebbleReader, genByte byte, genIndex int) error {
 	// Read generation metadata if present.
 	baseIndex := uint64(0)
 
@@ -490,7 +497,7 @@ func (s *CacheSnapshotter) restoreGeneration(genByte byte, genIndex int) error {
 		lower := []byte{dal.ZoneCache, genByte, slot.CacheType()}
 		upper := []byte{dal.ZoneCache, genByte, slot.CacheType() + 1}
 
-		iter, err := s.dataStore.NewIter(&pebble.IterOptions{
+		iter, err := reader.NewIter(&pebble.IterOptions{
 			LowerBound: lower,
 			UpperBound: upper,
 		})
@@ -610,10 +617,17 @@ func (s *CacheSnapshotter) runBloomTask(reason string, loadFn func(context.Conte
 
 // hasPersistedBloomBlocks checks if any bloom block keys exist in Pebble.
 func (s *CacheSnapshotter) hasPersistedBloomBlocks() bool {
+	handle, err := s.dataStore.NewDirectReadHandle()
+	if err != nil {
+		return false
+	}
+
+	defer func() { _ = handle.Close() }()
+
 	lower := []byte{dal.ZoneGlobal, dal.SubGlobBloom}
 	upper := []byte{dal.ZoneGlobal, dal.SubGlobBloom + 1}
 
-	iter, err := s.dataStore.NewIter(&pebble.IterOptions{
+	iter, err := handle.NewIter(&pebble.IterOptions{
 		LowerBound: lower,
 		UpperBound: upper,
 	})

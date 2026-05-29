@@ -158,7 +158,11 @@ func TestAccumulator(t *testing.T) {
 	// Use StreamingIter to iterate and verify results
 	var results []ComputedEntry[*raftcmdpb.VolumePair]
 
-	iter, err := attrs.Volume.NewStreamingIter(store, []byte("ledger\x00"))
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	iter, err := attrs.Volume.NewStreamingIter(handle, []byte("ledger\x00"))
 	require.NoError(t, err)
 
 	for iter.Next() {
@@ -186,7 +190,11 @@ func TestAccumulatorFeedAndFlush(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Use ComputeAllForPrefix to get all entries under the ledger prefix
-	entries, err := attrs.Metadata.ComputeAllForPrefix(store, []byte("ledger\x00"))
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	entries, err := attrs.Metadata.ComputeAllForPrefix(handle, []byte("ledger\x00"))
 	require.NoError(t, err)
 	require.Len(t, entries, 2)
 
@@ -284,7 +292,11 @@ func TestComputeAllForPrefixMaxIndex(t *testing.T) {
 	// StreamingIter scans all entries and groups by canonical key.
 	var results []ComputedEntry[*raftcmdpb.VolumePair]
 
-	iter, err := attrs.Volume.NewStreamingIter(store, []byte("test\x00"))
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	iter, err := attrs.Volume.NewStreamingIter(handle, []byte("test\x00"))
 	require.NoError(t, err)
 
 	for iter.Next() {

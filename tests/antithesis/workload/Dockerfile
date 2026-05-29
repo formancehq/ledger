@@ -25,7 +25,15 @@ WORKDIR /instrumented/customer
 
 RUN go build -o /init ./bin/init
 RUN mkdir -p /cmds
-RUN for file in $(ls ./bin/cmds/); do go build -race -o /cmds/$file ./bin/cmds/$file; done
+
+# Pre-warm the build cache: compile all shared dependencies once (race-instrumented).
+# This avoids recompiling the same packages 40 times — subsequent builds only
+# compile the unique main.go (~117 LOC each).
+RUN go build -race ./internal/...
+
+# Build all 40 workload binaries in parallel. The shared dependency cache is
+# warm from the previous step, so each parallel build only compiles main.go.
+RUN ls ./bin/cmds/ | xargs -P$(nproc) -I{} go build -race -o /cmds/{} ./bin/cmds/{}
 
 # Runner
 FROM debian:trixie

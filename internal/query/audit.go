@@ -109,7 +109,7 @@ func ReadAuditItems(ctx context.Context, reader dal.PebbleReader, auditSequence 
 
 // ReadAuditEntry returns a single audit entry by sequence number.
 // Returns domain.ErrNotFound if the entry does not exist.
-func ReadAuditEntry(ctx context.Context, reader dal.PebbleReader, sequence uint64) (*auditpb.AuditEntry, error) {
+func ReadAuditEntry(ctx context.Context, reader dal.PebbleGetter, sequence uint64) (*auditpb.AuditEntry, error) {
 	_, span := queryTracer.Start(ctx, "query.get_audit_entry",
 		trace.WithAttributes(attribute.Int64("sequence", int64(sequence))))
 	defer span.End()

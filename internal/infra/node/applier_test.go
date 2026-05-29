@@ -32,7 +32,14 @@ func (noopNotifier) NotifyLogsCommitted(uint64) {}
 func (noopNotifier) NotifyConfigChanged()       {}
 
 func listLedgerContains(s *dal.Store, name string) bool {
-	cursor, err := query.ReadLedgers(context.Background(), s)
+	handle, err := s.NewDirectReadHandle()
+	if err != nil {
+		return false
+	}
+
+	defer func() { _ = handle.Close() }()
+
+	cursor, err := query.ReadLedgers(context.Background(), handle)
 	if err != nil {
 		return false
 	}
@@ -200,7 +207,7 @@ func TestApplierRunSpoolsWhenNotNormal(t *testing.T) {
 	setup := newTestApplierSetup(t)
 
 	// Set status to syncing before starting.
-	setup.applier.SetOutOfSync() // Set to non-normal status for spooling test
+	setup.applier.setOutOfSync() // Set to non-normal status for spooling test
 
 	// Start the Run goroutine.
 	runDone := make(chan error, 1)

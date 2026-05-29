@@ -515,8 +515,16 @@ func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string)
 	}
 
 	// Enrich with ledger metadata from separate attribute store
-	if err := query.EnrichLedgerMetadata(ctrl.store, ctrl.attrs, ledgerInfo); err != nil {
-		return nil, fmt.Errorf("enriching ledger metadata: %w", err)
+	metaHandle, handleErr := ctrl.store.NewDirectReadHandle()
+	if handleErr != nil {
+		return nil, fmt.Errorf("creating read handle: %w", handleErr)
+	}
+
+	enrichErr := query.EnrichLedgerMetadata(metaHandle, ctrl.attrs, ledgerInfo)
+	_ = metaHandle.Close()
+
+	if enrichErr != nil {
+		return nil, fmt.Errorf("enriching ledger metadata: %w", enrichErr)
 	}
 
 	return ledgerInfo, nil
@@ -1264,7 +1272,13 @@ func (ctrl *DefaultController) ListPreparedQueries(ctx context.Context, ledger s
 		return nil, err
 	}
 
-	return query.ReadPreparedQueries(ctx, ctrl.attrs.PreparedQuery, ctrl.store, ledgerInfo.GetId())
+	pqHandle, handleErr := ctrl.store.NewDirectReadHandle()
+	if handleErr != nil {
+		return nil, fmt.Errorf("creating read handle: %w", handleErr)
+	}
+	defer func() { _ = pqHandle.Close() }()
+
+	return query.ReadPreparedQueries(ctx, ctrl.attrs.PreparedQuery, pqHandle, ledgerInfo.GetId())
 }
 
 // entityEnricher returns an EntityEnricher that uses the controller's attributes

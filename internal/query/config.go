@@ -9,19 +9,19 @@ import (
 
 // ReadLastAppliedIndex returns the last applied Raft index from the given reader.
 // Returns 0 if not found.
-func ReadLastAppliedIndex(reader dal.PebbleReader) (uint64, error) {
+func ReadLastAppliedIndex(reader dal.PebbleGetter) (uint64, error) {
 	return dal.ReadUint64(reader, []byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex}, 0)
 }
 
 // ReadLastAppliedTimestamp returns the last applied HLC timestamp (microseconds since epoch) from the given reader.
 // Returns 0 if not found.
-func ReadLastAppliedTimestamp(reader dal.PebbleReader) (uint64, error) {
+func ReadLastAppliedTimestamp(reader dal.PebbleGetter) (uint64, error) {
 	return dal.ReadUint64(reader, []byte{dal.ZoneGlobal, dal.SubGlobLastAppliedTimestamp}, 0)
 }
 
 // ReadMaintenanceMode loads the maintenance mode flag from the given reader.
 // Returns false if the config key does not exist.
-func ReadMaintenanceMode(reader dal.PebbleReader) (bool, error) {
+func ReadMaintenanceMode(reader dal.PebbleGetter) (bool, error) {
 	v, err := dal.ReadBool(reader, []byte{dal.ZoneGlobal, dal.SubGlobMaintenanceMode})
 	if err != nil {
 		return false, fmt.Errorf("loading maintenance mode: %w", err)
@@ -32,7 +32,7 @@ func ReadMaintenanceMode(reader dal.PebbleReader) (bool, error) {
 
 // ReadClusterState loads the persisted cluster state from the given reader.
 // Returns nil if the key does not exist (first boot).
-func ReadClusterState(reader dal.PebbleReader) (*commonpb.PersistedClusterState, error) {
+func ReadClusterState(reader dal.PebbleGetter) (*commonpb.PersistedClusterState, error) {
 	state, err := dal.ReadProto[*commonpb.PersistedClusterState](reader, []byte{dal.ZoneGlobal, dal.SubGlobClusterConfig})
 	if err != nil {
 		return nil, fmt.Errorf("loading cluster state: %w", err)

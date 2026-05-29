@@ -117,17 +117,25 @@ func RunBackup(
 		return nil, fmt.Errorf("opening checkpoint for reading sequences: %w", err)
 	}
 
-	lastAppliedIndex, _ := query.ReadLastAppliedIndex(checkpointStore)
+	readHandle, handleErr := checkpointStore.NewDirectReadHandle()
+	if handleErr != nil {
+		_ = checkpointStore.Close()
 
-	lastLog, _ := query.ReadLastLog(checkpointStore)
+		return nil, fmt.Errorf("creating read handle: %w", handleErr)
+	}
+
+	lastAppliedIndex, _ := query.ReadLastAppliedIndex(readHandle)
+
+	lastLog, _ := query.ReadLastLog(readHandle)
 
 	var lastLogSeq uint64
 	if lastLog != nil {
 		lastLogSeq = lastLog.GetSequence()
 	}
 
-	lastAuditSeq, _ := query.ReadLastAuditSequence(checkpointStore)
+	lastAuditSeq, _ := query.ReadLastAuditSequence(readHandle)
 
+	_ = readHandle.Close()
 	_ = checkpointStore.Close()
 
 	// 9. Write updated manifest with new checkpoint and empty exports

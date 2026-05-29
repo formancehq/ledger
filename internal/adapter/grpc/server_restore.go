@@ -253,12 +253,18 @@ func (s *RestoreServiceServerImpl) PreviewRestore(ctx context.Context, _ *restor
 		return nil, fmt.Errorf("getting last applied timestamp: %w", err)
 	}
 
-	lastSequence, err := query.ReadLastSequence(store)
+	readHandle, handleErr := store.NewDirectReadHandle()
+	if handleErr != nil {
+		return nil, fmt.Errorf("creating read handle: %w", handleErr)
+	}
+	defer func() { _ = readHandle.Close() }()
+
+	lastSequence, err := query.ReadLastSequence(readHandle)
 	if err != nil {
 		return nil, fmt.Errorf("getting last sequence: %w", err)
 	}
 
-	cursor, err := query.ReadLedgers(ctx, store)
+	cursor, err := query.ReadLedgers(ctx, readHandle)
 	if err != nil {
 		return nil, fmt.Errorf("listing ledgers: %w", err)
 	}

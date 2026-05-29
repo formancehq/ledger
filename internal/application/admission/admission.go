@@ -1506,7 +1506,13 @@ func (a *Admission) resolveNumscriptReference(overlay *bulkOverlay, ledger strin
 		return "", "", &domain.BusinessError{Err: &domain.ErrNumscriptNotFound{Name: name}}
 	}
 
-	info, err := query.ReadNumscript(a.attrs.NumscriptVersion, a.attrs.NumscriptContent, a.store, ledgerID, name, version)
+	nsHandle, handleErr := a.store.NewDirectReadHandle()
+	if handleErr != nil {
+		return "", "", fmt.Errorf("creating read handle: %w", handleErr)
+	}
+	defer func() { _ = nsHandle.Close() }()
+
+	info, err := query.ReadNumscript(a.attrs.NumscriptVersion, a.attrs.NumscriptContent, nsHandle, ledgerID, name, version)
 	if err != nil {
 		return "", "", fmt.Errorf("reading numscript %q: %w", name, err)
 	}

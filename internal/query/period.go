@@ -24,7 +24,7 @@ func ReadPeriods(ctx context.Context, reader dal.PebbleReader) (cursor.Cursor[*c
 
 // ReadNextPeriodID returns the next period ID from the given reader.
 // Returns 1 if not found (default starting value).
-func ReadNextPeriodID(reader dal.PebbleReader) (uint64, error) {
+func ReadNextPeriodID(reader dal.PebbleGetter) (uint64, error) {
 	v, err := dal.ReadUint64(reader, []byte{dal.ZoneGlobal, dal.SubGlobNextPeriodID}, 1)
 	if err != nil {
 		return 0, fmt.Errorf("getting next period ID: %w", err)
@@ -35,7 +35,7 @@ func ReadNextPeriodID(reader dal.PebbleReader) (uint64, error) {
 
 // ReadPeriodSchedule loads the period schedule cron expression from the given reader.
 // Returns an empty string if no schedule is configured.
-func ReadPeriodSchedule(reader dal.PebbleReader) (string, error) {
+func ReadPeriodSchedule(reader dal.PebbleGetter) (string, error) {
 	v, err := dal.ReadString(reader, []byte{dal.ZoneGlobal, dal.SubGlobPeriodSchedule})
 	if err != nil {
 		return "", fmt.Errorf("loading period schedule: %w", err)

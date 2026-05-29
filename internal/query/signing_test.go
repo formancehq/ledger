@@ -21,8 +21,12 @@ func TestReadSigningKeys(t *testing.T) {
 	t.Parallel()
 	s := newTestStore(t)
 
+	handle, err := s.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
 	t.Run("empty store has no signing keys", func(t *testing.T) {
-		keys, err := query.ReadSigningKeys(s)
+		keys, err := query.ReadSigningKeys(handle)
 		require.NoError(t, err)
 		require.Empty(t, keys)
 
@@ -45,7 +49,7 @@ func TestReadSigningKeys(t *testing.T) {
 		require.NoError(t, state.SaveSigningKey(batch, "key-2", pubKey2, ""))
 		require.NoError(t, batch.Commit())
 
-		keys, err := query.ReadSigningKeys(s)
+		keys, err := query.ReadSigningKeys(handle)
 		require.NoError(t, err)
 		require.Len(t, keys, 2)
 		require.Equal(t, pubKey1, keys["key-1"].PublicKey)
@@ -57,7 +61,7 @@ func TestReadSigningKeys(t *testing.T) {
 		require.NoError(t, state.DeleteSigningKey(batch, "key-1"))
 		require.NoError(t, batch.Commit())
 
-		keys, err := query.ReadSigningKeys(s)
+		keys, err := query.ReadSigningKeys(handle)
 		require.NoError(t, err)
 		require.Len(t, keys, 1)
 		_, hasKey1 := keys["key-1"]
@@ -93,7 +97,7 @@ func TestReadSigningKeys(t *testing.T) {
 		require.NoError(t, state.SaveSigningKey(batch, "c", make([]byte, 32), ""))
 		require.NoError(t, batch.Commit())
 
-		keys, err := query.ReadSigningKeys(s)
+		keys, err := query.ReadSigningKeys(handle)
 		require.NoError(t, err)
 		require.Len(t, keys, 4) // key-2 from previous test + a, b, c
 
@@ -101,7 +105,7 @@ func TestReadSigningKeys(t *testing.T) {
 		require.NoError(t, deleteAllSigningKeys(batch))
 		require.NoError(t, batch.Commit())
 
-		keys, err = query.ReadSigningKeys(s)
+		keys, err = query.ReadSigningKeys(handle)
 		require.NoError(t, err)
 		require.Empty(t, keys)
 	})

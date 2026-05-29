@@ -26,7 +26,12 @@ func listAuditEntries(t *testing.T, store *dal.Store, afterSequence uint64) []*a
 		filter = &afterSequence
 	}
 
-	cursor, err := query.ReadAuditEntries(context.Background(), store, filter)
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+
+	defer func() { _ = handle.Close() }()
+
+	cursor, err := query.ReadAuditEntries(context.Background(), handle, filter)
 	require.NoError(t, err)
 
 	defer func() { _ = cursor.Close() }()
@@ -244,7 +249,11 @@ func TestAuditSequenceAdvances(t *testing.T) {
 	require.NoError(t, result.Results[0].Error)
 
 	// Verify audit sequence is recoverable from Pebble.
-	lastAuditSeq, err := query.ReadLastAuditSequence(dataStore)
+	handle, err := dataStore.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	lastAuditSeq, err := query.ReadLastAuditSequence(handle)
 	require.NoError(t, err)
 	require.Equal(t, uint64(2), lastAuditSeq,
 		"last audit sequence should be 2 (2 entries written)")

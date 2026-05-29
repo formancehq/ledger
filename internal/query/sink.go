@@ -10,7 +10,7 @@ import (
 
 // ReadSinkCursor returns the last successfully emitted log sequence for a named sink from the given reader.
 // Returns 0 if no cursor has been persisted yet.
-func ReadSinkCursor(reader dal.PebbleReader, sinkName string) (uint64, error) {
+func ReadSinkCursor(reader dal.PebbleGetter, sinkName string) (uint64, error) {
 	kb := dal.NewKeyBuilder()
 	kb.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobSinkCursor).
 		PutString(sinkName)

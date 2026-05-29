@@ -21,7 +21,9 @@ func main() {
 			return
 		}
 
-		account := fmt.Sprintf("users:%d", r.Uint64()%internal.UserAccountCount)
+		// Use a dedicated account prefix so other drivers (e.g. audit) that post
+		// to "users:N" on random ledgers cannot interfere with balance assumptions.
+		account := fmt.Sprintf("insuf-users:%d", r.Uint64()%internal.UserAccountCount)
 		asset := "USD/2"
 		fundAmount := r.Uint64()%10000 + 100
 		details := internal.Details{"ledger": ledger, "account": account, "asset": asset, "fundAmount": fundAmount}

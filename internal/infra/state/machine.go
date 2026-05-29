@@ -214,6 +214,15 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 // Called on restart (via RecoverAndReplay) and after follower sync
 // (via reloadStateFromStore).
 func (fsm *Machine) RecoverState() error {
+	// Create a ReadHandle for functions that need iterator access (PebbleReader).
+	// Get-only calls use fsm.dataStore directly (PebbleGetter).
+	handle, err := fsm.dataStore.NewDirectReadHandle()
+	if err != nil {
+		return fmt.Errorf("creating read handle for recovery: %w", err)
+	}
+
+	defer func() { _ = handle.Close() }()
+
 	// Recover lastAppliedIndex from Pebble
 	lastAppliedIndex, err := query.ReadLastAppliedIndex(fsm.dataStore)
 	if err != nil {
@@ -224,7 +233,7 @@ func (fsm *Machine) RecoverState() error {
 	fsm.lastPersistedIndex.Store(lastAppliedIndex)
 
 	// Recover nextSequenceID from last log sequence
-	lastSeq, err := query.ReadLastSequence(fsm.dataStore)
+	lastSeq, err := query.ReadLastSequence(handle)
 	if err != nil {
 		return fmt.Errorf("recovering last sequence: %w", err)
 	}
@@ -234,7 +243,7 @@ func (fsm *Machine) RecoverState() error {
 	}
 
 	// Recover lastAuditHash and nextAuditSequenceID from last audit entry
-	lastAuditEntry, err := query.ReadLastAuditEntry(fsm.dataStore)
+	lastAuditEntry, err := query.ReadLastAuditEntry(handle)
 	if err != nil {
 		return fmt.Errorf("recovering last audit entry: %w", err)
 	}
@@ -269,7 +278,7 @@ func (fsm *Machine) RecoverState() error {
 	fsm.lastAppliedTimestamp = lastAppliedTimestamp
 
 	// Recover periods from Pebble
-	periodsCursor, err := query.ReadPeriods(context.Background(), fsm.dataStore)
+	periodsCursor, err := query.ReadPeriods(context.Background(), handle)
 	if err != nil {
 		return fmt.Errorf("recovering periods: %w", err)
 	}
@@ -312,7 +321,7 @@ func (fsm *Machine) RecoverState() error {
 	fsm.Periods.SetSchedule(periodSchedule)
 
 	// Recover reversions from Pebble
-	reversions, err := query.ReadReversions(fsm.dataStore)
+	reversions, err := query.ReadReversions(handle)
 	if err != nil {
 		return fmt.Errorf("recovering reversions: %w", err)
 	}
@@ -320,7 +329,7 @@ func (fsm *Machine) RecoverState() error {
 	fsm.Registry.Reversions = reversions
 
 	// Recover pending ledger cleanups from Pebble
-	pendingCleanups, err := query.ReadPendingLedgerCleanups(fsm.dataStore)
+	pendingCleanups, err := query.ReadPendingLedgerCleanups(handle)
 	if err != nil {
 		return fmt.Errorf("recovering pending ledger cleanups: %w", err)
 	}
@@ -339,7 +348,7 @@ func (fsm *Machine) RecoverState() error {
 	if fsm.keyStore != nil {
 		fsm.keyStore.Reset()
 
-		signingKeys, err := query.ReadSigningKeys(fsm.dataStore)
+		signingKeys, err := query.ReadSigningKeys(handle)
 		if err != nil {
 			return fmt.Errorf("loading signing keys: %w", err)
 		}
@@ -756,9 +765,16 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 
 	// Post-commit sentinel checks.
 	if pb.sentinelMode {
+		sentinelHandle, handleErr := fsm.dataStore.NewDirectReadHandle()
+		if handleErr != nil {
+			return fmt.Errorf("creating read handle for sentinel checks: %w", handleErr)
+		}
+
+		defer func() { _ = sentinelHandle.Close() }()
+
 		if len(pb.sentinelUpdates) > 0 {
 			if err := verifyPostCommitVolumes(
-				fsm.dataStore, fsm.Registry.Attrs.Volume,
+				sentinelHandle, fsm.Registry.Attrs.Volume,
 				pb.sentinelUpdates, pb.lastAppliedIndex, fsm.logger,
 			); err != nil {
 				fsm.logger.Errorf("POST-COMMIT VOLUME ASSERTION FAILED: %v", err)
@@ -774,10 +790,10 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 			}
 
 			if err := verifyAggregatedVolumesBalanced(
-				fsm.dataStore, fsm.Registry.Attrs.Volume, pb.sentinelLedgerIDs, pb.lastAppliedIndex, fsm.logger,
+				sentinelHandle, fsm.Registry.Attrs.Volume, pb.sentinelLedgerIDs, pb.lastAppliedIndex, fsm.logger,
 			); err != nil {
 				fsm.logger.Errorf("AGGREGATED VOLUME BALANCE CHECK FAILED: %v", err)
-				dumpCacheVsPebbleCoherence(fsm.dataStore, fsm.Registry.Cache, pb.lastAppliedIndex, fsm.logger)
+				dumpCacheVsPebbleCoherence(sentinelHandle, fsm.Registry.Cache, pb.lastAppliedIndex, fsm.logger)
 				pb.sentinelTracer.Dump(fsm.logger)
 
 				return fmt.Errorf("aggregated volume balance check failed: %w", err)

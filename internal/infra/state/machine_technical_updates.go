@@ -221,7 +221,14 @@ func (fsm *Machine) applyMirrorSyncUpdate(batch *dal.Batch, update *raftcmdpb.Mi
 
 // applyIdempotencyEviction evicts expired idempotency keys. No log entry is produced.
 func (fsm *Machine) applyIdempotencyEviction(batch *dal.Batch, eviction *raftcmdpb.IdempotencyEviction) error {
-	evicted, err := fsm.Registry.Idempotency.EvictBefore(batch, fsm.dataStore, eviction.GetCutoffMicros())
+	handle, err := fsm.dataStore.NewDirectReadHandle()
+	if err != nil {
+		return fmt.Errorf("creating read handle for idempotency eviction: %w", err)
+	}
+
+	defer func() { _ = handle.Close() }()
+
+	evicted, err := fsm.Registry.Idempotency.EvictBefore(batch, handle, eviction.GetCutoffMicros())
 	if err != nil {
 		return fmt.Errorf("evicting idempotency keys: %w", err)
 	}

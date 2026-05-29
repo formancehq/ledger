@@ -126,7 +126,12 @@ func logCacheState(t *testing.T, machine *Machine, store *dal.Store, attrs *attr
 
 	hasher := attributes.NewKeyHasher(attributes.DefaultSeeds)
 
-	iter, err := attrs.Volume.NewStreamingIter(store, nil)
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+
+	defer func() { _ = handle.Close() }()
+
+	iter, err := attrs.Volume.NewStreamingIter(handle, nil)
 	require.NoError(t, err)
 
 	var totalAttr, inCache int

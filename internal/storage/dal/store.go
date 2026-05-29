@@ -1144,7 +1144,7 @@ func (c *ProtoCursor[T]) Close() error {
 }
 
 // ReadProto reads a protobuf message from Pebble. Returns the zero value of T if not found.
-func ReadProto[T proto.Message](reader PebbleReader, key []byte) (T, error) {
+func ReadProto[T proto.Message](reader PebbleGetter, key []byte) (T, error) {
 	var zero T
 
 	val, err := GetValue(reader, key)
@@ -1230,32 +1230,6 @@ func ReadLastEntry[T proto.Message](reader PebbleReader, zone, sub byte) (T, err
 	}
 
 	return msg, nil
-}
-
-// NewIter creates a Pebble iterator. The dbMu.RLock is held only during
-// iterator creation, NOT for the iterator's lifetime. This means the caller
-// must ensure the DB won't be closed (via RestoreCheckpoint/Close) while
-// the iterator is open.
-//
-// Safe callers:
-//   - FSM goroutine (PrepareEntries, sentinel checks): RestoreCheckpoint runs
-//     in a maintenance task that's mutually exclusive with entry processing.
-//   - Code called AFTER RestoreCheckpoint (RestoreFromStore, bloom restore):
-//     sequential, no concurrent close possible.
-//
-// For concurrent/background callers that may overlap with RestoreCheckpoint,
-// use NewReadHandle() or NewDirectReadHandle() instead — they hold dbMu.RLock
-// for the full handle lifetime.
-func (s *Store) NewIter(p *pebble.IterOptions) (*pebble.Iterator, error) {
-	s.dbMu.RLock()
-	defer s.dbMu.RUnlock()
-
-	db := s.getDB()
-	if db == nil {
-		return nil, ErrStoreClosed
-	}
-
-	return db.NewIter(p)
 }
 
 func HardLink(srcDir, dstDir string) error {

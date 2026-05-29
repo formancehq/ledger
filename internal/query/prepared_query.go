@@ -15,7 +15,7 @@ import (
 )
 
 // ReadPreparedQuery reads a single prepared query by ledger and name from the attributes zone.
-func ReadPreparedQuery(ctx context.Context, attr *attributes.Attribute[*commonpb.PreparedQuery], reader dal.PebbleReader, ledgerID uint32, name string) (*commonpb.PreparedQuery, error) {
+func ReadPreparedQuery(ctx context.Context, attr *attributes.Attribute[*commonpb.PreparedQuery], reader dal.PebbleGetter, ledgerID uint32, name string) (*commonpb.PreparedQuery, error) {
 	_, span := queryTracer.Start(ctx, "query.get_prepared_query",
 		trace.WithAttributes(
 			attribute.Int64("ledger_id", int64(ledgerID)),
