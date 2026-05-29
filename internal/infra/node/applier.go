@@ -457,11 +457,13 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 	)
 
 	for {
-		a.logger.WithFields(map[string]any{
-			"status":       a.StatusString(),
-			"hasGating":    a.gatingTerminated != nil,
-			"gatingReason": a.gatingReason,
-		}).Infof("Applier: waiting for work")
+		if a.logger.Enabled(logging.DebugLevel) {
+			a.logger.WithFields(map[string]any{
+				"status":       a.StatusString(),
+				"hasGating":    a.gatingTerminated != nil,
+				"gatingReason": a.gatingReason,
+			}).Debugf("Applier: waiting for work")
+		}
 
 		select {
 		case work := <-a.ch:
