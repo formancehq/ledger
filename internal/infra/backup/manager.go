@@ -216,6 +216,13 @@ func RunIncrementalBackup(
 
 	currentAuditSeq, _ := query.ReadLastAuditSequence(readHandle)
 
+	// Ensure monotonicity: after a RestoreCheckpoint (leadership change +
+	// snapshot from new leader), Pebble may have a lower cold-zone sequence
+	// than what the manifest already recorded from a previous export.
+	// Never regress below the manifest.
+	currentLogSeq = max(currentLogSeq, afterLogSeq)
+	currentAuditSeq = max(currentAuditSeq, afterAuditSeq)
+
 	// 5. Check if there's anything new
 	if currentLogSeq <= afterLogSeq && currentAuditSeq <= afterAuditSeq {
 		logger.Infof("No new entries to export")
