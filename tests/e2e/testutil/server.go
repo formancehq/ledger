@@ -3,7 +3,6 @@ package testutil
 import (
 	"context"
 	"fmt"
-	"net"
 	"os"
 	"time"
 
@@ -277,36 +276,16 @@ func RestartNodeWithInstruments(ctx context.Context, srv *ServiceWithClient, ins
 }
 
 // StopServers stops all servers in the list. Used in AfterEach/AfterAll blocks.
-// After stopping, it waits for all gRPC ports to be free to avoid "address already
-// in use" errors when the next test suite starts on the same ports.
 func StopServers(ctx context.Context, servers []*ServiceWithClient) {
 	for _, server := range servers {
 		_ = server.GRPCConn.Close()
 	}
-
-	var ports []int
-
 	for i, server := range servers {
-		ports = append(ports, server.GRPCPort)
-
 		By(fmt.Sprintf("Stopping node %d", i+1), func() {
 			stopCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			DeferCleanup(cancel)
 			Expect(server.Service.Stop(stopCtx)).To(Succeed())
 		})
-	}
-
-	// Wait for ports to be released by the OS (TIME_WAIT cleanup).
-	for _, port := range ports {
-		Eventually(func() error {
-			ln, err := net.Listen("tcp4", fmt.Sprintf("0.0.0.0:%d", port))
-			if err != nil {
-				return err
-			}
-			_ = ln.Close()
-
-			return nil
-		}).WithTimeout(10 * time.Second).WithPolling(200 * time.Millisecond).Should(Succeed())
 	}
 }
 
