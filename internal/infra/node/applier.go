@@ -302,6 +302,13 @@ func (a *Applier) setOutOfSync() {
 // it marks the applier as out-of-sync so SynchronizeWithLeader runs.
 // Returns true when the store was up to date and replay succeeded.
 func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
+	// Reset the spool unconditionally: any data from a previous run is stale.
+	// A SIGKILL can leave a partially-written spool that causes corrupt record
+	// errors and entry index gaps during post-sync replay.
+	if err := a.spool.Reset(); err != nil {
+		return false, fmt.Errorf("resetting spool: %w", err)
+	}
+
 	isStoreUpToDate, err := a.fsm.IsStoreUpToDate(ctx)
 	if err != nil {
 		return false, fmt.Errorf("checking if store is up to date: %w", err)
@@ -357,37 +364,10 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 
 	replayStart := time.Now()
 
-	// Read HardState to know the committed index — we must never apply past it.
-	hardState, _, err := a.wal.InitialState()
-	if err != nil {
-		return false, fmt.Errorf("reading WAL initial state: %w", err)
-	}
-
 	// Replay Raft WAL entries that were committed but not yet applied
 	// (e.g. the node crashed between Raft commit and FSM apply).
 	if err := a.replayWAL(ctx, storeLastAppliedIndex); err != nil {
 		return false, fmt.Errorf("replaying WAL: %w", err)
-	}
-
-	// Re-read after WAL replay — it may have advanced the index.
-	storeLastAppliedIndex, err = query.ReadLastAppliedIndex(a.store)
-	if err != nil {
-		return false, fmt.Errorf("getting store last applied index after WAL replay: %w", err)
-	}
-
-	if a.logger.Enabled(logging.DebugLevel) {
-		a.logger.WithFields(map[string]any{
-			"fromIndex":   storeLastAppliedIndex,
-			"commitIndex": hardState.Commit,
-		}).Debugf("Starting spool replay")
-	}
-
-	// Replay spooled entries up to the committed index only.
-	// The spool may contain uncommitted entries (received from the leader
-	// before the node crashed). Applying past committed would cause
-	// etcd-raft to panic with "applied is out of range".
-	if err := a.replaySpoolUntil(ctx, storeLastAppliedIndex, hardState.Commit); err != nil {
-		return false, fmt.Errorf("replaying spool: %w", err)
 	}
 
 	assert.Reachable("startup recovery completed", map[string]any{
@@ -1175,13 +1155,6 @@ func (a *Applier) replayWAL(ctx context.Context, afterIndex uint64) error {
 	}
 
 	return nil
-}
-
-// replaySpoolUntil replays spooled entries from fromIndex up to maxIndex (inclusive).
-// Entries beyond maxIndex are skipped. This prevents applying uncommitted entries
-// that may be in the spool after a crash.
-func (a *Applier) replaySpoolUntil(ctx context.Context, fromIndex uint64, maxIndex uint64) error {
-	return a.replaySpoolImpl(ctx, fromIndex, maxIndex)
 }
 
 func (a *Applier) replaySpool(ctx context.Context, fromIndex uint64) error {

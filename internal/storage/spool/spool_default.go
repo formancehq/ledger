@@ -459,6 +459,47 @@ func (s *Default) ResetReadCache() error {
 	return nil
 }
 
+// Reset removes all spool segments and starts fresh. Called on startup because
+// the WAL replay + leader sync make any pre-existing spool data obsolete.
+func (s *Default) Reset() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Close the current writer
+	if s.w != nil {
+		_ = s.w.Flush()
+	}
+
+	if s.f != nil {
+		_ = s.f.Close()
+		s.f = nil
+		s.w = nil
+	}
+
+	// Remove all segment files
+	ids, err := listSegments(s.cfg.Dir)
+	if err != nil {
+		return err
+	}
+
+	for _, id := range ids {
+		_ = os.Remove(segmentPath(s.cfg.Dir, id))
+	}
+
+	// Reinitialize
+	s.segID = 1
+	s.size = 0
+	s.segMinIndex = 0
+	s.segMaxIndex = 0
+	s.pendingN = 0
+	s.rInit = true
+	s.rSegID = 1
+	s.rOffset = 0
+	s.rLastApplied = 0
+
+	return s.openWriter(s.segID)
+}
+
 // Prune removes segments whose maxIndex <= lastApplied (optional).
 func (s *Default) Prune(lastApplied uint64) error {
 	ids, err := listSegments(s.cfg.Dir)

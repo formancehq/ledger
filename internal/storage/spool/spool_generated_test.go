@@ -234,3 +234,41 @@ func (c *MockSpoolReplayUntilCall) DoAndReturn(f func(context.Context, Position,
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
+
+// Reset mocks base method.
+func (m *MockSpool) Reset() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Reset")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Reset indicates an expected call of Reset.
+func (mr *MockSpoolMockRecorder) Reset() *MockSpoolResetCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Reset", reflect.TypeOf((*MockSpool)(nil).Reset))
+	return &MockSpoolResetCall{Call: call}
+}
+
+// MockSpoolResetCall wrap *gomock.Call
+type MockSpoolResetCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockSpoolResetCall) Return(arg0 error) *MockSpoolResetCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockSpoolResetCall) Do(f func() error) *MockSpoolResetCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockSpoolResetCall) DoAndReturn(f func() error) *MockSpoolResetCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}

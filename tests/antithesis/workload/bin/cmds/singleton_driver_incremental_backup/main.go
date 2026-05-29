@@ -78,17 +78,14 @@ func main() {
 	}
 
 	// The second backup's last sequence should not regress below the first.
-	// Use Sometimes: multiple concurrent driver instances and round-robin gRPC
-	// routing mean the two calls may hit different nodes with different Pebble
-	// states, and concurrent manifest writes can interleave.
-	assert.Sometimes(resp2.GetLastLogSequence() >= resp.GetLastLogSequence(),
+	assert.AlwaysOrUnreachable(resp2.GetLastLogSequence() >= resp.GetLastLogSequence(),
 		"incremental backup log sequence should not regress",
 		details.With(internal.Details{
 			"firstLastLogSeq":  resp.GetLastLogSequence(),
 			"secondLastLogSeq": resp2.GetLastLogSequence(),
 		}))
 
-	assert.Sometimes(resp2.GetLastAuditSequence() >= resp.GetLastAuditSequence(),
+	assert.AlwaysOrUnreachable(resp2.GetLastAuditSequence() >= resp.GetLastAuditSequence(),
 		"incremental backup audit sequence should not regress",
 		details.With(internal.Details{
 			"firstLastAuditSeq":  resp.GetLastAuditSequence(),
