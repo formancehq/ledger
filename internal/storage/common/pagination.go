@@ -37,6 +37,30 @@ type (
 
 func (i InitialPaginatedQuery[OptionsType]) isPaginatedQuery() {}
 
+// ResourceQueryFromPaginatedQuery returns the underlying ResourceQuery carried
+// by a PaginatedQuery, whatever its concrete pagination strategy. The second
+// return value is false when the query does not match any known type. Both
+// value and pointer forms are handled, as the marker interface is satisfied by
+// either.
+func ResourceQueryFromPaginatedQuery[OptionsType any](q PaginatedQuery[OptionsType]) (ResourceQuery[OptionsType], bool) {
+	switch v := any(q).(type) {
+	case InitialPaginatedQuery[OptionsType]:
+		return v.Options, true
+	case *InitialPaginatedQuery[OptionsType]:
+		return v.Options, true
+	case OffsetPaginatedQuery[OptionsType]:
+		return v.Options, true
+	case *OffsetPaginatedQuery[OptionsType]:
+		return v.Options, true
+	case ColumnPaginatedQuery[OptionsType]:
+		return v.Options, true
+	case *ColumnPaginatedQuery[OptionsType]:
+		return v.Options, true
+	default:
+		return ResourceQuery[OptionsType]{}, false
+	}
+}
+
 var _ PaginatedQuery[any] = (*InitialPaginatedQuery[any])(nil)
 
 var _ PaginatedQuery[any] = (*OffsetPaginatedQuery[any])(nil)

@@ -3,11 +3,14 @@ package ledger
 import (
 	"context"
 	"database/sql"
+	"slices"
 
 	"github.com/uptrace/bun"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/formancehq/go-libs/v5/pkg/query"
 	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
 	"github.com/formancehq/go-libs/v5/pkg/storage/migrations"
 
@@ -16,6 +19,58 @@ import (
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/internal/tracing"
 )
+
+// accountsFromQuery extracts every concrete account address a query is scoped
+// to through `address` (or `account`) filters, handling both exact (`$match`)
+// and set (`$in`) operators across the whole expression tree. Pattern operators
+// such as `$like` are ignored as they do not designate a concrete account. It
+// returns nil when the query does not constrain the account set.
+func accountsFromQuery(builder query.Builder) []string {
+	if builder == nil {
+		return nil
+	}
+
+	var accounts []string
+	_ = builder.Walk(func(operator, key string, value *any) error {
+		if key != "address" && key != "account" {
+			return nil
+		}
+		switch operator {
+		case "$match":
+			if s, ok := (*value).(string); ok {
+				accounts = append(accounts, s)
+			}
+		case "$in":
+			switch v := (*value).(type) {
+			case []string:
+				accounts = append(accounts, v...)
+			case []any:
+				for _, item := range v {
+					if s, ok := item.(string); ok {
+						accounts = append(accounts, s)
+					}
+				}
+			}
+		}
+		return nil
+	})
+
+	// Dedupe so overlapping filters (e.g. `address` and `account` aliases, or
+	// repeated/overlapping `$in` sets) do not inflate the span attribute.
+	slices.Sort(accounts)
+	return slices.Compact(accounts)
+}
+
+// setAccountsAttribute tags the current span with the accounts it operates on.
+// The value is emitted under the same `accounts` slice attribute used by bulk
+// operations, so a single query can surface every span involving an account
+// regardless of whether the operation targets one or several accounts.
+func setAccountsAttribute(ctx context.Context, accounts []string) {
+	if len(accounts) == 0 {
+		return
+	}
+	trace.SpanFromContext(ctx).SetAttributes(attribute.StringSlice("accounts", accounts))
+}
 
 type ControllerWithTraces struct {
 	underlying Controller
@@ -305,6 +360,7 @@ func (c *ControllerWithTraces) GetAccount(ctx context.Context, q common.Resource
 		c.tracer,
 		c.getAccountHistogram,
 		func(ctx context.Context) (*ledger.Account, error) {
+			setAccountsAttribute(ctx, accountsFromQuery(q.Builder))
 			return c.underlying.GetAccount(ctx, q)
 		},
 	)
@@ -317,6 +373,7 @@ func (c *ControllerWithTraces) GetAggregatedBalances(ctx context.Context, q comm
 		c.tracer,
 		c.getAggregatedBalancesHistogram,
 		func(ctx context.Context) (ledger.BalancesByAssets, error) {
+			setAccountsAttribute(ctx, accountsFromQuery(q.Builder))
 			return c.underlying.GetAggregatedBalances(ctx, q)
 		},
 	)
@@ -377,6 +434,9 @@ func (c *ControllerWithTraces) GetVolumesWithBalances(ctx context.Context, q com
 		c.tracer,
 		c.getVolumesWithBalancesHistogram,
 		func(ctx context.Context) (*paginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+			if rq, ok := common.ResourceQueryFromPaginatedQuery[ledger.GetVolumesOptions](q); ok {
+				setAccountsAttribute(ctx, accountsFromQuery(rq.Builder))
+			}
 			return c.underlying.GetVolumesWithBalances(ctx, q)
 		},
 	)
@@ -464,6 +524,7 @@ func (c *ControllerWithTraces) SaveAccountMetadata(ctx context.Context, paramete
 		c.tracer,
 		c.saveAccountMetadataHistogram,
 		func(ctx context.Context) (*ledger.Log, error) {
+			setAccountsAttribute(ctx, []string{parameters.Input.Address})
 			log, idempotencyHit, err = c.underlying.SaveAccountMetadata(ctx, parameters)
 			return nil, err
 		},
@@ -510,6 +571,7 @@ func (c *ControllerWithTraces) DeleteAccountMetadata(ctx context.Context, parame
 		c.tracer,
 		c.deleteAccountMetadataHistogram,
 		func(ctx context.Context) (*ledger.Log, error) {
+			setAccountsAttribute(ctx, []string{parameters.Input.Address})
 			log, idempotencyHit, err = c.underlying.DeleteAccountMetadata(ctx, parameters)
 			return nil, err
 		},
