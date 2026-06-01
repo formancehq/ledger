@@ -39,7 +39,7 @@ func newLedgerIndexConfig() *ledgerIndexConfig {
 // initIndexConfig scans all ledgers from Pebble and populates the index config cache.
 // It also detects BUILDING indexes and creates backfill tasks, loading persisted
 // cursors from Pebble so backfills survive restarts.
-func (b *Builder) initIndexConfig() {
+func (b *Builder) initIndexConfig(ctx context.Context) {
 	handle, err := b.pebbleStore.NewDirectReadHandle()
 	if err != nil {
 		b.logger.Errorf("Failed to create read handle for index config: %v", err)
@@ -49,7 +49,7 @@ func (b *Builder) initIndexConfig() {
 
 	defer func() { _ = handle.Close() }()
 
-	cursor, err := query.ReadLedgers(context.Background(), handle)
+	cursor, err := query.ReadLedgers(ctx, handle)
 	if err != nil {
 		b.logger.Errorf("Failed to read ledgers for index config: %v", err)
 

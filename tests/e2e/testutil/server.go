@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2" //nolint:staticcheck // dot import is idiomatic for Ginkgo test helpers
@@ -257,8 +258,14 @@ func StopNode(ctx context.Context, srv *ServiceWithClient) {
 	Expect(srv.Service.Stop(ctx)).To(Succeed())
 }
 
-// RestartNode starts a previously stopped node and recreates its gRPC client connection.
+// RestartNode creates a fresh service instance and starts it, replacing the
+// previous one on srv. A new testservice.Service is needed because the old
+// instance's internal state (errorChan, cobra command) is not fully reset
+// after Stop, causing the next shutdown cycle to hang.
 func RestartNode(ctx context.Context, srv *ServiceWithClient) {
+	srv.Service = testservice.New(cmdserver.NewRunCommand,
+		testservice.WithInstruments(srv.Service.Instruments...),
+	)
 	Expect(srv.Service.Start(ctx)).To(Succeed())
 	client, clusterClient, conn, err := NewGRPCClient(srv.GRPCPort)
 	Expect(err).To(Succeed())
@@ -282,9 +289,19 @@ func StopServers(ctx context.Context, servers []*ServiceWithClient) {
 	}
 	for i, server := range servers {
 		By(fmt.Sprintf("Stopping node %d", i+1), func() {
-			stopCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			stopCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			DeferCleanup(cancel)
-			Expect(server.Service.Stop(stopCtx)).To(Succeed())
+
+			// Dump goroutines if stop is slow to help diagnose shutdown hangs.
+			dumpTimer := time.AfterFunc(10*time.Second, func() {
+				buf := make([]byte, 1<<20)
+				n := runtime.Stack(buf, true)
+				_, _ = fmt.Fprintf(GinkgoWriter, "\n=== GOROUTINE DUMP (node %d stop blocked >10s) ===\n%s\n=== END DUMP ===\n", i+1, buf[:n])
+			})
+
+			err := server.Service.Stop(stopCtx)
+			dumpTimer.Stop()
+			Expect(err).To(Succeed())
 		})
 	}
 }

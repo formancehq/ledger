@@ -205,8 +205,14 @@ func (b *Builder) registerMetrics() (metric.Registration, error) {
 }
 
 func (b *Builder) loop(stop <-chan struct{}) {
+	// Derive a context that is cancelled when stop fires. This context is
+	// passed to all blocking operations (Pebble reads, iterators) so they
+	// are interrupted promptly on shutdown instead of blocking until the
+	// operation completes naturally.
+	ctx := worker.ContextFromStop(stop)
+
 	// Initialize index config cache from Pebble before processing any logs.
-	b.initIndexConfig()
+	b.initIndexConfig(ctx)
 
 	cursor, err := b.readStore.LastIndexedSequence()
 	if err != nil {
@@ -222,22 +228,22 @@ func (b *Builder) loop(stop <-chan struct{}) {
 		b.lastAuditSeq = auditSeq
 	}
 
-	// Seed pebble last sequence.
-	handle, err := b.pebbleStore.NewDirectReadHandle()
-	if err != nil {
+	// Seed pebble last sequence. The handle is closed immediately after use
+	// to release the RLock — keeping it open would deadlock with
+	// RestoreCheckpoint (write lock) when processLogs tries to take a new RLock.
+	var pebbleLast uint64
+	if handle, err := b.pebbleStore.NewDirectReadHandle(); err != nil {
 		b.logger.Errorf("Failed to create read handle: %v", err)
 
 		return
+	} else {
+		if v, err := query.ReadLastSequence(handle); err == nil {
+			pebbleLast = v
+			b.pebbleLastSeq.Store(v)
+		}
+
+		_ = handle.Close()
 	}
-
-	defer func() { _ = handle.Close() }()
-
-	if pebbleLast, err := query.ReadLastSequence(handle); err == nil {
-		b.pebbleLastSeq.Store(pebbleLast)
-	}
-
-	// Log both the read index cursor and the Pebble last sequence for diagnostics.
-	pebbleLast, _ := query.ReadLastSequence(handle)
 	b.logger.WithFields(map[string]any{
 		"cursor":     cursor,
 		"pebbleLast": pebbleLast,
@@ -275,7 +281,7 @@ func (b *Builder) loop(stop <-chan struct{}) {
 		before := cursor
 		deadline := time.Now().Add(catchUpBudget)
 
-		if cursor, err = b.processLogs(cursor, deadline); err != nil {
+		if cursor, err = b.processLogs(ctx, cursor, deadline); err != nil {
 			b.logger.Errorf("Error during initial catch-up: %v", err)
 
 			break
@@ -297,7 +303,7 @@ func (b *Builder) loop(stop <-chan struct{}) {
 		}).Infof("Initial catch-up complete")
 	}
 
-	b.processBackgroundTasks(stop, cursor)
+	b.processBackgroundTasks(ctx, stop, cursor)
 
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
@@ -325,7 +331,7 @@ func (b *Builder) loop(stop <-chan struct{}) {
 			}
 
 			prevCursor := cursor
-			if cursor, err = b.processLogs(cursor, logDeadline); err != nil {
+			if cursor, err = b.processLogs(ctx, cursor, logDeadline); err != nil {
 				b.logger.Errorf("Error processing logs: %v", err)
 			}
 
@@ -340,7 +346,7 @@ func (b *Builder) loop(stop <-chan struct{}) {
 			b.backfillBudget = 50 * time.Millisecond
 		}
 
-		b.processBackgroundTasks(stop, cursor)
+		b.processBackgroundTasks(ctx, stop, cursor)
 
 		// Always wake WaitForSequence waiters so they can re-check progress.
 		// Without this, a waiter that enters Wait() between the last

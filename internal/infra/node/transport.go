@@ -240,12 +240,28 @@ func (t *DefaultTransport) pushToRecvQueue(priority int, msgs []raftpb.Message) 
 	}
 }
 
+// CancelPeerConnections cancels all peer reconnection loops immediately.
+// Safe to call before Stop(). This allows early cancellation during service
+// shutdown so reconnection loops don't block the shutdown timeout.
+func (t *DefaultTransport) CancelPeerConnections() {
+	t.peersMu.RLock()
+	defer t.peersMu.RUnlock()
+
+	for _, pc := range t.peers {
+		pc.stopCancel()
+	}
+}
+
 // Stop stops the transport.
 func (t *DefaultTransport) Stop(ctx context.Context) error {
 	t.logger.Infof("Stopping raft transport")
 
 	// Mark as stopped so orphaned goroutines skip channel sends.
 	t.stopped.Store(true)
+
+	// Cancel all peer reconnection loops upfront so pc.stop() below
+	// returns instantly (loops already exited).
+	t.CancelPeerConnections()
 
 	stopCh := make(chan struct{})
 	select {

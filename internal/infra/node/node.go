@@ -130,6 +130,7 @@ type Node struct {
 	readyTerminated    chan readyResult
 	tasks              *taskSet
 	stopChannel        chan chan struct{}
+	runDone            chan struct{} // closed when Run() exits
 	recoveredPeers     map[uint64]ConfChangeContext
 	peerAddressesMu    sync.RWMutex
 	peerAddresses      map[uint64]ConfChangeContext
@@ -706,6 +707,9 @@ func (node *Node) doMaintenance() {
 }
 
 func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
+	node.runDone = make(chan struct{})
+	defer close(node.runDone)
+
 	// Determine the Applied index for raft.Config. Normally this is the store's
 	// last applied index. However, when the store is behind the WAL snapshot
 	// (out-of-sync recovery after a crash during checkpoint sync), Raft requires
@@ -1318,6 +1322,11 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 			}
 
 			maybeCreateReady()
+		case <-stop:
+			node.logger.Infof("Stopping readyLoop as context was cancelled")
+			node.applier.Interrupt()
+
+			return nil
 		default:
 			select {
 			case msgs := <-node.transport.RecvHighPriority():
@@ -1804,6 +1813,16 @@ func (node *Node) tryTransferLeadershipBeforeShutdown(ctx context.Context) {
 func (node *Node) Stop(ctx context.Context) error {
 	node.logger.Infof("Stopping node")
 
+	// If Run() has already exited (e.g. task error or context cancellation),
+	// skip the leadership transfer and stopChannel handshake.
+	select {
+	case <-node.runDone:
+		node.logger.Infof("Run already exited, nothing to stop")
+
+		return nil
+	default:
+	}
+
 	if node.IsLeader() {
 		node.tryTransferLeadershipBeforeShutdown(ctx)
 	}
@@ -1819,6 +1838,10 @@ func (node *Node) Stop(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		}
+	case <-node.runDone:
+		// Run() exited while we were trying to send on stopChannel
+		// (e.g. a task crashed between our check and the send).
+		return nil
 	}
 }
 

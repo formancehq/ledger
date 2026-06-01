@@ -424,8 +424,8 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int) 
 // round-robin scheduling with a time budget.
 // When a backfill catches up to globalCursor, it proposes IndexReady (leader only).
 // If the proposal fails (not leader or Raft error), the task is kept and retried.
-func (b *Builder) processBackgroundTasks(stop <-chan struct{}, globalCursor uint64) {
-	b.processBackfills(stop, globalCursor)
+func (b *Builder) processBackgroundTasks(ctx context.Context, stop <-chan struct{}, globalCursor uint64) {
+	b.processBackfills(ctx, stop, globalCursor)
 	b.processSchemaRewrites(stop)
 }
 
@@ -497,7 +497,7 @@ func (b *Builder) processSchemaRewrites(stop <-chan struct{}) {
 // starvation when multiple indexes are building concurrently.
 // When a backfill catches up to globalCursor, it proposes IndexReady (leader only).
 // If the proposal fails (not leader or Raft error), the task is kept and retried.
-func (b *Builder) processBackfills(stop <-chan struct{}, globalCursor uint64) {
+func (b *Builder) processBackfills(ctx context.Context, stop <-chan struct{}, globalCursor uint64) {
 	if len(b.backfillTasks) == 0 {
 		return
 	}
@@ -525,7 +525,7 @@ func (b *Builder) processBackfills(stop <-chan struct{}, globalCursor uint64) {
 			// from another leader's proposal). If so, skip proposing and just
 			// clean up the task. This prevents follower nodes from getting
 			// stuck retrying a proposal they can never send.
-			if b.isIndexAlreadyReady(task) {
+			if b.isIndexAlreadyReady(ctx, task) {
 				b.logger.WithFields(map[string]any{
 					"ledger": task.ledger,
 					"index":  backfillIndexName(task.index),
@@ -585,9 +585,9 @@ func (b *Builder) processBackfills(stop <-chan struct{}, globalCursor uint64) {
 
 		var err error
 		if isPostingIndex(task.index) {
-			err = b.processBackfillPostings(stop, task, taskDeadline)
+			err = b.processBackfillPostings(ctx, stop, task, taskDeadline)
 		} else {
-			err = b.processBackfill(stop, task, taskDeadline)
+			err = b.processBackfill(ctx, stop, task, taskDeadline)
 		}
 
 		if err != nil {
@@ -642,7 +642,7 @@ const backfillBatchSize = 10_000
 // The iterator stays open across batches to avoid repeated NewIter/First
 // overhead during catch-up. Processing continues until the deadline is reached
 // or EOF. Existence writes are skipped.
-func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask, deadline time.Time) error {
+func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, task *backfillTask, deadline time.Time) error {
 	handle, err := b.pebbleStore.NewDirectReadHandle()
 	if err != nil {
 		return fmt.Errorf("creating read handle for backfill: %w", err)
@@ -650,7 +650,7 @@ func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask, dead
 
 	defer func() { _ = handle.Close() }()
 
-	logsCursor, err := query.ReadLogsSince(context.Background(), handle, task.cursor, dal.WithReuse(), dal.WithResetFunc(resetLogForReuse))
+	logsCursor, err := query.ReadLogsSince(ctx, handle, task.cursor, dal.WithReuse(), dal.WithResetFunc(resetLogForReuse))
 	if err != nil {
 		return err
 	}
@@ -840,8 +840,8 @@ func (b *Builder) proposeIndexReady(task *backfillTask) bool {
 // marked READY in Pebble (e.g. applied by the FSM from another leader's
 // proposal). This prevents follower nodes from retrying IndexReady proposals
 // forever when no new logs arrive.
-func (b *Builder) isIndexAlreadyReady(task *backfillTask) bool {
-	info, err := query.GetLedgerByName(context.Background(), b.pebbleStore, task.ledger)
+func (b *Builder) isIndexAlreadyReady(ctx context.Context, task *backfillTask) bool {
+	info, err := query.GetLedgerByName(ctx, b.pebbleStore, task.ledger)
 	if err != nil {
 		return false // ledger not found or error; assume not ready
 	}

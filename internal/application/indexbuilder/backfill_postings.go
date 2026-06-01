@@ -17,7 +17,7 @@ import (
 //
 // This reduces allocations from ~32/op (UnmarshalVT + resetLogForReuse) to ~5/op
 // and avoids parsing ~70% of each log entry's bytes.
-func (b *Builder) processBackfillPostings(stop <-chan struct{}, task *backfillTask, deadline time.Time) error {
+func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struct{}, task *backfillTask, deadline time.Time) error {
 	handle, err := b.pebbleStore.NewDirectReadHandle()
 	if err != nil {
 		return fmt.Errorf("creating read handle for postings backfill: %w", err)
@@ -25,7 +25,7 @@ func (b *Builder) processBackfillPostings(stop <-chan struct{}, task *backfillTa
 
 	defer func() { _ = handle.Close() }()
 
-	iter, err := query.ReadLogsSinceRaw(context.Background(), handle, task.cursor)
+	iter, err := query.ReadLogsSinceRaw(ctx, handle, task.cursor)
 	if err != nil {
 		return err
 	}

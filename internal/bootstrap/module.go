@@ -896,15 +896,22 @@ func Module() fx.Option {
 					}
 				}))
 			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``)),
-			func(lc fx.Lifecycle, node *node.Node, logger logging.Logger) (*node.Node, error) {
-				var waitNode func()
+			func(lc fx.Lifecycle, node *node.Node, defaultTransport *node.DefaultTransport, logger logging.Logger) (*node.Node, error) {
+				var cancelRun context.CancelFunc
 
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
 						ready := make(chan struct{})
 
-						waitNode = otlplogs.GoWait(func() {
-							err := node.Run(context.WithoutCancel(ctx), ready)
+						// Use a dedicated context for node.Run that survives
+						// the OnStart return (unlike ctx which expires) but can
+						// be cancelled by OnStop. This replaces WithoutCancel
+						// which prevented shutdown from propagating.
+						var runCtx context.Context
+						runCtx, cancelRun = context.WithCancel(context.Background())
+
+						otlplogs.Go(func() {
+							err := node.Run(runCtx, ready)
 							if err != nil {
 								panic(err)
 							}
@@ -912,6 +919,8 @@ func Module() fx.Option {
 
 						select {
 						case <-ctx.Done():
+							cancelRun()
+
 							return ctx.Err()
 						case <-ready:
 							logger.Infof("Raft cluster started successfully")
@@ -922,12 +931,14 @@ func Module() fx.Option {
 					OnStop: func(ctx context.Context) error {
 						logger.Infof("Shutting down raft cluster")
 
+						defaultTransport.CancelPeerConnections()
+						cancelRun()
+
 						err := node.Stop(ctx)
 						if err != nil {
 							return fmt.Errorf("shutting down raft cluster: %w", err)
 						}
 
-						waitNode()
 						logger.Infof("Raft cluster stopped successfully")
 
 						return nil

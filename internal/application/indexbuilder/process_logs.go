@@ -31,7 +31,7 @@ import (
 //
 // When a batch produces no index writes, the Pebble batch is skipped
 // entirely. Progress is persisted once at the end, reducing fsyncs to O(1).
-func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error) {
+func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.Time) (uint64, error) {
 	handle, err := b.pebbleStore.NewDirectReadHandle()
 	if err != nil {
 		return cursor, fmt.Errorf("creating read handle for log processing: %w", err)
@@ -39,7 +39,7 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 
 	defer func() { _ = handle.Close() }()
 
-	logsCursor, err := query.ReadLogsSince(context.Background(), handle, cursor, dal.WithReuse(), dal.WithResetFunc(resetLogForReuse))
+	logsCursor, err := query.ReadLogsSince(ctx, handle, cursor, dal.WithReuse(), dal.WithResetFunc(resetLogForReuse))
 	if err != nil {
 		return cursor, err
 	}
@@ -47,7 +47,7 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 	defer func() { _ = logsCursor.Close() }()
 
 	// Open audit iterator for transient account filtering.
-	audit, err := newAuditSync(handle, b.lastAuditSeq)
+	audit, err := newAuditSync(ctx, handle, b.lastAuditSeq)
 	if err != nil {
 		return cursor, fmt.Errorf("creating audit sync: %w", err)
 	}
@@ -348,7 +348,7 @@ func (b *Builder) deleteReadIndexCheckpoint(checkpointID uint64) {
 // rebuilding the entire read index. This is intended for offline use
 // (CLI backfill). Returns the last processed log sequence.
 func (b *Builder) RebuildAll() (uint64, error) {
-	return b.processLogs(0, time.Time{})
+	return b.processLogs(context.Background(), 0, time.Time{})
 }
 
 // indexLogEntry dispatches a single log entry to the appropriate index handler.

@@ -44,13 +44,13 @@ type auditSync struct {
 
 // newAuditSync creates an auditSync that reads audit entries from the given
 // Pebble handle, starting after afterAuditSeq.
-func newAuditSync(handle dal.PebbleReader, afterAuditSeq uint64) (*auditSync, error) {
+func newAuditSync(ctx context.Context, handle dal.PebbleReader, afterAuditSeq uint64) (*auditSync, error) {
 	var filter *uint64
 	if afterAuditSeq > 0 {
 		filter = &afterAuditSeq
 	}
 
-	cursor, err := query.ReadAuditEntries(context.Background(), handle, filter)
+	cursor, err := query.ReadAuditEntries(ctx, handle, filter)
 	if err != nil {
 		return nil, err
 	}
