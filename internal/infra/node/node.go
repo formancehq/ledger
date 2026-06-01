@@ -35,6 +35,14 @@ const (
 	statusInstallingSnapshot // processReadies is installing a snapshot, Run must not touch FSM
 )
 
+// gatingReason constants — stored in an atomic.Int32 for race-free observability.
+const (
+	gatingReasonNone            int32 = iota
+	gatingReasonSyncing               // leader sync in progress
+	gatingReasonSnapshotting          // checkpoint creation in progress
+	gatingReasonQueryCheckpoint       // query-checkpoint in progress
+)
+
 var (
 	// ErrNotLeader is returned when a leadership transfer is attempted on a non-leader node.
 	ErrNotLeader = errors.New("this node is not the leader")

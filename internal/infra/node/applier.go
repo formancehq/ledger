@@ -57,7 +57,7 @@ type Applier struct {
 	snapshotFetcherProvider state.SnapshotFetcherProvider
 
 	status           *atomic.Int32
-	gatingReason     string // "syncing", "snapshotting", "query-checkpoint" — for observability
+	gatingReason     atomic.Int32 // gatingReason* constants — for observability
 	syncProgress     atomic.Pointer[state.SyncProgress]
 	gatingTerminated chan gatingResult
 	ch               chan applyWork  // buffered(1)
@@ -480,7 +480,7 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 				}
 
 				a.status.Store(statusGated)
-				a.gatingReason = "syncing"
+				a.gatingReason.Store(gatingReasonSyncing)
 				a.startSyncSnapshot(ctx, work.syncLeader)
 				waitStart = time.Now()
 
@@ -643,11 +643,16 @@ func (a *Applier) StatusString() string {
 	case statusNormal:
 		return "normal"
 	case statusGated:
-		if a.gatingReason != "" {
-			return a.gatingReason
+		switch a.gatingReason.Load() {
+		case gatingReasonSyncing:
+			return "syncing"
+		case gatingReasonSnapshotting:
+			return "snapshotting"
+		case gatingReasonQueryCheckpoint:
+			return "query-checkpoint"
+		default:
+			return "gated"
 		}
-
-		return "gated"
 	case statusOutOfSync:
 		return "out_of_sync"
 	case statusInstallingSnapshot:
@@ -659,7 +664,7 @@ func (a *Applier) StatusString() string {
 
 // IsSyncing returns true if the applier is gated due to a leader sync.
 func (a *Applier) IsSyncing() bool {
-	return a.status.Load() == statusGated && a.gatingReason == "syncing"
+	return a.status.Load() == statusGated && a.gatingReason.Load() == gatingReasonSyncing
 }
 
 // GetSyncProgress returns the current sync progress, or nil if not syncing.
@@ -859,7 +864,7 @@ func (a *Applier) handleCheckpointRequired(
 	}
 
 	a.status.Store(statusGated)
-	a.gatingReason = "snapshotting"
+	a.gatingReason.Store(gatingReasonSnapshotting)
 
 	// Resolve the deferred future for the checkpoint-triggering proposal.
 	// The last result in applyResult.Results is the entry that set CheckpointRequired.
@@ -935,7 +940,7 @@ func (a *Applier) handleQueryCheckpointRequired(
 	}
 
 	a.status.Store(statusGated)
-	a.gatingReason = "query-checkpoint"
+	a.gatingReason.Store(gatingReasonQueryCheckpoint)
 
 	// Resolve the deferred future for the checkpoint-triggering proposal.
 	var (
