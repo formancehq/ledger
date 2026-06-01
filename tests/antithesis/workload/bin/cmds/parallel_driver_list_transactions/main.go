@@ -48,50 +48,61 @@ func main() {
 			minLogSeq = logs[len(logs)-1].GetSequence()
 		}
 
-		// 2. List transactions (reverse order so the just-created tx is in the first page).
-		stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
-			Ledger:         ledger,
-			PageSize:       50,
-			Reverse:        true,
-			MinLogSequence: minLogSeq,
-		})
-		if err != nil {
-			if internal.IsTransient(err) {
+		// 2. Paginate through all transactions until we find the one we created.
+		var (
+			totalCount  int
+			found       bool
+			afterTxID   uint64
+			streamErr   bool
+		)
+
+		for !found {
+			stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
+				Ledger:         ledger,
+				PageSize:       50,
+				AfterTxId:      afterTxID,
+				MinLogSequence: minLogSeq,
+			})
+			if err != nil {
+				if internal.IsTransient(err) {
+					return
+				}
+
+				assert.Unreachable("ListTransactions should not fail", details.With(internal.Details{"error": err}))
+
 				return
 			}
 
-			assert.Unreachable("ListTransactions should not fail", details.With(internal.Details{"error": err}))
+			var pageCount int
 
-			return
-		}
+			for {
+				tx, err := stream.Recv()
+				if err == io.EOF {
+					break
+				}
 
-		var (
-			count     int
-			found     bool
-			streamErr bool
-		)
+				if err != nil {
+					streamErr = true
 
-		for {
-			tx, err := stream.Recv()
-			if err == io.EOF {
-				break
+					break
+				}
+
+				pageCount++
+				totalCount++
+				afterTxID = tx.GetId()
+
+				if tx.GetId() == txID {
+					found = true
+				}
 			}
 
-			if err != nil {
-				streamErr = true
-
+			if streamErr || pageCount == 0 {
 				break
-			}
-
-			count++
-
-			if tx.GetId() == txID {
-				found = true
 			}
 		}
 
 		if !streamErr {
-			assert.AlwaysOrUnreachable(count > 0, "ListTransactions should return at least one transaction", details)
+			assert.AlwaysOrUnreachable(totalCount > 0, "ListTransactions should return at least one transaction", details)
 			assert.AlwaysOrUnreachable(found, "ListTransactions should contain the just-created transaction", details)
 		}
 
