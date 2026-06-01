@@ -4032,7 +4032,6 @@ func (m *BytesConstraint) Mutate() *BytesConstraint {
 type AccountTypeReader interface {
 	GetName() string
 	GetPattern() string
-	GetStatus() AccountTypeStatus
 	GetPersistence() AccountTypePersistence
 	GetSegmentTypes() map[string]*SegmentType
 	Mutate() *AccountType
@@ -4046,10 +4045,6 @@ func (r *accountTypeReadonly) GetName() string {
 
 func (r *accountTypeReadonly) GetPattern() string {
 	return r.v.GetPattern()
-}
-
-func (r *accountTypeReadonly) GetStatus() AccountTypeStatus {
-	return r.v.GetStatus()
 }
 
 func (r *accountTypeReadonly) GetPersistence() AccountTypePersistence {

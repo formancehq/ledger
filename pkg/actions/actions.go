@@ -135,7 +135,6 @@ func AddAccountTypeAction(ledgerName, name, pattern string) *servicepb.Request {
 				AccountType: &commonpb.AccountType{
 					Name:    name,
 					Pattern: pattern,
-					Status:  commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE,
 				},
 			},
 		},
@@ -157,7 +156,6 @@ func AddAccountTypeWithPersistenceAction(ledgerName, name, pattern string, persi
 				AccountType: &commonpb.AccountType{
 					Name:        name,
 					Pattern:     pattern,
-					Status:      commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE,
 					Persistence: persistence,
 				},
 			},

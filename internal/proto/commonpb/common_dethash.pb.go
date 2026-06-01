@@ -2435,16 +2435,11 @@ func (m *AccountType) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, err
 			dAtA[i] = 0xa
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
 			i--
-			dAtA[i] = 0x2a
+			dAtA[i] = 0x22
 		}
 	}
 	if m.Persistence != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Persistence))
-		i--
-		dAtA[i] = 0x20
-	}
-	if m.Status != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Status))
 		i--
 		dAtA[i] = 0x18
 	}

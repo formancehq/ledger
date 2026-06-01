@@ -2140,9 +2140,6 @@ components:
                 type: string
               pattern:
                 type: string
-              status:
-                type: string
-                enum: [ACTIVE, DEPRECATED]
               persistence:
                 type: string
                 enum: [NORMAL, EPHEMERAL, TRANSIENT]
@@ -3536,7 +3533,6 @@ components:
       required:
         - name
         - pattern
-        - status
       properties:
         name:
           type: string
@@ -3544,12 +3540,6 @@ components:
         pattern:
           type: string
           description: Account address pattern
-        status:
-          type: string
-          enum:
-            - ACTIVE
-            - DEPRECATED
-          description: Account type status
 
     ListAccountTypesResponse:
       type: object

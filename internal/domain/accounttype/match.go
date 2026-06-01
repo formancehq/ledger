@@ -12,17 +12,13 @@ type CompiledType struct {
 	Original    *commonpb.AccountType
 }
 
-// CompileTypes pre-parses all non-deprecated account types into CompiledType
-// entries. Types with invalid patterns are silently skipped.
+// CompileTypes pre-parses all account types into CompiledType entries.
+// Types with invalid patterns are silently skipped.
 // Variable segments are annotated with constraints from the proto segment_types map.
 func CompileTypes(types map[string]*commonpb.AccountType) []CompiledType {
 	compiled := make([]CompiledType, 0, len(types))
 
 	for _, at := range types {
-		if at.GetStatus() == commonpb.AccountTypeStatus_ACCOUNT_TYPE_DEPRECATED {
-			continue
-		}
-
 		segments, err := ParsePattern(at.GetPattern())
 		if err != nil {
 			continue

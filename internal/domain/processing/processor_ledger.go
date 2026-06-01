@@ -23,7 +23,6 @@ func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrde
 			return nil, &domain.ErrInvalidPattern{Pattern: at.GetPattern(), Details: err.Error()}
 		}
 		at.Name = name
-		at.Status = commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE
 	}
 
 	createdAt := s.GetDate()

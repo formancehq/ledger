@@ -10,27 +10,16 @@ import (
 type accountTypeJSON struct {
 	Name    string `json:"name"`
 	Pattern string `json:"pattern"`
-	Status  string `json:"status"`
 }
 
 type listAccountTypesResponse struct {
 	Types []accountTypeJSON `json:"types"`
 }
 
-func accountTypeStatusToString(status commonpb.AccountTypeStatus) string {
-	switch status {
-	case commonpb.AccountTypeStatus_ACCOUNT_TYPE_DEPRECATED:
-		return "DEPRECATED"
-	default:
-		return "ACTIVE"
-	}
-}
-
 func toAccountTypeJSON(at *commonpb.AccountType) accountTypeJSON {
 	return accountTypeJSON{
 		Name:    at.GetName(),
 		Pattern: at.GetPattern(),
-		Status:  accountTypeStatusToString(at.GetStatus()),
 	}
 }
 

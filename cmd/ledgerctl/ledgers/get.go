@@ -8,7 +8,6 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	"github.com/formancehq/ledger/v3/cmd/ledgerctl/accounttypes"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -112,7 +111,7 @@ func renderAccountTypes(types map[string]*commonpb.AccountType) {
 	sort.Strings(names)
 
 	tableData := pterm.TableData{
-		{"  NAME", "PATTERN", "STATUS"},
+		{"  NAME", "PATTERN"},
 	}
 
 	for _, n := range names {
@@ -120,7 +119,6 @@ func renderAccountTypes(types map[string]*commonpb.AccountType) {
 		tableData = append(tableData, []string{
 			"  " + at.GetName(),
 			at.GetPattern(),
-			accounttypes.FormatStatus(at.GetStatus()),
 		})
 	}
 

@@ -1499,7 +1499,7 @@ Get details of a specific account type.
 ledgerctl account-types get <name> [--ledger <ledger>]
 ```
 
-Shows name, pattern, status, and persistence mode.
+Shows name, pattern, and persistence mode.
 
 #### account-types remove
 

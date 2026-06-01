@@ -77,7 +77,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	sort.Strings(names)
 
 	tableData := pterm.TableData{
-		{"NAME", "PATTERN", "STATUS", "PERSISTENCE"},
+		{"NAME", "PATTERN", "PERSISTENCE"},
 	}
 
 	for _, n := range names {
@@ -85,7 +85,6 @@ func runList(cmd *cobra.Command, _ []string) error {
 		tableData = append(tableData, []string{
 			at.GetName(),
 			at.GetPattern(),
-			FormatStatus(at.GetStatus()),
 			FormatPersistence(at.GetPersistence()),
 		})
 	}
@@ -93,17 +92,6 @@ func runList(cmd *cobra.Command, _ []string) error {
 	pterm.Printf("Ledger: %s (%d account types)\n\n", pterm.Cyan(ledgerName), len(names))
 
 	return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
-}
-
-func FormatStatus(s commonpb.AccountTypeStatus) string {
-	switch s {
-	case commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE:
-		return "ACTIVE"
-	case commonpb.AccountTypeStatus_ACCOUNT_TYPE_DEPRECATED:
-		return "DEPRECATED"
-	default:
-		return "UNKNOWN"
-	}
 }
 
 func FormatPersistence(p commonpb.AccountTypePersistence) string {

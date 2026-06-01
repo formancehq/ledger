@@ -876,15 +876,8 @@ message BytesConstraint {}
 message AccountType {
   string name = 1;                           // Unique identifier: "user-checking"
   string pattern = 2;                        // Address pattern: "users:{id}:checking"
-  AccountTypeStatus status = 3;              // ACTIVE, DEPRECATED
-  AccountTypePersistence persistence = 4;    // How volumes are stored (replaces bool ephemeral)
-  map<string, SegmentType> segment_types = 5;  // variable_name -> type constraint
-}
-
-// AccountTypeStatus represents the lifecycle state of an account type.
-enum AccountTypeStatus {
-  ACCOUNT_TYPE_ACTIVE = 0;       // Accepts new accounts, validated normally
-  ACCOUNT_TYPE_DEPRECATED = 1;   // No new accounts; kept for backward compat
+  AccountTypePersistence persistence = 3;    // How volumes are stored (replaces bool ephemeral)
+  map<string, SegmentType> segment_types = 4;  // variable_name -> type constraint
 }
 
 // AddedAccountTypeLog records the addition of an account type.

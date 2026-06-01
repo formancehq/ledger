@@ -37,9 +37,6 @@ func (p *RequestProcessor) processAddAccountType(
 		return nil, &domain.ErrAccountTypeAlreadyExists{Name: at.GetName()}
 	}
 
-	// Set default status to ACTIVE.
-	at.Status = commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE
-
 	info.AccountTypes[at.GetName()] = at
 	s.PutLedger(ledgerName, info)
 	p.invalidateCompiledTypes(ledgerName)
@@ -54,7 +51,6 @@ func (p *RequestProcessor) processAddAccountType(
 }
 
 // processRemoveAccountType removes an account type from a ledger.
-// The type must be DEPRECATED or have no matching accounts.
 func (p *RequestProcessor) processRemoveAccountType(
 	ledgerName string,
 	order *raftcmdpb.RemoveAccountTypeOrder,

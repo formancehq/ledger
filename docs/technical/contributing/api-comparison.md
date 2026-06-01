@@ -200,7 +200,6 @@ Ledger metadata is stored separately from ledger configuration (LedgerInfo) and 
 - ✅ Variable segments with optional regex constraints (e.g., `{iban:^[A-Z]{2}[0-9]{14}$}`)
 - ✅ Ledger-level default enforcement mode: STRICT (reject) or AUDIT (warnings)
 - ✅ Longest-match / highest-specificity resolution when multiple types match
-- ✅ Account type lifecycle: ACTIVE → DEPRECATED
 - ✅ `world` account always passes validation
 - ✅ Account types can be set at ledger creation time or added later
 - ✅ Persistence modes: `NORMAL` (default), `EPHEMERAL` (purged when zero balance), `TRANSIENT` (never persisted, must be zero at end of batch)

@@ -37,7 +37,6 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 								AccountType: &commonpb.AccountType{
 									Name:        "staging",
 									Pattern:     "staging:{id}",
-									Status:      commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE,
 									Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
 								},
 							},
@@ -50,7 +49,6 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 								AccountType: &commonpb.AccountType{
 									Name:    "wallet",
 									Pattern: "wallet:{id}",
-									Status:  commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE,
 								},
 							},
 						},
@@ -122,7 +120,6 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 								AccountType: &commonpb.AccountType{
 									Name:        "staging",
 									Pattern:     "staging:{id}",
-									Status:      commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE,
 									Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
 								},
 							},
@@ -210,7 +207,6 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 								AccountType: &commonpb.AccountType{
 									Name:        "clearing",
 									Pattern:     "clearing:{id}",
-									Status:      commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE,
 									Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
 								},
 							},
@@ -296,7 +292,6 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 								AccountType: &commonpb.AccountType{
 									Name:        "staging",
 									Pattern:     "staging:{id}",
-									Status:      commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE,
 									Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
 								},
 							},
@@ -364,7 +359,6 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 								AccountType: &commonpb.AccountType{
 									Name:        "staging",
 									Pattern:     "staging:{id}",
-									Status:      commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE,
 									Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
 								},
 							},
@@ -377,7 +371,6 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 								AccountType: &commonpb.AccountType{
 									Name:    "wallet",
 									Pattern: "wallet:{id}",
-									Status:  commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE,
 								},
 							},
 						},
@@ -475,7 +468,6 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 								AccountType: &commonpb.AccountType{
 									Name:        "staging",
 									Pattern:     "staging:{id}",
-									Status:      commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE,
 									Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
 								},
 							},
@@ -488,7 +480,6 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 								AccountType: &commonpb.AccountType{
 									Name:    "wallet",
 									Pattern: "wallet:{id}",
-									Status:  commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE,
 								},
 							},
 						},
@@ -500,7 +491,6 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 								AccountType: &commonpb.AccountType{
 									Name:    "filler",
 									Pattern: "filler:{id}",
-									Status:  commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE,
 								},
 							},
 						},

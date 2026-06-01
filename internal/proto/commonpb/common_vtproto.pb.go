@@ -2700,7 +2700,6 @@ func (m *AccountType) CloneVT() *AccountType {
 	r := new(AccountType)
 	r.Name = m.Name
 	r.Pattern = m.Pattern
-	r.Status = m.Status
 	r.Persistence = m.Persistence
 	if rhs := m.SegmentTypes; rhs != nil {
 		tmpContainer := make(map[string]*SegmentType, len(rhs))
@@ -8036,9 +8035,6 @@ func (this *AccountType) EqualVT(that *AccountType) bool {
 		return false
 	}
 	if this.Pattern != that.Pattern {
-		return false
-	}
-	if this.Status != that.Status {
 		return false
 	}
 	if this.Persistence != that.Persistence {
@@ -16315,16 +16311,11 @@ func (m *AccountType) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			dAtA[i] = 0xa
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
 			i--
-			dAtA[i] = 0x2a
+			dAtA[i] = 0x22
 		}
 	}
 	if m.Persistence != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Persistence))
-		i--
-		dAtA[i] = 0x20
-	}
-	if m.Status != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Status))
 		i--
 		dAtA[i] = 0x18
 	}
@@ -21204,9 +21195,6 @@ func (m *AccountType) SizeVT() (n int) {
 	l = len(m.Pattern)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Status != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Status))
 	}
 	if m.Persistence != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.Persistence))
@@ -38838,25 +38826,6 @@ func (m *AccountType) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 3:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Status", wireType)
-			}
-			m.Status = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Status |= AccountTypeStatus(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 4:
-			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Persistence", wireType)
 			}
 			m.Persistence = 0
@@ -38874,7 +38843,7 @@ func (m *AccountType) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 5:
+		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SegmentTypes", wireType)
 			}

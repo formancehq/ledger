@@ -18,11 +18,9 @@ func NewRemoveCommand() *cobra.Command {
 		Short:   "Remove an account type",
 		Long: `Remove an account type from a ledger.
 
-The account type must be in DEPRECATED status or have no matching accounts.
-
 Examples:
   ledgerctl account-types remove old-type --ledger my-ledger
-  ledgerctl at rm deprecated-type --ledger my-ledger`,
+  ledgerctl at rm legacy-type --ledger my-ledger`,
 		Args: cobra.ExactArgs(1),
 		RunE: runRemove,
 	}

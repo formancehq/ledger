@@ -444,7 +444,6 @@ func SuggestAccountTypes(resp *servicepb.AnalyzeAccountsResponse) []*commonpb.Ac
 		types = append(types, &commonpb.AccountType{
 			Name:    name,
 			Pattern: p.GetPattern(),
-			Status:  commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE,
 		})
 	}
 
