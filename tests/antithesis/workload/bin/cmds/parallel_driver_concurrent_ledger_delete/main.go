@@ -29,9 +29,10 @@ func main() {
 
 		// Track write results.
 		var (
-			writeErr      error
-			deletedSeen   bool
-			writeAttempts int
+			writeErr       error
+			deletedSeen    bool
+			deleteOK       bool
+			writeAttempts  int
 		)
 
 		wg.Add(2)
@@ -94,13 +95,27 @@ func main() {
 					},
 				}},
 			})
-			if err != nil && !internal.IsTransient(err) {
+			if err == nil {
+				deleteOK = true
+
+				return
+			}
+
+			if !internal.IsTransient(err) {
 				assert.Unreachable("delete ledger should not fail unexpectedly",
 					details.With(internal.Details{"error": err}))
 			}
 		}()
 
 		wg.Wait()
+
+		// If the delete failed (e.g. transient error during leadership change),
+		// the ledger still exists — nothing to assert about post-delete writes.
+		if !deleteOK {
+			assert.Reachable("concurrent ledger delete path exercised", details)
+
+			return
+		}
 
 		// 3. After deletion, any write should fail with LEDGER_DELETED or LEDGER_NOT_FOUND.
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
