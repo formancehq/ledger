@@ -98,7 +98,7 @@ func (s *baseServer) Start(listening chan struct{}) error {
 
 	close(listening)
 
-	if err := s.server.Serve(lis); err != nil {
+	if err := s.server.Serve(lis); err != nil && !errors.Is(err, ggrpc.ErrServerStopped) {
 		return fmt.Errorf("%s server failed: %w", s.name, err)
 	}
 
