@@ -463,8 +463,14 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	a.proposeDurationHistogram.Record(ctx, time.Since(proposeStart).Microseconds())
 	proposeSpan.End()
 
+	// Ensure cleanup runs on all paths after proposal acceptance (success and error).
+	defer a.proposeQueueInflight.Add(-1)
+	defer guard.ReleaseLoaders()
+
 	// Wait for FSM to apply the command
 	ctx, fsmSpan := tracer.Start(ctx, "admission.fsm_wait")
+	defer fsmSpan.End()
+
 	fsmWaitStart := time.Now()
 	result, err := fsmFuture.Wait()
 	if err != nil {
@@ -472,14 +478,6 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	}
 
 	a.fsmFutureWaitHistogram.Record(ctx, time.Since(fsmWaitStart).Microseconds())
-	fsmSpan.End()
-
-	// Decrement inflight counter after command is fully processed
-	a.proposeQueueInflight.Add(-1)
-
-	// Clean up loaded keys after command is applied (or failed).
-	// At this point, the cache will have the values, so we can remove them from the loader.
-	guard.ReleaseLoaders()
 
 	// Resolve CreatedLogOrReference entries into concrete logs.
 	// Created logs are returned directly; reference sequences (idempotent responses)
