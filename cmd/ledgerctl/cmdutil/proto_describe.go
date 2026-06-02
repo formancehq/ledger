@@ -65,12 +65,6 @@ func ExtractScalarFieldPairs(msg protoreflect.Message, verbose bool) [][2]string
 	return pairs
 }
 
-// ExtractScalarFields returns a compact "key=value" representation of all
-// populated scalar fields in a protobuf message.
-func ExtractScalarFields(msg protoreflect.Message, verbose bool) string {
-	return joinFieldPairs(ExtractScalarFieldPairs(msg, verbose))
-}
-
 // ExtractStringMapEntries recursively collects all string-to-string map entries
 // from a protobuf message, returning them as key/value pairs.
 func ExtractStringMapEntries(msg protoreflect.Message) [][2]string {
