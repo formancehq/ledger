@@ -256,6 +256,6 @@ jobs:
           nix develop --command just operator-docker-build
       - name: Publish operator Helm charts
         run: >
-          nix develop --command just operator-helm-publish suffix='nightly'
+          nix develop --command just operator-helm-publish '' nightly
         env:
           GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}

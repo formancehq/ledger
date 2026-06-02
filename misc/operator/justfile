@@ -78,20 +78,22 @@ test-e2e ledger-branch="master": (e2e-cluster-up ledger-branch) _ensure-chainsaw
 test-e2e-only: _ensure-chainsaw
     chainsaw test --config e2e/chainsaw-test.yaml --test-dir e2e/tests/ --kube-context kind-ledger-e2e
 
-helm-package suffix='':
+helm-package version='' suffix='':
     #!/bin/bash
-    set -e
+    set -euo pipefail
     helm dependency update helm/operator
     for dir in helm/crds helm/operator; do
-        if [ -n "{{suffix}}" ]; then
-            version=$(grep '^version:' "$dir/Chart.yaml" | awk '{print $2}' | tr -d '"')
-            pushd "$dir" && helm package . --version "${version}-{{suffix}}" && popd
-        else
-            pushd "$dir" && helm package . && popd
+        chart_version="{{ version }}"
+        if [ -z "$chart_version" ]; then
+            chart_version=$(grep '^version:' "$dir/Chart.yaml" | awk '{print $2}' | tr -d '"')
+            if [ -n "{{ suffix }}" ]; then
+                chart_version="${chart_version}-{{ suffix }}"
+            fi
         fi
+        (cd "$dir" && helm package . --version "${chart_version}")
     done
 
-helm-publish suffix='': (helm-package suffix)
+helm-publish version='' suffix='': (helm-package version suffix)
     echo $GITHUB_TOKEN | docker login ghcr.io -u NumaryBot --password-stdin
     for path in helm/*/*.tgz; do \
         helm push ${path} oci://ghcr.io/formancehq/helm; \

@@ -33,9 +33,10 @@ jobs:
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
       - name: Build and push operator image
         run: >
-          nix develop --command just operator-docker-build
+          nix develop --command just operator-docker-build ${{ github.ref_name }}
       - name: Publish operator Helm charts
-        run: >
-          nix develop --command just operator-helm-publish
         env:
           GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          nix develop --command just operator-helm-publish "$version"

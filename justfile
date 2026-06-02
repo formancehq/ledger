@@ -320,13 +320,22 @@ operator-pre-commit: operator-generate
     echo "==> operator: go build"
     go build ./...
 
-# Build and push operator Docker image (multi-arch)
-operator-docker-build *ARGS:
-    docker buildx build -t ghcr.io/formancehq/ledger-operator --platform linux/amd64,linux/arm64 --push {{ARGS}} misc/operator
+# Build and push operator Docker image (multi-arch). With a tag argument, also tags :latest.
+operator-docker-build tag='':
+    #!/bin/bash
+    set -euo pipefail
+    image=ghcr.io/formancehq/ledger-operator
+    if [ -n "{{ tag }}" ]; then
+        docker buildx build -t "${image}:{{ tag }}" -t "${image}:latest" \
+            --platform linux/amd64,linux/arm64 --push misc/operator
+    else
+        docker buildx build -t "${image}:latest" \
+            --platform linux/amd64,linux/arm64 --push misc/operator
+    fi
 
-# Package and publish operator Helm charts to GHCR
-operator-helm-publish suffix='':
-    cd misc/operator && just helm-publish suffix='{{suffix}}'
+# Package and publish operator Helm charts to GHCR. Args are positional: version then suffix.
+operator-helm-publish version='' suffix='':
+    cd misc/operator && just helm-publish '{{ version }}' '{{ suffix }}'
 
 # Build and push multi-arch Docker image
 docker-build *ARGS:
