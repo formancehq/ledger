@@ -596,12 +596,14 @@ func (t *DefaultTransport) StreamMessages(stream grpc.BidiStreamingServer[rafttr
 				return err
 			}
 		case *rafttransportpb.SendMessageRequest_Raft:
-			responses := make([]*rafttransportpb.RaftResponseMessage, 0, len(m.Raft.GetMessages()))
+			// Group messages by priority, tracking request IDs per group.
+			type msgGroup struct {
+				msgs       []raftpb.Message
+				requestIDs []uint64
+			}
 
-			// Group messages by priority
-			highPriorityMsgs := make([]raftpb.Message, 0)
-			mediumPriorityMsgs := make([]raftpb.Message, 0)
-			lowPriorityMsgs := make([]raftpb.Message, 0)
+			groups := [3]msgGroup{} // 0=high, 1=medium, 2=low
+			responses := make([]*rafttransportpb.RaftResponseMessage, 0, len(m.Raft.GetMessages()))
 
 			for _, raftMsg := range m.Raft.GetMessages() {
 				var msg raftpb.Message
@@ -616,33 +618,32 @@ func (t *DefaultTransport) StreamMessages(stream grpc.BidiStreamingServer[rafttr
 					continue
 				}
 
-				// Group by priority
+				var pri int
+
 				switch msg.Type {
 				case raftpb.MsgHeartbeat, raftpb.MsgHeartbeatResp:
-					highPriorityMsgs = append(highPriorityMsgs, msg)
+					pri = 0
 				case raftpb.MsgAppResp, raftpb.MsgVote, raftpb.MsgVoteResp, raftpb.MsgPreVote, raftpb.MsgPreVoteResp:
-					mediumPriorityMsgs = append(mediumPriorityMsgs, msg)
+					pri = 1
 				default:
-					lowPriorityMsgs = append(lowPriorityMsgs, msg)
+					pri = 2
 				}
 
-				responses = append(responses, &rafttransportpb.RaftResponseMessage{
-					Success:   true,
-					RequestId: raftMsg.GetId(),
-				})
+				groups[pri].msgs = append(groups[pri].msgs, msg)
+				groups[pri].requestIDs = append(groups[pri].requestIDs, raftMsg.GetId())
 			}
 
-			// Push batches to priority queues
-			if !t.pushToRecvQueue(0, highPriorityMsgs) {
-				t.logger.Errorf("High priority recv queue full, some messages may be dropped")
-			}
+			// Push batches to priority queues and build responses
+			// based on whether each group was successfully enqueued.
+			for pri := range groups {
+				success := t.pushToRecvQueue(pri, groups[pri].msgs)
 
-			if !t.pushToRecvQueue(1, mediumPriorityMsgs) {
-				t.logger.Errorf("Medium priority recv queue full, some messages may be dropped")
-			}
-
-			if !t.pushToRecvQueue(2, lowPriorityMsgs) {
-				t.logger.Errorf("Low priority recv queue full, some messages may be dropped")
+				for _, reqID := range groups[pri].requestIDs {
+					responses = append(responses, &rafttransportpb.RaftResponseMessage{
+						Success:   success,
+						RequestId: reqID,
+					})
+				}
 			}
 
 			err := stream.Send(&rafttransportpb.SendMessageResponse{
