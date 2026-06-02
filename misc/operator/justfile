@@ -94,7 +94,17 @@ helm-package version='' suffix='':
     done
 
 helm-publish version='' suffix='': (helm-package version suffix)
+    #!/bin/bash
+    set -euo pipefail
     echo $GITHUB_TOKEN | docker login ghcr.io -u NumaryBot --password-stdin
-    for path in helm/*/*.tgz; do \
-        helm push ${path} oci://ghcr.io/formancehq/helm; \
+    for path in helm/*/*.tgz; do
+        for attempt in 1 2 3; do
+            if helm push "$path" oci://ghcr.io/formancehq/helm; then
+                continue 2
+            fi
+            echo "helm push $path failed (attempt $attempt/3), retrying in 5s..." >&2
+            sleep 5
+        done
+        echo "helm push $path failed after 3 attempts" >&2
+        exit 1
     done
