@@ -3,6 +3,7 @@ package state
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/holiman/uint256"
 	"google.golang.org/protobuf/proto"
@@ -1261,6 +1262,8 @@ func collectUniqueAccounts(updates []attributes.Update[domain.VolumeKey, *raftcm
 		for account := range accounts {
 			list = append(list, account)
 		}
+
+		slices.Sort(list)
 
 		result[ledgerID] = list
 	}

@@ -2,6 +2,7 @@ package state
 
 import (
 	"errors"
+	"slices"
 	"strconv"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -220,6 +221,8 @@ func extractLedgers(orders []*raftcmdpb.Order) []string {
 	for l := range seen {
 		ledgers = append(ledgers, l)
 	}
+
+	slices.Sort(ledgers)
 
 	return ledgers
 }
