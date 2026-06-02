@@ -240,8 +240,8 @@ jobs:
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: NumaryBot
+          password: ${{ secrets.NUMARY_GITHUB_TOKEN }}
       - name: Release nightly
         run: >
           nix develop --command just release-ci
