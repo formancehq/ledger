@@ -267,9 +267,11 @@ func (b *WriteSet) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
 	b.allVolumeUpdates = volumeUpdates
 	b.keptVolumeUpdates = partResult.kept
 
-	// Record purged volume keys for cross-entry deduplication in ApplyEntries.
-	for _, purged := range partResult.purged {
-		b.purgedVolumeKeys = append(b.purgedVolumeKeys, purged.Key)
+	// Fresh slice each Merge: exposed via ApplyResult and read later by
+	// deduplicateVolumeUpdates, so it must not alias a reused buffer.
+	b.purgedVolumeKeys = make([]domain.VolumeKey, len(partResult.purged))
+	for i, purged := range partResult.purged {
+		b.purgedVolumeKeys[i] = purged.Key
 	}
 
 	// Process AccountMetadata updates
@@ -571,7 +573,6 @@ func (b *WriteSet) Reset(at *commonpb.Timestamp) {
 	b.pendingLedgerDeletions = b.pendingLedgerDeletions[:0]
 	b.allVolumeUpdates = b.allVolumeUpdates[:0]
 	b.keptVolumeUpdates = b.keptVolumeUpdates[:0]
-	b.purgedVolumeKeys = b.purgedVolumeKeys[:0]
 	b.transientAccounts = nil
 	b.purgedAccounts = nil
 	b.bloomUpdates.Reset()
