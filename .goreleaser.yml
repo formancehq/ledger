@@ -79,10 +79,9 @@ dockers:
   goarch: amd64
   ids:
   - ledger-server
+  - ledgerctl
   dockerfile: build.Dockerfile
   use: buildx
-  extra_files:
-  - ledgerctl
   build_flag_templates:
   - --provenance=false
   - --platform=linux/amd64
@@ -98,10 +97,9 @@ dockers:
   goarch: arm64
   ids:
   - ledger-server
+  - ledgerctl
   dockerfile: build.Dockerfile
   use: buildx
-  extra_files:
-  - ledgerctl
   build_flag_templates:
   - --provenance=false
   - --platform=linux/arm64/v8
