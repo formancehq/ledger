@@ -218,18 +218,19 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			needsPersist = true
 		}
 
-		cursor = lastSeq
-		b.lastIndexedSeq.Store(cursor)
-		b.logsIndexed.Add(uint64(batchCount))
-		b.readStore.NotifyProgress()
-
-		// Create or delete a query checkpoint after the batch is committed,
-		// so the physical Pebble checkpoint captures all indexed data up to this point.
+		// Create or delete a query checkpoint after the batch is committed
+		// but BEFORE advancing the indexed sequence. This ensures the
+		// checkpoint directory exists before readers are notified.
 		if cpID := pendingCheckpointCreate; cpID > 0 {
 			if err := b.createReadIndexCheckpoint(cpID); err != nil {
 				return cursor, err
 			}
 		}
+
+		cursor = lastSeq
+		b.lastIndexedSeq.Store(cursor)
+		b.logsIndexed.Add(uint64(batchCount))
+		b.readStore.NotifyProgress()
 
 		if cpID := pendingCheckpointDelete; cpID > 0 {
 			b.deleteReadIndexCheckpoint(cpID)
