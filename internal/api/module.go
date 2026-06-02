@@ -22,11 +22,12 @@ type BulkConfig struct {
 }
 
 type Config struct {
-	Version    string
-	Debug      bool
-	Bulk       BulkConfig
-	Pagination storagecommon.PaginationConfig
-	Exporters  bool
+	Version              string
+	Debug                bool
+	Bulk                 BulkConfig
+	Pagination           storagecommon.PaginationConfig
+	Exporters            bool
+	ExperimentalFeatures []string
 }
 
 func Module(cfg Config) fx.Option {
@@ -51,6 +52,7 @@ func Module(cfg Config) fx.Option {
 				)),
 				WithPaginationConfiguration(cfg.Pagination),
 				WithExporters(cfg.Exporters),
+				WithExperimentalFeatures(cfg.ExperimentalFeatures),
 			)
 		}),
 		servicefx.HealthModule(),

@@ -21,7 +21,9 @@ func TestGetInfo(t *testing.T) {
 	t.Parallel()
 
 	systemController, _ := newTestingSystemController(t, false)
-	router := NewRouter(systemController, jwt.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true")
+	router := NewRouter(systemController, jwt.NewNoAuth(), "develop", os.Getenv("DEBUG") == "true",
+		WithExperimentalFeatures([]string{"experimental-features"}),
+	)
 
 	systemController.
 		EXPECT().
@@ -61,5 +63,6 @@ func TestGetInfo(t *testing.T) {
 				Ledgers: []string{"a", "b"},
 			},
 		},
+		ExperimentalFeatures: []string{"experimental-features"},
 	}, info)
 }
