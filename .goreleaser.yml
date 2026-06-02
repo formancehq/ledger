@@ -6,6 +6,13 @@ project_name: ledger-v3
 builds:
 - binary: ledger-server
   id: ledger-server
+  tags:
+  - kafka
+  - nats
+  - clickhouse
+  - databricks
+  - s3
+  - pyroscope
   ldflags:
   - -X main.Version={{ .Version }}
   - -X main.Commit={{ .ShortCommit }}
@@ -66,3 +73,53 @@ changelog:
     - "^docs:"
     - "^chore:"
     - "^ci:"
+
+dockers:
+- image_templates: ["ghcr.io/formancehq/ledger-v3-poc:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-amd64"]
+  goarch: amd64
+  ids:
+  - ledger-server
+  dockerfile: build.Dockerfile
+  use: buildx
+  extra_files:
+  - ledgerctl
+  build_flag_templates:
+  - --provenance=false
+  - --platform=linux/amd64
+  - --label=org.opencontainers.image.title=ledger-v3-poc
+  - --label=org.opencontainers.image.description=ledger-v3-poc
+  - --label=org.opencontainers.image.url=https://github.com/formancehq/ledger-v3-poc
+  - --label=org.opencontainers.image.source=https://github.com/formancehq/ledger-v3-poc
+  - --label=org.opencontainers.image.version={{ .Version }}
+  - --label=org.opencontainers.image.created={{ time "2006-01-02T15:04:05Z07:00" }}
+  - --label=org.opencontainers.image.revision={{ .FullCommit }}
+  - --label=org.opencontainers.image.licenses=MIT
+- image_templates: ["ghcr.io/formancehq/ledger-v3-poc:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-arm64"]
+  goarch: arm64
+  ids:
+  - ledger-server
+  dockerfile: build.Dockerfile
+  use: buildx
+  extra_files:
+  - ledgerctl
+  build_flag_templates:
+  - --provenance=false
+  - --platform=linux/arm64/v8
+  - --label=org.opencontainers.image.title=ledger-v3-poc
+  - --label=org.opencontainers.image.description=ledger-v3-poc
+  - --label=org.opencontainers.image.url=https://github.com/formancehq/ledger-v3-poc
+  - --label=org.opencontainers.image.source=https://github.com/formancehq/ledger-v3-poc
+  - --label=org.opencontainers.image.version={{ .Version }}
+  - --label=org.opencontainers.image.created={{ time "2006-01-02T15:04:05Z07:00" }}
+  - --label=org.opencontainers.image.revision={{ .FullCommit }}
+  - --label=org.opencontainers.image.licenses=MIT
+
+docker_manifests:
+- name_template: 'ghcr.io/formancehq/ledger-v3-poc:{{ if not .IsNightly }}v{{ end }}{{ .Version }}'
+  image_templates:
+  - 'ghcr.io/formancehq/ledger-v3-poc:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-amd64'
+  - 'ghcr.io/formancehq/ledger-v3-poc:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-arm64'
+- name_template: '{{ if not .IsNightly }}{{ if not .Prerelease }}ghcr.io/formancehq/ledger-v3-poc:latest{{ end }}{{ end }}'
+  image_templates:
+  - 'ghcr.io/formancehq/ledger-v3-poc:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-amd64'
+  - 'ghcr.io/formancehq/ledger-v3-poc:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-arm64'
