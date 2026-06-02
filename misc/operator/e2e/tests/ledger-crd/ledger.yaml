@@ -1,0 +1,7 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: Ledger
+metadata:
+  name: test-ledger
+spec:
+  name: my-ledger
+  serviceRef: crd-svc

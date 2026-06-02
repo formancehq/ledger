@@ -1,0 +1,27 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: hostpath-validation
+spec:
+  timeouts:
+    assert: 30s
+  steps:
+    - name: HostPath with storageClass should fail validation
+      try:
+        - apply:
+            file: ledgerservice-invalid.yaml
+        - assert:
+            file: assert-degraded.yaml
+
+    - name: Fix config by removing storageClass conflict
+      try:
+        - apply:
+            file: ledgerservice-fixed.yaml
+        - assert:
+            resource:
+              apiVersion: ledger.formance.com/v1alpha1
+              kind: LedgerService
+              metadata:
+                name: hp-val
+              status:
+                (conditions[?type == 'ConfigValid'].status): ['True']

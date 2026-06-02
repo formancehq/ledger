@@ -1,0 +1,14 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: LedgerService
+metadata:
+  name: ing-svc
+spec:
+  replicas: 1
+  image:
+    repository: ledger-v3-poc
+    tag: e2e
+    pullPolicy: Never
+  ingress:
+    enabled: false
+  ingressGrpc:
+    enabled: false

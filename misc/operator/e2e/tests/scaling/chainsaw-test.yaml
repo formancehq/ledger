@@ -1,0 +1,132 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: scaling
+spec:
+  timeouts:
+    assert: 5m
+  steps:
+    # 1. Deploy with 1 replica.
+    - name: Deploy 1-replica cluster
+      try:
+        - apply:
+            file: ledgerservice-1.yaml
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: scale-svc
+              status:
+                readyReplicas: 1
+
+    # 2. Provision data before scaling.
+    - name: Provision data
+      try:
+        - script:
+            content: |
+              kubectl exec scale-svc-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl provision run marketplace --scale 0.5 --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
+            timeout: 120s
+
+    # 3. Verify 1 voter in cluster.
+    - name: Verify 1-node cluster
+      try:
+        - script:
+            content: |
+              VOTERS=$(kubectl exec scale-svc-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl cluster status --json --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"' \
+                | grep -c '"suffrage": "Voter"')
+              echo "Voters: $VOTERS"
+              [ "$VOTERS" -eq 1 ]
+            timeout: 30s
+
+    # 4. Scale up to 3 replicas.
+    - name: Scale up to 3 replicas
+      try:
+        - apply:
+            file: ledgerservice-3.yaml
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: scale-svc
+              status:
+                readyReplicas: 3
+
+    # 5. Wait for all nodes to join as voters.
+    - name: Verify 3-node cluster
+      try:
+        - script:
+            content: |
+              # New nodes may start as learners and take a moment to promote.
+              for i in $(seq 1 30); do
+                VOTERS=$(kubectl exec scale-svc-0 -n $NAMESPACE -c ledger -- \
+                  /bin/sh -c './ledgerctl cluster status --json --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"' \
+                  | grep -c '"suffrage": "Voter"')
+                echo "Attempt $i: Voters=$VOTERS"
+                [ "$VOTERS" -eq 3 ] && exit 0
+                sleep 5
+              done
+              echo "FAIL: expected 3 voters"
+              exit 1
+            timeout: 180s
+
+    # 6. Verify data is still accessible after scale-up.
+    - name: Verify data after scale-up
+      try:
+        - script:
+            content: |
+              kubectl exec scale-svc-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl ledgers list --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
+            timeout: 30s
+
+    # 7. Scale back down to 1 replica.
+    - name: Scale down to 1 replica
+      try:
+        - apply:
+            file: ledgerservice-1.yaml
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: scale-svc
+              status:
+                readyReplicas: 1
+
+    # 8. Verify 1 voter remains.
+    - name: Verify 1-node cluster after scale-down
+      try:
+        - script:
+            content: |
+              for i in $(seq 1 30); do
+                VOTERS=$(kubectl exec scale-svc-0 -n $NAMESPACE -c ledger -- \
+                  /bin/sh -c './ledgerctl cluster status --json --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"' \
+                  | grep -c '"suffrage": "Voter"')
+                echo "Attempt $i: Voters=$VOTERS"
+                [ "$VOTERS" -eq 1 ] && exit 0
+                sleep 5
+              done
+              echo "FAIL: expected 1 voter"
+              exit 1
+            timeout: 180s
+
+    # 9. Verify data is still intact after scale-down.
+    - name: Verify data after scale-down
+      try:
+        - script:
+            content: |
+              kubectl exec scale-svc-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl ledgers list --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
+            timeout: 30s
+
+    # 10. Run integrity check.
+    - name: Verify store integrity
+      try:
+        - script:
+            content: |
+              kubectl exec scale-svc-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl store check --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
+            timeout: 120s

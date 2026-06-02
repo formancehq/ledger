@@ -13,6 +13,9 @@ Features, performance benchmarks, and key differentiators. For understanding wha
 ### [Technical Documentation](./technical/)
 Architecture, internals, and contributor guides. Start with the [Architecture Overview](./technical/architecture-overview.md) for the 10,000-foot view, then dive into specific topics.
 
+### [Operator](../misc/operator/README.md)
+Kubernetes operator for deploying and managing high-availability Ledger clusters. Manages `LedgerService`, `LedgerBackup`, and `LedgerClusterAgent` custom resources. Includes a `kubectl ledger` plugin and a web UI.
+
 ### [Design RFCs](./drafts/)
 Experimental ideas, advanced concepts, and future design proposals.
 
@@ -28,3 +31,4 @@ Experimental ideas, advanced concepts, and future design proposals.
 | API comparison (v2 parity) | [technical/contributing/api-comparison.md](./technical/contributing/api-comparison.md) |
 | Benchmarks (106K tx/s) | [sales/benchmarks.md](./sales/benchmarks.md) |
 | Getting started | [technical/contributing/getting-started.md](./technical/contributing/getting-started.md) |
+| Operator | [misc/operator/README.md](../misc/operator/README.md) |

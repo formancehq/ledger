@@ -1,0 +1,44 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: store-check
+spec:
+  timeouts:
+    assert: 5m
+  steps:
+    - name: Deploy LedgerService
+      try:
+        - apply:
+            file: ledgerservice.yaml
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: check-svc
+              status:
+                readyReplicas: 1
+
+    - name: Provision marketplace data
+      try:
+        - script:
+            content: |
+              kubectl exec check-svc-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl provision run marketplace --scale 0.5 --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
+            timeout: 120s
+
+    - name: Provision lending data
+      try:
+        - script:
+            content: |
+              kubectl exec check-svc-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl provision run lending-lifecycle --scale 0.5 --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
+            timeout: 120s
+
+    - name: Verify store integrity
+      try:
+        - script:
+            content: |
+              kubectl exec check-svc-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl store check --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
+            timeout: 120s

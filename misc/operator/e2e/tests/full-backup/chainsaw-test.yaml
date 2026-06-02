@@ -1,0 +1,58 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: full-backup
+spec:
+  timeouts:
+    assert: 5m
+  steps:
+    # 1. Create S3 bucket in MinIO via a temporary pod.
+    - name: Create S3 bucket
+      try:
+        - script:
+            content: |
+              kubectl run mc-full --rm -i --restart=Never \
+                --image=minio/mc --image-pull-policy=IfNotPresent \
+                --env=MC_HOST_minio=http://minioadmin:minioadmin@minio.minio.svc.cluster.local:9000 \
+                -- mb --ignore-existing minio/e2e-full-backup
+            timeout: 60s
+
+    # 2. Create LedgerService and wait for StatefulSet readiness.
+    - name: Deploy LedgerService
+      try:
+        - apply:
+            file: ledgerservice.yaml
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: bk-full-svc
+              status:
+                readyReplicas: 1
+
+    # 3. Load sample data via ledgerctl provision.
+    - name: Provision data
+      try:
+        - script:
+            content: |
+              kubectl exec bk-full-svc-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl provision run marketplace --scale 0.5 --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
+            timeout: 120s
+
+    # 4. Create LedgerBackup and assert it reaches Ready with a completed full backup.
+    - name: Run full backup
+      try:
+        - apply:
+            file: ledgerbackup.yaml
+        - assert:
+            file: assert-ready.yaml
+
+    # 4. Verify backup files exist in MinIO.
+    - name: Verify S3 content
+      try:
+        - script:
+            content: |
+              cd "$(git rev-parse --show-toplevel)"
+              go test -tags e2e -v -count=1 -run TestFullBackup_S3Objects -timeout 30s ./e2e/...
+            timeout: 60s

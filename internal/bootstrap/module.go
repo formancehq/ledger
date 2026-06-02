@@ -14,10 +14,12 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.uber.org/fx"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 	oidcclient "github.com/formancehq/go-libs/v5/pkg/authn/oidc/client"
@@ -995,10 +997,13 @@ func Module() fx.Option {
 			},
 			// Join mode: auto-register as learner on the leader after raft starts.
 			// Any peer will forward the request to the current leader automatically.
+			// The AddLearner call is idempotent: if the node is already a cluster
+			// member (e.g. after a crash-restart where the initial WAL was written
+			// but the AddLearner RPC never reached the leader), the server returns
+			// AlreadyExists which we treat as success.
 			fx.Annotate(func(
 				lc fx.Lifecycle,
 				cfg Config,
-				freshStart walFreshStart,
 				servicePool *transport.ConnectionPool,
 				logger logging.Logger,
 			) {
@@ -1008,50 +1013,16 @@ func Module() fx.Option {
 
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
-						// Only register as learner on the very first start;
-						// on restart the node is already a cluster member.
-						if !freshStart {
-							logger.WithFields(map[string]any{
-								"nodeID": cfg.RaftConfig.NodeID,
-							}).Infof("WARNING: Learner registration SKIPPED — WAL already contains ConfState voters (not a fresh start). " +
-								"If this node was never successfully added to the cluster, delete its WAL directory and retry")
-
-							return nil
-						}
-
-						peer := cfg.RaftConfig.Peers[0]
 						logger.WithFields(map[string]any{
 							"nodeID":         cfg.RaftConfig.NodeID,
-							"targetPeerID":   peer.ID,
-							"targetPeerAddr": peer.ServiceAddress,
 							"raftAddress":    cfg.RaftConfig.AdvertiseAddr,
 							"serviceAddress": cfg.ServiceAdvertiseAddr(),
 						}).Infof("Join mode: requesting peer to add this node as learner")
 
-						conn := servicePool.GetConnection(peer.ID)
-						if conn == nil {
-							return fmt.Errorf("failed to register as learner: no gRPC connection to peer %d (address: %s)", peer.ID, peer.ServiceAddress)
-						}
-
-						client := clusterpb.NewClusterServiceClient(conn)
-
-						_, err := client.AddLearner(ctx, &clusterpb.AddLearnerRequest{
-							NodeId:         cfg.RaftConfig.NodeID,
-							RaftAddress:    cfg.RaftConfig.AdvertiseAddr,
-							ServiceAddress: cfg.ServiceAdvertiseAddr(),
-						})
-						if err != nil {
-							return fmt.Errorf("failed to register as learner via peer %d (%s): %w", peer.ID, peer.ServiceAddress, err)
-						}
-
-						logger.WithFields(map[string]any{
-							"peer": peer.ID,
-						}).Infof("Successfully registered as learner on the cluster")
-
-						return nil
+						return tryAddLearner(ctx, cfg, servicePool, logger)
 					},
 				})
-			}, fx.ParamTags(``, ``, ``, `name:"service"`, ``)),
+			}, fx.ParamTags(``, ``, `name:"service"`, ``)),
 			func(lc fx.Lifecycle, cfg Config, handler http.Handler) {
 				lc.Append(transportfx.FXHook(httpserver.NewHook(handler,
 					httpserver.WithAddress(fmt.Sprintf(":%d", cfg.HTTPPort)),
@@ -1151,6 +1122,77 @@ func Module() fx.Option {
 			}, fx.ParamTags(``, ``, `name:"index"`, ``)),
 		),
 	)
+}
+
+// tryAddLearner attempts to register this node as a learner on an existing
+// cluster. It retries on transient errors (Unavailable, no leader) with
+// exponential backoff, and treats AlreadyExists as success (idempotent join).
+func tryAddLearner(ctx context.Context, cfg Config, servicePool *transport.ConnectionPool, logger logging.Logger) error {
+	peers := cfg.RaftConfig.Peers
+	req := &clusterpb.AddLearnerRequest{
+		NodeId:         cfg.RaftConfig.NodeID,
+		RaftAddress:    cfg.RaftConfig.AdvertiseAddr,
+		ServiceAddress: cfg.ServiceAdvertiseAddr(),
+	}
+
+	backoff := 500 * time.Millisecond
+	maxBackoff := 5 * time.Second
+
+	for {
+		// Try each peer in order until one succeeds.
+		for _, peer := range peers {
+			conn := servicePool.GetConnection(peer.ID)
+			if conn == nil {
+				continue
+			}
+
+			client := clusterpb.NewClusterServiceClient(conn)
+
+			_, err := client.AddLearner(ctx, req)
+			if err == nil {
+				logger.WithFields(map[string]any{
+					"peer": peer.ID,
+				}).Infof("Successfully registered as learner on the cluster")
+
+				return nil
+			}
+
+			st, ok := status.FromError(err)
+			if ok && st.Code() == codes.AlreadyExists {
+				logger.WithFields(map[string]any{
+					"nodeID": cfg.RaftConfig.NodeID,
+				}).Infof("Already a cluster member, skipping learner registration")
+
+				return nil
+			}
+
+			// Unavailable is transient (no leader, node syncing, etc.) — retry.
+			if ok && st.Code() == codes.Unavailable {
+				logger.WithFields(map[string]any{
+					"peer":  peer.ID,
+					"error": err,
+				}).Infof("AddLearner unavailable, will retry")
+
+				continue
+			}
+
+			// Non-transient error — fatal.
+			return fmt.Errorf("failed to register as learner via peer %d (%s): %w", peer.ID, peer.ServiceAddress, err)
+		}
+
+		// All peers returned transient errors. Back off and retry.
+		logger.WithFields(map[string]any{
+			"backoff": backoff.String(),
+		}).Infof("All peers unavailable, retrying after backoff")
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+		}
+
+		backoff = min(backoff*2, maxBackoff)
+	}
 }
 
 // proposeClusterConfigIfNeeded reads the persisted cluster state from Pebble

@@ -1,0 +1,114 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: rolling-update
+spec:
+  timeouts:
+    assert: 5m
+  steps:
+    # 1. Deploy LedgerService.
+    - name: Deploy LedgerService
+      try:
+        - apply:
+            file: ledgerservice.yaml
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: roll-svc
+              status:
+                readyReplicas: 1
+
+    # 2. Provision data to verify it survives the rolling update.
+    - name: Provision data
+      try:
+        - script:
+            content: |
+              kubectl exec roll-svc-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl provision run marketplace --scale 0.5 --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
+            timeout: 120s
+
+    # 3. Record the current spec-hash and pod UID.
+    - name: Record initial state
+      try:
+        - script:
+            content: |
+              HASH=$(kubectl get statefulset roll-svc -n $NAMESPACE \
+                -o jsonpath='{.spec.template.metadata.annotations.ledger\.formance\.com/spec-hash}')
+              echo "Initial spec-hash: $HASH"
+              [ -n "$HASH" ] || { echo "FAIL: spec-hash annotation not set"; exit 1; }
+
+              POD_UID=$(kubectl get pod roll-svc-0 -n $NAMESPACE -o jsonpath='{.metadata.uid}')
+              echo "Initial pod UID: $POD_UID"
+
+              # Store for comparison in later steps.
+              kubectl annotate namespace $NAMESPACE \
+                e2e-initial-hash="$HASH" \
+                e2e-initial-pod-uid="$POD_UID" \
+                --overwrite
+            timeout: 30s
+
+    # 4. Update the spec (add extraEnv) to trigger a rolling update.
+    - name: Update spec
+      try:
+        - apply:
+            file: ledgerservice-updated.yaml
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: roll-svc
+              status:
+                readyReplicas: 1
+
+    # 5. Verify the spec-hash changed and the pod was replaced.
+    - name: Verify rolling update happened
+      try:
+        - script:
+            content: |
+              INITIAL_HASH=$(kubectl get namespace $NAMESPACE -o jsonpath='{.metadata.annotations.e2e-initial-hash}')
+              INITIAL_UID=$(kubectl get namespace $NAMESPACE -o jsonpath='{.metadata.annotations.e2e-initial-pod-uid}')
+
+              NEW_HASH=$(kubectl get statefulset roll-svc -n $NAMESPACE \
+                -o jsonpath='{.spec.template.metadata.annotations.ledger\.formance\.com/spec-hash}')
+              echo "Initial hash: $INITIAL_HASH"
+              echo "New hash:     $NEW_HASH"
+              [ "$INITIAL_HASH" != "$NEW_HASH" ] || { echo "FAIL: spec-hash did not change"; exit 1; }
+
+              # Wait for the new pod to be ready with a different UID.
+              for i in $(seq 1 30); do
+                NEW_UID=$(kubectl get pod roll-svc-0 -n $NAMESPACE -o jsonpath='{.metadata.uid}' 2>/dev/null)
+                READY=$(kubectl get pod roll-svc-0 -n $NAMESPACE -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null)
+                if [ "$NEW_UID" != "$INITIAL_UID" ] && [ "$READY" = "True" ]; then
+                  echo "OK: pod was replaced (old=$INITIAL_UID new=$NEW_UID)"
+                  exit 0
+                fi
+                echo "Attempt $i: waiting for pod replacement..."
+                sleep 5
+              done
+              echo "FAIL: pod was not replaced"
+              exit 1
+            timeout: 180s
+
+    # 6. Verify the new env var is present in the container.
+    - name: Verify new env var
+      try:
+        - script:
+            content: |
+              VALUE=$(kubectl get statefulset roll-svc -n $NAMESPACE \
+                -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="E2E_ROLLING_UPDATE_MARKER")].value}')
+              echo "E2E_ROLLING_UPDATE_MARKER=$VALUE"
+              [ "$VALUE" = "triggered" ] || { echo "FAIL: env var not found"; exit 1; }
+              echo "OK: extraEnv propagated"
+            timeout: 10s
+
+    # 7. Verify data survived the rolling update.
+    - name: Verify data integrity
+      try:
+        - script:
+            content: |
+              kubectl exec roll-svc-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl ledgers list --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
+            timeout: 30s

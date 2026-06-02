@@ -1,8 +1,11 @@
 
 mod config
 mod workload
+mod k8s
 
 tag := "antithesis"
+
+# --- Docker Compose mode (legacy) ---
 
 run duration description='ledger-v3 manual run' *ARGS:
     just push-images {{ARGS}}
@@ -50,3 +53,45 @@ deploy-local: build-images
     just workload/build
 
     docker compose -f "$tmpdir/docker-compose.yaml" up
+
+# --- Kubernetes mode (uses operator) ---
+
+# Launch a test run on Antithesis using the k8s environment.
+# Duration is in hours (converted to minutes for the Antithesis API).
+k8s-run duration_hours description='ledger-v3 k8s run' *ARGS:
+    just k8s-push-images {{ARGS}}
+    curl --fail \
+        --user "formance:$ANTITHESIS_PASSWORD" \
+        -X POST https://formance.antithesis.com/api/v1/launch/basic_k8s_test -d '{ \
+            "params": { \
+                "antithesis.duration": "'"$(echo "{{duration_hours}} * 60" | bc | cut -d. -f1)"'", \
+                "antithesis.report.recipients": "'"$ANTITHESIS_REPORT_RECIPIENT"'", \
+                "antithesis.config_image": "'"antithesis-config-ledger-v3-k8s:{{tag}}"'", \
+                "antithesis.description": "{{description}}", \
+                "antithesis.images": "'"workload-ledger-v3:{{tag}};ledger-v3-poc:{{tag}};ledger-operator:{{tag}}"'" \
+            } \
+        }'
+
+# Build all images needed for k8s mode.
+k8s-build-images:
+    # ledger (instrumented for Antithesis)
+    docker build \
+        --platform linux/amd64 \
+        -f ../../Dockerfile.antithesis \
+        --progress=plain \
+        -t "$ANTITHESIS_REPOSITORY/ledger-v3-poc:{{tag}}" \
+        ../../
+
+    # operator
+    docker build \
+        --platform linux/amd64 \
+        -t "$ANTITHESIS_REPOSITORY/ledger-operator:{{tag}}" \
+        ../../misc/operator
+
+# Push all images for k8s mode.
+k8s-push-images *ARGS:
+    just k8s-build-images
+    just --justfile k8s/Justfile -d k8s push {{ARGS}}
+    just --justfile workload/Justfile -d workload push
+    docker push $ANTITHESIS_REPOSITORY/ledger-v3-poc:{{tag}}
+    docker push $ANTITHESIS_REPOSITORY/ledger-operator:{{tag}}

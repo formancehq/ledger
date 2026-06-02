@@ -1,0 +1,6 @@
+# kapp configuration: ensure PVCs created by StatefulSets (via the operator)
+# are cleaned up when the Antithesis environment is torn down.
+apiVersion: kapp.k14s.io/v1alpha1
+kind: Config
+ownedForDeletion:
+- allResourceMatcher: {}

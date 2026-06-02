@@ -343,6 +343,11 @@ func convertToGRPCError(err error) error {
 		return status.Error(codes.FailedPrecondition, err.Error())
 	}
 
+	// Convert ErrNodeAlreadyInCluster to AlreadyExists (idempotent AddLearner).
+	if errors.Is(err, node.ErrNodeAlreadyInCluster) {
+		return status.Error(codes.AlreadyExists, err.Error())
+	}
+
 	// Convert ErrUnhealthy to Unavailable with ErrorInfo (client should retry later)
 	if errors.Is(err, health.ErrUnhealthy) {
 		st := status.New(codes.Unavailable, err.Error())

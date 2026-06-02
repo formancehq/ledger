@@ -1,0 +1,14 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: LedgerBackup
+metadata:
+  name: full-bk
+status:
+  phase: Ready
+  lastFullBackup:
+    (time != null): true
+    (totalFiles >= `0`): true
+  conditions:
+    - type: ConfigValid
+      status: "True"
+    - type: FullBackupHealthy
+      status: "True"

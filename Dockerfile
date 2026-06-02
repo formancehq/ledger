@@ -20,7 +20,7 @@ ARG GOOS
 ARG BUILD_TAGS
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
-    go build -tags "${BUILD_TAGS}" -o ledger .
+    go build -tags "${BUILD_TAGS}" -o ledger-server .
 
 FROM base AS build-ledgerctl
 ARG GOARCH
@@ -38,7 +38,7 @@ ENV PATH=$PATH:/app
 ENV INSECURE=true
 SHELL ["/bin/bash", "-c"]
 WORKDIR /app
-COPY --from=build-server /build/ledger .
+COPY --from=build-server /build/ledger-server .
 COPY --from=build-ledgerctl /build/ledgerctl .
 RUN ./ledgerctl completion bash > /etc/bash_completion.d/ledgerctl
-ENTRYPOINT ["./ledger"]
+ENTRYPOINT ["./ledger-server"]

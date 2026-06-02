@@ -1,0 +1,16 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: LedgerService
+metadata:
+  name: hp-val
+spec:
+  replicas: 1
+  image:
+    repository: alpine
+    tag: "3"
+  nodeSelector:
+    formance.com/dedicated: ledger
+  persistence:
+    data:
+      storageClass: ""
+      hostPath:
+        path: /mnt/instance-store/data

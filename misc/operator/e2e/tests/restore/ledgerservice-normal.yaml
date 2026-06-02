@@ -1,0 +1,12 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: LedgerService
+metadata:
+  name: restore-svc
+spec:
+  replicas: 1
+  image:
+    repository: ledger-v3-poc
+    tag: e2e
+    pullPolicy: Never
+  restore: false
+

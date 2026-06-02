@@ -9,7 +9,7 @@ x-etcd-common: &etcd-common
     ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
 
 x-ledger-common: &ledger-common
-  image: us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/ledger:__TAG__
+  image: us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/ledger-v3-poc:__TAG__
   init: true
   environment: &ledger-env
     WAL_DIR: "/data/raft"
@@ -128,7 +128,7 @@ services:
         else
           CLUSTER_FLAG="--bootstrap"
         fi
-        exec ./ledger run \
+        exec ./ledger-server run \
           --node-id 1 \
           --advertise-addr "ledger-0:7777" \
           $$CLUSTER_FLAG
@@ -153,7 +153,7 @@ services:
         else
           JOIN_FLAG="--join ledger-0:8888"
         fi
-        exec ./ledger run \
+        exec ./ledger-server run \
           --node-id 2 \
           --advertise-addr "ledger-1:7777" \
           $$JOIN_FLAG
@@ -178,7 +178,7 @@ services:
         else
           JOIN_FLAG="--join ledger-0:8888"
         fi
-        exec ./ledger run \
+        exec ./ledger-server run \
           --node-id 3 \
           --advertise-addr "ledger-2:7777" \
           $$JOIN_FLAG

@@ -1,0 +1,7 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: LedgerBackup
+metadata:
+  name: ri-bk
+status:
+  phase: Ready
+  lastFullBackup: {}

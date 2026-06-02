@@ -1,0 +1,27 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: invalid-schedule
+spec:
+  timeouts:
+    assert: 30s
+  steps:
+    - name: Deploy a LedgerService so serviceRef passes
+      try:
+        - apply:
+            file: ledgerservice.yaml
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: sched-svc
+              status:
+                readyReplicas: 1
+
+    - name: Backup with invalid cron schedule should fail
+      try:
+        - apply:
+            file: ledgerbackup.yaml
+        - assert:
+            file: assert-failed.yaml

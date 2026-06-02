@@ -1,0 +1,7 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: LedgerBackup
+metadata:
+  name: bad-sched
+status:
+  phase: Failed
+  (contains(message, 'invalid full backup schedule')): true

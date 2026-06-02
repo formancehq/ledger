@@ -1,0 +1,67 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: incremental-backup
+spec:
+  timeouts:
+    assert: 5m
+  steps:
+    - name: Create S3 bucket
+      try:
+        - script:
+            content: |
+              kubectl run mc-incr --rm -i --restart=Never \
+                --image=minio/mc --image-pull-policy=IfNotPresent \
+                --env=MC_HOST_minio=http://minioadmin:minioadmin@minio.minio.svc.cluster.local:9000 \
+                -- mb --ignore-existing minio/e2e-incr-backup
+            timeout: 60s
+
+    - name: Deploy LedgerService
+      try:
+        - apply:
+            file: ledgerservice.yaml
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: bk-incr-svc
+              status:
+                readyReplicas: 1
+
+    - name: Provision initial data
+      try:
+        - script:
+            content: |
+              kubectl exec bk-incr-svc-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl provision run gaming-wallet --scale 0.5 --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
+            timeout: 120s
+
+    - name: Run full backup
+      try:
+        - apply:
+            file: ledgerbackup.yaml
+        - assert:
+            file: assert-full-done.yaml
+
+    # Insert new data AFTER the full backup so the incremental has something to export.
+    - name: Provision additional data
+      try:
+        - script:
+            content: |
+              kubectl exec bk-incr-svc-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl provision run subscription --scale 0.5 --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
+            timeout: 120s
+
+    - name: Wait for incremental backup
+      try:
+        - assert:
+            file: assert-incremental-done.yaml
+
+    - name: Verify S3 content
+      try:
+        - script:
+            content: |
+              cd "$(git rev-parse --show-toplevel)"
+              go test -tags e2e -v -count=1 -run TestIncrementalBackup_S3Segments -timeout 30s ./e2e/...
+            timeout: 60s

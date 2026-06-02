@@ -1,0 +1,98 @@
+controller-gen := "go run sigs.k8s.io/controller-tools/cmd/controller-gen@latest"
+
+generate:
+    {{controller-gen}} object:headerFile="" paths=./api/... \
+        crd output:crd:dir=config/crd/bases \
+        rbac:roleName=ledger-operator output:rbac:dir=config/rbac paths=./...
+    @just _sync-chart
+
+# Sync generated RBAC rules into the Helm chart ClusterRole template.
+# controller-gen produces config/rbac/role.yaml from kubebuilder annotations;
+# this script injects those rules into the chart and appends static extras.
+_sync-chart:
+    ./scripts/sync-chart-rbac.sh
+    cp config/crd/bases/*.yaml helm/crds/templates/
+
+build:
+    go build -o build/operator ./cmd/operator
+
+test:
+    go test ./...
+
+build-plugin:
+    go build -o build/kubectl-ledger ./cmd/kubectl-ledger
+
+install-plugin:
+    go build -o $(go env GOPATH)/bin/kubectl-ledger ./cmd/kubectl-ledger
+    mkdir -p ~/.kubectl-completions
+    $(go env GOPATH)/bin/kubectl-ledger completion zsh > ~/.kubectl-completions/_kubectl-ledger
+    @echo ""
+    @echo "Completion installed to ~/.kubectl-completions/_kubectl-ledger"
+    @echo "Add this to your ~/.zshrc if not already present:"
+    @echo '  fpath=(~/.kubectl-completions $fpath)'
+    @echo '  autoload -Uz compinit && compinit'
+
+pre-commit: generate
+    go mod tidy
+    go build ./...
+
+# E2E test infrastructure — requires kind and Docker.
+
+ledger-v3-repo := env("LEDGER_V3_REPO", "git@github.com:formancehq/ledger-v3-poc.git")
+ledger-v3-clone := "/tmp/ledger-v3-poc"
+
+e2e-cluster-up ledger-branch="master": (_e2e-build-ledger ledger-branch)
+    kind create cluster --name ledger-e2e --config e2e/manifests/kind-config.yaml 2>/dev/null || true
+    docker build -t ledger-operator:e2e .
+    docker pull minio/minio:latest
+    docker pull minio/mc:latest
+    kind load docker-image ledger-operator:e2e --name ledger-e2e
+    kind load docker-image ledger-v3-poc:e2e --name ledger-e2e
+    kind load docker-image minio/minio:latest --name ledger-e2e
+    kind load docker-image minio/mc:latest --name ledger-e2e
+    kubectl apply -f e2e/manifests/minio.yaml --context kind-ledger-e2e
+    kubectl wait --for=condition=available deployment/minio -n minio --context kind-ledger-e2e --timeout=300s
+    helm dependency update ./helm/operator
+    helm upgrade --install ledger-operator ./helm/operator \
+        --set image.repository=ledger-operator \
+        --set image.tag=e2e \
+        --set image.pullPolicy=Never \
+        --set leaderElection=false \
+        --kube-context kind-ledger-e2e --wait --timeout 120s
+
+# Clone and build the ledger-v3-poc image with S3 support.
+_e2e-build-ledger ledger-branch="master":
+    git clone --branch {{ledger-branch}} --depth 1 {{ledger-v3-repo}} {{ledger-v3-clone}} || (git -C {{ledger-v3-clone}} fetch --depth 1 origin {{ledger-branch}} && git -C {{ledger-v3-clone}} checkout FETCH_HEAD)
+    docker build -t ledger-v3-poc:e2e --build-arg BUILD_TAGS=s3 {{ledger-v3-clone}}
+
+e2e-cluster-down:
+    kind delete cluster --name ledger-e2e
+
+_ensure-chainsaw:
+    @which chainsaw >/dev/null 2>&1 || go install github.com/kyverno/chainsaw@latest
+
+test-e2e ledger-branch="master": (e2e-cluster-up ledger-branch) _ensure-chainsaw
+    chainsaw test --config e2e/chainsaw-test.yaml --test-dir e2e/tests/ --kube-context kind-ledger-e2e
+
+# Run E2E tests without rebuilding the cluster (for rapid iteration).
+test-e2e-only: _ensure-chainsaw
+    chainsaw test --config e2e/chainsaw-test.yaml --test-dir e2e/tests/ --kube-context kind-ledger-e2e
+
+helm-package suffix='':
+    #!/bin/bash
+    set -e
+    helm dependency update helm/operator
+    for dir in helm/crds helm/operator; do
+        if [ -n "{{suffix}}" ]; then
+            version=$(grep '^version:' "$dir/Chart.yaml" | awk '{print $2}' | tr -d '"')
+            pushd "$dir" && helm package . --version "${version}-{{suffix}}" && popd
+        else
+            pushd "$dir" && helm package . && popd
+        fi
+    done
+
+helm-publish suffix='': (helm-package suffix)
+    echo $GITHUB_TOKEN | docker login ghcr.io -u NumaryBot --password-stdin
+    for path in helm/*/*.tgz; do \
+        helm push ${path} oci://ghcr.io/formancehq/helm; \
+    done

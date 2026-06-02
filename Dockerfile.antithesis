@@ -17,7 +17,7 @@ RUN mkdir /instrumented
 RUN antithesis-go-instrumentor . /instrumented
 
 WORKDIR /instrumented/customer
-RUN go build -race -tags "${BUILD_TAGS}" -o /ledger .
+RUN go build -race -tags "${BUILD_TAGS}" -o /ledger-server .
 RUN go build -race -tags "${BUILD_TAGS}" -o /ledgerctl ./cmd/ledgerctl
 
 # Runner
@@ -27,7 +27,7 @@ ENV TZ=UTC
 ENV PATH=$PATH:/app
 ENV INSECURE=true
 WORKDIR /app
-COPY --from=compiler /ledger .
+COPY --from=compiler /ledger-server .
 COPY --from=compiler /ledgerctl .
 COPY --from=compiler /instrumented/symbols/ /symbols/
-ENTRYPOINT ["./ledger"]
+ENTRYPOINT ["./ledger-server"]

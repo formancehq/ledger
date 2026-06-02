@@ -1,0 +1,131 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: restore
+spec:
+  timeouts:
+    assert: 5m
+  steps:
+    - name: Create S3 bucket
+      try:
+        - script:
+            content: |
+              kubectl run mc-restore --rm -i --restart=Never \
+                --image=minio/mc --image-pull-policy=IfNotPresent \
+                --env=MC_HOST_minio=http://minioadmin:minioadmin@minio.minio.svc.cluster.local:9000 \
+                -- mb --ignore-existing minio/e2e-restore
+            timeout: 60s
+
+    - name: Deploy LedgerService
+      try:
+        - apply:
+            file: ledgerservice.yaml
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: restore-svc
+              status:
+                readyReplicas: 1
+
+    - name: Provision data
+      try:
+        - script:
+            content: |
+              kubectl exec restore-svc-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl provision run marketplace --scale 0.5 --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
+            timeout: 120s
+
+    - name: Run full backup
+      try:
+        - apply:
+            file: ledgerbackup.yaml
+        - assert:
+            file: assert-backup-ready.yaml
+
+    - name: Destroy LedgerService and PVCs
+      try:
+        - script:
+            content: |
+              kubectl delete ledgerbackup restore-bk -n $NAMESPACE --ignore-not-found
+              kubectl delete ledgerservice restore-svc -n $NAMESPACE --wait=true --timeout=60s
+              kubectl wait --for=delete pod/restore-svc-0 -n $NAMESPACE --timeout=60s 2>/dev/null || true
+              kubectl delete pvc wal-restore-svc-0 data-restore-svc-0 cold-cache-restore-svc-0 -n $NAMESPACE --ignore-not-found
+            timeout: 120s
+
+    - name: Deploy LedgerService in restore mode
+      try:
+        - apply:
+            file: ledgerservice-restore.yaml
+        # Restore mode serves /health but not /readyz, so the pod stays Running but not Ready.
+        # Wait for the pod to be Running instead of StatefulSet readyReplicas.
+        - assert:
+            resource:
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                name: restore-svc-0
+              status:
+                phase: Running
+
+    - name: Download and finalize restore
+      try:
+        - script:
+            content: |
+              kubectl exec restore-svc-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl restore download \
+                  --s3-bucket e2e-restore \
+                  --s3-endpoint http://minio.minio.svc.cluster.local:9000 \
+                  --s3-region us-east-1 \
+                  --s3-access-key-id minioadmin \
+                  --s3-secret-access-key minioadmin \
+                  --server 127.0.0.1:8888 \
+                  --insecure \
+                  --auth-token "$CLUSTER_SECRET"'
+            timeout: 120s
+        - script:
+            content: |
+              kubectl exec restore-svc-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl restore finalize --yes \
+                  --server 127.0.0.1:8888 \
+                  --insecure \
+                  --auth-token "$CLUSTER_SECRET"'
+            timeout: 60s
+
+    - name: Switch to normal mode
+      try:
+        - apply:
+            file: ledgerservice-normal.yaml
+        # The restore-mode pod is Running but not Ready (no /readyz in restore mode).
+        # OrderedReady StatefulSet won't rolling-update until the pod is Ready.
+        # Force-delete the pod so the StatefulSet recreates it with the new (normal) template.
+        - script:
+            content: |
+              sleep 5
+              kubectl delete pod restore-svc-0 -n $NAMESPACE --force --grace-period=0
+            timeout: 30s
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: restore-svc
+              status:
+                readyReplicas: 1
+
+    - name: Verify restored data
+      try:
+        - script:
+            content: |
+              kubectl exec restore-svc-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl ledgers list --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
+            timeout: 60s
+
+    - name: Verify data integrity
+      try:
+        - script:
+            content: |
+              kubectl exec restore-svc-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl store check --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
+            timeout: 120s

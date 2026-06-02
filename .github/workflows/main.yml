@@ -185,6 +185,9 @@ jobs:
         uses: ./.github/actions/default
       - run: >
           nix develop --command go build ./...
+      - name: Build operator
+        run: >
+          nix develop --command bash -c "cd misc/operator && go build ./..."
 
   Tests-Schemathesis:
     runs-on: namespace-profile-linux-amd64-4vcpu
@@ -248,3 +251,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
+      - name: Build and push operator image
+        run: >
+          nix develop --command just operator-docker-build
+      - name: Publish operator Helm charts
+        run: >
+          nix develop --command just operator-helm-publish suffix='nightly'
+        env:
+          GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}

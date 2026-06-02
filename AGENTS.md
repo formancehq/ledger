@@ -95,6 +95,7 @@ Key rules:
 - **Numscript examples**: `misc/numscript/examples/`
 - **Public packages**: `pkg/` - public API (`actions/`, `scenario/`, `testserver/`)
 - **Tests**: `tests/` - test suites (`e2e/`, `scenarios/`, `antithesis/`, `perf/`, `schemathesis/`)
+- **Operator**: `misc/operator/` - Kubernetes operator (separate Go module). CRD types (`api/v1alpha1/`), controllers (`internal/controller/`), Helm charts (`helm/`), kubectl plugin (`cmd/kubectl-ledger/`), web UI (`ui/`), e2e tests (`e2e/`)
 
 ## Build Tags (Optional Features)
 

@@ -83,6 +83,13 @@ func main() {
 
 	lifecycle.SetupComplete(map[string]any{})
 
+	// In k8s mode, the init binary runs as an init container and must exit
+	// after signaling setup_complete so the main workload container can start.
+	if os.Getenv("EXIT_AFTER_SETUP") == "true" {
+		log.Println("init: EXIT_AFTER_SETUP=true, exiting")
+		return
+	}
+
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	<-sigs

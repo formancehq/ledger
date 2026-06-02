@@ -1,0 +1,8 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: LedgerService
+metadata:
+  name: hp-val
+status:
+  phase: Error
+  (conditions[?type == 'ConfigValid'].status): ['False']
+  (contains(conditions[?type == 'ConfigValid'].message | [0], 'mutually exclusive')): true

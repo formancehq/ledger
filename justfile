@@ -1,6 +1,6 @@
 set dotenv-load
 
-pre-commit: generate generate-proto tidy lint
+pre-commit: generate generate-proto operator-generate tidy lint
 pc: pre-commit
 
 lint:
@@ -8,12 +8,16 @@ lint:
     set -euo pipefail
     echo "==> golangci-lint (.)"
     golangci-lint run --fix --build-tags it,local,{{all_tags}} --timeout 5m
+    echo "==> golangci-lint (operator)"
+    cd misc/operator && golangci-lint run --fix --timeout 5m
 
 tidy:
     #!/usr/bin/env bash
     set -euo pipefail
-    echo "==> go mod tidy"
+    echo "==> go mod tidy (.)"
     go mod tidy
+    echo "==> go mod tidy (operator)"
+    cd misc/operator && go mod tidy
 
 # All optional feature build tags
 all_tags := "kafka,nats,clickhouse,databricks,s3,pyroscope"
@@ -272,6 +276,57 @@ generate-proto:
         misc/proto/signature.proto \
         misc/proto/events.proto \
         misc/proto/restore.proto
+
+# --- Operator (Kubernetes) ---
+
+# controller-gen binary for CRD/RBAC generation
+controller-gen := "go run sigs.k8s.io/controller-tools/cmd/controller-gen@latest"
+
+# Generate operator CRDs, RBAC, and sync Helm chart
+operator-generate:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "==> controller-gen (operator)"
+    cd misc/operator
+    {{controller-gen}} object:headerFile="" paths=./api/... \
+        crd output:crd:dir=config/crd/bases \
+        rbac:roleName=ledger-operator output:rbac:dir=config/rbac paths=./...
+    ./scripts/sync-chart-rbac.sh
+    cp config/crd/bases/*.yaml helm/crds/templates/
+
+# Build the operator binary
+operator-build:
+    cd misc/operator && go build -o build/operator ./cmd/operator
+
+# Build the kubectl-ledger plugin
+operator-build-plugin:
+    cd misc/operator && go build -o build/kubectl-ledger ./cmd/kubectl-ledger
+
+# Install the kubectl-ledger plugin into $GOPATH/bin
+operator-install-plugin:
+    cd misc/operator && go build -o $(go env GOPATH)/bin/kubectl-ledger ./cmd/kubectl-ledger
+
+# Run operator unit tests
+operator-test:
+    cd misc/operator && go test ./...
+
+# Run operator pre-commit checks (generate + tidy + build)
+operator-pre-commit: operator-generate
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd misc/operator
+    echo "==> operator: go mod tidy"
+    go mod tidy
+    echo "==> operator: go build"
+    go build ./...
+
+# Build and push operator Docker image (multi-arch)
+operator-docker-build *ARGS:
+    docker buildx build -t ghcr.io/formancehq/ledger-operator --platform linux/amd64,linux/arm64 --push {{ARGS}} misc/operator
+
+# Package and publish operator Helm charts to GHCR
+operator-helm-publish suffix='':
+    cd misc/operator && just helm-publish suffix='{{suffix}}'
 
 # Build and push multi-arch Docker image
 docker-build *ARGS:

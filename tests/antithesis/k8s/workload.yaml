@@ -1,0 +1,90 @@
+---
+# RBAC: allow the workload pod to read and update LedgerService CRDs.
+# This enables test drivers to perform rolling updates, scaling, etc.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: workload
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: workload-ledger-updater
+rules:
+- apiGroups: ["ledger.formance.com"]
+  resources: ["ledgerservices"]
+  verbs: ["get", "list", "watch", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: workload-ledger-updater
+subjects:
+- kind: ServiceAccount
+  name: workload
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: workload-ledger-updater
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: workload
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: workload
+  template:
+    metadata:
+      labels:
+        app: workload
+    spec:
+      serviceAccountName: workload
+      # Init container waits for the Raft cluster to be fully formed
+      # (leader elected, all voters present) then signals setup_complete
+      # to Antithesis before exiting.
+      initContainers:
+      - name: wait-cluster
+        image: __REGISTRY__/workload-ledger-v3:__TAG__
+        command: ["/init"]
+        env:
+        - name: LEDGER_GRPC_ADDR
+          value: "ledger:8888"
+        - name: EXPECTED_VOTERS
+          value: "3"
+        - name: EXIT_AFTER_SETUP
+          value: "true"
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            memory: 64Mi
+      # Main container: Test Composer discovers and runs drivers
+      # from /opt/antithesis/test/v1/main/.
+      containers:
+      - name: workload
+        image: __REGISTRY__/workload-ledger-v3:__TAG__
+        command: ["sleep"]
+        args: ["infinity"]
+        env:
+        - name: LEDGER_GRPC_ADDR
+          value: "ledger:8888"
+        - name: EXPECTED_VOTERS
+          value: "3"
+        # Readiness probe ensures Antithesis waits for the ledger cluster
+        # to be reachable before starting the Test Composer.
+        readinessProbe:
+          exec:
+            command: ["grpc_health_probe", "-addr=ledger:8888"]
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            memory: 512Mi

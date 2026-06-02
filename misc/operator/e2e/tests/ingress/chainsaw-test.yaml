@@ -1,0 +1,146 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: ingress
+spec:
+  timeouts:
+    assert: 5m
+  steps:
+    # 1. Deploy LedgerService with HTTP and gRPC ingress enabled.
+    - name: Deploy with ingress
+      try:
+        - apply:
+            file: ledgerservice.yaml
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: ing-svc
+              status:
+                readyReplicas: 1
+
+    # 2. Verify HTTP Ingress exists with correct host and backend.
+    - name: Verify HTTP Ingress
+      try:
+        - assert:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: ing-svc
+              spec:
+                rules:
+                  - host: ledger.e2e.local
+
+    # 3. Verify gRPC Ingress exists with correct host.
+    - name: Verify gRPC Ingress
+      try:
+        - assert:
+            resource:
+              apiVersion: networking.k8s.io/v1
+              kind: Ingress
+              metadata:
+                name: ing-svc-grpc
+              spec:
+                rules:
+                  - host: ledger-grpc.e2e.local
+
+    # 4. Verify Ingress details (backend service, path, ownerReference).
+    - name: Verify Ingress details
+      try:
+        - script:
+            content: |
+              # HTTP ingress should point to ing-svc service.
+              HTTP_BACKEND=$(kubectl get ingress ing-svc -n $NAMESPACE \
+                -o jsonpath='{.spec.rules[0].http.paths[0].backend.service.name}')
+              echo "HTTP backend: $HTTP_BACKEND"
+              [ "$HTTP_BACKEND" = "ing-svc" ] || { echo "FAIL: expected ing-svc backend"; exit 1; }
+
+              # gRPC ingress should point to ing-svc-grpc service.
+              GRPC_BACKEND=$(kubectl get ingress ing-svc-grpc -n $NAMESPACE \
+                -o jsonpath='{.spec.rules[0].http.paths[0].backend.service.name}')
+              echo "gRPC backend: $GRPC_BACKEND"
+              [ "$GRPC_BACKEND" = "ing-svc-grpc" ] || { echo "FAIL: expected ing-svc-grpc backend"; exit 1; }
+
+              # Both should have ownerReferences to the LedgerService.
+              HTTP_OWNER=$(kubectl get ingress ing-svc -n $NAMESPACE \
+                -o jsonpath='{.metadata.ownerReferences[0].kind}')
+              GRPC_OWNER=$(kubectl get ingress ing-svc-grpc -n $NAMESPACE \
+                -o jsonpath='{.metadata.ownerReferences[0].kind}')
+              [ "$HTTP_OWNER" = "LedgerService" ] || { echo "FAIL: HTTP ingress missing ownerReference"; exit 1; }
+              [ "$GRPC_OWNER" = "LedgerService" ] || { echo "FAIL: gRPC ingress missing ownerReference"; exit 1; }
+
+              echo "OK: Ingress details are correct"
+            timeout: 30s
+
+    # 5. Verify status.endpoints reflect the ingress hosts.
+    - name: Verify status endpoints
+      try:
+        - script:
+            content: |
+              HTTP_EP=$(kubectl get ledgerservice ing-svc -n $NAMESPACE \
+                -o jsonpath='{.status.endpoints.http}')
+              GRPC_EP=$(kubectl get ledgerservice ing-svc -n $NAMESPACE \
+                -o jsonpath='{.status.endpoints.grpc}')
+              EXTERNAL=$(kubectl get ledgerservice ing-svc -n $NAMESPACE \
+                -o jsonpath='{.status.endpoints.external}')
+              echo "HTTP endpoint: $HTTP_EP"
+              echo "gRPC endpoint: $GRPC_EP"
+              echo "External: $EXTERNAL"
+              echo "$HTTP_EP" | grep -q 'ledger.e2e.local' || { echo "FAIL: HTTP endpoint missing host"; exit 1; }
+              echo "$GRPC_EP" | grep -q 'ledger-grpc.e2e.local' || { echo "FAIL: gRPC endpoint missing host"; exit 1; }
+              [ "$EXTERNAL" = "true" ] || { echo "FAIL: expected external=true"; exit 1; }
+              echo "OK: endpoints are correct"
+            timeout: 30s
+
+    # 6. Disable ingress and verify cleanup.
+    - name: Disable ingress
+      try:
+        - apply:
+            file: ledgerservice-no-ingress.yaml
+
+    # 7. Verify both Ingress resources are deleted.
+    - name: Verify Ingress cleanup
+      try:
+        - script:
+            content: |
+              for i in $(seq 1 20); do
+                HTTP_GONE=true
+                GRPC_GONE=true
+                kubectl get ingress ing-svc -n $NAMESPACE 2>/dev/null && HTTP_GONE=false
+                kubectl get ingress ing-svc-grpc -n $NAMESPACE 2>/dev/null && GRPC_GONE=false
+                if $HTTP_GONE && $GRPC_GONE; then
+                  echo "OK: both Ingress resources deleted"
+                  exit 0
+                fi
+                echo "Attempt $i: waiting for Ingress cleanup..."
+                sleep 3
+              done
+              echo "FAIL: Ingress resources not cleaned up"
+              exit 1
+            timeout: 90s
+
+    # 8. Verify status.endpoints reverted to internal.
+    - name: Verify internal endpoints
+      try:
+        - script:
+            content: |
+              for i in $(seq 1 10); do
+                EXTERNAL=$(kubectl get ledgerservice ing-svc -n $NAMESPACE \
+                  -o jsonpath='{.status.endpoints.external}')
+                if [ "$EXTERNAL" = "false" ]; then
+                  HTTP_EP=$(kubectl get ledgerservice ing-svc -n $NAMESPACE \
+                    -o jsonpath='{.status.endpoints.http}')
+                  echo "HTTP endpoint: $HTTP_EP"
+                  echo "External: $EXTERNAL"
+                  echo "$HTTP_EP" | grep -q 'svc.cluster.local' || { echo "FAIL: expected internal endpoint"; exit 1; }
+                  echo "OK: endpoints reverted to internal"
+                  exit 0
+                fi
+                echo "Attempt $i: waiting for endpoints update..."
+                sleep 3
+              done
+              echo "FAIL: endpoints not updated"
+              exit 1
+            timeout: 60s

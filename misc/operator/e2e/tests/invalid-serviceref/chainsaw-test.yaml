@@ -1,0 +1,14 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: invalid-serviceref
+spec:
+  timeouts:
+    assert: 30s
+  steps:
+    - name: Backup with missing service should fail
+      try:
+        - apply:
+            file: ledgerbackup.yaml
+        - assert:
+            file: assert-failed.yaml

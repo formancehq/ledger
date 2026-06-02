@@ -1,0 +1,6 @@
+dependencies:
+- name: ledger-operator-crds
+  repository: file://../crds
+  version: 0.1.0
+digest: sha256:ccd1ba6f23bcd11a5f952fbf7f0b1172fc44d0a4bcfa6f02265fe5583f3b16cf
+generated: "2026-05-27T17:33:44.193396+02:00"

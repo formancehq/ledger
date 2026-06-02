@@ -1,0 +1,25 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: LedgerService
+metadata:
+  name: my-ledger
+spec:
+  replicas: 3
+  image:
+    repository: ghcr.io/formancehq/ledger
+    tag: latest
+  clusterID: default
+  pebble:
+    memTableSize: 256Mi
+    cacheSize: 1Gi
+  persistence:
+    wal:
+      size: 5Gi
+    data:
+      size: 10Gi
+  resources:
+    requests:
+      cpu: "4000m"
+      memory: "2048Mi"
+    limits:
+      cpu: "4000m"
+      memory: "2048Mi"

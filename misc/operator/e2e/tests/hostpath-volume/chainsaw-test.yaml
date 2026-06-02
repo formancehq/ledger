@@ -1,0 +1,44 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: hostpath-volume
+spec:
+  timeouts:
+    assert: 2m
+  steps:
+    - name: Deploy LedgerService with data volume on hostPath
+      try:
+        - apply:
+            file: ledgerservice.yaml
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: hp-test
+
+    - name: Verify StatefulSet has only 2 VolumeClaimTemplates (wal, cold-cache)
+      try:
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: hp-test
+              spec:
+                volumeClaimTemplates:
+                  - metadata:
+                      name: wal
+                  - metadata:
+                      name: cold-cache
+
+    - name: Verify ConfigValid condition is True
+      try:
+        - assert:
+            resource:
+              apiVersion: ledger.formance.com/v1alpha1
+              kind: LedgerService
+              metadata:
+                name: hp-test
+              status:
+                (conditions[?type == 'ConfigValid'].status): ['True']

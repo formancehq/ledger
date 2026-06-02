@@ -31,3 +31,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
+      - name: Build and push operator image
+        run: >
+          nix develop --command just operator-docker-build
+      - name: Publish operator Helm charts
+        run: >
+          nix develop --command just operator-helm-publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}

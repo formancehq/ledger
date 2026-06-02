@@ -1,0 +1,49 @@
+package main
+
+import (
+	"github.com/spf13/cobra"
+
+	agentscmd "github.com/formance/ledger/operator/cmd/kubectl-ledger/agents"
+	"github.com/formance/ledger/operator/cmd/kubectl-ledger/cmdutil"
+	"github.com/formance/ledger/operator/cmd/kubectl-ledger/create"
+	deletecmd "github.com/formance/ledger/operator/cmd/kubectl-ledger/delete"
+	"github.com/formance/ledger/operator/cmd/kubectl-ledger/explain"
+	"github.com/formance/ledger/operator/cmd/kubectl-ledger/get"
+	"github.com/formance/ledger/operator/cmd/kubectl-ledger/list"
+	"github.com/formance/ledger/operator/cmd/kubectl-ledger/logs"
+	"github.com/formance/ledger/operator/cmd/kubectl-ledger/portforward"
+	"github.com/formance/ledger/operator/cmd/kubectl-ledger/restart"
+	"github.com/formance/ledger/operator/cmd/kubectl-ledger/scale"
+	"github.com/formance/ledger/operator/cmd/kubectl-ledger/update"
+)
+
+func newRootCommand() *cobra.Command {
+	opts := &cmdutil.Options{}
+
+	cmd := &cobra.Command{
+		Use:           "kubectl-ledger",
+		Short:         "Manage LedgerService deployments on Kubernetes",
+		Long:          "A kubectl plugin for managing LedgerService CRDs deployed by the Formance LedgerService Operator.",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+
+	opts.AddFlags(cmd)
+
+	cmd.AddCommand(
+		list.NewCommand(opts),
+		get.NewCommand(opts),
+		create.NewCommand(opts),
+		update.NewCommand(opts),
+		deletecmd.NewCommand(opts),
+		scale.NewCommand(opts),
+		restart.NewCommand(opts),
+		logs.NewCommand(opts),
+		portforward.NewCommand(opts),
+		agentscmd.NewCommand(opts),
+		explain.NewCommand(opts.RESTConfig),
+		newVersionCommand(),
+	)
+
+	return cmd
+}

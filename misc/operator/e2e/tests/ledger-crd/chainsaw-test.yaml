@@ -1,0 +1,62 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: ledger-crd
+spec:
+  timeouts:
+    assert: 5m
+  steps:
+    - name: Deploy LedgerService
+      try:
+        - apply:
+            file: ledgerservice.yaml
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: crd-svc
+              status:
+                readyReplicas: 1
+
+    - name: Create Ledger via CRD
+      try:
+        - apply:
+            file: ledger.yaml
+        - assert:
+            resource:
+              apiVersion: ledger.formance.com/v1alpha1
+              kind: Ledger
+              metadata:
+                name: test-ledger
+              status:
+                phase: Ready
+
+    - name: Verify ledger exists in the cluster
+      try:
+        - script:
+            content: |
+              kubectl exec crd-svc-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl ledgers list --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"' \
+                | grep my-ledger
+            timeout: 30s
+
+    - name: Delete Ledger CRD
+      try:
+        - script:
+            content: |
+              kubectl delete ledger test-ledger -n $NAMESPACE --wait=true --timeout=30s
+            timeout: 60s
+
+    - name: Verify ledger is removed
+      try:
+        - script:
+            content: |
+              OUTPUT=$(kubectl exec crd-svc-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl ledgers list --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"')
+              if echo "$OUTPUT" | grep -q my-ledger; then
+                echo "FAIL: ledger my-ledger still exists after deletion"
+                exit 1
+              fi
+              echo "OK: ledger my-ledger deleted successfully"
+            timeout: 30s

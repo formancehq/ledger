@@ -1,0 +1,434 @@
+package controller
+
+import (
+	"context"
+	"fmt"
+	"os"
+
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
+)
+
+// LedgerServiceReconciler reconciles a LedgerService object.
+type LedgerServiceReconciler struct {
+	client.Client
+
+	Scheme    *runtime.Scheme
+	Config    *rest.Config
+	Clientset kubernetes.Interface
+}
+
+// +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerservices,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerservices/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerservices/finalizers,verbs=update
+// +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerclusteragents,verbs=get;list;watch
+// +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=services;serviceaccounts,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=delete;list
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list
+// +kubebuilder:rbac:groups="",resources=pods/exec,verbs=create
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=externaldns.k8s.io,resources=dnsendpoints,verbs=get;list;watch;create;update;patch;delete
+
+// Reconcile handles the reconciliation loop for LedgerService resources.
+func (r *LedgerServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
+	// Fetch the LedgerService CR
+	ledger := &ledgerv1alpha1.LedgerService{}
+	if err := r.Get(ctx, req.NamespacedName, ledger); err != nil {
+		return ctrl.Result{}, ignoreNotFound(err)
+	}
+
+	// Handle deletion — owned resources are garbage-collected via owner references.
+	if !ledger.DeletionTimestamp.IsZero() {
+		return ctrl.Result{}, nil
+	}
+
+	// Apply hardcoded defaults (fills remaining zero-value fields).
+	applyDefaults(ledger)
+
+	// Resolve endpoints early so they are always set in status, even if
+	// later reconciliation steps fail (e.g. StatefulSet scale-down).
+	ledger.Status.Endpoints = resolveEndpoints(ledger)
+
+	// Always persist status (endpoints, conditions) at the end, even on error.
+	defer func() {
+		if statusErr := r.updateStatus(ctx, ledger); statusErr != nil {
+			logger.Error(statusErr, "failed to update status")
+		}
+	}()
+
+	// Validate spec — report errors via status condition instead of retrying.
+	if err := validateSpec(ledger); err != nil {
+		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+			Type:               "ConfigValid",
+			Status:             metav1.ConditionFalse,
+			Reason:             "ValidationFailed",
+			Message:            err.Error(),
+			ObservedGeneration: ledger.Generation,
+		})
+		ledger.Status.Phase = "Error"
+
+		return ctrl.Result{}, nil // Don't requeue; wait for spec change.
+	}
+
+	// Clear any previous validation failure.
+	meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+		Type:               "ConfigValid",
+		Status:             metav1.ConditionTrue,
+		Reason:             "Valid",
+		ObservedGeneration: ledger.Generation,
+	})
+
+	// Warn when hostPath volumes are used without node scheduling constraints.
+	if hasHostPathVolume(ledger) && len(ledger.Spec.NodeSelector) == 0 && ledger.Spec.Affinity == nil {
+		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+			Type:               "HostPathSchedulingWarning",
+			Status:             metav1.ConditionTrue,
+			Reason:             "NoNodeSelector",
+			Message:            "hostPath volumes are configured but no nodeSelector or affinity is set; pods may be scheduled on nodes without the expected mount path",
+			ObservedGeneration: ledger.Generation,
+		})
+	} else {
+		meta.RemoveStatusCondition(&ledger.Status.Conditions, "HostPathSchedulingWarning")
+	}
+
+	// Compute spec hash for rolling updates
+	specHash := computeSpecHash(&ledger.Spec)
+
+	// Reconcile sub-resources in order
+	reconcilers := []struct {
+		name string
+		fn   func(context.Context, *ledgerv1alpha1.LedgerService) error
+	}{
+		{"ServiceAccount", r.reconcileServiceAccount},
+		{"HeadlessService", r.reconcileHeadlessService},
+		{"Service", r.reconcileService},
+		{"GrpcService", r.reconcileGrpcService},
+		{"Ingress", r.reconcileIngress},
+		{"IngressGrpc", r.reconcileIngressGrpc},
+		{"DNSEndpoint", r.reconcileDNSEndpoint},
+		{"NetworkPolicy", r.reconcileNetworkPolicy},
+	}
+
+	for _, rec := range reconcilers {
+		if err := rec.fn(ctx, ledger); err != nil {
+			logger.Error(err, "failed to reconcile", "resource", rec.name)
+
+			return ctrl.Result{}, fmt.Errorf("reconciling %s: %w", rec.name, err)
+		}
+	}
+
+	// Reconcile auth keys from LedgerClusterAgents (before StatefulSet).
+	agents, err := r.reconcileAuthKeys(ctx, ledger)
+	if err != nil {
+		logger.Error(err, "failed to reconcile auth keys")
+
+		return ctrl.Result{}, fmt.Errorf("reconciling AuthKeys: %w", err)
+	}
+
+	// Reconcile cluster secret for inter-node auth (always, to avoid rolling-update deadlock).
+	if err := r.reconcileClusterSecret(ctx, ledger); err != nil {
+		logger.Error(err, "failed to reconcile cluster secret")
+
+		return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret: %w", err)
+	}
+
+	// StatefulSet needs the specHash and agent info
+	if err := r.reconcileStatefulSet(ctx, ledger, specHash, agents); err != nil {
+		logger.Error(err, "failed to reconcile StatefulSet")
+
+		return ctrl.Result{}, fmt.Errorf("reconciling StatefulSet: %w", err)
+	}
+
+	return ctrl.Result{}, nil
+}
+
+// SetupWithManager sets up the controller with the Manager.
+func (r *LedgerServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&ledgerv1alpha1.LedgerService{}).
+		Owns(&appsv1.StatefulSet{}).
+		Owns(&corev1.Service{}).
+		Owns(&corev1.ServiceAccount{}).
+		Owns(&corev1.ConfigMap{}).
+		Owns(&networkingv1.Ingress{}).
+		Owns(&networkingv1.NetworkPolicy{}).
+		Watches(&ledgerv1alpha1.LedgerClusterAgent{}, handler.EnqueueRequestsFromMapFunc(r.ledgerClusterAgentToLedgerServices)).
+		Complete(r)
+}
+
+func (r *LedgerServiceReconciler) updateStatus(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
+	// Re-fetch the latest version to avoid conflict on status update.
+	latest := &ledgerv1alpha1.LedgerService{}
+	if err := r.Get(ctx, types.NamespacedName{
+		Name:      ledger.Name,
+		Namespace: ledger.Namespace,
+	}, latest); err != nil {
+		return err
+	}
+
+	// Carry over conditions accumulated during reconciliation on the
+	// in-memory ledger object.
+	for _, c := range ledger.Status.Conditions {
+		meta.SetStatusCondition(&latest.Status.Conditions, c)
+	}
+
+	// Preserve the phase set during reconciliation (e.g. "Degraded" from
+	// validation failure) before we try to recompute from StatefulSet state.
+	reconciledPhase := ledger.Status.Phase
+
+	// Get the StatefulSet to read ready replicas
+	sts := &appsv1.StatefulSet{}
+	err := r.Get(ctx, types.NamespacedName{
+		Name:      ledger.Name,
+		Namespace: ledger.Namespace,
+	}, sts)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			// If the reconciler already set a phase (e.g. "Degraded" from
+			// validation), keep it; otherwise default to "Pending".
+			if reconciledPhase != "" {
+				latest.Status.Phase = reconciledPhase
+			} else {
+				latest.Status.Phase = "Pending"
+			}
+			latest.Status.ReadyReplicas = 0
+		} else {
+			return err
+		}
+	} else {
+		latest.Status.ReadyReplicas = sts.Status.ReadyReplicas
+
+		replicas := int32(3)
+		if latest.Spec.Replicas != nil {
+			replicas = *latest.Spec.Replicas
+		}
+
+		switch {
+		case sts.Status.ReadyReplicas == replicas:
+			latest.Status.Phase = "Running"
+		case sts.Status.ReadyReplicas > 0:
+			latest.Status.Phase = "Degraded"
+		default:
+			latest.Status.Phase = "Pending"
+		}
+	}
+
+	latest.Status.ObservedGeneration = latest.Generation
+	latest.Status.Endpoints = ledger.Status.Endpoints
+
+	// Set condition
+	condition := metav1.Condition{
+		Type:               "Ready",
+		ObservedGeneration: latest.Generation,
+		LastTransitionTime: metav1.Now(),
+	}
+	if latest.Status.Phase == "Running" {
+		condition.Status = metav1.ConditionTrue
+		condition.Reason = "AllReplicasReady"
+		condition.Message = "All replicas are ready"
+	} else {
+		condition.Status = metav1.ConditionFalse
+		condition.Reason = "ReplicasNotReady"
+		condition.Message = fmt.Sprintf("%d/%d replicas ready", latest.Status.ReadyReplicas, *latest.Spec.Replicas)
+	}
+	meta.SetStatusCondition(&latest.Status.Conditions, condition)
+
+	return r.Status().Update(ctx, latest)
+}
+
+// resolveEndpoints computes the external or internal endpoints for a LedgerService.
+func resolveEndpoints(ledger *ledgerv1alpha1.LedgerService) *ledgerv1alpha1.EndpointsStatus {
+	// gRPC endpoint
+	var grpcHost string
+	if ledger.Spec.IngressGrpc != nil && ledger.Spec.IngressGrpc.Enabled && len(ledger.Spec.IngressGrpc.Hosts) > 0 {
+		grpcHost = ledger.Spec.IngressGrpc.Hosts[0].Host
+	}
+
+	// HTTP endpoint
+	var httpHost string
+	var httpTLS bool
+	if ledger.Spec.Ingress != nil && ledger.Spec.Ingress.Enabled && len(ledger.Spec.Ingress.Hosts) > 0 {
+		httpHost = ledger.Spec.Ingress.Hosts[0].Host
+		httpTLS = len(ledger.Spec.Ingress.TLS) > 0
+	}
+
+	external := grpcHost != "" || httpHost != ""
+
+	grpcEndpoint := fmt.Sprintf("%s.%s.svc.cluster.local:8888", ledger.Name, ledger.Namespace)
+	if grpcHost != "" {
+		grpcEndpoint = grpcHost + ":443"
+	}
+
+	httpEndpoint := fmt.Sprintf("http://%s.%s.svc.cluster.local:9000", ledger.Name, ledger.Namespace)
+	if httpHost != "" {
+		scheme := "http"
+		if httpTLS {
+			scheme = "https"
+		}
+		httpEndpoint = fmt.Sprintf("%s://%s", scheme, httpHost)
+	}
+
+	return &ledgerv1alpha1.EndpointsStatus{
+		GRPC:     grpcEndpoint,
+		HTTP:     httpEndpoint,
+		External: external,
+	}
+}
+
+// deleteIfExists deletes a resource if it exists, ignoring not-found errors.
+func (r *LedgerServiceReconciler) deleteIfExists(ctx context.Context, obj client.Object) error {
+	err := r.Get(ctx, types.NamespacedName{
+		Name:      obj.GetName(),
+		Namespace: obj.GetNamespace(),
+	}, obj)
+	if err != nil {
+		return ignoreNotFound(err)
+	}
+
+	return r.Delete(ctx, obj)
+}
+
+func (r *LedgerServiceReconciler) deleteUnstructuredIfExists(ctx context.Context, obj *unstructured.Unstructured) error {
+	err := r.Get(ctx, types.NamespacedName{
+		Namespace: obj.GetNamespace(),
+		Name:      obj.GetName(),
+	}, obj)
+	if err != nil {
+		return ignoreNotFound(err)
+	}
+
+	return r.Delete(ctx, obj)
+}
+
+// ignoreNotFound returns nil on NotFound and NoKindMatch errors.
+// NoKindMatch occurs when optional CRDs (DNSEndpoint)
+// are not installed in the cluster.
+func ignoreNotFound(err error) error {
+	if apierrors.IsNotFound(err) || meta.IsNoMatchError(err) {
+		return nil
+	}
+
+	return err
+}
+
+// applyDefaults fills in zero-value fields with sensible defaults.
+func applyDefaults(ledger *ledgerv1alpha1.LedgerService) {
+	if ledger.Spec.Image.Repository == "" {
+		if repo := os.Getenv("LEDGER_IMAGE_REPOSITORY"); repo != "" {
+			ledger.Spec.Image.Repository = repo
+		} else {
+			ledger.Spec.Image.Repository = "ghcr.io/formancehq/ledger"
+		}
+	}
+	if ledger.Spec.Image.Tag == "" {
+		if tag := os.Getenv("LEDGER_IMAGE_TAG"); tag != "" {
+			ledger.Spec.Image.Tag = tag
+		} else {
+			ledger.Spec.Image.Tag = "latest"
+		}
+	}
+	if ledger.Spec.Image.PullPolicy == "" {
+		ledger.Spec.Image.PullPolicy = corev1.PullIfNotPresent
+	}
+	if ledger.Spec.Replicas == nil {
+		replicas := int32(3)
+		ledger.Spec.Replicas = &replicas
+	}
+	if ledger.Spec.BindAddr == "" {
+		ledger.Spec.BindAddr = "0.0.0.0:7777"
+	}
+	if ledger.Spec.GrpcPort == 0 {
+		ledger.Spec.GrpcPort = 8888
+	}
+	if ledger.Spec.HttpPort == 0 {
+		ledger.Spec.HttpPort = 9000
+	}
+	if ledger.Spec.WalDir == "" {
+		ledger.Spec.WalDir = "/data/raft"
+	}
+	if ledger.Spec.DataDir == "" {
+		ledger.Spec.DataDir = "/data/app"
+	}
+	if ledger.Spec.ClusterID == "" {
+		ledger.Spec.ClusterID = "default"
+	}
+	if ledger.Spec.ServiceAccount.Create == nil {
+		create := true
+		ledger.Spec.ServiceAccount.Create = &create
+	}
+	if ledger.Spec.Service.Type == "" {
+		ledger.Spec.Service.Type = corev1.ServiceTypeClusterIP
+	}
+}
+
+// validateSpec checks the LedgerService spec for configuration errors that would
+// cause reconciliation to fail. Errors are surfaced via status conditions
+// rather than silently failing in operator logs.
+func validateSpec(ledger *ledgerv1alpha1.LedgerService) error {
+	if ledger.Spec.Replicas != nil && *ledger.Spec.Replicas%2 == 0 {
+		return fmt.Errorf("replicas must be odd for Raft consensus, got %d", *ledger.Spec.Replicas)
+	}
+
+	// Validate hostPath / PVC mutual exclusion for each volume.
+	volumes := []struct {
+		name string
+		spec *ledgerv1alpha1.VolumeSpec
+	}{
+		{"persistence.wal", &ledger.Spec.Persistence.WAL},
+		{"persistence.data", &ledger.Spec.Persistence.Data},
+		{"persistence.coldCache", &ledger.Spec.Persistence.ColdCache},
+	}
+	for _, v := range volumes {
+		if err := validateVolumeSpec(v.name, v.spec); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// validateVolumeSpec checks that hostPath and PVC fields are mutually exclusive.
+func validateVolumeSpec(field string, spec *ledgerv1alpha1.VolumeSpec) error {
+	if spec.HostPath == nil {
+		return nil
+	}
+	if spec.HostPath.Path == "" {
+		return fmt.Errorf("%s.hostPath.path must not be empty", field)
+	}
+	if spec.StorageClass != "" {
+		return fmt.Errorf("%s: storageClass and hostPath are mutually exclusive", field)
+	}
+	if spec.VolumeAttributesClassName != "" {
+		return fmt.Errorf("%s: volumeAttributesClassName and hostPath are mutually exclusive", field)
+	}
+
+	return nil
+}
+
+// hasHostPathVolume returns true if any volume uses hostPath.
+func hasHostPathVolume(ledger *ledgerv1alpha1.LedgerService) bool {
+	return ledger.Spec.Persistence.WAL.HostPath != nil ||
+		ledger.Spec.Persistence.Data.HostPath != nil ||
+		ledger.Spec.Persistence.ColdCache.HostPath != nil
+}

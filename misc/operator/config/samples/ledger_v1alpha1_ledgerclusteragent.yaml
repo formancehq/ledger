@@ -1,0 +1,11 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: LedgerClusterAgent
+metadata:
+  name: payment-service
+spec:
+  scopes:
+    - write
+    - read
+  selector:
+    matchLabels:
+      env: production

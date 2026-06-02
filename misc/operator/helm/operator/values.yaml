@@ -1,0 +1,36 @@
+ledger-operator-crds:
+  create: true
+
+image:
+  repository: ghcr.io/formancehq/ledger-operator
+  tag: latest
+  pullPolicy: IfNotPresent
+
+ledgerImage:
+  registry: ghcr.io
+  name: formancehq/ledger
+  tag: latest
+
+replicaCount: 1
+
+leaderElection: true
+watchNamespace: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+nodeSelector: {}
+tolerations: []
+
+nameOverride: ""
+fullnameOverride: ""
