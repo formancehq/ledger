@@ -264,6 +264,10 @@ func buildEnvVars(ledger *ledgerv1alpha1.LedgerService) []corev1.EnvVar {
 				envs = append(envs, strEnv("AUTH_SCOPE_MAPPING", string(data)))
 			}
 		}
+
+		if len(spec.Auth.AnonymousScopes) > 0 {
+			envs = append(envs, strEnv("AUTH_ANONYMOUS_SCOPES", strings.Join(spec.Auth.AnonymousScopes, ",")))
+		}
 	}
 
 	// Read index

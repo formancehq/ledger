@@ -1,7 +1,21 @@
 package auth
 
+import "strings"
+
 // Scope represents a granular authorization scope for the ledger service.
 type Scope string
+
+// ScopeMappingAnonymousKey is the reserved virtual-scope key whose granular
+// scopes are granted to any request that does not present a bearer token.
+// When absent from the mapping (default), unauthenticated requests get no
+// scopes — preserving the historical strict behavior.
+const ScopeMappingAnonymousKey = "anonymous"
+
+// Wildcard tokens accepted inside scope mapping value lists.
+const (
+	WildcardRead  = "*:read"
+	WildcardWrite = "*:write"
+)
 
 // Granular scopes — 14 total, grouped by resource category.
 var (
@@ -94,6 +108,44 @@ func (m ScopeMapping) ExpandScopes(tokenScopes []string) map[Scope]struct{} {
 	}
 
 	return result
+}
+
+// AnonymousScopes returns the granular scopes granted to unauthenticated
+// requests, derived by expanding the reserved "anonymous" virtual scope.
+// Returns nil if the mapping has no "anonymous" key.
+func (m ScopeMapping) AnonymousScopes() map[Scope]struct{} {
+	if _, ok := m[ScopeMappingAnonymousKey]; !ok {
+		return nil
+	}
+
+	return m.ExpandScopes([]string{ScopeMappingAnonymousKey})
+}
+
+// ExpandWildcardScope expands a wildcard token (e.g. "*:read", "*:write") into
+// the list of granular scopes that share its suffix. Returns (nil, false) when
+// the input is not a recognized wildcard.
+func ExpandWildcardScope(s string) ([]Scope, bool) {
+	switch s {
+	case WildcardRead:
+		return scopesWithSuffix(":read"), true
+	case WildcardWrite:
+		return scopesWithSuffix(":write"), true
+	default:
+		return nil, false
+	}
+}
+
+// scopesWithSuffix returns every granular scope whose name ends with the given
+// suffix (e.g. ":read", ":write"). Order is not stable.
+func scopesWithSuffix(suffix string) []Scope {
+	out := make([]Scope, 0, len(AllGranularScopes))
+	for s := range AllGranularScopes {
+		if strings.HasSuffix(string(s), suffix) {
+			out = append(out, s)
+		}
+	}
+
+	return out
 }
 
 // HasScope checks whether the effective scope set contains all required scopes.

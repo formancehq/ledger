@@ -22,6 +22,12 @@ type AuthFlagConfig struct {
 	Ed25519KeysFile  string
 	ScopeMappingFile string // path to JSON file mapping virtual scopes to granular scopes
 	ScopeMappingJSON string // raw JSON string mapping (used by operator, env var AUTH_SCOPE_MAPPING)
+	// AnonymousScopes is a CSV of granular scopes (or "*:read" / "*:write"
+	// wildcards) granted to requests that arrive without a bearer token.
+	// Use "*:read" to enable the "writes-only" auth mode: reads are public,
+	// writes require a valid token. Empty (default) preserves the historical
+	// strict behavior where every request must authenticate.
+	AnonymousScopes string
 }
 
 type TLSConfig struct {

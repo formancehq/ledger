@@ -47,6 +47,42 @@ The following endpoints are always accessible without authentication:
 - **HTTP**: `/health`, `/debug/pprof/*`
 - **gRPC**: `grpc.health.v1.Health/*`, `BucketService.Discovery`, gRPC reflection
 
+## Anonymous Scopes (writes-only mode)
+
+By default, every request must authenticate. To open up a subset of operations to unauthenticated callers — typically: **all reads public, writes still authenticated** — declare *anonymous scopes*.
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--auth-anonymous-scopes` | string | `""` | Comma-separated granular scopes (or `*:read` / `*:write` wildcards) granted to requests without a bearer token |
+
+The writes-only configuration is:
+
+```bash
+ledger run --auth-enabled --auth-issuer https://auth.example.com \
+  --auth-anonymous-scopes "*:read"
+```
+
+Semantics:
+
+| Request | Token | Outcome |
+|---------|-------|---------|
+| Read endpoint | Absent | **200** — anonymous covers the required `*:read` scope |
+| Read endpoint | Invalid (bad signature, expired, malformed) | **401** — a broken token is a client error, never silently ignored |
+| Read endpoint | Valid with `*:read` | 200 — the token's scopes apply (no anonymous merging) |
+| Write endpoint | Absent | **401** — anonymous does not cover writes |
+| Write endpoint | Valid with `*:write` | 200 |
+| Write endpoint | Valid without write scope | 403 |
+
+Equivalent scope-mapping JSON (`--auth-scope-mapping-file`):
+
+```json
+{ "anonymous": ["*:read"] }
+```
+
+Both forms are supported — the CLI flag is shorthand for the JSON entry.
+
+When neither is set, the behavior is identical to before (every request must authenticate, no regression possible).
+
 ## gRPC Authentication
 
 gRPC clients must include the JWT token in the `authorization` metadata:

@@ -39,16 +39,30 @@ func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 	// Per-element scope check: verify the caller has the required scope for each element.
 	effective := internalauth.ExpandedScopesFromContext(r.Context())
 	if effective != nil {
+		authPresented := internalauth.AuthPresentedFromContext(r.Context())
+
 		for i, elem := range elements {
 			req := convertBulkElementToRequest(ledgerName, elem)
 
 			required := internalauth.RequiredScopeForRequest(req)
-			if !internalauth.HasScope(effective, required) {
-				writeBulkErrorResponse(w, http.StatusForbidden, "PERMISSION_DENIED",
+			if internalauth.HasScope(effective, required) {
+				continue
+			}
+
+			// 401 when no credentials were presented (the anonymous fallback
+			// covers reads only); 403 when a valid token was presented but
+			// lacks the required scope.
+			if !authPresented {
+				writeBulkErrorResponse(w, http.StatusUnauthorized, "UNAUTHENTICATED",
 					fmt.Errorf("element %d requires scope %s", i, required))
 
 				return
 			}
+
+			writeBulkErrorResponse(w, http.StatusForbidden, "PERMISSION_DENIED",
+				fmt.Errorf("element %d requires scope %s", i, required))
+
+			return
 		}
 	}
 

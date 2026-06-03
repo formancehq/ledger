@@ -118,3 +118,75 @@ func TestHasScope_Empty(t *testing.T) {
 	// No required scopes = always true
 	assert.True(t, HasScope(effective))
 }
+
+func TestExpandWildcardScope_Read(t *testing.T) {
+	t.Parallel()
+
+	scopes, ok := ExpandWildcardScope(WildcardRead)
+	assert.True(t, ok)
+
+	got := make(map[Scope]struct{}, len(scopes))
+	for _, s := range scopes {
+		got[s] = struct{}{}
+	}
+
+	assert.Contains(t, got, ScopeLedgersRead)
+	assert.Contains(t, got, ScopeTransactionsRead)
+	assert.Contains(t, got, ScopeAccountsRead)
+	assert.Contains(t, got, ScopeAuditRead)
+	assert.Contains(t, got, ScopeOpsRead)
+	assert.Contains(t, got, ScopeQueriesRead)
+	assert.Contains(t, got, ScopeClusterRead)
+	assert.NotContains(t, got, ScopeLedgersWrite)
+	assert.NotContains(t, got, ScopeMetadataWrite)
+}
+
+func TestExpandWildcardScope_Write(t *testing.T) {
+	t.Parallel()
+
+	scopes, ok := ExpandWildcardScope(WildcardWrite)
+	assert.True(t, ok)
+
+	got := make(map[Scope]struct{}, len(scopes))
+	for _, s := range scopes {
+		got[s] = struct{}{}
+	}
+
+	assert.Contains(t, got, ScopeLedgersWrite)
+	assert.Contains(t, got, ScopeTransactionsWrite)
+	assert.Contains(t, got, ScopeMetadataWrite)
+	assert.Contains(t, got, ScopeAuditWrite)
+	assert.Contains(t, got, ScopeOpsWrite)
+	assert.Contains(t, got, ScopeQueriesWrite)
+	assert.Contains(t, got, ScopeClusterWrite)
+	assert.NotContains(t, got, ScopeLedgersRead)
+}
+
+func TestExpandWildcardScope_Unknown(t *testing.T) {
+	t.Parallel()
+
+	_, ok := ExpandWildcardScope("*:admin")
+	assert.False(t, ok)
+
+	_, ok = ExpandWildcardScope("ledgers:read")
+	assert.False(t, ok)
+}
+
+func TestAnonymousScopes_NotConfigured(t *testing.T) {
+	t.Parallel()
+
+	m := DefaultMapping("ledger")
+	assert.Nil(t, m.AnonymousScopes(), "default mapping must not grant anonymous access")
+}
+
+func TestAnonymousScopes_Configured(t *testing.T) {
+	t.Parallel()
+
+	m := DefaultMapping("ledger")
+	m[ScopeMappingAnonymousKey] = []Scope{ScopeLedgersRead, ScopeAccountsRead}
+
+	anon := m.AnonymousScopes()
+	assert.Contains(t, anon, ScopeLedgersRead)
+	assert.Contains(t, anon, ScopeAccountsRead)
+	assert.NotContains(t, anon, ScopeTransactionsWrite)
+}

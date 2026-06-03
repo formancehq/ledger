@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"go.etcd.io/raft/v3/raftpb"
@@ -1326,6 +1327,10 @@ func buildAuthConfig(cfg Config, logger logging.Logger, oidcKeySet oidc.KeySet) 
 		return authCfg, err
 	}
 
+	if err := applyAnonymousScopes(scopeMapping, cfg.AuthConfig.AnonymousScopes, logger); err != nil {
+		return authCfg, err
+	}
+
 	authCfg.ScopeMapping = scopeMapping
 	authCfg.ClusterSecret = cfg.ClusterSecret
 
@@ -1362,6 +1367,48 @@ func loadScopeMapping(cfg Config, logger logging.Logger) (internalauth.ScopeMapp
 	}
 
 	return internalauth.DefaultMapping(cfg.AuthConfig.Service), nil
+}
+
+// applyAnonymousScopes merges the --auth-anonymous-scopes CSV (if any) into
+// the loaded scope mapping under the reserved "anonymous" key. Wildcards
+// "*:read" / "*:write" are expanded to the matching granular scopes.
+// An explicit "anonymous" entry already present in the mapping is overridden.
+func applyAnonymousScopes(mapping internalauth.ScopeMapping, raw string, logger logging.Logger) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+
+	parts := strings.Split(raw, ",")
+	scopes := make([]internalauth.Scope, 0, len(parts))
+
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+
+		if expanded, ok := internalauth.ExpandWildcardScope(p); ok {
+			scopes = append(scopes, expanded...)
+
+			continue
+		}
+
+		scope := internalauth.Scope(p)
+		if _, ok := internalauth.AllGranularScopes[scope]; !ok {
+			return fmt.Errorf("unknown granular scope %q in --auth-anonymous-scopes", p)
+		}
+
+		scopes = append(scopes, scope)
+	}
+
+	mapping[internalauth.ScopeMappingAnonymousKey] = scopes
+
+	logger.WithFields(map[string]any{
+		"scopes_count": len(scopes),
+	}).Infof("Anonymous scopes configured (requests without a bearer token will receive these)")
+
+	return nil
 }
 
 // handleLeadershipChangeEvent notifies the event and mirror Managers of leadership changes.

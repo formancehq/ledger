@@ -3922,12 +3922,37 @@ ledger run --cluster-secret "my-cluster-secret" --auth-enabled [other flags...]
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--auth-scope-mapping-file` | string | `""` | Path to JSON file mapping virtual scopes (e.g. `ledger:read`) to granular scopes |
+| `--auth-anonymous-scopes` | string | `""` | Comma-separated granular scopes (or `*:read` / `*:write` wildcards) granted to requests that arrive without a bearer token |
 
 Allows expanding virtual scopes into fine-grained scopes. For example, mapping `ledger:read` to a set of more specific scopes. The mapping can also be provided via the `AUTH_SCOPE_MAPPING` environment variable (JSON string).
 
 ```bash
 ledger run --auth-scope-mapping-file /etc/ledger/scope-mapping.json [other flags...]
 ```
+
+#### Anonymous scopes (writes-only auth)
+
+`--auth-anonymous-scopes` controls which scopes are granted to **unauthenticated requests** (no `Authorization` header). It is the supported mechanism for enabling auth on writes only:
+
+```bash
+ledger run --auth-enabled --auth-issuer https://auth.example.com \
+  --auth-anonymous-scopes "*:read"
+```
+
+With this configuration:
+
+- A read request without a token receives all `*:read` scopes and is allowed.
+- A read request with a **malformed/expired/invalid** token is rejected with `401` (a broken token is still treated as a client error — it is not silently ignored).
+- A write request without a token is rejected with `401` (anonymous scopes do not cover writes).
+- A write request with a valid token is allowed iff the token carries the required write scope (unchanged behavior).
+
+The same effect can be obtained by setting the `anonymous` key in the scope mapping JSON:
+
+```json
+{ "anonymous": ["*:read"] }
+```
+
+When `--auth-anonymous-scopes` is omitted (default), the historical strict behavior is preserved: every request must authenticate.
 
 ---
 

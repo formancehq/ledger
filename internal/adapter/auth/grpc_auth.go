@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -35,7 +36,17 @@ type AuthConfig struct {
 
 // Authenticate validates the JWT from gRPC metadata and checks required scopes.
 // If auth is disabled, returns the original context unchanged.
-// Returns the context enriched with claims and expanded scopes, or a gRPC status error.
+//
+// Token handling:
+//   - Missing authorization metadata → no error; the request continues with the
+//     "anonymous" scopes (cfg.ScopeMapping["anonymous"]). The per-request scope
+//     check below decides whether anonymous covers the requirement.
+//   - Authorization metadata present but invalid → codes.Unauthenticated.
+//   - Valid token → effective scopes = expansion of the token's scopes.
+//
+// Returns the context enriched with claims and expanded scopes, or a gRPC
+// status error (Unauthenticated when no credentials match the requirement,
+// PermissionDenied when a valid token lacks the required scope).
 func Authenticate(ctx context.Context, cfg AuthConfig, scopes ...Scope) (context.Context, error) {
 	ctx, span := authTracer.Start(ctx, "auth.authenticate")
 	defer span.End()
@@ -46,11 +57,20 @@ func Authenticate(ctx context.Context, cfg AuthConfig, scopes ...Scope) (context
 		return ctx, nil
 	}
 
-	token, err := bearerTokenFromContext(ctx)
-	if err != nil {
-		logAuthFailure(ctx, "", "missing_token", err)
+	token, hasToken := bearerTokenFromContext(ctx)
+	if !hasToken {
+		// No bearer token: fall back to anonymous scopes.
+		effective := cfg.ScopeMapping.AnonymousScopes()
+		ctx = WithExpandedScopes(ctx, effective)
+		ctx = WithAuthPresented(ctx, false)
 
-		return ctx, status.Error(codes.Unauthenticated, err.Error())
+		if HasScope(effective, scopes...) {
+			return ctx, nil
+		}
+
+		logAuthFailure(ctx, "", "missing_token", errors.New("anonymous scopes insufficient"))
+
+		return ctx, status.Errorf(codes.Unauthenticated, "missing required scope (required: %v)", scopes)
 	}
 
 	// Fast path: cluster-internal shared secret bypasses JWT validation.
@@ -58,8 +78,10 @@ func Authenticate(ctx context.Context, cfg AuthConfig, scopes ...Scope) (context
 	// succeed when a follower forwards a request to the leader.
 	if cfg.ClusterSecret != "" && token == cfg.ClusterSecret {
 		span.SetAttributes(attribute.Bool("auth.cluster_internal", true))
+		ctx = WithExpandedScopes(ctx, allScopes())
+		ctx = WithAuthPresented(ctx, true)
 
-		return WithExpandedScopes(ctx, allScopes()), nil
+		return ctx, nil
 	}
 
 	keyID := extractKeyID(token)
@@ -85,6 +107,7 @@ func Authenticate(ctx context.Context, cfg AuthConfig, scopes ...Scope) (context
 	}
 
 	ctx = WithExpandedScopes(ctx, effective)
+	ctx = WithAuthPresented(ctx, true)
 
 	if !HasScope(effective, scopes...) {
 		logAuthFailure(ctx, keyID, "missing_scope", fmt.Errorf("required: %v, have: %v", scopes, claims.Scopes))
@@ -120,23 +143,26 @@ func allScopes() map[Scope]struct{} {
 }
 
 // bearerTokenFromContext extracts the Bearer token from gRPC incoming metadata.
-func bearerTokenFromContext(ctx context.Context) (string, error) {
+// The boolean return is false when the metadata is absent or carries no
+// Bearer-prefixed authorization value — those cases are treated as "no token
+// presented" rather than "invalid token".
+func bearerTokenFromContext(ctx context.Context) (string, bool) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
-		return "", status.Error(codes.Unauthenticated, "missing metadata")
+		return "", false
 	}
 
 	values := md.Get("authorization")
 	if len(values) == 0 {
-		return "", status.Error(codes.Unauthenticated, "missing authorization header")
+		return "", false
 	}
 
 	authHeader := values[0]
 	if !strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
-		return "", status.Error(codes.Unauthenticated, "malformed authorization header")
+		return "", false
 	}
 
-	return strings.TrimSpace(authHeader[7:]), nil
+	return strings.TrimSpace(authHeader[7:]), true
 }
 
 // validateToken validates a JWT token. It supports both OIDC (RS256/ES256/PS256) and

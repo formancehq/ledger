@@ -97,3 +97,49 @@ func TestParseScopeMappingJSON_AllScopes(t *testing.T) {
 	assert.Len(t, mapping["all:read"], 7)
 	assert.Len(t, mapping["all:write"], 7)
 }
+
+func TestParseScopeMappingJSON_WildcardRead(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(`{"anonymous": ["*:read"]}`)
+
+	mapping, err := ParseScopeMappingJSON(data)
+	require.NoError(t, err)
+
+	anon := mapping.AnonymousScopes()
+	assert.Contains(t, anon, ScopeLedgersRead)
+	assert.Contains(t, anon, ScopeTransactionsRead)
+	assert.Contains(t, anon, ScopeAccountsRead)
+	assert.Contains(t, anon, ScopeAuditRead)
+	assert.Contains(t, anon, ScopeOpsRead)
+	assert.Contains(t, anon, ScopeQueriesRead)
+	assert.Contains(t, anon, ScopeClusterRead)
+	assert.NotContains(t, anon, ScopeTransactionsWrite)
+}
+
+func TestParseScopeMappingJSON_WildcardMixedWithExplicit(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(`{
+		"anonymous": ["*:read", "metadata:write"]
+	}`)
+
+	mapping, err := ParseScopeMappingJSON(data)
+	require.NoError(t, err)
+
+	anon := mapping.AnonymousScopes()
+	assert.Contains(t, anon, ScopeLedgersRead)
+	assert.Contains(t, anon, ScopeMetadataWrite)
+	assert.NotContains(t, anon, ScopeTransactionsWrite)
+}
+
+func TestParseScopeMappingJSON_UnknownWildcard(t *testing.T) {
+	t.Parallel()
+
+	// "*:admin" is not a recognized wildcard and is not a granular scope either.
+	data := []byte(`{"anonymous": ["*:admin"]}`)
+
+	_, err := ParseScopeMappingJSON(data)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown granular scope")
+}

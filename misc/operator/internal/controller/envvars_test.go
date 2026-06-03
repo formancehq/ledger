@@ -755,6 +755,55 @@ func TestBuildEnvVars_AuthScopeMapping(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Auth anonymous scopes (writes-only mode)
+// ---------------------------------------------------------------------------
+
+func TestBuildEnvVars_AuthAnonymousScopes(t *testing.T) {
+	t.Parallel()
+
+	t.Run("wildcard read", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalLedgerService()
+		ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{
+			AnonymousScopes: []string{"*:read"},
+		}
+		envs := buildEnvVars(ls)
+		e := findEnv(envs, "AUTH_ANONYMOUS_SCOPES")
+		require.NotNil(t, e, "AUTH_ANONYMOUS_SCOPES should be present")
+		assert.Equal(t, "*:read", e.Value)
+	})
+
+	t.Run("explicit list joined by comma", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalLedgerService()
+		ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{
+			AnonymousScopes: []string{"ledgers:read", "accounts:read"},
+		}
+		envs := buildEnvVars(ls)
+		e := findEnv(envs, "AUTH_ANONYMOUS_SCOPES")
+		require.NotNil(t, e)
+		assert.Equal(t, "ledgers:read,accounts:read", e.Value)
+	})
+
+	t.Run("empty slice omitted", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalLedgerService()
+		ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{
+			AnonymousScopes: []string{},
+		}
+		envs := buildEnvVars(ls)
+		assertNoEnv(t, envs, "AUTH_ANONYMOUS_SCOPES")
+	})
+
+	t.Run("nil auth omitted", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalLedgerService()
+		envs := buildEnvVars(ls)
+		assertNoEnv(t, envs, "AUTH_ANONYMOUS_SCOPES")
+	})
+}
+
+// ---------------------------------------------------------------------------
 // Read index batch size
 // ---------------------------------------------------------------------------
 

@@ -355,6 +355,16 @@ type AuthorizationConfig struct {
 	// When provided, overrides the default mapping and --auth-service is ignored for scope resolution.
 	// +optional
 	ScopeMapping map[string][]string `json:"scopeMapping,omitempty"`
+
+	// AnonymousScopes lists the granular scopes granted to requests that arrive
+	// without a bearer token. Wildcards "*:read" / "*:write" expand to every
+	// granular scope with that suffix. The canonical writes-only configuration
+	// is `["*:read"]`: reads are public, writes still require a valid token.
+	// Empty (default) preserves the strict behavior — every request must
+	// authenticate. Invalid tokens are still rejected with 401 regardless of
+	// this setting; only the *absence* of a token triggers the fallback.
+	// +optional
+	AnonymousScopes []string `json:"anonymousScopes,omitempty"`
 }
 
 // PebbleConfig holds Pebble storage engine configuration.

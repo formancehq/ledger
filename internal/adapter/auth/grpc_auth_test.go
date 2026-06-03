@@ -534,6 +534,94 @@ func TestAuthenticate_GodMode_EdDSA_NotAllowed(t *testing.T) {
 	assert.Equal(t, codes.Unauthenticated, st.Code())
 }
 
+// --- Writes-only mode (anonymous = "*:read") tests ---
+
+func writesOnlyGRPCConfig(t *testing.T) (AuthConfig, *rsa.PrivateKey) {
+	t.Helper()
+
+	privKey, keySet := testKeyPair(t)
+	mapping := DefaultMapping("ledger")
+
+	readScopes, ok := ExpandWildcardScope(WildcardRead)
+	require.True(t, ok)
+
+	mapping[ScopeMappingAnonymousKey] = readScopes
+
+	return AuthConfig{
+		Enabled:      true,
+		KeySet:       keySet,
+		Issuer:       testIssuer,
+		Service:      "ledger",
+		ScopeMapping: mapping,
+	}, privKey
+}
+
+func TestAuthenticate_WritesOnly_Read_NoToken_Passes(t *testing.T) {
+	t.Parallel()
+
+	cfg, _ := writesOnlyGRPCConfig(t)
+
+	newCtx, err := Authenticate(context.Background(), cfg, ScopeLedgersRead)
+	require.NoError(t, err)
+
+	assert.False(t, AuthPresentedFromContext(newCtx))
+	assert.True(t, HasScope(ExpandedScopesFromContext(newCtx), ScopeLedgersRead))
+}
+
+func TestAuthenticate_WritesOnly_Read_InvalidToken_Unauthenticated(t *testing.T) {
+	t.Parallel()
+
+	cfg, _ := writesOnlyGRPCConfig(t)
+	ctx := ctxWithBearer("garbage-not-a-jwt")
+
+	_, err := Authenticate(ctx, cfg, ScopeLedgersRead)
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.Unauthenticated, st.Code())
+}
+
+func TestAuthenticate_WritesOnly_Write_NoToken_Unauthenticated(t *testing.T) {
+	t.Parallel()
+
+	cfg, _ := writesOnlyGRPCConfig(t)
+
+	_, err := Authenticate(context.Background(), cfg, ScopeTransactionsWrite)
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.Unauthenticated, st.Code())
+}
+
+func TestAuthenticate_WritesOnly_Write_ValidToken_Passes(t *testing.T) {
+	t.Parallel()
+
+	cfg, privKey := writesOnlyGRPCConfig(t)
+	token := signToken(t, privKey, newTestClaims("ledger:write"))
+	ctx := ctxWithBearer(token)
+
+	newCtx, err := Authenticate(ctx, cfg, ScopeTransactionsWrite)
+	require.NoError(t, err)
+	assert.True(t, AuthPresentedFromContext(newCtx))
+}
+
+func TestAuthenticate_WritesOnly_NoArgs_NoToken_Passes(t *testing.T) {
+	t.Parallel()
+
+	// Apply.handler calls Authenticate(ctx, cfg) with no scopes upfront. With
+	// the new fallback contract this must NOT error — the per-Request scope
+	// check inside Apply enforces the actual write-scope requirement on the
+	// payload.
+
+	cfg, _ := writesOnlyGRPCConfig(t)
+
+	newCtx, err := Authenticate(context.Background(), cfg)
+	require.NoError(t, err)
+	assert.False(t, AuthPresentedFromContext(newCtx))
+	// Effective scopes are the anonymous set.
+	assert.True(t, HasScope(ExpandedScopesFromContext(newCtx), ScopeLedgersRead))
+}
+
 func TestAuthenticate_ClusterSecret_GrantsAllScopes(t *testing.T) {
 	t.Parallel()
 

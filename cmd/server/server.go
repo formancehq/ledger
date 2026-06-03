@@ -174,6 +174,7 @@ func NewRunCommand() *cobra.Command {
 
 	// Scope mapping: virtual → granular scope expansion
 	runCmd.Flags().String("auth-scope-mapping-file", "", "Path to JSON file mapping virtual scopes (e.g. ledger:read) to granular scopes")
+	runCmd.Flags().String("auth-anonymous-scopes", "", "Comma-separated granular scopes granted to requests without a bearer token (e.g. \"*:read\" for writes-only mode). Wildcards: *:read, *:write")
 
 	// Idempotency TTL and eviction
 	runCmd.Flags().Duration("idempotency-ttl", 24*time.Hour, "Idempotency key time-to-live (0 = never expire)")
@@ -527,6 +528,7 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 		Ed25519KeysFile:  ed25519KeysFile,
 		ScopeMappingFile: scopeMappingFile,
 		ScopeMappingJSON: scopeMappingJSON,
+		AnonymousScopes:  getString("auth-anonymous-scopes", ""),
 	}
 	// Idempotency TTL
 	cfg.IdempotencyTTL = getDuration("idempotency-ttl", 24*time.Hour)

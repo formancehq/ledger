@@ -15,6 +15,15 @@ import (
 // HTTPAuthMiddleware returns an HTTP middleware that validates JWT tokens,
 // stores the claims in the request context, and expands scopes through the
 // scope mapping. Health endpoints (/health, /livez, /readyz) are skipped.
+//
+// Token handling:
+//   - Missing Authorization header → no error; the request continues with the
+//     "anonymous" scopes (cfg.ScopeMapping["anonymous"]). Whether the request
+//     ultimately succeeds is decided by RequireScope downstream.
+//   - Authorization header present but invalid (bad signature, expired,
+//     malformed) → 401. A broken token is a client error.
+//   - Valid token → effective scopes = expansion of the token's scopes.
+//
 // When cfg.Enabled is false, requests pass through without authentication.
 func HTTPAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -33,10 +42,14 @@ func HTTPAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 				return
 			}
 
-			token, err := bearerTokenFromHTTP(r)
-			if err != nil {
-				logHTTPAuthFailure(r, "", "missing_token", err)
-				http.Error(w, err.Error(), http.StatusUnauthorized)
+			token, hasToken := bearerTokenFromHTTP(r)
+			if !hasToken {
+				// No bearer token: fall back to anonymous scopes. The actual
+				// authorization decision happens in RequireScope (or in the
+				// per-Request loop of Apply / bulk handlers).
+				ctx := WithExpandedScopes(r.Context(), cfg.ScopeMapping.AnonymousScopes())
+				ctx = WithAuthPresented(ctx, false)
+				next.ServeHTTP(w, r.WithContext(ctx))
 
 				return
 			}
@@ -68,6 +81,7 @@ func HTTPAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 			}
 
 			ctx = WithExpandedScopes(ctx, effective)
+			ctx = WithAuthPresented(ctx, true)
 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
@@ -77,6 +91,12 @@ func HTTPAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 // RequireScope returns an HTTP middleware that checks the authenticated user
 // has all the given granular scopes. Must be used after HTTPAuthMiddleware.
 // When cfg.Enabled is false, it passes through.
+//
+// Status code semantics on failure:
+//   - 401 Unauthorized: no bearer token was presented (anonymous request) and
+//     the anonymous scopes are insufficient. The client should authenticate.
+//   - 403 Forbidden: a valid bearer token was presented but lacks the required
+//     scope. Re-authenticating with the same identity will not help.
 func RequireScope(cfg AuthConfig, scopes ...Scope) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -87,21 +107,21 @@ func RequireScope(cfg AuthConfig, scopes ...Scope) func(http.Handler) http.Handl
 			}
 
 			effective := ExpandedScopesFromContext(r.Context())
-			if effective == nil {
-				logHTTPAuthFailure(r, "", "missing_auth", errors.New("no expanded scopes in context"))
-				http.Error(w, "missing authentication", http.StatusUnauthorized)
+			if HasScope(effective, scopes...) {
+				next.ServeHTTP(w, r)
 
 				return
 			}
 
-			if !HasScope(effective, scopes...) {
+			if AuthPresentedFromContext(r.Context()) {
 				logHTTPAuthFailure(r, "", "missing_scope", fmt.Errorf("required: %v", scopes))
 				http.Error(w, "missing required scope", http.StatusForbidden)
 
 				return
 			}
 
-			next.ServeHTTP(w, r)
+			logHTTPAuthFailure(r, "", "missing_auth", errors.New("anonymous scopes insufficient"))
+			http.Error(w, "missing authentication", http.StatusUnauthorized)
 		})
 	}
 }
@@ -120,16 +140,20 @@ func logHTTPAuthFailure(r *http.Request, keyID, reason string, err error) {
 	logging.FromContext(r.Context()).WithFields(fields).Infof("auth failure")
 }
 
-// bearerTokenFromHTTP extracts the Bearer token from the HTTP Authorization header.
-func bearerTokenFromHTTP(r *http.Request) (string, error) {
+// bearerTokenFromHTTP extracts the Bearer token from the HTTP Authorization
+// header. The boolean return is false when the header is missing or does not
+// carry the "Bearer " prefix — both cases are treated as "no token presented"
+// rather than "invalid token", because they cannot be distinguished from a
+// caller that simply chose not to authenticate.
+func bearerTokenFromHTTP(r *http.Request) (string, bool) {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
-		return "", errors.New("missing authorization header")
+		return "", false
 	}
 
 	if !strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
-		return "", errors.New("malformed authorization header")
+		return "", false
 	}
 
-	return strings.TrimSpace(authHeader[7:]), nil
+	return strings.TrimSpace(authHeader[7:]), true
 }

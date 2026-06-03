@@ -262,6 +262,17 @@ func WithAuthEd25519Keys(path string) testservice.InstrumentationFunc {
 	}
 }
 
+// WithAuthAnonymousScopes grants the given (CSV) granular scopes to requests
+// that arrive without a bearer token. Pass "*:read" to enable the writes-only
+// auth mode (reads public, writes still require a token).
+func WithAuthAnonymousScopes(scopes string) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--auth-anonymous-scopes", scopes)
+
+		return nil
+	}
+}
+
 func WithColdStorageDriver(driver string) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--cold-storage-driver", driver)

@@ -50,17 +50,70 @@ func TestHTTPAuthMiddleware_PublicEndpoints(t *testing.T) {
 func TestHTTPAuthMiddleware_MissingToken(t *testing.T) {
 	t.Parallel()
 
+	// A missing bearer token is no longer a middleware-level error; the request
+	// continues with the anonymous scopes (nil here, since no mapping). The
+	// 401 is then issued by RequireScope downstream if the anonymous scopes
+	// don't cover the required scope.
+
 	_, keySet := testKeyPair(t)
+
+	var (
+		capturedAuthPresented bool
+		capturedScopes        map[Scope]struct{}
+	)
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedAuthPresented = AuthPresentedFromContext(r.Context())
+		capturedScopes = ExpandedScopesFromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	})
+
 	handler := HTTPAuthMiddleware(AuthConfig{
 		Enabled: true,
 		KeySet:  keySet,
 		Issuer:  testIssuer,
-	})(ok200)
+	})(inner)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/test-ledger", nil)
 	handler.ServeHTTP(w, r)
-	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.False(t, capturedAuthPresented)
+	assert.Empty(t, capturedScopes)
+}
+
+func TestHTTPAuthMiddleware_MissingToken_AnonymousReadScopes(t *testing.T) {
+	t.Parallel()
+
+	// With anonymous scopes configured, an unauthenticated request inherits
+	// them so downstream RequireScope can let public reads through.
+
+	_, keySet := testKeyPair(t)
+
+	mapping := DefaultMapping("ledger")
+	mapping[ScopeMappingAnonymousKey] = []Scope{ScopeLedgersRead, ScopeAccountsRead}
+
+	var capturedScopes map[Scope]struct{}
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedScopes = ExpandedScopesFromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	})
+
+	handler := HTTPAuthMiddleware(AuthConfig{
+		Enabled:      true,
+		KeySet:       keySet,
+		Issuer:       testIssuer,
+		ScopeMapping: mapping,
+	})(inner)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/test-ledger", nil)
+	handler.ServeHTTP(w, r)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.True(t, HasScope(capturedScopes, ScopeLedgersRead))
+	assert.True(t, HasScope(capturedScopes, ScopeAccountsRead))
+	assert.False(t, HasScope(capturedScopes, ScopeTransactionsWrite))
 }
 
 func TestHTTPAuthMiddleware_ValidToken_ClaimsInContext(t *testing.T) {
@@ -497,6 +550,97 @@ func TestRequireScope_GodMode_PassesAnyScope(t *testing.T) {
 	r.Header.Set("Authorization", "Bearer "+token)
 	handler.ServeHTTP(w, r)
 	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+// --- Writes-only mode (anonymous = "*:read") tests ---
+
+func writesOnlyConfig(t *testing.T) (AuthConfig, *rsa.PrivateKey) {
+	t.Helper()
+
+	privKey, keySet := testKeyPair(t)
+	mapping := DefaultMapping("ledger")
+
+	readScopes, ok := ExpandWildcardScope(WildcardRead)
+	require.True(t, ok)
+
+	mapping[ScopeMappingAnonymousKey] = readScopes
+
+	return AuthConfig{
+		Enabled:      true,
+		KeySet:       keySet,
+		Issuer:       testIssuer,
+		Service:      "ledger",
+		ScopeMapping: mapping,
+	}, privKey
+}
+
+func TestWritesOnly_Read_NoToken_Passes(t *testing.T) {
+	t.Parallel()
+
+	cfg, _ := writesOnlyConfig(t)
+	handler := HTTPAuthMiddleware(cfg)(RequireScope(cfg, ScopeAccountsRead)(ok200))
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/test/accounts", nil)
+	handler.ServeHTTP(w, r)
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestWritesOnly_Read_InvalidToken_401(t *testing.T) {
+	t.Parallel()
+
+	cfg, _ := writesOnlyConfig(t)
+	handler := HTTPAuthMiddleware(cfg)(RequireScope(cfg, ScopeAccountsRead)(ok200))
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/test/accounts", nil)
+	r.Header.Set("Authorization", "Bearer garbage")
+	handler.ServeHTTP(w, r)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestWritesOnly_Write_NoToken_401(t *testing.T) {
+	t.Parallel()
+
+	cfg, _ := writesOnlyConfig(t)
+	handler := HTTPAuthMiddleware(cfg)(RequireScope(cfg, ScopeTransactionsWrite)(ok200))
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/test/transactions", nil)
+	handler.ServeHTTP(w, r)
+	// No token + write scope not covered by anonymous → 401 (please authenticate).
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestWritesOnly_Write_ValidToken_Passes(t *testing.T) {
+	t.Parallel()
+
+	cfg, privKey := writesOnlyConfig(t)
+	handler := HTTPAuthMiddleware(cfg)(RequireScope(cfg, ScopeTransactionsWrite)(ok200))
+
+	token := signToken(t, privKey, newTestClaims("ledger:write"))
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/test/transactions", nil)
+	r.Header.Set("Authorization", "Bearer "+token)
+	handler.ServeHTTP(w, r)
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestWritesOnly_Write_ValidTokenWrongScope_403(t *testing.T) {
+	t.Parallel()
+
+	cfg, privKey := writesOnlyConfig(t)
+	handler := HTTPAuthMiddleware(cfg)(RequireScope(cfg, ScopeTransactionsWrite)(ok200))
+
+	// Token has read-only scopes — anonymous would suffice for reads but does
+	// not apply because the caller is authenticated; the token's scopes alone
+	// are used. So writes are forbidden.
+	token := signToken(t, privKey, newTestClaims("ledger:read"))
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/test/transactions", nil)
+	r.Header.Set("Authorization", "Bearer "+token)
+	handler.ServeHTTP(w, r)
+	assert.Equal(t, http.StatusForbidden, w.Code)
 }
 
 func TestRequireScope_EdDSA_WrongScope(t *testing.T) {

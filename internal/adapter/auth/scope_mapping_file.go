@@ -28,14 +28,20 @@ func ParseScopeMappingJSON(data []byte) (ScopeMapping, error) {
 
 	mapping := make(ScopeMapping, len(raw))
 	for virtualScope, granularScopes := range raw {
-		scopes := make([]Scope, len(granularScopes))
-		for i, s := range granularScopes {
+		scopes := make([]Scope, 0, len(granularScopes))
+		for _, s := range granularScopes {
+			if expanded, ok := ExpandWildcardScope(s); ok {
+				scopes = append(scopes, expanded...)
+
+				continue
+			}
+
 			scope := Scope(s)
 			if _, ok := AllGranularScopes[scope]; !ok {
 				return nil, fmt.Errorf("unknown granular scope %q in mapping for %q", s, virtualScope)
 			}
 
-			scopes[i] = scope
+			scopes = append(scopes, scope)
 		}
 
 		mapping[virtualScope] = scopes

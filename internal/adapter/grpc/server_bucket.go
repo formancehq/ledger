@@ -106,13 +106,24 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 	// Per-request scope check: each request in the batch may require a different granular scope.
 	if impl.authCfg.Enabled {
 		effective := internalauth.ExpandedScopesFromContext(ctx)
+		authPresented := internalauth.AuthPresentedFromContext(ctx)
 
 		for i, r := range req.GetRequests() {
 			required := internalauth.RequiredScopeForRequest(r)
-			if !internalauth.HasScope(effective, required) {
-				return nil, status.Errorf(codes.PermissionDenied,
+			if internalauth.HasScope(effective, required) {
+				continue
+			}
+
+			// 401 when no credentials were presented (the anonymous fallback
+			// covers reads only); 403 when a valid token was presented but
+			// lacks the required scope.
+			if !authPresented {
+				return nil, status.Errorf(codes.Unauthenticated,
 					"request %d requires scope %s", i, required)
 			}
+
+			return nil, status.Errorf(codes.PermissionDenied,
+				"request %d requires scope %s", i, required)
 		}
 	}
 

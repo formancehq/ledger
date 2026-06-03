@@ -162,6 +162,49 @@ func TestLoadScopeMapping_FilePrecedenceOverJSON(t *testing.T) {
 	assert.NotContains(t, result, "json:read")
 }
 
+func TestApplyAnonymousScopes_WildcardRead(t *testing.T) {
+	t.Parallel()
+
+	mapping := internalauth.DefaultMapping("ledger")
+	require.NoError(t, applyAnonymousScopes(mapping, "*:read", logging.Testing()))
+
+	anon := mapping.AnonymousScopes()
+	assert.Contains(t, anon, internalauth.ScopeLedgersRead)
+	assert.Contains(t, anon, internalauth.ScopeTransactionsRead)
+	assert.Contains(t, anon, internalauth.ScopeClusterRead)
+	assert.NotContains(t, anon, internalauth.ScopeTransactionsWrite)
+}
+
+func TestApplyAnonymousScopes_ExplicitList(t *testing.T) {
+	t.Parallel()
+
+	mapping := internalauth.DefaultMapping("ledger")
+	require.NoError(t, applyAnonymousScopes(mapping, "ledgers:read, accounts:read", logging.Testing()))
+
+	anon := mapping.AnonymousScopes()
+	assert.Contains(t, anon, internalauth.ScopeLedgersRead)
+	assert.Contains(t, anon, internalauth.ScopeAccountsRead)
+	assert.NotContains(t, anon, internalauth.ScopeTransactionsRead)
+}
+
+func TestApplyAnonymousScopes_Empty_NoChange(t *testing.T) {
+	t.Parallel()
+
+	mapping := internalauth.DefaultMapping("ledger")
+	require.NoError(t, applyAnonymousScopes(mapping, "", logging.Testing()))
+
+	assert.Nil(t, mapping.AnonymousScopes())
+}
+
+func TestApplyAnonymousScopes_UnknownScope(t *testing.T) {
+	t.Parallel()
+
+	mapping := internalauth.DefaultMapping("ledger")
+	err := applyAnonymousScopes(mapping, "ledgers:read,bogus:scope", logging.Testing())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown granular scope")
+}
+
 func TestPersistConfig_SaveAndLoad(t *testing.T) {
 	t.Parallel()
 
