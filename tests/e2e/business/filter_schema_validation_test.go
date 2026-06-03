@@ -41,9 +41,9 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
 						},
 					}),
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "age"),
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "name"),
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "active"),
+					actions.CreateAccountMetadataIndexAction(ledgerName, "age"),
+					actions.CreateAccountMetadataIndexAction(ledgerName, "name"),
+					actions.CreateAccountMetadataIndexAction(ledgerName, "active"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -171,7 +171,7 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
 						},
 					}),
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "counter"),
+					actions.CreateAccountMetadataIndexAction(ledgerName, "counter"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -272,8 +272,8 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
 						},
 					}),
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score"),
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "visits"),
+					actions.CreateAccountMetadataIndexAction(ledgerName, "score"),
+					actions.CreateAccountMetadataIndexAction(ledgerName, "visits"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -329,7 +329,7 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
 						},
 					}),
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "priority"),
+					actions.CreateTransactionMetadataIndexAction(ledgerName, "priority"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -376,7 +376,7 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateLedgerAction(ledgerName, nil),
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "anything"),
+					actions.CreateAccountMetadataIndexAction(ledgerName, "anything"),
 				},
 			})
 			Expect(err).To(Succeed())

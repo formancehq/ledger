@@ -71,7 +71,7 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 			// Create the metadata index, then add data (index builder only indexes forward)
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "category"),
+					actions.CreateAccountMetadataIndexAction(ledgerName, "category"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -114,7 +114,7 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 			// Drop the metadata index
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					actions.DropMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "category"),
+					actions.DropAccountMetadataIndexAction(ledgerName, "category"),
 				},
 			})
 			Expect(err).To(Succeed())

@@ -640,6 +640,38 @@ func DropAccountMetadataIndexAction(ledger, metadataKey string) *servicepb.Reque
 	}
 }
 
+// CreateTransactionMetadataIndexAction creates an action for creating a transaction metadata index.
+func CreateTransactionMetadataIndexAction(ledger, metadataKey string) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_CreateIndex{
+			CreateIndex: &servicepb.CreateIndexRequest{
+				Ledger: ledger,
+				Index: &servicepb.CreateIndexRequest_Transaction{
+					Transaction: &commonpb.TransactionIndex{
+						Kind: &commonpb.TransactionIndex_MetadataKey{MetadataKey: metadataKey},
+					},
+				},
+			},
+		},
+	}
+}
+
+// DropTransactionMetadataIndexAction creates an action for dropping a transaction metadata index.
+func DropTransactionMetadataIndexAction(ledger, metadataKey string) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_DropIndex{
+			DropIndex: &servicepb.DropIndexRequest{
+				Ledger: ledger,
+				Index: &servicepb.DropIndexRequest_Transaction{
+					Transaction: &commonpb.TransactionIndex{
+						Kind: &commonpb.TransactionIndex_MetadataKey{MetadataKey: metadataKey},
+					},
+				},
+			},
+		},
+	}
+}
+
 // CreatePreparedQueryAction creates an action for creating a prepared query.
 func CreatePreparedQueryAction(name, ledger string, target commonpb.QueryTarget, filter *commonpb.QueryFilter) *servicepb.Request {
 	return &servicepb.Request{

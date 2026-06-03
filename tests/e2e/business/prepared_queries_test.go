@@ -55,7 +55,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 						},
 					}),
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
+					actions.CreateAccountMetadataIndexAction(ledgerName, "role"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -165,7 +165,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 						},
 					}),
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
+					actions.CreateAccountMetadataIndexAction(ledgerName, "role"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -348,8 +348,8 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 						},
 					}),
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier"),
+					actions.CreateAccountMetadataIndexAction(ledgerName, "role"),
+					actions.CreateAccountMetadataIndexAction(ledgerName, "tier"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -493,7 +493,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 						},
 					}),
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
+					actions.CreateAccountMetadataIndexAction(ledgerName, "role"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -652,7 +652,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 						},
 					}),
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
+					actions.CreateAccountMetadataIndexAction(ledgerName, "role"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -747,7 +747,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 						},
 					}),
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
+					actions.CreateAccountMetadataIndexAction(ledgerName, "role"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -840,8 +840,8 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 						},
 					}),
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier"),
+					actions.CreateAccountMetadataIndexAction(ledgerName, "role"),
+					actions.CreateAccountMetadataIndexAction(ledgerName, "tier"),
 				},
 			})
 			Expect(err).To(Succeed())

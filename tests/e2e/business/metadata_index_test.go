@@ -44,7 +44,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 			// Create index on the "role" field
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
+					actions.CreateAccountMetadataIndexAction(ledgerName, "role"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -147,7 +147,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "category"),
+					actions.CreateAccountMetadataIndexAction(ledgerName, "category"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -212,7 +212,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "status"),
+					actions.CreateTransactionMetadataIndexAction(ledgerName, "status"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -286,7 +286,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "tag"),
+					actions.CreateTransactionMetadataIndexAction(ledgerName, "tag"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -351,7 +351,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier"),
+					actions.CreateAccountMetadataIndexAction(ledgerName, "tier"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -427,7 +427,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "source"),
+					actions.CreateAccountMetadataIndexAction(ledgerName, "source"),
 				},
 			})
 			Expect(err).To(Succeed())

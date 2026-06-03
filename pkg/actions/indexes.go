@@ -10,52 +10,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-// CreateMetadataIndexAction creates a request for creating a metadata index on the given target type.
-func CreateMetadataIndexAction(ledger string, target commonpb.TargetType, key string) *servicepb.Request {
-	switch target {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-		return CreateAccountMetadataIndexAction(ledger, key)
-	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
-		return &servicepb.Request{
-			Type: &servicepb.Request_CreateIndex{
-				CreateIndex: &servicepb.CreateIndexRequest{
-					Ledger: ledger,
-					Index: &servicepb.CreateIndexRequest_Transaction{
-						Transaction: &commonpb.TransactionIndex{
-							Kind: &commonpb.TransactionIndex_MetadataKey{MetadataKey: key},
-						},
-					},
-				},
-			},
-		}
-	default:
-		panic("unsupported target type for metadata index")
-	}
-}
-
-// DropMetadataIndexAction creates a request for dropping a metadata index on the given target type.
-func DropMetadataIndexAction(ledger string, target commonpb.TargetType, key string) *servicepb.Request {
-	switch target {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-		return DropAccountMetadataIndexAction(ledger, key)
-	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
-		return &servicepb.Request{
-			Type: &servicepb.Request_DropIndex{
-				DropIndex: &servicepb.DropIndexRequest{
-					Ledger: ledger,
-					Index: &servicepb.DropIndexRequest_Transaction{
-						Transaction: &commonpb.TransactionIndex{
-							Kind: &commonpb.TransactionIndex_MetadataKey{MetadataKey: key},
-						},
-					},
-				},
-			},
-		}
-	default:
-		panic("unsupported target type for metadata index")
-	}
-}
-
 // AddressRoleToBuiltinIndex maps an AddressRole to its corresponding TransactionBuiltinIndex.
 func AddressRoleToBuiltinIndex(role commonpb.AddressRole) commonpb.TransactionBuiltinIndex {
 	switch role {
@@ -184,20 +138,27 @@ func WaitForLogBuiltinIndexReady(ctx context.Context, client servicepb.BucketSer
 	})
 }
 
-// poll repeatedly calls check until it returns nil or the timeout expires.
+// poll repeatedly calls check until it returns nil, the timeout expires, or
+// ctx is cancelled. The wait between checks is interruptible: cancellation
+// returns immediately rather than after the current interval.
 func poll(ctx context.Context, timeout, interval time.Duration, check func() error) error {
-	deadline := time.Now().Add(timeout)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
+
 	var lastErr error
-	for time.Now().Before(deadline) {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		lastErr = check()
-		if lastErr == nil {
+	for {
+		if lastErr = check(); lastErr == nil {
 			return nil
 		}
-		time.Sleep(interval)
-	}
 
-	return fmt.Errorf("timed out after %v: %w", timeout, lastErr)
+		timer.Reset(interval)
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("%w (last error: %w)", ctx.Err(), lastErr)
+		case <-timer.C:
+		}
+	}
 }

@@ -400,7 +400,7 @@ var _ = Describe("Accounts", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
 						},
 					}),
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "age"),
+					actions.CreateAccountMetadataIndexAction(ledgerName, "age"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -689,7 +689,7 @@ var _ = Describe("Accounts", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 						},
 					}),
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
+					actions.CreateAccountMetadataIndexAction(ledgerName, "role"),
 				},
 			})
 			Expect(err).To(Succeed())

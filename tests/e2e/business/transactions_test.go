@@ -967,9 +967,9 @@ var _ = Describe("Transactions", Ordered, func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					actions.CreateLedgerAction(ledgerName, nil),
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "category"),
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "priority"),
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "tier"),
+					actions.CreateTransactionMetadataIndexAction(ledgerName, "category"),
+					actions.CreateTransactionMetadataIndexAction(ledgerName, "priority"),
+					actions.CreateTransactionMetadataIndexAction(ledgerName, "tier"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -1162,7 +1162,7 @@ var _ = Describe("Transactions", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
 						},
 					}),
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "score"),
+					actions.CreateTransactionMetadataIndexAction(ledgerName, "score"),
 				},
 			})
 			Expect(err).To(Succeed())

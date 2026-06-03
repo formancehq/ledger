@@ -38,7 +38,7 @@ var _ = Describe("InspectIndex", Ordered, func() {
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "category"),
+					actions.CreateAccountMetadataIndexAction(ledgerName, "category"),
 				},
 			})
 			Expect(err).To(Succeed())

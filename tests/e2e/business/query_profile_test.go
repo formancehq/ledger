@@ -166,7 +166,7 @@ var _ = Describe("QueryProfile", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 						},
 					}),
-					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
+					actions.CreateAccountMetadataIndexAction(ledgerName, "role"),
 				},
 			})
 			Expect(err).To(Succeed())
