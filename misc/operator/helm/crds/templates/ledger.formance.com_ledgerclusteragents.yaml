@@ -52,6 +52,14 @@ spec:
           spec:
             description: LedgerClusterAgentSpec defines the desired state of a LedgerClusterAgent.
             properties:
+              additionalNamespaces:
+                description: |-
+                  AdditionalNamespaces is an optional list of extra namespaces where the
+                  agent's Secret must also be created, in addition to the namespaces of
+                  the LedgerServices matched by Selector.
+                items:
+                  type: string
+                type: array
               god:
                 description: |-
                   God enables god mode for this agent. God-mode agents receive all scopes
@@ -174,6 +182,25 @@ spec:
                   - type
                   type: object
                 type: array
+              distributedSecretRefs:
+                description: |-
+                  DistributedSecretRefs lists every namespace where the agent's Secret has
+                  been written. All replicas carry identical data; consumers can read any
+                  entry — typically the first.
+                items:
+                  description: SecretReference identifies a namespaced Secret.
+                  properties:
+                    name:
+                      description: Name of the Secret.
+                      type: string
+                    namespace:
+                      description: Namespace of the Secret.
+                      type: string
+                  required:
+                  - name
+                  - namespace
+                  type: object
+                type: array
               keyID:
                 description: KeyID is the SHA-256 fingerprint prefix (16 hex chars)
                   of the public key.
@@ -204,20 +231,6 @@ spec:
               phase:
                 description: 'Phase of the LedgerClusterAgent: Pending, Ready, Error.'
                 type: string
-              secretRef:
-                description: SecretRef references the Secret containing the generated
-                  Ed25519 keypair.
-                properties:
-                  name:
-                    description: Name of the Secret.
-                    type: string
-                  namespace:
-                    description: Namespace of the Secret.
-                    type: string
-                required:
-                - name
-                - namespace
-                type: object
             type: object
         type: object
     served: true

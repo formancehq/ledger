@@ -45,6 +45,12 @@ type LedgerClusterAgentSpec struct {
 
 	// Selector selects which LedgerService resources this agent applies to.
 	Selector metav1.LabelSelector `json:"selector"`
+
+	// AdditionalNamespaces is an optional list of extra namespaces where the
+	// agent's Secret must also be created, in addition to the namespaces of
+	// the LedgerServices matched by Selector.
+	// +optional
+	AdditionalNamespaces []string `json:"additionalNamespaces,omitempty"`
 }
 
 // LedgerClusterAgentStatus defines the observed state of a LedgerClusterAgent.
@@ -57,9 +63,11 @@ type LedgerClusterAgentStatus struct {
 	// +optional
 	KeyID string `json:"keyID,omitempty"`
 
-	// SecretRef references the Secret containing the generated Ed25519 keypair.
+	// DistributedSecretRefs lists every namespace where the agent's Secret has
+	// been written. All replicas carry identical data; consumers can read any
+	// entry — typically the first.
 	// +optional
-	SecretRef SecretReference `json:"secretRef,omitempty"`
+	DistributedSecretRefs []SecretReference `json:"distributedSecretRefs,omitempty"`
 
 	// MatchedServices lists the LedgerService resources matched by the selector.
 	// +optional

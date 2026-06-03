@@ -160,7 +160,13 @@ func (r *LedgerServiceReconciler) collectClusterAgentKeys(ctx context.Context, l
 			continue
 		}
 
-		info, ok, err := r.readAgentKeyFromSecret(ctx, agent.Name, agent.Status.SecretRef, agent.Spec.Scopes, agent.Spec.God, "agent")
+		if len(agent.Status.DistributedSecretRefs) == 0 {
+			logger.Info("agent has no distributed secret yet, skipping", "agent", agent.Name)
+
+			continue
+		}
+
+		info, ok, err := r.readAgentKeyFromSecret(ctx, agent.Name, agent.Status.DistributedSecretRefs[0], agent.Spec.Scopes, agent.Spec.God, "agent")
 		if err != nil {
 			return nil, err
 		}

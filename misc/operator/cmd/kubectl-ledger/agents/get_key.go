@@ -66,15 +66,16 @@ func runGetKey(cmd *cobra.Command, opts *cmdutil.Options, f *getKeyFlags, args [
 		return fmt.Errorf("getting agent %q: %w", name, err)
 	}
 
-	if agent.Status.SecretRef.Name == "" {
-		return fmt.Errorf("agent %q does not have a secret reference yet (phase: %s)", name, agent.Status.Phase)
+	if len(agent.Status.DistributedSecretRefs) == 0 {
+		return fmt.Errorf("agent %q does not have a distributed secret yet (phase: %s)", name, agent.Status.Phase)
 	}
 
-	// Read the Secret.
+	// Read the Secret. All replicas carry identical data; the first entry is canonical.
+	ref := agent.Status.DistributedSecretRefs[0]
 	secret := &corev1.Secret{}
 	secretKey := types.NamespacedName{
-		Namespace: agent.Status.SecretRef.Namespace,
-		Name:      agent.Status.SecretRef.Name,
+		Namespace: ref.Namespace,
+		Name:      ref.Name,
 	}
 	if err := crdClient.Get(ctx, secretKey, secret); err != nil {
 		return fmt.Errorf("fetching secret %s/%s: %w", secretKey.Namespace, secretKey.Name, err)

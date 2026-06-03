@@ -62,8 +62,13 @@ func renderAgentDetails(agent *ledgerv1alpha1.LedgerClusterAgent) error {
 		keyID = pterm.Gray("<pending>")
 	}
 	secretRef := pterm.Gray("<none>")
-	if agent.Status.SecretRef.Name != "" {
-		secretRef = fmt.Sprintf("%s/%s", agent.Status.SecretRef.Namespace, agent.Status.SecretRef.Name)
+	if n := len(agent.Status.DistributedSecretRefs); n > 0 {
+		first := agent.Status.DistributedSecretRefs[0]
+		if n == 1 {
+			secretRef = fmt.Sprintf("%s/%s", first.Namespace, first.Name)
+		} else {
+			secretRef = fmt.Sprintf("%s/%s (+%d more)", first.Namespace, first.Name, n-1)
+		}
 	}
 	scopes := strings.Join(agent.Spec.Scopes, ", ")
 	if scopes == "" {

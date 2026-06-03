@@ -25,8 +25,6 @@ import (
 	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
 )
 
-const agentSecretsNamespace = "agent-secrets"
-
 var (
 	testEnv   *envtest.Environment
 	k8sClient client.Client
@@ -82,18 +80,9 @@ func TestMain(m *testing.M) {
 		panic(fmt.Sprintf("setting up LedgerService controller: %v", err))
 	}
 
-	// Create the namespace for agent secrets before starting the reconciler.
-	agentNs := &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{Name: agentSecretsNamespace},
-	}
-	if err := k8sClient.Create(context.Background(), agentNs); err != nil {
-		panic(fmt.Sprintf("creating agent-secrets namespace: %v", err))
-	}
-
 	if err := (&LedgerClusterAgentReconciler{
-		Client:           mgr.GetClient(),
-		Scheme:           mgr.GetScheme(),
-		SecretsNamespace: agentSecretsNamespace,
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		panic(fmt.Sprintf("setting up LedgerClusterAgent controller: %v", err))
 	}
@@ -162,6 +151,16 @@ func newLedgerClusterAgent(name string, scopes []string, matchLabels map[string]
 			},
 		},
 	}
+}
+
+// newLedgerClusterAgentWithAdditional returns a cluster-scoped LedgerClusterAgent
+// that distributes its Secret to the given additional namespaces (regardless of
+// matched services). Useful for tests that only need a Secret to exist somewhere.
+func newLedgerClusterAgentWithAdditional(name string, scopes []string, matchLabels map[string]string, additional ...string) *ledgerv1alpha1.LedgerClusterAgent {
+	agent := newLedgerClusterAgent(name, scopes, matchLabels)
+	agent.Spec.AdditionalNamespaces = additional
+
+	return agent
 }
 
 // requireEventually wraps require.Eventually with standard timeouts for envtest.

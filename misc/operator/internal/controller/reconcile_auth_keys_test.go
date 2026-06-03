@@ -18,6 +18,11 @@ import (
 func TestReconcile_AuthKeysConfigMap(t *testing.T) {
 	ns := createTestNamespace(t)
 
+	// Create LedgerService first so the agent has a namespace to distribute into.
+	ls := newLedgerService("authcm-svc", ns)
+	ls.Labels = map[string]string{"tier": "authcm"}
+	require.NoError(t, k8sClient.Create(ctx, ls))
+
 	// Create agent with matching selector.
 	agent := newLedgerClusterAgent("authcm-agent", []string{"read", "write"}, map[string]string{"tier": "authcm"})
 	require.NoError(t, k8sClient.Create(ctx, agent))
@@ -25,18 +30,13 @@ func TestReconcile_AuthKeysConfigMap(t *testing.T) {
 		_ = k8sClient.Delete(ctx, agent) //nolint:errcheck // best-effort cleanup
 	})
 
-	// Wait for the agent to be ready (secret created, status populated).
+	// Wait for the agent to be ready (secret created in the service's namespace).
 	requireEventually(t, func() bool {
 		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "authcm-agent"}, agent); err != nil {
 			return false
 		}
-		return agent.Status.Phase == "Ready" && agent.Status.SecretRef.Name != ""
-	}, "agent should be Ready with SecretRef")
-
-	// Create a LedgerService with matching labels.
-	ls := newLedgerService("authcm-svc", ns)
-	ls.Labels = map[string]string{"tier": "authcm"}
-	require.NoError(t, k8sClient.Create(ctx, ls))
+		return agent.Status.Phase == "Ready" && len(agent.Status.DistributedSecretRefs) > 0
+	}, "agent should be Ready with a distributed secret ref")
 
 	// Wait for the auth-keys ConfigMap to appear.
 	cm := &corev1.ConfigMap{}
@@ -65,6 +65,11 @@ func TestReconcile_AuthKeysConfigMap(t *testing.T) {
 func TestReconcile_AuthKeysStatefulSet(t *testing.T) {
 	ns := createTestNamespace(t)
 
+	// Create LedgerService first so the agent has a namespace to distribute into.
+	ls := newLedgerService("authsts-svc", ns)
+	ls.Labels = map[string]string{"tier": "authsts"}
+	require.NoError(t, k8sClient.Create(ctx, ls))
+
 	// Create agent with matching selector.
 	agent := newLedgerClusterAgent("authsts-agent", []string{"read"}, map[string]string{"tier": "authsts"})
 	require.NoError(t, k8sClient.Create(ctx, agent))
@@ -77,13 +82,8 @@ func TestReconcile_AuthKeysStatefulSet(t *testing.T) {
 		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "authsts-agent"}, agent); err != nil {
 			return false
 		}
-		return agent.Status.Phase == "Ready" && agent.Status.SecretRef.Name != ""
+		return agent.Status.Phase == "Ready" && len(agent.Status.DistributedSecretRefs) > 0
 	}, "agent should be Ready")
-
-	// Create LedgerService with matching labels.
-	ls := newLedgerService("authsts-svc", ns)
-	ls.Labels = map[string]string{"tier": "authsts"}
-	require.NoError(t, k8sClient.Create(ctx, ls))
 
 	// Wait for the StatefulSet to appear.
 	sts := &appsv1.StatefulSet{}
@@ -152,6 +152,11 @@ func TestReconcile_NoAgentsNoConfigMap(t *testing.T) {
 func TestReconcile_AuthKeysHashAnnotation(t *testing.T) {
 	ns := createTestNamespace(t)
 
+	// Create LedgerService first so the agent has a namespace to distribute into.
+	ls := newLedgerService("authhash-svc", ns)
+	ls.Labels = map[string]string{"tier": "authhash"}
+	require.NoError(t, k8sClient.Create(ctx, ls))
+
 	// Create agent with matching selector.
 	agent := newLedgerClusterAgent("authhash-agent", []string{"read"}, map[string]string{"tier": "authhash"})
 	require.NoError(t, k8sClient.Create(ctx, agent))
@@ -164,13 +169,8 @@ func TestReconcile_AuthKeysHashAnnotation(t *testing.T) {
 		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "authhash-agent"}, agent); err != nil {
 			return false
 		}
-		return agent.Status.Phase == "Ready" && agent.Status.SecretRef.Name != ""
+		return agent.Status.Phase == "Ready" && len(agent.Status.DistributedSecretRefs) > 0
 	}, "agent should be Ready")
-
-	// Create LedgerService with matching labels.
-	ls := newLedgerService("authhash-svc", ns)
-	ls.Labels = map[string]string{"tier": "authhash"}
-	require.NoError(t, k8sClient.Create(ctx, ls))
 
 	// Wait for the StatefulSet with auth-keys hash annotation.
 	sts := &appsv1.StatefulSet{}

@@ -20,12 +20,11 @@ import (
 )
 
 type flags struct {
-	metricsAddr      string
-	probeAddr        string
-	leaderElect      bool
-	dev              bool
-	watchNamespace   string
-	secretsNamespace string
+	metricsAddr    string
+	probeAddr      string
+	leaderElect    bool
+	dev            bool
+	watchNamespace string
 }
 
 func main() {
@@ -34,7 +33,6 @@ func main() {
 	flag.StringVar(&f.probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&f.leaderElect, "leader-elect", false, "Enable leader election for controller manager.")
 	flag.StringVar(&f.watchNamespace, "watch-namespace", "", "Namespace to watch. Empty string watches all namespaces.")
-	flag.StringVar(&f.secretsNamespace, "secrets-namespace", "", "Namespace for agent key secrets. Defaults to POD_NAMESPACE or 'default'.")
 	flag.BoolVar(&f.dev, "dev", false, "Enable development mode (verbose logging).")
 
 	opts := zap.Options{}
@@ -49,14 +47,6 @@ func main() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(ledgerv1alpha1.AddToScheme(scheme))
 
-	secretsNS := f.secretsNamespace
-	if secretsNS == "" {
-		secretsNS = os.Getenv("POD_NAMESPACE")
-	}
-	if secretsNS == "" {
-		secretsNS = "default"
-	}
-
 	mgrOpts := ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
@@ -69,9 +59,6 @@ func main() {
 	if f.watchNamespace != "" {
 		mgrOpts.Cache.DefaultNamespaces = map[string]cache.Config{
 			f.watchNamespace: {},
-		}
-		if secretsNS != f.watchNamespace {
-			mgrOpts.Cache.DefaultNamespaces[secretsNS] = cache.Config{}
 		}
 	}
 
@@ -106,9 +93,8 @@ func main() {
 	}
 
 	if err = (&controller.LedgerClusterAgentReconciler{
-		Client:           mgr.GetClient(),
-		Scheme:           mgr.GetScheme(),
-		SecretsNamespace: secretsNS,
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "LedgerClusterAgent")
 		os.Exit(1)
