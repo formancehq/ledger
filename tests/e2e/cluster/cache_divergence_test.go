@@ -111,10 +111,9 @@ var _ = Describe("Cache divergence under chaos", func() {
 				sendParallelTransactions(ctx, servers[0].Client, ledgerName, parallelism, txPerWorker, cycle*1000+500, "COIN")
 			}
 
-			// Final consistency check across ALL nodes
+			// Final consistency check across ALL nodes. verifyVolumesConsistent
+			// polls until the nodes converge, so no fixed settle delay is needed.
 			By("Final volume consistency check")
-			// Wait a moment for all nodes to finish applying
-			time.Sleep(500 * time.Millisecond)
 			verifyVolumesConsistent(ctx, servers, ledgerName)
 		})
 	})
@@ -176,51 +175,49 @@ func verifyVolumesConsistent(ctx context.Context, servers []*testutil.ServiceWit
 		volumes map[string]string // "account/asset" → "input:output"
 	}
 
-	var snapshots []volumeSnapshot
+	// Poll the full collect-and-compare until the nodes converge, rather than
+	// snapshotting once after a fixed settle delay. Nodes may still be applying
+	// when the check starts (especially right after a restart cycle).
+	EventuallyWithOffset(1, func(g Gomega) {
+		var snapshots []volumeSnapshot
 
-	for _, srv := range servers {
-		if srv.GRPCConn == nil {
-			continue
+		for _, srv := range servers {
+			if srv.GRPCConn == nil {
+				continue
+			}
+
+			accounts, err := actions.ListAllAccounts(ctx, srv.Client, ledgerName)
+			g.Expect(err).To(Succeed(), "Node %d failed to list accounts", srv.NodeID)
+
+			snap := volumeSnapshot{
+				nodeID:  srv.NodeID,
+				volumes: make(map[string]string),
+			}
+
+			for _, acct := range accounts {
+				for asset, vol := range acct.GetVolumes() {
+					key := fmt.Sprintf("%s/%s", acct.GetAddress(), asset)
+					snap.volumes[key] = fmt.Sprintf("%s:%s", vol.GetInput(), vol.GetOutput())
+				}
+			}
+
+			snapshots = append(snapshots, snap)
 		}
 
-		// Use Eventually to handle nodes that are still catching up
-		var accounts []*commonpb.Account
+		g.Expect(len(snapshots)).To(BeNumerically(">=", 2),
+			"Need at least 2 reachable nodes to compare")
 
-		Eventually(func(g Gomega) {
-			var err error
-			accounts, err = actions.ListAllAccounts(ctx, srv.Client, ledgerName)
-			g.Expect(err).To(Succeed())
-		}).Within(10 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed(),
-			"Node %d failed to list accounts", srv.NodeID)
-
-		snap := volumeSnapshot{
-			nodeID:  srv.NodeID,
-			volumes: make(map[string]string),
-		}
-
-		for _, acct := range accounts {
-			for asset, vol := range acct.GetVolumes() {
-				key := fmt.Sprintf("%s/%s", acct.GetAddress(), asset)
-				snap.volumes[key] = fmt.Sprintf("%s:%s", vol.GetInput(), vol.GetOutput())
+		ref := snapshots[0]
+		for _, other := range snapshots[1:] {
+			for key, refVol := range ref.volumes {
+				otherVol, exists := other.volumes[key]
+				g.Expect(exists).To(BeTrue(),
+					"Node %d missing volume %s (present on node %d with %s)",
+					other.nodeID, key, ref.nodeID, refVol)
+				g.Expect(otherVol).To(Equal(refVol),
+					"Volume mismatch for %s: node %d has %s, node %d has %s",
+					key, ref.nodeID, refVol, other.nodeID, otherVol)
 			}
 		}
-
-		snapshots = append(snapshots, snap)
-	}
-
-	ExpectWithOffset(1, len(snapshots)).To(BeNumerically(">=", 2),
-		"Need at least 2 reachable nodes to compare")
-
-	ref := snapshots[0]
-	for _, other := range snapshots[1:] {
-		for key, refVol := range ref.volumes {
-			otherVol, exists := other.volumes[key]
-			ExpectWithOffset(1, exists).To(BeTrue(),
-				"Node %d missing volume %s (present on node %d with %s)",
-				other.nodeID, key, ref.nodeID, refVol)
-			ExpectWithOffset(1, otherVol).To(Equal(refVol),
-				"Volume mismatch for %s: node %d has %s, node %d has %s",
-				key, ref.nodeID, refVol, other.nodeID, otherVol)
-		}
-	}
+	}).Within(15 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
 }

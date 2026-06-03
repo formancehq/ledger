@@ -290,24 +290,28 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 			Expect(err).To(Succeed())
 			Expect(resp2.Logs[0].Sequence).To(Equal(firstSeq))
 
-			// Wait for TTL + eviction interval to expire the key
-			time.Sleep(4 * time.Second)
-
-			// After TTL expiration: same IK + same content should create a NEW transaction
-			resp3, err := ttlClient.Apply(ttlCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					actions.WithIdempotencyKey(
-						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							actions.NewPosting("world", "ttl-account", big.NewInt(100), "USD"),
-						}, nil, nil),
-						idempotencyKey,
-					),
-				},
-			})
-			Expect(err).To(Succeed())
-			Expect(resp3.Logs).To(HaveLen(1))
-			// Should be a NEW log sequence (not a reference to the old one)
-			Expect(resp3.Logs[0].Sequence).NotTo(Equal(firstSeq))
+			// The key's TTL (2s) + eviction interval (1s) must elapse before the
+			// same key + content creates a NEW transaction. Poll the apply rather
+			// than sleeping a fixed duration: before expiry every retry is
+			// idempotent and creates no new transaction (returns firstSeq); after
+			// expiry exactly one new transaction is created, after which the key
+			// maps to that new transaction and further retries stay stable.
+			Eventually(func(g Gomega) {
+				resp3, err := ttlClient.Apply(ttlCtx, &servicepb.ApplyRequest{
+					Requests: []*servicepb.Request{
+						actions.WithIdempotencyKey(
+							actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+								actions.NewPosting("world", "ttl-account", big.NewInt(100), "USD"),
+							}, nil, nil),
+							idempotencyKey,
+						),
+					},
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(resp3.Logs).To(HaveLen(1))
+				// A NEW log sequence (not a reference to the old one).
+				g.Expect(resp3.Logs[0].Sequence).NotTo(Equal(firstSeq))
+			}).Within(15 * time.Second).ProbeEvery(250 * time.Millisecond).Should(Succeed())
 
 			// Verify: account should have 200 total (100 from first tx + 100 from new tx)
 			account, err := ttlClient.GetAccount(ttlCtx, &servicepb.GetAccountRequest{

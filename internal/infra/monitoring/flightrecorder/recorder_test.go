@@ -29,19 +29,20 @@ func TestRecorder(t *testing.T) {
 	r.Start()
 	require.True(t, r.Enabled())
 
-	// Let some trace data accumulate
-	time.Sleep(50 * time.Millisecond)
-
+	// Trace data accumulates asynchronously; poll until a snapshot has content
+	// rather than sleeping a fixed duration.
 	var buf bytes.Buffer
-	err := r.Snapshot(&buf)
-	require.NoError(t, err)
-	require.Greater(t, buf.Len(), 0)
+	require.Eventually(t, func() bool {
+		buf.Reset()
+
+		return r.Snapshot(&buf) == nil && buf.Len() > 0
+	}, 2*time.Second, 10*time.Millisecond)
 
 	r.Stop()
 	require.False(t, r.Enabled())
 
 	// Snapshot after stop should fail
-	err = r.Snapshot(&buf)
+	err := r.Snapshot(&buf)
 	require.Error(t, err)
 }
 
@@ -62,17 +63,19 @@ func TestSnapshotHandler(t *testing.T) {
 	handler.ServeHTTP(w, req)
 	require.Equal(t, http.StatusServiceUnavailable, w.Code)
 
-	// After start: should return 200 with trace data
+	// After start: should return 200 with trace data. Trace data accumulates
+	// asynchronously; poll the handler until it serves a non-empty snapshot.
 	r.Start()
 	defer r.Stop()
 
-	time.Sleep(50 * time.Millisecond)
+	require.Eventually(t, func() bool {
+		req = httptest.NewRequest(http.MethodGet, "/debug/flight-recorder", nil)
+		w = httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
 
-	req = httptest.NewRequest(http.MethodGet, "/debug/flight-recorder", nil)
-	w = httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
-	require.Equal(t, http.StatusOK, w.Code)
+		return w.Code == http.StatusOK && w.Body.Len() > 0
+	}, 2*time.Second, 10*time.Millisecond)
+
 	require.Contains(t, w.Header().Get("Content-Type"), "application/octet-stream")
 	require.Contains(t, w.Header().Get("Content-Disposition"), "snapshot-")
-	require.Greater(t, w.Body.Len(), 0)
 }

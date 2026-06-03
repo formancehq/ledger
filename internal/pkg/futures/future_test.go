@@ -166,7 +166,10 @@ func TestFuture_WaitContext_ResolveDuringWait(t *testing.T) {
 		got, err = f.WaitContext(ctx)
 	})
 
-	time.Sleep(10 * time.Millisecond)
+	// Resolve concurrently with the waiter. The scheduler decides whether the
+	// goroutine is already parked in WaitContext or resolves first; both
+	// orderings are valid and must yield the resolved value. wg.Wait barriers
+	// on completion, so no fixed sleep is needed.
 	f.Resolve("hello", nil)
 	wg.Wait()
 
