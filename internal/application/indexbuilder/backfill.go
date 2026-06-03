@@ -24,6 +24,7 @@ type backfillTask struct {
 	index    indexID
 	cursor   uint64 // current position (persisted in Pebble)
 	bbKey    []byte // precomputed key for progress persistence
+	proposed bool   // true after IndexReady has been proposed; awaiting FSM apply
 
 	// Progress logging state.
 	lastProgressLog time.Time // last time a progress log was emitted
@@ -538,44 +539,46 @@ func (b *Builder) processBackfills(ctx context.Context, stop <-chan struct{}, gl
 				continue
 			}
 
-			// Backfill is caught up — propose IndexReady.
-			if !b.proposeIndexReady(task) {
-				// Proposal failed (not leader or Raft error) — keep the task
-				// and retry on the next tick. Log periodically so the operator
-				// can see that the backfill is done but waiting for leadership.
-				now := time.Now()
-				if task.lastProgressLog.IsZero() || now.Sub(task.lastProgressLog) >= 30*time.Second {
-					b.logger.WithFields(map[string]any{
-						"ledger":       task.ledger,
-						"index":        backfillIndexName(task.index),
-						"cursor":       task.cursor,
-						"globalCursor": globalCursor,
-						"isLeader":     b.isLeader != nil && b.isLeader(),
-						"hasProposer":  b.proposer != nil,
-					}).Infof("Backfill caught up, waiting for leadership to propose IndexReady")
-
-					task.lastProgressLog = now
-				}
-
-				b.nextBackfillIdx++
-				tasksProcessed++
-
-				continue
+			// Backfill is caught up — propose IndexReady if not already proposed.
+			// The task is kept until isIndexAlreadyReady confirms the FSM applied
+			// the IndexReady update. This prevents progress deletion before apply,
+			// which would lose the backfill state if leadership changes.
+			// Reset proposed flag on leadership loss so the task can
+			// re-propose on the new leader.
+			if task.proposed && (b.isLeader == nil || !b.isLeader()) {
+				task.proposed = false
 			}
 
-			b.logger.WithFields(map[string]any{
-				"ledger": task.ledger,
-				"index":  backfillIndexName(task.index),
-				"cursor": task.cursor,
-			}).Infof("Backfill complete, IndexReady proposed")
+			if !task.proposed {
+				if b.proposeIndexReady(task) {
+					task.proposed = true
 
-			// Delete persisted progress.
-			_ = b.readStore.DeleteBackfillProgress(task.bbKey)
+					b.logger.WithFields(map[string]any{
+						"ledger": task.ledger,
+						"index":  backfillIndexName(task.index),
+						"cursor": task.cursor,
+					}).Infof("Backfill complete, IndexReady proposed — waiting for FSM apply")
+				} else {
+					now := time.Now()
+					if task.lastProgressLog.IsZero() || now.Sub(task.lastProgressLog) >= 30*time.Second {
+						b.logger.WithFields(map[string]any{
+							"ledger":       task.ledger,
+							"index":        backfillIndexName(task.index),
+							"cursor":       task.cursor,
+							"globalCursor": globalCursor,
+							"isLeader":     b.isLeader != nil && b.isLeader(),
+							"hasProposer":  b.proposer != nil,
+						}).Infof("Backfill caught up, waiting for leadership to propose IndexReady")
 
-			// Remove from slice — the next task slides into this position,
-			// so don't increment nextBackfillIdx.
-			b.backfillTasks[b.nextBackfillIdx] = b.backfillTasks[len(b.backfillTasks)-1]
-			b.backfillTasks = b.backfillTasks[:len(b.backfillTasks)-1]
+						task.lastProgressLog = now
+					}
+				}
+			}
+
+			// Whether proposed or not, keep the task and check again next tick.
+			// isIndexAlreadyReady (above) will clean up once the FSM applies.
+			b.nextBackfillIdx++
+			tasksProcessed++
 
 			continue
 		}
