@@ -96,6 +96,11 @@ func (c Config) Validate() error {
 		return errors.New("--cluster-id is required")
 	}
 
+	// Reject cluster-secret without TLS — the secret would be sent in plaintext.
+	if c.ClusterSecret != "" && !c.TLSConfig.Enabled {
+		return errors.New("--cluster-secret requires TLS (configure --tls-cert-file and --tls-key-file); the secret would be sent in plaintext otherwise")
+	}
+
 	return c.RaftConfig.Validate()
 }
 

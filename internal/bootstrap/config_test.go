@@ -30,6 +30,63 @@ func TestServiceAdvertiseAddr_WithoutPort(t *testing.T) {
 	require.Equal(t, "myhost:8080", cfg.ServiceAdvertiseAddr())
 }
 
+// validBaseConfig returns a Config with required fields set so that
+// Validate() only fails on the aspect under test.
+func validBaseConfig() Config {
+	return Config{
+		ClusterID:  "test-cluster",
+		RaftConfig: node.NodeConfig{NodeID: 1},
+	}
+}
+
+func TestValidateClusterSecretRequiresTLS(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		clusterSecret string
+		tlsEnabled    bool
+		wantErr       string
+	}{
+		{
+			name:          "cluster secret with TLS enabled",
+			clusterSecret: "my-secret",
+			tlsEnabled:    true,
+			wantErr:       "",
+		},
+		{
+			name:          "cluster secret without TLS",
+			clusterSecret: "my-secret",
+			tlsEnabled:    false,
+			wantErr:       "--tls-cert-file",
+		},
+		{
+			name:          "no cluster secret without TLS",
+			clusterSecret: "",
+			tlsEnabled:    false,
+			wantErr:       "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := validBaseConfig()
+			cfg.ClusterSecret = tt.clusterSecret
+			cfg.TLSConfig.Enabled = tt.tlsEnabled
+
+			err := cfg.Validate()
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestConfigMismatchError_Error(t *testing.T) {
 	t.Parallel()
 

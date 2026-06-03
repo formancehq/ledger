@@ -3911,8 +3911,14 @@ ledger run --cold-storage-driver s3 \
 
 When authentication is enabled, all inter-node gRPC calls use this shared secret as a bearer token. Must be the same on all nodes in the cluster.
 
+**TLS is required when `--cluster-secret` is set.** The server refuses to start
+if a cluster secret is configured without TLS (`--tls-cert-file` and
+`--tls-key-file`), because the secret would be sent in plaintext otherwise.
+
 ```bash
-ledger run --cluster-secret "my-cluster-secret" --auth-enabled [other flags...]
+ledger run --cluster-secret "my-cluster-secret" --auth-enabled \
+  --tls-cert-file /etc/ledger/tls.crt --tls-key-file /etc/ledger/tls.key \
+  [other flags...]
 ```
 
 ---
