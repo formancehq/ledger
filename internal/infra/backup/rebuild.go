@@ -2,7 +2,9 @@ package backup
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"math/big"
 
@@ -69,9 +71,23 @@ func RebuildDelta(
 	var count uint64
 
 	for {
+		if err := ctx.Err(); err != nil {
+			_ = batch.Cancel()
+
+			return fmt.Errorf("rebuild cancelled after %d logs: %w", count, err)
+		}
+
 		log, err := logCursor.Next()
+		if errors.Is(err, io.EOF) {
+			break // clean end of stream
+		}
 		if err != nil {
-			break // io.EOF or error
+			// A non-EOF error means the log stream was truncated or a record
+			// failed to decode. Committing here would report a partial rebuild
+			// as success, leaving inconsistent derived state after a restore.
+			_ = batch.Cancel()
+
+			return fmt.Errorf("reading log cursor after %d logs: %w", count, err)
 		}
 
 		payload := log.GetPayload()
