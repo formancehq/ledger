@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -63,7 +64,16 @@ func writeCreated(w http.ResponseWriter, data any) {
 }
 
 // writeBadRequest writes a 400 Bad Request response.
+// If the underlying error is a MaxBytesError (body too large), it writes
+// 413 Request Entity Too Large instead.
 func writeBadRequest(w http.ResponseWriter, errorCode string, err error) {
+	var maxBytesErr *http.MaxBytesError
+	if errors.As(err, &maxBytesErr) {
+		writeErrorResponse(w, http.StatusRequestEntityTooLarge, "BODY_TOO_LARGE", err)
+
+		return
+	}
+
 	writeErrorResponse(w, http.StatusBadRequest, errorCode, err)
 }
 

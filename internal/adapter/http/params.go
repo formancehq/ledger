@@ -15,6 +15,25 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
+const (
+	defaultMaxBodySize int64 = 4 << 20 // 4 MB
+	defaultBulkMaxSize       = 1000    // max elements per bulk request
+)
+
+// maxBodySizeMiddleware limits the request body size using http.MaxBytesReader.
+// Requests exceeding the limit receive a 413 Request Entity Too Large response.
+func maxBodySizeMiddleware(maxBytes int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Body != nil {
+				r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // requireLedgerName extracts and validates the ledgerName URL parameter.
 // Returns the ledger name and true on success; writes a 400 response and returns false on failure.
 func requireLedgerName(w http.ResponseWriter, r *http.Request) (string, bool) {

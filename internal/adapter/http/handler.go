@@ -54,11 +54,12 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 			logger: logger,
 		}),
 		jsonRecoverer,
+		maxBodySizeMiddleware(defaultMaxBodySize),
 		internalauth.HTTPAuthMiddleware(authCfg),
 	)
 
 	// Create server instance for handlers
-	server := NewServer(logger, backend, 0) // 0 = no bulk size limit
+	server := NewServer(logger, backend, defaultBulkMaxSize)
 
 	// Register routes function - can be called with different prefixes
 	registerRoutes := func(r chi.Router) {

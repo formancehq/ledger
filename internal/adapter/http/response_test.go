@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -60,6 +61,19 @@ func TestWriteBadRequest(t *testing.T) {
 	resp := decodeResponse[ErrorResponse](t, w)
 	require.Equal(t, "VALIDATION", resp.ErrorCode)
 	require.Equal(t, "invalid input", resp.ErrorMessage)
+}
+
+func TestWriteBadRequest_MaxBytesError(t *testing.T) {
+	t.Parallel()
+
+	w := httptest.NewRecorder()
+	// Wrap a MaxBytesError so errors.As can unwrap it.
+	err := fmt.Errorf("read body: %w", &http.MaxBytesError{Limit: 1048576})
+	writeBadRequest(w, "INVALID_REQUEST", err)
+
+	require.Equal(t, http.StatusRequestEntityTooLarge, w.Code)
+	resp := decodeResponse[ErrorResponse](t, w)
+	require.Equal(t, "BODY_TOO_LARGE", resp.ErrorCode)
 }
 
 func TestWriteInternalServerError(t *testing.T) {
