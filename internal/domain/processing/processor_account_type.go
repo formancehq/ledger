@@ -25,7 +25,12 @@ func (p *RequestProcessor) processAddAccountType(
 		return nil, &domain.ErrInvalidPattern{Pattern: "", Details: "account type name is required"}
 	}
 
-	if err := accounttype.ValidatePattern(at.GetPattern()); err != nil {
+	newSegments, err := accounttype.ParsePattern(at.GetPattern())
+	if err != nil {
+		return nil, &domain.ErrInvalidPattern{Pattern: at.GetPattern(), Details: err.Error()}
+	}
+
+	if err := accounttype.ValidateSegmentTypes(newSegments, at.GetSegmentTypes()); err != nil {
 		return nil, &domain.ErrInvalidPattern{Pattern: at.GetPattern(), Details: err.Error()}
 	}
 
@@ -35,6 +40,22 @@ func (p *RequestProcessor) processAddAccountType(
 
 	if _, exists := info.GetAccountTypes()[at.GetName()]; exists {
 		return nil, &domain.ErrAccountTypeAlreadyExists{Name: at.GetName()}
+	}
+
+	// Check for conflicts with existing account types.
+	for existingName, existing := range info.GetAccountTypes() {
+		existingSegments, parseErr := accounttype.ParsePattern(existing.GetPattern())
+		if parseErr != nil {
+			continue
+		}
+
+		if accounttype.PatternsConflict(newSegments, existingSegments) {
+			return nil, &domain.ErrAccountTypeConflict{
+				NewPattern:      at.GetPattern(),
+				ExistingName:    existingName,
+				ExistingPattern: existing.GetPattern(),
+			}
+		}
 	}
 
 	info.AccountTypes[at.GetName()] = at

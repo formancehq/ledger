@@ -190,6 +190,10 @@ var errorMappings = []errorMapping{
 		return map[string]string{"name": e.Name}
 	}), codes.FailedPrecondition, domain.ErrReasonAccountTypeHasAccounts},
 
+	{matchAs(func(e *domain.ErrAccountTypeConflict) map[string]string {
+		return map[string]string{"pattern": e.NewPattern, "existingName": e.ExistingName, "existingPattern": e.ExistingPattern}
+	}), codes.FailedPrecondition, domain.ErrReasonAccountTypeConflict},
+
 	{matchAs(func(e *domain.ErrTransientAccountNonZero) map[string]string {
 		return map[string]string{"account": e.Account, "asset": e.Asset}
 	}), codes.FailedPrecondition, domain.ErrReasonTransientAccountNonZero},

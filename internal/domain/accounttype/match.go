@@ -1,6 +1,8 @@
 package accounttype
 
 import (
+	"slices"
+
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -15,10 +17,20 @@ type CompiledType struct {
 // CompileTypes pre-parses all account types into CompiledType entries.
 // Types with invalid patterns are silently skipped.
 // Variable segments are annotated with constraints from the proto segment_types map.
+// The output is sorted by name for deterministic ordering across nodes.
 func CompileTypes(types map[string]*commonpb.AccountType) []CompiledType {
+	// Sort keys for deterministic iteration order.
+	names := make([]string, 0, len(types))
+	for name := range types {
+		names = append(names, name)
+	}
+
+	slices.Sort(names)
+
 	compiled := make([]CompiledType, 0, len(types))
 
-	for _, at := range types {
+	for _, name := range names {
+		at := types[name]
 		segments, err := ParsePattern(at.GetPattern())
 		if err != nil {
 			continue
@@ -36,6 +48,33 @@ func CompileTypes(types map[string]*commonpb.AccountType) []CompiledType {
 	}
 
 	return compiled
+}
+
+// PatternsConflict returns true if two parsed patterns can match the same
+// address with the same specificity. Two patterns conflict when they have the
+// same number of segments, the same specificity, and at every position the
+// segments are compatible (both fixed with the same value, or at least one is
+// variable).
+func PatternsConflict(a, b []PatternSegment) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	if Specificity(a) != Specificity(b) {
+		return false
+	}
+
+	for i := range a {
+		// Two fixed segments must match literally to overlap.
+		if a[i].Kind == SegmentFixed && b[i].Kind == SegmentFixed {
+			if a[i].Value != b[i].Value {
+				return false
+			}
+		}
+		// If at least one is variable, any value could match — compatible.
+	}
+
+	return true
 }
 
 // FindMatchingType finds the best matching account type for an address using

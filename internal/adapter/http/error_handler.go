@@ -59,6 +59,7 @@ var httpErrorMappings = []httpErrorMapping{
 	{matchAs[*domain.ErrAccountTypeAlreadyExists](), http.StatusConflict, "ACCOUNT_TYPE_ALREADY_EXISTS", nil},
 	{matchAs[*domain.ErrInvalidPattern](), http.StatusBadRequest, "INVALID_PATTERN", nil},
 	{matchAs[*domain.ErrAccountTypeHasAccounts](), http.StatusConflict, "ACCOUNT_TYPE_HAS_ACCOUNTS", nil},
+	{matchAs[*domain.ErrAccountTypeConflict](), http.StatusConflict, "ACCOUNT_TYPE_CONFLICT", nil},
 	// Validation sentinel errors
 	{matchIs(domain.ErrNumscriptContentRequired), http.StatusBadRequest, "VALIDATION", nil},
 	{matchIs(domain.ErrTargetRequired), http.StatusBadRequest, "VALIDATION", nil},

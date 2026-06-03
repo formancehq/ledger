@@ -49,6 +49,7 @@ const (
 	ErrReasonAccountTypeAlreadyExists      = "ACCOUNT_TYPE_ALREADY_EXISTS"
 	ErrReasonInvalidPattern                = "INVALID_PATTERN"
 	ErrReasonAccountTypeHasAccounts        = "ACCOUNT_TYPE_HAS_ACCOUNTS"
+	ErrReasonAccountTypeConflict           = "ACCOUNT_TYPE_CONFLICT"
 	ErrReasonColdStorageDisabled           = "COLD_STORAGE_DISABLED"
 	ErrReasonClusterUnhealthy              = "CLUSTER_UNHEALTHY"
 	ErrReasonTransientAccountNonZero       = "TRANSIENT_ACCOUNT_NON_ZERO"
@@ -372,6 +373,19 @@ type ErrAccountTypeAlreadyExists struct {
 
 func (e *ErrAccountTypeAlreadyExists) Error() string {
 	return "account type already exists: " + e.Name
+}
+
+// ErrAccountTypeConflict is returned when a new account type pattern conflicts
+// with an existing pattern (same specificity and overlapping match space).
+type ErrAccountTypeConflict struct {
+	NewPattern      string
+	ExistingName    string
+	ExistingPattern string
+}
+
+func (e *ErrAccountTypeConflict) Error() string {
+	return fmt.Sprintf("pattern %q conflicts with existing account type %q (pattern %q): ambiguous match possible",
+		e.NewPattern, e.ExistingName, e.ExistingPattern)
 }
 
 // ErrInvalidPattern is returned when an account type pattern is syntactically invalid.
