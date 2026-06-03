@@ -595,6 +595,18 @@ func (a *Admission) verifyAndResolveSignatures(requests []*servicepb.Request) ([
 				return nil, fmt.Errorf("extracting signed request: %w", err)
 			}
 
+			// Verify the signed payload matches the wrapper request.
+			// The wrapper (minus the signature field) must be structurally
+			// identical to the trusted payload. This prevents scope escalation
+			// where the wrapper advertises a different operation than what
+			// was actually signed.
+			wrapperWithoutSig := req.CloneVT()
+			wrapperWithoutSig.Signature = nil
+
+			if !wrapperWithoutSig.EqualVT(trusted) {
+				return nil, fmt.Errorf("%w: signed payload does not match wrapper request", signing.ErrInvalidSignature)
+			}
+
 			// Attach the original signature to the trusted request for propagation
 			trusted.Signature = req.GetSignature()
 			result[i] = trusted
