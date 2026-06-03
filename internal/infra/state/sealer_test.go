@@ -1,7 +1,6 @@
 package state
 
 import (
-	"os"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -12,6 +11,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/pkg/worker"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -39,21 +39,34 @@ type testSealerResult struct {
 }
 
 // fixedPeriodState returns a fixed closing period for testing.
+// The period is stored atomically so it can be set after sealer startup
+// to avoid races with recoverPendingSeal.
 type fixedPeriodState struct {
-	period *commonpb.Period
+	period atomic.Pointer[commonpb.Period]
+}
+
+func newFixedPeriodState(p *commonpb.Period) *fixedPeriodState {
+	ps := &fixedPeriodState{}
+	if p != nil {
+		ps.period.Store(p)
+	}
+
+	return ps
 }
 
 func (f *fixedPeriodState) ClosingPeriods() []*commonpb.Period {
-	if f.period == nil {
+	p := f.period.Load()
+	if p == nil {
 		return nil
 	}
 
-	return []*commonpb.Period{f.period}
+	return []*commonpb.Period{p}
 }
 
 func (f *fixedPeriodState) ClosingPeriodByID(id uint64) (*commonpb.Period, bool) {
-	if f.period != nil && f.period.GetId() == id {
-		return f.period, true
+	p := f.period.Load()
+	if p != nil && p.GetId() == id {
+		return p, true
 	}
 
 	return nil, false
@@ -85,8 +98,8 @@ func newTestSealer(t *testing.T, store *dal.Store, closingPeriodID uint64) (*Sea
 	logger := logging.FromContext(ctx)
 
 	result := &testSealerResult{}
-	ps := &fixedPeriodState{period: &commonpb.Period{Id: closingPeriodID}}
-	sealer := NewSealer(logger, store, attributes.New(), make(chan SealRequest, 1), func(periodID uint64, sealingHash, stateHash []byte) {
+	ps := newFixedPeriodState(&commonpb.Period{Id: closingPeriodID})
+	sealer := NewSealer(logger, store, attributes.New(), worker.NewChannel[SealRequest](logger, "test-seal", 1), func(periodID uint64, sealingHash, stateHash []byte) {
 		result.periodID = periodID
 		result.sealingHash = sealingHash
 		result.stateHash = stateHash
@@ -222,37 +235,40 @@ func TestSealerRetryOnFailure(t *testing.T) {
 	t.Parallel()
 
 	store := createSealerTestStore(t)
-
-	// Create a real checkpoint, then hide it so the first attempt fails
-	realPath := createSealCheckpoint(t, store, 7)
-	hiddenPath := realPath + ".hidden"
-	require.NoError(t, os.Rename(realPath, hiddenPath))
+	checkpointPath := createSealCheckpoint(t, store, 7)
 
 	var proposeCalled atomic.Int32
 
+	// Start with isLeader=false so the first seal attempt returns ErrNotLeader,
+	// which triggers the retry loop. Then switch to true so the retry succeeds.
+	var leader atomic.Bool
+
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
-	sealRequestCh := make(chan SealRequest, 1)
-	ps := &fixedPeriodState{period: &commonpb.Period{Id: 7}}
+	sealRequestCh := worker.NewChannel[SealRequest](logger, "test-seal", 1)
+	// Use nil period state so recoverPendingSeal at startup does nothing.
+	ps := newFixedPeriodState(nil)
 	sealer := NewSealer(logger, store, attributes.New(), sealRequestCh, func(periodID uint64, sealingHash, stateHash []byte) {
 		proposeCalled.Add(1)
-	}, func() bool { return true }, ps)
+	}, leader.Load, ps)
+	// Disable periodic reconciliation to avoid duplicate seal requests during the test.
+	sealer.reconcileInterval = time.Hour
 
 	sealer.Start()
 	t.Cleanup(sealer.Stop)
 
-	// Restore the checkpoint so the retry succeeds
-	go func() {
-		_ = os.Rename(hiddenPath, realPath)
-	}()
+	// Activate the closing period state (needed for seal to proceed).
+	ps.period.Store(&commonpb.Period{Id: 7})
 
-	// Send the seal request via the channel
-	sealRequestCh <- SealRequest{
+	sealRequestCh.TrySend(SealRequest{
 		PeriodID:       7,
 		CloseSequence:  50,
 		LastAuditHash:  []byte("test-hash"),
-		CheckpointPath: realPath,
-	}
+		CheckpointPath: checkpointPath,
+	}, "test")
+
+	// Become leader so the retry succeeds.
+	leader.Store(true)
 
 	require.Eventually(t, func() bool {
 		return proposeCalled.Load() == 1
@@ -290,18 +306,18 @@ func TestSealerRecoverPendingSealMultiplePeriods(t *testing.T) {
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 
-	sealRequestCh := make(chan SealRequest, 10)
+	sealRequestCh := worker.NewChannel[SealRequest](logger, "test-seal", 10)
 	ps := &multiPeriodState{periods: []*commonpb.Period{p1, p2}}
 
 	sealer := NewSealer(logger, store, attributes.New(), sealRequestCh, func(uint64, []byte, []byte) {}, func() bool { return true }, ps)
 
-	sealer.recoverPendingSeal()
+	sealer.recoverPendingSeal(make(chan struct{}))
 
 	// Both periods should have been enqueued
 	var received []uint64
 	for len(received) < 2 {
 		select {
-		case req := <-sealRequestCh:
+		case req := <-sealRequestCh.Receive():
 			received = append(received, req.PeriodID)
 		default:
 			t.Fatal("expected 2 seal requests")
@@ -328,16 +344,16 @@ func TestSealerRecoverPendingSealSkipsMissingCheckpoint(t *testing.T) {
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 
-	sealRequestCh := make(chan SealRequest, 10)
+	sealRequestCh := worker.NewChannel[SealRequest](logger, "test-seal", 10)
 	ps := &multiPeriodState{periods: []*commonpb.Period{p1, p2}}
 
 	sealer := NewSealer(logger, store, attributes.New(), sealRequestCh, func(uint64, []byte, []byte) {}, func() bool { return true }, ps)
 
-	sealer.recoverPendingSeal()
+	sealer.recoverPendingSeal(make(chan struct{}))
 
 	// Only period 8 should be enqueued (period 5 has no checkpoint)
 	select {
-	case req := <-sealRequestCh:
+	case req := <-sealRequestCh.Receive():
 		require.Equal(t, uint64(8), req.PeriodID)
 	default:
 		t.Fatal("expected 1 seal request for period 8")
@@ -345,7 +361,7 @@ func TestSealerRecoverPendingSealSkipsMissingCheckpoint(t *testing.T) {
 
 	// No more requests
 	select {
-	case req := <-sealRequestCh:
+	case req := <-sealRequestCh.Receive():
 		t.Fatalf("unexpected seal request: %+v", req)
 	default:
 	}
@@ -358,14 +374,14 @@ func TestSealerSkipsAlreadySealedPeriod(t *testing.T) {
 	checkpointPath := createSealCheckpoint(t, store, 42)
 
 	// Period state says no closing periods (period was already sealed)
-	ps := &fixedPeriodState{period: nil}
+	ps := newFixedPeriodState(nil)
 
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 
 	var proposeCalled bool
 
-	sealer := NewSealer(logger, store, attributes.New(), make(chan SealRequest, 1), func(uint64, []byte, []byte) {
+	sealer := NewSealer(logger, store, attributes.New(), worker.NewChannel[SealRequest](logger, "test-seal", 1), func(uint64, []byte, []byte) {
 		proposeCalled = true
 	}, func() bool { return true }, ps)
 

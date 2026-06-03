@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -46,50 +47,68 @@ type MetadataConvertRequest struct {
 // Only the leader node performs the conversion and proposes. Followers wait and
 // re-check until the field is no longer in CONVERTING state (completed by the
 // leader through Raft).
+// metadataConvertReconcileInterval is the interval at which the MetadataConverter
+// re-checks for CONVERTING fields that may have been missed due to dropped signals.
+const metadataConvertReconcileInterval = 30 * time.Second
+
 type MetadataConverter struct {
-	logger    logging.Logger
-	dataStore *dal.Store
-	attrs     *attributes.Attributes
-	requestCh chan MetadataConvertRequest
-	proposer  Proposer
-	isLeader  func() bool
-	batchSize int
-	poolSize  int
-	w         worker.Worker
-	wg        sync.WaitGroup
+	logger      logging.Logger
+	dataStore   *dal.Store
+	attrs       *attributes.Attributes
+	requestCh   *worker.Channel[MetadataConvertRequest]
+	proposer    Proposer
+	isLeader    func() bool
+	reconcileFn func(stop <-chan struct{})
+	batchSize   int
+	poolSize    int
+	w           worker.Worker
+	wg          sync.WaitGroup
 }
 
 // NewMetadataConverter creates a new background metadata converter.
 // poolSize controls the maximum number of concurrent field conversions.
+// reconcileFn re-dispatches CONVERTING fields from durable state to the channel.
 func NewMetadataConverter(
 	logger logging.Logger,
 	dataStore *dal.Store,
 	attrs *attributes.Attributes,
-	requestCh chan MetadataConvertRequest,
+	requestCh *worker.Channel[MetadataConvertRequest],
 	proposer Proposer,
 	isLeader func() bool,
 	batchSize int,
 	poolSize int,
+	reconcileFn func(stop <-chan struct{}),
 ) *MetadataConverter {
 	if poolSize < 1 {
 		poolSize = 1
 	}
 
 	return &MetadataConverter{
-		logger:    logger.WithFields(map[string]any{"cmp": "metadata-converter"}),
-		dataStore: dataStore,
-		attrs:     attrs,
-		requestCh: requestCh,
-		proposer:  proposer,
-		isLeader:  isLeader,
-		batchSize: batchSize,
-		poolSize:  poolSize,
-		w:         worker.New(),
+		logger:      logger.WithFields(map[string]any{"cmp": "metadata-converter"}),
+		dataStore:   dataStore,
+		attrs:       attrs,
+		requestCh:   requestCh,
+		proposer:    proposer,
+		isLeader:    isLeader,
+		reconcileFn: reconcileFn,
+		batchSize:   batchSize,
+		poolSize:    poolSize,
+		w:           worker.New(),
 	}
 }
 
-// Start launches the background metadata conversion goroutine.
+// Start launches the background metadata conversion goroutine with periodic reconciliation.
 func (mc *MetadataConverter) Start() {
+	// Periodic reconciliation: re-scan for CONVERTING fields.
+	go func() {
+		stop := mc.w.StopCh()
+		worker.RunTicker(stop, metadataConvertReconcileInterval, func() {
+			if mc.isLeader() {
+				mc.reconcileFn(stop)
+			}
+		})
+	}()
+
 	mc.w.Run(mc.dispatchLoop)
 }
 
@@ -117,7 +136,7 @@ func (mc *MetadataConverter) dispatchLoop(stop <-chan struct{}) {
 			select {
 			case <-stop:
 				return
-			case req := <-mc.requestCh:
+			case req := <-mc.requestCh.Receive():
 				pending = append(pending, req)
 			case sem <- struct{}{}:
 				req := pending[0]
@@ -134,7 +153,7 @@ func (mc *MetadataConverter) dispatchLoop(stop <-chan struct{}) {
 			select {
 			case <-stop:
 				return
-			case req := <-mc.requestCh:
+			case req := <-mc.requestCh.Receive():
 				pending = append(pending, req)
 			}
 		}

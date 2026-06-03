@@ -17,6 +17,7 @@ import (
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
+	"github.com/formancehq/ledger/v3/internal/pkg/worker"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -87,10 +88,10 @@ func TestArchiverStartStop(t *testing.T) {
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 
-	archiveReqCh := make(chan ArchiveRequest, 1)
+	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 	cs := newMockColdStorage()
 
-	a := NewArchiver(logger, nil, cs, archiveReqCh, func(periodID uint64) {}, func() bool { return true }, "test-bucket")
+	a := NewArchiver(logger, nil, cs, archiveReqCh, func(periodID uint64) {}, func() bool { return true }, "test-bucket", func(<-chan struct{}) {})
 	a.Start()
 	a.Stop()
 	// No deadlock or panic means success
@@ -117,7 +118,7 @@ func TestArchiverArchivesAndProposes(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	cs := newMockColdStorage()
-	archiveReqCh := make(chan ArchiveRequest, 1)
+	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 
 	var proposedPeriodID atomic.Uint64
 
@@ -129,15 +130,16 @@ func TestArchiverArchivesAndProposes(t *testing.T) {
 		func(periodID uint64) { proposedPeriodID.Store(periodID) },
 		func() bool { return true },
 		"test-bucket",
+		func(<-chan struct{}) {},
 	)
 	a.Start()
 
 	// Send an archive request
-	archiveReqCh <- ArchiveRequest{
+	archiveReqCh.TrySend(ArchiveRequest{
 		PeriodID:      1,
 		StartSequence: 1,
 		CloseSequence: 1,
-	}
+	}, "test")
 
 	// Wait for the archive to complete
 	require.Eventually(t, func() bool {
@@ -162,7 +164,7 @@ func TestArchiverAlreadyArchivedLeaderProposes(t *testing.T) {
 	// Pre-populate: archive already exists
 	require.NoError(t, cs.Archive(context.Background(), "test-bucket", 5, nil))
 
-	archiveReqCh := make(chan ArchiveRequest, 1)
+	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 
 	var proposedPeriodID atomic.Uint64
 
@@ -174,15 +176,16 @@ func TestArchiverAlreadyArchivedLeaderProposes(t *testing.T) {
 		func(periodID uint64) { proposedPeriodID.Store(periodID) },
 		func() bool { return true }, // is leader
 		"test-bucket",
+		func(<-chan struct{}) {},
 	)
 	a.Start()
 
 	// Send request for already-archived period
-	archiveReqCh <- ArchiveRequest{
+	archiveReqCh.TrySend(ArchiveRequest{
 		PeriodID:      5,
 		StartSequence: 1,
 		CloseSequence: 10,
-	}
+	}, "test")
 
 	// Leader should still propose ConfirmArchivePeriod (crash recovery)
 	require.Eventually(t, func() bool {
@@ -202,7 +205,7 @@ func TestArchiverAlreadyArchivedFollowerDoesNotPropose(t *testing.T) {
 	// Pre-populate: archive already exists
 	require.NoError(t, cs.Archive(context.Background(), "test-bucket", 7, nil))
 
-	archiveReqCh := make(chan ArchiveRequest, 1)
+	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 
 	var proposedPeriodID atomic.Uint64
 
@@ -214,15 +217,16 @@ func TestArchiverAlreadyArchivedFollowerDoesNotPropose(t *testing.T) {
 		func(periodID uint64) { proposedPeriodID.Store(periodID) },
 		func() bool { return false }, // not leader
 		"test-bucket",
+		func(<-chan struct{}) {},
 	)
 	a.Start()
 
 	// Send request
-	archiveReqCh <- ArchiveRequest{
+	archiveReqCh.TrySend(ArchiveRequest{
 		PeriodID:      7,
 		StartSequence: 1,
 		CloseSequence: 10,
-	}
+	}, "test")
 
 	// Follower should not propose
 	require.Never(t, func() bool { return proposedPeriodID.Load() > 0 }, 200*time.Millisecond, 10*time.Millisecond, "follower should not propose")
@@ -242,7 +246,7 @@ func TestArchiverNonLeaderRetries(t *testing.T) {
 	t.Cleanup(func() { _ = dataStore.Close() })
 
 	cs := newMockColdStorage()
-	archiveReqCh := make(chan ArchiveRequest, 1)
+	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 
 	var (
 		proposedPeriodID atomic.Uint64
@@ -259,15 +263,16 @@ func TestArchiverNonLeaderRetries(t *testing.T) {
 		func(periodID uint64) { proposedPeriodID.Store(periodID) },
 		isLeader.Load,
 		"test-bucket",
+		func(<-chan struct{}) {},
 	)
 	a.Start()
 
 	// Send request while not leader
-	archiveReqCh <- ArchiveRequest{
+	archiveReqCh.TrySend(ArchiveRequest{
 		PeriodID:      3,
 		StartSequence: 1,
 		CloseSequence: 1,
-	}
+	}, "test")
 
 	// Should not have proposed yet
 	require.Never(t, func() bool { return proposedPeriodID.Load() > 0 }, 200*time.Millisecond, 10*time.Millisecond, "non-leader should not propose yet")
@@ -314,7 +319,7 @@ func TestArchiverSSTRoundtrip(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	cs := newMockColdStorage()
-	archiveReqCh := make(chan ArchiveRequest, 1)
+	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 
 	var proposedPeriodID atomic.Uint64
 
@@ -326,14 +331,15 @@ func TestArchiverSSTRoundtrip(t *testing.T) {
 		func(periodID uint64) { proposedPeriodID.Store(periodID) },
 		func() bool { return true },
 		"test-bucket",
+		func(<-chan struct{}) {},
 	)
 	a.Start()
 
-	archiveReqCh <- ArchiveRequest{
+	archiveReqCh.TrySend(ArchiveRequest{
 		PeriodID:      1,
 		StartSequence: 1,
 		CloseSequence: 1,
-	}
+	}, "test")
 
 	require.Eventually(t, func() bool {
 		return proposedPeriodID.Load() == 1

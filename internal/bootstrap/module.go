@@ -165,6 +165,7 @@ func ColdStorageModule(coldStorageDriver string) fx.Option {
 					},
 					raftNode.IsLeader,
 					bucketID,
+					machine.DispatchArchiveRequests,
 				)
 			},
 		),
@@ -649,6 +650,7 @@ func Module() fx.Option {
 					raftNode.IsLeader,
 					100, // batchSize
 					4,   // poolSize — max concurrent field conversions
+					machine.DispatchMetadataConversionRequests,
 				)
 			},
 			fx.Annotate(func(

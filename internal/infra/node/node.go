@@ -960,7 +960,7 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 				target := rd.Entries[len(rd.Entries)-1].Index
 
 				node.applier.Drain(stop)
-				node.fsm.OnLeadershipAcquired()
+				node.fsm.OnLeadershipAcquired(stop)
 
 				go func() {
 					if err := node.fsm.WaitForApplied(ctx, target); err != nil {

@@ -342,18 +342,13 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 				a.logger.Debugf("Recovering: creating seal checkpoint for closing period %d", period.GetId())
 			}
 
-			checkpointPath, err := a.store.CreateTemporaryCheckpoint(name)
+			_, err := a.store.CreateTemporaryCheckpoint(name)
 			if err != nil {
 				return false, fmt.Errorf("creating recovery seal checkpoint: %w", err)
 			}
 
-			req := state.SealRequestFromPeriod(period)
-
-			req.CheckpointPath = checkpointPath
-			select {
-			case a.fsm.SealRequestCh() <- *req:
-			default:
-			}
+			// The checkpoint is now on disk. The Sealer's recoverPendingSeal
+			// and periodic reconciliation will pick it up once started.
 		}
 	}
 

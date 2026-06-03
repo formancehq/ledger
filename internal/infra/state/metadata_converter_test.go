@@ -14,6 +14,7 @@ import (
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/pkg/worker"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -56,14 +57,14 @@ func newTestConverter(
 	isLeader func() bool,
 	batchSize int,
 	poolSize int,
-) (*MetadataConverter, chan MetadataConvertRequest) {
+) (*MetadataConverter, *worker.Channel[MetadataConvertRequest]) {
 	t.Helper()
 
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 	attrs := attributes.New()
 
-	requestCh := make(chan MetadataConvertRequest, 100)
+	requestCh := worker.NewChannel[MetadataConvertRequest](logger, "test-convert", 100)
 	mc := NewMetadataConverter(
 		logger,
 		store,
@@ -73,6 +74,7 @@ func newTestConverter(
 		isLeader,
 		batchSize,
 		poolSize,
+		func(<-chan struct{}) {},
 	)
 	t.Cleanup(mc.Stop)
 
@@ -113,18 +115,18 @@ func TestMetadataConverterFieldNoLongerConverting(t *testing.T) {
 	mc.Start()
 
 	// Send a convert request for the already-complete field.
-	requestCh <- MetadataConvertRequest{
+	requestCh.TrySend(MetadataConvertRequest{
 		LedgerName: "test-ledger",
 		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 		Key:        "age",
 		Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
-	}
+	}, "test")
 
 	// Wait for the converter to process the request. Since the field is
 	// already COMPLETE, it should exit without calling ProposeProposal.
 	// gomock will fail if ProposeProposal is called.
 	require.Eventually(t, func() bool {
-		return len(requestCh) == 0
+		return len(requestCh.Receive()) == 0
 	}, 2*time.Second, 50*time.Millisecond)
 }
 
@@ -149,12 +151,12 @@ func TestMetadataConverterNonLeaderWaits(t *testing.T) {
 	mc, requestCh := newTestConverter(t, store, proposer, func() bool { return false }, 10, 2)
 	mc.Start()
 
-	requestCh <- MetadataConvertRequest{
+	requestCh.TrySend(MetadataConvertRequest{
 		LedgerName: "test-ledger",
 		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 		Key:        "age",
 		Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
-	}
+	}, "test")
 
 	// Now mark the field as complete (simulating leader completing via Raft).
 	registerLedgerWithSchema(t, store, "test-ledger", &commonpb.MetadataSchema{
@@ -169,7 +171,7 @@ func TestMetadataConverterNonLeaderWaits(t *testing.T) {
 	// The non-leader should eventually notice and exit.
 	// gomock verifies ProposeProposal was never called.
 	require.Eventually(t, func() bool {
-		return len(requestCh) == 0
+		return len(requestCh.Receive()) == 0
 	}, 5*time.Second, 100*time.Millisecond)
 }
 
@@ -208,12 +210,12 @@ func TestMetadataConverterLeaderProposesCompletion(t *testing.T) {
 	mc, requestCh := newTestConverter(t, store, proposer, func() bool { return true }, 10, 2)
 	mc.Start()
 
-	requestCh <- MetadataConvertRequest{
+	requestCh.TrySend(MetadataConvertRequest{
 		LedgerName: "test-ledger",
 		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 		Key:        "score",
 		Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
-	}
+	}, "test")
 
 	// Wait for the ConversionComplete proposal.
 	require.Eventually(t, func() bool {
@@ -284,12 +286,12 @@ func TestMetadataConverterPoolConcurrency(t *testing.T) {
 			mdType = commonpb.MetadataType_METADATA_TYPE_UINT64
 		}
 
-		requestCh <- MetadataConvertRequest{
+		requestCh.TrySend(MetadataConvertRequest{
 			LedgerName: "test-ledger",
 			TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 			Key:        key,
 			Type:       mdType,
-		}
+		}, "test")
 	}
 
 	// All 3 should complete (each producing at least a ConversionComplete proposal).
@@ -313,17 +315,17 @@ func TestMetadataConverterLedgerNotFound(t *testing.T) {
 	mc, requestCh := newTestConverter(t, store, proposer, func() bool { return true }, 10, 2)
 	mc.Start()
 
-	requestCh <- MetadataConvertRequest{
+	requestCh.TrySend(MetadataConvertRequest{
 		LedgerName: "nonexistent-ledger",
 		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 		Key:        "age",
 		Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
-	}
+	}, "test")
 
 	// The isFieldStillConverting check will return false (ledger not found),
 	// so the converter should exit without proposing.
 	require.Eventually(t, func() bool {
-		return len(requestCh) == 0
+		return len(requestCh.Receive()) == 0
 	}, 2*time.Second, 50*time.Millisecond)
 }
 
@@ -347,24 +349,25 @@ func TestMetadataConverterQueueDrainsOnStop(t *testing.T) {
 		},
 	})
 
-	requestCh := make(chan MetadataConvertRequest, 100)
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 	attrs := attributes.New()
+	requestCh := worker.NewChannel[MetadataConvertRequest](logger, "test-convert", 100)
 
 	mc := NewMetadataConverter(
 		logger, store, attrs, requestCh, proposer,
 		func() bool { return true }, 10, 1,
+		func(<-chan struct{}) {},
 	)
 
 	// Fill the channel before starting.
 	for range 10 {
-		requestCh <- MetadataConvertRequest{
+		requestCh.TrySend(MetadataConvertRequest{
 			LedgerName: "test-ledger",
 			TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 			Key:        "x",
 			Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
-		}
+		}, "test")
 	}
 
 	mc.Start()

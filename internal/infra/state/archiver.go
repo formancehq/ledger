@@ -37,22 +37,29 @@ type Archiver struct {
 	logger           logging.Logger
 	dataStore        *dal.Store
 	coldStorage      coldstorage.ColdStorage
-	archiveRequestCh chan ArchiveRequest
+	archiveRequestCh *worker.Channel[ArchiveRequest]
 	proposeFn        ArchiveProposer
 	isLeader         func() bool
+	reconcileFn      func(stop <-chan struct{})
 	w                worker.Worker
 	bucketID         string
 }
 
+// archiveReconcileInterval is the interval at which the Archiver re-checks
+// for pending archive requests that may have been missed due to dropped signals.
+const archiveReconcileInterval = 30 * time.Second
+
 // NewArchiver creates a new background archiver.
+// reconcileFn re-dispatches ARCHIVING periods from durable state to the channel.
 func NewArchiver(
 	logger logging.Logger,
 	dataStore *dal.Store,
 	coldStorage coldstorage.ColdStorage,
-	archiveRequestCh chan ArchiveRequest,
+	archiveRequestCh *worker.Channel[ArchiveRequest],
 	proposeFn ArchiveProposer,
 	isLeader func() bool,
 	bucketID string,
+	reconcileFn func(stop <-chan struct{}),
 ) *Archiver {
 	return &Archiver{
 		logger:           logger.WithFields(map[string]any{"cmp": "archiver"}),
@@ -61,18 +68,24 @@ func NewArchiver(
 		archiveRequestCh: archiveRequestCh,
 		proposeFn:        proposeFn,
 		isLeader:         isLeader,
+		reconcileFn:      reconcileFn,
 		w:                worker.New(),
 		bucketID:         bucketID,
 	}
 }
 
-// Start launches the background archiving goroutine.
-// Crash recovery is automatic via WAL replay: if the node crashes between
-// ArchivedPeriodLog and ConfirmedArchivePeriodLog, WAL replay re-sends the
-// ArchiveRequest to the channel, and the export is idempotent.
+// Start launches the background archiving goroutine with periodic reconciliation.
 func (a *Archiver) Start() {
 	a.w.Run(func(stop <-chan struct{}) {
-		worker.DrainChannel(stop, a.archiveRequestCh, func(req ArchiveRequest) {
+		// Periodic reconciliation: re-scan for ARCHIVING periods.
+		go worker.RunTicker(stop, archiveReconcileInterval, func() {
+			if a.isLeader() {
+				a.reconcileFn(stop)
+			}
+		})
+
+		// Main drain loop.
+		worker.DrainChannel(stop, a.archiveRequestCh.Receive(), func(req ArchiveRequest) {
 			worker.RetryWithBackoff(stop, a.logger, func() error {
 				return a.archive(stop, req)
 			})

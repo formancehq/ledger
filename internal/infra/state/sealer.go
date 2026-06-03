@@ -3,6 +3,7 @@ package state
 import (
 	"encoding/binary"
 	"fmt"
+	"time"
 
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/zeebo/blake3"
@@ -44,14 +45,15 @@ func SealCheckpointName(periodID uint64) string {
 // Only the leader node computes the hash and proposes SealPeriod. Followers
 // poll until the period is no longer CLOSING (sealed by the leader through Raft).
 type Sealer struct {
-	logger        logging.Logger
-	dataStore     *dal.Store
-	attrs         *attributes.Attributes
-	sealRequestCh chan SealRequest
-	proposeFn     SealProposer
-	isLeader      func() bool
-	periodState   SealerPeriodState
-	w             worker.Worker
+	logger            logging.Logger
+	dataStore         *dal.Store
+	attrs             *attributes.Attributes
+	sealRequestCh     *worker.Channel[SealRequest]
+	proposeFn         SealProposer
+	isLeader          func() bool
+	periodState       SealerPeriodState
+	reconcileInterval time.Duration
+	w                 worker.Worker
 }
 
 // NewSealer creates a new background sealer.
@@ -59,40 +61,56 @@ func NewSealer(
 	logger logging.Logger,
 	dataStore *dal.Store,
 	attrs *attributes.Attributes,
-	sealRequestCh chan SealRequest,
+	sealRequestCh *worker.Channel[SealRequest],
 	proposeFn SealProposer,
 	isLeader func() bool,
 	periodState SealerPeriodState,
 ) *Sealer {
 	return &Sealer{
-		logger:        logger.WithFields(map[string]any{"cmp": "sealer"}),
-		dataStore:     dataStore,
-		attrs:         attrs,
-		sealRequestCh: sealRequestCh,
-		proposeFn:     proposeFn,
-		isLeader:      isLeader,
-		periodState:   periodState,
-		w:             worker.New(),
+		logger:            logger.WithFields(map[string]any{"cmp": "sealer"}),
+		dataStore:         dataStore,
+		attrs:             attrs,
+		sealRequestCh:     sealRequestCh,
+		proposeFn:         proposeFn,
+		isLeader:          isLeader,
+		periodState:       periodState,
+		reconcileInterval: sealReconcileInterval,
+		w:                 worker.New(),
 	}
 }
 
-// Start launches the background sealing goroutine and recovers any
-// pending seal from a previous crash.
+// reconcileInterval is the interval at which the Sealer re-checks for
+// pending seals that may have been missed due to dropped channel signals.
+const sealReconcileInterval = 30 * time.Second
+
+// Start launches the background sealing goroutine, recovers any pending
+// seal from a previous crash, and starts periodic reconciliation.
 func (s *Sealer) Start() {
 	s.w.Run(func(stop <-chan struct{}) {
-		worker.DrainChannel(stop, s.sealRequestCh, func(req SealRequest) {
+		// Recover on start and periodically in a background goroutine.
+		// Recovery uses blocking sends, so it must run concurrently with
+		// the drain loop to avoid deadlocking when the channel is full.
+		go func() {
+			s.recoverPendingSeal(stop)
+
+			worker.RunTicker(stop, s.reconcileInterval, func() {
+				s.recoverPendingSeal(stop)
+			})
+		}()
+
+		// Main drain loop.
+		worker.DrainChannel(stop, s.sealRequestCh.Receive(), func(req SealRequest) {
 			worker.RetryWithBackoff(stop, s.logger, func() error {
 				return s.seal(req)
 			})
 		})
 	})
-
-	s.recoverPendingSeal()
 }
 
 // recoverPendingSeal checks for pending seals from a previous crash and
 // re-enqueues them if seal checkpoints exist on disk.
-func (s *Sealer) recoverPendingSeal() {
+// Sends block until the worker drains or stop is closed.
+func (s *Sealer) recoverPendingSeal(stop <-chan struct{}) {
 	for _, cp := range s.periodState.ClosingPeriods() {
 		name := SealCheckpointName(cp.GetId())
 
@@ -106,11 +124,10 @@ func (s *Sealer) recoverPendingSeal() {
 		s.logger.WithFields(map[string]any{
 			"periodId":      req.PeriodID,
 			"closeSequence": req.CloseSequence,
-		}).Infof("Recovering pending period seal after restart")
+		}).Infof("Recovering pending period seal")
 
-		select {
-		case s.sealRequestCh <- *req:
-		default:
+		if !s.sealRequestCh.Send(*req, stop) {
+			return
 		}
 	}
 }

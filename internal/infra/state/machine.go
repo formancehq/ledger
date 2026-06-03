@@ -23,6 +23,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
+	"github.com/formancehq/ledger/v3/internal/pkg/worker"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -79,16 +80,16 @@ type Machine struct {
 
 	// sealRequestCh receives seal requests when a ClosePeriod log is applied.
 	// The Sealer reads from this channel to perform background sealing.
-	sealRequestCh chan SealRequest
+	sealRequestCh *worker.Channel[SealRequest]
 
 	// archiveRequestCh receives archive requests when an ArchivePeriod order is applied.
 	// The Archiver reads from this channel to perform background archival to cold storage.
-	archiveRequestCh chan ArchiveRequest
+	archiveRequestCh *worker.Channel[ArchiveRequest]
 
 	// metadataConvertRequestCh receives conversion requests when a SetMetadataFieldType
 	// log is applied. The MetadataConverter reads from this channel to perform
 	// background conversion of existing account metadata values.
-	metadataConvertRequestCh chan MetadataConvertRequest
+	metadataConvertRequestCh *worker.Channel[MetadataConvertRequest]
 
 	// coldCompactionCh signals the SmartCompactor that a period purge has been applied,
 	// meaning the cold zone [0x01, 0xF1) contains fresh tombstones that benefit from compaction.
@@ -192,9 +193,9 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		nextAuditSequenceID:            1,
 		nextLedgerID:                   1,
 		queryCheckpointScheduleChanged: signal.New(),
-		sealRequestCh:                  make(chan SealRequest, 10),
-		archiveRequestCh:               make(chan ArchiveRequest, 1),
-		metadataConvertRequestCh:       make(chan MetadataConvertRequest, 16),
+		sealRequestCh:                  worker.NewChannel[SealRequest](logger, "seal request", 10),
+		archiveRequestCh:               worker.NewChannel[ArchiveRequest](logger, "archive request", 1),
+		metadataConvertRequestCh:       worker.NewChannel[MetadataConvertRequest](logger, "metadata conversion request", 16),
 		coldCompactionCh:               make(chan struct{}, 1),
 		auditHashBuf:                   make([]byte, 0, 4096),
 	}
@@ -664,10 +665,7 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, entries ...raftpb.Entry)
 		if sealReqBase := fsm.checkClosePeriod(result); sealReqBase != nil {
 			return fsm.commitAndRequestCheckpoint(batch, ret, entries[i+1:], needsArchiveDispatch, sealReqBase.PeriodID, func(checkpointPath string) {
 				sealReqBase.CheckpointPath = checkpointPath
-				select {
-				case fsm.sealRequestCh <- *sealReqBase:
-				default:
-				}
+				fsm.sealRequestCh.TrySend(*sealReqBase, fmt.Sprintf("period %d", sealReqBase.PeriodID))
 			})
 		}
 
@@ -817,10 +815,7 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 
 	// Dispatch post-commit side effects using captured data.
 	for _, req := range pb.archiveRequests {
-		select {
-		case fsm.archiveRequestCh <- req:
-		default:
-		}
+		fsm.archiveRequestCh.TrySend(req, fmt.Sprintf("period %d", req.PeriodID))
 	}
 
 	for _, cpID := range pb.checkpointDeletes {
@@ -831,14 +826,12 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 		select {
 		case fsm.coldCompactionCh <- struct{}{}:
 		default:
+			// Coalescent signal — safe to drop, next purge will re-signal.
 		}
 	}
 
 	for _, req := range pb.convertRequests {
-		select {
-		case fsm.metadataConvertRequestCh <- req:
-		default:
-		}
+		fsm.metadataConvertRequestCh.TrySend(req, fmt.Sprintf("%s/%s", req.LedgerName, req.Key))
 	}
 
 	fsm.notifier.NotifyLogsCommitted(pb.lastSequenceID)
@@ -909,7 +902,7 @@ func (fsm *Machine) commitAndRequestCheckpoint(
 	fsm.notifier.NotifyLogsCommitted(lastSeq)
 
 	if needsArchiveDispatch {
-		fsm.dispatchArchiveRequests()
+		fsm.DispatchArchiveRequests(nil)
 	}
 
 	ret.CheckpointRequired = true
@@ -1460,7 +1453,7 @@ func (fsm *Machine) IsStoreUpToDate(ctx context.Context) (bool, error) {
 // SealRequestCh returns the channel used to communicate seal requests between
 // the Machine (writer, on ClosePeriod) and the Sealer (reader).
 // Both sides need send access (Machine for normal flow, Sealer/Node for recovery).
-func (fsm *Machine) SealRequestCh() chan SealRequest {
+func (fsm *Machine) SealRequestCh() *worker.Channel[SealRequest] {
 	return fsm.sealRequestCh
 }
 
@@ -1472,13 +1465,13 @@ func (fsm *Machine) StopBackgroundTasks() {
 }
 
 // ArchiveRequestCh returns the channel used to dispatch archive requests to the Archiver.
-func (fsm *Machine) ArchiveRequestCh() chan ArchiveRequest {
+func (fsm *Machine) ArchiveRequestCh() *worker.Channel[ArchiveRequest] {
 	return fsm.archiveRequestCh
 }
 
 // MetadataConvertRequestCh returns the channel used to dispatch metadata
 // conversion requests to the MetadataConverter.
-func (fsm *Machine) MetadataConvertRequestCh() chan MetadataConvertRequest {
+func (fsm *Machine) MetadataConvertRequestCh() *worker.Channel[MetadataConvertRequest] {
 	return fsm.metadataConvertRequestCh
 }
 
@@ -1489,18 +1482,26 @@ func (fsm *Machine) ColdCompactionCh() <-chan struct{} {
 }
 
 // dispatchArchiveRequests sends archive requests for all ARCHIVING periods
-// to the archiver channel. Called internally after batch commit on all nodes.
-// The Archiver itself skips execution when the node is not the leader.
-func (fsm *Machine) dispatchArchiveRequests() {
+// to the archiver channel.
+//
+// When stop is non-nil (recovery/reconciliation paths), sends block until
+// the worker drains or stop is closed.
+// When stop is nil (FSM apply path), sends are non-blocking with drop logging.
+func (fsm *Machine) DispatchArchiveRequests(stop <-chan struct{}) {
 	for _, p := range fsm.Periods.AllPeriods() {
 		if p.GetStatus() == commonpb.PeriodStatus_PERIOD_ARCHIVING {
-			select {
-			case fsm.archiveRequestCh <- ArchiveRequest{
+			req := ArchiveRequest{
 				PeriodID:      p.GetId(),
 				StartSequence: p.GetStartSequence(),
 				CloseSequence: p.GetCloseSequence(),
-			}:
-			default:
+			}
+
+			if stop != nil {
+				if !fsm.archiveRequestCh.Send(req, stop) {
+					return
+				}
+			} else {
+				fsm.archiveRequestCh.TrySend(req, fmt.Sprintf("period %d", req.PeriodID))
 			}
 		}
 	}
@@ -1508,8 +1509,8 @@ func (fsm *Machine) dispatchArchiveRequests() {
 
 // dispatchMetadataConversionRequests iterates all ledgers and dispatches
 // conversion requests for metadata fields still in CONVERTING status.
-// Called on leadership acquisition to recover incomplete conversions.
-func (fsm *Machine) dispatchMetadataConversionRequests() {
+// Called from recovery paths — sends block until the worker drains or stop is closed.
+func (fsm *Machine) DispatchMetadataConversionRequests(stop <-chan struct{}) {
 	handle, err := fsm.dataStore.NewReadHandle()
 	if err != nil {
 		fsm.logger.Errorf("Failed to create read handle for metadata conversion recovery: %v", err)
@@ -1538,22 +1539,21 @@ func (fsm *Machine) dispatchMetadataConversionRequests() {
 			continue
 		}
 
-		fsm.dispatchConvertingFields(info, commonpb.TargetType_TARGET_TYPE_ACCOUNT, info.GetMetadataSchema().GetAccountFields())
-		fsm.dispatchConvertingFields(info, commonpb.TargetType_TARGET_TYPE_TRANSACTION, info.GetMetadataSchema().GetTransactionFields())
+		fsm.dispatchConvertingFields(stop, info, commonpb.TargetType_TARGET_TYPE_ACCOUNT, info.GetMetadataSchema().GetAccountFields())
+		fsm.dispatchConvertingFields(stop, info, commonpb.TargetType_TARGET_TYPE_TRANSACTION, info.GetMetadataSchema().GetTransactionFields())
 	}
 }
 
-func (fsm *Machine) dispatchConvertingFields(info *commonpb.LedgerInfo, targetType commonpb.TargetType, fields map[string]*commonpb.MetadataFieldSchema) {
+func (fsm *Machine) dispatchConvertingFields(stop <-chan struct{}, info *commonpb.LedgerInfo, targetType commonpb.TargetType, fields map[string]*commonpb.MetadataFieldSchema) {
 	for key, field := range fields {
 		if field.GetStatus() == commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING {
-			select {
-			case fsm.metadataConvertRequestCh <- MetadataConvertRequest{
+			if !fsm.metadataConvertRequestCh.Send(MetadataConvertRequest{
 				LedgerName: info.GetName(),
 				TargetType: targetType,
 				Key:        key,
 				Type:       field.GetType(),
-			}:
-			default:
+			}, stop) {
+				return
 			}
 		}
 	}
@@ -1561,14 +1561,17 @@ func (fsm *Machine) dispatchConvertingFields(info *commonpb.LedgerInfo, targetTy
 
 // OnLeadershipAcquired is called when this node becomes the Raft leader.
 // It performs recovery actions that only the leader should handle.
-func (fsm *Machine) OnLeadershipAcquired() {
+// Dispatches are launched in goroutines so the Raft ready loop is never
+// blocked by channel sends that wait for background workers to start draining.
+// stop is the node's shutdown channel — goroutines abort on shutdown.
+func (fsm *Machine) OnLeadershipAcquired(stop <-chan struct{}) {
 	// Recover periods stuck in ARCHIVING state: if the previous leader crashed
 	// mid-archive, the new leader retries automatically.
-	fsm.dispatchArchiveRequests()
+	go fsm.DispatchArchiveRequests(stop)
 
 	// Recover metadata fields stuck in CONVERTING status: if the previous leader
 	// crashed mid-conversion, the new leader retries automatically.
-	fsm.dispatchMetadataConversionRequests()
+	go fsm.DispatchMetadataConversionRequests(stop)
 }
 
 // ensurePeriodBootstrapped creates the first period deterministically at the
