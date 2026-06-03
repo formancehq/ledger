@@ -1228,6 +1228,12 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// which produces false positives when batch boundaries differ across nodes.
 	ledgerIDs := collectLedgerIDs(proposal.GetOrders(), buffer)
 
+	// Capture the audit hash BEFORE writing this proposal's audit entry.
+	// This is the hash of the predecessor — used as LastAuditHash on the
+	// period so the checker can chain-verify from the first non-purged entry.
+	preAuditHash := make([]byte, len(fsm.lastAuditHash))
+	copy(preAuditHash, fsm.lastAuditHash)
+
 	// SUCCESS: write audit entry with batch-level side effects.
 	minLogSeq, maxLogSeq := extractLogSequenceRange(logs)
 	auditSuccess := &auditpb.AuditSuccess{
@@ -1264,11 +1270,14 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	}
 
 	// Update closing period's LastAuditHash if this batch contains a ClosePeriod.
+	// We use preAuditHash (the hash before this proposal's audit entry) so the
+	// checker can use it as the chain input when verifying the first non-purged
+	// audit entry after archive.
 	for _, logOrRef := range logs {
 		if created := logOrRef.GetCreatedLog(); created != nil {
 			if cp := created.GetPayload().GetClosePeriod(); cp != nil {
 				if closingPeriod := fsm.Periods.LatestClosingPeriod(); closingPeriod != nil {
-					closingPeriod.LastAuditHash = fsm.lastAuditHash
+					closingPeriod.LastAuditHash = preAuditHash
 				}
 			}
 		}

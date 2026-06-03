@@ -16,10 +16,12 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
+	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	domainreplay "github.com/formancehq/ledger/v3/internal/domain/replay"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
+	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -129,9 +131,15 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	defer func() { _ = replay.Close() }()
 
+	// Verify the audit hash chain before log replay.
+	// This iterates all non-archived audit entries and recomputes each hash
+	// from the stored orders, chaining from archiveLastAuditHash.
+	if err := c.verifyAuditHashChain(ctx, snap, periods, archiveLastAuditHash, callback); err != nil {
+		return fmt.Errorf("verifying audit hash chain: %w", err)
+	}
+
 	// State tracked during log replay
 	var (
-		_            = archiveLastAuditHash    // TODO: use in audit hash verification pass
 		knownLedgers = make(map[string]uint32) // ledger name → ledger ID
 		// Per-ledger reversion tracking using bitsets (1 bit per tx ID)
 		ledgerKnownTxIDs    = make(map[uint32]*bitset.Bitset)
@@ -842,6 +850,109 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 	}
 
 	return errorCount
+}
+
+// verifyAuditHashChain iterates all non-archived audit entries, recomputes
+// each hash from the stored orders, and verifies the chain starting from
+// archiveLastAuditHash. Reports CHECK_STORE_ERROR_TYPE_HASH_MISMATCH on
+// the first mismatch.
+//
+// Archived audit entries have been purged from Pebble, so the chain starts
+// at archiveLastAuditHash (from the latest archived period) or nil if no
+// periods have been archived.
+func (c *Checker) verifyAuditHashChain(
+	ctx context.Context,
+	reader dal.PebbleReader,
+	periods []*commonpb.Period,
+	archiveLastAuditHash []byte,
+	callback func(*servicepb.CheckStoreEvent),
+) error {
+	// Find the last archived audit sequence to start iteration after it.
+	//
+	// CloseAuditSequence is the last audit entry written BEFORE the ClosePeriod
+	// proposal. Purging deletes entries [start, CloseAuditSequence], so the
+	// ClosePeriod entry at CloseAuditSequence + 1 survives and is the first
+	// entry we verify. period.LastAuditHash is the hash of the predecessor
+	// (entry at CloseAuditSequence), which is the chain input for verifying
+	// the surviving entry.
+	var afterAuditSeq *uint64
+
+	for _, p := range periods {
+		if p.GetStatus() == commonpb.PeriodStatus_PERIOD_ARCHIVED {
+			closeAuditSeq := p.GetCloseAuditSequence()
+			if afterAuditSeq == nil || closeAuditSeq > *afterAuditSeq {
+				afterAuditSeq = &closeAuditSeq
+			}
+		}
+	}
+
+	auditCursor, err := query.ReadAuditEntries(ctx, reader, afterAuditSeq)
+	if err != nil {
+		return fmt.Errorf("reading audit entries: %w", err)
+	}
+
+	defer func() { _ = auditCursor.Close() }()
+
+	var (
+		lastHash = archiveLastAuditHash
+		hashBuf  []byte
+		checked  uint64
+	)
+
+	for {
+		entry, err := auditCursor.Next()
+		if err != nil {
+			break // end of cursor
+		}
+
+		// Read the audit items (orders) for this entry.
+		items, itemsErr := query.ReadAuditItems(ctx, reader, entry.GetSequence())
+		if itemsErr != nil {
+			return fmt.Errorf("reading audit items for sequence %d: %w", entry.GetSequence(), itemsErr)
+		}
+
+		// Extract orders from items.
+		orders := make([]*raftcmdpb.Order, len(items))
+		for i, item := range items {
+			orders[i] = item.GetOrder()
+		}
+
+		// Recompute the hash using the stored algorithm version.
+		var computed []byte
+		hashBuf, computed = processing.ComputeAuditHashByVersion(
+			entry.GetHashVersion(), hashBuf, lastHash, orders,
+		)
+
+		if !bytes.Equal(computed, entry.GetHash()) {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
+				fmt.Sprintf("audit hash chain broken at sequence %d: stored=%x computed=%x",
+					entry.GetSequence(), entry.GetHash(), computed),
+				logSequenceFromAuditEntry(entry), "", "", "",
+			))
+
+			return nil // Stop on first mismatch — chain is broken from here.
+		}
+
+		lastHash = entry.GetHash()
+		checked++
+	}
+
+	if checked > 0 {
+		c.logger.Infof("Audit hash chain verified: %d entries checked", checked)
+	}
+
+	return nil
+}
+
+// logSequenceFromAuditEntry extracts a representative log sequence from an
+// audit entry for error reporting. Returns 0 for failure entries.
+func logSequenceFromAuditEntry(entry *auditpb.AuditEntry) uint64 {
+	if success := entry.GetSuccess(); success != nil {
+		return success.GetMinLogSequence()
+	}
+
+	return 0
 }
 
 // verifySealingHash checks that the sealing hash of an archived period matches
