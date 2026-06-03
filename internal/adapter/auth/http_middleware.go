@@ -14,7 +14,7 @@ import (
 
 // HTTPAuthMiddleware returns an HTTP middleware that validates JWT tokens,
 // stores the claims in the request context, and expands scopes through the
-// scope mapping. Public endpoints (/health, /debug/*) are skipped.
+// scope mapping. Health endpoints (/health, /livez, /readyz) are skipped.
 // When cfg.Enabled is false, requests pass through without authentication.
 func HTTPAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -27,7 +27,7 @@ func HTTPAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 
 			// Public endpoints: no auth required
 			path := strings.TrimPrefix(r.URL.Path, "/v2")
-			if path == "/health" || path == "/livez" || path == "/readyz" || strings.HasPrefix(path, "/debug/") {
+			if path == "/health" || path == "/livez" || path == "/readyz" {
 				next.ServeHTTP(w, r)
 
 				return

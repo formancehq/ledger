@@ -30,6 +30,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 	requireTransactionsWrite := internalauth.RequireScope(authCfg, internalauth.ScopeTransactionsWrite)
 	requireAccountsRead := internalauth.RequireScope(authCfg, internalauth.ScopeAccountsRead)
 	requireMetadataWrite := internalauth.RequireScope(authCfg, internalauth.ScopeMetadataWrite)
+	requireOpsRead := internalauth.RequireScope(authCfg, internalauth.ScopeOpsRead)
 	requireQueriesRead := internalauth.RequireScope(authCfg, internalauth.ScopeQueriesRead)
 	requireQueriesWrite := internalauth.RequireScope(authCfg, internalauth.ScopeQueriesWrite)
 
@@ -63,8 +64,8 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 
 	// Register routes function - can be called with different prefixes
 	registerRoutes := func(r chi.Router) {
-		// Unauthenticated: pprof and health
-		r.Route("/debug/pprof", func(r chi.Router) {
+		// pprof: requires ops:read scope when auth is enabled
+		r.With(requireOpsRead).Route("/debug/pprof", func(r chi.Router) {
 			r.Get("/", pprof.Index)
 			r.Get("/cmdline", pprof.Cmdline)
 			r.Get("/profile", pprof.Profile)
