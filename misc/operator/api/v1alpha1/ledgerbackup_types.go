@@ -64,9 +64,24 @@ type LedgerBackupSpec struct {
 	Destination BackupDestination `json:"destination"`
 
 	// Schedule defines cron schedules for full and incremental backups.
-	// At least one of full or incremental must be set.
+	// Both entries are optional; a LedgerBackup without any schedule is valid
+	// and acts as a backup configuration template for manual LedgerBackupRun resources.
 	// +optional
 	Schedule BackupSchedule `json:"schedule,omitempty"`
+
+	// SuccessfulRunsHistoryLimit is the maximum number of successful LedgerBackupRun
+	// resources to keep per type (full/incremental). Older runs are garbage-collected.
+	// Defaults to 3.
+	// +kubebuilder:default=3
+	// +optional
+	SuccessfulRunsHistoryLimit *int32 `json:"successfulRunsHistoryLimit,omitempty"`
+
+	// FailedRunsHistoryLimit is the maximum number of failed LedgerBackupRun
+	// resources to keep per type (full/incremental). Older runs are garbage-collected.
+	// Defaults to 1.
+	// +kubebuilder:default=1
+	// +optional
+	FailedRunsHistoryLimit *int32 `json:"failedRunsHistoryLimit,omitempty"`
 }
 
 // FullBackupStatus holds the result of the last full backup.

@@ -67,6 +67,7 @@ rules:
 - apiGroups:
   - ledger.formance.com
   resources:
+  - ledgerbackupruns
   - ledgerbackups
   - ledgerclusteragents
   - ledgers
@@ -82,6 +83,7 @@ rules:
 - apiGroups:
   - ledger.formance.com
   resources:
+  - ledgerbackupruns/finalizers
   - ledgerbackups/finalizers
   - ledgerclusteragents/finalizers
   - ledgers/finalizers
@@ -91,6 +93,7 @@ rules:
 - apiGroups:
   - ledger.formance.com
   resources:
+  - ledgerbackupruns/status
   - ledgerbackups/status
   - ledgerclusteragents/status
   - ledgers/status

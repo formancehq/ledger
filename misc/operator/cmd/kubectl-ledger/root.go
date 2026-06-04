@@ -4,6 +4,7 @@ import (
 	"github.com/spf13/cobra"
 
 	agentscmd "github.com/formance/ledger/operator/cmd/kubectl-ledger/agents"
+	"github.com/formance/ledger/operator/cmd/kubectl-ledger/backup"
 	"github.com/formance/ledger/operator/cmd/kubectl-ledger/cmdutil"
 	"github.com/formance/ledger/operator/cmd/kubectl-ledger/create"
 	deletecmd "github.com/formance/ledger/operator/cmd/kubectl-ledger/delete"
@@ -41,6 +42,7 @@ func newRootCommand() *cobra.Command {
 		logs.NewCommand(opts),
 		portforward.NewCommand(opts),
 		agentscmd.NewCommand(opts),
+		backup.NewCommand(opts),
 		explain.NewCommand(opts.RESTConfig),
 		newVersionCommand(),
 	)

@@ -98,10 +98,19 @@ spec:
                 required:
                 - driver
                 type: object
+              failedRunsHistoryLimit:
+                default: 1
+                description: |-
+                  FailedRunsHistoryLimit is the maximum number of failed LedgerBackupRun
+                  resources to keep per type (full/incremental). Older runs are garbage-collected.
+                  Defaults to 1.
+                format: int32
+                type: integer
               schedule:
                 description: |-
                   Schedule defines cron schedules for full and incremental backups.
-                  At least one of full or incremental must be set.
+                  Both entries are optional; a LedgerBackup without any schedule is valid
+                  and acts as a backup configuration template for manual LedgerBackupRun resources.
                 properties:
                   full:
                     description: Full is the cron expression for full backups (e.g.
@@ -116,6 +125,14 @@ spec:
                 description: ServiceRef is the name of the LedgerService in the same
                   namespace.
                 type: string
+              successfulRunsHistoryLimit:
+                default: 3
+                description: |-
+                  SuccessfulRunsHistoryLimit is the maximum number of successful LedgerBackupRun
+                  resources to keep per type (full/incremental). Older runs are garbage-collected.
+                  Defaults to 3.
+                format: int32
+                type: integer
             required:
             - destination
             - serviceRef

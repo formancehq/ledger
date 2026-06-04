@@ -65,6 +65,59 @@ func ResolveLedgerServiceName(ctx context.Context, opts *Options, args []string)
 	return selected, ns, nil
 }
 
+// ResolveLedgerBackupName returns the LedgerBackup name from args or by interactive selection.
+func ResolveLedgerBackupName(ctx context.Context, opts *Options, args []string) (name, namespace string, err error) {
+	ns, err := opts.ResolvedNamespace()
+	if err != nil {
+		return "", "", fmt.Errorf("resolving namespace: %w", err)
+	}
+
+	if len(args) > 0 {
+		return args[0], ns, nil
+	}
+
+	crdClient, err := opts.CRDClient()
+	if err != nil {
+		return "", "", fmt.Errorf("creating client: %w", err)
+	}
+
+	spinner, _ := pterm.DefaultSpinner.Start("Fetching LedgerBackup resources...")
+
+	backups, err := ListLedgerBackups(ctx, crdClient, ns)
+	if err != nil {
+		spinner.Fail("Failed to list LedgerBackup resources")
+
+		return "", "", fmt.Errorf("listing backups: %w", err)
+	}
+
+	_ = spinner.Stop()
+
+	if len(backups.Items) == 0 {
+		return "", "", fmt.Errorf("no LedgerBackup resources found in namespace %q", ns)
+	}
+
+	names := make([]string, len(backups.Items))
+	for i := range backups.Items {
+		names[i] = backups.Items[i].Name
+	}
+
+	if len(names) == 1 {
+		pterm.Info.Printfln("Using backup: %s", pterm.Cyan(names[0]))
+
+		return names[0], ns, nil
+	}
+
+	selected, err := pterm.DefaultInteractiveSelect.
+		WithOptions(names).
+		WithDefaultText("Select a LedgerBackup").
+		Show()
+	if err != nil {
+		return "", "", fmt.Errorf("failed to select backup: %w", err)
+	}
+
+	return selected, ns, nil
+}
+
 // ResolveLedgerClusterAgentName returns the LedgerClusterAgent name from args
 // or by interactive selection. LedgerClusterAgent is cluster-scoped so no namespace needed.
 func ResolveLedgerClusterAgentName(ctx context.Context, opts *Options, args []string) (string, error) {

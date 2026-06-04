@@ -370,6 +370,10 @@ func buildPodTemplate(ledger *ledgerv1alpha1.LedgerService, specHash string, age
 		podSpec.Affinity = affinity
 	}
 
+	if len(ledger.Spec.TopologySpreadConstraints) > 0 {
+		podSpec.TopologySpreadConstraints = buildTopologySpreadConstraints(ledger)
+	}
+
 	return corev1.PodTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels:      selectorLabels(ledger),
@@ -435,6 +439,23 @@ func buildAffinity(ledger *ledgerv1alpha1.LedgerService) *corev1.Affinity {
 	}
 
 	return affinity
+}
+
+// buildTopologySpreadConstraints returns a deep-copied list of the user-provided
+// topologySpreadConstraints with a default LabelSelector pointing to the
+// LedgerService selector when the user did not supply one.
+func buildTopologySpreadConstraints(ledger *ledgerv1alpha1.LedgerService) []corev1.TopologySpreadConstraint {
+	in := ledger.Spec.TopologySpreadConstraints
+	out := make([]corev1.TopologySpreadConstraint, len(in))
+	selector := selectorLabels(ledger)
+	for i := range in {
+		out[i] = *in[i].DeepCopy()
+		if out[i].LabelSelector == nil {
+			out[i].LabelSelector = &metav1.LabelSelector{MatchLabels: selector}
+		}
+	}
+
+	return out
 }
 
 func buildCommand(ledger *ledgerv1alpha1.LedgerService, agents []agentKeyInfo) []string {

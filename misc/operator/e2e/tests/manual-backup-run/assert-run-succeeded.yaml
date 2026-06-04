@@ -1,0 +1,14 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: LedgerBackupRun
+metadata:
+  name: manual-bk-run-1
+status:
+  phase: Succeeded
+  (startTime != null): true
+  (completionTime != null): true
+  full:
+    (time != null): true
+    (totalFiles >= `0`): true
+  conditions:
+    - type: BackupCompleted
+      status: "True"

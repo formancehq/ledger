@@ -1,0 +1,9 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: LedgerBackup
+metadata:
+  name: manual-bk
+status:
+  phase: Ready
+  conditions:
+    - type: ConfigValid
+      status: "True"

@@ -260,6 +260,12 @@ type LedgerServiceSpec struct {
 	// +optional
 	PodAntiAffinity *PodAntiAffinitySpec `json:"podAntiAffinity,omitempty"`
 
+	// TopologySpreadConstraints describe how pods are spread across failure
+	// domains (e.g. zones, nodes). See PodSpec.topologySpreadConstraints. The
+	// pod label selector defaults to the LedgerService's selector when omitted.
+	// +optional
+	TopologySpreadConstraints []corev1.TopologySpreadConstraint `json:"topologySpreadConstraints,omitempty"`
+
 	// NetworkPolicy configuration for egress restrictions.
 	// +optional
 	NetworkPolicy *NetworkPolicySpec `json:"networkPolicy,omitempty"`

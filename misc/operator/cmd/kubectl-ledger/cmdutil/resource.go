@@ -75,6 +75,59 @@ func LedgerServices(ctx context.Context, cs kubernetes.Interface, namespace, nam
 	})
 }
 
+// GetLedgerBackup fetches a single LedgerBackup CR.
+func GetLedgerBackup(ctx context.Context, c client.Client, namespace, name string) (*ledgerv1alpha1.LedgerBackup, error) {
+	var backup ledgerv1alpha1.LedgerBackup
+	if err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &backup); err != nil {
+		return nil, err
+	}
+
+	return &backup, nil
+}
+
+// ListLedgerBackups lists LedgerBackup CRs in a namespace.
+func ListLedgerBackups(ctx context.Context, c client.Client, namespace string) (*ledgerv1alpha1.LedgerBackupList, error) {
+	var list ledgerv1alpha1.LedgerBackupList
+	opts := []client.ListOption{}
+	if namespace != "" {
+		opts = append(opts, client.InNamespace(namespace))
+	}
+	if err := c.List(ctx, &list, opts...); err != nil {
+		return nil, err
+	}
+
+	return &list, nil
+}
+
+// GetLedgerBackupRun fetches a single LedgerBackupRun CR.
+func GetLedgerBackupRun(ctx context.Context, c client.Client, namespace, name string) (*ledgerv1alpha1.LedgerBackupRun, error) {
+	var run ledgerv1alpha1.LedgerBackupRun
+	if err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &run); err != nil {
+		return nil, err
+	}
+
+	return &run, nil
+}
+
+// ListLedgerBackupRuns lists LedgerBackupRun CRs in a namespace, optionally filtered
+// by parent LedgerBackup name (matches the LabelLedgerBackup label). Pass an empty
+// backupName to list all runs in the namespace.
+func ListLedgerBackupRuns(ctx context.Context, c client.Client, namespace, backupName string) (*ledgerv1alpha1.LedgerBackupRunList, error) {
+	var list ledgerv1alpha1.LedgerBackupRunList
+	opts := []client.ListOption{}
+	if namespace != "" {
+		opts = append(opts, client.InNamespace(namespace))
+	}
+	if backupName != "" {
+		opts = append(opts, client.MatchingLabels{ledgerv1alpha1.LabelLedgerBackup: backupName})
+	}
+	if err := c.List(ctx, &list, opts...); err != nil {
+		return nil, err
+	}
+
+	return &list, nil
+}
+
 // GetLedgerClusterAgent fetches a single cluster-scoped LedgerClusterAgent CR.
 func GetLedgerClusterAgent(ctx context.Context, c client.Client, name string) (*ledgerv1alpha1.LedgerClusterAgent, error) {
 	var agent ledgerv1alpha1.LedgerClusterAgent

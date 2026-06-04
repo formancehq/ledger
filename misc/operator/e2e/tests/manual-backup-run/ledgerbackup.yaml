@@ -1,0 +1,15 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: LedgerBackup
+metadata:
+  name: manual-bk
+spec:
+  serviceRef: bk-manual-svc
+  destination:
+    driver: s3
+    s3:
+      bucket: e2e-manual-backup
+      region: us-east-1
+      endpoint: http://minio.minio.svc.cluster.local:9000
+    s3AccessKeyId: minioadmin
+    s3SecretAccessKey: minioadmin
+  # No schedule: this LedgerBackup is a configuration template for manual runs only.
