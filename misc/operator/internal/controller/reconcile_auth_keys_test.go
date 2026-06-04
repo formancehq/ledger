@@ -4,7 +4,6 @@ package controller
 
 import (
 	"encoding/json"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -115,9 +114,11 @@ func TestReconcile_AuthKeysStatefulSet(t *testing.T) {
 		}
 	}
 
-	// Verify the command contains --auth-ed25519-keys flag.
-	command := strings.Join(container.Command, " ")
-	assert.Contains(t, command, `--auth-ed25519-keys "/auth-keys/auth-keys.json"`)
+	// Verify the AUTH_ED25519_KEYS env var points at the mounted file.
+	authEd25519 := findEnv(container.Env, "AUTH_ED25519_KEYS")
+	if assert.NotNil(t, authEd25519, "AUTH_ED25519_KEYS env var should be set when agents exist") {
+		assert.Equal(t, "/auth-keys/auth-keys.json", authEd25519.Value)
+	}
 }
 
 func TestReconcile_NoAgentsNoConfigMap(t *testing.T) {
@@ -143,10 +144,9 @@ func TestReconcile_NoAgentsNoConfigMap(t *testing.T) {
 		assert.NotEqual(t, "auth-keys", v.Name, "auth-keys volume should not exist without agents")
 	}
 
-	// Verify the command does not contain --auth-ed25519-keys flag.
+	// Verify the AUTH_ED25519_KEYS env var is not set.
 	container := sts.Spec.Template.Spec.Containers[0]
-	command := strings.Join(container.Command, " ")
-	assert.NotContains(t, command, "--auth-ed25519-keys")
+	assert.Nil(t, findEnv(container.Env, "AUTH_ED25519_KEYS"), "AUTH_ED25519_KEYS env var should not be set without agents")
 }
 
 func TestReconcile_AuthKeysHashAnnotation(t *testing.T) {

@@ -331,7 +331,7 @@ func buildPodTemplate(ledger *ledgerv1alpha1.LedgerService, specHash string, age
 		})
 	}
 
-	envVars := buildEnvVars(ledger, targetTLSMode)
+	envVars := buildEnvVars(ledger, targetTLSMode, agents)
 	// Inject CLUSTER_SECRET only when TLS is at least partially active:
 	// the secret is a static bearer token and must never travel in
 	// plaintext. During a TLS toggle, the secret appears together with the
@@ -357,7 +357,7 @@ func buildPodTemplate(ledger *ledgerv1alpha1.LedgerService, specHash string, age
 		ImagePullPolicy: pullPolicy,
 		Ports:           ports,
 		Env:             envVars,
-		Command:         buildCommand(ledger, agents, targetTLSMode),
+		Command:         buildCommand(ledger),
 		VolumeMounts:    volumeMounts,
 		Resources:       ledger.Spec.Resources,
 	}
@@ -480,15 +480,20 @@ func buildTopologySpreadConstraints(ledger *ledgerv1alpha1.LedgerService) []core
 	return out
 }
 
-func buildCommand(ledger *ledgerv1alpha1.LedgerService, agents []agentKeyInfo, targetTLSMode string) []string {
+// buildCommand emits the shell entrypoint for the ledger container. It is
+// intentionally minimal: the only logic that lives here is what depends on
+// POD_INDEX (a Kubernetes concept that must not leak into the server) —
+// deriving the Raft NODE_ID and choosing between bootstrap / join / restore
+// for the cluster startup flag. Everything else is plain configuration and
+// is passed through env vars built by buildEnvVars.
+func buildCommand(ledger *ledgerv1alpha1.LedgerService) []string {
 	spec := &ledger.Spec
-	hlsSvcName := headlessServiceName(ledger)
 
 	var clusterLogic string
 	if spec.Restore {
 		clusterLogic = `CLUSTER_FLAG="--restore"`
 	} else {
-		bootstrap0 := fmt.Sprintf("%s-0.%s.${POD_NAMESPACE}.svc.cluster.local", ledger.Name, hlsSvcName)
+		bootstrap0 := fmt.Sprintf("%s-0.%s.${POD_NAMESPACE}.svc.cluster.local", ledger.Name, headlessServiceName(ledger))
 		clusterLogic = fmt.Sprintf(`if [ "$POD_INDEX" = "0" ]; then
   if [ -d "%s/checkpoints" ] && [ "$(ls -A %s/checkpoints 2>/dev/null)" ]; then
     CLUSTER_FLAG=""
@@ -496,60 +501,13 @@ func buildCommand(ledger *ledgerv1alpha1.LedgerService, agents []agentKeyInfo, t
     CLUSTER_FLAG="--bootstrap"
   fi
 else
-  BOOTSTRAP_HOST="%s"
-  CLUSTER_FLAG="--join ${BOOTSTRAP_HOST}:${GRPC_PORT}"
+  CLUSTER_FLAG="--join %s:${GRPC_PORT}"
 fi`, spec.DataDir, spec.DataDir, bootstrap0)
 	}
 
-	var extraFlags string
-	if spec.Raft != nil && spec.Raft.LearnerPromotionThreshold != nil {
-		extraFlags += fmt.Sprintf(" \\\n  --learner-promotion-threshold %d", *spec.Raft.LearnerPromotionThreshold)
-	}
-	if spec.ResponseSigning != nil && spec.ResponseSigning.Enabled {
-		extraFlags += ` \
-  --response-signing-key "$RESPONSE_SIGNING_KEY"`
-	}
-	// Pass --tls-* flags when TLS is at least partially active.
-	if targetTLSMode != tlsModeDisabled {
-		extraFlags += fmt.Sprintf(` \
-  --tls-mode %s \
-  --tls-cert-file "$TLS_CERT_FILE" \
-  --tls-key-file "$TLS_KEY_FILE"`, targetTLSMode)
-
-		if spec.TLS != nil && spec.TLS.CASecretKey != "" {
-			extraFlags += ` \
-  --tls-ca-cert-file "$TLS_CA_CERT_FILE"`
-		}
-	}
-
-	// Pass --cluster-secret only when injected (TLS != disabled). Sending a
-	// static bearer token over plaintext is an anti-pattern.
-	if shouldInjectClusterSecret(targetTLSMode) {
-		extraFlags += ` \
-  --cluster-secret "$CLUSTER_SECRET"`
-	}
-
-	// --auth-ed25519-keys is only added when agents exist AND auth is not explicitly disabled.
-	authExplicitlyDisabled := spec.Auth != nil && spec.Auth.Enabled != nil && !*spec.Auth.Enabled
-	if len(agents) > 0 && !authExplicitlyDisabled {
-		extraFlags += ` \
-  --auth-ed25519-keys "/auth-keys/auth-keys.json"`
-	}
-
 	script := fmt.Sprintf(`NODE_ID=$((POD_INDEX + 1))
-RAFT_PORT=$(echo $BIND_ADDR | cut -d: -f2)
-ADVERTISE_ADDR="${POD_NAME}.%s.${POD_NAMESPACE}.svc.cluster.local:${RAFT_PORT}"
 %s
-if [ -n "$OTEL_RESOURCE_ATTRIBUTES" ]; then
-  OTEL_RESOURCE_ATTRIBUTES="$OTEL_RESOURCE_ATTRIBUTES,service.cluster=%s,service.node_id=$POD_NAME"
-else
-  OTEL_RESOURCE_ATTRIBUTES="service.cluster=%s,service.node_id=$POD_NAME"
-fi
-export OTEL_RESOURCE_ATTRIBUTES
-exec ./ledger-server run \
-  --node-id $NODE_ID \
-  --advertise-addr "$ADVERTISE_ADDR"%s \
-  $CLUSTER_FLAG`, hlsSvcName, clusterLogic, ledger.Name, ledger.Name, extraFlags)
+exec ./ledger-server run --node-id $NODE_ID $CLUSTER_FLAG`, clusterLogic)
 
 	return []string{"/bin/sh", "-c", script}
 }

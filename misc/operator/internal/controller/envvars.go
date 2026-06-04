@@ -2,6 +2,7 @@ package controller
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -88,8 +89,18 @@ func appendIfQuantity(envs []corev1.EnvVar, name string, value *resource.Quantit
 // reconcile pass (one of "disabled", "optional", "required"); it differs from
 // spec.TLS.Enabled during a TLS toggle, when the operator first walks the
 // StatefulSet through "optional".
-func buildEnvVars(ledger *ledgerv1alpha1.LedgerService, targetTLSMode string) []corev1.EnvVar {
+//
+// The agents slice drives whether AUTH_ED25519_KEYS is exposed: it is set
+// only when at least one agent is registered AND auth is not explicitly
+// disabled.
+func buildEnvVars(ledger *ledgerv1alpha1.LedgerService, targetTLSMode string, agents []agentKeyInfo) []corev1.EnvVar {
 	spec := &ledger.Spec
+	hlsSvcName := headlessServiceName(ledger)
+
+	// ADVERTISE_ADDR uses Kubernetes' built-in $(VAR) substitution on env
+	// var values. The kubelet resolves $(POD_NAME) / $(POD_NAMESPACE) from
+	// the field refs above before passing the env to the container.
+	advertiseAddr := fmt.Sprintf("$(POD_NAME).%s.$(POD_NAMESPACE).svc.cluster.local:%d", hlsSvcName, spec.GrpcPort)
 
 	envs := []corev1.EnvVar{
 		// Field references
@@ -103,6 +114,7 @@ func buildEnvVars(ledger *ledgerv1alpha1.LedgerService, targetTLSMode string) []
 		int32Env("HTTP_PORT", spec.HttpPort),
 		strEnv("WAL_DIR", spec.WalDir),
 		strEnv("DATA_DIR", spec.DataDir),
+		strEnv("ADVERTISE_ADDR", advertiseAddr),
 	}
 
 	envs = appendIfStr(envs, "CLUSTER_ID", spec.ClusterID)
@@ -125,6 +137,7 @@ func buildEnvVars(ledger *ledgerv1alpha1.LedgerService, targetTLSMode string) []
 		envs = appendIfInt32(envs, "RAFT_COMPACTION_MARGIN", spec.Raft.CompactionMargin)
 		envs = appendIfInt32(envs, "RAFT_REPLAY_BATCH_SIZE", spec.Raft.ReplayBatchSize)
 		envs = appendIfStr(envs, "RAFT_PROCESSING_TICK_INTERVAL", spec.Raft.ProcessingTickInterval)
+		envs = appendIfInt32(envs, "LEARNER_PROMOTION_THRESHOLD", spec.Raft.LearnerPromotionThreshold)
 
 		if spec.Raft.Transport != nil {
 			if len(spec.Raft.Transport.ReceptionQueues) > 0 {
@@ -225,9 +238,7 @@ func buildEnvVars(ledger *ledgerv1alpha1.LedgerService, targetTLSMode string) []
 	}
 
 	// Monitoring
-	if spec.Monitoring != nil {
-		envs = appendMonitoringEnvVars(envs, spec.Monitoring)
-	}
+	envs = appendMonitoringEnvVars(envs, spec.Monitoring, ledger.Name)
 
 	// TLS — TLS_MODE is driven by the operator state machine, not directly
 	// by spec.TLS.Enabled (the operator passes through "optional" during a
@@ -279,6 +290,14 @@ func buildEnvVars(ledger *ledgerv1alpha1.LedgerService, targetTLSMode string) []
 		}
 	}
 
+	// AUTH_ED25519_KEYS points at the configmap-mounted JSON file when
+	// agents are registered and auth is not explicitly disabled. The path
+	// is fixed by the volume mount declared in reconcileStatefulSet.
+	authExplicitlyDisabled := spec.Auth != nil && spec.Auth.Enabled != nil && !*spec.Auth.Enabled
+	if len(agents) > 0 && !authExplicitlyDisabled {
+		envs = append(envs, strEnv("AUTH_ED25519_KEYS", "/auth-keys/auth-keys.json"))
+	}
+
 	// Read index
 	if spec.ReadIndex != nil {
 		envs = appendIfInt32(envs, "READ_INDEX_BATCH_SIZE", spec.ReadIndex.BatchSize)
@@ -302,7 +321,23 @@ func buildEnvVars(ledger *ledgerv1alpha1.LedgerService, targetTLSMode string) []
 	return envs
 }
 
-func appendMonitoringEnvVars(envs []corev1.EnvVar, mon *ledgerv1alpha1.MonitoringConfig) []corev1.EnvVar {
+func appendMonitoringEnvVars(envs []corev1.EnvVar, mon *ledgerv1alpha1.MonitoringConfig, clusterName string) []corev1.EnvVar {
+	// OTEL_RESOURCE_ATTRIBUTES carries operator-injected attributes
+	// (service.cluster, service.node_id) prefixed with the user-supplied
+	// list, if any. $(POD_NAME) is resolved by the kubelet via env var
+	// substitution. This var is emitted even when mon is nil so the
+	// cluster attribution is always present.
+	operatorAttrs := "service.cluster=" + clusterName + ",service.node_id=$(POD_NAME)"
+	attrs := operatorAttrs
+	if mon != nil && mon.Attributes != "" {
+		attrs = mon.Attributes + "," + operatorAttrs
+	}
+	envs = append(envs, strEnv("OTEL_RESOURCE_ATTRIBUTES", attrs))
+
+	if mon == nil {
+		return envs
+	}
+
 	// Metrics-specific OTEL vars
 	if mon.Metrics != nil {
 		envs = appendIfBool(envs, "OTEL_METRICS_ENABLED", mon.Metrics.Enabled)
@@ -328,9 +363,9 @@ func appendMonitoringEnvVars(envs []corev1.EnvVar, mon *ledgerv1alpha1.Monitorin
 		envs = appendIfStr(envs, "OTEL_LOGS_EXPORTER_OTLP_MODE", mon.Logs.Mode)
 	}
 
-	// core.monitoring equivalent: OTEL_SERVICE_NAME, OTEL_RESOURCE_ATTRIBUTES, traces, logs enabled/level
+	// core.monitoring equivalent: OTEL_SERVICE_NAME, traces, logs enabled/level
+	// (OTEL_RESOURCE_ATTRIBUTES is merged with operator-injected attrs above)
 	envs = appendIfStr(envs, "OTEL_SERVICE_NAME", mon.ServiceName)
-	envs = appendIfStr(envs, "OTEL_RESOURCE_ATTRIBUTES", mon.Attributes)
 
 	// Traces
 	if mon.Traces != nil {

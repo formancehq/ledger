@@ -65,7 +65,7 @@ func TestBuildEnvVars_SentinelMode(t *testing.T) {
 		ls := newMinimalLedgerService()
 		b := true
 		ls.Spec.SentinelMode = &b
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "SENTINEL_MODE", "true")
 	})
 
@@ -74,14 +74,14 @@ func TestBuildEnvVars_SentinelMode(t *testing.T) {
 		ls := newMinimalLedgerService()
 		b := false
 		ls.Spec.SentinelMode = &b
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "SENTINEL_MODE", "false")
 	})
 
 	t.Run("nil omitted", func(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalLedgerService()
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertNoEnv(t, envs, "SENTINEL_MODE")
 	})
 
@@ -90,7 +90,7 @@ func TestBuildEnvVars_SentinelMode(t *testing.T) {
 		ls := newMinimalLedgerService()
 		b := true
 		ls.Spec.SentinelMode = &b
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertNoEnv(t, envs, "VOLUME_ASSERTIONS")
 	})
 }
@@ -107,14 +107,14 @@ func TestBuildEnvVars_GrpcCompression(t *testing.T) {
 		ls := newMinimalLedgerService()
 		b := true
 		ls.Spec.GrpcCompression = &b
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "GRPC_COMPRESSION", "true")
 	})
 
 	t.Run("nil omitted", func(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalLedgerService()
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertNoEnv(t, envs, "GRPC_COMPRESSION")
 	})
 }
@@ -128,7 +128,7 @@ func TestBuildEnvVars_QueryProfileThreshold(t *testing.T) {
 
 	ls := newMinimalLedgerService()
 	ls.Spec.QueryProfileThreshold = "50ms"
-	envs := buildEnvVars(ls, "disabled")
+	envs := buildEnvVars(ls, "disabled", nil)
 	assertEnv(t, envs, "QUERY_PROFILE_THRESHOLD", "50ms")
 }
 
@@ -137,7 +137,7 @@ func TestBuildEnvVars_GrpcSlowThreshold(t *testing.T) {
 
 	ls := newMinimalLedgerService()
 	ls.Spec.GrpcSlowThreshold = "2s"
-	envs := buildEnvVars(ls, "disabled")
+	envs := buildEnvVars(ls, "disabled", nil)
 	assertEnv(t, envs, "GRPC_SLOW_THRESHOLD", "2s")
 }
 
@@ -145,7 +145,7 @@ func TestBuildEnvVars_ThresholdsOmittedWhenEmpty(t *testing.T) {
 	t.Parallel()
 
 	ls := newMinimalLedgerService()
-	envs := buildEnvVars(ls, "disabled")
+	envs := buildEnvVars(ls, "disabled", nil)
 	assertNoEnv(t, envs, "QUERY_PROFILE_THRESHOLD")
 	assertNoEnv(t, envs, "GRPC_SLOW_THRESHOLD")
 }
@@ -160,7 +160,7 @@ func TestBuildEnvVars_NumscriptCacheSize(t *testing.T) {
 	ls := newMinimalLedgerService()
 	v := int32(2048)
 	ls.Spec.NumscriptCacheSize = &v
-	envs := buildEnvVars(ls, "disabled")
+	envs := buildEnvVars(ls, "disabled", nil)
 	assertEnv(t, envs, "NUMSCRIPT_CACHE_SIZE", "2048")
 }
 
@@ -170,7 +170,7 @@ func TestBuildEnvVars_MirrorMaxBatchSize(t *testing.T) {
 	ls := newMinimalLedgerService()
 	v := int32(1000)
 	ls.Spec.MirrorMaxBatchSize = &v
-	envs := buildEnvVars(ls, "disabled")
+	envs := buildEnvVars(ls, "disabled", nil)
 	assertEnv(t, envs, "MIRROR_MAX_BATCH_SIZE", "1000")
 }
 
@@ -187,7 +187,7 @@ func TestBuildEnvVars_PebbleCompression(t *testing.T) {
 		ls.Spec.Pebble = &ledgerv1alpha1.PebbleConfig{
 			Compression: "snappy,snappy,zstd,zstd,zstd,zstd,zstd",
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "PEBBLE_COMPRESSION", "snappy,snappy,zstd,zstd,zstd,zstd,zstd")
 	})
 
@@ -199,7 +199,7 @@ func TestBuildEnvVars_PebbleCompression(t *testing.T) {
 				Compression: "none,none,zstd,zstd,zstd,zstd,zstd",
 			},
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "READ_INDEX_COMPRESSION", "none,none,zstd,zstd,zstd,zstd,zstd")
 	})
 
@@ -207,7 +207,7 @@ func TestBuildEnvVars_PebbleCompression(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalLedgerService()
 		ls.Spec.Pebble = &ledgerv1alpha1.PebbleConfig{}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertNoEnv(t, envs, "PEBBLE_COMPRESSION")
 	})
 }
@@ -226,7 +226,7 @@ func TestBuildEnvVars_PebbleMaxCheckpoints(t *testing.T) {
 		ls.Spec.Pebble = &ledgerv1alpha1.PebbleConfig{
 			MaxCheckpoints: &v,
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "PEBBLE_MAX_CHECKPOINTS", "5")
 	})
 
@@ -234,7 +234,7 @@ func TestBuildEnvVars_PebbleMaxCheckpoints(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalLedgerService()
 		ls.Spec.Pebble = &ledgerv1alpha1.PebbleConfig{}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertNoEnv(t, envs, "PEBBLE_MAX_CHECKPOINTS")
 	})
 }
@@ -261,7 +261,7 @@ func TestBuildEnvVars_PebbleValueSeparation(t *testing.T) {
 				GarbageRatio: "0.30",
 			},
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "PEBBLE_VALUE_SEPARATION", "true")
 		assertEnv(t, envs, "PEBBLE_VALUE_SEPARATION_MIN_SIZE", "512")
 		assertEnv(t, envs, "PEBBLE_VALUE_SEPARATION_MAX_DEPTH", "8")
@@ -273,7 +273,7 @@ func TestBuildEnvVars_PebbleValueSeparation(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalLedgerService()
 		ls.Spec.Pebble = &ledgerv1alpha1.PebbleConfig{}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertNoEnv(t, envs, "PEBBLE_VALUE_SEPARATION")
 		assertNoEnv(t, envs, "PEBBLE_VALUE_SEPARATION_MIN_SIZE")
 	})
@@ -287,7 +287,7 @@ func TestBuildEnvVars_PebbleValueSeparation(t *testing.T) {
 				Enabled: &bTrue,
 			},
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "PEBBLE_VALUE_SEPARATION", "true")
 		assertNoEnv(t, envs, "PEBBLE_VALUE_SEPARATION_MIN_SIZE")
 		assertNoEnv(t, envs, "PEBBLE_VALUE_SEPARATION_MAX_DEPTH")
@@ -309,7 +309,7 @@ func TestBuildEnvVars_RaftProcessingTickInterval(t *testing.T) {
 		ls.Spec.Raft = &ledgerv1alpha1.RaftConfig{
 			ProcessingTickInterval: "10ms",
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "RAFT_PROCESSING_TICK_INTERVAL", "10ms")
 	})
 
@@ -317,7 +317,7 @@ func TestBuildEnvVars_RaftProcessingTickInterval(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalLedgerService()
 		ls.Spec.Raft = &ledgerv1alpha1.RaftConfig{}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertNoEnv(t, envs, "RAFT_PROCESSING_TICK_INTERVAL")
 	})
 }
@@ -338,7 +338,7 @@ func TestBuildEnvVars_RaftTransportBufferSize(t *testing.T) {
 				BufferSize: &bufSize,
 			},
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "RAFT_TRANSPORT_BUFFER_SIZE", "20Mi")
 	})
 
@@ -348,7 +348,7 @@ func TestBuildEnvVars_RaftTransportBufferSize(t *testing.T) {
 		ls.Spec.Raft = &ledgerv1alpha1.RaftConfig{
 			Transport: &ledgerv1alpha1.RaftTransportConfig{},
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertNoEnv(t, envs, "RAFT_TRANSPORT_BUFFER_SIZE")
 	})
 }
@@ -366,7 +366,7 @@ func TestBuildEnvVars_AuthIssuers(t *testing.T) {
 		ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{
 			Issuers: []string{"https://issuer1.example.com", "https://issuer2.example.com"},
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "AUTH_ISSUERS", "https://issuer1.example.com,https://issuer2.example.com")
 	})
 
@@ -376,7 +376,7 @@ func TestBuildEnvVars_AuthIssuers(t *testing.T) {
 		ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{
 			Issuers: []string{"https://auth.example.com"},
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "AUTH_ISSUERS", "https://auth.example.com")
 	})
 
@@ -384,7 +384,7 @@ func TestBuildEnvVars_AuthIssuers(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalLedgerService()
 		ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertNoEnv(t, envs, "AUTH_ISSUERS")
 	})
 }
@@ -397,7 +397,7 @@ func TestBuildEnvVars_AuthCheckScopes(t *testing.T) {
 	ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{
 		CheckScopes: &b,
 	}
-	envs := buildEnvVars(ls, "disabled")
+	envs := buildEnvVars(ls, "disabled", nil)
 	assertEnv(t, envs, "AUTH_CHECK_SCOPES", "true")
 }
 
@@ -409,7 +409,7 @@ func TestBuildEnvVars_AuthReadKeySetMaxRetries(t *testing.T) {
 	ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{
 		ReadKeySetMaxRetries: &v,
 	}
-	envs := buildEnvVars(ls, "disabled")
+	envs := buildEnvVars(ls, "disabled", nil)
 	assertEnv(t, envs, "AUTH_READ_KEY_SET_MAX_RETRIES", "5")
 }
 
@@ -427,7 +427,7 @@ func TestBuildEnvVars_ReceiptSigning(t *testing.T) {
 			SecretName: "receipt-hmac",
 			SecretKey:  "hmac-key",
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		e := findEnv(envs, "RECEIPT_SIGNING_KEY")
 		require.NotNil(t, e, "RECEIPT_SIGNING_KEY should be present")
 		require.NotNil(t, e.ValueFrom, "should use ValueFrom")
@@ -442,7 +442,7 @@ func TestBuildEnvVars_ReceiptSigning(t *testing.T) {
 		ls.Spec.ReceiptSigning = &ledgerv1alpha1.ReceiptSigningConfig{
 			SecretName: "receipt-hmac",
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		e := findEnv(envs, "RECEIPT_SIGNING_KEY")
 		require.NotNil(t, e)
 		assert.Equal(t, "key", e.ValueFrom.SecretKeyRef.Key)
@@ -451,7 +451,7 @@ func TestBuildEnvVars_ReceiptSigning(t *testing.T) {
 	t.Run("nil omitted", func(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalLedgerService()
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertNoEnv(t, envs, "RECEIPT_SIGNING_KEY")
 	})
 
@@ -459,7 +459,7 @@ func TestBuildEnvVars_ReceiptSigning(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalLedgerService()
 		ls.Spec.ReceiptSigning = &ledgerv1alpha1.ReceiptSigningConfig{}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertNoEnv(t, envs, "RECEIPT_SIGNING_KEY")
 	})
 }
@@ -481,7 +481,7 @@ func TestBuildEnvVars_BloomFilters(t *testing.T) {
 				FPRate:       "0.01",
 			},
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "BLOOM_VOLUMES_EXPECTED_KEYS", "100000")
 		assertEnv(t, envs, "BLOOM_VOLUMES_FP_RATE", "0.01")
 		// Other types should not be present.
@@ -502,7 +502,7 @@ func TestBuildEnvVars_BloomFilters(t *testing.T) {
 			Boundaries:   bf,
 			Transactions: bf,
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		for _, prefix := range []string{
 			"BLOOM_VOLUMES", "BLOOM_METADATA",
 			"BLOOM_REFERENCES", "BLOOM_LEDGERS", "BLOOM_BOUNDARIES",
@@ -516,7 +516,7 @@ func TestBuildEnvVars_BloomFilters(t *testing.T) {
 	t.Run("nil bloom omitted", func(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalLedgerService()
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertNoEnv(t, envs, "BLOOM_VOLUMES_EXPECTED_KEYS")
 	})
 
@@ -529,7 +529,7 @@ func TestBuildEnvVars_BloomFilters(t *testing.T) {
 				ExpectedKeys: &keys,
 			},
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "BLOOM_METADATA_EXPECTED_KEYS", "10000")
 		assertNoEnv(t, envs, "BLOOM_METADATA_FP_RATE")
 	})
@@ -546,14 +546,14 @@ func TestBuildEnvVars_IdempotencyTTL(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalLedgerService()
 		ls.Spec.IdempotencyTTL = "48h"
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "IDEMPOTENCY_TTL", "48h")
 	})
 
 	t.Run("omitted when empty", func(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalLedgerService()
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertNoEnv(t, envs, "IDEMPOTENCY_TTL")
 	})
 }
@@ -565,14 +565,14 @@ func TestBuildEnvVars_IdempotencyEvictionInterval(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalLedgerService()
 		ls.Spec.IdempotencyEvictionInterval = "120s"
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "IDEMPOTENCY_EVICTION_INTERVAL", "120s")
 	})
 
 	t.Run("omitted when empty", func(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalLedgerService()
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertNoEnv(t, envs, "IDEMPOTENCY_EVICTION_INTERVAL")
 	})
 }
@@ -591,7 +591,7 @@ func TestBuildEnvVars_ExtraEnv(t *testing.T) {
 			{Name: "CUSTOM_VAR", Value: "custom-value"},
 			{Name: "ANOTHER", Value: "val"},
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "CUSTOM_VAR", "custom-value")
 		assertEnv(t, envs, "ANOTHER", "val")
 	})
@@ -602,7 +602,7 @@ func TestBuildEnvVars_ExtraEnv(t *testing.T) {
 		ls.Spec.ExtraEnv = []corev1.EnvVar{
 			{Name: "DEBUG", Value: "true"},
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		// ExtraEnv is appended last, so the last DEBUG wins in container spec
 		var debugCount int
 		for _, e := range envs {
@@ -617,7 +617,7 @@ func TestBuildEnvVars_ExtraEnv(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalLedgerService()
 		ls.Spec.ExtraEnv = []corev1.EnvVar{}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		// Should not panic, standard vars still present
 		assertEnv(t, envs, "BIND_ADDR", "0.0.0.0:7777")
 	})
@@ -637,7 +637,7 @@ func TestBuildEnvVars_RaftReplayBatchSize(t *testing.T) {
 		ls.Spec.Raft = &ledgerv1alpha1.RaftConfig{
 			ReplayBatchSize: &v,
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "RAFT_REPLAY_BATCH_SIZE", "5000")
 	})
 
@@ -645,7 +645,7 @@ func TestBuildEnvVars_RaftReplayBatchSize(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalLedgerService()
 		ls.Spec.Raft = &ledgerv1alpha1.RaftConfig{}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertNoEnv(t, envs, "RAFT_REPLAY_BATCH_SIZE")
 	})
 }
@@ -664,7 +664,7 @@ func TestBuildEnvVars_PebbleIncrementalCompactThreshold(t *testing.T) {
 		ls.Spec.Pebble = &ledgerv1alpha1.PebbleConfig{
 			IncrementalCompactThreshold: &v,
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "PEBBLE_INCREMENTAL_COMPACT_THRESHOLD", "50000")
 	})
 
@@ -672,7 +672,7 @@ func TestBuildEnvVars_PebbleIncrementalCompactThreshold(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalLedgerService()
 		ls.Spec.Pebble = &ledgerv1alpha1.PebbleConfig{}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertNoEnv(t, envs, "PEBBLE_INCREMENTAL_COMPACT_THRESHOLD")
 	})
 }
@@ -695,7 +695,7 @@ func TestBuildEnvVars_FlightRecorder(t *testing.T) {
 				MaxBytes: &maxBytes,
 			},
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "FLIGHT_RECORDER_ENABLED", "true")
 		assertEnv(t, envs, "FLIGHT_RECORDER_MIN_AGE", "30s")
 		assertEnv(t, envs, "FLIGHT_RECORDER_MAX_BYTES", "10Mi")
@@ -709,7 +709,7 @@ func TestBuildEnvVars_FlightRecorder(t *testing.T) {
 				Enabled: false,
 			},
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertNoEnv(t, envs, "FLIGHT_RECORDER_ENABLED")
 	})
 
@@ -717,7 +717,7 @@ func TestBuildEnvVars_FlightRecorder(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalLedgerService()
 		ls.Spec.Monitoring = &ledgerv1alpha1.MonitoringConfig{}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertNoEnv(t, envs, "FLIGHT_RECORDER_ENABLED")
 	})
 }
@@ -738,7 +738,7 @@ func TestBuildEnvVars_AuthScopeMapping(t *testing.T) {
 				"ledger:write": {"ledger:transactions:write"},
 			},
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		e := findEnv(envs, "AUTH_SCOPE_MAPPING")
 		require.NotNil(t, e, "AUTH_SCOPE_MAPPING should be present")
 		assert.Contains(t, e.Value, "ledger:read")
@@ -749,7 +749,7 @@ func TestBuildEnvVars_AuthScopeMapping(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalLedgerService()
 		ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertNoEnv(t, envs, "AUTH_SCOPE_MAPPING")
 	})
 }
@@ -767,7 +767,7 @@ func TestBuildEnvVars_AuthAnonymousScopes(t *testing.T) {
 		ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{
 			AnonymousScopes: []string{"*:read"},
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		e := findEnv(envs, "AUTH_ANONYMOUS_SCOPES")
 		require.NotNil(t, e, "AUTH_ANONYMOUS_SCOPES should be present")
 		assert.Equal(t, "*:read", e.Value)
@@ -779,7 +779,7 @@ func TestBuildEnvVars_AuthAnonymousScopes(t *testing.T) {
 		ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{
 			AnonymousScopes: []string{"ledgers:read", "accounts:read"},
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		e := findEnv(envs, "AUTH_ANONYMOUS_SCOPES")
 		require.NotNil(t, e)
 		assert.Equal(t, "ledgers:read,accounts:read", e.Value)
@@ -791,14 +791,14 @@ func TestBuildEnvVars_AuthAnonymousScopes(t *testing.T) {
 		ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{
 			AnonymousScopes: []string{},
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertNoEnv(t, envs, "AUTH_ANONYMOUS_SCOPES")
 	})
 
 	t.Run("nil auth omitted", func(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalLedgerService()
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertNoEnv(t, envs, "AUTH_ANONYMOUS_SCOPES")
 	})
 }
@@ -817,7 +817,7 @@ func TestBuildEnvVars_ReadIndexBatchSize(t *testing.T) {
 		ls.Spec.ReadIndex = &ledgerv1alpha1.ReadIndexConfig{
 			BatchSize: &v,
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "READ_INDEX_BATCH_SIZE", "2000")
 	})
 
@@ -825,7 +825,7 @@ func TestBuildEnvVars_ReadIndexBatchSize(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalLedgerService()
 		ls.Spec.ReadIndex = &ledgerv1alpha1.ReadIndexConfig{}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertNoEnv(t, envs, "READ_INDEX_BATCH_SIZE")
 	})
 }
@@ -891,7 +891,7 @@ func TestBuildEnvVars_AllNewFields(t *testing.T) {
 		},
 	}
 
-	envs := buildEnvVars(ls, "disabled")
+	envs := buildEnvVars(ls, "disabled", nil)
 
 	// Sentinel mode
 	assertEnv(t, envs, "SENTINEL_MODE", "true")
@@ -1017,7 +1017,7 @@ func TestBuildEnvVars_GoMemLimit(t *testing.T) {
 				corev1.ResourceMemory: resource.MustParse("2Gi"),
 			},
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		// 2Gi = 2147483648, 90% = 1932735283
 		assertEnv(t, envs, "GOMEMLIMIT", "1932735283")
 	})
@@ -1032,7 +1032,7 @@ func TestBuildEnvVars_GoMemLimit(t *testing.T) {
 				corev1.ResourceMemory: resource.MustParse("2Gi"),
 			},
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		// 2Gi = 2147483648, 80% = 1717986918
 		assertEnv(t, envs, "GOMEMLIMIT", "1717986918")
 	})
@@ -1040,7 +1040,7 @@ func TestBuildEnvVars_GoMemLimit(t *testing.T) {
 	t.Run("no memory limit", func(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalLedgerService()
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertNoEnv(t, envs, "GOMEMLIMIT")
 	})
 
@@ -1054,7 +1054,7 @@ func TestBuildEnvVars_GoMemLimit(t *testing.T) {
 				corev1.ResourceMemory: resource.MustParse("2Gi"),
 			},
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "GOMEMLIMIT", "0")
 	})
 }
@@ -1070,7 +1070,7 @@ func TestBuildEnvVars_HashAlgorithm(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalLedgerService()
 		ls.Spec.HashAlgorithm = "blake3"
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "HASH_ALGORITHM", "blake3")
 	})
 
@@ -1078,14 +1078,14 @@ func TestBuildEnvVars_HashAlgorithm(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalLedgerService()
 		ls.Spec.HashAlgorithm = "xxh3"
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "HASH_ALGORITHM", "xxh3")
 	})
 
 	t.Run("omitted when empty", func(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalLedgerService()
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertNoEnv(t, envs, "HASH_ALGORITHM")
 	})
 }
@@ -1102,7 +1102,7 @@ func TestBuildEnvVars_UnsafeSkipConfigValidation(t *testing.T) {
 		ls := newMinimalLedgerService()
 		b := true
 		ls.Spec.UnsafeSkipConfigValidation = &b
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "UNSAFE_SKIP_CONFIG_VALIDATION", "true")
 	})
 
@@ -1111,14 +1111,14 @@ func TestBuildEnvVars_UnsafeSkipConfigValidation(t *testing.T) {
 		ls := newMinimalLedgerService()
 		b := false
 		ls.Spec.UnsafeSkipConfigValidation = &b
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "UNSAFE_SKIP_CONFIG_VALIDATION", "false")
 	})
 
 	t.Run("nil omitted", func(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalLedgerService()
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertNoEnv(t, envs, "UNSAFE_SKIP_CONFIG_VALIDATION")
 	})
 }
@@ -1142,7 +1142,7 @@ func TestBuildEnvVars_Snapshot(t *testing.T) {
 			RetryCount:     &retryCount,
 			FileRetryCount: &fileRetryCount,
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "SNAPSHOT_SESSION_TTL", "10m")
 		assertEnv(t, envs, "SNAPSHOT_PARALLELISM", "8")
 		assertEnv(t, envs, "SNAPSHOT_RETRY_COUNT", "10")
@@ -1155,7 +1155,7 @@ func TestBuildEnvVars_Snapshot(t *testing.T) {
 		ls.Spec.Snapshot = &ledgerv1alpha1.SnapshotConfig{
 			SessionTTL: "3m",
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "SNAPSHOT_SESSION_TTL", "3m")
 		assertNoEnv(t, envs, "SNAPSHOT_PARALLELISM")
 		assertNoEnv(t, envs, "SNAPSHOT_RETRY_COUNT")
@@ -1165,7 +1165,7 @@ func TestBuildEnvVars_Snapshot(t *testing.T) {
 	t.Run("nil omitted", func(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalLedgerService()
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertNoEnv(t, envs, "SNAPSHOT_SESSION_TTL")
 		assertNoEnv(t, envs, "SNAPSHOT_PARALLELISM")
 		assertNoEnv(t, envs, "SNAPSHOT_RETRY_COUNT")
@@ -1190,7 +1190,7 @@ func TestBuildEnvVars_BloomFiltersNewTypes(t *testing.T) {
 				FPRate:       "0.01",
 			},
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "BLOOM_SINK_CONFIGS_EXPECTED_KEYS", "10000")
 		assertEnv(t, envs, "BLOOM_SINK_CONFIGS_FP_RATE", "0.01")
 	})
@@ -1205,7 +1205,7 @@ func TestBuildEnvVars_BloomFiltersNewTypes(t *testing.T) {
 				FPRate:       "0.005",
 			},
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "BLOOM_NUMSCRIPT_VERSIONS_EXPECTED_KEYS", "5000")
 		assertEnv(t, envs, "BLOOM_NUMSCRIPT_VERSIONS_FP_RATE", "0.005")
 	})
@@ -1220,7 +1220,7 @@ func TestBuildEnvVars_BloomFiltersNewTypes(t *testing.T) {
 				FPRate:       "0.02",
 			},
 		}
-		envs := buildEnvVars(ls, "disabled")
+		envs := buildEnvVars(ls, "disabled", nil)
 		assertEnv(t, envs, "BLOOM_NUMSCRIPT_CONTENTS_EXPECTED_KEYS", "8000")
 		assertEnv(t, envs, "BLOOM_NUMSCRIPT_CONTENTS_FP_RATE", "0.02")
 	})
