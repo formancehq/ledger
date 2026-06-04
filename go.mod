@@ -66,6 +66,7 @@ require (
 	github.com/cockroachdb/pebble/v2 v2.1.4
 	github.com/databricks/databricks-sql-go v1.10.0
 	github.com/formancehq/go-libs/v5 v5.0.1
+	github.com/soheilhy/cmux v0.1.5
 	github.com/testcontainers/testcontainers-go v0.40.0
 	go.etcd.io/raft/v3 v3.6.0
 	golang.org/x/sync v0.20.0

@@ -25,12 +25,12 @@ func RestoreModule() fx.Option {
 	return fx.Options(
 		fx.Provide(
 			func(cfg Config, logger logging.Logger) (*grpcadp.ServiceServer, error) {
-				tlsOpt, err := ServerCredentials(cfg.TLSConfig)
+				tlsCfg, err := ServerTLSConfig(cfg.TLSConfig)
 				if err != nil {
-					return nil, fmt.Errorf("loading TLS credentials for restore server: %w", err)
+					return nil, fmt.Errorf("loading TLS config for restore server: %w", err)
 				}
 
-				return grpcadp.NewServiceServer(cfg.GRPCPort, logger, cfg.Debug, cfg.GRPCSlowThreshold, tlsOpt), nil
+				return grpcadp.NewServiceServer(cfg.GRPCPort, logger, cfg.Debug, cfg.GRPCSlowThreshold, tlsCfg, cfg.TLSConfig.Mode.AllowsPlaintext())
 			},
 			func(cfg Config, logger logging.Logger) *grpcadp.RestoreServiceServerImpl {
 				return grpcadp.NewRestoreServiceServer(cfg.DataDir, cfg.ClusterID, logger)

@@ -3972,6 +3972,14 @@ spec:
                 description: ReadyReplicas is the number of ready pods.
                 format: int32
                 type: integer
+              tlsMigrationPhase:
+                description: |-
+                  TLSMigrationPhase reflects the operator's current TLS rollout phase.
+                  One of "disabled", "required", "transitioning-to-required",
+                  "transitioning-to-disabled". Set by the controller's TLS state
+                  machine; users observe the user-facing tls.enabled bool, this field
+                  exposes the intermediate "optional" mode used during a toggle.
+                type: string
             type: object
         type: object
     served: true

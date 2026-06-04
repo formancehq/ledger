@@ -148,7 +148,7 @@ func (s *SnapshotServiceServerImpl) CloseSession(_ context.Context, req *snapsho
 	return &snapshotpb.CloseSessionResponse{}, nil
 }
 
-// RegisterSnapshotService registers the SnapshotService with a gRPC server.
-func RegisterSnapshotService(server *ggrpc.Server, snapshotServiceServer snapshotpb.SnapshotServiceServer) {
-	snapshotpb.RegisterSnapshotServiceServer(server, snapshotServiceServer)
+// RegisterSnapshotService registers the SnapshotService on a gRPC service registrar.
+func RegisterSnapshotService(registrar ggrpc.ServiceRegistrar, snapshotServiceServer snapshotpb.SnapshotServiceServer) {
+	snapshotpb.RegisterSnapshotServiceServer(registrar, snapshotServiceServer)
 }

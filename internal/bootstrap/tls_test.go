@@ -9,48 +9,65 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 )
 
-func TestServerCredentials_Disabled(t *testing.T) {
+func TestServerTLSConfig_Disabled(t *testing.T) {
 	t.Parallel()
 
-	opt, err := ServerCredentials(TLSConfig{Enabled: false})
+	cfg, err := ServerTLSConfig(TLSConfig{Mode: TLSModeDisabled})
 	require.NoError(t, err)
-	require.Nil(t, opt)
+	require.Nil(t, cfg)
 }
 
-func TestServerCredentials_Enabled(t *testing.T) {
+func TestServerTLSConfig_Required(t *testing.T) {
 	t.Parallel()
 
 	certs := generateTestCerts(t)
 
-	opt, err := ServerCredentials(TLSConfig{
-		Enabled:  true,
+	cfg, err := ServerTLSConfig(TLSConfig{
+		Mode:     TLSModeRequired,
 		CertFile: certs.ServerCertFile,
 		KeyFile:  certs.ServerKeyFile,
 	})
 	require.NoError(t, err)
-	require.NotNil(t, opt)
+	require.NotNil(t, cfg)
+	require.Len(t, cfg.Certificates, 1)
 }
 
-func TestServerCredentials_WithCA(t *testing.T) {
+func TestServerTLSConfig_Optional(t *testing.T) {
 	t.Parallel()
 
 	certs := generateTestCerts(t)
 
-	opt, err := ServerCredentials(TLSConfig{
-		Enabled:  true,
+	cfg, err := ServerTLSConfig(TLSConfig{
+		Mode:     TLSModeOptional,
+		CertFile: certs.ServerCertFile,
+		KeyFile:  certs.ServerKeyFile,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, cfg)
+	require.Len(t, cfg.Certificates, 1)
+}
+
+func TestServerTLSConfig_WithCA(t *testing.T) {
+	t.Parallel()
+
+	certs := generateTestCerts(t)
+
+	cfg, err := ServerTLSConfig(TLSConfig{
+		Mode:     TLSModeRequired,
 		CertFile: certs.ServerCertFile,
 		KeyFile:  certs.ServerKeyFile,
 		CAFile:   certs.CACertFile,
 	})
 	require.NoError(t, err)
-	require.NotNil(t, opt)
+	require.NotNil(t, cfg)
+	require.NotNil(t, cfg.ClientCAs)
 }
 
-func TestServerCredentials_BadCertFile(t *testing.T) {
+func TestServerTLSConfig_BadCertFile(t *testing.T) {
 	t.Parallel()
 
-	_, err := ServerCredentials(TLSConfig{
-		Enabled:  true,
+	_, err := ServerTLSConfig(TLSConfig{
+		Mode:     TLSModeRequired,
 		CertFile: "/nonexistent/cert.pem",
 		KeyFile:  "/nonexistent/key.pem",
 	})
@@ -58,13 +75,13 @@ func TestServerCredentials_BadCertFile(t *testing.T) {
 	require.Contains(t, err.Error(), "loading server certificate")
 }
 
-func TestServerCredentials_BadCAFile(t *testing.T) {
+func TestServerTLSConfig_BadCAFile(t *testing.T) {
 	t.Parallel()
 
 	certs := generateTestCerts(t)
 
-	_, err := ServerCredentials(TLSConfig{
-		Enabled:  true,
+	_, err := ServerTLSConfig(TLSConfig{
+		Mode:     TLSModeRequired,
 		CertFile: certs.ServerCertFile,
 		KeyFile:  certs.ServerKeyFile,
 		CAFile:   "/nonexistent/ca.pem",
@@ -76,18 +93,17 @@ func TestServerCredentials_BadCAFile(t *testing.T) {
 func TestClientTransportCredentials_Disabled(t *testing.T) {
 	t.Parallel()
 
-	creds, err := ClientTransportCredentials(TLSConfig{Enabled: false})
+	creds, err := ClientTransportCredentials(TLSConfig{Mode: TLSModeDisabled})
 	require.NoError(t, err)
 	require.IsType(t, insecure.NewCredentials(), creds)
 }
 
-func TestClientTransportCredentials_Enabled(t *testing.T) {
+func TestClientTransportCredentials_Required(t *testing.T) {
 	t.Parallel()
 
-	creds, err := ClientTransportCredentials(TLSConfig{Enabled: true})
+	creds, err := ClientTransportCredentials(TLSConfig{Mode: TLSModeRequired})
 	require.NoError(t, err)
 	require.NotNil(t, creds)
-	// Should NOT be insecure credentials
 	require.NotEqual(t, "insecure", creds.Info().SecurityProtocol)
 }
 
@@ -97,8 +113,8 @@ func TestClientTransportCredentials_WithCA(t *testing.T) {
 	certs := generateTestCerts(t)
 
 	creds, err := ClientTransportCredentials(TLSConfig{
-		Enabled: true,
-		CAFile:  certs.CACertFile,
+		Mode:   TLSModeRequired,
+		CAFile: certs.CACertFile,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, creds)
@@ -111,7 +127,7 @@ func TestClientTransportCredentials_WithClientCert(t *testing.T) {
 	certs := generateTestCerts(t)
 
 	creds, err := ClientTransportCredentials(TLSConfig{
-		Enabled:  true,
+		Mode:     TLSModeRequired,
 		CertFile: certs.ServerCertFile,
 		KeyFile:  certs.ServerKeyFile,
 		CAFile:   certs.CACertFile,
@@ -125,8 +141,8 @@ func TestClientTransportCredentials_BadCAFile(t *testing.T) {
 	t.Parallel()
 
 	_, err := ClientTransportCredentials(TLSConfig{
-		Enabled: true,
-		CAFile:  "/nonexistent/ca.pem",
+		Mode:   TLSModeRequired,
+		CAFile: "/nonexistent/ca.pem",
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "reading CA certificate")
@@ -136,12 +152,28 @@ func TestClientTransportCredentials_BadClientCert(t *testing.T) {
 	t.Parallel()
 
 	_, err := ClientTransportCredentials(TLSConfig{
-		Enabled:  true,
+		Mode:     TLSModeRequired,
 		CertFile: "/nonexistent/cert.pem",
 		KeyFile:  "/nonexistent/key.pem",
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "loading client certificate")
+}
+
+func TestClientTLSConfig_Disabled(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := ClientTLSConfig(TLSConfig{Mode: TLSModeDisabled})
+	require.NoError(t, err)
+	require.Nil(t, cfg)
+}
+
+func TestClientTLSConfig_Optional(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := ClientTLSConfig(TLSConfig{Mode: TLSModeOptional})
+	require.NoError(t, err)
+	require.NotNil(t, cfg)
 }
 
 // generateTestCerts generates test certificates in a temporary directory.

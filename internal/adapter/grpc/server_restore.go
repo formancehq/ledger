@@ -395,7 +395,7 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 	}, nil
 }
 
-// RegisterRestoreService registers the RestoreService on a gRPC server.
-func RegisterRestoreService(server *ggrpc.Server, impl restorepb.RestoreServiceServer) {
-	restorepb.RegisterRestoreServiceServer(server, impl)
+// RegisterRestoreService registers the RestoreService on a gRPC service registrar.
+func RegisterRestoreService(registrar ggrpc.ServiceRegistrar, impl restorepb.RestoreServiceServer) {
+	restorepb.RegisterRestoreServiceServer(registrar, impl)
 }

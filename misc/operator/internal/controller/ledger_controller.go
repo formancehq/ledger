@@ -146,11 +146,33 @@ func (r *LedgerServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, fmt.Errorf("reconciling AuthKeys: %w", err)
 	}
 
-	// Reconcile cluster secret for inter-node auth (always, to avoid rolling-update deadlock).
-	if err := r.reconcileClusterSecret(ctx, ledger); err != nil {
-		logger.Error(err, "failed to reconcile cluster secret")
+	// Reconcile cluster secret only when TLS will be at least partially
+	// active during this pass. The secret is a static bearer token; it must
+	// never travel in plaintext. The state machine ensures the secret
+	// appears at the same time the StatefulSet moves to optional during a
+	// TLS toggle, and disappears symmetrically when TLS is turned off.
+	existingSTSForTLS, err := r.fetchExistingStatefulSet(ctx, ledger)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("fetching StatefulSet for TLS state: %w", err)
+	}
+	targetTLSForSecret := computeTargetTLSMode(
+		desiredTLSMode(ledger),
+		currentTLSModeFromStatefulSet(existingSTSForTLS),
+		rolloutConverged(existingSTSForTLS),
+	)
 
-		return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret: %w", err)
+	if shouldInjectClusterSecret(targetTLSForSecret) {
+		if err := r.reconcileClusterSecret(ctx, ledger); err != nil {
+			logger.Error(err, "failed to reconcile cluster secret")
+
+			return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret: %w", err)
+		}
+	} else {
+		if err := r.deleteClusterSecret(ctx, ledger); err != nil {
+			logger.Error(err, "failed to delete cluster secret")
+
+			return ctrl.Result{}, fmt.Errorf("deleting ClusterSecret: %w", err)
+		}
 	}
 
 	// StatefulSet needs the specHash and agent info
@@ -236,6 +258,7 @@ func (r *LedgerServiceReconciler) updateStatus(ctx context.Context, ledger *ledg
 
 	latest.Status.ObservedGeneration = latest.Generation
 	latest.Status.Endpoints = ledger.Status.Endpoints
+	latest.Status.TLSMigrationPhase = ledger.Status.TLSMigrationPhase
 
 	// Set condition
 	condition := metav1.Condition{

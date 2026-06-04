@@ -7,7 +7,10 @@ import (
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
@@ -20,12 +23,16 @@ func clusterSecretName(ledger *ledgerv1alpha1.LedgerService) string {
 	return ledger.Name + "-cluster-secret"
 }
 
-// reconcileClusterSecret ensures a Secret always exists with a random cluster secret
-// for inter-node authentication. The secret is created unconditionally so that all
-// pods always send the bearer token on outgoing calls. This prevents a rolling-update
-// deadlock when agents are added for the first time: without this, only updated pods
-// would send the token, and those same pods (with auth enabled) would reject calls
-// from not-yet-updated pods that don't send it.
+// reconcileClusterSecret ensures a Secret exists with a random cluster
+// secret for inter-node authentication. The caller is expected to invoke
+// this only when TLS is at least partially active (the secret is a static
+// bearer token and must never be sent in plaintext); see
+// shouldInjectClusterSecret.
+//
+// During a TLS toggle the operator orders things so that the secret
+// appears at the same time the StatefulSet moves into the "optional" mode,
+// and is symmetrically removed (via deleteClusterSecret) when TLS is
+// turned off again.
 func (r *LedgerServiceReconciler) reconcileClusterSecret(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -53,6 +60,29 @@ func (r *LedgerServiceReconciler) reconcileClusterSecret(ctx context.Context, le
 	})
 
 	return err
+}
+
+// deleteClusterSecret removes the cluster-secret Secret if it exists. Used
+// when TLS is turned off (mode=disabled): the secret is no longer needed
+// and must not be left around for someone to harvest it from a plaintext
+// cluster.
+func (r *LedgerServiceReconciler) deleteClusterSecret(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
+	secret := &corev1.Secret{}
+
+	err := r.Get(ctx, types.NamespacedName{Name: clusterSecretName(ledger), Namespace: ledger.Namespace}, secret)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+
+		return err
+	}
+
+	if err := r.Delete(ctx, secret, &client.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+
+	return nil
 }
 
 // generateRandomToken returns a hex-encoded random token of the given byte length.

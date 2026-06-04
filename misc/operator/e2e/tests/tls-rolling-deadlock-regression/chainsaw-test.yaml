@@ -1,0 +1,73 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: tls-rolling-deadlock-regression
+spec:
+  # Regression test for the rolling-update deadlock that triggered this
+  # feature: enabling TLS on a running plaintext cluster used to lock the
+  # rollout because the first pod restarted in TLS-only mode and could not
+  # talk to its peers. The fix is the operator state machine walking
+  # through "optional" first.
+  timeouts:
+    assert: 10m
+  steps:
+    - name: Deploy plaintext LedgerService
+      try:
+        - apply:
+            file: ledgerservice.yaml
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: tls-deadlock
+              status:
+                readyReplicas: 3
+
+    - name: Generate TLS Secret
+      try:
+        - script:
+            content: |
+              set -e
+              WORKDIR=$(mktemp -d)
+              cd "$WORKDIR"
+              openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 \
+                -nodes -keyout ca.key -out ca.crt -days 1 -subj "/CN=tls-deadlock-ca"
+              cat > csr.cnf <<EOF
+              [req]
+              distinguished_name=req
+              [SAN]
+              subjectAltName=DNS:localhost,DNS:tls-deadlock-headless,DNS:*.tls-deadlock-headless.${NAMESPACE}.svc.cluster.local,IP:127.0.0.1
+              EOF
+              openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 \
+                -nodes -keyout tls.key -out tls.csr -subj "/CN=tls-deadlock"
+              openssl x509 -req -in tls.csr -CA ca.crt -CAkey ca.key \
+                -CAcreateserial -out tls.crt -days 1 \
+                -extfile csr.cnf -extensions SAN
+              kubectl create secret generic tls-deadlock-certs \
+                --namespace "$NAMESPACE" \
+                --from-file=tls.crt=tls.crt \
+                --from-file=tls.key=tls.key \
+                --from-file=ca.crt=ca.crt
+            timeout: 60s
+
+    - name: Enable TLS
+      try:
+        - apply:
+            file: ledgerservice-tls-enabled.yaml
+
+    # The whole point: convergence must happen within the chainsaw timeout.
+    # Before the fix this never converged because the first restarted pod
+    # could not talk to its plaintext peers.
+    - name: Wait for full convergence
+      try:
+        - assert:
+            timeout: 8m
+            resource:
+              apiVersion: ledger.formance.com/v1alpha1
+              kind: LedgerService
+              metadata:
+                name: tls-deadlock
+              status:
+                tlsMigrationPhase: required
+                readyReplicas: 3

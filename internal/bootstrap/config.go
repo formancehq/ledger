@@ -30,8 +30,46 @@ type AuthFlagConfig struct {
 	AnonymousScopes string
 }
 
+// TLSMode controls the TLS posture of gRPC servers and the inter-node dialer.
+//
+//   - disabled: plaintext only.
+//   - optional: server accepts both TLS and plaintext (cmux dual-listener);
+//     client probes TLS first then falls back to plaintext per-peer. Used as
+//     a transitional state by the operator during a TLS toggle so that pods
+//     mid-rolling-update can still talk to peers on the other side of the
+//     transition.
+//   - required: TLS only (strict).
+type TLSMode string
+
+const (
+	TLSModeDisabled TLSMode = "disabled"
+	TLSModeOptional TLSMode = "optional"
+	TLSModeRequired TLSMode = "required"
+)
+
+// Valid reports whether m is one of the recognized TLS modes.
+func (m TLSMode) Valid() bool {
+	switch m {
+	case TLSModeDisabled, TLSModeOptional, TLSModeRequired:
+		return true
+	}
+
+	return false
+}
+
+// AllowsTLS reports whether the mode permits TLS connections (server side)
+// or attempts them (client side).
+func (m TLSMode) AllowsTLS() bool {
+	return m == TLSModeOptional || m == TLSModeRequired
+}
+
+// AllowsPlaintext reports whether the mode permits plaintext connections.
+func (m TLSMode) AllowsPlaintext() bool {
+	return m == TLSModeDisabled || m == TLSModeOptional
+}
+
 type TLSConfig struct {
-	Enabled  bool
+	Mode     TLSMode
 	CertFile string
 	KeyFile  string
 	CAFile   string
@@ -96,9 +134,13 @@ func (c Config) Validate() error {
 		return errors.New("--cluster-id is required")
 	}
 
+	if err := c.validateTLSConfig(); err != nil {
+		return err
+	}
+
 	// Reject cluster-secret without TLS — the secret would be sent in plaintext.
-	if c.ClusterSecret != "" && !c.TLSConfig.Enabled {
-		return errors.New("--cluster-secret requires TLS (configure --tls-cert-file and --tls-key-file); the secret would be sent in plaintext otherwise")
+	if c.ClusterSecret != "" && c.TLSConfig.Mode == TLSModeDisabled {
+		return errors.New("--cluster-secret requires TLS (set --tls-mode to optional or required and provide --tls-cert-file / --tls-key-file); the secret would be sent in plaintext otherwise")
 	}
 
 	if err := c.validateAuthConfig(); err != nil {
@@ -106,6 +148,24 @@ func (c Config) Validate() error {
 	}
 
 	return c.RaftConfig.Validate()
+}
+
+// validateTLSConfig enforces TLS configuration invariants.
+func (c Config) validateTLSConfig() error {
+	if !c.TLSConfig.Mode.Valid() {
+		return fmt.Errorf("--tls-mode must be one of %q, %q, %q (got %q)",
+			TLSModeDisabled, TLSModeOptional, TLSModeRequired, c.TLSConfig.Mode)
+	}
+
+	if c.TLSConfig.Mode == TLSModeDisabled {
+		return nil
+	}
+
+	if c.TLSConfig.CertFile == "" || c.TLSConfig.KeyFile == "" {
+		return fmt.Errorf("--tls-mode=%s requires --tls-cert-file and --tls-key-file", c.TLSConfig.Mode)
+	}
+
+	return nil
 }
 
 // validateAuthConfig enforces authentication configuration invariants.

@@ -68,7 +68,7 @@ func TestDialOptions_WithAuthToken(t *testing.T) {
 func TestConnectionPool_RestartConnection_UnknownPeer(t *testing.T) {
 	t.Parallel()
 
-	pool := NewConnectionPool(insecure.NewCredentials(), PoolConfig{})
+	pool := NewConnectionPool(TLSPolicy{}, PoolConfig{})
 
 	err := pool.RestartConnection(999)
 	require.Error(t, err)

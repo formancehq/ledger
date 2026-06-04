@@ -83,8 +83,12 @@ func appendIfQuantity(envs []corev1.EnvVar, name string, value *resource.Quantit
 	return envs
 }
 
-// buildEnvVars constructs the complete list of environment variables for the ledger container.
-func buildEnvVars(ledger *ledgerv1alpha1.LedgerService) []corev1.EnvVar {
+// buildEnvVars constructs the complete list of environment variables for the
+// ledger container. targetTLSMode is the operator-decided TLS mode for this
+// reconcile pass (one of "disabled", "optional", "required"); it differs from
+// spec.TLS.Enabled during a TLS toggle, when the operator first walks the
+// StatefulSet through "optional".
+func buildEnvVars(ledger *ledgerv1alpha1.LedgerService, targetTLSMode string) []corev1.EnvVar {
 	spec := &ledger.Spec
 
 	envs := []corev1.EnvVar{
@@ -225,13 +229,18 @@ func buildEnvVars(ledger *ledgerv1alpha1.LedgerService) []corev1.EnvVar {
 		envs = appendMonitoringEnvVars(envs, spec.Monitoring)
 	}
 
-	// TLS
-	if spec.TLS != nil && spec.TLS.Enabled {
+	// TLS — TLS_MODE is driven by the operator state machine, not directly
+	// by spec.TLS.Enabled (the operator passes through "optional" during a
+	// toggle so that pods on either side of the rolling update can still
+	// talk to each other).
+	envs = append(envs, strEnv("TLS_MODE", targetTLSMode))
+
+	if targetTLSMode != tlsModeDisabled {
 		envs = append(envs,
 			strEnv("TLS_CERT_FILE", "/tls/tls.crt"),
 			strEnv("TLS_KEY_FILE", "/tls/tls.key"),
 		)
-		if spec.TLS.CASecretKey != "" {
+		if spec.TLS != nil && spec.TLS.CASecretKey != "" {
 			envs = append(envs, strEnv("TLS_CA_CERT_FILE", "/tls/"+spec.TLS.CASecretKey))
 		}
 	}

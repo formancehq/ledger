@@ -697,6 +697,6 @@ func (impl *ClusterServiceServerImpl) IncrementalBackup(ctx context.Context, req
 	}, nil
 }
 
-func RegisterClusterService(server *ggrpc.Server, clusterServiceServer clusterpb.ClusterServiceServer) {
-	clusterpb.RegisterClusterServiceServer(server, clusterServiceServer)
+func RegisterClusterService(registrar ggrpc.ServiceRegistrar, clusterServiceServer clusterpb.ClusterServiceServer) {
+	clusterpb.RegisterClusterServiceServer(registrar, clusterServiceServer)
 }

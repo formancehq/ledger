@@ -156,8 +156,9 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().String("cold-cache-dir", "", "Directory for cold storage read cache (default: <data-dir>/cold-cache). Use a separate volume to avoid filling the data disk.")
 
 	// TLS configuration flags
-	runCmd.Flags().String("tls-cert-file", "", "Path to TLS certificate file (PEM)")
-	runCmd.Flags().String("tls-key-file", "", "Path to TLS private key file (PEM)")
+	runCmd.Flags().String("tls-mode", "disabled", "TLS mode for inter-node and service gRPC: disabled, optional (accepts both TLS and plaintext; used as a transitional state during a TLS toggle), or required (TLS only)")
+	runCmd.Flags().String("tls-cert-file", "", "Path to TLS certificate file (PEM). Required when --tls-mode is optional or required.")
+	runCmd.Flags().String("tls-key-file", "", "Path to TLS private key file (PEM). Required when --tls-mode is optional or required.")
 	runCmd.Flags().String("tls-ca-cert-file", "", "Path to CA certificate file (PEM) for client verification")
 
 	// Join mode: join an existing cluster as a learner node
@@ -167,7 +168,7 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().Bool("restore", false, "Start in restore mode (accepts backup upload, no Raft)")
 
 	// Shared secret for inter-node authentication
-	runCmd.Flags().String("cluster-secret", "", "Shared secret for inter-node gRPC authentication (required when auth is enabled)")
+	runCmd.Flags().String("cluster-secret", "", "Shared secret for inter-node gRPC authentication. Requires TLS (--tls-mode != disabled) — the secret would otherwise be sent in plaintext.")
 
 	// Ed25519 authentication keys
 	runCmd.Flags().String("auth-ed25519-keys", "", "Path to JSON file with Ed25519 public keys and scopes for authentication")
@@ -496,6 +497,7 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 	cfg.ColdStorageConfig.CacheDir = getString("cold-cache-dir", "")
 
 	// TLS configuration
+	tlsMode := bootstrap.TLSMode(getString("tls-mode", string(bootstrap.TLSModeDisabled)))
 	tlsCert := getString("tls-cert-file", "")
 	tlsKey := getString("tls-key-file", "")
 	tlsCA := getString("tls-ca-cert-file", "")
@@ -505,7 +507,7 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 	}
 
 	cfg.TLSConfig = bootstrap.TLSConfig{
-		Enabled:  tlsCert != "" && tlsKey != "",
+		Mode:     tlsMode,
 		CertFile: tlsCert,
 		KeyFile:  tlsKey,
 		CAFile:   tlsCA,

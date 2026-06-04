@@ -1,0 +1,123 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: tls-disable
+spec:
+  timeouts:
+    assert: 10m
+  steps:
+    # 1. Generate certs and create the Secret first.
+    - name: Generate TLS Secret
+      try:
+        - script:
+            content: |
+              set -e
+              WORKDIR=$(mktemp -d)
+              cd "$WORKDIR"
+              openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 \
+                -nodes -keyout ca.key -out ca.crt -days 1 -subj "/CN=tls-dis-ca"
+              cat > csr.cnf <<EOF
+              [req]
+              distinguished_name=req
+              [SAN]
+              subjectAltName=DNS:localhost,DNS:tls-dis-headless,DNS:*.tls-dis-headless.${NAMESPACE}.svc.cluster.local,IP:127.0.0.1
+              EOF
+              openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 \
+                -nodes -keyout tls.key -out tls.csr -subj "/CN=tls-dis"
+              openssl x509 -req -in tls.csr -CA ca.crt -CAkey ca.key \
+                -CAcreateserial -out tls.crt -days 1 \
+                -extfile csr.cnf -extensions SAN
+              kubectl create secret generic tls-dis-certs \
+                --namespace "$NAMESPACE" \
+                --from-file=tls.crt=tls.crt \
+                --from-file=tls.key=tls.key \
+                --from-file=ca.crt=ca.crt
+            timeout: 60s
+
+    # 2. Deploy LedgerService with TLS enabled.
+    - name: Deploy TLS-enabled LedgerService
+      try:
+        - apply:
+            file: ledgerservice.yaml
+        - assert:
+            resource:
+              apiVersion: ledger.formance.com/v1alpha1
+              kind: LedgerService
+              metadata:
+                name: tls-dis
+              status:
+                tlsMigrationPhase: required
+                readyReplicas: 3
+
+    # 3. Provision data.
+    - name: Provision data
+      try:
+        - script:
+            content: |
+              kubectl exec tls-dis-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl provision run marketplace --scale 0.5 --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
+            timeout: 120s
+
+    # 4. Toggle TLS off.
+    - name: Disable TLS
+      try:
+        - apply:
+            file: ledgerservice-tls-disabled.yaml
+
+    # 5. Observe the migration walking through the optional phase the other
+    #    direction. This exercises the client-side re-probe: TLS connections
+    #    cached towards peers transitioning to plaintext must be torn down
+    #    and re-dialed in plaintext, otherwise the rolling restart hangs.
+    - name: Observe optional phase
+      try:
+        - script:
+            content: |
+              SAW_OPTIONAL=0
+              for i in $(seq 1 60); do
+                MODE=$(kubectl get statefulset tls-dis -n $NAMESPACE \
+                  -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="TLS_MODE")].value}' 2>/dev/null)
+                PHASE=$(kubectl get ledgerservice tls-dis -n $NAMESPACE \
+                  -o jsonpath='{.status.tlsMigrationPhase}' 2>/dev/null)
+                echo "tick $i: TLS_MODE=$MODE migrationPhase=$PHASE"
+                if [ "$MODE" = "optional" ] || [ "$PHASE" = "transitioning-to-disabled" ]; then
+                  SAW_OPTIONAL=1
+                fi
+                if [ "$MODE" = "disabled" ] && [ "$PHASE" = "disabled" ]; then
+                  break
+                fi
+                sleep 5
+              done
+              [ "$SAW_OPTIONAL" = "1" ] || { echo "FAIL: migration never went through optional"; exit 1; }
+            timeout: 8m
+
+    # 6. Final state: tls disabled, cluster-secret gone, data intact.
+    - name: Assert final disabled phase
+      try:
+        - assert:
+            resource:
+              apiVersion: ledger.formance.com/v1alpha1
+              kind: LedgerService
+              metadata:
+                name: tls-dis
+              status:
+                tlsMigrationPhase: disabled
+                readyReplicas: 3
+
+    - name: Assert cluster-secret removed
+      try:
+        - script:
+            content: |
+              if kubectl get secret tls-dis-cluster-secret -n $NAMESPACE >/dev/null 2>&1; then
+                echo "FAIL: cluster-secret should be removed when TLS is disabled"
+                exit 1
+              fi
+              echo "OK: cluster-secret deleted on TLS disable"
+            timeout: 15s
+
+    - name: Verify data integrity
+      try:
+        - script:
+            content: |
+              kubectl exec tls-dis-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl ledgers list --server 127.0.0.1:8888 --insecure'
+            timeout: 30s

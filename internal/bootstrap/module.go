@@ -16,10 +16,8 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.uber.org/fx"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
@@ -435,8 +433,16 @@ func Module() fx.Option {
 
 				return poolCfg
 			},
-			func(cfg Config) (credentials.TransportCredentials, error) {
-				return ClientTransportCredentials(cfg.TLSConfig)
+			func(cfg Config) (transport.TLSPolicy, error) {
+				tlsCfg, err := ClientTLSConfig(cfg.TLSConfig)
+				if err != nil {
+					return transport.TLSPolicy{}, err
+				}
+
+				return transport.TLSPolicy{
+					TLSConfig: tlsCfg,
+					Strict:    cfg.TLSConfig.Mode != TLSModeOptional,
+				}, nil
 			},
 			// RaftServer for internal inter-node communication (Raft transport + Snapshot)
 			func(cfg Config, logger logging.Logger) (*grpcadp.RaftServer, error) {
@@ -450,21 +456,21 @@ func Module() fx.Option {
 					return nil, fmt.Errorf("invalid port in bind address: %w", err)
 				}
 
-				tlsOpt, err := ServerCredentials(cfg.TLSConfig)
+				tlsCfg, err := ServerTLSConfig(cfg.TLSConfig)
 				if err != nil {
-					return nil, fmt.Errorf("loading TLS credentials for raft server: %w", err)
+					return nil, fmt.Errorf("loading TLS config for raft server: %w", err)
 				}
 
-				return grpcadp.NewRaftServer(port, logger, tlsOpt), nil
+				return grpcadp.NewRaftServer(port, logger, tlsCfg, cfg.TLSConfig.Mode.AllowsPlaintext())
 			},
 			// ServiceServer for external client-facing API
 			func(cfg Config, logger logging.Logger) (*grpcadp.ServiceServer, error) {
-				tlsOpt, err := ServerCredentials(cfg.TLSConfig)
+				tlsCfg, err := ServerTLSConfig(cfg.TLSConfig)
 				if err != nil {
-					return nil, fmt.Errorf("loading TLS credentials for service server: %w", err)
+					return nil, fmt.Errorf("loading TLS config for service server: %w", err)
 				}
 
-				return grpcadp.NewServiceServer(cfg.GRPCPort, logger, cfg.Debug, cfg.GRPCSlowThreshold, tlsOpt), nil
+				return grpcadp.NewServiceServer(cfg.GRPCPort, logger, cfg.Debug, cfg.GRPCSlowThreshold, tlsCfg, cfg.TLSConfig.Mode.AllowsPlaintext())
 			},
 			// Provide a single AuthConfig used by gRPC and HTTP handlers.
 			fx.Annotate(buildAuthConfig, fx.ParamTags(``, ``, `optional:"true"`)),
@@ -812,7 +818,6 @@ func Module() fx.Option {
 
 						listening := make(chan struct{})
 
-						reflection.Register(raftServer.GetServer())
 						waitRaft = otlplogs.GoWait(func() {
 							err := raftServer.Start(listening)
 							if err != nil {

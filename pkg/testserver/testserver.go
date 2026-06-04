@@ -190,6 +190,16 @@ func WithJoin(serviceAddr string) testservice.InstrumentationFunc {
 	}
 }
 
+// WithTLSMode sets --tls-mode (disabled, optional, or required). When
+// combined with WithTLSCertFile/WithTLSKeyFile the server activates TLS.
+func WithTLSMode(mode string) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--tls-mode", mode)
+
+		return nil
+	}
+}
+
 func WithTLSCertFile(path string) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--tls-cert-file", path)

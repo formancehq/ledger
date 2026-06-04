@@ -677,7 +677,7 @@ kubectl cp ledger-0:/tmp/backup.tar.gz ./backup.tar.gz
 
 ### Production Recommendations
 
-1. **TLS/HTTPS**: Configure TLS for all communications
+1. **TLS/HTTPS**: Configure TLS for all communications. To enable or disable TLS on a running cluster without downtime, see [TLS migration](tls-migration.md).
 2. **Authentication**: Add API authentication (JWT, OAuth2)
 3. **Network Policies**: Restrict network communications
 4. **Secrets Management**: Use Kubernetes Secrets or Vault

@@ -99,6 +99,7 @@ func setupTLSSingleNode(httpPort, grpcPort, raftPort int) (context.Context, serv
 	})
 	instruments = append(instruments,
 		testserver.WithBootstrap(),
+		testserver.WithTLSMode("required"),
 		testserver.WithTLSCertFile(certs.ServerCertFile),
 		testserver.WithTLSKeyFile(certs.ServerKeyFile),
 	)
@@ -171,6 +172,7 @@ func setupTLSMultiNodeCluster(
 		return append(instruments,
 			testserver.WithRaftCompactionMargin(1),
 			testserver.WithAutoPromoteThreshold(10),
+			testserver.WithTLSMode("required"),
 			testserver.WithTLSCertFile(certs.ServerCertFile),
 			testserver.WithTLSKeyFile(certs.ServerKeyFile),
 			testserver.WithTLSCACertFile(certs.CACertFile),

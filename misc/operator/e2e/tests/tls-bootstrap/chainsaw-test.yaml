@@ -1,0 +1,95 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: tls-bootstrap
+spec:
+  timeouts:
+    assert: 5m
+  steps:
+    # 1. Generate a self-signed CA + server cert and store them in a Secret.
+    - name: Generate TLS Secret
+      try:
+        - script:
+            content: |
+              set -e
+              WORKDIR=$(mktemp -d)
+              cd "$WORKDIR"
+
+              # Self-signed CA
+              openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 \
+                -nodes -keyout ca.key -out ca.crt -days 1 \
+                -subj "/CN=tls-bs-ca"
+
+              # Server cert signed by the CA, valid for the headless service
+              cat > csr.cnf <<EOF
+              [req]
+              distinguished_name=req
+              [SAN]
+              subjectAltName=DNS:localhost,DNS:tls-bs-headless,DNS:*.tls-bs-headless.${NAMESPACE}.svc.cluster.local,IP:127.0.0.1
+              EOF
+
+              openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 \
+                -nodes -keyout tls.key -out tls.csr -days 1 \
+                -subj "/CN=tls-bs"
+
+              openssl x509 -req -in tls.csr -CA ca.crt -CAkey ca.key \
+                -CAcreateserial -out tls.crt -days 1 \
+                -extfile csr.cnf -extensions SAN
+
+              kubectl create secret generic tls-bs-certs \
+                --namespace "$NAMESPACE" \
+                --from-file=tls.crt=tls.crt \
+                --from-file=tls.key=tls.key \
+                --from-file=ca.crt=ca.crt
+            timeout: 60s
+
+    # 2. Deploy LedgerService with TLS enabled from the start. Because there
+    #    is no pre-existing StatefulSet, the operator does not need to walk
+    #    through the optional phase.
+    - name: Deploy TLS-enabled LedgerService
+      try:
+        - apply:
+            file: ledgerservice.yaml
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: tls-bs
+              status:
+                readyReplicas: 3
+
+    # 3. Verify the operator landed straight in the "required" TLS phase.
+    - name: Assert TLS phase
+      try:
+        - assert:
+            resource:
+              apiVersion: ledger.formance.com/v1alpha1
+              kind: LedgerService
+              metadata:
+                name: tls-bs
+              status:
+                tlsMigrationPhase: required
+
+    # 4. Verify the pod template env reports required mode and certs are mounted.
+    - name: Verify TLS env vars
+      try:
+        - script:
+            content: |
+              MODE=$(kubectl get statefulset tls-bs -n $NAMESPACE \
+                -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="TLS_MODE")].value}')
+              [ "$MODE" = "required" ] || { echo "FAIL: TLS_MODE=$MODE want required"; exit 1; }
+
+              CERT=$(kubectl get statefulset tls-bs -n $NAMESPACE \
+                -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="TLS_CERT_FILE")].value}')
+              [ -n "$CERT" ] || { echo "FAIL: TLS_CERT_FILE not set"; exit 1; }
+            timeout: 30s
+
+    # 5. Verify the cluster-secret was created (it is gated on TLS).
+    - name: Verify cluster secret exists
+      try:
+        - script:
+            content: |
+              kubectl get secret tls-bs-cluster-secret -n $NAMESPACE >/dev/null
+              echo "OK: cluster-secret present"
+            timeout: 15s

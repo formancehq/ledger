@@ -23,6 +23,22 @@ import (
 func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.LedgerService, specHash string, agents []agentKeyInfo) error {
 	logger := log.FromContext(ctx)
 
+	// Determine the TLS_MODE to apply this pass. The operator walks the
+	// StatefulSet through "optional" during a toggle so peers on either side
+	// of a rolling update can still talk to each other; the user-facing CR
+	// only exposes a boolean.
+	existingForTLS, err := r.fetchExistingStatefulSet(ctx, ledger)
+	if err != nil {
+		return fmt.Errorf("fetching StatefulSet for TLS state: %w", err)
+	}
+
+	targetTLSMode := computeTargetTLSMode(
+		desiredTLSMode(ledger),
+		currentTLSModeFromStatefulSet(existingForTLS),
+		rolloutConverged(existingForTLS),
+	)
+	ledger.Status.TLSMigrationPhase = tlsMigrationPhase(desiredTLSMode(ledger), targetTLSMode)
+
 	desiredReplicas := int32(3)
 	if ledger.Spec.Replicas != nil {
 		desiredReplicas = *ledger.Spec.Replicas
@@ -58,7 +74,7 @@ func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledg
 			ledger.Spec.Replicas = &previousReplicas
 			_, err := controllerutil.CreateOrUpdate(ctx, r.Client, sts, func() error {
 				sts.Labels = commonLabels(ledger)
-				desired := buildStatefulSetSpec(ledger, specHash, agents)
+				desired := buildStatefulSetSpec(ledger, specHash, agents, targetTLSMode)
 
 				if sts.CreationTimestamp.IsZero() {
 					sts.Spec = desired
@@ -94,7 +110,7 @@ func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledg
 		},
 	}
 
-	desired := buildStatefulSetSpec(ledger, specHash, agents)
+	desired := buildStatefulSetSpec(ledger, specHash, agents, targetTLSMode)
 
 	// Check if VolumeClaimTemplates changed on an existing StatefulSet.
 	// VCTs are immutable — we must delete-recreate with orphan propagation.
@@ -114,7 +130,7 @@ func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledg
 		}
 	}
 
-	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, sts, func() error {
+	_, err = controllerutil.CreateOrUpdate(ctx, r.Client, sts, func() error {
 		sts.Labels = commonLabels(ledger)
 
 		if sts.CreationTimestamp.IsZero() {
@@ -148,7 +164,7 @@ func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledg
 	return nil
 }
 
-func buildStatefulSetSpec(ledger *ledgerv1alpha1.LedgerService, specHash string, agents []agentKeyInfo) appsv1.StatefulSetSpec {
+func buildStatefulSetSpec(ledger *ledgerv1alpha1.LedgerService, specHash string, agents []agentKeyInfo, targetTLSMode string) appsv1.StatefulSetSpec {
 	replicas := int32(3)
 	if ledger.Spec.Replicas != nil {
 		replicas = *ledger.Spec.Replicas
@@ -165,7 +181,7 @@ func buildStatefulSetSpec(ledger *ledgerv1alpha1.LedgerService, specHash string,
 			MatchLabels: selectorLabels(ledger),
 		},
 		PersistentVolumeClaimRetentionPolicy: buildRetentionPolicy(ledger),
-		Template:                             buildPodTemplate(ledger, specHash, agents),
+		Template:                             buildPodTemplate(ledger, specHash, agents, targetTLSMode),
 		VolumeClaimTemplates:                 buildVolumeClaimTemplates(ledger),
 	}
 
@@ -192,7 +208,7 @@ func buildRetentionPolicy(ledger *ledgerv1alpha1.LedgerService) *appsv1.Stateful
 	}
 }
 
-func buildPodTemplate(ledger *ledgerv1alpha1.LedgerService, specHash string, agents []agentKeyInfo) corev1.PodTemplateSpec {
+func buildPodTemplate(ledger *ledgerv1alpha1.LedgerService, specHash string, agents []agentKeyInfo, targetTLSMode string) corev1.PodTemplateSpec {
 	spec := &ledger.Spec
 
 	// Pod annotations with spec hash for rolling updates
@@ -278,7 +294,10 @@ func buildPodTemplate(ledger *ledgerv1alpha1.LedgerService, specHash string, age
 		})
 	}
 
-	if spec.TLS != nil && spec.TLS.Enabled {
+	// Mount the TLS secret whenever TLS is at least partially active
+	// (targetTLSMode != "disabled"), so pods in the optional phase have
+	// certs available even before the user-facing flip is complete.
+	if targetTLSMode != tlsModeDisabled && spec.TLS != nil {
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
 			Name:      "tls-certs",
 			MountPath: "/tls",
@@ -312,22 +331,25 @@ func buildPodTemplate(ledger *ledgerv1alpha1.LedgerService, specHash string, age
 		})
 	}
 
-	envVars := buildEnvVars(ledger)
-	// Always inject CLUSTER_SECRET so pods send the bearer token on inter-node
-	// calls. This prevents a rolling-update deadlock when agents are added:
-	// not-yet-updated pods already send the token, so updated pods (with auth
-	// enabled) accept their calls.
-	envVars = append(envVars, corev1.EnvVar{
-		Name: "CLUSTER_SECRET",
-		ValueFrom: &corev1.EnvVarSource{
-			SecretKeyRef: &corev1.SecretKeySelector{
-				LocalObjectReference: corev1.LocalObjectReference{
-					Name: clusterSecretName(ledger),
+	envVars := buildEnvVars(ledger, targetTLSMode)
+	// Inject CLUSTER_SECRET only when TLS is at least partially active:
+	// the secret is a static bearer token and must never travel in
+	// plaintext. During a TLS toggle, the secret appears together with the
+	// optional mode (rolling update phase 1), so pods on either side of
+	// the rollout see consistent behavior.
+	if shouldInjectClusterSecret(targetTLSMode) {
+		envVars = append(envVars, corev1.EnvVar{
+			Name: "CLUSTER_SECRET",
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: clusterSecretName(ledger),
+					},
+					Key: clusterSecretKey,
 				},
-				Key: clusterSecretKey,
 			},
-		},
-	})
+		})
+	}
 
 	container := corev1.Container{
 		Name:            "ledger",
@@ -335,7 +357,7 @@ func buildPodTemplate(ledger *ledgerv1alpha1.LedgerService, specHash string, age
 		ImagePullPolicy: pullPolicy,
 		Ports:           ports,
 		Env:             envVars,
-		Command:         buildCommand(ledger, agents),
+		Command:         buildCommand(ledger, agents, targetTLSMode),
 		VolumeMounts:    volumeMounts,
 		Resources:       ledger.Spec.Resources,
 	}
@@ -458,7 +480,7 @@ func buildTopologySpreadConstraints(ledger *ledgerv1alpha1.LedgerService) []core
 	return out
 }
 
-func buildCommand(ledger *ledgerv1alpha1.LedgerService, agents []agentKeyInfo) []string {
+func buildCommand(ledger *ledgerv1alpha1.LedgerService, agents []agentKeyInfo, targetTLSMode string) []string {
 	spec := &ledger.Spec
 	hlsSvcName := headlessServiceName(ledger)
 
@@ -487,10 +509,27 @@ fi`, spec.DataDir, spec.DataDir, bootstrap0)
 		extraFlags += ` \
   --response-signing-key "$RESPONSE_SIGNING_KEY"`
 	}
-	// Always pass --cluster-secret so inter-node calls carry the bearer token.
-	// --auth-ed25519-keys is only added when agents exist AND auth is not explicitly disabled.
-	extraFlags += ` \
+	// Pass --tls-* flags when TLS is at least partially active.
+	if targetTLSMode != tlsModeDisabled {
+		extraFlags += fmt.Sprintf(` \
+  --tls-mode %s \
+  --tls-cert-file "$TLS_CERT_FILE" \
+  --tls-key-file "$TLS_KEY_FILE"`, targetTLSMode)
+
+		if spec.TLS != nil && spec.TLS.CASecretKey != "" {
+			extraFlags += ` \
+  --tls-ca-cert-file "$TLS_CA_CERT_FILE"`
+		}
+	}
+
+	// Pass --cluster-secret only when injected (TLS != disabled). Sending a
+	// static bearer token over plaintext is an anti-pattern.
+	if shouldInjectClusterSecret(targetTLSMode) {
+		extraFlags += ` \
   --cluster-secret "$CLUSTER_SECRET"`
+	}
+
+	// --auth-ed25519-keys is only added when agents exist AND auth is not explicitly disabled.
 	authExplicitlyDisabled := spec.Auth != nil && spec.Auth.Enabled != nil && !*spec.Auth.Enabled
 	if len(agents) > 0 && !authExplicitlyDisabled {
 		extraFlags += ` \

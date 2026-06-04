@@ -36,6 +36,7 @@ func validBaseConfig() Config {
 	return Config{
 		ClusterID:  "test-cluster",
 		RaftConfig: node.NodeConfig{NodeID: 1},
+		TLSConfig:  TLSConfig{Mode: TLSModeDisabled},
 	}
 }
 
@@ -45,25 +46,31 @@ func TestValidateClusterSecretRequiresTLS(t *testing.T) {
 	tests := []struct {
 		name          string
 		clusterSecret string
-		tlsEnabled    bool
+		tlsMode       TLSMode
 		wantErr       string
 	}{
 		{
-			name:          "cluster secret with TLS enabled",
+			name:          "cluster secret with TLS required",
 			clusterSecret: "my-secret",
-			tlsEnabled:    true,
+			tlsMode:       TLSModeRequired,
+			wantErr:       "",
+		},
+		{
+			name:          "cluster secret with TLS optional",
+			clusterSecret: "my-secret",
+			tlsMode:       TLSModeOptional,
 			wantErr:       "",
 		},
 		{
 			name:          "cluster secret without TLS",
 			clusterSecret: "my-secret",
-			tlsEnabled:    false,
-			wantErr:       "--tls-cert-file",
+			tlsMode:       TLSModeDisabled,
+			wantErr:       "--cluster-secret requires TLS",
 		},
 		{
 			name:          "no cluster secret without TLS",
 			clusterSecret: "",
-			tlsEnabled:    false,
+			tlsMode:       TLSModeDisabled,
 			wantErr:       "",
 		},
 	}
@@ -74,7 +81,73 @@ func TestValidateClusterSecretRequiresTLS(t *testing.T) {
 
 			cfg := validBaseConfig()
 			cfg.ClusterSecret = tt.clusterSecret
-			cfg.TLSConfig.Enabled = tt.tlsEnabled
+			cfg.TLSConfig.Mode = tt.tlsMode
+			if tt.tlsMode != TLSModeDisabled {
+				// Provide cert/key so the TLS-config validation doesn't trip first.
+				cfg.TLSConfig.CertFile = "/tmp/fake.crt"
+				cfg.TLSConfig.KeyFile = "/tmp/fake.key"
+			}
+
+			err := cfg.Validate()
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateTLSConfig(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		mode    TLSMode
+		cert    string
+		key     string
+		wantErr string
+	}{
+		{
+			name:    "disabled requires nothing",
+			mode:    TLSModeDisabled,
+			wantErr: "",
+		},
+		{
+			name:    "optional requires cert and key",
+			mode:    TLSModeOptional,
+			wantErr: "requires --tls-cert-file",
+		},
+		{
+			name:    "optional with cert and key",
+			mode:    TLSModeOptional,
+			cert:    "/tmp/fake.crt",
+			key:     "/tmp/fake.key",
+			wantErr: "",
+		},
+		{
+			name:    "required with cert and key",
+			mode:    TLSModeRequired,
+			cert:    "/tmp/fake.crt",
+			key:     "/tmp/fake.key",
+			wantErr: "",
+		},
+		{
+			name:    "unknown mode rejected",
+			mode:    TLSMode("invalid"),
+			wantErr: "--tls-mode must be one of",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := validBaseConfig()
+			cfg.TLSConfig.Mode = tt.mode
+			cfg.TLSConfig.CertFile = tt.cert
+			cfg.TLSConfig.KeyFile = tt.key
 
 			err := cfg.Validate()
 			if tt.wantErr == "" {

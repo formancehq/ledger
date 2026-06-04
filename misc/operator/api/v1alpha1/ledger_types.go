@@ -1210,6 +1210,14 @@ type LedgerServiceStatus struct {
 	// Conditions represent the latest available observations.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// TLSMigrationPhase reflects the operator's current TLS rollout phase.
+	// One of "disabled", "required", "transitioning-to-required",
+	// "transitioning-to-disabled". Set by the controller's TLS state
+	// machine; users observe the user-facing tls.enabled bool, this field
+	// exposes the intermediate "optional" mode used during a toggle.
+	// +optional
+	TLSMigrationPhase string `json:"tlsMigrationPhase,omitempty"`
 }
 
 // EndpointsStatus contains the resolved endpoints for a LedgerService.

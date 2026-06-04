@@ -40,7 +40,7 @@ func TestPoolConfig_SetDefaults_PreservesExisting(t *testing.T) {
 func TestNewConnectionPool(t *testing.T) {
 	t.Parallel()
 
-	pool := NewConnectionPool(insecure.NewCredentials(), PoolConfig{})
+	pool := NewConnectionPool(TLSPolicy{}, PoolConfig{})
 	require.NotNil(t, pool)
 	require.Empty(t, pool.PeerIDs())
 }
@@ -48,7 +48,7 @@ func TestNewConnectionPool(t *testing.T) {
 func TestConnectionPool_AddPeerAndGet(t *testing.T) {
 	t.Parallel()
 
-	pool := NewConnectionPool(insecure.NewCredentials(), PoolConfig{})
+	pool := NewConnectionPool(TLSPolicy{}, PoolConfig{})
 
 	err := pool.AddPeer(1, "localhost:9000")
 	require.NoError(t, err)
@@ -69,7 +69,7 @@ func TestConnectionPool_AddPeerAndGet(t *testing.T) {
 func TestConnectionPool_AddPeerIdempotent(t *testing.T) {
 	t.Parallel()
 
-	pool := NewConnectionPool(insecure.NewCredentials(), PoolConfig{})
+	pool := NewConnectionPool(TLSPolicy{}, PoolConfig{})
 
 	err := pool.AddPeer(1, "localhost:9000")
 	require.NoError(t, err)
@@ -87,7 +87,7 @@ func TestConnectionPool_AddPeerIdempotent(t *testing.T) {
 func TestConnectionPool_AddPeerReplacesAddress(t *testing.T) {
 	t.Parallel()
 
-	pool := NewConnectionPool(insecure.NewCredentials(), PoolConfig{})
+	pool := NewConnectionPool(TLSPolicy{}, PoolConfig{})
 
 	err := pool.AddPeer(1, "localhost:9000")
 	require.NoError(t, err)
@@ -105,7 +105,7 @@ func TestConnectionPool_AddPeerReplacesAddress(t *testing.T) {
 func TestConnectionPool_GetConnectionUnknownPeer(t *testing.T) {
 	t.Parallel()
 
-	pool := NewConnectionPool(insecure.NewCredentials(), PoolConfig{})
+	pool := NewConnectionPool(TLSPolicy{}, PoolConfig{})
 
 	conn := pool.GetConnection(999)
 	require.Nil(t, conn)
@@ -117,7 +117,7 @@ func TestConnectionPool_GetConnectionUnknownPeer(t *testing.T) {
 func TestConnectionPool_RemovePeer(t *testing.T) {
 	t.Parallel()
 
-	pool := NewConnectionPool(insecure.NewCredentials(), PoolConfig{})
+	pool := NewConnectionPool(TLSPolicy{}, PoolConfig{})
 
 	err := pool.AddPeer(1, "localhost:9000")
 	require.NoError(t, err)
@@ -135,7 +135,7 @@ func TestConnectionPool_RemovePeer(t *testing.T) {
 func TestConnectionPool_RemovePeerNotFound(t *testing.T) {
 	t.Parallel()
 
-	pool := NewConnectionPool(insecure.NewCredentials(), PoolConfig{})
+	pool := NewConnectionPool(TLSPolicy{}, PoolConfig{})
 
 	// Removing non-existent peer should be no-op
 	err := pool.RemovePeer(999)
@@ -145,7 +145,7 @@ func TestConnectionPool_RemovePeerNotFound(t *testing.T) {
 func TestConnectionPool_MultiplePeers(t *testing.T) {
 	t.Parallel()
 
-	pool := NewConnectionPool(insecure.NewCredentials(), PoolConfig{})
+	pool := NewConnectionPool(TLSPolicy{}, PoolConfig{})
 
 	require.NoError(t, pool.AddPeer(1, "localhost:9001"))
 	require.NoError(t, pool.AddPeer(2, "localhost:9002"))
@@ -164,7 +164,7 @@ func TestConnectionPool_MultiplePeers(t *testing.T) {
 func TestConnectionPool_Close(t *testing.T) {
 	t.Parallel()
 
-	pool := NewConnectionPool(insecure.NewCredentials(), PoolConfig{})
+	pool := NewConnectionPool(TLSPolicy{}, PoolConfig{})
 
 	require.NoError(t, pool.AddPeer(1, "localhost:9001"))
 	require.NoError(t, pool.AddPeer(2, "localhost:9002"))
@@ -181,7 +181,7 @@ func TestConnectionPool_Close(t *testing.T) {
 func TestConnectionPool_RestartConnection(t *testing.T) {
 	t.Parallel()
 
-	pool := NewConnectionPool(insecure.NewCredentials(), PoolConfig{})
+	pool := NewConnectionPool(TLSPolicy{}, PoolConfig{})
 
 	require.NoError(t, pool.AddPeer(1, "localhost:9001"))
 

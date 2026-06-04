@@ -660,14 +660,14 @@ func (t *DefaultTransport) StreamMessages(stream grpc.BidiStreamingServer[rafttr
 	}
 }
 
-// RegisterRaftTransportService registers the RaftTransportService on the given gRPC server.
-func RegisterRaftTransportService(server *grpc.Server, transport *DefaultTransport) {
-	transport.RegisterRaftService(server)
+// RegisterRaftTransportService registers the RaftTransportService on the given gRPC service registrar.
+func RegisterRaftTransportService(registrar grpc.ServiceRegistrar, transport *DefaultTransport) {
+	transport.RegisterRaftService(registrar)
 }
 
-// RegisterRaftService registers the RaftTransportService on the given gRPC server.
-func (t *DefaultTransport) RegisterRaftService(server *grpc.Server) {
-	rafttransportpb.RegisterRaftTransportServiceServer(server, t)
+// RegisterRaftService registers the RaftTransportService on the given gRPC service registrar.
+func (t *DefaultTransport) RegisterRaftService(registrar grpc.ServiceRegistrar) {
+	rafttransportpb.RegisterRaftTransportServiceServer(registrar, t)
 }
 
 type peerConnection struct {

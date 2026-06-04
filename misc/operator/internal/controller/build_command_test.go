@@ -66,7 +66,7 @@ func TestBuildCommand_AgentsWithAuthDisabled(t *testing.T) {
 				},
 			}
 
-			cmd := buildCommand(ls, tt.agents)
+			cmd := buildCommand(ls, tt.agents, "disabled")
 			script := strings.Join(cmd, " ")
 
 			if tt.expectEd25519 {

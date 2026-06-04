@@ -2,14 +2,17 @@ package grpc
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
 	"runtime/debug"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/aws/smithy-go"
+	"github.com/soheilhy/cmux"
 	"go.etcd.io/raft/v3"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/attribute"
@@ -71,17 +74,66 @@ func init() {
 	encoding.RegisterCodec(vtFallbackCodec{})
 }
 
-// baseServer contains common server functionality.
+// baseServer holds the listener and one or both gRPC servers.
+//
+// Modes:
+//   - tlsCfg == nil, acceptPlaintext == true  → plaintext only (TLS disabled).
+//   - tlsCfg != nil, acceptPlaintext == false → TLS only (TLS required).
+//   - tlsCfg != nil, acceptPlaintext == true  → dual listener via cmux
+//     (TLS optional, used as a transitional state during a TLS toggle).
+//
+// In dual mode, both servers share the same registered services via the
+// multiRegistrar returned by GetServer.
 type baseServer struct {
-	server   *ggrpc.Server
+	tlsServer       *ggrpc.Server
+	plaintextServer *ggrpc.Server
+	tlsConfig       *tls.Config
+
 	listener net.Listener
-	logger   logging.Logger
-	port     int
-	name     string
+	mu       sync.Mutex
+
+	logger logging.Logger
+	port   int
+	name   string
 }
 
-func (s *baseServer) GetServer() *ggrpc.Server {
-	return s.server
+// multiRegistrar fans out RegisterService calls to every underlying gRPC
+// server. It implements grpc.ServiceRegistrar.
+type multiRegistrar struct {
+	servers []*ggrpc.Server
+}
+
+func (m *multiRegistrar) RegisterService(desc *ggrpc.ServiceDesc, impl any) {
+	for _, s := range m.servers {
+		s.RegisterService(desc, impl)
+	}
+}
+
+// underlying returns the non-nil grpc.Server instances backing this server.
+func (s *baseServer) underlying() []*ggrpc.Server {
+	servers := make([]*ggrpc.Server, 0, 2)
+	if s.tlsServer != nil {
+		servers = append(servers, s.tlsServer)
+	}
+
+	if s.plaintextServer != nil {
+		servers = append(servers, s.plaintextServer)
+	}
+
+	return servers
+}
+
+// GetServer returns a grpc.ServiceRegistrar that registers handlers on every
+// underlying gRPC server (one or two, depending on the TLS mode).
+func (s *baseServer) GetServer() ggrpc.ServiceRegistrar {
+	return &multiRegistrar{servers: s.underlying()}
+}
+
+// registerReflection enables gRPC reflection on every underlying server.
+func (s *baseServer) registerReflection() {
+	for _, srv := range s.underlying() {
+		reflection.Register(srv)
+	}
 }
 
 func (s *baseServer) Start(listening chan struct{}) error {
@@ -90,45 +142,139 @@ func (s *baseServer) Start(listening chan struct{}) error {
 		return fmt.Errorf("failed to listen: %w", err)
 	}
 
+	s.mu.Lock()
 	s.listener = lis
+	s.mu.Unlock()
 
 	s.logger.
-		WithFields(map[string]any{"addr": lis.Addr().String()}).
+		WithFields(map[string]any{
+			"addr":      lis.Addr().String(),
+			"tls":       s.tlsServer != nil,
+			"plaintext": s.plaintextServer != nil,
+		}).
 		Infof("Starting %s server", s.name)
 
 	close(listening)
 
-	if err := s.server.Serve(lis); err != nil && !errors.Is(err, ggrpc.ErrServerStopped) {
+	switch {
+	case s.tlsServer != nil && s.plaintextServer != nil:
+		return s.serveDual(lis)
+	case s.tlsServer != nil:
+		return s.serveSingle(s.tlsServer, tls.NewListener(lis, s.tlsConfig))
+	default:
+		return s.serveSingle(s.plaintextServer, lis)
+	}
+}
+
+func (s *baseServer) serveSingle(server *ggrpc.Server, lis net.Listener) error {
+	if err := server.Serve(lis); err != nil && !errors.Is(err, ggrpc.ErrServerStopped) && !errors.Is(err, net.ErrClosed) {
 		return fmt.Errorf("%s server failed: %w", s.name, err)
 	}
 
 	return nil
 }
 
-func (s *baseServer) Stop() error {
-	s.logger.Infof("Stopping %s server", s.name)
+// serveDual multiplexes TLS and plaintext connections on the same listener
+// via cmux. TLS connections are routed to s.tlsServer (wrapped via
+// tls.NewListener), plaintext HTTP/2 connections (gRPC's plaintext mode is
+// HTTP/2 with the cleartext preface) are routed to s.plaintextServer.
+func (s *baseServer) serveDual(lis net.Listener) error {
+	m := cmux.New(lis)
+	tlsListener := m.Match(cmux.TLS())
+	plainListener := m.Match(cmux.HTTP2())
 
-	if s.server != nil {
-		s.server.Stop()
-		s.server = nil
-	}
+	errCh := make(chan error, 3)
 
-	if s.listener != nil {
-		_ = s.listener.Close()
-		s.listener = nil
+	go func() {
+		errCh <- s.tlsServer.Serve(tls.NewListener(tlsListener, s.tlsConfig))
+	}()
+
+	go func() {
+		errCh <- s.plaintextServer.Serve(plainListener)
+	}()
+
+	go func() {
+		errCh <- m.Serve()
+	}()
+
+	// Wait for the first goroutine to exit. Any error other than the
+	// expected shutdown errors is surfaced.
+	for range 3 {
+		err := <-errCh
+		if err != nil && !errors.Is(err, ggrpc.ErrServerStopped) && !errors.Is(err, net.ErrClosed) {
+			// cmux returns ErrServerClosed-like errors when the listener
+			// is closed; tolerate them.
+			if err.Error() == "mux: listener closed" {
+				continue
+			}
+
+			return fmt.Errorf("%s server failed: %w", s.name, err)
+		}
 	}
 
 	return nil
 }
 
+func (s *baseServer) stopImmediate() {
+	for _, srv := range s.underlying() {
+		srv.Stop()
+	}
+}
+
+func (s *baseServer) stopGraceful(timeout time.Duration) {
+	done := make(chan struct{})
+
+	go func() {
+		var wg sync.WaitGroup
+
+		for _, srv := range s.underlying() {
+			wg.Add(1)
+
+			go func(srv *ggrpc.Server) {
+				defer wg.Done()
+				srv.GracefulStop()
+			}(srv)
+		}
+
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(timeout):
+		s.logger.Infof("Graceful stop timed out, forcing stop")
+		s.stopImmediate()
+		<-done
+	}
+}
+
+func (s *baseServer) closeListener() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.listener != nil {
+		_ = s.listener.Close()
+		s.listener = nil
+	}
+}
+
 // RaftServer is the gRPC server for Raft transport (internal inter-node communication).
 type RaftServer struct {
-	baseServer
+	*baseServer
+}
+
+func (s *RaftServer) Stop() error {
+	s.logger.Infof("Stopping %s server", s.name)
+	s.stopImmediate()
+	s.closeListener()
+
+	return nil
 }
 
 // ServiceServer is the gRPC server for service API (external client-facing).
 type ServiceServer struct {
-	baseServer
+	*baseServer
 }
 
 // Stop gracefully shuts down the service server, waiting up to 2 seconds for
@@ -137,30 +283,8 @@ type ServiceServer struct {
 // gRPC server stops.
 func (s *ServiceServer) Stop() error {
 	s.logger.Infof("Stopping %s server", s.name)
-
-	if s.server != nil {
-		done := make(chan struct{})
-
-		go func() {
-			s.server.GracefulStop()
-			close(done)
-		}()
-
-		select {
-		case <-done:
-		case <-time.After(2 * time.Second):
-			s.logger.Infof("Graceful stop timed out, forcing stop")
-			s.server.Stop()
-			<-done // Wait for the GracefulStop goroutine to exit
-		}
-
-		s.server = nil
-	}
-
-	if s.listener != nil {
-		_ = s.listener.Close()
-		s.listener = nil
-	}
+	s.stopGraceful(2 * time.Second)
+	s.closeListener()
 
 	return nil
 }
@@ -508,11 +632,43 @@ func convertToGRPCError(err error) error {
 	return err
 }
 
-// NewRaftServer creates a new gRPC server for Raft transport (internal)
+// buildBaseServer constructs the baseServer fields shared by RaftServer and
+// ServiceServer. It instantiates one or two underlying gRPC servers based on
+// the (tlsCfg, acceptPlaintext) combination.
+//
+// Invariant: at least one of (tlsCfg != nil, acceptPlaintext) must hold.
+func buildBaseServer(name string, port int, logger logging.Logger, tlsCfg *tls.Config, acceptPlaintext bool, opts []ggrpc.ServerOption) (*baseServer, error) {
+	if tlsCfg == nil && !acceptPlaintext {
+		return nil, fmt.Errorf("%s: cannot construct server with neither TLS nor plaintext enabled", name)
+	}
+
+	bs := &baseServer{
+		port:      port,
+		logger:    logger,
+		name:      name,
+		tlsConfig: tlsCfg,
+	}
+
+	if tlsCfg != nil {
+		bs.tlsServer = ggrpc.NewServer(opts...)
+	}
+
+	if acceptPlaintext {
+		bs.plaintextServer = ggrpc.NewServer(opts...)
+	}
+
+	return bs, nil
+}
+
+// NewRaftServer creates a new gRPC server for Raft transport (internal).
 // This server is optimized for high-throughput inter-node communication
 // and does not include OpenTelemetry instrumentation to minimize overhead.
-// If tlsOpt is non-nil, it is appended to the server options to enable TLS.
-func NewRaftServer(port int, logger logging.Logger, tlsOpt ggrpc.ServerOption) *RaftServer {
+//
+// (tlsCfg, acceptPlaintext) maps to the TLS mode:
+//   - (nil, true):  plaintext only
+//   - (cfg, false): TLS only
+//   - (cfg, true):  dual listener (cmux), used as a transitional state
+func NewRaftServer(port int, logger logging.Logger, tlsCfg *tls.Config, acceptPlaintext bool) (*RaftServer, error) {
 	opts := []ggrpc.ServerOption{
 		ggrpc.InitialWindowSize(transport.GRPCInitialWindowSize),
 		ggrpc.InitialConnWindowSize(transport.GRPCInitialConnWindowSize),
@@ -522,27 +678,23 @@ func NewRaftServer(port int, logger logging.Logger, tlsOpt ggrpc.ServerOption) *
 		ggrpc.MaxSendMsgSize(transport.GRPCMaxMsgSize),
 	}
 
-	if tlsOpt != nil {
-		opts = append(opts, tlsOpt)
+	bs, err := buildBaseServer("Raft gRPC", port, logger, tlsCfg, acceptPlaintext, opts)
+	if err != nil {
+		return nil, err
 	}
 
-	server := ggrpc.NewServer(opts...)
+	srv := &RaftServer{baseServer: bs}
+	srv.registerReflection()
 
-	return &RaftServer{
-		baseServer: baseServer{
-			port:   port,
-			logger: logger,
-			server: server,
-			name:   "Raft gRPC",
-		},
-	}
+	return srv, nil
 }
 
-// NewServiceServer creates a new gRPC server for service API (external)
+// NewServiceServer creates a new gRPC server for service API (external).
 // This server includes OpenTelemetry instrumentation and error conversion.
 // Authentication is handled explicitly in each service method via auth.Authenticate.
-// If tlsOpt is non-nil, it is appended to the server options to enable TLS.
-func NewServiceServer(port int, logger logging.Logger, debug bool, slowThreshold time.Duration, tlsOpt ggrpc.ServerOption) *ServiceServer {
+//
+// See NewRaftServer for the (tlsCfg, acceptPlaintext) semantics.
+func NewServiceServer(port int, logger logging.Logger, debug bool, slowThreshold time.Duration, tlsCfg *tls.Config, acceptPlaintext bool) (*ServiceServer, error) {
 	// Recovery interceptor must be first (outermost) to catch panics from all handlers.
 	// Logging is placed before error conversion so that on the response path
 	// (innermost-first), error conversion runs first and logging sees the
@@ -572,21 +724,13 @@ func NewServiceServer(port int, logger logging.Logger, debug bool, slowThreshold
 		ggrpc.ChainStreamInterceptor(streamInterceptors...),
 	}
 
-	if tlsOpt != nil {
-		opts = append(opts, tlsOpt)
+	bs, err := buildBaseServer("Service gRPC", port, logger, tlsCfg, acceptPlaintext, opts)
+	if err != nil {
+		return nil, err
 	}
 
-	server := ggrpc.NewServer(opts...)
+	srv := &ServiceServer{baseServer: bs}
+	srv.registerReflection()
 
-	// Enable gRPC reflection for debugging tools like grpcurl
-	reflection.Register(server)
-
-	return &ServiceServer{
-		baseServer: baseServer{
-			port:   port,
-			logger: logger,
-			server: server,
-			name:   "Service gRPC",
-		},
-	}
+	return srv, nil
 }

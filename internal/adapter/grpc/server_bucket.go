@@ -1038,6 +1038,6 @@ func profileToMetadata(profile *query.QueryProfile) metadata.MD {
 	return metadata.Pairs(metadataKeyQueryProfileResult, string(data))
 }
 
-func RegisterBucketService(server *ggrpc.Server, ledgerServiceServer servicepb.BucketServiceServer) {
-	servicepb.RegisterBucketServiceServer(server, ledgerServiceServer)
+func RegisterBucketService(registrar ggrpc.ServiceRegistrar, ledgerServiceServer servicepb.BucketServiceServer) {
+	servicepb.RegisterBucketServiceServer(registrar, ledgerServiceServer)
 }

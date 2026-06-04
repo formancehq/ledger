@@ -1,0 +1,10 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: LedgerService
+metadata:
+  name: tls-deadlock
+spec:
+  replicas: 3
+  image:
+    repository: ledger-v3-poc
+    tag: e2e
+    pullPolicy: Never

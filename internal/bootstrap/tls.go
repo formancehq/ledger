@@ -6,16 +6,19 @@ import (
 	"fmt"
 	"os"
 
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-// ServerCredentials returns a grpc.ServerOption with TLS credentials when TLS is enabled,
-// or nil when disabled. If CAFile is set, client certificate verification is configured
-// with tls.VerifyClientCertIfGiven (opt-in mTLS).
-func ServerCredentials(cfg TLSConfig) (grpc.ServerOption, error) {
-	if !cfg.Enabled {
+// ServerTLSConfig returns the *tls.Config for inter-node and service gRPC
+// servers. Returns nil when TLS is disabled. When CAFile is set, opt-in mTLS
+// is enabled via VerifyClientCertIfGiven.
+//
+// The raw *tls.Config (rather than a grpc.ServerOption) lets callers wrap a
+// net.Listener with tls.NewListener and/or share the config across two
+// servers in the optional dual-listener mode.
+func ServerTLSConfig(cfg TLSConfig) (*tls.Config, error) {
+	if cfg.Mode == TLSModeDisabled {
 		return nil, nil
 	}
 
@@ -27,6 +30,10 @@ func ServerCredentials(cfg TLSConfig) (grpc.ServerOption, error) {
 	tlsCfg := &tls.Config{
 		Certificates: []tls.Certificate{cert},
 		MinVersion:   tls.VersionTLS12,
+		// gRPC requires h2 ALPN. credentials.NewTLS sets this implicitly,
+		// but we expose the raw *tls.Config to cmux + tls.NewListener and
+		// must set it ourselves.
+		NextProtos: []string{"h2"},
 	}
 
 	if cfg.CAFile != "" {
@@ -39,15 +46,15 @@ func ServerCredentials(cfg TLSConfig) (grpc.ServerOption, error) {
 		tlsCfg.ClientAuth = tls.VerifyClientCertIfGiven
 	}
 
-	return grpc.Creds(credentials.NewTLS(tlsCfg)), nil
+	return tlsCfg, nil
 }
 
-// ClientTransportCredentials returns transport credentials for gRPC client connections.
-// When TLS is disabled, it returns insecure credentials.
-// When enabled, it loads the CA pool from CAFile (if set) and client cert/key (if set) for mTLS.
-func ClientTransportCredentials(cfg TLSConfig) (credentials.TransportCredentials, error) {
-	if !cfg.Enabled {
-		return insecure.NewCredentials(), nil
+// ClientTLSConfig returns the *tls.Config for outbound inter-node dials.
+// Returns nil when TLS is disabled. When CertFile/KeyFile are set, the
+// client presents a certificate (mTLS).
+func ClientTLSConfig(cfg TLSConfig) (*tls.Config, error) {
+	if cfg.Mode == TLSModeDisabled {
+		return nil, nil
 	}
 
 	tlsCfg := &tls.Config{
@@ -70,6 +77,23 @@ func ClientTransportCredentials(cfg TLSConfig) (credentials.TransportCredentials
 		}
 
 		tlsCfg.Certificates = []tls.Certificate{cert}
+	}
+
+	return tlsCfg, nil
+}
+
+// ClientTransportCredentials returns transport credentials suitable for the
+// strict modes. For TLSModeRequired it returns TLS credentials; for
+// TLSModeDisabled it returns insecure credentials. In TLSModeOptional callers
+// must perform per-peer probing using ClientTLSConfig directly.
+func ClientTransportCredentials(cfg TLSConfig) (credentials.TransportCredentials, error) {
+	if cfg.Mode == TLSModeDisabled {
+		return insecure.NewCredentials(), nil
+	}
+
+	tlsCfg, err := ClientTLSConfig(cfg)
+	if err != nil {
+		return nil, err
 	}
 
 	return credentials.NewTLS(tlsCfg), nil
