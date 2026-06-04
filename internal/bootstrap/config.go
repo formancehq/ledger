@@ -101,7 +101,51 @@ func (c Config) Validate() error {
 		return errors.New("--cluster-secret requires TLS (configure --tls-cert-file and --tls-key-file); the secret would be sent in plaintext otherwise")
 	}
 
+	if err := c.validateAuthConfig(); err != nil {
+		return err
+	}
+
 	return c.RaftConfig.Validate()
+}
+
+// validateAuthConfig enforces authentication configuration invariants.
+// It prevents unsafe combinations where credentials are configured but
+// authentication is disabled, or where authentication is enabled without
+// the required OIDC issuer.
+func (c Config) validateAuthConfig() error {
+	auth := c.AuthConfig
+
+	if auth.Enabled {
+		if auth.Issuer == "" && auth.Ed25519KeysFile == "" {
+			return errors.New("--auth-enabled requires either --auth-issuer (OIDC) or --auth-ed25519-keys (Ed25519)")
+		}
+
+		return nil
+	}
+
+	// Auth is disabled — warn about credentials that will be ignored.
+	var unused []string
+	if auth.Issuer != "" {
+		unused = append(unused, "--auth-issuer")
+	}
+
+	if auth.Ed25519KeysFile != "" {
+		unused = append(unused, "--auth-ed25519-keys")
+	}
+
+	if auth.ScopeMappingFile != "" {
+		unused = append(unused, "--auth-scope-mapping-file")
+	}
+
+	if auth.ScopeMappingJSON != "" {
+		unused = append(unused, "AUTH_SCOPE_MAPPING")
+	}
+
+	if len(unused) > 0 {
+		return fmt.Errorf("authentication is disabled but the following flags are set: %v; either enable auth with --auth-enabled or remove these flags", unused)
+	}
+
+	return nil
 }
 
 // ServiceAdvertiseAddr returns the routable gRPC service address for this node.

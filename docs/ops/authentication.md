@@ -40,13 +40,25 @@ The ledger uses three authorization scopes. When `--auth-service=ledger`, the sc
 
 If `--auth-service=myapp`, the scopes become `myapp:read`, `myapp:write`, `myapp:admin`.
 
+## Configuration Invariants
+
+The server enforces the following rules at startup:
+
+- `--auth-enabled` requires at least one of `--auth-issuer` (OIDC) or
+  `--auth-ed25519-keys` (Ed25519 key file). The server refuses to start
+  without a credential source.
+- Setting auth-related flags (`--auth-issuer`, `--auth-ed25519-keys`,
+  `--auth-scope-mapping-file`) without `--auth-enabled` is rejected to
+  prevent operators from believing authentication is active when it is not.
+
 ## Unauthenticated Endpoints
 
 The following endpoints are always accessible without authentication:
 
-- **HTTP**: `/health`, `/debug/pprof/*`
+- **HTTP**: `/health`, `/livez`, `/readyz`
 - **gRPC**: `grpc.health.v1.Health/*`, `BucketService.Discovery`, gRPC reflection
 
+<<<<<<< HEAD
 ## Anonymous Scopes (writes-only mode)
 
 By default, every request must authenticate. To open up a subset of operations to unauthenticated callers — typically: **all reads public, writes still authenticated** — declare *anonymous scopes*.
@@ -82,6 +94,8 @@ Equivalent scope-mapping JSON (`--auth-scope-mapping-file`):
 Both forms are supported — the CLI flag is shorthand for the JSON entry.
 
 When neither is set, the behavior is identical to before (every request must authenticate, no regression possible).
+
+Note: `/debug/pprof/*` endpoints require the `ops:read` scope when authentication is enabled.
 
 ## gRPC Authentication
 
