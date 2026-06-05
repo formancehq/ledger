@@ -97,10 +97,17 @@ func buildEnvVars(ledger *ledgerv1alpha1.LedgerService, targetTLSMode string, ag
 	spec := &ledger.Spec
 	hlsSvcName := headlessServiceName(ledger)
 
-	// ADVERTISE_ADDR uses Kubernetes' built-in $(VAR) substitution on env
-	// var values. The kubelet resolves $(POD_NAME) / $(POD_NAMESPACE) from
-	// the field refs above before passing the env to the container.
-	advertiseAddr := fmt.Sprintf("$(POD_NAME).%s.$(POD_NAMESPACE).svc.cluster.local:%d", hlsSvcName, spec.GrpcPort)
+	// ADVERTISE_ADDR is the host:port a Raft peer dials to reach this node's
+	// Raft transport — it must point at the BindAddr port (Raft port, e.g.
+	// 7777), not the service gRPC port. Sending peers to GRPC_PORT routes
+	// them to the BucketService listener, which doesn't register
+	// raft_transport.RaftTransportService — every AppendEntries comes back
+	// `Unimplemented` and the cluster degrades silently.
+	//
+	// Kubernetes' built-in $(VAR) substitution on env var values lets the
+	// kubelet resolve $(POD_NAME) / $(POD_NAMESPACE) from the field refs
+	// above before passing the env to the container.
+	advertiseAddr := fmt.Sprintf("$(POD_NAME).%s.$(POD_NAMESPACE).svc.cluster.local:%d", hlsSvcName, raftPortFromBindAddr(spec.BindAddr))
 
 	envs := []corev1.EnvVar{
 		// Field references

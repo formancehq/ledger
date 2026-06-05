@@ -147,8 +147,9 @@ func TestBuildEnvVars_AdvertiseAddr(t *testing.T) {
 	ls := newMinimalLedgerService()
 	envs := buildEnvVars(ls, "disabled", nil)
 	// $(POD_NAME) / $(POD_NAMESPACE) are resolved by the kubelet — the
-	// operator just emits the template.
-	assertEnv(t, envs, "ADVERTISE_ADDR", "$(POD_NAME).test-headless.$(POD_NAMESPACE).svc.cluster.local:8888")
+	// operator just emits the template. The port is the Raft port (BindAddr),
+	// NOT the service gRPC port — see TestBuildEnvVars_AdvertiseAddr_UsesRaftPort.
+	assertEnv(t, envs, "ADVERTISE_ADDR", "$(POD_NAME).test-headless.$(POD_NAMESPACE).svc.cluster.local:7777")
 }
 
 func TestBuildEnvVars_OtelResourceAttributes(t *testing.T) {

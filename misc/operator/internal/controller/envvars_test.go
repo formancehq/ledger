@@ -1225,3 +1225,64 @@ func TestBuildEnvVars_BloomFiltersNewTypes(t *testing.T) {
 		assertEnv(t, envs, "BLOOM_NUMSCRIPT_CONTENTS_FP_RATE", "0.02")
 	})
 }
+
+// ---------------------------------------------------------------------------
+// ADVERTISE_ADDR — regression: must use the Raft port (BindAddr), not the
+// service gRPC port. Sending peers to GRPC_PORT routes Raft traffic to the
+// BucketService listener, which doesn't register raft_transport — every
+// AppendEntries comes back Unimplemented and the cluster degrades silently.
+// ---------------------------------------------------------------------------
+
+func TestBuildEnvVars_AdvertiseAddr_UsesRaftPort(t *testing.T) {
+	t.Parallel()
+
+	t.Run("default BindAddr extracts 7777", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalLedgerService()
+		envs := buildEnvVars(ls, "disabled", nil)
+		assertEnv(t, envs, "ADVERTISE_ADDR",
+			"$(POD_NAME).test-headless.$(POD_NAMESPACE).svc.cluster.local:7777")
+	})
+
+	t.Run("custom Raft port is honoured", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalLedgerService()
+		ls.Spec.BindAddr = "0.0.0.0:9001"
+		envs := buildEnvVars(ls, "disabled", nil)
+		assertEnv(t, envs, "ADVERTISE_ADDR",
+			"$(POD_NAME).test-headless.$(POD_NAMESPACE).svc.cluster.local:9001")
+	})
+
+	t.Run("must not use GrpcPort even when BindAddr is empty", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalLedgerService()
+		ls.Spec.BindAddr = ""
+		ls.Spec.GrpcPort = 12345
+		envs := buildEnvVars(ls, "disabled", nil)
+		e := findEnv(envs, "ADVERTISE_ADDR")
+		require.NotNil(t, e)
+		require.NotContains(t, e.Value, "12345",
+			"ADVERTISE_ADDR must never reuse GRPC_PORT — Raft transport lives on a different listener")
+	})
+}
+
+func TestRaftPortFromBindAddr(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		bindAddr string
+		want     int32
+	}{
+		{"default", "0.0.0.0:7777", 7777},
+		{"localhost", "127.0.0.1:9999", 9999},
+		{"empty falls back", "", 7777},
+		{"malformed falls back", "not-an-addr", 7777},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, raftPortFromBindAddr(tt.bindAddr))
+		})
+	}
+}
