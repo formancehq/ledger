@@ -30,15 +30,26 @@ const (
 // GetClientTransportCredentials returns the transport credentials based on CLI flags.
 // If --insecure is set, returns insecure credentials.
 // Otherwise, returns TLS credentials, optionally using a custom CA from --tls-ca-cert.
+//
+// Setting --insecure together with --tls-ca-cert is rejected: those flags
+// encode conflicting intent (no TLS vs. verify with this CA), and silently
+// preferring one of them — as the older code did — masks env-var leakage like
+// a stray INSECURE=true in a container image (the original cause of the
+// "error reading server preface: EOF" production incident).
 func GetClientTransportCredentials(cmd *cobra.Command) (credentials.TransportCredentials, error) {
 	insecureMode, _ := cmd.Flags().GetBool("insecure")
+	caCertPath, _ := cmd.Flags().GetString("tls-ca-cert")
+
+	if insecureMode && caCertPath != "" {
+		return nil, errors.New("--insecure and --tls-ca-cert are mutually exclusive (--insecure may also come from the INSECURE env var; unset it to use TLS)")
+	}
+
 	if insecureMode {
 		return insecure.NewCredentials(), nil
 	}
 
 	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
 
-	caCertPath, _ := cmd.Flags().GetString("tls-ca-cert")
 	if caCertPath != "" {
 		caPEM, err := os.ReadFile(caCertPath)
 		if err != nil {

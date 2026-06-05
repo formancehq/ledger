@@ -25,7 +25,6 @@ FROM debian:trixie
 RUN apt-get update && apt-get install -y ca-certificates tzdata && rm -rf /var/lib/apt/lists/*
 ENV TZ=UTC
 ENV PATH=$PATH:/app
-ENV INSECURE=true
 WORKDIR /app
 COPY --from=compiler /ledger-server .
 COPY --from=compiler /ledgerctl .

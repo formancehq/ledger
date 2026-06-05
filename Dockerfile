@@ -35,7 +35,6 @@ RUN apk --no-cache add ca-certificates tzdata bash bash-completion && \
     sed -i 's|/bin/ash|/bin/bash|' /etc/passwd
 ENV TZ=UTC
 ENV PATH=$PATH:/app
-ENV INSECURE=true
 SHELL ["/bin/bash", "-c"]
 WORKDIR /app
 COPY --from=build-server /build/ledger-server .
