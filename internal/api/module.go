@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	_ "embed"
 
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -8,6 +9,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
 
+	"github.com/formancehq/go-libs/v5/pkg/audit/httpaudit"
 	"github.com/formancehq/go-libs/v5/pkg/authn/jwt"
 	"github.com/formancehq/go-libs/v5/pkg/fx/servicefx"
 
@@ -16,9 +18,26 @@ import (
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 )
 
+const (
+	auditEventTopic = "audit-events"
+	auditAppName    = "ledger"
+
+	// DefaultAuditAsyncQueueCapacity is the default bounded queue capacity for async HTTP audit events.
+	DefaultAuditAsyncQueueCapacity = 4096
+	// DefaultAuditAsyncWorkerCount is the default worker count for async HTTP audit publishing.
+	DefaultAuditAsyncWorkerCount = 4
+)
+
 type BulkConfig struct {
 	MaxSize  int
 	Parallel int
+}
+
+type AuditConfig struct {
+	Enabled            bool
+	AsyncEnabled       bool
+	AsyncQueueCapacity int
+	AsyncWorkerCount   int
 }
 
 type Config struct {
@@ -28,16 +47,46 @@ type Config struct {
 	Pagination           storagecommon.PaginationConfig
 	Exporters            bool
 	ExperimentalFeatures []string
+	Audit                AuditConfig
 }
 
 func Module(cfg Config) fx.Option {
 	return fx.Options(
 		fx.Provide(func(
+			lc fx.Lifecycle,
 			backend system.Controller,
 			authenticator jwt.Authenticator,
 			publisher message.Publisher,
 			tracerProvider trace.TracerProvider,
 		) chi.Router {
+			auditOptions := []httpaudit.HTTPOption{
+				httpaudit.WithEnabled(cfg.Audit.Enabled),
+			}
+			if cfg.Audit.Enabled && cfg.Audit.AsyncEnabled {
+				queueCapacity := cfg.Audit.AsyncQueueCapacity
+				if queueCapacity <= 0 {
+					queueCapacity = DefaultAuditAsyncQueueCapacity
+				}
+				workerCount := cfg.Audit.AsyncWorkerCount
+				if workerCount <= 0 {
+					workerCount = DefaultAuditAsyncWorkerCount
+				}
+
+				asyncPublisher := httpaudit.NewAsyncPublisher(
+					publisher,
+					auditEventTopic,
+					auditAppName,
+					httpaudit.WithAsyncPublishingQueueCapacity(queueCapacity),
+					httpaudit.WithAsyncPublishingWorkerCount(workerCount),
+				)
+				lc.Append(fx.Hook{
+					OnStop: func(ctx context.Context) error {
+						return asyncPublisher.Close(ctx)
+					},
+				})
+				auditOptions = append(auditOptions, httpaudit.WithAsyncPublishing(asyncPublisher))
+			}
+
 			return NewRouter(
 				backend,
 				authenticator,
@@ -53,6 +102,7 @@ func Module(cfg Config) fx.Option {
 				WithPaginationConfiguration(cfg.Pagination),
 				WithExporters(cfg.Exporters),
 				WithExperimentalFeatures(cfg.ExperimentalFeatures),
+				WithAuditHTTPOptions(auditOptions...),
 			)
 		}),
 		servicefx.HealthModule(),

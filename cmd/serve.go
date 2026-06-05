@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/formancehq/go-libs/v5/pkg/audit"
 	"github.com/formancehq/go-libs/v5/pkg/authn/jwt"
 	"github.com/formancehq/go-libs/v5/pkg/cloud/aws/iam"
 	"github.com/formancehq/go-libs/v5/pkg/fx/authnfx"
@@ -49,16 +50,20 @@ type ServeCommandConfig struct {
 	commonConfig        `mapstructure:",squash"`
 	WorkerConfiguration `mapstructure:",squash"`
 
-	Bind                   string `mapstructure:"bind"`
-	BallastSizeInBytes     uint   `mapstructure:"ballast-size"`
-	NumscriptCacheMaxCount uint   `mapstructure:"numscript-cache-max-count"`
-	AutoUpgrade            bool   `mapstructure:"auto-upgrade"`
-	BulkMaxSize            int    `mapstructure:"bulk-max-size"`
-	BulkParallel           int    `mapstructure:"bulk-parallel"`
-	DefaultPageSize        uint64 `mapstructure:"default-page-size"`
-	MaxPageSize            uint64 `mapstructure:"max-page-size"`
-	WorkerEnabled          bool   `mapstructure:"worker"`
-	WorkerAddress          string `mapstructure:"worker-grpc-address"`
+	Bind                    string `mapstructure:"bind"`
+	BallastSizeInBytes      uint   `mapstructure:"ballast-size"`
+	NumscriptCacheMaxCount  uint   `mapstructure:"numscript-cache-max-count"`
+	AutoUpgrade             bool   `mapstructure:"auto-upgrade"`
+	BulkMaxSize             int    `mapstructure:"bulk-max-size"`
+	BulkParallel            int    `mapstructure:"bulk-parallel"`
+	DefaultPageSize         uint64 `mapstructure:"default-page-size"`
+	MaxPageSize             uint64 `mapstructure:"max-page-size"`
+	WorkerEnabled           bool   `mapstructure:"worker"`
+	WorkerAddress           string `mapstructure:"worker-grpc-address"`
+	AuditEnabled            bool   `mapstructure:"audit-enabled"`
+	AuditAsyncEnabled       bool   `mapstructure:"audit-async-enabled"`
+	AuditAsyncQueueCapacity int    `mapstructure:"audit-async-queue-capacity"`
+	AuditAsyncWorkerCount   int    `mapstructure:"audit-async-worker-count"`
 }
 
 const (
@@ -74,6 +79,10 @@ const (
 	WorkerEnabledFlag     = "worker"
 	SemconvMetricsNames   = "semconv-metrics-names"
 	SchemaEnforcementMode = "schema-enforcement-mode"
+
+	AuditAsyncEnabledFlag       = "audit-async-enabled"
+	AuditAsyncQueueCapacityFlag = "audit-async-queue-capacity"
+	AuditAsyncWorkerCountFlag   = "audit-async-worker-count"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -135,6 +144,12 @@ func NewServeCommand() *cobra.Command {
 					},
 					Exporters:            cfg.ExperimentalExporters,
 					ExperimentalFeatures: experimentalFeatures(cfg),
+					Audit: api.AuditConfig{
+						Enabled:            cfg.AuditEnabled,
+						AsyncEnabled:       cfg.AuditAsyncEnabled,
+						AsyncQueueCapacity: cfg.AuditAsyncQueueCapacity,
+						AsyncWorkerCount:   cfg.AuditAsyncWorkerCount,
+					},
 				}),
 				fx.Decorate(func(
 					params struct {
@@ -195,6 +210,10 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().String(WorkerGRPCAddressFlag, "localhost:8081", "GRPC address")
 	cmd.Flags().Bool(SemconvMetricsNames, false, "Use semconv metrics names (recommended)")
 	cmd.Flags().String(SchemaEnforcementMode, "audit", "Schema enforcement mode. Values: `audit`, `strict`")
+	cmd.Flags().Bool(audit.AuditEnabledFlag, true, "Enable HTTP audit")
+	cmd.Flags().Bool(AuditAsyncEnabledFlag, true, "Publish HTTP audit events asynchronously")
+	cmd.Flags().Int(AuditAsyncQueueCapacityFlag, api.DefaultAuditAsyncQueueCapacity, "HTTP audit async publish queue capacity")
+	cmd.Flags().Int(AuditAsyncWorkerCountFlag, api.DefaultAuditAsyncWorkerCount, "HTTP audit async publish worker count")
 
 	addWorkerFlags(cmd)
 	connect.AddFlags(cmd.Flags())

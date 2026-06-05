@@ -9,7 +9,7 @@ replace github.com/formancehq/ledger => ../..
 replace github.com/formancehq/ledger/pkg/client => ../../pkg/client
 
 require (
-	github.com/formancehq/go-libs/v5 v5.1.1-0.20260522131737-86f3639fcb38
+	github.com/formancehq/go-libs/v5 v5.3.2
 	github.com/formancehq/ledger v0.0.0-00010101000000-000000000000
 	github.com/formancehq/ledger/pkg/client v0.0.0-00010101000000-000000000000
 	github.com/spf13/cobra v1.10.2
@@ -88,10 +88,10 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.1 // indirect
 	golang.org/x/exp v0.0.0-20250819193227-8b4c13bb791b // indirect
-	golang.org/x/net v0.53.0 // indirect
+	golang.org/x/net v0.55.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.43.0 // indirect
-	golang.org/x/text v0.36.0 // indirect
+	golang.org/x/sys v0.45.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	google.golang.org/grpc v1.80.0 // indirect
