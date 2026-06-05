@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	_ "embed"
 
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -15,6 +16,16 @@ import (
 	"github.com/formancehq/ledger/internal/api/bulking"
 	"github.com/formancehq/ledger/internal/controller/system"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
+)
+
+const (
+	auditEventTopic = "audit-events"
+	auditAppName    = "ledger"
+
+	// DefaultAuditAsyncQueueCapacity is the default bounded queue capacity for async HTTP audit events.
+	DefaultAuditAsyncQueueCapacity = 4096
+	// DefaultAuditAsyncWorkerCount is the default worker count for async HTTP audit publishing.
+	DefaultAuditAsyncWorkerCount = 4
 )
 
 type BulkConfig struct {
@@ -52,15 +63,26 @@ func Module(cfg Config) fx.Option {
 				httpaudit.WithEnabled(cfg.Audit.Enabled),
 			}
 			if cfg.Audit.Enabled && cfg.Audit.AsyncEnabled {
+				queueCapacity := cfg.Audit.AsyncQueueCapacity
+				if queueCapacity <= 0 {
+					queueCapacity = DefaultAuditAsyncQueueCapacity
+				}
+				workerCount := cfg.Audit.AsyncWorkerCount
+				if workerCount <= 0 {
+					workerCount = DefaultAuditAsyncWorkerCount
+				}
+
 				asyncPublisher := httpaudit.NewAsyncPublisher(
 					publisher,
-					"audit-events",
-					"ledger",
-					httpaudit.WithAsyncPublishingQueueCapacity(cfg.Audit.AsyncQueueCapacity),
-					httpaudit.WithAsyncPublishingWorkerCount(cfg.Audit.AsyncWorkerCount),
+					auditEventTopic,
+					auditAppName,
+					httpaudit.WithAsyncPublishingQueueCapacity(queueCapacity),
+					httpaudit.WithAsyncPublishingWorkerCount(workerCount),
 				)
 				lc.Append(fx.Hook{
-					OnStop: asyncPublisher.Close,
+					OnStop: func(ctx context.Context) error {
+						return asyncPublisher.Close(ctx)
+					},
 				})
 				auditOptions = append(auditOptions, httpaudit.WithAsyncPublishing(asyncPublisher))
 			}
