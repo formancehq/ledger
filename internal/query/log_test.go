@@ -298,17 +298,33 @@ func TestReadLogsSince(t *testing.T) {
 	})
 }
 
+// sha256OrPanic mirrors the small test helper in package coldstorage —
+// duplicated here because Go does not share *_test.go helpers across
+// packages.
+func sha256OrPanic(b []byte) []byte {
+	c, err := coldstorage.ComputeSHA256(bytes.NewReader(b))
+	if err != nil {
+		panic(err)
+	}
+
+	return c
+}
+
 // testColdStorage is a test-only in-memory ColdStorage.
 type testColdStorage struct {
-	mu   sync.Mutex
-	data map[string][]byte
+	mu        sync.Mutex
+	data      map[string][]byte
+	checksums map[string][]byte
 }
 
 func newTestColdStorage() *testColdStorage {
-	return &testColdStorage{data: make(map[string][]byte)}
+	return &testColdStorage{
+		data:      make(map[string][]byte),
+		checksums: make(map[string][]byte),
+	}
 }
 
-func (m *testColdStorage) Archive(_ context.Context, bucketID string, periodID uint64, data io.Reader) error {
+func (m *testColdStorage) Archive(_ context.Context, bucketID string, periodID uint64, data io.Reader, sha256 []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -317,7 +333,9 @@ func (m *testColdStorage) Archive(_ context.Context, bucketID string, periodID u
 		return err
 	}
 
-	m.data[fmt.Sprintf("%s/%d", bucketID, periodID)] = buf
+	key := fmt.Sprintf("%s/%d", bucketID, periodID)
+	m.data[key] = buf
+	m.checksums[key] = append([]byte(nil), sha256...)
 
 	return nil
 }
@@ -326,9 +344,37 @@ func (m *testColdStorage) Exists(_ context.Context, bucketID string, periodID ui
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	_, ok := m.data[fmt.Sprintf("%s/%d", bucketID, periodID)]
+	key := fmt.Sprintf("%s/%d", bucketID, periodID)
+	_, hasData := m.data[key]
+	_, hasChecksum := m.checksums[key]
 
-	return ok, nil
+	return hasData && hasChecksum, nil
+}
+
+func (m *testColdStorage) ExpectedChecksum(_ context.Context, bucketID string, periodID uint64) ([]byte, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	c, ok := m.checksums[fmt.Sprintf("%s/%d", bucketID, periodID)]
+	if !ok {
+		return nil, coldstorage.ErrChecksumNotFound
+	}
+
+	return append([]byte(nil), c...), nil
+}
+
+func (m *testColdStorage) Checksum(_ context.Context, bucketID string, periodID uint64) ([]byte, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	key := fmt.Sprintf("%s/%d", bucketID, periodID)
+
+	buf, ok := m.data[key]
+	if !ok {
+		return nil, fmt.Errorf("archive %s not found", key)
+	}
+
+	return coldstorage.ComputeSHA256(bytes.NewReader(buf))
 }
 
 func (m *testColdStorage) Fetch(_ context.Context, bucketID string, periodID uint64) (io.ReadCloser, error) {
@@ -452,7 +498,7 @@ func TestReadLogBySequenceWithCold_ColdFallback(t *testing.T) {
 	// Build SST with the cold log and store in mock cold storage
 	cs := newTestColdStorage()
 	sstData := buildColdSST(t, coldLog)
-	require.NoError(t, cs.Archive(ctx, "bucket", 1, bytes.NewReader(sstData)))
+	require.NoError(t, cs.Archive(ctx, "bucket", 1, bytes.NewReader(sstData), sha256OrPanic(sstData)))
 
 	// Store an archived period in hot storage that covers sequence 5
 	storePeriod(t, s, &commonpb.Period{
@@ -502,7 +548,7 @@ func TestReadLogBySequenceWithCold_NotInCold(t *testing.T) {
 			},
 		}},
 	})
-	require.NoError(t, cs.Archive(ctx, "bucket", 1, bytes.NewReader(sstData)))
+	require.NoError(t, cs.Archive(ctx, "bucket", 1, bytes.NewReader(sstData), sha256OrPanic(sstData)))
 
 	coldReader := coldstorage.NewColdReader(cs, "bucket", t.TempDir(), 4, 0, logger)
 	t.Cleanup(func() { _ = coldReader.Close() })

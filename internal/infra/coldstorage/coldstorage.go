@@ -2,8 +2,34 @@ package coldstorage
 
 import (
 	"context"
+	"crypto/sha256"
+	"errors"
 	"io"
 )
+
+// ChecksumLength is the byte length of a SHA-256 digest.
+const ChecksumLength = sha256.Size
+
+// ErrChecksumNotFound is returned by ExpectedChecksum when the archive's
+// persisted checksum is missing — typically because the upload was interrupted
+// before the sidecar was committed. Callers should treat this as "archive not
+// fully committed" and re-upload.
+var ErrChecksumNotFound = errors.New("cold archive checksum not found")
+
+// ErrChecksumMalformed is returned by ExpectedChecksum when the persisted
+// checksum exists but has an unexpected byte length (not ChecksumLength). It
+// indicates tampering or corruption of the checksum sidecar itself.
+var ErrChecksumMalformed = errors.New("cold archive checksum has unexpected length")
+
+// ComputeSHA256 reads all data from r and returns its SHA-256 digest.
+func ComputeSHA256(r io.Reader) ([]byte, error) {
+	h := sha256.New()
+	if _, err := io.Copy(h, r); err != nil {
+		return nil, err
+	}
+
+	return h.Sum(nil), nil
+}
 
 // Config configures the cold storage backend for period archival.
 type Config struct {
@@ -18,13 +44,31 @@ type Config struct {
 }
 
 // ColdStorage provides an abstraction for archiving period data to durable external storage.
-// Implementations include filesystem (dev/test) and S3 (production, deferred).
+// Implementations include filesystem (dev/test) and S3 (production).
 type ColdStorage interface {
-	// Archive writes period archive data (SST format) to cold storage.
-	Archive(ctx context.Context, bucketID string, periodID uint64, data io.Reader) error
+	// Archive uploads the period archive (SST format) and persists its SHA-256
+	// checksum atomically with the data. After this returns nil, both the
+	// data and the checksum are durable. Implementations must guarantee that
+	// a crash before the checksum becomes visible leaves Exists returning
+	// false for this period, so the leader re-uploads on retry.
+	Archive(ctx context.Context, bucketID string, periodID uint64, data io.Reader, sha256 []byte) error
 
-	// Exists checks whether an archive for the given period exists in cold storage.
+	// Exists returns true only when both the archive data and its persisted
+	// checksum are present — i.e., the archive is fully committed. A partial
+	// upload returns false so the caller treats it as "not yet archived".
 	Exists(ctx context.Context, bucketID string, periodID uint64) (bool, error)
+
+	// ExpectedChecksum returns the SHA-256 stored alongside the archive at
+	// upload time. Used as the reference value for integrity verification at
+	// crash-recovery time. Returns ErrChecksumNotFound when the checksum is
+	// missing (incomplete upload) and ErrChecksumMalformed when the stored
+	// value has the wrong length.
+	ExpectedChecksum(ctx context.Context, bucketID string, periodID uint64) ([]byte, error)
+
+	// Checksum reads the current archive bytes and computes SHA-256 on the
+	// fly. Used to detect tampering or corruption when compared against
+	// ExpectedChecksum.
+	Checksum(ctx context.Context, bucketID string, periodID uint64) ([]byte, error)
 
 	// Fetch retrieves a previously archived SST file from cold storage.
 	Fetch(ctx context.Context, bucketID string, periodID uint64) (io.ReadCloser, error)

@@ -18,17 +18,33 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
 
+// ComputeSHA256OrPanic is a test helper that returns the SHA-256 of b. It
+// panics on any read error (impossible from a bytes.Reader) to keep call
+// sites short — only used in tests that already constructed b above.
+func ComputeSHA256OrPanic(b []byte) []byte {
+	c, err := ComputeSHA256(bytes.NewReader(b))
+	if err != nil {
+		panic(err)
+	}
+
+	return c
+}
+
 // inMemoryColdStorage is a test-only in-memory ColdStorage for ColdReader tests.
 type inMemoryColdStorage struct {
-	mu   sync.Mutex
-	data map[string][]byte
+	mu        sync.Mutex
+	data      map[string][]byte
+	checksums map[string][]byte
 }
 
 func newInMemoryColdStorage() *inMemoryColdStorage {
-	return &inMemoryColdStorage{data: make(map[string][]byte)}
+	return &inMemoryColdStorage{
+		data:      make(map[string][]byte),
+		checksums: make(map[string][]byte),
+	}
 }
 
-func (m *inMemoryColdStorage) Archive(_ context.Context, bucketID string, periodID uint64, data io.Reader) error {
+func (m *inMemoryColdStorage) Archive(_ context.Context, bucketID string, periodID uint64, data io.Reader, sha256 []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -37,7 +53,9 @@ func (m *inMemoryColdStorage) Archive(_ context.Context, bucketID string, period
 		return err
 	}
 
-	m.data[fmt.Sprintf("%s/%d", bucketID, periodID)] = buf
+	key := fmt.Sprintf("%s/%d", bucketID, periodID)
+	m.data[key] = buf
+	m.checksums[key] = append([]byte(nil), sha256...)
 
 	return nil
 }
@@ -46,9 +64,37 @@ func (m *inMemoryColdStorage) Exists(_ context.Context, bucketID string, periodI
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	_, ok := m.data[fmt.Sprintf("%s/%d", bucketID, periodID)]
+	key := fmt.Sprintf("%s/%d", bucketID, periodID)
+	_, hasData := m.data[key]
+	_, hasChecksum := m.checksums[key]
 
-	return ok, nil
+	return hasData && hasChecksum, nil
+}
+
+func (m *inMemoryColdStorage) ExpectedChecksum(_ context.Context, bucketID string, periodID uint64) ([]byte, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	c, ok := m.checksums[fmt.Sprintf("%s/%d", bucketID, periodID)]
+	if !ok {
+		return nil, ErrChecksumNotFound
+	}
+
+	return append([]byte(nil), c...), nil
+}
+
+func (m *inMemoryColdStorage) Checksum(_ context.Context, bucketID string, periodID uint64) ([]byte, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	key := fmt.Sprintf("%s/%d", bucketID, periodID)
+
+	buf, ok := m.data[key]
+	if !ok {
+		return nil, fmt.Errorf("archive %s not found", key)
+	}
+
+	return ComputeSHA256(bytes.NewReader(buf))
 }
 
 func (m *inMemoryColdStorage) Fetch(_ context.Context, bucketID string, periodID uint64) (io.ReadCloser, error) {
@@ -117,7 +163,7 @@ func TestColdReaderCacheMiss(t *testing.T) {
 		{[]byte("key1"), []byte("value1")},
 		{[]byte("key2"), []byte("value2")},
 	})
-	require.NoError(t, cs.Archive(ctx, "bucket", 1, bytes.NewReader(sstData)))
+	require.NoError(t, cs.Archive(ctx, "bucket", 1, bytes.NewReader(sstData), ComputeSHA256OrPanic(sstData)))
 
 	reader := NewColdReader(cs, "bucket", cacheDir, 4, 0, logger)
 	t.Cleanup(func() { _ = reader.Close() })
@@ -151,7 +197,7 @@ func TestColdReaderCacheHit(t *testing.T) {
 	sstData := buildTestSST(t, [][2][]byte{
 		{[]byte("key1"), []byte("value1")},
 	})
-	require.NoError(t, cs.Archive(ctx, "bucket", 1, bytes.NewReader(sstData)))
+	require.NoError(t, cs.Archive(ctx, "bucket", 1, bytes.NewReader(sstData), ComputeSHA256OrPanic(sstData)))
 
 	reader := NewColdReader(cs, "bucket", cacheDir, 4, 0, logger)
 	t.Cleanup(func() { _ = reader.Close() })
@@ -182,7 +228,7 @@ func TestColdReaderEviction(t *testing.T) {
 		sstData := buildTestSST(t, [][2][]byte{
 			{fmt.Appendf(nil, "key-%d", i), fmt.Appendf(nil, "value-%d", i)},
 		})
-		require.NoError(t, cs.Archive(ctx, "bucket", i, bytes.NewReader(sstData)))
+		require.NoError(t, cs.Archive(ctx, "bucket", i, bytes.NewReader(sstData), ComputeSHA256OrPanic(sstData)))
 	}
 
 	// maxCached=2 → opening a 3rd period should evict the oldest
@@ -230,7 +276,7 @@ func TestColdReaderLRUTouchOrder(t *testing.T) {
 		sstData := buildTestSST(t, [][2][]byte{
 			{fmt.Appendf(nil, "k%d", i), fmt.Appendf(nil, "v%d", i)},
 		})
-		require.NoError(t, cs.Archive(ctx, "bucket", i, bytes.NewReader(sstData)))
+		require.NoError(t, cs.Archive(ctx, "bucket", i, bytes.NewReader(sstData), ComputeSHA256OrPanic(sstData)))
 	}
 
 	reader := NewColdReader(cs, "bucket", cacheDir, 2, 0, logger)
@@ -271,7 +317,7 @@ func TestColdReaderClose(t *testing.T) {
 	sstData := buildTestSST(t, [][2][]byte{
 		{[]byte("key1"), []byte("value1")},
 	})
-	require.NoError(t, cs.Archive(ctx, "bucket", 1, bytes.NewReader(sstData)))
+	require.NoError(t, cs.Archive(ctx, "bucket", 1, bytes.NewReader(sstData), ComputeSHA256OrPanic(sstData)))
 
 	reader := NewColdReader(cs, "bucket", cacheDir, 4, 0, logger)
 
@@ -319,7 +365,7 @@ func TestColdReaderPebbleQueries(t *testing.T) {
 		{[]byte{0x01, 0x00, 0x03}, []byte("log-3")},
 		{[]byte{0x02, 0x00, 0x01}, []byte("audit-1")},
 	})
-	require.NoError(t, cs.Archive(ctx, "bucket", 1, bytes.NewReader(sstData)))
+	require.NoError(t, cs.Archive(ctx, "bucket", 1, bytes.NewReader(sstData), ComputeSHA256OrPanic(sstData)))
 
 	reader := NewColdReader(cs, "bucket", cacheDir, 4, 0, logger)
 	t.Cleanup(func() { _ = reader.Close() })
@@ -366,7 +412,7 @@ func TestColdReaderTTLEviction(t *testing.T) {
 	sstData := buildTestSST(t, [][2][]byte{
 		{[]byte("key1"), []byte("value1")},
 	})
-	require.NoError(t, cs.Archive(ctx, "bucket", 1, bytes.NewReader(sstData)))
+	require.NoError(t, cs.Archive(ctx, "bucket", 1, bytes.NewReader(sstData), ComputeSHA256OrPanic(sstData)))
 
 	// TTL of 100ms, sweep runs every 50ms
 	reader := NewColdReader(cs, "bucket", cacheDir, 4, 100*time.Millisecond, logger)
@@ -399,7 +445,7 @@ func TestColdReaderTTLRefreshedOnAccess(t *testing.T) {
 	sstData := buildTestSST(t, [][2][]byte{
 		{[]byte("key1"), []byte("value1")},
 	})
-	require.NoError(t, cs.Archive(ctx, "bucket", 1, bytes.NewReader(sstData)))
+	require.NoError(t, cs.Archive(ctx, "bucket", 1, bytes.NewReader(sstData), ComputeSHA256OrPanic(sstData)))
 
 	// TTL of 200ms
 	reader := NewColdReader(cs, "bucket", cacheDir, 4, 200*time.Millisecond, logger)

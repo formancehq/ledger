@@ -4,6 +4,7 @@ package coldstorage
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +15,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
+
+// s3ChecksumMetadataKey is the user-metadata key that carries the SHA-256
+// of the archive object, stored hex-encoded. S3 normalizes user-metadata
+// keys to lowercase on read; we use lowercase here to keep that explicit.
+const s3ChecksumMetadataKey = "sha256"
 
 // NewS3Client creates an S3 client.
 // When accessKeyID and secretAccessKey are both non-empty, static credentials are used.
@@ -62,7 +68,11 @@ func (s *S3Storage) archiveKey(bucketID string, periodID uint64) string {
 	return fmt.Sprintf("%s/periods/%d/archive.sst", bucketID, periodID)
 }
 
-func (s *S3Storage) Archive(ctx context.Context, bucketID string, periodID uint64, data io.Reader) error {
+func (s *S3Storage) Archive(ctx context.Context, bucketID string, periodID uint64, data io.Reader, sha256 []byte) error {
+	if len(sha256) != ChecksumLength {
+		return fmt.Errorf("archive: invalid checksum length %d, expected %d", len(sha256), ChecksumLength)
+	}
+
 	key := s.archiveKey(bucketID, periodID)
 
 	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
@@ -70,6 +80,9 @@ func (s *S3Storage) Archive(ctx context.Context, bucketID string, periodID uint6
 		Key:         aws.String(key),
 		Body:        data,
 		ContentType: aws.String("application/octet-stream"),
+		Metadata: map[string]string{
+			s3ChecksumMetadataKey: hex.EncodeToString(sha256),
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("s3 PutObject %s: %w", key, err)
@@ -78,10 +91,10 @@ func (s *S3Storage) Archive(ctx context.Context, bucketID string, periodID uint6
 	return nil
 }
 
-func (s *S3Storage) Exists(ctx context.Context, bucketID string, periodID uint64) (bool, error) {
-	key := s.archiveKey(bucketID, periodID)
-
-	_, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
+// headObject returns the HeadObject output or nil/false if the object is
+// absent. Any other S3 error is returned wrapped.
+func (s *S3Storage) headObject(ctx context.Context, key string) (*s3.HeadObjectOutput, bool, error) {
+	out, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(key),
 	})
@@ -92,13 +105,71 @@ func (s *S3Storage) Exists(ctx context.Context, bucketID string, periodID uint64
 		)
 
 		if errors.As(err, &noSuchKey) || errors.As(err, &notFound) {
-			return false, nil
+			return nil, false, nil
 		}
 
-		return false, fmt.Errorf("s3 HeadObject %s: %w", key, err)
+		return nil, false, fmt.Errorf("s3 HeadObject %s: %w", key, err)
+	}
+
+	return out, true, nil
+}
+
+func (s *S3Storage) Exists(ctx context.Context, bucketID string, periodID uint64) (bool, error) {
+	key := s.archiveKey(bucketID, periodID)
+
+	out, ok, err := s.headObject(ctx, key)
+	if err != nil || !ok {
+		return false, err
+	}
+
+	// The object exists in S3, but treat it as "not committed" unless its
+	// checksum metadata is also present — same semantics as the filesystem
+	// backend with its sidecar.
+	if _, hasChecksum := out.Metadata[s3ChecksumMetadataKey]; !hasChecksum {
+		return false, nil
 	}
 
 	return true, nil
+}
+
+func (s *S3Storage) ExpectedChecksum(ctx context.Context, bucketID string, periodID uint64) ([]byte, error) {
+	key := s.archiveKey(bucketID, periodID)
+
+	out, ok, err := s.headObject(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+
+	if !ok {
+		return nil, ErrChecksumNotFound
+	}
+
+	hexed, present := out.Metadata[s3ChecksumMetadataKey]
+	if !present || hexed == "" {
+		return nil, ErrChecksumNotFound
+	}
+
+	checksum, err := hex.DecodeString(hexed)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid hex %q: %w", ErrChecksumMalformed, hexed, err)
+	}
+
+	if len(checksum) != ChecksumLength {
+		return nil, fmt.Errorf("%w: got %d bytes", ErrChecksumMalformed, len(checksum))
+	}
+
+	return checksum, nil
+}
+
+func (s *S3Storage) Checksum(ctx context.Context, bucketID string, periodID uint64) ([]byte, error) {
+	body, err := s.Fetch(ctx, bucketID, periodID)
+	if err != nil {
+		return nil, fmt.Errorf("fetching archive for checksum: %w", err)
+	}
+
+	defer func() { _ = body.Close() }()
+
+	return ComputeSHA256(body)
 }
 
 func (s *S3Storage) Fetch(ctx context.Context, bucketID string, periodID uint64) (io.ReadCloser, error) {

@@ -1,9 +1,10 @@
 package state
 
 import (
+	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -101,9 +102,12 @@ func (a *Archiver) Stop() {
 // archive exports period data to cold storage and proposes ConfirmArchivePeriod.
 //
 // The flow handles both leader and follower nodes:
-//   - First, check if the archive already exists in cold storage. If it does,
-//     the leader already pushed it — followers exit silently, and the leader
-//     proposes ConfirmArchivePeriod (crash-recovery idempotency).
+//   - Exists returns true only when both the archive data AND its persisted
+//     checksum are present. On a leader, that lets us read the expected
+//     checksum and verify it against the current bytes before proposing.
+//     On a follower, that just means the leader is done — exit silently.
+//   - A partial upload (data without checksum, e.g. crashed mid-upload) shows
+//     up as Exists=false so the leader re-uploads on retry.
 //   - If the archive does not exist yet and this node is not the leader,
 //     return worker.ErrNotLeader so the retry loop waits and re-checks.
 //   - Only the leader builds, uploads, and proposes.
@@ -127,22 +131,28 @@ func (a *Archiver) archive(stop <-chan struct{}, req ArchiveRequest) error {
 		"closeSequence": req.CloseSequence,
 	}
 
-	// Check if already archived — this lets followers detect that the leader
-	// completed the upload and exit the retry loop without proposing.
 	exists, err := a.coldStorage.Exists(ctx, a.bucketID, req.PeriodID)
 	if err != nil {
 		return fmt.Errorf("checking archive existence: %w", err)
 	}
 
 	if exists {
-		if a.isLeader() {
-			// Leader crash-recovery: we uploaded before crashing, propose confirm.
-			a.logger.WithFields(logFields).Infof("Archive already exists, proposing ConfirmArchivePeriod")
-			a.proposeFn(req.PeriodID)
-		} else {
+		if !a.isLeader() {
 			// Follower: the leader pushed the archive, nothing left to do.
 			a.logger.WithFields(logFields).Infof("Archive already exists in cold storage, done")
+
+			return nil
 		}
+
+		// Leader crash-recovery: validate the existing object against its
+		// persisted checksum. A truncated-but-readable SST would still
+		// produce a digest, so we MUST compare against the stored reference.
+		if err := a.verifyExistingArchive(ctx, req.PeriodID); err != nil {
+			return err
+		}
+
+		a.logger.WithFields(logFields).Infof("Archive integrity verified, proposing ConfirmArchivePeriod")
+		a.proposeFn(req.PeriodID)
 
 		return nil
 	}
@@ -155,50 +165,79 @@ func (a *Archiver) archive(stop <-chan struct{}, req ArchiveRequest) error {
 	a.logger.WithFields(logFields).Infof("Starting period archival")
 
 	// Build SST archive to a temp file, then upload it.
-	tmpPath, err := a.buildSSTArchive(req)
+	tmpPath, localChecksum, err := a.buildSSTArchive(req)
 	if err != nil {
 		return fmt.Errorf("building SST archive: %w", err)
 	}
 
 	defer func() { _ = os.Remove(tmpPath) }()
 
-	// Open for reading and upload to cold storage.
+	// Open for reading and upload to cold storage. Archive persists the
+	// checksum atomically with the data.
 	sstFile, err := os.Open(tmpPath)
 	if err != nil {
 		return fmt.Errorf("opening SST archive for upload: %w", err)
 	}
 
-	uploadErr := a.coldStorage.Archive(ctx, a.bucketID, req.PeriodID, sstFile)
+	uploadErr := a.coldStorage.Archive(ctx, a.bucketID, req.PeriodID, sstFile, localChecksum)
 	_ = sstFile.Close()
 
 	if uploadErr != nil {
 		return fmt.Errorf("uploading archive: %w", uploadErr)
 	}
 
-	// Verify the upload
-	exists, err = a.coldStorage.Exists(ctx, a.bucketID, req.PeriodID)
+	// Sanity-check the upload by recomputing the remote checksum and
+	// comparing with the local one. Catches backend bugs or in-flight bit
+	// flips before we propose Confirm.
+	remoteChecksum, err := a.coldStorage.Checksum(ctx, a.bucketID, req.PeriodID)
 	if err != nil {
-		return fmt.Errorf("verifying archive: %w", err)
+		return fmt.Errorf("computing remote archive checksum: %w", err)
 	}
 
-	if !exists {
-		return errors.New("archive verification failed: archive not found after upload")
+	if !bytes.Equal(localChecksum, remoteChecksum) {
+		return fmt.Errorf("archive checksum mismatch for period %d after upload: local=%s remote=%s",
+			req.PeriodID, hex.EncodeToString(localChecksum), hex.EncodeToString(remoteChecksum))
 	}
 
 	a.logger.WithFields(logFields).Infof("Period archival complete, proposing ConfirmArchivePeriod")
-
-	// Propose ConfirmArchivePeriod back into Raft
 	a.proposeFn(req.PeriodID)
 
 	return nil
 }
 
-// periodMetadata is the JSON metadata included in the archive.
+// verifyExistingArchive reads the expected SHA-256 stored alongside the
+// archive at upload time, recomputes the current SHA-256 of the data, and
+// fails if they do not match. Used by the crash-recovery path before
+// proposing ConfirmArchivePeriod.
+func (a *Archiver) verifyExistingArchive(ctx context.Context, periodID uint64) error {
+	expected, err := a.coldStorage.ExpectedChecksum(ctx, a.bucketID, periodID)
+	if err != nil {
+		return fmt.Errorf("reading expected checksum for period %d: %w", periodID, err)
+	}
+
+	actual, err := a.coldStorage.Checksum(ctx, a.bucketID, periodID)
+	if err != nil {
+		return fmt.Errorf("reading current checksum for period %d: %w", periodID, err)
+	}
+
+	if !bytes.Equal(expected, actual) {
+		return fmt.Errorf("archive integrity check failed for period %d: expected=%s actual=%s",
+			periodID, hex.EncodeToString(expected), hex.EncodeToString(actual))
+	}
+
+	return nil
+}
+
+// periodMetadata is the JSON metadata included in the archive. Every field
+// here must be a deterministic function of the period being archived, so
+// that two archive builds of the same period produce byte-identical SSTs
+// (and therefore identical checksums). Adding a timestamp or any other
+// non-deterministic field would break checksum verification — keep this
+// struct boring.
 type periodMetadata struct {
 	PeriodID      uint64 `json:"periodId"`
 	StartSequence uint64 `json:"startSequence"`
 	CloseSequence uint64 `json:"closeSequence"`
-	ArchivedAt    string `json:"archivedAt"`
 }
 
 // MetadataKey is the SST key used for period metadata.
@@ -211,10 +250,10 @@ var MetadataKey = []byte{0x00, 'm', 'e', 't', 'a', 'd', 'a', 't', 'a'}
 // SST key layout:
 //   - [0x00]["metadata"] → JSON period metadata
 //   - original Pebble keys (0x01+ prefix) → values as-is
-func (a *Archiver) buildSSTArchive(req ArchiveRequest) (string, error) {
+func (a *Archiver) buildSSTArchive(req ArchiveRequest) (string, []byte, error) {
 	tmpFile, err := os.CreateTemp("", "cold-archive-*.sst")
 	if err != nil {
-		return "", fmt.Errorf("creating temp file: %w", err)
+		return "", nil, fmt.Errorf("creating temp file: %w", err)
 	}
 
 	tmpPath := tmpFile.Name()
@@ -224,27 +263,24 @@ func (a *Archiver) buildSSTArchive(req ArchiveRequest) (string, error) {
 		FilterPolicy: bloom.FilterPolicy(10),
 	})
 
-	// 1. Write metadata (sorts first due to 0x00 prefix)
-	meta := periodMetadata{
-		PeriodID:      req.PeriodID,
-		StartSequence: req.StartSequence,
-		CloseSequence: req.CloseSequence,
-		ArchivedAt:    time.Now().UTC().Format(time.RFC3339),
-	}
+	// 1. Write metadata (sorts first due to 0x00 prefix). periodMetadata
+	// shares the same shape as ArchiveRequest; the conversion is a no-op
+	// and keeps the two struct definitions in sync at compile time.
+	meta := periodMetadata(req)
 
 	metaJSON, err := json.Marshal(meta)
 	if err != nil {
 		_ = writer.Close()
 		_ = os.Remove(tmpPath)
 
-		return "", fmt.Errorf("marshaling period metadata: %w", err)
+		return "", nil, fmt.Errorf("marshaling period metadata: %w", err)
 	}
 
 	if err := writer.Set(MetadataKey, metaJSON); err != nil {
 		_ = writer.Close()
 		_ = os.Remove(tmpPath)
 
-		return "", fmt.Errorf("writing metadata to SST: %w", err)
+		return "", nil, fmt.Errorf("writing metadata to SST: %w", err)
 	}
 
 	// 2. Write all cold-storable KV pairs (already sorted from Pebble)
@@ -254,16 +290,33 @@ func (a *Archiver) buildSSTArchive(req ArchiveRequest) (string, error) {
 		_ = writer.Close()
 		_ = os.Remove(tmpPath)
 
-		return "", fmt.Errorf("writing cold KV pairs to SST: %w", err)
+		return "", nil, fmt.Errorf("writing cold KV pairs to SST: %w", err)
 	}
 
 	if err := writer.Close(); err != nil {
 		_ = os.Remove(tmpPath)
 
-		return "", fmt.Errorf("closing SST writer: %w", err)
+		return "", nil, fmt.Errorf("closing SST writer: %w", err)
 	}
 
-	return tmpPath, nil
+	// Compute SHA-256 checksum of the completed SST file.
+	checksumFile, err := os.Open(tmpPath)
+	if err != nil {
+		_ = os.Remove(tmpPath)
+
+		return "", nil, fmt.Errorf("opening SST for checksum: %w", err)
+	}
+
+	checksum, err := coldstorage.ComputeSHA256(checksumFile)
+	_ = checksumFile.Close()
+
+	if err != nil {
+		_ = os.Remove(tmpPath)
+
+		return "", nil, fmt.Errorf("computing SST checksum: %w", err)
+	}
+
+	return tmpPath, checksum, nil
 }
 
 // fileWritable adapts an *os.File to the objstorage.Writable interface.

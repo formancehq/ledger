@@ -5,6 +5,8 @@ package coldstorage
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -80,7 +82,8 @@ func TestS3Storage_ArchiveAndExists(t *testing.T) {
 	storage := NewS3Storage(client, minioBucket)
 	ctx := context.Background()
 
-	err := storage.Archive(ctx, "bucket1", 42, strings.NewReader("archive content"))
+	content := "archive content"
+	err := storage.Archive(ctx, "bucket1", 42, strings.NewReader(content), ComputeSHA256OrPanic([]byte(content)))
 	require.NoError(t, err)
 
 	exists, err := storage.Exists(ctx, "bucket1", 42)
@@ -108,7 +111,7 @@ func TestS3Storage_FetchRoundtrip(t *testing.T) {
 	ctx := context.Background()
 
 	content := "archive data for fetch test"
-	err := storage.Archive(ctx, "bucket", 7, strings.NewReader(content))
+	err := storage.Archive(ctx, "bucket", 7, strings.NewReader(content), ComputeSHA256OrPanic([]byte(content)))
 	require.NoError(t, err)
 
 	rc, err := storage.Fetch(ctx, "bucket", 7)
@@ -139,8 +142,8 @@ func TestS3Storage_ArchiveOverwrite(t *testing.T) {
 	storage := NewS3Storage(client, minioBucket)
 	ctx := context.Background()
 
-	require.NoError(t, storage.Archive(ctx, "bucket", 1, strings.NewReader("version1")))
-	require.NoError(t, storage.Archive(ctx, "bucket", 1, strings.NewReader("version2")))
+	require.NoError(t, storage.Archive(ctx, "bucket", 1, strings.NewReader("version1"), ComputeSHA256OrPanic([]byte("version1"))))
+	require.NoError(t, storage.Archive(ctx, "bucket", 1, strings.NewReader("version2"), ComputeSHA256OrPanic([]byte("version2"))))
 
 	rc, err := storage.Fetch(ctx, "bucket", 1)
 	require.NoError(t, err)
@@ -159,7 +162,7 @@ func TestS3Storage_DifferentBucketIDs(t *testing.T) {
 	storage := NewS3Storage(client, minioBucket)
 	ctx := context.Background()
 
-	require.NoError(t, storage.Archive(ctx, "bucket-a", 1, strings.NewReader("data-a")))
+	require.NoError(t, storage.Archive(ctx, "bucket-a", 1, strings.NewReader("data-a"), ComputeSHA256OrPanic([]byte("data-a"))))
 
 	exists, err := storage.Exists(ctx, "bucket-b", 1)
 	require.NoError(t, err)
@@ -186,7 +189,7 @@ func TestS3Storage_SSTRoundtripWithColdReader(t *testing.T) {
 	})
 
 	// Archive SST to S3
-	require.NoError(t, storage.Archive(ctx, "test-bucket", 1, bytes.NewReader(sstData)))
+	require.NoError(t, storage.Archive(ctx, "test-bucket", 1, bytes.NewReader(sstData), ComputeSHA256OrPanic(sstData)))
 
 	// Read back via ColdReader
 	cacheDir := t.TempDir()
@@ -225,7 +228,7 @@ func TestS3Storage_ColdReaderCacheEviction(t *testing.T) {
 		sstData := buildTestSST(t, [][2][]byte{
 			{[]byte("key"), []byte("value")},
 		})
-		require.NoError(t, storage.Archive(ctx, "evict-bucket", i, bytes.NewReader(sstData)))
+		require.NoError(t, storage.Archive(ctx, "evict-bucket", i, bytes.NewReader(sstData), ComputeSHA256OrPanic(sstData)))
 	}
 
 	// ColdReader with max 2 cached
@@ -253,6 +256,110 @@ func TestS3Storage_ColdReaderCacheEviction(t *testing.T) {
 	_ = closer.Close()
 }
 
+func TestS3Storage_ArchivePersistsChecksumInMetadata(t *testing.T) {
+	t.Parallel()
+
+	client, _ := setupMinIO(t)
+	storage := NewS3Storage(client, minioBucket)
+	ctx := context.Background()
+
+	content := []byte("integrity-tracked body")
+	expected := ComputeSHA256OrPanic(content)
+	require.NoError(t, storage.Archive(ctx, "bucket", 1, bytes.NewReader(content), expected))
+
+	head, err := client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(minioBucket),
+		Key:    aws.String(storage.archiveKey("bucket", 1)),
+	})
+	require.NoError(t, err)
+	require.Equal(t, hex.EncodeToString(expected), head.Metadata[s3ChecksumMetadataKey],
+		"S3 user metadata must carry the SHA-256 (hex-encoded) under the sha256 key")
+}
+
+func TestS3Storage_ExistsRequiresMetadata(t *testing.T) {
+	t.Parallel()
+
+	client, _ := setupMinIO(t)
+	storage := NewS3Storage(client, minioBucket)
+	ctx := context.Background()
+
+	key := storage.archiveKey("bucket", 2)
+
+	// Bypass our Archive() helper to upload an object WITHOUT checksum
+	// metadata. This simulates a legacy archive from before the fix.
+	_, err := client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket: aws.String(minioBucket),
+		Key:    aws.String(key),
+		Body:   strings.NewReader("legacy bytes"),
+	})
+	require.NoError(t, err)
+
+	exists, err := storage.Exists(ctx, "bucket", 2)
+	require.NoError(t, err)
+	require.False(t, exists, "object without checksum metadata must read as not-yet-committed")
+
+	// Re-upload via the new Archive path → metadata is now there → Exists=true.
+	require.NoError(t, storage.Archive(ctx, "bucket", 2, strings.NewReader("legacy bytes"),
+		ComputeSHA256OrPanic([]byte("legacy bytes"))))
+
+	exists, err = storage.Exists(ctx, "bucket", 2)
+	require.NoError(t, err)
+	require.True(t, exists)
+}
+
+func TestS3Storage_ExpectedChecksum(t *testing.T) {
+	t.Parallel()
+
+	client, _ := setupMinIO(t)
+	storage := NewS3Storage(client, minioBucket)
+	ctx := context.Background()
+
+	content := []byte("hello s3")
+	expected := ComputeSHA256OrPanic(content)
+	require.NoError(t, storage.Archive(ctx, "bucket", 3, bytes.NewReader(content), expected))
+
+	got, err := storage.ExpectedChecksum(ctx, "bucket", 3)
+	require.NoError(t, err)
+	require.Equal(t, expected, got)
+}
+
+func TestS3Storage_ExpectedChecksumMissingReturnsSentinel(t *testing.T) {
+	t.Parallel()
+
+	client, _ := setupMinIO(t)
+	storage := NewS3Storage(client, minioBucket)
+	ctx := context.Background()
+
+	// Upload directly without metadata to reproduce the missing-checksum state.
+	_, err := client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket: aws.String(minioBucket),
+		Key:    aws.String(storage.archiveKey("bucket", 4)),
+		Body:   strings.NewReader("no metadata"),
+	})
+	require.NoError(t, err)
+
+	_, err = storage.ExpectedChecksum(ctx, "bucket", 4)
+	require.True(t, errors.Is(err, ErrChecksumNotFound),
+		"missing metadata must surface as ErrChecksumNotFound")
+}
+
+func TestS3Storage_OverwriteUpdatesMetadata(t *testing.T) {
+	t.Parallel()
+
+	client, _ := setupMinIO(t)
+	storage := NewS3Storage(client, minioBucket)
+	ctx := context.Background()
+
+	c1 := ComputeSHA256OrPanic([]byte("v1"))
+	c2 := ComputeSHA256OrPanic([]byte("v2"))
+	require.NoError(t, storage.Archive(ctx, "bucket", 5, strings.NewReader("v1"), c1))
+	require.NoError(t, storage.Archive(ctx, "bucket", 5, strings.NewReader("v2"), c2))
+
+	got, err := storage.ExpectedChecksum(ctx, "bucket", 5)
+	require.NoError(t, err)
+	require.Equal(t, c2, got, "after overwrite, persisted metadata reflects the latest write")
+}
+
 func TestS3Storage_NewS3ColdStorage(t *testing.T) {
 	// Cannot use t.Parallel() with t.Setenv
 	_, endpoint := setupMinIO(t)
@@ -266,7 +373,7 @@ func TestS3Storage_NewS3ColdStorage(t *testing.T) {
 
 	ctx := context.Background()
 
-	require.NoError(t, cs.Archive(ctx, "bucket", 1, strings.NewReader("data")))
+	require.NoError(t, cs.Archive(ctx, "bucket", 1, strings.NewReader("data"), ComputeSHA256OrPanic([]byte("data"))))
 
 	exists, err := cs.Exists(ctx, "bucket", 1)
 	require.NoError(t, err)

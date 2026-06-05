@@ -1,13 +1,45 @@
 package coldstorage
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"io"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+// makeChecksum produces a deterministic, valid-length checksum from a seed
+// byte. Used to keep test payloads short and readable.
+func makeChecksum(seed byte) []byte {
+	b := make([]byte, ChecksumLength)
+	for i := range b {
+		b[i] = seed
+	}
+
+	return b
+}
+
+func sha256Of(t *testing.T, content string) []byte {
+	t.Helper()
+	c, err := ComputeSHA256(strings.NewReader(content))
+	require.NoError(t, err)
+
+	return c
+}
+
+func dataPath(dir, bucket string, periodID uint64) string {
+	return filepath.Join(dir, bucket, "periods", strconv.FormatUint(periodID, 10), archiveDataName)
+}
+
+func sidecarPath(dir, bucket string, periodID uint64) string {
+	return filepath.Join(dir, bucket, "periods", strconv.FormatUint(periodID, 10), archiveChecksumName)
+}
 
 func TestFilesystemStorage_ArchiveAndExists(t *testing.T) {
 	t.Parallel()
@@ -16,8 +48,8 @@ func TestFilesystemStorage_ArchiveAndExists(t *testing.T) {
 	fs := NewFilesystemStorage(dir)
 	ctx := context.Background()
 
-	data := strings.NewReader("archive content here")
-	err := fs.Archive(ctx, "bucket1", 42, data)
+	checksum := sha256Of(t, "archive content here")
+	err := fs.Archive(ctx, "bucket1", 42, strings.NewReader("archive content here"), checksum)
 	require.NoError(t, err)
 
 	exists, err := fs.Exists(ctx, "bucket1", 42)
@@ -44,9 +76,8 @@ func TestFilesystemStorage_ArchiveCreatesDirectories(t *testing.T) {
 	fs := NewFilesystemStorage(dir)
 	ctx := context.Background()
 
-	// Deep nesting should auto-create dirs
-	data := strings.NewReader("deep archive")
-	err := fs.Archive(ctx, "deep-bucket", 1, data)
+	checksum := sha256Of(t, "deep archive")
+	err := fs.Archive(ctx, "deep-bucket", 1, strings.NewReader("deep archive"), checksum)
 	require.NoError(t, err)
 
 	exists, err := fs.Exists(ctx, "deep-bucket", 1)
@@ -61,17 +92,23 @@ func TestFilesystemStorage_ArchiveOverwrite(t *testing.T) {
 	fs := NewFilesystemStorage(dir)
 	ctx := context.Background()
 
-	// Write first version
-	err := fs.Archive(ctx, "bucket", 1, strings.NewReader("version1"))
-	require.NoError(t, err)
+	// First version
+	c1 := sha256Of(t, "version1")
+	require.NoError(t, fs.Archive(ctx, "bucket", 1, strings.NewReader("version1"), c1))
 
 	// Overwrite
-	err = fs.Archive(ctx, "bucket", 1, strings.NewReader("version2"))
-	require.NoError(t, err)
+	c2 := sha256Of(t, "version2")
+	require.NoError(t, fs.Archive(ctx, "bucket", 1, strings.NewReader("version2"), c2))
 
-	exists, err := fs.Exists(ctx, "bucket", 1)
+	rc, err := fs.Fetch(ctx, "bucket", 1)
 	require.NoError(t, err)
-	require.True(t, exists)
+	defer func() { _ = rc.Close() }()
+	data, _ := io.ReadAll(rc)
+	require.Equal(t, "version2", string(data))
+
+	expected, err := fs.ExpectedChecksum(ctx, "bucket", 1)
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(c2, expected), "checksum sidecar must reflect the latest write")
 }
 
 func TestFilesystemStorage_ArchiveReadBack(t *testing.T) {
@@ -82,15 +119,12 @@ func TestFilesystemStorage_ArchiveReadBack(t *testing.T) {
 	ctx := context.Background()
 
 	content := "archive data for read-back test"
-	err := fs.Archive(ctx, "bucket", 7, strings.NewReader(content))
-	require.NoError(t, err)
+	checksum := sha256Of(t, content)
+	require.NoError(t, fs.Archive(ctx, "bucket", 7, strings.NewReader(content), checksum))
 
-	// Read back via Fetch to verify content
 	rc, err := fs.Fetch(ctx, "bucket", 7)
 	require.NoError(t, err)
-
 	defer func() { _ = rc.Close() }()
-
 	data, err := io.ReadAll(rc)
 	require.NoError(t, err)
 	require.Equal(t, content, string(data))
@@ -103,10 +137,9 @@ func TestFilesystemStorage_LargeArchive(t *testing.T) {
 	fs := NewFilesystemStorage(dir)
 	ctx := context.Background()
 
-	// Write a large piece of data
 	largeData := strings.Repeat("x", 100000)
-	err := fs.Archive(ctx, "bucket", 99, strings.NewReader(largeData))
-	require.NoError(t, err)
+	checksum := sha256Of(t, largeData)
+	require.NoError(t, fs.Archive(ctx, "bucket", 99, strings.NewReader(largeData), checksum))
 
 	exists, err := fs.Exists(ctx, "bucket", 99)
 	require.NoError(t, err)
@@ -120,8 +153,10 @@ func TestFilesystemStorage_DifferentPeriods(t *testing.T) {
 	fs := NewFilesystemStorage(dir)
 	ctx := context.Background()
 
-	require.NoError(t, fs.Archive(ctx, "bucket", 1, strings.NewReader("period-1")))
-	require.NoError(t, fs.Archive(ctx, "bucket", 2, strings.NewReader("period-2")))
+	c1 := sha256Of(t, "period-1")
+	c2 := sha256Of(t, "period-2")
+	require.NoError(t, fs.Archive(ctx, "bucket", 1, strings.NewReader("period-1"), c1))
+	require.NoError(t, fs.Archive(ctx, "bucket", 2, strings.NewReader("period-2"), c2))
 
 	exists1, err := fs.Exists(ctx, "bucket", 1)
 	require.NoError(t, err)
@@ -143,10 +178,9 @@ func TestFilesystemStorage_DifferentBuckets(t *testing.T) {
 	fs := NewFilesystemStorage(dir)
 	ctx := context.Background()
 
-	err := fs.Archive(ctx, "bucket-a", 1, strings.NewReader("data-a"))
-	require.NoError(t, err)
+	checksum := sha256Of(t, "data-a")
+	require.NoError(t, fs.Archive(ctx, "bucket-a", 1, strings.NewReader("data-a"), checksum))
 
-	// Different bucket, same period
 	exists, err := fs.Exists(ctx, "bucket-b", 1)
 	require.NoError(t, err)
 	require.False(t, exists)
@@ -154,4 +188,152 @@ func TestFilesystemStorage_DifferentBuckets(t *testing.T) {
 	exists, err = fs.Exists(ctx, "bucket-a", 1)
 	require.NoError(t, err)
 	require.True(t, exists)
+}
+
+// --- Integrity-focused tests ---
+
+func TestFilesystemStorage_ArchivePersistsChecksum(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	fs := NewFilesystemStorage(dir)
+	ctx := context.Background()
+
+	expected := makeChecksum(0xAB)
+	require.NoError(t, fs.Archive(ctx, "bucket", 1, strings.NewReader("some bytes"), expected))
+
+	// Both files must exist
+	_, err := os.Stat(dataPath(dir, "bucket", 1))
+	require.NoError(t, err, "archive.sst must be written")
+
+	got, err := os.ReadFile(sidecarPath(dir, "bucket", 1))
+	require.NoError(t, err, "sidecar must be written")
+	require.Equal(t, expected, got, "sidecar must contain exact checksum bytes")
+}
+
+func TestFilesystemStorage_ExistsRequiresBothFiles(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	fs := NewFilesystemStorage(dir)
+	ctx := context.Background()
+
+	periodDir := filepath.Join(dir, "bucket", "periods", "5")
+	require.NoError(t, os.MkdirAll(periodDir, 0o755))
+
+	// Only data, no sidecar
+	require.NoError(t, os.WriteFile(filepath.Join(periodDir, archiveDataName), []byte("orphan"), 0o644))
+	exists, err := fs.Exists(ctx, "bucket", 5)
+	require.NoError(t, err)
+	require.False(t, exists, "data alone must not count as committed")
+
+	// Only sidecar, no data
+	require.NoError(t, os.Remove(filepath.Join(periodDir, archiveDataName)))
+	require.NoError(t, os.WriteFile(filepath.Join(periodDir, archiveChecksumName), makeChecksum(0x01), 0o644))
+	exists, err = fs.Exists(ctx, "bucket", 5)
+	require.NoError(t, err)
+	require.False(t, exists, "sidecar alone must not count as committed")
+
+	// Both present
+	require.NoError(t, os.WriteFile(filepath.Join(periodDir, archiveDataName), []byte("orphan"), 0o644))
+	exists, err = fs.Exists(ctx, "bucket", 5)
+	require.NoError(t, err)
+	require.True(t, exists, "data + sidecar means committed")
+}
+
+func TestFilesystemStorage_ExpectedChecksumReadsFromSidecar(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	fs := NewFilesystemStorage(dir)
+	ctx := context.Background()
+
+	expected := makeChecksum(0x42)
+	require.NoError(t, fs.Archive(ctx, "bucket", 3, strings.NewReader("x"), expected))
+
+	got, err := fs.ExpectedChecksum(ctx, "bucket", 3)
+	require.NoError(t, err)
+	require.Equal(t, expected, got)
+}
+
+func TestFilesystemStorage_ExpectedChecksumMissingReturnsSentinel(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	fs := NewFilesystemStorage(dir)
+	ctx := context.Background()
+
+	_, err := fs.ExpectedChecksum(ctx, "bucket", 99)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, ErrChecksumNotFound),
+		"missing sidecar must surface as ErrChecksumNotFound so callers can re-upload")
+}
+
+func TestFilesystemStorage_MalformedSidecar(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	fs := NewFilesystemStorage(dir)
+	ctx := context.Background()
+
+	periodDir := filepath.Join(dir, "bucket", "periods", "8")
+	require.NoError(t, os.MkdirAll(periodDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(periodDir, archiveDataName), []byte("data"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(periodDir, archiveChecksumName), []byte("not-32-bytes"), 0o644))
+
+	_, err := fs.ExpectedChecksum(ctx, "bucket", 8)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, ErrChecksumMalformed),
+		"wrong-length sidecar must surface as ErrChecksumMalformed, not be silently accepted")
+}
+
+func TestFilesystemStorage_ChecksumIsContentBased(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	fs := NewFilesystemStorage(dir)
+	ctx := context.Background()
+
+	original := "original bytes"
+	expected := sha256Of(t, original)
+	require.NoError(t, fs.Archive(ctx, "bucket", 11, strings.NewReader(original), expected))
+
+	// Tamper with the data on disk (sidecar untouched).
+	require.NoError(t, os.WriteFile(dataPath(dir, "bucket", 11), []byte("tampered bytes"), 0o644))
+
+	got, err := fs.Checksum(ctx, "bucket", 11)
+	require.NoError(t, err)
+	require.NotEqual(t, expected, got, "Checksum must reflect current bytes, not the sidecar")
+
+	stored, err := fs.ExpectedChecksum(ctx, "bucket", 11)
+	require.NoError(t, err)
+	require.Equal(t, expected, stored, "ExpectedChecksum must reflect the sidecar, unchanged after tampering")
+}
+
+func TestFilesystemStorage_NoOrphanTmpAfterArchive(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	fs := NewFilesystemStorage(dir)
+	ctx := context.Background()
+
+	require.NoError(t, fs.Archive(ctx, "bucket", 4, strings.NewReader("x"), makeChecksum(0x07)))
+
+	entries, err := os.ReadDir(filepath.Join(dir, "bucket", "periods", "4"))
+	require.NoError(t, err)
+	for _, e := range entries {
+		require.False(t, strings.HasSuffix(e.Name(), ".tmp"),
+			"successful Archive must not leave .tmp files: %s", e.Name())
+	}
+}
+
+func TestFilesystemStorage_RejectsWrongChecksumLength(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	fs := NewFilesystemStorage(dir)
+	ctx := context.Background()
+
+	err := fs.Archive(ctx, "bucket", 1, strings.NewReader("x"), []byte{0x01, 0x02})
+	require.Error(t, err, "Archive must reject a checksum that is not the SHA-256 size")
 }
