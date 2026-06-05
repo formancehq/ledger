@@ -212,8 +212,8 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().String(SchemaEnforcementMode, "audit", "Schema enforcement mode. Values: `audit`, `strict`")
 	cmd.Flags().Bool(audit.AuditEnabledFlag, true, "Enable HTTP audit")
 	cmd.Flags().Bool(AuditAsyncEnabledFlag, true, "Publish HTTP audit events asynchronously")
-	cmd.Flags().Int(AuditAsyncQueueCapacityFlag, 4096, "HTTP audit async publish queue capacity")
-	cmd.Flags().Int(AuditAsyncWorkerCountFlag, 4, "HTTP audit async publish worker count")
+	cmd.Flags().Int(AuditAsyncQueueCapacityFlag, api.DefaultAuditAsyncQueueCapacity, "HTTP audit async publish queue capacity")
+	cmd.Flags().Int(AuditAsyncWorkerCountFlag, api.DefaultAuditAsyncWorkerCount, "HTTP audit async publish worker count")
 
 	addWorkerFlags(cmd)
 	connect.AddFlags(cmd.Flags())

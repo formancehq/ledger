@@ -62,7 +62,7 @@ func NewRouter(
 		common.LogID(),
 		middleware.RequestLogger(api.NewLogFormatter()),
 		httpserver.OTLPMiddleware("ledger", debug),
-		httpaudit.Middleware(publisher, "audit-events", "ledger", nil, routerOptions.auditHTTPOptions...),
+		httpaudit.Middleware(publisher, auditEventTopic, auditAppName, nil, routerOptions.auditHTTPOptions...),
 		otelchimetric.NewRequestDurationMillis(baseCfg),
 		otelchimetric.NewRequestInFlight(baseCfg),
 		otelchimetric.NewResponseSizeBytes(baseCfg),
