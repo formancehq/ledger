@@ -82,6 +82,16 @@ type LedgerBackupSpec struct {
 	// +kubebuilder:default=1
 	// +optional
 	FailedRunsHistoryLimit *int32 `json:"failedRunsHistoryLimit,omitempty"`
+
+	// Timeout caps how long the `ledgerctl store backup` /
+	// `ledgerctl store incremental-backup` RPC may run before the client
+	// aborts. The operator forwards it as `--timeout` to the Job's
+	// ledgerctl invocation; tune it for the size of the ledger and the
+	// throughput of the destination bucket. Defaults to 1h, which is
+	// enough for tens of GB on S3 while still bounding stuck runs.
+	// +kubebuilder:default="1h"
+	// +optional
+	Timeout *metav1.Duration `json:"timeout,omitempty"`
 }
 
 // FullBackupStatus holds the result of the last full backup.

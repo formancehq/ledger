@@ -3,6 +3,7 @@ package controller
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	batchv1 "k8s.io/api/batch/v1"
@@ -197,6 +198,58 @@ func TestBuildBackupJob_UnknownType(t *testing.T) {
 
 	_, err := buildBackupJob(run, backup, ls, tlsModeDisabled)
 	require.Error(t, err)
+}
+
+func TestBuildBackupJob_Timeout(t *testing.T) {
+	t.Parallel()
+
+	ls := &ledgerv1alpha1.LedgerService{
+		ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "ns"},
+		Spec:       ledgerv1alpha1.LedgerServiceSpec{Image: ledgerv1alpha1.ImageSpec{Repository: "r", Tag: "t"}},
+	}
+	run := &ledgerv1alpha1.LedgerBackupRun{
+		ObjectMeta: metav1.ObjectMeta{Name: "r", Namespace: "ns"},
+		Spec:       ledgerv1alpha1.LedgerBackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
+	}
+
+	t.Run("explicit timeout is forwarded as --timeout", func(t *testing.T) {
+		t.Parallel()
+		backup := &ledgerv1alpha1.LedgerBackup{
+			ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "ns"},
+			Spec: ledgerv1alpha1.LedgerBackupSpec{
+				Destination: ledgerv1alpha1.BackupDestination{Driver: "s3"},
+				Timeout:     &metav1.Duration{Duration: 30 * time.Minute},
+			},
+		}
+		job, err := buildBackupJob(run, backup, ls, tlsModeDisabled)
+		require.NoError(t, err)
+		require.Contains(t, job.Spec.Template.Spec.Containers[0].Command[2], "--timeout 30m0s")
+	})
+
+	t.Run("missing timeout means no --timeout flag", func(t *testing.T) {
+		t.Parallel()
+		backup := &ledgerv1alpha1.LedgerBackup{
+			ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "ns"},
+			Spec:       ledgerv1alpha1.LedgerBackupSpec{Destination: ledgerv1alpha1.BackupDestination{Driver: "s3"}},
+		}
+		job, err := buildBackupJob(run, backup, ls, tlsModeDisabled)
+		require.NoError(t, err)
+		require.NotContains(t, job.Spec.Template.Spec.Containers[0].Command[2], "--timeout")
+	})
+
+	t.Run("zero timeout is omitted", func(t *testing.T) {
+		t.Parallel()
+		backup := &ledgerv1alpha1.LedgerBackup{
+			ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "ns"},
+			Spec: ledgerv1alpha1.LedgerBackupSpec{
+				Destination: ledgerv1alpha1.BackupDestination{Driver: "s3"},
+				Timeout:     &metav1.Duration{Duration: 0},
+			},
+		}
+		job, err := buildBackupJob(run, backup, ls, tlsModeDisabled)
+		require.NoError(t, err)
+		require.NotContains(t, job.Spec.Template.Spec.Containers[0].Command[2], "--timeout")
+	})
 }
 
 func TestJobTerminalCondition(t *testing.T) {

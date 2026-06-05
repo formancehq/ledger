@@ -121,6 +121,9 @@ func buildBackupJob(
 	args := []string{"store", subcmd}
 	args = append(args, backupFlags(&backup.Spec.Destination)...)
 	args = append(args, "--json")
+	if backup.Spec.Timeout != nil && backup.Spec.Timeout.Duration > 0 {
+		args = append(args, "--timeout", backup.Spec.Timeout.Duration.String())
+	}
 	cmd := ledgerctlCommand(backupServerAddr(ls), tlsMode, args...)
 
 	env := []corev1.EnvVar{

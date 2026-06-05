@@ -133,6 +133,16 @@ spec:
                   Defaults to 3.
                 format: int32
                 type: integer
+              timeout:
+                default: 1h
+                description: |-
+                  Timeout caps how long the `ledgerctl store backup` /
+                  `ledgerctl store incremental-backup` RPC may run before the client
+                  aborts. The operator forwards it as `--timeout` to the Job's
+                  ledgerctl invocation; tune it for the size of the ledger and the
+                  throughput of the destination bucket. Defaults to 1h, which is
+                  enough for tens of GB on S3 while still bounding stuck runs.
+                type: string
             required:
             - destination
             - serviceRef
