@@ -1,0 +1,2019 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Ledger v3 — Architecture Flow</title>
+<style>
+  :root {
+    --bg: #0f1419;
+    --panel: #1b2330;
+    --panel-stroke: #2c3a52;
+    --text: #d6deeb;
+    --muted: #7a8aa6;
+    --accent: #ffcb6b;       /* leader */
+    --follower: #82aaff;     /* follower */
+    --grpc: #c3e88d;         /* client traffic */
+    --raft: #f78c6c;         /* raft replication */
+    --apply: #c792ea;        /* FSM apply */
+    --resp: #89ddff;         /* response */
+    --index: #addb67;        /* index builder */
+    --danger: #ff6b6b;
+  }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif; }
+  body { min-height: 100vh; }
+  .wrap { padding: 12px 16px; min-height: 100vh; box-sizing: border-box; display: flex; flex-direction: column; }
+  .layout-row { display: flex; gap: 14px; align-items: stretch; margin-bottom: 12px; flex: 1; min-height: 0; }
+  .layout-svg { flex: 1; min-width: 0; }
+  .layout-panel { width: 380px; flex-shrink: 0; display: flex; flex-direction: column; min-height: 0; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 2px 0; letter-spacing: .2px; }
+  .sub { color: var(--muted); font-size: 12px; margin: 0; }
+  .top-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 4px 0 14px 0; }
+  .top-bar .brand { min-width: 0; }
+  .top-bar .controls { margin: 0; flex-shrink: 0; }
+  svg { display: block; width: 100%; height: auto; background: var(--bg); }
+  .label { fill: var(--text); font-size: 13px; font-weight: 600; }
+  .sublabel { fill: var(--muted); font-size: 11px; }
+  .box { fill: var(--panel); stroke: var(--panel-stroke); stroke-width: 1.5; rx: 10; ry: 10; }
+  .box-leader { stroke: var(--accent); }
+  .node-title { font-size: 12px; font-weight: 700; letter-spacing: .8px; }
+  .legend text { fill: var(--muted); font-size: 11px; }
+  .edge { fill: none; stroke: #5a6f93; stroke-width: 1.4; stroke-dasharray: 3 4; opacity: 0.9; }
+  .stage-label { fill: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 1.4px; }
+  .pulse { animation: pulse 1.4s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
+  @keyframes pulse {
+    0%, 100% { opacity: .9; }
+    50% { opacity: .35; }
+  }
+  /* Dynamic index displays */
+  .applied-idx-leader { fill: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .2px; }
+  .applied-idx-follower { fill: var(--follower); font-size: 11px; font-weight: 600; }
+  .idx-flash { animation: idxFlash 0.7s ease-out; }
+  @keyframes idxFlash {
+    0%   { filter: brightness(2.4) drop-shadow(0 0 6px currentColor); font-weight: 800; }
+    100% { filter: brightness(1); }
+  }
+  .footer { color: var(--muted); font-size: 12px; margin-top: 12px; }
+  /* Consultation rails (read-only lookups), visually distinct from message edges.
+     Tiny round dots = "consultation", not transmission. */
+  .consult-edge {
+    stroke: #c792ea;
+    stroke-width: 2;
+    stroke-dasharray: 0.1 5;
+    stroke-linecap: round;
+    opacity: 0.35;
+    fill: none;
+  }
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 10px 0 16px 0;
+    padding: 8px 12px;
+    background: var(--panel);
+    border: 1px solid var(--panel-stroke);
+    border-radius: 8px;
+  }
+  .ctrl-btn {
+    background: #2c3a52;
+    color: var(--text);
+    border: none;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+    min-width: 96px;
+  }
+  .ctrl-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .ctrl-btn:hover:not(:disabled) { background: #3a4a66; }
+  .ctrl-btn.primary { background: var(--accent); color: #1b1410; }
+  .ctrl-btn.primary:hover:not(:disabled) { background: #ffd887; }
+  .step-indicator {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .step-indicator b { color: var(--text); font-weight: 700; }
+  .step-indicator.paused b { color: var(--accent); }
+  .tx-form {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px;
+    padding: 10px 12px; margin-bottom: 12px;
+    background: var(--panel); border: 1px solid var(--panel-stroke); border-radius: 8px;
+    box-sizing: border-box;
+  }
+  .tx-field { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--muted); }
+  .tx-field input {
+    background: #0f1419; color: var(--text); border: 1px solid var(--panel-stroke);
+    border-radius: 5px; padding: 5px 8px; font: inherit; font-size: 12px;
+    width: 100%; box-sizing: border-box;
+  }
+  .tx-field input:disabled { opacity: 0.45; cursor: not-allowed; }
+  .tx-actions { grid-column: 1 / -1; display: flex; gap: 8px; margin-top: 2px; }
+  .tx-actions .ctrl-btn { flex: 1; min-width: 0; }
+  .tx-error { grid-column: 1 / -1; color: #ff6b6b; font-size: 11px; min-height: 14px; }
+  .tx-controls {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    padding: 8px 12px; margin-bottom: 12px;
+    background: var(--panel); border: 1px solid var(--panel-stroke); border-radius: 8px;
+    box-sizing: border-box;
+  }
+  .tx-controls .ctrl-btn { font-size: 11px; padding: 4px 9px; min-width: 0; }
+  .tx-controls .step-indicator { margin-left: auto; font-size: 11px; }
+  .tx-controls[hidden] { display: none; }
+  /* Highlight the boxes the current step is interacting with */
+  .highlight { filter: drop-shadow(0 0 8px var(--accent)) drop-shadow(0 0 3px var(--accent)); }
+  .highlight rect.box { stroke-width: 2.2; }
+  .highlight, .highlight rect.box { transition: filter 0.25s ease, stroke-width 0.25s ease; }
+  .step-banner-html {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin: 14px 0 8px 0;
+    padding: 14px 16px;
+    background: var(--panel);
+    border: 1px solid var(--panel-stroke);
+    border-radius: 8px;
+    min-height: 72px;
+  }
+  .step-dot-html {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--grpc);
+    flex-shrink: 0;
+    margin-top: 5px;
+    box-shadow: 0 0 6px currentColor;
+  }
+  .step-content { flex: 1; min-width: 0; }
+  .step-title { color: var(--text); font-size: 13px; font-weight: 700; margin-bottom: 6px; letter-spacing: .2px; }
+  .step-desc { color: var(--muted); font-size: 12px; line-height: 1.5; }
+  .step-desc code { background: #0f1419; padding: 1px 5px; border-radius: 3px; color: var(--text); font-size: 11px; }
+  .payload-panel {
+    margin-top: 0;
+    padding: 12px 14px;
+    background: var(--panel);
+    border: 1px solid var(--panel-stroke);
+    border-radius: 8px;
+    box-sizing: border-box;
+    width: 100%;
+    flex: 1;
+    overflow: auto;
+  }
+  .cache-panel {
+    margin-bottom: 12px;
+    padding: 12px 14px;
+    background: var(--panel);
+    border: 1px solid var(--panel-stroke);
+    border-radius: 8px;
+    box-sizing: border-box;
+    width: 100%;
+    flex-shrink: 0;
+    transition: box-shadow 0.4s ease, border-color 0.4s ease;
+  }
+  .cache-panel.rotate-flash {
+    border-color: var(--accent);
+    box-shadow: 0 0 14px rgba(255, 203, 107, 0.55);
+    animation: rotateFlash 1s ease-out;
+  }
+  @keyframes rotateFlash {
+    0%   { box-shadow: 0 0 22px rgba(255, 203, 107, 0.9); border-color: var(--accent); }
+    100% { box-shadow: 0 0 0   rgba(255, 203, 107, 0);    border-color: var(--panel-stroke); }
+  }
+  .cache-header, .payload-header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 8px; gap: 8px;
+  }
+  /* Collapsible panels */
+  .collapsible-header { cursor: pointer; user-select: none; }
+  .collapsible-header::before {
+    content: "▾"; color: var(--muted); font-size: 9px;
+    margin-right: 6px; display: inline-block;
+    transition: transform 0.2s ease;
+  }
+  .collapsed .collapsible-header::before { transform: rotate(-90deg); }
+  .collapsed .collapsible-body { display: none; }
+  .collapsed.cache-panel, .collapsed.payload-panel { flex: 0 0 auto; }
+  .collapsed .cache-header, .collapsed .payload-header { margin-bottom: 0; }
+  .cache-title {
+    text-transform: uppercase; letter-spacing: 1.4px;
+    color: var(--muted); font-size: 10px; font-weight: 700;
+  }
+  .cache-meta {
+    color: var(--muted); font-size: 10px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  .cache-section { margin-top: 6px; }
+  .cache-section-title {
+    font-size: 10.5px; font-weight: 700; letter-spacing: .4px;
+    margin: 6px 0 4px 0;
+  }
+  .cache-section-title.gen0 { color: var(--accent); }
+  .cache-section-title.gen1 { color: var(--muted); }
+  .cache-section-sub { font-weight: 400; opacity: 0.75; font-size: 10px; letter-spacing: 0; }
+  .cache-list {
+    list-style: none; padding: 0; margin: 0;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px; line-height: 1.6;
+  }
+  .cache-list li {
+    display: flex; align-items: center; gap: 6px;
+    padding: 1px 0;
+    color: var(--text);
+  }
+  .cache-list li.gen1-line { color: var(--muted); }
+  .cache-list li .k { flex: 1; }
+  .cache-list li .v { color: #c3e88d; }
+  .cache-list li.deleted .k, .cache-list li.deleted .v {
+    text-decoration: line-through; opacity: 0.55;
+  }
+  .cache-list li .badge {
+    font-size: 9px; font-weight: 700; letter-spacing: .5px;
+    padding: 1px 5px; border-radius: 3px; line-height: 1.5;
+    flex-shrink: 0; font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  .cache-list li .b-new      { background: #1f3a23; color: #addb67; }
+  .cache-list li .b-touched  { background: #3a2a13; color: #ffcb6b; }
+  .cache-list li .b-deleted  { background: #3a1f1f; color: #ff6b6b; }
+  .row-flash { animation: rowFlash 0.6s ease-out; }
+  @keyframes rowFlash {
+    0%   { filter: brightness(2.4) drop-shadow(0 0 4px currentColor); }
+    100% { filter: brightness(1); }
+  }
+  .cache-empty { color: var(--muted); font-style: italic; padding: 2px 0; }
+  /* In-flight transactions row layout */
+  .inflight-row { display: flex; align-items: center; gap: 6px; padding: 3px 6px; cursor: pointer; border-radius: 4px; }
+  .inflight-row:hover { background: rgba(255, 255, 255, 0.04); }
+  .inflight-row.selected { background: rgba(130, 170, 255, 0.14); box-shadow: inset 0 0 0 1px rgba(130, 170, 255, 0.35); }
+  .inflight-chip { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .inflight-id { color: var(--muted); }
+  .inflight-route { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .inflight-step { font-size: 10px; color: var(--muted); }
+  .inflight-row.blocked .inflight-step { color: #ff6b6b; font-weight: 700; }
+  /* Selected-tx indicator next to the payload title */
+  .payload-tx-chip { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .payload-tx-id { color: var(--muted); font-weight: 600; margin-right: 8px; }
+  /* Frozen dot at a pipeline block point — pulses red to call attention */
+  .blocked-dot {
+    pointer-events: none;
+    filter: drop-shadow(0 0 8px #ff6b6b) drop-shadow(0 0 14px #ff6b6b);
+    animation: blockedPulse 1.1s ease-in-out infinite;
+    transform-box: fill-box; transform-origin: center;
+  }
+  @keyframes blockedPulse {
+    0%, 100% { opacity: 1;   transform: scale(1);    }
+    50%      { opacity: 0.6; transform: scale(1.45); }
+  }
+  /* Resting dot — tx is logically "inside" a box between two steps */
+  .rest-dot { pointer-events: none; opacity: 0.85; }
+  .payload-title {
+    text-transform: uppercase;
+    letter-spacing: 1.4px;
+    color: var(--muted);
+    font-size: 10px;
+    margin-bottom: 6px;
+    font-weight: 700;
+  }
+  .payload-body {
+    margin: 0;
+    font-family: ui-monospace, "SF Mono", "Menlo", "Roboto Mono", monospace;
+    font-size: 11.5px;
+    line-height: 1.55;
+    color: var(--text);
+    white-space: pre-wrap;
+  }
+  .payload-body .k { color: #82aaff; }
+  .payload-body .s { color: #c3e88d; }
+  .payload-body .n { color: #ffcb6b; }
+  .payload-body .c { color: var(--muted); font-style: italic; }
+  .payload-body .h { color: #c792ea; font-weight: 700; }
+  .step-banner {
+    fill: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .step-bg { fill: #1b2330; stroke: var(--panel-stroke); rx: 6; ry: 6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top-bar">
+    <div class="brand">
+      <h1>Ledger v3 — Architecture overview</h1>
+      <div class="sub">gRPC → Admission → Raft (3 nodes) → FSM → Pebble → Workers</div>
+    </div>
+  </header>
+
+  <div class="layout-row">
+    <div class="layout-svg">
+
+  <svg id="svg" viewBox="0 0 1200 565" preserveAspectRatio="xMidYMid meet">
+    <!-- Defs -->
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#5a6f93"/>
+      </marker>
+      <radialGradient id="dotGlow">
+        <stop offset="0%" stop-color="white" stop-opacity="0.9"/>
+        <stop offset="60%" stop-color="white" stop-opacity="0.0"/>
+      </radialGradient>
+    </defs>
+
+    <!-- Stage labels -->
+    <text class="stage-label" x="80"  y="40">Client</text>
+    <text class="stage-label" x="280" y="40">Ingress</text>
+    <text class="stage-label" x="510" y="40">Consensus (Raft)</text>
+    <text class="stage-label" x="835" y="40">Apply (FSM → Cache + Pebble)</text>
+    <text class="stage-label" x="1090" y="40">Workers</text>
+
+    <!-- Client -->
+    <g id="box-client">
+      <rect class="box" x="40" y="280" width="120" height="70"/>
+      <text class="label" x="100" y="310" text-anchor="middle">gRPC Client</text>
+      <text class="sublabel" x="100" y="328" text-anchor="middle">Apply(CreateLog)</text>
+    </g>
+
+    <!-- Ingress (on Leader) -->
+    <g id="box-grpc">
+      <rect class="box" x="220" y="200" width="160" height="60"/>
+      <text class="label" x="300" y="225" text-anchor="middle">gRPC Server</text>
+      <text class="sublabel" x="300" y="244" text-anchor="middle">BucketService :8888</text>
+    </g>
+
+    <g id="box-ctrl">
+      <rect class="box" x="220" y="280" width="160" height="60"/>
+      <text class="label" x="300" y="305" text-anchor="middle">Routed Controller</text>
+      <text class="sublabel" x="300" y="324" text-anchor="middle">forward to leader</text>
+    </g>
+
+    <g id="box-adm">
+      <rect class="box" x="220" y="360" width="160" height="60"/>
+      <text class="label" x="300" y="385" text-anchor="middle">Admission</text>
+      <text class="sublabel" x="300" y="404" text-anchor="middle">preload volumes</text>
+    </g>
+
+    <!-- Raft cluster (Leader at the BOTTOM so admission ↔ cache/pebble arcs are short).
+         WAL is a SEPARATE box below each Raft node (same principle as Cache + Pebble for FSM). -->
+    <!-- Node Follower 2 (top) -->
+    <g id="nodeF2">
+      <rect class="box" x="470" y="120" width="220" height="80"/>
+      <text class="node-title" x="580" y="142" text-anchor="middle" fill="#82aaff">FOLLOWER</text>
+      <text class="sublabel" x="580" y="160" text-anchor="middle">append entries → ack</text>
+      <circle cx="488" cy="184" r="4" fill="#82aaff"/>
+      <text id="f2-match" class="sublabel" x="500" y="188" text-anchor="start">match idx 1</text>
+    </g>
+    <!-- F2 WAL (durable side-persistence, smaller + offset right so replication line is clear) -->
+    <g id="walF2">
+      <rect class="box" x="610" y="215" width="80" height="20" stroke="#ff6b6b" stroke-width="1.5"/>
+      <text class="sublabel" x="650" y="229" text-anchor="middle" fill="#ff6b6b">WAL</text>
+    </g>
+
+    <!-- Node Follower 1 (middle, shifted up so the gap F1-WAL → Leader matches the other gaps) -->
+    <g id="nodeF1">
+      <rect class="box" x="470" y="250" width="220" height="80"/>
+      <text class="node-title" x="580" y="272" text-anchor="middle" fill="#82aaff">FOLLOWER</text>
+      <text class="sublabel" x="580" y="290" text-anchor="middle">append entries → ack</text>
+      <circle cx="488" cy="314" r="4" fill="#82aaff"/>
+      <text id="f1-match" class="sublabel" x="500" y="318" text-anchor="start">match idx 1</text>
+    </g>
+    <!-- F1 WAL -->
+    <g id="walF1">
+      <rect class="box" x="610" y="345" width="80" height="20" stroke="#ff6b6b" stroke-width="1.5"/>
+      <text class="sublabel" x="650" y="359" text-anchor="middle" fill="#ff6b6b">WAL</text>
+    </g>
+
+    <!-- Node Leader (bottom) -->
+    <g id="nodeL">
+      <rect class="box box-leader" x="470" y="380" width="220" height="100"/>
+      <text class="node-title" x="580" y="402" text-anchor="middle" fill="#ffcb6b">LEADER (raft)</text>
+      <text class="sublabel" x="580" y="420" text-anchor="middle">propose &amp; replicate</text>
+      <circle cx="488" cy="448" r="5" fill="#ffcb6b" class="pulse"/>
+      <text id="leader-idx" class="sublabel" x="500" y="452" text-anchor="start">term 1 · idx 1</text>
+    </g>
+    <!-- Leader WAL -->
+    <g id="walL">
+      <rect class="box" x="610" y="495" width="80" height="20" stroke="#ff6b6b" stroke-width="1.5"/>
+      <text class="sublabel" x="650" y="509" text-anchor="middle" fill="#ff6b6b">WAL</text>
+    </g>
+
+    <!-- FSM + parallel writes (cache authoritative, pebble durable backing).
+         Leader's apply zone now sits at the BOTTOM, aligned with the leader Raft node. -->
+    <g id="fsmF2">
+      <rect class="box" x="780" y="120" width="160" height="40"/>
+      <text class="label" x="860" y="138" text-anchor="middle">FSM</text>
+      <text id="f2-applied" class="applied-idx-follower" x="860" y="153" text-anchor="middle">applied 1</text>
+    </g>
+    <g id="fsmF1">
+      <rect class="box" x="780" y="250" width="160" height="40"/>
+      <text class="label" x="860" y="268" text-anchor="middle">FSM</text>
+      <text id="f1-applied" class="applied-idx-follower" x="860" y="283" text-anchor="middle">applied 1</text>
+    </g>
+    <g id="fsmL">
+      <rect class="box" x="780" y="380" width="160" height="42"/>
+      <text class="label" x="860" y="398" text-anchor="middle">FSM</text>
+      <text id="leader-applied" class="applied-idx-leader" x="860" y="414" text-anchor="middle">lastPersistedIndex&nbsp;=&nbsp;1</text>
+    </g>
+    <!-- Cache (in-memory, authoritative) — sibling of fsmL so highlights can target each independently -->
+    <g id="box-cache">
+      <rect class="box" x="780" y="438" width="75" height="42" stroke="#c792ea"/>
+      <text class="label" x="817" y="456" text-anchor="middle" fill="#c792ea">Cache</text>
+      <text class="sublabel" x="817" y="471" text-anchor="middle">in-memory</text>
+    </g>
+    <!-- Pebble (durable backing) -->
+    <g id="box-pebble">
+      <rect class="box" x="865" y="438" width="75" height="42"/>
+      <text class="label" x="902" y="456" text-anchor="middle">Pebble</text>
+      <text class="sublabel" x="902" y="471" text-anchor="middle">durable</text>
+    </g>
+
+    <!-- Workers — one box per worker, vertically spread so each channel reads clearly -->
+    <g id="box-worker-index">
+      <rect class="box" x="1000" y="120" width="180" height="50"/>
+      <text class="label" x="1090" y="143" text-anchor="middle">Index Builder</text>
+      <text class="sublabel" x="1090" y="160" text-anchor="middle">tail log → ReadStore</text>
+    </g>
+    <g id="box-worker-sinks">
+      <rect class="box" x="1000" y="225" width="180" height="50"/>
+      <text class="label" x="1090" y="248" text-anchor="middle">Event Sinks</text>
+      <text class="sublabel" x="1090" y="265" text-anchor="middle">Kafka · NATS · ClickHouse</text>
+    </g>
+    <g id="box-worker-archiver">
+      <rect class="box" x="1000" y="330" width="180" height="50"/>
+      <text class="label" x="1090" y="353" text-anchor="middle">Archiver</text>
+      <text class="sublabel" x="1090" y="370" text-anchor="middle">cold storage (S3)</text>
+    </g>
+    <g id="box-worker-sealer">
+      <rect class="box" x="1000" y="435" width="180" height="50"/>
+      <text class="label" x="1090" y="458" text-anchor="middle">Sealer</text>
+      <text class="sublabel" x="1090" y="475" text-anchor="middle">periods · hash chain</text>
+    </g>
+
+    <!-- Static edges (every animated dot rides exactly one of these via getPointAtLength,
+         so dots cannot deviate from arcs by design). -->
+    <path id="e-client-grpc"      class="edge" d="M160,315 C190,315 200,230 220,230"/>
+    <path id="e-grpc-ctrl"        class="edge" d="M300,260 L300,280"/>
+    <path id="e-ctrl-adm"         class="edge" d="M300,340 L300,360"/>
+    <path id="e-adm-leader"       class="edge" d="M380,390 C420,390 440,410 470,410"/>
+    <!-- Raft replication: leader sends INDEPENDENTLY to each follower.
+         leader→F1 is the short vertical; leader→F2 curves AROUND F1 on the LEFT side
+         so it never crosses F1 AND it doesn't overlap with the apply edges that exit
+         each Raft node on the right toward the FSM column. -->
+    <path id="e-leader-f1"        class="edge" d="M580,380 L580,330"/>
+    <path id="e-leader-f2"        class="edge" d="M580,380 C400,380 400,160 470,160"/>
+    <!-- Raft → FSM (committed entries become apply input; never reads WAL) -->
+    <path id="e-f2-fsm"           class="edge" d="M690,150 L780,140"/>
+    <path id="e-f1-fsm"           class="edge" d="M690,270 L780,270"/>
+    <path id="e-leader-fsm"       class="edge" d="M690,400 L780,401"/>
+    <!-- FSM → Cache + Pebble (parallel writes inside the leader's apply zone) -->
+    <path id="e-fsm-cache"        class="edge" d="M860,422 L817,438"/>
+    <path id="e-fsm-pebble"       class="edge" d="M860,422 L902,438"/>
+    <!-- Pebble → Workers — one fan-out channel per worker (each worker tails independently) -->
+    <path id="e-pebble-w-index"     class="edge" d="M940,459 L1000,145"/>
+    <path id="e-pebble-w-sinks"     class="edge" d="M940,459 L1000,250"/>
+    <path id="e-pebble-w-archiver"  class="edge" d="M940,459 L1000,355"/>
+    <path id="e-pebble-w-sealer"    class="edge" d="M940,459 L1000,460"/>
+    <!-- Response back: leader (bottom-left) → admission (short curve), dimmed -->
+    <path id="e-leader-adm"       class="edge" d="M470,440 C440,440 410,400 380,390" stroke="#3a4d72"/>
+
+    <!-- Admission consultation rails — sharp initial DOWN tangent clears the leader's
+         column + WAL, then bends right and rises to Cache / Pebble. -->
+    <!-- Admission's three notions leave from three distinct edges so the eye can pick them apart.
+         Cache is the SHORT arc (its destination is closer), so it departs from the RIGHT of the
+         bottom edge — that nests it INSIDE the longer Pebble arc which departs from the LEFT.
+         Same starting edge, opposite departure points → no crossing.
+         · Cache consult  → bottom-right of Admission (x=340, y=420) → Cache  (x=817, y=480)
+         · Pebble consult → bottom-left  of Admission (x=260, y=420) → Pebble (x=902, y=480)
+         · Propose Raft    → right edge (handled by e-adm-leader / e-leader-adm). -->
+    <path id="e-consult-cache"    class="consult-edge" d="M340,420 C340,560 720,560 817,480"/>
+    <path id="e-consult-pebble"   class="consult-edge" d="M260,420 C260,585 800,585 902,480"/>
+
+    <!-- WAL side-persistence rails (Raft bottom → separate WAL box) -->
+    <path id="e-wal-f2"           class="edge" d="M650,200 L650,215" stroke="#ff6b6b" opacity="0.55"/>
+    <path id="e-wal-f1"           class="edge" d="M650,330 L650,345" stroke="#ff6b6b" opacity="0.55"/>
+    <path id="e-wal-leader"       class="edge" d="M650,480 L650,495" stroke="#ff6b6b" opacity="0.55"/>
+
+    <!-- Animated dots layer (populated by JS) -->
+    <g id="dots"></g>
+  </svg>
+
+      <div id="step-banner" class="step-banner-html">
+        <span id="step-dot" class="step-dot-html"></span>
+        <div class="step-content">
+          <div id="step-title" class="step-title"></div>
+          <div id="step-desc" class="step-desc"></div>
+        </div>
+      </div>
+    </div><!-- /.layout-svg -->
+    <aside class="layout-panel">
+      <form id="tx-form" class="tx-form" onsubmit="return false;">
+        <label class="tx-field"><span>From</span>   <input id="tx-source"      value="world"></label>
+        <label class="tx-field"><span>To</span>     <input id="tx-destination" value="users:alice"></label>
+        <label class="tx-field"><span>Asset</span>  <input id="tx-asset"       value="USD/2"></label>
+        <label class="tx-field"><span>Amount</span> <input id="tx-amount" type="number" min="1" value="100"></label>
+        <div class="tx-actions">
+          <button id="btn-send"   class="ctrl-btn primary">▶ Send</button>
+          <button id="btn-repeat" class="ctrl-btn" disabled>↺ Repeat last</button>
+        </div>
+        <span id="tx-error" class="tx-error"></span>
+      </form>
+
+      <div id="tx-controls" class="tx-controls" hidden>
+        <button id="btn-playpause" class="ctrl-btn">⏸ Pause</button>
+        <button id="btn-previous"  class="ctrl-btn">⏮ Previous</button>
+        <button id="btn-next"      class="ctrl-btn">⏭ Next</button>
+        <button id="btn-restart"   class="ctrl-btn">⟲ Restart</button>
+        <span id="step-indicator" class="step-indicator">Step <b id="step-num">—</b> / <span id="step-total">13</span></span>
+      </div>
+
+      <div id="inflight-panel" class="cache-panel collapsible">
+        <div class="cache-header collapsible-header">
+          <span class="cache-title">In-flight transactions</span>
+          <span id="inflight-meta" class="cache-meta">0</span>
+        </div>
+        <div class="collapsible-body">
+          <ul id="inflight-list" class="cache-list"></ul>
+        </div>
+      </div>
+
+      <div id="cache-panel" class="cache-panel collapsible">
+        <div class="cache-header collapsible-header">
+          <span class="cache-title">Cache state (FSM)</span>
+          <span id="cache-meta" class="cache-meta">gen 0 · base 1</span>
+        </div>
+        <div class="collapsible-body">
+          <div class="cache-section">
+            <div class="cache-section-title gen0">Gen 0 <span class="cache-section-sub">(current)</span></div>
+            <ul id="cache-gen0" class="cache-list"></ul>
+          </div>
+          <div class="cache-section">
+            <div class="cache-section-title gen1">Gen 1 <span class="cache-section-sub">(previous · discarded on next rotation)</span></div>
+            <ul id="cache-gen1" class="cache-list"></ul>
+          </div>
+        </div>
+      </div>
+
+      <div id="pebble-panel" class="cache-panel collapsible">
+        <div class="cache-header collapsible-header">
+          <span class="cache-title">Pebble store (durable)</span>
+          <span id="pebble-meta" class="cache-meta">0 entries</span>
+        </div>
+        <div class="collapsible-body">
+          <ul id="pebble-list" class="cache-list"></ul>
+        </div>
+      </div>
+
+      <div class="payload-panel collapsible">
+        <div class="payload-header collapsible-header">
+          <span id="payload-title" class="payload-title">In-flight payload</span>
+        </div>
+        <div class="collapsible-body">
+          <pre id="payload-body" class="payload-body"></pre>
+        </div>
+      </div>
+    </aside>
+  </div><!-- /.layout-row -->
+
+  <div class="footer">Use the controls above to pause and step through.</div>
+</div>
+
+<script>
+(function () {
+  const svgNS = "http://www.w3.org/2000/svg";
+  const dots = document.getElementById("dots");
+  const stepTitle = document.getElementById("step-title");
+  const stepDesc  = document.getElementById("step-desc");
+  const stepDot   = document.getElementById("step-dot");
+
+  // Helpers ----------------------------------------------------------------
+  function makeDot(color, r) {
+    const c = document.createElementNS(svgNS, "circle");
+    c.setAttribute("r", r || 6);
+    c.setAttribute("fill", color);
+    c.setAttribute("filter", "drop-shadow(0 0 6px " + color + ")");
+    dots.appendChild(c);
+    return c;
+  }
+  function killDot(d) { if (d && d.parentNode) d.parentNode.removeChild(d); }
+
+  // Animate a dot along a chain of static SVG path elements. The dot literally walks
+  // the rendered geometry via getPointAtLength — so it cannot deviate from the arcs.
+  // pathSpecs: a string id, or array of { id, reverse? }. When chaining, the dot
+  // teleports from one path's end to the next path's start (which is invisible to the
+  // user because both endpoints sit on box edges of the same box).
+  function animateOnPaths(dot, pathSpecs, durationMs, onEnd) {
+    const specs = (Array.isArray(pathSpecs) ? pathSpecs : [pathSpecs]).map(s => {
+      const spec = typeof s === "string" ? { id: s } : s;
+      const el = document.getElementById(spec.id);
+      if (!el) throw new Error("Missing path: " + spec.id);
+      return { el, len: el.getTotalLength(), reverse: !!spec.reverse };
+    });
+    const total = specs.reduce((sum, s) => sum + s.len, 0);
+    const start = performance.now();
+    function step(now) {
+      const t = Math.min(1, (now - start) / durationMs);
+      let remaining = t * total;
+      let p = null;
+      for (const s of specs) {
+        if (remaining <= s.len) {
+          const at = s.reverse ? (s.len - remaining) : remaining;
+          p = s.el.getPointAtLength(at);
+          break;
+        }
+        remaining -= s.len;
+      }
+      if (!p) {
+        const last = specs[specs.length - 1];
+        p = last.el.getPointAtLength(last.reverse ? 0 : last.len);
+      }
+      dot.setAttribute("cx", p.x);
+      dot.setAttribute("cy", p.y);
+      if (t < 1) requestAnimationFrame(step);
+      else { killDot(dot); if (onEnd) onEnd(); }
+    }
+    requestAnimationFrame(step);
+  }
+
+  // Each animated dot rides one (or several chained) static SVG paths by ID.
+  // There are no hand-coded segment coordinates — coordinates live exclusively in the
+  // SVG `d` attribute, so dots cannot drift away from the arcs by construction.
+
+  // ── Dynamic cluster state ─────────────────────────────────────────────
+  // term + raft log indices + per-node FSM applied index. Everything starts at 1 and
+  // advances at the right step transitions. The leader's lastPersistedIndex is
+  // highlighted because it's the invariant the system commits to.
+  const state = {
+    term: 1,
+    leaderIdx: 1,        // highest entry in the leader's log
+    f1Match: 1, f2Match: 1,   // followers' match index (highest WAL-persisted)
+    leaderApplied: 1,    // leader FSM's lastPersistedIndex
+    f1Applied: 1, f2Applied: 1,
+  };
+  const idxNodes = {
+    leaderIdx:     document.getElementById("leader-idx"),
+    f1Match:       document.getElementById("f1-match"),
+    f2Match:       document.getElementById("f2-match"),
+    leaderApplied: document.getElementById("leader-applied"),
+    f1Applied:     document.getElementById("f1-applied"),
+    f2Applied:     document.getElementById("f2-applied"),
+  };
+  function renderState() {
+    idxNodes.leaderIdx.textContent     = `term ${state.term} · idx ${state.leaderIdx}`;
+    idxNodes.f1Match.textContent       = `match idx ${state.f1Match}`;
+    idxNodes.f2Match.textContent       = `match idx ${state.f2Match}`;
+    idxNodes.leaderApplied.textContent = `lastPersistedIndex = ${state.leaderApplied}`;
+    idxNodes.f1Applied.textContent     = `applied ${state.f1Applied}`;
+    idxNodes.f2Applied.textContent     = `applied ${state.f2Applied}`;
+  }
+  function flash(el) {
+    el.classList.remove("idx-flash"); void el.offsetWidth; el.classList.add("idx-flash");
+  }
+  function setIdx(key, value) {
+    if (state[key] === value) return;
+    state[key] = value;
+    const el = idxNodes[key];
+    el.textContent = (key === "leaderIdx" ? `term ${state.term} · idx ${value}`
+                    : key === "f1Match" || key === "f2Match" ? `match idx ${value}`
+                    : key === "leaderApplied" ? `lastPersistedIndex = ${value}`
+                    : `applied ${value}`);
+    flash(el);
+  }
+
+  // Step banner -----------------------------------------------------------
+  function setStep(title, desc, color) {
+    stepTitle.textContent = title;
+    stepDesc.textContent = desc || "";
+    stepDot.style.background = color;
+    stepDot.style.color = color; // for the box-shadow glow that uses currentColor
+  }
+
+  // The narrative cycle ---------------------------------------------------
+  const C = {
+    grpc:  getComputedStyle(document.documentElement).getPropertyValue("--grpc").trim(),
+    raft:  getComputedStyle(document.documentElement).getPropertyValue("--raft").trim(),
+    apply: getComputedStyle(document.documentElement).getPropertyValue("--apply").trim(),
+    resp:  getComputedStyle(document.documentElement).getPropertyValue("--resp").trim(),
+    index: getComputedStyle(document.documentElement).getPropertyValue("--index").trim(),
+  };
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  const anim = (dot, paths, ms) => new Promise(res => animateOnPaths(dot, paths, ms, res));
+
+  // ── Per-step box highlight ───────────────────────────────────────────
+  // Only the box(es) currently being interacted with — typically the destination(s)
+  // of the dot(s) in flight. The source is implicit (already passed through).
+  const HIGHLIGHTS = [
+    ["box-grpc"],                                                  // ①a → gRPC receives
+    ["box-ctrl"],                                                  // ①b → Ctrl receives
+    ["box-adm"],                                                   // ①c → Admission receives
+    ["box-cache"],                                                 // ①d Cache is being queried
+    ["box-pebble"],                                                // ①e Pebble is being read
+    ["nodeL"],                                                     // ①f leader receives the proposal
+    ["walL", "nodeF1", "nodeF2"],                                  // ② WAL written + followers receive AppendEntries
+    ["walF1", "walF2"],                                            // ③ followers' WAL is being fsynced
+    ["nodeL"],                                                     // ④ leader observes quorum & advances commit
+    ["fsmL", "fsmF1", "fsmF2"],                                    // ⑤a FSMs receive the committed entry
+    ["box-cache"],                                                 // ⑤b preload materializes in cache
+    ["box-cache", "box-pebble"],                                   // ⑤c apply writes to cache + pebble
+    ["box-client", "box-worker-index", "box-worker-sinks",
+     "box-worker-archiver", "box-worker-sealer"],                  // ⑥ client gets answer + workers tail
+  ];
+  function clearHighlights() {
+    document.querySelectorAll(".highlight").forEach(el => el.classList.remove("highlight"));
+  }
+  function applyHighlights(ids) {
+    clearHighlights();
+    if (!ids) return;
+    for (const id of ids) {
+      const el = document.getElementById(id);
+      if (el) el.classList.add("highlight");
+    }
+  }
+
+  // ── Concrete in-flight payload (a typical deposit transaction) ─────────
+  // Tagged template that lets us syntax-highlight a payload by wrapping
+  // (k)ey / (s)tring / (n)umber / (c)omment / (h)ighlight tokens.
+  function paint(strings, ...values) {
+    let out = "";
+    strings.forEach((s, i) => {
+      out += s;
+      if (i < values.length) {
+        const v = values[i];
+        // Tagged values come as [class, text] tuples from K/S/N/CMT/H; anything else
+        // is interpolated verbatim (handy for plain strings/numbers inline).
+        if (Array.isArray(v) && v.length === 2 && typeof v[0] === "string") {
+          out += `<span class="${v[0]}">${v[1]}</span>`;
+        } else {
+          out += String(v);
+        }
+      }
+    });
+    return out;
+  }
+  const K = v => ["k", v], S = v => ["s", v], N = v => ["n", v], CMT = v => ["c", v], H = v => ["h", v];
+
+  // Order payload is built from the user-submitted transaction. The reference id
+  // is frozen on the tx at makeTx time so subsequent boundary bumps don't drift
+  // the payload that's pinned in tx.payload.
+  function buildOrderPayload(tx) {
+    return paint`${H("Apply(CreateLog)")}  ${CMT("// gRPC unary call, BucketService :8888")}
+${K("ledger")}:    ${S(`"${tx.ledger}"`)}
+${K("type")}:      ${S("NEW_TRANSACTION")}
+${K("postings")}:  [{ ${K("source")}: ${S(`"${tx.source}"`)}, ${K("destination")}: ${S(`"${tx.destination}"`)}, ${K("amount")}: ${N(String(tx.amount))}, ${K("asset")}: ${S(`"${tx.asset}"`)} }]
+${K("reference")}: ${S(`"${tx.referenceId}"`)}`;
+  }
+
+  const PAYLOAD_ACK = paint`${H("MsgAppResp")}  ${CMT("// each follower acks after fsync")}
+${K("from")}:  F1, F2
+${K("term")}:  ${N("1")}
+${K("match")}: leader's last index   ${CMT("// = leaderIdx after step ②")}
+
+${H("Leader observes quorum")} → advance ${K("commitIdx")}
+${CMT("// new commitIdx will be piggybacked onto the next AppendEntries")}`;
+
+  // The other payloads are derived from the live cache + boundary state at the
+  // moment the step runs — see builders below (defined after the cache model).
+
+  const payloadTitle = document.getElementById("payload-title");
+  const payloadBody  = document.getElementById("payload-body");
+  function setPayload(title, html) {
+    payloadTitle.textContent = title;
+    payloadBody.innerHTML = html;
+  }
+
+  // Per-tx payload state: each in-flight tx caches its latest step payload so
+  // the user can pivot the panel between txs (multi-tx mode). When no tx is
+  // selected (or none in flight), the panel falls back to the form preview.
+  let selectedTxId = null;
+  function setTxPayload(tx, title, html) {
+    tx.payload = { title, html };
+    if (tx.id === selectedTxId) renderSelectedPayload();
+  }
+  function renderSelectedPayload() {
+    const tx = selectedTxId != null ? inflight.find(t => t.id === selectedTxId) : null;
+    if (tx && tx.payload) {
+      const chip = `<span class="payload-tx-chip" style="background:${tx.color}"></span><span class="payload-tx-id">#${tx.id}</span>`;
+      payloadTitle.innerHTML = chip + escapeText(tx.payload.title);
+      payloadBody.innerHTML  = tx.payload.html;
+    } else {
+      setPayload("Ready", buildOrderPayload(readForm()));
+    }
+  }
+  function escapeText(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function selectTx(txId) {
+    selectedTxId = txId;
+    renderSelectedPayload();
+    renderInflight();
+  }
+
+  // ── Mini cache model (Gen0 / Gen1, CheckCache, Touch, Put, rotation, tombstones) ──
+  // Mirrors the semantics of internal/infra/cache/cache.go (the byte-level sharding,
+  // U128 hashing, and Pebble persistence are abstracted away).
+  const ROTATION_EVERY = 5;        // raft indices per generation
+  const BADGE_TTL      = 2;        // cycles a "NEW" / "TOUCHED" badge survives
+  const generationFor  = (idx, th) => idx <= 0 ? 0 : Math.floor((idx - 1) / th);
+
+  const cache = {
+    threshold: ROTATION_EVERY,
+    currentGen: 0,
+    baseIdx: { gen0: 1, gen1: 0 },
+    gen0: new Map(),
+    gen1: new Map(),
+
+    _entry(value)   { return { value, deleted: false, badge: null, badgeAge: 0, flash: false }; },
+    _flash(entry)   { entry.flash = true; },
+
+    checkCache(futureIdx, key) {
+      const fg = generationFor(futureIdx, this.threshold);
+      const delta = fg - this.currentGen;
+      if (delta === 0) {
+        if (this.gen0.has(key) && !this.gen0.get(key).deleted) return "GUARANTEED";
+        if (this.gen1.has(key) && !this.gen1.get(key).deleted) return "NEEDS_TOUCH";
+        return "MISS";
+      }
+      if (delta === 1) {
+        if (this.gen0.has(key) && !this.gen0.get(key).deleted) return "GUARANTEED";
+        return "MISS";
+      }
+      return "MISS";
+    },
+
+    touch(key) {
+      // No-op if a (non-deleted) entry already exists in Gen0 — protects against overwrite.
+      const existing = this.gen0.get(key);
+      if (existing && !existing.deleted) return;
+      const fromGen1 = this.gen1.get(key);
+      if (!fromGen1) return;
+      const copy = this._entry(fromGen1.value);
+      copy.badge = "TOUCHED"; copy.badgeAge = BADGE_TTL; copy.flash = true;
+      this.gen0.set(key, copy);
+    },
+
+    put(key, value) {
+      const prev = this.gen0.get(key);
+      const entry = this._entry(value);
+      if (!prev || prev.deleted) {
+        // First time the key lands in Gen0 (or it was tombstoned).
+        entry.badge = "NEW"; entry.badgeAge = BADGE_TTL;
+      } else if (prev.badge) {
+        // Value update on a freshly-added / freshly-touched entry — preserve the badge
+        // so the reader still sees what happened to it during this cycle.
+        entry.badge = prev.badge; entry.badgeAge = prev.badgeAge;
+      }
+      entry.flash = true;
+      this.gen0.set(key, entry);
+    },
+
+    del(key) {
+      for (const m of [this.gen0, this.gen1]) {
+        const e = m.get(key);
+        if (e) { e.deleted = true; e.badge = "DELETED"; e.badgeAge = BADGE_TTL; e.flash = true; }
+      }
+    },
+
+    rotate(newBaseIdx) {
+      this.gen1 = this.gen0;
+      this.gen0 = new Map();
+      this.currentGen += 1;
+      this.baseIdx.gen1 = this.baseIdx.gen0;
+      this.baseIdx.gen0 = newBaseIdx;
+    },
+
+    ageBadges() {
+      for (const m of [this.gen0, this.gen1]) {
+        for (const e of m.values()) {
+          if (e.badgeAge > 0) { e.badgeAge -= 1; if (e.badgeAge === 0) e.badge = null; }
+        }
+      }
+    },
+
+    reset() {
+      this.currentGen = 0;
+      this.baseIdx = { gen0: 1, gen1: 0 };
+      this.gen0 = new Map();
+      this.gen1 = new Map();
+      seedCache();
+    },
+
+    // Snapshot / restore for the Previous-button history. structuredClone copies
+    // Maps and the nested entry objects (value/badge/...) deeply.
+    snapshot() {
+      return {
+        currentGen: this.currentGen,
+        baseIdx:    { ...this.baseIdx },
+        gen0:       structuredClone(this.gen0),
+        gen1:       structuredClone(this.gen1),
+      };
+    },
+    restore(snap) {
+      this.currentGen = snap.currentGen;
+      this.baseIdx    = { ...snap.baseIdx };
+      this.gen0       = structuredClone(snap.gen0);
+      this.gen1       = structuredClone(snap.gen1);
+    },
+  };
+
+  // Render --------------------------------------------------------------
+  const cachePanel    = document.getElementById("cache-panel");
+  const cacheMeta     = document.getElementById("cache-meta");
+  const cacheGen0List = document.getElementById("cache-gen0");
+  const cacheGen1List = document.getElementById("cache-gen1");
+
+  function fmtValue(v) {
+    if (v == null) return "—";
+    if (typeof v === "object" && "in" in v && "out" in v)        return `{in:${v.in}, out:${v.out}}`;
+    if (typeof v === "object" && "nextLogId" in v)
+      return `{log:${v.nextLogId}, tx:${v.nextTxId}, post:${v.postingCount}}`;
+    if (typeof v === "object" && Object.keys(v).length === 0)    return "{}";
+    if (typeof v === "object")                                    return JSON.stringify(v).replace(/"/g, "");
+    return String(v);
+  }
+  function renderCacheList(ul, map, klass) {
+    ul.innerHTML = "";
+    if (map.size === 0) {
+      const li = document.createElement("li");
+      li.className = "cache-empty";
+      li.textContent = "∅ empty";
+      ul.appendChild(li);
+      return;
+    }
+    for (const [key, entry] of map) {
+      const li = document.createElement("li");
+      if (klass) li.classList.add(klass);
+      if (entry.deleted) li.classList.add("deleted");
+      if (entry.flash)   { li.classList.add("row-flash"); entry.flash = false; }
+      const k = document.createElement("span"); k.className = "k"; k.textContent = key;
+      const v = document.createElement("span"); v.className = "v"; v.textContent = fmtValue(entry.value);
+      li.append(k, v);
+      if (entry.badge) {
+        const b = document.createElement("span");
+        b.className = "badge b-" + entry.badge.toLowerCase();
+        b.textContent = entry.badge;
+        li.appendChild(b);
+      }
+      ul.appendChild(li);
+    }
+  }
+  function renderCache() {
+    cacheMeta.textContent = `gen ${cache.currentGen} · base ${cache.baseIdx.gen0} · |g0|=${cache.gen0.size} · |g1|=${cache.gen1.size}`;
+    renderCacheList(cacheGen0List, cache.gen0);
+    renderCacheList(cacheGen1List, cache.gen1, "gen1-line");
+  }
+
+  // ── Pebble store (durable, single map) ──────────────────────────────────
+  // Mirrors what's persisted on disk. The FSM apply writes here in lock-step
+  // with the cache (⑤c), but Pebble is NOT rotated — it keeps every key.
+  const pebble = new Map();   // key → { value, flash? }
+  const pebbleMeta = document.getElementById("pebble-meta");
+  const pebbleList = document.getElementById("pebble-list");
+  function pebbleSet(key, value) {
+    pebble.set(key, { value, flash: true });
+  }
+  function pebbleReset() { pebble.clear(); }
+  function renderPebble() {
+    pebbleMeta.textContent = `${pebble.size} entr${pebble.size === 1 ? "y" : "ies"}`;
+    pebbleList.innerHTML = "";
+    if (pebble.size === 0) {
+      const li = document.createElement("li"); li.className = "cache-empty"; li.textContent = "∅ empty";
+      pebbleList.appendChild(li); return;
+    }
+    for (const [key, entry] of pebble) {
+      const li = document.createElement("li");
+      if (entry.flash) { li.classList.add("row-flash"); entry.flash = false; }
+      const k = document.createElement("span"); k.className = "k"; k.textContent = key;
+      const v = document.createElement("span"); v.className = "v"; v.textContent = fmtValue(entry.value);
+      li.append(k, v);
+      pebbleList.appendChild(li);
+    }
+  }
+
+  function flashRotation() {
+    cachePanel.classList.remove("rotate-flash"); void cachePanel.offsetWidth;
+    cachePanel.classList.add("rotate-flash");
+  }
+
+  // Seed --------------------------------------------------------------
+  // True cold-start: both generations empty. Every key the demo transaction reads
+  // (incl. boundary(main)) goes through the full Admission preload path on cycle 1
+  // — CheckCache returns Miss, Pebble lazy-load fills the gap, FSM.Preload writes
+  // Gen0, and the apply increments the counters. From cycle 2 they're GUARANTEED,
+  // and after the first rotation (cycle 5 → 6) they migrate to Gen1 and exercise
+  // the Touch path.
+  function seedCache() { /* nothing — cold start */ }
+
+  // Per-transaction key derivation — the FSM apply path reads each of these from
+  // the cache (invariant #3 says it never reads Pebble). Defaults model what Pebble
+  // returns on a CacheMiss: zero volumes for fresh accounts and an initial boundary
+  // (which gets bumped on every apply).
+  function txKeys(tx) {
+    // Simple `send` transactions only read the involved volumes + the ledger's
+    // boundary (for id allocation). No metadata, no references, no numscript.
+    return [
+      `volumes(${tx.source}.${tx.asset})`,
+      `volumes(${tx.destination}.${tx.asset})`,
+      `boundary(${tx.ledger})`,
+    ];
+  }
+  function txDefaults(tx) {
+    return {
+      [`volumes(${tx.source}.${tx.asset})`]:      { in: 0, out: 0 },
+      [`volumes(${tx.destination}.${tx.asset})`]: { in: 0, out: 0 },
+      [`boundary(${tx.ledger})`]:                 { nextLogId: 1, nextTxId: 1, postingCount: 0 },
+    };
+  }
+  seedCache();
+  renderCache();
+  renderPebble();
+
+  // ── Collapsible panels (cache, pebble, in-flight payload) ──────────────
+  document.querySelectorAll(".collapsible .collapsible-header").forEach(h => {
+    h.addEventListener("click", () => h.closest(".collapsible").classList.toggle("collapsed"));
+  });
+
+  // ── Payload builders ───────────────────────────────────────────────────
+  // Derive payloads from live state so they always match what's in the cache
+  // panel. Every builder returns an HTML string for setPayload().
+  // The proposal plan is what Admission computes once at CheckCache time (①d).
+  // After that, it's frozen and travels with the tx through Raft → FSM. Snapshot
+  // on first call (which lands at ①d) and reuse for every later builder — that's
+  // what guarantees the panel keeps showing the stale view a tx was admitted
+  // under, even if subsequent txs have populated the cache in the meantime.
+  function getProposalPlan(tx) {
+    if (tx.proposalPlan) return tx.proposalPlan;
+    const futureIdx = state.leaderIdx + 1; // index this proposal would land at
+    const plan = { guaranteed: [], needsTouch: [], miss: [], futureIdx };
+    for (const key of txKeys(tx)) {
+      const r = cache.checkCache(futureIdx, key);
+      if (r === "GUARANTEED")        plan.guaranteed.push(key);
+      else if (r === "NEEDS_TOUCH")  plan.needsTouch.push(key);
+      else                           plan.miss.push(key);
+    }
+    tx.proposalPlan = plan;
+    return plan;
+  }
+
+  function buildCheckCachePayload(tx) {
+    const plan = getProposalPlan(tx);
+    let body = paint`${H(`CheckCache(nextIdx=${plan.futureIdx}, …)`)}  ${CMT("// no lock, dual-generation lookup")}\n`;
+    for (const key of txKeys(tx)) {
+      let label, comment;
+      if (plan.guaranteed.includes(key))      { label = "CacheGuaranteed"; comment = "already in Gen0"; }
+      else if (plan.needsTouch.includes(key)) { label = "CacheNeedsTouch"; comment = "in Gen1, schedule promote"; }
+      else                                    { label = "CacheMiss";       comment = "absent — needs Pebble lookup"; }
+      body += paint`  • ${K(key)} → ${N(label)} ${CMT("(" + comment + ")")}\n`;
+    }
+    return `${buildOrderPayload(tx)}\n\n` + body.trimEnd();
+  }
+
+  function buildPebbleLoadsPayload(tx) {
+    const plan = getProposalPlan(tx);
+    if (plan.miss.length === 0) {
+      return `${buildOrderPayload(tx)}\n\n` +
+        paint`${H("Pebble lazy-load")}  ${CMT("// nothing to load — every key was Guaranteed or NeedsTouch")}`;
+    }
+    const defs = txDefaults(tx);
+    let body = paint`${H("Pebble lazy-load")}  ${CMT("// only CacheMiss keys, parallelism=16")}\n`;
+    for (const key of plan.miss) {
+      const v = defs[key];
+      const isZeroVolume = key.startsWith("volumes(") && v.in === 0 && v.out === 0;
+      const note = isZeroVolume
+        ? paint`new account → ${N("zero-value injected")}`
+        : paint`Get(Pebble) returned ${S(fmtValue(v))}`;
+      body += paint`  • ${K(key)} → ` + note + "\n";
+    }
+    return `${buildOrderPayload(tx)}\n\n` + body.trimEnd();
+  }
+
+  function buildProposalPayload(tx) {
+    const plan = getProposalPlan(tx);
+    const defs = txDefaults(tx);
+    let body = paint`${H("+ Preload payload")}  ${CMT("// attached to the Raft command — apply will read these from cache only")}\n`;
+    body += paint`${K("preloads")}: [`;
+    if (plan.miss.length === 0) {
+      body += paint`  ${CMT("(empty — all keys Guaranteed or NeedsTouch)")}`;
+    } else {
+      for (const key of plan.miss) {
+        body += "\n  " + paint`${K(key)} → ${S(fmtValue(defs[key]))}`;
+      }
+      body += "\n";
+    }
+    body += paint`]\n${K("touches")}: [`;
+    if (plan.needsTouch.length === 0) {
+      body += paint`  ${CMT("(empty — nothing in Gen1 to promote)")}`;
+    } else {
+      for (const key of plan.needsTouch) {
+        body += "\n  " + paint`${K(key)}   ${CMT("// Gen1 → Gen0 promotion")}`;
+      }
+      body += "\n";
+    }
+    body += "]";
+    return `${buildOrderPayload(tx)}\n\n` + body;
+  }
+
+  // Indent every line of a (possibly HTML-tagged) string. Safe to use on paint`...`
+  // output because the `paint` tagged template never lets a span cross a newline.
+  function indentText(text, spaces) {
+    const pad = " ".repeat(spaces);
+    return text.split("\n").map(l => l.length === 0 ? l : pad + l).join("\n");
+  }
+
+  // The committed Raft entry is a two-level wrap of the client request:
+  //   Entry { term, index, command: Proposal { Order + preloads + touches } }
+  // We embed the FULL proposal payload (built at ①f) so the panel never loses
+  // any info as a tx progresses past the Raft commit point.
+  function buildCommittedPayload(tx) {
+    const proposal = indentText(buildProposalPayload(tx), 4);
+    return paint`${H("Committed Raft entry")}  ${CMT("// quorum reached — same proposal as ①f, now wrapped in a Raft envelope")}
+
+${K("Entry")} {
+  ${K("type")}:    LOG_CREATE
+  ${K("term")}:    ${N(String(tx.commitTerm  ?? state.term))}
+  ${K("index")}:   ${N(String(tx.commitIndex ?? state.leaderIdx))}
+
+  ${K("command")}: ${K("Proposal")} {
+${proposal}
+  }
+}`;
+  }
+
+  function buildPreloadResultPayload(tx) {
+    const plan = getProposalPlan(tx);
+    const defs = txDefaults(tx);
+    let body = paint`${H("FSM.Preload(payload)")}  ${CMT("// runs BEFORE the deterministic apply — populates the cache")}\n\n`;
+    body += paint`${H("MirrorPreload")} → Gen0:\n`;
+    if (plan.miss.length === 0) body += paint`  ${CMT("(no entries — every key was already cached)")}\n`;
+    else for (const key of plan.miss) {
+      body += paint`  ${K(key)} = ${S(fmtValue(defs[key]))}\n`;
+    }
+    body += "\n" + paint`${H("MirrorTouch")} (Gen1 → Gen0):\n`;
+    if (plan.needsTouch.length === 0) body += paint`  ${CMT("(no touches)")}\n`;
+    else for (const key of plan.needsTouch) {
+      body += paint`  ${K(key)}\n`;
+    }
+    body += "\n" + paint`${CMT("// invariant #3: from now on, the apply step reads the cache exclusively")}`;
+    return body;
+  }
+
+  function buildApplyPreviewPayload(tx) {
+    const bnd = cache.gen0.get(`boundary(${tx.ledger})`);
+    const nextLog = bnd ? bnd.value.nextLogId : "?";
+    const nextTx  = bnd ? bnd.value.nextTxId  : "?";
+    return paint`${H("FSM deterministic apply running …")}  ${CMT("// processing committed entry inside Pebble batch")}
+
+${CMT("// Reads from cache (Gen0) only — never Pebble.")}
+${CMT("// Will allocate:")}
+  ${K("Log.id")}   ← boundary.nextLogId  = ${N(String(nextLog))}
+  ${K("Log.txid")} ← boundary.nextTxId   = ${N(String(nextTx))}
+
+${CMT("// Will mutate:")}
+  ${K(`volumes(${tx.source}.${tx.asset})`)}.out += ${N(String(tx.amount))}
+  ${K(`volumes(${tx.destination}.${tx.asset})`)}.in += ${N(String(tx.amount))}
+  ${K(`boundary(${tx.ledger})`)}.nextLogId++ · .nextTxId++ · .postingCount++`;
+  }
+
+  function buildApplyResultPayload(tx) {
+    const bnd = cache.gen0.get(`boundary(${tx.ledger})`);
+    // After ⑤c mutations: nextLogId / nextTxId have been incremented; the entry
+    // just written has the PREVIOUS values.
+    const logId = bnd ? bnd.value.nextLogId - 1 : "?";
+    const txId  = bnd ? bnd.value.nextTxId  - 1 : "?";
+    const posts = bnd ? bnd.value.postingCount  : 0;
+    return paint`${H("Apply result")}  ${CMT("// FSM has generated IDs and mutated cache + Pebble in one batch")}
+
+${K("Log")} {
+  ${K("id")}:     ${N(String(logId))},          ${CMT("// global log id, allocated from boundary.nextLogId")}
+  ${K("type")}:   NEW_TRANSACTION,
+  ${K("txid")}:   ${N(String(txId))},          ${CMT("// per-ledger transaction id")}
+  ${K("hash")}:   ${S(`"sha256:${hashFor(logId)}…"`)}
+}
+${K("Δ volumes")}:  ${tx.source}.${tx.asset} −${tx.amount}  ·  ${tx.destination}.${tx.asset} +${tx.amount}
+${K("boundary")}:  postingCount = ${N(String(posts))}  ${CMT("// per-ledger total since seal")}`;
+  }
+
+  function buildResponsePayload(tx) {
+    const bnd = cache.gen0.get(`boundary(${tx.ledger})`);
+    const logId = bnd ? bnd.value.nextLogId - 1 : "?";
+    const txId  = bnd ? bnd.value.nextTxId  - 1 : "?";
+    return paint`${H("ApplyResponse → client")}  ${CMT("// resolved on the leader after fan-out completes")}
+
+${K("Log")} { ${K("id")}: ${N(String(logId))}, ${K("txid")}: ${N(String(txId))}, ${K("hash")}: ${S(`"sha256:${hashFor(logId)}…"`)} }
+${K("status")}: ${N("OK")}  ${CMT("// gRPC OK, committed at lastPersistedIndex = " + state.leaderApplied)}
+
+${CMT("// In parallel, off the critical path:")}
+${H("Workers")} tail the global log → Index Builder, Event Sinks, Archiver, Sealer.`;
+  }
+
+  // Deterministic faux-sha256 prefix derived from log id (for visual variety).
+  function hashFor(n) {
+    const seed = ("0000000" + (n * 2654435761 >>> 0).toString(16)).slice(-4);
+    return seed + "f2c";
+  }
+
+  const steps = [
+    // ─── ① Ingress → preload → propose ────────────────────────────────────
+    {
+      title: "①a Client → gRPC Server",
+      desc: "The order arrives as a unary gRPC call on BucketService (port 8888). The server validates the proto payload — account names (with @ prefix), monetary amounts in fixed-size Uint256 wire format — then hands the command to the application layer.",
+      payload: (tx) => ["Client request", buildOrderPayload(tx)],
+      color: C.grpc,
+      action: (tx) => anim(makeDot(tx.color), "e-client-grpc", 700),
+    },
+    {
+      title: "①b gRPC Server → Routed Controller",
+      desc: "The Routed Controller checks Raft leadership. On a follower it transparently forwards the request to the current leader via the service connection pool. On the leader it stays local and proceeds with the default Controller.",
+      payload: (tx) => ["Client request", buildOrderPayload(tx)],
+      color: C.grpc,
+      action: (tx) => anim(makeDot(tx.color), "e-grpc-ctrl", 280),
+    },
+    {
+      title: "①c Routed Controller → Admission",
+      desc: "The default Controller calls Admission.Admit(). Admission scans the command and enumerates every key needed for the apply — for a simple send, that's the two account volumes for the involved asset plus the ledger boundary (used to allocate the next log id and transaction id). Those keys are what the preload payload will carry.",
+      payload: (tx) => ["Client request", buildOrderPayload(tx)],
+      color: C.grpc,
+      action: (tx) => anim(makeDot(tx.color), "e-ctrl-adm", 280),
+    },
+    {
+      title: "①d Admission ↔ Cache (CheckCache)",
+      desc: "Admission classifies each needed key against the dual-generation cache without taking a lock. Three outcomes: CacheGuaranteed (already in Gen0 — nothing to do), CacheNeedsTouch (in Gen1 — schedule a Gen1 → Gen0 promotion to survive rotation), CacheMiss (absent — must be fetched from Pebble).",
+      payload: (tx) => ["Admission reads the cache", buildCheckCachePayload(tx)],
+      color: C.apply,
+      action: (tx) => anim(makeDot(tx.color, 5), [{ id: "e-consult-cache" }, { id: "e-consult-cache", reverse: true }], 1000),
+    },
+    {
+      title: "①e Admission ↔ Pebble (lazy miss load)",
+      desc: "Only CacheMiss keys hit Pebble. Reads happen in parallel (parallelism=16) and feed the preload payload. Volume keys for non-existent accounts skip the read entirely — a zero-value is injected directly.",
+      payload: (tx) => ["Admission lazy-loads from Pebble", buildPebbleLoadsPayload(tx)],
+      color: C.apply,
+      action: (tx) => anim(makeDot(tx.color, 5), [{ id: "e-consult-pebble" }, { id: "e-consult-pebble", reverse: true }], 1100),
+    },
+    {
+      title: "①f Admission → Raft leader proposes",
+      desc: "The command — now carrying its preload payload (preloads + Gen1→Gen0 touches) — is handed to the Raft node via Propose(). AcquireProposalGuard() takes the lock and revalidates that nextIndex hasn't crossed a generation boundary since BuildPreloads ran; otherwise the preload is rebuilt.",
+      payload: (tx) => ["Raft command (order + preload payload)", buildProposalPayload(tx)],
+      color: C.grpc,
+      action: (tx) => anim(makeDot(tx.color), "e-adm-leader", 700),
+    },
+    // ─── ② Local WAL + replication (parallel by design) ──────────────────
+    {
+      title: "② Leader: WAL append + AppendEntries",
+      desc: "On the leader's etcd/raft Ready loop tick, wal.Append(HardState, Entries) writes the new entry to the Raft log (Pebble-backed, fsync for durability) AND MsgApp messages are emitted to every follower over the Raft gRPC transport (port 7777). Both happen locally on the leader, no quorum gate.",
+      payload: (tx) => ["Raft command in transit (WAL + AppendEntries)", buildProposalPayload(tx)],
+      color: C.raft,
+      action: async (tx) => {
+        await Promise.all([
+          anim(makeDot(tx.color, 5), "e-wal-leader", 320),
+          anim(makeDot(tx.color, 5), "e-leader-f1",  500),
+          anim(makeDot(tx.color, 5), "e-leader-f2",  900),
+        ]);
+        // Once the leader has fsync'd its own WAL, its log's last index advances.
+        setIdx("leaderIdx", state.leaderIdx + 1);
+        // Snapshot the position the tx was committed at — every downstream payload
+        // (Entry envelope at ⑤a, Apply result at ⑤c, …) renders against this so the
+        // panel never drifts when subsequent txs bump leaderIdx further.
+        tx.commitTerm  = state.term;
+        tx.commitIndex = state.leaderIdx;
+        // Cache rotation kicks in when the leader's new index crosses a generation boundary
+        // (mirrors writeCacheRotation in internal/infra/state/cache_incremental.go).
+        const targetGen = generationFor(state.leaderIdx, cache.threshold);
+        if (targetGen > cache.currentGen) {
+          cache.rotate(state.leaderIdx);
+          renderCache();
+          flashRotation();
+        }
+      },
+    },
+    // ─── ③ Followers fsync their own WAL ─────────────────────────────────
+    {
+      title: "③ Followers: WAL fsync",
+      desc: "On each follower's next Ready loop tick, wal.Append(HardState, Entries) persists the appended entries with fsync. Durability is per-node and independent. The WAL is a Raft side-persistence: invariant #3 says the FSM never reads from it on the hot path.",
+      payload: (tx) => ["Raft command persisting on followers", buildProposalPayload(tx)],
+      color: C.raft,
+      action: async (tx) => {
+        await Promise.all([
+          anim(makeDot(tx.color, 5), "e-wal-f1", 320),
+          anim(makeDot(tx.color, 5), "e-wal-f2", 320),
+        ]);
+        // Each follower's match index catches up to the leader's log tail.
+        setIdx("f1Match", state.leaderIdx);
+        setIdx("f2Match", state.leaderIdx);
+      },
+    },
+    // ─── ④ ACKs → quorum → commit ────────────────────────────────────────
+    {
+      title: "④ ACK → quorum → commit",
+      desc: "Each follower returns MsgAppResp once its WAL fsync completes. As soon as a quorum (majority including the leader's own write) has acked, etcd/raft on the leader advances the commit index. The new commit index is piggybacked onto the next AppendEntries to all followers.",
+      payload: ["MsgAppResp → quorum → commit advance", PAYLOAD_ACK],
+      color: C.raft,
+      action: (tx) => Promise.all([
+        anim(makeDot(tx.color, 5), [{ id: "e-leader-f1", reverse: true }], 700),
+        anim(makeDot(tx.color, 5), [{ id: "e-leader-f2", reverse: true }], 800),
+      ]),
+    },
+    // ─── ⑤ FSM apply: arrival → preload materialization → fan-out ──────
+    {
+      title: "⑤a Committed entries → FSM",
+      desc: "Each node's Ready loop hands the now-committed entries to the FSM applier on the same node. Invariant #2: the FSM is deterministic — same input → identical output on every node, no randomness, no time-dependent logic, no node-local state. Cache state at any applied index is the same everywhere.",
+      payload: (tx) => ["Committed entry → FSM", buildCommittedPayload(tx)],
+      color: C.apply,
+      action: (tx) => Promise.all([
+        anim(makeDot(tx.color, 5), "e-leader-fsm", 600),
+        anim(makeDot(tx.color, 5), "e-f1-fsm",     700),
+        anim(makeDot(tx.color, 5), "e-f2-fsm",     750),
+      ]),
+    },
+    {
+      title: "⑤b Preload payload → Cache (FSM.Preload)",
+      desc: "Before the actual apply runs, the FSM pours the preload payload into Gen0 via cacheSnapshotter.MirrorPreload (writes) + MirrorTouch (Gen1 → Gen0 promotions). This is the contract that lets invariant #3 hold: every key the apply will read is now guaranteed to be in cache, so apply never needs Pebble.",
+      payload: (tx) => ["FSM.Preload → cache (Gen0)", buildPreloadResultPayload(tx)],
+      color: C.apply,
+      action: async (tx) => {
+        await anim(makeDot(tx.color, 5), "e-fsm-cache", 380);
+        // Apply the right preload primitive per key (mirrors what FSM.Preload does):
+        //   in Gen0           → CacheGuaranteed, no-op
+        //   in Gen1 (only)    → CacheNeedsTouch, promote to Gen0 (badge TOUCHED)
+        //   absent everywhere → CacheMiss, materialize default value (badge NEW)
+        const defs = txDefaults(tx);
+        for (const key of txKeys(tx)) {
+          const g0 = cache.gen0.get(key);
+          if (g0 && !g0.deleted) continue;
+          const g1 = cache.gen1.get(key);
+          if (g1 && !g1.deleted) { cache.touch(key); continue; }
+          cache.put(key, defs[key]);
+        }
+        renderCache();
+      },
+    },
+    {
+      title: "⑤c FSM apply → Cache + Pebble",
+      desc: "The FSM processes the command — validate postings, run numscript if any, generate IDs, mutate state. The mutations land in a single Pebble batch (log + attributes) AND in the in-memory cache simultaneously. Invariant #1: cache is the source of authority — it must stay identical across nodes at the same applied index. lastPersistedIndex only advances once the batch is durable.",
+      payload: (tx) => ["FSM deterministic apply (running…)", buildApplyPreviewPayload(tx)],
+      color: C.apply,
+      action: async (tx) => {
+        await Promise.all([
+          anim(makeDot(tx.color, 5), "e-fsm-cache",  420),
+          anim(makeDot(tx.color, 5), "e-fsm-pebble", 420),
+        ]);
+        // Apply mutates: volume deltas (deposit semantics: source.out += amount,
+        // destination.in += amount) AND boundary counters (NextLogId / NextTxId /
+        // PostingCount each advance by 1 for this single-posting transaction).
+        const sKey = `volumes(${tx.source}.${tx.asset})`;
+        const dKey = `volumes(${tx.destination}.${tx.asset})`;
+        const bKey = `boundary(${tx.ledger})`;
+        const src = cache.gen0.get(sKey);
+        const dst = cache.gen0.get(dKey);
+        const bnd = cache.gen0.get(bKey);
+        if (src) cache.put(sKey, { in: src.value.in,            out: src.value.out + tx.amount });
+        if (dst) cache.put(dKey, { in: dst.value.in + tx.amount, out: dst.value.out });
+        if (bnd) cache.put(bKey, {
+          nextLogId:    bnd.value.nextLogId + 1,
+          nextTxId:     bnd.value.nextTxId  + 1,
+          postingCount: bnd.value.postingCount + 1,
+        });
+        // Pebble is written in the same batch — mirror the cache values.
+        if (cache.gen0.get(sKey)) pebbleSet(sKey, cache.gen0.get(sKey).value);
+        if (cache.gen0.get(dKey)) pebbleSet(dKey, cache.gen0.get(dKey).value);
+        if (cache.gen0.get(bKey)) pebbleSet(bKey, cache.gen0.get(bKey).value);
+        renderCache();
+        renderPebble();
+        // Now that the boundary has been bumped, the result payload knows the
+        // freshly-assigned ids — override the placeholder.
+        setTxPayload(tx, "FSM deterministic apply → cache + Pebble", buildApplyResultPayload(tx));
+        // lastPersistedIndex moves AFTER cache + Pebble are written (durable apply).
+        const idx = state.leaderIdx;
+        setIdx("leaderApplied", idx);
+        setIdx("f1Applied",     idx);
+        setIdx("f2Applied",     idx);
+      },
+    },
+    // ─── ⑥ Response + async workers ──────────────────────────────────────
+    {
+      title: "⑥ Response to client · Workers tail async",
+      desc: "On the leader, the controller resolves the pending future with the log entry and returns ApplyResponse to the client via gRPC. In parallel and entirely off the critical path, several Workers tail the global log in Pebble — Index Builder updates the read-side ReadStore, Event Sinks ship to Kafka/NATS, and the Archiver/Sealer maintain cold storage and period sealing.",
+      payload: (tx) => ["ApplyResponse → client · Workers", buildResponsePayload(tx)],
+      color: C.resp,
+      action: (tx) => Promise.all([
+        // response rides the four return edges in sequence; the tiny "teleports"
+        // between paths sit inside the ingress boxes (admission, ctrl, grpc).
+        anim(makeDot(tx.color), [
+          { id: "e-leader-adm" },
+          { id: "e-ctrl-adm",    reverse: true },
+          { id: "e-grpc-ctrl",   reverse: true },
+          { id: "e-client-grpc", reverse: true },
+        ], 1500),
+        // Each worker tails the global log on its own channel — fired in parallel,
+        // staggered so they don't all arrive at the exact same frame.
+        anim(makeDot(tx.color, 4), "e-pebble-w-index",    280),
+        anim(makeDot(tx.color, 4), "e-pebble-w-sinks",    320),
+        anim(makeDot(tx.color, 4), "e-pebble-w-archiver", 360),
+        anim(makeDot(tx.color, 4), "e-pebble-w-sealer",   400),
+      ]),
+    },
+  ];
+
+  // Logical "rest" position of a tx between two steps — the edge of the box
+  // the tx has just entered. Indexed by stepIndex of the step that just
+  // finished. For fan-out steps (②/③/④/⑤c), a single dot at the pivot box.
+  // null = no rest dot (tx has exited the pipeline).
+  const STEP_REST = [
+    { x: 380, y: 230 },   // 0  ①a → gRPC right edge
+    { x: 380, y: 310 },   // 1  ①b → Ctrl right edge
+    { x: 340, y: 420 },   // 2  ①c → Admission (parked at the Cache-consult departure)
+    { x: 260, y: 420 },   // 3  ①d → Admission (parked at the Pebble-consult departure)
+    { x: 380, y: 390 },   // 4  ①e → Admission (parked at the Propose-to-Leader departure)
+    { x: 470, y: 430 },   // 5  ①f → Leader left edge
+    { x: 690, y: 430 },   // 6  ②   → Leader right edge (pivot — replication done)
+    { x: 690, y: 430 },   // 7  ③   → Leader right edge (pivot — WAL fsynced)
+    { x: 690, y: 430 },   // 8  ④   → Leader right edge (pivot — committed)
+    { x: 780, y: 401 },   // 9  ⑤a → FSM left edge
+    { x: 820, y: 438 },   // 10 ⑤b → Cache top edge
+    { x: 902, y: 438 },   // 11 ⑤c → Pebble top edge (durable datastore)
+    null,                 // 12 ⑥   → done, no rest dot
+  ];
+
+  // Multi-tx state ─────────────────────────────────────────────────────────
+  const TX_PALETTE = ["#82aaff", "#c3e88d", "#ffcb6b", "#c792ea", "#89ddff", "#addb67", "#ff9bd2", "#fbc02d"];
+  let txSeq = 0;
+  const inflight = [];                    // in-flight Tx objects
+  const txState = { lastTx: null };       // last completed tx (for Repeat)
+  let paused          = false;
+  let cancelRequested = false;
+  const resumeWaiters = [];
+  const STAGGER_MS    = 140;              // visual offset between dots in a same-wave drain
+
+  // Previous-button history: stack of full state snapshots taken at every step
+  // boundary (and at every send). A snapshot represents "state BEFORE this
+  // transition happened" — popping it reverts the most recent transition.
+  // activeActions counts in-flight s.action() awaits; Previous is gated on this
+  // being zero so we never roll back mid-anim.
+  const history = [];
+  let   activeActions = 0;
+
+  function makeTx(form) {
+    const id = ++txSeq;
+    return {
+      id,
+      color: TX_PALETTE[(id - 1) % TX_PALETTE.length],
+      source: form.source, destination: form.destination, asset: form.asset,
+      amount: form.amount, ledger: form.ledger,
+      referenceId: `tx-2026-06-04-${String(id).padStart(3, "0")}`,
+      stepIndex: 0,
+      status: "running",                  // running | paused | blocked | done
+      cancelled: false,                   // set true by Restart or Previous to make this tx's runCycle exit
+      frozenDot: null,                    // SVG circle pinned at the block point while waiting
+      restDot: null,                      // SVG circle parked at the rest position between steps
+      payload: null,                      // { title, html } — last payload computed for this tx
+      proposalPlan: null,                 // snapshot of CheckCache result at ①d — frozen for the lifetime of the tx
+      commitTerm: null,                   // snapshotted at ② (leader bumps leaderIdx)
+      commitIndex: null,                  // ditto — the position the tx was committed at
+    };
+  }
+
+  // Pipeline locks — two distinct resources allow real pipelining:
+  //   raftLock: ②, ③, ④ (consensus / replication).
+  //   fsmLock : ⑤a, ⑤b, ⑤c (deterministic apply).
+  // raftLock is released the moment fsmLock is acquired — that way, as soon as a tx
+  // hands its entry to the FSM, the next tx waiting at ①f can enter Raft.
+  function makeLock({ drainOnRelease = false } = {}) {
+    return {
+      busy: false,
+      queue: [],         // entries are { res, tx }
+      batchGrants: 0,    // bypass tickets — Next click pre-arms these so a whole
+                         // wave of tx can enter together instead of serializing.
+      async acquire(tx) {
+        if (!this.busy) { this.busy = true; return; }
+        if (this.batchGrants > 0) {
+          // Same Next-driven wave as the current holder — admit alongside it.
+          this.batchGrants--;
+          return;
+        }
+        tx.status = "blocked";
+        showBlockedDot(tx);
+        renderInflight();
+        await new Promise(res => this.queue.push({ res, tx }));
+        clearBlockedDot(tx);
+        tx.status = "running";
+        renderInflight();
+      },
+      release() {
+        if (drainOnRelease) {
+          const drained = this.queue.splice(0);
+          if (drained.length === 0) this.busy = false;
+          // Stagger so the wave fans out visually (first dot leaves immediately,
+          // next ones with a small offset — they still all "leave together"
+          // logically, but the eye can pick each one out).
+          drained.forEach((item, i) => { item.tx.staggerMs = i * STAGGER_MS; });
+          drained.forEach(({ res }) => res());
+        } else {
+          this.busy = false;
+          const next = this.queue.shift();
+          if (next) { this.busy = true; next.res(); }
+        }
+      },
+      reset() { this.busy = false; this.queue.length = 0; this.batchGrants = 0; },
+    };
+  }
+  const raftLock = makeLock({ drainOnRelease: true });  // batch admission pickup
+  const fsmLock  = makeLock({ drainOnRelease: true });  // FSM batched intake too
+
+  // DOM
+  const txControls   = document.getElementById("tx-controls");
+  const btnPlayPause = document.getElementById("btn-playpause");
+  const btnPrevious  = document.getElementById("btn-previous");
+  const btnNext      = document.getElementById("btn-next");
+  const btnRestart   = document.getElementById("btn-restart");
+  const stepNum      = document.getElementById("step-num");
+  const stepTotal    = document.getElementById("step-total");
+  const stepIndi     = document.getElementById("step-indicator");
+  stepTotal.textContent = String(steps.length);
+
+  const inSource = document.getElementById("tx-source");
+  const inDest   = document.getElementById("tx-destination");
+  const inAsset  = document.getElementById("tx-asset");
+  const inAmount = document.getElementById("tx-amount");
+  const btnSend  = document.getElementById("btn-send");
+  const btnRep   = document.getElementById("btn-repeat");
+  const txError  = document.getElementById("tx-error");
+  const inflightMeta = document.getElementById("inflight-meta");
+  const inflightList = document.getElementById("inflight-list");
+
+  function readForm() {
+    return {
+      source:      inSource.value.trim(),
+      destination: inDest.value.trim(),
+      asset:       inAsset.value.trim(),
+      amount:      Math.max(0, parseInt(inAmount.value, 10) || 0),
+      ledger:      "main",
+    };
+  }
+  function validateTx(tx) {
+    if (!tx.source || !tx.destination || !tx.asset) return "All fields are required.";
+    if (tx.source === tx.destination)               return "Source and destination must differ.";
+    if (tx.amount <= 0)                              return "Amount must be positive.";
+    return null;
+  }
+  function updateIndicator() {
+    if (inflight.length === 0) {
+      stepNum.textContent = "—"; stepIndi.classList.toggle("paused", false); return;
+    }
+    // Show the most advanced tx (i.e., the one closest to completing).
+    const lead = inflight.reduce((m, t) => t.stepIndex > m.stepIndex ? t : m, inflight[0]);
+    stepNum.textContent = String(lead.stepIndex + 1);
+    stepIndi.classList.toggle("paused", paused);
+  }
+  function clearDots() { while (dots.firstChild) dots.removeChild(dots.firstChild); }
+
+  function refreshControls() {
+    const active = inflight.length > 0;
+    // The form, Send and Repeat stay usable at all times.
+    btnSend.disabled = false;
+    btnRep.disabled  = !txState.lastTx;
+    // The Pause / Next / Restart bar shows as soon as there's history to roll back,
+    // even if everything's done — that lets Previous remain reachable post-completion.
+    txControls.hidden = !active && history.length === 0;
+    btnNext.disabled     = !paused || !active;
+    btnPrevious.disabled = activeActions > 0 || history.length === 0;
+    btnPlayPause.disabled = !active;
+    btnPlayPause.textContent = paused ? "▶ Resume" : "⏸ Pause";
+    btnPlayPause.classList.toggle("primary", paused);
+    updateIndicator();
+  }
+
+  // Token model: each Next click grants 1 "step credit" to every in-flight tx.
+  // A tx consumes 1 credit either at awaitResumeOrNext (between steps) OR when
+  // unblocked from a lock queue by a Next-driven drain. This means a single Next
+  // click advances ALL in-flight txs by exactly one notch — regardless of whether
+  // they were already at the await point or still finishing an action when the
+  // click happened. The credit is held until the tx reaches its next gate.
+  function awaitResumeOrNext(tx) {
+    if ((tx.nextTokens || 0) > 0) {
+      tx.nextTokens--;
+      return Promise.resolve();
+    }
+    if (!paused) return Promise.resolve();
+    return new Promise(res => resumeWaiters.push({ res, tx }));
+  }
+  function consumeAndWake({ res, tx }) {
+    if (tx.nextTokens > 0) tx.nextTokens--;
+    res();
+  }
+  function releaseAll() {
+    resumeWaiters.splice(0).forEach(({ res }) => res());
+  }
+
+  // Block-point visualizer (frozen colored dot + red pulse).
+  function showBlockedDot(tx) {
+    clearRestDot(tx);                       // never stack a rest dot with a blocked dot
+    // Step about to fire ⑥ when blocked: 5 = ①f (block at Admission right edge),
+    //                                    9 = ⑤a (block at Leader right edge after ④).
+    const at = tx.stepIndex === 5
+      ? { x: 380, y: 390 }                 // Admission right-edge
+      : { x: 690, y: 400 };                // Leader right-edge
+    const dot = makeDot(tx.color, 6);
+    dot.setAttribute("cx", at.x);
+    dot.setAttribute("cy", at.y);
+    dot.classList.add("blocked-dot");
+    tx.frozenDot = dot;
+  }
+  function clearBlockedDot(tx) {
+    if (tx.frozenDot && tx.frozenDot.parentNode) tx.frozenDot.parentNode.removeChild(tx.frozenDot);
+    tx.frozenDot = null;
+  }
+  // Resting dot — visible at the edge of the box where the tx logically sits
+  // between two animations. Refreshed at the end of each step's action.
+  function placeRestDot(tx, stepIndex) {
+    const at = STEP_REST[stepIndex];
+    if (!at) return;
+    clearRestDot(tx);
+    const dot = makeDot(tx.color, 5);
+    dot.setAttribute("cx", at.x);
+    dot.setAttribute("cy", at.y);
+    dot.classList.add("rest-dot");
+    tx.restDot = dot;
+  }
+  function clearRestDot(tx) {
+    if (tx.restDot && tx.restDot.parentNode) tx.restDot.parentNode.removeChild(tx.restDot);
+    tx.restDot = null;
+  }
+
+  function renderInflight() {
+    inflightMeta.textContent = inflight.length === 0 ? "0" :
+      `${inflight.length} in flight` + (inflight.some(t => t.status === "blocked") ? " · some blocked" : "");
+    inflightList.innerHTML = "";
+    if (inflight.length === 0) {
+      const li = document.createElement("li"); li.className = "cache-empty"; li.textContent = "∅ none";
+      inflightList.appendChild(li); return;
+    }
+    for (const t of inflight) {
+      const li = document.createElement("li");
+      li.className = "inflight-row"
+        + (t.status === "blocked" ? " blocked" : "")
+        + (t.id === selectedTxId ? " selected" : "");
+      li.title = "Click to view this tx's payload";
+      li.addEventListener("click", () => selectTx(t.id));
+      const chip = document.createElement("span"); chip.className = "inflight-chip"; chip.style.background = t.color;
+      const id   = document.createElement("span"); id.className   = "inflight-id";   id.textContent = "#" + t.id;
+      const rt   = document.createElement("span"); rt.className   = "inflight-route";
+      rt.textContent = `${t.source} → ${t.destination} · ${t.amount} ${t.asset}`;
+      const step = document.createElement("span"); step.className = "inflight-step";
+      step.textContent = t.status === "blocked" ? "BLOCKED" : `step ${t.stepIndex + 1}/${steps.length}`;
+      li.append(chip, id, rt, step);
+      inflightList.appendChild(li);
+    }
+    refreshControls();
+  }
+
+  // ── History snapshot / restore for the Previous button ─────────────────
+  // Each entry captures the "state BEFORE the most recent transition" — popping
+  // the top entry restores that state. Animations are NOT replayed; only the
+  // logical state (cache, Pebble, Raft indices, tx positions/payloads/plans)
+  // and the rest-dot placement are rolled back.
+  function snapshotTx(t) {
+    return {
+      id: t.id, color: t.color,
+      source: t.source, destination: t.destination, asset: t.asset, amount: t.amount, ledger: t.ledger,
+      referenceId:  t.referenceId,
+      stepIndex:    t.stepIndex,
+      payload:      t.payload ? { title: t.payload.title, html: t.payload.html } : null,
+      proposalPlan: t.proposalPlan ? structuredClone(t.proposalPlan) : null,
+      commitTerm:   t.commitTerm,
+      commitIndex:  t.commitIndex,
+    };
+  }
+  function snapshotKey(snap) {
+    // Coarse identity used to dedup adjacent snapshots that capture the same
+    // logical state (e.g., a batched Next wave that fires recordCheckpoint
+    // once per tx before any of them actually advance).
+    return `${snap.txs.map(t => `${t.id}@${t.stepIndex}`).join("|")}::${snap.state.leaderIdx}/${snap.state.leaderApplied}`;
+  }
+  function takeCheckpoint() {
+    const snap = {
+      state:  { ...state },
+      cache:  cache.snapshot(),
+      pebble: structuredClone(pebble),
+      txs:    inflight.map(snapshotTx),
+      // Repeat reads source/destination/asset/amount/ledger off lastTx — store
+      // just those so it keeps working after a Previous removes the completed tx.
+      lastTxData: txState.lastTx ? {
+        source: txState.lastTx.source,
+        destination: txState.lastTx.destination,
+        asset: txState.lastTx.asset,
+        amount: txState.lastTx.amount,
+        ledger: txState.lastTx.ledger,
+      } : null,
+      selectedTxId, txSeq,
+    };
+    if (history.length > 0 && snapshotKey(history[history.length - 1]) === snapshotKey(snap)) return;
+    history.push(snap);
+    refreshControls();
+  }
+  function applyCheckpoint(snap) {
+    // 1. Cancel current runCycles and unblock any awaiters so they exit cleanly.
+    for (const t of inflight) t.cancelled = true;
+    raftLock.queue.splice(0).forEach(({ res }) => res());
+    fsmLock.queue.splice(0).forEach(({ res }) => res());
+    resumeWaiters.splice(0).forEach(({ res }) => res());
+    raftLock.reset(); fsmLock.reset();
+    // 2. Wipe live + rest + blocked dots, the dots <g>, and any step-driven
+    //    highlights — Previous shouldn't leave the last step's box outlines lit.
+    for (const t of inflight) { clearBlockedDot(t); clearRestDot(t); }
+    clearDots();
+    clearHighlights();
+    // 3. Restore numeric / Raft state.
+    Object.assign(state, snap.state);
+    // 4. Restore cache + Pebble.
+    cache.restore(snap.cache);
+    pebble.clear();
+    for (const [k, v] of structuredClone(snap.pebble)) pebble.set(k, v);
+    // 5. Replace the inflight list with FRESH tx objects rebuilt from the snapshot.
+    inflight.length = 0;
+    for (const ts of snap.txs) {
+      inflight.push({
+        ...ts,
+        status: "running", cancelled: false,
+        frozenDot: null, restDot: null,
+        nextTokens: 0, staggerMs: 0,
+        payload:      ts.payload ? { ...ts.payload } : null,
+        proposalPlan: ts.proposalPlan ? structuredClone(ts.proposalPlan) : null,
+      });
+    }
+    txSeq = snap.txSeq;
+    selectedTxId = snap.selectedTxId;
+    txState.lastTx = snap.lastTxData ? { ...snap.lastTxData } : null;
+    paused = true;                          // Previous always parks the simulation.
+    // 6. Re-place each restored tx at its rest position for the step it just finished.
+    for (const tx of inflight) {
+      if (tx.stepIndex > 0) placeRestDot(tx, tx.stepIndex - 1);
+    }
+    // 7. Re-render the whole UI from the restored state.
+    renderState(); renderCache(); renderPebble(); renderInflight(); renderSelectedPayload();
+    updateIndicator(); refreshControls();
+    // 8. Spawn fresh runCycles for the restored txs so subsequent Next clicks
+    //    advance them from the restored stepIndex. They immediately park at
+    //    awaitResumeOrNext (paused=true).
+    for (const tx of inflight) runStepsLoop(tx);
+  }
+  function popCheckpoint() {
+    if (history.length === 0 || activeActions > 0) return;
+    const snap = history.pop();
+    applyCheckpoint(snap);
+  }
+
+  // Button handlers ────────────────────────────────────────────────────────
+  btnPlayPause.addEventListener("click", () => {
+    if (inflight.length === 0) return;
+    paused = !paused;
+    if (!paused) {
+      // Resuming continuous playback: drop leftover Next credits so we don't
+      // accidentally double-step the first wave of txs.
+      for (const t of inflight) t.nextTokens = 0;
+      releaseAll();
+    }
+    refreshControls();
+  });
+
+  btnNext.addEventListener("click", () => {
+    if (!paused || inflight.length === 0) return;
+    // One click = one "step credit" granted to every in-flight tx. Each tx will
+    // consume its credit at its next gate (boundary OR lock wake). Txs still
+    // animating now will pick up their credit when their action finishes, so a
+    // single click reliably advances all in-flight txs by one step.
+    for (const t of inflight) t.nextTokens = (t.nextTokens || 0) + 1;
+    // Pre-arm the locks for batched entry. When the wake-up wave fires, every tx
+    // that reaches its raftLock / fsmLock acquire in the same microtask flush
+    // walks in alongside the first one (admission → leader, FSM gate). Without
+    // this, the mutex would serialize the wave and only T1 would cross per click.
+    // inflight.length grants is an overshoot — unused grants are reset below.
+    raftLock.batchGrants = inflight.length;
+    fsmLock.batchGrants  = inflight.length;
+    // Drain raftLock & fsmLock queues (txs already blocked at the lock); each
+    // wake consumes its credit since the wake itself is the step. Each wave is
+    // staggered so the dots fan out visually instead of overlapping pixel-for-pixel.
+    const drainWave = (items) => {
+      items.forEach((item, i) => { item.tx.staggerMs = i * STAGGER_MS; });
+      items.forEach(consumeAndWake);
+    };
+    drainWave(raftLock.queue.splice(0));
+    drainWave(fsmLock.queue.splice(0));
+    // Wake every tx currently parked between steps — same credit consumption.
+    drainWave(resumeWaiters.splice(0));
+    // After the microtask flush, drop any unused grants so future organic
+    // acquires (not part of this Next batch) still serialize through the mutex.
+    setTimeout(() => { raftLock.batchGrants = 0; fsmLock.batchGrants = 0; }, 0);
+  });
+
+  btnRestart.addEventListener("click", () => {
+    cancelRequested = true;
+    paused = false;
+    releaseAll();
+    // Remove every in-flight tx — their runCycle loops will exit on cancelRequested.
+    for (const t of inflight) { clearBlockedDot(t); clearRestDot(t); t.nextTokens = 0; t.cancelled = true; }
+    inflight.length = 0;
+    selectedTxId = null;
+    history.length = 0;                  // wipe Previous's rollback stack
+    activeActions = 0;
+    raftLock.reset();
+    fsmLock.reset();
+    txState.lastTx = null;
+    state.leaderIdx = 1; state.f1Match = 1; state.f2Match = 1;
+    state.leaderApplied = 1; state.f1Applied = 1; state.f2Applied = 1;
+    renderState();
+    cache.reset();
+    pebbleReset();
+    renderCache();
+    renderPebble();
+    clearDots();
+    clearHighlights();
+    txError.textContent = "";
+    setStep("Ledger v3 — Architecture overview",
+            "Fill the form and click ▶ Send to inject a transaction. Multiple sends queue up; the FSM + Raft pipeline serializes the critical section.",
+            C.grpc);
+    setPayload("Ready", buildOrderPayload(readForm()));
+    renderInflight();
+    // Reset the cancel flag on the next tick so any still-running cycle has time to bail out.
+    setTimeout(() => { cancelRequested = false; }, 0);
+  });
+
+  btnSend.addEventListener("click", () => {
+    const form = readForm();
+    const err = validateTx(form);
+    txError.textContent = err || "";
+    if (err) return;
+    // Pre-send checkpoint: captures the state with NO new tx. Previous-clicking
+    // back to this one removes the just-injected tx (and its ①a effect).
+    takeCheckpoint();
+    const tx = makeTx(form);
+    runCycle(tx);
+  });
+
+  btnRep.addEventListener("click", () => {
+    if (!txState.lastTx) return;
+    takeCheckpoint();
+    const last = txState.lastTx;
+    const tx = makeTx({
+      source: last.source, destination: last.destination,
+      asset:  last.asset,  amount:      last.amount,
+      ledger: last.ledger,
+    });
+    runCycle(tx);
+  });
+
+  btnPrevious.addEventListener("click", () => {
+    popCheckpoint();
+  });
+
+  // Live preview of the order payload as the form is edited (only while idle).
+  for (const f of [inSource, inDest, inAsset, inAmount]) {
+    f.addEventListener("input", () => {
+      if (inflight.length === 0) setPayload("Ready", buildOrderPayload(readForm()));
+    });
+  }
+
+  // ── Runner: one tx, full lifecycle, lock around ①f → ⑤c ─────────────────
+  // runCycle is the entry point for freshly-sent txs (Send / Repeat). The loop
+  // body lives in runStepsLoop so applyCheckpoint() can re-attach a new loop to
+  // a tx restored from history without re-running the inflight.push setup.
+  function isCancelled(tx) { return cancelRequested || tx.cancelled; }
+
+  function runCycle(tx) {
+    inflight.push(tx);
+    // Newly sent txs are auto-focused so the payload panel updates as they
+    // progress. The user can click any other in-flight row to switch.
+    selectedTxId = tx.id;
+    renderInflight();
+    refreshControls();
+    runStepsLoop(tx);
+  }
+
+  async function runStepsLoop(tx) {
+    while (tx.stepIndex < steps.length) {
+      // The client → gRPC step is independent of the system's pause state
+      // (a client doesn't know we paused). Always play ①a, then honor the
+      // global pause from step ①b onward.
+      if (tx.stepIndex > 0) await awaitResumeOrNext(tx);
+      if (isCancelled(tx)) {
+        clearBlockedDot(tx);
+        clearRestDot(tx);
+        return;
+      }
+      // Snapshot AFTER the resume gate but BEFORE any mutation — this is the
+      // "state to roll back to if Previous is clicked". Step 0 is excluded: the
+      // pre-send checkpoint already covers the send + ①a as a single unit.
+      if (tx.stepIndex > 0) takeCheckpoint();
+      // The next anim takes over — drop the rest dot from the previous step.
+      clearRestDot(tx);
+
+      // Two-stage pipeline locking:
+      //   ①f (5):  acquire raftLock — the Raft channel becomes ours.
+      //   ⑤a (9):  acquire fsmLock, then IMMEDIATELY release raftLock so the next
+      //            queued tx can enter Raft while we run the apply.
+      if (tx.stepIndex === 5) {
+        await raftLock.acquire(tx);
+        if (isCancelled(tx)) { raftLock.release(); clearRestDot(tx); return; }
+      } else if (tx.stepIndex === 9) {
+        await fsmLock.acquire(tx);
+        raftLock.release();
+        if (isCancelled(tx)) { fsmLock.release(); clearRestDot(tx); return; }
+      }
+
+      const s = steps[tx.stepIndex];
+      // Banner / payload / highlights describe the most recently STARTED step
+      // — when multiple tx race, last one wins, which is fine.
+      setStep(s.title, s.desc, s.color);
+      if (s.payload) {
+        const p = typeof s.payload === "function" ? s.payload(tx) : s.payload;
+        setTxPayload(tx, p[0], p[1]);
+      }
+      applyHighlights(HIGHLIGHTS[tx.stepIndex]);
+      updateIndicator();
+      // Honor any stagger assigned to this tx by the last drain wave — gives a
+      // visible offset between dots that were released "together".
+      if (tx.staggerMs > 0) {
+        const delay = tx.staggerMs;
+        tx.staggerMs = 0;
+        await new Promise(r => setTimeout(r, delay));
+        if (isCancelled(tx)) {
+          if (tx.stepIndex === 5) raftLock.release();
+          else if (tx.stepIndex === 9) fsmLock.release();
+          clearBlockedDot(tx);
+          clearRestDot(tx);
+          return;
+        }
+      }
+      activeActions++;
+      refreshControls();
+      try {
+        await s.action(tx);
+      } catch (e) {
+        console.error("Step", tx.stepIndex, "of tx#" + tx.id, "failed:", e);
+        // Belt-and-braces: release whichever lock the tx might be holding.
+        raftLock.release(); fsmLock.release();
+        clearBlockedDot(tx);
+        clearRestDot(tx);
+        const i = inflight.indexOf(tx); if (i >= 0) inflight.splice(i, 1);
+        if (selectedTxId === tx.id) selectedTxId = inflight[inflight.length - 1]?.id ?? null;
+        activeActions--;
+        renderSelectedPayload();
+        renderInflight();
+        refreshControls();
+        return;
+      }
+      activeActions--;
+      // The action may have been cancelled while it was running (e.g., the user
+      // pressed Previous, which set tx.cancelled and reset the locks). Bail out
+      // without mutating any more state — applyCheckpoint owns the restore.
+      if (isCancelled(tx)) {
+        clearBlockedDot(tx);
+        clearRestDot(tx);
+        refreshControls();
+        return;
+      }
+      tx.stepIndex++;
+      // Park the tx visually at the box it just entered.
+      placeRestDot(tx, tx.stepIndex - 1);
+      // After every tx's first step (①a → gRPC server), auto-pause globally so the
+      // reader can inspect what's about to happen next. Resume / Next driven by the user.
+      if (tx.stepIndex === 1 && tx.stepIndex < steps.length) {
+        paused = true;
+        refreshControls();
+      }
+      // After ⑤c (index 11 just finished, stepIndex now 12) release the FSM lock —
+      // step ⑥ (response + workers) doesn't need it. raftLock was already released
+      // when we entered ⑤a.
+      if (tx.stepIndex === 12) fsmLock.release();
+      renderInflight();
+      refreshControls();
+    }
+
+    cache.ageBadges();
+    renderCache();
+    txState.lastTx = tx;
+    clearRestDot(tx);                       // tx has left the pipeline
+    const i = inflight.indexOf(tx); if (i >= 0) inflight.splice(i, 1);
+    tx.status = "done";
+    if (selectedTxId === tx.id) selectedTxId = inflight[inflight.length - 1]?.id ?? null;
+    if (inflight.length === 0) {
+      applyHighlights(null);
+      setStep("Transaction complete · ready for next",
+              "Send queues another transaction; pipeline locks will line them up if you stack them quickly.",
+              C.resp);
+    }
+    renderSelectedPayload();
+    renderInflight();
+    refreshControls();
+  }
+
+  // Initial render — nothing in flight; user injects via Send.
+  renderState();
+  renderInflight();
+  setStep("Ledger v3 — Architecture overview",
+          "Fill the form and click ▶ Send to inject a transaction. Multiple sends queue up; the FSM + Raft pipeline serializes the critical section.",
+          C.grpc);
+  setPayload("Ready", buildOrderPayload(readForm()));
+  refreshControls();
+})();
+</script>
+</body>
+</html>
