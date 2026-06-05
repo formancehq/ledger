@@ -129,7 +129,7 @@ func (r *LedgerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 	defer cancel()
 
 	log.Info("creating ledger", "name", ledger.Spec.Name, "mode", ledger.Spec.Mode)
-	if err := r.ledgerctlExec(execCtx, ledger.Namespace, pod0, grpcPort, args...); err != nil {
+	if err := r.ledgerctlExec(execCtx, ledger.Namespace, ledger.Spec.ServiceRef, pod0, grpcPort, args...); err != nil {
 		if !isAlreadyExists(err) {
 			meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
 				Type:               conditionLedgerSynced,
@@ -212,7 +212,7 @@ func (r *LedgerReconciler) reconcilePromotion(ctx context.Context, ledger *ledge
 	defer cancel()
 
 	log.Info("promoting mirror ledger to normal", "name", ledger.Spec.Name)
-	if err := r.ledgerctlExec(execCtx, ledger.Namespace, pod0, grpcPort,
+	if err := r.ledgerctlExec(execCtx, ledger.Namespace, ledger.Spec.ServiceRef, pod0, grpcPort,
 		"ledgers", "promote", ledger.Spec.Name, "--yes"); err != nil {
 		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
 			Type:               conditionLedgerSynced,
@@ -259,7 +259,7 @@ func (r *LedgerReconciler) reconcileDelete(ctx context.Context, ledger *ledgerv1
 		defer cancel()
 
 		log.Info("deleting ledger", "name", ledger.Spec.Name)
-		if err := r.ledgerctlExec(execCtx, ledger.Namespace, pod0, grpcPort,
+		if err := r.ledgerctlExec(execCtx, ledger.Namespace, ledger.Spec.ServiceRef, pod0, grpcPort,
 			"ledgers", "delete", ledger.Spec.Name, "--yes"); err != nil {
 			if !isLedgerNotFound(err) {
 				log.Error(err, "failed to delete ledger (best-effort)")
@@ -402,12 +402,22 @@ func (r *LedgerReconciler) readSecretKey(ctx context.Context, namespace, name, k
 	return string(data), nil
 }
 
-// ledgerctlExec runs a ledgerctl command inside pod-0 of the LedgerService StatefulSet.
-func (r *LedgerReconciler) ledgerctlExec(ctx context.Context, namespace, pod string, grpcPort int32, args ...string) error {
-	cmd := ledgerctlCommand(grpcPort, args...)
-
-	_, err := podExec(ctx, r.Config, r.Clientset, namespace, pod, ledgerContainer, cmd)
+// ledgerctlExec runs a ledgerctl command inside pod-0 of the LedgerService
+// StatefulSet. It resolves the TLS_MODE from the StatefulSet env so that
+// ledgerctl negotiates the same transport (plaintext or TLS) as the running
+// gRPC server expects — a mismatch surfaces as "error reading server preface".
+// The server address dialed is the pod's own headless DNS so the SNI matches
+// the server certificate's SANs.
+func (r *LedgerReconciler) ledgerctlExec(ctx context.Context, namespace, serviceName, pod string, grpcPort int32, args ...string) error {
+	tlsMode, err := fetchTLSMode(ctx, r.Client, namespace, serviceName)
 	if err != nil {
+		return fmt.Errorf("resolving TLS mode for LedgerService %q: %w", serviceName, err)
+	}
+
+	serverAddr := podSelfServerAddr(serviceName+"-headless", grpcPort)
+	cmd := ledgerctlCommand(serverAddr, tlsMode, args...)
+
+	if _, err := podExec(ctx, r.Config, r.Clientset, namespace, pod, ledgerContainer, cmd); err != nil {
 		return fmt.Errorf("ledgerctl %s: %w", args[0], err)
 	}
 

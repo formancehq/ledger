@@ -7,6 +7,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
 )
@@ -37,6 +38,25 @@ func desiredTLSMode(ledger *ledgerv1alpha1.LedgerService) string {
 	}
 
 	return tlsModeDisabled
+}
+
+// fetchTLSMode returns the TLS_MODE currently in effect on the running pods of
+// the named LedgerService, by reading the TLS_MODE env var from the
+// StatefulSet pod template. Returns an empty string (and no error) if the
+// StatefulSet does not exist yet; the caller's exec is meaningless in that
+// case and will fail on the pod lookup, but this keeps the bootstrap path
+// from masking the original error.
+func fetchTLSMode(ctx context.Context, c client.Client, namespace, name string) (string, error) {
+	sts := &appsv1.StatefulSet{}
+	if err := c.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, sts); err != nil {
+		if apierrors.IsNotFound(err) {
+			return "", nil
+		}
+
+		return "", err
+	}
+
+	return currentTLSModeFromStatefulSet(sts), nil
 }
 
 // currentTLSModeFromStatefulSet returns the TLS_MODE env var that is

@@ -69,18 +69,24 @@ func podExec(ctx context.Context, cfg *rest.Config, clientset kubernetes.Interfa
 //
 // Crashed pods are force-removed first (bypassing Raft consensus) to restore
 // quorum before attempting normal consensus-based removal of alive nodes.
+//
+// tlsMode is the TLS_MODE currently in effect on the running pods (read from
+// the existing StatefulSet before the operator updates it); ledgerctl is
+// configured accordingly so its connection matches what the pod's gRPC server
+// expects.
 func raftScaleDown(ctx context.Context, cfg *rest.Config, clientset kubernetes.Interface,
-	ledger *ledgerv1alpha1.LedgerService, currentReplicas, desiredReplicas int32,
+	ledger *ledgerv1alpha1.LedgerService, currentReplicas, desiredReplicas int32, tlsMode string,
 ) error {
 	logger := log.FromContext(ctx)
 	grpcPort := ledger.Spec.GrpcPort
 	pod0 := ledger.Name + "-0"
 	container := "ledger"
+	serverAddr := podSelfServerAddr(headlessServiceName(ledger), grpcPort)
 
 	// Transfer leadership to node 1 (pod-0) so the leader is never among the removed nodes.
 	logger.Info("transferring Raft leadership to node 1 before scale-down")
 	result, err := podExec(ctx, cfg, clientset, ledger.Namespace, pod0, container,
-		ledgerctlCommand(grpcPort, "cluster", "transfer-leader", "1"),
+		ledgerctlCommand(serverAddr, tlsMode, "cluster", "transfer-leader", "1"),
 	)
 	if err != nil {
 		// If already leader on node 1, that's fine — check for known benign messages.
@@ -134,14 +140,14 @@ func raftScaleDown(ctx context.Context, cfg *rest.Config, clientset kubernetes.I
 
 	// Remove crashed nodes first with --force.
 	for _, n := range crashedNodes {
-		if err := removeNode(ctx, cfg, clientset, ledger.Namespace, pod0, container, grpcPort, n.nodeID, true); err != nil {
+		if err := removeNode(ctx, cfg, clientset, ledger.Namespace, pod0, container, serverAddr, tlsMode, n.nodeID, true); err != nil {
 			return err
 		}
 	}
 
 	// Remove alive nodes normally (highest ordinal first, already sorted).
 	for _, n := range aliveNodes {
-		if err := removeNode(ctx, cfg, clientset, ledger.Namespace, pod0, container, grpcPort, n.nodeID, false); err != nil {
+		if err := removeNode(ctx, cfg, clientset, ledger.Namespace, pod0, container, serverAddr, tlsMode, n.nodeID, false); err != nil {
 			return err
 		}
 	}
@@ -152,7 +158,7 @@ func raftScaleDown(ctx context.Context, cfg *rest.Config, clientset kubernetes.I
 // removeNode executes ledgerctl cluster remove-node via pod exec. If force is
 // true, --force is appended to bypass Raft consensus.
 func removeNode(ctx context.Context, cfg *rest.Config, clientset kubernetes.Interface,
-	namespace, pod0, container string, grpcPort, nodeID int32, force bool,
+	namespace, pod0, container, serverAddr, tlsMode string, nodeID int32, force bool,
 ) error {
 	logger := log.FromContext(ctx)
 
@@ -160,7 +166,7 @@ func removeNode(ctx context.Context, cfg *rest.Config, clientset kubernetes.Inte
 	if force {
 		subArgs = append(subArgs, "--force")
 	}
-	args := ledgerctlCommand(grpcPort, subArgs...)
+	args := ledgerctlCommand(serverAddr, tlsMode, subArgs...)
 
 	logger.Info("removing Raft node before scale-down",
 		"nodeID", nodeID,
@@ -190,13 +196,49 @@ func removeNode(ctx context.Context, cfg *rest.Config, clientset kubernetes.Inte
 }
 
 // ledgerctlCommand builds a shell command that runs ledgerctl with the cluster
-// secret for authentication. The command is wrapped in sh -c so that the
-// $CLUSTER_SECRET env var is expanded at runtime inside the pod.
-func ledgerctlCommand(grpcPort int32, args ...string) []string {
-	cmd := fmt.Sprintf("./ledgerctl %s --server 127.0.0.1:%d --insecure --auth-token \"$CLUSTER_SECRET\"",
-		strings.Join(args, " "), grpcPort)
+// secret for authentication. The command is wrapped in sh -c so that env vars
+// like $CLUSTER_SECRET, $TLS_CA_CERT_FILE, $POD_NAME and $POD_NAMESPACE are
+// expanded at runtime inside the pod.
+//
+// serverAddr is the host:port the client should dial. For in-pod execs the
+// caller must pass a DNS name that the server certificate is issued for (the
+// pod's own headless DNS, not 127.0.0.1 — server certs typically only cover
+// service/headless SANs).
+//
+// tlsMode must reflect what the target pod's gRPC server is actually running
+// (TLS_MODE env on the running container); when "required" or "optional" the
+// CA cert mounted in the pod is used for server verification, otherwise the
+// connection is plaintext.
+func ledgerctlCommand(serverAddr, tlsMode string, args ...string) []string {
+	cmd := fmt.Sprintf(`./ledgerctl %s --server "%s" %s --auth-token "$CLUSTER_SECRET"`,
+		strings.Join(args, " "), serverAddr, ledgerctlTLSFlag(tlsMode))
 
 	return []string{"/bin/sh", "-c", cmd}
+}
+
+// podSelfServerAddr is the host:port a ledger container should dial to reach
+// its own gRPC listener via a name covered by the TLS cert. Using the pod's
+// headless DNS (rather than 127.0.0.1) avoids SAN mismatches when TLS is on,
+// because operator-issued certs typically cover the headless SANs only.
+//
+// The returned string contains shell variables ($POD_NAME, $POD_NAMESPACE)
+// that the runtime container is expected to have via the downward API.
+func podSelfServerAddr(headlessSvc string, grpcPort int32) string {
+	return fmt.Sprintf("$POD_NAME.%s.$POD_NAMESPACE.svc.cluster.local:%d", headlessSvc, grpcPort)
+}
+
+// ledgerctlTLSFlag returns the TLS-related ledgerctl flag matching the gRPC
+// server's TLS_MODE. A required/optional server needs a TLS client; anything
+// else (disabled, unknown, bootstrap) must use --insecure to avoid sending a
+// TLS ClientHello to a plaintext listener — or vice versa, hitting a TLS
+// listener with HTTP/2 in clear, which surfaces as "error reading server
+// preface" / "connection reset by peer".
+func ledgerctlTLSFlag(tlsMode string) string {
+	if tlsMode == tlsModeRequired || tlsMode == tlsModeOptional {
+		return `--tls-ca-cert "$TLS_CA_CERT_FILE"`
+	}
+
+	return "--insecure"
 }
 
 // podForOrdinal returns the pod name for a given StatefulSet ordinal.

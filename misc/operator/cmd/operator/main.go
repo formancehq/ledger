@@ -124,7 +124,6 @@ func main() {
 	if err = (&controller.LedgerBackupRunReconciler{
 		Client:    mgr.GetClient(),
 		Scheme:    mgr.GetScheme(),
-		Config:    cfg,
 		Clientset: clientset,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "LedgerBackupRun")

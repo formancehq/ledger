@@ -97,7 +97,11 @@ func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledg
 				"currentReplicas", previousReplicas,
 				"desiredReplicas", desiredReplicas,
 			)
-			if err := raftScaleDown(ctx, r.Config, r.Clientset, ledger, previousReplicas, desiredReplicas); err != nil {
+			// Use the TLS mode of the *previous* StatefulSet (existingForTLS, snapshot
+			// taken before the CreateOrUpdate above): the rolling update has not yet
+			// started, so pod-0's gRPC server is still on the old TLS_MODE.
+			runningTLSMode := currentTLSModeFromStatefulSet(existingForTLS)
+			if err := raftScaleDown(ctx, r.Config, r.Clientset, ledger, previousReplicas, desiredReplicas, runningTLSMode); err != nil {
 				return fmt.Errorf("removing Raft nodes before scale-down: %w", err)
 			}
 		}
