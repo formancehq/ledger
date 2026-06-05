@@ -8,6 +8,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
 
+	"github.com/formancehq/go-libs/v5/pkg/audit/httpaudit"
 	"github.com/formancehq/go-libs/v5/pkg/authn/jwt"
 	"github.com/formancehq/go-libs/v5/pkg/fx/servicefx"
 
@@ -21,6 +22,13 @@ type BulkConfig struct {
 	Parallel int
 }
 
+type AuditConfig struct {
+	Enabled            bool
+	AsyncEnabled       bool
+	AsyncQueueCapacity int
+	AsyncWorkerCount   int
+}
+
 type Config struct {
 	Version              string
 	Debug                bool
@@ -28,16 +36,35 @@ type Config struct {
 	Pagination           storagecommon.PaginationConfig
 	Exporters            bool
 	ExperimentalFeatures []string
+	Audit                AuditConfig
 }
 
 func Module(cfg Config) fx.Option {
 	return fx.Options(
 		fx.Provide(func(
+			lc fx.Lifecycle,
 			backend system.Controller,
 			authenticator jwt.Authenticator,
 			publisher message.Publisher,
 			tracerProvider trace.TracerProvider,
 		) chi.Router {
+			auditOptions := []httpaudit.HTTPOption{
+				httpaudit.WithEnabled(cfg.Audit.Enabled),
+			}
+			if cfg.Audit.Enabled && cfg.Audit.AsyncEnabled {
+				asyncPublisher := httpaudit.NewAsyncPublisher(
+					publisher,
+					"audit-events",
+					"ledger",
+					httpaudit.WithAsyncPublishingQueueCapacity(cfg.Audit.AsyncQueueCapacity),
+					httpaudit.WithAsyncPublishingWorkerCount(cfg.Audit.AsyncWorkerCount),
+				)
+				lc.Append(fx.Hook{
+					OnStop: asyncPublisher.Close,
+				})
+				auditOptions = append(auditOptions, httpaudit.WithAsyncPublishing(asyncPublisher))
+			}
+
 			return NewRouter(
 				backend,
 				authenticator,
@@ -53,6 +80,7 @@ func Module(cfg Config) fx.Option {
 				WithPaginationConfiguration(cfg.Pagination),
 				WithExporters(cfg.Exporters),
 				WithExperimentalFeatures(cfg.ExperimentalFeatures),
+				WithAuditHTTPOptions(auditOptions...),
 			)
 		}),
 		servicefx.HealthModule(),

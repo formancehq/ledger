@@ -62,7 +62,7 @@ func NewRouter(
 		common.LogID(),
 		middleware.RequestLogger(api.NewLogFormatter()),
 		httpserver.OTLPMiddleware("ledger", debug),
-		httpaudit.Middleware(publisher, "audit-events", "ledger", nil),
+		httpaudit.Middleware(publisher, "audit-events", "ledger", nil, routerOptions.auditHTTPOptions...),
 		otelchimetric.NewRequestDurationMillis(baseCfg),
 		otelchimetric.NewRequestInFlight(baseCfg),
 		otelchimetric.NewResponseSizeBytes(baseCfg),
@@ -128,6 +128,7 @@ type routerOptions struct {
 	paginationConfig     storagecommon.PaginationConfig
 	exporters            bool
 	experimentalFeatures []string
+	auditHTTPOptions     []httpaudit.HTTPOption
 }
 
 type RouterOption func(ro *routerOptions)
@@ -165,6 +166,12 @@ func WithExporters(v bool) RouterOption {
 func WithExperimentalFeatures(features []string) RouterOption {
 	return func(ro *routerOptions) {
 		ro.experimentalFeatures = features
+	}
+}
+
+func WithAuditHTTPOptions(options ...httpaudit.HTTPOption) RouterOption {
+	return func(ro *routerOptions) {
+		ro.auditHTTPOptions = options
 	}
 }
 
