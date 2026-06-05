@@ -17,7 +17,7 @@ type QueryCheckpointScheduler struct {
 	logger          logging.Logger
 	isLeader        func() bool
 	getSchedule     func() string
-	proposeFn       func()
+	proposeFn       func() error
 	scheduleChanged signal.Signal
 	w               worker.Worker
 }
@@ -28,7 +28,7 @@ func NewQueryCheckpointScheduler(
 	logger logging.Logger,
 	isLeader func() bool,
 	getSchedule func() string,
-	proposeFn func(),
+	proposeFn func() error,
 	scheduleChanged signal.Signal,
 ) *QueryCheckpointScheduler {
 	return &QueryCheckpointScheduler{
@@ -110,7 +110,10 @@ func (s *QueryCheckpointScheduler) loop(stop <-chan struct{}) {
 		case <-timerCh:
 			if s.isLeader() {
 				s.logger.Infof("Query checkpoint scheduler firing: proposing CreateQueryCheckpoint")
-				s.proposeFn()
+
+				if err := s.proposeFn(); err != nil {
+					s.logger.Errorf("Failed to propose CreateQueryCheckpoint: %v (will retry on next tick)", err)
+				}
 			}
 
 			timerCh = resetTimer()

@@ -22,7 +22,7 @@ func TestPeriodSchedulerStartStop(t *testing.T) {
 		logger,
 		func() bool { return true },
 		func() string { return "" },
-		func() {},
+		func() error { return nil },
 		signal.New(),
 	)
 	ps.Start()
@@ -42,7 +42,11 @@ func TestPeriodSchedulerEmptySchedule(t *testing.T) {
 		logger,
 		func() bool { return true },
 		func() string { return "" }, // empty schedule - should not fire
-		func() { called.Add(1) },
+		func() error {
+			called.Add(1)
+
+			return nil
+		},
 		signal.New(),
 	)
 	ps.Start()
@@ -65,7 +69,11 @@ func TestPeriodSchedulerInvalidCron(t *testing.T) {
 		logger,
 		func() bool { return true },
 		func() string { return "not-a-cron" }, // invalid cron
-		func() { called.Add(1) },
+		func() error {
+			called.Add(1)
+
+			return nil
+		},
 		signal.New(),
 	)
 	ps.Start()
@@ -90,7 +98,7 @@ func TestPeriodSchedulerScheduleChanged(t *testing.T) {
 		logger,
 		func() bool { return true },
 		func() string { return schedule.Load().(string) },
-		func() {},
+		func() error { return nil },
 		sig,
 	)
 	ps.Start()
@@ -125,7 +133,11 @@ func TestPeriodSchedulerNonLeaderDoesNotPropose(t *testing.T) {
 		logger,
 		func() bool { return false }, // not leader
 		func() string { return "* * * * * *" },
-		func() { called.Add(1) },
+		func() error {
+			called.Add(1)
+
+			return nil
+		},
 		signal.New(),
 	)
 	ps.Start()

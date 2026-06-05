@@ -99,10 +99,12 @@ func newTestSealer(t *testing.T, store *dal.Store, closingPeriodID uint64) (*Sea
 
 	result := &testSealerResult{}
 	ps := newFixedPeriodState(&commonpb.Period{Id: closingPeriodID})
-	sealer := NewSealer(logger, store, attributes.New(), worker.NewChannel[SealRequest](logger, "test-seal", 1), func(periodID uint64, sealingHash, stateHash []byte) {
+	sealer := NewSealer(logger, store, attributes.New(), worker.NewChannel[SealRequest](logger, "test-seal", 1), func(periodID uint64, sealingHash, stateHash []byte) error {
 		result.periodID = periodID
 		result.sealingHash = sealingHash
 		result.stateHash = stateHash
+
+		return nil
 	}, func() bool { return true }, ps)
 
 	return sealer, result
@@ -248,8 +250,10 @@ func TestSealerRetryOnFailure(t *testing.T) {
 	sealRequestCh := worker.NewChannel[SealRequest](logger, "test-seal", 1)
 	// Use nil period state so recoverPendingSeal at startup does nothing.
 	ps := newFixedPeriodState(nil)
-	sealer := NewSealer(logger, store, attributes.New(), sealRequestCh, func(periodID uint64, sealingHash, stateHash []byte) {
+	sealer := NewSealer(logger, store, attributes.New(), sealRequestCh, func(periodID uint64, sealingHash, stateHash []byte) error {
 		proposeCalled.Add(1)
+
+		return nil
 	}, leader.Load, ps)
 	// Disable periodic reconciliation to avoid duplicate seal requests during the test.
 	sealer.reconcileInterval = time.Hour
@@ -309,7 +313,7 @@ func TestSealerRecoverPendingSealMultiplePeriods(t *testing.T) {
 	sealRequestCh := worker.NewChannel[SealRequest](logger, "test-seal", 10)
 	ps := &multiPeriodState{periods: []*commonpb.Period{p1, p2}}
 
-	sealer := NewSealer(logger, store, attributes.New(), sealRequestCh, func(uint64, []byte, []byte) {}, func() bool { return true }, ps)
+	sealer := NewSealer(logger, store, attributes.New(), sealRequestCh, func(uint64, []byte, []byte) error { return nil }, func() bool { return true }, ps)
 
 	sealer.recoverPendingSeal(make(chan struct{}))
 
@@ -347,7 +351,7 @@ func TestSealerRecoverPendingSealSkipsMissingCheckpoint(t *testing.T) {
 	sealRequestCh := worker.NewChannel[SealRequest](logger, "test-seal", 10)
 	ps := &multiPeriodState{periods: []*commonpb.Period{p1, p2}}
 
-	sealer := NewSealer(logger, store, attributes.New(), sealRequestCh, func(uint64, []byte, []byte) {}, func() bool { return true }, ps)
+	sealer := NewSealer(logger, store, attributes.New(), sealRequestCh, func(uint64, []byte, []byte) error { return nil }, func() bool { return true }, ps)
 
 	sealer.recoverPendingSeal(make(chan struct{}))
 
@@ -381,8 +385,10 @@ func TestSealerSkipsAlreadySealedPeriod(t *testing.T) {
 
 	var proposeCalled bool
 
-	sealer := NewSealer(logger, store, attributes.New(), worker.NewChannel[SealRequest](logger, "test-seal", 1), func(uint64, []byte, []byte) {
+	sealer := NewSealer(logger, store, attributes.New(), worker.NewChannel[SealRequest](logger, "test-seal", 1), func(uint64, []byte, []byte) error {
 		proposeCalled = true
+
+		return nil
 	}, func() bool { return true }, ps)
 
 	err := sealer.seal(SealRequest{

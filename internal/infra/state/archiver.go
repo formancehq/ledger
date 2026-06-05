@@ -28,7 +28,7 @@ type ArchiveRequest struct {
 }
 
 // ArchiveProposer is a callback to propose a ConfirmArchivePeriod order back into Raft.
-type ArchiveProposer func(periodID uint64)
+type ArchiveProposer func(periodID uint64) error
 
 // Archiver runs in the background to export closed period data to cold storage
 // and propose ConfirmArchivePeriod back into Raft for deterministic purge.
@@ -152,7 +152,9 @@ func (a *Archiver) archive(stop <-chan struct{}, req ArchiveRequest) error {
 		}
 
 		a.logger.WithFields(logFields).Infof("Archive integrity verified, proposing ConfirmArchivePeriod")
-		a.proposeFn(req.PeriodID)
+		if err := a.proposeFn(req.PeriodID); err != nil {
+			return fmt.Errorf("proposing ConfirmArchivePeriod for period %d: %w", req.PeriodID, err)
+		}
 
 		return nil
 	}
@@ -200,7 +202,11 @@ func (a *Archiver) archive(stop <-chan struct{}, req ArchiveRequest) error {
 	}
 
 	a.logger.WithFields(logFields).Infof("Period archival complete, proposing ConfirmArchivePeriod")
-	a.proposeFn(req.PeriodID)
+
+	// Propose ConfirmArchivePeriod back into Raft
+	if err := a.proposeFn(req.PeriodID); err != nil {
+		return fmt.Errorf("proposing ConfirmArchivePeriod for period %d: %w", req.PeriodID, err)
+	}
 
 	return nil
 }

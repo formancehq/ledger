@@ -153,7 +153,7 @@ func TestArchiverStartStop(t *testing.T) {
 	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 	cs := newMockColdStorage()
 
-	a := NewArchiver(logger, nil, cs, archiveReqCh, func(periodID uint64) {}, func() bool { return true }, "test-bucket", func(<-chan struct{}) {})
+	a := NewArchiver(logger, nil, cs, archiveReqCh, func(periodID uint64) error { return nil }, func() bool { return true }, "test-bucket", func(<-chan struct{}) {})
 	a.Start()
 	a.Stop()
 	// No deadlock or panic means success
@@ -189,7 +189,11 @@ func TestArchiverArchivesAndProposes(t *testing.T) {
 		dataStore,
 		cs,
 		archiveReqCh,
-		func(periodID uint64) { proposedPeriodID.Store(periodID) },
+		func(periodID uint64) error {
+			proposedPeriodID.Store(periodID)
+
+			return nil
+		},
 		func() bool { return true },
 		"test-bucket",
 		func(<-chan struct{}) {},
@@ -238,7 +242,11 @@ func TestArchiverAlreadyArchivedLeaderProposes(t *testing.T) {
 		nil, // no dataStore needed since archive already exists
 		cs,
 		archiveReqCh,
-		func(periodID uint64) { proposedPeriodID.Store(periodID) },
+		func(periodID uint64) error {
+			proposedPeriodID.Store(periodID)
+
+			return nil
+		},
 		func() bool { return true }, // is leader
 		"test-bucket",
 		func(<-chan struct{}) {},
@@ -282,7 +290,11 @@ func TestArchiverAlreadyArchivedFollowerDoesNotPropose(t *testing.T) {
 		nil,
 		cs,
 		archiveReqCh,
-		func(periodID uint64) { proposedPeriodID.Store(periodID) },
+		func(periodID uint64) error {
+			proposedPeriodID.Store(periodID)
+
+			return nil
+		},
 		func() bool { return false }, // not leader
 		"test-bucket",
 		func(<-chan struct{}) {},
@@ -328,7 +340,11 @@ func TestArchiverNonLeaderRetries(t *testing.T) {
 		dataStore,
 		cs,
 		archiveReqCh,
-		func(periodID uint64) { proposedPeriodID.Store(periodID) },
+		func(periodID uint64) error {
+			proposedPeriodID.Store(periodID)
+
+			return nil
+		},
 		isLeader.Load,
 		"test-bucket",
 		func(<-chan struct{}) {},
@@ -396,7 +412,11 @@ func TestArchiverSSTRoundtrip(t *testing.T) {
 		dataStore,
 		cs,
 		archiveReqCh,
-		func(periodID uint64) { proposedPeriodID.Store(periodID) },
+		func(periodID uint64) error {
+			proposedPeriodID.Store(periodID)
+
+			return nil
+		},
 		func() bool { return true },
 		"test-bucket",
 		func(<-chan struct{}) {},
@@ -475,7 +495,11 @@ func TestArchiver_FreshUploadPersistsChecksum(t *testing.T) {
 	var proposedPeriodID atomic.Uint64
 
 	a := NewArchiver(logger, dataStore, cs, archiveReqCh,
-		func(periodID uint64) { proposedPeriodID.Store(periodID) },
+		func(periodID uint64) error {
+			proposedPeriodID.Store(periodID)
+
+			return nil
+		},
 		func() bool { return true }, "test-bucket", func(<-chan struct{}) {})
 	a.Start()
 	t.Cleanup(a.Stop)
@@ -512,7 +536,11 @@ func TestArchiver_CrashRecoveryWithValidArchive(t *testing.T) {
 	var proposedPeriodID atomic.Uint64
 
 	a := NewArchiver(logger, nil, cs, archiveReqCh,
-		func(periodID uint64) { proposedPeriodID.Store(periodID) },
+		func(periodID uint64) error {
+			proposedPeriodID.Store(periodID)
+
+			return nil
+		},
 		func() bool { return true }, "test-bucket", func(<-chan struct{}) {})
 	a.Start()
 	t.Cleanup(a.Stop)
@@ -545,7 +573,11 @@ func TestArchiver_CrashRecoveryWithCorruptArchive(t *testing.T) {
 	var proposedPeriodID atomic.Uint64
 
 	a := NewArchiver(logger, nil, cs, archiveReqCh,
-		func(periodID uint64) { proposedPeriodID.Store(periodID) },
+		func(periodID uint64) error {
+			proposedPeriodID.Store(periodID)
+
+			return nil
+		},
 		func() bool { return true }, "test-bucket", func(<-chan struct{}) {})
 	a.Start()
 	t.Cleanup(a.Stop)
@@ -577,7 +609,11 @@ func TestArchiver_LegacyDataOnlyTriggersReupload(t *testing.T) {
 	var proposedPeriodID atomic.Uint64
 
 	a := NewArchiver(logger, dataStore, cs, archiveReqCh,
-		func(periodID uint64) { proposedPeriodID.Store(periodID) },
+		func(periodID uint64) error {
+			proposedPeriodID.Store(periodID)
+
+			return nil
+		},
 		func() bool { return true }, "test-bucket", func(<-chan struct{}) {})
 	a.Start()
 	t.Cleanup(a.Stop)

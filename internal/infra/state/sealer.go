@@ -25,7 +25,7 @@ type SealRequest struct {
 }
 
 // SealProposer is a callback to propose a SealPeriod order back into Raft.
-type SealProposer func(periodID uint64, sealingHash, stateHash []byte)
+type SealProposer func(periodID uint64, sealingHash, stateHash []byte) error
 
 // SealerPeriodState provides the Sealer with read access to the current period
 // state. Implemented by *Machine.
@@ -219,7 +219,9 @@ func (s *Sealer) seal(req SealRequest) error {
 	}).Infof("Period sealing complete, proposing SealPeriod")
 
 	// Propose the SealPeriod order back into Raft
-	s.proposeFn(req.PeriodID, sealingHash, stateHash)
+	if err := s.proposeFn(req.PeriodID, sealingHash, stateHash); err != nil {
+		return fmt.Errorf("proposing SealPeriod for period %d: %w", req.PeriodID, err)
+	}
 
 	return nil
 }

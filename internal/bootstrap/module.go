@@ -152,14 +152,16 @@ func ColdStorageModule(coldStorageDriver string) fx.Option {
 					store,
 					cold,
 					machine.ArchiveRequestCh(),
-					func(periodID uint64) {
-						_, _ = admissionHandler.Admit(context.Background(), &servicepb.Request{
+					func(periodID uint64) error {
+						_, err := admissionHandler.Admit(context.Background(), &servicepb.Request{
 							Type: &servicepb.Request_ConfirmArchivePeriod{
 								ConfirmArchivePeriod: &servicepb.ConfirmArchivePeriodRequest{
 									PeriodId: periodID,
 								},
 							},
 						})
+
+						return err
 					},
 					raftNode.IsLeader,
 					bucketID,
@@ -588,8 +590,8 @@ func Module() fx.Option {
 				admissionHandler ctrl.Admission,
 				raftNode *node.Node,
 			) *state.Sealer {
-				return state.NewSealer(logger, store, attrs, machine.SealRequestCh(), func(periodID uint64, sealingHash, stateHash []byte) {
-					_, _ = admissionHandler.Admit(context.Background(), &servicepb.Request{
+				return state.NewSealer(logger, store, attrs, machine.SealRequestCh(), func(periodID uint64, sealingHash, stateHash []byte) error {
+					_, err := admissionHandler.Admit(context.Background(), &servicepb.Request{
 						Type: &servicepb.Request_SealPeriod{
 							SealPeriod: &servicepb.SealPeriodRequest{
 								PeriodId:    periodID,
@@ -598,6 +600,8 @@ func Module() fx.Option {
 							},
 						},
 					})
+
+					return err
 				}, raftNode.IsLeader, machine)
 			},
 			func(
@@ -610,12 +614,14 @@ func Module() fx.Option {
 					logger,
 					raftNode.IsLeader,
 					machine.PeriodSchedule,
-					func() {
-						_, _ = admissionHandler.Admit(context.Background(), &servicepb.Request{
+					func() error {
+						_, err := admissionHandler.Admit(context.Background(), &servicepb.Request{
 							Type: &servicepb.Request_ClosePeriod{
 								ClosePeriod: &servicepb.ClosePeriodRequest{},
 							},
 						})
+
+						return err
 					},
 					machine.ScheduleChanged(),
 				)
@@ -630,12 +636,14 @@ func Module() fx.Option {
 					logger,
 					raftNode.IsLeader,
 					machine.QueryCheckpointSchedule,
-					func() {
-						_, _ = admissionHandler.Admit(context.Background(), &servicepb.Request{
+					func() error {
+						_, err := admissionHandler.Admit(context.Background(), &servicepb.Request{
 							Type: &servicepb.Request_CreateQueryCheckpoint{
 								CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{},
 							},
 						})
+
+						return err
 					},
 					machine.QueryCheckpointScheduleChanged(),
 				)

@@ -229,8 +229,8 @@ func (mc *MetadataConverter) proposeBatch(
 	entries []*raftcmdpb.ConvertMetadataEntry,
 	totalKeys uint64,
 	convertedKeysSoFar uint64,
-) {
-	_ = mc.proposer.ProposeProposal(&raftcmdpb.Proposal{
+) error {
+	return mc.proposer.ProposeProposal(&raftcmdpb.Proposal{
 		MetadataConversionBatches: []*raftcmdpb.MetadataConversionBatch{{
 			Ledger:             ledgerName,
 			TargetType:         targetType,
@@ -249,8 +249,8 @@ func (mc *MetadataConverter) proposeComplete(
 	targetType commonpb.TargetType,
 	key string,
 	expectedType commonpb.MetadataType,
-) {
-	_ = mc.proposer.ProposeProposal(&raftcmdpb.Proposal{
+) error {
+	return mc.proposer.ProposeProposal(&raftcmdpb.Proposal{
 		MetadataConversionsComplete: []*raftcmdpb.MetadataConversionCompletion{{
 			Ledger:       ledgerName,
 			TargetType:   targetType,
@@ -304,7 +304,10 @@ func (mc *MetadataConverter) convert(ctx context.Context, req MetadataConvertReq
 	// append-only update logs on every read). No background scan needed — just
 	// propose completion to transition CONVERTING → COMPLETE.
 	if req.TargetType == commonpb.TargetType_TARGET_TYPE_TRANSACTION {
-		mc.proposeComplete(req.LedgerName, req.TargetType, req.Key, req.Type)
+		if err := mc.proposeComplete(req.LedgerName, req.TargetType, req.Key, req.Type); err != nil {
+			return fmt.Errorf("proposing transaction metadata conversion completion: %w", err)
+		}
+
 		mc.logger.WithFields(logFields).Infof("Transaction metadata conversion complete (read-time enforcement)")
 
 		return nil
@@ -410,7 +413,13 @@ func (mc *MetadataConverter) convert(ctx context.Context, req MetadataConvertReq
 			}
 
 			convertedSoFar += uint64(len(batch))
-			mc.proposeBatch(req.LedgerName, req.TargetType, req.Key, req.Type, batch, totalMatchingKeys, convertedSoFar)
+
+			if err := mc.proposeBatch(req.LedgerName, req.TargetType, req.Key, req.Type, batch, totalMatchingKeys, convertedSoFar); err != nil {
+				_ = convertIter.Close()
+
+				return fmt.Errorf("proposing metadata conversion batch: %w", err)
+			}
+
 			batch = make([]*raftcmdpb.ConvertMetadataEntry, 0, mc.batchSize)
 		}
 	}
@@ -436,11 +445,16 @@ func (mc *MetadataConverter) convert(ctx context.Context, req MetadataConvertReq
 		}
 
 		convertedSoFar += uint64(len(batch))
-		mc.proposeBatch(req.LedgerName, req.TargetType, req.Key, req.Type, batch, totalMatchingKeys, convertedSoFar)
+
+		if err := mc.proposeBatch(req.LedgerName, req.TargetType, req.Key, req.Type, batch, totalMatchingKeys, convertedSoFar); err != nil {
+			return fmt.Errorf("proposing metadata conversion batch: %w", err)
+		}
 	}
 
 	// Propose conversion completion.
-	mc.proposeComplete(req.LedgerName, req.TargetType, req.Key, req.Type)
+	if err := mc.proposeComplete(req.LedgerName, req.TargetType, req.Key, req.Type); err != nil {
+		return fmt.Errorf("proposing metadata conversion completion: %w", err)
+	}
 
 	mc.logger.WithFields(logFields).Infof("Metadata conversion complete, proposed completion")
 

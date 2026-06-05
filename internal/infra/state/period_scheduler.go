@@ -17,7 +17,7 @@ type PeriodScheduler struct {
 	logger            logging.Logger
 	isLeader          func() bool
 	getPeriodSchedule func() string
-	proposeFn         func()
+	proposeFn         func() error
 	scheduleChanged   signal.Signal
 	w                 worker.Worker
 }
@@ -28,7 +28,7 @@ func NewPeriodScheduler(
 	logger logging.Logger,
 	isLeader func() bool,
 	getPeriodSchedule func() string,
-	proposeFn func(),
+	proposeFn func() error,
 	scheduleChanged signal.Signal,
 ) *PeriodScheduler {
 	return &PeriodScheduler{
@@ -110,7 +110,10 @@ func (ps *PeriodScheduler) loop(stop <-chan struct{}) {
 		case <-timerCh:
 			if ps.isLeader() {
 				ps.logger.Infof("Period scheduler firing: proposing ClosePeriod")
-				ps.proposeFn()
+
+				if err := ps.proposeFn(); err != nil {
+					ps.logger.Errorf("Failed to propose ClosePeriod: %v (will retry on next tick)", err)
+				}
 			}
 
 			timerCh = resetTimer()
