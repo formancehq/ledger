@@ -2,7 +2,7 @@
   import { pebble } from "../lib/state.svelte.js";
   import { fmtValue } from "../lib/payloadBuilders.js";
 
-  let collapsed = $state(false);
+  let collapsed = $state(true);
   const entries = $derived([...pebble.map]);
   const meta = $derived(`${pebble.map.size} entr${pebble.map.size === 1 ? "y" : "ies"}`);
 

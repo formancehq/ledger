@@ -1,13 +1,21 @@
 <script>
   import { app } from "../lib/state.svelte.js";
 
-  let collapsed = $state(false);
+  let collapsed = $state(true);
 
-  const selected = $derived(app.selectedTxId != null
-    ? app.inflight.find(t => t.id === app.selectedTxId)
-      ?? app.completed.find(t => t.id === app.selectedTxId)
-    : null);
-  const events = $derived(selected ? selected.timeline : []);
+  // $derived.by() with explicit function form — the previous expression-form
+  // with `??` chained off two array.find() calls produced inconsistent reads
+  // in Svelte 5 (header saw the entry, body saw null in the same render).
+  // Force-coercing undefined → null at the tail makes the {#if selected}
+  // and {#if !selected} branches agree.
+  const selected = $derived.by(() => {
+    if (app.selectedTxId == null) return null;
+    const live = app.inflight.find(t => t.id === app.selectedTxId);
+    if (live) return live;
+    const done = app.completed.find(t => t.id === app.selectedTxId);
+    return done ?? null;
+  });
+  const events  = $derived(selected ? selected.timeline : []);
   const isDone  = $derived(selected != null && app.inflight.every(t => t.id !== selected.id));
 
   // Accordion: only one event open at a time, defaulting to the newest. When
@@ -59,7 +67,7 @@
     {:else if events.length === 0}
       <div class="event-empty">Tx just sent — events will appear here as steps run.</div>
     {:else}
-      {#each events.slice().reverse() as ev, j (ev.stepIndex)}
+      {#each events.slice().reverse() as ev, j (events.length - 1 - j)}
         {@const i = events.length - 1 - j}
         <div class="event-section" class:open={i === openIdx} style="--evt-color: {ev.color}">
           <div class="event-title"

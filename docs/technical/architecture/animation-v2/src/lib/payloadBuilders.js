@@ -284,23 +284,32 @@ export function eventProposal(tx, cache, raft) {
 }
 
 export function eventCommitted(tx, cache, raft) {
-  const html = paint`${H("Committed Raft entry")}  ${CMT("// quorum reached; the proposal above is now durable in the cluster")}
+  // A batched WAL/apply tick covers N entries — each one was a separate
+  // Propose call with its own Raft index. Render the index range so the
+  // panel reflects "this Ready-loop tick committed entries idx..idx".
+  const orders = tx.batch ? [tx, ...tx.batch.members] : [tx];
+  const lo = orders[0].commitIndex;
+  const hi = orders[orders.length - 1].commitIndex;
+  const isBatch = orders.length > 1;
+  const idxField = isBatch
+    ? paint`${N(String(lo))}…${N(String(hi))}   ${CMT("// N entries committed in one Ready tick — each is its own Raft entry")}`
+    : paint`${N(String(tx.commitIndex ?? raft.leaderIdx))}`;
+  const html = paint`${H("Committed Raft entry" + (isBatch ? ` (${orders.length} entries batched)` : ""))}  ${CMT("// quorum reached; the proposal above is now durable in the cluster")}
 
 ${K("Entry")} {
   ${K("type")}:    LOG_CREATE
   ${K("term")}:    ${N(String(tx.commitTerm  ?? raft.term))}
-  ${K("index")}:   ${N(String(tx.commitIndex ?? raft.leaderIdx))}
+  ${K("index")}:   ${idxField}
   ${K("command")}: → ${CMT("see 'Proposal sent to Raft' above")}
 }`;
-  return { title: "Raft · Committed", html };
+  return { title: isBatch ? `Raft · Committed (${orders.length} entries)` : "Raft · Committed", html };
 }
 
 export function eventPreloadResult(tx /*, cache, raft */) {
-  // The action at ⑤b records exactly what MirrorPreload did with each
-  // preload entry (tx.preloadDecisions). We replay that decision log here
-  // instead of recomputing from plan.miss, so a STALE preload — one whose
-  // value was rejected because Gen0 already held a fresher entry from a
-  // prior tx's apply — is visible to the reader.
+  // ⑤b records THIS tx's preload decisions only — one proposal == 1 tx,
+  // one fsm.Preload call per proposal (machine.go:1100). Each tx in a
+  // batch (lead and members) has its own preloadDecisions on its own
+  // timeline; this builder renders only the one we're called with.
   const decisions = tx.preloadDecisions || [];
   let body = paint`${H("FSM.Preload(payload)")}  ${CMT("// runs BEFORE the deterministic apply — populates the cache for keys not yet there")}\n\n`;
   body += paint`${H("MirrorPreload")} → Gen0:\n`;
@@ -325,10 +334,34 @@ export function eventApplyResult(tx /*, cache */) {
   // Read from the tx snapshot (recorded by step ⑤c) — by the time this event
   // is emitted in multi-tx mode, a later rotation might have moved the
   // boundary out of Gen0, so reading the cache here would return "?".
-  const logId = tx.appliedLogId ?? "?";
-  const txId  = tx.appliedTxId  ?? "?";
-  const posts = tx.appliedPostingCount ?? 0;
-  const html = paint`${H("Apply result")}  ${CMT("// machine.go applyProposal — one pebble.Batch holds the entire entry, committed NoSync")}
+  //
+  // If this is a batched entry, we walk every order (lead + members) so the
+  // panel shows the full sequence of allocated logId/txId and the cumulative
+  // boundary bump — mirrors the FSM iterating N orders inside one
+  // applyProposal call.
+  const orders     = tx.batch ? [tx, ...tx.batch.members] : [tx];
+  const orderCount = orders.length;
+  const isBatch    = orderCount > 1;
+  const totalPosts = orders.reduce((acc) => acc + 1, 0);
+  const logBlocks = orders.map(t => {
+    const lId = t.appliedLogId ?? "?";
+    const tId = t.appliedTxId  ?? "?";
+    return paint`  ${K("Log")} {
+    ${K("id")}: ${N(String(lId))}, ${K("type")}: NEW_TRANSACTION, ${K("txid")}: ${N(String(tId))},
+    ${K("hash")}: ${S(`"sha256:${hashFor(lId)}…"`)},
+    ${K("Δ")} ${t.source}.${t.asset} −${t.amount}  ·  ${t.destination}.${t.asset} +${t.amount}
+  }`;
+  }).join("\n");
+  const lo = orders[0].commitIndex;
+  const hi = orders[orders.length - 1].commitIndex;
+  const idxRange = lo === hi ? String(lo) : `${lo}…${hi}`;
+  const header = isBatch
+    ? `Apply result (${orderCount} entries [idx ${idxRange}] in one Ready-loop tick)`
+    : `Apply result`;
+  const mirrorKeys = isBatch
+    ? `volumes / boundary for all ${orderCount} orders`
+    : `volumes(${tx.source}.${tx.asset}), volumes(${tx.destination}.${tx.asset}), boundary(${tx.ledger})`;
+  const html = paint`${H(header)}  ${CMT("// machine.go applyProposal — one pebble.Batch holds the entire entry, committed NoSync")}
 
 ${CMT("// FSM applyProposal sub-sequence (single batch):")}
 ${CMT("//   1. applyTechnicalUpdates  — cluster config / shared state")}
@@ -336,28 +369,23 @@ ${CMT("//   2. MirrorPreload + MirrorTouch  — cache populated (already shown a
 ${CMT("//   3. HLC timestamp advance")}
 ${CMT("//   4. ensurePeriodBootstrapped")}
 ${CMT("//   5. WriteSet.Reset(effectiveDate)")}
-${CMT("//   6. processor.ProcessOrders  — numscript + posting validation")}
+${CMT(`//   6. processor.ProcessOrders  — numscript + posting validation × ${orderCount}`)}
 ${CMT("//   7. ComputeAuditHash  — blake3 over orders")}
 ${CMT("//   8. appendAuditEntries  — log + audit")}
 ${CMT("//   9. WriteSet.Merge  — volumes, boundary, metadata, references, ...")}
 
-${K("Log")} {
-  ${K("id")}:     ${N(String(logId))},          ${CMT("// allocated from boundary.nextLogId")}
-  ${K("type")}:   NEW_TRANSACTION,
-  ${K("txid")}:   ${N(String(txId))},          ${CMT("// per-ledger transaction id")}
-  ${K("hash")}:   ${S(`"sha256:${hashFor(logId)}…"`)}
-}
-${K("Δ volumes")}:  ${tx.source}.${tx.asset} −${tx.amount}  ·  ${tx.destination}.${tx.asset} +${tx.amount}
-${K("boundary")}:  postingCount = ${N(String(posts))}
+${logBlocks}
+
+${K("boundary")}:  postingCount += ${N(String(totalPosts))}   ${CMT(isBatch ? "// one bump per order in the batch" : "")}
 
 ${H("pebble.Batch writes (NoSync)")}:
-  ${K("log/<id>")}          → audit + log entry (orders + posted hash)
-  ${K("0xFF cache mirror")} → volumes(${tx.source}.${tx.asset}), volumes(${tx.destination}.${tx.asset}), boundary(${tx.ledger})
+  ${K("log/<id>")}          → audit + log entries (${N(String(orderCount))} ${orderCount === 1 ? "order" : "orders"} share this batch)
+  ${K("0xFF cache mirror")} → ${mirrorKeys}
   ${K("rotation meta")}     ${CMT("// if a gen boundary was crossed, the rotation lands in this same batch")}
 
 ${K("lastPersistedIndex")} ← ${N(String(tx.commitIndex ?? "?"))}   ${CMT("// in-memory atomic, NOT persisted on disk — feeds WaitForApplied for linearizable reads")}
 ${CMT("// durability of the batch comes from the upstream Raft WAL, not from fsync here (pebble.NoSync)")}`;
-  return { title: "FSM · Apply mutations committed", html };
+  return { title: isBatch ? `FSM · Batched apply committed (${orderCount} entries · idx ${idxRange})` : "FSM · Apply mutations committed", html };
 }
 
 export function eventResponse(tx, cache, raft) {

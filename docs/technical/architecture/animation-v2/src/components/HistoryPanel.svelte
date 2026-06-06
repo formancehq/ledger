@@ -19,7 +19,7 @@
       {#if app.completed.length === 0}
         <li class="cache-empty">∅ no completed transactions yet</li>
       {:else}
-        {#each app.completed.slice().reverse() as t (t.id)}
+        {#each app.completed.slice().sort((a, b) => (b.commitIndex ?? -Infinity) - (a.commitIndex ?? -Infinity)) as t (t.id)}
           <li class="inflight-row history-row"
               class:selected={t.id === app.selectedTxId}
               onclick={() => selectTx(t.id)}

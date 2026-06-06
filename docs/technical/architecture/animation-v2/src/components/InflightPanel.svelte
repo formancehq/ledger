@@ -29,7 +29,12 @@
             <span class="inflight-chip" style="background: {t.color}"></span>
             <span class="inflight-id">#{t.id}</span>
             <span class="inflight-route">{t.source} → {t.destination} · {t.amount} {t.asset}</span>
-            <span class="inflight-step">{t.status === "blocked" ? "BLOCKED" : `step ${t.stepIndex + 1}/${steps.length}`}</span>
+            <span class="inflight-step">{
+              t.status === "blocked" ? "BLOCKED"
+              : (t.batch && !t.batchLead) ? `BATCHED → tx#${t.batch.leadId}`
+              : (t.batch && t.batchLead) ? `BATCH LEAD · step ${t.stepIndex + 1}/${steps.length}`
+              : `step ${t.stepIndex + 1}/${steps.length}`
+            }</span>
           </li>
         {/each}
       {/if}

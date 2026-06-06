@@ -1,22 +1,29 @@
-import { app, cache } from "./state.svelte.js";
+import { app, cache, proxyOf } from "./state.svelte.js";
 import { steps } from "./steps.js";
-import { raftLock, fsmLock, awaitResumeOrNext, isCancelled } from "./gates.js";
-import { clearTxDots, placeRestDot, clearRestDot } from "./dots.js";
-import { takeCheckpoint } from "./snapshot.js";
-import { generationFor } from "./cache.js";
-import { computePlan, eventGuardRebuild } from "./payloadBuilders.js";
-import { COLORS } from "./colors.js";
+import { awaitResumeOrNext, isCancelled, channelLock, fsmLock, raftLock } from "./gates.js";
+import { clearTxDots, placeRestDotAt, clearRestDot } from "./dots.js";
+import { clearTxAnimDots } from "./anim.js";
+import { ANCHOR } from "./geometry.js";
 
 // Single UI callback — banner update on step entry. Timeline mutations happen
 // directly on tx.timeline; the Svelte proxy picks them up.
 let bus = { onStep: () => {} };
 export function bindRunBus(b) { bus = b; }
 
-// Bail out helper — every cancel path needs to release whichever lock the tx is
-// holding and clear its dots before returning.
+// Bail out helper — every cancel path needs to release whichever lock the tx
+// is holding and clear its dots before returning. Locks are tracked per-tx
+// via boolean flags (_heldRaftLock / _heldFsmLock / _heldChannelSlot); bail
+// frees each held one via the bare module-scoped lock ref. Also resolves
+// batch.applied if this tx is the lead of a batch — otherwise members would
+// wait forever on the dead lead.
 function bail(tx) {
-  if (tx.stepIndex === 5) raftLock.release();
-  if (tx.stepIndex === 9) fsmLock.release();
+  // Release every lock the tx is holding via the bare module-scoped refs.
+  // Going through a stored proxy on tx would target a different object
+  // than the one awaiters are queued on.
+  if (tx._heldRaftLock)    { raftLock.release();    tx._heldRaftLock = false; }
+  if (tx._heldFsmLock)     { fsmLock.release();     tx._heldFsmLock = false; }
+  if (tx._heldChannelSlot) { channelLock.release(); tx._heldChannelSlot = false; }
+  if (tx.batch && tx.batchLead) tx.batch.resolveApplied();
   clearTxDots(tx);
 }
 
@@ -32,13 +39,16 @@ function removeFromInflight(tx) {
   }
 }
 
-// Entry point used by Send / Repeat. Sets up the inflight list state then hands
-// off to runStepsLoop. applyCheckpoint() uses runStepsLoop() directly because
-// restored txs are already in app.inflight.
+// Entry point used by Send / Repeat. Sets up the inflight list state then
+// hands off to runStepsLoop on the Svelte 5 PROXY for the tx — not the bare
+// ref. Mutating the bare object (e.g. tx.stepIndex++) doesn't propagate
+// through the proxy's signals, so the In-flight panel, Lifecycle, and any
+// other $derived/$effect reader stays frozen on initial values. Driving
+// the loop with the proxy fixes the whole reactivity chain in one shot.
 export function runCycle(tx) {
   app.inflight.push(tx);
   app.selectedTxId = tx.id;
-  runStepsLoop(tx);
+  runStepsLoop(app.inflight.at(-1));
 }
 
 // The lifecycle loop. Each iter:
@@ -63,47 +73,49 @@ export async function runStepsLoop(tx) {
       continue;
     }
 
-    // Park the dot at the entry edge of this step (= exit of the previous one).
-    if (tx.stepIndex > 0) placeRestDot(tx, tx.stepIndex - 1);
+    // No more STEP_REST-based dot parking — anim() now leaves its dot at
+    // the end of the last path it walked, so the previous step's leftover
+    // dots ARE the rest dots (by construction, no maintenance). Special
+    // case: a batched member that just landed at ⑥b (after skipping ⑥a
+    // via skipIf) never ran ②③④⑤'s anims, so there's nothing for them
+    // on the FSM side — park them explicitly at the FSM where the lead
+    // applied on their behalf.
+    if (tx.batch && !tx.batchLead && tx.stepIndex === 13) {
+      placeRestDotAt(tx, ANCHOR.fsmIn);
+    }
 
     if (tx.stepIndex > 0) await awaitResumeOrNext(tx);
     if (isCancelled(tx)) { bail(tx); return; }
 
-    // Snapshot AFTER the gate and BEFORE the action so Previous lands here.
-    if (tx.stepIndex > 0) takeCheckpoint();
-
+    // Clear the previous step's leftover dots (incl. any restDot the
+    // special case above placed) right before this step's action emits
+    // new ones. Tagging dots by tx.id keeps other in-flight txs' dots intact.
     clearRestDot(tx);
+    clearTxAnimDots(tx.id);
 
-    if (tx.stepIndex === 5) {
-      await raftLock.acquire(tx);
+    // Declarative pre-action hook: steps that need extra logic before their
+    // action runs (ProposalGuard rebuild at ①f, joinReadyTick + batched-
+    // member short-circuit at ②) implement `beforeAction(tx)`. The hook may
+    // return `{ jumpTo: <stepIndex> }` to skip the rest of this iter and
+    // jump to a different step (used by the batched-member shortcut).
+    if (s.beforeAction) {
+      const r = await s.beforeAction(tx);
       if (isCancelled(tx)) { bail(tx); return; }
-      // ProposalGuard rebuild check — preloader.go:209-236.
-      // Under the tracker lock, recompute gen(nextIndex) and compare to what
-      // BuildPreloads saw optimistically at ①d. If they disagree, the cache
-      // has rotated since admission computed its plan — drop it and rebuild.
-      if (tx.proposalPlan) {
-        const currentFutureIdx = app.raft.leaderIdx + 1;
-        const planGen = generationFor(tx.proposalPlan.futureIdx, cache.threshold);
-        const currentGen = generationFor(currentFutureIdx, cache.threshold);
-        if (planGen !== currentGen) {
-          const stale = tx.proposalPlan;
-          tx.proposalPlanStale = stale;
-          tx.proposalPlan = null;             // force planFor to recompute
-          const fresh = computePlan(tx, cache, app.raft);
-          // Emit a warning event into the lifecycle timeline (proxy-routed).
-          const entry = eventGuardRebuild(tx, stale, fresh);
-          const proxy = app.inflight.find(t => t.id === tx.id);
-          if (proxy) {
-            proxy.timeline = [...proxy.timeline,
-              { stepIndex: tx.stepIndex, color: COLORS.raft, ...entry }];
-          }
-        }
-      }
-    } else if (tx.stepIndex === 9) {
-      // raftLock was already released at the end of the WAL anim inside
-      // step ②'s action — the propose-side gate is only meant to serialize
-      // the leader's WAL batches, not the whole apply pipeline.
-      await fsmLock.acquire(tx);
+      if (r?.jumpTo != null) { tx.stepIndex = r.jumpTo; continue; }
+    }
+
+    // Declarative lock acquire: step ② declares `acquires: <lock>` and
+    // the runner takes it just before the action. We map the acquired
+    // lock to a boolean flag on tx — storing the lock OBJECT on the tx
+    // proxy would proxify it, and a stored proxy ref doesn't compare ===
+    // with the bare module-scoped lock that bail/release need to operate
+    // on. (⑤a's fsmLock + channelLock are managed manually inside the
+    // step's action for the same reason.)
+    if (s.acquires) {
+      await s.acquires.acquire(tx);
+      if (s.acquires === raftLock)         tx._heldRaftLock = true;
+      else if (s.acquires === fsmLock)     tx._heldFsmLock = true;
+      else if (s.acquires === channelLock) tx._heldChannelSlot = true;
       if (isCancelled(tx)) { bail(tx); return; }
     }
 
@@ -121,7 +133,12 @@ export async function runStepsLoop(tx) {
       await s.action(tx);
     } catch (e) {
       console.error("Step", tx.stepIndex, "of tx#" + tx.id, "failed:", e);
-      raftLock.release(); fsmLock.release();
+      if (tx._heldRaftLock)    { raftLock.release();    tx._heldRaftLock = false; }
+      if (tx._heldFsmLock)     { fsmLock.release();     tx._heldFsmLock = false; }
+      if (tx._heldChannelSlot) { channelLock.release(); tx._heldChannelSlot = false; }
+      // If the failing tx was the lead of a batch, unblock the members so
+      // they don't hang on a never-resolving applied promise.
+      if (tx.batch && tx.batchLead) tx.batch.resolveApplied();
       clearTxDots(tx);
       app.activeActions--;
       removeFromInflight(tx);
@@ -130,6 +147,16 @@ export async function runStepsLoop(tx) {
     app.activeActions--;
 
     if (isCancelled(tx)) { bail(tx); return; }
+
+    // Declarative lock release: step ② declares `releases: <lock>` and
+    // the runner frees it just after the action. Clear the matching flag
+    // so bail() doesn't try to double-release.
+    if (s.releases) {
+      s.releases.release();
+      if (s.releases === raftLock)         tx._heldRaftLock = false;
+      else if (s.releases === fsmLock)     tx._heldFsmLock = false;
+      else if (s.releases === channelLock) tx._heldChannelSlot = false;
+    }
 
     // After the action runs, append an event to the tx's lifecycle timeline.
     // Steps that don't introduce new info (①b/①c, ②/③/④) leave `event` unset.
@@ -140,7 +167,7 @@ export async function runStepsLoop(tx) {
     if (s.event) {
       const entry = s.event(tx);
       if (entry) {
-        const proxy = app.inflight.find(t => t.id === tx.id);
+        const proxy = proxyOf(tx);
         if (proxy) {
           proxy.timeline = [...proxy.timeline, { stepIndex: tx.stepIndex, color: s.color, ...entry }];
         }
@@ -149,7 +176,6 @@ export async function runStepsLoop(tx) {
 
     tx.stepIndex++;
     if (tx.stepIndex === 1 && tx.stepIndex < steps.length) app.paused = true;
-    if (tx.stepIndex === 12) fsmLock.release();
   }
 
   // Loop exit — tx has gone through ⑥. Archive a snapshot (timeline,
@@ -163,7 +189,7 @@ export async function runStepsLoop(tx) {
   // Read timeline via the proxy — the events were pushed through the inflight
   // proxy (runCycle line ~116) so the bare `tx.timeline` we hold here is the
   // empty array from makeTx. Same proxy/bare-ref issue we hit with preloadDecisions.
-  const proxy = app.inflight.find(t => t.id === tx.id);
+  const proxy = proxyOf(tx);
   const liveTimeline = proxy ? proxy.timeline : tx.timeline;
   app.completed.push({
     id: tx.id, color: tx.color,

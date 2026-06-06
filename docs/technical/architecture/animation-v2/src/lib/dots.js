@@ -1,5 +1,5 @@
-import { makeDot } from "./anim.js";
-import { STEP_REST, blockPosition } from "./geometry.js";
+import { makeDot, clearTxAnimDots } from "./anim.js";
+import { blockPosition } from "./geometry.js";
 
 // Both kinds of "parked" dots (rest after a step, blocked at a lock gate) share
 // the same lifecycle: pin a circle at a fixed (x, y), attach a CSS class for
@@ -16,7 +16,9 @@ function placeAt(tx, slot, at, radius, cssClass) {
   const dots = [];
   for (const a of anchors) {
     if (!a) continue;
-    const dot = makeDot(tx.color, radius);
+    // Tag every dot with tx.id so clearTxAnimDots(tx.id) can wipe them
+    // alongside any anim leftovers — the two layers share the same cleanup.
+    const dot = makeDot(tx.color, radius, tx.id);
     dot.setAttribute("cx", a.x);
     dot.setAttribute("cy", a.y);
     dot.classList.add(cssClass);
@@ -34,10 +36,12 @@ function clearSlot(tx, slot) {
   tx[slot] = null;
 }
 
-// Resting dot — visible while paused between steps. The position is the
-// edge of the box the tx has just entered.
-export function placeRestDot(tx, stepIndex) {
-  placeAt(tx, "restDot", STEP_REST[stepIndex], 5, "rest-dot");
+// Manual rest-dot placement. Used by runCycle's batched-member special
+// case at ⑥b: members never ran any anim through ②③④⑤, so the "anim
+// leftover dot" pattern has nothing to show them with — we park one
+// explicitly at the FSM where the lead applied on their behalf.
+export function placeRestDotAt(tx, anchor) {
+  placeAt(tx, "restDot", anchor, 5, "rest-dot");
 }
 export function clearRestDot(tx) { clearSlot(tx, "restDot"); }
 
@@ -49,8 +53,11 @@ export function showBlockedDot(tx) {
 }
 export function clearBlockedDot(tx) { clearSlot(tx, "blockedDot"); }
 
-// Drop everything a tx owns in the SVG layer.
+// Drop everything a tx owns in the SVG layer — restDot, blockedDot, AND
+// every anim leftover dot (tagged with tx.id via makeDot). Called by
+// runCycle on completion + by bail() on cancellation.
 export function clearTxDots(tx) {
   clearRestDot(tx);
   clearBlockedDot(tx);
+  clearTxAnimDots(tx.id);
 }

@@ -20,11 +20,16 @@ export const app = $state({
   // Raft cluster -------------------------------------------------------
   raft: {
     term: 1,
-    leaderIdx: 1,
-    f1Match: 1, f2Match: 1,
-    leaderApplied: 1,
-    f1Applied: 1, f2Applied: 1,
+    leaderIdx: 0,
+    f1Match: 0, f2Match: 0,
+    leaderApplied: 0,
+    f1Applied: 0, f2Applied: 0,
   },
+  // Leader's persistent log bounds. firstIndex is the floor of the log
+  // (1 until WAL truncation moves it forward); lastIndex bumps in step ②
+  // for each Ready-tick batch entry. lastIndex < firstIndex means the
+  // WAL has no entries yet (this is the initial state).
+  wal: { leaderFirst: 1, leaderLast: 0 },
   // In-flight ledger transactions (tx objects, see lib/tx.js) ----------
   inflight: [],
   // Completed transactions kept around so the user can replay the lifecycle
@@ -39,11 +44,19 @@ export const app = $state({
   paused: false,
   cancelRequested: false,
   activeActions: 0,
-  // Stack of state snapshots for the Previous button -------------------
-  history: [],
 });
 
 // Non-reactive coordination — Promises waiting on Pause/Next gates. Not part
 // of `state` because mutations during the resolve flow shouldn't churn every
 // reactive consumer.
 export const resumeWaiters = [];
+
+// Look up the Svelte 5 proxy for a bare tx by id. Svelte 5 proxifies items
+// as they enter app.inflight, so the bare ref held by runCycle / batch
+// members never matches what subscribers see — writes through the bare ref
+// silently bypass reactivity. Any timeline mutation, batch field update,
+// proxy.timeline = [...] etc. MUST go through the proxy returned here.
+// Returns undefined if the tx has been archived or never inflight'd.
+export function proxyOf(tx) {
+  return app.inflight.find(t => t.id === tx.id);
+}

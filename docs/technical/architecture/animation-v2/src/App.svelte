@@ -1,7 +1,9 @@
 <script>
+  import { onMount } from "svelte";
   import { app } from "./lib/state.svelte.js";
   import { HIGHLIGHTS } from "./lib/geometry.js";
   import { bindRunBus } from "./lib/runCycle.js";
+  import { startCompactor, stopCompactor } from "./lib/compactor.js";
 
   import Diagram        from "./components/Diagram.svelte";
   import StepBanner     from "./components/StepBanner.svelte";
@@ -31,10 +33,15 @@
     },
   });
 
+  onMount(() => {
+    startCompactor();
+    return () => stopCompactor();
+  });
+
   // When the simulation finishes everywhere, fall back to a "done" message.
   // We watch on inflight emptying with $effect.
   $effect(() => {
-    if (app.inflight.length === 0 && app.history.length === 0) {
+    if (app.inflight.length === 0) {
       banner = {
         title: "Ledger v3 — Architecture overview",
         desc:  "Fill the form and click ▶ Send to inject a transaction. Multiple sends queue up; the FSM + Raft pipeline serializes the critical section.",

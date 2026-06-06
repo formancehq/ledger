@@ -3,7 +3,7 @@
   import { cacheTick } from "../lib/cacheTick.svelte.js";
   import { fmtValue } from "../lib/payloadBuilders.js";
 
-  let collapsed = $state(false);
+  let collapsed = $state(true);
 
   // SvelteMap covers set/delete/clear reactivity within a generation.
   // cacheTick.v covers the gen0 / gen1 SWAP at rotation and the reset (the

@@ -48,6 +48,10 @@ svg { display: block; width: 100%; height: auto; background: var(--bg); }
 
 /* Consultation rails (dotted) ----------------------------------------- */
 .consult-edge { stroke: #c792ea; stroke-width: 2; stroke-dasharray: 0.1 5; stroke-linecap: round; opacity: 0.35; fill: none; }
+/* Buffered apply channel (1-deep make(chan applyWork, 1) in applier.go) —
+   wider stroke + tighter dashes than .edge so the queue reads as a "pipe
+   with a slot" rather than a regular hop. */
+.queue-edge   { stroke: #ffcb6b; stroke-width: 4; stroke-dasharray: 4 2; stroke-linecap: butt;  opacity: 0.45; fill: none; }
 
 /* Buttons -------------------------------------------------------------- */
 .controls { display: flex; align-items: center; gap: 8px; margin: 10px 0 16px 0; padding: 8px 12px;

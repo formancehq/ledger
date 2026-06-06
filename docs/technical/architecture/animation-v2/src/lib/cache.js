@@ -119,25 +119,6 @@ export function makeCache() {
       cacheTick.v++;
     },
 
-    snapshot() {
-      return {
-        currentGen: this.currentGen,
-        baseIdx:    { ...this.baseIdx },
-        // structuredClone returns plain Maps; restore() repopulates the
-        // SvelteMap instances to preserve reactivity.
-        gen0:       structuredClone(new Map(this.gen0)),
-        gen1:       structuredClone(new Map(this.gen1)),
-      };
-    },
-    restore(snap) {
-      this.currentGen = snap.currentGen;
-      this.baseIdx    = { ...snap.baseIdx };
-      this.gen0.clear();
-      for (const [k, v] of structuredClone(snap.gen0)) this.gen0.set(k, v);
-      this.gen1.clear();
-      for (const [k, v] of structuredClone(snap.gen1)) this.gen1.set(k, v);
-      cacheTick.v++;
-    },
   };
   return cache;
 }
