@@ -156,7 +156,11 @@
   <path id="e-client-grpc"      class="edge" d="M160,315 C190,315 200,230 220,230"/>
   <path id="e-grpc-ctrl"        class="edge" d="M300,260 L300,280"/>
   <path id="e-ctrl-adm"         class="edge" d="M300,340 L300,360"/>
-  <path id="e-adm-leader"       class="edge" d="M380,390 C420,390 440,410 470,410"/>
+  <!-- Propose flow leaves admission near the top of its right edge; the
+       leader→admission response lands lower (see e-leader-adm). Keeping
+       the two arcs separated visually distinguishes "request going to
+       Raft" from "ack coming back to the client goroutine". -->
+  <path id="e-adm-leader"       class="edge" d="M380,375 C420,375 450,395 470,410"/>
   <path id="e-leader-f1"        class="edge" d="M580,380 L580,330"/>
   <path id="e-leader-f2"        class="edge" d="M580,380 C400,380 400,160 470,160"/>
   <!-- Buffered apply channel between each node's Ready loop and its own
@@ -179,7 +183,7 @@
   <path id="e-notifier-w-sinks"    class="edge" d="M986,315 C993,315 993,225 1000,225"/>
   <path id="e-notifier-w-archiver" class="edge" d="M986,315 C993,315 993,305 1000,305"/>
   <path id="e-notifier-w-sealer"   class="edge" d="M986,315 C993,315 993,405 1000,405"/>
-  <path id="e-leader-adm"       class="edge" d="M470,440 C440,440 410,400 380,390" stroke="#3a4d72"/>
+  <path id="e-leader-adm"       class="edge" d="M470,440 C440,440 410,420 380,408" stroke="#3a4d72"/>
 
   <!-- Admission consultation rails — Cache departs from the right, Pebble from
        the left, so the longer Pebble arc nests around the shorter Cache arc.

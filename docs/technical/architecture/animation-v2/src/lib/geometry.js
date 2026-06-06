@@ -17,6 +17,10 @@ export const ANCHOR = {
   admPropose:       BOXES.adm.rightMid(),          // (380, 390) — Admission → Leader
   admBlock:         BOXES.adm.rightMid(),          // same edge for the BLOCKED pulse
   leaderIn:         BOXES.leader.leftMid(),        // (470, 430) — Leader left edge
+  // End point of the e-adm-leader arc (admission → leader). Used as the
+  // raftLock queue block position so the red pulse lands exactly where the
+  // tx's incoming dot would have come to rest, not slightly off.
+  leaderEntry:      { x: BOXES.leader.x, y: 410 }, // (470, 410)
   leaderOut:        BOXES.leader.rightMid(),       // (690, 430) — Leader right edge (pivot for fan-outs)
   leaderBlock:      { x: BOXES.leader.x + BOXES.leader.w, y: BOXES.leader.y + 20 }, // (690, 400) — slightly above rightMid for the BLOCKED pulse visual
   // Endpoints of the e-leader-f1 / e-leader-f2 paths — where AppendEntries
@@ -38,12 +42,14 @@ export const ANCHOR = {
 
 // Rest position the tx sits at AFTER the step at this index completed. Used to
 // drop a static colored dot on the box-edge while the simulation is paused.
-// Where a tx parks (red-pulsing) when blocked at a lock.
-//   stepIndex 5 (①f) → blocked at the Admission → Leader gate
-//   stepIndex 9 (⑤a) → blocked at the Leader   → FSM    gate
+// Where a tx parks (red-pulsing) when blocked at a lock. The block-dot
+// position is the END of the arc that BROUGHT the tx to the gate — i.e.
+// where its incoming travel landed — so visually the dot stays at its
+// arrival point rather than teleporting to the lock holder.
+//   stepIndex 6 (②) → blocked at raftLock, end of e-adm-leader
+//   stepIndex 9 (⑤a) → blocked at channelLock, leader's right edge
 export function blockPosition(stepIndex) {
-  if (stepIndex === 5) return ANCHOR.admBlock;     // legacy, raftLock no longer fires here
-  if (stepIndex === 6) return ANCHOR.leaderIn;     // queued at the raft.Node Ready-tick gate (same spot as rest dot to avoid teleport)
+  if (stepIndex === 6) return ANCHOR.leaderEntry;
   if (stepIndex === 9) return ANCHOR.leaderBlock;
   return null;
 }
