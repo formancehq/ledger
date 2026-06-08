@@ -2,6 +2,7 @@ package cmdutil
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"reflect"
 
@@ -33,15 +34,29 @@ func AddOutputFlags(cmd *cobra.Command) {
 // it encodes data to os.Stdout and returns (true, nil) on success or
 // (true, err) on failure. When neither flag is set it returns (false, nil) so
 // the caller can fall through to its pterm rendering.
+//
+// When --result-file is also set the JSON payload is additionally written to
+// that path. The flag is a generic out-of-band sink — any wrapper (a CI
+// script, the ledger-operator pointing at /dev/termination-log, ...) can
+// opt in without parsing stdout.
 func EncodeStructured(cmd *cobra.Command, data any) (bool, error) {
 	if jsonOutput, _ := cmd.Flags().GetBool("json"); jsonOutput {
 		b, err := marshalJSON(data)
 		if err != nil {
 			return true, err
 		}
-		_, err = os.Stdout.Write(append(b, '\n'))
 
-		return true, err
+		if _, err := os.Stdout.Write(append(b, '\n')); err != nil {
+			return true, err
+		}
+
+		if path, _ := cmd.Flags().GetString("result-file"); path != "" {
+			if err := writeResultFile(path, b); err != nil {
+				return true, err
+			}
+		}
+
+		return true, nil
 	}
 
 	if yamlOutput, _ := cmd.Flags().GetBool("yaml"); yamlOutput {
@@ -49,6 +64,29 @@ func EncodeStructured(cmd *cobra.Command, data any) (bool, error) {
 	}
 
 	return false, nil
+}
+
+// writeResultFile writes the JSON payload to path. The file is truncated and
+// written in one shot to keep the result self-contained (kubelet reads
+// /dev/termination-log in a single pass at container exit, so partial
+// writes would be surfaced as truncated JSON on pod.status.).
+func writeResultFile(path string, payload []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0)
+	if err != nil {
+		return fmt.Errorf("opening result file %q: %w", path, err)
+	}
+
+	if _, writeErr := f.Write(payload); writeErr != nil {
+		_ = f.Close()
+
+		return fmt.Errorf("writing result file %q: %w", path, writeErr)
+	}
+
+	if closeErr := f.Close(); closeErr != nil {
+		return fmt.Errorf("closing result file %q: %w", path, closeErr)
+	}
+
+	return nil
 }
 
 // encodeYAMLViaJSON marshals data to JSON first (using protojson for proto

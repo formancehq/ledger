@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -59,6 +60,46 @@ func TestEncodeStructured(t *testing.T) {
 		handled, err := cmdutil.EncodeStructured(cmd, data)
 		require.NoError(t, err)
 		require.False(t, handled)
+	})
+
+	t.Run("json with --result-file mirrors payload to the file", func(t *testing.T) {
+		cmd := &cobra.Command{}
+		cmdutil.AddOutputFlags(cmd)
+		cmd.Flags().String("result-file", "", "")
+		require.NoError(t, cmd.Flags().Set("json", "true"))
+
+		path := filepath.Join(t.TempDir(), "result.json")
+		// writeResultFile opens with O_TRUNC (no O_CREATE) — matches the
+		// kubelet's behaviour of pre-creating /dev/termination-log — so
+		// pre-create the test target.
+		require.NoError(t, os.WriteFile(path, []byte{}, 0o600))
+		require.NoError(t, cmd.Flags().Set("result-file", path))
+
+		out := captureStdout(t, func() {
+			handled, err := cmdutil.EncodeStructured(cmd, data)
+			require.NoError(t, err)
+			require.True(t, handled)
+		})
+
+		require.Contains(t, out, `"name": "test"`)
+		fileContent, err := os.ReadFile(path)
+		require.NoError(t, err)
+		require.Contains(t, string(fileContent), `"name": "test"`)
+		require.Contains(t, string(fileContent), `"count": 42`)
+	})
+
+	t.Run("json with --result-file pointing at unwritable path errors", func(t *testing.T) {
+		cmd := &cobra.Command{}
+		cmdutil.AddOutputFlags(cmd)
+		cmd.Flags().String("result-file", "", "")
+		require.NoError(t, cmd.Flags().Set("json", "true"))
+		require.NoError(t, cmd.Flags().Set("result-file", "/nonexistent/dir/result.json"))
+
+		_ = captureStdout(t, func() {
+			handled, err := cmdutil.EncodeStructured(cmd, data)
+			require.True(t, handled)
+			require.Error(t, err, "writing to a missing path must surface as an error so the caller doesn't think it succeeded")
+		})
 	})
 
 	t.Run("proto message json uses camelCase", func(t *testing.T) {

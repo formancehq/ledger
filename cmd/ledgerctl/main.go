@@ -62,6 +62,14 @@ func newRootCommand() *cobra.Command {
 		Long:         "Command-line client for interacting with Ledger v3 servers via gRPC",
 		SilenceUsage: true,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			// Keep stdout reserved for machine-readable payloads when the
+			// caller asked for --json or --yaml. Spinners, success messages,
+			// errors — every pterm printer — gets redirected to stderr so a
+			// downstream `jq`, `yq`, or K8s log scraper sees only the encoded
+			// result on stdout (and the termination-log mirror we drop in
+			// EncodeStructured).
+			cmdutil.RoutePtermForStructuredOutput(cmd)
+
 			// Skip profile/env resolution for profile management commands —
 			// they define local flags with the same names and must not be
 			// contaminated by the active profile or environment variables.
@@ -125,6 +133,12 @@ func newRootCommand() *cobra.Command {
 
 	// Add persistent flag for bearer token authentication.
 	rootCmd.PersistentFlags().String("auth-token", "", "Bearer token for authentication (JWT string or @path-to-file) (env: AUTH_TOKEN)")
+
+	// Add persistent flag for an out-of-band sink of the --json result.
+	// Generic on purpose: a CI wrapper, automation script, or the
+	// ledger-operator (which points it at /dev/termination-log so the
+	// kubelet captures the result on pod.status) can all opt in.
+	rootCmd.PersistentFlags().String("result-file", "", "Also write the --json result to this file path (env: RESULT_FILE)")
 
 	// Add subcommands.
 	rootCmd.AddCommand(ledgers.NewCommand())

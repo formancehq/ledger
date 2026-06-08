@@ -341,3 +341,134 @@ func TestParseBackupResult_NoJSON(t *testing.T) {
 	var result fullBackupResult
 	require.Error(t, parseBackupResult(logs, ledgerv1alpha1.BackupRunTypeFull, &result))
 }
+
+// Regression: ledgerctl emits its --json output via json.MarshalIndent, so
+// the summary spans multiple lines. The previous parser only matched a
+// single-line "{…}" anchor, missed the multi-line object, and surfaced "no
+// JSON summary found" even though the backup actually completed and pushed
+// 2900+ objects to S3 (observed on eks-acme-dev-euw1-01).
+func TestParseBackupResult_PrettyPrinted(t *testing.T) {
+	t.Parallel()
+
+	payload := `{
+  "filesUploaded": 130,
+  "filesDeleted": 45,
+  "totalFiles": 2853,
+  "durationMs": 386536,
+  "lastLogSequence": 758348596,
+  "lastAuditSequence": 363944,
+  "lastAppliedIndex": 372123
+}
+`
+	var result fullBackupResult
+	require.NoError(t, parseBackupResult(payload, ledgerv1alpha1.BackupRunTypeFull, &result))
+	require.Equal(t, uint32(130), result.FilesUploaded)
+	require.Equal(t, uint32(2853), result.TotalFiles)
+	require.Equal(t, uint64(372123), result.LastAppliedIndex)
+}
+
+// A non-JSON preamble (e.g. a stray log line that landed before --json
+// took effect on the fallback log path) must not block extraction.
+func TestParseBackupResult_PrettyPrintedWithPreamble(t *testing.T) {
+	t.Parallel()
+
+	payload := `INFO some preamble that is not JSON
+WARN another log line
+{
+  "filesUploaded": 7,
+  "filesDeleted": 0,
+  "totalFiles": 7,
+  "durationMs": 1234,
+  "lastLogSequence": 42,
+  "lastAuditSequence": 0,
+  "lastAppliedIndex": 100
+}
+
+`
+	var result fullBackupResult
+	require.NoError(t, parseBackupResult(payload, ledgerv1alpha1.BackupRunTypeFull, &result))
+	require.Equal(t, uint32(7), result.FilesUploaded)
+}
+
+func TestTerminatedMessage(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns State.Terminated.Message", func(t *testing.T) {
+		t.Parallel()
+		pod := &corev1.Pod{Status: corev1.PodStatus{
+			ContainerStatuses: []corev1.ContainerStatus{{
+				Name: backupJobContainerName,
+				State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{
+					Message: `{"filesUploaded":1}`,
+				}},
+			}},
+		}}
+		require.Equal(t, `{"filesUploaded":1}`, terminatedMessage(pod))
+	})
+
+	t.Run("falls back to LastTerminationState", func(t *testing.T) {
+		t.Parallel()
+		pod := &corev1.Pod{Status: corev1.PodStatus{
+			ContainerStatuses: []corev1.ContainerStatus{{
+				Name: backupJobContainerName,
+				LastTerminationState: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{
+					Message: `{"filesUploaded":2}`,
+				}},
+			}},
+		}}
+		require.Equal(t, `{"filesUploaded":2}`, terminatedMessage(pod))
+	})
+
+	t.Run("ignores other container", func(t *testing.T) {
+		t.Parallel()
+		pod := &corev1.Pod{Status: corev1.PodStatus{
+			ContainerStatuses: []corev1.ContainerStatus{{
+				Name: "sidecar",
+				State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{
+					Message: `{"oops":true}`,
+				}},
+			}},
+		}}
+		require.Empty(t, terminatedMessage(pod))
+	})
+
+	t.Run("empty when not terminated", func(t *testing.T) {
+		t.Parallel()
+		pod := &corev1.Pod{}
+		require.Empty(t, terminatedMessage(pod))
+	})
+}
+
+// Regression: the backup Job must declare terminationMessagePath AND pass
+// --result-file=/dev/termination-log to ledgerctl. Both halves are required
+// for the kubelet to surface the JSON summary on pod.status; dropping
+// either side silently sends us back to log scraping.
+func TestBuildBackupJob_DeclaresTerminationMessagePath(t *testing.T) {
+	t.Parallel()
+
+	ls := &ledgerv1alpha1.LedgerService{
+		ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "ns"},
+		Spec:       ledgerv1alpha1.LedgerServiceSpec{Image: ledgerv1alpha1.ImageSpec{Repository: "r", Tag: "t"}},
+	}
+	backup := &ledgerv1alpha1.LedgerBackup{
+		ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "ns"},
+		Spec:       ledgerv1alpha1.LedgerBackupSpec{Destination: ledgerv1alpha1.BackupDestination{Driver: "s3"}},
+	}
+	run := &ledgerv1alpha1.LedgerBackupRun{
+		ObjectMeta: metav1.ObjectMeta{Name: "r", Namespace: "ns"},
+		Spec:       ledgerv1alpha1.LedgerBackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
+	}
+
+	job, err := buildBackupJob(run, backup, ls, tlsModeDisabled)
+	require.NoError(t, err)
+
+	c := job.Spec.Template.Spec.Containers[0]
+	require.Equal(t, corev1.TerminationMessagePathDefault, c.TerminationMessagePath)
+	require.Equal(t, corev1.TerminationMessageFallbackToLogsOnError, c.TerminationMessagePolicy)
+
+	require.Len(t, c.Command, 3)
+	require.Equal(t, "/bin/sh", c.Command[0])
+	require.Equal(t, "-c", c.Command[1])
+	require.Contains(t, c.Command[2], "--result-file "+corev1.TerminationMessagePathDefault,
+		"ledgerctl must mirror the JSON to terminationMessagePath; otherwise the kubelet never sees the result")
+}

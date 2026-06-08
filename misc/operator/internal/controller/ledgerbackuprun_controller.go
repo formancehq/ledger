@@ -201,15 +201,20 @@ func (r *LedgerBackupRunReconciler) ensureBackupJob(
 	return desired, nil
 }
 
-// applyJobResult fetches the Job pod logs, parses the ledgerctl JSON summary,
-// and stamps the corresponding status sub-object on the LedgerBackupRun.
+// applyJobResult fetches the JSON summary produced by the Job's ledgerctl
+// invocation and stamps the corresponding status sub-object on the
+// LedgerBackupRun. The summary is read from
+// ContainerStatus.State.Terminated.Message (populated from the container's
+// terminationMessagePath when ledgerctl --json finishes cleanly) and falls
+// back to the merged stdout+stderr log stream if the structured field is
+// missing — e.g. the container died before writing the file.
 func (r *LedgerBackupRunReconciler) applyJobResult(
 	ctx context.Context,
 	run *ledgerv1alpha1.LedgerBackupRun,
 	_ *ledgerv1alpha1.LedgerService,
 	job *batchv1.Job,
 ) error {
-	logs, err := fetchJobPodLogs(ctx, r.Clientset, job.Namespace, job.Name)
+	payload, err := fetchJobResultPayload(ctx, r.Clientset, job.Namespace, job.Name)
 	if err != nil {
 		return err
 	}
@@ -219,7 +224,7 @@ func (r *LedgerBackupRunReconciler) applyJobResult(
 	switch run.Spec.Type {
 	case ledgerv1alpha1.BackupRunTypeFull:
 		var result fullBackupResult
-		if err := parseBackupResult(logs, run.Spec.Type, &result); err != nil {
+		if err := parseBackupResult(payload, run.Spec.Type, &result); err != nil {
 			return err
 		}
 
@@ -235,7 +240,7 @@ func (r *LedgerBackupRunReconciler) applyJobResult(
 		}
 	case ledgerv1alpha1.BackupRunTypeIncremental:
 		var result incrementalBackupResult
-		if err := parseBackupResult(logs, run.Spec.Type, &result); err != nil {
+		if err := parseBackupResult(payload, run.Spec.Type, &result); err != nil {
 			return err
 		}
 
