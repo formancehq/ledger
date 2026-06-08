@@ -873,6 +873,7 @@ type BackupResponseReader interface {
 	GetLastLogSequence() uint64
 	GetLastAuditSequence() uint64
 	GetLastAppliedIndex() uint64
+	GetOrphansDeleted() uint32
 	Mutate() *BackupResponse
 }
 
@@ -904,6 +905,10 @@ func (r *backupResponseReadonly) GetLastAuditSequence() uint64 {
 
 func (r *backupResponseReadonly) GetLastAppliedIndex() uint64 {
 	return r.v.GetLastAppliedIndex()
+}
+
+func (r *backupResponseReadonly) GetOrphansDeleted() uint32 {
+	return r.v.GetOrphansDeleted()
 }
 
 func (r *backupResponseReadonly) Mutate() *BackupResponse {
@@ -997,6 +1002,7 @@ type IncrementalBackupResponseReader interface {
 	GetDurationMs() int64
 	GetLastLogSequence() uint64
 	GetLastAuditSequence() uint64
+	GetOrphansDeleted() uint32
 	Mutate() *IncrementalBackupResponse
 }
 
@@ -1024,6 +1030,10 @@ func (r *incrementalBackupResponseReadonly) GetLastLogSequence() uint64 {
 
 func (r *incrementalBackupResponseReadonly) GetLastAuditSequence() uint64 {
 	return r.v.GetLastAuditSequence()
+}
+
+func (r *incrementalBackupResponseReadonly) GetOrphansDeleted() uint32 {
+	return r.v.GetOrphansDeleted()
 }
 
 func (r *incrementalBackupResponseReadonly) Mutate() *IncrementalBackupResponse {

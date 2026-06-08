@@ -77,6 +77,30 @@ func (s *S3Storage) DeleteFile(ctx context.Context, key string) error {
 	return nil
 }
 
+func (s *S3Storage) ListFiles(ctx context.Context, prefix string) ([]string, error) {
+	var keys []string
+
+	paginator := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{
+		Bucket: aws.String(s.bucket),
+		Prefix: aws.String(prefix),
+	})
+
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("s3 ListObjectsV2 %s: %w", prefix, err)
+		}
+
+		for _, obj := range page.Contents {
+			if obj.Key != nil {
+				keys = append(keys, *obj.Key)
+			}
+		}
+	}
+
+	return keys, nil
+}
+
 var _ Storage = (*S3Storage)(nil)
 
 // NewS3BackupStorage creates a Storage backed by S3.

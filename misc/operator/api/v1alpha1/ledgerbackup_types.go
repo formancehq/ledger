@@ -104,9 +104,16 @@ type FullBackupStatus struct {
 	// +optional
 	FilesUploaded uint32 `json:"filesUploaded,omitempty"`
 
-	// FilesDeleted is the number of stale files deleted in the last full backup.
+	// FilesDeleted is the number of stale files deleted in the last full backup
+	// (the diff between the previous manifest and the new checkpoint).
 	// +optional
 	FilesDeleted uint32 `json:"filesDeleted,omitempty"`
+
+	// OrphansDeleted is the number of orphan files pruned from storage in the
+	// last full backup. Orphans are leftovers from previous failed runs that
+	// crashed before writing a manifest.
+	// +optional
+	OrphansDeleted uint32 `json:"orphansDeleted,omitempty"`
 
 	// TotalFiles is the total number of files in the backup after the last run.
 	// +optional
@@ -146,6 +153,11 @@ type IncrementalBackupStatus struct {
 	// SegmentsUploaded is the number of segments uploaded.
 	// +optional
 	SegmentsUploaded uint32 `json:"segmentsUploaded,omitempty"`
+
+	// OrphansDeleted is the number of orphan export segments pruned from
+	// storage in the last incremental backup.
+	// +optional
+	OrphansDeleted uint32 `json:"orphansDeleted,omitempty"`
 
 	// DurationMs is the duration of the last incremental backup in milliseconds.
 	// +optional

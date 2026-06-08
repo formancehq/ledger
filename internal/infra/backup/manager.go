@@ -18,6 +18,7 @@ import (
 type Result struct {
 	FilesUploaded     int
 	FilesDeleted      int
+	OrphansDeleted    int
 	TotalFiles        int
 	LastLogSequence   uint64
 	LastAuditSequence uint64
@@ -30,6 +31,7 @@ type IncrementalBackupResult struct {
 	LogEntriesExported   uint64
 	AuditEntriesExported uint64
 	SegmentsUploaded     int
+	OrphansDeleted       int
 	Duration             time.Duration
 	LastLogSequence      uint64
 	LastAuditSequence    uint64
@@ -165,12 +167,27 @@ func RunBackup(
 		return nil, fmt.Errorf("writing manifest: %w", err)
 	}
 
+	// 10. Prune orphans left behind by earlier failed runs. The manifest is the
+	// authoritative inventory; anything under data/ or exports/ not in it is dead
+	// weight. Runs that crashed before writing a manifest leak files the diff
+	// step (which compares against the *previous manifest*) cannot reach.
+	expectedKeys := make(map[string]struct{}, len(localFiles))
+	for filename := range localFiles {
+		expectedKeys[CheckpointFileKey(bucketID, filename)] = struct{}{}
+	}
+
+	orphansDeleted := pruneOrphans(ctx, logger, storage, CheckpointPrefix(bucketID), expectedKeys)
+	// A full backup writes Exports: nil, so every export segment in storage is
+	// now orphaned and can be removed.
+	orphansDeleted += pruneOrphans(ctx, logger, storage, ExportPrefix(bucketID), nil)
+
 	duration := time.Since(start)
 
 	logger.WithFields(map[string]any{
 		"duration":          duration.String(),
 		"uploaded":          len(toUpload),
 		"deleted":           len(toDelete),
+		"orphansDeleted":    orphansDeleted,
 		"total":             len(localFiles),
 		"lastLogSequence":   lastLogSeq,
 		"lastAuditSequence": lastAuditSeq,
@@ -180,12 +197,64 @@ func RunBackup(
 	return &Result{
 		FilesUploaded:     len(toUpload),
 		FilesDeleted:      len(toDelete),
+		OrphansDeleted:    orphansDeleted,
 		TotalFiles:        len(localFiles),
 		LastLogSequence:   lastLogSeq,
 		LastAuditSequence: lastAuditSeq,
 		LastAppliedIndex:  lastAppliedIndex,
 		Duration:          duration,
 	}, nil
+}
+
+// pruneOrphanExports removes every object under exports/ that is not listed in
+// the manifest's export set. Used by RunIncrementalBackup both in its no-op
+// path (nothing new to export, but old garbage may still be sitting there) and
+// after writing a new manifest.
+func pruneOrphanExports(ctx context.Context, logger logging.Logger, storage Storage, bucketID string, exports []ExportSegment) int {
+	expectedKeys := make(map[string]struct{}, len(exports))
+	for _, seg := range exports {
+		expectedKeys[seg.Key] = struct{}{}
+	}
+
+	return pruneOrphans(ctx, logger, storage, ExportPrefix(bucketID), expectedKeys)
+}
+
+// pruneOrphans lists every object under prefix and deletes any whose key is not
+// in expectedKeys. A nil or empty expectedKeys deletes every object under the
+// prefix. Failures are logged and counted as non-orphan (a transient List or
+// Delete error must never fail the surrounding backup — the manifest is already
+// committed and the next run will retry).
+func pruneOrphans(ctx context.Context, logger logging.Logger, storage Storage, prefix string, expectedKeys map[string]struct{}) int {
+	keys, err := storage.ListFiles(ctx, prefix)
+	if err != nil {
+		logger.WithFields(map[string]any{
+			"prefix": prefix,
+			"error":  err,
+		}).Errorf("Failed to list backup objects for orphan prune (non-fatal)")
+
+		return 0
+	}
+
+	deleted := 0
+
+	for _, key := range keys {
+		if _, kept := expectedKeys[key]; kept {
+			continue
+		}
+
+		if err := storage.DeleteFile(ctx, key); err != nil {
+			logger.WithFields(map[string]any{
+				"key":   key,
+				"error": err,
+			}).Errorf("Failed to delete orphan backup file (non-fatal)")
+
+			continue
+		}
+
+		deleted++
+	}
+
+	return deleted
 }
 
 // RunIncrementalBackup exports new log and audit entries since the last backup.
@@ -247,10 +316,15 @@ func RunIncrementalBackup(
 	if currentLogSeq <= afterLogSeq && currentAuditSeq <= afterAuditSeq {
 		logger.Infof("No new entries to export")
 
+		// Still prune orphan exports — dangling segments are independent of
+		// whether new entries arrived since the previous run.
+		orphansDeleted := pruneOrphanExports(ctx, logger, storage, bucketID, manifest.Exports)
+
 		return &IncrementalBackupResult{
 			Duration:          time.Since(start),
 			LastLogSequence:   afterLogSeq,
 			LastAuditSequence: afterAuditSeq,
+			OrphansDeleted:    orphansDeleted,
 		}, nil
 	}
 
@@ -335,6 +409,11 @@ func RunIncrementalBackup(
 		return nil, fmt.Errorf("writing manifest: %w", err)
 	}
 
+	// 9. Prune orphan export segments — anything under exports/ that the manifest
+	// no longer references (typically leaked by earlier failed incremental runs).
+	// Checkpoint files under data/ are owned by the full backup and untouched here.
+	orphansDeleted := pruneOrphanExports(ctx, logger, storage, bucketID, manifest.Exports)
+
 	duration := time.Since(start)
 
 	logger.WithFields(map[string]any{
@@ -342,6 +421,7 @@ func RunIncrementalBackup(
 		"logEntriesExported":   logEntriesExported,
 		"auditEntriesExported": auditEntriesExported,
 		"segmentsUploaded":     segmentsUploaded,
+		"orphansDeleted":       orphansDeleted,
 		"lastLogSequence":      currentLogSeq,
 		"lastAuditSequence":    currentAuditSeq,
 	}).Infof("Incremental backup completed")
@@ -350,6 +430,7 @@ func RunIncrementalBackup(
 		LogEntriesExported:   logEntriesExported,
 		AuditEntriesExported: auditEntriesExported,
 		SegmentsUploaded:     segmentsUploaded,
+		OrphansDeleted:       orphansDeleted,
 		Duration:             duration,
 		LastLogSequence:      currentLogSeq,
 		LastAuditSequence:    currentAuditSeq,

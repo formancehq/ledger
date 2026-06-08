@@ -29,6 +29,7 @@ const (
 type fullBackupResult struct {
 	FilesUploaded     uint32 `json:"filesUploaded"`
 	FilesDeleted      uint32 `json:"filesDeleted"`
+	OrphansDeleted    uint32 `json:"orphansDeleted"`
 	TotalFiles        uint32 `json:"totalFiles"`
 	DurationMs        int64  `json:"durationMs"`
 	LastLogSequence   uint64 `json:"lastLogSequence"`
@@ -41,6 +42,7 @@ type incrementalBackupResult struct {
 	LogEntriesExported   uint64 `json:"logEntriesExported"`
 	AuditEntriesExported uint64 `json:"auditEntriesExported"`
 	SegmentsUploaded     uint32 `json:"segmentsUploaded"`
+	OrphansDeleted       uint32 `json:"orphansDeleted"`
 	DurationMs           int64  `json:"durationMs"`
 	LastLogSequence      uint64 `json:"lastLogSequence"`
 	LastAuditSequence    uint64 `json:"lastAuditSequence"`

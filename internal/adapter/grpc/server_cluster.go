@@ -642,6 +642,7 @@ func (impl *ClusterServiceServerImpl) Backup(ctx context.Context, req *clusterpb
 	return &clusterpb.BackupResponse{
 		FilesUploaded:     uint32(result.FilesUploaded),
 		FilesDeleted:      uint32(result.FilesDeleted),
+		OrphansDeleted:    uint32(result.OrphansDeleted),
 		TotalFiles:        uint32(result.TotalFiles),
 		DurationMs:        result.Duration.Milliseconds(),
 		LastLogSequence:   result.LastLogSequence,
@@ -691,6 +692,7 @@ func (impl *ClusterServiceServerImpl) IncrementalBackup(ctx context.Context, req
 		LogEntriesExported:   result.LogEntriesExported,
 		AuditEntriesExported: result.AuditEntriesExported,
 		SegmentsUploaded:     uint32(result.SegmentsUploaded),
+		OrphansDeleted:       uint32(result.OrphansDeleted),
 		DurationMs:           result.Duration.Milliseconds(),
 		LastLogSequence:      result.LastLogSequence,
 		LastAuditSequence:    result.LastAuditSequence,

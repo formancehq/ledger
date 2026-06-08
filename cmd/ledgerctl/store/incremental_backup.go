@@ -82,8 +82,8 @@ func runIncrementalBackup(cmd *cobra.Command, _ []string) error {
 	}
 
 	if spinner != nil {
-		spinner.Success(fmt.Sprintf("Incremental backup completed: %d log entries, %d audit entries, %d segments (log_seq=%d, audit_seq=%d) (%dms)",
-			resp.GetLogEntriesExported(), resp.GetAuditEntriesExported(), resp.GetSegmentsUploaded(),
+		spinner.Success(fmt.Sprintf("Incremental backup completed: %d log entries, %d audit entries, %d segments, %d orphans pruned (log_seq=%d, audit_seq=%d) (%dms)",
+			resp.GetLogEntriesExported(), resp.GetAuditEntriesExported(), resp.GetSegmentsUploaded(), resp.GetOrphansDeleted(),
 			resp.GetLastLogSequence(), resp.GetLastAuditSequence(),
 			resp.GetDurationMs()))
 	}
@@ -92,6 +92,7 @@ func runIncrementalBackup(cmd *cobra.Command, _ []string) error {
 		LogEntriesExported   uint64 `json:"logEntriesExported"`
 		AuditEntriesExported uint64 `json:"auditEntriesExported"`
 		SegmentsUploaded     uint32 `json:"segmentsUploaded"`
+		OrphansDeleted       uint32 `json:"orphansDeleted"`
 		DurationMs           int64  `json:"durationMs"`
 		LastLogSequence      uint64 `json:"lastLogSequence"`
 		LastAuditSequence    uint64 `json:"lastAuditSequence"`
@@ -99,6 +100,7 @@ func runIncrementalBackup(cmd *cobra.Command, _ []string) error {
 		LogEntriesExported:   resp.GetLogEntriesExported(),
 		AuditEntriesExported: resp.GetAuditEntriesExported(),
 		SegmentsUploaded:     resp.GetSegmentsUploaded(),
+		OrphansDeleted:       resp.GetOrphansDeleted(),
 		DurationMs:           resp.GetDurationMs(),
 		LastLogSequence:      resp.GetLastLogSequence(),
 		LastAuditSequence:    resp.GetLastAuditSequence(),

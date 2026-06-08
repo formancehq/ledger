@@ -440,6 +440,7 @@ func (m *BackupResponse) CloneVT() *BackupResponse {
 	r.LastLogSequence = m.LastLogSequence
 	r.LastAuditSequence = m.LastAuditSequence
 	r.LastAppliedIndex = m.LastAppliedIndex
+	r.OrphansDeleted = m.OrphansDeleted
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -486,6 +487,7 @@ func (m *IncrementalBackupResponse) CloneVT() *IncrementalBackupResponse {
 	r.DurationMs = m.DurationMs
 	r.LastLogSequence = m.LastLogSequence
 	r.LastAuditSequence = m.LastAuditSequence
+	r.OrphansDeleted = m.OrphansDeleted
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1344,6 +1346,9 @@ func (this *BackupResponse) EqualVT(that *BackupResponse) bool {
 	if this.LastAppliedIndex != that.LastAppliedIndex {
 		return false
 	}
+	if this.OrphansDeleted != that.OrphansDeleted {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -1416,6 +1421,9 @@ func (this *IncrementalBackupResponse) EqualVT(that *IncrementalBackupResponse) 
 		return false
 	}
 	if this.LastAuditSequence != that.LastAuditSequence {
+		return false
+	}
+	if this.OrphansDeleted != that.OrphansDeleted {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -2903,6 +2911,11 @@ func (m *BackupResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.OrphansDeleted != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.OrphansDeleted))
+		i--
+		dAtA[i] = 0x40
+	}
 	if m.LastAppliedIndex != 0 {
 		i -= 8
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.LastAppliedIndex))
@@ -3062,6 +3075,11 @@ func (m *IncrementalBackupResponse) MarshalToSizedBufferVT(dAtA []byte) (int, er
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.OrphansDeleted != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.OrphansDeleted))
+		i--
+		dAtA[i] = 0x38
 	}
 	if m.LastAuditSequence != 0 {
 		i -= 8
@@ -4174,6 +4192,9 @@ func (m *BackupResponse) SizeVT() (n int) {
 	if m.LastAppliedIndex != 0 {
 		n += 9
 	}
+	if m.OrphansDeleted != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.OrphansDeleted))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -4243,6 +4264,9 @@ func (m *IncrementalBackupResponse) SizeVT() (n int) {
 	}
 	if m.LastAuditSequence != 0 {
 		n += 9
+	}
+	if m.OrphansDeleted != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.OrphansDeleted))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -7147,6 +7171,25 @@ func (m *BackupResponse) UnmarshalVT(dAtA []byte) error {
 			}
 			m.LastAppliedIndex = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
+		case 8:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field OrphansDeleted", wireType)
+			}
+			m.OrphansDeleted = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.OrphansDeleted |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -7583,6 +7626,25 @@ func (m *IncrementalBackupResponse) UnmarshalVT(dAtA []byte) error {
 			}
 			m.LastAuditSequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field OrphansDeleted", wireType)
+			}
+			m.OrphansDeleted = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.OrphansDeleted |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

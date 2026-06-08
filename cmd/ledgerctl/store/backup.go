@@ -82,8 +82,8 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 	}
 
 	if spinner != nil {
-		spinner.Success(fmt.Sprintf("Backup completed: %d uploaded, %d deleted, %d total (log_seq=%d, audit_seq=%d, applied_idx=%d) (%dms)",
-			resp.GetFilesUploaded(), resp.GetFilesDeleted(), resp.GetTotalFiles(),
+		spinner.Success(fmt.Sprintf("Backup completed: %d uploaded, %d deleted, %d orphans pruned, %d total (log_seq=%d, audit_seq=%d, applied_idx=%d) (%dms)",
+			resp.GetFilesUploaded(), resp.GetFilesDeleted(), resp.GetOrphansDeleted(), resp.GetTotalFiles(),
 			resp.GetLastLogSequence(), resp.GetLastAuditSequence(), resp.GetLastAppliedIndex(),
 			resp.GetDurationMs()))
 	}
@@ -91,6 +91,7 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 	if handled, err := cmdutil.EncodeStructured(cmd, struct {
 		FilesUploaded     uint32 `json:"filesUploaded"`
 		FilesDeleted      uint32 `json:"filesDeleted"`
+		OrphansDeleted    uint32 `json:"orphansDeleted"`
 		TotalFiles        uint32 `json:"totalFiles"`
 		DurationMs        int64  `json:"durationMs"`
 		LastLogSequence   uint64 `json:"lastLogSequence"`
@@ -99,6 +100,7 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 	}{
 		FilesUploaded:     resp.GetFilesUploaded(),
 		FilesDeleted:      resp.GetFilesDeleted(),
+		OrphansDeleted:    resp.GetOrphansDeleted(),
 		TotalFiles:        resp.GetTotalFiles(),
 		DurationMs:        resp.GetDurationMs(),
 		LastLogSequence:   resp.GetLastLogSequence(),

@@ -1263,12 +1263,13 @@ func (x *BackupRequest) GetS3SecretAccessKey() string {
 type BackupResponse struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	FilesUploaded     uint32                 `protobuf:"varint,1,opt,name=files_uploaded,json=filesUploaded,proto3" json:"files_uploaded,omitempty"`                // Number of new/changed files uploaded
-	FilesDeleted      uint32                 `protobuf:"varint,2,opt,name=files_deleted,json=filesDeleted,proto3" json:"files_deleted,omitempty"`                   // Number of stale files deleted
+	FilesDeleted      uint32                 `protobuf:"varint,2,opt,name=files_deleted,json=filesDeleted,proto3" json:"files_deleted,omitempty"`                   // Number of stale files deleted (diff vs previous manifest)
 	TotalFiles        uint32                 `protobuf:"varint,3,opt,name=total_files,json=totalFiles,proto3" json:"total_files,omitempty"`                         // Total files in the backup after this run
 	DurationMs        int64                  `protobuf:"varint,4,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`                         // Wall-clock duration in milliseconds
 	LastLogSequence   uint64                 `protobuf:"fixed64,5,opt,name=last_log_sequence,json=lastLogSequence,proto3" json:"last_log_sequence,omitempty"`       // Log sequence at checkpoint time
 	LastAuditSequence uint64                 `protobuf:"fixed64,6,opt,name=last_audit_sequence,json=lastAuditSequence,proto3" json:"last_audit_sequence,omitempty"` // Audit sequence at checkpoint time
 	LastAppliedIndex  uint64                 `protobuf:"fixed64,7,opt,name=last_applied_index,json=lastAppliedIndex,proto3" json:"last_applied_index,omitempty"`    // Raft applied index at checkpoint time
+	OrphansDeleted    uint32                 `protobuf:"varint,8,opt,name=orphans_deleted,json=orphansDeleted,proto3" json:"orphans_deleted,omitempty"`             // Orphan files pruned from storage (leftovers from failed runs)
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -1348,6 +1349,13 @@ func (x *BackupResponse) GetLastAuditSequence() uint64 {
 func (x *BackupResponse) GetLastAppliedIndex() uint64 {
 	if x != nil {
 		return x.LastAppliedIndex
+	}
+	return 0
+}
+
+func (x *BackupResponse) GetOrphansDeleted() uint32 {
+	if x != nil {
+		return x.OrphansDeleted
 	}
 	return 0
 }
@@ -1460,6 +1468,7 @@ type IncrementalBackupResponse struct {
 	DurationMs           int64                  `protobuf:"varint,4,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`                                  // Wall-clock duration in milliseconds
 	LastLogSequence      uint64                 `protobuf:"fixed64,5,opt,name=last_log_sequence,json=lastLogSequence,proto3" json:"last_log_sequence,omitempty"`                // Last exported log sequence
 	LastAuditSequence    uint64                 `protobuf:"fixed64,6,opt,name=last_audit_sequence,json=lastAuditSequence,proto3" json:"last_audit_sequence,omitempty"`          // Last exported audit sequence
+	OrphansDeleted       uint32                 `protobuf:"varint,7,opt,name=orphans_deleted,json=orphansDeleted,proto3" json:"orphans_deleted,omitempty"`                      // Orphan export segments pruned from storage
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -1532,6 +1541,13 @@ func (x *IncrementalBackupResponse) GetLastLogSequence() uint64 {
 func (x *IncrementalBackupResponse) GetLastAuditSequence() uint64 {
 	if x != nil {
 		return x.LastAuditSequence
+	}
+	return 0
+}
+
+func (x *IncrementalBackupResponse) GetOrphansDeleted() uint32 {
+	if x != nil {
+		return x.OrphansDeleted
 	}
 	return 0
 }
@@ -2325,7 +2341,7 @@ const file_cluster_proto_rawDesc = "" +
 	"\vs3_endpoint\x18\x06 \x01(\tR\n" +
 	"s3Endpoint\x12'\n" +
 	"\x10s3_access_key_id\x18\a \x01(\tR\rs3AccessKeyId\x12/\n" +
-	"\x14s3_secret_access_key\x18\b \x01(\tR\x11s3SecretAccessKey\"\xa8\x02\n" +
+	"\x14s3_secret_access_key\x18\b \x01(\tR\x11s3SecretAccessKey\"\xd1\x02\n" +
 	"\x0eBackupResponse\x12%\n" +
 	"\x0efiles_uploaded\x18\x01 \x01(\rR\rfilesUploaded\x12#\n" +
 	"\rfiles_deleted\x18\x02 \x01(\rR\ffilesDeleted\x12\x1f\n" +
@@ -2335,7 +2351,8 @@ const file_cluster_proto_rawDesc = "" +
 	"durationMs\x12*\n" +
 	"\x11last_log_sequence\x18\x05 \x01(\x06R\x0flastLogSequence\x12.\n" +
 	"\x13last_audit_sequence\x18\x06 \x01(\x06R\x11lastAuditSequence\x12,\n" +
-	"\x12last_applied_index\x18\a \x01(\x06R\x10lastAppliedIndex\"\xa1\x02\n" +
+	"\x12last_applied_index\x18\a \x01(\x06R\x10lastAppliedIndex\x12'\n" +
+	"\x0forphans_deleted\x18\b \x01(\rR\x0eorphansDeleted\"\xa1\x02\n" +
 	"\x18IncrementalBackupRequest\x12\x16\n" +
 	"\x06driver\x18\x01 \x01(\tR\x06driver\x12\x1b\n" +
 	"\tbase_path\x18\x02 \x01(\tR\bbasePath\x12\x1b\n" +
@@ -2345,7 +2362,7 @@ const file_cluster_proto_rawDesc = "" +
 	"\vs3_endpoint\x18\x06 \x01(\tR\n" +
 	"s3Endpoint\x12'\n" +
 	"\x10s3_access_key_id\x18\a \x01(\tR\rs3AccessKeyId\x12/\n" +
-	"\x14s3_secret_access_key\x18\b \x01(\tR\x11s3SecretAccessKey\"\xad\x02\n" +
+	"\x14s3_secret_access_key\x18\b \x01(\tR\x11s3SecretAccessKey\"\xd6\x02\n" +
 	"\x19IncrementalBackupResponse\x120\n" +
 	"\x14log_entries_exported\x18\x01 \x01(\x06R\x12logEntriesExported\x124\n" +
 	"\x16audit_entries_exported\x18\x02 \x01(\x06R\x14auditEntriesExported\x12+\n" +
@@ -2353,7 +2370,8 @@ const file_cluster_proto_rawDesc = "" +
 	"\vduration_ms\x18\x04 \x01(\x03R\n" +
 	"durationMs\x12*\n" +
 	"\x11last_log_sequence\x18\x05 \x01(\x06R\x0flastLogSequence\x12.\n" +
-	"\x13last_audit_sequence\x18\x06 \x01(\x06R\x11lastAuditSequence\"\x17\n" +
+	"\x13last_audit_sequence\x18\x06 \x01(\x06R\x11lastAuditSequence\x12'\n" +
+	"\x0forphans_deleted\x18\a \x01(\rR\x0eorphansDeleted\"\x17\n" +
 	"\x15CompactPrimaryRequest\"9\n" +
 	"\x16CompactPrimaryResponse\x12\x1f\n" +
 	"\vduration_ms\x18\x01 \x01(\x03R\n" +

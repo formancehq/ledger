@@ -149,8 +149,9 @@ spec:
                     format: int64
                     type: integer
                   filesDeleted:
-                    description: FilesDeleted is the number of stale files deleted
-                      in the last full backup.
+                    description: |-
+                      FilesDeleted is the number of stale files deleted in the last full backup
+                      (the diff between the previous manifest and the new checkpoint).
                     format: int32
                     type: integer
                   filesUploaded:
@@ -172,6 +173,13 @@ spec:
                     description: LastLogSequence is the last log sequence included
                       in the backup.
                     format: int64
+                    type: integer
+                  orphansDeleted:
+                    description: |-
+                      OrphansDeleted is the number of orphan files pruned from storage in the
+                      last full backup. Orphans are leftovers from previous failed runs that
+                      crashed before writing a manifest.
+                    format: int32
                     type: integer
                   time:
                     description: Time is when the last full backup completed.
@@ -210,6 +218,12 @@ spec:
                   logEntriesExported:
                     description: LogEntriesExported is the number of log entries exported.
                     format: int64
+                    type: integer
+                  orphansDeleted:
+                    description: |-
+                      OrphansDeleted is the number of orphan export segments pruned from
+                      storage in the last incremental backup.
+                    format: int32
                     type: integer
                   segmentsUploaded:
                     description: SegmentsUploaded is the number of segments uploaded.

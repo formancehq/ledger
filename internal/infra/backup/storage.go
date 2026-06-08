@@ -12,6 +12,8 @@ import (
 // errors.Is(err, ErrFileNotFound) holds.
 var ErrFileNotFound = errors.New("backup: file not found")
 
+//go:generate mockgen -typed -write_source_comment=false -write_package_comment=false -source storage.go -destination storage_generated_test.go -package backup . Storage
+
 // Storage provides file-level access to a backup destination.
 // Keys use forward slashes as path separators regardless of the backend.
 type Storage interface {
@@ -20,6 +22,9 @@ type Storage interface {
 	// an error satisfying errors.Is(err, ErrFileNotFound).
 	GetFile(ctx context.Context, key string) (io.ReadCloser, error)
 	DeleteFile(ctx context.Context, key string) error
+	// ListFiles returns the keys of every object whose key starts with prefix.
+	// The order of returned keys is unspecified.
+	ListFiles(ctx context.Context, prefix string) ([]string, error)
 }
 
 // NewStorage creates a Storage implementation based on the driver name.

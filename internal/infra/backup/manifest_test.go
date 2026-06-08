@@ -36,6 +36,10 @@ func (f *fakeStorage) DeleteFile(_ context.Context, _ string) error {
 	return nil
 }
 
+func (f *fakeStorage) ListFiles(_ context.Context, _ string) ([]string, error) {
+	return nil, nil
+}
+
 func TestReadManifestOrEmpty_NotFoundReturnsEmpty(t *testing.T) {
 	t.Parallel()
 

@@ -236,12 +236,13 @@ message BackupRequest {
 
 message BackupResponse {
   uint32 files_uploaded = 1;      // Number of new/changed files uploaded
-  uint32 files_deleted = 2;       // Number of stale files deleted
+  uint32 files_deleted = 2;       // Number of stale files deleted (diff vs previous manifest)
   uint32 total_files = 3;         // Total files in the backup after this run
   int64 duration_ms = 4;          // Wall-clock duration in milliseconds
   fixed64 last_log_sequence = 5;   // Log sequence at checkpoint time
   fixed64 last_audit_sequence = 6; // Audit sequence at checkpoint time
   fixed64 last_applied_index = 7;  // Raft applied index at checkpoint time
+  uint32 orphans_deleted = 8;      // Orphan files pruned from storage (leftovers from failed runs)
 }
 
 // ============================================================================
@@ -266,6 +267,7 @@ message IncrementalBackupResponse {
   int64 duration_ms = 4;             // Wall-clock duration in milliseconds
   fixed64 last_log_sequence = 5;      // Last exported log sequence
   fixed64 last_audit_sequence = 6;    // Last exported audit sequence
+  uint32 orphans_deleted = 7;         // Orphan export segments pruned from storage
 }
 
 // ============================================================================

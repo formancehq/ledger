@@ -22,5 +22,15 @@ func ExportAuditItemSegmentKey(bucketID string, startSeq, endSeq uint64) string 
 
 // CheckpointFileKey returns the S3 key for a checkpoint file.
 func CheckpointFileKey(bucketID, filename string) string {
-	return bucketID + "/backups/data/" + filename
+	return CheckpointPrefix(bucketID) + filename
+}
+
+// CheckpointPrefix returns the key prefix shared by every checkpoint file.
+func CheckpointPrefix(bucketID string) string {
+	return bucketID + "/backups/data/"
+}
+
+// ExportPrefix returns the key prefix shared by every export segment.
+func ExportPrefix(bucketID string) string {
+	return bucketID + "/backups/exports/"
 }

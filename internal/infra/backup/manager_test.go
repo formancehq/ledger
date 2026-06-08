@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"slices"
 	"sync"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
+	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -45,6 +47,10 @@ func (r *recordingStorage) GetFile(_ context.Context, _ string) (io.ReadCloser, 
 }
 
 func (r *recordingStorage) DeleteFile(_ context.Context, _ string) error { return nil }
+
+func (r *recordingStorage) ListFiles(_ context.Context, _ string) ([]string, error) {
+	return nil, nil
+}
 
 func (r *recordingStorage) wrote(key string) bool {
 	r.mu.Lock()
@@ -193,4 +199,133 @@ func TestRunIncrementalBackup_AbortsOnCorruptManifest(t *testing.T) {
 	require.Error(t, err, "RunIncrementalBackup must fail on a corrupt existing manifest")
 	require.False(t, storage.wrote(ManifestKey("bucket")),
 		"manifest must not be overwritten when the existing manifest is corrupt")
+}
+
+// TestPruneOrphans_DeletesUnexpectedKeysAndKeepsExpected verifies the unit's
+// core contract: list everything under prefix, delete the keys not in
+// expectedKeys, count only successful deletes.
+func TestPruneOrphans_DeletesUnexpectedKeysAndKeepsExpected(t *testing.T) {
+	t.Parallel()
+
+	storage := NewMockStorage(gomock.NewController(t))
+	storage.EXPECT().ListFiles(gomock.Any(), "p/").
+		Return([]string{"p/keep1", "p/orphan", "p/keep2"}, nil)
+	storage.EXPECT().DeleteFile(gomock.Any(), "p/orphan").Return(nil)
+
+	expected := map[string]struct{}{"p/keep1": {}, "p/keep2": {}}
+
+	deleted := pruneOrphans(context.Background(), logging.Testing(), storage, "p/", expected)
+	require.Equal(t, 1, deleted)
+}
+
+// TestPruneOrphans_EmptyExpectedDeletesAll verifies the "wipe-everything"
+// branch used by RunBackup for the exports/ prefix after a full backup
+// (which always resets manifest.Exports to nil).
+func TestPruneOrphans_EmptyExpectedDeletesAll(t *testing.T) {
+	t.Parallel()
+
+	storage := NewMockStorage(gomock.NewController(t))
+	storage.EXPECT().ListFiles(gomock.Any(), "p/").
+		Return([]string{"p/a", "p/b", "p/c"}, nil)
+	storage.EXPECT().DeleteFile(gomock.Any(), "p/a").Return(nil)
+	storage.EXPECT().DeleteFile(gomock.Any(), "p/b").Return(nil)
+	storage.EXPECT().DeleteFile(gomock.Any(), "p/c").Return(nil)
+
+	deleted := pruneOrphans(context.Background(), logging.Testing(), storage, "p/", nil)
+	require.Equal(t, 3, deleted)
+}
+
+// TestPruneOrphans_ToleratesListError verifies that a ListFiles failure is
+// swallowed (logged elsewhere) and the function returns zero. The caller can
+// safely report the backup as Succeeded because the manifest is already
+// committed at this point.
+func TestPruneOrphans_ToleratesListError(t *testing.T) {
+	t.Parallel()
+
+	storage := NewMockStorage(gomock.NewController(t))
+	storage.EXPECT().ListFiles(gomock.Any(), "p/").
+		Return(nil, errors.New("s3 timeout"))
+
+	deleted := pruneOrphans(context.Background(), logging.Testing(), storage, "p/", nil)
+	require.Zero(t, deleted)
+}
+
+// TestPruneOrphans_ContinuesOnIndividualDeleteError verifies that a failure
+// on one DeleteFile does not abort the prune for the remaining orphans. The
+// failed key is excluded from the returned count so the manifest's view of
+// "we cleaned N files" stays accurate.
+func TestPruneOrphans_ContinuesOnIndividualDeleteError(t *testing.T) {
+	t.Parallel()
+
+	storage := NewMockStorage(gomock.NewController(t))
+	storage.EXPECT().ListFiles(gomock.Any(), "p/").
+		Return([]string{"p/a", "p/b", "p/c"}, nil)
+	storage.EXPECT().DeleteFile(gomock.Any(), "p/a").Return(nil)
+	storage.EXPECT().DeleteFile(gomock.Any(), "p/b").Return(errors.New("s3 throttled"))
+	storage.EXPECT().DeleteFile(gomock.Any(), "p/c").Return(nil)
+
+	deleted := pruneOrphans(context.Background(), logging.Testing(), storage, "p/", nil)
+	require.Equal(t, 2, deleted)
+}
+
+// TestRunBackup_InvokesPruneForBothPrefixes verifies the wiring: a full
+// backup must run the prune step against both data/ and exports/ — the
+// authority for "what is the right prefix" lives in RunBackup, not in the
+// pruneOrphans unit.
+func TestRunBackup_InvokesPruneForBothPrefixes(t *testing.T) {
+	t.Parallel()
+
+	const bucketID = "bucket"
+
+	store := newBackupTestStore(t)
+	storage := NewMockStorage(gomock.NewController(t))
+
+	// Manifest reads return not-found (first run); puts and deletes are
+	// absorbed; ListFiles returns nothing under both expected prefixes.
+	storage.EXPECT().GetFile(gomock.Any(), gomock.Any()).Return(nil, ErrFileNotFound).AnyTimes()
+	storage.EXPECT().PutFile(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, data io.Reader, _ int64) error {
+			_, _ = io.Copy(io.Discard, data)
+
+			return nil
+		}).AnyTimes()
+	storage.EXPECT().DeleteFile(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+	storage.EXPECT().ListFiles(gomock.Any(), CheckpointPrefix(bucketID)).Return(nil, nil)
+	storage.EXPECT().ListFiles(gomock.Any(), ExportPrefix(bucketID)).Return(nil, nil)
+
+	result, err := RunBackup(context.Background(), logging.Testing(), store, storage, bucketID)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Zero(t, result.OrphansDeleted)
+}
+
+// TestRunIncrementalBackup_InvokesPruneForExportsOnly verifies the wiring:
+// the incremental backup must only touch exports/ (data/ is owned by the
+// full backup and must remain untouched).
+func TestRunIncrementalBackup_InvokesPruneForExportsOnly(t *testing.T) {
+	t.Parallel()
+
+	const bucketID = "bucket"
+
+	store := newBackupTestStore(t)
+	storage := NewMockStorage(gomock.NewController(t))
+
+	// Pre-existing manifest with no entries to export, so RunIncrementalBackup
+	// hits the no-op branch which still has to prune.
+	manifest := &Manifest{Checkpoint: &CheckpointManifest{}}
+	body, err := json.Marshal(manifest)
+	require.NoError(t, err)
+
+	storage.EXPECT().GetFile(gomock.Any(), ManifestKey(bucketID)).
+		Return(io.NopCloser(bytes.NewReader(body)), nil)
+
+	storage.EXPECT().ListFiles(gomock.Any(), ExportPrefix(bucketID)).Return(nil, nil)
+	// data/ must NOT be listed by the incremental path. Any other ListFiles
+	// call would fail the strict mock.
+
+	result, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, bucketID)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Zero(t, result.OrphansDeleted)
 }
