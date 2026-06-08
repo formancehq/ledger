@@ -37,20 +37,18 @@ const (
 )
 
 // ScanLatestCheckpointID scans the checkpoints directory and returns the highest
-// numeric checkpoint ID found. Returns 0 if no checkpoints exist.
-func ScanLatestCheckpointID(dataDir string) (uint64, error) {
+// numeric checkpoint ID found and whether any checkpoint exists.
+func ScanLatestCheckpointID(dataDir string) (latestID uint64, found bool, err error) {
 	dir := filepath.Join(dataDir, checkpointsDir)
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return 0, nil
+			return 0, false, nil
 		}
 
-		return 0, fmt.Errorf("reading checkpoints directory: %w", err)
+		return 0, false, fmt.Errorf("reading checkpoints directory: %w", err)
 	}
-
-	var maxID uint64
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -62,12 +60,13 @@ func ScanLatestCheckpointID(dataDir string) (uint64, error) {
 			continue // skip non-numeric dirs (e.g. "incoming")
 		}
 
-		if id > maxID {
-			maxID = id
+		if !found || id > latestID {
+			latestID = id
+			found = true
 		}
 	}
 
-	return maxID, nil
+	return latestID, found, nil
 }
 
 // Store is a Pebble implementation of dal.Store
@@ -342,14 +341,16 @@ func NewStore(
 
 	// Scan the checkpoints directory to find the latest checkpoint ID.
 	// The ID is derived from the highest-numbered directory in checkpoints/.
-	latestCheckpointID, err := ScanLatestCheckpointID(dataDir)
+	latestCheckpointID, hasCheckpoint, err := ScanLatestCheckpointID(dataDir)
 	if err != nil {
 		return nil, fmt.Errorf("scanning checkpoints: %w", err)
 	}
 
 	if liveDirErr != nil {
 		// live/ does not exist. Check if a checkpoint exists (restore/bootstrap path).
-		if latestCheckpointID > 0 {
+		// Gate on hasCheckpoint, not latestCheckpointID > 0: a restore writes the
+		// base checkpoint as ID 0, which must still be adopted here.
+		if hasCheckpoint {
 			checkpointPath := filepath.Join(dataDir, checkpointsDir, strconv.FormatUint(latestCheckpointID, 10))
 
 			logger.Infof("No live directory found, restoring from checkpoint %d", latestCheckpointID)

@@ -39,12 +39,12 @@ func RestoreModule() fx.Option {
 		fx.Invoke(
 			// Validate that the data directory is fresh (no existing checkpoints)
 			func(cfg Config) error {
-				latestID, err := dal.ScanLatestCheckpointID(cfg.DataDir)
+				_, hasCheckpoint, err := dal.ScanLatestCheckpointID(cfg.DataDir)
 				if err != nil {
 					return fmt.Errorf("scanning data directory: %w", err)
 				}
 
-				if latestID > 0 {
+				if hasCheckpoint {
 					return fmt.Errorf("restore mode requires a fresh data directory; checkpoints already exist in %s", cfg.DataDir)
 				}
 

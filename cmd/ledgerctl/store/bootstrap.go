@@ -71,12 +71,12 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 	)
 
 	// Ensure data directory is fresh (no existing checkpoints).
-	latestID, err := dal.ScanLatestCheckpointID(dataDir)
+	_, hasCheckpoint, err := dal.ScanLatestCheckpointID(dataDir)
 	if err != nil {
 		return fmt.Errorf("scanning data directory: %w", err)
 	}
 
-	if latestID > 0 {
+	if hasCheckpoint {
 		return fmt.Errorf("data directory %s already contains checkpoints; refusing to overwrite", dataDir)
 	}
 
