@@ -4,11 +4,13 @@ package backup
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
 	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
 )
@@ -48,6 +50,15 @@ func (s *S3Storage) GetFile(ctx context.Context, key string) (io.ReadCloser, err
 		Key:    aws.String(key),
 	})
 	if err != nil {
+		var (
+			noSuchKey *types.NoSuchKey
+			notFound  *types.NotFound
+		)
+
+		if errors.As(err, &noSuchKey) || errors.As(err, &notFound) {
+			return nil, fmt.Errorf("s3 GetObject %s: %w", key, ErrFileNotFound)
+		}
+
 		return nil, fmt.Errorf("s3 GetObject %s: %w", key, err)
 	}
 

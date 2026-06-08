@@ -66,7 +66,10 @@ func RunBackup(
 	}
 
 	// 3. Read existing manifest
-	existingManifest := ReadManifestOrEmpty(ctx, logger, storage, manifestKey)
+	existingManifest, err := ReadManifestOrEmpty(ctx, logger, storage, manifestKey)
+	if err != nil {
+		return nil, err
+	}
 
 	// 4. Compute diff against previous checkpoint files
 	var previousFiles map[string]int64
@@ -117,26 +120,34 @@ func RunBackup(
 		return nil, fmt.Errorf("opening checkpoint for reading sequences: %w", err)
 	}
 
+	defer func() { _ = checkpointStore.Close() }()
+
 	readHandle, handleErr := checkpointStore.NewDirectReadHandle()
 	if handleErr != nil {
-		_ = checkpointStore.Close()
-
 		return nil, fmt.Errorf("creating read handle: %w", handleErr)
 	}
 
-	lastAppliedIndex, _ := query.ReadLastAppliedIndex(readHandle)
+	defer func() { _ = readHandle.Close() }()
 
-	lastLog, _ := query.ReadLastLog(readHandle)
+	lastAppliedIndex, err := query.ReadLastAppliedIndex(readHandle)
+	if err != nil {
+		return nil, fmt.Errorf("reading last applied index from checkpoint: %w", err)
+	}
+
+	lastLog, err := query.ReadLastLog(readHandle)
+	if err != nil {
+		return nil, fmt.Errorf("reading last log from checkpoint: %w", err)
+	}
 
 	var lastLogSeq uint64
 	if lastLog != nil {
 		lastLogSeq = lastLog.GetSequence()
 	}
 
-	lastAuditSeq, _ := query.ReadLastAuditSequence(readHandle)
-
-	_ = readHandle.Close()
-	_ = checkpointStore.Close()
+	lastAuditSeq, err := query.ReadLastAuditSequence(readHandle)
+	if err != nil {
+		return nil, fmt.Errorf("reading last audit sequence from checkpoint: %w", err)
+	}
 
 	// 9. Write updated manifest with new checkpoint and empty exports
 	newManifest := &Manifest{
@@ -192,7 +203,10 @@ func RunIncrementalBackup(
 	manifestKey := ManifestKey(bucketID)
 
 	// 1. Read existing manifest (empty if first run)
-	manifest := ReadManifestOrEmpty(ctx, logger, storage, manifestKey)
+	manifest, err := ReadManifestOrEmpty(ctx, logger, storage, manifestKey)
+	if err != nil {
+		return nil, err
+	}
 
 	// 2. Take a point-in-time snapshot for consistent reads
 	readHandle, err := store.NewReadHandle()
@@ -207,14 +221,20 @@ func RunIncrementalBackup(
 	afterAuditSeq := manifest.LastExportAuditSequence()
 
 	// 4. Read current last sequences
-	currentLastLog, _ := query.ReadLastLog(readHandle)
+	currentLastLog, err := query.ReadLastLog(readHandle)
+	if err != nil {
+		return nil, fmt.Errorf("reading current last log: %w", err)
+	}
 
 	var currentLogSeq uint64
 	if currentLastLog != nil {
 		currentLogSeq = currentLastLog.GetSequence()
 	}
 
-	currentAuditSeq, _ := query.ReadLastAuditSequence(readHandle)
+	currentAuditSeq, err := query.ReadLastAuditSequence(readHandle)
+	if err != nil {
+		return nil, fmt.Errorf("reading current last audit sequence: %w", err)
+	}
 
 	// Ensure monotonicity: after a RestoreCheckpoint (leadership change +
 	// snapshot from new leader), Pebble may have a lower cold-zone sequence

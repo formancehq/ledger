@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 )
 
@@ -96,15 +97,20 @@ func ManifestKey(bucketID string) string {
 	return bucketID + "/backups/manifest.json"
 }
 
-// ReadManifestOrEmpty reads a manifest from storage, returning an empty manifest
-// if the file does not exist or cannot be read.
-func ReadManifestOrEmpty(ctx context.Context, logger interface{ Infof(string, ...any) }, storage Storage, key string) *Manifest {
+// ReadManifestOrEmpty reads a manifest from storage, returning an empty
+// manifest if the file does not exist. Any other error (decode, permission,
+// network) is returned rather than masked.
+func ReadManifestOrEmpty(ctx context.Context, logger interface{ Infof(string, ...any) }, storage Storage, key string) (*Manifest, error) {
 	manifest, err := ReadManifest(ctx, storage, key)
-	if err != nil {
+	if errors.Is(err, ErrFileNotFound) {
 		logger.Infof("No existing manifest found, starting fresh")
 
-		return &Manifest{}
+		return &Manifest{}, nil
 	}
 
-	return manifest
+	if err != nil {
+		return nil, fmt.Errorf("reading existing manifest %s: %w", key, err)
+	}
+
+	return manifest, nil
 }
