@@ -963,22 +963,12 @@ func (m *BuiltinIndexConfig) Mutate() *BuiltinIndexConfig {
 // LogBuiltinIndexConfigReader provides read-only access to LogBuiltinIndexConfig.
 // Call Mutate() to obtain a mutable clone.
 type LogBuiltinIndexConfigReader interface {
-	GetLedger() bool
-	GetLedgerStatus() IndexBuildStatus
 	GetDate() bool
 	GetDateStatus() IndexBuildStatus
 	Mutate() *LogBuiltinIndexConfig
 }
 
 type logBuiltinIndexConfigReadonly struct{ v *LogBuiltinIndexConfig }
-
-func (r *logBuiltinIndexConfigReadonly) GetLedger() bool {
-	return r.v.GetLedger()
-}
-
-func (r *logBuiltinIndexConfigReadonly) GetLedgerStatus() IndexBuildStatus {
-	return r.v.GetLedgerStatus()
-}
 
 func (r *logBuiltinIndexConfigReadonly) GetDate() bool {
 	return r.v.GetDate()

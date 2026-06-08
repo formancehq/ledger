@@ -24,6 +24,7 @@ func NewListCommand() *cobra.Command {
 	}
 
 	cmdutil.AddOutputFlags(cmd)
+	cmd.Flags().String("ledger", "", "Ledger name (required)")
 	cmd.Flags().Uint64("after", 0, "Show logs after this sequence number")
 	cmd.Flags().Uint32("page-size", cmdutil.DefaultPageSize, "Number of logs per page (0 = unlimited)")
 	cmd.Flags().Uint64("min-log-sequence", 0, "Minimum log sequence the server must have applied before reading (0 = no constraint)")
@@ -46,6 +47,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	defer cancel()
 
 	var (
+		ledger, _       = cmd.Flags().GetString("ledger")
 		after, _        = cmd.Flags().GetUint64("after")
 		pageSize, _     = cmd.Flags().GetUint32("page-size")
 		minLogSeq, _    = cmd.Flags().GetUint64("min-log-sequence")
@@ -53,7 +55,12 @@ func runList(cmd *cobra.Command, _ []string) error {
 		expand, _       = cmd.Flags().GetBool("expand")
 	)
 
+	if ledger == "" {
+		return errors.New("--ledger flag is required")
+	}
+
 	req := &servicepb.ListLogsRequest{
+		Ledger:         ledger,
 		PageSize:       pageSize,
 		MinLogSequence: minLogSeq,
 		CheckpointId:   checkpointID,

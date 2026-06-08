@@ -33,8 +33,9 @@ func main() {
 
 		details := internal.Details{"ledger": ledger}
 
-		// 2. List logs (global).
+		// 2. List logs for the ledger.
 		stream, err := client.ListLogs(ctx, &servicepb.ListLogsRequest{
+			Ledger:   ledger,
 			PageSize: 20,
 		})
 		if err != nil {

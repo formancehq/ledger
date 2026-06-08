@@ -16,7 +16,7 @@ func TestHandleListLedgerLogs_Success(t *testing.T) {
 	t.Parallel()
 
 	backend := &mockBackend{
-		listLogsFn: func(_ context.Context, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
+		listLogsFn: func(_ context.Context, _ string, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
 			return cursor.NewSliceCursor([]*commonpb.Log{
 				{Sequence: 1},
 				{Sequence: 2},
@@ -39,7 +39,7 @@ func TestHandleListLedgerLogs_Empty(t *testing.T) {
 	t.Parallel()
 
 	backend := &mockBackend{
-		listLogsFn: func(_ context.Context, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
+		listLogsFn: func(_ context.Context, _ string, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
 			return cursor.NewSliceCursor[*commonpb.Log](nil), nil
 		},
 	}
@@ -134,7 +134,7 @@ func TestHandleListLedgerLogs_WithDateFilters(t *testing.T) {
 	t.Parallel()
 
 	backend := &mockBackend{
-		listLogsFn: func(_ context.Context, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
+		listLogsFn: func(_ context.Context, _ string, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
 			return cursor.NewSliceCursor[*commonpb.Log](nil), nil
 		},
 	}
@@ -154,7 +154,7 @@ func TestHandleListLedgerLogs_WithAfterParam(t *testing.T) {
 	t.Parallel()
 
 	backend := &mockBackend{
-		listLogsFn: func(_ context.Context, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
+		listLogsFn: func(_ context.Context, _ string, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
 			return cursor.NewSliceCursor[*commonpb.Log](nil), nil
 		},
 	}

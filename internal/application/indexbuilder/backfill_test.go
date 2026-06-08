@@ -144,13 +144,13 @@ func TestBackfillBBKey_AcctMetadata(t *testing.T) {
 func TestBackfillBBKey_LogBuiltin(t *testing.T) {
 	t.Parallel()
 
-	logIdx := commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER
+	logIdx := commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE
 	id := indexID{logBuiltin: &logIdx}
 
 	key := backfillBBKey(1, id)
 
 	expected := uint32BE(1)
-	expected = append(expected, readstore.BackfillKindLogBuiltin, byte(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER))
+	expected = append(expected, readstore.BackfillKindLogBuiltin, byte(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE))
 
 	assert.Equal(t, expected, key)
 }
@@ -221,10 +221,10 @@ func TestBackfillIndexName_AcctMetadata(t *testing.T) {
 func TestBackfillIndexName_LogBuiltin(t *testing.T) {
 	t.Parallel()
 
-	logIdx := commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER
+	logIdx := commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE
 	name := backfillIndexName(indexID{logBuiltin: &logIdx})
 
-	assert.Equal(t, "log:"+commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER.String(), name)
+	assert.Equal(t, "log:"+commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE.String(), name)
 }
 
 func TestBackfillIndexName_Unknown(t *testing.T) {
@@ -302,15 +302,15 @@ func TestMatchesBackfillIndex_DifferentTypes(t *testing.T) {
 func TestMatchesBackfillIndex_LogBuiltin(t *testing.T) {
 	t.Parallel()
 
-	ledgerIdx := commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER
 	dateIdx := commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE
 
-	a := indexID{logBuiltin: &ledgerIdx}
-	b := indexID{logBuiltin: &ledgerIdx}
+	a := indexID{logBuiltin: &dateIdx}
+	b := indexID{logBuiltin: &dateIdx}
 
 	assert.True(t, matchesBackfillIndex(a, b))
 
-	c := indexID{logBuiltin: &dateIdx}
+	unspec := commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_UNSPECIFIED
+	c := indexID{logBuiltin: &unspec}
 	assert.False(t, matchesBackfillIndex(a, c))
 }
 
@@ -643,5 +643,5 @@ func TestBuildBackfillConfig_LogBuiltin(t *testing.T) {
 
 	require.NotNil(t, cfg)
 	assert.True(t, cfg.logBuiltinIndexed[commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE])
-	assert.False(t, cfg.logBuiltinIndexed[commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER])
+	assert.False(t, cfg.logBuiltinIndexed[commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_UNSPECIFIED])
 }

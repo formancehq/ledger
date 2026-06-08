@@ -162,13 +162,8 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 			},
 		}
 		indexDesc = "inserted-at"
-	case "log-ledger":
-		req.Index = &servicepb.CreateIndexRequest_LogBuiltin{
-			LogBuiltin: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER,
-		}
-		indexDesc = "log-ledger"
 	default:
-		return fmt.Errorf("invalid index type %q: must be address, source-address, dest-address, metadata, reference, timestamp, inserted-at, or log-ledger", indexType)
+		return fmt.Errorf("invalid index type %q: must be address, source-address, dest-address, metadata, reference, timestamp, or inserted-at", indexType)
 	}
 
 	ctx, cancel := cmdutil.GetContext(cmd)

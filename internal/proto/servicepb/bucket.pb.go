@@ -5646,17 +5646,18 @@ func (x *GetAuditEntryRequest) GetSequence() uint64 {
 
 type ListLogsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// after_sequence is the global sequence to start after (exclusive). Used when no ledger filter is set.
+	// after_sequence is the ledger-local log ID to start after (exclusive).
 	AfterSequence *uint64 `protobuf:"fixed64,1,opt,name=after_sequence,json=afterSequence,proto3,oneof" json:"after_sequence,omitempty"`
 	PageSize      uint32  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	// min_log_sequence requires the store to have applied at least this log sequence before reading.
 	MinLogSequence uint64 `protobuf:"fixed64,3,opt,name=min_log_sequence,json=minLogSequence,proto3" json:"min_log_sequence,omitempty"`
-	// filter is an optional filter (e.g. ledger == "foo", log_id > 42). When a ledger filter
-	// is present, results are ordered by ledger-local log ID ascending. Use a log_id condition
-	// for pagination. When absent, all logs are returned ordered by global sequence ascending.
+	// filter is an optional filter (e.g. log_id > 42, date range). Results are ordered by
+	// ledger-local log ID ascending. Use a log_id condition for pagination.
 	Filter *commonpb.QueryFilter `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
 	// checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-	CheckpointId  uint64 `protobuf:"fixed64,5,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	CheckpointId uint64 `protobuf:"fixed64,5,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	// ledger is the required ledger name to scope the log listing.
+	Ledger        string `protobuf:"bytes,6,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5724,6 +5725,13 @@ func (x *ListLogsRequest) GetCheckpointId() uint64 {
 		return x.CheckpointId
 	}
 	return 0
+}
+
+func (x *ListLogsRequest) GetLedger() string {
+	if x != nil {
+		return x.Ledger
+	}
+	return ""
 }
 
 type GetLogRequest struct {
@@ -8994,13 +9002,14 @@ const file_bucket_proto_rawDesc = "" +
 	"\x06ledger\x18\x05 \x01(\tR\x06ledgerB\x11\n" +
 	"\x0f_after_sequence\"2\n" +
 	"\x14GetAuditEntryRequest\x12\x1a\n" +
-	"\bsequence\x18\x01 \x01(\x06R\bsequence\"\xe9\x01\n" +
+	"\bsequence\x18\x01 \x01(\x06R\bsequence\"\x81\x02\n" +
 	"\x0fListLogsRequest\x12*\n" +
 	"\x0eafter_sequence\x18\x01 \x01(\x06H\x00R\rafterSequence\x88\x01\x01\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\rR\bpageSize\x12(\n" +
 	"\x10min_log_sequence\x18\x03 \x01(\x06R\x0eminLogSequence\x12+\n" +
 	"\x06filter\x18\x04 \x01(\v2\x13.common.QueryFilterR\x06filter\x12#\n" +
-	"\rcheckpoint_id\x18\x05 \x01(\x06R\fcheckpointIdB\x11\n" +
+	"\rcheckpoint_id\x18\x05 \x01(\x06R\fcheckpointId\x12\x16\n" +
+	"\x06ledger\x18\x06 \x01(\tR\x06ledgerB\x11\n" +
 	"\x0f_after_sequence\"P\n" +
 	"\rGetLogRequest\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x06R\bsequence\x12#\n" +

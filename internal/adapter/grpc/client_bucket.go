@@ -98,8 +98,9 @@ func (g *BucketGrpcClient) ListAccounts(ctx context.Context, ledgerName string, 
 	return NewGRPCIdentityCursor(stream), nil
 }
 
-func (g *BucketGrpcClient) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
+func (g *BucketGrpcClient) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
 	req := &servicepb.ListLogsRequest{
+		Ledger:   ledgerName,
 		PageSize: pageSize,
 		Filter:   filter,
 	}

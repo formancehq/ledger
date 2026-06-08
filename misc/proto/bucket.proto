@@ -706,17 +706,18 @@ message GetAuditEntryRequest {
 // ============================================================================
 
 message ListLogsRequest {
-  // after_sequence is the global sequence to start after (exclusive). Used when no ledger filter is set.
+  // after_sequence is the ledger-local log ID to start after (exclusive).
   optional fixed64 after_sequence = 1;
   uint32 page_size = 2;
   // min_log_sequence requires the store to have applied at least this log sequence before reading.
   fixed64 min_log_sequence = 3;
-  // filter is an optional filter (e.g. ledger == "foo", log_id > 42). When a ledger filter
-  // is present, results are ordered by ledger-local log ID ascending. Use a log_id condition
-  // for pagination. When absent, all logs are returned ordered by global sequence ascending.
+  // filter is an optional filter (e.g. log_id > 42, date range). Results are ordered by
+  // ledger-local log ID ascending. Use a log_id condition for pagination.
   common.QueryFilter filter = 4;
   // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
   fixed64 checkpoint_id = 5;
+  // ledger is the required ledger name to scope the log listing.
+  string ledger = 6;
 }
 
 message GetLogRequest {

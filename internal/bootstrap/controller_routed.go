@@ -194,13 +194,13 @@ func (b *RoutedController) ListTransactions(ctx context.Context, ledgerName stri
 	return c.ListTransactions(ctx, ledgerName, pageSize, afterTxID, filter, reverse)
 }
 
-func (b *RoutedController) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
+func (b *RoutedController) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.ListLogs(ctx, afterSequence, pageSize, filter)
+	return c.ListLogs(ctx, ledgerName, afterSequence, pageSize, filter)
 }
 
 func (b *RoutedController) GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error) {

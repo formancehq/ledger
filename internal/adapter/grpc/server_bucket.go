@@ -727,12 +727,16 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 		}
 	}
 
+	if req.GetLedger() == "" {
+		return errors.New("ledger name is required")
+	}
+
 	var afterSequence uint64
 	if req.AfterSequence != nil {
 		afterSequence = req.GetAfterSequence()
 	}
 
-	cursor, err := c.ListLogs(ctx, afterSequence, req.GetPageSize(), req.GetFilter())
+	cursor, err := c.ListLogs(ctx, req.GetLedger(), afterSequence, req.GetPageSize(), req.GetFilter())
 	if err != nil {
 		return fmt.Errorf("listing logs: %w", err)
 	}

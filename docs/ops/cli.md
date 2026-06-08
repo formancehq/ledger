@@ -2139,31 +2139,32 @@ ledgerctl logs list [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
+| `--ledger` | (required) | Ledger name to list logs for |
 | `--json` | `false` | Output as JSON |
-| `--after` | `0` | Show logs after this global sequence number |
+| `--after` | `0` | Show logs after this log ID |
 | `--page-size` | `10` | Number of logs per page (0 = unlimited) |
 | `--min-log-sequence` | `0` | Minimum log sequence the server must have applied before reading (0 = no constraint) |
 | `--timeout` | `10s` | Request timeout |
 
 **Behavior:**
-- Streams system log entries from the server
-- Each entry shows: sequence number, log type, ledger name (if applicable), and details
-- The underlying gRPC `ListLogs` RPC supports a `QueryFilter` for per-ledger listing (e.g. `ledger == "foo"`) and log ID pagination (`log_id > 42`). The per-ledger log index must be enabled via `CreateIndex` (builtin `LOG` index)
+- Streams system log entries for a specific ledger from the server
+- Each entry shows: sequence number, log type, ledger name, and details
+- The `--ledger` flag is required
 
 **Example:**
 
 ```bash
-# List all system logs
-ledgerctl logs list
+# List logs for a ledger
+ledgerctl logs list --ledger my-ledger
 
-# Show logs after sequence 100
-ledgerctl logs list --after 100
+# Show logs after log ID 100
+ledgerctl logs list --ledger my-ledger --after 100
 
 # Show 20 entries per page
-ledgerctl logs list --page-size 20
+ledgerctl logs list --ledger my-ledger --page-size 20
 
 # Output as JSON
-ledgerctl logs list --json
+ledgerctl logs list --ledger my-ledger --json
 ```
 
 #### logs get

@@ -10,7 +10,8 @@ import (
 )
 
 // handleListLedgerLogs handles GET /{ledgerName}/logs to list logs for a specific ledger.
-// It builds a LedgerCondition filter from the URL path and delegates to ListLogs.
+// It passes the ledger name directly to ListLogs and builds optional filters
+// for pagination (after) and date ranges (startDate/endDate).
 func (s *Server) handleListLedgerLogs(w http.ResponseWriter, r *http.Request) {
 	ledgerName, ok := requireLedgerName(w, r)
 	if !ok {
@@ -22,17 +23,7 @@ func (s *Server) handleListLedgerLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	filters := []*commonpb.QueryFilter{
-		{
-			Filter: &commonpb.QueryFilter_Ledger{
-				Ledger: &commonpb.LedgerCondition{
-					Cond: &commonpb.StringCondition{
-						Value: &commonpb.StringCondition_Hardcoded{Hardcoded: ledgerName},
-					},
-				},
-			},
-		},
-	}
+	var filters []*commonpb.QueryFilter
 
 	if after := r.URL.Query().Get("after"); after != "" {
 		parsed, err := strconv.ParseUint(after, 10, 64)
@@ -96,8 +87,10 @@ func (s *Server) handleListLedgerLogs(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	filter := filters[0]
-	if len(filters) > 1 {
+	var filter *commonpb.QueryFilter
+	if len(filters) == 1 {
+		filter = filters[0]
+	} else if len(filters) > 1 {
 		filter = &commonpb.QueryFilter{
 			Filter: &commonpb.QueryFilter_And{
 				And: &commonpb.AndFilter{Filters: filters},
@@ -105,7 +98,7 @@ func (s *Server) handleListLedgerLogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	cursor, err := s.backend.ListLogs(r.Context(), 0, pageSize, filter)
+	cursor, err := s.backend.ListLogs(r.Context(), ledgerName, 0, pageSize, filter)
 	if err != nil {
 		handleError(w, r, err)
 

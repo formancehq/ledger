@@ -124,13 +124,8 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 		addMetadataIndexRowsWithProgress(&table, "transaction", schema.GetTransactionFields(), progressMap, lastLogSeq, commonpb.TargetType_TARGET_TYPE_TRANSACTION)
 	}
 
-	// Log builtin indexes
-	if li := ledger.GetLogBuiltinIndexes(); li != nil {
-		if li.GetLedger() {
-			table = append(table, []string{"log-ledger", "-", "-",
-				indexStatusWithProgress(li.GetLedgerStatus(), progressMap, lastLogSeq, "l:0")})
-		}
-	}
+	// The per-ledger log index is always-on (no row to display).
+	// Opt-in log builtin indexes (e.g. date) would be listed here if added.
 
 	if len(table) == 1 {
 		pterm.Println("No indexes configured.")
@@ -183,11 +178,8 @@ func hasBuildingIndexes(ledger *commonpb.LedgerInfo) bool {
 		}
 	}
 
-	if li := ledger.GetLogBuiltinIndexes(); li != nil {
-		if li.GetLedger() && li.GetLedgerStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
-			return true
-		}
-	}
+	// LogBuiltinIndexConfig.date is not exposed via the CLI yet; when it is,
+	// add the BUILDING check here.
 
 	return false
 }

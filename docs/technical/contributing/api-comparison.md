@@ -646,7 +646,7 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `ListPeriods` | Stream all periods | ✅ |
 | `ListAuditEntries` | Stream audit log entries (success + failure) | ✅ |
 | `GetAuditEntry` | Get a single audit entry by sequence number | ✅ |
-| `ListLogs` | Stream system logs (supports `ledger` and `log_id` filters for per-ledger listing and pagination) | ✅ |
+| `ListLogs` | Stream system logs for a ledger (requires `ledger` field; supports `log_id` and date filters for pagination) | ✅ |
 | `GetLog` | Get a single system log by sequence number | ✅ |
 | `ListSigningKeys` | Stream all registered signing keys | ✅ |
 | `Discovery` | Return server capabilities (response signing config) | ✅ |

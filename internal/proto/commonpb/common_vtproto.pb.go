@@ -679,8 +679,6 @@ func (m *LogBuiltinIndexConfig) CloneVT() *LogBuiltinIndexConfig {
 		return (*LogBuiltinIndexConfig)(nil)
 	}
 	r := new(LogBuiltinIndexConfig)
-	r.Ledger = m.Ledger
-	r.LedgerStatus = m.LedgerStatus
 	r.Date = m.Date
 	r.DateStatus = m.DateStatus
 	if len(m.unknownFields) > 0 {
@@ -4608,12 +4606,6 @@ func (this *LogBuiltinIndexConfig) EqualVT(that *LogBuiltinIndexConfig) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if this.Ledger != that.Ledger {
-		return false
-	}
-	if this.LedgerStatus != that.LedgerStatus {
 		return false
 	}
 	if this.Date != that.Date {
@@ -11098,21 +11090,6 @@ func (m *LogBuiltinIndexConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 		}
 		i--
 		dAtA[i] = 0x18
-	}
-	if m.LedgerStatus != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LedgerStatus))
-		i--
-		dAtA[i] = 0x10
-	}
-	if m.Ledger {
-		i--
-		if m.Ledger {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x8
 	}
 	return len(dAtA) - i, nil
 }
@@ -18946,12 +18923,6 @@ func (m *LogBuiltinIndexConfig) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Ledger {
-		n += 2
-	}
-	if m.LedgerStatus != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.LedgerStatus))
-	}
 	if m.Date {
 		n += 2
 	}
@@ -26197,45 +26168,6 @@ func (m *LogBuiltinIndexConfig) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: LogBuiltinIndexConfig: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.Ledger = bool(v != 0)
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LedgerStatus", wireType)
-			}
-			m.LedgerStatus = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.LedgerStatus |= IndexBuildStatus(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		case 3:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Date", wireType)

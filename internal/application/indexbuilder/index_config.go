@@ -155,13 +155,15 @@ func (b *Builder) loadLedgerIndexConfig(info *commonpb.LedgerInfo) {
 	}
 
 	// Builtin log indexes — include both READY and BUILDING.
+	// The per-ledger log index is always maintained by process_logs.go and
+	// has no opt-in config to consult here. Only opt-in builtins (date) need
+	// the enabled/status loop.
 	if li := info.GetLogBuiltinIndexes(); li != nil {
 		for _, entry := range []struct {
 			index   commonpb.LogBuiltinIndex
 			enabled bool
 			status  commonpb.IndexBuildStatus
 		}{
-			{commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER, li.GetLedger(), li.GetLedgerStatus()},
 			{commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE, li.GetDate(), li.GetDateStatus()},
 		} {
 			if !entry.enabled {

@@ -41,11 +41,11 @@ var _ = Describe("Log date index", Ordered, func() {
 	var nowRef time.Time
 
 	BeforeAll(func() {
-		// Create ledger with both ledger log index and date index enabled.
+		// Create ledger with the date index enabled.
+		// The per-ledger log index is always-on (no explicit CreateIndex needed).
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
 				actions.CreateLedgerAction(ledgerName, nil),
-				actions.CreateLogBuiltinIndexAction(ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER),
 				actions.CreateLogBuiltinIndexAction(ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
 			},
 		})
@@ -63,8 +63,7 @@ var _ = Describe("Log date index", Ordered, func() {
 		})
 		Expect(err).To(Succeed())
 
-		// Wait for both indexes to be ready.
-		Expect(actions.WaitForLogBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER)).To(Succeed())
+		// Wait for the date index to be ready.
 		Expect(actions.WaitForLogBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)).To(Succeed())
 	})
 
@@ -78,20 +77,10 @@ var _ = Describe("Log date index", Ordered, func() {
 
 	It("Should list all logs without date filter", func() {
 		// List all logs for the ledger (no date filter).
-		ledgerFilter := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Ledger{
-				Ledger: &commonpb.LedgerCondition{
-					Cond: &commonpb.StringCondition{
-						Value: &commonpb.StringCondition_Hardcoded{Hardcoded: ledgerName},
-					},
-				},
-			},
-		}
-
 		Eventually(func(g Gomega) {
 			stream, err := sharedClient.ListLogs(sharedCtx, &servicepb.ListLogsRequest{
+				Ledger:   ledgerName,
 				PageSize: 100,
-				Filter:   ledgerFilter,
 			})
 			g.Expect(err).To(Succeed())
 
@@ -114,30 +103,13 @@ var _ = Describe("Log date index", Ordered, func() {
 		endTs := uint64(nowRef.Add(5 * time.Minute).UnixMicro())
 
 		dateFilter := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_And{
-				And: &commonpb.AndFilter{
-					Filters: []*commonpb.QueryFilter{
-						{
-							Filter: &commonpb.QueryFilter_Ledger{
-								Ledger: &commonpb.LedgerCondition{
-									Cond: &commonpb.StringCondition{
-										Value: &commonpb.StringCondition_Hardcoded{Hardcoded: ledgerName},
-									},
-								},
-							},
-						},
-						{
-							Filter: &commonpb.QueryFilter_LogBuiltinUint{
-								LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
-									Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
-									Cond: &commonpb.UintCondition{
-										Min:          &startTs,
-										Max:          &endTs,
-										MaxExclusive: true,
-									},
-								},
-							},
-						},
+			Filter: &commonpb.QueryFilter_LogBuiltinUint{
+				LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
+					Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
+					Cond: &commonpb.UintCondition{
+						Min:          &startTs,
+						Max:          &endTs,
+						MaxExclusive: true,
 					},
 				},
 			},
@@ -145,6 +117,7 @@ var _ = Describe("Log date index", Ordered, func() {
 
 		Eventually(func(g Gomega) {
 			stream, err := sharedClient.ListLogs(sharedCtx, &servicepb.ListLogsRequest{
+				Ledger:   ledgerName,
 				PageSize: 100,
 				Filter:   dateFilter,
 			})
@@ -162,36 +135,20 @@ var _ = Describe("Log date index", Ordered, func() {
 		futureEndTs := uint64(time.Date(2031, 1, 1, 0, 0, 0, 0, time.UTC).UnixMicro())
 
 		dateFilter := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_And{
-				And: &commonpb.AndFilter{
-					Filters: []*commonpb.QueryFilter{
-						{
-							Filter: &commonpb.QueryFilter_Ledger{
-								Ledger: &commonpb.LedgerCondition{
-									Cond: &commonpb.StringCondition{
-										Value: &commonpb.StringCondition_Hardcoded{Hardcoded: ledgerName},
-									},
-								},
-							},
-						},
-						{
-							Filter: &commonpb.QueryFilter_LogBuiltinUint{
-								LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
-									Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
-									Cond: &commonpb.UintCondition{
-										Min:          &futureTs,
-										Max:          &futureEndTs,
-										MaxExclusive: true,
-									},
-								},
-							},
-						},
+			Filter: &commonpb.QueryFilter_LogBuiltinUint{
+				LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
+					Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
+					Cond: &commonpb.UintCondition{
+						Min:          &futureTs,
+						Max:          &futureEndTs,
+						MaxExclusive: true,
 					},
 				},
 			},
 		}
 
 		stream, err := sharedClient.ListLogs(sharedCtx, &servicepb.ListLogsRequest{
+			Ledger:   ledgerName,
 			PageSize: 100,
 			Filter:   dateFilter,
 		})
@@ -211,15 +168,6 @@ var _ = Describe("Log date index", Ordered, func() {
 			Filter: &commonpb.QueryFilter_And{
 				And: &commonpb.AndFilter{
 					Filters: []*commonpb.QueryFilter{
-						{
-							Filter: &commonpb.QueryFilter_Ledger{
-								Ledger: &commonpb.LedgerCondition{
-									Cond: &commonpb.StringCondition{
-										Value: &commonpb.StringCondition_Hardcoded{Hardcoded: ledgerName},
-									},
-								},
-							},
-						},
 						{
 							Filter: &commonpb.QueryFilter_LogBuiltinUint{
 								LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
@@ -249,6 +197,7 @@ var _ = Describe("Log date index", Ordered, func() {
 
 		Eventually(func(g Gomega) {
 			stream, err := sharedClient.ListLogs(sharedCtx, &servicepb.ListLogsRequest{
+				Ledger:   ledgerName,
 				PageSize: 100,
 				Filter:   combinedFilter,
 			})

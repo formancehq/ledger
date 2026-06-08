@@ -149,13 +149,13 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			cfg := b.ledgerConfig(ledgerName)
 			ledgerID := b.ledgerNameToID[ledgerName]
 
-			// Index ledger log for per-ledger listing (opt-in via log builtin index).
-			if cfg.isLogBuiltinIndexed(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER) {
-				if err := b.wb.WriteLedgerLogIndex(b.kb, ledgerID, ledgerLog.GetId(), log.GetSequence()); err != nil {
-					_ = batch.Cancel()
+			// Per-ledger log index is always maintained — every log gets a
+			// LedgerLogKey(ledgerID, logID) → globalSeq entry. The controller's
+			// ListLogs path relies on this being unconditional.
+			if err := b.wb.WriteLedgerLogIndex(b.kb, ledgerID, ledgerLog.GetId(), log.GetSequence()); err != nil {
+				_ = batch.Cancel()
 
-					return cursor, err
-				}
+				return cursor, err
 			}
 
 			// Index log date for date range filtering (opt-in via log date builtin index).
@@ -385,11 +385,9 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log) error
 		return nil
 	}
 
-	// Index ledger log for per-ledger listing (opt-in via log builtin index).
-	if cfg.isLogBuiltinIndexed(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER) {
-		if err := b.wb.WriteLedgerLogIndex(b.kb, ledgerID, ledgerLog.GetId(), log.GetSequence()); err != nil {
-			return err
-		}
+	// Per-ledger log index is always maintained — see the live-path comment.
+	if err := b.wb.WriteLedgerLogIndex(b.kb, ledgerID, ledgerLog.GetId(), log.GetSequence()); err != nil {
+		return err
 	}
 
 	// Index log date for date range filtering (opt-in via log date builtin index).

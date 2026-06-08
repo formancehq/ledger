@@ -26,10 +26,9 @@ type Controller interface {
 	GetLedgerStats(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error)
 
 	// Log operations
-	// ListLogs returns logs. When filter contains a ledger condition, only logs for that ledger
-	// are returned (ordered by ledger-local log ID). Use a LogIdCondition in the filter for
-	// pagination. Otherwise all logs are returned in global sequence order (paginated by afterSequence).
-	ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error)
+	// ListLogs returns logs for a specific ledger, ordered by ledger-local log ID.
+	// Use a LogIdCondition in the filter for pagination.
+	ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error)
 	GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error)
 
 	// Audit operations

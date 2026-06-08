@@ -973,184 +973,84 @@ func encodeCursor(b []byte) string {
 	return base64Encoding.EncodeToString(b)
 }
 
-// ListLogs returns a cursor over logs. When filter contains a ledger condition, only logs for
-// that ledger are returned using the Compile framework (supports boolean filters, date ranges).
-// Otherwise all logs are returned in global sequence order, paginated by afterSequence.
-func (ctrl *DefaultController) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
+// ListLogs returns a cursor over logs for a specific ledger, ordered by
+// ledger-local log ID. The per-ledger log index is unconditionally maintained
+// by the indexbuilder, so every read uses the Compile framework — boolean
+// filters and date ranges are honored on the single code path.
+func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
 
-	if ledger := extractLedgerFilter(filter); ledger != "" {
-		// Strip the LedgerCondition from the filter tree — the ledger is set
-		// as context for the Compile framework, not as a filter node.
-		remainingFilter := stripLedgerFilter(filter)
-
-		ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store, ledger)
-		if err != nil {
-			_ = handle.Close()
-
-			if errors.Is(err, domain.ErrNotFound) {
-				return nil, commonpb.NewNotFoundError("ledger %s not found", ledger)
-			}
-
-			return nil, err
-		}
-
-		if pageSize == 0 {
-			pageSize = math.MaxUint32
-		}
-
-		snap := ctrl.readStore.NewSnapshot()
-		defer func() { _ = snap.Close() }()
-
-		kb := dal.NewKeyBuilder()
-
-		iter, err := query.Compile(
-			snap, kb, remainingFilter,
-			commonpb.QueryTarget_QUERY_TARGET_LOGS,
-			ledgerInfo.GetId(), nil, nil,
-			nil, ledgerInfo.GetLogBuiltinIndexes(), nil, handle,
-		)
-		if err != nil {
-			_ = handle.Close()
-
-			return nil, fmt.Errorf("compiling log filter: %w", err)
-		}
-		defer iter.Close()
-
-		logIDs, _ := readstore.PaginateForward(iter, pageSize, nil)
-
-		c, err := query.ReadLedgerLogsCompiled(handle, snap, ledgerInfo.GetId(), logIDs)
-		if err != nil {
-			_ = handle.Close()
-
-			return nil, fmt.Errorf("reading ledger logs: %w", err)
-		}
-
-		return cursor.NewClosingCursor(c, handle), nil
-	}
-
-	c, err := query.ReadLogsSince(ctx, handle, afterSequence)
+	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store, ledgerName)
 	if err != nil {
 		_ = handle.Close()
 
-		return nil, fmt.Errorf("listing logs: %w", err)
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
+		}
+
+		return nil, err
 	}
 
-	result := cursor.NewClosingCursor(c, handle)
-	if pageSize > 0 {
-		result = cursor.NewLimitedCursor(result, pageSize)
+	if pageSize == 0 {
+		pageSize = math.MaxUint32
 	}
 
-	return result, nil
-}
-
-// extractLedgerFilter walks a QueryFilter tree and returns the ledger name if a
-// LedgerCondition with a hardcoded string value is found. Returns "" if absent.
-func extractLedgerFilter(f *commonpb.QueryFilter) string {
-	if f == nil {
-		return ""
-	}
-
-	switch v := f.GetFilter().(type) {
-	case *commonpb.QueryFilter_Ledger:
-		if v.Ledger != nil && v.Ledger.GetCond() != nil {
-			if h := v.Ledger.GetCond().GetHardcoded(); h != "" {
-				return h
-			}
-		}
-	case *commonpb.QueryFilter_And:
-		for _, sub := range v.And.GetFilters() {
-			if l := extractLedgerFilter(sub); l != "" {
-				return l
-			}
-		}
-	case *commonpb.QueryFilter_Or:
-		for _, sub := range v.Or.GetFilters() {
-			if l := extractLedgerFilter(sub); l != "" {
-				return l
-			}
-		}
-	case *commonpb.QueryFilter_Not:
-		return extractLedgerFilter(v.Not.GetFilter())
-	}
-
-	return ""
-}
-
-// stripLedgerFilter returns a new filter tree with all LedgerCondition nodes
-// removed. AND filters with a single remaining child are unwrapped.
-// Returns nil if the entire tree was a single LedgerCondition.
-func stripLedgerFilter(f *commonpb.QueryFilter) *commonpb.QueryFilter {
-	if f == nil {
-		return nil
-	}
-
-	switch v := f.GetFilter().(type) {
-	case *commonpb.QueryFilter_Ledger:
-		return nil
-	case *commonpb.QueryFilter_And:
-		var remaining []*commonpb.QueryFilter
-
-		for _, sub := range v.And.GetFilters() {
-			stripped := stripLedgerFilter(sub)
-			if stripped != nil {
-				remaining = append(remaining, stripped)
-			}
-		}
-
-		if len(remaining) == 0 {
-			return nil
-		}
-
-		if len(remaining) == 1 {
-			return remaining[0]
-		}
-
-		return &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_And{
-				And: &commonpb.AndFilter{Filters: remaining},
+	// Translate afterSequence into a LogId filter so the Compile framework
+	// respects the cursor position. LogId with min=afterSequence, min_exclusive=true
+	// excludes the entry at afterSequence and returns only newer entries.
+	if afterSequence > 0 {
+		afterFilter := &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_LogId{
+				LogId: &commonpb.LogIdCondition{
+					Cond: &commonpb.UintCondition{
+						Min:          &afterSequence,
+						MinExclusive: true,
+					},
+				},
 			},
 		}
-	case *commonpb.QueryFilter_Or:
-		var remaining []*commonpb.QueryFilter
-
-		for _, sub := range v.Or.GetFilters() {
-			stripped := stripLedgerFilter(sub)
-			if stripped != nil {
-				remaining = append(remaining, stripped)
+		if filter != nil {
+			filter = &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_And{
+					And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{filter, afterFilter}},
+				},
 			}
+		} else {
+			filter = afterFilter
 		}
-
-		if len(remaining) == 0 {
-			return nil
-		}
-
-		if len(remaining) == 1 {
-			return remaining[0]
-		}
-
-		return &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Or{
-				Or: &commonpb.OrFilter{Filters: remaining},
-			},
-		}
-	case *commonpb.QueryFilter_Not:
-		inner := stripLedgerFilter(v.Not.GetFilter())
-		if inner == nil {
-			return nil
-		}
-
-		return &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Not{
-				Not: &commonpb.NotFilter{Filter: inner},
-			},
-		}
-	default:
-		return f
 	}
+
+	snap := ctrl.readStore.NewSnapshot()
+	defer func() { _ = snap.Close() }()
+
+	kb := dal.NewKeyBuilder()
+
+	iter, err := query.Compile(
+		snap, kb, filter,
+		commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		ledgerInfo.GetId(), nil, nil,
+		nil, ledgerInfo.GetLogBuiltinIndexes(), nil, handle,
+	)
+	if err != nil {
+		_ = handle.Close()
+
+		return nil, fmt.Errorf("compiling log filter: %w", err)
+	}
+	defer iter.Close()
+
+	logIDs, _ := readstore.PaginateForward(iter, pageSize, nil)
+
+	c, err := query.ReadLedgerLogsCompiled(handle, snap, ledgerInfo.GetId(), logIDs)
+	if err != nil {
+		_ = handle.Close()
+
+		return nil, fmt.Errorf("reading ledger logs: %w", err)
+	}
+
+	return cursor.NewClosingCursor(c, handle), nil
 }
 
 // ListAuditEntries returns a cursor over audit entries, applying optional filters.

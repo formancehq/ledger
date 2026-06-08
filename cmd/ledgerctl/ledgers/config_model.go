@@ -44,7 +44,6 @@ type EditableIndexes struct {
 	SourceAddress bool `json:"sourceAddress" yaml:"sourceAddress"`
 	DestAddress   bool `json:"destAddress"   yaml:"destAddress"`
 	InsertedAt    bool `json:"insertedAt"    yaml:"insertedAt"`
-	LogLedger     bool `json:"logLedger"     yaml:"logLedger"`
 }
 
 // EditablePreparedQuery is the editable subset of a prepared query.
@@ -124,10 +123,6 @@ func ConfigFromProto(
 			DestAddress:   bi.GetDestAddress(),
 			InsertedAt:    bi.GetInsertedAt(),
 		}
-	}
-
-	if lbi := ledger.GetLogBuiltinIndexes(); lbi != nil {
-		cfg.Indexes.LogLedger = lbi.GetLedger()
 	}
 
 	// Prepared queries
@@ -537,41 +532,6 @@ func diffIndexes(ledgerName string, current, desired *EditableConfig) []DiffActi
 	}
 
 	// Log-ledger index
-	if desired.Indexes.LogLedger && !current.Indexes.LogLedger {
-		actions = append(actions, DiffAction{
-			Section:     "index",
-			Operation:   "add",
-			Description: "Create index log-ledger",
-			Request: &servicepb.Request{
-				Type: &servicepb.Request_CreateIndex{
-					CreateIndex: &servicepb.CreateIndexRequest{
-						Ledger: ledgerName,
-						Index: &servicepb.CreateIndexRequest_LogBuiltin{
-							LogBuiltin: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER,
-						},
-					},
-				},
-			},
-		})
-	}
-	if !desired.Indexes.LogLedger && current.Indexes.LogLedger {
-		actions = append(actions, DiffAction{
-			Section:     "index",
-			Operation:   "remove",
-			Description: "Drop index log-ledger",
-			Request: &servicepb.Request{
-				Type: &servicepb.Request_DropIndex{
-					DropIndex: &servicepb.DropIndexRequest{
-						Ledger: ledgerName,
-						Index: &servicepb.DropIndexRequest_LogBuiltin{
-							LogBuiltin: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER,
-						},
-					},
-				},
-			},
-		})
-	}
-
 	return actions
 }
 

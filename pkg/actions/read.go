@@ -102,9 +102,9 @@ func ListAllTransactions(ctx context.Context, client servicepb.BucketServiceClie
 	return transactions, nil
 }
 
-// ListAllLogs collects all system logs from the streaming RPC.
-func ListAllLogs(ctx context.Context, client servicepb.BucketServiceClient) ([]*commonpb.Log, error) {
-	return ListLogsFiltered(ctx, client, &servicepb.ListLogsRequest{})
+// ListAllLogs collects all system logs for a ledger from the streaming RPC.
+func ListAllLogs(ctx context.Context, client servicepb.BucketServiceClient, ledger string) ([]*commonpb.Log, error) {
+	return ListLogsFiltered(ctx, client, &servicepb.ListLogsRequest{Ledger: ledger})
 }
 
 // ListAllPeriods collects all periods from the streaming RPC.

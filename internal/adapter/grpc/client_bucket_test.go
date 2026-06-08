@@ -374,7 +374,7 @@ func TestListLogs_Success(t *testing.T) {
 	mock := &mockBucketServiceClient{listLogsStream: stream}
 
 	client := NewLedgerGrpcClient(mock)
-	cursor, err := client.ListLogs(context.Background(), 0, 10, nil)
+	cursor, err := client.ListLogs(context.Background(), "ledger1", 0, 10, nil)
 	require.NoError(t, err)
 
 	log1, err := cursor.Next()
@@ -383,6 +383,8 @@ func TestListLogs_Success(t *testing.T) {
 
 	// Verify afterSequence is not set when 0
 	require.Nil(t, mock.capturedListLogsReq.AfterSequence)
+	// Verify ledger is set
+	require.Equal(t, "ledger1", mock.capturedListLogsReq.GetLedger())
 }
 
 func TestListLogs_WithAfterSequence(t *testing.T) {
@@ -394,7 +396,7 @@ func TestListLogs_WithAfterSequence(t *testing.T) {
 	mock := &mockBucketServiceClient{listLogsStream: stream}
 
 	client := NewLedgerGrpcClient(mock)
-	_, err := client.ListLogs(context.Background(), 3, 10, nil)
+	_, err := client.ListLogs(context.Background(), "ledger1", 3, 10, nil)
 	require.NoError(t, err)
 
 	// Verify afterSequence is set when > 0
@@ -410,7 +412,7 @@ func TestListLogs_StreamError(t *testing.T) {
 	}
 
 	client := NewLedgerGrpcClient(mock)
-	_, err := client.ListLogs(context.Background(), 0, 10, nil)
+	_, err := client.ListLogs(context.Background(), "ledger1", 0, 10, nil)
 	require.Error(t, err)
 }
 

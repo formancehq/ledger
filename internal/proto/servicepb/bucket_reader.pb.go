@@ -3144,6 +3144,7 @@ type ListLogsRequestReader interface {
 	GetMinLogSequence() uint64
 	GetFilter() commonpb.QueryFilterReader
 	GetCheckpointId() uint64
+	GetLedger() string
 	Mutate() *ListLogsRequest
 }
 
@@ -3171,6 +3172,10 @@ func (r *listLogsRequestReadonly) GetFilter() commonpb.QueryFilterReader {
 
 func (r *listLogsRequestReadonly) GetCheckpointId() uint64 {
 	return r.v.GetCheckpointId()
+}
+
+func (r *listLogsRequestReadonly) GetLedger() string {
+	return r.v.GetLedger()
 }
 
 func (r *listLogsRequestReadonly) Mutate() *ListLogsRequest {

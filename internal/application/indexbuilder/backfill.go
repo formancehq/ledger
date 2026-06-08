@@ -898,10 +898,7 @@ func isBuiltinReady(cfg *commonpb.BuiltinIndexConfig, builtin commonpb.Transacti
 }
 
 func isLogBuiltinReady(cfg *commonpb.LogBuiltinIndexConfig, builtin commonpb.LogBuiltinIndex) bool {
-	switch builtin {
-	case commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER:
-		return cfg.GetLedgerStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
-	case commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE:
+	if builtin == commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE {
 		return cfg.GetDateStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
 	}
 

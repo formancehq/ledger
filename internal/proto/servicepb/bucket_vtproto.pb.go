@@ -2045,6 +2045,7 @@ func (m *ListLogsRequest) CloneVT() *ListLogsRequest {
 	r.MinLogSequence = m.MinLogSequence
 	r.Filter = m.Filter.CloneVT()
 	r.CheckpointId = m.CheckpointId
+	r.Ledger = m.Ledger
 	if rhs := m.AfterSequence; rhs != nil {
 		tmpVal := *rhs
 		r.AfterSequence = &tmpVal
@@ -6483,6 +6484,9 @@ func (this *ListLogsRequest) EqualVT(that *ListLogsRequest) bool {
 		return false
 	}
 	if this.CheckpointId != that.CheckpointId {
+		return false
+	}
+	if this.Ledger != that.Ledger {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -13365,6 +13369,13 @@ func (m *ListLogsRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.Ledger) > 0 {
+		i -= len(m.Ledger)
+		copy(dAtA[i:], m.Ledger)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
+		i--
+		dAtA[i] = 0x32
+	}
 	if m.CheckpointId != 0 {
 		i -= 8
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CheckpointId))
@@ -18279,6 +18290,10 @@ func (m *ListLogsRequest) SizeVT() (n int) {
 	}
 	if m.CheckpointId != 0 {
 		n += 9
+	}
+	l = len(m.Ledger)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -30812,6 +30827,38 @@ func (m *ListLogsRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			m.CheckpointId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Ledger = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

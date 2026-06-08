@@ -577,7 +577,7 @@ send $amount (
 		require.NotEmpty(t, txPage, "page should not be empty")
 
 		// GetLog by sequence: get first log then fetch it individually
-		logs, err := actions.ListAllLogs(ctx, client)
+		logs, err := actions.ListAllLogs(ctx, client, ledger)
 		require.NoError(t, err, "ListAllLogs failed")
 		require.NotEmpty(t, logs, "should have logs")
 		firstSeq := logs[0].Sequence

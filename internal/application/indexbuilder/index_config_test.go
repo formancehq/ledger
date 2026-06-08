@@ -98,17 +98,16 @@ func TestIsLogBuiltinIndexed(t *testing.T) {
 		t.Parallel()
 
 		var cfg *ledgerIndexConfig
-		assert.False(t, cfg.isLogBuiltinIndexed(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER))
+		assert.False(t, cfg.isLogBuiltinIndexed(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE))
 	})
 
 	t.Run("indexed", func(t *testing.T) {
 		t.Parallel()
 
 		cfg := newLedgerIndexConfig()
-		cfg.logBuiltinIndexed[commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER] = true
+		cfg.logBuiltinIndexed[commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE] = true
 
-		assert.True(t, cfg.isLogBuiltinIndexed(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER))
-		assert.False(t, cfg.isLogBuiltinIndexed(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE))
+		assert.True(t, cfg.isLogBuiltinIndexed(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE))
 	})
 }
 
@@ -356,19 +355,19 @@ func TestHandleDroppedIndexLog_LogBuiltin(t *testing.T) {
 
 	b := newTestBuilderWithStore(t)
 	cfg := newLedgerIndexConfig()
-	cfg.logBuiltinIndexed[commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER] = true
+	cfg.logBuiltinIndexed[commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE] = true
 	b.indexConfig["ledger1"] = cfg
 
-	b.addBackfillTaskForLogBuiltin("ledger1", 1, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER)
+	b.addBackfillTaskForLogBuiltin("ledger1", 1, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
 	require.Len(t, b.backfillTasks, 1)
 
 	b.handleDroppedIndexLog("ledger1", &commonpb.DroppedIndexLog{
 		Index: &commonpb.DroppedIndexLog_LogBuiltin{
-			LogBuiltin: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER,
+			LogBuiltin: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
 		},
 	})
 
-	assert.False(t, cfg.logBuiltinIndexed[commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER])
+	assert.False(t, cfg.logBuiltinIndexed[commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE])
 	assert.Empty(t, b.backfillTasks)
 }
 
@@ -392,7 +391,7 @@ func TestAddBackfillTask_DifferentIndexes(t *testing.T) {
 	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
 	b.addBackfillTaskForTxMetadata("ledger1", 1, "category")
 	b.addBackfillTaskForAcctMetadata("ledger1", 1, "role")
-	b.addBackfillTaskForLogBuiltin("ledger1", 1, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER)
+	b.addBackfillTaskForLogBuiltin("ledger1", 1, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
 
 	assert.Len(t, b.backfillTasks, 5)
 }
@@ -407,14 +406,14 @@ func TestStripBuildingIndexes(t *testing.T) {
 	cfg.txBuiltinIndexed[commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP] = true
 	cfg.txMetadataIndexed["category"] = true
 	cfg.acctMetadataIndexed["role"] = true
-	cfg.logBuiltinIndexed[commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER] = true
+	cfg.logBuiltinIndexed[commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE] = true
 	b.indexConfig["ledger1"] = cfg
 
 	// Add backfill tasks for some of the indexes (simulating BUILDING state).
 	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 	b.addBackfillTaskForTxMetadata("ledger1", 1, "category")
 	b.addBackfillTaskForAcctMetadata("ledger1", 1, "role")
-	b.addBackfillTaskForLogBuiltin("ledger1", 1, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER)
+	b.addBackfillTaskForLogBuiltin("ledger1", 1, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
 
 	restore := b.stripBuildingIndexes()
 
@@ -422,7 +421,7 @@ func TestStripBuildingIndexes(t *testing.T) {
 	assert.False(t, cfg.txBuiltinIndexed[commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE])
 	assert.False(t, cfg.txMetadataIndexed["category"])
 	assert.False(t, cfg.acctMetadataIndexed["role"])
-	assert.False(t, cfg.logBuiltinIndexed[commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER])
+	assert.False(t, cfg.logBuiltinIndexed[commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE])
 
 	// READY indexes should still be there.
 	assert.True(t, cfg.txBuiltinIndexed[commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP])
@@ -433,7 +432,7 @@ func TestStripBuildingIndexes(t *testing.T) {
 	assert.True(t, cfg.txBuiltinIndexed[commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE])
 	assert.True(t, cfg.txMetadataIndexed["category"])
 	assert.True(t, cfg.acctMetadataIndexed["role"])
-	assert.True(t, cfg.logBuiltinIndexed[commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER])
+	assert.True(t, cfg.logBuiltinIndexed[commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE])
 	assert.True(t, cfg.txBuiltinIndexed[commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP])
 }
 
@@ -560,13 +559,13 @@ func TestLoadLedgerIndexConfig_LogBuiltinIndexes(t *testing.T) {
 
 	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
 
+	// Only the opt-in date index appears here; the per-ledger log index is
+	// always-on and is written unconditionally by process_logs.go.
 	info := &commonpb.LedgerInfo{
 		Name: "ledger1",
 		LogBuiltinIndexes: &commonpb.LogBuiltinIndexConfig{
-			Ledger:       true,
-			LedgerStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
-			Date:         true,
-			DateStatus:   commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY,
+			Date:       true,
+			DateStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
 		},
 	}
 
@@ -574,7 +573,6 @@ func TestLoadLedgerIndexConfig_LogBuiltinIndexes(t *testing.T) {
 
 	cfg := b.indexConfig["ledger1"]
 	require.NotNil(t, cfg)
-	assert.True(t, cfg.logBuiltinIndexed[commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER])
 	assert.True(t, cfg.logBuiltinIndexed[commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE])
 
 	require.Len(t, b.backfillTasks, 1)

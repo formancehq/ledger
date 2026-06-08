@@ -264,10 +264,7 @@ func isLogBuiltinIndexedAndReady(cfg *commonpb.LogBuiltinIndexConfig, builtin co
 		return false
 	}
 
-	switch builtin {
-	case commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER:
-		return cfg.GetLedger() && cfg.GetLedgerStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
-	case commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE:
+	if builtin == commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE {
 		return cfg.GetDate() && cfg.GetDateStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
 	}
 
@@ -275,21 +272,14 @@ func isLogBuiltinIndexedAndReady(cfg *commonpb.LogBuiltinIndexConfig, builtin co
 }
 
 func setLogBuiltinIndexed(cfg *commonpb.LogBuiltinIndexConfig, builtin commonpb.LogBuiltinIndex, enabled bool, status commonpb.IndexBuildStatus) {
-	switch builtin {
-	case commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER:
-		cfg.Ledger = enabled
-		cfg.LedgerStatus = status
-	case commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE:
+	if builtin == commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE {
 		cfg.Date = enabled
 		cfg.DateStatus = status
 	}
 }
 
 func SetLogBuiltinStatus(cfg *commonpb.LogBuiltinIndexConfig, builtin commonpb.LogBuiltinIndex, status commonpb.IndexBuildStatus) {
-	switch builtin {
-	case commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER:
-		cfg.LedgerStatus = status
-	case commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE:
+	if builtin == commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE {
 		cfg.DateStatus = status
 	}
 }

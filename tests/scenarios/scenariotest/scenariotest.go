@@ -311,8 +311,10 @@ type AuditExpectation struct {
 func CheckAuditTrail(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, expectations []AuditExpectation) {
 	t.Helper()
 
-	// 1. Verify global log chain integrity.
-	logs, err := actions.ListAllLogs(ctx, client)
+	// 1. Verify log chain integrity for the first ledger.
+	require.NotEmpty(t, expectations, "at least one AuditExpectation is required")
+
+	logs, err := actions.ListAllLogs(ctx, client, expectations[0].Ledger)
 	require.NoError(t, err, "ListAllLogs failed")
 	require.NotEmpty(t, logs, "should have at least one log")
 

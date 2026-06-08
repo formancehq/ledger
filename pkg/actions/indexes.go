@@ -124,10 +124,7 @@ func WaitForLogBuiltinIndexReady(ctx context.Context, client servicepb.BucketSer
 			return errors.New("log builtin indexes is nil")
 		}
 		var st commonpb.IndexBuildStatus
-		switch index {
-		case commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER:
-			st = info.GetLogBuiltinIndexes().GetLedgerStatus()
-		case commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE:
+		if index == commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE {
 			st = info.GetLogBuiltinIndexes().GetDateStatus()
 		}
 		if st != commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY {

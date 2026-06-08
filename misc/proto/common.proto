@@ -229,8 +229,11 @@ message AccountIndex {
 }
 
 // LogBuiltinIndex identifies a built-in log field that can be indexed.
+// The per-ledger log index (Pebble "llog") is always built by the indexbuilder
+// and is not exposed here — only opt-in fields appear below.
 enum LogBuiltinIndex {
-  LOG_BUILTIN_INDEX_LEDGER = 0;     // per-ledger log index (Pebble "llog")
+  reserved "LOG_BUILTIN_INDEX_LEDGER";
+  LOG_BUILTIN_INDEX_UNSPECIFIED = 0;
   LOG_BUILTIN_INDEX_DATE = 1;       // per-ledger log date index (Pebble "lldt")
 }
 
@@ -251,9 +254,11 @@ message BuiltinIndexConfig {
 }
 
 // LogBuiltinIndexConfig tracks the status of built-in log field indexes.
+// The per-ledger log index is unconditionally maintained by the indexbuilder
+// and has no opt-in flag here.
 message LogBuiltinIndexConfig {
-  bool ledger = 1;
-  IndexBuildStatus ledger_status = 2;
+  reserved 1, 2;
+  reserved "ledger", "ledger_status";
   bool date = 3;
   IndexBuildStatus date_status = 4;
 }

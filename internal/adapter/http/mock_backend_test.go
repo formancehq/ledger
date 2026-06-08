@@ -23,7 +23,7 @@ type mockBackend struct {
 	listTransactionsFn        func(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error)
 	getAccountFn              func(ctx context.Context, ledgerName string, address string) (*commonpb.Account, error)
 	listAccountsFn            func(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Account], error)
-	listLogsFn                func(ctx context.Context, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error)
+	listLogsFn                func(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error)
 	getLogFn                  func(ctx context.Context, sequence uint64) (*commonpb.Log, error)
 	listAuditEntriesFn        func(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32, ledger string) (cursor.Cursor[*auditpb.AuditEntry], error)
 	getAuditEntryFn           func(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error)
@@ -115,9 +115,9 @@ func (m *mockBackend) ListAccounts(ctx context.Context, ledgerName string, pageS
 	return cursor.NewSliceCursor[*commonpb.Account](nil), nil
 }
 
-func (m *mockBackend) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
+func (m *mockBackend) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
 	if m.listLogsFn != nil {
-		return m.listLogsFn(ctx, afterSequence, pageSize, filter)
+		return m.listLogsFn(ctx, ledgerName, afterSequence, pageSize, filter)
 	}
 
 	return cursor.NewSliceCursor[*commonpb.Log](nil), nil
