@@ -188,6 +188,24 @@ func CompactAllForBackup(s *dal.Store) error {
 		return fmt.Errorf("deleting persisted config: %w", err)
 	}
 
+	// Drop persisted bloom blocks. After an incremental restore they are stale
+	// (they predate the logs RebuildDelta replayed into the attribute zone, so
+	// they lack any post-checkpoint account), and their block layout is tied to
+	// the source's bloom config — not necessarily the config of the cluster that
+	// boots this data. Clearing them forces the booting node to rebuild the
+	// bloom from a full attribute scan using its own config; otherwise
+	// RestoreFromStore loads the stale blocks and post-checkpoint accounts get
+	// bloom-false-negatived (read as {0,0}) on the apply path.
+	if err := batch.DeleteRange(
+		[]byte{dal.ZoneGlobal, dal.SubGlobBloom},
+		[]byte{dal.ZoneGlobal, dal.SubGlobBloom + 1},
+		pebble.NoSync,
+	); err != nil {
+		_ = batch.Cancel()
+
+		return fmt.Errorf("deleting persisted bloom blocks: %w", err)
+	}
+
 	if err := batch.Commit(); err != nil {
 		return fmt.Errorf("committing compacted attributes: %w", err)
 	}

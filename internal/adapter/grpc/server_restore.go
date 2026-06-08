@@ -114,8 +114,9 @@ func (s *RestoreServiceServerImpl) DownloadBackup(ctx context.Context, req *rest
 		return nil, fmt.Errorf("parsing manifest: %w", err)
 	}
 
-	if manifest.Checkpoint == nil || len(manifest.Checkpoint.Files) == 0 {
-		return nil, status.Error(codes.FailedPrecondition, "backup manifest contains no checkpoint files")
+	hasCheckpoint := manifest.Checkpoint != nil && len(manifest.Checkpoint.Files) > 0
+	if !hasCheckpoint && len(manifest.Exports) == 0 {
+		return nil, status.Error(codes.FailedPrecondition, "backup manifest contains no checkpoint files and no export segments")
 	}
 
 	// Prepare staging directory
@@ -129,49 +130,64 @@ func (s *RestoreServiceServerImpl) DownloadBackup(ctx context.Context, req *rest
 		return nil, fmt.Errorf("creating staging directory: %w", err)
 	}
 
-	// Download each file from S3 into staging
-	var totalBytes uint64
+	// Download each checkpoint file from S3 into staging.
+	var (
+		totalBytes      uint64
+		checkpointFiles int
+	)
 
-	for filename := range manifest.Checkpoint.Files {
-		key := fileKeyPrefix + filename
-		destPath := filepath.Join(stagingDir, filepath.FromSlash(filename))
+	if hasCheckpoint {
+		checkpointFiles = len(manifest.Checkpoint.Files)
 
-		if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
-			return nil, fmt.Errorf("creating directory for %s: %w", filename, err)
-		}
+		for filename := range manifest.Checkpoint.Files {
+			key := fileKeyPrefix + filename
+			destPath := filepath.Join(stagingDir, filepath.FromSlash(filename))
 
-		reader, err := storage.GetFile(ctx, key)
-		if err != nil {
-			return nil, fmt.Errorf("downloading %s: %w", filename, err)
-		}
+			if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+				return nil, fmt.Errorf("creating directory for %s: %w", filename, err)
+			}
 
-		outFile, err := os.Create(destPath)
-		if err != nil {
+			reader, err := storage.GetFile(ctx, key)
+			if err != nil {
+				return nil, fmt.Errorf("downloading %s: %w", filename, err)
+			}
+
+			outFile, err := os.Create(destPath)
+			if err != nil {
+				_ = reader.Close()
+
+				return nil, fmt.Errorf("creating file %s: %w", filename, err)
+			}
+
+			n, err := io.Copy(outFile, reader)
 			_ = reader.Close()
+			_ = outFile.Close()
 
-			return nil, fmt.Errorf("creating file %s: %w", filename, err)
+			if err != nil {
+				return nil, fmt.Errorf("writing file %s: %w", filename, err)
+			}
+
+			totalBytes += uint64(n)
 		}
+	}
 
-		n, err := io.Copy(outFile, reader)
-		_ = reader.Close()
-		_ = outFile.Close()
-
-		if err != nil {
-			return nil, fmt.Errorf("writing file %s: %w", filename, err)
-		}
-
-		totalBytes += uint64(n)
+	// Apply incremental export segments on top of the checkpoint and rebuild
+	// derived state. Skipping this would silently drop every log/audit entry
+	// written after the last full checkpoint. Mirrors the offline bootstrap.
+	if err := backup.ApplyExportsAndRebuild(ctx, s.logger, storage, stagingDir, &manifest); err != nil {
+		return nil, fmt.Errorf("applying export segments: %w", err)
 	}
 
 	success = true
 
 	s.logger.WithFields(map[string]any{
-		"filesDownloaded": len(manifest.Checkpoint.Files),
+		"filesDownloaded": checkpointFiles,
+		"exportSegments":  len(manifest.Exports),
 		"totalBytes":      totalBytes,
 	}).Infof("Backup downloaded from S3 successfully")
 
 	return &restorepb.DownloadBackupResponse{
-		FilesDownloaded: uint32(len(manifest.Checkpoint.Files)),
+		FilesDownloaded: uint32(checkpointFiles),
 		TotalBytes:      totalBytes,
 	}, nil
 }

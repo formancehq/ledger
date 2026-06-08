@@ -143,6 +143,13 @@ var _ = Describe("Restore", Ordered, func() {
 				Output:    GinkgoWriter,
 			})
 			instruments = append(instruments, testserver.WithBootstrap())
+			// Low rotation threshold so the source rotates the cache and
+			// persists bloom blocks to ZoneGlobal/SubGlobBloom before the
+			// backup. The full backup then carries those blocks, so the
+			// restore takes the RestoreFromStore path (loads stale blocks,
+			// no full 0xF1 rescan) — the condition under which a
+			// post-checkpoint account can be bloom-false-negatived.
+			instruments = append(instruments, testserver.WithCacheRotationThreshold(3))
 
 			sourceServer = testservice.New(cmdserver.NewRunCommand,
 				testservice.WithInstruments(instruments...),
@@ -225,6 +232,31 @@ var _ = Describe("Restore", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.GetTotalFiles()).To(BeNumerically(">", 0))
+		})
+
+		It("should write post-checkpoint data and take an incremental backup", func() {
+			// This transaction is written AFTER the full checkpoint, so it
+			// lives only in incremental export segments — never in the
+			// checkpoint files. A restore that ignores exports loses it.
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "dave", big.NewInt(1500), "USD"),
+					}, map[string]string{"type": "post-checkpoint"}, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			resp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
+				Driver:     "s3",
+				S3Bucket:   restoreS3Bucket,
+				S3Region:   restoreS3Region,
+				S3Endpoint: minioEndpoint,
+			})
+			Expect(err).To(Succeed())
+			Expect(resp.GetLogEntriesExported()).To(BeNumerically(">", 0),
+				"incremental backup must export the post-checkpoint log entries")
+			Expect(resp.GetSegmentsUploaded()).To(BeNumerically(">", 0))
 		})
 	})
 
@@ -417,6 +449,39 @@ var _ = Describe("Restore", Ordered, func() {
 			treasuryResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledger2, Address: "treasury"})
 			Expect(err).To(Succeed())
 			Expect(treasuryResp.Volumes["EUR"].Input).To(Equal("50000"))
+		})
+
+		It("should have post-checkpoint data restored from export segments", func() {
+			// dave was funded after the full checkpoint, so this balance can
+			// only be present if the restore applied the incremental exports.
+			daveResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "dave"})
+			Expect(err).To(Succeed())
+			Expect(daveResp.Volumes["USD"].Input).To(Equal("1500"),
+				"transaction written after the checkpoint must be restored from export segments")
+		})
+
+		It("should account for a post-checkpoint balance on the apply path after restore", func() {
+			// The GetAccount above reads 0xF1, which the incremental restore
+			// rebuilt correctly. The apply path instead reads balances from the
+			// in-memory cache only (no Pebble reads on the hot path), warmed via
+			// a bloom-gated preload. The restore rebuilds 0xF1 but not the
+			// cache/bloom zones, so a post-checkpoint-only account can be
+			// bloom-false-negatived and seen as {0,0} by apply. Funding dave
+			// again and reading back exposes it: a cache-aware apply yields
+			// 1500+500=2000; a cache-blind apply overwrites 0xF1 with 500.
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "dave", big.NewInt(500), "USD"),
+					}, nil, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			daveResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "dave"})
+			Expect(err).To(Succeed())
+			Expect(daveResp.Volumes["USD"].Input).To(Equal("2000"),
+				"apply must see dave's restored balance via the cache; a cache/bloom-blind apply yields 500")
 		})
 
 		It("should accept new transactions after restore", func() {

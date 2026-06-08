@@ -188,48 +188,17 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 
 	logger := otlplogs.NopLogger()
 
-	// Apply export segments (if any)
+	// Apply export segments and rebuild derived state (if any).
 	if len(manifest.Exports) > 0 {
-		exportSpinner, _ := pterm.DefaultSpinner.Start("Applying export segments...")
+		exportSpinner, _ := pterm.DefaultSpinner.Start("Applying export segments and rebuilding derived state...")
 
-		exportStore, openErr := dal.OpenDirect(stagingDir, logger)
-		if openErr != nil {
-			exportSpinner.Fail("Failed to open staging for export application")
+		if err := backup.ApplyExportsAndRebuild(cmd.Context(), logger, storage, stagingDir, &manifest); err != nil {
+			exportSpinner.Fail("Failed to apply export segments")
 
-			return cmdutil.Displayed(fmt.Errorf("opening staging for exports: %w", openErr))
+			return cmdutil.Displayed(err)
 		}
 
-		if applyErr := backup.ApplyExports(cmd.Context(), logger, storage, exportStore, manifest.Exports); applyErr != nil {
-			_ = exportStore.Close()
-			exportSpinner.Fail("Failed to apply exports")
-
-			return cmdutil.Displayed(fmt.Errorf("applying exports: %w", applyErr))
-		}
-
-		// Rebuild derived state from the exported logs
-		var fromLogSeq uint64
-		if manifest.Checkpoint != nil {
-			fromLogSeq = manifest.Checkpoint.LastLogSequence
-		}
-
-		rebuildSpinner, _ := pterm.DefaultSpinner.Start("Rebuilding derived state from logs...")
-
-		if rebuildErr := backup.RebuildDelta(cmd.Context(), logger, exportStore, fromLogSeq); rebuildErr != nil {
-			_ = exportStore.Close()
-			rebuildSpinner.Fail("Failed to rebuild state")
-
-			return cmdutil.Displayed(fmt.Errorf("rebuilding derived state: %w", rebuildErr))
-		}
-
-		rebuildSpinner.Success("Derived state rebuilt")
-
-		if closeErr := exportStore.Close(); closeErr != nil {
-			exportSpinner.Fail("Failed to close export store")
-
-			return cmdutil.Displayed(fmt.Errorf("closing export store: %w", closeErr))
-		}
-
-		exportSpinner.Success(fmt.Sprintf("Applied %d export segments", len(manifest.Exports)))
+		exportSpinner.Success(fmt.Sprintf("Applied %d export segments and rebuilt derived state", len(manifest.Exports)))
 	}
 
 	// Open staging as read-only to read metadata.

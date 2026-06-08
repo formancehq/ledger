@@ -59,6 +59,16 @@ func RebuildDelta(
 	}
 	defer func() { _ = readHandle.Close() }()
 
+	// Seed ledger context (IDs + account types) from state already in the
+	// store. On an incremental rebuild the CreateLedger / AddAccountType logs
+	// precede fromLogSeq, so without this the replayed entries would resolve to
+	// ledger ID 0 and write derived state under the wrong canonical keys.
+	if err := seedLedgerContext(ctx, readHandle, ledgerNameToID, rawLedgerTypes, ledgerAccountTypes); err != nil {
+		_ = batch.Cancel()
+
+		return fmt.Errorf("seeding ledger context: %w", err)
+	}
+
 	logCursor, err := query.ReadLogsSince(ctx, readHandle, fromLogSeq)
 	if err != nil {
 		_ = batch.Cancel()
@@ -266,6 +276,47 @@ func RebuildDelta(
 	logger.WithFields(map[string]any{
 		"totalLogsProcessed": count,
 	}).Infof("RebuildDelta completed")
+
+	return nil
+}
+
+// seedLedgerContext populates the ledger-ID and account-type maps from ledgers
+// already persisted in the store (i.e. captured by the checkpoint), so an
+// incremental replay resolves ledger IDs and account-type persistence for
+// ledgers created before fromLogSeq.
+func seedLedgerContext(
+	ctx context.Context,
+	reader dal.PebbleReader,
+	ledgerNameToID map[string]uint32,
+	rawLedgerTypes map[string]map[string]*commonpb.AccountType,
+	ledgerAccountTypes map[string][]accounttype.CompiledType,
+) error {
+	cursor, err := query.ReadLedgers(ctx, reader)
+	if err != nil {
+		return fmt.Errorf("reading ledgers: %w", err)
+	}
+
+	defer func() { _ = cursor.Close() }()
+
+	for {
+		info, err := cursor.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+
+		if err != nil {
+			return fmt.Errorf("iterating ledgers: %w", err)
+		}
+
+		name := info.GetName()
+		ledgerNameToID[name] = info.GetId()
+
+		if types := info.GetAccountTypes(); len(types) > 0 {
+			cloned := maps.Clone(types)
+			rawLedgerTypes[name] = cloned
+			ledgerAccountTypes[name] = accounttype.CompileTypes(cloned)
+		}
+	}
 
 	return nil
 }

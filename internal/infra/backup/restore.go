@@ -2,7 +2,9 @@ package backup
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 
 	"github.com/cockroachdb/pebble/v2"
 
@@ -52,15 +54,15 @@ func ApplyExports(
 
 		for {
 			key, value, err := kvReader.ReadEntry()
+			if errors.Is(err, io.EOF) {
+				break // footer sentinel: clean end of stream
+			}
+
 			if err != nil {
 				_ = reader.Close()
 				_ = batch.Cancel()
 
 				return fmt.Errorf("reading entry from segment %s: %w", seg.Key, err)
-			}
-
-			if key == nil {
-				break // EOF sentinel
 			}
 
 			if err := batch.Set(key, value, pebble.NoSync); err != nil {
@@ -94,6 +96,42 @@ func ApplyExports(
 			"segment": seg.Key,
 			"entries": count,
 		}).Infof("Export segment applied")
+	}
+
+	return nil
+}
+
+// ApplyExportsAndRebuild applies the manifest's incremental export segments to
+// the staged store and rebuilds derived state from them, leaving the staging
+// directory fully restored. It is a no-op when the manifest carries no exports.
+//
+// Both the offline bootstrap (cmd/ledgerctl/store) and the gRPC restore path
+// (internal/adapter/grpc) call this so the two cannot drift: skipping it loses
+// every log/audit entry written after the last full checkpoint.
+func ApplyExportsAndRebuild(ctx context.Context, logger logging.Logger, storage Storage, stagingDir string, manifest *Manifest) error {
+	if manifest == nil || len(manifest.Exports) == 0 {
+		return nil
+	}
+
+	store, err := dal.OpenDirect(stagingDir, logger)
+	if err != nil {
+		return fmt.Errorf("opening staging for exports: %w", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	if err := ApplyExports(ctx, logger, storage, store, manifest.Exports); err != nil {
+		return fmt.Errorf("applying exports: %w", err)
+	}
+
+	// Derived state is rebuilt from the first log sequence not covered by the
+	// checkpoint (0 when restoring from exports alone).
+	var fromLogSeq uint64
+	if manifest.Checkpoint != nil {
+		fromLogSeq = manifest.Checkpoint.LastLogSequence
+	}
+
+	if err := RebuildDelta(ctx, logger, store, fromLogSeq); err != nil {
+		return fmt.Errorf("rebuilding derived state: %w", err)
 	}
 
 	return nil

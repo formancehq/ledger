@@ -304,6 +304,30 @@ func RunIncrementalBackup(
 		})
 
 		segmentsUploaded++
+
+		// Export the audit items (per-order detail) for the same range.
+		// The audit hash is computed over these orders, so a restored
+		// incremental backup that lacks them cannot reconstruct the hash
+		// chain (the checker fails at the first restored audit sequence).
+		// Items share the audit sequence range but live in a separate
+		// subzone; their composite [seq][order_idx] keys fall within the
+		// same [seq+1, endSeq+1) prefix bounds exportEntries uses.
+		if _, err := exportEntries(
+			ctx, storage, readHandle, bucketID,
+			dal.ZoneCold, dal.SubColdAuditItem, afterAuditSeq, currentAuditSeq,
+			ExportAuditItemSegmentKey(bucketID, afterAuditSeq+1, currentAuditSeq),
+		); err != nil {
+			return nil, fmt.Errorf("exporting audit items: %w", err)
+		}
+
+		manifest.Exports = append(manifest.Exports, ExportSegment{
+			Type:     "auditItem",
+			StartSeq: afterAuditSeq + 1,
+			EndSeq:   currentAuditSeq,
+			Key:      ExportAuditItemSegmentKey(bucketID, afterAuditSeq+1, currentAuditSeq),
+		})
+
+		segmentsUploaded++
 	}
 
 	// 8. Write updated manifest

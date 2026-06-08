@@ -268,8 +268,9 @@ The client calls the `RestoreService.DownloadBackup` RPC, which downloads the ba
 
 1. Validates state (no concurrent download, no previous download already staged).
 2. Creates a clean staging directory at `{dataDir}/restore-staging/`.
-3. Reads the manifest from S3 and downloads all checkpoint files and export segments.
-4. On success, marks the staging as ready.
+3. Reads the manifest from S3 and downloads the full checkpoint files.
+4. Applies any incremental export segments on top of the checkpoint and rebuilds derived state (volumes, metadata, transactions) from the exported logs, starting at the checkpoint's last log sequence. This is the same `ApplyExports` + `RebuildDelta` path used by the offline `ledgerctl store bootstrap` command, so a manifest with incremental backups restores all data written after the last full checkpoint.
+5. On success, marks the staging as ready.
 
 ### Step 2: Validate
 
