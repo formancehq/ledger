@@ -784,9 +784,11 @@ type noopLogger struct{}
 
 var _ logging.Logger = noopLogger{}
 
+func (noopLogger) Tracef(string, ...any)                        {}
 func (noopLogger) Debugf(string, ...any)                        {}
 func (noopLogger) Infof(string, ...any)                         {}
 func (noopLogger) Errorf(string, ...any)                        {}
+func (noopLogger) Trace(...any)                                 {}
 func (noopLogger) Debug(...any)                                 {}
 func (noopLogger) Info(...any)                                  {}
 func (noopLogger) Error(...any)                                 {}

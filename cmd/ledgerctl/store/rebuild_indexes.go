@@ -8,9 +8,10 @@ import (
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel/metric/noop"
 
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/application/indexbuilder"
-	"github.com/formancehq/ledger/v3/internal/infra/monitoring/otlplogs"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -48,7 +49,7 @@ func runRebuildIndexes(cmd *cobra.Command, _ []string) error {
 		readIndexDir = filepath.Join(dataDir, "read-indexes")
 	}
 
-	logger := otlplogs.NopLogger()
+	logger := logging.NopZap()
 
 	// Open Pebble read-only.
 	spinner, _ := pterm.DefaultSpinner.Start("Opening Pebble store (read-only)...")

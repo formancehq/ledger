@@ -17,6 +17,7 @@ func TestSpecFieldsNotEmpty(t *testing.T) {
 		"replicas": false, "image": false, "clusterID": false,
 		"raft": false, "pebble": false, "persistence": false,
 		"monitoring": false, "auth": false, "debug": false,
+		"logLevel": false,
 	}
 
 	for _, f := range fields {

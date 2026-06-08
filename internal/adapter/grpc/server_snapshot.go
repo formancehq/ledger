@@ -58,11 +58,11 @@ func StopSnapshotService(server snapshotpb.SnapshotServiceServer) {
 // PrepareSnapshot creates a fresh Pebble checkpoint, builds a manifest, and
 // returns a session ID that can be used for parallel FetchFile calls.
 func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *snapshotpb.PrepareSnapshotRequest) (*snapshotpb.PrepareSnapshotResponse, error) {
-	if s.logger.Enabled(logging.DebugLevel) {
+	if s.logger.Enabled(logging.TraceLevel) {
 		s.logger.WithFields(map[string]any{
 			"node_id":         req.GetNodeId(),
 			"minAppliedIndex": req.GetMinAppliedIndex(),
-		}).Debugf("PrepareSnapshot request received")
+		}).Tracef("PrepareSnapshot request received")
 	}
 
 	// Wait until the FSM has applied at least the requested index before
@@ -139,10 +139,10 @@ func (s *SnapshotServiceServerImpl) FetchFile(req *snapshotpb.FetchFileRequest, 
 func (s *SnapshotServiceServerImpl) CloseSession(_ context.Context, req *snapshotpb.CloseSessionRequest) (*snapshotpb.CloseSessionResponse, error) {
 	s.sessions.remove(req.GetSessionId())
 
-	if s.logger.Enabled(logging.DebugLevel) {
+	if s.logger.Enabled(logging.TraceLevel) {
 		s.logger.WithFields(map[string]any{
 			"sessionId": req.GetSessionId(),
-		}).Debugf("Session closed")
+		}).Tracef("Session closed")
 	}
 
 	return &snapshotpb.CloseSessionResponse{}, nil

@@ -62,7 +62,7 @@ func (t *SentinelTracer) SkipEntry(raftIndex uint64, entryType string, dataLen i
 		"raftIndex": raftIndex,
 		"entryType": entryType,
 		"dataLen":   dataLen,
-	}).Debugf("SENTINEL: skipping non-normal/empty entry")
+	}).Tracef("SENTINEL: skipping non-normal/empty entry")
 }
 
 // StartEntry begins tracing a new raft entry.
@@ -92,7 +92,7 @@ func (t *SentinelTracer) RecordApplied(ledgerIDs []uint32, logCount, volumeCount
 		"logCount":      logCount,
 		"volumeUpdates": volumeCount,
 		"purgedVolumes": purgedCount,
-	}).Debugf("SENTINEL: proposal applied")
+	}).Tracef("SENTINEL: proposal applied")
 
 	lifecycle.SendEvent("proposal_applied", map[string]any{
 		"raftIndex":     e.RaftIndex,
@@ -120,7 +120,7 @@ func (t *SentinelTracer) RecordRejected(errMsg string) {
 		"proposalID": e.ProposalID,
 		"error":      errMsg,
 		"orderCount": e.OrderCount,
-	}).Debugf("SENTINEL: proposal rejected (business error)")
+	}).Tracef("SENTINEL: proposal rejected (business error)")
 
 	lifecycle.SendEvent("proposal_rejected", map[string]any{
 		"raftIndex":  e.RaftIndex,

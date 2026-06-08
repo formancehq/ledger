@@ -45,9 +45,11 @@ func newTestSnapshotServer(checkpointDir string) *testSnapshotServer {
 type noopLogger struct{}
 
 func (noopLogger) Enabled(_ logging.Level) bool                 { return false }
+func (noopLogger) Tracef(_ string, _ ...any)                    {}
 func (noopLogger) Debugf(_ string, _ ...any)                    {}
 func (noopLogger) Infof(_ string, _ ...any)                     {}
 func (noopLogger) Errorf(_ string, _ ...any)                    {}
+func (noopLogger) Trace(_ ...any)                               {}
 func (noopLogger) Debug(_ ...any)                               {}
 func (noopLogger) Info(_ ...any)                                {}
 func (noopLogger) Error(_ ...any)                               {}

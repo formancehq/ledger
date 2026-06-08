@@ -22,7 +22,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/application/check"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
-	"github.com/formancehq/ledger/v3/internal/infra/monitoring/otlplogs"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -186,7 +185,7 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 		dlSpinner.Success(fmt.Sprintf("Downloaded %d checkpoint files (%s)", len(manifest.Checkpoint.Files), cmdutil.FormatBytes(totalBytes)))
 	}
 
-	logger := otlplogs.NopLogger()
+	logger := logging.NopZap()
 
 	// Apply export segments and rebuild derived state (if any).
 	if len(manifest.Exports) > 0 {

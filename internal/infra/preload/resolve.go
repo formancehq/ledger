@@ -68,13 +68,13 @@ func resolveAttributePreload[K interface {
 			continue
 
 		case cache.CacheNeedsTouch:
-			if logger.Enabled(logging.DebugLevel) {
+			if logger.Enabled(logging.TraceLevel) {
 				logger.WithFields(map[string]any{
 					"type":      typeName,
 					"key":       hex.EncodeToString(canonicalKey),
 					"nextIndex": nextIndex,
 					"boundary":  boundary,
-				}).Debugf("Cache touch: promoting key from gen1 to gen0")
+				}).Tracef("Cache touch: promoting key from gen1 to gen0")
 			}
 
 			mu.Lock()
@@ -104,13 +104,13 @@ func resolveAttributePreload[K interface {
 				continue
 			}
 
-			if logger.Enabled(logging.DebugLevel) {
+			if logger.Enabled(logging.TraceLevel) {
 				logger.WithFields(map[string]any{
 					"type":      typeName,
 					"key":       hex.EncodeToString(canonicalKey),
 					"nextIndex": nextIndex,
 					"boundary":  boundary,
-				}).Debugf("Cache miss: key not guaranteed in cache, loading from store")
+				}).Tracef("Cache miss: key not guaranteed in cache, loading from store")
 			}
 
 			sem <- struct{}{}

@@ -28,7 +28,7 @@ type ModuleConfig struct {
 	Exporter   string
 	OTLPConfig *OTLPConfig
 	Output     io.Writer
-	Debug      bool
+	Level      logging.Level
 	FormatJSON bool
 	Fields     map[string]any
 }
@@ -98,33 +98,36 @@ func Logger(cfg ModuleConfig) (logging.Logger, error) {
 	global.SetLoggerProvider(loggerProvider)
 
 	// Build the console core (writes to cfg.Output).
-	level := zapcore.InfoLevel
-	if cfg.Debug {
-		level = zapcore.DebugLevel
-	}
+	// The console accepts the user-requested verbosity, including Trace.
+	consoleLevel := logging.ToZapLevel(cfg.Level)
 
 	var encoder zapcore.Encoder
 
 	if cfg.FormatJSON {
 		encoderCfg := zap.NewProductionEncoderConfig()
 		encoderCfg.EncodeTime = zapcore.TimeEncoderOfLayout(time.RFC3339Nano)
+		encoderCfg.EncodeLevel = logging.EncodeLevelWithTrace(encoderCfg.EncodeLevel)
 		encoder = zapcore.NewJSONEncoder(encoderCfg)
 	} else {
 		encoderCfg := zap.NewDevelopmentEncoderConfig()
 		encoderCfg.EncodeTime = zapcore.TimeEncoderOfLayout(time.RFC3339Nano)
+		encoderCfg.EncodeLevel = logging.EncodeLevelWithTrace(encoderCfg.EncodeLevel)
 		encoder = zapcore.NewConsoleEncoder(encoderCfg)
 	}
 
-	consoleCore := zapcore.NewCore(encoder, zapcore.AddSync(cfg.Output), level)
+	consoleCore := zapcore.NewCore(encoder, zapcore.AddSync(cfg.Output), consoleLevel)
 
-	// Build the OTel bridge core.
-	otelCore := otelzap.NewCore("root", otelzap.WithLoggerProvider(loggerProvider))
+	// Build the OTel bridge core. Trace records are never exported via OTLP
+	// (per-RPC / per-Raft-tick volume would balloon ingestion costs); the
+	// floor is pinned at DebugLevel regardless of the console level.
+	otelCoreBase := otelzap.NewCore("root", otelzap.WithLoggerProvider(loggerProvider))
+	otelCore := &logging.MinLevelCore{Core: otelCoreBase, Min: zapcore.DebugLevel}
 
 	// Combine both cores.
 	core := zapcore.NewTee(consoleCore, otelCore)
-	l := zap.New(core, zap.IncreaseLevel(level))
+	l := zap.New(core)
 
-	ret := NewZapLogger(l.Sugar())
+	ret := logging.NewZap(l.Sugar())
 	logger := ret.WithFields(cfg.Fields)
 
 	return logger, nil

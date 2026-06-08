@@ -222,6 +222,15 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 	if ledger.Spec.Debug {
 		debug = pterm.Yellow("true")
 	}
+
+	logLevel := ledger.Spec.LogLevel
+	switch logLevel {
+	case "":
+		logLevel = "(default)"
+	case "trace", "debug":
+		logLevel = pterm.Yellow(logLevel)
+	}
+
 	cmdutil.RenderTable(
 		[]string{"KEY", "VALUE"},
 		[][]string{
@@ -229,6 +238,7 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 			{"Bind Addr", ledger.Spec.BindAddr},
 			{"Image", cmdutil.FormatImage(ledger.Spec.Image)},
 			{"Debug", debug},
+			{"Log Level", logLevel},
 		},
 	)
 

@@ -288,11 +288,11 @@ func (e *Emitter) publishBatch(ctx context.Context, batch []*eventspb.Event) err
 		return err
 	}
 
-	if e.logger.Enabled(logging.DebugLevel) {
+	if e.logger.Enabled(logging.TraceLevel) {
 		e.logger.WithFields(map[string]any{
 			"count":    len(batch),
 			"last_seq": lastSeq,
-		}).Debugf("Published event batch")
+		}).Tracef("Published event batch")
 	}
 
 	return nil

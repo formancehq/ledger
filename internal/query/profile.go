@@ -127,7 +127,7 @@ func (p *QueryProfile) LogTo(logger logging.Logger) {
 		return
 	}
 
-	if logger.Enabled(logging.DebugLevel) {
+	if logger.Enabled(logging.TraceLevel) {
 		fields := map[string]any{
 			"indexDurationUs":      p.IndexDuration.Microseconds(),
 			"enrichmentDurationUs": p.EnrichmentDuration.Microseconds(),
@@ -140,7 +140,7 @@ func (p *QueryProfile) LogTo(logger logging.Logger) {
 			fields["iteratorTree"] = p.Root.String()
 		}
 
-		logger.WithFields(fields).Debugf("Query profile (total=%s)", p.TotalDuration())
+		logger.WithFields(fields).Tracef("Query profile (total=%s)", p.TotalDuration())
 	}
 }
 

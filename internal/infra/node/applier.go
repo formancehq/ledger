@@ -523,8 +523,8 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 					return err
 				}
 
-				if a.logger.Enabled(logging.DebugLevel) {
-					a.logger.Debugf("Spool committed entries")
+				if a.logger.Enabled(logging.TraceLevel) {
+					a.logger.Tracef("Spool committed entries")
 				}
 
 				err := a.spool.AppendCommittedEntries(ctx, work.entries...)

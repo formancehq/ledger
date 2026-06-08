@@ -248,7 +248,7 @@ type chiLogEntry struct {
 }
 
 func (c chiLogEntry) Write(status, bytes int, _ http.Header, elapsed stdtime.Duration, extra any) {
-	if c.logger.Enabled(logging.DebugLevel) {
+	if c.logger.Enabled(logging.TraceLevel) {
 		fields := map[string]any{
 			"status":  status,
 			"bytes":   bytes,
@@ -258,7 +258,7 @@ func (c chiLogEntry) Write(status, bytes int, _ http.Header, elapsed stdtime.Dur
 			fields["extra"] = extra
 		}
 
-		c.logger.WithFields(fields).Debugf("HTTP request completed")
+		c.logger.WithFields(fields).Tracef("HTTP request completed")
 	}
 }
 

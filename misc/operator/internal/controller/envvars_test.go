@@ -96,6 +96,41 @@ func TestBuildEnvVars_SentinelMode(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Log level
+// ---------------------------------------------------------------------------
+
+func TestBuildEnvVars_LogLevel(t *testing.T) {
+	t.Parallel()
+
+	t.Run("trace", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalLedgerService()
+		ls.Spec.LogLevel = "trace"
+		envs := buildEnvVars(ls, "disabled", nil)
+		assertEnv(t, envs, "LOG_LEVEL", "trace")
+		// DEBUG is always emitted (default false); LogLevel takes precedence
+		// server-side via resolveLogLevel.
+		assertEnv(t, envs, "DEBUG", "false")
+	})
+
+	t.Run("empty omitted", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalLedgerService()
+		envs := buildEnvVars(ls, "disabled", nil)
+		assertNoEnv(t, envs, "LOG_LEVEL")
+	})
+
+	t.Run("debug flag still emitted", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalLedgerService()
+		ls.Spec.Debug = true
+		envs := buildEnvVars(ls, "disabled", nil)
+		assertEnv(t, envs, "DEBUG", "true")
+		assertNoEnv(t, envs, "LOG_LEVEL")
+	})
+}
+
+// ---------------------------------------------------------------------------
 // gRPC compression
 // ---------------------------------------------------------------------------
 

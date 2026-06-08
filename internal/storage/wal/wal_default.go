@@ -447,7 +447,7 @@ func (s *DefaultWAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) 
 		lastIdx = entries[len(entries)-1].Index
 	}
 
-	if s.logger.Enabled(logging.DebugLevel) {
+	if s.logger.Enabled(logging.TraceLevel) {
 		logger := s.logger.WithFields(map[string]any{
 			"entries":          len(entries),
 			"firstIndex":       firstIdx,
@@ -458,7 +458,7 @@ func (s *DefaultWAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) 
 			"prevCommit":       s.hardState.Commit,
 			"cachedEntries":    len(s.entries),
 		})
-		logger.Debugf("WAL Append")
+		logger.Tracef("WAL Append")
 	}
 
 	// Update in-memory cache.

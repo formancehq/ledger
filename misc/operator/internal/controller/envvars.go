@@ -126,6 +126,7 @@ func buildEnvVars(ledger *ledgerv1alpha1.LedgerService, targetTLSMode string, ag
 
 	envs = appendIfStr(envs, "CLUSTER_ID", spec.ClusterID)
 	envs = append(envs, boolEnv("DEBUG", spec.Debug))
+	envs = appendIfStr(envs, "LOG_LEVEL", spec.LogLevel)
 
 	// Cache
 	if spec.Cache != nil {

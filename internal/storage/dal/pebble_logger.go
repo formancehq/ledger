@@ -9,8 +9,9 @@ import (
 )
 
 // PebbleLogger adapts a logging.Logger to pebble.Logger.
-// Pebble's Infof messages (WAL replay, compaction stats, etc.) are routed to
-// Debug level so they only appear when the application runs with --debug.
+// Pebble's Infof messages (WAL replay, compaction stats, etc.) fire per
+// background event and would drown out useful Debug output, so they are routed
+// to Trace level.
 type PebbleLogger struct {
 	logger logging.Logger
 }
@@ -20,8 +21,8 @@ func NewPebbleLogger(logger logging.Logger) pebble.Logger {
 }
 
 func (l *PebbleLogger) Infof(format string, args ...any) {
-	if l.logger.Enabled(logging.DebugLevel) {
-		l.logger.Debugf(format, args...)
+	if l.logger.Enabled(logging.TraceLevel) {
+		l.logger.Tracef(format, args...)
 	}
 }
 

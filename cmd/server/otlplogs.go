@@ -16,6 +16,7 @@ const (
 	OtelLogsExporterOTLPModeFlag     = "otel-logs-exporter-otlp-mode"
 	OtelLogsExporterOTLPEndpointFlag = "otel-logs-exporter-otlp-endpoint"
 	OtelLogsExporterOTLPInsecureFlag = "otel-logs-exporter-otlp-insecure"
+	LogLevelFlag                     = "log-level"
 )
 
 func addOtlpLogsFlags(flags *flag.FlagSet) {
@@ -25,11 +26,17 @@ func addOtlpLogsFlags(flags *flag.FlagSet) {
 	flags.String(OtelLogsExporterOTLPModeFlag, "grpc", "OpenTelemetry logs OTLP exporter mode (grpc|http)")
 	flags.String(OtelLogsExporterOTLPEndpointFlag, "", "OpenTelemetry logs grpc endpoint")
 	flags.Bool(OtelLogsExporterOTLPInsecureFlag, false, "OpenTelemetry logs grpc insecure")
+	flags.String(LogLevelFlag, "", "Log level (error|info|debug|trace). Overrides --debug when set. Trace is stdout-only and never exported via OTLP.")
 }
 
 func loggerFromFlags(cmd *cobra.Command, defaultFields map[string]any) (logging.Logger, error) {
 	exporter, _ := cmd.Flags().GetString(OtelLogsExporterFlag)
 	jsonFormatting, _ := cmd.Flags().GetBool(logging.JsonFormattingLoggerFlag)
+
+	level, err := resolveLogLevel(cmd)
+	if err != nil {
+		return nil, err
+	}
 
 	return otlplogs.Logger(otlplogs.ModuleConfig{
 		Exporter: exporter,
@@ -49,8 +56,22 @@ func loggerFromFlags(cmd *cobra.Command, defaultFields map[string]any) (logging.
 			}
 		}(),
 		Output:     cmd.OutOrStdout(),
-		Debug:      service.IsDebug(cmd),
+		Level:      level,
 		FormatJSON: jsonFormatting,
 		Fields:     defaultFields,
 	})
+}
+
+// resolveLogLevel picks the effective log level from the CLI flags.
+// --log-level wins when explicitly set; otherwise --debug maps to DebugLevel;
+// otherwise the default is InfoLevel.
+func resolveLogLevel(cmd *cobra.Command) (logging.Level, error) {
+	if raw, _ := cmd.Flags().GetString(LogLevelFlag); raw != "" {
+		return logging.ParseLevel(raw)
+	}
+	if service.IsDebug(cmd) {
+		return logging.DebugLevel, nil
+	}
+
+	return logging.InfoLevel, nil
 }

@@ -95,9 +95,18 @@ type LedgerServiceSpec struct {
 	// +optional
 	DataDir string `json:"dataDir,omitempty" ledger:"immutable"`
 
-	// Debug enables debug logging.
+	// Debug enables debug logging. Equivalent to LogLevel="debug".
+	// LogLevel takes precedence when both are set; prefer LogLevel for new
+	// manifests since it also unlocks the trace level.
 	// +optional
 	Debug bool `json:"debug,omitempty"`
+
+	// LogLevel sets the server's log verbosity. One of trace|debug|info|error.
+	// Trace records are stdout-only and never exported via OTLP.
+	// When set, takes precedence over Debug.
+	// +kubebuilder:validation:Enum=trace;debug;info;error
+	// +optional
+	LogLevel string `json:"logLevel,omitempty"`
 
 	// Restore starts the server in restore mode.
 	// +optional

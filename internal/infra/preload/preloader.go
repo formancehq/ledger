@@ -217,13 +217,13 @@ func (p *Preloader) AcquireProposalGuard(build *PreloadBuild, needs *Needs) (*ra
 	// also acquires this lock, preventing the race).
 	build.token.Release()
 
-	if p.logger.Enabled(logging.DebugLevel) {
+	if p.logger.Enabled(logging.TraceLevel) {
 		p.logger.WithFields(map[string]any{
 			"nextIndex_before":    build.nextIndex,
 			"nextIndex_after":     nextIndexAfter,
 			"nextIndexGen_before": build.nextIndexGen,
 			"nextIndexGen_after":  nextIndexGenAfter,
-		}).Debugf("nextIndex generation changed, rebuilding preloads under lock")
+		}).Tracef("nextIndex generation changed, rebuilding preloads under lock")
 	}
 
 	preloadSet, token, err := p.buildPreloadsAt(p.tracker.Next(), snap, needs)
@@ -258,13 +258,13 @@ type buildResult struct {
 func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, needs *Needs) (*raftcmdpb.PreloadSet, *CleanupToken, error) {
 	boundary := cache.BoundaryIndex(nextIndex, snap.GenerationThreshold)
 
-	if p.logger.Enabled(logging.DebugLevel) {
+	if p.logger.Enabled(logging.TraceLevel) {
 		p.logger.WithFields(map[string]any{
 			"nextIndex":           nextIndex,
 			"boundary":            boundary,
 			"generationThreshold": snap.GenerationThreshold,
 			"gen":                 cache.Gen(nextIndex, snap.GenerationThreshold),
-		}).Debugf("Preloader: buildPreloadsAt")
+		}).Tracef("Preloader: buildPreloadsAt")
 	}
 
 	// Each goroutine writes to a distinct results[slot].

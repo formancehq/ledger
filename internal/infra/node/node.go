@@ -882,8 +882,8 @@ func (node *Node) processReadies(ctx context.Context, stop chan struct{}) error 
 }
 
 func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.Ready) (readyResult, error) {
-	if node.logger.Enabled(logging.DebugLevel) {
-		node.logger.Debugf("Processing ready")
+	if node.logger.Enabled(logging.TraceLevel) {
+		node.logger.Tracef("Processing ready")
 	}
 
 	node.committedEntriesPerReadyHistogram.Record(context.Background(), int64(len(rd.CommittedEntries)))
@@ -1275,8 +1275,8 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 			err := node.rawNode.Step(msg)
 			if err != nil {
 				if errors.Is(err, raft.ErrStepPeerNotFound) {
-					if node.logger.Enabled(logging.DebugLevel) {
-						node.logger.Debugf("Ignoring message from unknown peer %d (type=%s)", msg.From, msg.Type)
+					if node.logger.Enabled(logging.TraceLevel) {
+						node.logger.Tracef("Ignoring message from unknown peer %d (type=%s)", msg.From, msg.Type)
 					}
 
 					continue
@@ -1356,7 +1356,7 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 
 					// Diagnostic: log the applied cursor that Advance will
 					// pass to raftLog.appliedTo, so we can trace regressions.
-					if len(result.rd.CommittedEntries) > 0 {
+					if len(result.rd.CommittedEntries) > 0 && node.logger.Enabled(logging.TraceLevel) {
 						cursor := result.rd.CommittedEntries[len(result.rd.CommittedEntries)-1].Index
 						status := node.rawNode.Status()
 						node.logger.WithFields(map[string]any{
@@ -1367,7 +1367,7 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 							"firstCommitted": result.rd.CommittedEntries[0].Index,
 							"hasSnapshot":    !raft.IsEmptySnap(result.rd.Snapshot),
 							"snapshotIndex":  result.rd.Snapshot.Metadata.Index,
-						}).Debugf("Pre-Advance diagnostic")
+						}).Tracef("Pre-Advance diagnostic")
 					}
 
 					node.rawNode.Advance(result.rd)

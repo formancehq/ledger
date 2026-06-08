@@ -467,7 +467,7 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, entries ...raftpb.Entry)
 	// (the pending commit). This is expected and safe.
 	persistedIdx := fsm.lastPersistedIndex.Load()
 	if persistedIdx != fsm.lastAppliedIndex {
-		if fsm.logger.Enabled(logging.DebugLevel) {
+		if fsm.logger.Enabled(logging.TraceLevel) {
 			fsm.logger.WithFields(map[string]any{
 				"lastPersistedIndex": persistedIdx,
 				"lastAppliedIndex":   fsm.lastAppliedIndex,
@@ -477,7 +477,7 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, entries ...raftpb.Entry)
 				"gen0":               fsm.Registry.Cache.BaseIndex.Gen0,
 				"gen1":               fsm.Registry.Cache.BaseIndex.Gen1,
 				"currentGeneration":  fsm.Registry.Cache.CurrentGeneration(),
-			}).Debugf("PrepareEntries: lastPersistedIndex lags (pending commit in-flight)")
+			}).Tracef("PrepareEntries: lastPersistedIndex lags (pending commit in-flight)")
 		}
 	}
 
@@ -604,11 +604,11 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, entries ...raftpb.Entry)
 		}
 
 		if len(cmd.GetOrders()) == 0 && len(cmd.GetMirrorSyncUpdates()) == 0 && len(cmd.GetEventsSinkUpdates()) == 0 && len(cmd.GetMetadataConversionBatches()) == 0 && len(cmd.GetMetadataConversionsComplete()) == 0 && len(cmd.GetIndexReadyUpdates()) == 0 && cmd.GetIdempotencyEviction() == nil && cmd.GetClusterConfig() == nil {
-			if fsm.sentinelMode {
+			if fsm.sentinelMode && fsm.logger.Enabled(logging.TraceLevel) {
 				fsm.logger.WithFields(map[string]any{
 					"raftIndex":  entry.Index,
 					"proposalID": cmd.GetId(),
-				}).Debugf("SENTINEL: skipping no-op proposal")
+				}).Tracef("SENTINEL: skipping no-op proposal")
 			}
 
 			ret.Results = append(ret.Results, ApplyResult{ProposalID: cmd.GetId(), AppliedIndex: entry.Index})
@@ -783,8 +783,8 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 		}
 
 		if len(pb.sentinelLedgerIDs) > 0 {
-			if fsm.logger.Enabled(logging.DebugLevel) {
-				fsm.logger.Debugf("Verifying aggregated volume balance for %d ledgers at raft index %d", len(pb.sentinelLedgerIDs), pb.lastAppliedIndex)
+			if fsm.logger.Enabled(logging.TraceLevel) {
+				fsm.logger.Tracef("Verifying aggregated volume balance for %d ledgers at raft index %d", len(pb.sentinelLedgerIDs), pb.lastAppliedIndex)
 			}
 
 			if err := verifyAggregatedVolumesBalanced(
@@ -1035,12 +1035,12 @@ func authorizedInMaintenanceMode(orders []*raftcmdpb.Order) bool {
 // an inflated IndexTracker or before a cache reset.
 func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Proposal) error {
 	if predicted := proposal.GetPredictedIndex(); predicted != 0 && predicted != raftIndex {
-		if fsm.logger.Enabled(logging.DebugLevel) {
+		if fsm.logger.Enabled(logging.TraceLevel) {
 			fsm.logger.WithFields(map[string]any{
 				"predictedIndex": predicted,
 				"actualIndex":    raftIndex,
 				"proposalID":     proposal.GetId(),
-			}).Debugf("Rejecting proposal: predicted index mismatch (stale tracker)")
+			}).Tracef("Rejecting proposal: predicted index mismatch (stale tracker)")
 		}
 
 		lifecycle.SendEvent("stale_proposal_rejected", map[string]any{
@@ -1052,13 +1052,13 @@ func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Pro
 	}
 
 	if preloadEpoch := proposal.GetPreload().GetCacheEpoch(); preloadEpoch != 0 && preloadEpoch != fsm.Registry.Cache.Epoch() {
-		if fsm.logger.Enabled(logging.DebugLevel) {
+		if fsm.logger.Enabled(logging.TraceLevel) {
 			fsm.logger.WithFields(map[string]any{
 				"preloadEpoch": preloadEpoch,
 				"cacheEpoch":   fsm.Registry.Cache.Epoch(),
 				"proposalID":   proposal.GetId(),
 				"raftIndex":    raftIndex,
-			}).Debugf("Rejecting proposal: cache epoch mismatch (cache was reset)")
+			}).Tracef("Rejecting proposal: cache epoch mismatch (cache was reset)")
 		}
 
 		return domain.ErrStaleProposal

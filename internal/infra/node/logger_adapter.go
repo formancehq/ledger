@@ -18,17 +18,19 @@ func NewLoggerAdapter(logger logging.Logger) raft.Logger {
 	return &loggerAdapter{logger: logger}
 }
 
-// Debug logs a debug message.
+// Debug logs a debug message from etcd/raft at trace level.
+// etcd/raft "debug" is per-tick / per-message verbosity; surfacing it under the
+// application Debug level drowns out lifecycle events, so it is routed to Trace.
 func (l *loggerAdapter) Debug(v ...any) {
-	if l.logger.Enabled(logging.DebugLevel) {
-		l.logger.Debugf("%s", fmt.Sprint(v...))
+	if l.logger.Enabled(logging.TraceLevel) {
+		l.logger.Tracef("%s", fmt.Sprint(v...))
 	}
 }
 
-// Debugf logs a formatted debug message.
+// Debugf logs a formatted debug message from etcd/raft at trace level.
 func (l *loggerAdapter) Debugf(format string, v ...any) {
-	if l.logger.Enabled(logging.DebugLevel) {
-		l.logger.Debugf(format, v...)
+	if l.logger.Enabled(logging.TraceLevel) {
+		l.logger.Tracef(format, v...)
 	}
 }
 
@@ -42,17 +44,19 @@ func (l *loggerAdapter) Errorf(format string, v ...any) {
 	l.logger.Errorf(format, v...)
 }
 
-// Info logs an info message from etcd/raft as debug.
+// Info logs an info message from etcd/raft at trace level.
+// etcd/raft "info" fires per heartbeat / per message; it is much too chatty for
+// application Debug. Use --log-level=trace to surface it.
 func (l *loggerAdapter) Info(v ...any) {
-	if l.logger.Enabled(logging.DebugLevel) {
-		l.logger.Debugf("%s", fmt.Sprint(v...))
+	if l.logger.Enabled(logging.TraceLevel) {
+		l.logger.Tracef("%s", fmt.Sprint(v...))
 	}
 }
 
-// Infof logs a formatted info message from etcd/raft as debug.
+// Infof logs a formatted info message from etcd/raft at trace level.
 func (l *loggerAdapter) Infof(format string, v ...any) {
-	if l.logger.Enabled(logging.DebugLevel) {
-		l.logger.Debugf(format, v...)
+	if l.logger.Enabled(logging.TraceLevel) {
+		l.logger.Tracef(format, v...)
 	}
 }
 

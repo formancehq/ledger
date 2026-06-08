@@ -1184,7 +1184,10 @@ spec:
                 - message: dataDir is immutable once set
                   rule: oldSelf == '' || self == oldSelf
               debug:
-                description: Debug enables debug logging.
+                description: |-
+                  Debug enables debug logging. Equivalent to LogLevel="debug".
+                  LogLevel takes precedence when both are set; prefer LogLevel for new
+                  manifests since it also unlocks the trace level.
                 type: boolean
               dnsEndpoint:
                 description: DNSEndpoint configuration for ExternalDNS.
@@ -1760,6 +1763,17 @@ spec:
                     format: int32
                     type: integer
                 type: object
+              logLevel:
+                description: |-
+                  LogLevel sets the server's log verbosity. One of trace|debug|info|error.
+                  Trace records are stdout-only and never exported via OTLP.
+                  When set, takes precedence over Debug.
+                enum:
+                - trace
+                - debug
+                - info
+                - error
+                type: string
               mirrorMaxBatchSize:
                 description: MirrorMaxBatchSize is the maximum allowed batch size
                   for mirror sync.
