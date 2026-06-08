@@ -164,18 +164,20 @@ func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, 
 		return cmdutil.FormatGRPCError("failed to receive account", err)
 	}
 
-	if handled, err := cmdutil.EncodeStructured(cmd, accounts); handled || err != nil {
+	handled, err := cmdutil.EncodeStructured(cmd, accounts)
+	if err != nil {
 		return err
 	}
 
-	if len(accounts) == 0 {
+	switch {
+	case handled:
+		// Structured output already written.
+	case len(accounts) == 0:
 		pterm.Info.Println("No accounts found.")
 		pterm.Println(pterm.Gray("Create transactions to populate accounts."))
-
-		return nil
+	default:
+		renderAccountsTable(accounts)
 	}
-
-	renderAccountsTable(accounts)
 
 	if showProfile {
 		cmdutil.RenderProfile(cmdutil.ExtractProfile(stream.Trailer()))
@@ -241,6 +243,10 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 			if pageNum == 1 {
 				pterm.Info.Println("No accounts found.")
 				pterm.Println(pterm.Gray("Create transactions to populate accounts."))
+			}
+
+			if showProfile {
+				cmdutil.RenderProfile(cmdutil.ExtractProfile(stream.Trailer()))
 			}
 
 			return nil

@@ -139,18 +139,20 @@ func fetchAllTransactions(cmd *cobra.Command, client servicepb.BucketServiceClie
 		return cmdutil.FormatGRPCError("failed to receive transaction", err)
 	}
 
-	if handled, err := cmdutil.EncodeStructured(cmd, transactions); handled || err != nil {
+	handled, err := cmdutil.EncodeStructured(cmd, transactions)
+	if err != nil {
 		return err
 	}
 
-	if len(transactions) == 0 {
+	switch {
+	case handled:
+		// Structured output already written.
+	case len(transactions) == 0:
 		pterm.Info.Println("No transactions found.")
 		pterm.Println(pterm.Gray("Create one with: ledgerctl transactions create --ledger " + ledgerName))
-
-		return nil
+	default:
+		renderTransactionsTable(transactions)
 	}
-
-	renderTransactionsTable(transactions)
 
 	if showProfile {
 		cmdutil.RenderProfile(cmdutil.ExtractProfile(stream.Trailer()))
@@ -216,6 +218,10 @@ func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServi
 			if pageNum == 1 {
 				pterm.Info.Println("No transactions found.")
 				pterm.Println(pterm.Gray("Create one with: ledgerctl transactions create --ledger " + ledgerName))
+			}
+
+			if showProfile {
+				cmdutil.RenderProfile(cmdutil.ExtractProfile(stream.Trailer()))
 			}
 
 			return nil
