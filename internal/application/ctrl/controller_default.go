@@ -122,6 +122,19 @@ func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerName st
 	return ctrl.GetTransactionFrom(ctx, ctrl.store, ledgerName, transactionID)
 }
 
+// WithStores returns a shallow copy of the controller whose reads are served
+// from the given main store and read index instead of the live ones. It is
+// intended for read-only query-checkpoint access: callers open a checkpoint's
+// stores and route GetAccount/ListAccounts/GetLedgerStats/etc. through the
+// returned controller. Write paths must not be used on the result.
+func (ctrl *DefaultController) WithStores(store *dal.Store, readStore *readstore.Store) *DefaultController {
+	clone := *ctrl
+	clone.store = store
+	clone.readStore = readStore
+
+	return &clone
+}
+
 // GetTransactionFrom reads a transaction using the provided store (live or checkpoint).
 func (ctrl *DefaultController) GetTransactionFrom(ctx context.Context, store *dal.Store, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
 	_, span := tracer.Start(ctx, "ctrl.get_transaction",

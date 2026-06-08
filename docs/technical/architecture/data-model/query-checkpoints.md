@@ -5,7 +5,12 @@ Query checkpoints are coordinated point-in-time snapshots of both the main Pebbl
 ## Lifecycle
 
 1. **Create** via `ledgerctl query-checkpoint create` or automatic cron schedule.
-2. **Query** using `checkpoint_id` on any read RPC (`ListTransactions`, `GetAccount`, `ListLedgers`, etc.).
+2. **Query** using `checkpoint_id` on any read RPC. Every read that exposes the
+   field honors it: `GetTransaction`, `ListTransactions`, `GetAccount`,
+   `ListAccounts`, `GetLedger`, `GetLedgerStats`, `AggregateVolumes`,
+   `GetNumscript`, `ListNumscripts`, `GetLog`, `ListLogs`, and `InspectIndex`.
+   A non-zero `checkpoint_id` routes the read to a controller bound to the
+   checkpoint's main store and read index instead of the live ones.
 3. **Delete** via `ledgerctl query-checkpoint delete <id>` when no longer needed.
 
 Checkpoint IDs are assigned sequentially by the FSM (1, 2, 3, ...).

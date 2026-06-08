@@ -133,6 +133,50 @@ var _ = Describe("Query Checkpoints", func() {
 			Expect(resp.GetTransaction().GetPostings()[0].GetDestination()).To(Equal("alice"))
 		})
 
+		It("GetAccount reads checkpoint state, not live", func() {
+			// bob was funded (500 EUR) AFTER the checkpoint.
+			liveBob, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "bob"})
+			Expect(err).To(Succeed())
+			Expect(liveBob.GetVolumes()).To(HaveKey("EUR"), "live store has the post-checkpoint balance")
+
+			cpBob, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
+				Ledger:       ledgerName,
+				Address:      "bob",
+				CheckpointId: checkpointID,
+			})
+			Expect(err).To(Succeed())
+			Expect(cpBob.GetVolumes()).NotTo(HaveKey("EUR"),
+				"checkpoint predates bob; reading it must not return live data")
+		})
+
+		It("GetLedgerStats reads checkpoint state, not live", func() {
+			liveStats, err := client.GetLedgerStats(ctx, &servicepb.GetLedgerStatsRequest{Ledger: ledgerName})
+			Expect(err).To(Succeed())
+			Expect(liveStats.GetTransactionCount()).To(Equal(uint64(2)), "live store has both transactions")
+
+			cpStats, err := client.GetLedgerStats(ctx, &servicepb.GetLedgerStatsRequest{
+				Ledger:       ledgerName,
+				CheckpointId: checkpointID,
+			})
+			Expect(err).To(Succeed())
+			Expect(cpStats.GetTransactionCount()).To(Equal(uint64(1)),
+				"checkpoint stats must reflect only the pre-checkpoint transaction")
+		})
+
+		It("AggregateVolumes reads checkpoint state, not live", func() {
+			liveAgg, err := client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{Ledger: ledgerName})
+			Expect(err).To(Succeed())
+			Expect(aggregateAssets(liveAgg)).To(ContainElements("USD", "EUR"), "live store has both assets")
+
+			cpAgg, err := client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{
+				Ledger:       ledgerName,
+				CheckpointId: checkpointID,
+			})
+			Expect(err).To(Succeed())
+			Expect(aggregateAssets(cpAgg)).To(ConsistOf("USD"),
+				"checkpoint must omit the post-checkpoint EUR volume")
+		})
+
 		It("should delete the checkpoint", func() {
 			_, err := clusterClient.DeleteQueryCheckpoint(ctx, &clusterpb.DeleteQueryCheckpointRequest{
 				CheckpointId: checkpointID,
@@ -283,4 +327,14 @@ func listAllTransactionsFromCheckpoint(ctx context.Context, client servicepb.Buc
 	}
 
 	return transactions, nil
+}
+
+// aggregateAssets returns the asset codes present in an AggregateVolumes result.
+func aggregateAssets(result *commonpb.AggregateResult) []string {
+	assets := make([]string, 0, len(result.GetVolumes()))
+	for _, v := range result.GetVolumes() {
+		assets = append(assets, v.GetAsset())
+	}
+
+	return assets
 }

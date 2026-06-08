@@ -312,6 +312,30 @@ func (impl *BucketServiceServerImpl) openCheckpointStores(checkpointID uint64) (
 	return mainStore, readIdx, nil
 }
 
+// readController selects the controller to serve a read from. When
+// checkpointID is non-zero it opens the query checkpoint's stores and returns
+// a checkpoint-scoped local controller plus a cleanup that closes them; reads
+// then reflect the checkpoint's point-in-time state. When zero it returns the
+// live (routed) controller and a no-op cleanup. The caller must always defer
+// the returned cleanup.
+func (impl *BucketServiceServerImpl) readController(checkpointID uint64) (ctrl.Controller, func(), error) {
+	if checkpointID == 0 {
+		return impl.ctrl, func() {}, nil
+	}
+
+	mainStore, readIdx, err := impl.openCheckpointStores(checkpointID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	cleanup := func() {
+		_ = readIdx.Close()
+		_ = mainStore.Close()
+	}
+
+	return impl.localCtrl.WithStores(mainStore, readIdx), cleanup, nil
+}
+
 // waitMinLogSequence blocks until the Pebble read index has processed at
 // least the requested minimum log sequence, or the context is cancelled.
 func (impl *BucketServiceServerImpl) waitMinLogSequence(ctx context.Context, minLogSequence uint64) error {
@@ -409,7 +433,13 @@ func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *service
 		return nil, errors.New("ledger name is required")
 	}
 
-	return impl.ctrl.GetLedgerByName(ctx, req.GetLedger())
+	c, cleanup, err := impl.readController(req.GetCheckpointId())
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+
+	return c.GetLedgerByName(ctx, req.GetLedger())
 }
 
 func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *servicepb.GetAccountRequest) (*commonpb.Account, error) {
@@ -421,7 +451,13 @@ func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *servic
 		return nil, errors.New("ledger name is required")
 	}
 
-	return impl.ctrl.GetAccount(ctx, req.GetLedger(), req.GetAddress())
+	c, cleanup, err := impl.readController(req.GetCheckpointId())
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+
+	return c.GetAccount(ctx, req.GetLedger(), req.GetAddress())
 }
 
 func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsRequest, stream servicepb.BucketService_ListAccountsServer) error {
@@ -437,8 +473,17 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 		return errors.New("ledger name is required")
 	}
 
-	if err := impl.waitMinLogSequence(ctx, req.GetMinLogSequence()); err != nil {
+	c, cleanup, err := impl.readController(req.GetCheckpointId())
+	if err != nil {
 		return err
+	}
+	defer cleanup()
+
+	// minLogSequence only gates live reads; a checkpoint is a fixed snapshot.
+	if req.GetCheckpointId() == 0 {
+		if err := impl.waitMinLogSequence(ctx, req.GetMinLogSequence()); err != nil {
+			return err
+		}
 	}
 
 	if impl.logger.Enabled(logging.DebugLevel) {
@@ -448,7 +493,7 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 
 	profileCtx, profile := query.WithProfile(ctx)
 
-	cursor, err := impl.ctrl.ListAccounts(profileCtx, req.GetLedger(), req.GetPageSize(), req.GetAfterAddress(), req.GetFilter(), req.GetReverse())
+	cursor, err := c.ListAccounts(profileCtx, req.GetLedger(), req.GetPageSize(), req.GetAfterAddress(), req.GetFilter(), req.GetReverse())
 	if err != nil {
 		return fmt.Errorf("listing accounts: %w", err)
 	}
@@ -652,7 +697,13 @@ func (impl *BucketServiceServerImpl) GetLog(ctx context.Context, req *servicepb.
 		return nil, err
 	}
 
-	return impl.ctrl.GetLog(ctx, req.GetSequence())
+	c, cleanup, err := impl.readController(req.GetCheckpointId())
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+
+	return c.GetLog(ctx, req.GetSequence())
 }
 
 func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, stream servicepb.BucketService_ListLogsServer) error {
@@ -663,8 +714,17 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 		return err
 	}
 
-	if err := impl.waitMinLogSequence(ctx, req.GetMinLogSequence()); err != nil {
+	c, cleanup, err := impl.readController(req.GetCheckpointId())
+	if err != nil {
 		return err
+	}
+	defer cleanup()
+
+	// minLogSequence only gates live reads; a checkpoint is a fixed snapshot.
+	if req.GetCheckpointId() == 0 {
+		if err := impl.waitMinLogSequence(ctx, req.GetMinLogSequence()); err != nil {
+			return err
+		}
 	}
 
 	var afterSequence uint64
@@ -672,7 +732,7 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 		afterSequence = req.GetAfterSequence()
 	}
 
-	cursor, err := impl.ctrl.ListLogs(ctx, afterSequence, req.GetPageSize(), req.GetFilter())
+	cursor, err := c.ListLogs(ctx, afterSequence, req.GetPageSize(), req.GetFilter())
 	if err != nil {
 		return fmt.Errorf("listing logs: %w", err)
 	}
@@ -919,7 +979,13 @@ func (impl *BucketServiceServerImpl) GetLedgerStats(ctx context.Context, req *se
 		return nil, errors.New("ledger name is required")
 	}
 
-	return impl.ctrl.GetLedgerStats(ctx, req.GetLedger())
+	c, cleanup, err := impl.readController(req.GetCheckpointId())
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+
+	return c.GetLedgerStats(ctx, req.GetLedger())
 }
 
 func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *servicepb.AggregateVolumesRequest) (*commonpb.AggregateResult, error) {
@@ -931,13 +997,22 @@ func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *
 		return nil, errors.New("ledger name is required")
 	}
 
-	if err := impl.waitMinLogSequence(ctx, req.GetMinLogSequence()); err != nil {
+	c, cleanup, err := impl.readController(req.GetCheckpointId())
+	if err != nil {
 		return nil, err
+	}
+	defer cleanup()
+
+	// minLogSequence only gates live reads; a checkpoint is a fixed snapshot.
+	if req.GetCheckpointId() == 0 {
+		if err := impl.waitMinLogSequence(ctx, req.GetMinLogSequence()); err != nil {
+			return nil, err
+		}
 	}
 
 	profileCtx, profile := query.WithProfile(ctx)
 
-	result, err := impl.ctrl.AggregateVolumes(profileCtx, req.GetLedger(), req.GetFilter(), query.AggregateOptions{
+	result, err := c.AggregateVolumes(profileCtx, req.GetLedger(), req.GetFilter(), query.AggregateOptions{
 		UseMaxPrecision: req.GetUseMaxPrecision(),
 		GroupByPrefixes: req.GetGroupByPrefixes(),
 	})
@@ -947,14 +1022,26 @@ func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *
 }
 
 func (impl *BucketServiceServerImpl) GetNumscript(ctx context.Context, req *servicepb.GetNumscriptRequest) (*commonpb.NumscriptInfo, error) {
-	return impl.ctrl.GetNumscript(ctx, req.GetLedger(), req.GetName(), req.GetVersion())
+	c, cleanup, err := impl.readController(req.GetCheckpointId())
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+
+	return c.GetNumscript(ctx, req.GetLedger(), req.GetName(), req.GetVersion())
 }
 
 func (impl *BucketServiceServerImpl) ListNumscripts(req *servicepb.ListNumscriptsRequest, stream servicepb.BucketService_ListNumscriptsServer) error {
 	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListNumscripts")
 	defer span.End()
 
-	scripts, err := impl.ctrl.ListNumscripts(ctx, req.GetLedger())
+	c, cleanup, err := impl.readController(req.GetCheckpointId())
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	scripts, err := c.ListNumscripts(ctx, req.GetLedger())
 	if err != nil {
 		return fmt.Errorf("listing numscripts: %w", err)
 	}
@@ -982,7 +1069,13 @@ func (impl *BucketServiceServerImpl) InspectIndex(ctx context.Context, req *serv
 		return nil, errors.New("metadata_key is required")
 	}
 
-	return impl.ctrl.InspectIndex(ctx, req)
+	c, cleanup, err := impl.readController(req.GetCheckpointId())
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+
+	return c.InspectIndex(ctx, req)
 }
 
 func (impl *BucketServiceServerImpl) Barrier(ctx context.Context, _ *servicepb.BarrierRequest) (*servicepb.BarrierResponse, error) {
