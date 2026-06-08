@@ -12,10 +12,19 @@ import (
 // It does not manage checkpoints.
 // The returned Store implements PebbleReader and can be passed to free functions in state/ and events/.
 // The caller must call Close() when done.
+//
+// Memory profile: tuned for short-lived secondary opens (e.g. reading a few
+// well-known keys from a backup checkpoint while the primary store still
+// holds its full working set). MaxOpenFiles is capped at 32 so Pebble does
+// not warm up table metadata (block index + bloom filters) for every SST in
+// large stores — on a 290 GB checkpoint that previously inflated the heap
+// by several GiB and tipped the pod over its memory limit during full
+// backups. The default 8 MiB block cache is left in place.
 func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
 	opts := &pebble.Options{
-		Logger:   NewPebbleLogger(logger),
-		ReadOnly: true,
+		Logger:       NewPebbleLogger(logger),
+		ReadOnly:     true,
+		MaxOpenFiles: 32,
 	}
 
 	db, err := pebble.Open(dirPath, opts)

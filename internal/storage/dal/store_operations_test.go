@@ -409,6 +409,14 @@ func TestStore_OpenReadOnly(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []byte("ro-val"), val)
 	require.NoError(t, closer.Close())
+
+	// Regression: OpenReadOnly is used as a secondary store during full
+	// backups while the primary still holds its working set. MaxOpenFiles
+	// must stay capped so Pebble does not warm up table metadata for every
+	// SST in large stores (observed pushing pods past their memory limit
+	// on a 290 GB checkpoint).
+	require.Equal(t, 32, roStore.opts.MaxOpenFiles,
+		"OpenReadOnly must bound MaxOpenFiles to keep the secondary store's table-metadata footprint small")
 }
 
 func TestStore_OpenDirect(t *testing.T) {
