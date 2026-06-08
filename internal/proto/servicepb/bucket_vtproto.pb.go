@@ -2947,6 +2947,11 @@ func (m *IteratorProfile) CloneVT() *IteratorProfile {
 	r.Bucket = m.Bucket
 	r.NextCalls = m.NextCalls
 	r.SeekCalls = m.SeekCalls
+	r.DurationUs = m.DurationUs
+	r.ItemsEmitted = m.ItemsEmitted
+	r.MaterializedRanges = m.MaterializedRanges
+	r.MaterializedItems = m.MaterializedItems
+	r.ItemsSkipped = m.ItemsSkipped
 	if rhs := m.Children; rhs != nil {
 		tmpContainer := make([]*IteratorProfile, len(rhs))
 		for k, v := range rhs {
@@ -7900,6 +7905,21 @@ func (this *IteratorProfile) EqualVT(that *IteratorProfile) bool {
 				return false
 			}
 		}
+	}
+	if this.DurationUs != that.DurationUs {
+		return false
+	}
+	if this.ItemsEmitted != that.ItemsEmitted {
+		return false
+	}
+	if this.MaterializedRanges != that.MaterializedRanges {
+		return false
+	}
+	if this.MaterializedItems != that.MaterializedItems {
+		return false
+	}
+	if this.ItemsSkipped != that.ItemsSkipped {
+		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -15583,6 +15603,31 @@ func (m *IteratorProfile) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.ItemsSkipped != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ItemsSkipped))
+		i--
+		dAtA[i] = 0x58
+	}
+	if m.MaterializedItems != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MaterializedItems))
+		i--
+		dAtA[i] = 0x50
+	}
+	if m.MaterializedRanges != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MaterializedRanges))
+		i--
+		dAtA[i] = 0x48
+	}
+	if m.ItemsEmitted != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ItemsEmitted))
+		i--
+		dAtA[i] = 0x40
+	}
+	if m.DurationUs != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DurationUs))
+		i--
+		dAtA[i] = 0x38
+	}
 	if len(m.Children) > 0 {
 		for iNdEx := len(m.Children) - 1; iNdEx >= 0; iNdEx-- {
 			size, err := m.Children[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
@@ -19210,6 +19255,21 @@ func (m *IteratorProfile) SizeVT() (n int) {
 			l = e.SizeVT()
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
+	}
+	if m.DurationUs != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.DurationUs))
+	}
+	if m.ItemsEmitted != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.ItemsEmitted))
+	}
+	if m.MaterializedRanges != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.MaterializedRanges))
+	}
+	if m.MaterializedItems != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.MaterializedItems))
+	}
+	if m.ItemsSkipped != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.ItemsSkipped))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -35991,6 +36051,101 @@ func (m *IteratorProfile) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DurationUs", wireType)
+			}
+			m.DurationUs = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.DurationUs |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 8:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ItemsEmitted", wireType)
+			}
+			m.ItemsEmitted = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ItemsEmitted |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 9:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MaterializedRanges", wireType)
+			}
+			m.MaterializedRanges = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.MaterializedRanges |= int32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 10:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MaterializedItems", wireType)
+			}
+			m.MaterializedItems = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.MaterializedItems |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 11:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ItemsSkipped", wireType)
+			}
+			m.ItemsSkipped = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ItemsSkipped |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

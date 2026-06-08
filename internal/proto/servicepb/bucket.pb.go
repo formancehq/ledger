@@ -8011,13 +8011,23 @@ func (x *QueryProfile) GetRootIterator() *IteratorProfile {
 
 // IteratorProfile describes a single iterator node in the query execution tree.
 type IteratorProfile struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Label         string                 `protobuf:"bytes,1,opt,name=label,proto3" json:"label,omitempty"`
-	Kind          string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
-	Bucket        string                 `protobuf:"bytes,3,opt,name=bucket,proto3" json:"bucket,omitempty"`
-	NextCalls     int64                  `protobuf:"varint,4,opt,name=next_calls,json=nextCalls,proto3" json:"next_calls,omitempty"`
-	SeekCalls     int64                  `protobuf:"varint,5,opt,name=seek_calls,json=seekCalls,proto3" json:"seek_calls,omitempty"`
-	Children      []*IteratorProfile     `protobuf:"bytes,6,rep,name=children,proto3" json:"children,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Label     string                 `protobuf:"bytes,1,opt,name=label,proto3" json:"label,omitempty"`
+	Kind      string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
+	Bucket    string                 `protobuf:"bytes,3,opt,name=bucket,proto3" json:"bucket,omitempty"`
+	NextCalls int64                  `protobuf:"varint,4,opt,name=next_calls,json=nextCalls,proto3" json:"next_calls,omitempty"`
+	SeekCalls int64                  `protobuf:"varint,5,opt,name=seek_calls,json=seekCalls,proto3" json:"seek_calls,omitempty"`
+	Children  []*IteratorProfile     `protobuf:"bytes,6,rep,name=children,proto3" json:"children,omitempty"`
+	// Inclusive wall-clock time spent in this node's Next + SeekGE (covers child calls).
+	DurationUs int64 `protobuf:"varint,7,opt,name=duration_us,json=durationUs,proto3" json:"duration_us,omitempty"`
+	// Successful Next() calls (rows emitted upward by this node).
+	ItemsEmitted int64 `protobuf:"varint,8,opt,name=items_emitted,json=itemsEmitted,proto3" json:"items_emitted,omitempty"`
+	// Range materializations performed at this node (typically leaf SliceIterator nodes).
+	MaterializedRanges int32 `protobuf:"varint,9,opt,name=materialized_ranges,json=materializedRanges,proto3" json:"materialized_ranges,omitempty"`
+	// Items drained from Pebble cursors into the materialized SliceIterator.
+	MaterializedItems int64 `protobuf:"varint,10,opt,name=materialized_items,json=materializedItems,proto3" json:"materialized_items,omitempty"`
+	// For combinator nodes (And/Not/Or): candidates discarded by the merge/converge loop.
+	ItemsSkipped  int64 `protobuf:"varint,11,opt,name=items_skipped,json=itemsSkipped,proto3" json:"items_skipped,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -8092,6 +8102,41 @@ func (x *IteratorProfile) GetChildren() []*IteratorProfile {
 		return x.Children
 	}
 	return nil
+}
+
+func (x *IteratorProfile) GetDurationUs() int64 {
+	if x != nil {
+		return x.DurationUs
+	}
+	return 0
+}
+
+func (x *IteratorProfile) GetItemsEmitted() int64 {
+	if x != nil {
+		return x.ItemsEmitted
+	}
+	return 0
+}
+
+func (x *IteratorProfile) GetMaterializedRanges() int32 {
+	if x != nil {
+		return x.MaterializedRanges
+	}
+	return 0
+}
+
+func (x *IteratorProfile) GetMaterializedItems() int64 {
+	if x != nil {
+		return x.MaterializedItems
+	}
+	return 0
+}
+
+func (x *IteratorProfile) GetItemsSkipped() int64 {
+	if x != nil {
+		return x.ItemsSkipped
+	}
+	return 0
 }
 
 type InspectIndexRequest struct {
@@ -9177,7 +9222,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x0eenriched_count\x18\x04 \x01(\x05R\renrichedCount\x12/\n" +
 	"\x13materialized_ranges\x18\x05 \x01(\x05R\x12materializedRanges\x12-\n" +
 	"\x12materialized_items\x18\x06 \x01(\x05R\x11materializedItems\x12<\n" +
-	"\rroot_iterator\x18\a \x01(\v2\x17.ledger.IteratorProfileR\frootIterator\"\xc6\x01\n" +
+	"\rroot_iterator\x18\a \x01(\v2\x17.ledger.IteratorProfileR\frootIterator\"\x91\x03\n" +
 	"\x0fIteratorProfile\x12\x14\n" +
 	"\x05label\x18\x01 \x01(\tR\x05label\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x16\n" +
@@ -9186,7 +9231,14 @@ const file_bucket_proto_rawDesc = "" +
 	"next_calls\x18\x04 \x01(\x03R\tnextCalls\x12\x1d\n" +
 	"\n" +
 	"seek_calls\x18\x05 \x01(\x03R\tseekCalls\x123\n" +
-	"\bchildren\x18\x06 \x03(\v2\x17.ledger.IteratorProfileR\bchildren\"\x8d\x02\n" +
+	"\bchildren\x18\x06 \x03(\v2\x17.ledger.IteratorProfileR\bchildren\x12\x1f\n" +
+	"\vduration_us\x18\a \x01(\x03R\n" +
+	"durationUs\x12#\n" +
+	"\ritems_emitted\x18\b \x01(\x03R\fitemsEmitted\x12/\n" +
+	"\x13materialized_ranges\x18\t \x01(\x05R\x12materializedRanges\x12-\n" +
+	"\x12materialized_items\x18\n" +
+	" \x01(\x03R\x11materializedItems\x12#\n" +
+	"\ritems_skipped\x18\v \x01(\x03R\fitemsSkipped\"\x8d\x02\n" +
 	"\x13InspectIndexRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x123\n" +
 	"\vtarget_type\x18\x02 \x01(\x0e2\x12.common.TargetTypeR\n" +

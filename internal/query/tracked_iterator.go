@@ -1,10 +1,15 @@
 package query
 
-import "github.com/formancehq/ledger/v3/internal/storage/readstore"
+import (
+	"time"
 
-// TrackedIterator wraps an EntityIterator and counts Next/SeekGE calls
-// in the associated IteratorStats. The overhead is a single int64 increment
-// per call, which is negligible compared to Pebble cursor operations.
+	"github.com/formancehq/ledger/v3/internal/storage/readstore"
+)
+
+// TrackedIterator wraps an EntityIterator and records per-iterator stats
+// (call counters, inclusive wall-clock duration, emitted-rows counter) into
+// the associated IteratorStats. Overhead is a single time.Now()/time.Since
+// pair plus two int64 increments per call.
 type TrackedIterator struct {
 	inner readstore.EntityIterator
 	stats *IteratorStats
@@ -16,9 +21,16 @@ func NewTrackedIterator(inner readstore.EntityIterator, stats *IteratorStats) *T
 }
 
 func (t *TrackedIterator) Next() bool {
+	start := time.Now()
+	ok := t.inner.Next()
+	t.stats.Duration += time.Since(start)
 	t.stats.NextCalls++
 
-	return t.inner.Next()
+	if ok {
+		t.stats.ItemsEmitted++
+	}
+
+	return ok
 }
 
 func (t *TrackedIterator) Current() []byte {
@@ -26,9 +38,12 @@ func (t *TrackedIterator) Current() []byte {
 }
 
 func (t *TrackedIterator) SeekGE(target []byte) bool {
+	start := time.Now()
+	ok := t.inner.SeekGE(target)
+	t.stats.Duration += time.Since(start)
 	t.stats.SeekCalls++
 
-	return t.inner.SeekGE(target)
+	return ok
 }
 
 func (t *TrackedIterator) Close() {

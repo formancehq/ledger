@@ -159,6 +159,54 @@ func TestIteratorStats_String(t *testing.T) {
 	assert.Contains(t, s, "bucket=midx")
 }
 
+func TestIteratorStats_ToProto_PerNodeFields(t *testing.T) {
+	t.Parallel()
+
+	stats := &query.IteratorStats{
+		Label:              "SliceIterator(midx:1:t::block_height=uint range)",
+		Kind:               "Range",
+		Prefix:             "midx",
+		NextCalls:          3,
+		SeekCalls:          1,
+		Duration:           58 * time.Second,
+		ItemsEmitted:       2,
+		MaterializedRanges: 1,
+		MaterializedItems:  251_000_000,
+		ItemsSkipped:       42,
+	}
+
+	pb := stats.ToProto()
+	require.NotNil(t, pb)
+	assert.Equal(t, int64(58_000_000), pb.GetDurationUs())
+	assert.Equal(t, int64(2), pb.GetItemsEmitted())
+	assert.Equal(t, int32(1), pb.GetMaterializedRanges())
+	assert.Equal(t, int64(251_000_000), pb.GetMaterializedItems())
+	assert.Equal(t, int64(42), pb.GetItemsSkipped())
+}
+
+func TestIteratorStats_String_PerNodeFields(t *testing.T) {
+	t.Parallel()
+
+	stats := &query.IteratorStats{
+		Label:              "SliceIterator(midx:1:t::block_height=uint range)",
+		Kind:               "Range",
+		Prefix:             "midx",
+		NextCalls:          3,
+		SeekCalls:          1,
+		Duration:           58 * time.Second,
+		ItemsEmitted:       2,
+		MaterializedRanges: 1,
+		MaterializedItems:  251_000_000,
+		ItemsSkipped:       42,
+	}
+
+	s := stats.String()
+	assert.Contains(t, s, "emit=2")
+	assert.Contains(t, s, "dur=58s")
+	assert.Contains(t, s, "skip=42")
+	assert.Contains(t, s, "materialized=1/251000000")
+}
+
 func TestIteratorStats_String_Nil(t *testing.T) {
 	t.Parallel()
 

@@ -1002,6 +1002,16 @@ message IteratorProfile {
   int64 next_calls = 4;
   int64 seek_calls = 5;
   repeated IteratorProfile children = 6;
+  // Inclusive wall-clock time spent in this node's Next + SeekGE (covers child calls).
+  int64 duration_us = 7;
+  // Successful Next() calls (rows emitted upward by this node).
+  int64 items_emitted = 8;
+  // Range materializations performed at this node (typically leaf SliceIterator nodes).
+  int32 materialized_ranges = 9;
+  // Items drained from Pebble cursors into the materialized SliceIterator.
+  int64 materialized_items = 10;
+  // For combinator nodes (And/Not/Or): candidates discarded by the merge/converge loop.
+  int64 items_skipped = 11;
 }
 
 // ============================================================================

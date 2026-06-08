@@ -8,12 +8,23 @@ type AndIterator struct {
 	children  []EntityIterator
 	current   []byte
 	exhausted bool
+	// onSkip, when non-nil, is invoked once per candidate discarded by the
+	// converge loop (i.e. a row some child held but the intersection rejected).
+	// Used by the query layer to attribute skip counts to per-iterator stats.
+	onSkip func()
 }
 
 // NewAndIterator creates a new AND iterator over the given children.
 // At least two children are required.
 func NewAndIterator(children ...EntityIterator) *AndIterator {
 	return &AndIterator{children: children}
+}
+
+// SetOnSkip registers a callback fired each time the converge loop discards
+// a candidate (a row held by some child that was not present in all others).
+// Nil disables the callback.
+func (it *AndIterator) SetOnSkip(onSkip func()) {
+	it.onSkip = onSkip
 }
 
 func (it *AndIterator) Next() bool {
@@ -101,6 +112,10 @@ func (it *AndIterator) converge() bool {
 			it.current = candidate
 
 			return true
+		}
+
+		if it.onSkip != nil {
+			it.onSkip()
 		}
 	}
 }

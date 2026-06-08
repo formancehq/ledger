@@ -4631,6 +4631,11 @@ type IteratorProfileReader interface {
 	GetNextCalls() int64
 	GetSeekCalls() int64
 	GetChildren() []*IteratorProfile
+	GetDurationUs() int64
+	GetItemsEmitted() int64
+	GetMaterializedRanges() int32
+	GetMaterializedItems() int64
+	GetItemsSkipped() int64
 	Mutate() *IteratorProfile
 }
 
@@ -4658,6 +4663,26 @@ func (r *iteratorProfileReadonly) GetSeekCalls() int64 {
 
 func (r *iteratorProfileReadonly) GetChildren() []*IteratorProfile {
 	return r.v.GetChildren()
+}
+
+func (r *iteratorProfileReadonly) GetDurationUs() int64 {
+	return r.v.GetDurationUs()
+}
+
+func (r *iteratorProfileReadonly) GetItemsEmitted() int64 {
+	return r.v.GetItemsEmitted()
+}
+
+func (r *iteratorProfileReadonly) GetMaterializedRanges() int32 {
+	return r.v.GetMaterializedRanges()
+}
+
+func (r *iteratorProfileReadonly) GetMaterializedItems() int64 {
+	return r.v.GetMaterializedItems()
+}
+
+func (r *iteratorProfileReadonly) GetItemsSkipped() int64 {
+	return r.v.GetItemsSkipped()
 }
 
 func (r *iteratorProfileReadonly) Mutate() *IteratorProfile {

@@ -189,11 +189,16 @@ func compileAnd(ctx *compileCtx, and *commonpb.AndFilter) (readstore.EntityItera
 
 	andIter := readstore.NewAndIterator(children...)
 
-	return trackIterator(andIter, ctx.profile, &IteratorStats{
+	stats := &IteratorStats{
 		Label:    "AndIterator",
 		Kind:     "And",
 		Children: childStats,
-	}), nil
+	}
+	if ctx.profile != nil {
+		andIter.SetOnSkip(func() { stats.ItemsSkipped++ })
+	}
+
+	return trackIterator(andIter, ctx.profile, stats), nil
 }
 
 // compileOr compiles an OR filter into a merge-union iterator.
@@ -465,13 +470,14 @@ func compileIntCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.IntCon
 		return nil, fmt.Errorf("creating int range iterator: %w", rErr)
 	}
 
-	matIter := materializeIterator(iter, ctx.profile)
-
-	return trackIterator(matIter, ctx.profile, &IteratorStats{
+	stats := &IteratorStats{
 		Label:  fmt.Sprintf("SliceIterator(midx:%d:%s:%s=int range)", ctx.ledgerID, mc.namespace, mc.metaKey),
 		Kind:   "Range",
 		Prefix: "midx",
-	}), nil
+	}
+	matIter := materializeIterator(iter, ctx.profile, stats)
+
+	return trackIterator(matIter, ctx.profile, stats), nil
 }
 
 // resolvedUintBounds holds resolved min/max bounds for a uint64 range condition.
@@ -590,13 +596,14 @@ func compileUintCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.UintC
 		return nil, fmt.Errorf("creating uint range iterator: %w", rErr)
 	}
 
-	matIter := materializeIterator(iter, ctx.profile)
-
-	return trackIterator(matIter, ctx.profile, &IteratorStats{
+	stats := &IteratorStats{
 		Label:  fmt.Sprintf("SliceIterator(midx:%d:%s:%s=uint range)", ctx.ledgerID, mc.namespace, mc.metaKey),
 		Kind:   "Range",
 		Prefix: "midx",
-	}), nil
+	}
+	matIter := materializeIterator(iter, ctx.profile, stats)
+
+	return trackIterator(matIter, ctx.profile, stats), nil
 }
 
 // compileBoolCondition -- point scan on exact bool value.
@@ -993,13 +1000,14 @@ func compileTimestampRangeCondition(
 		return nil, fmt.Errorf("creating timestamp range iterator: %w", rErr)
 	}
 
-	matIter := materializeIterator(iter, ctx.profile)
-
-	return trackIterator(matIter, ctx.profile, &IteratorStats{
+	stats := &IteratorStats{
 		Label:  fmt.Sprintf("SliceIterator(%s:%d range)", bucketLabel, ctx.ledgerID),
 		Kind:   "Range",
 		Prefix: bucketLabel,
-	}), nil
+	}
+	matIter := materializeIterator(iter, ctx.profile, stats)
+
+	return trackIterator(matIter, ctx.profile, stats), nil
 }
 
 // compileLogBuiltinUintCondition dispatches to the appropriate log builtin uint condition compiler.
@@ -1097,13 +1105,14 @@ func compileLogIdCondition(ctx *compileCtx, cond *commonpb.UintCondition) (reads
 		return nil, fmt.Errorf("creating log ID range iterator: %w", rErr)
 	}
 
-	matIter := materializeIterator(iter, ctx.profile)
-
-	return trackIterator(matIter, ctx.profile, &IteratorStats{
+	stats := &IteratorStats{
 		Label:  fmt.Sprintf("SliceIterator(llog:%d:id range)", ctx.ledgerID),
 		Kind:   "Range",
 		Prefix: "llog",
-	}), nil
+	}
+	matIter := materializeIterator(iter, ctx.profile, stats)
+
+	return trackIterator(matIter, ctx.profile, stats), nil
 }
 
 // checkLogBuiltinIndexed validates that the requested log builtin index is enabled and READY.
@@ -1439,10 +1448,17 @@ func paramTypeName(pv *commonpb.ParameterValue) string {
 }
 
 // materializeIterator drains a Pebble EntityIterator into a sorted SliceIterator.
-// When profile is non-nil, it increments MaterializedRanges and MaterializedItems.
-func materializeIterator(iter readstore.EntityIterator, profile *QueryProfile) *SliceIterator {
+// When profile is non-nil, it increments the global MaterializedRanges and
+// MaterializedItems counters; when stats is non-nil, it also accumulates the
+// same counts on the per-node stats so the iterator-tree dump can attribute
+// materialization cost to a specific branch.
+func materializeIterator(iter readstore.EntityIterator, profile *QueryProfile, stats *IteratorStats) *SliceIterator {
 	if profile != nil {
 		profile.MaterializedRanges++
+	}
+
+	if stats != nil {
+		stats.MaterializedRanges++
 	}
 
 	defer iter.Close()
@@ -1458,6 +1474,10 @@ func materializeIterator(iter readstore.EntityIterator, profile *QueryProfile) *
 
 	if profile != nil {
 		profile.MaterializedItems += len(entities)
+	}
+
+	if stats != nil {
+		stats.MaterializedItems += len(entities)
 	}
 
 	sortEntities(entities)

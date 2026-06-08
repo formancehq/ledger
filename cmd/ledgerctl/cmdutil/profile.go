@@ -110,14 +110,51 @@ func renderIteratorTree(iter *servicepb.IteratorProfile, depth int) {
 		label = iter.GetKind()
 	}
 
-	stats := fmt.Sprintf("next=%d seek=%d", iter.GetNextCalls(), iter.GetSeekCalls())
-	if iter.GetBucket() != "" {
-		stats += " bucket=" + iter.GetBucket()
+	parts := []string{
+		fmt.Sprintf("next=%d", iter.GetNextCalls()),
+		fmt.Sprintf("seek=%d", iter.GetSeekCalls()),
+		fmt.Sprintf("emit=%d", iter.GetItemsEmitted()),
 	}
 
-	pterm.Printf("%s%s  %s\n", indent, pterm.Cyan(label), pterm.Gray(stats))
+	if iter.GetDurationUs() > 0 {
+		parts = append(parts, "dur="+formatDurationUs(iter.GetDurationUs()))
+
+		if selfUs := selfDurationUs(iter); selfUs != iter.GetDurationUs() {
+			parts = append(parts, "self="+formatDurationUs(selfUs))
+		}
+	}
+
+	if iter.GetItemsSkipped() > 0 {
+		parts = append(parts, fmt.Sprintf("skip=%d", iter.GetItemsSkipped()))
+	}
+
+	if iter.GetMaterializedRanges() > 0 || iter.GetMaterializedItems() > 0 {
+		parts = append(parts, fmt.Sprintf("materialized=%d/%d", iter.GetMaterializedRanges(), iter.GetMaterializedItems()))
+	}
+
+	if iter.GetBucket() != "" {
+		parts = append(parts, "bucket="+iter.GetBucket())
+	}
+
+	pterm.Printf("%s%s  %s\n", indent, pterm.Cyan(label), pterm.Gray(strings.Join(parts, " ")))
 
 	for _, child := range iter.GetChildren() {
 		renderIteratorTree(child, depth+1)
 	}
+}
+
+// selfDurationUs returns the duration spent strictly in this node, excluding
+// time charged to descendants. Returns the node's own duration when there are
+// no children.
+func selfDurationUs(iter *servicepb.IteratorProfile) int64 {
+	self := iter.GetDurationUs()
+	for _, child := range iter.GetChildren() {
+		self -= child.GetDurationUs()
+	}
+
+	if self < 0 {
+		return 0
+	}
+
+	return self
 }

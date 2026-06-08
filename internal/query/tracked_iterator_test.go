@@ -2,6 +2,7 @@ package query_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -105,6 +106,40 @@ func TestTrackedIterator_DelegatesClose(t *testing.T) {
 
 	tracked.Close()
 	assert.True(t, inner.closeCalled)
+}
+
+func TestTrackedIterator_CountsItemsEmittedOnSuccessfulNext(t *testing.T) {
+	t.Parallel()
+
+	inner := &mockEntityIterator{
+		nextResults: []bool{true, true, false, true},
+	}
+	stats := &query.IteratorStats{}
+	tracked := query.NewTrackedIterator(inner, stats)
+
+	for range 4 {
+		tracked.Next()
+	}
+
+	assert.Equal(t, int64(4), stats.NextCalls)
+	assert.Equal(t, int64(3), stats.ItemsEmitted, "ItemsEmitted should match Next() returning true")
+}
+
+func TestTrackedIterator_AccumulatesDuration(t *testing.T) {
+	t.Parallel()
+
+	inner := &mockEntityIterator{
+		nextResults: []bool{true, false},
+		seekResults: []bool{true},
+	}
+	stats := &query.IteratorStats{}
+	tracked := query.NewTrackedIterator(inner, stats)
+
+	tracked.SeekGE([]byte("k"))
+	tracked.Next()
+	tracked.Next()
+
+	assert.Greater(t, stats.Duration, time.Duration(0), "Duration should advance after Next/SeekGE calls")
 }
 
 func TestTrackedIterator_MixedOperations(t *testing.T) {

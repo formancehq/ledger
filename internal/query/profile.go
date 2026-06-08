@@ -34,7 +34,20 @@ type IteratorStats struct {
 	Prefix    string // Pebble key prefix name (e.g. "exist", "midx")
 	NextCalls int64
 	SeekCalls int64
-	Children  []*IteratorStats
+	// Duration is inclusive: it covers time spent in children because a parent's
+	// Next/SeekGE calls the child's Next/SeekGE while the timer is running.
+	// Self-time can be derived at render as Duration - Σ Children.Duration.
+	Duration time.Duration
+	// ItemsEmitted counts Next() invocations that returned true.
+	ItemsEmitted int64
+	// MaterializedRanges/MaterializedItems are populated on nodes that wrap a
+	// materialized SliceIterator (range scans drained into memory).
+	MaterializedRanges int
+	MaterializedItems  int
+	// ItemsSkipped counts candidates discarded by combinator merge/converge
+	// loops. Currently populated by AndIterator only.
+	ItemsSkipped int64
+	Children     []*IteratorStats
 }
 
 type profileKey struct{}
@@ -87,11 +100,16 @@ func (s *IteratorStats) ToProto() *servicepb.IteratorProfile {
 	}
 
 	pb := &servicepb.IteratorProfile{
-		Label:     s.Label,
-		Kind:      s.Kind,
-		Bucket:    s.Prefix,
-		NextCalls: s.NextCalls,
-		SeekCalls: s.SeekCalls,
+		Label:              s.Label,
+		Kind:               s.Kind,
+		Bucket:             s.Prefix,
+		NextCalls:          s.NextCalls,
+		SeekCalls:          s.SeekCalls,
+		DurationUs:         s.Duration.Microseconds(),
+		ItemsEmitted:       s.ItemsEmitted,
+		MaterializedRanges: int32(s.MaterializedRanges),
+		MaterializedItems:  int64(s.MaterializedItems),
+		ItemsSkipped:       s.ItemsSkipped,
 	}
 	for _, child := range s.Children {
 		pb.Children = append(pb.Children, child.ToProto())
@@ -158,7 +176,19 @@ func (s *IteratorStats) String() string {
 
 func (s *IteratorStats) writeIndented(b *strings.Builder, depth int) {
 	indent := strings.Repeat("  ", depth)
-	fmt.Fprintf(b, "%s%s next=%d seek=%d", indent, s.Label, s.NextCalls, s.SeekCalls)
+	fmt.Fprintf(b, "%s%s next=%d seek=%d emit=%d", indent, s.Label, s.NextCalls, s.SeekCalls, s.ItemsEmitted)
+
+	if s.Duration > 0 {
+		fmt.Fprintf(b, " dur=%s", s.Duration)
+	}
+
+	if s.ItemsSkipped > 0 {
+		fmt.Fprintf(b, " skip=%d", s.ItemsSkipped)
+	}
+
+	if s.MaterializedRanges > 0 || s.MaterializedItems > 0 {
+		fmt.Fprintf(b, " materialized=%d/%d", s.MaterializedRanges, s.MaterializedItems)
+	}
 
 	if s.Prefix != "" {
 		fmt.Fprintf(b, " bucket=%s", s.Prefix)
