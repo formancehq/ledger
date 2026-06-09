@@ -111,7 +111,15 @@ type Machine struct {
 	logsAppendedCounter       metric.Int64Counter
 	rotationDurationHistogram metric.Int64Histogram
 	batchCommitHistogram      metric.Int64Histogram
-	lastPersistedIndex        atomic.Uint64
+
+	// lastPersistedIndex is the highest Raft index whose FSM batch has been
+	// committed to Pebble's memtable and WAL with pebble.NoSync. It is NOT
+	// guaranteed durable on disk by itself: a power loss between commit and
+	// Pebble's async WAL flush would lose the corresponding entries. After
+	// recovery, fsm.LastAppliedIndex (loaded from Pebble) is the true durable
+	// applied index — it may be less than lastPersistedIndex captured before
+	// the crash, and Raft is expected to redeliver the missing entries.
+	lastPersistedIndex atomic.Uint64
 
 	// writeSet is a reusable WriteSet for applyProposal. Since the FSM is
 	// single-goroutine, we can avoid per-proposal allocations by resetting

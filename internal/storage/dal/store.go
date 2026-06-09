@@ -433,6 +433,28 @@ func (s *Store) Flush() error {
 	return s.getDB().Flush()
 }
 
+// SyncWAL forces an fsync of Pebble's WAL. After this call returns, every
+// batch.Commit(NoSync) issued before SyncWAL was invoked is durable on disk.
+// It does not flush memtables to SSTs — strictly a WAL fsync.
+//
+// Used by node.doMaintenance to establish the durability invariant
+// "WAL snapshot index <= durable Pebble applied index" before creating a
+// Raft WAL snapshot or compacting the Raft WAL. Without it, a power loss
+// could leave the WAL snapshot referencing entries that were only in
+// Pebble's unsynced memtable, and a subsequent Compact could erase those
+// entries from the WAL too — making them unrecoverable from any source.
+func (s *Store) SyncWAL() error {
+	s.dbMu.RLock()
+	defer s.dbMu.RUnlock()
+
+	db := s.getDB()
+	if db == nil {
+		return ErrStoreClosed
+	}
+
+	return db.LogData(nil, &pebble.WriteOptions{Sync: true})
+}
+
 // WarmSystemKeys preloads the system/config key zones into Pebble's block
 // cache. This covers [0xE0, 0xF1) and [0xF2, 0xFF) — everything except the
 // bulky attributes zone (0xF1) which contains volumes and metadata. This is

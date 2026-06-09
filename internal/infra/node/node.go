@@ -676,9 +676,6 @@ func (node *Node) runBackgroundMaintenance(ctx context.Context, stop chan struct
 func (node *Node) doMaintenance() {
 	store := node.applier.Store()
 
-	// 1. WAL snapshot + compact
-	lastPersistedIndex := node.fsm.LastPersistedIndex()
-
 	lastSnap, err := node.wal.Snapshot()
 	if err != nil {
 		node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to read WAL snapshot")
@@ -686,35 +683,49 @@ func (node *Node) doMaintenance() {
 		return
 	}
 
-	if lastPersistedIndex > lastSnap.Metadata.Index {
-		data, err := node.wrapSnapshot()
-		if err != nil {
-			node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to wrap snapshot")
+	// Early skip: nothing new since the previous tick. Avoids paying for an
+	// fsync on idle clusters.
+	if node.fsm.LastPersistedIndex() <= lastSnap.Metadata.Index {
+		return
+	}
 
-			return
+	// Capture lastPersistedIndex BEFORE calling SyncWAL. Reading first then
+	// syncing guarantees the captured index is covered by the fsync: at the
+	// moment we read N from lastPersistedIndex the corresponding batch has
+	// already been written to Pebble's WAL (FSM publishes the index after
+	// batch.Commit returns, see machine.go), so the subsequent SyncWAL makes
+	// it durable. The reverse order (sync, then read) could capture an index
+	// from a concurrent apply whose WAL record was written after our fsync.
+	capturedIndex := node.fsm.LastPersistedIndex()
+	if err := store.SyncWAL(); err != nil {
+		node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to sync Pebble WAL, skipping snapshot and checkpoint")
+
+		return
+	}
+	// Post-condition: every FSM batch with Raft index <= capturedIndex is
+	// durable on disk. It is now safe to advance the Raft WAL snapshot and
+	// to compact the Raft WAL up to capturedIndex - margin — even on power
+	// loss right after this point, Pebble can recover to >= capturedIndex.
+
+	// 1. WAL snapshot + compact.
+	data, err := node.wrapSnapshot()
+	if err != nil {
+		node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to wrap snapshot")
+	} else if err := node.wal.CreateSnapshot(capturedIndex, node.confState.Load(), data); err != nil {
+		if !errors.Is(err, raft.ErrSnapOutOfDate) {
+			node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to create WAL snapshot")
 		}
-
-		if err := node.wal.CreateSnapshot(lastPersistedIndex, node.confState.Load(), data); err != nil {
-			if !errors.Is(err, raft.ErrSnapOutOfDate) {
-				node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to create WAL snapshot")
-			}
-
-			return
-		}
-
-		if lastPersistedIndex > node.applier.CompactionMargin() {
-			compactIdx := lastPersistedIndex - node.applier.CompactionMargin()
-			if err := node.wal.Compact(compactIdx); err != nil && !errors.Is(err, raft.ErrCompacted) {
-				node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to compact WAL")
-			}
+	} else if capturedIndex > node.applier.CompactionMargin() {
+		compactIdx := capturedIndex - node.applier.CompactionMargin()
+		if err := node.wal.Compact(compactIdx); err != nil && !errors.Is(err, raft.ErrCompacted) {
+			node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to compact WAL")
 		}
 	}
 
-	// 2. Pebble checkpoint (for follower sync + disaster recovery)
-	// Skip if no entries have been persisted since the last checkpoint to avoid
-	// unnecessary disk I/O (hard-linking SSTs + dir.Sync can saturate IOPS on
-	// constrained volumes like gp3).
-	if lastPersistedIndex <= node.lastCheckpointPersistedIndex {
+	// 2. Pebble checkpoint (for cold-restart DR — operator k8s bootstrap detection).
+	// Independent of step 1: failures in the WAL snapshot/compact path must not
+	// prevent the Pebble checkpoint from being attempted, and vice versa.
+	if capturedIndex <= node.lastCheckpointPersistedIndex {
 		return
 	}
 
@@ -724,17 +735,21 @@ func (node *Node) doMaintenance() {
 		return
 	}
 
-	node.lastCheckpointPersistedIndex = lastPersistedIndex
+	node.lastCheckpointPersistedIndex = capturedIndex
 }
 
 func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 	node.runDone = make(chan struct{})
 	defer close(node.runDone)
 
-	// Determine the Applied index for raft.Config. Normally this is the store's
-	// last applied index. However, when the store is behind the WAL snapshot
-	// (out-of-sync recovery after a crash during checkpoint sync), Raft requires
-	// Applied >= snapshot.Metadata.Index. Use the max of the two.
+	// Determine the Applied index for raft.Config from the FSM's durable last
+	// applied index (read from Pebble). doMaintenance calls Store.SyncWAL
+	// before creating each Raft WAL snapshot, so under correct operation the
+	// Raft WAL snapshot's Metadata.Index is always <= Pebble's durable
+	// applied index. The check below is defense-in-depth: it catches a
+	// pathological state (SyncWAL silently regressed, manual snapshot
+	// creation outside doMaintenance, Pebble bug) before Raft starts, rather
+	// than letting it manifest as silent data loss.
 	applied := node.fsm.LastAppliedIndex()
 
 	walSnap, err := node.wal.Snapshot()
@@ -742,13 +757,33 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 		return fmt.Errorf("reading WAL snapshot for Applied: %w", err)
 	}
 
+	walFirstIdx, err := node.wal.FirstIndex()
+	if err != nil {
+		return fmt.Errorf("reading WAL first index: %w", err)
+	}
+
+	// If Pebble's durable applied index is below the WAL's first available
+	// entry, the entries needed to catch the FSM up to walSnap.Metadata.Index
+	// are gone from both Pebble and the Raft WAL. With Store.SyncWAL in the
+	// maintenance path this is unreachable in correct operation; if it
+	// triggers, something is very wrong — refuse to start rather than mask it.
+	if applied+1 < walFirstIdx {
+		return fmt.Errorf(
+			"durability gap exceeds WAL retention: Pebble applied=%d, WAL firstIndex=%d, "+
+				"WAL snapshot=%d. The compaction margin was overrun before Pebble fsync'd. "+
+				"Restore from a Pebble checkpoint or contact ops",
+			applied, walFirstIdx, walSnap.Metadata.Index,
+		)
+	}
+
 	if walSnap.Metadata.Index > applied {
+		// Should not happen with SyncWAL in doMaintenance; log loudly so the
+		// regression is visible. Raft can still recover via redelivery of
+		// [Applied+1, Commit] in CommittedEntries.
 		node.logger.WithFields(map[string]any{
 			"storeApplied":   applied,
 			"walSnapshotIdx": walSnap.Metadata.Index,
-		}).Infof("Store behind WAL snapshot, using snapshot index as Applied")
-
-		applied = walSnap.Metadata.Index
+		}).Errorf("Pebble lags WAL snapshot — SyncWAL durability invariant violated, relying on Raft replay")
 	}
 
 	// Cap applied to the WAL's durable commit index. etcd's WAL skips fsync
@@ -771,6 +806,12 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 
 		applied = hardState.Commit
 	}
+
+	// Initialize lastCheckpointPersistedIndex from the durable applied index.
+	// Treating Applied as "at least as recent as the checkpoint we would
+	// create now" prevents a redundant Pebble checkpoint on the very first
+	// maintenance tick after restart.
+	node.lastCheckpointPersistedIndex = applied
 
 	raftConfig := &raft.Config{
 		ID:                        node.config.NodeID,
