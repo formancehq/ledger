@@ -765,12 +765,14 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 		Key:        "created_by",
 	}
 
-	// Expect account metadata to be set (called from numscript adapter + re-pushed after enforceSchema)
-	mockStore.EXPECT().PutAccountMetadata(acctTypeKey, commonpb.NewStringValue("savings")).Times(2)
-	mockStore.EXPECT().PutAccountMetadata(createdByKey, commonpb.NewStringValue("numscript")).Times(2)
-	// GetAccountMetadata called before each PutAccountMetadata in the enforceSchema path
-	mockStore.EXPECT().GetAccountMetadata(acctTypeKey).Return(commonpb.NewStringValue("savings"), nil)
-	mockStore.EXPECT().GetAccountMetadata(createdByKey).Return(commonpb.NewStringValue("numscript"), nil)
+	// After #186: PutAccountMetadata is only called once per key, by the
+	// caller (processCreateTransaction), so the previous value capture sees
+	// the real prior state. The numscript adapter no longer pre-writes.
+	mockStore.EXPECT().PutAccountMetadata(acctTypeKey, commonpb.NewStringValue("savings"))
+	mockStore.EXPECT().PutAccountMetadata(createdByKey, commonpb.NewStringValue("numscript"))
+	// New account → no prior metadata; GetAccountMetadata returns ErrNotFound.
+	mockStore.EXPECT().GetAccountMetadata(acctTypeKey).Return(nil, domain.ErrNotFound)
+	mockStore.EXPECT().GetAccountMetadata(createdByKey).Return(nil, domain.ErrNotFound)
 
 	// Test set_account_meta
 	request := &servicepb.Request{
@@ -814,6 +816,98 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 	metaMap := commonpb.MetadataMapToGoMap(aliceMeta)
 	require.Equal(t, "savings", metaMap["account_type"])
 	require.Equal(t, "numscript", metaMap["created_by"])
+
+	// New account → log's PreviousAccountMetadata must be empty for these
+	// keys, not equal to the new values (the #186 regression).
+	prev := createdTx.GetPreviousAccountMetadata()["users:alice"]
+	if prev != nil {
+		require.NotContains(t, prev.GetValues(), "account_type",
+			"PreviousAccountMetadata must not contain the newly-written key for a fresh account")
+		require.NotContains(t, prev.GetValues(), "created_by",
+			"PreviousAccountMetadata must not contain the newly-written key for a fresh account")
+	}
+}
+
+// TestProcessCreateTransaction_Numscript_SetAccountMeta_OverwriteCapturesOldValue
+// is the #186 regression. Before the fix, the Numscript adapter pre-wrote
+// new metadata into the overlay, so by the time
+// processCreateTransaction called GetAccountMetadata to capture the prior
+// value, it observed the just-written new value. The log's
+// PreviousAccountMetadata then matched the current metadata and the
+// indexbuilder failed to remove stale index entries for value A.
+func TestProcessCreateTransaction_Numscript_SetAccountMeta_OverwriteCapturesOldValue(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockInMemoryStore(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	now := &commonpb.Timestamp{Data: 1234567890}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true).AnyTimes()
+	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
+	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
+	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
+	setupNumscriptVolumeMocks(mockStore)
+	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
+	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{LedgerID: 1, ID: 1}, gomock.Any())
+
+	roleKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:alice"},
+		Key:        "role",
+	}
+
+	// Existing value "admin" must be observed at capture time.
+	mockStore.EXPECT().GetAccountMetadata(roleKey).Return(commonpb.NewStringValue("admin"), nil)
+	// Only one write — by processCreateTransaction itself, not by the
+	// numscript adapter pre-writing.
+	mockStore.EXPECT().PutAccountMetadata(roleKey, commonpb.NewStringValue("viewer"))
+
+	request := &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: "test-ledger",
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+					CreateTransaction: &servicepb.CreateTransactionPayload{
+						Script: &commonpb.Script{
+							Plain: `
+								set_account_meta(@users:alice, "role", "viewer")
+								send [USD/2 100] (
+									source = @world
+									destination = @users:alice
+								)
+							`,
+						},
+					},
+				}},
+			},
+		},
+	}
+
+	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	require.NoError(t, err)
+	createdTx := result.GetApply().GetLog().GetData().GetCreatedTransaction()
+	require.NotNil(t, createdTx)
+
+	// New metadata in the log.
+	aliceMeta := createdTx.GetAccountMetadata()["users:alice"]
+	require.NotNil(t, aliceMeta)
+	require.Equal(t, "viewer", commonpb.MetadataMapToGoMap(aliceMeta)["role"])
+
+	// The fix's specific claim: PreviousAccountMetadata holds "admin", not
+	// "viewer". The indexbuilder reads this to remove the stale index entry
+	// for "admin".
+	prev := createdTx.GetPreviousAccountMetadata()["users:alice"]
+	require.NotNil(t, prev, "PreviousAccountMetadata must capture the value before the script ran")
+	prevValue := prev.GetValues()["role"]
+	require.NotNil(t, prevValue)
+	require.Equal(t, "admin", prevValue.GetStringValue(),
+		"previous value must be the pre-script value, not the newly-written one")
 }
 
 func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {

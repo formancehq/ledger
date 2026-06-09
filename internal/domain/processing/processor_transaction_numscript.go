@@ -121,22 +121,19 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 		s.PutVolume(destKey, destVol)
 	}
 
-	// Apply account metadata from script execution and collect for return.
+	// Collect account metadata from script execution for return. The caller
+	// (processCreateTransaction) is responsible for capturing previous values
+	// and writing the new ones — writing here would clobber the previous
+	// value before the caller's GetAccountMetadata sees it, so the log's
+	// PreviousAccountMetadata would equal the new metadata and the
+	// indexbuilder could not remove stale index entries (#186).
 	var accountsMeta map[string]map[string]*commonpb.MetadataValue
 	if len(result.AccountsMetadata) > 0 {
 		accountsMeta = make(map[string]map[string]*commonpb.MetadataValue, len(result.AccountsMetadata))
 		for account, meta := range result.AccountsMetadata {
 			mdMap := make(map[string]*commonpb.MetadataValue, len(meta))
 			for key, value := range meta {
-				mv := commonpb.NewStringValue(value)
-				mdMap[key] = mv
-				s.PutAccountMetadata(domain.MetadataKey{
-					AccountKey: domain.AccountKey{
-						LedgerID: ledgerID,
-						Account:  account,
-					},
-					Key: key,
-				}, mv)
+				mdMap[key] = commonpb.NewStringValue(value)
 			}
 
 			accountsMeta[account] = mdMap

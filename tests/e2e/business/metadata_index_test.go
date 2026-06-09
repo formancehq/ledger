@@ -483,4 +483,90 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
+
+	// ========================================================================
+	// Numscript set_account_meta also has to drop the old indexed value.
+	// Before #186, the Numscript adapter pre-wrote new metadata into the
+	// overlay so the log's PreviousAccountMetadata equalled the new value,
+	// and the indexbuilder couldn't remove the old value from the index.
+	// ========================================================================
+	Context("Numscript set_account_meta removes old indexed value", Ordered, func() {
+		const ledgerName = "idx-acct-meta-numscript-update"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "role",
+							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+						},
+					}),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.CreateAccountMetadataIndexAction(ledgerName, "role"),
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")).To(Succeed())
+		})
+
+		It("Should drop the old value from the index when Numscript overwrites it", func() {
+			// Seed alice with role=admin via Numscript.
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.CreateForceScriptTransactionAction(ledgerName, `
+						set_account_meta(@alice, "role", "admin")
+						send [USD/2 100] (
+							source = @world
+							destination = @alice
+						)
+					`, nil, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", actions.StringMetadataFilter("role", "admin"))
+				g.Expect(err).To(Succeed())
+				g.Expect(accounts).To(HaveLen(1))
+				g.Expect(accounts[0].Address).To(Equal("alice"))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+
+			// Overwrite to role=viewer via Numscript.
+			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.CreateForceScriptTransactionAction(ledgerName, `
+						set_account_meta(@alice, "role", "viewer")
+						send [USD/2 100] (
+							source = @world
+							destination = @alice
+						)
+					`, nil, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", actions.StringMetadataFilter("role", "viewer"))
+				g.Expect(err).To(Succeed())
+				g.Expect(accounts).To(HaveLen(1))
+				g.Expect(accounts[0].Address).To(Equal("alice"))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+
+			// The #186 regression assertion: role=admin must no longer
+			// return alice. Pre-fix, the indexbuilder did not see "admin"
+			// as the previous value and left the index entry stale.
+			Eventually(func(g Gomega) {
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", actions.StringMetadataFilter("role", "admin"))
+				g.Expect(err).To(Succeed())
+				g.Expect(accounts).To(BeEmpty(), "old value 'admin' must be removed from the index after Numscript overwrites it")
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+	})
 })
