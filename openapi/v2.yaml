@@ -3197,24 +3197,28 @@ components:
           example: id:desc
       oneOf:
         - x-speakeasy-name-override: QueryTemplateAccountParams
+          required: [resource]
           properties:
             resource:
               type: string
               enum:
                 - accounts
         - x-speakeasy-name-override: QueryTemplateTransactionParams
+          required: [resource]
           properties:
             resource:
               type: string
               enum:
                 - transactions
         - x-speakeasy-name-override: QueryTemplateLogParams
+          required: [resource]
           properties:
             resource:
               type: string
               enum:
                 - logs
         - x-speakeasy-name-override: QueryTemplateVolumeParams
+          required: [resource]
           properties:
             resource:
               type: string

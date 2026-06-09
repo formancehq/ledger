@@ -34,9 +34,9 @@ func (e *V2QueryParams4Resource) UnmarshalJSON(data []byte) error {
 }
 
 type QueryTemplateVolumeParams struct {
-	Resource      *V2QueryParams4Resource `json:"resource,omitempty"`
-	InsertionDate *bool                   `json:"insertionDate,omitempty"`
-	GroupBy       *int64                  `json:"groupBy,omitempty"`
+	Resource      V2QueryParams4Resource `json:"resource"`
+	InsertionDate *bool                  `json:"insertionDate,omitempty"`
+	GroupBy       *int64                 `json:"groupBy,omitempty"`
 	// The maximum number of results to return per page.
 	//
 	PageSize *int64 `json:"pageSize,omitempty"`
@@ -65,9 +65,9 @@ func (q *QueryTemplateVolumeParams) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (o *QueryTemplateVolumeParams) GetResource() *V2QueryParams4Resource {
+func (o *QueryTemplateVolumeParams) GetResource() V2QueryParams4Resource {
 	if o == nil {
-		return nil
+		return V2QueryParams4Resource("")
 	}
 	return o.Resource
 }
@@ -145,7 +145,7 @@ func (e *V2QueryParams3Resource) UnmarshalJSON(data []byte) error {
 }
 
 type QueryTemplateLogParams struct {
-	Resource *V2QueryParams3Resource `json:"resource,omitempty"`
+	Resource V2QueryParams3Resource `json:"resource"`
 	// The maximum number of results to return per page.
 	//
 	PageSize *int64 `json:"pageSize,omitempty"`
@@ -174,9 +174,9 @@ func (q *QueryTemplateLogParams) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (o *QueryTemplateLogParams) GetResource() *V2QueryParams3Resource {
+func (o *QueryTemplateLogParams) GetResource() V2QueryParams3Resource {
 	if o == nil {
-		return nil
+		return V2QueryParams3Resource("")
 	}
 	return o.Resource
 }
@@ -240,7 +240,7 @@ func (e *V2QueryParamsResource) UnmarshalJSON(data []byte) error {
 }
 
 type QueryTemplateTransactionParams struct {
-	Resource *V2QueryParamsResource `json:"resource,omitempty"`
+	Resource V2QueryParamsResource `json:"resource"`
 	// The maximum number of results to return per page.
 	//
 	PageSize *int64 `json:"pageSize,omitempty"`
@@ -269,9 +269,9 @@ func (q *QueryTemplateTransactionParams) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (o *QueryTemplateTransactionParams) GetResource() *V2QueryParamsResource {
+func (o *QueryTemplateTransactionParams) GetResource() V2QueryParamsResource {
 	if o == nil {
-		return nil
+		return V2QueryParamsResource("")
 	}
 	return o.Resource
 }
@@ -335,7 +335,7 @@ func (e *V2QueryParams1Resource) UnmarshalJSON(data []byte) error {
 }
 
 type QueryTemplateAccountParams struct {
-	Resource *V2QueryParams1Resource `json:"resource,omitempty"`
+	Resource V2QueryParams1Resource `json:"resource"`
 	// The maximum number of results to return per page.
 	//
 	PageSize *int64 `json:"pageSize,omitempty"`
@@ -364,9 +364,9 @@ func (q *QueryTemplateAccountParams) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (o *QueryTemplateAccountParams) GetResource() *V2QueryParams1Resource {
+func (o *QueryTemplateAccountParams) GetResource() V2QueryParams1Resource {
 	if o == nil {
-		return nil
+		return V2QueryParams1Resource("")
 	}
 	return o.Resource
 }
