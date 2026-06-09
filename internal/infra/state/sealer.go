@@ -7,6 +7,7 @@ import (
 
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/zeebo/blake3"
+	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -226,95 +227,85 @@ func (s *Sealer) seal(req SealRequest) error {
 	return nil
 }
 
+// deterministicVTMarshaler matches the MarshalDeterministicVT method that
+// vtprotobuf generates for messages annotated for deterministic marshaling.
+// All three values hashed by computeStateHash (VolumePair, MetadataValue,
+// TransactionState) implement it.
+type deterministicVTMarshaler interface {
+	MarshalDeterministicVT(dAtA []byte) []byte
+}
+
 func computeStateHash(reader dal.PebbleReader, attrs *attributes.Attributes) ([]byte, error) {
 	hasher := blake3.New()
 
-	// Hash volumes (deterministic Pebble key order)
-	volIter, err := attrs.Volume.NewStreamingIter(reader, nil)
-	if err != nil {
-		return nil, fmt.Errorf("creating volume iterator: %w", err)
+	// Reusable buffer for MarshalDeterministicVT — avoids one alloc per
+	// entry across what can be a large iteration on a fully-sealed
+	// checkpoint.
+	var buf []byte
+
+	if err := hashAttribute(reader, attrs.Volume, hasher, &buf, "volume"); err != nil {
+		return nil, err
 	}
 
-	for volIter.Next() {
-		e := volIter.Entry()
-
-		_, _ = hasher.Write(e.CanonicalKey)
-
-		data, marshalErr := e.Value.MarshalVT()
-		if marshalErr != nil {
-			_ = volIter.Close()
-
-			return nil, fmt.Errorf("marshaling volume: %w", marshalErr)
-		}
-
-		_, _ = hasher.Write(data)
+	if err := hashAttribute(reader, attrs.Metadata, hasher, &buf, "metadata"); err != nil {
+		return nil, err
 	}
 
-	if closeErr := volIter.Close(); closeErr != nil {
-		return nil, fmt.Errorf("closing volume iterator: %w", closeErr)
-	}
-
-	if err := volIter.Err(); err != nil {
-		return nil, fmt.Errorf("hashing volumes: %w", err)
-	}
-
-	// Hash metadata
-	metaIter, err := attrs.Metadata.NewStreamingIter(reader, nil)
-	if err != nil {
-		return nil, fmt.Errorf("creating metadata iterator: %w", err)
-	}
-
-	for metaIter.Next() {
-		e := metaIter.Entry()
-
-		_, _ = hasher.Write(e.CanonicalKey)
-
-		data, marshalErr := e.Value.MarshalVT()
-		if marshalErr != nil {
-			_ = metaIter.Close()
-
-			return nil, fmt.Errorf("marshaling metadata: %w", marshalErr)
-		}
-
-		_, _ = hasher.Write(data)
-	}
-
-	if closeErr := metaIter.Close(); closeErr != nil {
-		return nil, fmt.Errorf("closing metadata iterator: %w", closeErr)
-	}
-
-	if err := metaIter.Err(); err != nil {
-		return nil, fmt.Errorf("hashing metadata: %w", err)
-	}
-
-	// Hash transaction states
-	txIter, err := attrs.Transaction.NewStreamingIter(reader, nil)
-	if err != nil {
-		return nil, fmt.Errorf("creating transaction iterator: %w", err)
-	}
-
-	for txIter.Next() {
-		e := txIter.Entry()
-
-		_, _ = hasher.Write(e.CanonicalKey)
-
-		data, marshalErr := e.Value.MarshalVT()
-		if marshalErr != nil {
-			_ = txIter.Close()
-
-			return nil, fmt.Errorf("marshaling transaction state: %w", marshalErr)
-		}
-
-		_, _ = hasher.Write(data)
-	}
-
-	if closeErr := txIter.Close(); closeErr != nil {
-		return nil, fmt.Errorf("closing transaction iterator: %w", closeErr)
-	}
-
-	if err := txIter.Err(); err != nil {
-		return nil, fmt.Errorf("hashing transaction states: %w", err)
+	if err := hashAttribute(reader, attrs.Transaction, hasher, &buf, "transaction state"); err != nil {
+		return nil, err
 	}
 
 	return hasher.Sum(nil), nil
+}
+
+// hashAttribute streams every (key, value) pair in an attribute store into
+// the hasher. Keys are taken in Pebble byte order (deterministic). Values
+// are marshaled via MarshalDeterministicVT so the resulting hash is
+// reproducible across nodes — important if/when state-hash comparison
+// becomes a cross-node check (today only the leader computes the state
+// hash and proposes it through Raft, so non-determinism would not
+// surface, but the deterministic marshal closes a foot-gun on the
+// sealing path).
+//
+// Cost: ~20% slower end-to-end than MarshalVT and ~75% slower per call
+// (see #288). Acceptable here because sealing runs at most once per
+// closing period, off the FSM hot path. The same swap on the hot path
+// was rejected by the same analysis.
+func hashAttribute[V proto.Message](
+	reader dal.PebbleReader,
+	attr *attributes.Attribute[V],
+	hasher *blake3.Hasher,
+	buf *[]byte,
+	name string,
+) error {
+	iter, err := attr.NewStreamingIter(reader, nil)
+	if err != nil {
+		return fmt.Errorf("creating %s iterator: %w", name, err)
+	}
+
+	for iter.Next() {
+		e := iter.Entry()
+
+		_, _ = hasher.Write(e.CanonicalKey)
+
+		m, ok := proto.Message(e.Value).(deterministicVTMarshaler)
+		if !ok {
+			_ = iter.Close()
+
+			return fmt.Errorf("%s value type %T lacks MarshalDeterministicVT", name, e.Value)
+		}
+
+		*buf = m.MarshalDeterministicVT((*buf)[:0])
+		_, _ = hasher.Write(*buf)
+	}
+
+	if closeErr := iter.Close(); closeErr != nil {
+		return fmt.Errorf("closing %s iterator: %w", name, closeErr)
+	}
+
+	if err := iter.Err(); err != nil {
+		return fmt.Errorf("hashing %s entries: %w", name, err)
+	}
+
+	return nil
 }
