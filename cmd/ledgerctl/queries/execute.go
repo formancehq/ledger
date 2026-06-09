@@ -263,6 +263,12 @@ func renderAggregate(cmd *cobra.Command, result *commonpb.AggregateResult) error
 	return nil
 }
 
+// parseParams turns --param key=value flags into ParameterValue messages.
+// Values are always sent as strings; the server coerces to the parameter's
+// declared type (int64, uint64, bool) at compile time via extractInt64 /
+// extractUint64 / extractBool. The CLI used to infer the type from the raw
+// value, but that broke any string-typed param whose contents happened to
+// parse as an int (e.g. a hex hash made of digits — see #249).
 func parseParams(flags []string) (map[string]*commonpb.ParameterValue, error) {
 	if len(flags) == 0 {
 		return nil, nil
@@ -276,26 +282,10 @@ func parseParams(flags []string) (map[string]*commonpb.ParameterValue, error) {
 			return nil, fmt.Errorf("invalid parameter %q (expected key=value)", f)
 		}
 
-		params[k] = inferParameterValue(v)
+		params[k] = &commonpb.ParameterValue{Value: &commonpb.ParameterValue_StringValue{StringValue: v}}
 	}
 
 	return params, nil
-}
-
-func inferParameterValue(s string) *commonpb.ParameterValue {
-	if v, err := strconv.ParseInt(s, 10, 64); err == nil {
-		return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Int64Value{Int64Value: v}}
-	}
-
-	if v, err := strconv.ParseUint(s, 10, 64); err == nil {
-		return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: v}}
-	}
-
-	if v, err := strconv.ParseBool(s); err == nil {
-		return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_BoolValue{BoolValue: v}}
-	}
-
-	return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_StringValue{StringValue: s}}
 }
 
 func parseMode(s string) (commonpb.QueryMode, error) {

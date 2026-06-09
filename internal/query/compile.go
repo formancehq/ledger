@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -1458,6 +1459,9 @@ func extractString(params map[string]*commonpb.ParameterValue, name string) (str
 }
 
 // extractBool extracts a bool parameter, returning a clear error on type mismatch or nil value.
+// It also accepts string values that strconv.ParseBool recognises ("true",
+// "false", "1", "0", etc.), so a client that doesn't know the target type
+// can pass through the safe default of sending strings — see #249.
 func extractBool(params map[string]*commonpb.ParameterValue, name string) (bool, error) {
 	val, ok := params[name]
 	if !ok {
@@ -1471,12 +1475,22 @@ func extractBool(params map[string]*commonpb.ParameterValue, name string) (bool,
 	switch v := val.GetValue().(type) {
 	case *commonpb.ParameterValue_BoolValue:
 		return v.BoolValue, nil
+	case *commonpb.ParameterValue_StringValue:
+		b, err := strconv.ParseBool(v.StringValue)
+		if err != nil {
+			return false, fmt.Errorf("parameter %q: cannot parse %q as bool: %w", name, v.StringValue, err)
+		}
+
+		return b, nil
 	default:
 		return false, fmt.Errorf("parameter %q: expected bool value, got %s", name, paramTypeName(val))
 	}
 }
 
-// extractInt64 extracts an int64 parameter. It also accepts uint64 values that fit in int64.
+// extractInt64 extracts an int64 parameter. It also accepts uint64 values
+// that fit in int64, and string values that parse cleanly as int64 (so a
+// client that doesn't know the target type can pass through the safe
+// default of sending strings — see #249).
 func extractInt64(params map[string]*commonpb.ParameterValue, name string) (int64, error) {
 	val, ok := params[name]
 	if !ok {
@@ -1496,12 +1510,22 @@ func extractInt64(params map[string]*commonpb.ParameterValue, name string) (int6
 		}
 
 		return int64(v.Uint64Value), nil
+	case *commonpb.ParameterValue_StringValue:
+		n, err := strconv.ParseInt(v.StringValue, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("parameter %q: cannot parse %q as int64: %w", name, v.StringValue, err)
+		}
+
+		return n, nil
 	default:
 		return 0, fmt.Errorf("parameter %q: expected int64 value, got %s", name, paramTypeName(val))
 	}
 }
 
-// extractUint64 extracts a uint64 parameter. It also accepts non-negative int64 values.
+// extractUint64 extracts a uint64 parameter. It also accepts non-negative
+// int64 values and string values that parse cleanly as uint64 (so a client
+// that doesn't know the target type can pass through the safe default of
+// sending strings — see #249).
 func extractUint64(params map[string]*commonpb.ParameterValue, name string) (uint64, error) {
 	val, ok := params[name]
 	if !ok {
@@ -1521,6 +1545,13 @@ func extractUint64(params map[string]*commonpb.ParameterValue, name string) (uin
 		}
 
 		return uint64(v.Int64Value), nil
+	case *commonpb.ParameterValue_StringValue:
+		n, err := strconv.ParseUint(v.StringValue, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("parameter %q: cannot parse %q as uint64: %w", name, v.StringValue, err)
+		}
+
+		return n, nil
 	default:
 		return 0, fmt.Errorf("parameter %q: expected uint64 value, got %s", name, paramTypeName(val))
 	}

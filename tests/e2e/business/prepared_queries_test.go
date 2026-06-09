@@ -566,6 +566,130 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 
 			Expect(accountAddresses(result.GetCursor().AccountData)).To(ConsistOf("bob"))
 		})
+
+		// #249 regression: a CLI that always sends string values must work
+		// against a string-typed param even when the raw string looks like
+		// an int. Pre-fix, the CLI inferred "0000...0" as int64(0) and the
+		// server rejected with "expected string, got int64". Post-fix, the
+		// CLI sends StringValue and extractString accepts it unchanged.
+		It("Should accept a string param whose value looks like a number", func() {
+			// Add a third account with a numeric-looking role so we can
+			// verify the lookup actually returns it.
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "carol", big.NewInt(100), "USD"),
+					}, nil),
+					actions.SaveAccountMetadataAction(ledgerName, "carol", map[string]string{"role": "0000"}),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			var result *servicepb.ExecutePreparedQueryResponse
+			Eventually(func(g Gomega) {
+				result, err = sharedClient.ExecutePreparedQuery(sharedCtx, &servicepb.ExecutePreparedQueryRequest{
+					Ledger:    ledgerName,
+					QueryName: "by-role",
+					Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+					Parameters: map[string]*commonpb.ParameterValue{
+						"role_value": actions.StringParam("0000"),
+					},
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(result.GetCursor()).NotTo(BeNil())
+				g.Expect(result.GetCursor().AccountData).To(HaveLen(1))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+
+			Expect(accountAddresses(result.GetCursor().AccountData)).To(ConsistOf("carol"))
+		})
+	})
+
+	// ========================================================================
+	// #249: server-side coercion of string params to typed scalars.
+	// The CLI sends every --param value as a StringValue because it doesn't
+	// know the target type. extractInt64 / extractUint64 / extractBool must
+	// parse the string into the declared scalar at compile time.
+	// ========================================================================
+	Context("Execute LIST mode — string param coerced to int64 range filter", Ordered, func() {
+		const ledgerName = "pq-exec-coerce-int"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "score",
+							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+						},
+					}),
+					actions.CreateAccountMetadataIndexAction(ledgerName, "score"),
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score")).To(Succeed())
+
+			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
+					}, nil),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bob", big.NewInt(100), "USD"),
+					}, nil),
+					actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"score": "42"}),
+					actions.SaveAccountMetadataAction(ledgerName, "bob", map[string]string{"score": "100"}),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			_, err = sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Query: &commonpb.PreparedQuery{
+					Name:   "score-in-range",
+					Ledger: ledgerName,
+					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+					Filter: actions.ParamInt64RangeMetadataFilter("score", "min", "max"),
+				},
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("Should coerce string params to int64 when the filter declares int64 range", func() {
+			var result *servicepb.ExecutePreparedQueryResponse
+			Eventually(func(g Gomega) {
+				var err error
+				// Note: StringParam, not Int64Param. This is what the CLI
+				// sends post-fix — server's extractInt64 must coerce.
+				result, err = sharedClient.ExecutePreparedQuery(sharedCtx, &servicepb.ExecutePreparedQueryRequest{
+					Ledger:    ledgerName,
+					QueryName: "score-in-range",
+					Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+					Parameters: map[string]*commonpb.ParameterValue{
+						"min": actions.StringParam("40"),
+						"max": actions.StringParam("50"),
+					},
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(result.GetCursor()).NotTo(BeNil())
+				g.Expect(result.GetCursor().AccountData).To(HaveLen(1))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+
+			Expect(accountAddresses(result.GetCursor().AccountData)).To(ConsistOf("alice"))
+		})
+
+		It("Should reject a string param that doesn't parse as int", func() {
+			_, err := sharedClient.ExecutePreparedQuery(sharedCtx, &servicepb.ExecutePreparedQueryRequest{
+				Ledger:    ledgerName,
+				QueryName: "score-in-range",
+				Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+				Parameters: map[string]*commonpb.ParameterValue{
+					"min": actions.StringParam("not-a-number"),
+					"max": actions.StringParam("50"),
+				},
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("cannot parse"))
+		})
 	})
 
 	// ========================================================================
