@@ -12,8 +12,8 @@ import (
 )
 
 // Custom lexer: Keywords are matched before Ident so that reserved words
-// (and, or, not, metadata, address, source, destination, exists, true, false)
-// cannot be consumed as bare values.
+// (and, or, not, between, metadata, address, source, destination, exists,
+// true, false) cannot be consumed as bare values.
 var filterLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "Whitespace", Pattern: `\s+`},
 	{Name: "OpEq", Pattern: `==`},
@@ -30,7 +30,7 @@ var filterLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "Dollar", Pattern: `\$`},
 	{Name: "String", Pattern: `"[^"]*"|'[^']*'`},
 	{Name: "Comma", Pattern: `,`},
-	{Name: "Keyword", Pattern: `\b(and|or|not|in|metadata|address|source|destination|ledger|exists|true|false)\b`},
+	{Name: "Keyword", Pattern: `\b(and|or|not|in|between|metadata|address|source|destination|ledger|exists|true|false)\b`},
 	{Name: "Number", Pattern: `-?[0-9]+`},
 	{Name: "Ident", Pattern: `[a-zA-Z_][a-zA-Z0-9_:.\-/]*`},
 })
@@ -50,7 +50,7 @@ var filterParser = participle.MustBuild[OrExpr](
 //	unary_expr     := "not" unary_expr | primary
 //	:= "(" expression ")" | condition
 //	:= metadata_cond | address_cond | source_cond | destination_cond
-//	metadata_cond  := "metadata" "[" KEY "]" ("==" VALUE | "!=" VALUE | ">" VALUE | ">=" VALUE | "<" VALUE | "<=" VALUE | "exists" | "in" "(" VALUE ("," VALUE)* ")")
+//	metadata_cond  := "metadata" "[" KEY "]" ("==" VALUE | "!=" VALUE | ">" VALUE | ">=" VALUE | "<" VALUE | "<=" VALUE | "between" VALUE "and" VALUE | "exists" | "in" "(" VALUE ("," VALUE)* ")")
 //	address_cond   := ("address" | "source" | "destination") ("==" VALUE | "^=" VALUE | "in" "(" VALUE ("," VALUE)* ")")
 //	value          := "$" Ident | "true" | "false" | String | Number | Ident
 func Parse(input string) (*commonpb.QueryFilter, error) {
@@ -196,13 +196,23 @@ func (m *MetadataCond) toProto() (*commonpb.QueryFilter, error) {
 }
 
 type MetadataOp struct {
-	Eq  *Value   `parser:"  '==' @@"`
-	Ne  *Value   `parser:"| '!=' @@"`
-	Gte *Value   `parser:"| '>=' @@"`
-	Gt  *Value   `parser:"| '>' @@"`
-	Lte *Value   `parser:"| '<=' @@"`
-	Lt  *Value   `parser:"| '<' @@"`
-	In  []*Value `parser:"| 'in' '(' @@ (',' @@)* ')'"`
+	Eq      *Value        `parser:"  '==' @@"`
+	Ne      *Value        `parser:"| '!=' @@"`
+	Gte     *Value        `parser:"| '>=' @@"`
+	Gt      *Value        `parser:"| '>' @@"`
+	Lte     *Value        `parser:"| '<=' @@"`
+	Lt      *Value        `parser:"| '<' @@"`
+	Between *BetweenRange `parser:"| 'between' @@"`
+	In      []*Value      `parser:"| 'in' '(' @@ (',' @@)* ')'"`
+}
+
+// BetweenRange parses `LOW and HIGH` for the `between` operator. The inner
+// 'and' is consumed here while parsing the metadata condition, so the outer
+// AndExpr never sees it — participle's PEG ordering ensures the BetweenRange
+// production wins over the AndExpr continuation at this point in the grammar.
+type BetweenRange struct {
+	Low  *Value `parser:"@@"`
+	High *Value `parser:"'and' @@"`
 }
 
 func (op *MetadataOp) toProto(field *commonpb.FieldRef) (*commonpb.QueryFilter, error) {
@@ -228,6 +238,8 @@ func (op *MetadataOp) toProto(field *commonpb.FieldRef) (*commonpb.QueryFilter, 
 		return metadataRangeToProto(field, op.Lt, "<")
 	case op.Lte != nil:
 		return metadataRangeToProto(field, op.Lte, "<=")
+	case op.Between != nil:
+		return metadataBetweenToProto(field, op.Between)
 	case len(op.In) > 0:
 		return metadataInToProto(field, op.In)
 	default:
@@ -442,6 +454,87 @@ func metadataRangeToProto(field *commonpb.FieldRef, val *Value, op string) (*com
 			},
 		},
 	}, nil
+}
+
+// metadataBetweenToProto desugars `metadata[key] between LOW and HIGH` into
+// a single IntCondition with both bounds set, inclusive on both ends (SQL
+// semantics: LOW <= value <= HIGH). Hardcoded bounds with LOW > HIGH return
+// a parse error — a transposed pair is almost certainly a bug, not a request
+// for the empty result.
+func metadataBetweenToProto(field *commonpb.FieldRef, r *BetweenRange) (*commonpb.QueryFilter, error) {
+	low := r.Low
+	high := r.High
+
+	if low.Param != "" || high.Param != "" {
+		ic := &commonpb.IntCondition{}
+
+		if low.Param != "" {
+			ic.ParamMin = low.Param
+		} else {
+			v, err := parseIntValue(low)
+			if err != nil {
+				return nil, err
+			}
+			ic.Min = &v
+		}
+
+		if high.Param != "" {
+			ic.ParamMax = high.Param
+		} else {
+			v, err := parseIntValue(high)
+			if err != nil {
+				return nil, err
+			}
+			ic.Max = &v
+		}
+
+		return wrapIntCondition(field, ic), nil
+	}
+
+	lowVal, err := parseIntValue(low)
+	if err != nil {
+		return nil, err
+	}
+
+	highVal, err := parseIntValue(high)
+	if err != nil {
+		return nil, err
+	}
+
+	if lowVal > highVal {
+		return nil, fmt.Errorf("between bounds out of order: %d > %d", lowVal, highVal)
+	}
+
+	return wrapIntCondition(field, &commonpb.IntCondition{
+		Min: &lowVal,
+		Max: &highVal,
+	}), nil
+}
+
+// parseIntValue parses a Value as a 64-bit signed integer, returning the same
+// error message that metadataRangeToProto uses so the two operators report
+// type-mismatches consistently.
+func parseIntValue(v *Value) (int64, error) {
+	raw := v.resolve()
+
+	n, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("range operators only support integer values, got %q", raw)
+	}
+
+	return n, nil
+}
+
+// wrapIntCondition packages an IntCondition as a leaf FieldCondition.
+func wrapIntCondition(field *commonpb.FieldRef, ic *commonpb.IntCondition) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Field{
+			Field: &commonpb.FieldCondition{
+				Field:     field,
+				Condition: &commonpb.FieldCondition_IntCond{IntCond: ic},
+			},
+		},
+	}
 }
 
 // metadataInToProto desugars `metadata[key] in (v1, v2, ...)` into

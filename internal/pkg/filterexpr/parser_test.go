@@ -492,6 +492,127 @@ func TestParse(t *testing.T) {
 		assert.Contains(t, err.Error(), "range operators only support integer values")
 	})
 
+	t.Run("metadata between inclusive range", func(t *testing.T) {
+		t.Parallel()
+
+		filter, err := Parse("metadata[block_height] between 800000 and 800099")
+		require.NoError(t, err)
+
+		fc := filter.GetField()
+		require.NotNil(t, fc)
+		assert.Equal(t, "block_height", fc.GetField().GetMetadata())
+		ic := fc.GetIntCond()
+		require.NotNil(t, ic)
+		require.NotNil(t, ic.Min)
+		require.NotNil(t, ic.Max)
+		assert.Equal(t, int64(800000), ic.GetMin())
+		assert.Equal(t, int64(800099), ic.GetMax())
+		assert.False(t, ic.GetMinExclusive())
+		assert.False(t, ic.GetMaxExclusive())
+	})
+
+	t.Run("metadata between collapses to equality when bounds match", func(t *testing.T) {
+		t.Parallel()
+
+		// `between X and X` compiles to a single value — same shape as `== X`,
+		// so the downstream PrefixIterator fast path applies.
+		filter, err := Parse("metadata[age] between 42 and 42")
+		require.NoError(t, err)
+
+		fc := filter.GetField()
+		require.NotNil(t, fc)
+		ic := fc.GetIntCond()
+		require.NotNil(t, ic)
+		assert.Equal(t, int64(42), ic.GetMin())
+		assert.Equal(t, int64(42), ic.GetMax())
+	})
+
+	t.Run("metadata between with parameters", func(t *testing.T) {
+		t.Parallel()
+
+		filter, err := Parse("metadata[age] between $low and $high")
+		require.NoError(t, err)
+
+		fc := filter.GetField()
+		require.NotNil(t, fc)
+		ic := fc.GetIntCond()
+		require.NotNil(t, ic)
+		assert.Equal(t, "low", ic.GetParamMin())
+		assert.Equal(t, "high", ic.GetParamMax())
+		assert.Nil(t, ic.Min)
+		assert.Nil(t, ic.Max)
+	})
+
+	t.Run("metadata between mixed param and literal", func(t *testing.T) {
+		t.Parallel()
+
+		filter, err := Parse("metadata[age] between 18 and $max")
+		require.NoError(t, err)
+
+		fc := filter.GetField()
+		require.NotNil(t, fc)
+		ic := fc.GetIntCond()
+		require.NotNil(t, ic)
+		require.NotNil(t, ic.Min)
+		assert.Equal(t, int64(18), ic.GetMin())
+		assert.Equal(t, "max", ic.GetParamMax())
+	})
+
+	t.Run("metadata between does not consume outer AND", func(t *testing.T) {
+		t.Parallel()
+
+		// The inner `and` belongs to BetweenRange; the outer `and` to AndExpr.
+		filter, err := Parse("metadata[a] between 1 and 10 and metadata[b] == foo")
+		require.NoError(t, err)
+
+		andF := filter.GetAnd()
+		require.NotNil(t, andF)
+		require.Len(t, andF.GetFilters(), 2)
+
+		ic := andF.GetFilters()[0].GetField().GetIntCond()
+		require.NotNil(t, ic)
+		assert.Equal(t, int64(1), ic.GetMin())
+		assert.Equal(t, int64(10), ic.GetMax())
+
+		sc := andF.GetFilters()[1].GetField().GetStringCond()
+		require.NotNil(t, sc)
+		assert.Equal(t, "foo", sc.GetHardcoded())
+	})
+
+	t.Run("error: between with reversed bounds", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := Parse("metadata[age] between 100 and 10")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "out of order")
+	})
+
+	t.Run("error: between with non-integer value", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := Parse(`metadata[name] between "alice" and "bob"`)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "range operators only support integer values")
+	})
+
+	t.Run("error: between mixes param low with non-integer high", func(t *testing.T) {
+		t.Parallel()
+
+		// Exercises the param-branch high-side parseIntValue error path.
+		_, err := Parse(`metadata[name] between $lo and "bob"`)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "range operators only support integer values")
+	})
+
+	t.Run("error: between mixes non-integer low with param high", func(t *testing.T) {
+		t.Parallel()
+
+		// Exercises the param-branch low-side parseIntValue error path.
+		_, err := Parse(`metadata[name] between "alice" and $hi`)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "range operators only support integer values")
+	})
+
 	t.Run("error: unknown keyword", func(t *testing.T) {
 		t.Parallel()
 

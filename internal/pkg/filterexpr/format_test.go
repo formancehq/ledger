@@ -453,6 +453,11 @@ func TestFormatRoundTrip(t *testing.T) {
 		{"param int min", "metadata[age] > $min", ""},
 		{"param int max", "metadata[age] <= $max", ""},
 		{"complex: AND with range", "metadata[age] >= 18 and metadata[age] < 65", ""},
+		{"between inclusive", "metadata[age] between 18 and 65", ""},
+		{"between collapses to equality", "metadata[age] between 42 and 42", "metadata[age] == 42"},
+		{"between with parameters", "metadata[age] between $low and $high", ""},
+		{"between mixed param/literal", "metadata[age] between 18 and $max", ""},
+		{"AND of ranges round-trips as between", "metadata[age] >= 18 and metadata[age] < 65", "metadata[age] >= 18 and metadata[age] < 65"},
 		{"complex: source and destination", `source ^= "a:" and destination ^= "b:"`, "source ^= a: and destination ^= b:"},
 	}
 
@@ -486,4 +491,134 @@ func fieldStringFilter(key, value string) *commonpb.QueryFilter {
 			},
 		},
 	}
+}
+
+// uintField wraps a UintCondition into a metadata FieldCondition for the
+// Format tests below — UintCondition has no surface syntax in the parser
+// (range operators always emit IntCondition), so we build it directly.
+func uintField(key string, uc *commonpb.UintCondition) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Field{
+			Field: &commonpb.FieldCondition{
+				Field:     &commonpb.FieldRef{Metadata: key},
+				Condition: &commonpb.FieldCondition_UintCond{UintCond: uc},
+			},
+		},
+	}
+}
+
+func TestFormatUintCondition(t *testing.T) {
+	t.Parallel()
+
+	t.Run("uint equality", func(t *testing.T) {
+		t.Parallel()
+		f := uintField("age", &commonpb.UintCondition{Min: new(uint64(42)), Max: new(uint64(42))})
+		assert.Equal(t, "metadata[age] == 42", Format(f))
+	})
+
+	t.Run("uint greater than", func(t *testing.T) {
+		t.Parallel()
+		f := uintField("age", &commonpb.UintCondition{Min: new(uint64(18)), MinExclusive: true})
+		assert.Equal(t, "metadata[age] > 18", Format(f))
+	})
+
+	t.Run("uint greater than or equal", func(t *testing.T) {
+		t.Parallel()
+		f := uintField("age", &commonpb.UintCondition{Min: new(uint64(18))})
+		assert.Equal(t, "metadata[age] >= 18", Format(f))
+	})
+
+	t.Run("uint less than", func(t *testing.T) {
+		t.Parallel()
+		f := uintField("age", &commonpb.UintCondition{Max: new(uint64(65)), MaxExclusive: true})
+		assert.Equal(t, "metadata[age] < 65", Format(f))
+	})
+
+	t.Run("uint less than or equal", func(t *testing.T) {
+		t.Parallel()
+		f := uintField("age", &commonpb.UintCondition{Max: new(uint64(65))})
+		assert.Equal(t, "metadata[age] <= 65", Format(f))
+	})
+
+	t.Run("uint param min", func(t *testing.T) {
+		t.Parallel()
+		f := uintField("age", &commonpb.UintCondition{ParamMin: "min", MinExclusive: true})
+		assert.Equal(t, "metadata[age] > $min", Format(f))
+	})
+
+	t.Run("uint param max", func(t *testing.T) {
+		t.Parallel()
+		f := uintField("age", &commonpb.UintCondition{ParamMax: "max"})
+		assert.Equal(t, "metadata[age] <= $max", Format(f))
+	})
+
+	t.Run("uint between inclusive", func(t *testing.T) {
+		t.Parallel()
+		f := uintField("age", &commonpb.UintCondition{Min: new(uint64(18)), Max: new(uint64(65))})
+		assert.Equal(t, "metadata[age] between 18 and 65", Format(f))
+	})
+
+	t.Run("uint between with exclusive bounds normalized", func(t *testing.T) {
+		t.Parallel()
+		// Lower exclusive becomes Min+1; upper exclusive becomes Max-1.
+		f := uintField("age", &commonpb.UintCondition{
+			Min: new(uint64(18)), MinExclusive: true,
+			Max: new(uint64(65)), MaxExclusive: true,
+		})
+		assert.Equal(t, "metadata[age] between 19 and 64", Format(f))
+	})
+
+	t.Run("uint between with param bounds", func(t *testing.T) {
+		t.Parallel()
+		f := uintField("age", &commonpb.UintCondition{ParamMin: "lo", ParamMax: "hi"})
+		assert.Equal(t, "metadata[age] between $lo and $hi", Format(f))
+	})
+
+	t.Run("uint with no bounds set falls back to placeholder", func(t *testing.T) {
+		t.Parallel()
+		f := uintField("x", &commonpb.UintCondition{})
+		assert.Equal(t, "metadata[x] <uint?>", Format(f))
+	})
+}
+
+func TestFormatIntConditionEdgeCases(t *testing.T) {
+	t.Parallel()
+
+	intField := func(key string, ic *commonpb.IntCondition) *commonpb.QueryFilter {
+		return &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_Field{
+				Field: &commonpb.FieldCondition{
+					Field:     &commonpb.FieldRef{Metadata: key},
+					Condition: &commonpb.FieldCondition_IntCond{IntCond: ic},
+				},
+			},
+		}
+	}
+
+	t.Run("int between mixes hardcoded lower with param upper", func(t *testing.T) {
+		t.Parallel()
+		f := intField("age", &commonpb.IntCondition{Min: new(int64(18)), ParamMax: "hi"})
+		assert.Equal(t, "metadata[age] between 18 and $hi", Format(f))
+	})
+
+	t.Run("int between mixes param lower with hardcoded upper", func(t *testing.T) {
+		t.Parallel()
+		f := intField("age", &commonpb.IntCondition{ParamMin: "lo", Max: new(int64(65))})
+		assert.Equal(t, "metadata[age] between $lo and 65", Format(f))
+	})
+
+	t.Run("int between with exclusive bounds normalized", func(t *testing.T) {
+		t.Parallel()
+		f := intField("age", &commonpb.IntCondition{
+			Min: new(int64(18)), MinExclusive: true,
+			Max: new(int64(65)), MaxExclusive: true,
+		})
+		assert.Equal(t, "metadata[age] between 19 and 64", Format(f))
+	})
+
+	t.Run("int with no bounds set falls back to placeholder", func(t *testing.T) {
+		t.Parallel()
+		f := intField("x", &commonpb.IntCondition{})
+		assert.Equal(t, "metadata[x] <int?>", Format(f))
+	})
 }

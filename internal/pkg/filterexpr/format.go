@@ -156,26 +156,29 @@ func formatIntCondition(key string, ic *commonpb.IntCondition) string {
 		return fmt.Sprintf("metadata[%s] == %s", key, eq)
 	}
 
-	// Parameterized range
-	if ic.GetParamMin() != "" {
-		op := ">="
-		if ic.GetMinExclusive() {
-			op = ">"
-		}
+	hasLow := ic.Min != nil || ic.GetParamMin() != ""
+	hasHigh := ic.Max != nil || ic.GetParamMax() != ""
 
-		return fmt.Sprintf("metadata[%s] %s $%s", key, op, ic.GetParamMin())
-	}
-	if ic.GetParamMax() != "" {
-		op := "<="
-		if ic.GetMaxExclusive() {
-			op = "<"
-		}
-
-		return fmt.Sprintf("metadata[%s] %s $%s", key, op, ic.GetParamMax())
+	// Bounded range (both ends present) → "between LOW and HIGH" (inclusive).
+	// Exclusivity on hardcoded bounds is normalized by adjusting the value
+	// (int64 is discrete). Param bounds carry no exclusivity in the DSL.
+	if hasLow && hasHigh {
+		return fmt.Sprintf("metadata[%s] between %s and %s",
+			key, formatIntLowInclusive(ic), formatIntHighInclusive(ic))
 	}
 
-	// Hardcoded range
-	if ic.Min != nil {
+	// Single bound: keep the original operator so `> 18` round-trips as `> 18`,
+	// not as `>= 19`. Fidelity matters more than canonicalization here.
+	if hasLow {
+		if ic.GetParamMin() != "" {
+			op := ">="
+			if ic.GetMinExclusive() {
+				op = ">"
+			}
+
+			return fmt.Sprintf("metadata[%s] %s $%s", key, op, ic.GetParamMin())
+		}
+
 		op := ">="
 		if ic.GetMinExclusive() {
 			op = ">"
@@ -183,7 +186,16 @@ func formatIntCondition(key string, ic *commonpb.IntCondition) string {
 
 		return fmt.Sprintf("metadata[%s] %s %d", key, op, ic.GetMin())
 	}
-	if ic.Max != nil {
+	if hasHigh {
+		if ic.GetParamMax() != "" {
+			op := "<="
+			if ic.GetMaxExclusive() {
+				op = "<"
+			}
+
+			return fmt.Sprintf("metadata[%s] %s $%s", key, op, ic.GetParamMax())
+		}
+
 		op := "<="
 		if ic.GetMaxExclusive() {
 			op = "<"
@@ -195,30 +207,60 @@ func formatIntCondition(key string, ic *commonpb.IntCondition) string {
 	return fmt.Sprintf("metadata[%s] <int?>", key)
 }
 
+// formatIntLowInclusive renders the lower bound for `between` output, with
+// any MinExclusive flag normalized away by incrementing the literal value.
+// Caller must have verified the bound is present.
+func formatIntLowInclusive(ic *commonpb.IntCondition) string {
+	if ic.GetParamMin() != "" {
+		return "$" + ic.GetParamMin()
+	}
+
+	v := ic.GetMin()
+	if ic.GetMinExclusive() {
+		v++
+	}
+
+	return strconv.FormatInt(v, 10)
+}
+
+// formatIntHighInclusive is the symmetric helper for the upper bound.
+func formatIntHighInclusive(ic *commonpb.IntCondition) string {
+	if ic.GetParamMax() != "" {
+		return "$" + ic.GetParamMax()
+	}
+
+	v := ic.GetMax()
+	if ic.GetMaxExclusive() {
+		v--
+	}
+
+	return strconv.FormatInt(v, 10)
+}
+
 func formatUintCondition(key string, uc *commonpb.UintCondition) string {
 	// Equality
 	if uc.Min != nil && uc.Max != nil && uc.GetMin() == uc.GetMax() && !uc.GetMinExclusive() && !uc.GetMaxExclusive() {
 		return fmt.Sprintf("metadata[%s] == %d", key, uc.GetMin())
 	}
 
-	if uc.GetParamMin() != "" {
-		op := ">="
-		if uc.GetMinExclusive() {
-			op = ">"
-		}
+	hasLow := uc.Min != nil || uc.GetParamMin() != ""
+	hasHigh := uc.Max != nil || uc.GetParamMax() != ""
 
-		return fmt.Sprintf("metadata[%s] %s $%s", key, op, uc.GetParamMin())
-	}
-	if uc.GetParamMax() != "" {
-		op := "<="
-		if uc.GetMaxExclusive() {
-			op = "<"
-		}
-
-		return fmt.Sprintf("metadata[%s] %s $%s", key, op, uc.GetParamMax())
+	if hasLow && hasHigh {
+		return fmt.Sprintf("metadata[%s] between %s and %s",
+			key, formatUintLowInclusive(uc), formatUintHighInclusive(uc))
 	}
 
-	if uc.Min != nil {
+	if hasLow {
+		if uc.GetParamMin() != "" {
+			op := ">="
+			if uc.GetMinExclusive() {
+				op = ">"
+			}
+
+			return fmt.Sprintf("metadata[%s] %s $%s", key, op, uc.GetParamMin())
+		}
+
 		op := ">="
 		if uc.GetMinExclusive() {
 			op = ">"
@@ -226,7 +268,16 @@ func formatUintCondition(key string, uc *commonpb.UintCondition) string {
 
 		return fmt.Sprintf("metadata[%s] %s %d", key, op, uc.GetMin())
 	}
-	if uc.Max != nil {
+	if hasHigh {
+		if uc.GetParamMax() != "" {
+			op := "<="
+			if uc.GetMaxExclusive() {
+				op = "<"
+			}
+
+			return fmt.Sprintf("metadata[%s] %s $%s", key, op, uc.GetParamMax())
+		}
+
 		op := "<="
 		if uc.GetMaxExclusive() {
 			op = "<"
@@ -236,6 +287,32 @@ func formatUintCondition(key string, uc *commonpb.UintCondition) string {
 	}
 
 	return fmt.Sprintf("metadata[%s] <uint?>", key)
+}
+
+func formatUintLowInclusive(uc *commonpb.UintCondition) string {
+	if uc.GetParamMin() != "" {
+		return "$" + uc.GetParamMin()
+	}
+
+	v := uc.GetMin()
+	if uc.GetMinExclusive() {
+		v++
+	}
+
+	return strconv.FormatUint(v, 10)
+}
+
+func formatUintHighInclusive(uc *commonpb.UintCondition) string {
+	if uc.GetParamMax() != "" {
+		return "$" + uc.GetParamMax()
+	}
+
+	v := uc.GetMax()
+	if uc.GetMaxExclusive() {
+		v--
+	}
+
+	return strconv.FormatUint(v, 10)
 }
 
 func formatAddressMatch(am *commonpb.AddressMatch) string {
@@ -275,7 +352,7 @@ func quoteIfNeeded(s string) string {
 }
 
 var keywords = map[string]bool{
-	"and": true, "or": true, "not": true,
+	"and": true, "or": true, "not": true, "between": true,
 	"metadata": true, "address": true, "source": true, "destination": true,
 	"exists": true, "true": true, "false": true,
 }

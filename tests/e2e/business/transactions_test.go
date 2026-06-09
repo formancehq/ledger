@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
@@ -20,6 +21,17 @@ import (
 // timestampToStdTime converts a commonpb.Timestamp to standard time.Time
 func timestampToStdTime(ts *commonpb.Timestamp) time.Time {
 	return time.UnixMicro(int64(ts.GetData()))
+}
+
+// idsOf extracts transaction IDs in input order. Handy for asserting that two
+// filters return the same set without depending on the wire order.
+func idsOf(txs []*commonpb.Transaction) []uint64 {
+	out := make([]uint64, len(txs))
+	for i, tx := range txs {
+		out[i] = tx.GetId()
+	}
+
+	return out
 }
 
 var _ = Describe("Transactions", Ordered, func() {
@@ -1393,6 +1405,76 @@ var _ = Describe("Transactions", Ordered, func() {
 			txs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, filter)
 			Expect(err).To(Succeed())
 			Expect(txs).To(HaveLen(4)) // tx1..tx4 have score; tx5 doesn't
+		})
+
+		It("Should filter transactions with `between` (inclusive bounds)", func() {
+			// score between 30 and 50 should match tx2(30), tx3(50)
+			filter, err := filterexpr.Parse("metadata[score] between 30 and 50")
+			Expect(err).To(Succeed())
+
+			txs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, filter)
+			Expect(err).To(Succeed())
+			Expect(txs).To(HaveLen(2))
+		})
+
+		It("Should treat `between X and X` like equality", func() {
+			// score between 50 and 50 should match only tx3
+			filter, err := filterexpr.Parse("metadata[score] between 50 and 50")
+			Expect(err).To(Succeed())
+
+			txs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, filter)
+			Expect(err).To(Succeed())
+			Expect(txs).To(HaveLen(1))
+		})
+
+		It("Should return empty when between bounds match nothing", func() {
+			// score between 80 and 100: tx4 is 70, no data in [80,100]
+			filter, err := filterexpr.Parse("metadata[score] between 80 and 100")
+			Expect(err).To(Succeed())
+
+			txs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, filter)
+			Expect(err).To(Succeed())
+			Expect(txs).To(BeEmpty())
+		})
+
+		It("Should coalesce conjunctive range bounds on the same field", func() {
+			// `score >= 30 and score < 70` is rewritten to a single bounded
+			// IntCondition by mergeFieldRanges, then compiled as a single
+			// bounded range scan. Must match exactly the same set as
+			// `between 30 and 69` (tx2=30, tx3=50).
+			fromAnd, err := filterexpr.Parse("metadata[score] >= 30 and metadata[score] < 70")
+			Expect(err).To(Succeed())
+
+			fromBetween, err := filterexpr.Parse("metadata[score] between 30 and 69")
+			Expect(err).To(Succeed())
+
+			fromAndTxs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, fromAnd)
+			Expect(err).To(Succeed())
+
+			fromBetweenTxs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, fromBetween)
+			Expect(err).To(Succeed())
+
+			Expect(fromAndTxs).To(HaveLen(2))
+			Expect(idsOf(fromAndTxs)).To(ConsistOf(idsOf(fromBetweenTxs)))
+		})
+
+		It("Should coalesce three range bounds on the same field", func() {
+			// `score >= 20 and score < 80 and score >= 40` collapses to
+			// `score between 40 and 79`, matching tx3(50), tx4(70).
+			filter, err := filterexpr.Parse(
+				"metadata[score] >= 20 and metadata[score] < 80 and metadata[score] >= 40",
+			)
+			Expect(err).To(Succeed())
+
+			txs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, filter)
+			Expect(err).To(Succeed())
+			Expect(txs).To(HaveLen(2))
+		})
+
+		It("Should reject `between` with reversed bounds at parse time", func() {
+			_, err := filterexpr.Parse("metadata[score] between 100 and 10")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("out of order"))
 		})
 	})
 

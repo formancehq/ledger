@@ -35,6 +35,7 @@ Examples:
   ledgerctl transactions list --ledger my-ledger --page-size 20
   ledgerctl transactions list --ledger my-ledger --filter "metadata[category] == premium"
   ledgerctl transactions list --ledger my-ledger --filter "metadata[status] == pending or metadata[priority] == high"
+  ledgerctl transactions list --ledger my-ledger --filter "metadata[block_height] between 800000 and 800099"
   ledgerctl transactions list --ledger my-ledger --filter 'source ^= "merchants:"'
   ledgerctl transactions list --ledger my-ledger --filter 'destination == "users:alice"'
   ledgerctl transactions list --ledger my-ledger --filter 'source ^= "merchants:" and destination ^= "users:"'

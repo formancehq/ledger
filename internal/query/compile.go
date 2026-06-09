@@ -160,11 +160,16 @@ func compileUniverse(ctx *compileCtx) (readstore.EntityIterator, error) {
 
 // compileAnd compiles an AND filter into a merge-intersect iterator.
 func compileAnd(ctx *compileCtx, and *commonpb.AndFilter) (readstore.EntityIterator, error) {
-	children := make([]readstore.EntityIterator, 0, len(and.GetFilters()))
+	// Coalesce multiple range predicates on the same metadata field so that
+	// `a >= X AND a < Y` compiles to a single bounded IntCondition, not two
+	// materialized half-ranges. See mergeFieldRanges for the rules.
+	filters := mergeFieldRanges(and.GetFilters())
+
+	children := make([]readstore.EntityIterator, 0, len(filters))
 
 	var childStats []*IteratorStats
 
-	for _, f := range and.GetFilters() {
+	for _, f := range filters {
 		child, err := compile(ctx, f)
 		if err != nil {
 			closeAll(children)

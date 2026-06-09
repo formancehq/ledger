@@ -1035,4 +1035,82 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 			Expect(txIDs[1]).To(Equal(uint64(3))) // tx2: alice→charlie
 		})
 	})
+
+	Context("Execute LIST mode — between filter", Ordered, func() {
+		const ledgerName = "pq-exec-between"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "age",
+							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+						},
+					}),
+					actions.CreateAccountMetadataIndexAction(ledgerName, "age"),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "age")).To(Succeed())
+
+			// alice=20, bob=35, charlie=50, dave=65
+			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
+					}, nil),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
+					}, nil),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "charlie", big.NewInt(300), "USD"),
+					}, nil),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "dave", big.NewInt(400), "USD"),
+					}, nil),
+					actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"age": "20"}),
+					actions.SaveAccountMetadataAction(ledgerName, "bob", map[string]string{"age": "35"}),
+					actions.SaveAccountMetadataAction(ledgerName, "charlie", map[string]string{"age": "50"}),
+					actions.SaveAccountMetadataAction(ledgerName, "dave", map[string]string{"age": "65"}),
+				},
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("Should store a between filter in a prepared query and execute it", func() {
+			// `between 30 and 60` matches bob(35) and charlie(50).
+			// Proves the IntCondition survives store + retrieve through the
+			// prepared-query proto round trip.
+			filter, err := filterexpr.Parse("metadata[age] between 30 and 60")
+			Expect(err).To(Succeed())
+
+			_, err = sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Query: &commonpb.PreparedQuery{
+					Name:   "age-between-30-60",
+					Ledger: ledgerName,
+					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+					Filter: filter,
+				},
+			})
+			Expect(err).To(Succeed())
+
+			var result *servicepb.ExecutePreparedQueryResponse
+			Eventually(func(g Gomega) {
+				var execErr error
+				result, execErr = sharedClient.ExecutePreparedQuery(sharedCtx, &servicepb.ExecutePreparedQueryRequest{
+					Ledger:    ledgerName,
+					QueryName: "age-between-30-60",
+					Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+				})
+				g.Expect(execErr).To(Succeed())
+				g.Expect(result.GetCursor()).NotTo(BeNil())
+				g.Expect(result.GetCursor().AccountData).To(HaveLen(2))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+
+			Expect(accountAddresses(result.GetCursor().AccountData)).To(ConsistOf("bob", "charlie"))
+		})
+	})
 })

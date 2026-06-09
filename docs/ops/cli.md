@@ -860,7 +860,7 @@ and_expr       := unary_expr ("and" unary_expr)*
 unary_expr     := "not" unary_expr | primary
 primary        := "(" expression ")" | condition
 condition      := metadata_cond | address_cond | source_cond | destination_cond
-metadata_cond  := "metadata" "[" KEY "]" ("==" VALUE | "!=" VALUE | ">" VALUE | ">=" VALUE | "<" VALUE | "<=" VALUE | "exists")
+metadata_cond  := "metadata" "[" KEY "]" ("==" VALUE | "!=" VALUE | ">" VALUE | ">=" VALUE | "<" VALUE | "<=" VALUE | "between" VALUE "and" VALUE | "exists")
 address_cond   := "address" ("==" VALUE | "^=" VALUE)
 source_cond    := "source" ("==" VALUE | "^=" VALUE)
 destination_cond := "destination" ("==" VALUE | "^=" VALUE)
@@ -876,6 +876,7 @@ destination_cond := "destination" ("==" VALUE | "^=" VALUE)
 | `metadata[key] >= value` | Metadata greater than or equal (integer values only) |
 | `metadata[key] < value` | Metadata less than (integer values only) |
 | `metadata[key] <= value` | Metadata less than or equal (integer values only) |
+| `metadata[key] between low and high` | Bounded range, inclusive on both ends (integer values only) — `between X and Y` is equivalent to `>= X and <= Y` but compiles to a single bounded index scan |
 | `metadata[key] exists` | Metadata key existence check |
 | `address == value` | Exact address match (any role: source or destination) |
 | `address ^= value` | Address prefix match (any role: source or destination) |
@@ -922,7 +923,12 @@ destination_cond := "destination" ("==" VALUE | "^=" VALUE)
 # Integer range (greater than)
 --filter "metadata[age] > 18"
 
-# Integer range (combined with AND)
+# Integer range, inclusive on both ends (preferred over `>= X and <= Y` —
+# a single bounded condition compiles to one bounded index scan instead of
+# intersecting two unbounded half-range scans)
+--filter "metadata[score] between 50 and 100"
+
+# `>= X and <= Y` still works and is auto-coalesced by the planner.
 --filter "metadata[score] >= 50 and metadata[score] <= 100"
 
 # Metadata existence

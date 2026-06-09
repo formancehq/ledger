@@ -601,6 +601,37 @@ var _ = Describe("Accounts", Ordered, func() {
 			Expect(err).To(Succeed())
 			Expect(accounts).To(BeEmpty())
 		})
+
+		It("Should filter accounts with `between` (inclusive bounds)", func() {
+			// age between 30 and 50 should match bob(35), charlie(50)
+			filter, err := filterexpr.Parse("metadata[age] between 30 and 50")
+			Expect(err).To(Succeed())
+
+			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", filter)
+			Expect(err).To(Succeed())
+			Expect(accounts).To(HaveLen(2))
+			Expect(accountAddresses(accounts)).To(ContainElements("bob", "charlie"))
+		})
+
+		It("Should coalesce conjunctive range bounds on the same account field", func() {
+			// `age >= 30 and age < 60` is coalesced into a single bounded
+			// IntCondition; must match the same set as `between 30 and 59`
+			// (bob=35, charlie=50).
+			fromAnd, err := filterexpr.Parse("metadata[age] >= 30 and metadata[age] < 60")
+			Expect(err).To(Succeed())
+
+			fromBetween, err := filterexpr.Parse("metadata[age] between 30 and 59")
+			Expect(err).To(Succeed())
+
+			fromAndAccts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", fromAnd)
+			Expect(err).To(Succeed())
+
+			fromBetweenAccts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", fromBetween)
+			Expect(err).To(Succeed())
+
+			Expect(fromAndAccts).To(HaveLen(2))
+			Expect(accountAddresses(fromAndAccts)).To(ConsistOf(accountAddresses(fromBetweenAccts)))
+		})
 	})
 
 	Context("When listing accounts is isolated per ledger", Ordered, func() {
