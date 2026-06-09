@@ -283,7 +283,7 @@ func main() {
                 "key": components.V2QueryTemplate{
                     Params: client.Pointer(components.CreateV2QueryParamsQueryTemplateAccountParams(
                         components.QueryTemplateAccountParams{
-                            Resource: components.V2QueryParams1ResourceAccounts.ToPointer(),
+                            Resource: components.V2QueryParams1ResourceAccounts,
                             PageSize: client.Int64(100),
                             Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
                         },
@@ -1897,10 +1897,12 @@ func main() {
         Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
         Sort: client.String("id:desc"),
         RequestBody: operations.V2RunQueryRequestBody{
-            Params: client.Pointer(components.CreateV2QueryParamsQueryTemplateAccountParams(
-                components.QueryTemplateAccountParams{
+            Params: client.Pointer(components.CreateV2QueryParamsQueryTemplateVolumeParams(
+                components.QueryTemplateVolumeParams{
+                    Resource: components.V2QueryParams4ResourceVolumes,
                     PageSize: client.Int64(100),
                     Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
+                    Sort: client.String("id:desc"),
                 },
             )),
         },
