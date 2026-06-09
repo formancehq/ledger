@@ -49,7 +49,7 @@ type Applier struct {
 	spool                   spool.Spool
 	store                   *dal.Store
 	wal                     wal.WAL
-	futures                 *SyncMap[uint64, *futures.Future[state.ApplyResult]]
+	futures                 *SyncMap[uint64, *pendingApplyFuture]
 	taskExecutor            *worker.SingleTaskExecutor
 	logger                  logging.Logger
 	compactionMargin        uint64
@@ -87,10 +87,25 @@ type pendingFuture struct {
 	future     *futures.Future[state.ApplyResult]
 }
 
+// pendingApplyFuture pairs the FSM-apply future with the Raft term observed
+// at Propose time. The term lets FailFuturesBelowTerm fail futures whose
+// entries were truncated by a new leader (issue #172): once any entry at a
+// higher term is applied locally, Raft leader-completeness guarantees that
+// any uncommitted local proposal from an older term was overwritten.
+type pendingApplyFuture struct {
+	term   uint64
+	future *futures.Future[state.ApplyResult]
+}
+
 type commitWork struct {
 	prepared *state.PreparedBatch
 	futures  []pendingFuture
-	done     chan error
+	// maxTerm is the highest term seen in the entries that produced this
+	// commit batch. After resolving per-commandID futures, the committer
+	// uses it to fail any pending future whose stored term is strictly
+	// smaller — those proposals were truncated.
+	maxTerm uint64
+	done    chan error
 }
 
 type pendingCommit struct {
@@ -117,7 +132,7 @@ func NewApplier(
 		spool:                   spool,
 		store:                   store,
 		wal:                     wal,
-		futures:                 &SyncMap[uint64, *futures.Future[state.ApplyResult]]{},
+		futures:                 &SyncMap[uint64, *pendingApplyFuture]{},
 		taskExecutor:            worker.NewSingleTaskExecutor(logger),
 		logger:                  logger,
 		compactionMargin:        compactionMargin,
@@ -269,14 +284,129 @@ func (a *Applier) Store() *dal.Store {
 	return a.store
 }
 
-// StoreFuture registers a future for a given command ID.
-func (a *Applier) StoreFuture(commandID uint64, future *futures.Future[state.ApplyResult]) {
-	a.futures.Store(commandID, future)
+// StoreFuture registers a future for a given command ID and the Raft term
+// the proposer observed at Propose time. The term is later used to fail the
+// future if a higher-term entry is applied locally (issue #172).
+func (a *Applier) StoreFuture(commandID, term uint64, future *futures.Future[state.ApplyResult]) {
+	a.futures.Store(commandID, &pendingApplyFuture{term: term, future: future})
 }
 
 // DeleteFuture removes the future for a given command ID.
 func (a *Applier) DeleteFuture(commandID uint64) {
 	a.futures.Delete(commandID)
+}
+
+// ResolveDroppedFuture is called from handleProposal when rawNode rejects a
+// proposal (e.g. ErrProposalDropped after leadership loss). It atomically
+// removes the registered FSM future and resolves it with the dropping error,
+// so the caller awaiting fsmFuture.Wait() unblocks immediately rather than
+// hanging until a term advance.
+func (a *Applier) ResolveDroppedFuture(commandID uint64, err error) {
+	if paf, ok := a.futures.LoadAndDelete(commandID); ok {
+		paf.future.Resolve(state.ApplyResult{}, err)
+	}
+}
+
+// FailFuturesBelowTerm resolves every pending future whose stored term is
+// strictly below threshold. Used after applying a batch whose max term is
+// `threshold`: per Raft leader-completeness, any committed older-term entry
+// has already been applied (resolving its future by commandID) before this
+// sweep runs, so anything left at term < threshold is a truncated local
+// proposal that will never apply.
+//
+// LoadAndDelete (with an identity check) makes the resolve race-free: if
+// another path has taken ownership of the future since the Range loop
+// captured it (extractBatchFutures, extractDeferredFuture, or
+// ResolveDroppedFuture all use LoadAndDelete for the same reason), the
+// second LoadAndDelete returns false and we skip it. This prevents a
+// double Resolve on a futures.Future, which is not idempotent.
+func (a *Applier) FailFuturesBelowTerm(threshold uint64, err error) {
+	a.futures.Range(func(commandID uint64, paf *pendingApplyFuture) bool {
+		if paf.term >= threshold {
+			return true
+		}
+
+		cur, ok := a.futures.LoadAndDelete(commandID)
+		if !ok || cur != paf {
+			return true
+		}
+
+		paf.future.Resolve(state.ApplyResult{}, err)
+
+		return true
+	})
+}
+
+// sweepBelowTerm computes the max term across the supplied raft entries and
+// fails every pending future whose stored term is strictly smaller. Callers
+// should invoke this AFTER per-commandID resolution for the same batch, so
+// committed older-term entries get their futures resolved first.
+func (a *Applier) sweepBelowTerm(entries []raftpb.Entry) {
+	var maxTerm uint64
+
+	for i := range entries {
+		if entries[i].Term > maxTerm {
+			maxTerm = entries[i].Term
+		}
+	}
+
+	if maxTerm > 0 {
+		a.FailFuturesBelowTerm(maxTerm, ErrLeadershipLost)
+	}
+}
+
+// extractDeferredFuture pulls the future for the LAST entry in result (the
+// entry that triggered CheckpointRequired). Callers attach a CheckpointPath
+// to lastResult before resolving the future. Both return values may be nil:
+// if there are no results, both are nil; if the proposalID has no registered
+// future, only lastResult is non-nil.
+//
+// Centralizes the LoadAndDelete + "last result is the deferred one"
+// convention used by every checkpoint flow, so adding a new checkpoint
+// trigger only needs to call this helper.
+func (a *Applier) extractDeferredFuture(result *state.ApplyEntriesResult) (
+	*state.ApplyResult,
+	*futures.Future[state.ApplyResult],
+) {
+	if len(result.Results) == 0 {
+		return nil, nil
+	}
+
+	lastResult := &result.Results[len(result.Results)-1]
+	if paf, ok := a.futures.LoadAndDelete(lastResult.ProposalID); ok {
+		return lastResult, paf.future
+	}
+
+	return lastResult, nil
+}
+
+// extractBatchFutures pulls the futures for every result in the batch,
+// except the deferred-checkpoint one when result.CheckpointRequired is
+// set (callers pair this with extractDeferredFuture). Uses LoadAndDelete
+// for atomic ownership transfer — see FailFuturesBelowTerm for the race
+// rationale.
+func (a *Applier) extractBatchFutures(result *state.ApplyEntriesResult) []pendingFuture {
+	n := len(result.Results)
+	if result.CheckpointRequired && n > 0 {
+		n--
+	}
+
+	pfs := make([]pendingFuture, 0, n)
+
+	for _, r := range result.Results[:n] {
+		paf, ok := a.futures.LoadAndDelete(r.ProposalID)
+		if !ok {
+			continue
+		}
+
+		pfs = append(pfs, pendingFuture{
+			proposalID: r.ProposalID,
+			result:     r,
+			future:     paf.future,
+		})
+	}
+
+	return pfs
 }
 
 // Interrupt interrupts any running maintenance task.
@@ -682,6 +812,7 @@ func (a *Applier) applyEntriesAndResolveCommands(ctx context.Context, entries ..
 	a.applyEntriesBatchSizeHistogram.Record(ctx, int64(len(result.Results)))
 
 	a.resolveFutures(result)
+	a.sweepBelowTerm(entries)
 
 	return result, nil
 }
@@ -702,13 +833,13 @@ func (a *Applier) waitPendingCommit(ctx context.Context) error {
 	return err
 }
 
-// startAsyncCommit launches a goroutine that commits the batch and resolves
-// futures. The caller must call waitPendingCommit before starting another.
 // submitAsyncCommit sends a commit to the dedicated committer goroutine.
-func (a *Applier) submitAsyncCommit(pb *state.PreparedBatch, pfs []pendingFuture) {
+// maxTerm carries the highest term seen in the source entries so the
+// committer can fail older-term pending futures after resolving this batch.
+func (a *Applier) submitAsyncCommit(pb *state.PreparedBatch, pfs []pendingFuture, maxTerm uint64) {
 	done := make(chan error, 1)
 	a.pending = &pendingCommit{done: done}
-	a.commitCh <- commitWork{prepared: pb, futures: pfs, done: done}
+	a.commitCh <- commitWork{prepared: pb, futures: pfs, maxTerm: maxTerm, done: done}
 }
 
 // runCommitter is the dedicated goroutine that processes commits sequentially.
@@ -718,9 +849,17 @@ func (a *Applier) runCommitter(ctx context.Context) {
 	for work := range a.commitCh {
 		err := a.fsm.CommitPreparedBatch(ctx, work.prepared)
 		if err == nil {
+			// 1. Resolve futures owned by THIS batch. Ownership was taken
+			//    via extractBatchFutures in applyEntriesPipelined (which
+			//    uses LoadAndDelete), so the futures are no longer in the
+			//    map — no per-future Delete needed here.
 			for _, pf := range work.futures {
 				pf.future.Resolve(pf.result, pf.result.Error)
-				a.futures.Delete(pf.proposalID)
+			}
+
+			// 2. Sweep stragglers from older terms (issue #172).
+			if work.maxTerm > 0 {
+				a.FailFuturesBelowTerm(work.maxTerm, ErrLeadershipLost)
 			}
 		}
 
@@ -752,24 +891,22 @@ func (a *Applier) applyEntriesPipelined(ctx context.Context, entries ...raftpb.E
 		return nil, fmt.Errorf("waiting for previous commit: %w", err)
 	}
 
-	// Collect futures for THIS batch.
-	resolveCount := len(pb.Result.Results)
-	if pb.Result.CheckpointRequired && resolveCount > 0 {
-		resolveCount--
-	}
+	// Collect futures for THIS batch. extractBatchFutures uses LoadAndDelete
+	// for atomic ownership so a concurrent FailFuturesBelowTerm can't race
+	// to double-resolve them, and skips the deferred (last) entry when
+	// CheckpointRequired is set — that one is handled downstream by
+	// gateAndLaunchMaintenance for the hot path, or by createReplayCheckpoint
+	// / handleQueryCheckpointDuringReplay on the replay path.
+	pfs := a.extractBatchFutures(pb.Result)
 
-	var pfs []pendingFuture
-	for _, r := range pb.Result.Results[:resolveCount] {
-		future, exists := a.futures.Load(r.ProposalID)
-		if !exists {
-			continue
+	// Highest term seen in this batch, used by the post-resolve sweep
+	// (issue #172). Computed once and reused below.
+	var maxTerm uint64
+
+	for i := range entries {
+		if entries[i].Term > maxTerm {
+			maxTerm = entries[i].Term
 		}
-
-		pfs = append(pfs, pendingFuture{
-			proposalID: r.ProposalID,
-			result:     r,
-			future:     future,
-		})
 	}
 
 	// Checkpoint boundaries are already committed synchronously inside
@@ -777,7 +914,10 @@ func (a *Applier) applyEntriesPipelined(ctx context.Context, entries ...raftpb.E
 	if pb.Result.CheckpointRequired {
 		for _, pf := range pfs {
 			pf.future.Resolve(pf.result, pf.result.Error)
-			a.futures.Delete(pf.proposalID)
+		}
+
+		if maxTerm > 0 {
+			a.FailFuturesBelowTerm(maxTerm, ErrLeadershipLost)
 		}
 
 		return pb.Result, nil
@@ -785,28 +925,19 @@ func (a *Applier) applyEntriesPipelined(ctx context.Context, entries ...raftpb.E
 
 	// Send to the committer goroutine. Futures are resolved when the
 	// commit completes. No need to wait for the next batch.
-	a.submitAsyncCommit(pb, pfs)
+	a.submitAsyncCommit(pb, pfs, maxTerm)
 
 	return pb.Result, nil
 }
 
 // resolveFutures resolves proposal futures from an ApplyEntriesResult.
-// When CheckpointRequired, the last result is deferred (resolved later
-// by handleCheckpointRequired).
+// Used by the replay path (applyEntriesAndResolveCommands). When
+// CheckpointRequired is set the last result is deferred — extracted by
+// extractBatchFutures and resolved later by createReplayCheckpoint or
+// handleQueryCheckpointDuringReplay.
 func (a *Applier) resolveFutures(result *state.ApplyEntriesResult) {
-	resolveCount := len(result.Results)
-	if result.CheckpointRequired && resolveCount > 0 {
-		resolveCount--
-	}
-
-	for _, r := range result.Results[:resolveCount] {
-		future, exists := a.futures.Load(r.ProposalID)
-		if !exists {
-			continue
-		}
-
-		future.Resolve(r, r.Error)
-		a.futures.Delete(r.ProposalID)
+	for _, pf := range a.extractBatchFutures(result) {
+		pf.future.Resolve(pf.result, pf.result.Error)
 	}
 }
 
@@ -834,23 +965,45 @@ func (a *Applier) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 	return nil
 }
 
-// handleCheckpointRequired enters maintenance mode to create a checkpoint off
-// the Raft hot path for ClosePeriod (seal checkpoint). While the checkpoint is
-// being created, new committed entries are spooled and replayed afterward.
-func (a *Applier) handleCheckpointRequired(
+// maintenanceTask is the body of a gated maintenance task. It receives the
+// deferred future + result extracted from the entry that triggered gating
+// (both may be nil if there was no future for that proposalID) and the
+// frozenAtIndex (last applied entry before the spool replay starts).
+type maintenanceTask func(
+	ctx context.Context,
+	deferredResult *state.ApplyResult,
+	deferredFuture *futures.Future[state.ApplyResult],
+	frozenAtIndex uint64,
+) (maintenanceTaskResult, error)
+
+// gateAndLaunchMaintenance is the shared setup for every "checkpoint
+// required during apply" flow:
+//  1. Spool the RemainingEntries (replayed once gating clears).
+//  2. Compute frozenAtIndex (the last applied index before the spool
+//     window).
+//  3. Mark the applier as gated with the given gatingReason.
+//  4. Extract the deferred future (the proposal that triggered gating).
+//  5. Sweep stale-term futures so they don't survive the gating window
+//     (issue #172).
+//  6. Launch the maintenance task asynchronously.
+//
+// Callers supply only the gating reason and the task body. The task body
+// receives the deferred result/future and the frozen index so it can
+// resolve the future with the checkpoint path on success or with the
+// error on failure.
+func (a *Applier) gateAndLaunchMaintenance(
 	ctx context.Context,
 	entries []raftpb.Entry,
 	applyResult *state.ApplyEntriesResult,
+	gatingReason int32,
+	task maintenanceTask,
 ) error {
-	// Spool remaining entries -- they'll be replayed after the maintenance task
 	if len(applyResult.RemainingEntries) > 0 {
-		err := a.spool.AppendCommittedEntries(ctx, applyResult.RemainingEntries...)
-		if err != nil {
+		if err := a.spool.AppendCommittedEntries(ctx, applyResult.RemainingEntries...); err != nil {
 			return fmt.Errorf("spooling remaining entries: %w", err)
 		}
 	}
 
-	// Last applied index: the boundary entry (before any remaining entries)
 	var frozenAtIndex uint64
 	if len(applyResult.RemainingEntries) > 0 {
 		frozenAtIndex = applyResult.RemainingEntries[0].Index - 1
@@ -859,54 +1012,57 @@ func (a *Applier) handleCheckpointRequired(
 	}
 
 	a.status.Store(statusGated)
-	a.gatingReason.Store(gatingReasonSnapshotting)
+	a.gatingReason.Store(gatingReason)
 
-	// Resolve the deferred future for the checkpoint-triggering proposal.
-	// The last result in applyResult.Results is the entry that set CheckpointRequired.
-	var (
-		deferredResult *state.ApplyResult
-		deferredFuture *futures.Future[state.ApplyResult]
-	)
+	deferredResult, deferredFuture := a.extractDeferredFuture(applyResult)
 
-	if len(applyResult.Results) > 0 {
-		deferredResult = &applyResult.Results[len(applyResult.Results)-1]
-		if f, ok := a.futures.Load(deferredResult.ProposalID); ok {
-			deferredFuture = f
+	// Sweep stale-term futures before launching — pending older-term
+	// proposals shouldn't survive the gating window.
+	a.sweepBelowTerm(entries)
 
-			a.futures.Delete(deferredResult.ProposalID)
-		}
-	}
-
-	// Called from Run goroutine — assign gating directly.
 	a.gatingTerminated = a.startMaintenanceTask(ctx, func(ctx context.Context) (maintenanceTaskResult, error) {
-		path, err := a.store.CreateTemporaryCheckpoint(fmt.Sprintf("checkpoint-%d", applyResult.CheckpointPeriodID))
-		if err != nil {
-			if deferredFuture != nil {
-				deferredFuture.Resolve(state.ApplyResult{}, err)
-			}
-
-			return maintenanceTaskResult{}, fmt.Errorf("creating checkpoint: %w", err)
-		}
-
-		if applyResult.OnCheckpointDone != nil {
-			applyResult.OnCheckpointDone(path)
-		}
-
-		// Create compact baseline snapshot for the checker (non-fatal on error).
-		if err := a.createBaselineSnapshot(); err != nil {
-			a.logger.WithFields(map[string]any{"error": err}).
-				Errorf("Failed to create baseline snapshot (checker will degrade gracefully)")
-		}
-
-		if deferredFuture != nil {
-			deferredResult.CheckpointPath = path
-			deferredFuture.Resolve(*deferredResult, nil)
-		}
-
-		return maintenanceTaskResult{frozenAtIndex: frozenAtIndex}, nil
+		return task(ctx, deferredResult, deferredFuture, frozenAtIndex)
 	}, nil)
 
 	return nil
+}
+
+// handleCheckpointRequired enters maintenance mode to create a checkpoint off
+// the Raft hot path for ClosePeriod (seal checkpoint). While the checkpoint is
+// being created, new committed entries are spooled and replayed afterward.
+func (a *Applier) handleCheckpointRequired(
+	ctx context.Context,
+	entries []raftpb.Entry,
+	applyResult *state.ApplyEntriesResult,
+) error {
+	return a.gateAndLaunchMaintenance(ctx, entries, applyResult, gatingReasonSnapshotting,
+		func(ctx context.Context, deferredResult *state.ApplyResult, deferredFuture *futures.Future[state.ApplyResult], frozenAtIndex uint64) (maintenanceTaskResult, error) {
+			path, err := a.store.CreateTemporaryCheckpoint(fmt.Sprintf("checkpoint-%d", applyResult.CheckpointPeriodID))
+			if err != nil {
+				if deferredFuture != nil {
+					deferredFuture.Resolve(state.ApplyResult{}, err)
+				}
+
+				return maintenanceTaskResult{}, fmt.Errorf("creating checkpoint: %w", err)
+			}
+
+			if applyResult.OnCheckpointDone != nil {
+				applyResult.OnCheckpointDone(path)
+			}
+
+			// Create compact baseline snapshot for the checker (non-fatal on error).
+			if err := a.createBaselineSnapshot(); err != nil {
+				a.logger.WithFields(map[string]any{"error": err}).
+					Errorf("Failed to create baseline snapshot (checker will degrade gracefully)")
+			}
+
+			if deferredFuture != nil {
+				deferredResult.CheckpointPath = path
+				deferredFuture.Resolve(*deferredResult, nil)
+			}
+
+			return maintenanceTaskResult{frozenAtIndex: frozenAtIndex}, nil
+		})
 }
 
 // handleQueryCheckpointRequired enters maintenance mode to create the main store
@@ -918,60 +1074,24 @@ func (a *Applier) handleQueryCheckpointRequired(
 	entries []raftpb.Entry,
 	applyResult *state.ApplyEntriesResult,
 ) error {
-	// Spool remaining entries -- they'll be replayed after the maintenance task
-	if len(applyResult.RemainingEntries) > 0 {
-		err := a.spool.AppendCommittedEntries(ctx, applyResult.RemainingEntries...)
-		if err != nil {
-			return fmt.Errorf("spooling remaining entries: %w", err)
-		}
-	}
-
-	// Last applied index: the boundary entry (before any remaining entries)
-	var frozenAtIndex uint64
-	if len(applyResult.RemainingEntries) > 0 {
-		frozenAtIndex = applyResult.RemainingEntries[0].Index - 1
-	} else {
-		frozenAtIndex = entries[len(entries)-1].Index
-	}
-
-	a.status.Store(statusGated)
-	a.gatingReason.Store(gatingReasonQueryCheckpoint)
-
-	// Resolve the deferred future for the checkpoint-triggering proposal.
-	var (
-		deferredResult *state.ApplyResult
-		deferredFuture *futures.Future[state.ApplyResult]
-	)
-
-	if len(applyResult.Results) > 0 {
-		deferredResult = &applyResult.Results[len(applyResult.Results)-1]
-		if f, ok := a.futures.Load(deferredResult.ProposalID); ok {
-			deferredFuture = f
-
-			a.futures.Delete(deferredResult.ProposalID)
-		}
-	}
-
 	checkpointID := applyResult.QueryCheckpointID
 
-	// Called from Run goroutine — assign gating directly.
-	a.gatingTerminated = a.startMaintenanceTask(ctx, func(ctx context.Context) (maintenanceTaskResult, error) {
-		if err := a.createMainStoreCheckpoint(checkpointID); err != nil {
-			if deferredFuture != nil {
-				deferredFuture.Resolve(state.ApplyResult{}, err)
+	return a.gateAndLaunchMaintenance(ctx, entries, applyResult, gatingReasonQueryCheckpoint,
+		func(ctx context.Context, deferredResult *state.ApplyResult, deferredFuture *futures.Future[state.ApplyResult], frozenAtIndex uint64) (maintenanceTaskResult, error) {
+			if err := a.createMainStoreCheckpoint(checkpointID); err != nil {
+				if deferredFuture != nil {
+					deferredFuture.Resolve(state.ApplyResult{}, err)
+				}
+
+				return maintenanceTaskResult{}, err
 			}
 
-			return maintenanceTaskResult{}, err
-		}
+			if deferredFuture != nil {
+				deferredFuture.Resolve(*deferredResult, nil)
+			}
 
-		if deferredFuture != nil {
-			deferredFuture.Resolve(*deferredResult, nil)
-		}
-
-		return maintenanceTaskResult{frozenAtIndex: frozenAtIndex}, nil
-	}, nil)
-
-	return nil
+			return maintenanceTaskResult{frozenAtIndex: frozenAtIndex}, nil
+		})
 }
 
 // confStatesEqual returns true when two ConfStates have identical membership.
@@ -1300,13 +1420,9 @@ func (a *Applier) createReplayCheckpoint(result *state.ApplyEntriesResult) error
 			Errorf("Failed to create baseline snapshot during replay (checker will degrade gracefully)")
 	}
 
-	if len(result.Results) > 0 {
-		lastResult := &result.Results[len(result.Results)-1]
-		if f, ok := a.futures.Load(lastResult.ProposalID); ok {
-			lastResult.CheckpointPath = checkpointPath
-			f.Resolve(*lastResult, nil)
-			a.futures.Delete(lastResult.ProposalID)
-		}
+	if lastResult, deferred := a.extractDeferredFuture(result); deferred != nil {
+		lastResult.CheckpointPath = checkpointPath
+		deferred.Resolve(*lastResult, nil)
 	}
 
 	return nil
@@ -1322,12 +1438,8 @@ func (a *Applier) handleQueryCheckpointDuringReplay(ctx context.Context, applyRe
 		}
 
 		// Resolve the deferred future.
-		if len(applyResult.Results) > 0 {
-			lastResult := &applyResult.Results[len(applyResult.Results)-1]
-			if f, ok := a.futures.Load(lastResult.ProposalID); ok {
-				f.Resolve(*lastResult, nil)
-				a.futures.Delete(lastResult.ProposalID)
-			}
+		if lastResult, deferred := a.extractDeferredFuture(applyResult); deferred != nil {
+			deferred.Resolve(*lastResult, nil)
 		}
 
 		if len(applyResult.RemainingEntries) == 0 {

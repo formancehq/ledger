@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 	"testing"
 	"time"
 
@@ -328,10 +329,11 @@ func TestApplierFutureResolution(t *testing.T) {
 	ctx := logging.TestingContext()
 	setup := newTestApplierSetup(t)
 
-	// Create entry and register a future for the proposal ID.
+	// Create entry and register a future for the proposal ID. Term matches
+	// the entry's term so the post-apply sweep leaves it untouched.
 	entry, proposalID := makeCreateLedgerEntry(t, 1, "future-ledger")
 	future := futures.New[state.ApplyResult]()
-	setup.applier.StoreFuture(proposalID, future)
+	setup.applier.StoreFuture(proposalID, entry.Term, future)
 
 	// Start the Run goroutine.
 	runDone := make(chan error, 1)
@@ -375,6 +377,319 @@ func TestApplierFutureResolution(t *testing.T) {
 		require.NoError(t, err)
 	case <-time.After(2 * time.Second):
 		t.Fatal("Run did not return after stop")
+	}
+}
+
+// makeCreateLedgerEntryWithTerm is a variant of makeCreateLedgerEntry that
+// lets the caller pick the term, so tests can simulate term advances on the
+// apply path.
+func makeCreateLedgerEntryWithTerm(t *testing.T, term, index uint64, name string) (raftpb.Entry, uint64) {
+	t.Helper()
+
+	cmd := commands.NewCommand(&raftcmdpb.Order{
+		Type: &raftcmdpb.Order_CreateLedger{
+			CreateLedger: &raftcmdpb.CreateLedgerOrder{
+				Name: name,
+			},
+		},
+	})
+
+	data, err := cmd.MarshalVT()
+	require.NoError(t, err)
+
+	return raftpb.Entry{
+		Term:  term,
+		Index: index,
+		Type:  raftpb.EntryNormal,
+		Data:  data,
+	}, cmd.GetId()
+}
+
+// waitFutureBounded waits for a future to resolve within d, returning the
+// error and whether it resolved. Used to assert "future stays pending" with
+// a short timeout and "future resolves" without hanging the test.
+func waitFutureBounded(f *futures.Future[state.ApplyResult], d time.Duration) (err error, resolved bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), d)
+	defer cancel()
+
+	_, werr := f.WaitContext(ctx)
+	if errors.Is(werr, context.DeadlineExceeded) {
+		return nil, false
+	}
+
+	return werr, true
+}
+
+func TestApplierFailFuturesBelowTerm(t *testing.T) {
+	t.Parallel()
+
+	setup := newTestApplierSetup(t)
+
+	type entry struct {
+		id   uint64
+		term uint64
+	}
+
+	entries := []entry{
+		{id: 1, term: 2},
+		{id: 2, term: 3},
+		{id: 3, term: 3},
+		{id: 4, term: 5},
+	}
+
+	fs := make(map[uint64]*futures.Future[state.ApplyResult])
+
+	for _, e := range entries {
+		fs[e.id] = futures.New[state.ApplyResult]()
+		setup.applier.StoreFuture(e.id, e.term, fs[e.id])
+	}
+
+	sentinel := errors.New("sweep sentinel")
+	setup.applier.FailFuturesBelowTerm(3, sentinel)
+
+	// Only the term=2 future is below threshold and should resolve.
+	gotErr, ok := waitFutureBounded(fs[1], time.Second)
+	require.True(t, ok, "term=2 future must resolve below threshold")
+	require.ErrorIs(t, gotErr, sentinel)
+
+	// Higher-term futures stay pending.
+	for _, id := range []uint64{2, 3, 4} {
+		_, resolved := waitFutureBounded(fs[id], 100*time.Millisecond)
+		require.False(t, resolved, "future id=%d at term >= threshold must remain pending", id)
+	}
+}
+
+func TestApplierTermOlderThanBatchFails(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	setup := newTestApplierSetup(t)
+
+	// Orphan future at term=2 (no matching entry in the batch).
+	orphanFuture := futures.New[state.ApplyResult]()
+	const orphanProposalID uint64 = 99999
+
+	setup.applier.StoreFuture(orphanProposalID, 2, orphanFuture)
+
+	// Apply an unrelated entry at term=3.
+	entry, _ := makeCreateLedgerEntryWithTerm(t, 3, 1, "term-advance-trigger")
+
+	runDone := make(chan error, 1)
+	go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
+
+	setup.applier.Submit([]raftpb.Entry{entry}, nil, setup.stop)
+	setup.applier.Drain(setup.stop)
+
+	gotErr, resolved := waitFutureBounded(orphanFuture, 2*time.Second)
+	require.True(t, resolved, "orphan future must resolve once higher-term entry applies")
+	require.ErrorIs(t, gotErr, ErrLeadershipLost)
+
+	close(setup.stop)
+	<-runDone
+}
+
+func TestApplierMixedTermBatchV1RaceFixed(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	setup := newTestApplierSetup(t)
+
+	// committedEntry at term=2 — has a matching future.
+	committedEntry, committedID := makeCreateLedgerEntryWithTerm(t, 2, 1, "committed-via-old-leader")
+	advanceEntry, _ := makeCreateLedgerEntryWithTerm(t, 3, 2, "new-leader-noop")
+
+	committedFuture := futures.New[state.ApplyResult]()
+	orphanFuture := futures.New[state.ApplyResult]()
+	const orphanID uint64 = 99999
+
+	setup.applier.StoreFuture(committedID, 2, committedFuture)
+	setup.applier.StoreFuture(orphanID, 2, orphanFuture)
+
+	runDone := make(chan error, 1)
+	go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
+
+	setup.applier.Submit([]raftpb.Entry{committedEntry, advanceEntry}, nil, setup.stop)
+	setup.applier.Drain(setup.stop)
+
+	// committed future resolves with success (commandID match, leader-completeness).
+	committedErr, committedResolved := waitFutureBounded(committedFuture, 2*time.Second)
+	require.True(t, committedResolved, "committed future must resolve")
+	require.NoError(t, committedErr, "committed future must resolve with success even though the batch also advances term")
+
+	// orphan future fails with ErrLeadershipLost (truncated by new term).
+	orphanErr, orphanResolved := waitFutureBounded(orphanFuture, 2*time.Second)
+	require.True(t, orphanResolved, "orphan future must resolve once the higher-term entry applies")
+	require.ErrorIs(t, orphanErr, ErrLeadershipLost)
+
+	close(setup.stop)
+	<-runDone
+}
+
+func TestApplierResolveDroppedFuture(t *testing.T) {
+	t.Parallel()
+
+	setup := newTestApplierSetup(t)
+
+	dropped := futures.New[state.ApplyResult]()
+	const droppedID uint64 = 42
+
+	setup.applier.StoreFuture(droppedID, 1, dropped)
+
+	dropErr := errors.New("simulated raft.ErrProposalDropped")
+	setup.applier.ResolveDroppedFuture(droppedID, dropErr)
+
+	gotErr, resolved := waitFutureBounded(dropped, time.Second)
+	require.True(t, resolved, "dropped future must resolve immediately")
+	require.ErrorIs(t, gotErr, dropErr)
+
+	// Calling again is a no-op (no future in the map).
+	require.NotPanics(t, func() { setup.applier.ResolveDroppedFuture(droppedID, dropErr) })
+}
+
+// TestApplierExtractDeferredFutureNoRegisteredFuture verifies the helper
+// returns (lastResult, nil) when the last result's proposalID is not in
+// the futures map — the defensive nil-future path the callers rely on
+// (e.g. ConfChange entries that don't register an FSM future).
+func TestApplierExtractDeferredFutureNoRegisteredFuture(t *testing.T) {
+	t.Parallel()
+
+	setup := newTestApplierSetup(t)
+
+	result := &state.ApplyEntriesResult{
+		Results: []state.ApplyResult{
+			{ProposalID: 12345},
+		},
+		CheckpointRequired: true,
+	}
+
+	lastResult, deferred := setup.applier.extractDeferredFuture(result)
+	require.NotNil(t, lastResult, "lastResult must be returned even when no future is registered")
+	require.Equal(t, uint64(12345), lastResult.ProposalID)
+	require.Nil(t, deferred, "deferred future must be nil when no proposalID match")
+}
+
+// TestApplierExtractDeferredFutureEmptyResults verifies the helper safely
+// returns (nil, nil) when the apply result has no Results entries.
+func TestApplierExtractDeferredFutureEmptyResults(t *testing.T) {
+	t.Parallel()
+
+	setup := newTestApplierSetup(t)
+
+	lastResult, deferred := setup.applier.extractDeferredFuture(&state.ApplyEntriesResult{})
+	require.Nil(t, lastResult)
+	require.Nil(t, deferred)
+}
+
+// TestApplierExtractBatchFuturesSkipsDeferred verifies the "last entry is
+// deferred" convention: when CheckpointRequired is set, the last result's
+// future stays in the map for the deferred path to pick up later, while
+// preceding futures are extracted via LoadAndDelete.
+func TestApplierExtractBatchFuturesSkipsDeferred(t *testing.T) {
+	t.Parallel()
+
+	setup := newTestApplierSetup(t)
+
+	const term uint64 = 1
+
+	fs := make(map[uint64]*futures.Future[state.ApplyResult], 3)
+	for _, id := range []uint64{1, 2, 3} {
+		fs[id] = futures.New[state.ApplyResult]()
+		setup.applier.StoreFuture(id, term, fs[id])
+	}
+
+	result := &state.ApplyEntriesResult{
+		Results: []state.ApplyResult{
+			{ProposalID: 1},
+			{ProposalID: 2},
+			{ProposalID: 3},
+		},
+		CheckpointRequired: true,
+	}
+
+	pfs := setup.applier.extractBatchFutures(result)
+	require.Len(t, pfs, 2, "deferred (last) entry must be skipped")
+	require.Equal(t, uint64(1), pfs[0].proposalID)
+	require.Equal(t, uint64(2), pfs[1].proposalID)
+
+	// Futures 1 and 2 were extracted (LoadAndDelete'd) — the map no longer
+	// holds them. Future 3 (the deferred one) is still there.
+	for _, id := range []uint64{1, 2} {
+		_, ok := setup.applier.futures.LoadAndDelete(id)
+		require.False(t, ok, "future %d should have been extracted", id)
+	}
+	cur, ok := setup.applier.futures.LoadAndDelete(uint64(3))
+	require.True(t, ok, "deferred future 3 should remain in the map")
+	require.Equal(t, fs[3], cur.future)
+}
+
+// TestApplierExtractBatchFuturesWithoutCheckpointRequired verifies that
+// when CheckpointRequired is false, every result's future is extracted
+// (no deferred-skip).
+func TestApplierExtractBatchFuturesWithoutCheckpointRequired(t *testing.T) {
+	t.Parallel()
+
+	setup := newTestApplierSetup(t)
+
+	const term uint64 = 1
+
+	for _, id := range []uint64{1, 2} {
+		setup.applier.StoreFuture(id, term, futures.New[state.ApplyResult]())
+	}
+
+	result := &state.ApplyEntriesResult{
+		Results: []state.ApplyResult{
+			{ProposalID: 1},
+			{ProposalID: 2},
+		},
+		CheckpointRequired: false,
+	}
+
+	pfs := setup.applier.extractBatchFutures(result)
+	require.Len(t, pfs, 2, "both futures must be extracted when no checkpoint is required")
+}
+
+// TestApplierConcurrentResolveAndSweep is the race-safety regression test
+// for the LoadAndDelete + identity-check pattern in FailFuturesBelowTerm
+// and ResolveDroppedFuture. With go test -race, any double-Resolve or
+// concurrent map mutation triggers a failure.
+//
+// For each iteration we register a future and concurrently invoke the two
+// paths that can race to resolve it. The future must end up resolved
+// exactly once (we only check it eventually resolves; -race catches the
+// double-Resolve / data race case).
+func TestApplierConcurrentResolveAndSweep(t *testing.T) {
+	t.Parallel()
+
+	setup := newTestApplierSetup(t)
+
+	const iterations = 200
+
+	for i := range iterations {
+		commandID := uint64(i + 1)
+		f := futures.New[state.ApplyResult]()
+		setup.applier.StoreFuture(commandID, 1, f)
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+
+		go func() {
+			defer wg.Done()
+			setup.applier.ResolveDroppedFuture(commandID, errors.New("dropped"))
+		}()
+
+		go func() {
+			defer wg.Done()
+			setup.applier.FailFuturesBelowTerm(5, errors.New("sweep"))
+		}()
+
+		wg.Wait()
+
+		// The future MUST be resolved exactly once. We can't easily detect
+		// "exactly once" here, but we can detect "at least once" (the future
+		// resolves within timeout) and rely on -race to detect double
+		// Resolve via internal mutex contention if it happened.
+		_, resolved := waitFutureBounded(f, 100*time.Millisecond)
+		require.True(t, resolved, "future for iter=%d must be resolved by one of the paths", i)
 	}
 }
 

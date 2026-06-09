@@ -47,6 +47,13 @@ var (
 	// ErrNotLeader is returned when a leadership transfer is attempted on a non-leader node.
 	ErrNotLeader = errors.New("this node is not the leader")
 
+	// ErrLeadershipLost is returned to pending FSM futures whose proposals were
+	// truncated by a later Raft term (issue #172). Distinct from ErrNotLeader
+	// (returned synchronously when admission refuses a proposal on a
+	// non-leader) and from raft.ErrProposalDropped (the proposal never reached
+	// rawNode's log).
+	ErrLeadershipLost = errors.New("leadership lost: proposal was truncated by a later term")
+
 	// ErrUnknownTransferee is returned when the transferee is not a known cluster member.
 	ErrUnknownTransferee = errors.New("transferee is not a known cluster member")
 
@@ -123,6 +130,13 @@ type Node struct {
 	clusterCommandCh chan *clusterCommand
 	confState        atomic.Pointer[raftpb.ConfState]
 	lastSoftState    atomic.Pointer[raft.SoftState]
+	// lastObservedTerm holds the highest Raft term this node has seen via
+	// Ready (sourced from rd.HardState.Term, not rd.SoftState — SoftState has
+	// no Term field). It is initialized from wal.InitialState() and updated
+	// monotonically in processReady. Propose reads it atomically to tag each
+	// pending FSM future, so a later term advance can fail futures whose
+	// entries were truncated by the new leader (issue #172).
+	lastObservedTerm atomic.Uint64
 	observer         *Observer
 	applier          *Applier
 
@@ -448,6 +462,13 @@ func NewNode(
 	logger.WithFields(map[string]any{
 		"initialIndex": initialIndex(wal),
 	}).Infof("IndexTracker initialized")
+
+	// Seed lastObservedTerm from the persisted HardState so that any Propose
+	// that lands before the first Ready already tags futures with the correct
+	// term. This closes the term=0 startup window referenced by issue #172.
+	if hs, _, hsErr := wal.InitialState(); hsErr == nil {
+		node.lastObservedTerm.Store(hs.Term)
+	}
 
 	node.confState.Store(&initialConfState)
 
@@ -1007,6 +1028,22 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 
 	node.appendEntriesHistogram.Record(ctx, time.Since(now).Microseconds())
 
+	// Track the highest term observed via HardState so Propose can tag each
+	// future with the proposer's view of the current term (issue #172). Use a
+	// monotonic CAS — terms only grow.
+	if !raft.IsEmptyHardState(rd.HardState) {
+		for {
+			cur := node.lastObservedTerm.Load()
+			if cur >= rd.Term {
+				break
+			}
+
+			if node.lastObservedTerm.CompareAndSwap(cur, rd.Term) {
+				break
+			}
+		}
+	}
+
 	result := readyResult{rd: rd}
 
 	if !raft.IsEmptySnap(rd.Snapshot) {
@@ -1514,7 +1551,15 @@ func (node *Node) Propose(ctx context.Context, proposal *Proposal) (*futures.Fut
 	// The proposal's embedded Future is for Raft consensus (resolved by rawNode.Propose).
 	// The fsmFuture is for Machine processing (resolved when entry is applied).
 	fsmFuture := futures.New[state.ApplyResult]()
-	node.applier.StoreFuture(proposal.commandID, fsmFuture)
+
+	// Tag the future with the term observed by this goroutine. lastObservedTerm
+	// lags the actual rawNode term (it is updated only in processReady), so the
+	// captured value is a lower bound on the real proposal term. The lower
+	// bound is safe: FailFuturesBelowTerm only fires once a strictly higher
+	// term has been APPLIED locally, which is unambiguous evidence the
+	// proposal was truncated.
+	proposalTerm := node.lastObservedTerm.Load()
+	node.applier.StoreFuture(proposal.commandID, proposalTerm, fsmFuture)
 
 	// Pre-increment before the channel send. All callers hold the tracker's
 	// mutex, so this is serialized with other proposals and with Decrement.
@@ -1549,6 +1594,12 @@ func (node *Node) handleProposal(p *Proposal) {
 			"trackerBefore": prev,
 			"trackerAfter":  node.indexTracker.Next(),
 		}).Errorf("Proposal dropped, IndexTracker decremented")
+
+		// The FSM future stored at Propose time would otherwise leak until
+		// a later term advance reclaims it via FailFuturesBelowTerm. Resolve
+		// it immediately so the caller's fsmFuture.Wait() unblocks with the
+		// drop error.
+		node.applier.ResolveDroppedFuture(p.commandID, err)
 	}
 	p.Resolve(nil, err)
 }
