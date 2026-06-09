@@ -21,6 +21,12 @@ import (
 // RestoreModule returns a minimal fx module for restore mode.
 // It only starts a gRPC server with the RestoreService and a health endpoint.
 // No Raft, WAL, transport, or other production services are started.
+//
+// The restore RPCs are not authenticated. To avoid exposing destructive
+// operations on the public network, this module binds gRPC + HTTP to
+// cfg.RestoreListen (defaults to 127.0.0.1). An operator can opt out with
+// --restore-listen=0.0.0.0 (or a specific interface), but this should only
+// be combined with TLS and upstream firewalling.
 func RestoreModule() fx.Option {
 	return fx.Options(
 		fx.Provide(
@@ -30,7 +36,14 @@ func RestoreModule() fx.Option {
 					return nil, fmt.Errorf("loading TLS config for restore server: %w", err)
 				}
 
-				return grpcadp.NewServiceServer(cfg.GRPCPort, logger, cfg.Debug, cfg.GRPCSlowThreshold, tlsCfg, cfg.TLSConfig.Mode.AllowsPlaintext())
+				host := cfg.EffectiveRestoreListen()
+
+				if host != "127.0.0.1" && host != "localhost" && host != "::1" {
+					logger.WithFields(map[string]any{"restoreListen": host}).
+						Errorf("WARNING: restore mode bound to a non-loopback address (%s). The restore RPCs are not authenticated; ensure TLS and upstream firewalling are in place.", host)
+				}
+
+				return grpcadp.NewServiceServer(host, cfg.GRPCPort, logger, cfg.Debug, cfg.GRPCSlowThreshold, tlsCfg, cfg.TLSConfig.Mode.AllowsPlaintext())
 			},
 			func(cfg Config, logger logging.Logger) *grpcadp.RestoreServiceServerImpl {
 				return grpcadp.NewRestoreServiceServer(cfg.DataDir, cfg.ClusterID, logger)
@@ -96,15 +109,17 @@ func RestoreModule() fx.Option {
 					},
 				})
 			},
-			// Start minimal HTTP server with /health only
+			// Start minimal HTTP server with /health only, bound to the same
+			// host as the gRPC restore server (see comment on RestoreModule).
 			func(lc fx.Lifecycle, cfg Config) {
 				mux := http.NewServeMux()
 				mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 					w.WriteHeader(http.StatusOK)
 					_, _ = w.Write([]byte(`{"status":"restore_mode"}`))
 				})
+
 				lc.Append(transportfx.FXHook(httpserver.NewHook(mux,
-					httpserver.WithAddress(fmt.Sprintf(":%d", cfg.HTTPPort)),
+					httpserver.WithAddress(fmt.Sprintf("%s:%d", cfg.EffectiveRestoreListen(), cfg.HTTPPort)),
 				)))
 			},
 		),

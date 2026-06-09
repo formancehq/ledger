@@ -3441,11 +3441,29 @@ In restore mode:
 - Only the RestoreService gRPC endpoint and `/health` HTTP endpoint are available
 - No Raft, WAL, or other production services are started
 - Requires a fresh data directory (no existing checkpoints)
+- The restore RPCs are **not authenticated**. The gRPC and HTTP listeners default to `127.0.0.1` so they are reachable only from the local host; see `--restore-listen` below to expose remotely.
+- The backup manifest is read with a 32 MiB byte cap and a 100 000 file-entry cap. File names in the manifest are validated and rejected if they are absolute or contain `..` parent-directory traversals.
 
 After finalizing, restart without `--restore`:
 
 ```bash
 ledger run --node-id 1 --cluster-id prod-ledger --data-dir ./data --bootstrap --wal-dir ./wal --grpc-port 8888
+```
+
+### Server `--restore-listen` Flag
+
+Bind host for the restore-mode gRPC and HTTP servers. Defaults to `127.0.0.1` because the restore RPCs are unauthenticated and destructive.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--restore-listen` | `127.0.0.1` | Bind host for restore-mode gRPC + HTTP. Set to `0.0.0.0` or a specific interface to expose remotely; the server logs a loud warning at startup when a non-loopback bind is used. Combine with TLS + upstream firewalling. |
+
+```bash
+# Default: restore only reachable from the local host
+ledger run --restore --node-id 1 --cluster-id prod-ledger --data-dir ./data --grpc-port 8888
+
+# Opt-in remote access (use TLS + firewalling)
+ledger run --restore --restore-listen 0.0.0.0 --tls-mode required --tls-cert-file ... --tls-key-file ... ...
 ```
 
 ### Server `--numscript-cache-size` Flag

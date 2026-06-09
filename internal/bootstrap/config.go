@@ -123,24 +123,31 @@ func (c SnapshotSyncConfig) Validate() error {
 }
 
 type Config struct {
-	RaftConfig                  node.NodeConfig
-	Debug                       bool
-	HTTPPort                    int
-	GRPCPort                    int
-	TransportConfig             node.TransportConfig
-	DataDir                     string
-	PebbleConfig                dal.Config
-	HealthConfig                HealthConfig
-	ClusterID                   string
-	AdmissionMetrics            bool
-	ReceiptSigningKey           string
-	ResponseSigningKeyFile      string
-	ColdStorageConfig           coldstorage.Config
-	PoolConfig                  transport.PoolConfig
-	TLSConfig                   TLSConfig
-	AuthConfig                  AuthFlagConfig
-	ClusterSecret               string
-	Restore                     bool
+	RaftConfig             node.NodeConfig
+	Debug                  bool
+	HTTPPort               int
+	GRPCPort               int
+	TransportConfig        node.TransportConfig
+	DataDir                string
+	PebbleConfig           dal.Config
+	HealthConfig           HealthConfig
+	ClusterID              string
+	AdmissionMetrics       bool
+	ReceiptSigningKey      string
+	ResponseSigningKeyFile string
+	ColdStorageConfig      coldstorage.Config
+	PoolConfig             transport.PoolConfig
+	TLSConfig              TLSConfig
+	AuthConfig             AuthFlagConfig
+	ClusterSecret          string
+	Restore                bool
+	// RestoreListen is the bind host for restore-mode servers (gRPC + HTTP).
+	// Defaults (via EffectiveRestoreListen) to "127.0.0.1" so the destructive
+	// restore RPCs are not exposed on the public network unless the operator
+	// opts in. Set to "0.0.0.0" or a specific external interface to allow
+	// remote calls (requires TLS + upstream firewalling — restore RPCs are
+	// not authenticated today).
+	RestoreListen               string
 	NumscriptCacheSize          int
 	MirrorMaxBatchSize          int
 	UnsafeSkipConfigValidation  bool
@@ -152,6 +159,17 @@ type Config struct {
 	IdempotencyTTL              time.Duration
 	IdempotencyEvictionInterval time.Duration
 	SnapshotSyncConfig          SnapshotSyncConfig
+}
+
+// EffectiveRestoreListen returns the bind host for restore mode, falling
+// back to 127.0.0.1 when the flag is unset. Used by both the gRPC and HTTP
+// restore listeners so the two stay in sync.
+func (c Config) EffectiveRestoreListen() string {
+	if c.RestoreListen == "" {
+		return "127.0.0.1"
+	}
+
+	return c.RestoreListen
 }
 
 func (c Config) Validate() error {

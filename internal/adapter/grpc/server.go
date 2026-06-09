@@ -93,6 +93,7 @@ type baseServer struct {
 	mu       sync.Mutex
 
 	logger logging.Logger
+	host   string // bind host; empty means "0.0.0.0"
 	port   int
 	name   string
 }
@@ -137,7 +138,12 @@ func (s *baseServer) registerReflection() {
 }
 
 func (s *baseServer) Start(listening chan struct{}) error {
-	lis, err := net.Listen("tcp4", fmt.Sprintf("0.0.0.0:%d", s.port))
+	host := s.host
+	if host == "" {
+		host = "0.0.0.0"
+	}
+
+	lis, err := net.Listen("tcp4", fmt.Sprintf("%s:%d", host, s.port))
 	if err != nil {
 		return fmt.Errorf("failed to listen: %w", err)
 	}
@@ -636,13 +642,18 @@ func convertToGRPCError(err error) error {
 // ServiceServer. It instantiates one or two underlying gRPC servers based on
 // the (tlsCfg, acceptPlaintext) combination.
 //
+// host controls the bind address; empty defaults to "0.0.0.0" (every
+// interface). Restore mode passes "127.0.0.1" to keep the destructive RPCs
+// off the public network unless an operator explicitly opts in.
+//
 // Invariant: at least one of (tlsCfg != nil, acceptPlaintext) must hold.
-func buildBaseServer(name string, port int, logger logging.Logger, tlsCfg *tls.Config, acceptPlaintext bool, opts []ggrpc.ServerOption) (*baseServer, error) {
+func buildBaseServer(name, host string, port int, logger logging.Logger, tlsCfg *tls.Config, acceptPlaintext bool, opts []ggrpc.ServerOption) (*baseServer, error) {
 	if tlsCfg == nil && !acceptPlaintext {
 		return nil, fmt.Errorf("%s: cannot construct server with neither TLS nor plaintext enabled", name)
 	}
 
 	bs := &baseServer{
+		host:      host,
 		port:      port,
 		logger:    logger,
 		name:      name,
@@ -678,7 +689,7 @@ func NewRaftServer(port int, logger logging.Logger, tlsCfg *tls.Config, acceptPl
 		ggrpc.MaxSendMsgSize(transport.GRPCMaxMsgSize),
 	}
 
-	bs, err := buildBaseServer("Raft gRPC", port, logger, tlsCfg, acceptPlaintext, opts)
+	bs, err := buildBaseServer("Raft gRPC", "", port, logger, tlsCfg, acceptPlaintext, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -693,8 +704,12 @@ func NewRaftServer(port int, logger logging.Logger, tlsCfg *tls.Config, acceptPl
 // This server includes OpenTelemetry instrumentation and error conversion.
 // Authentication is handled explicitly in each service method via auth.Authenticate.
 //
+// host controls the bind address. Empty means "0.0.0.0" (every interface) —
+// the normal mode. Restore mode passes "127.0.0.1" by default so the
+// destructive restore RPCs are not exposed on the public network.
+//
 // See NewRaftServer for the (tlsCfg, acceptPlaintext) semantics.
-func NewServiceServer(port int, logger logging.Logger, debug bool, slowThreshold time.Duration, tlsCfg *tls.Config, acceptPlaintext bool) (*ServiceServer, error) {
+func NewServiceServer(host string, port int, logger logging.Logger, debug bool, slowThreshold time.Duration, tlsCfg *tls.Config, acceptPlaintext bool) (*ServiceServer, error) {
 	// Recovery interceptor must be first (outermost) to catch panics from all handlers.
 	// Logging is placed before error conversion so that on the response path
 	// (innermost-first), error conversion runs first and logging sees the
@@ -724,7 +739,7 @@ func NewServiceServer(port int, logger logging.Logger, debug bool, slowThreshold
 		ggrpc.ChainStreamInterceptor(streamInterceptors...),
 	}
 
-	bs, err := buildBaseServer("Service gRPC", port, logger, tlsCfg, acceptPlaintext, opts)
+	bs, err := buildBaseServer("Service gRPC", host, port, logger, tlsCfg, acceptPlaintext, opts)
 	if err != nil {
 		return nil, err
 	}

@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	ggrpc "google.golang.org/grpc"
@@ -26,7 +27,69 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-const restoreStagingDir = "restore-staging"
+const (
+	restoreStagingDir = "restore-staging"
+
+	// maxRestoreManifestBytes caps how much of the manifest we read from
+	// S3 into memory. A real Pebble backup manifest is JSON describing
+	// one entry per file; even a 1 TB / 16 k SST backup is well under
+	// a megabyte of JSON. 32 MiB keeps a huge margin without risking
+	// OOM on a malicious or runaway upload.
+	maxRestoreManifestBytes = 32 * 1024 * 1024
+
+	// maxRestoreManifestFiles caps the number of file entries inside the
+	// manifest. 100 k is generous (a 6 TB backup at 64 MiB/SST is ~100 k
+	// files); larger uploads should be flagged at backup-time, not blindly
+	// trusted in restore mode.
+	maxRestoreManifestFiles = 100_000
+)
+
+// safeStagingPath joins filename onto stagingDir while refusing any input
+// that would escape the staging directory. It rejects absolute paths,
+// parent-directory traversals, and (defense in depth) any path that —
+// after canonicalisation — resolves outside the staging root.
+//
+// The filename comes from a Pebble backup manifest fetched from S3.
+// The manifest is signed by nothing today, so a malicious or buggy
+// uploader could attempt to overwrite arbitrary files. This function
+// is the only path validation in the restore download loop; it must
+// reject any input that does not land inside stagingDir.
+func safeStagingPath(stagingDir, filename string) (string, error) {
+	if filename == "" {
+		return "", errors.New("manifest entry has empty filename")
+	}
+
+	// Normalise slashes first so the OS-specific checks below are stable
+	// regardless of whether the manifest used forward or backslashes.
+	osName := filepath.FromSlash(filename)
+
+	if filepath.IsAbs(osName) {
+		return "", fmt.Errorf("manifest entry %q is an absolute path", filename)
+	}
+
+	cleaned := filepath.Clean(osName)
+
+	if cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("manifest entry %q escapes the staging directory", filename)
+	}
+
+	dest := filepath.Join(stagingDir, cleaned)
+
+	// Defense in depth: even after the prefix checks above, verify that
+	// `dest` is actually under `stagingDir` once everything is resolved.
+	// filepath.Rel returns an error or a path starting with ".." if dest
+	// is not a descendant.
+	rel, err := filepath.Rel(stagingDir, dest)
+	if err != nil {
+		return "", fmt.Errorf("computing relative path for %q: %w", filename, err)
+	}
+
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("manifest entry %q resolves outside the staging directory", filename)
+	}
+
+	return dest, nil
+}
 
 // RestoreServiceServerImpl implements the RestoreService gRPC server.
 type RestoreServiceServerImpl struct {
@@ -127,11 +190,21 @@ func (s *RestoreServiceServerImpl) DownloadBackup(ctx context.Context, req *rest
 		return nil, fmt.Errorf("reading backup manifest: %w", err)
 	}
 
-	manifestData, err := io.ReadAll(manifestReader)
+	// Read the manifest behind a hard byte cap. A real manifest is well
+	// under a megabyte; anything larger is either a misconfiguration on
+	// the backup side or an attempt to exhaust the restore node's memory.
+	// LimitReader yields an EOF at the cap+1 byte; we detect overshoot by
+	// reading one extra byte and refusing if it is present.
+	manifestData, err := io.ReadAll(io.LimitReader(manifestReader, maxRestoreManifestBytes+1))
 	_ = manifestReader.Close()
 
 	if err != nil {
 		return nil, fmt.Errorf("reading manifest data: %w", err)
+	}
+
+	if int64(len(manifestData)) > maxRestoreManifestBytes {
+		return nil, status.Errorf(codes.FailedPrecondition,
+			"backup manifest exceeds %d bytes; refusing to read", maxRestoreManifestBytes)
 	}
 
 	var manifest backup.Manifest
@@ -142,6 +215,12 @@ func (s *RestoreServiceServerImpl) DownloadBackup(ctx context.Context, req *rest
 	hasCheckpoint := manifest.Checkpoint != nil && len(manifest.Checkpoint.Files) > 0
 	if !hasCheckpoint && len(manifest.Exports) == 0 {
 		return nil, status.Error(codes.FailedPrecondition, "backup manifest contains no checkpoint files and no export segments")
+	}
+
+	if hasCheckpoint && len(manifest.Checkpoint.Files) > maxRestoreManifestFiles {
+		return nil, status.Errorf(codes.FailedPrecondition,
+			"backup manifest declares %d files (max %d); refusing to download",
+			len(manifest.Checkpoint.Files), maxRestoreManifestFiles)
 	}
 
 	// Prepare staging directory
@@ -165,8 +244,12 @@ func (s *RestoreServiceServerImpl) DownloadBackup(ctx context.Context, req *rest
 		checkpointFiles = len(manifest.Checkpoint.Files)
 
 		for filename := range manifest.Checkpoint.Files {
+			destPath, err := safeStagingPath(stagingDir, filename)
+			if err != nil {
+				return nil, status.Errorf(codes.InvalidArgument, "invalid manifest entry: %v", err)
+			}
+
 			key := fileKeyPrefix + filename
-			destPath := filepath.Join(stagingDir, filepath.FromSlash(filename))
 
 			if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
 				return nil, fmt.Errorf("creating directory for %s: %w", filename, err)
