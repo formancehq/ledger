@@ -6,6 +6,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
 
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source sink.go -destination sink_generated_test.go -typed -package events . Sink
+
 // Sink publishes events to an external system.
 // Implementations must be safe for concurrent use.
 type Sink interface {

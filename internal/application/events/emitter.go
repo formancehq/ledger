@@ -23,6 +23,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source emitter.go -destination emitter_generated_test.go -typed -package events . Proposer
+
 // Proposer proposes commands to the Raft cluster.
 type Proposer interface {
 	Propose(ctx context.Context, proposal *node.Proposal) (*futures.Future[state.ApplyResult], error)
@@ -67,6 +69,14 @@ type Emitter struct {
 	// Reusable state for proposeSinkUpdate (single-goroutine, no lock needed).
 	proposal   raftcmdpb.Proposal
 	marshalBuf []byte
+
+	// failure tracks consecutive publish failures so we don't spam Raft
+	// (or the sink) when an external dependency is unhealthy. See
+	// sink_failure_state.go for the policy.
+	failure sinkFailureState
+
+	// now overridable for tests; defaults to time.Now.
+	now func() time.Time
 }
 
 // NewEmitter creates a new event emitter for a named sink.
@@ -87,6 +97,7 @@ func NewEmitter(store *dal.Store, sink Sink, sinkName string, proposer Proposer,
 		config:   config,
 		logger:   logger.WithFields(map[string]any{"cmp": "event-emitter", "sink": sinkName}),
 		notify:   signal.New(),
+		now:      time.Now,
 	}
 }
 
@@ -181,7 +192,16 @@ func (e *Emitter) run(ctx context.Context) {
 
 // processLogs reads logs from the store starting after the given cursor,
 // publishes them, and returns the updated cursor position.
+//
+// If a previous publish failed and the failure backoff has not yet
+// elapsed, this is a no-op: the cursor is returned unchanged and no
+// Raft proposal is made. This prevents the 10ms ticker from spinning
+// the sink (and the Raft log) when an external dependency is unhealthy.
 func (e *Emitter) processLogs(ctx context.Context, cursor uint64) (uint64, error) {
+	if !e.failure.shouldRetry(e.now()) {
+		return cursor, nil
+	}
+
 	handle, err := e.store.NewDirectReadHandle()
 	if err != nil {
 		return cursor, fmt.Errorf("creating read handle: %w", err)
@@ -270,11 +290,16 @@ func (e *Emitter) processLogs(ctx context.Context, cursor uint64) (uint64, error
 func (e *Emitter) publishBatch(ctx context.Context, batch []*eventspb.Event) error {
 	err := e.sink.Publish(ctx, batch)
 	if err != nil {
-		// Report the error via Raft (best-effort)
+		// Report the error via Raft (best-effort), with dedup/backoff.
 		e.reportError(err)
 
 		return err
 	}
+
+	// Sink is healthy again — reset failure bookkeeping before we
+	// propose the cursor advance so a follow-up failure starts from
+	// a clean state.
+	e.failure.recordSuccess()
 
 	// Advance cursor via Raft and clear any previous error
 	lastSeq := batch[len(batch)-1].GetLogSequence()
@@ -298,21 +323,30 @@ func (e *Emitter) publishBatch(ctx context.Context, batch []*eventspb.Event) err
 	return nil
 }
 
-// reportError proposes a sink error status via Raft (best-effort).
-// If the proposal itself fails, it is logged but does not propagate.
+// reportError records a publish failure and proposes a sink error
+// status via Raft when the failure is worth reporting (first failure,
+// message changed, or remind interval elapsed — see sinkFailureState).
+// The Raft proposal itself remains best-effort: failures to propose
+// are logged but do not propagate.
 func (e *Emitter) reportError(publishErr error) {
-	now := commonpb.NewTimestamp(libtime.Now())
+	now := e.now()
+
+	if !e.failure.recordFailure(now, publishErr) {
+		// Same error within the remind interval — skip the Raft
+		// roundtrip. The SinkStatus already carries this message
+		// from the previous report.
+		return
+	}
 
 	update := &raftcmdpb.EventsSinkUpdate{
 		SinkName: e.sinkName,
 		Error: &commonpb.SinkError{
 			Message:    publishErr.Error(),
-			OccurredAt: now,
+			OccurredAt: commonpb.NewTimestamp(libtime.New(now)),
 		},
 	}
 
-	err := e.proposeSinkUpdate(update)
-	if err != nil {
+	if err := e.proposeSinkUpdate(update); err != nil {
 		e.logger.Errorf("Failed to report sink error via Raft: %v", err)
 	}
 }

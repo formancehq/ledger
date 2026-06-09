@@ -126,6 +126,7 @@ Key rules:
 - **Use gRPC client** (`servicepb.BucketServiceClient`) in integration tests
 - **Use helper functions** from `tests/e2e/testutil/` (helpers and server setup)
 - **E2E tests** use the `e2e` build tag and Ginkgo/Gomega framework: `go test -tags e2e ./tests/e2e/... -timeout=600s`
+- **Never hand-roll mocks** — if a test needs to fake an interface, add a `//go:generate mockgen` directive on the interface (see [Mock Generation](#mock-generation) above for the standard flag set), run `go generate ./...`, and use the generated `MockXxx` in the test. Hand-rolled fakes drift from the interface, lose call recording for free, and duplicate effort.
 
 ### Running all tests (with all optional features)
 
