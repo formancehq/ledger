@@ -2649,13 +2649,13 @@ Run a query template on a ledger
 |»» pit|body|string(date-time)|false|none|
 |»» sort|body|string|false|Sort results using a field name and order (ascending or descending).|
 |»» *anonymous*|body|object|false|none|
-|»»» resource|body|string|false|none|
+|»»» resource|body|string|true|none|
 |»» *anonymous*|body|object|false|none|
-|»»» resource|body|string|false|none|
+|»»» resource|body|string|true|none|
 |»» *anonymous*|body|object|false|none|
-|»»» resource|body|string|false|none|
+|»»» resource|body|string|true|none|
 |»» *anonymous*|body|object|false|none|
-|»»» resource|body|string|false|none|
+|»»» resource|body|string|true|none|
 |»»» insertionDate|body|boolean|false|none|
 |»»» groupBy|body|integer|false|none|
 |» vars|body|object|false|none|
@@ -6795,28 +6795,28 @@ oneOf
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
-|» resource|string|false|none|none|
+|» resource|string|true|none|none|
 
 xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
-|» resource|string|false|none|none|
+|» resource|string|true|none|none|
 
 xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
-|» resource|string|false|none|none|
+|» resource|string|true|none|none|
 
 xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
-|» resource|string|false|none|none|
+|» resource|string|true|none|none|
 |» insertionDate|boolean|false|none|none|
 |» groupBy|integer|false|none|none|
 

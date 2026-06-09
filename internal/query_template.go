@@ -155,7 +155,7 @@ func (q QueryTemplate) Validate() error {
 }
 
 func checkForExtraFields(params json.RawMessage, resourceSpecificFields []string) error {
-	allowedFields := slices.Concat([]string{"endTime", "startTime", "expand", "sort", "pageSize"}, resourceSpecificFields)
+	allowedFields := slices.Concat([]string{"endTime", "startTime", "expand", "sort", "pageSize", "resource"}, resourceSpecificFields)
 	var raw map[string]any
 	err := json.Unmarshal(params, &raw)
 	if err != nil {
