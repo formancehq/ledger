@@ -35,6 +35,7 @@ func buildAuditFailure(err error) *auditpb.AuditFailure {
 		nonDeterministic             *numscript.ErrNonDeterministicScript
 		sinkAlreadyExists            *domain.ErrSinkAlreadyExists
 		sinkNotFound                 *domain.ErrSinkNotFound
+		sinkBatchSizeTooLarge        *domain.ErrSinkBatchSizeTooLarge
 		metadataNotFound             *domain.ErrMetadataNotFound
 		periodNotFound               *domain.ErrPeriodNotFound
 		periodNotClosing             *domain.ErrPeriodNotClosing
@@ -110,6 +111,12 @@ func buildAuditFailure(err error) *auditpb.AuditFailure {
 	case errors.As(err, &sinkNotFound):
 		failure.ErrorType = domain.ErrReasonSinkNotFound
 		failure.Context["name"] = sinkNotFound.Name
+
+	case errors.As(err, &sinkBatchSizeTooLarge):
+		failure.ErrorType = domain.ErrReasonSinkBatchSizeTooLarge
+		failure.Context["name"] = sinkBatchSizeTooLarge.Name
+		failure.Context["batchSize"] = strconv.FormatInt(int64(sinkBatchSizeTooLarge.BatchSize), 10)
+		failure.Context["max"] = strconv.FormatInt(int64(sinkBatchSizeTooLarge.Max), 10)
 
 	case errors.As(err, &metadataNotFound):
 		failure.ErrorType = domain.ErrReasonMetadataNotFound

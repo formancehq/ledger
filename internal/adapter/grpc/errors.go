@@ -119,6 +119,14 @@ var errorMappings = []errorMapping{
 		return map[string]string{"name": e.Name}
 	}), codes.NotFound, domain.ErrReasonSinkNotFound},
 
+	{matchAs(func(e *domain.ErrSinkBatchSizeTooLarge) map[string]string {
+		return map[string]string{
+			"name":      e.Name,
+			"batchSize": strconv.FormatInt(int64(e.BatchSize), 10),
+			"max":       strconv.FormatInt(int64(e.Max), 10),
+		}
+	}), codes.InvalidArgument, domain.ErrReasonSinkBatchSizeTooLarge},
+
 	{matchAs(func(e *domain.ErrPreparedQueryAlreadyExists) map[string]string {
 		return map[string]string{"ledger": e.Ledger, "name": e.Name}
 	}), codes.AlreadyExists, domain.ErrReasonPreparedQueryAlreadyExists},

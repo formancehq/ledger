@@ -9,21 +9,31 @@ import (
 )
 
 func (p *RequestProcessor) processAddEventsSink(order *raftcmdpb.AddEventsSinkOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
-	existing, err := s.GetSinkConfig(order.GetConfig().GetName())
+	cfg := order.GetConfig()
+
+	if cfg.GetBatchSize() > domain.MaxSinkBatchSize {
+		return nil, &domain.ErrSinkBatchSizeTooLarge{
+			Name:      cfg.GetName(),
+			BatchSize: cfg.GetBatchSize(),
+			Max:       domain.MaxSinkBatchSize,
+		}
+	}
+
+	existing, err := s.GetSinkConfig(cfg.GetName())
 	if err != nil {
-		return nil, fmt.Errorf("checking existing sink %q: %w", order.GetConfig().GetName(), err)
+		return nil, fmt.Errorf("checking existing sink %q: %w", cfg.GetName(), err)
 	}
 
 	if existing != nil {
-		return nil, &domain.ErrSinkAlreadyExists{Name: order.GetConfig().GetName()}
+		return nil, &domain.ErrSinkAlreadyExists{Name: cfg.GetName()}
 	}
 
-	s.AddSinkConfig(order.GetConfig())
+	s.AddSinkConfig(cfg)
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_AddedEventsSink{
 			AddedEventsSink: &commonpb.AddedEventsSinkLog{
-				Config: order.GetConfig(),
+				Config: cfg,
 			},
 		},
 	}, nil

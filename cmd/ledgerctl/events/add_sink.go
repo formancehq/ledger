@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -160,6 +161,10 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 		batchSize, _    = cmd.Flags().GetInt32("batch-size")
 		batchDelayMs, _ = cmd.Flags().GetInt64("batch-delay-ms")
 	)
+
+	if batchSize < 0 || batchSize > domain.MaxSinkBatchSize {
+		return fmt.Errorf("--batch-size must be in [0, %d] (got %d)", domain.MaxSinkBatchSize, batchSize)
+	}
 
 	config := &commonpb.SinkConfig{
 		Name:         name,

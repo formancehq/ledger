@@ -25,6 +25,7 @@ const (
 	ErrReasonAuditDisabled                 = "AUDIT_DISABLED"
 	ErrReasonSinkAlreadyExists             = "SINK_ALREADY_EXISTS"
 	ErrReasonSinkNotFound                  = "SINK_NOT_FOUND"
+	ErrReasonSinkBatchSizeTooLarge         = "SINK_BATCH_SIZE_TOO_LARGE"
 	ErrReasonNoPeriodOpen                  = "NO_PERIOD_OPEN"
 	ErrReasonPeriodNotFound                = "PERIOD_NOT_FOUND"
 	ErrReasonPeriodNotClosing              = "PERIOD_NOT_CLOSING"
@@ -183,6 +184,27 @@ type ErrSinkAlreadyExists struct {
 
 func (e *ErrSinkAlreadyExists) Error() string {
 	return "event sink already exists: " + e.Name
+}
+
+// MaxSinkBatchSize is the server-side cap on SinkConfig.BatchSize. The
+// emitter uses BatchSize as the capacity of a per-flush slice; without a
+// bound, a misconfigured value drives one large allocation per flush on the
+// leader. 100_000 is several orders of magnitude beyond any sane sink
+// throughput and is intended only to catch fat-finger CLI input or
+// adversarial admin commands — not to enforce policy.
+const MaxSinkBatchSize int32 = 100_000
+
+// ErrSinkBatchSizeTooLarge is returned when an event sink is configured with
+// a batch size that exceeds MaxSinkBatchSize.
+type ErrSinkBatchSizeTooLarge struct {
+	Name      string
+	BatchSize int32
+	Max       int32
+}
+
+func (e *ErrSinkBatchSizeTooLarge) Error() string {
+	return fmt.Sprintf("event sink %q has batchSize=%d, exceeds maximum %d",
+		e.Name, e.BatchSize, e.Max)
 }
 
 // ErrMetadataNotFound is returned when deleting a metadata key that does not exist.

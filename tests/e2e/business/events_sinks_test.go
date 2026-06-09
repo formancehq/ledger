@@ -3,6 +3,7 @@
 package business
 
 import (
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	. "github.com/onsi/ginkgo/v2"
@@ -77,6 +78,26 @@ var _ = Describe("Events Sinks", Ordered, func() {
 		Expect(nats).NotTo(BeNil())
 		Expect(nats.Url).To(Equal("nats://localhost:4222"))
 		Expect(nats.Topic).To(Equal("ledger.events"))
+	})
+
+	It("Should reject adding a sink with an oversized batch size", func() {
+		oversized := newTestSinkConfig("oversized-sink", "ledger.events.oversized")
+		oversized.BatchSize = domain.MaxSinkBatchSize + 1
+
+		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+			Requests: []*servicepb.Request{
+				addEventsSinkAction(oversized),
+			},
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+
+		// Sink must not have been persisted.
+		resp, err := sharedClient.GetEventsSinks(sharedCtx, &servicepb.GetEventsSinksRequest{})
+		Expect(err).To(Succeed())
+		for _, s := range resp.Sinks {
+			Expect(s.Name).NotTo(Equal("oversized-sink"))
+		}
 	})
 
 	It("Should reject adding a sink with a duplicate name", func() {
