@@ -298,6 +298,115 @@ var _ = Describe("Query Checkpoints", func() {
 			Expect(txs).To(HaveLen(2))
 		})
 	})
+
+	// Regression coverage for #279: GetAccount(checkpoint_id=N) was returning
+	// live volumes regardless of the checkpoint. The fix landed in #246 along
+	// with a single-shot regression test ("GetAccount reads checkpoint state,
+	// not live", earlier in this file), but that test covers only the case
+	// of an account that does not yet exist at the checkpoint — a leaked
+	// live read still looks "wrong but not catastrophic" there because the
+	// missing-volume signal is binary. The issue's actual reproduction was
+	// the opposite: an account that already exists at the checkpoint with a
+	// partial balance, then receives further credits. This context credits
+	// the SAME account across three checkpoints and asserts each checkpoint
+	// returns its own frozen balance (100, 350, 400). A future regression
+	// in the scan layer (e.g. accumulating live entries on top of checkpoint
+	// entries) would surface here even if the simpler test still passed.
+	Context("GetAccount(checkpoint_id) returns frozen balance for the same account across checkpoints", Ordered, func() {
+		var (
+			ctx           context.Context
+			client        servicepb.BucketServiceClient
+			clusterClient clusterpb.ClusterServiceClient
+		)
+
+		const (
+			httpPort   = 9222
+			grpcPort   = 8222
+			ledgerName = "qcp-progressive-balance"
+			acc        = "users:test"
+			asset      = "USD"
+		)
+
+		var cpA, cpB, cpC uint64
+
+		BeforeAll(func() {
+			ctx, client, clusterClient = testutil.SetupSingleNode(httpPort, grpcPort)
+
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					actions.CreateLedgerAction(ledgerName, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("builds three balance steps with a checkpoint after each credit", func() {
+			credit := func(amount int64) {
+				_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+					Requests: []*servicepb.Request{
+						actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", acc, big.NewInt(amount), asset),
+						}, nil),
+					},
+				})
+				Expect(err).To(Succeed())
+			}
+
+			snapshot := func() uint64 {
+				resp, err := clusterClient.CreateQueryCheckpoint(ctx, &clusterpb.CreateQueryCheckpointRequest{})
+				Expect(err).To(Succeed())
+
+				return resp.GetCheckpointId()
+			}
+
+			credit(100)
+			cpA = snapshot() // expected balance @ cpA = 100
+
+			credit(250)
+			cpB = snapshot() // expected balance @ cpB = 350
+
+			credit(50)
+			cpC = snapshot() // expected balance @ cpC = 400
+		})
+
+		assertBalance := func(cp uint64, expected string) {
+			GinkgoHelper()
+
+			resp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
+				Ledger:       ledgerName,
+				Address:      acc,
+				CheckpointId: cp,
+			})
+			Expect(err).To(Succeed())
+
+			vols, ok := resp.GetVolumes()[asset]
+			Expect(ok).To(BeTrue(), "expected %s volumes at checkpoint %d", asset, cp)
+			Expect(vols.GetBalance()).To(Equal(expected),
+				"balance at checkpoint %d should be frozen at %s", cp, expected)
+		}
+
+		It("checkpoint A returns the balance after the first credit only (100)", func() {
+			assertBalance(cpA, "100")
+		})
+
+		It("checkpoint B returns the balance after the first two credits (350)", func() {
+			assertBalance(cpB, "350")
+		})
+
+		It("checkpoint C returns the balance after all three credits (400)", func() {
+			assertBalance(cpC, "400")
+		})
+
+		It("live store returns the current balance (400)", func() {
+			resp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
+				Ledger:  ledgerName,
+				Address: acc,
+			})
+			Expect(err).To(Succeed())
+
+			Expect(resp.GetVolumes()[asset].GetBalance()).To(Equal("400"))
+		})
+	})
 })
 
 // listAllTransactionsFromCheckpoint collects all transactions from a checkpoint via the streaming RPC.
