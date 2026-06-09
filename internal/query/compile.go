@@ -351,11 +351,15 @@ func compileStringCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.Str
 // resolvedIntBounds holds resolved min/max bounds for an int64 range condition.
 // Values are already adjusted for exclusivity (min incremented if exclusive,
 // max incremented if inclusive) so the range is [min, max).
+//
+// When empty is true, no row can satisfy the condition (e.g. `field > MaxInt64`)
+// and the bounds-derived iterator should short-circuit to an empty result.
 type resolvedIntBounds struct {
 	min    int64
 	max    int64
 	hasMin bool
 	hasMax bool
+	empty  bool
 }
 
 // isEquality returns true if the resolved bounds cover exactly one value.
@@ -364,6 +368,28 @@ type resolvedIntBounds struct {
 // in the B+ tree, enabling streaming instead of materializing + sorting.
 func (b resolvedIntBounds) isEquality() bool {
 	return b.hasMin && b.hasMax && b.max == b.min+1
+}
+
+// applyMinExclusive turns `field > v` into `field >= v+1`. Returns (_, false)
+// when v == math.MaxInt64 — no int64 satisfies `field > MaxInt64`, so the
+// caller marks the bounds empty.
+func applyMinExclusive(v int64) (int64, bool) {
+	if v == math.MaxInt64 {
+		return 0, false
+	}
+
+	return v + 1, true
+}
+
+// applyMaxInclusive turns `field <= v` into `field < v+1`. Returns (_, false)
+// when v == math.MaxInt64 — `field <= MaxInt64` is the entire range, so the
+// caller drops the upper bound (hasMax stays false) instead of wrapping.
+func applyMaxInclusive(v int64) (int64, bool) {
+	if v == math.MaxInt64 {
+		return 0, false
+	}
+
+	return v + 1, true
 }
 
 // resolveIntBounds resolves an IntCondition's bounds from hardcoded values or parameters,
@@ -378,7 +404,14 @@ func resolveIntBounds(cond *commonpb.IntCondition, params map[string]*commonpb.P
 		}
 
 		if cond.GetMinExclusive() {
-			v++
+			nv, ok := applyMinExclusive(v)
+			if !ok {
+				b.empty = true
+
+				return b, nil
+			}
+
+			v = nv
 		}
 
 		b.min = v
@@ -386,7 +419,14 @@ func resolveIntBounds(cond *commonpb.IntCondition, params map[string]*commonpb.P
 	} else if cond.Min != nil {
 		v := cond.GetMin()
 		if cond.GetMinExclusive() {
-			v++
+			nv, ok := applyMinExclusive(v)
+			if !ok {
+				b.empty = true
+
+				return b, nil
+			}
+
+			v = nv
 		}
 
 		b.min = v
@@ -399,20 +439,23 @@ func resolveIntBounds(cond *commonpb.IntCondition, params map[string]*commonpb.P
 			return b, err
 		}
 
-		if !cond.GetMaxExclusive() {
-			v++
+		if cond.GetMaxExclusive() {
+			b.max = v
+			b.hasMax = true
+		} else if nv, ok := applyMaxInclusive(v); ok {
+			b.max = nv
+			b.hasMax = true
 		}
-
-		b.max = v
-		b.hasMax = true
+		// !ok: inclusive max at MaxInt64 means unbounded above — leave hasMax false.
 	} else if cond.Max != nil {
 		v := cond.GetMax()
-		if !cond.GetMaxExclusive() {
-			v++
+		if cond.GetMaxExclusive() {
+			b.max = v
+			b.hasMax = true
+		} else if nv, ok := applyMaxInclusive(v); ok {
+			b.max = nv
+			b.hasMax = true
 		}
-
-		b.max = v
-		b.hasMax = true
 	}
 
 	return b, nil
@@ -426,6 +469,10 @@ func compileIntCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.IntCon
 	bounds, err := resolveIntBounds(cond, ctx.params)
 	if err != nil {
 		return nil, err
+	}
+
+	if bounds.empty {
+		return &SliceIterator{}, nil
 	}
 
 	// Equality optimization: single value range -> entities are naturally sorted
@@ -482,16 +529,39 @@ func compileIntCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.IntCon
 
 // resolvedUintBounds holds resolved min/max bounds for a uint64 range condition.
 // Values are already adjusted for exclusivity so the range is [min, max).
+//
+// When empty is true, no row can satisfy the condition (e.g. `field > MaxUint64`).
 type resolvedUintBounds struct {
 	min    uint64
 	max    uint64
 	hasMin bool
 	hasMax bool
+	empty  bool
 }
 
 // isEquality returns true if the resolved bounds cover exactly one value.
 func (b resolvedUintBounds) isEquality() bool {
 	return b.hasMin && b.hasMax && b.max == b.min+1
+}
+
+// applyMinExclusiveUint turns `field > v` into `field >= v+1`. Returns
+// (_, false) when v == math.MaxUint64.
+func applyMinExclusiveUint(v uint64) (uint64, bool) {
+	if v == math.MaxUint64 {
+		return 0, false
+	}
+
+	return v + 1, true
+}
+
+// applyMaxInclusiveUint turns `field <= v` into `field < v+1`. Returns
+// (_, false) when v == math.MaxUint64 (caller drops the upper bound).
+func applyMaxInclusiveUint(v uint64) (uint64, bool) {
+	if v == math.MaxUint64 {
+		return 0, false
+	}
+
+	return v + 1, true
 }
 
 // resolveUintBounds resolves a UintCondition's bounds from hardcoded values or parameters,
@@ -506,7 +576,14 @@ func resolveUintBounds(cond *commonpb.UintCondition, params map[string]*commonpb
 		}
 
 		if cond.GetMinExclusive() {
-			v++
+			nv, ok := applyMinExclusiveUint(v)
+			if !ok {
+				b.empty = true
+
+				return b, nil
+			}
+
+			v = nv
 		}
 
 		b.min = v
@@ -514,7 +591,14 @@ func resolveUintBounds(cond *commonpb.UintCondition, params map[string]*commonpb
 	} else if cond.Min != nil {
 		v := cond.GetMin()
 		if cond.GetMinExclusive() {
-			v++
+			nv, ok := applyMinExclusiveUint(v)
+			if !ok {
+				b.empty = true
+
+				return b, nil
+			}
+
+			v = nv
 		}
 
 		b.min = v
@@ -527,20 +611,22 @@ func resolveUintBounds(cond *commonpb.UintCondition, params map[string]*commonpb
 			return b, err
 		}
 
-		if !cond.GetMaxExclusive() {
-			v++
+		if cond.GetMaxExclusive() {
+			b.max = v
+			b.hasMax = true
+		} else if nv, ok := applyMaxInclusiveUint(v); ok {
+			b.max = nv
+			b.hasMax = true
 		}
-
-		b.max = v
-		b.hasMax = true
 	} else if cond.Max != nil {
 		v := cond.GetMax()
-		if !cond.GetMaxExclusive() {
-			v++
+		if cond.GetMaxExclusive() {
+			b.max = v
+			b.hasMax = true
+		} else if nv, ok := applyMaxInclusiveUint(v); ok {
+			b.max = nv
+			b.hasMax = true
 		}
-
-		b.max = v
-		b.hasMax = true
 	}
 
 	return b, nil
@@ -553,6 +639,10 @@ func compileUintCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.UintC
 	bounds, err := resolveUintBounds(cond, ctx.params)
 	if err != nil {
 		return nil, err
+	}
+
+	if bounds.empty {
+		return &SliceIterator{}, nil
 	}
 
 	// Equality optimization: single value range -> streaming

@@ -1,6 +1,7 @@
 package query
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -310,6 +311,7 @@ func TestResolveIntBounds(t *testing.T) {
 		wantHasMin bool
 		wantHasMax bool
 		wantEq     bool
+		wantEmpty  bool
 		wantErr    bool
 	}{
 		{
@@ -395,6 +397,32 @@ func TestResolveIntBounds(t *testing.T) {
 			cond:    &commonpb.IntCondition{ParamMin: "missing"},
 			wantErr: true,
 		},
+		{
+			name:      "overflow: min exclusive at MaxInt64 → empty",
+			cond:      &commonpb.IntCondition{Min: new(int64(math.MaxInt64)), MinExclusive: true},
+			wantEmpty: true,
+		},
+		{
+			name:       "overflow: max inclusive at MaxInt64 → unbounded above",
+			cond:       &commonpb.IntCondition{Min: new(int64(0)), Max: new(int64(math.MaxInt64))},
+			wantMin:    0,
+			wantHasMin: true,
+			wantHasMax: false,
+		},
+		{
+			name:      "overflow: param min exclusive at MaxInt64 → empty",
+			cond:      &commonpb.IntCondition{ParamMin: "v", MinExclusive: true},
+			params:    map[string]*commonpb.ParameterValue{"v": {Value: &commonpb.ParameterValue_Int64Value{Int64Value: math.MaxInt64}}},
+			wantEmpty: true,
+		},
+		{
+			name:       "overflow: param max inclusive at MaxInt64 → unbounded above",
+			cond:       &commonpb.IntCondition{Min: new(int64(0)), ParamMax: "v"},
+			params:     map[string]*commonpb.ParameterValue{"v": {Value: &commonpb.ParameterValue_Int64Value{Int64Value: math.MaxInt64}}},
+			wantMin:    0,
+			wantHasMin: true,
+			wantHasMax: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -409,6 +437,7 @@ func TestResolveIntBounds(t *testing.T) {
 			}
 
 			require.NoError(t, err)
+			assert.Equal(t, tt.wantEmpty, got.empty, "empty")
 			assert.Equal(t, tt.wantHasMin, got.hasMin, "hasMin")
 			assert.Equal(t, tt.wantHasMax, got.hasMax, "hasMax")
 
@@ -437,6 +466,7 @@ func TestResolveUintBounds(t *testing.T) {
 		wantHasMin bool
 		wantHasMax bool
 		wantEq     bool
+		wantEmpty  bool
 		wantErr    bool
 	}{
 		{
@@ -505,6 +535,24 @@ func TestResolveUintBounds(t *testing.T) {
 			cond:    &commonpb.UintCondition{ParamMax: "missing"},
 			wantErr: true,
 		},
+		{
+			name:      "overflow: min exclusive at MaxUint64 → empty",
+			cond:      &commonpb.UintCondition{Min: new(uint64(math.MaxUint64)), MinExclusive: true},
+			wantEmpty: true,
+		},
+		{
+			name:       "overflow: max inclusive at MaxUint64 → unbounded above",
+			cond:       &commonpb.UintCondition{Min: new(uint64(0)), Max: new(uint64(math.MaxUint64))},
+			wantMin:    0,
+			wantHasMin: true,
+			wantHasMax: false,
+		},
+		{
+			name:      "overflow: param min exclusive at MaxUint64 → empty",
+			cond:      &commonpb.UintCondition{ParamMin: "v", MinExclusive: true},
+			params:    map[string]*commonpb.ParameterValue{"v": {Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: math.MaxUint64}}},
+			wantEmpty: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -519,6 +567,7 @@ func TestResolveUintBounds(t *testing.T) {
 			}
 
 			require.NoError(t, err)
+			assert.Equal(t, tt.wantEmpty, got.empty, "empty")
 			assert.Equal(t, tt.wantHasMin, got.hasMin, "hasMin")
 			assert.Equal(t, tt.wantHasMax, got.hasMax, "hasMax")
 

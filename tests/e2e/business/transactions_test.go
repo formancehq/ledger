@@ -3,13 +3,14 @@
 package business
 
 import (
-	"github.com/formancehq/ledger/v3/pkg/actions"
+	"math"
 	"math/big"
 	"time"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
@@ -1347,6 +1348,51 @@ var _ = Describe("Transactions", Ordered, func() {
 			txs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, filter)
 			Expect(err).To(Succeed())
 			Expect(txs).To(BeEmpty())
+		})
+
+		It("Should return empty when filter is `score > MaxInt64` (impossible)", func() {
+			// `score > MaxInt64` matches nothing; previously the compiler
+			// incremented v++ and wrapped to MinInt64, turning this into
+			// `score >= MinInt64` which returned every indexed row.
+			val := int64(math.MaxInt64)
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Field{
+					Field: &commonpb.FieldCondition{
+						Field: &commonpb.FieldRef{Metadata: "score"},
+						Condition: &commonpb.FieldCondition_IntCond{
+							IntCond: &commonpb.IntCondition{
+								Min:          &val,
+								MinExclusive: true,
+							},
+						},
+					},
+				},
+			}
+			txs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, filter)
+			Expect(err).To(Succeed())
+			Expect(txs).To(BeEmpty())
+		})
+
+		It("Should match all indexed rows when filter is `score <= MaxInt64` (full range)", func() {
+			// `score <= MaxInt64` is the entire representable range; the
+			// compiler previously incremented v++ and wrapped to MinInt64,
+			// flipping the upper bound and returning zero rows.
+			val := int64(math.MaxInt64)
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Field{
+					Field: &commonpb.FieldCondition{
+						Field: &commonpb.FieldRef{Metadata: "score"},
+						Condition: &commonpb.FieldCondition_IntCond{
+							IntCond: &commonpb.IntCondition{
+								Max: &val,
+							},
+						},
+					},
+				},
+			}
+			txs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, filter)
+			Expect(err).To(Succeed())
+			Expect(txs).To(HaveLen(4)) // tx1..tx4 have score; tx5 doesn't
 		})
 	})
 
