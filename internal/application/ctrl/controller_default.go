@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"slices"
 	"time"
 
@@ -30,6 +29,26 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
+
+const (
+	// DefaultPageSize is used when callers pass pageSize=0 (unspecified).
+	DefaultPageSize uint32 = 100
+	// MaxPageSize is the hard server-side upper bound for list queries.
+	MaxPageSize uint32 = 1000
+)
+
+// ClampPageSize applies default and maximum bounds to a page size value.
+func ClampPageSize(pageSize uint32) uint32 {
+	if pageSize == 0 {
+		return DefaultPageSize
+	}
+
+	if pageSize > MaxPageSize {
+		return MaxPageSize
+	}
+
+	return pageSize
+}
 
 var (
 	tracer         = otel.Tracer("ctrl")
@@ -286,9 +305,11 @@ func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *
 		return nil, err
 	}
 
-	if pageSize == 0 {
-		pageSize = math.MaxUint32
-	}
+	// Defense in depth: server callers already clamp, but a missed call
+	// site (or a non-public caller) must not be able to ask for
+	// math.MaxUint32 here and force the cursor to materialise an
+	// unbounded slice.
+	pageSize = ClampPageSize(pageSize)
 
 	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 
@@ -374,9 +395,8 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 		return nil, err
 	}
 
-	if pageSize == 0 {
-		pageSize = math.MaxUint32
-	}
+	// Defense in depth — see ListTransactionsFrom for rationale.
+	pageSize = ClampPageSize(pageSize)
 
 	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 
@@ -994,9 +1014,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 		return nil, err
 	}
 
-	if pageSize == 0 {
-		pageSize = math.MaxUint32
-	}
+	pageSize = ClampPageSize(pageSize)
 
 	// Translate afterSequence into a LogId filter so the Compile framework
 	// respects the cursor position. LogId with min=afterSequence, min_exclusive=true
@@ -1081,9 +1099,10 @@ func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, afterSequen
 		})
 	}
 
-	if pageSize > 0 {
-		result = cursor.NewLimitedCursor(result, pageSize)
-	}
+	// Always cap audit-entry materialization. A caller that needs more than
+	// MaxPageSize entries paginates by passing the previous page's last
+	// AfterSequence — there is no "unlimited" option at the public boundary.
+	result = cursor.NewLimitedCursor(result, ClampPageSize(pageSize))
 
 	return result, nil
 }

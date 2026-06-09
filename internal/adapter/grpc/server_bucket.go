@@ -213,9 +213,7 @@ func (impl *BucketServiceServerImpl) ListPeriods(req *servicepb.ListPeriodsReque
 		return fmt.Errorf("listing periods: %w", err)
 	}
 
-	if req.GetPageSize() > 0 {
-		c = cursor.NewLimitedCursor(c, req.GetPageSize())
-	}
+	c = cursor.NewLimitedCursor(c, ctrl.ClampPageSize(req.GetPageSize()))
 
 	return sendCursorToStream(ctx, c, stream, "period")
 }
@@ -382,13 +380,13 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 			_ = mainStore.Close()
 		}()
 
-		cursor, err = impl.localCtrl.ListTransactionsFrom(profileCtx, mainStore, readIdx, req.GetLedger(), req.GetPageSize(), req.GetAfterTxId(), req.GetFilter(), req.GetReverse())
+		cursor, err = impl.localCtrl.ListTransactionsFrom(profileCtx, mainStore, readIdx, req.GetLedger(), ctrl.ClampPageSize(req.GetPageSize()), req.GetAfterTxId(), req.GetFilter(), req.GetReverse())
 	} else {
 		if waitErr := impl.waitMinLogSequence(ctx, req.GetMinLogSequence()); waitErr != nil {
 			return waitErr
 		}
 
-		cursor, err = impl.ctrl.ListTransactions(profileCtx, req.GetLedger(), req.GetPageSize(), req.GetAfterTxId(), req.GetFilter(), req.GetReverse())
+		cursor, err = impl.ctrl.ListTransactions(profileCtx, req.GetLedger(), ctrl.ClampPageSize(req.GetPageSize()), req.GetAfterTxId(), req.GetFilter(), req.GetReverse())
 	}
 
 	if err != nil {
@@ -414,9 +412,7 @@ func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersReque
 		return fmt.Errorf("listing ledgers: %w", err)
 	}
 
-	if req.GetPageSize() > 0 {
-		c = cursor.NewLimitedCursor(c, req.GetPageSize())
-	}
+	c = cursor.NewLimitedCursor(c, ctrl.ClampPageSize(req.GetPageSize()))
 
 	return sendCursorToStream(ctx, c, stream, "ledger")
 }
@@ -493,7 +489,7 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 
 	profileCtx, profile := query.WithProfile(ctx)
 
-	cursor, err := c.ListAccounts(profileCtx, req.GetLedger(), req.GetPageSize(), req.GetAfterAddress(), req.GetFilter(), req.GetReverse())
+	cursor, err := c.ListAccounts(profileCtx, req.GetLedger(), ctrl.ClampPageSize(req.GetPageSize()), req.GetAfterAddress(), req.GetFilter(), req.GetReverse())
 	if err != nil {
 		return fmt.Errorf("listing accounts: %w", err)
 	}
@@ -684,7 +680,7 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 		return err
 	}
 
-	cursor, err := impl.ctrl.ListAuditEntries(ctx, req.AfterSequence, req.FailuresOnly, req.PageSize, req.GetLedger()) //nolint:protogetter
+	cursor, err := impl.ctrl.ListAuditEntries(ctx, req.AfterSequence, req.FailuresOnly, ctrl.ClampPageSize(req.PageSize), req.GetLedger()) //nolint:protogetter
 	if err != nil {
 		return fmt.Errorf("listing audit entries: %w", err)
 	}
@@ -736,7 +732,7 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 		afterSequence = req.GetAfterSequence()
 	}
 
-	cursor, err := c.ListLogs(ctx, req.GetLedger(), afterSequence, req.GetPageSize(), req.GetFilter())
+	cursor, err := c.ListLogs(ctx, req.GetLedger(), afterSequence, ctrl.ClampPageSize(req.GetPageSize()), req.GetFilter())
 	if err != nil {
 		return fmt.Errorf("listing logs: %w", err)
 	}

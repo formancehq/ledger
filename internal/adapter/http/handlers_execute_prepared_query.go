@@ -48,14 +48,17 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	// Also accept query parameters for GET-like usage. Invalid pageSize is a
-	// client error; we don't silently fall back to the default.
-	if qsPageSize, ok := parsePageSize(w, r); ok {
-		if qsPageSize != 0 {
-			body.PageSize = qsPageSize
+	// Also accept ?pageSize= for GET-like usage. The QS form takes precedence
+	// over the JSON body when explicitly set; only parse it when the param is
+	// actually present so we don't clobber a body-provided pageSize with the
+	// default (parsePageSize returns DefaultPageSize for an empty QS).
+	if r.URL.Query().Has("pageSize") {
+		qsPageSize, ok := parsePageSize(w, r)
+		if !ok {
+			return
 		}
-	} else {
-		return
+
+		body.PageSize = qsPageSize
 	}
 
 	if c := r.URL.Query().Get("cursor"); c != "" {

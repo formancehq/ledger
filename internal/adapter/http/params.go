@@ -67,12 +67,17 @@ func requireTransactionID(w http.ResponseWriter, r *http.Request) (uint64, bool)
 	return transactionID, true
 }
 
+const (
+	defaultPageSize uint32 = 100
+	maxPageSize     uint32 = 1000
+)
+
 // parsePageSize extracts and validates the optional pageSize query parameter.
-// Returns the page size (0 if not specified) and true on success; writes a 400 response and returns false on failure.
+// Returns defaultPageSize when not specified or zero. Caps at maxPageSize.
 func parsePageSize(w http.ResponseWriter, r *http.Request) (uint32, bool) {
 	ps := r.URL.Query().Get("pageSize")
 	if ps == "" {
-		return 0, true
+		return defaultPageSize, true
 	}
 
 	parsed, err := strconv.ParseUint(ps, 10, 32)
@@ -82,7 +87,16 @@ func parsePageSize(w http.ResponseWriter, r *http.Request) (uint32, bool) {
 		return 0, false
 	}
 
-	return uint32(parsed), true
+	size := uint32(parsed)
+	if size == 0 {
+		size = defaultPageSize
+	}
+
+	if size > maxPageSize {
+		size = maxPageSize
+	}
+
+	return size, true
 }
 
 // parseMetadataBody reads and validates a metadata JSON body from the request.

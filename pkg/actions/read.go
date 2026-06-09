@@ -54,58 +54,130 @@ func ListNumscripts(ctx context.Context, client servicepb.BucketServiceClient, l
 	return scripts, nil
 }
 
-// ListAllAccounts collects all accounts for a ledger from the streaming RPC.
+// ListAllAccounts collects every account for a ledger by paginating through
+// the streaming RPC. The server caps each call at MaxPageSize, so a single
+// call only returns the first 1000 accounts; this helper loops with the
+// last-seen address as a cursor until the server returns a short page.
 func ListAllAccounts(ctx context.Context, client servicepb.BucketServiceClient, ledgerName string) ([]*commonpb.Account, error) {
-	stream, err := client.ListAccounts(ctx, &servicepb.ListAccountsRequest{
-		Ledger: ledgerName,
-	})
-	if err != nil {
-		return nil, err
-	}
+	var (
+		accounts     []*commonpb.Account
+		afterAddress string
+	)
 
-	var accounts []*commonpb.Account
 	for {
-		account, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			break
-		}
+		stream, err := client.ListAccounts(ctx, &servicepb.ListAccountsRequest{
+			Ledger:       ledgerName,
+			PageSize:     listAllPageSize,
+			AfterAddress: afterAddress,
+		})
 		if err != nil {
 			return nil, err
 		}
-		accounts = append(accounts, account)
-	}
 
-	return accounts, nil
+		page := 0
+
+		for {
+			account, err := stream.Recv()
+			if errors.Is(err, io.EOF) {
+				break
+			}
+
+			if err != nil {
+				return nil, err
+			}
+
+			accounts = append(accounts, account)
+			page++
+		}
+
+		if page < int(listAllPageSize) {
+			return accounts, nil
+		}
+
+		afterAddress = accounts[len(accounts)-1].GetAddress()
+	}
 }
 
-// ListAllTransactions collects all transactions for a ledger from the streaming RPC.
+// ListAllTransactions collects every transaction for a ledger by paginating
+// through the streaming RPC. See ListAllAccounts for the pagination shape.
 func ListAllTransactions(ctx context.Context, client servicepb.BucketServiceClient, ledgerName string) ([]*commonpb.Transaction, error) {
-	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
-		Ledger: ledgerName,
-	})
-	if err != nil {
-		return nil, err
-	}
+	var (
+		transactions []*commonpb.Transaction
+		afterTxID    uint64
+	)
 
-	var transactions []*commonpb.Transaction
 	for {
-		tx, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			break
-		}
+		stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
+			Ledger:    ledgerName,
+			PageSize:  listAllPageSize,
+			AfterTxId: afterTxID,
+		})
 		if err != nil {
 			return nil, err
 		}
-		transactions = append(transactions, tx)
+
+		page := 0
+
+		for {
+			tx, err := stream.Recv()
+			if errors.Is(err, io.EOF) {
+				break
+			}
+
+			if err != nil {
+				return nil, err
+			}
+
+			transactions = append(transactions, tx)
+			page++
+		}
+
+		if page < int(listAllPageSize) {
+			return transactions, nil
+		}
+
+		afterTxID = transactions[len(transactions)-1].GetId()
 	}
-
-	return transactions, nil
 }
 
-// ListAllLogs collects all system logs for a ledger from the streaming RPC.
+// ListAllLogs collects every system log for a ledger by paginating through
+// the streaming RPC using AfterSequence. The server caps each call at
+// MaxPageSize, so we loop with the last sequence as a cursor.
 func ListAllLogs(ctx context.Context, client servicepb.BucketServiceClient, ledger string) ([]*commonpb.Log, error) {
-	return ListLogsFiltered(ctx, client, &servicepb.ListLogsRequest{Ledger: ledger})
+	var (
+		logs          []*commonpb.Log
+		afterSequence uint64
+	)
+
+	for {
+		req := &servicepb.ListLogsRequest{
+			Ledger:   ledger,
+			PageSize: listAllPageSize,
+		}
+		if afterSequence > 0 {
+			req.AfterSequence = &afterSequence
+		}
+
+		page, err := ListLogsFiltered(ctx, client, req)
+		if err != nil {
+			return nil, err
+		}
+
+		logs = append(logs, page...)
+
+		if len(page) < int(listAllPageSize) {
+			return logs, nil
+		}
+
+		afterSequence = page[len(page)-1].GetSequence()
+	}
 }
+
+// listAllPageSize is the per-call page size used by every ListAll* helper.
+// It must match the server's MaxPageSize so each iteration of the loop
+// drains a full page from the server. A short page is the loop's
+// termination signal.
+const listAllPageSize uint32 = 1000
 
 // ListAllPeriods collects all periods from the streaming RPC.
 func ListAllPeriods(ctx context.Context, client servicepb.BucketServiceClient) ([]*commonpb.Period, error) {
@@ -182,26 +254,55 @@ func ListAuditEntries(ctx context.Context, client servicepb.BucketServiceClient,
 	})
 }
 
-// ListAuditEntriesWithRequest collects all audit entries using the provided request.
+// ListAuditEntriesWithRequest collects all audit entries matching the given
+// request by paginating through the streaming RPC. The server caps each call
+// at MaxPageSize; this helper loops with the last-seen sequence as a cursor
+// until the server returns a short page. The caller-supplied PageSize /
+// AfterSequence on req are used to seed the first call and are then
+// overwritten on each subsequent iteration.
 func ListAuditEntriesWithRequest(ctx context.Context, client servicepb.BucketServiceClient, req *servicepb.ListAuditEntriesRequest) ([]*auditpb.AuditEntry, error) {
-	stream, err := client.ListAuditEntries(ctx, req)
-	if err != nil {
-		return nil, err
+	// Field-by-field copy rather than `page := *req` — protobuf-generated
+	// messages embed a sync.Mutex (in MessageState) so value copy trips
+	// govet (copylocks). We only need the request fields used by the
+	// underlying RPC; the per-page cursor is updated below.
+	page := &servicepb.ListAuditEntriesRequest{
+		PageSize:      listAllPageSize,
+		AfterSequence: req.AfterSequence,
+		FailuresOnly:  req.GetFailuresOnly(),
+		Ledger:        req.GetLedger(),
 	}
 
 	var entries []*auditpb.AuditEntry
+
 	for {
-		entry, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			break
-		}
+		stream, err := client.ListAuditEntries(ctx, page)
 		if err != nil {
 			return nil, err
 		}
-		entries = append(entries, entry)
-	}
 
-	return entries, nil
+		pageLen := 0
+
+		for {
+			entry, err := stream.Recv()
+			if errors.Is(err, io.EOF) {
+				break
+			}
+
+			if err != nil {
+				return nil, err
+			}
+
+			entries = append(entries, entry)
+			pageLen++
+		}
+
+		if pageLen < int(listAllPageSize) {
+			return entries, nil
+		}
+
+		next := entries[len(entries)-1].GetSequence()
+		page.AfterSequence = &next
+	}
 }
 
 // ListLogsFiltered collects logs matching the given request parameters.
