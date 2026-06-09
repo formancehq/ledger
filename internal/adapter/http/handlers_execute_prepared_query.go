@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
-	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
@@ -36,29 +36,37 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 		MinLogSequence uint64                     `json:"minLogSequence"`
 		Mode           string                     `json:"mode"`
 	}
-	if r.Body != nil && r.ContentLength > 0 {
+	// Decode the body whenever one is present. Don't gate on ContentLength
+	// because chunked / unknown-length requests report ContentLength == -1;
+	// io.EOF means "no body" and is the only acceptable empty case.
+	if r.Body != nil {
 		err := json.NewDecoder(r.Body).Decode(&body)
-		if err != nil {
+		if err != nil && !errors.Is(err, io.EOF) {
 			writeBadRequest(w, "INVALID_REQUEST", err)
 
 			return
 		}
 	}
 
-	// Also accept query parameters for GET-like usage
-	if ps := r.URL.Query().Get("pageSize"); ps != "" {
-		if v, err := strconv.ParseUint(ps, 10, 32); err == nil {
-			body.PageSize = uint32(v)
+	// Also accept query parameters for GET-like usage. Invalid pageSize is a
+	// client error; we don't silently fall back to the default.
+	if qsPageSize, ok := parsePageSize(w, r); ok {
+		if qsPageSize != 0 {
+			body.PageSize = qsPageSize
 		}
+	} else {
+		return
 	}
 
 	if c := r.URL.Query().Get("cursor"); c != "" {
 		body.Cursor = c
 	}
 
-	mode := commonpb.QueryMode_QUERY_MODE_LIST
-	if body.Mode == "AGGREGATE_VOLUMES" {
-		mode = commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES
+	mode, ok := parseQueryMode(body.Mode)
+	if !ok {
+		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("unknown mode %q", body.Mode))
+
+		return
 	}
 
 	params, err := convertJSONParameters(body.Parameters)
@@ -144,4 +152,17 @@ func jsonToParameterValue(raw json.RawMessage) (*commonpb.ParameterValue, error)
 	}
 
 	return nil, fmt.Errorf("unsupported value type: %s", string(raw))
+}
+
+// parseQueryMode maps the wire string to a QueryMode enum value. The empty
+// string defaults to LIST for backwards-compatible "no mode" callers.
+func parseQueryMode(s string) (commonpb.QueryMode, bool) {
+	switch s {
+	case "", "LIST":
+		return commonpb.QueryMode_QUERY_MODE_LIST, true
+	case "AGGREGATE_VOLUMES":
+		return commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES, true
+	default:
+		return 0, false
+	}
 }

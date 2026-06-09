@@ -150,6 +150,73 @@ func TestHandleExecutePreparedQuery_WithParameters(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
+func TestHandleExecutePreparedQuery_ChunkedBody(t *testing.T) {
+	t.Parallel()
+
+	var capturedPageSize uint32
+
+	backend := &mockBackend{
+		executePreparedQueryFn: func(_ context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+			capturedPageSize = req.GetPageSize()
+
+			return &servicepb.ExecutePreparedQueryResponse{}, nil
+		},
+	}
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries/my-query/execute", strings.NewReader(`{"pageSize":42}`), map[string]string{
+		"ledgerName": "ledger1",
+		"queryName":  "my-query",
+	})
+	// Simulate chunked transfer-encoding by clearing Content-Length and
+	// flagging the request as chunked; ContentLength == -1 must not skip
+	// body decoding.
+	r.ContentLength = -1
+	r.TransferEncoding = []string{"chunked"}
+
+	srv.handleExecutePreparedQuery(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, uint32(42), capturedPageSize)
+}
+
+func TestHandleExecutePreparedQuery_InvalidPageSizeQueryString(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, &mockBackend{})
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries/my-query/execute?pageSize=not-a-number", nil, map[string]string{
+		"ledgerName": "ledger1",
+		"queryName":  "my-query",
+	})
+
+	srv.handleExecutePreparedQuery(w, r)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Contains(t, w.Body.String(), "pageSize")
+}
+
+func TestHandleExecutePreparedQuery_UnknownMode(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, &mockBackend{})
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries/my-query/execute",
+		strings.NewReader(`{"mode":"BOGUS"}`),
+		map[string]string{
+			"ledgerName": "ledger1",
+			"queryName":  "my-query",
+		})
+
+	srv.handleExecutePreparedQuery(w, r)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Contains(t, w.Body.String(), "BOGUS")
+}
+
 func TestHandleExecutePreparedQuery_UnsupportedParameterType(t *testing.T) {
 	t.Parallel()
 
