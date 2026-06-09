@@ -1026,6 +1026,10 @@ func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *
 }
 
 func (impl *BucketServiceServerImpl) GetNumscript(ctx context.Context, req *servicepb.GetNumscriptRequest) (*commonpb.NumscriptInfo, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeQueriesRead); err != nil {
+		return nil, err
+	}
+
 	c, cleanup, err := impl.readController(req.GetCheckpointId())
 	if err != nil {
 		return nil, err
@@ -1038,6 +1042,10 @@ func (impl *BucketServiceServerImpl) GetNumscript(ctx context.Context, req *serv
 func (impl *BucketServiceServerImpl) ListNumscripts(req *servicepb.ListNumscriptsRequest, stream servicepb.BucketService_ListNumscriptsServer) error {
 	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListNumscripts")
 	defer span.End()
+
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeQueriesRead); err != nil {
+		return err
+	}
 
 	c, cleanup, err := impl.readController(req.GetCheckpointId())
 	if err != nil {

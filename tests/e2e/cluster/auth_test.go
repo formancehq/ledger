@@ -317,5 +317,72 @@ var _ = Describe("Auth", Ordered, func() {
 			Expect(err).To(Succeed())
 			Expect(state.Leader).NotTo(BeZero())
 		})
+
+		It("should reject GetNumscript without token", func() {
+			_, err := client.GetNumscript(ctx, &servicepb.GetNumscriptRequest{
+				Ledger: "auth-test-ledger",
+				Name:   "missing-script",
+			})
+			Expect(err).To(HaveOccurred())
+			st, ok := status.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(st.Code()).To(Equal(codes.Unauthenticated))
+		})
+
+		It("should reject ListNumscripts without token", func() {
+			stream, err := client.ListNumscripts(ctx, &servicepb.ListNumscriptsRequest{
+				Ledger: "auth-test-ledger",
+			})
+			Expect(err).To(Succeed())
+			_, err = stream.Recv()
+			Expect(err).To(HaveOccurred())
+			st, ok := status.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(st.Code()).To(Equal(codes.Unauthenticated))
+		})
+
+		It("should allow GetNumscript with ledger:read scope (queries:read mapped)", func() {
+			token, err := signJWT(privKey, makeAuthClaims(oidcServer.URL, "ledger:read"))
+			Expect(err).To(Succeed())
+			authCtx := withAuthToken(ctx, token)
+
+			// Script doesn't exist; NotFound is the expected non-auth outcome.
+			_, err = client.GetNumscript(authCtx, &servicepb.GetNumscriptRequest{
+				Ledger: "auth-test-ledger",
+				Name:   "missing-script",
+			})
+			if err != nil {
+				st, ok := status.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(st.Code()).NotTo(Equal(codes.Unauthenticated))
+				Expect(st.Code()).NotTo(Equal(codes.PermissionDenied))
+			}
+		})
+
+		It("should allow ListNumscripts with ledger:read scope (queries:read mapped)", func() {
+			token, err := signJWT(privKey, makeAuthClaims(oidcServer.URL, "ledger:read"))
+			Expect(err).To(Succeed())
+			authCtx := withAuthToken(ctx, token)
+
+			stream, err := client.ListNumscripts(authCtx, &servicepb.ListNumscriptsRequest{
+				Ledger: "auth-test-ledger",
+			})
+			Expect(err).To(Succeed())
+			// Drain the stream; empty ledger means the stream ends with EOF.
+			for {
+				_, err := stream.Recv()
+				if err != nil {
+					st, ok := status.FromError(err)
+					if !ok {
+						break // io.EOF
+					}
+
+					Expect(st.Code()).NotTo(Equal(codes.Unauthenticated))
+					Expect(st.Code()).NotTo(Equal(codes.PermissionDenied))
+
+					break
+				}
+			}
+		})
 	})
 })
