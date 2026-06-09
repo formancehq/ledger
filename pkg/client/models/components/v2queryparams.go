@@ -34,9 +34,9 @@ func (e *V2QueryParams4Resource) UnmarshalJSON(data []byte) error {
 }
 
 type QueryTemplateVolumeParams struct {
-	Resource      *V2QueryParams4Resource `json:"resource,omitempty"`
-	InsertionDate *bool                   `json:"insertionDate,omitempty"`
-	GroupBy       *int64                  `json:"groupBy,omitempty"`
+	Resource      V2QueryParams4Resource `json:"resource"`
+	InsertionDate *bool                  `json:"insertionDate,omitempty"`
+	GroupBy       *int64                 `json:"groupBy,omitempty"`
 	// The maximum number of results to return per page.
 	//
 	PageSize *int64 `json:"pageSize,omitempty"`
@@ -59,15 +59,15 @@ func (q QueryTemplateVolumeParams) MarshalJSON() ([]byte, error) {
 }
 
 func (q *QueryTemplateVolumeParams) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &q, "", false, nil); err != nil {
+	if err := utils.UnmarshalJSON(data, &q, "", false, []string{"resource"}); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (q *QueryTemplateVolumeParams) GetResource() *V2QueryParams4Resource {
+func (q *QueryTemplateVolumeParams) GetResource() V2QueryParams4Resource {
 	if q == nil {
-		return nil
+		return V2QueryParams4Resource("")
 	}
 	return q.Resource
 }
@@ -145,7 +145,7 @@ func (e *V2QueryParams3Resource) UnmarshalJSON(data []byte) error {
 }
 
 type QueryTemplateLogParams struct {
-	Resource *V2QueryParams3Resource `json:"resource,omitempty"`
+	Resource V2QueryParams3Resource `json:"resource"`
 	// The maximum number of results to return per page.
 	//
 	PageSize *int64 `json:"pageSize,omitempty"`
@@ -168,15 +168,15 @@ func (q QueryTemplateLogParams) MarshalJSON() ([]byte, error) {
 }
 
 func (q *QueryTemplateLogParams) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &q, "", false, nil); err != nil {
+	if err := utils.UnmarshalJSON(data, &q, "", false, []string{"resource"}); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (q *QueryTemplateLogParams) GetResource() *V2QueryParams3Resource {
+func (q *QueryTemplateLogParams) GetResource() V2QueryParams3Resource {
 	if q == nil {
-		return nil
+		return V2QueryParams3Resource("")
 	}
 	return q.Resource
 }
@@ -240,7 +240,7 @@ func (e *V2QueryParamsResource) UnmarshalJSON(data []byte) error {
 }
 
 type QueryTemplateTransactionParams struct {
-	Resource *V2QueryParamsResource `json:"resource,omitempty"`
+	Resource V2QueryParamsResource `json:"resource"`
 	// The maximum number of results to return per page.
 	//
 	PageSize *int64 `json:"pageSize,omitempty"`
@@ -263,15 +263,15 @@ func (q QueryTemplateTransactionParams) MarshalJSON() ([]byte, error) {
 }
 
 func (q *QueryTemplateTransactionParams) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &q, "", false, nil); err != nil {
+	if err := utils.UnmarshalJSON(data, &q, "", false, []string{"resource"}); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (q *QueryTemplateTransactionParams) GetResource() *V2QueryParamsResource {
+func (q *QueryTemplateTransactionParams) GetResource() V2QueryParamsResource {
 	if q == nil {
-		return nil
+		return V2QueryParamsResource("")
 	}
 	return q.Resource
 }
@@ -335,7 +335,7 @@ func (e *V2QueryParams1Resource) UnmarshalJSON(data []byte) error {
 }
 
 type QueryTemplateAccountParams struct {
-	Resource *V2QueryParams1Resource `json:"resource,omitempty"`
+	Resource V2QueryParams1Resource `json:"resource"`
 	// The maximum number of results to return per page.
 	//
 	PageSize *int64 `json:"pageSize,omitempty"`
@@ -358,15 +358,15 @@ func (q QueryTemplateAccountParams) MarshalJSON() ([]byte, error) {
 }
 
 func (q *QueryTemplateAccountParams) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &q, "", false, nil); err != nil {
+	if err := utils.UnmarshalJSON(data, &q, "", false, []string{"resource"}); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (q *QueryTemplateAccountParams) GetResource() *V2QueryParams1Resource {
+func (q *QueryTemplateAccountParams) GetResource() V2QueryParams1Resource {
 	if q == nil {
-		return nil
+		return V2QueryParams1Resource("")
 	}
 	return q.Resource
 }

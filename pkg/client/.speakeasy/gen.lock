@@ -1,16 +1,16 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: ab78178ebbdd8336fc2cc052edd537df
+  docChecksum: 2093f8d6a23099ba44133f2398e87c8d
   docVersion: v2
   speakeasyVersion: 1.758.0
   generationVersion: 2.866.2
   releaseVersion: 0.10.2
   configChecksum: dd46b48d25fdb2a8e05e819ac208a15f
 persistentEdits:
-  generation_id: 364b2b81-3812-45a5-94a9-05c07f4f3656
-  pristine_commit_hash: 924c9075b735e7322a57a50995a75768c261e889
-  pristine_tree_hash: e82b67b2be20d0414c0fc5a27bb621cd1e7fb1fd
+  generation_id: b6a35582-e42c-4c4b-baa0-d4d1b151937a
+  pristine_commit_hash: bd51fa9560a142fdaefddf3adcb3c73ecd83313a
+  pristine_tree_hash: 92609235a6bfb071bf33332e1774d8a965a9f267
 features:
   go:
     additionalDependencies: 0.1.0
@@ -181,20 +181,20 @@ trackedFiles:
     pristine_git_object: 2b8540fbd6e13dfa9db42d3881a260bd0341be23
   docs/models/components/querytemplateaccountparams.md:
     id: 7e77b7c1fa51
-    last_write_checksum: sha1:650e24eda7c09cbc9724c2b0f0831299ae0f6b3f
-    pristine_git_object: d7010f3568b4ad609c15c6347602a3993217318f
+    last_write_checksum: sha1:c527afe6b62cb4a842947eaa33d2503fab03b377
+    pristine_git_object: 73a0058e4c3aecf251383f5eb1f659ab661a242b
   docs/models/components/querytemplatelogparams.md:
     id: 85cf272ed964
-    last_write_checksum: sha1:aeb6b0a7dafe6d86e47261d4d298bdb2f29e2f8a
-    pristine_git_object: ac46525fa7099fa98b201e5be99148c46e582a17
+    last_write_checksum: sha1:704af6b89efe4a04b2c35a1b37e4245e636cc273
+    pristine_git_object: 3b6ccd694dc8f6ef60273b59756a5479d134d5ae
   docs/models/components/querytemplatetransactionparams.md:
     id: e2bd0b54b385
-    last_write_checksum: sha1:b622d739f4943ed96553b20873ac1351576cc767
-    pristine_git_object: 6c0d731b77e88fdf880c775de14fd11c428c6f84
+    last_write_checksum: sha1:8c879668d3c5cd5814b29ab558e997ab2a8b181b
+    pristine_git_object: fb58742c71d27a58c70148aa6f8436b36f16cfae
   docs/models/components/querytemplatevolumeparams.md:
     id: cf44b00421a2
-    last_write_checksum: sha1:de89403b7a9370d1a925001574236102bc0a8647
-    pristine_git_object: f63d63e36fb65e78114c1627c29137d477743ecc
+    last_write_checksum: sha1:8e2c2703230430193559fffe08e64c3628d0c10c
+    pristine_git_object: bb7a73612775a8b6b52fd29af515da4997f432d7
   docs/models/components/resource.md:
     id: 7b2ee3d291d2
     last_write_checksum: sha1:fc9fc33629e6692521819df7defb7db52a24e9f2
@@ -1205,8 +1205,8 @@ trackedFiles:
     pristine_git_object: 95bb7a8c46e4d169ade75346257f43c31b339c3d
   docs/sdks/v2/README.md:
     id: 1fff216d9073
-    last_write_checksum: sha1:5ce2cea35b9c52ef84d2672e81d149a00a28ec2f
-    pristine_git_object: c7726bc1052043ff82bd758d5415498ba2289ebe
+    last_write_checksum: sha1:9d1c4581ac9cb2d929414ed68d39a2b3ee02447a
+    pristine_git_object: f84fd72547b7e8092bdf345420ff5a941d0cfa0f
   formance.go:
     id: 6a39aafd73d7
     last_write_checksum: sha1:627a105b55cd18cc71d68b29e5d329528b088915
@@ -1617,8 +1617,8 @@ trackedFiles:
     pristine_git_object: a6b98f751204bf8f039b6337065051ff0ccd8fa9
   models/components/v2queryparams.go:
     id: 8b42c448faf9
-    last_write_checksum: sha1:ec90d13f780d4a62b095a9999f34c944541d82a2
-    pristine_git_object: df236ab9c2f3dfa468b2f65a344d0e05b5e328a8
+    last_write_checksum: sha1:14f4af21ebb9eff3f2221ffe089ee533f66d5686
+    pristine_git_object: 7cab1901f4b7a58517a91754fa435540e9aa2b15
   models/components/v2queryresource.go:
     id: 3a0cc8418aab
     last_write_checksum: sha1:5808ef328f8c2f80410259567f39bf0533cf08df
@@ -2803,7 +2803,7 @@ examples:
           sort: "id:desc"
           schemaVersion: "v1.0.0"
       requestBody:
-        application/json: {"params": {"pageSize": 100, "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="}}
+        application/json: {"params": {"resource": "volumes", "pageSize": 100, "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==", "sort": "id:desc"}}
       responses:
         "200":
           application/json: {"resource": "transactions", "cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=", "data": []}}

@@ -4998,26 +4998,32 @@ components:
             Sort results using a field name and order (ascending or descending).
             Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
           example: id:desc
+      discriminator:
+        propertyName: resource
       oneOf:
         - x-speakeasy-name-override: QueryTemplateAccountParams
+          required: [resource]
           properties:
             resource:
               type: string
               enum:
                 - accounts
         - x-speakeasy-name-override: QueryTemplateTransactionParams
+          required: [resource]
           properties:
             resource:
               type: string
               enum:
                 - transactions
         - x-speakeasy-name-override: QueryTemplateLogParams
+          required: [resource]
           properties:
             resource:
               type: string
               enum:
                 - logs
         - x-speakeasy-name-override: QueryTemplateVolumeParams
+          required: [resource]
           properties:
             resource:
               type: string
