@@ -178,6 +178,10 @@ var errorMappings = []errorMapping{
 		return map[string]string{"index": e.Index}
 	}), codes.FailedPrecondition, domain.ErrReasonIndexBuilding},
 
+	{matchAs(func(e *domain.ErrIndexInconsistent) map[string]string {
+		return map[string]string{"index": e.Index, "detail": e.Detail}
+	}), codes.Internal, domain.ErrReasonIndexInconsistent},
+
 	{matchAs(func(e *domain.ErrAccountNotMatchingType) map[string]string {
 		return map[string]string{"address": e.Address}
 	}), codes.FailedPrecondition, domain.ErrReasonAccountNotMatchingType},

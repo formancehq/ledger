@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -94,18 +95,31 @@ func (c *ledgerLogCursor) Close() error { return nil }
 // ReadLedgerLogsCompiled returns a cursor over log entries using pre-compiled
 // logID bytes from the Compile framework. It resolves logIDs → global sequences
 // via the read index, then fetches the full Log from Pebble for each entry.
+//
+// Any structural inconsistency between the filter index (source of logIDs)
+// and the per-ledger log index (lookup target) is surfaced as
+// ErrIndexInconsistent rather than silently skipped — see #192. A
+// truncated query result is worse than a clear error because the caller
+// cannot tell it apart from a legitimate empty result.
 func ReadLedgerLogsCompiled(
 	pebbleReader dal.PebbleGetter,
 	indexReader dal.PebbleGetter,
 	ledgerID uint32,
 	logIDs [][]byte,
 ) (cursor.Cursor[*commonpb.Log], error) {
+	indexName := fmt.Sprintf("ledger-log[ledgerID=%d]", ledgerID)
+
 	kb := dal.NewKeyBuilder()
 	seqs := make([]uint64, 0, len(logIDs))
 
 	for _, logIDBytes := range logIDs {
 		if len(logIDBytes) != 8 {
-			continue
+			return nil, &domain.ErrIndexInconsistent{
+				Index: indexName,
+				Detail: fmt.Sprintf(
+					"filter index produced a logID of unexpected length %d (want 8)",
+					len(logIDBytes)),
+			}
 		}
 
 		logID := binary.BigEndian.Uint64(logIDBytes)
@@ -113,13 +127,29 @@ func ReadLedgerLogsCompiled(
 
 		v, closer, err := indexReader.Get(key)
 		if err != nil {
-			continue
+			// Even pebble.ErrNotFound is suspect here: the filter index
+			// produced this logID, so the per-ledger log index entry
+			// should exist. A miss means the two are out of sync.
+			return nil, &domain.ErrIndexInconsistent{
+				Index: indexName,
+				Detail: fmt.Sprintf(
+					"reading per-ledger log index for logID=%d: %v",
+					logID, err),
+			}
 		}
 
-		if len(v) == 8 {
-			seqs = append(seqs, binary.BigEndian.Uint64(v))
+		if len(v) != 8 {
+			_ = closer.Close()
+
+			return nil, &domain.ErrIndexInconsistent{
+				Index: indexName,
+				Detail: fmt.Sprintf(
+					"per-ledger log index value for logID=%d has unexpected length %d (want 8)",
+					logID, len(v)),
+			}
 		}
 
+		seqs = append(seqs, binary.BigEndian.Uint64(v))
 		_ = closer.Close()
 	}
 

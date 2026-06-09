@@ -42,6 +42,7 @@ const (
 	ErrReasonPreparedQueryNotFound         = "PREPARED_QUERY_NOT_FOUND"
 	ErrReasonIndexNotFound                 = "INDEX_NOT_FOUND"
 	ErrReasonIndexBuilding                 = "INDEX_BUILDING"
+	ErrReasonIndexInconsistent             = "INDEX_INCONSISTENT"
 	ErrReasonNumscriptNotFound             = "NUMSCRIPT_NOT_FOUND"
 	ErrReasonNumscriptVersionAlreadyExists = "NUMSCRIPT_VERSION_ALREADY_EXISTS"
 	ErrReasonNumscriptInvalidVersion       = "NUMSCRIPT_INVALID_VERSION"
@@ -331,6 +332,22 @@ type ErrIndexBuilding struct {
 
 func (e *ErrIndexBuilding) Error() string {
 	return "index is still building: " + e.Index
+}
+
+// ErrIndexInconsistent is returned when the read path detects a structural
+// inconsistency between the filter index and the per-ledger log index — for
+// example a logID present in the filter index but missing or malformed in
+// the log index. Surfacing this as an explicit error (rather than silently
+// skipping the entry) prevents stale/corrupt indexes from producing
+// truncated query results that the caller can't distinguish from a
+// legitimate empty result.
+type ErrIndexInconsistent struct {
+	Index  string
+	Detail string
+}
+
+func (e *ErrIndexInconsistent) Error() string {
+	return fmt.Sprintf("index %s is inconsistent: %s", e.Index, e.Detail)
 }
 
 // ErrInvalidReceipt is returned when a JWT receipt fails verification.
