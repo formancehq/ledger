@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -413,6 +414,10 @@ func validateSpec(ledger *ledgerv1alpha1.LedgerService) error {
 		return fmt.Errorf("replicas must be odd for Raft consensus, got %d", *ledger.Spec.Replicas)
 	}
 
+	if err := validateClusterConfig(&ledger.Spec); err != nil {
+		return err
+	}
+
 	// Validate hostPath / PVC mutual exclusion for each volume.
 	volumes := []struct {
 		name string
@@ -425,6 +430,54 @@ func validateSpec(ledger *ledgerv1alpha1.LedgerService) error {
 	for _, v := range volumes {
 		if err := validateVolumeSpec(v.name, v.spec); err != nil {
 			return err
+		}
+	}
+
+	return nil
+}
+
+// validateClusterConfig validates cluster-wide cache and bloom parameters that
+// flow to the server via env vars. Defaults are server-side (loadBloomConfig);
+// this only rejects values that would either be silently ignored or that the
+// server would refuse.
+func validateClusterConfig(spec *ledgerv1alpha1.LedgerServiceSpec) error {
+	if spec.Cache != nil && spec.Cache.RotationThreshold != nil && *spec.Cache.RotationThreshold <= 0 {
+		return fmt.Errorf("cache.rotationThreshold must be > 0, got %d", *spec.Cache.RotationThreshold)
+	}
+	if spec.Bloom == nil {
+		return nil
+	}
+	bloomFilters := []struct {
+		name string
+		spec *ledgerv1alpha1.BloomFilterConfig
+	}{
+		{"volumes", spec.Bloom.Volumes},
+		{"metadata", spec.Bloom.Metadata},
+		{"references", spec.Bloom.References},
+		{"ledgers", spec.Bloom.Ledgers},
+		{"boundaries", spec.Bloom.Boundaries},
+		{"transactions", spec.Bloom.Transactions},
+		{"sinkConfigs", spec.Bloom.SinkConfigs},
+		{"numscriptVersions", spec.Bloom.NumscriptVersions},
+		{"numscriptContents", spec.Bloom.NumscriptContents},
+		{"ledgerMetadata", spec.Bloom.LedgerMetadata},
+	}
+	for _, b := range bloomFilters {
+		if b.spec == nil {
+			continue
+		}
+		if b.spec.ExpectedKeys != nil && *b.spec.ExpectedKeys < 0 {
+			return fmt.Errorf("bloom.%s.expectedKeys must be >= 0, got %d (0 disables)", b.name, *b.spec.ExpectedKeys)
+		}
+		if b.spec.FPRate == "" {
+			continue
+		}
+		f, err := strconv.ParseFloat(b.spec.FPRate, 64)
+		if err != nil {
+			return fmt.Errorf("bloom.%s.fpRate %q is not a valid float: %w", b.name, b.spec.FPRate, err)
+		}
+		if f <= 0 || f >= 1 {
+			return fmt.Errorf("bloom.%s.fpRate must be in (0,1), got %v", b.name, f)
 		}
 	}
 

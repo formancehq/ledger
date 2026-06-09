@@ -12,8 +12,12 @@ import (
 
 // restrictedPrefixes lists ledger name prefixes created by specialized drivers
 // that set account type restrictions or have specific balance assumptions.
-// Generic drivers (via RunDriver) must not pick these ledgers.
-var restrictedPrefixes = []string{"transient-", "insuf-", "deltest-"}
+// Generic drivers (via RunDriver) must not pick these ledgers. The "sentinel-"
+// prefix is reserved for operational drivers (scaling_structured,
+// rolling_restart, config_change, quorum_recovery) that commit a witness
+// transaction and re-read it after a disruption — letting delete_ledger pick
+// these would weaken the survival assertion to Reachable.
+var restrictedPrefixes = []string{"transient-", "insuf-", "deltest-", "sentinel-"}
 
 // CreateLedger creates a ledger via the Apply RPC and verifies it can be read back.
 func CreateLedger(ctx context.Context, client servicepb.BucketServiceClient, name string) error {

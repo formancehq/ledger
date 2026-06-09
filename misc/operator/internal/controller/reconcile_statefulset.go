@@ -174,6 +174,11 @@ func buildStatefulSetSpec(ledger *ledgerv1alpha1.LedgerService, specHash string,
 		replicas = *ledger.Spec.Replicas
 	}
 
+	// Partition=0 means every pod is updated on a template change. The default
+	// would behave the same, but making it explicit prevents future regressions
+	// and lets cluster-config rotation tests assert on the strategy.
+	partition := int32(0)
+
 	// OrderedReady ensures pods start sequentially. This is critical for Raft
 	// clusters: etcd/raft only processes one ConfChange at a time and silently
 	// drops concurrent proposals, so nodes must join one at a time.
@@ -181,6 +186,10 @@ func buildStatefulSetSpec(ledger *ledgerv1alpha1.LedgerService, specHash string,
 		ServiceName:         headlessServiceName(ledger),
 		Replicas:            &replicas,
 		PodManagementPolicy: appsv1.OrderedReadyPodManagement,
+		UpdateStrategy: appsv1.StatefulSetUpdateStrategy{
+			Type:          appsv1.RollingUpdateStatefulSetStrategyType,
+			RollingUpdate: &appsv1.RollingUpdateStatefulSetStrategy{Partition: &partition},
+		},
 		Selector: &metav1.LabelSelector{
 			MatchLabels: selectorLabels(ledger),
 		},

@@ -14,6 +14,14 @@ rules:
 - apiGroups: ["ledger.formance.com"]
   resources: ["ledgerservices"]
   verbs: ["get", "list", "watch", "update", "patch"]
+# Operational drivers (rolling_restart, quorum_recovery) delete pods and
+# observe the StatefulSet they belong to.
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch", "delete"]
+- apiGroups: ["apps"]
+  resources: ["statefulsets"]
+  verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

@@ -1,0 +1,19 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: LedgerService
+metadata:
+  name: ccr-svc
+spec:
+  replicas: 1
+  image:
+    repository: ledger-v3-poc
+    tag: e2e
+    pullPolicy: Never
+  cache:
+    rotationThreshold: 2000
+  bloom:
+    volumes:
+      expectedKeys: 50000
+      fpRate: "0.001"
+    ledgerMetadata:
+      expectedKeys: 5000
+      fpRate: "0.01"

@@ -1,0 +1,128 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: cluster-config-rotation
+spec:
+  timeouts:
+    assert: 5m
+  steps:
+    # 1. Deploy LedgerService with initial cache + bloom configuration.
+    - name: Deploy LedgerService
+      try:
+        - apply:
+            file: ledgerservice.yaml
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: ccr-svc
+              status:
+                readyReplicas: 1
+
+    # 2. Verify the initial ClusterConfig is propagated to the running cluster.
+    - name: Verify initial cluster_config
+      try:
+        - script:
+            content: |
+              OUT=$(kubectl exec ccr-svc-0 -n $NAMESPACE -c ledger -- \
+                /bin/sh -c './ledgerctl cluster status --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET" --json')
+              echo "$OUT"
+              ROT=$(echo "$OUT" | sed -n 's/.*"rotationThreshold":[^0-9]*\([0-9]*\).*/\1/p' | head -1)
+              [ "$ROT" = "1000" ] || { echo "FAIL: expected rotationThreshold=1000, got $ROT"; exit 1; }
+              echo "OK: initial rotationThreshold=1000"
+            timeout: 60s
+
+    # 3. Record initial spec-hash and pod UID.
+    - name: Record initial state
+      try:
+        - script:
+            content: |
+              HASH=$(kubectl get statefulset ccr-svc -n $NAMESPACE \
+                -o jsonpath='{.spec.template.metadata.annotations.ledger\.formance\.com/spec-hash}')
+              POD_UID=$(kubectl get pod ccr-svc-0 -n $NAMESPACE -o jsonpath='{.metadata.uid}')
+              [ -n "$HASH" ] || { echo "FAIL: spec-hash annotation not set"; exit 1; }
+              kubectl annotate namespace $NAMESPACE \
+                e2e-initial-hash="$HASH" \
+                e2e-initial-pod-uid="$POD_UID" \
+                --overwrite
+            timeout: 30s
+
+    # 4. Patch cache + bloom config — triggers a rolling restart.
+    - name: Apply updated config
+      try:
+        - apply:
+            file: ledgerservice-updated.yaml
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: ccr-svc
+              status:
+                readyReplicas: 1
+
+    # 5. Verify the rolling update happened (spec-hash + pod UID changed).
+    - name: Verify rolling update happened
+      try:
+        - script:
+            content: |
+              INITIAL_HASH=$(kubectl get namespace $NAMESPACE -o jsonpath='{.metadata.annotations.e2e-initial-hash}')
+              INITIAL_UID=$(kubectl get namespace $NAMESPACE -o jsonpath='{.metadata.annotations.e2e-initial-pod-uid}')
+
+              NEW_HASH=$(kubectl get statefulset ccr-svc -n $NAMESPACE \
+                -o jsonpath='{.spec.template.metadata.annotations.ledger\.formance\.com/spec-hash}')
+              [ "$INITIAL_HASH" != "$NEW_HASH" ] || { echo "FAIL: spec-hash did not change"; exit 1; }
+              echo "OK: spec-hash changed ($INITIAL_HASH -> $NEW_HASH)"
+
+              for i in $(seq 1 60); do
+                NEW_UID=$(kubectl get pod ccr-svc-0 -n $NAMESPACE -o jsonpath='{.metadata.uid}' 2>/dev/null)
+                READY=$(kubectl get pod ccr-svc-0 -n $NAMESPACE -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null)
+                if [ "$NEW_UID" != "$INITIAL_UID" ] && [ "$READY" = "True" ]; then
+                  echo "OK: pod was replaced (old=$INITIAL_UID new=$NEW_UID)"
+                  exit 0
+                fi
+                sleep 5
+              done
+              echo "FAIL: pod was not replaced"
+              exit 1
+            timeout: 360s
+
+    # 6. Verify new env vars are present in the container spec.
+    - name: Verify env vars propagated
+      try:
+        - script:
+            content: |
+              GET_ENV() {
+                kubectl get statefulset ccr-svc -n $NAMESPACE \
+                  -o jsonpath="{.spec.template.spec.containers[0].env[?(@.name=='$1')].value}"
+              }
+              ROT=$(GET_ENV CACHE_ROTATION_THRESHOLD)
+              [ "$ROT" = "2000" ] || { echo "FAIL: CACHE_ROTATION_THRESHOLD=$ROT (want 2000)"; exit 1; }
+              KEYS=$(GET_ENV BLOOM_VOLUMES_EXPECTED_KEYS)
+              [ "$KEYS" = "50000" ] || { echo "FAIL: BLOOM_VOLUMES_EXPECTED_KEYS=$KEYS (want 50000)"; exit 1; }
+              LM_KEYS=$(GET_ENV BLOOM_LEDGER_METADATA_EXPECTED_KEYS)
+              [ "$LM_KEYS" = "5000" ] || { echo "FAIL: BLOOM_LEDGER_METADATA_EXPECTED_KEYS=$LM_KEYS (want 5000)"; exit 1; }
+              echo "OK: env vars propagated"
+            timeout: 10s
+
+    # 7. Verify the new ClusterConfig is observed at runtime
+    #    (Raft proposeClusterConfigIfNeeded runs on the new leader).
+    - name: Verify ClusterConfig converged
+      try:
+        - script:
+            content: |
+              for i in $(seq 1 60); do
+                OUT=$(kubectl exec ccr-svc-0 -n $NAMESPACE -c ledger -- \
+                  /bin/sh -c './ledgerctl cluster status --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET" --json' 2>/dev/null)
+                ROT=$(echo "$OUT" | sed -n 's/.*"rotationThreshold":[^0-9]*\([0-9]*\).*/\1/p' | head -1)
+                if [ "$ROT" = "2000" ]; then
+                  echo "OK: rotationThreshold converged to 2000 after $((i*5))s"
+                  exit 0
+                fi
+                sleep 5
+              done
+              echo "FAIL: rotationThreshold did not converge to 2000"
+              echo "$OUT"
+              exit 1
+            timeout: 360s

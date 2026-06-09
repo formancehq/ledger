@@ -75,4 +75,25 @@ func TestComputeSpecHash_IncludesPodFields(t *testing.T) {
 	withNS := base.DeepCopy()
 	withNS.NodeSelector = map[string]string{"zone": "us-east-1a"}
 	assert.NotEqual(t, baseHash, computeSpecHash(withNS), "NodeSelector change should affect hash")
+
+	// Changing Cache.RotationThreshold should change the hash (drives a rolling restart
+	// + cluster-config reconciliation in proposeClusterConfigIfNeeded).
+	withRotation := base.DeepCopy()
+	threshold := int32(2000)
+	withRotation.Cache = &ledgerv1alpha1.CacheConfig{RotationThreshold: &threshold}
+	assert.NotEqual(t, baseHash, computeSpecHash(withRotation), "Cache.RotationThreshold change should affect hash")
+
+	// Changing any Bloom field should change the hash.
+	withBloomVolumes := base.DeepCopy()
+	keys := int64(50000)
+	withBloomVolumes.Bloom = &ledgerv1alpha1.BloomConfig{
+		Volumes: &ledgerv1alpha1.BloomFilterConfig{ExpectedKeys: &keys},
+	}
+	assert.NotEqual(t, baseHash, computeSpecHash(withBloomVolumes), "Bloom.Volumes change should affect hash")
+
+	withBloomLedgerMetadata := base.DeepCopy()
+	withBloomLedgerMetadata.Bloom = &ledgerv1alpha1.BloomConfig{
+		LedgerMetadata: &ledgerv1alpha1.BloomFilterConfig{FPRate: "0.001"},
+	}
+	assert.NotEqual(t, baseHash, computeSpecHash(withBloomLedgerMetadata), "Bloom.LedgerMetadata change should affect hash")
 }

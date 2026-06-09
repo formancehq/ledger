@@ -582,6 +582,8 @@ type SnapshotConfig struct {
 // CacheConfig holds cache configuration.
 type CacheConfig struct {
 	// RotationThreshold is the number of Raft log entries before rotating cache generations.
+	// Changes trigger a rolling restart; convergence is deterministic via Raft (applyClusterConfig).
+	// +kubebuilder:validation:Minimum=1
 	// +optional
 	RotationThreshold *int32 `json:"rotationThreshold,omitempty"`
 }
@@ -1290,6 +1292,10 @@ type BloomConfig struct {
 	// NumscriptContents bloom filter configuration.
 	// +optional
 	NumscriptContents *BloomFilterConfig `json:"numscriptContents,omitempty"`
+
+	// LedgerMetadata bloom filter configuration.
+	// +optional
+	LedgerMetadata *BloomFilterConfig `json:"ledgerMetadata,omitempty"`
 }
 
 // BloomFilterConfig holds configuration for a single bloom filter type.

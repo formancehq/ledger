@@ -53,6 +53,19 @@ spec:
     pebble:
       memTableSize: 268435456
       cacheSize: 1073741824
+  # Cache and bloom parameters are part of the Raft-replicated ClusterConfig.
+  # Editing them triggers a rolling restart of the StatefulSet; convergence
+  # is deterministic via applyClusterConfig (cache reset + bloom rebuild) and
+  # bounded by one election cycle after the last pod restarts.
+  cache:
+    rotationThreshold: 1000
+  bloom:
+    volumes:
+      expectedKeys: 100000000
+      fpRate: "0.01"
+    ledgerMetadata:
+      expectedKeys: 1000000
+      fpRate: "0.001"
   persistence:
     wal:
       size: 5Gi

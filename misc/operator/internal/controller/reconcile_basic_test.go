@@ -124,6 +124,12 @@ func TestReconcile_StatefulSetSpec(t *testing.T) {
 	require.NotNil(t, sts.Spec.PersistentVolumeClaimRetentionPolicy)
 	assert.Equal(t, appsv1.RetainPersistentVolumeClaimRetentionPolicyType, sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenScaled)
 	assert.Equal(t, appsv1.RetainPersistentVolumeClaimRetentionPolicyType, sts.Spec.PersistentVolumeClaimRetentionPolicy.WhenDeleted)
+
+	// Rolling update is explicit so cluster-config rotation goes pod-by-pod.
+	assert.Equal(t, appsv1.RollingUpdateStatefulSetStrategyType, sts.Spec.UpdateStrategy.Type)
+	require.NotNil(t, sts.Spec.UpdateStrategy.RollingUpdate)
+	require.NotNil(t, sts.Spec.UpdateStrategy.RollingUpdate.Partition)
+	assert.Equal(t, int32(0), *sts.Spec.UpdateStrategy.RollingUpdate.Partition)
 }
 
 // --- Assertion helpers ---

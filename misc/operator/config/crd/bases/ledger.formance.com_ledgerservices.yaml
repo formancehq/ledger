@@ -1037,6 +1037,18 @@ spec:
                         description: FPRate is the false positive rate (0.0-1.0).
                         type: string
                     type: object
+                  ledgerMetadata:
+                    description: LedgerMetadata bloom filter configuration.
+                    properties:
+                      expectedKeys:
+                        description: ExpectedKeys is the expected number of unique
+                          keys (0 to disable this filter).
+                        format: int64
+                        type: integer
+                      fpRate:
+                        description: FPRate is the false positive rate (0.0-1.0).
+                        type: string
+                    type: object
                   ledgers:
                     description: Ledgers bloom filter configuration.
                     properties:
@@ -1138,9 +1150,11 @@ spec:
                 description: Cache configuration.
                 properties:
                   rotationThreshold:
-                    description: RotationThreshold is the number of Raft log entries
-                      before rotating cache generations.
+                    description: |-
+                      RotationThreshold is the number of Raft log entries before rotating cache generations.
+                      Changes trigger a rolling restart; convergence is deterministic via Raft (applyClusterConfig).
                     format: int32
+                    minimum: 1
                     type: integer
                 type: object
               clusterID:

@@ -467,6 +467,7 @@ func appendBloomEnvVars(envs []corev1.EnvVar, bloom *ledgerv1alpha1.BloomConfig)
 		{"BLOOM_SINK_CONFIGS", bloom.SinkConfigs},
 		{"BLOOM_NUMSCRIPT_VERSIONS", bloom.NumscriptVersions},
 		{"BLOOM_NUMSCRIPT_CONTENTS", bloom.NumscriptContents},
+		{"BLOOM_LEDGER_METADATA", bloom.LedgerMetadata},
 	}
 	for _, e := range entries {
 		if e.spec != nil {
