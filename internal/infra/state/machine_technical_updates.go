@@ -220,15 +220,10 @@ func (fsm *Machine) applyMirrorSyncUpdate(batch *dal.Batch, update *raftcmdpb.Mi
 }
 
 // applyIdempotencyEviction evicts expired idempotency keys. No log entry is produced.
+// The key hashes were pre-scanned by the leader and included in the proposal,
+// so this method is write-only — no Pebble reads occur.
 func (fsm *Machine) applyIdempotencyEviction(batch *dal.Batch, eviction *raftcmdpb.IdempotencyEviction) error {
-	handle, err := fsm.dataStore.NewDirectReadHandle()
-	if err != nil {
-		return fmt.Errorf("creating read handle for idempotency eviction: %w", err)
-	}
-
-	defer func() { _ = handle.Close() }()
-
-	evicted, err := fsm.Registry.Idempotency.EvictBefore(batch, handle, eviction.GetCutoffMicros())
+	evicted, err := fsm.Registry.Idempotency.Evict(batch, eviction.GetCutoffMicros(), eviction.GetLastScannedTimeIndexKey(), eviction.GetPebbleKeyHashes())
 	if err != nil {
 		return fmt.Errorf("evicting idempotency keys: %w", err)
 	}

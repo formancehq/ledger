@@ -3883,11 +3883,21 @@ func (x *Proposal) GetCaller() *commonpb.CallerIdentity {
 
 // IdempotencyEviction is a deterministic cleanup command proposed by the leader.
 // All nodes apply it identically: entries with created_at <= cutoff_micros are removed.
+// The leader pre-scans the Pebble time index and includes the key hashes so
+// that the FSM apply path is write-only (no Pebble reads).
 type IdempotencyEviction struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	CutoffMicros  uint64                 `protobuf:"fixed64,1,opt,name=cutoff_micros,json=cutoffMicros,proto3" json:"cutoff_micros,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	CutoffMicros    uint64                 `protobuf:"fixed64,1,opt,name=cutoff_micros,json=cutoffMicros,proto3" json:"cutoff_micros,omitempty"`
+	PebbleKeyHashes [][]byte               `protobuf:"bytes,2,rep,name=pebble_key_hashes,json=pebbleKeyHashes,proto3" json:"pebble_key_hashes,omitempty"` // 16-byte key hashes pre-scanned by leader
+	// last_scanned_time_index_key is the full 26-byte time-index Pebble key of
+	// the last entry the leader scanned: [zone(1)][sub(1)][created_at(8)][hash(16)].
+	// The FSM uses it as the DeleteRange upper bound bumped by 0x00 (lex-next),
+	// so the range delete includes exactly the scanned entries — never an
+	// unscanned sibling that happens to share the same created_at timestamp.
+	// Empty when no entries were scanned; in that case no DeleteRange is issued.
+	LastScannedTimeIndexKey []byte `protobuf:"bytes,3,opt,name=last_scanned_time_index_key,json=lastScannedTimeIndexKey,proto3" json:"last_scanned_time_index_key,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *IdempotencyEviction) Reset() {
@@ -3925,6 +3935,20 @@ func (x *IdempotencyEviction) GetCutoffMicros() uint64 {
 		return x.CutoffMicros
 	}
 	return 0
+}
+
+func (x *IdempotencyEviction) GetPebbleKeyHashes() [][]byte {
+	if x != nil {
+		return x.PebbleKeyHashes
+	}
+	return nil
+}
+
+func (x *IdempotencyEviction) GetLastScannedTimeIndexKey() []byte {
+	if x != nil {
+		return x.LastScannedTimeIndexKey
+	}
+	return nil
 }
 
 type MirrorSyncUpdate struct {
@@ -6326,9 +6350,11 @@ const file_raft_cmd_proto_rawDesc = "" +
 	" \x03(\v2\x1d.raft.MetadataConversionBatchR\x19metadataConversionBatches\x12f\n" +
 	"\x1dmetadata_conversions_complete\x18\v \x03(\v2\".raft.MetadataConversionCompletionR\x1bmetadataConversionsComplete\x12F\n" +
 	"\x13index_ready_updates\x18\f \x03(\v2\x16.raft.IndexReadyUpdateR\x11indexReadyUpdates\x12.\n" +
-	"\x06caller\x18\r \x01(\v2\x16.common.CallerIdentityR\x06caller\":\n" +
+	"\x06caller\x18\r \x01(\v2\x16.common.CallerIdentityR\x06caller\"\xa4\x01\n" +
 	"\x13IdempotencyEviction\x12#\n" +
-	"\rcutoff_micros\x18\x01 \x01(\x06R\fcutoffMicros\"\xc5\x01\n" +
+	"\rcutoff_micros\x18\x01 \x01(\x06R\fcutoffMicros\x12*\n" +
+	"\x11pebble_key_hashes\x18\x02 \x03(\fR\x0fpebbleKeyHashes\x12<\n" +
+	"\x1blast_scanned_time_index_key\x18\x03 \x01(\fR\x17lastScannedTimeIndexKey\"\xc5\x01\n" +
 	"\x10MirrorSyncUpdate\x12\x1f\n" +
 	"\vledger_name\x18\x01 \x01(\tR\n" +
 	"ledgerName\x12\x16\n" +

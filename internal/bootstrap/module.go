@@ -1068,19 +1068,25 @@ func Module() fx.Option {
 			func(lc fx.Lifecycle, scheduler *state.PeriodScheduler) {
 				lc.Append(worker.FxHook(scheduler))
 			},
-			func(lc fx.Lifecycle, cfg Config, logger logging.Logger, raftNode *node.Node) {
+			func(lc fx.Lifecycle, cfg Config, logger logging.Logger, raftNode *node.Node, store *dal.Store, machine *state.Machine) {
 				if cfg.IdempotencyTTL > 0 && cfg.IdempotencyEvictionInterval > 0 {
 					proposer := NewNodeProposer(raftNode)
 					scheduler := state.NewIdempotencyEvictionScheduler(
 						logger,
 						raftNode.IsLeader,
-						func(cutoffMicros uint64) {
+						func(cutoffMicros uint64, lastScannedTimeIndexKey []byte, pebbleKeyHashes [][]byte) {
 							proposal := commands.NewCommand()
-							proposal.IdempotencyEviction = &raftcmdpb.IdempotencyEviction{CutoffMicros: cutoffMicros}
+							proposal.IdempotencyEviction = &raftcmdpb.IdempotencyEviction{
+								CutoffMicros:            cutoffMicros,
+								PebbleKeyHashes:         pebbleKeyHashes,
+								LastScannedTimeIndexKey: lastScannedTimeIndexKey,
+							}
 							if err := proposer.ProposeProposal(proposal); err != nil {
 								logger.Errorf("Failed to propose idempotency eviction: %v", err)
 							}
 						},
+						store,
+						machine.Registry.Idempotency,
 						cfg.IdempotencyEvictionInterval,
 						cfg.IdempotencyTTL,
 					)

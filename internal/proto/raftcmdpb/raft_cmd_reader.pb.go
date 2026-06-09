@@ -2084,6 +2084,8 @@ func (m *Proposal) Mutate() *Proposal {
 // Call Mutate() to obtain a mutable clone.
 type IdempotencyEvictionReader interface {
 	GetCutoffMicros() uint64
+	GetPebbleKeyHashes() [][]byte
+	GetLastScannedTimeIndexKey() []byte
 	Mutate() *IdempotencyEviction
 }
 
@@ -2091,6 +2093,14 @@ type idempotencyEvictionReadonly struct{ v *IdempotencyEviction }
 
 func (r *idempotencyEvictionReadonly) GetCutoffMicros() uint64 {
 	return r.v.GetCutoffMicros()
+}
+
+func (r *idempotencyEvictionReadonly) GetPebbleKeyHashes() [][]byte {
+	return r.v.GetPebbleKeyHashes()
+}
+
+func (r *idempotencyEvictionReadonly) GetLastScannedTimeIndexKey() []byte {
+	return r.v.GetLastScannedTimeIndexKey()
 }
 
 func (r *idempotencyEvictionReadonly) Mutate() *IdempotencyEviction {

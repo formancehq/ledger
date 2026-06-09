@@ -1659,6 +1659,20 @@ func (m *IdempotencyEviction) CloneVT() *IdempotencyEviction {
 	}
 	r := new(IdempotencyEviction)
 	r.CutoffMicros = m.CutoffMicros
+	if rhs := m.PebbleKeyHashes; rhs != nil {
+		tmpContainer := make([][]byte, len(rhs))
+		for k, v := range rhs {
+			tmpBytes := make([]byte, len(v))
+			copy(tmpBytes, v)
+			tmpContainer[k] = tmpBytes
+		}
+		r.PebbleKeyHashes = tmpContainer
+	}
+	if rhs := m.LastScannedTimeIndexKey; rhs != nil {
+		tmpBytes := make([]byte, len(rhs))
+		copy(tmpBytes, rhs)
+		r.LastScannedTimeIndexKey = tmpBytes
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -5430,6 +5444,18 @@ func (this *IdempotencyEviction) EqualVT(that *IdempotencyEviction) bool {
 		return false
 	}
 	if this.CutoffMicros != that.CutoffMicros {
+		return false
+	}
+	if len(this.PebbleKeyHashes) != len(that.PebbleKeyHashes) {
+		return false
+	}
+	for i, vx := range this.PebbleKeyHashes {
+		vy := that.PebbleKeyHashes[i]
+		if string(vx) != string(vy) {
+			return false
+		}
+	}
+	if string(this.LastScannedTimeIndexKey) != string(that.LastScannedTimeIndexKey) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -10715,6 +10741,22 @@ func (m *IdempotencyEviction) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.LastScannedTimeIndexKey) > 0 {
+		i -= len(m.LastScannedTimeIndexKey)
+		copy(dAtA[i:], m.LastScannedTimeIndexKey)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.LastScannedTimeIndexKey)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if len(m.PebbleKeyHashes) > 0 {
+		for iNdEx := len(m.PebbleKeyHashes) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.PebbleKeyHashes[iNdEx])
+			copy(dAtA[i:], m.PebbleKeyHashes[iNdEx])
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.PebbleKeyHashes[iNdEx])))
+			i--
+			dAtA[i] = 0x12
+		}
+	}
 	if m.CutoffMicros != 0 {
 		i -= 8
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CutoffMicros))
@@ -14772,6 +14814,16 @@ func (m *IdempotencyEviction) SizeVT() (n int) {
 	_ = l
 	if m.CutoffMicros != 0 {
 		n += 9
+	}
+	if len(m.PebbleKeyHashes) > 0 {
+		for _, b := range m.PebbleKeyHashes {
+			l = len(b)
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
+	}
+	l = len(m.LastScannedTimeIndexKey)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -25090,6 +25142,72 @@ func (m *IdempotencyEviction) UnmarshalVT(dAtA []byte) error {
 			}
 			m.CutoffMicros = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PebbleKeyHashes", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.PebbleKeyHashes = append(m.PebbleKeyHashes, make([]byte, postIndex-iNdEx))
+			copy(m.PebbleKeyHashes[len(m.PebbleKeyHashes)-1], dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LastScannedTimeIndexKey", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.LastScannedTimeIndexKey = append(m.LastScannedTimeIndexKey[:0], dAtA[iNdEx:postIndex]...)
+			if m.LastScannedTimeIndexKey == nil {
+				m.LastScannedTimeIndexKey = []byte{}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

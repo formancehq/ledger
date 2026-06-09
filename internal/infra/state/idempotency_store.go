@@ -68,40 +68,35 @@ func (s *IdempotencyStore) Reset() {
 	s.entries = make(map[string]*commonpb.IdempotencyKeyValue)
 }
 
-// EvictBefore removes entries with created_at <= cutoffMicros from both
-// the in-memory map and Pebble [0x05, 0x06). Returns the count of evicted entries.
-func (s *IdempotencyStore) EvictBefore(batch *dal.Batch, reader dal.PebbleReader, cutoffMicros uint64) (int, error) {
-	evicted := 0
-
-	// 1. Scan in-memory map
-	for key, value := range s.entries {
-		if value.GetCreatedAt() <= cutoffMicros {
-			delete(s.entries, key)
-			evicted++
-		}
-	}
-
-	// 2. Scan Pebble time index to find main key hashes, then bulk-delete the range.
-	//
-	// Main keys ([0x05][0x01][hash]) are hash-ordered and must be deleted individually
-	// via SingleDelete (write-once / delete-once lifecycle guaranteed by the FSM).
-	//
-	// Time index keys ([0x05][0x02][ts][hash]) are timestamp-ordered, so all expired
-	// entries form a contiguous prefix. A single DeleteRange replaces N individual
-	// deletes, halving the batch operation count and enabling Pebble's delete-only
-	// compactions (entire SSTables dropped without I/O).
+// ScanExpiredKeyHashes reads the Pebble time index and returns up to maxKeys
+// 16-byte key hashes of entries with created_at <= cutoffMicros, plus the
+// full Pebble time-index key of the last scanned entry.
+//
+// The full key is used as an exact upper bound by the FSM's DeleteRange (via
+// lex-next, append 0x00) — bounding only by timestamp is unsafe because
+// multiple entries can share the same created_at: if the scan stops mid-
+// timestamp, a timestamp-only upper bound deletes time-index entries whose
+// main keys were NOT included in the proposal, orphaning them.
+//
+// This is called on the leader OUTSIDE the FSM apply path. The returned
+// hashes are embedded in the Raft proposal so the FSM apply is write-only.
+func (s *IdempotencyStore) ScanExpiredKeyHashes(reader dal.PebbleReader, cutoffMicros uint64, maxKeys int) ([][]byte, []byte, error) {
 	iter, err := reader.NewIter(&pebble.IterOptions{
 		LowerBound: []byte{dal.ZoneIdempotency, dal.SubIdempTimeIdx},
 		UpperBound: []byte{dal.ZoneIdempotency, dal.SubIdempTimeIdx + 1},
 	})
 	if err != nil {
-		return evicted, fmt.Errorf("creating idempotency time index iterator: %w", err)
+		return nil, nil, fmt.Errorf("creating idempotency time index iterator: %w", err)
 	}
 
 	defer func() { _ = iter.Close() }()
 
+	var (
+		hashes         [][]byte
+		lastScannedKey []byte
+	)
+
 	// Time index key format: [0x05][0x02][created_at BE 8 bytes][key_hash 16 bytes]
-	var pebbleEvicted int
 	for iter.First(); iter.Valid(); iter.Next() {
 		k := iter.Key()
 		// Minimum key length: 2 (zone+sub) + 8 (created_at) + 16 (key hash)
@@ -114,9 +109,61 @@ func (s *IdempotencyStore) EvictBefore(batch *dal.Batch, reader dal.PebbleReader
 			break // time index is sorted; all remaining entries are newer
 		}
 
-		keyHash := k[10:26]
+		hash := make([]byte, 16)
+		copy(hash, k[10:26])
+		hashes = append(hashes, hash)
 
-		// SingleDelete main key — write-once / delete-once invariant holds.
+		// Copy the full 26-byte time-index key — iter.Key() points into
+		// Pebble-owned memory that may be reused on Next().
+		lastScannedKey = append(lastScannedKey[:0], k...)
+
+		if len(hashes) >= maxKeys {
+			break
+		}
+	}
+
+	if err := iter.Error(); err != nil {
+		return nil, nil, fmt.Errorf("iterating idempotency time index: %w", err)
+	}
+
+	return hashes, lastScannedKey, nil
+}
+
+// Evict removes expired entries from the in-memory map and issues write-only
+// Pebble deletes for the key hashes pre-scanned by the leader.
+//
+// lastScannedTimeIndexKey is the full 26-byte Pebble key of the last entry
+// the leader scanned. It bounds the DeleteRange at the key level rather than
+// the timestamp level: bounding by timestamp + 1 alone is unsafe because if
+// the scan stops mid-timestamp, the unscanned siblings sharing that
+// created_at would have their time-index entry deleted but their main key
+// (not in pebbleKeyHashes) would survive — orphaning them forever. The
+// DeleteRange upper bound is lex-next(lastScannedTimeIndexKey) which is
+// lex-strictly-less than any unscanned sibling.
+//
+// This is called from the FSM apply path — no Pebble reads occur.
+func (s *IdempotencyStore) Evict(batch *dal.Batch, cutoffMicros uint64, lastScannedTimeIndexKey []byte, pebbleKeyHashes [][]byte) (int, error) {
+	evicted := 0
+
+	// 1. Scan in-memory map
+	for key, value := range s.entries {
+		if value.GetCreatedAt() <= cutoffMicros {
+			delete(s.entries, key)
+			evicted++
+		}
+	}
+
+	// 2. Write-only Pebble deletes using the pre-scanned key hashes.
+	//
+	// Main keys ([0x05][0x01][hash]) are hash-ordered and must be deleted individually
+	// via SingleDelete (write-once / delete-once lifecycle guaranteed by the FSM).
+	//
+	// Time index keys ([0x05][0x02][ts][hash]) are timestamp-ordered, so all
+	// scanned entries form a contiguous prefix. A single DeleteRange bounded
+	// by lex-next(lastScannedTimeIndexKey) replaces N individual deletes,
+	// halving the batch operation count and enabling Pebble's delete-only
+	// compactions (entire SSTables dropped without I/O).
+	for _, keyHash := range pebbleKeyHashes {
 		mainKey := make([]byte, 2+16)
 		mainKey[0] = dal.ZoneIdempotency
 		mainKey[1] = dal.SubIdempKeys
@@ -125,31 +172,27 @@ func (s *IdempotencyStore) EvictBefore(batch *dal.Batch, reader dal.PebbleReader
 		if err := batch.SingleDeleteKey(mainKey); err != nil {
 			return evicted, fmt.Errorf("deleting idempotency key: %w", err)
 		}
-
-		pebbleEvicted++
 	}
 
-	if err := iter.Error(); err != nil {
-		return evicted, fmt.Errorf("iterating idempotency time index: %w", err)
-	}
-
-	// Bulk-delete the time index range up to (and including) cutoffMicros.
-	// The upper bound is [0x05][0x02][cutoff+1] which excludes entries newer than cutoff.
-	if pebbleEvicted > 0 {
-		var rangeEnd [10]byte
-		rangeEnd[0] = dal.ZoneIdempotency
-		rangeEnd[1] = dal.SubIdempTimeIdx
-		binary.BigEndian.PutUint64(rangeEnd[2:], cutoffMicros+1)
+	// Bulk-delete the time index range up to and including the last scanned
+	// key. lex-next of any key is that key with a 0x00 byte appended — strictly
+	// greater than the key itself but strictly less than any longer key with
+	// the same prefix. This guarantees we never touch a time-index entry
+	// whose main key is not in pebbleKeyHashes.
+	if len(pebbleKeyHashes) > 0 && len(lastScannedTimeIndexKey) > 0 {
+		rangeEnd := make([]byte, len(lastScannedTimeIndexKey)+1)
+		copy(rangeEnd, lastScannedTimeIndexKey)
+		// rangeEnd[len(lastScannedTimeIndexKey)] is already 0x00 from make.
 
 		if err := batch.DeleteRangeNoSync(
 			[]byte{dal.ZoneIdempotency, dal.SubIdempTimeIdx},
-			rangeEnd[:],
+			rangeEnd,
 		); err != nil {
 			return evicted, fmt.Errorf("deleting idempotency time index range: %w", err)
 		}
 	}
 
-	evicted += pebbleEvicted
+	evicted += len(pebbleKeyHashes)
 
 	return evicted, nil
 }
