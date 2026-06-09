@@ -834,7 +834,7 @@ func (b *Builder) indexSetMetadataFieldType(
 	type rmapEntry struct {
 		rmapKey  []byte // full reverse map key
 		entityID []byte // account address or txID bytes
-		oldValue []byte // old MetadataValue protobuf
+		oldValue []byte // old MetadataValue encoded via EncodeMetadataValue (sortable format)
 	}
 
 	var entries []rmapEntry
@@ -866,18 +866,17 @@ func (b *Builder) indexSetMetadataFieldType(
 	// For each entity: delete old forward index, convert, insert new forward index, update reverse map.
 	// ReplaceMetadataIndex handles all four steps atomically within the batch.
 	for _, e := range entries {
-		// Decode old MetadataValue.
-		oldMV := &commonpb.MetadataValue{}
-		if err := oldMV.UnmarshalVT(e.oldValue); err != nil {
-			b.logger.WithFields(map[string]any{
-				"key":   smft.GetKey(),
-				"error": err,
-			}).Errorf("Failed to unmarshal reverse map value during schema change")
-
-			continue
+		// The reverse map stores values in the sortable EncodeMetadataValue
+		// format, not protobuf — decode with the matching decoder. A failure
+		// here means the stored bytes are corrupt; we treat it as fatal so
+		// the schema-change task is retried rather than silently skipping
+		// entries (which would leave inconsistent indexes).
+		oldMV, _, err := readstore.DecodeValue(e.oldValue)
+		if err != nil {
+			return fmt.Errorf("decoding reverse map value for key %q: %w", smft.GetKey(), err)
 		}
 
-		oldEncoded := readstore.EncodeMetadataValue(nil, oldMV)
+		oldEncoded := e.oldValue
 
 		// Convert to new type.
 		newMV := commonpb.ConvertMetadataValue(oldMV, smft.GetType())

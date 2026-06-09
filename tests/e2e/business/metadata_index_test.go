@@ -570,3 +570,13 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 		})
 	})
 })
+
+// Note: an end-to-end test covering the schema-change rewrite of an indexed
+// reverse-map (the R-028 path) would create an index, populate it, change
+// the field type, and query through the new type. Such a test is blocked
+// today because the SetMetadataFieldType apply leaves
+// IndexBuildStatus = BUILDING with no path to re-reach READY, so the post-
+// rewrite typed query is rejected by the "index is still building" guard.
+// The unit roundtrip in internal/storage/readstore/encode_metadata_test.go
+// covers the bug at the decoder level; the e2e gap will be closed once the
+// separate index-status reset path lands.

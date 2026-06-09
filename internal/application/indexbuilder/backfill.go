@@ -341,17 +341,17 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int) 
 			return false, verr
 		}
 
-		// Decode old MetadataValue.
-		oldMV := &commonpb.MetadataValue{}
-		if err := oldMV.UnmarshalVT(v); err != nil {
-			// Skip corrupt entries.
-			processed++
-			lastKey = cloneBytes(k)
-
-			continue
+		// The reverse map stores values in the sortable EncodeMetadataValue
+		// format, not protobuf — decode with the matching decoder. A failure
+		// here is fatal so the backfill task is retried; silently advancing
+		// `processed` for a corrupt entry would mark progress that never
+		// rewrote that index entry.
+		oldMV, _, err := readstore.DecodeValue(v)
+		if err != nil {
+			return false, fmt.Errorf("decoding reverse map value at key %x: %w", k, err)
 		}
 
-		oldEncoded := readstore.EncodeMetadataValue(nil, oldMV)
+		oldEncoded := v
 
 		// Convert to new type.
 		newMV := commonpb.ConvertMetadataValue(oldMV, task.toType)
