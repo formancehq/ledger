@@ -161,6 +161,65 @@ func nodeContainsAddressFilter(node map[string]any) bool {
 	return false
 }
 
+func hasPositiveSelectiveTransactionFilter(builder query.Builder) bool {
+	if builder == nil {
+		return false
+	}
+	data, err := json.Marshal(builder)
+	if err != nil {
+		return false
+	}
+	var node map[string]any
+	if err := json.Unmarshal(data, &node); err != nil {
+		return false
+	}
+	return nodeHasPositiveSelectiveTransactionFilter(node, false)
+}
+
+func nodeHasPositiveSelectiveTransactionFilter(node map[string]any, insideNot bool) bool {
+	for op, value := range node {
+		switch {
+		case op == "$match":
+			if insideNot {
+				continue
+			}
+			if m, ok := value.(map[string]any); ok {
+				for key := range m {
+					if isSelectiveTransactionFilterKey(key) {
+						return true
+					}
+				}
+			}
+
+		case op == "$not":
+			if child, ok := value.(map[string]any); ok {
+				if nodeHasPositiveSelectiveTransactionFilter(child, true) {
+					return true
+				}
+			}
+
+		case op == "$and" || op == "$or":
+			if items, ok := value.([]any); ok {
+				for _, item := range items {
+					if child, ok := item.(map[string]any); ok {
+						if nodeHasPositiveSelectiveTransactionFilter(child, insideNot) {
+							return true
+						}
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+func isSelectiveTransactionFilterKey(key string) bool {
+	return key == "account" ||
+		key == "source" ||
+		key == "destination" ||
+		strings.HasPrefix(key, "metadata[")
+}
+
 // isNodeSafeForLateral walks the JSON AST and checks whether pushing the
 // address filter into the LATERAL join would produce correct results.
 // insideNot tracks whether we are inside a $not ancestor.

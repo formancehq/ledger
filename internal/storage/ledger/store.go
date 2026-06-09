@@ -34,6 +34,8 @@ type Store struct {
 	// (e.g. when a new ledger is created) immediately affects all stores.
 	aloneInBucket *atomic.Bool
 
+	experimentalTransactionCandidatePagination bool
+
 	tracer                             trace.Tracer
 	meter                              metric.Meter
 	checkBucketSchemaHistogram         metric.Int64Histogram
@@ -343,6 +345,12 @@ func WithMeter(meter metric.Meter) Option {
 func WithTracer(tracer trace.Tracer) Option {
 	return func(s *Store) {
 		s.tracer = tracer
+	}
+}
+
+func WithExperimentalTransactionCandidatePagination(enabled bool) Option {
+	return func(s *Store) {
+		s.experimentalTransactionCandidatePagination = enabled
 	}
 }
 

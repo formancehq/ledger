@@ -19,7 +19,8 @@ import (
 const HealthCheckName = `storage-driver-up-to-date`
 
 type ModuleConfig struct {
-	AutoUpgrade bool
+	AutoUpgrade                                bool
+	ExperimentalTransactionCandidatePagination bool
 }
 
 func NewFXModule(config ModuleConfig) fx.Option {
@@ -28,7 +29,9 @@ func NewFXModule(config ModuleConfig) fx.Option {
 		fx.Provide(func(store *systemstore.DefaultStore) driver.SystemStore {
 			return store
 		}),
-		driver.NewFXModule(),
+		driver.NewFXModule(driver.ModuleConfig{
+			ExperimentalTransactionCandidatePagination: config.ExperimentalTransactionCandidatePagination,
+		}),
 		servicefx.ProvideHealthCheck(func(driver *driver.Driver, tracer trace.TracerProvider) health.NamedCheck {
 			hasReachedMinimalVersion := false
 			return health.NewNamedCheck(HealthCheckName, health.CheckFn(func(ctx context.Context) error {

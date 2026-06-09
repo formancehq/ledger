@@ -108,6 +108,71 @@ func TestCanPushAddressFilterToLateral(t *testing.T) {
 	}
 }
 
+func TestHasPositiveSelectiveTransactionFilter(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		builder  query.Builder
+		expected bool
+	}{
+		{
+			name:     "nil builder",
+			builder:  nil,
+			expected: false,
+		},
+		{
+			name:     "positive account match",
+			builder:  query.Match("account", "wallet:1"),
+			expected: true,
+		},
+		{
+			name:     "positive metadata match",
+			builder:  query.Match("metadata[transaction_currency]", "USD"),
+			expected: true,
+		},
+		{
+			name:     "negative metadata only",
+			builder:  query.Not(query.Match("metadata[wallet_transaction_method]", "hold_settlement")),
+			expected: false,
+		},
+		{
+			name: "positive and negative metadata",
+			builder: query.And(
+				query.Match("metadata[transaction_currency]", "USD"),
+				query.Not(query.Match("metadata[wallet_transaction_method]", "hold_settlement")),
+			),
+			expected: true,
+		},
+		{
+			name: "positive account in or",
+			builder: query.Or(
+				query.Match("account", "wallet:1"),
+				query.Match("reference", "tx1"),
+			),
+			expected: true,
+		},
+		{
+			name:     "reference only",
+			builder:  query.Match("reference", "tx1"),
+			expected: false,
+		},
+		{
+			name:     "metadata exists only",
+			builder:  query.Exists("metadata", "category"),
+			expected: false,
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, test.expected, hasPositiveSelectiveTransactionFilter(test.builder))
+		})
+	}
+}
+
 func TestBuildAddressFilterForLateral(t *testing.T) {
 	t.Parallel()
 

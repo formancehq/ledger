@@ -60,6 +60,8 @@ type ServeCommandConfig struct {
 	MaxPageSize            uint64 `mapstructure:"max-page-size"`
 	WorkerEnabled          bool   `mapstructure:"worker"`
 	WorkerAddress          string `mapstructure:"worker-grpc-address"`
+
+	ExperimentalTransactionCandidatePagination bool `mapstructure:"experimental-transaction-candidate-pagination"`
 }
 
 const (
@@ -75,6 +77,8 @@ const (
 	WorkerEnabledFlag     = "worker"
 	SemconvMetricsNames   = "semconv-metrics-names"
 	SchemaEnforcementMode = "schema-enforcement-mode"
+
+	ExperimentalTransactionCandidatePaginationFlag = "experimental-transaction-candidate-pagination"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -106,6 +110,7 @@ func NewServeCommand() *cobra.Command {
 				storagefx.BunConnectModule(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(storage.ModuleConfig{
 					AutoUpgrade: cfg.AutoUpgrade,
+					ExperimentalTransactionCandidatePagination: cfg.ExperimentalTransactionCandidatePagination,
 				}),
 				drivers.NewFXModule(),
 				fx.Invoke(alldrivers.Register),
@@ -192,6 +197,7 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Uint64(DefaultPageSizeFlag, 15, "Default page size")
 	cmd.Flags().Bool(WorkerEnabledFlag, false, "Enable worker")
 	cmd.Flags().Bool(ExperimentalFeaturesFlag, false, "Enable features configurability")
+	cmd.Flags().Bool(ExperimentalTransactionCandidatePaginationFlag, false, "Enable experimental candidate-key pagination for selective transaction queries")
 	cmd.Flags().Bool(NumscriptInterpreterFlag, false, "Enable experimental numscript rewrite")
 	cmd.Flags().StringSlice(NumscriptInterpreterFlagsToPass, nil, "Feature flags to pass to the experimental numscript interpreter")
 	cmd.Flags().String(WorkerGRPCAddressFlag, "localhost:8081", "GRPC address")

@@ -9,14 +9,18 @@ import (
 	"fmt"
 	"math/big"
 	"slices"
+	"strings"
+	"sync"
 	"testing"
 	libtime "time"
 
 	"github.com/alitto/pond"
 	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/query"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
 	"github.com/formancehq/go-libs/v5/pkg/storage/postgres"
 	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
 	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
@@ -946,4 +950,193 @@ func TestTransactionsList(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTransactionsCandidateKeyPaginationMatchesDefault(t *testing.T) {
+	t.Parallel()
+
+	store := newLedgerStore(t)
+	candidateStore := ledgerstore.New(
+		defaultBunDB.GetValue(),
+		store.GetBucket(),
+		store.GetLedger(),
+		ledgerstore.WithExperimentalTransactionCandidatePagination(true),
+	)
+
+	ctx := logging.TestingContext()
+	now := time.Now()
+
+	for i := 0; i < 12; i++ {
+		source := fmt.Sprintf("users:%d", i)
+		destination := "treasury"
+		txMetadata := metadata.Metadata{
+			"transaction_currency": "EUR",
+		}
+
+		switch i {
+		case 1, 4, 7, 10:
+			source = "wallet:target"
+			txMetadata["transaction_currency"] = "USD"
+		}
+		if i == 7 {
+			txMetadata["wallet_transaction_method"] = "hold_settlement"
+		}
+		if i == 10 {
+			delete(txMetadata, "transaction_currency")
+			txMetadata["destination_currency"] = "USD"
+		}
+
+		tx := ledger.NewTransaction().
+			WithPostings(
+				ledger.NewPosting(source, destination, "USD", big.NewInt(int64(i+1))),
+			).
+			WithMetadata(txMetadata).
+			WithReference(fmt.Sprintf("tx-%02d", i)).
+			WithTimestamp(now.Add(time.Duration(i) * time.Minute))
+		require.NoError(t, commitTransactionAndUpsertAccounts(ctx, store, &tx))
+	}
+
+	builder := query.And(
+		query.Match("account", "wallet:target"),
+		query.Or(
+			query.Match("metadata[transaction_currency]", "USD"),
+			query.Match("metadata[destination_currency]", "USD"),
+		),
+		query.Not(query.Match("metadata[wallet_transaction_method]", "hold_settlement")),
+	)
+	initialQuery := common.InitialPaginatedQuery[any]{
+		PageSize: 2,
+		Options: common.ResourceQuery[any]{
+			Builder: builder,
+			Expand:  []string{"volumes", "effectiveVolumes"},
+		},
+	}
+
+	defaultPage, err := store.Transactions().Paginate(ctx, initialQuery)
+	require.NoError(t, err)
+	candidatePage, err := candidateStore.Transactions().Paginate(ctx, initialQuery)
+	require.NoError(t, err)
+	requireTransactionsCursorEqual(t, defaultPage, candidatePage)
+	require.True(t, defaultPage.HasMore)
+
+	defaultNextQuery, err := common.UnmarshalCursor[any](defaultPage.Next)
+	require.NoError(t, err)
+	candidateNextQuery, err := common.UnmarshalCursor[any](candidatePage.Next)
+	require.NoError(t, err)
+
+	defaultNextPage, err := store.Transactions().Paginate(ctx, defaultNextQuery)
+	require.NoError(t, err)
+	candidateNextPage, err := candidateStore.Transactions().Paginate(ctx, candidateNextQuery)
+	require.NoError(t, err)
+	requireTransactionsCursorEqual(t, defaultNextPage, candidateNextPage)
+	require.False(t, defaultNextPage.HasMore)
+	require.NotEmpty(t, defaultNextPage.Previous)
+
+	defaultPreviousQuery, err := common.UnmarshalCursor[any](defaultNextPage.Previous)
+	require.NoError(t, err)
+	candidatePreviousQuery, err := common.UnmarshalCursor[any](candidateNextPage.Previous)
+	require.NoError(t, err)
+
+	defaultPreviousPage, err := store.Transactions().Paginate(ctx, defaultPreviousQuery)
+	require.NoError(t, err)
+	candidatePreviousPage, err := candidateStore.Transactions().Paginate(ctx, candidatePreviousQuery)
+	require.NoError(t, err)
+	requireTransactionsCursorEqual(t, defaultPreviousPage, candidatePreviousPage)
+	requireTransactionsCursorEqual(t, defaultPage, defaultPreviousPage)
+}
+
+func TestTransactionsCandidateKeyPaginationSQLShape(t *testing.T) {
+	<-defaultBunDB.Done()
+
+	hook := &captureQueriesHook{}
+	defaultBunDB.GetValue().AddQueryHook(hook)
+
+	store := newLedgerStore(t)
+	candidateStore := ledgerstore.New(
+		defaultBunDB.GetValue(),
+		store.GetBucket(),
+		store.GetLedger(),
+		ledgerstore.WithExperimentalTransactionCandidatePagination(true),
+	)
+
+	ctx := context.WithValue(logging.TestingContext(), captureQueriesContextKey{}, true)
+	tx := ledger.NewTransaction().
+		WithPostings(ledger.NewPosting("wallet:target", "treasury", "USD", big.NewInt(1))).
+		WithMetadata(metadata.Metadata{"transaction_currency": "USD"}).
+		WithTimestamp(time.Now())
+	require.NoError(t, commitTransactionAndUpsertAccounts(ctx, store, &tx))
+
+	paginatedQuery := common.InitialPaginatedQuery[any]{
+		PageSize: 2,
+		Options: common.ResourceQuery[any]{
+			Builder: query.And(
+				query.Match("account", "wallet:target"),
+				query.Match("metadata[transaction_currency]", "USD"),
+			),
+		},
+	}
+
+	hook.Reset()
+	_, err := store.Transactions().Paginate(ctx, paginatedQuery)
+	require.NoError(t, err)
+	require.False(t, hook.Contains("candidate_keys"))
+
+	hook.Reset()
+	_, err = candidateStore.Transactions().Paginate(ctx, paginatedQuery)
+	require.NoError(t, err)
+	require.True(t, hook.Contains("candidate_keys"))
+	require.True(t, hook.Contains("AS MATERIALIZED"))
+}
+
+func requireTransactionsCursorEqual(
+	t *testing.T,
+	expected *paginate.Cursor[ledger.Transaction],
+	actual *paginate.Cursor[ledger.Transaction],
+) {
+	t.Helper()
+
+	require.Equal(t, expected.PageSize, actual.PageSize)
+	require.Equal(t, expected.HasMore, actual.HasMore)
+	require.Equal(t, expected.Previous, actual.Previous)
+	require.Equal(t, expected.Next, actual.Next)
+	require.Len(t, actual.Data, len(expected.Data))
+	RequireEqual(t, expected.Data, actual.Data)
+}
+
+type captureQueriesContextKey struct{}
+
+type captureQueriesHook struct {
+	mu      sync.Mutex
+	queries []string
+}
+
+func (h *captureQueriesHook) BeforeQuery(ctx context.Context, _ *bun.QueryEvent) context.Context {
+	return ctx
+}
+
+func (h *captureQueriesHook) AfterQuery(ctx context.Context, event *bun.QueryEvent) {
+	if ctx.Value(captureQueriesContextKey{}) == nil {
+		return
+	}
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.queries = append(h.queries, event.Query)
+}
+
+func (h *captureQueriesHook) Reset() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.queries = nil
+}
+
+func (h *captureQueriesHook) Contains(value string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, query := range h.queries {
+		if strings.Contains(query, value) {
+			return true
+		}
+	}
+	return false
 }

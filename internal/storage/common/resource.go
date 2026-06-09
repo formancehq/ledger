@@ -97,6 +97,11 @@ type RepositoryHandler[Opts any] interface {
 	Expand(query ResourceQuery[Opts], property string) (*bun.SelectQuery, *JoinCondition, error)
 }
 
+type CandidateKeyPaginationHandler[Opts any] interface {
+	UseCandidateKeyPagination(ResourceQuery[Opts], ColumnPaginatedQuery[Opts]) bool
+	CandidateKeyColumns(ResourceQuery[Opts], ColumnPaginatedQuery[Opts]) []string
+}
+
 type ResourceRepository[ResourceType, OptionsType any] struct {
 	resourceHandler RepositoryHandler[OptionsType]
 }
@@ -310,8 +315,10 @@ func (r *PaginatedResourceRepository[ResourceType, OptionsType]) Paginate(
 	}
 
 	var (
-		paginator     Paginator[ResourceType]
-		resourceQuery ResourceQuery[OptionsType]
+		paginator                Paginator[ResourceType]
+		resourceQuery            ResourceQuery[OptionsType]
+		columnPaginationQuery    *ColumnPaginatedQuery[OptionsType]
+		columnPaginationStrategy *columnPaginator[ResourceType, OptionsType]
 	)
 	switch v := any(paginationQuery).(type) {
 	case OffsetPaginatedQuery[OptionsType]:
@@ -322,10 +329,44 @@ func (r *PaginatedResourceRepository[ResourceType, OptionsType]) Paginate(
 		if field == nil {
 			return nil, fmt.Errorf("invalid property '%s' for pagination", v.Column)
 		}
-		paginator = newColumnPaginator[ResourceType, OptionsType](v, fieldName, field.Type)
+		cp := newColumnPaginator[ResourceType, OptionsType](v, fieldName, field.Type)
+		paginator = cp
+		columnPaginationQuery = &v
+		columnPaginationStrategy = &cp
 		resourceQuery = v.Options
 	default:
 		panic("should not happen")
+	}
+
+	if columnPaginationQuery != nil {
+		if candidateHandler, ok := r.resourceHandler.(CandidateKeyPaginationHandler[OptionsType]); ok &&
+			candidateHandler.UseCandidateKeyPagination(resourceQuery, *columnPaginationQuery) {
+			finalQuery, err := r.buildCandidateKeyPaginatedDataset(
+				resourceQuery,
+				*columnPaginationStrategy,
+				candidateHandler.CandidateKeyColumns(resourceQuery, *columnPaginationQuery),
+			)
+			if err != nil {
+				return nil, err
+			}
+
+			finalQuery, err = r.expand(finalQuery, resourceQuery)
+			if err != nil {
+				return nil, fmt.Errorf("expanding results: %w", err)
+			}
+
+			orderExpr := paginator.OrderExpression()
+			col, dir, _ := strings.Cut(orderExpr, " ")
+			finalQuery = finalQuery.Order(fmt.Sprintf("dataset.%s %s", col, dir))
+
+			ret := make([]ResourceType, 0)
+			err = finalQuery.Model(&ret).Scan(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("scanning results: %w", err)
+			}
+
+			return paginator.BuildCursor(ret)
+		}
 	}
 
 	finalQuery, err := r.buildFilteredDataset(resourceQuery)
@@ -356,6 +397,56 @@ func (r *PaginatedResourceRepository[ResourceType, OptionsType]) Paginate(
 	}
 
 	return paginator.BuildCursor(ret)
+}
+
+func (r *PaginatedResourceRepository[ResourceType, OptionsType]) buildCandidateKeyPaginatedDataset(
+	resourceQuery ResourceQuery[OptionsType],
+	paginator columnPaginator[ResourceType, OptionsType],
+	keyColumns []string,
+) (*bun.SelectQuery, error) {
+	if len(keyColumns) == 0 {
+		return nil, fmt.Errorf("candidate key pagination requires at least one key column")
+	}
+
+	filteredDataset, err := r.buildFilteredDataset(resourceQuery)
+	if err != nil {
+		return nil, fmt.Errorf("building filtered candidate dataset: %w", err)
+	}
+
+	candidateKeys := filteredDataset.NewSelect().
+		ModelTableExpr("(?) candidate_source", filteredDataset)
+	for _, column := range keyColumns {
+		candidateKeys = candidateKeys.ColumnExpr("candidate_source." + column)
+	}
+
+	page := filteredDataset.NewSelect().
+		ModelTableExpr("candidate_keys")
+	for _, column := range keyColumns {
+		page = page.Column(column)
+	}
+	page, err = paginator.Paginate(page)
+	if err != nil {
+		return nil, fmt.Errorf("paginating candidate keys: %w", err)
+	}
+
+	unfilteredResourceQuery := resourceQuery
+	unfilteredResourceQuery.Builder = nil
+	unfilteredDataset, err := r.buildFilteredDataset(unfilteredResourceQuery)
+	if err != nil {
+		return nil, fmt.Errorf("building unfiltered page dataset: %w", err)
+	}
+
+	joinConditions := make([]string, 0, len(keyColumns))
+	for _, column := range keyColumns {
+		joinConditions = append(joinConditions, fmt.Sprintf("page.%s = dataset.%s", column, column))
+	}
+
+	return unfilteredDataset.NewSelect().
+		WithQuery(bun.NewWithQuery("candidate_keys", candidateKeys).Materialized()).
+		With("page", page).
+		ModelTableExpr("(?) dataset", unfilteredDataset).
+		ColumnExpr("dataset.*").
+		Join("join page on " + strings.Join(joinConditions, " and ")), nil
 }
 
 func NewPaginatedResourceRepository[ResourceType, OptionsType any](

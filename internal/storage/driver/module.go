@@ -16,7 +16,11 @@ import (
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 )
 
-func NewFXModule() fx.Option {
+type ModuleConfig struct {
+	ExperimentalTransactionCandidatePagination bool
+}
+
+func NewFXModule(config ModuleConfig) fx.Option {
 	return fx.Options(
 		fx.Provide(fx.Annotate(func(tracerProvider trace.TracerProvider) bucket.Factory {
 			return bucket.NewDefaultFactory(bucket.WithTracer(tracerProvider.Tracer("store")))
@@ -43,6 +47,9 @@ func NewFXModule() fx.Option {
 			}
 			if params.MeterProvider != nil {
 				options = append(options, ledgerstore.WithMeter(params.MeterProvider.Meter("store")))
+			}
+			if config.ExperimentalTransactionCandidatePagination {
+				options = append(options, ledgerstore.WithExperimentalTransactionCandidatePagination(true))
 			}
 			return ledgerstore.NewFactory(params.DB, options...)
 		}),

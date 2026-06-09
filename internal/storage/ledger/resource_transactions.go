@@ -6,6 +6,8 @@ import (
 
 	"github.com/uptrace/bun"
 
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
+
 	"github.com/formancehq/ledger/internal/queries"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/features"
@@ -186,4 +188,31 @@ func (h transactionsResourceHandler) Expand(_ common.ResourceQuery[any], propert
 	}, nil
 }
 
+func (h transactionsResourceHandler) UseCandidateKeyPagination(
+	q common.ResourceQuery[any],
+	paginationQuery common.ColumnPaginatedQuery[any],
+) bool {
+	if !h.store.experimentalTransactionCandidatePagination {
+		return false
+	}
+	if paginationQuery.Column != "id" {
+		return false
+	}
+	if paginationQuery.Order == nil || *paginationQuery.Order != paginate.OrderDesc {
+		return false
+	}
+	if paginationQuery.Reverse {
+		return false
+	}
+	return hasPositiveSelectiveTransactionFilter(q.Builder)
+}
+
+func (h transactionsResourceHandler) CandidateKeyColumns(
+	common.ResourceQuery[any],
+	common.ColumnPaginatedQuery[any],
+) []string {
+	return []string{"ledger", "id"}
+}
+
 var _ common.RepositoryHandler[any] = transactionsResourceHandler{}
+var _ common.CandidateKeyPaginationHandler[any] = transactionsResourceHandler{}
