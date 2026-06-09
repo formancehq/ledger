@@ -108,16 +108,17 @@ func ApplyExports(
 // Both the offline bootstrap (cmd/ledgerctl/store) and the gRPC restore path
 // (internal/adapter/grpc) call this so the two cannot drift: skipping it loses
 // every log/audit entry written after the last full checkpoint.
-func ApplyExportsAndRebuild(ctx context.Context, logger logging.Logger, storage Storage, stagingDir string, manifest *Manifest) error {
+//
+// The caller owns the *dal.Store lifecycle. Earlier versions opened and closed
+// the store internally, but Pebble v2's in-process lock map could keep the
+// staging directory marked as "locked" past Close (see ledger-v3-poc#293),
+// blocking the post-download validate/preview/finalize RPCs that need to open
+// the same directory in the same process. Reusing one handle eliminates that
+// re-open hazard.
+func ApplyExportsAndRebuild(ctx context.Context, logger logging.Logger, storage Storage, store *dal.Store, manifest *Manifest) error {
 	if manifest == nil || len(manifest.Exports) == 0 {
 		return nil
 	}
-
-	store, err := dal.OpenDirect(stagingDir, logger)
-	if err != nil {
-		return fmt.Errorf("opening staging for exports: %w", err)
-	}
-	defer func() { _ = store.Close() }()
 
 	if err := ApplyExports(ctx, logger, storage, store, manifest.Exports); err != nil {
 		return fmt.Errorf("applying exports: %w", err)

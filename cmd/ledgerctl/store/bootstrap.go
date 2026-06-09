@@ -191,8 +191,22 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 	if len(manifest.Exports) > 0 {
 		exportSpinner, _ := pterm.DefaultSpinner.Start("Applying export segments and rebuilding derived state...")
 
-		if err := backup.ApplyExportsAndRebuild(cmd.Context(), logger, storage, stagingDir, &manifest); err != nil {
+		exportStore, err := dal.OpenDirect(stagingDir, logger)
+		if err != nil {
+			exportSpinner.Fail("Failed to open staging for exports")
+
+			return cmdutil.Displayed(err)
+		}
+
+		if err := backup.ApplyExportsAndRebuild(cmd.Context(), logger, storage, exportStore, &manifest); err != nil {
+			_ = exportStore.Close()
 			exportSpinner.Fail("Failed to apply export segments")
+
+			return cmdutil.Displayed(err)
+		}
+
+		if err := exportStore.Close(); err != nil {
+			exportSpinner.Fail("Failed to close staging after exports")
 
 			return cmdutil.Displayed(err)
 		}

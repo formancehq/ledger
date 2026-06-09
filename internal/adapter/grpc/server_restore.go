@@ -38,6 +38,17 @@ type RestoreServiceServerImpl struct {
 	logger      logging.Logger
 	downloading bool
 	downloaded  bool
+
+	// stagingStore is the read-write Pebble handle on the staging directory,
+	// opened by DownloadBackup once the download is complete and the export
+	// segments have been applied, and kept alive for the rest of the restore
+	// lifecycle. ValidateRestore, PreviewRestore, and FinalizeRestore all
+	// reuse it instead of re-opening the staging Pebble in the same process
+	// — Pebble v2 forbids that (vfs/file_lock_unix.go: "lock held by current
+	// process"), and even if it did not, repeatedly warming up the table
+	// metadata for thousands of SSTs on a 1+ TB staging directory would be
+	// gratuitously slow.
+	stagingStore *dal.Store
 }
 
 // NewRestoreServiceServer creates a new RestoreServiceServerImpl.
@@ -51,6 +62,20 @@ func NewRestoreServiceServer(dataDir, clusterID string, logger logging.Logger) *
 
 func (s *RestoreServiceServerImpl) stagingDir() string {
 	return filepath.Join(s.dataDir, restoreStagingDir)
+}
+
+// closeStagingStore closes the held staging handle, if any, and nils it out.
+// Safe to call multiple times. Caller must hold s.mu.
+func (s *RestoreServiceServerImpl) closeStagingStore() {
+	if s.stagingStore == nil {
+		return
+	}
+
+	if err := s.stagingStore.Close(); err != nil {
+		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to close staging store")
+	}
+
+	s.stagingStore = nil
 }
 
 // DownloadBackup downloads backup files from S3 into the restore staging area.
@@ -171,12 +196,34 @@ func (s *RestoreServiceServerImpl) DownloadBackup(ctx context.Context, req *rest
 		}
 	}
 
+	// Open the staging Pebble in read-write mode and keep the handle alive for
+	// the remainder of the restore lifecycle (Validate, Preview, Finalize all
+	// reuse it). ApplyExportsAndRebuild operates on this same handle so the
+	// post-download flow never has to close and re-open in the same process.
+	stagingStore, err := dal.OpenDirect(stagingDir, s.logger)
+	if err != nil {
+		return nil, fmt.Errorf("opening staging store: %w", err)
+	}
+
+	defer func() {
+		if !success {
+			if closeErr := stagingStore.Close(); closeErr != nil {
+				s.logger.WithFields(map[string]any{"error": closeErr}).
+					Errorf("Failed to close staging store after failed download")
+			}
+		}
+	}()
+
 	// Apply incremental export segments on top of the checkpoint and rebuild
 	// derived state. Skipping this would silently drop every log/audit entry
 	// written after the last full checkpoint. Mirrors the offline bootstrap.
-	if err := backup.ApplyExportsAndRebuild(ctx, s.logger, storage, stagingDir, &manifest); err != nil {
+	if err := backup.ApplyExportsAndRebuild(ctx, s.logger, storage, stagingStore, &manifest); err != nil {
 		return nil, fmt.Errorf("applying export segments: %w", err)
 	}
+
+	s.mu.Lock()
+	s.stagingStore = stagingStore
+	s.mu.Unlock()
 
 	success = true
 
@@ -196,20 +243,12 @@ func (s *RestoreServiceServerImpl) DownloadBackup(ctx context.Context, req *rest
 func (s *RestoreServiceServerImpl) ValidateRestore(_ *restorepb.ValidateRestoreRequest, stream ggrpc.ServerStreamingServer[restorepb.ValidateRestoreEvent]) error {
 	s.mu.Lock()
 	downloaded := s.downloaded
+	store := s.stagingStore
 	s.mu.Unlock()
 
-	if !downloaded {
+	if !downloaded || store == nil {
 		return status.Error(codes.FailedPrecondition, "no backup downloaded; download a backup first")
 	}
-
-	stagingDir := s.stagingDir()
-
-	store, err := dal.OpenReadOnly(stagingDir, s.logger)
-	if err != nil {
-		return fmt.Errorf("opening staging store: %w", err)
-	}
-
-	defer func() { _ = store.Close() }()
 
 	attrs := attributes.New()
 	checker := check.NewChecker(store, attrs, s.logger)
@@ -244,20 +283,12 @@ func (s *RestoreServiceServerImpl) ValidateRestore(_ *restorepb.ValidateRestoreR
 func (s *RestoreServiceServerImpl) PreviewRestore(ctx context.Context, _ *restorepb.PreviewRestoreRequest) (*restorepb.PreviewRestoreResponse, error) {
 	s.mu.Lock()
 	downloaded := s.downloaded
+	store := s.stagingStore
 	s.mu.Unlock()
 
-	if !downloaded {
+	if !downloaded || store == nil {
 		return nil, status.Error(codes.FailedPrecondition, "no backup downloaded; download a backup first")
 	}
-
-	stagingDir := s.stagingDir()
-
-	store, err := dal.OpenReadOnly(stagingDir, s.logger)
-	if err != nil {
-		return nil, fmt.Errorf("opening staging store: %w", err)
-	}
-
-	defer func() { _ = store.Close() }()
 
 	lastAppliedIndex, err := query.ReadLastAppliedIndex(store)
 	if err != nil {
@@ -315,9 +346,10 @@ func (s *RestoreServiceServerImpl) PreviewRestore(ctx context.Context, _ *restor
 func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restorepb.FinalizeRestoreRequest) (*restorepb.FinalizeRestoreResponse, error) {
 	s.mu.Lock()
 	downloaded := s.downloaded
+	store := s.stagingStore
 	s.mu.Unlock()
 
-	if !downloaded {
+	if !downloaded || store == nil {
 		return nil, status.Error(codes.FailedPrecondition, "no backup downloaded; download a backup first")
 	}
 
@@ -326,44 +358,30 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 	// Compact attributes to index 0 and reset lastAppliedIndex.
 	s.logger.Infof("Compacting backup for restore compatibility")
 
-	compactStore, err := dal.OpenDirect(stagingDir, s.logger)
-	if err != nil {
-		return nil, fmt.Errorf("opening staging for compaction: %w", err)
-	}
-
-	if err := attributes.CompactAllForBackup(compactStore); err != nil {
-		_ = compactStore.Close()
-
+	if err := attributes.CompactAllForBackup(store); err != nil {
 		return nil, fmt.Errorf("compacting backup attributes: %w", err)
 	}
 
-	if err := compactStore.Close(); err != nil {
-		return nil, fmt.Errorf("closing compacted staging: %w", err)
-	}
-
-	// Read metadata after compaction
-	store, err := dal.OpenReadOnly(stagingDir, s.logger)
-	if err != nil {
-		return nil, fmt.Errorf("opening staging store: %w", err)
-	}
-
+	// Read metadata after compaction. We can do this directly on the same RW
+	// handle — query.ReadLast* only need a PebbleGetter, which *dal.Store
+	// satisfies in both RW and RO modes.
 	lastAppliedIndex, err := query.ReadLastAppliedIndex(store)
 	if err != nil {
-		_ = store.Close()
-
 		return nil, fmt.Errorf("getting last applied index: %w", err)
 	}
 
 	lastAppliedTimestamp, err := query.ReadLastAppliedTimestamp(store)
 	if err != nil {
-		_ = store.Close()
-
 		return nil, fmt.Errorf("getting last applied timestamp: %w", err)
 	}
 
-	if err := store.Close(); err != nil {
-		return nil, fmt.Errorf("closing staging store: %w", err)
-	}
+	// Close the staging Pebble before the filesystem move. The hard-link
+	// below would otherwise race with open FDs (SSTs, LOCK file) held by the
+	// running DB. After Close, the staging dir is just a tree of files we
+	// own.
+	s.mu.Lock()
+	s.closeStagingStore()
+	s.mu.Unlock()
 
 	// Write RESTORED marker
 	marker := node.RestoredMarker{
