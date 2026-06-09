@@ -2,7 +2,29 @@ package node
 
 import (
 	"errors"
+	"fmt"
 	"time"
+)
+
+// Upper bounds on validated numeric fields. They are intentionally generous —
+// the goal is not to enforce policy but to fail fast on values that are
+// obviously wrong (negative, or so large the allocation crashes the node)
+// before they reach the channel constructor or errgroup.SetLimit at startup.
+const (
+	// maxQueueCapacity caps every Raft-related channel buffer size. 1M
+	// pending entries is several orders of magnitude beyond steady-state
+	// throughput; anything larger almost always reflects a misconfigured
+	// flag rather than intent.
+	maxQueueCapacity = 1 << 20
+
+	// maxBufferBytes caps per-peer / per-message byte sizes. 1 GiB is the
+	// outer envelope for a single Raft message; beyond it, allocating the
+	// buffer is itself a denial-of-service.
+	maxBufferBytes = 1 << 30
+
+	// maxRaftTicks caps tick counts. Raft tick semantics break down well
+	// before this, but it's enough to filter typos like "100000".
+	maxRaftTicks = 10000
 )
 
 type NodeConfig struct {
@@ -37,6 +59,55 @@ func (cfg *NodeConfig) Validate() error {
 	// If AdvertiseAddr is not set, use BindAddr
 	if cfg.AdvertiseAddr == "" {
 		cfg.AdvertiseAddr = cfg.BindAddr
+	}
+
+	// Numeric fields use 0 as "use the default" sentinel (see SetDefaults),
+	// so accept 0 and only reject negative or absurd values. The Raft
+	// channel constructors panic on negative capacities and OOM on huge
+	// ones — catch both here.
+	for _, c := range []struct {
+		name string
+		val  int
+		max  int
+	}{
+		{"propose-queue-capacity", cfg.ProposeQueueCapacity, maxQueueCapacity},
+		{"transport-buffer-size", cfg.TransportBufferSize, maxBufferBytes},
+		{"replay-batch-size", cfg.ReplayBatchSize, maxQueueCapacity},
+		{"election-tick", cfg.ElectionTick, maxRaftTicks},
+		{"heartbeat-tick", cfg.HeartbeatTick, maxRaftTicks},
+		{"max-inflight-msgs", cfg.MaxInflightMsgs, maxQueueCapacity},
+	} {
+		if c.val < 0 || c.val > c.max {
+			return fmt.Errorf("--%s must be in [0, %d] (got %d)", c.name, c.max, c.val)
+		}
+	}
+
+	// uint64 fields can't go negative; just enforce the upper bound.
+	for _, c := range []struct {
+		name string
+		val  uint64
+		max  uint64
+	}{
+		{"max-size-per-msg", cfg.MaxSizePerMsg, maxBufferBytes},
+		{"rotation-threshold", cfg.RotationThreshold, maxQueueCapacity},
+		{"compaction-margin", cfg.CompactionMargin, maxQueueCapacity},
+		{"auto-promote-threshold", cfg.AutoPromoteThreshold, maxQueueCapacity},
+	} {
+		if c.val > c.max {
+			return fmt.Errorf("--%s must be ≤ %d (got %d)", c.name, c.max, c.val)
+		}
+	}
+
+	if cfg.MaintenanceInterval < 0 {
+		return fmt.Errorf("--maintenance-interval must be ≥ 0 (got %s)", cfg.MaintenanceInterval)
+	}
+
+	if cfg.TickInterval < 0 {
+		return fmt.Errorf("--tick-interval must be ≥ 0 (got %s)", cfg.TickInterval)
+	}
+
+	if cfg.ProcessingTickInterval < 0 {
+		return fmt.Errorf("--processing-tick-interval must be ≥ 0 (got %s)", cfg.ProcessingTickInterval)
 	}
 
 	return nil

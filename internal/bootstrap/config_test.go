@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -37,6 +38,16 @@ func validBaseConfig() Config {
 		ClusterID:  "test-cluster",
 		RaftConfig: node.NodeConfig{NodeID: 1},
 		TLSConfig:  TLSConfig{Mode: TLSModeDisabled},
+		TransportConfig: node.TransportConfig{
+			Reception: []int{10, 512, 512},
+			Send:      []int{10, 512, 512},
+		},
+		SnapshotSyncConfig: SnapshotSyncConfig{
+			SessionTTL:     5 * time.Minute,
+			Parallelism:    4,
+			RetryCount:     5,
+			FileRetryCount: 3,
+		},
 	}
 }
 
@@ -214,6 +225,72 @@ func TestValidateAuthConfig(t *testing.T) {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tt.wantErr)
 			}
+		})
+	}
+}
+
+func TestSnapshotSyncConfigValidate(t *testing.T) {
+	t.Parallel()
+
+	valid := SnapshotSyncConfig{
+		SessionTTL:     5 * time.Minute,
+		Parallelism:    4,
+		RetryCount:     5,
+		FileRetryCount: 3,
+	}
+
+	tests := []struct {
+		name    string
+		mutate  func(*SnapshotSyncConfig)
+		wantErr string
+	}{
+		{
+			name:   "valid defaults",
+			mutate: func(c *SnapshotSyncConfig) {},
+		},
+		{
+			name:    "parallelism=0 makes errgroup serial — operational failure mode",
+			mutate:  func(c *SnapshotSyncConfig) { c.Parallelism = 0 },
+			wantErr: "--snapshot-parallelism",
+		},
+		{
+			name:    "parallelism=-1 makes errgroup unlimited — DoS by misconfig",
+			mutate:  func(c *SnapshotSyncConfig) { c.Parallelism = -1 },
+			wantErr: "--snapshot-parallelism",
+		},
+		{
+			name:    "retry-count=0 makes the loop run zero attempts",
+			mutate:  func(c *SnapshotSyncConfig) { c.RetryCount = 0 },
+			wantErr: "--snapshot-retry-count",
+		},
+		{
+			name:    "file-retry-count=0",
+			mutate:  func(c *SnapshotSyncConfig) { c.FileRetryCount = 0 },
+			wantErr: "--snapshot-file-retry-count",
+		},
+		{
+			name:    "session-ttl=0 reaps the session immediately",
+			mutate:  func(c *SnapshotSyncConfig) { c.SessionTTL = 0 },
+			wantErr: "--snapshot-session-ttl",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := valid
+			tt.mutate(&cfg)
+
+			err := cfg.Validate()
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+
+				return
+			}
+
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tt.wantErr)
 		})
 	}
 }

@@ -97,6 +97,31 @@ type SnapshotSyncConfig struct {
 	FileRetryCount int           // Per-file retry attempts on transient stream errors
 }
 
+// Validate enforces that snapshot sync flags name workable values. The
+// snapshot fetcher uses retryCount as `for attempt := range f.retryCount`
+// (zero means no attempts → the node never catches up), and parallelism is
+// passed to errgroup.SetLimit where 0 means "serial" and negative means
+// "unlimited"; both extremes are operational failure modes.
+func (c SnapshotSyncConfig) Validate() error {
+	if c.Parallelism < 1 || c.Parallelism > 1024 {
+		return fmt.Errorf("--snapshot-parallelism must be in [1, 1024] (got %d)", c.Parallelism)
+	}
+
+	if c.RetryCount < 1 || c.RetryCount > 100 {
+		return fmt.Errorf("--snapshot-retry-count must be in [1, 100] (got %d)", c.RetryCount)
+	}
+
+	if c.FileRetryCount < 1 || c.FileRetryCount > 100 {
+		return fmt.Errorf("--snapshot-file-retry-count must be in [1, 100] (got %d)", c.FileRetryCount)
+	}
+
+	if c.SessionTTL <= 0 {
+		return fmt.Errorf("--snapshot-session-ttl must be > 0 (got %s)", c.SessionTTL)
+	}
+
+	return nil
+}
+
 type Config struct {
 	RaftConfig                  node.NodeConfig
 	Debug                       bool
@@ -147,7 +172,15 @@ func (c Config) Validate() error {
 		return err
 	}
 
-	return c.RaftConfig.Validate()
+	if err := c.RaftConfig.Validate(); err != nil {
+		return err
+	}
+
+	if err := c.TransportConfig.Validate(); err != nil {
+		return err
+	}
+
+	return c.SnapshotSyncConfig.Validate()
 }
 
 // validateTLSConfig enforces TLS configuration invariants.

@@ -103,6 +103,33 @@ type TransportConfig struct {
 	Send      []int
 }
 
+// Validate checks that Reception and Send hold the three priority slots the
+// transport reads at startup, that each capacity is non-negative, and that
+// no value is large enough to OOM the channel allocator.
+func (c TransportConfig) Validate() error {
+	for _, side := range []struct {
+		name   string
+		queues []int
+	}{
+		{"raft-transport-reception-queues", c.Reception},
+		{"raft-transport-send-queues", c.Send},
+	} {
+		if len(side.queues) != 3 {
+			return fmt.Errorf("--%s must have exactly 3 entries (high/medium/low priority); got %d",
+				side.name, len(side.queues))
+		}
+
+		for i, v := range side.queues {
+			if v < 0 || v > maxQueueCapacity {
+				return fmt.Errorf("--%s[%d] must be in [0, %d] (got %d)",
+					side.name, i, maxQueueCapacity, v)
+			}
+		}
+	}
+
+	return nil
+}
+
 // NewTransport creates a new transport with a gRPC connection pool and client pool.
 func NewTransport(
 	logger logging.Logger,
