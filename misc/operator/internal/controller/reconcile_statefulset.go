@@ -370,9 +370,25 @@ func buildPodTemplate(ledger *ledgerv1alpha1.LedgerService, specHash string, age
 		container.SecurityContext = ledger.Spec.SecurityContext
 	}
 	// Probes: start from defaults, then overlay any user-provided fields.
-	container.LivenessProbe = mergeProbe(defaultLivenessProbe(), ledger.Spec.LivenessProbe)
-	container.ReadinessProbe = mergeProbe(defaultReadinessProbe(), ledger.Spec.ReadinessProbe)
-	container.StartupProbe = mergeProbe(defaultStartupProbe(), ledger.Spec.StartupProbe)
+	// In restore mode the management HTTP server only exposes /health (no
+	// /livez or /readyz), so the HTTP probes would loop forever and the pod
+	// would never be Ready — leaving the Service Endpoints empty and any
+	// gRPC ingress unable to route restore RPC traffic. Fall back to TCP
+	// probes on the gRPC port, which is sufficient to attest that the
+	// restore-mode RPC server is accepting connections.
+	livenessProbe := defaultLivenessProbe()
+	readinessProbe := defaultReadinessProbe()
+	startupProbe := defaultStartupProbe()
+
+	if ledger.Spec.Restore {
+		livenessProbe = restoreModeTCPProbe(15, 10, 3)
+		readinessProbe = restoreModeTCPProbe(5, 5, 3)
+		startupProbe = restoreModeTCPProbe(0, 10, 30)
+	}
+
+	container.LivenessProbe = mergeProbe(livenessProbe, ledger.Spec.LivenessProbe)
+	container.ReadinessProbe = mergeProbe(readinessProbe, ledger.Spec.ReadinessProbe)
+	container.StartupProbe = mergeProbe(startupProbe, ledger.Spec.StartupProbe)
 
 	podSpec := corev1.PodSpec{
 		ServiceAccountName: serviceAccountName(ledger),
@@ -641,6 +657,20 @@ func defaultStartupProbe() *corev1.Probe {
 		},
 		PeriodSeconds:    10,
 		FailureThreshold: 30,
+	}
+}
+
+// restoreModeTCPProbe returns a TCP probe targeting the gRPC port. Restore
+// mode does not expose /livez or /readyz on the management HTTP server, so
+// the standard HTTP probes would never succeed.
+func restoreModeTCPProbe(initialDelay, period, failureThreshold int32) *corev1.Probe {
+	return &corev1.Probe{
+		ProbeHandler: corev1.ProbeHandler{
+			TCPSocket: &corev1.TCPSocketAction{Port: intstr.FromString("grpc")},
+		},
+		InitialDelaySeconds: initialDelay,
+		PeriodSeconds:       period,
+		FailureThreshold:    failureThreshold,
 	}
 }
 
