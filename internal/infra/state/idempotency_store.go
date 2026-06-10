@@ -8,27 +8,31 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/zeebo/blake3"
 
+	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// HashIdempotencyKey returns a 16-byte hash of the idempotency key string.
-// This is used as the Pebble key suffix for the dedicated 0x03 prefix.
-func hashIdempotencyKey(key string) [16]byte {
+// hashIdempotencyKey returns a 128-bit hash of the idempotency key string,
+// used both as the Pebble key suffix under `[0x05][0x01]` and as the
+// in-memory map key.
+func hashIdempotencyKey(key string) attributes.U128 {
 	h := blake3.Sum256([]byte(key))
 
-	var out [16]byte
-	copy(out[:], h[:16])
-
-	return out
+	return attributes.U128FromBytes(h[:16])
 }
 
 // IdempotencyStore is the in-memory bridge between consecutive proposals.
 // It holds recently written idempotency keys so that a key written by
 // proposal N is visible to proposal N+1 even if N+1's preload ran before
 // N was applied to Pebble.
+//
+// The map is keyed by the same U128 blake3 hash used as the Pebble key
+// suffix. This lets the boot-time RestoreFromStore scan rebuild the map
+// directly from `[0x05][0x01]` Pebble entries without needing the original
+// caller-supplied string, and keeps lookups O(1) on the hash.
 type IdempotencyStore struct {
-	entries   map[string]*commonpb.IdempotencyKeyValue
+	entries   map[attributes.U128]*commonpb.IdempotencyKeyValue
 	ttlMicros uint64
 }
 
@@ -36,21 +40,21 @@ type IdempotencyStore struct {
 // ttlMicros is the time-to-live in HLC microseconds (0 = no expiration).
 func NewIdempotencyStore(ttlMicros uint64) *IdempotencyStore {
 	return &IdempotencyStore{
-		entries:   make(map[string]*commonpb.IdempotencyKeyValue),
+		entries:   make(map[attributes.U128]*commonpb.IdempotencyKeyValue),
 		ttlMicros: ttlMicros,
 	}
 }
 
 // Get returns the idempotency value for the given key, if present in the in-memory map.
 func (s *IdempotencyStore) Get(key string) (*commonpb.IdempotencyKeyValue, bool) {
-	v, ok := s.entries[key]
+	v, ok := s.entries[hashIdempotencyKey(key)]
 
 	return v, ok
 }
 
 // Put writes an idempotency key to the in-memory map.
 func (s *IdempotencyStore) Put(key string, value *commonpb.IdempotencyKeyValue) {
-	s.entries[key] = value
+	s.entries[hashIdempotencyKey(key)] = value
 }
 
 // IsExpired returns true if the value's created_at is older than TTL relative to nowMicros.
@@ -65,7 +69,53 @@ func (s *IdempotencyStore) IsExpired(value *commonpb.IdempotencyKeyValue, nowMic
 
 // Reset clears the in-memory map (used during snapshot restore).
 func (s *IdempotencyStore) Reset() {
-	s.entries = make(map[string]*commonpb.IdempotencyKeyValue)
+	s.entries = make(map[attributes.U128]*commonpb.IdempotencyKeyValue)
+}
+
+// RestoreFromStore rebuilds the in-memory map from Pebble. It scans every
+// entry under `[0x05][0x01]` (the idempotency main-key zone), extracts the
+// 16-byte hash from the Pebble key, unmarshals the value, and repopulates the
+// map.
+//
+// No TTL filter is applied: the map MUST be identical across all nodes for
+// the same applied index (Cache-is-source-of-authority invariant). A wall-
+// clock TTL filter at boot time would yield different maps on nodes that
+// restart at different moments. Removing stale entries is exclusively the
+// job of the Raft-replicated IdempotencyEviction command, which uses a
+// deterministic cutoff embedded in the proposal.
+func (s *IdempotencyStore) RestoreFromStore(reader dal.PebbleReader) error {
+	iter, err := reader.NewIter(&pebble.IterOptions{
+		LowerBound: []byte{dal.ZoneIdempotency, dal.SubIdempKeys},
+		UpperBound: []byte{dal.ZoneIdempotency, dal.SubIdempKeys + 1},
+	})
+	if err != nil {
+		return fmt.Errorf("creating idempotency main-key iterator: %w", err)
+	}
+
+	defer func() { _ = iter.Close() }()
+
+	// Main key layout: [0x05][0x01][hash 16 bytes] (length = 18).
+	const mainKeyLen = 2 + 16
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		k := iter.Key()
+		if len(k) != mainKeyLen {
+			continue
+		}
+
+		value := &commonpb.IdempotencyKeyValue{}
+		if err := value.UnmarshalVT(iter.Value()); err != nil {
+			return fmt.Errorf("unmarshaling idempotency value: %w", err)
+		}
+
+		s.entries[attributes.U128FromBytes(k[2:mainKeyLen])] = value
+	}
+
+	if err := iter.Error(); err != nil {
+		return fmt.Errorf("iterating idempotency main keys: %w", err)
+	}
+
+	return nil
 }
 
 // ScanExpiredKeyHashes reads the Pebble time index and returns up to maxKeys
@@ -146,9 +196,9 @@ func (s *IdempotencyStore) Evict(batch *dal.Batch, cutoffMicros uint64, lastScan
 	evicted := 0
 
 	// 1. Scan in-memory map
-	for key, value := range s.entries {
+	for hash, value := range s.entries {
 		if value.GetCreatedAt() <= cutoffMicros {
-			delete(s.entries, key)
+			delete(s.entries, hash)
 			evicted++
 		}
 	}

@@ -401,6 +401,22 @@ func (s *CacheSnapshotter) RestoreFromStore() error {
 	s.registry.Cache.Reset()
 	s.registry.Idempotency.Reset()
 
+	reader, err := s.dataStore.NewDirectReadHandle()
+	if err != nil {
+		return fmt.Errorf("creating read handle for restore: %w", err)
+	}
+
+	defer func() { _ = reader.Close() }()
+
+	// Rebuild the idempotency bridge from Pebble. The Reset above cleared the
+	// in-memory map, but the underlying Pebble entries survive snapshot
+	// restoration — without this scan the FSM would re-accept already-applied
+	// idempotent operations until the bridge naturally refilled, breaking the
+	// at-most-once guarantee. See issue #300.
+	if err := s.registry.Idempotency.RestoreFromStore(reader); err != nil {
+		return fmt.Errorf("restoring idempotency bridge: %w", err)
+	}
+
 	// Read cache-level metadata if present. Pre-rotation, this key does not
 	// exist; default to currentGeneration=0.
 	currentGen := uint64(0)
@@ -422,13 +438,6 @@ func (s *CacheSnapshotter) RestoreFromStore() error {
 	// Gen-byte mapping: gen0 at currentGeneration % 2, gen1 at the other byte.
 	gen0Byte := byte(currentGen % 2)
 	gen1Byte := byte((currentGen + 1) % 2)
-
-	reader, err := s.dataStore.NewDirectReadHandle()
-	if err != nil {
-		return fmt.Errorf("creating read handle for cache restore: %w", err)
-	}
-
-	defer func() { _ = reader.Close() }()
 
 	if err := s.restoreGeneration(reader, gen0Byte, 0); err != nil {
 		return fmt.Errorf("restoring cache gen0 from byte %d: %w", gen0Byte, err)

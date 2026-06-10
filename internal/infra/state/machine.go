@@ -396,6 +396,16 @@ func (fsm *Machine) RecoverState() error {
 		fsm.hashAlgorithm = clusterState.GetConfig().GetHashAlgorithm()
 	}
 
+	// Rebuild the idempotency bridge from Pebble. Without this, a node that
+	// restarts loses every idempotency key whose surrounding proposal already
+	// landed in Pebble — replays would then be accepted as new work until the
+	// in-memory bridge naturally refilled. See issue #300.
+	fsm.Registry.Idempotency.Reset()
+
+	if err := fsm.Registry.Idempotency.RestoreFromStore(handle); err != nil {
+		return fmt.Errorf("recovering idempotency bridge: %w", err)
+	}
+
 	fsm.logger.WithFields(map[string]any{
 		"nextSequenceID":        fsm.nextSequenceID,
 		"nextAuditSequenceID":   fsm.nextAuditSequenceID,
