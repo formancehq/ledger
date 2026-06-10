@@ -976,10 +976,14 @@ var _ = Describe("Transactions", Ordered, func() {
 		var ledgerName = "tx-filter-ledger"
 
 		BeforeAll(func() {
-			// Create ledger and metadata indexes for the fields we'll filter on
+			// Create ledger with metadata schema then indexes for the fields we'll filter on
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					actions.CreateLedgerAction(ledgerName, nil),
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+						{TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION, Key: "category", Type: commonpb.MetadataType_METADATA_TYPE_STRING},
+						{TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION, Key: "priority", Type: commonpb.MetadataType_METADATA_TYPE_STRING},
+						{TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION, Key: "tier", Type: commonpb.MetadataType_METADATA_TYPE_STRING},
+					}),
 					actions.CreateTransactionMetadataIndexAction(ledgerName, "category"),
 					actions.CreateTransactionMetadataIndexAction(ledgerName, "priority"),
 					actions.CreateTransactionMetadataIndexAction(ledgerName, "tier"),

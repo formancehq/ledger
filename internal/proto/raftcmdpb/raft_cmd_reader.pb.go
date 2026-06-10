@@ -1238,14 +1238,18 @@ func (m *LedgerApplyOrder) Mutate() *LedgerApplyOrder {
 // CreateIndexOrderReader provides read-only access to CreateIndexOrder.
 // Call Mutate() to obtain a mutable clone.
 type CreateIndexOrderReader interface {
-	GetIndex() isCreateIndexOrder_Index
+	GetId() commonpb.IndexIDReader
 	Mutate() *CreateIndexOrder
 }
 
 type createIndexOrderReadonly struct{ v *CreateIndexOrder }
 
-func (r *createIndexOrderReadonly) GetIndex() isCreateIndexOrder_Index {
-	return r.v.GetIndex()
+func (r *createIndexOrderReadonly) GetId() commonpb.IndexIDReader {
+	v := r.v.GetId()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *createIndexOrderReadonly) Mutate() *CreateIndexOrder {
@@ -1268,14 +1272,18 @@ func (m *CreateIndexOrder) Mutate() *CreateIndexOrder {
 // DropIndexOrderReader provides read-only access to DropIndexOrder.
 // Call Mutate() to obtain a mutable clone.
 type DropIndexOrderReader interface {
-	GetIndex() isDropIndexOrder_Index
+	GetId() commonpb.IndexIDReader
 	Mutate() *DropIndexOrder
 }
 
 type dropIndexOrderReadonly struct{ v *DropIndexOrder }
 
-func (r *dropIndexOrderReadonly) GetIndex() isDropIndexOrder_Index {
-	return r.v.GetIndex()
+func (r *dropIndexOrderReadonly) GetId() commonpb.IndexIDReader {
+	v := r.v.GetId()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *dropIndexOrderReadonly) Mutate() *DropIndexOrder {
@@ -1299,7 +1307,7 @@ func (m *DropIndexOrder) Mutate() *DropIndexOrder {
 // Call Mutate() to obtain a mutable clone.
 type IndexReadyUpdateReader interface {
 	GetLedger() string
-	GetIndex() isIndexReadyUpdate_Index
+	GetId() commonpb.IndexIDReader
 	Mutate() *IndexReadyUpdate
 }
 
@@ -1309,8 +1317,12 @@ func (r *indexReadyUpdateReadonly) GetLedger() string {
 	return r.v.GetLedger()
 }
 
-func (r *indexReadyUpdateReadonly) GetIndex() isIndexReadyUpdate_Index {
-	return r.v.GetIndex()
+func (r *indexReadyUpdateReadonly) GetId() commonpb.IndexIDReader {
+	v := r.v.GetId()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *indexReadyUpdateReadonly) Mutate() *IndexReadyUpdate {

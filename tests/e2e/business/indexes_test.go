@@ -107,7 +107,8 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 			Expect(ledger.MetadataSchema).NotTo(BeNil())
 			field, ok := ledger.MetadataSchema.AccountFields["category"]
 			Expect(ok).To(BeTrue())
-			Expect(field.Indexed).To(BeTrue())
+			Expect(field).NotTo(BeNil())
+			Expect(hasMetadataIndex(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "category")).To(BeTrue())
 		})
 
 		It("Should reject queries after dropping the index", func() {
@@ -173,8 +174,7 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 			Eventually(func(g Gomega) {
 				ledger, err := sharedClient.GetLedger(sharedCtx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
 				g.Expect(err).To(Succeed())
-				g.Expect(ledger.BuiltinIndexes).NotTo(BeNil())
-				g.Expect(ledger.BuiltinIndexes.Address).To(BeTrue())
+				g.Expect(hasTxBuiltinIndex(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)).To(BeTrue())
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
@@ -190,9 +190,8 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 			Eventually(func(g Gomega) {
 				ledger, err := sharedClient.GetLedger(sharedCtx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
 				g.Expect(err).To(Succeed())
-				g.Expect(ledger.BuiltinIndexes).NotTo(BeNil())
-				g.Expect(ledger.BuiltinIndexes.SourceAddress).To(BeTrue())
-				g.Expect(ledger.BuiltinIndexes.DestAddress).To(BeTrue())
+				g.Expect(hasTxBuiltinIndex(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS)).To(BeTrue())
+				g.Expect(hasTxBuiltinIndex(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS)).To(BeTrue())
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
@@ -207,11 +206,10 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 			Eventually(func(g Gomega) {
 				ledger, err := sharedClient.GetLedger(sharedCtx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
 				g.Expect(err).To(Succeed())
-				g.Expect(ledger.BuiltinIndexes).NotTo(BeNil())
-				g.Expect(ledger.BuiltinIndexes.Address).To(BeFalse())
+				g.Expect(hasTxBuiltinIndex(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)).To(BeFalse())
 				// Source and destination should still be enabled
-				g.Expect(ledger.BuiltinIndexes.SourceAddress).To(BeTrue())
-				g.Expect(ledger.BuiltinIndexes.DestAddress).To(BeTrue())
+				g.Expect(hasTxBuiltinIndex(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS)).To(BeTrue())
+				g.Expect(hasTxBuiltinIndex(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS)).To(BeTrue())
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
@@ -291,9 +289,9 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		It("Should show reference index as READY in GetLedger", func() {
 			info, err := sharedClient.GetLedger(sharedCtx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
 			Expect(err).To(Succeed())
-			Expect(info.BuiltinIndexes).NotTo(BeNil())
-			Expect(info.BuiltinIndexes.Reference).To(BeTrue())
-			Expect(info.BuiltinIndexes.ReferenceStatus).To(Equal(commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY))
+			idx := findTxBuiltinIndex(info, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+			Expect(idx).NotTo(BeNil())
+			Expect(idx.GetBuildStatus()).To(Equal(commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY))
 		})
 
 		It("Should reject reference filter queries after dropping the index", func() {
@@ -416,9 +414,9 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		It("Should show timestamp index as READY in GetLedger", func() {
 			info, err := sharedClient.GetLedger(sharedCtx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
 			Expect(err).To(Succeed())
-			Expect(info.BuiltinIndexes).NotTo(BeNil())
-			Expect(info.BuiltinIndexes.Timestamp).To(BeTrue())
-			Expect(info.BuiltinIndexes.TimestampStatus).To(Equal(commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY))
+			idx := findTxBuiltinIndex(info, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
+			Expect(idx).NotTo(BeNil())
+			Expect(idx.GetBuildStatus()).To(Equal(commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY))
 		})
 	})
 
@@ -533,9 +531,9 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		It("Should show inserted_at index as READY in GetLedger", func() {
 			info, err := sharedClient.GetLedger(sharedCtx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
 			Expect(err).To(Succeed())
-			Expect(info.BuiltinIndexes).NotTo(BeNil())
-			Expect(info.BuiltinIndexes.InsertedAt).To(BeTrue())
-			Expect(info.BuiltinIndexes.InsertedAtStatus).To(Equal(commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY))
+			idx := findTxBuiltinIndex(info, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT)
+			Expect(idx).NotTo(BeNil())
+			Expect(idx.GetBuildStatus()).To(Equal(commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY))
 		})
 
 		It("Should reject inserted_at filter queries after dropping the index", func() {
@@ -650,3 +648,56 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 		})
 	})
 })
+
+// findTxBuiltinIndex returns the Index entry on info matching the given
+// TransactionBuiltinIndex, or nil when absent.
+func findTxBuiltinIndex(info *commonpb.LedgerInfo, want commonpb.TransactionBuiltinIndex) *commonpb.Index {
+	for _, idx := range info.GetIndexes() {
+		b, ok := idx.GetId().GetKind().(*commonpb.IndexID_TxBuiltin)
+		if !ok {
+			continue
+		}
+		if b.TxBuiltin == want {
+			return idx
+		}
+	}
+
+	return nil
+}
+
+// hasTxBuiltinIndex reports whether info declares the given builtin tx index.
+func hasTxBuiltinIndex(info *commonpb.LedgerInfo, want commonpb.TransactionBuiltinIndex) bool {
+	return findTxBuiltinIndex(info, want) != nil
+}
+
+// findLogBuiltinIndex returns the Index entry on info matching the given
+// LogBuiltinIndex, or nil when absent.
+func findLogBuiltinIndex(info *commonpb.LedgerInfo, want commonpb.LogBuiltinIndex) *commonpb.Index {
+	for _, idx := range info.GetIndexes() {
+		b, ok := idx.GetId().GetKind().(*commonpb.IndexID_LogBuiltin)
+		if !ok {
+			continue
+		}
+		if b.LogBuiltin == want {
+			return idx
+		}
+	}
+
+	return nil
+}
+
+// hasMetadataIndex reports whether info declares a metadata index for the
+// given (target, key) pair.
+func hasMetadataIndex(info *commonpb.LedgerInfo, target commonpb.TargetType, key string) bool {
+	for _, idx := range info.GetIndexes() {
+		m, ok := idx.GetId().GetKind().(*commonpb.IndexID_Metadata)
+		if !ok {
+			continue
+		}
+		if m.Metadata.GetTarget() == target && m.Metadata.GetKey() == key {
+			return true
+		}
+	}
+
+	return false
+}

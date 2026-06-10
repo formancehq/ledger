@@ -79,6 +79,24 @@ func ConfigFromProto(
 		}
 	}
 
+	// indexedKeys collects the (target, key) pairs that have an active index
+	// declared on the ledger. The metadata schema no longer carries the
+	// "indexed" flag itself — it lives on LedgerInfo.indexes.
+	indexedKeys := map[commonpb.TargetType]map[string]bool{
+		commonpb.TargetType_TARGET_TYPE_ACCOUNT:     {},
+		commonpb.TargetType_TARGET_TYPE_TRANSACTION: {},
+		commonpb.TargetType_TARGET_TYPE_LEDGER:      {},
+	}
+
+	for _, idx := range ledger.GetIndexes() {
+		m, ok := idx.GetId().GetKind().(*commonpb.IndexID_Metadata)
+		if !ok {
+			continue
+		}
+
+		indexedKeys[m.Metadata.GetTarget()][m.Metadata.GetKey()] = true
+	}
+
 	// Metadata schema
 	if schema := ledger.GetMetadataSchema(); schema != nil {
 		if acct := schema.GetAccountFields(); len(acct) > 0 {
@@ -86,7 +104,7 @@ func ConfigFromProto(
 			for key, field := range acct {
 				m[key] = EditableMetaField{
 					Type:    commonpb.MetadataTypeToString(field.GetType()),
-					Indexed: field.GetIndexed(),
+					Indexed: indexedKeys[commonpb.TargetType_TARGET_TYPE_ACCOUNT][key],
 				}
 			}
 			cfg.MetadataSchema["account"] = m
@@ -96,7 +114,7 @@ func ConfigFromProto(
 			for key, field := range tx {
 				m[key] = EditableMetaField{
 					Type:    commonpb.MetadataTypeToString(field.GetType()),
-					Indexed: field.GetIndexed(),
+					Indexed: indexedKeys[commonpb.TargetType_TARGET_TYPE_TRANSACTION][key],
 				}
 			}
 			cfg.MetadataSchema["transaction"] = m
@@ -106,22 +124,33 @@ func ConfigFromProto(
 			for key, field := range lf {
 				m[key] = EditableMetaField{
 					Type:    commonpb.MetadataTypeToString(field.GetType()),
-					Indexed: field.GetIndexed(),
+					Indexed: indexedKeys[commonpb.TargetType_TARGET_TYPE_LEDGER][key],
 				}
 			}
 			cfg.MetadataSchema["ledger"] = m
 		}
 	}
 
-	// Builtin indexes
-	if bi := ledger.GetBuiltinIndexes(); bi != nil {
-		cfg.Indexes = EditableIndexes{
-			Reference:     bi.GetReference(),
-			Timestamp:     bi.GetTimestamp(),
-			Address:       bi.GetAddress(),
-			SourceAddress: bi.GetSourceAddress(),
-			DestAddress:   bi.GetDestAddress(),
-			InsertedAt:    bi.GetInsertedAt(),
+	// Builtin indexes — derived from LedgerInfo.indexes.
+	for _, idx := range ledger.GetIndexes() {
+		b, ok := idx.GetId().GetKind().(*commonpb.IndexID_TxBuiltin)
+		if !ok {
+			continue
+		}
+
+		switch b.TxBuiltin {
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE:
+			cfg.Indexes.Reference = true
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
+			cfg.Indexes.Timestamp = true
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS:
+			cfg.Indexes.Address = true
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS:
+			cfg.Indexes.SourceAddress = true
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS:
+			cfg.Indexes.DestAddress = true
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
+			cfg.Indexes.InsertedAt = true
 		}
 	}
 
@@ -418,45 +447,21 @@ func diffMetadataSchema(ledgerName string, current, desired *EditableConfig) ([]
 }
 
 func metadataIndexAction(ledgerName, target string, targetType commonpb.TargetType, key, op string) DiffAction {
-	if op == "add" {
-		req := &servicepb.CreateIndexRequest{Ledger: ledgerName}
-		switch targetType {
-		case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-			req.Index = &servicepb.CreateIndexRequest_Account{
-				Account: &commonpb.AccountIndex{
-					Kind: &commonpb.AccountIndex_MetadataKey{MetadataKey: key},
-				},
-			}
-		case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
-			req.Index = &servicepb.CreateIndexRequest_Transaction{
-				Transaction: &commonpb.TransactionIndex{
-					Kind: &commonpb.TransactionIndex_MetadataKey{MetadataKey: key},
-				},
-			}
-		}
+	id := &commonpb.IndexID{Kind: &commonpb.IndexID_Metadata{Metadata: &commonpb.MetadataIndexID{
+		Target: targetType,
+		Key:    key,
+	}}}
 
+	if op == "add" {
 		return DiffAction{
 			Section:     "index",
 			Operation:   "add",
 			Description: fmt.Sprintf("Create metadata index %s.%s", target, key),
 			Request: &servicepb.Request{
-				Type: &servicepb.Request_CreateIndex{CreateIndex: req},
-			},
-		}
-	}
-
-	req := &servicepb.DropIndexRequest{Ledger: ledgerName}
-	switch targetType {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-		req.Index = &servicepb.DropIndexRequest_Account{
-			Account: &commonpb.AccountIndex{
-				Kind: &commonpb.AccountIndex_MetadataKey{MetadataKey: key},
-			},
-		}
-	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
-		req.Index = &servicepb.DropIndexRequest_Transaction{
-			Transaction: &commonpb.TransactionIndex{
-				Kind: &commonpb.TransactionIndex_MetadataKey{MetadataKey: key},
+				Type: &servicepb.Request_CreateIndex{CreateIndex: &servicepb.CreateIndexRequest{
+					Ledger: ledgerName,
+					Id:     id,
+				}},
 			},
 		}
 	}
@@ -466,7 +471,10 @@ func metadataIndexAction(ledgerName, target string, targetType commonpb.TargetTy
 		Operation:   "remove",
 		Description: fmt.Sprintf("Drop metadata index %s.%s", target, key),
 		Request: &servicepb.Request{
-			Type: &servicepb.Request_DropIndex{DropIndex: req},
+			Type: &servicepb.Request_DropIndex{DropIndex: &servicepb.DropIndexRequest{
+				Ledger: ledgerName,
+				Id:     id,
+			}},
 		},
 	}
 }
@@ -491,6 +499,8 @@ func diffIndexes(ledgerName string, current, desired *EditableConfig) []DiffActi
 	}
 
 	for _, b := range builtins {
+		id := &commonpb.IndexID{Kind: &commonpb.IndexID_TxBuiltin{TxBuiltin: b.builtin}}
+
 		if b.des && !b.cur {
 			actions = append(actions, DiffAction{
 				Section:     "index",
@@ -498,14 +508,7 @@ func diffIndexes(ledgerName string, current, desired *EditableConfig) []DiffActi
 				Description: "Create index " + b.name,
 				Request: &servicepb.Request{
 					Type: &servicepb.Request_CreateIndex{
-						CreateIndex: &servicepb.CreateIndexRequest{
-							Ledger: ledgerName,
-							Index: &servicepb.CreateIndexRequest_Transaction{
-								Transaction: &commonpb.TransactionIndex{
-									Kind: &commonpb.TransactionIndex_Builtin{Builtin: b.builtin},
-								},
-							},
-						},
+						CreateIndex: &servicepb.CreateIndexRequest{Ledger: ledgerName, Id: id},
 					},
 				},
 			})
@@ -517,14 +520,7 @@ func diffIndexes(ledgerName string, current, desired *EditableConfig) []DiffActi
 				Description: "Drop index " + b.name,
 				Request: &servicepb.Request{
 					Type: &servicepb.Request_DropIndex{
-						DropIndex: &servicepb.DropIndexRequest{
-							Ledger: ledgerName,
-							Index: &servicepb.DropIndexRequest_Transaction{
-								Transaction: &commonpb.TransactionIndex{
-									Kind: &commonpb.TransactionIndex_Builtin{Builtin: b.builtin},
-								},
-							},
-						},
+						DropIndex: &servicepb.DropIndexRequest{Ledger: ledgerName, Id: id},
 					},
 				},
 			})

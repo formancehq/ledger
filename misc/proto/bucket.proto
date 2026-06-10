@@ -343,22 +343,18 @@ message RemoveMetadataFieldTypeRequest {
 
 // CreateIndexRequest requests the creation of an index on a ledger.
 message CreateIndexRequest {
+  reserved 2, 3, 4;
+  reserved "log_builtin", "transaction", "account";
   string ledger = 1;
-  oneof index {
-    common.LogBuiltinIndex log_builtin = 2;
-    common.TransactionIndex transaction = 3;
-    common.AccountIndex account = 4;
-  }
+  common.IndexID id = 5;
 }
 
 // DropIndexRequest requests the removal of an index from a ledger.
 message DropIndexRequest {
+  reserved 2, 3, 4;
+  reserved "log_builtin", "transaction", "account";
   string ledger = 1;
-  oneof index {
-    common.LogBuiltinIndex log_builtin = 2;
-    common.TransactionIndex transaction = 3;
-    common.AccountIndex account = 4;
-  }
+  common.IndexID id = 5;
 }
 
 // ============================================================================
@@ -937,25 +933,31 @@ message ExecutePreparedQueryResponse {
 // Index Status Messages
 // ============================================================================
 
-message GetIndexStatusRequest {}
+message GetIndexStatusRequest {
+  // Optional: when set, only IndexEntry rows for this ledger are returned.
+  // Leave empty to fetch the union across all ledgers (caller-side filtering
+  // becomes unnecessary). The aggregate counters (last_indexed_sequence,
+  // last_log_sequence, lag, index_file_size) are global and ignore the
+  // filter.
+  string ledger = 1;
+}
 
 message GetIndexStatusResponse {
+  reserved 5;
+  reserved "backfill_progress";
   fixed64 last_indexed_sequence = 1;
   fixed64 last_log_sequence = 2;
   fixed64 lag = 3;
   fixed64 index_file_size = 4;
-  repeated IndexBackfillProgress backfill_progress = 5;
+  repeated IndexEntry indexes = 6;
 }
 
-// IndexBackfillProgress reports per-index backfill cursor position.
-message IndexBackfillProgress {
+// IndexEntry joins a ledger's index definition (status + audit metadata) with
+// its backfill cursor position. Replaces the former IndexBackfillProgress.
+message IndexEntry {
   string ledger = 1;
-  oneof index {
-    common.LogBuiltinIndex log_builtin = 2;
-    common.TransactionIndex transaction = 3;
-    common.AccountIndex account = 4;
-  }
-  fixed64 cursor = 5;
+  common.Index index = 2;     // status + created_at + last_built_at + last_error
+  fixed64 cursor = 3;         // backfill cursor (0 when not in backfill or done)
 }
 
 message GetLedgerStatsRequest {

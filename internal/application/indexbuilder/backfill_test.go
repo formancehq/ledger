@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -23,7 +24,6 @@ func TestSchemaRewriteBBKey_Account(t *testing.T) {
 
 	key := schemaRewriteBBKey(1, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status")
 
-	// Expected format: [ledgerID_BE_4B]S[targetType_byte][key]
 	expected := uint32BE(1)
 	expected = append(expected, readstore.BackfillKindSchemaRewrite, byte(commonpb.TargetType_TARGET_TYPE_ACCOUNT))
 	expected = append(expected, "status"...)
@@ -66,15 +66,7 @@ func TestSchemaRewriteBBKey_DifferentTargetTypesProduceDifferentKeys(t *testing.
 func TestBackfillBBKey_TxBuiltin(t *testing.T) {
 	t.Parallel()
 
-	id := indexID{
-		transaction: &commonpb.TransactionIndex{
-			Kind: &commonpb.TransactionIndex_Builtin{
-				Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
-			},
-		},
-	}
-
-	key := backfillBBKey(1, id)
+	key := backfillBBKey(1, indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
 
 	expected := uint32BE(1)
 	expected = append(expected, readstore.BackfillKindTxBuiltin, byte(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
@@ -85,15 +77,7 @@ func TestBackfillBBKey_TxBuiltin(t *testing.T) {
 func TestBackfillBBKey_TxMetadata(t *testing.T) {
 	t.Parallel()
 
-	id := indexID{
-		transaction: &commonpb.TransactionIndex{
-			Kind: &commonpb.TransactionIndex_MetadataKey{
-				MetadataKey: "category",
-			},
-		},
-	}
-
-	key := backfillBBKey(2, id)
+	key := backfillBBKey(2, indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "category"))
 
 	expected := uint32BE(2)
 	expected = append(expected, readstore.BackfillKindTxMetadata)
@@ -105,15 +89,7 @@ func TestBackfillBBKey_TxMetadata(t *testing.T) {
 func TestBackfillBBKey_AcctBuiltin(t *testing.T) {
 	t.Parallel()
 
-	id := indexID{
-		account: &commonpb.AccountIndex{
-			Kind: &commonpb.AccountIndex_Builtin{
-				Builtin: commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED,
-			},
-		},
-	}
-
-	key := backfillBBKey(1, id)
+	key := backfillBBKey(1, indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED))
 
 	expected := uint32BE(1)
 	expected = append(expected, readstore.BackfillKindAcctBuiltin, byte(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED))
@@ -124,15 +100,7 @@ func TestBackfillBBKey_AcctBuiltin(t *testing.T) {
 func TestBackfillBBKey_AcctMetadata(t *testing.T) {
 	t.Parallel()
 
-	id := indexID{
-		account: &commonpb.AccountIndex{
-			Kind: &commonpb.AccountIndex_MetadataKey{
-				MetadataKey: "role",
-			},
-		},
-	}
-
-	key := backfillBBKey(1, id)
+	key := backfillBBKey(1, indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"))
 
 	expected := uint32BE(1)
 	expected = append(expected, readstore.BackfillKindAcctMetadata)
@@ -144,10 +112,7 @@ func TestBackfillBBKey_AcctMetadata(t *testing.T) {
 func TestBackfillBBKey_LogBuiltin(t *testing.T) {
 	t.Parallel()
 
-	logIdx := commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE
-	id := indexID{logBuiltin: &logIdx}
-
-	key := backfillBBKey(1, id)
+	key := backfillBBKey(1, indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE))
 
 	expected := uint32BE(1)
 	expected = append(expected, readstore.BackfillKindLogBuiltin, byte(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE))
@@ -155,169 +120,94 @@ func TestBackfillBBKey_LogBuiltin(t *testing.T) {
 	assert.Equal(t, expected, key)
 }
 
-func TestBackfillBBKey_EmptyIndexID_ReturnsNil(t *testing.T) {
+func TestBackfillBBKey_NilID_ReturnsNil(t *testing.T) {
 	t.Parallel()
 
-	key := backfillBBKey(1, indexID{})
-	assert.Nil(t, key)
+	assert.Nil(t, backfillBBKey(1, nil))
+	assert.Nil(t, backfillBBKey(1, &commonpb.IndexID{}))
 }
 
 func TestBackfillIndexName_TxBuiltin(t *testing.T) {
 	t.Parallel()
 
-	name := backfillIndexName(indexID{
-		transaction: &commonpb.TransactionIndex{
-			Kind: &commonpb.TransactionIndex_Builtin{
-				Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
-			},
-		},
-	})
-
+	name := backfillIndexName(indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
 	assert.Equal(t, "tx:"+commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE.String(), name)
 }
 
 func TestBackfillIndexName_TxMetadata(t *testing.T) {
 	t.Parallel()
 
-	name := backfillIndexName(indexID{
-		transaction: &commonpb.TransactionIndex{
-			Kind: &commonpb.TransactionIndex_MetadataKey{
-				MetadataKey: "category",
-			},
-		},
-	})
-
+	name := backfillIndexName(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "category"))
 	assert.Equal(t, "tx:metadata:category", name)
 }
 
 func TestBackfillIndexName_AcctBuiltin(t *testing.T) {
 	t.Parallel()
 
-	name := backfillIndexName(indexID{
-		account: &commonpb.AccountIndex{
-			Kind: &commonpb.AccountIndex_Builtin{
-				Builtin: commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED,
-			},
-		},
-	})
-
+	name := backfillIndexName(indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED))
 	assert.Equal(t, "acct:"+commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED.String(), name)
 }
 
 func TestBackfillIndexName_AcctMetadata(t *testing.T) {
 	t.Parallel()
 
-	name := backfillIndexName(indexID{
-		account: &commonpb.AccountIndex{
-			Kind: &commonpb.AccountIndex_MetadataKey{
-				MetadataKey: "role",
-			},
-		},
-	})
-
+	name := backfillIndexName(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"))
 	assert.Equal(t, "acct:metadata:role", name)
 }
 
 func TestBackfillIndexName_LogBuiltin(t *testing.T) {
 	t.Parallel()
 
-	logIdx := commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE
-	name := backfillIndexName(indexID{logBuiltin: &logIdx})
-
+	name := backfillIndexName(indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE))
 	assert.Equal(t, "log:"+commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE.String(), name)
 }
 
 func TestBackfillIndexName_Unknown(t *testing.T) {
 	t.Parallel()
 
-	name := backfillIndexName(indexID{})
-	assert.Equal(t, "unknown", name)
+	assert.Equal(t, "unknown", backfillIndexName(nil))
+	assert.Equal(t, "unknown", backfillIndexName(&commonpb.IndexID{}))
 }
 
-func TestMatchesBackfillIndex_TxBuiltin(t *testing.T) {
+func TestBuildBackfillConfig_TxBuiltin(t *testing.T) {
 	t.Parallel()
 
-	a := indexID{transaction: &commonpb.TransactionIndex{
-		Kind: &commonpb.TransactionIndex_Builtin{Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE},
-	}}
-	b := indexID{transaction: &commonpb.TransactionIndex{
-		Kind: &commonpb.TransactionIndex_Builtin{Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE},
-	}}
+	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
+	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	task := &backfillTask{ledger: "test", index: id}
 
-	assert.True(t, matchesBackfillIndex(a, b))
+	cfg := b.buildBackfillConfig(task)
+
+	require.NotNil(t, cfg)
+	assert.True(t, cfg.isIndexed(id))
+	assert.False(t, cfg.isIndexed(indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)))
 }
 
-func TestMatchesBackfillIndex_TxBuiltinMismatch(t *testing.T) {
+func TestBuildBackfillConfig_AcctMetadata(t *testing.T) {
 	t.Parallel()
 
-	a := indexID{transaction: &commonpb.TransactionIndex{
-		Kind: &commonpb.TransactionIndex_Builtin{Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE},
-	}}
-	b := indexID{transaction: &commonpb.TransactionIndex{
-		Kind: &commonpb.TransactionIndex_Builtin{Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP},
-	}}
+	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
+	task := &backfillTask{ledger: "test", index: id}
 
-	assert.False(t, matchesBackfillIndex(a, b))
+	cfg := b.buildBackfillConfig(task)
+
+	require.NotNil(t, cfg)
+	assert.True(t, cfg.isIndexed(id))
+	assert.False(t, cfg.isIndexed(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "other")))
 }
 
-func TestMatchesBackfillIndex_TxMetadata(t *testing.T) {
+func TestBuildBackfillConfig_LogBuiltin(t *testing.T) {
 	t.Parallel()
 
-	a := indexID{transaction: &commonpb.TransactionIndex{
-		Kind: &commonpb.TransactionIndex_MetadataKey{MetadataKey: "category"},
-	}}
-	b := indexID{transaction: &commonpb.TransactionIndex{
-		Kind: &commonpb.TransactionIndex_MetadataKey{MetadataKey: "category"},
-	}}
+	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
+	id := indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
+	task := &backfillTask{ledger: "test", index: id}
 
-	assert.True(t, matchesBackfillIndex(a, b))
-}
+	cfg := b.buildBackfillConfig(task)
 
-func TestMatchesBackfillIndex_TxMetadataMismatch(t *testing.T) {
-	t.Parallel()
-
-	a := indexID{transaction: &commonpb.TransactionIndex{
-		Kind: &commonpb.TransactionIndex_MetadataKey{MetadataKey: "category"},
-	}}
-	b := indexID{transaction: &commonpb.TransactionIndex{
-		Kind: &commonpb.TransactionIndex_MetadataKey{MetadataKey: "type"},
-	}}
-
-	assert.False(t, matchesBackfillIndex(a, b))
-}
-
-func TestMatchesBackfillIndex_DifferentTypes(t *testing.T) {
-	t.Parallel()
-
-	a := indexID{transaction: &commonpb.TransactionIndex{
-		Kind: &commonpb.TransactionIndex_Builtin{Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE},
-	}}
-	b := indexID{account: &commonpb.AccountIndex{
-		Kind: &commonpb.AccountIndex_MetadataKey{MetadataKey: "role"},
-	}}
-
-	assert.False(t, matchesBackfillIndex(a, b))
-}
-
-func TestMatchesBackfillIndex_LogBuiltin(t *testing.T) {
-	t.Parallel()
-
-	dateIdx := commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE
-
-	a := indexID{logBuiltin: &dateIdx}
-	b := indexID{logBuiltin: &dateIdx}
-
-	assert.True(t, matchesBackfillIndex(a, b))
-
-	unspec := commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_UNSPECIFIED
-	c := indexID{logBuiltin: &unspec}
-	assert.False(t, matchesBackfillIndex(a, c))
-}
-
-func TestMatchesBackfillIndex_BothEmpty(t *testing.T) {
-	t.Parallel()
-
-	assert.False(t, matchesBackfillIndex(indexID{}, indexID{}))
+	require.NotNil(t, cfg)
+	assert.True(t, cfg.isIndexed(id))
 }
 
 func TestIsDataLog(t *testing.T) {
@@ -484,61 +374,43 @@ func TestIsPostingIndex(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		id       indexID
+		id       *commonpb.IndexID
 		expected bool
 	}{
+		{name: "nil", id: nil, expected: false},
 		{
-			name:     "nil transaction",
-			id:       indexID{},
+			name:     "metadata key (not posting)",
+			id:       indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "category"),
 			expected: false,
 		},
 		{
-			name: "metadata key (not posting)",
-			id: indexID{transaction: &commonpb.TransactionIndex{
-				Kind: &commonpb.TransactionIndex_MetadataKey{MetadataKey: "category"},
-			}},
-			expected: false,
-		},
-		{
-			name: "address index",
-			id: indexID{transaction: &commonpb.TransactionIndex{
-				Kind: &commonpb.TransactionIndex_Builtin{Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS},
-			}},
+			name:     "address index",
+			id:       indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS),
 			expected: true,
 		},
 		{
-			name: "source address index",
-			id: indexID{transaction: &commonpb.TransactionIndex{
-				Kind: &commonpb.TransactionIndex_Builtin{Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS},
-			}},
+			name:     "source address index",
+			id:       indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS),
 			expected: true,
 		},
 		{
-			name: "dest address index",
-			id: indexID{transaction: &commonpb.TransactionIndex{
-				Kind: &commonpb.TransactionIndex_Builtin{Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS},
-			}},
+			name:     "dest address index",
+			id:       indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS),
 			expected: true,
 		},
 		{
-			name: "reference index (not posting)",
-			id: indexID{transaction: &commonpb.TransactionIndex{
-				Kind: &commonpb.TransactionIndex_Builtin{Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE},
-			}},
+			name:     "reference index (not posting)",
+			id:       indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
 			expected: false,
 		},
 		{
-			name: "timestamp index (not posting)",
-			id: indexID{transaction: &commonpb.TransactionIndex{
-				Kind: &commonpb.TransactionIndex_Builtin{Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP},
-			}},
+			name:     "timestamp index (not posting)",
+			id:       indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
 			expected: false,
 		},
 		{
-			name: "account index (not posting)",
-			id: indexID{account: &commonpb.AccountIndex{
-				Kind: &commonpb.AccountIndex_MetadataKey{MetadataKey: "role"},
-			}},
+			name:     "account metadata (not posting)",
+			id:       indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
 			expected: false,
 		},
 	}
@@ -546,102 +418,7 @@ func TestIsPostingIndex(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			assert.Equal(t, tc.expected, isPostingIndex(tc.id))
 		})
 	}
-}
-
-func TestBuildBackfillConfig_TxBuiltin(t *testing.T) {
-	t.Parallel()
-
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
-	task := &backfillTask{
-		ledger: "test",
-		index: indexID{transaction: &commonpb.TransactionIndex{
-			Kind: &commonpb.TransactionIndex_Builtin{
-				Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
-			},
-		}},
-	}
-
-	cfg := b.buildBackfillConfig(task)
-
-	require.NotNil(t, cfg)
-	assert.True(t, cfg.txBuiltinIndexed[commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE])
-	assert.False(t, cfg.txBuiltinIndexed[commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP])
-	assert.Empty(t, cfg.txMetadataIndexed)
-	assert.Empty(t, cfg.acctMetadataIndexed)
-	assert.Empty(t, cfg.logBuiltinIndexed)
-}
-
-func TestBuildBackfillConfig_TxMetadata(t *testing.T) {
-	t.Parallel()
-
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
-	task := &backfillTask{
-		ledger: "test",
-		index: indexID{transaction: &commonpb.TransactionIndex{
-			Kind: &commonpb.TransactionIndex_MetadataKey{MetadataKey: "category"},
-		}},
-	}
-
-	cfg := b.buildBackfillConfig(task)
-
-	require.NotNil(t, cfg)
-	assert.True(t, cfg.txMetadataIndexed["category"])
-	assert.False(t, cfg.txMetadataIndexed["other"])
-}
-
-func TestBuildBackfillConfig_AcctBuiltin(t *testing.T) {
-	t.Parallel()
-
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
-	task := &backfillTask{
-		ledger: "test",
-		index: indexID{account: &commonpb.AccountIndex{
-			Kind: &commonpb.AccountIndex_Builtin{
-				Builtin: commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED,
-			},
-		}},
-	}
-
-	cfg := b.buildBackfillConfig(task)
-
-	require.NotNil(t, cfg)
-	assert.True(t, cfg.acctBuiltinIndexed[commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED])
-}
-
-func TestBuildBackfillConfig_AcctMetadata(t *testing.T) {
-	t.Parallel()
-
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
-	task := &backfillTask{
-		ledger: "test",
-		index: indexID{account: &commonpb.AccountIndex{
-			Kind: &commonpb.AccountIndex_MetadataKey{MetadataKey: "role"},
-		}},
-	}
-
-	cfg := b.buildBackfillConfig(task)
-
-	require.NotNil(t, cfg)
-	assert.True(t, cfg.acctMetadataIndexed["role"])
-}
-
-func TestBuildBackfillConfig_LogBuiltin(t *testing.T) {
-	t.Parallel()
-
-	logIdx := commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
-	task := &backfillTask{
-		ledger: "test",
-		index:  indexID{logBuiltin: &logIdx},
-	}
-
-	cfg := b.buildBackfillConfig(task)
-
-	require.NotNil(t, cfg)
-	assert.True(t, cfg.logBuiltinIndexed[commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE])
-	assert.False(t, cfg.logBuiltinIndexed[commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_UNSPECIFIED])
 }

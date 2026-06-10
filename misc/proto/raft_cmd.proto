@@ -230,31 +230,25 @@ message LedgerApplyOrder {
 
 // CreateIndexOrder requests the creation of a new index.
 message CreateIndexOrder {
-  oneof index {
-    common.LogBuiltinIndex log_builtin = 1;
-    common.TransactionIndex transaction = 2;
-    common.AccountIndex account = 3;
-  }
+  reserved 1, 2, 3;
+  reserved "log_builtin", "transaction", "account";
+  common.IndexID id = 4;
 }
 
 // DropIndexOrder requests the removal of an index.
 message DropIndexOrder {
-  oneof index {
-    common.LogBuiltinIndex log_builtin = 1;
-    common.TransactionIndex transaction = 2;
-    common.AccountIndex account = 3;
-  }
+  reserved 1, 2, 3;
+  reserved "log_builtin", "transaction", "account";
+  common.IndexID id = 4;
 }
 
 // IndexReadyUpdate signals that an index has finished building.
 // Applied directly as a Proposal field (no log entry produced).
 message IndexReadyUpdate {
+  reserved 2, 3, 4;
+  reserved "log_builtin", "transaction", "account";
   string ledger = 1;
-  oneof index {
-    common.LogBuiltinIndex log_builtin = 2;
-    common.TransactionIndex transaction = 3;
-    common.AccountIndex account = 4;
-  }
+  common.IndexID id = 5;
 }
 
 // AddAccountTypeOrder adds a new account type to the ledger.

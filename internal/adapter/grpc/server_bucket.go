@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
-	"strconv"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -25,6 +25,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/receipt"
@@ -566,10 +567,12 @@ func (impl *BucketServiceServerImpl) GetSecondaryMetrics(ctx context.Context, re
 	}, nil
 }
 
-func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, _ *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error) {
+func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, req *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error) {
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
 		return nil, err
 	}
+
+	ledgerFilter := req.GetLedger()
 
 	lastIndexed, err := impl.readStore.LastIndexedSequence()
 	if err != nil {
@@ -597,64 +600,62 @@ func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, _ *serv
 		fileSize = uint64(info.Size())
 	}
 
-	// Read per-index backfill progress from Pebble.
+	// Read per-index backfill cursors keyed by (ledgerID, IndexID canonical).
 	backfillEntries, err := impl.readStore.ListBackfillProgress()
 	if err != nil {
 		return nil, fmt.Errorf("reading backfill progress: %w", err)
 	}
 
-	progress := make([]*servicepb.IndexBackfillProgress, 0, len(backfillEntries))
+	type cursorKey struct {
+		ledgerID  uint32
+		canonical string
+	}
+
+	cursors := make(map[cursorKey]uint64, len(backfillEntries))
+
 	for _, e := range backfillEntries {
-		entry := &servicepb.IndexBackfillProgress{
-			Ledger: strconv.FormatUint(uint64(e.LedgerID), 10),
-			Cursor: e.Cursor,
-		}
-		switch e.Kind {
-		case readstore.BackfillKindTxBuiltin:
-			if len(e.Details) >= 1 {
-				entry.Index = &servicepb.IndexBackfillProgress_Transaction{
-					Transaction: &commonpb.TransactionIndex{
-						Kind: &commonpb.TransactionIndex_Builtin{
-							Builtin: commonpb.TransactionBuiltinIndex(e.Details[0]),
-						},
-					},
-				}
-			}
-		case readstore.BackfillKindTxMetadata:
-			entry.Index = &servicepb.IndexBackfillProgress_Transaction{
-				Transaction: &commonpb.TransactionIndex{
-					Kind: &commonpb.TransactionIndex_MetadataKey{
-						MetadataKey: string(e.Details),
-					},
-				},
-			}
-		case readstore.BackfillKindAcctBuiltin:
-			if len(e.Details) >= 1 {
-				entry.Index = &servicepb.IndexBackfillProgress_Account{
-					Account: &commonpb.AccountIndex{
-						Kind: &commonpb.AccountIndex_Builtin{
-							Builtin: commonpb.AccountBuiltinIndex(e.Details[0]),
-						},
-					},
-				}
-			}
-		case readstore.BackfillKindAcctMetadata:
-			entry.Index = &servicepb.IndexBackfillProgress_Account{
-				Account: &commonpb.AccountIndex{
-					Kind: &commonpb.AccountIndex_MetadataKey{
-						MetadataKey: string(e.Details),
-					},
-				},
-			}
-		case readstore.BackfillKindLogBuiltin:
-			if len(e.Details) >= 1 {
-				entry.Index = &servicepb.IndexBackfillProgress_LogBuiltin{
-					LogBuiltin: commonpb.LogBuiltinIndex(e.Details[0]),
-				}
-			}
+		id := indexIDFromBackfillEntry(e)
+		if id == nil {
+			continue
 		}
 
-		progress = append(progress, entry)
+		cursors[cursorKey{ledgerID: e.LedgerID, canonical: indexes.Canonical(id)}] = e.Cursor
+	}
+
+	// Enumerate ledgers and join their LedgerInfo.indexes with the backfill cursors.
+	ledgerCursor, err := query.ReadLedgers(ctx, handle)
+	if err != nil {
+		return nil, fmt.Errorf("reading ledgers: %w", err)
+	}
+	defer func() { _ = ledgerCursor.Close() }()
+
+	var entries []*servicepb.IndexEntry
+
+	for {
+		info, lErr := ledgerCursor.Next()
+		if lErr != nil {
+			if errors.Is(lErr, io.EOF) {
+				break
+			}
+
+			return nil, fmt.Errorf("iterating ledgers: %w", lErr)
+		}
+
+		if info.GetDeletedAt() != nil {
+			continue
+		}
+
+		if ledgerFilter != "" && info.GetName() != ledgerFilter {
+			continue
+		}
+
+		for _, idx := range info.GetIndexes() {
+			entries = append(entries, &servicepb.IndexEntry{
+				Ledger: info.GetName(),
+				Index:  idx,
+				Cursor: cursors[cursorKey{ledgerID: info.GetId(), canonical: indexes.Canonical(idx.GetId())}],
+			})
+		}
 	}
 
 	return &servicepb.GetIndexStatusResponse{
@@ -662,8 +663,51 @@ func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, _ *serv
 		LastLogSequence:     lastLog,
 		Lag:                 lag,
 		IndexFileSize:       fileSize,
-		BackfillProgress:    progress,
+		Indexes:             entries,
 	}, nil
+}
+
+// indexIDFromBackfillEntry rebuilds the IndexID associated with a persisted
+// backfill cursor, given the BB-key encoding used by the indexbuilder.
+func indexIDFromBackfillEntry(e readstore.BackfillEntry) *commonpb.IndexID {
+	switch e.Kind {
+	case readstore.BackfillKindTxBuiltin:
+		if len(e.Details) < 1 {
+			return nil
+		}
+
+		return &commonpb.IndexID{Kind: &commonpb.IndexID_TxBuiltin{
+			TxBuiltin: commonpb.TransactionBuiltinIndex(e.Details[0]),
+		}}
+	case readstore.BackfillKindTxMetadata:
+		return &commonpb.IndexID{Kind: &commonpb.IndexID_Metadata{Metadata: &commonpb.MetadataIndexID{
+			Target: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+			Key:    string(e.Details),
+		}}}
+	case readstore.BackfillKindAcctBuiltin:
+		if len(e.Details) < 1 {
+			return nil
+		}
+
+		return &commonpb.IndexID{Kind: &commonpb.IndexID_AccountBuiltin{
+			AccountBuiltin: commonpb.AccountBuiltinIndex(e.Details[0]),
+		}}
+	case readstore.BackfillKindAcctMetadata:
+		return &commonpb.IndexID{Kind: &commonpb.IndexID_Metadata{Metadata: &commonpb.MetadataIndexID{
+			Target: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+			Key:    string(e.Details),
+		}}}
+	case readstore.BackfillKindLogBuiltin:
+		if len(e.Details) < 1 {
+			return nil
+		}
+
+		return &commonpb.IndexID{Kind: &commonpb.IndexID_LogBuiltin{
+			LogBuiltin: commonpb.LogBuiltinIndex(e.Details[0]),
+		}}
+	}
+
+	return nil
 }
 
 func (impl *BucketServiceServerImpl) CheckStore(_ *servicepb.CheckStoreRequest, stream servicepb.BucketService_CheckStoreServer) error {

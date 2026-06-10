@@ -87,31 +87,13 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 
 	switch indexType {
 	case "address":
-		req.Index = &servicepb.CreateIndexRequest_Transaction{
-			Transaction: &commonpb.TransactionIndex{
-				Kind: &commonpb.TransactionIndex_Builtin{
-					Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS,
-				},
-			},
-		}
+		req.Id = txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)
 		indexDesc = "address (any role)"
 	case "source-address":
-		req.Index = &servicepb.CreateIndexRequest_Transaction{
-			Transaction: &commonpb.TransactionIndex{
-				Kind: &commonpb.TransactionIndex_Builtin{
-					Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS,
-				},
-			},
-		}
+		req.Id = txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS)
 		indexDesc = "source-address"
 	case "dest-address":
-		req.Index = &servicepb.CreateIndexRequest_Transaction{
-			Transaction: &commonpb.TransactionIndex{
-				Kind: &commonpb.TransactionIndex_Builtin{
-					Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS,
-				},
-			},
-		}
+		req.Id = txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS)
 		indexDesc = "dest-address"
 	case "metadata":
 		target, key, err := resolveMetadataIndexFlags(cmd)
@@ -119,48 +101,16 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 			return err
 		}
 
-		switch target {
-		case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
-			req.Index = &servicepb.CreateIndexRequest_Transaction{
-				Transaction: &commonpb.TransactionIndex{
-					Kind: &commonpb.TransactionIndex_MetadataKey{MetadataKey: key},
-				},
-			}
-		case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-			req.Index = &servicepb.CreateIndexRequest_Account{
-				Account: &commonpb.AccountIndex{
-					Kind: &commonpb.AccountIndex_MetadataKey{MetadataKey: key},
-				},
-			}
-		}
-
+		req.Id = metadataIndexID(target, key)
 		indexDesc = fmt.Sprintf("metadata %s.%s", cmdutil.TargetTypeString(target), key)
 	case "reference":
-		req.Index = &servicepb.CreateIndexRequest_Transaction{
-			Transaction: &commonpb.TransactionIndex{
-				Kind: &commonpb.TransactionIndex_Builtin{
-					Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
-				},
-			},
-		}
+		req.Id = txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 		indexDesc = "reference"
 	case "timestamp":
-		req.Index = &servicepb.CreateIndexRequest_Transaction{
-			Transaction: &commonpb.TransactionIndex{
-				Kind: &commonpb.TransactionIndex_Builtin{
-					Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
-				},
-			},
-		}
+		req.Id = txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
 		indexDesc = "timestamp"
 	case "inserted-at":
-		req.Index = &servicepb.CreateIndexRequest_Transaction{
-			Transaction: &commonpb.TransactionIndex{
-				Kind: &commonpb.TransactionIndex_Builtin{
-					Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
-				},
-			},
-		}
+		req.Id = txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT)
 		indexDesc = "inserted-at"
 	default:
 		return fmt.Errorf("invalid index type %q: must be address, source-address, dest-address, metadata, reference, timestamp, or inserted-at", indexType)

@@ -1223,7 +1223,7 @@ func (m *RemoveMetadataFieldTypeRequest) Mutate() *RemoveMetadataFieldTypeReques
 // Call Mutate() to obtain a mutable clone.
 type CreateIndexRequestReader interface {
 	GetLedger() string
-	GetIndex() isCreateIndexRequest_Index
+	GetId() commonpb.IndexIDReader
 	Mutate() *CreateIndexRequest
 }
 
@@ -1233,8 +1233,12 @@ func (r *createIndexRequestReadonly) GetLedger() string {
 	return r.v.GetLedger()
 }
 
-func (r *createIndexRequestReadonly) GetIndex() isCreateIndexRequest_Index {
-	return r.v.GetIndex()
+func (r *createIndexRequestReadonly) GetId() commonpb.IndexIDReader {
+	v := r.v.GetId()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *createIndexRequestReadonly) Mutate() *CreateIndexRequest {
@@ -1258,7 +1262,7 @@ func (m *CreateIndexRequest) Mutate() *CreateIndexRequest {
 // Call Mutate() to obtain a mutable clone.
 type DropIndexRequestReader interface {
 	GetLedger() string
-	GetIndex() isDropIndexRequest_Index
+	GetId() commonpb.IndexIDReader
 	Mutate() *DropIndexRequest
 }
 
@@ -1268,8 +1272,12 @@ func (r *dropIndexRequestReadonly) GetLedger() string {
 	return r.v.GetLedger()
 }
 
-func (r *dropIndexRequestReadonly) GetIndex() isDropIndexRequest_Index {
-	return r.v.GetIndex()
+func (r *dropIndexRequestReadonly) GetId() commonpb.IndexIDReader {
+	v := r.v.GetId()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *dropIndexRequestReadonly) Mutate() *DropIndexRequest {
@@ -4352,10 +4360,15 @@ func (m *ExecutePreparedQueryResponse) Mutate() *ExecutePreparedQueryResponse {
 // GetIndexStatusRequestReader provides read-only access to GetIndexStatusRequest.
 // Call Mutate() to obtain a mutable clone.
 type GetIndexStatusRequestReader interface {
+	GetLedger() string
 	Mutate() *GetIndexStatusRequest
 }
 
 type getIndexStatusRequestReadonly struct{ v *GetIndexStatusRequest }
+
+func (r *getIndexStatusRequestReadonly) GetLedger() string {
+	return r.v.GetLedger()
+}
 
 func (r *getIndexStatusRequestReadonly) Mutate() *GetIndexStatusRequest {
 	return r.v.CloneVT()
@@ -4381,7 +4394,7 @@ type GetIndexStatusResponseReader interface {
 	GetLastLogSequence() uint64
 	GetLag() uint64
 	GetIndexFileSize() uint64
-	GetBackfillProgress() []*IndexBackfillProgress
+	GetIndexes() []*IndexEntry
 	Mutate() *GetIndexStatusResponse
 }
 
@@ -4403,8 +4416,8 @@ func (r *getIndexStatusResponseReadonly) GetIndexFileSize() uint64 {
 	return r.v.GetIndexFileSize()
 }
 
-func (r *getIndexStatusResponseReadonly) GetBackfillProgress() []*IndexBackfillProgress {
-	return r.v.GetBackfillProgress()
+func (r *getIndexStatusResponseReadonly) GetIndexes() []*IndexEntry {
+	return r.v.GetIndexes()
 }
 
 func (r *getIndexStatusResponseReadonly) Mutate() *GetIndexStatusResponse {
@@ -4424,43 +4437,47 @@ func (m *GetIndexStatusResponse) Mutate() *GetIndexStatusResponse {
 	return m.CloneVT()
 }
 
-// IndexBackfillProgressReader provides read-only access to IndexBackfillProgress.
+// IndexEntryReader provides read-only access to IndexEntry.
 // Call Mutate() to obtain a mutable clone.
-type IndexBackfillProgressReader interface {
+type IndexEntryReader interface {
 	GetLedger() string
+	GetIndex() commonpb.IndexReader
 	GetCursor() uint64
-	GetIndex() isIndexBackfillProgress_Index
-	Mutate() *IndexBackfillProgress
+	Mutate() *IndexEntry
 }
 
-type indexBackfillProgressReadonly struct{ v *IndexBackfillProgress }
+type indexEntryReadonly struct{ v *IndexEntry }
 
-func (r *indexBackfillProgressReadonly) GetLedger() string {
+func (r *indexEntryReadonly) GetLedger() string {
 	return r.v.GetLedger()
 }
 
-func (r *indexBackfillProgressReadonly) GetCursor() uint64 {
+func (r *indexEntryReadonly) GetIndex() commonpb.IndexReader {
+	v := r.v.GetIndex()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *indexEntryReadonly) GetCursor() uint64 {
 	return r.v.GetCursor()
 }
 
-func (r *indexBackfillProgressReadonly) GetIndex() isIndexBackfillProgress_Index {
-	return r.v.GetIndex()
-}
-
-func (r *indexBackfillProgressReadonly) Mutate() *IndexBackfillProgress {
+func (r *indexEntryReadonly) Mutate() *IndexEntry {
 	return r.v.CloneVT()
 }
 
-// AsReader returns a read-only view of this IndexBackfillProgress.
-func (m *IndexBackfillProgress) AsReader() IndexBackfillProgressReader {
+// AsReader returns a read-only view of this IndexEntry.
+func (m *IndexEntry) AsReader() IndexEntryReader {
 	if m == nil {
 		return nil
 	}
-	return &indexBackfillProgressReadonly{v: m}
+	return &indexEntryReadonly{v: m}
 }
 
-// Mutate returns a mutable deep clone of this IndexBackfillProgress.
-func (m *IndexBackfillProgress) Mutate() *IndexBackfillProgress {
+// Mutate returns a mutable deep clone of this IndexEntry.
+func (m *IndexEntry) Mutate() *IndexEntry {
 	return m.CloneVT()
 }
 

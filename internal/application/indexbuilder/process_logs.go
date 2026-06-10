@@ -309,6 +309,8 @@ func (b *Builder) indexPayload(kb *dal.KeyBuilder, cfg *ledgerIndexConfig, ledge
 		// Defer the rewrite to a background task instead of scanning
 		// the reverse map inline during the hot path.
 		b.addSchemaRewriteTask(cfg, ledgerID, ledgerName, p.SetMetadataFieldType)
+	case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
+		return b.handleRemovedMetadataFieldType(kb, cfg, ledgerID, p.RemovedMetadataFieldType)
 	case *commonpb.LedgerLogPayload_CreateIndex:
 		b.handleCreatedIndexLog(ledgerName, ledgerID, p.CreateIndex)
 	case *commonpb.LedgerLogPayload_DropIndex:

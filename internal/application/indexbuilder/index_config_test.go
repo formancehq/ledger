@@ -10,6 +10,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -20,92 +21,47 @@ func TestNewLedgerIndexConfig(t *testing.T) {
 	cfg := newLedgerIndexConfig()
 
 	require.NotNil(t, cfg)
-	assert.NotNil(t, cfg.txMetadataIndexed)
-	assert.NotNil(t, cfg.txBuiltinIndexed)
-	assert.NotNil(t, cfg.acctMetadataIndexed)
-	assert.NotNil(t, cfg.acctBuiltinIndexed)
-	assert.NotNil(t, cfg.logBuiltinIndexed)
-	assert.Empty(t, cfg.txMetadataIndexed)
-	assert.Empty(t, cfg.txBuiltinIndexed)
-	assert.Empty(t, cfg.acctMetadataIndexed)
-	assert.Empty(t, cfg.acctBuiltinIndexed)
-	assert.Empty(t, cfg.logBuiltinIndexed)
+	assert.Empty(t, cfg.byCanonical)
 }
 
-func TestIsMetadataIndexed(t *testing.T) {
+func TestIsIndexed(t *testing.T) {
 	t.Parallel()
 
 	t.Run("nil config returns false", func(t *testing.T) {
 		t.Parallel()
 
 		var cfg *ledgerIndexConfig
-		assert.False(t, cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "key"))
+		assert.False(t, cfg.isIndexed(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k")))
 	})
 
-	t.Run("account metadata indexed", func(t *testing.T) {
+	t.Run("metadata indexed", func(t *testing.T) {
 		t.Parallel()
 
 		cfg := newLedgerIndexConfig()
-		cfg.acctMetadataIndexed["role"] = true
+		id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
+		cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
 
-		assert.True(t, cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"))
-		assert.False(t, cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "other"))
+		assert.True(t, cfg.isIndexed(id))
+		assert.False(t, cfg.isIndexed(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "other")))
 	})
 
-	t.Run("transaction metadata indexed", func(t *testing.T) {
+	t.Run("tx builtin indexed", func(t *testing.T) {
 		t.Parallel()
 
 		cfg := newLedgerIndexConfig()
-		cfg.txMetadataIndexed["category"] = true
-
-		assert.True(t, cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "category"))
-		assert.False(t, cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "other"))
-	})
-
-	t.Run("unknown target type returns false", func(t *testing.T) {
-		t.Parallel()
-
-		cfg := newLedgerIndexConfig()
-		assert.False(t, cfg.isMetadataIndexed(commonpb.TargetType(99), "key"))
-	})
-}
-
-func TestIsBuiltinIndexed(t *testing.T) {
-	t.Parallel()
-
-	t.Run("nil config returns false", func(t *testing.T) {
-		t.Parallel()
-
-		var cfg *ledgerIndexConfig
-		assert.False(t, cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
-	})
-
-	t.Run("indexed", func(t *testing.T) {
-		t.Parallel()
-
-		cfg := newLedgerIndexConfig()
-		cfg.txBuiltinIndexed[commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE] = true
+		id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+		cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
 
 		assert.True(t, cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
 		assert.False(t, cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP))
 	})
-}
 
-func TestIsLogBuiltinIndexed(t *testing.T) {
-	t.Parallel()
-
-	t.Run("nil config returns false", func(t *testing.T) {
-		t.Parallel()
-
-		var cfg *ledgerIndexConfig
-		assert.False(t, cfg.isLogBuiltinIndexed(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE))
-	})
-
-	t.Run("indexed", func(t *testing.T) {
+	t.Run("log builtin indexed", func(t *testing.T) {
 		t.Parallel()
 
 		cfg := newLedgerIndexConfig()
-		cfg.logBuiltinIndexed[commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE] = true
+		id := indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
+		cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
 
 		assert.True(t, cfg.isLogBuiltinIndexed(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE))
 	})
@@ -114,15 +70,10 @@ func TestIsLogBuiltinIndexed(t *testing.T) {
 func TestLedgerConfig(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{
-		indexConfig:    make(map[string]*ledgerIndexConfig),
-		ledgerNameToID: make(map[string]uint32),
-	}
+	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig), ledgerNameToID: make(map[string]uint32)}
 
-	// Unknown ledger returns nil.
 	assert.Nil(t, b.ledgerConfig("unknown"))
 
-	// Known ledger returns its config.
 	cfg := newLedgerIndexConfig()
 	b.indexConfig["test"] = cfg
 	assert.Same(t, cfg, b.ledgerConfig("test"))
@@ -131,275 +82,71 @@ func TestLedgerConfig(t *testing.T) {
 func TestGetOrCreateLedgerConfig(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{
-		indexConfig:    make(map[string]*ledgerIndexConfig),
-		ledgerNameToID: make(map[string]uint32),
-	}
+	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig), ledgerNameToID: make(map[string]uint32)}
 
-	// First call creates.
 	cfg := b.getOrCreateLedgerConfig("test")
 	require.NotNil(t, cfg)
 
-	// Second call returns same.
 	cfg2 := b.getOrCreateLedgerConfig("test")
 	assert.Same(t, cfg, cfg2)
 }
 
-func TestHandleCreatedIndexLog_TxBuiltin(t *testing.T) {
+func TestHandleCreatedIndexLog(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{
-		indexConfig:    make(map[string]*ledgerIndexConfig),
-		ledgerNameToID: make(map[string]uint32),
+	tests := []struct {
+		name        string
+		id          *commonpb.IndexID
+		hasBackfill bool
+	}{
+		{"tx builtin", indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE), true},
+		{"tx metadata", indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "category"), true},
+		{"acct metadata", indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"), true},
+		{"acct builtin", indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED), false},
+		{"log builtin", indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE), true},
 	}
 
-	b.handleCreatedIndexLog("ledger1", 1, &commonpb.CreatedIndexLog{
-		Index: &commonpb.CreatedIndexLog_Transaction{
-			Transaction: &commonpb.TransactionIndex{
-				Kind: &commonpb.TransactionIndex_Builtin{
-					Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
-				},
-			},
-		},
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	cfg := b.indexConfig["ledger1"]
-	require.NotNil(t, cfg)
-	assert.True(t, cfg.txBuiltinIndexed[commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE])
-	// Should have created a backfill task.
-	require.Len(t, b.backfillTasks, 1)
-	assert.Equal(t, "ledger1", b.backfillTasks[0].ledger)
-}
+			b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig), ledgerNameToID: make(map[string]uint32)}
 
-func TestHandleCreatedIndexLog_TxMetadata(t *testing.T) {
-	t.Parallel()
+			b.handleCreatedIndexLog("ledger1", 1, &commonpb.CreatedIndexLog{Id: tt.id})
 
-	b := &Builder{
-		indexConfig:    make(map[string]*ledgerIndexConfig),
-		ledgerNameToID: make(map[string]uint32),
-	}
+			cfg := b.indexConfig["ledger1"]
+			require.NotNil(t, cfg)
+			assert.True(t, cfg.isIndexed(tt.id))
 
-	b.handleCreatedIndexLog("ledger1", 1, &commonpb.CreatedIndexLog{
-		Index: &commonpb.CreatedIndexLog_Transaction{
-			Transaction: &commonpb.TransactionIndex{
-				Kind: &commonpb.TransactionIndex_MetadataKey{MetadataKey: "category"},
-			},
-		},
-	})
-
-	cfg := b.indexConfig["ledger1"]
-	require.NotNil(t, cfg)
-	assert.True(t, cfg.txMetadataIndexed["category"])
-	require.Len(t, b.backfillTasks, 1)
-}
-
-func TestHandleCreatedIndexLog_AcctMetadata(t *testing.T) {
-	t.Parallel()
-
-	b := &Builder{
-		indexConfig:    make(map[string]*ledgerIndexConfig),
-		ledgerNameToID: make(map[string]uint32),
-	}
-
-	b.handleCreatedIndexLog("ledger1", 1, &commonpb.CreatedIndexLog{
-		Index: &commonpb.CreatedIndexLog_Account{
-			Account: &commonpb.AccountIndex{
-				Kind: &commonpb.AccountIndex_MetadataKey{MetadataKey: "role"},
-			},
-		},
-	})
-
-	cfg := b.indexConfig["ledger1"]
-	require.NotNil(t, cfg)
-	assert.True(t, cfg.acctMetadataIndexed["role"])
-	require.Len(t, b.backfillTasks, 1)
-}
-
-func TestHandleCreatedIndexLog_AcctBuiltin(t *testing.T) {
-	t.Parallel()
-
-	b := &Builder{
-		indexConfig:    make(map[string]*ledgerIndexConfig),
-		ledgerNameToID: make(map[string]uint32),
-	}
-
-	b.handleCreatedIndexLog("ledger1", 1, &commonpb.CreatedIndexLog{
-		Index: &commonpb.CreatedIndexLog_Account{
-			Account: &commonpb.AccountIndex{
-				Kind: &commonpb.AccountIndex_Builtin{
-					Builtin: commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED,
-				},
-			},
-		},
-	})
-
-	cfg := b.indexConfig["ledger1"]
-	require.NotNil(t, cfg)
-	assert.True(t, cfg.acctBuiltinIndexed[commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED])
-	// No backfill for account builtins yet.
-	assert.Empty(t, b.backfillTasks)
-}
-
-func TestHandleCreatedIndexLog_LogBuiltin(t *testing.T) {
-	t.Parallel()
-
-	b := &Builder{
-		indexConfig:    make(map[string]*ledgerIndexConfig),
-		ledgerNameToID: make(map[string]uint32),
-	}
-
-	b.handleCreatedIndexLog("ledger1", 1, &commonpb.CreatedIndexLog{
-		Index: &commonpb.CreatedIndexLog_LogBuiltin{
-			LogBuiltin: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
-		},
-	})
-
-	cfg := b.indexConfig["ledger1"]
-	require.NotNil(t, cfg)
-	assert.True(t, cfg.logBuiltinIndexed[commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE])
-	require.Len(t, b.backfillTasks, 1)
-}
-
-// newTestBuilderWithStore creates a Builder backed by a temporary Pebble read store.
-// Use this for tests that call removeBackfillTask (which requires readStore.DeleteBackfillProgress).
-func newTestBuilderWithStore(t *testing.T) *Builder {
-	t.Helper()
-
-	dir := t.TempDir()
-
-	store, err := readstore.New(dir, noopLogger{}, readstore.DefaultConfig())
-	require.NoError(t, err)
-
-	t.Cleanup(func() { _ = store.Close() })
-
-	return &Builder{
-		indexConfig:    make(map[string]*ledgerIndexConfig),
-		ledgerNameToID: make(map[string]uint32),
-		readStore:      store,
+			if tt.hasBackfill {
+				require.Len(t, b.backfillTasks, 1)
+				assert.Equal(t, "ledger1", b.backfillTasks[0].ledger)
+			} else {
+				assert.Empty(t, b.backfillTasks)
+			}
+		})
 	}
 }
 
-func TestHandleDroppedIndexLog_TxBuiltin(t *testing.T) {
+func TestHandleDroppedIndexLog(t *testing.T) {
 	t.Parallel()
+
+	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 
 	b := newTestBuilderWithStore(t)
-	cfg := newLedgerIndexConfig()
-	cfg.txBuiltinIndexed[commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE] = true
-	b.indexConfig["ledger1"] = cfg
-
-	// Add a backfill task that should be removed.
-	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	b.handleCreatedIndexLog("ledger1", 1, &commonpb.CreatedIndexLog{Id: id})
 	require.Len(t, b.backfillTasks, 1)
+	assert.True(t, b.indexConfig["ledger1"].isIndexed(id))
 
-	b.handleDroppedIndexLog("ledger1", &commonpb.DroppedIndexLog{
-		Index: &commonpb.DroppedIndexLog_Transaction{
-			Transaction: &commonpb.TransactionIndex{
-				Kind: &commonpb.TransactionIndex_Builtin{
-					Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
-				},
-			},
-		},
-	})
-
-	assert.False(t, cfg.txBuiltinIndexed[commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE])
-	assert.Empty(t, b.backfillTasks)
-}
-
-func TestHandleDroppedIndexLog_TxMetadata(t *testing.T) {
-	t.Parallel()
-
-	b := newTestBuilderWithStore(t)
-	cfg := newLedgerIndexConfig()
-	cfg.txMetadataIndexed["category"] = true
-	b.indexConfig["ledger1"] = cfg
-
-	b.addBackfillTaskForTxMetadata("ledger1", 1, "category")
-	require.Len(t, b.backfillTasks, 1)
-
-	b.handleDroppedIndexLog("ledger1", &commonpb.DroppedIndexLog{
-		Index: &commonpb.DroppedIndexLog_Transaction{
-			Transaction: &commonpb.TransactionIndex{
-				Kind: &commonpb.TransactionIndex_MetadataKey{MetadataKey: "category"},
-			},
-		},
-	})
-
-	assert.False(t, cfg.txMetadataIndexed["category"])
-	assert.Empty(t, b.backfillTasks)
-}
-
-func TestHandleDroppedIndexLog_AcctBuiltin(t *testing.T) {
-	t.Parallel()
-
-	b := newTestBuilderWithStore(t)
-	cfg := newLedgerIndexConfig()
-	cfg.acctBuiltinIndexed[commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED] = true
-	b.indexConfig["ledger1"] = cfg
-
-	b.handleDroppedIndexLog("ledger1", &commonpb.DroppedIndexLog{
-		Index: &commonpb.DroppedIndexLog_Account{
-			Account: &commonpb.AccountIndex{
-				Kind: &commonpb.AccountIndex_Builtin{
-					Builtin: commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED,
-				},
-			},
-		},
-	})
-
-	assert.False(t, cfg.acctBuiltinIndexed[commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED])
-}
-
-func TestHandleDroppedIndexLog_AcctMetadata(t *testing.T) {
-	t.Parallel()
-
-	b := newTestBuilderWithStore(t)
-	cfg := newLedgerIndexConfig()
-	cfg.acctMetadataIndexed["role"] = true
-	b.indexConfig["ledger1"] = cfg
-
-	b.addBackfillTaskForAcctMetadata("ledger1", 1, "role")
-	require.Len(t, b.backfillTasks, 1)
-
-	b.handleDroppedIndexLog("ledger1", &commonpb.DroppedIndexLog{
-		Index: &commonpb.DroppedIndexLog_Account{
-			Account: &commonpb.AccountIndex{
-				Kind: &commonpb.AccountIndex_MetadataKey{MetadataKey: "role"},
-			},
-		},
-	})
-
-	assert.False(t, cfg.acctMetadataIndexed["role"])
-	assert.Empty(t, b.backfillTasks)
-}
-
-func TestHandleDroppedIndexLog_LogBuiltin(t *testing.T) {
-	t.Parallel()
-
-	b := newTestBuilderWithStore(t)
-	cfg := newLedgerIndexConfig()
-	cfg.logBuiltinIndexed[commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE] = true
-	b.indexConfig["ledger1"] = cfg
-
-	b.addBackfillTaskForLogBuiltin("ledger1", 1, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
-	require.Len(t, b.backfillTasks, 1)
-
-	b.handleDroppedIndexLog("ledger1", &commonpb.DroppedIndexLog{
-		Index: &commonpb.DroppedIndexLog_LogBuiltin{
-			LogBuiltin: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
-		},
-	})
-
-	assert.False(t, cfg.logBuiltinIndexed[commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE])
+	b.handleDroppedIndexLog("ledger1", &commonpb.DroppedIndexLog{Id: id})
+	assert.False(t, b.indexConfig["ledger1"].isIndexed(id))
 	assert.Empty(t, b.backfillTasks)
 }
 
 func TestAddBackfillTask_NoDuplicates(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{
-		indexConfig:    make(map[string]*ledgerIndexConfig),
-		ledgerNameToID: make(map[string]uint32),
-	}
+	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig), ledgerNameToID: make(map[string]uint32)}
 
 	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
@@ -410,10 +157,7 @@ func TestAddBackfillTask_NoDuplicates(t *testing.T) {
 func TestAddBackfillTask_DifferentIndexes(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{
-		indexConfig:    make(map[string]*ledgerIndexConfig),
-		ledgerNameToID: make(map[string]uint32),
-	}
+	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig), ledgerNameToID: make(map[string]uint32)}
 
 	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
@@ -427,20 +171,22 @@ func TestAddBackfillTask_DifferentIndexes(t *testing.T) {
 func TestStripBuildingIndexes(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{
-		indexConfig:    make(map[string]*ledgerIndexConfig),
-		ledgerNameToID: make(map[string]uint32),
-	}
+	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig), ledgerNameToID: make(map[string]uint32)}
+
+	refID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	tsID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
+	catID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "category")
+	roleID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
+	dateID := indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
 
 	cfg := newLedgerIndexConfig()
-	cfg.txBuiltinIndexed[commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE] = true
-	cfg.txBuiltinIndexed[commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP] = true
-	cfg.txMetadataIndexed["category"] = true
-	cfg.acctMetadataIndexed["role"] = true
-	cfg.logBuiltinIndexed[commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE] = true
+	for _, id := range []*commonpb.IndexID{refID, tsID, catID, roleID, dateID} {
+		cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
+	}
+
 	b.indexConfig["ledger1"] = cfg
 
-	// Add backfill tasks for some of the indexes (simulating BUILDING state).
+	// Mark BUILDING for all but tsID.
 	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 	b.addBackfillTaskForTxMetadata("ledger1", 1, "category")
 	b.addBackfillTaskForAcctMetadata("ledger1", 1, "role")
@@ -448,68 +194,56 @@ func TestStripBuildingIndexes(t *testing.T) {
 
 	restore := b.stripBuildingIndexes()
 
-	// BUILDING indexes should be stripped from config.
-	assert.False(t, cfg.txBuiltinIndexed[commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE])
-	assert.False(t, cfg.txMetadataIndexed["category"])
-	assert.False(t, cfg.acctMetadataIndexed["role"])
-	assert.False(t, cfg.logBuiltinIndexed[commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE])
+	assert.False(t, cfg.isIndexed(refID))
+	assert.False(t, cfg.isIndexed(catID))
+	assert.False(t, cfg.isIndexed(roleID))
+	assert.False(t, cfg.isIndexed(dateID))
+	assert.True(t, cfg.isIndexed(tsID))
 
-	// READY indexes should still be there.
-	assert.True(t, cfg.txBuiltinIndexed[commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP])
-
-	// Restore should add them back.
 	restore()
 
-	assert.True(t, cfg.txBuiltinIndexed[commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE])
-	assert.True(t, cfg.txMetadataIndexed["category"])
-	assert.True(t, cfg.acctMetadataIndexed["role"])
-	assert.True(t, cfg.logBuiltinIndexed[commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE])
-	assert.True(t, cfg.txBuiltinIndexed[commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP])
+	assert.True(t, cfg.isIndexed(refID))
+	assert.True(t, cfg.isIndexed(catID))
+	assert.True(t, cfg.isIndexed(roleID))
+	assert.True(t, cfg.isIndexed(dateID))
+	assert.True(t, cfg.isIndexed(tsID))
 }
 
 func TestStripBuildingIndexes_NilConfig(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{
-		indexConfig:    make(map[string]*ledgerIndexConfig),
-		ledgerNameToID: make(map[string]uint32),
-	}
+	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig), ledgerNameToID: make(map[string]uint32)}
 
-	// Add a backfill task for a ledger with no config.
+	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 	b.backfillTasks = append(b.backfillTasks, &backfillTask{
 		ledger: "missing",
-		index: indexID{transaction: &commonpb.TransactionIndex{
-			Kind: &commonpb.TransactionIndex_Builtin{
-				Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
-			},
-		}},
-		bbKey: backfillBBKey(99, indexID{transaction: &commonpb.TransactionIndex{
-			Kind: &commonpb.TransactionIndex_Builtin{
-				Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
-			},
-		}}),
+		index:  id,
+		bbKey:  backfillBBKey(99, id),
 	})
 
-	// Should not panic with nil config.
 	restore := b.stripBuildingIndexes()
 	restore()
 }
 
-func TestLoadLedgerIndexConfig_BuildingTxBuiltin(t *testing.T) {
+func TestLoadLedgerIndexConfig_FromIndexes(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{
-		indexConfig:    make(map[string]*ledgerIndexConfig),
-		ledgerNameToID: make(map[string]uint32),
-	}
+	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig), ledgerNameToID: make(map[string]uint32)}
+
+	refID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	tsID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
+	roleID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
+	categoryID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "category")
+	dateID := indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
 
 	info := &commonpb.LedgerInfo{
 		Name: "ledger1",
-		BuiltinIndexes: &commonpb.BuiltinIndexConfig{
-			Reference:       true,
-			ReferenceStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
-			Timestamp:       true,
-			TimestampStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY,
+		Indexes: []*commonpb.Index{
+			{Id: refID, BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING},
+			{Id: tsID, BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY},
+			{Id: roleID, BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING},
+			{Id: categoryID, BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING},
+			{Id: dateID, BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING},
 		},
 	}
 
@@ -517,160 +251,38 @@ func TestLoadLedgerIndexConfig_BuildingTxBuiltin(t *testing.T) {
 
 	cfg := b.indexConfig["ledger1"]
 	require.NotNil(t, cfg)
-	assert.True(t, cfg.txBuiltinIndexed[commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE])
-	assert.True(t, cfg.txBuiltinIndexed[commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP])
+	assert.True(t, cfg.isIndexed(refID))
+	assert.True(t, cfg.isIndexed(tsID))
+	assert.True(t, cfg.isIndexed(roleID))
+	assert.True(t, cfg.isIndexed(categoryID))
+	assert.True(t, cfg.isIndexed(dateID))
 
-	// Only BUILDING should have backfill task.
-	require.Len(t, b.backfillTasks, 1)
-	assert.Equal(t, "ledger1", b.backfillTasks[0].ledger)
+	// Only BUILDING entries trigger backfill scheduling (4 of the 5 above).
+	assert.Len(t, b.backfillTasks, 4)
 }
 
-func TestLoadLedgerIndexConfig_DisabledIndexesNotIncluded(t *testing.T) {
+func TestRemoveBackfillTask(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{
-		indexConfig:    make(map[string]*ledgerIndexConfig),
-		ledgerNameToID: make(map[string]uint32),
-	}
+	b := newTestBuilderWithStore(t)
 
-	info := &commonpb.LedgerInfo{
-		Name: "ledger1",
-		BuiltinIndexes: &commonpb.BuiltinIndexConfig{
-			Reference:       false,
-			Timestamp:       true,
-			TimestampStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY,
-		},
-	}
+	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
+	b.addBackfillTaskForTxMetadata("ledger1", 1, "category")
+	require.Len(t, b.backfillTasks, 3)
 
-	b.loadLedgerIndexConfig(info)
-
-	cfg := b.indexConfig["ledger1"]
-	require.NotNil(t, cfg)
-	assert.False(t, cfg.txBuiltinIndexed[commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE])
-	assert.True(t, cfg.txBuiltinIndexed[commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP])
-	assert.Empty(t, b.backfillTasks)
-}
-
-func TestLoadLedgerIndexConfig_MetadataIndexes(t *testing.T) {
-	t.Parallel()
-
-	b := &Builder{
-		indexConfig:    make(map[string]*ledgerIndexConfig),
-		ledgerNameToID: make(map[string]uint32),
-	}
-
-	info := &commonpb.LedgerInfo{
-		Name: "ledger1",
-		MetadataSchema: &commonpb.MetadataSchema{
-			AccountFields: map[string]*commonpb.MetadataFieldSchema{
-				"role": {
-					Indexed:          true,
-					IndexBuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
-				},
-				"status": {
-					Indexed:          true,
-					IndexBuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY,
-				},
-				"ignore": {
-					Indexed: false,
-				},
-			},
-			TransactionFields: map[string]*commonpb.MetadataFieldSchema{
-				"category": {
-					Indexed:          true,
-					IndexBuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
-				},
-			},
-		},
-	}
-
-	b.loadLedgerIndexConfig(info)
-
-	cfg := b.indexConfig["ledger1"]
-	require.NotNil(t, cfg)
-	assert.True(t, cfg.acctMetadataIndexed["role"])
-	assert.True(t, cfg.acctMetadataIndexed["status"])
-	assert.False(t, cfg.acctMetadataIndexed["ignore"])
-	assert.True(t, cfg.txMetadataIndexed["category"])
-
-	// BUILDING indexes should have backfill tasks (role + category).
+	b.removeBackfillTask(indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP))
 	assert.Len(t, b.backfillTasks, 2)
-}
 
-func TestLoadLedgerIndexConfig_LogBuiltinIndexes(t *testing.T) {
-	t.Parallel()
-
-	b := &Builder{
-		indexConfig:    make(map[string]*ledgerIndexConfig),
-		ledgerNameToID: make(map[string]uint32),
-	}
-
-	// Only the opt-in date index appears here; the per-ledger log index is
-	// always-on and is written unconditionally by process_logs.go.
-	info := &commonpb.LedgerInfo{
-		Name: "ledger1",
-		LogBuiltinIndexes: &commonpb.LogBuiltinIndexConfig{
-			Date:       true,
-			DateStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
-		},
-	}
-
-	b.loadLedgerIndexConfig(info)
-
-	cfg := b.indexConfig["ledger1"]
-	require.NotNil(t, cfg)
-	assert.True(t, cfg.logBuiltinIndexed[commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE])
-
-	require.Len(t, b.backfillTasks, 1)
-}
-
-func TestLoadLedgerIndexConfig_AllBuiltinIndexes(t *testing.T) {
-	t.Parallel()
-
-	b := &Builder{
-		indexConfig:    make(map[string]*ledgerIndexConfig),
-		ledgerNameToID: make(map[string]uint32),
-	}
-
-	info := &commonpb.LedgerInfo{
-		Name: "ledger1",
-		BuiltinIndexes: &commonpb.BuiltinIndexConfig{
-			Reference:           true,
-			ReferenceStatus:     commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY,
-			Timestamp:           true,
-			TimestampStatus:     commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY,
-			Address:             true,
-			AddressStatus:       commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY,
-			SourceAddress:       true,
-			SourceAddressStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY,
-			DestAddress:         true,
-			DestAddressStatus:   commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY,
-			InsertedAt:          true,
-			InsertedAtStatus:    commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY,
-		},
-	}
-
-	b.loadLedgerIndexConfig(info)
-
-	cfg := b.indexConfig["ledger1"]
-	require.NotNil(t, cfg)
-	assert.True(t, cfg.txBuiltinIndexed[commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE])
-	assert.True(t, cfg.txBuiltinIndexed[commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP])
-	assert.True(t, cfg.txBuiltinIndexed[commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS])
-	assert.True(t, cfg.txBuiltinIndexed[commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS])
-	assert.True(t, cfg.txBuiltinIndexed[commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS])
-	assert.True(t, cfg.txBuiltinIndexed[commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT])
-	assert.Empty(t, b.backfillTasks)
+	// Removing one that doesn't exist is a no-op.
+	b.removeBackfillTask(indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT))
+	assert.Len(t, b.backfillTasks, 2)
 }
 
 func TestAddSchemaRewriteTask_NotIndexed(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{
-		indexConfig:    make(map[string]*ledgerIndexConfig),
-		ledgerNameToID: make(map[string]uint32),
-	}
-
+	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig), ledgerNameToID: make(map[string]uint32)}
 	cfg := newLedgerIndexConfig()
 
 	b.addSchemaRewriteTask(cfg, 1, "test-ledger", &commonpb.SetMetadataFieldTypeLog{
@@ -685,13 +297,10 @@ func TestAddSchemaRewriteTask_NotIndexed(t *testing.T) {
 func TestAddSchemaRewriteTask_Indexed(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{
-		indexConfig:    make(map[string]*ledgerIndexConfig),
-		ledgerNameToID: make(map[string]uint32),
-	}
-
+	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig), ledgerNameToID: make(map[string]uint32)}
 	cfg := newLedgerIndexConfig()
-	cfg.acctMetadataIndexed["status"] = true
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status")
+	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
 
 	b.addSchemaRewriteTask(cfg, 1, "test-ledger", &commonpb.SetMetadataFieldTypeLog{
 		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
@@ -712,13 +321,10 @@ func TestAddSchemaRewriteTask_Indexed(t *testing.T) {
 func TestAddSchemaRewriteTask_DuplicateResetsProgress(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{
-		indexConfig:    make(map[string]*ledgerIndexConfig),
-		ledgerNameToID: make(map[string]uint32),
-	}
-
+	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig), ledgerNameToID: make(map[string]uint32)}
 	cfg := newLedgerIndexConfig()
-	cfg.acctMetadataIndexed["status"] = true
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status")
+	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
 
 	b.addSchemaRewriteTask(cfg, 1, "test-ledger", &commonpb.SetMetadataFieldTypeLog{
 		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
@@ -745,13 +351,10 @@ func TestAddSchemaRewriteTask_DuplicateResetsProgress(t *testing.T) {
 func TestAddSchemaRewriteTask_Transaction(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{
-		indexConfig:    make(map[string]*ledgerIndexConfig),
-		ledgerNameToID: make(map[string]uint32),
-	}
-
+	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig), ledgerNameToID: make(map[string]uint32)}
 	cfg := newLedgerIndexConfig()
-	cfg.txMetadataIndexed["tag"] = true
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "tag")
+	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
 
 	b.addSchemaRewriteTask(cfg, 1, "test-ledger", &commonpb.SetMetadataFieldTypeLog{
 		TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
@@ -788,9 +391,7 @@ func TestRemoveSchemaRewriteTask(t *testing.T) {
 		{ledger: "ledger1", key: "key3", bbKey: bbKey3},
 	}
 
-	// Remove the middle task.
 	b.removeSchemaRewriteTask(1)
-
 	require.Len(t, b.schemaRewriteTasks, 2)
 	assert.Equal(t, "key1", b.schemaRewriteTasks[0].key)
 	assert.Equal(t, "key3", b.schemaRewriteTasks[1].key)
@@ -803,41 +404,22 @@ func TestRemoveSchemaRewriteTask(t *testing.T) {
 	assert.Empty(t, b.schemaRewriteTasks)
 }
 
-func TestRemoveBackfillTask(t *testing.T) {
-	t.Parallel()
+// newTestBuilderWithStore creates a Builder backed by a temporary Pebble read store.
+func newTestBuilderWithStore(t *testing.T) *Builder {
+	t.Helper()
 
 	dir := t.TempDir()
 
 	store, err := readstore.New(dir, noopLogger{}, readstore.DefaultConfig())
 	require.NoError(t, err)
 
-	defer func() { _ = store.Close() }()
+	t.Cleanup(func() { _ = store.Close() })
 
-	b := &Builder{
-		indexConfig: make(map[string]*ledgerIndexConfig),
-		readStore:   store,
+	return &Builder{
+		indexConfig:    make(map[string]*ledgerIndexConfig),
+		ledgerNameToID: make(map[string]uint32),
+		readStore:      store,
 	}
-
-	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
-	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
-	b.addBackfillTaskForTxMetadata("ledger1", 1, "category")
-	require.Len(t, b.backfillTasks, 3)
-
-	b.removeBackfillTask(indexID{transaction: &commonpb.TransactionIndex{
-		Kind: &commonpb.TransactionIndex_Builtin{
-			Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
-		},
-	}})
-
-	assert.Len(t, b.backfillTasks, 2)
-
-	// Remove one that doesn't exist (no-op).
-	b.removeBackfillTask(indexID{transaction: &commonpb.TransactionIndex{
-		Kind: &commonpb.TransactionIndex_Builtin{
-			Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
-		},
-	}})
-	assert.Len(t, b.backfillTasks, 2)
 }
 
 // TestRecoverSchemaRewriteTasks_ResolvesLedgerNameFromID is the
@@ -950,31 +532,3 @@ func (n noopLogger) WithField(string, any) logging.Logger       { return n }
 func (n noopLogger) WithContext(context.Context) logging.Logger { return n }
 func (noopLogger) Writer() io.Writer                            { return io.Discard }
 func (noopLogger) Enabled(logging.Level) bool                   { return false }
-
-// TestLoadLedgerIndexConfig_SeedsLedgerNameToID pins the fix for #304.
-// On restart, the persisted log cursor is past the CreateLedger logs of
-// every pre-existing ledger, so process_logs.go's CreateLedger branch —
-// the only place that used to populate ledgerNameToID — never runs for
-// those ledgers. Without this seeding, b.ledgerNameToID[name] yields the
-// Go zero value (0) for every subsequent index write, silently routing
-// new logs into ledger 0's keyspace while reads use the real id.
-func TestLoadLedgerIndexConfig_SeedsLedgerNameToID(t *testing.T) {
-	t.Parallel()
-
-	b := &Builder{
-		indexConfig:    make(map[string]*ledgerIndexConfig),
-		ledgerNameToID: make(map[string]uint32),
-	}
-
-	info := &commonpb.LedgerInfo{
-		Name: "ledger-restart",
-		Id:   42,
-	}
-
-	b.loadLedgerIndexConfig(info)
-
-	gotID, ok := b.ledgerNameToID["ledger-restart"]
-	require.True(t, ok, "ledgerNameToID must hold an entry for the loaded ledger")
-	assert.Equal(t, uint32(42), gotID,
-		"ledgerNameToID must resolve to the real ledger id, not 0 (#304)")
-}

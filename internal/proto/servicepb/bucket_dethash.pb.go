@@ -2282,7 +2282,7 @@ func (m *GetIndexStatusResponse) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *IndexBackfillProgress) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *IndexEntry) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}

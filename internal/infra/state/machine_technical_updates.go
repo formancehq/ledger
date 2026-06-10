@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -70,7 +71,7 @@ func (fsm *Machine) applyTechnicalUpdates(batch *dal.Batch, raftIndex uint64, pr
 	}
 
 	for _, ready := range proposal.GetIndexReadyUpdates() {
-		if err := fsm.applyIndexReady(batch, ready); err != nil {
+		if err := fsm.applyIndexReady(batch, ready, proposal.GetDate()); err != nil {
 			return fmt.Errorf("applying index ready: %w", err)
 		}
 	}
@@ -322,7 +323,7 @@ func (fsm *Machine) applyMetadataConversionCompletion(batch *dal.Batch, complete
 
 // applyIndexReady applies an index-ready notification. No log entry is produced.
 // The index builder detects the status change by reading LedgerInfo on its next tick.
-func (fsm *Machine) applyIndexReady(batch *dal.Batch, ready *raftcmdpb.IndexReadyUpdate) error {
+func (fsm *Machine) applyIndexReady(batch *dal.Batch, ready *raftcmdpb.IndexReadyUpdate, proposalDate *commonpb.Timestamp) error {
 	ledgerKey := domain.LedgerKey{Name: ready.GetLedger()}
 
 	info, _, err := fsm.Registry.Ledgers.Get(ledgerKey.Bytes())
@@ -338,30 +339,16 @@ func (fsm *Machine) applyIndexReady(batch *dal.Batch, ready *raftcmdpb.IndexRead
 		return nil // ledger was deleted — stale index ready, skip
 	}
 
-	info = info.CloneVT()
-
-	switch idx := ready.GetIndex().(type) {
-	case *raftcmdpb.IndexReadyUpdate_Transaction:
-		switch kind := idx.Transaction.GetKind().(type) {
-		case *commonpb.TransactionIndex_Builtin:
-			if info.GetBuiltinIndexes() != nil {
-				processing.SetBuiltinStatus(info.GetBuiltinIndexes(), kind.Builtin, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY)
-			}
-		case *commonpb.TransactionIndex_MetadataKey:
-			processing.ProcessIndexReadyMetadata(info, commonpb.TargetType_TARGET_TYPE_TRANSACTION, kind.MetadataKey)
-		}
-	case *raftcmdpb.IndexReadyUpdate_Account:
-		switch kind := idx.Account.GetKind().(type) {
-		case *commonpb.AccountIndex_Builtin:
-			_ = kind // No account builtins yet
-		case *commonpb.AccountIndex_MetadataKey:
-			processing.ProcessIndexReadyMetadata(info, commonpb.TargetType_TARGET_TYPE_ACCOUNT, kind.MetadataKey)
-		}
-	case *raftcmdpb.IndexReadyUpdate_LogBuiltin:
-		if info.GetLogBuiltinIndexes() != nil {
-			processing.SetLogBuiltinStatus(info.GetLogBuiltinIndexes(), idx.LogBuiltin, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY)
-		}
+	idx := indexes.Find(info, ready.GetId())
+	if idx == nil {
+		return nil // index entry has been dropped between scheduling and apply
 	}
+
+	info = info.CloneVT()
+	idx = indexes.Find(info, ready.GetId())
+	idx.BuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
+	idx.LastBuiltAt = proposalDate
+	idx.LastError = ""
 
 	return fsm.saveLedgerWithCache(batch, ledgerKey, info)
 }

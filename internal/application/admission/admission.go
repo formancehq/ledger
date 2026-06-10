@@ -1223,39 +1223,21 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 			},
 		}
 	case *servicepb.Request_CreateIndex:
-		createIndexOrder := &raftcmdpb.CreateIndexOrder{}
-
-		switch idx := reqType.CreateIndex.GetIndex().(type) {
-		case *servicepb.CreateIndexRequest_Transaction:
-			createIndexOrder.Index = &raftcmdpb.CreateIndexOrder_Transaction{Transaction: idx.Transaction}
-		case *servicepb.CreateIndexRequest_Account:
-			createIndexOrder.Index = &raftcmdpb.CreateIndexOrder_Account{Account: idx.Account}
-		case *servicepb.CreateIndexRequest_LogBuiltin:
-			createIndexOrder.Index = &raftcmdpb.CreateIndexOrder_LogBuiltin{LogBuiltin: idx.LogBuiltin}
-		}
-
 		order.Type = &raftcmdpb.Order_Apply{
 			Apply: &raftcmdpb.LedgerApplyOrder{
 				Ledger: reqType.CreateIndex.GetLedger(),
-				Data:   &raftcmdpb.LedgerApplyOrder_CreateIndex{CreateIndex: createIndexOrder},
+				Data: &raftcmdpb.LedgerApplyOrder_CreateIndex{CreateIndex: &raftcmdpb.CreateIndexOrder{
+					Id: reqType.CreateIndex.GetId(),
+				}},
 			},
 		}
 	case *servicepb.Request_DropIndex:
-		dropIndexOrder := &raftcmdpb.DropIndexOrder{}
-
-		switch idx := reqType.DropIndex.GetIndex().(type) {
-		case *servicepb.DropIndexRequest_Transaction:
-			dropIndexOrder.Index = &raftcmdpb.DropIndexOrder_Transaction{Transaction: idx.Transaction}
-		case *servicepb.DropIndexRequest_Account:
-			dropIndexOrder.Index = &raftcmdpb.DropIndexOrder_Account{Account: idx.Account}
-		case *servicepb.DropIndexRequest_LogBuiltin:
-			dropIndexOrder.Index = &raftcmdpb.DropIndexOrder_LogBuiltin{LogBuiltin: idx.LogBuiltin}
-		}
-
 		order.Type = &raftcmdpb.Order_Apply{
 			Apply: &raftcmdpb.LedgerApplyOrder{
 				Ledger: reqType.DropIndex.GetLedger(),
-				Data:   &raftcmdpb.LedgerApplyOrder_DropIndex{DropIndex: dropIndexOrder},
+				Data: &raftcmdpb.LedgerApplyOrder_DropIndex{DropIndex: &raftcmdpb.DropIndexOrder{
+					Id: reqType.DropIndex.GetId(),
+				}},
 			},
 		}
 	case *servicepb.Request_SaveNumscript:

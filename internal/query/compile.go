@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -32,17 +33,16 @@ var ErrFilterTooDeep = fmt.Errorf("query filter exceeds maximum nesting depth (%
 // read (never mutated) by every sub-function, except depth which is
 // incremented by the recursive boolean combinators.
 type compileCtx struct {
-	kb            *dal.KeyBuilder
-	pebbleReader  dal.PebbleReader
-	indexReader   dal.PebbleReader
-	target        commonpb.QueryTarget
-	ledgerID      uint32
-	params        map[string]*commonpb.ParameterValue
-	schema        map[string]*commonpb.MetadataFieldSchema
-	builtinCfg    *commonpb.BuiltinIndexConfig
-	logBuiltinCfg *commonpb.LogBuiltinIndexConfig
-	profile       *QueryProfile
-	depth         int
+	kb           *dal.KeyBuilder
+	pebbleReader dal.PebbleReader
+	indexReader  dal.PebbleReader
+	target       commonpb.QueryTarget
+	ledgerID     uint32
+	params       map[string]*commonpb.ParameterValue
+	schema       map[string]*commonpb.MetadataFieldSchema
+	info         *commonpb.LedgerInfo
+	profile      *QueryProfile
+	depth        int
 }
 
 // metadataCtx holds the per-field context used only by type-specific
@@ -58,10 +58,11 @@ type metadataCtx struct {
 // The params map resolves parameterized conditions at execution time.
 // The schema map validates condition types against declared metadata field types;
 // a nil schema causes ErrIndexNotFound for any metadata field condition.
-// The builtinCfg checks that required address/builtin indexes are available;
-// a nil builtinCfg causes ErrIndexNotFound for any address filter on transactions.
-// The logBuiltinCfg checks that required log builtin indexes are available;
-// pass nil when the target is not QUERY_TARGET_LOGS.
+// The info argument carries the ledger's Index list (LedgerInfo.indexes): each
+// indexed-read condition (metadata, address role, builtin field) verifies that
+// the required Index entry exists and is READY. Pass nil only when no
+// index-bound filter is expected (the compiler returns ErrIndexNotFound on the
+// first such filter encountered).
 // When profile is non-nil, each iterator is wrapped in a TrackedIterator and
 // profile.Root is set to the root of the iterator stats tree.
 func Compile(
@@ -72,22 +73,20 @@ func Compile(
 	ledgerID uint32,
 	params map[string]*commonpb.ParameterValue,
 	schema map[string]*commonpb.MetadataFieldSchema,
-	builtinCfg *commonpb.BuiltinIndexConfig,
-	logBuiltinCfg *commonpb.LogBuiltinIndexConfig,
+	info *commonpb.LedgerInfo,
 	profile *QueryProfile,
 	pebbleReader dal.PebbleReader,
 ) (readstore.EntityIterator, error) {
 	ctx := &compileCtx{
-		kb:            kb,
-		pebbleReader:  pebbleReader,
-		indexReader:   indexReader,
-		target:        target,
-		ledgerID:      ledgerID,
-		params:        params,
-		schema:        schema,
-		builtinCfg:    builtinCfg,
-		logBuiltinCfg: logBuiltinCfg,
-		profile:       profile,
+		kb:           kb,
+		pebbleReader: pebbleReader,
+		indexReader:  indexReader,
+		target:       target,
+		ledgerID:     ledgerID,
+		params:       params,
+		schema:       schema,
+		info:         info,
+		profile:      profile,
 	}
 
 	return compile(ctx, filter)
@@ -316,12 +315,13 @@ func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readst
 	}
 
 	fieldSchema, ok := ctx.schema[metaKey]
-	if !ok || !fieldSchema.GetIndexed() {
+	if !ok {
 		return nil, &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
 	}
 
-	if fieldSchema.GetIndexBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
-		return nil, &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
+	if err := checkIndexed(ctx.info, indexes.MetadataID(targetTypeForQueryTarget(ctx.target), metaKey),
+		fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)); err != nil {
+		return nil, err
 	}
 
 	var err error
@@ -841,8 +841,8 @@ func compileAddressMatch(ctx *compileCtx, am *commonpb.AddressMatch) (readstore.
 	// Address filtering on TRANSACTIONS target requires the account-tx index.
 	// For ACCOUNTS target, address matching uses the existence index (always on).
 	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
-		err := checkAddressRoleIndexed(ctx.builtinCfg, role)
-		if err != nil {
+		id, label := txAddressIndexID(role)
+		if err := checkIndexed(ctx.info, id, label); err != nil {
 			return nil, err
 		}
 	}
@@ -953,7 +953,9 @@ func compileReferenceCondition(ctx *compileCtx, rc *commonpb.ReferenceCondition)
 		return nil, errors.New("reference condition has no value")
 	}
 
-	if err := checkBuiltinIndexed(ctx.builtinCfg, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE); err != nil {
+	if err := checkIndexed(ctx.info,
+		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
+		"reference"); err != nil {
 		return nil, err
 	}
 
@@ -1053,7 +1055,9 @@ func compileTxIDCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readst
 // compileTimestampCondition filters transactions by timestamp using the transaction timestamp index.
 // Requires the timestamp builtin index to be READY.
 func compileTimestampCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.EntityIterator, error) {
-	if err := checkBuiltinIndexed(ctx.builtinCfg, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP); err != nil {
+	if err := checkIndexed(ctx.info,
+		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
+		"timestamp"); err != nil {
 		return nil, err
 	}
 
@@ -1064,7 +1068,9 @@ func compileTimestampCondition(ctx *compileCtx, cond *commonpb.UintCondition) (r
 // compileInsertedAtCondition filters transactions by inserted_at using the transaction inserted_at index.
 // Requires the inserted_at builtin index to be READY.
 func compileInsertedAtCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.EntityIterator, error) {
-	if err := checkBuiltinIndexed(ctx.builtinCfg, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT); err != nil {
+	if err := checkIndexed(ctx.info,
+		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
+		"inserted_at"); err != nil {
 		return nil, err
 	}
 
@@ -1145,7 +1151,9 @@ func compileLogBuiltinUintCondition(ctx *compileCtx, cond *commonpb.LogBuiltinUi
 // compileLogDateCondition filters logs by date using the ledger log date index.
 // Requires the log date builtin index to be READY.
 func compileLogDateCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.EntityIterator, error) {
-	if err := checkLogBuiltinIndexed(ctx.logBuiltinCfg, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE); err != nil {
+	if err := checkIndexed(ctx.info,
+		indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
+		"log date"); err != nil {
 		return nil, err
 	}
 
@@ -1233,76 +1241,39 @@ func compileLogIdCondition(ctx *compileCtx, cond *commonpb.UintCondition) (reads
 	return trackIterator(matIter, ctx.profile, stats), nil
 }
 
-// checkLogBuiltinIndexed validates that the requested log builtin index is enabled and READY.
-func checkLogBuiltinIndexed(cfg *commonpb.LogBuiltinIndexConfig, index commonpb.LogBuiltinIndex) error {
-	var (
-		enabled bool
-		status  commonpb.IndexBuildStatus
-		label   string
-	)
-
-	switch index {
-	case commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE:
-		label = "log date"
-
-		if cfg != nil {
-			enabled, status = cfg.GetDate(), cfg.GetDateStatus()
-		}
-	default:
-		return nil
-	}
-
-	if !enabled {
+// checkIndexed verifies that an Index entry exists in info.indexes for the
+// given id and that its build status is READY. Returns ErrIndexNotFound when
+// the entry is missing, ErrIndexBuilding when it is still being built, or nil
+// otherwise. The label is surfaced in the error for diagnostic purposes
+// (callers tailor it to the condition site, e.g. "reference", "log date",
+// "metadata[\"color\"] on accounts").
+func checkIndexed(info *commonpb.LedgerInfo, id *commonpb.IndexID, label string) error {
+	idx := indexes.Find(info, id)
+	if idx == nil {
 		return &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: label}}
 	}
 
-	if status == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+	if idx.GetBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
 		return &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: label}}
 	}
 
 	return nil
 }
 
-// checkBuiltinIndexed validates that the requested builtin index is enabled and READY.
-func checkBuiltinIndexed(cfg *commonpb.BuiltinIndexConfig, index commonpb.TransactionBuiltinIndex) error {
-	var (
-		enabled bool
-		status  commonpb.IndexBuildStatus
-		label   string
-	)
-
-	switch index {
-	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE:
-		label = "reference"
-
-		if cfg != nil {
-			enabled, status = cfg.GetReference(), cfg.GetReferenceStatus()
-		}
-	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
-		label = "timestamp"
-
-		if cfg != nil {
-			enabled, status = cfg.GetTimestamp(), cfg.GetTimestampStatus()
-		}
-	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
-		label = "inserted_at"
-
-		if cfg != nil {
-			enabled, status = cfg.GetInsertedAt(), cfg.GetInsertedAtStatus()
-		}
+// targetTypeForQueryTarget maps a QueryTarget to the matching TargetType used
+// as a discriminator in MetadataIndexID and metadata schemas. Defaults to
+// TARGET_TYPE_LEDGER for query targets without a corresponding metadata
+// namespace; callers must not invoke this helper outside the metadata
+// condition path.
+func targetTypeForQueryTarget(t commonpb.QueryTarget) commonpb.TargetType {
+	switch t {
+	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
+		return commonpb.TargetType_TARGET_TYPE_ACCOUNT
+	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
+		return commonpb.TargetType_TARGET_TYPE_TRANSACTION
 	default:
-		return nil
+		return commonpb.TargetType_TARGET_TYPE_LEDGER
 	}
-
-	if !enabled {
-		return &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: label}}
-	}
-
-	if status == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
-		return &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: label}}
-	}
-
-	return nil
 }
 
 // --- Helpers ---
@@ -1645,48 +1616,17 @@ func closeAll(iters []readstore.EntityIterator) {
 	}
 }
 
-// checkAddressRoleIndexed validates that the requested address role index
-// exists and is ready via BuiltinIndexConfig. Returns ErrIndexNotFound when
-// builtinCfg is nil (no indexes configured).
-func checkAddressRoleIndexed(builtinCfg *commonpb.BuiltinIndexConfig, role commonpb.AddressRole) error {
-	var (
-		indexed bool
-		status  commonpb.IndexBuildStatus
-		label   string
-	)
-
+// txAddressIndexID maps an AddressRole to the IndexID covering it on the
+// transactions target, along with a human-readable label for error messages.
+func txAddressIndexID(role commonpb.AddressRole) (*commonpb.IndexID, string) {
 	switch role {
-	case commonpb.AddressRole_ADDRESS_ROLE_ANY:
-		label = "address"
-
-		if builtinCfg != nil {
-			indexed, status = builtinCfg.GetAddress(), builtinCfg.GetAddressStatus()
-		}
 	case commonpb.AddressRole_ADDRESS_ROLE_SOURCE:
-		label = "source"
-
-		if builtinCfg != nil {
-			indexed, status = builtinCfg.GetSourceAddress(), builtinCfg.GetSourceAddressStatus()
-		}
+		return indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS), "source"
 	case commonpb.AddressRole_ADDRESS_ROLE_DESTINATION:
-		label = "destination"
-
-		if builtinCfg != nil {
-			indexed, status = builtinCfg.GetDestAddress(), builtinCfg.GetDestAddressStatus()
-		}
+		return indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS), "destination"
 	default:
-		return nil
+		return indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS), "address"
 	}
-
-	if !indexed {
-		return &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: label}}
-	}
-
-	if status == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
-		return &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: label}}
-	}
-
-	return nil
 }
 
 // SchemaFieldsForTarget extracts the relevant metadata fields map from a schema

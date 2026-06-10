@@ -110,7 +110,7 @@ func Execute(
 
 	kb := dal.NewKeyBuilder()
 
-	iter, compileErr := Compile(indexSnap, kb, pq.GetFilter(), pq.GetTarget(), ledgerInfo.GetId(), req.GetParameters(), schema, ledgerInfo.GetBuiltinIndexes(), ledgerInfo.GetLogBuiltinIndexes(), profile, handle)
+	iter, compileErr := Compile(indexSnap, kb, pq.GetFilter(), pq.GetTarget(), ledgerInfo.GetId(), req.GetParameters(), schema, ledgerInfo, profile, handle)
 	if compileErr != nil {
 		return nil, fmt.Errorf("compiling filter: %w", compileErr)
 	}

@@ -2502,13 +2502,8 @@ func (*LedgerApplyOrder_UpdateDefaultEnforcementMode) isLedgerApplyOrder_Data() 
 
 // CreateIndexOrder requests the creation of a new index.
 type CreateIndexOrder struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Types that are valid to be assigned to Index:
-	//
-	//	*CreateIndexOrder_LogBuiltin
-	//	*CreateIndexOrder_Transaction
-	//	*CreateIndexOrder_Account
-	Index         isCreateIndexOrder_Index `protobuf_oneof:"index"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            *commonpb.IndexID      `protobuf:"bytes,4,opt,name=id,proto3" json:"id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2543,71 +2538,17 @@ func (*CreateIndexOrder) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{34}
 }
 
-func (x *CreateIndexOrder) GetIndex() isCreateIndexOrder_Index {
+func (x *CreateIndexOrder) GetId() *commonpb.IndexID {
 	if x != nil {
-		return x.Index
+		return x.Id
 	}
 	return nil
 }
-
-func (x *CreateIndexOrder) GetLogBuiltin() commonpb.LogBuiltinIndex {
-	if x != nil {
-		if x, ok := x.Index.(*CreateIndexOrder_LogBuiltin); ok {
-			return x.LogBuiltin
-		}
-	}
-	return commonpb.LogBuiltinIndex(0)
-}
-
-func (x *CreateIndexOrder) GetTransaction() *commonpb.TransactionIndex {
-	if x != nil {
-		if x, ok := x.Index.(*CreateIndexOrder_Transaction); ok {
-			return x.Transaction
-		}
-	}
-	return nil
-}
-
-func (x *CreateIndexOrder) GetAccount() *commonpb.AccountIndex {
-	if x != nil {
-		if x, ok := x.Index.(*CreateIndexOrder_Account); ok {
-			return x.Account
-		}
-	}
-	return nil
-}
-
-type isCreateIndexOrder_Index interface {
-	isCreateIndexOrder_Index()
-}
-
-type CreateIndexOrder_LogBuiltin struct {
-	LogBuiltin commonpb.LogBuiltinIndex `protobuf:"varint,1,opt,name=log_builtin,json=logBuiltin,proto3,enum=common.LogBuiltinIndex,oneof"`
-}
-
-type CreateIndexOrder_Transaction struct {
-	Transaction *commonpb.TransactionIndex `protobuf:"bytes,2,opt,name=transaction,proto3,oneof"`
-}
-
-type CreateIndexOrder_Account struct {
-	Account *commonpb.AccountIndex `protobuf:"bytes,3,opt,name=account,proto3,oneof"`
-}
-
-func (*CreateIndexOrder_LogBuiltin) isCreateIndexOrder_Index() {}
-
-func (*CreateIndexOrder_Transaction) isCreateIndexOrder_Index() {}
-
-func (*CreateIndexOrder_Account) isCreateIndexOrder_Index() {}
 
 // DropIndexOrder requests the removal of an index.
 type DropIndexOrder struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Types that are valid to be assigned to Index:
-	//
-	//	*DropIndexOrder_LogBuiltin
-	//	*DropIndexOrder_Transaction
-	//	*DropIndexOrder_Account
-	Index         isDropIndexOrder_Index `protobuf_oneof:"index"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            *commonpb.IndexID      `protobuf:"bytes,4,opt,name=id,proto3" json:"id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2642,73 +2583,19 @@ func (*DropIndexOrder) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{35}
 }
 
-func (x *DropIndexOrder) GetIndex() isDropIndexOrder_Index {
+func (x *DropIndexOrder) GetId() *commonpb.IndexID {
 	if x != nil {
-		return x.Index
+		return x.Id
 	}
 	return nil
 }
-
-func (x *DropIndexOrder) GetLogBuiltin() commonpb.LogBuiltinIndex {
-	if x != nil {
-		if x, ok := x.Index.(*DropIndexOrder_LogBuiltin); ok {
-			return x.LogBuiltin
-		}
-	}
-	return commonpb.LogBuiltinIndex(0)
-}
-
-func (x *DropIndexOrder) GetTransaction() *commonpb.TransactionIndex {
-	if x != nil {
-		if x, ok := x.Index.(*DropIndexOrder_Transaction); ok {
-			return x.Transaction
-		}
-	}
-	return nil
-}
-
-func (x *DropIndexOrder) GetAccount() *commonpb.AccountIndex {
-	if x != nil {
-		if x, ok := x.Index.(*DropIndexOrder_Account); ok {
-			return x.Account
-		}
-	}
-	return nil
-}
-
-type isDropIndexOrder_Index interface {
-	isDropIndexOrder_Index()
-}
-
-type DropIndexOrder_LogBuiltin struct {
-	LogBuiltin commonpb.LogBuiltinIndex `protobuf:"varint,1,opt,name=log_builtin,json=logBuiltin,proto3,enum=common.LogBuiltinIndex,oneof"`
-}
-
-type DropIndexOrder_Transaction struct {
-	Transaction *commonpb.TransactionIndex `protobuf:"bytes,2,opt,name=transaction,proto3,oneof"`
-}
-
-type DropIndexOrder_Account struct {
-	Account *commonpb.AccountIndex `protobuf:"bytes,3,opt,name=account,proto3,oneof"`
-}
-
-func (*DropIndexOrder_LogBuiltin) isDropIndexOrder_Index() {}
-
-func (*DropIndexOrder_Transaction) isDropIndexOrder_Index() {}
-
-func (*DropIndexOrder_Account) isDropIndexOrder_Index() {}
 
 // IndexReadyUpdate signals that an index has finished building.
 // Applied directly as a Proposal field (no log entry produced).
 type IndexReadyUpdate struct {
-	state  protoimpl.MessageState `protogen:"open.v1"`
-	Ledger string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
-	// Types that are valid to be assigned to Index:
-	//
-	//	*IndexReadyUpdate_LogBuiltin
-	//	*IndexReadyUpdate_Transaction
-	//	*IndexReadyUpdate_Account
-	Index         isIndexReadyUpdate_Index `protobuf_oneof:"index"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ledger        string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
+	Id            *commonpb.IndexID      `protobuf:"bytes,5,opt,name=id,proto3" json:"id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2750,61 +2637,12 @@ func (x *IndexReadyUpdate) GetLedger() string {
 	return ""
 }
 
-func (x *IndexReadyUpdate) GetIndex() isIndexReadyUpdate_Index {
+func (x *IndexReadyUpdate) GetId() *commonpb.IndexID {
 	if x != nil {
-		return x.Index
+		return x.Id
 	}
 	return nil
 }
-
-func (x *IndexReadyUpdate) GetLogBuiltin() commonpb.LogBuiltinIndex {
-	if x != nil {
-		if x, ok := x.Index.(*IndexReadyUpdate_LogBuiltin); ok {
-			return x.LogBuiltin
-		}
-	}
-	return commonpb.LogBuiltinIndex(0)
-}
-
-func (x *IndexReadyUpdate) GetTransaction() *commonpb.TransactionIndex {
-	if x != nil {
-		if x, ok := x.Index.(*IndexReadyUpdate_Transaction); ok {
-			return x.Transaction
-		}
-	}
-	return nil
-}
-
-func (x *IndexReadyUpdate) GetAccount() *commonpb.AccountIndex {
-	if x != nil {
-		if x, ok := x.Index.(*IndexReadyUpdate_Account); ok {
-			return x.Account
-		}
-	}
-	return nil
-}
-
-type isIndexReadyUpdate_Index interface {
-	isIndexReadyUpdate_Index()
-}
-
-type IndexReadyUpdate_LogBuiltin struct {
-	LogBuiltin commonpb.LogBuiltinIndex `protobuf:"varint,2,opt,name=log_builtin,json=logBuiltin,proto3,enum=common.LogBuiltinIndex,oneof"`
-}
-
-type IndexReadyUpdate_Transaction struct {
-	Transaction *commonpb.TransactionIndex `protobuf:"bytes,3,opt,name=transaction,proto3,oneof"`
-}
-
-type IndexReadyUpdate_Account struct {
-	Account *commonpb.AccountIndex `protobuf:"bytes,4,opt,name=account,proto3,oneof"`
-}
-
-func (*IndexReadyUpdate_LogBuiltin) isIndexReadyUpdate_Index() {}
-
-func (*IndexReadyUpdate_Transaction) isIndexReadyUpdate_Index() {}
-
-func (*IndexReadyUpdate_Account) isIndexReadyUpdate_Index() {}
 
 // AddAccountTypeOrder adds a new account type to the ledger.
 type AddAccountTypeOrder struct {
@@ -6231,26 +6069,14 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x10add_account_type\x18\r \x01(\v2\x19.raft.AddAccountTypeOrderH\x00R\x0eaddAccountType\x12N\n" +
 	"\x13remove_account_type\x18\x0e \x01(\v2\x1c.raft.RemoveAccountTypeOrderH\x00R\x11removeAccountType\x12p\n" +
 	"\x1fupdate_default_enforcement_mode\x18\x0f \x01(\v2'.raft.UpdateDefaultEnforcementModeOrderH\x00R\x1cupdateDefaultEnforcementModeB\x06\n" +
-	"\x04data\"\xc7\x01\n" +
-	"\x10CreateIndexOrder\x12:\n" +
-	"\vlog_builtin\x18\x01 \x01(\x0e2\x17.common.LogBuiltinIndexH\x00R\n" +
-	"logBuiltin\x12<\n" +
-	"\vtransaction\x18\x02 \x01(\v2\x18.common.TransactionIndexH\x00R\vtransaction\x120\n" +
-	"\aaccount\x18\x03 \x01(\v2\x14.common.AccountIndexH\x00R\aaccountB\a\n" +
-	"\x05index\"\xc5\x01\n" +
-	"\x0eDropIndexOrder\x12:\n" +
-	"\vlog_builtin\x18\x01 \x01(\x0e2\x17.common.LogBuiltinIndexH\x00R\n" +
-	"logBuiltin\x12<\n" +
-	"\vtransaction\x18\x02 \x01(\v2\x18.common.TransactionIndexH\x00R\vtransaction\x120\n" +
-	"\aaccount\x18\x03 \x01(\v2\x14.common.AccountIndexH\x00R\aaccountB\a\n" +
-	"\x05index\"\xdf\x01\n" +
+	"\x04data\"h\n" +
+	"\x10CreateIndexOrder\x12\x1f\n" +
+	"\x02id\x18\x04 \x01(\v2\x0f.common.IndexIDR\x02idJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x03\x10\x04R\vlog_builtinR\vtransactionR\aaccount\"f\n" +
+	"\x0eDropIndexOrder\x12\x1f\n" +
+	"\x02id\x18\x04 \x01(\v2\x0f.common.IndexIDR\x02idJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x03\x10\x04R\vlog_builtinR\vtransactionR\aaccount\"\x80\x01\n" +
 	"\x10IndexReadyUpdate\x12\x16\n" +
-	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12:\n" +
-	"\vlog_builtin\x18\x02 \x01(\x0e2\x17.common.LogBuiltinIndexH\x00R\n" +
-	"logBuiltin\x12<\n" +
-	"\vtransaction\x18\x03 \x01(\v2\x18.common.TransactionIndexH\x00R\vtransaction\x120\n" +
-	"\aaccount\x18\x04 \x01(\v2\x14.common.AccountIndexH\x00R\aaccountB\a\n" +
-	"\x05index\"M\n" +
+	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x1f\n" +
+	"\x02id\x18\x05 \x01(\v2\x0f.common.IndexIDR\x02idJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04J\x04\b\x04\x10\x05R\vlog_builtinR\vtransactionR\aaccount\"M\n" +
 	"\x13AddAccountTypeOrder\x126\n" +
 	"\faccount_type\x18\x01 \x01(\v2\x13.common.AccountTypeR\vaccountType\",\n" +
 	"\x16RemoveAccountTypeOrder\x12\x12\n" +
@@ -6631,27 +6457,25 @@ var file_raft_cmd_proto_goTypes = []any{
 	(commonpb.ChartEnforcementMode)(0),           // 107: common.ChartEnforcementMode
 	(*commonpb.Posting)(nil),                     // 108: common.Posting
 	(*commonpb.Target)(nil),                      // 109: common.Target
-	(commonpb.LogBuiltinIndex)(0),                // 110: common.LogBuiltinIndex
-	(*commonpb.TransactionIndex)(nil),            // 111: common.TransactionIndex
-	(*commonpb.AccountIndex)(nil),                // 112: common.AccountIndex
-	(*commonpb.AccountType)(nil),                 // 113: common.AccountType
-	(commonpb.TargetType)(0),                     // 114: common.TargetType
-	(commonpb.MetadataType)(0),                   // 115: common.MetadataType
-	(*commonpb.MetadataValue)(nil),               // 116: common.MetadataValue
-	(*commonpb.Script)(nil),                      // 117: common.Script
-	(*commonpb.ClusterConfig)(nil),               // 118: common.ClusterConfig
-	(*commonpb.CallerIdentity)(nil),              // 119: common.CallerIdentity
-	(*commonpb.MirrorSyncError)(nil),             // 120: common.MirrorSyncError
-	(*commonpb.SinkError)(nil),                   // 121: common.SinkError
-	(*commonpb.Log)(nil),                         // 122: common.Log
-	(*commonpb.Uint256)(nil),                     // 123: common.Uint256
-	(*commonpb.IdempotencyKeyValue)(nil),         // 124: common.IdempotencyKeyValue
-	(*commonpb.LedgerInfo)(nil),                  // 125: common.LedgerInfo
-	(*commonpb.TransactionReferenceValue)(nil),   // 126: common.TransactionReferenceValue
-	(*commonpb.NumscriptVersionValue)(nil),       // 127: common.NumscriptVersionValue
-	(*commonpb.TransactionState)(nil),            // 128: common.TransactionState
-	(*commonpb.NumscriptInfo)(nil),               // 129: common.NumscriptInfo
-	(*commonpb.MetadataMap)(nil),                 // 130: common.MetadataMap
+	(*commonpb.IndexID)(nil),                     // 110: common.IndexID
+	(*commonpb.AccountType)(nil),                 // 111: common.AccountType
+	(commonpb.TargetType)(0),                     // 112: common.TargetType
+	(commonpb.MetadataType)(0),                   // 113: common.MetadataType
+	(*commonpb.MetadataValue)(nil),               // 114: common.MetadataValue
+	(*commonpb.Script)(nil),                      // 115: common.Script
+	(*commonpb.ClusterConfig)(nil),               // 116: common.ClusterConfig
+	(*commonpb.CallerIdentity)(nil),              // 117: common.CallerIdentity
+	(*commonpb.MirrorSyncError)(nil),             // 118: common.MirrorSyncError
+	(*commonpb.SinkError)(nil),                   // 119: common.SinkError
+	(*commonpb.Log)(nil),                         // 120: common.Log
+	(*commonpb.Uint256)(nil),                     // 121: common.Uint256
+	(*commonpb.IdempotencyKeyValue)(nil),         // 122: common.IdempotencyKeyValue
+	(*commonpb.LedgerInfo)(nil),                  // 123: common.LedgerInfo
+	(*commonpb.TransactionReferenceValue)(nil),   // 124: common.TransactionReferenceValue
+	(*commonpb.NumscriptVersionValue)(nil),       // 125: common.NumscriptVersionValue
+	(*commonpb.TransactionState)(nil),            // 126: common.TransactionState
+	(*commonpb.NumscriptInfo)(nil),               // 127: common.NumscriptInfo
+	(*commonpb.MetadataMap)(nil),                 // 128: common.MetadataMap
 }
 var file_raft_cmd_proto_depIdxs = []int32{
 	98,  // 0: raft.Order.idempotency:type_name -> common.Idempotency
@@ -6720,130 +6544,124 @@ var file_raft_cmd_proto_depIdxs = []int32{
 	37,  // 63: raft.LedgerApplyOrder.add_account_type:type_name -> raft.AddAccountTypeOrder
 	38,  // 64: raft.LedgerApplyOrder.remove_account_type:type_name -> raft.RemoveAccountTypeOrder
 	39,  // 65: raft.LedgerApplyOrder.update_default_enforcement_mode:type_name -> raft.UpdateDefaultEnforcementModeOrder
-	110, // 66: raft.CreateIndexOrder.log_builtin:type_name -> common.LogBuiltinIndex
-	111, // 67: raft.CreateIndexOrder.transaction:type_name -> common.TransactionIndex
-	112, // 68: raft.CreateIndexOrder.account:type_name -> common.AccountIndex
-	110, // 69: raft.DropIndexOrder.log_builtin:type_name -> common.LogBuiltinIndex
-	111, // 70: raft.DropIndexOrder.transaction:type_name -> common.TransactionIndex
-	112, // 71: raft.DropIndexOrder.account:type_name -> common.AccountIndex
-	110, // 72: raft.IndexReadyUpdate.log_builtin:type_name -> common.LogBuiltinIndex
-	111, // 73: raft.IndexReadyUpdate.transaction:type_name -> common.TransactionIndex
-	112, // 74: raft.IndexReadyUpdate.account:type_name -> common.AccountIndex
-	113, // 75: raft.AddAccountTypeOrder.account_type:type_name -> common.AccountType
-	107, // 76: raft.UpdateDefaultEnforcementModeOrder.enforcement_mode:type_name -> common.ChartEnforcementMode
-	114, // 77: raft.MetadataConversionBatch.target_type:type_name -> common.TargetType
-	115, // 78: raft.MetadataConversionBatch.expected_type:type_name -> common.MetadataType
-	41,  // 79: raft.MetadataConversionBatch.entries:type_name -> raft.ConvertMetadataEntry
-	116, // 80: raft.ConvertMetadataEntry.converted_value:type_name -> common.MetadataValue
-	114, // 81: raft.MetadataConversionCompletion.target_type:type_name -> common.TargetType
-	115, // 82: raft.MetadataConversionCompletion.expected_type:type_name -> common.MetadataType
-	114, // 83: raft.SetMetadataFieldTypeOrder.target_type:type_name -> common.TargetType
-	115, // 84: raft.SetMetadataFieldTypeOrder.type:type_name -> common.MetadataType
-	114, // 85: raft.RemoveMetadataFieldTypeOrder.target_type:type_name -> common.TargetType
-	108, // 86: raft.CreateTransactionOrder.postings:type_name -> common.Posting
-	117, // 87: raft.CreateTransactionOrder.script:type_name -> common.Script
-	103, // 88: raft.CreateTransactionOrder.timestamp:type_name -> common.Timestamp
-	92,  // 89: raft.CreateTransactionOrder.metadata:type_name -> raft.CreateTransactionOrder.MetadataEntry
-	93,  // 90: raft.CreateTransactionOrder.account_metadata:type_name -> raft.CreateTransactionOrder.AccountMetadataEntry
-	46,  // 91: raft.CreateTransactionOrder.numscript_reference:type_name -> raft.NumscriptReference
-	94,  // 92: raft.NumscriptReference.vars:type_name -> raft.NumscriptReference.VarsEntry
-	109, // 93: raft.SaveMetadataOrder.target:type_name -> common.Target
-	95,  // 94: raft.SaveMetadataOrder.metadata:type_name -> raft.SaveMetadataOrder.MetadataEntry
-	96,  // 95: raft.RevertTransactionOrder.metadata:type_name -> raft.RevertTransactionOrder.MetadataEntry
-	108, // 96: raft.RevertTransactionOrder.original_postings:type_name -> common.Posting
-	109, // 97: raft.DeleteMetadataOrder.target:type_name -> common.Target
-	97,  // 98: raft.SaveLedgerMetadataOrder.metadata:type_name -> raft.SaveLedgerMetadataOrder.MetadataEntry
-	0,   // 99: raft.Proposal.orders:type_name -> raft.Order
-	103, // 100: raft.Proposal.date:type_name -> common.Timestamp
-	59,  // 101: raft.Proposal.preload:type_name -> raft.PreloadSet
-	55,  // 102: raft.Proposal.events_sink_updates:type_name -> raft.EventsSinkUpdate
-	54,  // 103: raft.Proposal.mirror_sync_updates:type_name -> raft.MirrorSyncUpdate
-	53,  // 104: raft.Proposal.idempotency_eviction:type_name -> raft.IdempotencyEviction
-	118, // 105: raft.Proposal.cluster_config:type_name -> common.ClusterConfig
-	40,  // 106: raft.Proposal.metadata_conversion_batches:type_name -> raft.MetadataConversionBatch
-	42,  // 107: raft.Proposal.metadata_conversions_complete:type_name -> raft.MetadataConversionCompletion
-	36,  // 108: raft.Proposal.index_ready_updates:type_name -> raft.IndexReadyUpdate
-	119, // 109: raft.Proposal.caller:type_name -> common.CallerIdentity
-	120, // 110: raft.MirrorSyncUpdate.error:type_name -> common.MirrorSyncError
-	121, // 111: raft.EventsSinkUpdate.error:type_name -> common.SinkError
-	122, // 112: raft.CreatedLogOrReference.created_log:type_name -> common.Log
-	123, // 113: raft.VolumePair.input:type_name -> common.Uint256
-	123, // 114: raft.VolumePair.output:type_name -> common.Uint256
-	61,  // 115: raft.PreloadSet.preloads:type_name -> raft.Preload
-	60,  // 116: raft.PreloadSet.touches:type_name -> raft.CacheTouch
-	62,  // 117: raft.Preload.volume:type_name -> raft.PreloadVolume
-	63,  // 118: raft.Preload.idempotency_key:type_name -> raft.PreloadIdempotencyKey
-	64,  // 119: raft.Preload.ledger:type_name -> raft.PreloadLedger
-	65,  // 120: raft.Preload.boundary:type_name -> raft.PreloadBoundary
-	66,  // 121: raft.Preload.transaction_reference:type_name -> raft.PreloadTransactionReference
-	67,  // 122: raft.Preload.sink_config:type_name -> raft.PreloadSinkConfig
-	68,  // 123: raft.Preload.account_metadata:type_name -> raft.PreloadAccountMetadata
-	69,  // 124: raft.Preload.numscript_version:type_name -> raft.PreloadNumscriptVersion
-	70,  // 125: raft.Preload.transaction_state:type_name -> raft.PreloadTransactionState
-	71,  // 126: raft.Preload.numscript_content:type_name -> raft.PreloadNumscriptContent
-	72,  // 127: raft.Preload.prepared_query:type_name -> raft.PreloadPreparedQuery
-	73,  // 128: raft.Preload.ledger_metadata:type_name -> raft.PreloadLedgerMetadata
-	86,  // 129: raft.PreloadVolume.id:type_name -> raft.AttributeID
-	58,  // 130: raft.PreloadVolume.value:type_name -> raft.VolumePair
-	124, // 131: raft.PreloadIdempotencyKey.value:type_name -> common.IdempotencyKeyValue
-	86,  // 132: raft.PreloadLedger.id:type_name -> raft.AttributeID
-	125, // 133: raft.PreloadLedger.value:type_name -> common.LedgerInfo
-	86,  // 134: raft.PreloadBoundary.id:type_name -> raft.AttributeID
-	57,  // 135: raft.PreloadBoundary.value:type_name -> raft.LedgerBoundaries
-	86,  // 136: raft.PreloadTransactionReference.id:type_name -> raft.AttributeID
-	126, // 137: raft.PreloadTransactionReference.value:type_name -> common.TransactionReferenceValue
-	86,  // 138: raft.PreloadSinkConfig.id:type_name -> raft.AttributeID
-	102, // 139: raft.PreloadSinkConfig.value:type_name -> common.SinkConfig
-	86,  // 140: raft.PreloadAccountMetadata.id:type_name -> raft.AttributeID
-	116, // 141: raft.PreloadAccountMetadata.value:type_name -> common.MetadataValue
-	86,  // 142: raft.PreloadNumscriptVersion.id:type_name -> raft.AttributeID
-	127, // 143: raft.PreloadNumscriptVersion.value:type_name -> common.NumscriptVersionValue
-	86,  // 144: raft.PreloadTransactionState.id:type_name -> raft.AttributeID
-	128, // 145: raft.PreloadTransactionState.value:type_name -> common.TransactionState
-	86,  // 146: raft.PreloadNumscriptContent.id:type_name -> raft.AttributeID
-	129, // 147: raft.PreloadNumscriptContent.value:type_name -> common.NumscriptInfo
-	86,  // 148: raft.PreloadPreparedQuery.id:type_name -> raft.AttributeID
-	100, // 149: raft.PreloadPreparedQuery.value:type_name -> common.PreparedQuery
-	86,  // 150: raft.PreloadLedgerMetadata.id:type_name -> raft.AttributeID
-	116, // 151: raft.PreloadLedgerMetadata.value:type_name -> common.MetadataValue
-	77,  // 152: raft.NodeSnapshot.peer_addresses:type_name -> raft.PeerAddress
-	79,  // 153: raft.GenerationSnapshot.volumes:type_name -> raft.VolumeAttributeSnapshotEntry
-	80,  // 154: raft.GenerationSnapshot.metadata:type_name -> raft.MetadataAttributeEntry
-	80,  // 155: raft.GenerationSnapshot.ledger_metadata:type_name -> raft.MetadataAttributeEntry
-	81,  // 156: raft.GenerationSnapshot.ledgers:type_name -> raft.LedgerAttributeEntry
-	82,  // 157: raft.GenerationSnapshot.boundaries:type_name -> raft.BoundaryAttributeEntry
-	83,  // 158: raft.GenerationSnapshot.references:type_name -> raft.TransactionReferenceAttributeEntry
-	84,  // 159: raft.GenerationSnapshot.transactions:type_name -> raft.TransactionStateAttributeEntry
-	86,  // 160: raft.VolumeAttributeSnapshotEntry.id:type_name -> raft.AttributeID
-	123, // 161: raft.VolumeAttributeSnapshotEntry.input:type_name -> common.Uint256
-	123, // 162: raft.VolumeAttributeSnapshotEntry.output:type_name -> common.Uint256
-	86,  // 163: raft.MetadataAttributeEntry.id:type_name -> raft.AttributeID
-	116, // 164: raft.MetadataAttributeEntry.value:type_name -> common.MetadataValue
-	86,  // 165: raft.LedgerAttributeEntry.id:type_name -> raft.AttributeID
-	125, // 166: raft.LedgerAttributeEntry.info:type_name -> common.LedgerInfo
-	86,  // 167: raft.BoundaryAttributeEntry.id:type_name -> raft.AttributeID
-	57,  // 168: raft.BoundaryAttributeEntry.boundaries:type_name -> raft.LedgerBoundaries
-	86,  // 169: raft.TransactionReferenceAttributeEntry.id:type_name -> raft.AttributeID
-	126, // 170: raft.TransactionReferenceAttributeEntry.value:type_name -> common.TransactionReferenceValue
-	86,  // 171: raft.TransactionStateAttributeEntry.id:type_name -> raft.AttributeID
-	128, // 172: raft.TransactionStateAttributeEntry.state:type_name -> common.TransactionState
-	86,  // 173: raft.IdempotencyKeyAttributeEntry.id:type_name -> raft.AttributeID
-	124, // 174: raft.IdempotencyKeyAttributeEntry.value:type_name -> common.IdempotencyKeyValue
-	113, // 175: raft.CreateLedgerOrder.AccountTypesEntry.value:type_name -> common.AccountType
-	116, // 176: raft.MirrorCreatedTransaction.MetadataEntry.value:type_name -> common.MetadataValue
-	130, // 177: raft.MirrorCreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataMap
-	116, // 178: raft.MirrorSavedMetadata.MetadataEntry.value:type_name -> common.MetadataValue
-	116, // 179: raft.MirrorRevertedTransaction.MetadataEntry.value:type_name -> common.MetadataValue
-	116, // 180: raft.CreateTransactionOrder.MetadataEntry.value:type_name -> common.MetadataValue
-	130, // 181: raft.CreateTransactionOrder.AccountMetadataEntry.value:type_name -> common.MetadataMap
-	116, // 182: raft.SaveMetadataOrder.MetadataEntry.value:type_name -> common.MetadataValue
-	116, // 183: raft.RevertTransactionOrder.MetadataEntry.value:type_name -> common.MetadataValue
-	116, // 184: raft.SaveLedgerMetadataOrder.MetadataEntry.value:type_name -> common.MetadataValue
-	185, // [185:185] is the sub-list for method output_type
-	185, // [185:185] is the sub-list for method input_type
-	185, // [185:185] is the sub-list for extension type_name
-	185, // [185:185] is the sub-list for extension extendee
-	0,   // [0:185] is the sub-list for field type_name
+	110, // 66: raft.CreateIndexOrder.id:type_name -> common.IndexID
+	110, // 67: raft.DropIndexOrder.id:type_name -> common.IndexID
+	110, // 68: raft.IndexReadyUpdate.id:type_name -> common.IndexID
+	111, // 69: raft.AddAccountTypeOrder.account_type:type_name -> common.AccountType
+	107, // 70: raft.UpdateDefaultEnforcementModeOrder.enforcement_mode:type_name -> common.ChartEnforcementMode
+	112, // 71: raft.MetadataConversionBatch.target_type:type_name -> common.TargetType
+	113, // 72: raft.MetadataConversionBatch.expected_type:type_name -> common.MetadataType
+	41,  // 73: raft.MetadataConversionBatch.entries:type_name -> raft.ConvertMetadataEntry
+	114, // 74: raft.ConvertMetadataEntry.converted_value:type_name -> common.MetadataValue
+	112, // 75: raft.MetadataConversionCompletion.target_type:type_name -> common.TargetType
+	113, // 76: raft.MetadataConversionCompletion.expected_type:type_name -> common.MetadataType
+	112, // 77: raft.SetMetadataFieldTypeOrder.target_type:type_name -> common.TargetType
+	113, // 78: raft.SetMetadataFieldTypeOrder.type:type_name -> common.MetadataType
+	112, // 79: raft.RemoveMetadataFieldTypeOrder.target_type:type_name -> common.TargetType
+	108, // 80: raft.CreateTransactionOrder.postings:type_name -> common.Posting
+	115, // 81: raft.CreateTransactionOrder.script:type_name -> common.Script
+	103, // 82: raft.CreateTransactionOrder.timestamp:type_name -> common.Timestamp
+	92,  // 83: raft.CreateTransactionOrder.metadata:type_name -> raft.CreateTransactionOrder.MetadataEntry
+	93,  // 84: raft.CreateTransactionOrder.account_metadata:type_name -> raft.CreateTransactionOrder.AccountMetadataEntry
+	46,  // 85: raft.CreateTransactionOrder.numscript_reference:type_name -> raft.NumscriptReference
+	94,  // 86: raft.NumscriptReference.vars:type_name -> raft.NumscriptReference.VarsEntry
+	109, // 87: raft.SaveMetadataOrder.target:type_name -> common.Target
+	95,  // 88: raft.SaveMetadataOrder.metadata:type_name -> raft.SaveMetadataOrder.MetadataEntry
+	96,  // 89: raft.RevertTransactionOrder.metadata:type_name -> raft.RevertTransactionOrder.MetadataEntry
+	108, // 90: raft.RevertTransactionOrder.original_postings:type_name -> common.Posting
+	109, // 91: raft.DeleteMetadataOrder.target:type_name -> common.Target
+	97,  // 92: raft.SaveLedgerMetadataOrder.metadata:type_name -> raft.SaveLedgerMetadataOrder.MetadataEntry
+	0,   // 93: raft.Proposal.orders:type_name -> raft.Order
+	103, // 94: raft.Proposal.date:type_name -> common.Timestamp
+	59,  // 95: raft.Proposal.preload:type_name -> raft.PreloadSet
+	55,  // 96: raft.Proposal.events_sink_updates:type_name -> raft.EventsSinkUpdate
+	54,  // 97: raft.Proposal.mirror_sync_updates:type_name -> raft.MirrorSyncUpdate
+	53,  // 98: raft.Proposal.idempotency_eviction:type_name -> raft.IdempotencyEviction
+	116, // 99: raft.Proposal.cluster_config:type_name -> common.ClusterConfig
+	40,  // 100: raft.Proposal.metadata_conversion_batches:type_name -> raft.MetadataConversionBatch
+	42,  // 101: raft.Proposal.metadata_conversions_complete:type_name -> raft.MetadataConversionCompletion
+	36,  // 102: raft.Proposal.index_ready_updates:type_name -> raft.IndexReadyUpdate
+	117, // 103: raft.Proposal.caller:type_name -> common.CallerIdentity
+	118, // 104: raft.MirrorSyncUpdate.error:type_name -> common.MirrorSyncError
+	119, // 105: raft.EventsSinkUpdate.error:type_name -> common.SinkError
+	120, // 106: raft.CreatedLogOrReference.created_log:type_name -> common.Log
+	121, // 107: raft.VolumePair.input:type_name -> common.Uint256
+	121, // 108: raft.VolumePair.output:type_name -> common.Uint256
+	61,  // 109: raft.PreloadSet.preloads:type_name -> raft.Preload
+	60,  // 110: raft.PreloadSet.touches:type_name -> raft.CacheTouch
+	62,  // 111: raft.Preload.volume:type_name -> raft.PreloadVolume
+	63,  // 112: raft.Preload.idempotency_key:type_name -> raft.PreloadIdempotencyKey
+	64,  // 113: raft.Preload.ledger:type_name -> raft.PreloadLedger
+	65,  // 114: raft.Preload.boundary:type_name -> raft.PreloadBoundary
+	66,  // 115: raft.Preload.transaction_reference:type_name -> raft.PreloadTransactionReference
+	67,  // 116: raft.Preload.sink_config:type_name -> raft.PreloadSinkConfig
+	68,  // 117: raft.Preload.account_metadata:type_name -> raft.PreloadAccountMetadata
+	69,  // 118: raft.Preload.numscript_version:type_name -> raft.PreloadNumscriptVersion
+	70,  // 119: raft.Preload.transaction_state:type_name -> raft.PreloadTransactionState
+	71,  // 120: raft.Preload.numscript_content:type_name -> raft.PreloadNumscriptContent
+	72,  // 121: raft.Preload.prepared_query:type_name -> raft.PreloadPreparedQuery
+	73,  // 122: raft.Preload.ledger_metadata:type_name -> raft.PreloadLedgerMetadata
+	86,  // 123: raft.PreloadVolume.id:type_name -> raft.AttributeID
+	58,  // 124: raft.PreloadVolume.value:type_name -> raft.VolumePair
+	122, // 125: raft.PreloadIdempotencyKey.value:type_name -> common.IdempotencyKeyValue
+	86,  // 126: raft.PreloadLedger.id:type_name -> raft.AttributeID
+	123, // 127: raft.PreloadLedger.value:type_name -> common.LedgerInfo
+	86,  // 128: raft.PreloadBoundary.id:type_name -> raft.AttributeID
+	57,  // 129: raft.PreloadBoundary.value:type_name -> raft.LedgerBoundaries
+	86,  // 130: raft.PreloadTransactionReference.id:type_name -> raft.AttributeID
+	124, // 131: raft.PreloadTransactionReference.value:type_name -> common.TransactionReferenceValue
+	86,  // 132: raft.PreloadSinkConfig.id:type_name -> raft.AttributeID
+	102, // 133: raft.PreloadSinkConfig.value:type_name -> common.SinkConfig
+	86,  // 134: raft.PreloadAccountMetadata.id:type_name -> raft.AttributeID
+	114, // 135: raft.PreloadAccountMetadata.value:type_name -> common.MetadataValue
+	86,  // 136: raft.PreloadNumscriptVersion.id:type_name -> raft.AttributeID
+	125, // 137: raft.PreloadNumscriptVersion.value:type_name -> common.NumscriptVersionValue
+	86,  // 138: raft.PreloadTransactionState.id:type_name -> raft.AttributeID
+	126, // 139: raft.PreloadTransactionState.value:type_name -> common.TransactionState
+	86,  // 140: raft.PreloadNumscriptContent.id:type_name -> raft.AttributeID
+	127, // 141: raft.PreloadNumscriptContent.value:type_name -> common.NumscriptInfo
+	86,  // 142: raft.PreloadPreparedQuery.id:type_name -> raft.AttributeID
+	100, // 143: raft.PreloadPreparedQuery.value:type_name -> common.PreparedQuery
+	86,  // 144: raft.PreloadLedgerMetadata.id:type_name -> raft.AttributeID
+	114, // 145: raft.PreloadLedgerMetadata.value:type_name -> common.MetadataValue
+	77,  // 146: raft.NodeSnapshot.peer_addresses:type_name -> raft.PeerAddress
+	79,  // 147: raft.GenerationSnapshot.volumes:type_name -> raft.VolumeAttributeSnapshotEntry
+	80,  // 148: raft.GenerationSnapshot.metadata:type_name -> raft.MetadataAttributeEntry
+	80,  // 149: raft.GenerationSnapshot.ledger_metadata:type_name -> raft.MetadataAttributeEntry
+	81,  // 150: raft.GenerationSnapshot.ledgers:type_name -> raft.LedgerAttributeEntry
+	82,  // 151: raft.GenerationSnapshot.boundaries:type_name -> raft.BoundaryAttributeEntry
+	83,  // 152: raft.GenerationSnapshot.references:type_name -> raft.TransactionReferenceAttributeEntry
+	84,  // 153: raft.GenerationSnapshot.transactions:type_name -> raft.TransactionStateAttributeEntry
+	86,  // 154: raft.VolumeAttributeSnapshotEntry.id:type_name -> raft.AttributeID
+	121, // 155: raft.VolumeAttributeSnapshotEntry.input:type_name -> common.Uint256
+	121, // 156: raft.VolumeAttributeSnapshotEntry.output:type_name -> common.Uint256
+	86,  // 157: raft.MetadataAttributeEntry.id:type_name -> raft.AttributeID
+	114, // 158: raft.MetadataAttributeEntry.value:type_name -> common.MetadataValue
+	86,  // 159: raft.LedgerAttributeEntry.id:type_name -> raft.AttributeID
+	123, // 160: raft.LedgerAttributeEntry.info:type_name -> common.LedgerInfo
+	86,  // 161: raft.BoundaryAttributeEntry.id:type_name -> raft.AttributeID
+	57,  // 162: raft.BoundaryAttributeEntry.boundaries:type_name -> raft.LedgerBoundaries
+	86,  // 163: raft.TransactionReferenceAttributeEntry.id:type_name -> raft.AttributeID
+	124, // 164: raft.TransactionReferenceAttributeEntry.value:type_name -> common.TransactionReferenceValue
+	86,  // 165: raft.TransactionStateAttributeEntry.id:type_name -> raft.AttributeID
+	126, // 166: raft.TransactionStateAttributeEntry.state:type_name -> common.TransactionState
+	86,  // 167: raft.IdempotencyKeyAttributeEntry.id:type_name -> raft.AttributeID
+	122, // 168: raft.IdempotencyKeyAttributeEntry.value:type_name -> common.IdempotencyKeyValue
+	111, // 169: raft.CreateLedgerOrder.AccountTypesEntry.value:type_name -> common.AccountType
+	114, // 170: raft.MirrorCreatedTransaction.MetadataEntry.value:type_name -> common.MetadataValue
+	128, // 171: raft.MirrorCreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataMap
+	114, // 172: raft.MirrorSavedMetadata.MetadataEntry.value:type_name -> common.MetadataValue
+	114, // 173: raft.MirrorRevertedTransaction.MetadataEntry.value:type_name -> common.MetadataValue
+	114, // 174: raft.CreateTransactionOrder.MetadataEntry.value:type_name -> common.MetadataValue
+	128, // 175: raft.CreateTransactionOrder.AccountMetadataEntry.value:type_name -> common.MetadataMap
+	114, // 176: raft.SaveMetadataOrder.MetadataEntry.value:type_name -> common.MetadataValue
+	114, // 177: raft.RevertTransactionOrder.MetadataEntry.value:type_name -> common.MetadataValue
+	114, // 178: raft.SaveLedgerMetadataOrder.MetadataEntry.value:type_name -> common.MetadataValue
+	179, // [179:179] is the sub-list for method output_type
+	179, // [179:179] is the sub-list for method input_type
+	179, // [179:179] is the sub-list for extension type_name
+	179, // [179:179] is the sub-list for extension extendee
+	0,   // [0:179] is the sub-list for field type_name
 }
 
 func init() { file_raft_cmd_proto_init() }
@@ -6900,21 +6718,6 @@ func file_raft_cmd_proto_init() {
 		(*LedgerApplyOrder_AddAccountType)(nil),
 		(*LedgerApplyOrder_RemoveAccountType)(nil),
 		(*LedgerApplyOrder_UpdateDefaultEnforcementMode)(nil),
-	}
-	file_raft_cmd_proto_msgTypes[34].OneofWrappers = []any{
-		(*CreateIndexOrder_LogBuiltin)(nil),
-		(*CreateIndexOrder_Transaction)(nil),
-		(*CreateIndexOrder_Account)(nil),
-	}
-	file_raft_cmd_proto_msgTypes[35].OneofWrappers = []any{
-		(*DropIndexOrder_LogBuiltin)(nil),
-		(*DropIndexOrder_Transaction)(nil),
-		(*DropIndexOrder_Account)(nil),
-	}
-	file_raft_cmd_proto_msgTypes[36].OneofWrappers = []any{
-		(*IndexReadyUpdate_LogBuiltin)(nil),
-		(*IndexReadyUpdate_Transaction)(nil),
-		(*IndexReadyUpdate_Account)(nil),
 	}
 	file_raft_cmd_proto_msgTypes[56].OneofWrappers = []any{
 		(*CreatedLogOrReference_CreatedLog)(nil),

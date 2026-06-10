@@ -176,12 +176,12 @@ enum IndexBuildStatus {
 }
 
 message MetadataFieldSchema {
+  reserved 5, 6;
+  reserved "indexed", "index_build_status";
   MetadataType type = 1;
   MetadataConversionStatus status = 2;
   fixed64 total_keys = 3;
   fixed64 converted_keys = 4;
-  bool indexed = 5;
-  IndexBuildStatus index_build_status = 6;
 }
 
 message MetadataSchema {
@@ -212,22 +212,6 @@ enum AccountBuiltinIndex {
   ACCT_BUILTIN_INDEX_UNSPECIFIED = 0;
 }
 
-// TransactionIndex groups all transaction-level indexes (builtins + metadata keys).
-message TransactionIndex {
-  oneof kind {
-    TransactionBuiltinIndex builtin = 1;
-    string metadata_key = 2;
-  }
-}
-
-// AccountIndex groups all account-level indexes (builtins + metadata keys).
-message AccountIndex {
-  oneof kind {
-    AccountBuiltinIndex builtin = 1;
-    string metadata_key = 2;
-  }
-}
-
 // LogBuiltinIndex identifies a built-in log field that can be indexed.
 // The per-ledger log index (Pebble "llog") is always built by the indexbuilder
 // and is not exposed here — only opt-in fields appear below.
@@ -237,30 +221,32 @@ enum LogBuiltinIndex {
   LOG_BUILTIN_INDEX_DATE = 1;       // per-ledger log date index (Pebble "lldt")
 }
 
-// BuiltinIndexConfig tracks the status of built-in transaction field indexes.
-message BuiltinIndexConfig {
-  bool reference = 1;
-  IndexBuildStatus reference_status = 2;
-  bool timestamp = 3;
-  IndexBuildStatus timestamp_status = 4;
-  bool address = 5;
-  IndexBuildStatus address_status = 6;
-  bool source_address = 7;
-  IndexBuildStatus source_address_status = 8;
-  bool dest_address = 9;
-  IndexBuildStatus dest_address_status = 10;
-  bool inserted_at = 11;
-  IndexBuildStatus inserted_at_status = 12;
+// MetadataIndexID identifies a metadata-key index by its target entity and key.
+message MetadataIndexID {
+  TargetType target = 1;
+  string key = 2;
 }
 
-// LogBuiltinIndexConfig tracks the status of built-in log field indexes.
-// The per-ledger log index is unconditionally maintained by the indexbuilder
-// and has no opt-in flag here.
-message LogBuiltinIndexConfig {
-  reserved 1, 2;
-  reserved "ledger", "ledger_status";
-  bool date = 3;
-  IndexBuildStatus date_status = 4;
+// IndexID uniquely identifies an index within a ledger across all kinds
+// (transaction builtins, log builtins, account builtins, metadata keys, ...).
+// Future kinds (e.g. account_type) extend the oneof without touching other code.
+message IndexID {
+  oneof kind {
+    TransactionBuiltinIndex tx_builtin = 1;
+    LogBuiltinIndex log_builtin = 2;
+    AccountBuiltinIndex account_builtin = 3;
+    MetadataIndexID metadata = 4;
+  }
+}
+
+// Index is the first-class representation of an index on a ledger.
+// Holds its identifier plus build state and audit metadata.
+message Index {
+  IndexID id = 1;
+  IndexBuildStatus build_status = 2;
+  Timestamp created_at = 3;
+  Timestamp last_built_at = 4;
+  string last_error = 5;
 }
 
 // ============================================================================
@@ -628,20 +614,16 @@ message LedgerLogPayload {
 
 // CreatedIndexLog records the creation of an index.
 message CreatedIndexLog {
-  oneof index {
-    LogBuiltinIndex log_builtin = 1;
-    TransactionIndex transaction = 2;
-    AccountIndex account = 3;
-  }
+  reserved 1, 2, 3;
+  reserved "log_builtin", "transaction", "account";
+  IndexID id = 4;
 }
 
 // DroppedIndexLog records the removal of an index.
 message DroppedIndexLog {
-  oneof index {
-    LogBuiltinIndex log_builtin = 1;
-    TransactionIndex transaction = 2;
-    AccountIndex account = 3;
-  }
+  reserved 1, 2, 3;
+  reserved "log_builtin", "transaction", "account";
+  IndexID id = 4;
 }
 
 message FilledGapLog {
@@ -683,9 +665,12 @@ message SetMetadataFieldTypeLog {
 }
 
 // RemovedMetadataFieldTypeLog records the removal of a metadata field type declaration.
+// When the removed field had an index, dropped_index identifies it so the
+// indexbuilder can purge the read-store entries in the same handler pass.
 message RemovedMetadataFieldTypeLog {
   TargetType target_type = 1;
   string key = 2;
+  IndexID dropped_index = 3;  // nil when no index was attached to the field
 }
 
 // ============================================================================
@@ -789,6 +774,8 @@ message MirrorSyncProgress {
 
 // LedgerInfo represents information about a ledger
 message LedgerInfo {
+  reserved 8, 9;
+  reserved "builtin_indexes", "log_builtin_indexes";
   string name = 1;                          // Ledger name
   Timestamp created_at = 2;                 // Creation timestamp
   Timestamp deleted_at = 3;                 // Soft delete timestamp (nil if not deleted)
@@ -796,12 +783,11 @@ message LedgerInfo {
   LedgerMode mode = 5;                      // Normal or mirror mode
   MirrorSourceConfig mirror_source = 6;     // Mirror source config (set when mode=MIRROR)
   MirrorSyncProgress mirror_sync_progress = 7;  // Populated at read time for MIRROR ledgers
-  BuiltinIndexConfig builtin_indexes = 8;  // Built-in transaction field index config
-  LogBuiltinIndexConfig log_builtin_indexes = 9;  // Built-in log field index config
   map<string, AccountType> account_types = 10; // Per-type account address validation
   ChartEnforcementMode default_enforcement_mode = 11; // Default enforcement for unmatched accounts
   map<string, MetadataValue> metadata = 12; // Populated at read time from separate attribute store
   uint32 id = 13;                           // Unique numeric ledger ID (assigned by FSM, used as Pebble key prefix)
+  repeated Index indexes = 14;              // All indexes defined on this ledger
 }
 
 // ============================================================================

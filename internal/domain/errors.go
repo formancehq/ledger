@@ -346,6 +346,17 @@ func (e *ErrIndexNotFound) Error() string {
 	return "index not found: " + e.Index
 }
 
+// ErrMetadataFieldNotInSchema is returned when CreateIndex targets a metadata
+// key that has not been declared via SetMetadataFieldType first.
+type ErrMetadataFieldNotInSchema struct {
+	Target string
+	Key    string
+}
+
+func (e *ErrMetadataFieldNotInSchema) Error() string {
+	return "metadata field not declared in schema: " + e.Target + "/" + e.Key
+}
+
 // ErrIndexBuilding is returned when a query references an index that is still being built.
 type ErrIndexBuilding struct {
 	Index string

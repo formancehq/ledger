@@ -370,18 +370,17 @@ func (x *PreparedQueryCursor) MarshalJSON() ([]byte, error) {
 // MarshalJSON implements json.Marshaler for LedgerInfo.
 func (x *LedgerInfo) MarshalJSON() ([]byte, error) {
 	type Aux struct {
-		Name                   string        `json:"name,omitempty"`
-		CreatedAt              *time.Time    `json:"createdAt,omitempty"`
-		DeletedAt              *time.Time    `json:"deletedAt,omitempty"`
-		MetadataSchema         json.RawValue `json:"metadataSchema,omitempty"`
-		Mode                   string        `json:"mode,omitempty"`
-		MirrorSource           json.RawValue `json:"mirrorSource,omitempty"`
-		MirrorSyncProgress     json.RawValue `json:"mirrorSyncProgress,omitempty"`
-		BuiltinIndexes         json.RawValue `json:"builtinIndexes,omitempty"`
-		LogBuiltinIndexes      json.RawValue `json:"logBuiltinIndexes,omitempty"`
-		AccountTypes           json.RawValue `json:"accountTypes,omitempty"`
-		DefaultEnforcementMode string        `json:"defaultEnforcementMode,omitempty"`
-		Metadata               json.RawValue `json:"metadata,omitempty"`
+		Name                   string          `json:"name,omitempty"`
+		CreatedAt              *time.Time      `json:"createdAt,omitempty"`
+		DeletedAt              *time.Time      `json:"deletedAt,omitempty"`
+		MetadataSchema         json.RawValue   `json:"metadataSchema,omitempty"`
+		Mode                   string          `json:"mode,omitempty"`
+		MirrorSource           json.RawValue   `json:"mirrorSource,omitempty"`
+		MirrorSyncProgress     json.RawValue   `json:"mirrorSyncProgress,omitempty"`
+		Indexes                []json.RawValue `json:"indexes,omitempty"`
+		AccountTypes           json.RawValue   `json:"accountTypes,omitempty"`
+		DefaultEnforcementMode string          `json:"defaultEnforcementMode,omitempty"`
+		Metadata               json.RawValue   `json:"metadata,omitempty"`
 	}
 
 	aux := Aux{
@@ -389,9 +388,14 @@ func (x *LedgerInfo) MarshalJSON() ([]byte, error) {
 		MetadataSchema:         protoFieldJSON(x.GetMetadataSchema()),
 		MirrorSource:           protoFieldJSON(x.GetMirrorSource()),
 		MirrorSyncProgress:     protoFieldJSON(x.GetMirrorSyncProgress()),
-		BuiltinIndexes:         protoFieldJSON(x.GetBuiltinIndexes()),
-		LogBuiltinIndexes:      protoFieldJSON(x.GetLogBuiltinIndexes()),
 		DefaultEnforcementMode: x.GetDefaultEnforcementMode().String(),
+	}
+
+	if indexes := x.GetIndexes(); len(indexes) > 0 {
+		aux.Indexes = make([]json.RawValue, len(indexes))
+		for i, idx := range indexes {
+			aux.Indexes[i] = protoFieldJSON(idx)
+		}
 	}
 
 	if x.GetMode() != LedgerMode_LEDGER_MODE_NORMAL {

@@ -170,6 +170,20 @@ func EntityExistsKey(kb *dal.KeyBuilder, ledgerID uint32, ns, metaKey string, is
 		Consume()
 }
 
+// EntityExistsKeyPrefix returns the prefix covering both null and non-null
+// entries for a given metadata key — i.e. every entry recorded under that
+// key, regardless of whether the value was null.
+//
+//	[0x02][ledgerID_BE(4B)][ns:][metadataKey\x00]
+func EntityExistsKeyPrefix(kb *dal.KeyBuilder, ledgerID uint32, ns, metaKey string) []byte {
+	return kb.Reset().
+		PutByte(PrefixEntityExists).
+		PutLedgerID(ledgerID).
+		PutNamespace(ns).
+		PutStringNull(metaKey).
+		Snapshot()
+}
+
 // EntityExistsNonNullPrefix returns the prefix for scanning non-null entities
 // that have a given metadata key.
 //

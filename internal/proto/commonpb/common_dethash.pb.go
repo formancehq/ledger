@@ -599,7 +599,7 @@ func (m *SetMetadataFieldTypeCommand) MarshalDeterministicVT(dAtA []byte) []byte
 	return append(dAtA, b...)
 }
 
-func (m *TransactionIndex) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *MetadataIndexID) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -610,7 +610,7 @@ func (m *TransactionIndex) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *AccountIndex) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *IndexID) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -621,18 +621,7 @@ func (m *AccountIndex) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *BuiltinIndexConfig) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *LogBuiltinIndexConfig) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *Index) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -2099,6 +2088,15 @@ func (m *LedgerInfo) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.Indexes) > 0 {
+		for iNdEx := len(m.Indexes) - 1; iNdEx >= 0; iNdEx-- {
+			size, _ := m.Indexes[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x72
+		}
+	}
 	if m.Id != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Id))
 		i--
@@ -2146,20 +2144,6 @@ func (m *LedgerInfo) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i--
 			dAtA[i] = 0x52
 		}
-	}
-	if m.LogBuiltinIndexes != nil {
-		size, _ := m.LogBuiltinIndexes.MarshalToSizedBufferVT(dAtA[:i])
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x4a
-	}
-	if m.BuiltinIndexes != nil {
-		size, _ := m.BuiltinIndexes.MarshalToSizedBufferVT(dAtA[:i])
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x42
 	}
 	if m.MirrorSyncProgress != nil {
 		size, _ := m.MirrorSyncProgress.MarshalToSizedBufferVT(dAtA[:i])

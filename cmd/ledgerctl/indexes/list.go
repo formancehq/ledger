@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -61,22 +62,35 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 		return cmdutil.FormatGRPCError("failed to get ledger", err)
 	}
 
-	// Check if any index is in BUILDING state before fetching progress.
-	hasBuilding := hasBuildingIndexes(ledger)
+	hasBuilding := false
+	for _, idx := range ledger.GetIndexes() {
+		if idx.GetBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+			hasBuilding = true
+
+			break
+		}
+	}
 
 	var (
-		progressMap map[string]uint64
-		lastLogSeq  uint64
+		cursorByID map[string]uint64
+		lastLogSeq uint64
 	)
 
 	if hasBuilding {
-		idxStatus, err := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{})
-		if err != nil {
-			spinner.Fail(fmt.Sprintf("Failed to fetch index status: %v", err))
-			// Continue without progress info — indexes will show as BUILDING without percentage.
+		idxStatus, statusErr := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{Ledger: ledgerName})
+		if statusErr != nil {
+			spinner.Fail(fmt.Sprintf("Failed to fetch index status: %v", statusErr))
 		} else {
 			lastLogSeq = idxStatus.GetLastLogSequence()
-			progressMap = buildProgressMap(ledgerName, idxStatus.GetBackfillProgress())
+			cursorByID = make(map[string]uint64)
+
+			for _, e := range idxStatus.GetIndexes() {
+				if e.GetLedger() != ledgerName {
+					continue
+				}
+
+				cursorByID[indexes.Canonical(e.GetIndex().GetId())] = e.GetCursor()
+			}
 		}
 	}
 
@@ -90,42 +104,21 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 		{"TYPE", "TARGET", "KEY", "STATUS"},
 	}
 
-	// Builtin indexes (includes address indexes)
-	if bi := ledger.GetBuiltinIndexes(); bi != nil {
-		if bi.GetReference() {
-			table = append(table, []string{"reference", "-", "-",
-				indexStatusWithProgress(bi.GetReferenceStatus(), progressMap, lastLogSeq, "b:0")})
-		}
+	// Sort indexes by canonical id for stable output.
+	sorted := append([]*commonpb.Index(nil), ledger.GetIndexes()...)
+	sort.Slice(sorted, func(i, j int) bool {
+		return indexes.Canonical(sorted[i].GetId()) < indexes.Canonical(sorted[j].GetId())
+	})
 
-		if bi.GetTimestamp() {
-			table = append(table, []string{"timestamp", "-", "-",
-				indexStatusWithProgress(bi.GetTimestampStatus(), progressMap, lastLogSeq, "b:1")})
-		}
-
-		if bi.GetAddress() {
-			table = append(table, []string{"address", "-", "-",
-				indexStatusWithProgress(bi.GetAddressStatus(), progressMap, lastLogSeq, "b:3")})
-		}
-
-		if bi.GetSourceAddress() {
-			table = append(table, []string{"source-address", "-", "-",
-				indexStatusWithProgress(bi.GetSourceAddressStatus(), progressMap, lastLogSeq, "b:4")})
-		}
-
-		if bi.GetDestAddress() {
-			table = append(table, []string{"dest-address", "-", "-",
-				indexStatusWithProgress(bi.GetDestAddressStatus(), progressMap, lastLogSeq, "b:5")})
-		}
+	for _, idx := range sorted {
+		typeName, target, key := describeIndex(idx.GetId())
+		table = append(table, []string{
+			typeName,
+			target,
+			key,
+			indexStatusWithProgress(idx.GetBuildStatus(), cursorByID, lastLogSeq, indexes.Canonical(idx.GetId())),
+		})
 	}
-
-	// Metadata indexes
-	if schema := ledger.GetMetadataSchema(); schema != nil {
-		addMetadataIndexRowsWithProgress(&table, "account", schema.GetAccountFields(), progressMap, lastLogSeq, commonpb.TargetType_TARGET_TYPE_ACCOUNT)
-		addMetadataIndexRowsWithProgress(&table, "transaction", schema.GetTransactionFields(), progressMap, lastLogSeq, commonpb.TargetType_TARGET_TYPE_TRANSACTION)
-	}
-
-	// The per-ledger log index is always-on (no row to display).
-	// Opt-in log builtin indexes (e.g. date) would be listed here if added.
 
 	if len(table) == 1 {
 		pterm.Println("No indexes configured.")
@@ -140,135 +133,68 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-// hasBuildingIndexes returns true if any index on the ledger has BUILDING status.
-func hasBuildingIndexes(ledger *commonpb.LedgerInfo) bool {
-	if bi := ledger.GetBuiltinIndexes(); bi != nil {
-		if bi.GetReference() && bi.GetReferenceStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
-			return true
+// describeIndex returns the CLI-facing tuple (type, target, key) for an IndexID.
+func describeIndex(id *commonpb.IndexID) (typeName, target, key string) {
+	switch k := id.GetKind().(type) {
+	case *commonpb.IndexID_TxBuiltin:
+		switch k.TxBuiltin {
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE:
+			return "reference", "-", "-"
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
+			return "timestamp", "-", "-"
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS:
+			return "address", "-", "-"
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS:
+			return "source-address", "-", "-"
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS:
+			return "dest-address", "-", "-"
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
+			return "inserted-at", "-", "-"
 		}
 
-		if bi.GetTimestamp() && bi.GetTimestampStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
-			return true
-		}
-
-		if bi.GetAddress() && bi.GetAddressStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
-			return true
-		}
-
-		if bi.GetSourceAddress() && bi.GetSourceAddressStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
-			return true
-		}
-
-		if bi.GetDestAddress() && bi.GetDestAddressStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
-			return true
-		}
+		return "tx-builtin", "-", k.TxBuiltin.String()
+	case *commonpb.IndexID_LogBuiltin:
+		return "log-" + k.LogBuiltin.String(), "-", "-"
+	case *commonpb.IndexID_AccountBuiltin:
+		return "account-builtin", "-", k.AccountBuiltin.String()
+	case *commonpb.IndexID_Metadata:
+		return "metadata", targetName(k.Metadata.GetTarget()), k.Metadata.GetKey()
 	}
 
-	if schema := ledger.GetMetadataSchema(); schema != nil {
-		for _, f := range schema.GetAccountFields() {
-			if f.GetIndexed() && f.GetIndexBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
-				return true
-			}
-		}
-
-		for _, f := range schema.GetTransactionFields() {
-			if f.GetIndexed() && f.GetIndexBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
-				return true
-			}
-		}
-	}
-
-	// LogBuiltinIndexConfig.date is not exposed via the CLI yet; when it is,
-	// add the BUILDING check here.
-
-	return false
+	return "unknown", "-", "-"
 }
 
-// buildProgressMap creates a lookup map from backfill progress entries.
-// Keys use the format "b:<builtin_int>" for transaction builtin indexes,
-// "tm:<key>" for transaction metadata, "am:<key>" for account metadata,
-// or "l:<builtin_int>" for log builtin indexes.
-func buildProgressMap(ledgerName string, entries []*servicepb.IndexBackfillProgress) map[string]uint64 {
-	m := make(map[string]uint64, len(entries))
-	for _, e := range entries {
-		if e.GetLedger() != ledgerName {
-			continue
-		}
-
-		switch idx := e.GetIndex().(type) {
-		case *servicepb.IndexBackfillProgress_Transaction:
-			switch txIdx := idx.Transaction.GetKind().(type) {
-			case *commonpb.TransactionIndex_Builtin:
-				m[fmt.Sprintf("b:%d", txIdx.Builtin)] = e.GetCursor()
-			case *commonpb.TransactionIndex_MetadataKey:
-				m["tm:"+txIdx.MetadataKey] = e.GetCursor()
-			}
-		case *servicepb.IndexBackfillProgress_Account:
-			switch acctIdx := idx.Account.GetKind().(type) {
-			case *commonpb.AccountIndex_Builtin:
-				m[fmt.Sprintf("ab:%d", acctIdx.Builtin)] = e.GetCursor()
-			case *commonpb.AccountIndex_MetadataKey:
-				m["am:"+acctIdx.MetadataKey] = e.GetCursor()
-			}
-		case *servicepb.IndexBackfillProgress_LogBuiltin:
-			m[fmt.Sprintf("l:%d", idx.LogBuiltin)] = e.GetCursor()
-		}
+func targetName(t commonpb.TargetType) string {
+	switch t {
+	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		return "account"
+	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		return "transaction"
+	case commonpb.TargetType_TARGET_TYPE_LEDGER:
+		return "ledger"
 	}
 
-	return m
+	return "-"
 }
 
 // indexStatusWithProgress returns the status string, appending progress percentage for BUILDING indexes.
-func indexStatusWithProgress(status commonpb.IndexBuildStatus, progressMap map[string]uint64, lastLogSeq uint64, key string) string {
+func indexStatusWithProgress(status commonpb.IndexBuildStatus, cursorByID map[string]uint64, lastLogSeq uint64, canonical string) string {
 	if status != commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
 		return indexBuildStatusString(status)
 	}
 
-	if progressMap == nil || lastLogSeq == 0 {
+	if cursorByID == nil || lastLogSeq == 0 {
 		return indexBuildStatusString(status)
 	}
 
-	cursor, ok := progressMap[key]
+	cursor, ok := cursorByID[canonical]
 	if !ok {
-		// Backfill task exists but hasn't written its first batch yet
-		// (initial log catch-up is still running).
 		return pterm.Yellow("BUILDING (starting...)")
 	}
 
 	pct := cursor * 100 / lastLogSeq
 
 	return pterm.Yellow(fmt.Sprintf("BUILDING (%d%%)", pct))
-}
-
-// addMetadataIndexRowsWithProgress adds rows for indexed metadata fields with progress info.
-func addMetadataIndexRowsWithProgress(table *pterm.TableData, targetName string, fields map[string]*commonpb.MetadataFieldSchema, progressMap map[string]uint64, lastLogSeq uint64, targetType commonpb.TargetType) {
-	keys := make([]string, 0, len(fields))
-	for k, f := range fields {
-		if f.GetIndexed() {
-			keys = append(keys, k)
-		}
-	}
-
-	sort.Strings(keys)
-
-	var progressPrefix string
-
-	switch targetType {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-		progressPrefix = "am:"
-	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
-		progressPrefix = "tm:"
-	}
-
-	for _, key := range keys {
-		progressKey := progressPrefix + key
-		*table = append(*table, []string{
-			"metadata",
-			targetName,
-			key,
-			indexStatusWithProgress(fields[key].GetIndexBuildStatus(), progressMap, lastLogSeq, progressKey),
-		})
-	}
 }
 
 // indexBuildStatusString returns a user-friendly string for IndexBuildStatus.

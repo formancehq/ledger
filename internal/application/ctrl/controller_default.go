@@ -19,6 +19,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/analysis"
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
@@ -323,7 +324,7 @@ func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *
 		filter:       filter,
 		reverse:      !reverse, // API: reverse=false → newest-first (desc); listEntities: reverse=true → desc
 		schema:       schemaFields,
-		builtinCfg:   ledgerInfo.GetBuiltinIndexes(),
+		info:         ledgerInfo,
 		profile:      profile,
 		pebbleReader: handle,
 		afterToBytes: func(id uint64) []byte {
@@ -410,7 +411,7 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 		filter:       filter,
 		reverse:      reverse,
 		schema:       schemaFields,
-		builtinCfg:   ledgerInfo.GetBuiltinIndexes(),
+		info:         ledgerInfo,
 		profile:      profile,
 		pebbleReader: handle,
 		afterToBytes: func(addr string) []byte {
@@ -820,7 +821,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 
 	indexStart := time.Now()
 
-	iter, err := query.Compile(snap, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetId(), nil, schemaFields, ledgerInfo.GetBuiltinIndexes(), nil, profile, handle)
+	iter, err := query.Compile(snap, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetId(), nil, schemaFields, ledgerInfo, profile, handle)
 	if err != nil {
 		return nil, fmt.Errorf("compiling filter: %w", err)
 	}
@@ -878,14 +879,20 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 
 	metaKey := req.GetMetadataKey()
 
-	fieldSchema, ok := fields[metaKey]
-	if !ok || !fieldSchema.GetIndexed() {
+	if _, ok := fields[metaKey]; !ok {
 		return nil, &domain.BusinessError{Err: &domain.ErrIndexNotFound{
 			Index: fmt.Sprintf("metadata[%q] on %s", metaKey, req.GetTargetType()),
 		}}
 	}
 
-	if fieldSchema.GetIndexBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+	idx := indexes.Find(ledgerInfo, indexes.MetadataID(req.GetTargetType(), metaKey))
+	if idx == nil {
+		return nil, &domain.BusinessError{Err: &domain.ErrIndexNotFound{
+			Index: fmt.Sprintf("metadata[%q] on %s", metaKey, req.GetTargetType()),
+		}}
+	}
+
+	if idx.GetBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
 		return nil, &domain.BusinessError{Err: &domain.ErrIndexBuilding{
 			Index: fmt.Sprintf("metadata[%q] on %s", metaKey, req.GetTargetType()),
 		}}
@@ -1050,7 +1057,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 		snap, kb, filter,
 		commonpb.QueryTarget_QUERY_TARGET_LOGS,
 		ledgerInfo.GetId(), nil, nil,
-		nil, ledgerInfo.GetLogBuiltinIndexes(), nil, handle,
+		ledgerInfo, nil, handle,
 	)
 	if err != nil {
 		_ = handle.Close()

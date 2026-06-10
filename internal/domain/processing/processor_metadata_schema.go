@@ -2,6 +2,7 @@ package processing
 
 import (
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -27,15 +28,6 @@ func (p *RequestProcessor) processSetMetadataFieldType(
 		Status: commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING,
 	}
 
-	// Preserve indexed flag from any existing field schema. If the field
-	// is currently indexed, set status to BUILDING because index entries
-	// have a mix of old and new encodings during type conversion.
-	_, existing := SchemaFieldForTarget(info.GetMetadataSchema(), order.GetTargetType(), order.GetKey())
-	if existing != nil && existing.GetIndexed() {
-		field.Indexed = true
-		field.IndexBuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING
-	}
-
 	switch order.GetTargetType() {
 	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
 		if info.MetadataSchema.AccountFields == nil {
@@ -55,6 +47,14 @@ func (p *RequestProcessor) processSetMetadataFieldType(
 		}
 
 		info.MetadataSchema.LedgerFields[order.GetKey()] = field
+	}
+
+	// If an index covers this field, flip it back to BUILDING for the
+	// duration of the conversion: stored entries mix old and new encodings
+	// until the background scan completes.
+	id := indexes.MetadataID(order.GetTargetType(), order.GetKey())
+	if existing := indexes.Find(info, id); existing != nil {
+		existing.BuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING
 	}
 
 	s.PutLedger(ledgerName, info)
@@ -103,13 +103,24 @@ func (p *RequestProcessor) processRemoveMetadataFieldType(
 		delete(info.GetMetadataSchema().GetLedgerFields(), order.GetKey())
 	}
 
+	// Cascade: removing a schema field drops any index attached to it. The
+	// dropped IndexID is carried in the log so the indexbuilder can purge
+	// read-store entries within the same handler pass.
+	var droppedIndex *commonpb.IndexID
+
+	id := indexes.MetadataID(order.GetTargetType(), order.GetKey())
+	if indexes.Remove(info, id) {
+		droppedIndex = id
+	}
+
 	s.PutLedger(ledgerName, info)
 
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_RemovedMetadataFieldType{
 			RemovedMetadataFieldType: &commonpb.RemovedMetadataFieldTypeLog{
-				TargetType: order.GetTargetType(),
-				Key:        order.GetKey(),
+				TargetType:   order.GetTargetType(),
+				Key:          order.GetKey(),
+				DroppedIndex: droppedIndex,
 			},
 		},
 	}, nil

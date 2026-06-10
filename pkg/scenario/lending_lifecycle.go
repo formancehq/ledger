@@ -148,7 +148,13 @@ func lendingWriteOff(ctx context.Context, client servicepb.BucketServiceClient, 
 // account types, and numscript library for the lending lifecycle scenario.
 func LendingLifecycleSetupActions() []*servicepb.Request {
 	return []*servicepb.Request{
-		actions.CreateLedgerAction(LendingLifecycleLedger, nil),
+		actions.CreateLedgerWithSchemaAction(LendingLifecycleLedger, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			{
+				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				Key:        "status",
+				Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+			},
+		}),
 		actions.AddAccountTypeAction(LendingLifecycleLedger, "funding", "funding:{type}"),
 		actions.AddAccountTypeAction(LendingLifecycleLedger, "borrower-loan", "borrower:{id}:loan"),
 		actions.AddAccountTypeAction(LendingLifecycleLedger, "borrower-wallet", "borrower:{id}:wallet"),

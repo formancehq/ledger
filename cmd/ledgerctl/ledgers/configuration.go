@@ -173,27 +173,27 @@ func renderConfigurationIndexes(ledger *commonpb.LedgerInfo) {
 		{"TYPE", "TARGET", "KEY"},
 	}
 
-	if bi := ledger.GetBuiltinIndexes(); bi != nil {
-		if bi.GetReference() {
-			table = append(table, []string{"reference", "-", "-"})
-		}
-		if bi.GetTimestamp() {
-			table = append(table, []string{"timestamp", "-", "-"})
-		}
-		if bi.GetAddress() {
-			table = append(table, []string{"address", "-", "-"})
-		}
-		if bi.GetSourceAddress() {
-			table = append(table, []string{"source-address", "-", "-"})
-		}
-		if bi.GetDestAddress() {
-			table = append(table, []string{"dest-address", "-", "-"})
-		}
+	rows := make([][3]string, 0, len(ledger.GetIndexes()))
+
+	for _, idx := range ledger.GetIndexes() {
+		typeName, target, key := describeIndex(idx.GetId())
+		rows = append(rows, [3]string{typeName, target, key})
 	}
 
-	if schema := ledger.GetMetadataSchema(); schema != nil {
-		addMetadataIndexRows(&table, "account", schema.GetAccountFields())
-		addMetadataIndexRows(&table, "transaction", schema.GetTransactionFields())
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i][0] != rows[j][0] {
+			return rows[i][0] < rows[j][0]
+		}
+
+		if rows[i][1] != rows[j][1] {
+			return rows[i][1] < rows[j][1]
+		}
+
+		return rows[i][2] < rows[j][2]
+	})
+
+	for _, r := range rows {
+		table = append(table, []string{r[0], r[1], r[2]})
 	}
 
 	if len(table) == 1 {
@@ -205,20 +205,49 @@ func renderConfigurationIndexes(ledger *commonpb.LedgerInfo) {
 	_ = pterm.DefaultTable.WithHasHeader().WithData(table).Render()
 }
 
-// addMetadataIndexRows appends rows for indexed metadata fields (config only, no status).
-func addMetadataIndexRows(table *pterm.TableData, targetName string, fields map[string]*commonpb.MetadataFieldSchema) {
-	keys := make([]string, 0, len(fields))
-	for k, f := range fields {
-		if f.GetIndexed() {
-			keys = append(keys, k)
+// describeIndex returns a (type, target, key) tuple for an IndexID, suitable
+// for tabular display.
+func describeIndex(id *commonpb.IndexID) (typeName, target, key string) {
+	switch k := id.GetKind().(type) {
+	case *commonpb.IndexID_TxBuiltin:
+		switch k.TxBuiltin {
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE:
+			return "reference", "-", "-"
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
+			return "timestamp", "-", "-"
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS:
+			return "address", "-", "-"
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS:
+			return "source-address", "-", "-"
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS:
+			return "dest-address", "-", "-"
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
+			return "inserted-at", "-", "-"
 		}
+
+		return "tx-builtin", "-", k.TxBuiltin.String()
+	case *commonpb.IndexID_LogBuiltin:
+		return "log-" + k.LogBuiltin.String(), "-", "-"
+	case *commonpb.IndexID_AccountBuiltin:
+		return "account-builtin", "-", k.AccountBuiltin.String()
+	case *commonpb.IndexID_Metadata:
+		var t string
+
+		switch k.Metadata.GetTarget() {
+		case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+			t = "account"
+		case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+			t = "transaction"
+		case commonpb.TargetType_TARGET_TYPE_LEDGER:
+			t = "ledger"
+		default:
+			t = "-"
+		}
+
+		return "metadata", t, k.Metadata.GetKey()
 	}
 
-	sort.Strings(keys)
-
-	for _, key := range keys {
-		*table = append(*table, []string{"metadata", targetName, key})
-	}
+	return "unknown", "-", "-"
 }
 
 func renderConfigurationPreparedQueries(queries []*commonpb.PreparedQuery, expand bool) {

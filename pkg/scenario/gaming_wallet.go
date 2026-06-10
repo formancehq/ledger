@@ -135,7 +135,13 @@ func gamingClawback(ctx context.Context, client servicepb.BucketServiceClient, r
 // account types, and numscript library for the gaming wallet scenario.
 func GamingWalletSetupActions() []*servicepb.Request {
 	return []*servicepb.Request{
-		actions.CreateLedgerAction(GamingWalletLedger, nil),
+		actions.CreateLedgerWithSchemaAction(GamingWalletLedger, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			{
+				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				Key:        "tier",
+				Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+			},
+		}),
 		actions.AddAccountTypeAction(GamingWalletLedger, "player-usd", "player:{id}:usd"),
 		actions.AddAccountTypeAction(GamingWalletLedger, "player-coins", "player:{id}:coins"),
 		actions.AddAccountTypeAction(GamingWalletLedger, "platform", "platform:{type}"),

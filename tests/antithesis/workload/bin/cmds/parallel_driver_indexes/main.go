@@ -17,19 +17,40 @@ func main() {
 		metadataKey := fmt.Sprintf("idx-key-%d", internal.Rand().Uint64()%50)
 		details := internal.Details{"ledger": ledger, "metadataKey": metadataKey}
 
-		// Create an account metadata index.
+		// The metadata schema field must exist before its index — declare it
+		// (idempotent / harmless if already declared).
+		if _, err := client.Apply(ctx, &servicepb.ApplyRequest{
+			Requests: []*servicepb.Request{{
+				Type: &servicepb.Request_SetMetadataFieldType{
+					SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
+						Ledger:     ledger,
+						TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+						Key:        metadataKey,
+						Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+					},
+				},
+			}},
+		}); err != nil && !internal.IsTransient(err) {
+			st, _ := status.FromError(err)
+			if st.Code() != codes.AlreadyExists {
+				assert.Unreachable("SetMetadataFieldType returned unexpected error", details.With(internal.Details{"error": err}))
+
+				return
+			}
+		}
+
+		indexID := &commonpb.IndexID{Kind: &commonpb.IndexID_Metadata{Metadata: &commonpb.MetadataIndexID{
+			Target: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+			Key:    metadataKey,
+		}}}
+
+		// Create the account metadata index.
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{{
 				Type: &servicepb.Request_CreateIndex{
 					CreateIndex: &servicepb.CreateIndexRequest{
 						Ledger: ledger,
-						Index: &servicepb.CreateIndexRequest_Account{
-							Account: &commonpb.AccountIndex{
-								Kind: &commonpb.AccountIndex_MetadataKey{
-									MetadataKey: metadataKey,
-								},
-							},
-						},
+						Id:     indexID,
 					},
 				},
 			}},
@@ -64,13 +85,7 @@ func main() {
 				Type: &servicepb.Request_DropIndex{
 					DropIndex: &servicepb.DropIndexRequest{
 						Ledger: ledger,
-						Index: &servicepb.DropIndexRequest_Account{
-							Account: &commonpb.AccountIndex{
-								Kind: &commonpb.AccountIndex_MetadataKey{
-									MetadataKey: metadataKey,
-								},
-							},
-						},
+						Id:     indexID,
 					},
 				},
 			}},

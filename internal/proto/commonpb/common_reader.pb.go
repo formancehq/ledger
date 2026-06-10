@@ -687,8 +687,6 @@ type MetadataFieldSchemaReader interface {
 	GetStatus() MetadataConversionStatus
 	GetTotalKeys() uint64
 	GetConvertedKeys() uint64
-	GetIndexed() bool
-	GetIndexBuildStatus() IndexBuildStatus
 	Mutate() *MetadataFieldSchema
 }
 
@@ -708,14 +706,6 @@ func (r *metadataFieldSchemaReadonly) GetTotalKeys() uint64 {
 
 func (r *metadataFieldSchemaReadonly) GetConvertedKeys() uint64 {
 	return r.v.GetConvertedKeys()
-}
-
-func (r *metadataFieldSchemaReadonly) GetIndexed() bool {
-	return r.v.GetIndexed()
-}
-
-func (r *metadataFieldSchemaReadonly) GetIndexBuildStatus() IndexBuildStatus {
-	return r.v.GetIndexBuildStatus()
 }
 
 func (r *metadataFieldSchemaReadonly) Mutate() *MetadataFieldSchema {
@@ -815,183 +805,130 @@ func (m *SetMetadataFieldTypeCommand) Mutate() *SetMetadataFieldTypeCommand {
 	return m.CloneVT()
 }
 
-// TransactionIndexReader provides read-only access to TransactionIndex.
+// MetadataIndexIDReader provides read-only access to MetadataIndexID.
 // Call Mutate() to obtain a mutable clone.
-type TransactionIndexReader interface {
-	GetKind() isTransactionIndex_Kind
-	Mutate() *TransactionIndex
+type MetadataIndexIDReader interface {
+	GetTarget() TargetType
+	GetKey() string
+	Mutate() *MetadataIndexID
 }
 
-type transactionIndexReadonly struct{ v *TransactionIndex }
+type metadataIndexIDReadonly struct{ v *MetadataIndexID }
 
-func (r *transactionIndexReadonly) GetKind() isTransactionIndex_Kind {
+func (r *metadataIndexIDReadonly) GetTarget() TargetType {
+	return r.v.GetTarget()
+}
+
+func (r *metadataIndexIDReadonly) GetKey() string {
+	return r.v.GetKey()
+}
+
+func (r *metadataIndexIDReadonly) Mutate() *MetadataIndexID {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this MetadataIndexID.
+func (m *MetadataIndexID) AsReader() MetadataIndexIDReader {
+	if m == nil {
+		return nil
+	}
+	return &metadataIndexIDReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this MetadataIndexID.
+func (m *MetadataIndexID) Mutate() *MetadataIndexID {
+	return m.CloneVT()
+}
+
+// IndexIDReader provides read-only access to IndexID.
+// Call Mutate() to obtain a mutable clone.
+type IndexIDReader interface {
+	GetKind() isIndexID_Kind
+	Mutate() *IndexID
+}
+
+type indexIDReadonly struct{ v *IndexID }
+
+func (r *indexIDReadonly) GetKind() isIndexID_Kind {
 	return r.v.GetKind()
 }
 
-func (r *transactionIndexReadonly) Mutate() *TransactionIndex {
+func (r *indexIDReadonly) Mutate() *IndexID {
 	return r.v.CloneVT()
 }
 
-// AsReader returns a read-only view of this TransactionIndex.
-func (m *TransactionIndex) AsReader() TransactionIndexReader {
+// AsReader returns a read-only view of this IndexID.
+func (m *IndexID) AsReader() IndexIDReader {
 	if m == nil {
 		return nil
 	}
-	return &transactionIndexReadonly{v: m}
+	return &indexIDReadonly{v: m}
 }
 
-// Mutate returns a mutable deep clone of this TransactionIndex.
-func (m *TransactionIndex) Mutate() *TransactionIndex {
+// Mutate returns a mutable deep clone of this IndexID.
+func (m *IndexID) Mutate() *IndexID {
 	return m.CloneVT()
 }
 
-// AccountIndexReader provides read-only access to AccountIndex.
+// IndexReader provides read-only access to Index.
 // Call Mutate() to obtain a mutable clone.
-type AccountIndexReader interface {
-	GetKind() isAccountIndex_Kind
-	Mutate() *AccountIndex
+type IndexReader interface {
+	GetId() IndexIDReader
+	GetBuildStatus() IndexBuildStatus
+	GetCreatedAt() TimestampReader
+	GetLastBuiltAt() TimestampReader
+	GetLastError() string
+	Mutate() *Index
 }
 
-type accountIndexReadonly struct{ v *AccountIndex }
+type indexReadonly struct{ v *Index }
 
-func (r *accountIndexReadonly) GetKind() isAccountIndex_Kind {
-	return r.v.GetKind()
+func (r *indexReadonly) GetId() IndexIDReader {
+	v := r.v.GetId()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
-func (r *accountIndexReadonly) Mutate() *AccountIndex {
+func (r *indexReadonly) GetBuildStatus() IndexBuildStatus {
+	return r.v.GetBuildStatus()
+}
+
+func (r *indexReadonly) GetCreatedAt() TimestampReader {
+	v := r.v.GetCreatedAt()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *indexReadonly) GetLastBuiltAt() TimestampReader {
+	v := r.v.GetLastBuiltAt()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *indexReadonly) GetLastError() string {
+	return r.v.GetLastError()
+}
+
+func (r *indexReadonly) Mutate() *Index {
 	return r.v.CloneVT()
 }
 
-// AsReader returns a read-only view of this AccountIndex.
-func (m *AccountIndex) AsReader() AccountIndexReader {
+// AsReader returns a read-only view of this Index.
+func (m *Index) AsReader() IndexReader {
 	if m == nil {
 		return nil
 	}
-	return &accountIndexReadonly{v: m}
+	return &indexReadonly{v: m}
 }
 
-// Mutate returns a mutable deep clone of this AccountIndex.
-func (m *AccountIndex) Mutate() *AccountIndex {
-	return m.CloneVT()
-}
-
-// BuiltinIndexConfigReader provides read-only access to BuiltinIndexConfig.
-// Call Mutate() to obtain a mutable clone.
-type BuiltinIndexConfigReader interface {
-	GetReference() bool
-	GetReferenceStatus() IndexBuildStatus
-	GetTimestamp() bool
-	GetTimestampStatus() IndexBuildStatus
-	GetAddress() bool
-	GetAddressStatus() IndexBuildStatus
-	GetSourceAddress() bool
-	GetSourceAddressStatus() IndexBuildStatus
-	GetDestAddress() bool
-	GetDestAddressStatus() IndexBuildStatus
-	GetInsertedAt() bool
-	GetInsertedAtStatus() IndexBuildStatus
-	Mutate() *BuiltinIndexConfig
-}
-
-type builtinIndexConfigReadonly struct{ v *BuiltinIndexConfig }
-
-func (r *builtinIndexConfigReadonly) GetReference() bool {
-	return r.v.GetReference()
-}
-
-func (r *builtinIndexConfigReadonly) GetReferenceStatus() IndexBuildStatus {
-	return r.v.GetReferenceStatus()
-}
-
-func (r *builtinIndexConfigReadonly) GetTimestamp() bool {
-	return r.v.GetTimestamp()
-}
-
-func (r *builtinIndexConfigReadonly) GetTimestampStatus() IndexBuildStatus {
-	return r.v.GetTimestampStatus()
-}
-
-func (r *builtinIndexConfigReadonly) GetAddress() bool {
-	return r.v.GetAddress()
-}
-
-func (r *builtinIndexConfigReadonly) GetAddressStatus() IndexBuildStatus {
-	return r.v.GetAddressStatus()
-}
-
-func (r *builtinIndexConfigReadonly) GetSourceAddress() bool {
-	return r.v.GetSourceAddress()
-}
-
-func (r *builtinIndexConfigReadonly) GetSourceAddressStatus() IndexBuildStatus {
-	return r.v.GetSourceAddressStatus()
-}
-
-func (r *builtinIndexConfigReadonly) GetDestAddress() bool {
-	return r.v.GetDestAddress()
-}
-
-func (r *builtinIndexConfigReadonly) GetDestAddressStatus() IndexBuildStatus {
-	return r.v.GetDestAddressStatus()
-}
-
-func (r *builtinIndexConfigReadonly) GetInsertedAt() bool {
-	return r.v.GetInsertedAt()
-}
-
-func (r *builtinIndexConfigReadonly) GetInsertedAtStatus() IndexBuildStatus {
-	return r.v.GetInsertedAtStatus()
-}
-
-func (r *builtinIndexConfigReadonly) Mutate() *BuiltinIndexConfig {
-	return r.v.CloneVT()
-}
-
-// AsReader returns a read-only view of this BuiltinIndexConfig.
-func (m *BuiltinIndexConfig) AsReader() BuiltinIndexConfigReader {
-	if m == nil {
-		return nil
-	}
-	return &builtinIndexConfigReadonly{v: m}
-}
-
-// Mutate returns a mutable deep clone of this BuiltinIndexConfig.
-func (m *BuiltinIndexConfig) Mutate() *BuiltinIndexConfig {
-	return m.CloneVT()
-}
-
-// LogBuiltinIndexConfigReader provides read-only access to LogBuiltinIndexConfig.
-// Call Mutate() to obtain a mutable clone.
-type LogBuiltinIndexConfigReader interface {
-	GetDate() bool
-	GetDateStatus() IndexBuildStatus
-	Mutate() *LogBuiltinIndexConfig
-}
-
-type logBuiltinIndexConfigReadonly struct{ v *LogBuiltinIndexConfig }
-
-func (r *logBuiltinIndexConfigReadonly) GetDate() bool {
-	return r.v.GetDate()
-}
-
-func (r *logBuiltinIndexConfigReadonly) GetDateStatus() IndexBuildStatus {
-	return r.v.GetDateStatus()
-}
-
-func (r *logBuiltinIndexConfigReadonly) Mutate() *LogBuiltinIndexConfig {
-	return r.v.CloneVT()
-}
-
-// AsReader returns a read-only view of this LogBuiltinIndexConfig.
-func (m *LogBuiltinIndexConfig) AsReader() LogBuiltinIndexConfigReader {
-	if m == nil {
-		return nil
-	}
-	return &logBuiltinIndexConfigReadonly{v: m}
-}
-
-// Mutate returns a mutable deep clone of this LogBuiltinIndexConfig.
-func (m *LogBuiltinIndexConfig) Mutate() *LogBuiltinIndexConfig {
+// Mutate returns a mutable deep clone of this Index.
+func (m *Index) Mutate() *Index {
 	return m.CloneVT()
 }
 
@@ -2731,14 +2668,18 @@ func (m *LedgerLogPayload) Mutate() *LedgerLogPayload {
 // CreatedIndexLogReader provides read-only access to CreatedIndexLog.
 // Call Mutate() to obtain a mutable clone.
 type CreatedIndexLogReader interface {
-	GetIndex() isCreatedIndexLog_Index
+	GetId() IndexIDReader
 	Mutate() *CreatedIndexLog
 }
 
 type createdIndexLogReadonly struct{ v *CreatedIndexLog }
 
-func (r *createdIndexLogReadonly) GetIndex() isCreatedIndexLog_Index {
-	return r.v.GetIndex()
+func (r *createdIndexLogReadonly) GetId() IndexIDReader {
+	v := r.v.GetId()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *createdIndexLogReadonly) Mutate() *CreatedIndexLog {
@@ -2761,14 +2702,18 @@ func (m *CreatedIndexLog) Mutate() *CreatedIndexLog {
 // DroppedIndexLogReader provides read-only access to DroppedIndexLog.
 // Call Mutate() to obtain a mutable clone.
 type DroppedIndexLogReader interface {
-	GetIndex() isDroppedIndexLog_Index
+	GetId() IndexIDReader
 	Mutate() *DroppedIndexLog
 }
 
 type droppedIndexLogReadonly struct{ v *DroppedIndexLog }
 
-func (r *droppedIndexLogReadonly) GetIndex() isDroppedIndexLog_Index {
-	return r.v.GetIndex()
+func (r *droppedIndexLogReadonly) GetId() IndexIDReader {
+	v := r.v.GetId()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *droppedIndexLogReadonly) Mutate() *DroppedIndexLog {
@@ -3061,6 +3006,7 @@ func (m *SetMetadataFieldTypeLog) Mutate() *SetMetadataFieldTypeLog {
 type RemovedMetadataFieldTypeLogReader interface {
 	GetTargetType() TargetType
 	GetKey() string
+	GetDroppedIndex() IndexIDReader
 	Mutate() *RemovedMetadataFieldTypeLog
 }
 
@@ -3072,6 +3018,14 @@ func (r *removedMetadataFieldTypeLogReadonly) GetTargetType() TargetType {
 
 func (r *removedMetadataFieldTypeLogReadonly) GetKey() string {
 	return r.v.GetKey()
+}
+
+func (r *removedMetadataFieldTypeLogReadonly) GetDroppedIndex() IndexIDReader {
+	v := r.v.GetDroppedIndex()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *removedMetadataFieldTypeLogReadonly) Mutate() *RemovedMetadataFieldTypeLog {
@@ -3581,12 +3535,11 @@ type LedgerInfoReader interface {
 	GetMode() LedgerMode
 	GetMirrorSource() MirrorSourceConfigReader
 	GetMirrorSyncProgress() MirrorSyncProgressReader
-	GetBuiltinIndexes() BuiltinIndexConfigReader
-	GetLogBuiltinIndexes() LogBuiltinIndexConfigReader
 	GetAccountTypes() map[string]*AccountType
 	GetDefaultEnforcementMode() ChartEnforcementMode
 	GetMetadata() map[string]*MetadataValue
 	GetId() uint32
+	GetIndexes() []*Index
 	Mutate() *LedgerInfo
 }
 
@@ -3640,22 +3593,6 @@ func (r *ledgerInfoReadonly) GetMirrorSyncProgress() MirrorSyncProgressReader {
 	return v.AsReader()
 }
 
-func (r *ledgerInfoReadonly) GetBuiltinIndexes() BuiltinIndexConfigReader {
-	v := r.v.GetBuiltinIndexes()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *ledgerInfoReadonly) GetLogBuiltinIndexes() LogBuiltinIndexConfigReader {
-	v := r.v.GetLogBuiltinIndexes()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
 func (r *ledgerInfoReadonly) GetAccountTypes() map[string]*AccountType {
 	return r.v.GetAccountTypes()
 }
@@ -3670,6 +3607,10 @@ func (r *ledgerInfoReadonly) GetMetadata() map[string]*MetadataValue {
 
 func (r *ledgerInfoReadonly) GetId() uint32 {
 	return r.v.GetId()
+}
+
+func (r *ledgerInfoReadonly) GetIndexes() []*Index {
+	return r.v.GetIndexes()
 }
 
 func (r *ledgerInfoReadonly) Mutate() *LedgerInfo {

@@ -2,7 +2,6 @@ package actions
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -38,12 +37,28 @@ func CreateLogBuiltinIndexAction(ledger string, index commonpb.LogBuiltinIndex) 
 		Type: &servicepb.Request_CreateIndex{
 			CreateIndex: &servicepb.CreateIndexRequest{
 				Ledger: ledger,
-				Index: &servicepb.CreateIndexRequest_LogBuiltin{
-					LogBuiltin: index,
-				},
+				Id:     &commonpb.IndexID{Kind: &commonpb.IndexID_LogBuiltin{LogBuiltin: index}},
 			},
 		},
 	}
+}
+
+// indexReadyOnLedger returns nil if an Index entry matching matches is present
+// in info.GetIndexes() with READY status.
+func indexReadyOnLedger(info *commonpb.LedgerInfo, matches func(*commonpb.IndexID) bool, label string) error {
+	for _, idx := range info.GetIndexes() {
+		if !matches(idx.GetId()) {
+			continue
+		}
+
+		if idx.GetBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY {
+			return nil
+		}
+
+		return fmt.Errorf("index %s status is %v, want READY", label, idx.GetBuildStatus())
+	}
+
+	return fmt.Errorf("index %s not found", label)
 }
 
 // WaitForMetadataIndexReady polls until a metadata index reaches READY status or the timeout expires.
@@ -53,25 +68,12 @@ func WaitForMetadataIndexReady(ctx context.Context, client servicepb.BucketServi
 		if err != nil {
 			return err
 		}
-		if info.GetMetadataSchema() == nil {
-			return errors.New("metadata schema is nil")
-		}
-		var fields map[string]*commonpb.MetadataFieldSchema
-		switch target {
-		case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-			fields = info.GetMetadataSchema().GetAccountFields()
-		case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
-			fields = info.GetMetadataSchema().GetTransactionFields()
-		}
-		f, ok := fields[key]
-		if !ok {
-			return fmt.Errorf("field %q not found", key)
-		}
-		if f.GetIndexBuildStatus() != commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY {
-			return fmt.Errorf("index status is %v, want READY", f.GetIndexBuildStatus())
-		}
 
-		return nil
+		return indexReadyOnLedger(info, func(id *commonpb.IndexID) bool {
+			m, ok := id.GetKind().(*commonpb.IndexID_Metadata)
+
+			return ok && m.Metadata.GetTarget() == target && m.Metadata.GetKey() == key
+		}, fmt.Sprintf("metadata[%s] on %s", key, target.String()))
 	})
 }
 
@@ -82,29 +84,12 @@ func WaitForBuiltinIndexReady(ctx context.Context, client servicepb.BucketServic
 		if err != nil {
 			return err
 		}
-		if info.GetBuiltinIndexes() == nil {
-			return errors.New("builtin indexes is nil")
-		}
-		var st commonpb.IndexBuildStatus
-		switch index {
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE:
-			st = info.GetBuiltinIndexes().GetReferenceStatus()
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
-			st = info.GetBuiltinIndexes().GetTimestampStatus()
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS:
-			st = info.GetBuiltinIndexes().GetAddressStatus()
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS:
-			st = info.GetBuiltinIndexes().GetSourceAddressStatus()
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS:
-			st = info.GetBuiltinIndexes().GetDestAddressStatus()
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
-			st = info.GetBuiltinIndexes().GetInsertedAtStatus()
-		}
-		if st != commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY {
-			return fmt.Errorf("index status is %v, want READY", st)
-		}
 
-		return nil
+		return indexReadyOnLedger(info, func(id *commonpb.IndexID) bool {
+			b, ok := id.GetKind().(*commonpb.IndexID_TxBuiltin)
+
+			return ok && b.TxBuiltin == index
+		}, "tx_builtin:"+index.String())
 	})
 }
 
@@ -120,19 +105,27 @@ func WaitForLogBuiltinIndexReady(ctx context.Context, client servicepb.BucketSer
 		if err != nil {
 			return err
 		}
-		if info.GetLogBuiltinIndexes() == nil {
-			return errors.New("log builtin indexes is nil")
-		}
-		var st commonpb.IndexBuildStatus
-		if index == commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE {
-			st = info.GetLogBuiltinIndexes().GetDateStatus()
-		}
-		if st != commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY {
-			return fmt.Errorf("index status is %v, want READY", st)
-		}
 
-		return nil
+		return indexReadyOnLedger(info, func(id *commonpb.IndexID) bool {
+			b, ok := id.GetKind().(*commonpb.IndexID_LogBuiltin)
+
+			return ok && b.LogBuiltin == index
+		}, "log_builtin:"+index.String())
 	})
+}
+
+// CountIndexBackfillsInProgress returns the number of indexes currently in
+// backfill (Cursor != 0). It replaces the former
+// GetIndexStatusResponse.GetBackfillProgress() field count.
+func CountIndexBackfillsInProgress(resp *servicepb.GetIndexStatusResponse) int {
+	count := 0
+	for _, entry := range resp.GetIndexes() {
+		if entry.GetCursor() != 0 {
+			count++
+		}
+	}
+
+	return count
 }
 
 // poll repeatedly calls check until it returns nil, the timeout expires, or

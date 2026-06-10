@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math/big"
 	"testing"
-	"time"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -196,16 +195,12 @@ send $amount (
 		adjustBalance("treasury:usd", "USD/2", 1)
 
 		// Verify builtin indexes (created by shared scenario) become READY
-		require.Eventually(t, func() bool {
-			info, err := actions.GetLedger(ctx, client, ledger)
-			if err != nil {
-				return false
-			}
-			bi := info.GetBuiltinIndexes()
-			return bi != nil &&
-				bi.GetTimestampStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY &&
-				bi.GetInsertedAtStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
-		}, 30*time.Second, 200*time.Millisecond, "builtin indexes should become READY")
+		require.NoError(t, actions.WaitForBuiltinIndexReady(ctx, client, ledger,
+			commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
+			"timestamp builtin index should become READY")
+		require.NoError(t, actions.WaitForBuiltinIndexReady(ctx, client, ledger,
+			commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
+			"inserted_at builtin index should become READY")
 
 		// Drop and re-create to test index lifecycle
 		scenariotest.ApplyActions(t, ctx, client,

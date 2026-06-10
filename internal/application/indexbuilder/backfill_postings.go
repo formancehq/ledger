@@ -33,14 +33,14 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 	defer func() { _ = iter.Close() }()
 
 	// Determine which address indexes are active.
-	builtin, ok := task.index.transaction.GetKind().(*commonpb.TransactionIndex_Builtin)
+	builtin, ok := task.index.GetKind().(*commonpb.IndexID_TxBuiltin)
 	if !ok {
 		return nil
 	}
 
-	indexAny := builtin.Builtin == commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS
-	indexSrc := builtin.Builtin == commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS
-	indexDst := builtin.Builtin == commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS
+	indexAny := builtin.TxBuiltin == commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS
+	indexSrc := builtin.TxBuiltin == commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS
+	indexDst := builtin.TxBuiltin == commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS
 
 	var parsed parsedLog
 
@@ -162,17 +162,13 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 
 // isPostingIndex returns true if the index is a transaction builtin index
 // related to postings (ADDRESS, SOURCE_ADDRESS, DEST_ADDRESS).
-func isPostingIndex(id indexID) bool {
-	if id.transaction == nil {
-		return false
-	}
-
-	builtin, ok := id.transaction.GetKind().(*commonpb.TransactionIndex_Builtin)
+func isPostingIndex(id *commonpb.IndexID) bool {
+	builtin, ok := id.GetKind().(*commonpb.IndexID_TxBuiltin)
 	if !ok {
 		return false
 	}
 
-	switch builtin.Builtin {
+	switch builtin.TxBuiltin {
 	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS,
 		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS,
 		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS:

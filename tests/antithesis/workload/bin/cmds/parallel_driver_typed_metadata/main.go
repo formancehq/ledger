@@ -50,13 +50,10 @@ func main() {
 				Type: &servicepb.Request_CreateIndex{
 					CreateIndex: &servicepb.CreateIndexRequest{
 						Ledger: ledger,
-						Index: &servicepb.CreateIndexRequest_Account{
-							Account: &commonpb.AccountIndex{
-								Kind: &commonpb.AccountIndex_MetadataKey{
-									MetadataKey: metaKey,
-								},
-							},
-						},
+						Id: &commonpb.IndexID{Kind: &commonpb.IndexID_Metadata{Metadata: &commonpb.MetadataIndexID{
+							Target: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:    metaKey,
+						}}},
 					},
 				},
 			}},

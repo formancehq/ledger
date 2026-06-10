@@ -240,7 +240,7 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 			if err != nil {
 				return false
 			}
-			return indexStatus.GetLag() == 0 && len(indexStatus.GetBackfillProgress()) == 0
+			return indexStatus.GetLag() == 0 && actions.CountIndexBackfillsInProgress(indexStatus) == 0
 		}, 15*time.Second, 200*time.Millisecond, "index backfill should complete")
 
 		// 1. Parameterized address prefix — reusable across different prefixes

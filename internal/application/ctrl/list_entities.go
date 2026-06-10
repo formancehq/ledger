@@ -13,17 +13,16 @@ import (
 // entityListParams holds the parameters for a generic entity listing.
 // T is the entity identifier type ([]byte for both txIDs and account addresses).
 type entityListParams[T interface{ ~string | ~uint64 }] struct {
-	target        commonpb.QueryTarget
-	ledgerID      uint32
-	pageSize      uint32
-	after         T
-	filter        *commonpb.QueryFilter
-	reverse       bool
-	schema        map[string]*commonpb.MetadataFieldSchema
-	builtinCfg    *commonpb.BuiltinIndexConfig
-	logBuiltinCfg *commonpb.LogBuiltinIndexConfig
-	profile       *query.QueryProfile
-	pebbleReader  dal.PebbleReader
+	target       commonpb.QueryTarget
+	ledgerID     uint32
+	pageSize     uint32
+	after        T
+	filter       *commonpb.QueryFilter
+	reverse      bool
+	schema       map[string]*commonpb.MetadataFieldSchema
+	info         *commonpb.LedgerInfo
+	profile      *query.QueryProfile
+	pebbleReader dal.PebbleReader
 	// afterToBytes converts the after cursor to a byte slice for pagination.
 	afterToBytes func(T) []byte
 }
@@ -68,7 +67,7 @@ func listAscending[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReade
 	iter, err := query.Compile(
 		indexReader, kb, params.filter,
 		params.target,
-		params.ledgerID, nil, params.schema, params.builtinCfg, params.logBuiltinCfg, params.profile,
+		params.ledgerID, nil, params.schema, params.info, params.profile,
 		params.pebbleReader,
 	)
 	if err != nil {
@@ -175,7 +174,7 @@ func listDescFiltered[T interface{ ~string | ~uint64 }](indexReader dal.PebbleRe
 	iter, err := query.Compile(
 		indexReader, kb, params.filter,
 		params.target,
-		params.ledgerID, nil, params.schema, params.builtinCfg, params.logBuiltinCfg, params.profile,
+		params.ledgerID, nil, params.schema, params.info, params.profile,
 		params.pebbleReader,
 	)
 	if err != nil {

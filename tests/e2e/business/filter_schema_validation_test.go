@@ -367,15 +367,21 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 	// ========================================================================
 	// No schema: validation is skipped (backward compat)
 	// ========================================================================
-	Context("Auto-created schema via index — type validation applies", Ordered, func() {
-		const ledgerName = "pq-auto-schema"
+	Context("Schema-typed string field with index — type validation applies", Ordered, func() {
+		const ledgerName = "pq-string-schema"
 
 		BeforeAll(func() {
-			// Create ledger without explicit schema, but with a metadata index.
-			// Creating a metadata index auto-creates a STRING schema field.
+			// Declare a STRING schema field then index it. Type mismatches at
+			// query time must be rejected against the declared field type.
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					actions.CreateLedgerAction(ledgerName, nil),
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "anything",
+							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+						},
+					}),
 					actions.CreateAccountMetadataIndexAction(ledgerName, "anything"),
 				},
 			})
@@ -394,8 +400,8 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 			Expect(err).To(Succeed())
 		})
 
-		It("Should reject int filter on auto-created STRING field", func() {
-			// Auto-created schema type is STRING, so int filter should fail with type mismatch
+		It("Should reject int filter on a STRING field", func() {
+			// Declared schema type is STRING, so int filter must fail with type mismatch
 			val := int64(42)
 			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
 				Query: &commonpb.PreparedQuery{
@@ -417,7 +423,7 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 			Expect(err.Error()).To(ContainSubstring("cannot use integer condition"))
 		})
 
-		It("Should allow string filter on ListAccounts with auto-created schema", func() {
+		It("Should allow string filter on ListAccounts with declared schema", func() {
 			Eventually(func(g Gomega) {
 				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", actions.StringMetadataFilter("anything", "hello"))
 				g.Expect(err).To(Succeed())
