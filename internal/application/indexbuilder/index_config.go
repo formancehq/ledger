@@ -93,27 +93,60 @@ func (b *Builder) initIndexConfig(ctx context.Context) {
 		}
 	}
 
-	// Recover schema rewrite tasks from Pebble.
-	entries, err := b.readStore.ReadAllSchemaRewriteProgress()
-	if err != nil {
-		b.logger.Errorf("Failed to read schema rewrite progress: %v", err)
-	} else {
-		for _, e := range entries {
-			b.schemaRewriteTasks = append(b.schemaRewriteTasks, &schemaRewriteTask{
-				ledgerID:   e.LedgerID,
-				targetType: commonpb.TargetType(e.TargetType),
-				key:        e.Key,
-				toType:     commonpb.MetadataType(e.ToType),
-				rmapCursor: e.Cursor,
-				bbKey:      e.BBKey,
-			})
-		}
-	}
+	b.recoverSchemaRewriteTasks()
 
 	if len(b.schemaRewriteTasks) > 0 {
 		b.logger.WithFields(map[string]any{
 			"count": len(b.schemaRewriteTasks),
 		}).Infof("Recovered schema rewrite tasks")
+	}
+}
+
+// recoverSchemaRewriteTasks rebuilds in-flight schema rewrite tasks from
+// the persisted progress entries. The persisted entry only carries
+// ledgerID, so we resolve it back to ledgerName via b.ledgerNameToID
+// (seeded by loadLedgerIndexConfig). Without the resolved name,
+// proposeSchemaRewriteIndexReady would emit IndexReadyUpdate{Ledger: ""}
+// and isSchemaRewriteIndexReady would call query.GetLedgerByName("") —
+// always NotFound — so the task would loop forever and the index would
+// stay BUILDING across restart (PR #277 review).
+func (b *Builder) recoverSchemaRewriteTasks() {
+	entries, err := b.readStore.ReadAllSchemaRewriteProgress()
+	if err != nil {
+		b.logger.Errorf("Failed to read schema rewrite progress: %v", err)
+
+		return
+	}
+
+	idToName := make(map[uint32]string, len(b.ledgerNameToID))
+	for name, id := range b.ledgerNameToID {
+		idToName[id] = name
+	}
+
+	for _, e := range entries {
+		ledgerName, ok := idToName[e.LedgerID]
+		if !ok {
+			// The ledger this task was attached to no longer exists
+			// (deleted while the task was persisted). Drop the entry —
+			// keeping it would leave the task stuck forever.
+			b.logger.WithFields(map[string]any{
+				"ledgerID":   e.LedgerID,
+				"targetType": e.TargetType,
+				"key":        e.Key,
+			}).Errorf("Dropping schema rewrite task for unknown ledger")
+
+			continue
+		}
+
+		b.schemaRewriteTasks = append(b.schemaRewriteTasks, &schemaRewriteTask{
+			ledger:     ledgerName,
+			ledgerID:   e.LedgerID,
+			targetType: commonpb.TargetType(e.TargetType),
+			key:        e.Key,
+			toType:     commonpb.MetadataType(e.ToType),
+			rmapCursor: e.Cursor,
+			bbKey:      e.BBKey,
+		})
 	}
 }
 
@@ -127,6 +160,8 @@ func (b *Builder) loadLedgerIndexConfig(info *commonpb.LedgerInfo) {
 	// is past those, so every pre-existing ledger fell back to the map's zero
 	// value (0). Indexes were then written under ledgerID=0 while queries used
 	// the real id from LedgerInfo, silently freezing the read index (#304).
+	// recoverSchemaRewriteTasks also depends on this map to resolve persisted
+	// ledgerIDs back to names during recovery (#277).
 	b.ledgerNameToID[info.GetName()] = info.GetId()
 
 	cfg := newLedgerIndexConfig()

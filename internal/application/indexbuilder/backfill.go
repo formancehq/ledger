@@ -193,6 +193,12 @@ type schemaRewriteTask struct {
 
 	lastProgressLog time.Time
 	processedCount  uint64
+
+	// done flips when the reverse-map scan is exhausted. We keep the task in
+	// the slice afterwards so the loop can propose IndexReady and confirm the
+	// FSM applied it before cleanup — same pattern as backfillTask.
+	done     bool
+	proposed bool
 }
 
 // schemaRewriteBBKey builds the key for persisting schema rewrite progress.
@@ -211,8 +217,10 @@ func schemaRewriteBBKey(ledgerID uint32, targetType commonpb.TargetType, key str
 }
 
 // addSchemaRewriteTask creates a deferred schema rewrite task for a SetMetadataFieldType
-// log entry, avoiding duplicates.
-func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerID uint32, smft *commonpb.SetMetadataFieldTypeLog) {
+// log entry, avoiding duplicates. The ledger name is captured so the
+// follow-up IndexReady proposal can address the right LedgerInfo (the FSM
+// keys by name).
+func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerID uint32, ledgerName string, smft *commonpb.SetMetadataFieldTypeLog) {
 	// Only rewrite if this metadata key is indexed.
 	if !cfg.isMetadataIndexed(smft.GetTargetType(), smft.GetKey()) {
 		return
@@ -232,6 +240,7 @@ func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerID uint32, 
 	}
 
 	b.schemaRewriteTasks = append(b.schemaRewriteTasks, &schemaRewriteTask{
+		ledger:     ledgerName,
 		ledgerID:   ledgerID,
 		targetType: smft.GetTargetType(),
 		key:        smft.GetKey(),
@@ -427,11 +436,21 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int) 
 // If the proposal fails (not leader or Raft error), the task is kept and retried.
 func (b *Builder) processBackgroundTasks(ctx context.Context, stop <-chan struct{}, globalCursor uint64) {
 	b.processBackfills(ctx, stop, globalCursor)
-	b.processSchemaRewrites(stop)
+	b.processSchemaRewrites(ctx, stop)
 }
 
 // processSchemaRewrites advances schema rewrite tasks with a time budget.
-func (b *Builder) processSchemaRewrites(stop <-chan struct{}) {
+//
+// A task lifecycle has three phases:
+//  1. Rewriting: processSchemaRewrite consumes reverse-map entries in batches.
+//  2. Done, waiting for IndexReady to flip the field's IndexBuildStatus back
+//     from BUILDING to READY (leader proposes; followers wait).
+//  3. Cleanup: once the FSM applies IndexReady on this node, the task is
+//     removed.
+//
+// Phase 2 mirrors processBackfills: without it the index stays BUILDING
+// forever after a SetMetadataFieldType on an indexed field (see #275).
+func (b *Builder) processSchemaRewrites(ctx context.Context, stop <-chan struct{}) {
 	if len(b.schemaRewriteTasks) == 0 {
 		return
 	}
@@ -449,6 +468,23 @@ func (b *Builder) processSchemaRewrites(stop <-chan struct{}) {
 
 		task := b.schemaRewriteTasks[i]
 
+		// Phase 3: cleanup once the FSM applied IndexReady.
+		if task.done && b.isSchemaRewriteIndexReady(ctx, task) {
+			b.removeSchemaRewriteTask(i)
+
+			continue
+		}
+
+		// Phase 2: rewrite finished, drive IndexReady through Raft. Skip the
+		// rewrite step; just keep retrying the proposal until applied.
+		if task.done {
+			b.tryProposeSchemaRewriteIndexReady(task)
+			i++
+
+			continue
+		}
+
+		// Phase 1: still rewriting.
 		done, err := b.processSchemaRewrite(task, maxEntriesPerBatch)
 		if err != nil {
 			b.logger.WithFields(map[string]any{
@@ -483,14 +519,37 @@ func (b *Builder) processSchemaRewrites(stop <-chan struct{}) {
 				"processed": task.processedCount,
 			}).Infof("Schema rewrite complete")
 
-			b.removeSchemaRewriteTask(i)
-			// Don't increment i — next task slid into this position.
-
-			continue
+			task.done = true
+			b.tryProposeSchemaRewriteIndexReady(task)
 		}
 
 		i++
 	}
+}
+
+// tryProposeSchemaRewriteIndexReady proposes IndexReady on the rewritten
+// field (leader only). The flag is reset on leadership loss so a new leader
+// can re-propose. Mirrors the backfill flow.
+func (b *Builder) tryProposeSchemaRewriteIndexReady(task *schemaRewriteTask) {
+	if task.proposed && (b.isLeader == nil || !b.isLeader()) {
+		task.proposed = false
+	}
+
+	if task.proposed {
+		return
+	}
+
+	if !b.proposeSchemaRewriteIndexReady(task) {
+		return
+	}
+
+	task.proposed = true
+
+	b.logger.WithFields(map[string]any{
+		"ledger": task.ledger,
+		"key":    task.key,
+		"toType": task.toType.String(),
+	}).Infof("Schema rewrite complete, IndexReady proposed — waiting for FSM apply")
 }
 
 // processBackfills advances backfill tasks using round-robin scheduling with a
@@ -837,6 +896,74 @@ func (b *Builder) proposeIndexReady(task *backfillTask) bool {
 	}
 
 	return true
+}
+
+// proposeSchemaRewriteIndexReady proposes an IndexReadyUpdate for a
+// schema-rewrite task (leader only). The update shape is the same as a
+// backfill IndexReady for the equivalent metadata index, so the FSM applies
+// it through the existing applyIndexReady →
+// processing.ProcessIndexReadyMetadata path and flips IndexBuildStatus from
+// BUILDING back to READY.
+func (b *Builder) proposeSchemaRewriteIndexReady(task *schemaRewriteTask) bool {
+	if b.proposer == nil || b.isLeader == nil || !b.isLeader() {
+		return false
+	}
+
+	update := &raftcmdpb.IndexReadyUpdate{
+		Ledger: task.ledger,
+	}
+
+	switch task.targetType {
+	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		update.Index = &raftcmdpb.IndexReadyUpdate_Account{
+			Account: &commonpb.AccountIndex{
+				Kind: &commonpb.AccountIndex_MetadataKey{MetadataKey: task.key},
+			},
+		}
+	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		update.Index = &raftcmdpb.IndexReadyUpdate_Transaction{
+			Transaction: &commonpb.TransactionIndex{
+				Kind: &commonpb.TransactionIndex_MetadataKey{MetadataKey: task.key},
+			},
+		}
+	default:
+		// Ledger-target metadata isn't indexed today; nothing to mark ready.
+		return true
+	}
+
+	if err := b.proposer.ProposeProposal(&raftcmdpb.Proposal{
+		IndexReadyUpdates: []*raftcmdpb.IndexReadyUpdate{update},
+	}); err != nil {
+		b.logger.WithFields(map[string]any{
+			"ledger": task.ledger,
+			"key":    task.key,
+			"error":  err,
+		}).Errorf("Failed to propose IndexReady for schema rewrite")
+
+		return false
+	}
+
+	return true
+}
+
+// isSchemaRewriteIndexReady checks if the rewritten index has reached READY
+// in Pebble — either because the leader proposed it and the FSM applied here,
+// or because another leader did the work. Used to clean up the task on every
+// node (followers can't propose, so they wait).
+func (b *Builder) isSchemaRewriteIndexReady(ctx context.Context, task *schemaRewriteTask) bool {
+	info, err := query.GetLedgerByName(ctx, b.pebbleStore, task.ledger)
+	if err != nil {
+		return false
+	}
+
+	switch task.targetType {
+	case commonpb.TargetType_TARGET_TYPE_ACCOUNT, commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		return isMetadataIndexReady(info, task.targetType, task.key)
+	default:
+		// Ledger-target: no index, nothing to wait for. Treat as ready so the
+		// task is cleaned up.
+		return true
+	}
 }
 
 // isIndexAlreadyReady checks if the index for this backfill task is already

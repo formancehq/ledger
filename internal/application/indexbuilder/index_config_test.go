@@ -673,7 +673,7 @@ func TestAddSchemaRewriteTask_NotIndexed(t *testing.T) {
 
 	cfg := newLedgerIndexConfig()
 
-	b.addSchemaRewriteTask(cfg, 1, &commonpb.SetMetadataFieldTypeLog{
+	b.addSchemaRewriteTask(cfg, 1, "test-ledger", &commonpb.SetMetadataFieldTypeLog{
 		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 		Key:        "status",
 		Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
@@ -693,7 +693,7 @@ func TestAddSchemaRewriteTask_Indexed(t *testing.T) {
 	cfg := newLedgerIndexConfig()
 	cfg.acctMetadataIndexed["status"] = true
 
-	b.addSchemaRewriteTask(cfg, 1, &commonpb.SetMetadataFieldTypeLog{
+	b.addSchemaRewriteTask(cfg, 1, "test-ledger", &commonpb.SetMetadataFieldTypeLog{
 		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 		Key:        "status",
 		Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
@@ -720,7 +720,7 @@ func TestAddSchemaRewriteTask_DuplicateResetsProgress(t *testing.T) {
 	cfg := newLedgerIndexConfig()
 	cfg.acctMetadataIndexed["status"] = true
 
-	b.addSchemaRewriteTask(cfg, 1, &commonpb.SetMetadataFieldTypeLog{
+	b.addSchemaRewriteTask(cfg, 1, "test-ledger", &commonpb.SetMetadataFieldTypeLog{
 		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 		Key:        "status",
 		Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
@@ -730,7 +730,7 @@ func TestAddSchemaRewriteTask_DuplicateResetsProgress(t *testing.T) {
 	b.schemaRewriteTasks[0].rmapCursor = []byte("some-cursor")
 	b.schemaRewriteTasks[0].processedCount = 100
 
-	b.addSchemaRewriteTask(cfg, 1, &commonpb.SetMetadataFieldTypeLog{
+	b.addSchemaRewriteTask(cfg, 1, "test-ledger", &commonpb.SetMetadataFieldTypeLog{
 		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 		Key:        "status",
 		Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
@@ -753,7 +753,7 @@ func TestAddSchemaRewriteTask_Transaction(t *testing.T) {
 	cfg := newLedgerIndexConfig()
 	cfg.txMetadataIndexed["tag"] = true
 
-	b.addSchemaRewriteTask(cfg, 1, &commonpb.SetMetadataFieldTypeLog{
+	b.addSchemaRewriteTask(cfg, 1, "test-ledger", &commonpb.SetMetadataFieldTypeLog{
 		TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
 		Key:        "tag",
 		Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
@@ -838,6 +838,98 @@ func TestRemoveBackfillTask(t *testing.T) {
 		},
 	}})
 	assert.Len(t, b.backfillTasks, 2)
+}
+
+// TestRecoverSchemaRewriteTasks_ResolvesLedgerNameFromID is the
+// regression for PR #277. A persisted schema rewrite task only stores
+// the ledgerID; on restart the recovery loop MUST resolve that ID back
+// to the ledger name so proposeSchemaRewriteIndexReady can address
+// LedgerInfo by name. If the name were left empty, the FSM check
+// query.GetLedgerByName("") would never return the ledger and the
+// index would stay BUILDING forever.
+func TestRecoverSchemaRewriteTasks_ResolvesLedgerNameFromID(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	store, err := readstore.New(dir, noopLogger{}, readstore.DefaultConfig())
+	require.NoError(t, err)
+
+	defer func() { _ = store.Close() }()
+
+	// Persist a schema rewrite progress entry for ledgerID=42 ("customer"),
+	// account-metadata key "role", target type STRING, with a non-empty
+	// resume cursor. Value format mirrors backfill.go: [toType_byte][cursor].
+	const (
+		ledgerID   = uint32(42)
+		ledgerName = "customer"
+		metaKey    = "role"
+		targetType = commonpb.TargetType_TARGET_TYPE_ACCOUNT
+		toType     = commonpb.MetadataType_METADATA_TYPE_STRING
+	)
+
+	cursor := []byte("rmap-cursor-bytes")
+	bbKey := schemaRewriteBBKey(ledgerID, targetType, metaKey)
+	val := append([]byte{byte(toType)}, cursor...)
+
+	batch := store.NewBatch()
+	require.NoError(t, store.WriteBackfillCursor(batch, bbKey, val))
+	require.NoError(t, batch.Commit())
+
+	b := &Builder{
+		indexConfig:    make(map[string]*ledgerIndexConfig),
+		ledgerNameToID: map[string]uint32{ledgerName: ledgerID},
+		readStore:      store,
+		logger:         noopLogger{},
+	}
+
+	b.recoverSchemaRewriteTasks()
+
+	require.Len(t, b.schemaRewriteTasks, 1)
+	task := b.schemaRewriteTasks[0]
+	assert.Equal(t, ledgerName, task.ledger,
+		"ledger name MUST be resolved from ledgerID — empty name makes IndexReadyUpdate unaddressable (#277)")
+	assert.Equal(t, ledgerID, task.ledgerID)
+	assert.Equal(t, targetType, task.targetType)
+	assert.Equal(t, metaKey, task.key)
+	assert.Equal(t, toType, task.toType)
+	assert.Equal(t, cursor, task.rmapCursor)
+	assert.Equal(t, bbKey, task.bbKey)
+}
+
+// TestRecoverSchemaRewriteTasks_DropsOrphanedEntries verifies that a
+// persisted task whose ledger no longer exists (deleted between persist
+// and restart) is dropped rather than re-enqueued forever with a stale
+// name. Keeping it would burn a slot in the round-robin processor.
+func TestRecoverSchemaRewriteTasks_DropsOrphanedEntries(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	store, err := readstore.New(dir, noopLogger{}, readstore.DefaultConfig())
+	require.NoError(t, err)
+
+	defer func() { _ = store.Close() }()
+
+	bbKey := schemaRewriteBBKey(99, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
+	val := []byte{byte(commonpb.MetadataType_METADATA_TYPE_STRING)}
+
+	batch := store.NewBatch()
+	require.NoError(t, store.WriteBackfillCursor(batch, bbKey, val))
+	require.NoError(t, batch.Commit())
+
+	// ledgerNameToID is empty — the ledger that owned this task is gone.
+	b := &Builder{
+		indexConfig:    make(map[string]*ledgerIndexConfig),
+		ledgerNameToID: map[string]uint32{},
+		readStore:      store,
+		logger:         noopLogger{},
+	}
+
+	b.recoverSchemaRewriteTasks()
+
+	assert.Empty(t, b.schemaRewriteTasks,
+		"orphaned schema rewrite task must be dropped, not retained with empty ledger name")
 }
 
 // noopLogger implements the logging.Logger interface for tests without output.
