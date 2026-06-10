@@ -114,7 +114,10 @@ func TestIsLogBuiltinIndexed(t *testing.T) {
 func TestLedgerConfig(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
+	b := &Builder{
+		indexConfig:    make(map[string]*ledgerIndexConfig),
+		ledgerNameToID: make(map[string]uint32),
+	}
 
 	// Unknown ledger returns nil.
 	assert.Nil(t, b.ledgerConfig("unknown"))
@@ -128,7 +131,10 @@ func TestLedgerConfig(t *testing.T) {
 func TestGetOrCreateLedgerConfig(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
+	b := &Builder{
+		indexConfig:    make(map[string]*ledgerIndexConfig),
+		ledgerNameToID: make(map[string]uint32),
+	}
 
 	// First call creates.
 	cfg := b.getOrCreateLedgerConfig("test")
@@ -142,7 +148,10 @@ func TestGetOrCreateLedgerConfig(t *testing.T) {
 func TestHandleCreatedIndexLog_TxBuiltin(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
+	b := &Builder{
+		indexConfig:    make(map[string]*ledgerIndexConfig),
+		ledgerNameToID: make(map[string]uint32),
+	}
 
 	b.handleCreatedIndexLog("ledger1", 1, &commonpb.CreatedIndexLog{
 		Index: &commonpb.CreatedIndexLog_Transaction{
@@ -165,7 +174,10 @@ func TestHandleCreatedIndexLog_TxBuiltin(t *testing.T) {
 func TestHandleCreatedIndexLog_TxMetadata(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
+	b := &Builder{
+		indexConfig:    make(map[string]*ledgerIndexConfig),
+		ledgerNameToID: make(map[string]uint32),
+	}
 
 	b.handleCreatedIndexLog("ledger1", 1, &commonpb.CreatedIndexLog{
 		Index: &commonpb.CreatedIndexLog_Transaction{
@@ -184,7 +196,10 @@ func TestHandleCreatedIndexLog_TxMetadata(t *testing.T) {
 func TestHandleCreatedIndexLog_AcctMetadata(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
+	b := &Builder{
+		indexConfig:    make(map[string]*ledgerIndexConfig),
+		ledgerNameToID: make(map[string]uint32),
+	}
 
 	b.handleCreatedIndexLog("ledger1", 1, &commonpb.CreatedIndexLog{
 		Index: &commonpb.CreatedIndexLog_Account{
@@ -203,7 +218,10 @@ func TestHandleCreatedIndexLog_AcctMetadata(t *testing.T) {
 func TestHandleCreatedIndexLog_AcctBuiltin(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
+	b := &Builder{
+		indexConfig:    make(map[string]*ledgerIndexConfig),
+		ledgerNameToID: make(map[string]uint32),
+	}
 
 	b.handleCreatedIndexLog("ledger1", 1, &commonpb.CreatedIndexLog{
 		Index: &commonpb.CreatedIndexLog_Account{
@@ -225,7 +243,10 @@ func TestHandleCreatedIndexLog_AcctBuiltin(t *testing.T) {
 func TestHandleCreatedIndexLog_LogBuiltin(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
+	b := &Builder{
+		indexConfig:    make(map[string]*ledgerIndexConfig),
+		ledgerNameToID: make(map[string]uint32),
+	}
 
 	b.handleCreatedIndexLog("ledger1", 1, &commonpb.CreatedIndexLog{
 		Index: &commonpb.CreatedIndexLog_LogBuiltin{
@@ -252,8 +273,9 @@ func newTestBuilderWithStore(t *testing.T) *Builder {
 	t.Cleanup(func() { _ = store.Close() })
 
 	return &Builder{
-		indexConfig: make(map[string]*ledgerIndexConfig),
-		readStore:   store,
+		indexConfig:    make(map[string]*ledgerIndexConfig),
+		ledgerNameToID: make(map[string]uint32),
+		readStore:      store,
 	}
 }
 
@@ -374,7 +396,10 @@ func TestHandleDroppedIndexLog_LogBuiltin(t *testing.T) {
 func TestAddBackfillTask_NoDuplicates(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
+	b := &Builder{
+		indexConfig:    make(map[string]*ledgerIndexConfig),
+		ledgerNameToID: make(map[string]uint32),
+	}
 
 	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
@@ -385,7 +410,10 @@ func TestAddBackfillTask_NoDuplicates(t *testing.T) {
 func TestAddBackfillTask_DifferentIndexes(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
+	b := &Builder{
+		indexConfig:    make(map[string]*ledgerIndexConfig),
+		ledgerNameToID: make(map[string]uint32),
+	}
 
 	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 	b.addBackfillTaskForTxBuiltin("ledger1", 1, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
@@ -399,7 +427,10 @@ func TestAddBackfillTask_DifferentIndexes(t *testing.T) {
 func TestStripBuildingIndexes(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
+	b := &Builder{
+		indexConfig:    make(map[string]*ledgerIndexConfig),
+		ledgerNameToID: make(map[string]uint32),
+	}
 
 	cfg := newLedgerIndexConfig()
 	cfg.txBuiltinIndexed[commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE] = true
@@ -439,7 +470,10 @@ func TestStripBuildingIndexes(t *testing.T) {
 func TestStripBuildingIndexes_NilConfig(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
+	b := &Builder{
+		indexConfig:    make(map[string]*ledgerIndexConfig),
+		ledgerNameToID: make(map[string]uint32),
+	}
 
 	// Add a backfill task for a ledger with no config.
 	b.backfillTasks = append(b.backfillTasks, &backfillTask{
@@ -464,7 +498,10 @@ func TestStripBuildingIndexes_NilConfig(t *testing.T) {
 func TestLoadLedgerIndexConfig_BuildingTxBuiltin(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
+	b := &Builder{
+		indexConfig:    make(map[string]*ledgerIndexConfig),
+		ledgerNameToID: make(map[string]uint32),
+	}
 
 	info := &commonpb.LedgerInfo{
 		Name: "ledger1",
@@ -491,7 +528,10 @@ func TestLoadLedgerIndexConfig_BuildingTxBuiltin(t *testing.T) {
 func TestLoadLedgerIndexConfig_DisabledIndexesNotIncluded(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
+	b := &Builder{
+		indexConfig:    make(map[string]*ledgerIndexConfig),
+		ledgerNameToID: make(map[string]uint32),
+	}
 
 	info := &commonpb.LedgerInfo{
 		Name: "ledger1",
@@ -514,7 +554,10 @@ func TestLoadLedgerIndexConfig_DisabledIndexesNotIncluded(t *testing.T) {
 func TestLoadLedgerIndexConfig_MetadataIndexes(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
+	b := &Builder{
+		indexConfig:    make(map[string]*ledgerIndexConfig),
+		ledgerNameToID: make(map[string]uint32),
+	}
 
 	info := &commonpb.LedgerInfo{
 		Name: "ledger1",
@@ -557,7 +600,10 @@ func TestLoadLedgerIndexConfig_MetadataIndexes(t *testing.T) {
 func TestLoadLedgerIndexConfig_LogBuiltinIndexes(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
+	b := &Builder{
+		indexConfig:    make(map[string]*ledgerIndexConfig),
+		ledgerNameToID: make(map[string]uint32),
+	}
 
 	// Only the opt-in date index appears here; the per-ledger log index is
 	// always-on and is written unconditionally by process_logs.go.
@@ -581,7 +627,10 @@ func TestLoadLedgerIndexConfig_LogBuiltinIndexes(t *testing.T) {
 func TestLoadLedgerIndexConfig_AllBuiltinIndexes(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
+	b := &Builder{
+		indexConfig:    make(map[string]*ledgerIndexConfig),
+		ledgerNameToID: make(map[string]uint32),
+	}
 
 	info := &commonpb.LedgerInfo{
 		Name: "ledger1",
@@ -617,7 +666,10 @@ func TestLoadLedgerIndexConfig_AllBuiltinIndexes(t *testing.T) {
 func TestAddSchemaRewriteTask_NotIndexed(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
+	b := &Builder{
+		indexConfig:    make(map[string]*ledgerIndexConfig),
+		ledgerNameToID: make(map[string]uint32),
+	}
 
 	cfg := newLedgerIndexConfig()
 
@@ -633,7 +685,10 @@ func TestAddSchemaRewriteTask_NotIndexed(t *testing.T) {
 func TestAddSchemaRewriteTask_Indexed(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
+	b := &Builder{
+		indexConfig:    make(map[string]*ledgerIndexConfig),
+		ledgerNameToID: make(map[string]uint32),
+	}
 
 	cfg := newLedgerIndexConfig()
 	cfg.acctMetadataIndexed["status"] = true
@@ -657,7 +712,10 @@ func TestAddSchemaRewriteTask_Indexed(t *testing.T) {
 func TestAddSchemaRewriteTask_DuplicateResetsProgress(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
+	b := &Builder{
+		indexConfig:    make(map[string]*ledgerIndexConfig),
+		ledgerNameToID: make(map[string]uint32),
+	}
 
 	cfg := newLedgerIndexConfig()
 	cfg.acctMetadataIndexed["status"] = true
@@ -687,7 +745,10 @@ func TestAddSchemaRewriteTask_DuplicateResetsProgress(t *testing.T) {
 func TestAddSchemaRewriteTask_Transaction(t *testing.T) {
 	t.Parallel()
 
-	b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
+	b := &Builder{
+		indexConfig:    make(map[string]*ledgerIndexConfig),
+		ledgerNameToID: make(map[string]uint32),
+	}
 
 	cfg := newLedgerIndexConfig()
 	cfg.txMetadataIndexed["tag"] = true
@@ -797,3 +858,31 @@ func (n noopLogger) WithField(string, any) logging.Logger       { return n }
 func (n noopLogger) WithContext(context.Context) logging.Logger { return n }
 func (noopLogger) Writer() io.Writer                            { return io.Discard }
 func (noopLogger) Enabled(logging.Level) bool                   { return false }
+
+// TestLoadLedgerIndexConfig_SeedsLedgerNameToID pins the fix for #304.
+// On restart, the persisted log cursor is past the CreateLedger logs of
+// every pre-existing ledger, so process_logs.go's CreateLedger branch —
+// the only place that used to populate ledgerNameToID — never runs for
+// those ledgers. Without this seeding, b.ledgerNameToID[name] yields the
+// Go zero value (0) for every subsequent index write, silently routing
+// new logs into ledger 0's keyspace while reads use the real id.
+func TestLoadLedgerIndexConfig_SeedsLedgerNameToID(t *testing.T) {
+	t.Parallel()
+
+	b := &Builder{
+		indexConfig:    make(map[string]*ledgerIndexConfig),
+		ledgerNameToID: make(map[string]uint32),
+	}
+
+	info := &commonpb.LedgerInfo{
+		Name: "ledger-restart",
+		Id:   42,
+	}
+
+	b.loadLedgerIndexConfig(info)
+
+	gotID, ok := b.ledgerNameToID["ledger-restart"]
+	require.True(t, ok, "ledgerNameToID must hold an entry for the loaded ledger")
+	assert.Equal(t, uint32(42), gotID,
+		"ledgerNameToID must resolve to the real ledger id, not 0 (#304)")
+}

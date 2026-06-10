@@ -121,6 +121,14 @@ func (b *Builder) initIndexConfig(ctx context.Context) {
 // Both READY and BUILDING indexes are included so that normal processing writes
 // to new indexes immediately (covering logs after CreateIndex).
 func (b *Builder) loadLedgerIndexConfig(info *commonpb.LedgerInfo) {
+	// Seed the name → ID lookup so logs that arrive AFTER the persisted cursor
+	// can still resolve their ledger ID. process_logs.go used to populate this
+	// map exclusively from CreateLedger payloads — but on a restart the cursor
+	// is past those, so every pre-existing ledger fell back to the map's zero
+	// value (0). Indexes were then written under ledgerID=0 while queries used
+	// the real id from LedgerInfo, silently freezing the read index (#304).
+	b.ledgerNameToID[info.GetName()] = info.GetId()
+
 	cfg := newLedgerIndexConfig()
 
 	// Metadata indexes — include both READY and BUILDING.
