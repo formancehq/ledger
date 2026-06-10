@@ -1016,10 +1016,23 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 				// completeness + the rule that commits always pass through a
 				// current-term entry), including entries the old leader
 				// applied whose commit broadcast never reached us.
+				target, err := leadershipGainTarget(rd)
+				if err != nil {
+					emptyDetails := map[string]any{
+						"nodeID": node.config.NodeID,
+						"lead":   ss.Lead,
+						"term":   term,
+					}
+					node.logger.WithFields(emptyDetails).Errorf("Leadership gained Ready has no entries — etcd/raft contract changed")
+					assert.Unreachable("leadership gain Ready must carry the no-op blank entry", emptyDetails)
+					lifecycle.SendEvent("leadership_gain_no_entries", emptyDetails)
+
+					return readyResult{}, fmt.Errorf("leadership gain (nodeID=%d term=%d): %w",
+						node.config.NodeID, term, err)
+				}
+
 				pending := make(chan struct{})
 				node.leaderReady.Store(&pending)
-
-				target := rd.Entries[len(rd.Entries)-1].Index
 
 				node.applier.Drain(stop)
 				node.fsm.OnLeadershipAcquired(stop)
