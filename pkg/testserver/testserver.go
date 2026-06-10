@@ -182,9 +182,12 @@ func WithReceiptSigningKey(key string) testservice.InstrumentationFunc {
 	}
 }
 
-func WithJoin(serviceAddr string) testservice.InstrumentationFunc {
+// WithJoin sets --join to the Raft transport address of an existing
+// cluster member. The joining node calls ClusterBootstrapService on the
+// RaftServer (not the external service gRPC port).
+func WithJoin(raftAddr string) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		cfg.AppendArgs("--join", serviceAddr)
+		cfg.AppendArgs("--join", raftAddr)
 
 		return nil
 	}

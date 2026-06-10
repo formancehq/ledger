@@ -28,12 +28,12 @@ Peers are discovered dynamically using the bootstrap/join model:
 # First node bootstraps a new cluster
 ./ledger run --node-id 1 --cluster-id prod-ledger --bootstrap
 
-# Other nodes join the bootstrap node
-./ledger run --node-id 2 --cluster-id prod-ledger --join node-1:8888
-./ledger run --node-id 3 --cluster-id prod-ledger --join node-1:8888
+# Other nodes join the bootstrap node via the RaftServer port (inter-node)
+./ledger run --node-id 2 --cluster-id prod-ledger --join node-1:7777
+./ledger run --node-id 3 --cluster-id prod-ledger --join node-1:7777
 ```
 
-When a node joins, it discovers all existing cluster members via `GetClusterState` and registers itself as a learner. The leader auto-promotes caught-up learners to voters (configurable via `--learner-promotion-threshold`).
+When a node joins, it discovers all existing cluster members via `ClusterBootstrapService.GetPeers` on the RaftServer and registers itself as a learner through `JoinAsLearner`. Both RPCs are gated by cluster-id metadata (and the cluster-secret bearer when configured), not by the user-JWT pipeline. The leader auto-promotes caught-up learners to voters (configurable via `--learner-promotion-threshold`).
 
 The Raft transport handles internal inter-node communication for consensus:
 

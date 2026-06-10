@@ -48,7 +48,7 @@ Available flags for `run`:
 - `--wal-dir`: WAL directory for Raft (default: `./wal`)
 - `--data-dir`: Data directory for application storage (default: `./data`)
 - `--bootstrap`: Initialize a new single-node cluster (mutually exclusive with `--join`)
-- `--join`: Service address of an existing cluster member to join as a learner (e.g., `--join node-1:8888`; mutually exclusive with `--bootstrap`)
+- `--join`: Raft transport address of an existing cluster member to join as a learner (e.g., `--join node-1:7777`; mutually exclusive with `--bootstrap`). Discovery and learner registration go through the inter-node `ClusterBootstrapService` on the RaftServer — no user JWT is required.
 - `--learner-promotion-threshold`: Max log entry lag before auto-promoting a caught-up learner to voter (default: `100`, `0` = disable auto-promotion)
 - `--http-port`: HTTP server port (default: `9000`)
 - `--health-check-interval`: Interval between disk usage health checks (default: `30s`)
@@ -302,12 +302,12 @@ The operator creates a StatefulSet with a headless service for automatic discove
 1. Each pod calculates its Node ID from its index: `POD_INDEX + 1`
 2. The advertise address is generated: `{POD_NAME}.{HEADLESS_SVC}.{NAMESPACE}.svc.cluster.local:{RAFT_PORT}`
 3. Pod 0 starts with `--bootstrap` to initialize a single-node cluster
-4. Pods 1..N-1 start with `--join` pointing to pod-0's service address to join as learners
+4. Pods 1..N-1 start with `--join` pointing to pod-0's RaftServer address to join as learners
 5. Learner nodes are automatically promoted to voters once they catch up (controlled by `--learner-promotion-threshold`)
 
 ### Automatic Cluster Initialization
 
-Pod 0 uses the `--bootstrap` flag to create a new single-node cluster. All subsequent pods use `--join` to contact pod-0's gRPC service address and join the cluster as learner (non-voting) nodes. The `--join` flag triggers peer discovery from the existing cluster member with retry and exponential backoff (up to 60 seconds), allowing the bootstrap node time to start.
+Pod 0 uses the `--bootstrap` flag to create a new single-node cluster. All subsequent pods use `--join` to contact pod-0's RaftServer address and join the cluster as learner (non-voting) nodes. The `--join` flag triggers peer discovery (`ClusterBootstrapService.GetPeers`) from the existing cluster member with retry and exponential backoff (up to 60 seconds), allowing the bootstrap node time to start.
 
 Once a learner has caught up with the leader's log (within the threshold configured by `--learner-promotion-threshold`, default: 100 entries), it is automatically promoted to a full voting member.
 

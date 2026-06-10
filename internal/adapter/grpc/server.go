@@ -460,10 +460,13 @@ func convertToGRPCError(err error) error {
 	// ErrProposalDropped: the leader lost leadership while processing the proposal.
 	// ErrNotLeader/ErrNodeSyncing: node cannot serve the request right now.
 	// ErrTransferLeaderTimeout: leadership transfer did not complete in time.
+	// ErrNoLeader: target peer doesn't know who the leader is yet (election
+	// still in progress, or it just joined and hasn't received the heartbeat).
 	if errors.Is(err, raft.ErrProposalDropped) ||
 		errors.Is(err, node.ErrNotLeader) ||
 		errors.Is(err, node.ErrNodeSyncing) ||
-		errors.Is(err, node.ErrTransferLeaderTimeout) {
+		errors.Is(err, node.ErrTransferLeaderTimeout) ||
+		errors.Is(err, commonpb.ErrNoLeader) {
 		return status.Error(codes.Unavailable, err.Error())
 	}
 

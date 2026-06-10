@@ -78,11 +78,14 @@ func TestBuildCommand_BootstrapVsJoin(t *testing.T) {
 	}
 
 	script := strings.Join(buildCommand(ls), " ")
-	// Pod-0 with no checkpoints bootstraps; non-zero pods join pod-0.
+	// Pod-0 with no checkpoints bootstraps; non-zero pods join pod-0 via
+	// the RaftServer port (extracted from BindAddr), not the external
+	// service gRPC port — see ClusterBootstrapService.
 	assert.Contains(t, script, `if [ "$POD_INDEX" = "0" ]; then`)
 	assert.Contains(t, script, `CLUSTER_FLAG="--bootstrap"`)
 	assert.Contains(t, script, `CLUSTER_FLAG="--join test-svc-0.`)
-	assert.Contains(t, script, `:${GRPC_PORT}"`)
+	assert.Contains(t, script, `:7777"`)
+	assert.NotContains(t, script, `:${GRPC_PORT}"`)
 }
 
 func TestBuildEnvVars_AuthEd25519Keys(t *testing.T) {

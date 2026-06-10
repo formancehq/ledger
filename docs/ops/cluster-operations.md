@@ -49,27 +49,27 @@ The `--bootstrap` flag must only be used **once**, on the **first node**, on its
 
 ## Adding a Node (Join as Learner)
 
-Subsequent nodes join the cluster with `--join`, pointing to any existing cluster member's gRPC service address:
+Subsequent nodes join the cluster with `--join`, pointing to any existing cluster member's **RaftServer** address (the inter-node Raft transport port, not the external gRPC service port):
 
 ```bash
 ledger run \
   --node-id 2 \
   --cluster-id prod-ledger \
-  --join 127.0.0.1:8888 \
+  --join 127.0.0.1:7777 \
   --bind-addr 127.0.0.1:7778 \
   --grpc-port 8889
 ```
 
 ### Join Sequence
 
-The join process has four phases: peer discovery, node initialization, startup, and learner registration.
+The join process has four phases: peer discovery, node initialization, startup, and learner registration. Both discovery and registration go through the inter-node `ClusterBootstrapService` exposed on the RaftServer — gated by cluster-id metadata (and cluster-secret bearer when configured), without the user-JWT auth pipeline.
 
 #### Phase 1: Peer Discovery
 
-Before the fx application starts, `LoadConfig` connects to the address specified by `--join` and calls `GetClusterState` to discover all existing cluster members:
+Before the fx application starts, `LoadConfig` connects to the address specified by `--join` and calls `ClusterBootstrapService.GetPeers` to discover all existing cluster members:
 
 ```
---join 127.0.0.1:8888
+--join 127.0.0.1:7777
     │
     ▼
 discoverPeersFromClusterWithRetry()
@@ -77,7 +77,7 @@ discoverPeersFromClusterWithRetry()
     │  │ Retry loop:                          │
     │  │   Exponential backoff 500ms → 5s     │
     │  │   Deadline: 60 seconds               │
-    │  │   Call GetClusterState RPC           │
+    │  │   Call GetPeers RPC                  │
     │  └─────────────────────────────────────┘
     │
     ▼
@@ -118,10 +118,10 @@ An fx `OnStart` hook detects this is a fresh start (empty WAL before `NewNode` m
 freshStart == true && !Bootstrap && len(Peers) > 0
     │
     ▼
-Connect to first discovered peer
+Connect to first discovered peer's RaftServer
     │
     ▼
-Call AddLearner RPC → forwarded to leader if needed
+Call JoinAsLearner RPC → forwarded to leader if needed
     │
     ▼
 Leader proposes ConfChangeAddLearnerNode
@@ -339,7 +339,7 @@ if [ "$POD_INDEX" = "0" ]; then
 else
   # Pods 1..N-1 → Node IDs 2..N → Join pod-0
   BOOTSTRAP_HOST="{fullname}-0.{headless}.{namespace}.svc.cluster.local"
-  CLUSTER_FLAG="--join ${BOOTSTRAP_HOST}:${GRPC_PORT}"
+  CLUSTER_FLAG="--join ${BOOTSTRAP_HOST}:${RAFT_PORT}"
 fi
 ```
 
@@ -369,14 +369,14 @@ Time 0: Pod-0 starts with --bootstrap
     → Self-elects as leader
     → Cluster: Voters=[1], Learners=[]
 
-Time 1: Pod-1 starts with --join pod-0:8888
-    → discoverPeersFromCluster → finds Node 1
+Time 1: Pod-1 starts with --join pod-0:7777
+    → ClusterBootstrapService.GetPeers → finds Node 1
     → Creates initial snapshot: Voters=[1], Learners=[2]
-    → OnStart hook calls AddLearner RPC
+    → OnStart hook calls JoinAsLearner RPC
     → Leader adds Node 2 as learner
     → Cluster: Voters=[1], Learners=[2]
 
-Time 2: Pod-2 starts with --join pod-0:8888
+Time 2: Pod-2 starts with --join pod-0:7777
     → Same process as Pod-1
     → Cluster: Voters=[1], Learners=[2, 3]
 

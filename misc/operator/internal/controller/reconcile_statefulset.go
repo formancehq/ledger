@@ -523,6 +523,12 @@ func buildCommand(ledger *ledgerv1alpha1.LedgerService) []string {
 		clusterLogic = `CLUSTER_FLAG="--restore"`
 	} else {
 		bootstrap0 := fmt.Sprintf("%s-0.%s.${POD_NAMESPACE}.svc.cluster.local", ledger.Name, headlessServiceName(ledger))
+		// --join targets the RaftServer (inter-node port), not the
+		// external GRPC service port. The joining node calls
+		// ClusterBootstrapService.GetPeers / JoinAsLearner there,
+		// gated by cluster-id metadata + cluster-secret bearer —
+		// without going through the user-JWT auth pipeline.
+		raftPort := raftPortFromBindAddr(spec.BindAddr)
 		clusterLogic = fmt.Sprintf(`if [ "$POD_INDEX" = "0" ]; then
   if [ -d "%s/checkpoints" ] && [ "$(ls -A %s/checkpoints 2>/dev/null)" ]; then
     CLUSTER_FLAG=""
@@ -530,8 +536,8 @@ func buildCommand(ledger *ledgerv1alpha1.LedgerService) []string {
     CLUSTER_FLAG="--bootstrap"
   fi
 else
-  CLUSTER_FLAG="--join %s:${GRPC_PORT}"
-fi`, spec.DataDir, spec.DataDir, bootstrap0)
+  CLUSTER_FLAG="--join %s:%d"
+fi`, spec.DataDir, spec.DataDir, bootstrap0, raftPort)
 	}
 
 	script := fmt.Sprintf(`NODE_ID=$((POD_INDEX + 1))

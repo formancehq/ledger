@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package cluster_bootstrap;
+
+option go_package = "github.com/formancehq/ledger/v3/internal/proto/clusterbootstrappb";
+
+// ClusterBootstrapService is the inter-node bootstrap surface.
+//
+// Unlike ClusterService (exposed on the external ServiceServer behind the
+// user JWT/scope pipeline), this service lives on the internal RaftServer
+// alongside the Raft transport. It carries the two RPCs required by a node
+// that is joining an existing cluster:
+//
+//   1. GetPeers       — discover the current set of voter nodes and their
+//                       addresses, so the joining node can populate its WAL
+//                       snapshot before starting Raft.
+//   2. JoinAsLearner  — register with the leader as a new learner, which
+//                       proposes the corresponding ConfChange.
+//
+// Authentication is the RaftServer's own: cluster-id metadata (always) and
+// the cluster-secret bearer when configured. No user JWT or scope check
+// applies here.
+service ClusterBootstrapService {
+  rpc GetPeers(GetPeersRequest) returns (GetPeersResponse);
+  rpc JoinAsLearner(JoinAsLearnerRequest) returns (JoinAsLearnerResponse);
+}
+
+message GetPeersRequest {}
+
+message GetPeersResponse {
+  repeated PeerInfo peers = 1;
+}
+
+// PeerInfo carries the minimum information a joining node needs to
+// populate its initial WAL snapshot and dial the leader.
+message PeerInfo {
+  uint64 id = 1;
+  string raft_address = 2;
+  string service_address = 3;
+}
+
+message JoinAsLearnerRequest {
+  uint64 node_id = 1;          // Numeric ID for the new learner node
+  string raft_address = 2;     // Raft transport address of the learner
+  string service_address = 3;  // Service API address of the learner
+}
+
+message JoinAsLearnerResponse {}

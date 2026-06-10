@@ -224,11 +224,12 @@ func setupTLSMultiNodeCluster(
 		g.Expect(state.Leader).NotTo(BeZero())
 	}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
 
-	// Nodes 1..N-1: join the bootstrap node via TLS
-	// The --join flag connects to the service port which is now TLS-enabled
-	bootstrapServiceAddr := fmt.Sprintf("127.0.0.1:%d", serviceBasePort)
+	// Nodes 1..N-1: join the bootstrap node via TLS on the RaftServer port.
+	// ClusterBootstrapService now lives on the inter-node Raft port, so
+	// --join targets that — not the external service gRPC port.
+	bootstrapRaftAddr := fmt.Sprintf("127.0.0.1:%d", raftBasePort)
 	for i := 1; i < countInstances; i++ {
-		startNode(i, testserver.WithJoin(bootstrapServiceAddr))
+		startNode(i, testserver.WithJoin(bootstrapRaftAddr))
 	}
 
 	// Wait for all nodes to be promoted to voters

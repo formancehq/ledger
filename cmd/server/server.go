@@ -16,6 +16,7 @@ import (
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.uber.org/fx"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 	"gopkg.in/yaml.v3"
 
 	auth "github.com/formancehq/go-libs/v5/pkg/authn/jwt"
@@ -34,7 +35,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/pkg/bytesize"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/clusterbootstrappb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/pebblecfg"
@@ -162,7 +163,7 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().String("tls-ca-cert-file", "", "Path to CA certificate file (PEM) for client verification")
 
 	// Join mode: join an existing cluster as a learner node
-	runCmd.Flags().String("join", "", "Service address of an existing cluster member to join as a learner (e.g., \"node-1:8888\")")
+	runCmd.Flags().String("join", "", "Raft transport address of an existing cluster member to join as a learner (e.g., \"node-1:7777\")")
 
 	// Restore mode: start in restore mode to accept backup upload
 	runCmd.Flags().Bool("restore", false, "Start in restore mode (accepts backup upload, no Raft)")
@@ -598,7 +599,7 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 
 		cmd.Printf("Join mode: discovering peers from cluster via %s\n", joinAddr)
 
-		peers, err := discoverPeersFromClusterWithRetry(ctx, joinAddr, cfg.TLSConfig, cfg.ClusterSecret)
+		peers, err := discoverPeersFromClusterWithRetry(ctx, joinAddr, cfg.TLSConfig, cfg.ClusterID, cfg.ClusterSecret)
 		if err != nil {
 			return nil, fmt.Errorf("discovering peers from cluster: %w", err)
 		}
@@ -615,18 +616,18 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 
 // discoverPeersFromClusterWithRetry retries peer discovery with exponential backoff
 // indefinitely until peers are found or the context is cancelled (e.g. SIGTERM).
-func discoverPeersFromClusterWithRetry(ctx context.Context, serviceAddr string, tlsCfg bootstrap.TLSConfig, clusterSecret string) ([]node.Peer, error) {
+func discoverPeersFromClusterWithRetry(ctx context.Context, raftAddr string, tlsCfg bootstrap.TLSConfig, clusterID, clusterSecret string) ([]node.Peer, error) {
 	delay := 500 * time.Millisecond
 
 	for {
-		peers, err := discoverPeersFromCluster(serviceAddr, tlsCfg, clusterSecret)
+		peers, err := discoverPeersFromCluster(raftAddr, tlsCfg, clusterID, clusterSecret)
 		if err == nil {
 			return peers, nil
 		}
 
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("discovering peers from %s: %w: %w", serviceAddr, ctx.Err(), err)
+			return nil, fmt.Errorf("discovering peers from %s: %w: %w", raftAddr, ctx.Err(), err)
 		case <-time.After(delay):
 			if delay < 5*time.Second {
 				delay *= 2
@@ -635,9 +636,13 @@ func discoverPeersFromClusterWithRetry(ctx context.Context, serviceAddr string, 
 	}
 }
 
-// discoverPeersFromCluster connects to an existing cluster member and discovers
-// all voter nodes and their addresses via GetClusterState.
-func discoverPeersFromCluster(serviceAddr string, tlsCfg bootstrap.TLSConfig, clusterSecret string) ([]node.Peer, error) {
+// discoverPeersFromCluster connects to an existing cluster member's
+// RaftServer and discovers all voter nodes and their addresses via
+// ClusterBootstrapService.GetPeers. The call is authenticated by the
+// cluster-id metadata (and, when configured, the cluster-secret bearer
+// — preserved for compatibility with the existing RaftServer auth
+// pipeline) — not by a user JWT.
+func discoverPeersFromCluster(raftAddr string, tlsCfg bootstrap.TLSConfig, clusterID, clusterSecret string) ([]node.Peer, error) {
 	creds, err := bootstrap.ClientTransportCredentials(tlsCfg)
 	if err != nil {
 		return nil, fmt.Errorf("loading TLS credentials for peer discovery: %w", err)
@@ -650,39 +655,43 @@ func discoverPeersFromCluster(serviceAddr string, tlsCfg bootstrap.TLSConfig, cl
 		opts = append(opts, transport.BearerTokenDialOption(clusterSecret))
 	}
 
-	conn, err := grpc.NewClient(serviceAddr, opts...)
+	conn, err := grpc.NewClient(raftAddr, opts...)
 	if err != nil {
-		return nil, fmt.Errorf("connecting to cluster member %s: %w", serviceAddr, err)
+		return nil, fmt.Errorf("connecting to cluster member %s: %w", raftAddr, err)
 	}
 
 	defer func() { _ = conn.Close() }()
 
-	client := clusterpb.NewClusterServiceClient(conn)
+	client := clusterbootstrappb.NewClusterBootstrapServiceClient(conn)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	state, err := client.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
-	if err != nil {
-		return nil, fmt.Errorf("getting cluster state from %s: %w", serviceAddr, err)
+	if clusterID != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, node.MetadataKeyClusterID, clusterID)
 	}
 
-	var peers []node.Peer
+	resp, err := client.GetPeers(ctx, &clusterbootstrappb.GetPeersRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("getting peers from %s: %w", raftAddr, err)
+	}
 
-	for _, nodeInfo := range state.GetNodes() {
-		if nodeInfo.GetRaftAddress() == "" || nodeInfo.GetServiceAddress() == "" {
+	peers := make([]node.Peer, 0, len(resp.GetPeers()))
+
+	for _, p := range resp.GetPeers() {
+		if p.GetRaftAddress() == "" || p.GetServiceAddress() == "" {
 			continue
 		}
 
 		peers = append(peers, node.Peer{
-			ID:             uint64(nodeInfo.GetId()),
-			Address:        nodeInfo.GetRaftAddress(),
-			ServiceAddress: nodeInfo.GetServiceAddress(),
+			ID:             p.GetId(),
+			Address:        p.GetRaftAddress(),
+			ServiceAddress: p.GetServiceAddress(),
 		})
 	}
 
 	if len(peers) == 0 {
-		return nil, fmt.Errorf("no peers with addresses found in cluster state from %s", serviceAddr)
+		return nil, fmt.Errorf("no peers with addresses found from %s", raftAddr)
 	}
 
 	return peers, nil

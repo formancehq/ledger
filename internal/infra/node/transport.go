@@ -565,7 +565,7 @@ func (t *DefaultTransport) GetPeerAddress(peerID uint64) string {
 // This maintains a persistent connection to avoid frequent reconnections
 // The server receives all messages and sends a single response at the end.
 func (t *DefaultTransport) StreamMessages(stream grpc.BidiStreamingServer[rafttransportpb.SendMessageRequest, rafttransportpb.SendMessageResponse]) error {
-	nodeIDStr := metadata.ValueFromIncomingContext(stream.Context(), "nodeID")
+	nodeIDStr := metadata.ValueFromIncomingContext(stream.Context(), MetadataKeyNodeID)
 	if len(nodeIDStr) == 0 {
 		return errors.New("nodeID metadata not found in context")
 	}
@@ -577,13 +577,13 @@ func (t *DefaultTransport) StreamMessages(stream grpc.BidiStreamingServer[rafttr
 
 	// Validate cluster ID if configured
 	if t.clusterID != "" {
-		clusterIDStr := metadata.ValueFromIncomingContext(stream.Context(), "clusterID")
+		clusterIDStr := metadata.ValueFromIncomingContext(stream.Context(), MetadataKeyClusterID)
 		if len(clusterIDStr) == 0 || clusterIDStr[0] != t.clusterID {
 			return status.Errorf(codes.PermissionDenied, "invalid cluster ID")
 		}
 	}
 
-	priorityStr := metadata.ValueFromIncomingContext(stream.Context(), "priority")
+	priorityStr := metadata.ValueFromIncomingContext(stream.Context(), MetadataKeyPriority)
 	if len(priorityStr) == 0 {
 		return errors.New("priority metadata not found in context")
 	}
@@ -879,11 +879,11 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 	createStream := func(priorityName string) (grpc.BidiStreamingClient[rafttransportpb.SendMessageRequest, rafttransportpb.SendMessageResponse], error) {
 		return client.StreamMessages(
 			metadata.NewOutgoingContext(streamCtx, metadata.New(map[string]string{
-				"nodeID":        strconv.FormatUint(conn.nodeID, 16),
-				"priority":      priorityName,
-				"clusterID":     conn.clusterID,
-				"advertiseAddr": conn.advertiseAddr,
-				"serviceAddr":   conn.serviceAdvertiseAddr,
+				MetadataKeyNodeID:    strconv.FormatUint(conn.nodeID, 16),
+				MetadataKeyPriority:  priorityName,
+				MetadataKeyClusterID: conn.clusterID,
+				"advertiseAddr":      conn.advertiseAddr,
+				"serviceAddr":        conn.serviceAdvertiseAddr,
 			})),
 		)
 	}

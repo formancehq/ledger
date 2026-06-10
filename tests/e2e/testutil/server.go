@@ -227,10 +227,13 @@ func SetupMultiNodeCluster(
 		leaderID = uint64(state.GetLeader())
 	}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
 
-	// Nodes 1..N-1: join the bootstrap node
-	bootstrapServiceAddr := fmt.Sprintf("127.0.0.1:%d", serviceBasePort)
+	// Nodes 1..N-1: join the bootstrap node via the RaftServer port.
+	// ClusterBootstrapService is exposed there (see
+	// internal/adapter/grpc/server_bootstrap.go), so --join targets the
+	// raft port, not the external service gRPC port.
+	bootstrapRaftAddr := fmt.Sprintf("127.0.0.1:%d", raftBasePort)
 	for i := 1; i < countInstances; i++ {
-		startNode(i, testserver.WithJoin(bootstrapServiceAddr))
+		startNode(i, testserver.WithJoin(bootstrapRaftAddr))
 	}
 
 	// Wait for all nodes to be promoted to voters

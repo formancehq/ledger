@@ -14,6 +14,7 @@ import (
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/application/indexbuilder"
+	"github.com/formancehq/ledger/v3/internal/application/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/diskusage"
@@ -42,6 +43,7 @@ type ClusterServiceServerImpl struct {
 	sharedState         *state.SharedState
 	indexBuilder        *indexbuilder.Builder
 	admission           ctrl.Admission
+	membership          *membership.Service
 	logger              logging.Logger
 	localRaftAddr       string // This node's own Raft advertise address
 	localServiceAddr    string // This node's own gRPC service address
@@ -63,6 +65,7 @@ func NewClusterServiceServer(
 	indexBuilder *indexbuilder.Builder,
 	readStore *readstore.Store,
 	admission ctrl.Admission,
+	membershipSvc *membership.Service,
 	logger logging.Logger,
 	localRaftAddr string,
 	localServiceAddr string,
@@ -80,6 +83,7 @@ func NewClusterServiceServer(
 		sharedState:      sharedState,
 		indexBuilder:     indexBuilder,
 		admission:        admission,
+		membership:       membershipSvc,
 		logger:           logger.WithField("component", "cluster-server"),
 		localRaftAddr:    localRaftAddr,
 		localServiceAddr: localServiceAddr,
@@ -285,18 +289,6 @@ func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *clust
 		return nil, err
 	}
 
-	if req.GetNodeId() == 0 {
-		return nil, errors.New("node_id must be non-zero")
-	}
-
-	if req.GetRaftAddress() == "" {
-		return nil, errors.New("raft_address is required")
-	}
-
-	if req.GetServiceAddress() == "" {
-		return nil, errors.New("service_address is required")
-	}
-
 	impl.logger.WithFields(map[string]any{
 		"requestedNodeID":      req.GetNodeId(),
 		"requestedRaftAddress": req.GetRaftAddress(),
@@ -305,7 +297,6 @@ func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *clust
 		"localNodeID":          impl.node.GetNodeID(),
 	}).Infof("AddLearner: received request")
 
-	// Forward to leader if not leader
 	if !impl.node.IsLeader() {
 		client, err := impl.leaderClient()
 		if err != nil {
@@ -319,29 +310,9 @@ func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *clust
 		return client.AddLearner(ctx, req)
 	}
 
-	// On the leader: add peer to transport and service pool so we can reach it
-	impl.logger.WithFields(map[string]any{
-		"learnerNodeID":  req.GetNodeId(),
-		"raftAddress":    req.GetRaftAddress(),
-		"serviceAddress": req.GetServiceAddress(),
-	}).Infof("AddLearner: processing on leader — adding peer to transport and proposing ConfChange")
-
-	impl.raftTransport.AddPeer(req.GetNodeId(), req.GetRaftAddress())
-
-	err := impl.servicePool.AddPeer(req.GetNodeId(), req.GetServiceAddress())
-	if err != nil {
-		impl.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to add learner to service pool")
+	if err := impl.membership.AddLearner(ctx, req.GetNodeId(), req.GetRaftAddress(), req.GetServiceAddress()); err != nil {
+		return nil, err
 	}
-
-	// Propose the ConfChange
-	err = impl.node.AddLearner(ctx, req.GetNodeId(), req.GetRaftAddress(), req.GetServiceAddress())
-	if err != nil {
-		return nil, fmt.Errorf("adding learner: %w", err)
-	}
-
-	impl.logger.WithFields(map[string]any{
-		"learnerNodeID": req.GetNodeId(),
-	}).Infof("AddLearner: successfully proposed ConfChange for learner")
 
 	return &clusterpb.AddLearnerResponse{}, nil
 }
@@ -351,11 +322,6 @@ func (impl *ClusterServiceServerImpl) PromoteLearner(ctx context.Context, req *c
 		return nil, err
 	}
 
-	if req.GetNodeId() == 0 {
-		return nil, errors.New("node_id must be non-zero")
-	}
-
-	// Forward to leader if not leader
 	if !impl.node.IsLeader() {
 		client, err := impl.leaderClient()
 		if err != nil {
@@ -365,9 +331,8 @@ func (impl *ClusterServiceServerImpl) PromoteLearner(ctx context.Context, req *c
 		return client.PromoteLearner(ctx, req)
 	}
 
-	err := impl.node.PromoteLearner(ctx, req.GetNodeId())
-	if err != nil {
-		return nil, fmt.Errorf("promoting learner: %w", err)
+	if err := impl.membership.PromoteLearner(ctx, req.GetNodeId()); err != nil {
+		return nil, err
 	}
 
 	return &clusterpb.PromoteLearnerResponse{}, nil
@@ -378,27 +343,13 @@ func (impl *ClusterServiceServerImpl) RemoveNode(ctx context.Context, req *clust
 		return nil, err
 	}
 
-	if req.GetNodeId() == 0 {
-		return nil, errors.New("node_id must be non-zero")
-	}
-
 	// Force-remove bypasses consensus and must run on the leader directly.
 	// Do NOT forward: the operator already exec's into the leader pod.
-	if req.GetForce() {
-		if !impl.node.IsLeader() {
-			return nil, errors.New("force-remove must be executed on the leader node")
-		}
-
-		err := impl.node.ForceRemoveNode(ctx, req.GetNodeId())
-		if err != nil {
-			return nil, fmt.Errorf("force-removing node: %w", err)
-		}
-
-		return &clusterpb.RemoveNodeResponse{}, nil
+	if req.GetForce() && !impl.node.IsLeader() {
+		return nil, errors.New("force-remove must be executed on the leader node")
 	}
 
-	// Forward to leader if not leader
-	if !impl.node.IsLeader() {
+	if !req.GetForce() && !impl.node.IsLeader() {
 		client, err := impl.leaderClient()
 		if err != nil {
 			return nil, err
@@ -407,9 +358,8 @@ func (impl *ClusterServiceServerImpl) RemoveNode(ctx context.Context, req *clust
 		return client.RemoveNode(ctx, req)
 	}
 
-	err := impl.node.RemoveNode(ctx, req.GetNodeId())
-	if err != nil {
-		return nil, fmt.Errorf("removing node: %w", err)
+	if err := impl.membership.RemoveNode(ctx, req.GetNodeId(), req.GetForce()); err != nil {
+		return nil, err
 	}
 
 	return &clusterpb.RemoveNodeResponse{}, nil

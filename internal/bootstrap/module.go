@@ -15,9 +15,11 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.uber.org/fx"
+	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
@@ -34,6 +36,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/application/events"
 	"github.com/formancehq/ledger/v3/internal/application/indexbuilder"
+	"github.com/formancehq/ledger/v3/internal/application/membership"
 	"github.com/formancehq/ledger/v3/internal/application/mirror"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
@@ -54,6 +57,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
+	"github.com/formancehq/ledger/v3/internal/proto/clusterbootstrappb"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -490,14 +494,27 @@ func Module() fx.Option {
 					meterProvider.Meter("storage"),
 				)
 			},
-			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, collector *diskusage.Collector, store *dal.Store, c *cache.Cache, ss *state.SharedState, ib *indexbuilder.Builder, rs *readstore.Store, adm ctrl.Admission, logger logging.Logger, cfg Config, authCfg internalauth.AuthConfig) clusterpb.ClusterServiceServer {
-				return grpcadp.NewClusterServiceServer(n, raftTransport, servicePool, collector, store, c, ss, ib, rs, adm, logger,
+			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, cfg Config, logger logging.Logger) *membership.Service {
+				return membership.NewService(
+					n, raftTransport, servicePool, logger,
+					cfg.RaftConfig.AdvertiseAddr,
+					cfg.ServiceAdvertiseAddr(),
+				)
+			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``)),
+			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, collector *diskusage.Collector, store *dal.Store, c *cache.Cache, ss *state.SharedState, ib *indexbuilder.Builder, rs *readstore.Store, adm ctrl.Admission, ms *membership.Service, logger logging.Logger, cfg Config, authCfg internalauth.AuthConfig) clusterpb.ClusterServiceServer {
+				return grpcadp.NewClusterServiceServer(n, raftTransport, servicePool, collector, store, c, ss, ib, rs, adm, ms, logger,
 					cfg.RaftConfig.AdvertiseAddr,
 					cfg.ServiceAdvertiseAddr(),
 					authCfg,
 					cfg.ClusterID,
 				)
-			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``)),
+			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``)),
+			func(n *node.Node, raftTransport *node.DefaultTransport, ms *membership.Service, cfg Config, logger logging.Logger) clusterbootstrappb.ClusterBootstrapServiceServer {
+				return grpcadp.NewClusterBootstrapServiceServer(
+					n, raftTransport, ms, logger,
+					cfg.ClusterID,
+				)
+			},
 			fx.Annotate(func(n *node.Node, collector *diskusage.Collector, servicePool *transport.ConnectionPool, cfg Config, logger logging.Logger) *clusterhealth.HealthChecker {
 				return clusterhealth.NewHealthChecker(
 					n, collector, servicePool,
@@ -773,6 +790,11 @@ func Module() fx.Option {
 
 				return nil
 			},
+			func(raftServer *grpcadp.RaftServer, bootstrapServer clusterbootstrappb.ClusterBootstrapServiceServer) error {
+				grpcadp.RegisterClusterBootstrapService(raftServer.GetServer(), bootstrapServer)
+
+				return nil
+			},
 			func(lc fx.Lifecycle, raftServer *grpcadp.RaftServer, snapshotServiceServer snapshotpb.SnapshotServiceServer) error {
 				grpcadp.RegisterSnapshotService(raftServer.GetServer(), snapshotServiceServer)
 				lc.Append(fx.Hook{
@@ -1017,10 +1039,9 @@ func Module() fx.Option {
 			// member (e.g. after a crash-restart where the initial WAL was written
 			// but the AddLearner RPC never reached the leader), the server returns
 			// AlreadyExists which we treat as success.
-			fx.Annotate(func(
+			func(
 				lc fx.Lifecycle,
 				cfg Config,
-				servicePool *transport.ConnectionPool,
 				logger logging.Logger,
 			) {
 				if cfg.RaftConfig.Bootstrap || len(cfg.RaftConfig.Peers) == 0 {
@@ -1035,10 +1056,10 @@ func Module() fx.Option {
 							"serviceAddress": cfg.ServiceAdvertiseAddr(),
 						}).Infof("Join mode: requesting peer to add this node as learner")
 
-						return tryAddLearner(ctx, cfg, servicePool, logger)
+						return tryAddLearner(ctx, cfg, cfg.TLSConfig, logger)
 					},
 				})
-			}, fx.ParamTags(``, ``, `name:"service"`, ``)),
+			},
 			func(lc fx.Lifecycle, cfg Config, handler http.Handler) {
 				lc.Append(transportfx.FXHook(httpserver.NewHook(handler,
 					httpserver.WithAddress(fmt.Sprintf(":%d", cfg.HTTPPort)),
@@ -1147,30 +1168,59 @@ func Module() fx.Option {
 }
 
 // tryAddLearner attempts to register this node as a learner on an existing
-// cluster. It retries on transient errors (Unavailable, no leader) with
-// exponential backoff, and treats AlreadyExists as success (idempotent join).
-func tryAddLearner(ctx context.Context, cfg Config, servicePool *transport.ConnectionPool, logger logging.Logger) error {
+// cluster, using the inter-node ClusterBootstrapService exposed on the
+// RaftServer. It retries on transient errors (Unavailable, no leader)
+// with exponential backoff, and treats AlreadyExists as success
+// (idempotent join).
+//
+// It dials each peer's Raft address directly with a short-lived
+// connection rather than reusing raftTransport's connection pool: the
+// pool is populated by a separate fx OnStart hook whose ordering
+// relative to ours is not guaranteed, and a missing pool entry would
+// otherwise leave us spinning on every retry.
+func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger logging.Logger) error {
 	peers := cfg.RaftConfig.Peers
-	req := &clusterpb.AddLearnerRequest{
+	req := &clusterbootstrappb.JoinAsLearnerRequest{
 		NodeId:         cfg.RaftConfig.NodeID,
 		RaftAddress:    cfg.RaftConfig.AdvertiseAddr,
 		ServiceAddress: cfg.ServiceAdvertiseAddr(),
 	}
 
+	creds, err := ClientTransportCredentials(tlsCfg)
+	if err != nil {
+		return fmt.Errorf("loading TLS credentials for learner registration: %w", err)
+	}
+
+	dialOpts := []ggrpc.DialOption{ggrpc.WithTransportCredentials(creds)}
+	if cfg.ClusterSecret != "" {
+		dialOpts = append(dialOpts, transport.BearerTokenDialOption(cfg.ClusterSecret))
+	}
+
 	backoff := 500 * time.Millisecond
 	maxBackoff := 5 * time.Second
+
+	if cfg.ClusterID != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, node.MetadataKeyClusterID, cfg.ClusterID)
+	}
 
 	for {
 		// Try each peer in order until one succeeds.
 		for _, peer := range peers {
-			conn := servicePool.GetConnection(peer.ID)
-			if conn == nil {
+			conn, err := ggrpc.NewClient(peer.Address, dialOpts...)
+			if err != nil {
+				logger.WithFields(map[string]any{
+					"peer":    peer.ID,
+					"address": peer.Address,
+					"error":   err,
+				}).Infof("Failed to dial peer for learner registration, will retry")
+
 				continue
 			}
 
-			client := clusterpb.NewClusterServiceClient(conn)
+			client := clusterbootstrappb.NewClusterBootstrapServiceClient(conn)
+			_, err = client.JoinAsLearner(ctx, req)
+			_ = conn.Close()
 
-			_, err := client.AddLearner(ctx, req)
 			if err == nil {
 				logger.WithFields(map[string]any{
 					"peer": peer.ID,
@@ -1193,13 +1243,13 @@ func tryAddLearner(ctx context.Context, cfg Config, servicePool *transport.Conne
 				logger.WithFields(map[string]any{
 					"peer":  peer.ID,
 					"error": err,
-				}).Infof("AddLearner unavailable, will retry")
+				}).Infof("JoinAsLearner unavailable, will retry")
 
 				continue
 			}
 
 			// Non-transient error — fatal.
-			return fmt.Errorf("failed to register as learner via peer %d (%s): %w", peer.ID, peer.ServiceAddress, err)
+			return fmt.Errorf("failed to register as learner via peer %d (%s): %w", peer.ID, peer.Address, err)
 		}
 
 		// All peers returned transient errors. Back off and retry.
