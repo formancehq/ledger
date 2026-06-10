@@ -191,6 +191,24 @@ func (e *Emitter) run(ctx context.Context) {
 	}
 }
 
+// shouldEmit reports whether an event derived from a log entry should be
+// published to this sink. Internal logs (EVENT_TYPE_UNSPECIFIED, e.g.
+// AddedEventsSink) are always dropped. When the sink declares an
+// EventTypes allow-list, only types in that set are emitted.
+func (e *Emitter) shouldEmit(event *eventspb.Event) bool {
+	if event.GetType() == commonpb.EventType_EVENT_TYPE_UNSPECIFIED {
+		return false
+	}
+
+	if len(e.config.EventTypes) == 0 {
+		return true
+	}
+
+	_, ok := e.config.EventTypes[event.GetType()]
+
+	return ok
+}
+
 // processLogs reads logs from the store starting after the given cursor,
 // publishes them, and returns the updated cursor position.
 //
@@ -219,6 +237,16 @@ func (e *Emitter) processLogs(ctx context.Context, cursor uint64) (uint64, error
 	batch := make([]*eventspb.Event, 0, e.config.BatchSize)
 	lastPersistedCursor := cursor
 
+	// pendingFilteredCursor remembers the highest sequence of a filtered or
+	// internal log scanned while batch != nil. We MUST NOT advance cursor
+	// through those logs in-place: if a later publishBatch fails, returning
+	// the scan position would skip the unpublished events with lower
+	// sequences and lose them as soon as the next successful flush
+	// persists the bumped cursor via Raft (#323). Instead we stash the
+	// position here and apply it together with batch[last].LogSequence
+	// after the next successful flush.
+	var pendingFilteredCursor uint64
+
 	for {
 		log, err := logsCursor.Next()
 		if err != nil {
@@ -230,19 +258,20 @@ func (e *Emitter) processLogs(ctx context.Context, cursor uint64) (uint64, error
 		}
 
 		event := LogToEvent(log)
-		// Skip internal logs (e.g. AddedEventsSink) that don't produce domain events.
-		if event.GetType() == commonpb.EventType_EVENT_TYPE_UNSPECIFIED {
-			cursor = log.GetSequence()
+
+		if !e.shouldEmit(event) {
+			if len(batch) == 0 {
+				// No pending events with lower sequence: advancing the
+				// cursor through this filtered log is safe.
+				cursor = log.GetSequence()
+			} else {
+				// Defer: this log's seq is > every event in the pending
+				// batch (scan is sequential), so we apply it only after
+				// the batch is durably published.
+				pendingFilteredCursor = log.GetSequence()
+			}
 
 			continue
-		}
-		// Apply per-sink event type filter (empty = all events).
-		if len(e.config.EventTypes) > 0 {
-			if _, ok := e.config.EventTypes[event.GetType()]; !ok {
-				cursor = log.GetSequence()
-
-				continue
-			}
 		}
 
 		batch = append(batch, event)
@@ -253,9 +282,11 @@ func (e *Emitter) processLogs(ctx context.Context, cursor uint64) (uint64, error
 				return cursor, err
 			}
 
-			cursor = batch[len(batch)-1].GetLogSequence()
-			lastPersistedCursor = cursor
+			cursor = max(pendingFilteredCursor, batch[len(batch)-1].GetLogSequence())
+
+			lastPersistedCursor = batch[len(batch)-1].GetLogSequence()
 			batch = batch[:0]
+			pendingFilteredCursor = 0
 		}
 	}
 
@@ -269,6 +300,12 @@ func (e *Emitter) processLogs(ctx context.Context, cursor uint64) (uint64, error
 		lastPersistedCursor = batch[len(batch)-1].GetLogSequence()
 		if cursor < lastPersistedCursor {
 			cursor = lastPersistedCursor
+		}
+		// Filtered logs deferred during this batch window are now safe to
+		// absorb. The end-of-function block below will issue a single
+		// trailing Raft update if needed.
+		if pendingFilteredCursor > cursor {
+			cursor = pendingFilteredCursor
 		}
 	}
 

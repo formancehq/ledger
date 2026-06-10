@@ -2,8 +2,10 @@ package events_test
 
 import (
 	"context"
+	"errors"
 	"math/big"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -735,6 +737,155 @@ func TestEmitterIntegration_EventTypeFilter(t *testing.T) {
 	require.Len(t, published, 1)
 	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, published[0].GetType())
 	require.Equal(t, uint64(2), published[0].GetLogSequence())
+}
+
+// flakySink fails the first `failures` Publish calls then succeeds.
+// Captures everything it publishes for inspection.
+type flakySink struct {
+	mu       sync.Mutex
+	failures atomic.Int32
+	events   []*eventspb.Event
+}
+
+func (s *flakySink) Publish(_ context.Context, evts []*eventspb.Event) error {
+	if s.failures.Add(-1) >= 0 {
+		return errors.New("simulated sink failure")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.events = append(s.events, evts...)
+
+	return nil
+}
+
+func (s *flakySink) Close() error { return nil }
+
+func (s *flakySink) getEvents() []*eventspb.Event {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	out := make([]*eventspb.Event, len(s.events))
+	copy(out, s.events)
+
+	return out
+}
+
+// TestEmitterIntegration_FilteredLogDoesNotSkipPendingBatchOnFailure pins
+// the fix for #323. Before this PR processLogs advanced cursor through a
+// filtered log even when a batch with lower-sequence events was still
+// pending; if the subsequent publishBatch failed, the in-memory cursor
+// was past those events and the next successful flush persisted the
+// bumped cursor — silently losing the unpublished events forever.
+//
+// Reproducer: 4 logs — committed-tx, filtered, committed-tx, filtered.
+// EventTypes filter accepts only committed-tx. BatchSize=2. The first
+// Publish call fails (flaky sink); the second succeeds. Without the fix
+// the cursor jumps to log 2's sequence on the failed attempt, the next
+// scan starts past log 1, and the committed-tx at seq 1 is never
+// republished.
+func TestEmitterIntegration_FilteredLogDoesNotSkipPendingBatchOnFailure(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	sink := &flakySink{}
+	sink.failures.Store(1) // fail exactly one Publish
+
+	proposer := &directProposer{store: store}
+	logger := logging.Testing()
+
+	registerLedger(t, store, "test")
+
+	now := libtime.Now()
+
+	// Logs:
+	//   seq 1: COMMITTED_TRANSACTION (will be batched)
+	//   seq 2: SAVED_METADATA        (filtered out by config)
+	//   seq 3: COMMITTED_TRANSACTION (will be batched, triggers flush at BatchSize=2)
+	//   seq 4: SAVED_METADATA        (filtered out by config)
+	appendTestLogs(t, store,
+		&commonpb.Log{
+			Sequence: 1,
+			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+				LedgerName: "test",
+				Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+					Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{
+						Transaction: commonpb.NewTransaction().
+							WithPostings(commonpb.NewPosting("world", "bank", "USD", big.NewInt(100))).
+							WithID(1).WithTimestamp(now),
+					}},
+				}).WithID(1).WithDate(now),
+			}}},
+		},
+		&commonpb.Log{
+			Sequence: 2,
+			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+				LedgerName: "test",
+				Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+					Payload: &commonpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &commonpb.SavedMetadata{
+						Target:   &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "bank"}}},
+						Metadata: commonpb.MetadataFromGoMap(map[string]string{"k": "v"}),
+					}},
+				}).WithID(2).WithDate(now),
+			}}},
+		},
+		&commonpb.Log{
+			Sequence: 3,
+			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+				LedgerName: "test",
+				Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+					Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{
+						Transaction: commonpb.NewTransaction().
+							WithPostings(commonpb.NewPosting("world", "alice", "USD", big.NewInt(50))).
+							WithID(2).WithTimestamp(now),
+					}},
+				}).WithID(3).WithDate(now),
+			}}},
+		},
+		&commonpb.Log{
+			Sequence: 4,
+			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+				LedgerName: "test",
+				Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+					Payload: &commonpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &commonpb.SavedMetadata{
+						Target:   &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "alice"}}},
+						Metadata: commonpb.MetadataFromGoMap(map[string]string{"k2": "v2"}),
+					}},
+				}).WithID(4).WithDate(now),
+			}}},
+		},
+	)
+
+	cfg := events.DefaultEmitterConfig()
+	cfg.BatchSize = 2
+	cfg.EventTypes = map[commonpb.EventType]struct{}{
+		commonpb.EventType_COMMITTED_TRANSACTION: {},
+	}
+
+	emitter := events.NewEmitter(store, sink, "lossy-sink", proposer, logger, cfg)
+	emitter.Start()
+
+	// Both committed-transaction events MUST be published despite the
+	// transient sink failure. Pre-fix, only the second one made it through:
+	// the failed first attempt advanced the in-memory cursor past the
+	// filtered log at seq 2, so the retry started past the committed-tx
+	// at seq 1.
+	require.Eventually(t, func() bool {
+		return len(sink.getEvents()) >= 2
+	}, 5*time.Second, 10*time.Millisecond,
+		"both committed-tx events must reach the sink even after a transient failure (#323)")
+
+	require.Eventually(t, func() bool {
+		cursor, err := query.ReadSinkCursor(store, "lossy-sink")
+
+		return err == nil && cursor >= 4
+	}, 5*time.Second, 10*time.Millisecond, "cursor must advance past all logs")
+
+	emitter.Stop()
+
+	require.Len(t, sink.getEvents(), 2,
+		"exactly two committed-tx events expected, lossy retry would have produced only 1 pre-fix")
 }
 
 func TestEmitterIntegration_StartStopIdempotent(t *testing.T) {
