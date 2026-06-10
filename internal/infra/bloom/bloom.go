@@ -211,10 +211,18 @@ func (f *Filter) RestoreFromStore(ctx context.Context, store dal.PebbleReader) e
 	return nil
 }
 
-// filterSnapshot holds per-attribute-type bloom filter pointers.
-// Accessed via atomic.Pointer in FilterSet so that Rebuild (writer on
-// the Raft goroutine) and FilterForAttrType (reader on the preloader
-// goroutine) never race on pointer fields.
+// filterSnapshot holds per-attribute-type bloom filter pointers plus the
+// readiness flag that goes with them. Accessed via atomic.Pointer in
+// FilterSet so that a reader can observe filters and readiness in a single
+// atomic load — never pair a "ready" flag from one revision with a
+// freshly-swapped empty snapshot from another (#317).
+//
+// Fields are treated as immutable once published: Rebuild and
+// SetReadyIfEpoch allocate a new filterSnapshot rather than mutating the
+// existing one. Filter pointers themselves remain mutable through their
+// own thread-safe API (Filter.Add / MayContain) so in-flight FSM writes
+// during the populator window are preserved across the not-ready → ready
+// transition.
 type filterSnapshot struct {
 	Volume           *Filter
 	Metadata         *Filter
@@ -226,6 +234,9 @@ type filterSnapshot struct {
 	NumscriptVersion *Filter
 	NumscriptContent *Filter
 	LedgerMetadata   *Filter
+	// ready marks the snapshot as fully populated. Bound to the snap so a
+	// reader that captures the snap pointer sees consistent (filters, ready).
+	ready bool
 }
 
 func (s *filterSnapshot) filterForAttrType(attrType byte) *Filter {
@@ -263,22 +274,20 @@ func (s *filterSnapshot) allFilters() []*Filter {
 	}
 }
 
-// FilterSet holds per-attribute-type bloom filters.
-// The ready flag indicates whether the bloom filters have been fully populated
-// (from a Pebble restore + cache replay). While not ready, MayContain
-// always returns true (= "maybe present") to avoid false negatives.
+// FilterSet holds per-attribute-type bloom filters. Readiness is carried
+// inside the snapshot pointer so a single atomic.Pointer load resolves both
+// (filters, ready) consistently — see filterSnapshot for the rationale.
 //
-// Filter pointers live inside a filterSnapshot swapped atomically, so
-// concurrent readers (preloader) never race with Rebuild (Raft goroutine).
+// Concurrent readers (preloader) never race with Rebuild (Raft goroutine)
+// because the snapshot pointer is updated atomically and never mutated.
 type FilterSet struct {
-	ready   atomic.Bool
 	filters atomic.Pointer[filterSnapshot]
 
-	// readyMu serializes Rebuild (which sets ready=false and bumps epoch) with
-	// background goroutines that want to set ready=true. Without this, the
-	// epoch check and SetReady in the background goroutine are not atomic and
-	// Rebuild can slip in between (TOCTOU).
-	// Readers of ready (IsReady) remain lock-free — only writers take this lock.
+	// readyMu serializes Rebuild (which publishes a not-ready snapshot and
+	// bumps epoch) with background goroutines that want to flip the current
+	// snapshot to ready. Without this, the epoch check and the snap swap
+	// in the background goroutine are not atomic and Rebuild can slip in
+	// between (TOCTOU). Readers remain lock-free — only writers take it.
 	readyMu sync.Mutex
 	epoch   uint64
 
@@ -306,13 +315,23 @@ func (fs *FilterSet) Snapshot() FilterSnapshot {
 	return FilterSnapshot{snap: fs.filters.Load()}
 }
 
-// FilterSnapshot is an opaque handle to a consistent set of bloom filters.
+// FilterSnapshot is an opaque handle to a consistent set of bloom filters
+// AND the readiness state that goes with them. Capture once via
+// FilterSet.Snapshot, branch on Ready, then read filters — no second
+// atomic load and no race against Rebuild.
 type FilterSnapshot struct {
 	snap *filterSnapshot
 }
 
+// Ready reports whether this snapshot is fully populated. False on a nil
+// snap (FilterSet was nil) and on snapshots published by Rebuild before
+// the populator has flipped them to ready.
+func (s FilterSnapshot) Ready() bool {
+	return s.snap != nil && s.snap.ready
+}
+
 // FilterForAttrType returns the bloom filter for the given attribute type
-// from this snapshot.
+// from this snapshot. Returns nil on a nil snap.
 func (s FilterSnapshot) FilterForAttrType(attrType byte) *Filter {
 	if s.snap == nil {
 		return nil
@@ -321,27 +340,48 @@ func (s FilterSnapshot) FilterForAttrType(attrType byte) *Filter {
 	return s.snap.filterForAttrType(attrType)
 }
 
-// IsReady returns true if the bloom filters are fully populated.
+// IsReady reports whether the current snapshot is fully populated. This
+// is a single-load convenience; callers that subsequently read filters
+// MUST use Snapshot() and branch on Snapshot.Ready() instead — otherwise
+// they race against Rebuild between the IsReady call and the filter
+// lookup (#317).
 func (fs *FilterSet) IsReady() bool {
-	return fs.ready.Load()
+	snap := fs.filters.Load()
+
+	return snap != nil && snap.ready
 }
 
-// SetReady marks the bloom filters as fully populated (or not).
-// Callers that set ready=false (e.g. Rebuild) should use setReadyLocked
-// under readyMu instead.
+// SetReady publishes a new snapshot with the requested readiness, reusing
+// the current filter pointers. Concurrent SetReadyIfEpoch / Rebuild calls
+// are serialised through readyMu so the snap copy can't race them.
 func (fs *FilterSet) SetReady(v bool) {
-	fs.ready.Store(v)
+	fs.readyMu.Lock()
+	fs.setReadyLocked(v)
+	fs.readyMu.Unlock()
+}
 
-	val := int64(0)
-	if v {
-		val = 1
+// setReadyLocked publishes a new snapshot with the requested readiness.
+// Caller must hold readyMu. Filter pointers are shared with the previous
+// snapshot — in-flight FSM writes during a populator window land in the
+// same Filter objects and become visible the moment the ready snap is
+// published.
+func (fs *FilterSet) setReadyLocked(v bool) {
+	old := fs.filters.Load()
+
+	var next *filterSnapshot
+	switch {
+	case old == nil:
+		next = &filterSnapshot{ready: v}
+	case old.ready == v:
+		// Already in the target state — no need to allocate a new snap.
+		return
+	default:
+		clone := *old
+		clone.ready = v
+		next = &clone
 	}
 
-	fs.readyGauge.Record(context.Background(), val)
-}
-
-func (fs *FilterSet) setReadyLocked(v bool) {
-	fs.ready.Store(v)
+	fs.filters.Store(next)
 
 	val := int64(0)
 	if v {
@@ -359,9 +399,9 @@ func (fs *FilterSet) Epoch() uint64 {
 	return fs.epoch
 }
 
-// SetReadyIfEpoch atomically checks the epoch and sets ready=true only if
-// the epoch has not changed since the caller captured it. Returns true if
-// ready was set. This prevents a stale background goroutine from marking
+// SetReadyIfEpoch publishes a ready snapshot only if the epoch has not
+// changed since the caller captured it. Returns true if the snapshot was
+// promoted. This prevents a stale background goroutine from marking
 // empty post-Rebuild filters as ready (TOCTOU).
 func (fs *FilterSet) SetReadyIfEpoch(expected uint64) bool {
 	fs.readyMu.Lock()
@@ -524,22 +564,26 @@ func (fs *FilterSet) PopulateFromStore(ctx context.Context, store dal.PebbleRead
 // Rebuild recreates all bloom filters with new dimensions from the given
 // ClusterConfig. Existing filter data is discarded. The caller must purge
 // persisted blocks (0xE7) and trigger a full attribute scan to repopulate.
+//
+// The new snapshot is published as not-ready, so any reader that observes
+// it via Snapshot().Ready() sees false and falls back to the no-bloom
+// path. Without that coupling, a reader could observe ready=true from an
+// earlier snapshot and then load the new, still-empty one in a separate
+// atomic read, treating present keys as absent (#317).
 func (fs *FilterSet) Rebuild(cfg *commonpb.ClusterConfig) {
-	fs.readyMu.Lock()
-
-	// Mark not-ready and bump epoch under the lock so no background
-	// goroutine can sneak a SetReadyIfEpoch(true) in between.
-	fs.setReadyLocked(false)
-	fs.epoch++
-
-	fs.readyMu.Unlock()
-
 	snap := &filterSnapshot{}
 	for _, bt := range bloomTypes(cfg) {
 		bt.rebuild(snap, fs.meter)
 	}
 
+	fs.readyMu.Lock()
+	// Bump epoch under the lock so a background SetReadyIfEpoch using the
+	// previous epoch cannot promote this fresh, still-empty snapshot.
+	fs.epoch++
 	fs.filters.Store(snap)
+	fs.readyMu.Unlock()
+
+	fs.readyGauge.Record(context.Background(), 0)
 }
 
 // bloomType maps a proto bloom config field to its Filter field and metadata.

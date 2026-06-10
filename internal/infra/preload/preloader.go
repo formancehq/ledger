@@ -241,13 +241,23 @@ func (p *Preloader) AcquireProposalGuard(build *PreloadBuild, needs *Needs) (*ra
 	return preloadSet, &ProposalGuard{p: p, token: token}, nil
 }
 
-// bloomFilter returns the bloom filter for the given attribute type, or nil if disabled.
+// bloomFilter returns the bloom filter for the given attribute type, or nil
+// if disabled or the bloom set is not yet ready. Readiness and the filter
+// pointer are read from a single Snapshot so we never observe ready=true
+// from one revision paired with a freshly-swapped empty snapshot from the
+// next — that race injected zero-volume preloads after a bloom config
+// change (#317).
 func (p *Preloader) bloomFilter(attrType byte) *bloom.Filter {
-	if p.bloomFilters == nil || !p.bloomFilters.IsReady() {
+	if p.bloomFilters == nil {
 		return nil
 	}
 
-	return p.bloomFilters.FilterForAttrType(attrType)
+	snap := p.bloomFilters.Snapshot()
+	if !snap.Ready() {
+		return nil
+	}
+
+	return snap.FilterForAttrType(attrType)
 }
 
 // buildResult holds the output of a single attribute-type resolution goroutine.
