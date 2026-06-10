@@ -250,3 +250,53 @@ func TestPersistConfig_Overwrite(t *testing.T) {
 	assert.Equal(t, uint64(2), loaded.GetNodeId())
 	assert.Equal(t, "cluster-b", loaded.GetClusterId())
 }
+
+// TestBuildResponseSigner_FailClosedOnMissingKeyFile pins the fix for
+// #325. The previous provider swallowed any LoadSeedFromFile error and
+// returned nil, silently starting the server with response signing
+// disabled even though --response-signing-key was explicitly set —
+// fail-open on a security feature. The fix returns (nil, err) so fx
+// aborts startup.
+func TestBuildResponseSigner_FailClosedOnMissingKeyFile(t *testing.T) {
+	t.Parallel()
+
+	cfg := Config{
+		ResponseSigningKeyFile: filepath.Join(t.TempDir(), "does-not-exist.key"),
+	}
+
+	signer, err := buildResponseSigner(cfg, logging.Testing())
+	require.Error(t, err,
+		"configured-but-unloadable response-signing key MUST surface an error (#325)")
+	require.Nil(t, signer)
+}
+
+// TestBuildResponseSigner_NoFileMeansDisabled documents the opt-in
+// path: when ResponseSigningKeyFile is empty, response signing stays
+// off without an error.
+func TestBuildResponseSigner_NoFileMeansDisabled(t *testing.T) {
+	t.Parallel()
+
+	signer, err := buildResponseSigner(Config{}, logging.Testing())
+	require.NoError(t, err)
+	require.Nil(t, signer)
+}
+
+// TestBuildResponseSigner_LoadsValidKey covers the happy path: a
+// well-formed seed file produces a working signer.
+func TestBuildResponseSigner_LoadsValidKey(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	keyFile := filepath.Join(dir, "signing.seed")
+
+	// 32-byte all-zero seed — perfectly legal Ed25519 input for the test.
+	seed := make([]byte, 32)
+	require.NoError(t, os.WriteFile(keyFile, seed, 0o600))
+
+	cfg := Config{ResponseSigningKeyFile: keyFile}
+
+	signer, err := buildResponseSigner(cfg, logging.Testing())
+	require.NoError(t, err)
+	require.NotNil(t, signer)
+	require.NotEmpty(t, signer.KeyID())
+}

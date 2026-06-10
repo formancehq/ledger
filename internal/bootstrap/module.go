@@ -403,25 +403,7 @@ func Module() fx.Option {
 
 				return receipt.NewSigner([]byte(cfg.ReceiptSigningKey))
 			},
-			func(cfg Config, logger logging.Logger) *signing.ResponseSigner {
-				if cfg.ResponseSigningKeyFile == "" {
-					return nil
-				}
-
-				seed, err := signing.LoadSeedFromFile(cfg.ResponseSigningKeyFile)
-				if err != nil {
-					logger.Errorf("Failed to load response signing key: %v", err)
-
-					return nil
-				}
-
-				signer := signing.NewResponseSigner(seed)
-				logger.WithFields(map[string]any{
-					"key_id": signer.KeyID(),
-				}).Infof("Response signing enabled")
-
-				return signer
-			},
+			buildResponseSigner,
 			func(cfg Config) node.NodeConfig {
 				cfg.RaftConfig.DataDir = cfg.DataDir
 				cfg.RaftConfig.SetDefaults()
@@ -1353,6 +1335,37 @@ func handleConfChangeEvent(
 			logger.WithFields(map[string]any{"error": err}).Errorf("Failed to remove peer from service pool")
 		}
 	}
+}
+
+// buildResponseSigner returns the Ed25519 response signer for the gRPC
+// service plane.
+//
+//   - If --response-signing-key is not set, returns (nil, nil) — response
+//     signing is opt-in and absence is a legitimate configuration.
+//   - If the file IS configured but unreadable / invalid, returns
+//     (nil, err) so fx aborts startup. Returning nil silently here would
+//     fail-open: every response goes unsigned, clients running
+//     VerifyResponseSignatures lose the authenticity guarantee, and the
+//     deployment error (wrong path, bad permissions, corrupt seed) goes
+//     unnoticed apart from one log line (#325).
+//
+// Mirrors the buildAuthConfig contract for Ed25519 auth keys.
+func buildResponseSigner(cfg Config, logger logging.Logger) (*signing.ResponseSigner, error) {
+	if cfg.ResponseSigningKeyFile == "" {
+		return nil, nil //nolint:nilnil // no signer configured is a legitimate state
+	}
+
+	seed, err := signing.LoadSeedFromFile(cfg.ResponseSigningKeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("loading response signing key from %q: %w", cfg.ResponseSigningKeyFile, err)
+	}
+
+	signer := signing.NewResponseSigner(seed)
+	logger.WithFields(map[string]any{
+		"key_id": signer.KeyID(),
+	}).Infof("Response signing enabled")
+
+	return signer, nil
 }
 
 // buildAuthConfig constructs an AuthConfig from the server configuration and optional OIDC KeySet.
