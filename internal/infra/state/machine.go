@@ -439,6 +439,25 @@ func (fsm *Machine) LastAppliedIndex() uint64 {
 	return fsm.lastAppliedIndex
 }
 
+// publishApplied advances lastPersistedIndex and wakes WaitForApplied
+// callers, holding appliedMu so the Store + Broadcast pair cannot
+// interleave with a waiter's Load() / Wait() sequence. Without the lock
+// the writer can complete Store + Broadcast in the window between the
+// waiter's lastPersistedIndex.Load() check and its appliedCond.Wait()
+// call — the broadcast lands on an empty wait queue and the waiter
+// sleeps until ctx cancellation. On an idle cluster (no further
+// publishes) the wake-up never arrives and node.Run's startup gate or
+// ReadIndex stalls until the context times out (#327).
+//
+// lastPersistedIndex stays atomic for the fast-path callers that only
+// need a one-shot read with no readiness wait (e.g. PrepareEntries).
+func (fsm *Machine) publishApplied(idx uint64) {
+	fsm.appliedMu.Lock()
+	fsm.lastPersistedIndex.Store(idx)
+	fsm.appliedCond.Broadcast()
+	fsm.appliedMu.Unlock()
+}
+
 // WaitForApplied blocks until the FSM has applied entries up to (and including) targetIndex,
 // or the context is cancelled. Used by ReadIndex to ensure local state is fresh enough
 // for linearizable reads.
@@ -828,8 +847,7 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 	}
 
 	previousPersisted := fsm.lastPersistedIndex.Load()
-	fsm.lastPersistedIndex.Store(pb.lastAppliedIndex)
-	fsm.appliedCond.Broadcast()
+	fsm.publishApplied(pb.lastAppliedIndex)
 
 	if pb.lastAppliedIndex != previousPersisted+uint64(pb.entryCount) {
 		if fsm.logger.Enabled(logging.DebugLevel) {
@@ -923,8 +941,7 @@ func (fsm *Machine) commitAndRequestCheckpoint(
 		return nil, fmt.Errorf("committing batch for checkpoint: %w", err)
 	}
 
-	fsm.lastPersistedIndex.Store(fsm.lastAppliedIndex)
-	fsm.appliedCond.Broadcast()
+	fsm.publishApplied(fsm.lastAppliedIndex)
 
 	lastSeq := fsm.nextSequenceID - 1
 	fsm.notifier.NotifyLogsCommitted(lastSeq)
