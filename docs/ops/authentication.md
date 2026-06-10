@@ -34,7 +34,7 @@ The ledger uses three authorization scopes. When `--auth-service=ledger`, the sc
 
 | Scope | Operations |
 |-------|------------|
-| `ledger:read` | All read operations (GET HTTP, List*/Get* gRPC RPCs) |
+| `ledger:read` | All read operations (GET HTTP, List*/Get* gRPC RPCs). Also covers `Barrier`, which is read-after-write tooling but proposes a no-op through Raft, so it is authenticated and requires the `ops:read` granular scope (included in the read bundle). |
 | `ledger:write` | All write operations (Apply: create/revert transactions, save/delete metadata, create/delete ledgers, set maintenance mode, etc.) |
 | `ledger:admin` | Cluster operations (GetClusterState, TransferLeadership, Backup, AddLearner, PromoteLearner, RemoveNode, GetDiskUsage, GetNodeTime) |
 
@@ -58,7 +58,6 @@ The following endpoints are always accessible without authentication:
 - **HTTP**: `/health`, `/livez`, `/readyz`
 - **gRPC**: `grpc.health.v1.Health/*`, `BucketService.Discovery`, gRPC reflection
 
-<<<<<<< HEAD
 ## Anonymous Scopes (writes-only mode)
 
 By default, every request must authenticate. To open up a subset of operations to unauthenticated callers — typically: **all reads public, writes still authenticated** — declare *anonymous scopes*.
