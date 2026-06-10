@@ -581,9 +581,20 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 		const ledgerName = "idx-acct-meta-schemachg"
 
 		BeforeAll(func() {
+			// CreateIndex on a metadata key now requires the field to be
+			// declared via SetMetadataFieldType first — the schema field is
+			// no longer created implicitly by the index. Start with type
+			// STRING so the schema-change It-block below can flip it to
+			// INT64 and exercise the reverse-map rewrite path.
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					actions.CreateLedgerAction(ledgerName, nil),
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "score",
+							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+						},
+					}),
 					actions.CreateAccountMetadataIndexAction(ledgerName, "score"),
 				},
 			})
