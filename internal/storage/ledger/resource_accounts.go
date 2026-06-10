@@ -60,6 +60,10 @@ func (h accountsResourceHandler) ResolveFilter(opts common.ResourceQuery[any], o
 	case property == "address":
 		return filterAccountAddress(value.(string), "address"), nil, nil
 	case property == "first_usage" || property == "insertion_date" || property == "updated_at":
+		value, err := common.NormalizeDateFilterValue(value)
+		if err != nil {
+			return "", nil, err
+		}
 		return fmt.Sprintf("%s %s ?", property, common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case balanceRegex.MatchString(property) || property == "balance":
 
@@ -139,15 +143,15 @@ func (h accountsResourceHandler) Expand(opts common.ResourceQuery[any], property
 		selectRowsQuery = selectRowsQuery.
 			ModelTableExpr(h.store.GetPrefixedRelationName("accounts_volumes")).
 			Column("asset", "accounts_address").
-			ColumnExpr("(input, output)::"+h.store.GetPrefixedRelationName("volumes")+" as volumes")
+			ColumnExpr("(input, output)::" + h.store.GetPrefixedRelationName("volumes") + " as volumes")
 	}
 
 	return h.store.db.NewSelect().
-		With("rows", selectRowsQuery).
-		ModelTableExpr("rows").
-		Column("accounts_address").
-		ColumnExpr("public.aggregate_objects(json_build_object(asset, json_build_object('input', (volumes).inputs, 'output', (volumes).outputs))::jsonb) as " + strcase.SnakeCase(property)).
-		Group("accounts_address"), &common.JoinCondition{
+			With("rows", selectRowsQuery).
+			ModelTableExpr("rows").
+			Column("accounts_address").
+			ColumnExpr("public.aggregate_objects(json_build_object(asset, json_build_object('input', (volumes).inputs, 'output', (volumes).outputs))::jsonb) as " + strcase.SnakeCase(property)).
+			Group("accounts_address"), &common.JoinCondition{
 			Left:  "address",
 			Right: "accounts_address",
 		}, nil
