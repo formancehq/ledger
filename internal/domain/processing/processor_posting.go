@@ -83,14 +83,30 @@ func applyPosting(s InMemoryStore, ledgerID uint32, posting *commonpb.Posting, s
 		}
 	}
 
-	// scratch is reused across both volume updates
-	var scratch uint256.Int
+	// scratch is reused across both volume updates. Each mutation uses
+	// AddOverflow and rejects the order on overflow: plain uint256.Add
+	// wraps silently and would let an extreme posting (e.g. world → A of
+	// 2^256-1 followed by 1) wrap A.Input back to 0 while Output stayed
+	// unchanged — money silently created or destroyed (#321). The FSM
+	// apply path discards the WriteSet atomically on error, so erroring
+	// is safe.
+	var scratch, sum uint256.Int
 
-	// Increase Output for source (money going out)
+	// Increase Output for source (money going out).
 	sourceVol := sourceReader.Mutate()
 	sourceVol.GetOutput().IntoUint256(&scratch)
-	scratch.Add(&scratch, &amount)
-	sourceVol.GetOutput().SetFromUint256(&scratch)
+
+	if _, overflow := sum.AddOverflow(&scratch, &amount); overflow {
+		return &domain.ErrVolumeOverflow{
+			Account: posting.GetSource(),
+			Asset:   posting.GetAsset(),
+			Side:    "output",
+			Amount:  amount.Dec(),
+			Current: scratch.Dec(),
+		}
+	}
+
+	sourceVol.GetOutput().SetFromUint256(&sum)
 	s.PutVolume(sourceKey, sourceVol)
 
 	// Destination receives credit - increase Input
@@ -106,8 +122,18 @@ func applyPosting(s InMemoryStore, ledgerID uint32, posting *commonpb.Posting, s
 
 	destVol := destReader.Mutate()
 	destVol.GetInput().IntoUint256(&scratch)
-	scratch.Add(&scratch, &amount)
-	destVol.GetInput().SetFromUint256(&scratch)
+
+	if _, overflow := sum.AddOverflow(&scratch, &amount); overflow {
+		return &domain.ErrVolumeOverflow{
+			Account: posting.GetDestination(),
+			Asset:   posting.GetAsset(),
+			Side:    "input",
+			Amount:  amount.Dec(),
+			Current: scratch.Dec(),
+		}
+	}
+
+	destVol.GetInput().SetFromUint256(&sum)
 	s.PutVolume(destKey, destVol)
 
 	return nil

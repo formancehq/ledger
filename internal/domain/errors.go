@@ -168,6 +168,27 @@ func (e *ErrInsufficientFunds) Error() string {
 	)
 }
 
+// ErrVolumeOverflow is returned when a posting would push an account's Input
+// or Output volume past 2^256. Posting amounts are unbounded 256-bit values
+// supplied by the API and the cumulative volumes are themselves uint256, so
+// the addition can wrap silently. A wrap on the destination Input or on a
+// `world` / `Force=true` source Output would silently create or destroy
+// funds; the FSM rejects the order instead (#321).
+type ErrVolumeOverflow struct {
+	Account string
+	Asset   string
+	Side    string // "input" or "output"
+	Amount  string // requested amount (decimal string)
+	Current string // current volume on that side (decimal string)
+}
+
+func (e *ErrVolumeOverflow) Error() string {
+	return fmt.Sprintf(
+		"%s volume overflow on account %q for asset %s: current=%s + amount=%s exceeds 2^256",
+		e.Side, e.Account, e.Asset, e.Current, e.Amount,
+	)
+}
+
 // ErrBalanceNotFound is returned when the balance for a source account cannot be determined.
 type ErrBalanceNotFound struct {
 	Account string

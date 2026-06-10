@@ -3,6 +3,7 @@ package processing
 import (
 	"testing"
 
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
@@ -172,4 +173,104 @@ func TestApplyPosting_NotPreloaded(t *testing.T) {
 	err := applyPosting(mockStore, 0, posting, false, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not fully preloaded")
+}
+
+// uint256Max returns the maximum uint256 value (2^256 - 1).
+func uint256Max() *uint256.Int {
+	var m uint256.Int
+	m.SubUint64(&m, 1) // 0 - 1 wraps to 2^256-1
+
+	return &m
+}
+
+// TestApplyPosting_DestinationInputOverflow_Rejects pins the fix for
+// #321. Before this PR the destination Input was incremented with plain
+// uint256.Add, which wraps silently on overflow: two API calls
+// `world → A` of (2^256-1) then 1 would wrap A.Input back to 0 while
+// Output stayed unchanged — money silently created. The fix uses
+// AddOverflow and rejects the order; the FSM apply path discards the
+// WriteSet atomically on error.
+func TestApplyPosting_DestinationInputOverflow_Rejects(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockInMemoryStore(ctrl)
+
+	sourceKey := domain.NewVolumeKey(0, "world", "USD")
+	destKey := domain.NewVolumeKey(0, "users:001", "USD")
+
+	// world output is 0 — safe to add anything on the source side.
+	worldVol := &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
+	}
+	// Destination Input already at 2^256-1, so any positive amount
+	// overflows on Input.
+	destVol := &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256(uint256Max()),
+		Output: commonpb.NewUint256FromUint64(0),
+	}
+
+	mockStore.EXPECT().GetVolume(sourceKey).Return(worldVol.AsReader(), nil)
+	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any())
+	mockStore.EXPECT().GetVolume(destKey).Return(destVol.AsReader(), nil)
+	// destination PutVolume must NOT be called once the overflow is
+	// detected.
+
+	posting := &commonpb.Posting{
+		Source:      "world",
+		Destination: "users:001",
+		Amount:      commonpb.NewUint256FromUint64(1),
+		Asset:       "USD",
+	}
+
+	err := applyPosting(mockStore, 0, posting, false, nil)
+	require.Error(t, err)
+
+	var overflowErr *domain.ErrVolumeOverflow
+	require.ErrorAs(t, err, &overflowErr,
+		"posting that overflows destination Input must surface ErrVolumeOverflow (#321)")
+	require.Equal(t, "users:001", overflowErr.Account)
+	require.Equal(t, "USD", overflowErr.Asset)
+	require.Equal(t, "input", overflowErr.Side)
+}
+
+// TestApplyPosting_SourceOutputOverflow_Rejects covers the
+// world-source path: the balance check is skipped for `world` so the
+// source Output mutation is the one that can wrap. We seed world's
+// Output at 2^256-1 and try to add 1.
+func TestApplyPosting_SourceOutputOverflow_Rejects(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockInMemoryStore(ctrl)
+
+	sourceKey := domain.NewVolumeKey(0, "world", "USD")
+
+	worldVol := &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256(uint256Max()),
+	}
+
+	mockStore.EXPECT().GetVolume(sourceKey).Return(worldVol.AsReader(), nil)
+	// source PutVolume must NOT be called once the overflow is detected.
+
+	posting := &commonpb.Posting{
+		Source:      "world",
+		Destination: "users:001",
+		Amount:      commonpb.NewUint256FromUint64(1),
+		Asset:       "USD",
+	}
+
+	err := applyPosting(mockStore, 0, posting, false, nil)
+	require.Error(t, err)
+
+	var overflowErr *domain.ErrVolumeOverflow
+	require.ErrorAs(t, err, &overflowErr)
+	require.Equal(t, "world", overflowErr.Account)
+	require.Equal(t, "output", overflowErr.Side)
 }

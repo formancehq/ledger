@@ -59,6 +59,7 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 
 	var (
 		scratch    uint256.Int // reused across all postings
+		sum        uint256.Int
 		u256Amount uint256.Int
 	)
 
@@ -95,8 +96,20 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 
 		sourceVol := sourceReader.Mutate()
 		sourceVol.GetOutput().IntoUint256(&scratch)
-		scratch.Add(&scratch, &u256Amount)
-		sourceVol.GetOutput().SetFromUint256(&scratch)
+
+		// AddOverflow: plain Add would wrap silently and let extreme
+		// Numscript-driven postings silently destroy funds. See #321.
+		if _, overflow := sum.AddOverflow(&scratch, &u256Amount); overflow {
+			return nil, &domain.ErrVolumeOverflow{
+				Account: posting.Source,
+				Asset:   posting.Asset,
+				Side:    "output",
+				Amount:  u256Amount.Dec(),
+				Current: scratch.Dec(),
+			}
+		}
+
+		sourceVol.GetOutput().SetFromUint256(&sum)
 		s.PutVolume(sourceKey, sourceVol)
 
 		// Update destination input (money coming in)
@@ -116,8 +129,18 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 
 		destVol := destReader.Mutate()
 		destVol.GetInput().IntoUint256(&scratch)
-		scratch.Add(&scratch, &u256Amount)
-		destVol.GetInput().SetFromUint256(&scratch)
+
+		if _, overflow := sum.AddOverflow(&scratch, &u256Amount); overflow {
+			return nil, &domain.ErrVolumeOverflow{
+				Account: posting.Destination,
+				Asset:   posting.Asset,
+				Side:    "input",
+				Amount:  u256Amount.Dec(),
+				Current: scratch.Dec(),
+			}
+		}
+
+		destVol.GetInput().SetFromUint256(&sum)
 		s.PutVolume(destKey, destVol)
 	}
 
