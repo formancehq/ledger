@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -174,6 +175,54 @@ func (c Config) EffectiveRestoreListen() string {
 	}
 
 	return c.RestoreListen
+}
+
+// RedactedSecretPlaceholder replaces inline secret values when the config is
+// rendered (e.g. printed at startup), so cluster secrets and signing keys never
+// leak into terminals, CI logs, or support bundles.
+const RedactedSecretPlaceholder = "***REDACTED***"
+
+// redactedCopy returns a copy of the config with inline secrets blanked, as a
+// type that carries no Marshal methods — so json/yaml render it as plain fields
+// without recursing back into MarshalJSON/MarshalYAML. A non-empty secret
+// becomes the placeholder; an empty one is left empty to preserve "is it
+// configured?" visibility. New secret fields must be added here (single source
+// of truth) so both encoders stay redacted.
+func (c Config) redactedCopy() configAlias {
+	redacted := configAlias(c)
+
+	if redacted.ReceiptSigningKey != "" {
+		redacted.ReceiptSigningKey = RedactedSecretPlaceholder
+	}
+
+	if redacted.ClusterSecret != "" {
+		redacted.ClusterSecret = RedactedSecretPlaceholder
+	}
+
+	// PoolConfig.AuthToken carries the inter-node bearer token (set to the
+	// cluster secret); redact it too even though it is populated after startup.
+	if redacted.PoolConfig.AuthToken != "" {
+		redacted.PoolConfig.AuthToken = RedactedSecretPlaceholder
+	}
+
+	return redacted
+}
+
+// configAlias has Config's fields but none of its methods, breaking the
+// marshal recursion in redactedCopy.
+type configAlias Config
+
+// MarshalYAML redacts inline secret fields before the config is serialized.
+// Config is only marshaled for display, so redacting at the type level
+// guarantees secrets are never rendered regardless of the call site or format.
+func (c Config) MarshalYAML() (any, error) {
+	return c.redactedCopy(), nil
+}
+
+// MarshalJSON mirrors MarshalYAML so JSON output (e.g. a future --output json)
+// is redacted too — encoding/json does not honor MarshalYAML.
+func (c Config) MarshalJSON() ([]byte, error) {
+	return json.Marshal(c.redactedCopy())
 }
 
 func (c Config) Validate() error {
