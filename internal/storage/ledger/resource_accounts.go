@@ -67,6 +67,10 @@ func (h accountsResourceHandler) ResolveFilter(opts common.ResourceQuery[any], o
 		}
 
 	case property == "first_usage" || property == "insertion_date" || property == "updated_at":
+		value, err := common.NormalizeDateFilterValue(value)
+		if err != nil {
+			return "", nil, err
+		}
 		return fmt.Sprintf("%s %s ?", property, common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case balanceRegex.MatchString(property) || property == "balance":
 
