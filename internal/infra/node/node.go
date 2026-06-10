@@ -1307,6 +1307,25 @@ func isStopping(stop chan struct{}) bool {
 	}
 }
 
+// shouldTickRaft returns true if the orchestrate loop should call
+// rawNode.Tick() for the given applier status.
+//
+// Tick MUST keep firing during statusGated. The applier enters statusGated
+// for ClosePeriod seal checkpoints and query checkpoints — on the leader
+// AND on followers. Suppressing Tick on the leader means no MsgHeartbeat
+// is emitted for the entire duration of a checkpoint, and any checkpoint
+// longer than the election timeout (default 1s) lets followers depose the
+// leader on every period close. Tick only needs to be suppressed when the
+// node is genuinely behind raft state (#316).
+func shouldTickRaft(status int32) bool {
+	switch status {
+	case statusOutOfSync, statusInstallingSnapshot:
+		return false
+	default:
+		return true
+	}
+}
+
 func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 	tickInterval := node.config.TickInterval
 	if tickInterval == 0 {
@@ -1384,14 +1403,16 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 	for {
 		select {
 		case <-ticker.C:
-			// Prevent election timeouts from happening while syncing the Machine
 			status := node.applier.Status()
-			if status == statusNormal {
+			if shouldTickRaft(status) {
 				node.rawNode.Tick()
+			}
 
-				if node.config.AutoPromoteThreshold > 0 {
-					node.checkAndPromoteLearners()
-				}
+			// Learner promotion proposes a ConfChange; keep it strictly to
+			// the normal path so we don't try to drive cluster topology
+			// while a maintenance window is open.
+			if status == statusNormal && node.config.AutoPromoteThreshold > 0 {
+				node.checkAndPromoteLearners()
 			}
 		case msgs := <-node.transport.RecvHighPriority():
 			err := stepMessages(msgs)
