@@ -182,8 +182,16 @@ func SetupMultiNodeCluster(
 	servers := make([]*ServiceWithClient, 0, countInstances)
 
 	startNode := func(i int, extraInstruments ...testservice.Instrumentation) {
-		walTmpDir := GinkgoT().TempDir()
-		dataTmpDir := GinkgoT().TempDir()
+		// Use os.MkdirTemp directly rather than GinkgoT().TempDir(): in a
+		// BeforeAll, GinkgoT() resolves to the first spec's testing.T and
+		// Go's testing package wipes the dir at the end of that spec —
+		// which silently empties the node's WAL and Pebble between Its
+		// inside the same Ordered container, so any rolling/restart
+		// scenario starts the second It with a blank state.
+		walTmpDir, err := os.MkdirTemp("", "ledger-wal-*")
+		Expect(err).To(Succeed())
+		dataTmpDir, err := os.MkdirTemp("", "ledger-data-*")
+		Expect(err).To(Succeed())
 		DeferCleanup(func() {
 			Expect(os.RemoveAll(walTmpDir)).To(Succeed())
 			Expect(os.RemoveAll(dataTmpDir)).To(Succeed())
