@@ -89,7 +89,7 @@ type InMemoryStore interface {
 	GetPeriodByID(periodID uint64) (*commonpb.Period, bool)
 	UpdatePeriod(period *commonpb.Period)
 	SetPurgeRange(periodID, startSequence, closeSequence, startAuditSequence, closeAuditSequence uint64)
-	SetPendingArchive(periodID, startSequence, closeSequence uint64)
+	SetPendingArchive(periodID, startSequence, closeSequence, startAuditSequence, closeAuditSequence uint64)
 
 	// Metadata conversion requests
 	AddMetadataConvertRequest(ledgerName string, targetType commonpb.TargetType, key string, metadataType commonpb.MetadataType)

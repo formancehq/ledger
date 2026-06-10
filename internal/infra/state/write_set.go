@@ -1077,11 +1077,13 @@ func (b *WriteSet) SetPurgeRange(periodID, startSequence, closeSequence, startAu
 // SetPendingArchive records a period that needs archiving after the batch is committed.
 // The Machine reads this after Merge() to construct and send the ArchiveRequest.
 // Can be called multiple times to archive multiple periods in the same batch.
-func (b *WriteSet) SetPendingArchive(periodID, startSequence, closeSequence uint64) {
+func (b *WriteSet) SetPendingArchive(periodID, startSequence, closeSequence, startAuditSequence, closeAuditSequence uint64) {
 	b.pendingArchives = append(b.pendingArchives, ArchiveRequest{
-		PeriodID:      periodID,
-		StartSequence: startSequence,
-		CloseSequence: closeSequence,
+		PeriodID:           periodID,
+		StartSequence:      startSequence,
+		CloseSequence:      closeSequence,
+		StartAuditSequence: startAuditSequence,
+		CloseAuditSequence: closeAuditSequence,
 	})
 }
 

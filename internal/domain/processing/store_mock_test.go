@@ -814,15 +814,15 @@ func (mr *MockInMemoryStoreMockRecorder) SetMaintenanceMode(enabled any) *gomock
 }
 
 // SetPendingArchive mocks base method.
-func (m *MockInMemoryStore) SetPendingArchive(periodID, startSequence, closeSequence uint64) {
+func (m *MockInMemoryStore) SetPendingArchive(periodID, startSequence, closeSequence, startAuditSequence, closeAuditSequence uint64) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "SetPendingArchive", periodID, startSequence, closeSequence)
+	m.ctrl.Call(m, "SetPendingArchive", periodID, startSequence, closeSequence, startAuditSequence, closeAuditSequence)
 }
 
 // SetPendingArchive indicates an expected call of SetPendingArchive.
-func (mr *MockInMemoryStoreMockRecorder) SetPendingArchive(periodID, startSequence, closeSequence any) *gomock.Call {
+func (mr *MockInMemoryStoreMockRecorder) SetPendingArchive(periodID, startSequence, closeSequence, startAuditSequence, closeAuditSequence any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetPendingArchive", reflect.TypeOf((*MockInMemoryStore)(nil).SetPendingArchive), periodID, startSequence, closeSequence)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetPendingArchive", reflect.TypeOf((*MockInMemoryStore)(nil).SetPendingArchive), periodID, startSequence, closeSequence, startAuditSequence, closeAuditSequence)
 }
 
 // SetPeriodSchedule mocks base method.

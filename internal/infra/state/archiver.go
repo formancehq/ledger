@@ -21,10 +21,19 @@ import (
 )
 
 // ArchiveRequest contains the data needed to archive a period.
+//
+// Logs and audit entries advance on independent sequence counters, so the
+// archive must carry BOTH ranges (#312). Iterating `SubColdAudit` /
+// `SubColdAuditItem` with the log range silently drops every audit entry
+// whose audit sequence happens to fall outside the log window — and the
+// subsequent purge still removes them from Pebble. The audit trail goes
+// straight to the floor.
 type ArchiveRequest struct {
-	PeriodID      uint64
-	StartSequence uint64 // First log sequence in the period
-	CloseSequence uint64 // Last log sequence in the period (the ClosePeriod log)
+	PeriodID           uint64
+	StartSequence      uint64 // First log sequence in the period
+	CloseSequence      uint64 // Last log sequence in the period (the ClosePeriod log)
+	StartAuditSequence uint64 // First audit sequence in the period
+	CloseAuditSequence uint64 // Last audit sequence when the period was closed
 }
 
 // ArchiveProposer is a callback to propose a ConfirmArchivePeriod order back into Raft.
@@ -241,9 +250,11 @@ func (a *Archiver) verifyExistingArchive(ctx context.Context, periodID uint64) e
 // non-deterministic field would break checksum verification — keep this
 // struct boring.
 type periodMetadata struct {
-	PeriodID      uint64 `json:"periodId"`
-	StartSequence uint64 `json:"startSequence"`
-	CloseSequence uint64 `json:"closeSequence"`
+	PeriodID           uint64 `json:"periodId"`
+	StartSequence      uint64 `json:"startSequence"`
+	CloseSequence      uint64 `json:"closeSequence"`
+	StartAuditSequence uint64 `json:"startAuditSequence"`
+	CloseAuditSequence uint64 `json:"closeAuditSequence"`
 }
 
 // MetadataKey is the SST key used for period metadata.
@@ -289,10 +300,15 @@ func (a *Archiver) buildSSTArchive(req ArchiveRequest) (string, []byte, error) {
 		return "", nil, fmt.Errorf("writing metadata to SST: %w", err)
 	}
 
-	// 2. Write all cold-storable KV pairs (already sorted from Pebble)
-	if err := a.dataStore.IterateColdKVPairs(req.StartSequence, req.CloseSequence, func(key, value []byte) error {
-		return writer.Set(key, value)
-	}); err != nil {
+	// 2. Write all cold-storable KV pairs (already sorted from Pebble). Logs
+	// and audit have independent sequence counters; the store applies each
+	// range to its own zone (#312).
+	if err := a.dataStore.IterateColdKVPairs(
+		req.StartSequence, req.CloseSequence,
+		req.StartAuditSequence, req.CloseAuditSequence,
+		func(key, value []byte) error {
+			return writer.Set(key, value)
+		}); err != nil {
 		_ = writer.Close()
 		_ = os.Remove(tmpPath)
 

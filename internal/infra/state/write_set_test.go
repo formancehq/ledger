@@ -428,11 +428,13 @@ func TestWriteSetSetPendingArchive(t *testing.T) {
 	buf, _ := newTestBuffer(t)
 
 	require.Empty(t, buf.pendingArchives)
-	buf.SetPendingArchive(1, 10, 50)
+	buf.SetPendingArchive(1, 10, 50, 5, 25)
 	require.Len(t, buf.pendingArchives, 1)
 	require.Equal(t, uint64(1), buf.pendingArchives[0].PeriodID)
 	require.Equal(t, uint64(10), buf.pendingArchives[0].StartSequence)
 	require.Equal(t, uint64(50), buf.pendingArchives[0].CloseSequence)
+	require.Equal(t, uint64(5), buf.pendingArchives[0].StartAuditSequence)
+	require.Equal(t, uint64(25), buf.pendingArchives[0].CloseAuditSequence)
 }
 
 func TestWriteSetAddMetadataConvertRequest(t *testing.T) {
@@ -480,7 +482,7 @@ func TestWriteSetResetIsolation(t *testing.T) {
 	buf.SetRequireSignatures(true)
 	buf.SetPeriodSchedule("*/5 * * * *")
 	buf.SetPurgeRange(1, 10, 50, 5, 25)
-	buf.SetPendingArchive(1, 10, 50)
+	buf.SetPendingArchive(1, 10, 50, 5, 25)
 	buf.AddMetadataConvertRequest("ledger-1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "email", commonpb.MetadataType_METADATA_TYPE_STRING)
 
 	// Verify data is present before Reset

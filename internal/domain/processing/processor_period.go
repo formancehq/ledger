@@ -98,7 +98,7 @@ func (p *RequestProcessor) processArchivePeriod(order *raftcmdpb.ArchivePeriodOr
 	s.UpdatePeriod(period)
 
 	// Signal the Machine to send an archive request after batch commit
-	s.SetPendingArchive(period.GetId(), period.GetStartSequence(), period.GetCloseSequence())
+	s.SetPendingArchive(period.GetId(), period.GetStartSequence(), period.GetCloseSequence(), period.GetStartAuditSequence(), period.GetCloseAuditSequence())
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_ArchivePeriod{

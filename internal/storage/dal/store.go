@@ -1262,12 +1262,19 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	return nil
 }
 
-// IterateColdKVPairs iterates all cold-storable KV pairs whose sequence (or byLog)
-// falls in [startSeq, closeSeq] and calls fn for each raw key+value.
-// IterateColdKVPairs iterates sequence-keyed prefixes (logs, audit) via efficient range scan.
-// Transaction updates are not archived: they are redundant with log entries which already
-// contain all creation, revert, and metadata information.
-func (s *Store) IterateColdKVPairs(startSeq, closeSeq uint64, fn func(key, value []byte) error) error {
+// IterateColdKVPairs iterates every cold-storable KV pair belonging to a
+// period via efficient prefixed range scans.
+//
+// Logs and audit entries advance on independent sequence counters, so the
+// caller must supply both ranges. SubColdLog is scanned with the log range;
+// SubColdAudit and SubColdAuditItem are scanned with the audit range. Mixing
+// them (#312) drops every audit entry that happens to fall outside the log
+// window — and the matching purge still removes it from Pebble, permanently
+// losing the audit trail.
+//
+// Transaction updates are not archived: they are redundant with log entries
+// which already contain all creation, revert, and metadata information.
+func (s *Store) IterateColdKVPairs(logStart, logClose, auditStart, auditClose uint64, fn func(key, value []byte) error) error {
 	s.dbMu.RLock()
 	defer s.dbMu.RUnlock()
 
@@ -1276,9 +1283,25 @@ func (s *Store) IterateColdKVPairs(startSeq, closeSeq uint64, fn func(key, value
 		return ErrStoreClosed
 	}
 
+	rangeFor := func(sub byte) (low, high uint64) {
+		if sub == SubColdLog {
+			return logStart, logClose
+		}
+
+		return auditStart, auditClose
+	}
+
 	for _, zp := range ColdSequencePrefixes {
-		lowerBound := NewKeyBuilder().PutZonePrefix(zp[0], zp[1]).PutUint64(startSeq).Build()
-		upperBound := NewKeyBuilder().PutZonePrefix(zp[0], zp[1]).PutUint64(closeSeq + 1).Build()
+		low, high := rangeFor(zp[1])
+
+		// Audit range may legitimately be empty (high < low) when no audit
+		// entries were produced in the period. Skip the scan in that case.
+		if high < low {
+			continue
+		}
+
+		lowerBound := NewKeyBuilder().PutZonePrefix(zp[0], zp[1]).PutUint64(low).Build()
+		upperBound := NewKeyBuilder().PutZonePrefix(zp[0], zp[1]).PutUint64(high + 1).Build()
 
 		err := iterateRawRange(db, lowerBound, upperBound, fn)
 		if err != nil {

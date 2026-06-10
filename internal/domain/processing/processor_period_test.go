@@ -253,18 +253,20 @@ func TestProcessArchivePeriod_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	closedPeriod := &commonpb.Period{
-		Id:            1,
-		Status:        commonpb.PeriodStatus_PERIOD_CLOSED,
-		StartSequence: 1,
-		CloseSequence: 42,
-		SealingHash:   []byte("seal-hash"),
+		Id:                 1,
+		Status:             commonpb.PeriodStatus_PERIOD_CLOSED,
+		StartSequence:      1,
+		CloseSequence:      42,
+		StartAuditSequence: 3,
+		CloseAuditSequence: 17,
+		SealingHash:        []byte("seal-hash"),
 	}
 
 	mockStore.EXPECT().GetPeriodByID(uint64(1)).Return(closedPeriod, true)
 	mockStore.EXPECT().UpdatePeriod(gomock.Any()).Do(func(period *commonpb.Period) {
 		require.Equal(t, commonpb.PeriodStatus_PERIOD_ARCHIVING, period.GetStatus())
 	})
-	mockStore.EXPECT().SetPendingArchive(uint64(1), uint64(1), uint64(42))
+	mockStore.EXPECT().SetPendingArchive(uint64(1), uint64(1), uint64(42), uint64(3), uint64(17))
 
 	payload, err := processor.processArchivePeriod(&raftcmdpb.ArchivePeriodOrder{PeriodId: 1}, mockStore)
 	require.NoError(t, err)

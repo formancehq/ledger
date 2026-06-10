@@ -238,7 +238,7 @@ The crash-recovery path is what catches truncation or post-upload bit rot: an SS
 
 ### Determinism of archive content
 
-The SST produced by `buildSSTArchive` is a deterministic function of the period being archived: identical periods produce byte-identical SSTs. `periodMetadata` carries only `periodId`, `startSequence`, and `closeSequence` — no timestamps, no nonces. This is enforced by `TestArchiver_BuildSSTIsDeterministic`. Adding a non-deterministic field would invalidate the checksum reference on re-upload and is treated as a regression.
+The SST produced by `buildSSTArchive` is a deterministic function of the period being archived: identical periods produce byte-identical SSTs. `periodMetadata` carries only `periodId`, `startSequence`, `closeSequence`, `startAuditSequence`, and `closeAuditSequence` — no timestamps, no nonces. The two audit-sequence fields were added in #312 so the SST is scoped to BOTH the log range AND the (independent) audit-sequence range; otherwise audit entries would silently miss the archive and then be purged. This contract is enforced by `TestArchiver_BuildSSTIsDeterministic`. Adding a non-deterministic field would invalidate the checksum reference on re-upload and is treated as a regression.
 
 ## Integrity Guarantees
 

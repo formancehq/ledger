@@ -324,7 +324,7 @@ func TestStore_IterateColdKVPairs(t *testing.T) {
 	// that effectively captures sequences startSeq through closeSeq for each prefix.
 	var collected []string
 
-	err := s.IterateColdKVPairs(1, 3, func(key, value []byte) error {
+	err := s.IterateColdKVPairs(1, 3, 1, 3, func(key, value []byte) error {
 		collected = append(collected, string(value))
 
 		return nil
@@ -343,13 +343,111 @@ func TestStore_IterateColdKVPairs_NoMatches(t *testing.T) {
 
 	var count int
 
-	err := s.IterateColdKVPairs(100, 200, func(key, value []byte) error {
+	err := s.IterateColdKVPairs(100, 200, 100, 200, func(key, value []byte) error {
 		count++
 
 		return nil
 	})
 	require.NoError(t, err)
 	require.Equal(t, 0, count)
+}
+
+// TestStore_IterateColdKVPairs_AuditRangeAppliedToAuditZones pins the fix
+// for #312. Logs and audit advance on independent sequence counters, so the
+// archiver must hand BOTH ranges to IterateColdKVPairs. Before the fix the
+// audit zones were scanned with the log range, silently dropping every
+// audit entry whose audit sequence happened to fall outside the log window
+// — and the subsequent purge still removed them from Pebble.
+func TestStore_IterateColdKVPairs_AuditRangeAppliedToAuditZones(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	kb := NewKeyBuilder()
+
+	// Period: log range [10, 20], audit range [3, 5].
+	// The two windows do not overlap on purpose — that is precisely the case
+	// that broke the archiver before #312.
+	batch := s.NewBatch()
+
+	logKeys := []uint64{10, 15, 20}
+	for _, seq := range logKeys {
+		k := kb.PutZonePrefix(ZoneCold, SubColdLog).PutUint64(seq).Build()
+		require.NoError(t, batch.SetBytes(k, []byte("log")))
+	}
+
+	auditKeys := []uint64{3, 4, 5}
+	for _, seq := range auditKeys {
+		k := kb.PutZonePrefix(ZoneCold, SubColdAudit).PutUint64(seq).Build()
+		require.NoError(t, batch.SetBytes(k, []byte("audit")))
+
+		item := kb.PutZonePrefix(ZoneCold, SubColdAuditItem).PutUint64(seq).PutUint32(0).Build()
+		require.NoError(t, batch.SetBytes(item, []byte("audit-item")))
+	}
+
+	// A separate audit entry at seq=20 — would be picked up if the audit
+	// zone was (incorrectly) scanned with the log range.
+	straySeq := uint64(20)
+	strayKey := kb.PutZonePrefix(ZoneCold, SubColdAudit).PutUint64(straySeq).Build()
+	require.NoError(t, batch.SetBytes(strayKey, []byte("audit-stray")))
+
+	require.NoError(t, batch.Commit())
+
+	var (
+		logs        int
+		audits      int
+		auditItems  int
+		strayPicked bool
+	)
+
+	err := s.IterateColdKVPairs(10, 20, 3, 5, func(key, _ []byte) error {
+		switch key[1] {
+		case SubColdLog:
+			logs++
+		case SubColdAudit:
+			audits++
+			if len(key) == 10 {
+				// Check whether this is the audit entry at the stray seq.
+				if seq := readUint64(key[2:10]); seq == straySeq {
+					strayPicked = true
+				}
+			}
+		case SubColdAuditItem:
+			auditItems++
+		}
+
+		return nil
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, len(logKeys), logs, "log zone must be scanned with the log range")
+	require.Equal(t, len(auditKeys), audits, "audit zone must be scanned with the audit range")
+	require.Equal(t, len(auditKeys), auditItems, "audit-item zone must be scanned with the audit range")
+	require.False(t, strayPicked, "audit entry outside the audit range must NOT be archived (#312)")
+}
+
+// TestStore_IterateColdKVPairs_EmptyAuditRangeNoop documents that a period
+// with no audit entries (close < start by convention) skips the audit
+// scans entirely instead of erroring.
+func TestStore_IterateColdKVPairs_EmptyAuditRangeNoop(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+
+	err := s.IterateColdKVPairs(0, 10, 1, 0, func(_, _ []byte) error {
+		t.Fatal("no rows expected — empty audit range and empty log zone")
+
+		return nil
+	})
+	require.NoError(t, err)
+}
+
+func readUint64(b []byte) uint64 {
+	var v uint64
+	for i := 0; i < 8 && i < len(b); i++ {
+		v = (v << 8) | uint64(b[i])
+	}
+
+	return v
 }
 
 func TestStore_NewIter(t *testing.T) {

@@ -727,9 +727,11 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, entries ...raftpb.Entry)
 		for _, p := range fsm.Periods.AllPeriods() {
 			if p.GetStatus() == commonpb.PeriodStatus_PERIOD_ARCHIVING {
 				pb.archiveRequests = append(pb.archiveRequests, ArchiveRequest{
-					PeriodID:      p.GetId(),
-					StartSequence: p.GetStartSequence(),
-					CloseSequence: p.GetCloseSequence(),
+					PeriodID:           p.GetId(),
+					StartSequence:      p.GetStartSequence(),
+					CloseSequence:      p.GetCloseSequence(),
+					StartAuditSequence: p.GetStartAuditSequence(),
+					CloseAuditSequence: p.GetCloseAuditSequence(),
 				})
 			}
 		}
@@ -1499,9 +1501,11 @@ func (fsm *Machine) DispatchArchiveRequests(stop <-chan struct{}) {
 	for _, p := range fsm.Periods.AllPeriods() {
 		if p.GetStatus() == commonpb.PeriodStatus_PERIOD_ARCHIVING {
 			req := ArchiveRequest{
-				PeriodID:      p.GetId(),
-				StartSequence: p.GetStartSequence(),
-				CloseSequence: p.GetCloseSequence(),
+				PeriodID:           p.GetId(),
+				StartSequence:      p.GetStartSequence(),
+				CloseSequence:      p.GetCloseSequence(),
+				StartAuditSequence: p.GetStartAuditSequence(),
+				CloseAuditSequence: p.GetCloseAuditSequence(),
 			}
 
 			if stop != nil {

@@ -436,7 +436,7 @@ func (s *inMemoryStore) UpdatePeriod(_ *commonpb.Period) {}
 
 func (s *inMemoryStore) SetPurgeRange(_, _, _, _, _ uint64) {}
 
-func (s *inMemoryStore) SetPendingArchive(_, _, _ uint64) {}
+func (s *inMemoryStore) SetPendingArchive(_, _, _, _, _ uint64) {}
 
 func (s *inMemoryStore) AddMetadataConvertRequest(_ string, _ commonpb.TargetType, _ string, _ commonpb.MetadataType) {
 }
