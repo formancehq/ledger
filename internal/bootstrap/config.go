@@ -147,7 +147,11 @@ type Config struct {
 	// opts in. Set to "0.0.0.0" or a specific external interface to allow
 	// remote calls (requires TLS + upstream firewalling — restore RPCs are
 	// not authenticated today).
-	RestoreListen               string
+	RestoreListen string
+	// RestoreDownloadParallelism caps the number of concurrent S3 file downloads
+	// during an async restore. 0 means use the default (16). The server clamps
+	// the effective value to [1, 64].
+	RestoreDownloadParallelism  int
 	NumscriptCacheSize          int
 	MirrorMaxBatchSize          int
 	UnsafeSkipConfigValidation  bool

@@ -19,7 +19,6 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/application/check"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -29,6 +28,17 @@ import (
 
 const (
 	restoreStagingDir = "restore-staging"
+
+	// defaultDownloadParallelism is the fallback when no --restore-download-parallelism
+	// flag is provided. 16 saturates typical S3 throughput without flooding the
+	// node's file descriptor budget or Pebble's open-files limit.
+	defaultDownloadParallelism = 16
+
+	// minDownloadParallelism / maxDownloadParallelism clamp the configured value
+	// so a misconfigured operator cannot disable parallelism entirely or open
+	// hundreds of concurrent S3 connections.
+	minDownloadParallelism = 1
+	maxDownloadParallelism = 64
 
 	// maxRestoreManifestBytes caps how much of the manifest we read from
 	// S3 into memory. A real Pebble backup manifest is JSON describing
@@ -91,19 +101,52 @@ func safeStagingPath(stagingDir, filename string) (string, error) {
 	return dest, nil
 }
 
+// clampParallelism returns a download parallelism value within [min, max],
+// substituting the default when v == 0.
+func clampParallelism(v int) int {
+	if v == 0 {
+		v = defaultDownloadParallelism
+	}
+
+	if v < minDownloadParallelism {
+		return minDownloadParallelism
+	}
+
+	if v > maxDownloadParallelism {
+		return maxDownloadParallelism
+	}
+
+	return v
+}
+
 // RestoreServiceServerImpl implements the RestoreService gRPC server.
+//
+// The download phase is decoupled from the calling RPC context: StartDownloadBackup
+// kicks off a background job and returns immediately, GetDownloadStatus exposes
+// the running state, and CancelDownload aborts it. This avoids ingress / load
+// balancer timeouts on multi-hour transfers (issue #349).
 type RestoreServiceServerImpl struct {
 	restorepb.UnimplementedRestoreServiceServer
 
 	mu          sync.Mutex
 	dataDir     string
 	clusterID   string
+	parallelism int // effective per-job worker count, already clamped
 	logger      logging.Logger
 	downloading bool
 	downloaded  bool
 
+	// job holds the single active download (if any). Only one job runs at a
+	// time because the staging directory is a singleton. Successive Start
+	// calls reject while a job is RUNNING and after a SUCCEEDED job — the
+	// caller must Finalize or restart the server.
+	//
+	// A terminal job (SUCCEEDED / FAILED / CANCELED) stays in this field so
+	// the client can still poll its final state via GetDownloadStatus.
+	job *downloadJob
+
 	// stagingStore is the read-write Pebble handle on the staging directory,
-	// opened by DownloadBackup once the download is complete and the export
+	// opened by the download job once the data is in place and the export
 	// segments have been applied, and kept alive for the rest of the restore
 	// lifecycle. ValidateRestore, PreviewRestore, and FinalizeRestore all
 	// reuse it instead of re-opening the staging Pebble in the same process
@@ -112,14 +155,22 @@ type RestoreServiceServerImpl struct {
 	// metadata for thousands of SSTs on a 1+ TB staging directory would be
 	// gratuitously slow.
 	stagingStore *dal.Store
+
+	// storageFactory builds the backup.Storage used by a download job.
+	// Production code leaves this nil (defaults to S3); tests inject a fake
+	// to avoid touching live infrastructure.
+	storageFactory storageFactory
 }
 
-// NewRestoreServiceServer creates a new RestoreServiceServerImpl.
-func NewRestoreServiceServer(dataDir, clusterID string, logger logging.Logger) *RestoreServiceServerImpl {
+// NewRestoreServiceServer creates a new RestoreServiceServerImpl. parallelism
+// caps concurrent S3 file downloads during the async download phase; 0 falls
+// back to the default and out-of-range values are clamped to [1, 64].
+func NewRestoreServiceServer(dataDir, clusterID string, parallelism int, logger logging.Logger) *RestoreServiceServerImpl {
 	return &RestoreServiceServerImpl{
-		dataDir:   dataDir,
-		clusterID: clusterID,
-		logger:    logger,
+		dataDir:     dataDir,
+		clusterID:   clusterID,
+		parallelism: clampParallelism(parallelism),
+		logger:      logger,
 	}
 }
 
@@ -139,187 +190,6 @@ func (s *RestoreServiceServerImpl) closeStagingStore() {
 	}
 
 	s.stagingStore = nil
-}
-
-// DownloadBackup downloads backup files from S3 into the restore staging area.
-func (s *RestoreServiceServerImpl) DownloadBackup(ctx context.Context, req *restorepb.DownloadBackupRequest) (*restorepb.DownloadBackupResponse, error) {
-	s.mu.Lock()
-	if s.downloaded {
-		s.mu.Unlock()
-
-		return nil, status.Error(codes.FailedPrecondition, "backup already downloaded; finalize or restart to download again")
-	}
-
-	if s.downloading {
-		s.mu.Unlock()
-
-		return nil, status.Error(codes.FailedPrecondition, "another download is already in progress")
-	}
-
-	s.downloading = true
-	s.mu.Unlock()
-
-	success := false
-
-	defer func() {
-		s.mu.Lock()
-		if success {
-			s.downloaded = true
-		}
-		s.downloading = false
-		s.mu.Unlock()
-	}()
-
-	// Create S3 storage
-	storage, err := backup.NewStorage("s3", "", req.GetS3Bucket(), req.GetS3Region(), req.GetS3Endpoint(), req.GetS3AccessKeyId(), req.GetS3SecretAccessKey())
-	if err != nil {
-		return nil, fmt.Errorf("creating S3 storage: %w", err)
-	}
-
-	bucketID := req.GetBucketId()
-	if bucketID == "" {
-		bucketID = s.clusterID
-	}
-
-	manifestKey := bucketID + "/backups/manifest.json"
-	fileKeyPrefix := bucketID + "/backups/data/"
-
-	// Read manifest
-	manifestReader, err := storage.GetFile(ctx, manifestKey)
-	if err != nil {
-		return nil, fmt.Errorf("reading backup manifest: %w", err)
-	}
-
-	// Read the manifest behind a hard byte cap. A real manifest is well
-	// under a megabyte; anything larger is either a misconfiguration on
-	// the backup side or an attempt to exhaust the restore node's memory.
-	// LimitReader yields an EOF at the cap+1 byte; we detect overshoot by
-	// reading one extra byte and refusing if it is present.
-	manifestData, err := io.ReadAll(io.LimitReader(manifestReader, maxRestoreManifestBytes+1))
-	_ = manifestReader.Close()
-
-	if err != nil {
-		return nil, fmt.Errorf("reading manifest data: %w", err)
-	}
-
-	if int64(len(manifestData)) > maxRestoreManifestBytes {
-		return nil, status.Errorf(codes.FailedPrecondition,
-			"backup manifest exceeds %d bytes; refusing to read", maxRestoreManifestBytes)
-	}
-
-	var manifest backup.Manifest
-	if err := json.Unmarshal(manifestData, &manifest); err != nil {
-		return nil, fmt.Errorf("parsing manifest: %w", err)
-	}
-
-	hasCheckpoint := manifest.Checkpoint != nil && len(manifest.Checkpoint.Files) > 0
-	if !hasCheckpoint && len(manifest.Exports) == 0 {
-		return nil, status.Error(codes.FailedPrecondition, "backup manifest contains no checkpoint files and no export segments")
-	}
-
-	if hasCheckpoint && len(manifest.Checkpoint.Files) > maxRestoreManifestFiles {
-		return nil, status.Errorf(codes.FailedPrecondition,
-			"backup manifest declares %d files (max %d); refusing to download",
-			len(manifest.Checkpoint.Files), maxRestoreManifestFiles)
-	}
-
-	// Prepare staging directory
-	stagingDir := s.stagingDir()
-
-	if err := os.RemoveAll(stagingDir); err != nil {
-		return nil, fmt.Errorf("cleaning staging directory: %w", err)
-	}
-
-	if err := os.MkdirAll(stagingDir, 0o755); err != nil {
-		return nil, fmt.Errorf("creating staging directory: %w", err)
-	}
-
-	// Download each checkpoint file from S3 into staging.
-	var (
-		totalBytes      uint64
-		checkpointFiles int
-	)
-
-	if hasCheckpoint {
-		checkpointFiles = len(manifest.Checkpoint.Files)
-
-		for filename := range manifest.Checkpoint.Files {
-			destPath, err := safeStagingPath(stagingDir, filename)
-			if err != nil {
-				return nil, status.Errorf(codes.InvalidArgument, "invalid manifest entry: %v", err)
-			}
-
-			key := fileKeyPrefix + filename
-
-			if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
-				return nil, fmt.Errorf("creating directory for %s: %w", filename, err)
-			}
-
-			reader, err := storage.GetFile(ctx, key)
-			if err != nil {
-				return nil, fmt.Errorf("downloading %s: %w", filename, err)
-			}
-
-			outFile, err := os.Create(destPath)
-			if err != nil {
-				_ = reader.Close()
-
-				return nil, fmt.Errorf("creating file %s: %w", filename, err)
-			}
-
-			n, err := io.Copy(outFile, reader)
-			_ = reader.Close()
-			_ = outFile.Close()
-
-			if err != nil {
-				return nil, fmt.Errorf("writing file %s: %w", filename, err)
-			}
-
-			totalBytes += uint64(n)
-		}
-	}
-
-	// Open the staging Pebble in read-write mode and keep the handle alive for
-	// the remainder of the restore lifecycle (Validate, Preview, Finalize all
-	// reuse it). ApplyExportsAndRebuild operates on this same handle so the
-	// post-download flow never has to close and re-open in the same process.
-	stagingStore, err := dal.OpenDirect(stagingDir, s.logger)
-	if err != nil {
-		return nil, fmt.Errorf("opening staging store: %w", err)
-	}
-
-	defer func() {
-		if !success {
-			if closeErr := stagingStore.Close(); closeErr != nil {
-				s.logger.WithFields(map[string]any{"error": closeErr}).
-					Errorf("Failed to close staging store after failed download")
-			}
-		}
-	}()
-
-	// Apply incremental export segments on top of the checkpoint and rebuild
-	// derived state. Skipping this would silently drop every log/audit entry
-	// written after the last full checkpoint. Mirrors the offline bootstrap.
-	if err := backup.ApplyExportsAndRebuild(ctx, s.logger, storage, stagingStore, &manifest); err != nil {
-		return nil, fmt.Errorf("applying export segments: %w", err)
-	}
-
-	s.mu.Lock()
-	s.stagingStore = stagingStore
-	s.mu.Unlock()
-
-	success = true
-
-	s.logger.WithFields(map[string]any{
-		"filesDownloaded": checkpointFiles,
-		"exportSegments":  len(manifest.Exports),
-		"totalBytes":      totalBytes,
-	}).Infof("Backup downloaded from S3 successfully")
-
-	return &restorepb.DownloadBackupResponse{
-		FilesDownloaded: uint32(checkpointFiles),
-		TotalBytes:      totalBytes,
-	}, nil
 }
 
 // ValidateRestore runs integrity checks on the staged backup data.

@@ -3374,6 +3374,17 @@ Backup restore operations. Requires the server to be started with `--restore`.
 
 Download a backup from S3 to the restore staging area.
 
+The download runs asynchronously on the server: the CLI starts the job, polls
+progress periodically, and renders a progress bar. The actual transfer is
+detached from any individual RPC and therefore survives ingress / load-balancer
+idle or max-stream timeouts (1.2 TB restores routinely take several hours).
+Press `Ctrl+C` to cancel the running download cleanly — the CLI issues a
+server-side `CancelDownload` so the staging directory is wiped before the
+process exits.
+
+The server downloads files in parallel; tune the worker count with the server
+flag `--restore-download-parallelism` (default 16, clamped to `[1, 64]`).
+
 ```bash
 ledgerctl restore download --s3-bucket my-bucket --s3-region us-east-1
 ```
@@ -3384,7 +3395,8 @@ ledgerctl restore download --s3-bucket my-bucket --s3-region us-east-1
 | `--s3-region` | No | AWS region for S3 bucket |
 | `--s3-endpoint` | No | Custom S3 endpoint (for MinIO) |
 | `--bucket-id` | No | Namespace prefix for backup files (default: cluster-id) |
-| `--timeout` | No | Request timeout (default: 100s) |
+| `--poll-interval` | No | Interval between progress polls (default: 3s) |
+| `--rpc-timeout` | No | Per-RPC timeout for Start, status poll, and Cancel (default: 30s) |
 
 #### restore validate
 
@@ -3465,6 +3477,14 @@ ledger run --restore --node-id 1 --cluster-id prod-ledger --data-dir ./data --gr
 # Opt-in remote access (use TLS + firewalling)
 ledger run --restore --restore-listen 0.0.0.0 --tls-mode required --tls-cert-file ... --tls-key-file ... ...
 ```
+
+### Server `--restore-download-parallelism` Flag
+
+Maximum number of concurrent S3 file downloads during an async restore.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--restore-download-parallelism` | `16` | Worker pool size for parallel checkpoint file downloads. Clamped to `[1, 64]`. Higher values can saturate S3 throughput on large restores; lower values reduce the file-descriptor and connection footprint on the node. |
 
 ### Server `--numscript-cache-size` Flag
 

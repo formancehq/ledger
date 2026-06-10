@@ -66,6 +66,7 @@ require (
 	github.com/cockroachdb/pebble/v2 v2.1.4
 	github.com/databricks/databricks-sql-go v1.10.0
 	github.com/formancehq/go-libs/v5 v5.3.0
+	github.com/google/uuid v1.6.0
 	github.com/soheilhy/cmux v0.1.5
 	github.com/testcontainers/testcontainers-go v0.40.0
 	go.etcd.io/raft/v3 v3.6.0
@@ -176,7 +177,6 @@ require (
 	github.com/google/go-tpm v0.9.8 // indirect
 	github.com/google/pprof v0.0.0-20260302011040-a15ffb7f9dcc // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/gookit/color v1.5.4 // indirect
 	github.com/gorilla/securecookie v1.1.2 // indirect
 	github.com/grafana/pyroscope-go/godeltaprof v0.1.9 // indirect

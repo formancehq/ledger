@@ -46,7 +46,7 @@ func RestoreModule() fx.Option {
 				return grpcadp.NewServiceServer(host, cfg.GRPCPort, logger, cfg.Debug, cfg.GRPCSlowThreshold, tlsCfg, cfg.TLSConfig.Mode.AllowsPlaintext())
 			},
 			func(cfg Config, logger logging.Logger) *grpcadp.RestoreServiceServerImpl {
-				return grpcadp.NewRestoreServiceServer(cfg.DataDir, cfg.ClusterID, logger)
+				return grpcadp.NewRestoreServiceServer(cfg.DataDir, cfg.ClusterID, cfg.RestoreDownloadParallelism, logger)
 			},
 		),
 		fx.Invoke(

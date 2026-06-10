@@ -19,10 +19,12 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	RestoreService_DownloadBackup_FullMethodName  = "/restore.RestoreService/DownloadBackup"
-	RestoreService_ValidateRestore_FullMethodName = "/restore.RestoreService/ValidateRestore"
-	RestoreService_PreviewRestore_FullMethodName  = "/restore.RestoreService/PreviewRestore"
-	RestoreService_FinalizeRestore_FullMethodName = "/restore.RestoreService/FinalizeRestore"
+	RestoreService_StartDownloadBackup_FullMethodName = "/restore.RestoreService/StartDownloadBackup"
+	RestoreService_GetDownloadStatus_FullMethodName   = "/restore.RestoreService/GetDownloadStatus"
+	RestoreService_CancelDownload_FullMethodName      = "/restore.RestoreService/CancelDownload"
+	RestoreService_ValidateRestore_FullMethodName     = "/restore.RestoreService/ValidateRestore"
+	RestoreService_PreviewRestore_FullMethodName      = "/restore.RestoreService/PreviewRestore"
+	RestoreService_FinalizeRestore_FullMethodName     = "/restore.RestoreService/FinalizeRestore"
 )
 
 // RestoreServiceClient is the client API for RestoreService service.
@@ -32,8 +34,20 @@ const (
 // RestoreService provides backup restore operations for a fresh cluster.
 // Available only when the server is started with --restore mode.
 type RestoreServiceClient interface {
-	// DownloadBackup downloads a backup from S3 into the restore staging area.
-	DownloadBackup(ctx context.Context, in *DownloadBackupRequest, opts ...grpc.CallOption) (*DownloadBackupResponse, error)
+	// StartDownloadBackup kicks off an asynchronous download of a backup from S3
+	// into the restore staging area and returns immediately with a job ID. Use
+	// GetDownloadStatus to poll progress and CancelDownload to abort.
+	//
+	// The download runs detached from the calling RPC context so it survives any
+	// intermediary timeout (ingress, load balancer) on multi-hour transfers.
+	StartDownloadBackup(ctx context.Context, in *StartDownloadBackupRequest, opts ...grpc.CallOption) (*StartDownloadBackupResponse, error)
+	// GetDownloadStatus returns the current state of a download job started by
+	// StartDownloadBackup. It is the polling endpoint clients use to track
+	// progress and detect terminal states (SUCCEEDED, FAILED, CANCELED).
+	GetDownloadStatus(ctx context.Context, in *GetDownloadStatusRequest, opts ...grpc.CallOption) (*GetDownloadStatusResponse, error)
+	// CancelDownload aborts an in-progress download and wipes the staging area.
+	// Idempotent: cancelling a finished or already-cancelled job is a no-op.
+	CancelDownload(ctx context.Context, in *CancelDownloadRequest, opts ...grpc.CallOption) (*CancelDownloadResponse, error)
 	// ValidateRestore runs integrity checks on the staged backup data.
 	ValidateRestore(ctx context.Context, in *ValidateRestoreRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ValidateRestoreEvent], error)
 	// PreviewRestore returns a summary of the staged backup data.
@@ -50,10 +64,30 @@ func NewRestoreServiceClient(cc grpc.ClientConnInterface) RestoreServiceClient {
 	return &restoreServiceClient{cc}
 }
 
-func (c *restoreServiceClient) DownloadBackup(ctx context.Context, in *DownloadBackupRequest, opts ...grpc.CallOption) (*DownloadBackupResponse, error) {
+func (c *restoreServiceClient) StartDownloadBackup(ctx context.Context, in *StartDownloadBackupRequest, opts ...grpc.CallOption) (*StartDownloadBackupResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(DownloadBackupResponse)
-	err := c.cc.Invoke(ctx, RestoreService_DownloadBackup_FullMethodName, in, out, cOpts...)
+	out := new(StartDownloadBackupResponse)
+	err := c.cc.Invoke(ctx, RestoreService_StartDownloadBackup_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *restoreServiceClient) GetDownloadStatus(ctx context.Context, in *GetDownloadStatusRequest, opts ...grpc.CallOption) (*GetDownloadStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetDownloadStatusResponse)
+	err := c.cc.Invoke(ctx, RestoreService_GetDownloadStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *restoreServiceClient) CancelDownload(ctx context.Context, in *CancelDownloadRequest, opts ...grpc.CallOption) (*CancelDownloadResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CancelDownloadResponse)
+	err := c.cc.Invoke(ctx, RestoreService_CancelDownload_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -106,8 +140,20 @@ func (c *restoreServiceClient) FinalizeRestore(ctx context.Context, in *Finalize
 // RestoreService provides backup restore operations for a fresh cluster.
 // Available only when the server is started with --restore mode.
 type RestoreServiceServer interface {
-	// DownloadBackup downloads a backup from S3 into the restore staging area.
-	DownloadBackup(context.Context, *DownloadBackupRequest) (*DownloadBackupResponse, error)
+	// StartDownloadBackup kicks off an asynchronous download of a backup from S3
+	// into the restore staging area and returns immediately with a job ID. Use
+	// GetDownloadStatus to poll progress and CancelDownload to abort.
+	//
+	// The download runs detached from the calling RPC context so it survives any
+	// intermediary timeout (ingress, load balancer) on multi-hour transfers.
+	StartDownloadBackup(context.Context, *StartDownloadBackupRequest) (*StartDownloadBackupResponse, error)
+	// GetDownloadStatus returns the current state of a download job started by
+	// StartDownloadBackup. It is the polling endpoint clients use to track
+	// progress and detect terminal states (SUCCEEDED, FAILED, CANCELED).
+	GetDownloadStatus(context.Context, *GetDownloadStatusRequest) (*GetDownloadStatusResponse, error)
+	// CancelDownload aborts an in-progress download and wipes the staging area.
+	// Idempotent: cancelling a finished or already-cancelled job is a no-op.
+	CancelDownload(context.Context, *CancelDownloadRequest) (*CancelDownloadResponse, error)
 	// ValidateRestore runs integrity checks on the staged backup data.
 	ValidateRestore(*ValidateRestoreRequest, grpc.ServerStreamingServer[ValidateRestoreEvent]) error
 	// PreviewRestore returns a summary of the staged backup data.
@@ -124,8 +170,14 @@ type RestoreServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedRestoreServiceServer struct{}
 
-func (UnimplementedRestoreServiceServer) DownloadBackup(context.Context, *DownloadBackupRequest) (*DownloadBackupResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method DownloadBackup not implemented")
+func (UnimplementedRestoreServiceServer) StartDownloadBackup(context.Context, *StartDownloadBackupRequest) (*StartDownloadBackupResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method StartDownloadBackup not implemented")
+}
+func (UnimplementedRestoreServiceServer) GetDownloadStatus(context.Context, *GetDownloadStatusRequest) (*GetDownloadStatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetDownloadStatus not implemented")
+}
+func (UnimplementedRestoreServiceServer) CancelDownload(context.Context, *CancelDownloadRequest) (*CancelDownloadResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CancelDownload not implemented")
 }
 func (UnimplementedRestoreServiceServer) ValidateRestore(*ValidateRestoreRequest, grpc.ServerStreamingServer[ValidateRestoreEvent]) error {
 	return status.Error(codes.Unimplemented, "method ValidateRestore not implemented")
@@ -157,20 +209,56 @@ func RegisterRestoreServiceServer(s grpc.ServiceRegistrar, srv RestoreServiceSer
 	s.RegisterService(&RestoreService_ServiceDesc, srv)
 }
 
-func _RestoreService_DownloadBackup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DownloadBackupRequest)
+func _RestoreService_StartDownloadBackup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StartDownloadBackupRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(RestoreServiceServer).DownloadBackup(ctx, in)
+		return srv.(RestoreServiceServer).StartDownloadBackup(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: RestoreService_DownloadBackup_FullMethodName,
+		FullMethod: RestoreService_StartDownloadBackup_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RestoreServiceServer).DownloadBackup(ctx, req.(*DownloadBackupRequest))
+		return srv.(RestoreServiceServer).StartDownloadBackup(ctx, req.(*StartDownloadBackupRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RestoreService_GetDownloadStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetDownloadStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RestoreServiceServer).GetDownloadStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RestoreService_GetDownloadStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RestoreServiceServer).GetDownloadStatus(ctx, req.(*GetDownloadStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RestoreService_CancelDownload_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CancelDownloadRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RestoreServiceServer).CancelDownload(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RestoreService_CancelDownload_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RestoreServiceServer).CancelDownload(ctx, req.(*CancelDownloadRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -230,8 +318,16 @@ var RestoreService_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*RestoreServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "DownloadBackup",
-			Handler:    _RestoreService_DownloadBackup_Handler,
+			MethodName: "StartDownloadBackup",
+			Handler:    _RestoreService_StartDownloadBackup_Handler,
+		},
+		{
+			MethodName: "GetDownloadStatus",
+			Handler:    _RestoreService_GetDownloadStatus_Handler,
+		},
+		{
+			MethodName: "CancelDownload",
+			Handler:    _RestoreService_CancelDownload_Handler,
 		},
 		{
 			MethodName: "PreviewRestore",

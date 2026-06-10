@@ -11,8 +11,22 @@ option go_package = "github.com/formancehq/ledger/v3/internal/proto/restorepb";
 // RestoreService provides backup restore operations for a fresh cluster.
 // Available only when the server is started with --restore mode.
 service RestoreService {
-  // DownloadBackup downloads a backup from S3 into the restore staging area.
-  rpc DownloadBackup(DownloadBackupRequest) returns (DownloadBackupResponse);
+  // StartDownloadBackup kicks off an asynchronous download of a backup from S3
+  // into the restore staging area and returns immediately with a job ID. Use
+  // GetDownloadStatus to poll progress and CancelDownload to abort.
+  //
+  // The download runs detached from the calling RPC context so it survives any
+  // intermediary timeout (ingress, load balancer) on multi-hour transfers.
+  rpc StartDownloadBackup(StartDownloadBackupRequest) returns (StartDownloadBackupResponse);
+
+  // GetDownloadStatus returns the current state of a download job started by
+  // StartDownloadBackup. It is the polling endpoint clients use to track
+  // progress and detect terminal states (SUCCEEDED, FAILED, CANCELED).
+  rpc GetDownloadStatus(GetDownloadStatusRequest) returns (GetDownloadStatusResponse);
+
+  // CancelDownload aborts an in-progress download and wipes the staging area.
+  // Idempotent: cancelling a finished or already-cancelled job is a no-op.
+  rpc CancelDownload(CancelDownloadRequest) returns (CancelDownloadResponse);
 
   // ValidateRestore runs integrity checks on the staged backup data.
   rpc ValidateRestore(ValidateRestoreRequest) returns (stream ValidateRestoreEvent);
@@ -28,19 +42,50 @@ service RestoreService {
 // Download Messages
 // ============================================================================
 
-message DownloadBackupRequest {
-  string s3_bucket = 1;           // S3 bucket containing the backup
-  string s3_region = 2;           // AWS region for the S3 bucket
-  string s3_endpoint = 3;         // Custom S3 endpoint (for MinIO)
-  string bucket_id = 4;           // Namespace prefix for backup files (default: cluster-id from server config)
-  string s3_access_key_id = 5;    // Optional static AWS access key ID
+message StartDownloadBackupRequest {
+  string s3_bucket = 1;            // S3 bucket containing the backup
+  string s3_region = 2;            // AWS region for the S3 bucket
+  string s3_endpoint = 3;          // Custom S3 endpoint (for MinIO)
+  string bucket_id = 4;            // Namespace prefix for backup files (default: cluster-id from server config)
+  string s3_access_key_id = 5;     // Optional static AWS access key ID
   string s3_secret_access_key = 6; // Optional static AWS secret access key
 }
 
-message DownloadBackupResponse {
-  uint32 files_downloaded = 1; // Number of files downloaded
-  fixed64 total_bytes = 2;     // Total bytes downloaded
+message StartDownloadBackupResponse {
+  string job_id = 1; // Opaque identifier used to poll status and cancel
 }
+
+message GetDownloadStatusRequest {
+  string job_id = 1;
+}
+
+// DownloadState reflects the lifecycle of an async download job.
+enum DownloadState {
+  DOWNLOAD_STATE_UNSPECIFIED = 0;
+  DOWNLOAD_STATE_PENDING     = 1;
+  DOWNLOAD_STATE_RUNNING     = 2;
+  DOWNLOAD_STATE_SUCCEEDED   = 3;
+  DOWNLOAD_STATE_FAILED      = 4;
+  DOWNLOAD_STATE_CANCELED    = 5;
+}
+
+message GetDownloadStatusResponse {
+  DownloadState state            = 1;
+  fixed64       files_downloaded = 2;
+  fixed64       total_files      = 3;
+  fixed64       bytes_downloaded = 4;
+  fixed64       total_bytes      = 5;
+  string        current_file     = 6; // Best-effort: the most recently started file
+  string        error_message    = 7; // Populated when state == FAILED
+  fixed64       started_at_unix  = 8; // Seconds since Unix epoch
+  fixed64       finished_at_unix = 9; // 0 while running
+}
+
+message CancelDownloadRequest {
+  string job_id = 1;
+}
+
+message CancelDownloadResponse {}
 
 // ============================================================================
 // Validate Messages

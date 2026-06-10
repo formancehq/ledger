@@ -3,93 +3,243 @@
 
 package restorepb
 
-// DownloadBackupRequestReader provides read-only access to DownloadBackupRequest.
+// StartDownloadBackupRequestReader provides read-only access to StartDownloadBackupRequest.
 // Call Mutate() to obtain a mutable clone.
-type DownloadBackupRequestReader interface {
+type StartDownloadBackupRequestReader interface {
 	GetS3Bucket() string
 	GetS3Region() string
 	GetS3Endpoint() string
 	GetBucketId() string
 	GetS3AccessKeyId() string
 	GetS3SecretAccessKey() string
-	Mutate() *DownloadBackupRequest
+	Mutate() *StartDownloadBackupRequest
 }
 
-type downloadBackupRequestReadonly struct{ v *DownloadBackupRequest }
+type startDownloadBackupRequestReadonly struct{ v *StartDownloadBackupRequest }
 
-func (r *downloadBackupRequestReadonly) GetS3Bucket() string {
+func (r *startDownloadBackupRequestReadonly) GetS3Bucket() string {
 	return r.v.GetS3Bucket()
 }
 
-func (r *downloadBackupRequestReadonly) GetS3Region() string {
+func (r *startDownloadBackupRequestReadonly) GetS3Region() string {
 	return r.v.GetS3Region()
 }
 
-func (r *downloadBackupRequestReadonly) GetS3Endpoint() string {
+func (r *startDownloadBackupRequestReadonly) GetS3Endpoint() string {
 	return r.v.GetS3Endpoint()
 }
 
-func (r *downloadBackupRequestReadonly) GetBucketId() string {
+func (r *startDownloadBackupRequestReadonly) GetBucketId() string {
 	return r.v.GetBucketId()
 }
 
-func (r *downloadBackupRequestReadonly) GetS3AccessKeyId() string {
+func (r *startDownloadBackupRequestReadonly) GetS3AccessKeyId() string {
 	return r.v.GetS3AccessKeyId()
 }
 
-func (r *downloadBackupRequestReadonly) GetS3SecretAccessKey() string {
+func (r *startDownloadBackupRequestReadonly) GetS3SecretAccessKey() string {
 	return r.v.GetS3SecretAccessKey()
 }
 
-func (r *downloadBackupRequestReadonly) Mutate() *DownloadBackupRequest {
+func (r *startDownloadBackupRequestReadonly) Mutate() *StartDownloadBackupRequest {
 	return r.v.CloneVT()
 }
 
-// AsReader returns a read-only view of this DownloadBackupRequest.
-func (m *DownloadBackupRequest) AsReader() DownloadBackupRequestReader {
+// AsReader returns a read-only view of this StartDownloadBackupRequest.
+func (m *StartDownloadBackupRequest) AsReader() StartDownloadBackupRequestReader {
 	if m == nil {
 		return nil
 	}
-	return &downloadBackupRequestReadonly{v: m}
+	return &startDownloadBackupRequestReadonly{v: m}
 }
 
-// Mutate returns a mutable deep clone of this DownloadBackupRequest.
-func (m *DownloadBackupRequest) Mutate() *DownloadBackupRequest {
+// Mutate returns a mutable deep clone of this StartDownloadBackupRequest.
+func (m *StartDownloadBackupRequest) Mutate() *StartDownloadBackupRequest {
 	return m.CloneVT()
 }
 
-// DownloadBackupResponseReader provides read-only access to DownloadBackupResponse.
+// StartDownloadBackupResponseReader provides read-only access to StartDownloadBackupResponse.
 // Call Mutate() to obtain a mutable clone.
-type DownloadBackupResponseReader interface {
-	GetFilesDownloaded() uint32
-	GetTotalBytes() uint64
-	Mutate() *DownloadBackupResponse
+type StartDownloadBackupResponseReader interface {
+	GetJobId() string
+	Mutate() *StartDownloadBackupResponse
 }
 
-type downloadBackupResponseReadonly struct{ v *DownloadBackupResponse }
+type startDownloadBackupResponseReadonly struct{ v *StartDownloadBackupResponse }
 
-func (r *downloadBackupResponseReadonly) GetFilesDownloaded() uint32 {
-	return r.v.GetFilesDownloaded()
+func (r *startDownloadBackupResponseReadonly) GetJobId() string {
+	return r.v.GetJobId()
 }
 
-func (r *downloadBackupResponseReadonly) GetTotalBytes() uint64 {
-	return r.v.GetTotalBytes()
-}
-
-func (r *downloadBackupResponseReadonly) Mutate() *DownloadBackupResponse {
+func (r *startDownloadBackupResponseReadonly) Mutate() *StartDownloadBackupResponse {
 	return r.v.CloneVT()
 }
 
-// AsReader returns a read-only view of this DownloadBackupResponse.
-func (m *DownloadBackupResponse) AsReader() DownloadBackupResponseReader {
+// AsReader returns a read-only view of this StartDownloadBackupResponse.
+func (m *StartDownloadBackupResponse) AsReader() StartDownloadBackupResponseReader {
 	if m == nil {
 		return nil
 	}
-	return &downloadBackupResponseReadonly{v: m}
+	return &startDownloadBackupResponseReadonly{v: m}
 }
 
-// Mutate returns a mutable deep clone of this DownloadBackupResponse.
-func (m *DownloadBackupResponse) Mutate() *DownloadBackupResponse {
+// Mutate returns a mutable deep clone of this StartDownloadBackupResponse.
+func (m *StartDownloadBackupResponse) Mutate() *StartDownloadBackupResponse {
+	return m.CloneVT()
+}
+
+// GetDownloadStatusRequestReader provides read-only access to GetDownloadStatusRequest.
+// Call Mutate() to obtain a mutable clone.
+type GetDownloadStatusRequestReader interface {
+	GetJobId() string
+	Mutate() *GetDownloadStatusRequest
+}
+
+type getDownloadStatusRequestReadonly struct{ v *GetDownloadStatusRequest }
+
+func (r *getDownloadStatusRequestReadonly) GetJobId() string {
+	return r.v.GetJobId()
+}
+
+func (r *getDownloadStatusRequestReadonly) Mutate() *GetDownloadStatusRequest {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this GetDownloadStatusRequest.
+func (m *GetDownloadStatusRequest) AsReader() GetDownloadStatusRequestReader {
+	if m == nil {
+		return nil
+	}
+	return &getDownloadStatusRequestReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this GetDownloadStatusRequest.
+func (m *GetDownloadStatusRequest) Mutate() *GetDownloadStatusRequest {
+	return m.CloneVT()
+}
+
+// GetDownloadStatusResponseReader provides read-only access to GetDownloadStatusResponse.
+// Call Mutate() to obtain a mutable clone.
+type GetDownloadStatusResponseReader interface {
+	GetState() DownloadState
+	GetFilesDownloaded() uint64
+	GetTotalFiles() uint64
+	GetBytesDownloaded() uint64
+	GetTotalBytes() uint64
+	GetCurrentFile() string
+	GetErrorMessage() string
+	GetStartedAtUnix() uint64
+	GetFinishedAtUnix() uint64
+	Mutate() *GetDownloadStatusResponse
+}
+
+type getDownloadStatusResponseReadonly struct{ v *GetDownloadStatusResponse }
+
+func (r *getDownloadStatusResponseReadonly) GetState() DownloadState {
+	return r.v.GetState()
+}
+
+func (r *getDownloadStatusResponseReadonly) GetFilesDownloaded() uint64 {
+	return r.v.GetFilesDownloaded()
+}
+
+func (r *getDownloadStatusResponseReadonly) GetTotalFiles() uint64 {
+	return r.v.GetTotalFiles()
+}
+
+func (r *getDownloadStatusResponseReadonly) GetBytesDownloaded() uint64 {
+	return r.v.GetBytesDownloaded()
+}
+
+func (r *getDownloadStatusResponseReadonly) GetTotalBytes() uint64 {
+	return r.v.GetTotalBytes()
+}
+
+func (r *getDownloadStatusResponseReadonly) GetCurrentFile() string {
+	return r.v.GetCurrentFile()
+}
+
+func (r *getDownloadStatusResponseReadonly) GetErrorMessage() string {
+	return r.v.GetErrorMessage()
+}
+
+func (r *getDownloadStatusResponseReadonly) GetStartedAtUnix() uint64 {
+	return r.v.GetStartedAtUnix()
+}
+
+func (r *getDownloadStatusResponseReadonly) GetFinishedAtUnix() uint64 {
+	return r.v.GetFinishedAtUnix()
+}
+
+func (r *getDownloadStatusResponseReadonly) Mutate() *GetDownloadStatusResponse {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this GetDownloadStatusResponse.
+func (m *GetDownloadStatusResponse) AsReader() GetDownloadStatusResponseReader {
+	if m == nil {
+		return nil
+	}
+	return &getDownloadStatusResponseReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this GetDownloadStatusResponse.
+func (m *GetDownloadStatusResponse) Mutate() *GetDownloadStatusResponse {
+	return m.CloneVT()
+}
+
+// CancelDownloadRequestReader provides read-only access to CancelDownloadRequest.
+// Call Mutate() to obtain a mutable clone.
+type CancelDownloadRequestReader interface {
+	GetJobId() string
+	Mutate() *CancelDownloadRequest
+}
+
+type cancelDownloadRequestReadonly struct{ v *CancelDownloadRequest }
+
+func (r *cancelDownloadRequestReadonly) GetJobId() string {
+	return r.v.GetJobId()
+}
+
+func (r *cancelDownloadRequestReadonly) Mutate() *CancelDownloadRequest {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this CancelDownloadRequest.
+func (m *CancelDownloadRequest) AsReader() CancelDownloadRequestReader {
+	if m == nil {
+		return nil
+	}
+	return &cancelDownloadRequestReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this CancelDownloadRequest.
+func (m *CancelDownloadRequest) Mutate() *CancelDownloadRequest {
+	return m.CloneVT()
+}
+
+// CancelDownloadResponseReader provides read-only access to CancelDownloadResponse.
+// Call Mutate() to obtain a mutable clone.
+type CancelDownloadResponseReader interface {
+	Mutate() *CancelDownloadResponse
+}
+
+type cancelDownloadResponseReadonly struct{ v *CancelDownloadResponse }
+
+func (r *cancelDownloadResponseReadonly) Mutate() *CancelDownloadResponse {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this CancelDownloadResponse.
+func (m *CancelDownloadResponse) AsReader() CancelDownloadResponseReader {
+	if m == nil {
+		return nil
+	}
+	return &cancelDownloadResponseReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this CancelDownloadResponse.
+func (m *CancelDownloadResponse) Mutate() *CancelDownloadResponse {
 	return m.CloneVT()
 }
 

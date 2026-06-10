@@ -168,6 +168,7 @@ func NewRunCommand() *cobra.Command {
 	// Restore mode: start in restore mode to accept backup upload
 	runCmd.Flags().Bool("restore", false, "Start in restore mode (accepts backup upload, no Raft)")
 	runCmd.Flags().String("restore-listen", "127.0.0.1", "Bind host for restore-mode gRPC + HTTP servers. The restore RPCs are not authenticated; default keeps them off the public network. Set to \"0.0.0.0\" or a specific interface to expose, but only behind TLS + firewalling.")
+	runCmd.Flags().Int("restore-download-parallelism", 16, "Maximum number of concurrent S3 file downloads during an async restore. Clamped to [1, 64].")
 
 	// Shared secret for inter-node authentication
 	runCmd.Flags().String("cluster-secret", "", "Shared secret for inter-node gRPC authentication. Requires TLS (--tls-mode != disabled) — the secret would otherwise be sent in plaintext.")
@@ -518,6 +519,7 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 	// Restore mode
 	cfg.Restore = getBool("restore", false)
 	cfg.RestoreListen = getString("restore-listen", "127.0.0.1")
+	cfg.RestoreDownloadParallelism = getInt("restore-download-parallelism", 16)
 
 	// Cluster secret for inter-node authentication
 	cfg.ClusterSecret = getString("cluster-secret", "")

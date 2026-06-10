@@ -21,7 +21,66 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type DownloadBackupRequest struct {
+// DownloadState reflects the lifecycle of an async download job.
+type DownloadState int32
+
+const (
+	DownloadState_DOWNLOAD_STATE_UNSPECIFIED DownloadState = 0
+	DownloadState_DOWNLOAD_STATE_PENDING     DownloadState = 1
+	DownloadState_DOWNLOAD_STATE_RUNNING     DownloadState = 2
+	DownloadState_DOWNLOAD_STATE_SUCCEEDED   DownloadState = 3
+	DownloadState_DOWNLOAD_STATE_FAILED      DownloadState = 4
+	DownloadState_DOWNLOAD_STATE_CANCELED    DownloadState = 5
+)
+
+// Enum value maps for DownloadState.
+var (
+	DownloadState_name = map[int32]string{
+		0: "DOWNLOAD_STATE_UNSPECIFIED",
+		1: "DOWNLOAD_STATE_PENDING",
+		2: "DOWNLOAD_STATE_RUNNING",
+		3: "DOWNLOAD_STATE_SUCCEEDED",
+		4: "DOWNLOAD_STATE_FAILED",
+		5: "DOWNLOAD_STATE_CANCELED",
+	}
+	DownloadState_value = map[string]int32{
+		"DOWNLOAD_STATE_UNSPECIFIED": 0,
+		"DOWNLOAD_STATE_PENDING":     1,
+		"DOWNLOAD_STATE_RUNNING":     2,
+		"DOWNLOAD_STATE_SUCCEEDED":   3,
+		"DOWNLOAD_STATE_FAILED":      4,
+		"DOWNLOAD_STATE_CANCELED":    5,
+	}
+)
+
+func (x DownloadState) Enum() *DownloadState {
+	p := new(DownloadState)
+	*p = x
+	return p
+}
+
+func (x DownloadState) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (DownloadState) Descriptor() protoreflect.EnumDescriptor {
+	return file_restore_proto_enumTypes[0].Descriptor()
+}
+
+func (DownloadState) Type() protoreflect.EnumType {
+	return &file_restore_proto_enumTypes[0]
+}
+
+func (x DownloadState) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use DownloadState.Descriptor instead.
+func (DownloadState) EnumDescriptor() ([]byte, []int) {
+	return file_restore_proto_rawDescGZIP(), []int{0}
+}
+
+type StartDownloadBackupRequest struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	S3Bucket          string                 `protobuf:"bytes,1,opt,name=s3_bucket,json=s3Bucket,proto3" json:"s3_bucket,omitempty"`                                // S3 bucket containing the backup
 	S3Region          string                 `protobuf:"bytes,2,opt,name=s3_region,json=s3Region,proto3" json:"s3_region,omitempty"`                                // AWS region for the S3 bucket
@@ -33,20 +92,20 @@ type DownloadBackupRequest struct {
 	sizeCache         protoimpl.SizeCache
 }
 
-func (x *DownloadBackupRequest) Reset() {
-	*x = DownloadBackupRequest{}
+func (x *StartDownloadBackupRequest) Reset() {
+	*x = StartDownloadBackupRequest{}
 	mi := &file_restore_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *DownloadBackupRequest) String() string {
+func (x *StartDownloadBackupRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*DownloadBackupRequest) ProtoMessage() {}
+func (*StartDownloadBackupRequest) ProtoMessage() {}
 
-func (x *DownloadBackupRequest) ProtoReflect() protoreflect.Message {
+func (x *StartDownloadBackupRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_restore_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -58,75 +117,74 @@ func (x *DownloadBackupRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use DownloadBackupRequest.ProtoReflect.Descriptor instead.
-func (*DownloadBackupRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use StartDownloadBackupRequest.ProtoReflect.Descriptor instead.
+func (*StartDownloadBackupRequest) Descriptor() ([]byte, []int) {
 	return file_restore_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *DownloadBackupRequest) GetS3Bucket() string {
+func (x *StartDownloadBackupRequest) GetS3Bucket() string {
 	if x != nil {
 		return x.S3Bucket
 	}
 	return ""
 }
 
-func (x *DownloadBackupRequest) GetS3Region() string {
+func (x *StartDownloadBackupRequest) GetS3Region() string {
 	if x != nil {
 		return x.S3Region
 	}
 	return ""
 }
 
-func (x *DownloadBackupRequest) GetS3Endpoint() string {
+func (x *StartDownloadBackupRequest) GetS3Endpoint() string {
 	if x != nil {
 		return x.S3Endpoint
 	}
 	return ""
 }
 
-func (x *DownloadBackupRequest) GetBucketId() string {
+func (x *StartDownloadBackupRequest) GetBucketId() string {
 	if x != nil {
 		return x.BucketId
 	}
 	return ""
 }
 
-func (x *DownloadBackupRequest) GetS3AccessKeyId() string {
+func (x *StartDownloadBackupRequest) GetS3AccessKeyId() string {
 	if x != nil {
 		return x.S3AccessKeyId
 	}
 	return ""
 }
 
-func (x *DownloadBackupRequest) GetS3SecretAccessKey() string {
+func (x *StartDownloadBackupRequest) GetS3SecretAccessKey() string {
 	if x != nil {
 		return x.S3SecretAccessKey
 	}
 	return ""
 }
 
-type DownloadBackupResponse struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	FilesDownloaded uint32                 `protobuf:"varint,1,opt,name=files_downloaded,json=filesDownloaded,proto3" json:"files_downloaded,omitempty"` // Number of files downloaded
-	TotalBytes      uint64                 `protobuf:"fixed64,2,opt,name=total_bytes,json=totalBytes,proto3" json:"total_bytes,omitempty"`               // Total bytes downloaded
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+type StartDownloadBackupResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	JobId         string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"` // Opaque identifier used to poll status and cancel
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
-func (x *DownloadBackupResponse) Reset() {
-	*x = DownloadBackupResponse{}
+func (x *StartDownloadBackupResponse) Reset() {
+	*x = StartDownloadBackupResponse{}
 	mi := &file_restore_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *DownloadBackupResponse) String() string {
+func (x *StartDownloadBackupResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*DownloadBackupResponse) ProtoMessage() {}
+func (*StartDownloadBackupResponse) ProtoMessage() {}
 
-func (x *DownloadBackupResponse) ProtoReflect() protoreflect.Message {
+func (x *StartDownloadBackupResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_restore_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -138,23 +196,248 @@ func (x *DownloadBackupResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use DownloadBackupResponse.ProtoReflect.Descriptor instead.
-func (*DownloadBackupResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use StartDownloadBackupResponse.ProtoReflect.Descriptor instead.
+func (*StartDownloadBackupResponse) Descriptor() ([]byte, []int) {
 	return file_restore_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *DownloadBackupResponse) GetFilesDownloaded() uint32 {
+func (x *StartDownloadBackupResponse) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+type GetDownloadStatusRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	JobId         string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetDownloadStatusRequest) Reset() {
+	*x = GetDownloadStatusRequest{}
+	mi := &file_restore_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetDownloadStatusRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetDownloadStatusRequest) ProtoMessage() {}
+
+func (x *GetDownloadStatusRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_restore_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetDownloadStatusRequest.ProtoReflect.Descriptor instead.
+func (*GetDownloadStatusRequest) Descriptor() ([]byte, []int) {
+	return file_restore_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *GetDownloadStatusRequest) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+type GetDownloadStatusResponse struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	State           DownloadState          `protobuf:"varint,1,opt,name=state,proto3,enum=restore.DownloadState" json:"state,omitempty"`
+	FilesDownloaded uint64                 `protobuf:"fixed64,2,opt,name=files_downloaded,json=filesDownloaded,proto3" json:"files_downloaded,omitempty"`
+	TotalFiles      uint64                 `protobuf:"fixed64,3,opt,name=total_files,json=totalFiles,proto3" json:"total_files,omitempty"`
+	BytesDownloaded uint64                 `protobuf:"fixed64,4,opt,name=bytes_downloaded,json=bytesDownloaded,proto3" json:"bytes_downloaded,omitempty"`
+	TotalBytes      uint64                 `protobuf:"fixed64,5,opt,name=total_bytes,json=totalBytes,proto3" json:"total_bytes,omitempty"`
+	CurrentFile     string                 `protobuf:"bytes,6,opt,name=current_file,json=currentFile,proto3" json:"current_file,omitempty"`              // Best-effort: the most recently started file
+	ErrorMessage    string                 `protobuf:"bytes,7,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`           // Populated when state == FAILED
+	StartedAtUnix   uint64                 `protobuf:"fixed64,8,opt,name=started_at_unix,json=startedAtUnix,proto3" json:"started_at_unix,omitempty"`    // Seconds since Unix epoch
+	FinishedAtUnix  uint64                 `protobuf:"fixed64,9,opt,name=finished_at_unix,json=finishedAtUnix,proto3" json:"finished_at_unix,omitempty"` // 0 while running
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *GetDownloadStatusResponse) Reset() {
+	*x = GetDownloadStatusResponse{}
+	mi := &file_restore_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetDownloadStatusResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetDownloadStatusResponse) ProtoMessage() {}
+
+func (x *GetDownloadStatusResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_restore_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetDownloadStatusResponse.ProtoReflect.Descriptor instead.
+func (*GetDownloadStatusResponse) Descriptor() ([]byte, []int) {
+	return file_restore_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *GetDownloadStatusResponse) GetState() DownloadState {
+	if x != nil {
+		return x.State
+	}
+	return DownloadState_DOWNLOAD_STATE_UNSPECIFIED
+}
+
+func (x *GetDownloadStatusResponse) GetFilesDownloaded() uint64 {
 	if x != nil {
 		return x.FilesDownloaded
 	}
 	return 0
 }
 
-func (x *DownloadBackupResponse) GetTotalBytes() uint64 {
+func (x *GetDownloadStatusResponse) GetTotalFiles() uint64 {
+	if x != nil {
+		return x.TotalFiles
+	}
+	return 0
+}
+
+func (x *GetDownloadStatusResponse) GetBytesDownloaded() uint64 {
+	if x != nil {
+		return x.BytesDownloaded
+	}
+	return 0
+}
+
+func (x *GetDownloadStatusResponse) GetTotalBytes() uint64 {
 	if x != nil {
 		return x.TotalBytes
 	}
 	return 0
+}
+
+func (x *GetDownloadStatusResponse) GetCurrentFile() string {
+	if x != nil {
+		return x.CurrentFile
+	}
+	return ""
+}
+
+func (x *GetDownloadStatusResponse) GetErrorMessage() string {
+	if x != nil {
+		return x.ErrorMessage
+	}
+	return ""
+}
+
+func (x *GetDownloadStatusResponse) GetStartedAtUnix() uint64 {
+	if x != nil {
+		return x.StartedAtUnix
+	}
+	return 0
+}
+
+func (x *GetDownloadStatusResponse) GetFinishedAtUnix() uint64 {
+	if x != nil {
+		return x.FinishedAtUnix
+	}
+	return 0
+}
+
+type CancelDownloadRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	JobId         string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CancelDownloadRequest) Reset() {
+	*x = CancelDownloadRequest{}
+	mi := &file_restore_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CancelDownloadRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CancelDownloadRequest) ProtoMessage() {}
+
+func (x *CancelDownloadRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_restore_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CancelDownloadRequest.ProtoReflect.Descriptor instead.
+func (*CancelDownloadRequest) Descriptor() ([]byte, []int) {
+	return file_restore_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *CancelDownloadRequest) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+type CancelDownloadResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CancelDownloadResponse) Reset() {
+	*x = CancelDownloadResponse{}
+	mi := &file_restore_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CancelDownloadResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CancelDownloadResponse) ProtoMessage() {}
+
+func (x *CancelDownloadResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_restore_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CancelDownloadResponse.ProtoReflect.Descriptor instead.
+func (*CancelDownloadResponse) Descriptor() ([]byte, []int) {
+	return file_restore_proto_rawDescGZIP(), []int{5}
 }
 
 type ValidateRestoreRequest struct {
@@ -165,7 +448,7 @@ type ValidateRestoreRequest struct {
 
 func (x *ValidateRestoreRequest) Reset() {
 	*x = ValidateRestoreRequest{}
-	mi := &file_restore_proto_msgTypes[2]
+	mi := &file_restore_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -177,7 +460,7 @@ func (x *ValidateRestoreRequest) String() string {
 func (*ValidateRestoreRequest) ProtoMessage() {}
 
 func (x *ValidateRestoreRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_restore_proto_msgTypes[2]
+	mi := &file_restore_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -190,7 +473,7 @@ func (x *ValidateRestoreRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateRestoreRequest.ProtoReflect.Descriptor instead.
 func (*ValidateRestoreRequest) Descriptor() ([]byte, []int) {
-	return file_restore_proto_rawDescGZIP(), []int{2}
+	return file_restore_proto_rawDescGZIP(), []int{6}
 }
 
 type ValidateRestoreEvent struct {
@@ -206,7 +489,7 @@ type ValidateRestoreEvent struct {
 
 func (x *ValidateRestoreEvent) Reset() {
 	*x = ValidateRestoreEvent{}
-	mi := &file_restore_proto_msgTypes[3]
+	mi := &file_restore_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -218,7 +501,7 @@ func (x *ValidateRestoreEvent) String() string {
 func (*ValidateRestoreEvent) ProtoMessage() {}
 
 func (x *ValidateRestoreEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_restore_proto_msgTypes[3]
+	mi := &file_restore_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -231,7 +514,7 @@ func (x *ValidateRestoreEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateRestoreEvent.ProtoReflect.Descriptor instead.
 func (*ValidateRestoreEvent) Descriptor() ([]byte, []int) {
-	return file_restore_proto_rawDescGZIP(), []int{3}
+	return file_restore_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ValidateRestoreEvent) GetType() isValidateRestoreEvent_Type {
@@ -284,7 +567,7 @@ type ValidateRestoreError struct {
 
 func (x *ValidateRestoreError) Reset() {
 	*x = ValidateRestoreError{}
-	mi := &file_restore_proto_msgTypes[4]
+	mi := &file_restore_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -296,7 +579,7 @@ func (x *ValidateRestoreError) String() string {
 func (*ValidateRestoreError) ProtoMessage() {}
 
 func (x *ValidateRestoreError) ProtoReflect() protoreflect.Message {
-	mi := &file_restore_proto_msgTypes[4]
+	mi := &file_restore_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -309,7 +592,7 @@ func (x *ValidateRestoreError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateRestoreError.ProtoReflect.Descriptor instead.
 func (*ValidateRestoreError) Descriptor() ([]byte, []int) {
-	return file_restore_proto_rawDescGZIP(), []int{4}
+	return file_restore_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ValidateRestoreError) GetMessage() string {
@@ -329,7 +612,7 @@ type ValidateRestoreProgress struct {
 
 func (x *ValidateRestoreProgress) Reset() {
 	*x = ValidateRestoreProgress{}
-	mi := &file_restore_proto_msgTypes[5]
+	mi := &file_restore_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -341,7 +624,7 @@ func (x *ValidateRestoreProgress) String() string {
 func (*ValidateRestoreProgress) ProtoMessage() {}
 
 func (x *ValidateRestoreProgress) ProtoReflect() protoreflect.Message {
-	mi := &file_restore_proto_msgTypes[5]
+	mi := &file_restore_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -354,7 +637,7 @@ func (x *ValidateRestoreProgress) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateRestoreProgress.ProtoReflect.Descriptor instead.
 func (*ValidateRestoreProgress) Descriptor() ([]byte, []int) {
-	return file_restore_proto_rawDescGZIP(), []int{5}
+	return file_restore_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ValidateRestoreProgress) GetLogsChecked() uint64 {
@@ -379,7 +662,7 @@ type PreviewRestoreRequest struct {
 
 func (x *PreviewRestoreRequest) Reset() {
 	*x = PreviewRestoreRequest{}
-	mi := &file_restore_proto_msgTypes[6]
+	mi := &file_restore_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -391,7 +674,7 @@ func (x *PreviewRestoreRequest) String() string {
 func (*PreviewRestoreRequest) ProtoMessage() {}
 
 func (x *PreviewRestoreRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_restore_proto_msgTypes[6]
+	mi := &file_restore_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -404,7 +687,7 @@ func (x *PreviewRestoreRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreviewRestoreRequest.ProtoReflect.Descriptor instead.
 func (*PreviewRestoreRequest) Descriptor() ([]byte, []int) {
-	return file_restore_proto_rawDescGZIP(), []int{6}
+	return file_restore_proto_rawDescGZIP(), []int{10}
 }
 
 type PreviewRestoreResponse struct {
@@ -424,7 +707,7 @@ type PreviewRestoreResponse struct {
 
 func (x *PreviewRestoreResponse) Reset() {
 	*x = PreviewRestoreResponse{}
-	mi := &file_restore_proto_msgTypes[7]
+	mi := &file_restore_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -436,7 +719,7 @@ func (x *PreviewRestoreResponse) String() string {
 func (*PreviewRestoreResponse) ProtoMessage() {}
 
 func (x *PreviewRestoreResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_restore_proto_msgTypes[7]
+	mi := &file_restore_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -449,7 +732,7 @@ func (x *PreviewRestoreResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreviewRestoreResponse.ProtoReflect.Descriptor instead.
 func (*PreviewRestoreResponse) Descriptor() ([]byte, []int) {
-	return file_restore_proto_rawDescGZIP(), []int{7}
+	return file_restore_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *PreviewRestoreResponse) GetLastAppliedIndex() uint64 {
@@ -523,7 +806,7 @@ type FinalizeRestoreRequest struct {
 
 func (x *FinalizeRestoreRequest) Reset() {
 	*x = FinalizeRestoreRequest{}
-	mi := &file_restore_proto_msgTypes[8]
+	mi := &file_restore_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -535,7 +818,7 @@ func (x *FinalizeRestoreRequest) String() string {
 func (*FinalizeRestoreRequest) ProtoMessage() {}
 
 func (x *FinalizeRestoreRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_restore_proto_msgTypes[8]
+	mi := &file_restore_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -548,7 +831,7 @@ func (x *FinalizeRestoreRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FinalizeRestoreRequest.ProtoReflect.Descriptor instead.
 func (*FinalizeRestoreRequest) Descriptor() ([]byte, []int) {
-	return file_restore_proto_rawDescGZIP(), []int{8}
+	return file_restore_proto_rawDescGZIP(), []int{12}
 }
 
 type FinalizeRestoreResponse struct {
@@ -560,7 +843,7 @@ type FinalizeRestoreResponse struct {
 
 func (x *FinalizeRestoreResponse) Reset() {
 	*x = FinalizeRestoreResponse{}
-	mi := &file_restore_proto_msgTypes[9]
+	mi := &file_restore_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -572,7 +855,7 @@ func (x *FinalizeRestoreResponse) String() string {
 func (*FinalizeRestoreResponse) ProtoMessage() {}
 
 func (x *FinalizeRestoreResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_restore_proto_msgTypes[9]
+	mi := &file_restore_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -585,7 +868,7 @@ func (x *FinalizeRestoreResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FinalizeRestoreResponse.ProtoReflect.Descriptor instead.
 func (*FinalizeRestoreResponse) Descriptor() ([]byte, []int) {
-	return file_restore_proto_rawDescGZIP(), []int{9}
+	return file_restore_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *FinalizeRestoreResponse) GetMessage() string {
@@ -599,19 +882,34 @@ var File_restore_proto protoreflect.FileDescriptor
 
 const file_restore_proto_rawDesc = "" +
 	"\n" +
-	"\rrestore.proto\x12\arestore\"\xe9\x01\n" +
-	"\x15DownloadBackupRequest\x12\x1b\n" +
+	"\rrestore.proto\x12\arestore\"\xee\x01\n" +
+	"\x1aStartDownloadBackupRequest\x12\x1b\n" +
 	"\ts3_bucket\x18\x01 \x01(\tR\bs3Bucket\x12\x1b\n" +
 	"\ts3_region\x18\x02 \x01(\tR\bs3Region\x12\x1f\n" +
 	"\vs3_endpoint\x18\x03 \x01(\tR\n" +
 	"s3Endpoint\x12\x1b\n" +
 	"\tbucket_id\x18\x04 \x01(\tR\bbucketId\x12'\n" +
 	"\x10s3_access_key_id\x18\x05 \x01(\tR\rs3AccessKeyId\x12/\n" +
-	"\x14s3_secret_access_key\x18\x06 \x01(\tR\x11s3SecretAccessKey\"d\n" +
-	"\x16DownloadBackupResponse\x12)\n" +
-	"\x10files_downloaded\x18\x01 \x01(\rR\x0ffilesDownloaded\x12\x1f\n" +
-	"\vtotal_bytes\x18\x02 \x01(\x06R\n" +
-	"totalBytes\"\x18\n" +
+	"\x14s3_secret_access_key\x18\x06 \x01(\tR\x11s3SecretAccessKey\"4\n" +
+	"\x1bStartDownloadBackupResponse\x12\x15\n" +
+	"\x06job_id\x18\x01 \x01(\tR\x05jobId\"1\n" +
+	"\x18GetDownloadStatusRequest\x12\x15\n" +
+	"\x06job_id\x18\x01 \x01(\tR\x05jobId\"\xfb\x02\n" +
+	"\x19GetDownloadStatusResponse\x12,\n" +
+	"\x05state\x18\x01 \x01(\x0e2\x16.restore.DownloadStateR\x05state\x12)\n" +
+	"\x10files_downloaded\x18\x02 \x01(\x06R\x0ffilesDownloaded\x12\x1f\n" +
+	"\vtotal_files\x18\x03 \x01(\x06R\n" +
+	"totalFiles\x12)\n" +
+	"\x10bytes_downloaded\x18\x04 \x01(\x06R\x0fbytesDownloaded\x12\x1f\n" +
+	"\vtotal_bytes\x18\x05 \x01(\x06R\n" +
+	"totalBytes\x12!\n" +
+	"\fcurrent_file\x18\x06 \x01(\tR\vcurrentFile\x12#\n" +
+	"\rerror_message\x18\a \x01(\tR\ferrorMessage\x12&\n" +
+	"\x0fstarted_at_unix\x18\b \x01(\x06R\rstartedAtUnix\x12(\n" +
+	"\x10finished_at_unix\x18\t \x01(\x06R\x0efinishedAtUnix\".\n" +
+	"\x15CancelDownloadRequest\x12\x15\n" +
+	"\x06job_id\x18\x01 \x01(\tR\x05jobId\"\x18\n" +
+	"\x16CancelDownloadResponse\"\x18\n" +
 	"\x16ValidateRestoreRequest\"\x95\x01\n" +
 	"\x14ValidateRestoreEvent\x125\n" +
 	"\x05error\x18\x01 \x01(\v2\x1d.restore.ValidateRestoreErrorH\x00R\x05error\x12>\n" +
@@ -637,9 +935,18 @@ const file_restore_proto_rawDesc = "" +
 	"\fexport_count\x18\t \x01(\rR\vexportCount\"\x18\n" +
 	"\x16FinalizeRestoreRequest\"3\n" +
 	"\x17FinalizeRestoreResponse\x12\x18\n" +
-	"\amessage\x18\x01 \x01(\tR\amessage2\xe1\x02\n" +
-	"\x0eRestoreService\x12Q\n" +
-	"\x0eDownloadBackup\x12\x1e.restore.DownloadBackupRequest\x1a\x1f.restore.DownloadBackupResponse\x12S\n" +
+	"\amessage\x18\x01 \x01(\tR\amessage*\xbd\x01\n" +
+	"\rDownloadState\x12\x1e\n" +
+	"\x1aDOWNLOAD_STATE_UNSPECIFIED\x10\x00\x12\x1a\n" +
+	"\x16DOWNLOAD_STATE_PENDING\x10\x01\x12\x1a\n" +
+	"\x16DOWNLOAD_STATE_RUNNING\x10\x02\x12\x1c\n" +
+	"\x18DOWNLOAD_STATE_SUCCEEDED\x10\x03\x12\x19\n" +
+	"\x15DOWNLOAD_STATE_FAILED\x10\x04\x12\x1b\n" +
+	"\x17DOWNLOAD_STATE_CANCELED\x10\x052\x9f\x04\n" +
+	"\x0eRestoreService\x12`\n" +
+	"\x13StartDownloadBackup\x12#.restore.StartDownloadBackupRequest\x1a$.restore.StartDownloadBackupResponse\x12Z\n" +
+	"\x11GetDownloadStatus\x12!.restore.GetDownloadStatusRequest\x1a\".restore.GetDownloadStatusResponse\x12Q\n" +
+	"\x0eCancelDownload\x12\x1e.restore.CancelDownloadRequest\x1a\x1f.restore.CancelDownloadResponse\x12S\n" +
 	"\x0fValidateRestore\x12\x1f.restore.ValidateRestoreRequest\x1a\x1d.restore.ValidateRestoreEvent0\x01\x12Q\n" +
 	"\x0ePreviewRestore\x12\x1e.restore.PreviewRestoreRequest\x1a\x1f.restore.PreviewRestoreResponse\x12T\n" +
 	"\x0fFinalizeRestore\x12\x1f.restore.FinalizeRestoreRequest\x1a .restore.FinalizeRestoreResponseB:Z8github.com/formancehq/ledger/v3/internal/proto/restorepbb\x06proto3"
@@ -656,35 +963,46 @@ func file_restore_proto_rawDescGZIP() []byte {
 	return file_restore_proto_rawDescData
 }
 
-var file_restore_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_restore_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_restore_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_restore_proto_goTypes = []any{
-	(*DownloadBackupRequest)(nil),   // 0: restore.DownloadBackupRequest
-	(*DownloadBackupResponse)(nil),  // 1: restore.DownloadBackupResponse
-	(*ValidateRestoreRequest)(nil),  // 2: restore.ValidateRestoreRequest
-	(*ValidateRestoreEvent)(nil),    // 3: restore.ValidateRestoreEvent
-	(*ValidateRestoreError)(nil),    // 4: restore.ValidateRestoreError
-	(*ValidateRestoreProgress)(nil), // 5: restore.ValidateRestoreProgress
-	(*PreviewRestoreRequest)(nil),   // 6: restore.PreviewRestoreRequest
-	(*PreviewRestoreResponse)(nil),  // 7: restore.PreviewRestoreResponse
-	(*FinalizeRestoreRequest)(nil),  // 8: restore.FinalizeRestoreRequest
-	(*FinalizeRestoreResponse)(nil), // 9: restore.FinalizeRestoreResponse
+	(DownloadState)(0),                  // 0: restore.DownloadState
+	(*StartDownloadBackupRequest)(nil),  // 1: restore.StartDownloadBackupRequest
+	(*StartDownloadBackupResponse)(nil), // 2: restore.StartDownloadBackupResponse
+	(*GetDownloadStatusRequest)(nil),    // 3: restore.GetDownloadStatusRequest
+	(*GetDownloadStatusResponse)(nil),   // 4: restore.GetDownloadStatusResponse
+	(*CancelDownloadRequest)(nil),       // 5: restore.CancelDownloadRequest
+	(*CancelDownloadResponse)(nil),      // 6: restore.CancelDownloadResponse
+	(*ValidateRestoreRequest)(nil),      // 7: restore.ValidateRestoreRequest
+	(*ValidateRestoreEvent)(nil),        // 8: restore.ValidateRestoreEvent
+	(*ValidateRestoreError)(nil),        // 9: restore.ValidateRestoreError
+	(*ValidateRestoreProgress)(nil),     // 10: restore.ValidateRestoreProgress
+	(*PreviewRestoreRequest)(nil),       // 11: restore.PreviewRestoreRequest
+	(*PreviewRestoreResponse)(nil),      // 12: restore.PreviewRestoreResponse
+	(*FinalizeRestoreRequest)(nil),      // 13: restore.FinalizeRestoreRequest
+	(*FinalizeRestoreResponse)(nil),     // 14: restore.FinalizeRestoreResponse
 }
 var file_restore_proto_depIdxs = []int32{
-	4, // 0: restore.ValidateRestoreEvent.error:type_name -> restore.ValidateRestoreError
-	5, // 1: restore.ValidateRestoreEvent.progress:type_name -> restore.ValidateRestoreProgress
-	0, // 2: restore.RestoreService.DownloadBackup:input_type -> restore.DownloadBackupRequest
-	2, // 3: restore.RestoreService.ValidateRestore:input_type -> restore.ValidateRestoreRequest
-	6, // 4: restore.RestoreService.PreviewRestore:input_type -> restore.PreviewRestoreRequest
-	8, // 5: restore.RestoreService.FinalizeRestore:input_type -> restore.FinalizeRestoreRequest
-	1, // 6: restore.RestoreService.DownloadBackup:output_type -> restore.DownloadBackupResponse
-	3, // 7: restore.RestoreService.ValidateRestore:output_type -> restore.ValidateRestoreEvent
-	7, // 8: restore.RestoreService.PreviewRestore:output_type -> restore.PreviewRestoreResponse
-	9, // 9: restore.RestoreService.FinalizeRestore:output_type -> restore.FinalizeRestoreResponse
-	6, // [6:10] is the sub-list for method output_type
-	2, // [2:6] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	0,  // 0: restore.GetDownloadStatusResponse.state:type_name -> restore.DownloadState
+	9,  // 1: restore.ValidateRestoreEvent.error:type_name -> restore.ValidateRestoreError
+	10, // 2: restore.ValidateRestoreEvent.progress:type_name -> restore.ValidateRestoreProgress
+	1,  // 3: restore.RestoreService.StartDownloadBackup:input_type -> restore.StartDownloadBackupRequest
+	3,  // 4: restore.RestoreService.GetDownloadStatus:input_type -> restore.GetDownloadStatusRequest
+	5,  // 5: restore.RestoreService.CancelDownload:input_type -> restore.CancelDownloadRequest
+	7,  // 6: restore.RestoreService.ValidateRestore:input_type -> restore.ValidateRestoreRequest
+	11, // 7: restore.RestoreService.PreviewRestore:input_type -> restore.PreviewRestoreRequest
+	13, // 8: restore.RestoreService.FinalizeRestore:input_type -> restore.FinalizeRestoreRequest
+	2,  // 9: restore.RestoreService.StartDownloadBackup:output_type -> restore.StartDownloadBackupResponse
+	4,  // 10: restore.RestoreService.GetDownloadStatus:output_type -> restore.GetDownloadStatusResponse
+	6,  // 11: restore.RestoreService.CancelDownload:output_type -> restore.CancelDownloadResponse
+	8,  // 12: restore.RestoreService.ValidateRestore:output_type -> restore.ValidateRestoreEvent
+	12, // 13: restore.RestoreService.PreviewRestore:output_type -> restore.PreviewRestoreResponse
+	14, // 14: restore.RestoreService.FinalizeRestore:output_type -> restore.FinalizeRestoreResponse
+	9,  // [9:15] is the sub-list for method output_type
+	3,  // [3:9] is the sub-list for method input_type
+	3,  // [3:3] is the sub-list for extension type_name
+	3,  // [3:3] is the sub-list for extension extendee
+	0,  // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_restore_proto_init() }
@@ -692,7 +1010,7 @@ func file_restore_proto_init() {
 	if File_restore_proto != nil {
 		return
 	}
-	file_restore_proto_msgTypes[3].OneofWrappers = []any{
+	file_restore_proto_msgTypes[7].OneofWrappers = []any{
 		(*ValidateRestoreEvent_Error)(nil),
 		(*ValidateRestoreEvent_Progress)(nil),
 	}
@@ -701,13 +1019,14 @@ func file_restore_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_restore_proto_rawDesc), len(file_restore_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   10,
+			NumEnums:      1,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_restore_proto_goTypes,
 		DependencyIndexes: file_restore_proto_depIdxs,
+		EnumInfos:         file_restore_proto_enumTypes,
 		MessageInfos:      file_restore_proto_msgTypes,
 	}.Build()
 	File_restore_proto = out.File

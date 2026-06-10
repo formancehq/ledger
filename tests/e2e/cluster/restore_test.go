@@ -298,18 +298,38 @@ var _ = Describe("Restore", Ordered, func() {
 		})
 
 		It("should download the backup from S3", func() {
-			resp, err := restoreClient.DownloadBackup(ctx, &restorepb.DownloadBackupRequest{
+			startResp, err := restoreClient.StartDownloadBackup(ctx, &restorepb.StartDownloadBackupRequest{
 				S3Bucket:   restoreS3Bucket,
 				S3Region:   restoreS3Region,
 				S3Endpoint: minioEndpoint,
 			})
 			Expect(err).To(Succeed())
-			Expect(resp.GetFilesDownloaded()).To(BeNumerically(">", 0))
-			Expect(resp.GetTotalBytes()).To(BeNumerically(">", 0))
+			Expect(startResp.GetJobId()).NotTo(BeEmpty())
+
+			var final *restorepb.GetDownloadStatusResponse
+			Eventually(func() restorepb.DownloadState {
+				resp, statusErr := restoreClient.GetDownloadStatus(ctx, &restorepb.GetDownloadStatusRequest{
+					JobId: startResp.GetJobId(),
+				})
+				Expect(statusErr).To(Succeed())
+				final = resp
+				return resp.GetState()
+			}, 2*time.Minute, 500*time.Millisecond).Should(Equal(restorepb.DownloadState_DOWNLOAD_STATE_SUCCEEDED),
+				"download must reach SUCCEEDED before timeout (last error: %q)",
+				func() string {
+					if final == nil {
+						return "<nil>"
+					}
+					return final.GetErrorMessage()
+				}())
+
+			Expect(final.GetFilesDownloaded()).To(BeNumerically(">", 0))
+			Expect(final.GetBytesDownloaded()).To(BeNumerically(">", 0))
+			Expect(final.GetFilesDownloaded()).To(Equal(final.GetTotalFiles()))
 		})
 
 		It("should reject a duplicate download", func() {
-			_, err := restoreClient.DownloadBackup(ctx, &restorepb.DownloadBackupRequest{
+			_, err := restoreClient.StartDownloadBackup(ctx, &restorepb.StartDownloadBackupRequest{
 				S3Bucket:   restoreS3Bucket,
 				S3Region:   restoreS3Region,
 				S3Endpoint: minioEndpoint,

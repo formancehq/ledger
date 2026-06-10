@@ -262,15 +262,29 @@ ledgerctl restore download --s3-bucket my-bucket --s3-region us-east-1
 | `--s3-access-key-id` | No | Static AWS access key ID (default: use default credential chain) |
 | `--s3-secret-access-key` | No | Static AWS secret access key (default: use default credential chain) |
 | `--bucket-id` | No | Namespace prefix for backup files (default: cluster-id) |
-| `--timeout` | No | Request timeout (default: 1000s) |
+| `--poll-interval` | No | Interval between progress polls (default: 3s) |
+| `--rpc-timeout` | No | Per-RPC timeout for Start, status poll, and Cancel (default: 30s) |
 
-The client calls the `RestoreService.DownloadBackup` RPC, which downloads the backup files directly from S3 into the server's staging directory. The server:
+The client calls `RestoreService.StartDownloadBackup`, which returns a job ID
+immediately and runs the actual transfer on a goroutine detached from the
+calling RPC. The client then polls `RestoreService.GetDownloadStatus` on
+`--poll-interval` until the job reaches a terminal state (SUCCEEDED, FAILED,
+or CANCELED). Pressing `Ctrl+C` issues `RestoreService.CancelDownload` so the
+staging directory is wiped before the CLI exits — the server-side goroutine
+never outlives the CLI.
+
+The server-side job:
 
 1. Validates state (no concurrent download, no previous download already staged).
 2. Creates a clean staging directory at `{dataDir}/restore-staging/`.
-3. Reads the manifest from S3 and downloads the full checkpoint files.
+3. Reads the manifest from S3 and downloads the checkpoint files in parallel
+   through an `errgroup` worker pool. The pool size is set by the server flag
+   `--restore-download-parallelism` (default 16, clamped to `[1, 64]`).
 4. Applies any incremental export segments on top of the checkpoint and rebuilds derived state (volumes, metadata, transactions) from the exported logs, starting at the checkpoint's last log sequence. This is the same `ApplyExports` + `RebuildDelta` path used by the offline `ledgerctl store bootstrap` command, so a manifest with incremental backups restores all data written after the last full checkpoint.
 5. On success, marks the staging as ready.
+
+If the job fails or is cancelled, the staging directory is wiped so the
+operator can retry with a fresh state without restarting the server.
 
 ### Step 2: Validate
 
@@ -340,26 +354,37 @@ After finalize, the server stays running but refuses new uploads. Restart withou
 ### Data Flow
 
 ```
-Client                  Restore Server                     Disk / S3
-  |                          |                               |
-  |--- DownloadBackup ------>|                               |
-  |    (S3 params)           |--- Download from S3 --------->|
-  |                          |    {dataDir}/restore-staging/  |
-  |<-- DownloadResponse -----|                               |
-  |                          |                               |
-  |--- ValidateRestore ----->|                               |
-  |    (stream events)       |--- check.Checker.Check() --->|
-  |<-- progress/error -------|    (read-only staging DB)     |
-  |                          |                               |
-  |--- PreviewRestore ------>|                               |
-  |<-- summary --------------|--- OpenReadOnly(staging) ---->|
-  |                          |                               |
-  |--- FinalizeRestore ----->|                               |
-  |                          |--- Write RESTORED marker ---->|
-  |                          |--- HardLink staging --------->|
-  |                          |    -> checkpoints/0           |
-  |                          |--- Remove staging ----------->|
-  |<-- response -------------|                               |
+Client                       Restore Server                    Disk / S3
+  |                               |                               |
+  |--- StartDownloadBackup ------>|                               |
+  |    (S3 params)                |--- spawn job goroutine        |
+  |<-- {jobId} -------------------|                               |
+  |                               |--- parallel Download (N) ---->|
+  |--- GetDownloadStatus -------->|    {dataDir}/restore-staging/ |
+  |<-- {state, files, bytes} ----|                               |
+  |    (poll every 3s)            |                               |
+  |--- GetDownloadStatus -------->|                               |
+  |<-- {SUCCEEDED} ---------------|                               |
+  |                               |                               |
+  |--- ValidateRestore ---------->|                               |
+  |    (stream events)            |--- check.Checker.Check() ---->|
+  |<-- progress/error ------------|    (read-only staging DB)     |
+  |                               |                               |
+  |--- PreviewRestore ----------->|                               |
+  |<-- summary -------------------|--- OpenReadOnly(staging) ---->|
+  |                               |                               |
+  |--- FinalizeRestore ---------->|                               |
+  |                               |--- Write RESTORED marker ---->|
+  |                               |--- HardLink staging --------->|
+  |                               |    -> checkpoints/0           |
+  |                               |--- Remove staging ----------->|
+  |<-- response ------------------|                               |
+
+   On Ctrl+C while polling:
+  |--- CancelDownload ----------->|                               |
+  |                               |--- cancel job ctx             |
+  |                               |--- wipe restore-staging/      |
+  |<-- ack ----------------------|                               |
 ```
 
 ---
