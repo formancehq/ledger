@@ -467,13 +467,24 @@ func (s *DefaultWAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) 
 			offset := s.entries[0].Index
 
 			last := entries[0].Index + uint64(len(entries)) - 1
-			if last < offset {
-				return nil
-			}
+			switch {
+			case last < offset:
+				// Stale append: every incoming entry precedes the cached
+				// window. Forwarding them to wal.Save would rewind the
+				// on-disk log past the active snapshot. Drop them — but
+				// continue with HardState persistence below so a piggy-
+				// backed term/vote/commit bump on the same call is not
+				// silently lost (#301).
+				if hardState == s.hardState {
+					s.mu.Unlock()
 
-			if entries[0].Index > offset+uint64(len(s.entries)) {
+					return nil
+				}
+
+				entries = nil
+			case entries[0].Index > offset+uint64(len(s.entries)):
 				s.entries = append(s.entries, entries...)
-			} else {
+			default:
 				truncateIndex := entries[0].Index
 				var kept []raftpb.Entry
 				if truncateIndex > offset {

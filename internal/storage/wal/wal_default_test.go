@@ -925,3 +925,131 @@ func TestWAL_RepairCorruptedEntry(t *testing.T) {
 
 	require.True(t, hasBroken, "repair should create a .broken backup file")
 }
+
+// TestAppend_StaleEntriesBeforeCachedWindowDoesNotLeakLock pins the fix
+// for #301. When Append receives entries that all fall before the cached
+// window (last < offset), the in-memory-merge branch short-circuited with
+// `return nil` while still holding s.mu. Every subsequent call to
+// Append/Entries/Term/Snapshot — including the next one driven by the
+// Raft Ready loop — would then block forever, freezing the node with no
+// commits, no snapshot, no clean shutdown.
+//
+// We reproduce by:
+//  1. Appending entries [3..5] so the cached window has offset=3.
+//  2. Appending entries [1..2] (last=2 < offset=3) — the stale branch.
+//  3. Running the next Append in a goroutine and asserting it returns
+//     within a short timeout.
+//
+// Without the fix step 3 hangs and the test fails on the timeout.
+func TestAppend_StaleEntriesBeforeCachedWindowDoesNotLeakLock(t *testing.T) {
+	t.Parallel()
+
+	w := newTestWAL(t)
+
+	require.NoError(t, w.Append(
+		raftpb.HardState{Term: 1, Vote: 1, Commit: 5},
+		[]raftpb.Entry{
+			{Index: 3, Term: 1, Data: []byte("c")},
+			{Index: 4, Term: 1, Data: []byte("d")},
+			{Index: 5, Term: 1, Data: []byte("e")},
+		},
+	))
+
+	require.NoError(t, w.Append(
+		raftpb.HardState{Term: 1, Vote: 1, Commit: 5},
+		[]raftpb.Entry{
+			{Index: 1, Term: 1, Data: []byte("a")},
+			{Index: 2, Term: 1, Data: []byte("b")},
+		},
+	))
+
+	done := make(chan error, 1)
+	go func() {
+		done <- w.Append(
+			raftpb.HardState{Term: 1, Vote: 1, Commit: 6},
+			[]raftpb.Entry{{Index: 6, Term: 1, Data: []byte("f")}},
+		)
+	}()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Append blocked after a stale prior Append — s.mu was not released (#301)")
+	}
+
+	got, err := w.Entries(3, 7, math.MaxUint64)
+	require.NoError(t, err)
+	require.Len(t, got, 4)
+	require.Equal(t, uint64(3), got[0].Index)
+	require.Equal(t, uint64(6), got[3].Index)
+}
+
+// TestAppend_StaleEntriesPiggybackedHardStateIsPersisted pins the second
+// half of the #301 fix. The first iteration of this PR returned early
+// from the stale-entry branch, which also bypassed HardState persistence.
+// If a follower's Ready batch carries stale entries together with a new
+// term/vote/commit on the same Append call (a common shape right after a
+// snapshot install), the bumped HardState would be silently dropped and
+// the node would forget the commit on the next restart.
+//
+// The fix drops the stale entries but falls through to the HardState
+// update path. We assert that the new commit survives:
+//  1. Prime the window with entries 3..5 and HardState commit=5.
+//  2. Issue an Append carrying stale entries 1..2 AND HardState commit=10.
+//  3. Reload the WAL from disk and assert InitialState reports commit=10.
+func TestAppend_StaleEntriesPiggybackedHardStateIsPersisted(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	w := newTestWALDir(t, dir)
+
+	// Seed a snapshot at index 2 so writing entries 3..5 is legal and
+	// "stale" entries at index 1..2 fall before the cached window.
+	cs := &raftpb.ConfState{Voters: []uint64{1}}
+	require.NoError(t, w.CreateSnapshot(2, cs, nil))
+
+	require.NoError(t, w.Append(
+		raftpb.HardState{Term: 1, Vote: 1, Commit: 5},
+		[]raftpb.Entry{
+			{Index: 3, Term: 1, Data: []byte("c")},
+			{Index: 4, Term: 1, Data: []byte("d")},
+			{Index: 5, Term: 1, Data: []byte("e")},
+		},
+	))
+
+	// Stale entries (1..2) + a piggy-backed Commit=10. The stale branch
+	// must drop the entries but still flush the new HardState.
+	require.NoError(t, w.Append(
+		raftpb.HardState{Term: 1, Vote: 1, Commit: 10},
+		[]raftpb.Entry{
+			{Index: 1, Term: 1, Data: []byte("a")},
+			{Index: 2, Term: 1, Data: []byte("b")},
+		},
+	))
+
+	require.NoError(t, w.Close())
+
+	// Reopen and verify the persisted HardState carries the bumped commit.
+	reopened := newTestWALDir(t, dir)
+
+	hs, _, err := reopened.InitialState()
+	require.NoError(t, err)
+	require.Equal(t, uint64(10), hs.Commit,
+		"piggy-backed HardState commit on a stale-entry Append must survive across restart (#301)")
+}
+
+// newTestWALDir is a variant of newTestWAL that lets the caller control
+// the storage directory so a WAL can be closed and reopened in-place.
+func newTestWALDir(t *testing.T, dir string) *DefaultWAL {
+	t.Helper()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("test")
+
+	w, err := New(dir, logger, meter)
+	require.NoError(t, err)
+
+	return w
+}
