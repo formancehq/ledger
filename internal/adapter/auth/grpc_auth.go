@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"strings"
@@ -76,7 +77,17 @@ func Authenticate(ctx context.Context, cfg AuthConfig, scopes ...Scope) (context
 	// Fast path: cluster-internal shared secret bypasses JWT validation.
 	// Grant all granular scopes so that per-request scope checks (e.g. in Apply)
 	// succeed when a follower forwards a request to the leader.
-	if cfg.ClusterSecret != "" && token == cfg.ClusterSecret {
+	//
+	// Compare with crypto/subtle.ConstantTimeCompare to avoid leaking
+	// the secret's length and common-prefix timing via Go's variable-time
+	// string equality. The explicit length pre-check is itself constant-
+	// time in the sense that it does not branch on secret bytes (only
+	// on the public input length), and short-circuits the comparison
+	// when lengths differ — a timing leak there is harmless because the
+	// expected length is a fixed configuration value (#339 / Review-2 M-25).
+	if cfg.ClusterSecret != "" &&
+		len(token) == len(cfg.ClusterSecret) &&
+		subtle.ConstantTimeCompare([]byte(token), []byte(cfg.ClusterSecret)) == 1 {
 		span.SetAttributes(attribute.Bool("auth.cluster_internal", true))
 		ctx = WithExpandedScopes(ctx, allScopes())
 		ctx = WithAuthPresented(ctx, true)

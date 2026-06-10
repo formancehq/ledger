@@ -646,3 +646,47 @@ func TestAuthenticate_ClusterSecret_GrantsAllScopes(t *testing.T) {
 		assert.True(t, HasScope(effective, scope), "missing scope %s", scope)
 	}
 }
+
+// TestAuthenticate_ClusterSecret_RejectsWrongValue pins the
+// constant-time comparison from #339 / Review-2 M-25. A token whose
+// length matches but whose bytes differ must be rejected. A regression
+// to plain == would still reject this case (so the test alone does not
+// prove constant-timeness), but the test guards against the comparison
+// being accidentally inverted or short-circuited.
+func TestAuthenticate_ClusterSecret_RejectsWrongValue(t *testing.T) {
+	t.Parallel()
+
+	secret := "test-cluster-secret-12345"
+
+	cfg := AuthConfig{
+		Enabled:       true,
+		ClusterSecret: secret,
+	}
+
+	// Same length, different bytes.
+	wrong := "test-cluster-secret-99999"
+	require.Equal(t, len(secret), len(wrong))
+
+	ctx := ctxWithBearer(wrong)
+
+	_, err := Authenticate(ctx, cfg)
+	require.Error(t, err,
+		"cluster-secret comparison must reject a same-length token whose bytes differ (#339)")
+}
+
+// TestAuthenticate_ClusterSecret_RejectsWrongLength documents that the
+// length pre-check correctly short-circuits without leaking secret bytes
+// via subtle.ConstantTimeCompare's length-equality input requirement.
+func TestAuthenticate_ClusterSecret_RejectsWrongLength(t *testing.T) {
+	t.Parallel()
+
+	cfg := AuthConfig{
+		Enabled:       true,
+		ClusterSecret: "test-cluster-secret-12345",
+	}
+
+	ctx := ctxWithBearer("short")
+
+	_, err := Authenticate(ctx, cfg)
+	require.Error(t, err)
+}
