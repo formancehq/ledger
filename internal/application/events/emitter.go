@@ -16,6 +16,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
+	"github.com/formancehq/ledger/v3/internal/pkg/vtmarshal"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -66,9 +67,9 @@ type Emitter struct {
 	mu      sync.Mutex
 	running bool
 
-	// Reusable state for proposeSinkUpdate (single-goroutine, no lock needed).
-	proposal   raftcmdpb.Proposal
-	marshalBuf []byte
+	// Reusable proposal struct for proposeSinkUpdate (single-goroutine, no
+	// lock needed). The marshal output is NOT reused — see vtmarshal.MarshalCopy.
+	proposal raftcmdpb.Proposal
 
 	// failure tracks consecutive publish failures so we don't spam Raft
 	// (or the sink) when an external dependency is unhealthy. See
@@ -359,19 +360,18 @@ func (e *Emitter) proposeSinkUpdate(update *raftcmdpb.EventsSinkUpdate) error {
 	e.proposal.Id = cmdID
 	e.proposal.EventsSinkUpdates = []*raftcmdpb.EventsSinkUpdate{update}
 
-	size := e.proposal.SizeVT()
-	if cap(e.marshalBuf) < size {
-		e.marshalBuf = make([]byte, size)
-	} else {
-		e.marshalBuf = e.marshalBuf[:size]
-	}
-
-	n, err := e.proposal.MarshalToVT(e.marshalBuf)
+	// MarshalCopy returns a freshly allocated slice safe for Raft retention.
+	// Reusing a per-Emitter buffer here would be unsafe: etcd/raft keeps the
+	// proposal bytes in its in-memory log and may re-read them when replicating
+	// to a slow follower after local apply. A subsequent proposeSinkUpdate
+	// would overwrite the buffer mid-replication, corrupting the entry
+	// observed by the lagging node and violating cross-node determinism (#311).
+	data, err := vtmarshal.MarshalCopy(&e.proposal)
 	if err != nil {
 		return err
 	}
 
-	future, err := e.proposer.Propose(context.Background(), node.NewProposal(cmdID, e.marshalBuf[:n]))
+	future, err := e.proposer.Propose(context.Background(), node.NewProposal(cmdID, data))
 	if err != nil {
 		return err
 	}
