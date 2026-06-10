@@ -7,7 +7,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -26,7 +25,7 @@ func (s *Server) handleUpdatePreparedQuery(w http.ResponseWriter, r *http.Reques
 	}
 
 	var body struct {
-		Filter *commonpb.QueryFilter `json:"filter"`
+		Filter json.RawMessage `json:"filter"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", err)
@@ -34,12 +33,19 @@ func (s *Server) handleUpdatePreparedQuery(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	_, err := s.backend.Apply(r.Context(), &servicepb.Request{
+	filter, err := decodePreparedQueryFilter(body.Filter)
+	if err != nil {
+		writeBadRequest(w, "INVALID_REQUEST", err)
+
+		return
+	}
+
+	_, err = s.backend.Apply(r.Context(), &servicepb.Request{
 		Type: &servicepb.Request_UpdatePreparedQuery{
 			UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
 				Ledger: ledgerName,
 				Name:   queryName,
-				Filter: body.Filter,
+				Filter: filter,
 			},
 		},
 	})
