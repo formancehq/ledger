@@ -94,7 +94,15 @@ func (it *OrIterator) findMin() bool {
 		return false
 	}
 
-	it.current = minVal
+	// Copy minVal into our own buffer: child.Current() aliases the underlying
+	// pebble.Iterator.Key() memory, which the next positioning call may
+	// overwrite. On Next() we advance every child whose Current() equals
+	// it.current; if it.current still pointed at the winning child's buffer
+	// after that child advanced, the subsequent bytes.Equal comparisons
+	// would run against rewritten memory and the duplicate-holding children
+	// would not be advanced (resulting in duplicate or skipped rows in OR
+	// queries — #319).
+	it.current = append(it.current[:0], minVal...)
 
 	return true
 }

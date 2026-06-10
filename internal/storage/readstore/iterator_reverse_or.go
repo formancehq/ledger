@@ -105,7 +105,10 @@ func (it *ReverseOrIterator) findMax() bool {
 		return false
 	}
 
-	it.current = maxVal
+	// Own the buffer — see iterator_or.go.findMin for the rationale.
+	// child.Current() aliases the Pebble key memory and is invalidated on
+	// the next positioning call (#319).
+	it.current = append(it.current[:0], maxVal...)
 
 	return true
 }
