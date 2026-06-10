@@ -132,6 +132,15 @@ func TestValidateAsset(t *testing.T) {
 		{name: "double slash", input: "USD//2", wantErr: ErrAssetInvalid},
 		{name: "trailing slash", input: "USD/", wantErr: ErrAssetInvalid},
 		{name: "leading underscore", input: "_USD", wantErr: ErrAssetInvalid},
+		// #303: precision must fit in uint8 (the volume-key byte) and use a
+		// single canonical form per (base, precision) pair.
+		{name: "precision overflows uint8", input: "USD/256", wantErr: ErrAssetInvalid},
+		{name: "precision way over uint8", input: "USD/999999", wantErr: ErrAssetInvalid},
+		{name: "precision boundary 255", input: "USD/255"},
+		{name: "precision min 1", input: "USD/1"},
+		{name: "precision zero aliases bare base", input: "USD/0", wantErr: ErrAssetInvalid},
+		{name: "precision leading zero", input: "USD/02", wantErr: ErrAssetInvalid},
+		{name: "precision multi leading zero", input: "USD/007", wantErr: ErrAssetInvalid},
 	}
 
 	for _, tt := range tests {
@@ -144,6 +153,42 @@ func TestValidateAsset(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 			}
+		})
+	}
+}
+
+// TestValidateAsset_CanonicalRoundTrip pins the contract used by the
+// volume-key encoding (#303): every input ValidateAsset accepts must
+// survive the ParseAssetPrecision → FormatAsset round trip unchanged.
+// If two valid inputs collapsed onto the same (base, precision) pair,
+// the canonical form returned by FormatAsset would not match one of
+// them and consensus-deterministic asset aliasing would already exist
+// in production.
+func TestValidateAsset_CanonicalRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	valid := []string{
+		"USD",
+		"EUR/2",
+		"BTC/8",
+		"USD/1",
+		"USD/255",
+		"CUSTOM_TOKEN",
+		"CUSTOM_TOKEN/6",
+		"A",
+		"USD2",
+		"ABCDEFGHIJKLMNOPQ",
+	}
+
+	for _, asset := range valid {
+		t.Run(asset, func(t *testing.T) {
+			t.Parallel()
+
+			require.NoError(t, ValidateAsset(asset))
+
+			base, precision := ParseAssetPrecision(asset)
+			require.Equal(t, asset, FormatAsset(base, precision),
+				"every accepted asset must round-trip through Parse/Format unchanged (#303)")
 		})
 	}
 }

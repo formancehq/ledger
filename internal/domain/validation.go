@@ -23,7 +23,7 @@ var (
 	ErrAccountAddressInvalidChar   = errors.New("account address must contain only letters, digits, colons, underscores, and hyphens")
 	ErrAccountAddressTooLong       = fmt.Errorf("account address exceeds maximum length of %d bytes", maxAccountAddressLength)
 
-	ErrAssetInvalid = errors.New("asset must match [A-Z][A-Z0-9]{0,16}(_[A-Z]{1,16})?(/\\d{1,6})?")
+	ErrAssetInvalid = errors.New("asset must match [A-Z][A-Z0-9]{0,16}(_[A-Z]{1,16})?(/[1-9][0-9]{0,2})? with precision in [1, 255]")
 )
 
 // ValidateLedgerName checks that a ledger name is safe for use in Pebble key encoding.
@@ -86,8 +86,15 @@ func ValidateMetadataKey(key string) error {
 }
 
 // ValidateAsset checks that an asset string matches the expected format:
-// [A-Z][A-Z0-9]{0,16}(_[A-Z]{1,16})?(/\d{1,6})?
+// [A-Z][A-Z0-9]{0,16}(_[A-Z]{1,16})?(/[1-9]\d{0,2})?
 // Examples: "USD", "EUR/2", "BTC/8", "CUSTOM_TOKEN/6".
+//
+// Precision rules are tight on purpose: the canonical volume key in keys.go
+// encodes the precision as a single byte, and ParseAssetPrecision relies on
+// validation to have rejected anything that would lose information. Without
+// these rules, "USD", "USD/0", "USD/02", and "USD/256" all collapse onto
+// the same Pebble/cache volume entry — cross-asset fund contamination in a
+// double-entry ledger (#303).
 func ValidateAsset(asset string) error {
 	if len(asset) == 0 {
 		return ErrAssetInvalid
@@ -99,11 +106,38 @@ func ValidateAsset(asset string) error {
 		return ErrAssetInvalid
 	}
 
-	if hasPrecision && !isDigits(precisionStr, 1, 6) {
+	if hasPrecision && !validateAssetPrecision(precisionStr) {
 		return ErrAssetInvalid
 	}
 
 	return nil
+}
+
+// validateAssetPrecision enforces a canonical, uint8-safe precision suffix:
+//   - 1 to 3 digits (max numeric value 255 fits in 3 chars).
+//   - no leading zero (rejects "02" → 2 aliasing).
+//   - numeric value in [1, 255]; "0" is rejected so "USD/0" cannot alias "USD",
+//     and values that overflow uint8 are rejected so "USD/256+" cannot alias
+//     anything either.
+func validateAssetPrecision(s string) bool {
+	if len(s) == 0 || len(s) > 3 {
+		return false
+	}
+
+	if s[0] == '0' {
+		return false
+	}
+
+	for i := range s {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+
+	// strconv.Atoi is safe: we've already proven s is all-digit, ≤ 3 chars.
+	v, _ := strconv.Atoi(s)
+
+	return v >= 1 && v <= 255
 }
 
 // validateAssetBase checks the base part: [A-Z][A-Z0-9]{0,16}(_[A-Z]{1,16})?
@@ -151,20 +185,6 @@ func isUpperAlpha(s string, minLen, maxLen int) bool {
 
 	for i := range s {
 		if s[i] < 'A' || s[i] > 'Z' {
-			return false
-		}
-	}
-
-	return true
-}
-
-func isDigits(s string, minLen, maxLen int) bool {
-	if len(s) < minLen || len(s) > maxLen {
-		return false
-	}
-
-	for i := range s {
-		if s[i] < '0' || s[i] > '9' {
 			return false
 		}
 	}
