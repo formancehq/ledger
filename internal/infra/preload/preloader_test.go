@@ -11,6 +11,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/bloom"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -211,5 +212,59 @@ func TestResolveLedgerID(t *testing.T) {
 
 	id, ok = p.ResolveLedgerID("test")
 	require.True(t, ok)
+	require.Equal(t, uint32(42), id)
+}
+
+// TestResolveLedgerID_BloomNotReadyFallsThrough pins the fix for #318.
+// Bloom filters start empty at process start and are populated
+// asynchronously (restoreBloomFilters / StartAsyncBloomPopulate). During
+// that window IsReady() is false and the raw filter's MayContain returns
+// false for every input. ResolveLedgerID used to consult the raw filter
+// instead of the IsReady-guarded helper, so it returned (0, false) for
+// every pre-existing ledger and admission then rejected the matching
+// proposals (ErrBalanceNotPreloaded / ErrLedgerNotFound) until the
+// bloom rebuild finished.
+func TestResolveLedgerID_BloomNotReadyFallsThrough(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("test")
+
+	store, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	attrs := attributes.New()
+	c, err := cache.New(1000, meter)
+	require.NoError(t, err)
+
+	// Persist a ledger to Pebble only; nothing in the cache, nothing in
+	// the bloom yet — the exact state during a fresh boot.
+	ledgerInfo := &commonpb.LedgerInfo{Name: "test", Id: 42}
+	canonical := domain.LedgerKey{Name: "test"}.Bytes()
+
+	batch := store.NewBatch()
+	_, err = attrs.Ledger.Set(batch, canonical, ledgerInfo)
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	// Build a bloom FilterSet with the ledgers type enabled. Do NOT mark
+	// it ready: that's the exact window the bug used to break.
+	bfs := bloom.NewFilterSet(&commonpb.ClusterConfig{
+		BloomLedgers: &commonpb.BloomTypeConfig{ExpectedKeys: 1024, FpRate: 0.01},
+	}, meter)
+	require.NotNil(t, bfs)
+	require.False(t, bfs.IsReady(), "precondition: bloom must be in the populating window")
+
+	tracker := node.NewIndexTracker(1)
+	p := New(tracker, c, attrs, store, bfs, logger)
+
+	// Pre-fix the call short-circuited on the empty bloom and returned
+	// (0, false). Post-fix the IsReady guard skips the bloom, the lookup
+	// falls through to Pebble, and finds the ledger.
+	id, ok := p.ResolveLedgerID("test")
+	require.True(t, ok,
+		"ResolveLedgerID must fall through to Pebble while the bloom is still populating (#318)")
 	require.Equal(t, uint32(42), id)
 }

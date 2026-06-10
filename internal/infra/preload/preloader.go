@@ -117,11 +117,16 @@ func (p *Preloader) ResolveLedgerID(name string) (uint32, bool) {
 	canonical := domain.LedgerKey{Name: name}.Bytes()
 	id, _ := attributes.MakeKey(attributes.DefaultSeeds, canonical)
 
-	// 1. Bloom filter: if definitely absent, skip.
-	if p.bloomFilters != nil {
-		if bf := p.bloomFilters.FilterForAttrType(dal.SubAttrLedger); bf != nil && !bf.MayContain(id) {
-			return 0, false
-		}
+	// 1. Bloom filter: if definitely absent, skip. Use the IsReady-guarded
+	// helper — the raw FilterForAttrType returns the (still-empty) filter
+	// even while restoreBloomFilters / StartAsyncBloomPopulate is rebuilding
+	// it on boot or after a rebuild. During that window every MayContain
+	// returns false, so ResolveLedgerID would falsely answer "not found"
+	// for every pre-existing ledger and admission would reject the matching
+	// proposals with ErrBalanceNotPreloaded / reverts with ErrLedgerNotFound
+	// (#318).
+	if bf := p.bloomFilter(dal.SubAttrLedger); bf != nil && !bf.MayContain(id) {
+		return 0, false
 	}
 
 	// 2. Cache: check gen0/gen1.
