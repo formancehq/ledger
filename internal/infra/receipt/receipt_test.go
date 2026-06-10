@@ -4,6 +4,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -138,6 +139,54 @@ func TestClaimsToPostings(t *testing.T) {
 	require.Equal(t, "user:carol", postings[1].GetDestination())
 	require.Equal(t, big.NewInt(1000), postings[1].GetAmount().ToBigInt())
 	require.Equal(t, "EUR", postings[1].GetAsset())
+}
+
+// TestVerifyRejectsForeignAlg pins the algorithm-confusion defense
+// from #342 / Review-2 L-21. A token forged with a different
+// SigningMethod (HS512 here) but signed using the same []byte key
+// must be rejected, even if the keyfunc returns []byte and the alg
+// is not "none". golang-jwt's WithValidMethods is the canonical
+// belt-and-braces for this attack class.
+func TestVerifyRejectsForeignAlg(t *testing.T) {
+	t.Parallel()
+
+	key := []byte("test-secret-key-32-bytes-long!!!")
+	signer := NewSigner(key)
+
+	// Build a token with HS512 instead of the signer's HS256.
+	claims := &Claims{
+		RegisteredClaims: jwt.RegisteredClaims{Issuer: "ledger-v3"},
+		Ledger:           "L",
+		TxID:             1,
+	}
+	forged, err := jwt.NewWithClaims(jwt.SigningMethodHS512, claims).SignedString(key)
+	require.NoError(t, err)
+
+	_, err = signer.Verify(forged)
+	require.Error(t, err,
+		"Verify must reject tokens whose alg is not the pinned HS256 (#342)")
+}
+
+// TestVerifyRejectsForeignIssuer pins the issuer guard. A token
+// minted by a sibling service (different issuer) but signed with
+// the same key must not be accepted as a ledger-v3 receipt.
+func TestVerifyRejectsForeignIssuer(t *testing.T) {
+	t.Parallel()
+
+	key := []byte("test-secret-key-32-bytes-long!!!")
+	signer := NewSigner(key)
+
+	claims := &Claims{
+		RegisteredClaims: jwt.RegisteredClaims{Issuer: "some-other-service"},
+		Ledger:           "L",
+		TxID:             1,
+	}
+	forged, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(key)
+	require.NoError(t, err)
+
+	_, err = signer.Verify(forged)
+	require.Error(t, err,
+		"Verify must reject tokens whose issuer is not ledger-v3 (#342)")
 }
 
 func TestSignWithNilTimestamp(t *testing.T) {

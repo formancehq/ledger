@@ -73,12 +73,23 @@ func (s *Signer) Sign(ledger string, txID uint64, postings []*commonpb.Posting, 
 }
 
 // Verify verifies a JWT receipt and returns its claims.
+//
+// Algorithm pinning is required defense-in-depth on a path that
+// verifies financial receipts: golang-jwt v5 already blocks
+// alg:none and the []byte keyfunc makes asymmetric-alg confusion
+// fail at the type assertion, but pinning protects against future
+// library or keyfunc changes (#342 / Review-2 L-21). Issuer pinning
+// in the same call rejects tokens minted by anything other than
+// this Signer.
 func (s *Signer) Verify(tokenString string) (*Claims, error) {
 	claims := &Claims{}
 
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(_ *jwt.Token) (any, error) {
 		return s.signingKey, nil
-	})
+	},
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+		jwt.WithIssuer("ledger-v3"),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("parsing receipt token: %w", err)
 	}
