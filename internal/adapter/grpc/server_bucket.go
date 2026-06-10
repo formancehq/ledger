@@ -23,6 +23,7 @@ import (
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/application/check"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
@@ -228,8 +229,13 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 	}
 
 	var (
-		tx  *commonpb.Transaction
-		err error
+		tx *commonpb.Transaction
+		// reader is the store the transaction was read from. The receipt is
+		// computed from the SAME store so a historical checkpoint read produces
+		// a receipt consistent with the checkpoint's ledger/log data, not live
+		// data that may have since changed or been purged.
+		reader dal.PebbleGetter
+		err    error
 	)
 
 	if cpID := req.GetCheckpointId(); cpID > 0 {
@@ -243,8 +249,10 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 			_ = mainStore.Close()
 		}()
 
+		reader = mainStore
 		tx, err = impl.localCtrl.GetTransactionFrom(ctx, mainStore, req.GetLedger(), req.GetTransactionId())
 	} else {
+		reader = impl.store
 		tx, err = impl.ctrl.GetTransaction(ctx, req.GetLedger(), req.GetTransactionId())
 	}
 
@@ -254,36 +262,46 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 
 	resp := &servicepb.GetTransactionResponse{Transaction: tx}
 	if impl.receiptSigner != nil {
-		receiptToken, err := impl.computeTransactionReceipt(ctx, req.GetLedger(), req.GetTransactionId(), tx)
-		if err == nil {
-			resp.Receipt = receiptToken
+		receiptToken, err := impl.computeTransactionReceipt(ctx, reader, req.GetLedger(), req.GetTransactionId(), tx)
+		if err != nil {
+			return nil, fmt.Errorf("computing transaction receipt: %w", err)
 		}
+
+		resp.Receipt = receiptToken
 	}
 
 	return resp, nil
 }
 
 // computeTransactionReceipt computes a JWT receipt for an existing transaction
-// by looking up its creation log to extract the period ID.
-func (impl *BucketServiceServerImpl) computeTransactionReceipt(ctx context.Context, ledger string, txID uint64, tx *commonpb.Transaction) (string, error) {
-	ledgerInfo, err := query.GetLedgerByName(ctx, impl.store, ledger)
+// by looking up its creation log to extract the period ID. Ledger info and the
+// creation log are read from the supplied reader — the same store the
+// transaction was read from — so checkpoint reads stay self-consistent.
+func (impl *BucketServiceServerImpl) computeTransactionReceipt(ctx context.Context, reader dal.PebbleGetter, ledger string, txID uint64, tx *commonpb.Transaction) (string, error) {
+	ledgerInfo, err := query.GetLedgerByName(ctx, reader, ledger)
 	if err != nil {
 		return "", err
 	}
 
-	log, err := query.FindTransactionCreationLog(ctx, impl.store, impl.attrs.Transaction, ledgerInfo.GetId(), txID)
+	log, err := query.FindTransactionCreationLog(ctx, reader, impl.attrs.Transaction, ledgerInfo.GetId(), txID)
+	if errors.Is(err, domain.ErrNotFound) {
+		// No creation log for this transaction in this store (e.g. its log was
+		// archived/purged). The transaction is still readable; it just has no
+		// receipt. Not an error.
+		return "", nil
+	}
+
 	if err != nil {
 		return "", err
 	}
 
-	applyLog := log.GetPayload().GetApply()
-	if applyLog == nil || applyLog.GetLog() == nil {
-		return "", errors.New("not an apply log")
-	}
-
-	created := applyLog.GetLog().GetData().GetCreatedTransaction()
+	// Receipts are only issued for created transactions, matching the Apply path
+	// (signReceiptIfNeeded skips non-created logs). A reversal transaction's
+	// creation log is a RevertedTransaction log, so it legitimately has no
+	// receipt — return empty rather than erroring.
+	created := log.GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction()
 	if created == nil {
-		return "", errors.New("not a created transaction log")
+		return "", nil
 	}
 
 	return impl.receiptSigner.Sign(ledger, txID, tx.GetPostings(), tx.GetTimestamp(), created.GetPeriodId())
