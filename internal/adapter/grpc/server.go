@@ -682,7 +682,13 @@ func buildBaseServer(name, host string, port int, logger logging.Logger, tlsCfg 
 //   - (nil, true):  plaintext only
 //   - (cfg, false): TLS only
 //   - (cfg, true):  dual listener (cmux), used as a transitional state
-func NewRaftServer(port int, logger logging.Logger, tlsCfg *tls.Config, acceptPlaintext bool) (*RaftServer, error) {
+//
+// clusterSecret guards every RPC on this server (transport stream + snapshot
+// service). When empty, the server runs unauthenticated — historical default,
+// matches single-node setups that never set --cluster-secret. When set, the
+// caller MUST present `authorization: Bearer <clusterSecret>` on every call
+// or the RPC is rejected with codes.Unauthenticated (#310).
+func NewRaftServer(port int, logger logging.Logger, tlsCfg *tls.Config, acceptPlaintext bool, clusterSecret string) (*RaftServer, error) {
 	opts := []ggrpc.ServerOption{
 		ggrpc.InitialWindowSize(transport.GRPCInitialWindowSize),
 		ggrpc.InitialConnWindowSize(transport.GRPCInitialConnWindowSize),
@@ -690,6 +696,13 @@ func NewRaftServer(port int, logger logging.Logger, tlsCfg *tls.Config, acceptPl
 		ggrpc.WriteBufferSize(transport.GRPCWriteBufferSize),
 		ggrpc.MaxRecvMsgSize(transport.GRPCMaxMsgSize),
 		ggrpc.MaxSendMsgSize(transport.GRPCMaxMsgSize),
+	}
+
+	if unary, stream := raftAuthInterceptors(clusterSecret); unary != nil {
+		opts = append(opts,
+			ggrpc.ChainUnaryInterceptor(unary),
+			ggrpc.ChainStreamInterceptor(stream),
+		)
 	}
 
 	bs, err := buildBaseServer("Raft gRPC", "", port, logger, tlsCfg, acceptPlaintext, opts)

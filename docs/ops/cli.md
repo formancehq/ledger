@@ -3940,6 +3940,14 @@ When authentication is enabled, all inter-node gRPC calls use this shared secret
 if a cluster secret is configured without TLS (`--tls-cert-file` and
 `--tls-key-file`), because the secret would be sent in plaintext otherwise.
 
+**The Raft transport server enforces the secret on every RPC.** When
+`--cluster-secret` is set, the Raft gRPC server (transport stream + snapshot
+service) installs a server-side interceptor that rejects any call whose
+`authorization: Bearer …` metadata does not match the configured secret with
+`codes.Unauthenticated`. The comparison is constant-time. Leaving
+`--cluster-secret` empty preserves the historical unauthenticated behavior for
+single-node setups; multi-node deployments **MUST** set it.
+
 ```bash
 ledger run --cluster-secret "my-cluster-secret" --auth-enabled \
   --tls-cert-file /etc/ledger/tls.crt --tls-key-file /etc/ledger/tls.key \

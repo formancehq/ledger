@@ -467,7 +467,7 @@ func Module() fx.Option {
 					return nil, fmt.Errorf("loading TLS config for raft server: %w", err)
 				}
 
-				return grpcadp.NewRaftServer(port, logger, tlsCfg, cfg.TLSConfig.Mode.AllowsPlaintext())
+				return grpcadp.NewRaftServer(port, logger, tlsCfg, cfg.TLSConfig.Mode.AllowsPlaintext(), cfg.ClusterSecret)
 			},
 			// ServiceServer for external client-facing API
 			func(cfg Config, logger logging.Logger) (*grpcadp.ServiceServer, error) {

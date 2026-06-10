@@ -51,7 +51,7 @@ func startTestRaftServer(t *testing.T, certs *testserver.TestCerts, allowTLS, ac
 		}
 	}
 
-	srv, err := NewRaftServer(port, noopLogger{}, tlsCfg, acceptPlaintext)
+	srv, err := NewRaftServer(port, noopLogger{}, tlsCfg, acceptPlaintext, "")
 	require.NoError(t, err)
 
 	healthpb.RegisterHealthServer(srv.GetServer(), healthShim{})
@@ -110,7 +110,7 @@ func TestMultiServer_OptionalAcceptsBoth(t *testing.T) {
 func TestMultiServer_RejectsEmptyMode(t *testing.T) {
 	t.Parallel()
 
-	_, err := NewRaftServer(0, noopLogger{}, nil, false)
+	_, err := NewRaftServer(0, noopLogger{}, nil, false, "")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "neither TLS nor plaintext enabled")
 }
