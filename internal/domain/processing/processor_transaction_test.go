@@ -734,6 +734,58 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 	require.Equal(t, "purchase", metaMap["category"])
 }
 
+// TestProcessCreateTransaction_Numscript_RejectsEmptyMetadataKey pins
+// the fix for #322 (second prong): Numscript-produced metadata keys
+// never passed through admission's ValidateMetadataKey, so a script
+// could write empty / NUL-bearing keys straight into the canonical
+// Pebble layout. We now revalidate after Numscript resolution, mirroring
+// the post-resolution address validation.
+func TestProcessCreateTransaction_Numscript_RejectsEmptyMetadataKey(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockInMemoryStore(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	now := &commonpb.Timestamp{Data: 1234567890}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true).AnyTimes()
+	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true).AnyTimes()
+	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
+	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false).AnyTimes()
+	setupNumscriptVolumeMocks(mockStore)
+
+	request := &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: "test-ledger",
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+					CreateTransaction: &servicepb.CreateTransactionPayload{
+						Script: &commonpb.Script{
+							Plain: `
+								set_tx_meta("", "ghost")
+								send [USD/2 100] (
+									source = @world
+									destination = @users:alice
+								)
+							`,
+						},
+					},
+				}},
+			},
+		},
+	}
+
+	_, err = processor.ProcessOrder(requestToOrder(request), mockStore)
+	require.Error(t, err)
+	require.ErrorIs(t, err, domain.ErrMetadataKeyEmpty,
+		"empty metadata key produced by Numscript must surface ErrMetadataKeyEmpty (#322)")
+}
+
 func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 	t.Parallel()
 

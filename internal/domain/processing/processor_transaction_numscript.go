@@ -150,12 +150,21 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 	// value before the caller's GetAccountMetadata sees it, so the log's
 	// PreviousAccountMetadata would equal the new metadata and the
 	// indexbuilder could not remove stale index entries (#186).
+	// Validate Numscript-produced metadata keys before they reach the
+	// canonical Pebble key layout. set_account_meta / set_tx_meta keys
+	// never pass through admission's ValidateMetadataKey, so an empty or
+	// NUL-bearing key from a Numscript program would otherwise corrupt
+	// read-index entries (#322).
 	var accountsMeta map[string]map[string]*commonpb.MetadataValue
 	if len(result.AccountsMetadata) > 0 {
 		accountsMeta = make(map[string]map[string]*commonpb.MetadataValue, len(result.AccountsMetadata))
 		for account, meta := range result.AccountsMetadata {
 			mdMap := make(map[string]*commonpb.MetadataValue, len(meta))
 			for key, value := range meta {
+				if err := domain.ValidateMetadataKey(key); err != nil {
+					return nil, fmt.Errorf("numscript-produced account %q metadata key: %w", account, err)
+				}
+
 				mdMap[key] = commonpb.NewStringValue(value)
 			}
 
@@ -168,6 +177,10 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 	if len(result.Metadata) > 0 {
 		txMeta = make(map[string]*commonpb.MetadataValue, len(result.Metadata))
 		for key, value := range result.Metadata {
+			if err := domain.ValidateMetadataKey(key); err != nil {
+				return nil, fmt.Errorf("numscript-produced transaction metadata key: %w", err)
+			}
+
 			txMeta[key] = commonpb.NewStringValue(value.String())
 		}
 	}

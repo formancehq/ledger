@@ -179,6 +179,66 @@ func TestValidateOrder_MetadataKeys(t *testing.T) {
 			},
 			wantErr: domain.ErrMetadataKeyContainsNullByte,
 		},
+		// #322: revert orders silently bypassed validateApplyMetadataKeys
+		// (no case for LedgerApplyOrder_RevertTransaction). A client could
+		// thus ship empty / NUL-bearing keys directly into the canonical
+		// Pebble layout via the revert log.
+		{
+			name: "null byte in RevertTransaction metadata key",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Ledger: "default",
+						Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
+							RevertTransaction: &raftcmdpb.RevertTransactionOrder{
+								TransactionId: 1,
+								Metadata: map[string]*commonpb.MetadataValue{
+									"bad\x00key": {Type: &commonpb.MetadataValue_StringValue{StringValue: "v"}},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErr: domain.ErrMetadataKeyContainsNullByte,
+		},
+		{
+			name: "empty metadata key in RevertTransaction",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Ledger: "default",
+						Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
+							RevertTransaction: &raftcmdpb.RevertTransactionOrder{
+								TransactionId: 1,
+								Metadata: map[string]*commonpb.MetadataValue{
+									"": {Type: &commonpb.MetadataValue_StringValue{StringValue: "v"}},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErr: domain.ErrMetadataKeyEmpty,
+		},
+		{
+			name: "valid metadata in RevertTransaction",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Ledger: "default",
+						Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
+							RevertTransaction: &raftcmdpb.RevertTransactionOrder{
+								TransactionId: 1,
+								Metadata: map[string]*commonpb.MetadataValue{
+									"reason": {Type: &commonpb.MetadataValue_StringValue{StringValue: "wrong amount"}},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {

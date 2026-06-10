@@ -95,6 +95,14 @@ func validateApplyMetadataKeys(apply *raftcmdpb.LedgerApplyOrder) error {
 		}
 
 		return nil
+	case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
+		// processRevertTransaction stores order.GetMetadata() straight into
+		// the revert log payload, so the metadata-key invariants (non-empty,
+		// no NUL bytes) must be checked here too. Without this gate a
+		// client-supplied empty or NUL-bearing key reaches the canonical
+		// Pebble key layout via the revert log and corrupts read-index
+		// entries (#322).
+		return validateMetadataMap(d.RevertTransaction.GetMetadata())
 	case *raftcmdpb.LedgerApplyOrder_AddMetadata:
 		return validateMetadataMap(d.AddMetadata.GetMetadata())
 	case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
