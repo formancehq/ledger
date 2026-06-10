@@ -18,7 +18,7 @@ func (o OffsetPaginator[ResourceType, OptionsType]) Paginate(sb *bun.SelectQuery
 	originalOrder := *o.query.Order
 
 	orderExpression := fmt.Sprintf("%s %s", paginationColumn, originalOrder)
-	sb = sb.ColumnExpr("row_number() OVER (ORDER BY " + orderExpression + ")")
+	sb = sb.Order(orderExpression)
 
 	if o.query.Offset > math.MaxInt32 {
 		return nil, fmt.Errorf("offset value exceeds maximum allowed value")
@@ -68,6 +68,11 @@ func (o OffsetPaginator[ResourceType, OptionsType]) BuildCursor(ret []ResourceTy
 		Next:     encodeCursor[OptionsType, OffsetPaginatedQuery[OptionsType]](next),
 		Data:     ret,
 	}, nil
+}
+
+//nolint:unused
+func (o OffsetPaginator[ResourceType, OptionsType]) OrderExpression() string {
+	return fmt.Sprintf("%s %s", o.query.Column, *o.query.Order)
 }
 
 var _ Paginator[any] = &OffsetPaginator[any, any]{}
