@@ -29,7 +29,24 @@ import (
 var ErrStoreClosed = errors.New("store closed")
 
 const (
-	liveDir                 = "live"
+	liveDir = "live"
+	// liveStagingDir is where RestoreCheckpoint builds the new database
+	// before publishing it. Hard-link, pebble.Open, persisted-config
+	// rewrite, flush, and re-checkpoint all happen inside `live.staging/`.
+	// Only once every post-open step succeeds do we `rename(live.staging,
+	// live)` — that rename is the single atomic commit point of the
+	// restore. Until it happens, `live/` does not exist, so a crash
+	// anywhere in the build phase is unambiguous on the next boot: the
+	// presence of `live/` means "restore committed", its absence (with
+	// `live.discard/` present) means "restore aborted, revert to discard".
+	liveStagingDir = "live.staging"
+	// liveDiscardDir is the rename-aside name used by RestoreCheckpoint as
+	// a rollback point. The restore renames `live/` -> `live.discard/`
+	// before building the new database under `live.staging/`. If any step
+	// fails before the staging->live publish, we drop staging and rename
+	// `live.discard/` back to `live/`. After a successful publish the
+	// `live.discard/` directory is removed.
+	liveDiscardDir          = "live.discard"
 	checkpointsDir          = "checkpoints"
 	temporaryCheckpointsDir = "tmp"
 	baselineCheckpointsDir  = "baseline"
@@ -329,6 +346,13 @@ func NewStore(
 	)
 
 	liveDir := filepath.Join(dataDir, liveDir)
+
+	// Reconcile any leftover live.discard/ from a crashed RestoreCheckpoint.
+	// This runs before any other stat on live/ so we observe the recovered
+	// state rather than the mid-restore state.
+	if err := reconcileLiveAfterRestore(dataDir, logger); err != nil {
+		return nil, fmt.Errorf("reconciling live directory after restore: %w", err)
+	}
 
 	// With incremental 0xFF cache persistence, the live/ directory is always
 	// up-to-date after each Pebble batch commit. On restart we open it directly
@@ -890,10 +914,141 @@ func (s *Store) ActivateIncomingRestore() (uint64, error) {
 	return newID, nil
 }
 
-// RestoreCheckpoint restores the database from a checkpoint.
-// This closes the current database, replaces it with the checkpoint, and reopens.
-// Holds dbMu exclusively so concurrent NewIter/IterateColdKVPairs calls block
-// until the new DB is ready, preventing panics on the closed DB.
+// reconcileLiveAfterRestore observes the live/, live.staging/ and
+// live.discard/ directories at boot and finishes any half-completed
+// RestoreCheckpoint swap.
+//
+// The restore protocol publishes the new database by atomically renaming
+// `live.staging/` -> `live/` after every post-open step has succeeded.
+// That rename is the single commit point — so the presence of `live/`
+// after a crash is proof that the restore committed (or that no restore
+// was ever in flight). `live.staging/` is always ephemeral: it represents
+// in-progress build state and can be discarded without losing anything
+// that wasn't already in the source checkpoint.
+//
+// Reconciliation rules:
+//
+//   - `live/` present → keep it. Drop any leftover staging/discard,
+//     they are both stale at this point.
+//   - `live/` missing + `live.discard/` present → restore was aborted
+//     before the publish rename. Drop staging if present (incomplete
+//     build) and rename `live.discard/` back to `live/`.
+//   - `live/` missing + no discard → no rollback target. Drop staging
+//     if present (incomplete build, no preserved original to recover);
+//     NewStore will then take its normal "no live directory" path.
+//
+// The function is a no-op in the common cases. It is safe to call on
+// every boot.
+func reconcileLiveAfterRestore(dataDir string, logger logging.Logger) error {
+	liveDirectory := filepath.Join(dataDir, liveDir)
+	stagingDirectory := filepath.Join(dataDir, liveStagingDir)
+	discardDirectory := filepath.Join(dataDir, liveDiscardDir)
+
+	_, liveErr := os.Stat(liveDirectory)
+	_, stagingErr := os.Stat(stagingDirectory)
+	_, discardErr := os.Stat(discardDirectory)
+
+	liveExists := liveErr == nil
+	stagingExists := stagingErr == nil
+	discardExists := discardErr == nil
+
+	// Nothing to reconcile: no in-flight or aborted restore left a trace.
+	if !stagingExists && !discardExists {
+		return nil
+	}
+
+	if liveExists {
+		// `live/` is durable proof the restore committed (or never ran).
+		// Any staging or discard left next to it is stale.
+		if stagingExists {
+			logger.WithFields(map[string]any{
+				"liveDir":    liveDirectory,
+				"stagingDir": stagingDirectory,
+			}).Infof("Dropping stale live.staging next to live/ (previous RestoreCheckpoint either crashed pre-publish or left this around)")
+
+			if err := os.RemoveAll(stagingDirectory); err != nil {
+				return fmt.Errorf("removing stale live.staging directory: %w", err)
+			}
+		}
+
+		if discardExists {
+			logger.WithFields(map[string]any{
+				"liveDir":    liveDirectory,
+				"discardDir": discardDirectory,
+			}).Infof("Cleaning up live.discard from a previously successful RestoreCheckpoint")
+
+			if err := os.RemoveAll(discardDirectory); err != nil {
+				return fmt.Errorf("removing leftover live.discard directory: %w", err)
+			}
+		}
+
+		return nil
+	}
+
+	// live/ is missing. Drop any in-progress staging — it is incomplete
+	// by definition (the publish rename would have replaced it with live/).
+	if stagingExists {
+		logger.WithFields(map[string]any{
+			"stagingDir": stagingDirectory,
+		}).Infof("Dropping incomplete live.staging from an aborted RestoreCheckpoint (live/ missing means the publish never happened)")
+
+		if err := os.RemoveAll(stagingDirectory); err != nil {
+			return fmt.Errorf("removing incomplete live.staging directory: %w", err)
+		}
+	}
+
+	if discardExists {
+		// Revert: rename(discard, live) restores the pre-restore state.
+		logger.WithFields(map[string]any{
+			"liveDir":    liveDirectory,
+			"discardDir": discardDirectory,
+		}).Infof("WARNING: detected aborted RestoreCheckpoint (live missing, live.discard present); reverting to pre-restore live")
+
+		if err := os.Rename(discardDirectory, liveDirectory); err != nil {
+			return fmt.Errorf("reverting live.discard to live: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// RestoreCheckpoint restores the database from a checkpoint using a
+// staging directory + atomic publish so that any failure leaves the
+// original live directory recoverable AND so that a crash anywhere
+// during the build is unambiguous on the next boot.
+//
+// Sequence on the happy path:
+//
+//  1. Verify the checkpoint exists.
+//  2. Read the current node's persisted-config from the live DB.
+//  3. Close the live DB and rename live/ -> live.discard/ (atomic, O(1)).
+//  4. Hard-link the checkpoint into a fresh live.staging/.
+//  5. Open live.staging/ as a Pebble DB.
+//  6. Re-write the preserved config, flush, and re-checkpoint.
+//  7. rename live.staging/ -> live/. THIS is the atomic commit point.
+//  8. Remove live.discard/.
+//
+// The split between steps 3-6 (build under staging) and step 7 (publish)
+// is what makes crash recovery unambiguous: until step 7 succeeds,
+// `live/` does not exist, so seeing `live/` on the next boot is proof
+// the restore committed.
+//
+// If any of steps 4-6 fails the rollback path runs:
+//
+//   - close the staging DB if it was opened,
+//   - remove live.staging/,
+//   - rename live.discard/ back to live/ (atomic),
+//   - reopen the original DB.
+//
+// Holds dbMu exclusively so concurrent NewIter/IterateColdKVPairs calls
+// block until the new DB is ready.
+//
+// Crash recovery: if the process dies anywhere between steps 3 and 7,
+// `live/` is missing and `live.discard/` (plus maybe an incomplete
+// `live.staging/`) is on disk. NewStore detects it at boot (see
+// reconcileLiveAfterRestore) and reverts to the pre-restore live. If
+// the process dies between steps 7 and 8, `live/` is present and stale
+// `live.discard/` is on disk; boot drops the discard.
 func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	s.dbMu.Lock()
 	defer s.dbMu.Unlock()
@@ -905,16 +1060,34 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 		return fmt.Errorf("checkpoint %d not found: %w", checkpointID, err)
 	}
 
+	liveDirectory := filepath.Join(s.dataDir, liveDir)
+	stagingDirectory := filepath.Join(s.dataDir, liveStagingDir)
+	discardDirectory := filepath.Join(s.dataDir, liveDiscardDir)
+
+	// Stale live.staging/ or live.discard/ from an earlier aborted attempt
+	// must not be inherited. If they represented recovery state, boot
+	// would have already consumed them via reconcileLiveAfterRestore.
+	if err := os.RemoveAll(stagingDirectory); err != nil {
+		return fmt.Errorf("clearing stale live.staging directory: %w", err)
+	}
+
+	if err := os.RemoveAll(discardDirectory); err != nil {
+		return fmt.Errorf("clearing stale live.discard directory: %w", err)
+	}
+
+	// Step 2: preserve this node's persisted-config from the live DB.
+	// The checkpoint originates from the leader and contains the leader's
+	// node-id; we must re-write our own identity into the new live so
+	// startup config validation passes on the next boot.
+	//
+	// The DB may already be closed from a previous failed RestoreCheckpoint
+	// (e.g. the rollback path below failed to reopen). In that case skip
+	// config preservation — the next caller (or the operator) can sort it
+	// out from outside.
 	oldDB := s.db
 
-	// Preserve this node's persisted config before replacing the database.
-	// The checkpoint originates from the leader and contains the leader's
-	// config (including its node-id). After restore we must re-write this
-	// node's own identity so that startup config validation passes.
-	//
-	// The DB may already be closed from a previous failed RestoreCheckpoint.
-	// In that case, skip config preservation and proceed with the restore.
 	var preservedConfig []byte
+
 	if oldDB != nil {
 		if value, closer, getErr := oldDB.Get([]byte{ZoneGlobal, SubGlobPersistedConfig}); getErr == nil {
 			preservedConfig = append([]byte(nil), value...)
@@ -924,7 +1097,8 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 		if closeErr := closeDBSafe(oldDB); closeErr != nil {
 			// Pebble v2.1.x can panic here due to an internal race in
 			// collectTableStats (see closeDBSafe). Log and continue — the
-			// old data is stale and being replaced.
+			// old data is stale and being replaced. The rename in step 3
+			// still works regardless of close cleanliness.
 			s.logger.WithFields(map[string]any{
 				"error": closeErr,
 			}).Errorf("Error closing old database during checkpoint restore (continuing)")
@@ -933,54 +1107,148 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 		s.db = nil
 	}
 
-	// Remove the live directory
-	liveDirectory := filepath.Join(s.dataDir, liveDir)
-	if err := os.RemoveAll(liveDirectory); err != nil {
-		return fmt.Errorf("removing live directory: %w", err)
+	// Step 3: rename live/ -> live.discard/. This is atomic on POSIX
+	// (single inode-table update). If we crash here, boot recovery sees
+	// live missing + live.discard present and reverts.
+	if _, err := os.Stat(liveDirectory); err == nil {
+		if err := os.Rename(liveDirectory, discardDirectory); err != nil {
+			return fmt.Errorf("renaming live directory aside: %w", err)
+		}
+	}
+	// If liveDirectory didn't exist (e.g. a previous failed restore left
+	// it absent), we have nothing to roll back to. Continue: the worst
+	// case is no rollback target, same as the old destructive path.
+
+	// From this point on, any failure must drop the staging tree and
+	// roll back to live.discard/ before propagating the error.
+	rollback := func(reason error) error {
+		// Close the staging DB if it managed to open before failing.
+		if s.db != nil {
+			if closeErr := closeDBSafe(s.db); closeErr != nil {
+				s.logger.WithFields(map[string]any{
+					"error": closeErr,
+				}).Errorf("Error closing partial staging DB during rollback (continuing)")
+			}
+
+			s.db = nil
+		}
+
+		// Drop the incomplete staging tree. The hard-linked SSTs remain
+		// in the checkpoint directory; removing the staging tree only
+		// drops the link.
+		if err := os.RemoveAll(stagingDirectory); err != nil {
+			s.logger.WithFields(map[string]any{
+				"error": err,
+			}).Errorf("Removing partial live.staging directory during rollback (continuing)")
+		}
+
+		// Revert live.discard/ -> live/. Atomic.
+		if _, statErr := os.Stat(discardDirectory); statErr == nil {
+			if err := os.Rename(discardDirectory, liveDirectory); err != nil {
+				return fmt.Errorf("rollback failed (could not restore live from live.discard): %w; original error: %w", err, reason)
+			}
+		}
+
+		// Reopen the original DB so the Store stays usable.
+		// FileCache must be cleared for the same reason as below.
+		s.opts.FileCache = nil
+
+		revivedDB, openErr := pebble.Open(liveDirectory, s.opts)
+		if openErr != nil {
+			return fmt.Errorf("rollback failed (could not reopen original live): %w; original error: %w", openErr, reason)
+		}
+
+		s.db = revivedDB
+
+		return reason
 	}
 
-	// Hard link the checkpoint to the live directory
-	if err := HardLink(checkpointDir, liveDirectory); err != nil {
-		return fmt.Errorf("hard linking checkpoint to live directory: %w", err)
+	// Step 4: hard-link the checkpoint into a fresh live.staging/.
+	if err := HardLink(checkpointDir, stagingDirectory); err != nil {
+		return rollback(fmt.Errorf("hard linking checkpoint to live.staging directory: %w", err))
 	}
 
-	// Reopen the database with the same options.
-	// Clear FileCache so pebble.Open creates a fresh one. The first Open mutates
-	// opts.FileCache in-place; reusing the stale pointer causes a panic in
-	// shard.Close ("element has outstanding references") because the old
-	// FileCache was already closed when the old DB was closed.
+	// Step 5: open the staged database. Clear FileCache so pebble.Open
+	// creates a fresh one. The first Open mutates opts.FileCache in-place;
+	// reusing the stale pointer causes a panic in shard.Close ("element
+	// has outstanding references") because the old FileCache was already
+	// closed when the old DB was closed.
 	s.opts.FileCache = nil
 
-	newDB, err := pebble.Open(liveDirectory, s.opts)
+	newDB, err := pebble.Open(stagingDirectory, s.opts)
 	if err != nil {
-		return fmt.Errorf("reopening database: %w", err)
+		return rollback(fmt.Errorf("opening staged database: %w", err))
 	}
 
 	s.db = newDB
 
-	// Re-write this node's persisted config into the restored database.
-	// The checkpoint originates from the leader and contains the leader's
-	// config (including its node-id). We must restore this node's identity.
+	// Step 6: re-write this node's persisted config and re-checkpoint
+	// (still inside the staging directory).
 	if preservedConfig != nil {
-		err := newDB.Set([]byte{ZoneGlobal, SubGlobPersistedConfig}, preservedConfig, pebble.Sync)
-		if err != nil {
-			return fmt.Errorf("re-writing persisted config after checkpoint restore: %w", err)
+		if err := newDB.Set([]byte{ZoneGlobal, SubGlobPersistedConfig}, preservedConfig, pebble.Sync); err != nil {
+			return rollback(fmt.Errorf("re-writing persisted config after checkpoint restore: %w", err))
 		}
 
-		err = newDB.Flush()
-		if err != nil {
-			return fmt.Errorf("flushing persisted config after checkpoint restore: %w", err)
+		if err := newDB.Flush(); err != nil {
+			return rollback(fmt.Errorf("flushing persisted config after checkpoint restore: %w", err))
 		}
 
-		err = os.RemoveAll(checkpointDir)
-		if err != nil {
-			return fmt.Errorf("removing old checkpoint dir for re-checkpoint: %w", err)
+		if err := os.RemoveAll(checkpointDir); err != nil {
+			return rollback(fmt.Errorf("removing old checkpoint dir for re-checkpoint: %w", err))
 		}
 
-		err = newDB.Checkpoint(checkpointDir)
-		if err != nil {
-			return fmt.Errorf("re-creating checkpoint with preserved config: %w", err)
+		if err := newDB.Checkpoint(checkpointDir); err != nil {
+			return rollback(fmt.Errorf("re-creating checkpoint with preserved config: %w", err))
 		}
+	}
+
+	// Step 7: PUBLISH. The atomic rename is the single commit point of
+	// the restore. The DB has been opened on stagingDirectory; once we
+	// rename the directory out from under it, subsequent file operations
+	// inside pebble (compactions, flushes) will follow the inode they
+	// already hold open, but new opens must use the new path. So we
+	// close the staging DB, do the rename, then reopen on liveDirectory.
+	//
+	// This double-open is the price of using rename as the commit
+	// point — it is cheap (warm OS cache, no compactions) and only
+	// happens once per restore.
+	if closeErr := closeDBSafe(newDB); closeErr != nil {
+		// Same Pebble v2.1.x caveat as above: log and continue. The on-
+		// disk state is durable (Flush + Checkpoint above already synced).
+		s.logger.WithFields(map[string]any{
+			"error": closeErr,
+		}).Errorf("Error closing staging DB before publish rename (continuing)")
+	}
+
+	s.db = nil
+
+	if err := os.Rename(stagingDirectory, liveDirectory); err != nil {
+		return rollback(fmt.Errorf("publishing live.staging to live: %w", err))
+	}
+
+	// Restore committed — past this point any failure is non-fatal for
+	// correctness; the worst case is a stale live.discard/ that boot
+	// will sweep up.
+
+	s.opts.FileCache = nil
+
+	publishedDB, err := pebble.Open(liveDirectory, s.opts)
+	if err != nil {
+		// We renamed staging to live so the new state is durable, but
+		// we cannot reopen it in-process. Surface the error; the next
+		// boot will open live/ normally.
+		return fmt.Errorf("reopening published live directory after restore: %w", err)
+	}
+
+	s.db = publishedDB
+
+	// Step 8: drop the rollback target.
+	if err := os.RemoveAll(discardDirectory); err != nil {
+		// Cleanup failure post-success is non-fatal — the next call (or
+		// boot reconciliation) will sweep it up. Log and continue.
+		s.logger.WithFields(map[string]any{
+			"error": err,
+		}).Errorf("Removing live.discard directory after successful restore (will be cleaned up on next boot)")
 	}
 
 	// Update internal state
