@@ -15,9 +15,22 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
+// MaxFilterDepth bounds the recursion depth of compile() over
+// QueryFilter protos. A hostile client can hand-craft a deeply-nested
+// filter (e.g. 100k repetitions of And/Or/Not) and submit it via gRPC;
+// without a depth cap the compiler stack-overflows and aborts the
+// process (Go stack overflow is not catchable by recover) — a fatal
+// DoS. 100 is well above any legitimate query (review-2 L-19 / #341).
+const MaxFilterDepth = 100
+
+// ErrFilterTooDeep is returned by Compile when the QueryFilter
+// recursion exceeds MaxFilterDepth.
+var ErrFilterTooDeep = fmt.Errorf("query filter exceeds maximum nesting depth (%d)", MaxFilterDepth)
+
 // compileCtx holds the immutable context threaded through the recursive
 // compilation pipeline. All fields are set once at the entry point and
-// read (never mutated) by every sub-function.
+// read (never mutated) by every sub-function, except depth which is
+// incremented by the recursive boolean combinators.
 type compileCtx struct {
 	kb            *dal.KeyBuilder
 	pebbleReader  dal.PebbleReader
@@ -29,6 +42,7 @@ type compileCtx struct {
 	builtinCfg    *commonpb.BuiltinIndexConfig
 	logBuiltinCfg *commonpb.LogBuiltinIndexConfig
 	profile       *QueryProfile
+	depth         int
 }
 
 // metadataCtx holds the per-field context used only by type-specific
@@ -79,11 +93,19 @@ func Compile(
 	return compile(ctx, filter)
 }
 
-// compile is the internal recursive entry point.
+// compile is the internal recursive entry point. The depth counter
+// guards against malicious deeply-nested QueryFilter protos (#341).
 func compile(ctx *compileCtx, filter *commonpb.QueryFilter) (readstore.EntityIterator, error) {
 	if filter == nil {
 		return compileUniverse(ctx)
 	}
+
+	if ctx.depth >= MaxFilterDepth {
+		return nil, ErrFilterTooDeep
+	}
+
+	ctx.depth++
+	defer func() { ctx.depth-- }()
 
 	switch f := filter.GetFilter().(type) {
 	case *commonpb.QueryFilter_Field:

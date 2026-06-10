@@ -1,6 +1,7 @@
 package query
 
 import (
+	"errors"
 	"math"
 	"testing"
 
@@ -9,6 +10,41 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
+
+// TestCompile_RejectsDeeplyNestedFilter is the regression for #341 /
+// Review-2 L-19. A hostile gRPC client can hand-craft a deeply-nested
+// QueryFilter and ship it through prepared queries; without a depth
+// guard the compile() recursion blows the Go stack — a fatal,
+// unrecoverable abort. Build a chain of nested Or wrappers deeper
+// than MaxFilterDepth and assert that compile() returns
+// ErrFilterTooDeep instead of recursing.
+func TestCompile_RejectsDeeplyNestedFilter(t *testing.T) {
+	t.Parallel()
+
+	// Universe iterator at the leaf — every wrapper level is an Or
+	// with a single child, so compile dispatches Or → compile(child)
+	// without needing a Pebble reader (the depth check fires before
+	// we reach a leaf when the chain is deeper than MaxFilterDepth).
+	var leaf *commonpb.QueryFilter // nil = universe; would reach compileUniverse if we got there.
+	filter := leaf
+
+	for range MaxFilterDepth + 5 {
+		filter = &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_Or{
+				Or: &commonpb.OrFilter{Filters: []*commonpb.QueryFilter{filter}},
+			},
+		}
+	}
+
+	ctx := &compileCtx{
+		target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+	}
+
+	_, err := compile(ctx, filter)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, ErrFilterTooDeep),
+		"deeply-nested QueryFilter must trip the depth guard, got: %v", err)
+}
 
 func fieldCondition(metaKey string, cond any) *commonpb.FieldCondition {
 	fc := &commonpb.FieldCondition{

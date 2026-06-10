@@ -4,12 +4,30 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/alecthomas/participle/v2"
 	"github.com/alecthomas/participle/v2/lexer"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
+
+// MaxParseDepth bounds the nesting depth participle is allowed to
+// descend through during Parse. Participle does recursive-descent
+// parsing on the grammar rules `UnaryExpr → 'not' UnaryExpr` and
+// `Primary → '(' OrExpr ')'`; an input with 100k repetitions of
+// `not ` or `(` overflows the Go stack — a fatal, unrecoverable
+// process abort (review-2 L-19 / #341).
+//
+// 200 is well above any legitimate filter expression. The check is
+// a syntactic upper bound (counts `not` keywords plus open parens),
+// not an exact AST depth — but those tokens are the only sources of
+// participle recursion in this grammar.
+const MaxParseDepth = 200
+
+// ErrFilterTooDeep is returned by Parse when the lexical nesting
+// indicators exceed MaxParseDepth.
+var ErrFilterTooDeep = fmt.Errorf("filter expression nesting exceeds maximum depth (%d)", MaxParseDepth)
 
 // Custom lexer: Keywords are matched before Ident so that reserved words
 // (and, or, not, between, metadata, address, source, destination, exists,
@@ -54,6 +72,15 @@ var filterParser = participle.MustBuild[OrExpr](
 //	address_cond   := ("address" | "source" | "destination") ("==" VALUE | "^=" VALUE | "in" "(" VALUE ("," VALUE)* ")")
 //	value          := "$" Ident | "true" | "false" | String | Number | Ident
 func Parse(input string) (*commonpb.QueryFilter, error) {
+	// Reject pathologically nested inputs BEFORE handing them to
+	// participle. Participle's recursive-descent parser would
+	// otherwise stack-overflow on counts beyond a few thousand,
+	// killing the process (#341). Count open parens plus `not`
+	// occurrences as a conservative syntactic depth proxy.
+	if strings.Count(input, "(")+strings.Count(input, "not") > MaxParseDepth {
+		return nil, ErrFilterTooDeep
+	}
+
 	ast, err := filterParser.ParseString("", input)
 	if err != nil {
 		return nil, fmt.Errorf("parse error: %w", err)

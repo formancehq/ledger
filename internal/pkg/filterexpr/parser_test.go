@@ -1,6 +1,7 @@
 package filterexpr
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -944,5 +945,30 @@ func TestParse(t *testing.T) {
 
 		_, err := Parse("metadata[category] in ()")
 		require.Error(t, err)
+	})
+
+	// Regression for #341 / Review-2 L-19. Without the depth guard,
+	// participle's recursive-descent parser stack-overflows the
+	// process on inputs with many `not ` or `(` repetitions. Reject
+	// such inputs upfront.
+	t.Run("error: deeply nested not", func(t *testing.T) {
+		t.Parallel()
+
+		input := strings.Repeat("not ", MaxParseDepth+5) + "metadata[x] == y"
+
+		_, err := Parse(input)
+		require.ErrorIs(t, err, ErrFilterTooDeep,
+			"deeply-nested `not` chain must trip the depth guard before participle (#341)")
+	})
+
+	t.Run("error: deeply nested parens", func(t *testing.T) {
+		t.Parallel()
+
+		opens := strings.Repeat("(", MaxParseDepth+5)
+		closes := strings.Repeat(")", MaxParseDepth+5)
+
+		_, err := Parse(opens + "metadata[x] == y" + closes)
+		require.ErrorIs(t, err, ErrFilterTooDeep,
+			"deeply-nested parens must trip the depth guard before participle (#341)")
 	})
 }
