@@ -308,6 +308,24 @@ func TestCache_NewCache(t *testing.T) {
 	assert.Equal(t, uint64(0), cache.CurrentGeneration())
 	assert.Equal(t, uint64(0), cache.BaseIndex.Gen0)
 	assert.Equal(t, uint64(0), cache.BaseIndex.Gen1)
+	// Epoch must start at 1, not 0 — the FSM staleness check used to treat
+	// epoch 0 as "unset" and skip the comparison, leaving the check inert
+	// for the entire first epoch of a cluster's life (#302).
+	assert.Equal(t, uint64(1), cache.Epoch(), "fresh cache must report epoch=1, never 0")
+}
+
+func TestCache_ResetWithThresholdIncrementsEpoch(t *testing.T) {
+	t.Parallel()
+
+	cache, err := New(100, nil)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), cache.Epoch())
+
+	cache.ResetWithThreshold(200)
+	assert.Equal(t, uint64(2), cache.Epoch())
+
+	cache.ResetWithThreshold(300)
+	assert.Equal(t, uint64(3), cache.Epoch())
 }
 
 func TestCache_CheckRotationNeeded_SameGeneration(t *testing.T) {

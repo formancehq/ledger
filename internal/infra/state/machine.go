@@ -392,7 +392,15 @@ func (fsm *Machine) RecoverState() error {
 	if clusterState != nil {
 		fsm.lastClusterConfig = clusterState.GetConfig()
 		fsm.Registry.Cache.SetGenerationThreshold(clusterState.GetConfig().GetRotationThreshold())
-		fsm.Registry.Cache.SetEpoch(clusterState.GetCacheEpoch())
+		// Epoch is never 0 in the running cache (cache.New initializes it to 1).
+		// Persisted clusterState from before that change may still carry 0 —
+		// bump it up so the staleness check never sees a zero live epoch (#302).
+		persistedEpoch := clusterState.GetCacheEpoch()
+		if persistedEpoch == 0 {
+			persistedEpoch = 1
+		}
+
+		fsm.Registry.Cache.SetEpoch(persistedEpoch)
 		fsm.hashAlgorithm = clusterState.GetConfig().GetHashAlgorithm()
 	}
 

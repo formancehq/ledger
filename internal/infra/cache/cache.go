@@ -506,6 +506,12 @@ func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
 	ret := &Cache{
 		BaseIndex: newDualGen[uint64](0, 0),
 	}
+	// Initialize epoch to 1 — never 0. 0 used to be both the atomic zero value
+	// AND the "unset" sentinel the FSM stale-proposal check skipped on, which
+	// made the check inert during a cluster's first epoch (#302). Persisted
+	// values of 0 (clusters that ran before this fix) are bumped back to 1 by
+	// RecoverState.
+	ret.epoch.Store(1)
 	ret.generationThreshold.Store(generationThreshold)
 	ret.Volumes = newAttributeCache[*raftcmdpb.VolumePair](ret, "volumes")
 	ret.AccountMetadata = newAttributeCache[*commonpb.MetadataValue](ret, "account_metadata")
