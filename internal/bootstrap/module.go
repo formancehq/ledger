@@ -971,7 +971,17 @@ func Module() fx.Option {
 					OnStop: func(ctx context.Context) error {
 						logger.Infof("Shutting down raft cluster")
 
-						defaultTransport.CancelPeerConnections()
+						// Do NOT cancel peer connections here. node.Stop's
+						// first move is tryTransferLeadershipBeforeShutdown,
+						// which needs the priority send queue of the elected
+						// transferee to still be wired up so the MsgTimeoutNow
+						// reaches it. Killing peer loops up-front broke the
+						// transfer and forced the cluster through a full
+						// election timeout on every graceful shutdown (#314).
+						//
+						// The transport's own fx OnStop runs AFTER this hook
+						// (fx invokes OnStop in reverse registration order) and
+						// already calls CancelPeerConnections inside t.Stop().
 						cancelRun()
 
 						err := node.Stop(ctx)
