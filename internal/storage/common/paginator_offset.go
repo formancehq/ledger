@@ -22,6 +22,19 @@ func (o OffsetPaginator[ResourceType, OptionsType]) Paginate(sb *bun.SelectQuery
 	orderExpression := fmt.Sprintf("%s %s", paginationColumn, originalOrder)
 	sb = sb.Order(orderExpression)
 
+	return o.ApplyWindow(sb)
+}
+
+// ApplyCursorPredicate is a no-op for offset pagination: the position is expressed as OFFSET,
+// which is part of the page window (see ApplyWindow), not a predicate on the filtered set.
+//
+//nolint:unused
+func (o OffsetPaginator[ResourceType, OptionsType]) ApplyCursorPredicate(sb *bun.SelectQuery) *bun.SelectQuery {
+	return sb
+}
+
+//nolint:unused
+func (o OffsetPaginator[ResourceType, OptionsType]) ApplyWindow(sb *bun.SelectQuery) (*bun.SelectQuery, error) {
 	if o.query.Offset > math.MaxInt32 {
 		return nil, fmt.Errorf("offset value exceeds maximum allowed value")
 	}

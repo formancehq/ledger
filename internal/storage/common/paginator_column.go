@@ -25,42 +25,55 @@ type columnPaginator[ResourceType, OptionsType any] struct {
 func (o columnPaginator[ResourceType, OptionsType]) Paginate(sb *bun.SelectQuery) (*bun.SelectQuery, error) {
 
 	paginationColumn := o.fieldName
-	originalOrder := *o.query.Order
 
+	order := *o.query.Order
+	if o.query.Reverse {
+		order = order.Reverse()
+	}
+	orderExpression := fmt.Sprintf("%s %s", paginationColumn, order)
+
+	sb = o.ApplyCursorPredicate(sb)
+	sb = sb.Order(orderExpression)
+	return o.ApplyWindow(sb)
+}
+
+//nolint:unused
+func (o columnPaginator[ResourceType, OptionsType]) ApplyCursorPredicate(sb *bun.SelectQuery) *bun.SelectQuery {
+
+	if o.query.PaginationID == nil {
+		return sb
+	}
+
+	paginationColumn := o.fieldName
+	originalOrder := *o.query.Order
+	paginationID := convertPaginationIDToSQLType(o.fieldType, o.query.PaginationID)
+	if o.query.Reverse {
+		switch originalOrder {
+		case paginate.OrderAsc:
+			sb = sb.Where(fmt.Sprintf("%s < ?", paginationColumn), paginationID)
+		case paginate.OrderDesc:
+			sb = sb.Where(fmt.Sprintf("%s > ?", paginationColumn), paginationID)
+		}
+	} else {
+		switch originalOrder {
+		case paginate.OrderAsc:
+			sb = sb.Where(fmt.Sprintf("%s >= ?", paginationColumn), paginationID)
+		case paginate.OrderDesc:
+			sb = sb.Where(fmt.Sprintf("%s <= ?", paginationColumn), paginationID)
+		}
+	}
+
+	return sb
+}
+
+//nolint:unused
+func (o columnPaginator[ResourceType, OptionsType]) ApplyWindow(sb *bun.SelectQuery) (*bun.SelectQuery, error) {
 	pageSize := o.query.PageSize
 	if pageSize == 0 {
 		pageSize = paginate.QueryDefaultPageSize
 	}
 
-	sb = sb.Limit(int(pageSize) + 1) // Fetch one additional item to find the next token
-
-	order := originalOrder
-	if o.query.Reverse {
-		order = order.Reverse()
-	}
-	orderExpression := fmt.Sprintf("%s %s", paginationColumn, order)
-	sb = sb.Order(orderExpression)
-
-	if o.query.PaginationID != nil {
-		paginationID := convertPaginationIDToSQLType(o.fieldType, o.query.PaginationID)
-		if o.query.Reverse {
-			switch originalOrder {
-			case paginate.OrderAsc:
-				sb = sb.Where(fmt.Sprintf("%s < ?", paginationColumn), paginationID)
-			case paginate.OrderDesc:
-				sb = sb.Where(fmt.Sprintf("%s > ?", paginationColumn), paginationID)
-			}
-		} else {
-			switch originalOrder {
-			case paginate.OrderAsc:
-				sb = sb.Where(fmt.Sprintf("%s >= ?", paginationColumn), paginationID)
-			case paginate.OrderDesc:
-				sb = sb.Where(fmt.Sprintf("%s <= ?", paginationColumn), paginationID)
-			}
-		}
-	}
-
-	return sb, nil
+	return sb.Limit(int(pageSize) + 1), nil // Fetch one additional item to find the next token
 }
 
 //nolint:unused
