@@ -29,10 +29,10 @@ func main() {
 
 		// Track write results.
 		var (
-			writeErr       error
-			deletedSeen    bool
-			deleteOK       bool
-			writeAttempts  int
+			writeErr      error
+			deletedSeen   bool
+			deleteOK      bool
+			writeAttempts int
 		)
 
 		wg.Add(2)
@@ -112,7 +112,7 @@ func main() {
 		// If the delete failed (e.g. transient error during leadership change),
 		// the ledger still exists — nothing to assert about post-delete writes.
 		if !deleteOK {
-			assert.Reachable("concurrent ledger delete path exercised", details)
+			assert.Reachable("concurrent ledger delete: delete failed transiently", details)
 
 			return
 		}
@@ -150,7 +150,7 @@ func main() {
 		}
 
 		if internal.IsTransient(err) {
-			assert.Reachable("concurrent ledger delete path exercised", details)
+			assert.Reachable("concurrent ledger delete: post-delete write inconclusive (transient)", details)
 
 			return
 		}
@@ -167,6 +167,6 @@ func main() {
 				"writeAttempts": writeAttempts,
 			}))
 
-		assert.Reachable("concurrent ledger delete path exercised", details)
+		assert.Reachable("concurrent ledger delete: post-delete write rejected", details)
 	})
 }

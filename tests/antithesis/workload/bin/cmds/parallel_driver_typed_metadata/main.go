@@ -188,7 +188,7 @@ func main() {
 		}
 
 		// 8. Remove the type declaration entirely.
-		_, _ = client.Apply(ctx, &servicepb.ApplyRequest{
+		if _, err := client.Apply(ctx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{{
 				Type: &servicepb.Request_RemoveMetadataFieldType{
 					RemoveMetadataFieldType: &servicepb.RemoveMetadataFieldTypeRequest{
@@ -198,7 +198,9 @@ func main() {
 					},
 				},
 			}},
-		})
+		}); err != nil {
+			internal.LogCleanupError(fmt.Sprintf("remove metadata field type %q", metaKey), err)
+		}
 
 		// 9. Verify the account is still readable after all type changes.
 		acct, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
@@ -329,7 +331,7 @@ func main() {
 		}
 
 		// Cleanup: delete the prepared query.
-		_, _ = client.Apply(ctx, &servicepb.ApplyRequest{
+		if _, err := client.Apply(ctx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{{
 				Type: &servicepb.Request_DeletePreparedQuery{
 					DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{
@@ -338,6 +340,8 @@ func main() {
 					},
 				},
 			}},
-		})
+		}); err != nil {
+			internal.LogCleanupError(fmt.Sprintf("delete prepared query %q", queryName), err)
+		}
 	})
 }

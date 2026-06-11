@@ -10,7 +10,6 @@ import (
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
 )
 
 func main() {
@@ -91,7 +90,7 @@ func main() {
 		assert.AlwaysOrUnreachable(execResp != nil, "updated query should return a response", details)
 
 		// 4. Cleanup.
-		_, _ = client.Apply(ctx, &servicepb.ApplyRequest{
+		if _, err := client.Apply(ctx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{{
 				Type: &servicepb.Request_DeletePreparedQuery{
 					DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{
@@ -100,6 +99,8 @@ func main() {
 					},
 				},
 			}},
-		})
+		}); err != nil {
+			internal.LogCleanupError(fmt.Sprintf("delete prepared query %q", queryName), err)
+		}
 	})
 }

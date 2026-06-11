@@ -101,7 +101,20 @@ func PatchReplicas(ctx context.Context, lsClient dynamic.ResourceInterface, name
 
 // WaitForVoters polls the cluster state until the expected voter count is
 // reached or the timeout expires. Returns true if converged.
+//
+// The convergence property is asserted from a single callsite with the actual
+// outcome: a Sometimes assertion that is only ever evaluated with a false
+// condition can never be satisfied and shows up as permanently failing in
+// every Antithesis report.
 func WaitForVoters(ctx context.Context, clusterClient clusterpb.ClusterServiceClient, expected int64, timeout time.Duration, details Details) bool {
+	converged := pollForVoters(ctx, clusterClient, expected, timeout)
+
+	assert.Sometimes(converged, "scaling converges within timeout", details.With(Details{"timeout": timeout.String()}))
+
+	return converged
+}
+
+func pollForVoters(ctx context.Context, clusterClient clusterpb.ClusterServiceClient, expected int64, timeout time.Duration) bool {
 	deadline := time.After(timeout)
 
 	for {
@@ -110,7 +123,6 @@ func WaitForVoters(ctx context.Context, clusterClient clusterpb.ClusterServiceCl
 			return false
 		case <-deadline:
 			log.Printf("scaling: timed out waiting for %d voters", expected)
-			assert.Sometimes(false, "scaling should converge within timeout", details.With(Details{"timeout": timeout.String()}))
 
 			return false
 		case <-time.After(5 * time.Second):
@@ -136,10 +148,6 @@ func WaitForVoters(ctx context.Context, clusterClient clusterpb.ClusterServiceCl
 
 		if voterCount == expected {
 			log.Printf("scaling: cluster converged (%d voters, leader=%d)", voterCount, state.GetLeader())
-			assert.Reachable("scaling converged to target", details.With(Details{
-				"voters": voterCount,
-				"leader": state.GetLeader(),
-			}))
 
 			return true
 		}

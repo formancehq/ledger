@@ -122,8 +122,9 @@ func main() {
 		assert.Sometimes(err == nil || internal.IsTransient(err),
 			"should be able to remove account type", details.With(internal.Details{"error": err}))
 
-		// 6. Reset enforcement mode to STRICT.
-		_, _ = client.Apply(ctx, &servicepb.ApplyRequest{
+		// 6. Reset enforcement mode to STRICT. This ledger is selectable by other
+		// drivers, so a silent failure leaves it in AUDIT mode for them.
+		if _, err := client.Apply(ctx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{{
 				Type: &servicepb.Request_SetDefaultEnforcementMode{
 					SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{
@@ -132,6 +133,8 @@ func main() {
 					},
 				},
 			}},
-		})
+		}); err != nil {
+			internal.LogCleanupError("reset enforcement mode to STRICT", err)
+		}
 	})
 }
