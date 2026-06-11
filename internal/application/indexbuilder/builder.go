@@ -73,10 +73,9 @@ type Builder struct {
 	lastAuditSeq uint64
 
 	// Reusable scratch objects to reduce allocations in the hot loop.
-	kb               *dal.KeyBuilder
-	wb               *readstore.WriteBatch
-	accounts         map[string]struct{}
-	excludedAccounts map[string]struct{} // current proposal's excluded accounts (transient + purged ephemeral)
+	kb       *dal.KeyBuilder
+	wb       *readstore.WriteBatch
+	accounts map[string]struct{}
 }
 
 // NewBuilder creates a new index builder.

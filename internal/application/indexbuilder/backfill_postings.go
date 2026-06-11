@@ -32,6 +32,13 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 
 	defer func() { _ = iter.Close() }()
 
+	audit, err := newAuditSync(ctx, handle, task.auditSeq)
+	if err != nil {
+		return fmt.Errorf("creating audit sync for postings backfill: %w", err)
+	}
+
+	defer func() { _ = audit.close() }()
+
 	// Determine which address indexes are active.
 	builtin, ok := task.index.GetKind().(*commonpb.IndexID_TxBuiltin)
 	if !ok {
@@ -95,38 +102,18 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 			}
 
 			kb := b.kb
-			wb := b.wb
+			ledgerID := b.ledgerNameToID[parsed.Ledger]
+			excludedAccounts := audit.syncTo(parsed.Sequence, parsed.Ledger)
 
 			for i := range parsed.Postings {
 				p := &parsed.Postings[i]
-				if indexAny {
-					if err := wb.WriteAccountTxMapping(kb, parsed.LedgerID, p.Source, parsed.TxID); err != nil {
-						_ = batch.Cancel()
+				if err := b.indexPostingAddressMappings(
+					kb, ledgerID, parsed.TxID, p.Source, p.Destination,
+					indexAny, indexSrc, indexDst, excludedAccounts,
+				); err != nil {
+					_ = batch.Cancel()
 
-						return err
-					}
-
-					if err := wb.WriteAccountTxMapping(kb, parsed.LedgerID, p.Destination, parsed.TxID); err != nil {
-						_ = batch.Cancel()
-
-						return err
-					}
-				}
-
-				if indexSrc {
-					if err := wb.WriteSourceAccountTxMapping(kb, parsed.LedgerID, p.Source, parsed.TxID); err != nil {
-						_ = batch.Cancel()
-
-						return err
-					}
-				}
-
-				if indexDst {
-					if err := wb.WriteDestAccountTxMapping(kb, parsed.LedgerID, p.Destination, parsed.TxID); err != nil {
-						_ = batch.Cancel()
-
-						return err
-					}
+					return err
 				}
 			}
 		}
@@ -151,6 +138,8 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 		}
 
 		task.cursor = lastSeq
+		audit.advanceBefore(lastSeq + 1)
+		task.auditSeq = audit.resumeSequence()
 
 		if eof {
 			break

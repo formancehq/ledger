@@ -24,6 +24,7 @@ type backfillTask struct {
 	ledgerID uint32 // ledger ID (for BB key construction and readstore keys)
 	index    *commonpb.IndexID
 	cursor   uint64 // current position (persisted in Pebble)
+	auditSeq uint64 // safe audit resume sequence for transient-account filtering
 	bbKey    []byte // precomputed key for progress persistence
 	proposed bool   // true after IndexReady has been proposed; awaiting FSM apply
 
@@ -716,6 +717,16 @@ func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, tas
 	// Build a temporary index config with only the backfilling index enabled.
 	cfg := b.buildBackfillConfig(task)
 
+	var audit *auditSync
+	if cfg.indexesPostingAddressMappings() {
+		audit, err = newAuditSync(ctx, handle, task.auditSeq)
+		if err != nil {
+			return fmt.Errorf("creating audit sync for backfill: %w", err)
+		}
+
+		defer func() { _ = audit.close() }()
+	}
+
 	for time.Now().Before(deadline) {
 		select {
 		case <-stop:
@@ -754,7 +765,7 @@ func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, tas
 				continue
 			}
 
-			if err := b.indexLogEntry(cfg, log); err != nil {
+			if err := b.indexLogEntry(cfg, log, audit); err != nil {
 				_ = batch.Cancel()
 
 				return err
@@ -784,6 +795,10 @@ func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, tas
 		}
 
 		task.cursor = lastSeq
+		if audit != nil {
+			audit.advanceBefore(lastSeq + 1)
+			task.auditSeq = audit.resumeSequence()
+		}
 
 		if eof {
 			break

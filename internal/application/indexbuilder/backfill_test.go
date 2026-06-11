@@ -2,13 +2,18 @@ package indexbuilder
 
 import (
 	"encoding/binary"
+	"errors"
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
+	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
+	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -208,6 +213,180 @@ func TestBuildBackfillConfig_LogBuiltin(t *testing.T) {
 
 	require.NotNil(t, cfg)
 	assert.True(t, cfg.isIndexed(id))
+}
+
+func TestIndexLogEntryUsesReplayAuditSyncForExcludedAccounts(t *testing.T) {
+	t.Parallel()
+
+	store, err := readstore.New(t.TempDir(), noopLogger{}, readstore.DefaultConfig())
+	require.NoError(t, err)
+
+	defer func() { _ = store.Close() }()
+
+	b := &Builder{
+		readStore:      store,
+		kb:             dal.NewKeyBuilder(),
+		wb:             readstore.NewWriteBatch(),
+		accounts:       make(map[string]struct{}),
+		ledgerNameToID: map[string]uint32{"ledger-a": 1, "ledger-b": 2},
+	}
+
+	batch := store.NewBatch()
+	b.wb.Init(batch)
+
+	cfg := newLedgerIndexConfig()
+	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)
+	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
+
+	audit := newTestAuditSync(
+		testAuditEntry(1, 1, 10, "ledger-a", "stale:account"),
+		testAuditEntry(2, 20, 20, "ledger-b", "transient:source"),
+	)
+
+	log := makeCreatedTxLog(20, "ledger-b", 99, []*commonpb.Posting{
+		{Source: "transient:source", Destination: "kept:dest"},
+	})
+
+	require.NoError(t, b.indexLogEntry(cfg, log, audit))
+	require.NoError(t, b.wb.Flush())
+
+	assert.False(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
+		dal.NewKeyBuilder(), readstore.PrefixAccountTx, 2, "transient:source", 99,
+	)))
+	assert.True(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
+		dal.NewKeyBuilder(), readstore.PrefixAccountTx, 2, "kept:dest", 99,
+	)))
+}
+
+func TestIndexPostingAddressMappingsSkipsExcludedAccounts(t *testing.T) {
+	t.Parallel()
+
+	store, err := readstore.New(t.TempDir(), noopLogger{}, readstore.DefaultConfig())
+	require.NoError(t, err)
+
+	defer func() { _ = store.Close() }()
+
+	b := &Builder{
+		kb: dal.NewKeyBuilder(),
+		wb: readstore.NewWriteBatch(),
+	}
+
+	batch := store.NewBatch()
+	b.wb.Init(batch)
+
+	excludedAccounts := map[string]struct{}{
+		"transient:source": {},
+		"purged:dest":      {},
+	}
+
+	require.NoError(t, b.indexPostingAddressMappings(
+		b.kb, 7, 42, "transient:source", "kept:dest",
+		true, true, true, excludedAccounts,
+	))
+	require.NoError(t, b.indexPostingAddressMappings(
+		b.kb, 7, 43, "kept:source", "purged:dest",
+		true, true, true, excludedAccounts,
+	))
+	require.NoError(t, b.wb.Flush())
+
+	assert.False(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
+		dal.NewKeyBuilder(), readstore.PrefixAccountTx, 7, "transient:source", 42,
+	)))
+	assert.False(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
+		dal.NewKeyBuilder(), readstore.PrefixSourceAccountTx, 7, "transient:source", 42,
+	)))
+	assert.True(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
+		dal.NewKeyBuilder(), readstore.PrefixAccountTx, 7, "kept:dest", 42,
+	)))
+	assert.True(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
+		dal.NewKeyBuilder(), readstore.PrefixDestAccountTx, 7, "kept:dest", 42,
+	)))
+	assert.True(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
+		dal.NewKeyBuilder(), readstore.PrefixAccountTx, 7, "kept:source", 43,
+	)))
+	assert.True(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
+		dal.NewKeyBuilder(), readstore.PrefixSourceAccountTx, 7, "kept:source", 43,
+	)))
+	assert.False(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
+		dal.NewKeyBuilder(), readstore.PrefixAccountTx, 7, "purged:dest", 43,
+	)))
+	assert.False(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
+		dal.NewKeyBuilder(), readstore.PrefixDestAccountTx, 7, "purged:dest", 43,
+	)))
+}
+
+func TestAuditSyncResumeSequenceOnlySkipsFullyConsumedRanges(t *testing.T) {
+	t.Parallel()
+
+	audit := newTestAuditSync(
+		testAuditEntry(1, 1, 10, "ledger", "old:account"),
+		testAuditEntry(2, 20, 30, "ledger", "current:account"),
+	)
+
+	excluded := audit.syncTo(25, "ledger")
+	require.Contains(t, excluded, "current:account")
+	assert.Equal(t, uint64(1), audit.resumeSequence())
+
+	audit.advanceBefore(31)
+	assert.Equal(t, uint64(2), audit.resumeSequence())
+}
+
+func TestAuditSyncResumeSequenceKeepsInitialResumeFloor(t *testing.T) {
+	t.Parallel()
+
+	audit := newTestAuditSyncAfter(1,
+		testAuditEntry(2, 20, 30, "ledger", "current:account"),
+	)
+
+	excluded := audit.syncTo(25, "ledger")
+	require.Contains(t, excluded, "current:account")
+	assert.Equal(t, uint64(1), audit.resumeSequence())
+}
+
+func newTestAuditSync(entries ...*auditpb.AuditEntry) *auditSync {
+	return newTestAuditSyncAfter(0, entries...)
+}
+
+func newTestAuditSyncAfter(afterAuditSeq uint64, entries ...*auditpb.AuditEntry) *auditSync {
+	audit := &auditSync{cursor: cursor.NewSliceCursor(entries)}
+	audit.resumeAfterAuditSeq = afterAuditSeq
+	audit.advance()
+
+	return audit
+}
+
+func testAuditEntry(sequence, minLogSeq, maxLogSeq uint64, ledger string, accounts ...string) *auditpb.AuditEntry {
+	return &auditpb.AuditEntry{
+		Sequence: sequence,
+		Outcome: &auditpb.AuditEntry_Success{
+			Success: &auditpb.AuditSuccess{
+				MinLogSequence: minLogSeq,
+				MaxLogSequence: maxLogSeq,
+				TransientAccounts: map[string]*auditpb.AccountList{
+					ledger: {Accounts: accounts},
+				},
+			},
+		},
+	}
+}
+
+func readStoreKeyExists(t *testing.T, store *readstore.Store, key []byte) bool {
+	t.Helper()
+
+	_, closer, err := store.DB().Get(key)
+	if err == nil {
+		require.NoError(t, closer.Close())
+
+		return true
+	}
+
+	if errors.Is(err, pebble.ErrNotFound) {
+		return false
+	}
+
+	require.NoError(t, err)
+
+	return false
 }
 
 func TestIsDataLog(t *testing.T) {

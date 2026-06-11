@@ -258,6 +258,12 @@ func (c *ledgerIndexConfig) isBuiltinIndexed(index commonpb.TransactionBuiltinIn
 	return c.isIndexed(indexes.TxBuiltinID(index))
 }
 
+func (c *ledgerIndexConfig) indexesPostingAddressMappings() bool {
+	return c.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS) ||
+		c.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS) ||
+		c.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS)
+}
+
 // isLogBuiltinIndexed checks if a specific log builtin index is enabled.
 // Returns false if the receiver is nil (unknown ledger).
 func (c *ledgerIndexConfig) isLogBuiltinIndexed(index commonpb.LogBuiltinIndex) bool {

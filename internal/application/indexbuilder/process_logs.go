@@ -58,6 +58,18 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 	needsPersist := false
 	startCursor := cursor
 	lastProgressLog := time.Now()
+	persistAuditProgress := func(batch *dal.Batch, lastProcessedSeq uint64) error {
+		audit.advanceBefore(lastProcessedSeq + 1)
+		if auditSeq := audit.resumeSequence(); auditSeq > b.lastAuditSeq {
+			if err := b.readStore.WriteAuditProgress(batch, auditSeq); err != nil {
+				return err
+			}
+
+			b.lastAuditSeq = auditSeq
+		}
+
+		return nil
+	}
 
 	for {
 		var (
@@ -143,11 +155,13 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 				continue
 			}
 
-			// Sync audit iterator and load excluded accounts (transient + purged ephemeral).
-			b.excludedAccounts = audit.syncTo(lastSeq, ledgerName)
-
 			cfg := b.ledgerConfig(ledgerName)
 			ledgerID := b.ledgerNameToID[ledgerName]
+			var excludedAccounts map[string]struct{}
+			if cfg.indexesPostingAddressMappings() {
+				// Sync audit iterator and load excluded accounts (transient + purged ephemeral).
+				excludedAccounts = audit.syncTo(lastSeq, ledgerName)
+			}
 
 			// Per-ledger log index is always maintained — every log gets a
 			// LedgerLogKey(ledgerID, logID) → globalSeq entry. The controller's
@@ -167,7 +181,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 				}
 			}
 
-			if err := b.indexPayload(b.kb, cfg, ledgerID, ledgerName, ledgerLog.GetData().GetPayload()); err != nil {
+			if err := b.indexPayload(b.kb, cfg, ledgerID, ledgerName, ledgerLog.GetData().GetPayload(), excludedAccounts); err != nil {
 				_ = batch.Cancel()
 
 				return cursor, err
@@ -190,15 +204,11 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 				return cursor, err
 			}
 
-			// Persist audit progress alongside log progress.
-			if auditSeq := audit.auditSequence(); auditSeq > b.lastAuditSeq {
-				if err := b.readStore.WriteAuditProgress(batch, auditSeq); err != nil {
-					_ = batch.Cancel()
+			// Persist only audit entries whose log range is fully behind lastSeq.
+			if err := persistAuditProgress(batch, lastSeq); err != nil {
+				_ = batch.Cancel()
 
-					return cursor, err
-				}
-
-				b.lastAuditSeq = auditSeq
+				return cursor, err
 			}
 
 			if err := b.wb.Flush(); err != nil {
@@ -274,14 +284,10 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			return cursor, fmt.Errorf("writing progress: %w", err)
 		}
 
-		if auditSeq := audit.auditSequence(); auditSeq > b.lastAuditSeq {
-			if err := b.readStore.WriteAuditProgress(batch, auditSeq); err != nil {
-				_ = batch.Cancel()
+		if err := persistAuditProgress(batch, cursor); err != nil {
+			_ = batch.Cancel()
 
-				return cursor, fmt.Errorf("writing audit progress: %w", err)
-			}
-
-			b.lastAuditSeq = auditSeq
+			return cursor, fmt.Errorf("writing audit progress: %w", err)
 		}
 
 		if err := batch.Commit(); err != nil {
@@ -295,12 +301,19 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 }
 
 // indexPayload dispatches a ledger log payload to the appropriate index handler.
-func (b *Builder) indexPayload(kb *dal.KeyBuilder, cfg *ledgerIndexConfig, ledgerID uint32, ledgerName string, payload any) error {
+func (b *Builder) indexPayload(
+	kb *dal.KeyBuilder,
+	cfg *ledgerIndexConfig,
+	ledgerID uint32,
+	ledgerName string,
+	payload any,
+	excludedAccounts map[string]struct{},
+) error {
 	switch p := payload.(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
-		return b.indexCreatedTransaction(kb, cfg, ledgerID, p.CreatedTransaction)
+		return b.indexCreatedTransaction(kb, cfg, ledgerID, p.CreatedTransaction, excludedAccounts)
 	case *commonpb.LedgerLogPayload_RevertedTransaction:
-		return b.indexRevertedTransaction(kb, cfg, ledgerID, p.RevertedTransaction)
+		return b.indexRevertedTransaction(kb, cfg, ledgerID, p.RevertedTransaction, excludedAccounts)
 	case *commonpb.LedgerLogPayload_SavedMetadata:
 		return b.indexSavedMetadata(kb, cfg, ledgerID, p.SavedMetadata)
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
@@ -358,7 +371,7 @@ func (b *Builder) RebuildAll() (uint64, error) {
 // It does NOT call WriteProgress — the caller batches that.
 // cfg is the index configuration to use for this log entry (may differ from
 // b.indexConfig during backfill, where a temporary config is used).
-func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log) error {
+func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, audit *auditSync) error {
 	if log.GetPayload() == nil {
 		return nil
 	}
@@ -381,6 +394,10 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log) error
 
 	ledgerName := applyLog.Apply.GetLedgerName()
 	ledgerID := b.ledgerNameToID[ledgerName]
+	var excludedAccounts map[string]struct{}
+	if audit != nil {
+		excludedAccounts = audit.syncTo(log.GetSequence(), ledgerName)
+	}
 
 	ledgerLog := applyLog.Apply.GetLog()
 	if ledgerLog == nil || ledgerLog.GetData() == nil {
@@ -401,9 +418,9 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log) error
 
 	switch p := ledgerLog.GetData().GetPayload().(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
-		return b.indexCreatedTransaction(b.kb, cfg, ledgerID, p.CreatedTransaction)
+		return b.indexCreatedTransaction(b.kb, cfg, ledgerID, p.CreatedTransaction, excludedAccounts)
 	case *commonpb.LedgerLogPayload_RevertedTransaction:
-		return b.indexRevertedTransaction(b.kb, cfg, ledgerID, p.RevertedTransaction)
+		return b.indexRevertedTransaction(b.kb, cfg, ledgerID, p.RevertedTransaction, excludedAccounts)
 	case *commonpb.LedgerLogPayload_SavedMetadata:
 		return b.indexSavedMetadata(b.kb, cfg, ledgerID, p.SavedMetadata)
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
@@ -440,6 +457,7 @@ func (b *Builder) indexCreatedTransaction(
 	cfg *ledgerIndexConfig,
 	ledger uint32,
 	ct *commonpb.CreatedTransaction,
+	excludedAccounts map[string]struct{},
 ) error {
 	if ct.GetTransaction() == nil {
 		return nil
@@ -456,40 +474,15 @@ func (b *Builder) indexCreatedTransaction(
 
 	clear(b.accounts)
 
-	excluded := b.excludedAccounts
-
 	for _, posting := range txn.GetPostings() {
 		b.accounts[posting.GetSource()] = struct{}{}
 		b.accounts[posting.GetDestination()] = struct{}{}
 
-		srcExcluded := isExcluded(excluded, posting.GetSource())
-		dstExcluded := isExcluded(excluded, posting.GetDestination())
-
-		// Account→transaction mapping (any role) — skip transient accounts.
-		if indexAny {
-			if !srcExcluded {
-				if err := wb.WriteAccountTxMapping(kb, ledger, posting.GetSource(), txn.GetId()); err != nil {
-					return err
-				}
-			}
-
-			if !dstExcluded {
-				if err := wb.WriteAccountTxMapping(kb, ledger, posting.GetDestination(), txn.GetId()); err != nil {
-					return err
-				}
-			}
-		}
-		// Role-specific mappings — skip transient accounts.
-		if indexSrc && !srcExcluded {
-			if err := wb.WriteSourceAccountTxMapping(kb, ledger, posting.GetSource(), txn.GetId()); err != nil {
-				return err
-			}
-		}
-
-		if indexDst && !dstExcluded {
-			if err := wb.WriteDestAccountTxMapping(kb, ledger, posting.GetDestination(), txn.GetId()); err != nil {
-				return err
-			}
+		if err := b.indexPostingAddressMappings(
+			kb, ledger, txn.GetId(), posting.GetSource(), posting.GetDestination(),
+			indexAny, indexSrc, indexDst, excludedAccounts,
+		); err != nil {
+			return err
 		}
 	}
 
@@ -572,6 +565,7 @@ func (b *Builder) indexRevertedTransaction(
 	cfg *ledgerIndexConfig,
 	ledger uint32,
 	rt *commonpb.RevertedTransaction,
+	excludedAccounts map[string]struct{},
 ) error {
 	if rt.GetRevertTransaction() == nil {
 		return nil
@@ -587,39 +581,15 @@ func (b *Builder) indexRevertedTransaction(
 
 	clear(b.accounts)
 
-	excluded := b.excludedAccounts
-
 	for _, posting := range revertTxn.GetPostings() {
 		b.accounts[posting.GetSource()] = struct{}{}
 		b.accounts[posting.GetDestination()] = struct{}{}
 
-		srcExcluded := isExcluded(excluded, posting.GetSource())
-		dstExcluded := isExcluded(excluded, posting.GetDestination())
-
-		if indexAny {
-			if !srcExcluded {
-				if err := wb.WriteAccountTxMapping(kb, ledger, posting.GetSource(), revertTxn.GetId()); err != nil {
-					return err
-				}
-			}
-
-			if !dstExcluded {
-				if err := wb.WriteAccountTxMapping(kb, ledger, posting.GetDestination(), revertTxn.GetId()); err != nil {
-					return err
-				}
-			}
-		}
-		// Role-specific mappings — skip transient accounts.
-		if indexSrc && !srcExcluded {
-			if err := wb.WriteSourceAccountTxMapping(kb, ledger, posting.GetSource(), revertTxn.GetId()); err != nil {
-				return err
-			}
-		}
-
-		if indexDst && !dstExcluded {
-			if err := wb.WriteDestAccountTxMapping(kb, ledger, posting.GetDestination(), revertTxn.GetId()); err != nil {
-				return err
-			}
+		if err := b.indexPostingAddressMappings(
+			kb, ledger, revertTxn.GetId(), posting.GetSource(), posting.GetDestination(),
+			indexAny, indexSrc, indexDst, excludedAccounts,
+		); err != nil {
+			return err
 		}
 	}
 
@@ -655,6 +625,51 @@ func (b *Builder) indexRevertedTransaction(
 
 	if cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT) && revertTxn.GetInsertedAt() != nil {
 		if err := wb.WriteTransactionInsertedAtIndex(kb, ledger, revertTxn.GetInsertedAt().GetData(), revertTxn.GetId()); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (b *Builder) indexPostingAddressMappings(
+	kb *dal.KeyBuilder,
+	ledger uint32,
+	txID uint64,
+	source string,
+	destination string,
+	indexAny bool,
+	indexSrc bool,
+	indexDst bool,
+	excludedAccounts map[string]struct{},
+) error {
+	wb := b.wb
+	srcExcluded := isExcluded(excludedAccounts, source)
+	dstExcluded := isExcluded(excludedAccounts, destination)
+
+	if indexAny {
+		if !srcExcluded {
+			if err := wb.WriteAccountTxMapping(kb, ledger, source, txID); err != nil {
+				return err
+			}
+		}
+
+		if !dstExcluded {
+			if err := wb.WriteAccountTxMapping(kb, ledger, destination, txID); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Role-specific mappings skip transient and purged ephemeral accounts.
+	if indexSrc && !srcExcluded {
+		if err := wb.WriteSourceAccountTxMapping(kb, ledger, source, txID); err != nil {
+			return err
+		}
+	}
+
+	if indexDst && !dstExcluded {
+		if err := wb.WriteDestAccountTxMapping(kb, ledger, destination, txID); err != nil {
 			return err
 		}
 	}

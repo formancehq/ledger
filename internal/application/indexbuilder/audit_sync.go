@@ -32,6 +32,8 @@ type auditSync struct {
 
 	// Audit sequence of the current entry (for progress persistence).
 	currentAuditSeq uint64
+	// Last audit sequence that is known to be before the next log sequence.
+	resumeAfterAuditSeq uint64
 
 	// Cached excluded set to avoid rebuilding for every log in the same proposal.
 	cachedLedger   string
@@ -55,7 +57,7 @@ func newAuditSync(ctx context.Context, handle dal.PebbleReader, afterAuditSeq ui
 		return nil, err
 	}
 
-	as := &auditSync{cursor: cursor}
+	as := &auditSync{cursor: cursor, resumeAfterAuditSeq: afterAuditSeq}
 	// Pre-load the first AuditSuccess.
 	as.advance()
 
@@ -79,6 +81,7 @@ func (as *auditSync) advance() {
 		if success == nil || success.GetMaxLogSequence() == 0 {
 			// Skip failure entries (no log sequences).
 			as.currentAuditSeq = entry.GetSequence()
+			as.resumeAfterAuditSeq = entry.GetSequence()
 
 			continue
 		}
@@ -102,10 +105,7 @@ func (as *auditSync) syncTo(logSeq uint64, ledger string) map[string]struct{} {
 		return nil
 	}
 
-	// Advance past entries whose log range is entirely before logSeq.
-	for as.current != nil && logSeq > as.maxLogSeq {
-		as.advance()
-	}
+	as.advanceBefore(logSeq)
 
 	if as.current == nil {
 		return nil
@@ -125,6 +125,16 @@ func (as *auditSync) syncTo(logSeq uint64, ledger string) map[string]struct{} {
 	as.cachedExcluded = as.excludedAccountsForLedger(ledger)
 
 	return as.cachedExcluded
+}
+
+// advanceBefore advances past audit entries whose log range is entirely before
+// logSeq. The resulting resume sequence is safe for a future newAuditSync call:
+// it never skips an AuditSuccess that could still cover logSeq.
+func (as *auditSync) advanceBefore(logSeq uint64) {
+	for as.current != nil && logSeq > as.maxLogSeq {
+		as.resumeAfterAuditSeq = as.currentAuditSeq
+		as.advance()
+	}
 }
 
 // excludedAccountsForLedger returns a set of account addresses that should be
@@ -164,9 +174,8 @@ func (as *auditSync) excludedAccountsForLedger(ledger string) map[string]struct{
 	return set
 }
 
-// auditSequence returns the last consumed audit sequence.
-func (as *auditSync) auditSequence() uint64 {
-	return as.currentAuditSeq
+func (as *auditSync) resumeSequence() uint64 {
+	return as.resumeAfterAuditSeq
 }
 
 // close releases the underlying Pebble iterator.

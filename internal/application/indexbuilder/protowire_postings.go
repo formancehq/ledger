@@ -17,7 +17,6 @@ type rawPosting struct {
 type parsedLog struct {
 	Sequence uint64
 	Ledger   string
-	LedgerID uint32
 	TxID     uint64
 	Postings []rawPosting // reused across iterations via truncate-to-zero
 	LogType  int32        // LedgerLogPayload oneof tag: 1=created, 2=reverted, 0=skip
