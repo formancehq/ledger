@@ -220,18 +220,13 @@ func (r *ResourceRepository[ResourceType, OptionsType]) buildFilteredDataset(bui
 	return r.resourceHandler.Project(q, dataset)
 }
 
-// expand wraps the filtered dataset as a "dataset" CTE and left-joins any requested expand CTEs.
-// When materialized is true the CTE is emitted as "WITH dataset AS MATERIALIZED (...)", an
-// optimization fence that forces the planner to evaluate the filtered set once instead of
-// inlining it (which would let an outer LIMIT leak back onto the scan). See DatasetFencer.
-func (r *ResourceRepository[ResourceType, OptionsType]) expand(dataset *bun.SelectQuery, q ResourceQuery[OptionsType], materialized bool) (*bun.SelectQuery, error) {
-	outer := dataset.NewSelect()
-	if materialized {
-		outer = outer.WithQuery(bun.NewWithQuery("dataset", dataset).Materialized())
-	} else {
-		outer = outer.With("dataset", dataset)
-	}
-	dataset = outer.
+// expand wraps the given select as the "dataset" CTE and left-joins any requested expand CTEs,
+// which reference it via "select ... from dataset". The MATERIALIZED fence (when fencing) lives one
+// level deeper, inside the select passed here (see Paginate), so the expands always join against the
+// page rather than the full filtered set.
+func (r *ResourceRepository[ResourceType, OptionsType]) expand(dataset *bun.SelectQuery, q ResourceQuery[OptionsType]) (*bun.SelectQuery, error) {
+	dataset = dataset.NewSelect().
+		With("dataset", dataset).
 		ModelTableExpr("dataset").
 		ColumnExpr("*")
 
@@ -274,7 +269,7 @@ func (r *ResourceRepository[ResourceType, OptionsType]) GetOne(ctx context.Conte
 		return nil, err
 	}
 
-	finalQuery, err = r.expand(finalQuery, query, false)
+	finalQuery, err = r.expand(finalQuery, query)
 	if err != nil {
 		return nil, err
 	}
@@ -411,7 +406,25 @@ func (r *PaginatedResourceRepository[ResourceType, OptionsType]) Paginate(
 	if fence {
 		// The cursor/offset predicate is part of "the filtered set", so it stays inside the fence.
 		finalQuery = paginator.ApplyCursorPredicate(finalQuery)
-		finalQuery, err = r.expand(finalQuery, resourceQuery, true)
+
+		// Fence the filtered set in a MATERIALIZED CTE ("filtered"), then take the page
+		// (ORDER BY + LIMIT/OFFSET) in the "dataset" select that wraps it. The page window lives
+		// here — between the fence and the expand joins — so expand CTEs that reference
+		// "select id from dataset" see only the page, not the whole filtered set. The plan benefit
+		// is preserved: the LIMIT is outside the *materialized* CTE, so the planner still evaluates
+		// "filtered" once via the GIN BitmapOr and the page is a cheap top-N over that result.
+		paged := finalQuery.NewSelect().
+			WithQuery(bun.NewWithQuery("filtered", finalQuery).Materialized()).
+			ModelTableExpr("filtered").
+			ColumnExpr("*").
+			Order(paginator.OrderExpression())
+		paged, err = paginator.ApplyWindow(paged)
+		if err != nil {
+			return nil, fmt.Errorf("applying page window: %w", err)
+		}
+
+		// expand wraps the paged select as the "dataset" CTE the expands join against.
+		finalQuery, err = r.expand(paged, resourceQuery)
 		if err != nil {
 			return nil, fmt.Errorf("expanding results: %w", err)
 		}
@@ -420,7 +433,7 @@ func (r *PaginatedResourceRepository[ResourceType, OptionsType]) Paginate(
 		if err != nil {
 			return nil, fmt.Errorf("paginating request: %w", err)
 		}
-		finalQuery, err = r.expand(finalQuery, resourceQuery, false)
+		finalQuery, err = r.expand(finalQuery, resourceQuery)
 		if err != nil {
 			return nil, fmt.Errorf("expanding results: %w", err)
 		}
@@ -428,20 +441,11 @@ func (r *PaginatedResourceRepository[ResourceType, OptionsType]) Paginate(
 	// Qualify the sort column with "dataset." so that LEFT JOINed expand CTEs
 	// cannot introduce an ambiguous column name (e.g. a future expand that also
 	// selects "id"). No expand today conflicts, but this makes it safe by construction.
-	// This is the single source of the final ORDER BY for both paths; in the fenced path it
-	// is the only ORDER BY, and it must be applied before the page window below.
+	// This is the final ORDER BY over the joined result for both paths; in the fenced path the
+	// page LIMIT already lives inside the "dataset" CTE, so the outer select carries no LIMIT.
 	orderExpr := paginator.OrderExpression()
 	col, dir, _ := strings.Cut(orderExpr, " ")
 	finalQuery = finalQuery.Order(fmt.Sprintf("dataset.%s %s", col, dir))
-
-	if fence {
-		// In the fenced shape the LIMIT (+ OFFSET) live on the outer select, applied after the
-		// outer ORDER BY above.
-		finalQuery, err = paginator.ApplyWindow(finalQuery)
-		if err != nil {
-			return nil, fmt.Errorf("applying page window: %w", err)
-		}
-	}
 
 	ret := make([]ResourceType, 0)
 	err = finalQuery.Model(&ret).Scan(ctx)
