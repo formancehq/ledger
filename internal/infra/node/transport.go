@@ -726,12 +726,35 @@ type peerConnection struct {
 	sendQueueLoadHistogram [3]metric.Int64Histogram
 	sendQueueFullCounter   [3]metric.Float64Counter
 	sendQueueInflight      [3]atomic.Int32
+
+	// pubMu guards stopped vs. send-into-queue. Publishers (pushMessages)
+	// hold pubMu.RLock for the duration of the send so stop() — which takes
+	// pubMu.Lock before flipping stopped and closing the queues — observes
+	// a quiescent state at the moment of close.
+	pubMu   sync.RWMutex
+	stopped bool
 }
 
 // pushMessages pushes a batch of messages to the specified priority queue.
+//
+// Concurrency note: pushMessages is called by DefaultTransport.Start after it
+// snapshots *peerConnection from t.peers under peersMu.RLock and releases
+// that lock. RemovePeer can be racing against this send. To make the close
+// in stop() safe (the prior never-close policy was forced by the absence of
+// publisher coordination, see #315), we acquire pubMu.RLock for the
+// duration of the send. stop() acquires pubMu.Lock before flipping stopped
+// and closing the queues, which guarantees no in-flight send overlaps the
+// close.
 func (conn *peerConnection) pushMessages(priority int, msgs []raftpb.Message) bool {
 	if len(msgs) == 0 {
 		return true
+	}
+
+	conn.pubMu.RLock()
+	defer conn.pubMu.RUnlock()
+
+	if conn.stopped {
+		return false
 	}
 
 	var queue chan []raftpb.Message
@@ -760,13 +783,6 @@ func (conn *peerConnection) pushMessages(priority int, msgs []raftpb.Message) bo
 
 		return false
 	}
-}
-
-// closeQueues closes all priority queues.
-func (conn *peerConnection) closeQueues() {
-	close(conn.highPriorityCh)
-	close(conn.mediumPriorityCh)
-	close(conn.lowPriorityCh)
 }
 
 func (conn *peerConnection) loop() {
@@ -1235,10 +1251,27 @@ func (conn *peerConnection) stop(ctx context.Context) error {
 	// goroutines from this peer connection.
 	select {
 	case <-conn.loopDone:
-		conn.closeQueues()
-
-		return nil
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+
+	// loop() is gone, so no consumer drains the queues. Close them so
+	// any future range-over-channel exits cleanly and the buffered
+	// messages are GC'd promptly.
+	//
+	// Closing alone is not safe: pushMessages is called by t.Start after a
+	// peer snapshot — it can race RemovePeer and would panic with "send on
+	// closed channel" (the panic fires even inside a select-with-default).
+	// pubMu serialises the close against in-flight sends: pushMessages
+	// holds pubMu.RLock during the send; pubMu.Lock here waits for every
+	// active send to finish, then we set stopped=true so subsequent calls
+	// bail out before touching the channel. See #315.
+	conn.pubMu.Lock()
+	conn.stopped = true
+	close(conn.highPriorityCh)
+	close(conn.mediumPriorityCh)
+	close(conn.lowPriorityCh)
+	conn.pubMu.Unlock()
+
+	return nil
 }
