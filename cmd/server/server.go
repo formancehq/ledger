@@ -391,22 +391,45 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 		return defaultValue
 	}
 
-	// Helper function to get uint64 value from flag
+	// Helper function to get uint64 value from flag.
+	//
+	// When the flag is registered with cobra (the common case here),
+	// cmd.Flags().GetUint64 already returns the registered default if the
+	// user didn't set the flag, and the user's value otherwise — including
+	// an explicit zero, which several flags document as a meaningful
+	// sentinel ("0 = disable" / "0 = never expire"). The previous
+	// `val != 0` shortcut silently substituted the local `defaultValue`
+	// for any zero, making those sentinels impossible to set via the CLI
+	// (#324). An earlier attempt routed the not-set branch through the
+	// local `defaultValue`, but that put two competing defaults in play
+	// (cobra's registered one and the call-site fallback) and where the
+	// two disagreed — e.g. cobra default 1000 vs call-site 0 for
+	// --cache-rotation-threshold — the not-set path silently produced an
+	// invalid runtime value (here, a divide-by-zero in cache/generation.go).
+	//
+	// Trust cobra as the single source of truth for the registered case;
+	// keep `defaultValue` as a safety net only for tests / call sites that
+	// never registered the flag.
 	getUint64 := func(flagName string, defaultValue uint64) uint64 {
-		if val, _ := cmd.Flags().GetUint64(flagName); val != 0 {
-			return val
+		if cmd.Flags().Lookup(flagName) == nil {
+			return defaultValue
 		}
 
-		return defaultValue
+		val, _ := cmd.Flags().GetUint64(flagName)
+
+		return val
 	}
 
-	// Helper function to get int value from flag
+	// Helper function to get int value from flag. Same single-source-of-
+	// truth rationale as getUint64.
 	getInt := func(flagName string, defaultValue int) int {
-		if val, _ := cmd.Flags().GetInt(flagName); val != 0 {
-			return val
+		if cmd.Flags().Lookup(flagName) == nil {
+			return defaultValue
 		}
 
-		return defaultValue
+		val, _ := cmd.Flags().GetInt(flagName)
+
+		return val
 	}
 
 	// Helper function to get bool value from flag
@@ -429,13 +452,23 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 		return []int{}
 	}
 
-	// Helper function to get duration from flag
+	// Helper function to get duration from flag. Same single-source-of-
+	// truth rationale as getUint64 — flags like --idempotency-ttl,
+	// --health-clock-skew-threshold and --query-profile-threshold document
+	// 0 as a meaningful sentinel (disable / never expire) and MUST forward
+	// that value unchanged when the user sets it. The previous `val != 0`
+	// shortcut silently snapped --idempotency-ttl=0 back to 24h, so the
+	// eviction scheduler then deleted idempotency keys the operator wanted
+	// kept indefinitely and client retries created duplicate transactions
+	// (#324).
 	getDuration := func(flagName string, defaultValue time.Duration) time.Duration {
-		if val, _ := cmd.Flags().GetDuration(flagName); val != 0 {
-			return val
+		if cmd.Flags().Lookup(flagName) == nil {
+			return defaultValue
 		}
 
-		return defaultValue
+		val, _ := cmd.Flags().GetDuration(flagName)
+
+		return val
 	}
 
 	cfg.Debug = getBool("debug", false)
