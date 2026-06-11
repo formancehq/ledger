@@ -30,7 +30,7 @@ jobs:
       GOPATH: /tmp/go
       GOLANGCI_LINT_CACHE: /tmp/golangci-lint
     steps:
-      - uses: namespacelabs/nscloud-checkout-action@v7
+      - uses: namespacelabs/nscloud-checkout-action@v9
         with:
           fetch-depth: 0
           dissociate: true
@@ -59,7 +59,7 @@ jobs:
     env:
       GOPATH: /tmp/go
     steps:
-      - uses: namespacelabs/nscloud-checkout-action@v7
+      - uses: namespacelabs/nscloud-checkout-action@v9
         with:
           fetch-depth: 0
           dissociate: true
@@ -87,7 +87,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           version: "latest"
-      - uses: namespacelabs/nscloud-checkout-action@v7
+      - uses: namespacelabs/nscloud-checkout-action@v9
         with:
           fetch-depth: 0
           dissociate: true
