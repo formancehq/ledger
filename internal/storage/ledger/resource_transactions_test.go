@@ -36,7 +36,7 @@ func TestShouldFenceTransactionsDataset(t *testing.T) {
 		},
 		{
 			name:    "metadata needle",
-			filters: map[string][]any{"metadata": {map[string]any{"wallet_id": "x"}}},
+			filters: map[string][]any{"metadata": {"wallet_id"}},
 			expect:  true,
 		},
 		{
