@@ -127,11 +127,13 @@ func ApplyExportsAndRebuild(ctx context.Context, logger logging.Logger, storage 
 	// Derived state is rebuilt from the first log sequence not covered by the
 	// checkpoint (0 when restoring from exports alone).
 	var fromLogSeq uint64
+	var fromAuditSeq uint64
 	if manifest.Checkpoint != nil {
 		fromLogSeq = manifest.Checkpoint.LastLogSequence
+		fromAuditSeq = manifest.Checkpoint.LastAuditSequence
 	}
 
-	if err := RebuildDelta(ctx, logger, store, fromLogSeq); err != nil {
+	if err := RebuildDelta(ctx, logger, store, fromLogSeq, fromAuditSeq); err != nil {
 		return fmt.Errorf("rebuilding derived state: %w", err)
 	}
 

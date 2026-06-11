@@ -17,6 +17,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/replay"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
+	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -31,16 +33,18 @@ func RebuildDelta(
 	logger logging.Logger,
 	store *dal.Store,
 	fromLogSeq uint64,
+	fromAuditSeq uint64,
 ) error {
 	attrs := attributes.New()
 	batch := store.NewBatch()
 
 	writer := &attributeReplayWriter{
-		store:    store,
-		batch:    batch,
-		volume:   attrs.Volume,
-		metadata: attrs.Metadata,
-		tx:       attrs.Transaction,
+		store:          store,
+		batch:          batch,
+		volume:         attrs.Volume,
+		metadata:       attrs.Metadata,
+		tx:             attrs.Transaction,
+		pendingVolumes: make(map[string]*raftcmdpb.VolumePair),
 	}
 
 	sinkConfig := attrs.SinkConfig
@@ -78,6 +82,26 @@ func RebuildDelta(
 
 	defer func() { _ = logCursor.Close() }()
 
+	proposalBoundaries, err := newProposalBoundaryReader(ctx, readHandle, fromLogSeq, fromAuditSeq)
+	if err != nil {
+		_ = batch.Cancel()
+
+		return fmt.Errorf("reading proposal log boundaries: %w", err)
+	}
+	defer func() { _ = proposalBoundaries.Close() }()
+
+	nextProposalEnd, hasProposalEnd, err := proposalBoundaries.Next()
+	if err != nil {
+		_ = batch.Cancel()
+
+		return fmt.Errorf("reading first proposal log boundary: %w", err)
+	}
+
+	var ephemeralPurgeBuffer *replay.EphemeralPurgeBuffer
+	if hasProposalEnd {
+		ephemeralPurgeBuffer = replay.NewEphemeralPurgeBuffer()
+	}
+
 	var count uint64
 
 	for {
@@ -103,6 +127,21 @@ func RebuildDelta(
 		payload := log.GetPayload()
 		seq := log.GetSequence()
 
+		for ephemeralPurgeBuffer != nil && hasProposalEnd && seq > nextProposalEnd {
+			if err := ephemeralPurgeBuffer.Flush(writer, ledgerAccountTypes); err != nil {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("flushing replay ephemeral purge at missing log boundary %d: %w", nextProposalEnd, err)
+			}
+
+			nextProposalEnd, hasProposalEnd, err = proposalBoundaries.Next()
+			if err != nil {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("reading next proposal log boundary: %w", err)
+			}
+		}
+
 		switch p := payload.GetType().(type) {
 		case *commonpb.LogPayload_Apply:
 			if p.Apply == nil || p.Apply.GetLog() == nil || p.Apply.GetLog().GetData() == nil {
@@ -111,7 +150,7 @@ func RebuildDelta(
 
 			ledgerName := p.Apply.GetLedgerName()
 
-			if err := replay.ReplayLedgerLog(ledgerName, ledgerNameToID[ledgerName], seq, p.Apply.GetLog().GetData(), writer, rawLedgerTypes, ledgerAccountTypes); err != nil {
+			if err := replay.ReplayLedgerLog(ledgerName, ledgerNameToID[ledgerName], seq, p.Apply.GetLog().GetData(), writer, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
 				_ = batch.Cancel()
 
 				return fmt.Errorf("replaying ledger log %d: %w", seq, err)
@@ -251,6 +290,21 @@ func RebuildDelta(
 		case *commonpb.LogPayload_DeleteQueryCheckpointSchedule:
 		}
 
+		if ephemeralPurgeBuffer != nil && hasProposalEnd && seq == nextProposalEnd {
+			if err := ephemeralPurgeBuffer.Flush(writer, ledgerAccountTypes); err != nil {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("flushing replay ephemeral purge at log %d: %w", seq, err)
+			}
+
+			nextProposalEnd, hasProposalEnd, err = proposalBoundaries.Next()
+			if err != nil {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("reading next proposal log boundary: %w", err)
+			}
+		}
+
 		count++
 
 		// Commit in batches to avoid unbounded memory
@@ -261,11 +315,20 @@ func RebuildDelta(
 
 			batch = store.NewBatch()
 			writer.batch = batch
+			clear(writer.pendingVolumes)
 
 			logger.WithFields(map[string]any{
 				"logsProcessed": count,
 				"currentSeq":    seq,
 			}).Infof("RebuildDelta progress")
+		}
+	}
+
+	if ephemeralPurgeBuffer != nil {
+		if err := ephemeralPurgeBuffer.Flush(writer, ledgerAccountTypes); err != nil {
+			_ = batch.Cancel()
+
+			return fmt.Errorf("flushing final replay ephemeral purge: %w", err)
 		}
 	}
 
@@ -278,6 +341,63 @@ func RebuildDelta(
 	}).Infof("RebuildDelta completed")
 
 	return nil
+}
+
+type proposalBoundaryReader struct {
+	auditCursor cursor.Cursor[*auditpb.AuditEntry]
+	tracker     *replay.ProposalBoundaryTracker
+}
+
+func newProposalBoundaryReader(
+	ctx context.Context,
+	reader dal.PebbleReader,
+	replayedThrough uint64,
+	afterAuditSeq uint64,
+) (*proposalBoundaryReader, error) {
+	var after *uint64
+	if afterAuditSeq > 0 {
+		after = &afterAuditSeq
+	}
+
+	auditCursor, err := query.ReadAuditEntries(ctx, reader, after)
+	if err != nil {
+		return nil, fmt.Errorf("reading audit entries: %w", err)
+	}
+
+	return &proposalBoundaryReader{
+		auditCursor: auditCursor,
+		tracker:     replay.NewProposalBoundaryTracker(replayedThrough),
+	}, nil
+}
+
+func (r *proposalBoundaryReader) Next() (uint64, bool, error) {
+	for {
+		entry, err := r.auditCursor.Next()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return 0, false, nil
+			}
+
+			return 0, false, fmt.Errorf("reading audit entry: %w", err)
+		}
+
+		success := entry.GetSuccess()
+		if success == nil || success.GetMaxLogSequence() == 0 {
+			continue
+		}
+
+		if boundary, ok := r.tracker.Accept(success.GetMaxLogSequence()); ok {
+			return boundary, true, nil
+		}
+	}
+}
+
+func (r *proposalBoundaryReader) Close() error {
+	if r == nil || r.auditCursor == nil {
+		return nil
+	}
+
+	return r.auditCursor.Close()
 }
 
 // seedLedgerContext populates the ledger-ID and account-type maps from ledgers
@@ -324,15 +444,16 @@ func seedLedgerContext(
 // attributeReplayWriter implements replay.Writer by writing directly to
 // Pebble attributes via Attribute[V].Set/Get/Delete.
 type attributeReplayWriter struct {
-	store    *dal.Store
-	batch    *dal.Batch
-	volume   *attributes.Attribute[*raftcmdpb.VolumePair]
-	metadata *attributes.Attribute[*commonpb.MetadataValue]
-	tx       *attributes.Attribute[*commonpb.TransactionState]
+	store          *dal.Store
+	batch          *dal.Batch
+	volume         *attributes.Attribute[*raftcmdpb.VolumePair]
+	metadata       *attributes.Attribute[*commonpb.MetadataValue]
+	tx             *attributes.Attribute[*commonpb.TransactionState]
+	pendingVolumes map[string]*raftcmdpb.VolumePair
 }
 
 func (w *attributeReplayWriter) AddVolumeDelta(canonicalKey []byte, inputDelta, outputDelta *big.Int) error {
-	existing, err := w.volume.Get(w.store, canonicalKey)
+	existing, err := w.GetVolume(canonicalKey)
 	if err != nil {
 		return err
 	}
@@ -362,16 +483,28 @@ func (w *attributeReplayWriter) AddVolumeDelta(canonicalKey []byte, inputDelta, 
 	}
 
 	_, err = w.volume.Set(w.batch, canonicalKey, pair)
+	if err == nil {
+		w.pendingVolumes[string(canonicalKey)] = pair
+	}
 
 	return err
 }
 
 func (w *attributeReplayWriter) GetVolume(canonicalKey []byte) (*raftcmdpb.VolumePair, error) {
+	if pair, ok := w.pendingVolumes[string(canonicalKey)]; ok {
+		return pair, nil
+	}
+
 	return w.volume.Get(w.store, canonicalKey)
 }
 
 func (w *attributeReplayWriter) DeleteVolume(canonicalKey []byte) error {
-	return w.volume.Delete(w.batch, canonicalKey)
+	err := w.volume.Delete(w.batch, canonicalKey)
+	if err == nil {
+		w.pendingVolumes[string(canonicalKey)] = nil
+	}
+
+	return err
 }
 
 func (w *attributeReplayWriter) MoveVolume(oldKey, newKey []byte) error {

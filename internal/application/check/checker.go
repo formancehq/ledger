@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"strconv"
 
@@ -138,6 +140,12 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return fmt.Errorf("verifying audit hash chain: %w", err)
 	}
 
+	proposalBoundaries, err := c.newProposalBoundaryReader(ctx, snap, periods, archiveEndSeq)
+	if err != nil {
+		return fmt.Errorf("reading proposal log boundaries: %w", err)
+	}
+	defer func() { _ = proposalBoundaries.Close() }()
+
 	// State tracked during log replay
 	var (
 		knownLedgers = make(map[string]uint32) // ledger name → ledger ID
@@ -148,6 +156,16 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		rawLedgerTypes     = make(map[string]map[string]*commonpb.AccountType)
 		ledgerAccountTypes = make(map[string][]accounttype.CompiledType)
 	)
+
+	nextProposalEnd, hasProposalEnd, err := proposalBoundaries.Next()
+	if err != nil {
+		return fmt.Errorf("reading first proposal log boundary: %w", err)
+	}
+
+	var ephemeralPurgeBuffer *domainreplay.EphemeralPurgeBuffer
+	if hasProposalEnd {
+		ephemeralPurgeBuffer = domainreplay.NewEphemeralPurgeBuffer()
+	}
 
 	// If periods were archived, pre-populate knownLedgers from Pebble
 	// since the CreateLedger logs have been purged.
@@ -226,6 +244,17 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// Extract sequence from key: [ZoneCold(1)][SubColdLog(1)][sequence(8)]
 		seq := binary.BigEndian.Uint64(logIter.Key()[2:10])
 
+		for ephemeralPurgeBuffer != nil && hasProposalEnd && seq > nextProposalEnd {
+			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes); err != nil {
+				return fmt.Errorf("flushing replay ephemeral purge at missing log boundary %d: %w", nextProposalEnd, err)
+			}
+
+			nextProposalEnd, hasProposalEnd, err = proposalBoundaries.Next()
+			if err != nil {
+				return fmt.Errorf("reading next proposal log boundary: %w", err)
+			}
+		}
+
 		// 1. Detect gaps
 		for expectedSeq < seq {
 			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP,
@@ -273,13 +302,24 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					}
 
 					if payload.Apply.GetLog() != nil && payload.Apply.GetLog().GetData() != nil {
-						if err := domainreplay.ReplayLedgerLog(ledgerName, ledgerID, seq, payload.Apply.GetLog().GetData(), replay, rawLedgerTypes, ledgerAccountTypes); err != nil {
+						if err := domainreplay.ReplayLedgerLog(ledgerName, ledgerID, seq, payload.Apply.GetLog().GetData(), replay, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
 							return fmt.Errorf("replaying log %d: %w", seq, err)
 						}
 
 						checkReversionInvariants(ledgerName, ledgerID, seq, payload.Apply.GetLog().GetData(), ledgerKnownTxIDs, ledgerRevertedTxIDs, callback)
 					}
 				}
+			}
+		}
+
+		if ephemeralPurgeBuffer != nil && hasProposalEnd && seq == nextProposalEnd {
+			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes); err != nil {
+				return fmt.Errorf("flushing replay ephemeral purge at log %d: %w", seq, err)
+			}
+
+			nextProposalEnd, hasProposalEnd, err = proposalBoundaries.Next()
+			if err != nil {
+				return fmt.Errorf("reading next proposal log boundary: %w", err)
 			}
 		}
 
@@ -298,6 +338,12 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	if err := logIter.Error(); err != nil {
 		return fmt.Errorf("log iterator error: %w", err)
+	}
+
+	if ephemeralPurgeBuffer != nil {
+		if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes); err != nil {
+			return fmt.Errorf("flushing final replay ephemeral purge: %w", err)
+		}
 	}
 
 	// Open baseline checkpoint for archived state comparison.
@@ -943,6 +989,69 @@ func (c *Checker) verifyAuditHashChain(
 	}
 
 	return nil
+}
+
+type proposalBoundaryReader struct {
+	auditCursor cursor.Cursor[*auditpb.AuditEntry]
+	tracker     *domainreplay.ProposalBoundaryTracker
+}
+
+func (c *Checker) newProposalBoundaryReader(
+	ctx context.Context,
+	reader dal.PebbleReader,
+	periods []*commonpb.Period,
+	archiveEndSeq uint64,
+) (*proposalBoundaryReader, error) {
+	var afterAuditSeq *uint64
+
+	for _, p := range periods {
+		if p.GetStatus() == commonpb.PeriodStatus_PERIOD_ARCHIVED {
+			closeAuditSeq := p.GetCloseAuditSequence()
+			if afterAuditSeq == nil || closeAuditSeq > *afterAuditSeq {
+				afterAuditSeq = &closeAuditSeq
+			}
+		}
+	}
+
+	auditCursor, err := query.ReadAuditEntries(ctx, reader, afterAuditSeq)
+	if err != nil {
+		return nil, fmt.Errorf("reading audit entries: %w", err)
+	}
+
+	return &proposalBoundaryReader{
+		auditCursor: auditCursor,
+		tracker:     domainreplay.NewProposalBoundaryTracker(archiveEndSeq),
+	}, nil
+}
+
+func (r *proposalBoundaryReader) Next() (uint64, bool, error) {
+	for {
+		entry, err := r.auditCursor.Next()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return 0, false, nil
+			}
+
+			return 0, false, fmt.Errorf("reading audit entry: %w", err)
+		}
+
+		success := entry.GetSuccess()
+		if success == nil || success.GetMaxLogSequence() == 0 {
+			continue
+		}
+
+		if boundary, ok := r.tracker.Accept(success.GetMaxLogSequence()); ok {
+			return boundary, true, nil
+		}
+	}
+}
+
+func (r *proposalBoundaryReader) Close() error {
+	if r == nil || r.auditCursor == nil {
+		return nil
+	}
+
+	return r.auditCursor.Close()
 }
 
 // logSequenceFromAuditEntry extracts a representative log sequence from an

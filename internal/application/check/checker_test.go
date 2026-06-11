@@ -14,6 +14,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -57,6 +58,8 @@ type testEngine struct {
 	currentOpenPeriod      *commonpb.Period
 	closingPeriods         []*commonpb.Period
 	nextLedgerID           uint32
+	nextAuditSequenceID    uint64
+	lastAuditHash          []byte
 	nextPeriodID           uint64
 	raftIndex              uint64
 	pendingLedgerDeletions []string
@@ -76,22 +79,23 @@ func newTestEngine(t *testing.T) *testEngine {
 	require.NoError(t, err)
 
 	return &testEngine{
-		t:                 t,
-		store:             store,
-		attrs:             attrs,
-		processor:         proc,
-		cache:             c,
-		nextSequenceID:    1,
-		nextLedgerID:      1,
-		ledgers:           make(map[string]*commonpb.LedgerInfo),
-		boundaries:        make(map[string]*raftcmdpb.LedgerBoundaries),
-		volumes:           make(map[string]*raftcmdpb.VolumePair),
-		metadata:          make(map[string]*commonpb.MetadataValue),
-		idempotency:       make(map[string]*commonpb.IdempotencyKeyValue),
-		references:        make(map[string]*commonpb.TransactionReferenceValue),
-		transactionStates: make(map[string]*commonpb.TransactionState),
-		nextPeriodID:      1,
-		raftIndex:         1,
+		t:                   t,
+		store:               store,
+		attrs:               attrs,
+		processor:           proc,
+		cache:               c,
+		nextSequenceID:      1,
+		nextLedgerID:        1,
+		ledgers:             make(map[string]*commonpb.LedgerInfo),
+		boundaries:          make(map[string]*raftcmdpb.LedgerBoundaries),
+		volumes:             make(map[string]*raftcmdpb.VolumePair),
+		metadata:            make(map[string]*commonpb.MetadataValue),
+		idempotency:         make(map[string]*commonpb.IdempotencyKeyValue),
+		references:          make(map[string]*commonpb.TransactionReferenceValue),
+		transactionStates:   make(map[string]*commonpb.TransactionState),
+		nextPeriodID:        1,
+		nextAuditSequenceID: 1,
+		raftIndex:           1,
 	}
 }
 
@@ -138,6 +142,8 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 
 	err = state.AppendLogs(batch, logs)
 	require.NoError(e.t, err)
+
+	e.appendAuditEntry(batch, proposal, resp)
 
 	// Write only modified volume attributes.
 	// Values are always stored as Input/Output.
@@ -204,6 +210,94 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 	e.raftIndex++
 
 	return logs
+}
+
+func (e *testEngine) appendAuditEntry(batch *dal.Batch, proposal *raftcmdpb.Proposal, results []*raftcmdpb.CreatedLogOrReference) {
+	e.t.Helper()
+
+	hashAlgorithm := commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3
+	_, auditHash := processing.ComputeAuditHash(hashAlgorithm, nil, e.lastAuditHash, proposal.GetOrders())
+	minLogSeq, maxLogSeq := testLogSequenceRange(results)
+
+	entry := &auditpb.AuditEntry{
+		Sequence:    e.nextAuditSequenceID,
+		Timestamp:   proposal.GetDate(),
+		ProposalId:  proposal.GetId(),
+		OrderCount:  uint32(len(proposal.GetOrders())),
+		Hash:        auditHash,
+		HashVersion: uint32(hashAlgorithm),
+		Outcome: &auditpb.AuditEntry_Success{
+			Success: &auditpb.AuditSuccess{
+				MinLogSequence: minLogSeq,
+				MaxLogSequence: maxLogSeq,
+			},
+		},
+	}
+
+	batch.KeyBuilder.
+		PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).
+		PutUint64(entry.GetSequence())
+	require.NoError(e.t, batch.SetProto(batch.KeyBuilder.Consume(), entry))
+
+	for _, item := range testAuditItems(proposal.GetOrders(), results) {
+		batch.KeyBuilder.
+			PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).
+			PutUint64(entry.GetSequence()).
+			PutUint32(item.GetOrderIndex())
+		require.NoError(e.t, batch.SetProto(batch.KeyBuilder.Consume(), item))
+	}
+
+	e.lastAuditHash = auditHash
+	e.nextAuditSequenceID++
+}
+
+func testLogSequenceRange(results []*raftcmdpb.CreatedLogOrReference) (uint64, uint64) {
+	var minSeq, maxSeq uint64
+
+	for _, result := range results {
+		var seq uint64
+		if created := result.GetCreatedLog(); created != nil {
+			seq = created.GetSequence()
+		} else {
+			seq = result.GetReferenceSequence()
+		}
+
+		if seq == 0 {
+			continue
+		}
+
+		if minSeq == 0 || seq < minSeq {
+			minSeq = seq
+		}
+		if seq > maxSeq {
+			maxSeq = seq
+		}
+	}
+
+	return minSeq, maxSeq
+}
+
+func testAuditItems(orders []*raftcmdpb.Order, results []*raftcmdpb.CreatedLogOrReference) []*auditpb.AuditItem {
+	items := make([]*auditpb.AuditItem, len(orders))
+
+	for i, order := range orders {
+		item := &auditpb.AuditItem{
+			OrderIndex: uint32(i),
+			Order:      order,
+		}
+
+		if i < len(results) {
+			if created := results[i].GetCreatedLog(); created != nil {
+				item.LogSequence = created.GetSequence()
+			} else if refSeq := results[i].GetReferenceSequence(); refSeq > 0 {
+				item.LogSequence = refSeq
+			}
+		}
+
+		items[i] = item
+	}
+
+	return items
 }
 
 // inMemoryStore implements processing.InMemoryStore using the testEngine's in-memory state.
@@ -481,6 +575,25 @@ func createLedgerOrder(name string) *raftcmdpb.Order {
 		Type: &raftcmdpb.Order_CreateLedger{
 			CreateLedger: &raftcmdpb.CreateLedgerOrder{
 				Name: name,
+			},
+		},
+	}
+}
+
+func addAccountTypeOrder(ledger, name, pattern string, persistence commonpb.AccountTypePersistence) *raftcmdpb.Order {
+	return &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_Apply{
+			Apply: &raftcmdpb.LedgerApplyOrder{
+				Ledger: ledger,
+				Data: &raftcmdpb.LedgerApplyOrder_AddAccountType{
+					AddAccountType: &raftcmdpb.AddAccountTypeOrder{
+						AccountType: &commonpb.AccountType{
+							Name:        name,
+							Pattern:     pattern,
+							Persistence: persistence,
+						},
+					},
+				},
 			},
 		},
 	}
@@ -764,6 +877,37 @@ func TestCheckerComprehensive(t *testing.T) {
 	}
 
 	require.Empty(t, errors, "store built from valid operations should have no integrity errors")
+}
+
+func TestCheckerReplaysEphemeralPurgeAtProposalBoundary(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+
+	engine.processAndCommit(createLedgerOrder("ledger"))
+	engine.processAndCommit(addAccountTypeOrder(
+		"ledger",
+		"orders",
+		"orders:{id}",
+		commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+	))
+
+	fund := createTransactionOrder("ledger", true,
+		newPosting("world", "orders:1", "USD", 5),
+	)
+	drain := createTransactionOrder("ledger", true,
+		newPosting("orders:1", "world", "USD", 5),
+	)
+	drain.Idempotency = &commonpb.Idempotency{Key: "drain-orders-1"}
+	refund := createTransactionOrder("ledger", true,
+		newPosting("world", "orders:1", "USD", 3),
+	)
+
+	engine.processAndCommit(fund, drain, refund)
+	engine.processAndCommit(drain)
+
+	errors := collectCheckErrors(t, engine.store, engine.attrs)
+	require.Empty(t, errors, "ephemeral purge must use the proposal boundary, not each transaction log")
 }
 
 // TestCheckerDetectsSequenceGap verifies the checker detects missing log entries.

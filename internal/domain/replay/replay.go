@@ -23,6 +23,7 @@ func ReplayLedgerLog(
 	w Writer,
 	rawLedgerTypes map[string]map[string]*commonpb.AccountType,
 	ledgerAccountTypes map[string][]accounttype.CompiledType,
+	ephemeralPurgeBuffer *EphemeralPurgeBuffer,
 ) error {
 	switch p := payload.GetPayload().(type) {
 	case *commonpb.LedgerLogPayload_AddedAccountType:
@@ -56,7 +57,7 @@ func ReplayLedgerLog(
 			return err
 		}
 
-		if err := SimulateEphemeralPurge(ledger, ledgerID, tx.GetPostings(), w, ledgerAccountTypes); err != nil {
+		if err := replayEphemeralPurge(ledger, ledgerID, tx.GetPostings(), w, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
 			return err
 		}
 
@@ -96,7 +97,7 @@ func ReplayLedgerLog(
 			return err
 		}
 
-		if err := SimulateEphemeralPurge(ledger, ledgerID, revertTx.GetPostings(), w, ledgerAccountTypes); err != nil {
+		if err := replayEphemeralPurge(ledger, ledgerID, revertTx.GetPostings(), w, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
 			return err
 		}
 
@@ -187,6 +188,107 @@ func ReplayLedgerLog(
 	}
 
 	return nil
+}
+
+type pendingEphemeralPurge struct {
+	ledgerID uint32
+	postings []*commonpb.Posting
+}
+
+// EphemeralPurgeBuffer accumulates transaction postings until the caller reaches
+// the same proposal boundary used by the FSM's WriteSet.Merge().
+type EphemeralPurgeBuffer struct {
+	byLedger map[string]*pendingEphemeralPurge
+	ledgers  []string
+}
+
+// NewEphemeralPurgeBuffer creates a buffer for replay callers that know batch
+// boundaries, such as the integrity checker via audit entries.
+func NewEphemeralPurgeBuffer() *EphemeralPurgeBuffer {
+	return &EphemeralPurgeBuffer{
+		byLedger: make(map[string]*pendingEphemeralPurge),
+	}
+}
+
+// Add records postings for a ledger in the current replay batch.
+func (b *EphemeralPurgeBuffer) Add(ledger string, ledgerID uint32, postings []*commonpb.Posting) {
+	if b == nil || len(postings) == 0 {
+		return
+	}
+
+	pending := b.byLedger[ledger]
+	if pending == nil {
+		pending = &pendingEphemeralPurge{ledgerID: ledgerID}
+		b.byLedger[ledger] = pending
+		b.ledgers = append(b.ledgers, ledger)
+	}
+
+	pending.ledgerID = ledgerID
+	pending.postings = append(pending.postings, postings...)
+}
+
+// Flush applies the accumulated purge decisions once per replay batch.
+func (b *EphemeralPurgeBuffer) Flush(
+	w Writer,
+	ledgerAccountTypes map[string][]accounttype.CompiledType,
+) error {
+	if b == nil || len(b.byLedger) == 0 {
+		return nil
+	}
+
+	for _, ledger := range b.ledgers {
+		pending := b.byLedger[ledger]
+		if err := SimulateEphemeralPurge(ledger, pending.ledgerID, pending.postings, w, ledgerAccountTypes); err != nil {
+			return err
+		}
+	}
+
+	clear(b.byLedger)
+	b.ledgers = b.ledgers[:0]
+
+	return nil
+}
+
+func replayEphemeralPurge(
+	ledger string,
+	ledgerID uint32,
+	postings []*commonpb.Posting,
+	w Writer,
+	ledgerAccountTypes map[string][]accounttype.CompiledType,
+	ephemeralPurgeBuffer *EphemeralPurgeBuffer,
+) error {
+	if ephemeralPurgeBuffer != nil {
+		ephemeralPurgeBuffer.Add(ledger, ledgerID, postings)
+
+		return nil
+	}
+
+	return SimulateEphemeralPurge(ledger, ledgerID, postings, w, ledgerAccountTypes)
+}
+
+// ProposalBoundaryTracker filters audit log ranges down to newly-created log
+// boundaries. Audit ranges may include idempotent references to older logs; only
+// a monotonically advancing max log sequence can close a replayed proposal.
+type ProposalBoundaryTracker struct {
+	lastLogSequence uint64
+}
+
+// NewProposalBoundaryTracker creates a tracker seeded with the highest log
+// sequence already covered by the replay base, such as an archived period or a
+// backup checkpoint.
+func NewProposalBoundaryTracker(replayedThrough uint64) *ProposalBoundaryTracker {
+	return &ProposalBoundaryTracker{lastLogSequence: replayedThrough}
+}
+
+// Accept returns true when maxLogSequence represents a new proposal boundary.
+func (t *ProposalBoundaryTracker) Accept(maxLogSequence uint64) (uint64, bool) {
+	if t == nil || maxLogSequence == 0 || maxLogSequence <= t.lastLogSequence {
+		return 0, false
+	}
+
+	t.lastLogSequence = maxLogSequence
+
+	return maxLogSequence, true
 }
 
 // ApplyPostings applies postings to the writer as volume deltas.
