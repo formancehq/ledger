@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/http"
 	"os"
 	"runtime"
 	"runtime/debug"
@@ -180,6 +181,12 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().String("auth-scope-mapping-file", "", "Path to JSON file mapping virtual scopes (e.g. ledger:read) to granular scopes")
 	runCmd.Flags().String("auth-anonymous-scopes", "", "Comma-separated granular scopes granted to requests without a bearer token (e.g. \"*:read\" for writes-only mode). Wildcards: *:read, *:write")
 
+	// OIDC discovery + JWKS HTTP timeout. A slow or blackholed issuer would
+	// otherwise hang startup indefinitely (go-libs supplies http.DefaultClient
+	// with no Timeout and discovery uses context.Background()). 0 keeps the
+	// legacy unbounded behavior for operators that need it.
+	runCmd.Flags().Duration("auth-discovery-timeout", 10*time.Second, "Bound the HTTP calls used for OIDC discovery and JWKS fetches at startup (0 = unbounded)")
+
 	// Idempotency TTL and eviction
 	runCmd.Flags().Duration("idempotency-ttl", 24*time.Hour, "Idempotency key time-to-live (0 = never expire)")
 	runCmd.Flags().Duration("idempotency-eviction-interval", 60*time.Second, "How often the leader proposes idempotency eviction")
@@ -309,9 +316,21 @@ func runServer(cmd *cobra.Command, _ []string) error {
 	// skip OIDC discovery to avoid a crash on empty issuer URL.
 	// Ed25519-only auth works without OIDC (the KeySet parameter in
 	// buildAuthConfig is optional).
+	//
+	// fx.Decorate replaces the http.DefaultClient that authnfx.JWTModule
+	// supplies (no Timeout — would hang startup on a slow/blackholed issuer)
+	// with one bounded by cfg.AuthConfig.OIDCDiscoveryTimeout. go-libs'
+	// NewKeySets receives this client and feeds it to oidc client.Discover
+	// and NewRemoteKeySet, so both discovery and JWKS fetches are bounded.
 	var authModule fx.Option
 	if cfg.AuthConfig.Issuer != "" {
-		authModule = authnfx.JWTModuleFromFlags(cmd)
+		discoveryTimeout := cfg.AuthConfig.OIDCDiscoveryTimeout
+		authModule = fx.Options(
+			authnfx.JWTModuleFromFlags(cmd),
+			fx.Decorate(func(*http.Client) *http.Client {
+				return bootstrap.TimeoutHTTPClient(discoveryTimeout)
+			}),
+		)
 	} else {
 		authModule = fx.Module("auth")
 	}
@@ -529,13 +548,14 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 	scopeMappingFile := getString("auth-scope-mapping-file", "")
 	scopeMappingJSON := os.Getenv("AUTH_SCOPE_MAPPING") // env var only (used by operator)
 	cfg.AuthConfig = bootstrap.AuthFlagConfig{
-		Enabled:          getBool(auth.AuthEnabledFlag, false),
-		Issuer:           getString(auth.AuthIssuerFlag, ""),
-		Service:          getString(auth.AuthServiceFlag, "ledger"),
-		Ed25519KeysFile:  ed25519KeysFile,
-		ScopeMappingFile: scopeMappingFile,
-		ScopeMappingJSON: scopeMappingJSON,
-		AnonymousScopes:  getString("auth-anonymous-scopes", ""),
+		Enabled:              getBool(auth.AuthEnabledFlag, false),
+		Issuer:               getString(auth.AuthIssuerFlag, ""),
+		Service:              getString(auth.AuthServiceFlag, "ledger"),
+		Ed25519KeysFile:      ed25519KeysFile,
+		ScopeMappingFile:     scopeMappingFile,
+		ScopeMappingJSON:     scopeMappingJSON,
+		AnonymousScopes:      getString("auth-anonymous-scopes", ""),
+		OIDCDiscoveryTimeout: getDuration("auth-discovery-timeout", 10*time.Second),
 	}
 	// Idempotency TTL
 	cfg.IdempotencyTTL = getDuration("idempotency-ttl", 24*time.Hour)

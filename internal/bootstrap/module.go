@@ -1368,6 +1368,30 @@ func buildResponseSigner(cfg Config, logger logging.Logger) (*signing.ResponseSi
 	return signer, nil
 }
 
+// discoveryContext returns a context bounded by timeout when timeout > 0,
+// or a background context with a no-op cancel when timeout <= 0 (preserving
+// the legacy unbounded behavior for operators who opt out explicitly).
+func discoveryContext(timeout time.Duration) (context.Context, context.CancelFunc) {
+	if timeout <= 0 {
+		return context.Background(), func() {}
+	}
+
+	return context.WithTimeout(context.Background(), timeout)
+}
+
+// TimeoutHTTPClient returns an *http.Client with Timeout set when timeout > 0,
+// otherwise http.DefaultClient (which has no timeout). Used by cmd/server to
+// shadow — via fx.Decorate — the http.DefaultClient that go-libs'
+// authnfx.JWTModule injects into NewKeySets, so OIDC discovery + JWKS reads
+// don't hang startup on a slow issuer.
+func TimeoutHTTPClient(timeout time.Duration) *http.Client {
+	if timeout <= 0 {
+		return http.DefaultClient
+	}
+
+	return &http.Client{Timeout: timeout}
+}
+
 // buildAuthConfig constructs an AuthConfig from the server configuration and optional OIDC KeySet.
 // If Ed25519 keys are configured, it creates a composite KeySet that handles both OIDC and EdDSA tokens.
 // When auth is enabled with an issuer and no external KeySet is injected, it discovers the OIDC
@@ -1381,9 +1405,14 @@ func buildAuthConfig(cfg Config, logger logging.Logger, oidcKeySet oidc.KeySet) 
 	}
 
 	// When auth is enabled and an issuer is configured but no external KeySet was injected,
-	// discover the OIDC configuration and create a remote KeySet.
+	// discover the OIDC configuration and create a remote KeySet. The
+	// discovery HTTP call uses http.DefaultClient (no Timeout) inside go-libs,
+	// so a slow or blackholed issuer would otherwise hang startup forever —
+	// bound it via a context deadline derived from cfg.AuthConfig.OIDCDiscoveryTimeout.
 	if oidcKeySet == nil && cfg.AuthConfig.Enabled && cfg.AuthConfig.Issuer != "" {
-		discovery, err := oidc.Discover(context.Background(), cfg.AuthConfig.Issuer, oidc.DiscoveryEndpoint)
+		ctx, cancel := discoveryContext(cfg.AuthConfig.OIDCDiscoveryTimeout)
+		discovery, err := oidc.Discover(ctx, cfg.AuthConfig.Issuer, oidc.DiscoveryEndpoint)
+		cancel()
 		if err != nil {
 			return authCfg, fmt.Errorf("discovering OIDC configuration for issuer %q: %w", cfg.AuthConfig.Issuer, err)
 		}
