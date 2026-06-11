@@ -10,10 +10,16 @@ import (
 
 const loaderShards = 256
 
-// loadedEntry stores a loaded attribute value with its boundary.
+// loadedEntry stores a loaded attribute value with the cache state that made
+// the value safe to reuse.
 type loadedEntry[T any] struct {
-	boundary uint64
-	value    T
+	boundary   uint64
+	cacheEpoch uint64
+	value      T
+}
+
+func (e *loadedEntry[T]) validFor(boundary, cacheEpoch uint64) bool {
+	return e.cacheEpoch == cacheEpoch && e.boundary >= boundary
 }
 
 // loaderShard is one of loaderShards independent partitions, each with its own
@@ -61,13 +67,13 @@ func (al *AttributeLoader[T]) shard(key attributes.U128) *loaderShard[T] {
 // LoadOrWait loads an attribute value or waits for an ongoing load.
 // It returns the value and whether we actually performed a load (vs using cached).
 // The loadFn is called only if the value needs to be loaded from store.
-func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary uint64, loadFn func() (T, error)) (*LoadResult[T], error) {
+func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary, cacheEpoch uint64, loadFn func() (T, error)) (*LoadResult[T], error) {
 	s := al.shard(key)
 
 	// Fast path: check if already loaded using read lock
 	s.mu.RLock()
 
-	if cached, ok := s.loaded[key]; ok && cached.boundary >= boundary {
+	if cached, ok := s.loaded[key]; ok && cached.validFor(boundary, cacheEpoch) {
 		s.mu.RUnlock()
 
 		return &LoadResult[T]{Value: cached.value, FromLoad: false}, nil
@@ -82,21 +88,22 @@ func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary uint64, l
 		// Re-check with read lock
 		s.mu.RLock()
 
-		if cached, ok := s.loaded[key]; ok && cached.boundary >= boundary {
+		if cached, ok := s.loaded[key]; ok && cached.validFor(boundary, cacheEpoch) {
 			s.mu.RUnlock()
 
 			return &LoadResult[T]{Value: cached.value, FromLoad: false}, nil
 		}
 
 		s.mu.RUnlock()
-		// Load failed or boundary mismatch - fall through to try loading ourselves
+		// Load failed or cached entry does not match this cache state.
+		// Fall through to try loading ourselves.
 	}
 
 	// Slow path: need to load - acquire write lock
 	s.mu.Lock()
 
 	// Double-check after acquiring write lock (another goroutine might have loaded it)
-	if cached, ok := s.loaded[key]; ok && cached.boundary >= boundary {
+	if cached, ok := s.loaded[key]; ok && cached.validFor(boundary, cacheEpoch) {
 		s.mu.Unlock()
 
 		return &LoadResult[T]{Value: cached.value, FromLoad: false}, nil
@@ -108,7 +115,7 @@ func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary uint64, l
 		// Wait and retry from the beginning
 		<-waitCh
 
-		return al.LoadOrWait(key, boundary, loadFn)
+		return al.LoadOrWait(key, boundary, cacheEpoch, loadFn)
 	}
 
 	// We're the one who will load - mark as loading
@@ -124,7 +131,7 @@ func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary uint64, l
 	delete(s.loading, key)
 
 	if err == nil {
-		s.loaded[key] = &loadedEntry[T]{boundary: boundary, value: value}
+		s.loaded[key] = &loadedEntry[T]{boundary: boundary, cacheEpoch: cacheEpoch, value: value}
 	}
 
 	close(waitCh)

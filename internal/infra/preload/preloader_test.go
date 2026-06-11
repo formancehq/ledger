@@ -27,7 +27,7 @@ func TestProposalGuard_ReleaseLoaders(t *testing.T) {
 	// Load a value so we can verify it gets cleaned up
 	key := attributes.NewU128(10, 20)
 
-	_, err := loaders.Volumes.LoadOrWait(key, 100, func() (*raftcmdpb.VolumePair, error) {
+	_, err := loaders.Volumes.LoadOrWait(key, 100, testCacheEpoch, func() (*raftcmdpb.VolumePair, error) {
 		return &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(1)}, nil
 	})
 	require.NoError(t, err)
@@ -50,7 +50,7 @@ func TestProposalGuard_ReleaseLoaders(t *testing.T) {
 
 	// The key should have been released from the loader
 	loadCount := 0
-	_, err = loaders.Volumes.LoadOrWait(key, 100, func() (*raftcmdpb.VolumePair, error) {
+	_, err = loaders.Volumes.LoadOrWait(key, 100, testCacheEpoch, func() (*raftcmdpb.VolumePair, error) {
 		loadCount++
 
 		return &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(2)}, nil
@@ -72,7 +72,7 @@ func TestProposalGuard_ReleaseAll(t *testing.T) {
 
 	key := attributes.NewU128(30, 40)
 
-	_, err := loaders.References.LoadOrWait(key, 100, func() (*commonpb.TransactionReferenceValue, error) {
+	_, err := loaders.References.LoadOrWait(key, 100, testCacheEpoch, func() (*commonpb.TransactionReferenceValue, error) {
 		return &commonpb.TransactionReferenceValue{TransactionId: 1}, nil
 	})
 	require.NoError(t, err)
@@ -93,7 +93,7 @@ func TestProposalGuard_ReleaseAll(t *testing.T) {
 	assert.Nil(t, guard.token)
 
 	loadCount := 0
-	_, err = loaders.References.LoadOrWait(key, 100, func() (*commonpb.TransactionReferenceValue, error) {
+	_, err = loaders.References.LoadOrWait(key, 100, testCacheEpoch, func() (*commonpb.TransactionReferenceValue, error) {
 		loadCount++
 
 		return &commonpb.TransactionReferenceValue{TransactionId: 2}, nil
@@ -109,7 +109,7 @@ func TestPreloadBuild_ReleaseLoaders(t *testing.T) {
 
 	key := attributes.NewU128(50, 60)
 
-	_, err := loaders.References.LoadOrWait(key, 100, func() (*commonpb.TransactionReferenceValue, error) {
+	_, err := loaders.References.LoadOrWait(key, 100, testCacheEpoch, func() (*commonpb.TransactionReferenceValue, error) {
 		return &commonpb.TransactionReferenceValue{TransactionId: 1}, nil
 	})
 	require.NoError(t, err)
@@ -128,7 +128,7 @@ func TestPreloadBuild_ReleaseLoaders(t *testing.T) {
 
 	// Key should have been released
 	loadCount := 0
-	_, err = loaders.References.LoadOrWait(key, 100, func() (*commonpb.TransactionReferenceValue, error) {
+	_, err = loaders.References.LoadOrWait(key, 100, testCacheEpoch, func() (*commonpb.TransactionReferenceValue, error) {
 		loadCount++
 
 		return &commonpb.TransactionReferenceValue{TransactionId: 2}, nil

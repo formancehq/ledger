@@ -36,7 +36,7 @@ func resolveAttributePreload[K interface {
 	Bytes() []byte
 }, T any](
 	keys map[K]struct{},
-	nextIndex, boundary uint64,
+	nextIndex, boundary, cacheEpoch uint64,
 	attrCache *cache.AttributeCache[T],
 	loader *AttributeLoader[T],
 	getValue func(reader dal.PebbleGetter, canonicalKey []byte) (T, error),
@@ -122,7 +122,7 @@ func resolveAttributePreload[K interface {
 			wg.Go(func() {
 				defer func() { <-sem }()
 
-				result, err := loader.LoadOrWait(id, boundary, func() (T, error) {
+				result, err := loader.LoadOrWait(id, boundary, cacheEpoch, func() (T, error) {
 					return getValue(store, canonicalKey)
 				})
 

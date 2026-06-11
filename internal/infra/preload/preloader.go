@@ -304,7 +304,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot,
 		launch(func(i int) {
 			var r *resolveResult
 			r, results[i].err = resolveAttributePreload(
-				needs.Ledgers, nextIndex, boundary,
+				needs.Ledgers, nextIndex, boundary, snap.Epoch,
 				p.cache.Ledgers, p.loaders.Ledgers,
 				p.attrs.Ledger.Get, p.store,
 				buildLedgerPreload, false,
@@ -321,7 +321,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot,
 		launch(func(i int) {
 			var r *resolveResult
 			r, results[i].err = resolveAttributePreload(
-				needs.Boundaries, nextIndex, boundary,
+				needs.Boundaries, nextIndex, boundary, snap.Epoch,
 				p.cache.Boundaries, p.loaders.Boundaries,
 				p.attrs.Boundary.Get, p.store,
 				buildBoundaryPreload, false,
@@ -338,7 +338,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot,
 		launch(func(i int) {
 			var r *resolveResult
 			r, results[i].err = resolveAttributePreload(
-				needs.Volumes, nextIndex, boundary,
+				needs.Volumes, nextIndex, boundary, snap.Epoch,
 				p.cache.Volumes, p.loaders.Volumes,
 				p.attrs.Volume.Get, p.store,
 				buildVolumePreload, true,
@@ -389,7 +389,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot,
 		launch(func(i int) {
 			var r *resolveResult
 			r, results[i].err = resolveAttributePreload(
-				needs.References, nextIndex, boundary,
+				needs.References, nextIndex, boundary, snap.Epoch,
 				p.cache.References, p.loaders.References,
 				p.attrs.References.Get, p.store,
 				buildReferencePreload, false,
@@ -406,7 +406,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot,
 		launch(func(i int) {
 			var r *resolveResult
 			r, results[i].err = resolveAttributePreload(
-				needs.SinkConfigs, nextIndex, boundary,
+				needs.SinkConfigs, nextIndex, boundary, snap.Epoch,
 				p.cache.SinkConfigs, p.loaders.SinkConfigs,
 				p.attrs.SinkConfig.Get, p.store,
 				buildSinkConfigPreload, false,
@@ -423,7 +423,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot,
 		launch(func(i int) {
 			var r *resolveResult
 			r, results[i].err = resolveAttributePreload(
-				needs.NumscriptVersions, nextIndex, boundary,
+				needs.NumscriptVersions, nextIndex, boundary, snap.Epoch,
 				p.cache.NumscriptVersions, p.loaders.NumscriptVersions,
 				p.attrs.NumscriptVersion.Get, p.store,
 				buildNumscriptVersionPreload, true,
@@ -440,7 +440,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot,
 		launch(func(i int) {
 			var r *resolveResult
 			r, results[i].err = resolveAttributePreload(
-				needs.NumscriptContents, nextIndex, boundary,
+				needs.NumscriptContents, nextIndex, boundary, snap.Epoch,
 				p.cache.NumscriptContents, p.loaders.NumscriptContents,
 				p.attrs.NumscriptContent.Get, p.store,
 				buildNumscriptContentPreload, true,
@@ -457,7 +457,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot,
 		launch(func(i int) {
 			var r *resolveResult
 			r, results[i].err = resolveAttributePreload(
-				needs.Transactions, nextIndex, boundary,
+				needs.Transactions, nextIndex, boundary, snap.Epoch,
 				p.cache.Transactions, p.loaders.Transactions,
 				p.attrs.Transaction.Get, p.store,
 				buildTransactionStatePreload, false,
@@ -474,7 +474,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot,
 		launch(func(i int) {
 			var r *resolveResult
 			r, results[i].err = resolveAttributePreload(
-				needs.Metadata, nextIndex, boundary,
+				needs.Metadata, nextIndex, boundary, snap.Epoch,
 				p.cache.AccountMetadata, p.loaders.AccountMetadata,
 				p.attrs.Metadata.Get, p.store,
 				buildMetadataPreload, false,
@@ -491,7 +491,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot,
 		launch(func(i int) {
 			var r *resolveResult
 			r, results[i].err = resolveAttributePreload(
-				needs.PreparedQueries, nextIndex, boundary,
+				needs.PreparedQueries, nextIndex, boundary, snap.Epoch,
 				p.cache.PreparedQueries, p.loaders.PreparedQueries,
 				p.attrs.PreparedQuery.Get, p.store,
 				buildPreparedQueryPreload, true,
@@ -508,7 +508,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot,
 		launch(func(i int) {
 			var r *resolveResult
 			r, results[i].err = resolveAttributePreload(
-				needs.LedgerMetadata, nextIndex, boundary,
+				needs.LedgerMetadata, nextIndex, boundary, snap.Epoch,
 				p.cache.LedgerMetadata, p.loaders.LedgerMetadata,
 				p.attrs.LedgerMetadata.Get, p.store,
 				buildLedgerMetadataPreload, false,
