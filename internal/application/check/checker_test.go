@@ -1194,6 +1194,141 @@ func TestCheckerDetectsTransactionUpdateMismatch(t *testing.T) {
 	require.Equal(t, uint64(1), txErrors[0].GetTransactionId())
 }
 
+// TestCheckerDetectsLiveOnlyTransaction is a regression test for #347:
+// compareTransactions used to build allKeys from replay ∪ baseline only,
+// so a transaction present in the live store without a matching log entry
+// (fabricated state, FSM bug, direct Pebble write) escaped detection. The
+// fix widens allKeys with the live store and reports the rogue entry.
+func TestCheckerDetectsLiveOnlyTransaction(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+
+	engine.processAndCommit(createLedgerOrder("test"))
+	engine.processAndCommit(createTransactionOrder("test", true,
+		newPosting("world", "user:alice", "USD", 1000),
+	))
+
+	// Write a transaction state into live attrs with an ID that no log ever
+	// produced (the only tx the log produced is ID 1). This simulates
+	// fabricated state or a direct Pebble write.
+	batch := engine.store.NewBatch()
+	rogueKey := domain.TransactionKey{LedgerID: 1, ID: 9999}
+	_, err := engine.attrs.Transaction.Set(batch, rogueKey.Bytes(), &commonpb.TransactionState{
+		CreatedByLog: 9999,
+	})
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	errors := collectCheckErrors(t, engine.store, engine.attrs)
+
+	var (
+		hasRogue bool
+		count    int
+	)
+
+	for _, e := range errors {
+		if e.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH &&
+			e.GetTransactionId() == 9999 {
+			hasRogue = true
+		}
+
+		count++
+	}
+
+	require.True(t, hasRogue, "checker must flag a transaction present in live but absent from replay/baseline (got %d errors total)", count)
+}
+
+// TestCheckerDetectsSymmetricVolumeMutation is a regression test for #347:
+// the previous "input == output → skip" heuristic in compareVolumes masked
+// every symmetric mutation, not just transient accounts. A normal account
+// whose volume was tampered with from (100, 100) to (999, 999) went
+// undetected. With audit-driven exclusion the heuristic is gone — only
+// accounts that the audit log explicitly marks as transient or purged are
+// skipped, so a tampered normal account triggers VOLUME_MISMATCH.
+func TestCheckerDetectsSymmetricVolumeMutation(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+
+	engine.processAndCommit(createLedgerOrder("test"))
+	// Fund: world → alice 100 USD  (alice now has input=100, output=0)
+	engine.processAndCommit(createTransactionOrder("test", true,
+		newPosting("world", "user:alice", "USD", 100),
+	))
+	// Drain back: alice → world 100 USD  (alice now has input=100, output=100)
+	engine.processAndCommit(createTransactionOrder("test", false,
+		newPosting("user:alice", "world", "USD", 100),
+	))
+
+	// Tamper with the live volume on a NORMAL account: replace (100, 100)
+	// with (999, 999). Both sides remain balanced, so the old heuristic
+	// would skip the comparison entirely; the audit log doesn't list
+	// user:alice as transient/purged, so the new path reports it.
+	batch := engine.store.NewBatch()
+	tamperedKey := domain.VolumeKey{
+		AccountKey: domain.AccountKey{LedgerID: 1, Account: "user:alice"},
+		Asset:      "USD",
+	}
+	_, err := engine.attrs.Volume.Set(batch, tamperedKey.Bytes(), &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(999),
+		Output: commonpb.NewUint256FromUint64(999),
+	})
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	errors := collectCheckErrors(t, engine.store, engine.attrs)
+
+	var hasVolErr bool
+
+	for _, e := range errors {
+		if e.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH &&
+			e.GetAccount() == "user:alice" {
+			hasVolErr = true
+		}
+	}
+
+	require.True(t, hasVolErr, "checker must flag a symmetric volume mutation on a non-transient account")
+}
+
+// TestCheckerSurfacesCorruptAuditEntry is a regression test for the #399
+// review finding: the audit-cursor loops in collectExcludedAccounts and
+// verifyAuditHashChain used to treat ANY cursor error as end-of-cursor,
+// silently truncating the scan. A corrupted audit entry then either let
+// the hash chain partially-verify or skipped later transient/purged
+// accounts in the exclusion set, masking the very integrity issue the
+// checker is meant to detect. Both loops now distinguish io.EOF from
+// real errors and propagate the latter as a Check error.
+func TestCheckerSurfacesCorruptAuditEntry(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+
+	// Need at least one log so Check doesn't short-circuit on empty store.
+	engine.processAndCommit(createLedgerOrder("test"))
+
+	// Inject a malformed audit entry directly into Pebble at sequence 1.
+	// The ProtoCursor used by query.ReadAuditEntries will fail to
+	// UnmarshalVT these bytes, returning a non-EOF error.
+	batch := engine.store.NewBatch()
+	auditKey := dal.NewKeyBuilder().
+		PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).
+		PutUint64(1).
+		Build()
+	require.NoError(t, batch.SetBytes(auditKey, []byte{0xFF, 0xFF, 0xFF, 0xFF}))
+	require.NoError(t, batch.Commit())
+
+	checker := NewChecker(engine.store, engine.attrs, logging.Testing())
+	err := checker.Check(context.Background(), func(_ *servicepb.CheckStoreEvent) {})
+
+	// Before the fix: Check returned nil; the cursor break swallowed the
+	// unmarshal error and the integrity scan completed "successfully".
+	// After the fix: the error is surfaced via the Check return value.
+	require.Error(t, err, "Check must surface a non-EOF cursor error from an audit scan")
+	require.Contains(t, err.Error(), "audit entry",
+		"the wrapped error should reference the failed audit-entry read (got: %v)", err)
+}
+
 // TestCheckerWithTransactionMetadata verifies that transaction metadata
 // operations (save and delete) are properly tracked and verified.
 func TestCheckerWithTransactionMetadata(t *testing.T) {

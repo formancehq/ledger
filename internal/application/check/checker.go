@@ -375,18 +375,125 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return nil
 	}
 
+	// Collect the per-ledger set of accounts that legitimately differ between
+	// live and replay: transient accounts (never persisted live) and ephemeral
+	// accounts that were purged at zero balance. The audit log is the source
+	// of truth — the comparison passes use this set to skip such accounts
+	// deterministically rather than heuristically (cf. #347).
+	excluded, err := c.collectExcludedAccounts(ctx, snap, knownLedgers, callback)
+	if err != nil {
+		return fmt.Errorf("collecting excluded accounts from audit log: %w", err)
+	}
+
 	// Comparison passes: 3-way merge (baseline + replay + live).
 	// When no archived periods exist, baseline is nil and expected = replay delta only.
-	c.compareVolumes(ctx, snap, baselineDB, replay, callback)
-	c.compareMetadata(ctx, snap, baselineDB, replay, callback)
+	c.compareVolumes(ctx, snap, baselineDB, replay, excluded, callback)
+	c.compareMetadata(ctx, snap, baselineDB, replay, excluded, callback)
 	c.compareTransactions(ctx, snap, baselineDB, replay, callback)
 
 	return nil
 }
 
+// excludedAccountsSet maps ledger ID to a set of account addresses that
+// legitimately diverge between the replay store and the live Pebble store.
+// Sources: AuditSuccess.TransientAccounts (never persisted live) and
+// AuditSuccess.PurgedAccounts (ephemeral, zeroed and purged). Mirrors the
+// indexbuilder's audit_sync exclusion set.
+type excludedAccountsSet map[uint32]map[string]struct{}
+
+func (e excludedAccountsSet) contains(ledgerID uint32, account string) bool {
+	if e == nil {
+		return false
+	}
+
+	accs, ok := e[ledgerID]
+	if !ok {
+		return false
+	}
+
+	_, has := accs[account]
+
+	return has
+}
+
+// collectExcludedAccounts iterates every non-archived audit entry and
+// accumulates the union of transient and purged-ephemeral accounts per
+// ledger. The result lets compare* passes skip volumes/metadata that the
+// audit log explicitly marks as non-persisted-live, replacing the older
+// "input == output" heuristic which masked symmetric mutations.
+func (c *Checker) collectExcludedAccounts(
+	ctx context.Context,
+	reader dal.PebbleReader,
+	knownLedgers map[string]uint32,
+	callback func(*servicepb.CheckStoreEvent),
+) (excludedAccountsSet, error) {
+	cursorIter, err := query.ReadAuditEntries(ctx, reader, nil)
+	if err != nil {
+		return nil, fmt.Errorf("reading audit entries: %w", err)
+	}
+
+	defer func() { _ = cursorIter.Close() }()
+
+	result := excludedAccountsSet{}
+
+	for {
+		entry, err := cursorIter.Next()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+
+			// Real iterator/unmarshal failure: propagate. Treating it as
+			// EOF would silently truncate the exclusion set and let
+			// compareVolumes / compareMetadata flag false positives on
+			// later transient/purged accounts (#347 review feedback).
+			return nil, fmt.Errorf("reading audit entry for exclusion set: %w", err)
+		}
+
+		success := entry.GetSuccess()
+		if success == nil {
+			continue
+		}
+
+		addAccounts := func(perLedger map[string]*auditpb.AccountList) {
+			for ledgerName, accountList := range perLedger {
+				ledgerID, ok := knownLedgers[ledgerName]
+				if !ok {
+					// Audit references a ledger we don't know about: surface
+					// it instead of silently skipping. A divergence here means
+					// the audit log and the ledger registry disagree, which
+					// is a real integrity issue.
+					callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER,
+						fmt.Sprintf("audit entry references unknown ledger %q in transient/purged set", ledgerName),
+						entry.GetSequence(), ledgerName, "", ""))
+
+					continue
+				}
+
+				set, exists := result[ledgerID]
+				if !exists {
+					set = make(map[string]struct{})
+					result[ledgerID] = set
+				}
+
+				for _, account := range accountList.GetAccounts() {
+					set[account] = struct{}{}
+				}
+			}
+		}
+
+		addAccounts(success.GetTransientAccounts())
+		addAccounts(success.GetPurgedAccounts())
+	}
+
+	return result, nil
+}
+
 // compareVolumes performs a 3-way merge comparison for volumes.
 // expected = baseline + replay delta; compare with live (actual).
-func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, baselineDB *pebble.DB, replay *replayStore, callback func(*servicepb.CheckStoreEvent)) int {
+// `excluded` lists per-ledger accounts whose volumes legitimately diverge
+// (transient + purged ephemeral, sourced from the audit log).
+func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, baselineDB *pebble.DB, replay *replayStore, excluded excludedAccountsSet, callback func(*servicepb.CheckStoreEvent)) int {
 	errorCount := 0
 
 	// Collect live volumes
@@ -544,13 +651,13 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, b
 			actualOutput = actual.GetOutput().ToBigInt()
 		}
 
-		// A zero-balanced volume (input == output) is semantically equivalent
-		// to absent. This matters for transient accounts: the real system may
-		// keep pre-existing zero-balanced volumes in Pebble while the replay
-		// store purges them (or vice versa). Both represent "no net balance".
-		expectedZeroBal := expectedInput.Cmp(expectedOutput) == 0
-		actualZeroBal := actualInput.Cmp(actualOutput) == 0
-		if expectedZeroBal && actualZeroBal {
+		// Skip accounts that the audit log marks as transient or purged:
+		// transient accounts are never persisted live, ephemeral accounts may
+		// be purged at zero balance, so a per-account divergence between live
+		// and replay is expected and benign. Until #347 this used an
+		// input == output heuristic that also masked symmetric mutations
+		// (e.g. expected (100,100) vs actual (999,999) on a normal account).
+		if excluded.contains(vk.LedgerID, vk.Account) {
 			continue
 		}
 
@@ -579,7 +686,10 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, b
 // compareMetadata performs a 3-way merge comparison for account metadata.
 // Replay entries encode SET (flag 0x00 + value) or DELETED (flag 0x01).
 // expected = replay override if present, else baseline; compare with live.
-func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, baselineDB *pebble.DB, replay *replayStore, callback func(*servicepb.CheckStoreEvent)) int {
+// `excluded` lists per-ledger accounts whose state legitimately diverges
+// (transient + purged ephemeral, sourced from the audit log) — metadata on
+// such accounts is skipped to avoid false positives.
+func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, baselineDB *pebble.DB, replay *replayStore, excluded excludedAccountsSet, callback func(*servicepb.CheckStoreEvent)) int {
 	errorCount := 0
 
 	// Collect live metadata
@@ -717,6 +827,10 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 			continue
 		}
 
+		if excluded.contains(mk.LedgerID, mk.Account) {
+			continue
+		}
+
 		// Compute expected value
 		var expectedValue string
 		expectedExists := false
@@ -764,16 +878,54 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 
 // compareTransactions performs a 3-way merge comparison for transaction states.
 // expected = replay override if present, else baseline; compare with live.
+//
+// Compared to compareVolumes / compareMetadata, this pass historically only
+// iterated replay ∪ baseline, so a transaction present in the live store
+// without a matching log entry (fabricated state, corruption, FSM bug) went
+// undetected. The fix in #347 widens allKeys to the union with live and
+// instruments every abort path with an error event so that swallowed
+// iterator/unmarshal failures cannot make the check look clean.
 func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleReader, baselineDB *pebble.DB, replay *replayStore, callback func(*servicepb.CheckStoreEvent)) int {
 	errorCount := 0
 
-	// Collect replay transaction states
+	emitErr := func(msg string) {
+		callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH, msg, "", 0))
+	}
+
+	// Collect live transaction states up-front so that fabricated entries
+	// (live without replay/baseline) are part of allKeys.
+	liveTx := make(map[string]*commonpb.TransactionState)
+
+	liveIter, err := c.attrs.Transaction.NewStreamingIter(reader, nil)
+	if err != nil {
+		emitErr(fmt.Sprintf("failed to create live transaction iterator: %v", err))
+
+		return 1
+	}
+
+	for liveIter.Next() {
+		e := liveIter.Entry()
+		liveTx[string(e.CanonicalKey)] = e.Value
+	}
+
+	if err := liveIter.Close(); err != nil {
+		emitErr(fmt.Sprintf("closing live transaction iterator: %v", err))
+
+		return 1
+	}
+
+	if err := liveIter.Err(); err != nil {
+		emitErr(fmt.Sprintf("live transaction iterator error: %v", err))
+
+		return 1
+	}
+
+	// Collect replay transaction states.
 	replayTx := make(map[string]*commonpb.TransactionState)
 
 	replayIter, err := replay.newPrefixIter(replayPrefixTransaction)
 	if err != nil {
-		callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH,
-			fmt.Sprintf("failed to create replay transaction iterator: %v", err), "", 0))
+		emitErr(fmt.Sprintf("failed to create replay transaction iterator: %v", err))
 
 		return 1
 	}
@@ -784,6 +936,7 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 		valBytes, valErr := replayIter.ValueAndErr()
 		if valErr != nil {
 			_ = replayIter.Close()
+			emitErr(fmt.Sprintf("reading replay transaction value: %v", valErr))
 
 			return 1
 		}
@@ -791,6 +944,7 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 		// Values are prefixed with txOpFinalized tag from the merger's Finish output.
 		if len(valBytes) == 0 || valBytes[0] != 0x00 {
 			_ = replayIter.Close()
+			emitErr(fmt.Sprintf("malformed replay transaction tag at key %x", canonicalKey))
 
 			return 1
 		}
@@ -798,6 +952,7 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 		state := &commonpb.TransactionState{}
 		if err := state.UnmarshalVT(valBytes[1:]); err != nil {
 			_ = replayIter.Close()
+			emitErr(fmt.Sprintf("unmarshaling replay transaction at key %x: %v", canonicalKey, err))
 
 			return 1
 		}
@@ -806,6 +961,8 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 	}
 
 	if err := replayIter.Close(); err != nil {
+		emitErr(fmt.Sprintf("closing replay transaction iterator: %v", err))
+
 		return 1
 	}
 
@@ -815,6 +972,8 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 	if baselineDB != nil {
 		baselineIter, err := c.attrs.Transaction.NewStreamingIter(baselineDB, nil)
 		if err != nil {
+			emitErr(fmt.Sprintf("failed to create baseline transaction iterator: %v", err))
+
 			return 1
 		}
 
@@ -823,14 +982,20 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 			baselineTx[string(e.CanonicalKey)] = e.Value
 		}
 
-		_ = baselineIter.Close()
+		if err := baselineIter.Close(); err != nil {
+			emitErr(fmt.Sprintf("closing baseline transaction iterator: %v", err))
+
+			return 1
+		}
 
 		if baselineIter.Err() != nil {
+			emitErr(fmt.Sprintf("baseline transaction iterator error: %v", baselineIter.Err()))
+
 			return 1
 		}
 	}
 
-	// Collect all keys to check
+	// Collect all keys to check: replay ∪ baseline ∪ live.
 	allKeys := make(map[string]struct{})
 	for k := range replayTx {
 		allKeys[k] = struct{}{}
@@ -840,7 +1005,10 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 		allKeys[k] = struct{}{}
 	}
 
-	// Compare each expected transaction against the live store
+	for k := range liveTx {
+		allKeys[k] = struct{}{}
+	}
+
 	for key := range allKeys {
 		if ctx.Err() != nil {
 			return errorCount
@@ -851,7 +1019,8 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 			continue
 		}
 
-		// Expected: replay overrides baseline
+		// Expected: replay overrides baseline. Stays nil when only the live
+		// store has the entry (fabricated/corrupted state).
 		var expected *commonpb.TransactionState
 		if rs, ok := replayTx[key]; ok {
 			expected = rs
@@ -859,14 +1028,18 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 			expected = bs
 		}
 
-		if expected == nil {
-			continue
-		}
+		actualState := liveTx[key]
 
-		// Read actual from live store
-		actualState, err := query.ReadTransactionState(context.Background(), reader, c.attrs.Transaction, tk.LedgerID, tk.ID)
-		if err != nil {
-			return errorCount
+		if expected == nil {
+			if actualState != nil {
+				callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH,
+					fmt.Sprintf("unexpected transaction in live store for tx %d (no matching log or baseline)", tk.ID),
+					strconv.FormatUint(uint64(tk.LedgerID), 10), tk.ID))
+
+				errorCount++
+			}
+
+			continue
 		}
 
 		if actualState == nil {
@@ -948,7 +1121,15 @@ func (c *Checker) verifyAuditHashChain(
 	for {
 		entry, err := auditCursor.Next()
 		if err != nil {
-			break // end of cursor
+			if errors.Is(err, io.EOF) {
+				break
+			}
+
+			// Real iterator/unmarshal failure: surface it. A silent break
+			// here would let a corrupted audit entry partially-verify the
+			// hash chain and report "no mismatch" even though entries
+			// past the failure point were never checked.
+			return fmt.Errorf("reading audit entry for hash chain verification: %w", err)
 		}
 
 		// Read the audit items (orders) for this entry.
