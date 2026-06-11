@@ -85,6 +85,10 @@ func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], 
 			return fmt.Sprintf("reference %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
 		}
 	case property == "timestamp" || property == "inserted_at" || property == "updated_at":
+		value, err := common.NormalizeDateFilterValue(value)
+		if err != nil {
+			return "", nil, err
+		}
 		return fmt.Sprintf("%s %s ?", property, common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case property == "reverted":
 		ret := "dataset.reverted_at is"
@@ -93,6 +97,10 @@ func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], 
 		}
 		return ret + " null", nil, nil
 	case property == "reverted_at":
+		value, err := common.NormalizeDateFilterValue(value)
+		if err != nil {
+			return "", nil, err
+		}
 		return fmt.Sprintf("dataset.reverted_at %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case property == "account":
 		switch operator {
