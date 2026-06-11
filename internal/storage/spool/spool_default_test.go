@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"io"
 	"os"
 	"testing"
 
@@ -33,6 +34,86 @@ func makeEntry(index uint64) raftpb.Entry {
 		Term:  1,
 		Data:  []byte("test-data"),
 	}
+}
+
+func requireLastSegment(t *testing.T, dir string) string {
+	t.Helper()
+
+	ids, err := listSegments(dir)
+	require.NoError(t, err)
+	require.NotEmpty(t, ids)
+
+	return segmentPath(dir, ids[len(ids)-1])
+}
+
+func requireSegmentSize(t *testing.T, path string) int64 {
+	t.Helper()
+
+	fi, err := os.Stat(path)
+	require.NoError(t, err)
+
+	return fi.Size()
+}
+
+func appendPartialRecordTail(t *testing.T, path string) (int64, int64) {
+	t.Helper()
+
+	originalSize := requireSegmentSize(t, path) - trailerLen
+	require.NoError(t, os.Truncate(path, originalSize))
+
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o600)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, f.Close())
+	}()
+
+	partialHeader := make([]byte, 8)
+	binary.LittleEndian.PutUint32(partialHeader[0:4], recMagic)
+	binary.LittleEndian.PutUint32(partialHeader[4:8], 100)
+	_, err = f.Write(partialHeader)
+	require.NoError(t, err)
+
+	return originalSize, originalSize + int64(len(partialHeader))
+}
+
+func appendBadCRCRecordTail(t *testing.T, path string) (int64, int64) {
+	t.Helper()
+
+	originalSize := requireSegmentSize(t, path) - trailerLen
+	require.NoError(t, os.Truncate(path, originalSize))
+
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o600)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, f.Close())
+	}()
+
+	fakePayload := []byte("corrupted-data")
+	corruptHeader := make([]byte, recHdrLen)
+	binary.LittleEndian.PutUint32(corruptHeader[0:4], recMagic)
+	binary.LittleEndian.PutUint32(corruptHeader[4:8], uint32(len(fakePayload)))
+	binary.LittleEndian.PutUint32(corruptHeader[8:12], 0xDEADBEEF)
+	_, err = f.Write(corruptHeader)
+	require.NoError(t, err)
+	_, err = f.Write(fakePayload)
+	require.NoError(t, err)
+
+	return originalSize, originalSize + int64(len(corruptHeader)+len(fakePayload))
+}
+
+func corruptRecordCRCAt(t *testing.T, path string, offset int64) {
+	t.Helper()
+
+	f, err := os.OpenFile(path, os.O_WRONLY, 0o600)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, f.Close())
+	}()
+
+	badCRC := make([]byte, 4)
+	binary.LittleEndian.PutUint32(badCRC, 0xDEADBEEF)
+	_, err = f.WriteAt(badCRC, offset+8)
+	require.NoError(t, err)
 }
 
 func collectEntries(t *testing.T, s *Default, end *Position, lastApplied uint64) []raftpb.Entry {
@@ -333,7 +414,7 @@ func TestDefaultSpoolReplayApplyError(t *testing.T) {
 	require.ErrorIs(t, err, applyErr)
 }
 
-func TestDefaultSpoolRepairPartialRecord(t *testing.T) {
+func TestDefaultSpoolReplayReturnsErrorOnPartialRecord(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -353,60 +434,35 @@ func TestDefaultSpoolRepairPartialRecord(t *testing.T) {
 	))
 	require.NoError(t, s.Close())
 
-	// Corrupt the last segment by appending a partial record header
-	ids, err := listSegments(dir)
-	require.NoError(t, err)
-	require.NotEmpty(t, ids)
+	lastSeg := requireLastSegment(t, dir)
+	_, corruptedSize := appendPartialRecordTail(t, lastSeg)
+	require.Equal(t, corruptedSize, requireSegmentSize(t, lastSeg),
+		"file should have data + partial header")
 
-	lastSeg := segmentPath(dir, ids[len(ids)-1])
-
-	// Remove the trailer that Close() wrote, then append garbage
-	fi, err := os.Stat(lastSeg)
-	require.NoError(t, err)
-	originalSize := fi.Size() - trailerLen // size without trailer
-
-	require.NoError(t, os.Truncate(lastSeg, originalSize))
-
-	// Append a partial record header (only 8 bytes of 12-byte header)
-	f, err := os.OpenFile(lastSeg, os.O_WRONLY|os.O_APPEND, 0o600)
-	require.NoError(t, err)
-
-	partialHeader := make([]byte, 8)
-	binary.LittleEndian.PutUint32(partialHeader[0:4], recMagic)
-	binary.LittleEndian.PutUint32(partialHeader[4:8], 100) // claims 100 bytes payload
-	_, err = f.Write(partialHeader)
-	require.NoError(t, err)
-	require.NoError(t, f.Close())
-
-	corruptedSize := originalSize + 8 // data + partial header
-
-	fi, err = os.Stat(lastSeg)
-	require.NoError(t, err)
-	require.Equal(t, corruptedSize, fi.Size(), "file should have data + partial header")
-
-	// Reopen — should recover from the partial record
 	s2, err := NewDefault(cfg)
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, s2.Close())
+	}()
 
 	end, err := s2.End()
 	require.NoError(t, err)
 
-	// Should replay the 3 good entries
-	entries := collectEntries(t, s2, end, 0)
+	var entries []raftpb.Entry
+	err = s2.ReplayUntil(context.Background(), *end, 0, func(e raftpb.Entry) error {
+		entries = append(entries, e)
+
+		return nil
+	})
+	require.ErrorIs(t, err, io.ErrUnexpectedEOF)
 	require.Len(t, entries, 3)
 	require.Equal(t, uint64(1), entries[0].Index)
 	require.Equal(t, uint64(3), entries[2].Index)
-
-	// Verify the file was truncated to remove the partial record
-	fi, err = os.Stat(lastSeg)
-	require.NoError(t, err)
-	require.Equal(t, originalSize, fi.Size(),
-		"file should be truncated back to original data size (partial record removed)")
-
-	require.NoError(t, s2.Close())
+	require.Equal(t, corruptedSize, requireSegmentSize(t, lastSeg),
+		"ReplayUntil must not truncate corrupt tails through a separate fd")
 }
 
-func TestDefaultSpoolRepairCorruptRecord(t *testing.T) {
+func TestDefaultSpoolReplayReturnsErrorOnCorruptRecord(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -425,53 +481,69 @@ func TestDefaultSpoolRepairCorruptRecord(t *testing.T) {
 	))
 	require.NoError(t, s.Close())
 
-	ids, err := listSegments(dir)
-	require.NoError(t, err)
-	require.NotEmpty(t, ids)
+	lastSeg := requireLastSegment(t, dir)
+	_, corruptedSize := appendBadCRCRecordTail(t, lastSeg)
 
-	lastSeg := segmentPath(dir, ids[len(ids)-1])
-
-	// Remove trailer, then append a full record header with valid magic but bad CRC + fake payload
-	fi, err := os.Stat(lastSeg)
-	require.NoError(t, err)
-	originalSize := fi.Size() - trailerLen
-
-	require.NoError(t, os.Truncate(lastSeg, originalSize))
-
-	f, err := os.OpenFile(lastSeg, os.O_WRONLY|os.O_APPEND, 0o600)
-	require.NoError(t, err)
-
-	// Write a complete record with valid magic, valid length, but wrong CRC
-	fakePayload := []byte("corrupted-data")
-	corruptHeader := make([]byte, recHdrLen)
-	binary.LittleEndian.PutUint32(corruptHeader[0:4], recMagic)
-	binary.LittleEndian.PutUint32(corruptHeader[4:8], uint32(len(fakePayload)))
-	binary.LittleEndian.PutUint32(corruptHeader[8:12], 0xDEADBEEF) // bad CRC
-	_, err = f.Write(corruptHeader)
-	require.NoError(t, err)
-	_, err = f.Write(fakePayload)
-	require.NoError(t, err)
-	require.NoError(t, f.Close())
-
-	// Reopen — should recover from the corrupt record
 	s2, err := NewDefault(cfg)
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, s2.Close())
+	}()
 
 	end, err := s2.End()
 	require.NoError(t, err)
 
-	entries := collectEntries(t, s2, end, 0)
+	var entries []raftpb.Entry
+	err = s2.ReplayUntil(context.Background(), *end, 0, func(e raftpb.Entry) error {
+		entries = append(entries, e)
+
+		return nil
+	})
+	require.ErrorIs(t, err, ErrCorrupt)
 	require.Len(t, entries, 3)
 	require.Equal(t, uint64(1), entries[0].Index)
 	require.Equal(t, uint64(3), entries[2].Index)
+	require.Equal(t, corruptedSize, requireSegmentSize(t, lastSeg),
+		"ReplayUntil must not truncate corrupt tails through a separate fd")
+}
 
-	// File should be truncated to remove the corrupt record
-	fi, err = os.Stat(lastSeg)
+func TestDefaultSpoolReplayCorruptTailDoesNotDesyncLiveWriter(t *testing.T) {
+	t.Parallel()
+
+	s := newTestSpool(t)
+
+	require.NoError(t, s.AppendCommittedEntries(context.Background(),
+		makeEntry(1), makeEntry(2), makeEntry(3),
+	))
+
+	goodEnd, err := s.End()
 	require.NoError(t, err)
-	require.Equal(t, originalSize, fi.Size(),
-		"file should be truncated back to original data size (corrupt record removed)")
 
-	require.NoError(t, s2.Close())
+	require.NoError(t, s.AppendCommittedEntries(context.Background(), makeEntry(4)))
+
+	corruptEnd, err := s.End()
+	require.NoError(t, err)
+
+	lastSeg := requireLastSegment(t, s.cfg.Dir)
+	corruptRecordCRCAt(t, lastSeg, goodEnd.Offset)
+
+	var entries []raftpb.Entry
+	err = s.ReplayUntil(context.Background(), *corruptEnd, 0, func(e raftpb.Entry) error {
+		entries = append(entries, e)
+
+		return nil
+	})
+	require.ErrorIs(t, err, ErrCorrupt)
+	require.Len(t, entries, 3)
+	require.Equal(t, corruptEnd.Offset, requireSegmentSize(t, lastSeg),
+		"ReplayUntil must leave the active writer's file untouched on corrupt tails")
+
+	require.NoError(t, s.AppendCommittedEntries(context.Background(), makeEntry(5)))
+
+	afterAppend, err := s.End()
+	require.NoError(t, err)
+	require.Greater(t, afterAppend.Offset, corruptEnd.Offset)
+	require.Equal(t, afterAppend.Offset, requireSegmentSize(t, lastSeg))
 }
 
 func TestDefaultSpoolCloseAndReopen(t *testing.T) {

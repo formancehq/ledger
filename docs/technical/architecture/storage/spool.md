@@ -220,7 +220,7 @@ The DefaultSpool uses a **batched sync** strategy:
 | Scenario | Behavior |
 |----------|----------|
 | Crash before sync | Unsynced entries are lost; Raft will re-send |
-| Crash during sync | Partial writes detected by CRC; truncated on recovery |
+| Crash during sync | Partial writes detected by CRC; node startup resets stale spool data; live replay returns an error without truncating |
 | Crash during replay | Safe; replay resumes from cached position |
 | Corrupt record | `ErrCorrupt` returned; manual intervention may be needed |
 
