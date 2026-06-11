@@ -227,6 +227,13 @@ func (m *ApplyRequest) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, er
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.ForwardedCaller != nil {
+		size, _ := m.ForwardedCaller.MarshalToSizedBufferVT(dAtA[:i])
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1a
+	}
 	if m.SkipResponse {
 		i--
 		if m.SkipResponse {

@@ -76,7 +76,10 @@ func Authenticate(ctx context.Context, cfg AuthConfig, scopes ...Scope) (context
 
 	// Fast path: cluster-internal shared secret bypasses JWT validation.
 	// Grant all granular scopes so that per-request scope checks (e.g. in Apply)
-	// succeed when a follower forwards a request to the leader.
+	// succeed when a follower forwards a request to the leader. The
+	// cluster-internal marker (WithClusterInternal below) lets downstream
+	// handlers decide whether to trust per-request fields carrying the
+	// original caller's identity.
 	//
 	// Compare with crypto/subtle.ConstantTimeCompare to avoid leaking
 	// the secret's length and common-prefix timing via Go's variable-time
@@ -91,6 +94,7 @@ func Authenticate(ctx context.Context, cfg AuthConfig, scopes ...Scope) (context
 		span.SetAttributes(attribute.Bool("auth.cluster_internal", true))
 		ctx = WithExpandedScopes(ctx, allScopes())
 		ctx = WithAuthPresented(ctx, true)
+		ctx = WithClusterInternal(ctx, true)
 
 		return ctx, nil
 	}

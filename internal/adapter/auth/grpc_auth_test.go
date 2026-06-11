@@ -690,3 +690,46 @@ func TestAuthenticate_ClusterSecret_RejectsWrongLength(t *testing.T) {
 	_, err := Authenticate(ctx, cfg)
 	require.Error(t, err)
 }
+
+// TestAuthenticate_ClusterSecret_MarksClusterInternal ensures the fast path
+// tags the context so downstream handlers can decide whether to trust the
+// forwarded_caller field on the request (regression for #362).
+func TestAuthenticate_ClusterSecret_MarksClusterInternal(t *testing.T) {
+	t.Parallel()
+
+	secret := "another-cluster-secret"
+	cfg := AuthConfig{
+		Enabled:       true,
+		ClusterSecret: secret,
+	}
+
+	newCtx, err := Authenticate(ctxWithBearer(secret), cfg)
+	require.NoError(t, err)
+
+	require.True(t, IsClusterInternal(newCtx),
+		"cluster-secret fast path must mark the context as cluster-internal")
+}
+
+// TestAuthenticate_UserToken_NotClusterInternal verifies that a regular
+// JWT-authenticated request does NOT carry the cluster-internal marker,
+// so any forwarded_caller field on the request is ignored.
+func TestAuthenticate_UserToken_NotClusterInternal(t *testing.T) {
+	t.Parallel()
+
+	privKey, keySet := testKeyPair(t)
+
+	cfg := AuthConfig{
+		Enabled:       true,
+		KeySet:        keySet,
+		Issuer:        testIssuer,
+		ScopeMapping:  DefaultMapping("ledger"),
+		ClusterSecret: "shared-cluster-secret",
+	}
+
+	token := signToken(t, privKey, newTestClaims("ledger:read"))
+
+	newCtx, err := Authenticate(ctxWithBearer(token), cfg)
+	require.NoError(t, err)
+	require.False(t, IsClusterInternal(newCtx),
+		"user JWT must not be tagged as cluster-internal")
+}

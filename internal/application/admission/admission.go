@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 	"sync/atomic"
 	"time"
 	"unicode/utf8"
@@ -368,7 +367,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	a.preloadCacheHitsCounter.Add(ctx, cacheHits)
 
 	cmd.Preload = build.PreloadSet
-	cmd.Caller = callerIdentityFromContext(ctx)
+	cmd.Caller = auth.ResolveCallerIdentity(ctx)
 	preloadSpan.End()
 
 	// Step 5: Pre-marshal outside the proposal lock.
@@ -1660,42 +1659,4 @@ func (a *Admission) getTransactionPostings(ledgerName string, transactionID uint
 			log.GetSequence(), ledgerName, transactionID, applyLog.Apply.GetLog().GetData().GetPayload(),
 		)
 	}
-}
-
-// callerIdentityFromContext builds a CallerIdentity proto from the authenticated
-// claims stored in the context. Returns nil when auth is disabled (no claims).
-func callerIdentityFromContext(ctx context.Context) *commonpb.CallerIdentity {
-	claims := auth.ClaimsFromContext(ctx)
-	if claims == nil {
-		return nil
-	}
-
-	identity := &commonpb.CallerIdentity{
-		Subject: claims.Subject,
-	}
-
-	// God mode detection
-	if god, ok := claims.Claims["god"].(bool); ok && god {
-		identity.God = true
-	}
-
-	// Expanded scopes (sorted for deterministic serialization)
-	if expanded := auth.ExpandedScopesFromContext(ctx); len(expanded) > 0 {
-		scopes := make([]string, 0, len(expanded))
-		for s := range expanded {
-			scopes = append(scopes, string(s))
-		}
-
-		sort.Strings(scopes)
-		identity.Scopes = scopes
-	}
-
-	// Source: key_id for Ed25519, issuer for OIDC
-	if keyID := auth.KeyIDFromContext(ctx); keyID != "" {
-		identity.Source = &commonpb.CallerIdentity_KeyId{KeyId: keyID}
-	} else if claims.Issuer != "" {
-		identity.Source = &commonpb.CallerIdentity_Issuer{Issuer: claims.Issuer}
-	}
-
-	return identity
 }

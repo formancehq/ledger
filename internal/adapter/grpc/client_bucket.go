@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
@@ -37,10 +38,14 @@ func (g *BucketGrpcClient) Barrier(ctx context.Context) (uint64, error) {
 	return resp.GetCommitIndex(), nil
 }
 
-// Apply forwards the requests via gRPC to the leader.
+// Apply forwards the requests via gRPC to the leader. The authenticated
+// caller is captured from the local context and passed alongside, so the
+// leader can populate the audit entry with the original subject even
+// though the inter-node connection authenticates via cluster-secret.
 func (g *BucketGrpcClient) Apply(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
 	resp, err := g.client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: requests,
+		Requests:        requests,
+		ForwardedCaller: auth.ResolveCallerIdentity(ctx),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("gRPC call failed: %w", err)

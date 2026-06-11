@@ -179,6 +179,12 @@ message ApplyRequest {
   // Only the sequence number is returned for each log. Useful for
   // historical ingestion where the client does not need the full response.
   bool skip_response = 2;
+  // forwarded_caller carries the authenticated caller identity captured by
+  // the forwarding follower. The leader honors this field ONLY when the
+  // incoming connection authenticates via cluster-secret (trusted peer);
+  // direct client requests have it derived from validated JWT/Ed25519
+  // claims on the leader and any value sent here is ignored.
+  common.CallerIdentity forwarded_caller = 3;
 }
 
 message ApplyResponse {

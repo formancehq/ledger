@@ -101,6 +101,8 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 		return nil, err
 	}
 
+	ctx = adoptForwardedCallerIfTrusted(ctx, req)
+
 	if len(req.GetRequests()) == 0 {
 		return nil, errors.New("at least one request is required")
 	}
@@ -170,6 +172,23 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 	}
 
 	return &servicepb.ApplyResponse{Logs: logs}, nil
+}
+
+// adoptForwardedCallerIfTrusted attaches the request's forwarded_caller to the
+// context when (and only when) the connection authenticated via cluster-secret.
+// This is the trust boundary that lets a follower forward a user's identity
+// to the leader for audit purposes without letting regular clients spoof it.
+func adoptForwardedCallerIfTrusted(ctx context.Context, req *servicepb.ApplyRequest) context.Context {
+	if !internalauth.IsClusterInternal(ctx) {
+		return ctx
+	}
+
+	fc := req.GetForwardedCaller()
+	if fc == nil {
+		return ctx
+	}
+
+	return internalauth.WithForwardedCaller(ctx, fc)
 }
 
 // signReceiptIfNeeded signs a JWT receipt for logs containing created transactions.
