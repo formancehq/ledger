@@ -30,8 +30,7 @@ func (t *SingleTaskExecutor) Run(ctx context.Context, fn func(ctx context.Contex
 		t.mu.Lock()
 		t.terminated = make(chan struct{})
 		t.ctx, t.cancel = context.WithCancel(ctx)
-		errCh := make(chan error, 1)
-		t.errChan = errCh
+		errCh := t.errChan
 		t.mu.Unlock()
 
 		otlplogs.Go(func() {
@@ -47,7 +46,13 @@ func (t *SingleTaskExecutor) Run(ctx context.Context, fn func(ctx context.Contex
 			}
 
 			if err != nil {
-				errCh <- err
+				select {
+				case errCh <- err:
+				default:
+					t.logger.WithFields(map[string]any{
+						"error": err,
+					}).Errorf("Single task executor error channel is full")
+				}
 			}
 		}, t.logger)
 	default:
@@ -71,7 +76,7 @@ func (t *SingleTaskExecutor) Interrupt() {
 	}
 }
 
-// Error returns a channel that receives the error from the last completed task.
+// Error returns the long-lived channel that receives task errors.
 func (t *SingleTaskExecutor) Error() chan error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -87,5 +92,6 @@ func NewSingleTaskExecutor(logger logging.Logger) *SingleTaskExecutor {
 	return &SingleTaskExecutor{
 		terminated: terminatedChan,
 		logger:     logger,
+		errChan:    make(chan error, 1),
 	}
 }

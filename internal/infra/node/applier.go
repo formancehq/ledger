@@ -39,6 +39,7 @@ type applyWork struct {
 // goroutine so it can decide whether to unspool or mark the node out-of-sync.
 type gatingResult struct {
 	syncFailed bool // true if the sync task failed, node should be marked out-of-sync
+	taskFailed bool // true if the task returned an error, node should stay gated until shutdown
 }
 
 // Applier owns all FSM application logic and gating/spool lifecycle.
@@ -693,6 +694,15 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 				continue
 			}
 
+			if result.taskFailed {
+				if a.logger.Enabled(logging.DebugLevel) {
+					a.logger.Debugf("Background operation failed, keeping node gated until task error is handled")
+				}
+				waitStart = time.Now()
+
+				continue
+			}
+
 			unspoolStart := time.Now()
 
 			err := a.unspoolAndResume(ctx)
@@ -1143,7 +1153,7 @@ func (a *Applier) startMaintenanceTask(
 				close(gatingTerminated)
 			})
 		}
-		defer sendResult(gatingResult{})
+		defer sendResult(gatingResult{taskFailed: true})
 
 		snapshotStart := time.Now()
 

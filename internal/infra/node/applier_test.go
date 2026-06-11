@@ -809,3 +809,40 @@ func TestApplierSnapshotGatingCycle(t *testing.T) {
 		t.Fatal("Run did not return after stop")
 	}
 }
+
+func TestStartMaintenanceTaskReportsFailureOnTaskError(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	setup := newTestApplierSetup(t)
+	taskErr := errors.New("checkpoint failed")
+
+	gatingTerminated := setup.applier.startMaintenanceTask(ctx, func(ctx context.Context) (maintenanceTaskResult, error) {
+		return maintenanceTaskResult{}, taskErr
+	}, nil)
+
+	var result gatingResult
+	require.Eventually(t, func() bool {
+		select {
+		case result = <-gatingTerminated:
+			return true
+		default:
+			return false
+		}
+	}, time.Second, 10*time.Millisecond)
+
+	require.True(t, result.taskFailed)
+	require.False(t, result.syncFailed)
+
+	var err error
+	require.Eventually(t, func() bool {
+		select {
+		case err = <-setup.applier.TaskError():
+			return true
+		default:
+			return false
+		}
+	}, time.Second, 10*time.Millisecond)
+
+	require.ErrorIs(t, err, taskErr)
+}
