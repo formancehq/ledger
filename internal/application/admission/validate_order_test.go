@@ -254,3 +254,221 @@ func TestValidateOrder_MetadataKeys(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateOrder_MetadataValues(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		order   *raftcmdpb.Order
+		wantErr error
+	}{
+		{
+			name: "null byte in CreateTransaction metadata value",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Ledger: "default",
+						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+								Metadata: map[string]*commonpb.MetadataValue{
+									"category": commonpb.NewStringValue("safe\x00poison"),
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErr: domain.ErrMetadataValueContainsNullByte,
+		},
+		{
+			name: "null byte in CreateTransaction account metadata value",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Ledger: "default",
+						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+								AccountMetadata: map[string]*commonpb.MetadataMap{
+									"users:001": {
+										Values: map[string]*commonpb.MetadataValue{
+											"role": commonpb.NewStringValue("admin\x00poison"),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErr: domain.ErrMetadataValueContainsNullByte,
+		},
+		{
+			name: "null byte in AddMetadata null original",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Ledger: "default",
+						Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
+							AddMetadata: &raftcmdpb.SaveMetadataOrder{
+								Metadata: map[string]*commonpb.MetadataValue{
+									"score": commonpb.NewNullValue("not\x00numeric"),
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErr: domain.ErrMetadataValueContainsNullByte,
+		},
+		{
+			name: "null byte in RevertTransaction metadata value",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Ledger: "default",
+						Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
+							RevertTransaction: &raftcmdpb.RevertTransactionOrder{
+								TransactionId: 1,
+								Metadata: map[string]*commonpb.MetadataValue{
+									"reason": commonpb.NewStringValue("bad\x00reason"),
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErr: domain.ErrMetadataValueContainsNullByte,
+		},
+		{
+			name: "null byte in SaveLedgerMetadata value",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_SaveLedgerMetadata{
+					SaveLedgerMetadata: &raftcmdpb.SaveLedgerMetadataOrder{
+						Ledger: "default",
+						Metadata: map[string]*commonpb.MetadataValue{
+							"region": commonpb.NewStringValue("eu\x00west"),
+						},
+					},
+				},
+			},
+			wantErr: domain.ErrMetadataValueContainsNullByte,
+		},
+		{
+			name: "null byte in MirrorIngest created transaction metadata value",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_MirrorIngest{
+					MirrorIngest: &raftcmdpb.MirrorIngestOrder{
+						Ledger: "default",
+						Entry: &raftcmdpb.MirrorLogEntry{
+							Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
+								CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
+									Metadata: map[string]*commonpb.MetadataValue{
+										"category": commonpb.NewStringValue("safe\x00poison"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErr: domain.ErrMetadataValueContainsNullByte,
+		},
+		{
+			name: "null byte in MirrorIngest account metadata value",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_MirrorIngest{
+					MirrorIngest: &raftcmdpb.MirrorIngestOrder{
+						Ledger: "default",
+						Entry: &raftcmdpb.MirrorLogEntry{
+							Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
+								CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
+									AccountMetadata: map[string]*commonpb.MetadataMap{
+										"users:001": {
+											Values: map[string]*commonpb.MetadataValue{
+												"role": commonpb.NewStringValue("admin\x00poison"),
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErr: domain.ErrMetadataValueContainsNullByte,
+		},
+		{
+			name: "null byte in MirrorIngest saved metadata value",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_MirrorIngest{
+					MirrorIngest: &raftcmdpb.MirrorIngestOrder{
+						Ledger: "default",
+						Entry: &raftcmdpb.MirrorLogEntry{
+							Data: &raftcmdpb.MirrorLogEntry_SavedMetadata{
+								SavedMetadata: &raftcmdpb.MirrorSavedMetadata{
+									Metadata: map[string]*commonpb.MetadataValue{
+										"status": commonpb.NewStringValue("active\x00poison"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErr: domain.ErrMetadataValueContainsNullByte,
+		},
+		{
+			name: "null byte in MirrorIngest reverted transaction metadata value",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_MirrorIngest{
+					MirrorIngest: &raftcmdpb.MirrorIngestOrder{
+						Ledger: "default",
+						Entry: &raftcmdpb.MirrorLogEntry{
+							Data: &raftcmdpb.MirrorLogEntry_RevertedTransaction{
+								RevertedTransaction: &raftcmdpb.MirrorRevertedTransaction{
+									Metadata: map[string]*commonpb.MetadataValue{
+										"reason": commonpb.NewStringValue("bad\x00reason"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErr: domain.ErrMetadataValueContainsNullByte,
+		},
+		{
+			name: "valid typed metadata values",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Ledger: "default",
+						Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
+							AddMetadata: &raftcmdpb.SaveMetadataOrder{
+								Metadata: map[string]*commonpb.MetadataValue{
+									"name":   commonpb.NewStringValue("alice"),
+									"age":    commonpb.NewIntValue(42),
+									"active": commonpb.NewBoolValue(true),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := validateOrder(tt.order)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}

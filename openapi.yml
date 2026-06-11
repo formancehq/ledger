@@ -2037,10 +2037,12 @@ components:
           description: The account address that caused the violation
 
     MetadataValue:
-      description: A typed metadata value (string, integer, boolean, or null)
+      description: A typed metadata value (string, integer, boolean, or null). String values must not contain NUL bytes.
       nullable: true
       oneOf:
         - type: string
+          pattern: '^[^\u0000]*$'
+          description: Metadata string value without NUL bytes
         - type: integer
           format: int64
         - type: boolean

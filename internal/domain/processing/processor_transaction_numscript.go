@@ -164,6 +164,9 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 				if err := domain.ValidateMetadataKey(key); err != nil {
 					return nil, fmt.Errorf("numscript-produced account %q metadata key: %w", account, err)
 				}
+				if err := domain.ValidateMetadataStringValue(value); err != nil {
+					return nil, fmt.Errorf("numscript-produced account %q metadata key %q value: %w", account, key, err)
+				}
 
 				mdMap[key] = commonpb.NewStringValue(value)
 			}
@@ -181,7 +184,12 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 				return nil, fmt.Errorf("numscript-produced transaction metadata key: %w", err)
 			}
 
-			txMeta[key] = commonpb.NewStringValue(value.String())
+			stringValue := value.String()
+			if err := domain.ValidateMetadataStringValue(stringValue); err != nil {
+				return nil, fmt.Errorf("numscript-produced transaction metadata key %q value: %w", key, err)
+			}
+
+			txMeta[key] = commonpb.NewStringValue(stringValue)
 		}
 	}
 

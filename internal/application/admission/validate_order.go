@@ -16,7 +16,7 @@ func validateOrder(order *raftcmdpb.Order) error {
 		return &domain.BusinessError{Err: err}
 	}
 
-	if err := validateOrderMetadataKeys(order); err != nil {
+	if err := validateOrderMetadata(order); err != nil {
 		return &domain.BusinessError{Err: err}
 	}
 
@@ -63,23 +63,25 @@ func validateOrderLedgerName(order *raftcmdpb.Order) error {
 	return domain.ValidateLedgerName(name)
 }
 
-// validateOrderMetadataKeys validates that all metadata keys in the order are safe for
-// Pebble key encoding (no null bytes).
-func validateOrderMetadataKeys(order *raftcmdpb.Order) error {
+// validateOrderMetadata validates that all metadata keys and values in the order
+// are safe for Pebble key encoding.
+func validateOrderMetadata(order *raftcmdpb.Order) error {
 	switch o := order.GetType().(type) {
 	case *raftcmdpb.Order_Apply:
-		return validateApplyMetadataKeys(o.Apply)
+		return validateApplyMetadata(o.Apply)
 	case *raftcmdpb.Order_SaveLedgerMetadata:
 		return validateMetadataMap(o.SaveLedgerMetadata.GetMetadata())
 	case *raftcmdpb.Order_DeleteLedgerMetadata:
 		return domain.ValidateMetadataKey(o.DeleteLedgerMetadata.GetKey())
+	case *raftcmdpb.Order_MirrorIngest:
+		return validateMirrorMetadata(o.MirrorIngest.GetEntry())
 	default:
 		return nil
 	}
 }
 
-// validateApplyMetadataKeys validates metadata keys within a LedgerApplyOrder.
-func validateApplyMetadataKeys(apply *raftcmdpb.LedgerApplyOrder) error {
+// validateApplyMetadata validates metadata within a LedgerApplyOrder.
+func validateApplyMetadata(apply *raftcmdpb.LedgerApplyOrder) error {
 	switch d := apply.GetData().(type) {
 	case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
 		if err := validateMetadataMap(d.CreateTransaction.GetMetadata()); err != nil {
@@ -116,6 +118,32 @@ func validateApplyMetadataKeys(apply *raftcmdpb.LedgerApplyOrder) error {
 	}
 }
 
+// validateMirrorMetadata validates metadata supplied by mirror ingest orders.
+func validateMirrorMetadata(entry *raftcmdpb.MirrorLogEntry) error {
+	switch d := entry.GetData().(type) {
+	case *raftcmdpb.MirrorLogEntry_CreatedTransaction:
+		if err := validateMetadataMap(d.CreatedTransaction.GetMetadata()); err != nil {
+			return err
+		}
+
+		for account, mm := range d.CreatedTransaction.GetAccountMetadata() {
+			if mm != nil {
+				if err := validateMetadataMap(mm.GetValues()); err != nil {
+					return fmt.Errorf("account %q: %w", account, err)
+				}
+			}
+		}
+
+		return nil
+	case *raftcmdpb.MirrorLogEntry_SavedMetadata:
+		return validateMetadataMap(d.SavedMetadata.GetMetadata())
+	case *raftcmdpb.MirrorLogEntry_RevertedTransaction:
+		return validateMetadataMap(d.RevertedTransaction.GetMetadata())
+	default:
+		return nil
+	}
+}
+
 // validateOrderAccountAddresses validates account addresses in non-transaction orders
 // (metadata targets). Transaction postings are validated in the processor after
 // Numscript resolution.
@@ -143,11 +171,15 @@ func validateOrderAccountAddresses(order *raftcmdpb.Order) error {
 	}
 }
 
-// validateMetadataMap validates all keys in a metadata map.
+// validateMetadataMap validates all keys and values in a metadata map.
 func validateMetadataMap(m map[string]*commonpb.MetadataValue) error {
-	for key := range m {
+	for key, value := range m {
 		if err := domain.ValidateMetadataKey(key); err != nil {
 			return err
+		}
+
+		if err := domain.ValidateMetadataValue(value); err != nil {
+			return fmt.Errorf("metadata key %q value: %w", key, err)
 		}
 	}
 

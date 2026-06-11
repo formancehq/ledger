@@ -786,6 +786,86 @@ func TestProcessCreateTransaction_Numscript_RejectsEmptyMetadataKey(t *testing.T
 		"empty metadata key produced by Numscript must surface ErrMetadataKeyEmpty (#322)")
 }
 
+func TestProcessCreateTransaction_Numscript_RejectsNullByteMetadataValue(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		script string
+	}{
+		{
+			name: "transaction metadata",
+			script: `
+				vars {
+					string $poison
+				}
+				set_tx_meta("kind", $poison)
+				send [USD/2 100] (
+					source = @world
+					destination = @users:alice
+				)
+			`,
+		},
+		{
+			name: "account metadata",
+			script: `
+				vars {
+					string $poison
+				}
+				set_account_meta(@users:alice, "role", $poison)
+				send [USD/2 100] (
+					source = @world
+					destination = @users:alice
+				)
+			`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockStore := NewMockInMemoryStore(ctrl)
+			processor, err := NewRequestProcessor(nil, 0)
+			require.NoError(t, err)
+
+			now := &commonpb.Timestamp{Data: 1234567890}
+			boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+
+			mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true).AnyTimes()
+			mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true).AnyTimes()
+			mockStore.EXPECT().GetDate().Return(now).AnyTimes()
+			mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false).AnyTimes()
+			setupNumscriptVolumeMocks(mockStore)
+
+			request := &servicepb.Request{
+				Type: &servicepb.Request_Apply{
+					Apply: &servicepb.LedgerApplyRequest{
+						Ledger: "test-ledger",
+						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+							CreateTransaction: &servicepb.CreateTransactionPayload{
+								Script: &commonpb.Script{
+									Plain: tt.script,
+									Vars: map[string]string{
+										"poison": "safe\x00poison",
+									},
+								},
+							},
+						}},
+					},
+				},
+			}
+
+			_, err = processor.ProcessOrder(requestToOrder(request), mockStore)
+			require.Error(t, err)
+			require.ErrorIs(t, err, domain.ErrMetadataValueContainsNullByte)
+		})
+	}
+}
+
 func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 	t.Parallel()
 

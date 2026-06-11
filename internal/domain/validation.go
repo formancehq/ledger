@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // maxLedgerNameLength is the maximum allowed length for a ledger name.
@@ -15,13 +17,14 @@ const maxLedgerNameLength = 256
 const maxAccountAddressLength = 1024
 
 var (
-	ErrLedgerNameContainsNullByte  = errors.New("ledger name must not contain null bytes")
-	ErrLedgerNameTooLong           = fmt.Errorf("ledger name exceeds maximum length of %d bytes", maxLedgerNameLength)
-	ErrMetadataKeyContainsNullByte = errors.New("metadata key must not contain null bytes")
-	ErrMetadataKeyEmpty            = errors.New("metadata key must not be empty")
-	ErrAccountAddressEmpty         = errors.New("account address must not be empty")
-	ErrAccountAddressInvalidChar   = errors.New("account address must contain only letters, digits, colons, underscores, and hyphens")
-	ErrAccountAddressTooLong       = fmt.Errorf("account address exceeds maximum length of %d bytes", maxAccountAddressLength)
+	ErrLedgerNameContainsNullByte    = errors.New("ledger name must not contain null bytes")
+	ErrLedgerNameTooLong             = fmt.Errorf("ledger name exceeds maximum length of %d bytes", maxLedgerNameLength)
+	ErrMetadataKeyContainsNullByte   = errors.New("metadata key must not contain null bytes")
+	ErrMetadataKeyEmpty              = errors.New("metadata key must not be empty")
+	ErrMetadataValueContainsNullByte = errors.New("metadata value must not contain null bytes")
+	ErrAccountAddressEmpty           = errors.New("account address must not be empty")
+	ErrAccountAddressInvalidChar     = errors.New("account address must contain only letters, digits, colons, underscores, and hyphens")
+	ErrAccountAddressTooLong         = fmt.Errorf("account address exceeds maximum length of %d bytes", maxAccountAddressLength)
 
 	ErrAssetInvalid = errors.New("asset must match [A-Z][A-Z0-9]{0,16}(_[A-Z]{1,16})?(/[1-9][0-9]{0,2})? with precision in [1, 255]")
 )
@@ -83,6 +86,32 @@ func ValidateMetadataKey(key string) error {
 	}
 
 	return nil
+}
+
+// ValidateMetadataStringValue checks that a metadata string payload is safe for
+// null-terminated Pebble key encodings used by the metadata read index.
+func ValidateMetadataStringValue(value string) error {
+	if strings.ContainsRune(value, 0) {
+		return ErrMetadataValueContainsNullByte
+	}
+
+	return nil
+}
+
+// ValidateMetadataValue checks string-bearing metadata values for key-encoding safety.
+func ValidateMetadataValue(value *commonpb.MetadataValue) error {
+	switch v := value.GetType().(type) {
+	case *commonpb.MetadataValue_StringValue:
+		return ValidateMetadataStringValue(v.StringValue)
+	case *commonpb.MetadataValue_NullValue:
+		if v.NullValue == nil {
+			return nil
+		}
+
+		return ValidateMetadataStringValue(v.NullValue.GetOriginal())
+	default:
+		return nil
+	}
 }
 
 // ValidateAsset checks that an asset string matches the expected format:

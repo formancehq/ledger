@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestValidateLedgerName(t *testing.T) {
@@ -58,6 +60,40 @@ func TestValidateMetadataKey(t *testing.T) {
 			t.Parallel()
 
 			err := ValidateMetadataKey(tt.input)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestValidateMetadataValue(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		input   *commonpb.MetadataValue
+		wantErr error
+	}{
+		{name: "nil value"},
+		{name: "valid string", input: commonpb.NewStringValue("admin")},
+		{name: "empty string", input: commonpb.NewStringValue("")},
+		{name: "string contains null byte", input: commonpb.NewStringValue("admin\x00evil"), wantErr: ErrMetadataValueContainsNullByte},
+		{name: "valid null original", input: commonpb.NewNullValue("not-a-number")},
+		{name: "null original contains null byte", input: commonpb.NewNullValue("not\x00safe"), wantErr: ErrMetadataValueContainsNullByte},
+		{name: "nil null original", input: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_NullValue{}}},
+		{name: "int64", input: commonpb.NewIntValue(-42)},
+		{name: "uint64", input: commonpb.NewUintValue(42)},
+		{name: "bool", input: commonpb.NewBoolValue(true)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := ValidateMetadataValue(tt.input)
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)
 			} else {
