@@ -14,7 +14,7 @@ import (
 func main() {
 	internal.RunDriver("parallel_driver_audit", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
 		// Create a transaction so the audit trail has something.
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+		resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{{
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
@@ -34,10 +34,23 @@ func main() {
 		if err != nil {
 			return
 		}
+		// A successful Apply of a committed transaction always returns its log
+		// (failures come back as err, not a short response), so an empty slice
+		// is a server invariant violation, not natural skew.
+		if len(resp.GetLogs()) == 0 {
+			assert.Unreachable("Apply succeeded but returned no committed log", internal.Details{"ledger": ledger})
+
+			return
+		}
+
+		// Gate on the Apply's log sequence: the audit index is built async from
+		// the log, so wait for it to process our entry before asserting.
+		minLogSeq := resp.GetLogs()[len(resp.GetLogs())-1].GetSequence()
 
 		// List audit entries and verify at least one exists.
 		stream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
-			PageSize: 10,
+			PageSize:       10,
+			MinLogSequence: minLogSeq,
 		})
 		if err != nil {
 			if !internal.IsTransient(err) {

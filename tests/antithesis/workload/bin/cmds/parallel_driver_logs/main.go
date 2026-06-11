@@ -30,19 +30,28 @@ func main() {
 		if err != nil {
 			return
 		}
-		// Apply may return success without committing a log (e.g. partial
-		// failure inside the batch). Without a confirmed log entry there is
-		// nothing to assert ListLogs against.
-		if len(resp.GetLogs()) == 0 {
-			return
-		}
 
 		details := internal.Details{"ledger": ledger}
 
+		// A successful Apply of a committed transaction always returns its log
+		// (failures come back as err, not a short response), so an empty slice
+		// is a server invariant violation, not natural skew.
+		if len(resp.GetLogs()) == 0 {
+			assert.Unreachable("Apply succeeded but returned no committed log", details)
+
+			return
+		}
+
+		// Gate the read on the Apply's log sequence: ListLogs reads the async
+		// query index, which lags the FSM commit. Waiting for the index to
+		// reach this sequence turns the read-after-write into a guarantee.
+		minLogSeq := resp.GetLogs()[len(resp.GetLogs())-1].GetSequence()
+
 		// 2. List logs for the ledger.
 		stream, err := client.ListLogs(ctx, &servicepb.ListLogsRequest{
-			Ledger:   ledger,
-			PageSize: 20,
+			Ledger:         ledger,
+			PageSize:       20,
+			MinLogSequence: minLogSeq,
 		})
 		if err != nil {
 			if internal.IsTransient(err) {
@@ -83,12 +92,9 @@ func main() {
 			return
 		}
 
-		// CQRS: ListLogs reads the query side, which indexes asynchronously
-		// from the FSM commit. The read-after-write happy path is recorded
-		// as Sometimes; a persistent absence would be caught by repeated
-		// failures across the run, not by a single AlwaysOrUnreachable that
-		// trips on natural indexing lag.
-		assert.Sometimes(count > 0, "ListLogs should return at least one entry after a confirmed write", details)
+		// MinLogSequence guaranteed the index caught up to our write, so the
+		// log we just committed must be present.
+		assert.Always(count > 0, "ListLogs should return at least one entry after a confirmed write", details)
 
 		if firstSeq == 0 {
 			return
