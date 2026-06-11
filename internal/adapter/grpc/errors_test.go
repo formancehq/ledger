@@ -412,6 +412,22 @@ func TestConvertToGRPCError_NoLeader(t *testing.T) {
 	require.Equal(t, codes.Unavailable, st.Code())
 }
 
+func TestConvertToGRPCError_LeadershipLost(t *testing.T) {
+	t.Parallel()
+
+	// Truncated by a later term => did not commit => retryable. Surfaces wrapped
+	// as "applying raft requests: %w" from the controller, so cover that too.
+	for _, err := range []error{
+		node.ErrLeadershipLost,
+		fmt.Errorf("applying raft requests: %w", node.ErrLeadershipLost),
+	} {
+		grpcErr := convertToGRPCError(err)
+		st, ok := status.FromError(grpcErr)
+		require.True(t, ok)
+		require.Equal(t, codes.Unavailable, st.Code())
+	}
+}
+
 func TestConvertToGRPCError_NotFoundError(t *testing.T) {
 	t.Parallel()
 
