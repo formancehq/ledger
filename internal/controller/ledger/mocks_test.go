@@ -156,6 +156,44 @@ func (mr *MockRepositoryHandlerMockRecorder[Opts]) Schema() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Schema", reflect.TypeOf((*MockRepositoryHandler[Opts])(nil).Schema))
 }
 
+// MockDatasetFencer is a mock of DatasetFencer interface.
+type MockDatasetFencer[Opts any] struct {
+	ctrl     *gomock.Controller
+	recorder *MockDatasetFencerMockRecorder[Opts]
+	isgomock struct{}
+}
+
+// MockDatasetFencerMockRecorder is the mock recorder for MockDatasetFencer.
+type MockDatasetFencerMockRecorder[Opts any] struct {
+	mock *MockDatasetFencer[Opts]
+}
+
+// NewMockDatasetFencer creates a new mock instance.
+func NewMockDatasetFencer[Opts any](ctrl *gomock.Controller) *MockDatasetFencer[Opts] {
+	mock := &MockDatasetFencer[Opts]{ctrl: ctrl}
+	mock.recorder = &MockDatasetFencerMockRecorder[Opts]{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockDatasetFencer[Opts]) EXPECT() *MockDatasetFencerMockRecorder[Opts] {
+	return m.recorder
+}
+
+// ShouldFenceDataset mocks base method.
+func (m *MockDatasetFencer[Opts]) ShouldFenceDataset(ctx common.RepositoryHandlerBuildContext[Opts]) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ShouldFenceDataset", ctx)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// ShouldFenceDataset indicates an expected call of ShouldFenceDataset.
+func (mr *MockDatasetFencerMockRecorder[Opts]) ShouldFenceDataset(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ShouldFenceDataset", reflect.TypeOf((*MockDatasetFencer[Opts])(nil).ShouldFenceDataset), ctx)
+}
+
 // MockResource is a mock of Resource interface.
 type MockResource[ResourceType any, OptionsType any] struct {
 	ctrl     *gomock.Controller
