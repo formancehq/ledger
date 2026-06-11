@@ -201,6 +201,38 @@ func TestApplierRunAppliesEntries(t *testing.T) {
 	}
 }
 
+// TestApplierRunStopPrecedenceOverCtxCancel verifies the invariant the
+// bootstrap OnStop hook depends on (#345): closing the `stop` channel must
+// be the unambiguous shutdown signal even if the surrounding ctx is also
+// cancelled. The applier's select loop watches only `stop`, so a closed
+// stop should yield a clean nil regardless of ctx state. If this ever
+// regresses (e.g. someone adds a `case <-ctx.Done(): return ctx.Err()`
+// branch), the bootstrap hook would start panicking on shutdown again.
+func TestApplierRunStopPrecedenceOverCtxCancel(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(logging.TestingContext())
+	setup := newTestApplierSetup(t)
+
+	runDone := make(chan error, 1)
+
+	go func() {
+		runDone <- setup.applier.Run(ctx, setup.stop)
+	}()
+
+	// Cancel ctx FIRST, then close stop — the order seen by the buggy
+	// pre-fix bootstrap hook (cancelRun() before node.Stop()).
+	cancel()
+	close(setup.stop)
+
+	select {
+	case err := <-runDone:
+		require.NoError(t, err, "Run must return nil when stop is closed even if ctx was cancelled")
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return after stop")
+	}
+}
+
 func TestApplierRunSpoolsWhenNotNormal(t *testing.T) {
 	t.Parallel()
 

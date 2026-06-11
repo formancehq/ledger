@@ -926,9 +926,10 @@ func Module() fx.Option {
 						ready := make(chan struct{})
 
 						// Use a dedicated context for node.Run that survives
-						// the OnStart return (unlike ctx which expires) but can
-						// be cancelled by OnStop. This replaces WithoutCancel
-						// which prevented shutdown from propagating.
+						// the OnStart return (unlike ctx which expires). On
+						// startup failure we cancel it to abandon the goroutine;
+						// on graceful shutdown node.Stop is the signal, NOT this
+						// cancel — see the OnStop hook below for the rationale.
 						var runCtx context.Context
 						runCtx, cancelRun = context.WithCancel(context.Background())
 
@@ -964,7 +965,31 @@ func Module() fx.Option {
 						// The transport's own fx OnStop runs AFTER this hook
 						// (fx invokes OnStop in reverse registration order) and
 						// already calls CancelPeerConnections inside t.Stop().
-						cancelRun()
+						//
+						// Do NOT cancel runCtx here either. node.Run's outer
+						// select watches stopChannel and tasks.err() — it does
+						// not watch ctx. The tasks (applier.Run, processReadies)
+						// likewise select only on their stop channel. Cancelling
+						// runCtx would only propagate into the FSM calls those
+						// tasks make (PrepareEntries, CommitPreparedBatch,
+						// InstallSnapshot) and cause them to return
+						// context.Canceled mid-batch — which surfaces as a "task
+						// pool error" from Node.Run, panics the bootstrap
+						// goroutine, and crashes the process mid-shutdown
+						// instead of returning a clean nil (#345).
+						// Defer the cancel so it runs on EVERY return path,
+						// including the error path below. If node.Stop returns
+						// ctx.Err() (e.g. fx stop timeout expired during the
+						// leadership transfer or stopChannel handshake), the
+						// Run goroutine is still alive and waiting; without
+						// this cancel the goroutine would outlive OnStop while
+						// downstream fx hooks tear down transport and Pebble
+						// underneath it. The cancel propagates into the tasks'
+						// FSM calls (PrepareEntries / CommitPreparedBatch /
+						// InstallSnapshot) so the bootstrap goroutine exits
+						// via a logged task-pool error rather than racing with
+						// concurrent infrastructure teardown.
+						defer cancelRun()
 
 						err := node.Stop(ctx)
 						if err != nil {
