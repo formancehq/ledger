@@ -113,6 +113,24 @@ type RepositoryHandler[Opts any] interface {
 	Expand(query ResourceQuery[Opts], property string) (*bun.SelectQuery, *JoinCondition, error)
 }
 
+// DatasetFencer is an optional interface a RepositoryHandler may implement to request a
+// MATERIALIZED CTE fence around the filtered dataset when the resolved filter is selective
+// enough that an abort-early "ORDER BY ... LIMIT" index walk would scan most of the table.
+//
+// When ShouldFenceDataset returns true, the paginated query is generated as:
+//
+//	WITH dataset AS MATERIALIZED (<filter + PIT + keyset>)
+//	SELECT * FROM dataset [expand joins] ORDER BY dataset.<col> <dir> LIMIT pageSize+1
+//
+// i.e. the ORDER BY + LIMIT move outside the fence so the planner can pick a GIN BitmapOr
+// over the filtered set instead of walking the pagination index. The decision is static
+// (filter-shape based); see internal/storage/ledger/resource_transactions.go for the rule.
+//
+// Handlers that do not implement this interface keep the default, non-materialized shape.
+type DatasetFencer[Opts any] interface {
+	ShouldFenceDataset(ctx RepositoryHandlerBuildContext[Opts]) bool
+}
+
 type ResourceRepository[ResourceType, OptionsType any] struct {
 	resourceHandler RepositoryHandler[OptionsType]
 }
@@ -155,17 +173,26 @@ func (r *ResourceRepository[ResourceType, OptionsType]) validateFilters(builder 
 	return ret, nil
 }
 
-func (r *ResourceRepository[ResourceType, OptionsType]) buildFilteredDataset(q ResourceQuery[OptionsType]) (*bun.SelectQuery, error) {
-
+// resolveBuildContext validates the query's filters and returns the build context shared by
+// BuildDataset and the optional DatasetFencer decision. Kept separate from buildFilteredDataset
+// so the paginated path can inspect the resolved filter shape before deciding whether to fence.
+func (r *ResourceRepository[ResourceType, OptionsType]) resolveBuildContext(q ResourceQuery[OptionsType]) (RepositoryHandlerBuildContext[OptionsType], error) {
 	filters, err := r.validateFilters(q.Builder)
 	if err != nil {
-		return nil, err
+		return RepositoryHandlerBuildContext[OptionsType]{}, err
 	}
 
-	dataset, err := r.resourceHandler.BuildDataset(RepositoryHandlerBuildContext[OptionsType]{
+	return RepositoryHandlerBuildContext[OptionsType]{
 		ResourceQuery: q,
 		filters:       filters,
-	})
+	}, nil
+}
+
+func (r *ResourceRepository[ResourceType, OptionsType]) buildFilteredDataset(buildCtx RepositoryHandlerBuildContext[OptionsType]) (*bun.SelectQuery, error) {
+
+	q := buildCtx.ResourceQuery
+
+	dataset, err := r.resourceHandler.BuildDataset(buildCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -193,9 +220,18 @@ func (r *ResourceRepository[ResourceType, OptionsType]) buildFilteredDataset(q R
 	return r.resourceHandler.Project(q, dataset)
 }
 
-func (r *ResourceRepository[ResourceType, OptionsType]) expand(dataset *bun.SelectQuery, q ResourceQuery[OptionsType]) (*bun.SelectQuery, error) {
-	dataset = dataset.NewSelect().
-		With("dataset", dataset).
+// expand wraps the filtered dataset as a "dataset" CTE and left-joins any requested expand CTEs.
+// When materialized is true the CTE is emitted as "WITH dataset AS MATERIALIZED (...)", an
+// optimization fence that forces the planner to evaluate the filtered set once instead of
+// inlining it (which would let an outer LIMIT leak back onto the scan). See DatasetFencer.
+func (r *ResourceRepository[ResourceType, OptionsType]) expand(dataset *bun.SelectQuery, q ResourceQuery[OptionsType], materialized bool) (*bun.SelectQuery, error) {
+	outer := dataset.NewSelect()
+	if materialized {
+		outer = outer.WithQuery(bun.NewWithQuery("dataset", dataset).Materialized())
+	} else {
+		outer = outer.With("dataset", dataset)
+	}
+	dataset = outer.
 		ModelTableExpr("dataset").
 		ColumnExpr("*")
 
@@ -228,12 +264,17 @@ func (r *ResourceRepository[ResourceType, OptionsType]) expand(dataset *bun.Sele
 
 func (r *ResourceRepository[ResourceType, OptionsType]) GetOne(ctx context.Context, query ResourceQuery[OptionsType]) (*ResourceType, error) {
 
-	finalQuery, err := r.buildFilteredDataset(query)
+	buildCtx, err := r.resolveBuildContext(query)
 	if err != nil {
 		return nil, err
 	}
 
-	finalQuery, err = r.expand(finalQuery, query)
+	finalQuery, err := r.buildFilteredDataset(buildCtx)
+	if err != nil {
+		return nil, err
+	}
+
+	finalQuery, err = r.expand(finalQuery, query, false)
 	if err != nil {
 		return nil, err
 	}
@@ -254,7 +295,12 @@ func (r *ResourceRepository[ResourceType, OptionsType]) GetOne(ctx context.Conte
 
 func (r *ResourceRepository[ResourceType, OptionsType]) Count(ctx context.Context, query ResourceQuery[OptionsType]) (int, error) {
 
-	finalQuery, err := r.buildFilteredDataset(query)
+	buildCtx, err := r.resolveBuildContext(query)
+	if err != nil {
+		return 0, err
+	}
+
+	finalQuery, err := r.buildFilteredDataset(buildCtx)
 	if err != nil {
 		return 0, err
 	}
@@ -344,26 +390,58 @@ func (r *PaginatedResourceRepository[ResourceType, OptionsType]) Paginate(
 		panic("should not happen")
 	}
 
-	finalQuery, err := r.buildFilteredDataset(resourceQuery)
+	buildCtx, err := r.resolveBuildContext(resourceQuery)
+	if err != nil {
+		return nil, fmt.Errorf("resolving build context: %w", err)
+	}
+
+	// A handler may opt into a MATERIALIZED CTE fence when its resolved filter is selective.
+	// Fenced, the keyset predicate stays inside the CTE and ORDER BY + LIMIT move to the outer
+	// select; unfenced keeps the historical shape (order + limit inside the dataset select).
+	fence := false
+	if fencer, ok := r.resourceHandler.(DatasetFencer[OptionsType]); ok {
+		fence = fencer.ShouldFenceDataset(buildCtx)
+	}
+
+	finalQuery, err := r.buildFilteredDataset(buildCtx)
 	if err != nil {
 		return nil, fmt.Errorf("building filtered dataset: %w", err)
 	}
 
-	finalQuery, err = paginator.Paginate(finalQuery)
-	if err != nil {
-		return nil, fmt.Errorf("paginating request: %w", err)
-	}
-
-	finalQuery, err = r.expand(finalQuery, resourceQuery)
-	if err != nil {
-		return nil, fmt.Errorf("expanding results: %w", err)
+	if fence {
+		// The cursor/offset predicate is part of "the filtered set", so it stays inside the fence.
+		finalQuery = paginator.ApplyCursorPredicate(finalQuery)
+		finalQuery, err = r.expand(finalQuery, resourceQuery, true)
+		if err != nil {
+			return nil, fmt.Errorf("expanding results: %w", err)
+		}
+	} else {
+		finalQuery, err = paginator.Paginate(finalQuery)
+		if err != nil {
+			return nil, fmt.Errorf("paginating request: %w", err)
+		}
+		finalQuery, err = r.expand(finalQuery, resourceQuery, false)
+		if err != nil {
+			return nil, fmt.Errorf("expanding results: %w", err)
+		}
 	}
 	// Qualify the sort column with "dataset." so that LEFT JOINed expand CTEs
 	// cannot introduce an ambiguous column name (e.g. a future expand that also
 	// selects "id"). No expand today conflicts, but this makes it safe by construction.
+	// This is the single source of the final ORDER BY for both paths; in the fenced path it
+	// is the only ORDER BY, and it must be applied before the page window below.
 	orderExpr := paginator.OrderExpression()
 	col, dir, _ := strings.Cut(orderExpr, " ")
 	finalQuery = finalQuery.Order(fmt.Sprintf("dataset.%s %s", col, dir))
+
+	if fence {
+		// In the fenced shape the LIMIT (+ OFFSET) live on the outer select, applied after the
+		// outer ORDER BY above.
+		finalQuery, err = paginator.ApplyWindow(finalQuery)
+		if err != nil {
+			return nil, fmt.Errorf("applying page window: %w", err)
+		}
+	}
 
 	ret := make([]ResourceType, 0)
 	err = finalQuery.Model(&ret).Scan(ctx)

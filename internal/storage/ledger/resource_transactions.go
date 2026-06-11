@@ -158,6 +158,32 @@ func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], 
 	}
 }
 
+// ShouldFenceDataset opts ListTransactions into a MATERIALIZED CTE fence when the filter targets a
+// specific account/source/destination address or metadata value. These compile to indexed JSONB/array
+// containment ("needle") predicates that are usually highly selective; without the fence the
+// "ORDER BY id DESC LIMIT n" pagination triggers an abort-early walk of transactions_id_desc that can
+// scan most of the table before collecting a page. Fenced, the planner uses the GIN BitmapOr over the
+// filtered set and the LIMIT becomes a trivial top-N. Broad/range-only filters (id/timestamp/reference/
+// reverted) are intentionally left unfenced, where abort-early is the faster plan.
+//
+// The decision is static and correctness-safe (see DatasetFencer): edge cases such as a negated
+// containment (NOT metadata @> {x}) or a non-selective needle value like account="world" may fence
+// without benefit, but never change the result.
+func (h transactionsResourceHandler) ShouldFenceDataset(ctx common.RepositoryHandlerBuildContext[any]) bool {
+	return shouldFenceTransactionsDataset(ctx)
+}
+
+// shouldFenceTransactionsDataset holds the static needle-filter rule, taking the minimal UseFilter
+// interface so it can be unit-tested with a mock (see resource_transactions_test.go).
+func shouldFenceTransactionsDataset(q interface {
+	UseFilter(string, ...func(any) bool) bool
+}) bool {
+	return q.UseFilter("account") ||
+		q.UseFilter("source") ||
+		q.UseFilter("destination") ||
+		q.UseFilter("metadata")
+}
+
 func (h transactionsResourceHandler) Project(_ common.ResourceQuery[any], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error) {
 	return selectQuery.ColumnExpr("*"), nil
 }
