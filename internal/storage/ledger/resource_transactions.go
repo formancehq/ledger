@@ -15,16 +15,16 @@ type transactionsResourceHandler struct {
 func (h transactionsResourceHandler) Schema() common.EntitySchema {
 	return common.EntitySchema{
 		Fields: map[string]common.Field{
-			"reverted": common.NewBooleanField(),
-			"account": common.NewStringField(),
-			"source": common.NewStringField(),
+			"reverted":    common.NewBooleanField(),
+			"account":     common.NewStringField(),
+			"source":      common.NewStringField(),
 			"destination": common.NewStringField(),
-			"timestamp": common.NewDateField().Paginated(),
-			"metadata": common.NewStringMapField(),
-			"id": common.NewNumericField().Paginated(),
-			"reference": common.NewStringField(),
+			"timestamp":   common.NewDateField().Paginated(),
+			"metadata":    common.NewStringMapField(),
+			"id":          common.NewNumericField().Paginated(),
+			"reference":   common.NewStringField(),
 			"inserted_at": common.NewDateField().Paginated(),
-			"updated_at": common.NewDateField().Paginated(),
+			"updated_at":  common.NewDateField().Paginated(),
 		},
 	}
 }
@@ -85,7 +85,13 @@ func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], 
 	switch {
 	case property == "id":
 		return fmt.Sprintf("id %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
-	case property == "reference" || property == "timestamp" || property == "inserted_at" || property == "updated_at":
+	case property == "reference":
+		return fmt.Sprintf("reference %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
+	case property == "timestamp" || property == "inserted_at" || property == "updated_at":
+		value, err := common.NormalizeDateFilterValue(value)
+		if err != nil {
+			return "", nil, err
+		}
 		return fmt.Sprintf("%s %s ?", property, common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case property == "reverted":
 		ret := "reverted_at is"

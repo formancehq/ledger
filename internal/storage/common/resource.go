@@ -14,6 +14,22 @@ import (
 	"strings"
 )
 
+// NormalizeDateFilterValue parses a date filter value into a UTC time.
+// Date columns are "timestamp without time zone" holding UTC instants;
+// casting an offset-bearing string (e.g. 2026-05-21T15:09:13+04:00) to
+// that type in Postgres silently drops the offset, so the value must be
+// normalized to UTC application-side before being bound.
+func NormalizeDateFilterValue(value any) (any, error) {
+	if s, ok := value.(string); ok {
+		ts, err := time.ParseTime(s)
+		if err != nil {
+			return nil, err
+		}
+		return ts, nil
+	}
+	return value, nil
+}
+
 func ConvertOperatorToSQL(operator string) string {
 	switch operator {
 	case OperatorMatch:
