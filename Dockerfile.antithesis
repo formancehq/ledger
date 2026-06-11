@@ -1,6 +1,9 @@
 # Compiler — instruments the ledger service for Antithesis coverage
 FROM golang:1.26-trixie AS compiler
-ARG BUILD_TAGS="s3"
+# nats is included so the NATS event-sink implementation actually exists in
+# the tested binary: the workload's parallel_driver_event_sinks creates NATS
+# sinks against the nats container started by the Antithesis config.
+ARG BUILD_TAGS="s3,nats"
 
 RUN apt-get update && apt-get install -y bash git gcc
 

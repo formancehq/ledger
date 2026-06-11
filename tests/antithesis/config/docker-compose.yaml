@@ -86,7 +86,9 @@ services:
       - etcd-2-data:/var/run/etcd
 
   minio:
-    image: minio/minio:latest
+    # Pinned to the same release as the k8s manifests (k8s/minio.yaml) so
+    # docker-compose and k8s runs are reproducible and test the same MinIO.
+    image: minio/minio:RELEASE.2024-06-13T22-53-53Z
     container_name: minio
     hostname: minio
     command: server /data --console-address ":9001"
@@ -103,7 +105,7 @@ services:
     command: ["-js"]
 
   minio-init:
-    image: minio/mc:latest
+    image: minio/mc:RELEASE.2024-06-12T14-34-03Z
     container_name: minio-init
     depends_on:
       - minio

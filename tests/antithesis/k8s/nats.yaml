@@ -1,0 +1,48 @@
+---
+# NATS JetStream backing the event-sink drivers. The workload's
+# parallel_driver_event_sinks creates sinks pointing at nats://nats:4222,
+# which this Service resolves (the docker-compose config runs the same
+# container under the same hostname).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nats
+  labels:
+    app: nats
+  annotations:
+    kapp.k14s.io/owned-for-deletion: ""
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nats
+  template:
+    metadata:
+      labels:
+        app: nats
+    spec:
+      containers:
+      - name: nats
+        image: nats:2-alpine
+        args: ["-js"]
+        ports:
+        - containerPort: 4222
+          name: client
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nats
+spec:
+  selector:
+    app: nats
+  ports:
+  - port: 4222
+    targetPort: 4222
+    name: client
