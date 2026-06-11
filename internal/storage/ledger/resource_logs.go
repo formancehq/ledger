@@ -26,8 +26,14 @@ func (h logsResourceHandler) BuildDataset(_ common.RepositoryHandlerBuildContext
 
 func (h logsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
 	switch property {
-	case "date", "id":
-		return fmt.Sprintf("%s %s ?", property, common.ConvertOperatorToSQL(operator)), []any{value}, nil
+	case "date":
+		value, err := common.NormalizeDateFilterValue(value)
+		if err != nil {
+			return "", nil, err
+		}
+		return fmt.Sprintf("date %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
+	case "id":
+		return fmt.Sprintf("id %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case "type":
 		return fmt.Sprintf("type %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	default:

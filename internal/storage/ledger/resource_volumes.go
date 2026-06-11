@@ -143,6 +143,10 @@ func (h volumesResourceHandler) ResolveFilter(
 			return filterAccountAddress(value.(string), "account"), nil, nil
 		}
 	case property == "first_usage":
+		value, err := common.NormalizeDateFilterValue(value)
+		if err != nil {
+			return "", nil, err
+		}
 		return fmt.Sprintf("first_usage %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case balanceRegex.MatchString(property) || property == "balance":
 		clauses := make([]string, 0)

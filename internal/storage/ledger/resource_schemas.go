@@ -35,8 +35,14 @@ func (h schemasResourceHandler) Project(_ common.ResourceQuery[any], selectQuery
 
 func (h schemasResourceHandler) ResolveFilter(_ common.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
 	switch property {
-	case "version", "created_at":
-		return fmt.Sprintf("%s %s ?", property, common.ConvertOperatorToSQL(operator)), []any{value}, nil
+	case "created_at":
+		value, err := common.NormalizeDateFilterValue(value)
+		if err != nil {
+			return "", nil, err
+		}
+		return fmt.Sprintf("created_at %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
+	case "version":
+		return fmt.Sprintf("version %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	default:
 		return "", nil, fmt.Errorf("unknown key '%s' when building query", property)
 	}
