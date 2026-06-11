@@ -1066,7 +1066,12 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 	}
 	defer iter.Close()
 
-	logIDs, _ := readstore.PaginateForward(iter, pageSize, nil)
+	logIDs, _, paginateErr := readstore.PaginateForward(iter, pageSize, nil)
+	if paginateErr != nil {
+		_ = handle.Close()
+
+		return nil, fmt.Errorf("paginating log filter: %w", paginateErr)
+	}
 
 	c, err := query.ReadLedgerLogsCompiled(handle, snap, ledgerInfo.GetId(), logIDs)
 	if err != nil {

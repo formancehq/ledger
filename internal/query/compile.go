@@ -1773,6 +1773,8 @@ func (it *SliceIterator) SeekGE(target []byte) bool {
 	return true
 }
 
+func (it *SliceIterator) Err() error { return nil }
+
 func (it *SliceIterator) Close() {}
 
 var _ readstore.EntityIterator = (*SliceIterator)(nil)

@@ -174,7 +174,11 @@ func executeList(
 		}
 	}
 
-	entities, hasMore := readstore.PaginateForward(iter, pageSize, afterEntity)
+	entities, hasMore, err := readstore.PaginateForward(iter, pageSize, afterEntity)
+	if err != nil {
+		return nil, fmt.Errorf("paginating prepared query results: %w", err)
+	}
+
 	if profile != nil {
 		profile.ItemsCollected = len(entities)
 	}

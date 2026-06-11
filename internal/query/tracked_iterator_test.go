@@ -47,6 +47,8 @@ func (m *mockEntityIterator) SeekGE(_ []byte) bool {
 	return result
 }
 
+func (m *mockEntityIterator) Err() error { return nil }
+
 func (m *mockEntityIterator) Close() {
 	m.closeCalled = true
 }

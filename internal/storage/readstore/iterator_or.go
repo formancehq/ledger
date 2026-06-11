@@ -64,6 +64,16 @@ func (it *OrIterator) SeekGE(target []byte) bool {
 	return it.findMin()
 }
 
+func (it *OrIterator) Err() error {
+	for _, child := range it.children {
+		if err := child.Err(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (it *OrIterator) Close() {
 	for _, child := range it.children {
 		child.Close()

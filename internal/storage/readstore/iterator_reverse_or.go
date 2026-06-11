@@ -76,6 +76,16 @@ func (it *ReverseOrIterator) SeekLE(target []byte) bool {
 	return it.findMax()
 }
 
+func (it *ReverseOrIterator) Err() error {
+	for _, c := range it.children {
+		if err := c.iter.Err(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (it *ReverseOrIterator) Close() {
 	for _, c := range it.children {
 		c.close()

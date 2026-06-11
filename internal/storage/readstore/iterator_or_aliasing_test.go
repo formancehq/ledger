@@ -57,6 +57,11 @@ func (it *aliasingIter) SeekGE(target []byte) bool {
 
 func (it *aliasingIter) Close() {}
 
+// Err satisfies the EntityIterator contract introduced by this PR. The
+// test driver never injects an iterator error, so always returning nil
+// keeps the OR-iterator alias-safety invariant the only thing under test.
+func (it *aliasingIter) Err() error { return nil }
+
 // TestOrIterator_DedupSurvivesAliasedChildBuffers pins the fix for #319.
 // Pre-fix, OrIterator.findMin stored an alias into the winning child's
 // Pebble-key buffer. On the next Next() the dedup loop advanced that
@@ -130,6 +135,10 @@ func (it *reverseAliasingIter) SeekLE(target []byte) bool {
 }
 
 func (it *reverseAliasingIter) Close() {}
+
+// Err satisfies the ReverseIterator contract introduced by this PR. See
+// aliasingIter.Err for the rationale.
+func (it *reverseAliasingIter) Err() error { return nil }
 
 // TestReverseOrIterator_DedupSurvivesAliasedChildBuffers is the
 // descending-order twin of TestOrIterator_DedupSurvivesAliasedChildBuffers

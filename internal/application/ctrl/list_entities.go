@@ -82,7 +82,12 @@ func listAscending[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReade
 		after = params.afterToBytes(params.after)
 	}
 
-	*out, _ = readstore.PaginateForward(iter, params.pageSize, after)
+	items, _, err := readstore.PaginateForward(iter, params.pageSize, after)
+	if err != nil {
+		return fmt.Errorf("paginating filtered list: %w", err)
+	}
+
+	*out = items
 
 	return nil
 }
@@ -111,7 +116,12 @@ func listDescUnfiltered[T interface{ ~string | ~uint64 }](indexReader dal.Pebble
 		}
 	}
 
-	*out, _ = readstore.PaginateReverse(iter, params.pageSize, before)
+	items, _, err := readstore.PaginateReverse(iter, params.pageSize, before)
+	if err != nil {
+		return fmt.Errorf("paginating reverse list: %w", err)
+	}
+
+	*out = items
 
 	return nil
 }

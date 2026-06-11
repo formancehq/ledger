@@ -126,6 +126,14 @@ func (it *PrefixIterator) SeekGE(target []byte) bool {
 	return false
 }
 
+func (it *PrefixIterator) Err() error {
+	if it.iter == nil {
+		return nil
+	}
+
+	return it.iter.Error()
+}
+
 func (it *PrefixIterator) Close() {
 	if it.iter != nil {
 		_ = it.iter.Close()
@@ -260,6 +268,14 @@ func (it *RangeIterator) SeekGE(target []byte) bool {
 	it.exhausted = true
 
 	return false
+}
+
+func (it *RangeIterator) Err() error {
+	if it.iter == nil {
+		return nil
+	}
+
+	return it.iter.Error()
 }
 
 func (it *RangeIterator) Close() {

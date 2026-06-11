@@ -124,6 +124,14 @@ func (it *NotIterator) SeekGE(target []byte) bool {
 	}
 }
 
+func (it *NotIterator) Err() error {
+	if err := it.universe.Err(); err != nil {
+		return err
+	}
+
+	return it.child.Err()
+}
+
 func (it *NotIterator) Close() {
 	it.universe.Close()
 	it.child.Close()

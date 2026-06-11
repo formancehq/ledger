@@ -22,6 +22,7 @@ type AddressTxIterator struct {
 	addrIter    EntityIterator // iterates over matching account addresses
 	current     []byte         // current txID (8 bytes)
 	exhausted   bool
+	err         error    // first I/O error from materialize / addrIter
 	pendingTxns [][]byte // merge-union buffer for deduplication
 	txSeen      map[uint64]struct{}
 }
@@ -60,8 +61,14 @@ func (it *AddressTxIterator) Next() bool {
 	}
 
 	// Materialize all txIDs for remaining accounts and merge-union
-	err := it.materialize()
-	if err != nil || len(it.pendingTxns) == 0 {
+	if err := it.materialize(); err != nil {
+		it.err = err
+		it.exhausted = true
+
+		return false
+	}
+
+	if len(it.pendingTxns) == 0 {
 		it.exhausted = true
 
 		return false
@@ -84,8 +91,14 @@ func (it *AddressTxIterator) SeekGE(target []byte) bool {
 
 	// Re-materialize with filter
 	if len(it.pendingTxns) == 0 {
-		err := it.materialize()
-		if err != nil || len(it.pendingTxns) == 0 {
+		if err := it.materialize(); err != nil {
+			it.err = err
+			it.exhausted = true
+
+			return false
+		}
+
+		if len(it.pendingTxns) == 0 {
 			it.exhausted = true
 
 			return false
@@ -114,12 +127,22 @@ func (it *AddressTxIterator) SeekGE(target []byte) bool {
 	return true
 }
 
+func (it *AddressTxIterator) Err() error {
+	if it.err != nil {
+		return it.err
+	}
+
+	return it.addrIter.Err()
+}
+
 func (it *AddressTxIterator) Close() {
 	it.addrIter.Close()
 }
 
 // materialize collects all transaction IDs from all matching accounts,
-// deduplicates, and sorts them.
+// deduplicates, and sorts them. Surfaces I/O errors from the underlying
+// Pebble iterators and from the addrIter through addrIter.Err()
+// (checked by the caller via it.Err()).
 func (it *AddressTxIterator) materialize() error {
 	for it.addrIter.Next() {
 		account := string(it.addrIter.Current())
@@ -155,10 +178,15 @@ func (it *AddressTxIterator) materialize() error {
 			it.pendingTxns = insertSorted(it.pendingTxns, txCopy)
 		}
 
+		iterErr := iter.Error()
 		_ = iter.Close()
+
+		if iterErr != nil {
+			return iterErr
+		}
 	}
 
-	return nil
+	return it.addrIter.Err()
 }
 
 // insertSorted inserts a value into a sorted slice maintaining sort order.

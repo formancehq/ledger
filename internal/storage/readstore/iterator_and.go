@@ -61,6 +61,16 @@ func (it *AndIterator) SeekGE(target []byte) bool {
 	return it.converge()
 }
 
+func (it *AndIterator) Err() error {
+	for _, child := range it.children {
+		if err := child.Err(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (it *AndIterator) Close() {
 	for _, child := range it.children {
 		child.Close()

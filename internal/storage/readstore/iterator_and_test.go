@@ -46,6 +46,8 @@ func (s *sliceIter) SeekGE(target []byte) bool {
 	return false
 }
 
+func (s *sliceIter) Err() error { return nil }
+
 func (s *sliceIter) Close() {}
 
 func compareBytes(a, b []byte) int {

@@ -137,6 +137,14 @@ func (it *ReversePrefixIterator) SeekLE(target []byte) bool {
 	return false
 }
 
+func (it *ReversePrefixIterator) Err() error {
+	if it.iter == nil {
+		return nil
+	}
+
+	return it.iter.Error()
+}
+
 func (it *ReversePrefixIterator) Close() {
 	if it.iter != nil {
 		_ = it.iter.Close()

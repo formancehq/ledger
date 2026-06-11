@@ -46,6 +46,10 @@ func (t *TrackedIterator) SeekGE(target []byte) bool {
 	return ok
 }
 
+func (t *TrackedIterator) Err() error {
+	return t.inner.Err()
+}
+
 func (t *TrackedIterator) Close() {
 	t.inner.Close()
 }

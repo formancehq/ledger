@@ -13,7 +13,12 @@ import (
 // transaction IDs as raw bytes). All iterators produce entities in ascending
 // byte order.
 type EntityIterator interface {
-	// Next advances to the next entity. Returns false when exhausted.
+	// Next advances to the next entity. Returns false when exhausted OR when
+	// the underlying storage reported an error. Callers MUST call Err() after
+	// the loop terminates to distinguish clean exhaustion from a Pebble I/O
+	// failure (block checksum, blob-file read error, transient I/O). Without
+	// the check a corrupted SST returns a shorter, plausible-looking page
+	// rather than an error (#320).
 	Next() bool
 
 	// Current returns the current entity ID. The returned slice is only
@@ -21,8 +26,13 @@ type EntityIterator interface {
 	Current() []byte
 
 	// SeekGE positions the iterator at the first entity >= target.
-	// Returns false if no such entity exists.
+	// Returns false if no such entity exists OR on I/O error — see Err().
 	SeekGE(target []byte) bool
+
+	// Err returns the first storage error encountered during iteration, or
+	// nil for clean exhaustion. Callers MUST consult Err after Next/SeekGE
+	// returns false.
+	Err() error
 
 	// Close releases resources held by this iterator.
 	Close()
@@ -212,6 +222,14 @@ func (it *PebbleAccountIterator) SeekGE(target []byte) bool {
 	return false
 }
 
+func (it *PebbleAccountIterator) Err() error {
+	if it.iter == nil {
+		return nil
+	}
+
+	return it.iter.Error()
+}
+
 func (it *PebbleAccountIterator) Close() {
 	if it.iter != nil {
 		_ = it.iter.Close()
@@ -392,6 +410,14 @@ func (it *PebbleReverseAccountIterator) SeekLE(target []byte) bool {
 	return false
 }
 
+func (it *PebbleReverseAccountIterator) Err() error {
+	if it.iter == nil {
+		return nil
+	}
+
+	return it.iter.Error()
+}
+
 func (it *PebbleReverseAccountIterator) Close() {
 	if it.iter != nil {
 		_ = it.iter.Close()
@@ -519,6 +545,14 @@ func (it *PebbleTxIterator) SeekGE(target []byte) bool {
 	it.exhausted = true
 
 	return false
+}
+
+func (it *PebbleTxIterator) Err() error {
+	if it.iter == nil {
+		return nil
+	}
+
+	return it.iter.Error()
 }
 
 func (it *PebbleTxIterator) Close() {
@@ -667,6 +701,14 @@ func (it *PebbleReverseTxIterator) SeekLE(target []byte) bool {
 	return false
 }
 
+func (it *PebbleReverseTxIterator) Err() error {
+	if it.iter == nil {
+		return nil
+	}
+
+	return it.iter.Error()
+}
+
 func (it *PebbleReverseTxIterator) Close() {
 	if it.iter != nil {
 		_ = it.iter.Close()
@@ -702,6 +744,7 @@ func NewLedgerLogIterator(reader dal.PebbleReader, kb *dal.KeyBuilder, ledgerID 
 func (it *LedgerLogIterator) Next() bool                { return it.inner.Next() }
 func (it *LedgerLogIterator) Current() []byte           { return it.inner.Current() }
 func (it *LedgerLogIterator) SeekGE(target []byte) bool { return it.inner.SeekGE(target) }
+func (it *LedgerLogIterator) Err() error                { return it.inner.Err() }
 func (it *LedgerLogIterator) Close()                    { it.inner.Close() }
 
 // PebbleTxRangeIterator iterates over transaction IDs within a [min, max) range.
@@ -827,6 +870,14 @@ func (it *PebbleTxRangeIterator) SeekGE(target []byte) bool {
 	it.exhausted = true
 
 	return false
+}
+
+func (it *PebbleTxRangeIterator) Err() error {
+	if it.iter == nil {
+		return nil
+	}
+
+	return it.iter.Error()
 }
 
 func (it *PebbleTxRangeIterator) Close() {
