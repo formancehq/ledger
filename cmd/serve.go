@@ -56,6 +56,8 @@ type ServeCommandConfig struct {
 	MaxPageSize            uint64 `mapstructure:"max-page-size"`
 	WorkerEnabled          bool   `mapstructure:"worker"`
 	WorkerAddress          string `mapstructure:"worker-grpc-address"`
+
+	DisableLedgerScopeOptimization bool `mapstructure:"disable-ledger-scope-optimization"`
 }
 
 const (
@@ -69,6 +71,8 @@ const (
 	DefaultPageSizeFlag = "default-page-size"
 	MaxPageSizeFlag     = "max-page-size"
 	WorkerEnabledFlag   = "worker"
+
+	DisableLedgerScopeOptimizationFlag = "disable-ledger-scope-optimization"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -97,7 +101,8 @@ func NewServeCommand() *cobra.Command {
 				auth.FXModuleFromFlags(cmd),
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(storage.ModuleConfig{
-					AutoUpgrade: cfg.AutoUpgrade,
+					AutoUpgrade:                     cfg.AutoUpgrade,
+					DisableScopedSelectOptimization: cfg.DisableLedgerScopeOptimization,
 				}),
 				drivers.NewFXModule(),
 				fx.Invoke(alldrivers.Register),
@@ -186,6 +191,7 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Bool(NumscriptInterpreterFlag, false, "Enable experimental numscript rewrite")
 	cmd.Flags().StringSlice(NumscriptInterpreterFlagsToPass, nil, "Feature flags to pass to the experimental numscript interpreter")
 	cmd.Flags().String(WorkerGRPCAddressFlag, "localhost:8081", "GRPC address")
+	cmd.Flags().Bool(DisableLedgerScopeOptimizationFlag, false, "Always emit the `ledger = ?` predicate on read queries, disabling the alone-in-bucket optimization that skips it when a ledger is the only one in its bucket")
 
 	addWorkerFlags(cmd)
 	bunconnect.AddFlags(cmd.Flags())
