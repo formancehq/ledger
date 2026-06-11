@@ -585,7 +585,17 @@ Key log messages for debugging connection issues:
 
 Both gRPC servers and all connection pools support opt-in TLS. When the server is started with `--tls-cert-file` and `--tls-key-file`, both the Raft server and Service server require TLS. Inter-node connections (Raft and Service pools) also use TLS automatically.
 
-If `--tls-ca-cert-file` is provided, the server enables optional client certificate verification (`tls.VerifyClientCertIfGiven`), supporting mTLS.
+If `--tls-ca-cert-file` is provided, the server enables optional client certificate verification (`tls.VerifyClientCertIfGiven`) by default. Set `--tls-require-client-cert` to switch the posture to `tls.RequireAndVerifyClientCert` — peers without a CA-signed certificate are rejected at the TLS layer before any application code runs.
+
+Certificate files are watched with fsnotify and re-read with a 60 s polling fallback. What reloads live without a node restart:
+
+- **Server leaf cert/key** (every inbound handshake reads from the reloader).
+- **Server's `ClientCAs` trust pool** (`GetConfigForClient` is invoked per inbound handshake).
+- **Outbound client leaf cert/key** (`GetClientCertificate` is invoked per outbound handshake).
+
+What still requires a node restart:
+
+- **Outbound `RootCAs`** — gRPC's `credentials.NewTLS` clones the `*tls.Config` once at credential creation, so the trust pool used to verify the *server* on outbound dials is frozen for the lifetime of those credentials. For cert-manager deployments this is rarely a constraint, since the rotating piece is the leaf cert; CA bundle rotations are orchestrated separately.
 
 On the client side (`ledgerctl`), the `--tls-ca-cert` flag specifies a custom CA for server verification. Without any TLS flags, the client uses the system CA pool. Use `--insecure` to disable TLS entirely.
 

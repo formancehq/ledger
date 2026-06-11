@@ -3976,6 +3976,46 @@ ledger run --cluster-secret "my-cluster-secret" --auth-enabled \
 
 ---
 
+### Server TLS Flags
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--tls-mode` | string | `disabled` | TLS posture for inter-node and service gRPC: `disabled`, `optional` (cmux dual-listener used as a transitional state during a TLS toggle), or `required` (TLS only) |
+| `--tls-cert-file` | string | `""` | Path to TLS certificate file (PEM). Required when `--tls-mode` is `optional` or `required` |
+| `--tls-key-file` | string | `""` | Path to TLS private key file (PEM). Required when `--tls-mode` is `optional` or `required` |
+| `--tls-ca-cert-file` | string | `""` | Path to CA certificate file (PEM). When set, the server verifies any presented client certificate against this CA |
+| `--tls-require-client-cert` | bool | `false` | Reject inbound connections that do not present a CA-signed client certificate. Requires `--tls-ca-cert-file`. Defaults to `false`, which preserves the historical `VerifyClientCertIfGiven` posture (missing client certs fall through to cluster-secret / JWT auth) |
+
+The cert, key, and CA files are watched with fsnotify and re-read with a 60s
+polling fallback, so cert-manager rotations are picked up live for the server
+leaf cert and the inbound trust pool without restarting the node. Outbound
+`RootCAs` are frozen at credentials-creation time (gRPC clones the
+`*tls.Config`); a CA-bundle rotation on the trust side still requires a
+process restart on each client node.
+
+`--tls-require-client-cert` is the opt-in switch to enforced mTLS. With it
+set, peers without a valid CA-signed certificate are rejected at the TLS
+layer before any application code runs. Without it (default), the configured
+CA is used only to verify presented certs — clients without a cert are still
+admitted and downstream auth (cluster-secret / JWT) decides.
+
+```bash
+# TLS required, optional client certs (default mTLS posture)
+ledger run --tls-mode required \
+  --tls-cert-file /etc/ledger/tls.crt --tls-key-file /etc/ledger/tls.key \
+  --tls-ca-cert-file /etc/ledger/ca.crt [other flags...]
+
+# TLS required + enforced mTLS (peers MUST present a CA-signed cert)
+ledger run --tls-mode required \
+  --tls-cert-file /etc/ledger/tls.crt --tls-key-file /etc/ledger/tls.key \
+  --tls-ca-cert-file /etc/ledger/ca.crt --tls-require-client-cert [other flags...]
+```
+
+See [`docs/ops/tls-migration.md`](tls-migration.md) for the zero-downtime
+on/off TLS toggle workflow.
+
+---
+
 ### Server Scope Mapping Flag
 
 | Flag | Type | Default | Description |

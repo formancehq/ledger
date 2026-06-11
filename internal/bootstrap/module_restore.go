@@ -30,11 +30,13 @@ import (
 func RestoreModule() fx.Option {
 	return fx.Options(
 		fx.Provide(
-			func(cfg Config, logger logging.Logger) (*grpcadp.ServiceServer, error) {
-				tlsCfg, err := ServerTLSConfig(cfg.TLSConfig)
+			func(cfg Config, lc fx.Lifecycle, logger logging.Logger) (*grpcadp.ServiceServer, error) {
+				tlsCfg, reloader, err := ServerTLSConfig(cfg.TLSConfig)
 				if err != nil {
 					return nil, fmt.Errorf("loading TLS config for restore server: %w", err)
 				}
+
+				RegisterCertReloaderLifecycle(lc, reloader, logger)
 
 				host := cfg.EffectiveRestoreListen()
 

@@ -81,6 +81,13 @@ type TLSConfig struct {
 	CertFile string
 	KeyFile  string
 	CAFile   string
+	// RequireClientCert switches inbound mTLS from VerifyClientCertIfGiven
+	// (the default — a missing client cert is accepted, authentication then
+	// relies on cluster-secret / JWT) to RequireAndVerifyClientCert, where a
+	// peer that fails to present a CA-signed certificate is rejected at the
+	// TLS layer before any application code runs. Only honored when CAFile
+	// is set — required by config validation.
+	RequireClientCert bool
 }
 
 type HealthConfig struct {
@@ -274,6 +281,10 @@ func (c Config) validateTLSConfig() error {
 
 	if c.TLSConfig.CertFile == "" || c.TLSConfig.KeyFile == "" {
 		return fmt.Errorf("--tls-mode=%s requires --tls-cert-file and --tls-key-file", c.TLSConfig.Mode)
+	}
+
+	if c.TLSConfig.RequireClientCert && c.TLSConfig.CAFile == "" {
+		return errors.New("--tls-require-client-cert requires --tls-ca-file (cannot verify peer certs without a CA)")
 	}
 
 	return nil

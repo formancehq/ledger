@@ -162,6 +162,7 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().String("tls-cert-file", "", "Path to TLS certificate file (PEM). Required when --tls-mode is optional or required.")
 	runCmd.Flags().String("tls-key-file", "", "Path to TLS private key file (PEM). Required when --tls-mode is optional or required.")
 	runCmd.Flags().String("tls-ca-cert-file", "", "Path to CA certificate file (PEM) for client verification")
+	runCmd.Flags().Bool("tls-require-client-cert", false, "Reject inbound connections that do not present a CA-signed client certificate. Defaults to false (VerifyClientCertIfGiven), preserving the prior posture where missing client certs fall through to cluster-secret/JWT auth. Requires --tls-ca-cert-file.")
 
 	// Join mode: join an existing cluster as a learner node
 	runCmd.Flags().String("join", "", "Raft transport address of an existing cluster member to join as a learner (e.g., \"node-1:7777\")")
@@ -529,10 +530,11 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 	}
 
 	cfg.TLSConfig = bootstrap.TLSConfig{
-		Mode:     tlsMode,
-		CertFile: tlsCert,
-		KeyFile:  tlsKey,
-		CAFile:   tlsCA,
+		Mode:              tlsMode,
+		CertFile:          tlsCert,
+		KeyFile:           tlsKey,
+		CAFile:            tlsCA,
+		RequireClientCert: getBool("tls-require-client-cert", false),
 	}
 
 	// Restore mode
@@ -665,7 +667,7 @@ func discoverPeersFromClusterWithRetry(ctx context.Context, raftAddr string, tls
 // — preserved for compatibility with the existing RaftServer auth
 // pipeline) — not by a user JWT.
 func discoverPeersFromCluster(raftAddr string, tlsCfg bootstrap.TLSConfig, clusterID, clusterSecret string) ([]node.Peer, error) {
-	creds, err := bootstrap.ClientTransportCredentials(tlsCfg)
+	creds, _, err := bootstrap.ClientTransportCredentials(tlsCfg)
 	if err != nil {
 		return nil, fmt.Errorf("loading TLS credentials for peer discovery: %w", err)
 	}

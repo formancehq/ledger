@@ -421,11 +421,13 @@ func Module() fx.Option {
 
 				return poolCfg
 			},
-			func(cfg Config) (transport.TLSPolicy, error) {
-				tlsCfg, err := ClientTLSConfig(cfg.TLSConfig)
+			func(cfg Config, lc fx.Lifecycle, logger logging.Logger) (transport.TLSPolicy, error) {
+				tlsCfg, reloader, err := ClientTLSConfig(cfg.TLSConfig)
 				if err != nil {
 					return transport.TLSPolicy{}, err
 				}
+
+				RegisterCertReloaderLifecycle(lc, reloader, logger)
 
 				return transport.TLSPolicy{
 					TLSConfig: tlsCfg,
@@ -433,7 +435,7 @@ func Module() fx.Option {
 				}, nil
 			},
 			// RaftServer for internal inter-node communication (Raft transport + Snapshot)
-			func(cfg Config, logger logging.Logger) (*grpcadp.RaftServer, error) {
+			func(cfg Config, lc fx.Lifecycle, logger logging.Logger) (*grpcadp.RaftServer, error) {
 				_, raftPort, err := net.SplitHostPort(cfg.RaftConfig.BindAddr)
 				if err != nil {
 					return nil, fmt.Errorf("invalid bind address format: %w", err)
@@ -444,19 +446,23 @@ func Module() fx.Option {
 					return nil, fmt.Errorf("invalid port in bind address: %w", err)
 				}
 
-				tlsCfg, err := ServerTLSConfig(cfg.TLSConfig)
+				tlsCfg, reloader, err := ServerTLSConfig(cfg.TLSConfig)
 				if err != nil {
 					return nil, fmt.Errorf("loading TLS config for raft server: %w", err)
 				}
 
+				RegisterCertReloaderLifecycle(lc, reloader, logger)
+
 				return grpcadp.NewRaftServer(port, logger, tlsCfg, cfg.TLSConfig.Mode.AllowsPlaintext(), cfg.ClusterSecret)
 			},
 			// ServiceServer for external client-facing API
-			func(cfg Config, logger logging.Logger) (*grpcadp.ServiceServer, error) {
-				tlsCfg, err := ServerTLSConfig(cfg.TLSConfig)
+			func(cfg Config, lc fx.Lifecycle, logger logging.Logger) (*grpcadp.ServiceServer, error) {
+				tlsCfg, reloader, err := ServerTLSConfig(cfg.TLSConfig)
 				if err != nil {
 					return nil, fmt.Errorf("loading TLS config for service server: %w", err)
 				}
+
+				RegisterCertReloaderLifecycle(lc, reloader, logger)
 
 				return grpcadp.NewServiceServer("", cfg.GRPCPort, logger, cfg.Debug, cfg.GRPCSlowThreshold, tlsCfg, cfg.TLSConfig.Mode.AllowsPlaintext())
 			},
@@ -1203,7 +1209,7 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 		ServiceAddress: cfg.ServiceAdvertiseAddr(),
 	}
 
-	creds, err := ClientTransportCredentials(tlsCfg)
+	creds, _, err := ClientTransportCredentials(tlsCfg)
 	if err != nil {
 		return fmt.Errorf("loading TLS credentials for learner registration: %w", err)
 	}

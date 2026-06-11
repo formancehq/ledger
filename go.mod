@@ -66,6 +66,7 @@ require (
 	github.com/cockroachdb/pebble/v2 v2.1.4
 	github.com/databricks/databricks-sql-go v1.10.0
 	github.com/formancehq/go-libs/v5 v5.3.0
+	github.com/fsnotify/fsnotify v1.5.4
 	github.com/google/uuid v1.6.0
 	github.com/soheilhy/cmux v0.1.5
 	github.com/testcontainers/testcontainers-go v0.40.0
@@ -152,7 +153,6 @@ require (
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
-	github.com/fsnotify/fsnotify v1.5.4 // indirect
 	github.com/getkin/kin-openapi v0.134.0 // indirect
 	github.com/getsentry/sentry-go v0.35.1 // indirect
 	github.com/go-chi/chi v4.1.2+incompatible // indirect

@@ -114,11 +114,13 @@ func TestValidateTLSConfig(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		mode    TLSMode
-		cert    string
-		key     string
-		wantErr string
+		name              string
+		mode              TLSMode
+		cert              string
+		key               string
+		ca                string
+		requireClientCert bool
+		wantErr           string
 	}{
 		{
 			name:    "disabled requires nothing",
@@ -149,6 +151,23 @@ func TestValidateTLSConfig(t *testing.T) {
 			mode:    TLSMode("invalid"),
 			wantErr: "--tls-mode must be one of",
 		},
+		{
+			name:              "require-client-cert without CA rejected",
+			mode:              TLSModeRequired,
+			cert:              "/tmp/fake.crt",
+			key:               "/tmp/fake.key",
+			requireClientCert: true,
+			wantErr:           "--tls-require-client-cert requires --tls-ca-file",
+		},
+		{
+			name:              "require-client-cert with CA allowed",
+			mode:              TLSModeRequired,
+			cert:              "/tmp/fake.crt",
+			key:               "/tmp/fake.key",
+			ca:                "/tmp/fake-ca.crt",
+			requireClientCert: true,
+			wantErr:           "",
+		},
 	}
 
 	for _, tt := range tests {
@@ -159,6 +178,8 @@ func TestValidateTLSConfig(t *testing.T) {
 			cfg.TLSConfig.Mode = tt.mode
 			cfg.TLSConfig.CertFile = tt.cert
 			cfg.TLSConfig.KeyFile = tt.key
+			cfg.TLSConfig.CAFile = tt.ca
+			cfg.TLSConfig.RequireClientCert = tt.requireClientCert
 
 			err := cfg.Validate()
 			if tt.wantErr == "" {
