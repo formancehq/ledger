@@ -153,6 +153,41 @@ func TestListTransactionsMaterializedFence(t *testing.T) {
 		require.False(t, containsMaterialized(queries),
 			"range-only filter must not be fenced, got: %v", queries)
 	})
+
+	// Regression guard for the nested-CTE shape: when fenced with effectiveVolumes, the page LIMIT
+	// must live inside the "dataset" CTE so the expand's "select id from dataset" sees only the page,
+	// not the whole materialized filtered set. Otherwise effectiveVolumes aggregates over the entire
+	// matched history to return one page.
+	t.Run("fenced + effectiveVolumes pages before the expand reads dataset", func(t *testing.T) {
+		queries := capture(func() {
+			_, err := store.Transactions().Paginate(ctx, common.InitialPaginatedQuery[any]{
+				PageSize: 5,
+				Options: common.ResourceQuery[any]{
+					Builder: query.Match("account", "alice"),
+					Expand:  []string{"effectiveVolumes"},
+				},
+			})
+			require.NoError(t, err)
+		})
+
+		var main string
+		for _, q := range queries {
+			if strings.Contains(q, "AS MATERIALIZED") {
+				main = q
+				break
+			}
+		}
+		require.NotEmpty(t, main, "expected a fenced list query, got: %v", queries)
+
+		low := strings.ToLower(main)
+		expandRef := strings.Index(low, "select id from dataset")
+		limitIdx := strings.Index(low, "limit")
+		require.GreaterOrEqual(t, expandRef, 0, "effectiveVolumes expand should reference dataset: %s", main)
+		require.GreaterOrEqual(t, limitIdx, 0, "fenced query should carry a page LIMIT: %s", main)
+		require.Less(t, limitIdx, expandRef,
+			"page LIMIT must live inside the dataset CTE (before the expand reads from dataset), "+
+				"so effectiveVolumes aggregates over the page, not the whole filtered set: %s", main)
+	})
 }
 
 // TestListTransactionsFencedPagination walks next/previous pages under a fenced (selective) filter
