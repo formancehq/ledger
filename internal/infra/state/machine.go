@@ -128,8 +128,15 @@ type Machine struct {
 
 	// sentinelMode enables runtime volume consistency checks
 	// (monotonicity, delta/posting cross-check, post-commit cache/Pebble verification).
-	sentinelMode   bool
-	sentinelTracer SentinelTracer
+	sentinelMode bool
+
+	// sentinelTracer points to the tracer scoped to the in-flight PrepareEntries.
+	// A fresh tracer is allocated at the start of every PrepareEntries call when
+	// sentinelMode is on. The pointer is captured by the PreparedBatch so a
+	// later pipelined CommitPreparedBatch can Dump() the right batch's trace,
+	// even after the next PrepareEntries has started populating a NEW tracer
+	// behind the same field. Only ever read/written under fsm.mu.
+	sentinelTracer *SentinelTracer
 
 	// notifier is notified after new logs are committed and when configuration
 	// changes. A single notifier decouples the FSM from individual consumers;
@@ -216,7 +223,6 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 	fsm.appliedCond = sync.NewCond(&fsm.appliedMu)
 	fsm.cacheSnapshotter = NewCacheSnapshotter(logger, dataStore, fsm.Registry, bloomFilters)
 	fsm.writeSet = NewWriteSet(fsm)
-	fsm.sentinelTracer.Init(logger)
 
 	if err := fsm.RecoverState(); err != nil {
 		return nil, fmt.Errorf("recovering state: %w", err)
@@ -538,11 +544,25 @@ func (fsm *Machine) WaitForApplied(ctx context.Context, targetIndex uint64) erro
 // This is the first half of the pipelining split: PrepareEntries is CPU-bound
 // and can run while a previous batch's commit is in-flight.
 func (fsm *Machine) PrepareEntries(ctx context.Context, entries ...raftpb.Entry) (*PreparedBatch, error) {
+	// Validate checkpoint trigger positions BEFORE taking the lock or mutating
+	// any in-memory state. A malformed batch (trigger not last) is rejected
+	// here so the FSM cannot be left with lastAppliedIndex bumped and proposal
+	// side effects applied for an entry that will never be committed.
+	if err := ValidateCheckpointEntryPositions(entries); err != nil {
+		return nil, err
+	}
+
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
 
+	// Allocate a fresh tracer for this PrepareEntries call. The pointer is
+	// captured by the PreparedBatch below; once we return, the next
+	// PrepareEntries reassigns fsm.sentinelTracer to a new instance — the old
+	// one stays referenced by the in-flight PreparedBatch's pb.sentinelTracer
+	// so the pipelined committer can Dump() the correct batch's trace on a
+	// sentinel failure.
 	if fsm.sentinelMode {
-		fsm.sentinelTracer.Reset()
+		fsm.sentinelTracer = NewSentinelTracer(fsm.logger)
 	}
 
 	// With pipelining, lastPersistedIndex may lag lastAppliedIndex by one batch
@@ -741,21 +761,51 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, entries ...raftpb.Entry)
 		ret.Results = append(ret.Results, *result)
 		pendingConvertRequests = append(pendingConvertRequests, result.MetadataConvertRequests...)
 
-		// If ClosePeriod was detected, stop processing immediately.
-		// Commit the batch so the ClosePeriod state is persisted,
-		// then signal the caller to create a Pebble checkpoint.
-		if sealReqBase := fsm.checkClosePeriod(result); sealReqBase != nil {
-			return fsm.commitAndRequestCheckpoint(batch, ret, entries[i+1:], needsArchiveDispatch, sealReqBase.PeriodID, func(checkpointPath string) {
-				sealReqBase.CheckpointPath = checkpointPath
-				fsm.sealRequestCh.TrySend(*sealReqBase, fmt.Sprintf("period %d", sealReqBase.PeriodID))
+		// Checkpoint-trigger detection. The applier is responsible for pre-
+		// splitting the entries slice so any trigger entry is the last one in
+		// this batch; the FSM only records the flag here and lets the batch
+		// commit through the normal pipelined path (via CommitPreparedBatch
+		// → runCommitter). This restores the "one batch = one commit" invariant
+		// that mid-batch synchronous commits used to violate.
+		//
+		// The position invariant is enforced upfront by
+		// ValidateCheckpointEntryPositions at the start of PrepareEntries — by
+		// the time we reach this point any trigger entry is guaranteed to be
+		// the last one. The assert below is a belt-and-braces check kept in
+		// place because reaching it would mean either the upfront validator and
+		// this dynamic detection disagree, or applyProposal produced a trigger
+		// effect from a proposal whose orders did not carry a trigger.
+		sealReqBase := fsm.checkClosePeriod(result)
+		queryCheckpointCreated := result.QueryCheckpointCreated > 0
+
+		if (sealReqBase != nil || queryCheckpointCreated) && i != len(entries)-1 {
+			assert.Unreachable("checkpoint trigger entry not last in PrepareEntries batch", map[string]any{
+				"raftIndex":  entry.Index,
+				"proposalID": cmd.GetId(),
+				"position":   i,
+				"entryCount": len(entries),
 			})
+
+			_ = batch.Cancel()
+
+			return nil, fmt.Errorf(
+				"checkpoint trigger entry at position %d/%d in PrepareEntries batch (raft index %d) — applier must pre-split",
+				i, len(entries), entry.Index,
+			)
 		}
 
-		// If CreateQueryCheckpoint was detected, stop processing and enter gating.
-		if cpID := result.QueryCheckpointCreated; cpID > 0 {
-			ret.QueryCheckpointID = cpID
+		if sealReqBase != nil {
+			ret.CheckpointRequired = true
+			ret.CheckpointPeriodID = sealReqBase.PeriodID
+			ret.OnCheckpointDone = func(checkpointPath string) {
+				sealReqBase.CheckpointPath = checkpointPath
+				fsm.sealRequestCh.TrySend(*sealReqBase, fmt.Sprintf("period %d", sealReqBase.PeriodID))
+			}
+		}
 
-			return fsm.commitAndRequestCheckpoint(batch, ret, entries[i+1:], needsArchiveDispatch, 0, nil)
+		if queryCheckpointCreated {
+			ret.CheckpointRequired = true
+			ret.QueryCheckpointID = result.QueryCheckpointCreated
 		}
 	}
 
@@ -793,7 +843,7 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, entries ...raftpb.Entry)
 		pb.sentinelMode = true
 		pb.sentinelUpdates = deduplicateVolumeUpdates(ret.Results)
 		pb.sentinelLedgerIDs = collectLedgerIDsFromResults(ret.Results)
-		pb.sentinelTracer = &fsm.sentinelTracer
+		pb.sentinelTracer = fsm.sentinelTracer
 	}
 
 	// Capture archive requests from current period state.
@@ -846,8 +896,15 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 	})
 
 	// Post-commit sentinel checks.
+	//
+	// Use a snapshot read handle (not a direct one) so the view is pinned to
+	// the DB state right after this batch's commit. With the
+	// fix/checkpoint-commit-race refactor, all main-store commits go through
+	// runCommitter so no other write should race with this read, but the
+	// snapshot is cheap and ensures the sentinel keeps the right invariant
+	// even if a future change reintroduces a synchronous commit path.
 	if pb.sentinelMode {
-		sentinelHandle, handleErr := fsm.dataStore.NewDirectReadHandle()
+		sentinelHandle, handleErr := fsm.dataStore.NewReadHandle()
 		if handleErr != nil {
 			return fmt.Errorf("creating read handle for sentinel checks: %w", handleErr)
 		}
@@ -929,79 +986,21 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 // ApplyEntries processes entries and commits synchronously. This is a
 // convenience wrapper around PrepareEntries + CommitPreparedBatch for
 // callers that do not need pipelining (spool replay, WAL replay).
+//
+// Callers must pre-split entries so that any checkpoint-triggering entry is
+// the last in the slice (see state.ClassifyCheckpointOrderPosition); the FSM
+// enforces this with a defensive check inside PrepareEntries.
 func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (*ApplyEntriesResult, error) {
 	pb, err := fsm.PrepareEntries(ctx, entries...)
 	if err != nil {
 		return nil, err
 	}
 
-	// When a ClosePeriod entry triggers commitAndRequestCheckpoint, the batch
-	// is already committed synchronously and pb.batch is nil. Skip the commit
-	// in that case — the caller handles the checkpoint via Result flags.
-	if pb.batch != nil {
-		if err := fsm.CommitPreparedBatch(ctx, pb); err != nil {
-			return nil, err
-		}
+	if err := fsm.CommitPreparedBatch(ctx, pb); err != nil {
+		return nil, err
 	}
 
 	return pb.Result, nil
-}
-
-// commitAndRequestCheckpoint commits the current batch synchronously, stores
-// remaining entries, and returns a PreparedBatch with CheckpointRequired = true.
-// The batch is already committed (batch field is nil) since checkpoint boundaries
-// require synchronous persistence.
-func (fsm *Machine) commitAndRequestCheckpoint(
-	batch *dal.Batch,
-	ret *ApplyEntriesResult,
-	remaining []raftpb.Entry,
-	needsArchiveDispatch bool,
-	checkpointPeriodID uint64,
-	onCheckpointDone func(checkpointPath string),
-) (*PreparedBatch, error) {
-	err := SetAppliedIndex(batch, fsm.lastAppliedIndex)
-	if err != nil {
-		_ = batch.Cancel()
-
-		return nil, fmt.Errorf("setting applied index: %w", err)
-	}
-
-	err = setLastAppliedTimestamp(batch, fsm.lastAppliedTimestamp)
-	if err != nil {
-		_ = batch.Cancel()
-
-		return nil, fmt.Errorf("setting last applied timestamp: %w", err)
-	}
-
-	err = batch.Commit()
-	if err != nil {
-		return nil, fmt.Errorf("committing batch for checkpoint: %w", err)
-	}
-
-	fsm.publishApplied(fsm.lastAppliedIndex)
-
-	lastSeq := fsm.nextSequenceID - 1
-	fsm.notifier.NotifyLogsCommitted(lastSeq)
-
-	if needsArchiveDispatch {
-		fsm.DispatchArchiveRequests(nil)
-	}
-
-	ret.CheckpointRequired = true
-	ret.CheckpointPeriodID = checkpointPeriodID
-
-	if len(remaining) > 0 {
-		ret.RemainingEntries = make([]raftpb.Entry, len(remaining))
-		copy(ret.RemainingEntries, remaining)
-	}
-
-	ret.OnCheckpointDone = onCheckpointDone
-
-	// Return a PreparedBatch with batch=nil (already committed).
-	return &PreparedBatch{
-		Result:           ret,
-		lastAppliedIndex: fsm.lastAppliedIndex,
-	}, nil
 }
 
 // deleteQueryCheckpointFiles removes the physical files for a deleted checkpoint.
@@ -1165,6 +1164,23 @@ func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Pro
 // applyProposal processes all orders in a proposal atomically.
 // Uses RequestProcessor which handles rollback internally via WriteSet.
 func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *dal.Batch, proposal *raftcmdpb.Proposal) (*ApplyResult, error) {
+	// FSM-level safety net mirroring the admission check: a checkpoint trigger
+	// (CreateQueryCheckpoint or ClosePeriod) must be the last order. The
+	// applier relies on this so it can place a Pebble-batch boundary at this
+	// proposal — a trigger that is not last would force a mid-batch commit
+	// and race the pipelined committer. Any violation here means the
+	// admission path was bypassed (replay of a pre-fix proposal, or a future
+	// bug); refuse to apply rather than corrupt state.
+	if ClassifyCheckpointOrderPosition(proposal.GetOrders()) == CheckpointOrderInvalid {
+		assert.Unreachable("checkpoint trigger order not last in proposal", map[string]any{
+			"raftIndex":  raftIndex,
+			"proposalID": proposal.GetId(),
+			"orderCount": len(proposal.GetOrders()),
+		})
+
+		return nil, fmt.Errorf("checkpoint trigger order not last in proposal id=%d at raft index %d", proposal.GetId(), raftIndex)
+	}
+
 	if err := fsm.applyTechnicalUpdates(batch, raftIndex, proposal); err != nil {
 		return nil, err
 	}
@@ -1892,11 +1908,11 @@ type ApplyEntriesResult struct {
 	// Results contains one ApplyResult per processed entry that carried a proposal.
 	Results []ApplyResult
 
-	// RemainingEntries holds unprocessed entries when a ClosePeriod stopped processing early.
-	RemainingEntries []raftpb.Entry
-
 	// CheckpointRequired is true when the caller must create a Pebble checkpoint
-	// before resuming entry processing (e.g. after a ClosePeriod).
+	// before resuming entry processing (e.g. after a ClosePeriod or
+	// CreateQueryCheckpoint). The triggering entry is always the last in the
+	// slice that produced this result — callers must pre-split to maintain that
+	// invariant (see state.ClassifyCheckpointOrderPosition).
 	CheckpointRequired bool
 
 	// CheckpointPeriodID is the period ID that triggered the checkpoint.

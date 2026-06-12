@@ -522,13 +522,53 @@ flowchart LR
 
 ---
 
-## 15. Summary
+## 15. Checkpoint orders and the "single committer" invariant
+
+The Pebble main store has exactly one writer: the `runCommitter` goroutine
+owned by the applier. Every write goes through `Machine.CommitPreparedBatch`,
+which `runCommitter` calls sequentially — one batch in flight at any time.
+
+To preserve this invariant in the presence of orders that require a Pebble
+**physical checkpoint** to be created (currently `CreateQueryCheckpoint` and
+`ClosePeriod`), we enforce:
+
+1. **Admission constraint.** A `raftcmdpb.Proposal` may carry N orders, but
+   if any order is a checkpoint trigger (`CreateQueryCheckpoint` or
+   `ClosePeriod`), it **must be the last order** in `proposal.Orders`.
+   `internal/application/admission` rejects bulk requests that violate this
+   with `ErrCheckpointOrderNotLast`.
+
+2. **FSM safety net.** `PrepareEntries` calls
+   `state.ValidateCheckpointEntryPositions` upfront — before taking the lock
+   or mutating any in-memory state — and `applyProposal` re-validates the
+   per-proposal ordering with `state.ClassifyCheckpointOrderPosition`. Any
+   proposal slipping past admission (replay of pre-fix proposals, hand-crafted
+   bypass) makes the FSM return a fatal error rather than silently committing,
+   and the upfront placement check guarantees no partial state mutation
+   occurs before rejection.
+
+3. **Applier pre-split.** Before passing a `[]raftpb.Entry` slice to
+   `PrepareEntries`, the applier scans for checkpoint triggers and splits
+   the slice so any trigger entry is always the LAST in its sub-batch
+   (`findCheckpointBoundary`). Entries past the trigger go to the spool
+   and are replayed once the maintenance window clears.
+
+Result: every `PrepareEntries` → `CommitPreparedBatch` pair commits exactly
+one Pebble batch, and the post-commit sentinel reads a snapshot pinned to
+that commit. There is no concurrent commit path on the main store; any
+cache/pebble divergence reported by the sentinel is a genuine FSM bug.
+
+See issue [#424 / EN-1235](https://github.com/formancehq/ledger-v3-poc/issues/424)
+for the race this design eliminated.
+
+## 16. Summary
 
 - Deterministic cache uses `gen0/gen1`, derived only from Raft index.
 - Admission (leader, parallel) builds Preload aligned to canonical boundary `B(i)`.
 - Apply is RAM-only and enforces checks on every node deterministically.
-- Preload may include an “older” volume at `B(i)`; subsequent applies update absolute volumes in place, ensuring correctness.
+- Preload may include an "older" volume at `B(i)`; subsequent applies update absolute volumes in place, ensuring correctness.
 - Snapshots are not aligned across nodes → snapshot must embed `gen0 + gen1`.
 - Pebble stores one entry per canonical key (last-write-wins, overwritten in place).
 - `persistedIndex` is an operational guardrail and backpressure signal (rare), not a rotation input.
+- Checkpoint-triggering orders are always the last in their proposal AND the last in their PrepareEntries slice, keeping `runCommitter` the sole writer to the main store.
 - `AttributeLoader` coordinates concurrent attribute loads to prevent duplicate store reads.

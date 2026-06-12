@@ -95,6 +95,15 @@ func deduplicateVolumeUpdates(results []ApplyResult) []attributes.Update[domain.
 // the cache because cache generation rotations during a batch can evict entries
 // before this verification runs (e.g., during replay of large batches spanning
 // multiple generation thresholds).
+//
+// After the fix/checkpoint-commit-race refactor, all main-store writes go
+// through a single runCommitter goroutine, and the sentinel reads from a
+// Pebble snapshot pinned to the post-commit moment of THIS batch. Any
+// divergence reported here must therefore be a genuine FSM determinism bug
+// (cache value vs. serialized batch value computed differently for the same
+// key) — NOT a race between two concurrent commit paths. The earlier
+// "racing checkpoint commit" failure mode (issue #424 / EN-1235) is no
+// longer possible.
 func verifyPostCommitVolumes(
 	store dal.PebbleGetter,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
@@ -130,7 +139,13 @@ func verifyPostCommitVolumes(
 		expectedOutput := update.New.GetOutput().ToBigInt()
 
 		if pebbleInput.Cmp(expectedInput) != 0 || pebbleOutput.Cmp(expectedOutput) != 0 {
-			// Log full diagnostic before asserting
+			// Log full diagnostic before asserting.
+			//
+			// Genuine FSM bug — not a race. Single committer + snapshot read
+			// rule out the previous mid-batch-commit cause (see #424 / EN-1235).
+			// Look at the SENTINEL TRACE entries dumped right after for the
+			// proposal that produced this update, and at deduplicateVolumeUpdates
+			// for cross-entry interactions.
 			logger.WithFields(map[string]any{
 				"ledger":         update.Key.LedgerID,
 				"account":        update.Key.Account,
@@ -142,7 +157,7 @@ func verifyPostCommitVolumes(
 				"raftIndex":      raftIndex,
 				"canonicalKey":   hex.EncodeToString(update.CanonicalKey),
 				"id":             fmt.Sprintf("%x", update.ID),
-			}).Errorf("SENTINEL DIAG: cache/pebble volume divergence")
+			}).Errorf("SENTINEL DIAG: cache/pebble volume divergence (FSM determinism bug)")
 
 			assert.Unreachable("cache pebble volume divergence", map[string]any{
 				"ledger":         update.Key.LedgerID,

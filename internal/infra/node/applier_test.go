@@ -749,13 +749,14 @@ func makeCreateQueryCheckpointEntry(t *testing.T, index uint64) (raftpb.Entry, u
 // TestApplierCascadingQueryCheckpointsDuringReplay verifies that entries after
 // a second CreateQueryCheckpoint are not lost during spool replay.
 //
-// Regression test: handleQueryCheckpointDuringReplay did not loop on cascading
-// checkpoints, so RemainingEntries from the second checkpoint were silently
-// dropped.
+// Regression test: the previous replay path did not loop on cascading
+// checkpoints, so entries after the second checkpoint were silently dropped.
+// The current path (applyReplayEntries) pre-splits at each trigger and the
+// caller loops on the remaining tail until the entire slice has been applied.
 //
 // The test bypasses the Run loop to avoid timing issues: it applies the first
 // entry directly, fills the spool with entries containing two query checkpoints,
-// then calls replaySpool to exercise the exact buggy code path.
+// then calls replaySpool to exercise the cascading path.
 func TestApplierCascadingQueryCheckpointsDuringReplay(t *testing.T) {
 	t.Parallel()
 

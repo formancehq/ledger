@@ -688,6 +688,13 @@ var ErrIdempotencyKeyInvalidUTF8 = errors.New("idempotency key contains invalid 
 // ErrMaintenanceMode is returned when maintenance mode is active and the request is not a maintenance mode toggle.
 var ErrMaintenanceMode = errors.New("cluster is in maintenance mode: write operations are blocked")
 
+// ErrCheckpointOrderNotLast is returned when a bulk request mixes a checkpoint
+// trigger (CreateQueryCheckpoint or ClosePeriod) with any non-trigger order
+// AND the trigger does not occupy the last slot. The FSM commits the batch as
+// a single atomic unit, so a trigger order must always be last — otherwise it
+// would force a mid-batch commit that races the pipelined committer.
+var ErrCheckpointOrderNotLast = errors.New("checkpoint trigger (CreateQueryCheckpoint or ClosePeriod) must be the last order in a bulk request")
+
 // allRequestsAreMaintenanceMode returns true if every request in the batch is a SetMaintenanceMode request.
 func allRequestsAreMaintenanceMode(requests []*servicepb.Request) bool {
 	for _, req := range requests {
@@ -1627,6 +1634,10 @@ func (a *Admission) requestsToOrders(ctx context.Context, reqs []*servicepb.Requ
 		}
 
 		orders[i] = order
+	}
+
+	if state.ClassifyCheckpointOrderPosition(orders) == state.CheckpointOrderInvalid {
+		return nil, nil, &domain.BusinessError{Err: ErrCheckpointOrderNotLast}
 	}
 
 	return orders, overlay, nil

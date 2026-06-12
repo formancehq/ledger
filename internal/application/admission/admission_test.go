@@ -1035,6 +1035,63 @@ func TestRequestToOrder_IdempotencyKeyValidation(t *testing.T) {
 	})
 }
 
+func TestRequestsToOrders_CheckpointOrderPosition(t *testing.T) {
+	t.Parallel()
+
+	applyReq := func() *servicepb.Request {
+		return &servicepb.Request{
+			Type: &servicepb.Request_CreateLedger{
+				CreateLedger: &servicepb.CreateLedgerRequest{Name: "ledger-" + t.Name()},
+			},
+		}
+	}
+	checkpointReq := func() *servicepb.Request {
+		return &servicepb.Request{
+			Type: &servicepb.Request_CreateQueryCheckpoint{
+				CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{},
+			},
+		}
+	}
+	closePeriodReq := func() *servicepb.Request {
+		return &servicepb.Request{
+			Type: &servicepb.Request_ClosePeriod{
+				ClosePeriod: &servicepb.ClosePeriodRequest{},
+			},
+		}
+	}
+
+	cases := []struct {
+		name    string
+		reqs    []*servicepb.Request
+		wantErr error
+	}{
+		{"empty batch", nil, nil},
+		{"single apply", []*servicepb.Request{applyReq()}, nil},
+		{"checkpoint alone", []*servicepb.Request{checkpointReq()}, nil},
+		{"close period alone", []*servicepb.Request{closePeriodReq()}, nil},
+		{"apply then checkpoint", []*servicepb.Request{applyReq(), checkpointReq()}, nil},
+		{"apply then close period", []*servicepb.Request{applyReq(), closePeriodReq()}, nil},
+		{"checkpoint then apply", []*servicepb.Request{checkpointReq(), applyReq()}, ErrCheckpointOrderNotLast},
+		{"close period then apply", []*servicepb.Request{closePeriodReq(), applyReq()}, ErrCheckpointOrderNotLast},
+		{"checkpoint mid-batch", []*servicepb.Request{applyReq(), checkpointReq(), applyReq()}, ErrCheckpointOrderNotLast},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			store := createTestStore(t)
+			adm, _ := createTestAdmission(t, store)
+
+			_, _, err := adm.requestsToOrders(t.Context(), tc.reqs)
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 // generateTestKeyPair generates an Ed25519 key pair for testing.
 func generateTestKeyPair(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
 	t.Helper()

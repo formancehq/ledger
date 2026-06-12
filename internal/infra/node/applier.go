@@ -19,6 +19,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/spool"
@@ -835,6 +836,9 @@ func (a *Applier) GetSyncProgress() *state.SyncProgress {
 
 // applyEntriesAndResolveCommands applies entries synchronously and resolves
 // futures. Used by replay paths (spool, WAL) that do not need pipelining.
+//
+// Callers must ensure no checkpoint trigger appears mid-slice; use
+// applyReplayEntries when iterating an arbitrary slice.
 func (a *Applier) applyEntriesAndResolveCommands(ctx context.Context, entries ...raftpb.Entry) (*state.ApplyEntriesResult, error) {
 	start := time.Now()
 
@@ -851,6 +855,37 @@ func (a *Applier) applyEntriesAndResolveCommands(ctx context.Context, entries ..
 	a.sweepBelowTerm(entries)
 
 	return result, nil
+}
+
+// applyReplayEntries applies a slice of entries during replay (spool or WAL),
+// splitting on checkpoint boundaries so each FSM batch contains at most one
+// trigger entry (always last). Each checkpoint is handled synchronously
+// (createReplayCheckpoint / createMainStoreCheckpoint) before continuing.
+// Cascading checkpoints in the same slice are handled by the loop.
+func (a *Applier) applyReplayEntries(ctx context.Context, entries []raftpb.Entry) error {
+	for offset := 0; offset < len(entries); {
+		boundary, err := findCheckpointBoundary(entries[offset:])
+		if err != nil {
+			return fmt.Errorf("classifying replay batch: %w", err)
+		}
+
+		end := offset + boundary
+
+		result, err := a.applyEntriesAndResolveCommands(ctx, entries[offset:end]...)
+		if err != nil {
+			return err
+		}
+
+		if result.CheckpointRequired {
+			if err := a.handleCheckpointDuringReplay(ctx, result); err != nil {
+				return err
+			}
+		}
+
+		offset = end
+	}
+
+	return nil
 }
 
 // waitPendingCommit blocks until the in-flight commit goroutine finishes.
@@ -976,8 +1011,8 @@ func (a *Applier) applyEntriesPipelined(ctx context.Context, entries ...raftpb.E
 	// for atomic ownership so a concurrent FailFuturesBelowTerm can't race
 	// to double-resolve them, and skips the deferred (last) entry when
 	// CheckpointRequired is set — that one is handled downstream by
-	// gateAndLaunchMaintenance for the hot path, or by createReplayCheckpoint
-	// / handleQueryCheckpointDuringReplay on the replay path.
+	// gateAndLaunchMaintenance for the hot path, or by
+	// handleCheckpointDuringReplay on the replay path.
 	pfs := a.extractBatchFutures(pb.Result)
 
 	// Highest term seen in this batch, used by the post-resolve sweep
@@ -990,23 +1025,20 @@ func (a *Applier) applyEntriesPipelined(ctx context.Context, entries ...raftpb.E
 		}
 	}
 
-	// Checkpoint boundaries are already committed synchronously inside
-	// PrepareEntries (via commitAndRequestCheckpoint). Resolve futures now.
-	if pb.Result.CheckpointRequired {
-		for _, pf := range pfs {
-			pf.future.Resolve(pf.result, pf.result.Error)
-		}
-
-		if maxTerm > 0 {
-			a.FailFuturesBelowTerm(maxTerm, ErrLeadershipLost)
-		}
-
-		return pb.Result, nil
-	}
-
 	// Send to the committer goroutine. Futures are resolved when the
 	// commit completes. No need to wait for the next batch.
 	a.submitAsyncCommit(pb, pfs, maxTerm)
+
+	// Checkpoint batches must be drained synchronously so the caller can
+	// safely create the Pebble checkpoint on a fully-committed store. Without
+	// this drain, handleCheckpointRequired/handleQueryCheckpointRequired would
+	// race the in-flight commit; with it, all commits go through runCommitter
+	// in a strictly serialized order (one batch = one commit).
+	if pb.Result.CheckpointRequired {
+		if err := a.waitPendingCommit(ctx); err != nil {
+			return nil, fmt.Errorf("draining commit before checkpoint: %w", err)
+		}
+	}
 
 	return pb.Result, nil
 }
@@ -1014,8 +1046,7 @@ func (a *Applier) applyEntriesPipelined(ctx context.Context, entries ...raftpb.E
 // resolveFutures resolves proposal futures from an ApplyEntriesResult.
 // Used by the replay path (applyEntriesAndResolveCommands). When
 // CheckpointRequired is set the last result is deferred — extracted by
-// extractBatchFutures and resolved later by createReplayCheckpoint or
-// handleQueryCheckpointDuringReplay.
+// extractBatchFutures and resolved later by handleCheckpointDuringReplay.
 func (a *Applier) resolveFutures(result *state.ApplyEntriesResult) {
 	for _, pf := range a.extractBatchFutures(result) {
 		pf.future.Resolve(pf.result, pf.result.Error)
@@ -1026,24 +1057,88 @@ func (a *Applier) resolveFutures(result *state.ApplyEntriesResult) {
 // The prepare phase (CPU-bound) runs immediately while the previous batch's
 // commit may still be in-flight. The commit is deferred until the next batch
 // arrives or a drain is required.
+//
+// To preserve the "one PrepareEntries call = one commit through runCommitter"
+// invariant, callers must never mix a checkpoint-trigger entry with later
+// entries in the same FSM batch. We split the input slice at the first
+// checkpoint trigger and apply the prefix as one batch; any entries past the
+// trigger are spooled before we hand control to the maintenance task so the
+// spool replay picks them up once gating clears.
 func (a *Applier) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfState, entries ...raftpb.Entry) error {
-	result, err := a.applyEntriesPipelined(ctx, entries...)
+	boundary, err := findCheckpointBoundary(entries)
+	if err != nil {
+		return fmt.Errorf("classifying checkpoint boundary: %w", err)
+	}
+
+	head := entries[:boundary]
+	tail := entries[boundary:]
+
+	result, err := a.applyEntriesPipelined(ctx, head...)
 	if err != nil {
 		return err
 	}
 
-	// If Machine stopped at a checkpoint boundary (ClosePeriod or CreateQueryCheckpoint),
-	// enter maintenance mode and create the checkpoint off the Raft hot path.
-	// The pipelined path already committed this batch synchronously.
-	if result.CheckpointRequired {
-		if result.QueryCheckpointID > 0 {
-			return a.handleQueryCheckpointRequired(ctx, entries, result)
-		}
-
-		return a.handleCheckpointRequired(ctx, entries, result)
+	if !result.CheckpointRequired {
+		return nil
 	}
 
-	return nil
+	// Spool entries past the checkpoint trigger so the spool replay picks
+	// them up after the maintenance window clears. Doing this here (instead
+	// of inside gateAndLaunchMaintenance) keeps the maintenance helper
+	// agnostic of "leftover entries" and makes the pre-split contract
+	// explicit at the call site.
+	if len(tail) > 0 {
+		if err := a.spool.AppendCommittedEntries(ctx, tail...); err != nil {
+			return fmt.Errorf("spooling entries past checkpoint trigger: %w", err)
+		}
+	}
+
+	if result.QueryCheckpointID > 0 {
+		return a.handleQueryCheckpointRequired(ctx, head, result)
+	}
+
+	return a.handleCheckpointRequired(ctx, head, result)
+}
+
+// findCheckpointBoundary returns the length of the prefix of entries that
+// should be applied as a single FSM batch — i.e. up to and including the
+// first entry whose proposal contains a checkpoint-trigger order. Entries
+// without a proposal payload (config-change entries, empty entries) cannot
+// contain triggers and are scanned through cheaply.
+//
+// Returns len(entries) when no trigger is present (apply the whole slice as
+// one batch).
+func findCheckpointBoundary(entries []raftpb.Entry) (int, error) {
+	for i := range entries {
+		hasTrigger, err := entryRequiresCheckpoint(&entries[i])
+		if err != nil {
+			return 0, fmt.Errorf("inspecting entry index %d: %w", entries[i].Index, err)
+		}
+
+		if hasTrigger {
+			return i + 1, nil
+		}
+	}
+
+	return len(entries), nil
+}
+
+// entryRequiresCheckpoint reports whether the proposal carried by entry
+// contains a checkpoint trigger order. Returns false for non-normal entries
+// (raftpb.EntryConfChange*, empty entries) which never carry a proposal.
+func entryRequiresCheckpoint(entry *raftpb.Entry) (bool, error) {
+	if entry.Type != raftpb.EntryNormal || len(entry.Data) == 0 {
+		return false, nil
+	}
+
+	cmd := raftcmdpb.ProposalFromVTPool()
+	defer cmd.ReturnToVTPool()
+
+	if err := cmd.UnmarshalVT(entry.Data); err != nil {
+		return false, fmt.Errorf("unmarshaling proposal: %w", err)
+	}
+
+	return state.ProposalRequiresCheckpoint(cmd), nil
 }
 
 // maintenanceTask is the body of a gated maintenance task. It receives the
@@ -1059,19 +1154,23 @@ type maintenanceTask func(
 
 // gateAndLaunchMaintenance is the shared setup for every "checkpoint
 // required during apply" flow:
-//  1. Spool the RemainingEntries (replayed once gating clears).
-//  2. Compute frozenAtIndex (the last applied index before the spool
-//     window).
-//  3. Mark the applier as gated with the given gatingReason.
-//  4. Extract the deferred future (the proposal that triggered gating).
-//  5. Sweep stale-term futures so they don't survive the gating window
+//  1. Compute frozenAtIndex (the last applied index — the trigger entry is
+//     the last in the slice by construction; see applyEntriesToFSM).
+//  2. Mark the applier as gated with the given gatingReason.
+//  3. Extract the deferred future (the proposal that triggered gating).
+//  4. Sweep stale-term futures so they don't survive the gating window
 //     (issue #172).
-//  6. Launch the maintenance task asynchronously.
+//  5. Launch the maintenance task asynchronously.
 //
 // Callers supply only the gating reason and the task body. The task body
 // receives the deferred result/future and the frozen index so it can
 // resolve the future with the checkpoint path on success or with the
 // error on failure.
+//
+// There are no remaining entries to spool here: applyEntriesToFSM pre-splits
+// the slice so the checkpoint trigger is always the last entry it applies.
+// Any entries received from raft AFTER gating starts go to the spool via the
+// normal hot-path routing.
 func (a *Applier) gateAndLaunchMaintenance(
 	ctx context.Context,
 	entries []raftpb.Entry,
@@ -1079,18 +1178,7 @@ func (a *Applier) gateAndLaunchMaintenance(
 	gatingReason int32,
 	task maintenanceTask,
 ) error {
-	if len(applyResult.RemainingEntries) > 0 {
-		if err := a.spool.AppendCommittedEntries(ctx, applyResult.RemainingEntries...); err != nil {
-			return fmt.Errorf("spooling remaining entries: %w", err)
-		}
-	}
-
-	var frozenAtIndex uint64
-	if len(applyResult.RemainingEntries) > 0 {
-		frozenAtIndex = applyResult.RemainingEntries[0].Index - 1
-	} else {
-		frozenAtIndex = entries[len(entries)-1].Index
-	}
+	frozenAtIndex := entries[len(entries)-1].Index
 
 	a.status.Store(statusGated)
 	a.gatingReason.Store(gatingReason)
@@ -1369,15 +1457,8 @@ func (a *Applier) replayWAL(ctx context.Context, afterIndex uint64) error {
 	for i := 0; i < len(entries); i += a.replayBatchSize {
 		end := min(i+a.replayBatchSize, len(entries))
 
-		result, err := a.applyEntriesAndResolveCommands(ctx, entries[i:end]...)
-		if err != nil {
+		if err := a.applyReplayEntries(ctx, entries[i:end]); err != nil {
 			return fmt.Errorf("applying WAL entries: %w", err)
-		}
-
-		if result.CheckpointRequired {
-			if err := a.handleCheckpointDuringReplay(ctx, result); err != nil {
-				return fmt.Errorf("handling checkpoint during WAL replay: %w", err)
-			}
 		}
 	}
 
@@ -1424,22 +1505,13 @@ func (a *Applier) replaySpoolImpl(ctx context.Context, fromIndex uint64, maxInde
 
 		batch = append(batch, entry)
 		if len(batch) >= batchSize {
-			result, err := a.applyEntriesAndResolveCommands(ctx, batch...)
-			if err != nil {
+			if err := a.applyReplayEntries(ctx, batch); err != nil {
 				return err
 			}
 
 			count += len(batch)
 			batch = batch[:0]
 			lastEntry = &entry
-
-			// Handle checkpoint during replay (ClosePeriod)
-			if result.CheckpointRequired {
-				err := a.handleCheckpointDuringReplay(ctx, result)
-				if err != nil {
-					return err
-				}
-			}
 		}
 
 		return nil
@@ -1450,20 +1522,11 @@ func (a *Applier) replaySpoolImpl(ctx context.Context, fromIndex uint64, maxInde
 	if len(batch) > 0 {
 		count += len(batch)
 
-		result, err := a.applyEntriesAndResolveCommands(ctx, batch...)
-		if err != nil {
+		if err := a.applyReplayEntries(ctx, batch); err != nil {
 			return count, err
 		}
 
 		lastEntry = new(batch[len(batch)-1])
-
-		// Handle checkpoint during replay (ClosePeriod or CreateCheckpoint)
-		if result.CheckpointRequired {
-			err := a.handleCheckpointDuringReplay(ctx, result)
-			if err != nil {
-				return count, err
-			}
-		}
 	}
 
 	if lastEntry != nil {
@@ -1480,42 +1543,26 @@ func (a *Applier) replaySpoolImpl(ctx context.Context, fromIndex uint64, maxInde
 }
 
 // handleCheckpointDuringReplay creates a checkpoint synchronously when a
-// checkpoint-requiring entry (ClosePeriod or CreateQueryCheckpoint) is
-// encountered during spool/WAL replay.
-// Unlike handleCheckpointRequired, this does not enter maintenance mode -- the
-// checkpoint is created synchronously (acceptable since we're already off
-// the hot path) and remaining entries are applied directly.
-func (a *Applier) handleCheckpointDuringReplay(ctx context.Context, applyResult *state.ApplyEntriesResult) error {
-	if cpID := applyResult.QueryCheckpointID; cpID > 0 {
-		return a.handleQueryCheckpointDuringReplay(ctx, applyResult)
-	}
-
-	if err := a.createReplayCheckpoint(applyResult); err != nil {
-		return err
-	}
-
-	// Apply remaining entries. Loop to handle cascading checkpoints
-	// (multiple ClosePeriod entries in the same spool batch).
-	remaining := applyResult.RemainingEntries
-
-	for len(remaining) > 0 {
-		remainResult, err := a.applyEntriesAndResolveCommands(ctx, remaining...)
-		if err != nil {
-			return fmt.Errorf("applying remaining entries after checkpoint during replay: %w", err)
+// checkpoint-requiring entry (ClosePeriod or CreateQueryCheckpoint) is the
+// last entry of a replay batch. Unlike handleCheckpointRequired, this does
+// not enter maintenance mode — we are already off the hot path. Callers
+// (replayWAL, replaySpoolImpl) pre-split so the checkpoint trigger is always
+// the last applied entry; cascading checkpoints in the same source slice are
+// handled by the caller's outer loop.
+func (a *Applier) handleCheckpointDuringReplay(_ context.Context, applyResult *state.ApplyEntriesResult) error {
+	if applyResult.QueryCheckpointID > 0 {
+		if err := a.createMainStoreCheckpoint(applyResult.QueryCheckpointID); err != nil {
+			return fmt.Errorf("during replay: %w", err)
 		}
 
-		if !remainResult.CheckpointRequired {
-			break
+		if lastResult, deferred := a.extractDeferredFuture(applyResult); deferred != nil {
+			deferred.Resolve(*lastResult, nil)
 		}
 
-		if err := a.createReplayCheckpoint(remainResult); err != nil {
-			return err
-		}
-
-		remaining = remainResult.RemainingEntries
+		return nil
 	}
 
-	return nil
+	return a.createReplayCheckpoint(applyResult)
 }
 
 // createReplayCheckpoint creates a checkpoint for a ClosePeriod entry encountered
@@ -1541,37 +1588,6 @@ func (a *Applier) createReplayCheckpoint(result *state.ApplyEntriesResult) error
 	}
 
 	return nil
-}
-
-// handleQueryCheckpointDuringReplay creates query checkpoint stores synchronously
-// during spool/WAL replay. It loops to handle cascading checkpoints (multiple
-// CreateQueryCheckpoint entries in the same spool batch).
-func (a *Applier) handleQueryCheckpointDuringReplay(ctx context.Context, applyResult *state.ApplyEntriesResult) error {
-	for {
-		if err := a.createMainStoreCheckpoint(applyResult.QueryCheckpointID); err != nil {
-			return fmt.Errorf("during replay: %w", err)
-		}
-
-		// Resolve the deferred future.
-		if lastResult, deferred := a.extractDeferredFuture(applyResult); deferred != nil {
-			deferred.Resolve(*lastResult, nil)
-		}
-
-		if len(applyResult.RemainingEntries) == 0 {
-			return nil
-		}
-
-		remainResult, err := a.applyEntriesAndResolveCommands(ctx, applyResult.RemainingEntries...)
-		if err != nil {
-			return fmt.Errorf("applying remaining entries after query checkpoint replay: %w", err)
-		}
-
-		if !remainResult.CheckpointRequired {
-			return nil
-		}
-
-		applyResult = remainResult
-	}
 }
 
 // createMainStoreCheckpoint creates a physical Pebble checkpoint of the main store.

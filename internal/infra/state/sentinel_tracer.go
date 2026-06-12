@@ -18,9 +18,18 @@ import (
 // It logs each entry as it is processed (proposal applied/rejected), emits
 // lifecycle.SendEvent for Antithesis causality analysis, and accumulates
 // volume details for a full dump only when a post-commit sentinel check fails.
+//
+// One instance is allocated per PrepareEntries invocation (and threaded through
+// the WriteSet) so that a later batch's traces don't overwrite the entries the
+// pipelined committer is about to dump on a sentinel failure.
 type SentinelTracer struct {
 	logger  logging.Logger
 	entries []sentinelEntryTrace
+}
+
+// NewSentinelTracer creates a tracer scoped to one PrepareEntries call.
+func NewSentinelTracer(logger logging.Logger) *SentinelTracer {
+	return &SentinelTracer{logger: logger}
 }
 
 type sentinelVolumeTrace struct {
@@ -44,16 +53,6 @@ type sentinelEntryTrace struct {
 	Rejected     bool
 	Error        string
 	LogCount     int
-}
-
-// Init sets the logger. Called once at Machine construction.
-func (t *SentinelTracer) Init(logger logging.Logger) {
-	t.logger = logger
-}
-
-// Reset clears the tracer for reuse at the start of each PrepareEntries.
-func (t *SentinelTracer) Reset() {
-	t.entries = t.entries[:0]
 }
 
 // SkipEntry logs a skipped non-normal/empty entry.
