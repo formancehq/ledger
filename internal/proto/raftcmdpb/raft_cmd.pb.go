@@ -3593,7 +3593,7 @@ type Proposal struct {
 	MetadataConversionBatches   []*MetadataConversionBatch      `protobuf:"bytes,10,rep,name=metadata_conversion_batches,json=metadataConversionBatches,proto3" json:"metadata_conversion_batches,omitempty"`       // Background metadata conversion batches (no log entry)
 	MetadataConversionsComplete []*MetadataConversionCompletion `protobuf:"bytes,11,rep,name=metadata_conversions_complete,json=metadataConversionsComplete,proto3" json:"metadata_conversions_complete,omitempty"` // Background metadata conversion completions (no log entry)
 	IndexReadyUpdates           []*IndexReadyUpdate             `protobuf:"bytes,12,rep,name=index_ready_updates,json=indexReadyUpdates,proto3" json:"index_ready_updates,omitempty"`                               // Index ready signals from index builder (no log entry)
-	Caller                      *commonpb.CallerIdentity        `protobuf:"bytes,13,opt,name=caller,proto3" json:"caller,omitempty"`                                                                                // Authenticated caller identity (nil for system proposals)
+	CallerSnapshot              *commonpb.CallerSnapshot        `protobuf:"bytes,14,opt,name=caller_snapshot,json=callerSnapshot,proto3" json:"caller_snapshot,omitempty"`                                          // Admission-time auth snapshot (nil for system proposals); persisted into AuditEntry by the FSM.
 	unknownFields               protoimpl.UnknownFields
 	sizeCache                   protoimpl.SizeCache
 }
@@ -3712,9 +3712,9 @@ func (x *Proposal) GetIndexReadyUpdates() []*IndexReadyUpdate {
 	return nil
 }
 
-func (x *Proposal) GetCaller() *commonpb.CallerIdentity {
+func (x *Proposal) GetCallerSnapshot() *commonpb.CallerSnapshot {
 	if x != nil {
-		return x.Caller
+		return x.CallerSnapshot
 	}
 	return nil
 }
@@ -6161,7 +6161,7 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"E\n" +
 	"\x19DeleteLedgerMetadataOrder\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\"\x96\x06\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\"\xb5\x06\n" +
 	"\bProposal\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x06R\x02id\x12#\n" +
 	"\x06orders\x18\x02 \x03(\v2\v.raft.OrderR\x06orders\x12%\n" +
@@ -6175,8 +6175,8 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x1bmetadata_conversion_batches\x18\n" +
 	" \x03(\v2\x1d.raft.MetadataConversionBatchR\x19metadataConversionBatches\x12f\n" +
 	"\x1dmetadata_conversions_complete\x18\v \x03(\v2\".raft.MetadataConversionCompletionR\x1bmetadataConversionsComplete\x12F\n" +
-	"\x13index_ready_updates\x18\f \x03(\v2\x16.raft.IndexReadyUpdateR\x11indexReadyUpdates\x12.\n" +
-	"\x06caller\x18\r \x01(\v2\x16.common.CallerIdentityR\x06caller\"\xa4\x01\n" +
+	"\x13index_ready_updates\x18\f \x03(\v2\x16.raft.IndexReadyUpdateR\x11indexReadyUpdates\x12?\n" +
+	"\x0fcaller_snapshot\x18\x0e \x01(\v2\x16.common.CallerSnapshotR\x0ecallerSnapshotJ\x04\b\r\x10\x0eR\x06caller\"\xa4\x01\n" +
 	"\x13IdempotencyEviction\x12#\n" +
 	"\rcutoff_micros\x18\x01 \x01(\x06R\fcutoffMicros\x12*\n" +
 	"\x11pebble_key_hashes\x18\x02 \x03(\fR\x0fpebbleKeyHashes\x12<\n" +
@@ -6464,7 +6464,7 @@ var file_raft_cmd_proto_goTypes = []any{
 	(*commonpb.MetadataValue)(nil),               // 114: common.MetadataValue
 	(*commonpb.Script)(nil),                      // 115: common.Script
 	(*commonpb.ClusterConfig)(nil),               // 116: common.ClusterConfig
-	(*commonpb.CallerIdentity)(nil),              // 117: common.CallerIdentity
+	(*commonpb.CallerSnapshot)(nil),              // 117: common.CallerSnapshot
 	(*commonpb.MirrorSyncError)(nil),             // 118: common.MirrorSyncError
 	(*commonpb.SinkError)(nil),                   // 119: common.SinkError
 	(*commonpb.Log)(nil),                         // 120: common.Log
@@ -6581,7 +6581,7 @@ var file_raft_cmd_proto_depIdxs = []int32{
 	40,  // 100: raft.Proposal.metadata_conversion_batches:type_name -> raft.MetadataConversionBatch
 	42,  // 101: raft.Proposal.metadata_conversions_complete:type_name -> raft.MetadataConversionCompletion
 	36,  // 102: raft.Proposal.index_ready_updates:type_name -> raft.IndexReadyUpdate
-	117, // 103: raft.Proposal.caller:type_name -> common.CallerIdentity
+	117, // 103: raft.Proposal.caller_snapshot:type_name -> common.CallerSnapshot
 	118, // 104: raft.MirrorSyncUpdate.error:type_name -> common.MirrorSyncError
 	119, // 105: raft.EventsSinkUpdate.error:type_name -> common.SinkError
 	120, // 106: raft.CreatedLogOrReference.created_log:type_name -> common.Log

@@ -179,12 +179,24 @@ message ApplyRequest {
   // Only the sequence number is returned for each log. Useful for
   // historical ingestion where the client does not need the full response.
   bool skip_response = 2;
-  // forwarded_caller carries the authenticated caller identity captured by
-  // the forwarding follower. The leader honors this field ONLY when the
-  // incoming connection authenticates via cluster-secret (trusted peer);
-  // direct client requests have it derived from validated JWT/Ed25519
-  // claims on the leader and any value sent here is ignored.
-  common.CallerIdentity forwarded_caller = 3;
+  // Field 3 previously held `common.CallerIdentity forwarded_caller`
+  // (subject + scopes + god + source). The type was split into
+  // `CallerIdentity` (identification only) and `CallerSnapshot`
+  // (admission-time identity + scopes + god). Reusing the field with the
+  // new type is unsafe across rolling upgrades — both old and new bytes
+  // are length-delimited and decode silently into a snapshot with empty
+  // scopes/subject. Keep 3 reserved forever and write the new snapshot
+  // at field 4.
+  reserved 3;
+  reserved "forwarded_caller";
+
+  // forwarded_caller_snapshot carries the admission-time caller snapshot
+  // (identity + scopes + god) captured by the forwarding follower. The
+  // leader honors this field ONLY when the incoming connection authenticates
+  // via cluster-secret (trusted peer); direct client requests have it
+  // derived from validated JWT/Ed25519 claims on the leader and any value
+  // sent here is ignored.
+  common.CallerSnapshot forwarded_caller_snapshot = 4;
 }
 
 message ApplyResponse {

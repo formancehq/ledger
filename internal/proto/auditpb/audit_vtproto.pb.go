@@ -32,7 +32,7 @@ func (m *AuditEntry) CloneVT() *AuditEntry {
 	r.ProposalId = m.ProposalId
 	r.OrderCount = m.OrderCount
 	r.HashVersion = m.HashVersion
-	r.Caller = m.Caller.CloneVT()
+	r.CallerSnapshot = m.CallerSnapshot.CloneVT()
 	if m.Outcome != nil {
 		r.Outcome = m.Outcome.(interface{ CloneVT() isAuditEntry_Outcome }).CloneVT()
 	}
@@ -241,7 +241,7 @@ func (this *AuditEntry) EqualVT(that *AuditEntry) bool {
 	if this.HashVersion != that.HashVersion {
 		return false
 	}
-	if !this.Caller.EqualVT(that.Caller) {
+	if !this.CallerSnapshot.EqualVT(that.CallerSnapshot) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -489,15 +489,15 @@ func (m *AuditEntry) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		}
 		i -= size
 	}
-	if m.Caller != nil {
-		size, err := m.Caller.MarshalToSizedBufferVT(dAtA[:i])
+	if m.CallerSnapshot != nil {
+		size, err := m.CallerSnapshot.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x5a
+		dAtA[i] = 0x62
 	}
 	if m.HashVersion != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.HashVersion))
@@ -892,8 +892,8 @@ func (m *AuditEntry) SizeVT() (n int) {
 	if m.HashVersion != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.HashVersion))
 	}
-	if m.Caller != nil {
-		l = m.Caller.SizeVT()
+	if m.CallerSnapshot != nil {
+		l = m.CallerSnapshot.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -1333,9 +1333,9 @@ func (m *AuditEntry) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 11:
+		case 12:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Caller", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field CallerSnapshot", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -1362,10 +1362,10 @@ func (m *AuditEntry) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.Caller == nil {
-				m.Caller = &commonpb.CallerIdentity{}
+			if m.CallerSnapshot == nil {
+				m.CallerSnapshot = &commonpb.CallerSnapshot{}
 			}
-			if err := m.Caller.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if err := m.CallerSnapshot.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex

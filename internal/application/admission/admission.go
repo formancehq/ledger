@@ -377,7 +377,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	a.preloadCacheHitsCounter.Add(ctx, cacheHits)
 
 	cmd.Preload = build.PreloadSet
-	cmd.Caller = auth.ResolveCallerIdentity(ctx)
+	cmd.CallerSnapshot = auth.ResolveCallerSnapshot(ctx)
 	preloadSpan.End()
 
 	// Step 5: Pre-marshal outside the proposal lock.

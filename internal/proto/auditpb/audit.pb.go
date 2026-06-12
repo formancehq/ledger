@@ -50,10 +50,12 @@ type AuditEntry struct {
 	Hash []byte `protobuf:"bytes,9,opt,name=hash,proto3" json:"hash,omitempty"`
 	// Hash algorithm version (matches common.HashAlgorithm enum).
 	HashVersion uint32 `protobuf:"varint,10,opt,name=hash_version,json=hashVersion,proto3" json:"hash_version,omitempty"`
-	// Authenticated caller identity. Nil when auth is disabled or for system-initiated proposals.
-	Caller        *commonpb.CallerIdentity `protobuf:"bytes,11,opt,name=caller,proto3" json:"caller,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// Admission-time auth snapshot: caller identification + the
+	// authorization granted at admission. Nil when auth is disabled or
+	// for system-initiated proposals.
+	CallerSnapshot *commonpb.CallerSnapshot `protobuf:"bytes,12,opt,name=caller_snapshot,json=callerSnapshot,proto3" json:"caller_snapshot,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *AuditEntry) Reset() {
@@ -167,9 +169,9 @@ func (x *AuditEntry) GetHashVersion() uint32 {
 	return 0
 }
 
-func (x *AuditEntry) GetCaller() *commonpb.CallerIdentity {
+func (x *AuditEntry) GetCallerSnapshot() *commonpb.CallerSnapshot {
 	if x != nil {
-		return x.Caller
+		return x.CallerSnapshot
 	}
 	return nil
 }
@@ -445,7 +447,7 @@ var File_audit_proto protoreflect.FileDescriptor
 
 const file_audit_proto_rawDesc = "" +
 	"\n" +
-	"\vaudit.proto\x12\x05audit\x1a\fcommon.proto\x1a\x0eraft_cmd.proto\"\xb1\x03\n" +
+	"\vaudit.proto\x12\x05audit\x1a\fcommon.proto\x1a\x0eraft_cmd.proto\"\xd0\x03\n" +
 	"\n" +
 	"AuditEntry\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x06R\bsequence\x12/\n" +
@@ -460,9 +462,9 @@ const file_audit_proto_rawDesc = "" +
 	"\aledgers\x18\b \x03(\tR\aledgers\x12\x12\n" +
 	"\x04hash\x18\t \x01(\fR\x04hash\x12!\n" +
 	"\fhash_version\x18\n" +
-	" \x01(\rR\vhashVersion\x12.\n" +
-	"\x06caller\x18\v \x01(\v2\x16.common.CallerIdentityR\x06callerB\t\n" +
-	"\aoutcome\"r\n" +
+	" \x01(\rR\vhashVersion\x12?\n" +
+	"\x0fcaller_snapshot\x18\f \x01(\v2\x16.common.CallerSnapshotR\x0ecallerSnapshotB\t\n" +
+	"\aoutcomeJ\x04\b\v\x10\fR\x06caller\"r\n" +
 	"\tAuditItem\x12\x1f\n" +
 	"\vorder_index\x18\x01 \x01(\rR\n" +
 	"orderIndex\x12!\n" +
@@ -513,7 +515,7 @@ var file_audit_proto_goTypes = []any{
 	nil,                             // 6: audit.AuditSuccess.PurgedAccountsEntry
 	nil,                             // 7: audit.AuditFailure.ContextEntry
 	(*commonpb.Timestamp)(nil),      // 8: common.Timestamp
-	(*commonpb.CallerIdentity)(nil), // 9: common.CallerIdentity
+	(*commonpb.CallerSnapshot)(nil), // 9: common.CallerSnapshot
 	(*raftcmdpb.Order)(nil),         // 10: raft.Order
 }
 var file_audit_proto_depIdxs = []int32{
@@ -521,7 +523,7 @@ var file_audit_proto_depIdxs = []int32{
 	2,  // 1: audit.AuditEntry.success:type_name -> audit.AuditSuccess
 	4,  // 2: audit.AuditEntry.failure:type_name -> audit.AuditFailure
 	1,  // 3: audit.AuditEntry.items:type_name -> audit.AuditItem
-	9,  // 4: audit.AuditEntry.caller:type_name -> common.CallerIdentity
+	9,  // 4: audit.AuditEntry.caller_snapshot:type_name -> common.CallerSnapshot
 	10, // 5: audit.AuditItem.order:type_name -> raft.Order
 	5,  // 6: audit.AuditSuccess.transient_accounts:type_name -> audit.AuditSuccess.TransientAccountsEntry
 	6,  // 7: audit.AuditSuccess.purged_accounts:type_name -> audit.AuditSuccess.PurgedAccountsEntry

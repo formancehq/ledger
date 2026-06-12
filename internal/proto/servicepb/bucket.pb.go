@@ -886,14 +886,15 @@ type ApplyRequest struct {
 	// Only the sequence number is returned for each log. Useful for
 	// historical ingestion where the client does not need the full response.
 	SkipResponse bool `protobuf:"varint,2,opt,name=skip_response,json=skipResponse,proto3" json:"skip_response,omitempty"`
-	// forwarded_caller carries the authenticated caller identity captured by
-	// the forwarding follower. The leader honors this field ONLY when the
-	// incoming connection authenticates via cluster-secret (trusted peer);
-	// direct client requests have it derived from validated JWT/Ed25519
-	// claims on the leader and any value sent here is ignored.
-	ForwardedCaller *commonpb.CallerIdentity `protobuf:"bytes,3,opt,name=forwarded_caller,json=forwardedCaller,proto3" json:"forwarded_caller,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// forwarded_caller_snapshot carries the admission-time caller snapshot
+	// (identity + scopes + god) captured by the forwarding follower. The
+	// leader honors this field ONLY when the incoming connection authenticates
+	// via cluster-secret (trusted peer); direct client requests have it
+	// derived from validated JWT/Ed25519 claims on the leader and any value
+	// sent here is ignored.
+	ForwardedCallerSnapshot *commonpb.CallerSnapshot `protobuf:"bytes,4,opt,name=forwarded_caller_snapshot,json=forwardedCallerSnapshot,proto3" json:"forwarded_caller_snapshot,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *ApplyRequest) Reset() {
@@ -940,9 +941,9 @@ func (x *ApplyRequest) GetSkipResponse() bool {
 	return false
 }
 
-func (x *ApplyRequest) GetForwardedCaller() *commonpb.CallerIdentity {
+func (x *ApplyRequest) GetForwardedCallerSnapshot() *commonpb.CallerSnapshot {
 	if x != nil {
-		return x.ForwardedCaller
+		return x.ForwardedCallerSnapshot
 	}
 	return nil
 }
@@ -8618,11 +8619,11 @@ const file_bucket_proto_rawDesc = "" +
 	"\rcheckpoint_id\x18\x02 \x01(\x06R\fcheckpointId\"O\n" +
 	"\x10GetLedgerRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12#\n" +
-	"\rcheckpoint_id\x18\x02 \x01(\x06R\fcheckpointId\"\xa3\x01\n" +
+	"\rcheckpoint_id\x18\x02 \x01(\x06R\fcheckpointId\"\xcc\x01\n" +
 	"\fApplyRequest\x12+\n" +
 	"\brequests\x18\x01 \x03(\v2\x0f.ledger.RequestR\brequests\x12#\n" +
-	"\rskip_response\x18\x02 \x01(\bR\fskipResponse\x12A\n" +
-	"\x10forwarded_caller\x18\x03 \x01(\v2\x16.common.CallerIdentityR\x0fforwardedCaller\"0\n" +
+	"\rskip_response\x18\x02 \x01(\bR\fskipResponse\x12R\n" +
+	"\x19forwarded_caller_snapshot\x18\x04 \x01(\v2\x16.common.CallerSnapshotR\x17forwardedCallerSnapshotJ\x04\b\x03\x10\x04R\x10forwarded_caller\"0\n" +
 	"\rApplyResponse\x12\x1f\n" +
 	"\x04logs\x18\x01 \x03(\v2\v.common.LogR\x04logs\"\x93\x17\n" +
 	"\aRequest\x12'\n" +
@@ -9395,7 +9396,7 @@ var file_bucket_proto_goTypes = []any{
 	(commonpb.LedgerMode)(0),                       // 142: common.LedgerMode
 	(*commonpb.MirrorSourceConfig)(nil),            // 143: common.MirrorSourceConfig
 	(commonpb.ChartEnforcementMode)(0),             // 144: common.ChartEnforcementMode
-	(*commonpb.CallerIdentity)(nil),                // 145: common.CallerIdentity
+	(*commonpb.CallerSnapshot)(nil),                // 145: common.CallerSnapshot
 	(*commonpb.Log)(nil),                           // 146: common.Log
 	(*signaturepb.RequestSignature)(nil),           // 147: signature.RequestSignature
 	(*commonpb.SinkConfig)(nil),                    // 148: common.SinkConfig
@@ -9436,7 +9437,7 @@ var file_bucket_proto_depIdxs = []int32{
 	129, // 6: ledger.CreateLedgerRequest.account_types:type_name -> ledger.CreateLedgerRequest.AccountTypesEntry
 	144, // 7: ledger.CreateLedgerRequest.default_enforcement_mode:type_name -> common.ChartEnforcementMode
 	16,  // 8: ledger.ApplyRequest.requests:type_name -> ledger.Request
-	145, // 9: ledger.ApplyRequest.forwarded_caller:type_name -> common.CallerIdentity
+	145, // 9: ledger.ApplyRequest.forwarded_caller_snapshot:type_name -> common.CallerSnapshot
 	146, // 10: ledger.ApplyResponse.logs:type_name -> common.Log
 	55,  // 11: ledger.Request.apply:type_name -> ledger.LedgerApplyRequest
 	9,   // 12: ledger.Request.create_ledger:type_name -> ledger.CreateLedgerRequest

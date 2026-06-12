@@ -101,13 +101,20 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 		return nil, err
 	}
 
-	ctx = adoptForwardedCallerIfTrusted(ctx, req)
+	ctx = adoptForwardedSnapshotIfTrusted(ctx, req)
 
 	if len(req.GetRequests()) == 0 {
 		return nil, errors.New("at least one request is required")
 	}
 
-	// Per-request scope check: each request in the batch may require a different granular scope.
+	// Per-request scope check: each request in the batch may require a
+	// different granular scope. Note: for cluster-internal forwards
+	// (cluster-secret authenticated peers), Authenticate grants the full
+	// scope set so this loop is a no-op by design — the forwarding follower
+	// has already enforced per-request scopes against the original user's
+	// claims. The forwarded snapshot's Scopes field is recorded for audit
+	// (carried via WithForwardedSnapshot above) but is never consulted for
+	// authorization here.
 	if impl.authCfg.Enabled {
 		effective := internalauth.ExpandedScopesFromContext(ctx)
 		authPresented := internalauth.AuthPresentedFromContext(ctx)
@@ -174,21 +181,23 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 	return &servicepb.ApplyResponse{Logs: logs}, nil
 }
 
-// adoptForwardedCallerIfTrusted attaches the request's forwarded_caller to the
-// context when (and only when) the connection authenticated via cluster-secret.
-// This is the trust boundary that lets a follower forward a user's identity
-// to the leader for audit purposes without letting regular clients spoof it.
-func adoptForwardedCallerIfTrusted(ctx context.Context, req *servicepb.ApplyRequest) context.Context {
+// adoptForwardedSnapshotIfTrusted attaches the request's
+// forwarded_caller_snapshot to the context when (and only when) the
+// connection authenticated via the cluster-secret. This is the trust
+// boundary that lets a follower forward a user's admission-time snapshot
+// (identity + scopes + god) to the leader for audit purposes without
+// letting regular clients spoof it.
+func adoptForwardedSnapshotIfTrusted(ctx context.Context, req *servicepb.ApplyRequest) context.Context {
 	if !internalauth.IsClusterInternal(ctx) {
 		return ctx
 	}
 
-	fc := req.GetForwardedCaller()
+	fc := req.GetForwardedCallerSnapshot()
 	if fc == nil {
 		return ctx
 	}
 
-	return internalauth.WithForwardedCaller(ctx, fc)
+	return internalauth.WithForwardedSnapshot(ctx, fc)
 }
 
 // signReceiptIfNeeded signs a JWT receipt for logs containing created transactions.

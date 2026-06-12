@@ -19,7 +19,7 @@ type AuditEntryReader interface {
 	GetLedgers() []string
 	GetHash() []byte
 	GetHashVersion() uint32
-	GetCaller() commonpb.CallerIdentityReader
+	GetCallerSnapshot() commonpb.CallerSnapshotReader
 	GetOutcome() isAuditEntry_Outcome
 	Mutate() *AuditEntry
 }
@@ -62,8 +62,8 @@ func (r *auditEntryReadonly) GetHashVersion() uint32 {
 	return r.v.GetHashVersion()
 }
 
-func (r *auditEntryReadonly) GetCaller() commonpb.CallerIdentityReader {
-	v := r.v.GetCaller()
+func (r *auditEntryReadonly) GetCallerSnapshot() commonpb.CallerSnapshotReader {
+	v := r.v.GetCallerSnapshot()
 	if v == nil {
 		return nil
 	}

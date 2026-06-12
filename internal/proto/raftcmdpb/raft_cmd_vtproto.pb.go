@@ -1508,7 +1508,7 @@ func (m *Proposal) CloneVT() *Proposal {
 	r.PredictedIndex = m.PredictedIndex
 	r.IdempotencyEviction = m.IdempotencyEviction.CloneVT()
 	r.ClusterConfig = m.ClusterConfig.CloneVT()
-	r.Caller = m.Caller.CloneVT()
+	r.CallerSnapshot = m.CallerSnapshot.CloneVT()
 	if rhs := m.Orders; rhs != nil {
 		tmpContainer := make([]*Order, len(rhs))
 		for k, v := range rhs {
@@ -5105,7 +5105,7 @@ func (this *Proposal) EqualVT(that *Proposal) bool {
 			}
 		}
 	}
-	if !this.Caller.EqualVT(that.Caller) {
+	if !this.CallerSnapshot.EqualVT(that.CallerSnapshot) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -10108,15 +10108,15 @@ func (m *Proposal) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Caller != nil {
-		size, err := m.Caller.MarshalToSizedBufferVT(dAtA[:i])
+	if m.CallerSnapshot != nil {
+		size, err := m.CallerSnapshot.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x6a
+		dAtA[i] = 0x72
 	}
 	if len(m.IndexReadyUpdates) > 0 {
 		for iNdEx := len(m.IndexReadyUpdates) - 1; iNdEx >= 0; iNdEx-- {
@@ -14236,8 +14236,8 @@ func (m *Proposal) SizeVT() (n int) {
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
 	}
-	if m.Caller != nil {
-		l = m.Caller.SizeVT()
+	if m.CallerSnapshot != nil {
+		l = m.CallerSnapshot.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -24285,9 +24285,9 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 13:
+		case 14:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Caller", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field CallerSnapshot", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -24314,10 +24314,10 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.Caller == nil {
-				m.Caller = &commonpb.CallerIdentity{}
+			if m.CallerSnapshot == nil {
+				m.CallerSnapshot = &commonpb.CallerSnapshot{}
 			}
-			if err := m.Caller.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if err := m.CallerSnapshot.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex

@@ -1997,7 +1997,7 @@ type ProposalReader interface {
 	GetMetadataConversionBatches() []*MetadataConversionBatch
 	GetMetadataConversionsComplete() []*MetadataConversionCompletion
 	GetIndexReadyUpdates() []*IndexReadyUpdate
-	GetCaller() commonpb.CallerIdentityReader
+	GetCallerSnapshot() commonpb.CallerSnapshotReader
 	Mutate() *Proposal
 }
 
@@ -2067,8 +2067,8 @@ func (r *proposalReadonly) GetIndexReadyUpdates() []*IndexReadyUpdate {
 	return r.v.GetIndexReadyUpdates()
 }
 
-func (r *proposalReadonly) GetCaller() commonpb.CallerIdentityReader {
-	v := r.v.GetCaller()
+func (r *proposalReadonly) GetCallerSnapshot() commonpb.CallerSnapshotReader {
+	v := r.v.GetCallerSnapshot()
 	if v == nil {
 		return nil
 	}

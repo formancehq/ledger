@@ -1053,13 +1053,14 @@ func TestApply_Error(t *testing.T) {
 	require.Contains(t, err.Error(), "gRPC call failed")
 }
 
-// TestApply_ForwardsCallerIdentity verifies that when a follower forwards an
-// Apply to the leader, it captures the authenticated caller from the local
-// context and includes it on the wire so the leader can attribute the audit
-// entry to the original user despite the cluster-secret hop.
+// TestApply_ForwardsCallerSnapshot verifies that when a follower forwards an
+// Apply to the leader, it captures the admission-time caller snapshot
+// (identity + scopes + god) from the local context and includes it on the
+// wire so the leader can attribute the audit entry to the original user
+// despite the cluster-secret hop.
 //
-// Regression test for #362.
-func TestApply_ForwardsCallerIdentity(t *testing.T) {
+// Regression test for #362 / EN-1079.
+func TestApply_ForwardsCallerSnapshot(t *testing.T) {
 	t.Parallel()
 
 	mock := &mockBucketServiceClient{
@@ -1078,16 +1079,17 @@ func TestApply_ForwardsCallerIdentity(t *testing.T) {
 	_, err := client.Apply(ctx, &servicepb.Request{})
 	require.NoError(t, err)
 
-	fc := mock.capturedApplyReq.GetForwardedCaller()
-	require.NotNil(t, fc, "follower must forward the caller identity")
-	require.Equal(t, "alice", fc.GetSubject())
-	require.Equal(t, "https://idp.example.com", fc.GetIssuer())
+	fc := mock.capturedApplyReq.GetForwardedCallerSnapshot()
+	require.NotNil(t, fc, "follower must forward the caller snapshot")
+	require.Equal(t, "alice", fc.GetIdentity().GetSubject())
+	require.Equal(t, "https://idp.example.com", fc.GetIdentity().GetIssuer())
 }
 
-// TestApply_PropagatesExistingForwardedCaller verifies that a node receiving
-// an Apply already carrying a forwarded_caller (multi-hop forward) preserves
-// the original identity rather than overwriting it with its own claims.
-func TestApply_PropagatesExistingForwardedCaller(t *testing.T) {
+// TestApply_PropagatesExistingForwardedSnapshot verifies that a node
+// receiving an Apply already carrying a forwarded_caller (multi-hop forward)
+// preserves the original snapshot rather than overwriting it with its own
+// claims.
+func TestApply_PropagatesExistingForwardedSnapshot(t *testing.T) {
 	t.Parallel()
 
 	mock := &mockBucketServiceClient{
@@ -1095,18 +1097,22 @@ func TestApply_PropagatesExistingForwardedCaller(t *testing.T) {
 	}
 
 	// Simulate a node that received the request via cluster-internal forward.
-	original := &commonpb.CallerIdentity{
-		Subject: "original-user",
-		Source:  &commonpb.CallerIdentity_KeyId{KeyId: "ed25519-7"},
+	original := &commonpb.CallerSnapshot{
+		Identity: &commonpb.CallerIdentity{
+			Subject: "original-user",
+			Source:  &commonpb.CallerIdentity_KeyId{KeyId: "ed25519-7"},
+		},
+		Scopes: []string{"transactions:write"},
 	}
-	ctx := auth.WithForwardedCaller(context.Background(), original)
+	ctx := auth.WithForwardedSnapshot(context.Background(), original)
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.Apply(ctx, &servicepb.Request{})
 	require.NoError(t, err)
 
-	fc := mock.capturedApplyReq.GetForwardedCaller()
+	fc := mock.capturedApplyReq.GetForwardedCallerSnapshot()
 	require.NotNil(t, fc)
-	require.Equal(t, "original-user", fc.GetSubject())
-	require.Equal(t, "ed25519-7", fc.GetKeyId())
+	require.Equal(t, "original-user", fc.GetIdentity().GetSubject())
+	require.Equal(t, "ed25519-7", fc.GetIdentity().GetKeyId())
+	require.Equal(t, []string{"transactions:write"}, fc.GetScopes())
 }

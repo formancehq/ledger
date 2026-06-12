@@ -5053,8 +5053,6 @@ func (m *PersistedConfig) Mutate() *PersistedConfig {
 // Call Mutate() to obtain a mutable clone.
 type CallerIdentityReader interface {
 	GetSubject() string
-	GetScopes() []string
-	GetGod() bool
 	GetSource() isCallerIdentity_Source
 	Mutate() *CallerIdentity
 }
@@ -5063,14 +5061,6 @@ type callerIdentityReadonly struct{ v *CallerIdentity }
 
 func (r *callerIdentityReadonly) GetSubject() string {
 	return r.v.GetSubject()
-}
-
-func (r *callerIdentityReadonly) GetScopes() []string {
-	return r.v.GetScopes()
-}
-
-func (r *callerIdentityReadonly) GetGod() bool {
-	return r.v.GetGod()
 }
 
 func (r *callerIdentityReadonly) GetSource() isCallerIdentity_Source {
@@ -5091,5 +5081,49 @@ func (m *CallerIdentity) AsReader() CallerIdentityReader {
 
 // Mutate returns a mutable deep clone of this CallerIdentity.
 func (m *CallerIdentity) Mutate() *CallerIdentity {
+	return m.CloneVT()
+}
+
+// CallerSnapshotReader provides read-only access to CallerSnapshot.
+// Call Mutate() to obtain a mutable clone.
+type CallerSnapshotReader interface {
+	GetIdentity() CallerIdentityReader
+	GetScopes() []string
+	GetGod() bool
+	Mutate() *CallerSnapshot
+}
+
+type callerSnapshotReadonly struct{ v *CallerSnapshot }
+
+func (r *callerSnapshotReadonly) GetIdentity() CallerIdentityReader {
+	v := r.v.GetIdentity()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *callerSnapshotReadonly) GetScopes() []string {
+	return r.v.GetScopes()
+}
+
+func (r *callerSnapshotReadonly) GetGod() bool {
+	return r.v.GetGod()
+}
+
+func (r *callerSnapshotReadonly) Mutate() *CallerSnapshot {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this CallerSnapshot.
+func (m *CallerSnapshot) AsReader() CallerSnapshotReader {
+	if m == nil {
+		return nil
+	}
+	return &callerSnapshotReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this CallerSnapshot.
+func (m *CallerSnapshot) Mutate() *CallerSnapshot {
 	return m.CloneVT()
 }

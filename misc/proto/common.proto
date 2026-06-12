@@ -1101,15 +1101,40 @@ message PersistedConfig {
   uint32 storage_schema_version = 4;
 }
 
-// CallerIdentity captures the authenticated caller for audit trail purposes.
-// Carried on Proposals through Raft, then copied to AuditEntry by the FSM.
-// Nil when authentication is disabled or for system-initiated proposals.
+// CallerIdentity uniquely identifies an authenticated caller. It is
+// strictly an *identification* — subject plus the mechanism that
+// authenticated it — and carries no authorization decision.
+//
+// It is safe to propagate across nodes (e.g. when a follower forwards
+// a request to the leader) because no downstream code makes an
+// authorization decision based on it: the admission point that issued
+// it already vetted the call.
 message CallerIdentity {
   string subject = 1;
-  repeated string scopes = 2;
-  bool god = 3;
+  // Fields 2 and 3 historically held `repeated string scopes` and
+  // `bool god`. They moved to CallerSnapshot when CallerIdentity was
+  // split into identification + audit snapshot. Keep them reserved so
+  // a future field can't accidentally re-use the numbers and silently
+  // collide with old persisted data.
+  reserved 2, 3;
+  reserved "scopes", "god";
   oneof source {
     string issuer = 4;   // OIDC token issuer URL
     string key_id = 5;   // Ed25519 signing key ID
   }
+}
+
+// CallerSnapshot is the *admission-time* record of who initiated an
+// action and what authorization was granted to them at that moment.
+// It exists for audit trail purposes only: scopes and god MUST NOT be
+// re-evaluated downstream (FSM, leader after a follower forward,
+// etc.).
+//
+// Carried on Proposals through Raft, then copied to AuditEntry by the
+// FSM. Nil when authentication is disabled or for system-initiated
+// proposals.
+message CallerSnapshot {
+  CallerIdentity identity = 1;
+  repeated string scopes = 2;
+  bool god = 3;
 }

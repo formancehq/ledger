@@ -379,7 +379,16 @@ message Proposal {
   repeated MetadataConversionBatch metadata_conversion_batches = 10;  // Background metadata conversion batches (no log entry)
   repeated MetadataConversionCompletion metadata_conversions_complete = 11;  // Background metadata conversion completions (no log entry)
   repeated IndexReadyUpdate index_ready_updates = 12;  // Index ready signals from index builder (no log entry)
-  common.CallerIdentity caller = 13;  // Authenticated caller identity (nil for system proposals)
+  // Field 13 previously held `common.CallerIdentity caller` (subject + scopes + god + source).
+  // The type was split into `CallerIdentity` (identification only) and
+  // `CallerSnapshot` (admission-time identity + scopes + god). Reusing the
+  // same field number with a different shape would silently mis-decode
+  // every persisted Proposal that carried the old caller — wire types are
+  // identical (length-delimited) but the inner field layout differs.
+  // Keep 13 reserved forever and write the new snapshot at 14.
+  reserved 13;
+  reserved "caller";
+  common.CallerSnapshot caller_snapshot = 14;  // Admission-time auth snapshot (nil for system proposals); persisted into AuditEntry by the FSM.
 }
 
 // IdempotencyEviction is a deterministic cleanup command proposed by the leader.

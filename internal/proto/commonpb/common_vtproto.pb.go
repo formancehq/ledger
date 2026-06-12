@@ -3431,12 +3431,6 @@ func (m *CallerIdentity) CloneVT() *CallerIdentity {
 	}
 	r := new(CallerIdentity)
 	r.Subject = m.Subject
-	r.God = m.God
-	if rhs := m.Scopes; rhs != nil {
-		tmpContainer := make([]string, len(rhs))
-		copy(tmpContainer, rhs)
-		r.Scopes = tmpContainer
-	}
 	if m.Source != nil {
 		r.Source = m.Source.(interface {
 			CloneVT() isCallerIdentity_Source
@@ -3469,6 +3463,29 @@ func (m *CallerIdentity_KeyId) CloneVT() isCallerIdentity_Source {
 	r := new(CallerIdentity_KeyId)
 	r.KeyId = m.KeyId
 	return r
+}
+
+func (m *CallerSnapshot) CloneVT() *CallerSnapshot {
+	if m == nil {
+		return (*CallerSnapshot)(nil)
+	}
+	r := new(CallerSnapshot)
+	r.Identity = m.Identity.CloneVT()
+	r.God = m.God
+	if rhs := m.Scopes; rhs != nil {
+		tmpContainer := make([]string, len(rhs))
+		copy(tmpContainer, rhs)
+		r.Scopes = tmpContainer
+	}
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *CallerSnapshot) CloneMessageVT() proto.Message {
+	return m.CloneVT()
 }
 
 func (this *Timestamp) EqualVT(that *Timestamp) bool {
@@ -9156,18 +9173,6 @@ func (this *CallerIdentity) EqualVT(that *CallerIdentity) bool {
 	if this.Subject != that.Subject {
 		return false
 	}
-	if len(this.Scopes) != len(that.Scopes) {
-		return false
-	}
-	for i, vx := range this.Scopes {
-		vy := that.Scopes[i]
-		if vx != vy {
-			return false
-		}
-	}
-	if this.God != that.God {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -9212,6 +9217,37 @@ func (this *CallerIdentity_KeyId) EqualVT(thatIface isCallerIdentity_Source) boo
 	return true
 }
 
+func (this *CallerSnapshot) EqualVT(that *CallerSnapshot) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if !this.Identity.EqualVT(that.Identity) {
+		return false
+	}
+	if len(this.Scopes) != len(that.Scopes) {
+		return false
+	}
+	for i, vx := range this.Scopes {
+		vy := that.Scopes[i]
+		if vx != vy {
+			return false
+		}
+	}
+	if this.God != that.God {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *CallerSnapshot) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*CallerSnapshot)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
 func (m *Timestamp) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -17781,25 +17817,6 @@ func (m *CallerIdentity) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		}
 		i -= size
 	}
-	if m.God {
-		i--
-		if m.God {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x18
-	}
-	if len(m.Scopes) > 0 {
-		for iNdEx := len(m.Scopes) - 1; iNdEx >= 0; iNdEx-- {
-			i -= len(m.Scopes[iNdEx])
-			copy(dAtA[i:], m.Scopes[iNdEx])
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Scopes[iNdEx])))
-			i--
-			dAtA[i] = 0x12
-		}
-	}
 	if len(m.Subject) > 0 {
 		i -= len(m.Subject)
 		copy(dAtA[i:], m.Subject)
@@ -17838,6 +17855,68 @@ func (m *CallerIdentity_KeyId) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 	dAtA[i] = 0x2a
 	return len(dAtA) - i, nil
 }
+func (m *CallerSnapshot) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *CallerSnapshot) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *CallerSnapshot) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.God {
+		i--
+		if m.God {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x18
+	}
+	if len(m.Scopes) > 0 {
+		for iNdEx := len(m.Scopes) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.Scopes[iNdEx])
+			copy(dAtA[i:], m.Scopes[iNdEx])
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Scopes[iNdEx])))
+			i--
+			dAtA[i] = 0x12
+		}
+	}
+	if m.Identity != nil {
+		size, err := m.Identity.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *Timestamp) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -21510,15 +21589,6 @@ func (m *CallerIdentity) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if len(m.Scopes) > 0 {
-		for _, s := range m.Scopes {
-			l = len(s)
-			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-		}
-	}
-	if m.God {
-		n += 2
-	}
 	if vtmsg, ok := m.Source.(interface{ SizeVT() int }); ok {
 		n += vtmsg.SizeVT()
 	}
@@ -21546,6 +21616,29 @@ func (m *CallerIdentity_KeyId) SizeVT() (n int) {
 	n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	return n
 }
+func (m *CallerSnapshot) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Identity != nil {
+		l = m.Identity.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if len(m.Scopes) > 0 {
+		for _, s := range m.Scopes {
+			l = len(s)
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
+	}
+	if m.God {
+		n += 2
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
 func (m *Timestamp) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -42014,58 +42107,6 @@ func (m *CallerIdentity) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Subject = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Scopes", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Scopes = append(m.Scopes, string(dAtA[iNdEx:postIndex]))
-			iNdEx = postIndex
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field God", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.God = bool(v != 0)
 		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Issuer", wireType)
@@ -42130,6 +42171,145 @@ func (m *CallerIdentity) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Source = &CallerIdentity_KeyId{KeyId: string(dAtA[iNdEx:postIndex])}
 			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *CallerSnapshot) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: CallerSnapshot: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: CallerSnapshot: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Identity", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Identity == nil {
+				m.Identity = &CallerIdentity{}
+			}
+			if err := m.Identity.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Scopes", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Scopes = append(m.Scopes, string(dAtA[iNdEx:postIndex]))
+			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field God", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.God = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

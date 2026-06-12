@@ -44,8 +44,8 @@ func (g *BucketGrpcClient) Barrier(ctx context.Context) (uint64, error) {
 // though the inter-node connection authenticates via cluster-secret.
 func (g *BucketGrpcClient) Apply(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
 	resp, err := g.client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests:        requests,
-		ForwardedCaller: auth.ResolveCallerIdentity(ctx),
+		Requests:                requests,
+		ForwardedCallerSnapshot: auth.ResolveCallerSnapshot(ctx),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("gRPC call failed: %w", err)

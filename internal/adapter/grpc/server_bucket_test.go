@@ -11,51 +11,58 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-// TestAdoptForwardedCallerIfTrusted_TrustsClusterInternal verifies that when
-// the request authenticated via the cluster-secret (peer-to-peer trust
-// boundary), the leader picks up the forwarded caller identity so the audit
-// entry can attribute the write to the original user (regression for #362).
-func TestAdoptForwardedCallerIfTrusted_TrustsClusterInternal(t *testing.T) {
+// TestAdoptForwardedSnapshotIfTrusted_TrustsClusterInternal verifies that
+// when the request authenticated via the cluster-secret (peer-to-peer trust
+// boundary), the leader picks up the forwarded caller snapshot so the audit
+// entry can attribute the write to the original user (regression for #362 /
+// EN-1079).
+func TestAdoptForwardedSnapshotIfTrusted_TrustsClusterInternal(t *testing.T) {
 	t.Parallel()
 
-	identity := &commonpb.CallerIdentity{
-		Subject: "alice",
-		Source:  &commonpb.CallerIdentity_Issuer{Issuer: "https://idp.example.com"},
+	snapshot := &commonpb.CallerSnapshot{
+		Identity: &commonpb.CallerIdentity{
+			Subject: "alice",
+			Source:  &commonpb.CallerIdentity_Issuer{Issuer: "https://idp.example.com"},
+		},
+		Scopes: []string{"transactions:write"},
 	}
-	req := &servicepb.ApplyRequest{ForwardedCaller: identity}
+	req := &servicepb.ApplyRequest{ForwardedCallerSnapshot: snapshot}
 
 	ctx := internalauth.WithClusterInternal(context.Background(), true)
-	out := adoptForwardedCallerIfTrusted(ctx, req)
+	out := adoptForwardedSnapshotIfTrusted(ctx, req)
 
-	require.Same(t, identity, internalauth.ForwardedCallerFromContext(out))
+	require.Same(t, snapshot, internalauth.ForwardedSnapshotFromContext(out))
 }
 
-// TestAdoptForwardedCallerIfTrusted_IgnoresFromRegularClient verifies that a
-// regular (non-cluster-internal) client cannot spoof the audit identity by
+// TestAdoptForwardedSnapshotIfTrusted_IgnoresFromRegularClient verifies that
+// a regular (non-cluster-internal) client cannot spoof the audit identity by
 // setting forwarded_caller. The field MUST be dropped on direct requests.
-func TestAdoptForwardedCallerIfTrusted_IgnoresFromRegularClient(t *testing.T) {
+func TestAdoptForwardedSnapshotIfTrusted_IgnoresFromRegularClient(t *testing.T) {
 	t.Parallel()
 
 	req := &servicepb.ApplyRequest{
-		ForwardedCaller: &commonpb.CallerIdentity{Subject: "attacker"},
+		ForwardedCallerSnapshot: &commonpb.CallerSnapshot{
+			Identity: &commonpb.CallerIdentity{Subject: "attacker"},
+		},
 	}
 
-	out := adoptForwardedCallerIfTrusted(context.Background(), req)
+	out := adoptForwardedSnapshotIfTrusted(context.Background(), req)
 
-	require.Nil(t, internalauth.ForwardedCallerFromContext(out),
-		"non-cluster-internal requests must not be allowed to set the forwarded caller")
+	require.Nil(t, internalauth.ForwardedSnapshotFromContext(out),
+		"non-cluster-internal requests must not be allowed to set the forwarded snapshot")
 }
 
-// TestAdoptForwardedCallerIfTrusted_NilForwardedNoOp verifies that an empty
-// forwarded_caller leaves the context untouched even on a trusted hop, so the
-// leader falls back to building the identity from its own claims (or nil).
-func TestAdoptForwardedCallerIfTrusted_NilForwardedNoOp(t *testing.T) {
+// TestAdoptForwardedSnapshotIfTrusted_NilForwardedNoOp verifies that an
+// empty forwarded_caller leaves the context untouched even on a trusted hop,
+// so the leader falls back to building the snapshot from its own claims (or
+// nil).
+func TestAdoptForwardedSnapshotIfTrusted_NilForwardedNoOp(t *testing.T) {
 	t.Parallel()
 
 	req := &servicepb.ApplyRequest{}
 
 	ctx := internalauth.WithClusterInternal(context.Background(), true)
-	out := adoptForwardedCallerIfTrusted(ctx, req)
+	out := adoptForwardedSnapshotIfTrusted(ctx, req)
 
-	require.Nil(t, internalauth.ForwardedCallerFromContext(out))
+	require.Nil(t, internalauth.ForwardedSnapshotFromContext(out))
 }

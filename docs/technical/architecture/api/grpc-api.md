@@ -157,11 +157,13 @@ All write operations go through the unified `Apply` method, which accepts a batc
 message ApplyRequest {
   repeated Request requests = 1;
   bool skip_response = 2;  // Strip log payloads from response (only sequence returned)
+  reserved 3;
+  reserved "forwarded_caller";  // was: common.CallerIdentity (pre-split, see common.proto)
   // Internal: set by a follower when forwarding a write to the leader, so the
   // audit entry attributes the operation to the original user even though the
   // inter-node connection authenticates via cluster-secret. Honored ONLY when
   // the request is cluster-internal; ignored on direct client requests.
-  common.CallerIdentity forwarded_caller = 3;
+  common.CallerSnapshot forwarded_caller_snapshot = 4;
 }
 
 message Request {

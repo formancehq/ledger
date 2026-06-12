@@ -143,8 +143,8 @@ func printAuditEntry(entry *auditpb.AuditEntry, verbose bool) {
 
 	// Caller info (compact or verbose)
 	callerText := ""
-	if caller := entry.GetCaller(); caller != nil && caller.GetSubject() != "" {
-		callerText = "  caller=" + pterm.Yellow(caller.GetSubject())
+	if id := entry.GetCallerSnapshot().GetIdentity(); id.GetSubject() != "" {
+		callerText = "  caller=" + pterm.Yellow(id.GetSubject())
 	}
 
 	pterm.Printf("  #%-6d %s  proposal=%-4d %s  %s%s\n",
@@ -158,29 +158,31 @@ func printAuditEntry(entry *auditpb.AuditEntry, verbose bool) {
 
 	// Verbose caller details
 	if verbose {
-		if caller := entry.GetCaller(); caller != nil && caller.GetSubject() != "" {
+		if snap := entry.GetCallerSnapshot(); snap != nil && snap.GetIdentity().GetSubject() != "" {
+			id := snap.GetIdentity()
+
 			var source string
 
-			switch s := caller.GetSource().(type) {
+			switch s := id.GetSource().(type) {
 			case *commonpb.CallerIdentity_Issuer:
 				source = "issuer=" + s.Issuer
 			case *commonpb.CallerIdentity_KeyId:
 				source = "key_id=" + s.KeyId
 			}
 
-			if caller.GetGod() {
+			if snap.GetGod() {
 				pterm.Printf("    %s subject=%s %s %s\n",
 					pterm.Gray("caller:"),
-					pterm.Yellow(caller.GetSubject()),
+					pterm.Yellow(id.GetSubject()),
 					pterm.Gray(source),
 					pterm.Red("god=true"),
 				)
 			} else {
 				pterm.Printf("    %s subject=%s %s scopes=[%s]\n",
 					pterm.Gray("caller:"),
-					pterm.Yellow(caller.GetSubject()),
+					pterm.Yellow(id.GetSubject()),
 					pterm.Gray(source),
-					pterm.Gray(strings.Join(caller.GetScopes(), ",")),
+					pterm.Gray(strings.Join(snap.GetScopes(), ",")),
 				)
 			}
 		}

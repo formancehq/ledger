@@ -444,7 +444,7 @@ func (m *GetLedgerRequest) Mutate() *GetLedgerRequest {
 type ApplyRequestReader interface {
 	GetRequests() []*Request
 	GetSkipResponse() bool
-	GetForwardedCaller() commonpb.CallerIdentityReader
+	GetForwardedCallerSnapshot() commonpb.CallerSnapshotReader
 	Mutate() *ApplyRequest
 }
 
@@ -458,8 +458,8 @@ func (r *applyRequestReadonly) GetSkipResponse() bool {
 	return r.v.GetSkipResponse()
 }
 
-func (r *applyRequestReadonly) GetForwardedCaller() commonpb.CallerIdentityReader {
-	v := r.v.GetForwardedCaller()
+func (r *applyRequestReadonly) GetForwardedCallerSnapshot() commonpb.CallerSnapshotReader {
+	v := r.v.GetForwardedCallerSnapshot()
 	if v == nil {
 		return nil
 	}
