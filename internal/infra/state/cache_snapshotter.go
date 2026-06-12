@@ -608,6 +608,15 @@ func (s *CacheSnapshotter) runBloomTask(reason string, loadFn func(context.Conte
 		}
 
 		if !s.bloomFilters.SetReadyIfEpoch(epoch) {
+			// The rarest interleaving (#391-class): a Rebuild bumped the epoch
+			// while this task was scanning, so publishing readiness would have
+			// exposed a half-populated filter. Skipping is the correct path —
+			// the rebuild's own task republishes readiness.
+			assert.Reachable("bloom SetReady skipped: rebuild raced populate", map[string]any{
+				"reason": reason,
+				"epoch":  epoch,
+			})
+
 			s.logger.WithFields(map[string]any{
 				"reason": reason,
 			}).Infof("Bloom background task skipped SetReady: Rebuild occurred")

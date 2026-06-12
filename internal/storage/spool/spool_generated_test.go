@@ -160,11 +160,12 @@ func (c *MockSpoolEndCall) DoAndReturn(f func() (*Position, error)) *MockSpoolEn
 }
 
 // Prune mocks base method.
-func (m *MockSpool) Prune(lastApplied uint64) error {
+func (m *MockSpool) Prune(lastApplied uint64) (PruneStats, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Prune", lastApplied)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(PruneStats)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // Prune indicates an expected call of Prune.
@@ -180,19 +181,19 @@ type MockSpoolPruneCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockSpoolPruneCall) Return(arg0 error) *MockSpoolPruneCall {
-	c.Call = c.Call.Return(arg0)
+func (c *MockSpoolPruneCall) Return(arg0 PruneStats, arg1 error) *MockSpoolPruneCall {
+	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockSpoolPruneCall) Do(f func(uint64) error) *MockSpoolPruneCall {
+func (c *MockSpoolPruneCall) Do(f func(uint64) (PruneStats, error)) *MockSpoolPruneCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockSpoolPruneCall) DoAndReturn(f func(uint64) error) *MockSpoolPruneCall {
+func (c *MockSpoolPruneCall) DoAndReturn(f func(uint64) (PruneStats, error)) *MockSpoolPruneCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

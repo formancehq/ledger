@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/holiman/uint256"
 	"google.golang.org/protobuf/proto"
 
@@ -1122,6 +1123,19 @@ func (b *WriteSet) executePurge(batch *dal.Batch, pr *purgeRange) error {
 			}
 
 			delete(b.fsm.pendingLedgerCleanups, ledgerID)
+
+			// Liveness anchor for deleted-ledger-data-isolation-and-eventual-purge:
+			// the deferred cleanup recorded at DeleteLedger apply time is only
+			// consumed here, when a covering purge range (period archival
+			// confirmation) reaches the delete sequence. The period-close
+			// singleton driver closes/archives/confirms periods continuously
+			// and ledger-delete drivers run in parallel, so this branch is
+			// expected to be exercised in every full run.
+			assert.Reachable("deleted ledger deferred cleanup executed by covering purge", map[string]any{
+				"ledgerId":  ledgerID,
+				"deleteSeq": deleteSeq,
+				"periodId":  pr.periodID,
+			})
 		}
 	}
 

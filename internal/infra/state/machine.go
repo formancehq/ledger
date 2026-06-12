@@ -142,6 +142,12 @@ type Machine struct {
 	// to a target commit index before reading local state.
 	appliedMu   sync.Mutex
 	appliedCond *sync.Cond
+
+	// publishSeq counts publishApplied calls; guarded by appliedMu. It feeds
+	// the lost-wakeup detector in WaitForApplied: an index advance observed
+	// without a sequence increment can only come from a bare Store that
+	// bypassed the wake protocol (#327 class).
+	publishSeq uint64
 }
 
 func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, numscriptCacheSize int, sentinelMode bool, idempotencyTTLMicros uint64) (*Machine, error) {
@@ -239,7 +245,11 @@ func (fsm *Machine) RecoverState() error {
 	}
 
 	fsm.lastAppliedIndex = lastAppliedIndex
-	fsm.lastPersistedIndex.Store(lastAppliedIndex)
+	// Route through publishApplied rather than a bare Store: RecoverState also
+	// runs at runtime (SynchronizeWithLeader), where a silent advance of
+	// lastPersistedIndex would strand any blocked WaitForApplied caller — the
+	// lost-wakeup shape of #327.
+	fsm.publishApplied(lastAppliedIndex)
 
 	// Recover nextSequenceID from last log sequence
 	lastSeq, err := query.ReadLastSequence(handle)
@@ -454,6 +464,7 @@ func (fsm *Machine) LastAppliedIndex() uint64 {
 func (fsm *Machine) publishApplied(idx uint64) {
 	fsm.appliedMu.Lock()
 	fsm.lastPersistedIndex.Store(idx)
+	fsm.publishSeq++
 	fsm.appliedCond.Broadcast()
 	fsm.appliedMu.Unlock()
 }
@@ -480,6 +491,9 @@ func (fsm *Machine) WaitForApplied(ctx context.Context, targetIndex uint64) erro
 	}()
 
 	fsm.appliedMu.Lock()
+
+	blocked := false
+
 	for fsm.lastPersistedIndex.Load() < targetIndex {
 		if ctx.Err() != nil {
 			fsm.appliedMu.Unlock()
@@ -487,9 +501,32 @@ func (fsm *Machine) WaitForApplied(ctx context.Context, targetIndex uint64) erro
 			return ctx.Err()
 		}
 
+		blocked = true
+		seqBefore := fsm.publishSeq
+
 		fsm.appliedCond.Wait()
+
+		// Lost-wakeup detector (#327 class): the target index became visible
+		// while we slept, yet publishSeq did not move — the index was advanced
+		// by a bare Store that bypassed the wake protocol. Sound under
+		// arbitrary pauses and wake sources: a legitimate publish always
+		// increments publishSeq under appliedMu before its index is
+		// observable from this loop.
+		if fsm.lastPersistedIndex.Load() >= targetIndex && fsm.publishSeq == seqBefore {
+			assert.Unreachable("WaitForApplied observed an index advance without a publish", map[string]any{
+				"targetIndex":        targetIndex,
+				"lastPersistedIndex": fsm.lastPersistedIndex.Load(),
+			})
+		}
 	}
+
 	fsm.appliedMu.Unlock()
+
+	if blocked {
+		assert.Reachable("WaitForApplied woke after blocking", map[string]any{
+			"targetIndex": targetIndex,
+		})
+	}
 
 	return nil
 }
@@ -1088,6 +1125,12 @@ func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Pro
 			}).Tracef("Rejecting proposal: predicted index mismatch (stale tracker)")
 		}
 
+		assert.Reachable("stale proposal rejected: predicted index mismatch", map[string]any{
+			"predictedIndex": predicted,
+			"actualIndex":    raftIndex,
+			"proposalID":     proposal.GetId(),
+		})
+
 		lifecycle.SendEvent("stale_proposal_rejected", map[string]any{
 			"predictedIndex": predicted,
 			"actualIndex":    raftIndex,
@@ -1105,6 +1148,13 @@ func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Pro
 				"raftIndex":    raftIndex,
 			}).Tracef("Rejecting proposal: cache epoch mismatch (cache was reset)")
 		}
+
+		assert.Reachable("stale proposal rejected: cache epoch mismatch", map[string]any{
+			"preloadEpoch": preloadEpoch,
+			"cacheEpoch":   fsm.Registry.Cache.Epoch(),
+			"proposalID":   proposal.GetId(),
+			"raftIndex":    raftIndex,
+		})
 
 		return domain.ErrStaleProposal
 	}
@@ -1127,6 +1177,15 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// orders that were admitted before maintenance mode was enabled but batched into
 	// a Raft entry applied after the maintenance mode flag was set.
 	if fsm.sharedState.MaintenanceMode() && !authorizedInMaintenanceMode(proposal.GetOrders()) {
+		// Proves the admitted-before/applied-after race is actually exercised:
+		// this branch only fires when a write passed admission before the
+		// maintenance flag flipped on but applies after.
+		assert.Reachable("write rejected by FSM maintenance gate after flag flip", map[string]any{
+			"proposalID": proposal.GetId(),
+			"orderCount": len(proposal.GetOrders()),
+			"raftIndex":  raftIndex,
+		})
+
 		return &ApplyResult{
 			ProposalID: proposal.GetId(),
 			Error:      &domain.BusinessError{Err: domain.ErrMaintenanceMode},
@@ -1158,6 +1217,23 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	buffer := fsm.writeSet
 
 	orders := proposal.GetOrders()
+
+	// The maintenance gate above is the only barrier between an
+	// admitted-before/applied-after write and the ledger state. Re-check the
+	// inverse immediately before orders mutate state: reaching this point
+	// with maintenance active and a non-SetMaintenanceMode order means the
+	// gate was bypassed. The flag is FSM-owned (write_set.go) and only
+	// mutates when a WriteSet commits, so it cannot change between the gate
+	// and here within the same sequential apply — this never fires on the
+	// legitimate carve-out (an all-SetMaintenanceMode batch, e.g. flipping
+	// the flag off while maintenance is active).
+	if fsm.sharedState.MaintenanceMode() && !authorizedInMaintenanceMode(orders) {
+		assert.Unreachable("non-maintenance order applied while maintenance mode active", map[string]any{
+			"proposalID": proposal.GetId(),
+			"orderCount": len(orders),
+			"raftIndex":  raftIndex,
+		})
+	}
 
 	// Process the proposal
 	logs, err := fsm.processor.ProcessOrders(orders, buffer)

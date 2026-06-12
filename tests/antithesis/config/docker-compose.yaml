@@ -21,6 +21,8 @@ x-ledger-common: &ledger-common
     # Chaos-tuned: lower thresholds to exercise more code paths under fault injection
     SNAPSHOT_THRESHOLD: "200"
     CACHE_ROTATION_THRESHOLD: "50"
+    # 256 KiB segments (default 256 MiB) so spool rotation seals segments and Prune has work to do
+    SPOOL_SEGMENT_MAX_BYTES: "262144"
 
     # Bloom filters: reduce from defaults (100M/10M) to 1M — antithesis is not a large-scale workload
     BLOOM_VOLUMES_EXPECTED_KEYS: "1000000"

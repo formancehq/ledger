@@ -17,7 +17,19 @@ import (
 // rolling_restart, config_change, quorum_recovery) that commit a witness
 // transaction and re-read it after a disruption — letting delete_ledger pick
 // these would weaken the survival assertion to Reachable.
-var restrictedPrefixes = []string{"transient-", "insuf-", "deltest-", "sentinel-"}
+var restrictedPrefixes = []string{
+	"transient-", "insuf-", "deltest-", "sentinel-",
+	// Wave-1 property drivers: each owns its ledgers and asserts balance/
+	// completeness/ordering invariants that a foreign write would break.
+	"refrace-",  // parallel_driver_reference_race
+	"bulkatom-", // parallel_driver_bulk_atomicity
+	"deferr-",   // parallel_driver_definitive_errors
+	"lrec-",     // parallel_driver_ledger_recreate (covers lrecreate- too)
+	"listcomp-", // parallel_driver_list_completeness
+	"tsorder-",  // parallel_driver_timestamp_order
+	"minseq-",   // parallel_driver_minlogseq
+	"stale-",    // parallel_driver_stale_reads
+}
 
 // CreateLedger creates a ledger via the Apply RPC and verifies it can be read back.
 func CreateLedger(ctx context.Context, client servicepb.BucketServiceClient, name string) error {

@@ -782,7 +782,7 @@ func TestApplierCascadingQueryCheckpointsDuringReplay(t *testing.T) {
 	require.NoError(t, setup.spool.AppendCommittedEntries(ctx, e2, e3, e4, e5, e6))
 
 	// Replay the spool starting after lastAppliedIndex=1.
-	err = setup.applier.replaySpool(ctx, 1)
+	_, err = setup.applier.replaySpool(ctx, 1)
 	require.NoError(t, err)
 
 	// All ledgers must exist — including "after-second-cp".

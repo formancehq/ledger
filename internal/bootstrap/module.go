@@ -251,7 +251,8 @@ func Module() fx.Option {
 			},
 			func(cfg Config, logger logging.Logger) (*spool.Default, error) {
 				return spool.NewDefault(spool.DefaultSpoolConfig{
-					Dir: filepath.Join(cfg.DataDir, "spool"),
+					Dir:             filepath.Join(cfg.DataDir, "spool"),
+					SegmentMaxBytes: cfg.SpoolSegmentMaxBytes,
 					Logger: logger.WithFields(map[string]any{
 						"cmp": "spool",
 					}),

@@ -129,6 +129,7 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().Float64("pebble-value-separation-garbage-ratio", 0.20, "Blob garbage ratio before rewrite (default: 0.20)")
 
 	runCmd.Flags().Uint64("cache-rotation-threshold", 1000, "Cache rotation threshold (0 = use default 1000)")
+	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "spool-segment-max-bytes", 0, "Maximum spool segment size before rotation/sealing (0 = use default 256Mi)")
 	runCmd.Flags().Int("numscript-cache-size", 1024, "Maximum number of parsed Numscript programs to cache (LRU eviction)")
 	runCmd.Flags().Int("mirror-max-batch-size", 500, "Maximum allowed batch size for mirror sync (server-side cap on user-configured batch size)")
 
@@ -523,6 +524,7 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 	}
 
 	cfg.RaftConfig.RotationThreshold = getUint64("cache-rotation-threshold", 0)
+	cfg.SpoolSegmentMaxBytes = bytesize.Get(cmd, "spool-segment-max-bytes").Int64()
 	cfg.NumscriptCacheSize = getInt("numscript-cache-size", 1024)
 	cfg.MirrorMaxBatchSize = getInt("mirror-max-batch-size", 500)
 

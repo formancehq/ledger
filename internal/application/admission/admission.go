@@ -8,6 +8,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -529,6 +530,16 @@ func (a *Admission) Barrier(ctx context.Context) (uint64, error) {
 		return 0, err
 	}
 
+	// A successfully resolved barrier future must carry the Raft index of its
+	// own no-op entry; zero means the futures bookkeeping resolved the wrong
+	// entry (applier ownership transfer) and the caller would treat an
+	// unpositioned barrier as a valid quiescence point.
+	if result.AppliedIndex == 0 {
+		assert.Unreachable("barrier future resolved with zero applied index", map[string]any{
+			"commandId": cmd.GetId(),
+		})
+	}
+
 	return result.AppliedIndex, nil
 }
 
@@ -603,6 +614,18 @@ func (a *Admission) verifyAndResolveSignatures(requests []*servicepb.Request) ([
 			wrapperWithoutSig.Signature = nil
 
 			if !wrapperWithoutSig.EqualVT(trusted) {
+				// Guardrail: no trusted client in the Antithesis harness ever
+				// produces a divergent wrapper/signed_payload pair (the only
+				// signing workload signs the exact request it ships). Reaching
+				// this branch therefore means either client-side corruption or
+				// a serialization bug upstream of the gate — both worth
+				// flagging. The rejection itself is the system working; the
+				// assertion documents that the divergent-input class is never
+				// observed in a trusted-client environment.
+				assert.Unreachable("signed payload diverges from wrapper request", map[string]any{
+					"keyId": req.GetSignature().GetKeyId(),
+				})
+
 				return nil, fmt.Errorf("%w: signed payload does not match wrapper request", signing.ErrInvalidSignature)
 			}
 

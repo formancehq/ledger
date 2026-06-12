@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -125,22 +127,39 @@ func (p *Preloader) ResolveLedgerID(name string) (uint32, bool) {
 	// for every pre-existing ledger and admission would reject the matching
 	// proposals with ErrBalanceNotPreloaded / reverts with ErrLedgerNotFound
 	// (#318).
-	if bf := p.bloomFilter(dal.SubAttrLedger); bf != nil && !bf.MayContain(id) {
+	bf := p.bloomFilter(dal.SubAttrLedger)
+	if bf != nil && !bf.MayContain(id) {
 		return 0, false
 	}
+
+	// bf == nil with bloom configured but not ready means the populate window
+	// (#318) is open and we are falling through to cache/Pebble. Re-reading
+	// readiness here can race SetReady: the window may close between the two
+	// reads, which only under-reports the condition — it never over-reports
+	// (a bloom-disabled deployment keeps bloomFilters == nil and a ready
+	// snapshot keeps Ready() == true).
+	bloomPopulating := bf == nil && p.bloomFilters != nil && !p.bloomFilters.Snapshot().Ready()
+
+	var (
+		resolvedID uint32
+		resolved   bool
+	)
 
 	// 2. Cache: check gen0/gen1.
 	if entry, ok := p.cache.Ledgers.Get(id); ok && entry.Data != nil {
-		return entry.Data.GetId(), true
+		resolvedID, resolved = entry.Data.GetId(), true
+	} else if info, err := p.attrs.Ledger.Get(p.store, canonical); err == nil && info != nil {
+		// 3. Pebble fallback (single point read, no snapshot needed).
+		resolvedID, resolved = info.GetId(), true
 	}
 
-	// 3. Pebble fallback (single point read, no snapshot needed).
-	info, err := p.attrs.Ledger.Get(p.store, canonical)
-	if err != nil || info == nil {
-		return 0, false
-	}
+	// Antithesis anchor: a pre-existing ledger was successfully resolved
+	// through the fallback path while the bloom filters were still
+	// populating — proves the not-ready window degrades gracefully instead
+	// of faking absence.
+	assert.Sometimes(bloomPopulating && resolved, "ledger resolved while bloom filters not ready", nil)
 
-	return info.GetId(), true
+	return resolvedID, resolved
 }
 
 // ReadBoundaries reads the current LedgerBoundaries for the given ledger
@@ -230,6 +249,13 @@ func (p *Preloader) AcquireProposalGuard(build *PreloadBuild, needs *Needs) (*ra
 			"nextIndexGen_after":  nextIndexGenAfter,
 		}).Tracef("nextIndex generation changed, rebuilding preloads under lock")
 	}
+
+	assert.Reachable("preloads rebuilt under proposal guard after generation crossing", map[string]any{
+		"nextIndexBefore":    build.nextIndex,
+		"nextIndexAfter":     nextIndexAfter,
+		"nextIndexGenBefore": build.nextIndexGen,
+		"nextIndexGenAfter":  nextIndexGenAfter,
+	})
 
 	preloadSet, token, err := p.buildPreloadsAt(p.tracker.Next(), snap, needs)
 	if err != nil {

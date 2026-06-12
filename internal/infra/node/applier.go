@@ -86,6 +86,11 @@ type pendingFuture struct {
 	proposalID uint64
 	result     state.ApplyResult
 	future     *futures.Future[state.ApplyResult]
+	// term is the Raft term observed at Propose time (copied from
+	// pendingApplyFuture). It is a lower bound on the term the entry was
+	// actually appended under; runCommitter uses it to detect the
+	// "old-term entry committed indirectly" coverage condition.
+	term uint64
 }
 
 // pendingApplyFuture pairs the FSM-apply future with the Raft term observed
@@ -322,6 +327,8 @@ func (a *Applier) ResolveDroppedFuture(commandID uint64, err error) {
 // second LoadAndDelete returns false and we skip it. This prevents a
 // double Resolve on a futures.Future, which is not idempotent.
 func (a *Applier) FailFuturesBelowTerm(threshold uint64, err error) {
+	resolved := 0
+
 	a.futures.Range(func(commandID uint64, paf *pendingApplyFuture) bool {
 		if paf.term >= threshold {
 			return true
@@ -333,8 +340,26 @@ func (a *Applier) FailFuturesBelowTerm(threshold uint64, err error) {
 		}
 
 		paf.future.Resolve(state.ApplyResult{}, err)
+		resolved++
+
+		// Coverage anchor for the leadership-lost error taxonomy: proves the
+		// below-term resolve path is actually exercised under fault injection
+		// (without it, workload-side absence checks could pass vacuously).
+		assert.Reachable("future failed by below-term sweep", map[string]any{
+			"commandID": commandID,
+			"term":      paf.term,
+			"threshold": threshold,
+		})
 
 		return true
+	})
+
+	// This sweep runs after every committed batch with maxTerm > 0, so the
+	// condition — not the call — carries the signal: it is true only when an
+	// actual straggler (truncated lower-term proposal) was swept.
+	assert.Sometimes(resolved > 0, "FailFuturesBelowTerm resolved at least one future", map[string]any{
+		"threshold": threshold,
+		"resolved":  resolved,
 	})
 }
 
@@ -404,6 +429,7 @@ func (a *Applier) extractBatchFutures(result *state.ApplyEntriesResult) []pendin
 			proposalID: r.ProposalID,
 			result:     r,
 			future:     paf.future,
+			term:       paf.term,
 		})
 	}
 
@@ -853,8 +879,8 @@ func (a *Applier) submitAsyncCommit(pb *state.PreparedBatch, pfs []pendingFuture
 }
 
 // runCommitter is the dedicated goroutine that processes commits sequentially.
-// It reads from commitCh and commits each batch, resolving futures on success.
-// Exits when commitCh is closed.
+// It reads from commitCh and commits each batch, resolving futures on success
+// or failure. Exits when commitCh is closed.
 func (a *Applier) runCommitter(ctx context.Context) {
 	for work := range a.commitCh {
 		err := a.fsm.CommitPreparedBatch(ctx, work.prepared)
@@ -863,11 +889,56 @@ func (a *Applier) runCommitter(ctx context.Context) {
 			//    via extractBatchFutures in applyEntriesPipelined (which
 			//    uses LoadAndDelete), so the futures are no longer in the
 			//    map — no per-future Delete needed here.
+			//
+			// oldTermResolved counts futures tagged below this batch's max
+			// term that nevertheless resolve with their real apply result:
+			// the entry committed (possibly indirectly, under a newer
+			// leader) and per-commandID resolution won over the sweep — the
+			// resolve-before-sweep ordering this loop exists to preserve.
+			// The tag is the propose-time observed term (a lower bound), so
+			// the count can also include the benign lastObservedTerm-lag
+			// window; both variants exercise the same ordering.
+			oldTermResolved := 0
+
 			for _, pf := range work.futures {
+				if work.maxTerm > 0 && pf.term < work.maxTerm {
+					oldTermResolved++
+				}
+
 				pf.future.Resolve(pf.result, pf.result.Error)
 			}
 
 			// 2. Sweep stragglers from older terms (issue #172).
+			if work.maxTerm > 0 {
+				a.FailFuturesBelowTerm(work.maxTerm, ErrLeadershipLost)
+			}
+
+			// Runs on every committed batch: the condition is the signal —
+			// true only when a below-maxTerm future got its real result in
+			// the same batch that triggers a sweep.
+			assert.Sometimes(oldTermResolved > 0,
+				"old-term entry committed and resolved in same batch as a sweep",
+				map[string]any{
+					"maxTerm":         work.maxTerm,
+					"oldTermResolved": oldTermResolved,
+					"batchFutures":    len(work.futures),
+				})
+		} else {
+			// Fail fast: ownership was already taken via LoadAndDelete, so no
+			// other path (term sweep, dropped-proposal resolution) can ever
+			// reach these futures — leaving them unresolved would hang every
+			// client in the batch until its own deadline while the commit
+			// error sits unobserved in work.done until the next work item.
+			// The storage error maps to gRPC Unknown (ambiguous by contract):
+			// the entry is Raft-committed and will reapply on restart, so a
+			// client retry resolves through the idempotency/reference checks.
+			for _, pf := range work.futures {
+				pf.future.Resolve(state.ApplyResult{}, err)
+			}
+
+			// Sweep older-term stragglers here too: term-truncated entries
+			// never apply regardless of this batch's commit outcome, and the
+			// deferred fatal error may sit unobserved on a quiet node.
 			if work.maxTerm > 0 {
 				a.FailFuturesBelowTerm(work.maxTerm, ErrLeadershipLost)
 			}
@@ -1174,7 +1245,7 @@ func (a *Applier) startMaintenanceTask(
 
 		replayStart := time.Now()
 
-		if err := a.replaySpool(ctx, taskResult.frozenAtIndex); err != nil {
+		if _, err := a.replaySpool(ctx, taskResult.frozenAtIndex); err != nil {
 			return err
 		}
 
@@ -1205,9 +1276,18 @@ func (a *Applier) unspoolAndResume(ctx context.Context) error {
 		return fmt.Errorf("getting last applied index: %w", err)
 	}
 
-	if err := a.replaySpool(ctx, lastAppliedIndex); err != nil {
+	replayed, err := a.replaySpool(ctx, lastAppliedIndex)
+	if err != nil {
 		return fmt.Errorf("replaying spool: %w", err)
 	}
+
+	// Non-vacuity probe: proves the gated-window -> unspool path is exercised
+	// with a non-empty spool under faults (otherwise the spool corruption
+	// guardrail is never meaningfully covered).
+	assert.Sometimes(replayed > 0, "spool replay after gated window applied at least one entry", map[string]any{
+		"entriesApplied": replayed,
+		"fromIndex":      lastAppliedIndex,
+	})
 
 	a.status.Store(statusNormal)
 
@@ -1216,9 +1296,32 @@ func (a *Applier) unspoolAndResume(ctx context.Context) error {
 		return fmt.Errorf("getting last applied index: %w", err)
 	}
 
-	if err := a.spool.Prune(lastAppliedIndex); err != nil {
+	pruneStats, err := a.spool.Prune(lastAppliedIndex)
+	if err != nil {
 		return fmt.Errorf("pruning spool: %w", err)
 	}
+
+	// Reclamation probe: prune actually had fully-applied segments to delete
+	// after a gated window (spool disk usage is bounded in practice).
+	assert.Sometimes(pruneStats.SegmentsRemoved > 0, "spool pruned after resync", map[string]any{
+		"segmentsRemoved":   pruneStats.SegmentsRemoved,
+		"bytesRemoved":      pruneStats.BytesRemoved,
+		"segmentsRemaining": pruneStats.SegmentsRemaining,
+		"lastAppliedIndex":  lastAppliedIndex,
+	})
+
+	// Prune effectiveness: no segment known to be sealed (trailer-bearing)
+	// and fully applied (maxIndex <= lastApplied) may survive Prune. The
+	// trailer-less ACTIVE segment is exempt by design and never counted;
+	// unreadable segments are reported separately (state unknown) and do not
+	// fail the condition.
+	assert.Always(pruneStats.SealedFullyAppliedRemaining == 0, "spool prune leaves no fully-applied sealed segment behind", map[string]any{
+		"sealedFullyAppliedRemaining": pruneStats.SealedFullyAppliedRemaining,
+		"segmentsUnreadable":          pruneStats.SegmentsUnreadable,
+		"segmentsRemoved":             pruneStats.SegmentsRemoved,
+		"segmentsRemaining":           pruneStats.SegmentsRemaining,
+		"lastAppliedIndex":            lastAppliedIndex,
+	})
 
 	lifecycle.SendEvent("spool replay completed", nil)
 	if a.logger.Enabled(logging.DebugLevel) {
@@ -1287,11 +1390,13 @@ func (a *Applier) replayWAL(ctx context.Context, afterIndex uint64) error {
 	return nil
 }
 
-func (a *Applier) replaySpool(ctx context.Context, fromIndex uint64) error {
+// replaySpool replays spooled entries with Index > fromIndex into the FSM.
+// It returns the number of entries handed to the FSM apply path.
+func (a *Applier) replaySpool(ctx context.Context, fromIndex uint64) (int, error) {
 	return a.replaySpoolImpl(ctx, fromIndex, 0)
 }
 
-func (a *Applier) replaySpoolImpl(ctx context.Context, fromIndex uint64, maxIndex uint64) error {
+func (a *Applier) replaySpoolImpl(ctx context.Context, fromIndex uint64, maxIndex uint64) (int, error) {
 	if a.logger.Enabled(logging.DebugLevel) {
 		a.logger.WithFields(map[string]any{
 			"fromIndex": fromIndex,
@@ -1301,7 +1406,7 @@ func (a *Applier) replaySpoolImpl(ctx context.Context, fromIndex uint64, maxInde
 
 	until, err := a.spool.End()
 	if err != nil {
-		return fmt.Errorf("getting spool end position: %w", err)
+		return 0, fmt.Errorf("getting spool end position: %w", err)
 	}
 
 	count := 0
@@ -1339,7 +1444,7 @@ func (a *Applier) replaySpoolImpl(ctx context.Context, fromIndex uint64, maxInde
 
 		return nil
 	}); err != nil {
-		return fmt.Errorf("replaying spool: %w", err)
+		return count, fmt.Errorf("replaying spool: %w", err)
 	}
 
 	if len(batch) > 0 {
@@ -1347,7 +1452,7 @@ func (a *Applier) replaySpoolImpl(ctx context.Context, fromIndex uint64, maxInde
 
 		result, err := a.applyEntriesAndResolveCommands(ctx, batch...)
 		if err != nil {
-			return err
+			return count, err
 		}
 
 		lastEntry = new(batch[len(batch)-1])
@@ -1356,7 +1461,7 @@ func (a *Applier) replaySpoolImpl(ctx context.Context, fromIndex uint64, maxInde
 		if result.CheckpointRequired {
 			err := a.handleCheckpointDuringReplay(ctx, result)
 			if err != nil {
-				return err
+				return count, err
 			}
 		}
 	}
@@ -1371,7 +1476,7 @@ func (a *Applier) replaySpoolImpl(ctx context.Context, fromIndex uint64, maxInde
 		WithField("count", count).
 		Infof("Replayed spool")
 
-	return nil
+	return count, nil
 }
 
 // handleCheckpointDuringReplay creates a checkpoint synchronously when a

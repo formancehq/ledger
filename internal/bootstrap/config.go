@@ -166,7 +166,10 @@ type Config struct {
 	// RestoreDownloadParallelism caps the number of concurrent S3 file downloads
 	// during an async restore. 0 means use the default (16). The server clamps
 	// the effective value to [1, 64].
-	RestoreDownloadParallelism  int
+	RestoreDownloadParallelism int
+	// SpoolSegmentMaxBytes caps the size of a spool segment before rotation
+	// (sealing). 0 means use the spool default (256Mi).
+	SpoolSegmentMaxBytes        int64
 	NumscriptCacheSize          int
 	MirrorMaxBatchSize          int
 	UnsafeSkipConfigValidation  bool

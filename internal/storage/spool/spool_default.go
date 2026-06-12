@@ -486,27 +486,55 @@ func (s *Default) Reset() error {
 }
 
 // Prune removes segments whose maxIndex <= lastApplied (optional).
-func (s *Default) Prune(lastApplied uint64) error {
+// It returns statistics about what was removed and what remains so callers
+// can observe reclamation effectiveness.
+func (s *Default) Prune(lastApplied uint64) (PruneStats, error) {
+	var stats PruneStats
+
 	ids, err := listSegments(s.cfg.Dir)
 	if err != nil {
-		return err
+		return stats, err
 	}
 
 	for _, id := range ids {
-		f, err := os.Open(segmentPath(s.cfg.Dir, id))
+		path := segmentPath(s.cfg.Dir, id)
+
+		f, err := os.Open(path)
 		if err != nil {
+			stats.SegmentsRemaining++
+			stats.SegmentsUnreadable++
+
 			continue
+		}
+
+		var size int64
+		if info, statErr := f.Stat(); statErr == nil {
+			size = info.Size()
 		}
 
 		_, maxI, ok := readTrailer(f)
 		_ = f.Close()
 
 		if ok && maxI <= lastApplied {
-			_ = os.Remove(segmentPath(s.cfg.Dir, id))
+			if rmErr := os.Remove(path); rmErr != nil {
+				// Known sealed + fully applied, but removal failed: the
+				// segment lingers. Surface it through the stats.
+				stats.SegmentsRemaining++
+				stats.SealedFullyAppliedRemaining++
+
+				continue
+			}
+
+			stats.SegmentsRemoved++
+			stats.BytesRemoved += size
+
+			continue
 		}
+
+		stats.SegmentsRemaining++
 	}
 
-	return nil
+	return stats, nil
 }
 
 // --------------------

@@ -306,7 +306,11 @@ func TestDefaultSpoolPruneRemovesOldSegments(t *testing.T) {
 	require.Greater(t, len(idsBefore), 1, "should have multiple segments")
 
 	// Prune all entries up to 150
-	require.NoError(t, s2.Prune(150))
+	stats, err := s2.Prune(150)
+	require.NoError(t, err)
+	require.Positive(t, stats.SegmentsRemoved, "prune should report removed segments")
+	require.Positive(t, stats.BytesRemoved, "prune should report removed bytes")
+	require.Zero(t, stats.SealedFullyAppliedRemaining)
 
 	// Count segments after prune
 	idsAfter, err := listSegments(s2.cfg.Dir)
@@ -338,7 +342,10 @@ func TestDefaultSpoolPruneNoOp(t *testing.T) {
 	s := newTestSpool(t)
 
 	// Prune on empty spool should not error
-	require.NoError(t, s.Prune(100))
+	stats, err := s.Prune(100)
+	require.NoError(t, err)
+	require.Zero(t, stats.SegmentsRemoved)
+	require.Zero(t, stats.SealedFullyAppliedRemaining)
 }
 
 func TestDefaultSpoolReplayRewindResetsCache(t *testing.T) {

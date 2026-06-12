@@ -64,6 +64,9 @@ spec:
   extraEnv:
   - name: INSECURE
     value: "true"
+  # Chaos-tuned: 256 KiB spool segments (default 256 MiB) so rotation seals segments and Prune has work to do.
+  - name: SPOOL_SEGMENT_MAX_BYTES
+    value: "262144"
   - name: AWS_ACCESS_KEY_ID
     value: minioadmin
   - name: AWS_SECRET_ACCESS_KEY

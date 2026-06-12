@@ -27,11 +27,11 @@ RUN go build -o /init ./bin/init
 RUN mkdir -p /cmds
 
 # Pre-warm the build cache: compile all shared dependencies once (race-instrumented).
-# This avoids recompiling the same packages 49 times — subsequent builds only
+# This avoids recompiling the same packages once per driver — subsequent builds only
 # compile the unique main.go (~117 LOC each).
 RUN go build -race ./internal/...
 
-# Build all 49 workload binaries in parallel. The shared dependency cache is
+# Build all workload binaries in parallel. The shared dependency cache is
 # warm from the previous step, so each parallel build only compiles main.go.
 RUN ls ./bin/cmds/ | xargs -P$(nproc) -I{} go build -race -o /cmds/{} ./bin/cmds/{}
 

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"go.etcd.io/etcd/client/pkg/v3/fileutil"
 	"go.etcd.io/etcd/server/v3/storage/wal"
 	"go.etcd.io/etcd/server/v3/storage/wal/walpb"
@@ -182,6 +183,15 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 				recovered.Index, recovered.Term, recovered.ConfState.Voters)
 			s.logger.Errorf("========================================")
 
+			// Torn-boot recovery is the correct answer to a lost snap file;
+			// asserting it confirms fault exploration actually reaches this
+			// lifecycle outcome.
+			assert.Reachable("snap file recovered from WAL snapshot records", map[string]any{
+				"index":      recovered.Index,
+				"term":       recovered.Term,
+				"walRecords": len(walSnaps),
+			})
+
 			s.snapshot = raftpb.Snapshot{
 				Metadata: raftpb.SnapshotMetadata{
 					Index:     recovered.Index,
@@ -214,6 +224,29 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 		}).Infof("WAL opened")
 	} else {
 		s.logger.Infof("DefaultWAL creation not completed, creating new DefaultWAL")
+
+		// A WAL holding state on this branch means the creation marker was
+		// lost while the fsynced WAL survived (marker dirent lost to a torn
+		// first boot, marker deletion, disk repair). Removing it would
+		// destroy vote records (double-vote → split brain) and entries not
+		// yet in a snapshot (acknowledged-write loss). File presence alone is
+		// not the signal: a crash between wal.Create and the marker write
+		// legitimately leaves one fresh, state-free segment here — only a
+		// non-empty HardState (term/vote/commit) distinguishes a WAL that
+		// participated in consensus. A Verify error is treated as
+		// not-populated: an unreadable WAL on this branch is the incomplete
+		// creation this branch exists to clean up.
+		if existing, globErr := filepath.Glob(filepath.Join(s.etcdWalDir, "*.wal")); globErr == nil && len(existing) > 0 {
+			if hs, verifyErr := wal.Verify(zapLogger, s.etcdWalDir, walpb.Snapshot{}); verifyErr == nil && hs != nil && (hs.Term > 0 || hs.Vote != 0 || hs.Commit > 0) {
+				assert.Unreachable("WAL recreation would discard an existing populated WAL directory", map[string]any{
+					"walFileCount": len(existing),
+					"walDir":       s.etcdWalDir,
+					"term":         hs.Term,
+					"vote":         hs.Vote,
+					"commit":       hs.Commit,
+				})
+			}
+		}
 
 		if err := os.RemoveAll(s.etcdWalDir); err != nil {
 			return nil, fmt.Errorf("removing existing DefaultWAL directory: %w", err)
