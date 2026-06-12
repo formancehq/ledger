@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/assert"
@@ -387,6 +388,119 @@ func readStoreKeyExists(t *testing.T, store *readstore.Store, key []byte) bool {
 	require.NoError(t, err)
 
 	return false
+}
+
+func TestProcessSchemaRewriteCountsScannedKeysAgainstBudgetAndPersistsCursor(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	kb := dal.NewKeyBuilder()
+	stop := make(chan struct{})
+	ledgerID := uint32(1)
+
+	firstSkippedKey := readstore.AccountReverseMapKey(kb, ledgerID, "acct-001", "other")
+	secondSkippedKey := readstore.AccountReverseMapKey(kb, ledgerID, "acct-002", "other")
+	matchingKey := readstore.AccountReverseMapKey(kb, ledgerID, "acct-003", "status")
+
+	skippedEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("ignored"))
+	oldEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("42"))
+	newEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(42))
+	entityID := []byte("acct-003")
+	oldForwardKey := cloneBytes(readstore.MetadataIndexKey(kb, ledgerID, readstore.NamespaceAccount, "status", oldEncoded, entityID))
+	newForwardKey := cloneBytes(readstore.MetadataIndexKey(kb, ledgerID, readstore.NamespaceAccount, "status", newEncoded, entityID))
+
+	batch := b.readStore.NewBatch()
+	require.NoError(t, batch.SetBytes(firstSkippedKey, skippedEncoded))
+	require.NoError(t, batch.SetBytes(secondSkippedKey, skippedEncoded))
+	require.NoError(t, batch.SetBytes(matchingKey, oldEncoded))
+	require.NoError(t, batch.SetBytes(oldForwardKey, nil))
+	require.NoError(t, batch.Commit())
+
+	task := &schemaRewriteTask{
+		ledgerID:   ledgerID,
+		targetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		key:        "status",
+		toType:     commonpb.MetadataType_METADATA_TYPE_INT64,
+		bbKey:      schemaRewriteBBKey(ledgerID, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status"),
+	}
+
+	done, err := b.processSchemaRewrite(task, 2, stop, time.Now().Add(time.Hour))
+	require.NoError(t, err)
+	assert.False(t, done)
+	assert.Equal(t, uint64(0), task.processedCount)
+	assert.Equal(t, secondSkippedKey, task.rmapCursor)
+
+	cursor, ok := b.readStore.ReadBackfillCursor(task.bbKey)
+	require.True(t, ok)
+	assert.Equal(t, append([]byte{byte(task.toType)}, secondSkippedKey...), cursor)
+	assertReadStoreValue(t, b, oldForwardKey, nil)
+	assertReadStoreValue(t, b, matchingKey, oldEncoded)
+
+	done, err = b.processSchemaRewrite(task, 10, stop, time.Now().Add(time.Hour))
+	require.NoError(t, err)
+	assert.True(t, done)
+	assert.Equal(t, uint64(1), task.processedCount)
+	assert.Equal(t, matchingKey, task.rmapCursor)
+
+	assertReadStoreMissing(t, b, oldForwardKey)
+	assertReadStoreValue(t, b, newForwardKey, nil)
+	assertReadStoreValue(t, b, matchingKey, newEncoded)
+}
+
+func TestProcessSchemaRewriteStopsBeforeScanningWhenStopClosed(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	kb := dal.NewKeyBuilder()
+	stop := make(chan struct{})
+	close(stop)
+
+	ledgerID := uint32(1)
+	reverseKey := readstore.AccountReverseMapKey(kb, ledgerID, "acct-001", "status")
+	encoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("42"))
+
+	batch := b.readStore.NewBatch()
+	require.NoError(t, batch.SetBytes(reverseKey, encoded))
+	require.NoError(t, batch.Commit())
+
+	task := &schemaRewriteTask{
+		ledgerID:   ledgerID,
+		targetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		key:        "status",
+		toType:     commonpb.MetadataType_METADATA_TYPE_INT64,
+		bbKey:      schemaRewriteBBKey(ledgerID, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status"),
+	}
+
+	done, err := b.processSchemaRewrite(task, 10, stop, time.Now().Add(time.Hour))
+	require.NoError(t, err)
+	assert.False(t, done)
+	assert.Equal(t, uint64(0), task.processedCount)
+	assert.Nil(t, task.rmapCursor)
+
+	_, ok := b.readStore.ReadBackfillCursor(task.bbKey)
+	assert.False(t, ok)
+	assertReadStoreValue(t, b, reverseKey, encoded)
+}
+
+func assertReadStoreValue(t *testing.T, b *Builder, key, expected []byte) {
+	t.Helper()
+
+	value, closer, err := b.readStore.DB().Get(key)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, closer.Close()) }()
+
+	assert.Equal(t, expected, append([]byte(nil), value...))
+}
+
+func assertReadStoreMissing(t *testing.T, b *Builder, key []byte) {
+	t.Helper()
+
+	_, closer, err := b.readStore.DB().Get(key)
+	if closer != nil {
+		defer func() { require.NoError(t, closer.Close()) }()
+	}
+
+	require.True(t, errors.Is(err, pebble.ErrNotFound), "expected key %x to be missing, got %v", key, err)
 }
 
 func TestIsDataLog(t *testing.T) {

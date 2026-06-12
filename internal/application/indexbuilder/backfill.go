@@ -256,7 +256,7 @@ func (b *Builder) removeSchemaRewriteTask(idx int) {
 
 // processSchemaRewrite processes a batch of reverse map entries for a schema rewrite task.
 // Returns true when the rewrite is complete (no more entries to process).
-func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int) (bool, error) {
+func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, stop <-chan struct{}, deadline time.Time) (bool, error) {
 	var ns string
 
 	switch task.targetType {
@@ -320,15 +320,26 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int) 
 	batch := b.readStore.NewBatch()
 	defer func() { _ = batch.Cancel() }()
 
-	processed := 0
-	var lastKey []byte
+	scanned := 0
+	rewritten := 0
+	var lastScannedKey []byte
 
+scan:
 	for ; iter.Valid(); iter.Next() {
-		if processed >= maxEntries {
+		if scanned >= maxEntries || !time.Now().Before(deadline) {
 			break
 		}
 
 		k := iter.Key()
+
+		select {
+		case <-stop:
+			break scan
+		default:
+		}
+
+		lastScannedKey = cloneBytes(k)
+		scanned++
 
 		// Strip the PrefixReverseMap byte for the extract helpers.
 		suffixAfterByte := k[1:]
@@ -394,8 +405,7 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int) 
 			return false, fmt.Errorf("updating reverse map: %w", err)
 		}
 
-		processed++
-		lastKey = cloneBytes(k)
+		rewritten++
 	}
 
 	// Check if we've exhausted the prefix.
@@ -403,15 +413,15 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int) 
 		done = true
 	}
 
-	task.processedCount += uint64(processed)
+	task.processedCount += uint64(rewritten)
 
 	// Persist cursor into the same batch.
-	if lastKey != nil {
-		task.rmapCursor = lastKey
+	if lastScannedKey != nil {
+		task.rmapCursor = lastScannedKey
 		// Value format: [toType_byte][rmapCursor...]
-		val := make([]byte, 1+len(lastKey))
+		val := make([]byte, 1+len(lastScannedKey))
 		val[0] = byte(task.toType)
-		copy(val[1:], lastKey)
+		copy(val[1:], lastScannedKey)
 
 		if err := b.readStore.WriteBackfillCursor(batch, task.bbKey, val); err != nil {
 			return false, err
@@ -480,7 +490,7 @@ func (b *Builder) processSchemaRewrites(ctx context.Context, stop <-chan struct{
 		}
 
 		// Phase 1: still rewriting.
-		done, err := b.processSchemaRewrite(task, maxEntriesPerBatch)
+		done, err := b.processSchemaRewrite(task, maxEntriesPerBatch, stop, deadline)
 		if err != nil {
 			b.logger.WithFields(map[string]any{
 				"ledger": task.ledger,
