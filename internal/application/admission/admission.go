@@ -336,6 +336,15 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		return nil, err
 	}
 
+	// Step 2b: Resolve transaction references on metadata orders so the
+	// FSM cache can be warmed with the corresponding TransactionState.
+	// Without this enrichment, SET/DELETE METADATA by reference on a
+	// committed transaction whose state has rotated out of the cache
+	// would surface as ErrTransactionNotFound at apply time.
+	if err := a.resolveMetadataReferencesAndEnrichNeeds(ctx, orders, needs); err != nil {
+		return nil, err
+	}
+
 	// Step 3-5: Build preloads via shared Preloader (no lock)
 	cmd := commands.NewCommand(orders...)
 
@@ -714,6 +723,31 @@ func addVolumeNeed(p *preload.Needs, ledgerID uint32, account, asset string) {
 	}] = struct{}{}
 }
 
+// addTransactionTargetNeeds preloads the right entry for a TargetTransaction.
+// When the identifier carries an id, the corresponding TransactionState is
+// preloaded so the FSM can read it from cache. When it carries a reference,
+// only the reference entry is preloaded — the FSM resolves it against the
+// WriteSet, which sees both committed references (via this preload) and
+// references just written by an earlier order in the same batch.
+func addTransactionTargetNeeds(p *preload.Needs, ledgerID uint32, target *commonpb.TargetTransaction) {
+	switch id := target.GetIdentifier().(type) {
+	case *commonpb.TargetTransaction_Id:
+		p.Transactions[domain.TransactionKey{
+			LedgerID: ledgerID,
+			ID:       id.Id,
+		}] = struct{}{}
+	case *commonpb.TargetTransaction_Reference:
+		if id.Reference == "" {
+			return
+		}
+
+		p.References[domain.TransactionReferenceKey{
+			LedgerID:  ledgerID,
+			Reference: id.Reference,
+		}] = struct{}{}
+	}
+}
+
 // resolveLedgerIDs builds a name-to-ID map for all ledger names referenced in orders.
 // Ledger names from CreateLedger orders are excluded since the ledger doesn't exist yet.
 func (a *Admission) resolveLedgerIDs(orders []*raftcmdpb.Order) (map[string]uint32, error) {
@@ -935,10 +969,7 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 				}
 
 				if target, ok := applyData.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_Transaction); ok {
-					p.Transactions[domain.TransactionKey{
-						LedgerID: ledgerID,
-						ID:       target.Transaction.GetId(),
-					}] = struct{}{}
+					addTransactionTargetNeeds(p, ledgerID, target.Transaction)
 				}
 
 			case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
@@ -950,10 +981,7 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 				}
 
 				if target, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_Transaction); ok {
-					p.Transactions[domain.TransactionKey{
-						LedgerID: ledgerID,
-						ID:       target.Transaction.GetId(),
-					}] = struct{}{}
+					addTransactionTargetNeeds(p, ledgerID, target.Transaction)
 				}
 			}
 		case *raftcmdpb.Order_SaveLedgerMetadata:
@@ -1471,6 +1499,15 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 			},
 		}
 	case *servicepb.LedgerAction_RevertTransaction:
+		// Resolve the target transaction id. When the caller supplied a
+		// reference, look it up in the store; Revert never resolves against
+		// the current batch because that would require reading writes that
+		// have not been committed yet.
+		txID, err := a.resolveRevertTarget(ctx, apply.GetLedger(), data.RevertTransaction)
+		if err != nil {
+			return nil, err
+		}
+
 		var originalPostings []*commonpb.Posting
 
 		if data.RevertTransaction.GetReceipt() != "" && a.receiptSigner != nil {
@@ -1484,16 +1521,14 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 				return nil, fmt.Errorf("receipt ledger %q does not match request ledger %q", claims.Ledger, apply.GetLedger())
 			}
 
-			if claims.TxID != data.RevertTransaction.GetTransactionId() {
-				return nil, fmt.Errorf("receipt txID %d does not match request txID %d", claims.TxID, data.RevertTransaction.GetTransactionId())
+			if claims.TxID != txID {
+				return nil, fmt.Errorf("receipt txID %d does not match resolved txID %d", claims.TxID, txID)
 			}
 
 			originalPostings = receipt.ClaimsToPostings(claims.Postings)
 		} else {
 			// Fall back to reading from Pebble
-			var err error
-
-			originalPostings, err = a.getTransactionPostings(apply.GetLedger(), data.RevertTransaction.GetTransactionId())
+			originalPostings, err = a.getTransactionPostings(apply.GetLedger(), txID)
 			if err != nil {
 				return nil, fmt.Errorf("getting original transaction postings: %w", err)
 			}
@@ -1501,7 +1536,7 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 
 		order.Data = &raftcmdpb.LedgerApplyOrder_RevertTransaction{
 			RevertTransaction: &raftcmdpb.RevertTransactionOrder{
-				TransactionId:    data.RevertTransaction.GetTransactionId(),
+				TransactionId:    txID,
 				Force:            data.RevertTransaction.GetForce(),
 				AtEffectiveDate:  data.RevertTransaction.GetAtEffectiveDate(),
 				Metadata:         data.RevertTransaction.GetMetadata(),
@@ -1641,6 +1676,134 @@ func (a *Admission) requestsToOrders(ctx context.Context, reqs []*servicepb.Requ
 	}
 
 	return orders, overlay, nil
+}
+
+// resolveRevertTarget resolves the target transaction id of a Revert action.
+// When the payload carries a numeric id, it is returned as-is. When it
+// carries a reference, the reference is looked up against the committed
+// store (Pebble) — Revert by reference is therefore only supported for
+// transactions that have been committed in a previous Raft entry, never for
+// transactions created in the current batch.
+func (a *Admission) resolveRevertTarget(ctx context.Context, ledgerName string, payload *servicepb.RevertTransactionPayload) (uint64, error) {
+	switch identifier := payload.GetIdentifier().(type) {
+	case *servicepb.RevertTransactionPayload_TransactionId:
+		return identifier.TransactionId, nil
+	case *servicepb.RevertTransactionPayload_TransactionReference:
+		if identifier.TransactionReference == "" {
+			return 0, &domain.BusinessError{Err: domain.ErrTransactionTargetMissing}
+		}
+
+		return a.lookupTransactionByReference(ctx, ledgerName, identifier.TransactionReference)
+	default:
+		return 0, &domain.BusinessError{Err: domain.ErrTransactionTargetMissing}
+	}
+}
+
+// lookupTransactionByReference resolves a transaction reference against the
+// committed primary store. Returns ErrTransactionReferenceNotFound when the
+// reference does not exist. The provided context is honoured: if it is
+// already cancelled, the lookup is short-circuited before opening a Pebble
+// handle.
+func (a *Admission) lookupTransactionByReference(ctx context.Context, ledgerName, reference string) (uint64, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+
+	ledgerID, ok := a.preloader.ResolveLedgerID(ledgerName)
+	if !ok {
+		return 0, &domain.BusinessError{Err: &domain.ErrLedgerNotFound{Name: ledgerName}}
+	}
+
+	handle, err := a.store.NewDirectReadHandle()
+	if err != nil {
+		return 0, fmt.Errorf("creating read handle: %w", err)
+	}
+
+	defer func() { _ = handle.Close() }()
+
+	key := domain.TransactionReferenceKey{LedgerID: ledgerID, Reference: reference}
+
+	value, err := a.attrs.References.Get(handle, key.Bytes())
+	if err != nil {
+		return 0, fmt.Errorf("reading transaction reference: %w", err)
+	}
+
+	if value == nil {
+		return 0, &domain.BusinessError{Err: &domain.ErrTransactionReferenceNotFound{Reference: reference}}
+	}
+
+	return value.GetTransactionId(), nil
+}
+
+// resolveMetadataReferencesAndEnrichNeeds walks SaveMetadata / DeleteMetadata
+// orders whose Target.Transaction carries a Reference (rather than an Id) and
+// preloads the corresponding TransactionState. If the reference cannot be
+// resolved in the committed store (typically because the transaction is being
+// created in the same batch), the preload is skipped — the FSM will read the
+// state directly from the WriteSet.
+func (a *Admission) resolveMetadataReferencesAndEnrichNeeds(ctx context.Context, orders []*raftcmdpb.Order, p *preload.Needs) error {
+	for _, order := range orders {
+		applyOrder, ok := order.GetType().(*raftcmdpb.Order_Apply)
+		if !ok {
+			continue
+		}
+
+		var target *commonpb.TargetTransaction
+
+		switch data := applyOrder.Apply.GetData().(type) {
+		case *raftcmdpb.LedgerApplyOrder_AddMetadata:
+			tx, isTx := data.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_Transaction)
+			if isTx {
+				target = tx.Transaction
+			}
+		case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
+			tx, isTx := data.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_Transaction)
+			if isTx {
+				target = tx.Transaction
+			}
+		}
+
+		if target == nil {
+			continue
+		}
+
+		ref, isRef := target.GetIdentifier().(*commonpb.TargetTransaction_Reference)
+		if !isRef || ref.Reference == "" {
+			continue
+		}
+
+		ledgerName := applyOrder.Apply.GetLedger()
+
+		txID, err := a.lookupTransactionByReference(ctx, ledgerName, ref.Reference)
+		if err != nil {
+			// Intra-batch references that have not yet been committed
+			// to the store surface as ErrTransactionReferenceNotFound.
+			// The FSM resolves them through the WriteSet, so we silently
+			// skip the preload — the FSM either succeeds via the
+			// WriteSet, or it returns the same NotFound error.
+			//
+			// ErrLedgerNotFound is handled symmetrically: the targeted
+			// ledger may be created in the same batch. resolveLedgerIDs
+			// already skips unknown ledgers and defers the decision to
+			// the FSM, so we mirror that here.
+			var refNotFound *domain.ErrTransactionReferenceNotFound
+			var ledgerNotFound *domain.ErrLedgerNotFound
+			if errors.As(err, &refNotFound) || errors.As(err, &ledgerNotFound) {
+				continue
+			}
+
+			return err
+		}
+
+		ledgerID, ok := a.preloader.ResolveLedgerID(ledgerName)
+		if !ok {
+			continue
+		}
+
+		p.Transactions[domain.TransactionKey{LedgerID: ledgerID, ID: txID}] = struct{}{}
+	}
+
+	return nil
 }
 
 // getTransactionPostings retrieves the postings of an original transaction from the store.

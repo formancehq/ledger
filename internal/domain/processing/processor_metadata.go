@@ -9,10 +9,80 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
+// canonicalizeTarget returns a Target whose Transaction identifier is always
+// expressed as a numeric id, even when the caller supplied a reference. The
+// log payload stored downstream (sinks, indexbuilder, replay, mirror, audit)
+// reads `Target.Transaction.GetId()` directly; without this rewrite, every
+// consumer would see id=0 for reference-typed targets and silently corrupt
+// derived state. The user's original reference is dropped from the log; if
+// it matters downstream, callers should embed it in the metadata payload.
+func canonicalizeTarget(target *commonpb.Target, resolvedTxID uint64) *commonpb.Target {
+	if target == nil {
+		return nil
+	}
+
+	tx, ok := target.GetTarget().(*commonpb.Target_Transaction)
+	if !ok || tx.Transaction == nil {
+		return target
+	}
+
+	if _, isRef := tx.Transaction.GetIdentifier().(*commonpb.TargetTransaction_Reference); !isRef {
+		return target
+	}
+
+	return &commonpb.Target{
+		Target: &commonpb.Target_Transaction{
+			Transaction: &commonpb.TargetTransaction{
+				Identifier: &commonpb.TargetTransaction_Id{Id: resolvedTxID},
+			},
+		},
+	}
+}
+
+// resolveTargetTransactionID returns the numeric transaction id for the given
+// TargetTransaction. When the target carries a reference, it is resolved
+// against the in-memory transaction reference index (which sees writes from
+// previous orders in the same batch, including just-created transactions).
+// The id path additionally validates against the ledger boundary; the
+// reference path does not need that check because PutTransactionReference is
+// only set when a transaction is actually allocated.
+func resolveTargetTransactionID(t *commonpb.TargetTransaction, ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, s InMemoryStore) (uint64, error) {
+	switch id := t.GetIdentifier().(type) {
+	case *commonpb.TargetTransaction_Id:
+		if id.Id >= boundaries.GetNextTransactionId() {
+			return 0, &domain.ErrTransactionNotFound{TransactionID: id.Id}
+		}
+
+		return id.Id, nil
+	case *commonpb.TargetTransaction_Reference:
+		if id.Reference == "" {
+			return 0, domain.ErrTransactionTargetMissing
+		}
+
+		value, err := s.GetTransactionReference(domain.TransactionReferenceKey{LedgerID: ledgerID, Reference: id.Reference})
+		if err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
+				return 0, &domain.ErrTransactionReferenceNotFound{Reference: id.Reference}
+			}
+
+			return 0, fmt.Errorf("resolving transaction reference: %w", err)
+		}
+
+		return value.GetTransactionId(), nil
+	default:
+		return 0, domain.ErrTransactionTargetMissing
+	}
+}
+
 func (p *RequestProcessor) processAddMetadata(ledger string, ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.SaveMetadataOrder, s InMemoryStore, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, error) {
 	if order.GetTarget() == nil {
 		return nil, domain.ErrTargetRequired
 	}
+
+	// loggedTarget defaults to the original target; the Target_Transaction
+	// branch rewrites it to a canonical id-based variant so the log stays
+	// usable across downstream consumers.
+	loggedTarget := order.GetTarget()
 
 	// Validate account address against account types.
 	if acct, isAcct := order.GetTarget().GetTarget().(*commonpb.Target_Account); isAcct {
@@ -58,11 +128,14 @@ func (p *RequestProcessor) processAddMetadata(ledger string, ledgerID uint32, bo
 			s.PutAccountMetadata(metaKey, value)
 		}
 	case *commonpb.Target_Transaction:
-		if target.Transaction.GetId() >= boundaries.GetNextTransactionId() {
-			return nil, &domain.ErrTransactionNotFound{TransactionID: target.Transaction.GetId()}
+		txID, err := resolveTargetTransactionID(target.Transaction, ledgerID, boundaries, s)
+		if err != nil {
+			return nil, err
 		}
 
-		txKey := domain.TransactionKey{LedgerID: ledgerID, ID: target.Transaction.GetId()}
+		loggedTarget = canonicalizeTarget(order.GetTarget(), txID)
+
+		txKey := domain.TransactionKey{LedgerID: ledgerID, ID: txID}
 
 		state, err := s.GetTransactionState(txKey)
 		if err != nil {
@@ -70,7 +143,7 @@ func (p *RequestProcessor) processAddMetadata(ledger string, ledgerID uint32, bo
 		}
 
 		if state == nil {
-			return nil, &domain.ErrTransactionNotFound{TransactionID: target.Transaction.GetId()}
+			return nil, &domain.ErrTransactionNotFound{TransactionID: txID}
 		}
 
 		// Add metadata entries to the transaction state
@@ -97,7 +170,7 @@ func (p *RequestProcessor) processAddMetadata(ledger string, ledgerID uint32, bo
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_SavedMetadata{
 			SavedMetadata: &commonpb.SavedMetadata{
-				Target:         order.GetTarget(),
+				Target:         loggedTarget,
 				Metadata:       order.GetMetadata(),
 				PreviousValues: previousValues,
 			},
@@ -115,6 +188,11 @@ func (p *RequestProcessor) processDeleteMetadata(ledger string, ledgerID uint32,
 	}
 
 	var previousValue *commonpb.MetadataValue
+
+	// loggedTarget defaults to the original target; the Target_Transaction
+	// branch rewrites it to a canonical id-based variant so the log stays
+	// usable across downstream consumers.
+	loggedTarget := order.GetTarget()
 
 	switch target := order.GetTarget().GetTarget().(type) {
 	case *commonpb.Target_Account:
@@ -141,11 +219,14 @@ func (p *RequestProcessor) processDeleteMetadata(ledger string, ledgerID uint32,
 		previousValue = oldVal
 		s.DeleteAccountMetadata(metaKey)
 	case *commonpb.Target_Transaction:
-		if target.Transaction.GetId() >= boundaries.GetNextTransactionId() {
-			return nil, &domain.ErrTransactionNotFound{TransactionID: target.Transaction.GetId()}
+		txID, err := resolveTargetTransactionID(target.Transaction, ledgerID, boundaries, s)
+		if err != nil {
+			return nil, err
 		}
 
-		txKey := domain.TransactionKey{LedgerID: ledgerID, ID: target.Transaction.GetId()}
+		loggedTarget = canonicalizeTarget(order.GetTarget(), txID)
+
+		txKey := domain.TransactionKey{LedgerID: ledgerID, ID: txID}
 
 		state, err := s.GetTransactionState(txKey)
 		if err != nil {
@@ -153,7 +234,7 @@ func (p *RequestProcessor) processDeleteMetadata(ledger string, ledgerID uint32,
 		}
 
 		if state == nil {
-			return nil, &domain.ErrTransactionNotFound{TransactionID: target.Transaction.GetId()}
+			return nil, &domain.ErrTransactionNotFound{TransactionID: txID}
 		}
 
 		// Capture old value and remove the metadata key from the transaction state
@@ -170,7 +251,7 @@ func (p *RequestProcessor) processDeleteMetadata(ledger string, ledgerID uint32,
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_DeletedMetadata{
 			DeletedMetadata: &commonpb.DeletedMetadata{
-				Target:        order.GetTarget(),
+				Target:        loggedTarget,
 				Key:           order.GetKey(),
 				PreviousValue: previousValue,
 			},

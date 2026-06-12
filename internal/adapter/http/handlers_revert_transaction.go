@@ -35,7 +35,7 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 
 	// Build request payload
 	payload := &servicepb.RevertTransactionPayload{
-		TransactionId: transactionID,
+		Identifier: &servicepb.RevertTransactionPayload_TransactionId{TransactionId: transactionID},
 	}
 
 	// Extract optional fields from request body

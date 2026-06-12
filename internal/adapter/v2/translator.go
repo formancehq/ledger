@@ -351,7 +351,9 @@ func translateTarget(targetType string, rawID stdjson.RawMessage) (*commonpb.Tar
 
 		return &commonpb.Target{
 			Target: &commonpb.Target_Transaction{
-				Transaction: &commonpb.TargetTransaction{Id: txID},
+				Transaction: &commonpb.TargetTransaction{
+					Identifier: &commonpb.TargetTransaction_Id{Id: txID},
+				},
 			},
 		}, nil
 	case "ACCOUNT":

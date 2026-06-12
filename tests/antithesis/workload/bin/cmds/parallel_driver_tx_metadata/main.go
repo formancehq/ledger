@@ -56,7 +56,9 @@ func main() {
 							AddMetadata: &commonpb.SaveMetadataCommand{
 								Target: &commonpb.Target{
 									Target: &commonpb.Target_Transaction{
-										Transaction: &commonpb.TargetTransaction{Id: txID},
+										Transaction: &commonpb.TargetTransaction{
+											Identifier: &commonpb.TargetTransaction_Id{Id: txID},
+										},
 									},
 								},
 								Metadata: commonpb.MetadataFromGoMap(map[string]string{key: value}),
@@ -98,7 +100,9 @@ func main() {
 							DeleteMetadata: &commonpb.DeleteMetadataCommand{
 								Target: &commonpb.Target{
 									Target: &commonpb.Target_Transaction{
-										Transaction: &commonpb.TargetTransaction{Id: txID},
+										Transaction: &commonpb.TargetTransaction{
+											Identifier: &commonpb.TargetTransaction_Id{Id: txID},
+										},
 									},
 								},
 								Key: key,

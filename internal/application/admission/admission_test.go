@@ -352,6 +352,160 @@ func TestExtractNeededVolumes(t *testing.T) {
 		require.True(t, hasBob)
 		require.True(t, hasWorld)
 	})
+
+	t.Run("preloads transaction reference index when add_metadata target uses reference", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		admission, _ := createTestAdmission(t, store)
+
+		orders := []*raftcmdpb.Order{
+			{
+				Type: &raftcmdpb.Order_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Ledger: testLedgerName,
+						Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
+							AddMetadata: &raftcmdpb.SaveMetadataOrder{
+								Target: &commonpb.Target{
+									Target: &commonpb.Target_Transaction{
+										Transaction: &commonpb.TargetTransaction{
+											Identifier: &commonpb.TargetTransaction_Reference{Reference: "invoice:42"},
+										},
+									},
+								},
+								Metadata: map[string]*commonpb.MetadataValue{
+									"status": commonpb.NewStringValue("paid"),
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders)
+		require.NoError(t, err)
+
+		_, hasRef := needs.References[domain.TransactionReferenceKey{LedgerID: 1, Reference: "invoice:42"}]
+		require.True(t, hasRef, "reference key should be preloaded")
+		require.Empty(t, needs.Transactions, "transaction key should not be preloaded when reference is used")
+	})
+
+	t.Run("preloads transaction state when add_metadata target uses id", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		admission, _ := createTestAdmission(t, store)
+
+		orders := []*raftcmdpb.Order{
+			{
+				Type: &raftcmdpb.Order_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Ledger: testLedgerName,
+						Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
+							AddMetadata: &raftcmdpb.SaveMetadataOrder{
+								Target: &commonpb.Target{
+									Target: &commonpb.Target_Transaction{
+										Transaction: &commonpb.TargetTransaction{
+											Identifier: &commonpb.TargetTransaction_Id{Id: 7},
+										},
+									},
+								},
+								Metadata: map[string]*commonpb.MetadataValue{
+									"status": commonpb.NewStringValue("paid"),
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders)
+		require.NoError(t, err)
+
+		_, hasTx := needs.Transactions[domain.TransactionKey{LedgerID: 1, ID: 7}]
+		require.True(t, hasTx, "transaction key should be preloaded when id is used")
+		require.Empty(t, needs.References, "reference key should not be preloaded when id is used")
+	})
+}
+
+// TestResolveMetadataReferences_SameBatchUnknownLedger covers the case where
+// a SaveMetadata-by-reference order targets a ledger created in the same
+// atomic batch (so the preloader still reports it as missing). The lookup
+// surfaces BusinessError{ErrLedgerNotFound}; admission must skip the preload
+// silently — mirroring resolveLedgerIDs — and let the FSM resolve via the
+// WriteSet.
+func TestResolveMetadataReferences_SameBatchUnknownLedger(t *testing.T) {
+	t.Parallel()
+
+	t.Run("skips preload when ledger is unknown (same-batch create)", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		admission, _ := createTestAdmission(t, store)
+
+		needs := preload.NewNeeds()
+		orders := []*raftcmdpb.Order{
+			{
+				Type: &raftcmdpb.Order_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Ledger: "fresh-ledger", // not registered in the preloader
+						Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
+							AddMetadata: &raftcmdpb.SaveMetadataOrder{
+								Target: &commonpb.Target{
+									Target: &commonpb.Target_Transaction{
+										Transaction: &commonpb.TargetTransaction{
+											Identifier: &commonpb.TargetTransaction_Reference{Reference: "invoice:42"},
+										},
+									},
+								},
+								Metadata: map[string]*commonpb.MetadataValue{
+									"status": commonpb.NewStringValue("paid"),
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		err := admission.resolveMetadataReferencesAndEnrichNeeds(context.Background(), orders, needs)
+		require.NoError(t, err, "ErrLedgerNotFound from intra-batch reference lookup must not block admission")
+		require.Empty(t, needs.Transactions, "no transaction key should be preloaded when the ledger is unknown")
+	})
+
+	t.Run("skips preload when reference does not resolve on a known ledger", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		admission, _ := createTestAdmission(t, store)
+
+		needs := preload.NewNeeds()
+		orders := []*raftcmdpb.Order{
+			{
+				Type: &raftcmdpb.Order_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Ledger: testLedgerName,
+						Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
+							AddMetadata: &raftcmdpb.SaveMetadataOrder{
+								Target: &commonpb.Target{
+									Target: &commonpb.Target_Transaction{
+										Transaction: &commonpb.TargetTransaction{
+											Identifier: &commonpb.TargetTransaction_Reference{Reference: "ref-not-yet-committed"},
+										},
+									},
+								},
+								Metadata: map[string]*commonpb.MetadataValue{
+									"status": commonpb.NewStringValue("paid"),
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		err := admission.resolveMetadataReferencesAndEnrichNeeds(context.Background(), orders, needs)
+		require.NoError(t, err, "ErrTransactionReferenceNotFound from intra-batch lookup must be swallowed")
+		require.Empty(t, needs.Transactions, "no transaction key should be preloaded when the reference is unknown")
+	})
 }
 
 func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
@@ -391,7 +545,7 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 			Action: &servicepb.LedgerAction{
 				Data: &servicepb.LedgerAction_RevertTransaction{
 					RevertTransaction: &servicepb.RevertTransactionPayload{
-						TransactionId:   1,
+						Identifier:      &servicepb.RevertTransactionPayload_TransactionId{TransactionId: 1},
 						Force:           false,
 						AtEffectiveDate: true,
 					},
@@ -425,7 +579,7 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 			Action: &servicepb.LedgerAction{
 				Data: &servicepb.LedgerAction_RevertTransaction{
 					RevertTransaction: &servicepb.RevertTransactionPayload{
-						TransactionId: 999,
+						Identifier: &servicepb.RevertTransactionPayload_TransactionId{TransactionId: 999},
 					},
 				},
 			},
@@ -434,6 +588,92 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 		_, err := admission.convertApplyRequest(t.Context(), applyRequest)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "getting original transaction postings")
+	})
+
+	t.Run("resolves transaction reference and patches numeric id into the order", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		admission, attrs := createTestAdmission(t, store)
+
+		expectedPostings := []*commonpb.Posting{
+			{
+				Source:      "world",
+				Destination: "user:alice",
+				Amount:      commonpb.NewUint256FromUint64(100),
+				Asset:       "USD",
+			},
+		}
+
+		txLog := createTransactionLog(1, testLedgerName, 1, 1, expectedPostings)
+
+		batch := store.NewBatch()
+		require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{txLog}))
+		_, err := attrs.Transaction.Set(batch, domain.TransactionKey{LedgerID: 1, ID: 1}.Bytes(), &commonpb.TransactionState{CreatedByLog: 1})
+		require.NoError(t, err)
+		_, err = attrs.References.Set(batch, domain.TransactionReferenceKey{LedgerID: 1, Reference: "invoice:42"}.Bytes(), &commonpb.TransactionReferenceValue{TransactionId: 1})
+		require.NoError(t, err)
+		require.NoError(t, state.SetAppliedIndex(batch, 1))
+		require.NoError(t, batch.Commit())
+
+		applyRequest := &servicepb.LedgerApplyRequest{
+			Ledger: testLedgerName,
+			Action: &servicepb.LedgerAction{
+				Data: &servicepb.LedgerAction_RevertTransaction{
+					RevertTransaction: &servicepb.RevertTransactionPayload{
+						Identifier: &servicepb.RevertTransactionPayload_TransactionReference{TransactionReference: "invoice:42"},
+					},
+				},
+			},
+		}
+
+		order, err := admission.convertApplyRequest(t.Context(), applyRequest)
+		require.NoError(t, err)
+
+		revertOrder := order.GetData().(*raftcmdpb.LedgerApplyOrder_RevertTransaction).RevertTransaction
+		require.Equal(t, uint64(1), revertOrder.GetTransactionId(), "raft order should carry resolved numeric id")
+		require.Len(t, revertOrder.GetOriginalPostings(), 1)
+	})
+
+	t.Run("returns error when transaction reference does not exist", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		admission, _ := createTestAdmission(t, store)
+
+		applyRequest := &servicepb.LedgerApplyRequest{
+			Ledger: testLedgerName,
+			Action: &servicepb.LedgerAction{
+				Data: &servicepb.LedgerAction_RevertTransaction{
+					RevertTransaction: &servicepb.RevertTransactionPayload{
+						Identifier: &servicepb.RevertTransactionPayload_TransactionReference{TransactionReference: "ghost"},
+					},
+				},
+			},
+		}
+
+		_, err := admission.convertApplyRequest(t.Context(), applyRequest)
+		require.Error(t, err)
+
+		var refNotFound *domain.ErrTransactionReferenceNotFound
+		require.ErrorAs(t, err, &refNotFound)
+		require.Equal(t, "ghost", refNotFound.Reference)
+	})
+
+	t.Run("returns error when revert payload has no identifier", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		admission, _ := createTestAdmission(t, store)
+
+		applyRequest := &servicepb.LedgerApplyRequest{
+			Ledger: testLedgerName,
+			Action: &servicepb.LedgerAction{
+				Data: &servicepb.LedgerAction_RevertTransaction{
+					RevertTransaction: &servicepb.RevertTransactionPayload{},
+				},
+			},
+		}
+
+		_, err := admission.convertApplyRequest(t.Context(), applyRequest)
+		require.ErrorIs(t, err, domain.ErrTransactionTargetMissing)
 	})
 }
 
@@ -755,8 +995,8 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 					Action: &servicepb.LedgerAction{
 						Data: &servicepb.LedgerAction_RevertTransaction{
 							RevertTransaction: &servicepb.RevertTransactionPayload{
-								TransactionId: 42,
-								Force:         true,
+								Identifier: &servicepb.RevertTransactionPayload_TransactionId{TransactionId: 42},
+								Force:      true,
 							},
 						},
 					},

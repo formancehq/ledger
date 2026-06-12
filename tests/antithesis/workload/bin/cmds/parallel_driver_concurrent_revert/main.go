@@ -55,7 +55,7 @@ func main() {
 						Ledger: ledger,
 						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RevertTransaction{
 							RevertTransaction: &servicepb.RevertTransactionPayload{
-								TransactionId: txID,
+								Identifier:    &servicepb.RevertTransactionPayload_TransactionId{TransactionId: txID},
 								Force:         true,
 								ExpandVolumes: true,
 							},

@@ -127,7 +127,9 @@ func TestProcessAddMetadata_TransactionNotFound(t *testing.T) {
 					AddMetadata: &commonpb.SaveMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Transaction{
-								Transaction: &commonpb.TargetTransaction{Id: 99}, // Beyond NextTransactionId=5
+								Transaction: &commonpb.TargetTransaction{
+									Identifier: &commonpb.TargetTransaction_Id{Id: 99},
+								}, // Beyond NextTransactionId=5
 							},
 						},
 						Metadata: map[string]*commonpb.MetadataValue{
@@ -264,7 +266,9 @@ func TestProcessDeleteMetadata_Transaction(t *testing.T) {
 					DeleteMetadata: &commonpb.DeleteMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Transaction{
-								Transaction: &commonpb.TargetTransaction{Id: 3},
+								Transaction: &commonpb.TargetTransaction{
+									Identifier: &commonpb.TargetTransaction_Id{Id: 3},
+								},
 							},
 						},
 						Key: "category",
@@ -308,7 +312,9 @@ func TestProcessDeleteMetadata_TransactionNotFound(t *testing.T) {
 					DeleteMetadata: &commonpb.DeleteMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Transaction{
-								Transaction: &commonpb.TargetTransaction{Id: 99},
+								Transaction: &commonpb.TargetTransaction{
+									Identifier: &commonpb.TargetTransaction_Id{Id: 99},
+								},
 							},
 						},
 						Key: "status",

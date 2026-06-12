@@ -227,7 +227,9 @@ func SaveTransactionMetadataAction(ledgerName string, transactionID uint64, meta
 					AddMetadata: &commonpb.SaveMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Transaction{
-								Transaction: &commonpb.TargetTransaction{Id: transactionID},
+								Transaction: &commonpb.TargetTransaction{
+									Identifier: &commonpb.TargetTransaction_Id{Id: transactionID},
+								},
 							},
 						},
 						Metadata: commonpb.MetadataFromGoMap(metadata),
@@ -248,7 +250,9 @@ func DeleteTransactionMetadataAction(ledgerName string, transactionID uint64, ke
 					DeleteMetadata: &commonpb.DeleteMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Transaction{
-								Transaction: &commonpb.TargetTransaction{Id: transactionID},
+								Transaction: &commonpb.TargetTransaction{
+									Identifier: &commonpb.TargetTransaction_Id{Id: transactionID},
+								},
 							},
 						},
 						Key: key,
@@ -291,7 +295,7 @@ func RevertTransactionAction(ledgerName string, transactionID uint64, force, atE
 				Ledger: ledgerName,
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RevertTransaction{
 					RevertTransaction: &servicepb.RevertTransactionPayload{
-						TransactionId:   transactionID,
+						Identifier:      &servicepb.RevertTransactionPayload_TransactionId{TransactionId: transactionID},
 						Force:           force,
 						AtEffectiveDate: atEffectiveDate,
 						Metadata:        commonpb.MetadataFromGoMap(metadata),
@@ -497,7 +501,9 @@ func SaveTypedTransactionMetadataAction(ledgerName string, txID uint64, metadata
 					AddMetadata: &commonpb.SaveMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Transaction{
-								Transaction: &commonpb.TargetTransaction{Id: txID},
+								Transaction: &commonpb.TargetTransaction{
+									Identifier: &commonpb.TargetTransaction_Id{Id: txID},
+								},
 							},
 						},
 						Metadata: metadata,

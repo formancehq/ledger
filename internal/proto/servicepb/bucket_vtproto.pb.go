@@ -1291,11 +1291,15 @@ func (m *RevertTransactionPayload) CloneVT() *RevertTransactionPayload {
 		return (*RevertTransactionPayload)(nil)
 	}
 	r := new(RevertTransactionPayload)
-	r.TransactionId = m.TransactionId
 	r.Force = m.Force
 	r.AtEffectiveDate = m.AtEffectiveDate
 	r.Receipt = m.Receipt
 	r.ExpandVolumes = m.ExpandVolumes
+	if m.Identifier != nil {
+		r.Identifier = m.Identifier.(interface {
+			CloneVT() isRevertTransactionPayload_Identifier
+		}).CloneVT()
+	}
 	if rhs := m.Metadata; rhs != nil {
 		tmpContainer := make(map[string]*commonpb.MetadataValue, len(rhs))
 		for k, v := range rhs {
@@ -1312,6 +1316,24 @@ func (m *RevertTransactionPayload) CloneVT() *RevertTransactionPayload {
 
 func (m *RevertTransactionPayload) CloneMessageVT() proto.Message {
 	return m.CloneVT()
+}
+
+func (m *RevertTransactionPayload_TransactionId) CloneVT() isRevertTransactionPayload_Identifier {
+	if m == nil {
+		return (*RevertTransactionPayload_TransactionId)(nil)
+	}
+	r := new(RevertTransactionPayload_TransactionId)
+	r.TransactionId = m.TransactionId
+	return r
+}
+
+func (m *RevertTransactionPayload_TransactionReference) CloneVT() isRevertTransactionPayload_Identifier {
+	if m == nil {
+		return (*RevertTransactionPayload_TransactionReference)(nil)
+	}
+	r := new(RevertTransactionPayload_TransactionReference)
+	r.TransactionReference = m.TransactionReference
+	return r
 }
 
 func (m *LedgerAction) CloneVT() *LedgerAction {
@@ -5155,8 +5177,17 @@ func (this *RevertTransactionPayload) EqualVT(that *RevertTransactionPayload) bo
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.TransactionId != that.TransactionId {
+	if this.Identifier == nil && that.Identifier != nil {
 		return false
+	} else if this.Identifier != nil {
+		if that.Identifier == nil {
+			return false
+		}
+		if !this.Identifier.(interface {
+			EqualVT(isRevertTransactionPayload_Identifier) bool
+		}).EqualVT(that.Identifier) {
+			return false
+		}
 	}
 	if this.Force != that.Force {
 		return false
@@ -5200,6 +5231,40 @@ func (this *RevertTransactionPayload) EqualMessageVT(thatMsg proto.Message) bool
 	}
 	return this.EqualVT(that)
 }
+func (this *RevertTransactionPayload_TransactionId) EqualVT(thatIface isRevertTransactionPayload_Identifier) bool {
+	that, ok := thatIface.(*RevertTransactionPayload_TransactionId)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if this.TransactionId != that.TransactionId {
+		return false
+	}
+	return true
+}
+
+func (this *RevertTransactionPayload_TransactionReference) EqualVT(thatIface isRevertTransactionPayload_Identifier) bool {
+	that, ok := thatIface.(*RevertTransactionPayload_TransactionReference)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if this.TransactionReference != that.TransactionReference {
+		return false
+	}
+	return true
+}
+
 func (this *LedgerAction) EqualVT(that *LedgerAction) bool {
 	if this == that {
 		return true
@@ -11089,6 +11154,15 @@ func (m *RevertTransactionPayload) MarshalToSizedBufferVT(dAtA []byte) (int, err
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if vtmsg, ok := m.Identifier.(interface {
+		MarshalToSizedBufferVT([]byte) (int, error)
+	}); ok {
+		size, err := vtmsg.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+	}
 	if m.ExpandVolumes {
 		i--
 		if m.ExpandVolumes {
@@ -11148,15 +11222,36 @@ func (m *RevertTransactionPayload) MarshalToSizedBufferVT(dAtA []byte) (int, err
 		i--
 		dAtA[i] = 0x10
 	}
-	if m.TransactionId != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.TransactionId))
-		i--
-		dAtA[i] = 0x9
-	}
 	return len(dAtA) - i, nil
 }
 
+func (m *RevertTransactionPayload_TransactionId) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *RevertTransactionPayload_TransactionId) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i -= 8
+	binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.TransactionId))
+	i--
+	dAtA[i] = 0x9
+	return len(dAtA) - i, nil
+}
+func (m *RevertTransactionPayload_TransactionReference) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *RevertTransactionPayload_TransactionReference) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i -= len(m.TransactionReference)
+	copy(dAtA[i:], m.TransactionReference)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.TransactionReference)))
+	i--
+	dAtA[i] = 0x3a
+	return len(dAtA) - i, nil
+}
 func (m *LedgerAction) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -17043,8 +17138,8 @@ func (m *RevertTransactionPayload) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.TransactionId != 0 {
-		n += 9
+	if vtmsg, ok := m.Identifier.(interface{ SizeVT() int }); ok {
+		n += vtmsg.SizeVT()
 	}
 	if m.Force {
 		n += 2
@@ -17076,6 +17171,25 @@ func (m *RevertTransactionPayload) SizeVT() (n int) {
 	return n
 }
 
+func (m *RevertTransactionPayload_TransactionId) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 9
+	return n
+}
+func (m *RevertTransactionPayload_TransactionReference) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.TransactionReference)
+	n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	return n
+}
 func (m *LedgerAction) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -26052,12 +26166,13 @@ func (m *RevertTransactionPayload) UnmarshalVT(dAtA []byte) error {
 			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field TransactionId", wireType)
 			}
-			m.TransactionId = 0
+			var v uint64
 			if (iNdEx + 8) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.TransactionId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			v = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
+			m.Identifier = &RevertTransactionPayload_TransactionId{TransactionId: v}
 		case 2:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Force", wireType)
@@ -26279,6 +26394,38 @@ func (m *RevertTransactionPayload) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.ExpandVolumes = bool(v != 0)
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TransactionReference", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Identifier = &RevertTransactionPayload_TransactionReference{TransactionReference: string(dAtA[iNdEx:postIndex])}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

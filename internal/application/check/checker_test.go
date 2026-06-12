@@ -1124,7 +1124,7 @@ func saveTransactionMetadataOrder(ledger string, txID uint64, metadata map[strin
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Transaction{
 								Transaction: &commonpb.TargetTransaction{
-									Id: txID,
+									Identifier: &commonpb.TargetTransaction_Id{Id: txID},
 								},
 							},
 						},
@@ -1146,7 +1146,7 @@ func deleteTransactionMetadataOrder(ledger string, txID uint64, key string) *raf
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Transaction{
 								Transaction: &commonpb.TargetTransaction{
-									Id: txID,
+									Identifier: &commonpb.TargetTransaction_Id{Id: txID},
 								},
 							},
 						},

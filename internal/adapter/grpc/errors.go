@@ -75,6 +75,10 @@ var errorMappings = []errorMapping{
 		return map[string]string{"ledger": e.Ledger, "reference": e.Reference}
 	}), codes.AlreadyExists, domain.ErrReasonTransactionReferenceConflict},
 
+	{matchAs(func(e *domain.ErrTransactionReferenceNotFound) map[string]string {
+		return map[string]string{"reference": e.Reference}
+	}), codes.NotFound, domain.ErrReasonTransactionReferenceNotFound},
+
 	{matchAs(func(e *domain.ErrTransactionNotFound) map[string]string {
 		return map[string]string{"transactionId": strconv.FormatUint(e.TransactionID, 10)}
 	}), codes.NotFound, domain.ErrReasonTransactionNotFound},
@@ -157,6 +161,7 @@ var errorMappings = []errorMapping{
 	{matchIs(domain.ErrTargetRequired), codes.InvalidArgument, domain.ErrReasonValidation},
 	{matchIs(domain.ErrMetadataKeyRequired), codes.InvalidArgument, domain.ErrReasonValidation},
 	{matchIs(domain.ErrScriptRequired), codes.InvalidArgument, domain.ErrReasonValidation},
+	{matchIs(domain.ErrTransactionTargetMissing), codes.InvalidArgument, domain.ErrReasonValidation},
 	{matchIs(admission.ErrIdempotencyKeyTooLong), codes.InvalidArgument, domain.ErrReasonValidation},
 	{matchIs(domain.ErrNumscriptNameRequired), codes.InvalidArgument, domain.ErrReasonValidation},
 	{matchIs(domain.ErrNumscriptContentRequired), codes.InvalidArgument, domain.ErrReasonValidation},

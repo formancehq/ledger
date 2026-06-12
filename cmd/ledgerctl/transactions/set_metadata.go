@@ -143,7 +143,9 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 								AddMetadata: &commonpb.SaveMetadataCommand{
 									Target: &commonpb.Target{
 										Target: &commonpb.Target_Transaction{
-											Transaction: &commonpb.TargetTransaction{Id: txID},
+											Transaction: &commonpb.TargetTransaction{
+												Identifier: &commonpb.TargetTransaction_Id{Id: txID},
+											},
 										},
 									},
 									Metadata: commonpb.MetadataFromGoMap(metadata),

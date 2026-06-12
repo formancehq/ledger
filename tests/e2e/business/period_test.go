@@ -205,9 +205,9 @@ var _ = Describe("Receipts", Ordered, func() {
 								Ledger: ledger,
 								Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RevertTransaction{
 									RevertTransaction: &servicepb.RevertTransactionPayload{
-										TransactionId: txID,
-										Force:         true,
-										Receipt:       receipt,
+										Identifier: &servicepb.RevertTransactionPayload_TransactionId{TransactionId: txID},
+										Force:      true,
+										Receipt:    receipt,
 									},
 								}},
 							},
@@ -234,9 +234,9 @@ var _ = Describe("Receipts", Ordered, func() {
 								Ledger: ledger,
 								Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RevertTransaction{
 									RevertTransaction: &servicepb.RevertTransactionPayload{
-										TransactionId: txID,
-										Force:         true,
-										Receipt:       receipt,
+										Identifier: &servicepb.RevertTransactionPayload_TransactionId{TransactionId: txID},
+										Force:      true,
+										Receipt:    receipt,
 									},
 								}},
 							},

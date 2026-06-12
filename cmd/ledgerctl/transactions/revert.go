@@ -153,7 +153,7 @@ func runRevert(cmd *cobra.Command, args []string) error {
 						Action: &servicepb.LedgerAction{
 							Data: &servicepb.LedgerAction_RevertTransaction{
 								RevertTransaction: &servicepb.RevertTransactionPayload{
-									TransactionId:   txID,
+									Identifier:      &servicepb.RevertTransactionPayload_TransactionId{TransactionId: txID},
 									Force:           force,
 									AtEffectiveDate: atEffectiveDate,
 									Metadata:        commonpb.MetadataFromGoMap(metadata),

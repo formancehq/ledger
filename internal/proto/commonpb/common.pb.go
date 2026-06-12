@@ -1909,8 +1909,24 @@ func (x *TargetAccount) GetAddr() string {
 }
 
 type TargetTransaction struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            uint64                 `protobuf:"fixed64,1,opt,name=id,proto3" json:"id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Exactly one of id or reference must be set.
+	// Reference is resolved by the FSM via the in-memory transaction
+	// reference index, so a transaction created earlier in the same batch
+	// can be addressed by its reference.
+	//
+	// Cluster-version safety: this oneof is committed to the Raft log, so a
+	// mixed-version cluster (old nodes that pre-date `reference = 2`) would
+	// decode the field as unknown and diverge from new nodes at the same
+	// applied index. Rollouts MUST proceed via a full cluster restart on the
+	// new binary before any client sends a reference-typed target. The POC
+	// assumes a single-version cluster; partial upgrades are not supported.
+	//
+	// Types that are valid to be assigned to Identifier:
+	//
+	//	*TargetTransaction_Id
+	//	*TargetTransaction_Reference
+	Identifier    isTargetTransaction_Identifier `protobuf_oneof:"identifier"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1945,12 +1961,46 @@ func (*TargetTransaction) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{15}
 }
 
+func (x *TargetTransaction) GetIdentifier() isTargetTransaction_Identifier {
+	if x != nil {
+		return x.Identifier
+	}
+	return nil
+}
+
 func (x *TargetTransaction) GetId() uint64 {
 	if x != nil {
-		return x.Id
+		if x, ok := x.Identifier.(*TargetTransaction_Id); ok {
+			return x.Id
+		}
 	}
 	return 0
 }
+
+func (x *TargetTransaction) GetReference() string {
+	if x != nil {
+		if x, ok := x.Identifier.(*TargetTransaction_Reference); ok {
+			return x.Reference
+		}
+	}
+	return ""
+}
+
+type isTargetTransaction_Identifier interface {
+	isTargetTransaction_Identifier()
+}
+
+type TargetTransaction_Id struct {
+	Id uint64 `protobuf:"fixed64,1,opt,name=id,proto3,oneof"`
+}
+
+type TargetTransaction_Reference struct {
+	Reference string `protobuf:"bytes,2,opt,name=reference,proto3,oneof"`
+}
+
+func (*TargetTransaction_Id) isTargetTransaction_Identifier() {}
+
+func (*TargetTransaction_Reference) isTargetTransaction_Identifier() {}
 
 type Target struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -9712,9 +9762,12 @@ const file_common_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x120\n" +
 	"\x05value\x18\x02 \x01(\v2\x1a.common.VolumesWithBalanceR\x05value:\x028\x01\"#\n" +
 	"\rTargetAccount\x12\x12\n" +
-	"\x04addr\x18\x01 \x01(\tR\x04addr\"#\n" +
-	"\x11TargetTransaction\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x06R\x02id\"\x84\x01\n" +
+	"\x04addr\x18\x01 \x01(\tR\x04addr\"S\n" +
+	"\x11TargetTransaction\x12\x10\n" +
+	"\x02id\x18\x01 \x01(\x06H\x00R\x02id\x12\x1e\n" +
+	"\treference\x18\x02 \x01(\tH\x00R\treferenceB\f\n" +
+	"\n" +
+	"identifier\"\x84\x01\n" +
 	"\x06Target\x121\n" +
 	"\aaccount\x18\x01 \x01(\v2\x15.common.TargetAccountH\x00R\aaccount\x12=\n" +
 	"\vtransaction\x18\x02 \x01(\v2\x19.common.TargetTransactionH\x00R\vtransactionB\b\n" +
@@ -10804,6 +10857,10 @@ func file_common_proto_init() {
 		(*ParameterValue_Int64Value)(nil),
 		(*ParameterValue_Uint64Value)(nil),
 		(*ParameterValue_BoolValue)(nil),
+	}
+	file_common_proto_msgTypes[15].OneofWrappers = []any{
+		(*TargetTransaction_Id)(nil),
+		(*TargetTransaction_Reference)(nil),
 	}
 	file_common_proto_msgTypes[16].OneofWrappers = []any{
 		(*Target_Account)(nil),

@@ -2,6 +2,7 @@ package commonpb
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -279,7 +280,7 @@ func (dm *DeletedMetadata) UnmarshalJSON(data []byte) error {
 			dm.Target = &Target{
 				Target: &Target_Transaction{
 					Transaction: &TargetTransaction{
-						Id: txID,
+						Identifier: &TargetTransaction_Id{Id: txID},
 					},
 				},
 			}
@@ -336,7 +337,7 @@ func (sm *SavedMetadata) UnmarshalJSON(data []byte) error {
 			sm.Target = &Target{
 				Target: &Target_Transaction{
 					Transaction: &TargetTransaction{
-						Id: txID,
+						Identifier: &TargetTransaction_Id{Id: txID},
 					},
 				},
 			}
@@ -489,36 +490,62 @@ func (x *Period) MarshalJSON() ([]byte, error) {
 	return json.Marshal(aux)
 }
 
-// ParseTarget parses targetType and targetId into a Target message.
-func ParseTarget(targetType string, targetID json.RawValue) *Target {
-	if len(targetID) == 0 {
-		return nil
-	}
-
+// ParseTarget parses targetType and targetId/targetReference into a Target.
+// For TRANSACTION targets, the caller may provide either a numeric targetID
+// or a non-empty targetReference (resolved against the transaction reference
+// index). targetReference is ignored for ACCOUNT targets. Returns an error
+// when the inputs cannot be parsed instead of silently returning nil — the
+// caller should surface this to the client.
+func ParseTarget(targetType string, targetID json.RawValue, targetReference string) (*Target, error) {
 	switch strings.ToUpper(targetType) {
 	case MetaTargetTypeAccount:
-		var addr string
-
-		err := json.Unmarshal(targetID, &addr)
-		if err == nil {
-			return &Target{
-				Target: &Target_Account{
-					Account: &TargetAccount{Addr: addr},
-				},
-			}
+		if len(targetID) == 0 {
+			return nil, errors.New("account target requires targetId")
 		}
-	case MetaTargetTypeTransaction:
-		var id uint64
 
-		err := json.Unmarshal(targetID, &id)
-		if err == nil {
+		var addr string
+		if err := json.Unmarshal(targetID, &addr); err != nil {
+			return nil, fmt.Errorf("account targetId must be a string: %w", err)
+		}
+
+		return &Target{
+			Target: &Target_Account{
+				Account: &TargetAccount{Addr: addr},
+			},
+		}, nil
+
+	case MetaTargetTypeTransaction:
+		if targetReference != "" {
+			if len(targetID) != 0 {
+				return nil, errors.New("transaction target must set either targetId or targetReference, not both")
+			}
+
 			return &Target{
 				Target: &Target_Transaction{
-					Transaction: &TargetTransaction{Id: id},
+					Transaction: &TargetTransaction{
+						Identifier: &TargetTransaction_Reference{Reference: targetReference},
+					},
 				},
-			}
+			}, nil
 		}
+
+		if len(targetID) == 0 {
+			return nil, errors.New("transaction target requires either targetId or targetReference")
+		}
+
+		var id uint64
+		if err := json.Unmarshal(targetID, &id); err != nil {
+			return nil, fmt.Errorf("transaction targetId must be a uint64: %w", err)
+		}
+
+		return &Target{
+			Target: &Target_Transaction{
+				Transaction: &TargetTransaction{
+					Identifier: &TargetTransaction_Id{Id: id},
+				},
+			},
+		}, nil
 	}
 
-	return nil
+	return nil, fmt.Errorf("unsupported targetType %q", targetType)
 }

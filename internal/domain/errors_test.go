@@ -57,6 +57,16 @@ func TestErrorTypes(t *testing.T) {
 			expected: "transaction 42 is already reverted",
 		},
 		{
+			name:     "ErrTransactionReferenceNotFound",
+			err:      &ErrTransactionReferenceNotFound{Reference: "invoice:42"},
+			expected: `transaction with reference "invoice:42" does not exist`,
+		},
+		{
+			name:     "ErrTransactionTargetMissing",
+			err:      ErrTransactionTargetMissing,
+			expected: "transaction target requires either id or reference",
+		},
+		{
 			name:     "ErrInsufficientFunds",
 			err:      &ErrInsufficientFunds{Account: "bank", Asset: "USD", Amount: "1000", Balance: "500"},
 			expected: `insufficient funds on account "bank" for asset USD: needed 1000, available 500`,

@@ -443,7 +443,11 @@ func (m *TargetTransaction) CloneVT() *TargetTransaction {
 		return (*TargetTransaction)(nil)
 	}
 	r := new(TargetTransaction)
-	r.Id = m.Id
+	if m.Identifier != nil {
+		r.Identifier = m.Identifier.(interface {
+			CloneVT() isTargetTransaction_Identifier
+		}).CloneVT()
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -453,6 +457,24 @@ func (m *TargetTransaction) CloneVT() *TargetTransaction {
 
 func (m *TargetTransaction) CloneMessageVT() proto.Message {
 	return m.CloneVT()
+}
+
+func (m *TargetTransaction_Id) CloneVT() isTargetTransaction_Identifier {
+	if m == nil {
+		return (*TargetTransaction_Id)(nil)
+	}
+	r := new(TargetTransaction_Id)
+	r.Id = m.Id
+	return r
+}
+
+func (m *TargetTransaction_Reference) CloneVT() isTargetTransaction_Identifier {
+	if m == nil {
+		return (*TargetTransaction_Reference)(nil)
+	}
+	r := new(TargetTransaction_Reference)
+	r.Reference = m.Reference
+	return r
 }
 
 func (m *Target) CloneVT() *Target {
@@ -4116,8 +4138,17 @@ func (this *TargetTransaction) EqualVT(that *TargetTransaction) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.Id != that.Id {
+	if this.Identifier == nil && that.Identifier != nil {
 		return false
+	} else if this.Identifier != nil {
+		if that.Identifier == nil {
+			return false
+		}
+		if !this.Identifier.(interface {
+			EqualVT(isTargetTransaction_Identifier) bool
+		}).EqualVT(that.Identifier) {
+			return false
+		}
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -4129,6 +4160,40 @@ func (this *TargetTransaction) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
+func (this *TargetTransaction_Id) EqualVT(thatIface isTargetTransaction_Identifier) bool {
+	that, ok := thatIface.(*TargetTransaction_Id)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if this.Id != that.Id {
+		return false
+	}
+	return true
+}
+
+func (this *TargetTransaction_Reference) EqualVT(thatIface isTargetTransaction_Identifier) bool {
+	that, ok := thatIface.(*TargetTransaction_Reference)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if this.Reference != that.Reference {
+		return false
+	}
+	return true
+}
+
 func (this *Target) EqualVT(that *Target) bool {
 	if this == that {
 		return true
@@ -10206,15 +10271,45 @@ func (m *TargetTransaction) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Id != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Id))
-		i--
-		dAtA[i] = 0x9
+	if vtmsg, ok := m.Identifier.(interface {
+		MarshalToSizedBufferVT([]byte) (int, error)
+	}); ok {
+		size, err := vtmsg.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
 	}
 	return len(dAtA) - i, nil
 }
 
+func (m *TargetTransaction_Id) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *TargetTransaction_Id) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i -= 8
+	binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Id))
+	i--
+	dAtA[i] = 0x9
+	return len(dAtA) - i, nil
+}
+func (m *TargetTransaction_Reference) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *TargetTransaction_Reference) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i -= len(m.Reference)
+	copy(dAtA[i:], m.Reference)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Reference)))
+	i--
+	dAtA[i] = 0x12
+	return len(dAtA) - i, nil
+}
 func (m *Target) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -18192,13 +18287,32 @@ func (m *TargetTransaction) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Id != 0 {
-		n += 9
+	if vtmsg, ok := m.Identifier.(interface{ SizeVT() int }); ok {
+		n += vtmsg.SizeVT()
 	}
 	n += len(m.unknownFields)
 	return n
 }
 
+func (m *TargetTransaction_Id) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 9
+	return n
+}
+func (m *TargetTransaction_Reference) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Reference)
+	n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	return n
+}
 func (m *Target) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -24210,12 +24324,45 @@ func (m *TargetTransaction) UnmarshalVT(dAtA []byte) error {
 			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
 			}
-			m.Id = 0
+			var v uint64
 			if (iNdEx + 8) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Id = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			v = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
+			m.Identifier = &TargetTransaction_Id{Id: v}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Reference", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Identifier = &TargetTransaction_Reference{Reference: string(dAtA[iNdEx:postIndex])}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

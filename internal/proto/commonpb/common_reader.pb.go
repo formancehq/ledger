@@ -623,14 +623,14 @@ func (m *TargetAccount) Mutate() *TargetAccount {
 // TargetTransactionReader provides read-only access to TargetTransaction.
 // Call Mutate() to obtain a mutable clone.
 type TargetTransactionReader interface {
-	GetId() uint64
+	GetIdentifier() isTargetTransaction_Identifier
 	Mutate() *TargetTransaction
 }
 
 type targetTransactionReadonly struct{ v *TargetTransaction }
 
-func (r *targetTransactionReadonly) GetId() uint64 {
-	return r.v.GetId()
+func (r *targetTransactionReadonly) GetIdentifier() isTargetTransaction_Identifier {
+	return r.v.GetIdentifier()
 }
 
 func (r *targetTransactionReadonly) Mutate() *TargetTransaction {

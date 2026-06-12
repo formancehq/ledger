@@ -140,7 +140,9 @@ func runDeleteMetadata(cmd *cobra.Command, args []string) error {
 								DeleteMetadata: &commonpb.DeleteMetadataCommand{
 									Target: &commonpb.Target{
 										Target: &commonpb.Target_Transaction{
-											Transaction: &commonpb.TargetTransaction{Id: txID},
+											Transaction: &commonpb.TargetTransaction{
+												Identifier: &commonpb.TargetTransaction_Id{Id: txID},
+											},
 										},
 									},
 									Key: key,

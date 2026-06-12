@@ -111,7 +111,9 @@ func TestProcessAddMetadata_Transaction(t *testing.T) {
 					AddMetadata: &commonpb.SaveMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Transaction{
-								Transaction: &commonpb.TargetTransaction{Id: 5},
+								Transaction: &commonpb.TargetTransaction{
+									Identifier: &commonpb.TargetTransaction_Id{Id: 5},
+								},
 							},
 						},
 						Metadata: map[string]*commonpb.MetadataValue{
@@ -230,4 +232,214 @@ func TestProcessDeleteMetadata_Account_NotFound(t *testing.T) {
 	require.ErrorAs(t, err, &metaNotFound)
 	require.Equal(t, "users:123", metaNotFound.Target)
 	require.Equal(t, "status", metaNotFound.Key)
+}
+
+func TestProcessAddMetadata_TransactionByReference(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockInMemoryStore(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	now := &commonpb.Timestamp{Data: 1234567890}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 5}
+	refKey := domain.TransactionReferenceKey{LedgerID: 1, Reference: "invoice:42"}
+	txKey := domain.TransactionKey{LedgerID: 1, ID: 7}
+	existingState := &commonpb.TransactionState{CreatedByLog: 3}
+
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true).AnyTimes()
+	mockStore.EXPECT().GetDate().Return(now)
+	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
+	mockStore.EXPECT().GetTransactionReference(refKey).Return(&commonpb.TransactionReferenceValue{TransactionId: 7}, nil)
+	mockStore.EXPECT().GetTransactionState(txKey).Return(existingState, nil)
+	mockStore.EXPECT().PutTransactionState(txKey, gomock.Any()).Do(
+		func(_ domain.TransactionKey, state *commonpb.TransactionState) {
+			require.Equal(t, commonpb.NewStringValue("paid"), state.GetMetadata()["status"])
+		},
+	)
+
+	request := &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: "test-ledger",
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
+					AddMetadata: &commonpb.SaveMetadataCommand{
+						Target: &commonpb.Target{
+							Target: &commonpb.Target_Transaction{
+								Transaction: &commonpb.TargetTransaction{
+									Identifier: &commonpb.TargetTransaction_Reference{Reference: "invoice:42"},
+								},
+							},
+						},
+						Metadata: map[string]*commonpb.MetadataValue{
+							"status": commonpb.NewStringValue("paid"),
+						},
+					},
+				}},
+			},
+		},
+	}
+
+	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// The logged target MUST be canonicalised to the Id variant so
+	// downstream consumers (sinks, indexbuilder, replay, mirror) read a
+	// stable numeric id rather than a Reference variant they don't know
+	// how to handle.
+	saved := result.GetApply().GetLog().GetData().GetSavedMetadata()
+	require.NotNil(t, saved)
+
+	canonical, ok := saved.GetTarget().GetTarget().(*commonpb.Target_Transaction)
+	require.True(t, ok)
+	require.Equal(t, uint64(7), canonical.Transaction.GetId(), "logged target must carry resolved id")
+	require.Empty(t, canonical.Transaction.GetReference(), "logged target must not carry the original reference")
+}
+
+func TestProcessAddMetadata_TransactionByReferenceNotFound(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockInMemoryStore(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 5}
+	refKey := domain.TransactionReferenceKey{LedgerID: 1, Reference: "unknown"}
+
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true).AnyTimes()
+	mockStore.EXPECT().GetTransactionReference(refKey).Return(nil, domain.ErrNotFound)
+
+	request := &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: "test-ledger",
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
+					AddMetadata: &commonpb.SaveMetadataCommand{
+						Target: &commonpb.Target{
+							Target: &commonpb.Target_Transaction{
+								Transaction: &commonpb.TargetTransaction{
+									Identifier: &commonpb.TargetTransaction_Reference{Reference: "unknown"},
+								},
+							},
+						},
+						Metadata: map[string]*commonpb.MetadataValue{
+							"status": commonpb.NewStringValue("paid"),
+						},
+					},
+				}},
+			},
+		},
+	}
+
+	_, err = processor.ProcessOrder(requestToOrder(request), mockStore)
+	require.Error(t, err)
+
+	var refNotFound *domain.ErrTransactionReferenceNotFound
+	require.ErrorAs(t, err, &refNotFound)
+	require.Equal(t, "unknown", refNotFound.Reference)
+}
+
+func TestProcessAddMetadata_TransactionTargetMissing(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockInMemoryStore(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 5}
+
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true).AnyTimes()
+
+	request := &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: "test-ledger",
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
+					AddMetadata: &commonpb.SaveMetadataCommand{
+						Target: &commonpb.Target{
+							Target: &commonpb.Target_Transaction{
+								Transaction: &commonpb.TargetTransaction{}, // empty identifier
+							},
+						},
+						Metadata: map[string]*commonpb.MetadataValue{
+							"status": commonpb.NewStringValue("paid"),
+						},
+					},
+				}},
+			},
+		},
+	}
+
+	_, err = processor.ProcessOrder(requestToOrder(request), mockStore)
+	require.ErrorIs(t, err, domain.ErrTransactionTargetMissing)
+}
+
+func TestProcessDeleteMetadata_TransactionByReference(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockInMemoryStore(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	now := &commonpb.Timestamp{Data: 1234567890}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 5}
+	refKey := domain.TransactionReferenceKey{LedgerID: 1, Reference: "invoice:42"}
+	txKey := domain.TransactionKey{LedgerID: 1, ID: 7}
+	existingState := &commonpb.TransactionState{
+		CreatedByLog: 3,
+		Metadata:     map[string]*commonpb.MetadataValue{"status": commonpb.NewStringValue("paid")},
+	}
+
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true).AnyTimes()
+	mockStore.EXPECT().GetDate().Return(now)
+	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
+	mockStore.EXPECT().GetTransactionReference(refKey).Return(&commonpb.TransactionReferenceValue{TransactionId: 7}, nil)
+	mockStore.EXPECT().GetTransactionState(txKey).Return(existingState, nil)
+	mockStore.EXPECT().PutTransactionState(txKey, gomock.Any()).Do(
+		func(_ domain.TransactionKey, state *commonpb.TransactionState) {
+			_, hasStatus := state.GetMetadata()["status"]
+			require.False(t, hasStatus, "status metadata should have been removed")
+		},
+	)
+
+	request := &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: "test-ledger",
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_DeleteMetadata{
+					DeleteMetadata: &commonpb.DeleteMetadataCommand{
+						Target: &commonpb.Target{
+							Target: &commonpb.Target_Transaction{
+								Transaction: &commonpb.TargetTransaction{
+									Identifier: &commonpb.TargetTransaction_Reference{Reference: "invoice:42"},
+								},
+							},
+						},
+						Key: "status",
+					},
+				}},
+			},
+		},
+	}
+
+	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	require.NoError(t, err)
+	require.NotNil(t, result)
 }

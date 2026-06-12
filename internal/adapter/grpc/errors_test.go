@@ -78,6 +78,19 @@ func TestBusinessErrorToGRPCStatus_TransactionReferenceConflict(t *testing.T) {
 	require.Equal(t, "ref-001", info.GetMetadata()["reference"])
 }
 
+func TestBusinessErrorToGRPCStatus_TransactionReferenceNotFound(t *testing.T) {
+	t.Parallel()
+
+	bizErr := &domain.BusinessError{Err: &domain.ErrTransactionReferenceNotFound{Reference: "invoice:42"}}
+	st := businessErrorToGRPCStatus(bizErr)
+
+	require.Equal(t, codes.NotFound, st.Code())
+
+	info := extractErrorInfo(t, st)
+	require.Equal(t, domain.ErrReasonTransactionReferenceNotFound, info.GetReason())
+	require.Equal(t, "invoice:42", info.GetMetadata()["reference"])
+}
+
 func TestBusinessErrorToGRPCStatus_TransactionNotFound(t *testing.T) {
 	t.Parallel()
 
@@ -182,6 +195,7 @@ func TestBusinessErrorToGRPCStatus_ValidationErrors(t *testing.T) {
 		{"target required", domain.ErrTargetRequired},
 		{"metadata key required", domain.ErrMetadataKeyRequired},
 		{"script required", domain.ErrScriptRequired},
+		{"transaction target missing", domain.ErrTransactionTargetMissing},
 	}
 
 	for _, tt := range tests {

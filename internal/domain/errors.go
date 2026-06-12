@@ -15,6 +15,7 @@ const (
 	ErrReasonLedgerDeleted                 = "LEDGER_DELETED"
 	ErrReasonIdempotencyKeyConflict        = "IDEMPOTENCY_KEY_CONFLICT"
 	ErrReasonTransactionReferenceConflict  = "TRANSACTION_REFERENCE_CONFLICT"
+	ErrReasonTransactionReferenceNotFound  = "TRANSACTION_REFERENCE_NOT_FOUND"
 	ErrReasonTransactionNotFound           = "TRANSACTION_NOT_FOUND"
 	ErrReasonTransactionAlreadyReverted    = "TRANSACTION_ALREADY_REVERTED"
 	ErrReasonInsufficientFunds             = "INSUFFICIENT_FUNDS"
@@ -144,6 +145,20 @@ type ErrTransactionNotFound struct {
 func (e *ErrTransactionNotFound) Error() string {
 	return fmt.Sprintf("transaction %d does not exist", e.TransactionID)
 }
+
+// ErrTransactionReferenceNotFound is returned when a transaction reference does not
+// resolve to an existing transaction in the visible state (cache or current batch).
+type ErrTransactionReferenceNotFound struct {
+	Reference string
+}
+
+func (e *ErrTransactionReferenceNotFound) Error() string {
+	return fmt.Sprintf("transaction with reference %q does not exist", e.Reference)
+}
+
+// ErrTransactionTargetMissing is returned when a TargetTransaction is empty
+// (neither id nor reference set).
+var ErrTransactionTargetMissing = errors.New("transaction target requires either id or reference")
 
 // ErrTransactionAlreadyReverted is returned when attempting to revert an already-reverted transaction.
 type ErrTransactionAlreadyReverted struct {

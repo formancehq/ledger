@@ -35,7 +35,7 @@ func (s *Server) handleSaveTransactionMetadata(w http.ResponseWriter, r *http.Re
 							Target: &commonpb.Target{
 								Target: &commonpb.Target_Transaction{
 									Transaction: &commonpb.TargetTransaction{
-										Id: transactionID,
+										Identifier: &commonpb.TargetTransaction_Id{Id: transactionID},
 									},
 								},
 							},

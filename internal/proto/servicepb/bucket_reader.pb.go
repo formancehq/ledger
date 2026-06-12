@@ -1799,20 +1799,16 @@ func (m *CreateTransactionPayload) Mutate() *CreateTransactionPayload {
 // RevertTransactionPayloadReader provides read-only access to RevertTransactionPayload.
 // Call Mutate() to obtain a mutable clone.
 type RevertTransactionPayloadReader interface {
-	GetTransactionId() uint64
 	GetForce() bool
 	GetAtEffectiveDate() bool
 	GetMetadata() map[string]*commonpb.MetadataValue
 	GetReceipt() string
 	GetExpandVolumes() bool
+	GetIdentifier() isRevertTransactionPayload_Identifier
 	Mutate() *RevertTransactionPayload
 }
 
 type revertTransactionPayloadReadonly struct{ v *RevertTransactionPayload }
-
-func (r *revertTransactionPayloadReadonly) GetTransactionId() uint64 {
-	return r.v.GetTransactionId()
-}
 
 func (r *revertTransactionPayloadReadonly) GetForce() bool {
 	return r.v.GetForce()
@@ -1832,6 +1828,10 @@ func (r *revertTransactionPayloadReadonly) GetReceipt() string {
 
 func (r *revertTransactionPayloadReadonly) GetExpandVolumes() bool {
 	return r.v.GetExpandVolumes()
+}
+
+func (r *revertTransactionPayloadReadonly) GetIdentifier() isRevertTransactionPayload_Identifier {
+	return r.v.GetIdentifier()
 }
 
 func (r *revertTransactionPayloadReadonly) Mutate() *RevertTransactionPayload {
