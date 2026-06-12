@@ -182,6 +182,12 @@ var errorMappings = []errorMapping{
 		return map[string]string{"index": e.Index, "detail": e.Detail}
 	}), codes.Internal, domain.ErrReasonIndexInconsistent},
 
+	// Caller created an index before declaring the field via SetMetadataFieldType:
+	// a precondition the client can fix and retry, not a server fault.
+	{matchAs(func(e *domain.ErrMetadataFieldNotInSchema) map[string]string {
+		return map[string]string{"target": e.Target, "key": e.Key}
+	}), codes.FailedPrecondition, domain.ErrReasonMetadataFieldNotInSchema},
+
 	{matchAs(func(e *domain.ErrAccountNotMatchingType) map[string]string {
 		return map[string]string{"address": e.Address}
 	}), codes.FailedPrecondition, domain.ErrReasonAccountNotMatchingType},

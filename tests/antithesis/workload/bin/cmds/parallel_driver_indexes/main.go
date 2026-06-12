@@ -30,10 +30,16 @@ func main() {
 					},
 				},
 			}},
-		}); err != nil && !internal.IsTransient(err) {
+		}); err != nil {
 			st, _ := status.FromError(err)
+			// AlreadyExists means the field is declared — fall through to
+			// CreateIndex. Any other failure (including a transient one that may
+			// not have committed) leaves the field undeclared, so we must NOT
+			// attempt CreateIndex — it would legitimately fail "field not declared".
 			if st.Code() != codes.AlreadyExists {
-				assert.Unreachable("SetMetadataFieldType returned unexpected error", details.With(internal.Details{"error": err}))
+				if !internal.IsTransient(err) {
+					assert.Unreachable("SetMetadataFieldType returned unexpected error", details.With(internal.Details{"error": err}))
+				}
 
 				return
 			}

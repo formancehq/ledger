@@ -43,6 +43,7 @@ const (
 	ErrReasonIndexNotFound                 = "INDEX_NOT_FOUND"
 	ErrReasonIndexBuilding                 = "INDEX_BUILDING"
 	ErrReasonIndexInconsistent             = "INDEX_INCONSISTENT"
+	ErrReasonMetadataFieldNotInSchema      = "METADATA_FIELD_NOT_IN_SCHEMA"
 	ErrReasonNumscriptNotFound             = "NUMSCRIPT_NOT_FOUND"
 	ErrReasonNumscriptVersionAlreadyExists = "NUMSCRIPT_VERSION_ALREADY_EXISTS"
 	ErrReasonNumscriptInvalidVersion       = "NUMSCRIPT_INVALID_VERSION"

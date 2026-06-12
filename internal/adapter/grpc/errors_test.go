@@ -240,6 +240,25 @@ func TestBusinessErrorToGRPCStatus_MetadataNotFound(t *testing.T) {
 	require.Equal(t, "role", info.GetMetadata()["key"])
 }
 
+func TestBusinessErrorToGRPCStatus_MetadataFieldNotInSchema(t *testing.T) {
+	t.Parallel()
+
+	// CreateIndex on an undeclared field is a caller precondition error, not an
+	// internal fault — must be FailedPrecondition, not the Internal default.
+	bizErr := &domain.BusinessError{Err: &domain.ErrMetadataFieldNotInSchema{
+		Target: "TARGET_TYPE_ACCOUNT",
+		Key:    "idx-key-33",
+	}}
+	st := businessErrorToGRPCStatus(bizErr)
+
+	require.Equal(t, codes.FailedPrecondition, st.Code())
+
+	info := extractErrorInfo(t, st)
+	require.Equal(t, domain.ErrReasonMetadataFieldNotInSchema, info.GetReason())
+	require.Equal(t, "TARGET_TYPE_ACCOUNT", info.GetMetadata()["target"])
+	require.Equal(t, "idx-key-33", info.GetMetadata()["key"])
+}
+
 func TestBusinessErrorToGRPCStatus_NoPeriodOpen(t *testing.T) {
 	t.Parallel()
 
