@@ -117,8 +117,9 @@ func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset
 	}
 
 	log.Printf("config-change: patching %s (%s=%v)", change.kind, change.category, change.value)
-	if err := change.apply(ctx, lsClient); err != nil {
-		assert.Sometimes(false, "config patch should succeed", details.With(internal.Details{"error": err}))
+	err = change.apply(ctx, lsClient)
+	assert.Sometimes(err == nil, "config patch should succeed", details.With(internal.Details{"error": err}))
+	if err != nil {
 		return
 	}
 	assert.Reachable("config patch applied", details)
@@ -134,8 +135,9 @@ func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset
 		log.Printf("config-change: cannot read current replicas: %s", err)
 		return
 	}
-	if !internal.WaitForStatefulSetReady(ctx, clientset, internal.LedgerServiceName, int32(currentReplicas), ccStsReadyWait) {
-		assert.Sometimes(false, "StatefulSet should reach Ready after a config patch", details)
+	ready := internal.WaitForStatefulSetReady(ctx, clientset, internal.LedgerServiceName, int32(currentReplicas), ccStsReadyWait)
+	assert.Sometimes(ready, "StatefulSet should reach Ready after a config patch", details)
+	if !ready {
 		return
 	}
 	assert.Reachable("STS ready after config patch", details)

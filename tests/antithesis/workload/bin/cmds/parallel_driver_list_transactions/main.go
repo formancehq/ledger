@@ -113,6 +113,7 @@ func main() {
 			Reverse:  true,
 		})
 		if err != nil {
+			internal.LogCleanupError("reverse list transactions", err)
 			return
 		}
 

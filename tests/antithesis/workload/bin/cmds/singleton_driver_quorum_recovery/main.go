@@ -145,15 +145,15 @@ func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset
 	}()
 
 	for _, v := range victims {
-		if err := internal.DeletePod(ctx, clientset, v); err != nil {
-			assert.Sometimes(false, "quorum-recovery pod delete should succeed",
-				details.With(internal.Details{"pod": v, "error": err}))
-		}
+		err := internal.DeletePod(ctx, clientset, v)
+		assert.Sometimes(err == nil, "quorum-recovery pod delete should succeed",
+			details.With(internal.Details{"pod": v, "error": err}))
 	}
 	assert.Reachable("quorum-recovery killed both non-leader pods", details)
 
-	if err := internal.PatchReplicas(ctx, lsClient, internal.LedgerServiceName, 1); err != nil {
-		assert.Sometimes(false, "scale-down to 1 should succeed", details.With(internal.Details{"error": err}))
+	err = internal.PatchReplicas(ctx, lsClient, internal.LedgerServiceName, 1)
+	assert.Sometimes(err == nil, "scale-down to 1 should succeed", details.With(internal.Details{"error": err}))
+	if err != nil {
 		return
 	}
 

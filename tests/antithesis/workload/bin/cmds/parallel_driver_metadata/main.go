@@ -55,6 +55,7 @@ func main() {
 			Address: address,
 		})
 		if err != nil {
+			internal.LogCleanupError("read account after metadata write", err)
 			return
 		}
 
@@ -98,6 +99,7 @@ func main() {
 			Address: address,
 		})
 		if err != nil {
+			internal.LogCleanupError("read account after metadata delete", err)
 			return
 		}
 

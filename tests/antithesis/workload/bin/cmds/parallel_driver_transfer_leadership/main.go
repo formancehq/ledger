@@ -90,6 +90,7 @@ func main() {
 
 		stateAfter, err = client.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 		if err != nil {
+			internal.LogCleanupError("get cluster state after leadership transfer", err)
 			return
 		}
 

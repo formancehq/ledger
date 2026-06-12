@@ -22,9 +22,9 @@ import (
 )
 
 const (
-	sentinelLedger     = "sentinel-scaling-structured"
-	convergenceTimeout = 10 * time.Minute
-	stableWindow       = 20 * time.Second
+	sentinelLedger        = "sentinel-scaling-structured"
+	convergenceTimeout    = 10 * time.Minute
+	stableWindow          = 20 * time.Second
 	cooldownBetweenRounds = 60 * time.Second
 )
 
@@ -84,8 +84,9 @@ func runCycle(ctx context.Context, lsClient dynamic.ResourceInterface, clusterCl
 			"sentinel": sentinel.TxID,
 		}
 
-		if err := internal.PatchReplicas(ctx, lsClient, internal.LedgerServiceName, target); err != nil {
-			assert.Sometimes(false, "structured scaling patch should succeed", details.With(internal.Details{"error": err}))
+		err := internal.PatchReplicas(ctx, lsClient, internal.LedgerServiceName, target)
+		assert.Sometimes(err == nil, "structured scaling patch should succeed", details.With(internal.Details{"error": err}))
+		if err != nil {
 			log.Printf("structured-scaling: patch failed: %s", err)
 			return
 		}

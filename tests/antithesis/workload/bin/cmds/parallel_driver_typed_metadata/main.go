@@ -136,6 +136,7 @@ func main() {
 			PageSize:  100,
 		})
 		if err != nil {
+			internal.LogCleanupError(fmt.Sprintf("execute prepared query %q", queryName), err)
 			return
 		}
 
@@ -146,6 +147,7 @@ func main() {
 			Ledger: ledger,
 		})
 		if err != nil {
+			internal.LogCleanupError("get metadata schema status", err)
 			return
 		}
 
@@ -207,6 +209,9 @@ func main() {
 			Ledger:  ledger,
 			Address: address,
 		})
+		if err != nil {
+			internal.LogCleanupError("read account after type changes", err)
+		}
 		assert.AlwaysOrUnreachable(err == nil || internal.IsTransient(err),
 			"account should be readable after metadata type changes", details.With(internal.Details{"error": err}))
 

@@ -32,6 +32,7 @@ func main() {
 		// 2. Read the schedule back.
 		schedResp, err := client.GetPeriodSchedule(ctx, &servicepb.GetPeriodScheduleRequest{})
 		if err != nil {
+			internal.LogCleanupError("get period schedule after set", err)
 			return
 		}
 

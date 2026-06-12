@@ -27,6 +27,8 @@ func main() {
 				},
 			}},
 		})
+		assert.Sometimes(err == nil || internal.IsTransient(err),
+			"should be able to create tx for logs test", internal.Details{"ledger": ledger, "error": err})
 		if err != nil {
 			return
 		}
@@ -105,6 +107,7 @@ func main() {
 			Sequence: firstSeq,
 		})
 		if err != nil {
+			internal.LogCleanupError("get log by sequence", err)
 			return
 		}
 

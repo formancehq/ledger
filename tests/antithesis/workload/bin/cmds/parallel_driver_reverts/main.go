@@ -76,6 +76,7 @@ func main() {
 			TransactionId: txID,
 		})
 		if err != nil {
+			internal.LogCleanupError("get transaction after revert", err)
 			return
 		}
 

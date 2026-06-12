@@ -31,6 +31,8 @@ func main() {
 				},
 			}},
 		})
+		assert.Sometimes(err == nil || internal.IsTransient(err),
+			"should be able to create tx for audit trail", internal.Details{"ledger": ledger, "error": err})
 		if err != nil {
 			return
 		}

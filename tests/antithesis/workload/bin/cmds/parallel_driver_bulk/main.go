@@ -98,6 +98,7 @@ func main() {
 			Address: addr1,
 		})
 		if err != nil {
+			internal.LogCleanupError("read account after bulk apply", err)
 			return
 		}
 

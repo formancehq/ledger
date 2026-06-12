@@ -51,6 +51,8 @@ func main() {
 			},
 		}},
 	})
+	assert.Sometimes(err == nil || internal.IsTransient(err),
+		"should be able to seed ephemeral ledger before delete", details.With(internal.Details{"error": err}))
 	if err != nil {
 		return
 	}
@@ -74,6 +76,7 @@ func main() {
 	// Verify the ledger no longer appears in ListLedgers.
 	stream, err := client.ListLedgers(ctx, &servicepb.ListLedgersRequest{})
 	if err != nil {
+		internal.LogCleanupError("list ledgers after delete", err)
 		return
 	}
 
@@ -85,6 +88,7 @@ func main() {
 			break
 		}
 		if err != nil {
+			internal.LogCleanupError("list ledgers stream after delete", err)
 			return
 		}
 

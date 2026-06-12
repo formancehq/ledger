@@ -40,6 +40,7 @@ func main() {
 			Ledger: ledger,
 		})
 		if err != nil {
+			internal.LogCleanupError("get numscript after save", err)
 			return
 		}
 

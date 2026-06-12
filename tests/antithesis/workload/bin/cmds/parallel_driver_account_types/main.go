@@ -59,6 +59,7 @@ func main() {
 		// 2. Verify the account type appears in the ledger info.
 		info, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledger})
 		if err != nil {
+			internal.LogCleanupError("get ledger after account type add", err)
 			return
 		}
 

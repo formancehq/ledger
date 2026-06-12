@@ -78,6 +78,7 @@ func main() {
 			TransactionId: txID,
 		})
 		if err != nil {
+			internal.LogCleanupError("read transaction after metadata write", err)
 			return
 		}
 
@@ -119,6 +120,7 @@ func main() {
 			TransactionId: txID,
 		})
 		if err != nil {
+			internal.LogCleanupError("read transaction after metadata delete", err)
 			return
 		}
 

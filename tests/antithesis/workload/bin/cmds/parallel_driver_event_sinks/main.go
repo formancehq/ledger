@@ -58,6 +58,7 @@ func main() {
 	// 2. Verify the sink appears in GetEventsSinks.
 	sinksResp, err := client.GetEventsSinks(ctx, &servicepb.GetEventsSinksRequest{})
 	if err != nil {
+		internal.LogCleanupError("get events sinks after add", err)
 		return
 	}
 
@@ -116,6 +117,7 @@ func main() {
 	// 5. Verify the sink is gone.
 	sinksResp, err = client.GetEventsSinks(ctx, &servicepb.GetEventsSinksRequest{})
 	if err != nil {
+		internal.LogCleanupError("get events sinks after remove", err)
 		return
 	}
 

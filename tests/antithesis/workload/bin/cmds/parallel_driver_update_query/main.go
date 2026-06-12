@@ -84,6 +84,7 @@ func main() {
 			PageSize:  100,
 		})
 		if err != nil {
+			internal.LogCleanupError(fmt.Sprintf("execute prepared query %q", queryName), err)
 			return
 		}
 

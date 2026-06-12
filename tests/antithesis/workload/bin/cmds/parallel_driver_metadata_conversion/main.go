@@ -108,10 +108,7 @@ func main() {
 			Ledger: ledger,
 		})
 		if err != nil {
-			if internal.IsTransient(err) {
-				return
-			}
-
+			internal.LogCleanupError("get metadata schema status after conversion", err)
 			return
 		}
 

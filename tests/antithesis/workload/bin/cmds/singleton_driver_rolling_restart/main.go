@@ -115,8 +115,9 @@ func runSweep(ctx context.Context, clientset kubernetes.Interface, clusterClient
 			continue
 		}
 
-		if err := internal.DeletePod(ctx, clientset, pod); err != nil {
-			assert.Sometimes(false, "rolling-restart pod delete should succeed", details.With(internal.Details{"error": err}))
+		err = internal.DeletePod(ctx, clientset, pod)
+		assert.Sometimes(err == nil, "rolling-restart pod delete should succeed", details.With(internal.Details{"error": err}))
+		if err != nil {
 			continue
 		}
 		assert.Reachable("rolling-restart deleted pod", details)
@@ -125,8 +126,9 @@ func runSweep(ctx context.Context, clientset kubernetes.Interface, clusterClient
 			log.Printf("rolling-restart: %s did not disappear within %s", pod, rrPodGoneTimeout)
 			continue
 		}
-		if !internal.WaitForPodReady(ctx, clientset, pod, rrPodReadyTimeout) {
-			assert.Sometimes(false, "restarted pod should reach Ready", details)
+		ready := internal.WaitForPodReady(ctx, clientset, pod, rrPodReadyTimeout)
+		assert.Sometimes(ready, "restarted pod should reach Ready", details)
+		if !ready {
 			continue
 		}
 		if !internal.WaitForVoters(ctx, clusterClient, expected, rrVotersTimeout, details) {
@@ -200,4 +202,3 @@ func writeBurst(ctx context.Context, client servicepb.BucketServiceClient, commi
 		}
 	}
 }
-

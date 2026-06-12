@@ -42,6 +42,7 @@ func main() {
 			Ledger: ledger,
 		})
 		if err != nil {
+			internal.LogCleanupError("list numscripts after save", err)
 			return
 		}
 
@@ -85,6 +86,8 @@ func main() {
 				},
 			}},
 		})
+		assert.Sometimes(err == nil || internal.IsTransient(err),
+			"should be able to save second numscript version", details.With(internal.Details{"version": version2, "error": err}))
 		if err != nil {
 			return
 		}
@@ -95,6 +98,7 @@ func main() {
 			Ledger: ledger,
 		})
 		if err != nil {
+			internal.LogCleanupError("get numscript after second version", err)
 			return
 		}
 

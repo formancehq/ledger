@@ -117,6 +117,7 @@ func main() {
 	// 5. Verify deletion — should no longer appear in list.
 	listAfter, err := client.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
 	if err != nil {
+		internal.LogCleanupError("list query checkpoints after delete", err)
 		return
 	}
 
