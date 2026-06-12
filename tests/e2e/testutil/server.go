@@ -126,7 +126,7 @@ func SetupMultiNodeCluster(
 	opts ...MultiNodeOption,
 ) (context.Context, []*ServiceWithClient, *testserver.Gateway, *uint64) {
 	options := MultiNodeOptions{
-		RaftTickInterval: 10 * time.Millisecond,
+		RaftTickInterval: 100 * time.Millisecond,
 	}
 	for _, opt := range opts {
 		opt(&options)
