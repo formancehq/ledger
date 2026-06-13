@@ -569,14 +569,24 @@ message HttpSinkConfig {
 }
 
 // DatabricksSinkConfig holds Databricks SQL Warehouse sink configuration.
+// Exactly one of the auth oneof fields must be set.
 message DatabricksSinkConfig {
-  string server_hostname = 1;   // e.g. "adb-123456.azuredatabricks.net"
-  string http_path = 2;         // SQL Warehouse HTTP path (e.g. "/sql/1.0/warehouses/abc123")
-  string token = 3;             // Personal Access Token or OAuth token
-  string catalog = 4;           // Unity Catalog name (e.g. "main")
-  string schema = 5;            // Schema name (e.g. "default")
-  string table = 6;             // Table name (default: "ledger_events")
-  int32 port = 7;               // Port number (default: 443)
+  string server_hostname = 1;  // e.g. "adb-123456.azuredatabricks.net"
+  string http_path = 2;        // SQL Warehouse HTTP path (e.g. "/sql/1.0/warehouses/abc123")
+  string catalog = 4;          // Unity Catalog name (e.g. "main")
+  string schema = 5;           // Schema name (e.g. "default")
+  string table = 6;            // Table name (default: "ledger_events")
+  int32 port = 7;              // Port number (default: 443)
+  oneof auth {
+    string token = 3;                  // Personal Access Token (PAT) — field number 3 preserved for wire compatibility
+    DatabricksOAuthM2M oauth_m2m = 8;  // OAuth M2M / service principal
+  }
+}
+
+// DatabricksOAuthM2M holds OAuth M2M (client credentials) for a Databricks service principal.
+message DatabricksOAuthM2M {
+  string client_id = 1;
+  string client_secret = 2;
 }
 
 // CreatedLedgerLog captures the creation-time parameters of a ledger.

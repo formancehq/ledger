@@ -265,7 +265,7 @@ The cursor is advanced only after the entire batch is successfully published to 
 | **ClickHouse** | `clickhouse` | Inserts events into a ClickHouse table for analytics. Requires `dsn`. Optional `table` (default: `ledger_events`). Uses experimental JSON type with Variant support. Always uses ClickHouse-native JSON format (ignores `format` setting). |
 | **Kafka** | `kafka` | Publishes to Apache Kafka topics. Requires `brokers` and `topic`. Optional TLS and SASL authentication (PLAIN, SCRAM-SHA-256, SCRAM-SHA-512). Uses synchronous producer for delivery guarantees. |
 | **HTTP Webhooks** | `http` | Sends individual HTTP POST requests per event. Requires `endpoint` URL. Optional `secret` for HMAC-SHA256 request signing (`X-Webhook-Signature` header). |
-| **Databricks** | `databricks` | Inserts events into a Databricks SQL Warehouse table via Unity Catalog. Requires `server_hostname`, `http_path`, `token`, `catalog`, `schema`, and `table`. |
+| **Databricks** | `databricks` | Inserts events into a Databricks SQL Warehouse table via Unity Catalog. Requires `server_hostname`, `http_path`, `catalog`, `schema`, `table`, and exactly one auth method (`token` for a Personal Access Token, or `oauth_m2m` with `client_id`/`client_secret` for OAuth M2M / service principal). |
 
 New sink types can be added by implementing the `Sink` interface and adding a variant to `SinkConfig.oneof type`.
 
@@ -330,6 +330,24 @@ message KafkaSinkConfig {
 message HttpSinkConfig {
   string endpoint = 1;           // Target URL (e.g. "https://example.com/webhooks/ledger")
   string secret = 2;             // Optional HMAC-SHA256 secret for X-Webhook-Signature header
+}
+
+message DatabricksSinkConfig {
+  string server_hostname = 1;    // e.g. "adb-123456.azuredatabricks.net"
+  string http_path = 2;          // SQL Warehouse HTTP path (e.g. "/sql/1.0/warehouses/abc123")
+  string catalog = 4;            // Unity Catalog name (e.g. "main")
+  string schema = 5;             // Schema name (e.g. "default")
+  string table = 6;              // Table name (default: "ledger_events")
+  int32 port = 7;                // Port number (default: 443)
+  oneof auth {                   // Exactly one auth method must be set
+    string token = 3;                  // Personal Access Token (PAT)
+    DatabricksOAuthM2M oauth_m2m = 8;  // OAuth M2M / service principal
+  }
+}
+
+message DatabricksOAuthM2M {
+  string client_id = 1;
+  string client_secret = 2;
 }
 ```
 

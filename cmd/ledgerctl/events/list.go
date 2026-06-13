@@ -3,6 +3,7 @@ package events
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -51,7 +52,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 		return cmdutil.FormatGRPCError("failed to get event sinks", err)
 	}
 
-	if handled, err := cmdutil.EncodeStructured(cmd, resp); handled || err != nil {
+	if handled, err := cmdutil.EncodeStructured(cmd, redactGetEventsSinksResponse(resp)); handled || err != nil {
 		return err
 	}
 
@@ -114,14 +115,10 @@ func runList(cmd *cobra.Command, _ []string) error {
 				[]string{"Topic", s.Nats.GetTopic()},
 			)
 		case *commonpb.SinkConfig_Http:
-			secret := "(none)"
-			if s.Http.GetSecret() != "" {
-				secret = "(set)"
-			}
 			data = append(data,
 				[]string{"Type", "HTTP"},
 				[]string{"Endpoint", s.Http.GetEndpoint()},
-				[]string{"Secret", secret},
+				[]string{"Secret", redactSecret(s.Http.GetSecret())},
 			)
 		case *commonpb.SinkConfig_Clickhouse:
 			data = append(data,
@@ -129,6 +126,53 @@ func runList(cmd *cobra.Command, _ []string) error {
 				[]string{"DSN", cmdutil.ObfuscateDSN(s.Clickhouse.GetDsn())},
 				[]string{"Table", s.Clickhouse.GetTable()},
 			)
+		case *commonpb.SinkConfig_Kafka:
+			rows := [][]string{
+				{"Type", "Kafka"},
+				{"Brokers", strings.Join(s.Kafka.GetBrokers(), ",")},
+				{"Topic", s.Kafka.GetTopic()},
+				{"TLS", strconv.FormatBool(s.Kafka.GetTls())},
+			}
+			if mech := s.Kafka.GetSaslMechanism(); mech != "" {
+				rows = append(rows,
+					[]string{"SASL Mechanism", mech},
+					[]string{"SASL Username", s.Kafka.GetSaslUsername()},
+					[]string{"SASL Password", redactSecret(s.Kafka.GetSaslPassword())},
+				)
+			}
+
+			data = append(data, rows...)
+		case *commonpb.SinkConfig_Databricks:
+			db := s.Databricks
+			rows := [][]string{
+				{"Type", "Databricks"},
+				{"Host", db.GetServerHostname()},
+				{"HTTP Path", db.GetHttpPath()},
+				{"Catalog", db.GetCatalog()},
+				{"Schema", db.GetSchema()},
+				{"Table", db.GetTable()},
+				{"Port", strconv.Itoa(int(db.GetPort()))},
+			}
+
+			switch a := db.GetAuth().(type) {
+			case *commonpb.DatabricksSinkConfig_Token:
+				rows = append(rows,
+					[]string{"Auth Mode", "PAT"},
+					[]string{"Token", redactSecret(a.Token)},
+				)
+			case *commonpb.DatabricksSinkConfig_OauthM2M:
+				rows = append(rows, []string{"Auth Mode", "OAuth M2M"})
+				if a.OauthM2M != nil {
+					rows = append(rows,
+						[]string{"Client ID", a.OauthM2M.GetClientId()},
+						[]string{"Client Secret", redactSecret(a.OauthM2M.GetClientSecret())},
+					)
+				}
+			default:
+				rows = append(rows, []string{"Auth Mode", "none"})
+			}
+
+			data = append(data, rows...)
 		default:
 			data = append(data, []string{"Type", fmt.Sprintf("unknown (%T)", s)})
 		}

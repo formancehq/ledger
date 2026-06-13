@@ -4404,9 +4404,11 @@ ledgerctl events add-sink --name webhook --http-endpoint https://example.com/web
 | `--http-secret` | | HMAC-SHA256 secret for `X-Webhook-Signature` header |
 | `--databricks-host` | | Databricks SQL warehouse host (required for Databricks sinks) |
 | `--databricks-http-path` | | Databricks SQL warehouse HTTP path (required for Databricks sinks) |
-| `--databricks-token` | | Databricks personal access token (required for Databricks sinks) |
-| `--databricks-catalog` | | Databricks Unity Catalog name |
-| `--databricks-schema` | | Databricks schema name |
+| `--databricks-token` | | Databricks personal access token — mutually exclusive with `--databricks-client-id`/`--databricks-client-secret` |
+| `--databricks-client-id` | | Databricks OAuth M2M service principal client ID — mutually exclusive with `--databricks-token` |
+| `--databricks-client-secret` | | Databricks OAuth M2M service principal client secret — mutually exclusive with `--databricks-token` |
+| `--databricks-catalog` | | Databricks Unity Catalog name (required for Databricks sinks) |
+| `--databricks-schema` | | Databricks schema name (required for Databricks sinks) |
 | `--databricks-table` | `ledger_events` | Databricks table name |
 | `--databricks-port` | `443` | Databricks SQL warehouse port |
 | `--format` | `json` | Event serialization format (`json` or `protobuf`) |
@@ -4415,7 +4417,7 @@ ledgerctl events add-sink --name webhook --http-endpoint https://example.com/web
 | `--event-types` | | Comma-separated list of event types to forward (empty = all) |
 | `--timeout` | `10s` | Request timeout |
 
-You must specify exactly one sink type: NATS (`--nats-url` + `--nats-topic`), ClickHouse (`--ch-dsn`), Kafka (`--kafka-brokers` + `--kafka-topic`), HTTP (`--http-endpoint`), or Databricks (`--databricks-host` + `--databricks-http-path` + `--databricks-token`).
+You must specify exactly one sink type: NATS (`--nats-url` + `--nats-topic`), ClickHouse (`--ch-dsn`), Kafka (`--kafka-brokers` + `--kafka-topic`), HTTP (`--http-endpoint`), or Databricks (`--databricks-host` + `--databricks-http-path` + `--databricks-catalog` + `--databricks-schema` + one of `--databricks-token` for PAT or `--databricks-client-id`/`--databricks-client-secret` for OAuth M2M).
 
 The HTTP sink sends each event as an individual POST request with headers:
 - `Content-Type`: `application/json` or `application/protobuf`

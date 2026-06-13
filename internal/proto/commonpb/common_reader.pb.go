@@ -2377,11 +2377,11 @@ func (m *HttpSinkConfig) Mutate() *HttpSinkConfig {
 type DatabricksSinkConfigReader interface {
 	GetServerHostname() string
 	GetHttpPath() string
-	GetToken() string
 	GetCatalog() string
 	GetSchema() string
 	GetTable() string
 	GetPort() int32
+	GetAuth() isDatabricksSinkConfig_Auth
 	Mutate() *DatabricksSinkConfig
 }
 
@@ -2393,10 +2393,6 @@ func (r *databricksSinkConfigReadonly) GetServerHostname() string {
 
 func (r *databricksSinkConfigReadonly) GetHttpPath() string {
 	return r.v.GetHttpPath()
-}
-
-func (r *databricksSinkConfigReadonly) GetToken() string {
-	return r.v.GetToken()
 }
 
 func (r *databricksSinkConfigReadonly) GetCatalog() string {
@@ -2415,6 +2411,10 @@ func (r *databricksSinkConfigReadonly) GetPort() int32 {
 	return r.v.GetPort()
 }
 
+func (r *databricksSinkConfigReadonly) GetAuth() isDatabricksSinkConfig_Auth {
+	return r.v.GetAuth()
+}
+
 func (r *databricksSinkConfigReadonly) Mutate() *DatabricksSinkConfig {
 	return r.v.CloneVT()
 }
@@ -2429,6 +2429,41 @@ func (m *DatabricksSinkConfig) AsReader() DatabricksSinkConfigReader {
 
 // Mutate returns a mutable deep clone of this DatabricksSinkConfig.
 func (m *DatabricksSinkConfig) Mutate() *DatabricksSinkConfig {
+	return m.CloneVT()
+}
+
+// DatabricksOAuthM2MReader provides read-only access to DatabricksOAuthM2M.
+// Call Mutate() to obtain a mutable clone.
+type DatabricksOAuthM2MReader interface {
+	GetClientId() string
+	GetClientSecret() string
+	Mutate() *DatabricksOAuthM2M
+}
+
+type databricksOAuthM2MReadonly struct{ v *DatabricksOAuthM2M }
+
+func (r *databricksOAuthM2MReadonly) GetClientId() string {
+	return r.v.GetClientId()
+}
+
+func (r *databricksOAuthM2MReadonly) GetClientSecret() string {
+	return r.v.GetClientSecret()
+}
+
+func (r *databricksOAuthM2MReadonly) Mutate() *DatabricksOAuthM2M {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this DatabricksOAuthM2M.
+func (m *DatabricksOAuthM2M) AsReader() DatabricksOAuthM2MReader {
+	if m == nil {
+		return nil
+	}
+	return &databricksOAuthM2MReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this DatabricksOAuthM2M.
+func (m *DatabricksOAuthM2M) Mutate() *DatabricksOAuthM2M {
 	return m.CloneVT()
 }
 

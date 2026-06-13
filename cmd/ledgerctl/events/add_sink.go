@@ -51,9 +51,15 @@ Examples:
   # Add an HTTP webhook sink with HMAC signature
   ledgerctl events add-sink --name webhook --http-endpoint https://example.com/webhooks/ledger --http-secret my-secret
 
-  # Add a Databricks sink
+  # Add a Databricks sink (PAT authentication)
   ledgerctl events add-sink --name analytics --databricks-host adb-123456.azuredatabricks.net \
     --databricks-http-path /sql/1.0/warehouses/abc123 --databricks-token dapi... \
+    --databricks-catalog main --databricks-schema default
+
+  # Add a Databricks sink (OAuth M2M / service principal — for workspaces where PATs are disabled)
+  ledgerctl events add-sink --name analytics --databricks-host adb-123456.azuredatabricks.net \
+    --databricks-http-path /sql/1.0/warehouses/abc123 \
+    --databricks-client-id <client-id> --databricks-client-secret <client-secret> \
     --databricks-catalog main --databricks-schema default
 
   # Add a NATS sink that only receives transaction events
@@ -78,7 +84,9 @@ Examples:
 	cmd.Flags().String("http-secret", "", "HMAC-SHA256 secret for X-Webhook-Signature header")
 	cmd.Flags().String("databricks-host", "", "Databricks server hostname (e.g. adb-123456.azuredatabricks.net)")
 	cmd.Flags().String("databricks-http-path", "", "Databricks SQL Warehouse HTTP path")
-	cmd.Flags().String("databricks-token", "", "Databricks access token")
+	cmd.Flags().String("databricks-token", "", "Databricks Personal Access Token (PAT) — mutually exclusive with --databricks-client-id/--databricks-client-secret")
+	cmd.Flags().String("databricks-client-id", "", "Databricks OAuth M2M service principal client ID — mutually exclusive with --databricks-token")
+	cmd.Flags().String("databricks-client-secret", "", "Databricks OAuth M2M service principal client secret — mutually exclusive with --databricks-token")
 	cmd.Flags().String("databricks-catalog", "", "Databricks Unity Catalog name")
 	cmd.Flags().String("databricks-schema", "", "Databricks schema name")
 	cmd.Flags().String("databricks-table", "ledger_events", "Databricks table name")
@@ -115,17 +123,38 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 		dbHost, _          = cmd.Flags().GetString("databricks-host")
 		dbHTTPPath, _      = cmd.Flags().GetString("databricks-http-path")
 		dbToken, _         = cmd.Flags().GetString("databricks-token")
+		dbClientID, _      = cmd.Flags().GetString("databricks-client-id")
+		dbClientSecret, _  = cmd.Flags().GetString("databricks-client-secret")
 		dbCatalog, _       = cmd.Flags().GetString("databricks-catalog")
 		dbSchema, _        = cmd.Flags().GetString("databricks-schema")
 		dbTable, _         = cmd.Flags().GetString("databricks-table")
 		dbPort, _          = cmd.Flags().GetInt32("databricks-port")
 	)
 
+	flagChanged := func(name string) bool {
+		f := cmd.Flags().Lookup(name)
+
+		return f != nil && f.Changed
+	}
+
 	hasNATS := natsURL != "" || natsTopic != ""
 	hasCH := chDSN != ""
 	hasKafka := kafkaBrokersStr != "" || kafkaTopic != ""
 	hasHTTP := httpEndpoint != ""
-	hasDatabricks := dbHost != ""
+	// Detect Databricks intent from any --databricks-* flag the user actually
+	// set. Keying on dbHost alone silently swallows OAuth-only invocations
+	// (--databricks-client-id without --databricks-host) and lets them either
+	// fall through to "must specify a sink type" or combine with another sink
+	// type because their flags are ignored.
+	hasDatabricks := flagChanged("databricks-host") ||
+		flagChanged("databricks-http-path") ||
+		flagChanged("databricks-token") ||
+		flagChanged("databricks-client-id") ||
+		flagChanged("databricks-client-secret") ||
+		flagChanged("databricks-catalog") ||
+		flagChanged("databricks-schema") ||
+		flagChanged("databricks-table") ||
+		flagChanged("databricks-port")
 
 	sinkCount := 0
 	if hasNATS {
@@ -232,20 +261,58 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 		}
 		sinkType = "HTTP"
 	case hasDatabricks:
-		if dbHTTPPath == "" || dbToken == "" || dbCatalog == "" || dbSchema == "" {
-			return errors.New("--databricks-host, --databricks-http-path, --databricks-token, --databricks-catalog, and --databricks-schema are all required for Databricks sinks")
+		hasPAT := dbToken != ""
+		hasOAuth := dbClientID != "" || dbClientSecret != ""
+
+		var missing []string
+		if dbHost == "" {
+			missing = append(missing, "--databricks-host")
+		}
+
+		if dbHTTPPath == "" {
+			missing = append(missing, "--databricks-http-path")
+		}
+
+		if dbCatalog == "" {
+			missing = append(missing, "--databricks-catalog")
+		}
+
+		if dbSchema == "" {
+			missing = append(missing, "--databricks-schema")
+		}
+
+		switch {
+		case len(missing) > 0:
+			return fmt.Errorf("databricks sink is missing required flag(s): %s", strings.Join(missing, ", "))
+		case hasPAT && hasOAuth:
+			return errors.New("--databricks-token and --databricks-client-id/--databricks-client-secret are mutually exclusive — set exactly one auth method")
+		case !hasPAT && !hasOAuth:
+			return errors.New("databricks sink requires either --databricks-token (PAT) or both --databricks-client-id and --databricks-client-secret (OAuth M2M)")
+		case hasOAuth && (dbClientID == "" || dbClientSecret == ""):
+			return errors.New("--databricks-client-id and --databricks-client-secret must both be set for OAuth M2M authentication")
+		}
+
+		dbConfig := &commonpb.DatabricksSinkConfig{
+			ServerHostname: dbHost,
+			HttpPath:       dbHTTPPath,
+			Catalog:        dbCatalog,
+			Schema:         dbSchema,
+			Table:          dbTable,
+			Port:           dbPort,
+		}
+		if hasPAT {
+			dbConfig.Auth = &commonpb.DatabricksSinkConfig_Token{Token: dbToken}
+		} else {
+			dbConfig.Auth = &commonpb.DatabricksSinkConfig_OauthM2M{
+				OauthM2M: &commonpb.DatabricksOAuthM2M{
+					ClientId:     dbClientID,
+					ClientSecret: dbClientSecret,
+				},
+			}
 		}
 
 		config.Type = &commonpb.SinkConfig_Databricks{
-			Databricks: &commonpb.DatabricksSinkConfig{
-				ServerHostname: dbHost,
-				HttpPath:       dbHTTPPath,
-				Token:          dbToken,
-				Catalog:        dbCatalog,
-				Schema:         dbSchema,
-				Table:          dbTable,
-				Port:           dbPort,
-			},
+			Databricks: dbConfig,
 		}
 		sinkType = "Databricks"
 	}
@@ -287,7 +354,7 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 
 	spinner.Success("Added")
 
-	if handled, err := cmdutil.EncodeStructured(cmd, config); handled || err != nil {
+	if handled, err := cmdutil.EncodeStructured(cmd, redactSinkConfig(config)); handled || err != nil {
 		return err
 	}
 

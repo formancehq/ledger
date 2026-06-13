@@ -84,7 +84,7 @@ var _ = Describe("Events Sinks Databricks", Ordered, func() {
 						Databricks: &commonpb.DatabricksSinkConfig{
 							ServerHostname: dbHost,
 							HttpPath:       dbHTTPPath,
-							Token:          dbToken,
+							Auth:           &commonpb.DatabricksSinkConfig_Token{Token: dbToken},
 							Catalog:        dbCatalog,
 							Schema:         dbSchema,
 							Table:          table,

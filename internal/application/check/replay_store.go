@@ -420,13 +420,13 @@ func (m *txMerger) Finish(_ bool) ([]byte, io.Closer, error) {
 		case txOpSetMeta:
 			// Wire format: [key\x00][marshaledMetadataValue]
 			payload := op[1:]
-			nullIdx := bytes.IndexByte(payload, 0x00)
-			if nullIdx < 0 {
+			before, after, ok := bytes.Cut(payload, []byte{0x00})
+			if !ok {
 				return nil, nil, errors.New("txOpSetMeta missing null separator")
 			}
 
-			metaKey := string(payload[:nullIdx])
-			valueBytes := payload[nullIdx+1:]
+			metaKey := string(before)
+			valueBytes := after
 
 			value := &commonpb.MetadataValue{}
 			if len(valueBytes) > 0 {

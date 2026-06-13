@@ -1683,11 +1683,15 @@ func (m *DatabricksSinkConfig) CloneVT() *DatabricksSinkConfig {
 	r := new(DatabricksSinkConfig)
 	r.ServerHostname = m.ServerHostname
 	r.HttpPath = m.HttpPath
-	r.Token = m.Token
 	r.Catalog = m.Catalog
 	r.Schema = m.Schema
 	r.Table = m.Table
 	r.Port = m.Port
+	if m.Auth != nil {
+		r.Auth = m.Auth.(interface {
+			CloneVT() isDatabricksSinkConfig_Auth
+		}).CloneVT()
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1696,6 +1700,42 @@ func (m *DatabricksSinkConfig) CloneVT() *DatabricksSinkConfig {
 }
 
 func (m *DatabricksSinkConfig) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *DatabricksSinkConfig_Token) CloneVT() isDatabricksSinkConfig_Auth {
+	if m == nil {
+		return (*DatabricksSinkConfig_Token)(nil)
+	}
+	r := new(DatabricksSinkConfig_Token)
+	r.Token = m.Token
+	return r
+}
+
+func (m *DatabricksSinkConfig_OauthM2M) CloneVT() isDatabricksSinkConfig_Auth {
+	if m == nil {
+		return (*DatabricksSinkConfig_OauthM2M)(nil)
+	}
+	r := new(DatabricksSinkConfig_OauthM2M)
+	r.OauthM2M = m.OauthM2M.CloneVT()
+	return r
+}
+
+func (m *DatabricksOAuthM2M) CloneVT() *DatabricksOAuthM2M {
+	if m == nil {
+		return (*DatabricksOAuthM2M)(nil)
+	}
+	r := new(DatabricksOAuthM2M)
+	r.ClientId = m.ClientId
+	r.ClientSecret = m.ClientSecret
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *DatabricksOAuthM2M) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -6283,13 +6323,22 @@ func (this *DatabricksSinkConfig) EqualVT(that *DatabricksSinkConfig) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
+	if this.Auth == nil && that.Auth != nil {
+		return false
+	} else if this.Auth != nil {
+		if that.Auth == nil {
+			return false
+		}
+		if !this.Auth.(interface {
+			EqualVT(isDatabricksSinkConfig_Auth) bool
+		}).EqualVT(that.Auth) {
+			return false
+		}
+	}
 	if this.ServerHostname != that.ServerHostname {
 		return false
 	}
 	if this.HttpPath != that.HttpPath {
-		return false
-	}
-	if this.Token != that.Token {
 		return false
 	}
 	if this.Catalog != that.Catalog {
@@ -6309,6 +6358,70 @@ func (this *DatabricksSinkConfig) EqualVT(that *DatabricksSinkConfig) bool {
 
 func (this *DatabricksSinkConfig) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*DatabricksSinkConfig)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *DatabricksSinkConfig_Token) EqualVT(thatIface isDatabricksSinkConfig_Auth) bool {
+	that, ok := thatIface.(*DatabricksSinkConfig_Token)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if this.Token != that.Token {
+		return false
+	}
+	return true
+}
+
+func (this *DatabricksSinkConfig_OauthM2M) EqualVT(thatIface isDatabricksSinkConfig_Auth) bool {
+	that, ok := thatIface.(*DatabricksSinkConfig_OauthM2M)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.OauthM2M, that.OauthM2M; p != q {
+		if p == nil {
+			p = &DatabricksOAuthM2M{}
+		}
+		if q == nil {
+			q = &DatabricksOAuthM2M{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *DatabricksOAuthM2M) EqualVT(that *DatabricksOAuthM2M) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.ClientId != that.ClientId {
+		return false
+	}
+	if this.ClientSecret != that.ClientSecret {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *DatabricksOAuthM2M) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*DatabricksOAuthM2M)
 	if !ok {
 		return false
 	}
@@ -13428,6 +13541,15 @@ func (m *DatabricksSinkConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if vtmsg, ok := m.Auth.(interface {
+		MarshalToSizedBufferVT([]byte) (int, error)
+	}); ok {
+		size, err := vtmsg.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+	}
 	if m.Port != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Port))
 		i--
@@ -13454,13 +13576,6 @@ func (m *DatabricksSinkConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 		i--
 		dAtA[i] = 0x22
 	}
-	if len(m.Token) > 0 {
-		i -= len(m.Token)
-		copy(dAtA[i:], m.Token)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Token)))
-		i--
-		dAtA[i] = 0x1a
-	}
 	if len(m.HttpPath) > 0 {
 		i -= len(m.HttpPath)
 		copy(dAtA[i:], m.HttpPath)
@@ -13472,6 +13587,86 @@ func (m *DatabricksSinkConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 		i -= len(m.ServerHostname)
 		copy(dAtA[i:], m.ServerHostname)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ServerHostname)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *DatabricksSinkConfig_Token) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *DatabricksSinkConfig_Token) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i -= len(m.Token)
+	copy(dAtA[i:], m.Token)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Token)))
+	i--
+	dAtA[i] = 0x1a
+	return len(dAtA) - i, nil
+}
+func (m *DatabricksSinkConfig_OauthM2M) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *DatabricksSinkConfig_OauthM2M) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.OauthM2M != nil {
+		size, err := m.OauthM2M.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x42
+	}
+	return len(dAtA) - i, nil
+}
+func (m *DatabricksOAuthM2M) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *DatabricksOAuthM2M) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *DatabricksOAuthM2M) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.ClientSecret) > 0 {
+		i -= len(m.ClientSecret)
+		copy(dAtA[i:], m.ClientSecret)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ClientSecret)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.ClientId) > 0 {
+		i -= len(m.ClientId)
+		copy(dAtA[i:], m.ClientId)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ClientId)))
 		i--
 		dAtA[i] = 0xa
 	}
@@ -19735,9 +19930,8 @@ func (m *DatabricksSinkConfig) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	l = len(m.Token)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	if vtmsg, ok := m.Auth.(interface{ SizeVT() int }); ok {
+		n += vtmsg.SizeVT()
 	}
 	l = len(m.Catalog)
 	if l > 0 {
@@ -19753,6 +19947,46 @@ func (m *DatabricksSinkConfig) SizeVT() (n int) {
 	}
 	if m.Port != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.Port))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *DatabricksSinkConfig_Token) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Token)
+	n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	return n
+}
+func (m *DatabricksSinkConfig_OauthM2M) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.OauthM2M != nil {
+		l = m.OauthM2M.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *DatabricksOAuthM2M) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.ClientId)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.ClientSecret)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -31823,7 +32057,7 @@ func (m *DatabricksSinkConfig) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Token = string(dAtA[iNdEx:postIndex])
+			m.Auth = &DatabricksSinkConfig_Token{Token: string(dAtA[iNdEx:postIndex])}
 			iNdEx = postIndex
 		case 4:
 			if wireType != 2 {
@@ -31940,6 +32174,162 @@ func (m *DatabricksSinkConfig) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field OauthM2M", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Auth.(*DatabricksSinkConfig_OauthM2M); ok {
+				if err := oneof.OauthM2M.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &DatabricksOAuthM2M{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Auth = &DatabricksSinkConfig_OauthM2M{OauthM2M: v}
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *DatabricksOAuthM2M) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: DatabricksOAuthM2M: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: DatabricksOAuthM2M: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ClientId", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ClientId = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ClientSecret", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ClientSecret = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
