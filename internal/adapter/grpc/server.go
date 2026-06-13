@@ -2,7 +2,9 @@ package grpc
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -295,17 +297,43 @@ func (s *ServiceServer) Stop() error {
 	return nil
 }
 
-// handlePanic records a panic with its stack trace on the current OTel span
-// and logs it server-side.
+// newCorrelationID returns a short hex token. It is mentioned in the
+// generic error message returned to clients and logged alongside the
+// raw cause server-side, so ops can grep the logs for the same string
+// the user reports.
+func newCorrelationID() string {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// rand.Read returning an error on a server is exceptional. Fall
+		// back to a non-secret deterministic token so the caller still
+		// has SOMETHING to quote.
+		return fmt.Sprintf("ts-%d", time.Now().UnixNano())
+	}
+
+	return hex.EncodeToString(b[:])
+}
+
+// handlePanic records a panic with its stack trace on the current OTel
+// span, logs it server-side, and returns a SANITIZED error to the
+// caller. The raw panic value and stack used to be embedded in the
+// gRPC error message — internal file paths, goroutine state, and
+// invariant strings disclosed to any client (#326). We now only return
+// a generic codes.Internal carrying a correlation ID; ops resolves
+// `correlation_id=<id>` against the logs.
 func handlePanic(ctx context.Context, logger logging.Logger, r any, stack []byte) error {
-	logger.Errorf("gRPC handler panicked: %v\n%s", r, stack)
+	correlationID := newCorrelationID()
+	logger.WithFields(map[string]any{
+		"correlation_id": correlationID,
+	}).Errorf("gRPC handler panicked: %v\n%s", r, stack)
 
 	span := trace.SpanFromContext(ctx)
 	span.SetAttributes(
 		attribute.String("panic.value", fmt.Sprintf("%v", r)),
 		attribute.String("panic.stack", string(stack)),
+		attribute.String("correlation_id", correlationID),
 	)
-	grpcErr := status.Errorf(codes.Internal, "panic: %v\n%s", r, stack)
+
+	grpcErr := status.Errorf(codes.Internal, "internal server error (correlation ID: %s)", correlationID)
 	span.RecordError(grpcErr)
 
 	return grpcErr
@@ -402,11 +430,11 @@ func loggingStreamInterceptor(logger logging.Logger, slowThreshold time.Duration
 }
 
 // errorConversionInterceptor converts known errors to proper gRPC status codes.
-func errorConversionInterceptor() ggrpc.UnaryServerInterceptor {
+func errorConversionInterceptor(logger logging.Logger) ggrpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *ggrpc.UnaryServerInfo, handler ggrpc.UnaryHandler) (any, error) {
 		resp, err := handler(ctx, req)
 		if err != nil {
-			err = convertToGRPCError(err)
+			err = convertToGRPCError(err, logger)
 		}
 
 		return resp, err
@@ -414,11 +442,11 @@ func errorConversionInterceptor() ggrpc.UnaryServerInterceptor {
 }
 
 // errorConversionStreamInterceptor converts known errors to proper gRPC status codes for streaming RPCs.
-func errorConversionStreamInterceptor() ggrpc.StreamServerInterceptor {
+func errorConversionStreamInterceptor(logger logging.Logger) ggrpc.StreamServerInterceptor {
 	return func(srv any, ss ggrpc.ServerStream, info *ggrpc.StreamServerInfo, handler ggrpc.StreamHandler) error {
 		err := handler(srv, ss)
 		if err != nil {
-			err = convertToGRPCError(err)
+			err = convertToGRPCError(err, logger)
 		}
 
 		return err
@@ -426,7 +454,11 @@ func errorConversionStreamInterceptor() ggrpc.StreamServerInterceptor {
 }
 
 // convertToGRPCError converts known errors to proper gRPC status errors.
-func convertToGRPCError(err error) error {
+// Unmapped errors are logged with a correlation ID and replaced with a
+// generic codes.Unknown so internal implementation details (Pebble
+// strings, file paths, invariant messages) are not disclosed to API
+// clients (#326).
+func convertToGRPCError(err error, logger logging.Logger) error {
 	// Already a gRPC status error, return as-is
 	if _, ok := status.FromError(err); ok {
 		return err
@@ -640,8 +672,16 @@ func convertToGRPCError(err error) error {
 		return st.Err()
 	}
 
-	// Default: return as Unknown (preserves the original error message)
-	return err
+	// Default: sanitize. The raw error may contain Pebble error strings,
+	// file system paths, or internal invariant messages; do not leak any
+	// of that to the client. Log server-side with a correlation ID and
+	// return a generic Unknown.
+	correlationID := newCorrelationID()
+	logger.WithFields(map[string]any{
+		"correlation_id": correlationID,
+	}).Errorf("Unmapped gRPC handler error: %v", err)
+
+	return status.Errorf(codes.Unknown, "unknown server error (correlation ID: %s)", correlationID)
 }
 
 // buildBaseServer constructs the baseServer fields shared by RaftServer and
@@ -737,13 +777,13 @@ func NewServiceServer(host string, port int, logger logging.Logger, debug bool, 
 		recoveryInterceptor(logger),
 		consistencyInterceptor(),
 		loggingInterceptor(logger, slowThreshold),
-		errorConversionInterceptor(),
+		errorConversionInterceptor(logger),
 	}
 	streamInterceptors := []ggrpc.StreamServerInterceptor{
 		recoveryStreamInterceptor(logger),
 		consistencyStreamInterceptor(),
 		loggingStreamInterceptor(logger, slowThreshold),
-		errorConversionStreamInterceptor(),
+		errorConversionStreamInterceptor(logger),
 	}
 
 	opts := []ggrpc.ServerOption{

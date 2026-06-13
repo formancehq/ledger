@@ -103,6 +103,10 @@ var errorMappings = []errorMapping{
 		return map[string]string{"details": e.Details}
 	}), codes.InvalidArgument, domain.ErrReasonNumscriptParseError},
 
+	{matchAs(func(e *domain.ErrFilterCompilation) map[string]string {
+		return map[string]string{"detail": e.Detail}
+	}), codes.InvalidArgument, domain.ErrReasonFilterCompilation},
+
 	{matchAs(func(e *domain.ErrNumscriptNotFound) map[string]string {
 		return map[string]string{"name": e.Name}
 	}), codes.NotFound, domain.ErrReasonNumscriptNotFound},

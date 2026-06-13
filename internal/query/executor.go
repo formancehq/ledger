@@ -112,7 +112,7 @@ func Execute(
 
 	iter, compileErr := Compile(indexSnap, kb, pq.GetFilter(), pq.GetTarget(), ledgerInfo.GetId(), req.GetParameters(), schema, ledgerInfo, profile, handle)
 	if compileErr != nil {
-		return nil, fmt.Errorf("compiling filter: %w", compileErr)
+		return nil, domain.WrapCompileError(compileErr)
 	}
 	defer iter.Close()
 

@@ -823,7 +823,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 
 	iter, err := query.Compile(snap, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetId(), nil, schemaFields, ledgerInfo, profile, handle)
 	if err != nil {
-		return nil, fmt.Errorf("compiling filter: %w", err)
+		return nil, domain.WrapCompileError(err)
 	}
 	defer iter.Close()
 

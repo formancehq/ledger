@@ -3,7 +3,6 @@ package query
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -26,7 +25,7 @@ const MaxFilterDepth = 100
 
 // ErrFilterTooDeep is returned by Compile when the QueryFilter
 // recursion exceeds MaxFilterDepth.
-var ErrFilterTooDeep = fmt.Errorf("query filter exceeds maximum nesting depth (%d)", MaxFilterDepth)
+var ErrFilterTooDeep = domain.NewFilterCompilationError("query filter exceeds maximum nesting depth (%d)", MaxFilterDepth)
 
 // compileCtx holds the immutable context threaded through the recursive
 // compilation pipeline. All fields are set once at the entry point and
@@ -130,7 +129,7 @@ func compile(ctx *compileCtx, filter *commonpb.QueryFilter) (readstore.EntityIte
 		// is already set in the context. Return the universe iterator.
 		return compileUniverse(ctx)
 	default:
-		return nil, fmt.Errorf("unknown filter type: %T", filter.GetFilter())
+		return nil, domain.NewFilterCompilationError("unknown filter type: %T", filter.GetFilter())
 	}
 }
 
@@ -302,7 +301,7 @@ func compileNot(ctx *compileCtx, not *commonpb.NotFilter) (readstore.EntityItera
 // compileFieldCondition compiles a FieldCondition (metadata filter) into a leaf iterator.
 func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readstore.EntityIterator, error) {
 	if fc.GetField() == nil {
-		return nil, errors.New("field condition has no field reference")
+		return nil, domain.NewFilterCompilationError("field condition has no field reference")
 	}
 
 	ns, entityLen := targetNamespaceAndLen(ctx.target)
@@ -350,7 +349,7 @@ func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readst
 	case *commonpb.FieldCondition_ExistsCond:
 		return compileExistsCondition(ctx, mc, cond.ExistsCond)
 	default:
-		return nil, fmt.Errorf("unknown condition type: %T", fc.GetCondition())
+		return nil, domain.NewFilterCompilationError("unknown condition type: %T", fc.GetCondition())
 	}
 }
 
@@ -867,7 +866,7 @@ func compileAddressMatch(ctx *compileCtx, am *commonpb.AddressMatch) (readstore.
 
 		return compileAddressExact(ctx, value, role)
 	default:
-		return nil, fmt.Errorf("unknown address match type: %T", am.GetMatch())
+		return nil, domain.NewFilterCompilationError("unknown address match type: %T", am.GetMatch())
 	}
 }
 
@@ -950,7 +949,7 @@ func compileAddressExact(ctx *compileCtx, exactAddr string, role commonpb.Addres
 // Requires the reference builtin index to be READY.
 func compileReferenceCondition(ctx *compileCtx, rc *commonpb.ReferenceCondition) (readstore.EntityIterator, error) {
 	if rc.GetCond() == nil {
-		return nil, errors.New("reference condition has no value")
+		return nil, domain.NewFilterCompilationError("reference condition has no value")
 	}
 
 	if err := checkIndexed(ctx.info,
@@ -981,7 +980,7 @@ func compileReferenceCondition(ctx *compileCtx, rc *commonpb.ReferenceCondition)
 // compileBuiltinUintCondition dispatches to the appropriate builtin uint condition compiler.
 func compileBuiltinUintCondition(ctx *compileCtx, cond *commonpb.BuiltinUintCondition) (readstore.EntityIterator, error) {
 	if cond.GetCond() == nil {
-		return nil, errors.New("builtin uint condition has no value")
+		return nil, domain.NewFilterCompilationError("builtin uint condition has no value")
 	}
 
 	switch cond.GetField() {
@@ -992,7 +991,7 @@ func compileBuiltinUintCondition(ctx *compileCtx, cond *commonpb.BuiltinUintCond
 	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
 		return compileInsertedAtCondition(ctx, cond.GetCond())
 	default:
-		return nil, fmt.Errorf("unsupported builtin uint field: %v", cond.GetField())
+		return nil, domain.NewFilterCompilationError("unsupported builtin uint field: %v", cond.GetField())
 	}
 }
 
@@ -1137,14 +1136,14 @@ func compileTimestampRangeCondition(
 // compileLogBuiltinUintCondition dispatches to the appropriate log builtin uint condition compiler.
 func compileLogBuiltinUintCondition(ctx *compileCtx, cond *commonpb.LogBuiltinUintCondition) (readstore.EntityIterator, error) {
 	if cond.GetCond() == nil {
-		return nil, errors.New("log builtin uint condition has no value")
+		return nil, domain.NewFilterCompilationError("log builtin uint condition has no value")
 	}
 
 	switch cond.GetField() {
 	case commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE:
 		return compileLogDateCondition(ctx, cond.GetCond())
 	default:
-		return nil, fmt.Errorf("unsupported log builtin uint field: %v", cond.GetField())
+		return nil, domain.NewFilterCompilationError("unsupported log builtin uint field: %v", cond.GetField())
 	}
 }
 
@@ -1409,7 +1408,7 @@ func resolveString(cond *commonpb.StringCondition, params map[string]*commonpb.P
 	case *commonpb.StringCondition_Param:
 		return extractString(params, v.Param)
 	default:
-		return "", errors.New("string condition has no value")
+		return "", domain.NewFilterCompilationError("string condition has no value")
 	}
 }
 
@@ -1420,7 +1419,7 @@ func resolveBool(cond *commonpb.BoolCondition, params map[string]*commonpb.Param
 	case *commonpb.BoolCondition_Param:
 		return extractBool(params, v.Param)
 	default:
-		return false, errors.New("bool condition has no value")
+		return false, domain.NewFilterCompilationError("bool condition has no value")
 	}
 }
 
@@ -1436,18 +1435,18 @@ func resolveParamUint64(params map[string]*commonpb.ParameterValue, name string)
 func extractString(params map[string]*commonpb.ParameterValue, name string) (string, error) {
 	val, ok := params[name]
 	if !ok {
-		return "", fmt.Errorf("parameter %q not provided", name)
+		return "", domain.NewFilterCompilationError("parameter %q not provided", name)
 	}
 
 	if val == nil || val.GetValue() == nil {
-		return "", fmt.Errorf("parameter %q has a nil value, expected string", name)
+		return "", domain.NewFilterCompilationError("parameter %q has a nil value, expected string", name)
 	}
 
 	switch v := val.GetValue().(type) {
 	case *commonpb.ParameterValue_StringValue:
 		return v.StringValue, nil
 	default:
-		return "", fmt.Errorf("parameter %q: expected string value, got %s", name, paramTypeName(val))
+		return "", domain.NewFilterCompilationError("parameter %q: expected string value, got %s", name, paramTypeName(val))
 	}
 }
 
@@ -1458,11 +1457,11 @@ func extractString(params map[string]*commonpb.ParameterValue, name string) (str
 func extractBool(params map[string]*commonpb.ParameterValue, name string) (bool, error) {
 	val, ok := params[name]
 	if !ok {
-		return false, fmt.Errorf("parameter %q not provided", name)
+		return false, domain.NewFilterCompilationError("parameter %q not provided", name)
 	}
 
 	if val == nil || val.GetValue() == nil {
-		return false, fmt.Errorf("parameter %q has a nil value, expected bool", name)
+		return false, domain.NewFilterCompilationError("parameter %q has a nil value, expected bool", name)
 	}
 
 	switch v := val.GetValue().(type) {
@@ -1471,12 +1470,12 @@ func extractBool(params map[string]*commonpb.ParameterValue, name string) (bool,
 	case *commonpb.ParameterValue_StringValue:
 		b, err := strconv.ParseBool(v.StringValue)
 		if err != nil {
-			return false, fmt.Errorf("parameter %q: cannot parse %q as bool: %w", name, v.StringValue, err)
+			return false, domain.NewFilterCompilationError("parameter %q: cannot parse %q as bool: %v", name, v.StringValue, err)
 		}
 
 		return b, nil
 	default:
-		return false, fmt.Errorf("parameter %q: expected bool value, got %s", name, paramTypeName(val))
+		return false, domain.NewFilterCompilationError("parameter %q: expected bool value, got %s", name, paramTypeName(val))
 	}
 }
 
@@ -1487,11 +1486,11 @@ func extractBool(params map[string]*commonpb.ParameterValue, name string) (bool,
 func extractInt64(params map[string]*commonpb.ParameterValue, name string) (int64, error) {
 	val, ok := params[name]
 	if !ok {
-		return 0, fmt.Errorf("parameter %q not provided", name)
+		return 0, domain.NewFilterCompilationError("parameter %q not provided", name)
 	}
 
 	if val == nil || val.GetValue() == nil {
-		return 0, fmt.Errorf("parameter %q has a nil value, expected int64", name)
+		return 0, domain.NewFilterCompilationError("parameter %q has a nil value, expected int64", name)
 	}
 
 	switch v := val.GetValue().(type) {
@@ -1499,19 +1498,19 @@ func extractInt64(params map[string]*commonpb.ParameterValue, name string) (int6
 		return v.Int64Value, nil
 	case *commonpb.ParameterValue_Uint64Value:
 		if v.Uint64Value > math.MaxInt64 {
-			return 0, fmt.Errorf("parameter %q: uint64 value %d overflows int64", name, v.Uint64Value)
+			return 0, domain.NewFilterCompilationError("parameter %q: uint64 value %d overflows int64", name, v.Uint64Value)
 		}
 
 		return int64(v.Uint64Value), nil
 	case *commonpb.ParameterValue_StringValue:
 		n, err := strconv.ParseInt(v.StringValue, 10, 64)
 		if err != nil {
-			return 0, fmt.Errorf("parameter %q: cannot parse %q as int64: %w", name, v.StringValue, err)
+			return 0, domain.NewFilterCompilationError("parameter %q: cannot parse %q as int64: %v", name, v.StringValue, err)
 		}
 
 		return n, nil
 	default:
-		return 0, fmt.Errorf("parameter %q: expected int64 value, got %s", name, paramTypeName(val))
+		return 0, domain.NewFilterCompilationError("parameter %q: expected int64 value, got %s", name, paramTypeName(val))
 	}
 }
 
@@ -1522,11 +1521,11 @@ func extractInt64(params map[string]*commonpb.ParameterValue, name string) (int6
 func extractUint64(params map[string]*commonpb.ParameterValue, name string) (uint64, error) {
 	val, ok := params[name]
 	if !ok {
-		return 0, fmt.Errorf("parameter %q not provided", name)
+		return 0, domain.NewFilterCompilationError("parameter %q not provided", name)
 	}
 
 	if val == nil || val.GetValue() == nil {
-		return 0, fmt.Errorf("parameter %q has a nil value, expected uint64", name)
+		return 0, domain.NewFilterCompilationError("parameter %q has a nil value, expected uint64", name)
 	}
 
 	switch v := val.GetValue().(type) {
@@ -1534,19 +1533,19 @@ func extractUint64(params map[string]*commonpb.ParameterValue, name string) (uin
 		return v.Uint64Value, nil
 	case *commonpb.ParameterValue_Int64Value:
 		if v.Int64Value < 0 {
-			return 0, fmt.Errorf("parameter %q: negative int64 value %d cannot be used as uint64", name, v.Int64Value)
+			return 0, domain.NewFilterCompilationError("parameter %q: negative int64 value %d cannot be used as uint64", name, v.Int64Value)
 		}
 
 		return uint64(v.Int64Value), nil
 	case *commonpb.ParameterValue_StringValue:
 		n, err := strconv.ParseUint(v.StringValue, 10, 64)
 		if err != nil {
-			return 0, fmt.Errorf("parameter %q: cannot parse %q as uint64: %w", name, v.StringValue, err)
+			return 0, domain.NewFilterCompilationError("parameter %q: cannot parse %q as uint64: %v", name, v.StringValue, err)
 		}
 
 		return n, nil
 	default:
-		return 0, fmt.Errorf("parameter %q: expected uint64 value, got %s", name, paramTypeName(val))
+		return 0, domain.NewFilterCompilationError("parameter %q: expected uint64 value, got %s", name, paramTypeName(val))
 	}
 }
 
@@ -1663,28 +1662,28 @@ func validateAndCoerceCondition(fc *commonpb.FieldCondition, fieldSchema *common
 			return coerceIntToUint(fc)
 		}
 
-		return nil, fmt.Errorf("field %q is declared as %s, cannot use integer condition", fieldName, schemaType)
+		return nil, domain.NewFilterCompilationError("field %q is declared as %s, cannot use integer condition", fieldName, schemaType)
 
 	case *commonpb.FieldCondition_UintCond:
 		if commonpb.IsUnsignedType(schemaType) {
 			return fc, nil
 		}
 
-		return nil, fmt.Errorf("field %q is declared as %s, cannot use unsigned integer condition", fieldName, schemaType)
+		return nil, domain.NewFilterCompilationError("field %q is declared as %s, cannot use unsigned integer condition", fieldName, schemaType)
 
 	case *commonpb.FieldCondition_StringCond:
 		if schemaType == commonpb.MetadataType_METADATA_TYPE_STRING {
 			return fc, nil
 		}
 
-		return nil, fmt.Errorf("field %q is declared as %s, cannot use string condition", fieldName, schemaType)
+		return nil, domain.NewFilterCompilationError("field %q is declared as %s, cannot use string condition", fieldName, schemaType)
 
 	case *commonpb.FieldCondition_BoolCond:
 		if schemaType == commonpb.MetadataType_METADATA_TYPE_BOOL {
 			return fc, nil
 		}
 
-		return nil, fmt.Errorf("field %q is declared as %s, cannot use bool condition", fieldName, schemaType)
+		return nil, domain.NewFilterCompilationError("field %q is declared as %s, cannot use bool condition", fieldName, schemaType)
 
 	default:
 		return fc, nil
@@ -1707,7 +1706,7 @@ func coerceIntToUint(fc *commonpb.FieldCondition) (*commonpb.FieldCondition, err
 	if intCond.Min != nil {
 		v := intCond.GetMin()
 		if v < 0 {
-			return nil, fmt.Errorf("field %q is unsigned, cannot use negative min bound %d", fieldName, v)
+			return nil, domain.NewFilterCompilationError("field %q is unsigned, cannot use negative min bound %d", fieldName, v)
 		}
 
 		uv := uint64(v)
@@ -1717,7 +1716,7 @@ func coerceIntToUint(fc *commonpb.FieldCondition) (*commonpb.FieldCondition, err
 	if intCond.Max != nil {
 		v := intCond.GetMax()
 		if v < 0 {
-			return nil, fmt.Errorf("field %q is unsigned, cannot use negative max bound %d", fieldName, v)
+			return nil, domain.NewFilterCompilationError("field %q is unsigned, cannot use negative max bound %d", fieldName, v)
 		}
 
 		uv := uint64(v)

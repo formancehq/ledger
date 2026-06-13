@@ -57,6 +57,7 @@ const (
 	ErrReasonColdStorageDisabled           = "COLD_STORAGE_DISABLED"
 	ErrReasonClusterUnhealthy              = "CLUSTER_UNHEALTHY"
 	ErrReasonTransientAccountNonZero       = "TRANSIENT_ACCOUNT_NON_ZERO"
+	ErrReasonFilterCompilation             = "FILTER_COMPILATION_ERROR"
 )
 
 // BusinessError wraps a processing error to distinguish it from infrastructure errors.
@@ -501,6 +502,45 @@ type ErrNumscriptParse struct {
 
 func (e *ErrNumscriptParse) Error() string {
 	return "numscript parse error: " + e.Details
+}
+
+// ErrFilterCompilation wraps a query-filter compilation failure: schema-type
+// mismatches (e.g. string condition on an int64 field) and prepared-query
+// parameter parse errors (e.g. "cannot parse 'x' as int64"). Both are
+// client-actionable. Without this typed wrap the raw fmt.Errorf fell into
+// convertToGRPCError's default branch and was sanitized to codes.Unknown,
+// stripping the message the client needs to fix its request (#326).
+type ErrFilterCompilation struct {
+	Detail string
+}
+
+func (e *ErrFilterCompilation) Error() string {
+	return "compiling filter: " + e.Detail
+}
+
+// WrapCompileError propagates errors returned by query.Compile through to the
+// caller. Typed BusinessErrors (ErrIndexNotFound from missing-index paths,
+// ErrFilterCompilation from validation/parameter-parse paths produced by
+// NewFilterCompilationError at the source) flow through verbatim and reach
+// the gRPC adapter's typed mappings. Other errors — iterator creation, Pebble
+// existence checks, raw fmt.Errorf paths — pass through unchanged so the
+// convertToGRPCError default branch sanitises them as codes.Unknown with a
+// correlation ID, preventing internal storage/cache details from leaking to
+// API clients (#326). Kept as a single edge function so future call sites do
+// not accidentally re-introduce the leak by re-wrapping every cause.
+func WrapCompileError(err error) error {
+	return err
+}
+
+// NewFilterCompilationError wraps a client-actionable filter compilation
+// detail (schema-type mismatch, parameter parse failure) into a typed
+// BusinessError so the gRPC adapter maps it to InvalidArgument with the
+// detail preserved in ErrorInfo.metadata. Use this ONLY at the source —
+// inside query.Compile's validation helpers — never at the boundary, so
+// non-validation errors (iterator creation, Pebble lookups) reach the
+// sanitiser unchanged.
+func NewFilterCompilationError(format string, args ...any) error {
+	return &BusinessError{Err: &ErrFilterCompilation{Detail: fmt.Sprintf(format, args...)}}
 }
 
 // ErrBalanceNotPreloaded is returned when the balance for an account was not

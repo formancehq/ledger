@@ -130,3 +130,64 @@ func TestErrorTypes(t *testing.T) {
 		})
 	}
 }
+
+func TestWrapCompileError(t *testing.T) {
+	t.Parallel()
+
+	t.Run("raw error passes through unchanged (sanitiser handles it)", func(t *testing.T) {
+		t.Parallel()
+
+		// After flemzord's review: raw errors at the WrapCompileError
+		// boundary are no longer re-wrapped — they pass through so the
+		// convertToGRPCError sanitiser default returns codes.Unknown with
+		// a correlation ID instead of leaking the message via
+		// ErrFilterCompilation.Detail. Client-actionable validation
+		// errors are typed at source (compile.go validation helpers via
+		// NewFilterCompilationError).
+		raw := errors.New(`creating account iterator: pebble: not found at /var/lib/ledger/...`)
+		wrapped := WrapCompileError(raw)
+
+		require.Same(t, raw, wrapped)
+	})
+
+	t.Run("existing BusinessError passes through unchanged", func(t *testing.T) {
+		t.Parallel()
+
+		// ErrIndexNotFound is already wrapped by query.Compile and has its own
+		// gRPC mapping (FailedPrecondition). Re-wrapping it as
+		// ErrFilterCompilation would shadow the specific mapping with the
+		// generic InvalidArgument — regression caught by E2E
+		// indexes_test.go:63.
+		original := &BusinessError{Err: &ErrIndexNotFound{Index: `metadata["category"] on accounts`}}
+		got := WrapCompileError(original)
+		require.Same(t, original, got)
+
+		var notFound *ErrIndexNotFound
+		require.ErrorAs(t, got, &notFound)
+		require.Equal(t, `metadata["category"] on accounts`, notFound.Index)
+	})
+
+	t.Run("wrapped BusinessError passes through unchanged", func(t *testing.T) {
+		t.Parallel()
+
+		// Defensive: even if a caller wraps with fmt.Errorf, errors.As must
+		// still find the BusinessError underneath and we must NOT re-wrap.
+		original := &BusinessError{Err: &ErrIndexNotFound{Index: "idx"}}
+		wrapped := errors.Join(original)
+		got := WrapCompileError(wrapped)
+		require.Equal(t, wrapped, got)
+	})
+}
+
+func TestNewFilterCompilationError(t *testing.T) {
+	t.Parallel()
+
+	err := NewFilterCompilationError("field %q is declared as %s, cannot use string condition", "age", "INT64")
+
+	var biz *BusinessError
+	require.ErrorAs(t, err, &biz)
+
+	var compile *ErrFilterCompilation
+	require.ErrorAs(t, err, &compile)
+	require.Equal(t, `field "age" is declared as INT64, cannot use string condition`, compile.Detail)
+}

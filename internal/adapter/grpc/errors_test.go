@@ -12,6 +12,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
 	"github.com/formancehq/ledger/v3/internal/application/admission"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
@@ -19,6 +21,34 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
+
+// testLogger is the silent logger used by convertToGRPCError tests.
+func testLogger() logging.Logger { return logging.Testing() }
+
+// TestHandlePanic_DoesNotLeakStackToClient pins the fix for #326.
+// The recovery interceptor used to embed the raw panic value AND the
+// full stack trace (with file paths, goroutine state) in the gRPC
+// error message. handlePanic now returns a sanitized codes.Internal
+// carrying only a correlation ID.
+func TestHandlePanic_DoesNotLeakStackToClient(t *testing.T) {
+	t.Parallel()
+
+	const secretInternal = "panic message leaking /internal/path"
+	stack := []byte("goroutine 1 [running]:\nmain.veryRevealingFunctionName(...)\n\t/build/ledger/internal/secret.go:42")
+
+	grpcErr := handlePanic(context.Background(), testLogger(), secretInternal, stack)
+
+	st, ok := status.FromError(grpcErr)
+	require.True(t, ok)
+	require.Equal(t, codes.Internal, st.Code())
+	require.NotContains(t, st.Message(), secretInternal,
+		"raw panic value MUST NOT leak through to the client (#326)")
+	require.NotContains(t, st.Message(), "goroutine",
+		"stack trace MUST NOT leak through to the client (#326)")
+	require.NotContains(t, st.Message(), "/build",
+		"file paths MUST NOT leak through to the client (#326)")
+	require.Contains(t, st.Message(), "correlation ID")
+}
 
 func TestBusinessErrorToGRPCStatus_LedgerAlreadyExists(t *testing.T) {
 	t.Parallel()
@@ -183,6 +213,45 @@ func TestBusinessErrorToGRPCStatus_NumscriptParseError(t *testing.T) {
 	info := extractErrorInfo(t, st)
 	require.Equal(t, domain.ErrReasonNumscriptParseError, info.GetReason())
 	require.Equal(t, "unexpected token at line 3", info.GetMetadata()["details"])
+}
+
+func TestBusinessErrorToGRPCStatus_FilterCompilationError(t *testing.T) {
+	t.Parallel()
+
+	// Two flavors of filter-compile error must both reach the client as
+	// InvalidArgument so callers can fix their request: schema-type mismatch
+	// (covers tests/e2e/business/filter_schema_validation_test.go) and
+	// prepared-query parameter parse (covers prepared_queries_test.go).
+	tests := []struct {
+		name   string
+		detail string
+	}{
+		{
+			name:   "schema type mismatch",
+			detail: `field "age" is declared as METADATA_TYPE_INT64, cannot use string condition`,
+		},
+		{
+			name:   "parameter parse",
+			detail: `parameter "min": cannot parse "not-a-number" as int64: strconv.ParseInt: parsing "not-a-number": invalid syntax`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			bizErr := &domain.BusinessError{Err: &domain.ErrFilterCompilation{Detail: tt.detail}}
+			st := businessErrorToGRPCStatus(bizErr)
+
+			require.Equal(t, codes.InvalidArgument, st.Code())
+			require.Contains(t, st.Message(), tt.detail)
+
+			info := extractErrorInfo(t, st)
+			require.Equal(t, domain.ErrReasonFilterCompilation, info.GetReason())
+			require.Equal(t, errorDomain, info.GetDomain())
+			require.Equal(t, tt.detail, info.GetMetadata()["detail"])
+		})
+	}
 }
 
 func TestBusinessErrorToGRPCStatus_ValidationErrors(t *testing.T) {
@@ -383,27 +452,38 @@ func TestConvertToGRPCError_BusinessError(t *testing.T) {
 	t.Parallel()
 
 	bizErr := &domain.BusinessError{Err: &domain.ErrLedgerNotFound{Name: "test"}}
-	grpcErr := convertToGRPCError(bizErr)
+	grpcErr := convertToGRPCError(bizErr, testLogger())
 
 	st, ok := status.FromError(grpcErr)
 	require.True(t, ok)
 	require.Equal(t, codes.NotFound, st.Code())
 }
 
-func TestConvertToGRPCError_UnknownError(t *testing.T) {
+// TestConvertToGRPCError_UnknownErrorIsSanitized pins the fix for #326.
+// Unmapped errors used to be returned verbatim, leaking internal error
+// strings (Pebble messages, file paths, invariant text) to API clients.
+// The default branch now returns a generic codes.Unknown with a
+// correlation ID, and logs the raw error server-side.
+func TestConvertToGRPCError_UnknownErrorIsSanitized(t *testing.T) {
 	t.Parallel()
 
-	err := errors.New("some random error")
-	grpcErr := convertToGRPCError(err)
+	const secretInternalDetail = "pebble: block /var/lib/ledger/db/000123.sst checksum mismatch"
+	err := errors.New(secretInternalDetail)
 
-	// Unknown errors pass through as-is
-	require.Equal(t, err, grpcErr)
+	grpcErr := convertToGRPCError(err, testLogger())
+
+	st, ok := status.FromError(grpcErr)
+	require.True(t, ok)
+	require.Equal(t, codes.Unknown, st.Code())
+	require.NotContains(t, st.Message(), secretInternalDetail,
+		"raw internal error string MUST NOT leak through to the client (#326)")
+	require.Contains(t, st.Message(), "correlation ID")
 }
 
 func TestConvertToGRPCError_MissingSignature(t *testing.T) {
 	t.Parallel()
 
-	grpcErr := convertToGRPCError(signing.ErrMissingSignature)
+	grpcErr := convertToGRPCError(signing.ErrMissingSignature, testLogger())
 	st, ok := status.FromError(grpcErr)
 	require.True(t, ok)
 	require.Equal(t, codes.Unauthenticated, st.Code())
@@ -412,7 +492,7 @@ func TestConvertToGRPCError_MissingSignature(t *testing.T) {
 func TestConvertToGRPCError_InvalidSignature(t *testing.T) {
 	t.Parallel()
 
-	grpcErr := convertToGRPCError(signing.ErrInvalidSignature)
+	grpcErr := convertToGRPCError(signing.ErrInvalidSignature, testLogger())
 	st, ok := status.FromError(grpcErr)
 	require.True(t, ok)
 	require.Equal(t, codes.PermissionDenied, st.Code())
@@ -421,7 +501,7 @@ func TestConvertToGRPCError_InvalidSignature(t *testing.T) {
 func TestConvertToGRPCError_UnknownKeyID(t *testing.T) {
 	t.Parallel()
 
-	grpcErr := convertToGRPCError(signing.ErrUnknownKeyID)
+	grpcErr := convertToGRPCError(signing.ErrUnknownKeyID, testLogger())
 	st, ok := status.FromError(grpcErr)
 	require.True(t, ok)
 	require.Equal(t, codes.PermissionDenied, st.Code())
@@ -430,7 +510,7 @@ func TestConvertToGRPCError_UnknownKeyID(t *testing.T) {
 func TestConvertToGRPCError_MaintenanceMode(t *testing.T) {
 	t.Parallel()
 
-	grpcErr := convertToGRPCError(admission.ErrMaintenanceMode)
+	grpcErr := convertToGRPCError(admission.ErrMaintenanceMode, testLogger())
 	st, ok := status.FromError(grpcErr)
 	require.True(t, ok)
 	require.Equal(t, codes.Unavailable, st.Code())
@@ -439,7 +519,7 @@ func TestConvertToGRPCError_MaintenanceMode(t *testing.T) {
 func TestConvertToGRPCError_NoLeader(t *testing.T) {
 	t.Parallel()
 
-	grpcErr := convertToGRPCError(commonpb.ErrNoLeader)
+	grpcErr := convertToGRPCError(commonpb.ErrNoLeader, testLogger())
 	st, ok := status.FromError(grpcErr)
 	require.True(t, ok)
 	require.Equal(t, codes.Unavailable, st.Code())
@@ -454,7 +534,7 @@ func TestConvertToGRPCError_LeadershipLost(t *testing.T) {
 		node.ErrLeadershipLost,
 		fmt.Errorf("applying raft requests: %w", node.ErrLeadershipLost),
 	} {
-		grpcErr := convertToGRPCError(err)
+		grpcErr := convertToGRPCError(err, testLogger())
 		st, ok := status.FromError(grpcErr)
 		require.True(t, ok)
 		require.Equal(t, codes.Unavailable, st.Code())
@@ -464,7 +544,7 @@ func TestConvertToGRPCError_LeadershipLost(t *testing.T) {
 func TestConvertToGRPCError_NotFoundError(t *testing.T) {
 	t.Parallel()
 
-	grpcErr := convertToGRPCError(commonpb.NewNotFoundError("ledger %s not found", "test"))
+	grpcErr := convertToGRPCError(commonpb.NewNotFoundError("ledger %s not found", "test"), testLogger())
 	st, ok := status.FromError(grpcErr)
 	require.True(t, ok)
 	require.Equal(t, codes.NotFound, st.Code())
@@ -473,7 +553,7 @@ func TestConvertToGRPCError_NotFoundError(t *testing.T) {
 func TestConvertToGRPCError_AuditDisabled(t *testing.T) {
 	t.Parallel()
 
-	grpcErr := convertToGRPCError(domain.ErrAuditDisabled)
+	grpcErr := convertToGRPCError(domain.ErrAuditDisabled, testLogger())
 	st, ok := status.FromError(grpcErr)
 	require.True(t, ok)
 	require.Equal(t, codes.FailedPrecondition, st.Code())
@@ -482,7 +562,7 @@ func TestConvertToGRPCError_AuditDisabled(t *testing.T) {
 func TestConvertToGRPCError_PeriodNotClosed(t *testing.T) {
 	t.Parallel()
 
-	grpcErr := convertToGRPCError(&domain.ErrPeriodNotClosed{PeriodID: 5})
+	grpcErr := convertToGRPCError(&domain.ErrPeriodNotClosed{PeriodID: 5}, testLogger())
 	st, ok := status.FromError(grpcErr)
 	require.True(t, ok)
 	require.Equal(t, codes.FailedPrecondition, st.Code())
@@ -491,7 +571,7 @@ func TestConvertToGRPCError_PeriodNotClosed(t *testing.T) {
 func TestConvertToGRPCError_PeriodNotArchiving(t *testing.T) {
 	t.Parallel()
 
-	grpcErr := convertToGRPCError(&domain.ErrPeriodNotArchiving{PeriodID: 3})
+	grpcErr := convertToGRPCError(&domain.ErrPeriodNotArchiving{PeriodID: 3}, testLogger())
 	st, ok := status.FromError(grpcErr)
 	require.True(t, ok)
 	require.Equal(t, codes.FailedPrecondition, st.Code())
@@ -500,7 +580,7 @@ func TestConvertToGRPCError_PeriodNotArchiving(t *testing.T) {
 func TestConvertToGRPCError_ColdStorageDisabled(t *testing.T) {
 	t.Parallel()
 
-	grpcErr := convertToGRPCError(domain.ErrColdStorageDisabled)
+	grpcErr := convertToGRPCError(domain.ErrColdStorageDisabled, testLogger())
 	st, ok := status.FromError(grpcErr)
 	require.True(t, ok)
 	require.Equal(t, codes.FailedPrecondition, st.Code())
@@ -509,7 +589,7 @@ func TestConvertToGRPCError_ColdStorageDisabled(t *testing.T) {
 func TestConvertToGRPCError_ClusterUnhealthy(t *testing.T) {
 	t.Parallel()
 
-	grpcErr := convertToGRPCError(health.ErrUnhealthy)
+	grpcErr := convertToGRPCError(health.ErrUnhealthy, testLogger())
 	st, ok := status.FromError(grpcErr)
 	require.True(t, ok)
 	require.Equal(t, codes.Unavailable, st.Code())
@@ -539,7 +619,7 @@ func TestConvertToGRPCError_RaftTransientErrors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			grpcErr := convertToGRPCError(tt.err)
+			grpcErr := convertToGRPCError(tt.err, testLogger())
 			st, ok := status.FromError(grpcErr)
 			require.True(t, ok)
 			require.Equal(t, codes.Unavailable, st.Code())
@@ -551,7 +631,7 @@ func TestConvertToGRPCError_AlreadyGRPCStatus(t *testing.T) {
 	t.Parallel()
 
 	original := status.Error(codes.Internal, "already grpc")
-	grpcErr := convertToGRPCError(original)
+	grpcErr := convertToGRPCError(original, testLogger())
 	require.Equal(t, original, grpcErr)
 }
 

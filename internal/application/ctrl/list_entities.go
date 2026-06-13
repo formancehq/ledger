@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -71,7 +72,7 @@ func listAscending[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReade
 		params.pebbleReader,
 	)
 	if err != nil {
-		return fmt.Errorf("compiling filter: %w", err)
+		return domain.WrapCompileError(err)
 	}
 	defer iter.Close()
 
@@ -188,7 +189,7 @@ func listDescFiltered[T interface{ ~string | ~uint64 }](indexReader dal.PebbleRe
 		params.pebbleReader,
 	)
 	if err != nil {
-		return fmt.Errorf("compiling filter: %w", err)
+		return domain.WrapCompileError(err)
 	}
 	defer iter.Close()
 
