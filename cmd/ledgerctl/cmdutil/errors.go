@@ -3,7 +3,6 @@ package cmdutil
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/pterm/pterm"
@@ -102,38 +101,46 @@ func formatAuthError(serverMsg string) string {
 	return msg
 }
 
-// printErrorDetails prints structured details for specific business error types.
+// printErrorDetails prints structured details for business errors. After
+// the Describable refactor (#431) reconstructed errors carry Reason+Metadata
+// directly off the wire; this switch dispatches on Reason rather than Go
+// type so a new server-side error gets a "no extra details" graceful
+// fallback instead of a missing branch.
 func printErrorDetails(err error) {
-	var (
-		insufficient *domain.ErrInsufficientFunds
-		refConflict  *domain.ErrTransactionReferenceConflict
-		indexMissing *domain.ErrIndexNotFound
-		indexBuild   *domain.ErrIndexBuilding
-	)
+	var d domain.Describable
+	if !errors.As(err, &d) {
+		return
+	}
 
-	switch {
-	case errors.As(err, &insufficient):
+	meta := d.Metadata()
+
+	switch d.Reason() {
+	case domain.ErrReasonInsufficientFunds:
 		pterm.Println()
-		pterm.Printf("  Account: %s\n", pterm.Cyan(insufficient.Account))
-		pterm.Printf("  Asset:   %s\n", pterm.Yellow(insufficient.Asset))
-		pterm.Printf("  Balance: %s\n", pterm.Red(insufficient.Balance))
-		pterm.Printf("  Needed:  %s\n", insufficient.Amount)
-	case errors.As(err, &refConflict):
+		pterm.Printf("  Account: %s\n", pterm.Cyan(meta["account"]))
+		pterm.Printf("  Asset:   %s\n", pterm.Yellow(meta["asset"]))
+		pterm.Printf("  Balance: %s\n", pterm.Red(meta["balance"]))
+		pterm.Printf("  Needed:  %s\n", meta["amount"])
+	case domain.ErrReasonTransactionReferenceConflict:
 		pterm.Println()
-		pterm.Printf("  Reference: %s\n", pterm.Cyan(refConflict.Reference))
-	case errors.As(err, &indexMissing):
+		pterm.Printf("  Reference: %s\n", pterm.Cyan(meta["reference"]))
+	case domain.ErrReasonIndexNotFound:
 		pterm.Println()
-		pterm.Printf("  Index: %s\n", pterm.Yellow(indexMissing.Index))
+		pterm.Printf("  Index: %s\n", pterm.Yellow(meta["index"]))
 		pterm.Println(pterm.Gray("  hint: create the index with 'ledgerctl indexes create'"))
-	case errors.As(err, &indexBuild):
+	case domain.ErrReasonIndexBuilding:
 		pterm.Println()
-		pterm.Printf("  Index: %s\n", pterm.Yellow(indexBuild.Index))
+		pterm.Printf("  Index: %s\n", pterm.Yellow(meta["index"]))
 		pterm.Println(pterm.Gray("  hint: wait for the index to finish building, check status with 'ledgerctl indexes list'"))
 	}
 }
 
 // BusinessErrorFromGRPC extracts a BusinessError from a gRPC status error.
-// Returns nil if the error is not a business error (no ErrorInfo with domain "ledger").
+// Returns nil if the error is not a business error (no ErrorInfo with
+// domain "ledger"). The returned BusinessError.Err is a *domain.RemoteError
+// transporting the wire contract (Reason, Metadata, Message) plus the
+// Kind derived from the gRPC status code. New server-side error types
+// reach this code path automatically — no client-side switch to extend.
 func BusinessErrorFromGRPC(err error) *domain.BusinessError {
 	st := status.Convert(err)
 	if st.Code() == codes.OK {
@@ -142,83 +149,45 @@ func BusinessErrorFromGRPC(err error) *domain.BusinessError {
 
 	for _, detail := range st.Details() {
 		info, ok := detail.(*errdetails.ErrorInfo)
-		if !ok || info.GetDomain() != "ledger" {
+		if !ok || info.GetDomain() != "ledger" || info.GetReason() == "" {
 			continue
 		}
 
-		inner := reconstructError(info.GetReason(), info.GetMetadata(), st.Message())
-		if inner != nil {
-			return &domain.BusinessError{Err: inner}
+		return &domain.BusinessError{
+			Err: &domain.RemoteError{
+				KindValue:   grpcCodeToKind(st.Code()),
+				ReasonValue: info.GetReason(),
+				Message:     st.Message(),
+				Meta:        info.GetMetadata(),
+			},
 		}
 	}
 
 	return nil
 }
 
-// reconstructError rebuilds the typed error from the reason and metadata.
-func reconstructError(reason string, metadata map[string]string, message string) error {
-	switch reason {
-	case domain.ErrReasonLedgerAlreadyExists:
-		return &domain.ErrLedgerAlreadyExists{Name: metadata["name"]}
-
-	case domain.ErrReasonLedgerNotFound:
-		return &domain.ErrLedgerNotFound{Name: metadata["name"]}
-
-	case domain.ErrReasonLedgerDeleted:
-		return &domain.ErrLedgerDeleted{Name: metadata["name"]}
-
-	case domain.ErrReasonIdempotencyKeyConflict:
-		return &domain.ErrIdempotencyKeyConflict{Key: metadata["key"]}
-
-	case domain.ErrReasonTransactionReferenceConflict:
-		return &domain.ErrTransactionReferenceConflict{
-			Ledger:    metadata["ledger"],
-			Reference: metadata["reference"],
-		}
-
-	case domain.ErrReasonTransactionNotFound:
-		txID, _ := strconv.ParseUint(metadata["transactionId"], 10, 64)
-
-		return &domain.ErrTransactionNotFound{TransactionID: txID}
-
-	case domain.ErrReasonTransactionAlreadyReverted:
-		txID, _ := strconv.ParseUint(metadata["transactionId"], 10, 64)
-
-		return &domain.ErrTransactionAlreadyReverted{TransactionID: txID}
-
-	case domain.ErrReasonInsufficientFunds:
-		return &domain.ErrInsufficientFunds{
-			Account: metadata["account"],
-			Asset:   metadata["asset"],
-			Amount:  metadata["amount"],
-			Balance: metadata["balance"],
-		}
-
-	case domain.ErrReasonBalanceNotFound:
-		return &domain.ErrBalanceNotFound{
-			Account: metadata["account"],
-			Asset:   metadata["asset"],
-		}
-
-	case domain.ErrReasonBalanceNotPreloaded:
-		return &domain.ErrBalanceNotPreloaded{
-			Account: metadata["account"],
-			Asset:   metadata["asset"],
-		}
-
-	case domain.ErrReasonNumscriptParseError:
-		return &domain.ErrNumscriptParse{Details: metadata["details"]}
-
-	case domain.ErrReasonValidation:
-		return fmt.Errorf("%s", message)
-
-	case domain.ErrReasonIndexNotFound:
-		return &domain.ErrIndexNotFound{Index: metadata["index"]}
-
-	case domain.ErrReasonIndexBuilding:
-		return &domain.ErrIndexBuilding{Index: metadata["index"]}
-
+// grpcCodeToKind reverses the server-side kindToGRPCCode mapping. Two Kinds
+// (KindConflict, KindPrecondition) collapse to codes.FailedPrecondition on
+// the wire; the client cannot distinguish them post-fact, so we conservatively
+// pick KindPrecondition (the more common semantic). Clients that need the
+// distinction should pattern-match on Reason instead.
+func grpcCodeToKind(c codes.Code) domain.ErrorKind {
+	switch c {
+	case codes.InvalidArgument:
+		return domain.KindValidation
+	case codes.NotFound:
+		return domain.KindNotFound
+	case codes.AlreadyExists:
+		return domain.KindAlreadyExists
+	case codes.FailedPrecondition:
+		return domain.KindPrecondition
+	case codes.Unavailable:
+		return domain.KindUnavailable
+	case codes.Unauthenticated:
+		return domain.KindUnauthenticated
+	case codes.PermissionDenied:
+		return domain.KindPermissionDenied
 	default:
-		return nil
+		return domain.KindInternal
 	}
 }

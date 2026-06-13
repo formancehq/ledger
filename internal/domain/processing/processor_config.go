@@ -1,11 +1,12 @@
 package processing
 
 import (
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processSetMaintenanceMode(order *raftcmdpb.SetMaintenanceModeOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processSetMaintenanceMode(order *raftcmdpb.SetMaintenanceModeOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
 	s.SetMaintenanceMode(order.GetEnabled())
 
 	return &commonpb.LogPayload{

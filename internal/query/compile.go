@@ -23,8 +23,9 @@ import (
 // DoS. 100 is well above any legitimate query (review-2 L-19 / #341).
 const MaxFilterDepth = 100
 
-// ErrFilterTooDeep is returned by Compile when the QueryFilter
-// recursion exceeds MaxFilterDepth.
+// ErrFilterTooDeep is returned by Compile when the QueryFilter recursion
+// exceeds MaxFilterDepth. Typed Describable (KindValidation) so the gRPC
+// adapter maps it to InvalidArgument with the depth in the message.
 var ErrFilterTooDeep = domain.NewFilterCompilationError("query filter exceeds maximum nesting depth (%d)", MaxFilterDepth)
 
 // compileCtx holds the immutable context threaded through the recursive

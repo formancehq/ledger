@@ -37,7 +37,7 @@ type lruEntry struct {
 // parsedScript wraps a parsed Numscript program with any parsing errors.
 type parsedScript struct {
 	program numscriptlib.ParseResult
-	err     error
+	err     domain.Describable
 }
 
 // NewNumscriptCache creates a new NumscriptCache with the given maximum size.
@@ -71,7 +71,7 @@ func HashScript(script string) [32]byte {
 // On cache hit the lookup uses a read lock for zero contention under concurrent reads.
 // On cache miss the script is parsed outside the lock, then inserted with a write lock.
 // LRU ordering is approximate: read hits do not reorder to avoid write contention.
-func (c *NumscriptCache) GetOrParse(script string) (numscriptlib.ParseResult, error) {
+func (c *NumscriptCache) GetOrParse(script string) (numscriptlib.ParseResult, domain.Describable) {
 	hash := HashScript(script)
 
 	// Fast path: read lock for cache hits (no contention between readers).
@@ -88,7 +88,7 @@ func (c *NumscriptCache) GetOrParse(script string) (numscriptlib.ParseResult, er
 	// Parse the script outside the lock — this is the expensive operation.
 	parsed := numscriptlib.Parse(script)
 
-	var parseErr error
+	var parseErr domain.Describable
 	if errs := parsed.GetParsingErrors(); len(errs) > 0 {
 		parseErr = &domain.ErrNumscriptParse{
 			Details: numscriptlib.ParseErrorsToString(errs, parsed.GetSource()),

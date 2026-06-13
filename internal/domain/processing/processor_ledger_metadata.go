@@ -8,7 +8,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processAddLedgerMetadata(order *raftcmdpb.SaveLedgerMetadataOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processAddLedgerMetadata(order *raftcmdpb.SaveLedgerMetadataOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
 	ledger := order.GetLedger()
 	if ledger == "" {
 		return nil, domain.ErrLedgerNameRequired
@@ -51,7 +51,7 @@ func (p *RequestProcessor) processAddLedgerMetadata(order *raftcmdpb.SaveLedgerM
 	}, nil
 }
 
-func (p *RequestProcessor) processDeleteLedgerMetadata(order *raftcmdpb.DeleteLedgerMetadataOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processDeleteLedgerMetadata(order *raftcmdpb.DeleteLedgerMetadataOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
 	ledger := order.GetLedger()
 	if ledger == "" {
 		return nil, domain.ErrLedgerNameRequired
@@ -80,7 +80,7 @@ func (p *RequestProcessor) processDeleteLedgerMetadata(order *raftcmdpb.DeleteLe
 			}
 		}
 
-		return nil, err
+		return nil, &domain.ErrStorageOperation{Operation: "checking ledger metadata", Cause: err}
 	}
 
 	s.DeleteLedgerMetadata(metaKey)

@@ -1,11 +1,12 @@
 package processing
 
 import (
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processRegisterSigningKey(order *raftcmdpb.RegisterSigningKeyOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processRegisterSigningKey(order *raftcmdpb.RegisterSigningKeyOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
 	s.AddSigningKey(order.GetKeyId(), order.GetPublicKey(), order.GetParentKeyId())
 
 	return &commonpb.LogPayload{
@@ -19,7 +20,7 @@ func (p *RequestProcessor) processRegisterSigningKey(order *raftcmdpb.RegisterSi
 	}, nil
 }
 
-func (p *RequestProcessor) processRevokeSigningKey(order *raftcmdpb.RevokeSigningKeyOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processRevokeSigningKey(order *raftcmdpb.RevokeSigningKeyOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
 	var cascaded []string
 
 	if order.GetCascade() {
@@ -51,7 +52,7 @@ func (p *RequestProcessor) processRevokeSigningKey(order *raftcmdpb.RevokeSignin
 	}, nil
 }
 
-func (p *RequestProcessor) processSetSigningConfig(order *raftcmdpb.SetSigningConfigOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processSetSigningConfig(order *raftcmdpb.SetSigningConfigOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
 	s.SetRequireSignatures(order.GetRequireSignatures())
 
 	return &commonpb.LogPayload{

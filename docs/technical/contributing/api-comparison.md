@@ -687,40 +687,94 @@ The `Apply` method is the **single entry point for all ledger write operations**
 
 ### gRPC Error Mapping
 
-Business errors from the processing layer are mapped to proper gRPC status codes with structured `ErrorInfo` details. This allows clients to programmatically identify error types without parsing error messages.
+Business errors from the processing layer are mapped to gRPC status codes with structured `ErrorInfo` details via the `Describable` contract in `internal/domain`. This allows clients to programmatically identify error types without parsing error messages. See `internal/domain/errors.go` for the canonical list — the `Reason()` method on each typed error returns the constant below, and `Metadata()` returns the keys listed.
 
 Each error response includes a `google.rpc.ErrorInfo` detail with:
 - **`reason`**: Machine-readable error reason constant (e.g., `LEDGER_ALREADY_EXISTS`)
 - **`domain`**: Always `"ledger"`
-- **`metadata`**: Error-specific key-value pairs with context (e.g., account name, asset, amount)
+- **`metadata`**: Error-specific key-value pairs with context
+
+**Adding a new error**: define a typed error implementing `domain.Describable` (`Kind`, `Reason`, `Metadata`). The exhaustive `kindToGRPCCode` switch + reflection test enforce that no new error reaches the API without a mapping. No edit to this table required to keep it accurate — but please keep it in sync as a reference.
 
 | Error | gRPC Code | Reason | Metadata |
 |-------|-----------|--------|----------|
 | Ledger already exists | `ALREADY_EXISTS` | `LEDGER_ALREADY_EXISTS` | `name` |
 | Ledger not found | `NOT_FOUND` | `LEDGER_NOT_FOUND` | `name` |
+| Ledger deleted | `FAILED_PRECONDITION` | `LEDGER_DELETED` | `name` |
+| Ledger in mirror mode | `FAILED_PRECONDITION` | `LEDGER_IN_MIRROR_MODE` | `name` |
+| Ledger not in mirror mode | `FAILED_PRECONDITION` | `LEDGER_NOT_IN_MIRROR_MODE` | `name` |
 | Idempotency key conflict | `ALREADY_EXISTS` | `IDEMPOTENCY_KEY_CONFLICT` | `key` |
-| Transaction reference conflict | `ALREADY_EXISTS` | `TRANSACTION_REFERENCE_CONFLICT` | `ledgerId`, `reference` |
+| Idempotency check failed | `INTERNAL` | `IDEMPOTENCY_CHECK_FAILED` | *(none)* |
+| Transaction reference conflict | `ALREADY_EXISTS` | `TRANSACTION_REFERENCE_CONFLICT` | `ledger`, `reference` |
 | Transaction not found | `NOT_FOUND` | `TRANSACTION_NOT_FOUND` | `transactionId` |
 | Transaction already reverted | `FAILED_PRECONDITION` | `TRANSACTION_ALREADY_REVERTED` | `transactionId` |
+| Transaction state inconsistent | `INTERNAL` | `TRANSACTION_STATE_INCONSISTENT` | `transactionId`, `operation` |
 | Insufficient funds | `FAILED_PRECONDITION` | `INSUFFICIENT_FUNDS` | `account`, `asset`, `amount`, `balance` |
+| Volume overflow | `FAILED_PRECONDITION` | `VOLUME_OVERFLOW` | `account`, `asset`, `side`, `amount`, `current` |
+| Volume not materialized | `INTERNAL` | `VOLUME_NOT_MATERIALIZED` | `account`, `asset`, `side` |
 | Balance not found | `FAILED_PRECONDITION` | `BALANCE_NOT_FOUND` | `account`, `asset` |
 | Balance not preloaded | `FAILED_PRECONDITION` | `BALANCE_NOT_PRELOADED` | `account`, `asset` |
 | Numscript parse error | `INVALID_ARGUMENT` | `NUMSCRIPT_PARSE_ERROR` | `details` |
+| Numscript runtime error | `INTERNAL` | `NUMSCRIPT_RUNTIME` | `detail` |
+| Non-deterministic script | `INVALID_ARGUMENT` | `NON_DETERMINISTIC_SCRIPT` | `method` |
 | Numscript not found | `NOT_FOUND` | `NUMSCRIPT_NOT_FOUND` | `name` |
 | Numscript invalid version | `INVALID_ARGUMENT` | `NUMSCRIPT_INVALID_VERSION` | `version` |
 | Numscript version already exists | `ALREADY_EXISTS` | `NUMSCRIPT_VERSION_ALREADY_EXISTS` | `name`, `version` |
-| Numscript no version exists | `FAILED_PRECONDITION` | `NUMSCRIPT_NO_VERSION_EXISTS` | `name` |
-| Validation error | `INVALID_ARGUMENT` | `VALIDATION` | *(none)* |
+| Validation error (generic) | `INVALID_ARGUMENT` | `VALIDATION` | *(none — see message)* |
 | Audit disabled | `FAILED_PRECONDITION` | `AUDIT_DISABLED` | *(none)* |
-| Ledger in mirror mode | `FAILED_PRECONDITION` | `LEDGER_IN_MIRROR_MODE` | `name` |
-| Ledger not in mirror mode | `FAILED_PRECONDITION` | `LEDGER_NOT_IN_MIRROR_MODE` | `name` |
-| Prepared query already exists | `ALREADY_EXISTS` | `PREPARED_QUERY_ALREADY_EXISTS` | `name` |
-| Prepared query not found | `NOT_FOUND` | `PREPARED_QUERY_NOT_FOUND` | `name` |
+| Maintenance mode | `UNAVAILABLE` | `MAINTENANCE_MODE` | *(none)* |
+| Stale proposal | `UNAVAILABLE` | `STALE_PROPOSAL` | *(none)* |
+| Cluster unhealthy | `UNAVAILABLE` | `CLUSTER_UNHEALTHY` | *(none)* |
+| Cold storage disabled | `FAILED_PRECONDITION` | `COLD_STORAGE_DISABLED` | *(none)* |
+| No period open | `FAILED_PRECONDITION` | `NO_PERIOD_OPEN` | *(none)* |
+| Period not found | `NOT_FOUND` | `PERIOD_NOT_FOUND` | `periodId` |
+| Period not closing | `FAILED_PRECONDITION` | `PERIOD_NOT_CLOSING` | `periodId` |
+| Period not closed | `FAILED_PRECONDITION` | `PERIOD_NOT_CLOSED` | `periodId` |
+| Period not archiving | `FAILED_PRECONDITION` | `PERIOD_NOT_ARCHIVING` | `periodId` |
+| Metadata not found | `NOT_FOUND` | `METADATA_NOT_FOUND` | `target`, `key` |
+| Metadata field not in schema | `FAILED_PRECONDITION` | `METADATA_FIELD_NOT_IN_SCHEMA` | `target`, `key` |
+| Invalid receipt | `INVALID_ARGUMENT` | `INVALID_RECEIPT` | `reason` |
+| Invalid cron expression | `INVALID_ARGUMENT` | `INVALID_CRON_EXPRESSION` | `expression`, `details` |
+| Prepared query already exists | `ALREADY_EXISTS` | `PREPARED_QUERY_ALREADY_EXISTS` | `ledger`, `name` |
+| Prepared query not found | `NOT_FOUND` | `PREPARED_QUERY_NOT_FOUND` | `ledger`, `name` |
+| Filter compilation error | `INVALID_ARGUMENT` | `FILTER_COMPILATION_ERROR` | `detail` |
+| Index not found | `FAILED_PRECONDITION` | `INDEX_NOT_FOUND` | `index` |
+| Index building | `FAILED_PRECONDITION` | `INDEX_BUILDING` | `index` |
+| Index inconsistent | `INTERNAL` | `INDEX_INCONSISTENT` | `index`, `detail` |
 | Account not matching type | `FAILED_PRECONDITION` | `ACCOUNT_NOT_MATCHING_TYPE` | `address` |
 | Account type not found | `NOT_FOUND` | `ACCOUNT_TYPE_NOT_FOUND` | `name` |
 | Account type already exists | `ALREADY_EXISTS` | `ACCOUNT_TYPE_ALREADY_EXISTS` | `name` |
-| Invalid pattern | `INVALID_ARGUMENT` | `INVALID_PATTERN` | `pattern`, `details` |
+| Account type conflict | `FAILED_PRECONDITION` | `ACCOUNT_TYPE_CONFLICT` | `pattern`, `existingName`, `existingPattern` |
 | Account type has accounts | `FAILED_PRECONDITION` | `ACCOUNT_TYPE_HAS_ACCOUNTS` | `name` |
+| Invalid pattern | `INVALID_ARGUMENT` | `INVALID_PATTERN` | `pattern`, `details` |
+| Transient account non-zero | `FAILED_PRECONDITION` | `TRANSIENT_ACCOUNT_NON_ZERO` | `account`, `asset` |
+| Sink already exists | `ALREADY_EXISTS` | `SINK_ALREADY_EXISTS` | `name` |
+| Sink not found | `NOT_FOUND` | `SINK_NOT_FOUND` | `name` |
+| Sink batch size too large | `INVALID_ARGUMENT` | `SINK_BATCH_SIZE_TOO_LARGE` | `name`, `batchSize`, `max` |
+| Invalid order type (protocol mismatch) | `INTERNAL` | `INVALID_ORDER_TYPE` | `typeName` |
+| Invalid apply type (protocol mismatch) | `INTERNAL` | `INVALID_APPLY_TYPE` | `typeName` |
+| Storage operation failed | `INTERNAL` | `STORAGE_OPERATION_FAILED` | `operation` |
+| Checkpoint ID required | `INVALID_ARGUMENT` | `CHECKPOINT_ID_REQUIRED` | *(none)* |
+
+### REST/HTTP Error Mapping
+
+The REST adapter uses the same `Describable.Reason()` as the JSON `errorCode` field — wire contract is uniform with gRPC's `ErrorInfo.reason`. HTTP status code is derived from `Kind` via `kindToHTTPStatus`:
+
+| ErrorKind | HTTP Status |
+|-----------|-------------|
+| `KindValidation` | 400 Bad Request |
+| `KindNotFound` | 404 Not Found |
+| `KindAlreadyExists` | 409 Conflict |
+| `KindConflict` | 409 Conflict |
+| `KindPrecondition` | 400 Bad Request |
+| `KindUnavailable` | 503 Service Unavailable |
+| `KindUnauthenticated` | 401 Unauthorized |
+| `KindPermissionDenied` | 403 Forbidden |
+| `KindInternal` | 500 Internal Server Error |
+
+**Breaking change in #432**: HTTP `errorCode` JSON field previously used HTTP-specific codes (`"CONFLICT"`, `"NOT_FOUND"`, `"SCRIPT_PARSE_ERROR"`, `"INSUFFICIENT_FUNDS"`, ...) that were sometimes the same as the gRPC Reason and sometimes different. After the Describable refactor (#432) it is uniformly `Reason()` from the table above — e.g. `"LEDGER_ALREADY_EXISTS"` (was `"CONFLICT"`), `"NUMSCRIPT_PARSE_ERROR"` (was `"SCRIPT_PARSE_ERROR"`). Update REST clients to widen pattern matching accordingly.
+
+**Client-side Kind reconstruction is lossy — match on `Reason`, not `Kind`.** The server-side `Kind` enum has two values (`KindConflict` and `KindPrecondition`) that both serialise to `codes.FailedPrecondition` on the wire. Client SDKs that reconstruct a `RemoteError` from a gRPC status (see `cmd/ledgerctl/cmdutil`) conservatively pick `KindPrecondition` for every `FailedPrecondition` response — so a server-side `KindConflict` (e.g. ledger deleted, transaction already reverted) reads as `KindPrecondition` client-side. Branching on `RemoteError.Kind()` will therefore misclassify conflict responses. Match on `Reason()` (`LEDGER_DELETED`, `TRANSACTION_ALREADY_REVERTED`, etc.) instead — it is preserved end-to-end and is the reliable discriminator.
 
 **Client-side usage (Go):**
 ```go

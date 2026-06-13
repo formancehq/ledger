@@ -1,8 +1,6 @@
 package admission
 
 import (
-	"fmt"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -28,7 +26,7 @@ func validateOrder(order *raftcmdpb.Order) error {
 }
 
 // validateOrderLedgerName extracts and validates the ledger name from any order type.
-func validateOrderLedgerName(order *raftcmdpb.Order) error {
+func validateOrderLedgerName(order *raftcmdpb.Order) domain.Describable {
 	var name string
 
 	switch o := order.GetType().(type) {
@@ -65,7 +63,7 @@ func validateOrderLedgerName(order *raftcmdpb.Order) error {
 
 // validateOrderMetadata validates that all metadata keys and values in the order
 // are safe for Pebble key encoding.
-func validateOrderMetadata(order *raftcmdpb.Order) error {
+func validateOrderMetadata(order *raftcmdpb.Order) domain.Describable {
 	switch o := order.GetType().(type) {
 	case *raftcmdpb.Order_Apply:
 		return validateApplyMetadata(o.Apply)
@@ -81,7 +79,7 @@ func validateOrderMetadata(order *raftcmdpb.Order) error {
 }
 
 // validateApplyMetadata validates metadata within a LedgerApplyOrder.
-func validateApplyMetadata(apply *raftcmdpb.LedgerApplyOrder) error {
+func validateApplyMetadata(apply *raftcmdpb.LedgerApplyOrder) domain.Describable {
 	switch d := apply.GetData().(type) {
 	case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
 		if err := validateMetadataMap(d.CreateTransaction.GetMetadata()); err != nil {
@@ -91,7 +89,7 @@ func validateApplyMetadata(apply *raftcmdpb.LedgerApplyOrder) error {
 		for account, mm := range d.CreateTransaction.GetAccountMetadata() {
 			if mm != nil {
 				if err := validateMetadataMap(mm.GetValues()); err != nil {
-					return fmt.Errorf("account %q: %w", account, err)
+					return &domain.ErrAccountValidation{Account: account, Cause: err}
 				}
 			}
 		}
@@ -119,7 +117,7 @@ func validateApplyMetadata(apply *raftcmdpb.LedgerApplyOrder) error {
 }
 
 // validateMirrorMetadata validates metadata supplied by mirror ingest orders.
-func validateMirrorMetadata(entry *raftcmdpb.MirrorLogEntry) error {
+func validateMirrorMetadata(entry *raftcmdpb.MirrorLogEntry) domain.Describable {
 	switch d := entry.GetData().(type) {
 	case *raftcmdpb.MirrorLogEntry_CreatedTransaction:
 		if err := validateMetadataMap(d.CreatedTransaction.GetMetadata()); err != nil {
@@ -129,7 +127,7 @@ func validateMirrorMetadata(entry *raftcmdpb.MirrorLogEntry) error {
 		for account, mm := range d.CreatedTransaction.GetAccountMetadata() {
 			if mm != nil {
 				if err := validateMetadataMap(mm.GetValues()); err != nil {
-					return fmt.Errorf("account %q: %w", account, err)
+					return &domain.ErrAccountValidation{Account: account, Cause: err}
 				}
 			}
 		}
@@ -147,7 +145,7 @@ func validateMirrorMetadata(entry *raftcmdpb.MirrorLogEntry) error {
 // validateOrderAccountAddresses validates account addresses in non-transaction orders
 // (metadata targets). Transaction postings are validated in the processor after
 // Numscript resolution.
-func validateOrderAccountAddresses(order *raftcmdpb.Order) error {
+func validateOrderAccountAddresses(order *raftcmdpb.Order) domain.Describable {
 	apply, ok := order.GetType().(*raftcmdpb.Order_Apply)
 	if !ok {
 		return nil
@@ -172,14 +170,18 @@ func validateOrderAccountAddresses(order *raftcmdpb.Order) error {
 }
 
 // validateMetadataMap validates all keys and values in a metadata map.
-func validateMetadataMap(m map[string]*commonpb.MetadataValue) error {
+// Value-level failures are wrapped in ErrMetadataKeyValidation so the
+// offending key reaches operator logs and the gRPC ErrorInfo metadata
+// (rather than being dropped, which the first pass of this refactor did
+// before paul-nicolas's review).
+func validateMetadataMap(m map[string]*commonpb.MetadataValue) domain.Describable {
 	for key, value := range m {
 		if err := domain.ValidateMetadataKey(key); err != nil {
 			return err
 		}
 
 		if err := domain.ValidateMetadataValue(value); err != nil {
-			return fmt.Errorf("metadata key %q value: %w", key, err)
+			return &domain.ErrMetadataKeyValidation{Key: key, Cause: err}
 		}
 	}
 

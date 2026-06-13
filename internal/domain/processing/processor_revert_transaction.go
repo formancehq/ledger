@@ -1,14 +1,12 @@
 package processing
 
 import (
-	"fmt"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processRevertTransaction(ledger string, ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.RevertTransactionOrder, s InMemoryStore, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, error) {
+func (p *RequestProcessor) processRevertTransaction(ledger string, ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.RevertTransactionOrder, s InMemoryStore, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, domain.Describable) {
 	txKey := domain.TransactionKey{
 		LedgerID: ledgerID,
 		ID:       order.GetTransactionId(),
@@ -22,7 +20,7 @@ func (p *RequestProcessor) processRevertTransaction(ledger string, ledgerID uint
 	// Check if the transaction is already reverted (bitset lookup, never errors)
 	reverted, err := s.GetReverted(txKey)
 	if err != nil {
-		return nil, fmt.Errorf("checking reverted status: %w", err)
+		return nil, &domain.ErrStorageOperation{Operation: "checking reverted status", Cause: err}
 	}
 
 	if reverted {
@@ -69,11 +67,11 @@ func (p *RequestProcessor) processRevertTransaction(ledger string, ledgerID uint
 	// Update the original transaction's state to record the reversion
 	origState, err := s.GetTransactionState(txKey)
 	if err != nil {
-		return nil, fmt.Errorf("getting original transaction state: %w", err)
+		return nil, &domain.ErrStorageOperation{Operation: "getting original transaction state", Cause: err}
 	}
 
 	if origState == nil {
-		return nil, fmt.Errorf("original transaction state not found for tx %d", order.GetTransactionId())
+		return nil, &domain.ErrTransactionStateInconsistent{TransactionID: order.GetTransactionId(), Operation: "revert"}
 	}
 
 	origState.RevertedByTransaction = revertTxID

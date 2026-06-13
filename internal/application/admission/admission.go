@@ -689,20 +689,47 @@ func isRegisterSigningKeyRequest(req *servicepb.Request) bool {
 const maxIdempotencyKeyLength = 256
 
 // ErrIdempotencyKeyTooLong is returned when an idempotency key exceeds the maximum length.
-var ErrIdempotencyKeyTooLong = errors.New("idempotency key exceeds maximum length of 256 characters")
+type errIdempotencyKeyTooLong struct{}
+
+func (errIdempotencyKeyTooLong) Error() string {
+	return "idempotency key exceeds maximum length of 256 characters"
+}
+func (errIdempotencyKeyTooLong) Kind() domain.ErrorKind      { return domain.KindValidation }
+func (errIdempotencyKeyTooLong) Reason() string              { return domain.ErrReasonValidation }
+func (errIdempotencyKeyTooLong) Metadata() map[string]string { return nil }
+
+var ErrIdempotencyKeyTooLong domain.Describable = errIdempotencyKeyTooLong{}
 
 // ErrIdempotencyKeyInvalidUTF8 is returned when an idempotency key contains invalid UTF-8.
-var ErrIdempotencyKeyInvalidUTF8 = errors.New("idempotency key contains invalid UTF-8")
+type errIdempotencyKeyInvalidUTF8 struct{}
+
+func (errIdempotencyKeyInvalidUTF8) Error() string               { return "idempotency key contains invalid UTF-8" }
+func (errIdempotencyKeyInvalidUTF8) Kind() domain.ErrorKind      { return domain.KindValidation }
+func (errIdempotencyKeyInvalidUTF8) Reason() string              { return domain.ErrReasonValidation }
+func (errIdempotencyKeyInvalidUTF8) Metadata() map[string]string { return nil }
+
+var ErrIdempotencyKeyInvalidUTF8 domain.Describable = errIdempotencyKeyInvalidUTF8{}
 
 // ErrMaintenanceMode is returned when maintenance mode is active and the request is not a maintenance mode toggle.
-var ErrMaintenanceMode = errors.New("cluster is in maintenance mode: write operations are blocked")
+// Distinct from domain.ErrMaintenanceMode (FSM-level): this one is admission-level (caller hit the gate before the
+// proposal entered the Raft pipeline) and shares the same Kind/Reason wire contract.
+var ErrMaintenanceMode = domain.ErrMaintenanceMode
 
 // ErrCheckpointOrderNotLast is returned when a bulk request mixes a checkpoint
 // trigger (CreateQueryCheckpoint or ClosePeriod) with any non-trigger order
 // AND the trigger does not occupy the last slot. The FSM commits the batch as
 // a single atomic unit, so a trigger order must always be last — otherwise it
 // would force a mid-batch commit that races the pipelined committer.
-var ErrCheckpointOrderNotLast = errors.New("checkpoint trigger (CreateQueryCheckpoint or ClosePeriod) must be the last order in a bulk request")
+type errCheckpointOrderNotLast struct{}
+
+func (errCheckpointOrderNotLast) Error() string {
+	return "checkpoint trigger (CreateQueryCheckpoint or ClosePeriod) must be the last order in a bulk request"
+}
+func (errCheckpointOrderNotLast) Kind() domain.ErrorKind      { return domain.KindValidation }
+func (errCheckpointOrderNotLast) Reason() string              { return domain.ErrReasonValidation }
+func (errCheckpointOrderNotLast) Metadata() map[string]string { return nil }
+
+var ErrCheckpointOrderNotLast domain.Describable = errCheckpointOrderNotLast{}
 
 // allRequestsAreMaintenanceMode returns true if every request in the batch is a SetMaintenanceMode request.
 func allRequestsAreMaintenanceMode(requests []*servicepb.Request) bool {

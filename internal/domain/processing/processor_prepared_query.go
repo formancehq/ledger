@@ -6,7 +6,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processCreatePreparedQuery(order *raftcmdpb.CreatePreparedQueryOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processCreatePreparedQuery(order *raftcmdpb.CreatePreparedQueryOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
 	info, ok := s.GetLedger(order.GetQuery().GetLedger())
 	if !ok {
 		return nil, &domain.ErrLedgerNotFound{Name: order.GetQuery().GetLedger()}
@@ -16,7 +16,7 @@ func (p *RequestProcessor) processCreatePreparedQuery(order *raftcmdpb.CreatePre
 
 	existing, err := s.GetPreparedQuery(ledgerID, order.GetQuery().GetName())
 	if err != nil {
-		return nil, err
+		return nil, &domain.ErrStorageOperation{Operation: "getting prepared query", Cause: err}
 	}
 
 	if existing != nil {
@@ -37,7 +37,7 @@ func (p *RequestProcessor) processCreatePreparedQuery(order *raftcmdpb.CreatePre
 	}, nil
 }
 
-func (p *RequestProcessor) processUpdatePreparedQuery(order *raftcmdpb.UpdatePreparedQueryOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processUpdatePreparedQuery(order *raftcmdpb.UpdatePreparedQueryOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
 	info, ok := s.GetLedger(order.GetLedger())
 	if !ok {
 		return nil, &domain.ErrLedgerNotFound{Name: order.GetLedger()}
@@ -47,7 +47,7 @@ func (p *RequestProcessor) processUpdatePreparedQuery(order *raftcmdpb.UpdatePre
 
 	existing, err := s.GetPreparedQuery(ledgerID, order.GetName())
 	if err != nil {
-		return nil, err
+		return nil, &domain.ErrStorageOperation{Operation: "getting prepared query", Cause: err}
 	}
 
 	if existing == nil {
@@ -74,7 +74,7 @@ func (p *RequestProcessor) processUpdatePreparedQuery(order *raftcmdpb.UpdatePre
 	}, nil
 }
 
-func (p *RequestProcessor) processDeletePreparedQuery(order *raftcmdpb.DeletePreparedQueryOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processDeletePreparedQuery(order *raftcmdpb.DeletePreparedQueryOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
 	info, ok := s.GetLedger(order.GetLedger())
 	if !ok {
 		return nil, &domain.ErrLedgerNotFound{Name: order.GetLedger()}
@@ -84,7 +84,7 @@ func (p *RequestProcessor) processDeletePreparedQuery(order *raftcmdpb.DeletePre
 
 	existing, err := s.GetPreparedQuery(ledgerID, order.GetName())
 	if err != nil {
-		return nil, err
+		return nil, &domain.ErrStorageOperation{Operation: "getting prepared query", Cause: err}
 	}
 
 	if existing == nil {

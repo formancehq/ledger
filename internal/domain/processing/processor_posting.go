@@ -1,7 +1,7 @@
 package processing
 
 import (
-	"fmt"
+	"errors"
 	"math/big"
 
 	"github.com/holiman/uint256"
@@ -45,7 +45,7 @@ func cachedVolumeKey(ledgerID uint32, account, asset string, assetCache map[stri
 // increases Output for source and Input for destination.
 // All volumes must be preloaded by the admission layer — nil volumes return an error.
 // assetCache, if non-nil, avoids redundant ParseAssetPrecision calls across postings.
-func applyPosting(s InMemoryStore, ledgerID uint32, posting *commonpb.Posting, skipBalanceCheck bool, assetCache map[string]cachedAssetPrecision) error {
+func applyPosting(s InMemoryStore, ledgerID uint32, posting *commonpb.Posting, skipBalanceCheck bool, assetCache map[string]cachedAssetPrecision) domain.Describable {
 	sourceKey := cachedVolumeKey(ledgerID, posting.GetSource(), posting.GetAsset(), assetCache)
 
 	// Decode posting amount into stack variable to avoid heap allocation
@@ -55,10 +55,19 @@ func applyPosting(s InMemoryStore, ledgerID uint32, posting *commonpb.Posting, s
 	// Get current volume pair for source — must be preloaded
 	sourceReader, err := s.GetVolume(sourceKey)
 	if err != nil {
-		return fmt.Errorf("source volume %s/%s not preloaded: %w", posting.GetSource(), posting.GetAsset(), err)
+		// ErrNotFound means the admission layer didn't preload this volume
+		// — a precondition the caller can satisfy. Anything else is an
+		// internal storage/cache failure the client cannot fix; surface it
+		// as ErrStorageOperation instead of masking it as a preload miss
+		// (paul-nicolas/NumaryBot review on #432).
+		if errors.Is(err, domain.ErrNotFound) {
+			return &domain.ErrBalanceNotPreloaded{Account: posting.GetSource(), Asset: posting.GetAsset()}
+		}
+
+		return &domain.ErrStorageOperation{Operation: "loading source volume", Cause: err}
 	}
 	if sourceReader == nil || sourceReader.GetInput() == nil || sourceReader.GetOutput() == nil {
-		return fmt.Errorf("source volume %s/%s not fully preloaded", posting.GetSource(), posting.GetAsset())
+		return &domain.ErrBalanceNotPreloaded{Account: posting.GetSource(), Asset: posting.GetAsset()}
 	}
 
 	// Balance check (skip for "world" account and when skipBalanceCheck is true)
@@ -114,10 +123,14 @@ func applyPosting(s InMemoryStore, ledgerID uint32, posting *commonpb.Posting, s
 
 	destReader, err := s.GetVolume(destKey)
 	if err != nil {
-		return fmt.Errorf("destination volume %s/%s not preloaded: %w", posting.GetDestination(), posting.GetAsset(), err)
+		if errors.Is(err, domain.ErrNotFound) {
+			return &domain.ErrBalanceNotPreloaded{Account: posting.GetDestination(), Asset: posting.GetAsset()}
+		}
+
+		return &domain.ErrStorageOperation{Operation: "loading destination volume", Cause: err}
 	}
 	if destReader == nil || destReader.GetInput() == nil || destReader.GetOutput() == nil {
-		return fmt.Errorf("destination volume %s/%s not fully preloaded", posting.GetDestination(), posting.GetAsset())
+		return &domain.ErrBalanceNotPreloaded{Account: posting.GetDestination(), Asset: posting.GetAsset()}
 	}
 
 	destVol := destReader.Mutate()

@@ -3,12 +3,129 @@ package domain
 import (
 	"errors"
 	"fmt"
+	"maps"
+	"strconv"
 )
 
-// ErrNotFound is a sentinel error for missing records in storage lookups.
+// ErrNotFound is a sentinel error for missing records in storage lookups. It
+// is an internal marker, NOT a Describable — it never reaches the API edge
+// because callers always convert it to one of the typed Describable errors
+// below (ErrLedgerNotFound, ErrTransactionNotFound, etc.) before returning.
 var ErrNotFound = errors.New("not found")
 
-// Reason constants shared between server and client for gRPC error mapping.
+// ErrorKind classifies a domain error semantically — independent of any
+// transport (gRPC, HTTP, CLI). Adapters translate Kind → their own status
+// code via an exhaustive switch; adding a new Kind without updating every
+// switch fails the build (golangci-lint `exhaustive` rule + ad-hoc reflection
+// test). Adding a new Describable type without declaring a Kind() fails to
+// compile because BusinessError.Err is typed as Describable.
+//
+// This file is the single source of truth for the (error type, Kind, Reason,
+// Metadata) tuple. Anything stored in BusinessError must implement
+// Describable; anything outside BusinessError (signing.*, raft.*, ctx errors,
+// AWS smithy, etc.) is sanitised by convertToGRPCError's defence-in-depth
+// default branch and does NOT need a Kind. See #431.
+type ErrorKind int
+
+const (
+	// KindValidation: the caller sent a syntactically/structurally invalid
+	// request. gRPC: InvalidArgument. HTTP: 400.
+	KindValidation ErrorKind = iota + 1
+
+	// KindNotFound: the named resource does not exist. gRPC: NotFound.
+	// HTTP: 404.
+	KindNotFound
+
+	// KindAlreadyExists: the resource exists and the caller asked to create
+	// it. gRPC: AlreadyExists. HTTP: 409.
+	KindAlreadyExists
+
+	// KindConflict: the request collides with current state in a way that
+	// could be reconciled by inspecting/modifying that state (e.g. already
+	// reverted, ledger deleted, mirror-mode write attempt). gRPC:
+	// FailedPrecondition. HTTP: 409.
+	KindConflict
+
+	// KindPrecondition: a precondition the caller can in principle satisfy
+	// is not met (e.g. insufficient funds, index missing, period not
+	// closing). gRPC: FailedPrecondition. HTTP: 400.
+	KindPrecondition
+
+	// KindUnavailable: the server cannot serve the request right now but
+	// the caller should retry (e.g. maintenance mode, stale proposal, lost
+	// leadership). gRPC: Unavailable. HTTP: 503.
+	KindUnavailable
+
+	// KindUnauthenticated: the caller is not authenticated. gRPC:
+	// Unauthenticated. HTTP: 401.
+	KindUnauthenticated
+
+	// KindPermissionDenied: the caller is authenticated but lacks the right
+	// to perform this action. gRPC: PermissionDenied. HTTP: 403.
+	KindPermissionDenied
+
+	// KindInternal: an invariant on the server side is broken. The caller
+	// cannot fix it. gRPC: Internal. HTTP: 500.
+	KindInternal
+)
+
+// String returns the canonical name of the kind. Used in tests and logging,
+// not part of the wire contract — Reason() is the client-facing identifier.
+func (k ErrorKind) String() string {
+	switch k {
+	case KindValidation:
+		return "Validation"
+	case KindNotFound:
+		return "NotFound"
+	case KindAlreadyExists:
+		return "AlreadyExists"
+	case KindConflict:
+		return "Conflict"
+	case KindPrecondition:
+		return "Precondition"
+	case KindUnavailable:
+		return "Unavailable"
+	case KindUnauthenticated:
+		return "Unauthenticated"
+	case KindPermissionDenied:
+		return "PermissionDenied"
+	case KindInternal:
+		return "Internal"
+	default:
+		return fmt.Sprintf("ErrorKind(%d)", int(k))
+	}
+}
+
+// Describable is the contract every domain business error must satisfy.
+// Adapters consume Kind() to pick a transport status code, Reason() for the
+// stable client-facing identifier, and Metadata() for the structured
+// error-info payload (field values that let the client format a precise
+// user message — names, IDs, etc.).
+//
+// The interface embeds `error` so `errors.As(err, &target Describable)` works
+// transparently from any chain. Implementations should be value-comparable
+// when stateless (so `errors.Is(err, sentinel)` works) and pointer-typed
+// when they carry per-occurrence data (so the metadata is preserved).
+type Describable interface {
+	error
+
+	// Kind returns the semantic category. Determines the transport status.
+	Kind() ErrorKind
+
+	// Reason returns a stable, client-facing identifier (UPPER_SNAKE_CASE).
+	// Clients pattern-match on this string; never rename a Reason once
+	// shipped — add a new Describable type instead.
+	Reason() string
+
+	// Metadata returns structured context the client uses to format a
+	// user-facing message (e.g. {"name": "default"}). Return nil when
+	// there is no per-occurrence context.
+	Metadata() map[string]string
+}
+
+// Reason constants shared between server and client. Wire contract: do NOT
+// rename an existing constant. Each constant appears in exactly one
+// Reason() implementation below.
 const (
 	ErrReasonLedgerAlreadyExists           = "LEDGER_ALREADY_EXISTS"
 	ErrReasonLedgerNotFound                = "LEDGER_NOT_FOUND"
@@ -19,6 +136,7 @@ const (
 	ErrReasonTransactionNotFound           = "TRANSACTION_NOT_FOUND"
 	ErrReasonTransactionAlreadyReverted    = "TRANSACTION_ALREADY_REVERTED"
 	ErrReasonInsufficientFunds             = "INSUFFICIENT_FUNDS"
+	ErrReasonVolumeOverflow                = "VOLUME_OVERFLOW"
 	ErrReasonBalanceNotFound               = "BALANCE_NOT_FOUND"
 	ErrReasonBalanceNotPreloaded           = "BALANCE_NOT_PRELOADED"
 	ErrReasonNumscriptParseError           = "NUMSCRIPT_PARSE_ERROR"
@@ -55,468 +173,37 @@ const (
 	ErrReasonAccountTypeHasAccounts        = "ACCOUNT_TYPE_HAS_ACCOUNTS"
 	ErrReasonAccountTypeConflict           = "ACCOUNT_TYPE_CONFLICT"
 	ErrReasonColdStorageDisabled           = "COLD_STORAGE_DISABLED"
-	ErrReasonClusterUnhealthy              = "CLUSTER_UNHEALTHY"
 	ErrReasonTransientAccountNonZero       = "TRANSIENT_ACCOUNT_NON_ZERO"
 	ErrReasonFilterCompilation             = "FILTER_COMPILATION_ERROR"
+	ErrReasonInvalidOrderType              = "INVALID_ORDER_TYPE"
+	ErrReasonInvalidApplyType              = "INVALID_APPLY_TYPE"
+	ErrReasonIdempotencyCheckFailed        = "IDEMPOTENCY_CHECK_FAILED"
+	ErrReasonStorageOperation              = "STORAGE_OPERATION_FAILED"
+	ErrReasonTransactionStateInconsistent  = "TRANSACTION_STATE_INCONSISTENT"
+	ErrReasonCheckpointIDRequired          = "CHECKPOINT_ID_REQUIRED"
+	ErrReasonNumscriptRuntime              = "NUMSCRIPT_RUNTIME"
+	ErrReasonVolumeNotMaterialized         = "VOLUME_NOT_MATERIALIZED"
+	ErrReasonNonDeterministicScript        = "NON_DETERMINISTIC_SCRIPT"
+	// ErrReasonClusterUnhealthy is consumed by health.ErrUnhealthy in the gRPC
+	// interceptor; the underlying error lives in internal/infra/health, not
+	// in domain. Kept here as the wire-contract identifier.
+	ErrReasonClusterUnhealthy = "CLUSTER_UNHEALTHY"
 )
 
-// BusinessError wraps a processing error to distinguish it from infrastructure errors.
-// It flows through futures -> admission -> controller -> gRPC server, where the interceptor
-// maps it to proper gRPC status codes.
+// BusinessError wraps a Describable so it can flow through code paths that
+// only understand the standard `error` interface (futures, admission,
+// controller) while still carrying the structured information adapters need
+// at the API edge. The field is typed as Describable, NOT error — adding a
+// new domain failure case without declaring its Kind() does not compile.
 type BusinessError struct {
-	Err error
+	Err Describable
 }
 
-func (e *BusinessError) Error() string {
-	return e.Err.Error()
-}
-
-func (e *BusinessError) Unwrap() error {
-	return e.Err
-}
-
-// ErrColdStorageDisabled is returned when archiving is attempted but cold storage is not configured.
-var ErrColdStorageDisabled = errors.New("cold storage is disabled: archiving is not available")
-
-// Sentinel validation errors (no context needed).
-var (
-	ErrTargetRequired             = errors.New("target is required")
-	ErrMetadataKeyRequired        = errors.New("key is required")
-	ErrAuditDisabled              = errors.New("audit log is disabled on this server")
-	ErrMaintenanceMode            = errors.New("cluster is in maintenance mode: write operations are blocked")
-	ErrStaleProposal              = errors.New("proposal rejected: predicted index mismatch (stale tracker after leadership transition)")
-	ErrNumscriptNameRequired      = errors.New("numscript name is required")
-	ErrNumscriptContentRequired   = errors.New("numscript content is required")
-	ErrScriptAndReferenceConflict = errors.New("cannot specify both script and scriptReference")
-	ErrScriptRequired             = errors.New("numscript: script is required")
-	ErrLedgerNameRequired         = errors.New("ledger name is required")
-)
-
-// ErrLedgerAlreadyExists is returned when attempting to create a ledger that already exists.
-type ErrLedgerAlreadyExists struct {
-	Name string
-}
-
-func (e *ErrLedgerAlreadyExists) Error() string {
-	return "ledger already exists: " + e.Name
-}
-
-// ErrLedgerNotFound is returned when a referenced ledger does not exist.
-type ErrLedgerNotFound struct {
-	Name string
-}
-
-func (e *ErrLedgerNotFound) Error() string {
-	return "ledger does not exist: " + e.Name
-}
-
-// ErrLedgerDeleted is returned when a write operation targets a soft-deleted ledger.
-type ErrLedgerDeleted struct {
-	Name string
-}
-
-func (e *ErrLedgerDeleted) Error() string {
-	return "ledger has been deleted: " + e.Name
-}
-
-// ErrIdempotencyKeyConflict is returned when an idempotency key is reused with different content.
-type ErrIdempotencyKeyConflict struct {
-	Key string
-}
-
-func (e *ErrIdempotencyKeyConflict) Error() string {
-	return fmt.Sprintf("idempotency key conflict: key %q used with different request content", e.Key)
-}
-
-// ErrTransactionReferenceConflict is returned when a transaction reference already exists in the same ledger.
-type ErrTransactionReferenceConflict struct {
-	Ledger    string
-	Reference string
-}
-
-func (e *ErrTransactionReferenceConflict) Error() string {
-	return fmt.Sprintf("transaction reference %q already exists in ledger %s", e.Reference, e.Ledger)
-}
-
-// ErrTransactionNotFound is returned when a transaction ID is beyond the known range.
-type ErrTransactionNotFound struct {
-	TransactionID uint64
-}
-
-func (e *ErrTransactionNotFound) Error() string {
-	return fmt.Sprintf("transaction %d does not exist", e.TransactionID)
-}
-
-// ErrTransactionReferenceNotFound is returned when a transaction reference does not
-// resolve to an existing transaction in the visible state (cache or current batch).
-type ErrTransactionReferenceNotFound struct {
-	Reference string
-}
-
-func (e *ErrTransactionReferenceNotFound) Error() string {
-	return fmt.Sprintf("transaction with reference %q does not exist", e.Reference)
-}
-
-// ErrTransactionTargetMissing is returned when a TargetTransaction is empty
-// (neither id nor reference set).
-var ErrTransactionTargetMissing = errors.New("transaction target requires either id or reference")
-
-// ErrTransactionAlreadyReverted is returned when attempting to revert an already-reverted transaction.
-type ErrTransactionAlreadyReverted struct {
-	TransactionID uint64
-}
-
-func (e *ErrTransactionAlreadyReverted) Error() string {
-	return fmt.Sprintf("transaction %d is already reverted", e.TransactionID)
-}
-
-// ErrInsufficientFunds is returned when a source account does not have enough balance.
-type ErrInsufficientFunds struct {
-	Account string
-	Asset   string
-	Amount  string // requested amount (decimal string)
-	Balance string // available balance (decimal string)
-}
-
-func (e *ErrInsufficientFunds) Error() string {
-	return fmt.Sprintf(
-		"insufficient funds on account %q for asset %s: needed %s, available %s",
-		e.Account, e.Asset, e.Amount, e.Balance,
-	)
-}
-
-// ErrVolumeOverflow is returned when a posting would push an account's Input
-// or Output volume past 2^256. Posting amounts are unbounded 256-bit values
-// supplied by the API and the cumulative volumes are themselves uint256, so
-// the addition can wrap silently. A wrap on the destination Input or on a
-// `world` / `Force=true` source Output would silently create or destroy
-// funds; the FSM rejects the order instead (#321).
-type ErrVolumeOverflow struct {
-	Account string
-	Asset   string
-	Side    string // "input" or "output"
-	Amount  string // requested amount (decimal string)
-	Current string // current volume on that side (decimal string)
-}
-
-func (e *ErrVolumeOverflow) Error() string {
-	return fmt.Sprintf(
-		"%s volume overflow on account %q for asset %s: current=%s + amount=%s exceeds 2^256",
-		e.Side, e.Account, e.Asset, e.Current, e.Amount,
-	)
-}
-
-// ErrBalanceNotFound is returned when the balance for a source account cannot be determined.
-type ErrBalanceNotFound struct {
-	Account string
-	Asset   string
-}
-
-func (e *ErrBalanceNotFound) Error() string {
-	return fmt.Sprintf("balance not found for account %q asset %q", e.Account, e.Asset)
-}
-
-// ErrSinkAlreadyExists is returned when adding a sink that already exists.
-type ErrSinkAlreadyExists struct {
-	Name string
-}
-
-func (e *ErrSinkAlreadyExists) Error() string {
-	return "event sink already exists: " + e.Name
-}
-
-// MaxSinkBatchSize is the server-side cap on SinkConfig.BatchSize. The
-// emitter uses BatchSize as the capacity of a per-flush slice; without a
-// bound, a misconfigured value drives one large allocation per flush on the
-// leader. 100_000 is several orders of magnitude beyond any sane sink
-// throughput and is intended only to catch fat-finger CLI input or
-// adversarial admin commands — not to enforce policy.
-const MaxSinkBatchSize int32 = 100_000
-
-// ErrSinkBatchSizeTooLarge is returned when an event sink is configured with
-// a batch size that exceeds MaxSinkBatchSize.
-type ErrSinkBatchSizeTooLarge struct {
-	Name      string
-	BatchSize int32
-	Max       int32
-}
-
-func (e *ErrSinkBatchSizeTooLarge) Error() string {
-	return fmt.Sprintf("event sink %q has batchSize=%d, exceeds maximum %d",
-		e.Name, e.BatchSize, e.Max)
-}
-
-// ErrMetadataNotFound is returned when deleting a metadata key that does not exist.
-type ErrMetadataNotFound struct {
-	Target string
-	Key    string
-}
-
-func (e *ErrMetadataNotFound) Error() string {
-	return fmt.Sprintf("metadata key %q not found on %s", e.Key, e.Target)
-}
-
-// ErrSinkNotFound is returned when removing a sink that does not exist.
-type ErrSinkNotFound struct {
-	Name string
-}
-
-func (e *ErrSinkNotFound) Error() string {
-	return "event sink not found: " + e.Name
-}
-
-// Period-related sentinel errors.
-var (
-	ErrNoPeriodOpen = errors.New("no open period exists")
-)
-
-// ErrPeriodNotFound is returned when a period ID does not match any known period.
-type ErrPeriodNotFound struct {
-	PeriodID uint64
-}
-
-func (e *ErrPeriodNotFound) Error() string {
-	return fmt.Sprintf("period %d not found", e.PeriodID)
-}
-
-// ErrPeriodNotClosing is returned when attempting to seal a period that is not in CLOSING state.
-type ErrPeriodNotClosing struct {
-	PeriodID uint64
-}
-
-func (e *ErrPeriodNotClosing) Error() string {
-	return fmt.Sprintf("period %d is not in CLOSING state", e.PeriodID)
-}
-
-// ErrPeriodNotClosed is returned when attempting to archive a period that is not in CLOSED state.
-type ErrPeriodNotClosed struct {
-	PeriodID uint64
-}
-
-func (e *ErrPeriodNotClosed) Error() string {
-	return fmt.Sprintf("period %d is not in CLOSED state", e.PeriodID)
-}
-
-// ErrPeriodNotArchiving is returned when attempting to confirm archive of a period that is not in ARCHIVING state.
-type ErrPeriodNotArchiving struct {
-	PeriodID uint64
-}
-
-func (e *ErrPeriodNotArchiving) Error() string {
-	return fmt.Sprintf("period %d is not in ARCHIVING state", e.PeriodID)
-}
-
-// ErrInvalidCronExpression is returned when a cron expression is invalid.
-type ErrInvalidCronExpression struct {
-	Expression string
-	Details    string
-}
-
-func (e *ErrInvalidCronExpression) Error() string {
-	return fmt.Sprintf("invalid cron expression %q: %s", e.Expression, e.Details)
-}
-
-// ErrLedgerInMirrorMode is returned when a write operation is attempted on a mirror-mode ledger.
-type ErrLedgerInMirrorMode struct {
-	Name string
-}
-
-func (e *ErrLedgerInMirrorMode) Error() string {
-	return fmt.Sprintf("ledger %s is in mirror mode: write operations are blocked", e.Name)
-}
-
-// ErrLedgerNotInMirrorMode is returned when a mirror-only operation is attempted on a normal-mode ledger.
-type ErrLedgerNotInMirrorMode struct {
-	Name string
-}
-
-func (e *ErrLedgerNotInMirrorMode) Error() string {
-	return fmt.Sprintf("ledger %s is not in mirror mode", e.Name)
-}
-
-// ErrPreparedQueryAlreadyExists is returned when creating a prepared query that already exists.
-type ErrPreparedQueryAlreadyExists struct {
-	Ledger string
-	Name   string
-}
-
-func (e *ErrPreparedQueryAlreadyExists) Error() string {
-	return fmt.Sprintf("prepared query %s/%s already exists", e.Ledger, e.Name)
-}
-
-// ErrPreparedQueryNotFound is returned when a prepared query does not exist.
-type ErrPreparedQueryNotFound struct {
-	Ledger string
-	Name   string
-}
-
-func (e *ErrPreparedQueryNotFound) Error() string {
-	return fmt.Sprintf("prepared query %s/%s not found", e.Ledger, e.Name)
-}
-
-// ErrIndexNotFound is returned when a query references an index that does not exist.
-type ErrIndexNotFound struct {
-	Index string
-}
-
-func (e *ErrIndexNotFound) Error() string {
-	return "index not found: " + e.Index
-}
-
-// ErrMetadataFieldNotInSchema is returned when CreateIndex targets a metadata
-// key that has not been declared via SetMetadataFieldType first.
-type ErrMetadataFieldNotInSchema struct {
-	Target string
-	Key    string
-}
-
-func (e *ErrMetadataFieldNotInSchema) Error() string {
-	return "metadata field not declared in schema: " + e.Target + "/" + e.Key
-}
-
-// ErrIndexBuilding is returned when a query references an index that is still being built.
-type ErrIndexBuilding struct {
-	Index string
-}
-
-func (e *ErrIndexBuilding) Error() string {
-	return "index is still building: " + e.Index
-}
-
-// ErrIndexInconsistent is returned when the read path detects a structural
-// inconsistency between the filter index and the per-ledger log index — for
-// example a logID present in the filter index but missing or malformed in
-// the log index. Surfacing this as an explicit error (rather than silently
-// skipping the entry) prevents stale/corrupt indexes from producing
-// truncated query results that the caller can't distinguish from a
-// legitimate empty result.
-type ErrIndexInconsistent struct {
-	Index  string
-	Detail string
-}
-
-func (e *ErrIndexInconsistent) Error() string {
-	return fmt.Sprintf("index %s is inconsistent: %s", e.Index, e.Detail)
-}
-
-// ErrInvalidReceipt is returned when a JWT receipt fails verification.
-type ErrInvalidReceipt struct {
-	Reason string
-}
-
-func (e *ErrInvalidReceipt) Error() string {
-	return "invalid receipt: " + e.Reason
-}
-
-// ErrNumscriptNotFound is returned when a referenced numscript does not exist in the library.
-type ErrNumscriptNotFound struct {
-	Name string
-}
-
-func (e *ErrNumscriptNotFound) Error() string {
-	return "numscript not found: " + e.Name
-}
-
-// ErrNumscriptVersionAlreadyExists is returned when saving with a semver version that already exists.
-type ErrNumscriptVersionAlreadyExists struct {
-	Name    string
-	Version string
-}
-
-func (e *ErrNumscriptVersionAlreadyExists) Error() string {
-	return fmt.Sprintf("numscript %q version %s already exists", e.Name, e.Version)
-}
-
-// ErrNumscriptInvalidVersion is returned when the version string is not valid semver.
-type ErrNumscriptInvalidVersion struct {
-	Version string
-}
-
-func (e *ErrNumscriptInvalidVersion) Error() string {
-	return fmt.Sprintf("invalid numscript version %q: must be semver (major.minor.patch) or \"latest\"", e.Version)
-}
-
-// ErrAccountNotMatchingType is returned when an account address doesn't match any active account type pattern.
-type ErrAccountNotMatchingType struct {
-	Address string
-}
-
-func (e *ErrAccountNotMatchingType) Error() string {
-	return "account does not match any account type pattern: " + e.Address
-}
-
-// ErrAccountTypeNotFound is returned when a referenced account type does not exist.
-type ErrAccountTypeNotFound struct {
-	Name string
-}
-
-func (e *ErrAccountTypeNotFound) Error() string {
-	return "account type not found: " + e.Name
-}
-
-// ErrAccountTypeAlreadyExists is returned when creating an account type with a name that already exists.
-type ErrAccountTypeAlreadyExists struct {
-	Name string
-}
-
-func (e *ErrAccountTypeAlreadyExists) Error() string {
-	return "account type already exists: " + e.Name
-}
-
-// ErrAccountTypeConflict is returned when a new account type pattern conflicts
-// with an existing pattern (same specificity and overlapping match space).
-type ErrAccountTypeConflict struct {
-	NewPattern      string
-	ExistingName    string
-	ExistingPattern string
-}
-
-func (e *ErrAccountTypeConflict) Error() string {
-	return fmt.Sprintf("pattern %q conflicts with existing account type %q (pattern %q): ambiguous match possible",
-		e.NewPattern, e.ExistingName, e.ExistingPattern)
-}
-
-// ErrInvalidPattern is returned when an account type pattern is syntactically invalid.
-type ErrInvalidPattern struct {
-	Pattern string
-	Details string
-}
-
-func (e *ErrInvalidPattern) Error() string {
-	return fmt.Sprintf("invalid pattern %q: %s", e.Pattern, e.Details)
-}
-
-// ErrAccountTypeHasAccounts is returned when removing an account type that still has matching accounts.
-type ErrAccountTypeHasAccounts struct {
-	Name string
-}
-
-func (e *ErrAccountTypeHasAccounts) Error() string {
-	return fmt.Sprintf("account type %q still has matching accounts", e.Name)
-}
-
-// ErrNumscriptParse is returned when a Numscript program has syntax errors.
-type ErrNumscriptParse struct {
-	Details string
-}
-
-func (e *ErrNumscriptParse) Error() string {
-	return "numscript parse error: " + e.Details
-}
-
-// ErrFilterCompilation wraps a query-filter compilation failure: schema-type
-// mismatches (e.g. string condition on an int64 field) and prepared-query
-// parameter parse errors (e.g. "cannot parse 'x' as int64"). Both are
-// client-actionable. Without this typed wrap the raw fmt.Errorf fell into
-// convertToGRPCError's default branch and was sanitized to codes.Unknown,
-// stripping the message the client needs to fix its request (#326).
-type ErrFilterCompilation struct {
-	Detail string
-}
-
-func (e *ErrFilterCompilation) Error() string {
-	return "compiling filter: " + e.Detail
-}
+func (e *BusinessError) Error() string               { return e.Err.Error() }
+func (e *BusinessError) Unwrap() error               { return e.Err }
+func (e *BusinessError) Kind() ErrorKind             { return e.Err.Kind() }
+func (e *BusinessError) Reason() string              { return e.Err.Reason() }
+func (e *BusinessError) Metadata() map[string]string { return e.Err.Metadata() }
 
 // WrapCompileError propagates errors returned by query.Compile through to the
 // caller. Typed BusinessErrors (ErrIndexNotFound from missing-index paths,
@@ -543,8 +230,685 @@ func NewFilterCompilationError(format string, args ...any) error {
 	return &BusinessError{Err: &ErrFilterCompilation{Detail: fmt.Sprintf(format, args...)}}
 }
 
-// ErrBalanceNotPreloaded is returned when the balance for an account was not
-// preloaded by the admission layer before script execution.
+// validationSentinel is a stateless validation Describable. Used for the
+// many "must not be empty / must not contain null / must be valid format"
+// failures that all map to the same Kind+Reason: a distinct *pointer*
+// instance per failure mode (so errors.Is compares pointer identity) but no
+// per-occurrence metadata.
+type validationSentinel struct {
+	msg string
+}
+
+func (e *validationSentinel) Error() string             { return e.msg }
+func (*validationSentinel) Kind() ErrorKind             { return KindValidation }
+func (*validationSentinel) Reason() string              { return ErrReasonValidation }
+func (*validationSentinel) Metadata() map[string]string { return nil }
+
+// newValidationSentinel constructs a stateless validation sentinel. Use only
+// at package init time; the returned pointer is the identity used by
+// errors.Is at every call site.
+func newValidationSentinel(msg string) Describable {
+	return &validationSentinel{msg: msg}
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Sentinel errors (zero-value structs). Constructed once and shared; comparable
+// via errors.Is. Each implements Describable so wrapping them in
+// BusinessError compiles.
+// ──────────────────────────────────────────────────────────────────────────
+
+// ErrColdStorageDisabled — archiving is attempted but cold storage is not configured.
+type errColdStorageDisabled struct{}
+
+func (errColdStorageDisabled) Error() string {
+	return "cold storage is disabled: archiving is not available"
+}
+func (errColdStorageDisabled) Kind() ErrorKind             { return KindPrecondition }
+func (errColdStorageDisabled) Reason() string              { return ErrReasonColdStorageDisabled }
+func (errColdStorageDisabled) Metadata() map[string]string { return nil }
+
+var ErrColdStorageDisabled Describable = errColdStorageDisabled{}
+
+// ErrAuditDisabled — audit log is disabled on this server.
+type errAuditDisabled struct{}
+
+func (errAuditDisabled) Error() string               { return "audit log is disabled on this server" }
+func (errAuditDisabled) Kind() ErrorKind             { return KindPrecondition }
+func (errAuditDisabled) Reason() string              { return ErrReasonAuditDisabled }
+func (errAuditDisabled) Metadata() map[string]string { return nil }
+
+var ErrAuditDisabled Describable = errAuditDisabled{}
+
+// ErrMaintenanceMode — cluster is in maintenance mode, writes are blocked.
+type errMaintenanceMode struct{}
+
+func (errMaintenanceMode) Error() string {
+	return "cluster is in maintenance mode: write operations are blocked"
+}
+func (errMaintenanceMode) Kind() ErrorKind             { return KindUnavailable }
+func (errMaintenanceMode) Reason() string              { return ErrReasonMaintenanceMode }
+func (errMaintenanceMode) Metadata() map[string]string { return nil }
+
+var ErrMaintenanceMode Describable = errMaintenanceMode{}
+
+// ErrStaleProposal — proposal rejected: predicted index mismatch after leadership transition.
+type errStaleProposal struct{}
+
+func (errStaleProposal) Error() string {
+	return "proposal rejected: predicted index mismatch (stale tracker after leadership transition)"
+}
+func (errStaleProposal) Kind() ErrorKind             { return KindUnavailable }
+func (errStaleProposal) Reason() string              { return ErrReasonStaleProposal }
+func (errStaleProposal) Metadata() map[string]string { return nil }
+
+var ErrStaleProposal Describable = errStaleProposal{}
+
+// ErrNoPeriodOpen — no open period exists.
+type errNoPeriodOpen struct{}
+
+func (errNoPeriodOpen) Error() string               { return "no open period exists" }
+func (errNoPeriodOpen) Kind() ErrorKind             { return KindPrecondition }
+func (errNoPeriodOpen) Reason() string              { return ErrReasonNoPeriodOpen }
+func (errNoPeriodOpen) Metadata() map[string]string { return nil }
+
+var ErrNoPeriodOpen Describable = errNoPeriodOpen{}
+
+// Validation sentinels — caller sent a request that fails a structural
+// check. Each is a unique *validationSentinel pointer; errors.Is compares
+// pointer identity (each call site references the exported variable, so
+// the comparison is stable). No per-occurrence metadata — the message is
+// the same every time and the Reason() is shared (ErrReasonValidation).
+var (
+	ErrTargetRequired             = newValidationSentinel("target is required")
+	ErrMetadataKeyRequired        = newValidationSentinel("key is required")
+	ErrNumscriptNameRequired      = newValidationSentinel("numscript name is required")
+	ErrNumscriptContentRequired   = newValidationSentinel("numscript content is required")
+	ErrScriptAndReferenceConflict = newValidationSentinel("cannot specify both script and scriptReference")
+	ErrScriptRequired             = newValidationSentinel("numscript: script is required")
+	ErrLedgerNameRequired         = newValidationSentinel("ledger name is required")
+)
+
+// ──────────────────────────────────────────────────────────────────────────
+// Typed errors with per-occurrence data. Pointer receivers so each instance
+// carries its own metadata.
+// ──────────────────────────────────────────────────────────────────────────
+
+// ErrLedgerAlreadyExists — attempting to create a ledger that already exists.
+type ErrLedgerAlreadyExists struct {
+	Name string
+}
+
+func (e *ErrLedgerAlreadyExists) Error() string { return "ledger already exists: " + e.Name }
+func (*ErrLedgerAlreadyExists) Kind() ErrorKind { return KindAlreadyExists }
+func (*ErrLedgerAlreadyExists) Reason() string  { return ErrReasonLedgerAlreadyExists }
+func (e *ErrLedgerAlreadyExists) Metadata() map[string]string {
+	return map[string]string{"name": e.Name}
+}
+
+// ErrLedgerNotFound — referenced ledger does not exist.
+type ErrLedgerNotFound struct {
+	Name string
+}
+
+func (e *ErrLedgerNotFound) Error() string               { return "ledger does not exist: " + e.Name }
+func (*ErrLedgerNotFound) Kind() ErrorKind               { return KindNotFound }
+func (*ErrLedgerNotFound) Reason() string                { return ErrReasonLedgerNotFound }
+func (e *ErrLedgerNotFound) Metadata() map[string]string { return map[string]string{"name": e.Name} }
+
+// ErrLedgerDeleted — write targets a soft-deleted ledger.
+type ErrLedgerDeleted struct {
+	Name string
+}
+
+func (e *ErrLedgerDeleted) Error() string               { return "ledger has been deleted: " + e.Name }
+func (*ErrLedgerDeleted) Kind() ErrorKind               { return KindConflict }
+func (*ErrLedgerDeleted) Reason() string                { return ErrReasonLedgerDeleted }
+func (e *ErrLedgerDeleted) Metadata() map[string]string { return map[string]string{"name": e.Name} }
+
+// ErrIdempotencyKeyConflict — idempotency key reused with different content.
+type ErrIdempotencyKeyConflict struct {
+	Key string
+}
+
+func (e *ErrIdempotencyKeyConflict) Error() string {
+	return fmt.Sprintf("idempotency key conflict: key %q used with different request content", e.Key)
+}
+func (*ErrIdempotencyKeyConflict) Kind() ErrorKind { return KindAlreadyExists }
+func (*ErrIdempotencyKeyConflict) Reason() string  { return ErrReasonIdempotencyKeyConflict }
+func (e *ErrIdempotencyKeyConflict) Metadata() map[string]string {
+	return map[string]string{"key": e.Key}
+}
+
+// ErrTransactionReferenceConflict — reference already exists in the same ledger.
+type ErrTransactionReferenceConflict struct {
+	Ledger    string
+	Reference string
+}
+
+func (e *ErrTransactionReferenceConflict) Error() string {
+	return fmt.Sprintf("transaction reference %q already exists in ledger %s", e.Reference, e.Ledger)
+}
+func (*ErrTransactionReferenceConflict) Kind() ErrorKind { return KindAlreadyExists }
+func (*ErrTransactionReferenceConflict) Reason() string  { return ErrReasonTransactionReferenceConflict }
+func (e *ErrTransactionReferenceConflict) Metadata() map[string]string {
+	return map[string]string{"ledger": e.Ledger, "reference": e.Reference}
+}
+
+// ErrTransactionNotFound — transaction ID is beyond the known range.
+type ErrTransactionNotFound struct {
+	TransactionID uint64
+}
+
+func (e *ErrTransactionNotFound) Error() string {
+	return fmt.Sprintf("transaction %d does not exist", e.TransactionID)
+}
+func (*ErrTransactionNotFound) Kind() ErrorKind { return KindNotFound }
+func (*ErrTransactionNotFound) Reason() string  { return ErrReasonTransactionNotFound }
+func (e *ErrTransactionNotFound) Metadata() map[string]string {
+	return map[string]string{"transactionId": strconv.FormatUint(e.TransactionID, 10)}
+}
+
+// ErrTransactionReferenceNotFound is returned when a transaction reference does not
+// resolve to an existing transaction in the visible state (cache or current batch).
+type ErrTransactionReferenceNotFound struct {
+	Reference string
+}
+
+func (e *ErrTransactionReferenceNotFound) Error() string {
+	return fmt.Sprintf("transaction with reference %q does not exist", e.Reference)
+}
+func (*ErrTransactionReferenceNotFound) Kind() ErrorKind { return KindNotFound }
+func (*ErrTransactionReferenceNotFound) Reason() string  { return ErrReasonTransactionReferenceNotFound }
+func (e *ErrTransactionReferenceNotFound) Metadata() map[string]string {
+	return map[string]string{"reference": e.Reference}
+}
+
+// ErrTransactionTargetMissing is returned when a TargetTransaction is empty
+// (neither id nor reference set).
+var ErrTransactionTargetMissing = newValidationSentinel("transaction target requires either id or reference")
+
+// ErrTransactionAlreadyReverted — attempting to revert an already-reverted transaction.
+type ErrTransactionAlreadyReverted struct {
+	TransactionID uint64
+}
+
+func (e *ErrTransactionAlreadyReverted) Error() string {
+	return fmt.Sprintf("transaction %d is already reverted", e.TransactionID)
+}
+func (*ErrTransactionAlreadyReverted) Kind() ErrorKind { return KindConflict }
+func (*ErrTransactionAlreadyReverted) Reason() string  { return ErrReasonTransactionAlreadyReverted }
+func (e *ErrTransactionAlreadyReverted) Metadata() map[string]string {
+	return map[string]string{"transactionId": strconv.FormatUint(e.TransactionID, 10)}
+}
+
+// ErrInsufficientFunds — source account does not have enough balance.
+type ErrInsufficientFunds struct {
+	Account string
+	Asset   string
+	Amount  string // requested amount (decimal string)
+	Balance string // available balance (decimal string)
+}
+
+func (e *ErrInsufficientFunds) Error() string {
+	return fmt.Sprintf(
+		"insufficient funds on account %q for asset %s: needed %s, available %s",
+		e.Account, e.Asset, e.Amount, e.Balance,
+	)
+}
+func (*ErrInsufficientFunds) Kind() ErrorKind { return KindPrecondition }
+func (*ErrInsufficientFunds) Reason() string  { return ErrReasonInsufficientFunds }
+func (e *ErrInsufficientFunds) Metadata() map[string]string {
+	return map[string]string{"account": e.Account, "asset": e.Asset, "amount": e.Amount, "balance": e.Balance}
+}
+
+// ErrVolumeOverflow — a posting would push an account's volume past 2^256.
+// Posting amounts are unbounded 256-bit values supplied by the API and the
+// cumulative volumes are themselves uint256, so the addition can wrap
+// silently. A wrap on the destination Input or on a `world` / `Force=true`
+// source Output would silently create or destroy funds; the FSM rejects the
+// order instead (#321).
+type ErrVolumeOverflow struct {
+	Account string
+	Asset   string
+	Side    string // "input" or "output"
+	Amount  string // requested amount (decimal string)
+	Current string // current volume on that side (decimal string)
+}
+
+func (e *ErrVolumeOverflow) Error() string {
+	return fmt.Sprintf(
+		"%s volume overflow on account %q for asset %s: current=%s + amount=%s exceeds 2^256",
+		e.Side, e.Account, e.Asset, e.Current, e.Amount,
+	)
+}
+func (*ErrVolumeOverflow) Kind() ErrorKind { return KindPrecondition }
+func (*ErrVolumeOverflow) Reason() string  { return ErrReasonVolumeOverflow }
+func (e *ErrVolumeOverflow) Metadata() map[string]string {
+	return map[string]string{
+		"account": e.Account,
+		"asset":   e.Asset,
+		"side":    e.Side,
+		"amount":  e.Amount,
+		"current": e.Current,
+	}
+}
+
+// ErrBalanceNotFound — balance for a source account cannot be determined.
+type ErrBalanceNotFound struct {
+	Account string
+	Asset   string
+}
+
+func (e *ErrBalanceNotFound) Error() string {
+	return fmt.Sprintf("balance not found for account %q asset %q", e.Account, e.Asset)
+}
+func (*ErrBalanceNotFound) Kind() ErrorKind { return KindPrecondition }
+func (*ErrBalanceNotFound) Reason() string  { return ErrReasonBalanceNotFound }
+func (e *ErrBalanceNotFound) Metadata() map[string]string {
+	return map[string]string{"account": e.Account, "asset": e.Asset}
+}
+
+// ErrSinkAlreadyExists — adding a sink that already exists.
+type ErrSinkAlreadyExists struct {
+	Name string
+}
+
+func (e *ErrSinkAlreadyExists) Error() string               { return "event sink already exists: " + e.Name }
+func (*ErrSinkAlreadyExists) Kind() ErrorKind               { return KindAlreadyExists }
+func (*ErrSinkAlreadyExists) Reason() string                { return ErrReasonSinkAlreadyExists }
+func (e *ErrSinkAlreadyExists) Metadata() map[string]string { return map[string]string{"name": e.Name} }
+
+// MaxSinkBatchSize is the server-side cap on SinkConfig.BatchSize. The
+// emitter uses BatchSize as the capacity of a per-flush slice; without a
+// bound, a misconfigured value drives one large allocation per flush on
+// the leader. 100_000 is several orders of magnitude beyond any sane sink
+// throughput and is intended only to catch fat-finger CLI input or
+// adversarial admin commands — not to enforce policy.
+const MaxSinkBatchSize int32 = 100_000
+
+// ErrSinkBatchSizeTooLarge — sink configured with batch size > MaxSinkBatchSize.
+type ErrSinkBatchSizeTooLarge struct {
+	Name      string
+	BatchSize int32
+	Max       int32
+}
+
+func (e *ErrSinkBatchSizeTooLarge) Error() string {
+	return fmt.Sprintf("event sink %q has batchSize=%d, exceeds maximum %d",
+		e.Name, e.BatchSize, e.Max)
+}
+func (*ErrSinkBatchSizeTooLarge) Kind() ErrorKind { return KindValidation }
+func (*ErrSinkBatchSizeTooLarge) Reason() string  { return ErrReasonSinkBatchSizeTooLarge }
+func (e *ErrSinkBatchSizeTooLarge) Metadata() map[string]string {
+	return map[string]string{
+		"name":      e.Name,
+		"batchSize": strconv.Itoa(int(e.BatchSize)),
+		"max":       strconv.Itoa(int(e.Max)),
+	}
+}
+
+// ErrMetadataNotFound — deleting a metadata key that does not exist.
+type ErrMetadataNotFound struct {
+	Target string
+	Key    string
+}
+
+func (e *ErrMetadataNotFound) Error() string {
+	return fmt.Sprintf("metadata key %q not found on %s", e.Key, e.Target)
+}
+func (*ErrMetadataNotFound) Kind() ErrorKind { return KindNotFound }
+func (*ErrMetadataNotFound) Reason() string  { return ErrReasonMetadataNotFound }
+func (e *ErrMetadataNotFound) Metadata() map[string]string {
+	return map[string]string{"target": e.Target, "key": e.Key}
+}
+
+// ErrSinkNotFound — removing a sink that does not exist.
+type ErrSinkNotFound struct {
+	Name string
+}
+
+func (e *ErrSinkNotFound) Error() string               { return "event sink not found: " + e.Name }
+func (*ErrSinkNotFound) Kind() ErrorKind               { return KindNotFound }
+func (*ErrSinkNotFound) Reason() string                { return ErrReasonSinkNotFound }
+func (e *ErrSinkNotFound) Metadata() map[string]string { return map[string]string{"name": e.Name} }
+
+// ErrPeriodNotFound — period ID does not match any known period.
+type ErrPeriodNotFound struct {
+	PeriodID uint64
+}
+
+func (e *ErrPeriodNotFound) Error() string { return fmt.Sprintf("period %d not found", e.PeriodID) }
+func (*ErrPeriodNotFound) Kind() ErrorKind { return KindNotFound }
+func (*ErrPeriodNotFound) Reason() string  { return ErrReasonPeriodNotFound }
+func (e *ErrPeriodNotFound) Metadata() map[string]string {
+	return map[string]string{"periodId": strconv.FormatUint(e.PeriodID, 10)}
+}
+
+// ErrPeriodNotClosing — attempting to seal a period not in CLOSING state.
+type ErrPeriodNotClosing struct {
+	PeriodID uint64
+}
+
+func (e *ErrPeriodNotClosing) Error() string {
+	return fmt.Sprintf("period %d is not in CLOSING state", e.PeriodID)
+}
+func (*ErrPeriodNotClosing) Kind() ErrorKind { return KindPrecondition }
+func (*ErrPeriodNotClosing) Reason() string  { return ErrReasonPeriodNotClosing }
+func (e *ErrPeriodNotClosing) Metadata() map[string]string {
+	return map[string]string{"periodId": strconv.FormatUint(e.PeriodID, 10)}
+}
+
+// ErrPeriodNotClosed — attempting to archive a period not in CLOSED state.
+type ErrPeriodNotClosed struct {
+	PeriodID uint64
+}
+
+func (e *ErrPeriodNotClosed) Error() string {
+	return fmt.Sprintf("period %d is not in CLOSED state", e.PeriodID)
+}
+func (*ErrPeriodNotClosed) Kind() ErrorKind { return KindPrecondition }
+func (*ErrPeriodNotClosed) Reason() string  { return ErrReasonPeriodNotClosed }
+func (e *ErrPeriodNotClosed) Metadata() map[string]string {
+	return map[string]string{"periodId": strconv.FormatUint(e.PeriodID, 10)}
+}
+
+// ErrPeriodNotArchiving — attempting to confirm archive of a period not in ARCHIVING state.
+type ErrPeriodNotArchiving struct {
+	PeriodID uint64
+}
+
+func (e *ErrPeriodNotArchiving) Error() string {
+	return fmt.Sprintf("period %d is not in ARCHIVING state", e.PeriodID)
+}
+func (*ErrPeriodNotArchiving) Kind() ErrorKind { return KindPrecondition }
+func (*ErrPeriodNotArchiving) Reason() string  { return ErrReasonPeriodNotArchiving }
+func (e *ErrPeriodNotArchiving) Metadata() map[string]string {
+	return map[string]string{"periodId": strconv.FormatUint(e.PeriodID, 10)}
+}
+
+// ErrInvalidCronExpression — cron expression is invalid.
+type ErrInvalidCronExpression struct {
+	Expression string
+	Details    string
+}
+
+func (e *ErrInvalidCronExpression) Error() string {
+	return fmt.Sprintf("invalid cron expression %q: %s", e.Expression, e.Details)
+}
+func (*ErrInvalidCronExpression) Kind() ErrorKind { return KindValidation }
+func (*ErrInvalidCronExpression) Reason() string  { return ErrReasonInvalidCronExpression }
+func (e *ErrInvalidCronExpression) Metadata() map[string]string {
+	return map[string]string{"expression": e.Expression, "details": e.Details}
+}
+
+// ErrLedgerInMirrorMode — write attempted on a mirror-mode ledger.
+type ErrLedgerInMirrorMode struct {
+	Name string
+}
+
+func (e *ErrLedgerInMirrorMode) Error() string {
+	return fmt.Sprintf("ledger %s is in mirror mode: write operations are blocked", e.Name)
+}
+func (*ErrLedgerInMirrorMode) Kind() ErrorKind { return KindConflict }
+func (*ErrLedgerInMirrorMode) Reason() string  { return ErrReasonLedgerInMirrorMode }
+func (e *ErrLedgerInMirrorMode) Metadata() map[string]string {
+	return map[string]string{"name": e.Name}
+}
+
+// ErrLedgerNotInMirrorMode — mirror-only operation attempted on a normal-mode ledger.
+type ErrLedgerNotInMirrorMode struct {
+	Name string
+}
+
+func (e *ErrLedgerNotInMirrorMode) Error() string {
+	return fmt.Sprintf("ledger %s is not in mirror mode", e.Name)
+}
+func (*ErrLedgerNotInMirrorMode) Kind() ErrorKind { return KindPrecondition }
+func (*ErrLedgerNotInMirrorMode) Reason() string  { return ErrReasonLedgerNotInMirrorMode }
+func (e *ErrLedgerNotInMirrorMode) Metadata() map[string]string {
+	return map[string]string{"name": e.Name}
+}
+
+// ErrPreparedQueryAlreadyExists — creating a prepared query that already exists.
+type ErrPreparedQueryAlreadyExists struct {
+	Ledger string
+	Name   string
+}
+
+func (e *ErrPreparedQueryAlreadyExists) Error() string {
+	return fmt.Sprintf("prepared query %s/%s already exists", e.Ledger, e.Name)
+}
+func (*ErrPreparedQueryAlreadyExists) Kind() ErrorKind { return KindAlreadyExists }
+func (*ErrPreparedQueryAlreadyExists) Reason() string  { return ErrReasonPreparedQueryAlreadyExists }
+func (e *ErrPreparedQueryAlreadyExists) Metadata() map[string]string {
+	return map[string]string{"ledger": e.Ledger, "name": e.Name}
+}
+
+// ErrPreparedQueryNotFound — prepared query does not exist.
+type ErrPreparedQueryNotFound struct {
+	Ledger string
+	Name   string
+}
+
+func (e *ErrPreparedQueryNotFound) Error() string {
+	return fmt.Sprintf("prepared query %s/%s not found", e.Ledger, e.Name)
+}
+func (*ErrPreparedQueryNotFound) Kind() ErrorKind { return KindNotFound }
+func (*ErrPreparedQueryNotFound) Reason() string  { return ErrReasonPreparedQueryNotFound }
+func (e *ErrPreparedQueryNotFound) Metadata() map[string]string {
+	return map[string]string{"ledger": e.Ledger, "name": e.Name}
+}
+
+// ErrIndexNotFound — query references an index that does not exist.
+type ErrIndexNotFound struct {
+	Index string
+}
+
+func (e *ErrIndexNotFound) Error() string               { return "index not found: " + e.Index }
+func (*ErrIndexNotFound) Kind() ErrorKind               { return KindPrecondition }
+func (*ErrIndexNotFound) Reason() string                { return ErrReasonIndexNotFound }
+func (e *ErrIndexNotFound) Metadata() map[string]string { return map[string]string{"index": e.Index} }
+
+// ErrMetadataFieldNotInSchema — CreateIndex targets a metadata key that
+// has not been declared via SetMetadataFieldType first.
+type ErrMetadataFieldNotInSchema struct {
+	Target string
+	Key    string
+}
+
+func (e *ErrMetadataFieldNotInSchema) Error() string {
+	return "metadata field not declared in schema: " + e.Target + "/" + e.Key
+}
+func (*ErrMetadataFieldNotInSchema) Kind() ErrorKind { return KindPrecondition }
+func (*ErrMetadataFieldNotInSchema) Reason() string  { return ErrReasonMetadataFieldNotInSchema }
+func (e *ErrMetadataFieldNotInSchema) Metadata() map[string]string {
+	return map[string]string{"target": e.Target, "key": e.Key}
+}
+
+// ErrIndexBuilding — query references an index that is still being built.
+type ErrIndexBuilding struct {
+	Index string
+}
+
+func (e *ErrIndexBuilding) Error() string               { return "index is still building: " + e.Index }
+func (*ErrIndexBuilding) Kind() ErrorKind               { return KindPrecondition }
+func (*ErrIndexBuilding) Reason() string                { return ErrReasonIndexBuilding }
+func (e *ErrIndexBuilding) Metadata() map[string]string { return map[string]string{"index": e.Index} }
+
+// ErrIndexInconsistent — read path detects a structural inconsistency between
+// the filter index and the per-ledger log index (e.g. logID present in the
+// filter index but missing or malformed in the log index). Surfacing this as
+// an explicit error prevents stale/corrupt indexes from producing truncated
+// query results that the caller can't distinguish from a legitimate empty
+// result.
+type ErrIndexInconsistent struct {
+	Index  string
+	Detail string
+}
+
+func (e *ErrIndexInconsistent) Error() string {
+	return fmt.Sprintf("index %s is inconsistent: %s", e.Index, e.Detail)
+}
+func (*ErrIndexInconsistent) Kind() ErrorKind { return KindInternal }
+func (*ErrIndexInconsistent) Reason() string  { return ErrReasonIndexInconsistent }
+func (e *ErrIndexInconsistent) Metadata() map[string]string {
+	return map[string]string{"index": e.Index, "detail": e.Detail}
+}
+
+// ErrInvalidReceipt — JWT receipt fails verification. The metadata field is
+// named "reason" on the wire (legacy contract); the Go field is renamed
+// Detail to free the method name Reason() for the Describable interface.
+type ErrInvalidReceipt struct {
+	Detail string
+}
+
+func (e *ErrInvalidReceipt) Error() string { return "invalid receipt: " + e.Detail }
+func (*ErrInvalidReceipt) Kind() ErrorKind { return KindValidation }
+func (*ErrInvalidReceipt) Reason() string  { return ErrReasonInvalidReceipt }
+func (e *ErrInvalidReceipt) Metadata() map[string]string {
+	return map[string]string{"reason": e.Detail}
+}
+
+// ErrNumscriptNotFound — referenced numscript does not exist in the library.
+type ErrNumscriptNotFound struct {
+	Name string
+}
+
+func (e *ErrNumscriptNotFound) Error() string               { return "numscript not found: " + e.Name }
+func (*ErrNumscriptNotFound) Kind() ErrorKind               { return KindNotFound }
+func (*ErrNumscriptNotFound) Reason() string                { return ErrReasonNumscriptNotFound }
+func (e *ErrNumscriptNotFound) Metadata() map[string]string { return map[string]string{"name": e.Name} }
+
+// ErrNumscriptVersionAlreadyExists — saving with a semver version that already exists.
+type ErrNumscriptVersionAlreadyExists struct {
+	Name    string
+	Version string
+}
+
+func (e *ErrNumscriptVersionAlreadyExists) Error() string {
+	return fmt.Sprintf("numscript %q version %s already exists", e.Name, e.Version)
+}
+func (*ErrNumscriptVersionAlreadyExists) Kind() ErrorKind { return KindAlreadyExists }
+func (*ErrNumscriptVersionAlreadyExists) Reason() string {
+	return ErrReasonNumscriptVersionAlreadyExists
+}
+func (e *ErrNumscriptVersionAlreadyExists) Metadata() map[string]string {
+	return map[string]string{"name": e.Name, "version": e.Version}
+}
+
+// ErrNumscriptInvalidVersion — version string is not valid semver.
+type ErrNumscriptInvalidVersion struct {
+	Version string
+}
+
+func (e *ErrNumscriptInvalidVersion) Error() string {
+	return fmt.Sprintf("invalid numscript version %q: must be semver (major.minor.patch) or \"latest\"", e.Version)
+}
+func (*ErrNumscriptInvalidVersion) Kind() ErrorKind { return KindValidation }
+func (*ErrNumscriptInvalidVersion) Reason() string  { return ErrReasonNumscriptInvalidVersion }
+func (e *ErrNumscriptInvalidVersion) Metadata() map[string]string {
+	return map[string]string{"version": e.Version}
+}
+
+// ErrAccountNotMatchingType — account address doesn't match any active account type pattern.
+type ErrAccountNotMatchingType struct {
+	Address string
+}
+
+func (e *ErrAccountNotMatchingType) Error() string {
+	return "account does not match any account type pattern: " + e.Address
+}
+func (*ErrAccountNotMatchingType) Kind() ErrorKind { return KindPrecondition }
+func (*ErrAccountNotMatchingType) Reason() string  { return ErrReasonAccountNotMatchingType }
+func (e *ErrAccountNotMatchingType) Metadata() map[string]string {
+	return map[string]string{"address": e.Address}
+}
+
+// ErrAccountTypeNotFound — referenced account type does not exist.
+type ErrAccountTypeNotFound struct {
+	Name string
+}
+
+func (e *ErrAccountTypeNotFound) Error() string { return "account type not found: " + e.Name }
+func (*ErrAccountTypeNotFound) Kind() ErrorKind { return KindNotFound }
+func (*ErrAccountTypeNotFound) Reason() string  { return ErrReasonAccountTypeNotFound }
+func (e *ErrAccountTypeNotFound) Metadata() map[string]string {
+	return map[string]string{"name": e.Name}
+}
+
+// ErrAccountTypeAlreadyExists — creating an account type with a name that already exists.
+type ErrAccountTypeAlreadyExists struct {
+	Name string
+}
+
+func (e *ErrAccountTypeAlreadyExists) Error() string { return "account type already exists: " + e.Name }
+func (*ErrAccountTypeAlreadyExists) Kind() ErrorKind { return KindAlreadyExists }
+func (*ErrAccountTypeAlreadyExists) Reason() string  { return ErrReasonAccountTypeAlreadyExists }
+func (e *ErrAccountTypeAlreadyExists) Metadata() map[string]string {
+	return map[string]string{"name": e.Name}
+}
+
+// ErrAccountTypeConflict — new account type pattern conflicts with an
+// existing pattern (same specificity and overlapping match space).
+type ErrAccountTypeConflict struct {
+	NewPattern      string
+	ExistingName    string
+	ExistingPattern string
+}
+
+func (e *ErrAccountTypeConflict) Error() string {
+	return fmt.Sprintf("pattern %q conflicts with existing account type %q (pattern %q): ambiguous match possible",
+		e.NewPattern, e.ExistingName, e.ExistingPattern)
+}
+func (*ErrAccountTypeConflict) Kind() ErrorKind { return KindConflict }
+func (*ErrAccountTypeConflict) Reason() string  { return ErrReasonAccountTypeConflict }
+func (e *ErrAccountTypeConflict) Metadata() map[string]string {
+	return map[string]string{"pattern": e.NewPattern, "existingName": e.ExistingName, "existingPattern": e.ExistingPattern}
+}
+
+// ErrInvalidPattern — account type pattern is syntactically invalid.
+type ErrInvalidPattern struct {
+	Pattern string
+	Details string
+}
+
+func (e *ErrInvalidPattern) Error() string {
+	return fmt.Sprintf("invalid pattern %q: %s", e.Pattern, e.Details)
+}
+func (*ErrInvalidPattern) Kind() ErrorKind { return KindValidation }
+func (*ErrInvalidPattern) Reason() string  { return ErrReasonInvalidPattern }
+func (e *ErrInvalidPattern) Metadata() map[string]string {
+	return map[string]string{"pattern": e.Pattern, "details": e.Details}
+}
+
+// ErrAccountTypeHasAccounts — removing an account type that still has matching accounts.
+type ErrAccountTypeHasAccounts struct {
+	Name string
+}
+
+func (e *ErrAccountTypeHasAccounts) Error() string {
+	return fmt.Sprintf("account type %q still has matching accounts", e.Name)
+}
+func (*ErrAccountTypeHasAccounts) Kind() ErrorKind { return KindConflict }
+func (*ErrAccountTypeHasAccounts) Reason() string  { return ErrReasonAccountTypeHasAccounts }
+func (e *ErrAccountTypeHasAccounts) Metadata() map[string]string {
+	return map[string]string{"name": e.Name}
+}
+
+// ErrNumscriptParse — Numscript program has syntax errors.
+type ErrNumscriptParse struct {
+	Details string
+}
+
+func (e *ErrNumscriptParse) Error() string { return "numscript parse error: " + e.Details }
+func (*ErrNumscriptParse) Kind() ErrorKind { return KindValidation }
+func (*ErrNumscriptParse) Reason() string  { return ErrReasonNumscriptParseError }
+func (e *ErrNumscriptParse) Metadata() map[string]string {
+	return map[string]string{"details": e.Details}
+}
+
+// ErrBalanceNotPreloaded — balance for an account was not preloaded by the
+// admission layer before script execution.
 type ErrBalanceNotPreloaded struct {
 	Account string
 	Asset   string
@@ -553,8 +917,13 @@ type ErrBalanceNotPreloaded struct {
 func (e *ErrBalanceNotPreloaded) Error() string {
 	return fmt.Sprintf("balance not preloaded for account %q asset %q", e.Account, e.Asset)
 }
+func (*ErrBalanceNotPreloaded) Kind() ErrorKind { return KindPrecondition }
+func (*ErrBalanceNotPreloaded) Reason() string  { return ErrReasonBalanceNotPreloaded }
+func (e *ErrBalanceNotPreloaded) Metadata() map[string]string {
+	return map[string]string{"account": e.Account, "asset": e.Asset}
+}
 
-// ErrTransientAccountNonZero is returned when a transient account has non-zero balance at end of batch.
+// ErrTransientAccountNonZero — transient account has non-zero balance at end of batch.
 type ErrTransientAccountNonZero struct {
 	Account string
 	Asset   string
@@ -562,4 +931,238 @@ type ErrTransientAccountNonZero struct {
 
 func (e *ErrTransientAccountNonZero) Error() string {
 	return fmt.Sprintf("transient account %s/%s has non-zero balance at end of batch (input != output)", e.Account, e.Asset)
+}
+func (*ErrTransientAccountNonZero) Kind() ErrorKind { return KindPrecondition }
+func (*ErrTransientAccountNonZero) Reason() string  { return ErrReasonTransientAccountNonZero }
+func (e *ErrTransientAccountNonZero) Metadata() map[string]string {
+	return map[string]string{"account": e.Account, "asset": e.Asset}
+}
+
+// RemoteError is the client-side Describable produced by cmdutil's
+// BusinessErrorFromGRPC: it transports the wire contract (Reason + Metadata
+// + Message + the gRPC-derived Kind) without committing the client to any
+// specific Go type. Replaces the 14-case hand-maintained reconstruction
+// switch — new server-side error types automatically reach the CLI with
+// full structured info (Reason, all Metadata keys, original Message).
+//
+// Server code must NOT use RemoteError; it is the boundary representation
+// for errors arriving FROM the network. Use the specific Describable types
+// in this file on the server side.
+type RemoteError struct {
+	KindValue   ErrorKind
+	ReasonValue string
+	Message     string
+	Meta        map[string]string
+}
+
+// Compile-time assertion: RemoteError sits outside the Err* naming pattern
+// that TestEveryDomainErrorImplementsDescribable scans, so we pin the
+// contract here explicitly.
+var _ Describable = (*RemoteError)(nil)
+
+func (e *RemoteError) Error() string               { return e.Message }
+func (e *RemoteError) Kind() ErrorKind             { return e.KindValue }
+func (e *RemoteError) Reason() string              { return e.ReasonValue }
+func (e *RemoteError) Metadata() map[string]string { return e.Meta }
+
+// ErrFilterCompilation — query-filter compilation failure: schema-type
+// mismatches (e.g. string condition on an int64 field) and prepared-query
+// parameter parse errors (e.g. "cannot parse 'x' as int64"). Both are
+// client-actionable. See WrapCompileError above.
+type ErrFilterCompilation struct {
+	Detail string
+}
+
+func (e *ErrFilterCompilation) Error() string { return "compiling filter: " + e.Detail }
+func (*ErrFilterCompilation) Kind() ErrorKind { return KindValidation }
+func (*ErrFilterCompilation) Reason() string  { return ErrReasonFilterCompilation }
+func (e *ErrFilterCompilation) Metadata() map[string]string {
+	return map[string]string{"detail": e.Detail}
+}
+
+// ErrInvalidOrderType — the FSM received an Order with an unknown proto type.
+// Reachable only via a protocol-version mismatch (a peer or client crafted
+// a message with a oneof case the local build does not recognise). Kind is
+// Internal because the local node cannot satisfy the request; the client
+// is expected to upgrade. Replaces a former `errors.New("invalid order
+// type")` defensive branch (processor.go).
+type ErrInvalidOrderType struct {
+	TypeName string
+}
+
+func (e *ErrInvalidOrderType) Error() string {
+	return "invalid order type: " + e.TypeName
+}
+func (*ErrInvalidOrderType) Kind() ErrorKind { return KindInternal }
+func (*ErrInvalidOrderType) Reason() string  { return ErrReasonInvalidOrderType }
+func (e *ErrInvalidOrderType) Metadata() map[string]string {
+	return map[string]string{"typeName": e.TypeName}
+}
+
+// ErrIdempotencyCheckFailed — Pebble lookup for an idempotency key returned
+// an unexpected I/O error (the key not being present is not an error;
+// only storage-level failures land here). KindInternal: the caller cannot
+// fix it. Error() returns a sanitised message — the underlying Cause is
+// still available via Unwrap for server-side logging and correlation, but
+// never reaches the wire (it could carry Pebble paths or invariant
+// strings per #326).
+type ErrIdempotencyCheckFailed struct {
+	Cause error
+}
+
+func (*ErrIdempotencyCheckFailed) Error() string               { return "checking idempotency key" }
+func (e *ErrIdempotencyCheckFailed) Unwrap() error             { return e.Cause }
+func (*ErrIdempotencyCheckFailed) Kind() ErrorKind             { return KindInternal }
+func (*ErrIdempotencyCheckFailed) Reason() string              { return ErrReasonIdempotencyCheckFailed }
+func (*ErrIdempotencyCheckFailed) Metadata() map[string]string { return nil }
+
+// ErrInvalidApplyType — the FSM received a LedgerApplyOrder with an unknown
+// inner proto type. Reachable only via a protocol-version mismatch on the
+// Apply sub-types. Distinct from ErrInvalidOrderType which covers the outer
+// Order oneof.
+type ErrInvalidApplyType struct {
+	TypeName string
+}
+
+func (e *ErrInvalidApplyType) Error() string { return "invalid apply type: " + e.TypeName }
+func (*ErrInvalidApplyType) Kind() ErrorKind { return KindInternal }
+func (*ErrInvalidApplyType) Reason() string  { return ErrReasonInvalidApplyType }
+func (e *ErrInvalidApplyType) Metadata() map[string]string {
+	return map[string]string{"typeName": e.TypeName}
+}
+
+// ErrStorageOperation wraps a Pebble (or other store) IO failure that
+// surfaces during order processing. Kind is Internal: the caller cannot
+// fix it. Operation is a short identifier ("checking transaction reference",
+// "getting numscript latest version") emitted via Error() and Metadata —
+// the underlying Cause is preserved for server-side logging via Unwrap but
+// is NOT included in the wire message: it can carry Pebble paths or other
+// internal storage details that must not reach the API (#326).
+type ErrStorageOperation struct {
+	Operation string
+	Cause     error
+}
+
+func (e *ErrStorageOperation) Error() string { return "storage operation failed: " + e.Operation }
+func (e *ErrStorageOperation) Unwrap() error { return e.Cause }
+func (*ErrStorageOperation) Kind() ErrorKind { return KindInternal }
+func (*ErrStorageOperation) Reason() string  { return ErrReasonStorageOperation }
+func (e *ErrStorageOperation) Metadata() map[string]string {
+	return map[string]string{"operation": e.Operation}
+}
+
+// ErrTransactionStateInconsistent — an invariant of the transaction
+// state-tracker is violated (e.g. a transaction is in the index but its
+// state is absent or malformed). KindInternal: a server bug or data
+// corruption, not a client mistake.
+type ErrTransactionStateInconsistent struct {
+	TransactionID uint64
+	Operation     string
+}
+
+func (e *ErrTransactionStateInconsistent) Error() string {
+	return fmt.Sprintf("transaction %d state inconsistent (%s)", e.TransactionID, e.Operation)
+}
+func (*ErrTransactionStateInconsistent) Kind() ErrorKind { return KindInternal }
+func (*ErrTransactionStateInconsistent) Reason() string  { return ErrReasonTransactionStateInconsistent }
+func (e *ErrTransactionStateInconsistent) Metadata() map[string]string {
+	return map[string]string{
+		"transactionId": strconv.FormatUint(e.TransactionID, 10),
+		"operation":     e.Operation,
+	}
+}
+
+// ErrCheckpointIDRequired — the caller asked for a query checkpoint
+// operation but did not pass an ID. KindValidation.
+type errCheckpointIDRequired struct{}
+
+func (errCheckpointIDRequired) Error() string               { return "checkpoint_id must be non-zero" }
+func (errCheckpointIDRequired) Kind() ErrorKind             { return KindValidation }
+func (errCheckpointIDRequired) Reason() string              { return ErrReasonCheckpointIDRequired }
+func (errCheckpointIDRequired) Metadata() map[string]string { return nil }
+
+var ErrCheckpointIDRequired Describable = errCheckpointIDRequired{}
+
+// ErrNumscriptRuntime — the Numscript program produced output that violates
+// a server-side invariant at apply time (negative posting amount, posting
+// amount exceeding 2^256, malformed metadata key produced by a numscript
+// expression, etc.). KindInternal because the user wrote the script and
+// the FSM cannot recover; the message carries the diagnostic detail.
+type ErrNumscriptRuntime struct {
+	Detail string
+}
+
+func (e *ErrNumscriptRuntime) Error() string { return "numscript runtime error: " + e.Detail }
+func (*ErrNumscriptRuntime) Kind() ErrorKind { return KindInternal }
+func (*ErrNumscriptRuntime) Reason() string  { return ErrReasonNumscriptRuntime }
+func (e *ErrNumscriptRuntime) Metadata() map[string]string {
+	return map[string]string{"detail": e.Detail}
+}
+
+// ErrVolumeNotMaterialized — a posting references a (Account, Asset) pair
+// whose Input/Output volumes have not been fully fetched into the FSM's
+// working set. KindInternal: indicates a preloading miss the admission
+// layer should have caught; reaching this branch is a server bug.
+type ErrVolumeNotMaterialized struct {
+	Account string
+	Asset   string
+	Side    string // "source" or "destination"
+}
+
+func (e *ErrVolumeNotMaterialized) Error() string {
+	return fmt.Sprintf("%s volume %s/%s not fully materialized", e.Side, e.Account, e.Asset)
+}
+func (*ErrVolumeNotMaterialized) Kind() ErrorKind { return KindInternal }
+func (*ErrVolumeNotMaterialized) Reason() string  { return ErrReasonVolumeNotMaterialized }
+func (e *ErrVolumeNotMaterialized) Metadata() map[string]string {
+	return map[string]string{"account": e.Account, "asset": e.Asset, "side": e.Side}
+}
+
+// ErrMetadataKeyValidation wraps another Describable to add the metadata-key
+// name that caused a value-level validation failure. Same shape as
+// ErrAccountValidation but for the metadata-map iteration in
+// validateMetadataMap / numscript-produced metadata. Lets operator logs and
+// the client identify which specific key violated which sentinel rule
+// instead of just naming the rule.
+type ErrMetadataKeyValidation struct {
+	Key   string
+	Cause Describable
+}
+
+func (e *ErrMetadataKeyValidation) Error() string {
+	return fmt.Sprintf("metadata key %q value: %s", e.Key, e.Cause.Error())
+}
+func (e *ErrMetadataKeyValidation) Unwrap() error   { return e.Cause }
+func (e *ErrMetadataKeyValidation) Kind() ErrorKind { return e.Cause.Kind() }
+func (e *ErrMetadataKeyValidation) Reason() string  { return e.Cause.Reason() }
+func (e *ErrMetadataKeyValidation) Metadata() map[string]string {
+	out := map[string]string{"key": e.Key}
+
+	maps.Copy(out, e.Cause.Metadata())
+
+	return out
+}
+
+// ErrAccountValidation wraps another Describable to add the account-name
+// context produced when iterating per-account metadata maps in admission.
+// The inner Cause carries the original Kind/Reason; Metadata is the inner
+// metadata merged with {"account": Account} so the client can format
+// per-account validation messages without parsing the wrapped string.
+type ErrAccountValidation struct {
+	Account string
+	Cause   Describable
+}
+
+func (e *ErrAccountValidation) Error() string {
+	return fmt.Sprintf("account %q: %s", e.Account, e.Cause.Error())
+}
+func (e *ErrAccountValidation) Unwrap() error   { return e.Cause }
+func (e *ErrAccountValidation) Kind() ErrorKind { return e.Cause.Kind() }
+func (e *ErrAccountValidation) Reason() string  { return e.Cause.Reason() }
+func (e *ErrAccountValidation) Metadata() map[string]string {
+	out := map[string]string{"account": e.Account}
+
+	maps.Copy(out, e.Cause.Metadata())
+
+	return out
 }

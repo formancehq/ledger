@@ -1,13 +1,12 @@
 package processing
 
 import (
-	"errors"
-
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processCreateQueryCheckpoint(order *raftcmdpb.CreateQueryCheckpointOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processCreateQueryCheckpoint(order *raftcmdpb.CreateQueryCheckpointOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
 	checkpointID := s.IncrementNextQueryCheckpointID()
 
 	cp := &raftcmdpb.QueryCheckpointState{
@@ -28,9 +27,9 @@ func (p *RequestProcessor) processCreateQueryCheckpoint(order *raftcmdpb.CreateQ
 	}, nil
 }
 
-func (p *RequestProcessor) processDeleteQueryCheckpoint(order *raftcmdpb.DeleteQueryCheckpointOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processDeleteQueryCheckpoint(order *raftcmdpb.DeleteQueryCheckpointOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
 	if order.GetCheckpointId() == 0 {
-		return nil, errors.New("checkpoint_id must be non-zero")
+		return nil, domain.ErrCheckpointIDRequired
 	}
 
 	s.DeleteQueryCheckpoint(order.GetCheckpointId())

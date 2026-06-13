@@ -27,18 +27,32 @@ func buildGRPCError(t *testing.T, code codes.Code, message, reason string, metad
 	return detailed.Err()
 }
 
+// assertRemote asserts that bizErr.Err is a *domain.RemoteError with the
+// expected Reason and metadata-subset. Replaces the per-type ErrorAs checks
+// from before the Describable refactor: client-side code no longer ties to
+// the specific server Go types.
+func assertRemote(t *testing.T, bizErr *domain.BusinessError, reason string, meta map[string]string) {
+	t.Helper()
+
+	require.NotNil(t, bizErr)
+
+	var remote *domain.RemoteError
+	require.ErrorAs(t, bizErr, &remote)
+	require.Equal(t, reason, remote.Reason())
+
+	for k, v := range meta {
+		require.Equal(t, v, remote.Metadata()[k], "metadata key %q", k)
+	}
+}
+
 func TestBusinessErrorFromGRPC_LedgerAlreadyExists(t *testing.T) {
 	t.Parallel()
 
 	grpcErr := buildGRPCError(t, codes.AlreadyExists, "ledger already exists: foo",
 		domain.ErrReasonLedgerAlreadyExists, map[string]string{"name": "foo"})
 
-	bizErr := BusinessErrorFromGRPC(grpcErr)
-	require.NotNil(t, bizErr)
-
-	var ledgerErr *domain.ErrLedgerAlreadyExists
-	require.ErrorAs(t, bizErr, &ledgerErr)
-	require.Equal(t, "foo", ledgerErr.Name)
+	assertRemote(t, BusinessErrorFromGRPC(grpcErr), domain.ErrReasonLedgerAlreadyExists,
+		map[string]string{"name": "foo"})
 }
 
 func TestBusinessErrorFromGRPC_LedgerNotFound(t *testing.T) {
@@ -47,12 +61,8 @@ func TestBusinessErrorFromGRPC_LedgerNotFound(t *testing.T) {
 	grpcErr := buildGRPCError(t, codes.NotFound, "ledger does not exist: bar",
 		domain.ErrReasonLedgerNotFound, map[string]string{"name": "bar"})
 
-	bizErr := BusinessErrorFromGRPC(grpcErr)
-	require.NotNil(t, bizErr)
-
-	var ledgerErr *domain.ErrLedgerNotFound
-	require.ErrorAs(t, bizErr, &ledgerErr)
-	require.Equal(t, "bar", ledgerErr.Name)
+	assertRemote(t, BusinessErrorFromGRPC(grpcErr), domain.ErrReasonLedgerNotFound,
+		map[string]string{"name": "bar"})
 }
 
 func TestBusinessErrorFromGRPC_IdempotencyKeyConflict(t *testing.T) {
@@ -61,12 +71,8 @@ func TestBusinessErrorFromGRPC_IdempotencyKeyConflict(t *testing.T) {
 	grpcErr := buildGRPCError(t, codes.AlreadyExists, "idempotency key conflict",
 		domain.ErrReasonIdempotencyKeyConflict, map[string]string{"key": "ik-123"})
 
-	bizErr := BusinessErrorFromGRPC(grpcErr)
-	require.NotNil(t, bizErr)
-
-	var ikErr *domain.ErrIdempotencyKeyConflict
-	require.ErrorAs(t, bizErr, &ikErr)
-	require.Equal(t, "ik-123", ikErr.Key)
+	assertRemote(t, BusinessErrorFromGRPC(grpcErr), domain.ErrReasonIdempotencyKeyConflict,
+		map[string]string{"key": "ik-123"})
 }
 
 func TestBusinessErrorFromGRPC_TransactionReferenceConflict(t *testing.T) {
@@ -78,13 +84,8 @@ func TestBusinessErrorFromGRPC_TransactionReferenceConflict(t *testing.T) {
 			"reference": "ref-001",
 		})
 
-	bizErr := BusinessErrorFromGRPC(grpcErr)
-	require.NotNil(t, bizErr)
-
-	var refErr *domain.ErrTransactionReferenceConflict
-	require.ErrorAs(t, bizErr, &refErr)
-	require.Equal(t, "test", refErr.Ledger)
-	require.Equal(t, "ref-001", refErr.Reference)
+	assertRemote(t, BusinessErrorFromGRPC(grpcErr), domain.ErrReasonTransactionReferenceConflict,
+		map[string]string{"ledger": "test", "reference": "ref-001"})
 }
 
 func TestBusinessErrorFromGRPC_TransactionNotFound(t *testing.T) {
@@ -93,12 +94,8 @@ func TestBusinessErrorFromGRPC_TransactionNotFound(t *testing.T) {
 	grpcErr := buildGRPCError(t, codes.NotFound, "tx not found",
 		domain.ErrReasonTransactionNotFound, map[string]string{"transactionId": "999"})
 
-	bizErr := BusinessErrorFromGRPC(grpcErr)
-	require.NotNil(t, bizErr)
-
-	var txErr *domain.ErrTransactionNotFound
-	require.ErrorAs(t, bizErr, &txErr)
-	require.Equal(t, uint64(999), txErr.TransactionID)
+	assertRemote(t, BusinessErrorFromGRPC(grpcErr), domain.ErrReasonTransactionNotFound,
+		map[string]string{"transactionId": "999"})
 }
 
 func TestBusinessErrorFromGRPC_TransactionAlreadyReverted(t *testing.T) {
@@ -107,12 +104,8 @@ func TestBusinessErrorFromGRPC_TransactionAlreadyReverted(t *testing.T) {
 	grpcErr := buildGRPCError(t, codes.FailedPrecondition, "already reverted",
 		domain.ErrReasonTransactionAlreadyReverted, map[string]string{"transactionId": "42"})
 
-	bizErr := BusinessErrorFromGRPC(grpcErr)
-	require.NotNil(t, bizErr)
-
-	var txErr *domain.ErrTransactionAlreadyReverted
-	require.ErrorAs(t, bizErr, &txErr)
-	require.Equal(t, uint64(42), txErr.TransactionID)
+	assertRemote(t, BusinessErrorFromGRPC(grpcErr), domain.ErrReasonTransactionAlreadyReverted,
+		map[string]string{"transactionId": "42"})
 }
 
 func TestBusinessErrorFromGRPC_InsufficientFunds(t *testing.T) {
@@ -126,15 +119,8 @@ func TestBusinessErrorFromGRPC_InsufficientFunds(t *testing.T) {
 			"balance": "500",
 		})
 
-	bizErr := BusinessErrorFromGRPC(grpcErr)
-	require.NotNil(t, bizErr)
-
-	var fundsErr *domain.ErrInsufficientFunds
-	require.ErrorAs(t, bizErr, &fundsErr)
-	require.Equal(t, "user:001", fundsErr.Account)
-	require.Equal(t, "USD", fundsErr.Asset)
-	require.Equal(t, "1000", fundsErr.Amount)
-	require.Equal(t, "500", fundsErr.Balance)
+	assertRemote(t, BusinessErrorFromGRPC(grpcErr), domain.ErrReasonInsufficientFunds,
+		map[string]string{"account": "user:001", "asset": "USD", "amount": "1000", "balance": "500"})
 }
 
 func TestBusinessErrorFromGRPC_NumscriptParseError(t *testing.T) {
@@ -143,12 +129,8 @@ func TestBusinessErrorFromGRPC_NumscriptParseError(t *testing.T) {
 	grpcErr := buildGRPCError(t, codes.InvalidArgument, "parse error",
 		domain.ErrReasonNumscriptParseError, map[string]string{"details": "unexpected token"})
 
-	bizErr := BusinessErrorFromGRPC(grpcErr)
-	require.NotNil(t, bizErr)
-
-	var parseErr *domain.ErrNumscriptParse
-	require.ErrorAs(t, bizErr, &parseErr)
-	require.Equal(t, "unexpected token", parseErr.Details)
+	assertRemote(t, BusinessErrorFromGRPC(grpcErr), domain.ErrReasonNumscriptParseError,
+		map[string]string{"details": "unexpected token"})
 }
 
 func TestBusinessErrorFromGRPC_Validation(t *testing.T) {
@@ -184,7 +166,7 @@ func TestBusinessErrorRoundTrip(t *testing.T) {
 
 	tests := []struct {
 		name string
-		err  error
+		err  domain.Describable
 	}{
 		{"ledger already exists", &domain.ErrLedgerAlreadyExists{Name: "test"}},
 		{"ledger not found", &domain.ErrLedgerNotFound{Name: "test"}},

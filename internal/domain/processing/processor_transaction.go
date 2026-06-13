@@ -10,14 +10,14 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processCreateTransaction(ledger string, ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.CreateTransactionOrder, s InMemoryStore, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, error) {
+func (p *RequestProcessor) processCreateTransaction(ledger string, ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.CreateTransactionOrder, s InMemoryStore, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, domain.Describable) {
 	// Check transaction reference uniqueness if reference is provided
 	if order.GetReference() != "" {
 		refKey := domain.TransactionReferenceKey{LedgerID: ledgerID, Reference: order.GetReference()}
 
 		existingRef, err := s.GetTransactionReference(refKey)
 		if err != nil && !errors.Is(err, domain.ErrNotFound) {
-			return nil, fmt.Errorf("checking transaction reference: %w", err)
+			return nil, &domain.ErrStorageOperation{Operation: "checking transaction reference", Cause: err}
 		}
 
 		if existingRef != nil {
@@ -38,7 +38,10 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, ledgerID uint
 	if ref := order.GetNumscriptReference(); ref != nil {
 		info, err := s.ResolveNumscriptContent(ledgerID, ref.GetName(), ref.GetVersion())
 		if err != nil {
-			return nil, fmt.Errorf("resolving numscript %q v%s: %w", ref.GetName(), ref.GetVersion(), err)
+			return nil, &domain.ErrStorageOperation{
+				Operation: fmt.Sprintf("resolving numscript %q v%s", ref.GetName(), ref.GetVersion()),
+				Cause:     err,
+			}
 		}
 
 		if info == nil {
@@ -225,7 +228,7 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, ledgerID uint
 // validatePostings checks that all account addresses and assets in the postings
 // contain only allowed characters. This runs after Numscript resolution so it
 // covers both explicit and script-resolved values.
-func validatePostings(postings []*commonpb.Posting) error {
+func validatePostings(postings []*commonpb.Posting) domain.Describable {
 	for _, p := range postings {
 		if err := domain.ValidateAccountAddress(p.GetSource()); err != nil {
 			return err
@@ -252,14 +255,14 @@ type produceResult struct {
 }
 
 type postingProducer interface {
-	produce(s InMemoryStore, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, error)
+	produce(s InMemoryStore, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, domain.Describable)
 }
 
 type stdPostingProducer struct {
 	assetCache map[string]cachedAssetPrecision
 }
 
-func (p *stdPostingProducer) produce(s InMemoryStore, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder, _ *commonpb.Script) (*produceResult, error) {
+func (p *stdPostingProducer) produce(s InMemoryStore, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder, _ *commonpb.Script) (*produceResult, domain.Describable) {
 	for _, posting := range order.GetPostings() {
 		// Skip balance check when Force is true
 		err := applyPosting(s, ledgerID, posting, order.GetForce(), p.assetCache)

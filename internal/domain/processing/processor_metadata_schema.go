@@ -11,7 +11,7 @@ func (p *RequestProcessor) processSetMetadataFieldType(
 	ledgerName string,
 	order *raftcmdpb.SetMetadataFieldTypeOrder,
 	s InMemoryStore,
-) (*commonpb.LedgerLogPayload, error) {
+) (*commonpb.LedgerLogPayload, domain.Describable) {
 	info, ok := s.GetLedger(ledgerName)
 	if !ok {
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
@@ -79,7 +79,7 @@ func (p *RequestProcessor) processRemoveMetadataFieldType(
 	ledgerName string,
 	order *raftcmdpb.RemoveMetadataFieldTypeOrder,
 	s InMemoryStore,
-) (*commonpb.LedgerLogPayload, error) {
+) (*commonpb.LedgerLogPayload, domain.Describable) {
 	info, ok := s.GetLedger(ledgerName)
 	if !ok {
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}

@@ -11,7 +11,7 @@ func (p *RequestProcessor) processCreateIndex(
 	ledgerName string,
 	order *raftcmdpb.CreateIndexOrder,
 	s InMemoryStore,
-) (*commonpb.LedgerLogPayload, error) {
+) (*commonpb.LedgerLogPayload, domain.Describable) {
 	info, ok := s.GetLedger(ledgerName)
 	if !ok {
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
@@ -46,7 +46,7 @@ func (p *RequestProcessor) processDropIndex(
 	ledgerName string,
 	order *raftcmdpb.DropIndexOrder,
 	s InMemoryStore,
-) (*commonpb.LedgerLogPayload, error) {
+) (*commonpb.LedgerLogPayload, domain.Describable) {
 	info, ok := s.GetLedger(ledgerName)
 	if !ok {
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
@@ -68,7 +68,7 @@ func (p *RequestProcessor) processDropIndex(
 // before an Index entry is persisted. Built-in indexes are always valid by
 // virtue of the enum; metadata indexes require that the schema field has been
 // declared with SetMetadataFieldType first.
-func validateIndexTarget(info *commonpb.LedgerInfo, id *commonpb.IndexID) error {
+func validateIndexTarget(info *commonpb.LedgerInfo, id *commonpb.IndexID) domain.Describable {
 	if id == nil {
 		return nil
 	}

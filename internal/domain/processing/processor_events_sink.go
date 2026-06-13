@@ -1,14 +1,12 @@
 package processing
 
 import (
-	"fmt"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processAddEventsSink(order *raftcmdpb.AddEventsSinkOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processAddEventsSink(order *raftcmdpb.AddEventsSinkOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
 	cfg := order.GetConfig()
 
 	if cfg.GetBatchSize() > domain.MaxSinkBatchSize {
@@ -21,7 +19,7 @@ func (p *RequestProcessor) processAddEventsSink(order *raftcmdpb.AddEventsSinkOr
 
 	existing, err := s.GetSinkConfig(cfg.GetName())
 	if err != nil {
-		return nil, fmt.Errorf("checking existing sink %q: %w", cfg.GetName(), err)
+		return nil, &domain.ErrStorageOperation{Operation: "checking existing sink " + cfg.GetName(), Cause: err}
 	}
 
 	if existing != nil {
@@ -39,10 +37,10 @@ func (p *RequestProcessor) processAddEventsSink(order *raftcmdpb.AddEventsSinkOr
 	}, nil
 }
 
-func (p *RequestProcessor) processRemoveEventsSink(order *raftcmdpb.RemoveEventsSinkOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processRemoveEventsSink(order *raftcmdpb.RemoveEventsSinkOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
 	existing, err := s.GetSinkConfig(order.GetName())
 	if err != nil {
-		return nil, fmt.Errorf("checking existing sink %q: %w", order.GetName(), err)
+		return nil, &domain.ErrStorageOperation{Operation: "checking existing sink " + order.GetName(), Cause: err}
 	}
 
 	if existing == nil {

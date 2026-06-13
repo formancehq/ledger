@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -16,23 +15,25 @@ const maxLedgerNameLength = 256
 // maxAccountAddressLength is the maximum allowed length for an account address.
 const maxAccountAddressLength = 1024
 
+// Storage-safety validation sentinels. All are Describable so they flow
+// through BusinessError with Kind=KindValidation.
 var (
-	ErrLedgerNameContainsNullByte    = errors.New("ledger name must not contain null bytes")
-	ErrLedgerNameTooLong             = fmt.Errorf("ledger name exceeds maximum length of %d bytes", maxLedgerNameLength)
-	ErrMetadataKeyContainsNullByte   = errors.New("metadata key must not contain null bytes")
-	ErrMetadataKeyEmpty              = errors.New("metadata key must not be empty")
-	ErrMetadataValueContainsNullByte = errors.New("metadata value must not contain null bytes")
-	ErrAccountAddressEmpty           = errors.New("account address must not be empty")
-	ErrAccountAddressInvalidChar     = errors.New("account address must contain only letters, digits, colons, underscores, and hyphens")
-	ErrAccountAddressTooLong         = fmt.Errorf("account address exceeds maximum length of %d bytes", maxAccountAddressLength)
+	ErrLedgerNameContainsNullByte    = newValidationSentinel("ledger name must not contain null bytes")
+	ErrLedgerNameTooLong             = newValidationSentinel(fmt.Sprintf("ledger name exceeds maximum length of %d bytes", maxLedgerNameLength))
+	ErrMetadataKeyContainsNullByte   = newValidationSentinel("metadata key must not contain null bytes")
+	ErrMetadataKeyEmpty              = newValidationSentinel("metadata key must not be empty")
+	ErrMetadataValueContainsNullByte = newValidationSentinel("metadata value must not contain null bytes")
+	ErrAccountAddressEmpty           = newValidationSentinel("account address must not be empty")
+	ErrAccountAddressInvalidChar     = newValidationSentinel("account address must contain only letters, digits, colons, underscores, and hyphens")
+	ErrAccountAddressTooLong         = newValidationSentinel(fmt.Sprintf("account address exceeds maximum length of %d bytes", maxAccountAddressLength))
 
-	ErrAssetInvalid = errors.New("asset must match [A-Z][A-Z0-9]{0,16}(_[A-Z]{1,16})?(/[1-9][0-9]{0,2})? with precision in [1, 255]")
+	ErrAssetInvalid = newValidationSentinel("asset must match [A-Z][A-Z0-9]{0,16}(_[A-Z]{1,16})?(/[1-9][0-9]{0,2})? with precision in [1, 255]")
 )
 
 // ValidateLedgerName checks that a ledger name is safe for use in Pebble key encoding.
 // Null bytes would corrupt null-terminated key layouts; length is capped to prevent
 // oversized keys.
-func ValidateLedgerName(name string) error {
+func ValidateLedgerName(name string) Describable {
 	if name == "" {
 		return ErrLedgerNameRequired
 	}
@@ -56,7 +57,7 @@ func isAccountAddressChar(r rune) bool {
 
 // ValidateAccountAddress checks that an account address contains only allowed characters
 // (letters, digits, colons, underscores, hyphens) and is within length limits.
-func ValidateAccountAddress(address string) error {
+func ValidateAccountAddress(address string) Describable {
 	if address == "" {
 		return ErrAccountAddressEmpty
 	}
@@ -76,7 +77,7 @@ func ValidateAccountAddress(address string) error {
 
 // ValidateMetadataKey checks that a metadata key is safe for use in Pebble key encoding.
 // Null bytes would corrupt null-terminated key layouts used in canonical keys and the read index.
-func ValidateMetadataKey(key string) error {
+func ValidateMetadataKey(key string) Describable {
 	if key == "" {
 		return ErrMetadataKeyEmpty
 	}
@@ -90,7 +91,7 @@ func ValidateMetadataKey(key string) error {
 
 // ValidateMetadataStringValue checks that a metadata string payload is safe for
 // null-terminated Pebble key encodings used by the metadata read index.
-func ValidateMetadataStringValue(value string) error {
+func ValidateMetadataStringValue(value string) Describable {
 	if strings.ContainsRune(value, 0) {
 		return ErrMetadataValueContainsNullByte
 	}
@@ -99,7 +100,7 @@ func ValidateMetadataStringValue(value string) error {
 }
 
 // ValidateMetadataValue checks string-bearing metadata values for key-encoding safety.
-func ValidateMetadataValue(value *commonpb.MetadataValue) error {
+func ValidateMetadataValue(value *commonpb.MetadataValue) Describable {
 	switch v := value.GetType().(type) {
 	case *commonpb.MetadataValue_StringValue:
 		return ValidateMetadataStringValue(v.StringValue)
@@ -124,7 +125,7 @@ func ValidateMetadataValue(value *commonpb.MetadataValue) error {
 // these rules, "USD", "USD/0", "USD/02", and "USD/256" all collapse onto
 // the same Pebble/cache volume entry — cross-asset fund contamination in a
 // double-entry ledger (#303).
-func ValidateAsset(asset string) error {
+func ValidateAsset(asset string) Describable {
 	if len(asset) == 0 {
 		return ErrAssetInvalid
 	}

@@ -1117,7 +1117,7 @@ func authorizedInMaintenanceMode(orders []*raftcmdpb.Order) bool {
 // checkStaleProposal rejects proposals whose predicted index or cache epoch
 // doesn't match the current state. This detects stale proposals admitted with
 // an inflated IndexTracker or before a cache reset.
-func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Proposal) error {
+func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Proposal) domain.Describable {
 	if predicted := proposal.GetPredictedIndex(); predicted != 0 && predicted != raftIndex {
 		if fsm.logger.Enabled(logging.TraceLevel) {
 			fsm.logger.WithFields(map[string]any{
@@ -1287,7 +1287,9 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	}
 
 	if err != nil {
-		// FAILURE: write audit entry and return business error
+		// FAILURE: write audit entry and return business error. `err` is
+		// produced by processor.ProcessOrders which now returns Describable
+		// directly — no boundary cast, no fallback path.
 		if appendErr := writeAuditEntry(&auditpb.AuditEntry{Outcome: &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(err)}}, nil, "failure"); appendErr != nil {
 			return nil, appendErr
 		}

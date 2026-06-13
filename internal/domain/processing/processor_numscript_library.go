@@ -1,15 +1,13 @@
 package processing
 
 import (
-	"fmt"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processSaveNumscript(order *raftcmdpb.SaveNumscriptOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processSaveNumscript(order *raftcmdpb.SaveNumscriptOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
 	if order.GetName() == "" {
 		return nil, domain.ErrNumscriptNameRequired
 	}
@@ -46,7 +44,7 @@ func (p *RequestProcessor) processSaveNumscript(order *raftcmdpb.SaveNumscriptOr
 		// Semver versions are immutable — check the specific version doesn't already exist
 		exists, err := s.NumscriptVersionExists(ledgerID, order.GetName(), version)
 		if err != nil {
-			return nil, fmt.Errorf("checking numscript version existence: %w", err)
+			return nil, &domain.ErrStorageOperation{Operation: "checking numscript version existence", Cause: err}
 		}
 
 		if exists {
@@ -77,7 +75,7 @@ func (p *RequestProcessor) processSaveNumscript(order *raftcmdpb.SaveNumscriptOr
 	}, nil
 }
 
-func (p *RequestProcessor) processDeleteNumscript(order *raftcmdpb.DeleteNumscriptOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processDeleteNumscript(order *raftcmdpb.DeleteNumscriptOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
 	if order.GetName() == "" {
 		return nil, domain.ErrNumscriptNameRequired
 	}
@@ -91,7 +89,7 @@ func (p *RequestProcessor) processDeleteNumscript(order *raftcmdpb.DeleteNumscri
 
 	currentVersion, err := s.GetNumscriptLatestVersion(ledgerID, order.GetName())
 	if err != nil {
-		return nil, fmt.Errorf("getting numscript latest version: %w", err)
+		return nil, &domain.ErrStorageOperation{Operation: "getting numscript latest version", Cause: err}
 	}
 
 	if currentVersion == "" {

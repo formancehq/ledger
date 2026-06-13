@@ -125,8 +125,8 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 		modifiedTxStates: modifiedTxStates,
 		reverted:         make(map[string]bool),
 	}
-	resp, err := e.processor.ProcessOrders(proposal.GetOrders(), store)
-	require.NoError(e.t, err)
+	resp, procErr := e.processor.ProcessOrders(proposal.GetOrders(), store)
+	require.NoError(e.t, procErr)
 
 	// Collect actual logs from the response
 	var logs []*commonpb.Log
@@ -142,7 +142,7 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 
 	defer func() { _ = batch.Cancel() }()
 
-	err = state.AppendLogs(batch, logs)
+	err := state.AppendLogs(batch, logs)
 	require.NoError(e.t, err)
 
 	e.appendAuditEntry(batch, proposal, resp)

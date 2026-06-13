@@ -2,6 +2,12 @@ package domain
 
 import (
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -10,12 +16,15 @@ import (
 func TestBusinessError(t *testing.T) {
 	t.Parallel()
 
-	inner := errors.New("something went wrong")
+	inner := &ErrLedgerNotFound{Name: "missing"}
 	bErr := &BusinessError{Err: inner}
 
-	require.Equal(t, "something went wrong", bErr.Error())
+	require.Equal(t, "ledger does not exist: missing", bErr.Error())
 	require.ErrorIs(t, bErr, inner)
 	require.Equal(t, inner, bErr.Unwrap())
+	require.Equal(t, KindNotFound, bErr.Kind())
+	require.Equal(t, ErrReasonLedgerNotFound, bErr.Reason())
+	require.Equal(t, map[string]string{"name": "missing"}, bErr.Metadata())
 }
 
 func TestErrorTypes(t *testing.T) {
@@ -118,7 +127,7 @@ func TestErrorTypes(t *testing.T) {
 		},
 		{
 			name:     "ErrInvalidReceipt",
-			err:      &ErrInvalidReceipt{Reason: "expired"},
+			err:      &ErrInvalidReceipt{Detail: "expired"},
 			expected: "invalid receipt: expired",
 		},
 	}
@@ -190,4 +199,160 @@ func TestNewFilterCompilationError(t *testing.T) {
 	var compile *ErrFilterCompilation
 	require.ErrorAs(t, err, &compile)
 	require.Equal(t, `field "age" is declared as INT64, cannot use string condition`, compile.Detail)
+}
+
+// TestEveryDomainErrorImplementsDescribable parses every Go file in this
+// package and asserts that every `type Err... struct` declaration has a
+// corresponding *T or T that satisfies the Describable interface. This is
+// the structural backstop for #431: adding a new domain error without
+// implementing Describable fails this test even if the new type is never
+// reached via a BusinessError construction site (which would catch it at
+// compile time). The reflection-based discovery means the test catches new
+// additions automatically — no hand-maintained list to forget about.
+func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
+	t.Parallel()
+
+	matches, err := filepath.Glob("*.go")
+	require.NoError(t, err)
+
+	describableType := reflect.TypeFor[Describable]()
+
+	// Pre-built registry: for each known type in this package, a zero
+	// pointer instance the test can run reflection against. New entries
+	// must be added here when a new typed error is introduced — but the
+	// AST scan below verifies the list is complete, so forgetting fails
+	// the test.
+	instances := map[string]any{
+		"ErrLedgerAlreadyExists":           &ErrLedgerAlreadyExists{},
+		"ErrLedgerNotFound":                &ErrLedgerNotFound{},
+		"ErrLedgerDeleted":                 &ErrLedgerDeleted{},
+		"ErrIdempotencyKeyConflict":        &ErrIdempotencyKeyConflict{},
+		"ErrTransactionReferenceConflict":  &ErrTransactionReferenceConflict{},
+		"ErrTransactionReferenceNotFound":  &ErrTransactionReferenceNotFound{},
+		"ErrTransactionNotFound":           &ErrTransactionNotFound{},
+		"ErrTransactionAlreadyReverted":    &ErrTransactionAlreadyReverted{},
+		"ErrInsufficientFunds":             &ErrInsufficientFunds{},
+		"ErrVolumeOverflow":                &ErrVolumeOverflow{},
+		"ErrBalanceNotFound":               &ErrBalanceNotFound{},
+		"ErrSinkAlreadyExists":             &ErrSinkAlreadyExists{},
+		"ErrSinkBatchSizeTooLarge":         &ErrSinkBatchSizeTooLarge{},
+		"ErrMetadataNotFound":              &ErrMetadataNotFound{},
+		"ErrSinkNotFound":                  &ErrSinkNotFound{},
+		"ErrPeriodNotFound":                &ErrPeriodNotFound{},
+		"ErrPeriodNotClosing":              &ErrPeriodNotClosing{},
+		"ErrPeriodNotClosed":               &ErrPeriodNotClosed{},
+		"ErrPeriodNotArchiving":            &ErrPeriodNotArchiving{},
+		"ErrInvalidCronExpression":         &ErrInvalidCronExpression{},
+		"ErrLedgerInMirrorMode":            &ErrLedgerInMirrorMode{},
+		"ErrLedgerNotInMirrorMode":         &ErrLedgerNotInMirrorMode{},
+		"ErrPreparedQueryAlreadyExists":    &ErrPreparedQueryAlreadyExists{},
+		"ErrPreparedQueryNotFound":         &ErrPreparedQueryNotFound{},
+		"ErrIndexNotFound":                 &ErrIndexNotFound{},
+		"ErrMetadataFieldNotInSchema":      &ErrMetadataFieldNotInSchema{},
+		"ErrIndexBuilding":                 &ErrIndexBuilding{},
+		"ErrIndexInconsistent":             &ErrIndexInconsistent{},
+		"ErrInvalidReceipt":                &ErrInvalidReceipt{},
+		"ErrNumscriptNotFound":             &ErrNumscriptNotFound{},
+		"ErrNumscriptVersionAlreadyExists": &ErrNumscriptVersionAlreadyExists{},
+		"ErrNumscriptInvalidVersion":       &ErrNumscriptInvalidVersion{},
+		"ErrAccountNotMatchingType":        &ErrAccountNotMatchingType{},
+		"ErrAccountTypeNotFound":           &ErrAccountTypeNotFound{},
+		"ErrAccountTypeAlreadyExists":      &ErrAccountTypeAlreadyExists{},
+		"ErrAccountTypeConflict":           &ErrAccountTypeConflict{},
+		"ErrInvalidPattern":                &ErrInvalidPattern{},
+		"ErrAccountTypeHasAccounts":        &ErrAccountTypeHasAccounts{},
+		"ErrNumscriptParse":                &ErrNumscriptParse{},
+		"ErrBalanceNotPreloaded":           &ErrBalanceNotPreloaded{},
+		"ErrTransientAccountNonZero":       &ErrTransientAccountNonZero{},
+		"ErrFilterCompilation":             &ErrFilterCompilation{},
+		"ErrInvalidOrderType":              &ErrInvalidOrderType{},
+		"ErrIdempotencyCheckFailed":        &ErrIdempotencyCheckFailed{},
+		"ErrAccountValidation":             &ErrAccountValidation{},
+		"ErrMetadataKeyValidation":         &ErrMetadataKeyValidation{},
+		"ErrInvalidApplyType":              &ErrInvalidApplyType{},
+		"ErrStorageOperation":              &ErrStorageOperation{},
+		"ErrTransactionStateInconsistent":  &ErrTransactionStateInconsistent{},
+		"ErrNumscriptRuntime":              &ErrNumscriptRuntime{},
+		"ErrVolumeNotMaterialized":         &ErrVolumeNotMaterialized{},
+		"errCheckpointIDRequired":          errCheckpointIDRequired{},
+		// Unexported sentinel struct types; each is exposed once via a
+		// package-level Describable var (ErrColdStorageDisabled, etc.)
+		// and must implement the interface.
+		"validationSentinel":     &validationSentinel{},
+		"errColdStorageDisabled": errColdStorageDisabled{},
+		"errAuditDisabled":       errAuditDisabled{},
+		"errMaintenanceMode":     errMaintenanceMode{},
+		"errStaleProposal":       errStaleProposal{},
+		"errNoPeriodOpen":        errNoPeriodOpen{},
+	}
+
+	// Walk the AST to discover every type declaration that starts with
+	// "Err" in this package. If a new type is added without a matching
+	// instances entry, the test fails — the boundary that turns
+	// "forgot to add a Describable method" into a CI failure.
+	discovered := make(map[string]bool)
+
+	for _, path := range matches {
+		if strings.HasSuffix(path, "_test.go") {
+			continue
+		}
+
+		fset := token.NewFileSet()
+
+		f, parseErr := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+		require.NoError(t, parseErr, "parsing %s", path)
+
+		for _, decl := range f.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok || gen.Tok != token.TYPE {
+				continue
+			}
+
+			for _, spec := range gen.Specs {
+				typeSpec, ok := spec.(*ast.TypeSpec)
+				if !ok {
+					continue
+				}
+
+				name := typeSpec.Name.Name
+
+				// Match Err<UpperCase>... (typed errors) or err<lowercase>...
+				// (unexported sentinel helpers). Skip "ErrorKind",
+				// "Describable", "BusinessError", and validationSentinel
+				// (covered by name='validationSentinel' below).
+				switch {
+				case strings.HasPrefix(name, "Err") && len(name) > 3 && name[3] >= 'A' && name[3] <= 'Z':
+				case strings.HasPrefix(name, "err") && len(name) > 3 && name[3] >= 'A' && name[3] <= 'Z':
+				case name == "validationSentinel":
+				default:
+					continue
+				}
+
+				discovered[name] = true
+			}
+		}
+	}
+
+	for name := range discovered {
+		// Some types are pointer-receiver Describables and some are
+		// value-receiver. The map above stores pointer instances so
+		// both forms satisfy Describable through implicit pointer
+		// promotion.
+		inst, ok := instances[name]
+		require.True(t, ok,
+			"type %s declared in internal/domain has no entry in TestEveryDomainErrorImplementsDescribable.instances — add one (and a Describable implementation) to keep the structural check tight",
+			name)
+
+		require.True(t,
+			reflect.TypeOf(inst).Implements(describableType),
+			"type %s in internal/domain does not implement Describable — every domain error type must declare Kind(), Reason(), and Metadata() so the gRPC and HTTP adapters can route it",
+			name)
+	}
+
+	// And conversely: every entry in instances must correspond to a
+	// declared type — catches stale list entries after a type is
+	// renamed or removed.
+	for name := range instances {
+		require.True(t, discovered[name], "instances entry %s does not match any type declared in internal/domain — remove it", name)
+	}
 }

@@ -1,14 +1,14 @@
 package processing
 
 import (
-	"errors"
+	"fmt"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
 	// Check deletion status before boundaries: MarkLedgerForCleanup removes
 	// boundaries on delete, so GetBoundaries would return false and we'd
 	// incorrectly return ErrLedgerNotFound instead of ErrLedgerDeleted.
@@ -31,7 +31,7 @@ func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s InM
 
 	var (
 		logPayload *commonpb.LedgerLogPayload
-		err        error
+		err        domain.Describable
 	)
 
 	ledgerID := ledgerInfo.GetId()
@@ -60,7 +60,7 @@ func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s InM
 	case *raftcmdpb.LedgerApplyOrder_UpdateDefaultEnforcementMode:
 		logPayload, err = p.processUpdateDefaultEnforcementMode(apply.GetLedger(), applyData.UpdateDefaultEnforcementMode, s)
 	default:
-		return nil, errors.New("invalid apply type")
+		return nil, &domain.ErrInvalidApplyType{TypeName: fmt.Sprintf("%T", apply.GetData())}
 	}
 
 	if err != nil {

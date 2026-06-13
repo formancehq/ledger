@@ -67,8 +67,14 @@ func TestConvertNumscriptError_MissingFunds_WrappedPreservesErrorsAs(t *testing.
 func TestConvertNumscriptError_OtherError(t *testing.T) {
 	t.Parallel()
 
+	// Unmapped library errors now type as ErrNumscriptRuntime
+	// (KindInternal) so they flow through the BusinessError pipeline
+	// without falling through the FSM's boundary cast (#431).
 	other := errors.New("some other error")
-	require.Equal(t, other, convertNumscriptError(other))
+	got := convertNumscriptError(other)
+
+	require.IsType(t, &domain.ErrNumscriptRuntime{}, got)
+	require.Equal(t, "numscript runtime error: some other error", got.Error())
 }
 
 func TestConvertNumscriptError_Nil(t *testing.T) {

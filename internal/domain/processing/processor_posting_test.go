@@ -172,7 +172,7 @@ func TestApplyPosting_NotPreloaded(t *testing.T) {
 
 	err := applyPosting(mockStore, 0, posting, false, nil)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "not fully preloaded")
+	require.Contains(t, err.Error(), "balance not preloaded")
 }
 
 // uint256Max returns the maximum uint256 value (2^256 - 1).

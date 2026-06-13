@@ -24,7 +24,7 @@ type numscriptPostingProducer struct {
 	assetCache map[string]cachedAssetPrecision
 }
 
-func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, error) {
+func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, domain.Describable) {
 	if script == nil || script.GetPlain() == "" {
 		return nil, domain.ErrScriptRequired
 	}
@@ -51,7 +51,10 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 	// Execute the script (experimental features are declared directly in scripts)
 	result, err := numscript.SafeRun(parsed, context.Background(), vars, storeAdapter)
 	if err != nil {
-		return nil, fmt.Errorf("numscript execution error: %w", err)
+		// SafeRun already converted to Describable: ErrInsufficientFunds
+		// for missing-funds, ErrNumscriptRuntime for panics and unmapped
+		// library errors.
+		return nil, err
 	}
 
 	// Convert numscript postings to commonpb postings and update buffer
@@ -65,11 +68,15 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 
 	for i, posting := range result.Postings {
 		if posting.Amount.Sign() < 0 {
-			return nil, fmt.Errorf("numscript execution error: posting %d has negative amount %s", i, posting.Amount)
+			return nil, &domain.ErrNumscriptRuntime{
+				Detail: fmt.Sprintf("posting %d has negative amount %s", i, posting.Amount),
+			}
 		}
 
 		if overflow := u256Amount.SetFromBig(posting.Amount); overflow {
-			return nil, fmt.Errorf("numscript execution error: posting %d amount %s exceeds 256 bits", i, posting.Amount)
+			return nil, &domain.ErrNumscriptRuntime{
+				Detail: fmt.Sprintf("posting %d amount %s exceeds 256 bits", i, posting.Amount),
+			}
 		}
 
 		postings[i] = &commonpb.Posting{
@@ -88,10 +95,17 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 				return nil, &domain.ErrBalanceNotPreloaded{Account: posting.Source, Asset: posting.Asset}
 			}
 
-			return nil, fmt.Errorf("source volume %s/%s: %w", posting.Source, posting.Asset, err)
+			return nil, &domain.ErrStorageOperation{
+				Operation: fmt.Sprintf("source volume %s/%s", posting.Source, posting.Asset),
+				Cause:     err,
+			}
 		}
 		if sourceReader == nil || sourceReader.GetInput() == nil || sourceReader.GetOutput() == nil {
-			return nil, fmt.Errorf("source volume %s/%s not fully materialized", posting.Source, posting.Asset)
+			return nil, &domain.ErrVolumeNotMaterialized{
+				Account: posting.Source,
+				Asset:   posting.Asset,
+				Side:    "source",
+			}
 		}
 
 		sourceVol := sourceReader.Mutate()
@@ -121,10 +135,17 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 				return nil, &domain.ErrBalanceNotPreloaded{Account: posting.Destination, Asset: posting.Asset}
 			}
 
-			return nil, fmt.Errorf("destination volume %s/%s: %w", posting.Destination, posting.Asset, err)
+			return nil, &domain.ErrStorageOperation{
+				Operation: fmt.Sprintf("destination volume %s/%s", posting.Destination, posting.Asset),
+				Cause:     err,
+			}
 		}
 		if destReader == nil || destReader.GetInput() == nil || destReader.GetOutput() == nil {
-			return nil, fmt.Errorf("destination volume %s/%s not fully materialized", posting.Destination, posting.Asset)
+			return nil, &domain.ErrVolumeNotMaterialized{
+				Account: posting.Destination,
+				Asset:   posting.Asset,
+				Side:    "destination",
+			}
 		}
 
 		destVol := destReader.Mutate()
@@ -162,10 +183,10 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 			mdMap := make(map[string]*commonpb.MetadataValue, len(meta))
 			for key, value := range meta {
 				if err := domain.ValidateMetadataKey(key); err != nil {
-					return nil, fmt.Errorf("numscript-produced account %q metadata key: %w", account, err)
+					return nil, &domain.ErrAccountValidation{Account: account, Cause: err}
 				}
 				if err := domain.ValidateMetadataStringValue(value); err != nil {
-					return nil, fmt.Errorf("numscript-produced account %q metadata key %q value: %w", account, key, err)
+					return nil, &domain.ErrAccountValidation{Account: account, Cause: err}
 				}
 
 				mdMap[key] = commonpb.NewStringValue(value)
@@ -181,12 +202,12 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledgerID uint32, ord
 		txMeta = make(map[string]*commonpb.MetadataValue, len(result.Metadata))
 		for key, value := range result.Metadata {
 			if err := domain.ValidateMetadataKey(key); err != nil {
-				return nil, fmt.Errorf("numscript-produced transaction metadata key: %w", err)
+				return nil, err
 			}
 
 			stringValue := value.String()
 			if err := domain.ValidateMetadataStringValue(stringValue); err != nil {
-				return nil, fmt.Errorf("numscript-produced transaction metadata key %q value: %w", key, err)
+				return nil, &domain.ErrMetadataKeyValidation{Key: key, Cause: err}
 			}
 
 			txMeta[key] = commonpb.NewStringValue(stringValue)

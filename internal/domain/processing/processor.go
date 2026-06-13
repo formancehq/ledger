@@ -70,7 +70,7 @@ func (p *RequestProcessor) invalidateCompiledTypes(ledger string) {
 }
 
 // ProcessOrders processes a list of orders and returns the resulting logs.
-func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemoryStore) ([]*raftcmdpb.CreatedLogOrReference, error) {
+func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemoryStore) ([]*raftcmdpb.CreatedLogOrReference, domain.Describable) {
 	clear(p.compiledTypesCache)
 	clear(p.assetCache)
 
@@ -88,7 +88,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 
 			storedValue, err := s.GetIdempotencyKey(ikKey)
 			if err != nil && !errors.Is(err, domain.ErrNotFound) {
-				return nil, fmt.Errorf("checking idempotency key: %w", err)
+				return nil, &domain.ErrIdempotencyCheckFailed{Cause: err}
 			}
 
 			// Check if idempotency key exists
@@ -164,7 +164,7 @@ func (p *RequestProcessor) computeOrderHash(order *raftcmdpb.Order) []byte {
 }
 
 // ProcessOrder processes an Order and returns the resulting LogPayload.
-func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s InMemoryStore) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
 	switch orderType := order.GetType().(type) {
 	case *raftcmdpb.Order_Apply:
 		return p.processApply(orderType.Apply, s)
@@ -223,6 +223,6 @@ func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s InMemoryStore)
 	case *raftcmdpb.Order_DeleteLedgerMetadata:
 		return p.processDeleteLedgerMetadata(orderType.DeleteLedgerMetadata, s)
 	default:
-		return nil, errors.New("invalid order type")
+		return nil, &domain.ErrInvalidOrderType{TypeName: fmt.Sprintf("%T", order.GetType())}
 	}
 }

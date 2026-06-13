@@ -5,8 +5,6 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-
-	"github.com/formancehq/ledger/v3/internal/domain"
 )
 
 // handleGetNumscript handles GET /{ledgerName}/numscripts/{name} to get a numscript.
@@ -27,13 +25,12 @@ func (s *Server) handleGetNumscript(w http.ResponseWriter, r *http.Request) {
 
 	info, err := s.backend.GetNumscript(r.Context(), ledgerName, name, version)
 	if err != nil {
-		var notFound *domain.ErrNumscriptNotFound
-		if errors.As(err, &notFound) {
-			writeErrorResponse(w, http.StatusNotFound, "NOT_FOUND", err)
-
-			return
-		}
-
+		// Route every error — including ErrNumscriptNotFound — through
+		// handleError so the emitted errorCode stays uniform with the
+		// Describable Reason() contract introduced by #432. The hardcoded
+		// "NOT_FOUND" branch this handler used to take violated that
+		// contract by emitting a different code than every other
+		// endpoint for the same domain error type.
 		handleError(w, r, err)
 
 		return

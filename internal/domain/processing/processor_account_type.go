@@ -12,7 +12,7 @@ func (p *RequestProcessor) processAddAccountType(
 	ledgerName string,
 	order *raftcmdpb.AddAccountTypeOrder,
 	s InMemoryStore,
-) (*commonpb.LedgerLogPayload, error) {
+) (*commonpb.LedgerLogPayload, domain.Describable) {
 	info, ok := s.GetLedger(ledgerName)
 	if !ok {
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
@@ -76,7 +76,7 @@ func (p *RequestProcessor) processRemoveAccountType(
 	ledgerName string,
 	order *raftcmdpb.RemoveAccountTypeOrder,
 	s InMemoryStore,
-) (*commonpb.LedgerLogPayload, error) {
+) (*commonpb.LedgerLogPayload, domain.Describable) {
 	info, ok := s.GetLedger(ledgerName)
 	if !ok {
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
@@ -109,7 +109,7 @@ func validatePostingsAgainstAccountTypes(
 	postings []*commonpb.Posting,
 	compiled []accounttype.CompiledType,
 	defaultMode commonpb.ChartEnforcementMode,
-) error {
+) domain.Describable {
 	if len(compiled) == 0 {
 		return nil
 	}
@@ -147,7 +147,7 @@ func validateAccountAgainstAccountTypes(
 	address string,
 	compiled []accounttype.CompiledType,
 	defaultMode commonpb.ChartEnforcementMode,
-) error {
+) domain.Describable {
 	if len(compiled) == 0 || address == "world" {
 		return nil
 	}
@@ -166,7 +166,7 @@ func (p *RequestProcessor) processUpdateDefaultEnforcementMode(
 	ledgerName string,
 	order *raftcmdpb.UpdateDefaultEnforcementModeOrder,
 	s InMemoryStore,
-) (*commonpb.LedgerLogPayload, error) {
+) (*commonpb.LedgerLogPayload, domain.Describable) {
 	info, ok := s.GetLedger(ledgerName)
 	if !ok {
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}

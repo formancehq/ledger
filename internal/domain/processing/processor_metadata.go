@@ -2,7 +2,6 @@ package processing
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -46,7 +45,7 @@ func canonicalizeTarget(target *commonpb.Target, resolvedTxID uint64) *commonpb.
 // The id path additionally validates against the ledger boundary; the
 // reference path does not need that check because PutTransactionReference is
 // only set when a transaction is actually allocated.
-func resolveTargetTransactionID(t *commonpb.TargetTransaction, ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, s InMemoryStore) (uint64, error) {
+func resolveTargetTransactionID(t *commonpb.TargetTransaction, ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, s InMemoryStore) (uint64, domain.Describable) {
 	switch id := t.GetIdentifier().(type) {
 	case *commonpb.TargetTransaction_Id:
 		if id.Id >= boundaries.GetNextTransactionId() {
@@ -65,7 +64,7 @@ func resolveTargetTransactionID(t *commonpb.TargetTransaction, ledgerID uint32, 
 				return 0, &domain.ErrTransactionReferenceNotFound{Reference: id.Reference}
 			}
 
-			return 0, fmt.Errorf("resolving transaction reference: %w", err)
+			return 0, &domain.ErrStorageOperation{Operation: "resolving transaction reference", Cause: err}
 		}
 
 		return value.GetTransactionId(), nil
@@ -74,7 +73,7 @@ func resolveTargetTransactionID(t *commonpb.TargetTransaction, ledgerID uint32, 
 	}
 }
 
-func (p *RequestProcessor) processAddMetadata(ledger string, ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.SaveMetadataOrder, s InMemoryStore, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, error) {
+func (p *RequestProcessor) processAddMetadata(ledger string, ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.SaveMetadataOrder, s InMemoryStore, info *commonpb.LedgerInfo) (*commonpb.LedgerLogPayload, domain.Describable) {
 	if order.GetTarget() == nil {
 		return nil, domain.ErrTargetRequired
 	}
@@ -128,9 +127,9 @@ func (p *RequestProcessor) processAddMetadata(ledger string, ledgerID uint32, bo
 			s.PutAccountMetadata(metaKey, value)
 		}
 	case *commonpb.Target_Transaction:
-		txID, err := resolveTargetTransactionID(target.Transaction, ledgerID, boundaries, s)
-		if err != nil {
-			return nil, err
+		txID, resolveErr := resolveTargetTransactionID(target.Transaction, ledgerID, boundaries, s)
+		if resolveErr != nil {
+			return nil, resolveErr
 		}
 
 		loggedTarget = canonicalizeTarget(order.GetTarget(), txID)
@@ -139,7 +138,7 @@ func (p *RequestProcessor) processAddMetadata(ledger string, ledgerID uint32, bo
 
 		state, err := s.GetTransactionState(txKey)
 		if err != nil {
-			return nil, fmt.Errorf("getting transaction state: %w", err)
+			return nil, &domain.ErrStorageOperation{Operation: "getting transaction state", Cause: err}
 		}
 
 		if state == nil {
@@ -178,7 +177,7 @@ func (p *RequestProcessor) processAddMetadata(ledger string, ledgerID uint32, bo
 	}, nil
 }
 
-func (p *RequestProcessor) processDeleteMetadata(ledger string, ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.DeleteMetadataOrder, s InMemoryStore) (*commonpb.LedgerLogPayload, error) {
+func (p *RequestProcessor) processDeleteMetadata(ledger string, ledgerID uint32, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.DeleteMetadataOrder, s InMemoryStore) (*commonpb.LedgerLogPayload, domain.Describable) {
 	if order.GetTarget() == nil {
 		return nil, domain.ErrTargetRequired
 	}
@@ -213,15 +212,15 @@ func (p *RequestProcessor) processDeleteMetadata(ledger string, ledgerID uint32,
 				}
 			}
 
-			return nil, fmt.Errorf("checking account metadata: %w", err)
+			return nil, &domain.ErrStorageOperation{Operation: "checking account metadata", Cause: err}
 		}
 
 		previousValue = oldVal
 		s.DeleteAccountMetadata(metaKey)
 	case *commonpb.Target_Transaction:
-		txID, err := resolveTargetTransactionID(target.Transaction, ledgerID, boundaries, s)
-		if err != nil {
-			return nil, err
+		txID, resolveErr := resolveTargetTransactionID(target.Transaction, ledgerID, boundaries, s)
+		if resolveErr != nil {
+			return nil, resolveErr
 		}
 
 		loggedTarget = canonicalizeTarget(order.GetTarget(), txID)
@@ -230,7 +229,7 @@ func (p *RequestProcessor) processDeleteMetadata(ledger string, ledgerID uint32,
 
 		state, err := s.GetTransactionState(txKey)
 		if err != nil {
-			return nil, fmt.Errorf("getting transaction state for delete: %w", err)
+			return nil, &domain.ErrStorageOperation{Operation: "getting transaction state for delete", Cause: err}
 		}
 
 		if state == nil {

@@ -77,5 +77,5 @@ func TestHandleCreateLedger_AlreadyExists(t *testing.T) {
 
 	require.Equal(t, http.StatusConflict, w.Code)
 	resp := decodeResponse[ErrorResponse](t, w)
-	require.Equal(t, "CONFLICT", resp.ErrorCode)
+	require.Equal(t, "LEDGER_ALREADY_EXISTS", resp.ErrorCode)
 }

@@ -30,7 +30,6 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	"github.com/formancehq/ledger/v3/internal/application/admission"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
@@ -454,6 +453,11 @@ func errorConversionStreamInterceptor(logger logging.Logger) ggrpc.StreamServerI
 }
 
 // convertToGRPCError converts known errors to proper gRPC status errors.
+// The bulk of the work is delegated to describableToGRPCStatus: any domain
+// error that implements Describable (every typed *Err* and BusinessError
+// itself) flows through a single exhaustive Kind switch. The remaining
+// branches below cover non-domain errors (signing, raft, AWS smithy, etc.)
+// that don't fit the domain Describable model.
 // Unmapped errors are logged with a correlation ID and replaced with a
 // generic codes.Unknown so internal implementation details (Pebble
 // strings, file paths, invariant messages) are not disclosed to API
@@ -475,11 +479,6 @@ func convertToGRPCError(err error, logger logging.Logger) error {
 
 	if errors.Is(err, signing.ErrUnknownKeyID) {
 		return status.Error(codes.PermissionDenied, err.Error())
-	}
-
-	// Convert maintenance mode error to Unavailable (client should retry later)
-	if errors.Is(err, admission.ErrMaintenanceMode) {
-		return status.Error(codes.Unavailable, err.Error())
 	}
 
 	// Convert context deadline/cancellation from internal timeouts (e.g. proposeTimeout)
@@ -531,77 +530,10 @@ func convertToGRPCError(err error, logger logging.Logger) error {
 		return st.Err()
 	}
 
-	// Convert ErrNoLeader to Unavailable (client should retry)
-	if errors.Is(err, commonpb.ErrNoLeader) {
-		return status.Error(codes.Unavailable, "no leader available, please retry")
-	}
-
 	// Convert NotFoundError to NotFound
 	var notFoundErr *commonpb.NotFoundError
 	if errors.As(err, &notFoundErr) {
 		return status.Error(codes.NotFound, notFoundErr.Error())
-	}
-
-	// Convert ErrAuditDisabled to FailedPrecondition with ErrorInfo
-	if errors.Is(err, domain.ErrAuditDisabled) {
-		st := status.New(codes.FailedPrecondition, err.Error())
-
-		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
-			Reason: domain.ErrReasonAuditDisabled,
-			Domain: "ledger",
-		})
-		if detailErr == nil {
-			return detailed.Err()
-		}
-
-		return st.Err()
-	}
-
-	// Convert ErrPeriodNotClosed to FailedPrecondition with ErrorInfo
-	var periodNotClosedErr *domain.ErrPeriodNotClosed
-	if errors.As(err, &periodNotClosedErr) {
-		st := status.New(codes.FailedPrecondition, err.Error())
-
-		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
-			Reason: domain.ErrReasonPeriodNotClosed,
-			Domain: "ledger",
-		})
-		if detailErr == nil {
-			return detailed.Err()
-		}
-
-		return st.Err()
-	}
-
-	// Convert ErrPeriodNotArchiving to FailedPrecondition with ErrorInfo
-	var periodNotArchivingErr *domain.ErrPeriodNotArchiving
-	if errors.As(err, &periodNotArchivingErr) {
-		st := status.New(codes.FailedPrecondition, err.Error())
-
-		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
-			Reason: domain.ErrReasonPeriodNotArchiving,
-			Domain: "ledger",
-		})
-		if detailErr == nil {
-			return detailed.Err()
-		}
-
-		return st.Err()
-	}
-
-	// Convert ErrColdStorageDisabled to FailedPrecondition with ErrorInfo
-	if errors.Is(err, domain.ErrColdStorageDisabled) {
-		st := status.New(codes.FailedPrecondition, err.Error())
-
-		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
-			Reason: domain.ErrReasonColdStorageDisabled,
-			Domain: "ledger",
-		})
-		if detailErr == nil {
-			return detailed.Err()
-		}
-
-		return st.Err()
 	}
 
 	// Convert ErrReadIndexNotCaughtUp to FailedPrecondition with details
@@ -624,10 +556,12 @@ func convertToGRPCError(err error, logger logging.Logger) error {
 		return st.Err()
 	}
 
-	// Convert BusinessError to proper gRPC status with ErrorInfo details
-	var bizErr *domain.BusinessError
-	if errors.As(err, &bizErr) {
-		return businessErrorToGRPCStatus(bizErr).Err()
+	// Domain errors: any *Err* type or sentinel that implements Describable,
+	// whether wrapped in BusinessError or returned raw, flows through one
+	// exhaustive Kind switch in describableToGRPCStatus.
+	var d domain.Describable
+	if errors.As(err, &d) {
+		return describableToGRPCStatus(d).Err()
 	}
 
 	// Convert AWS S3/infrastructure errors to FailedPrecondition so clients

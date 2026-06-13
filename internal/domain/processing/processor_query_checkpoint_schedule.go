@@ -8,7 +8,7 @@ import (
 
 // processSetQueryCheckpointSchedule handles the SetQueryCheckpointSchedule order.
 // It validates the cron expression and stores it in the FSM state.
-func (p *RequestProcessor) processSetQueryCheckpointSchedule(order *raftcmdpb.SetQueryCheckpointScheduleOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processSetQueryCheckpointSchedule(order *raftcmdpb.SetQueryCheckpointScheduleOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
 	if _, err := CronParser.Parse(order.GetCron()); err != nil {
 		return nil, &domain.ErrInvalidCronExpression{
 			Expression: order.GetCron(),
@@ -29,7 +29,7 @@ func (p *RequestProcessor) processSetQueryCheckpointSchedule(order *raftcmdpb.Se
 
 // processDeleteQueryCheckpointSchedule handles the DeleteQueryCheckpointSchedule order.
 // It removes the query checkpoint schedule from the FSM state.
-func (p *RequestProcessor) processDeleteQueryCheckpointSchedule(s InMemoryStore) (*commonpb.LogPayload, error) {
+func (p *RequestProcessor) processDeleteQueryCheckpointSchedule(s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
 	s.DeleteQueryCheckpointSchedule()
 
 	return &commonpb.LogPayload{

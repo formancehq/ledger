@@ -33,6 +33,7 @@ linters:
   - errcheck
   - errchkjson
   - errorlint
+  - exhaustive
   - exptostd
   - fatcontext
   - ginkgolinter
@@ -95,3 +96,10 @@ linters:
     exhaustruct:
       exclude:
       - '.+/cobra\.Command$'
+    exhaustive:
+      # Only flag switches explicitly tagged with //exhaustive:enforce. This
+      # is opt-in to avoid disturbing the existing codebase; the structural
+      # guarantee for ErrorKind comes from tagging the two transport
+      # switches in adapter/grpc/errors.go and adapter/http/error_handler.go.
+      explicit-exhaustive-switch: true
+      default-signifies-exhaustive: false

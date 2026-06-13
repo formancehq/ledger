@@ -4,83 +4,71 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/formancehq/ledger/v3/internal/application/admission"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
-type httpErrorMapping struct {
-	match      func(error) bool
-	statusCode int
-	errorCode  string
-	// headerFn optionally sets response headers before writing the error body.
-	headerFn func(http.ResponseWriter)
-}
-
-func matchAs[T error]() func(error) bool {
-	return func(err error) bool {
-		var target T
-
-		return errors.As(err, &target)
+// kindToHTTPStatus maps a semantic ErrorKind to an HTTP status code. Adding
+// a new Kind without a branch fails the `exhaustive` golangci-lint rule;
+// that's the structural guarantee that drives this design (#431).
+func kindToHTTPStatus(k domain.ErrorKind) int {
+	switch k { //exhaustive:enforce
+	case domain.KindValidation:
+		return http.StatusBadRequest
+	case domain.KindNotFound:
+		return http.StatusNotFound
+	case domain.KindAlreadyExists:
+		return http.StatusConflict
+	case domain.KindConflict:
+		return http.StatusConflict
+	case domain.KindPrecondition:
+		return http.StatusBadRequest
+	case domain.KindUnavailable:
+		return http.StatusServiceUnavailable
+	case domain.KindUnauthenticated:
+		return http.StatusUnauthorized
+	case domain.KindPermissionDenied:
+		return http.StatusForbidden
+	case domain.KindInternal:
+		return http.StatusInternalServerError
 	}
+
+	// Unreachable when the exhaustive linter is enabled.
+	return http.StatusInternalServerError
 }
 
-func matchIs(sentinel error) func(error) bool {
-	return func(err error) bool {
-		return errors.Is(err, sentinel)
-	}
-}
-
-var httpErrorMappings = []httpErrorMapping{
-	{matchIs(commonpb.ErrNoLeader), http.StatusServiceUnavailable, "NO_LEADER",
-		func(w http.ResponseWriter) { w.Header().Set("Retry-After", "1") }},
-
-	{matchAs[*commonpb.NotFoundError](), http.StatusNotFound, "NOT_FOUND", nil},
-	{matchAs[*domain.ErrLedgerAlreadyExists](), http.StatusConflict, "CONFLICT", nil},
-	{matchAs[*domain.ErrLedgerNotFound](), http.StatusNotFound, "NOT_FOUND", nil},
-	{matchAs[*domain.ErrLedgerDeleted](), http.StatusConflict, "LEDGER_DELETED", nil},
-	{matchAs[*domain.ErrLedgerInMirrorMode](), http.StatusConflict, "LEDGER_IN_MIRROR_MODE", nil},
-	{matchAs[*domain.ErrLedgerNotInMirrorMode](), http.StatusBadRequest, "LEDGER_NOT_IN_MIRROR_MODE", nil},
-	{matchAs[*domain.ErrTransactionReferenceConflict](), http.StatusConflict, "CONFLICT", nil},
-	{matchAs[*domain.ErrIdempotencyKeyConflict](), http.StatusConflict, "CONFLICT", nil},
-	{matchAs[*domain.ErrTransactionNotFound](), http.StatusNotFound, "NOT_FOUND", nil},
-	{matchAs[*domain.ErrTransactionAlreadyReverted](), http.StatusConflict, "CONFLICT", nil},
-	{matchAs[*domain.ErrInsufficientFunds](), http.StatusBadRequest, "INSUFFICIENT_FUNDS", nil},
-	{matchAs[*domain.ErrBalanceNotFound](), http.StatusBadRequest, "BALANCE_NOT_FOUND", nil},
-	{matchAs[*domain.ErrNumscriptParse](), http.StatusBadRequest, "SCRIPT_PARSE_ERROR", nil},
-	{matchAs[*domain.ErrNumscriptNotFound](), http.StatusNotFound, "NOT_FOUND", nil},
-	{matchAs[*domain.ErrNumscriptVersionAlreadyExists](), http.StatusConflict, "CONFLICT", nil},
-	{matchAs[*domain.ErrNumscriptInvalidVersion](), http.StatusBadRequest, "VALIDATION", nil},
-	{matchAs[*domain.ErrMetadataNotFound](), http.StatusNotFound, "NOT_FOUND", nil},
-	{matchAs[*domain.ErrPreparedQueryAlreadyExists](), http.StatusConflict, "CONFLICT", nil},
-	{matchAs[*domain.ErrPreparedQueryNotFound](), http.StatusNotFound, "NOT_FOUND", nil},
-	{matchAs[*domain.ErrAccountNotMatchingType](), http.StatusBadRequest, "ACCOUNT_NOT_MATCHING_TYPE", nil},
-	{matchAs[*domain.ErrAccountTypeNotFound](), http.StatusNotFound, "ACCOUNT_TYPE_NOT_FOUND", nil},
-	{matchAs[*domain.ErrAccountTypeAlreadyExists](), http.StatusConflict, "ACCOUNT_TYPE_ALREADY_EXISTS", nil},
-	{matchAs[*domain.ErrInvalidPattern](), http.StatusBadRequest, "INVALID_PATTERN", nil},
-	{matchAs[*domain.ErrAccountTypeHasAccounts](), http.StatusConflict, "ACCOUNT_TYPE_HAS_ACCOUNTS", nil},
-	{matchAs[*domain.ErrAccountTypeConflict](), http.StatusConflict, "ACCOUNT_TYPE_CONFLICT", nil},
-	// Validation sentinel errors
-	{matchIs(domain.ErrNumscriptContentRequired), http.StatusBadRequest, "VALIDATION", nil},
-	{matchIs(domain.ErrTargetRequired), http.StatusBadRequest, "VALIDATION", nil},
-	{matchIs(domain.ErrMetadataKeyRequired), http.StatusBadRequest, "VALIDATION", nil},
-	{matchIs(domain.ErrScriptRequired), http.StatusBadRequest, "VALIDATION", nil},
-	{matchIs(admission.ErrIdempotencyKeyTooLong), http.StatusBadRequest, "VALIDATION", nil},
-	{matchIs(admission.ErrIdempotencyKeyInvalidUTF8), http.StatusBadRequest, "VALIDATION", nil},
-}
-
-// handleError handles errors and returns appropriate HTTP responses.
+// handleError converts a server-side error into a JSON-formatted HTTP
+// response. The bulk of the work is delegated to the domain.Describable
+// contract: any *Err* type or sentinel from internal/domain flows through
+// kindToHTTPStatus + Reason(). The few branches below handle errors that
+// are not domain Describables — the leader-discovery sentinel from
+// commonpb and the generic NotFoundError used by route lookups.
 func handleError(w http.ResponseWriter, r *http.Request, err error) {
-	for _, m := range httpErrorMappings {
-		if m.match(err) {
-			if m.headerFn != nil {
-				m.headerFn(w)
-			}
+	// commonpb.ErrNoLeader carries its own retry hint (Retry-After) — keep
+	// the dedicated branch so the response shape stays stable for clients
+	// that have been told to honour it.
+	if errors.Is(err, commonpb.ErrNoLeader) {
+		w.Header().Set("Retry-After", "1")
+		writeErrorResponse(w, http.StatusServiceUnavailable, "NO_LEADER", err)
 
-			writeErrorResponse(w, m.statusCode, m.errorCode, err)
+		return
+	}
 
-			return
-		}
+	var notFoundErr *commonpb.NotFoundError
+	if errors.As(err, &notFoundErr) {
+		writeErrorResponse(w, http.StatusNotFound, "NOT_FOUND", err)
+
+		return
+	}
+
+	// Domain Describables: every typed *Err* and sentinel in internal/domain
+	// (and transitively in admission/numscript) flows through this branch.
+	// Catches BusinessError too (it implements Describable transparently).
+	var d domain.Describable
+	if errors.As(err, &d) {
+		writeErrorResponse(w, kindToHTTPStatus(d.Kind()), d.Reason(), err)
+
+		return
 	}
 
 	writeInternalServerError(w, r, err)

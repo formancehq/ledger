@@ -259,7 +259,7 @@ func TestBusinessErrorToGRPCStatus_ValidationErrors(t *testing.T) {
 
 	tests := []struct {
 		name string
-		err  error
+		err  domain.Describable
 	}{
 		{"target required", domain.ErrTargetRequired},
 		{"metadata key required", domain.ErrMetadataKeyRequired},
@@ -383,7 +383,7 @@ func TestBusinessErrorToGRPCStatus_PeriodNotClosing(t *testing.T) {
 func TestBusinessErrorToGRPCStatus_InvalidReceipt(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &domain.BusinessError{Err: &domain.ErrInvalidReceipt{Reason: "bad signature"}}
+	bizErr := &domain.BusinessError{Err: &domain.ErrInvalidReceipt{Detail: "bad signature"}}
 	st := businessErrorToGRPCStatus(bizErr)
 
 	require.Equal(t, codes.InvalidArgument, st.Code())
@@ -434,18 +434,6 @@ func TestBusinessErrorToGRPCStatus_AccountNotMatchingType(t *testing.T) {
 	require.Equal(t, domain.ErrReasonAccountNotMatchingType, info.GetReason())
 	require.Equal(t, errorDomain, info.GetDomain())
 	require.Equal(t, "invalid:addr:here", info.GetMetadata()["address"])
-}
-
-func TestBusinessErrorToGRPCStatus_UnknownError(t *testing.T) {
-	t.Parallel()
-
-	bizErr := &domain.BusinessError{Err: errors.New("something unexpected")}
-	st := businessErrorToGRPCStatus(bizErr)
-
-	require.Equal(t, codes.Internal, st.Code())
-	require.Contains(t, st.Message(), "something unexpected")
-	// Default case has no ErrorInfo details
-	require.Empty(t, st.Details())
 }
 
 func TestConvertToGRPCError_BusinessError(t *testing.T) {

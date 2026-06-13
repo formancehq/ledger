@@ -665,7 +665,7 @@ func (b *WriteSet) PutVolume(key domain.VolumeKey, value *raftcmdpb.VolumePair) 
 // the account) are exempt: partitionVolumes routes those batches to the ephemeral-
 // mirror lifecycle (kept while unbalanced, purged once the running cumulative
 // returns to zero), so a balance check here would double-up with that flow.
-func (b *WriteSet) ValidateTransientVolumes() error {
+func (b *WriteSet) ValidateTransientVolumes() domain.Describable {
 	ledgerTypes := make(map[uint32][]accounttype.CompiledType)
 
 	for key, vol := range b.Derived.Volumes.DirtyValues() {

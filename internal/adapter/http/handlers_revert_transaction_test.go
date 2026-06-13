@@ -75,7 +75,7 @@ func TestHandleRevertTransaction_AlreadyReverted(t *testing.T) {
 
 	require.Equal(t, http.StatusConflict, w.Code)
 	resp := decodeResponse[ErrorResponse](t, w)
-	require.Equal(t, "CONFLICT", resp.ErrorCode)
+	require.Equal(t, "TRANSACTION_ALREADY_REVERTED", resp.ErrorCode)
 }
 
 func TestHandleRevertTransaction_InvalidTxID(t *testing.T) {
