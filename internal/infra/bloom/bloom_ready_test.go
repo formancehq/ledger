@@ -25,7 +25,7 @@ func addKey(t *testing.T, fs *FilterSet, key []byte) {
 		t.Fatalf("Volume filter is nil — bloom config mismatch")
 	}
 
-	f.Add(attributes.HashU128(attributes.DefaultSeeds, key))
+	f.Add(attributes.HashU128(key))
 }
 
 func bloomCfg() *commonpb.ClusterConfig {
@@ -47,7 +47,7 @@ func TestFilterSet_SnapshotPairsReadyAndFilters(t *testing.T) {
 	require.NotNil(t, fs)
 
 	keyBytes := []byte("ledger-1")
-	id := attributes.HashU128(attributes.DefaultSeeds, keyBytes)
+	id := attributes.HashU128(keyBytes)
 
 	addKey(t, fs, keyBytes)
 	fs.SetReady(true)
@@ -115,7 +115,7 @@ func TestFilterSet_NoReadyWithEmptyFilterUnderContention(t *testing.T) {
 	require.NotNil(t, fs)
 
 	keyBytes := []byte("ledger-canary")
-	id := attributes.HashU128(attributes.DefaultSeeds, keyBytes)
+	id := attributes.HashU128(keyBytes)
 
 	// Initial state: populated + ready.
 	addKey(t, fs, keyBytes)

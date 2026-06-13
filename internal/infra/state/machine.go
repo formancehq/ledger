@@ -62,7 +62,8 @@ type Machine struct {
 	queryCheckpointSchedule        string
 	queryCheckpointScheduleChanged signal.Signal
 	lastAuditHash                  []byte
-	hashAlgorithm                  commonpb.HashAlgorithm
+	hashGenerator                  processing.HashGenerator
+	clusterID                      string
 	auditHashBuf                   []byte
 
 	lastAppliedIndex     uint64
@@ -157,7 +158,7 @@ type Machine struct {
 	publishSeq uint64
 }
 
-func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, numscriptCacheSize int, sentinelMode bool, idempotencyTTLMicros uint64) (*Machine, error) {
+func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, clusterID string, numscriptCacheSize int, sentinelMode bool, idempotencyTTLMicros uint64) (*Machine, error) {
 	logsAppendedCounter, err := meter.Int64Counter(
 		"raft.fsm.logs_appended",
 		metric.WithDescription("Total number of logs appended to the store. Use rate() to get logs per second."),
@@ -219,6 +220,8 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		metadataConvertRequestCh:       worker.NewChannel[MetadataConvertRequest](logger, "metadata conversion request", 16),
 		coldCompactionCh:               make(chan struct{}, 1),
 		auditHashBuf:                   make([]byte, 0, 4096),
+		hashGenerator:                  processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, clusterID),
+		clusterID:                      clusterID,
 	}
 	fsm.appliedCond = sync.NewCond(&fsm.appliedMu)
 	fsm.cacheSnapshotter = NewCacheSnapshotter(logger, dataStore, fsm.Registry, bloomFilters)
@@ -417,7 +420,7 @@ func (fsm *Machine) RecoverState() error {
 		}
 
 		fsm.Registry.Cache.SetEpoch(persistedEpoch)
-		fsm.hashAlgorithm = clusterState.GetConfig().GetHashAlgorithm()
+		fsm.hashGenerator = processing.NewHashGenerator(clusterState.GetConfig().GetHashAlgorithm(), fsm.clusterID)
 	}
 
 	// Rebuild the idempotency bridge from Pebble. Without this, a node that
@@ -1257,7 +1260,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// Compute audit hash synchronously. The hash covers the orders (source of
 	// truth), not the logs (deterministic derivation).
 	var auditHash []byte
-	fsm.auditHashBuf, auditHash = processing.ComputeAuditHash(fsm.hashAlgorithm, fsm.auditHashBuf, fsm.lastAuditHash, orders)
+	fsm.auditHashBuf, auditHash = fsm.hashGenerator.Compute(fsm.auditHashBuf, fsm.lastAuditHash, orders)
 
 	// Helper to build and write the audit entry (shared by success and failure paths).
 	writeAuditEntry := func(entry *auditpb.AuditEntry, logs []*raftcmdpb.CreatedLogOrReference, label string) error {
@@ -1267,7 +1270,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		entry.OrderCount = uint32(len(orders))
 		entry.Ledgers = extractLedgers(orders)
 		entry.Hash = auditHash
-		entry.HashVersion = uint32(fsm.hashAlgorithm)
+		entry.HashVersion = uint32(fsm.hashGenerator.Algorithm())
 		entry.CallerSnapshot = proposal.GetCallerSnapshot()
 		fsm.lastAuditHash = entry.GetHash()
 		fsm.nextAuditSequenceID++

@@ -24,7 +24,7 @@ var benchInputs = [][]byte{
 // --- XXH3 (current implementation via KeyHasher) ---
 
 func BenchmarkXXH3_MakeKey(b *testing.B) {
-	kh := NewKeyHasher(DefaultSeeds)
+	kh := NewKeyHasher()
 
 	for _, input := range benchInputs {
 		b.Run(fmt.Sprintf("len=%d", len(input)), func(b *testing.B) {
@@ -144,7 +144,7 @@ func BenchmarkHashComparison(b *testing.B) {
 	input := []byte("platform:region-eu:merchant-42:wallets:main")
 
 	b.Run("XXH3_Current", func(b *testing.B) {
-		kh := NewKeyHasher(DefaultSeeds)
+		kh := NewKeyHasher()
 		for b.Loop() {
 			kh.MakeKey(input)
 		}

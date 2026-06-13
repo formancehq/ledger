@@ -38,7 +38,7 @@ func newTestMachineWithThreshold(t *testing.T, generationThreshold uint64) (*Mac
 	c, err := cache.New(generationThreshold, meter)
 	require.NoError(t, err)
 
-	machine, err := NewMachine(logger, dataStore, meter, c, attrs, keystore.NewKeyStore(), NewSharedState(), noopNotifier{}, nil, 0, false, 0)
+	machine, err := NewMachine(logger, dataStore, meter, c, attrs, keystore.NewKeyStore(), NewSharedState(), noopNotifier{}, nil, "test-cluster", 0, false, 0)
 	require.NoError(t, err)
 
 	return machine, dataStore, attrs
@@ -108,7 +108,7 @@ func buildVolumePreloads(orders []*raftcmdpb.Order, ledgerID uint32) []*raftcmdp
 					AccountKey: domain.AccountKey{LedgerID: ledgerID, Account: account},
 					Asset:      p.GetAsset(),
 				}
-				id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey.Bytes())
+				id, tag := attributes.MakeKey(canonicalKey.Bytes())
 
 				preloads = append(preloads, &raftcmdpb.Preload{
 					Type: &raftcmdpb.Preload_Volume{
@@ -525,7 +525,7 @@ func TestNextLedgerIDRecovery(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create first machine and 3 ledgers.
-	machine1, err := NewMachine(logger, dataStore, meter, c, attrs, keystore.NewKeyStore(), NewSharedState(), noopNotifier{}, nil, 0, false, 0)
+	machine1, err := NewMachine(logger, dataStore, meter, c, attrs, keystore.NewKeyStore(), NewSharedState(), noopNotifier{}, nil, "test-cluster", 0, false, 0)
 	require.NoError(t, err)
 
 	result, err := machine1.ApplyEntries(ctx,
@@ -558,7 +558,7 @@ func TestNextLedgerIDRecovery(t *testing.T) {
 
 	attrs2 := attributes.New()
 
-	machine2, err := NewMachine(logger, dataStore, meter, c2, attrs2, keystore.NewKeyStore(), NewSharedState(), noopNotifier{}, nil, 0, false, 0)
+	machine2, err := NewMachine(logger, dataStore, meter, c2, attrs2, keystore.NewKeyStore(), NewSharedState(), noopNotifier{}, nil, "test-cluster", 0, false, 0)
 	require.NoError(t, err)
 
 	// The recovered machine should have nextLedgerID = 4.

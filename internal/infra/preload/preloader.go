@@ -117,7 +117,7 @@ func (p *Preloader) Loaders() *Loaders {
 // Returns (0, false) if the ledger does not exist.
 func (p *Preloader) ResolveLedgerID(name string) (uint32, bool) {
 	canonical := domain.LedgerKey{Name: name}.Bytes()
-	id, _ := attributes.MakeKey(attributes.DefaultSeeds, canonical)
+	id, _ := attributes.MakeKey(canonical)
 
 	// 1. Bloom filter: if definitely absent, skip. Use the IsReady-guarded
 	// helper — the raw FilterForAttrType returns the (still-empty) filter

@@ -109,7 +109,7 @@ func runCacheStats(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	// Find volume keys in attributes but missing from BOTH cache gens
-	hasher := attributes.NewKeyHasher(attributes.DefaultSeeds)
+	hasher := attributes.NewKeyHasher()
 	missing := findVolumesNotInCache(db, dal.SubAttrVolume, gen0Byte, gen1Byte, hasher)
 
 	fmt.Printf("Volume keys in attributes but NOT in cache (either gen): %d\n", len(missing))

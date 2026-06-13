@@ -207,7 +207,7 @@ func TestResolveLedgerID(t *testing.T) {
 	require.Equal(t, uint32(42), id)
 
 	// 3. Populate the cache with the LedgerInfo entry and verify cache hit.
-	attrID, _ := attributes.MakeKey(attributes.DefaultSeeds, canonical)
+	attrID, _ := attributes.MakeKey(canonical)
 	c.Ledgers.Put(attrID, attributes.Entry[*commonpb.LedgerInfo]{Data: ledgerInfo})
 
 	id, ok = p.ResolveLedgerID("test")

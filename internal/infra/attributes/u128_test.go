@@ -175,27 +175,16 @@ func TestHashU128(t *testing.T) {
 		t.Parallel()
 
 		input := []byte("platform:region-eu:merchant-42:wallets:main")
-		h1 := HashU128(DefaultSeeds, input)
-		h2 := HashU128(DefaultSeeds, input)
+		h1 := HashU128(input)
+		h2 := HashU128(input)
 		require.Equal(t, h1, h2)
 	})
 
 	t.Run("different inputs produce different hashes", func(t *testing.T) {
 		t.Parallel()
 
-		h1 := HashU128(DefaultSeeds, []byte("input-a"))
-		h2 := HashU128(DefaultSeeds, []byte("input-b"))
-		require.False(t, h1.Equal(h2))
-	})
-
-	t.Run("different seeds produce different hashes", func(t *testing.T) {
-		t.Parallel()
-
-		seedsA := DeriveSeeds([32]byte{1})
-		seedsB := DeriveSeeds([32]byte{2})
-		input := []byte("same-input")
-		h1 := HashU128(seedsA, input)
-		h2 := HashU128(seedsB, input)
+		h1 := HashU128([]byte("input-a"))
+		h2 := HashU128([]byte("input-b"))
 		require.False(t, h1.Equal(h2))
 	})
 }
@@ -207,16 +196,16 @@ func TestTag64(t *testing.T) {
 		t.Parallel()
 
 		input := []byte("test-input")
-		tag1 := Tag64(DefaultSeeds, input)
-		tag2 := Tag64(DefaultSeeds, input)
+		tag1 := Tag64(input)
+		tag2 := Tag64(input)
 		require.Equal(t, tag1, tag2)
 	})
 
 	t.Run("different inputs produce different tags", func(t *testing.T) {
 		t.Parallel()
 
-		tag1 := Tag64(DefaultSeeds, []byte("input-x"))
-		tag2 := Tag64(DefaultSeeds, []byte("input-y"))
+		tag1 := Tag64([]byte("input-x"))
+		tag2 := Tag64([]byte("input-y"))
 		require.NotEqual(t, tag1, tag2)
 	})
 }
@@ -228,53 +217,22 @@ func TestMakeKey(t *testing.T) {
 		t.Parallel()
 
 		input := []byte("test-key")
-		id, tag := MakeKey(DefaultSeeds, input)
+		id, tag := MakeKey(input)
 
 		// Verify consistency with individual functions
-		expectedID := HashU128(DefaultSeeds, input)
-		expectedTag := Tag64(DefaultSeeds, input)
+		expectedID := HashU128(input)
+		expectedTag := Tag64(input)
 
 		require.Equal(t, expectedID, id)
 		require.Equal(t, expectedTag, tag)
 	})
 
-	t.Run("id and tag are independent", func(t *testing.T) {
+	t.Run("id and tag are non-zero on real input", func(t *testing.T) {
 		t.Parallel()
-		// Different seeds for ID and tag means they should not be trivially related
-		input := []byte("check-independence")
-		id, tag := MakeKey(DefaultSeeds, input)
-		// Verify neither is zero (extremely unlikely with real hashing)
+
+		input := []byte("check-non-zero")
+		id, tag := MakeKey(input)
 		require.NotEqual(t, U128{}, id)
 		require.NotEqual(t, uint64(0), tag)
-	})
-}
-
-func TestDeriveSeeds(t *testing.T) {
-	t.Parallel()
-
-	t.Run("deterministic", func(t *testing.T) {
-		t.Parallel()
-
-		key := [32]byte{0x42}
-		s1 := DeriveSeeds(key)
-		s2 := DeriveSeeds(key)
-		require.Equal(t, s1.IDSeed, s2.IDSeed)
-		require.Equal(t, s1.TagSeed, s2.TagSeed)
-	})
-
-	t.Run("different keys produce different seeds", func(t *testing.T) {
-		t.Parallel()
-
-		s1 := DeriveSeeds([32]byte{1})
-		s2 := DeriveSeeds([32]byte{2})
-		require.NotEqual(t, s1.IDSeed, s2.IDSeed)
-		require.NotEqual(t, s1.TagSeed, s2.TagSeed)
-	})
-
-	t.Run("id and tag seeds are different", func(t *testing.T) {
-		t.Parallel()
-
-		s := DeriveSeeds([32]byte{0xFF})
-		require.NotEqual(t, s.IDSeed, s.TagSeed)
 	})
 }

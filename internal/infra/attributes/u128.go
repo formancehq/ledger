@@ -56,20 +56,24 @@ func (u U128) Hex() string {
 // Equal returns true if u and v are equal.
 func (u U128) Equal(v U128) bool { return u == v }
 
-// HashU128 computes a deterministic 128-bit ID from canonical bytes using XXH3-128.
-func HashU128(seeds Seeds, canonical []byte) U128 {
-	u := xxh3.Hash128Seed(canonical, seeds.IDSeed)
+// HashU128 computes a deterministic 128-bit ID from canonical bytes using
+// unseeded XXH3-128. Cache U128 keys and bloom bit positions do not need
+// a per-cluster key — the audit hash chain (processing.HashGenerator) is
+// the only structure where forgery-resistance matters.
+func HashU128(canonical []byte) U128 {
+	u := xxh3.Hash128(canonical)
 
 	return NewU128(u.Hi, u.Lo)
 }
 
-// Tag64 computes a secondary fingerprint from canonical bytes using XXH3-64.
-// It is used to detect rare collisions locally without storing original keys.
-func Tag64(seeds Seeds, canonical []byte) uint64 {
-	return xxh3.HashSeed(canonical, seeds.TagSeed)
+// Tag64 computes a secondary fingerprint from canonical bytes using
+// unseeded XXH3-64. Used to detect rare U128 collisions locally without
+// storing original keys.
+func Tag64(canonical []byte) uint64 {
+	return xxh3.Hash(canonical)
 }
 
 // MakeKey returns (u128, tag64) from canonical bytes.
-func MakeKey(seeds Seeds, canonical []byte) (U128, uint64) {
-	return HashU128(seeds, canonical), Tag64(seeds, canonical)
+func MakeKey(canonical []byte) (U128, uint64) {
+	return HashU128(canonical), Tag64(canonical)
 }

@@ -124,7 +124,7 @@ func TestCacheCoherenceAfterRestart(t *testing.T) {
 func logCacheState(t *testing.T, machine *Machine, store *dal.Store, attrs *attributes.Attributes) {
 	t.Helper()
 
-	hasher := attributes.NewKeyHasher(attributes.DefaultSeeds)
+	hasher := attributes.NewKeyHasher()
 
 	handle, err := store.NewDirectReadHandle()
 	require.NoError(t, err)

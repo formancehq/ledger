@@ -550,7 +550,7 @@ func (fs *FilterSet) PopulateFromStore(ctx context.Context, store dal.PebbleRead
 		}
 
 		canonicalKey := attributes.CanonicalKeyFromPebbleKey(pebbleKey)
-		id := attributes.HashU128(attributes.DefaultSeeds, canonicalKey)
+		id := attributes.HashU128(canonicalKey)
 		f.Add(id)
 	}
 

@@ -599,6 +599,41 @@ The server persists critical configuration parameters in Pebble under the Global
 
 Use `--unsafe-skip-config-validation` to bypass safety checks for `node-id`, `cluster-id`, and `idempotency-ttl` mismatches and overwrite the persisted config. **Use only for intentional migrations.** Note that `storage-schema-version` mismatches are never bypassable. See [CLI Reference](./cli.md) for flag documentation.
 
+### Upgrading from pre-#400 clusters
+
+This refactor changes two things that are not backward-compatible with persisted state from older binaries:
+
+- The **attribute hash scheme** moves from seeded XXH3 (`DefaultSeeds`) to unseeded XXH3. Persisted cache U128 keys (zone `0xFF`) and persisted bloom blocks were computed under the old hash, so they no longer match the IDs the new binary computes for the same canonical inputs.
+- The **audit hash chain** moves from an unkeyed hash to one keyed by a value derived from the immutable `cluster-id` (`processing.HashGenerator`). Audit entries written by the old binary become unverifiable under the new scheme.
+
+The service is not yet stable, so this break is accepted instead of adding migration code. **The only supported upgrade path is a full data wipe**:
+
+1. Drain the cluster.
+2. Delete the Pebble data directory on every node.
+3. Redeploy with the new binary and restore from your source-of-truth state (e.g. replay logs from a trusted upstream).
+
+Trying to keep existing Pebble data and upgrade in-place is **unsafe**:
+
+- The cache zone `0xFF` produces no correctness issue on its own (zombies miss → fall through to zone `0xF1` keyed by canonical bytes), but stays bloated with unreachable entries until gen0 → gen1 rotation evicts them.
+- Persisted bloom blocks are loaded as-is by `cache_snapshotter.restoreBloomFilters` with no scheme-change detection. Lookups under the new hash produce systematic false negatives → `preload/resolve.go` injects a zero balance for accounts that actually have one → silent corruption replicated via Raft.
+- The audit checker will report `HASH_MISMATCH` on every pre-upgrade entry.
+
+Mixed-binary rolling upgrades are **not supported** across this change. Stop all nodes before deploying the new binary.
+
+### Audit hash keying — threat model
+
+The audit hash chain (`processing.HashGenerator`) is keyed by a value derived from the immutable `cluster-id`. This is **defense in depth against offline grinding from outside the cluster boundary**, not a tamper-evidence guarantee against an attacker with persisted-store access.
+
+What the keying protects against:
+
+- An external actor with public-API access (or read access to canonical inputs like account names, metadata keys, references) cannot grind XXH3 collisions to fabricate audit entries that hash identically to legitimate ones — they would first need to learn the `cluster-id`, which is not exposed on public surfaces.
+
+What the keying does **not** protect against:
+
+- An attacker who has obtained the persisted Pebble store (a leaked backup, a compromised node, a malicious operator) can read the `cluster-id` directly from `PersistedConfig` and recompute the entire chain after modifying orders. The keying buys nothing in that scenario.
+
+If true tamper-evidence is required (e.g., regulated audit log integrity, third-party verification of leaked backups), configure the cluster's `HashAlgorithm` to `BLAKE3` instead of `XXH3`. BLAKE3 is collision-resistant by construction, so an attacker cannot replace orders with crafted inputs that hash to the same value — but the chain itself can still be replayed from any tampered point onward unless the key is moved to an out-of-store trust anchor (HSM, environment variable, external secret). That move is out of scope for this PoC.
+
 ## Scaling
 
 ### Horizontal Scaling

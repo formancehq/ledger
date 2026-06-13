@@ -61,7 +61,7 @@ func resolveAttributePreload[K interface {
 
 	for key := range keys {
 		canonicalKey := key.Bytes()
-		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
+		id, tag := attributes.MakeKey(canonicalKey)
 
 		switch attrCache.CheckCache(nextIndex, id) {
 		case cache.CacheGuaranteed:

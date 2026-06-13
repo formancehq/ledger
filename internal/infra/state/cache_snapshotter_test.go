@@ -143,7 +143,7 @@ func TestCacheSnapshotter_PersistAndRestoreVolumes(t *testing.T) {
 
 	// Populate cache with volume data in gen0
 	volumeKey := newVolumeKey(domain.AccountKey{LedgerID: 1, Account: "bank"}, "USD")
-	u128 := attributes.HashU128(attributes.DefaultSeeds, volumeKey.Bytes())
+	u128 := attributes.HashU128(volumeKey.Bytes())
 	pair := &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(100),
 		Output: commonpb.NewUint256FromUint64(50),
@@ -180,7 +180,7 @@ func TestCacheSnapshotter_PersistAndRestoreMetadata(t *testing.T) {
 
 	// Populate cache with metadata in gen0
 	metaKey := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "bank"}, Key: "label"}
-	u128 := attributes.HashU128(attributes.DefaultSeeds, metaKey.Bytes())
+	u128 := attributes.HashU128(metaKey.Bytes())
 	metaValue := commonpb.NewStringValue("test-value")
 	registry.Cache.AccountMetadata.Gen0().Put(u128, attributes.Entry[*commonpb.MetadataValue]{
 		Tag: 2, Data: metaValue,
@@ -205,7 +205,7 @@ func TestCacheSnapshotter_PersistAndRestoreLedgers(t *testing.T) {
 
 	// Populate cache with ledger info in gen0
 	ledgerKey := domain.LedgerKey{Name: "my-ledger"}
-	u128 := attributes.HashU128(attributes.DefaultSeeds, ledgerKey.Bytes())
+	u128 := attributes.HashU128(ledgerKey.Bytes())
 	ledgerInfo := &commonpb.LedgerInfo{Name: "my-ledger"}
 	registry.Cache.Ledgers.Gen0().Put(u128, attributes.Entry[*commonpb.LedgerInfo]{
 		Tag: 3, Data: ledgerInfo,
@@ -245,7 +245,7 @@ func TestCacheSnapshotter_PersistAndRestoreBothGenerations(t *testing.T) {
 
 	// Populate gen0 with a volume
 	volKey0 := newVolumeKey(domain.AccountKey{LedgerID: 1, Account: "alice"}, "USD")
-	u128_0 := attributes.HashU128(attributes.DefaultSeeds, volKey0.Bytes())
+	u128_0 := attributes.HashU128(volKey0.Bytes())
 	registry.Cache.Volumes.Gen0().Put(u128_0, attributes.Entry[*raftcmdpb.VolumePair]{
 		Tag: 1, Data: &raftcmdpb.VolumePair{
 			Input:  commonpb.NewUint256FromUint64(200),
@@ -255,7 +255,7 @@ func TestCacheSnapshotter_PersistAndRestoreBothGenerations(t *testing.T) {
 
 	// Populate gen1 with a different volume
 	volKey1 := newVolumeKey(domain.AccountKey{LedgerID: 1, Account: "bob"}, "EUR")
-	u128_1 := attributes.HashU128(attributes.DefaultSeeds, volKey1.Bytes())
+	u128_1 := attributes.HashU128(volKey1.Bytes())
 	registry.Cache.Volumes.Gen1().Put(u128_1, attributes.Entry[*raftcmdpb.VolumePair]{
 		Tag: 2, Data: &raftcmdpb.VolumePair{
 			Input:  commonpb.NewUint256FromUint64(0),
@@ -358,7 +358,7 @@ func TestCacheSnapshotter_PersistAndRestoreReferences(t *testing.T) {
 	snapshotter, _, registry := newTestCacheSnapshotter(t, nil)
 
 	refKey := domain.TransactionReferenceKey{LedgerID: 1, Reference: "ref-1"}
-	u128 := attributes.HashU128(attributes.DefaultSeeds, refKey.Bytes())
+	u128 := attributes.HashU128(refKey.Bytes())
 	value := &commonpb.TransactionReferenceValue{TransactionId: 99}
 	registry.Cache.References.Gen0().Put(u128, attributes.Entry[*commonpb.TransactionReferenceValue]{
 		Tag: 6, Data: value,
@@ -380,7 +380,7 @@ func TestCacheSnapshotter_PersistAndRestoreTransactions(t *testing.T) {
 	snapshotter, _, registry := newTestCacheSnapshotter(t, nil)
 
 	txKey := domain.TransactionKey{LedgerID: 1, ID: 42}
-	u128 := attributes.HashU128(attributes.DefaultSeeds, txKey.Bytes())
+	u128 := attributes.HashU128(txKey.Bytes())
 	value := &commonpb.TransactionState{CreatedByLog: 10, RevertedByTransaction: 5}
 	registry.Cache.Transactions.Gen0().Put(u128, attributes.Entry[*commonpb.TransactionState]{
 		Tag: 7, Data: value,
@@ -404,7 +404,7 @@ func TestCacheSnapshotter_PersistOverwritesPrevious(t *testing.T) {
 
 	// First persist with one volume
 	volKey := newVolumeKey(domain.AccountKey{LedgerID: 1, Account: "alice"}, "USD")
-	u128 := attributes.HashU128(attributes.DefaultSeeds, volKey.Bytes())
+	u128 := attributes.HashU128(volKey.Bytes())
 	registry.Cache.Volumes.Gen0().Put(u128, attributes.Entry[*raftcmdpb.VolumePair]{
 		Tag: 1, Data: &raftcmdpb.VolumePair{
 			Input:  commonpb.NewUint256FromUint64(100),
@@ -465,13 +465,13 @@ func TestCacheSnapshotter_RestorePreRotation(t *testing.T) {
 	const genByte byte = 0
 
 	boundaryKey := domain.LedgerKey{Name: "default"}
-	boundaryU128 := attributes.HashU128(attributes.DefaultSeeds, boundaryKey.Bytes())
+	boundaryU128 := attributes.HashU128(boundaryKey.Bytes())
 	boundaryValue := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1}
 	boundaryBytes, err := boundaryValue.MarshalVT()
 	require.NoError(t, err)
 
 	volKey := newVolumeKey(domain.AccountKey{LedgerID: 1, Account: "world"}, "USD")
-	volU128 := attributes.HashU128(attributes.DefaultSeeds, volKey.Bytes())
+	volU128 := attributes.HashU128(volKey.Bytes())
 	volValue := &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(0),
 		Output: commonpb.NewUint256FromUint64(0),
@@ -516,7 +516,7 @@ func TestCacheSnapshotter_MachineIntegration(t *testing.T) {
 
 	// Populate some data via the machine's registry
 	volKey := newVolumeKey(domain.AccountKey{LedgerID: 1, Account: "alice"}, "USD")
-	u128 := attributes.HashU128(attributes.DefaultSeeds, volKey.Bytes())
+	u128 := attributes.HashU128(volKey.Bytes())
 	machine.Registry.Cache.Volumes.Gen0().Put(u128, attributes.Entry[*raftcmdpb.VolumePair]{
 		Tag: 1, Data: &raftcmdpb.VolumePair{
 			Input:  commonpb.NewUint256FromUint64(100),

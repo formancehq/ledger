@@ -50,7 +50,9 @@ func TestPipelinedApplyWithCheckpointDoesNotDiverge(t *testing.T) {
 
 	machine, err := NewMachine(
 		logger, dataStore, meter, c, attributes.New(),
-		keystore.NewKeyStore(), NewSharedState(), noopNotifier{}, nil, 0,
+		keystore.NewKeyStore(), NewSharedState(), noopNotifier{}, nil,
+		"test-cluster",
+		0,
 		true, // sentinelMode ON — exercises verifyPostCommitVolumes
 		0,
 	)

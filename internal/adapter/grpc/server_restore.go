@@ -203,8 +203,21 @@ func (s *RestoreServiceServerImpl) ValidateRestore(_ *restorepb.ValidateRestoreR
 		return status.Error(codes.FailedPrecondition, "no backup downloaded; download a backup first")
 	}
 
+	// Use the BACKUP's ClusterID (recorded in its PersistedConfig) to recompute
+	// audit hashes, not the local server's clusterID — those may differ when a
+	// backup is staged on a fresh node, and the audit chain was hashed under
+	// the source cluster's key.
+	persisted, err := query.ReadPersistedConfig(store)
+	if err != nil {
+		return status.Errorf(codes.Internal, "reading staged backup config: %v", err)
+	}
+
+	if persisted == nil {
+		return status.Error(codes.FailedPrecondition, "staged backup has no persisted config; cannot validate audit chain")
+	}
+
 	attrs := attributes.New()
-	checker := check.NewChecker(store, attrs, s.logger)
+	checker := check.NewChecker(store, attrs, persisted.GetClusterId(), s.logger)
 
 	return checker.Check(stream.Context(), func(event *servicepb.CheckStoreEvent) {
 		var restoreEvent restorepb.ValidateRestoreEvent

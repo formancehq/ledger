@@ -22,7 +22,7 @@ func newTestKV[V any]() kv.KV[U128, V] {
 }
 
 func newTestKeyStore() *KeyStore[testKey, string] {
-	return NewKeyStore[testKey, string](DefaultSeeds, newTestKV[Entry[string]]())
+	return NewKeyStore[testKey, string](newTestKV[Entry[string]]())
 }
 
 func TestKeyStorePut(t *testing.T) {
@@ -157,7 +157,7 @@ func TestErrCollisionDetected(t *testing.T) {
 func TestKeyHasherMakeKey(t *testing.T) {
 	t.Parallel()
 
-	kh := NewKeyHasher(DefaultSeeds)
+	kh := NewKeyHasher()
 
 	t.Run("deterministic", func(t *testing.T) {
 		t.Parallel()

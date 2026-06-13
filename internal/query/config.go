@@ -40,3 +40,18 @@ func ReadClusterState(reader dal.PebbleGetter) (*commonpb.PersistedClusterState,
 
 	return state, nil
 }
+
+// ReadPersistedConfig loads the persisted node/cluster configuration block
+// from the given reader. Returns nil if the key does not exist (first boot).
+//
+// Lives in this leaf package — rather than internal/bootstrap — so that
+// adapter and CLI code can read ClusterID from an opened store without
+// pulling in the composition root (which would create an import cycle).
+func ReadPersistedConfig(reader dal.PebbleGetter) (*commonpb.PersistedConfig, error) {
+	cfg, err := dal.ReadProto[*commonpb.PersistedConfig](reader, []byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig})
+	if err != nil {
+		return nil, fmt.Errorf("loading persisted config: %w", err)
+	}
+
+	return cfg, nil
+}

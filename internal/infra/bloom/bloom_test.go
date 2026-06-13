@@ -22,7 +22,7 @@ func newTestFilter(t *testing.T) *Filter {
 }
 
 func hashKey(key []byte) attributes.U128 {
-	return attributes.HashU128(attributes.DefaultSeeds, key)
+	return attributes.HashU128(key)
 }
 
 func TestFilter_DirtyTracking(t *testing.T) {

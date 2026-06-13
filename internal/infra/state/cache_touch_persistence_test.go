@@ -29,7 +29,7 @@ func TestPreload_TouchIsPersistedToCacheZone(t *testing.T) {
 
 	// Pre-touch shape: entry in gen1 in-memory and at 0xFF gen1Byte.
 	ledgerKey := domain.LedgerKey{Name: "gaming"}
-	id := attributes.HashU128(attributes.DefaultSeeds, ledgerKey.Bytes())
+	id := attributes.HashU128(ledgerKey.Bytes())
 	info := &commonpb.LedgerInfo{Name: "gaming"}
 
 	registry.Cache.Ledgers.Gen1().Put(id, attributes.Entry[*commonpb.LedgerInfo]{Tag: 7, Data: info})
@@ -106,7 +106,7 @@ func TestPreload_TouchSkipsWhenGen0HasFreshValue(t *testing.T) {
 	)
 
 	ledgerKey := domain.LedgerKey{Name: "gaming"}
-	id := attributes.HashU128(attributes.DefaultSeeds, ledgerKey.Bytes())
+	id := attributes.HashU128(ledgerKey.Bytes())
 
 	staleInfo := &commonpb.LedgerInfo{Name: "gaming-stale"}
 	freshInfo := &commonpb.LedgerInfo{Name: "gaming-fresh"}
@@ -170,7 +170,7 @@ func TestPreload_FullPreloadSkipsWhenGen0HasFreshValue(t *testing.T) {
 	)
 
 	canonicalKey := []byte("lending\x00disburse_loan\x001.0.0")
-	hash := attributes.HashU128(attributes.DefaultSeeds, canonicalKey)
+	hash := attributes.HashU128(canonicalKey)
 	tag := uint64(42)
 
 	staleInfo := &commonpb.NumscriptInfo{
@@ -257,7 +257,7 @@ func TestPreload_FullPreloadIsPersistedToCacheZone(t *testing.T) {
 	require.NoError(t, persistToStore(machine.cacheSnapshotter))
 
 	canonicalKey := []byte("lending\x00disburse_loan\x001.0.0")
-	hash := attributes.HashU128(attributes.DefaultSeeds, canonicalKey)
+	hash := attributes.HashU128(canonicalKey)
 	tag := uint64(42)
 
 	scriptInfo := &commonpb.NumscriptInfo{

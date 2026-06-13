@@ -1,11 +1,9 @@
 package attributes
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 
-	"github.com/zeebo/blake3"
 	"github.com/zeebo/xxh3"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -30,48 +28,21 @@ func newErrCollisionDetected(bytes []byte, originalTag, newTag uint64) *ErrColli
 	}
 }
 
-// Seeds holds domain-separated XXH3 seeds for ID (128-bit) and Tag (64-bit).
-// Use a single MasterKey (32 bytes) and derive both seeds once at startup.
-type Seeds struct {
-	IDSeed  uint64 // seed for xxh3.Hash128Seed (128-bit ID)
-	TagSeed uint64 // seed for xxh3.HashSeed (64-bit collision tag)
-}
+// KeyHasher computes (U128, tag64) from canonical bytes using unseeded XXH3.
+// The cache U128 layer does not need per-cluster keying — see
+// processing.HashGenerator for the structure that does.
+type KeyHasher struct{}
 
-var DefaultSeeds = DeriveSeeds([32]byte{
-	0x3C, 0x3C, 0x69, 0x66, 0x79, 0x6F, 0x75, 0x72,
-	0x65, 0x61, 0x64, 0x74, 0x68, 0x69, 0x73, 0x79,
-	0x6F, 0x75, 0x66, 0x6F, 0x75, 0x6E, 0x64, 0x61,
-	0x73, 0x65, 0x63, 0x72, 0x65, 0x74, 0x3E, 0x3E,
-})
-
-// DeriveSeeds derives two independent uint64 seeds from a single master key
-// using domain-separated BLAKE3. MasterKey MUST be 32 bytes.
-func DeriveSeeds(masterKey [32]byte) Seeds {
-	idHash := blake3.Sum256(append([]byte("attrid:v1:id128:"), masterKey[:]...))
-	tagHash := blake3.Sum256(append([]byte("attrid:v1:tag64:"), masterKey[:]...))
-
-	return Seeds{
-		IDSeed:  binary.LittleEndian.Uint64(idHash[:8]),
-		TagSeed: binary.LittleEndian.Uint64(tagHash[:8]),
-	}
-}
-
-// KeyHasher provides efficient hashing using XXH3.
-// XXH3 functions are stateless, so no mutex or pre-allocated buffers are needed.
-type KeyHasher struct {
-	seeds Seeds
-}
-
-// NewKeyHasher creates a new KeyHasher with the given seeds.
-func NewKeyHasher(seeds Seeds) *KeyHasher {
-	return &KeyHasher{seeds: seeds}
+// NewKeyHasher creates a new KeyHasher.
+func NewKeyHasher() *KeyHasher {
+	return &KeyHasher{}
 }
 
 // MakeKey computes (U128, tag64) from canonical bytes using XXH3.
 // Lock-free: XXH3 functions are stateless.
 func (kh *KeyHasher) MakeKey(canonical []byte) (U128, uint64) {
-	u := xxh3.Hash128Seed(canonical, kh.seeds.IDSeed)
-	tag := xxh3.HashSeed(canonical, kh.seeds.TagSeed)
+	u := xxh3.Hash128(canonical)
+	tag := xxh3.Hash(canonical)
 
 	return NewU128(u.Hi, u.Lo), tag
 }
@@ -84,9 +55,9 @@ type KeyStore[K Key, T any] struct {
 	scratch []byte // reusable buffer for GetKey — single-goroutine use only
 }
 
-func NewKeyStore[K Key, T any](seeds Seeds, m kv.KV[U128, Entry[T]]) *KeyStore[K, T] {
+func NewKeyStore[K Key, T any](m kv.KV[U128, Entry[T]]) *KeyStore[K, T] {
 	return &KeyStore[K, T]{
-		hasher: NewKeyHasher(seeds),
+		hasher: NewKeyHasher(),
 		M:      m,
 	}
 }

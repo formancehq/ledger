@@ -35,17 +35,22 @@ const progressInterval = 100
 
 // Checker verifies store integrity by replaying logs and comparing derived state.
 type Checker struct {
-	store  *dal.Store
-	attrs  *attributes.Attributes
-	logger logging.Logger
+	store     *dal.Store
+	attrs     *attributes.Attributes
+	logger    logging.Logger
+	clusterID string
 }
 
-// NewChecker creates a new Checker.
-func NewChecker(store *dal.Store, attrs *attributes.Attributes, logger logging.Logger) *Checker {
+// NewChecker creates a new Checker. clusterID is used to derive the
+// per-cluster key for verifying audit-hash chain entries — it must match
+// the value the FSM used when writing those entries (enforced via
+// PersistedConfig immutability).
+func NewChecker(store *dal.Store, attrs *attributes.Attributes, clusterID string, logger logging.Logger) *Checker {
 	return &Checker{
-		store:  store,
-		attrs:  attrs,
-		logger: logger,
+		store:     store,
+		attrs:     attrs,
+		logger:    logger,
+		clusterID: clusterID,
 	}
 }
 
@@ -1113,9 +1118,10 @@ func (c *Checker) verifyAuditHashChain(
 	defer func() { _ = auditCursor.Close() }()
 
 	var (
-		lastHash = archiveLastAuditHash
-		hashBuf  []byte
-		checked  uint64
+		lastHash   = archiveLastAuditHash
+		hashBuf    []byte
+		checked    uint64
+		generators = make(map[uint32]processing.HashGenerator, 2)
 	)
 
 	for {
@@ -1144,11 +1150,18 @@ func (c *Checker) verifyAuditHashChain(
 			orders[i] = item.GetOrder()
 		}
 
-		// Recompute the hash using the stored algorithm version.
+		// Recompute the hash using a generator matching the entry's stored
+		// algorithm version. Lazily cached per version (~2 entries max).
+		version := entry.GetHashVersion()
+
+		gen, ok := generators[version]
+		if !ok {
+			gen = processing.NewHashGenerator(commonpb.HashAlgorithm(version), c.clusterID)
+			generators[version] = gen
+		}
+
 		var computed []byte
-		hashBuf, computed = processing.ComputeAuditHashByVersion(
-			entry.GetHashVersion(), hashBuf, lastHash, orders,
-		)
+		hashBuf, computed = gen.Compute(hashBuf, lastHash, orders)
 
 		if !bytes.Equal(computed, entry.GetHash()) {
 			callback(errorEvent(

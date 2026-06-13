@@ -155,7 +155,10 @@ func (fsm *Machine) applyClusterConfig(batch *dal.Batch, raftIndex uint64, cfg *
 		return fmt.Errorf("saving cluster state: %w", err)
 	}
 
-	fsm.hashAlgorithm = cfg.GetHashAlgorithm()
+	if cfg.GetHashAlgorithm() != fsm.hashGenerator.Algorithm() {
+		fsm.hashGenerator = processing.NewHashGenerator(cfg.GetHashAlgorithm(), fsm.clusterID)
+	}
+
 	fsm.lastClusterConfig = cfg
 
 	return nil

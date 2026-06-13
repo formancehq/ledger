@@ -44,6 +44,7 @@ type testEngine struct {
 	attrs     *attributes.Attributes
 	processor *processing.RequestProcessor
 	cache     *cache.Cache
+	clusterID string
 
 	// In-memory state tracking (mirroring the state machine)
 	nextSequenceID         uint64
@@ -84,6 +85,7 @@ func newTestEngine(t *testing.T) *testEngine {
 		attrs:               attrs,
 		processor:           proc,
 		cache:               c,
+		clusterID:           "test-cluster",
 		nextSequenceID:      1,
 		nextLedgerID:        1,
 		ledgers:             make(map[string]*commonpb.LedgerInfo),
@@ -216,7 +218,8 @@ func (e *testEngine) appendAuditEntry(batch *dal.Batch, proposal *raftcmdpb.Prop
 	e.t.Helper()
 
 	hashAlgorithm := commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3
-	_, auditHash := processing.ComputeAuditHash(hashAlgorithm, nil, e.lastAuditHash, proposal.GetOrders())
+	hashGenerator := processing.NewHashGenerator(hashAlgorithm, e.clusterID)
+	_, auditHash := hashGenerator.Compute(nil, e.lastAuditHash, proposal.GetOrders())
 	minLogSeq, maxLogSeq := testLogSequenceRange(results)
 
 	entry := &auditpb.AuditEntry{
@@ -707,7 +710,7 @@ func deleteAccountMetadataOrder(ledger, account, key string) *raftcmdpb.Order {
 func collectCheckErrors(t *testing.T, store *dal.Store, attrs *attributes.Attributes) []*servicepb.CheckStoreError {
 	t.Helper()
 
-	checker := NewChecker(store, attrs, logging.Testing())
+	checker := NewChecker(store, attrs, "test-cluster", logging.Testing())
 
 	var errors []*servicepb.CheckStoreError
 
@@ -981,7 +984,7 @@ func TestCheckerProgressEvents(t *testing.T) {
 		))
 	}
 
-	checker := NewChecker(engine.store, engine.attrs, logging.Testing())
+	checker := NewChecker(engine.store, engine.attrs, engine.clusterID, logging.Testing())
 
 	var progressEvents []*servicepb.CheckStoreProgress
 
@@ -1318,7 +1321,7 @@ func TestCheckerSurfacesCorruptAuditEntry(t *testing.T) {
 	require.NoError(t, batch.SetBytes(auditKey, []byte{0xFF, 0xFF, 0xFF, 0xFF}))
 	require.NoError(t, batch.Commit())
 
-	checker := NewChecker(engine.store, engine.attrs, logging.Testing())
+	checker := NewChecker(engine.store, engine.attrs, engine.clusterID, logging.Testing())
 	err := checker.Check(context.Background(), func(_ *servicepb.CheckStoreEvent) {})
 
 	// Before the fix: Check returned nil; the cursor break swallowed the

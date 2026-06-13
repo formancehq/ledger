@@ -416,8 +416,17 @@ func runBootstrapValidation(ctx context.Context, stagingDir string, logger loggi
 
 	defer func() { _ = store.Close() }()
 
+	persisted, err := query.ReadPersistedConfig(store)
+	if err != nil {
+		return fmt.Errorf("loading persisted config from staging store: %w", err)
+	}
+
+	if persisted == nil {
+		return errors.New("staging store has no persisted config; cannot validate audit chain (incomplete or malformed backup?)")
+	}
+
 	attrs := attributes.New()
-	checker := check.NewChecker(store, attrs, logger)
+	checker := check.NewChecker(store, attrs, persisted.GetClusterId(), logger)
 
 	pterm.Info.Println("Validating backup integrity...")
 

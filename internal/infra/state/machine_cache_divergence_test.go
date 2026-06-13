@@ -578,7 +578,7 @@ func buildProposalWithLeaderPreloads(
 		// Check LedgerInfo in leader's cache
 		ledgerKey := domain.LedgerKey{Name: ledger}
 		ledgerCanonical := ledgerKey.Bytes()
-		ledgerU128, ledgerTag := attributes.MakeKey(attributes.DefaultSeeds, ledgerCanonical)
+		ledgerU128, ledgerTag := attributes.MakeKey(ledgerCanonical)
 
 		switch leader.Registry.Cache.Ledgers.CheckCache(nextIndex, ledgerU128) {
 		case cache.CacheGuaranteed:
@@ -631,7 +631,7 @@ func buildProposalWithLeaderPreloads(
 						Asset:      p.GetAsset(),
 					}
 					volCanonical := volKey.Bytes()
-					volU128, volTag := attributes.MakeKey(attributes.DefaultSeeds, volCanonical)
+					volU128, volTag := attributes.MakeKey(volCanonical)
 
 					switch leader.Registry.Cache.Volumes.CheckCache(nextIndex, volU128) {
 					case cache.CacheGuaranteed:
