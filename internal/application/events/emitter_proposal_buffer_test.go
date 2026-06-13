@@ -47,12 +47,12 @@ func TestProposeSinkUpdate_DoesNotMutateEarlierProposalBytes(t *testing.T) {
 	const firstCursor uint64 = 42
 	const secondCursor uint64 = 99
 
-	require.NoError(t, emitter.proposeSinkUpdate(&raftcmdpb.EventsSinkUpdate{
+	require.NoError(t, emitter.proposeSinkUpdate(context.Background(), &raftcmdpb.EventsSinkUpdate{
 		SinkName: "test-sink",
 		Cursor:   firstCursor,
 	}))
 
-	require.NoError(t, emitter.proposeSinkUpdate(&raftcmdpb.EventsSinkUpdate{
+	require.NoError(t, emitter.proposeSinkUpdate(context.Background(), &raftcmdpb.EventsSinkUpdate{
 		SinkName: "test-sink",
 		Cursor:   secondCursor,
 	}))

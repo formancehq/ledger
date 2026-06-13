@@ -1,6 +1,7 @@
 package events
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -14,6 +15,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+const sinkStartupRetryDelay = time.Second
 
 // managedSink holds an emitter and its sink for a named sink configuration.
 type managedSink struct {
@@ -35,6 +38,7 @@ type Manager struct {
 	mu       sync.Mutex
 	isLeader bool
 	emitters map[string]*managedSink
+	retries  map[string]struct{}
 
 	w worker.Worker
 }
@@ -48,6 +52,7 @@ func NewManager(store *dal.Store, attrs *attributes.Attributes, proposer Propose
 		logger:         logger.WithFields(map[string]any{"cmp": "event-manager"}),
 		notifications:  notifications,
 		emitters:       make(map[string]*managedSink),
+		retries:        make(map[string]struct{}),
 	}
 }
 
@@ -154,6 +159,7 @@ func (m *Manager) reconcile() {
 
 		if ms := m.startSink(sc); ms != nil {
 			m.emitters[name] = ms
+			delete(m.retries, name)
 		}
 	}
 
@@ -192,9 +198,57 @@ func (m *Manager) startSink(sc *commonpb.SinkConfig) *managedSink {
 
 	emitter := NewEmitter(m.store, sink, sc.GetName(), m.proposer, m.logger, emitterCfg)
 	emitter.Start()
-	<-emitter.Ready()
+	if err := emitter.WaitStarted(context.Background()); err != nil {
+		m.logger.Errorf("Failed to start sink %q: %v", sc.GetName(), err)
+		emitter.Stop()
+
+		if closeErr := sink.Close(); closeErr != nil {
+			m.logger.Errorf("Failed to close sink %q after startup failure: %v", sc.GetName(), closeErr)
+		}
+
+		m.scheduleStartupRetry(sc.GetName())
+
+		return nil
+	}
 
 	return &managedSink{emitter: emitter, sink: sink, config: sc}
+}
+
+// scheduleStartupRetry triggers a future reconcile for transient startup
+// failures without spinning the notification loop. Must be called under lock.
+func (m *Manager) scheduleStartupRetry(name string) {
+	if _, exists := m.retries[name]; exists {
+		return
+	}
+
+	m.retries[name] = struct{}{}
+	stopCh := m.w.StopCh()
+
+	go func() {
+		timer := time.NewTimer(sinkStartupRetryDelay)
+		defer timer.Stop()
+
+		select {
+		case <-stopCh:
+			return
+		case <-timer.C:
+		}
+
+		m.mu.Lock()
+		if _, pending := m.retries[name]; !pending {
+			m.mu.Unlock()
+
+			return
+		}
+
+		delete(m.retries, name)
+		isLeader := m.isLeader
+		m.mu.Unlock()
+
+		if isLeader {
+			m.notifications.NotifyConfigChanged()
+		}
+	}()
 }
 
 // stopSink stops an emitter and closes its sink.

@@ -39,6 +39,8 @@ type EmitterConfig struct {
 	EventTypes map[commonpb.EventType]struct{} // nil or empty = all events
 }
 
+const deliveredCursorUpdateTimeout = 2 * time.Second
+
 // DefaultEmitterConfig returns the default emitter configuration.
 func DefaultEmitterConfig() EmitterConfig {
 	return EmitterConfig{
@@ -63,9 +65,13 @@ type Emitter struct {
 	cancel  context.CancelFunc
 	stopCh  chan struct{}
 	stopped chan struct{}
-	ready   chan struct{}
+	started chan struct{}
 	mu      sync.Mutex
 	running bool
+
+	// startErr is written exactly once by run before started is closed. WaitStarted
+	// reads it only after observing that close, which provides the happens-before edge.
+	startErr error
 
 	// Reusable proposal struct for proposeSinkUpdate (single-goroutine, no
 	// lock needed). The marshal output is NOT reused — see vtmarshal.MarshalCopy.
@@ -102,10 +108,14 @@ func NewEmitter(store *dal.Store, sink Sink, sinkName string, proposer Proposer,
 	}
 }
 
-// Ready returns a channel that is closed when the emitter goroutine has completed
-// its initial catch-up and entered the main select loop.
-func (e *Emitter) Ready() <-chan struct{} {
-	return e.ready
+// WaitStarted waits until the emitter has completed its startup read.
+func (e *Emitter) WaitStarted(ctx context.Context) error {
+	select {
+	case <-e.started:
+		return e.startErr
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // Notify sends a non-blocking signal that new logs are available.
@@ -126,7 +136,8 @@ func (e *Emitter) Start() {
 	e.running = true
 	e.stopCh = make(chan struct{})
 	e.stopped = make(chan struct{})
-	e.ready = make(chan struct{})
+	e.started = make(chan struct{})
+	e.startErr = nil
 
 	ctx, cancel := context.WithCancel(context.Background())
 	e.cancel = cancel
@@ -156,22 +167,21 @@ func (e *Emitter) run(ctx context.Context) {
 	cursor, err := query.ReadSinkCursor(e.store, e.sinkName)
 	if err != nil {
 		e.logger.Errorf("Failed to read sink cursor: %v", err)
+		e.signalStarted(err)
 
 		return
 	}
 
 	e.logger.WithFields(map[string]any{"cursor": cursor}).Infof("Event emitter started")
-
-	// Initial catch-up: process any logs since the cursor
-	if cursor, err = e.processLogs(ctx, cursor); err != nil {
-		e.logger.Errorf("Error during initial catch-up: %v", err)
-	}
-
-	// Signal that the emitter is ready to receive notifications.
-	close(e.ready)
+	e.signalStarted(nil)
 
 	ticker := time.NewTicker(e.config.BatchDelay)
 	defer ticker.Stop()
+
+	// Queue the first batch through the main loop so startup never waits for
+	// full catch-up and stop requests are observed at the same boundary as
+	// notification-driven work.
+	e.notify.Notify()
 
 	for {
 		select {
@@ -179,14 +189,34 @@ func (e *Emitter) run(ctx context.Context) {
 			e.logger.Infof("Event emitter stopped")
 
 			return
+		default:
+		}
+
+		select {
+		case <-e.stopCh:
+			e.logger.Infof("Event emitter stopped")
+
+			return
 		case <-e.notify.C():
-			if cursor, err = e.processLogs(ctx, cursor); err != nil {
-				e.logger.Errorf("Error processing logs: %v", err)
-			}
 		case <-ticker.C:
-			if cursor, err = e.processLogs(ctx, cursor); err != nil {
-				e.logger.Errorf("Error processing logs (poll): %v", err)
-			}
+		}
+
+		select {
+		case <-e.stopCh:
+			e.logger.Infof("Event emitter stopped")
+
+			return
+		default:
+		}
+
+		var more bool
+		cursor, more, err = e.processLogBatch(ctx, cursor)
+		if err != nil {
+			e.logger.Errorf("Error processing logs: %v", err)
+		}
+
+		if more {
+			e.notify.Notify()
 		}
 	}
 }
@@ -209,27 +239,33 @@ func (e *Emitter) shouldEmit(event *eventspb.Event) bool {
 	return ok
 }
 
-// processLogs reads logs from the store starting after the given cursor,
-// publishes them, and returns the updated cursor position.
+func (e *Emitter) signalStarted(err error) {
+	e.startErr = err
+	close(e.started)
+}
+
+// processLogBatch reads logs from the store starting after the given cursor,
+// publishes at most one batch, and returns the updated cursor position. The
+// boolean return is true when more logs may be immediately available.
 //
 // If a previous publish failed and the failure backoff has not yet
 // elapsed, this is a no-op: the cursor is returned unchanged and no
 // Raft proposal is made. This prevents the 10ms ticker from spinning
 // the sink (and the Raft log) when an external dependency is unhealthy.
-func (e *Emitter) processLogs(ctx context.Context, cursor uint64) (uint64, error) {
+func (e *Emitter) processLogBatch(ctx context.Context, cursor uint64) (uint64, bool, error) {
 	if !e.failure.shouldRetry(e.now()) {
-		return cursor, nil
+		return cursor, false, nil
 	}
 
 	handle, err := e.store.NewDirectReadHandle()
 	if err != nil {
-		return cursor, fmt.Errorf("creating read handle: %w", err)
+		return cursor, false, fmt.Errorf("creating read handle: %w", err)
 	}
 	defer func() { _ = handle.Close() }()
 
 	logsCursor, err := query.ReadLogsSince(ctx, handle, cursor)
 	if err != nil {
-		return cursor, err
+		return cursor, false, err
 	}
 
 	defer func() { _ = logsCursor.Close() }()
@@ -254,7 +290,7 @@ func (e *Emitter) processLogs(ctx context.Context, cursor uint64) (uint64, error
 				break
 			}
 
-			return cursor, err
+			return cursor, false, err
 		}
 
 		event := LogToEvent(log)
@@ -279,14 +315,12 @@ func (e *Emitter) processLogs(ctx context.Context, cursor uint64) (uint64, error
 		if len(batch) >= e.config.BatchSize {
 			err := e.publishBatch(ctx, batch)
 			if err != nil {
-				return cursor, err
+				return cursor, false, err
 			}
 
 			cursor = max(pendingFilteredCursor, batch[len(batch)-1].GetLogSequence())
 
-			lastPersistedCursor = batch[len(batch)-1].GetLogSequence()
-			batch = batch[:0]
-			pendingFilteredCursor = 0
+			return cursor, true, nil
 		}
 	}
 
@@ -294,7 +328,7 @@ func (e *Emitter) processLogs(ctx context.Context, cursor uint64) (uint64, error
 	if len(batch) > 0 {
 		err := e.publishBatch(ctx, batch)
 		if err != nil {
-			return cursor, err
+			return cursor, false, err
 		}
 
 		lastPersistedCursor = batch[len(batch)-1].GetLogSequence()
@@ -313,23 +347,27 @@ func (e *Emitter) processLogs(ctx context.Context, cursor uint64) (uint64, error
 	// skipped logs after the last published event), persist the cursor so we
 	// don't re-process these logs on restart.
 	if cursor > lastPersistedCursor {
-		err := e.proposeSinkUpdate(&raftcmdpb.EventsSinkUpdate{
+		err := e.proposeSinkUpdate(ctx, &raftcmdpb.EventsSinkUpdate{
 			SinkName: e.sinkName,
 			Cursor:   cursor,
 		})
 		if err != nil {
-			return cursor, err
+			return cursor, false, err
 		}
 	}
 
-	return cursor, nil
+	return cursor, false, nil
 }
 
 func (e *Emitter) publishBatch(ctx context.Context, batch []*eventspb.Event) error {
 	err := e.sink.Publish(ctx, batch)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+
 		// Report the error via Raft (best-effort), with dedup/backoff.
-		e.reportError(err)
+		e.reportError(ctx, err)
 
 		return err
 	}
@@ -342,7 +380,12 @@ func (e *Emitter) publishBatch(ctx context.Context, batch []*eventspb.Event) err
 	// Advance cursor via Raft and clear any previous error
 	lastSeq := batch[len(batch)-1].GetLogSequence()
 
-	err = e.proposeSinkUpdate(&raftcmdpb.EventsSinkUpdate{
+	// A delivered batch should get a best-effort cursor advance even if Stop
+	// races the proposal. Keep it bounded so leadership loss cannot wait forever.
+	updateCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), deliveredCursorUpdateTimeout)
+	defer cancel()
+
+	err = e.proposeSinkUpdate(updateCtx, &raftcmdpb.EventsSinkUpdate{
 		SinkName:   e.sinkName,
 		Cursor:     lastSeq,
 		ClearError: true,
@@ -366,7 +409,7 @@ func (e *Emitter) publishBatch(ctx context.Context, batch []*eventspb.Event) err
 // message changed, or remind interval elapsed — see sinkFailureState).
 // The Raft proposal itself remains best-effort: failures to propose
 // are logged but do not propagate.
-func (e *Emitter) reportError(publishErr error) {
+func (e *Emitter) reportError(ctx context.Context, publishErr error) {
 	now := e.now()
 
 	if !e.failure.recordFailure(now, publishErr) {
@@ -384,13 +427,13 @@ func (e *Emitter) reportError(publishErr error) {
 		},
 	}
 
-	if err := e.proposeSinkUpdate(update); err != nil {
+	if err := e.proposeSinkUpdate(ctx, update); err != nil {
 		e.logger.Errorf("Failed to report sink error via Raft: %v", err)
 	}
 }
 
 // proposeSinkUpdate proposes a Raft command to update per-sink state.
-func (e *Emitter) proposeSinkUpdate(update *raftcmdpb.EventsSinkUpdate) error {
+func (e *Emitter) proposeSinkUpdate(ctx context.Context, update *raftcmdpb.EventsSinkUpdate) error {
 	cmdID := commands.GenerateRandomID()
 
 	e.proposal.Reset()
@@ -408,13 +451,13 @@ func (e *Emitter) proposeSinkUpdate(update *raftcmdpb.EventsSinkUpdate) error {
 		return err
 	}
 
-	future, err := e.proposer.Propose(context.Background(), node.NewProposal(cmdID, data))
+	future, err := e.proposer.Propose(ctx, node.NewProposal(cmdID, data))
 	if err != nil {
 		return err
 	}
 
 	// Wait for the update to be applied by the FSM
-	_, err = future.Wait()
+	_, err = future.WaitContext(ctx)
 
 	return err
 }
