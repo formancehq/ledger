@@ -122,6 +122,7 @@ func main() {
 				Ledger:         ledger,
 				PageSize:       pageSize,
 				AfterTxId:      afterTxID,
+				Reverse:        true,   // oldest-first, so IDs must increase across pages
 				MinLogSequence: maxSeq, // freshness barrier: index must cover every acked write
 			})
 			if err != nil {

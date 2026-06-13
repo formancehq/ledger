@@ -55,11 +55,15 @@ func (conns PerNodeConns) Close() {
 	}
 }
 
-// nodeAddresses parses LEDGER_GRPC_ADDR (a comma-separated list such as
+// nodeAddresses parses LEDGER_PER_NODE_GRPC_ADDR (a comma-separated list such as
 // "ledger-0:8888,ledger-1:8888,ledger-2:8888") into individual addresses.
-// Empty entries are dropped. Falls back to the single-node default.
+// Empty entries are dropped. Falls back to LEDGER_GRPC_ADDR, then the
+// single-node default.
 func nodeAddresses() []string {
-	target := os.Getenv("LEDGER_GRPC_ADDR")
+	target := os.Getenv("LEDGER_PER_NODE_GRPC_ADDR")
+	if target == "" {
+		target = os.Getenv("LEDGER_GRPC_ADDR")
+	}
 	if target == "" {
 		target = "localhost:15100"
 	}
@@ -76,9 +80,9 @@ func nodeAddresses() []string {
 }
 
 // DialPerNode opens one single-target gRPC connection per node address in
-// LEDGER_GRPC_ADDR. Each connection uses the same insecure credentials and
-// UNAVAILABLE retry interceptors as NewGRPCConn but dials a SINGLE target (no
-// round-robin), so reads are attributable to the node that received them.
+// LEDGER_PER_NODE_GRPC_ADDR. Each connection uses the same insecure credentials
+// and UNAVAILABLE retry interceptors as NewGRPCConn but dials a SINGLE target
+// (no round-robin), so reads are attributable to the node that received them.
 //
 // Dialing is error-tolerant: grpc.NewClient is lazy and never fails on an
 // unreachable address, so a node that is down is simply skipped at read time

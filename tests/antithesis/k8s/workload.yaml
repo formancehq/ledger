@@ -61,6 +61,8 @@ spec:
         env:
         - name: LEDGER_GRPC_ADDR
           value: "ledger:8888"
+        - name: LEDGER_PER_NODE_GRPC_ADDR
+          value: "ledger-0.ledger-headless.default.svc.cluster.local:8888,ledger-1.ledger-headless.default.svc.cluster.local:8888,ledger-2.ledger-headless.default.svc.cluster.local:8888,ledger-3.ledger-headless.default.svc.cluster.local:8888,ledger-4.ledger-headless.default.svc.cluster.local:8888,ledger-5.ledger-headless.default.svc.cluster.local:8888,ledger-6.ledger-headless.default.svc.cluster.local:8888"
         - name: EXPECTED_VOTERS
           value: "3"
         - name: EXIT_AFTER_SETUP
@@ -81,6 +83,8 @@ spec:
         env:
         - name: LEDGER_GRPC_ADDR
           value: "ledger:8888"
+        - name: LEDGER_PER_NODE_GRPC_ADDR
+          value: "ledger-0.ledger-headless.default.svc.cluster.local:8888,ledger-1.ledger-headless.default.svc.cluster.local:8888,ledger-2.ledger-headless.default.svc.cluster.local:8888,ledger-3.ledger-headless.default.svc.cluster.local:8888,ledger-4.ledger-headless.default.svc.cluster.local:8888,ledger-5.ledger-headless.default.svc.cluster.local:8888,ledger-6.ledger-headless.default.svc.cluster.local:8888"
         - name: EXPECTED_VOTERS
           value: "3"
         # Readiness probe ensures Antithesis waits for the ledger cluster
