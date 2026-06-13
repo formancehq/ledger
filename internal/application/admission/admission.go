@@ -1055,6 +1055,7 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		ledgerID := nameToID[ledgerName]
 
 		var scriptText string
+		var scriptVars map[string]string
 		isReference := false
 
 		// Resolve ScriptReference: load numscript content from overlay (intra-bulk) or Pebble.
@@ -1067,6 +1068,7 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			}
 
 			scriptText = content
+			scriptVars = ref.GetVars()
 			resolvedVersion = rv
 			isReference = true
 
@@ -1081,7 +1083,9 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			createTx.CreateTransaction.GetScript().GetPlain() != "" &&
 			len(createTx.CreateTransaction.GetPostings()) == 0 {
 			// Inline script
-			scriptText = createTx.CreateTransaction.GetScript().GetPlain()
+			script := createTx.CreateTransaction.GetScript()
+			scriptText = script.GetPlain()
+			scriptVars = script.GetVars()
 		} else {
 			// Postings-only — handled by extractPreloadNeeds
 			continue
@@ -1090,19 +1094,11 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		discovered, err := numscript.DiscoverNumscriptDependencies(
 			a.numscriptCache,
 			scriptText,
-			createTx.CreateTransaction.GetScript().GetVars(),
+			scriptVars,
 			ledgerID,
 		)
 		if err != nil {
-			if errors.Is(err, numscript.ErrMetaNotSupported) {
-				return &domain.BusinessError{Err: numscript.ErrMetaNotSupported}
-			}
-
-			if a.logger.Enabled(logging.DebugLevel) {
-				a.logger.WithFields(map[string]any{
-					"error": err.Error(),
-				}).Debug("Numscript emulation failed during dependency discovery, skipping preload")
-			}
+			return &domain.BusinessError{Err: &domain.ErrDependencyDiscoveryFailed{Cause: err}}
 		}
 
 		if discovered != nil {

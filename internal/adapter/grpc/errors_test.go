@@ -283,6 +283,38 @@ func TestBusinessErrorToGRPCStatus_ValidationErrors(t *testing.T) {
 	}
 }
 
+func TestBusinessErrorToGRPCStatus_NumscriptDependencyDiscoveryFailed(t *testing.T) {
+	t.Parallel()
+
+	bizErr := &domain.BusinessError{
+		Err: &domain.ErrDependencyDiscoveryFailed{Cause: errors.New("non-deterministic script")},
+	}
+	st := businessErrorToGRPCStatus(bizErr)
+
+	require.Equal(t, codes.InvalidArgument, st.Code())
+
+	info := extractErrorInfo(t, st)
+	require.Equal(t, domain.ErrReasonValidation, info.GetReason())
+	require.Contains(t, info.GetMetadata()["details"], "numscript dependency discovery failed")
+	require.Contains(t, info.GetMetadata()["details"], "non-deterministic script")
+}
+
+func TestBusinessErrorToGRPCStatus_NumscriptDependencyDiscoveryFailedWithParseCause(t *testing.T) {
+	t.Parallel()
+
+	bizErr := &domain.BusinessError{
+		Err: &domain.ErrDependencyDiscoveryFailed{Cause: &domain.ErrNumscriptParse{Details: "syntax error"}},
+	}
+	st := businessErrorToGRPCStatus(bizErr)
+
+	require.Equal(t, codes.InvalidArgument, st.Code())
+
+	info := extractErrorInfo(t, st)
+	require.Equal(t, domain.ErrReasonNumscriptParseError, info.GetReason())
+	require.Contains(t, info.GetMetadata()["details"], "numscript dependency discovery failed")
+	require.Contains(t, info.GetMetadata()["details"], "numscript parse error")
+}
+
 func TestBusinessErrorToGRPCStatus_SinkAlreadyExists(t *testing.T) {
 	t.Parallel()
 

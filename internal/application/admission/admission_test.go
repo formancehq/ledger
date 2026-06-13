@@ -1131,6 +1131,148 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		require.True(t, hasBob, "should have destination volume from numscript")
 	})
 
+	t.Run("discovers volumes from numscript reference vars", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		admission, _ := createTestAdmission(t, store)
+
+		orders := []*raftcmdpb.Order{
+			{
+				Type: &raftcmdpb.Order_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Ledger: testLedgerName,
+						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+								NumscriptReference: &raftcmdpb.NumscriptReference{
+									Name: "pay",
+									Vars: map[string]string{
+										"account": "users:alice",
+										"amount":  "USD/2 1000",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		overlay := newBulkOverlay()
+		overlay.recordNumscriptSave(testLedgerName, "pay", "v1", `
+#![feature("experimental-account-interpolation")]
+				vars {
+					string $account
+					monetary $amount
+				}
+				send $amount (
+					source = @world
+					destination = @$account
+				)
+			`)
+
+		needs, nameToID, err := admission.extractPreloadNeeds(context.Background(), orders)
+		require.NoError(t, err)
+		require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, nameToID))
+
+		_, hasAlice := needs.Volumes[domain.VolumeKey{
+			AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:alice"},
+			Asset:      "USD/2",
+		}]
+		require.True(t, hasAlice, "should discover destination account from reference vars")
+
+		ref := orders[0].GetApply().GetCreateTransaction().GetNumscriptReference()
+		require.Equal(t, "v1", ref.GetVersion())
+		require.Equal(t, "users:alice", ref.GetVars()["account"])
+	})
+
+	t.Run("rejects numscript dependency discovery failures", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		admission, _ := createTestAdmission(t, store)
+
+		orders := []*raftcmdpb.Order{
+			{
+				Type: &raftcmdpb.Order_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Ledger: testLedgerName,
+						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+								Script: &commonpb.Script{
+									Plain: `send [USD/2 invalid] ( source = @world destination = @users:alice )`,
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		overlay := newBulkOverlay()
+		needs, nameToID, err := admission.extractPreloadNeeds(context.Background(), orders)
+		require.NoError(t, err)
+
+		err = admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, nameToID)
+		require.Error(t, err)
+
+		var businessErr *domain.BusinessError
+		require.ErrorAs(t, err, &businessErr)
+
+		var discoveryErr *domain.ErrDependencyDiscoveryFailed
+		require.ErrorAs(t, err, &discoveryErr)
+
+		var parseErr *domain.ErrNumscriptParse
+		require.ErrorAs(t, err, &parseErr)
+		require.Empty(t, needs.Volumes)
+	})
+
+	t.Run("rejects numscript emulation failures during dependency discovery", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		admission, _ := createTestAdmission(t, store)
+
+		orders := []*raftcmdpb.Order{
+			{
+				Type: &raftcmdpb.Order_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Ledger: testLedgerName,
+						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+								Script: &commonpb.Script{
+									Plain: `
+										vars {
+											monetary $amount
+										}
+										send $amount (
+											source = @world
+											destination = @users:alice
+										)
+									`,
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		overlay := newBulkOverlay()
+		needs, nameToID, err := admission.extractPreloadNeeds(context.Background(), orders)
+		require.NoError(t, err)
+
+		err = admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, nameToID)
+		require.Error(t, err)
+
+		var businessErr *domain.BusinessError
+		require.ErrorAs(t, err, &businessErr)
+
+		var discoveryErr *domain.ErrDependencyDiscoveryFailed
+		require.ErrorAs(t, err, &discoveryErr)
+
+		var runtimeErr *domain.ErrNumscriptRuntime
+		require.ErrorAs(t, err, &runtimeErr)
+		require.Empty(t, needs.Volumes)
+	})
+
 	t.Run("falls back to postings when script has explicit postings", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)

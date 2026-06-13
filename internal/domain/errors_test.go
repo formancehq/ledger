@@ -27,6 +27,27 @@ func TestBusinessError(t *testing.T) {
 	require.Equal(t, map[string]string{"name": "missing"}, bErr.Metadata())
 }
 
+func TestErrDependencyDiscoveryFailed_Error(t *testing.T) {
+	t.Parallel()
+
+	cause := errors.New("parse failed")
+	err := &ErrDependencyDiscoveryFailed{Cause: cause}
+
+	require.Contains(t, err.Error(), "numscript dependency discovery failed")
+	require.Contains(t, err.Error(), "parse failed")
+	require.ErrorIs(t, err, cause)
+}
+
+func TestErrDependencyDiscoveryFailed_ReasonPreservesDescribableCause(t *testing.T) {
+	t.Parallel()
+
+	err := &ErrDependencyDiscoveryFailed{
+		Cause: &ErrNumscriptParse{Details: "syntax error"},
+	}
+
+	require.Equal(t, ErrReasonNumscriptParseError, err.Reason())
+}
+
 func TestErrorTypes(t *testing.T) {
 	t.Parallel()
 
@@ -262,6 +283,7 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 		"ErrInvalidPattern":                &ErrInvalidPattern{},
 		"ErrAccountTypeHasAccounts":        &ErrAccountTypeHasAccounts{},
 		"ErrNumscriptParse":                &ErrNumscriptParse{},
+		"ErrDependencyDiscoveryFailed":     &ErrDependencyDiscoveryFailed{},
 		"ErrBalanceNotPreloaded":           &ErrBalanceNotPreloaded{},
 		"ErrTransientAccountNonZero":       &ErrTransientAccountNonZero{},
 		"ErrFilterCompilation":             &ErrFilterCompilation{},

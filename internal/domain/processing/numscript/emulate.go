@@ -87,9 +87,8 @@ func (s *discoveryStore) GetAccountsMetadata(_ context.Context, _ numscriptlib.M
 //
 // Scripts using meta() are rejected with ErrMetaNotSupported.
 //
-// Other execution errors are ignored: the discovery store returns infinite balances
-// which may cause the script to follow different code paths. We collect whatever
-// accounts were queried before the error occurred.
+// Other execution errors are returned so admission rejects scripts that cannot
+// be emulated safely.
 //
 // Known limitation: with infinite balances, `oneof` may only query the first source.
 func DiscoverNumscriptDependencies(cache *NumscriptCache, script string, vars map[string]string, ledgerID uint32) (*DiscoveryResult, error) {
@@ -108,7 +107,7 @@ func DiscoverNumscriptDependencies(cache *NumscriptCache, script string, vars ma
 	// Run the script. The discovery store captures source accounts via GetBalances
 	// and we extract destinations from the resulting postings.
 	// Experimental features are declared directly in scripts via #![feature "..."].
-	execResult, _ := SafeRun(parsed, context.Background(), variablesMap, store)
+	execResult, execErr := SafeRun(parsed, context.Background(), variablesMap, store)
 
 	// Reject scripts that use meta() — cannot preload dynamic accounts.
 	if store.metaCalled {
@@ -120,6 +119,10 @@ func DiscoverNumscriptDependencies(cache *NumscriptCache, script string, vars ma
 	// errors without Unwrap(), making errors.As unusable.
 	if store.nonDeterministic != nil {
 		return nil, store.nonDeterministic
+	}
+
+	if execErr != nil {
+		return nil, execErr
 	}
 
 	// Collect source volume keys from balance queries with the real ledger ID

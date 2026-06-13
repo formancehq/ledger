@@ -63,9 +63,6 @@ func describableToGRPCStatus(d domain.Describable) *status.Status {
 // businessErrorToGRPCStatus is the thin shim still consumed by tests and
 // (transitively) by convertToGRPCError in server.go. New code should call
 // describableToGRPCStatus directly with a Describable.
-// businessErrorToGRPCStatus is the thin shim still consumed by tests and
-// (transitively) by convertToGRPCError in server.go. New code should call
-// describableToGRPCStatus directly with a Describable.
 func businessErrorToGRPCStatus(bizErr *domain.BusinessError) *status.Status {
 	return describableToGRPCStatus(bizErr.Err)
 }

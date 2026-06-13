@@ -464,12 +464,12 @@ The emulation is implemented in `internal/domain/processing/numscript/emulate.go
 
 Scripts must be deterministic: the discovery store enforces that `GetBalances` may be called **at most once** during discovery. A second call indicates a non-deterministic script (e.g., mid-script balance queries that depend on earlier execution results) which cannot be reliably preloaded. `GetAccountsMetadata` always returns `ErrMetaNotSupported` — `meta()` calls are fully rejected, not constrained.
 
-If a script violates the single `GetBalances` constraint, `DiscoverNumscriptDependencies` returns `ErrNonDeterministicScript` with the offending method name. If a script uses `meta()`, it returns `ErrMetaNotSupported`. The admission layer logs these and skips volume preloading — the real execution will report the actual error.
+If a script violates the single `GetBalances` constraint, `DiscoverNumscriptDependencies` returns `ErrNonDeterministicScript` with the offending method name. If a script uses `meta()`, it returns `ErrMetaNotSupported`. The admission layer rejects these dependency discovery failures as business validation errors before proposing the command, because proposing without complete preloads would produce a doomed Raft apply.
 
 ### Known Limitations
 
 - **`oneof` selectors**: With infinite balances, `oneof` may only query the first source account, since the first source always has sufficient funds. Other sources in the `oneof` list may not be discovered.
-- **Execution errors**: If the emulation fails (e.g., due to missing variables), the error is logged and volume discovery is skipped. The real execution will report the actual error.
+- **Discovery errors**: If dependency discovery fails, admission rejects the transaction before proposal instead of skipping volume discovery.
 - **Shared parsing cache**: Both discovery and real execution use `cache.GetOrParse(script)`, so the script is parsed only once and cached for both paths.
 - **Non-deterministic scripts**: Scripts with multiple `send` statements that trigger separate `GetBalances` calls are rejected during discovery. Such scripts cannot have their volumes reliably preloaded.
 

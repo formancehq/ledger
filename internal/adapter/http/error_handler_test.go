@@ -90,6 +90,12 @@ func TestHandleError(t *testing.T) {
 			expectedCode:   "NUMSCRIPT_PARSE_ERROR",
 		},
 		{
+			name:           "numscript dependency discovery failed",
+			err:            &domain.ErrDependencyDiscoveryFailed{Cause: errors.New("non-deterministic script")},
+			expectedStatus: http.StatusBadRequest,
+			expectedCode:   "VALIDATION",
+		},
+		{
 			name:           "metadata not found",
 			err:            &domain.ErrMetadataNotFound{Target: "account:foo", Key: "bar"},
 			expectedStatus: http.StatusNotFound,

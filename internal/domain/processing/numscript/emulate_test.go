@@ -177,12 +177,11 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 		require.ErrorAs(t, err, &parseErr)
 	})
 
-	t.Run("execution error still returns partial discovery", func(t *testing.T) {
+	t.Run("execution error is returned", func(t *testing.T) {
 		t.Parallel()
 
 		// This script references a variable that is not provided,
-		// which should cause an execution error. But any accounts queried
-		// before the error should still be discovered.
+		// which should cause an execution error.
 		script := `
 			vars {
 				monetary $amount
@@ -192,12 +191,13 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 				destination = @users:bob
 			)
 		`
-		// Don't provide the $amount variable — this will cause an execution error
+		// Don't provide the $amount variable — this will cause an execution error.
 		result, err := DiscoverNumscriptDependencies(testCache, script, nil, ledgerID)
-		require.NoError(t, err) // Parse succeeds, execution error is ignored
-		// Discovery may or may not have found accounts depending on when the error occurred,
-		// but the function should not return an error
-		require.NotNil(t, result)
+		require.Error(t, err)
+		require.Nil(t, result)
+
+		var runtimeErr *domain.ErrNumscriptRuntime
+		require.ErrorAs(t, err, &runtimeErr)
 	})
 
 	t.Run("sets correct ledger ID on all discovered volumes", func(t *testing.T) {

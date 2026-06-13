@@ -907,6 +907,37 @@ func (e *ErrNumscriptParse) Metadata() map[string]string {
 	return map[string]string{"details": e.Details}
 }
 
+// ErrDependencyDiscoveryFailed is returned when admission cannot discover all
+// dependencies needed to preload a Numscript transaction before proposal.
+type ErrDependencyDiscoveryFailed struct {
+	Cause error
+}
+
+func (e *ErrDependencyDiscoveryFailed) Error() string {
+	if e.Cause == nil {
+		return "numscript dependency discovery failed"
+	}
+
+	return fmt.Sprintf("numscript dependency discovery failed: %v", e.Cause)
+}
+
+func (e *ErrDependencyDiscoveryFailed) Unwrap() error {
+	return e.Cause
+}
+
+func (*ErrDependencyDiscoveryFailed) Kind() ErrorKind { return KindValidation }
+func (e *ErrDependencyDiscoveryFailed) Reason() string {
+	var describable Describable
+	if errors.As(e.Cause, &describable) {
+		return describable.Reason()
+	}
+
+	return ErrReasonValidation
+}
+func (e *ErrDependencyDiscoveryFailed) Metadata() map[string]string {
+	return map[string]string{"details": e.Error()}
+}
+
 // ErrBalanceNotPreloaded — balance for an account was not preloaded by the
 // admission layer before script execution.
 type ErrBalanceNotPreloaded struct {
