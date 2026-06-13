@@ -116,7 +116,7 @@ func newV2TransactionLog(id uint64, txID uint64, source, destination, amount, as
 	}
 }
 
-func newV2SetMetadataLog(id uint64, targetType, targetID string, metadata map[string]any) v2.V2Log {
+func newV2SetMetadataLog(id uint64, targetType, targetID string, metadata map[string]string) v2.V2Log {
 	rawTargetID, _ := json.Marshal(targetID)
 	data, _ := json.Marshal(v2.V2SetMetadataData{
 		TargetType: targetType,
@@ -309,7 +309,7 @@ var _ = Describe("Mirror", Ordered, func() {
 			// Seed v2 logs before creating the mirror
 			mockV2.addLog(newV2TransactionLog(1, 0, "world", "users:001", "100", "USD/2"))
 			mockV2.addLog(newV2TransactionLog(2, 1, "world", "users:002", "200", "EUR/2"))
-			mockV2.addLog(newV2SetMetadataLog(3, "ACCOUNT", "users:001", map[string]any{"role": "admin"}))
+			mockV2.addLog(newV2SetMetadataLog(3, "ACCOUNT", "users:001", map[string]string{"role": "admin"}))
 
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{{
@@ -472,7 +472,7 @@ var _ = Describe("Mirror", Ordered, func() {
 
 			// Seed v2 logs before creating the mirror
 			mockV2.addLog(newV2TransactionLog(1, 0, "world", "oauth2:user1", "500", "USD/2"))
-			mockV2.addLog(newV2SetMetadataLog(2, "ACCOUNT", "oauth2:user1", map[string]any{"provider": "oauth2"}))
+			mockV2.addLog(newV2SetMetadataLog(2, "ACCOUNT", "oauth2:user1", map[string]string{"provider": "oauth2"}))
 
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{{

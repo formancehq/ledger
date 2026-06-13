@@ -27,18 +27,18 @@ type V2Log struct {
 
 // V2NewTransactionData represents the data for a NEW_TRANSACTION log.
 type V2NewTransactionData struct {
-	Transaction     V2Transaction             `json:"transaction"`
-	AccountMetadata map[string]map[string]any `json:"accountMetadata,omitempty"`
+	Transaction     V2Transaction                `json:"transaction"`
+	AccountMetadata map[string]map[string]string `json:"accountMetadata,omitempty"`
 }
 
 // V2Transaction represents a v2 transaction.
 type V2Transaction struct {
-	ID        uint64         `json:"id"`
-	Postings  []V2Posting    `json:"postings"`
-	Metadata  map[string]any `json:"metadata,omitempty"`
-	Timestamp string         `json:"timestamp"`
-	Reference string         `json:"reference,omitempty"`
-	Reverted  bool           `json:"reverted,omitempty"`
+	ID        uint64            `json:"id"`
+	Postings  []V2Posting       `json:"postings"`
+	Metadata  map[string]string `json:"metadata,omitempty"`
+	Timestamp string            `json:"timestamp"`
+	Reference string            `json:"reference,omitempty"`
+	Reverted  bool              `json:"reverted,omitempty"`
 }
 
 // V2Posting represents a v2 posting.
@@ -51,9 +51,9 @@ type V2Posting struct {
 
 // V2SetMetadataData represents the data for a SET_METADATA log.
 type V2SetMetadataData struct {
-	TargetType string          `json:"targetType"`
-	TargetID   json.RawMessage `json:"targetId"`
-	Metadata   map[string]any  `json:"metadata"`
+	TargetType string            `json:"targetType"`
+	TargetID   json.RawMessage   `json:"targetId"`
+	Metadata   map[string]string `json:"metadata"`
 }
 
 // V2RevertedTransactionData represents the data for a REVERTED_TRANSACTION log.

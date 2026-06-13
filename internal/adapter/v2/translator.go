@@ -374,32 +374,18 @@ func translateTarget(targetType string, rawID stdjson.RawMessage) (*commonpb.Tar
 	}
 }
 
-// translateMetadataMap converts a v2 metadata map to a map[string]*MetadataValue.
-func translateMetadataMap(meta map[string]any) map[string]*commonpb.MetadataValue {
+// translateMetadataMap converts v2 string metadata to proto metadata values.
+func translateMetadataMap(meta map[string]string) map[string]*commonpb.MetadataValue {
 	if len(meta) == 0 {
 		return nil
 	}
 
 	result := make(map[string]*commonpb.MetadataValue, len(meta))
 	for key, value := range meta {
-		var mv commonpb.MetadataValue
-		setMetadataValue(value, &mv)
-		result[key] = &mv
+		result[key] = &commonpb.MetadataValue{
+			Type: &commonpb.MetadataValue_StringValue{StringValue: value},
+		}
 	}
 
 	return result
-}
-
-// setMetadataValue writes a v2 metadata value into a pre-allocated MetadataValue.
-func setMetadataValue(v any, dst *commonpb.MetadataValue) {
-	switch val := v.(type) {
-	case string:
-		dst.Type = &commonpb.MetadataValue_StringValue{StringValue: val}
-	case float64:
-		dst.Type = &commonpb.MetadataValue_IntValue{IntValue: int64(val)}
-	case bool:
-		dst.Type = &commonpb.MetadataValue_BoolValue{BoolValue: val}
-	default:
-		dst.Type = &commonpb.MetadataValue_StringValue{StringValue: fmt.Sprintf("%v", v)}
-	}
 }

@@ -6,7 +6,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -60,7 +59,7 @@ func TestTranslateBatch_SetMetadata_Account(t *testing.T) {
 		Data: mustMarshal(t, V2SetMetadataData{
 			TargetType: "ACCOUNT",
 			TargetID:   json.RawMessage(`"users:001"`),
-			Metadata:   map[string]any{"role": "admin"},
+			Metadata:   map[string]string{"role": "admin"},
 		}),
 	}}
 
@@ -76,6 +75,7 @@ func TestTranslateBatch_SetMetadata_Account(t *testing.T) {
 	require.Equal(t, "users:001", account.GetAddr())
 	require.Len(t, sm.GetMetadata(), 1)
 	require.Contains(t, sm.GetMetadata(), "role")
+	require.Equal(t, "admin", sm.GetMetadata()["role"].GetStringValue())
 }
 
 func TestTranslateBatch_SetMetadata_Transaction(t *testing.T) {
@@ -87,7 +87,7 @@ func TestTranslateBatch_SetMetadata_Transaction(t *testing.T) {
 		Data: mustMarshal(t, V2SetMetadataData{
 			TargetType: "TRANSACTION",
 			TargetID:   json.RawMessage(`42`),
-			Metadata:   map[string]any{"status": "confirmed"},
+			Metadata:   map[string]string{"status": "confirmed"},
 		}),
 	}}
 
@@ -101,6 +101,51 @@ func TestTranslateBatch_SetMetadata_Transaction(t *testing.T) {
 	tx := sm.GetTarget().GetTransaction()
 	require.NotNil(t, tx)
 	require.Equal(t, uint64(42), tx.GetId())
+}
+
+func TestTranslateBatch_SetMetadata_StringMetadataPreserved(t *testing.T) {
+	t.Parallel()
+
+	v2Logs := []V2Log{{
+		ID:   1,
+		Type: "SET_METADATA",
+		Data: json.RawMessage(`{
+			"targetType": "ACCOUNT",
+			"targetId": "users:001",
+			"metadata": {
+				"unsafe": "9007199254740993"
+			}
+		}`),
+	}}
+
+	orders, _, _, err := TranslateBatch("default", v2Logs, 1, 1)
+	require.NoError(t, err)
+	require.Len(t, orders, 1)
+
+	metadata := orders[0].GetMirrorIngest().GetEntry().GetSavedMetadata().GetMetadata()
+	require.Contains(t, metadata, "unsafe")
+	require.Equal(t, "9007199254740993", metadata["unsafe"].GetStringValue())
+}
+
+func TestTranslateBatch_SetMetadata_RejectsNonStringMetadata(t *testing.T) {
+	t.Parallel()
+
+	v2Logs := []V2Log{{
+		ID:   1,
+		Type: "SET_METADATA",
+		Data: json.RawMessage(`{
+				"targetType": "ACCOUNT",
+				"targetId": "users:001",
+				"metadata": {
+					"unsafe": 9007199254740993
+				}
+			}`),
+	}}
+
+	orders, _, _, err := TranslateBatch("default", v2Logs, 1, 1)
+	require.Error(t, err)
+	require.Nil(t, orders)
+	require.Contains(t, err.Error(), "unmarshaling SET_METADATA data")
 }
 
 func TestTranslateBatch_RevertedTransaction(t *testing.T) {
@@ -186,7 +231,7 @@ func TestTranslateBatch_LogIDGapDetection(t *testing.T) {
 		Data: mustMarshal(t, V2SetMetadataData{
 			TargetType: "ACCOUNT",
 			TargetID:   json.RawMessage(`"users:001"`),
-			Metadata:   map[string]any{"key": "val"},
+			Metadata:   map[string]string{"key": "val"},
 		}),
 	}}
 
@@ -236,7 +281,7 @@ func TestTranslateBatch_MultipleLogs(t *testing.T) {
 			Data: mustMarshal(t, V2SetMetadataData{
 				TargetType: "ACCOUNT",
 				TargetID:   json.RawMessage(`"a"`),
-				Metadata:   map[string]any{"type": "asset"},
+				Metadata:   map[string]string{"type": "asset"},
 			}),
 		},
 	}
@@ -262,7 +307,7 @@ func TestTranslateBatch_AccountMetadata(t *testing.T) {
 				ID:       0,
 				Postings: []V2Posting{{Source: "world", Destination: "a", Amount: "100", Asset: "USD"}},
 			},
-			AccountMetadata: map[string]map[string]any{
+			AccountMetadata: map[string]map[string]string{
 				"a": {"type": "asset"},
 			},
 		}),
@@ -355,36 +400,22 @@ func TestTranslateTarget_UnknownType(t *testing.T) {
 	require.Contains(t, err.Error(), "unknown target type")
 }
 
-func TestSetMetadataValue_String(t *testing.T) {
+func TestTranslateMetadataMap_String(t *testing.T) {
 	t.Parallel()
 
-	var v commonpb.MetadataValue
-	setMetadataValue("hello", &v)
-	require.Equal(t, "hello", v.GetStringValue())
+	result := translateMetadataMap(map[string]string{"hello": "world"})
+	require.Equal(t, "world", result["hello"].GetStringValue())
 }
 
-func TestSetMetadataValue_Float64(t *testing.T) {
+func TestTranslateMetadataMap_MultipleStringValues(t *testing.T) {
 	t.Parallel()
 
-	var v commonpb.MetadataValue
-	setMetadataValue(float64(42), &v)
-	require.Equal(t, int64(42), v.GetIntValue())
-}
-
-func TestSetMetadataValue_Bool(t *testing.T) {
-	t.Parallel()
-
-	var v commonpb.MetadataValue
-	setMetadataValue(true, &v)
-	require.True(t, v.GetBoolValue())
-}
-
-func TestSetMetadataValue_Fallback(t *testing.T) {
-	t.Parallel()
-
-	var v commonpb.MetadataValue
-	setMetadataValue([]int{1, 2, 3}, &v)
-	require.NotEmpty(t, v.GetStringValue())
+	result := translateMetadataMap(map[string]string{
+		"status": "confirmed",
+		"ref":    "order-123",
+	})
+	require.Equal(t, "confirmed", result["status"].GetStringValue())
+	require.Equal(t, "order-123", result["ref"].GetStringValue())
 }
 
 func TestTranslateMetadataMap_Nil(t *testing.T) {
@@ -431,6 +462,24 @@ func TestTranslateBatch_InvalidJSON(t *testing.T) {
 	require.Contains(t, err.Error(), "translating v2 log 1")
 }
 
+func TestTranslateBatch_TrailingJSONRejected(t *testing.T) {
+	t.Parallel()
+
+	v2Logs := []V2Log{{
+		ID:   1,
+		Type: "SET_METADATA",
+		Data: json.RawMessage(`{
+			"targetType": "ACCOUNT",
+			"targetId": "users:001",
+			"metadata": {"key": "value"}
+		}{}`),
+	}}
+
+	_, _, _, err := TranslateBatch("default", v2Logs, 1, 1)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "translating v2 log 1")
+}
+
 func TestMakeMirrorOrder(t *testing.T) {
 	t.Parallel()
 
@@ -469,7 +518,7 @@ func BenchmarkTranslateBatch(b *testing.B) {
 					{Source: "users:001", Destination: "merchants:042", Amount: "150000", Asset: "USD/2"},
 				},
 				Timestamp: "2024-06-15T10:30:00Z",
-				Metadata:  map[string]any{"ref": "order-12345", "type": "payment"},
+				Metadata:  map[string]string{"ref": "order-12345", "type": "payment"},
 			},
 		})
 		if err != nil {
