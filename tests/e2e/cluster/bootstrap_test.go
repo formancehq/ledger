@@ -201,11 +201,12 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 
 		It("should take a backup to S3 with sequence metadata", func() {
 			resp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
-				Driver:     "s3",
-				BucketId:   bootstrapBucketID,
-				S3Bucket:   bootstrapS3Bucket,
-				S3Region:   bootstrapS3Region,
-				S3Endpoint: minioEndpoint,
+				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+					Bucket:   bootstrapS3Bucket,
+					Region:   bootstrapS3Region,
+					Endpoint: minioEndpoint,
+				}),
+				BucketId: bootstrapBucketID,
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.GetTotalFiles()).To(BeNumerically(">", 0))
@@ -227,11 +228,12 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 
 			// Run incremental backup
 			incrResp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
-				Driver:     "s3",
-				BucketId:   bootstrapBucketID,
-				S3Bucket:   bootstrapS3Bucket,
-				S3Region:   bootstrapS3Region,
-				S3Endpoint: minioEndpoint,
+				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+					Bucket:   bootstrapS3Bucket,
+					Region:   bootstrapS3Region,
+					Endpoint: minioEndpoint,
+				}),
+				BucketId: bootstrapBucketID,
 			})
 			Expect(err).To(Succeed())
 			Expect(incrResp.GetLogEntriesExported()).To(BeNumerically(">", 0))
@@ -239,11 +241,12 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 
 			// Take a new full backup to include all data (clears exports)
 			fullResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
-				Driver:     "s3",
-				BucketId:   bootstrapBucketID,
-				S3Bucket:   bootstrapS3Bucket,
-				S3Region:   bootstrapS3Region,
-				S3Endpoint: minioEndpoint,
+				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+					Bucket:   bootstrapS3Bucket,
+					Region:   bootstrapS3Region,
+					Endpoint: minioEndpoint,
+				}),
+				BucketId: bootstrapBucketID,
 			})
 			Expect(err).To(Succeed())
 			Expect(fullResp.GetTotalFiles()).To(BeNumerically(">", 0))

@@ -128,23 +128,25 @@ var _ = Describe("S3 Backup", Ordered, func() {
 		ctx, client, clusterClient = testutil.SetupSingleNode(s3BackupHTTPPort2, s3BackupGRPCPort2)
 	})
 
+	s3Storage := func() *commonpb.BackupStorage {
+		return testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+			Bucket:   backupS3Bucket,
+			Region:   backupS3Region,
+			Endpoint: minioEndpoint,
+		})
+	}
+
 	backupRequest := func() *clusterpb.BackupRequest {
 		return &clusterpb.BackupRequest{
-			Driver:     "s3",
-			BucketId:   "test-cluster",
-			S3Bucket:   backupS3Bucket,
-			S3Region:   backupS3Region,
-			S3Endpoint: minioEndpoint,
+			Storage:  s3Storage(),
+			BucketId: "test-cluster",
 		}
 	}
 
 	incrementalBackupRequest := func() *clusterpb.IncrementalBackupRequest {
 		return &clusterpb.IncrementalBackupRequest{
-			Driver:     "s3",
-			BucketId:   "test-cluster",
-			S3Bucket:   backupS3Bucket,
-			S3Region:   backupS3Region,
-			S3Endpoint: minioEndpoint,
+			Storage:  s3Storage(),
+			BucketId: "test-cluster",
 		}
 	}
 
@@ -236,11 +238,8 @@ var _ = Describe("S3 Backup", Ordered, func() {
 	It("should succeed with incremental backup without a prior checkpoint", func() {
 		// Use a fresh bucket-id with no prior manifest
 		resp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
-			Driver:     "s3",
-			BucketId:   "no-prior",
-			S3Bucket:   backupS3Bucket,
-			S3Region:   backupS3Region,
-			S3Endpoint: minioEndpoint,
+			Storage:  s3Storage(),
+			BucketId: "no-prior",
 		})
 		Expect(err).To(Succeed())
 		Expect(resp.GetLogEntriesExported()).To(BeNumerically(">", 0))

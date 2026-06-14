@@ -409,14 +409,9 @@ func (m *BackupRequest) CloneVT() *BackupRequest {
 		return (*BackupRequest)(nil)
 	}
 	r := new(BackupRequest)
-	r.Driver = m.Driver
 	r.BasePath = m.BasePath
 	r.BucketId = m.BucketId
-	r.S3Bucket = m.S3Bucket
-	r.S3Region = m.S3Region
-	r.S3Endpoint = m.S3Endpoint
-	r.S3AccessKeyId = m.S3AccessKeyId
-	r.S3SecretAccessKey = m.S3SecretAccessKey
+	r.Storage = m.Storage.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -457,14 +452,9 @@ func (m *IncrementalBackupRequest) CloneVT() *IncrementalBackupRequest {
 		return (*IncrementalBackupRequest)(nil)
 	}
 	r := new(IncrementalBackupRequest)
-	r.Driver = m.Driver
 	r.BasePath = m.BasePath
 	r.BucketId = m.BucketId
-	r.S3Bucket = m.S3Bucket
-	r.S3Region = m.S3Region
-	r.S3Endpoint = m.S3Endpoint
-	r.S3AccessKeyId = m.S3AccessKeyId
-	r.S3SecretAccessKey = m.S3SecretAccessKey
+	r.Storage = m.Storage.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1285,28 +1275,13 @@ func (this *BackupRequest) EqualVT(that *BackupRequest) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.Driver != that.Driver {
-		return false
-	}
 	if this.BasePath != that.BasePath {
 		return false
 	}
 	if this.BucketId != that.BucketId {
 		return false
 	}
-	if this.S3Bucket != that.S3Bucket {
-		return false
-	}
-	if this.S3Region != that.S3Region {
-		return false
-	}
-	if this.S3Endpoint != that.S3Endpoint {
-		return false
-	}
-	if this.S3AccessKeyId != that.S3AccessKeyId {
-		return false
-	}
-	if this.S3SecretAccessKey != that.S3SecretAccessKey {
+	if !this.Storage.EqualVT(that.Storage) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -1365,28 +1340,13 @@ func (this *IncrementalBackupRequest) EqualVT(that *IncrementalBackupRequest) bo
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.Driver != that.Driver {
-		return false
-	}
 	if this.BasePath != that.BasePath {
 		return false
 	}
 	if this.BucketId != that.BucketId {
 		return false
 	}
-	if this.S3Bucket != that.S3Bucket {
-		return false
-	}
-	if this.S3Region != that.S3Region {
-		return false
-	}
-	if this.S3Endpoint != that.S3Endpoint {
-		return false
-	}
-	if this.S3AccessKeyId != that.S3AccessKeyId {
-		return false
-	}
-	if this.S3SecretAccessKey != that.S3SecretAccessKey {
+	if !this.Storage.EqualVT(that.Storage) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -2822,40 +2782,15 @@ func (m *BackupRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.S3SecretAccessKey) > 0 {
-		i -= len(m.S3SecretAccessKey)
-		copy(dAtA[i:], m.S3SecretAccessKey)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.S3SecretAccessKey)))
+	if m.Storage != nil {
+		size, err := m.Storage.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x42
-	}
-	if len(m.S3AccessKeyId) > 0 {
-		i -= len(m.S3AccessKeyId)
-		copy(dAtA[i:], m.S3AccessKeyId)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.S3AccessKeyId)))
-		i--
-		dAtA[i] = 0x3a
-	}
-	if len(m.S3Endpoint) > 0 {
-		i -= len(m.S3Endpoint)
-		copy(dAtA[i:], m.S3Endpoint)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.S3Endpoint)))
-		i--
-		dAtA[i] = 0x32
-	}
-	if len(m.S3Region) > 0 {
-		i -= len(m.S3Region)
-		copy(dAtA[i:], m.S3Region)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.S3Region)))
-		i--
-		dAtA[i] = 0x2a
-	}
-	if len(m.S3Bucket) > 0 {
-		i -= len(m.S3Bucket)
-		copy(dAtA[i:], m.S3Bucket)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.S3Bucket)))
-		i--
-		dAtA[i] = 0x22
+		dAtA[i] = 0x4a
 	}
 	if len(m.BucketId) > 0 {
 		i -= len(m.BucketId)
@@ -2870,13 +2805,6 @@ func (m *BackupRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.BasePath)))
 		i--
 		dAtA[i] = 0x12
-	}
-	if len(m.Driver) > 0 {
-		i -= len(m.Driver)
-		copy(dAtA[i:], m.Driver)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Driver)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -2987,40 +2915,15 @@ func (m *IncrementalBackupRequest) MarshalToSizedBufferVT(dAtA []byte) (int, err
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.S3SecretAccessKey) > 0 {
-		i -= len(m.S3SecretAccessKey)
-		copy(dAtA[i:], m.S3SecretAccessKey)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.S3SecretAccessKey)))
+	if m.Storage != nil {
+		size, err := m.Storage.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x42
-	}
-	if len(m.S3AccessKeyId) > 0 {
-		i -= len(m.S3AccessKeyId)
-		copy(dAtA[i:], m.S3AccessKeyId)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.S3AccessKeyId)))
-		i--
-		dAtA[i] = 0x3a
-	}
-	if len(m.S3Endpoint) > 0 {
-		i -= len(m.S3Endpoint)
-		copy(dAtA[i:], m.S3Endpoint)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.S3Endpoint)))
-		i--
-		dAtA[i] = 0x32
-	}
-	if len(m.S3Region) > 0 {
-		i -= len(m.S3Region)
-		copy(dAtA[i:], m.S3Region)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.S3Region)))
-		i--
-		dAtA[i] = 0x2a
-	}
-	if len(m.S3Bucket) > 0 {
-		i -= len(m.S3Bucket)
-		copy(dAtA[i:], m.S3Bucket)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.S3Bucket)))
-		i--
-		dAtA[i] = 0x22
+		dAtA[i] = 0x4a
 	}
 	if len(m.BucketId) > 0 {
 		i -= len(m.BucketId)
@@ -3035,13 +2938,6 @@ func (m *IncrementalBackupRequest) MarshalToSizedBufferVT(dAtA []byte) (int, err
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.BasePath)))
 		i--
 		dAtA[i] = 0x12
-	}
-	if len(m.Driver) > 0 {
-		i -= len(m.Driver)
-		copy(dAtA[i:], m.Driver)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Driver)))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -4129,10 +4025,6 @@ func (m *BackupRequest) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	l = len(m.Driver)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	l = len(m.BasePath)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
@@ -4141,24 +4033,8 @@ func (m *BackupRequest) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	l = len(m.S3Bucket)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	l = len(m.S3Region)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	l = len(m.S3Endpoint)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	l = len(m.S3AccessKeyId)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	l = len(m.S3SecretAccessKey)
-	if l > 0 {
+	if m.Storage != nil {
+		l = m.Storage.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -4205,10 +4081,6 @@ func (m *IncrementalBackupRequest) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	l = len(m.Driver)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	l = len(m.BasePath)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
@@ -4217,24 +4089,8 @@ func (m *IncrementalBackupRequest) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	l = len(m.S3Bucket)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	l = len(m.S3Region)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	l = len(m.S3Endpoint)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	l = len(m.S3AccessKeyId)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	l = len(m.S3SecretAccessKey)
-	if l > 0 {
+	if m.Storage != nil {
+		l = m.Storage.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -6758,38 +6614,6 @@ func (m *BackupRequest) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: BackupRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Driver", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Driver = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field BasePath", wireType)
@@ -6854,11 +6678,11 @@ func (m *BackupRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			m.BucketId = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 4:
+		case 9:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field S3Bucket", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Storage", wireType)
 			}
-			var stringLen uint64
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -6868,151 +6692,27 @@ func (m *BackupRequest) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
+			if msglen < 0 {
 				return protohelpers.ErrInvalidLength
 			}
-			postIndex := iNdEx + intStringLen
+			postIndex := iNdEx + msglen
 			if postIndex < 0 {
 				return protohelpers.ErrInvalidLength
 			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.S3Bucket = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 5:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field S3Region", wireType)
+			if m.Storage == nil {
+				m.Storage = &commonpb.BackupStorage{}
 			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if err := m.Storage.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
 			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.S3Region = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 6:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field S3Endpoint", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.S3Endpoint = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 7:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field S3AccessKeyId", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.S3AccessKeyId = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 8:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field S3SecretAccessKey", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.S3SecretAccessKey = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -7241,38 +6941,6 @@ func (m *IncrementalBackupRequest) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: IncrementalBackupRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Driver", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Driver = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field BasePath", wireType)
@@ -7337,11 +7005,11 @@ func (m *IncrementalBackupRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			m.BucketId = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 4:
+		case 9:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field S3Bucket", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Storage", wireType)
 			}
-			var stringLen uint64
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -7351,151 +7019,27 @@ func (m *IncrementalBackupRequest) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
+			if msglen < 0 {
 				return protohelpers.ErrInvalidLength
 			}
-			postIndex := iNdEx + intStringLen
+			postIndex := iNdEx + msglen
 			if postIndex < 0 {
 				return protohelpers.ErrInvalidLength
 			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.S3Bucket = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 5:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field S3Region", wireType)
+			if m.Storage == nil {
+				m.Storage = &commonpb.BackupStorage{}
 			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if err := m.Storage.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
 			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.S3Region = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 6:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field S3Endpoint", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.S3Endpoint = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 7:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field S3AccessKeyId", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.S3AccessKeyId = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 8:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field S3SecretAccessKey", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.S3SecretAccessKey = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

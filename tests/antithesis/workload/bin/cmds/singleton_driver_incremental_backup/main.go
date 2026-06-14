@@ -6,8 +6,21 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
+
+func s3Storage() *commonpb.BackupStorage {
+	return &commonpb.BackupStorage{
+		Provider: &commonpb.BackupStorage_S3{
+			S3: &commonpb.S3StorageConfig{
+				Bucket:   "backups",
+				Region:   "us-east-1",
+				Endpoint: "http://minio:9000",
+			},
+		},
+	}
+}
 
 func main() {
 	log.Println("composer: parallel_driver_incremental_backup")
@@ -24,10 +37,7 @@ func main() {
 
 	// 1. Run an incremental backup (exports log/audit entries since last export).
 	resp, err := client.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
-		Driver:     "s3",
-		S3Bucket:   "backups",
-		S3Region:   "us-east-1",
-		S3Endpoint: "http://minio:9000",
+		Storage: s3Storage(),
 	})
 	if err != nil {
 		if internal.IsTransient(err) {
@@ -61,10 +71,7 @@ func main() {
 	// 2. Run a second incremental backup immediately.
 	//    Should succeed with fewer or zero new entries.
 	resp2, err := client.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
-		Driver:     "s3",
-		S3Bucket:   "backups",
-		S3Region:   "us-east-1",
-		S3Endpoint: "http://minio:9000",
+		Storage: s3Storage(),
 	})
 	if err != nil {
 		if internal.IsTransient(err) || internal.IsExternalServiceError(err) {

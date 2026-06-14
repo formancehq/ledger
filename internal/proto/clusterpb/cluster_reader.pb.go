@@ -801,22 +801,13 @@ func (m *RemoveNodeResponse) Mutate() *RemoveNodeResponse {
 // BackupRequestReader provides read-only access to BackupRequest.
 // Call Mutate() to obtain a mutable clone.
 type BackupRequestReader interface {
-	GetDriver() string
 	GetBasePath() string
 	GetBucketId() string
-	GetS3Bucket() string
-	GetS3Region() string
-	GetS3Endpoint() string
-	GetS3AccessKeyId() string
-	GetS3SecretAccessKey() string
+	GetStorage() commonpb.BackupStorageReader
 	Mutate() *BackupRequest
 }
 
 type backupRequestReadonly struct{ v *BackupRequest }
-
-func (r *backupRequestReadonly) GetDriver() string {
-	return r.v.GetDriver()
-}
 
 func (r *backupRequestReadonly) GetBasePath() string {
 	return r.v.GetBasePath()
@@ -826,24 +817,12 @@ func (r *backupRequestReadonly) GetBucketId() string {
 	return r.v.GetBucketId()
 }
 
-func (r *backupRequestReadonly) GetS3Bucket() string {
-	return r.v.GetS3Bucket()
-}
-
-func (r *backupRequestReadonly) GetS3Region() string {
-	return r.v.GetS3Region()
-}
-
-func (r *backupRequestReadonly) GetS3Endpoint() string {
-	return r.v.GetS3Endpoint()
-}
-
-func (r *backupRequestReadonly) GetS3AccessKeyId() string {
-	return r.v.GetS3AccessKeyId()
-}
-
-func (r *backupRequestReadonly) GetS3SecretAccessKey() string {
-	return r.v.GetS3SecretAccessKey()
+func (r *backupRequestReadonly) GetStorage() commonpb.BackupStorageReader {
+	v := r.v.GetStorage()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *backupRequestReadonly) Mutate() *BackupRequest {
@@ -931,22 +910,13 @@ func (m *BackupResponse) Mutate() *BackupResponse {
 // IncrementalBackupRequestReader provides read-only access to IncrementalBackupRequest.
 // Call Mutate() to obtain a mutable clone.
 type IncrementalBackupRequestReader interface {
-	GetDriver() string
 	GetBasePath() string
 	GetBucketId() string
-	GetS3Bucket() string
-	GetS3Region() string
-	GetS3Endpoint() string
-	GetS3AccessKeyId() string
-	GetS3SecretAccessKey() string
+	GetStorage() commonpb.BackupStorageReader
 	Mutate() *IncrementalBackupRequest
 }
 
 type incrementalBackupRequestReadonly struct{ v *IncrementalBackupRequest }
-
-func (r *incrementalBackupRequestReadonly) GetDriver() string {
-	return r.v.GetDriver()
-}
 
 func (r *incrementalBackupRequestReadonly) GetBasePath() string {
 	return r.v.GetBasePath()
@@ -956,24 +926,12 @@ func (r *incrementalBackupRequestReadonly) GetBucketId() string {
 	return r.v.GetBucketId()
 }
 
-func (r *incrementalBackupRequestReadonly) GetS3Bucket() string {
-	return r.v.GetS3Bucket()
-}
-
-func (r *incrementalBackupRequestReadonly) GetS3Region() string {
-	return r.v.GetS3Region()
-}
-
-func (r *incrementalBackupRequestReadonly) GetS3Endpoint() string {
-	return r.v.GetS3Endpoint()
-}
-
-func (r *incrementalBackupRequestReadonly) GetS3AccessKeyId() string {
-	return r.v.GetS3AccessKeyId()
-}
-
-func (r *incrementalBackupRequestReadonly) GetS3SecretAccessKey() string {
-	return r.v.GetS3SecretAccessKey()
+func (r *incrementalBackupRequestReadonly) GetStorage() commonpb.BackupStorageReader {
+	v := r.v.GetStorage()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *incrementalBackupRequestReadonly) Mutate() *IncrementalBackupRequest {

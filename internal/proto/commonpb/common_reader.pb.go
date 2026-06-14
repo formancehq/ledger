@@ -5162,3 +5162,128 @@ func (m *CallerSnapshot) AsReader() CallerSnapshotReader {
 func (m *CallerSnapshot) Mutate() *CallerSnapshot {
 	return m.CloneVT()
 }
+
+// S3StorageConfigReader provides read-only access to S3StorageConfig.
+// Call Mutate() to obtain a mutable clone.
+type S3StorageConfigReader interface {
+	GetBucket() string
+	GetRegion() string
+	GetEndpoint() string
+	GetAccessKeyId() string
+	GetSecretAccessKey() string
+	Mutate() *S3StorageConfig
+}
+
+type s3StorageConfigReadonly struct{ v *S3StorageConfig }
+
+func (r *s3StorageConfigReadonly) GetBucket() string {
+	return r.v.GetBucket()
+}
+
+func (r *s3StorageConfigReadonly) GetRegion() string {
+	return r.v.GetRegion()
+}
+
+func (r *s3StorageConfigReadonly) GetEndpoint() string {
+	return r.v.GetEndpoint()
+}
+
+func (r *s3StorageConfigReadonly) GetAccessKeyId() string {
+	return r.v.GetAccessKeyId()
+}
+
+func (r *s3StorageConfigReadonly) GetSecretAccessKey() string {
+	return r.v.GetSecretAccessKey()
+}
+
+func (r *s3StorageConfigReadonly) Mutate() *S3StorageConfig {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this S3StorageConfig.
+func (m *S3StorageConfig) AsReader() S3StorageConfigReader {
+	if m == nil {
+		return nil
+	}
+	return &s3StorageConfigReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this S3StorageConfig.
+func (m *S3StorageConfig) Mutate() *S3StorageConfig {
+	return m.CloneVT()
+}
+
+// AzureStorageConfigReader provides read-only access to AzureStorageConfig.
+// Call Mutate() to obtain a mutable clone.
+type AzureStorageConfigReader interface {
+	GetAccountName() string
+	GetAccountKey() string
+	GetContainer() string
+	GetEndpoint() string
+	Mutate() *AzureStorageConfig
+}
+
+type azureStorageConfigReadonly struct{ v *AzureStorageConfig }
+
+func (r *azureStorageConfigReadonly) GetAccountName() string {
+	return r.v.GetAccountName()
+}
+
+func (r *azureStorageConfigReadonly) GetAccountKey() string {
+	return r.v.GetAccountKey()
+}
+
+func (r *azureStorageConfigReadonly) GetContainer() string {
+	return r.v.GetContainer()
+}
+
+func (r *azureStorageConfigReadonly) GetEndpoint() string {
+	return r.v.GetEndpoint()
+}
+
+func (r *azureStorageConfigReadonly) Mutate() *AzureStorageConfig {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this AzureStorageConfig.
+func (m *AzureStorageConfig) AsReader() AzureStorageConfigReader {
+	if m == nil {
+		return nil
+	}
+	return &azureStorageConfigReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this AzureStorageConfig.
+func (m *AzureStorageConfig) Mutate() *AzureStorageConfig {
+	return m.CloneVT()
+}
+
+// BackupStorageReader provides read-only access to BackupStorage.
+// Call Mutate() to obtain a mutable clone.
+type BackupStorageReader interface {
+	GetProvider() isBackupStorage_Provider
+	Mutate() *BackupStorage
+}
+
+type backupStorageReadonly struct{ v *BackupStorage }
+
+func (r *backupStorageReadonly) GetProvider() isBackupStorage_Provider {
+	return r.v.GetProvider()
+}
+
+func (r *backupStorageReadonly) Mutate() *BackupStorage {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this BackupStorage.
+func (m *BackupStorage) AsReader() BackupStorageReader {
+	if m == nil {
+		return nil
+	}
+	return &backupStorageReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this BackupStorage.
+func (m *BackupStorage) Mutate() *BackupStorage {
+	return m.CloneVT()
+}

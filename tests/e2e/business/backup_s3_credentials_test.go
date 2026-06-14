@@ -110,13 +110,14 @@ var _ = Describe("S3 Backup with explicit credentials", Ordered, func() {
 		// Trigger backup with explicit credentials — the server has bogus env vars,
 		// so this will only succeed if the request-level credentials are used.
 		resp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
-			Driver:            "s3",
-			BucketId:          "creds-cluster",
-			S3Bucket:          s3CredsBucket,
-			S3Region:          s3CredsRegion,
-			S3Endpoint:        minioEndpoint,
-			S3AccessKeyId:     s3CredsAccessKey,
-			S3SecretAccessKey: s3CredsSecretKey,
+			Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+				Bucket:          s3CredsBucket,
+				Region:          s3CredsRegion,
+				Endpoint:        minioEndpoint,
+				AccessKeyId:     s3CredsAccessKey,
+				SecretAccessKey: s3CredsSecretKey,
+			}),
+			BucketId: "creds-cluster",
 		})
 		Expect(err).To(Succeed())
 		Expect(resp.GetTotalFiles()).To(BeNumerically(">", 0))
@@ -138,13 +139,14 @@ var _ = Describe("S3 Backup with explicit credentials", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		resp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
-			Driver:            "s3",
-			BucketId:          "creds-cluster",
-			S3Bucket:          s3CredsBucket,
-			S3Region:          s3CredsRegion,
-			S3Endpoint:        minioEndpoint,
-			S3AccessKeyId:     s3CredsAccessKey,
-			S3SecretAccessKey: s3CredsSecretKey,
+			Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+				Bucket:          s3CredsBucket,
+				Region:          s3CredsRegion,
+				Endpoint:        minioEndpoint,
+				AccessKeyId:     s3CredsAccessKey,
+				SecretAccessKey: s3CredsSecretKey,
+			}),
+			BucketId: "creds-cluster",
 		})
 		Expect(err).To(Succeed())
 		Expect(resp.GetLogEntriesExported()).To(BeNumerically(">", 0))
@@ -154,11 +156,12 @@ var _ = Describe("S3 Backup with explicit credentials", Ordered, func() {
 		// Same request but without explicit credentials — should fail because
 		// the server process has bogus AWS env vars.
 		_, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
-			Driver:     "s3",
-			BucketId:   "creds-cluster-fail",
-			S3Bucket:   s3CredsBucket,
-			S3Region:   s3CredsRegion,
-			S3Endpoint: minioEndpoint,
+			Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+				Bucket:   s3CredsBucket,
+				Region:   s3CredsRegion,
+				Endpoint: minioEndpoint,
+			}),
+			BucketId: "creds-cluster-fail",
 		})
 		Expect(err).To(HaveOccurred())
 	})

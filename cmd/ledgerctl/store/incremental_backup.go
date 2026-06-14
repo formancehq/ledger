@@ -16,35 +16,27 @@ func NewIncrementalBackupCommand() *cobra.Command {
 		Use:     "incremental-backup",
 		Aliases: []string{"ibk"},
 		Short:   "Export new log and audit entries since the last backup",
-		Long:    "Perform an incremental backup by exporting new log and audit entries to S3. Requires a prior full backup.",
+		Long:    "Perform an incremental backup by exporting new log and audit entries to S3 or Azure Blob Storage. Requires a prior full backup.",
 		RunE:    runIncrementalBackup,
 	}
 
-	cmd.Flags().String("driver", "s3", "Backup storage driver (only 's3' is supported)")
 	cmd.Flags().String("path", "", "Reserved for future use")
 	cmd.Flags().String("bucket-id", "", "Namespace prefix for backup files (default: cluster-id)")
-	cmd.Flags().String("s3-bucket", "", "S3 bucket name (required when driver=s3)")
-	cmd.Flags().String("s3-region", "", "AWS region for S3 bucket")
-	cmd.Flags().String("s3-endpoint", "", "Custom S3 endpoint (for MinIO)")
-	cmd.Flags().String("s3-access-key-id", "", "Static AWS access key ID (default: use default credential chain)")
-	cmd.Flags().String("s3-secret-access-key", "", "Static AWS secret access key (default: use default credential chain)")
+	cmdutil.AddBackupStorageFlags(cmd)
 	cmd.Flags().Duration("timeout", 10*cmdutil.DefaultTimeout, "Request timeout")
 	cmdutil.AddOutputFlags(cmd)
-
-	_ = cmd.MarkFlagRequired("driver")
 
 	return cmd
 }
 
 func runIncrementalBackup(cmd *cobra.Command, _ []string) error {
-	driver, _ := cmd.Flags().GetString("driver")
 	basePath, _ := cmd.Flags().GetString("path")
 	bucketID, _ := cmd.Flags().GetString("bucket-id")
-	s3Bucket, _ := cmd.Flags().GetString("s3-bucket")
-	s3Region, _ := cmd.Flags().GetString("s3-region")
-	s3Endpoint, _ := cmd.Flags().GetString("s3-endpoint")
-	s3AccessKeyID, _ := cmd.Flags().GetString("s3-access-key-id")
-	s3SecretAccessKey, _ := cmd.Flags().GetString("s3-secret-access-key")
+
+	storage, err := cmdutil.BackupStorageFromFlags(cmd)
+	if err != nil {
+		return err
+	}
 
 	client, conn, err := cmdutil.GetClusterClient(cmd)
 	if err != nil {
@@ -64,14 +56,9 @@ func runIncrementalBackup(cmd *cobra.Command, _ []string) error {
 	}
 
 	resp, err := client.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
-		Driver:            driver,
-		BasePath:          basePath,
-		BucketId:          bucketID,
-		S3Bucket:          s3Bucket,
-		S3Region:          s3Region,
-		S3Endpoint:        s3Endpoint,
-		S3AccessKeyId:     s3AccessKeyID,
-		S3SecretAccessKey: s3SecretAccessKey,
+		Storage:  storage,
+		BasePath: basePath,
+		BucketId: bucketID,
 	})
 	if err != nil {
 		if spinner != nil {

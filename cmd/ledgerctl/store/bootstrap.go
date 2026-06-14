@@ -32,25 +32,20 @@ import (
 func NewBootstrapCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "bootstrap",
-		Short: "Build a data directory from an S3 backup (offline)",
-		Long: `Download backup files from S3 into a fresh Pebble data directory,
-optionally validate integrity, and finalize with checkpoint + RESTORED marker.
+		Short: "Build a data directory from a backup (offline)",
+		Long: `Download backup files from S3 or Azure Blob Storage into a fresh Pebble data
+directory, optionally validate integrity, and finalize with checkpoint + RESTORED marker.
 
 This is a purely offline operation — no server needed.`,
 		RunE: runBootstrap,
 	}
 
-	cmd.Flags().String("s3-bucket", "", "S3 bucket containing the backup (required)")
-	cmd.Flags().String("s3-region", "", "AWS region for S3 bucket")
-	cmd.Flags().String("s3-endpoint", "", "Custom S3 endpoint (for MinIO)")
-	cmd.Flags().String("s3-access-key-id", "", "Static AWS access key ID (default: use default credential chain)")
-	cmd.Flags().String("s3-secret-access-key", "", "Static AWS secret access key (default: use default credential chain)")
+	cmdutil.AddBackupStorageFlags(cmd)
 	cmd.Flags().String("bucket-id", "", "Namespace prefix for backup files (default: uses cluster-id from config)")
 	cmd.Flags().String("data-dir", "", "Target data directory (required, must be fresh)")
 	cmd.Flags().Bool("validate", false, "Run integrity checks after download")
 	cmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
 
-	_ = cmd.MarkFlagRequired("s3-bucket")
 	_ = cmd.MarkFlagRequired("data-dir")
 
 	return cmd
@@ -58,15 +53,10 @@ This is a purely offline operation — no server needed.`,
 
 func runBootstrap(cmd *cobra.Command, _ []string) error {
 	var (
-		s3Bucket, _          = cmd.Flags().GetString("s3-bucket")
-		s3Region, _          = cmd.Flags().GetString("s3-region")
-		s3Endpoint, _        = cmd.Flags().GetString("s3-endpoint")
-		s3AccessKeyID, _     = cmd.Flags().GetString("s3-access-key-id")
-		s3SecretAccessKey, _ = cmd.Flags().GetString("s3-secret-access-key")
-		bucketID, _          = cmd.Flags().GetString("bucket-id")
-		dataDir, _           = cmd.Flags().GetString("data-dir")
-		validate, _          = cmd.Flags().GetBool("validate")
-		yes, _               = cmd.Flags().GetBool("yes")
+		bucketID, _ = cmd.Flags().GetString("bucket-id")
+		dataDir, _  = cmd.Flags().GetString("data-dir")
+		validate, _ = cmd.Flags().GetBool("validate")
+		yes, _      = cmd.Flags().GetBool("yes")
 	)
 
 	// Ensure data directory is fresh (no existing checkpoints).
@@ -79,10 +69,14 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("data directory %s already contains checkpoints; refusing to overwrite", dataDir)
 	}
 
-	// Create S3 storage
-	storage, err := backup.NewStorage("s3", "", s3Bucket, s3Region, s3Endpoint, s3AccessKeyID, s3SecretAccessKey)
+	storageCfg, err := cmdutil.BackupStorageConfigFromFlags(cmd)
 	if err != nil {
-		return cmdutil.Displayed(fmt.Errorf("creating S3 storage: %w", err))
+		return cmdutil.Displayed(err)
+	}
+
+	storage, err := backup.NewStorage(storageCfg)
+	if err != nil {
+		return cmdutil.Displayed(fmt.Errorf("creating backup storage: %w", err))
 	}
 
 	if bucketID == "" {
@@ -93,7 +87,7 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 	fileKeyPrefix := bucketID + "/backups/data/"
 
 	// Read manifest
-	spinner, _ := pterm.DefaultSpinner.Start("Reading backup manifest from S3...")
+	spinner, _ := pterm.DefaultSpinner.Start("Reading backup manifest...")
 
 	manifestReader, err := storage.GetFile(cmd.Context(), manifestKey)
 	if err != nil {
@@ -140,7 +134,7 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 
 	// Download checkpoint files (if any)
 	if manifest.Checkpoint != nil && len(manifest.Checkpoint.Files) > 0 {
-		dlSpinner, _ := pterm.DefaultSpinner.Start("Downloading checkpoint files from S3...")
+		dlSpinner, _ := pterm.DefaultSpinner.Start("Downloading checkpoint files...")
 
 		var totalBytes uint64
 

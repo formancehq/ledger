@@ -7,6 +7,7 @@
 package restorepb
 
 import (
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -81,15 +82,11 @@ func (DownloadState) EnumDescriptor() ([]byte, []int) {
 }
 
 type StartDownloadBackupRequest struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	S3Bucket          string                 `protobuf:"bytes,1,opt,name=s3_bucket,json=s3Bucket,proto3" json:"s3_bucket,omitempty"`                                // S3 bucket containing the backup
-	S3Region          string                 `protobuf:"bytes,2,opt,name=s3_region,json=s3Region,proto3" json:"s3_region,omitempty"`                                // AWS region for the S3 bucket
-	S3Endpoint        string                 `protobuf:"bytes,3,opt,name=s3_endpoint,json=s3Endpoint,proto3" json:"s3_endpoint,omitempty"`                          // Custom S3 endpoint (for MinIO)
-	BucketId          string                 `protobuf:"bytes,4,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"`                                // Namespace prefix for backup files (default: cluster-id from server config)
-	S3AccessKeyId     string                 `protobuf:"bytes,5,opt,name=s3_access_key_id,json=s3AccessKeyId,proto3" json:"s3_access_key_id,omitempty"`             // Optional static AWS access key ID
-	S3SecretAccessKey string                 `protobuf:"bytes,6,opt,name=s3_secret_access_key,json=s3SecretAccessKey,proto3" json:"s3_secret_access_key,omitempty"` // Optional static AWS secret access key
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state         protoimpl.MessageState  `protogen:"open.v1"`
+	BucketId      string                  `protobuf:"bytes,4,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"` // Namespace prefix for backup files (default: cluster-id from server config)
+	Storage       *commonpb.BackupStorage `protobuf:"bytes,7,opt,name=storage,proto3" json:"storage,omitempty"`                   // Backup storage backend (s3 or azure)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *StartDownloadBackupRequest) Reset() {
@@ -122,27 +119,6 @@ func (*StartDownloadBackupRequest) Descriptor() ([]byte, []int) {
 	return file_restore_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *StartDownloadBackupRequest) GetS3Bucket() string {
-	if x != nil {
-		return x.S3Bucket
-	}
-	return ""
-}
-
-func (x *StartDownloadBackupRequest) GetS3Region() string {
-	if x != nil {
-		return x.S3Region
-	}
-	return ""
-}
-
-func (x *StartDownloadBackupRequest) GetS3Endpoint() string {
-	if x != nil {
-		return x.S3Endpoint
-	}
-	return ""
-}
-
 func (x *StartDownloadBackupRequest) GetBucketId() string {
 	if x != nil {
 		return x.BucketId
@@ -150,18 +126,11 @@ func (x *StartDownloadBackupRequest) GetBucketId() string {
 	return ""
 }
 
-func (x *StartDownloadBackupRequest) GetS3AccessKeyId() string {
+func (x *StartDownloadBackupRequest) GetStorage() *commonpb.BackupStorage {
 	if x != nil {
-		return x.S3AccessKeyId
+		return x.Storage
 	}
-	return ""
-}
-
-func (x *StartDownloadBackupRequest) GetS3SecretAccessKey() string {
-	if x != nil {
-		return x.S3SecretAccessKey
-	}
-	return ""
+	return nil
 }
 
 type StartDownloadBackupResponse struct {
@@ -882,15 +851,10 @@ var File_restore_proto protoreflect.FileDescriptor
 
 const file_restore_proto_rawDesc = "" +
 	"\n" +
-	"\rrestore.proto\x12\arestore\"\xee\x01\n" +
+	"\rrestore.proto\x12\arestore\x1a\fcommon.proto\"\xd3\x01\n" +
 	"\x1aStartDownloadBackupRequest\x12\x1b\n" +
-	"\ts3_bucket\x18\x01 \x01(\tR\bs3Bucket\x12\x1b\n" +
-	"\ts3_region\x18\x02 \x01(\tR\bs3Region\x12\x1f\n" +
-	"\vs3_endpoint\x18\x03 \x01(\tR\n" +
-	"s3Endpoint\x12\x1b\n" +
-	"\tbucket_id\x18\x04 \x01(\tR\bbucketId\x12'\n" +
-	"\x10s3_access_key_id\x18\x05 \x01(\tR\rs3AccessKeyId\x12/\n" +
-	"\x14s3_secret_access_key\x18\x06 \x01(\tR\x11s3SecretAccessKey\"4\n" +
+	"\tbucket_id\x18\x04 \x01(\tR\bbucketId\x12/\n" +
+	"\astorage\x18\a \x01(\v2\x15.common.BackupStorageR\astorageJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x03\x10\x04J\x04\b\x05\x10\x06J\x04\b\x06\x10\aR\ts3_bucketR\ts3_regionR\vs3_endpointR\x10s3_access_key_idR\x14s3_secret_access_key\"4\n" +
 	"\x1bStartDownloadBackupResponse\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\"1\n" +
 	"\x18GetDownloadStatusRequest\x12\x15\n" +
@@ -981,28 +945,30 @@ var file_restore_proto_goTypes = []any{
 	(*PreviewRestoreResponse)(nil),      // 12: restore.PreviewRestoreResponse
 	(*FinalizeRestoreRequest)(nil),      // 13: restore.FinalizeRestoreRequest
 	(*FinalizeRestoreResponse)(nil),     // 14: restore.FinalizeRestoreResponse
+	(*commonpb.BackupStorage)(nil),      // 15: common.BackupStorage
 }
 var file_restore_proto_depIdxs = []int32{
-	0,  // 0: restore.GetDownloadStatusResponse.state:type_name -> restore.DownloadState
-	9,  // 1: restore.ValidateRestoreEvent.error:type_name -> restore.ValidateRestoreError
-	10, // 2: restore.ValidateRestoreEvent.progress:type_name -> restore.ValidateRestoreProgress
-	1,  // 3: restore.RestoreService.StartDownloadBackup:input_type -> restore.StartDownloadBackupRequest
-	3,  // 4: restore.RestoreService.GetDownloadStatus:input_type -> restore.GetDownloadStatusRequest
-	5,  // 5: restore.RestoreService.CancelDownload:input_type -> restore.CancelDownloadRequest
-	7,  // 6: restore.RestoreService.ValidateRestore:input_type -> restore.ValidateRestoreRequest
-	11, // 7: restore.RestoreService.PreviewRestore:input_type -> restore.PreviewRestoreRequest
-	13, // 8: restore.RestoreService.FinalizeRestore:input_type -> restore.FinalizeRestoreRequest
-	2,  // 9: restore.RestoreService.StartDownloadBackup:output_type -> restore.StartDownloadBackupResponse
-	4,  // 10: restore.RestoreService.GetDownloadStatus:output_type -> restore.GetDownloadStatusResponse
-	6,  // 11: restore.RestoreService.CancelDownload:output_type -> restore.CancelDownloadResponse
-	8,  // 12: restore.RestoreService.ValidateRestore:output_type -> restore.ValidateRestoreEvent
-	12, // 13: restore.RestoreService.PreviewRestore:output_type -> restore.PreviewRestoreResponse
-	14, // 14: restore.RestoreService.FinalizeRestore:output_type -> restore.FinalizeRestoreResponse
-	9,  // [9:15] is the sub-list for method output_type
-	3,  // [3:9] is the sub-list for method input_type
-	3,  // [3:3] is the sub-list for extension type_name
-	3,  // [3:3] is the sub-list for extension extendee
-	0,  // [0:3] is the sub-list for field type_name
+	15, // 0: restore.StartDownloadBackupRequest.storage:type_name -> common.BackupStorage
+	0,  // 1: restore.GetDownloadStatusResponse.state:type_name -> restore.DownloadState
+	9,  // 2: restore.ValidateRestoreEvent.error:type_name -> restore.ValidateRestoreError
+	10, // 3: restore.ValidateRestoreEvent.progress:type_name -> restore.ValidateRestoreProgress
+	1,  // 4: restore.RestoreService.StartDownloadBackup:input_type -> restore.StartDownloadBackupRequest
+	3,  // 5: restore.RestoreService.GetDownloadStatus:input_type -> restore.GetDownloadStatusRequest
+	5,  // 6: restore.RestoreService.CancelDownload:input_type -> restore.CancelDownloadRequest
+	7,  // 7: restore.RestoreService.ValidateRestore:input_type -> restore.ValidateRestoreRequest
+	11, // 8: restore.RestoreService.PreviewRestore:input_type -> restore.PreviewRestoreRequest
+	13, // 9: restore.RestoreService.FinalizeRestore:input_type -> restore.FinalizeRestoreRequest
+	2,  // 10: restore.RestoreService.StartDownloadBackup:output_type -> restore.StartDownloadBackupResponse
+	4,  // 11: restore.RestoreService.GetDownloadStatus:output_type -> restore.GetDownloadStatusResponse
+	6,  // 12: restore.RestoreService.CancelDownload:output_type -> restore.CancelDownloadResponse
+	8,  // 13: restore.RestoreService.ValidateRestore:output_type -> restore.ValidateRestoreEvent
+	12, // 14: restore.RestoreService.PreviewRestore:output_type -> restore.PreviewRestoreResponse
+	14, // 15: restore.RestoreService.FinalizeRestore:output_type -> restore.FinalizeRestoreResponse
+	10, // [10:16] is the sub-list for method output_type
+	4,  // [4:10] is the sub-list for method input_type
+	4,  // [4:4] is the sub-list for extension type_name
+	4,  // [4:4] is the sub-list for extension extendee
+	0,  // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_restore_proto_init() }

@@ -40,26 +40,15 @@ func NewDownloadCommand() *cobra.Command {
 		RunE: runDownload,
 	}
 
-	cmd.Flags().String("s3-bucket", "", "S3 bucket containing the backup (required)")
-	cmd.Flags().String("s3-region", "", "AWS region for S3 bucket")
-	cmd.Flags().String("s3-endpoint", "", "Custom S3 endpoint (for MinIO)")
-	cmd.Flags().String("s3-access-key-id", "", "Static AWS access key ID (default: use default credential chain)")
-	cmd.Flags().String("s3-secret-access-key", "", "Static AWS secret access key (default: use default credential chain)")
+	cmdutil.AddBackupStorageFlags(cmd)
 	cmd.Flags().String("bucket-id", "", "Namespace prefix for backup files (default: cluster-id)")
 	cmd.Flags().Duration("poll-interval", defaultPollInterval, "Interval between progress polls")
 	cmd.Flags().Duration("rpc-timeout", defaultRPCTimeout, "Per-RPC timeout for Start, status poll, and Cancel")
-
-	_ = cmd.MarkFlagRequired("s3-bucket")
 
 	return cmd
 }
 
 func runDownload(cmd *cobra.Command, _ []string) error {
-	s3Bucket, _ := cmd.Flags().GetString("s3-bucket")
-	s3Region, _ := cmd.Flags().GetString("s3-region")
-	s3Endpoint, _ := cmd.Flags().GetString("s3-endpoint")
-	s3AccessKeyID, _ := cmd.Flags().GetString("s3-access-key-id")
-	s3SecretAccessKey, _ := cmd.Flags().GetString("s3-secret-access-key")
 	bucketID, _ := cmd.Flags().GetString("bucket-id")
 	pollInterval, _ := cmd.Flags().GetDuration("poll-interval")
 	rpcTimeout, _ := cmd.Flags().GetDuration("rpc-timeout")
@@ -70,6 +59,11 @@ func runDownload(cmd *cobra.Command, _ []string) error {
 
 	if rpcTimeout <= 0 {
 		rpcTimeout = defaultRPCTimeout
+	}
+
+	storage, err := cmdutil.BackupStorageFromFlags(cmd)
+	if err != nil {
+		return err
 	}
 
 	client, conn, err := getRestoreClient(cmd)
@@ -87,12 +81,8 @@ func runDownload(cmd *cobra.Command, _ []string) error {
 	defer stop()
 
 	startResp, err := startDownload(rootCtx, client, rpcTimeout, &restorepb.StartDownloadBackupRequest{
-		S3Bucket:          s3Bucket,
-		S3Region:          s3Region,
-		S3Endpoint:        s3Endpoint,
-		BucketId:          bucketID,
-		S3AccessKeyId:     s3AccessKeyID,
-		S3SecretAccessKey: s3SecretAccessKey,
+		Storage:  storage,
+		BucketId: bucketID,
 	})
 	if err != nil {
 		return cmdutil.FormatGRPCError("starting download", err)

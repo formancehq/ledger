@@ -1161,17 +1161,12 @@ func (*RemoveNodeResponse) Descriptor() ([]byte, []int) {
 }
 
 type BackupRequest struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	Driver            string                 `protobuf:"bytes,1,opt,name=driver,proto3" json:"driver,omitempty"`                                                    // "s3" (only supported driver)
-	BasePath          string                 `protobuf:"bytes,2,opt,name=base_path,json=basePath,proto3" json:"base_path,omitempty"`                                // Reserved for future use
-	BucketId          string                 `protobuf:"bytes,3,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"`                                // Namespace prefix for backup files (default: cluster-id)
-	S3Bucket          string                 `protobuf:"bytes,4,opt,name=s3_bucket,json=s3Bucket,proto3" json:"s3_bucket,omitempty"`                                // S3 bucket name (required when driver=s3)
-	S3Region          string                 `protobuf:"bytes,5,opt,name=s3_region,json=s3Region,proto3" json:"s3_region,omitempty"`                                // AWS region for backup S3 bucket
-	S3Endpoint        string                 `protobuf:"bytes,6,opt,name=s3_endpoint,json=s3Endpoint,proto3" json:"s3_endpoint,omitempty"`                          // Custom S3 endpoint (for MinIO)
-	S3AccessKeyId     string                 `protobuf:"bytes,7,opt,name=s3_access_key_id,json=s3AccessKeyId,proto3" json:"s3_access_key_id,omitempty"`             // Optional static AWS access key ID
-	S3SecretAccessKey string                 `protobuf:"bytes,8,opt,name=s3_secret_access_key,json=s3SecretAccessKey,proto3" json:"s3_secret_access_key,omitempty"` // Optional static AWS secret access key
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state         protoimpl.MessageState  `protogen:"open.v1"`
+	BasePath      string                  `protobuf:"bytes,2,opt,name=base_path,json=basePath,proto3" json:"base_path,omitempty"` // Reserved for future use
+	BucketId      string                  `protobuf:"bytes,3,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"` // Namespace prefix for backup files (default: cluster-id)
+	Storage       *commonpb.BackupStorage `protobuf:"bytes,9,opt,name=storage,proto3" json:"storage,omitempty"`                   // Backup storage backend (s3 or azure)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *BackupRequest) Reset() {
@@ -1204,13 +1199,6 @@ func (*BackupRequest) Descriptor() ([]byte, []int) {
 	return file_cluster_proto_rawDescGZIP(), []int{20}
 }
 
-func (x *BackupRequest) GetDriver() string {
-	if x != nil {
-		return x.Driver
-	}
-	return ""
-}
-
 func (x *BackupRequest) GetBasePath() string {
 	if x != nil {
 		return x.BasePath
@@ -1225,39 +1213,11 @@ func (x *BackupRequest) GetBucketId() string {
 	return ""
 }
 
-func (x *BackupRequest) GetS3Bucket() string {
+func (x *BackupRequest) GetStorage() *commonpb.BackupStorage {
 	if x != nil {
-		return x.S3Bucket
+		return x.Storage
 	}
-	return ""
-}
-
-func (x *BackupRequest) GetS3Region() string {
-	if x != nil {
-		return x.S3Region
-	}
-	return ""
-}
-
-func (x *BackupRequest) GetS3Endpoint() string {
-	if x != nil {
-		return x.S3Endpoint
-	}
-	return ""
-}
-
-func (x *BackupRequest) GetS3AccessKeyId() string {
-	if x != nil {
-		return x.S3AccessKeyId
-	}
-	return ""
-}
-
-func (x *BackupRequest) GetS3SecretAccessKey() string {
-	if x != nil {
-		return x.S3SecretAccessKey
-	}
-	return ""
+	return nil
 }
 
 type BackupResponse struct {
@@ -1361,17 +1321,12 @@ func (x *BackupResponse) GetOrphansDeleted() uint32 {
 }
 
 type IncrementalBackupRequest struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	Driver            string                 `protobuf:"bytes,1,opt,name=driver,proto3" json:"driver,omitempty"`                                                    // "s3" (only supported driver)
-	BasePath          string                 `protobuf:"bytes,2,opt,name=base_path,json=basePath,proto3" json:"base_path,omitempty"`                                // Reserved for future use
-	BucketId          string                 `protobuf:"bytes,3,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"`                                // Namespace prefix for backup files (default: cluster-id)
-	S3Bucket          string                 `protobuf:"bytes,4,opt,name=s3_bucket,json=s3Bucket,proto3" json:"s3_bucket,omitempty"`                                // S3 bucket name (required when driver=s3)
-	S3Region          string                 `protobuf:"bytes,5,opt,name=s3_region,json=s3Region,proto3" json:"s3_region,omitempty"`                                // AWS region for backup S3 bucket
-	S3Endpoint        string                 `protobuf:"bytes,6,opt,name=s3_endpoint,json=s3Endpoint,proto3" json:"s3_endpoint,omitempty"`                          // Custom S3 endpoint (for MinIO)
-	S3AccessKeyId     string                 `protobuf:"bytes,7,opt,name=s3_access_key_id,json=s3AccessKeyId,proto3" json:"s3_access_key_id,omitempty"`             // Optional static AWS access key ID
-	S3SecretAccessKey string                 `protobuf:"bytes,8,opt,name=s3_secret_access_key,json=s3SecretAccessKey,proto3" json:"s3_secret_access_key,omitempty"` // Optional static AWS secret access key
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state         protoimpl.MessageState  `protogen:"open.v1"`
+	BasePath      string                  `protobuf:"bytes,2,opt,name=base_path,json=basePath,proto3" json:"base_path,omitempty"` // Reserved for future use
+	BucketId      string                  `protobuf:"bytes,3,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"` // Namespace prefix for backup files (default: cluster-id)
+	Storage       *commonpb.BackupStorage `protobuf:"bytes,9,opt,name=storage,proto3" json:"storage,omitempty"`                   // Backup storage backend (s3 or azure)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *IncrementalBackupRequest) Reset() {
@@ -1404,13 +1359,6 @@ func (*IncrementalBackupRequest) Descriptor() ([]byte, []int) {
 	return file_cluster_proto_rawDescGZIP(), []int{22}
 }
 
-func (x *IncrementalBackupRequest) GetDriver() string {
-	if x != nil {
-		return x.Driver
-	}
-	return ""
-}
-
 func (x *IncrementalBackupRequest) GetBasePath() string {
 	if x != nil {
 		return x.BasePath
@@ -1425,39 +1373,11 @@ func (x *IncrementalBackupRequest) GetBucketId() string {
 	return ""
 }
 
-func (x *IncrementalBackupRequest) GetS3Bucket() string {
+func (x *IncrementalBackupRequest) GetStorage() *commonpb.BackupStorage {
 	if x != nil {
-		return x.S3Bucket
+		return x.Storage
 	}
-	return ""
-}
-
-func (x *IncrementalBackupRequest) GetS3Region() string {
-	if x != nil {
-		return x.S3Region
-	}
-	return ""
-}
-
-func (x *IncrementalBackupRequest) GetS3Endpoint() string {
-	if x != nil {
-		return x.S3Endpoint
-	}
-	return ""
-}
-
-func (x *IncrementalBackupRequest) GetS3AccessKeyId() string {
-	if x != nil {
-		return x.S3AccessKeyId
-	}
-	return ""
-}
-
-func (x *IncrementalBackupRequest) GetS3SecretAccessKey() string {
-	if x != nil {
-		return x.S3SecretAccessKey
-	}
-	return ""
+	return nil
 }
 
 type IncrementalBackupResponse struct {
@@ -2331,17 +2251,11 @@ const file_cluster_proto_rawDesc = "" +
 	"\x11RemoveNodeRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12\x14\n" +
 	"\x05force\x18\x02 \x01(\bR\x05force\"\x14\n" +
-	"\x12RemoveNodeResponse\"\x96\x02\n" +
-	"\rBackupRequest\x12\x16\n" +
-	"\x06driver\x18\x01 \x01(\tR\x06driver\x12\x1b\n" +
+	"\x12RemoveNodeResponse\"\xf1\x01\n" +
+	"\rBackupRequest\x12\x1b\n" +
 	"\tbase_path\x18\x02 \x01(\tR\bbasePath\x12\x1b\n" +
-	"\tbucket_id\x18\x03 \x01(\tR\bbucketId\x12\x1b\n" +
-	"\ts3_bucket\x18\x04 \x01(\tR\bs3Bucket\x12\x1b\n" +
-	"\ts3_region\x18\x05 \x01(\tR\bs3Region\x12\x1f\n" +
-	"\vs3_endpoint\x18\x06 \x01(\tR\n" +
-	"s3Endpoint\x12'\n" +
-	"\x10s3_access_key_id\x18\a \x01(\tR\rs3AccessKeyId\x12/\n" +
-	"\x14s3_secret_access_key\x18\b \x01(\tR\x11s3SecretAccessKey\"\xd1\x02\n" +
+	"\tbucket_id\x18\x03 \x01(\tR\bbucketId\x12/\n" +
+	"\astorage\x18\t \x01(\v2\x15.common.BackupStorageR\astorageJ\x04\b\x01\x10\x02J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tR\x06driverR\ts3_bucketR\ts3_regionR\vs3_endpointR\x10s3_access_key_idR\x14s3_secret_access_key\"\xd1\x02\n" +
 	"\x0eBackupResponse\x12%\n" +
 	"\x0efiles_uploaded\x18\x01 \x01(\rR\rfilesUploaded\x12#\n" +
 	"\rfiles_deleted\x18\x02 \x01(\rR\ffilesDeleted\x12\x1f\n" +
@@ -2352,17 +2266,11 @@ const file_cluster_proto_rawDesc = "" +
 	"\x11last_log_sequence\x18\x05 \x01(\x06R\x0flastLogSequence\x12.\n" +
 	"\x13last_audit_sequence\x18\x06 \x01(\x06R\x11lastAuditSequence\x12,\n" +
 	"\x12last_applied_index\x18\a \x01(\x06R\x10lastAppliedIndex\x12'\n" +
-	"\x0forphans_deleted\x18\b \x01(\rR\x0eorphansDeleted\"\xa1\x02\n" +
-	"\x18IncrementalBackupRequest\x12\x16\n" +
-	"\x06driver\x18\x01 \x01(\tR\x06driver\x12\x1b\n" +
+	"\x0forphans_deleted\x18\b \x01(\rR\x0eorphansDeleted\"\xfc\x01\n" +
+	"\x18IncrementalBackupRequest\x12\x1b\n" +
 	"\tbase_path\x18\x02 \x01(\tR\bbasePath\x12\x1b\n" +
-	"\tbucket_id\x18\x03 \x01(\tR\bbucketId\x12\x1b\n" +
-	"\ts3_bucket\x18\x04 \x01(\tR\bs3Bucket\x12\x1b\n" +
-	"\ts3_region\x18\x05 \x01(\tR\bs3Region\x12\x1f\n" +
-	"\vs3_endpoint\x18\x06 \x01(\tR\n" +
-	"s3Endpoint\x12'\n" +
-	"\x10s3_access_key_id\x18\a \x01(\tR\rs3AccessKeyId\x12/\n" +
-	"\x14s3_secret_access_key\x18\b \x01(\tR\x11s3SecretAccessKey\"\xd6\x02\n" +
+	"\tbucket_id\x18\x03 \x01(\tR\bbucketId\x12/\n" +
+	"\astorage\x18\t \x01(\v2\x15.common.BackupStorageR\astorageJ\x04\b\x01\x10\x02J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tR\x06driverR\ts3_bucketR\ts3_regionR\vs3_endpointR\x10s3_access_key_idR\x14s3_secret_access_key\"\xd6\x02\n" +
 	"\x19IncrementalBackupResponse\x120\n" +
 	"\x14log_entries_exported\x18\x01 \x01(\x06R\x12logEntriesExported\x124\n" +
 	"\x16audit_entries_exported\x18\x02 \x01(\x06R\x14auditEntriesExported\x12+\n" +
@@ -2482,7 +2390,8 @@ var file_cluster_proto_goTypes = []any{
 	(*QueryCheckpointInfo)(nil),                // 39: cluster.QueryCheckpointInfo
 	nil,                                        // 40: cluster.RaftStatus.ProgressEntry
 	(*commonpb.ClusterConfig)(nil),             // 41: common.ClusterConfig
-	(*commonpb.Timestamp)(nil),                 // 42: common.Timestamp
+	(*commonpb.BackupStorage)(nil),             // 42: common.BackupStorage
+	(*commonpb.Timestamp)(nil),                 // 43: common.Timestamp
 }
 var file_cluster_proto_depIdxs = []int32{
 	2,  // 0: cluster.NodeInfo.progress:type_name -> cluster.ProgressInfo
@@ -2496,48 +2405,50 @@ var file_cluster_proto_depIdxs = []int32{
 	41, // 8: cluster.ClusterState.cluster_config:type_name -> common.ClusterConfig
 	12, // 9: cluster.DiskUsage.wal_volume:type_name -> cluster.VolumeUsage
 	12, // 10: cluster.DiskUsage.data_volume:type_name -> cluster.VolumeUsage
-	39, // 11: cluster.ListQueryCheckpointsResponse.checkpoints:type_name -> cluster.QueryCheckpointInfo
-	42, // 12: cluster.QueryCheckpointInfo.created_at:type_name -> common.Timestamp
-	2,  // 13: cluster.RaftStatus.ProgressEntry.value:type_name -> cluster.ProgressInfo
-	0,  // 14: cluster.ClusterService.GetClusterState:input_type -> cluster.GetClusterStateRequest
-	9,  // 15: cluster.ClusterService.GetDiskUsage:input_type -> cluster.GetDiskUsageRequest
-	10, // 16: cluster.ClusterService.GetNodeTime:input_type -> cluster.GetNodeTimeRequest
-	7,  // 17: cluster.ClusterService.TransferLeadership:input_type -> cluster.TransferLeadershipRequest
-	14, // 18: cluster.ClusterService.AddLearner:input_type -> cluster.AddLearnerRequest
-	16, // 19: cluster.ClusterService.PromoteLearner:input_type -> cluster.PromoteLearnerRequest
-	18, // 20: cluster.ClusterService.RemoveNode:input_type -> cluster.RemoveNodeRequest
-	24, // 21: cluster.ClusterService.CompactPrimary:input_type -> cluster.CompactPrimaryRequest
-	26, // 22: cluster.ClusterService.CompactSecondary:input_type -> cluster.CompactSecondaryRequest
-	28, // 23: cluster.ClusterService.CreateCheckpoint:input_type -> cluster.CreateCheckpointRequest
-	20, // 24: cluster.ClusterService.Backup:input_type -> cluster.BackupRequest
-	22, // 25: cluster.ClusterService.IncrementalBackup:input_type -> cluster.IncrementalBackupRequest
-	30, // 26: cluster.ClusterService.CreateQueryCheckpoint:input_type -> cluster.CreateQueryCheckpointRequest
-	32, // 27: cluster.ClusterService.DeleteQueryCheckpoint:input_type -> cluster.DeleteQueryCheckpointRequest
-	34, // 28: cluster.ClusterService.ListQueryCheckpoints:input_type -> cluster.ListQueryCheckpointsRequest
-	36, // 29: cluster.ClusterService.GetQueryCheckpointInfo:input_type -> cluster.GetQueryCheckpointInfoRequest
-	37, // 30: cluster.ClusterService.GetQueryCheckpointSchedule:input_type -> cluster.GetQueryCheckpointScheduleRequest
-	4,  // 31: cluster.ClusterService.GetClusterState:output_type -> cluster.ClusterState
-	13, // 32: cluster.ClusterService.GetDiskUsage:output_type -> cluster.DiskUsage
-	11, // 33: cluster.ClusterService.GetNodeTime:output_type -> cluster.NodeTime
-	8,  // 34: cluster.ClusterService.TransferLeadership:output_type -> cluster.TransferLeadershipResponse
-	15, // 35: cluster.ClusterService.AddLearner:output_type -> cluster.AddLearnerResponse
-	17, // 36: cluster.ClusterService.PromoteLearner:output_type -> cluster.PromoteLearnerResponse
-	19, // 37: cluster.ClusterService.RemoveNode:output_type -> cluster.RemoveNodeResponse
-	25, // 38: cluster.ClusterService.CompactPrimary:output_type -> cluster.CompactPrimaryResponse
-	27, // 39: cluster.ClusterService.CompactSecondary:output_type -> cluster.CompactSecondaryResponse
-	29, // 40: cluster.ClusterService.CreateCheckpoint:output_type -> cluster.CreateCheckpointResponse
-	21, // 41: cluster.ClusterService.Backup:output_type -> cluster.BackupResponse
-	23, // 42: cluster.ClusterService.IncrementalBackup:output_type -> cluster.IncrementalBackupResponse
-	31, // 43: cluster.ClusterService.CreateQueryCheckpoint:output_type -> cluster.CreateQueryCheckpointResponse
-	33, // 44: cluster.ClusterService.DeleteQueryCheckpoint:output_type -> cluster.DeleteQueryCheckpointResponse
-	35, // 45: cluster.ClusterService.ListQueryCheckpoints:output_type -> cluster.ListQueryCheckpointsResponse
-	39, // 46: cluster.ClusterService.GetQueryCheckpointInfo:output_type -> cluster.QueryCheckpointInfo
-	38, // 47: cluster.ClusterService.GetQueryCheckpointSchedule:output_type -> cluster.GetQueryCheckpointScheduleResponse
-	31, // [31:48] is the sub-list for method output_type
-	14, // [14:31] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	42, // 11: cluster.BackupRequest.storage:type_name -> common.BackupStorage
+	42, // 12: cluster.IncrementalBackupRequest.storage:type_name -> common.BackupStorage
+	39, // 13: cluster.ListQueryCheckpointsResponse.checkpoints:type_name -> cluster.QueryCheckpointInfo
+	43, // 14: cluster.QueryCheckpointInfo.created_at:type_name -> common.Timestamp
+	2,  // 15: cluster.RaftStatus.ProgressEntry.value:type_name -> cluster.ProgressInfo
+	0,  // 16: cluster.ClusterService.GetClusterState:input_type -> cluster.GetClusterStateRequest
+	9,  // 17: cluster.ClusterService.GetDiskUsage:input_type -> cluster.GetDiskUsageRequest
+	10, // 18: cluster.ClusterService.GetNodeTime:input_type -> cluster.GetNodeTimeRequest
+	7,  // 19: cluster.ClusterService.TransferLeadership:input_type -> cluster.TransferLeadershipRequest
+	14, // 20: cluster.ClusterService.AddLearner:input_type -> cluster.AddLearnerRequest
+	16, // 21: cluster.ClusterService.PromoteLearner:input_type -> cluster.PromoteLearnerRequest
+	18, // 22: cluster.ClusterService.RemoveNode:input_type -> cluster.RemoveNodeRequest
+	24, // 23: cluster.ClusterService.CompactPrimary:input_type -> cluster.CompactPrimaryRequest
+	26, // 24: cluster.ClusterService.CompactSecondary:input_type -> cluster.CompactSecondaryRequest
+	28, // 25: cluster.ClusterService.CreateCheckpoint:input_type -> cluster.CreateCheckpointRequest
+	20, // 26: cluster.ClusterService.Backup:input_type -> cluster.BackupRequest
+	22, // 27: cluster.ClusterService.IncrementalBackup:input_type -> cluster.IncrementalBackupRequest
+	30, // 28: cluster.ClusterService.CreateQueryCheckpoint:input_type -> cluster.CreateQueryCheckpointRequest
+	32, // 29: cluster.ClusterService.DeleteQueryCheckpoint:input_type -> cluster.DeleteQueryCheckpointRequest
+	34, // 30: cluster.ClusterService.ListQueryCheckpoints:input_type -> cluster.ListQueryCheckpointsRequest
+	36, // 31: cluster.ClusterService.GetQueryCheckpointInfo:input_type -> cluster.GetQueryCheckpointInfoRequest
+	37, // 32: cluster.ClusterService.GetQueryCheckpointSchedule:input_type -> cluster.GetQueryCheckpointScheduleRequest
+	4,  // 33: cluster.ClusterService.GetClusterState:output_type -> cluster.ClusterState
+	13, // 34: cluster.ClusterService.GetDiskUsage:output_type -> cluster.DiskUsage
+	11, // 35: cluster.ClusterService.GetNodeTime:output_type -> cluster.NodeTime
+	8,  // 36: cluster.ClusterService.TransferLeadership:output_type -> cluster.TransferLeadershipResponse
+	15, // 37: cluster.ClusterService.AddLearner:output_type -> cluster.AddLearnerResponse
+	17, // 38: cluster.ClusterService.PromoteLearner:output_type -> cluster.PromoteLearnerResponse
+	19, // 39: cluster.ClusterService.RemoveNode:output_type -> cluster.RemoveNodeResponse
+	25, // 40: cluster.ClusterService.CompactPrimary:output_type -> cluster.CompactPrimaryResponse
+	27, // 41: cluster.ClusterService.CompactSecondary:output_type -> cluster.CompactSecondaryResponse
+	29, // 42: cluster.ClusterService.CreateCheckpoint:output_type -> cluster.CreateCheckpointResponse
+	21, // 43: cluster.ClusterService.Backup:output_type -> cluster.BackupResponse
+	23, // 44: cluster.ClusterService.IncrementalBackup:output_type -> cluster.IncrementalBackupResponse
+	31, // 45: cluster.ClusterService.CreateQueryCheckpoint:output_type -> cluster.CreateQueryCheckpointResponse
+	33, // 46: cluster.ClusterService.DeleteQueryCheckpoint:output_type -> cluster.DeleteQueryCheckpointResponse
+	35, // 47: cluster.ClusterService.ListQueryCheckpoints:output_type -> cluster.ListQueryCheckpointsResponse
+	39, // 48: cluster.ClusterService.GetQueryCheckpointInfo:output_type -> cluster.QueryCheckpointInfo
+	38, // 49: cluster.ClusterService.GetQueryCheckpointSchedule:output_type -> cluster.GetQueryCheckpointScheduleResponse
+	33, // [33:50] is the sub-list for method output_type
+	16, // [16:33] is the sub-list for method input_type
+	16, // [16:16] is the sub-list for extension type_name
+	16, // [16:16] is the sub-list for extension extendee
+	0,  // [0:16] is the sub-list for field type_name
 }
 
 func init() { file_cluster_proto_init() }

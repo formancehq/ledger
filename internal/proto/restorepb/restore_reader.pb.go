@@ -3,42 +3,30 @@
 
 package restorepb
 
+import (
+	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+)
+
 // StartDownloadBackupRequestReader provides read-only access to StartDownloadBackupRequest.
 // Call Mutate() to obtain a mutable clone.
 type StartDownloadBackupRequestReader interface {
-	GetS3Bucket() string
-	GetS3Region() string
-	GetS3Endpoint() string
 	GetBucketId() string
-	GetS3AccessKeyId() string
-	GetS3SecretAccessKey() string
+	GetStorage() commonpb.BackupStorageReader
 	Mutate() *StartDownloadBackupRequest
 }
 
 type startDownloadBackupRequestReadonly struct{ v *StartDownloadBackupRequest }
 
-func (r *startDownloadBackupRequestReadonly) GetS3Bucket() string {
-	return r.v.GetS3Bucket()
-}
-
-func (r *startDownloadBackupRequestReadonly) GetS3Region() string {
-	return r.v.GetS3Region()
-}
-
-func (r *startDownloadBackupRequestReadonly) GetS3Endpoint() string {
-	return r.v.GetS3Endpoint()
-}
-
 func (r *startDownloadBackupRequestReadonly) GetBucketId() string {
 	return r.v.GetBucketId()
 }
 
-func (r *startDownloadBackupRequestReadonly) GetS3AccessKeyId() string {
-	return r.v.GetS3AccessKeyId()
-}
-
-func (r *startDownloadBackupRequestReadonly) GetS3SecretAccessKey() string {
-	return r.v.GetS3SecretAccessKey()
+func (r *startDownloadBackupRequestReadonly) GetStorage() commonpb.BackupStorageReader {
+	v := r.v.GetStorage()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *startDownloadBackupRequestReadonly) Mutate() *StartDownloadBackupRequest {

@@ -562,19 +562,12 @@ func (impl *ClusterServiceServerImpl) Backup(ctx context.Context, req *clusterpb
 	impl.backupMu.Lock()
 	defer impl.backupMu.Unlock()
 
-	if req.GetDriver() == "" {
-		return nil, errors.New("driver is required")
+	cfg, err := storageConfigFromProto(req.GetStorage())
+	if err != nil {
+		return nil, err
 	}
 
-	storage, err := backup.NewStorage(
-		req.GetDriver(),
-		req.GetBasePath(),
-		req.GetS3Bucket(),
-		req.GetS3Region(),
-		req.GetS3Endpoint(),
-		req.GetS3AccessKeyId(),
-		req.GetS3SecretAccessKey(),
-	)
+	storage, err := backup.NewStorage(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("creating backup storage: %w", err)
 	}
@@ -611,19 +604,12 @@ func (impl *ClusterServiceServerImpl) IncrementalBackup(ctx context.Context, req
 	impl.incrementalBackupMu.Lock()
 	defer impl.incrementalBackupMu.Unlock()
 
-	if req.GetDriver() == "" {
-		return nil, errors.New("driver is required")
+	cfg, err := storageConfigFromProto(req.GetStorage())
+	if err != nil {
+		return nil, err
 	}
 
-	storage, err := backup.NewStorage(
-		req.GetDriver(),
-		req.GetBasePath(),
-		req.GetS3Bucket(),
-		req.GetS3Region(),
-		req.GetS3Endpoint(),
-		req.GetS3AccessKeyId(),
-		req.GetS3SecretAccessKey(),
-	)
+	storage, err := backup.NewStorage(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("creating backup storage: %w", err)
 	}

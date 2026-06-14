@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package restore;
 
+import "common.proto";
+
 option go_package = "github.com/formancehq/ledger/v3/internal/proto/restorepb";
 
 // ============================================================================
@@ -43,12 +45,15 @@ service RestoreService {
 // ============================================================================
 
 message StartDownloadBackupRequest {
-  string s3_bucket = 1;            // S3 bucket containing the backup
-  string s3_region = 2;            // AWS region for the S3 bucket
-  string s3_endpoint = 3;          // Custom S3 endpoint (for MinIO)
-  string bucket_id = 4;            // Namespace prefix for backup files (default: cluster-id from server config)
-  string s3_access_key_id = 5;     // Optional static AWS access key ID
-  string s3_secret_access_key = 6; // Optional static AWS secret access key
+  // Fields 1, 2, 3, 5, 6 were the flat s3_* configuration. They are reserved
+  // so the new BackupStorage oneof cannot silently parse a legacy payload as
+  // a sub-message. bucket_id keeps its original field number (4) for
+  // forward-compatible payloads.
+  reserved 1, 2, 3, 5, 6;
+  reserved "s3_bucket", "s3_region", "s3_endpoint", "s3_access_key_id", "s3_secret_access_key";
+
+  string bucket_id = 4;             // Namespace prefix for backup files (default: cluster-id from server config)
+  common.BackupStorage storage = 7; // Backup storage backend (s3 or azure)
 }
 
 message StartDownloadBackupResponse {

@@ -20,7 +20,7 @@ tidy:
     cd misc/operator && go mod tidy
 
 # All optional feature build tags
-all_tags := "kafka,nats,clickhouse,databricks,s3,pyroscope"
+all_tags := "kafka,nats,clickhouse,databricks,s3,azure,pyroscope"
 
 # Build the server application (light: no optional deps)
 build:
@@ -340,7 +340,7 @@ operator-helm-publish version='' suffix='':
 
 # Build and push multi-arch Docker image
 docker-build *ARGS:
-    docker buildx build -t ghcr.io/formancehq/ledger-v3-poc --platform linux/amd64,linux/arm64 --push --build-arg BUILD_TAGS=kafka,clickhouse,s3,pyroscope {{ARGS}} .
+    docker buildx build -t ghcr.io/formancehq/ledger-v3-poc --platform linux/amd64,linux/arm64 --push --build-arg BUILD_TAGS=kafka,clickhouse,s3,azure,pyroscope {{ARGS}} .
 
 # Docker builds are handled via Pulumi
 

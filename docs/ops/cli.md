@@ -1836,7 +1836,7 @@ ledgerctl s cp
 
 #### store backup
 
-Perform a full checkpoint backup of the Pebble store to S3. The request is forwarded to the cluster leader because SST file numbering is node-local.
+Perform a full checkpoint backup of the Pebble store to S3 or Azure Blob Storage. The request is forwarded to the cluster leader because SST file numbering is node-local.
 
 **Aliases:** `bk`
 
@@ -1848,13 +1848,17 @@ ledgerctl store backup [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--driver` | `s3` | Storage driver (only `s3` is supported) |
+| `--driver` | `s3` | Storage driver: `s3` or `azure` |
 | `--bucket-id` | cluster-id | Namespace prefix for backup files |
-| `--s3-bucket` | | S3 bucket name (required) |
+| `--s3-bucket` | | S3 bucket name (required when `driver=s3`) |
 | `--s3-region` | | AWS region for S3 bucket |
 | `--s3-endpoint` | | Custom S3 endpoint (for MinIO) |
 | `--s3-access-key-id` | | Static AWS access key ID (default: use default credential chain) |
 | `--s3-secret-access-key` | | Static AWS secret access key (default: use default credential chain) |
+| `--azure-account-name` | | Azure storage account name (required when `driver=azure`) |
+| `--azure-account-key` | | Azure storage account key (omit to use `DefaultAzureCredential`) |
+| `--azure-container` | | Azure Blob Storage container name (required when `driver=azure`) |
+| `--azure-endpoint` | | Custom Azure endpoint (for Azurite) |
 | `--timeout` | `1000s` | Request timeout |
 
 **Behavior:**
@@ -1874,13 +1878,16 @@ ledgerctl store backup --driver s3 --s3-bucket my-bucket --s3-region us-east-1
 # Full backup to MinIO
 ledgerctl store backup --driver s3 --s3-bucket my-bucket --s3-endpoint http://minio:9000
 
+# Full backup to Azure Blob Storage
+ledgerctl store backup --driver azure --azure-account-name myaccount --azure-account-key <key> --azure-container backups
+
 # Short form
 ledgerctl s bk --driver s3 --s3-bucket my-bucket
 ```
 
 #### store incremental-backup
 
-Export new log and audit entries since the last backup to S3. Can run on **any node** (no leader forwarding required).
+Export new log and audit entries since the last backup to S3 or Azure Blob Storage. Can run on **any node** (no leader forwarding required).
 
 **Aliases:** `ibk`
 
@@ -1892,13 +1899,17 @@ ledgerctl store incremental-backup [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--driver` | `s3` | Storage driver (only `s3` is supported) |
+| `--driver` | `s3` | Storage driver: `s3` or `azure` |
 | `--bucket-id` | cluster-id | Namespace prefix for backup files |
-| `--s3-bucket` | | S3 bucket name (required) |
+| `--s3-bucket` | | S3 bucket name (required when `driver=s3`) |
 | `--s3-region` | | AWS region for S3 bucket |
 | `--s3-endpoint` | | Custom S3 endpoint (for MinIO) |
 | `--s3-access-key-id` | | Static AWS access key ID (default: use default credential chain) |
 | `--s3-secret-access-key` | | Static AWS secret access key (default: use default credential chain) |
+| `--azure-account-name` | | Azure storage account name (required when `driver=azure`) |
+| `--azure-account-key` | | Azure storage account key (omit to use `DefaultAzureCredential`) |
+| `--azure-container` | | Azure Blob Storage container name (required when `driver=azure`) |
+| `--azure-endpoint` | | Custom Azure endpoint (for Azurite) |
 | `--timeout` | `1000s` | Request timeout |
 
 **Behavior:**
@@ -1914,6 +1925,9 @@ ledgerctl store incremental-backup [flags]
 ```bash
 # Incremental backup to S3
 ledgerctl store incremental-backup --driver s3 --s3-bucket my-bucket --s3-region us-east-1
+
+# Incremental backup to Azure Blob Storage
+ledgerctl store incremental-backup --driver azure --azure-account-name myaccount --azure-account-key <key> --azure-container backups
 
 # Short form
 ledgerctl s ibk --driver s3 --s3-bucket my-bucket
@@ -1936,21 +1950,26 @@ ledgerctl store backup --driver s3 --s3-bucket my-bucket
 
 ### store bootstrap
 
-Build a data directory from an S3 backup without starting a server. This is a purely offline operation useful for scripted disaster recovery or bootstrapping from backups.
+Build a data directory from a backup without starting a server. This is a purely offline operation useful for scripted disaster recovery or bootstrapping from backups. Supports S3 (default) and Azure Blob Storage backends.
 
 ```bash
-ledgerctl store bootstrap --s3-bucket <bucket> --data-dir /path/to/data [flags]
+ledgerctl store bootstrap --driver s3 --s3-bucket <bucket> --data-dir /path/to/data [flags]
 ```
 
 **Flags:**
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--s3-bucket` | | S3 bucket containing the backup (required) |
+| `--driver` | `s3` | Storage driver: `s3` or `azure` |
+| `--s3-bucket` | | S3 bucket containing the backup (required when `driver=s3`) |
 | `--s3-region` | | AWS region for S3 bucket |
 | `--s3-endpoint` | | Custom S3 endpoint (for MinIO) |
 | `--s3-access-key-id` | | Static AWS access key ID (default: use default credential chain) |
 | `--s3-secret-access-key` | | Static AWS secret access key (default: use default credential chain) |
+| `--azure-account-name` | | Azure storage account name (required when `driver=azure`) |
+| `--azure-account-key` | | Azure storage account key (omit to use `DefaultAzureCredential`) |
+| `--azure-container` | | Azure Blob Storage container name (required when `driver=azure`) |
+| `--azure-endpoint` | | Custom Azure endpoint (for Azurite) |
 | `--bucket-id` | `default` | Namespace prefix for backup files (default: uses cluster-id from config) |
 | `--data-dir` | | Target data directory (required, must be fresh) |
 | `--validate` | `false` | Run integrity checks after download |
@@ -1959,7 +1978,7 @@ ledgerctl store bootstrap --s3-bucket <bucket> --data-dir /path/to/data [flags]
 **Behavior:**
 
 1. Verifies the target data directory is fresh (no existing checkpoints via `ScanLatestCheckpointID`)
-2. Downloads backup files from S3 into a staging directory
+2. Downloads backup files from the configured backend into a staging directory
 3. Applies export segments and rebuilds derived state from logs (if any)
 4. Opens the staging as a read-only Pebble database and displays a preview (ledger count, timestamps)
 5. If `--validate` is set, runs the full integrity checker (same as `store check`)
@@ -1973,14 +1992,17 @@ After bootstrap, start the server with `--bootstrap` to use the restored data.
 **Example:**
 
 ```bash
-# Interactive with validation
-ledgerctl store bootstrap --s3-bucket my-bucket --s3-region us-east-1 --data-dir ./fresh-data --validate
+# Interactive with validation (S3)
+ledgerctl store bootstrap --driver s3 --s3-bucket my-bucket --s3-region us-east-1 --data-dir ./fresh-data --validate
 
 # Non-interactive (scripted)
-ledgerctl store bootstrap --s3-bucket my-bucket --data-dir ./fresh-data --yes
+ledgerctl store bootstrap --driver s3 --s3-bucket my-bucket --data-dir ./fresh-data --yes
 
 # With MinIO
-ledgerctl store bootstrap --s3-bucket my-bucket --s3-endpoint http://minio:9000 --data-dir ./fresh-data --yes
+ledgerctl store bootstrap --driver s3 --s3-bucket my-bucket --s3-endpoint http://minio:9000 --data-dir ./fresh-data --yes
+
+# From Azure Blob Storage
+ledgerctl store bootstrap --driver azure --azure-account-name myaccount --azure-account-key <key> --azure-container backups --data-dir ./fresh-data --yes
 ```
 
 ---
@@ -3372,7 +3394,7 @@ Backup restore operations. Requires the server to be started with `--restore`.
 
 #### restore download
 
-Download a backup from S3 to the restore staging area.
+Download a backup from S3 or Azure Blob Storage to the restore staging area.
 
 The download runs asynchronously on the server: the CLI starts the job, polls
 progress periodically, and renders a progress bar. The actual transfer is
@@ -3387,13 +3409,23 @@ flag `--restore-download-parallelism` (default 16, clamped to `[1, 64]`).
 
 ```bash
 ledgerctl restore download --s3-bucket my-bucket --s3-region us-east-1
+
+# From Azure Blob Storage
+ledgerctl restore download --driver azure --azure-account-name myaccount --azure-account-key <key> --azure-container backups
 ```
 
 | Flag | Required | Description |
 |------|----------|-------------|
-| `--s3-bucket` | Yes | S3 bucket name |
+| `--driver` | No | Storage driver: `s3` or `azure` (default: `s3`) |
+| `--s3-bucket` | s3 only | S3 bucket name (required when `driver=s3`) |
 | `--s3-region` | No | AWS region for S3 bucket |
 | `--s3-endpoint` | No | Custom S3 endpoint (for MinIO) |
+| `--s3-access-key-id` | No | Static AWS access key ID (default: use default credential chain) |
+| `--s3-secret-access-key` | No | Static AWS secret access key (default: use default credential chain) |
+| `--azure-account-name` | azure only | Azure storage account name (required when `driver=azure`) |
+| `--azure-account-key` | No | Azure storage account key (omit to use `DefaultAzureCredential`) |
+| `--azure-container` | azure only | Azure Blob Storage container name (required when `driver=azure`) |
+| `--azure-endpoint` | No | Custom Azure endpoint (for Azurite) |
 | `--bucket-id` | No | Namespace prefix for backup files (default: cluster-id) |
 | `--poll-interval` | No | Interval between progress polls (default: 3s) |
 | `--rpc-timeout` | No | Per-RPC timeout for Start, status poll, and Cancel (default: 30s) |

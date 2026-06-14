@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
@@ -112,3 +113,19 @@ var (
 type (
 	CheckStoreResult = actions.CheckStoreResult
 )
+
+// S3BackupStorage wraps an S3 storage config in the BackupStorage provider
+// oneof so backup/restore requests can be built without repeating the wrapper.
+func S3BackupStorage(cfg *commonpb.S3StorageConfig) *commonpb.BackupStorage {
+	return &commonpb.BackupStorage{
+		Provider: &commonpb.BackupStorage_S3{S3: cfg},
+	}
+}
+
+// AzureBackupStorage wraps an Azure storage config in the BackupStorage
+// provider oneof.
+func AzureBackupStorage(cfg *commonpb.AzureStorageConfig) *commonpb.BackupStorage {
+	return &commonpb.BackupStorage{
+		Provider: &commonpb.BackupStorage_Azure{Azure: cfg},
+	}
+}

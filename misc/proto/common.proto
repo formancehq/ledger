@@ -1148,3 +1148,34 @@ message CallerSnapshot {
   repeated string scopes = 2;
   bool god = 3;
 }
+
+// ============================================================================
+// Backup Storage
+// ============================================================================
+
+// S3StorageConfig configures an S3 / S3-compatible backup backend.
+message S3StorageConfig {
+  string bucket            = 1; // Bucket name (required)
+  string region            = 2; // AWS region
+  string endpoint          = 3; // Custom endpoint (for MinIO)
+  string access_key_id     = 4; // Optional static access key ID (default: credential chain)
+  string secret_access_key = 5; // Optional static secret access key (default: credential chain)
+}
+
+// AzureStorageConfig configures an Azure Blob Storage backup backend.
+message AzureStorageConfig {
+  string account_name = 1; // Storage account name (required)
+  string account_key  = 2; // Storage account key (omit to use DefaultAzureCredential)
+  string container    = 3; // Blob container name (required)
+  string endpoint     = 4; // Custom endpoint (for Azurite)
+}
+
+// BackupStorage selects and configures the backup storage backend. The provider
+// oneof is the single source of truth for the driver — adding a new backend is
+// a new oneof case, no parallel "driver" string to keep in sync.
+message BackupStorage {
+  oneof provider {
+    S3StorageConfig s3       = 1;
+    AzureStorageConfig azure = 2;
+  }
+}

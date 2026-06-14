@@ -108,9 +108,10 @@ The default build (`go build .`) produces a **light binary** (~60 MB) without he
 | `clickhouse` | ClickHouse event sink | `ClickHouse/clickhouse-go` |
 | `databricks` | Databricks event sink | `databricks/databricks-sql-go` |
 | `s3` | S3 cold storage & backup | `aws-sdk-go-v2` |
+| `azure` | Azure Blob Storage backup | `azure-sdk-for-go/sdk/storage/azblob`, `azure-sdk-for-go/sdk/azidentity` |
 | `pyroscope` | Pyroscope continuous profiling | `grafana/pyroscope-go` |
 
-Build with all features: `just build-full` or `go build -tags "kafka,nats,clickhouse,databricks,s3,pyroscope" .`
+Build with all features: `just build-full` or `go build -tags "kafka,nats,clickhouse,databricks,s3,azure,pyroscope" .`
 
 Scenario tests use a separate build tag: `go test -tags scenario ./tests/scenarios/... -timeout 20m`
 

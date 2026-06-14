@@ -6,6 +6,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -23,10 +24,15 @@ func main() {
 	client := clusterpb.NewClusterServiceClient(conn)
 
 	resp, err := client.Backup(ctx, &clusterpb.BackupRequest{
-		Driver:     "s3",
-		S3Bucket:   "backups",
-		S3Region:   "us-east-1",
-		S3Endpoint: "http://minio:9000",
+		Storage: &commonpb.BackupStorage{
+			Provider: &commonpb.BackupStorage_S3{
+				S3: &commonpb.S3StorageConfig{
+					Bucket:   "backups",
+					Region:   "us-east-1",
+					Endpoint: "http://minio:9000",
+				},
+			},
+		},
 	})
 	if err != nil {
 		if internal.IsTransient(err) {

@@ -26,9 +26,15 @@ import (
 // touching live S3.
 type storageFactory func(req *restorepb.StartDownloadBackupRequest) (backup.Storage, error)
 
-// defaultStorageFactory builds the production S3-backed storage.
+// defaultStorageFactory builds the production storage backend selected by the
+// request's storage provider oneof (s3 or azure).
 func defaultStorageFactory(req *restorepb.StartDownloadBackupRequest) (backup.Storage, error) {
-	return backup.NewStorage("s3", "", req.GetS3Bucket(), req.GetS3Region(), req.GetS3Endpoint(), req.GetS3AccessKeyId(), req.GetS3SecretAccessKey())
+	cfg, err := storageConfigFromProto(req.GetStorage())
+	if err != nil {
+		return nil, err
+	}
+
+	return backup.NewStorage(cfg)
 }
 
 // downloadJob tracks the lifecycle of a single async download started by
@@ -57,10 +63,10 @@ type downloadJob struct {
 // user-initiated cancel from an unexpected error returned by errgroup.
 var errCanceled = errors.New("download canceled")
 
-// StartDownloadBackup kicks off an asynchronous download from S3 and returns
-// immediately with the job ID. The actual transfer happens on a goroutine
-// detached from the calling RPC context so it survives any ingress / load
-// balancer timeout. See issue #349.
+// StartDownloadBackup kicks off an asynchronous download from the configured
+// backup backend and returns immediately with the job ID. The actual transfer
+// happens on a goroutine detached from the calling RPC context so it survives
+// any ingress / load balancer timeout. See issue #349.
 func (s *RestoreServiceServerImpl) StartDownloadBackup(_ context.Context, req *restorepb.StartDownloadBackupRequest) (*restorepb.StartDownloadBackupResponse, error) {
 	s.mu.Lock()
 
@@ -158,7 +164,7 @@ func (s *RestoreServiceServerImpl) CancelDownload(_ context.Context, req *restor
 	job.cancel()
 
 	// Wait briefly for the goroutine to drain so callers see a CANCELED status
-	// on their next poll. We cap the wait so a stuck S3 client does not block
+	// on their next poll. We cap the wait so a stuck storage client does not block
 	// the RPC indefinitely; in that case the client will observe CANCELED on a
 	// later poll instead.
 	select {
@@ -192,9 +198,9 @@ func (s *RestoreServiceServerImpl) runDownloadJob(
 }
 
 // prepareDownload performs all blocking I/O that must succeed before workers
-// start: build the S3 client, fetch the manifest, validate it, and recreate
-// the staging directory. Returns the storage, the parsed manifest and the S3
-// key prefix for data files.
+// start: build the storage client, fetch the manifest, validate it, and
+// recreate the staging directory. Returns the storage, the parsed manifest
+// and the object key prefix for data files.
 func (s *RestoreServiceServerImpl) prepareDownload(
 	ctx context.Context,
 	req *restorepb.StartDownloadBackupRequest,
@@ -202,7 +208,7 @@ func (s *RestoreServiceServerImpl) prepareDownload(
 ) (backup.Storage, *backup.Manifest, string, error) {
 	storage, err := factory(req)
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("creating S3 storage: %w", err)
+		return nil, nil, "", fmt.Errorf("creating backup storage: %w", err)
 	}
 
 	bucketID := req.GetBucketId()
@@ -411,7 +417,7 @@ func (s *RestoreServiceServerImpl) finishJob(job *downloadJob, runErr error, sta
 		s.logger.WithFields(map[string]any{
 			"filesDownloaded": job.filesDownloaded.Load(),
 			"totalBytes":      job.bytesDownloaded.Load(),
-		}).Infof("Backup downloaded from S3 successfully")
+		}).Infof("Backup downloaded successfully")
 
 	case errors.Is(runErr, errCanceled) || errors.Is(runErr, context.Canceled):
 		if stagingStore != nil {

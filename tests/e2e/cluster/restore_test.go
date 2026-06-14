@@ -225,10 +225,11 @@ var _ = Describe("Restore", Ordered, func() {
 
 		It("should take a backup to S3", func() {
 			resp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
-				Driver:     "s3",
-				S3Bucket:   restoreS3Bucket,
-				S3Region:   restoreS3Region,
-				S3Endpoint: minioEndpoint,
+				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+					Bucket:   restoreS3Bucket,
+					Region:   restoreS3Region,
+					Endpoint: minioEndpoint,
+				}),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.GetTotalFiles()).To(BeNumerically(">", 0))
@@ -248,10 +249,11 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			resp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
-				Driver:     "s3",
-				S3Bucket:   restoreS3Bucket,
-				S3Region:   restoreS3Region,
-				S3Endpoint: minioEndpoint,
+				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+					Bucket:   restoreS3Bucket,
+					Region:   restoreS3Region,
+					Endpoint: minioEndpoint,
+				}),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.GetLogEntriesExported()).To(BeNumerically(">", 0),
@@ -299,9 +301,11 @@ var _ = Describe("Restore", Ordered, func() {
 
 		It("should download the backup from S3", func() {
 			startResp, err := restoreClient.StartDownloadBackup(ctx, &restorepb.StartDownloadBackupRequest{
-				S3Bucket:   restoreS3Bucket,
-				S3Region:   restoreS3Region,
-				S3Endpoint: minioEndpoint,
+				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+					Bucket:   restoreS3Bucket,
+					Region:   restoreS3Region,
+					Endpoint: minioEndpoint,
+				}),
 			})
 			Expect(err).To(Succeed())
 			Expect(startResp.GetJobId()).NotTo(BeEmpty())
@@ -330,9 +334,11 @@ var _ = Describe("Restore", Ordered, func() {
 
 		It("should reject a duplicate download", func() {
 			_, err := restoreClient.StartDownloadBackup(ctx, &restorepb.StartDownloadBackupRequest{
-				S3Bucket:   restoreS3Bucket,
-				S3Region:   restoreS3Region,
-				S3Endpoint: minioEndpoint,
+				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+					Bucket:   restoreS3Bucket,
+					Region:   restoreS3Region,
+					Endpoint: minioEndpoint,
+				}),
 			})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("already downloaded"))
