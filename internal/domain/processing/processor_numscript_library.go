@@ -8,8 +8,8 @@ import (
 )
 
 func (p *RequestProcessor) processSaveNumscript(order *raftcmdpb.SaveNumscriptOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
-	if order.GetName() == "" {
-		return nil, domain.ErrNumscriptNameRequired
+	if err := domain.ValidateNumscriptName(order.GetName()); err != nil {
+		return nil, err
 	}
 
 	if order.GetContent() == "" {
@@ -76,8 +76,8 @@ func (p *RequestProcessor) processSaveNumscript(order *raftcmdpb.SaveNumscriptOr
 }
 
 func (p *RequestProcessor) processDeleteNumscript(order *raftcmdpb.DeleteNumscriptOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
-	if order.GetName() == "" {
-		return nil, domain.ErrNumscriptNameRequired
+	if err := domain.ValidateNumscriptName(order.GetName()); err != nil {
+		return nil, err
 	}
 
 	ledgerInfo, ok := s.GetLedger(order.GetLedger())

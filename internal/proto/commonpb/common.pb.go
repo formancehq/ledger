@@ -10045,6 +10045,165 @@ func (*BackupStorage_S3) isBackupStorage_Provider() {}
 
 func (*BackupStorage_Azure) isBackupStorage_Provider() {}
 
+// ReadOptions carries the canonical consistency parameters every read RPC
+// understands. Embed it as a field on the Request so the contract stays DRY:
+// every endpoint that reads from the read store accepts the same knobs.
+type ReadOptions struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// checkpoint_id, when non-zero, reads from a query checkpoint instead of
+	// the live store. Endpoints that do not support checkpoint reads MUST
+	// reject any non-zero value with InvalidArgument.
+	CheckpointId uint64 `protobuf:"fixed64,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	// min_log_sequence requires the store to have applied at least this log
+	// sequence before reading; FailedPrecondition otherwise. Ignored for
+	// checkpoint reads (a checkpoint is a fixed snapshot).
+	MinLogSequence uint64 `protobuf:"fixed64,2,opt,name=min_log_sequence,json=minLogSequence,proto3" json:"min_log_sequence,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ReadOptions) Reset() {
+	*x = ReadOptions{}
+	mi := &file_common_proto_msgTypes[130]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReadOptions) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReadOptions) ProtoMessage() {}
+
+func (x *ReadOptions) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[130]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReadOptions.ProtoReflect.Descriptor instead.
+func (*ReadOptions) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{130}
+}
+
+func (x *ReadOptions) GetCheckpointId() uint64 {
+	if x != nil {
+		return x.CheckpointId
+	}
+	return 0
+}
+
+func (x *ReadOptions) GetMinLogSequence() uint64 {
+	if x != nil {
+		return x.MinLogSequence
+	}
+	return 0
+}
+
+// ListOptions carries the canonical pagination + consistency + filter
+// parameters every streaming read endpoint understands. Embed it as a field
+// on the Request so the contract stays DRY across resources.
+//
+// cursor is OPAQUE from the client's POV: the server encodes the next-page
+// resume token internally (entity address, sequence number, …) and the client
+// round-trips whatever value it received as the "x-next-cursor" trailer of
+// the previous response. This lets the server evolve its on-wire cursor
+// format without breaking deployed clients.
+//
+// Not every endpoint honors every option: a reverse-uncapable or filter-less
+// endpoint MUST reject a non-default value with InvalidArgument rather than
+// silently ignoring it.
+type ListOptions struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Read  *ReadOptions           `protobuf:"bytes,1,opt,name=read,proto3" json:"read,omitempty"`
+	// page_size is the maximum number of items per page. 0 lets the server
+	// pick a sane default (currently 100); the server clamps to MaxPageSize.
+	PageSize uint32 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// cursor is the opaque resume token from the previous page's
+	// x-next-cursor trailer. Empty starts at the iteration head.
+	Cursor string `protobuf:"bytes,3,opt,name=cursor,proto3" json:"cursor,omitempty"`
+	// reverse inverts the default iteration order for endpoints that support it.
+	Reverse bool `protobuf:"varint,4,opt,name=reverse,proto3" json:"reverse,omitempty"`
+	// filter is a rich boolean filter (metadata conditions, address matching,
+	// AND/OR/NOT, log_id ranges, …) applied alongside the cursor. The set of
+	// valid conditions depends on the endpoint's QueryTarget; the server
+	// rejects unsupported variants with InvalidArgument.
+	Filter        *QueryFilter `protobuf:"bytes,5,opt,name=filter,proto3" json:"filter,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListOptions) Reset() {
+	*x = ListOptions{}
+	mi := &file_common_proto_msgTypes[131]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListOptions) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListOptions) ProtoMessage() {}
+
+func (x *ListOptions) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[131]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListOptions.ProtoReflect.Descriptor instead.
+func (*ListOptions) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{131}
+}
+
+func (x *ListOptions) GetRead() *ReadOptions {
+	if x != nil {
+		return x.Read
+	}
+	return nil
+}
+
+func (x *ListOptions) GetPageSize() uint32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListOptions) GetCursor() string {
+	if x != nil {
+		return x.Cursor
+	}
+	return ""
+}
+
+func (x *ListOptions) GetReverse() bool {
+	if x != nil {
+		return x.Reverse
+	}
+	return false
+}
+
+func (x *ListOptions) GetFilter() *QueryFilter {
+	if x != nil {
+		return x.Filter
+	}
+	return nil
+}
+
 var File_common_proto protoreflect.FileDescriptor
 
 const file_common_proto_rawDesc = "" +
@@ -10749,7 +10908,16 @@ const file_common_proto_rawDesc = "" +
 	"\x02s3\x18\x01 \x01(\v2\x17.common.S3StorageConfigH\x00R\x02s3\x122\n" +
 	"\x05azure\x18\x02 \x01(\v2\x1a.common.AzureStorageConfigH\x00R\x05azureB\n" +
 	"\n" +
-	"\bprovider*Z\n" +
+	"\bprovider\"\\\n" +
+	"\vReadOptions\x12#\n" +
+	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\x12(\n" +
+	"\x10min_log_sequence\x18\x02 \x01(\x06R\x0eminLogSequence\"\xb2\x01\n" +
+	"\vListOptions\x12'\n" +
+	"\x04read\x18\x01 \x01(\v2\x13.common.ReadOptionsR\x04read\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\rR\bpageSize\x12\x16\n" +
+	"\x06cursor\x18\x03 \x01(\tR\x06cursor\x12\x18\n" +
+	"\areverse\x18\x04 \x01(\bR\areverse\x12+\n" +
+	"\x06filter\x18\x05 \x01(\v2\x13.common.QueryFilterR\x06filter*Z\n" +
 	"\n" +
 	"TargetType\x12\x17\n" +
 	"\x13TARGET_TYPE_ACCOUNT\x10\x00\x12\x1b\n" +
@@ -10842,7 +11010,7 @@ func file_common_proto_rawDescGZIP() []byte {
 }
 
 var file_common_proto_enumTypes = make([]protoimpl.EnumInfo, 17)
-var file_common_proto_msgTypes = make([]protoimpl.MessageInfo, 152)
+var file_common_proto_msgTypes = make([]protoimpl.MessageInfo, 154)
 var file_common_proto_goTypes = []any{
 	(TargetType)(0),                           // 0: common.TargetType
 	(MetadataType)(0),                         // 1: common.MetadataType
@@ -10991,56 +11159,58 @@ var file_common_proto_goTypes = []any{
 	(*S3StorageConfig)(nil),                   // 144: common.S3StorageConfig
 	(*AzureStorageConfig)(nil),                // 145: common.AzureStorageConfig
 	(*BackupStorage)(nil),                     // 146: common.BackupStorage
-	nil,                                       // 147: common.MetadataMap.ValuesEntry
-	nil,                                       // 148: common.Transaction.MetadataEntry
-	nil,                                       // 149: common.Script.VarsEntry
-	nil,                                       // 150: common.VolumesByAssets.VolumesEntry
-	nil,                                       // 151: common.PostCommitVolumes.VolumesByAccountEntry
-	nil,                                       // 152: common.Account.MetadataEntry
-	nil,                                       // 153: common.Account.VolumesEntry
-	nil,                                       // 154: common.MetadataSchema.AccountFieldsEntry
-	nil,                                       // 155: common.MetadataSchema.TransactionFieldsEntry
-	nil,                                       // 156: common.MetadataSchema.LedgerFieldsEntry
-	nil,                                       // 157: common.SavedLedgerMetadataLog.MetadataEntry
-	nil,                                       // 158: common.SavedLedgerMetadataLog.PreviousValuesEntry
-	nil,                                       // 159: common.CreatedLedgerLog.AccountTypesEntry
-	nil,                                       // 160: common.CreatedTransaction.AccountMetadataEntry
-	nil,                                       // 161: common.CreatedTransaction.PreviousAccountMetadataEntry
-	nil,                                       // 162: common.SavedMetadata.MetadataEntry
-	nil,                                       // 163: common.SavedMetadata.PreviousValuesEntry
-	nil,                                       // 164: common.LedgerInfo.AccountTypesEntry
-	nil,                                       // 165: common.LedgerInfo.MetadataEntry
-	nil,                                       // 166: common.SaveMetadataCommand.MetadataEntry
-	nil,                                       // 167: common.TransactionState.MetadataEntry
-	nil,                                       // 168: common.AccountType.SegmentTypesEntry
-	(*signaturepb.RequestSignature)(nil),      // 169: signature.RequestSignature
-	(*signaturepb.ResponseSignature)(nil),     // 170: signature.ResponseSignature
+	(*ReadOptions)(nil),                       // 147: common.ReadOptions
+	(*ListOptions)(nil),                       // 148: common.ListOptions
+	nil,                                       // 149: common.MetadataMap.ValuesEntry
+	nil,                                       // 150: common.Transaction.MetadataEntry
+	nil,                                       // 151: common.Script.VarsEntry
+	nil,                                       // 152: common.VolumesByAssets.VolumesEntry
+	nil,                                       // 153: common.PostCommitVolumes.VolumesByAccountEntry
+	nil,                                       // 154: common.Account.MetadataEntry
+	nil,                                       // 155: common.Account.VolumesEntry
+	nil,                                       // 156: common.MetadataSchema.AccountFieldsEntry
+	nil,                                       // 157: common.MetadataSchema.TransactionFieldsEntry
+	nil,                                       // 158: common.MetadataSchema.LedgerFieldsEntry
+	nil,                                       // 159: common.SavedLedgerMetadataLog.MetadataEntry
+	nil,                                       // 160: common.SavedLedgerMetadataLog.PreviousValuesEntry
+	nil,                                       // 161: common.CreatedLedgerLog.AccountTypesEntry
+	nil,                                       // 162: common.CreatedTransaction.AccountMetadataEntry
+	nil,                                       // 163: common.CreatedTransaction.PreviousAccountMetadataEntry
+	nil,                                       // 164: common.SavedMetadata.MetadataEntry
+	nil,                                       // 165: common.SavedMetadata.PreviousValuesEntry
+	nil,                                       // 166: common.LedgerInfo.AccountTypesEntry
+	nil,                                       // 167: common.LedgerInfo.MetadataEntry
+	nil,                                       // 168: common.SaveMetadataCommand.MetadataEntry
+	nil,                                       // 169: common.TransactionState.MetadataEntry
+	nil,                                       // 170: common.AccountType.SegmentTypesEntry
+	(*signaturepb.RequestSignature)(nil),      // 171: signature.RequestSignature
+	(*signaturepb.ResponseSignature)(nil),     // 172: signature.ResponseSignature
 }
 var file_common_proto_depIdxs = []int32{
 	18,  // 0: common.MetadataValue.null_value:type_name -> common.NullValue
-	147, // 1: common.MetadataMap.values:type_name -> common.MetadataMap.ValuesEntry
+	149, // 1: common.MetadataMap.values:type_name -> common.MetadataMap.ValuesEntry
 	22,  // 2: common.Posting.amount:type_name -> common.Uint256
 	23,  // 3: common.Transaction.postings:type_name -> common.Posting
-	148, // 4: common.Transaction.metadata:type_name -> common.Transaction.MetadataEntry
+	150, // 4: common.Transaction.metadata:type_name -> common.Transaction.MetadataEntry
 	17,  // 5: common.Transaction.timestamp:type_name -> common.Timestamp
 	17,  // 6: common.Transaction.inserted_at:type_name -> common.Timestamp
 	17,  // 7: common.Transaction.updated_at:type_name -> common.Timestamp
 	17,  // 8: common.Transaction.reverted_at:type_name -> common.Timestamp
-	149, // 9: common.Script.vars:type_name -> common.Script.VarsEntry
-	150, // 10: common.VolumesByAssets.volumes:type_name -> common.VolumesByAssets.VolumesEntry
-	151, // 11: common.PostCommitVolumes.volumes_by_account:type_name -> common.PostCommitVolumes.VolumesByAccountEntry
-	152, // 12: common.Account.metadata:type_name -> common.Account.MetadataEntry
+	151, // 9: common.Script.vars:type_name -> common.Script.VarsEntry
+	152, // 10: common.VolumesByAssets.volumes:type_name -> common.VolumesByAssets.VolumesEntry
+	153, // 11: common.PostCommitVolumes.volumes_by_account:type_name -> common.PostCommitVolumes.VolumesByAccountEntry
+	154, // 12: common.Account.metadata:type_name -> common.Account.MetadataEntry
 	17,  // 13: common.Account.first_usage:type_name -> common.Timestamp
 	17,  // 14: common.Account.insertion_date:type_name -> common.Timestamp
 	17,  // 15: common.Account.updated_at:type_name -> common.Timestamp
-	153, // 16: common.Account.volumes:type_name -> common.Account.VolumesEntry
+	155, // 16: common.Account.volumes:type_name -> common.Account.VolumesEntry
 	31,  // 17: common.Target.account:type_name -> common.TargetAccount
 	32,  // 18: common.Target.transaction:type_name -> common.TargetTransaction
 	1,   // 19: common.MetadataFieldSchema.type:type_name -> common.MetadataType
 	2,   // 20: common.MetadataFieldSchema.status:type_name -> common.MetadataConversionStatus
-	154, // 21: common.MetadataSchema.account_fields:type_name -> common.MetadataSchema.AccountFieldsEntry
-	155, // 22: common.MetadataSchema.transaction_fields:type_name -> common.MetadataSchema.TransactionFieldsEntry
-	156, // 23: common.MetadataSchema.ledger_fields:type_name -> common.MetadataSchema.LedgerFieldsEntry
+	156, // 21: common.MetadataSchema.account_fields:type_name -> common.MetadataSchema.AccountFieldsEntry
+	157, // 22: common.MetadataSchema.transaction_fields:type_name -> common.MetadataSchema.TransactionFieldsEntry
+	158, // 23: common.MetadataSchema.ledger_fields:type_name -> common.MetadataSchema.LedgerFieldsEntry
 	0,   // 24: common.SetMetadataFieldTypeCommand.target_type:type_name -> common.TargetType
 	1,   // 25: common.SetMetadataFieldTypeCommand.type:type_name -> common.MetadataType
 	0,   // 26: common.MetadataIndexID.target:type_name -> common.TargetType
@@ -11054,8 +11224,8 @@ var file_common_proto_depIdxs = []int32{
 	17,  // 34: common.Index.last_built_at:type_name -> common.Timestamp
 	43,  // 35: common.Log.payload:type_name -> common.LogPayload
 	40,  // 36: common.Log.idempotency:type_name -> common.Idempotency
-	169, // 37: common.Log.signature:type_name -> signature.RequestSignature
-	170, // 38: common.Log.response_signature:type_name -> signature.ResponseSignature
+	171, // 37: common.Log.signature:type_name -> signature.RequestSignature
+	172, // 38: common.Log.response_signature:type_name -> signature.ResponseSignature
 	78,  // 39: common.LogPayload.create_ledger:type_name -> common.CreatedLedgerLog
 	79,  // 40: common.LogPayload.delete_ledger:type_name -> common.DeletedLedgerLog
 	80,  // 41: common.LogPayload.apply:type_name -> common.ApplyLedgerLog
@@ -11099,8 +11269,8 @@ var file_common_proto_depIdxs = []int32{
 	135, // 79: common.CreatedPreparedQueryLog.query:type_name -> common.PreparedQuery
 	118, // 80: common.UpdatedPreparedQueryLog.previous_filter:type_name -> common.QueryFilter
 	118, // 81: common.UpdatedPreparedQueryLog.new_filter:type_name -> common.QueryFilter
-	157, // 82: common.SavedLedgerMetadataLog.metadata:type_name -> common.SavedLedgerMetadataLog.MetadataEntry
-	158, // 83: common.SavedLedgerMetadataLog.previous_values:type_name -> common.SavedLedgerMetadataLog.PreviousValuesEntry
+	159, // 82: common.SavedLedgerMetadataLog.metadata:type_name -> common.SavedLedgerMetadataLog.MetadataEntry
+	160, // 83: common.SavedLedgerMetadataLog.previous_values:type_name -> common.SavedLedgerMetadataLog.PreviousValuesEntry
 	19,  // 84: common.DeletedLedgerMetadataLog.previous_value:type_name -> common.MetadataValue
 	17,  // 85: common.NumscriptInfo.created_at:type_name -> common.Timestamp
 	62,  // 86: common.SavedNumscriptLog.info:type_name -> common.NumscriptInfo
@@ -11117,7 +11287,7 @@ var file_common_proto_depIdxs = []int32{
 	35,  // 97: common.CreatedLedgerLog.metadata_schema:type_name -> common.MetadataSchema
 	10,  // 98: common.CreatedLedgerLog.mode:type_name -> common.LedgerMode
 	97,  // 99: common.CreatedLedgerLog.mirror_source:type_name -> common.MirrorSourceConfig
-	159, // 100: common.CreatedLedgerLog.account_types:type_name -> common.CreatedLedgerLog.AccountTypesEntry
+	161, // 100: common.CreatedLedgerLog.account_types:type_name -> common.CreatedLedgerLog.AccountTypesEntry
 	12,  // 101: common.CreatedLedgerLog.default_enforcement_mode:type_name -> common.ChartEnforcementMode
 	17,  // 102: common.DeletedLedgerLog.deleted_at:type_name -> common.Timestamp
 	81,  // 103: common.ApplyLedgerLog.log:type_name -> common.LedgerLog
@@ -11138,14 +11308,14 @@ var file_common_proto_depIdxs = []int32{
 	38,  // 118: common.CreatedIndexLog.id:type_name -> common.IndexID
 	38,  // 119: common.DroppedIndexLog.id:type_name -> common.IndexID
 	24,  // 120: common.CreatedTransaction.transaction:type_name -> common.Transaction
-	160, // 121: common.CreatedTransaction.account_metadata:type_name -> common.CreatedTransaction.AccountMetadataEntry
+	162, // 121: common.CreatedTransaction.account_metadata:type_name -> common.CreatedTransaction.AccountMetadataEntry
 	29,  // 122: common.CreatedTransaction.post_commit_volumes:type_name -> common.PostCommitVolumes
-	161, // 123: common.CreatedTransaction.previous_account_metadata:type_name -> common.CreatedTransaction.PreviousAccountMetadataEntry
+	163, // 123: common.CreatedTransaction.previous_account_metadata:type_name -> common.CreatedTransaction.PreviousAccountMetadataEntry
 	24,  // 124: common.RevertedTransaction.revert_transaction:type_name -> common.Transaction
 	29,  // 125: common.RevertedTransaction.post_commit_volumes:type_name -> common.PostCommitVolumes
 	33,  // 126: common.SavedMetadata.target:type_name -> common.Target
-	162, // 127: common.SavedMetadata.metadata:type_name -> common.SavedMetadata.MetadataEntry
-	163, // 128: common.SavedMetadata.previous_values:type_name -> common.SavedMetadata.PreviousValuesEntry
+	164, // 127: common.SavedMetadata.metadata:type_name -> common.SavedMetadata.MetadataEntry
+	165, // 128: common.SavedMetadata.previous_values:type_name -> common.SavedMetadata.PreviousValuesEntry
 	33,  // 129: common.DeletedMetadata.target:type_name -> common.Target
 	19,  // 130: common.DeletedMetadata.previous_value:type_name -> common.MetadataValue
 	0,   // 131: common.SetMetadataFieldTypeLog.target_type:type_name -> common.TargetType
@@ -11172,19 +11342,19 @@ var file_common_proto_depIdxs = []int32{
 	10,  // 152: common.LedgerInfo.mode:type_name -> common.LedgerMode
 	97,  // 153: common.LedgerInfo.mirror_source:type_name -> common.MirrorSourceConfig
 	102, // 154: common.LedgerInfo.mirror_sync_progress:type_name -> common.MirrorSyncProgress
-	164, // 155: common.LedgerInfo.account_types:type_name -> common.LedgerInfo.AccountTypesEntry
+	166, // 155: common.LedgerInfo.account_types:type_name -> common.LedgerInfo.AccountTypesEntry
 	12,  // 156: common.LedgerInfo.default_enforcement_mode:type_name -> common.ChartEnforcementMode
-	165, // 157: common.LedgerInfo.metadata:type_name -> common.LedgerInfo.MetadataEntry
+	167, // 157: common.LedgerInfo.metadata:type_name -> common.LedgerInfo.MetadataEntry
 	39,  // 158: common.LedgerInfo.indexes:type_name -> common.Index
 	33,  // 159: common.SaveMetadataCommand.target:type_name -> common.Target
-	166, // 160: common.SaveMetadataCommand.metadata:type_name -> common.SaveMetadataCommand.MetadataEntry
+	168, // 160: common.SaveMetadataCommand.metadata:type_name -> common.SaveMetadataCommand.MetadataEntry
 	33,  // 161: common.DeleteMetadataCommand.target:type_name -> common.Target
-	167, // 162: common.TransactionState.metadata:type_name -> common.TransactionState.MetadataEntry
+	169, // 162: common.TransactionState.metadata:type_name -> common.TransactionState.MetadataEntry
 	111, // 163: common.SegmentType.uuid:type_name -> common.UUIDConstraint
 	112, // 164: common.SegmentType.uint64:type_name -> common.Uint64Constraint
 	113, // 165: common.SegmentType.bytes:type_name -> common.BytesConstraint
 	13,  // 166: common.AccountType.persistence:type_name -> common.AccountTypePersistence
-	168, // 167: common.AccountType.segment_types:type_name -> common.AccountType.SegmentTypesEntry
+	170, // 167: common.AccountType.segment_types:type_name -> common.AccountType.SegmentTypesEntry
 	114, // 168: common.AddedAccountTypeLog.account_type:type_name -> common.AccountType
 	12,  // 169: common.UpdatedDefaultEnforcementModeLog.enforcement_mode:type_name -> common.ChartEnforcementMode
 	128, // 170: common.QueryFilter.field:type_name -> common.FieldCondition
@@ -11226,32 +11396,34 @@ var file_common_proto_depIdxs = []int32{
 	142, // 206: common.CallerSnapshot.identity:type_name -> common.CallerIdentity
 	144, // 207: common.BackupStorage.s3:type_name -> common.S3StorageConfig
 	145, // 208: common.BackupStorage.azure:type_name -> common.AzureStorageConfig
-	19,  // 209: common.MetadataMap.ValuesEntry.value:type_name -> common.MetadataValue
-	19,  // 210: common.Transaction.MetadataEntry.value:type_name -> common.MetadataValue
-	26,  // 211: common.VolumesByAssets.VolumesEntry.value:type_name -> common.Volumes
-	28,  // 212: common.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> common.VolumesByAssets
-	19,  // 213: common.Account.MetadataEntry.value:type_name -> common.MetadataValue
-	27,  // 214: common.Account.VolumesEntry.value:type_name -> common.VolumesWithBalance
-	34,  // 215: common.MetadataSchema.AccountFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	34,  // 216: common.MetadataSchema.TransactionFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	34,  // 217: common.MetadataSchema.LedgerFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	19,  // 218: common.SavedLedgerMetadataLog.MetadataEntry.value:type_name -> common.MetadataValue
-	19,  // 219: common.SavedLedgerMetadataLog.PreviousValuesEntry.value:type_name -> common.MetadataValue
-	114, // 220: common.CreatedLedgerLog.AccountTypesEntry.value:type_name -> common.AccountType
-	20,  // 221: common.CreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataMap
-	20,  // 222: common.CreatedTransaction.PreviousAccountMetadataEntry.value:type_name -> common.MetadataMap
-	19,  // 223: common.SavedMetadata.MetadataEntry.value:type_name -> common.MetadataValue
-	19,  // 224: common.SavedMetadata.PreviousValuesEntry.value:type_name -> common.MetadataValue
-	114, // 225: common.LedgerInfo.AccountTypesEntry.value:type_name -> common.AccountType
-	19,  // 226: common.LedgerInfo.MetadataEntry.value:type_name -> common.MetadataValue
-	19,  // 227: common.SaveMetadataCommand.MetadataEntry.value:type_name -> common.MetadataValue
-	19,  // 228: common.TransactionState.MetadataEntry.value:type_name -> common.MetadataValue
-	110, // 229: common.AccountType.SegmentTypesEntry.value:type_name -> common.SegmentType
-	230, // [230:230] is the sub-list for method output_type
-	230, // [230:230] is the sub-list for method input_type
-	230, // [230:230] is the sub-list for extension type_name
-	230, // [230:230] is the sub-list for extension extendee
-	0,   // [0:230] is the sub-list for field type_name
+	147, // 209: common.ListOptions.read:type_name -> common.ReadOptions
+	118, // 210: common.ListOptions.filter:type_name -> common.QueryFilter
+	19,  // 211: common.MetadataMap.ValuesEntry.value:type_name -> common.MetadataValue
+	19,  // 212: common.Transaction.MetadataEntry.value:type_name -> common.MetadataValue
+	26,  // 213: common.VolumesByAssets.VolumesEntry.value:type_name -> common.Volumes
+	28,  // 214: common.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> common.VolumesByAssets
+	19,  // 215: common.Account.MetadataEntry.value:type_name -> common.MetadataValue
+	27,  // 216: common.Account.VolumesEntry.value:type_name -> common.VolumesWithBalance
+	34,  // 217: common.MetadataSchema.AccountFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	34,  // 218: common.MetadataSchema.TransactionFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	34,  // 219: common.MetadataSchema.LedgerFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	19,  // 220: common.SavedLedgerMetadataLog.MetadataEntry.value:type_name -> common.MetadataValue
+	19,  // 221: common.SavedLedgerMetadataLog.PreviousValuesEntry.value:type_name -> common.MetadataValue
+	114, // 222: common.CreatedLedgerLog.AccountTypesEntry.value:type_name -> common.AccountType
+	20,  // 223: common.CreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataMap
+	20,  // 224: common.CreatedTransaction.PreviousAccountMetadataEntry.value:type_name -> common.MetadataMap
+	19,  // 225: common.SavedMetadata.MetadataEntry.value:type_name -> common.MetadataValue
+	19,  // 226: common.SavedMetadata.PreviousValuesEntry.value:type_name -> common.MetadataValue
+	114, // 227: common.LedgerInfo.AccountTypesEntry.value:type_name -> common.AccountType
+	19,  // 228: common.LedgerInfo.MetadataEntry.value:type_name -> common.MetadataValue
+	19,  // 229: common.SaveMetadataCommand.MetadataEntry.value:type_name -> common.MetadataValue
+	19,  // 230: common.TransactionState.MetadataEntry.value:type_name -> common.MetadataValue
+	110, // 231: common.AccountType.SegmentTypesEntry.value:type_name -> common.SegmentType
+	232, // [232:232] is the sub-list for method output_type
+	232, // [232:232] is the sub-list for method input_type
+	232, // [232:232] is the sub-list for extension type_name
+	232, // [232:232] is the sub-list for extension extendee
+	0,   // [0:232] is the sub-list for field type_name
 }
 
 func init() { file_common_proto_init() }
@@ -11399,7 +11571,7 @@ func file_common_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_common_proto_rawDesc), len(file_common_proto_rawDesc)),
 			NumEnums:      17,
-			NumMessages:   152,
+			NumMessages:   154,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

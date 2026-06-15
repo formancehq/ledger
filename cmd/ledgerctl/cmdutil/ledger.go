@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -85,31 +85,37 @@ func sortStrings(s []string) {
 	}
 }
 
-// GetAllLedgersInfo collects all ledgers from the streaming RPC into a map.
+// GetAllLedgersInfo collects every ledger from the streaming RPC, following
+// the x-next-cursor trailer chain so clusters with more ledgers than the
+// server's default page still surface them all.
 func GetAllLedgersInfo(ctx context.Context, client servicepb.BucketServiceClient, checkpointID ...uint64) (map[string]*commonpb.LedgerInfo, error) {
-	req := &servicepb.ListLedgersRequest{}
-	if len(checkpointID) > 0 {
-		req.CheckpointId = checkpointID[0]
+	var read *commonpb.ReadOptions
+	if len(checkpointID) > 0 && checkpointID[0] > 0 {
+		read = &commonpb.ReadOptions{CheckpointId: checkpointID[0]}
 	}
 
-	stream, err := client.ListLedgers(ctx, req)
+	all, err := DrainAllPages("", func(cur string) ([]*commonpb.LedgerInfo, metadata.MD, error) {
+		stream, streamErr := client.ListLedgers(ctx, &servicepb.ListLedgersRequest{
+			Options: &commonpb.ListOptions{Read: read, Cursor: cur},
+		})
+		if streamErr != nil {
+			return nil, nil, streamErr
+		}
+
+		items, recvErr := CollectStream(stream)
+		if recvErr != nil {
+			return nil, nil, recvErr
+		}
+
+		return items, stream.Trailer(), nil
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	ledgers := make(map[string]*commonpb.LedgerInfo)
-
-	for {
-		ledger, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-
-		if err != nil {
-			return nil, err
-		}
-
-		ledgers[ledger.GetName()] = ledger
+	ledgers := make(map[string]*commonpb.LedgerInfo, len(all))
+	for _, l := range all {
+		ledgers[l.GetName()] = l
 	}
 
 	return ledgers, nil

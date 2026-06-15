@@ -34,11 +34,20 @@ import (
 const (
 	// DefaultPageSize is used when callers pass pageSize=0 (unspecified).
 	DefaultPageSize uint32 = 100
-	// MaxPageSize is the hard server-side upper bound for list queries.
+	// MaxPageSize is the hard server-side upper bound for user-visible list
+	// queries (number of items rendered per page).
 	MaxPageSize uint32 = 1000
+	// MaxFetchSize is the internal cap on what the controller can fetch from
+	// the read store. It is MaxPageSize+1 to give the gRPC handler one extra
+	// item for peek-ahead — sendPagedToStream uses that extra item to decide
+	// whether to publish an x-next-cursor trailer without ever sending it to
+	// the client.
+	MaxFetchSize uint32 = MaxPageSize + 1
 )
 
-// ClampPageSize applies default and maximum bounds to a page size value.
+// ClampPageSize applies default and maximum bounds to a USER-VISIBLE page
+// size value. gRPC handlers feed it the value the client sent in
+// ListOptions.page_size and use the result as the rendered-page limit.
 func ClampPageSize(pageSize uint32) uint32 {
 	if pageSize == 0 {
 		return DefaultPageSize
@@ -46,6 +55,23 @@ func ClampPageSize(pageSize uint32) uint32 {
 
 	if pageSize > MaxPageSize {
 		return MaxPageSize
+	}
+
+	return pageSize
+}
+
+// ClampFetchSize is the internal variant used by controllers to size their
+// actual read-store query. It allows one extra item past MaxPageSize so the
+// gRPC handler can peek-ahead: sendPagedToStream uses the extra item to
+// decide whether to publish an x-next-cursor trailer without ever sending it
+// to the client.
+func ClampFetchSize(pageSize uint32) uint32 {
+	if pageSize == 0 {
+		return DefaultPageSize
+	}
+
+	if pageSize > MaxFetchSize {
+		return MaxFetchSize
 	}
 
 	return pageSize
@@ -310,7 +336,7 @@ func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *
 	// site (or a non-public caller) must not be able to ask for
 	// math.MaxUint32 here and force the cursor to materialise an
 	// unbounded slice.
-	pageSize = ClampPageSize(pageSize)
+	pageSize = ClampFetchSize(pageSize)
 
 	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 
@@ -397,7 +423,7 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 	}
 
 	// Defense in depth — see ListTransactionsFrom for rationale.
-	pageSize = ClampPageSize(pageSize)
+	pageSize = ClampFetchSize(pageSize)
 
 	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 
@@ -1021,7 +1047,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 		return nil, err
 	}
 
-	pageSize = ClampPageSize(pageSize)
+	pageSize = ClampFetchSize(pageSize)
 
 	// Translate afterSequence into a LogId filter so the Compile framework
 	// respects the cursor position. LogId with min=afterSequence, min_exclusive=true
@@ -1114,7 +1140,7 @@ func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, afterSequen
 	// Always cap audit-entry materialization. A caller that needs more than
 	// MaxPageSize entries paginates by passing the previous page's last
 	// AfterSequence — there is no "unlimited" option at the public boundary.
-	result = cursor.NewLimitedCursor(result, ClampPageSize(pageSize))
+	result = cursor.NewLimitedCursor(result, ClampFetchSize(pageSize))
 
 	return result, nil
 }

@@ -8,9 +8,9 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -19,7 +19,7 @@ import (
 func NewListCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list",
-		Aliases: []string{"ls", "l"},
+		Aliases: cmdutil.ListAliases,
 		Short:   "List accounts in a ledger",
 		Long: `List accounts in a ledger via gRPC with pagination.
 
@@ -36,19 +36,19 @@ Examples:
   ledgerctl accounts list --ledger my-ledger --filter "metadata[category] == premium"
   ledgerctl accounts list --ledger my-ledger --filter "metadata[active] == true or address ^= users:"
   ledgerctl accounts list --reverse   # Reverse alphabetical (Z→A)
-  ledgerctl accounts list --all   # Fetch all accounts without pagination`,
+  ledgerctl accounts list --all   # Fetch all accounts without pagination
+  ledgerctl accounts list --cursor users:bob   # Resume after a previous page`,
 		RunE: runList,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")
-	cmd.Flags().Uint32("page-size", cmdutil.DefaultPageSize, "Number of accounts per page")
-	cmd.Flags().String("prefix", "", "Filter accounts by address prefix (e.g. users:)")
-	cmd.Flags().String("filter", "", `Filter expression (e.g. "metadata[category] == premium or address ^= users:")`)
-	cmd.Flags().Bool("reverse", false, "Reverse iteration order (Z→A instead of A→Z)")
-	cmd.Flags().Bool("all", false, "Fetch all accounts at once (no pagination)")
+	cmdutil.AddPaginationFlags(cmd, cmdutil.PaginationOptions{
+		SupportsReverse: true,
+		SupportsAll:     true,
+	})
+	cmdutil.AddFilterFlags(cmd, cmdutil.FilterOptions{SupportsPrefix: true})
+	cmdutil.AddConsistencyFlags(cmd)
 	cmdutil.AddOutputFlags(cmd)
-	cmd.Flags().Uint64("min-log-sequence", 0, "Minimum log sequence the server must have applied before reading (0 = no constraint)")
-	cmd.Flags().Uint64("checkpoint-id", 0, "Read from a query checkpoint instead of the live store")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 	cmdutil.AddAnalyzeFlag(cmd)
 
@@ -70,69 +70,24 @@ func runList(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	pageSize, _ := cmd.Flags().GetUint32("page-size")
-	prefix, _ := cmd.Flags().GetString("prefix")
-	filterExpr, _ := cmd.Flags().GetString("filter")
-	reverse, _ := cmd.Flags().GetBool("reverse")
-	fetchAll, _ := cmd.Flags().GetBool("all")
-	minLogSeq, _ := cmd.Flags().GetUint64("min-log-sequence")
-	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
+	pgn := cmdutil.GetPaginationFlags(cmd)
+	flt := cmdutil.GetFilterFlags(cmd)
+	cns := cmdutil.GetConsistencyFlags(cmd)
 	showProfile, _ := cmd.Flags().GetBool("analyze")
 
-	// Build the filter from --filter and --prefix flags
-	filter, err := buildAccountFilter(filterExpr, prefix)
+	filter, err := cmdutil.BuildQueryFilter(flt.Expr, flt.Prefix)
 	if err != nil {
 		return err
 	}
 
-	if fetchAll {
-		return fetchAllAccounts(cmd, client, ledgerName, filter, reverse, minLogSeq, checkpointID, showProfile)
+	if pgn.All {
+		return fetchAllAccounts(cmd, client, ledgerName, filter, pgn.Cursor, pgn.Reverse, cns, showProfile)
 	}
 
-	return fetchAccountsWithPager(cmd, client, ledgerName, pageSize, filter, reverse, minLogSeq, checkpointID, showProfile)
+	return fetchAccountsWithPager(cmd, client, ledgerName, pgn, filter, cns, showProfile)
 }
 
-// buildAccountFilter combines --filter and --prefix flags into a single QueryFilter.
-func buildAccountFilter(filterExpr, prefix string) (*commonpb.QueryFilter, error) {
-	var parsedFilter *commonpb.QueryFilter
-
-	if filterExpr != "" {
-		var err error
-
-		parsedFilter, err = filterexpr.Parse(filterExpr)
-		if err != nil {
-			return nil, fmt.Errorf("invalid filter expression: %w", err)
-		}
-	}
-
-	var prefixFilter *commonpb.QueryFilter
-	if prefix != "" {
-		prefixFilter = &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Address{
-				Address: &commonpb.AddressMatch{
-					Match: &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: prefix},
-				},
-			},
-		}
-	}
-
-	switch {
-	case parsedFilter != nil && prefixFilter != nil:
-		return &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_And{
-				And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{prefixFilter, parsedFilter}},
-			},
-		}, nil
-	case parsedFilter != nil:
-		return parsedFilter, nil
-	case prefixFilter != nil:
-		return prefixFilter, nil
-	default:
-		return nil, nil
-	}
-}
-
-func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, filter *commonpb.QueryFilter, reverse bool, minLogSeq, checkpointID uint64, showProfile bool) error {
+func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, filter *commonpb.QueryFilter, initialCursor string, reverse bool, cns cmdutil.ConsistencyFlags, showProfile bool) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
@@ -142,26 +97,31 @@ func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, 
 
 	spinner, _ := pterm.DefaultSpinner.Start("Fetching all accounts...")
 
-	stream, err := client.ListAccounts(ctx, &servicepb.ListAccountsRequest{
-		Ledger:         ledgerName,
-		PageSize:       0,
-		Filter:         filter,
-		Reverse:        reverse,
-		MinLogSequence: minLogSeq,
-		CheckpointId:   checkpointID,
+	var lastTrailer metadata.MD
+
+	accounts, err := cmdutil.DrainAllPages(initialCursor, func(cur string) ([]*commonpb.Account, metadata.MD, error) {
+		stream, err := client.ListAccounts(ctx, &servicepb.ListAccountsRequest{
+			Ledger:  ledgerName,
+			Options: cmdutil.BuildListOptions(cmdutil.PaginationFlags{Cursor: cur, Reverse: reverse}, cns, filter),
+		})
+		if err != nil {
+			return nil, nil, cmdutil.FormatGRPCError("failed to list accounts", err)
+		}
+
+		items, recvErr := cmdutil.CollectStream(stream)
+		if recvErr != nil {
+			return nil, nil, cmdutil.FormatGRPCError("failed to receive account", recvErr)
+		}
+
+		lastTrailer = stream.Trailer()
+
+		return items, lastTrailer, nil
 	})
-	if err != nil {
-		_ = spinner.Stop()
-
-		return cmdutil.FormatGRPCError("failed to list accounts", err)
-	}
-
-	accounts, err := cmdutil.CollectStream(stream)
 
 	_ = spinner.Stop()
 
 	if err != nil {
-		return cmdutil.FormatGRPCError("failed to receive account", err)
+		return err
 	}
 
 	handled, err := cmdutil.EncodeStructured(cmd, accounts)
@@ -179,16 +139,15 @@ func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, 
 		renderAccountsTable(accounts)
 	}
 
-	if showProfile {
-		cmdutil.RenderProfile(cmdutil.ExtractProfile(stream.Trailer()))
+	if showProfile && lastTrailer != nil {
+		cmdutil.RenderProfile(cmdutil.ExtractProfile(lastTrailer))
 	}
 
 	return nil
 }
 
-func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, filter *commonpb.QueryFilter, reverse bool, minLogSeq, checkpointID uint64, showProfile bool) error {
-	var afterAddress string
-
+func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, pgn cmdutil.PaginationFlags, filter *commonpb.QueryFilter, cns cmdutil.ConsistencyFlags, showProfile bool) error {
+	page := pgn
 	pageNum := 1
 
 	for {
@@ -200,13 +159,8 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 		spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Fetching page %d...", pageNum))
 
 		stream, err := client.ListAccounts(ctx, &servicepb.ListAccountsRequest{
-			Ledger:         ledgerName,
-			PageSize:       pageSize,
-			AfterAddress:   afterAddress,
-			Filter:         filter,
-			Reverse:        reverse,
-			MinLogSequence: minLogSeq,
-			CheckpointId:   checkpointID,
+			Ledger:  ledgerName,
+			Options: cmdutil.BuildListOptions(page, cns, filter),
 		})
 		if err != nil {
 			cancel()
@@ -271,7 +225,8 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 			cmdutil.RenderProfile(cmdutil.ExtractProfile(stream.Trailer()))
 		}
 
-		if uint32(len(accounts)) < pageSize {
+		nextCursor := cmdutil.NextCursorFromTrailer(stream.Trailer())
+		if nextCursor == "" {
 			if !structuredOutput {
 				pterm.Info.Println("End of accounts.")
 			}
@@ -279,9 +234,14 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 			return nil
 		}
 
-		afterAddress = accounts[len(accounts)-1].GetAddress()
+		page.Cursor = nextCursor
 
 		if structuredOutput {
+			// `accounts list --json/--yaml` printed the JSON/YAML payload on
+			// stdout above; surface the resume cursor on stderr so scripts can
+			// pick it up without parsing gRPC trailers.
+			cmdutil.EmitNextCursorHint(cmd, nextCursor)
+
 			return nil
 		}
 
@@ -304,8 +264,6 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 func renderAccountsTable(accounts []*commonpb.Account) {
 	termWidth := pterm.GetTerminalWidth()
 
-	// Reserve space for METADATA column (header is 8 chars), separator (3 spaces),
-	// and continuation indent (2 spaces).
 	const (
 		metadataColWidth   = 8
 		separatorWidth     = 3

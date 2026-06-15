@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 
@@ -44,6 +45,13 @@ func (m *mockStream[T]) Recv() (*T, error) {
 
 func (m *mockStream[T]) CloseSend() error {
 	return nil
+}
+
+// Trailer overrides the embedded ClientStream's nil-receiver method so the
+// trailer-following helpers in BucketGrpcClient see an empty trailer
+// (signaling end of pages) instead of panicking.
+func (m *mockStream[T]) Trailer() metadata.MD {
+	return metadata.MD{}
 }
 
 // mockBucketServiceClient implements servicepb.BucketServiceClient for testing.
@@ -387,8 +395,8 @@ func TestListLogs_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), log1.GetSequence())
 
-	// Verify afterSequence is not set when 0
-	require.Nil(t, mock.capturedListLogsReq.AfterSequence)
+	// Verify cursor is not set when afterSequence is 0
+	require.Empty(t, mock.capturedListLogsReq.GetOptions().GetCursor())
 	// Verify ledger is set
 	require.Equal(t, "ledger1", mock.capturedListLogsReq.GetLedger())
 }
@@ -405,9 +413,9 @@ func TestListLogs_WithAfterSequence(t *testing.T) {
 	_, err := client.ListLogs(context.Background(), "ledger1", 3, 10, nil)
 	require.NoError(t, err)
 
-	// Verify afterSequence is set when > 0
-	require.NotNil(t, mock.capturedListLogsReq.AfterSequence)
-	require.Equal(t, uint64(3), mock.capturedListLogsReq.GetAfterSequence())
+	// The client converts the typed afterSequence into the opaque ListOptions.cursor
+	// (decimal-encoded uint64) — server decodes it back.
+	require.Equal(t, "3", mock.capturedListLogsReq.GetOptions().GetCursor())
 }
 
 func TestListLogs_StreamError(t *testing.T) {

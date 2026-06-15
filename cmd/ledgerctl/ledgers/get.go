@@ -17,14 +17,14 @@ import (
 func NewGetCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "get <name>",
-		Aliases: []string{"g", "show", "describe"},
+		Aliases: cmdutil.GetAliases,
 		Short:   "Get a ledger by name",
 		Long:    "Get detailed information about a ledger by its name via gRPC",
 		Args:    cobra.ExactArgs(1),
 		RunE:    runGet,
 	}
 
-	cmd.Flags().Uint64("checkpoint-id", 0, "Read from a query checkpoint instead of the live store")
+	cmdutil.AddConsistencyFlags(cmd)
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
@@ -44,13 +44,11 @@ func runGet(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
-
 	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Fetching ledger %s...", ledgerName))
 
 	ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{
-		Ledger:       ledgerName,
-		CheckpointId: checkpointID,
+		Ledger: ledgerName,
+		Read:   cmdutil.BuildReadOptions(cmdutil.GetConsistencyFlags(cmd)),
 	})
 	if err != nil {
 		_ = spinner.Stop()

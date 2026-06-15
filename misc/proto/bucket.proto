@@ -112,37 +112,24 @@ message GetTransactionResponse {
 
 message ListTransactionsRequest {
   string ledger = 1;
-  // page_size is the maximum number of transactions to return (0 = default)
-  uint32 page_size = 2;
-  // after_tx_id is the transaction ID to start after (for pagination, exclusive)
-  // Use 0 or omit to start from the latest transaction
-  fixed64 after_tx_id = 3;
-  // filter is a rich boolean filter (metadata conditions, address matching, AND/OR/NOT)
-  common.QueryFilter filter = 4;
-  // reverse inverts the default iteration order (newest-first becomes oldest-first)
-  bool reverse = 5;
-  // min_log_sequence requires the store to have applied at least this log sequence before reading.
-  // If the store has not caught up, the server returns FailedPrecondition.
-  fixed64 min_log_sequence = 6;
-  // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-  fixed64 checkpoint_id = 7;
+  common.ListOptions options = 2;
+
+  // Previously: scalar pagination/filter/consistency fields. Replaced by the
+  // ListOptions envelope (reuses field 2). Old field names reserved so they
+  // cannot be silently reintroduced with a different meaning.
+  reserved 3 to 7;
+  reserved "page_size", "after_tx_id", "filter", "reverse", "min_log_sequence", "checkpoint_id";
 }
 
 message ListAccountsRequest {
   string ledger = 1;
-  // page_size is the maximum number of accounts to return (0 = no limit)
-  uint32 page_size = 2;
-  // after_address is the account address to start after (for pagination, exclusive)
-  string after_address = 3;
-  // filter is a rich boolean filter (metadata conditions, address matching, AND/OR/NOT)
-  common.QueryFilter filter = 4;
-  // reverse inverts the default iteration order (alphabetical becomes reverse-alphabetical)
-  bool reverse = 5;
-  // min_log_sequence requires the store to have applied at least this log sequence before reading.
-  // If the store has not caught up, the server returns FailedPrecondition.
-  fixed64 min_log_sequence = 6;
-  // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-  fixed64 checkpoint_id = 7;
+  common.ListOptions options = 2;
+
+  // Previously: scalar pagination/filter/consistency fields. Replaced by the
+  // ListOptions envelope (reuses field 2). Old field names reserved so they
+  // cannot be silently reintroduced with a different meaning.
+  reserved 3 to 7;
+  reserved "page_size", "after_address", "filter", "reverse", "min_log_sequence", "checkpoint_id";
 }
 
 message CreateLedgerRequest {
@@ -161,16 +148,24 @@ message DeleteLedgerRequest {
 message DeleteLedgerResponse {}
 
 message ListLedgersRequest {
-  // page_size is the maximum number of ledgers to return (0 = no limit)
-  uint32 page_size = 1;
-  // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-  fixed64 checkpoint_id = 2;
+  common.ListOptions options = 1;
+
+  // Previously: uint32 page_size = 1; fixed64 checkpoint_id = 2;
+  // page_size's slot (1) was reused for the ListOptions envelope; the
+  // checkpoint_id field number is reserved alongside the name so it cannot
+  // come back as a different scalar.
+  reserved 2;
+  reserved "page_size", "checkpoint_id";
 }
 
 message GetLedgerRequest {
   string ledger = 1;
-  // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-  fixed64 checkpoint_id = 2;
+  common.ReadOptions read = 2;
+
+  // Previously: fixed64 checkpoint_id = 2. Field 2 now carries the
+  // ReadOptions envelope; the old name is reserved so it cannot be
+  // reintroduced as a different scalar.
+  reserved "checkpoint_id";
 }
 
 message ApplyRequest {
@@ -304,7 +299,9 @@ message SetSigningConfigRequest {
   bool require_signatures = 1;   // Whether to reject unsigned requests
 }
 
-message ListSigningKeysRequest {}
+message ListSigningKeysRequest {
+  common.ListOptions options = 1;
+}
 
 message ClosePeriodRequest {}
 
@@ -323,8 +320,7 @@ message ConfirmArchivePeriodRequest {
 }
 
 message ListPeriodsRequest {
-  // page_size is the maximum number of periods to return (0 = no limit)
-  uint32 page_size = 1;
+  common.ListOptions options = 1;
 }
 
 // SetMaintenanceModeRequest enables or disables maintenance mode.
@@ -399,15 +395,19 @@ message GetNumscriptRequest {
   string name = 1;
   string version = 2; // "" = latest
   string ledger = 3;
-  // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-  fixed64 checkpoint_id = 4;
+  common.ReadOptions read = 4;
+
+  // Previously: fixed64 checkpoint_id = 4. Field 4 now carries the
+  // ReadOptions envelope (checkpoint_id + min_log_sequence) to match the
+  // rest of the Get* request shapes. The old name is reserved so it cannot
+  // be silently reintroduced.
+  reserved "checkpoint_id";
 }
 
 // ListNumscriptsRequest lists all numscripts for a ledger (latest version of each).
 message ListNumscriptsRequest {
   string ledger = 1;
-  // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-  fixed64 checkpoint_id = 2;
+  common.ListOptions options = 2;
 }
 
 // ScriptReference references a numscript from the library by name and optional version.
@@ -707,15 +707,11 @@ message CheckStoreProgress {
 // ============================================================================
 
 message ListAuditEntriesRequest {
-  optional fixed64 after_sequence = 1;
+  common.ListOptions options = 1;
+  // failures_only filters audit entries to only those carrying a failure status.
   bool failures_only = 2;
-  // page_size is the maximum number of audit entries to return (0 = no limit)
-  uint32 page_size = 3;
-  // min_log_sequence requires the store to have applied at least this log sequence before reading.
-  // If the store has not caught up, the server returns FailedPrecondition.
-  fixed64 min_log_sequence = 4;
   // ledger filters audit entries to only those containing orders targeting this ledger.
-  string ledger = 5;
+  string ledger = 3;
 }
 
 message GetAuditEntryRequest {
@@ -727,18 +723,18 @@ message GetAuditEntryRequest {
 // ============================================================================
 
 message ListLogsRequest {
-  // after_sequence is the ledger-local log ID to start after (exclusive).
-  optional fixed64 after_sequence = 1;
-  uint32 page_size = 2;
-  // min_log_sequence requires the store to have applied at least this log sequence before reading.
-  fixed64 min_log_sequence = 3;
-  // filter is an optional filter (e.g. log_id > 42, date range). Results are ordered by
-  // ledger-local log ID ascending. Use a log_id condition for pagination.
-  common.QueryFilter filter = 4;
-  // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-  fixed64 checkpoint_id = 5;
   // ledger is the required ledger name to scope the log listing.
-  string ledger = 6;
+  string ledger = 1;
+  common.ListOptions options = 2;
+
+  // Previously: optional fixed64 after_sequence = 1; uint32 page_size = 2;
+  // fixed64 min_log_sequence = 3; common.QueryFilter filter = 4;
+  // fixed64 checkpoint_id = 5; string ledger = 6.
+  // The shape was rebuilt around the ListOptions envelope (ledger=1,
+  // options=2). The legacy field numbers 3..6 are reserved together with
+  // their old names so they cannot be silently reintroduced.
+  reserved 3 to 6;
+  reserved "after_sequence", "page_size", "min_log_sequence", "filter", "checkpoint_id";
 }
 
 message GetLogRequest {

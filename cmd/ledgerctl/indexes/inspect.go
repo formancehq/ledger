@@ -17,7 +17,7 @@ import (
 func NewInspectCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "inspect [flags]",
-		Aliases: []string{"i"},
+		Aliases: cmdutil.InspectAliases,
 		Short:   "Inspect a metadata index",
 		Long: `Scan a metadata index to see distinct values, facets, or a summary.
 
@@ -40,6 +40,7 @@ Examples:
 	cmd.Flags().String("mode", "summary", "Mode: summary, distinct-values, facets")
 	cmd.Flags().Uint32("page-size", 20, "Page size for distinct-values/facets")
 	cmd.Flags().String("cursor", "", "Pagination cursor from previous response")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	_ = cmd.MarkFlagRequired("key")
@@ -96,6 +97,10 @@ func runInspectIndex(cmd *cobra.Command, _ []string) error {
 	})
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to inspect index", err)
+	}
+
+	if handled, err := cmdutil.EncodeStructured(cmd, resp); handled || err != nil {
+		return err
 	}
 
 	pterm.Println()

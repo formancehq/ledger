@@ -16,7 +16,7 @@ import (
 func NewGetCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "get [transaction-id]",
-		Aliases: []string{"g", "show", "describe"},
+		Aliases: cmdutil.GetAliases,
 		Short:   "Get a transaction by ID",
 		Long: `Get detailed information about a transaction via gRPC.
 

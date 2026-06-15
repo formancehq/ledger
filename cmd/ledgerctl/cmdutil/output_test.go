@@ -287,6 +287,56 @@ func TestIsStructuredOutput(t *testing.T) {
 	})
 }
 
+func TestEmitNextCursorHint(t *testing.T) {
+	t.Parallel()
+
+	newCmd := func() (*cobra.Command, *bytes.Buffer, *bytes.Buffer) {
+		cmd := &cobra.Command{}
+		cmdutil.AddOutputFlags(cmd)
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+		cmd.SetOut(stdout)
+		cmd.SetErr(stderr)
+
+		return cmd, stdout, stderr
+	}
+
+	t.Run("empty cursor — no output", func(t *testing.T) {
+		t.Parallel()
+
+		cmd, stdout, stderr := newCmd()
+		cmdutil.EmitNextCursorHint(cmd, "")
+
+		require.Empty(t, stdout.String())
+		require.Empty(t, stderr.String())
+	})
+
+	t.Run("structured mode routes hint to stderr", func(t *testing.T) {
+		t.Parallel()
+
+		cmd, _, stderr := newCmd()
+		require.NoError(t, cmd.Flags().Set("json", "true"))
+
+		cmdutil.EmitNextCursorHint(cmd, "abc123")
+
+		// stdout would carry the JSON payload from EncodeStructured in real
+		// callers — keep it untouched here so `jq` / `yq` pipes stay lossless.
+		require.Equal(t, "next_cursor=abc123\n", stderr.String())
+	})
+
+	t.Run("yaml mode also routes to stderr", func(t *testing.T) {
+		t.Parallel()
+
+		cmd, _, stderr := newCmd()
+		require.NoError(t, cmd.Flags().Set("yaml", "true"))
+
+		cmdutil.EmitNextCursorHint(cmd, "token-xyz")
+
+		require.Equal(t, "next_cursor=token-xyz\n", stderr.String())
+	})
+}
+
 // captureStdout redirects os.Stdout to a pipe, calls fn, and returns the
 // captured output as a string.
 func captureStdout(t *testing.T, fn func()) string {

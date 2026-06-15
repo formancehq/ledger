@@ -117,10 +117,12 @@ func countTransactionsWithReference(
 	minLogSeq uint64,
 ) ([]uint64, bool) {
 	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
-		Ledger:         ledger,
-		PageSize:       10,
-		Filter:         actions.ReferenceFilter(ref),
-		MinLogSequence: minLogSeq,
+		Ledger: ledger,
+		Options: &commonpb.ListOptions{
+			PageSize: 10,
+			Filter:   actions.ReferenceFilter(ref),
+			Read:     &commonpb.ReadOptions{MinLogSequence: minLogSeq},
+		},
 	})
 	if err != nil {
 		return nil, false

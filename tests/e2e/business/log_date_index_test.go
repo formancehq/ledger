@@ -79,8 +79,10 @@ var _ = Describe("Log date index", Ordered, func() {
 		// List all logs for the ledger (no date filter).
 		Eventually(func(g Gomega) {
 			stream, err := sharedClient.ListLogs(sharedCtx, &servicepb.ListLogsRequest{
-				Ledger:   ledgerName,
-				PageSize: 100,
+				Ledger: ledgerName,
+				Options: &commonpb.ListOptions{
+					PageSize: 100,
+				},
 			})
 			g.Expect(err).To(Succeed())
 
@@ -117,9 +119,11 @@ var _ = Describe("Log date index", Ordered, func() {
 
 		Eventually(func(g Gomega) {
 			stream, err := sharedClient.ListLogs(sharedCtx, &servicepb.ListLogsRequest{
-				Ledger:   ledgerName,
-				PageSize: 100,
-				Filter:   dateFilter,
+				Ledger: ledgerName,
+				Options: &commonpb.ListOptions{
+					PageSize: 100,
+					Filter:   dateFilter,
+				},
 			})
 			g.Expect(err).To(Succeed())
 
@@ -148,9 +152,11 @@ var _ = Describe("Log date index", Ordered, func() {
 		}
 
 		stream, err := sharedClient.ListLogs(sharedCtx, &servicepb.ListLogsRequest{
-			Ledger:   ledgerName,
-			PageSize: 100,
-			Filter:   dateFilter,
+			Ledger: ledgerName,
+			Options: &commonpb.ListOptions{
+				PageSize: 100,
+				Filter:   dateFilter,
+			},
 		})
 		Expect(err).To(Succeed())
 
@@ -197,9 +203,11 @@ var _ = Describe("Log date index", Ordered, func() {
 
 		Eventually(func(g Gomega) {
 			stream, err := sharedClient.ListLogs(sharedCtx, &servicepb.ListLogsRequest{
-				Ledger:   ledgerName,
-				PageSize: 100,
-				Filter:   combinedFilter,
+				Ledger: ledgerName,
+				Options: &commonpb.ListOptions{
+					PageSize: 100,
+					Filter:   combinedFilter,
+				},
 			})
 			g.Expect(err).To(Succeed())
 

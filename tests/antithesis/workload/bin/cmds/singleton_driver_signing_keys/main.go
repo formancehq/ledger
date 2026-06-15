@@ -4,12 +4,12 @@ import (
 	"context"
 	"crypto/ed25519"
 	"fmt"
-	"io"
 	"log"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -56,33 +56,21 @@ func main() {
 		return
 	}
 
-	// 2. Verify the key appears in ListSigningKeys.
-	stream, err := bucketClient.ListSigningKeys(ctx, &servicepb.ListSigningKeysRequest{})
-	if err != nil {
-		return
-	}
+	// 2. Verify the key appears in ListSigningKeys. Use the trailer-aware
+	// helper so long-running clusters with more than the server's default
+	// page of keys still surface the one we just registered.
+	keys, listErr := actions.ListAllSigningKeys(ctx, bucketClient)
 
 	found := false
-	streamErr := false
-
-	for {
-		key, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-
-		if err != nil {
-			streamErr = true
-
-			break
-		}
-
-		if key.GetKeyId() == keyID {
+	for _, k := range keys {
+		if k.GetKeyId() == keyID {
 			found = true
+
+			break
 		}
 	}
 
-	if !streamErr {
+	if listErr == nil {
 		assert.AlwaysOrUnreachable(found, "registered key should appear in ListSigningKeys", details)
 	}
 
@@ -111,33 +99,19 @@ func main() {
 		return
 	}
 
-	// 4. Verify the key is no longer listed.
-	stream, err = bucketClient.ListSigningKeys(ctx, &servicepb.ListSigningKeysRequest{})
-	if err != nil {
-		return
-	}
+	// 4. Verify the key is no longer listed (trailer-aware helper).
+	keysAfter, listErr := actions.ListAllSigningKeys(ctx, bucketClient)
 
 	foundAfterRevoke := false
-	streamErr = false
-
-	for {
-		key, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-
-		if err != nil {
-			streamErr = true
-
-			break
-		}
-
-		if key.GetKeyId() == keyID {
+	for _, k := range keysAfter {
+		if k.GetKeyId() == keyID {
 			foundAfterRevoke = true
+
+			break
 		}
 	}
 
-	if !streamErr {
+	if listErr == nil {
 		assert.AlwaysOrUnreachable(!foundAfterRevoke, "revoked key should not appear in ListSigningKeys", details)
 	}
 

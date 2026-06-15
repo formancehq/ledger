@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
+	"strconv"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -240,14 +242,43 @@ func (impl *BucketServiceServerImpl) ListPeriods(req *servicepb.ListPeriodsReque
 		return err
 	}
 
+	opts := req.GetOptions()
+
+	// Periods are raft-state-backed; filter and checkpoint_id are not
+	// applicable. Reverse is honored at the handler layer (drain + reverse).
+	if err := ValidateListOptions(opts, ListOptionsSupport{Reverse: true}); err != nil {
+		return err
+	}
+
+	if err := impl.waitMinLogSequence(ctx, opts.GetRead().GetMinLogSequence()); err != nil {
+		return err
+	}
+
 	c, err := impl.ctrl.ListPeriods(ctx)
 	if err != nil {
 		return fmt.Errorf("listing periods: %w", err)
 	}
 
-	c = cursor.NewLimitedCursor(c, ctrl.ClampPageSize(req.GetPageSize()))
+	cursorKey, err := parseUint64Cursor(opts.GetCursor())
+	if err != nil {
+		return err
+	}
 
-	return sendCursorToStream(ctx, c, stream, "period")
+	pageSize := ctrl.ClampPageSize(opts.GetPageSize())
+	reverse := opts.GetReverse()
+
+	c, err = ApplyHandlerPagination(
+		c,
+		skipByUint64Key(cursorKey, reverse, func(item *commonpb.Period) uint64 { return item.GetId() }),
+		reverse,
+	)
+	if err != nil {
+		return fmt.Errorf("paginating periods: %w", err)
+	}
+
+	return sendPagedToStream(ctx, c, stream, "period", pageSize, func(p *commonpb.Period) string {
+		return strconv.FormatUint(p.GetId(), 10)
+	})
 }
 
 func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *servicepb.GetTransactionRequest) (*servicepb.GetTransactionResponse, error) {
@@ -406,19 +437,28 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 		return errors.New("ledger name is required")
 	}
 
+	opts := req.GetOptions()
+	pageSize := ctrl.ClampPageSize(opts.GetPageSize())
+	// Ask the controller for one extra item beyond pageSize so
+	// sendPagedToStream can peek-ahead and only emit x-next-cursor when
+	// another page actually exists.
+	fetchSize := pageSizePlusOne(pageSize)
+
+	afterTxID, err := parseUint64Cursor(opts.GetCursor())
+	if err != nil {
+		return err
+	}
+
 	if impl.logger.Enabled(logging.TraceLevel) {
 		impl.logger.Tracef("ListTransactions request received for ledger %s (pageSize=%d, afterTxID=%d, hasFilter=%v, reverse=%v)",
-			req.GetLedger(), req.GetPageSize(), req.GetAfterTxId(), req.GetFilter() != nil, req.GetReverse())
+			req.GetLedger(), pageSize, afterTxID, opts.GetFilter() != nil, opts.GetReverse())
 	}
 
 	profileCtx, profile := query.WithProfile(ctx)
 
-	var (
-		cursor cursor.Cursor[*commonpb.Transaction]
-		err    error
-	)
+	var c cursor.Cursor[*commonpb.Transaction]
 
-	if cpID := req.GetCheckpointId(); cpID > 0 {
+	if cpID := opts.GetRead().GetCheckpointId(); cpID > 0 {
 		mainStore, readIdx, openErr := impl.openCheckpointStores(cpID)
 		if openErr != nil {
 			return openErr
@@ -429,23 +469,44 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 			_ = mainStore.Close()
 		}()
 
-		cursor, err = impl.localCtrl.ListTransactionsFrom(profileCtx, mainStore, readIdx, req.GetLedger(), ctrl.ClampPageSize(req.GetPageSize()), req.GetAfterTxId(), req.GetFilter(), req.GetReverse())
+		c, err = impl.localCtrl.ListTransactionsFrom(profileCtx, mainStore, readIdx, req.GetLedger(), fetchSize, afterTxID, opts.GetFilter(), opts.GetReverse())
 	} else {
-		if waitErr := impl.waitMinLogSequence(ctx, req.GetMinLogSequence()); waitErr != nil {
+		if waitErr := impl.waitMinLogSequence(ctx, opts.GetRead().GetMinLogSequence()); waitErr != nil {
 			return waitErr
 		}
 
-		cursor, err = impl.ctrl.ListTransactions(profileCtx, req.GetLedger(), ctrl.ClampPageSize(req.GetPageSize()), req.GetAfterTxId(), req.GetFilter(), req.GetReverse())
+		c, err = impl.ctrl.ListTransactions(profileCtx, req.GetLedger(), fetchSize, afterTxID, opts.GetFilter(), opts.GetReverse())
 	}
 
 	if err != nil {
 		return fmt.Errorf("listing transactions: %w", err)
 	}
 
-	err = sendCursorToStream(ctx, cursor, stream, "transaction")
+	err = sendPagedToStream(ctx, c, stream, "transaction", pageSize, txCursorOf)
 	impl.emitProfile(ctx, profile)
 
 	return err
+}
+
+// txCursorOf returns the opaque next-page cursor for a transaction (its id
+// encoded as decimal).
+func txCursorOf(tx *commonpb.Transaction) string {
+	return strconv.FormatUint(tx.GetId(), 10)
+}
+
+// parseUint64Cursor decodes the opaque ListOptions.cursor as a uint64. Empty
+// is the canonical "start at the head" marker.
+func parseUint64Cursor(cursor string) (uint64, error) {
+	if cursor == "" {
+		return 0, nil
+	}
+
+	v, err := strconv.ParseUint(cursor, 10, 64)
+	if err != nil {
+		return 0, status.Errorf(codes.InvalidArgument, "invalid cursor %q: %v", cursor, err)
+	}
+
+	return v, nil
 }
 
 func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersRequest, stream servicepb.BucketService_ListLedgersServer) error {
@@ -456,14 +517,46 @@ func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersReque
 		return err
 	}
 
-	c, err := impl.ctrl.ListLedgers(ctx)
+	opts := req.GetOptions()
+	read := opts.GetRead()
+
+	if err := ValidateListOptions(opts, ListOptionsSupport{Reverse: true, CheckpointID: true}); err != nil {
+		return err
+	}
+
+	if read.GetCheckpointId() == 0 {
+		if err := impl.waitMinLogSequence(ctx, read.GetMinLogSequence()); err != nil {
+			return err
+		}
+	}
+
+	listingCtrl, cleanup, err := impl.readController(read.GetCheckpointId())
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	c, err := listingCtrl.ListLedgers(ctx)
 	if err != nil {
 		return fmt.Errorf("listing ledgers: %w", err)
 	}
 
-	c = cursor.NewLimitedCursor(c, ctrl.ClampPageSize(req.GetPageSize()))
+	cursorKey := opts.GetCursor()
+	reverse := opts.GetReverse()
+	pageSize := ctrl.ClampPageSize(opts.GetPageSize())
 
-	return sendCursorToStream(ctx, c, stream, "ledger")
+	c, err = ApplyHandlerPagination(
+		c,
+		skipByStringKey(cursorKey, reverse, func(item *commonpb.LedgerInfo) string { return item.GetName() }),
+		reverse,
+	)
+	if err != nil {
+		return fmt.Errorf("paginating ledgers: %w", err)
+	}
+
+	return sendPagedToStream(ctx, c, stream, "ledger", pageSize, func(l *commonpb.LedgerInfo) string {
+		return l.GetName()
+	})
 }
 
 func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
@@ -478,7 +571,15 @@ func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *service
 		return nil, errors.New("ledger name is required")
 	}
 
-	c, cleanup, err := impl.readController(req.GetCheckpointId())
+	read := req.GetRead()
+
+	if read.GetCheckpointId() == 0 {
+		if err := impl.waitMinLogSequence(ctx, read.GetMinLogSequence()); err != nil {
+			return nil, err
+		}
+	}
+
+	c, cleanup, err := impl.readController(read.GetCheckpointId())
 	if err != nil {
 		return nil, err
 	}
@@ -518,35 +619,46 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 		return errors.New("ledger name is required")
 	}
 
-	c, cleanup, err := impl.readController(req.GetCheckpointId())
+	opts := req.GetOptions()
+	read := opts.GetRead()
+	pageSize := ctrl.ClampPageSize(opts.GetPageSize())
+
+	c, cleanup, err := impl.readController(read.GetCheckpointId())
 	if err != nil {
 		return err
 	}
 	defer cleanup()
 
 	// minLogSequence only gates live reads; a checkpoint is a fixed snapshot.
-	if req.GetCheckpointId() == 0 {
-		if err := impl.waitMinLogSequence(ctx, req.GetMinLogSequence()); err != nil {
+	if read.GetCheckpointId() == 0 {
+		if err := impl.waitMinLogSequence(ctx, read.GetMinLogSequence()); err != nil {
 			return err
 		}
 	}
 
 	if impl.logger.Enabled(logging.TraceLevel) {
-		impl.logger.Tracef("ListAccounts request received for ledger %s (pageSize=%d, afterAddress=%q, hasFilter=%v, reverse=%v)",
-			req.GetLedger(), req.GetPageSize(), req.GetAfterAddress(), req.GetFilter() != nil, req.GetReverse())
+		impl.logger.Tracef("ListAccounts request received for ledger %s (pageSize=%d, cursor=%q, hasFilter=%v, reverse=%v)",
+			req.GetLedger(), pageSize, opts.GetCursor(), opts.GetFilter() != nil, opts.GetReverse())
 	}
 
 	profileCtx, profile := query.WithProfile(ctx)
 
-	cursor, err := c.ListAccounts(profileCtx, req.GetLedger(), ctrl.ClampPageSize(req.GetPageSize()), req.GetAfterAddress(), req.GetFilter(), req.GetReverse())
+	cur, err := c.ListAccounts(profileCtx, req.GetLedger(), pageSizePlusOne(pageSize), opts.GetCursor(), opts.GetFilter(), opts.GetReverse())
 	if err != nil {
 		return fmt.Errorf("listing accounts: %w", err)
 	}
 
-	err = sendCursorToStream(ctx, cursor, stream, "account")
+	err = sendPagedToStream(ctx, cur, stream, "account", pageSize, accountCursorOf)
 	impl.emitProfile(ctx, profile)
 
 	return err
+}
+
+// accountCursorOf returns the opaque next-page cursor for an account (its
+// address). Used as both ListAccounts cursorOf and exported for use by the
+// Aggregate helper if it ever needs to paginate.
+func accountCursorOf(a *commonpb.Account) string {
+	return a.GetAddress()
 }
 
 func (impl *BucketServiceServerImpl) GetPrimaryMetrics(ctx context.Context, req *servicepb.GetPrimaryMetricsRequest) (*servicepb.GetPrimaryMetricsResponse, error) {
@@ -768,16 +880,38 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 		return err
 	}
 
-	if err := impl.waitMinLogSequence(ctx, req.GetMinLogSequence()); err != nil {
+	opts := req.GetOptions()
+
+	// The audit controller does not yet honor filter / reverse /
+	// checkpoint_id — see #436 for the alignment work.
+	if err := ValidateListOptions(opts, ListOptionsSupport{}); err != nil {
 		return err
 	}
 
-	cursor, err := impl.ctrl.ListAuditEntries(ctx, req.AfterSequence, req.FailuresOnly, ctrl.ClampPageSize(req.PageSize), req.GetLedger()) //nolint:protogetter
+	if err := impl.waitMinLogSequence(ctx, opts.GetRead().GetMinLogSequence()); err != nil {
+		return err
+	}
+
+	afterSeq, err := parseUint64Cursor(opts.GetCursor())
+	if err != nil {
+		return err
+	}
+
+	pageSize := ctrl.ClampPageSize(opts.GetPageSize())
+
+	var afterSeqPtr *uint64
+	if opts.GetCursor() != "" {
+		afterSeqPtr = &afterSeq
+	}
+
+	c, err := impl.ctrl.ListAuditEntries(ctx, afterSeqPtr, req.GetFailuresOnly(), pageSizePlusOne(pageSize), req.GetLedger())
 	if err != nil {
 		return fmt.Errorf("listing audit entries: %w", err)
 	}
 
-	return sendCursorToStream(ctx, cursor, stream, "audit entry")
+	return sendPagedToStream(ctx, c, stream, "audit entry", pageSize, func(e *auditpb.AuditEntry) string {
+		return strconv.FormatUint(e.GetSequence(), 10)
+	})
 }
 
 func (impl *BucketServiceServerImpl) GetLog(ctx context.Context, req *servicepb.GetLogRequest) (*commonpb.Log, error) {
@@ -802,15 +936,25 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 		return err
 	}
 
-	c, cleanup, err := impl.readController(req.GetCheckpointId())
+	opts := req.GetOptions()
+	read := opts.GetRead()
+
+	// ListLogs honors filter and checkpoint_id; reverse iteration over the
+	// log zone still needs PaginateBackward — see follow-up tracked in the
+	// PR description.
+	if err := ValidateListOptions(opts, ListOptionsSupport{Filter: true, CheckpointID: true}); err != nil {
+		return err
+	}
+
+	c, cleanup, err := impl.readController(read.GetCheckpointId())
 	if err != nil {
 		return err
 	}
 	defer cleanup()
 
 	// minLogSequence only gates live reads; a checkpoint is a fixed snapshot.
-	if req.GetCheckpointId() == 0 {
-		if err := impl.waitMinLogSequence(ctx, req.GetMinLogSequence()); err != nil {
+	if read.GetCheckpointId() == 0 {
+		if err := impl.waitMinLogSequence(ctx, read.GetMinLogSequence()); err != nil {
 			return err
 		}
 	}
@@ -819,17 +963,38 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 		return errors.New("ledger name is required")
 	}
 
-	var afterSequence uint64
-	if req.AfterSequence != nil {
-		afterSequence = req.GetAfterSequence()
+	afterSequence, err := parseUint64Cursor(opts.GetCursor())
+	if err != nil {
+		return err
 	}
 
-	cursor, err := c.ListLogs(ctx, req.GetLedger(), afterSequence, ctrl.ClampPageSize(req.GetPageSize()), req.GetFilter())
+	pageSize := ctrl.ClampPageSize(opts.GetPageSize())
+
+	cur, err := c.ListLogs(ctx, req.GetLedger(), afterSequence, pageSizePlusOne(pageSize), opts.GetFilter())
 	if err != nil {
 		return fmt.Errorf("listing logs: %w", err)
 	}
 
-	return sendCursorToStream(ctx, cursor, stream, "log")
+	// The cursor MUST be the ledger-local LedgerLog.Id — DefaultController.ListLogs
+	// compiles afterSequence into a `LogId > afterSequence` filter against the
+	// ledger-local id. Emitting the global raft sequence (Log.Sequence) would
+	// skip valid ledger logs on the next page as soon as the two diverge
+	// (after ledger creation or with >1 ledger).
+	//
+	// Defensive: if a non-apply payload ever reaches this path (today the
+	// ListLogs filter only yields Apply logs, but the proto leaves room for
+	// future payload kinds), GetApply() returns nil and Id defaults to 0 —
+	// which would publish a bogus `x-next-cursor: "0"` and trap the client
+	// in an infinite resume loop. Return an empty cursor in that case so the
+	// stream signals "no more pages" instead.
+	return sendPagedToStream(ctx, cur, stream, "log", pageSize, func(l *commonpb.Log) string {
+		apply := l.GetPayload().GetApply()
+		if apply == nil {
+			return ""
+		}
+
+		return strconv.FormatUint(apply.GetLog().GetId(), 10)
+	})
 }
 
 func (impl *BucketServiceServerImpl) GetEventsSinks(ctx context.Context, _ *servicepb.GetEventsSinksRequest) (*servicepb.GetEventsSinksResponse, error) {
@@ -900,7 +1065,7 @@ func (impl *BucketServiceServerImpl) GetPeriodSchedule(ctx context.Context, _ *s
 	return &servicepb.GetPeriodScheduleResponse{Cron: cronExpr}, nil
 }
 
-func (impl *BucketServiceServerImpl) ListSigningKeys(_ *servicepb.ListSigningKeysRequest, stream servicepb.BucketService_ListSigningKeysServer) error {
+func (impl *BucketServiceServerImpl) ListSigningKeys(req *servicepb.ListSigningKeysRequest, stream servicepb.BucketService_ListSigningKeysServer) error {
 	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListSigningKeys")
 	defer span.End()
 
@@ -908,12 +1073,47 @@ func (impl *BucketServiceServerImpl) ListSigningKeys(_ *servicepb.ListSigningKey
 		return err
 	}
 
-	cursor, err := impl.ctrl.ListSigningKeys(ctx)
+	opts := req.GetOptions()
+
+	if err := ValidateListOptions(opts, ListOptionsSupport{Reverse: true}); err != nil {
+		return err
+	}
+
+	if err := impl.waitMinLogSequence(ctx, opts.GetRead().GetMinLogSequence()); err != nil {
+		return err
+	}
+
+	raw, err := impl.ctrl.ListSigningKeys(ctx)
 	if err != nil {
 		return fmt.Errorf("listing signing keys: %w", err)
 	}
 
-	return sendCursorToStream(ctx, cursor, stream, "signing key")
+	// ReadSigningKeysCursor ranges over a Go map (random order). Sort by KeyId
+	// before applying the opaque-cursor pagination so resume tokens stay
+	// stable across requests — otherwise pages skip or duplicate keys.
+	keys, err := cursor.Collect(raw)
+	if err != nil {
+		return fmt.Errorf("collecting signing keys: %w", err)
+	}
+
+	sort.Slice(keys, func(i, j int) bool { return keys[i].GetKeyId() < keys[j].GetKeyId() })
+
+	cursorKey := opts.GetCursor()
+	reverse := opts.GetReverse()
+	pageSize := ctrl.ClampPageSize(opts.GetPageSize())
+
+	c, err := ApplyHandlerPagination(
+		cursor.NewSliceCursor(keys),
+		skipByStringKey(cursorKey, reverse, func(item *commonpb.SigningKey) string { return item.GetKeyId() }),
+		reverse,
+	)
+	if err != nil {
+		return fmt.Errorf("paginating signing keys: %w", err)
+	}
+
+	return sendPagedToStream(ctx, c, stream, "signing key", pageSize, func(k *commonpb.SigningKey) string {
+		return k.GetKeyId()
+	})
 }
 
 func (impl *BucketServiceServerImpl) GetMetadataSchemaStatus(ctx context.Context, req *servicepb.GetMetadataSchemaStatusRequest) (*servicepb.GetMetadataSchemaStatusResponse, error) {
@@ -1118,7 +1318,15 @@ func (impl *BucketServiceServerImpl) GetNumscript(ctx context.Context, req *serv
 		return nil, err
 	}
 
-	c, cleanup, err := impl.readController(req.GetCheckpointId())
+	read := req.GetRead()
+
+	if read.GetCheckpointId() == 0 {
+		if err := impl.waitMinLogSequence(ctx, read.GetMinLogSequence()); err != nil {
+			return nil, err
+		}
+	}
+
+	c, cleanup, err := impl.readController(read.GetCheckpointId())
 	if err != nil {
 		return nil, err
 	}
@@ -1135,7 +1343,20 @@ func (impl *BucketServiceServerImpl) ListNumscripts(req *servicepb.ListNumscript
 		return err
 	}
 
-	c, cleanup, err := impl.readController(req.GetCheckpointId())
+	opts := req.GetOptions()
+	read := opts.GetRead()
+
+	if err := ValidateListOptions(opts, ListOptionsSupport{Reverse: true, CheckpointID: true}); err != nil {
+		return err
+	}
+
+	if read.GetCheckpointId() == 0 {
+		if err := impl.waitMinLogSequence(ctx, read.GetMinLogSequence()); err != nil {
+			return err
+		}
+	}
+
+	c, cleanup, err := impl.readController(read.GetCheckpointId())
 	if err != nil {
 		return err
 	}
@@ -1146,14 +1367,24 @@ func (impl *BucketServiceServerImpl) ListNumscripts(req *servicepb.ListNumscript
 		return fmt.Errorf("listing numscripts: %w", err)
 	}
 
-	for _, script := range scripts {
-		err := stream.Send(script)
-		if err != nil {
-			return fmt.Errorf("sending numscript: %w", err)
-		}
+	// Sort by name so the opaque cursor stays stable across requests; the
+	// underlying store iteration order is not guaranteed.
+	sort.Slice(scripts, func(i, j int) bool { return scripts[i].GetName() < scripts[j].GetName() })
+
+	pageSize := ctrl.ClampPageSize(opts.GetPageSize())
+
+	paginated, err := ApplyHandlerPagination(
+		cursor.NewSliceCursor(scripts),
+		skipByStringKey(opts.GetCursor(), opts.GetReverse(), func(item *commonpb.NumscriptInfo) string { return item.GetName() }),
+		opts.GetReverse(),
+	)
+	if err != nil {
+		return fmt.Errorf("paginating numscripts: %w", err)
 	}
 
-	return nil
+	return sendPagedToStream(ctx, paginated, stream, "numscript", pageSize, func(n *commonpb.NumscriptInfo) string {
+		return n.GetName()
+	})
 }
 
 func (impl *BucketServiceServerImpl) InspectIndex(ctx context.Context, req *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error) {

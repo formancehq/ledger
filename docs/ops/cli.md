@@ -52,6 +52,57 @@ ledgerctl --consistency leader ledgers list
 ledgerctl ledgers list
 ```
 
+### Shared Flag Contract
+
+All read subcommands (`list`, `get`, `inspect`) follow a uniform set of flags
+provided by helpers in `cmd/ledgerctl/cmdutil/flags.go`. This contract makes
+scripting against the CLI predictable across resources.
+
+| Category | Flag | Type | Notes |
+|---|---|---|---|
+| Pagination | `--page-size` | uint32 | Number of items per page (clamped server-side; default `10`). |
+| Pagination | `--cursor` | string | Opaque cursor returned by the previous page. Parsed per-resource into the appropriate type (string address, uint64 sequence, …). |
+| Pagination | `--reverse` | bool | Reverse iteration order. Available on commands whose server endpoint supports it. |
+| Pagination | `--all` | bool | Fetch every page at once (no interactive pagination). Available on `accounts` and `transactions`. |
+| Filter | `--filter` | string | Boolean filter expression (see `filterexpr` grammar). |
+| Filter | `--prefix` | string | Account-address prefix shortcut. Only on `accounts list` (server-side `HardcodedPrefix` optimization). |
+| Consistency | `--checkpoint-id` | uint64 | Read from a named query checkpoint instead of the live store. |
+| Consistency | `--min-log-sequence` | uint64 | Require the server to have applied at least this log sequence before reading. `FailedPrecondition` if not. |
+| Output | `--json` | bool | Emit JSON to stdout. Mutually exclusive with `--yaml`. |
+| Output | `--yaml` | bool | Emit YAML to stdout. Mutually exclusive with `--json`. |
+| Output | `--result-file` | string | Also write the JSON payload to this file (for kubelet `/dev/termination-log` or CI scripts). |
+| Aliases | `list` | — | `ls`, `l` |
+| Aliases | `get` | — | `g`, `show`, `describe` |
+| Aliases | `inspect` | — | `i` |
+
+#### Unpaginated endpoints
+
+A few endpoints intentionally do not expose pagination because the underlying
+collection is bounded by design:
+
+| Command | Why unpaginated |
+|---|---|
+| `account-types list` | Embedded in `LedgerInfo`; cardinality bounded by ledger config. |
+| `indexes list` | Embedded in `LedgerInfo`; cardinality bounded by ledger config. |
+| `events list` | Raft-state cluster-wide sink config; cardinality bounded by deployment topology. |
+| `queries list` | Raft-state per-ledger prepared queries; cardinality bounded by ledger config. |
+| `querycheckpoint list` | Replicated state; cardinality bounded by retention policy. |
+
+These commands still honor `--json` / `--yaml`.
+
+#### Default pagination behaviour
+
+Paginated `list` commands fall into two groups depending on what happens when
+neither `--page-size` nor `--cursor` is set:
+
+| Group | Commands | Default behaviour |
+|---|---|---|
+| Drain-by-default | `accounts list`, `transactions list`, `ledgers list`, `periods list`, `numscripts list`, `queries list`, `signing keys list` | Follow the trailer chain to the end and print every page in one shot. Set `--page-size` or `--cursor` to switch back to single-page output (and surface the resume cursor on stderr). |
+| Single-page-only | `audit list`, `logs list` | Always print one page and surface the resume cursor on stderr, even with no flags set. Resume with `--cursor <token>`. These resources commonly hold tens of thousands of rows; defaulting to a single page avoids accidentally streaming the whole history. |
+
+Both groups expose the same `--page-size` / `--cursor` semantics; only the
+flagless default differs.
+
 ### Request Signing
 
 All write commands (create/delete ledger, create/revert transaction, set/delete metadata) support Ed25519 request signing. When `--signing-key` is provided, each request is signed before being sent to the server.
@@ -2061,13 +2112,10 @@ ledgerctl audit list [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--json` | `false` | Output as JSON |
 | `--failures-only` | `false` | Show only failed entries |
-| `--ledger` | | Filter by ledger name |
-| `--after` | `0` | Show entries after this sequence number |
-| `--page-size` | `10` | Number of entries per page (0 = unlimited) |
-| `--timeout` | `10s` | Request timeout |
 | `--expand` | `false` | Expand orders within each audit entry |
+
+Also honors the [Shared Flag Contract](#shared-flag-contract) (`--page-size`, `--cursor`, `--min-log-sequence`, `--json`, `--yaml`, `--timeout`).
 
 **Behavior:**
 - Streams audit entries from the server
@@ -2078,24 +2126,19 @@ ledgerctl audit list [flags]
   - Signing key ID used (`key=<id>`) or `unsigned` if the order was not signed
   - Consecutive identical orders are grouped compactly (e.g. `MirrorIngest x500`)
 - If audit is disabled on the server, a warning message is displayed instead of an error
+- When `--page-size N` is set and more entries exist, the command prints `More results available — resume with --cursor <token>` so the listing can be chained
 
 **Example:**
 
 ```bash
-# List all audit entries
+# List audit entries
 ledgerctl audit list
 
 # Show only failures
 ledgerctl audit list --failures-only
 
-# Filter by ledger
-ledgerctl audit list --ledger my-ledger
-
-# Show entries after sequence 100
-ledgerctl audit list --after 100
-
-# Show 20 entries per page
-ledgerctl audit list --page-size 20
+# Resume after a previous page
+ledgerctl audit list --page-size 20 --cursor <token>
 
 # Expand orders within entries
 ledgerctl audit list --expand
@@ -2168,16 +2211,15 @@ ledgerctl logs list [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | (required) | Ledger name to list logs for |
-| `--json` | `false` | Output as JSON |
-| `--after` | `0` | Show logs after this log ID |
-| `--page-size` | `10` | Number of logs per page (0 = unlimited) |
-| `--min-log-sequence` | `0` | Minimum log sequence the server must have applied before reading (0 = no constraint) |
-| `--timeout` | `10s` | Request timeout |
+| `--expand` | `false` | Expand details within each log entry |
+
+Also honors the [Shared Flag Contract](#shared-flag-contract) (`--page-size`, `--cursor`, `--filter`, `--checkpoint-id`, `--min-log-sequence`, `--json`, `--yaml`, `--timeout`).
 
 **Behavior:**
 - Streams system log entries for a specific ledger from the server
 - Each entry shows: sequence number, log type, ledger name, and details
 - The `--ledger` flag is required
+- When `--page-size N` is set and more entries exist, the command prints `More results available — resume with --cursor <token>` so the listing can be chained
 
 **Example:**
 
@@ -2185,11 +2227,13 @@ ledgerctl logs list [flags]
 # List logs for a ledger
 ledgerctl logs list --ledger my-ledger
 
-# Show logs after log ID 100
-ledgerctl logs list --ledger my-ledger --after 100
+# Resume after a previous page
+ledgerctl logs list --ledger my-ledger --page-size 20 --cursor <token>
 
-# Show 20 entries per page
-ledgerctl logs list --ledger my-ledger --page-size 20
+# Filter via the shared filter grammar (only the fields documented under
+# "Shared Flag Contract → Filter grammar" are accepted: metadata[<key>],
+# address, source, destination, ledger)
+ledgerctl logs list --ledger my-ledger --filter 'metadata[origin] == "payments"'
 
 # Output as JSON
 ledgerctl logs list --ledger my-ledger --json

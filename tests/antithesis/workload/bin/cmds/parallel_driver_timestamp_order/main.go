@@ -32,6 +32,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
@@ -137,12 +138,17 @@ func main() {
 		maxPages := txCount*4 + 16
 
 		for range maxPages {
-			after := afterLocalID
+			var cursor string
+			if afterLocalID > 0 {
+				cursor = strconv.FormatUint(afterLocalID, 10) // ledger-local log ID, exclusive
+			}
 			stream, err := client.ListLogs(ctx, &servicepb.ListLogsRequest{
-				Ledger:         ledger,
-				PageSize:       pageSize,
-				AfterSequence:  &after, // ledger-local log ID, exclusive
-				MinLogSequence: maxSeq,
+				Ledger: ledger,
+				Options: &commonpb.ListOptions{
+					PageSize: pageSize,
+					Cursor:   cursor,
+					Read:     &commonpb.ReadOptions{MinLogSequence: maxSeq},
+				},
 			})
 			if err != nil {
 				return

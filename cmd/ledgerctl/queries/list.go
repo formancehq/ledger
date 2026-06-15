@@ -14,9 +14,13 @@ import (
 func NewListCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list",
-		Aliases: []string{"ls", "l"},
+		Aliases: cmdutil.ListAliases,
 		Short:   "List prepared queries for a ledger",
-		RunE:    runList,
+		Long: `List prepared queries configured on a ledger.
+
+Prepared queries are stored in raft state per ledger and naturally bounded
+in size; this endpoint is intentionally not paginated.`,
+		RunE: runList,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")

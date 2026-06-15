@@ -9,9 +9,9 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -20,7 +20,7 @@ import (
 func NewListCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list",
-		Aliases: []string{"ls", "l"},
+		Aliases: cmdutil.ListAliases,
 		Short:   "List transactions in a ledger",
 		Long: `List transactions in a ledger via gRPC with pagination.
 
@@ -40,18 +40,19 @@ Examples:
   ledgerctl transactions list --ledger my-ledger --filter 'destination == "users:alice"'
   ledgerctl transactions list --ledger my-ledger --filter 'source ^= "merchants:" and destination ^= "users:"'
   ledgerctl transactions list --reverse   # Oldest first
-  ledgerctl transactions list --all   # Fetch all transactions without pagination`,
+  ledgerctl transactions list --all   # Fetch all transactions without pagination
+  ledgerctl transactions list --cursor 42   # Resume after tx id 42`,
 		RunE: runList,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")
-	cmd.Flags().Uint32("page-size", cmdutil.DefaultPageSize, "Number of transactions per page")
-	cmd.Flags().String("filter", "", `Filter expression (e.g. "metadata[category] == premium")`)
-	cmd.Flags().Bool("reverse", false, "Reverse iteration order (oldest first instead of newest first)")
-	cmd.Flags().Bool("all", false, "Fetch all transactions at once (no pagination)")
+	cmdutil.AddPaginationFlags(cmd, cmdutil.PaginationOptions{
+		SupportsReverse: true,
+		SupportsAll:     true,
+	})
+	cmdutil.AddFilterFlags(cmd, cmdutil.FilterOptions{})
+	cmdutil.AddConsistencyFlags(cmd)
 	cmdutil.AddOutputFlags(cmd)
-	cmd.Flags().Uint64("min-log-sequence", 0, "Minimum log sequence the server must have applied before reading (0 = no constraint)")
-	cmd.Flags().Uint64("checkpoint-id", 0, "Read from a query checkpoint instead of the live store")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 	cmdutil.AddAnalyzeFlag(cmd)
 
@@ -66,7 +67,6 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 	defer func() { _ = conn.Close() }()
 
-	// Get ledger name (from flag or interactive selection)
 	ledgerFlag, _ := cmd.Flags().GetString("ledger")
 
 	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
@@ -74,41 +74,24 @@ func runList(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	pageSize, _ := cmd.Flags().GetUint32("page-size")
-	filterExpr, _ := cmd.Flags().GetString("filter")
-	reverse, _ := cmd.Flags().GetBool("reverse")
-	fetchAll, _ := cmd.Flags().GetBool("all")
-	minLogSeq, _ := cmd.Flags().GetUint64("min-log-sequence")
-	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
+	pgn := cmdutil.GetPaginationFlags(cmd)
+	flt := cmdutil.GetFilterFlags(cmd)
+	cns := cmdutil.GetConsistencyFlags(cmd)
 	showProfile, _ := cmd.Flags().GetBool("analyze")
 
-	filter, err := buildTransactionFilter(filterExpr)
+	filter, err := cmdutil.BuildQueryFilter(flt.Expr, flt.Prefix)
 	if err != nil {
 		return err
 	}
 
-	if fetchAll {
-		return fetchAllTransactions(cmd, client, ledgerName, filter, reverse, minLogSeq, checkpointID, showProfile)
+	if pgn.All {
+		return fetchAllTransactions(cmd, client, ledgerName, filter, pgn.Cursor, pgn.Reverse, cns, showProfile)
 	}
 
-	return fetchTransactionsWithPager(cmd, client, ledgerName, pageSize, filter, reverse, minLogSeq, checkpointID, showProfile)
+	return fetchTransactionsWithPager(cmd, client, ledgerName, pgn, filter, cns, showProfile)
 }
 
-// buildTransactionFilter parses the --filter expression for transaction metadata.
-func buildTransactionFilter(filterExpr string) (*commonpb.QueryFilter, error) {
-	if filterExpr == "" {
-		return nil, nil
-	}
-
-	filter, err := filterexpr.Parse(filterExpr)
-	if err != nil {
-		return nil, fmt.Errorf("invalid filter expression: %w", err)
-	}
-
-	return filter, nil
-}
-
-func fetchAllTransactions(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, filter *commonpb.QueryFilter, reverse bool, minLogSeq, checkpointID uint64, showProfile bool) error {
+func fetchAllTransactions(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, filter *commonpb.QueryFilter, initialCursor string, reverse bool, cns cmdutil.ConsistencyFlags, showProfile bool) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
@@ -118,26 +101,31 @@ func fetchAllTransactions(cmd *cobra.Command, client servicepb.BucketServiceClie
 
 	spinner, _ := pterm.DefaultSpinner.Start("Fetching all transactions...")
 
-	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
-		Ledger:         ledgerName,
-		PageSize:       0, // No limit
-		Filter:         filter,
-		Reverse:        reverse,
-		MinLogSequence: minLogSeq,
-		CheckpointId:   checkpointID,
+	var lastTrailer metadata.MD
+
+	transactions, err := cmdutil.DrainAllPages(initialCursor, func(cur string) ([]*commonpb.Transaction, metadata.MD, error) {
+		stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
+			Ledger:  ledgerName,
+			Options: cmdutil.BuildListOptions(cmdutil.PaginationFlags{Cursor: cur, Reverse: reverse}, cns, filter),
+		})
+		if err != nil {
+			return nil, nil, cmdutil.FormatGRPCError("failed to list transactions", err)
+		}
+
+		items, recvErr := cmdutil.CollectStream(stream)
+		if recvErr != nil {
+			return nil, nil, cmdutil.FormatGRPCError("failed to receive transaction", recvErr)
+		}
+
+		lastTrailer = stream.Trailer()
+
+		return items, lastTrailer, nil
 	})
-	if err != nil {
-		_ = spinner.Stop()
-
-		return cmdutil.FormatGRPCError("failed to list transactions", err)
-	}
-
-	transactions, err := cmdutil.CollectStream(stream)
 
 	_ = spinner.Stop()
 
 	if err != nil {
-		return cmdutil.FormatGRPCError("failed to receive transaction", err)
+		return err
 	}
 
 	handled, err := cmdutil.EncodeStructured(cmd, transactions)
@@ -155,16 +143,15 @@ func fetchAllTransactions(cmd *cobra.Command, client servicepb.BucketServiceClie
 		renderTransactionsTable(transactions)
 	}
 
-	if showProfile {
-		cmdutil.RenderProfile(cmdutil.ExtractProfile(stream.Trailer()))
+	if showProfile && lastTrailer != nil {
+		cmdutil.RenderProfile(cmdutil.ExtractProfile(lastTrailer))
 	}
 
 	return nil
 }
 
-func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, filter *commonpb.QueryFilter, reverse bool, minLogSeq, checkpointID uint64, showProfile bool) error {
-	var afterTxID uint64
-
+func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, pgn cmdutil.PaginationFlags, filter *commonpb.QueryFilter, cns cmdutil.ConsistencyFlags, showProfile bool) error {
+	page := pgn
 	pageNum := 1
 
 	for {
@@ -176,13 +163,8 @@ func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServi
 		spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Fetching page %d...", pageNum))
 
 		stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
-			Ledger:         ledgerName,
-			PageSize:       pageSize,
-			AfterTxId:      afterTxID,
-			Filter:         filter,
-			Reverse:        reverse,
-			MinLogSequence: minLogSeq,
-			CheckpointId:   checkpointID,
+			Ledger:  ledgerName,
+			Options: cmdutil.BuildListOptions(page, cns, filter),
 		})
 		if err != nil {
 			cancel()
@@ -247,8 +229,8 @@ func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServi
 			cmdutil.RenderProfile(cmdutil.ExtractProfile(stream.Trailer()))
 		}
 
-		// If we got fewer transactions than pageSize, we've reached the end
-		if uint32(len(transactions)) < pageSize {
+		nextCursor := cmdutil.NextCursorFromTrailer(stream.Trailer())
+		if nextCursor == "" {
 			if !structuredOutput {
 				pterm.Info.Println("End of transactions.")
 			}
@@ -256,10 +238,14 @@ func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServi
 			return nil
 		}
 
-		// Update afterTxID for next page (last transaction in current page)
-		afterTxID = transactions[len(transactions)-1].GetId()
+		page.Cursor = nextCursor
 
 		if structuredOutput {
+			// `transactions list --json/--yaml` printed the JSON/YAML payload
+			// on stdout above; surface the resume cursor on stderr so scripts
+			// can pick it up without parsing gRPC trailers.
+			cmdutil.EmitNextCursorHint(cmd, nextCursor)
+
 			return nil
 		}
 

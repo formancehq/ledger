@@ -15,9 +15,13 @@ import (
 func newListCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list",
-		Aliases: []string{"ls"},
+		Aliases: cmdutil.ListAliases,
 		Short:   "List all query checkpoints",
-		RunE:    runList,
+		Long: `List all query checkpoints registered on the cluster.
+
+Query checkpoints are stored in replicated state and naturally bounded in size;
+this endpoint is intentionally not paginated.`,
+		RunE: runList,
 	}
 
 	cmdutil.AddOutputFlags(cmd)

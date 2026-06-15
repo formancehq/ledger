@@ -6,6 +6,7 @@ import (
 	"os"
 	"reflect"
 
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -300,4 +301,29 @@ func IsStructuredOutput(cmd *cobra.Command) bool {
 	yamlOutput, _ := cmd.Flags().GetBool("yaml")
 
 	return jsonOutput || yamlOutput
+}
+
+// EmitNextCursorHint surfaces the resume cursor to the user without
+// contaminating the structured payload on stdout.
+//
+//   - human mode (no --json/--yaml): prints a pterm.Info line to stdout.
+//   - structured mode (--json/--yaml): prints a single `next_cursor=<token>`
+//     line to stderr so scripts that pipe stdout into `jq` / `yq` still get a
+//     parseable payload while keeping the resume hint reachable.
+//
+// Pass an empty cursor to skip emission entirely.
+func EmitNextCursorHint(cmd *cobra.Command, nextCursor string) {
+	if nextCursor == "" {
+		return
+	}
+
+	if IsStructuredOutput(cmd) {
+		// Stderr keeps stdout JSON/YAML lossless for downstream parsers.
+		// The hint is best-effort — a closed stderr (rare) is not fatal.
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "next_cursor=%s\n", nextCursor)
+
+		return
+	}
+
+	pterm.Info.Printfln("More results available — resume with --cursor %s", pterm.Cyan(nextCursor))
 }

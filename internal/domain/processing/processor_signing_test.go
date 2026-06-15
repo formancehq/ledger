@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -113,6 +114,101 @@ func TestProcessRevokeSigningKey_WithCascade(t *testing.T) {
 	require.NotNil(t, revokeLog)
 	require.Equal(t, "key-001", revokeLog.GetKeyId())
 	require.ElementsMatch(t, []string{"child-a", "child-b", "grandchild-c"}, revokeLog.GetCascadedKeyIds())
+}
+
+// TestProcessRegisterSigningKey_RejectsInvalidIDs pins the validator branches
+// added when the `signing keys list` pagination cursor started flowing the
+// raw KeyId through the `x-next-cursor` gRPC trailer. Bad IDs must be
+// rejected before the FSM mutates anything.
+func TestProcessRegisterSigningKey_RejectsInvalidIDs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		keyID       string
+		parentKeyID string
+		wantErr     domain.Describable
+	}{
+		{name: "empty key id", keyID: "", parentKeyID: "parent", wantErr: domain.ErrSigningKeyIDRequired},
+		{name: "key id with newline", keyID: "key\n001", parentKeyID: "", wantErr: domain.ErrSigningKeyIDInvalidChar},
+		{name: "key id with non-ASCII", keyID: "clé", parentKeyID: "", wantErr: domain.ErrSigningKeyIDInvalidChar},
+		{name: "parent key id with newline", keyID: "key-001", parentKeyID: "p\nkey", wantErr: domain.ErrSigningKeyIDInvalidChar},
+		{name: "parent key id with non-ASCII", keyID: "key-001", parentKeyID: "pärent", wantErr: domain.ErrSigningKeyIDInvalidChar},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockStore := NewMockInMemoryStore(ctrl)
+			processor, err := NewRequestProcessor(nil, 0)
+			require.NoError(t, err)
+
+			// Bad IDs short-circuit before any store mutation; no AddSigningKey
+			// EXPECT, so gomock will fail the test if the validator is bypassed.
+
+			order := &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_RegisterSigningKey{
+					RegisterSigningKey: &raftcmdpb.RegisterSigningKeyOrder{
+						KeyId:       tt.keyID,
+						PublicKey:   []byte{0xAB, 0xCD},
+						ParentKeyId: tt.parentKeyID,
+					},
+				},
+			}
+
+			result, err := processor.ProcessOrder(order, mockStore)
+			require.Error(t, err)
+			require.ErrorIs(t, err, tt.wantErr)
+			require.Nil(t, result)
+		})
+	}
+}
+
+func TestProcessRevokeSigningKey_RejectsInvalidIDs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		keyID   string
+		wantErr domain.Describable
+	}{
+		{name: "empty key id", keyID: "", wantErr: domain.ErrSigningKeyIDRequired},
+		{name: "key id with control byte", keyID: "key\x07id", wantErr: domain.ErrSigningKeyIDInvalidChar},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockStore := NewMockInMemoryStore(ctrl)
+			processor, err := NewRequestProcessor(nil, 0)
+			require.NoError(t, err)
+
+			// No RemoveSigningKey / GetSigningKeyChildren expectations —
+			// gomock will fail if the validator does not short-circuit.
+
+			order := &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_RevokeSigningKey{
+					RevokeSigningKey: &raftcmdpb.RevokeSigningKeyOrder{
+						KeyId:   tt.keyID,
+						Cascade: false,
+					},
+				},
+			}
+
+			result, err := processor.ProcessOrder(order, mockStore)
+			require.Error(t, err)
+			require.ErrorIs(t, err, tt.wantErr)
+			require.Nil(t, result)
+		})
+	}
 }
 
 func TestProcessSetSigningConfig(t *testing.T) {

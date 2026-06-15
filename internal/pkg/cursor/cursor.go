@@ -138,6 +138,68 @@ func NewClosingCursor[T any](inner Cursor[T], closer io.Closer) Cursor[T] {
 	return &ClosingCursor[T]{inner: inner, closer: closer}
 }
 
+// SkipWhileCursor wraps a cursor and discards items at the start while the
+// predicate returns true. Once the predicate becomes false, the wrapped cursor
+// passes every remaining item through.
+type SkipWhileCursor[T any] struct {
+	inner     Cursor[T]
+	predicate func(T) bool
+	skipped   bool
+}
+
+func (c *SkipWhileCursor[T]) Next() (T, error) {
+	if c.skipped {
+		return c.inner.Next()
+	}
+
+	for {
+		item, err := c.inner.Next()
+		if err != nil {
+			var zero T
+
+			return zero, err
+		}
+
+		if !c.predicate(item) {
+			c.skipped = true
+
+			return item, nil
+		}
+	}
+}
+
+func (c *SkipWhileCursor[T]) Close() error {
+	return c.inner.Close()
+}
+
+var _ Cursor[any] = (*SkipWhileCursor[any])(nil)
+
+// NewSkipWhileCursor creates a cursor that drops a contiguous prefix of items
+// for which predicate returns true. Useful for resuming after a string/uint64
+// cursor (skip items whose key <= cursor in ascending iteration).
+func NewSkipWhileCursor[T any](inner Cursor[T], predicate func(T) bool) Cursor[T] {
+	return &SkipWhileCursor[T]{inner: inner, predicate: predicate}
+}
+
+// Reverse drains the cursor, reverses the items in place, and returns a fresh
+// slice cursor. The wrapped cursor is closed.
+//
+// Suitable for small to medium in-memory collections (a few thousand items at
+// most). Large or unbounded streams should use a backend-specific reverse
+// iteration mechanism instead.
+func Reverse[T any](c Cursor[T]) (Cursor[T], error) {
+	items, err := Collect(c)
+	if err != nil {
+		return nil, err
+	}
+
+	for i, j := 0, len(items)-1; i < j; i, j = i+1, j-1 {
+		items[i], items[j] = items[j], items[i]
+	}
+
+	return NewSliceCursor(items), nil
+}
+
 // Collect drains a cursor into a slice and closes it.
 func Collect[T any](c Cursor[T]) ([]T, error) {
 	defer func() { _ = c.Close() }()

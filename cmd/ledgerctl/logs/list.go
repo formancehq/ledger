@@ -3,7 +3,6 @@ package logs
 import (
 	"errors"
 	"fmt"
-	"io"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -17,18 +16,17 @@ import (
 func NewListCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list",
-		Aliases: []string{"ls", "l"},
+		Aliases: cmdutil.ListAliases,
 		Short:   "List system logs",
 		Long:    "List system log entries via gRPC streaming",
 		RunE:    runList,
 	}
 
-	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().String("ledger", "", "Ledger name (required)")
-	cmd.Flags().Uint64("after", 0, "Show logs after this sequence number")
-	cmd.Flags().Uint32("page-size", cmdutil.DefaultPageSize, "Number of logs per page (0 = unlimited)")
-	cmd.Flags().Uint64("min-log-sequence", 0, "Minimum log sequence the server must have applied before reading (0 = no constraint)")
-	cmd.Flags().Uint64("checkpoint-id", 0, "Read from a query checkpoint instead of the live store")
+	cmdutil.AddPaginationFlags(cmd, cmdutil.PaginationOptions{})
+	cmdutil.AddFilterFlags(cmd, cmdutil.FilterOptions{})
+	cmdutil.AddConsistencyFlags(cmd)
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 	cmd.Flags().Bool("expand", false, "Expand details within each log entry")
 
@@ -46,53 +44,43 @@ func runList(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	var (
-		ledger, _       = cmd.Flags().GetString("ledger")
-		after, _        = cmd.Flags().GetUint64("after")
-		pageSize, _     = cmd.Flags().GetUint32("page-size")
-		minLogSeq, _    = cmd.Flags().GetUint64("min-log-sequence")
-		checkpointID, _ = cmd.Flags().GetUint64("checkpoint-id")
-		expand, _       = cmd.Flags().GetBool("expand")
-	)
+	ledger, _ := cmd.Flags().GetString("ledger")
+	expand, _ := cmd.Flags().GetBool("expand")
+	pgn := cmdutil.GetPaginationFlags(cmd)
+	flt := cmdutil.GetFilterFlags(cmd)
+	cns := cmdutil.GetConsistencyFlags(cmd)
 
 	if ledger == "" {
 		return errors.New("--ledger flag is required")
 	}
 
-	req := &servicepb.ListLogsRequest{
-		Ledger:         ledger,
-		PageSize:       pageSize,
-		MinLogSequence: minLogSeq,
-		CheckpointId:   checkpointID,
-	}
-	if cmd.Flags().Changed("after") {
-		req.AfterSequence = &after
+	filter, err := cmdutil.BuildQueryFilter(flt.Expr, flt.Prefix)
+	if err != nil {
+		return err
 	}
 
-	stream, err := client.ListLogs(ctx, req)
+	stream, err := client.ListLogs(ctx, &servicepb.ListLogsRequest{
+		Ledger:  ledger,
+		Options: cmdutil.BuildListOptions(pgn, cns, filter),
+	})
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to list logs", err)
 	}
 
-	var entries []*commonpb.Log
-
-	for {
-		log, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-
-		if err != nil {
-			return cmdutil.FormatGRPCError("receiving log", err)
-		}
-
-		entries = append(entries, log)
-		if pageSize > 0 && uint32(len(entries)) >= pageSize {
-			break
-		}
+	// Drain to EOF so the x-next-cursor trailer is available; the server
+	// already caps the stream at pageSize.
+	entries, err := cmdutil.CollectStream(stream)
+	if err != nil {
+		return cmdutil.FormatGRPCError("receiving log", err)
 	}
 
+	nextCursor := cmdutil.NextCursorFromTrailer(stream.Trailer())
+
 	if handled, err := cmdutil.EncodeStructured(cmd, entries); handled || err != nil {
+		// Surface the resume cursor on stderr so --json/--yaml payloads stay
+		// lossless on stdout while scripts can still pick up the resume hint.
+		cmdutil.EmitNextCursorHint(cmd, nextCursor)
+
 		return err
 	}
 
@@ -108,6 +96,8 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 	pterm.Println()
 	pterm.Info.Printfln("%d log(s) displayed", len(entries))
+
+	cmdutil.EmitNextCursorHint(cmd, nextCursor)
 
 	return nil
 }

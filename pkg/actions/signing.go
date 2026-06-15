@@ -27,24 +27,39 @@ func SignRequest(req *servicepb.Request, keyID string, privKey ed25519.PrivateKe
 	return req, nil
 }
 
-// ListAllSigningKeys collects all signing keys from the ListSigningKeys stream.
+// ListAllSigningKeys collects every signing key from the ListSigningKeys
+// stream, following the x-next-cursor trailer chain so clusters with more
+// keys than the server's default page still surface them all.
 func ListAllSigningKeys(ctx context.Context, client servicepb.BucketServiceClient) ([]*commonpb.SigningKey, error) {
-	stream, err := client.ListSigningKeys(ctx, &servicepb.ListSigningKeysRequest{})
-	if err != nil {
-		return nil, err
-	}
+	var (
+		keys   []*commonpb.SigningKey
+		cursor string
+	)
 
-	var keys []*commonpb.SigningKey
 	for {
-		key, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			break
-		}
+		stream, err := client.ListSigningKeys(ctx, &servicepb.ListSigningKeysRequest{
+			Options: &commonpb.ListOptions{PageSize: listAllPageSize, Cursor: cursor},
+		})
 		if err != nil {
 			return nil, err
 		}
-		keys = append(keys, key)
-	}
 
-	return keys, nil
+		for {
+			key, recvErr := stream.Recv()
+			if errors.Is(recvErr, io.EOF) {
+				break
+			}
+			if recvErr != nil {
+				return nil, recvErr
+			}
+			keys = append(keys, key)
+		}
+
+		next := nextCursorFromTrailer(stream.Trailer())
+		if next == "" {
+			return keys, nil
+		}
+
+		cursor = next
+	}
 }

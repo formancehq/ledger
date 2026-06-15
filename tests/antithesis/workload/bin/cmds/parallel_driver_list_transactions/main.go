@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"io"
+	"strconv"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -57,11 +59,17 @@ func main() {
 		)
 
 		for !found {
+			var cursor string
+			if afterTxID > 0 {
+				cursor = strconv.FormatUint(afterTxID, 10)
+			}
 			stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
-				Ledger:         ledger,
-				PageSize:       50,
-				AfterTxId:      afterTxID,
-				MinLogSequence: minLogSeq,
+				Ledger: ledger,
+				Options: &commonpb.ListOptions{
+					PageSize: 50,
+					Cursor:   cursor,
+					Read:     &commonpb.ReadOptions{MinLogSequence: minLogSeq},
+				},
 			})
 			if err != nil {
 				if internal.IsTransient(err) {
@@ -108,9 +116,11 @@ func main() {
 
 		// 3. List transactions in reverse order.
 		reverseStream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
-			Ledger:   ledger,
-			PageSize: 10,
-			Reverse:  true,
+			Ledger: ledger,
+			Options: &commonpb.ListOptions{
+				PageSize: 10,
+				Reverse:  true,
+			},
 		})
 		if err != nil {
 			internal.LogCleanupError("reverse list transactions", err)

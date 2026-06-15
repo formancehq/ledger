@@ -5287,3 +5287,96 @@ func (m *BackupStorage) AsReader() BackupStorageReader {
 func (m *BackupStorage) Mutate() *BackupStorage {
 	return m.CloneVT()
 }
+
+// ReadOptionsReader provides read-only access to ReadOptions.
+// Call Mutate() to obtain a mutable clone.
+type ReadOptionsReader interface {
+	GetCheckpointId() uint64
+	GetMinLogSequence() uint64
+	Mutate() *ReadOptions
+}
+
+type readOptionsReadonly struct{ v *ReadOptions }
+
+func (r *readOptionsReadonly) GetCheckpointId() uint64 {
+	return r.v.GetCheckpointId()
+}
+
+func (r *readOptionsReadonly) GetMinLogSequence() uint64 {
+	return r.v.GetMinLogSequence()
+}
+
+func (r *readOptionsReadonly) Mutate() *ReadOptions {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this ReadOptions.
+func (m *ReadOptions) AsReader() ReadOptionsReader {
+	if m == nil {
+		return nil
+	}
+	return &readOptionsReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this ReadOptions.
+func (m *ReadOptions) Mutate() *ReadOptions {
+	return m.CloneVT()
+}
+
+// ListOptionsReader provides read-only access to ListOptions.
+// Call Mutate() to obtain a mutable clone.
+type ListOptionsReader interface {
+	GetRead() ReadOptionsReader
+	GetPageSize() uint32
+	GetCursor() string
+	GetReverse() bool
+	GetFilter() QueryFilterReader
+	Mutate() *ListOptions
+}
+
+type listOptionsReadonly struct{ v *ListOptions }
+
+func (r *listOptionsReadonly) GetRead() ReadOptionsReader {
+	v := r.v.GetRead()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *listOptionsReadonly) GetPageSize() uint32 {
+	return r.v.GetPageSize()
+}
+
+func (r *listOptionsReadonly) GetCursor() string {
+	return r.v.GetCursor()
+}
+
+func (r *listOptionsReadonly) GetReverse() bool {
+	return r.v.GetReverse()
+}
+
+func (r *listOptionsReadonly) GetFilter() QueryFilterReader {
+	v := r.v.GetFilter()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *listOptionsReadonly) Mutate() *ListOptions {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this ListOptions.
+func (m *ListOptions) AsReader() ListOptionsReader {
+	if m == nil {
+		return nil
+	}
+	return &listOptionsReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this ListOptions.
+func (m *ListOptions) Mutate() *ListOptions {
+	return m.CloneVT()
+}

@@ -131,12 +131,7 @@ func (m *GetTransactionResponse) Mutate() *GetTransactionResponse {
 // Call Mutate() to obtain a mutable clone.
 type ListTransactionsRequestReader interface {
 	GetLedger() string
-	GetPageSize() uint32
-	GetAfterTxId() uint64
-	GetFilter() commonpb.QueryFilterReader
-	GetReverse() bool
-	GetMinLogSequence() uint64
-	GetCheckpointId() uint64
+	GetOptions() commonpb.ListOptionsReader
 	Mutate() *ListTransactionsRequest
 }
 
@@ -146,32 +141,12 @@ func (r *listTransactionsRequestReadonly) GetLedger() string {
 	return r.v.GetLedger()
 }
 
-func (r *listTransactionsRequestReadonly) GetPageSize() uint32 {
-	return r.v.GetPageSize()
-}
-
-func (r *listTransactionsRequestReadonly) GetAfterTxId() uint64 {
-	return r.v.GetAfterTxId()
-}
-
-func (r *listTransactionsRequestReadonly) GetFilter() commonpb.QueryFilterReader {
-	v := r.v.GetFilter()
+func (r *listTransactionsRequestReadonly) GetOptions() commonpb.ListOptionsReader {
+	v := r.v.GetOptions()
 	if v == nil {
 		return nil
 	}
 	return v.AsReader()
-}
-
-func (r *listTransactionsRequestReadonly) GetReverse() bool {
-	return r.v.GetReverse()
-}
-
-func (r *listTransactionsRequestReadonly) GetMinLogSequence() uint64 {
-	return r.v.GetMinLogSequence()
-}
-
-func (r *listTransactionsRequestReadonly) GetCheckpointId() uint64 {
-	return r.v.GetCheckpointId()
 }
 
 func (r *listTransactionsRequestReadonly) Mutate() *ListTransactionsRequest {
@@ -195,12 +170,7 @@ func (m *ListTransactionsRequest) Mutate() *ListTransactionsRequest {
 // Call Mutate() to obtain a mutable clone.
 type ListAccountsRequestReader interface {
 	GetLedger() string
-	GetPageSize() uint32
-	GetAfterAddress() string
-	GetFilter() commonpb.QueryFilterReader
-	GetReverse() bool
-	GetMinLogSequence() uint64
-	GetCheckpointId() uint64
+	GetOptions() commonpb.ListOptionsReader
 	Mutate() *ListAccountsRequest
 }
 
@@ -210,32 +180,12 @@ func (r *listAccountsRequestReadonly) GetLedger() string {
 	return r.v.GetLedger()
 }
 
-func (r *listAccountsRequestReadonly) GetPageSize() uint32 {
-	return r.v.GetPageSize()
-}
-
-func (r *listAccountsRequestReadonly) GetAfterAddress() string {
-	return r.v.GetAfterAddress()
-}
-
-func (r *listAccountsRequestReadonly) GetFilter() commonpb.QueryFilterReader {
-	v := r.v.GetFilter()
+func (r *listAccountsRequestReadonly) GetOptions() commonpb.ListOptionsReader {
+	v := r.v.GetOptions()
 	if v == nil {
 		return nil
 	}
 	return v.AsReader()
-}
-
-func (r *listAccountsRequestReadonly) GetReverse() bool {
-	return r.v.GetReverse()
-}
-
-func (r *listAccountsRequestReadonly) GetMinLogSequence() uint64 {
-	return r.v.GetMinLogSequence()
-}
-
-func (r *listAccountsRequestReadonly) GetCheckpointId() uint64 {
-	return r.v.GetCheckpointId()
 }
 
 func (r *listAccountsRequestReadonly) Mutate() *ListAccountsRequest {
@@ -372,19 +322,18 @@ func (m *DeleteLedgerResponse) Mutate() *DeleteLedgerResponse {
 // ListLedgersRequestReader provides read-only access to ListLedgersRequest.
 // Call Mutate() to obtain a mutable clone.
 type ListLedgersRequestReader interface {
-	GetPageSize() uint32
-	GetCheckpointId() uint64
+	GetOptions() commonpb.ListOptionsReader
 	Mutate() *ListLedgersRequest
 }
 
 type listLedgersRequestReadonly struct{ v *ListLedgersRequest }
 
-func (r *listLedgersRequestReadonly) GetPageSize() uint32 {
-	return r.v.GetPageSize()
-}
-
-func (r *listLedgersRequestReadonly) GetCheckpointId() uint64 {
-	return r.v.GetCheckpointId()
+func (r *listLedgersRequestReadonly) GetOptions() commonpb.ListOptionsReader {
+	v := r.v.GetOptions()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *listLedgersRequestReadonly) Mutate() *ListLedgersRequest {
@@ -408,7 +357,7 @@ func (m *ListLedgersRequest) Mutate() *ListLedgersRequest {
 // Call Mutate() to obtain a mutable clone.
 type GetLedgerRequestReader interface {
 	GetLedger() string
-	GetCheckpointId() uint64
+	GetRead() commonpb.ReadOptionsReader
 	Mutate() *GetLedgerRequest
 }
 
@@ -418,8 +367,12 @@ func (r *getLedgerRequestReadonly) GetLedger() string {
 	return r.v.GetLedger()
 }
 
-func (r *getLedgerRequestReadonly) GetCheckpointId() uint64 {
-	return r.v.GetCheckpointId()
+func (r *getLedgerRequestReadonly) GetRead() commonpb.ReadOptionsReader {
+	v := r.v.GetRead()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *getLedgerRequestReadonly) Mutate() *GetLedgerRequest {
@@ -879,10 +832,19 @@ func (m *SetSigningConfigRequest) Mutate() *SetSigningConfigRequest {
 // ListSigningKeysRequestReader provides read-only access to ListSigningKeysRequest.
 // Call Mutate() to obtain a mutable clone.
 type ListSigningKeysRequestReader interface {
+	GetOptions() commonpb.ListOptionsReader
 	Mutate() *ListSigningKeysRequest
 }
 
 type listSigningKeysRequestReadonly struct{ v *ListSigningKeysRequest }
+
+func (r *listSigningKeysRequestReadonly) GetOptions() commonpb.ListOptionsReader {
+	v := r.v.GetOptions()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
 
 func (r *listSigningKeysRequestReadonly) Mutate() *ListSigningKeysRequest {
 	return r.v.CloneVT()
@@ -1029,14 +991,18 @@ func (m *ConfirmArchivePeriodRequest) Mutate() *ConfirmArchivePeriodRequest {
 // ListPeriodsRequestReader provides read-only access to ListPeriodsRequest.
 // Call Mutate() to obtain a mutable clone.
 type ListPeriodsRequestReader interface {
-	GetPageSize() uint32
+	GetOptions() commonpb.ListOptionsReader
 	Mutate() *ListPeriodsRequest
 }
 
 type listPeriodsRequestReadonly struct{ v *ListPeriodsRequest }
 
-func (r *listPeriodsRequestReadonly) GetPageSize() uint32 {
-	return r.v.GetPageSize()
+func (r *listPeriodsRequestReadonly) GetOptions() commonpb.ListOptionsReader {
+	v := r.v.GetOptions()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *listPeriodsRequestReadonly) Mutate() *ListPeriodsRequest {
@@ -1392,7 +1358,7 @@ type GetNumscriptRequestReader interface {
 	GetName() string
 	GetVersion() string
 	GetLedger() string
-	GetCheckpointId() uint64
+	GetRead() commonpb.ReadOptionsReader
 	Mutate() *GetNumscriptRequest
 }
 
@@ -1410,8 +1376,12 @@ func (r *getNumscriptRequestReadonly) GetLedger() string {
 	return r.v.GetLedger()
 }
 
-func (r *getNumscriptRequestReadonly) GetCheckpointId() uint64 {
-	return r.v.GetCheckpointId()
+func (r *getNumscriptRequestReadonly) GetRead() commonpb.ReadOptionsReader {
+	v := r.v.GetRead()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *getNumscriptRequestReadonly) Mutate() *GetNumscriptRequest {
@@ -1435,7 +1405,7 @@ func (m *GetNumscriptRequest) Mutate() *GetNumscriptRequest {
 // Call Mutate() to obtain a mutable clone.
 type ListNumscriptsRequestReader interface {
 	GetLedger() string
-	GetCheckpointId() uint64
+	GetOptions() commonpb.ListOptionsReader
 	Mutate() *ListNumscriptsRequest
 }
 
@@ -1445,8 +1415,12 @@ func (r *listNumscriptsRequestReadonly) GetLedger() string {
 	return r.v.GetLedger()
 }
 
-func (r *listNumscriptsRequestReadonly) GetCheckpointId() uint64 {
-	return r.v.GetCheckpointId()
+func (r *listNumscriptsRequestReadonly) GetOptions() commonpb.ListOptionsReader {
+	v := r.v.GetOptions()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *listNumscriptsRequestReadonly) Mutate() *ListNumscriptsRequest {
@@ -3076,30 +3050,24 @@ func (m *CheckStoreProgress) Mutate() *CheckStoreProgress {
 // ListAuditEntriesRequestReader provides read-only access to ListAuditEntriesRequest.
 // Call Mutate() to obtain a mutable clone.
 type ListAuditEntriesRequestReader interface {
-	GetAfterSequence() uint64
+	GetOptions() commonpb.ListOptionsReader
 	GetFailuresOnly() bool
-	GetPageSize() uint32
-	GetMinLogSequence() uint64
 	GetLedger() string
 	Mutate() *ListAuditEntriesRequest
 }
 
 type listAuditEntriesRequestReadonly struct{ v *ListAuditEntriesRequest }
 
-func (r *listAuditEntriesRequestReadonly) GetAfterSequence() uint64 {
-	return r.v.GetAfterSequence()
+func (r *listAuditEntriesRequestReadonly) GetOptions() commonpb.ListOptionsReader {
+	v := r.v.GetOptions()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *listAuditEntriesRequestReadonly) GetFailuresOnly() bool {
 	return r.v.GetFailuresOnly()
-}
-
-func (r *listAuditEntriesRequestReadonly) GetPageSize() uint32 {
-	return r.v.GetPageSize()
-}
-
-func (r *listAuditEntriesRequestReadonly) GetMinLogSequence() uint64 {
-	return r.v.GetMinLogSequence()
 }
 
 func (r *listAuditEntriesRequestReadonly) GetLedger() string {
@@ -3156,43 +3124,23 @@ func (m *GetAuditEntryRequest) Mutate() *GetAuditEntryRequest {
 // ListLogsRequestReader provides read-only access to ListLogsRequest.
 // Call Mutate() to obtain a mutable clone.
 type ListLogsRequestReader interface {
-	GetAfterSequence() uint64
-	GetPageSize() uint32
-	GetMinLogSequence() uint64
-	GetFilter() commonpb.QueryFilterReader
-	GetCheckpointId() uint64
 	GetLedger() string
+	GetOptions() commonpb.ListOptionsReader
 	Mutate() *ListLogsRequest
 }
 
 type listLogsRequestReadonly struct{ v *ListLogsRequest }
 
-func (r *listLogsRequestReadonly) GetAfterSequence() uint64 {
-	return r.v.GetAfterSequence()
+func (r *listLogsRequestReadonly) GetLedger() string {
+	return r.v.GetLedger()
 }
 
-func (r *listLogsRequestReadonly) GetPageSize() uint32 {
-	return r.v.GetPageSize()
-}
-
-func (r *listLogsRequestReadonly) GetMinLogSequence() uint64 {
-	return r.v.GetMinLogSequence()
-}
-
-func (r *listLogsRequestReadonly) GetFilter() commonpb.QueryFilterReader {
-	v := r.v.GetFilter()
+func (r *listLogsRequestReadonly) GetOptions() commonpb.ListOptionsReader {
+	v := r.v.GetOptions()
 	if v == nil {
 		return nil
 	}
 	return v.AsReader()
-}
-
-func (r *listLogsRequestReadonly) GetCheckpointId() uint64 {
-	return r.v.GetCheckpointId()
-}
-
-func (r *listLogsRequestReadonly) GetLedger() string {
-	return r.v.GetLedger()
 }
 
 func (r *listLogsRequestReadonly) Mutate() *ListLogsRequest {

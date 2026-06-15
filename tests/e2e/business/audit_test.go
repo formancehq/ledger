@@ -7,6 +7,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"math/big"
+	"strconv"
 
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -185,7 +186,9 @@ var _ = Describe("Audit Log", Ordered, func() {
 		// Get entries after the first one
 		afterSeq := allEntries[0].Sequence
 		afterEntries, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
-			AfterSequence: &afterSeq,
+			Options: &commonpb.ListOptions{
+				Cursor: strconv.FormatUint(afterSeq, 10),
+			},
 		})
 		Expect(err).To(Succeed())
 		Expect(len(afterEntries)).To(Equal(len(allEntries) - 1))

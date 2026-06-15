@@ -51,8 +51,10 @@ func main() {
 
 		// List audit entries and verify at least one exists.
 		stream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
-			PageSize:       10,
-			MinLogSequence: minLogSeq,
+			Options: &commonpb.ListOptions{
+				PageSize: 10,
+				Read:     &commonpb.ReadOptions{MinLogSequence: minLogSeq},
+			},
 		})
 		if err != nil {
 			if !internal.IsTransient(err) {

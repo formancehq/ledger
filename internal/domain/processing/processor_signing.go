@@ -7,6 +7,18 @@ import (
 )
 
 func (p *RequestProcessor) processRegisterSigningKey(order *raftcmdpb.RegisterSigningKeyOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
+	if err := domain.ValidateSigningKeyID(order.GetKeyId()); err != nil {
+		return nil, err
+	}
+
+	// Parent key ID is optional ("" = root key). Only validate the shape
+	// when it's set so registering a root key stays a single-field call.
+	if parent := order.GetParentKeyId(); parent != "" {
+		if err := domain.ValidateSigningKeyID(parent); err != nil {
+			return nil, err
+		}
+	}
+
 	s.AddSigningKey(order.GetKeyId(), order.GetPublicKey(), order.GetParentKeyId())
 
 	return &commonpb.LogPayload{
@@ -21,6 +33,10 @@ func (p *RequestProcessor) processRegisterSigningKey(order *raftcmdpb.RegisterSi
 }
 
 func (p *RequestProcessor) processRevokeSigningKey(order *raftcmdpb.RevokeSigningKeyOrder, s InMemoryStore) (*commonpb.LogPayload, domain.Describable) {
+	if err := domain.ValidateSigningKeyID(order.GetKeyId()); err != nil {
+		return nil, err
+	}
+
 	var cascaded []string
 
 	if order.GetCascade() {

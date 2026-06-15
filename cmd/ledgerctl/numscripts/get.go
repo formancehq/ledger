@@ -11,8 +11,9 @@ import (
 // NewGetCommand creates the numscripts get command.
 func NewGetCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "get <name>",
-		Short: "Get a numscript from the library",
+		Use:     "get <name>",
+		Aliases: cmdutil.GetAliases,
+		Short:   "Get a numscript from the library",
 		Long: `Get a numscript from a ledger's library by name.
 
 By default, returns the latest version. Use --version to get a specific version.
@@ -25,7 +26,8 @@ Examples:
 	}
 
 	cmd.Flags().String("version", "", "Specific version to retrieve (empty = latest)")
-	cmd.Flags().Uint64("checkpoint-id", 0, "Read from a query checkpoint instead of the live store")
+	cmdutil.AddConsistencyFlags(cmd)
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -51,16 +53,18 @@ func runGet(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
-
 	info, err := client.GetNumscript(ctx, &servicepb.GetNumscriptRequest{
-		Ledger:       ledgerName,
-		Name:         name,
-		Version:      version,
-		CheckpointId: checkpointID,
+		Ledger:  ledgerName,
+		Name:    name,
+		Version: version,
+		Read:    cmdutil.BuildReadOptions(cmdutil.GetConsistencyFlags(cmd)),
 	})
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to get numscript", err)
+	}
+
+	if handled, err := cmdutil.EncodeStructured(cmd, info); handled || err != nil {
+		return err
 	}
 
 	pterm.Printf("Ledger:     %s\n", pterm.Cyan(ledgerName))

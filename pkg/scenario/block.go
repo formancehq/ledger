@@ -85,8 +85,8 @@ func GetAccountBalance(ctx context.Context, client servicepb.BucketServiceClient
 // GetNonRevertedTransaction finds a random non-reverted transaction in a ledger.
 func GetNonRevertedTransaction(ctx context.Context, client servicepb.BucketServiceClient, ledger string, randFn RandFunc) (*commonpb.Transaction, bool) {
 	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
-		Ledger:   ledger,
-		PageSize: 100,
+		Ledger:  ledger,
+		Options: &commonpb.ListOptions{PageSize: 100},
 	})
 	if err != nil {
 		return nil, false

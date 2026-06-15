@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
@@ -118,12 +119,18 @@ func main() {
 		maxPages := txCount*4 + 16
 
 		for range maxPages {
+			var cursor string
+			if afterTxID > 0 {
+				cursor = strconv.FormatUint(afterTxID, 10)
+			}
 			stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
-				Ledger:         ledger,
-				PageSize:       pageSize,
-				AfterTxId:      afterTxID,
-				Reverse:        true,   // oldest-first, so IDs must increase across pages
-				MinLogSequence: maxSeq, // freshness barrier: index must cover every acked write
+				Ledger: ledger,
+				Options: &commonpb.ListOptions{
+					PageSize: pageSize,
+					Cursor:   cursor,
+					Reverse:  true,                                          // oldest-first, so IDs must increase across pages
+					Read:     &commonpb.ReadOptions{MinLogSequence: maxSeq}, // freshness barrier: index must cover every acked write
+				},
 			})
 			if err != nil {
 				// Errored termination (transient or otherwise): inconclusive.

@@ -1,17 +1,15 @@
 package ledgers
 
 import (
-	"errors"
 	"fmt"
-	"io"
 	"os"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 // NewConfigurationExportCommand creates the configuration export subcommand.
@@ -81,25 +79,13 @@ func fetchEditableConfig(cmd *cobra.Command, ledgerName string) (*EditableConfig
 		return nil, cmdutil.FormatGRPCError("failed to list prepared queries", err)
 	}
 
-	nsStream, err := client.ListNumscripts(ctx, &servicepb.ListNumscriptsRequest{Ledger: ledgerName})
+	// Drain every numscript page via x-next-cursor — a single stream
+	// would silently cap at the server's default page (#421 review).
+	numscripts, err := actions.ListNumscripts(ctx, client, ledgerName)
 	if err != nil {
 		spinner.Fail("Failed to list numscripts")
 
 		return nil, cmdutil.FormatGRPCError("failed to list numscripts", err)
-	}
-
-	var numscripts []*commonpb.NumscriptInfo
-	for {
-		info, err := nsStream.Recv()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			spinner.Fail("Failed to receive numscripts")
-
-			return nil, cmdutil.FormatGRPCError("failed to receive numscripts", err)
-		}
-		numscripts = append(numscripts, info)
 	}
 
 	_ = spinner.Stop()

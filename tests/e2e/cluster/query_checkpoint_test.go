@@ -6,6 +6,7 @@ import (
 	"context"
 	"io"
 	"math/big"
+	"strconv"
 
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -411,11 +412,17 @@ var _ = Describe("Query Checkpoints", func() {
 
 // listAllTransactionsFromCheckpoint collects all transactions from a checkpoint via the streaming RPC.
 func listAllTransactionsFromCheckpoint(ctx context.Context, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, afterTxID uint64, checkpointID uint64) ([]*commonpb.Transaction, error) {
+	var cursor string
+	if afterTxID > 0 {
+		cursor = strconv.FormatUint(afterTxID, 10)
+	}
 	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
-		Ledger:       ledgerName,
-		PageSize:     pageSize,
-		AfterTxId:    afterTxID,
-		CheckpointId: checkpointID,
+		Ledger: ledgerName,
+		Options: &commonpb.ListOptions{
+			PageSize: pageSize,
+			Cursor:   cursor,
+			Read:     &commonpb.ReadOptions{CheckpointId: checkpointID},
+		},
 	})
 	if err != nil {
 		return nil, err

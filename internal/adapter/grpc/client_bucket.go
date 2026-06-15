@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
+
+	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
@@ -67,18 +70,25 @@ func (g *BucketGrpcClient) GetTransaction(ctx context.Context, ledgerName string
 }
 
 func (g *BucketGrpcClient) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
+	var cursorStr string
+	if afterTxID > 0 {
+		cursorStr = strconv.FormatUint(afterTxID, 10)
+	}
+
 	stream, err := g.client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
-		Ledger:    ledgerName,
-		PageSize:  pageSize,
-		AfterTxId: afterTxID,
-		Filter:    filter,
-		Reverse:   reverse,
+		Ledger: ledgerName,
+		Options: &commonpb.ListOptions{
+			PageSize: pageSize,
+			Cursor:   cursorStr,
+			Reverse:  reverse,
+			Filter:   filter,
+		},
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	return NewGRPCIdentityCursor(stream), nil
+	return NewUpstreamPeekCursor(stream), nil
 }
 
 func (g *BucketGrpcClient) GetAccount(ctx context.Context, ledgerName string, address string) (*commonpb.Account, error) {
@@ -90,44 +100,82 @@ func (g *BucketGrpcClient) GetAccount(ctx context.Context, ledgerName string, ad
 
 func (g *BucketGrpcClient) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Account], error) {
 	stream, err := g.client.ListAccounts(ctx, &servicepb.ListAccountsRequest{
-		Ledger:       ledgerName,
-		PageSize:     pageSize,
-		AfterAddress: afterAddress,
-		Filter:       filter,
-		Reverse:      reverse,
+		Ledger: ledgerName,
+		Options: &commonpb.ListOptions{
+			PageSize: pageSize,
+			Cursor:   afterAddress,
+			Reverse:  reverse,
+			Filter:   filter,
+		},
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	return NewGRPCIdentityCursor(stream), nil
+	return NewUpstreamPeekCursor(stream), nil
 }
 
 func (g *BucketGrpcClient) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
-	req := &servicepb.ListLogsRequest{
-		Ledger:   ledgerName,
-		PageSize: pageSize,
-		Filter:   filter,
-	}
+	var cursorStr string
 	if afterSequence > 0 {
-		req.AfterSequence = &afterSequence
+		cursorStr = strconv.FormatUint(afterSequence, 10)
 	}
 
-	stream, err := g.client.ListLogs(ctx, req)
+	stream, err := g.client.ListLogs(ctx, &servicepb.ListLogsRequest{
+		Ledger: ledgerName,
+		Options: &commonpb.ListOptions{
+			PageSize: pageSize,
+			Cursor:   cursorStr,
+			Filter:   filter,
+		},
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	return NewGRPCIdentityCursor(stream), nil
+	return NewUpstreamPeekCursor(stream), nil
 }
 
 func (g *BucketGrpcClient) ListLedgers(ctx context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {
-	stream, err := g.client.ListLedgers(ctx, &servicepb.ListLedgersRequest{})
-	if err != nil {
-		return nil, err
-	}
+	// Drain every leader page via x-next-cursor. The Controller.ListLedgers
+	// interface does not propagate the caller's cursor to the leader, so a
+	// trailer-peek shim would only ever see the first leader page and the
+	// follower-side skip predicate would never reach later ledgers. See
+	// ListSigningKeys / ListPeriods / ListNumscripts for the same pattern.
+	var (
+		ledgers []*commonpb.LedgerInfo
+		nextCur string
+	)
 
-	return NewGRPCIdentityCursor(stream), nil
+	for {
+		stream, err := g.client.ListLedgers(ctx, &servicepb.ListLedgersRequest{
+			Options: &commonpb.ListOptions{Cursor: nextCur},
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		for {
+			ledger, recvErr := stream.Recv()
+			if errors.Is(recvErr, io.EOF) {
+				break
+			}
+
+			if recvErr != nil {
+				return nil, recvErr
+			}
+
+			ledgers = append(ledgers, ledger)
+		}
+
+		if next := nextCursorFromTrailer(stream.Trailer()); next != "" {
+			nextCur = next
+
+			continue
+		}
+
+		return cursor.NewSliceCursor(ledgers), nil
+	}
 }
 
 func (g *BucketGrpcClient) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
@@ -137,19 +185,24 @@ func (g *BucketGrpcClient) GetLedgerByName(ctx context.Context, name string) (*c
 }
 
 func (g *BucketGrpcClient) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32, ledger string) (cursor.Cursor[*auditpb.AuditEntry], error) {
-	req := &servicepb.ListAuditEntriesRequest{
-		AfterSequence: afterSequence,
-		FailuresOnly:  failuresOnly,
-		PageSize:      pageSize,
-		Ledger:        ledger,
+	var cursorStr string
+	if afterSequence != nil {
+		cursorStr = strconv.FormatUint(*afterSequence, 10)
 	}
 
-	stream, err := g.client.ListAuditEntries(ctx, req)
+	stream, err := g.client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
+		Options: &commonpb.ListOptions{
+			PageSize: pageSize,
+			Cursor:   cursorStr,
+		},
+		FailuresOnly: failuresOnly,
+		Ledger:       ledger,
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	return NewGRPCIdentityCursor(stream), nil
+	return NewUpstreamPeekCursor(stream), nil
 }
 
 func (g *BucketGrpcClient) GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
@@ -165,21 +218,93 @@ func (g *BucketGrpcClient) GetAuditEntry(ctx context.Context, sequence uint64) (
 }
 
 func (g *BucketGrpcClient) ListPeriods(ctx context.Context) (cursor.Cursor[*commonpb.Period], error) {
-	stream, err := g.client.ListPeriods(ctx, &servicepb.ListPeriodsRequest{})
-	if err != nil {
-		return nil, fmt.Errorf("gRPC ListPeriods call failed: %w", err)
-	}
+	// Follow x-next-cursor across pages — see ListSigningKeys for the
+	// rationale (routed leader controller caps per-call at the server
+	// default page).
+	var (
+		periods []*commonpb.Period
+		nextCur string
+	)
 
-	return NewGRPCIdentityCursor(stream), nil
+	for {
+		stream, err := g.client.ListPeriods(ctx, &servicepb.ListPeriodsRequest{
+			Options: &commonpb.ListOptions{Cursor: nextCur},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("gRPC ListPeriods call failed: %w", err)
+		}
+
+		for {
+			period, recvErr := stream.Recv()
+			if errors.Is(recvErr, io.EOF) {
+				break
+			}
+
+			if recvErr != nil {
+				return nil, fmt.Errorf("receiving period: %w", recvErr)
+			}
+
+			periods = append(periods, period)
+		}
+
+		if next := nextCursorFromTrailer(stream.Trailer()); next != "" {
+			nextCur = next
+
+			continue
+		}
+
+		return cursor.NewSliceCursor(periods), nil
+	}
 }
 
 func (g *BucketGrpcClient) ListSigningKeys(ctx context.Context) (cursor.Cursor[*commonpb.SigningKey], error) {
-	stream, err := g.client.ListSigningKeys(ctx, &servicepb.ListSigningKeysRequest{})
-	if err != nil {
-		return nil, fmt.Errorf("gRPC ListSigningKeys call failed: %w", err)
+	// Follow x-next-cursor across pages — when this client wraps a routed
+	// (leader) controller the upstream caps each call at the server's
+	// default page, so a single stream would only ever return one page.
+	var (
+		keys    []*commonpb.SigningKey
+		nextCur string
+	)
+
+	for {
+		stream, err := g.client.ListSigningKeys(ctx, &servicepb.ListSigningKeysRequest{
+			Options: &commonpb.ListOptions{Cursor: nextCur},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("gRPC ListSigningKeys call failed: %w", err)
+		}
+
+		for {
+			key, recvErr := stream.Recv()
+			if errors.Is(recvErr, io.EOF) {
+				break
+			}
+
+			if recvErr != nil {
+				return nil, fmt.Errorf("receiving signing key: %w", recvErr)
+			}
+
+			keys = append(keys, key)
+		}
+
+		if next := nextCursorFromTrailer(stream.Trailer()); next != "" {
+			nextCur = next
+
+			continue
+		}
+
+		return cursor.NewSliceCursor(keys), nil
+	}
+}
+
+// nextCursorFromTrailer mirrors cmdutil.NextCursorFromTrailer without
+// pulling the CLI package into the gRPC adapter.
+func nextCursorFromTrailer(trailer metadata.MD) string {
+	if vals := trailer.Get(NextCursorTrailerKey); len(vals) > 0 {
+		return vals[0]
 	}
 
-	return NewGRPCIdentityCursor(stream), nil
+	return ""
 }
 
 func (g *BucketGrpcClient) GetMetadataSchemaStatus(ctx context.Context, ledgerName string) (*servicepb.GetMetadataSchemaStatusResponse, error) {
@@ -287,27 +412,44 @@ func (g *BucketGrpcClient) GetNumscript(ctx context.Context, ledger, name string
 }
 
 func (g *BucketGrpcClient) ListNumscripts(ctx context.Context, ledger string) ([]*commonpb.NumscriptInfo, error) {
-	stream, err := g.client.ListNumscripts(ctx, &servicepb.ListNumscriptsRequest{Ledger: ledger})
-	if err != nil {
-		return nil, fmt.Errorf("gRPC ListNumscripts call failed: %w", err)
-	}
-
-	var scripts []*commonpb.NumscriptInfo
+	// Follow x-next-cursor across pages — see ListSigningKeys for the
+	// rationale (this client may wrap a routed leader controller whose
+	// per-call response is capped at the server default page).
+	var (
+		scripts []*commonpb.NumscriptInfo
+		nextCur string
+	)
 
 	for {
-		info, err := stream.Recv()
+		stream, err := g.client.ListNumscripts(ctx, &servicepb.ListNumscriptsRequest{
+			Ledger:  ledger,
+			Options: &commonpb.ListOptions{Cursor: nextCur},
+		})
 		if err != nil {
-			if errors.Is(err, io.EOF) {
+			return nil, fmt.Errorf("gRPC ListNumscripts call failed: %w", err)
+		}
+
+		for {
+			info, recvErr := stream.Recv()
+			if errors.Is(recvErr, io.EOF) {
 				break
 			}
 
-			return nil, fmt.Errorf("receiving numscript: %w", err)
+			if recvErr != nil {
+				return nil, fmt.Errorf("receiving numscript: %w", recvErr)
+			}
+
+			scripts = append(scripts, info)
 		}
 
-		scripts = append(scripts, info)
-	}
+		if next := nextCursorFromTrailer(stream.Trailer()); next != "" {
+			nextCur = next
 
-	return scripts, nil
+			continue
+		}
+
+		return scripts, nil
+	}
 }
 
 func (g *BucketGrpcClient) GetPeriodSchedule(ctx context.Context) (string, error) {

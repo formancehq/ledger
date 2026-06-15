@@ -407,7 +407,9 @@ func compareAuditHashes(ctx context.Context, nodes []readyNode, driver servicepb
 // sequence seen within auditSampleWindow entries, which is in the live window
 // and most likely present on every caught-up node.
 func pickRecentAuditSequence(ctx context.Context, driver servicepb.BucketServiceClient) (uint64, bool) {
-	stream, err := driver.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{PageSize: auditSampleWindow})
+	stream, err := driver.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
+		Options: &commonpb.ListOptions{PageSize: auditSampleWindow},
+	})
 	if err != nil {
 		return 0, false
 	}

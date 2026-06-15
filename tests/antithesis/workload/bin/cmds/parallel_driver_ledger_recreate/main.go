@@ -83,10 +83,12 @@ func listMatches(
 	minLogSeq uint64,
 ) ([]uint64, bool) {
 	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
-		Ledger:         ledger,
-		PageSize:       10,
-		Filter:         filter,
-		MinLogSequence: minLogSeq,
+		Ledger: ledger,
+		Options: &commonpb.ListOptions{
+			PageSize: 10,
+			Filter:   filter,
+			Read:     &commonpb.ReadOptions{MinLogSequence: minLogSeq},
+		},
 	})
 	if err != nil {
 		return nil, false

@@ -1,9 +1,7 @@
 package ledgers
 
 import (
-	"errors"
 	"fmt"
-	"io"
 	"sort"
 	"strings"
 
@@ -15,6 +13,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 // NewConfigurationCommand creates the ledgers configuration command.
@@ -78,26 +77,13 @@ func runConfiguration(cmd *cobra.Command, args []string) error {
 		return cmdutil.FormatGRPCError("failed to list prepared queries", err)
 	}
 
-	// Fetch numscripts
-	nsStream, err := client.ListNumscripts(ctx, &servicepb.ListNumscriptsRequest{Ledger: ledgerName})
+	// Drain every numscript page via x-next-cursor — a single stream
+	// would silently cap at the server's default page (#421 review).
+	numscripts, err := actions.ListNumscripts(ctx, client, ledgerName)
 	if err != nil {
 		spinner.Fail("Failed to list numscripts")
 
 		return cmdutil.FormatGRPCError("failed to list numscripts", err)
-	}
-
-	var numscripts []*commonpb.NumscriptInfo
-	for {
-		info, err := nsStream.Recv()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			spinner.Fail("Failed to receive numscripts")
-
-			return cmdutil.FormatGRPCError("failed to receive numscripts", err)
-		}
-		numscripts = append(numscripts, info)
 	}
 
 	_ = spinner.Stop()

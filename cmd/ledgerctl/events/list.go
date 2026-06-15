@@ -16,13 +16,18 @@ import (
 // NewListCommand creates the events list command.
 func NewListCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "list",
-		Aliases: []string{"ls", "sinks"},
+		Use: "list",
+		// "sinks" is preserved as a domain-meaningful alias on top of the
+		// standard ls/l shortcuts.
+		Aliases: append([]string{"sinks"}, cmdutil.ListAliases...),
 		Short:   "List all event sink configurations and statuses",
 		Long: `List all configured event sinks and their current status.
 
 Shows each sink's configuration (name, format, batch settings, sink type)
 and its runtime status (cursor position, any active errors).
+
+Event sinks are cluster-wide raft-state-backed configuration and are naturally
+bounded; this endpoint is intentionally not paginated.
 
 Examples:
   ledgerctl events list`,

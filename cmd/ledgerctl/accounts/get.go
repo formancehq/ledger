@@ -17,7 +17,7 @@ import (
 func NewGetCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "get [address]",
-		Aliases: []string{"g", "show", "describe"},
+		Aliases: cmdutil.GetAliases,
 		Short:   "Get an account by address",
 		Long: `Get detailed information about an account including its volumes via gRPC.
 

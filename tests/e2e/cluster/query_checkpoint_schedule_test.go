@@ -187,7 +187,9 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 
 			// The checkpoint should contain the ledger we created.
 			stream, err := client.ListLedgers(ctx, &servicepb.ListLedgersRequest{
-				CheckpointId: cpID,
+				Options: &commonpb.ListOptions{
+					Read: &commonpb.ReadOptions{CheckpointId: cpID},
+				},
 			})
 			Expect(err).To(Succeed())
 

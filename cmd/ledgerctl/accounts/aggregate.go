@@ -62,7 +62,7 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 	minLogSeq, _ := cmd.Flags().GetUint64("min-log-sequence")
 	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
 
-	filter, err := buildAccountFilter(filterExpr, prefix)
+	filter, err := cmdutil.BuildQueryFilter(filterExpr, prefix)
 	if err != nil {
 		return err
 	}

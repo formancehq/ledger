@@ -8,6 +8,7 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -17,13 +18,19 @@ import (
 // NewListCommand creates the periods list command.
 func NewListCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List all periods",
-		Long:  "List all accounting periods with their status",
-		RunE:  runList,
+		Use:     "list",
+		Aliases: cmdutil.ListAliases,
+		Short:   "List all periods",
+		Long:    "List all accounting periods with their status",
+		RunE:    runList,
 	}
 
+	cmdutil.AddPaginationFlags(cmd, cmdutil.PaginationOptions{
+		SupportsReverse: true,
+	})
+	cmdutil.AddMinLogSequenceFlag(cmd)
 	cmdutil.AddOutputFlags(cmd)
+	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
 }
@@ -39,17 +46,34 @@ func runList(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	stream, err := client.ListPeriods(ctx, &servicepb.ListPeriodsRequest{})
-	if err != nil {
-		return fmt.Errorf("listing periods: %w", err)
-	}
+	pgn := cmdutil.GetPaginationFlags(cmd)
+	minLogSeq, _ := cmd.Flags().GetUint64("min-log-sequence")
 
-	periods, err := cmdutil.CollectStream(stream)
+	periods, nextCursor, err := cmdutil.FetchSinglePageOrAll(cmd, pgn.Cursor, func(cur string) ([]*commonpb.Period, metadata.MD, error) {
+		page := pgn
+		page.Cursor = cur
+
+		stream, err := client.ListPeriods(ctx, &servicepb.ListPeriodsRequest{
+			Options: cmdutil.BuildListOptions(page, cmdutil.ConsistencyFlags{MinLogSequence: minLogSeq}, nil),
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("listing periods: %w", err)
+		}
+
+		items, recvErr := cmdutil.CollectStream(stream)
+		if recvErr != nil {
+			return nil, nil, fmt.Errorf("receiving periods: %w", recvErr)
+		}
+
+		return items, stream.Trailer(), nil
+	})
 	if err != nil {
-		return fmt.Errorf("receiving periods: %w", err)
+		return err
 	}
 
 	if handled, err := cmdutil.EncodeStructured(cmd, periods); handled || err != nil {
+		cmdutil.EmitNextCursorHint(cmd, nextCursor)
+
 		return err
 	}
 
@@ -95,6 +119,10 @@ func runList(cmd *cobra.Command, _ []string) error {
 	if err := pterm.DefaultTable.WithHasHeader().WithData(tableData).Render(); err != nil {
 		return fmt.Errorf("rendering table: %w", err)
 	}
+
+	pterm.Println()
+
+	cmdutil.EmitNextCursorHint(cmd, nextCursor)
 
 	return nil
 }

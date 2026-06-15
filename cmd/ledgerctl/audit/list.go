@@ -1,9 +1,7 @@
 package audit
 
 import (
-	"errors"
 	"fmt"
-	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -22,17 +20,16 @@ import (
 func NewListCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list",
-		Aliases: []string{"ls", "l"},
+		Aliases: cmdutil.ListAliases,
 		Short:   "List audit entries",
 		Long:    "List audit log entries (successes and failures) via gRPC streaming",
 		RunE:    runList,
 	}
 
+	cmdutil.AddPaginationFlags(cmd, cmdutil.PaginationOptions{})
+	cmdutil.AddMinLogSequenceFlag(cmd)
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Bool("failures-only", false, "Show only failed entries")
-	cmd.Flags().Uint64("after", 0, "Show entries after this sequence number")
-	cmd.Flags().Uint32("page-size", cmdutil.DefaultPageSize, "Number of entries per page (0 = unlimited)")
-	cmd.Flags().Uint64("min-log-sequence", 0, "Minimum log sequence the server must have applied before reading (0 = no constraint)")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 	cmd.Flags().Bool("expand", false, "Expand orders within each audit entry")
 
@@ -50,45 +47,28 @@ func runList(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	var (
-		failuresOnly, _ = cmd.Flags().GetBool("failures-only")
-		after, _        = cmd.Flags().GetUint64("after")
-		pageSize, _     = cmd.Flags().GetUint32("page-size")
-		minLogSeq, _    = cmd.Flags().GetUint64("min-log-sequence")
-		expand, _       = cmd.Flags().GetBool("expand")
-	)
+	failuresOnly, _ := cmd.Flags().GetBool("failures-only")
+	expand, _ := cmd.Flags().GetBool("expand")
+	minLogSeq, _ := cmd.Flags().GetUint64("min-log-sequence")
+	pgn := cmdutil.GetPaginationFlags(cmd)
 
-	req := &servicepb.ListAuditEntriesRequest{
-		FailuresOnly:   failuresOnly,
-		PageSize:       pageSize,
-		MinLogSequence: minLogSeq,
-	}
-	if cmd.Flags().Changed("after") {
-		req.AfterSequence = &after
-	}
-
-	stream, err := client.ListAuditEntries(ctx, req)
+	stream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
+		Options:      cmdutil.BuildListOptions(pgn, cmdutil.ConsistencyFlags{MinLogSequence: minLogSeq}, nil),
+		FailuresOnly: failuresOnly,
+	})
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to list audit entries", err)
 	}
 
-	var entries []*auditpb.AuditEntry
-
-	for {
-		entry, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-
-		if err != nil {
-			return cmdutil.FormatGRPCError("receiving audit entry", err)
-		}
-
-		entries = append(entries, entry)
-		if pageSize > 0 && uint32(len(entries)) >= pageSize {
-			break
-		}
+	// Drain the stream to EOF so the gRPC trailer (x-next-cursor) is
+	// available — the server already caps the stream at pageSize, so reading
+	// to EOF is the canonical way to consume one page.
+	entries, err := cmdutil.CollectStream(stream)
+	if err != nil {
+		return cmdutil.FormatGRPCError("receiving audit entry", err)
 	}
+
+	nextCursor := cmdutil.NextCursorFromTrailer(stream.Trailer())
 
 	if expand {
 		for i, entry := range entries {
@@ -104,6 +84,10 @@ func runList(cmd *cobra.Command, _ []string) error {
 	}
 
 	if handled, err := cmdutil.EncodeStructured(cmd, entries); handled || err != nil {
+		// Surface the resume cursor to stderr so --json/--yaml output stays a
+		// pure payload on stdout while scripts can still grep stderr for it.
+		cmdutil.EmitNextCursorHint(cmd, nextCursor)
+
 		return err
 	}
 
@@ -119,6 +103,8 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 	pterm.Println()
 	pterm.Info.Printfln("%d audit entry(ies) displayed", len(entries))
+
+	cmdutil.EmitNextCursorHint(cmd, nextCursor)
 
 	return nil
 }

@@ -79,10 +79,12 @@ func listIsEmpty(
 	minLogSeq uint64,
 ) (bool, []uint64, bool) {
 	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
-		Ledger:         ledger,
-		PageSize:       10,
-		Filter:         filter,
-		MinLogSequence: minLogSeq,
+		Ledger: ledger,
+		Options: &commonpb.ListOptions{
+			PageSize: 10,
+			Filter:   filter,
+			Read:     &commonpb.ReadOptions{MinLogSequence: minLogSeq},
+		},
 	})
 	if err != nil {
 		return false, nil, false
@@ -248,8 +250,10 @@ func main() {
 		// entries must be unique per ProposalId (a failed proposal writes
 		// exactly one Failure entry by design, machine.go:1163-1204).
 		auditStream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
-			Ledger:         ledger,
-			MinLogSequence: minLogSeq,
+			Ledger: ledger,
+			Options: &commonpb.ListOptions{
+				Read: &commonpb.ReadOptions{MinLogSequence: minLogSeq},
+			},
 		})
 		if err != nil {
 			return

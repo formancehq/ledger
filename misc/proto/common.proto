@@ -1179,3 +1179,47 @@ message BackupStorage {
     AzureStorageConfig azure = 2;
   }
 }
+
+// ReadOptions carries the canonical consistency parameters every read RPC
+// understands. Embed it as a field on the Request so the contract stays DRY:
+// every endpoint that reads from the read store accepts the same knobs.
+message ReadOptions {
+  // checkpoint_id, when non-zero, reads from a query checkpoint instead of
+  // the live store. Endpoints that do not support checkpoint reads MUST
+  // reject any non-zero value with InvalidArgument.
+  fixed64 checkpoint_id = 1;
+  // min_log_sequence requires the store to have applied at least this log
+  // sequence before reading; FailedPrecondition otherwise. Ignored for
+  // checkpoint reads (a checkpoint is a fixed snapshot).
+  fixed64 min_log_sequence = 2;
+}
+
+// ListOptions carries the canonical pagination + consistency + filter
+// parameters every streaming read endpoint understands. Embed it as a field
+// on the Request so the contract stays DRY across resources.
+//
+// cursor is OPAQUE from the client's POV: the server encodes the next-page
+// resume token internally (entity address, sequence number, …) and the client
+// round-trips whatever value it received as the "x-next-cursor" trailer of
+// the previous response. This lets the server evolve its on-wire cursor
+// format without breaking deployed clients.
+//
+// Not every endpoint honors every option: a reverse-uncapable or filter-less
+// endpoint MUST reject a non-default value with InvalidArgument rather than
+// silently ignoring it.
+message ListOptions {
+  ReadOptions read = 1;
+  // page_size is the maximum number of items per page. 0 lets the server
+  // pick a sane default (currently 100); the server clamps to MaxPageSize.
+  uint32 page_size = 2;
+  // cursor is the opaque resume token from the previous page's
+  // x-next-cursor trailer. Empty starts at the iteration head.
+  string cursor = 3;
+  // reverse inverts the default iteration order for endpoints that support it.
+  bool reverse = 4;
+  // filter is a rich boolean filter (metadata conditions, address matching,
+  // AND/OR/NOT, log_id ranges, …) applied alongside the cursor. The set of
+  // valid conditions depends on the endpoint's QueryTarget; the server
+  // rejects unsupported variants with InvalidArgument.
+  QueryFilter filter = 5;
+}

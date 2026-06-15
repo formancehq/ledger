@@ -16,9 +16,12 @@ import (
 func NewListCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list",
-		Aliases: []string{"ls"},
+		Aliases: cmdutil.ListAliases,
 		Short:   "List all account types for a ledger",
 		Long: `List all account types configured on a ledger.
+
+Account types are embedded in the ledger configuration and naturally bounded
+in size; this endpoint is intentionally not paginated.
 
 If --ledger is not provided and only one ledger exists, it will be used automatically.
 
@@ -30,6 +33,7 @@ Examples:
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -59,6 +63,10 @@ func runList(cmd *cobra.Command, _ []string) error {
 	info, ok := ledgers[ledgerName]
 	if !ok {
 		return fmt.Errorf("ledger %q not found", ledgerName)
+	}
+
+	if handled, err := cmdutil.EncodeStructured(cmd, info.GetAccountTypes()); handled || err != nil {
+		return err
 	}
 
 	if len(info.GetAccountTypes()) == 0 {

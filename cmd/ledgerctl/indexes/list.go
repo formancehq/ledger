@@ -17,9 +17,12 @@ import (
 func NewListCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list [flags]",
-		Aliases: []string{"ls"},
+		Aliases: cmdutil.ListAliases,
 		Short:   "List indexes on a ledger",
 		Long: `List all configured indexes on a ledger, including their build status.
+
+Indexes are embedded in the ledger configuration and naturally bounded in size;
+this endpoint is intentionally not paginated.
 
 Examples:
   ledgerctl indexes list --ledger my-ledger`,
@@ -28,6 +31,7 @@ Examples:
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -95,6 +99,10 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 	}
 
 	_ = spinner.Stop()
+
+	if handled, err := cmdutil.EncodeStructured(cmd, ledger.GetIndexes()); handled || err != nil {
+		return err
+	}
 
 	pterm.Println()
 	pterm.Printf("Indexes for ledger: %s\n", pterm.Cyan(ledgerName))

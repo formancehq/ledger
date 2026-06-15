@@ -271,7 +271,9 @@ var _ = Describe("QueryProfile", Ordered, func() {
 
 				stream, err := sharedClient.ListAccounts(profileCtx, &servicepb.ListAccountsRequest{
 					Ledger: ledgerName,
-					Filter: actions.AddressPrefixFilter("users:"),
+					Options: &commonpb.ListOptions{
+						Filter: actions.AddressPrefixFilter("users:"),
+					},
 				})
 				g.Expect(err).To(Succeed())
 

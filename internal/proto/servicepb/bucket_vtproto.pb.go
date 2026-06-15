@@ -85,12 +85,7 @@ func (m *ListTransactionsRequest) CloneVT() *ListTransactionsRequest {
 	}
 	r := new(ListTransactionsRequest)
 	r.Ledger = m.Ledger
-	r.PageSize = m.PageSize
-	r.AfterTxId = m.AfterTxId
-	r.Filter = m.Filter.CloneVT()
-	r.Reverse = m.Reverse
-	r.MinLogSequence = m.MinLogSequence
-	r.CheckpointId = m.CheckpointId
+	r.Options = m.Options.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -108,12 +103,7 @@ func (m *ListAccountsRequest) CloneVT() *ListAccountsRequest {
 	}
 	r := new(ListAccountsRequest)
 	r.Ledger = m.Ledger
-	r.PageSize = m.PageSize
-	r.AfterAddress = m.AfterAddress
-	r.Filter = m.Filter.CloneVT()
-	r.Reverse = m.Reverse
-	r.MinLogSequence = m.MinLogSequence
-	r.CheckpointId = m.CheckpointId
+	r.Options = m.Options.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -197,8 +187,7 @@ func (m *ListLedgersRequest) CloneVT() *ListLedgersRequest {
 		return (*ListLedgersRequest)(nil)
 	}
 	r := new(ListLedgersRequest)
-	r.PageSize = m.PageSize
-	r.CheckpointId = m.CheckpointId
+	r.Options = m.Options.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -216,7 +205,7 @@ func (m *GetLedgerRequest) CloneVT() *GetLedgerRequest {
 	}
 	r := new(GetLedgerRequest)
 	r.Ledger = m.Ledger
-	r.CheckpointId = m.CheckpointId
+	r.Read = m.Read.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -791,6 +780,7 @@ func (m *ListSigningKeysRequest) CloneVT() *ListSigningKeysRequest {
 		return (*ListSigningKeysRequest)(nil)
 	}
 	r := new(ListSigningKeysRequest)
+	r.Options = m.Options.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -884,7 +874,7 @@ func (m *ListPeriodsRequest) CloneVT() *ListPeriodsRequest {
 		return (*ListPeriodsRequest)(nil)
 	}
 	r := new(ListPeriodsRequest)
-	r.PageSize = m.PageSize
+	r.Options = m.Options.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1067,7 +1057,7 @@ func (m *GetNumscriptRequest) CloneVT() *GetNumscriptRequest {
 	r.Name = m.Name
 	r.Version = m.Version
 	r.Ledger = m.Ledger
-	r.CheckpointId = m.CheckpointId
+	r.Read = m.Read.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1085,7 +1075,7 @@ func (m *ListNumscriptsRequest) CloneVT() *ListNumscriptsRequest {
 	}
 	r := new(ListNumscriptsRequest)
 	r.Ledger = m.Ledger
-	r.CheckpointId = m.CheckpointId
+	r.Options = m.Options.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1961,14 +1951,9 @@ func (m *ListAuditEntriesRequest) CloneVT() *ListAuditEntriesRequest {
 		return (*ListAuditEntriesRequest)(nil)
 	}
 	r := new(ListAuditEntriesRequest)
+	r.Options = m.Options.CloneVT()
 	r.FailuresOnly = m.FailuresOnly
-	r.PageSize = m.PageSize
-	r.MinLogSequence = m.MinLogSequence
 	r.Ledger = m.Ledger
-	if rhs := m.AfterSequence; rhs != nil {
-		tmpVal := *rhs
-		r.AfterSequence = &tmpVal
-	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2002,15 +1987,8 @@ func (m *ListLogsRequest) CloneVT() *ListLogsRequest {
 		return (*ListLogsRequest)(nil)
 	}
 	r := new(ListLogsRequest)
-	r.PageSize = m.PageSize
-	r.MinLogSequence = m.MinLogSequence
-	r.Filter = m.Filter.CloneVT()
-	r.CheckpointId = m.CheckpointId
 	r.Ledger = m.Ledger
-	if rhs := m.AfterSequence; rhs != nil {
-		tmpVal := *rhs
-		r.AfterSequence = &tmpVal
-	}
+	r.Options = m.Options.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -3175,22 +3153,7 @@ func (this *ListTransactionsRequest) EqualVT(that *ListTransactionsRequest) bool
 	if this.Ledger != that.Ledger {
 		return false
 	}
-	if this.PageSize != that.PageSize {
-		return false
-	}
-	if this.AfterTxId != that.AfterTxId {
-		return false
-	}
-	if !this.Filter.EqualVT(that.Filter) {
-		return false
-	}
-	if this.Reverse != that.Reverse {
-		return false
-	}
-	if this.MinLogSequence != that.MinLogSequence {
-		return false
-	}
-	if this.CheckpointId != that.CheckpointId {
+	if !this.Options.EqualVT(that.Options) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -3212,22 +3175,7 @@ func (this *ListAccountsRequest) EqualVT(that *ListAccountsRequest) bool {
 	if this.Ledger != that.Ledger {
 		return false
 	}
-	if this.PageSize != that.PageSize {
-		return false
-	}
-	if this.AfterAddress != that.AfterAddress {
-		return false
-	}
-	if !this.Filter.EqualVT(that.Filter) {
-		return false
-	}
-	if this.Reverse != that.Reverse {
-		return false
-	}
-	if this.MinLogSequence != that.MinLogSequence {
-		return false
-	}
-	if this.CheckpointId != that.CheckpointId {
+	if !this.Options.EqualVT(that.Options) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -3346,10 +3294,7 @@ func (this *ListLedgersRequest) EqualVT(that *ListLedgersRequest) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.PageSize != that.PageSize {
-		return false
-	}
-	if this.CheckpointId != that.CheckpointId {
+	if !this.Options.EqualVT(that.Options) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -3371,7 +3316,7 @@ func (this *GetLedgerRequest) EqualVT(that *GetLedgerRequest) bool {
 	if this.Ledger != that.Ledger {
 		return false
 	}
-	if this.CheckpointId != that.CheckpointId {
+	if !this.Read.EqualVT(that.Read) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -4560,6 +4505,9 @@ func (this *ListSigningKeysRequest) EqualVT(that *ListSigningKeysRequest) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
+	if !this.Options.EqualVT(that.Options) {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -4655,7 +4603,7 @@ func (this *ListPeriodsRequest) EqualVT(that *ListPeriodsRequest) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.PageSize != that.PageSize {
+	if !this.Options.EqualVT(that.Options) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -4884,7 +4832,7 @@ func (this *GetNumscriptRequest) EqualVT(that *GetNumscriptRequest) bool {
 	if this.Ledger != that.Ledger {
 		return false
 	}
-	if this.CheckpointId != that.CheckpointId {
+	if !this.Read.EqualVT(that.Read) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -4906,7 +4854,7 @@ func (this *ListNumscriptsRequest) EqualVT(that *ListNumscriptsRequest) bool {
 	if this.Ledger != that.Ledger {
 		return false
 	}
-	if this.CheckpointId != that.CheckpointId {
+	if !this.Options.EqualVT(that.Options) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -6251,16 +6199,10 @@ func (this *ListAuditEntriesRequest) EqualVT(that *ListAuditEntriesRequest) bool
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.AfterSequence, that.AfterSequence; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
+	if !this.Options.EqualVT(that.Options) {
 		return false
 	}
 	if this.FailuresOnly != that.FailuresOnly {
-		return false
-	}
-	if this.PageSize != that.PageSize {
-		return false
-	}
-	if this.MinLogSequence != that.MinLogSequence {
 		return false
 	}
 	if this.Ledger != that.Ledger {
@@ -6301,22 +6243,10 @@ func (this *ListLogsRequest) EqualVT(that *ListLogsRequest) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
-	if p, q := this.AfterSequence, that.AfterSequence; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
-		return false
-	}
-	if this.PageSize != that.PageSize {
-		return false
-	}
-	if this.MinLogSequence != that.MinLogSequence {
-		return false
-	}
-	if !this.Filter.EqualVT(that.Filter) {
-		return false
-	}
-	if this.CheckpointId != that.CheckpointId {
-		return false
-	}
 	if this.Ledger != that.Ledger {
+		return false
+	}
+	if !this.Options.EqualVT(that.Options) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -8174,48 +8104,15 @@ func (m *ListTransactionsRequest) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.CheckpointId != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CheckpointId))
-		i--
-		dAtA[i] = 0x39
-	}
-	if m.MinLogSequence != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MinLogSequence))
-		i--
-		dAtA[i] = 0x31
-	}
-	if m.Reverse {
-		i--
-		if m.Reverse {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x28
-	}
-	if m.Filter != nil {
-		size, err := m.Filter.MarshalToSizedBufferVT(dAtA[:i])
+	if m.Options != nil {
+		size, err := m.Options.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x22
-	}
-	if m.AfterTxId != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.AfterTxId))
-		i--
-		dAtA[i] = 0x19
-	}
-	if m.PageSize != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PageSize))
-		i--
-		dAtA[i] = 0x10
+		dAtA[i] = 0x12
 	}
 	if len(m.Ledger) > 0 {
 		i -= len(m.Ledger)
@@ -8257,49 +8154,15 @@ func (m *ListAccountsRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.CheckpointId != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CheckpointId))
-		i--
-		dAtA[i] = 0x39
-	}
-	if m.MinLogSequence != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MinLogSequence))
-		i--
-		dAtA[i] = 0x31
-	}
-	if m.Reverse {
-		i--
-		if m.Reverse {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x28
-	}
-	if m.Filter != nil {
-		size, err := m.Filter.MarshalToSizedBufferVT(dAtA[:i])
+	if m.Options != nil {
+		size, err := m.Options.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x22
-	}
-	if len(m.AfterAddress) > 0 {
-		i -= len(m.AfterAddress)
-		copy(dAtA[i:], m.AfterAddress)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.AfterAddress)))
-		i--
-		dAtA[i] = 0x1a
-	}
-	if m.PageSize != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PageSize))
-		i--
-		dAtA[i] = 0x10
+		dAtA[i] = 0x12
 	}
 	if len(m.Ledger) > 0 {
 		i -= len(m.Ledger)
@@ -8508,16 +8371,15 @@ func (m *ListLedgersRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.CheckpointId != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CheckpointId))
+	if m.Options != nil {
+		size, err := m.Options.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x11
-	}
-	if m.PageSize != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PageSize))
-		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -8552,11 +8414,15 @@ func (m *GetLedgerRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.CheckpointId != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CheckpointId))
+	if m.Read != nil {
+		size, err := m.Read.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x11
+		dAtA[i] = 0x12
 	}
 	if len(m.Ledger) > 0 {
 		i -= len(m.Ledger)
@@ -9899,6 +9765,16 @@ func (m *ListSigningKeysRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.Options != nil {
+		size, err := m.Options.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xa
+	}
 	return len(dAtA) - i, nil
 }
 
@@ -10096,10 +9972,15 @@ func (m *ListPeriodsRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.PageSize != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PageSize))
+	if m.Options != nil {
+		size, err := m.Options.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -10567,11 +10448,15 @@ func (m *GetNumscriptRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.CheckpointId != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CheckpointId))
+	if m.Read != nil {
+		size, err := m.Read.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x21
+		dAtA[i] = 0x22
 	}
 	if len(m.Ledger) > 0 {
 		i -= len(m.Ledger)
@@ -10627,11 +10512,15 @@ func (m *ListNumscriptsRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.CheckpointId != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CheckpointId))
+	if m.Options != nil {
+		size, err := m.Options.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x11
+		dAtA[i] = 0x12
 	}
 	if len(m.Ledger) > 0 {
 		i -= len(m.Ledger)
@@ -12982,18 +12871,7 @@ func (m *ListAuditEntriesRequest) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		copy(dAtA[i:], m.Ledger)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
 		i--
-		dAtA[i] = 0x2a
-	}
-	if m.MinLogSequence != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MinLogSequence))
-		i--
-		dAtA[i] = 0x21
-	}
-	if m.PageSize != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PageSize))
-		i--
-		dAtA[i] = 0x18
+		dAtA[i] = 0x1a
 	}
 	if m.FailuresOnly {
 		i--
@@ -13005,11 +12883,15 @@ func (m *ListAuditEntriesRequest) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		i--
 		dAtA[i] = 0x10
 	}
-	if m.AfterSequence != nil {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(*m.AfterSequence))
+	if m.Options != nil {
+		size, err := m.Options.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x9
+		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -13083,45 +12965,22 @@ func (m *ListLogsRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.Ledger) > 0 {
-		i -= len(m.Ledger)
-		copy(dAtA[i:], m.Ledger)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
-		i--
-		dAtA[i] = 0x32
-	}
-	if m.CheckpointId != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CheckpointId))
-		i--
-		dAtA[i] = 0x29
-	}
-	if m.Filter != nil {
-		size, err := m.Filter.MarshalToSizedBufferVT(dAtA[:i])
+	if m.Options != nil {
+		size, err := m.Options.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x22
+		dAtA[i] = 0x12
 	}
-	if m.MinLogSequence != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MinLogSequence))
+	if len(m.Ledger) > 0 {
+		i -= len(m.Ledger)
+		copy(dAtA[i:], m.Ledger)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
 		i--
-		dAtA[i] = 0x19
-	}
-	if m.PageSize != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PageSize))
-		i--
-		dAtA[i] = 0x10
-	}
-	if m.AfterSequence != nil {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(*m.AfterSequence))
-		i--
-		dAtA[i] = 0x9
+		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -15885,24 +15744,9 @@ func (m *ListTransactionsRequest) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.PageSize != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.PageSize))
-	}
-	if m.AfterTxId != 0 {
-		n += 9
-	}
-	if m.Filter != nil {
-		l = m.Filter.SizeVT()
+	if m.Options != nil {
+		l = m.Options.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Reverse {
-		n += 2
-	}
-	if m.MinLogSequence != 0 {
-		n += 9
-	}
-	if m.CheckpointId != 0 {
-		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -15918,25 +15762,9 @@ func (m *ListAccountsRequest) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.PageSize != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.PageSize))
-	}
-	l = len(m.AfterAddress)
-	if l > 0 {
+	if m.Options != nil {
+		l = m.Options.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Filter != nil {
-		l = m.Filter.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Reverse {
-		n += 2
-	}
-	if m.MinLogSequence != 0 {
-		n += 9
-	}
-	if m.CheckpointId != 0 {
-		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -16015,11 +15843,9 @@ func (m *ListLedgersRequest) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.PageSize != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.PageSize))
-	}
-	if m.CheckpointId != 0 {
-		n += 9
+	if m.Options != nil {
+		l = m.Options.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -16035,8 +15861,9 @@ func (m *GetLedgerRequest) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.CheckpointId != 0 {
-		n += 9
+	if m.Read != nil {
+		l = m.Read.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -16674,6 +16501,10 @@ func (m *ListSigningKeysRequest) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
+	if m.Options != nil {
+		l = m.Options.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -16741,8 +16572,9 @@ func (m *ListPeriodsRequest) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.PageSize != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.PageSize))
+	if m.Options != nil {
+		l = m.Options.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -16928,8 +16760,9 @@ func (m *GetNumscriptRequest) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.CheckpointId != 0 {
-		n += 9
+	if m.Read != nil {
+		l = m.Read.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -16945,8 +16778,9 @@ func (m *ListNumscriptsRequest) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.CheckpointId != 0 {
-		n += 9
+	if m.Options != nil {
+		l = m.Options.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -17892,17 +17726,12 @@ func (m *ListAuditEntriesRequest) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.AfterSequence != nil {
-		n += 9
+	if m.Options != nil {
+		l = m.Options.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	if m.FailuresOnly {
 		n += 2
-	}
-	if m.PageSize != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.PageSize))
-	}
-	if m.MinLogSequence != 0 {
-		n += 9
 	}
 	l = len(m.Ledger)
 	if l > 0 {
@@ -17931,24 +17760,12 @@ func (m *ListLogsRequest) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.AfterSequence != nil {
-		n += 9
-	}
-	if m.PageSize != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.PageSize))
-	}
-	if m.MinLogSequence != 0 {
-		n += 9
-	}
-	if m.Filter != nil {
-		l = m.Filter.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.CheckpointId != 0 {
-		n += 9
-	}
 	l = len(m.Ledger)
 	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.Options != nil {
+		l = m.Options.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -19463,37 +19280,8 @@ func (m *ListTransactionsRequest) UnmarshalVT(dAtA []byte) error {
 			m.Ledger = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field PageSize", wireType)
-			}
-			m.PageSize = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.PageSize |= uint32(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 3:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AfterTxId", wireType)
-			}
-			m.AfterTxId = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.AfterTxId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 4:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Filter", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Options", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -19520,53 +19308,13 @@ func (m *ListTransactionsRequest) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.Filter == nil {
-				m.Filter = &commonpb.QueryFilter{}
+			if m.Options == nil {
+				m.Options = &commonpb.ListOptions{}
 			}
-			if err := m.Filter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if err := m.Options.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
-		case 5:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Reverse", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.Reverse = bool(v != 0)
-		case 6:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field MinLogSequence", wireType)
-			}
-			m.MinLogSequence = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.MinLogSequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 7:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field CheckpointId", wireType)
-			}
-			m.CheckpointId = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.CheckpointId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -19651,59 +19399,8 @@ func (m *ListAccountsRequest) UnmarshalVT(dAtA []byte) error {
 			m.Ledger = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field PageSize", wireType)
-			}
-			m.PageSize = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.PageSize |= uint32(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 3:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AfterAddress", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.AfterAddress = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Filter", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Options", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -19730,53 +19427,13 @@ func (m *ListAccountsRequest) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.Filter == nil {
-				m.Filter = &commonpb.QueryFilter{}
+			if m.Options == nil {
+				m.Options = &commonpb.ListOptions{}
 			}
-			if err := m.Filter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if err := m.Options.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
-		case 5:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Reverse", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.Reverse = bool(v != 0)
-		case 6:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field MinLogSequence", wireType)
-			}
-			m.MinLogSequence = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.MinLogSequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 7:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field CheckpointId", wireType)
-			}
-			m.CheckpointId = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.CheckpointId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -20283,10 +19940,10 @@ func (m *ListLedgersRequest) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field PageSize", wireType)
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Options", wireType)
 			}
-			m.PageSize = 0
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -20296,21 +19953,28 @@ func (m *ListLedgersRequest) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.PageSize |= uint32(b&0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-		case 2:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field CheckpointId", wireType)
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
 			}
-			m.CheckpointId = 0
-			if (iNdEx + 8) > l {
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.CheckpointId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
+			if m.Options == nil {
+				m.Options = &commonpb.ListOptions{}
+			}
+			if err := m.Options.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -20395,15 +20059,41 @@ func (m *GetLedgerRequest) UnmarshalVT(dAtA []byte) error {
 			m.Ledger = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		case 2:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field CheckpointId", wireType)
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Read", wireType)
 			}
-			m.CheckpointId = 0
-			if (iNdEx + 8) > l {
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.CheckpointId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
+			if m.Read == nil {
+				m.Read = &commonpb.ReadOptions{}
+			}
+			if err := m.Read.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -23177,6 +22867,42 @@ func (m *ListSigningKeysRequest) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: ListSigningKeysRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Options", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Options == nil {
+				m.Options = &commonpb.ListOptions{}
+			}
+			if err := m.Options.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -23531,10 +23257,10 @@ func (m *ListPeriodsRequest) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field PageSize", wireType)
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Options", wireType)
 			}
-			m.PageSize = 0
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -23544,11 +23270,28 @@ func (m *ListPeriodsRequest) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.PageSize |= uint32(b&0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Options == nil {
+				m.Options = &commonpb.ListOptions{}
+			}
+			if err := m.Options.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -24721,15 +24464,41 @@ func (m *GetNumscriptRequest) UnmarshalVT(dAtA []byte) error {
 			m.Ledger = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		case 4:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field CheckpointId", wireType)
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Read", wireType)
 			}
-			m.CheckpointId = 0
-			if (iNdEx + 8) > l {
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.CheckpointId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
+			if m.Read == nil {
+				m.Read = &commonpb.ReadOptions{}
+			}
+			if err := m.Read.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -24814,15 +24583,41 @@ func (m *ListNumscriptsRequest) UnmarshalVT(dAtA []byte) error {
 			m.Ledger = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		case 2:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field CheckpointId", wireType)
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Options", wireType)
 			}
-			m.CheckpointId = 0
-			if (iNdEx + 8) > l {
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.CheckpointId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
+			if m.Options == nil {
+				m.Options = &commonpb.ListOptions{}
+			}
+			if err := m.Options.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -30118,16 +29913,41 @@ func (m *ListAuditEntriesRequest) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AfterSequence", wireType)
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Options", wireType)
 			}
-			var v uint64
-			if (iNdEx + 8) > l {
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			v = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-			m.AfterSequence = &v
+			if m.Options == nil {
+				m.Options = &commonpb.ListOptions{}
+			}
+			if err := m.Options.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		case 2:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field FailuresOnly", wireType)
@@ -30149,35 +29969,6 @@ func (m *ListAuditEntriesRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			m.FailuresOnly = bool(v != 0)
 		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field PageSize", wireType)
-			}
-			m.PageSize = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.PageSize |= uint32(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 4:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field MinLogSequence", wireType)
-			}
-			m.MinLogSequence = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.MinLogSequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 5:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
 			}
@@ -30322,92 +30113,6 @@ func (m *ListLogsRequest) UnmarshalVT(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AfterSequence", wireType)
-			}
-			var v uint64
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			v = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-			m.AfterSequence = &v
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field PageSize", wireType)
-			}
-			m.PageSize = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.PageSize |= uint32(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 3:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field MinLogSequence", wireType)
-			}
-			m.MinLogSequence = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.MinLogSequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Filter", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.Filter == nil {
-				m.Filter = &commonpb.QueryFilter{}
-			}
-			if err := m.Filter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 5:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field CheckpointId", wireType)
-			}
-			m.CheckpointId = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.CheckpointId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 6:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
 			}
@@ -30438,6 +30143,42 @@ func (m *ListLogsRequest) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.Ledger = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Options", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Options == nil {
+				m.Options = &commonpb.ListOptions{}
+			}
+			if err := m.Options.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

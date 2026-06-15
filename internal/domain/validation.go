@@ -12,6 +12,15 @@ import (
 // Pebble keys must stay reasonable; 256 bytes is generous for a human-readable identifier.
 const maxLedgerNameLength = 256
 
+// maxNumscriptNameLength caps numscript identifiers. Same envelope as
+// ledger names — they are addressed the same way in CLI/UI/RPC.
+const maxNumscriptNameLength = 256
+
+// maxSigningKeyIDLength caps signing-key identifiers. Operators usually
+// reuse a short slug ("admin-key-1"); the same 256-byte envelope as the
+// other named resources is plenty.
+const maxSigningKeyIDLength = 256
+
 // maxAccountAddressLength is the maximum allowed length for an account address.
 const maxAccountAddressLength = 1024
 
@@ -19,7 +28,13 @@ const maxAccountAddressLength = 1024
 // through BusinessError with Kind=KindValidation.
 var (
 	ErrLedgerNameContainsNullByte    = newValidationSentinel("ledger name must not contain null bytes")
+	ErrLedgerNameInvalidChar         = newValidationSentinel("ledger name must contain only printable ASCII (0x20–0x7E)")
 	ErrLedgerNameTooLong             = newValidationSentinel(fmt.Sprintf("ledger name exceeds maximum length of %d bytes", maxLedgerNameLength))
+	ErrNumscriptNameInvalidChar      = newValidationSentinel("numscript name must contain only printable ASCII (0x20–0x7E)")
+	ErrNumscriptNameTooLong          = newValidationSentinel(fmt.Sprintf("numscript name exceeds maximum length of %d bytes", maxNumscriptNameLength))
+	ErrSigningKeyIDRequired          = newValidationSentinel("signing key id is required")
+	ErrSigningKeyIDInvalidChar       = newValidationSentinel("signing key id must contain only printable ASCII (0x20–0x7E)")
+	ErrSigningKeyIDTooLong           = newValidationSentinel(fmt.Sprintf("signing key id exceeds maximum length of %d bytes", maxSigningKeyIDLength))
 	ErrMetadataKeyContainsNullByte   = newValidationSentinel("metadata key must not contain null bytes")
 	ErrMetadataKeyEmpty              = newValidationSentinel("metadata key must not be empty")
 	ErrMetadataValueContainsNullByte = newValidationSentinel("metadata value must not contain null bytes")
@@ -30,9 +45,28 @@ var (
 	ErrAssetInvalid = newValidationSentinel("asset must match [A-Z][A-Z0-9]{0,16}(_[A-Z]{1,16})?(/[1-9][0-9]{0,2})? with precision in [1, 255]")
 )
 
-// ValidateLedgerName checks that a ledger name is safe for use in Pebble key encoding.
-// Null bytes would corrupt null-terminated key layouts; length is capped to prevent
-// oversized keys.
+// isPrintableASCII reports whether every byte of s is in the printable ASCII
+// range 0x20–0x7E (space through tilde). The bound matches the safe-value
+// subset accepted by gRPC metadata headers (HTTP/2 fields strip CR/LF,
+// reject control bytes, and have no defined encoding for high bytes), so
+// any identifier we plan to round-trip through `x-next-cursor` trailers
+// must satisfy this predicate.
+func isPrintableASCII(s string) bool {
+	for i := range len(s) {
+		b := s[i]
+		if b < 0x20 || b > 0x7E {
+			return false
+		}
+	}
+
+	return true
+}
+
+// ValidateLedgerName checks that a ledger name is safe for use in Pebble key
+// encoding AND for transport through gRPC metadata trailers (paginated list
+// cursors are derived from the ledger name). Null bytes would corrupt
+// null-terminated key layouts; control or high bytes would break the
+// `x-next-cursor` resume token. Length is capped to keep keys reasonable.
 func ValidateLedgerName(name string) Describable {
 	if name == "" {
 		return ErrLedgerNameRequired
@@ -42,8 +76,52 @@ func ValidateLedgerName(name string) Describable {
 		return ErrLedgerNameContainsNullByte
 	}
 
+	if !isPrintableASCII(name) {
+		return ErrLedgerNameInvalidChar
+	}
+
 	if len(name) > maxLedgerNameLength {
 		return ErrLedgerNameTooLong
+	}
+
+	return nil
+}
+
+// ValidateNumscriptName mirrors ValidateLedgerName: numscript names are the
+// resume-cursor key for `numscripts list` pagination and must survive the
+// same gRPC metadata round-trip.
+func ValidateNumscriptName(name string) Describable {
+	if name == "" {
+		return ErrNumscriptNameRequired
+	}
+
+	if !isPrintableASCII(name) {
+		return ErrNumscriptNameInvalidChar
+	}
+
+	if len(name) > maxNumscriptNameLength {
+		return ErrNumscriptNameTooLong
+	}
+
+	return nil
+}
+
+// ValidateSigningKeyID mirrors ValidateLedgerName: the key ID lands in the
+// `x-next-cursor` trailer of `signing keys list` pagination, so it must be
+// safe for HTTP/2 header values (printable ASCII, bounded length).
+// Parent key IDs go through the same rule so revoke/cascade traversals
+// cannot smuggle in an unsafe identifier either.
+func ValidateSigningKeyID(id string) Describable {
+	if id == "" {
+		return ErrSigningKeyIDRequired
+	}
+
+	if !isPrintableASCII(id) {
+		return ErrSigningKeyIDInvalidChar
+	}
+
+	if len(id) > maxSigningKeyIDLength {
+		return ErrSigningKeyIDTooLong
 	}
 
 	return nil
