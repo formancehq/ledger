@@ -71,6 +71,7 @@ require (
 	github.com/formancehq/go-libs/v5 v5.3.0
 	github.com/fsnotify/fsnotify v1.5.4
 	github.com/google/uuid v1.6.0
+	github.com/sirupsen/logrus v1.9.4
 	github.com/soheilhy/cmux v0.1.5
 	github.com/testcontainers/testcontainers-go v0.40.0
 	go.etcd.io/raft/v3 v3.6.0
@@ -261,7 +262,6 @@ require (
 	github.com/segmentio/asm v1.2.1 // indirect
 	github.com/shirou/gopsutil/v4 v4.26.2 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
-	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
 	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc // indirect

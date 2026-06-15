@@ -400,19 +400,17 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 	// With pipelining, lastPersistedIndex may lag lastAppliedIndex by one batch
 	// (the pending commit). This is expected and safe.
 	persistedIdx := fsm.lastPersistedIndex.Load()
-	if persistedIdx != fsm.lastAppliedIndex {
-		if fsm.logger.Enabled(logging.TraceLevel) {
-			fsm.logger.WithFields(map[string]any{
-				"lastPersistedIndex": persistedIdx,
-				"lastAppliedIndex":   fsm.lastAppliedIndex,
-				"snapshotIndex":      fsm.snapshotIndex,
-				"entryCount":         len(entries),
-				"firstEntryIndex":    entries[0].Index,
-				"gen0":               fsm.Registry.Cache.BaseIndex.Gen0,
-				"gen1":               fsm.Registry.Cache.BaseIndex.Gen1,
-				"currentGeneration":  fsm.Registry.Cache.CurrentGeneration(),
-			}).Tracef("PrepareEntries: lastPersistedIndex lags (pending commit in-flight)")
-		}
+	if persistedIdx != fsm.lastAppliedIndex && len(entries) > 0 && fsm.logger.Enabled(logging.TraceLevel) {
+		fsm.logger.WithFields(map[string]any{
+			"lastPersistedIndex": persistedIdx,
+			"lastAppliedIndex":   fsm.lastAppliedIndex,
+			"snapshotIndex":      fsm.snapshotIndex,
+			"entryCount":         len(entries),
+			"firstEntryIndex":    entries[0].Index,
+			"gen0":               fsm.Registry.Cache.BaseIndex.Gen0,
+			"gen1":               fsm.Registry.Cache.BaseIndex.Gen1,
+			"currentGeneration":  fsm.Registry.Cache.CurrentGeneration(),
+		}).Tracef("PrepareEntries: lastPersistedIndex lags (pending commit in-flight)")
 	}
 
 	if fsm.snapshotIndex > fsm.lastAppliedIndex {

@@ -3,8 +3,10 @@ package state
 import (
 	"context"
 	"errors"
+	"io"
 	"testing"
 
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -595,4 +597,85 @@ func TestNextLedgerIDRecovery(t *testing.T) {
 
 	// And nextLedgerID should now be 5.
 	require.Equal(t, uint32(5), machine2.nextLedgerID)
+}
+
+// TestPrepareEntriesTraceLogPipeliningLag is a regression test for issue #427:
+// PrepareEntries used to read entries[0].Index unconditionally inside a
+// trace-level log when lastPersistedIndex lagged lastAppliedIndex. Calling
+// it with an empty entries slice (e.g. the empty `head` slice produced by
+// applyEntriesToFSM when a batch boundary lands on the first entry) and
+// trace logging enabled would panic with index out of range. The non-empty
+// sub-test exercises the trace-log code path itself to keep coverage on the
+// guarded block.
+func TestPrepareEntriesTraceLogPipeliningLag(t *testing.T) {
+	t.Parallel()
+
+	newMachineWithTraceLogger := func(t *testing.T) (*Machine, *dal.Store) {
+		t.Helper()
+
+		logrusLogger := logrus.New()
+		logrusLogger.SetOutput(io.Discard)
+		logrusLogger.SetLevel(logrus.TraceLevel)
+		logger := logging.NewLogrus(logrusLogger)
+		require.True(t, logger.Enabled(logging.TraceLevel))
+
+		meter := noop.NewMeterProvider().Meter("test")
+
+		dataStore, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = dataStore.Close() })
+
+		c, err := cache.New(1000, meter)
+		require.NoError(t, err)
+
+		registry := NewStateRegistry(c, attributes.New(), 0)
+		snapshotter := NewCacheSnapshotter(logger, registry, nil)
+
+		machine, err := NewMachine(logger, registry, snapshotter, dataStore, dal.NewSentinelFactory(dataStore, false), meter, keystore.NewKeyStore(), NewSharedState(), noopNotifier{}, nil, "test-cluster", 0)
+		require.NoError(t, err)
+		require.NoError(t, NewRecovery(machine, dataStore).RecoverState())
+
+		// Simulate the pipelining state where a previous batch's commit is
+		// still in flight: lastAppliedIndex has been bumped by a prior
+		// PrepareEntries, but lastPersistedIndex (advanced by
+		// CommitPreparedBatch) lags behind.
+		machine.lastAppliedIndex = 5
+
+		return machine, dataStore
+	}
+
+	t.Run("empty entries does not panic", func(t *testing.T) {
+		t.Parallel()
+
+		machine, dataStore := newMachineWithTraceLogger(t)
+
+		require.NotPanics(t, func() {
+			pb, err := machine.PrepareEntries(context.Background(), dataStore)
+			require.NoError(t, err)
+			if pb != nil {
+				pb.Close()
+			}
+		})
+	})
+
+	t.Run("non-empty entries logs first index", func(t *testing.T) {
+		t.Parallel()
+
+		machine, dataStore := newMachineWithTraceLogger(t)
+
+		// A no-op entry (empty Data) is enough to drive the trace branch;
+		// applyProposal is skipped, no Pebble writes happen, but the
+		// log fields are evaluated.
+		require.NotPanics(t, func() {
+			pb, err := machine.PrepareEntries(context.Background(), dataStore, raftpb.Entry{
+				Index: 6,
+				Term:  1,
+				Type:  raftpb.EntryNormal,
+			})
+			require.NoError(t, err)
+			if pb != nil {
+				pb.Close()
+			}
+		})
+	})
 }
