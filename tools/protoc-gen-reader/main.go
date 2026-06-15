@@ -5,8 +5,18 @@
 //   - An AsReader() method on the concrete type returning the reader interface
 //   - A Mutate() method on the concrete type returning CloneVT()
 //
-// Sub-message getters in the reader interface return sub-message Reader types
-// (recursive protection). Scalar getters return value types directly.
+// Immutability rules (enforced at the type level so a Reader cannot leak a
+// mutable view of the underlying message):
+//   - Singular sub-message getters return the sub-message Reader interface.
+//   - Repeated sub-message getters return a <Message>ListReader interface that
+//     exposes only Len/Get/Range and yields Reader views of the elements.
+//   - Map getters return a <Outer>_<Field>MapReader interface that exposes
+//     only Len/Get/Range. When the value is a message, callers receive a
+//     Reader view of it.
+//   - Repeated scalar getters return a freshly-cloned slice (slices.Clone).
+//   - Singular []byte getters return a freshly-cloned slice (bytes.Clone).
+//   - Repeated []byte ([][]byte) getters return a deep clone of the slice.
+//   - Singular scalar getters return value types directly.
 //
 // Install:  go build -o protoc-gen-reader .
 // Usage:    protoc --reader_out=. --reader_opt=module=<module> ...
@@ -40,7 +50,11 @@ var extraMethods = map[string][]extraMethod{
 	},
 }
 
-var uint256Pkg = protogen.GoImportPath("github.com/holiman/uint256")
+var (
+	uint256Pkg = protogen.GoImportPath("github.com/holiman/uint256")
+	slicesPkg  = protogen.GoImportPath("slices")
+	bytesPkg   = protogen.GoImportPath("bytes")
+)
 
 func main() {
 	protogen.Options{}.Run(func(gen *protogen.Plugin) error {
@@ -94,7 +108,7 @@ func generateMessage(g *protogen.GeneratedFile, msg *protogen.Message) {
 	readerName := typeName + "Reader"
 	wrapperName := unexport(typeName) + "Readonly"
 
-	// --- Interface ---
+	// --- Reader interface ---
 	g.P()
 	g.P("// ", readerName, " provides read-only access to ", typeName, ".")
 	g.P("// Call Mutate() to obtain a mutable clone.")
@@ -108,8 +122,8 @@ func generateMessage(g *protogen.GeneratedFile, msg *protogen.Message) {
 		}
 
 		getterName := "Get" + field.GoName
-		retType := fieldReturnType(g, field, true)
-		g.P("\t", getterName, "()", retType)
+		retType := readerFieldType(g, msg, field)
+		g.P("\t", getterName, "() ", retType)
 	}
 
 	// Oneof getters (one per oneof group)
@@ -148,33 +162,7 @@ func generateMessage(g *protogen.GeneratedFile, msg *protogen.Message) {
 			continue
 		}
 
-		getterName := "Get" + field.GoName
-		retType := fieldReturnType(g, field, true)
-		concreteRetType := fieldReturnType(g, field, false)
-
-		if retType != concreteRetType {
-			// Sub-message field: wrap with AsReader()
-			g.P()
-			g.P("func (r *", wrapperName, ") ", getterName, "() ", retType, " {")
-
-			if field.Desc.IsList() {
-				// Repeated message — return concrete type (no wrapper for slices)
-				g.P("\treturn r.v.", getterName, "()")
-			} else {
-				// Singular message — wrap with AsReader()
-				g.P("\tv := r.v.", getterName, "()")
-				g.P("\tif v == nil { return nil }")
-				g.P("\treturn v.AsReader()")
-			}
-
-			g.P("}")
-		} else {
-			// Scalar, enum, map, repeated scalar — delegate directly
-			g.P()
-			g.P("func (r *", wrapperName, ") ", getterName, "() ", retType, " {")
-			g.P("\treturn r.v.", getterName, "()")
-			g.P("}")
-		}
+		writeWrapperGetter(g, msg, field, wrapperName)
 	}
 
 	// Oneof getters on wrapper
@@ -193,7 +181,6 @@ func generateMessage(g *protogen.GeneratedFile, msg *protogen.Message) {
 
 	// Extra custom methods on wrapper
 	for _, em := range extras {
-		// Ensure imports for extra method types
 		if strings.Contains(em.signature, "uint256.Int") {
 			_ = g.QualifiedGoIdent(protogen.GoIdent{GoName: "Int", GoImportPath: uint256Pkg})
 		}
@@ -223,23 +210,227 @@ func generateMessage(g *protogen.GeneratedFile, msg *protogen.Message) {
 	g.P("func (m *", typeName, ") Mutate() *", typeName, " {")
 	g.P("\treturn m.CloneVT()")
 	g.P("}")
+
+	// --- ListReader for this message ---
+	// Emitted unconditionally so any other package can reference it.
+	writeListReader(g, msg)
+
+	// --- MapReader per map field on this message ---
+	for _, field := range msg.Fields {
+		if !field.Desc.IsMap() {
+			continue
+		}
+
+		writeMapReader(g, msg, field)
+	}
 }
 
-// fieldReturnType returns the Go return type for a field's getter.
-// If reader is true and the field is a singular message, returns the Reader interface type.
-// Otherwise returns the concrete type matching the protoc-gen-go getter signature.
-func fieldReturnType(g *protogen.GeneratedFile, field *protogen.Field, reader bool) string {
+// readerFieldType returns the Go type of a field as exposed on the Reader interface.
+func readerFieldType(g *protogen.GeneratedFile, owner *protogen.Message, field *protogen.Field) string {
 	if field.Desc.IsMap() {
-		return mapReturnType(g, field)
+		return qualifiedMapReaderIdent(g, owner, field)
 	}
 
 	if field.Desc.IsList() {
-		return repeatedReturnType(g, field, reader)
+		if field.Desc.Kind() == protoreflect.MessageKind || field.Desc.Kind() == protoreflect.GroupKind {
+			return qualifiedListReaderIdent(g, field.Message)
+		}
+
+		return repeatedScalarType(g, field)
 	}
 
-	return singularReturnType(g, field, reader)
+	return singularReturnType(g, field, true)
 }
 
+// writeWrapperGetter emits the wrapper method for one field, applying the
+// immutability rules described at the top of the file.
+func writeWrapperGetter(g *protogen.GeneratedFile, owner *protogen.Message, field *protogen.Field, wrapperName string) {
+	getterName := "Get" + field.GoName
+
+	switch {
+	case field.Desc.IsMap():
+		retType := qualifiedMapReaderIdent(g, owner, field)
+		mapImpl := mapReadonlyName(owner, field)
+
+		g.P()
+		g.P("func (r *", wrapperName, ") ", getterName, "() ", retType, " {")
+		g.P("\treturn ", mapImpl, "(r.v.", getterName, "())")
+		g.P("}")
+
+	case field.Desc.IsList():
+		kind := field.Desc.Kind()
+
+		switch kind {
+		case protoreflect.MessageKind, protoreflect.GroupKind:
+			retType := qualifiedListReaderIdent(g, field.Message)
+			ctor := g.QualifiedGoIdent(protogen.GoIdent{
+				GoName:       listReaderCtorName(field.Message),
+				GoImportPath: field.Message.GoIdent.GoImportPath,
+			})
+
+			g.P()
+			g.P("func (r *", wrapperName, ") ", getterName, "() ", retType, " {")
+			g.P("\treturn ", ctor, "(r.v.", getterName, "())")
+			g.P("}")
+
+		case protoreflect.BytesKind:
+			// [][]byte — deep clone.
+			g.P()
+			g.P("func (r *", wrapperName, ") ", getterName, "() [][]byte {")
+			g.P("\tsrc := r.v.", getterName, "()")
+			g.P("\tif src == nil { return nil }")
+			g.P("\tout := make([][]byte, len(src))")
+			g.P("\tfor i, b := range src {")
+			g.P("\t\tout[i] = ", g.QualifiedGoIdent(protogen.GoIdent{GoName: "Clone", GoImportPath: bytesPkg}), "(b)")
+			g.P("\t}")
+			g.P("\treturn out")
+			g.P("}")
+
+		default:
+			// Repeated scalar — clone the slice.
+			retType := repeatedScalarType(g, field)
+
+			g.P()
+			g.P("func (r *", wrapperName, ") ", getterName, "() ", retType, " {")
+			g.P("\treturn ", g.QualifiedGoIdent(protogen.GoIdent{GoName: "Clone", GoImportPath: slicesPkg}), "(r.v.", getterName, "())")
+			g.P("}")
+		}
+
+	case field.Desc.Kind() == protoreflect.MessageKind || field.Desc.Kind() == protoreflect.GroupKind:
+		retType := singularReturnType(g, field, true)
+
+		g.P()
+		g.P("func (r *", wrapperName, ") ", getterName, "() ", retType, " {")
+		g.P("\tv := r.v.", getterName, "()")
+		g.P("\tif v == nil { return nil }")
+		g.P("\treturn v.AsReader()")
+		g.P("}")
+
+	case field.Desc.Kind() == protoreflect.BytesKind:
+		// Singular []byte — defensive clone.
+		g.P()
+		g.P("func (r *", wrapperName, ") ", getterName, "() []byte {")
+		g.P("\treturn ", g.QualifiedGoIdent(protogen.GoIdent{GoName: "Clone", GoImportPath: bytesPkg}), "(r.v.", getterName, "())")
+		g.P("}")
+
+	default:
+		// Scalar — return by value.
+		retType := singularReturnType(g, field, true)
+
+		g.P()
+		g.P("func (r *", wrapperName, ") ", getterName, "() ", retType, " {")
+		g.P("\treturn r.v.", getterName, "()")
+		g.P("}")
+	}
+}
+
+// writeListReader emits a <Message>ListReader interface and its implementation
+// as a defined type over []*<Message>. Callers can iterate but cannot replace
+// elements or mutate the underlying slice header of the source message.
+func writeListReader(g *protogen.GeneratedFile, msg *protogen.Message) {
+	typeName := msg.GoIdent.GoName
+	readerName := typeName + "Reader"
+	listReaderName := typeName + "ListReader"
+	listImplName := listReadonlyName(msg)
+
+	g.P()
+	g.P("// ", listReaderName, " provides read-only iteration over []*", typeName, ".")
+	g.P("type ", listReaderName, " interface {")
+	g.P("\tLen() int")
+	g.P("\tGet(i int) ", readerName)
+	g.P("\tRange(yield func(int, ", readerName, ") bool)")
+	g.P("}")
+
+	g.P()
+	g.P("type ", listImplName, " []*", typeName)
+
+	g.P()
+	g.P("func (l ", listImplName, ") Len() int { return len(l) }")
+
+	g.P()
+	g.P("func (l ", listImplName, ") Get(i int) ", readerName, " {")
+	g.P("\tv := l[i]")
+	g.P("\tif v == nil { return nil }")
+	g.P("\treturn v.AsReader()")
+	g.P("}")
+
+	g.P()
+	g.P("func (l ", listImplName, ") Range(yield func(int, ", readerName, ") bool) {")
+	g.P("\tfor i, v := range l {")
+	g.P("\t\tvar r ", readerName)
+	g.P("\t\tif v != nil { r = v.AsReader() }")
+	g.P("\t\tif !yield(i, r) { return }")
+	g.P("\t}")
+	g.P("}")
+
+	g.P()
+	g.P("// ", listReaderCtorName(msg), " wraps s for read-only iteration. The returned")
+	g.P("// view aliases the underlying slice; do not mutate s afterwards.")
+	g.P("func ", listReaderCtorName(msg), "(s []*", typeName, ") ", listReaderName, " { return ", listImplName, "(s) }")
+}
+
+// writeMapReader emits a <Outer>_<Field>MapReader interface and its
+// implementation as a defined type over the underlying map type.
+func writeMapReader(g *protogen.GeneratedFile, owner *protogen.Message, field *protogen.Field) {
+	keyField := field.Message.Fields[0]
+	valField := field.Message.Fields[1]
+
+	keyType := singularReturnType(g, keyField, false)
+	concreteValType := singularReturnType(g, valField, false)
+	readerValType := singularReturnType(g, valField, true)
+
+	mapReaderName := mapReaderInterfaceName(owner, field)
+	mapImplName := mapReadonlyName(owner, field)
+
+	valueIsMessage := valField.Desc.Kind() == protoreflect.MessageKind || valField.Desc.Kind() == protoreflect.GroupKind
+
+	g.P()
+	g.P("// ", mapReaderName, " provides read-only access to ", owner.GoIdent.GoName, ".", field.GoName, ".")
+	g.P("type ", mapReaderName, " interface {")
+	g.P("\tLen() int")
+	g.P("\tGet(k ", keyType, ") (", readerValType, ", bool)")
+	g.P("\tRange(yield func(", keyType, ", ", readerValType, ") bool)")
+	g.P("}")
+
+	g.P()
+	g.P("type ", mapImplName, " map[", keyType, "]", concreteValType)
+
+	g.P()
+	g.P("func (m ", mapImplName, ") Len() int { return len(m) }")
+
+	g.P()
+	g.P("func (m ", mapImplName, ") Get(k ", keyType, ") (", readerValType, ", bool) {")
+	g.P("\tv, ok := m[k]")
+
+	if valueIsMessage {
+		g.P("\tif !ok || v == nil { return nil, ok }")
+		g.P("\treturn v.AsReader(), true")
+	} else {
+		g.P("\treturn v, ok")
+	}
+
+	g.P("}")
+
+	g.P()
+	g.P("func (m ", mapImplName, ") Range(yield func(", keyType, ", ", readerValType, ") bool) {")
+	g.P("\tfor k, v := range m {")
+
+	if valueIsMessage {
+		g.P("\t\tvar r ", readerValType)
+		g.P("\t\tif v != nil { r = v.AsReader() }")
+		g.P("\t\tif !yield(k, r) { return }")
+	} else {
+		g.P("\t\tif !yield(k, v) { return }")
+	}
+
+	g.P("\t}")
+	g.P("}")
+}
+
+// singularReturnType returns the Go return type for a singular field's getter.
+// If reader is true and the field is a singular message, returns the Reader
+// interface type. Otherwise returns the concrete type matching the
+// protoc-gen-go getter signature.
 func singularReturnType(g *protogen.GeneratedFile, field *protogen.Field, reader bool) string {
 	switch field.Desc.Kind() {
 	case protoreflect.BoolKind:
@@ -273,7 +464,9 @@ func singularReturnType(g *protogen.GeneratedFile, field *protogen.Field, reader
 	}
 }
 
-func repeatedReturnType(g *protogen.GeneratedFile, field *protogen.Field, _ bool) string {
+// repeatedScalarType returns the Go type for a repeated scalar field (i.e.
+// for kinds other than message/group, which have their own list-reader path).
+func repeatedScalarType(g *protogen.GeneratedFile, field *protogen.Field) string {
 	switch field.Desc.Kind() {
 	case protoreflect.BoolKind:
 		return "[]bool"
@@ -295,22 +488,9 @@ func repeatedReturnType(g *protogen.GeneratedFile, field *protogen.Field, _ bool
 		return "[][]byte"
 	case protoreflect.EnumKind:
 		return "[]" + g.QualifiedGoIdent(field.Enum.GoIdent)
-	case protoreflect.MessageKind, protoreflect.GroupKind:
-		// Repeated messages return concrete slice (no wrapper for slices)
-		return "[]*" + g.QualifiedGoIdent(field.Message.GoIdent)
 	default:
 		return "[]interface{}"
 	}
-}
-
-func mapReturnType(g *protogen.GeneratedFile, field *protogen.Field) string {
-	keyField := field.Message.Fields[0]
-	valField := field.Message.Fields[1]
-
-	keyType := singularReturnType(g, keyField, false)
-	valType := singularReturnType(g, valField, false)
-
-	return "map[" + keyType + "]" + valType
 }
 
 // qualifiedReaderIdent returns the Reader interface name for a message,
@@ -322,6 +502,45 @@ func qualifiedReaderIdent(g *protogen.GeneratedFile, msg *protogen.Message) stri
 	}
 
 	return g.QualifiedGoIdent(readerIdent)
+}
+
+// qualifiedListReaderIdent returns the <Message>ListReader name qualified with
+// the message's package import.
+func qualifiedListReaderIdent(g *protogen.GeneratedFile, msg *protogen.Message) string {
+	ident := protogen.GoIdent{
+		GoName:       msg.GoIdent.GoName + "ListReader",
+		GoImportPath: msg.GoIdent.GoImportPath,
+	}
+
+	return g.QualifiedGoIdent(ident)
+}
+
+// qualifiedMapReaderIdent returns the per-field MapReader name. The MapReader
+// is emitted in the owner's package, so cross-package qualification happens
+// only when the field's owner lives in a different file.
+func qualifiedMapReaderIdent(g *protogen.GeneratedFile, owner *protogen.Message, field *protogen.Field) string {
+	ident := protogen.GoIdent{
+		GoName:       mapReaderInterfaceName(owner, field),
+		GoImportPath: owner.GoIdent.GoImportPath,
+	}
+
+	return g.QualifiedGoIdent(ident)
+}
+
+func listReadonlyName(msg *protogen.Message) string {
+	return unexport(msg.GoIdent.GoName) + "ListReadonly"
+}
+
+func listReaderCtorName(msg *protogen.Message) string {
+	return "New" + msg.GoIdent.GoName + "ListReader"
+}
+
+func mapReaderInterfaceName(owner *protogen.Message, field *protogen.Field) string {
+	return owner.GoIdent.GoName + "_" + field.GoName + "MapReader"
+}
+
+func mapReadonlyName(owner *protogen.Message, field *protogen.Field) string {
+	return unexport(owner.GoIdent.GoName) + "_" + unexport(field.GoName) + "MapReadonly"
 }
 
 func unexport(s string) string {

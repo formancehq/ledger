@@ -4,8 +4,10 @@
 package auditpb
 
 import (
+	bytes "bytes"
 	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	raftcmdpb "github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	slices "slices"
 )
 
 // AuditEntryReader provides read-only access to AuditEntry.
@@ -15,7 +17,7 @@ type AuditEntryReader interface {
 	GetTimestamp() commonpb.TimestampReader
 	GetProposalId() uint64
 	GetOrderCount() uint32
-	GetItems() []*AuditItem
+	GetItems() AuditItemListReader
 	GetLedgers() []string
 	GetHash() []byte
 	GetHashVersion() uint32
@@ -46,16 +48,16 @@ func (r *auditEntryReadonly) GetOrderCount() uint32 {
 	return r.v.GetOrderCount()
 }
 
-func (r *auditEntryReadonly) GetItems() []*AuditItem {
-	return r.v.GetItems()
+func (r *auditEntryReadonly) GetItems() AuditItemListReader {
+	return NewAuditItemListReader(r.v.GetItems())
 }
 
 func (r *auditEntryReadonly) GetLedgers() []string {
-	return r.v.GetLedgers()
+	return slices.Clone(r.v.GetLedgers())
 }
 
 func (r *auditEntryReadonly) GetHash() []byte {
-	return r.v.GetHash()
+	return bytes.Clone(r.v.GetHash())
 }
 
 func (r *auditEntryReadonly) GetHashVersion() uint32 {
@@ -90,6 +92,41 @@ func (m *AuditEntry) AsReader() AuditEntryReader {
 func (m *AuditEntry) Mutate() *AuditEntry {
 	return m.CloneVT()
 }
+
+// AuditEntryListReader provides read-only iteration over []*AuditEntry.
+type AuditEntryListReader interface {
+	Len() int
+	Get(i int) AuditEntryReader
+	Range(yield func(int, AuditEntryReader) bool)
+}
+
+type auditEntryListReadonly []*AuditEntry
+
+func (l auditEntryListReadonly) Len() int { return len(l) }
+
+func (l auditEntryListReadonly) Get(i int) AuditEntryReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l auditEntryListReadonly) Range(yield func(int, AuditEntryReader) bool) {
+	for i, v := range l {
+		var r AuditEntryReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAuditEntryListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAuditEntryListReader(s []*AuditEntry) AuditEntryListReader { return auditEntryListReadonly(s) }
 
 // AuditItemReader provides read-only access to AuditItem.
 // Call Mutate() to obtain a mutable clone.
@@ -135,13 +172,48 @@ func (m *AuditItem) Mutate() *AuditItem {
 	return m.CloneVT()
 }
 
+// AuditItemListReader provides read-only iteration over []*AuditItem.
+type AuditItemListReader interface {
+	Len() int
+	Get(i int) AuditItemReader
+	Range(yield func(int, AuditItemReader) bool)
+}
+
+type auditItemListReadonly []*AuditItem
+
+func (l auditItemListReadonly) Len() int { return len(l) }
+
+func (l auditItemListReadonly) Get(i int) AuditItemReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l auditItemListReadonly) Range(yield func(int, AuditItemReader) bool) {
+	for i, v := range l {
+		var r AuditItemReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAuditItemListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAuditItemListReader(s []*AuditItem) AuditItemListReader { return auditItemListReadonly(s) }
+
 // AuditSuccessReader provides read-only access to AuditSuccess.
 // Call Mutate() to obtain a mutable clone.
 type AuditSuccessReader interface {
 	GetMinLogSequence() uint64
 	GetMaxLogSequence() uint64
-	GetTransientAccounts() map[string]*AccountList
-	GetPurgedAccounts() map[string]*AccountList
+	GetTransientAccounts() AuditSuccess_TransientAccountsMapReader
+	GetPurgedAccounts() AuditSuccess_PurgedAccountsMapReader
 	Mutate() *AuditSuccess
 }
 
@@ -155,12 +227,12 @@ func (r *auditSuccessReadonly) GetMaxLogSequence() uint64 {
 	return r.v.GetMaxLogSequence()
 }
 
-func (r *auditSuccessReadonly) GetTransientAccounts() map[string]*AccountList {
-	return r.v.GetTransientAccounts()
+func (r *auditSuccessReadonly) GetTransientAccounts() AuditSuccess_TransientAccountsMapReader {
+	return auditSuccess_transientAccountsMapReadonly(r.v.GetTransientAccounts())
 }
 
-func (r *auditSuccessReadonly) GetPurgedAccounts() map[string]*AccountList {
-	return r.v.GetPurgedAccounts()
+func (r *auditSuccessReadonly) GetPurgedAccounts() AuditSuccess_PurgedAccountsMapReader {
+	return auditSuccess_purgedAccountsMapReadonly(r.v.GetPurgedAccounts())
 }
 
 func (r *auditSuccessReadonly) Mutate() *AuditSuccess {
@@ -180,6 +252,105 @@ func (m *AuditSuccess) Mutate() *AuditSuccess {
 	return m.CloneVT()
 }
 
+// AuditSuccessListReader provides read-only iteration over []*AuditSuccess.
+type AuditSuccessListReader interface {
+	Len() int
+	Get(i int) AuditSuccessReader
+	Range(yield func(int, AuditSuccessReader) bool)
+}
+
+type auditSuccessListReadonly []*AuditSuccess
+
+func (l auditSuccessListReadonly) Len() int { return len(l) }
+
+func (l auditSuccessListReadonly) Get(i int) AuditSuccessReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l auditSuccessListReadonly) Range(yield func(int, AuditSuccessReader) bool) {
+	for i, v := range l {
+		var r AuditSuccessReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAuditSuccessListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAuditSuccessListReader(s []*AuditSuccess) AuditSuccessListReader {
+	return auditSuccessListReadonly(s)
+}
+
+// AuditSuccess_TransientAccountsMapReader provides read-only access to AuditSuccess.TransientAccounts.
+type AuditSuccess_TransientAccountsMapReader interface {
+	Len() int
+	Get(k string) (AccountListReader, bool)
+	Range(yield func(string, AccountListReader) bool)
+}
+
+type auditSuccess_transientAccountsMapReadonly map[string]*AccountList
+
+func (m auditSuccess_transientAccountsMapReadonly) Len() int { return len(m) }
+
+func (m auditSuccess_transientAccountsMapReadonly) Get(k string) (AccountListReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m auditSuccess_transientAccountsMapReadonly) Range(yield func(string, AccountListReader) bool) {
+	for k, v := range m {
+		var r AccountListReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
+}
+
+// AuditSuccess_PurgedAccountsMapReader provides read-only access to AuditSuccess.PurgedAccounts.
+type AuditSuccess_PurgedAccountsMapReader interface {
+	Len() int
+	Get(k string) (AccountListReader, bool)
+	Range(yield func(string, AccountListReader) bool)
+}
+
+type auditSuccess_purgedAccountsMapReadonly map[string]*AccountList
+
+func (m auditSuccess_purgedAccountsMapReadonly) Len() int { return len(m) }
+
+func (m auditSuccess_purgedAccountsMapReadonly) Get(k string) (AccountListReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m auditSuccess_purgedAccountsMapReadonly) Range(yield func(string, AccountListReader) bool) {
+	for k, v := range m {
+		var r AccountListReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
+}
+
 // AccountListReader provides read-only access to AccountList.
 // Call Mutate() to obtain a mutable clone.
 type AccountListReader interface {
@@ -190,7 +361,7 @@ type AccountListReader interface {
 type accountListReadonly struct{ v *AccountList }
 
 func (r *accountListReadonly) GetAccounts() []string {
-	return r.v.GetAccounts()
+	return slices.Clone(r.v.GetAccounts())
 }
 
 func (r *accountListReadonly) Mutate() *AccountList {
@@ -210,12 +381,49 @@ func (m *AccountList) Mutate() *AccountList {
 	return m.CloneVT()
 }
 
+// AccountListListReader provides read-only iteration over []*AccountList.
+type AccountListListReader interface {
+	Len() int
+	Get(i int) AccountListReader
+	Range(yield func(int, AccountListReader) bool)
+}
+
+type accountListListReadonly []*AccountList
+
+func (l accountListListReadonly) Len() int { return len(l) }
+
+func (l accountListListReadonly) Get(i int) AccountListReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l accountListListReadonly) Range(yield func(int, AccountListReader) bool) {
+	for i, v := range l {
+		var r AccountListReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAccountListListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAccountListListReader(s []*AccountList) AccountListListReader {
+	return accountListListReadonly(s)
+}
+
 // AuditFailureReader provides read-only access to AuditFailure.
 // Call Mutate() to obtain a mutable clone.
 type AuditFailureReader interface {
 	GetErrorType() string
 	GetMessage() string
-	GetContext() map[string]string
+	GetContext() AuditFailure_ContextMapReader
 	Mutate() *AuditFailure
 }
 
@@ -229,8 +437,8 @@ func (r *auditFailureReadonly) GetMessage() string {
 	return r.v.GetMessage()
 }
 
-func (r *auditFailureReadonly) GetContext() map[string]string {
-	return r.v.GetContext()
+func (r *auditFailureReadonly) GetContext() AuditFailure_ContextMapReader {
+	return auditFailure_contextMapReadonly(r.v.GetContext())
 }
 
 func (r *auditFailureReadonly) Mutate() *AuditFailure {
@@ -248,4 +456,65 @@ func (m *AuditFailure) AsReader() AuditFailureReader {
 // Mutate returns a mutable deep clone of this AuditFailure.
 func (m *AuditFailure) Mutate() *AuditFailure {
 	return m.CloneVT()
+}
+
+// AuditFailureListReader provides read-only iteration over []*AuditFailure.
+type AuditFailureListReader interface {
+	Len() int
+	Get(i int) AuditFailureReader
+	Range(yield func(int, AuditFailureReader) bool)
+}
+
+type auditFailureListReadonly []*AuditFailure
+
+func (l auditFailureListReadonly) Len() int { return len(l) }
+
+func (l auditFailureListReadonly) Get(i int) AuditFailureReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l auditFailureListReadonly) Range(yield func(int, AuditFailureReader) bool) {
+	for i, v := range l {
+		var r AuditFailureReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAuditFailureListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAuditFailureListReader(s []*AuditFailure) AuditFailureListReader {
+	return auditFailureListReadonly(s)
+}
+
+// AuditFailure_ContextMapReader provides read-only access to AuditFailure.Context.
+type AuditFailure_ContextMapReader interface {
+	Len() int
+	Get(k string) (string, bool)
+	Range(yield func(string, string) bool)
+}
+
+type auditFailure_contextMapReadonly map[string]string
+
+func (m auditFailure_contextMapReadonly) Len() int { return len(m) }
+
+func (m auditFailure_contextMapReadonly) Get(k string) (string, bool) {
+	v, ok := m[k]
+	return v, ok
+}
+
+func (m auditFailure_contextMapReadonly) Range(yield func(string, string) bool) {
+	for k, v := range m {
+		if !yield(k, v) {
+			return
+		}
+	}
 }

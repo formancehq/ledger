@@ -5,6 +5,7 @@ package restorepb
 
 import (
 	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	slices "slices"
 )
 
 // StartDownloadBackupRequestReader provides read-only access to StartDownloadBackupRequest.
@@ -46,6 +47,43 @@ func (m *StartDownloadBackupRequest) Mutate() *StartDownloadBackupRequest {
 	return m.CloneVT()
 }
 
+// StartDownloadBackupRequestListReader provides read-only iteration over []*StartDownloadBackupRequest.
+type StartDownloadBackupRequestListReader interface {
+	Len() int
+	Get(i int) StartDownloadBackupRequestReader
+	Range(yield func(int, StartDownloadBackupRequestReader) bool)
+}
+
+type startDownloadBackupRequestListReadonly []*StartDownloadBackupRequest
+
+func (l startDownloadBackupRequestListReadonly) Len() int { return len(l) }
+
+func (l startDownloadBackupRequestListReadonly) Get(i int) StartDownloadBackupRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l startDownloadBackupRequestListReadonly) Range(yield func(int, StartDownloadBackupRequestReader) bool) {
+	for i, v := range l {
+		var r StartDownloadBackupRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewStartDownloadBackupRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewStartDownloadBackupRequestListReader(s []*StartDownloadBackupRequest) StartDownloadBackupRequestListReader {
+	return startDownloadBackupRequestListReadonly(s)
+}
+
 // StartDownloadBackupResponseReader provides read-only access to StartDownloadBackupResponse.
 // Call Mutate() to obtain a mutable clone.
 type StartDownloadBackupResponseReader interface {
@@ -76,6 +114,43 @@ func (m *StartDownloadBackupResponse) Mutate() *StartDownloadBackupResponse {
 	return m.CloneVT()
 }
 
+// StartDownloadBackupResponseListReader provides read-only iteration over []*StartDownloadBackupResponse.
+type StartDownloadBackupResponseListReader interface {
+	Len() int
+	Get(i int) StartDownloadBackupResponseReader
+	Range(yield func(int, StartDownloadBackupResponseReader) bool)
+}
+
+type startDownloadBackupResponseListReadonly []*StartDownloadBackupResponse
+
+func (l startDownloadBackupResponseListReadonly) Len() int { return len(l) }
+
+func (l startDownloadBackupResponseListReadonly) Get(i int) StartDownloadBackupResponseReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l startDownloadBackupResponseListReadonly) Range(yield func(int, StartDownloadBackupResponseReader) bool) {
+	for i, v := range l {
+		var r StartDownloadBackupResponseReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewStartDownloadBackupResponseListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewStartDownloadBackupResponseListReader(s []*StartDownloadBackupResponse) StartDownloadBackupResponseListReader {
+	return startDownloadBackupResponseListReadonly(s)
+}
+
 // GetDownloadStatusRequestReader provides read-only access to GetDownloadStatusRequest.
 // Call Mutate() to obtain a mutable clone.
 type GetDownloadStatusRequestReader interface {
@@ -104,6 +179,43 @@ func (m *GetDownloadStatusRequest) AsReader() GetDownloadStatusRequestReader {
 // Mutate returns a mutable deep clone of this GetDownloadStatusRequest.
 func (m *GetDownloadStatusRequest) Mutate() *GetDownloadStatusRequest {
 	return m.CloneVT()
+}
+
+// GetDownloadStatusRequestListReader provides read-only iteration over []*GetDownloadStatusRequest.
+type GetDownloadStatusRequestListReader interface {
+	Len() int
+	Get(i int) GetDownloadStatusRequestReader
+	Range(yield func(int, GetDownloadStatusRequestReader) bool)
+}
+
+type getDownloadStatusRequestListReadonly []*GetDownloadStatusRequest
+
+func (l getDownloadStatusRequestListReadonly) Len() int { return len(l) }
+
+func (l getDownloadStatusRequestListReadonly) Get(i int) GetDownloadStatusRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l getDownloadStatusRequestListReadonly) Range(yield func(int, GetDownloadStatusRequestReader) bool) {
+	for i, v := range l {
+		var r GetDownloadStatusRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewGetDownloadStatusRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewGetDownloadStatusRequestListReader(s []*GetDownloadStatusRequest) GetDownloadStatusRequestListReader {
+	return getDownloadStatusRequestListReadonly(s)
 }
 
 // GetDownloadStatusResponseReader provides read-only access to GetDownloadStatusResponse.
@@ -176,6 +288,43 @@ func (m *GetDownloadStatusResponse) Mutate() *GetDownloadStatusResponse {
 	return m.CloneVT()
 }
 
+// GetDownloadStatusResponseListReader provides read-only iteration over []*GetDownloadStatusResponse.
+type GetDownloadStatusResponseListReader interface {
+	Len() int
+	Get(i int) GetDownloadStatusResponseReader
+	Range(yield func(int, GetDownloadStatusResponseReader) bool)
+}
+
+type getDownloadStatusResponseListReadonly []*GetDownloadStatusResponse
+
+func (l getDownloadStatusResponseListReadonly) Len() int { return len(l) }
+
+func (l getDownloadStatusResponseListReadonly) Get(i int) GetDownloadStatusResponseReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l getDownloadStatusResponseListReadonly) Range(yield func(int, GetDownloadStatusResponseReader) bool) {
+	for i, v := range l {
+		var r GetDownloadStatusResponseReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewGetDownloadStatusResponseListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewGetDownloadStatusResponseListReader(s []*GetDownloadStatusResponse) GetDownloadStatusResponseListReader {
+	return getDownloadStatusResponseListReadonly(s)
+}
+
 // CancelDownloadRequestReader provides read-only access to CancelDownloadRequest.
 // Call Mutate() to obtain a mutable clone.
 type CancelDownloadRequestReader interface {
@@ -206,6 +355,43 @@ func (m *CancelDownloadRequest) Mutate() *CancelDownloadRequest {
 	return m.CloneVT()
 }
 
+// CancelDownloadRequestListReader provides read-only iteration over []*CancelDownloadRequest.
+type CancelDownloadRequestListReader interface {
+	Len() int
+	Get(i int) CancelDownloadRequestReader
+	Range(yield func(int, CancelDownloadRequestReader) bool)
+}
+
+type cancelDownloadRequestListReadonly []*CancelDownloadRequest
+
+func (l cancelDownloadRequestListReadonly) Len() int { return len(l) }
+
+func (l cancelDownloadRequestListReadonly) Get(i int) CancelDownloadRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l cancelDownloadRequestListReadonly) Range(yield func(int, CancelDownloadRequestReader) bool) {
+	for i, v := range l {
+		var r CancelDownloadRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewCancelDownloadRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewCancelDownloadRequestListReader(s []*CancelDownloadRequest) CancelDownloadRequestListReader {
+	return cancelDownloadRequestListReadonly(s)
+}
+
 // CancelDownloadResponseReader provides read-only access to CancelDownloadResponse.
 // Call Mutate() to obtain a mutable clone.
 type CancelDownloadResponseReader interface {
@@ -231,6 +417,43 @@ func (m *CancelDownloadResponse) Mutate() *CancelDownloadResponse {
 	return m.CloneVT()
 }
 
+// CancelDownloadResponseListReader provides read-only iteration over []*CancelDownloadResponse.
+type CancelDownloadResponseListReader interface {
+	Len() int
+	Get(i int) CancelDownloadResponseReader
+	Range(yield func(int, CancelDownloadResponseReader) bool)
+}
+
+type cancelDownloadResponseListReadonly []*CancelDownloadResponse
+
+func (l cancelDownloadResponseListReadonly) Len() int { return len(l) }
+
+func (l cancelDownloadResponseListReadonly) Get(i int) CancelDownloadResponseReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l cancelDownloadResponseListReadonly) Range(yield func(int, CancelDownloadResponseReader) bool) {
+	for i, v := range l {
+		var r CancelDownloadResponseReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewCancelDownloadResponseListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewCancelDownloadResponseListReader(s []*CancelDownloadResponse) CancelDownloadResponseListReader {
+	return cancelDownloadResponseListReadonly(s)
+}
+
 // ValidateRestoreRequestReader provides read-only access to ValidateRestoreRequest.
 // Call Mutate() to obtain a mutable clone.
 type ValidateRestoreRequestReader interface {
@@ -254,6 +477,43 @@ func (m *ValidateRestoreRequest) AsReader() ValidateRestoreRequestReader {
 // Mutate returns a mutable deep clone of this ValidateRestoreRequest.
 func (m *ValidateRestoreRequest) Mutate() *ValidateRestoreRequest {
 	return m.CloneVT()
+}
+
+// ValidateRestoreRequestListReader provides read-only iteration over []*ValidateRestoreRequest.
+type ValidateRestoreRequestListReader interface {
+	Len() int
+	Get(i int) ValidateRestoreRequestReader
+	Range(yield func(int, ValidateRestoreRequestReader) bool)
+}
+
+type validateRestoreRequestListReadonly []*ValidateRestoreRequest
+
+func (l validateRestoreRequestListReadonly) Len() int { return len(l) }
+
+func (l validateRestoreRequestListReadonly) Get(i int) ValidateRestoreRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l validateRestoreRequestListReadonly) Range(yield func(int, ValidateRestoreRequestReader) bool) {
+	for i, v := range l {
+		var r ValidateRestoreRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewValidateRestoreRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewValidateRestoreRequestListReader(s []*ValidateRestoreRequest) ValidateRestoreRequestListReader {
+	return validateRestoreRequestListReadonly(s)
 }
 
 // ValidateRestoreEventReader provides read-only access to ValidateRestoreEvent.
@@ -286,6 +546,43 @@ func (m *ValidateRestoreEvent) Mutate() *ValidateRestoreEvent {
 	return m.CloneVT()
 }
 
+// ValidateRestoreEventListReader provides read-only iteration over []*ValidateRestoreEvent.
+type ValidateRestoreEventListReader interface {
+	Len() int
+	Get(i int) ValidateRestoreEventReader
+	Range(yield func(int, ValidateRestoreEventReader) bool)
+}
+
+type validateRestoreEventListReadonly []*ValidateRestoreEvent
+
+func (l validateRestoreEventListReadonly) Len() int { return len(l) }
+
+func (l validateRestoreEventListReadonly) Get(i int) ValidateRestoreEventReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l validateRestoreEventListReadonly) Range(yield func(int, ValidateRestoreEventReader) bool) {
+	for i, v := range l {
+		var r ValidateRestoreEventReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewValidateRestoreEventListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewValidateRestoreEventListReader(s []*ValidateRestoreEvent) ValidateRestoreEventListReader {
+	return validateRestoreEventListReadonly(s)
+}
+
 // ValidateRestoreErrorReader provides read-only access to ValidateRestoreError.
 // Call Mutate() to obtain a mutable clone.
 type ValidateRestoreErrorReader interface {
@@ -314,6 +611,43 @@ func (m *ValidateRestoreError) AsReader() ValidateRestoreErrorReader {
 // Mutate returns a mutable deep clone of this ValidateRestoreError.
 func (m *ValidateRestoreError) Mutate() *ValidateRestoreError {
 	return m.CloneVT()
+}
+
+// ValidateRestoreErrorListReader provides read-only iteration over []*ValidateRestoreError.
+type ValidateRestoreErrorListReader interface {
+	Len() int
+	Get(i int) ValidateRestoreErrorReader
+	Range(yield func(int, ValidateRestoreErrorReader) bool)
+}
+
+type validateRestoreErrorListReadonly []*ValidateRestoreError
+
+func (l validateRestoreErrorListReadonly) Len() int { return len(l) }
+
+func (l validateRestoreErrorListReadonly) Get(i int) ValidateRestoreErrorReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l validateRestoreErrorListReadonly) Range(yield func(int, ValidateRestoreErrorReader) bool) {
+	for i, v := range l {
+		var r ValidateRestoreErrorReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewValidateRestoreErrorListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewValidateRestoreErrorListReader(s []*ValidateRestoreError) ValidateRestoreErrorListReader {
+	return validateRestoreErrorListReadonly(s)
 }
 
 // ValidateRestoreProgressReader provides read-only access to ValidateRestoreProgress.
@@ -351,6 +685,43 @@ func (m *ValidateRestoreProgress) Mutate() *ValidateRestoreProgress {
 	return m.CloneVT()
 }
 
+// ValidateRestoreProgressListReader provides read-only iteration over []*ValidateRestoreProgress.
+type ValidateRestoreProgressListReader interface {
+	Len() int
+	Get(i int) ValidateRestoreProgressReader
+	Range(yield func(int, ValidateRestoreProgressReader) bool)
+}
+
+type validateRestoreProgressListReadonly []*ValidateRestoreProgress
+
+func (l validateRestoreProgressListReadonly) Len() int { return len(l) }
+
+func (l validateRestoreProgressListReadonly) Get(i int) ValidateRestoreProgressReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l validateRestoreProgressListReadonly) Range(yield func(int, ValidateRestoreProgressReader) bool) {
+	for i, v := range l {
+		var r ValidateRestoreProgressReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewValidateRestoreProgressListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewValidateRestoreProgressListReader(s []*ValidateRestoreProgress) ValidateRestoreProgressListReader {
+	return validateRestoreProgressListReadonly(s)
+}
+
 // PreviewRestoreRequestReader provides read-only access to PreviewRestoreRequest.
 // Call Mutate() to obtain a mutable clone.
 type PreviewRestoreRequestReader interface {
@@ -374,6 +745,43 @@ func (m *PreviewRestoreRequest) AsReader() PreviewRestoreRequestReader {
 // Mutate returns a mutable deep clone of this PreviewRestoreRequest.
 func (m *PreviewRestoreRequest) Mutate() *PreviewRestoreRequest {
 	return m.CloneVT()
+}
+
+// PreviewRestoreRequestListReader provides read-only iteration over []*PreviewRestoreRequest.
+type PreviewRestoreRequestListReader interface {
+	Len() int
+	Get(i int) PreviewRestoreRequestReader
+	Range(yield func(int, PreviewRestoreRequestReader) bool)
+}
+
+type previewRestoreRequestListReadonly []*PreviewRestoreRequest
+
+func (l previewRestoreRequestListReadonly) Len() int { return len(l) }
+
+func (l previewRestoreRequestListReadonly) Get(i int) PreviewRestoreRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l previewRestoreRequestListReadonly) Range(yield func(int, PreviewRestoreRequestReader) bool) {
+	for i, v := range l {
+		var r PreviewRestoreRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewPreviewRestoreRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewPreviewRestoreRequestListReader(s []*PreviewRestoreRequest) PreviewRestoreRequestListReader {
+	return previewRestoreRequestListReadonly(s)
 }
 
 // PreviewRestoreResponseReader provides read-only access to PreviewRestoreResponse.
@@ -410,7 +818,7 @@ func (r *previewRestoreResponseReadonly) GetLedgerCount() uint32 {
 }
 
 func (r *previewRestoreResponseReadonly) GetLedgerNames() []string {
-	return r.v.GetLedgerNames()
+	return slices.Clone(r.v.GetLedgerNames())
 }
 
 func (r *previewRestoreResponseReadonly) GetFirstLogSequence() uint64 {
@@ -446,6 +854,43 @@ func (m *PreviewRestoreResponse) Mutate() *PreviewRestoreResponse {
 	return m.CloneVT()
 }
 
+// PreviewRestoreResponseListReader provides read-only iteration over []*PreviewRestoreResponse.
+type PreviewRestoreResponseListReader interface {
+	Len() int
+	Get(i int) PreviewRestoreResponseReader
+	Range(yield func(int, PreviewRestoreResponseReader) bool)
+}
+
+type previewRestoreResponseListReadonly []*PreviewRestoreResponse
+
+func (l previewRestoreResponseListReadonly) Len() int { return len(l) }
+
+func (l previewRestoreResponseListReadonly) Get(i int) PreviewRestoreResponseReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l previewRestoreResponseListReadonly) Range(yield func(int, PreviewRestoreResponseReader) bool) {
+	for i, v := range l {
+		var r PreviewRestoreResponseReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewPreviewRestoreResponseListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewPreviewRestoreResponseListReader(s []*PreviewRestoreResponse) PreviewRestoreResponseListReader {
+	return previewRestoreResponseListReadonly(s)
+}
+
 // FinalizeRestoreRequestReader provides read-only access to FinalizeRestoreRequest.
 // Call Mutate() to obtain a mutable clone.
 type FinalizeRestoreRequestReader interface {
@@ -469,6 +914,43 @@ func (m *FinalizeRestoreRequest) AsReader() FinalizeRestoreRequestReader {
 // Mutate returns a mutable deep clone of this FinalizeRestoreRequest.
 func (m *FinalizeRestoreRequest) Mutate() *FinalizeRestoreRequest {
 	return m.CloneVT()
+}
+
+// FinalizeRestoreRequestListReader provides read-only iteration over []*FinalizeRestoreRequest.
+type FinalizeRestoreRequestListReader interface {
+	Len() int
+	Get(i int) FinalizeRestoreRequestReader
+	Range(yield func(int, FinalizeRestoreRequestReader) bool)
+}
+
+type finalizeRestoreRequestListReadonly []*FinalizeRestoreRequest
+
+func (l finalizeRestoreRequestListReadonly) Len() int { return len(l) }
+
+func (l finalizeRestoreRequestListReadonly) Get(i int) FinalizeRestoreRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l finalizeRestoreRequestListReadonly) Range(yield func(int, FinalizeRestoreRequestReader) bool) {
+	for i, v := range l {
+		var r FinalizeRestoreRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewFinalizeRestoreRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewFinalizeRestoreRequestListReader(s []*FinalizeRestoreRequest) FinalizeRestoreRequestListReader {
+	return finalizeRestoreRequestListReadonly(s)
 }
 
 // FinalizeRestoreResponseReader provides read-only access to FinalizeRestoreResponse.
@@ -499,4 +981,41 @@ func (m *FinalizeRestoreResponse) AsReader() FinalizeRestoreResponseReader {
 // Mutate returns a mutable deep clone of this FinalizeRestoreResponse.
 func (m *FinalizeRestoreResponse) Mutate() *FinalizeRestoreResponse {
 	return m.CloneVT()
+}
+
+// FinalizeRestoreResponseListReader provides read-only iteration over []*FinalizeRestoreResponse.
+type FinalizeRestoreResponseListReader interface {
+	Len() int
+	Get(i int) FinalizeRestoreResponseReader
+	Range(yield func(int, FinalizeRestoreResponseReader) bool)
+}
+
+type finalizeRestoreResponseListReadonly []*FinalizeRestoreResponse
+
+func (l finalizeRestoreResponseListReadonly) Len() int { return len(l) }
+
+func (l finalizeRestoreResponseListReadonly) Get(i int) FinalizeRestoreResponseReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l finalizeRestoreResponseListReadonly) Range(yield func(int, FinalizeRestoreResponseReader) bool) {
+	for i, v := range l {
+		var r FinalizeRestoreResponseReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewFinalizeRestoreResponseListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewFinalizeRestoreResponseListReader(s []*FinalizeRestoreResponse) FinalizeRestoreResponseListReader {
+	return finalizeRestoreResponseListReadonly(s)
 }

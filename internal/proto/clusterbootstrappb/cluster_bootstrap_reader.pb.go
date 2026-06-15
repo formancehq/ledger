@@ -28,17 +28,54 @@ func (m *GetPeersRequest) Mutate() *GetPeersRequest {
 	return m.CloneVT()
 }
 
+// GetPeersRequestListReader provides read-only iteration over []*GetPeersRequest.
+type GetPeersRequestListReader interface {
+	Len() int
+	Get(i int) GetPeersRequestReader
+	Range(yield func(int, GetPeersRequestReader) bool)
+}
+
+type getPeersRequestListReadonly []*GetPeersRequest
+
+func (l getPeersRequestListReadonly) Len() int { return len(l) }
+
+func (l getPeersRequestListReadonly) Get(i int) GetPeersRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l getPeersRequestListReadonly) Range(yield func(int, GetPeersRequestReader) bool) {
+	for i, v := range l {
+		var r GetPeersRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewGetPeersRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewGetPeersRequestListReader(s []*GetPeersRequest) GetPeersRequestListReader {
+	return getPeersRequestListReadonly(s)
+}
+
 // GetPeersResponseReader provides read-only access to GetPeersResponse.
 // Call Mutate() to obtain a mutable clone.
 type GetPeersResponseReader interface {
-	GetPeers() []*PeerInfo
+	GetPeers() PeerInfoListReader
 	Mutate() *GetPeersResponse
 }
 
 type getPeersResponseReadonly struct{ v *GetPeersResponse }
 
-func (r *getPeersResponseReadonly) GetPeers() []*PeerInfo {
-	return r.v.GetPeers()
+func (r *getPeersResponseReadonly) GetPeers() PeerInfoListReader {
+	return NewPeerInfoListReader(r.v.GetPeers())
 }
 
 func (r *getPeersResponseReadonly) Mutate() *GetPeersResponse {
@@ -56,6 +93,43 @@ func (m *GetPeersResponse) AsReader() GetPeersResponseReader {
 // Mutate returns a mutable deep clone of this GetPeersResponse.
 func (m *GetPeersResponse) Mutate() *GetPeersResponse {
 	return m.CloneVT()
+}
+
+// GetPeersResponseListReader provides read-only iteration over []*GetPeersResponse.
+type GetPeersResponseListReader interface {
+	Len() int
+	Get(i int) GetPeersResponseReader
+	Range(yield func(int, GetPeersResponseReader) bool)
+}
+
+type getPeersResponseListReadonly []*GetPeersResponse
+
+func (l getPeersResponseListReadonly) Len() int { return len(l) }
+
+func (l getPeersResponseListReadonly) Get(i int) GetPeersResponseReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l getPeersResponseListReadonly) Range(yield func(int, GetPeersResponseReader) bool) {
+	for i, v := range l {
+		var r GetPeersResponseReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewGetPeersResponseListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewGetPeersResponseListReader(s []*GetPeersResponse) GetPeersResponseListReader {
+	return getPeersResponseListReadonly(s)
 }
 
 // PeerInfoReader provides read-only access to PeerInfo.
@@ -98,6 +172,41 @@ func (m *PeerInfo) Mutate() *PeerInfo {
 	return m.CloneVT()
 }
 
+// PeerInfoListReader provides read-only iteration over []*PeerInfo.
+type PeerInfoListReader interface {
+	Len() int
+	Get(i int) PeerInfoReader
+	Range(yield func(int, PeerInfoReader) bool)
+}
+
+type peerInfoListReadonly []*PeerInfo
+
+func (l peerInfoListReadonly) Len() int { return len(l) }
+
+func (l peerInfoListReadonly) Get(i int) PeerInfoReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l peerInfoListReadonly) Range(yield func(int, PeerInfoReader) bool) {
+	for i, v := range l {
+		var r PeerInfoReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewPeerInfoListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewPeerInfoListReader(s []*PeerInfo) PeerInfoListReader { return peerInfoListReadonly(s) }
+
 // JoinAsLearnerRequestReader provides read-only access to JoinAsLearnerRequest.
 // Call Mutate() to obtain a mutable clone.
 type JoinAsLearnerRequestReader interface {
@@ -138,6 +247,43 @@ func (m *JoinAsLearnerRequest) Mutate() *JoinAsLearnerRequest {
 	return m.CloneVT()
 }
 
+// JoinAsLearnerRequestListReader provides read-only iteration over []*JoinAsLearnerRequest.
+type JoinAsLearnerRequestListReader interface {
+	Len() int
+	Get(i int) JoinAsLearnerRequestReader
+	Range(yield func(int, JoinAsLearnerRequestReader) bool)
+}
+
+type joinAsLearnerRequestListReadonly []*JoinAsLearnerRequest
+
+func (l joinAsLearnerRequestListReadonly) Len() int { return len(l) }
+
+func (l joinAsLearnerRequestListReadonly) Get(i int) JoinAsLearnerRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l joinAsLearnerRequestListReadonly) Range(yield func(int, JoinAsLearnerRequestReader) bool) {
+	for i, v := range l {
+		var r JoinAsLearnerRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewJoinAsLearnerRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewJoinAsLearnerRequestListReader(s []*JoinAsLearnerRequest) JoinAsLearnerRequestListReader {
+	return joinAsLearnerRequestListReadonly(s)
+}
+
 // JoinAsLearnerResponseReader provides read-only access to JoinAsLearnerResponse.
 // Call Mutate() to obtain a mutable clone.
 type JoinAsLearnerResponseReader interface {
@@ -161,4 +307,41 @@ func (m *JoinAsLearnerResponse) AsReader() JoinAsLearnerResponseReader {
 // Mutate returns a mutable deep clone of this JoinAsLearnerResponse.
 func (m *JoinAsLearnerResponse) Mutate() *JoinAsLearnerResponse {
 	return m.CloneVT()
+}
+
+// JoinAsLearnerResponseListReader provides read-only iteration over []*JoinAsLearnerResponse.
+type JoinAsLearnerResponseListReader interface {
+	Len() int
+	Get(i int) JoinAsLearnerResponseReader
+	Range(yield func(int, JoinAsLearnerResponseReader) bool)
+}
+
+type joinAsLearnerResponseListReadonly []*JoinAsLearnerResponse
+
+func (l joinAsLearnerResponseListReadonly) Len() int { return len(l) }
+
+func (l joinAsLearnerResponseListReadonly) Get(i int) JoinAsLearnerResponseReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l joinAsLearnerResponseListReadonly) Range(yield func(int, JoinAsLearnerResponseReader) bool) {
+	for i, v := range l {
+		var r JoinAsLearnerResponseReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewJoinAsLearnerResponseListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewJoinAsLearnerResponseListReader(s []*JoinAsLearnerResponse) JoinAsLearnerResponseListReader {
+	return joinAsLearnerResponseListReadonly(s)
 }

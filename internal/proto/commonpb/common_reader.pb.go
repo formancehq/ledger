@@ -4,8 +4,10 @@
 package commonpb
 
 import (
+	bytes "bytes"
 	signaturepb "github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 	uint256 "github.com/holiman/uint256"
+	slices "slices"
 )
 
 // TimestampReader provides read-only access to Timestamp.
@@ -38,6 +40,41 @@ func (m *Timestamp) Mutate() *Timestamp {
 	return m.CloneVT()
 }
 
+// TimestampListReader provides read-only iteration over []*Timestamp.
+type TimestampListReader interface {
+	Len() int
+	Get(i int) TimestampReader
+	Range(yield func(int, TimestampReader) bool)
+}
+
+type timestampListReadonly []*Timestamp
+
+func (l timestampListReadonly) Len() int { return len(l) }
+
+func (l timestampListReadonly) Get(i int) TimestampReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l timestampListReadonly) Range(yield func(int, TimestampReader) bool) {
+	for i, v := range l {
+		var r TimestampReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewTimestampListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewTimestampListReader(s []*Timestamp) TimestampListReader { return timestampListReadonly(s) }
+
 // NullValueReader provides read-only access to NullValue.
 // Call Mutate() to obtain a mutable clone.
 type NullValueReader interface {
@@ -67,6 +104,41 @@ func (m *NullValue) AsReader() NullValueReader {
 func (m *NullValue) Mutate() *NullValue {
 	return m.CloneVT()
 }
+
+// NullValueListReader provides read-only iteration over []*NullValue.
+type NullValueListReader interface {
+	Len() int
+	Get(i int) NullValueReader
+	Range(yield func(int, NullValueReader) bool)
+}
+
+type nullValueListReadonly []*NullValue
+
+func (l nullValueListReadonly) Len() int { return len(l) }
+
+func (l nullValueListReadonly) Get(i int) NullValueReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l nullValueListReadonly) Range(yield func(int, NullValueReader) bool) {
+	for i, v := range l {
+		var r NullValueReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewNullValueListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewNullValueListReader(s []*NullValue) NullValueListReader { return nullValueListReadonly(s) }
 
 // MetadataValueReader provides read-only access to MetadataValue.
 // Call Mutate() to obtain a mutable clone.
@@ -98,17 +170,54 @@ func (m *MetadataValue) Mutate() *MetadataValue {
 	return m.CloneVT()
 }
 
+// MetadataValueListReader provides read-only iteration over []*MetadataValue.
+type MetadataValueListReader interface {
+	Len() int
+	Get(i int) MetadataValueReader
+	Range(yield func(int, MetadataValueReader) bool)
+}
+
+type metadataValueListReadonly []*MetadataValue
+
+func (l metadataValueListReadonly) Len() int { return len(l) }
+
+func (l metadataValueListReadonly) Get(i int) MetadataValueReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l metadataValueListReadonly) Range(yield func(int, MetadataValueReader) bool) {
+	for i, v := range l {
+		var r MetadataValueReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewMetadataValueListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewMetadataValueListReader(s []*MetadataValue) MetadataValueListReader {
+	return metadataValueListReadonly(s)
+}
+
 // MetadataMapReader provides read-only access to MetadataMap.
 // Call Mutate() to obtain a mutable clone.
 type MetadataMapReader interface {
-	GetValues() map[string]*MetadataValue
+	GetValues() MetadataMap_ValuesMapReader
 	Mutate() *MetadataMap
 }
 
 type metadataMapReadonly struct{ v *MetadataMap }
 
-func (r *metadataMapReadonly) GetValues() map[string]*MetadataValue {
-	return r.v.GetValues()
+func (r *metadataMapReadonly) GetValues() MetadataMap_ValuesMapReader {
+	return metadataMap_valuesMapReadonly(r.v.GetValues())
 }
 
 func (r *metadataMapReadonly) Mutate() *MetadataMap {
@@ -126,6 +235,74 @@ func (m *MetadataMap) AsReader() MetadataMapReader {
 // Mutate returns a mutable deep clone of this MetadataMap.
 func (m *MetadataMap) Mutate() *MetadataMap {
 	return m.CloneVT()
+}
+
+// MetadataMapListReader provides read-only iteration over []*MetadataMap.
+type MetadataMapListReader interface {
+	Len() int
+	Get(i int) MetadataMapReader
+	Range(yield func(int, MetadataMapReader) bool)
+}
+
+type metadataMapListReadonly []*MetadataMap
+
+func (l metadataMapListReadonly) Len() int { return len(l) }
+
+func (l metadataMapListReadonly) Get(i int) MetadataMapReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l metadataMapListReadonly) Range(yield func(int, MetadataMapReader) bool) {
+	for i, v := range l {
+		var r MetadataMapReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewMetadataMapListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewMetadataMapListReader(s []*MetadataMap) MetadataMapListReader {
+	return metadataMapListReadonly(s)
+}
+
+// MetadataMap_ValuesMapReader provides read-only access to MetadataMap.Values.
+type MetadataMap_ValuesMapReader interface {
+	Len() int
+	Get(k string) (MetadataValueReader, bool)
+	Range(yield func(string, MetadataValueReader) bool)
+}
+
+type metadataMap_valuesMapReadonly map[string]*MetadataValue
+
+func (m metadataMap_valuesMapReadonly) Len() int { return len(m) }
+
+func (m metadataMap_valuesMapReadonly) Get(k string) (MetadataValueReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m metadataMap_valuesMapReadonly) Range(yield func(string, MetadataValueReader) bool) {
+	for k, v := range m {
+		var r MetadataValueReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
 }
 
 // ParameterValueReader provides read-only access to ParameterValue.
@@ -156,6 +333,43 @@ func (m *ParameterValue) AsReader() ParameterValueReader {
 // Mutate returns a mutable deep clone of this ParameterValue.
 func (m *ParameterValue) Mutate() *ParameterValue {
 	return m.CloneVT()
+}
+
+// ParameterValueListReader provides read-only iteration over []*ParameterValue.
+type ParameterValueListReader interface {
+	Len() int
+	Get(i int) ParameterValueReader
+	Range(yield func(int, ParameterValueReader) bool)
+}
+
+type parameterValueListReadonly []*ParameterValue
+
+func (l parameterValueListReadonly) Len() int { return len(l) }
+
+func (l parameterValueListReadonly) Get(i int) ParameterValueReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l parameterValueListReadonly) Range(yield func(int, ParameterValueReader) bool) {
+	for i, v := range l {
+		var r ParameterValueReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewParameterValueListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewParameterValueListReader(s []*ParameterValue) ParameterValueListReader {
+	return parameterValueListReadonly(s)
 }
 
 // Uint256Reader provides read-only access to Uint256.
@@ -213,6 +427,41 @@ func (m *Uint256) Mutate() *Uint256 {
 	return m.CloneVT()
 }
 
+// Uint256ListReader provides read-only iteration over []*Uint256.
+type Uint256ListReader interface {
+	Len() int
+	Get(i int) Uint256Reader
+	Range(yield func(int, Uint256Reader) bool)
+}
+
+type uint256ListReadonly []*Uint256
+
+func (l uint256ListReadonly) Len() int { return len(l) }
+
+func (l uint256ListReadonly) Get(i int) Uint256Reader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l uint256ListReadonly) Range(yield func(int, Uint256Reader) bool) {
+	for i, v := range l {
+		var r Uint256Reader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewUint256ListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewUint256ListReader(s []*Uint256) Uint256ListReader { return uint256ListReadonly(s) }
+
 // PostingReader provides read-only access to Posting.
 // Call Mutate() to obtain a mutable clone.
 type PostingReader interface {
@@ -262,11 +511,46 @@ func (m *Posting) Mutate() *Posting {
 	return m.CloneVT()
 }
 
+// PostingListReader provides read-only iteration over []*Posting.
+type PostingListReader interface {
+	Len() int
+	Get(i int) PostingReader
+	Range(yield func(int, PostingReader) bool)
+}
+
+type postingListReadonly []*Posting
+
+func (l postingListReadonly) Len() int { return len(l) }
+
+func (l postingListReadonly) Get(i int) PostingReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l postingListReadonly) Range(yield func(int, PostingReader) bool) {
+	for i, v := range l {
+		var r PostingReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewPostingListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewPostingListReader(s []*Posting) PostingListReader { return postingListReadonly(s) }
+
 // TransactionReader provides read-only access to Transaction.
 // Call Mutate() to obtain a mutable clone.
 type TransactionReader interface {
-	GetPostings() []*Posting
-	GetMetadata() map[string]*MetadataValue
+	GetPostings() PostingListReader
+	GetMetadata() Transaction_MetadataMapReader
 	GetTimestamp() TimestampReader
 	GetReference() string
 	GetId() uint64
@@ -279,12 +563,12 @@ type TransactionReader interface {
 
 type transactionReadonly struct{ v *Transaction }
 
-func (r *transactionReadonly) GetPostings() []*Posting {
-	return r.v.GetPostings()
+func (r *transactionReadonly) GetPostings() PostingListReader {
+	return NewPostingListReader(r.v.GetPostings())
 }
 
-func (r *transactionReadonly) GetMetadata() map[string]*MetadataValue {
-	return r.v.GetMetadata()
+func (r *transactionReadonly) GetMetadata() Transaction_MetadataMapReader {
+	return transaction_metadataMapReadonly(r.v.GetMetadata())
 }
 
 func (r *transactionReadonly) GetTimestamp() TimestampReader {
@@ -348,11 +632,79 @@ func (m *Transaction) Mutate() *Transaction {
 	return m.CloneVT()
 }
 
+// TransactionListReader provides read-only iteration over []*Transaction.
+type TransactionListReader interface {
+	Len() int
+	Get(i int) TransactionReader
+	Range(yield func(int, TransactionReader) bool)
+}
+
+type transactionListReadonly []*Transaction
+
+func (l transactionListReadonly) Len() int { return len(l) }
+
+func (l transactionListReadonly) Get(i int) TransactionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l transactionListReadonly) Range(yield func(int, TransactionReader) bool) {
+	for i, v := range l {
+		var r TransactionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewTransactionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewTransactionListReader(s []*Transaction) TransactionListReader {
+	return transactionListReadonly(s)
+}
+
+// Transaction_MetadataMapReader provides read-only access to Transaction.Metadata.
+type Transaction_MetadataMapReader interface {
+	Len() int
+	Get(k string) (MetadataValueReader, bool)
+	Range(yield func(string, MetadataValueReader) bool)
+}
+
+type transaction_metadataMapReadonly map[string]*MetadataValue
+
+func (m transaction_metadataMapReadonly) Len() int { return len(m) }
+
+func (m transaction_metadataMapReadonly) Get(k string) (MetadataValueReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m transaction_metadataMapReadonly) Range(yield func(string, MetadataValueReader) bool) {
+	for k, v := range m {
+		var r MetadataValueReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
+}
+
 // ScriptReader provides read-only access to Script.
 // Call Mutate() to obtain a mutable clone.
 type ScriptReader interface {
 	GetPlain() string
-	GetVars() map[string]string
+	GetVars() Script_VarsMapReader
 	GetContentHash() []byte
 	Mutate() *Script
 }
@@ -363,12 +715,12 @@ func (r *scriptReadonly) GetPlain() string {
 	return r.v.GetPlain()
 }
 
-func (r *scriptReadonly) GetVars() map[string]string {
-	return r.v.GetVars()
+func (r *scriptReadonly) GetVars() Script_VarsMapReader {
+	return script_varsMapReadonly(r.v.GetVars())
 }
 
 func (r *scriptReadonly) GetContentHash() []byte {
-	return r.v.GetContentHash()
+	return bytes.Clone(r.v.GetContentHash())
 }
 
 func (r *scriptReadonly) Mutate() *Script {
@@ -386,6 +738,65 @@ func (m *Script) AsReader() ScriptReader {
 // Mutate returns a mutable deep clone of this Script.
 func (m *Script) Mutate() *Script {
 	return m.CloneVT()
+}
+
+// ScriptListReader provides read-only iteration over []*Script.
+type ScriptListReader interface {
+	Len() int
+	Get(i int) ScriptReader
+	Range(yield func(int, ScriptReader) bool)
+}
+
+type scriptListReadonly []*Script
+
+func (l scriptListReadonly) Len() int { return len(l) }
+
+func (l scriptListReadonly) Get(i int) ScriptReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l scriptListReadonly) Range(yield func(int, ScriptReader) bool) {
+	for i, v := range l {
+		var r ScriptReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewScriptListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewScriptListReader(s []*Script) ScriptListReader { return scriptListReadonly(s) }
+
+// Script_VarsMapReader provides read-only access to Script.Vars.
+type Script_VarsMapReader interface {
+	Len() int
+	Get(k string) (string, bool)
+	Range(yield func(string, string) bool)
+}
+
+type script_varsMapReadonly map[string]string
+
+func (m script_varsMapReadonly) Len() int { return len(m) }
+
+func (m script_varsMapReadonly) Get(k string) (string, bool) {
+	v, ok := m[k]
+	return v, ok
+}
+
+func (m script_varsMapReadonly) Range(yield func(string, string) bool) {
+	for k, v := range m {
+		if !yield(k, v) {
+			return
+		}
+	}
 }
 
 // VolumesReader provides read-only access to Volumes.
@@ -422,6 +833,41 @@ func (m *Volumes) AsReader() VolumesReader {
 func (m *Volumes) Mutate() *Volumes {
 	return m.CloneVT()
 }
+
+// VolumesListReader provides read-only iteration over []*Volumes.
+type VolumesListReader interface {
+	Len() int
+	Get(i int) VolumesReader
+	Range(yield func(int, VolumesReader) bool)
+}
+
+type volumesListReadonly []*Volumes
+
+func (l volumesListReadonly) Len() int { return len(l) }
+
+func (l volumesListReadonly) Get(i int) VolumesReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l volumesListReadonly) Range(yield func(int, VolumesReader) bool) {
+	for i, v := range l {
+		var r VolumesReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewVolumesListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewVolumesListReader(s []*Volumes) VolumesListReader { return volumesListReadonly(s) }
 
 // VolumesWithBalanceReader provides read-only access to VolumesWithBalance.
 // Call Mutate() to obtain a mutable clone.
@@ -463,17 +909,54 @@ func (m *VolumesWithBalance) Mutate() *VolumesWithBalance {
 	return m.CloneVT()
 }
 
+// VolumesWithBalanceListReader provides read-only iteration over []*VolumesWithBalance.
+type VolumesWithBalanceListReader interface {
+	Len() int
+	Get(i int) VolumesWithBalanceReader
+	Range(yield func(int, VolumesWithBalanceReader) bool)
+}
+
+type volumesWithBalanceListReadonly []*VolumesWithBalance
+
+func (l volumesWithBalanceListReadonly) Len() int { return len(l) }
+
+func (l volumesWithBalanceListReadonly) Get(i int) VolumesWithBalanceReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l volumesWithBalanceListReadonly) Range(yield func(int, VolumesWithBalanceReader) bool) {
+	for i, v := range l {
+		var r VolumesWithBalanceReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewVolumesWithBalanceListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewVolumesWithBalanceListReader(s []*VolumesWithBalance) VolumesWithBalanceListReader {
+	return volumesWithBalanceListReadonly(s)
+}
+
 // VolumesByAssetsReader provides read-only access to VolumesByAssets.
 // Call Mutate() to obtain a mutable clone.
 type VolumesByAssetsReader interface {
-	GetVolumes() map[string]*Volumes
+	GetVolumes() VolumesByAssets_VolumesMapReader
 	Mutate() *VolumesByAssets
 }
 
 type volumesByAssetsReadonly struct{ v *VolumesByAssets }
 
-func (r *volumesByAssetsReadonly) GetVolumes() map[string]*Volumes {
-	return r.v.GetVolumes()
+func (r *volumesByAssetsReadonly) GetVolumes() VolumesByAssets_VolumesMapReader {
+	return volumesByAssets_volumesMapReadonly(r.v.GetVolumes())
 }
 
 func (r *volumesByAssetsReadonly) Mutate() *VolumesByAssets {
@@ -493,17 +976,85 @@ func (m *VolumesByAssets) Mutate() *VolumesByAssets {
 	return m.CloneVT()
 }
 
+// VolumesByAssetsListReader provides read-only iteration over []*VolumesByAssets.
+type VolumesByAssetsListReader interface {
+	Len() int
+	Get(i int) VolumesByAssetsReader
+	Range(yield func(int, VolumesByAssetsReader) bool)
+}
+
+type volumesByAssetsListReadonly []*VolumesByAssets
+
+func (l volumesByAssetsListReadonly) Len() int { return len(l) }
+
+func (l volumesByAssetsListReadonly) Get(i int) VolumesByAssetsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l volumesByAssetsListReadonly) Range(yield func(int, VolumesByAssetsReader) bool) {
+	for i, v := range l {
+		var r VolumesByAssetsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewVolumesByAssetsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewVolumesByAssetsListReader(s []*VolumesByAssets) VolumesByAssetsListReader {
+	return volumesByAssetsListReadonly(s)
+}
+
+// VolumesByAssets_VolumesMapReader provides read-only access to VolumesByAssets.Volumes.
+type VolumesByAssets_VolumesMapReader interface {
+	Len() int
+	Get(k string) (VolumesReader, bool)
+	Range(yield func(string, VolumesReader) bool)
+}
+
+type volumesByAssets_volumesMapReadonly map[string]*Volumes
+
+func (m volumesByAssets_volumesMapReadonly) Len() int { return len(m) }
+
+func (m volumesByAssets_volumesMapReadonly) Get(k string) (VolumesReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m volumesByAssets_volumesMapReadonly) Range(yield func(string, VolumesReader) bool) {
+	for k, v := range m {
+		var r VolumesReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
+}
+
 // PostCommitVolumesReader provides read-only access to PostCommitVolumes.
 // Call Mutate() to obtain a mutable clone.
 type PostCommitVolumesReader interface {
-	GetVolumesByAccount() map[string]*VolumesByAssets
+	GetVolumesByAccount() PostCommitVolumes_VolumesByAccountMapReader
 	Mutate() *PostCommitVolumes
 }
 
 type postCommitVolumesReadonly struct{ v *PostCommitVolumes }
 
-func (r *postCommitVolumesReadonly) GetVolumesByAccount() map[string]*VolumesByAssets {
-	return r.v.GetVolumesByAccount()
+func (r *postCommitVolumesReadonly) GetVolumesByAccount() PostCommitVolumes_VolumesByAccountMapReader {
+	return postCommitVolumes_volumesByAccountMapReadonly(r.v.GetVolumesByAccount())
 }
 
 func (r *postCommitVolumesReadonly) Mutate() *PostCommitVolumes {
@@ -523,15 +1074,83 @@ func (m *PostCommitVolumes) Mutate() *PostCommitVolumes {
 	return m.CloneVT()
 }
 
+// PostCommitVolumesListReader provides read-only iteration over []*PostCommitVolumes.
+type PostCommitVolumesListReader interface {
+	Len() int
+	Get(i int) PostCommitVolumesReader
+	Range(yield func(int, PostCommitVolumesReader) bool)
+}
+
+type postCommitVolumesListReadonly []*PostCommitVolumes
+
+func (l postCommitVolumesListReadonly) Len() int { return len(l) }
+
+func (l postCommitVolumesListReadonly) Get(i int) PostCommitVolumesReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l postCommitVolumesListReadonly) Range(yield func(int, PostCommitVolumesReader) bool) {
+	for i, v := range l {
+		var r PostCommitVolumesReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewPostCommitVolumesListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewPostCommitVolumesListReader(s []*PostCommitVolumes) PostCommitVolumesListReader {
+	return postCommitVolumesListReadonly(s)
+}
+
+// PostCommitVolumes_VolumesByAccountMapReader provides read-only access to PostCommitVolumes.VolumesByAccount.
+type PostCommitVolumes_VolumesByAccountMapReader interface {
+	Len() int
+	Get(k string) (VolumesByAssetsReader, bool)
+	Range(yield func(string, VolumesByAssetsReader) bool)
+}
+
+type postCommitVolumes_volumesByAccountMapReadonly map[string]*VolumesByAssets
+
+func (m postCommitVolumes_volumesByAccountMapReadonly) Len() int { return len(m) }
+
+func (m postCommitVolumes_volumesByAccountMapReadonly) Get(k string) (VolumesByAssetsReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m postCommitVolumes_volumesByAccountMapReadonly) Range(yield func(string, VolumesByAssetsReader) bool) {
+	for k, v := range m {
+		var r VolumesByAssetsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
+}
+
 // AccountReader provides read-only access to Account.
 // Call Mutate() to obtain a mutable clone.
 type AccountReader interface {
 	GetAddress() string
-	GetMetadata() map[string]*MetadataValue
+	GetMetadata() Account_MetadataMapReader
 	GetFirstUsage() TimestampReader
 	GetInsertionDate() TimestampReader
 	GetUpdatedAt() TimestampReader
-	GetVolumes() map[string]*VolumesWithBalance
+	GetVolumes() Account_VolumesMapReader
 	Mutate() *Account
 }
 
@@ -541,8 +1160,8 @@ func (r *accountReadonly) GetAddress() string {
 	return r.v.GetAddress()
 }
 
-func (r *accountReadonly) GetMetadata() map[string]*MetadataValue {
-	return r.v.GetMetadata()
+func (r *accountReadonly) GetMetadata() Account_MetadataMapReader {
+	return account_metadataMapReadonly(r.v.GetMetadata())
 }
 
 func (r *accountReadonly) GetFirstUsage() TimestampReader {
@@ -569,8 +1188,8 @@ func (r *accountReadonly) GetUpdatedAt() TimestampReader {
 	return v.AsReader()
 }
 
-func (r *accountReadonly) GetVolumes() map[string]*VolumesWithBalance {
-	return r.v.GetVolumes()
+func (r *accountReadonly) GetVolumes() Account_VolumesMapReader {
+	return account_volumesMapReadonly(r.v.GetVolumes())
 }
 
 func (r *accountReadonly) Mutate() *Account {
@@ -588,6 +1207,103 @@ func (m *Account) AsReader() AccountReader {
 // Mutate returns a mutable deep clone of this Account.
 func (m *Account) Mutate() *Account {
 	return m.CloneVT()
+}
+
+// AccountListReader provides read-only iteration over []*Account.
+type AccountListReader interface {
+	Len() int
+	Get(i int) AccountReader
+	Range(yield func(int, AccountReader) bool)
+}
+
+type accountListReadonly []*Account
+
+func (l accountListReadonly) Len() int { return len(l) }
+
+func (l accountListReadonly) Get(i int) AccountReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l accountListReadonly) Range(yield func(int, AccountReader) bool) {
+	for i, v := range l {
+		var r AccountReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAccountListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAccountListReader(s []*Account) AccountListReader { return accountListReadonly(s) }
+
+// Account_MetadataMapReader provides read-only access to Account.Metadata.
+type Account_MetadataMapReader interface {
+	Len() int
+	Get(k string) (MetadataValueReader, bool)
+	Range(yield func(string, MetadataValueReader) bool)
+}
+
+type account_metadataMapReadonly map[string]*MetadataValue
+
+func (m account_metadataMapReadonly) Len() int { return len(m) }
+
+func (m account_metadataMapReadonly) Get(k string) (MetadataValueReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m account_metadataMapReadonly) Range(yield func(string, MetadataValueReader) bool) {
+	for k, v := range m {
+		var r MetadataValueReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
+}
+
+// Account_VolumesMapReader provides read-only access to Account.Volumes.
+type Account_VolumesMapReader interface {
+	Len() int
+	Get(k string) (VolumesWithBalanceReader, bool)
+	Range(yield func(string, VolumesWithBalanceReader) bool)
+}
+
+type account_volumesMapReadonly map[string]*VolumesWithBalance
+
+func (m account_volumesMapReadonly) Len() int { return len(m) }
+
+func (m account_volumesMapReadonly) Get(k string) (VolumesWithBalanceReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m account_volumesMapReadonly) Range(yield func(string, VolumesWithBalanceReader) bool) {
+	for k, v := range m {
+		var r VolumesWithBalanceReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
 }
 
 // TargetAccountReader provides read-only access to TargetAccount.
@@ -620,6 +1336,43 @@ func (m *TargetAccount) Mutate() *TargetAccount {
 	return m.CloneVT()
 }
 
+// TargetAccountListReader provides read-only iteration over []*TargetAccount.
+type TargetAccountListReader interface {
+	Len() int
+	Get(i int) TargetAccountReader
+	Range(yield func(int, TargetAccountReader) bool)
+}
+
+type targetAccountListReadonly []*TargetAccount
+
+func (l targetAccountListReadonly) Len() int { return len(l) }
+
+func (l targetAccountListReadonly) Get(i int) TargetAccountReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l targetAccountListReadonly) Range(yield func(int, TargetAccountReader) bool) {
+	for i, v := range l {
+		var r TargetAccountReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewTargetAccountListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewTargetAccountListReader(s []*TargetAccount) TargetAccountListReader {
+	return targetAccountListReadonly(s)
+}
+
 // TargetTransactionReader provides read-only access to TargetTransaction.
 // Call Mutate() to obtain a mutable clone.
 type TargetTransactionReader interface {
@@ -648,6 +1401,43 @@ func (m *TargetTransaction) AsReader() TargetTransactionReader {
 // Mutate returns a mutable deep clone of this TargetTransaction.
 func (m *TargetTransaction) Mutate() *TargetTransaction {
 	return m.CloneVT()
+}
+
+// TargetTransactionListReader provides read-only iteration over []*TargetTransaction.
+type TargetTransactionListReader interface {
+	Len() int
+	Get(i int) TargetTransactionReader
+	Range(yield func(int, TargetTransactionReader) bool)
+}
+
+type targetTransactionListReadonly []*TargetTransaction
+
+func (l targetTransactionListReadonly) Len() int { return len(l) }
+
+func (l targetTransactionListReadonly) Get(i int) TargetTransactionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l targetTransactionListReadonly) Range(yield func(int, TargetTransactionReader) bool) {
+	for i, v := range l {
+		var r TargetTransactionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewTargetTransactionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewTargetTransactionListReader(s []*TargetTransaction) TargetTransactionListReader {
+	return targetTransactionListReadonly(s)
 }
 
 // TargetReader provides read-only access to Target.
@@ -679,6 +1469,41 @@ func (m *Target) AsReader() TargetReader {
 func (m *Target) Mutate() *Target {
 	return m.CloneVT()
 }
+
+// TargetListReader provides read-only iteration over []*Target.
+type TargetListReader interface {
+	Len() int
+	Get(i int) TargetReader
+	Range(yield func(int, TargetReader) bool)
+}
+
+type targetListReadonly []*Target
+
+func (l targetListReadonly) Len() int { return len(l) }
+
+func (l targetListReadonly) Get(i int) TargetReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l targetListReadonly) Range(yield func(int, TargetReader) bool) {
+	for i, v := range l {
+		var r TargetReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewTargetListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewTargetListReader(s []*Target) TargetListReader { return targetListReadonly(s) }
 
 // MetadataFieldSchemaReader provides read-only access to MetadataFieldSchema.
 // Call Mutate() to obtain a mutable clone.
@@ -715,27 +1540,64 @@ func (m *MetadataFieldSchema) Mutate() *MetadataFieldSchema {
 	return m.CloneVT()
 }
 
+// MetadataFieldSchemaListReader provides read-only iteration over []*MetadataFieldSchema.
+type MetadataFieldSchemaListReader interface {
+	Len() int
+	Get(i int) MetadataFieldSchemaReader
+	Range(yield func(int, MetadataFieldSchemaReader) bool)
+}
+
+type metadataFieldSchemaListReadonly []*MetadataFieldSchema
+
+func (l metadataFieldSchemaListReadonly) Len() int { return len(l) }
+
+func (l metadataFieldSchemaListReadonly) Get(i int) MetadataFieldSchemaReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l metadataFieldSchemaListReadonly) Range(yield func(int, MetadataFieldSchemaReader) bool) {
+	for i, v := range l {
+		var r MetadataFieldSchemaReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewMetadataFieldSchemaListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewMetadataFieldSchemaListReader(s []*MetadataFieldSchema) MetadataFieldSchemaListReader {
+	return metadataFieldSchemaListReadonly(s)
+}
+
 // MetadataSchemaReader provides read-only access to MetadataSchema.
 // Call Mutate() to obtain a mutable clone.
 type MetadataSchemaReader interface {
-	GetAccountFields() map[string]*MetadataFieldSchema
-	GetTransactionFields() map[string]*MetadataFieldSchema
-	GetLedgerFields() map[string]*MetadataFieldSchema
+	GetAccountFields() MetadataSchema_AccountFieldsMapReader
+	GetTransactionFields() MetadataSchema_TransactionFieldsMapReader
+	GetLedgerFields() MetadataSchema_LedgerFieldsMapReader
 	Mutate() *MetadataSchema
 }
 
 type metadataSchemaReadonly struct{ v *MetadataSchema }
 
-func (r *metadataSchemaReadonly) GetAccountFields() map[string]*MetadataFieldSchema {
-	return r.v.GetAccountFields()
+func (r *metadataSchemaReadonly) GetAccountFields() MetadataSchema_AccountFieldsMapReader {
+	return metadataSchema_accountFieldsMapReadonly(r.v.GetAccountFields())
 }
 
-func (r *metadataSchemaReadonly) GetTransactionFields() map[string]*MetadataFieldSchema {
-	return r.v.GetTransactionFields()
+func (r *metadataSchemaReadonly) GetTransactionFields() MetadataSchema_TransactionFieldsMapReader {
+	return metadataSchema_transactionFieldsMapReadonly(r.v.GetTransactionFields())
 }
 
-func (r *metadataSchemaReadonly) GetLedgerFields() map[string]*MetadataFieldSchema {
-	return r.v.GetLedgerFields()
+func (r *metadataSchemaReadonly) GetLedgerFields() MetadataSchema_LedgerFieldsMapReader {
+	return metadataSchema_ledgerFieldsMapReadonly(r.v.GetLedgerFields())
 }
 
 func (r *metadataSchemaReadonly) Mutate() *MetadataSchema {
@@ -753,6 +1615,136 @@ func (m *MetadataSchema) AsReader() MetadataSchemaReader {
 // Mutate returns a mutable deep clone of this MetadataSchema.
 func (m *MetadataSchema) Mutate() *MetadataSchema {
 	return m.CloneVT()
+}
+
+// MetadataSchemaListReader provides read-only iteration over []*MetadataSchema.
+type MetadataSchemaListReader interface {
+	Len() int
+	Get(i int) MetadataSchemaReader
+	Range(yield func(int, MetadataSchemaReader) bool)
+}
+
+type metadataSchemaListReadonly []*MetadataSchema
+
+func (l metadataSchemaListReadonly) Len() int { return len(l) }
+
+func (l metadataSchemaListReadonly) Get(i int) MetadataSchemaReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l metadataSchemaListReadonly) Range(yield func(int, MetadataSchemaReader) bool) {
+	for i, v := range l {
+		var r MetadataSchemaReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewMetadataSchemaListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewMetadataSchemaListReader(s []*MetadataSchema) MetadataSchemaListReader {
+	return metadataSchemaListReadonly(s)
+}
+
+// MetadataSchema_AccountFieldsMapReader provides read-only access to MetadataSchema.AccountFields.
+type MetadataSchema_AccountFieldsMapReader interface {
+	Len() int
+	Get(k string) (MetadataFieldSchemaReader, bool)
+	Range(yield func(string, MetadataFieldSchemaReader) bool)
+}
+
+type metadataSchema_accountFieldsMapReadonly map[string]*MetadataFieldSchema
+
+func (m metadataSchema_accountFieldsMapReadonly) Len() int { return len(m) }
+
+func (m metadataSchema_accountFieldsMapReadonly) Get(k string) (MetadataFieldSchemaReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m metadataSchema_accountFieldsMapReadonly) Range(yield func(string, MetadataFieldSchemaReader) bool) {
+	for k, v := range m {
+		var r MetadataFieldSchemaReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
+}
+
+// MetadataSchema_TransactionFieldsMapReader provides read-only access to MetadataSchema.TransactionFields.
+type MetadataSchema_TransactionFieldsMapReader interface {
+	Len() int
+	Get(k string) (MetadataFieldSchemaReader, bool)
+	Range(yield func(string, MetadataFieldSchemaReader) bool)
+}
+
+type metadataSchema_transactionFieldsMapReadonly map[string]*MetadataFieldSchema
+
+func (m metadataSchema_transactionFieldsMapReadonly) Len() int { return len(m) }
+
+func (m metadataSchema_transactionFieldsMapReadonly) Get(k string) (MetadataFieldSchemaReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m metadataSchema_transactionFieldsMapReadonly) Range(yield func(string, MetadataFieldSchemaReader) bool) {
+	for k, v := range m {
+		var r MetadataFieldSchemaReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
+}
+
+// MetadataSchema_LedgerFieldsMapReader provides read-only access to MetadataSchema.LedgerFields.
+type MetadataSchema_LedgerFieldsMapReader interface {
+	Len() int
+	Get(k string) (MetadataFieldSchemaReader, bool)
+	Range(yield func(string, MetadataFieldSchemaReader) bool)
+}
+
+type metadataSchema_ledgerFieldsMapReadonly map[string]*MetadataFieldSchema
+
+func (m metadataSchema_ledgerFieldsMapReadonly) Len() int { return len(m) }
+
+func (m metadataSchema_ledgerFieldsMapReadonly) Get(k string) (MetadataFieldSchemaReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m metadataSchema_ledgerFieldsMapReadonly) Range(yield func(string, MetadataFieldSchemaReader) bool) {
+	for k, v := range m {
+		var r MetadataFieldSchemaReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
 }
 
 // SetMetadataFieldTypeCommandReader provides read-only access to SetMetadataFieldTypeCommand.
@@ -795,6 +1787,43 @@ func (m *SetMetadataFieldTypeCommand) Mutate() *SetMetadataFieldTypeCommand {
 	return m.CloneVT()
 }
 
+// SetMetadataFieldTypeCommandListReader provides read-only iteration over []*SetMetadataFieldTypeCommand.
+type SetMetadataFieldTypeCommandListReader interface {
+	Len() int
+	Get(i int) SetMetadataFieldTypeCommandReader
+	Range(yield func(int, SetMetadataFieldTypeCommandReader) bool)
+}
+
+type setMetadataFieldTypeCommandListReadonly []*SetMetadataFieldTypeCommand
+
+func (l setMetadataFieldTypeCommandListReadonly) Len() int { return len(l) }
+
+func (l setMetadataFieldTypeCommandListReadonly) Get(i int) SetMetadataFieldTypeCommandReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l setMetadataFieldTypeCommandListReadonly) Range(yield func(int, SetMetadataFieldTypeCommandReader) bool) {
+	for i, v := range l {
+		var r SetMetadataFieldTypeCommandReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSetMetadataFieldTypeCommandListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSetMetadataFieldTypeCommandListReader(s []*SetMetadataFieldTypeCommand) SetMetadataFieldTypeCommandListReader {
+	return setMetadataFieldTypeCommandListReadonly(s)
+}
+
 // MetadataIndexIDReader provides read-only access to MetadataIndexID.
 // Call Mutate() to obtain a mutable clone.
 type MetadataIndexIDReader interface {
@@ -830,6 +1859,43 @@ func (m *MetadataIndexID) Mutate() *MetadataIndexID {
 	return m.CloneVT()
 }
 
+// MetadataIndexIDListReader provides read-only iteration over []*MetadataIndexID.
+type MetadataIndexIDListReader interface {
+	Len() int
+	Get(i int) MetadataIndexIDReader
+	Range(yield func(int, MetadataIndexIDReader) bool)
+}
+
+type metadataIndexIDListReadonly []*MetadataIndexID
+
+func (l metadataIndexIDListReadonly) Len() int { return len(l) }
+
+func (l metadataIndexIDListReadonly) Get(i int) MetadataIndexIDReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l metadataIndexIDListReadonly) Range(yield func(int, MetadataIndexIDReader) bool) {
+	for i, v := range l {
+		var r MetadataIndexIDReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewMetadataIndexIDListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewMetadataIndexIDListReader(s []*MetadataIndexID) MetadataIndexIDListReader {
+	return metadataIndexIDListReadonly(s)
+}
+
 // IndexIDReader provides read-only access to IndexID.
 // Call Mutate() to obtain a mutable clone.
 type IndexIDReader interface {
@@ -859,6 +1925,41 @@ func (m *IndexID) AsReader() IndexIDReader {
 func (m *IndexID) Mutate() *IndexID {
 	return m.CloneVT()
 }
+
+// IndexIDListReader provides read-only iteration over []*IndexID.
+type IndexIDListReader interface {
+	Len() int
+	Get(i int) IndexIDReader
+	Range(yield func(int, IndexIDReader) bool)
+}
+
+type indexIDListReadonly []*IndexID
+
+func (l indexIDListReadonly) Len() int { return len(l) }
+
+func (l indexIDListReadonly) Get(i int) IndexIDReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l indexIDListReadonly) Range(yield func(int, IndexIDReader) bool) {
+	for i, v := range l {
+		var r IndexIDReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewIndexIDListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewIndexIDListReader(s []*IndexID) IndexIDListReader { return indexIDListReadonly(s) }
 
 // IndexReader provides read-only access to Index.
 // Call Mutate() to obtain a mutable clone.
@@ -922,6 +2023,41 @@ func (m *Index) Mutate() *Index {
 	return m.CloneVT()
 }
 
+// IndexListReader provides read-only iteration over []*Index.
+type IndexListReader interface {
+	Len() int
+	Get(i int) IndexReader
+	Range(yield func(int, IndexReader) bool)
+}
+
+type indexListReadonly []*Index
+
+func (l indexListReadonly) Len() int { return len(l) }
+
+func (l indexListReadonly) Get(i int) IndexReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l indexListReadonly) Range(yield func(int, IndexReader) bool) {
+	for i, v := range l {
+		var r IndexReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewIndexListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewIndexListReader(s []*Index) IndexListReader { return indexListReadonly(s) }
+
 // IdempotencyReader provides read-only access to Idempotency.
 // Call Mutate() to obtain a mutable clone.
 type IdempotencyReader interface {
@@ -952,6 +2088,43 @@ func (m *Idempotency) Mutate() *Idempotency {
 	return m.CloneVT()
 }
 
+// IdempotencyListReader provides read-only iteration over []*Idempotency.
+type IdempotencyListReader interface {
+	Len() int
+	Get(i int) IdempotencyReader
+	Range(yield func(int, IdempotencyReader) bool)
+}
+
+type idempotencyListReadonly []*Idempotency
+
+func (l idempotencyListReadonly) Len() int { return len(l) }
+
+func (l idempotencyListReadonly) Get(i int) IdempotencyReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l idempotencyListReadonly) Range(yield func(int, IdempotencyReader) bool) {
+	for i, v := range l {
+		var r IdempotencyReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewIdempotencyListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewIdempotencyListReader(s []*Idempotency) IdempotencyListReader {
+	return idempotencyListReadonly(s)
+}
+
 // IdempotencyEntryReader provides read-only access to IdempotencyEntry.
 // Call Mutate() to obtain a mutable clone.
 type IdempotencyEntryReader interface {
@@ -963,7 +2136,7 @@ type IdempotencyEntryReader interface {
 type idempotencyEntryReadonly struct{ v *IdempotencyEntry }
 
 func (r *idempotencyEntryReadonly) GetHash() []byte {
-	return r.v.GetHash()
+	return bytes.Clone(r.v.GetHash())
 }
 
 func (r *idempotencyEntryReadonly) GetLogId() uint64 {
@@ -985,6 +2158,43 @@ func (m *IdempotencyEntry) AsReader() IdempotencyEntryReader {
 // Mutate returns a mutable deep clone of this IdempotencyEntry.
 func (m *IdempotencyEntry) Mutate() *IdempotencyEntry {
 	return m.CloneVT()
+}
+
+// IdempotencyEntryListReader provides read-only iteration over []*IdempotencyEntry.
+type IdempotencyEntryListReader interface {
+	Len() int
+	Get(i int) IdempotencyEntryReader
+	Range(yield func(int, IdempotencyEntryReader) bool)
+}
+
+type idempotencyEntryListReadonly []*IdempotencyEntry
+
+func (l idempotencyEntryListReadonly) Len() int { return len(l) }
+
+func (l idempotencyEntryListReadonly) Get(i int) IdempotencyEntryReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l idempotencyEntryListReadonly) Range(yield func(int, IdempotencyEntryReader) bool) {
+	for i, v := range l {
+		var r IdempotencyEntryReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewIdempotencyEntryListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewIdempotencyEntryListReader(s []*IdempotencyEntry) IdempotencyEntryListReader {
+	return idempotencyEntryListReadonly(s)
 }
 
 // LogReader provides read-only access to Log.
@@ -1058,6 +2268,41 @@ func (m *Log) Mutate() *Log {
 	return m.CloneVT()
 }
 
+// LogListReader provides read-only iteration over []*Log.
+type LogListReader interface {
+	Len() int
+	Get(i int) LogReader
+	Range(yield func(int, LogReader) bool)
+}
+
+type logListReadonly []*Log
+
+func (l logListReadonly) Len() int { return len(l) }
+
+func (l logListReadonly) Get(i int) LogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l logListReadonly) Range(yield func(int, LogReader) bool) {
+	for i, v := range l {
+		var r LogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewLogListReader(s []*Log) LogListReader { return logListReadonly(s) }
+
 // LogPayloadReader provides read-only access to LogPayload.
 // Call Mutate() to obtain a mutable clone.
 type LogPayloadReader interface {
@@ -1087,6 +2332,41 @@ func (m *LogPayload) AsReader() LogPayloadReader {
 func (m *LogPayload) Mutate() *LogPayload {
 	return m.CloneVT()
 }
+
+// LogPayloadListReader provides read-only iteration over []*LogPayload.
+type LogPayloadListReader interface {
+	Len() int
+	Get(i int) LogPayloadReader
+	Range(yield func(int, LogPayloadReader) bool)
+}
+
+type logPayloadListReadonly []*LogPayload
+
+func (l logPayloadListReadonly) Len() int { return len(l) }
+
+func (l logPayloadListReadonly) Get(i int) LogPayloadReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l logPayloadListReadonly) Range(yield func(int, LogPayloadReader) bool) {
+	for i, v := range l {
+		var r LogPayloadReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewLogPayloadListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewLogPayloadListReader(s []*LogPayload) LogPayloadListReader { return logPayloadListReadonly(s) }
 
 // PromotedLedgerLogReader provides read-only access to PromotedLedgerLog.
 // Call Mutate() to obtain a mutable clone.
@@ -1118,6 +2398,43 @@ func (m *PromotedLedgerLog) Mutate() *PromotedLedgerLog {
 	return m.CloneVT()
 }
 
+// PromotedLedgerLogListReader provides read-only iteration over []*PromotedLedgerLog.
+type PromotedLedgerLogListReader interface {
+	Len() int
+	Get(i int) PromotedLedgerLogReader
+	Range(yield func(int, PromotedLedgerLogReader) bool)
+}
+
+type promotedLedgerLogListReadonly []*PromotedLedgerLog
+
+func (l promotedLedgerLogListReadonly) Len() int { return len(l) }
+
+func (l promotedLedgerLogListReadonly) Get(i int) PromotedLedgerLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l promotedLedgerLogListReadonly) Range(yield func(int, PromotedLedgerLogReader) bool) {
+	for i, v := range l {
+		var r PromotedLedgerLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewPromotedLedgerLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewPromotedLedgerLogListReader(s []*PromotedLedgerLog) PromotedLedgerLogListReader {
+	return promotedLedgerLogListReadonly(s)
+}
+
 // RegisteredSigningKeyLogReader provides read-only access to RegisteredSigningKeyLog.
 // Call Mutate() to obtain a mutable clone.
 type RegisteredSigningKeyLogReader interface {
@@ -1134,7 +2451,7 @@ func (r *registeredSigningKeyLogReadonly) GetKeyId() string {
 }
 
 func (r *registeredSigningKeyLogReadonly) GetPublicKey() []byte {
-	return r.v.GetPublicKey()
+	return bytes.Clone(r.v.GetPublicKey())
 }
 
 func (r *registeredSigningKeyLogReadonly) GetParentKeyId() string {
@@ -1158,6 +2475,43 @@ func (m *RegisteredSigningKeyLog) Mutate() *RegisteredSigningKeyLog {
 	return m.CloneVT()
 }
 
+// RegisteredSigningKeyLogListReader provides read-only iteration over []*RegisteredSigningKeyLog.
+type RegisteredSigningKeyLogListReader interface {
+	Len() int
+	Get(i int) RegisteredSigningKeyLogReader
+	Range(yield func(int, RegisteredSigningKeyLogReader) bool)
+}
+
+type registeredSigningKeyLogListReadonly []*RegisteredSigningKeyLog
+
+func (l registeredSigningKeyLogListReadonly) Len() int { return len(l) }
+
+func (l registeredSigningKeyLogListReadonly) Get(i int) RegisteredSigningKeyLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l registeredSigningKeyLogListReadonly) Range(yield func(int, RegisteredSigningKeyLogReader) bool) {
+	for i, v := range l {
+		var r RegisteredSigningKeyLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewRegisteredSigningKeyLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewRegisteredSigningKeyLogListReader(s []*RegisteredSigningKeyLog) RegisteredSigningKeyLogListReader {
+	return registeredSigningKeyLogListReadonly(s)
+}
+
 // RevokedSigningKeyLogReader provides read-only access to RevokedSigningKeyLog.
 // Call Mutate() to obtain a mutable clone.
 type RevokedSigningKeyLogReader interface {
@@ -1173,7 +2527,7 @@ func (r *revokedSigningKeyLogReadonly) GetKeyId() string {
 }
 
 func (r *revokedSigningKeyLogReadonly) GetCascadedKeyIds() []string {
-	return r.v.GetCascadedKeyIds()
+	return slices.Clone(r.v.GetCascadedKeyIds())
 }
 
 func (r *revokedSigningKeyLogReadonly) Mutate() *RevokedSigningKeyLog {
@@ -1193,6 +2547,43 @@ func (m *RevokedSigningKeyLog) Mutate() *RevokedSigningKeyLog {
 	return m.CloneVT()
 }
 
+// RevokedSigningKeyLogListReader provides read-only iteration over []*RevokedSigningKeyLog.
+type RevokedSigningKeyLogListReader interface {
+	Len() int
+	Get(i int) RevokedSigningKeyLogReader
+	Range(yield func(int, RevokedSigningKeyLogReader) bool)
+}
+
+type revokedSigningKeyLogListReadonly []*RevokedSigningKeyLog
+
+func (l revokedSigningKeyLogListReadonly) Len() int { return len(l) }
+
+func (l revokedSigningKeyLogListReadonly) Get(i int) RevokedSigningKeyLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l revokedSigningKeyLogListReadonly) Range(yield func(int, RevokedSigningKeyLogReader) bool) {
+	for i, v := range l {
+		var r RevokedSigningKeyLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewRevokedSigningKeyLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewRevokedSigningKeyLogListReader(s []*RevokedSigningKeyLog) RevokedSigningKeyLogListReader {
+	return revokedSigningKeyLogListReadonly(s)
+}
+
 // SigningKeyReader provides read-only access to SigningKey.
 // Call Mutate() to obtain a mutable clone.
 type SigningKeyReader interface {
@@ -1209,7 +2600,7 @@ func (r *signingKeyReadonly) GetKeyId() string {
 }
 
 func (r *signingKeyReadonly) GetPublicKey() []byte {
-	return r.v.GetPublicKey()
+	return bytes.Clone(r.v.GetPublicKey())
 }
 
 func (r *signingKeyReadonly) GetParentKeyId() string {
@@ -1232,6 +2623,41 @@ func (m *SigningKey) AsReader() SigningKeyReader {
 func (m *SigningKey) Mutate() *SigningKey {
 	return m.CloneVT()
 }
+
+// SigningKeyListReader provides read-only iteration over []*SigningKey.
+type SigningKeyListReader interface {
+	Len() int
+	Get(i int) SigningKeyReader
+	Range(yield func(int, SigningKeyReader) bool)
+}
+
+type signingKeyListReadonly []*SigningKey
+
+func (l signingKeyListReadonly) Len() int { return len(l) }
+
+func (l signingKeyListReadonly) Get(i int) SigningKeyReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l signingKeyListReadonly) Range(yield func(int, SigningKeyReader) bool) {
+	for i, v := range l {
+		var r SigningKeyReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSigningKeyListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSigningKeyListReader(s []*SigningKey) SigningKeyListReader { return signingKeyListReadonly(s) }
 
 // SetSigningConfigLogReader provides read-only access to SetSigningConfigLog.
 // Call Mutate() to obtain a mutable clone.
@@ -1261,6 +2687,43 @@ func (m *SetSigningConfigLog) AsReader() SetSigningConfigLogReader {
 // Mutate returns a mutable deep clone of this SetSigningConfigLog.
 func (m *SetSigningConfigLog) Mutate() *SetSigningConfigLog {
 	return m.CloneVT()
+}
+
+// SetSigningConfigLogListReader provides read-only iteration over []*SetSigningConfigLog.
+type SetSigningConfigLogListReader interface {
+	Len() int
+	Get(i int) SetSigningConfigLogReader
+	Range(yield func(int, SetSigningConfigLogReader) bool)
+}
+
+type setSigningConfigLogListReadonly []*SetSigningConfigLog
+
+func (l setSigningConfigLogListReadonly) Len() int { return len(l) }
+
+func (l setSigningConfigLogListReadonly) Get(i int) SetSigningConfigLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l setSigningConfigLogListReadonly) Range(yield func(int, SetSigningConfigLogReader) bool) {
+	for i, v := range l {
+		var r SetSigningConfigLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSetSigningConfigLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSetSigningConfigLogListReader(s []*SetSigningConfigLog) SetSigningConfigLogListReader {
+	return setSigningConfigLogListReadonly(s)
 }
 
 // AddedEventsSinkLogReader provides read-only access to AddedEventsSinkLog.
@@ -1297,6 +2760,43 @@ func (m *AddedEventsSinkLog) Mutate() *AddedEventsSinkLog {
 	return m.CloneVT()
 }
 
+// AddedEventsSinkLogListReader provides read-only iteration over []*AddedEventsSinkLog.
+type AddedEventsSinkLogListReader interface {
+	Len() int
+	Get(i int) AddedEventsSinkLogReader
+	Range(yield func(int, AddedEventsSinkLogReader) bool)
+}
+
+type addedEventsSinkLogListReadonly []*AddedEventsSinkLog
+
+func (l addedEventsSinkLogListReadonly) Len() int { return len(l) }
+
+func (l addedEventsSinkLogListReadonly) Get(i int) AddedEventsSinkLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l addedEventsSinkLogListReadonly) Range(yield func(int, AddedEventsSinkLogReader) bool) {
+	for i, v := range l {
+		var r AddedEventsSinkLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAddedEventsSinkLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAddedEventsSinkLogListReader(s []*AddedEventsSinkLog) AddedEventsSinkLogListReader {
+	return addedEventsSinkLogListReadonly(s)
+}
+
 // RemovedEventsSinkLogReader provides read-only access to RemovedEventsSinkLog.
 // Call Mutate() to obtain a mutable clone.
 type RemovedEventsSinkLogReader interface {
@@ -1327,6 +2827,43 @@ func (m *RemovedEventsSinkLog) Mutate() *RemovedEventsSinkLog {
 	return m.CloneVT()
 }
 
+// RemovedEventsSinkLogListReader provides read-only iteration over []*RemovedEventsSinkLog.
+type RemovedEventsSinkLogListReader interface {
+	Len() int
+	Get(i int) RemovedEventsSinkLogReader
+	Range(yield func(int, RemovedEventsSinkLogReader) bool)
+}
+
+type removedEventsSinkLogListReadonly []*RemovedEventsSinkLog
+
+func (l removedEventsSinkLogListReadonly) Len() int { return len(l) }
+
+func (l removedEventsSinkLogListReadonly) Get(i int) RemovedEventsSinkLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l removedEventsSinkLogListReadonly) Range(yield func(int, RemovedEventsSinkLogReader) bool) {
+	for i, v := range l {
+		var r RemovedEventsSinkLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewRemovedEventsSinkLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewRemovedEventsSinkLogListReader(s []*RemovedEventsSinkLog) RemovedEventsSinkLogListReader {
+	return removedEventsSinkLogListReadonly(s)
+}
+
 // SetMaintenanceModeLogReader provides read-only access to SetMaintenanceModeLog.
 // Call Mutate() to obtain a mutable clone.
 type SetMaintenanceModeLogReader interface {
@@ -1355,6 +2892,43 @@ func (m *SetMaintenanceModeLog) AsReader() SetMaintenanceModeLogReader {
 // Mutate returns a mutable deep clone of this SetMaintenanceModeLog.
 func (m *SetMaintenanceModeLog) Mutate() *SetMaintenanceModeLog {
 	return m.CloneVT()
+}
+
+// SetMaintenanceModeLogListReader provides read-only iteration over []*SetMaintenanceModeLog.
+type SetMaintenanceModeLogListReader interface {
+	Len() int
+	Get(i int) SetMaintenanceModeLogReader
+	Range(yield func(int, SetMaintenanceModeLogReader) bool)
+}
+
+type setMaintenanceModeLogListReadonly []*SetMaintenanceModeLog
+
+func (l setMaintenanceModeLogListReadonly) Len() int { return len(l) }
+
+func (l setMaintenanceModeLogListReadonly) Get(i int) SetMaintenanceModeLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l setMaintenanceModeLogListReadonly) Range(yield func(int, SetMaintenanceModeLogReader) bool) {
+	for i, v := range l {
+		var r SetMaintenanceModeLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSetMaintenanceModeLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSetMaintenanceModeLogListReader(s []*SetMaintenanceModeLog) SetMaintenanceModeLogListReader {
+	return setMaintenanceModeLogListReadonly(s)
 }
 
 // BloomTypeConfigReader provides read-only access to BloomTypeConfig.
@@ -1390,6 +2964,43 @@ func (m *BloomTypeConfig) AsReader() BloomTypeConfigReader {
 // Mutate returns a mutable deep clone of this BloomTypeConfig.
 func (m *BloomTypeConfig) Mutate() *BloomTypeConfig {
 	return m.CloneVT()
+}
+
+// BloomTypeConfigListReader provides read-only iteration over []*BloomTypeConfig.
+type BloomTypeConfigListReader interface {
+	Len() int
+	Get(i int) BloomTypeConfigReader
+	Range(yield func(int, BloomTypeConfigReader) bool)
+}
+
+type bloomTypeConfigListReadonly []*BloomTypeConfig
+
+func (l bloomTypeConfigListReadonly) Len() int { return len(l) }
+
+func (l bloomTypeConfigListReadonly) Get(i int) BloomTypeConfigReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l bloomTypeConfigListReadonly) Range(yield func(int, BloomTypeConfigReader) bool) {
+	for i, v := range l {
+		var r BloomTypeConfigReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewBloomTypeConfigListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewBloomTypeConfigListReader(s []*BloomTypeConfig) BloomTypeConfigListReader {
+	return bloomTypeConfigListReadonly(s)
 }
 
 // ClusterConfigReader provides read-only access to ClusterConfig.
@@ -1517,6 +3128,43 @@ func (m *ClusterConfig) Mutate() *ClusterConfig {
 	return m.CloneVT()
 }
 
+// ClusterConfigListReader provides read-only iteration over []*ClusterConfig.
+type ClusterConfigListReader interface {
+	Len() int
+	Get(i int) ClusterConfigReader
+	Range(yield func(int, ClusterConfigReader) bool)
+}
+
+type clusterConfigListReadonly []*ClusterConfig
+
+func (l clusterConfigListReadonly) Len() int { return len(l) }
+
+func (l clusterConfigListReadonly) Get(i int) ClusterConfigReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l clusterConfigListReadonly) Range(yield func(int, ClusterConfigReader) bool) {
+	for i, v := range l {
+		var r ClusterConfigReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewClusterConfigListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewClusterConfigListReader(s []*ClusterConfig) ClusterConfigListReader {
+	return clusterConfigListReadonly(s)
+}
+
 // PersistedClusterStateReader provides read-only access to PersistedClusterState.
 // Call Mutate() to obtain a mutable clone.
 type PersistedClusterStateReader interface {
@@ -1556,6 +3204,43 @@ func (m *PersistedClusterState) Mutate() *PersistedClusterState {
 	return m.CloneVT()
 }
 
+// PersistedClusterStateListReader provides read-only iteration over []*PersistedClusterState.
+type PersistedClusterStateListReader interface {
+	Len() int
+	Get(i int) PersistedClusterStateReader
+	Range(yield func(int, PersistedClusterStateReader) bool)
+}
+
+type persistedClusterStateListReadonly []*PersistedClusterState
+
+func (l persistedClusterStateListReadonly) Len() int { return len(l) }
+
+func (l persistedClusterStateListReadonly) Get(i int) PersistedClusterStateReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l persistedClusterStateListReadonly) Range(yield func(int, PersistedClusterStateReader) bool) {
+	for i, v := range l {
+		var r PersistedClusterStateReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewPersistedClusterStateListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewPersistedClusterStateListReader(s []*PersistedClusterState) PersistedClusterStateListReader {
+	return persistedClusterStateListReadonly(s)
+}
+
 // SetPeriodScheduleLogReader provides read-only access to SetPeriodScheduleLog.
 // Call Mutate() to obtain a mutable clone.
 type SetPeriodScheduleLogReader interface {
@@ -1586,6 +3271,43 @@ func (m *SetPeriodScheduleLog) Mutate() *SetPeriodScheduleLog {
 	return m.CloneVT()
 }
 
+// SetPeriodScheduleLogListReader provides read-only iteration over []*SetPeriodScheduleLog.
+type SetPeriodScheduleLogListReader interface {
+	Len() int
+	Get(i int) SetPeriodScheduleLogReader
+	Range(yield func(int, SetPeriodScheduleLogReader) bool)
+}
+
+type setPeriodScheduleLogListReadonly []*SetPeriodScheduleLog
+
+func (l setPeriodScheduleLogListReadonly) Len() int { return len(l) }
+
+func (l setPeriodScheduleLogListReadonly) Get(i int) SetPeriodScheduleLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l setPeriodScheduleLogListReadonly) Range(yield func(int, SetPeriodScheduleLogReader) bool) {
+	for i, v := range l {
+		var r SetPeriodScheduleLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSetPeriodScheduleLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSetPeriodScheduleLogListReader(s []*SetPeriodScheduleLog) SetPeriodScheduleLogListReader {
+	return setPeriodScheduleLogListReadonly(s)
+}
+
 // DeletedPeriodScheduleLogReader provides read-only access to DeletedPeriodScheduleLog.
 // Call Mutate() to obtain a mutable clone.
 type DeletedPeriodScheduleLogReader interface {
@@ -1609,6 +3331,43 @@ func (m *DeletedPeriodScheduleLog) AsReader() DeletedPeriodScheduleLogReader {
 // Mutate returns a mutable deep clone of this DeletedPeriodScheduleLog.
 func (m *DeletedPeriodScheduleLog) Mutate() *DeletedPeriodScheduleLog {
 	return m.CloneVT()
+}
+
+// DeletedPeriodScheduleLogListReader provides read-only iteration over []*DeletedPeriodScheduleLog.
+type DeletedPeriodScheduleLogListReader interface {
+	Len() int
+	Get(i int) DeletedPeriodScheduleLogReader
+	Range(yield func(int, DeletedPeriodScheduleLogReader) bool)
+}
+
+type deletedPeriodScheduleLogListReadonly []*DeletedPeriodScheduleLog
+
+func (l deletedPeriodScheduleLogListReadonly) Len() int { return len(l) }
+
+func (l deletedPeriodScheduleLogListReadonly) Get(i int) DeletedPeriodScheduleLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l deletedPeriodScheduleLogListReadonly) Range(yield func(int, DeletedPeriodScheduleLogReader) bool) {
+	for i, v := range l {
+		var r DeletedPeriodScheduleLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewDeletedPeriodScheduleLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewDeletedPeriodScheduleLogListReader(s []*DeletedPeriodScheduleLog) DeletedPeriodScheduleLogListReader {
+	return deletedPeriodScheduleLogListReadonly(s)
 }
 
 // CreatedPreparedQueryLogReader provides read-only access to CreatedPreparedQueryLog.
@@ -1643,6 +3402,43 @@ func (m *CreatedPreparedQueryLog) AsReader() CreatedPreparedQueryLogReader {
 // Mutate returns a mutable deep clone of this CreatedPreparedQueryLog.
 func (m *CreatedPreparedQueryLog) Mutate() *CreatedPreparedQueryLog {
 	return m.CloneVT()
+}
+
+// CreatedPreparedQueryLogListReader provides read-only iteration over []*CreatedPreparedQueryLog.
+type CreatedPreparedQueryLogListReader interface {
+	Len() int
+	Get(i int) CreatedPreparedQueryLogReader
+	Range(yield func(int, CreatedPreparedQueryLogReader) bool)
+}
+
+type createdPreparedQueryLogListReadonly []*CreatedPreparedQueryLog
+
+func (l createdPreparedQueryLogListReadonly) Len() int { return len(l) }
+
+func (l createdPreparedQueryLogListReadonly) Get(i int) CreatedPreparedQueryLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l createdPreparedQueryLogListReadonly) Range(yield func(int, CreatedPreparedQueryLogReader) bool) {
+	for i, v := range l {
+		var r CreatedPreparedQueryLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewCreatedPreparedQueryLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewCreatedPreparedQueryLogListReader(s []*CreatedPreparedQueryLog) CreatedPreparedQueryLogListReader {
+	return createdPreparedQueryLogListReadonly(s)
 }
 
 // UpdatedPreparedQueryLogReader provides read-only access to UpdatedPreparedQueryLog.
@@ -1698,6 +3494,43 @@ func (m *UpdatedPreparedQueryLog) Mutate() *UpdatedPreparedQueryLog {
 	return m.CloneVT()
 }
 
+// UpdatedPreparedQueryLogListReader provides read-only iteration over []*UpdatedPreparedQueryLog.
+type UpdatedPreparedQueryLogListReader interface {
+	Len() int
+	Get(i int) UpdatedPreparedQueryLogReader
+	Range(yield func(int, UpdatedPreparedQueryLogReader) bool)
+}
+
+type updatedPreparedQueryLogListReadonly []*UpdatedPreparedQueryLog
+
+func (l updatedPreparedQueryLogListReadonly) Len() int { return len(l) }
+
+func (l updatedPreparedQueryLogListReadonly) Get(i int) UpdatedPreparedQueryLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l updatedPreparedQueryLogListReadonly) Range(yield func(int, UpdatedPreparedQueryLogReader) bool) {
+	for i, v := range l {
+		var r UpdatedPreparedQueryLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewUpdatedPreparedQueryLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewUpdatedPreparedQueryLogListReader(s []*UpdatedPreparedQueryLog) UpdatedPreparedQueryLogListReader {
+	return updatedPreparedQueryLogListReadonly(s)
+}
+
 // DeletedPreparedQueryLogReader provides read-only access to DeletedPreparedQueryLog.
 // Call Mutate() to obtain a mutable clone.
 type DeletedPreparedQueryLogReader interface {
@@ -1733,12 +3566,49 @@ func (m *DeletedPreparedQueryLog) Mutate() *DeletedPreparedQueryLog {
 	return m.CloneVT()
 }
 
+// DeletedPreparedQueryLogListReader provides read-only iteration over []*DeletedPreparedQueryLog.
+type DeletedPreparedQueryLogListReader interface {
+	Len() int
+	Get(i int) DeletedPreparedQueryLogReader
+	Range(yield func(int, DeletedPreparedQueryLogReader) bool)
+}
+
+type deletedPreparedQueryLogListReadonly []*DeletedPreparedQueryLog
+
+func (l deletedPreparedQueryLogListReadonly) Len() int { return len(l) }
+
+func (l deletedPreparedQueryLogListReadonly) Get(i int) DeletedPreparedQueryLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l deletedPreparedQueryLogListReadonly) Range(yield func(int, DeletedPreparedQueryLogReader) bool) {
+	for i, v := range l {
+		var r DeletedPreparedQueryLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewDeletedPreparedQueryLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewDeletedPreparedQueryLogListReader(s []*DeletedPreparedQueryLog) DeletedPreparedQueryLogListReader {
+	return deletedPreparedQueryLogListReadonly(s)
+}
+
 // SavedLedgerMetadataLogReader provides read-only access to SavedLedgerMetadataLog.
 // Call Mutate() to obtain a mutable clone.
 type SavedLedgerMetadataLogReader interface {
 	GetLedger() string
-	GetMetadata() map[string]*MetadataValue
-	GetPreviousValues() map[string]*MetadataValue
+	GetMetadata() SavedLedgerMetadataLog_MetadataMapReader
+	GetPreviousValues() SavedLedgerMetadataLog_PreviousValuesMapReader
 	Mutate() *SavedLedgerMetadataLog
 }
 
@@ -1748,12 +3618,12 @@ func (r *savedLedgerMetadataLogReadonly) GetLedger() string {
 	return r.v.GetLedger()
 }
 
-func (r *savedLedgerMetadataLogReadonly) GetMetadata() map[string]*MetadataValue {
-	return r.v.GetMetadata()
+func (r *savedLedgerMetadataLogReadonly) GetMetadata() SavedLedgerMetadataLog_MetadataMapReader {
+	return savedLedgerMetadataLog_metadataMapReadonly(r.v.GetMetadata())
 }
 
-func (r *savedLedgerMetadataLogReadonly) GetPreviousValues() map[string]*MetadataValue {
-	return r.v.GetPreviousValues()
+func (r *savedLedgerMetadataLogReadonly) GetPreviousValues() SavedLedgerMetadataLog_PreviousValuesMapReader {
+	return savedLedgerMetadataLog_previousValuesMapReadonly(r.v.GetPreviousValues())
 }
 
 func (r *savedLedgerMetadataLogReadonly) Mutate() *SavedLedgerMetadataLog {
@@ -1771,6 +3641,105 @@ func (m *SavedLedgerMetadataLog) AsReader() SavedLedgerMetadataLogReader {
 // Mutate returns a mutable deep clone of this SavedLedgerMetadataLog.
 func (m *SavedLedgerMetadataLog) Mutate() *SavedLedgerMetadataLog {
 	return m.CloneVT()
+}
+
+// SavedLedgerMetadataLogListReader provides read-only iteration over []*SavedLedgerMetadataLog.
+type SavedLedgerMetadataLogListReader interface {
+	Len() int
+	Get(i int) SavedLedgerMetadataLogReader
+	Range(yield func(int, SavedLedgerMetadataLogReader) bool)
+}
+
+type savedLedgerMetadataLogListReadonly []*SavedLedgerMetadataLog
+
+func (l savedLedgerMetadataLogListReadonly) Len() int { return len(l) }
+
+func (l savedLedgerMetadataLogListReadonly) Get(i int) SavedLedgerMetadataLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l savedLedgerMetadataLogListReadonly) Range(yield func(int, SavedLedgerMetadataLogReader) bool) {
+	for i, v := range l {
+		var r SavedLedgerMetadataLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSavedLedgerMetadataLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSavedLedgerMetadataLogListReader(s []*SavedLedgerMetadataLog) SavedLedgerMetadataLogListReader {
+	return savedLedgerMetadataLogListReadonly(s)
+}
+
+// SavedLedgerMetadataLog_MetadataMapReader provides read-only access to SavedLedgerMetadataLog.Metadata.
+type SavedLedgerMetadataLog_MetadataMapReader interface {
+	Len() int
+	Get(k string) (MetadataValueReader, bool)
+	Range(yield func(string, MetadataValueReader) bool)
+}
+
+type savedLedgerMetadataLog_metadataMapReadonly map[string]*MetadataValue
+
+func (m savedLedgerMetadataLog_metadataMapReadonly) Len() int { return len(m) }
+
+func (m savedLedgerMetadataLog_metadataMapReadonly) Get(k string) (MetadataValueReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m savedLedgerMetadataLog_metadataMapReadonly) Range(yield func(string, MetadataValueReader) bool) {
+	for k, v := range m {
+		var r MetadataValueReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
+}
+
+// SavedLedgerMetadataLog_PreviousValuesMapReader provides read-only access to SavedLedgerMetadataLog.PreviousValues.
+type SavedLedgerMetadataLog_PreviousValuesMapReader interface {
+	Len() int
+	Get(k string) (MetadataValueReader, bool)
+	Range(yield func(string, MetadataValueReader) bool)
+}
+
+type savedLedgerMetadataLog_previousValuesMapReadonly map[string]*MetadataValue
+
+func (m savedLedgerMetadataLog_previousValuesMapReadonly) Len() int { return len(m) }
+
+func (m savedLedgerMetadataLog_previousValuesMapReadonly) Get(k string) (MetadataValueReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m savedLedgerMetadataLog_previousValuesMapReadonly) Range(yield func(string, MetadataValueReader) bool) {
+	for k, v := range m {
+		var r MetadataValueReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
 }
 
 // DeletedLedgerMetadataLogReader provides read-only access to DeletedLedgerMetadataLog.
@@ -1815,6 +3784,43 @@ func (m *DeletedLedgerMetadataLog) AsReader() DeletedLedgerMetadataLogReader {
 // Mutate returns a mutable deep clone of this DeletedLedgerMetadataLog.
 func (m *DeletedLedgerMetadataLog) Mutate() *DeletedLedgerMetadataLog {
 	return m.CloneVT()
+}
+
+// DeletedLedgerMetadataLogListReader provides read-only iteration over []*DeletedLedgerMetadataLog.
+type DeletedLedgerMetadataLogListReader interface {
+	Len() int
+	Get(i int) DeletedLedgerMetadataLogReader
+	Range(yield func(int, DeletedLedgerMetadataLogReader) bool)
+}
+
+type deletedLedgerMetadataLogListReadonly []*DeletedLedgerMetadataLog
+
+func (l deletedLedgerMetadataLogListReadonly) Len() int { return len(l) }
+
+func (l deletedLedgerMetadataLogListReadonly) Get(i int) DeletedLedgerMetadataLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l deletedLedgerMetadataLogListReadonly) Range(yield func(int, DeletedLedgerMetadataLogReader) bool) {
+	for i, v := range l {
+		var r DeletedLedgerMetadataLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewDeletedLedgerMetadataLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewDeletedLedgerMetadataLogListReader(s []*DeletedLedgerMetadataLog) DeletedLedgerMetadataLogListReader {
+	return deletedLedgerMetadataLogListReadonly(s)
 }
 
 // NumscriptInfoReader provides read-only access to NumscriptInfo.
@@ -1871,6 +3877,43 @@ func (m *NumscriptInfo) Mutate() *NumscriptInfo {
 	return m.CloneVT()
 }
 
+// NumscriptInfoListReader provides read-only iteration over []*NumscriptInfo.
+type NumscriptInfoListReader interface {
+	Len() int
+	Get(i int) NumscriptInfoReader
+	Range(yield func(int, NumscriptInfoReader) bool)
+}
+
+type numscriptInfoListReadonly []*NumscriptInfo
+
+func (l numscriptInfoListReadonly) Len() int { return len(l) }
+
+func (l numscriptInfoListReadonly) Get(i int) NumscriptInfoReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l numscriptInfoListReadonly) Range(yield func(int, NumscriptInfoReader) bool) {
+	for i, v := range l {
+		var r NumscriptInfoReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewNumscriptInfoListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewNumscriptInfoListReader(s []*NumscriptInfo) NumscriptInfoListReader {
+	return numscriptInfoListReadonly(s)
+}
+
 // SavedNumscriptLogReader provides read-only access to SavedNumscriptLog.
 // Call Mutate() to obtain a mutable clone.
 type SavedNumscriptLogReader interface {
@@ -1903,6 +3946,43 @@ func (m *SavedNumscriptLog) AsReader() SavedNumscriptLogReader {
 // Mutate returns a mutable deep clone of this SavedNumscriptLog.
 func (m *SavedNumscriptLog) Mutate() *SavedNumscriptLog {
 	return m.CloneVT()
+}
+
+// SavedNumscriptLogListReader provides read-only iteration over []*SavedNumscriptLog.
+type SavedNumscriptLogListReader interface {
+	Len() int
+	Get(i int) SavedNumscriptLogReader
+	Range(yield func(int, SavedNumscriptLogReader) bool)
+}
+
+type savedNumscriptLogListReadonly []*SavedNumscriptLog
+
+func (l savedNumscriptLogListReadonly) Len() int { return len(l) }
+
+func (l savedNumscriptLogListReadonly) Get(i int) SavedNumscriptLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l savedNumscriptLogListReadonly) Range(yield func(int, SavedNumscriptLogReader) bool) {
+	for i, v := range l {
+		var r SavedNumscriptLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSavedNumscriptLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSavedNumscriptLogListReader(s []*SavedNumscriptLog) SavedNumscriptLogListReader {
+	return savedNumscriptLogListReadonly(s)
 }
 
 // DeletedNumscriptLogReader provides read-only access to DeletedNumscriptLog.
@@ -1940,6 +4020,43 @@ func (m *DeletedNumscriptLog) Mutate() *DeletedNumscriptLog {
 	return m.CloneVT()
 }
 
+// DeletedNumscriptLogListReader provides read-only iteration over []*DeletedNumscriptLog.
+type DeletedNumscriptLogListReader interface {
+	Len() int
+	Get(i int) DeletedNumscriptLogReader
+	Range(yield func(int, DeletedNumscriptLogReader) bool)
+}
+
+type deletedNumscriptLogListReadonly []*DeletedNumscriptLog
+
+func (l deletedNumscriptLogListReadonly) Len() int { return len(l) }
+
+func (l deletedNumscriptLogListReadonly) Get(i int) DeletedNumscriptLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l deletedNumscriptLogListReadonly) Range(yield func(int, DeletedNumscriptLogReader) bool) {
+	for i, v := range l {
+		var r DeletedNumscriptLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewDeletedNumscriptLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewDeletedNumscriptLogListReader(s []*DeletedNumscriptLog) DeletedNumscriptLogListReader {
+	return deletedNumscriptLogListReadonly(s)
+}
+
 // SetQueryCheckpointScheduleLogReader provides read-only access to SetQueryCheckpointScheduleLog.
 // Call Mutate() to obtain a mutable clone.
 type SetQueryCheckpointScheduleLogReader interface {
@@ -1972,6 +4089,43 @@ func (m *SetQueryCheckpointScheduleLog) Mutate() *SetQueryCheckpointScheduleLog 
 	return m.CloneVT()
 }
 
+// SetQueryCheckpointScheduleLogListReader provides read-only iteration over []*SetQueryCheckpointScheduleLog.
+type SetQueryCheckpointScheduleLogListReader interface {
+	Len() int
+	Get(i int) SetQueryCheckpointScheduleLogReader
+	Range(yield func(int, SetQueryCheckpointScheduleLogReader) bool)
+}
+
+type setQueryCheckpointScheduleLogListReadonly []*SetQueryCheckpointScheduleLog
+
+func (l setQueryCheckpointScheduleLogListReadonly) Len() int { return len(l) }
+
+func (l setQueryCheckpointScheduleLogListReadonly) Get(i int) SetQueryCheckpointScheduleLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l setQueryCheckpointScheduleLogListReadonly) Range(yield func(int, SetQueryCheckpointScheduleLogReader) bool) {
+	for i, v := range l {
+		var r SetQueryCheckpointScheduleLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSetQueryCheckpointScheduleLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSetQueryCheckpointScheduleLogListReader(s []*SetQueryCheckpointScheduleLog) SetQueryCheckpointScheduleLogListReader {
+	return setQueryCheckpointScheduleLogListReadonly(s)
+}
+
 // DeletedQueryCheckpointScheduleLogReader provides read-only access to DeletedQueryCheckpointScheduleLog.
 // Call Mutate() to obtain a mutable clone.
 type DeletedQueryCheckpointScheduleLogReader interface {
@@ -1997,6 +4151,43 @@ func (m *DeletedQueryCheckpointScheduleLog) AsReader() DeletedQueryCheckpointSch
 // Mutate returns a mutable deep clone of this DeletedQueryCheckpointScheduleLog.
 func (m *DeletedQueryCheckpointScheduleLog) Mutate() *DeletedQueryCheckpointScheduleLog {
 	return m.CloneVT()
+}
+
+// DeletedQueryCheckpointScheduleLogListReader provides read-only iteration over []*DeletedQueryCheckpointScheduleLog.
+type DeletedQueryCheckpointScheduleLogListReader interface {
+	Len() int
+	Get(i int) DeletedQueryCheckpointScheduleLogReader
+	Range(yield func(int, DeletedQueryCheckpointScheduleLogReader) bool)
+}
+
+type deletedQueryCheckpointScheduleLogListReadonly []*DeletedQueryCheckpointScheduleLog
+
+func (l deletedQueryCheckpointScheduleLogListReadonly) Len() int { return len(l) }
+
+func (l deletedQueryCheckpointScheduleLogListReadonly) Get(i int) DeletedQueryCheckpointScheduleLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l deletedQueryCheckpointScheduleLogListReadonly) Range(yield func(int, DeletedQueryCheckpointScheduleLogReader) bool) {
+	for i, v := range l {
+		var r DeletedQueryCheckpointScheduleLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewDeletedQueryCheckpointScheduleLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewDeletedQueryCheckpointScheduleLogListReader(s []*DeletedQueryCheckpointScheduleLog) DeletedQueryCheckpointScheduleLogListReader {
+	return deletedQueryCheckpointScheduleLogListReadonly(s)
 }
 
 // CreatedQueryCheckpointLogReader provides read-only access to CreatedQueryCheckpointLog.
@@ -2034,6 +4225,43 @@ func (m *CreatedQueryCheckpointLog) Mutate() *CreatedQueryCheckpointLog {
 	return m.CloneVT()
 }
 
+// CreatedQueryCheckpointLogListReader provides read-only iteration over []*CreatedQueryCheckpointLog.
+type CreatedQueryCheckpointLogListReader interface {
+	Len() int
+	Get(i int) CreatedQueryCheckpointLogReader
+	Range(yield func(int, CreatedQueryCheckpointLogReader) bool)
+}
+
+type createdQueryCheckpointLogListReadonly []*CreatedQueryCheckpointLog
+
+func (l createdQueryCheckpointLogListReadonly) Len() int { return len(l) }
+
+func (l createdQueryCheckpointLogListReadonly) Get(i int) CreatedQueryCheckpointLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l createdQueryCheckpointLogListReadonly) Range(yield func(int, CreatedQueryCheckpointLogReader) bool) {
+	for i, v := range l {
+		var r CreatedQueryCheckpointLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewCreatedQueryCheckpointLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewCreatedQueryCheckpointLogListReader(s []*CreatedQueryCheckpointLog) CreatedQueryCheckpointLogListReader {
+	return createdQueryCheckpointLogListReadonly(s)
+}
+
 // DeletedQueryCheckpointLogReader provides read-only access to DeletedQueryCheckpointLog.
 // Call Mutate() to obtain a mutable clone.
 type DeletedQueryCheckpointLogReader interface {
@@ -2062,6 +4290,43 @@ func (m *DeletedQueryCheckpointLog) AsReader() DeletedQueryCheckpointLogReader {
 // Mutate returns a mutable deep clone of this DeletedQueryCheckpointLog.
 func (m *DeletedQueryCheckpointLog) Mutate() *DeletedQueryCheckpointLog {
 	return m.CloneVT()
+}
+
+// DeletedQueryCheckpointLogListReader provides read-only iteration over []*DeletedQueryCheckpointLog.
+type DeletedQueryCheckpointLogListReader interface {
+	Len() int
+	Get(i int) DeletedQueryCheckpointLogReader
+	Range(yield func(int, DeletedQueryCheckpointLogReader) bool)
+}
+
+type deletedQueryCheckpointLogListReadonly []*DeletedQueryCheckpointLog
+
+func (l deletedQueryCheckpointLogListReadonly) Len() int { return len(l) }
+
+func (l deletedQueryCheckpointLogListReadonly) Get(i int) DeletedQueryCheckpointLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l deletedQueryCheckpointLogListReadonly) Range(yield func(int, DeletedQueryCheckpointLogReader) bool) {
+	for i, v := range l {
+		var r DeletedQueryCheckpointLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewDeletedQueryCheckpointLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewDeletedQueryCheckpointLogListReader(s []*DeletedQueryCheckpointLog) DeletedQueryCheckpointLogListReader {
+	return deletedQueryCheckpointLogListReadonly(s)
 }
 
 // SinkConfigReader provides read-only access to SinkConfig.
@@ -2095,7 +4360,7 @@ func (r *sinkConfigReadonly) GetBatchDelayMs() int64 {
 }
 
 func (r *sinkConfigReadonly) GetEventTypes() []EventType {
-	return r.v.GetEventTypes()
+	return slices.Clone(r.v.GetEventTypes())
 }
 
 func (r *sinkConfigReadonly) GetType() isSinkConfig_Type {
@@ -2118,6 +4383,41 @@ func (m *SinkConfig) AsReader() SinkConfigReader {
 func (m *SinkConfig) Mutate() *SinkConfig {
 	return m.CloneVT()
 }
+
+// SinkConfigListReader provides read-only iteration over []*SinkConfig.
+type SinkConfigListReader interface {
+	Len() int
+	Get(i int) SinkConfigReader
+	Range(yield func(int, SinkConfigReader) bool)
+}
+
+type sinkConfigListReadonly []*SinkConfig
+
+func (l sinkConfigListReadonly) Len() int { return len(l) }
+
+func (l sinkConfigListReadonly) Get(i int) SinkConfigReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l sinkConfigListReadonly) Range(yield func(int, SinkConfigReader) bool) {
+	for i, v := range l {
+		var r SinkConfigReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSinkConfigListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSinkConfigListReader(s []*SinkConfig) SinkConfigListReader { return sinkConfigListReadonly(s) }
 
 // SinkStatusReader provides read-only access to SinkStatus.
 // Call Mutate() to obtain a mutable clone.
@@ -2163,6 +4463,41 @@ func (m *SinkStatus) Mutate() *SinkStatus {
 	return m.CloneVT()
 }
 
+// SinkStatusListReader provides read-only iteration over []*SinkStatus.
+type SinkStatusListReader interface {
+	Len() int
+	Get(i int) SinkStatusReader
+	Range(yield func(int, SinkStatusReader) bool)
+}
+
+type sinkStatusListReadonly []*SinkStatus
+
+func (l sinkStatusListReadonly) Len() int { return len(l) }
+
+func (l sinkStatusListReadonly) Get(i int) SinkStatusReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l sinkStatusListReadonly) Range(yield func(int, SinkStatusReader) bool) {
+	for i, v := range l {
+		var r SinkStatusReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSinkStatusListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSinkStatusListReader(s []*SinkStatus) SinkStatusListReader { return sinkStatusListReadonly(s) }
+
 // SinkErrorReader provides read-only access to SinkError.
 // Call Mutate() to obtain a mutable clone.
 type SinkErrorReader interface {
@@ -2202,6 +4537,41 @@ func (m *SinkError) Mutate() *SinkError {
 	return m.CloneVT()
 }
 
+// SinkErrorListReader provides read-only iteration over []*SinkError.
+type SinkErrorListReader interface {
+	Len() int
+	Get(i int) SinkErrorReader
+	Range(yield func(int, SinkErrorReader) bool)
+}
+
+type sinkErrorListReadonly []*SinkError
+
+func (l sinkErrorListReadonly) Len() int { return len(l) }
+
+func (l sinkErrorListReadonly) Get(i int) SinkErrorReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l sinkErrorListReadonly) Range(yield func(int, SinkErrorReader) bool) {
+	for i, v := range l {
+		var r SinkErrorReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSinkErrorListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSinkErrorListReader(s []*SinkError) SinkErrorListReader { return sinkErrorListReadonly(s) }
+
 // NatsSinkConfigReader provides read-only access to NatsSinkConfig.
 // Call Mutate() to obtain a mutable clone.
 type NatsSinkConfigReader interface {
@@ -2235,6 +4605,43 @@ func (m *NatsSinkConfig) AsReader() NatsSinkConfigReader {
 // Mutate returns a mutable deep clone of this NatsSinkConfig.
 func (m *NatsSinkConfig) Mutate() *NatsSinkConfig {
 	return m.CloneVT()
+}
+
+// NatsSinkConfigListReader provides read-only iteration over []*NatsSinkConfig.
+type NatsSinkConfigListReader interface {
+	Len() int
+	Get(i int) NatsSinkConfigReader
+	Range(yield func(int, NatsSinkConfigReader) bool)
+}
+
+type natsSinkConfigListReadonly []*NatsSinkConfig
+
+func (l natsSinkConfigListReadonly) Len() int { return len(l) }
+
+func (l natsSinkConfigListReadonly) Get(i int) NatsSinkConfigReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l natsSinkConfigListReadonly) Range(yield func(int, NatsSinkConfigReader) bool) {
+	for i, v := range l {
+		var r NatsSinkConfigReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewNatsSinkConfigListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewNatsSinkConfigListReader(s []*NatsSinkConfig) NatsSinkConfigListReader {
+	return natsSinkConfigListReadonly(s)
 }
 
 // ClickHouseSinkConfigReader provides read-only access to ClickHouseSinkConfig.
@@ -2272,6 +4679,43 @@ func (m *ClickHouseSinkConfig) Mutate() *ClickHouseSinkConfig {
 	return m.CloneVT()
 }
 
+// ClickHouseSinkConfigListReader provides read-only iteration over []*ClickHouseSinkConfig.
+type ClickHouseSinkConfigListReader interface {
+	Len() int
+	Get(i int) ClickHouseSinkConfigReader
+	Range(yield func(int, ClickHouseSinkConfigReader) bool)
+}
+
+type clickHouseSinkConfigListReadonly []*ClickHouseSinkConfig
+
+func (l clickHouseSinkConfigListReadonly) Len() int { return len(l) }
+
+func (l clickHouseSinkConfigListReadonly) Get(i int) ClickHouseSinkConfigReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l clickHouseSinkConfigListReadonly) Range(yield func(int, ClickHouseSinkConfigReader) bool) {
+	for i, v := range l {
+		var r ClickHouseSinkConfigReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewClickHouseSinkConfigListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewClickHouseSinkConfigListReader(s []*ClickHouseSinkConfig) ClickHouseSinkConfigListReader {
+	return clickHouseSinkConfigListReadonly(s)
+}
+
 // KafkaSinkConfigReader provides read-only access to KafkaSinkConfig.
 // Call Mutate() to obtain a mutable clone.
 type KafkaSinkConfigReader interface {
@@ -2287,7 +4731,7 @@ type KafkaSinkConfigReader interface {
 type kafkaSinkConfigReadonly struct{ v *KafkaSinkConfig }
 
 func (r *kafkaSinkConfigReadonly) GetBrokers() []string {
-	return r.v.GetBrokers()
+	return slices.Clone(r.v.GetBrokers())
 }
 
 func (r *kafkaSinkConfigReadonly) GetTopic() string {
@@ -2327,6 +4771,43 @@ func (m *KafkaSinkConfig) Mutate() *KafkaSinkConfig {
 	return m.CloneVT()
 }
 
+// KafkaSinkConfigListReader provides read-only iteration over []*KafkaSinkConfig.
+type KafkaSinkConfigListReader interface {
+	Len() int
+	Get(i int) KafkaSinkConfigReader
+	Range(yield func(int, KafkaSinkConfigReader) bool)
+}
+
+type kafkaSinkConfigListReadonly []*KafkaSinkConfig
+
+func (l kafkaSinkConfigListReadonly) Len() int { return len(l) }
+
+func (l kafkaSinkConfigListReadonly) Get(i int) KafkaSinkConfigReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l kafkaSinkConfigListReadonly) Range(yield func(int, KafkaSinkConfigReader) bool) {
+	for i, v := range l {
+		var r KafkaSinkConfigReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewKafkaSinkConfigListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewKafkaSinkConfigListReader(s []*KafkaSinkConfig) KafkaSinkConfigListReader {
+	return kafkaSinkConfigListReadonly(s)
+}
+
 // HttpSinkConfigReader provides read-only access to HttpSinkConfig.
 // Call Mutate() to obtain a mutable clone.
 type HttpSinkConfigReader interface {
@@ -2360,6 +4841,43 @@ func (m *HttpSinkConfig) AsReader() HttpSinkConfigReader {
 // Mutate returns a mutable deep clone of this HttpSinkConfig.
 func (m *HttpSinkConfig) Mutate() *HttpSinkConfig {
 	return m.CloneVT()
+}
+
+// HttpSinkConfigListReader provides read-only iteration over []*HttpSinkConfig.
+type HttpSinkConfigListReader interface {
+	Len() int
+	Get(i int) HttpSinkConfigReader
+	Range(yield func(int, HttpSinkConfigReader) bool)
+}
+
+type httpSinkConfigListReadonly []*HttpSinkConfig
+
+func (l httpSinkConfigListReadonly) Len() int { return len(l) }
+
+func (l httpSinkConfigListReadonly) Get(i int) HttpSinkConfigReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l httpSinkConfigListReadonly) Range(yield func(int, HttpSinkConfigReader) bool) {
+	for i, v := range l {
+		var r HttpSinkConfigReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewHttpSinkConfigListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewHttpSinkConfigListReader(s []*HttpSinkConfig) HttpSinkConfigListReader {
+	return httpSinkConfigListReadonly(s)
 }
 
 // DatabricksSinkConfigReader provides read-only access to DatabricksSinkConfig.
@@ -2422,6 +4940,43 @@ func (m *DatabricksSinkConfig) Mutate() *DatabricksSinkConfig {
 	return m.CloneVT()
 }
 
+// DatabricksSinkConfigListReader provides read-only iteration over []*DatabricksSinkConfig.
+type DatabricksSinkConfigListReader interface {
+	Len() int
+	Get(i int) DatabricksSinkConfigReader
+	Range(yield func(int, DatabricksSinkConfigReader) bool)
+}
+
+type databricksSinkConfigListReadonly []*DatabricksSinkConfig
+
+func (l databricksSinkConfigListReadonly) Len() int { return len(l) }
+
+func (l databricksSinkConfigListReadonly) Get(i int) DatabricksSinkConfigReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l databricksSinkConfigListReadonly) Range(yield func(int, DatabricksSinkConfigReader) bool) {
+	for i, v := range l {
+		var r DatabricksSinkConfigReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewDatabricksSinkConfigListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewDatabricksSinkConfigListReader(s []*DatabricksSinkConfig) DatabricksSinkConfigListReader {
+	return databricksSinkConfigListReadonly(s)
+}
+
 // DatabricksOAuthM2MReader provides read-only access to DatabricksOAuthM2M.
 // Call Mutate() to obtain a mutable clone.
 type DatabricksOAuthM2MReader interface {
@@ -2457,6 +5012,43 @@ func (m *DatabricksOAuthM2M) Mutate() *DatabricksOAuthM2M {
 	return m.CloneVT()
 }
 
+// DatabricksOAuthM2MListReader provides read-only iteration over []*DatabricksOAuthM2M.
+type DatabricksOAuthM2MListReader interface {
+	Len() int
+	Get(i int) DatabricksOAuthM2MReader
+	Range(yield func(int, DatabricksOAuthM2MReader) bool)
+}
+
+type databricksOAuthM2MListReadonly []*DatabricksOAuthM2M
+
+func (l databricksOAuthM2MListReadonly) Len() int { return len(l) }
+
+func (l databricksOAuthM2MListReadonly) Get(i int) DatabricksOAuthM2MReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l databricksOAuthM2MListReadonly) Range(yield func(int, DatabricksOAuthM2MReader) bool) {
+	for i, v := range l {
+		var r DatabricksOAuthM2MReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewDatabricksOAuthM2MListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewDatabricksOAuthM2MListReader(s []*DatabricksOAuthM2M) DatabricksOAuthM2MListReader {
+	return databricksOAuthM2MListReadonly(s)
+}
+
 // CreatedLedgerLogReader provides read-only access to CreatedLedgerLog.
 // Call Mutate() to obtain a mutable clone.
 type CreatedLedgerLogReader interface {
@@ -2465,7 +5057,7 @@ type CreatedLedgerLogReader interface {
 	GetMetadataSchema() MetadataSchemaReader
 	GetMode() LedgerMode
 	GetMirrorSource() MirrorSourceConfigReader
-	GetAccountTypes() map[string]*AccountType
+	GetAccountTypes() CreatedLedgerLog_AccountTypesMapReader
 	GetDefaultEnforcementMode() ChartEnforcementMode
 	GetId() uint32
 	Mutate() *CreatedLedgerLog
@@ -2505,8 +5097,8 @@ func (r *createdLedgerLogReadonly) GetMirrorSource() MirrorSourceConfigReader {
 	return v.AsReader()
 }
 
-func (r *createdLedgerLogReadonly) GetAccountTypes() map[string]*AccountType {
-	return r.v.GetAccountTypes()
+func (r *createdLedgerLogReadonly) GetAccountTypes() CreatedLedgerLog_AccountTypesMapReader {
+	return createdLedgerLog_accountTypesMapReadonly(r.v.GetAccountTypes())
 }
 
 func (r *createdLedgerLogReadonly) GetDefaultEnforcementMode() ChartEnforcementMode {
@@ -2532,6 +5124,74 @@ func (m *CreatedLedgerLog) AsReader() CreatedLedgerLogReader {
 // Mutate returns a mutable deep clone of this CreatedLedgerLog.
 func (m *CreatedLedgerLog) Mutate() *CreatedLedgerLog {
 	return m.CloneVT()
+}
+
+// CreatedLedgerLogListReader provides read-only iteration over []*CreatedLedgerLog.
+type CreatedLedgerLogListReader interface {
+	Len() int
+	Get(i int) CreatedLedgerLogReader
+	Range(yield func(int, CreatedLedgerLogReader) bool)
+}
+
+type createdLedgerLogListReadonly []*CreatedLedgerLog
+
+func (l createdLedgerLogListReadonly) Len() int { return len(l) }
+
+func (l createdLedgerLogListReadonly) Get(i int) CreatedLedgerLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l createdLedgerLogListReadonly) Range(yield func(int, CreatedLedgerLogReader) bool) {
+	for i, v := range l {
+		var r CreatedLedgerLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewCreatedLedgerLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewCreatedLedgerLogListReader(s []*CreatedLedgerLog) CreatedLedgerLogListReader {
+	return createdLedgerLogListReadonly(s)
+}
+
+// CreatedLedgerLog_AccountTypesMapReader provides read-only access to CreatedLedgerLog.AccountTypes.
+type CreatedLedgerLog_AccountTypesMapReader interface {
+	Len() int
+	Get(k string) (AccountTypeReader, bool)
+	Range(yield func(string, AccountTypeReader) bool)
+}
+
+type createdLedgerLog_accountTypesMapReadonly map[string]*AccountType
+
+func (m createdLedgerLog_accountTypesMapReadonly) Len() int { return len(m) }
+
+func (m createdLedgerLog_accountTypesMapReadonly) Get(k string) (AccountTypeReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m createdLedgerLog_accountTypesMapReadonly) Range(yield func(string, AccountTypeReader) bool) {
+	for k, v := range m {
+		var r AccountTypeReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
 }
 
 // DeletedLedgerLogReader provides read-only access to DeletedLedgerLog.
@@ -2573,6 +5233,43 @@ func (m *DeletedLedgerLog) Mutate() *DeletedLedgerLog {
 	return m.CloneVT()
 }
 
+// DeletedLedgerLogListReader provides read-only iteration over []*DeletedLedgerLog.
+type DeletedLedgerLogListReader interface {
+	Len() int
+	Get(i int) DeletedLedgerLogReader
+	Range(yield func(int, DeletedLedgerLogReader) bool)
+}
+
+type deletedLedgerLogListReadonly []*DeletedLedgerLog
+
+func (l deletedLedgerLogListReadonly) Len() int { return len(l) }
+
+func (l deletedLedgerLogListReadonly) Get(i int) DeletedLedgerLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l deletedLedgerLogListReadonly) Range(yield func(int, DeletedLedgerLogReader) bool) {
+	for i, v := range l {
+		var r DeletedLedgerLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewDeletedLedgerLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewDeletedLedgerLogListReader(s []*DeletedLedgerLog) DeletedLedgerLogListReader {
+	return deletedLedgerLogListReadonly(s)
+}
+
 // ApplyLedgerLogReader provides read-only access to ApplyLedgerLog.
 // Call Mutate() to obtain a mutable clone.
 type ApplyLedgerLogReader interface {
@@ -2610,6 +5307,43 @@ func (m *ApplyLedgerLog) AsReader() ApplyLedgerLogReader {
 // Mutate returns a mutable deep clone of this ApplyLedgerLog.
 func (m *ApplyLedgerLog) Mutate() *ApplyLedgerLog {
 	return m.CloneVT()
+}
+
+// ApplyLedgerLogListReader provides read-only iteration over []*ApplyLedgerLog.
+type ApplyLedgerLogListReader interface {
+	Len() int
+	Get(i int) ApplyLedgerLogReader
+	Range(yield func(int, ApplyLedgerLogReader) bool)
+}
+
+type applyLedgerLogListReadonly []*ApplyLedgerLog
+
+func (l applyLedgerLogListReadonly) Len() int { return len(l) }
+
+func (l applyLedgerLogListReadonly) Get(i int) ApplyLedgerLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l applyLedgerLogListReadonly) Range(yield func(int, ApplyLedgerLogReader) bool) {
+	for i, v := range l {
+		var r ApplyLedgerLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewApplyLedgerLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewApplyLedgerLogListReader(s []*ApplyLedgerLog) ApplyLedgerLogListReader {
+	return applyLedgerLogListReadonly(s)
 }
 
 // LedgerLogReader provides read-only access to LedgerLog.
@@ -2660,6 +5394,41 @@ func (m *LedgerLog) Mutate() *LedgerLog {
 	return m.CloneVT()
 }
 
+// LedgerLogListReader provides read-only iteration over []*LedgerLog.
+type LedgerLogListReader interface {
+	Len() int
+	Get(i int) LedgerLogReader
+	Range(yield func(int, LedgerLogReader) bool)
+}
+
+type ledgerLogListReadonly []*LedgerLog
+
+func (l ledgerLogListReadonly) Len() int { return len(l) }
+
+func (l ledgerLogListReadonly) Get(i int) LedgerLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l ledgerLogListReadonly) Range(yield func(int, LedgerLogReader) bool) {
+	for i, v := range l {
+		var r LedgerLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewLedgerLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewLedgerLogListReader(s []*LedgerLog) LedgerLogListReader { return ledgerLogListReadonly(s) }
+
 // LedgerLogPayloadReader provides read-only access to LedgerLogPayload.
 // Call Mutate() to obtain a mutable clone.
 type LedgerLogPayloadReader interface {
@@ -2688,6 +5457,43 @@ func (m *LedgerLogPayload) AsReader() LedgerLogPayloadReader {
 // Mutate returns a mutable deep clone of this LedgerLogPayload.
 func (m *LedgerLogPayload) Mutate() *LedgerLogPayload {
 	return m.CloneVT()
+}
+
+// LedgerLogPayloadListReader provides read-only iteration over []*LedgerLogPayload.
+type LedgerLogPayloadListReader interface {
+	Len() int
+	Get(i int) LedgerLogPayloadReader
+	Range(yield func(int, LedgerLogPayloadReader) bool)
+}
+
+type ledgerLogPayloadListReadonly []*LedgerLogPayload
+
+func (l ledgerLogPayloadListReadonly) Len() int { return len(l) }
+
+func (l ledgerLogPayloadListReadonly) Get(i int) LedgerLogPayloadReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l ledgerLogPayloadListReadonly) Range(yield func(int, LedgerLogPayloadReader) bool) {
+	for i, v := range l {
+		var r LedgerLogPayloadReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewLedgerLogPayloadListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewLedgerLogPayloadListReader(s []*LedgerLogPayload) LedgerLogPayloadListReader {
+	return ledgerLogPayloadListReadonly(s)
 }
 
 // CreatedIndexLogReader provides read-only access to CreatedIndexLog.
@@ -2724,6 +5530,43 @@ func (m *CreatedIndexLog) Mutate() *CreatedIndexLog {
 	return m.CloneVT()
 }
 
+// CreatedIndexLogListReader provides read-only iteration over []*CreatedIndexLog.
+type CreatedIndexLogListReader interface {
+	Len() int
+	Get(i int) CreatedIndexLogReader
+	Range(yield func(int, CreatedIndexLogReader) bool)
+}
+
+type createdIndexLogListReadonly []*CreatedIndexLog
+
+func (l createdIndexLogListReadonly) Len() int { return len(l) }
+
+func (l createdIndexLogListReadonly) Get(i int) CreatedIndexLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l createdIndexLogListReadonly) Range(yield func(int, CreatedIndexLogReader) bool) {
+	for i, v := range l {
+		var r CreatedIndexLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewCreatedIndexLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewCreatedIndexLogListReader(s []*CreatedIndexLog) CreatedIndexLogListReader {
+	return createdIndexLogListReadonly(s)
+}
+
 // DroppedIndexLogReader provides read-only access to DroppedIndexLog.
 // Call Mutate() to obtain a mutable clone.
 type DroppedIndexLogReader interface {
@@ -2758,6 +5601,43 @@ func (m *DroppedIndexLog) Mutate() *DroppedIndexLog {
 	return m.CloneVT()
 }
 
+// DroppedIndexLogListReader provides read-only iteration over []*DroppedIndexLog.
+type DroppedIndexLogListReader interface {
+	Len() int
+	Get(i int) DroppedIndexLogReader
+	Range(yield func(int, DroppedIndexLogReader) bool)
+}
+
+type droppedIndexLogListReadonly []*DroppedIndexLog
+
+func (l droppedIndexLogListReadonly) Len() int { return len(l) }
+
+func (l droppedIndexLogListReadonly) Get(i int) DroppedIndexLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l droppedIndexLogListReadonly) Range(yield func(int, DroppedIndexLogReader) bool) {
+	for i, v := range l {
+		var r DroppedIndexLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewDroppedIndexLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewDroppedIndexLogListReader(s []*DroppedIndexLog) DroppedIndexLogListReader {
+	return droppedIndexLogListReadonly(s)
+}
+
 // FilledGapLogReader provides read-only access to FilledGapLog.
 // Call Mutate() to obtain a mutable clone.
 type FilledGapLogReader interface {
@@ -2788,14 +5668,51 @@ func (m *FilledGapLog) Mutate() *FilledGapLog {
 	return m.CloneVT()
 }
 
+// FilledGapLogListReader provides read-only iteration over []*FilledGapLog.
+type FilledGapLogListReader interface {
+	Len() int
+	Get(i int) FilledGapLogReader
+	Range(yield func(int, FilledGapLogReader) bool)
+}
+
+type filledGapLogListReadonly []*FilledGapLog
+
+func (l filledGapLogListReadonly) Len() int { return len(l) }
+
+func (l filledGapLogListReadonly) Get(i int) FilledGapLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l filledGapLogListReadonly) Range(yield func(int, FilledGapLogReader) bool) {
+	for i, v := range l {
+		var r FilledGapLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewFilledGapLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewFilledGapLogListReader(s []*FilledGapLog) FilledGapLogListReader {
+	return filledGapLogListReadonly(s)
+}
+
 // CreatedTransactionReader provides read-only access to CreatedTransaction.
 // Call Mutate() to obtain a mutable clone.
 type CreatedTransactionReader interface {
 	GetTransaction() TransactionReader
-	GetAccountMetadata() map[string]*MetadataMap
+	GetAccountMetadata() CreatedTransaction_AccountMetadataMapReader
 	GetPeriodId() uint64
 	GetPostCommitVolumes() PostCommitVolumesReader
-	GetPreviousAccountMetadata() map[string]*MetadataMap
+	GetPreviousAccountMetadata() CreatedTransaction_PreviousAccountMetadataMapReader
 	Mutate() *CreatedTransaction
 }
 
@@ -2809,8 +5726,8 @@ func (r *createdTransactionReadonly) GetTransaction() TransactionReader {
 	return v.AsReader()
 }
 
-func (r *createdTransactionReadonly) GetAccountMetadata() map[string]*MetadataMap {
-	return r.v.GetAccountMetadata()
+func (r *createdTransactionReadonly) GetAccountMetadata() CreatedTransaction_AccountMetadataMapReader {
+	return createdTransaction_accountMetadataMapReadonly(r.v.GetAccountMetadata())
 }
 
 func (r *createdTransactionReadonly) GetPeriodId() uint64 {
@@ -2825,8 +5742,8 @@ func (r *createdTransactionReadonly) GetPostCommitVolumes() PostCommitVolumesRea
 	return v.AsReader()
 }
 
-func (r *createdTransactionReadonly) GetPreviousAccountMetadata() map[string]*MetadataMap {
-	return r.v.GetPreviousAccountMetadata()
+func (r *createdTransactionReadonly) GetPreviousAccountMetadata() CreatedTransaction_PreviousAccountMetadataMapReader {
+	return createdTransaction_previousAccountMetadataMapReadonly(r.v.GetPreviousAccountMetadata())
 }
 
 func (r *createdTransactionReadonly) Mutate() *CreatedTransaction {
@@ -2844,6 +5761,105 @@ func (m *CreatedTransaction) AsReader() CreatedTransactionReader {
 // Mutate returns a mutable deep clone of this CreatedTransaction.
 func (m *CreatedTransaction) Mutate() *CreatedTransaction {
 	return m.CloneVT()
+}
+
+// CreatedTransactionListReader provides read-only iteration over []*CreatedTransaction.
+type CreatedTransactionListReader interface {
+	Len() int
+	Get(i int) CreatedTransactionReader
+	Range(yield func(int, CreatedTransactionReader) bool)
+}
+
+type createdTransactionListReadonly []*CreatedTransaction
+
+func (l createdTransactionListReadonly) Len() int { return len(l) }
+
+func (l createdTransactionListReadonly) Get(i int) CreatedTransactionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l createdTransactionListReadonly) Range(yield func(int, CreatedTransactionReader) bool) {
+	for i, v := range l {
+		var r CreatedTransactionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewCreatedTransactionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewCreatedTransactionListReader(s []*CreatedTransaction) CreatedTransactionListReader {
+	return createdTransactionListReadonly(s)
+}
+
+// CreatedTransaction_AccountMetadataMapReader provides read-only access to CreatedTransaction.AccountMetadata.
+type CreatedTransaction_AccountMetadataMapReader interface {
+	Len() int
+	Get(k string) (MetadataMapReader, bool)
+	Range(yield func(string, MetadataMapReader) bool)
+}
+
+type createdTransaction_accountMetadataMapReadonly map[string]*MetadataMap
+
+func (m createdTransaction_accountMetadataMapReadonly) Len() int { return len(m) }
+
+func (m createdTransaction_accountMetadataMapReadonly) Get(k string) (MetadataMapReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m createdTransaction_accountMetadataMapReadonly) Range(yield func(string, MetadataMapReader) bool) {
+	for k, v := range m {
+		var r MetadataMapReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
+}
+
+// CreatedTransaction_PreviousAccountMetadataMapReader provides read-only access to CreatedTransaction.PreviousAccountMetadata.
+type CreatedTransaction_PreviousAccountMetadataMapReader interface {
+	Len() int
+	Get(k string) (MetadataMapReader, bool)
+	Range(yield func(string, MetadataMapReader) bool)
+}
+
+type createdTransaction_previousAccountMetadataMapReadonly map[string]*MetadataMap
+
+func (m createdTransaction_previousAccountMetadataMapReadonly) Len() int { return len(m) }
+
+func (m createdTransaction_previousAccountMetadataMapReadonly) Get(k string) (MetadataMapReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m createdTransaction_previousAccountMetadataMapReadonly) Range(yield func(string, MetadataMapReader) bool) {
+	for k, v := range m {
+		var r MetadataMapReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
 }
 
 // RevertedTransactionReader provides read-only access to RevertedTransaction.
@@ -2894,12 +5910,49 @@ func (m *RevertedTransaction) Mutate() *RevertedTransaction {
 	return m.CloneVT()
 }
 
+// RevertedTransactionListReader provides read-only iteration over []*RevertedTransaction.
+type RevertedTransactionListReader interface {
+	Len() int
+	Get(i int) RevertedTransactionReader
+	Range(yield func(int, RevertedTransactionReader) bool)
+}
+
+type revertedTransactionListReadonly []*RevertedTransaction
+
+func (l revertedTransactionListReadonly) Len() int { return len(l) }
+
+func (l revertedTransactionListReadonly) Get(i int) RevertedTransactionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l revertedTransactionListReadonly) Range(yield func(int, RevertedTransactionReader) bool) {
+	for i, v := range l {
+		var r RevertedTransactionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewRevertedTransactionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewRevertedTransactionListReader(s []*RevertedTransaction) RevertedTransactionListReader {
+	return revertedTransactionListReadonly(s)
+}
+
 // SavedMetadataReader provides read-only access to SavedMetadata.
 // Call Mutate() to obtain a mutable clone.
 type SavedMetadataReader interface {
 	GetTarget() TargetReader
-	GetMetadata() map[string]*MetadataValue
-	GetPreviousValues() map[string]*MetadataValue
+	GetMetadata() SavedMetadata_MetadataMapReader
+	GetPreviousValues() SavedMetadata_PreviousValuesMapReader
 	Mutate() *SavedMetadata
 }
 
@@ -2913,12 +5966,12 @@ func (r *savedMetadataReadonly) GetTarget() TargetReader {
 	return v.AsReader()
 }
 
-func (r *savedMetadataReadonly) GetMetadata() map[string]*MetadataValue {
-	return r.v.GetMetadata()
+func (r *savedMetadataReadonly) GetMetadata() SavedMetadata_MetadataMapReader {
+	return savedMetadata_metadataMapReadonly(r.v.GetMetadata())
 }
 
-func (r *savedMetadataReadonly) GetPreviousValues() map[string]*MetadataValue {
-	return r.v.GetPreviousValues()
+func (r *savedMetadataReadonly) GetPreviousValues() SavedMetadata_PreviousValuesMapReader {
+	return savedMetadata_previousValuesMapReadonly(r.v.GetPreviousValues())
 }
 
 func (r *savedMetadataReadonly) Mutate() *SavedMetadata {
@@ -2936,6 +5989,105 @@ func (m *SavedMetadata) AsReader() SavedMetadataReader {
 // Mutate returns a mutable deep clone of this SavedMetadata.
 func (m *SavedMetadata) Mutate() *SavedMetadata {
 	return m.CloneVT()
+}
+
+// SavedMetadataListReader provides read-only iteration over []*SavedMetadata.
+type SavedMetadataListReader interface {
+	Len() int
+	Get(i int) SavedMetadataReader
+	Range(yield func(int, SavedMetadataReader) bool)
+}
+
+type savedMetadataListReadonly []*SavedMetadata
+
+func (l savedMetadataListReadonly) Len() int { return len(l) }
+
+func (l savedMetadataListReadonly) Get(i int) SavedMetadataReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l savedMetadataListReadonly) Range(yield func(int, SavedMetadataReader) bool) {
+	for i, v := range l {
+		var r SavedMetadataReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSavedMetadataListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSavedMetadataListReader(s []*SavedMetadata) SavedMetadataListReader {
+	return savedMetadataListReadonly(s)
+}
+
+// SavedMetadata_MetadataMapReader provides read-only access to SavedMetadata.Metadata.
+type SavedMetadata_MetadataMapReader interface {
+	Len() int
+	Get(k string) (MetadataValueReader, bool)
+	Range(yield func(string, MetadataValueReader) bool)
+}
+
+type savedMetadata_metadataMapReadonly map[string]*MetadataValue
+
+func (m savedMetadata_metadataMapReadonly) Len() int { return len(m) }
+
+func (m savedMetadata_metadataMapReadonly) Get(k string) (MetadataValueReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m savedMetadata_metadataMapReadonly) Range(yield func(string, MetadataValueReader) bool) {
+	for k, v := range m {
+		var r MetadataValueReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
+}
+
+// SavedMetadata_PreviousValuesMapReader provides read-only access to SavedMetadata.PreviousValues.
+type SavedMetadata_PreviousValuesMapReader interface {
+	Len() int
+	Get(k string) (MetadataValueReader, bool)
+	Range(yield func(string, MetadataValueReader) bool)
+}
+
+type savedMetadata_previousValuesMapReadonly map[string]*MetadataValue
+
+func (m savedMetadata_previousValuesMapReadonly) Len() int { return len(m) }
+
+func (m savedMetadata_previousValuesMapReadonly) Get(k string) (MetadataValueReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m savedMetadata_previousValuesMapReadonly) Range(yield func(string, MetadataValueReader) bool) {
+	for k, v := range m {
+		var r MetadataValueReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
 }
 
 // DeletedMetadataReader provides read-only access to DeletedMetadata.
@@ -2986,6 +6138,43 @@ func (m *DeletedMetadata) Mutate() *DeletedMetadata {
 	return m.CloneVT()
 }
 
+// DeletedMetadataListReader provides read-only iteration over []*DeletedMetadata.
+type DeletedMetadataListReader interface {
+	Len() int
+	Get(i int) DeletedMetadataReader
+	Range(yield func(int, DeletedMetadataReader) bool)
+}
+
+type deletedMetadataListReadonly []*DeletedMetadata
+
+func (l deletedMetadataListReadonly) Len() int { return len(l) }
+
+func (l deletedMetadataListReadonly) Get(i int) DeletedMetadataReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l deletedMetadataListReadonly) Range(yield func(int, DeletedMetadataReader) bool) {
+	for i, v := range l {
+		var r DeletedMetadataReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewDeletedMetadataListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewDeletedMetadataListReader(s []*DeletedMetadata) DeletedMetadataListReader {
+	return deletedMetadataListReadonly(s)
+}
+
 // SetMetadataFieldTypeLogReader provides read-only access to SetMetadataFieldTypeLog.
 // Call Mutate() to obtain a mutable clone.
 type SetMetadataFieldTypeLogReader interface {
@@ -3024,6 +6213,43 @@ func (m *SetMetadataFieldTypeLog) AsReader() SetMetadataFieldTypeLogReader {
 // Mutate returns a mutable deep clone of this SetMetadataFieldTypeLog.
 func (m *SetMetadataFieldTypeLog) Mutate() *SetMetadataFieldTypeLog {
 	return m.CloneVT()
+}
+
+// SetMetadataFieldTypeLogListReader provides read-only iteration over []*SetMetadataFieldTypeLog.
+type SetMetadataFieldTypeLogListReader interface {
+	Len() int
+	Get(i int) SetMetadataFieldTypeLogReader
+	Range(yield func(int, SetMetadataFieldTypeLogReader) bool)
+}
+
+type setMetadataFieldTypeLogListReadonly []*SetMetadataFieldTypeLog
+
+func (l setMetadataFieldTypeLogListReadonly) Len() int { return len(l) }
+
+func (l setMetadataFieldTypeLogListReadonly) Get(i int) SetMetadataFieldTypeLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l setMetadataFieldTypeLogListReadonly) Range(yield func(int, SetMetadataFieldTypeLogReader) bool) {
+	for i, v := range l {
+		var r SetMetadataFieldTypeLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSetMetadataFieldTypeLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSetMetadataFieldTypeLogListReader(s []*SetMetadataFieldTypeLog) SetMetadataFieldTypeLogListReader {
+	return setMetadataFieldTypeLogListReadonly(s)
 }
 
 // RemovedMetadataFieldTypeLogReader provides read-only access to RemovedMetadataFieldTypeLog.
@@ -3068,6 +6294,43 @@ func (m *RemovedMetadataFieldTypeLog) AsReader() RemovedMetadataFieldTypeLogRead
 // Mutate returns a mutable deep clone of this RemovedMetadataFieldTypeLog.
 func (m *RemovedMetadataFieldTypeLog) Mutate() *RemovedMetadataFieldTypeLog {
 	return m.CloneVT()
+}
+
+// RemovedMetadataFieldTypeLogListReader provides read-only iteration over []*RemovedMetadataFieldTypeLog.
+type RemovedMetadataFieldTypeLogListReader interface {
+	Len() int
+	Get(i int) RemovedMetadataFieldTypeLogReader
+	Range(yield func(int, RemovedMetadataFieldTypeLogReader) bool)
+}
+
+type removedMetadataFieldTypeLogListReadonly []*RemovedMetadataFieldTypeLog
+
+func (l removedMetadataFieldTypeLogListReadonly) Len() int { return len(l) }
+
+func (l removedMetadataFieldTypeLogListReadonly) Get(i int) RemovedMetadataFieldTypeLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l removedMetadataFieldTypeLogListReadonly) Range(yield func(int, RemovedMetadataFieldTypeLogReader) bool) {
+	for i, v := range l {
+		var r RemovedMetadataFieldTypeLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewRemovedMetadataFieldTypeLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewRemovedMetadataFieldTypeLogListReader(s []*RemovedMetadataFieldTypeLog) RemovedMetadataFieldTypeLogListReader {
+	return removedMetadataFieldTypeLogListReadonly(s)
 }
 
 // PeriodReader provides read-only access to Period.
@@ -3118,11 +6381,11 @@ func (r *periodReadonly) GetCloseSequence() uint64 {
 }
 
 func (r *periodReadonly) GetSealingHash() []byte {
-	return r.v.GetSealingHash()
+	return bytes.Clone(r.v.GetSealingHash())
 }
 
 func (r *periodReadonly) GetLastAuditHash() []byte {
-	return r.v.GetLastAuditHash()
+	return bytes.Clone(r.v.GetLastAuditHash())
 }
 
 func (r *periodReadonly) GetStartSequence() uint64 {
@@ -3130,7 +6393,7 @@ func (r *periodReadonly) GetStartSequence() uint64 {
 }
 
 func (r *periodReadonly) GetStateHash() []byte {
-	return r.v.GetStateHash()
+	return bytes.Clone(r.v.GetStateHash())
 }
 
 func (r *periodReadonly) GetStartAuditSequence() uint64 {
@@ -3157,6 +6420,41 @@ func (m *Period) AsReader() PeriodReader {
 func (m *Period) Mutate() *Period {
 	return m.CloneVT()
 }
+
+// PeriodListReader provides read-only iteration over []*Period.
+type PeriodListReader interface {
+	Len() int
+	Get(i int) PeriodReader
+	Range(yield func(int, PeriodReader) bool)
+}
+
+type periodListReadonly []*Period
+
+func (l periodListReadonly) Len() int { return len(l) }
+
+func (l periodListReadonly) Get(i int) PeriodReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l periodListReadonly) Range(yield func(int, PeriodReader) bool) {
+	for i, v := range l {
+		var r PeriodReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewPeriodListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewPeriodListReader(s []*Period) PeriodListReader { return periodListReadonly(s) }
 
 // ClosedPeriodLogReader provides read-only access to ClosedPeriodLog.
 // Call Mutate() to obtain a mutable clone.
@@ -3201,6 +6499,43 @@ func (m *ClosedPeriodLog) Mutate() *ClosedPeriodLog {
 	return m.CloneVT()
 }
 
+// ClosedPeriodLogListReader provides read-only iteration over []*ClosedPeriodLog.
+type ClosedPeriodLogListReader interface {
+	Len() int
+	Get(i int) ClosedPeriodLogReader
+	Range(yield func(int, ClosedPeriodLogReader) bool)
+}
+
+type closedPeriodLogListReadonly []*ClosedPeriodLog
+
+func (l closedPeriodLogListReadonly) Len() int { return len(l) }
+
+func (l closedPeriodLogListReadonly) Get(i int) ClosedPeriodLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l closedPeriodLogListReadonly) Range(yield func(int, ClosedPeriodLogReader) bool) {
+	for i, v := range l {
+		var r ClosedPeriodLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewClosedPeriodLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewClosedPeriodLogListReader(s []*ClosedPeriodLog) ClosedPeriodLogListReader {
+	return closedPeriodLogListReadonly(s)
+}
+
 // SealedPeriodLogReader provides read-only access to SealedPeriodLog.
 // Call Mutate() to obtain a mutable clone.
 type SealedPeriodLogReader interface {
@@ -3233,6 +6568,43 @@ func (m *SealedPeriodLog) AsReader() SealedPeriodLogReader {
 // Mutate returns a mutable deep clone of this SealedPeriodLog.
 func (m *SealedPeriodLog) Mutate() *SealedPeriodLog {
 	return m.CloneVT()
+}
+
+// SealedPeriodLogListReader provides read-only iteration over []*SealedPeriodLog.
+type SealedPeriodLogListReader interface {
+	Len() int
+	Get(i int) SealedPeriodLogReader
+	Range(yield func(int, SealedPeriodLogReader) bool)
+}
+
+type sealedPeriodLogListReadonly []*SealedPeriodLog
+
+func (l sealedPeriodLogListReadonly) Len() int { return len(l) }
+
+func (l sealedPeriodLogListReadonly) Get(i int) SealedPeriodLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l sealedPeriodLogListReadonly) Range(yield func(int, SealedPeriodLogReader) bool) {
+	for i, v := range l {
+		var r SealedPeriodLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSealedPeriodLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSealedPeriodLogListReader(s []*SealedPeriodLog) SealedPeriodLogListReader {
+	return sealedPeriodLogListReadonly(s)
 }
 
 // ArchivedPeriodLogReader provides read-only access to ArchivedPeriodLog.
@@ -3269,6 +6641,43 @@ func (m *ArchivedPeriodLog) Mutate() *ArchivedPeriodLog {
 	return m.CloneVT()
 }
 
+// ArchivedPeriodLogListReader provides read-only iteration over []*ArchivedPeriodLog.
+type ArchivedPeriodLogListReader interface {
+	Len() int
+	Get(i int) ArchivedPeriodLogReader
+	Range(yield func(int, ArchivedPeriodLogReader) bool)
+}
+
+type archivedPeriodLogListReadonly []*ArchivedPeriodLog
+
+func (l archivedPeriodLogListReadonly) Len() int { return len(l) }
+
+func (l archivedPeriodLogListReadonly) Get(i int) ArchivedPeriodLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l archivedPeriodLogListReadonly) Range(yield func(int, ArchivedPeriodLogReader) bool) {
+	for i, v := range l {
+		var r ArchivedPeriodLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewArchivedPeriodLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewArchivedPeriodLogListReader(s []*ArchivedPeriodLog) ArchivedPeriodLogListReader {
+	return archivedPeriodLogListReadonly(s)
+}
+
 // ConfirmedArchivePeriodLogReader provides read-only access to ConfirmedArchivePeriodLog.
 // Call Mutate() to obtain a mutable clone.
 type ConfirmedArchivePeriodLogReader interface {
@@ -3301,6 +6710,43 @@ func (m *ConfirmedArchivePeriodLog) AsReader() ConfirmedArchivePeriodLogReader {
 // Mutate returns a mutable deep clone of this ConfirmedArchivePeriodLog.
 func (m *ConfirmedArchivePeriodLog) Mutate() *ConfirmedArchivePeriodLog {
 	return m.CloneVT()
+}
+
+// ConfirmedArchivePeriodLogListReader provides read-only iteration over []*ConfirmedArchivePeriodLog.
+type ConfirmedArchivePeriodLogListReader interface {
+	Len() int
+	Get(i int) ConfirmedArchivePeriodLogReader
+	Range(yield func(int, ConfirmedArchivePeriodLogReader) bool)
+}
+
+type confirmedArchivePeriodLogListReadonly []*ConfirmedArchivePeriodLog
+
+func (l confirmedArchivePeriodLogListReadonly) Len() int { return len(l) }
+
+func (l confirmedArchivePeriodLogListReadonly) Get(i int) ConfirmedArchivePeriodLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l confirmedArchivePeriodLogListReadonly) Range(yield func(int, ConfirmedArchivePeriodLogReader) bool) {
+	for i, v := range l {
+		var r ConfirmedArchivePeriodLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewConfirmedArchivePeriodLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewConfirmedArchivePeriodLogListReader(s []*ConfirmedArchivePeriodLog) ConfirmedArchivePeriodLogListReader {
+	return confirmedArchivePeriodLogListReadonly(s)
 }
 
 // MirrorSourceConfigReader provides read-only access to MirrorSourceConfig.
@@ -3343,6 +6789,43 @@ func (m *MirrorSourceConfig) Mutate() *MirrorSourceConfig {
 	return m.CloneVT()
 }
 
+// MirrorSourceConfigListReader provides read-only iteration over []*MirrorSourceConfig.
+type MirrorSourceConfigListReader interface {
+	Len() int
+	Get(i int) MirrorSourceConfigReader
+	Range(yield func(int, MirrorSourceConfigReader) bool)
+}
+
+type mirrorSourceConfigListReadonly []*MirrorSourceConfig
+
+func (l mirrorSourceConfigListReadonly) Len() int { return len(l) }
+
+func (l mirrorSourceConfigListReadonly) Get(i int) MirrorSourceConfigReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l mirrorSourceConfigListReadonly) Range(yield func(int, MirrorSourceConfigReader) bool) {
+	for i, v := range l {
+		var r MirrorSourceConfigReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewMirrorSourceConfigListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewMirrorSourceConfigListReader(s []*MirrorSourceConfig) MirrorSourceConfigListReader {
+	return mirrorSourceConfigListReadonly(s)
+}
+
 // HttpMirrorSourceConfigReader provides read-only access to HttpMirrorSourceConfig.
 // Call Mutate() to obtain a mutable clone.
 type HttpMirrorSourceConfigReader interface {
@@ -3382,6 +6865,43 @@ func (m *HttpMirrorSourceConfig) Mutate() *HttpMirrorSourceConfig {
 	return m.CloneVT()
 }
 
+// HttpMirrorSourceConfigListReader provides read-only iteration over []*HttpMirrorSourceConfig.
+type HttpMirrorSourceConfigListReader interface {
+	Len() int
+	Get(i int) HttpMirrorSourceConfigReader
+	Range(yield func(int, HttpMirrorSourceConfigReader) bool)
+}
+
+type httpMirrorSourceConfigListReadonly []*HttpMirrorSourceConfig
+
+func (l httpMirrorSourceConfigListReadonly) Len() int { return len(l) }
+
+func (l httpMirrorSourceConfigListReadonly) Get(i int) HttpMirrorSourceConfigReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l httpMirrorSourceConfigListReadonly) Range(yield func(int, HttpMirrorSourceConfigReader) bool) {
+	for i, v := range l {
+		var r HttpMirrorSourceConfigReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewHttpMirrorSourceConfigListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewHttpMirrorSourceConfigListReader(s []*HttpMirrorSourceConfig) HttpMirrorSourceConfigListReader {
+	return httpMirrorSourceConfigListReadonly(s)
+}
+
 // OAuth2ClientCredentialsReader provides read-only access to OAuth2ClientCredentials.
 // Call Mutate() to obtain a mutable clone.
 type OAuth2ClientCredentialsReader interface {
@@ -3407,7 +6927,7 @@ func (r *oAuth2ClientCredentialsReadonly) GetTokenEndpoint() string {
 }
 
 func (r *oAuth2ClientCredentialsReadonly) GetScopes() []string {
-	return r.v.GetScopes()
+	return slices.Clone(r.v.GetScopes())
 }
 
 func (r *oAuth2ClientCredentialsReadonly) Mutate() *OAuth2ClientCredentials {
@@ -3425,6 +6945,43 @@ func (m *OAuth2ClientCredentials) AsReader() OAuth2ClientCredentialsReader {
 // Mutate returns a mutable deep clone of this OAuth2ClientCredentials.
 func (m *OAuth2ClientCredentials) Mutate() *OAuth2ClientCredentials {
 	return m.CloneVT()
+}
+
+// OAuth2ClientCredentialsListReader provides read-only iteration over []*OAuth2ClientCredentials.
+type OAuth2ClientCredentialsListReader interface {
+	Len() int
+	Get(i int) OAuth2ClientCredentialsReader
+	Range(yield func(int, OAuth2ClientCredentialsReader) bool)
+}
+
+type oAuth2ClientCredentialsListReadonly []*OAuth2ClientCredentials
+
+func (l oAuth2ClientCredentialsListReadonly) Len() int { return len(l) }
+
+func (l oAuth2ClientCredentialsListReadonly) Get(i int) OAuth2ClientCredentialsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l oAuth2ClientCredentialsListReadonly) Range(yield func(int, OAuth2ClientCredentialsReader) bool) {
+	for i, v := range l {
+		var r OAuth2ClientCredentialsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewOAuth2ClientCredentialsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewOAuth2ClientCredentialsListReader(s []*OAuth2ClientCredentials) OAuth2ClientCredentialsListReader {
+	return oAuth2ClientCredentialsListReadonly(s)
 }
 
 // PostgresMirrorSourceConfigReader provides read-only access to PostgresMirrorSourceConfig.
@@ -3455,6 +7012,43 @@ func (m *PostgresMirrorSourceConfig) AsReader() PostgresMirrorSourceConfigReader
 // Mutate returns a mutable deep clone of this PostgresMirrorSourceConfig.
 func (m *PostgresMirrorSourceConfig) Mutate() *PostgresMirrorSourceConfig {
 	return m.CloneVT()
+}
+
+// PostgresMirrorSourceConfigListReader provides read-only iteration over []*PostgresMirrorSourceConfig.
+type PostgresMirrorSourceConfigListReader interface {
+	Len() int
+	Get(i int) PostgresMirrorSourceConfigReader
+	Range(yield func(int, PostgresMirrorSourceConfigReader) bool)
+}
+
+type postgresMirrorSourceConfigListReadonly []*PostgresMirrorSourceConfig
+
+func (l postgresMirrorSourceConfigListReadonly) Len() int { return len(l) }
+
+func (l postgresMirrorSourceConfigListReadonly) Get(i int) PostgresMirrorSourceConfigReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l postgresMirrorSourceConfigListReadonly) Range(yield func(int, PostgresMirrorSourceConfigReader) bool) {
+	for i, v := range l {
+		var r PostgresMirrorSourceConfigReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewPostgresMirrorSourceConfigListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewPostgresMirrorSourceConfigListReader(s []*PostgresMirrorSourceConfig) PostgresMirrorSourceConfigListReader {
+	return postgresMirrorSourceConfigListReadonly(s)
 }
 
 // MirrorSyncErrorReader provides read-only access to MirrorSyncError.
@@ -3494,6 +7088,43 @@ func (m *MirrorSyncError) AsReader() MirrorSyncErrorReader {
 // Mutate returns a mutable deep clone of this MirrorSyncError.
 func (m *MirrorSyncError) Mutate() *MirrorSyncError {
 	return m.CloneVT()
+}
+
+// MirrorSyncErrorListReader provides read-only iteration over []*MirrorSyncError.
+type MirrorSyncErrorListReader interface {
+	Len() int
+	Get(i int) MirrorSyncErrorReader
+	Range(yield func(int, MirrorSyncErrorReader) bool)
+}
+
+type mirrorSyncErrorListReadonly []*MirrorSyncError
+
+func (l mirrorSyncErrorListReadonly) Len() int { return len(l) }
+
+func (l mirrorSyncErrorListReadonly) Get(i int) MirrorSyncErrorReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l mirrorSyncErrorListReadonly) Range(yield func(int, MirrorSyncErrorReader) bool) {
+	for i, v := range l {
+		var r MirrorSyncErrorReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewMirrorSyncErrorListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewMirrorSyncErrorListReader(s []*MirrorSyncError) MirrorSyncErrorListReader {
+	return mirrorSyncErrorListReadonly(s)
 }
 
 // MirrorSyncProgressReader provides read-only access to MirrorSyncProgress.
@@ -3550,6 +7181,43 @@ func (m *MirrorSyncProgress) Mutate() *MirrorSyncProgress {
 	return m.CloneVT()
 }
 
+// MirrorSyncProgressListReader provides read-only iteration over []*MirrorSyncProgress.
+type MirrorSyncProgressListReader interface {
+	Len() int
+	Get(i int) MirrorSyncProgressReader
+	Range(yield func(int, MirrorSyncProgressReader) bool)
+}
+
+type mirrorSyncProgressListReadonly []*MirrorSyncProgress
+
+func (l mirrorSyncProgressListReadonly) Len() int { return len(l) }
+
+func (l mirrorSyncProgressListReadonly) Get(i int) MirrorSyncProgressReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l mirrorSyncProgressListReadonly) Range(yield func(int, MirrorSyncProgressReader) bool) {
+	for i, v := range l {
+		var r MirrorSyncProgressReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewMirrorSyncProgressListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewMirrorSyncProgressListReader(s []*MirrorSyncProgress) MirrorSyncProgressListReader {
+	return mirrorSyncProgressListReadonly(s)
+}
+
 // LedgerInfoReader provides read-only access to LedgerInfo.
 // Call Mutate() to obtain a mutable clone.
 type LedgerInfoReader interface {
@@ -3560,11 +7228,11 @@ type LedgerInfoReader interface {
 	GetMode() LedgerMode
 	GetMirrorSource() MirrorSourceConfigReader
 	GetMirrorSyncProgress() MirrorSyncProgressReader
-	GetAccountTypes() map[string]*AccountType
+	GetAccountTypes() LedgerInfo_AccountTypesMapReader
 	GetDefaultEnforcementMode() ChartEnforcementMode
-	GetMetadata() map[string]*MetadataValue
+	GetMetadata() LedgerInfo_MetadataMapReader
 	GetId() uint32
-	GetIndexes() []*Index
+	GetIndexes() IndexListReader
 	Mutate() *LedgerInfo
 }
 
@@ -3618,24 +7286,24 @@ func (r *ledgerInfoReadonly) GetMirrorSyncProgress() MirrorSyncProgressReader {
 	return v.AsReader()
 }
 
-func (r *ledgerInfoReadonly) GetAccountTypes() map[string]*AccountType {
-	return r.v.GetAccountTypes()
+func (r *ledgerInfoReadonly) GetAccountTypes() LedgerInfo_AccountTypesMapReader {
+	return ledgerInfo_accountTypesMapReadonly(r.v.GetAccountTypes())
 }
 
 func (r *ledgerInfoReadonly) GetDefaultEnforcementMode() ChartEnforcementMode {
 	return r.v.GetDefaultEnforcementMode()
 }
 
-func (r *ledgerInfoReadonly) GetMetadata() map[string]*MetadataValue {
-	return r.v.GetMetadata()
+func (r *ledgerInfoReadonly) GetMetadata() LedgerInfo_MetadataMapReader {
+	return ledgerInfo_metadataMapReadonly(r.v.GetMetadata())
 }
 
 func (r *ledgerInfoReadonly) GetId() uint32 {
 	return r.v.GetId()
 }
 
-func (r *ledgerInfoReadonly) GetIndexes() []*Index {
-	return r.v.GetIndexes()
+func (r *ledgerInfoReadonly) GetIndexes() IndexListReader {
+	return NewIndexListReader(r.v.GetIndexes())
 }
 
 func (r *ledgerInfoReadonly) Mutate() *LedgerInfo {
@@ -3655,11 +7323,108 @@ func (m *LedgerInfo) Mutate() *LedgerInfo {
 	return m.CloneVT()
 }
 
+// LedgerInfoListReader provides read-only iteration over []*LedgerInfo.
+type LedgerInfoListReader interface {
+	Len() int
+	Get(i int) LedgerInfoReader
+	Range(yield func(int, LedgerInfoReader) bool)
+}
+
+type ledgerInfoListReadonly []*LedgerInfo
+
+func (l ledgerInfoListReadonly) Len() int { return len(l) }
+
+func (l ledgerInfoListReadonly) Get(i int) LedgerInfoReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l ledgerInfoListReadonly) Range(yield func(int, LedgerInfoReader) bool) {
+	for i, v := range l {
+		var r LedgerInfoReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewLedgerInfoListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewLedgerInfoListReader(s []*LedgerInfo) LedgerInfoListReader { return ledgerInfoListReadonly(s) }
+
+// LedgerInfo_AccountTypesMapReader provides read-only access to LedgerInfo.AccountTypes.
+type LedgerInfo_AccountTypesMapReader interface {
+	Len() int
+	Get(k string) (AccountTypeReader, bool)
+	Range(yield func(string, AccountTypeReader) bool)
+}
+
+type ledgerInfo_accountTypesMapReadonly map[string]*AccountType
+
+func (m ledgerInfo_accountTypesMapReadonly) Len() int { return len(m) }
+
+func (m ledgerInfo_accountTypesMapReadonly) Get(k string) (AccountTypeReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m ledgerInfo_accountTypesMapReadonly) Range(yield func(string, AccountTypeReader) bool) {
+	for k, v := range m {
+		var r AccountTypeReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
+}
+
+// LedgerInfo_MetadataMapReader provides read-only access to LedgerInfo.Metadata.
+type LedgerInfo_MetadataMapReader interface {
+	Len() int
+	Get(k string) (MetadataValueReader, bool)
+	Range(yield func(string, MetadataValueReader) bool)
+}
+
+type ledgerInfo_metadataMapReadonly map[string]*MetadataValue
+
+func (m ledgerInfo_metadataMapReadonly) Len() int { return len(m) }
+
+func (m ledgerInfo_metadataMapReadonly) Get(k string) (MetadataValueReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m ledgerInfo_metadataMapReadonly) Range(yield func(string, MetadataValueReader) bool) {
+	for k, v := range m {
+		var r MetadataValueReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
+}
+
 // SaveMetadataCommandReader provides read-only access to SaveMetadataCommand.
 // Call Mutate() to obtain a mutable clone.
 type SaveMetadataCommandReader interface {
 	GetTarget() TargetReader
-	GetMetadata() map[string]*MetadataValue
+	GetMetadata() SaveMetadataCommand_MetadataMapReader
 	Mutate() *SaveMetadataCommand
 }
 
@@ -3673,8 +7438,8 @@ func (r *saveMetadataCommandReadonly) GetTarget() TargetReader {
 	return v.AsReader()
 }
 
-func (r *saveMetadataCommandReadonly) GetMetadata() map[string]*MetadataValue {
-	return r.v.GetMetadata()
+func (r *saveMetadataCommandReadonly) GetMetadata() SaveMetadataCommand_MetadataMapReader {
+	return saveMetadataCommand_metadataMapReadonly(r.v.GetMetadata())
 }
 
 func (r *saveMetadataCommandReadonly) Mutate() *SaveMetadataCommand {
@@ -3692,6 +7457,74 @@ func (m *SaveMetadataCommand) AsReader() SaveMetadataCommandReader {
 // Mutate returns a mutable deep clone of this SaveMetadataCommand.
 func (m *SaveMetadataCommand) Mutate() *SaveMetadataCommand {
 	return m.CloneVT()
+}
+
+// SaveMetadataCommandListReader provides read-only iteration over []*SaveMetadataCommand.
+type SaveMetadataCommandListReader interface {
+	Len() int
+	Get(i int) SaveMetadataCommandReader
+	Range(yield func(int, SaveMetadataCommandReader) bool)
+}
+
+type saveMetadataCommandListReadonly []*SaveMetadataCommand
+
+func (l saveMetadataCommandListReadonly) Len() int { return len(l) }
+
+func (l saveMetadataCommandListReadonly) Get(i int) SaveMetadataCommandReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l saveMetadataCommandListReadonly) Range(yield func(int, SaveMetadataCommandReader) bool) {
+	for i, v := range l {
+		var r SaveMetadataCommandReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSaveMetadataCommandListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSaveMetadataCommandListReader(s []*SaveMetadataCommand) SaveMetadataCommandListReader {
+	return saveMetadataCommandListReadonly(s)
+}
+
+// SaveMetadataCommand_MetadataMapReader provides read-only access to SaveMetadataCommand.Metadata.
+type SaveMetadataCommand_MetadataMapReader interface {
+	Len() int
+	Get(k string) (MetadataValueReader, bool)
+	Range(yield func(string, MetadataValueReader) bool)
+}
+
+type saveMetadataCommand_metadataMapReadonly map[string]*MetadataValue
+
+func (m saveMetadataCommand_metadataMapReadonly) Len() int { return len(m) }
+
+func (m saveMetadataCommand_metadataMapReadonly) Get(k string) (MetadataValueReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m saveMetadataCommand_metadataMapReadonly) Range(yield func(string, MetadataValueReader) bool) {
+	for k, v := range m {
+		var r MetadataValueReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
 }
 
 // DeleteMetadataCommandReader provides read-only access to DeleteMetadataCommand.
@@ -3733,12 +7566,49 @@ func (m *DeleteMetadataCommand) Mutate() *DeleteMetadataCommand {
 	return m.CloneVT()
 }
 
+// DeleteMetadataCommandListReader provides read-only iteration over []*DeleteMetadataCommand.
+type DeleteMetadataCommandListReader interface {
+	Len() int
+	Get(i int) DeleteMetadataCommandReader
+	Range(yield func(int, DeleteMetadataCommandReader) bool)
+}
+
+type deleteMetadataCommandListReadonly []*DeleteMetadataCommand
+
+func (l deleteMetadataCommandListReadonly) Len() int { return len(l) }
+
+func (l deleteMetadataCommandListReadonly) Get(i int) DeleteMetadataCommandReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l deleteMetadataCommandListReadonly) Range(yield func(int, DeleteMetadataCommandReader) bool) {
+	for i, v := range l {
+		var r DeleteMetadataCommandReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewDeleteMetadataCommandListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewDeleteMetadataCommandListReader(s []*DeleteMetadataCommand) DeleteMetadataCommandListReader {
+	return deleteMetadataCommandListReadonly(s)
+}
+
 // TransactionStateReader provides read-only access to TransactionState.
 // Call Mutate() to obtain a mutable clone.
 type TransactionStateReader interface {
 	GetCreatedByLog() uint64
 	GetRevertedByTransaction() uint64
-	GetMetadata() map[string]*MetadataValue
+	GetMetadata() TransactionState_MetadataMapReader
 	Mutate() *TransactionState
 }
 
@@ -3752,8 +7622,8 @@ func (r *transactionStateReadonly) GetRevertedByTransaction() uint64 {
 	return r.v.GetRevertedByTransaction()
 }
 
-func (r *transactionStateReadonly) GetMetadata() map[string]*MetadataValue {
-	return r.v.GetMetadata()
+func (r *transactionStateReadonly) GetMetadata() TransactionState_MetadataMapReader {
+	return transactionState_metadataMapReadonly(r.v.GetMetadata())
 }
 
 func (r *transactionStateReadonly) Mutate() *TransactionState {
@@ -3773,6 +7643,74 @@ func (m *TransactionState) Mutate() *TransactionState {
 	return m.CloneVT()
 }
 
+// TransactionStateListReader provides read-only iteration over []*TransactionState.
+type TransactionStateListReader interface {
+	Len() int
+	Get(i int) TransactionStateReader
+	Range(yield func(int, TransactionStateReader) bool)
+}
+
+type transactionStateListReadonly []*TransactionState
+
+func (l transactionStateListReadonly) Len() int { return len(l) }
+
+func (l transactionStateListReadonly) Get(i int) TransactionStateReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l transactionStateListReadonly) Range(yield func(int, TransactionStateReader) bool) {
+	for i, v := range l {
+		var r TransactionStateReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewTransactionStateListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewTransactionStateListReader(s []*TransactionState) TransactionStateListReader {
+	return transactionStateListReadonly(s)
+}
+
+// TransactionState_MetadataMapReader provides read-only access to TransactionState.Metadata.
+type TransactionState_MetadataMapReader interface {
+	Len() int
+	Get(k string) (MetadataValueReader, bool)
+	Range(yield func(string, MetadataValueReader) bool)
+}
+
+type transactionState_metadataMapReadonly map[string]*MetadataValue
+
+func (m transactionState_metadataMapReadonly) Len() int { return len(m) }
+
+func (m transactionState_metadataMapReadonly) Get(k string) (MetadataValueReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m transactionState_metadataMapReadonly) Range(yield func(string, MetadataValueReader) bool) {
+	for k, v := range m {
+		var r MetadataValueReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
+}
+
 // IdempotencyKeyValueReader provides read-only access to IdempotencyKeyValue.
 // Call Mutate() to obtain a mutable clone.
 type IdempotencyKeyValueReader interface {
@@ -3790,7 +7728,7 @@ func (r *idempotencyKeyValueReadonly) GetLogSequence() uint64 {
 }
 
 func (r *idempotencyKeyValueReadonly) GetHash() []byte {
-	return r.v.GetHash()
+	return bytes.Clone(r.v.GetHash())
 }
 
 func (r *idempotencyKeyValueReadonly) GetHashVersion() uint32 {
@@ -3816,6 +7754,43 @@ func (m *IdempotencyKeyValue) AsReader() IdempotencyKeyValueReader {
 // Mutate returns a mutable deep clone of this IdempotencyKeyValue.
 func (m *IdempotencyKeyValue) Mutate() *IdempotencyKeyValue {
 	return m.CloneVT()
+}
+
+// IdempotencyKeyValueListReader provides read-only iteration over []*IdempotencyKeyValue.
+type IdempotencyKeyValueListReader interface {
+	Len() int
+	Get(i int) IdempotencyKeyValueReader
+	Range(yield func(int, IdempotencyKeyValueReader) bool)
+}
+
+type idempotencyKeyValueListReadonly []*IdempotencyKeyValue
+
+func (l idempotencyKeyValueListReadonly) Len() int { return len(l) }
+
+func (l idempotencyKeyValueListReadonly) Get(i int) IdempotencyKeyValueReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l idempotencyKeyValueListReadonly) Range(yield func(int, IdempotencyKeyValueReader) bool) {
+	for i, v := range l {
+		var r IdempotencyKeyValueReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewIdempotencyKeyValueListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewIdempotencyKeyValueListReader(s []*IdempotencyKeyValue) IdempotencyKeyValueListReader {
+	return idempotencyKeyValueListReadonly(s)
 }
 
 // TransactionReferenceValueReader provides read-only access to TransactionReferenceValue.
@@ -3848,6 +7823,43 @@ func (m *TransactionReferenceValue) Mutate() *TransactionReferenceValue {
 	return m.CloneVT()
 }
 
+// TransactionReferenceValueListReader provides read-only iteration over []*TransactionReferenceValue.
+type TransactionReferenceValueListReader interface {
+	Len() int
+	Get(i int) TransactionReferenceValueReader
+	Range(yield func(int, TransactionReferenceValueReader) bool)
+}
+
+type transactionReferenceValueListReadonly []*TransactionReferenceValue
+
+func (l transactionReferenceValueListReadonly) Len() int { return len(l) }
+
+func (l transactionReferenceValueListReadonly) Get(i int) TransactionReferenceValueReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l transactionReferenceValueListReadonly) Range(yield func(int, TransactionReferenceValueReader) bool) {
+	for i, v := range l {
+		var r TransactionReferenceValueReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewTransactionReferenceValueListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewTransactionReferenceValueListReader(s []*TransactionReferenceValue) TransactionReferenceValueListReader {
+	return transactionReferenceValueListReadonly(s)
+}
+
 // NumscriptVersionValueReader provides read-only access to NumscriptVersionValue.
 // Call Mutate() to obtain a mutable clone.
 type NumscriptVersionValueReader interface {
@@ -3876,6 +7888,43 @@ func (m *NumscriptVersionValue) AsReader() NumscriptVersionValueReader {
 // Mutate returns a mutable deep clone of this NumscriptVersionValue.
 func (m *NumscriptVersionValue) Mutate() *NumscriptVersionValue {
 	return m.CloneVT()
+}
+
+// NumscriptVersionValueListReader provides read-only iteration over []*NumscriptVersionValue.
+type NumscriptVersionValueListReader interface {
+	Len() int
+	Get(i int) NumscriptVersionValueReader
+	Range(yield func(int, NumscriptVersionValueReader) bool)
+}
+
+type numscriptVersionValueListReadonly []*NumscriptVersionValue
+
+func (l numscriptVersionValueListReadonly) Len() int { return len(l) }
+
+func (l numscriptVersionValueListReadonly) Get(i int) NumscriptVersionValueReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l numscriptVersionValueListReadonly) Range(yield func(int, NumscriptVersionValueReader) bool) {
+	for i, v := range l {
+		var r NumscriptVersionValueReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewNumscriptVersionValueListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewNumscriptVersionValueListReader(s []*NumscriptVersionValue) NumscriptVersionValueListReader {
+	return numscriptVersionValueListReadonly(s)
 }
 
 // SegmentTypeReader provides read-only access to SegmentType.
@@ -3908,6 +7957,43 @@ func (m *SegmentType) Mutate() *SegmentType {
 	return m.CloneVT()
 }
 
+// SegmentTypeListReader provides read-only iteration over []*SegmentType.
+type SegmentTypeListReader interface {
+	Len() int
+	Get(i int) SegmentTypeReader
+	Range(yield func(int, SegmentTypeReader) bool)
+}
+
+type segmentTypeListReadonly []*SegmentType
+
+func (l segmentTypeListReadonly) Len() int { return len(l) }
+
+func (l segmentTypeListReadonly) Get(i int) SegmentTypeReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l segmentTypeListReadonly) Range(yield func(int, SegmentTypeReader) bool) {
+	for i, v := range l {
+		var r SegmentTypeReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSegmentTypeListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSegmentTypeListReader(s []*SegmentType) SegmentTypeListReader {
+	return segmentTypeListReadonly(s)
+}
+
 // UUIDConstraintReader provides read-only access to UUIDConstraint.
 // Call Mutate() to obtain a mutable clone.
 type UUIDConstraintReader interface {
@@ -3931,6 +8017,43 @@ func (m *UUIDConstraint) AsReader() UUIDConstraintReader {
 // Mutate returns a mutable deep clone of this UUIDConstraint.
 func (m *UUIDConstraint) Mutate() *UUIDConstraint {
 	return m.CloneVT()
+}
+
+// UUIDConstraintListReader provides read-only iteration over []*UUIDConstraint.
+type UUIDConstraintListReader interface {
+	Len() int
+	Get(i int) UUIDConstraintReader
+	Range(yield func(int, UUIDConstraintReader) bool)
+}
+
+type uUIDConstraintListReadonly []*UUIDConstraint
+
+func (l uUIDConstraintListReadonly) Len() int { return len(l) }
+
+func (l uUIDConstraintListReadonly) Get(i int) UUIDConstraintReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l uUIDConstraintListReadonly) Range(yield func(int, UUIDConstraintReader) bool) {
+	for i, v := range l {
+		var r UUIDConstraintReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewUUIDConstraintListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewUUIDConstraintListReader(s []*UUIDConstraint) UUIDConstraintListReader {
+	return uUIDConstraintListReadonly(s)
 }
 
 // Uint64ConstraintReader provides read-only access to Uint64Constraint.
@@ -3958,6 +8081,43 @@ func (m *Uint64Constraint) Mutate() *Uint64Constraint {
 	return m.CloneVT()
 }
 
+// Uint64ConstraintListReader provides read-only iteration over []*Uint64Constraint.
+type Uint64ConstraintListReader interface {
+	Len() int
+	Get(i int) Uint64ConstraintReader
+	Range(yield func(int, Uint64ConstraintReader) bool)
+}
+
+type uint64ConstraintListReadonly []*Uint64Constraint
+
+func (l uint64ConstraintListReadonly) Len() int { return len(l) }
+
+func (l uint64ConstraintListReadonly) Get(i int) Uint64ConstraintReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l uint64ConstraintListReadonly) Range(yield func(int, Uint64ConstraintReader) bool) {
+	for i, v := range l {
+		var r Uint64ConstraintReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewUint64ConstraintListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewUint64ConstraintListReader(s []*Uint64Constraint) Uint64ConstraintListReader {
+	return uint64ConstraintListReadonly(s)
+}
+
 // BytesConstraintReader provides read-only access to BytesConstraint.
 // Call Mutate() to obtain a mutable clone.
 type BytesConstraintReader interface {
@@ -3983,13 +8143,50 @@ func (m *BytesConstraint) Mutate() *BytesConstraint {
 	return m.CloneVT()
 }
 
+// BytesConstraintListReader provides read-only iteration over []*BytesConstraint.
+type BytesConstraintListReader interface {
+	Len() int
+	Get(i int) BytesConstraintReader
+	Range(yield func(int, BytesConstraintReader) bool)
+}
+
+type bytesConstraintListReadonly []*BytesConstraint
+
+func (l bytesConstraintListReadonly) Len() int { return len(l) }
+
+func (l bytesConstraintListReadonly) Get(i int) BytesConstraintReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l bytesConstraintListReadonly) Range(yield func(int, BytesConstraintReader) bool) {
+	for i, v := range l {
+		var r BytesConstraintReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewBytesConstraintListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewBytesConstraintListReader(s []*BytesConstraint) BytesConstraintListReader {
+	return bytesConstraintListReadonly(s)
+}
+
 // AccountTypeReader provides read-only access to AccountType.
 // Call Mutate() to obtain a mutable clone.
 type AccountTypeReader interface {
 	GetName() string
 	GetPattern() string
 	GetPersistence() AccountTypePersistence
-	GetSegmentTypes() map[string]*SegmentType
+	GetSegmentTypes() AccountType_SegmentTypesMapReader
 	Mutate() *AccountType
 }
 
@@ -4007,8 +8204,8 @@ func (r *accountTypeReadonly) GetPersistence() AccountTypePersistence {
 	return r.v.GetPersistence()
 }
 
-func (r *accountTypeReadonly) GetSegmentTypes() map[string]*SegmentType {
-	return r.v.GetSegmentTypes()
+func (r *accountTypeReadonly) GetSegmentTypes() AccountType_SegmentTypesMapReader {
+	return accountType_segmentTypesMapReadonly(r.v.GetSegmentTypes())
 }
 
 func (r *accountTypeReadonly) Mutate() *AccountType {
@@ -4026,6 +8223,74 @@ func (m *AccountType) AsReader() AccountTypeReader {
 // Mutate returns a mutable deep clone of this AccountType.
 func (m *AccountType) Mutate() *AccountType {
 	return m.CloneVT()
+}
+
+// AccountTypeListReader provides read-only iteration over []*AccountType.
+type AccountTypeListReader interface {
+	Len() int
+	Get(i int) AccountTypeReader
+	Range(yield func(int, AccountTypeReader) bool)
+}
+
+type accountTypeListReadonly []*AccountType
+
+func (l accountTypeListReadonly) Len() int { return len(l) }
+
+func (l accountTypeListReadonly) Get(i int) AccountTypeReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l accountTypeListReadonly) Range(yield func(int, AccountTypeReader) bool) {
+	for i, v := range l {
+		var r AccountTypeReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAccountTypeListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAccountTypeListReader(s []*AccountType) AccountTypeListReader {
+	return accountTypeListReadonly(s)
+}
+
+// AccountType_SegmentTypesMapReader provides read-only access to AccountType.SegmentTypes.
+type AccountType_SegmentTypesMapReader interface {
+	Len() int
+	Get(k string) (SegmentTypeReader, bool)
+	Range(yield func(string, SegmentTypeReader) bool)
+}
+
+type accountType_segmentTypesMapReadonly map[string]*SegmentType
+
+func (m accountType_segmentTypesMapReadonly) Len() int { return len(m) }
+
+func (m accountType_segmentTypesMapReadonly) Get(k string) (SegmentTypeReader, bool) {
+	v, ok := m[k]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.AsReader(), true
+}
+
+func (m accountType_segmentTypesMapReadonly) Range(yield func(string, SegmentTypeReader) bool) {
+	for k, v := range m {
+		var r SegmentTypeReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(k, r) {
+			return
+		}
+	}
 }
 
 // AddedAccountTypeLogReader provides read-only access to AddedAccountTypeLog.
@@ -4062,6 +8327,43 @@ func (m *AddedAccountTypeLog) Mutate() *AddedAccountTypeLog {
 	return m.CloneVT()
 }
 
+// AddedAccountTypeLogListReader provides read-only iteration over []*AddedAccountTypeLog.
+type AddedAccountTypeLogListReader interface {
+	Len() int
+	Get(i int) AddedAccountTypeLogReader
+	Range(yield func(int, AddedAccountTypeLogReader) bool)
+}
+
+type addedAccountTypeLogListReadonly []*AddedAccountTypeLog
+
+func (l addedAccountTypeLogListReadonly) Len() int { return len(l) }
+
+func (l addedAccountTypeLogListReadonly) Get(i int) AddedAccountTypeLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l addedAccountTypeLogListReadonly) Range(yield func(int, AddedAccountTypeLogReader) bool) {
+	for i, v := range l {
+		var r AddedAccountTypeLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAddedAccountTypeLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAddedAccountTypeLogListReader(s []*AddedAccountTypeLog) AddedAccountTypeLogListReader {
+	return addedAccountTypeLogListReadonly(s)
+}
+
 // RemovedAccountTypeLogReader provides read-only access to RemovedAccountTypeLog.
 // Call Mutate() to obtain a mutable clone.
 type RemovedAccountTypeLogReader interface {
@@ -4090,6 +8392,43 @@ func (m *RemovedAccountTypeLog) AsReader() RemovedAccountTypeLogReader {
 // Mutate returns a mutable deep clone of this RemovedAccountTypeLog.
 func (m *RemovedAccountTypeLog) Mutate() *RemovedAccountTypeLog {
 	return m.CloneVT()
+}
+
+// RemovedAccountTypeLogListReader provides read-only iteration over []*RemovedAccountTypeLog.
+type RemovedAccountTypeLogListReader interface {
+	Len() int
+	Get(i int) RemovedAccountTypeLogReader
+	Range(yield func(int, RemovedAccountTypeLogReader) bool)
+}
+
+type removedAccountTypeLogListReadonly []*RemovedAccountTypeLog
+
+func (l removedAccountTypeLogListReadonly) Len() int { return len(l) }
+
+func (l removedAccountTypeLogListReadonly) Get(i int) RemovedAccountTypeLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l removedAccountTypeLogListReadonly) Range(yield func(int, RemovedAccountTypeLogReader) bool) {
+	for i, v := range l {
+		var r RemovedAccountTypeLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewRemovedAccountTypeLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewRemovedAccountTypeLogListReader(s []*RemovedAccountTypeLog) RemovedAccountTypeLogListReader {
+	return removedAccountTypeLogListReadonly(s)
 }
 
 // UpdatedDefaultEnforcementModeLogReader provides read-only access to UpdatedDefaultEnforcementModeLog.
@@ -4124,6 +8463,43 @@ func (m *UpdatedDefaultEnforcementModeLog) Mutate() *UpdatedDefaultEnforcementMo
 	return m.CloneVT()
 }
 
+// UpdatedDefaultEnforcementModeLogListReader provides read-only iteration over []*UpdatedDefaultEnforcementModeLog.
+type UpdatedDefaultEnforcementModeLogListReader interface {
+	Len() int
+	Get(i int) UpdatedDefaultEnforcementModeLogReader
+	Range(yield func(int, UpdatedDefaultEnforcementModeLogReader) bool)
+}
+
+type updatedDefaultEnforcementModeLogListReadonly []*UpdatedDefaultEnforcementModeLog
+
+func (l updatedDefaultEnforcementModeLogListReadonly) Len() int { return len(l) }
+
+func (l updatedDefaultEnforcementModeLogListReadonly) Get(i int) UpdatedDefaultEnforcementModeLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l updatedDefaultEnforcementModeLogListReadonly) Range(yield func(int, UpdatedDefaultEnforcementModeLogReader) bool) {
+	for i, v := range l {
+		var r UpdatedDefaultEnforcementModeLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewUpdatedDefaultEnforcementModeLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewUpdatedDefaultEnforcementModeLogListReader(s []*UpdatedDefaultEnforcementModeLog) UpdatedDefaultEnforcementModeLogListReader {
+	return updatedDefaultEnforcementModeLogListReadonly(s)
+}
+
 // QueryFilterReader provides read-only access to QueryFilter.
 // Call Mutate() to obtain a mutable clone.
 type QueryFilterReader interface {
@@ -4152,6 +8528,43 @@ func (m *QueryFilter) AsReader() QueryFilterReader {
 // Mutate returns a mutable deep clone of this QueryFilter.
 func (m *QueryFilter) Mutate() *QueryFilter {
 	return m.CloneVT()
+}
+
+// QueryFilterListReader provides read-only iteration over []*QueryFilter.
+type QueryFilterListReader interface {
+	Len() int
+	Get(i int) QueryFilterReader
+	Range(yield func(int, QueryFilterReader) bool)
+}
+
+type queryFilterListReadonly []*QueryFilter
+
+func (l queryFilterListReadonly) Len() int { return len(l) }
+
+func (l queryFilterListReadonly) Get(i int) QueryFilterReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l queryFilterListReadonly) Range(yield func(int, QueryFilterReader) bool) {
+	for i, v := range l {
+		var r QueryFilterReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewQueryFilterListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewQueryFilterListReader(s []*QueryFilter) QueryFilterListReader {
+	return queryFilterListReadonly(s)
 }
 
 // ReferenceConditionReader provides read-only access to ReferenceCondition.
@@ -4188,6 +8601,43 @@ func (m *ReferenceCondition) Mutate() *ReferenceCondition {
 	return m.CloneVT()
 }
 
+// ReferenceConditionListReader provides read-only iteration over []*ReferenceCondition.
+type ReferenceConditionListReader interface {
+	Len() int
+	Get(i int) ReferenceConditionReader
+	Range(yield func(int, ReferenceConditionReader) bool)
+}
+
+type referenceConditionListReadonly []*ReferenceCondition
+
+func (l referenceConditionListReadonly) Len() int { return len(l) }
+
+func (l referenceConditionListReadonly) Get(i int) ReferenceConditionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l referenceConditionListReadonly) Range(yield func(int, ReferenceConditionReader) bool) {
+	for i, v := range l {
+		var r ReferenceConditionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewReferenceConditionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewReferenceConditionListReader(s []*ReferenceCondition) ReferenceConditionListReader {
+	return referenceConditionListReadonly(s)
+}
+
 // LedgerConditionReader provides read-only access to LedgerCondition.
 // Call Mutate() to obtain a mutable clone.
 type LedgerConditionReader interface {
@@ -4222,6 +8672,43 @@ func (m *LedgerCondition) Mutate() *LedgerCondition {
 	return m.CloneVT()
 }
 
+// LedgerConditionListReader provides read-only iteration over []*LedgerCondition.
+type LedgerConditionListReader interface {
+	Len() int
+	Get(i int) LedgerConditionReader
+	Range(yield func(int, LedgerConditionReader) bool)
+}
+
+type ledgerConditionListReadonly []*LedgerCondition
+
+func (l ledgerConditionListReadonly) Len() int { return len(l) }
+
+func (l ledgerConditionListReadonly) Get(i int) LedgerConditionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l ledgerConditionListReadonly) Range(yield func(int, LedgerConditionReader) bool) {
+	for i, v := range l {
+		var r LedgerConditionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewLedgerConditionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewLedgerConditionListReader(s []*LedgerCondition) LedgerConditionListReader {
+	return ledgerConditionListReadonly(s)
+}
+
 // LogIdConditionReader provides read-only access to LogIdCondition.
 // Call Mutate() to obtain a mutable clone.
 type LogIdConditionReader interface {
@@ -4254,6 +8741,43 @@ func (m *LogIdCondition) AsReader() LogIdConditionReader {
 // Mutate returns a mutable deep clone of this LogIdCondition.
 func (m *LogIdCondition) Mutate() *LogIdCondition {
 	return m.CloneVT()
+}
+
+// LogIdConditionListReader provides read-only iteration over []*LogIdCondition.
+type LogIdConditionListReader interface {
+	Len() int
+	Get(i int) LogIdConditionReader
+	Range(yield func(int, LogIdConditionReader) bool)
+}
+
+type logIdConditionListReadonly []*LogIdCondition
+
+func (l logIdConditionListReadonly) Len() int { return len(l) }
+
+func (l logIdConditionListReadonly) Get(i int) LogIdConditionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l logIdConditionListReadonly) Range(yield func(int, LogIdConditionReader) bool) {
+	for i, v := range l {
+		var r LogIdConditionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewLogIdConditionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewLogIdConditionListReader(s []*LogIdCondition) LogIdConditionListReader {
+	return logIdConditionListReadonly(s)
 }
 
 // BuiltinUintConditionReader provides read-only access to BuiltinUintCondition.
@@ -4295,6 +8819,43 @@ func (m *BuiltinUintCondition) Mutate() *BuiltinUintCondition {
 	return m.CloneVT()
 }
 
+// BuiltinUintConditionListReader provides read-only iteration over []*BuiltinUintCondition.
+type BuiltinUintConditionListReader interface {
+	Len() int
+	Get(i int) BuiltinUintConditionReader
+	Range(yield func(int, BuiltinUintConditionReader) bool)
+}
+
+type builtinUintConditionListReadonly []*BuiltinUintCondition
+
+func (l builtinUintConditionListReadonly) Len() int { return len(l) }
+
+func (l builtinUintConditionListReadonly) Get(i int) BuiltinUintConditionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l builtinUintConditionListReadonly) Range(yield func(int, BuiltinUintConditionReader) bool) {
+	for i, v := range l {
+		var r BuiltinUintConditionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewBuiltinUintConditionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewBuiltinUintConditionListReader(s []*BuiltinUintCondition) BuiltinUintConditionListReader {
+	return builtinUintConditionListReadonly(s)
+}
+
 // LogBuiltinUintConditionReader provides read-only access to LogBuiltinUintCondition.
 // Call Mutate() to obtain a mutable clone.
 type LogBuiltinUintConditionReader interface {
@@ -4334,17 +8895,54 @@ func (m *LogBuiltinUintCondition) Mutate() *LogBuiltinUintCondition {
 	return m.CloneVT()
 }
 
+// LogBuiltinUintConditionListReader provides read-only iteration over []*LogBuiltinUintCondition.
+type LogBuiltinUintConditionListReader interface {
+	Len() int
+	Get(i int) LogBuiltinUintConditionReader
+	Range(yield func(int, LogBuiltinUintConditionReader) bool)
+}
+
+type logBuiltinUintConditionListReadonly []*LogBuiltinUintCondition
+
+func (l logBuiltinUintConditionListReadonly) Len() int { return len(l) }
+
+func (l logBuiltinUintConditionListReadonly) Get(i int) LogBuiltinUintConditionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l logBuiltinUintConditionListReadonly) Range(yield func(int, LogBuiltinUintConditionReader) bool) {
+	for i, v := range l {
+		var r LogBuiltinUintConditionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewLogBuiltinUintConditionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewLogBuiltinUintConditionListReader(s []*LogBuiltinUintCondition) LogBuiltinUintConditionListReader {
+	return logBuiltinUintConditionListReadonly(s)
+}
+
 // AndFilterReader provides read-only access to AndFilter.
 // Call Mutate() to obtain a mutable clone.
 type AndFilterReader interface {
-	GetFilters() []*QueryFilter
+	GetFilters() QueryFilterListReader
 	Mutate() *AndFilter
 }
 
 type andFilterReadonly struct{ v *AndFilter }
 
-func (r *andFilterReadonly) GetFilters() []*QueryFilter {
-	return r.v.GetFilters()
+func (r *andFilterReadonly) GetFilters() QueryFilterListReader {
+	return NewQueryFilterListReader(r.v.GetFilters())
 }
 
 func (r *andFilterReadonly) Mutate() *AndFilter {
@@ -4364,17 +8962,52 @@ func (m *AndFilter) Mutate() *AndFilter {
 	return m.CloneVT()
 }
 
+// AndFilterListReader provides read-only iteration over []*AndFilter.
+type AndFilterListReader interface {
+	Len() int
+	Get(i int) AndFilterReader
+	Range(yield func(int, AndFilterReader) bool)
+}
+
+type andFilterListReadonly []*AndFilter
+
+func (l andFilterListReadonly) Len() int { return len(l) }
+
+func (l andFilterListReadonly) Get(i int) AndFilterReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l andFilterListReadonly) Range(yield func(int, AndFilterReader) bool) {
+	for i, v := range l {
+		var r AndFilterReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAndFilterListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAndFilterListReader(s []*AndFilter) AndFilterListReader { return andFilterListReadonly(s) }
+
 // OrFilterReader provides read-only access to OrFilter.
 // Call Mutate() to obtain a mutable clone.
 type OrFilterReader interface {
-	GetFilters() []*QueryFilter
+	GetFilters() QueryFilterListReader
 	Mutate() *OrFilter
 }
 
 type orFilterReadonly struct{ v *OrFilter }
 
-func (r *orFilterReadonly) GetFilters() []*QueryFilter {
-	return r.v.GetFilters()
+func (r *orFilterReadonly) GetFilters() QueryFilterListReader {
+	return NewQueryFilterListReader(r.v.GetFilters())
 }
 
 func (r *orFilterReadonly) Mutate() *OrFilter {
@@ -4393,6 +9026,41 @@ func (m *OrFilter) AsReader() OrFilterReader {
 func (m *OrFilter) Mutate() *OrFilter {
 	return m.CloneVT()
 }
+
+// OrFilterListReader provides read-only iteration over []*OrFilter.
+type OrFilterListReader interface {
+	Len() int
+	Get(i int) OrFilterReader
+	Range(yield func(int, OrFilterReader) bool)
+}
+
+type orFilterListReadonly []*OrFilter
+
+func (l orFilterListReadonly) Len() int { return len(l) }
+
+func (l orFilterListReadonly) Get(i int) OrFilterReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l orFilterListReadonly) Range(yield func(int, OrFilterReader) bool) {
+	for i, v := range l {
+		var r OrFilterReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewOrFilterListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewOrFilterListReader(s []*OrFilter) OrFilterListReader { return orFilterListReadonly(s) }
 
 // NotFilterReader provides read-only access to NotFilter.
 // Call Mutate() to obtain a mutable clone.
@@ -4428,6 +9096,41 @@ func (m *NotFilter) Mutate() *NotFilter {
 	return m.CloneVT()
 }
 
+// NotFilterListReader provides read-only iteration over []*NotFilter.
+type NotFilterListReader interface {
+	Len() int
+	Get(i int) NotFilterReader
+	Range(yield func(int, NotFilterReader) bool)
+}
+
+type notFilterListReadonly []*NotFilter
+
+func (l notFilterListReadonly) Len() int { return len(l) }
+
+func (l notFilterListReadonly) Get(i int) NotFilterReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l notFilterListReadonly) Range(yield func(int, NotFilterReader) bool) {
+	for i, v := range l {
+		var r NotFilterReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewNotFilterListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewNotFilterListReader(s []*NotFilter) NotFilterListReader { return notFilterListReadonly(s) }
+
 // FieldRefReader provides read-only access to FieldRef.
 // Call Mutate() to obtain a mutable clone.
 type FieldRefReader interface {
@@ -4457,6 +9160,41 @@ func (m *FieldRef) AsReader() FieldRefReader {
 func (m *FieldRef) Mutate() *FieldRef {
 	return m.CloneVT()
 }
+
+// FieldRefListReader provides read-only iteration over []*FieldRef.
+type FieldRefListReader interface {
+	Len() int
+	Get(i int) FieldRefReader
+	Range(yield func(int, FieldRefReader) bool)
+}
+
+type fieldRefListReadonly []*FieldRef
+
+func (l fieldRefListReadonly) Len() int { return len(l) }
+
+func (l fieldRefListReadonly) Get(i int) FieldRefReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l fieldRefListReadonly) Range(yield func(int, FieldRefReader) bool) {
+	for i, v := range l {
+		var r FieldRefReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewFieldRefListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewFieldRefListReader(s []*FieldRef) FieldRefListReader { return fieldRefListReadonly(s) }
 
 // FieldConditionReader provides read-only access to FieldCondition.
 // Call Mutate() to obtain a mutable clone.
@@ -4497,6 +9235,43 @@ func (m *FieldCondition) Mutate() *FieldCondition {
 	return m.CloneVT()
 }
 
+// FieldConditionListReader provides read-only iteration over []*FieldCondition.
+type FieldConditionListReader interface {
+	Len() int
+	Get(i int) FieldConditionReader
+	Range(yield func(int, FieldConditionReader) bool)
+}
+
+type fieldConditionListReadonly []*FieldCondition
+
+func (l fieldConditionListReadonly) Len() int { return len(l) }
+
+func (l fieldConditionListReadonly) Get(i int) FieldConditionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l fieldConditionListReadonly) Range(yield func(int, FieldConditionReader) bool) {
+	for i, v := range l {
+		var r FieldConditionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewFieldConditionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewFieldConditionListReader(s []*FieldCondition) FieldConditionListReader {
+	return fieldConditionListReadonly(s)
+}
+
 // StringConditionReader provides read-only access to StringCondition.
 // Call Mutate() to obtain a mutable clone.
 type StringConditionReader interface {
@@ -4525,6 +9300,43 @@ func (m *StringCondition) AsReader() StringConditionReader {
 // Mutate returns a mutable deep clone of this StringCondition.
 func (m *StringCondition) Mutate() *StringCondition {
 	return m.CloneVT()
+}
+
+// StringConditionListReader provides read-only iteration over []*StringCondition.
+type StringConditionListReader interface {
+	Len() int
+	Get(i int) StringConditionReader
+	Range(yield func(int, StringConditionReader) bool)
+}
+
+type stringConditionListReadonly []*StringCondition
+
+func (l stringConditionListReadonly) Len() int { return len(l) }
+
+func (l stringConditionListReadonly) Get(i int) StringConditionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l stringConditionListReadonly) Range(yield func(int, StringConditionReader) bool) {
+	for i, v := range l {
+		var r StringConditionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewStringConditionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewStringConditionListReader(s []*StringCondition) StringConditionListReader {
+	return stringConditionListReadonly(s)
 }
 
 // IntConditionReader provides read-only access to IntCondition.
@@ -4582,6 +9394,43 @@ func (m *IntCondition) Mutate() *IntCondition {
 	return m.CloneVT()
 }
 
+// IntConditionListReader provides read-only iteration over []*IntCondition.
+type IntConditionListReader interface {
+	Len() int
+	Get(i int) IntConditionReader
+	Range(yield func(int, IntConditionReader) bool)
+}
+
+type intConditionListReadonly []*IntCondition
+
+func (l intConditionListReadonly) Len() int { return len(l) }
+
+func (l intConditionListReadonly) Get(i int) IntConditionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l intConditionListReadonly) Range(yield func(int, IntConditionReader) bool) {
+	for i, v := range l {
+		var r IntConditionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewIntConditionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewIntConditionListReader(s []*IntCondition) IntConditionListReader {
+	return intConditionListReadonly(s)
+}
+
 // UintConditionReader provides read-only access to UintCondition.
 // Call Mutate() to obtain a mutable clone.
 type UintConditionReader interface {
@@ -4637,6 +9486,43 @@ func (m *UintCondition) Mutate() *UintCondition {
 	return m.CloneVT()
 }
 
+// UintConditionListReader provides read-only iteration over []*UintCondition.
+type UintConditionListReader interface {
+	Len() int
+	Get(i int) UintConditionReader
+	Range(yield func(int, UintConditionReader) bool)
+}
+
+type uintConditionListReadonly []*UintCondition
+
+func (l uintConditionListReadonly) Len() int { return len(l) }
+
+func (l uintConditionListReadonly) Get(i int) UintConditionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l uintConditionListReadonly) Range(yield func(int, UintConditionReader) bool) {
+	for i, v := range l {
+		var r UintConditionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewUintConditionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewUintConditionListReader(s []*UintCondition) UintConditionListReader {
+	return uintConditionListReadonly(s)
+}
+
 // BoolConditionReader provides read-only access to BoolCondition.
 // Call Mutate() to obtain a mutable clone.
 type BoolConditionReader interface {
@@ -4667,6 +9553,43 @@ func (m *BoolCondition) Mutate() *BoolCondition {
 	return m.CloneVT()
 }
 
+// BoolConditionListReader provides read-only iteration over []*BoolCondition.
+type BoolConditionListReader interface {
+	Len() int
+	Get(i int) BoolConditionReader
+	Range(yield func(int, BoolConditionReader) bool)
+}
+
+type boolConditionListReadonly []*BoolCondition
+
+func (l boolConditionListReadonly) Len() int { return len(l) }
+
+func (l boolConditionListReadonly) Get(i int) BoolConditionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l boolConditionListReadonly) Range(yield func(int, BoolConditionReader) bool) {
+	for i, v := range l {
+		var r BoolConditionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewBoolConditionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewBoolConditionListReader(s []*BoolCondition) BoolConditionListReader {
+	return boolConditionListReadonly(s)
+}
+
 // ExistsConditionReader provides read-only access to ExistsCondition.
 // Call Mutate() to obtain a mutable clone.
 type ExistsConditionReader interface {
@@ -4695,6 +9618,43 @@ func (m *ExistsCondition) AsReader() ExistsConditionReader {
 // Mutate returns a mutable deep clone of this ExistsCondition.
 func (m *ExistsCondition) Mutate() *ExistsCondition {
 	return m.CloneVT()
+}
+
+// ExistsConditionListReader provides read-only iteration over []*ExistsCondition.
+type ExistsConditionListReader interface {
+	Len() int
+	Get(i int) ExistsConditionReader
+	Range(yield func(int, ExistsConditionReader) bool)
+}
+
+type existsConditionListReadonly []*ExistsCondition
+
+func (l existsConditionListReadonly) Len() int { return len(l) }
+
+func (l existsConditionListReadonly) Get(i int) ExistsConditionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l existsConditionListReadonly) Range(yield func(int, ExistsConditionReader) bool) {
+	for i, v := range l {
+		var r ExistsConditionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewExistsConditionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewExistsConditionListReader(s []*ExistsCondition) ExistsConditionListReader {
+	return existsConditionListReadonly(s)
 }
 
 // AddressMatchReader provides read-only access to AddressMatch.
@@ -4730,6 +9690,43 @@ func (m *AddressMatch) AsReader() AddressMatchReader {
 // Mutate returns a mutable deep clone of this AddressMatch.
 func (m *AddressMatch) Mutate() *AddressMatch {
 	return m.CloneVT()
+}
+
+// AddressMatchListReader provides read-only iteration over []*AddressMatch.
+type AddressMatchListReader interface {
+	Len() int
+	Get(i int) AddressMatchReader
+	Range(yield func(int, AddressMatchReader) bool)
+}
+
+type addressMatchListReadonly []*AddressMatch
+
+func (l addressMatchListReadonly) Len() int { return len(l) }
+
+func (l addressMatchListReadonly) Get(i int) AddressMatchReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l addressMatchListReadonly) Range(yield func(int, AddressMatchReader) bool) {
+	for i, v := range l {
+		var r AddressMatchReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAddressMatchListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAddressMatchListReader(s []*AddressMatch) AddressMatchListReader {
+	return addressMatchListReadonly(s)
 }
 
 // PreparedQueryReader provides read-only access to PreparedQuery.
@@ -4781,6 +9778,43 @@ func (m *PreparedQuery) Mutate() *PreparedQuery {
 	return m.CloneVT()
 }
 
+// PreparedQueryListReader provides read-only iteration over []*PreparedQuery.
+type PreparedQueryListReader interface {
+	Len() int
+	Get(i int) PreparedQueryReader
+	Range(yield func(int, PreparedQueryReader) bool)
+}
+
+type preparedQueryListReadonly []*PreparedQuery
+
+func (l preparedQueryListReadonly) Len() int { return len(l) }
+
+func (l preparedQueryListReadonly) Get(i int) PreparedQueryReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l preparedQueryListReadonly) Range(yield func(int, PreparedQueryReader) bool) {
+	for i, v := range l {
+		var r PreparedQueryReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewPreparedQueryListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewPreparedQueryListReader(s []*PreparedQuery) PreparedQueryListReader {
+	return preparedQueryListReadonly(s)
+}
+
 // AggregatedVolumeReader provides read-only access to AggregatedVolume.
 // Call Mutate() to obtain a mutable clone.
 type AggregatedVolumeReader interface {
@@ -4829,22 +9863,59 @@ func (m *AggregatedVolume) Mutate() *AggregatedVolume {
 	return m.CloneVT()
 }
 
+// AggregatedVolumeListReader provides read-only iteration over []*AggregatedVolume.
+type AggregatedVolumeListReader interface {
+	Len() int
+	Get(i int) AggregatedVolumeReader
+	Range(yield func(int, AggregatedVolumeReader) bool)
+}
+
+type aggregatedVolumeListReadonly []*AggregatedVolume
+
+func (l aggregatedVolumeListReadonly) Len() int { return len(l) }
+
+func (l aggregatedVolumeListReadonly) Get(i int) AggregatedVolumeReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l aggregatedVolumeListReadonly) Range(yield func(int, AggregatedVolumeReader) bool) {
+	for i, v := range l {
+		var r AggregatedVolumeReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAggregatedVolumeListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAggregatedVolumeListReader(s []*AggregatedVolume) AggregatedVolumeListReader {
+	return aggregatedVolumeListReadonly(s)
+}
+
 // AggregateResultReader provides read-only access to AggregateResult.
 // Call Mutate() to obtain a mutable clone.
 type AggregateResultReader interface {
-	GetVolumes() []*AggregatedVolume
-	GetGroups() []*GroupedAggregateResult
+	GetVolumes() AggregatedVolumeListReader
+	GetGroups() GroupedAggregateResultListReader
 	Mutate() *AggregateResult
 }
 
 type aggregateResultReadonly struct{ v *AggregateResult }
 
-func (r *aggregateResultReadonly) GetVolumes() []*AggregatedVolume {
-	return r.v.GetVolumes()
+func (r *aggregateResultReadonly) GetVolumes() AggregatedVolumeListReader {
+	return NewAggregatedVolumeListReader(r.v.GetVolumes())
 }
 
-func (r *aggregateResultReadonly) GetGroups() []*GroupedAggregateResult {
-	return r.v.GetGroups()
+func (r *aggregateResultReadonly) GetGroups() GroupedAggregateResultListReader {
+	return NewGroupedAggregateResultListReader(r.v.GetGroups())
 }
 
 func (r *aggregateResultReadonly) Mutate() *AggregateResult {
@@ -4864,11 +9935,48 @@ func (m *AggregateResult) Mutate() *AggregateResult {
 	return m.CloneVT()
 }
 
+// AggregateResultListReader provides read-only iteration over []*AggregateResult.
+type AggregateResultListReader interface {
+	Len() int
+	Get(i int) AggregateResultReader
+	Range(yield func(int, AggregateResultReader) bool)
+}
+
+type aggregateResultListReadonly []*AggregateResult
+
+func (l aggregateResultListReadonly) Len() int { return len(l) }
+
+func (l aggregateResultListReadonly) Get(i int) AggregateResultReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l aggregateResultListReadonly) Range(yield func(int, AggregateResultReader) bool) {
+	for i, v := range l {
+		var r AggregateResultReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAggregateResultListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAggregateResultListReader(s []*AggregateResult) AggregateResultListReader {
+	return aggregateResultListReadonly(s)
+}
+
 // GroupedAggregateResultReader provides read-only access to GroupedAggregateResult.
 // Call Mutate() to obtain a mutable clone.
 type GroupedAggregateResultReader interface {
 	GetPrefix() string
-	GetVolumes() []*AggregatedVolume
+	GetVolumes() AggregatedVolumeListReader
 	Mutate() *GroupedAggregateResult
 }
 
@@ -4878,8 +9986,8 @@ func (r *groupedAggregateResultReadonly) GetPrefix() string {
 	return r.v.GetPrefix()
 }
 
-func (r *groupedAggregateResultReadonly) GetVolumes() []*AggregatedVolume {
-	return r.v.GetVolumes()
+func (r *groupedAggregateResultReadonly) GetVolumes() AggregatedVolumeListReader {
+	return NewAggregatedVolumeListReader(r.v.GetVolumes())
 }
 
 func (r *groupedAggregateResultReadonly) Mutate() *GroupedAggregateResult {
@@ -4899,6 +10007,43 @@ func (m *GroupedAggregateResult) Mutate() *GroupedAggregateResult {
 	return m.CloneVT()
 }
 
+// GroupedAggregateResultListReader provides read-only iteration over []*GroupedAggregateResult.
+type GroupedAggregateResultListReader interface {
+	Len() int
+	Get(i int) GroupedAggregateResultReader
+	Range(yield func(int, GroupedAggregateResultReader) bool)
+}
+
+type groupedAggregateResultListReadonly []*GroupedAggregateResult
+
+func (l groupedAggregateResultListReadonly) Len() int { return len(l) }
+
+func (l groupedAggregateResultListReadonly) Get(i int) GroupedAggregateResultReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l groupedAggregateResultListReadonly) Range(yield func(int, GroupedAggregateResultReader) bool) {
+	for i, v := range l {
+		var r GroupedAggregateResultReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewGroupedAggregateResultListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewGroupedAggregateResultListReader(s []*GroupedAggregateResult) GroupedAggregateResultListReader {
+	return groupedAggregateResultListReadonly(s)
+}
+
 // PreparedQueryCursorReader provides read-only access to PreparedQueryCursor.
 // Call Mutate() to obtain a mutable clone.
 type PreparedQueryCursorReader interface {
@@ -4906,8 +10051,8 @@ type PreparedQueryCursorReader interface {
 	GetHasMore() bool
 	GetPrevious() string
 	GetNext() string
-	GetAccountData() []*Account
-	GetTransactionData() []*Transaction
+	GetAccountData() AccountListReader
+	GetTransactionData() TransactionListReader
 	Mutate() *PreparedQueryCursor
 }
 
@@ -4929,12 +10074,12 @@ func (r *preparedQueryCursorReadonly) GetNext() string {
 	return r.v.GetNext()
 }
 
-func (r *preparedQueryCursorReadonly) GetAccountData() []*Account {
-	return r.v.GetAccountData()
+func (r *preparedQueryCursorReadonly) GetAccountData() AccountListReader {
+	return NewAccountListReader(r.v.GetAccountData())
 }
 
-func (r *preparedQueryCursorReadonly) GetTransactionData() []*Transaction {
-	return r.v.GetTransactionData()
+func (r *preparedQueryCursorReadonly) GetTransactionData() TransactionListReader {
+	return NewTransactionListReader(r.v.GetTransactionData())
 }
 
 func (r *preparedQueryCursorReadonly) Mutate() *PreparedQueryCursor {
@@ -4952,6 +10097,43 @@ func (m *PreparedQueryCursor) AsReader() PreparedQueryCursorReader {
 // Mutate returns a mutable deep clone of this PreparedQueryCursor.
 func (m *PreparedQueryCursor) Mutate() *PreparedQueryCursor {
 	return m.CloneVT()
+}
+
+// PreparedQueryCursorListReader provides read-only iteration over []*PreparedQueryCursor.
+type PreparedQueryCursorListReader interface {
+	Len() int
+	Get(i int) PreparedQueryCursorReader
+	Range(yield func(int, PreparedQueryCursorReader) bool)
+}
+
+type preparedQueryCursorListReadonly []*PreparedQueryCursor
+
+func (l preparedQueryCursorListReadonly) Len() int { return len(l) }
+
+func (l preparedQueryCursorListReadonly) Get(i int) PreparedQueryCursorReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l preparedQueryCursorListReadonly) Range(yield func(int, PreparedQueryCursorReader) bool) {
+	for i, v := range l {
+		var r PreparedQueryCursorReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewPreparedQueryCursorListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewPreparedQueryCursorListReader(s []*PreparedQueryCursor) PreparedQueryCursorListReader {
+	return preparedQueryCursorListReadonly(s)
 }
 
 // LedgerStatsReader provides read-only access to LedgerStats.
@@ -5029,6 +10211,43 @@ func (m *LedgerStats) Mutate() *LedgerStats {
 	return m.CloneVT()
 }
 
+// LedgerStatsListReader provides read-only iteration over []*LedgerStats.
+type LedgerStatsListReader interface {
+	Len() int
+	Get(i int) LedgerStatsReader
+	Range(yield func(int, LedgerStatsReader) bool)
+}
+
+type ledgerStatsListReadonly []*LedgerStats
+
+func (l ledgerStatsListReadonly) Len() int { return len(l) }
+
+func (l ledgerStatsListReadonly) Get(i int) LedgerStatsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l ledgerStatsListReadonly) Range(yield func(int, LedgerStatsReader) bool) {
+	for i, v := range l {
+		var r LedgerStatsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewLedgerStatsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewLedgerStatsListReader(s []*LedgerStats) LedgerStatsListReader {
+	return ledgerStatsListReadonly(s)
+}
+
 // PersistedConfigReader provides read-only access to PersistedConfig.
 // Call Mutate() to obtain a mutable clone.
 type PersistedConfigReader interface {
@@ -5074,6 +10293,43 @@ func (m *PersistedConfig) Mutate() *PersistedConfig {
 	return m.CloneVT()
 }
 
+// PersistedConfigListReader provides read-only iteration over []*PersistedConfig.
+type PersistedConfigListReader interface {
+	Len() int
+	Get(i int) PersistedConfigReader
+	Range(yield func(int, PersistedConfigReader) bool)
+}
+
+type persistedConfigListReadonly []*PersistedConfig
+
+func (l persistedConfigListReadonly) Len() int { return len(l) }
+
+func (l persistedConfigListReadonly) Get(i int) PersistedConfigReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l persistedConfigListReadonly) Range(yield func(int, PersistedConfigReader) bool) {
+	for i, v := range l {
+		var r PersistedConfigReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewPersistedConfigListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewPersistedConfigListReader(s []*PersistedConfig) PersistedConfigListReader {
+	return persistedConfigListReadonly(s)
+}
+
 // CallerIdentityReader provides read-only access to CallerIdentity.
 // Call Mutate() to obtain a mutable clone.
 type CallerIdentityReader interface {
@@ -5109,6 +10365,43 @@ func (m *CallerIdentity) Mutate() *CallerIdentity {
 	return m.CloneVT()
 }
 
+// CallerIdentityListReader provides read-only iteration over []*CallerIdentity.
+type CallerIdentityListReader interface {
+	Len() int
+	Get(i int) CallerIdentityReader
+	Range(yield func(int, CallerIdentityReader) bool)
+}
+
+type callerIdentityListReadonly []*CallerIdentity
+
+func (l callerIdentityListReadonly) Len() int { return len(l) }
+
+func (l callerIdentityListReadonly) Get(i int) CallerIdentityReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l callerIdentityListReadonly) Range(yield func(int, CallerIdentityReader) bool) {
+	for i, v := range l {
+		var r CallerIdentityReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewCallerIdentityListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewCallerIdentityListReader(s []*CallerIdentity) CallerIdentityListReader {
+	return callerIdentityListReadonly(s)
+}
+
 // CallerSnapshotReader provides read-only access to CallerSnapshot.
 // Call Mutate() to obtain a mutable clone.
 type CallerSnapshotReader interface {
@@ -5129,7 +10422,7 @@ func (r *callerSnapshotReadonly) GetIdentity() CallerIdentityReader {
 }
 
 func (r *callerSnapshotReadonly) GetScopes() []string {
-	return r.v.GetScopes()
+	return slices.Clone(r.v.GetScopes())
 }
 
 func (r *callerSnapshotReadonly) GetGod() bool {
@@ -5151,6 +10444,43 @@ func (m *CallerSnapshot) AsReader() CallerSnapshotReader {
 // Mutate returns a mutable deep clone of this CallerSnapshot.
 func (m *CallerSnapshot) Mutate() *CallerSnapshot {
 	return m.CloneVT()
+}
+
+// CallerSnapshotListReader provides read-only iteration over []*CallerSnapshot.
+type CallerSnapshotListReader interface {
+	Len() int
+	Get(i int) CallerSnapshotReader
+	Range(yield func(int, CallerSnapshotReader) bool)
+}
+
+type callerSnapshotListReadonly []*CallerSnapshot
+
+func (l callerSnapshotListReadonly) Len() int { return len(l) }
+
+func (l callerSnapshotListReadonly) Get(i int) CallerSnapshotReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l callerSnapshotListReadonly) Range(yield func(int, CallerSnapshotReader) bool) {
+	for i, v := range l {
+		var r CallerSnapshotReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewCallerSnapshotListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewCallerSnapshotListReader(s []*CallerSnapshot) CallerSnapshotListReader {
+	return callerSnapshotListReadonly(s)
 }
 
 // S3StorageConfigReader provides read-only access to S3StorageConfig.
@@ -5203,6 +10533,43 @@ func (m *S3StorageConfig) Mutate() *S3StorageConfig {
 	return m.CloneVT()
 }
 
+// S3StorageConfigListReader provides read-only iteration over []*S3StorageConfig.
+type S3StorageConfigListReader interface {
+	Len() int
+	Get(i int) S3StorageConfigReader
+	Range(yield func(int, S3StorageConfigReader) bool)
+}
+
+type s3StorageConfigListReadonly []*S3StorageConfig
+
+func (l s3StorageConfigListReadonly) Len() int { return len(l) }
+
+func (l s3StorageConfigListReadonly) Get(i int) S3StorageConfigReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l s3StorageConfigListReadonly) Range(yield func(int, S3StorageConfigReader) bool) {
+	for i, v := range l {
+		var r S3StorageConfigReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewS3StorageConfigListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewS3StorageConfigListReader(s []*S3StorageConfig) S3StorageConfigListReader {
+	return s3StorageConfigListReadonly(s)
+}
+
 // AzureStorageConfigReader provides read-only access to AzureStorageConfig.
 // Call Mutate() to obtain a mutable clone.
 type AzureStorageConfigReader interface {
@@ -5248,6 +10615,43 @@ func (m *AzureStorageConfig) Mutate() *AzureStorageConfig {
 	return m.CloneVT()
 }
 
+// AzureStorageConfigListReader provides read-only iteration over []*AzureStorageConfig.
+type AzureStorageConfigListReader interface {
+	Len() int
+	Get(i int) AzureStorageConfigReader
+	Range(yield func(int, AzureStorageConfigReader) bool)
+}
+
+type azureStorageConfigListReadonly []*AzureStorageConfig
+
+func (l azureStorageConfigListReadonly) Len() int { return len(l) }
+
+func (l azureStorageConfigListReadonly) Get(i int) AzureStorageConfigReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l azureStorageConfigListReadonly) Range(yield func(int, AzureStorageConfigReader) bool) {
+	for i, v := range l {
+		var r AzureStorageConfigReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAzureStorageConfigListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAzureStorageConfigListReader(s []*AzureStorageConfig) AzureStorageConfigListReader {
+	return azureStorageConfigListReadonly(s)
+}
+
 // BackupStorageReader provides read-only access to BackupStorage.
 // Call Mutate() to obtain a mutable clone.
 type BackupStorageReader interface {
@@ -5276,6 +10680,43 @@ func (m *BackupStorage) AsReader() BackupStorageReader {
 // Mutate returns a mutable deep clone of this BackupStorage.
 func (m *BackupStorage) Mutate() *BackupStorage {
 	return m.CloneVT()
+}
+
+// BackupStorageListReader provides read-only iteration over []*BackupStorage.
+type BackupStorageListReader interface {
+	Len() int
+	Get(i int) BackupStorageReader
+	Range(yield func(int, BackupStorageReader) bool)
+}
+
+type backupStorageListReadonly []*BackupStorage
+
+func (l backupStorageListReadonly) Len() int { return len(l) }
+
+func (l backupStorageListReadonly) Get(i int) BackupStorageReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l backupStorageListReadonly) Range(yield func(int, BackupStorageReader) bool) {
+	for i, v := range l {
+		var r BackupStorageReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewBackupStorageListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewBackupStorageListReader(s []*BackupStorage) BackupStorageListReader {
+	return backupStorageListReadonly(s)
 }
 
 // ReadOptionsReader provides read-only access to ReadOptions.
@@ -5311,6 +10752,43 @@ func (m *ReadOptions) AsReader() ReadOptionsReader {
 // Mutate returns a mutable deep clone of this ReadOptions.
 func (m *ReadOptions) Mutate() *ReadOptions {
 	return m.CloneVT()
+}
+
+// ReadOptionsListReader provides read-only iteration over []*ReadOptions.
+type ReadOptionsListReader interface {
+	Len() int
+	Get(i int) ReadOptionsReader
+	Range(yield func(int, ReadOptionsReader) bool)
+}
+
+type readOptionsListReadonly []*ReadOptions
+
+func (l readOptionsListReadonly) Len() int { return len(l) }
+
+func (l readOptionsListReadonly) Get(i int) ReadOptionsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l readOptionsListReadonly) Range(yield func(int, ReadOptionsReader) bool) {
+	for i, v := range l {
+		var r ReadOptionsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewReadOptionsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewReadOptionsListReader(s []*ReadOptions) ReadOptionsListReader {
+	return readOptionsListReadonly(s)
 }
 
 // ListOptionsReader provides read-only access to ListOptions.
@@ -5369,4 +10847,41 @@ func (m *ListOptions) AsReader() ListOptionsReader {
 // Mutate returns a mutable deep clone of this ListOptions.
 func (m *ListOptions) Mutate() *ListOptions {
 	return m.CloneVT()
+}
+
+// ListOptionsListReader provides read-only iteration over []*ListOptions.
+type ListOptionsListReader interface {
+	Len() int
+	Get(i int) ListOptionsReader
+	Range(yield func(int, ListOptionsReader) bool)
+}
+
+type listOptionsListReadonly []*ListOptions
+
+func (l listOptionsListReadonly) Len() int { return len(l) }
+
+func (l listOptionsListReadonly) Get(i int) ListOptionsReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l listOptionsListReadonly) Range(yield func(int, ListOptionsReader) bool) {
+	for i, v := range l {
+		var r ListOptionsReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewListOptionsListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewListOptionsListReader(s []*ListOptions) ListOptionsListReader {
+	return listOptionsListReadonly(s)
 }

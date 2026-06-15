@@ -3,6 +3,10 @@
 
 package rafttransportpb
 
+import (
+	bytes "bytes"
+)
+
 // RaftRequestMessageReader provides read-only access to RaftRequestMessage.
 // Call Mutate() to obtain a mutable clone.
 type RaftRequestMessageReader interface {
@@ -18,7 +22,7 @@ func (r *raftRequestMessageReadonly) GetId() uint64 {
 }
 
 func (r *raftRequestMessageReadonly) GetMessage() []byte {
-	return r.v.GetMessage()
+	return bytes.Clone(r.v.GetMessage())
 }
 
 func (r *raftRequestMessageReadonly) Mutate() *RaftRequestMessage {
@@ -38,17 +42,54 @@ func (m *RaftRequestMessage) Mutate() *RaftRequestMessage {
 	return m.CloneVT()
 }
 
+// RaftRequestMessageListReader provides read-only iteration over []*RaftRequestMessage.
+type RaftRequestMessageListReader interface {
+	Len() int
+	Get(i int) RaftRequestMessageReader
+	Range(yield func(int, RaftRequestMessageReader) bool)
+}
+
+type raftRequestMessageListReadonly []*RaftRequestMessage
+
+func (l raftRequestMessageListReadonly) Len() int { return len(l) }
+
+func (l raftRequestMessageListReadonly) Get(i int) RaftRequestMessageReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l raftRequestMessageListReadonly) Range(yield func(int, RaftRequestMessageReader) bool) {
+	for i, v := range l {
+		var r RaftRequestMessageReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewRaftRequestMessageListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewRaftRequestMessageListReader(s []*RaftRequestMessage) RaftRequestMessageListReader {
+	return raftRequestMessageListReadonly(s)
+}
+
 // RaftRequestBatchReader provides read-only access to RaftRequestBatch.
 // Call Mutate() to obtain a mutable clone.
 type RaftRequestBatchReader interface {
-	GetMessages() []*RaftRequestMessage
+	GetMessages() RaftRequestMessageListReader
 	Mutate() *RaftRequestBatch
 }
 
 type raftRequestBatchReadonly struct{ v *RaftRequestBatch }
 
-func (r *raftRequestBatchReadonly) GetMessages() []*RaftRequestMessage {
-	return r.v.GetMessages()
+func (r *raftRequestBatchReadonly) GetMessages() RaftRequestMessageListReader {
+	return NewRaftRequestMessageListReader(r.v.GetMessages())
 }
 
 func (r *raftRequestBatchReadonly) Mutate() *RaftRequestBatch {
@@ -66,6 +107,43 @@ func (m *RaftRequestBatch) AsReader() RaftRequestBatchReader {
 // Mutate returns a mutable deep clone of this RaftRequestBatch.
 func (m *RaftRequestBatch) Mutate() *RaftRequestBatch {
 	return m.CloneVT()
+}
+
+// RaftRequestBatchListReader provides read-only iteration over []*RaftRequestBatch.
+type RaftRequestBatchListReader interface {
+	Len() int
+	Get(i int) RaftRequestBatchReader
+	Range(yield func(int, RaftRequestBatchReader) bool)
+}
+
+type raftRequestBatchListReadonly []*RaftRequestBatch
+
+func (l raftRequestBatchListReadonly) Len() int { return len(l) }
+
+func (l raftRequestBatchListReadonly) Get(i int) RaftRequestBatchReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l raftRequestBatchListReadonly) Range(yield func(int, RaftRequestBatchReader) bool) {
+	for i, v := range l {
+		var r RaftRequestBatchReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewRaftRequestBatchListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewRaftRequestBatchListReader(s []*RaftRequestBatch) RaftRequestBatchListReader {
+	return raftRequestBatchListReadonly(s)
 }
 
 // RaftResponseMessageReader provides read-only access to RaftResponseMessage.
@@ -108,17 +186,54 @@ func (m *RaftResponseMessage) Mutate() *RaftResponseMessage {
 	return m.CloneVT()
 }
 
+// RaftResponseMessageListReader provides read-only iteration over []*RaftResponseMessage.
+type RaftResponseMessageListReader interface {
+	Len() int
+	Get(i int) RaftResponseMessageReader
+	Range(yield func(int, RaftResponseMessageReader) bool)
+}
+
+type raftResponseMessageListReadonly []*RaftResponseMessage
+
+func (l raftResponseMessageListReadonly) Len() int { return len(l) }
+
+func (l raftResponseMessageListReadonly) Get(i int) RaftResponseMessageReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l raftResponseMessageListReadonly) Range(yield func(int, RaftResponseMessageReader) bool) {
+	for i, v := range l {
+		var r RaftResponseMessageReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewRaftResponseMessageListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewRaftResponseMessageListReader(s []*RaftResponseMessage) RaftResponseMessageListReader {
+	return raftResponseMessageListReadonly(s)
+}
+
 // RaftResponseBatchReader provides read-only access to RaftResponseBatch.
 // Call Mutate() to obtain a mutable clone.
 type RaftResponseBatchReader interface {
-	GetMessages() []*RaftResponseMessage
+	GetMessages() RaftResponseMessageListReader
 	Mutate() *RaftResponseBatch
 }
 
 type raftResponseBatchReadonly struct{ v *RaftResponseBatch }
 
-func (r *raftResponseBatchReadonly) GetMessages() []*RaftResponseMessage {
-	return r.v.GetMessages()
+func (r *raftResponseBatchReadonly) GetMessages() RaftResponseMessageListReader {
+	return NewRaftResponseMessageListReader(r.v.GetMessages())
 }
 
 func (r *raftResponseBatchReadonly) Mutate() *RaftResponseBatch {
@@ -136,6 +251,43 @@ func (m *RaftResponseBatch) AsReader() RaftResponseBatchReader {
 // Mutate returns a mutable deep clone of this RaftResponseBatch.
 func (m *RaftResponseBatch) Mutate() *RaftResponseBatch {
 	return m.CloneVT()
+}
+
+// RaftResponseBatchListReader provides read-only iteration over []*RaftResponseBatch.
+type RaftResponseBatchListReader interface {
+	Len() int
+	Get(i int) RaftResponseBatchReader
+	Range(yield func(int, RaftResponseBatchReader) bool)
+}
+
+type raftResponseBatchListReadonly []*RaftResponseBatch
+
+func (l raftResponseBatchListReadonly) Len() int { return len(l) }
+
+func (l raftResponseBatchListReadonly) Get(i int) RaftResponseBatchReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l raftResponseBatchListReadonly) Range(yield func(int, RaftResponseBatchReader) bool) {
+	for i, v := range l {
+		var r RaftResponseBatchReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewRaftResponseBatchListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewRaftResponseBatchListReader(s []*RaftResponseBatch) RaftResponseBatchListReader {
+	return raftResponseBatchListReadonly(s)
 }
 
 // PingMessageReader provides read-only access to PingMessage.
@@ -168,6 +320,43 @@ func (m *PingMessage) Mutate() *PingMessage {
 	return m.CloneVT()
 }
 
+// PingMessageListReader provides read-only iteration over []*PingMessage.
+type PingMessageListReader interface {
+	Len() int
+	Get(i int) PingMessageReader
+	Range(yield func(int, PingMessageReader) bool)
+}
+
+type pingMessageListReadonly []*PingMessage
+
+func (l pingMessageListReadonly) Len() int { return len(l) }
+
+func (l pingMessageListReadonly) Get(i int) PingMessageReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l pingMessageListReadonly) Range(yield func(int, PingMessageReader) bool) {
+	for i, v := range l {
+		var r PingMessageReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewPingMessageListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewPingMessageListReader(s []*PingMessage) PingMessageListReader {
+	return pingMessageListReadonly(s)
+}
+
 // PongResponseReader provides read-only access to PongResponse.
 // Call Mutate() to obtain a mutable clone.
 type PongResponseReader interface {
@@ -196,6 +385,43 @@ func (m *PongResponse) AsReader() PongResponseReader {
 // Mutate returns a mutable deep clone of this PongResponse.
 func (m *PongResponse) Mutate() *PongResponse {
 	return m.CloneVT()
+}
+
+// PongResponseListReader provides read-only iteration over []*PongResponse.
+type PongResponseListReader interface {
+	Len() int
+	Get(i int) PongResponseReader
+	Range(yield func(int, PongResponseReader) bool)
+}
+
+type pongResponseListReadonly []*PongResponse
+
+func (l pongResponseListReadonly) Len() int { return len(l) }
+
+func (l pongResponseListReadonly) Get(i int) PongResponseReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l pongResponseListReadonly) Range(yield func(int, PongResponseReader) bool) {
+	for i, v := range l {
+		var r PongResponseReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewPongResponseListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewPongResponseListReader(s []*PongResponse) PongResponseListReader {
+	return pongResponseListReadonly(s)
 }
 
 // SendMessageRequestReader provides read-only access to SendMessageRequest.
@@ -228,6 +454,43 @@ func (m *SendMessageRequest) Mutate() *SendMessageRequest {
 	return m.CloneVT()
 }
 
+// SendMessageRequestListReader provides read-only iteration over []*SendMessageRequest.
+type SendMessageRequestListReader interface {
+	Len() int
+	Get(i int) SendMessageRequestReader
+	Range(yield func(int, SendMessageRequestReader) bool)
+}
+
+type sendMessageRequestListReadonly []*SendMessageRequest
+
+func (l sendMessageRequestListReadonly) Len() int { return len(l) }
+
+func (l sendMessageRequestListReadonly) Get(i int) SendMessageRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l sendMessageRequestListReadonly) Range(yield func(int, SendMessageRequestReader) bool) {
+	for i, v := range l {
+		var r SendMessageRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSendMessageRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSendMessageRequestListReader(s []*SendMessageRequest) SendMessageRequestListReader {
+	return sendMessageRequestListReadonly(s)
+}
+
 // SendMessageResponseReader provides read-only access to SendMessageResponse.
 // Call Mutate() to obtain a mutable clone.
 type SendMessageResponseReader interface {
@@ -256,4 +519,41 @@ func (m *SendMessageResponse) AsReader() SendMessageResponseReader {
 // Mutate returns a mutable deep clone of this SendMessageResponse.
 func (m *SendMessageResponse) Mutate() *SendMessageResponse {
 	return m.CloneVT()
+}
+
+// SendMessageResponseListReader provides read-only iteration over []*SendMessageResponse.
+type SendMessageResponseListReader interface {
+	Len() int
+	Get(i int) SendMessageResponseReader
+	Range(yield func(int, SendMessageResponseReader) bool)
+}
+
+type sendMessageResponseListReadonly []*SendMessageResponse
+
+func (l sendMessageResponseListReadonly) Len() int { return len(l) }
+
+func (l sendMessageResponseListReadonly) Get(i int) SendMessageResponseReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l sendMessageResponseListReadonly) Range(yield func(int, SendMessageResponseReader) bool) {
+	for i, v := range l {
+		var r SendMessageResponseReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSendMessageResponseListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSendMessageResponseListReader(s []*SendMessageResponse) SendMessageResponseListReader {
+	return sendMessageResponseListReadonly(s)
 }

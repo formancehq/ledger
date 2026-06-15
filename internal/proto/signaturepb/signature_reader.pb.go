@@ -3,6 +3,10 @@
 
 package signaturepb
 
+import (
+	bytes "bytes"
+)
+
 // RequestSignatureReader provides read-only access to RequestSignature.
 // Call Mutate() to obtain a mutable clone.
 type RequestSignatureReader interface {
@@ -19,11 +23,11 @@ func (r *requestSignatureReadonly) GetKeyId() string {
 }
 
 func (r *requestSignatureReadonly) GetSignature() []byte {
-	return r.v.GetSignature()
+	return bytes.Clone(r.v.GetSignature())
 }
 
 func (r *requestSignatureReadonly) GetSignedPayload() []byte {
-	return r.v.GetSignedPayload()
+	return bytes.Clone(r.v.GetSignedPayload())
 }
 
 func (r *requestSignatureReadonly) Mutate() *RequestSignature {
@@ -43,6 +47,43 @@ func (m *RequestSignature) Mutate() *RequestSignature {
 	return m.CloneVT()
 }
 
+// RequestSignatureListReader provides read-only iteration over []*RequestSignature.
+type RequestSignatureListReader interface {
+	Len() int
+	Get(i int) RequestSignatureReader
+	Range(yield func(int, RequestSignatureReader) bool)
+}
+
+type requestSignatureListReadonly []*RequestSignature
+
+func (l requestSignatureListReadonly) Len() int { return len(l) }
+
+func (l requestSignatureListReadonly) Get(i int) RequestSignatureReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l requestSignatureListReadonly) Range(yield func(int, RequestSignatureReader) bool) {
+	for i, v := range l {
+		var r RequestSignatureReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewRequestSignatureListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewRequestSignatureListReader(s []*RequestSignature) RequestSignatureListReader {
+	return requestSignatureListReadonly(s)
+}
+
 // ResponseSignatureReader provides read-only access to ResponseSignature.
 // Call Mutate() to obtain a mutable clone.
 type ResponseSignatureReader interface {
@@ -59,11 +100,11 @@ func (r *responseSignatureReadonly) GetKeyId() string {
 }
 
 func (r *responseSignatureReadonly) GetSignature() []byte {
-	return r.v.GetSignature()
+	return bytes.Clone(r.v.GetSignature())
 }
 
 func (r *responseSignatureReadonly) GetSignedPayload() []byte {
-	return r.v.GetSignedPayload()
+	return bytes.Clone(r.v.GetSignedPayload())
 }
 
 func (r *responseSignatureReadonly) Mutate() *ResponseSignature {
@@ -81,4 +122,41 @@ func (m *ResponseSignature) AsReader() ResponseSignatureReader {
 // Mutate returns a mutable deep clone of this ResponseSignature.
 func (m *ResponseSignature) Mutate() *ResponseSignature {
 	return m.CloneVT()
+}
+
+// ResponseSignatureListReader provides read-only iteration over []*ResponseSignature.
+type ResponseSignatureListReader interface {
+	Len() int
+	Get(i int) ResponseSignatureReader
+	Range(yield func(int, ResponseSignatureReader) bool)
+}
+
+type responseSignatureListReadonly []*ResponseSignature
+
+func (l responseSignatureListReadonly) Len() int { return len(l) }
+
+func (l responseSignatureListReadonly) Get(i int) ResponseSignatureReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l responseSignatureListReadonly) Range(yield func(int, ResponseSignatureReader) bool) {
+	for i, v := range l {
+		var r ResponseSignatureReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewResponseSignatureListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewResponseSignatureListReader(s []*ResponseSignature) ResponseSignatureListReader {
+	return responseSignatureListReadonly(s)
 }

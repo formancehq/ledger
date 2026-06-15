@@ -3,6 +3,10 @@
 
 package snapshotpb
 
+import (
+	bytes "bytes"
+)
+
 // PrepareSnapshotRequestReader provides read-only access to PrepareSnapshotRequest.
 // Call Mutate() to obtain a mutable clone.
 type PrepareSnapshotRequestReader interface {
@@ -36,6 +40,43 @@ func (m *PrepareSnapshotRequest) AsReader() PrepareSnapshotRequestReader {
 // Mutate returns a mutable deep clone of this PrepareSnapshotRequest.
 func (m *PrepareSnapshotRequest) Mutate() *PrepareSnapshotRequest {
 	return m.CloneVT()
+}
+
+// PrepareSnapshotRequestListReader provides read-only iteration over []*PrepareSnapshotRequest.
+type PrepareSnapshotRequestListReader interface {
+	Len() int
+	Get(i int) PrepareSnapshotRequestReader
+	Range(yield func(int, PrepareSnapshotRequestReader) bool)
+}
+
+type prepareSnapshotRequestListReadonly []*PrepareSnapshotRequest
+
+func (l prepareSnapshotRequestListReadonly) Len() int { return len(l) }
+
+func (l prepareSnapshotRequestListReadonly) Get(i int) PrepareSnapshotRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l prepareSnapshotRequestListReadonly) Range(yield func(int, PrepareSnapshotRequestReader) bool) {
+	for i, v := range l {
+		var r PrepareSnapshotRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewPrepareSnapshotRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewPrepareSnapshotRequestListReader(s []*PrepareSnapshotRequest) PrepareSnapshotRequestListReader {
+	return prepareSnapshotRequestListReadonly(s)
 }
 
 // PrepareSnapshotResponseReader provides read-only access to PrepareSnapshotResponse.
@@ -77,6 +118,43 @@ func (m *PrepareSnapshotResponse) Mutate() *PrepareSnapshotResponse {
 	return m.CloneVT()
 }
 
+// PrepareSnapshotResponseListReader provides read-only iteration over []*PrepareSnapshotResponse.
+type PrepareSnapshotResponseListReader interface {
+	Len() int
+	Get(i int) PrepareSnapshotResponseReader
+	Range(yield func(int, PrepareSnapshotResponseReader) bool)
+}
+
+type prepareSnapshotResponseListReadonly []*PrepareSnapshotResponse
+
+func (l prepareSnapshotResponseListReadonly) Len() int { return len(l) }
+
+func (l prepareSnapshotResponseListReadonly) Get(i int) PrepareSnapshotResponseReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l prepareSnapshotResponseListReadonly) Range(yield func(int, PrepareSnapshotResponseReader) bool) {
+	for i, v := range l {
+		var r PrepareSnapshotResponseReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewPrepareSnapshotResponseListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewPrepareSnapshotResponseListReader(s []*PrepareSnapshotResponse) PrepareSnapshotResponseListReader {
+	return prepareSnapshotResponseListReadonly(s)
+}
+
 // FetchFileRequestReader provides read-only access to FetchFileRequest.
 // Call Mutate() to obtain a mutable clone.
 type FetchFileRequestReader interface {
@@ -112,6 +190,43 @@ func (m *FetchFileRequest) Mutate() *FetchFileRequest {
 	return m.CloneVT()
 }
 
+// FetchFileRequestListReader provides read-only iteration over []*FetchFileRequest.
+type FetchFileRequestListReader interface {
+	Len() int
+	Get(i int) FetchFileRequestReader
+	Range(yield func(int, FetchFileRequestReader) bool)
+}
+
+type fetchFileRequestListReadonly []*FetchFileRequest
+
+func (l fetchFileRequestListReadonly) Len() int { return len(l) }
+
+func (l fetchFileRequestListReadonly) Get(i int) FetchFileRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l fetchFileRequestListReadonly) Range(yield func(int, FetchFileRequestReader) bool) {
+	for i, v := range l {
+		var r FetchFileRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewFetchFileRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewFetchFileRequestListReader(s []*FetchFileRequest) FetchFileRequestListReader {
+	return fetchFileRequestListReadonly(s)
+}
+
 // FetchFileResponseReader provides read-only access to FetchFileResponse.
 // Call Mutate() to obtain a mutable clone.
 type FetchFileResponseReader interface {
@@ -123,7 +238,7 @@ type FetchFileResponseReader interface {
 type fetchFileResponseReadonly struct{ v *FetchFileResponse }
 
 func (r *fetchFileResponseReadonly) GetData() []byte {
-	return r.v.GetData()
+	return bytes.Clone(r.v.GetData())
 }
 
 func (r *fetchFileResponseReadonly) GetEof() bool {
@@ -145,6 +260,43 @@ func (m *FetchFileResponse) AsReader() FetchFileResponseReader {
 // Mutate returns a mutable deep clone of this FetchFileResponse.
 func (m *FetchFileResponse) Mutate() *FetchFileResponse {
 	return m.CloneVT()
+}
+
+// FetchFileResponseListReader provides read-only iteration over []*FetchFileResponse.
+type FetchFileResponseListReader interface {
+	Len() int
+	Get(i int) FetchFileResponseReader
+	Range(yield func(int, FetchFileResponseReader) bool)
+}
+
+type fetchFileResponseListReadonly []*FetchFileResponse
+
+func (l fetchFileResponseListReadonly) Len() int { return len(l) }
+
+func (l fetchFileResponseListReadonly) Get(i int) FetchFileResponseReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l fetchFileResponseListReadonly) Range(yield func(int, FetchFileResponseReader) bool) {
+	for i, v := range l {
+		var r FetchFileResponseReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewFetchFileResponseListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewFetchFileResponseListReader(s []*FetchFileResponse) FetchFileResponseListReader {
+	return fetchFileResponseListReadonly(s)
 }
 
 // CloseSessionRequestReader provides read-only access to CloseSessionRequest.
@@ -177,6 +329,43 @@ func (m *CloseSessionRequest) Mutate() *CloseSessionRequest {
 	return m.CloneVT()
 }
 
+// CloseSessionRequestListReader provides read-only iteration over []*CloseSessionRequest.
+type CloseSessionRequestListReader interface {
+	Len() int
+	Get(i int) CloseSessionRequestReader
+	Range(yield func(int, CloseSessionRequestReader) bool)
+}
+
+type closeSessionRequestListReadonly []*CloseSessionRequest
+
+func (l closeSessionRequestListReadonly) Len() int { return len(l) }
+
+func (l closeSessionRequestListReadonly) Get(i int) CloseSessionRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l closeSessionRequestListReadonly) Range(yield func(int, CloseSessionRequestReader) bool) {
+	for i, v := range l {
+		var r CloseSessionRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewCloseSessionRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewCloseSessionRequestListReader(s []*CloseSessionRequest) CloseSessionRequestListReader {
+	return closeSessionRequestListReadonly(s)
+}
+
 // CloseSessionResponseReader provides read-only access to CloseSessionResponse.
 // Call Mutate() to obtain a mutable clone.
 type CloseSessionResponseReader interface {
@@ -202,17 +391,54 @@ func (m *CloseSessionResponse) Mutate() *CloseSessionResponse {
 	return m.CloneVT()
 }
 
+// CloseSessionResponseListReader provides read-only iteration over []*CloseSessionResponse.
+type CloseSessionResponseListReader interface {
+	Len() int
+	Get(i int) CloseSessionResponseReader
+	Range(yield func(int, CloseSessionResponseReader) bool)
+}
+
+type closeSessionResponseListReadonly []*CloseSessionResponse
+
+func (l closeSessionResponseListReadonly) Len() int { return len(l) }
+
+func (l closeSessionResponseListReadonly) Get(i int) CloseSessionResponseReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l closeSessionResponseListReadonly) Range(yield func(int, CloseSessionResponseReader) bool) {
+	for i, v := range l {
+		var r CloseSessionResponseReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewCloseSessionResponseListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewCloseSessionResponseListReader(s []*CloseSessionResponse) CloseSessionResponseListReader {
+	return closeSessionResponseListReadonly(s)
+}
+
 // SnapshotManifestReader provides read-only access to SnapshotManifest.
 // Call Mutate() to obtain a mutable clone.
 type SnapshotManifestReader interface {
-	GetFiles() []*FileEntry
+	GetFiles() FileEntryListReader
 	Mutate() *SnapshotManifest
 }
 
 type snapshotManifestReadonly struct{ v *SnapshotManifest }
 
-func (r *snapshotManifestReadonly) GetFiles() []*FileEntry {
-	return r.v.GetFiles()
+func (r *snapshotManifestReadonly) GetFiles() FileEntryListReader {
+	return NewFileEntryListReader(r.v.GetFiles())
 }
 
 func (r *snapshotManifestReadonly) Mutate() *SnapshotManifest {
@@ -230,6 +456,43 @@ func (m *SnapshotManifest) AsReader() SnapshotManifestReader {
 // Mutate returns a mutable deep clone of this SnapshotManifest.
 func (m *SnapshotManifest) Mutate() *SnapshotManifest {
 	return m.CloneVT()
+}
+
+// SnapshotManifestListReader provides read-only iteration over []*SnapshotManifest.
+type SnapshotManifestListReader interface {
+	Len() int
+	Get(i int) SnapshotManifestReader
+	Range(yield func(int, SnapshotManifestReader) bool)
+}
+
+type snapshotManifestListReadonly []*SnapshotManifest
+
+func (l snapshotManifestListReadonly) Len() int { return len(l) }
+
+func (l snapshotManifestListReadonly) Get(i int) SnapshotManifestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l snapshotManifestListReadonly) Range(yield func(int, SnapshotManifestReader) bool) {
+	for i, v := range l {
+		var r SnapshotManifestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSnapshotManifestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSnapshotManifestListReader(s []*SnapshotManifest) SnapshotManifestListReader {
+	return snapshotManifestListReadonly(s)
 }
 
 // FileEntryReader provides read-only access to FileEntry.
@@ -271,3 +534,38 @@ func (m *FileEntry) AsReader() FileEntryReader {
 func (m *FileEntry) Mutate() *FileEntry {
 	return m.CloneVT()
 }
+
+// FileEntryListReader provides read-only iteration over []*FileEntry.
+type FileEntryListReader interface {
+	Len() int
+	Get(i int) FileEntryReader
+	Range(yield func(int, FileEntryReader) bool)
+}
+
+type fileEntryListReadonly []*FileEntry
+
+func (l fileEntryListReadonly) Len() int { return len(l) }
+
+func (l fileEntryListReadonly) Get(i int) FileEntryReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l fileEntryListReadonly) Range(yield func(int, FileEntryReader) bool) {
+	for i, v := range l {
+		var r FileEntryReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewFileEntryListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewFileEntryListReader(s []*FileEntry) FileEntryListReader { return fileEntryListReadonly(s) }

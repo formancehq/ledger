@@ -64,3 +64,38 @@ func (m *Event) AsReader() EventReader {
 func (m *Event) Mutate() *Event {
 	return m.CloneVT()
 }
+
+// EventListReader provides read-only iteration over []*Event.
+type EventListReader interface {
+	Len() int
+	Get(i int) EventReader
+	Range(yield func(int, EventReader) bool)
+}
+
+type eventListReadonly []*Event
+
+func (l eventListReadonly) Len() int { return len(l) }
+
+func (l eventListReadonly) Get(i int) EventReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l eventListReadonly) Range(yield func(int, EventReader) bool) {
+	for i, v := range l {
+		var r EventReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewEventListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewEventListReader(s []*Event) EventListReader { return eventListReadonly(s) }
