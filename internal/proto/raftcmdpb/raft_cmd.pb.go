@@ -2781,17 +2781,19 @@ func (x *UpdateDefaultEnforcementModeOrder) GetEnforcementMode() commonpb.ChartE
 
 // MetadataConversionBatch carries a batch of metadata value conversions.
 // Applied directly as a Proposal field (no log entry produced).
+// Convergence is driven by the converter: it keeps proposing batches as
+// long as a Pebble scan turns up entries with a mismatched type, and
+// proposes MetadataConversionCompletion once a full pass finds zero such
+// entries. The FSM no longer tracks progress counters or auto-completes.
 type MetadataConversionBatch struct {
-	state              protoimpl.MessageState  `protogen:"open.v1"`
-	Ledger             string                  `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
-	TargetType         commonpb.TargetType     `protobuf:"varint,2,opt,name=target_type,json=targetType,proto3,enum=common.TargetType" json:"target_type,omitempty"`
-	Key                string                  `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
-	ExpectedType       commonpb.MetadataType   `protobuf:"varint,4,opt,name=expected_type,json=expectedType,proto3,enum=common.MetadataType" json:"expected_type,omitempty"`
-	Entries            []*ConvertMetadataEntry `protobuf:"bytes,5,rep,name=entries,proto3" json:"entries,omitempty"`
-	TotalKeys          uint64                  `protobuf:"fixed64,6,opt,name=total_keys,json=totalKeys,proto3" json:"total_keys,omitempty"`
-	ConvertedKeysSoFar uint64                  `protobuf:"fixed64,7,opt,name=converted_keys_so_far,json=convertedKeysSoFar,proto3" json:"converted_keys_so_far,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state         protoimpl.MessageState  `protogen:"open.v1"`
+	Ledger        string                  `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
+	TargetType    commonpb.TargetType     `protobuf:"varint,2,opt,name=target_type,json=targetType,proto3,enum=common.TargetType" json:"target_type,omitempty"`
+	Key           string                  `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
+	ExpectedType  commonpb.MetadataType   `protobuf:"varint,4,opt,name=expected_type,json=expectedType,proto3,enum=common.MetadataType" json:"expected_type,omitempty"`
+	Entries       []*ConvertMetadataEntry `protobuf:"bytes,5,rep,name=entries,proto3" json:"entries,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *MetadataConversionBatch) Reset() {
@@ -2859,26 +2861,19 @@ func (x *MetadataConversionBatch) GetEntries() []*ConvertMetadataEntry {
 	return nil
 }
 
-func (x *MetadataConversionBatch) GetTotalKeys() uint64 {
-	if x != nil {
-		return x.TotalKeys
-	}
-	return 0
-}
-
-func (x *MetadataConversionBatch) GetConvertedKeysSoFar() uint64 {
-	if x != nil {
-		return x.ConvertedKeysSoFar
-	}
-	return 0
-}
-
 type ConvertMetadataEntry struct {
 	state          protoimpl.MessageState  `protogen:"open.v1"`
 	CanonicalKey   []byte                  `protobuf:"bytes,1,opt,name=canonical_key,json=canonicalKey,proto3" json:"canonical_key,omitempty"`
 	ConvertedValue *commonpb.MetadataValue `protobuf:"bytes,2,opt,name=converted_value,json=convertedValue,proto3" json:"converted_value,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Snapshot of the original value the converter scanned. The FSM apply path
+	// compares this to the current cache value; mismatch means a normal
+	// metadata command mutated or deleted the key between scan and apply, and
+	// the conversion is silently skipped to avoid resurrecting a deleted value
+	// or clobbering a newer write (see #313/#359). Stored as raw VT bytes so
+	// the comparison is purely byte-equality on a canonical encoding.
+	ExpectedValue []byte `protobuf:"bytes,3,opt,name=expected_value,json=expectedValue,proto3" json:"expected_value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ConvertMetadataEntry) Reset() {
@@ -2925,8 +2920,18 @@ func (x *ConvertMetadataEntry) GetConvertedValue() *commonpb.MetadataValue {
 	return nil
 }
 
+func (x *ConvertMetadataEntry) GetExpectedValue() []byte {
+	if x != nil {
+		return x.ExpectedValue
+	}
+	return nil
+}
+
 // MetadataConversionCompletion signals that a metadata conversion is done.
 // Applied directly as a Proposal field (no log entry produced).
+// Freshness is delegated to the standard preload path: the proposer adds
+// the ledger key to `needs.Ledgers` and the FSM reads the preloaded value
+// from the cache at apply time.
 type MetadataConversionCompletion struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Ledger        string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
@@ -6082,26 +6087,25 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x16RemoveAccountTypeOrder\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"l\n" +
 	"!UpdateDefaultEnforcementModeOrder\x12G\n" +
-	"\x10enforcement_mode\x18\x01 \x01(\x0e2\x1c.common.ChartEnforcementModeR\x0fenforcementMode\"\xbb\x02\n" +
+	"\x10enforcement_mode\x18\x01 \x01(\x0e2\x1c.common.ChartEnforcementModeR\x0fenforcementMode\"\x98\x02\n" +
 	"\x17MetadataConversionBatch\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x123\n" +
 	"\vtarget_type\x18\x02 \x01(\x0e2\x12.common.TargetTypeR\n" +
 	"targetType\x12\x10\n" +
 	"\x03key\x18\x03 \x01(\tR\x03key\x129\n" +
 	"\rexpected_type\x18\x04 \x01(\x0e2\x14.common.MetadataTypeR\fexpectedType\x124\n" +
-	"\aentries\x18\x05 \x03(\v2\x1a.raft.ConvertMetadataEntryR\aentries\x12\x1d\n" +
-	"\n" +
-	"total_keys\x18\x06 \x01(\x06R\ttotalKeys\x121\n" +
-	"\x15converted_keys_so_far\x18\a \x01(\x06R\x12convertedKeysSoFar\"{\n" +
+	"\aentries\x18\x05 \x03(\v2\x1a.raft.ConvertMetadataEntryR\aentriesJ\x04\b\x06\x10\aJ\x04\b\a\x10\bR\n" +
+	"total_keysR\x15converted_keys_so_far\"\xa2\x01\n" +
 	"\x14ConvertMetadataEntry\x12#\n" +
 	"\rcanonical_key\x18\x01 \x01(\fR\fcanonicalKey\x12>\n" +
-	"\x0fconverted_value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x0econvertedValue\"\xb8\x01\n" +
+	"\x0fconverted_value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x0econvertedValue\x12%\n" +
+	"\x0eexpected_value\x18\x03 \x01(\fR\rexpectedValue\"\xd4\x01\n" +
 	"\x1cMetadataConversionCompletion\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x123\n" +
 	"\vtarget_type\x18\x02 \x01(\x0e2\x12.common.TargetTypeR\n" +
 	"targetType\x12\x10\n" +
 	"\x03key\x18\x03 \x01(\tR\x03key\x129\n" +
-	"\rexpected_type\x18\x04 \x01(\x0e2\x14.common.MetadataTypeR\fexpectedType\"\x8c\x01\n" +
+	"\rexpected_type\x18\x04 \x01(\x0e2\x14.common.MetadataTypeR\fexpectedTypeJ\x04\b\x05\x10\x06R\x14ledger_info_snapshot\"\x8c\x01\n" +
 	"\x19SetMetadataFieldTypeOrder\x123\n" +
 	"\vtarget_type\x18\x01 \x01(\x0e2\x12.common.TargetTypeR\n" +
 	"targetType\x12\x10\n" +

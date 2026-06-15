@@ -96,6 +96,20 @@ func (w *Worker) Run(fn func(stop <-chan struct{})) {
 	}()
 }
 
+// RunCtx is the ctx-flavored variant of Run: the callback receives a
+// context.Context that is cancelled when Stop() is called. Equivalent to
+// w.Run(func(stop) { fn(ContextFromStop(stop)) }), factored so every worker
+// uses the same derivation — no caller needs to invent its own ctx (and in
+// particular no caller is tempted to bound a Raft propose with
+// context.WithTimeout(context.Background(), X), which would shadow the
+// stop signal and, for write-once paths like SingleDelete, can cause a
+// timeout-driven retry to duplicate an already-applied entry).
+func (w *Worker) RunCtx(fn func(ctx context.Context)) {
+	w.Run(func(stop <-chan struct{}) {
+		fn(ContextFromStop(stop))
+	})
+}
+
 // Stop signals the background goroutine to stop and waits for it to finish.
 func (w *Worker) Stop() {
 	close(w.stopCh)

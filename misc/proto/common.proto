@@ -190,12 +190,10 @@ enum IndexBuildStatus {
 }
 
 message MetadataFieldSchema {
-  reserved 5, 6;
-  reserved "indexed", "index_build_status";
+  reserved 3, 4, 5, 6;
+  reserved "total_keys", "converted_keys", "indexed", "index_build_status";
   MetadataType type = 1;
   MetadataConversionStatus status = 2;
-  fixed64 total_keys = 3;
-  fixed64 converted_keys = 4;
 }
 
 message MetadataSchema {

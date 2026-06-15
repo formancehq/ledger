@@ -2088,8 +2088,6 @@ type MetadataFieldSchema struct {
 	state         protoimpl.MessageState   `protogen:"open.v1"`
 	Type          MetadataType             `protobuf:"varint,1,opt,name=type,proto3,enum=common.MetadataType" json:"type,omitempty"`
 	Status        MetadataConversionStatus `protobuf:"varint,2,opt,name=status,proto3,enum=common.MetadataConversionStatus" json:"status,omitempty"`
-	TotalKeys     uint64                   `protobuf:"fixed64,3,opt,name=total_keys,json=totalKeys,proto3" json:"total_keys,omitempty"`
-	ConvertedKeys uint64                   `protobuf:"fixed64,4,opt,name=converted_keys,json=convertedKeys,proto3" json:"converted_keys,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2136,20 +2134,6 @@ func (x *MetadataFieldSchema) GetStatus() MetadataConversionStatus {
 		return x.Status
 	}
 	return MetadataConversionStatus_METADATA_CONVERSION_COMPLETE
-}
-
-func (x *MetadataFieldSchema) GetTotalKeys() uint64 {
-	if x != nil {
-		return x.TotalKeys
-	}
-	return 0
-}
-
-func (x *MetadataFieldSchema) GetConvertedKeys() uint64 {
-	if x != nil {
-		return x.ConvertedKeys
-	}
-	return 0
 }
 
 type MetadataSchema struct {
@@ -10311,13 +10295,11 @@ const file_common_proto_rawDesc = "" +
 	"\x06Target\x121\n" +
 	"\aaccount\x18\x01 \x01(\v2\x15.common.TargetAccountH\x00R\aaccount\x12=\n" +
 	"\vtransaction\x18\x02 \x01(\v2\x19.common.TargetTransactionH\x00R\vtransactionB\b\n" +
-	"\x06target\"\xe8\x01\n" +
+	"\x06target\"\xca\x01\n" +
 	"\x13MetadataFieldSchema\x12(\n" +
 	"\x04type\x18\x01 \x01(\x0e2\x14.common.MetadataTypeR\x04type\x128\n" +
-	"\x06status\x18\x02 \x01(\x0e2 .common.MetadataConversionStatusR\x06status\x12\x1d\n" +
-	"\n" +
-	"total_keys\x18\x03 \x01(\x06R\ttotalKeys\x12%\n" +
-	"\x0econverted_keys\x18\x04 \x01(\x06R\rconvertedKeysJ\x04\b\x05\x10\x06J\x04\b\x06\x10\aR\aindexedR\x12index_build_status\"\xaf\x04\n" +
+	"\x06status\x18\x02 \x01(\x0e2 .common.MetadataConversionStatusR\x06statusJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aR\n" +
+	"total_keysR\x0econverted_keysR\aindexedR\x12index_build_status\"\xaf\x04\n" +
 	"\x0eMetadataSchema\x12P\n" +
 	"\x0eaccount_fields\x18\x01 \x03(\v2).common.MetadataSchema.AccountFieldsEntryR\raccountFields\x12\\\n" +
 	"\x12transaction_fields\x18\x02 \x03(\v2-.common.MetadataSchema.TransactionFieldsEntryR\x11transactionFields\x12M\n" +

@@ -230,7 +230,7 @@ The aggregate schema is also available on `LedgerInfo.metadata_schema` (returned
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/{ledgerName}/metadata-schema` | Get schema status (field types + conversion progress) |
+| `GET` | `/{ledgerName}/metadata-schema` | Get schema status (per-field declared type and `COMPLETE`/`CONVERTING` status) |
 | `PUT` | `/{ledgerName}/metadata-schema/{targetType}/{key}` | Set/change metadata field type |
 | `DELETE` | `/{ledgerName}/metadata-schema/{targetType}/{key}` | Remove metadata field type declaration |
 

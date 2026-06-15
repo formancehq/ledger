@@ -1,6 +1,7 @@
 package state
 
 import (
+	"context"
 	"time"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -19,10 +20,17 @@ const maxEvictionBatchSize = 10000
 // The scheduler pre-scans the Pebble time index on the leader side to collect
 // expired key hashes (up to maxEvictionBatchSize per tick). These hashes are
 // included in the proposal so the FSM apply path is write-only (no Pebble reads).
+//
+// proposeFn receives a context derived from the scheduler's stop signal —
+// callers should propagate it to their Raft propose so a Stop() cancels an
+// in-flight proposal cleanly. There is intentionally no internal timeout: a
+// timeout that fires after Raft has accepted the proposal would cause the
+// next tick to re-submit the same hashes, and the FSM apply path's
+// SingleDelete contract forbids double-deleting a Pebble main key.
 type IdempotencyEvictionScheduler struct {
 	logger      logging.Logger
 	isLeader    func() bool
-	proposeFn   func(cutoffMicros uint64, lastScannedTimeIndexKey []byte, pebbleKeyHashes [][]byte)
+	proposeFn   func(ctx context.Context, cutoffMicros uint64, lastScannedTimeIndexKey []byte, pebbleKeyHashes [][]byte)
 	store       dal.BackgroundScanner
 	idempotency *IdempotencyStore
 	interval    time.Duration
@@ -31,13 +39,15 @@ type IdempotencyEvictionScheduler struct {
 }
 
 // NewIdempotencyEvictionScheduler creates a new scheduler.
-// proposeFn is called with the cutoff timestamp, the full Pebble time-index
-// key of the last scanned entry (used as the exact DeleteRange upper bound),
-// and the pre-scanned key hashes to submit via Raft.
+// proposeFn is called with a stop-cancelled context, the cutoff timestamp,
+// the full Pebble time-index key of the last scanned entry (used as the
+// exact DeleteRange upper bound), and the pre-scanned key hashes to submit
+// via Raft. The ctx is cancelled when Stop() is invoked, which is the
+// scheduler's sole shutdown signal.
 func NewIdempotencyEvictionScheduler(
 	logger logging.Logger,
 	isLeader func() bool,
-	proposeFn func(cutoffMicros uint64, lastScannedTimeIndexKey []byte, pebbleKeyHashes [][]byte),
+	proposeFn func(ctx context.Context, cutoffMicros uint64, lastScannedTimeIndexKey []byte, pebbleKeyHashes [][]byte),
 	store dal.BackgroundScanner,
 	idempotency *IdempotencyStore,
 	interval time.Duration,
@@ -57,7 +67,7 @@ func NewIdempotencyEvictionScheduler(
 
 // Start begins the eviction loop in a background goroutine.
 func (s *IdempotencyEvictionScheduler) Start() {
-	s.w.Run(s.loop)
+	s.w.RunCtx(s.loop)
 }
 
 // Stop signals the eviction loop to stop and waits for it to finish.
@@ -65,13 +75,19 @@ func (s *IdempotencyEvictionScheduler) Stop() {
 	s.w.Stop()
 }
 
-func (s *IdempotencyEvictionScheduler) loop(stop <-chan struct{}) {
+func (s *IdempotencyEvictionScheduler) loop(ctx context.Context) {
+	// ctx is supplied by Worker.RunCtx and is cancelled by Stop(). It
+	// flows to proposeFn so an in-flight Raft propose unblocks on
+	// shutdown instead of pinning the worker, and so no bounded timeout
+	// can fire after Raft has accepted the proposal (which would force
+	// a retry that double-SingleDeletes the same Pebble main keys —
+	// undefined per Pebble's SingleDelete contract).
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-stop:
+		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			if !s.isLeader() {
@@ -104,7 +120,7 @@ func (s *IdempotencyEvictionScheduler) loop(stop <-chan struct{}) {
 			}
 
 			s.logger.Debugf("Proposing idempotency eviction with cutoff=%d, pebbleKeys=%d", cutoff, len(hashes))
-			s.proposeFn(cutoff, lastScannedKey, hashes)
+			s.proposeFn(ctx, cutoff, lastScannedKey, hashes)
 		}
 	}
 }

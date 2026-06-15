@@ -1,6 +1,7 @@
 package state
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
@@ -13,6 +14,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -35,13 +37,21 @@ func newConverterTestStore(t *testing.T) *dal.Store {
 	return s
 }
 
-// registerLedgerWithSchema registers a ledger with a metadata schema.
+// testLedgerID is the ledger ID used by the test fixtures so the seeded
+// metadata keys match the prefix the converter scans for.
+const testLedgerID uint32 = 42
+
+// registerLedgerWithSchema registers a ledger with a metadata schema. The
+// ledger is given a non-zero ID so test seeds can be built through
+// `domain.MetadataKey{LedgerID: testLedgerID, ...}.Bytes()` — matching how
+// production writes keys.
 func registerLedgerWithSchema(t *testing.T, s *dal.Store, name string, schema *commonpb.MetadataSchema) {
 	t.Helper()
 
 	batch := s.OpenWriteSession()
 	err := SaveLedger(batch, &commonpb.LedgerInfo{
 		Name:           name,
+		Id:             testLedgerID,
 		CreatedAt:      commonpb.NewTimestamp(libtime.Now()),
 		MetadataSchema: schema,
 	})
@@ -53,7 +63,7 @@ func registerLedgerWithSchema(t *testing.T, s *dal.Store, name string, schema *c
 func newTestConverter(
 	t *testing.T,
 	store *dal.Store,
-	proposer Proposer,
+	proposer MetadataBatchProposer,
 	isLeader func() bool,
 	batchSize int,
 	poolSize int,
@@ -86,7 +96,7 @@ func TestMetadataConverterStartStop(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	store := newConverterTestStore(t)
-	proposer := NewMockProposer(ctrl)
+	proposer := NewMockMetadataBatchProposer(ctrl)
 
 	mc, _ := newTestConverter(t, store, proposer, func() bool { return true }, 10, 2)
 	mc.Start()
@@ -98,7 +108,7 @@ func TestMetadataConverterFieldNoLongerConverting(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	store := newConverterTestStore(t)
-	proposer := NewMockProposer(ctrl)
+	proposer := NewMockMetadataBatchProposer(ctrl)
 	// No EXPECT on proposer → any call will fail the test.
 
 	// Register a ledger with the field already COMPLETE (not CONVERTING).
@@ -135,7 +145,7 @@ func TestMetadataConverterNonLeaderWaits(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	store := newConverterTestStore(t)
-	proposer := NewMockProposer(ctrl)
+	proposer := NewMockMetadataBatchProposer(ctrl)
 	// No EXPECT → non-leader must never propose.
 
 	// Register a ledger with the field in CONVERTING state.
@@ -180,7 +190,7 @@ func TestMetadataConverterLeaderProposesCompletion(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	store := newConverterTestStore(t)
-	proposer := NewMockProposer(ctrl)
+	proposer := NewMockMetadataBatchProposer(ctrl)
 
 	// Register a ledger with the field in CONVERTING state but no metadata entries.
 	registerLedgerWithSchema(t, store, "test-ledger", &commonpb.MetadataSchema{
@@ -198,7 +208,7 @@ func TestMetadataConverterLeaderProposesCompletion(t *testing.T) {
 		capturedProposals []*raftcmdpb.Proposal
 	)
 
-	proposer.EXPECT().ProposeProposal(gomock.Any()).DoAndReturn(func(cmd *raftcmdpb.Proposal) error {
+	proposer.EXPECT().Propose(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, cmd *raftcmdpb.Proposal, _ [][]byte, _ commonpb.TargetType) error {
 		mu.Lock()
 		defer mu.Unlock()
 
@@ -233,12 +243,393 @@ func TestMetadataConverterLeaderProposesCompletion(t *testing.T) {
 	assert.NotEmpty(t, lastProposal.GetMetadataConversionsComplete(), "expected MetadataConversionsComplete in proposal")
 }
 
+// seedAccountMetadata writes account metadata entries through the same
+// canonical-key construction the FSM write path uses
+// (`domain.MetadataKey{LedgerID, Account, Key}.Bytes()`), so the converter's
+// LedgerID-prefixed scan finds them.
+func seedAccountMetadata(t *testing.T, s *dal.Store, _, account, key string, value *commonpb.MetadataValue) {
+	t.Helper()
+
+	attrs := attributes.New()
+	canonicalKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerID: testLedgerID, Account: account},
+		Key:        key,
+	}.Bytes()
+
+	batch := s.OpenWriteSession()
+	_, err := attrs.Metadata.Set(batch, canonicalKey, value)
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+}
+
+// TestMetadataConverterProposesOnlyKeysNeedingConversion guards that the
+// converter never enqueues already-typed values into a batch — they are the
+// signal that a pass has converged and Complete should be proposed instead.
+// Pre-#359 cleanup, this was conflated with a separate TotalKeys counter the
+// FSM used to auto-COMPLETE; that counter has been removed and the converter
+// alone drives convergence by emitting Complete when a pass enqueues zero
+// entries.
+func TestMetadataConverterProposesOnlyKeysNeedingConversion(t *testing.T) {
+	t.Parallel()
+
+	t.Run("mixed: only untyped keys counted", func(t *testing.T) {
+		t.Parallel()
+
+		ctrl := gomock.NewController(t)
+		store := newConverterTestStore(t)
+		proposer := NewMockMetadataBatchProposer(ctrl)
+
+		registerLedgerWithSchema(t, store, "test-ledger", &commonpb.MetadataSchema{
+			AccountFields: map[string]*commonpb.MetadataFieldSchema{
+				"age": {
+					Type:   commonpb.MetadataType_METADATA_TYPE_INT64,
+					Status: commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING,
+				},
+			},
+		})
+
+		// Two values need conversion (stored as strings), one already has the
+		// expected int64 type and must NOT be enqueued in the batch — the
+		// already-typed entry should be silently skipped at scan time.
+		seedAccountMetadata(t, store, "test-ledger", "users:alice", "age", commonpb.NewStringValue("30"))
+		seedAccountMetadata(t, store, "test-ledger", "users:bob", "age", commonpb.NewStringValue("41"))
+		seedAccountMetadata(t, store, "test-ledger", "users:carol", "age", commonpb.NewIntValue(52))
+
+		var (
+			mu        sync.Mutex
+			batches   []*raftcmdpb.MetadataConversionBatch
+			completes int
+		)
+
+		proposer.EXPECT().Propose(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, cmd *raftcmdpb.Proposal, _ [][]byte, _ commonpb.TargetType) error {
+			mu.Lock()
+			defer mu.Unlock()
+
+			batches = append(batches, cmd.GetMetadataConversionBatches()...)
+			completes += len(cmd.GetMetadataConversionsComplete())
+
+			return nil
+		}).AnyTimes()
+
+		mc, requestCh := newTestConverter(t, store, proposer, func() bool { return true }, 10, 1)
+		mc.Start()
+
+		requestCh.TrySend(MetadataConvertRequest{
+			LedgerName: "test-ledger",
+			TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+			Key:        "age",
+			Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+		}, "test")
+
+		require.Eventually(t, func() bool {
+			mu.Lock()
+			defer mu.Unlock()
+
+			return len(batches) > 0
+		}, 5*time.Second, 50*time.Millisecond)
+
+		mu.Lock()
+		defer mu.Unlock()
+
+		require.GreaterOrEqual(t, len(batches), 1, "expected at least one conversion batch")
+		assert.Len(t, batches[0].GetEntries(), 2,
+			"only the two untyped values should be enqueued in the first batch")
+		assert.Zero(t, completes,
+			"completion must NOT be proposed while a pass still enqueues entries")
+	})
+
+	t.Run("all already typed: completes without a batch", func(t *testing.T) {
+		t.Parallel()
+
+		ctrl := gomock.NewController(t)
+		store := newConverterTestStore(t)
+		proposer := NewMockMetadataBatchProposer(ctrl)
+
+		registerLedgerWithSchema(t, store, "test-ledger", &commonpb.MetadataSchema{
+			AccountFields: map[string]*commonpb.MetadataFieldSchema{
+				"age": {
+					Type:   commonpb.MetadataType_METADATA_TYPE_INT64,
+					Status: commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING,
+				},
+			},
+		})
+
+		// Every value already has the expected type: nothing needs a write, so
+		// the converter must propose completion (else CONVERTING never clears).
+		seedAccountMetadata(t, store, "test-ledger", "users:alice", "age", commonpb.NewIntValue(30))
+		seedAccountMetadata(t, store, "test-ledger", "users:bob", "age", commonpb.NewIntValue(41))
+
+		var (
+			mu        sync.Mutex
+			batches   int
+			completes int
+		)
+
+		proposer.EXPECT().Propose(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, cmd *raftcmdpb.Proposal, _ [][]byte, _ commonpb.TargetType) error {
+			mu.Lock()
+			defer mu.Unlock()
+
+			batches += len(cmd.GetMetadataConversionBatches())
+			completes += len(cmd.GetMetadataConversionsComplete())
+
+			return nil
+		}).AnyTimes()
+
+		mc, requestCh := newTestConverter(t, store, proposer, func() bool { return true }, 10, 1)
+		mc.Start()
+
+		requestCh.TrySend(MetadataConvertRequest{
+			LedgerName: "test-ledger",
+			TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+			Key:        "age",
+			Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+		}, "test")
+
+		require.Eventually(t, func() bool {
+			mu.Lock()
+			defer mu.Unlock()
+
+			return completes > 0
+		}, 5*time.Second, 50*time.Millisecond)
+
+		mu.Lock()
+		defer mu.Unlock()
+
+		assert.Zero(t, batches, "no conversion batch expected when all values are already typed")
+	})
+
+	t.Run("all already null sentinel: completes without a batch", func(t *testing.T) {
+		t.Parallel()
+
+		ctrl := gomock.NewController(t)
+		store := newConverterTestStore(t)
+		proposer := NewMockMetadataBatchProposer(ctrl)
+
+		registerLedgerWithSchema(t, store, "test-ledger", &commonpb.MetadataSchema{
+			AccountFields: map[string]*commonpb.MetadataFieldSchema{
+				"age": {
+					Type:   commonpb.MetadataType_METADATA_TYPE_INT64,
+					Status: commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING,
+				},
+			},
+		})
+
+		// Values that were already converted to the NullValue sentinel by a
+		// previous conversion pass (i.e. the original value was structurally
+		// inconvertible to the declared type, e.g. "abc" -> INT64). TypeMatches
+		// returns false on NullValue but the converter must treat it as
+		// terminal — otherwise it re-enqueues the same key forever and the
+		// field stays CONVERTING indefinitely.
+		seedAccountMetadata(t, store, "test-ledger", "users:alice", "age", commonpb.NewNullValue("abc"))
+		seedAccountMetadata(t, store, "test-ledger", "users:bob", "age", commonpb.NewNullValue("xyz"))
+
+		var (
+			mu        sync.Mutex
+			batches   int
+			completes int
+		)
+
+		proposer.EXPECT().Propose(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, cmd *raftcmdpb.Proposal, _ [][]byte, _ commonpb.TargetType) error {
+			mu.Lock()
+			defer mu.Unlock()
+
+			batches += len(cmd.GetMetadataConversionBatches())
+			completes += len(cmd.GetMetadataConversionsComplete())
+
+			return nil
+		}).AnyTimes()
+
+		mc, requestCh := newTestConverter(t, store, proposer, func() bool { return true }, 10, 1)
+		mc.Start()
+
+		requestCh.TrySend(MetadataConvertRequest{
+			LedgerName: "test-ledger",
+			TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+			Key:        "age",
+			Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+		}, "test")
+
+		require.Eventually(t, func() bool {
+			mu.Lock()
+			defer mu.Unlock()
+
+			return completes > 0
+		}, 5*time.Second, 50*time.Millisecond)
+
+		mu.Lock()
+		defer mu.Unlock()
+
+		assert.Zero(t, batches, "no conversion batch expected when all values are already the NullValue sentinel")
+	})
+
+	t.Run("retyped to a more permissive type re-converts NullValue", func(t *testing.T) {
+		t.Parallel()
+
+		ctrl := gomock.NewController(t)
+		store := newConverterTestStore(t)
+		proposer := NewMockMetadataBatchProposer(ctrl)
+
+		// Field now declared STRING — the original conversion to INT64
+		// failed and left NullValue sentinels. Retyping to STRING must
+		// recover the originals via ConvertMetadataValue's convertFromNull
+		// path; the converter must NOT blanket-skip NullValue.
+		registerLedgerWithSchema(t, store, "test-ledger", &commonpb.MetadataSchema{
+			AccountFields: map[string]*commonpb.MetadataFieldSchema{
+				"label": {
+					Type:   commonpb.MetadataType_METADATA_TYPE_STRING,
+					Status: commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING,
+				},
+			},
+		})
+
+		seedAccountMetadata(t, store, "test-ledger", "users:alice", "label", commonpb.NewNullValue("abc"))
+		seedAccountMetadata(t, store, "test-ledger", "users:bob", "label", commonpb.NewNullValue("xyz"))
+
+		var (
+			mu      sync.Mutex
+			batches []*raftcmdpb.MetadataConversionBatch
+		)
+
+		proposer.EXPECT().Propose(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, cmd *raftcmdpb.Proposal, _ [][]byte, _ commonpb.TargetType) error {
+			mu.Lock()
+			defer mu.Unlock()
+
+			batches = append(batches, cmd.GetMetadataConversionBatches()...)
+
+			return nil
+		}).AnyTimes()
+
+		mc, requestCh := newTestConverter(t, store, proposer, func() bool { return true }, 10, 1)
+		mc.Start()
+
+		requestCh.TrySend(MetadataConvertRequest{
+			LedgerName: "test-ledger",
+			TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+			Key:        "label",
+			Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+		}, "test")
+
+		require.Eventually(t, func() bool {
+			mu.Lock()
+			defer mu.Unlock()
+
+			return len(batches) > 0
+		}, 5*time.Second, 50*time.Millisecond)
+
+		mu.Lock()
+		defer mu.Unlock()
+
+		require.GreaterOrEqual(t, len(batches), 1, "expected at least one conversion batch")
+		assert.Len(t, batches[0].GetEntries(), 2,
+			"both NullValue entries must be enqueued when retyping to STRING — convertFromNull recovers the original")
+
+		// And the converted values must be the original strings (not NullValues).
+		gotOriginals := map[string]bool{}
+		for _, e := range batches[0].GetEntries() {
+			sv, ok := e.GetConvertedValue().GetType().(*commonpb.MetadataValue_StringValue)
+			require.True(t, ok, "expected ConvertedValue to be a StringValue, got %T", e.GetConvertedValue().GetType())
+			gotOriginals[sv.StringValue] = true
+		}
+		assert.True(t, gotOriginals["abc"], "expected original \"abc\" to be recovered as a StringValue")
+		assert.True(t, gotOriginals["xyz"], "expected original \"xyz\" to be recovered as a StringValue")
+	})
+}
+
+// TestMetadataConverterStopUnblocksInFlightConversion guards the shutdown
+// regression (#359) where an in-flight conversion blocked teardown. The
+// proposer's Propose blocks until the FSM apply resolves; at shutdown the
+// Raft node stops and that apply never comes, so Propose must observe the
+// converter's stop-derived context being cancelled and return. If the
+// converter threaded a non-cancelable context (or the proposer ignored
+// cancellation), Stop's wg.Wait would hang past the stop timeout and strand
+// the app's OnStop — exactly the e2e teardown hang this protects against.
+func TestMetadataConverterStopUnblocksInFlightConversion(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	store := newConverterTestStore(t)
+	proposer := NewMockMetadataBatchProposer(ctrl)
+
+	registerLedgerWithSchema(t, store, "test-ledger", &commonpb.MetadataSchema{
+		AccountFields: map[string]*commonpb.MetadataFieldSchema{
+			"age": {
+				Type:   commonpb.MetadataType_METADATA_TYPE_INT64,
+				Status: commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING,
+			},
+		},
+	})
+
+	seedAccountMetadata(t, store, "test-ledger", "users:alice", "age", commonpb.NewStringValue("30"))
+
+	// Propose blocks until its context is cancelled, simulating an FSM apply
+	// that never resolves because the node is shutting down.
+	proposeEntered := make(chan struct{})
+
+	var once sync.Once
+
+	proposer.EXPECT().
+		Propose(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, _ *raftcmdpb.Proposal, _ [][]byte, _ commonpb.TargetType) error {
+			once.Do(func() { close(proposeEntered) })
+
+			<-ctx.Done()
+
+			return ctx.Err()
+		}).
+		AnyTimes()
+
+	// Build the converter directly (not via newTestConverter) to avoid the
+	// helper's t.Cleanup(mc.Stop): this test calls Stop explicitly, and a
+	// second Stop would close the worker's stop channel twice.
+	logger := logging.FromContext(logging.TestingContext())
+	requestCh := worker.NewChannel[MetadataConvertRequest](logger, "test-convert", 100)
+	mc := NewMetadataConverter(
+		logger,
+		store,
+		attributes.New(),
+		requestCh,
+		proposer,
+		func() bool { return true },
+		10,
+		1,
+		func(<-chan struct{}) {},
+	)
+	mc.Start()
+
+	requestCh.TrySend(MetadataConvertRequest{
+		LedgerName: "test-ledger",
+		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		Key:        "age",
+		Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+	}, "test")
+
+	select {
+	case <-proposeEntered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("conversion never reached Propose")
+	}
+
+	// Stop must return promptly: cancelling the conversion's context unblocks
+	// the in-flight Propose so wg.Wait completes.
+	stopped := make(chan struct{})
+	go func() {
+		mc.Stop()
+		close(stopped)
+	}()
+
+	select {
+	case <-stopped:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Stop hung on an in-flight conversion — shutdown context not honored")
+	}
+}
+
 func TestMetadataConverterPoolConcurrency(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
 	store := newConverterTestStore(t)
-	proposer := NewMockProposer(ctrl)
+	proposer := NewMockMetadataBatchProposer(ctrl)
 
 	// Register multiple fields in CONVERTING state.
 	registerLedgerWithSchema(t, store, "test-ledger", &commonpb.MetadataSchema{
@@ -263,7 +654,7 @@ func TestMetadataConverterPoolConcurrency(t *testing.T) {
 		proposalCount int
 	)
 
-	proposer.EXPECT().ProposeProposal(gomock.Any()).DoAndReturn(func(cmd *raftcmdpb.Proposal) error {
+	proposer.EXPECT().Propose(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, cmd *raftcmdpb.Proposal, _ [][]byte, _ commonpb.TargetType) error {
 		mu.Lock()
 		defer mu.Unlock()
 
@@ -308,7 +699,7 @@ func TestMetadataConverterLedgerNotFound(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	store := newConverterTestStore(t)
-	proposer := NewMockProposer(ctrl)
+	proposer := NewMockMetadataBatchProposer(ctrl)
 	// No EXPECT → proposer must never be called.
 
 	// Don't register any ledger — the converter should handle the error gracefully.
@@ -334,9 +725,9 @@ func TestMetadataConverterQueueDrainsOnStop(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	store := newConverterTestStore(t)
-	proposer := NewMockProposer(ctrl)
+	proposer := NewMockMetadataBatchProposer(ctrl)
 	// Allow any calls (fields are COMPLETE so no proposals, but allow for safety).
-	proposer.EXPECT().ProposeProposal(gomock.Any()).Return(nil).AnyTimes()
+	proposer.EXPECT().Propose(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	// Register ledger with schema that is complete — requests will be processed
 	// quickly (exit on isFieldStillConverting=false).

@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"context"
 	"errors"
 	"sync/atomic"
 	"testing"
@@ -25,6 +26,61 @@ func TestWorkerRunStop(t *testing.T) {
 
 	require.Eventually(t, ran.Load, time.Second, 10*time.Millisecond)
 	w.Stop()
+}
+
+// TestWorkerRunCtxCancelsOnStop guards the contract of RunCtx: the context
+// passed to the callback must be cancelled by Stop(). Callers rely on this
+// to propagate the lifecycle to operations like Raft Propose without
+// inventing their own bounded timeout — a timeout firing after Raft has
+// already accepted a proposal would force a retry that, for write-once
+// paths like SingleDelete, can duplicate an already-applied entry.
+func TestWorkerRunCtxCancelsOnStop(t *testing.T) {
+	t.Parallel()
+
+	w := New()
+
+	var (
+		started    = make(chan struct{})
+		observed   atomic.Value // stores ctx.Err() seen by the callback
+		callbackOk = make(chan struct{})
+	)
+
+	w.RunCtx(func(ctx context.Context) {
+		close(started)
+		<-ctx.Done()
+		observed.Store(ctx.Err())
+		close(callbackOk)
+	})
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("RunCtx callback never started")
+	}
+
+	stopDone := make(chan struct{})
+
+	go func() {
+		w.Stop()
+		close(stopDone)
+	}()
+
+	select {
+	case <-stopDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Stop did not return — ctx was not cancelled")
+	}
+
+	select {
+	case <-callbackOk:
+	case <-time.After(time.Second):
+		t.Fatal("callback never observed ctx.Done()")
+	}
+
+	err, ok := observed.Load().(error)
+	require.True(t, ok)
+	require.True(t, errors.Is(err, context.Canceled),
+		"RunCtx ctx must be cancelled by Stop, got %v", err)
 }
 
 func TestWorkerStopBlocksUntilDone(t *testing.T) {

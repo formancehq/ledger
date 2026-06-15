@@ -30,7 +30,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
-	"github.com/formancehq/ledger/v3/internal/pkg/protowireutil"
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
 	"github.com/formancehq/ledger/v3/internal/pkg/vtmarshal"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -380,86 +379,50 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	cmd.CallerSnapshot = auth.ResolveCallerSnapshot(ctx)
 	preloadSpan.End()
 
-	// Step 5: Pre-marshal outside the proposal lock.
-	//
-	// The marshal is the heaviest CPU work in the proposal path, especially
-	// for large batches. PredictedIndex is left at zero (omitted in proto3
-	// wire format) and will be patched cheaply under the lock via a raw
-	// protobuf append — see appendProposalPredictedIndex.
+	// Step 5: Marshal + acquire proposal guard + set PredictedIndex
+	// + propose, all via the shared preload runner. The runner also
+	// patches PredictedIndex onto the pre-marshaled buffer (or
+	// re-marshals on the rare boundary-shift rebuild).
 	start := time.Now()
 
 	defer func() {
 		a.commandDurationHistogram.Record(ctx, time.Since(start).Microseconds())
 	}()
 
-	proposalData, err := a.marshalCommand(ctx, cmd)
-	if err != nil {
-		build.ReleaseLoaders()
-
-		return nil, err
-	}
-
-	// Step 6: Acquire proposal lock and validate boundary.
-	guardStart := time.Now()
-	updatedPreloads, guard, err := a.preloader.AcquireProposalGuard(build, needs)
-	if err != nil {
-		if guard != nil {
-			a.proposalGuardDurationHistogram.Record(ctx, time.Since(guardStart).Microseconds())
-			guard.ReleaseAll()
-		}
-
-		return nil, fmt.Errorf("acquiring proposal guard: %w", err)
-	}
-
-	// Set the predicted index under the proposal guard (tracker locked).
-	// The FSM uses this to detect stale proposals whose preloads were
-	// computed against an inflated tracker (e.g. after leadership transition).
-	cmd.PredictedIndex = a.preloader.TrackerNext()
-
-	if updatedPreloads != nil {
-		// Rare path: nextIndex crossed a generation boundary since
-		// BuildPreloads, so the preload set was rebuilt under the lock.
-		// Must re-marshal the entire command with updated preloads.
-		a.proposalGuardRebuildCounter.Add(ctx, 1)
-		cmd.Preload = updatedPreloads
-
-		proposalData, err = a.marshalCommand(ctx, cmd)
-		if err != nil {
-			guard.ReleaseAll()
-
-			return nil, err
-		}
-	} else {
-		// Common path: preloads are still valid. Append only the
-		// PredictedIndex field to the pre-marshaled buffer — no full
-		// re-marshal needed. See appendProposalPredictedIndex for the
-		// protobuf wire-format trick that makes this safe.
-		proposalData = appendProposalPredictedIndex(proposalData, cmd.GetPredictedIndex())
-	}
-
-	proposal := node.NewProposal(cmd.GetId(), proposalData)
-
-	// Bail out if the caller disconnected (e.g. gRPC client killed).
-	// Checking here — right before the Raft proposal — avoids committing
-	// entries whose response will never be delivered.
 	ctx, proposeSpan := tracer.Start(ctx, "admission.propose")
-	proposeStart := time.Now()
 
-	fsmFuture, err := a.proposer.Propose(ctx, proposal)
+	runResult, err := a.preloader.RunWithPreload(
+		ctx, cmd, build, needs,
+		func(c *raftcmdpb.Proposal) ([]byte, error) { return a.marshalCommand(ctx, c) },
+		a.proposer,
+	)
 	if err != nil {
 		proposeSpan.End()
-		guard.ReleaseAll()
-		a.logger.WithFields(map[string]any{
-			"channel": "raft.node.propose",
-		}).Errorf("Proposal failed: %v", err)
-		a.proposeQueueFullCounter.Add(context.Background(), 1)
+
+		// Distinguish proposer error (queue full / shutdown) from
+		// marshal / guard errors via the runner's phase sentinels.
+		// The marshal and guard wrappers carry their own diagnostic
+		// already; the bare propose error is the queue-full case.
+		if !errors.Is(err, preload.ErrMarshalProposal) && !errors.Is(err, preload.ErrAcquireProposalGuard) {
+			a.logger.WithFields(map[string]any{
+				"channel": "raft.node.propose",
+			}).Errorf("Proposal failed: %v", err)
+			a.proposeQueueFullCounter.Add(context.Background(), 1)
+		}
 
 		return nil, err
 	}
 
-	guard.Release()
-	a.proposalGuardDurationHistogram.Record(ctx, time.Since(guardStart).Microseconds())
+	if runResult.Rebuilt {
+		a.proposalGuardRebuildCounter.Add(ctx, 1)
+	}
+
+	a.proposalGuardDurationHistogram.Record(ctx, runResult.LockHeldDuration.Microseconds())
 	a.proposeQueueLoadHistogram.Record(context.Background(), int64(a.proposeQueueInflight.Add(1)))
+
+	guard := runResult.Guard
+	fsmFuture := runResult.FSMFuture
+	proposal := runResult.Proposal
 
 	if _, err := proposal.Wait(); err != nil {
 		proposeSpan.End()
@@ -469,7 +432,11 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		return nil, err
 	}
 
-	a.proposeDurationHistogram.Record(ctx, time.Since(proposeStart).Microseconds())
+	// Old semantic preserved: "admission.propose.duration" measures
+	// Propose + Wait combined (queue insertion through Raft commit
+	// acceptance). The runner exposes ProposeStartTime so we can
+	// compute this without holding our own timer.
+	a.proposeDurationHistogram.Record(ctx, time.Since(runResult.ProposeStartTime).Microseconds())
 	proposeSpan.End()
 
 	// Ensure cleanup runs on all paths after proposal acceptance (success and error).
@@ -567,22 +534,6 @@ func (a *Admission) marshalCommand(ctx context.Context, cmd *raftcmdpb.Proposal)
 	marshalSpan.SetAttributes(attribute.Int("command.size_bytes", len(proposalData)))
 
 	return proposalData, nil
-}
-
-// appendProposalPredictedIndex appends the raw protobuf wire encoding of
-// Proposal.predicted_index (field 7, fixed64) to an already-marshaled Proposal.
-//
-// PredictedIndex was zero when we pre-marshaled the command (proto3 omits
-// zero-valued scalars), so appending it produces exactly one occurrence.
-//
-// This saves re-marshaling the entire Proposal (which can be megabytes for
-// large batches) while holding the proposal lock.
-func appendProposalPredictedIndex(data []byte, index uint64) []byte {
-	if index == 0 {
-		return data
-	}
-
-	return protowireutil.AppendFixed64(data, 7, index)
 }
 
 // verifyAndResolveSignatures verifies signatures on requests and resolves signed payloads.

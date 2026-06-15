@@ -326,5 +326,6 @@ func (r *Recovery) DispatchMetadataConversionRequests(stop <-chan struct{}) {
 
 		r.apply.dispatchConvertingFields(stop, info, commonpb.TargetType_TARGET_TYPE_ACCOUNT, info.GetMetadataSchema().GetAccountFields())
 		r.apply.dispatchConvertingFields(stop, info, commonpb.TargetType_TARGET_TYPE_TRANSACTION, info.GetMetadataSchema().GetTransactionFields())
+		r.apply.dispatchConvertingFields(stop, info, commonpb.TargetType_TARGET_TYPE_LEDGER, info.GetMetadataSchema().GetLedgerFields())
 	}
 }

@@ -3018,8 +3018,6 @@ components:
       required:
         - declaredType
         - status
-        - totalKeys
-        - convertedKeys
       properties:
         declaredType:
           type: string
@@ -3041,16 +3039,6 @@ components:
             - COMPLETE
             - CONVERTING
           description: Conversion status for this field
-        totalKeys:
-          type: integer
-          format: uint64
-          minimum: 0
-          description: Total number of instances of this key
-        convertedKeys:
-          type: integer
-          format: uint64
-          minimum: 0
-          description: Number of already-converted instances
 
     SetMetadataTypeRequest:
       type: object

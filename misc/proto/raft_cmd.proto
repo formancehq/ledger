@@ -268,24 +268,40 @@ message UpdateDefaultEnforcementModeOrder {
 
 // MetadataConversionBatch carries a batch of metadata value conversions.
 // Applied directly as a Proposal field (no log entry produced).
+// Convergence is driven by the converter: it keeps proposing batches as
+// long as a Pebble scan turns up entries with a mismatched type, and
+// proposes MetadataConversionCompletion once a full pass finds zero such
+// entries. The FSM no longer tracks progress counters or auto-completes.
 message MetadataConversionBatch {
+  reserved 6, 7;
+  reserved "total_keys", "converted_keys_so_far";
   string ledger = 1;
   common.TargetType target_type = 2;
   string key = 3;
   common.MetadataType expected_type = 4;
   repeated ConvertMetadataEntry entries = 5;
-  fixed64 total_keys = 6;
-  fixed64 converted_keys_so_far = 7;
 }
 
 message ConvertMetadataEntry {
   bytes canonical_key = 1;
   common.MetadataValue converted_value = 2;
+  // Snapshot of the original value the converter scanned. The FSM apply path
+  // compares this to the current cache value; mismatch means a normal
+  // metadata command mutated or deleted the key between scan and apply, and
+  // the conversion is silently skipped to avoid resurrecting a deleted value
+  // or clobbering a newer write (see #313/#359). Stored as raw VT bytes so
+  // the comparison is purely byte-equality on a canonical encoding.
+  bytes expected_value = 3;
 }
 
 // MetadataConversionCompletion signals that a metadata conversion is done.
 // Applied directly as a Proposal field (no log entry produced).
+// Freshness is delegated to the standard preload path: the proposer adds
+// the ledger key to `needs.Ledgers` and the FSM reads the preloaded value
+// from the cache at apply time.
 message MetadataConversionCompletion {
+  reserved 5;
+  reserved "ledger_info_snapshot";
   string ledger = 1;
   common.TargetType target_type = 2;
   string key = 3;

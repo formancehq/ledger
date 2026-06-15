@@ -1446,8 +1446,6 @@ type MetadataConversionBatchReader interface {
 	GetKey() string
 	GetExpectedType() commonpb.MetadataType
 	GetEntries() []*ConvertMetadataEntry
-	GetTotalKeys() uint64
-	GetConvertedKeysSoFar() uint64
 	Mutate() *MetadataConversionBatch
 }
 
@@ -1473,14 +1471,6 @@ func (r *metadataConversionBatchReadonly) GetEntries() []*ConvertMetadataEntry {
 	return r.v.GetEntries()
 }
 
-func (r *metadataConversionBatchReadonly) GetTotalKeys() uint64 {
-	return r.v.GetTotalKeys()
-}
-
-func (r *metadataConversionBatchReadonly) GetConvertedKeysSoFar() uint64 {
-	return r.v.GetConvertedKeysSoFar()
-}
-
 func (r *metadataConversionBatchReadonly) Mutate() *MetadataConversionBatch {
 	return r.v.CloneVT()
 }
@@ -1503,6 +1493,7 @@ func (m *MetadataConversionBatch) Mutate() *MetadataConversionBatch {
 type ConvertMetadataEntryReader interface {
 	GetCanonicalKey() []byte
 	GetConvertedValue() commonpb.MetadataValueReader
+	GetExpectedValue() []byte
 	Mutate() *ConvertMetadataEntry
 }
 
@@ -1518,6 +1509,10 @@ func (r *convertMetadataEntryReadonly) GetConvertedValue() commonpb.MetadataValu
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *convertMetadataEntryReadonly) GetExpectedValue() []byte {
+	return r.v.GetExpectedValue()
 }
 
 func (r *convertMetadataEntryReadonly) Mutate() *ConvertMetadataEntry {

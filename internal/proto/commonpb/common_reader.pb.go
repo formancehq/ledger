@@ -685,8 +685,6 @@ func (m *Target) Mutate() *Target {
 type MetadataFieldSchemaReader interface {
 	GetType() MetadataType
 	GetStatus() MetadataConversionStatus
-	GetTotalKeys() uint64
-	GetConvertedKeys() uint64
 	Mutate() *MetadataFieldSchema
 }
 
@@ -698,14 +696,6 @@ func (r *metadataFieldSchemaReadonly) GetType() MetadataType {
 
 func (r *metadataFieldSchemaReadonly) GetStatus() MetadataConversionStatus {
 	return r.v.GetStatus()
-}
-
-func (r *metadataFieldSchemaReadonly) GetTotalKeys() uint64 {
-	return r.v.GetTotalKeys()
-}
-
-func (r *metadataFieldSchemaReadonly) GetConvertedKeys() uint64 {
-	return r.v.GetConvertedKeys()
 }
 
 func (r *metadataFieldSchemaReadonly) Mutate() *MetadataFieldSchema {

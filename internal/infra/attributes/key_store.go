@@ -131,6 +131,33 @@ func (s *KeyStore[K, T]) Get(canonical []byte) (value T, id U128, err error) {
 	return entry.Data, id, nil
 }
 
+// GetEntry returns the raw Entry for canonical key, including the
+// Deleted tombstone flag. Unlike Get, it does NOT treat tombstones as
+// absent — that distinction is what callers like the metadata-conversion
+// apply path rely on to skip keys deleted between scan and apply without
+// also skipping cache-evicted keys (#359).
+//
+// Returns (entry, true) when the key is in the underlying map AND the
+// stored tag matches the canonical key. A tag mismatch (U128 collision
+// with a different canonical key) returns (zero, false) — treating it
+// as "not in cache for this key" is the only safe answer: returning the
+// other entry would let the caller make a decision against unrelated
+// data (paul-nicolas review on #359). Mirrors Get's collision handling.
+func (s *KeyStore[K, T]) GetEntry(canonical []byte) (Entry[T], bool) {
+	id, tag := s.hasher.MakeKey(canonical)
+
+	entry, ok := s.M.Get(id)
+	if !ok {
+		return Entry[T]{}, false
+	}
+
+	if entry.Tag != tag {
+		return Entry[T]{}, false
+	}
+
+	return entry, true
+}
+
 // Delete marks the entry as a tombstone instead of removing it.
 // The entry stays in the cache (surviving MirrorTouch during pipelined
 // proposals) but reads via Get return nil. Tombstones age out naturally

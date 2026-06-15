@@ -769,10 +769,10 @@ message GetMetadataSchemaStatusResponse {
 }
 
 message MetadataFieldStatus {
+  reserved 3, 4;
+  reserved "total_keys", "converted_keys";
   common.MetadataType declared_type = 1;
   common.MetadataConversionStatus status = 2;
-  fixed64 total_keys = 3;
-  fixed64 converted_keys = 4;
 }
 
 // ============================================================================

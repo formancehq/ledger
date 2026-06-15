@@ -483,7 +483,7 @@ func (b *Builder) processSchemaRewrites(ctx context.Context, stop <-chan struct{
 		// Phase 2: rewrite finished, drive IndexReady through Raft. Skip the
 		// rewrite step; just keep retrying the proposal until applied.
 		if task.done {
-			b.tryProposeSchemaRewriteIndexReady(task)
+			b.tryProposeSchemaRewriteIndexReady(ctx, task)
 			i++
 
 			continue
@@ -525,7 +525,7 @@ func (b *Builder) processSchemaRewrites(ctx context.Context, stop <-chan struct{
 			}).Infof("Schema rewrite complete")
 
 			task.done = true
-			b.tryProposeSchemaRewriteIndexReady(task)
+			b.tryProposeSchemaRewriteIndexReady(ctx, task)
 		}
 
 		i++
@@ -535,7 +535,7 @@ func (b *Builder) processSchemaRewrites(ctx context.Context, stop <-chan struct{
 // tryProposeSchemaRewriteIndexReady proposes IndexReady on the rewritten
 // field (leader only). The flag is reset on leadership loss so a new leader
 // can re-propose. Mirrors the backfill flow.
-func (b *Builder) tryProposeSchemaRewriteIndexReady(task *schemaRewriteTask) {
+func (b *Builder) tryProposeSchemaRewriteIndexReady(ctx context.Context, task *schemaRewriteTask) {
 	if task.proposed && (b.isLeader == nil || !b.isLeader()) {
 		task.proposed = false
 	}
@@ -544,7 +544,7 @@ func (b *Builder) tryProposeSchemaRewriteIndexReady(task *schemaRewriteTask) {
 		return
 	}
 
-	if !b.proposeSchemaRewriteIndexReady(task) {
+	if !b.proposeSchemaRewriteIndexReady(ctx, task) {
 		return
 	}
 
@@ -614,7 +614,7 @@ func (b *Builder) processBackfills(ctx context.Context, stop <-chan struct{}, gl
 			}
 
 			if !task.proposed {
-				if b.proposeIndexReady(task) {
+				if b.proposeIndexReady(ctx, task) {
 					task.proposed = true
 
 					b.logger.WithFields(map[string]any{
@@ -864,8 +864,11 @@ func isDataLog(log *commonpb.Log) bool {
 
 // proposeIndexReady proposes an IndexReadyUpdate through Raft as a direct
 // Proposal field (leader only). Returns true if the proposal was submitted
-// successfully, false otherwise.
-func (b *Builder) proposeIndexReady(task *backfillTask) bool {
+// successfully, false otherwise. ctx is the stop-derived context of the
+// builder loop — the proposer now waits for FSM apply through proposeTechnical,
+// so a non-cancellable context would pin this goroutine on shutdown or
+// leadership loss.
+func (b *Builder) proposeIndexReady(ctx context.Context, task *backfillTask) bool {
 	if b.proposer == nil || b.isLeader == nil || !b.isLeader() {
 		return false
 	}
@@ -875,7 +878,7 @@ func (b *Builder) proposeIndexReady(task *backfillTask) bool {
 		Id:     task.index,
 	}
 
-	if err := b.proposer.ProposeProposal(&raftcmdpb.Proposal{
+	if err := b.proposer.Propose(ctx, &raftcmdpb.Proposal{
 		IndexReadyUpdates: []*raftcmdpb.IndexReadyUpdate{update},
 	}); err != nil {
 		b.logger.WithFields(map[string]any{
@@ -895,7 +898,7 @@ func (b *Builder) proposeIndexReady(task *backfillTask) bool {
 // it through the existing applyIndexReady →
 // processing.ProcessIndexReadyMetadata path and flips IndexBuildStatus from
 // BUILDING back to READY.
-func (b *Builder) proposeSchemaRewriteIndexReady(task *schemaRewriteTask) bool {
+func (b *Builder) proposeSchemaRewriteIndexReady(ctx context.Context, task *schemaRewriteTask) bool {
 	if b.proposer == nil || b.isLeader == nil || !b.isLeader() {
 		return false
 	}
@@ -914,7 +917,7 @@ func (b *Builder) proposeSchemaRewriteIndexReady(task *schemaRewriteTask) bool {
 		Id:     indexes.MetadataID(task.targetType, task.key),
 	}
 
-	if err := b.proposer.ProposeProposal(&raftcmdpb.Proposal{
+	if err := b.proposer.Propose(ctx, &raftcmdpb.Proposal{
 		IndexReadyUpdates: []*raftcmdpb.IndexReadyUpdate{update},
 	}); err != nil {
 		b.logger.WithFields(map[string]any{

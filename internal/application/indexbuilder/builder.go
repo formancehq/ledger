@@ -21,10 +21,12 @@ import (
 // commit. Can be overridden via --read-index-batch-size.
 const DefaultBatchSize = 1000
 
-// Proposer proposes Raft commands to the cluster.
-// Implemented by a thin adapter around *node.Node (bootstrap.NodeProposer).
+// Proposer submits a technical Raft proposal (no orders, no preload
+// payload) and blocks until the FSM applies. Implemented in bootstrap
+// via a closure that routes the proposal through preload.RunWithPreload
+// with empty Needs.
 type Proposer interface {
-	ProposeProposal(cmd *raftcmdpb.Proposal) error
+	Propose(ctx context.Context, cmd *raftcmdpb.Proposal) error
 }
 
 // Builder tails the system log and populates the Pebble read store indexes.
@@ -126,7 +128,7 @@ func (b *Builder) Start() {
 	}
 
 	b.w = worker.New()
-	b.w.Run(b.loop)
+	b.w.RunCtx(b.loop)
 }
 
 // Stop gracefully stops the background loop and unregisters OTEL metrics.
@@ -203,12 +205,14 @@ func (b *Builder) registerMetrics() (metric.Registration, error) {
 	)
 }
 
-func (b *Builder) loop(stop <-chan struct{}) {
-	// Derive a context that is cancelled when stop fires. This context is
-	// passed to all blocking operations (Pebble reads, iterators) so they
+func (b *Builder) loop(ctx context.Context) {
+	// ctx is supplied by Worker.RunCtx and is cancelled by Stop(). It
+	// flows to all blocking operations (Pebble reads, iterators) so they
 	// are interrupted promptly on shutdown instead of blocking until the
-	// operation completes naturally.
-	ctx := worker.ContextFromStop(stop)
+	// operation completes naturally. For internal helpers that still
+	// take a stop <-chan struct{}, ctx.Done() is passed at the boundary
+	// (same signal, same semantics).
+	stop := ctx.Done()
 
 	// Initialize index config cache from Pebble before processing any logs.
 	b.initIndexConfig(ctx)
@@ -269,7 +273,7 @@ func (b *Builder) loop(stop <-chan struct{}) {
 
 	for {
 		select {
-		case <-stop:
+		case <-ctx.Done():
 			restoreIndexes()
 			b.batchSize = savedBatchSize
 
@@ -309,7 +313,7 @@ func (b *Builder) loop(stop <-chan struct{}) {
 
 	for {
 		select {
-		case <-stop:
+		case <-ctx.Done():
 			b.logger.Infof("Index builder stopped")
 
 			return

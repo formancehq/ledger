@@ -9,10 +9,8 @@ import (
 
 // metadataFieldStatusJSON is the camelCase JSON DTO for MetadataFieldStatus.
 type metadataFieldStatusJSON struct {
-	DeclaredType  string `json:"declaredType"`
-	Status        string `json:"status"`
-	TotalKeys     uint64 `json:"totalKeys"`
-	ConvertedKeys uint64 `json:"convertedKeys"`
+	DeclaredType string `json:"declaredType"`
+	Status       string `json:"status"`
 }
 
 // metadataSchemaStatusJSON is the camelCase JSON DTO for GetMetadataSchemaStatusResponse.
@@ -24,10 +22,8 @@ type metadataSchemaStatusJSON struct {
 
 func toFieldStatusJSON(fs *servicepb.MetadataFieldStatus) *metadataFieldStatusJSON {
 	return &metadataFieldStatusJSON{
-		DeclaredType:  commonpb.MetadataTypeToString(fs.GetDeclaredType()),
-		Status:        commonpb.ConversionStatusToString(fs.GetStatus()),
-		TotalKeys:     fs.GetTotalKeys(),
-		ConvertedKeys: fs.GetConvertedKeys(),
+		DeclaredType: commonpb.MetadataTypeToString(fs.GetDeclaredType()),
+		Status:       commonpb.ConversionStatusToString(fs.GetStatus()),
 	}
 }
 

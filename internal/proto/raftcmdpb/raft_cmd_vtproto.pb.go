@@ -1212,8 +1212,6 @@ func (m *MetadataConversionBatch) CloneVT() *MetadataConversionBatch {
 	r.TargetType = m.TargetType
 	r.Key = m.Key
 	r.ExpectedType = m.ExpectedType
-	r.TotalKeys = m.TotalKeys
-	r.ConvertedKeysSoFar = m.ConvertedKeysSoFar
 	if rhs := m.Entries; rhs != nil {
 		tmpContainer := make([]*ConvertMetadataEntry, len(rhs))
 		for k, v := range rhs {
@@ -1242,6 +1240,11 @@ func (m *ConvertMetadataEntry) CloneVT() *ConvertMetadataEntry {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
 		r.CanonicalKey = tmpBytes
+	}
+	if rhs := m.ExpectedValue; rhs != nil {
+		tmpBytes := make([]byte, len(rhs))
+		copy(tmpBytes, rhs)
+		r.ExpectedValue = tmpBytes
 	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -4554,12 +4557,6 @@ func (this *MetadataConversionBatch) EqualVT(that *MetadataConversionBatch) bool
 			}
 		}
 	}
-	if this.TotalKeys != that.TotalKeys {
-		return false
-	}
-	if this.ConvertedKeysSoFar != that.ConvertedKeysSoFar {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -4580,6 +4577,9 @@ func (this *ConvertMetadataEntry) EqualVT(that *ConvertMetadataEntry) bool {
 		return false
 	}
 	if !this.ConvertedValue.EqualVT(that.ConvertedValue) {
+		return false
+	}
+	if string(this.ExpectedValue) != string(that.ExpectedValue) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -9286,18 +9286,6 @@ func (m *MetadataConversionBatch) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.ConvertedKeysSoFar != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ConvertedKeysSoFar))
-		i--
-		dAtA[i] = 0x39
-	}
-	if m.TotalKeys != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.TotalKeys))
-		i--
-		dAtA[i] = 0x31
-	}
 	if len(m.Entries) > 0 {
 		for iNdEx := len(m.Entries) - 1; iNdEx >= 0; iNdEx-- {
 			size, err := m.Entries[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
@@ -9366,6 +9354,13 @@ func (m *ConvertMetadataEntry) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.ExpectedValue) > 0 {
+		i -= len(m.ExpectedValue)
+		copy(dAtA[i:], m.ExpectedValue)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ExpectedValue)))
+		i--
+		dAtA[i] = 0x1a
 	}
 	if m.ConvertedValue != nil {
 		size, err := m.ConvertedValue.MarshalToSizedBufferVT(dAtA[:i])
@@ -13862,12 +13857,6 @@ func (m *MetadataConversionBatch) SizeVT() (n int) {
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
 	}
-	if m.TotalKeys != 0 {
-		n += 9
-	}
-	if m.ConvertedKeysSoFar != 0 {
-		n += 9
-	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -13884,6 +13873,10 @@ func (m *ConvertMetadataEntry) SizeVT() (n int) {
 	}
 	if m.ConvertedValue != nil {
 		l = m.ConvertedValue.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.ExpectedValue)
+	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -21596,26 +21589,6 @@ func (m *MetadataConversionBatch) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 6:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field TotalKeys", wireType)
-			}
-			m.TotalKeys = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.TotalKeys = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 7:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ConvertedKeysSoFar", wireType)
-			}
-			m.ConvertedKeysSoFar = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.ConvertedKeysSoFar = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -21735,6 +21708,40 @@ func (m *ConvertMetadataEntry) UnmarshalVT(dAtA []byte) error {
 			}
 			if err := m.ConvertedValue.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ExpectedValue", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ExpectedValue = append(m.ExpectedValue[:0], dAtA[iNdEx:postIndex]...)
+			if m.ExpectedValue == nil {
+				m.ExpectedValue = []byte{}
 			}
 			iNdEx = postIndex
 		default:

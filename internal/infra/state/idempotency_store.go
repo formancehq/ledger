@@ -192,28 +192,70 @@ func (s *IdempotencyStore) ScanExpiredKeyHashes(reader dal.PebbleReader, cutoffM
 // lex-strictly-less than any unscanned sibling.
 //
 // This is called from the FSM apply path — no Pebble reads occur.
+//
+// The in-memory map (s.entries) is the source of authority for which hashes
+// have already been evicted: cache and Pebble stay in sync (entries enter via
+// Put, exit via this Evict, and RestoreFromStore rebuilds the map from
+// Pebble). The step-2 SingleDelete loop therefore skips any hash absent from
+// the map at the start of THIS apply — that hash was already deleted by a
+// previous apply, and a second SingleDelete on the same Pebble main key
+// would violate Pebble's write-once/delete-once SingleDelete contract
+// (resulting state is undefined, can resurrect the value at compaction time).
+//
+// This dedup matters because the leader-side scheduler bounds proposeTechnical
+// with a context timeout: if Raft accepts a proposal but the FSM apply lags
+// past that timeout, the scheduler logs the error and on the next tick
+// re-scans the same expired Pebble entries (the first proposal has not yet
+// applied), then submits a second proposal with the same hashes. Both apply
+// in series; without this dedup the second apply would re-SingleDelete every
+// main key.
 func (s *IdempotencyStore) Evict(batch *dal.WriteSession, cutoffMicros uint64, lastScannedTimeIndexKey []byte, pebbleKeyHashes [][]byte) (int, error) {
 	evicted := 0
 
-	// 1. Scan in-memory map
-	for hash, value := range s.entries {
-		if value.GetCreatedAt() <= cutoffMicros {
-			delete(s.entries, hash)
-			evicted++
-		}
-	}
-
-	// 2. Write-only Pebble deletes using the pre-scanned key hashes.
+	// Walk the pre-scanned hashes and evict each from the in-memory map
+	// alongside its Pebble main key. Two important properties:
 	//
-	// Main keys ([0x05][0x01][hash]) are hash-ordered and must be deleted individually
-	// via SingleDelete (write-once / delete-once lifecycle guaranteed by the FSM).
+	//   * We iterate over `pebbleKeyHashes`, NOT over `s.entries`. When the
+	//     leader scan caps at maxEvictionBatchSize, the proposal only
+	//     covers the K oldest expired hashes; the remaining expired
+	//     entries must stay in the map (and in Pebble) so the next tick's
+	//     scan finds them. Evicting them from the map here, while their
+	//     Pebble main keys still exist, would orphan them: the next apply
+	//     would see them absent from the map and skip the SingleDelete
+	//     (see the dedup rule below).
 	//
-	// Time index keys ([0x05][0x02][ts][hash]) are timestamp-ordered, so all
-	// scanned entries form a contiguous prefix. A single DeleteRange bounded
-	// by lex-next(lastScannedTimeIndexKey) replaces N individual deletes,
-	// halving the batch operation count and enabling Pebble's delete-only
-	// compactions (entire SSTables dropped without I/O).
+	//   * For each scanned hash, the SingleDelete is gated on "still
+	//     present in the map". Cache and Pebble stay in sync (entries
+	//     enter via Put, exit here, and RestoreFromStore rebuilds the map
+	//     from Pebble), so a hash absent from the map at apply time was
+	//     already evicted by a previous apply. Re-emitting SingleDelete
+	//     on that main key would violate Pebble's write-once/delete-once
+	//     SingleDelete contract (undefined result — value can resurrect
+	//     at compaction time). This shields the FSM against a scheduler
+	//     retry that re-submits the same hashes after Raft has accepted
+	//     the first proposal but its apply has not yet landed.
 	for _, keyHash := range pebbleKeyHashes {
+		u128 := attributes.U128FromBytes(keyHash)
+
+		value, ok := s.entries[u128]
+		if !ok {
+			// Already evicted by a previous apply — skip SingleDelete to
+			// preserve the SingleDelete lifecycle.
+			continue
+		}
+
+		if value.GetCreatedAt() > cutoffMicros {
+			// Defensive: the leader scan returned this hash with a stale
+			// cutoff. Don't evict a still-live entry.
+			continue
+		}
+
+		delete(s.entries, u128)
+		evicted++
+
+		// Main keys ([0x05][0x01][hash]) are hash-ordered and must be
+		// deleted individually via SingleDelete (write-once / delete-once
+		// lifecycle guaranteed by the FSM).
 		mainKey := make([]byte, 2+16)
 		mainKey[0] = dal.ZoneIdempotency
 		mainKey[1] = dal.SubIdempKeys
@@ -224,11 +266,18 @@ func (s *IdempotencyStore) Evict(batch *dal.WriteSession, cutoffMicros uint64, l
 		}
 	}
 
-	// Bulk-delete the time index range up to and including the last scanned
-	// key. lex-next of any key is that key with a 0x00 byte appended — strictly
-	// greater than the key itself but strictly less than any longer key with
-	// the same prefix. This guarantees we never touch a time-index entry
-	// whose main key is not in pebbleKeyHashes.
+	// Bulk-delete the time-index range up to and including the last
+	// scanned key. Time-index keys ([0x05][0x02][ts][hash]) are
+	// timestamp-ordered, so all scanned entries form a contiguous
+	// prefix; a single DeleteRange bounded by lex-next(lastScannedTime-
+	// IndexKey) replaces N individual deletes, halving the batch
+	// operation count and enabling Pebble's delete-only compactions
+	// (entire SSTables dropped without I/O). lex-next of any key is
+	// that key with a 0x00 byte appended — strictly greater than the
+	// key itself but strictly less than any longer key with the same
+	// prefix; this guarantees we never touch a time-index entry whose
+	// main key is not in pebbleKeyHashes. DeleteRange is idempotent
+	// over an already-empty range, so this step needs no per-key dedup.
 	if len(pebbleKeyHashes) > 0 && len(lastScannedTimeIndexKey) > 0 {
 		rangeEnd := make([]byte, len(lastScannedTimeIndexKey)+1)
 		copy(rangeEnd, lastScannedTimeIndexKey)
@@ -242,8 +291,10 @@ func (s *IdempotencyStore) Evict(batch *dal.WriteSession, cutoffMicros uint64, l
 		}
 	}
 
-	evicted += len(pebbleKeyHashes)
-
+	// `evicted` now reflects the in-memory map deletions, which by the
+	// invariant above equal the Pebble main-key SingleDeletes emitted in
+	// step 2. A duplicate-payload apply (race with a scheduler retry)
+	// observes the map already empty for these hashes and reports 0.
 	return evicted, nil
 }
 

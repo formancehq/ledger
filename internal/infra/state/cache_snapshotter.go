@@ -163,6 +163,26 @@ func (s *protoSnapshotSlot[V]) MirrorPreload(
 	id := attributes.U128FromBytes(attrID.GetId())
 	tag := attrID.GetTag()
 
+	// Preserve tombstones. A delete that landed in Raft order after the
+	// preload was scanned writes a tombstone here; overwriting it with
+	// the stale scanned value would silently resurrect metadata the
+	// user deleted, and the per-entry CAS in applyMetadataConversionBatch
+	// would then see a live entry and write the converted value. See
+	// the metadata-conversion race surfaced on #359.
+	//
+	// The tag check matters in the (improbable but non-zero) case of a
+	// U128 collision: a tombstone for canonical-key A would otherwise
+	// suppress the preload for canonical-key B that hashes to the same
+	// U128 id. With the tag check, only a tombstone for THIS key
+	// short-circuits.
+	if existing, ok := s.ac.Gen1().Get(id); ok && existing.Deleted && existing.Tag == tag {
+		return nil
+	}
+
+	if existing, ok := s.ac.Gen0().Get(id); ok && existing.Deleted && existing.Tag == tag {
+		return nil
+	}
+
 	// gen1 wins if it already has a (post-rotation, possibly fresher)
 	// value; otherwise the preload value populates both gens.
 	effective, gen1Set := putAttributeIfAbsent(s.ac.Gen1(), id, tag, typed)

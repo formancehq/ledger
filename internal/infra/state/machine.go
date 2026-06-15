@@ -997,6 +997,15 @@ func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Pro
 
 // applyProposal processes all orders in a proposal atomically.
 // Uses RequestProcessor which handles rollback internally via WriteSet.
+//
+// Phase ordering matters: checkStaleProposal and Preload run BEFORE
+// applyTechnicalUpdates so that technical updates that need to consult
+// the cache (notably applyMetadataConversionBatch's compare-and-set
+// against ExpectedValue) see the values the leader captured in the
+// preload. Previously these two ran only on orders-bearing proposals,
+// so technical-only proposals (the converter, cluster config,
+// idempotency eviction, index-ready) silently ignored any PredictedIndex
+// or Preload they carried.
 func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *dal.WriteSession, proposal *raftcmdpb.Proposal) (*ApplyResult, error) {
 	// FSM-level safety net mirroring the admission check: a checkpoint trigger
 	// (CreateQueryCheckpoint or ClosePeriod) must be the last order. The
@@ -1013,6 +1022,22 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		})
 
 		return nil, fmt.Errorf("checkpoint trigger order not last in proposal id=%d at raft index %d", proposal.GetId(), raftIndex)
+	}
+
+	// checkStaleProposal is a no-op when PredictedIndex and CacheEpoch
+	// are both unset, so legacy technical-only proposals (none today
+	// set them) are unaffected.
+	if err := fsm.checkStaleProposal(raftIndex, proposal); err != nil {
+		return &ApplyResult{
+			ProposalID: proposal.GetId(),
+			Error:      &domain.BusinessError{Err: err},
+		}, nil
+	}
+
+	// Preload is a no-op when the proposal carries no PreloadSet.
+	genByte := byte(fsm.Registry.Cache.CurrentGeneration() % 2)
+	if err := fsm.Preload(proposal.GetPreload(), batch, genByte); err != nil {
+		return nil, fmt.Errorf("raftIndex=%d: %w", raftIndex, err)
 	}
 
 	if err := fsm.applyTechnicalUpdates(batch, raftIndex, proposal); err != nil {
@@ -1040,19 +1065,6 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			ProposalID: proposal.GetId(),
 			Error:      &domain.BusinessError{Err: domain.ErrMaintenanceMode},
 		}, nil
-	}
-
-	if err := fsm.checkStaleProposal(raftIndex, proposal); err != nil {
-		return &ApplyResult{
-			ProposalID: proposal.GetId(),
-			Error:      &domain.BusinessError{Err: err},
-		}, nil
-	}
-
-	genByte := byte(fsm.Registry.Cache.CurrentGeneration() % 2)
-
-	if err := fsm.Preload(proposal.GetPreload(), batch, genByte); err != nil {
-		return nil, fmt.Errorf("raftIndex=%d: %w", raftIndex, err)
 	}
 
 	// Compute the effective date using the HLC to guarantee monotonicity

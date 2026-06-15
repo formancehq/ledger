@@ -694,13 +694,14 @@ func Module() fx.Option {
 				machine *state.Machine,
 				recovery *state.Recovery,
 				raftNode *node.Node,
+				preloader *preload.Preloader,
 			) *state.MetadataConverter {
 				return state.NewMetadataConverter(
 					logger,
 					store,
 					attrs,
 					machine.MetadataConvertRequestCh(),
-					NewNodeProposer(raftNode),
+					newMetadataBatchProposer(preloader, raftNode),
 					raftNode.IsLeader,
 					100, // batchSize
 					4,   // poolSize — max concurrent field conversions
@@ -958,6 +959,7 @@ func Module() fx.Option {
 				defaultTransport *node.DefaultTransport,
 				servicePool *transport.ConnectionPool,
 				store *dal.Store,
+				preloader *preload.Preloader,
 				cfg Config,
 				logger logging.Logger,
 				eventsManager *events.Manager,
@@ -975,12 +977,12 @@ func Module() fx.Option {
 						// and stalling the readiness probe.
 						go handleLeadershipChangeEvent(e, eventsManager, mirrorManager, logger)
 					case node.LeaderReadyEvent:
-						proposeClusterConfigIfNeeded(n, store, cfg, logger)
+						proposeClusterConfigIfNeeded(n, preloader, store, cfg, logger)
 					default:
 						logger.Errorf("Unknown observer event type: %T", event)
 					}
 				}))
-			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``)),
+			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``, ``)),
 			func(lc fx.Lifecycle, node *node.Node, defaultTransport *node.DefaultTransport, logger logging.Logger) (*node.Node, error) {
 				var cancelRun context.CancelFunc
 
@@ -1169,20 +1171,31 @@ func Module() fx.Option {
 			func(lc fx.Lifecycle, scheduler *state.PeriodScheduler) {
 				lc.Append(worker.FxHook(scheduler))
 			},
-			func(lc fx.Lifecycle, cfg Config, logger logging.Logger, raftNode *node.Node, store *dal.Store, machine *state.Machine) {
+			func(lc fx.Lifecycle, cfg Config, logger logging.Logger, raftNode *node.Node, store *dal.Store, machine *state.Machine, preloader *preload.Preloader) {
 				if cfg.IdempotencyTTL > 0 && cfg.IdempotencyEvictionInterval > 0 {
-					proposer := NewNodeProposer(raftNode)
 					scheduler := state.NewIdempotencyEvictionScheduler(
 						logger,
 						raftNode.IsLeader,
-						func(cutoffMicros uint64, lastScannedTimeIndexKey []byte, pebbleKeyHashes [][]byte) {
+						func(ctx context.Context, cutoffMicros uint64, lastScannedTimeIndexKey []byte, pebbleKeyHashes [][]byte) {
 							proposal := commands.NewCommand()
 							proposal.IdempotencyEviction = &raftcmdpb.IdempotencyEviction{
 								CutoffMicros:            cutoffMicros,
 								PebbleKeyHashes:         pebbleKeyHashes,
 								LastScannedTimeIndexKey: lastScannedTimeIndexKey,
 							}
-							if err := proposer.ProposeProposal(proposal); err != nil {
+							// ctx comes from the scheduler's loop and is
+							// cancelled by Stop(). No bounded timeout: a
+							// timeout firing after Raft has accepted the
+							// proposal would force a retry on the next tick
+							// with the same Pebble main-key hashes; the
+							// applied FSM uses SingleDelete, whose
+							// write-once/delete-once contract forbids
+							// re-deleting an already-deleted key.
+							//
+							// applyIdempotencyEviction works through
+							// Registry.Idempotency.Evict (no cache-keyed
+							// Registry.Get); no preload needed.
+							if err := proposeTechnical(ctx, preloader, raftNode, proposal, nil); err != nil {
 								logger.Errorf("Failed to propose idempotency eviction: %v", err)
 							}
 						},
@@ -1238,11 +1251,11 @@ func Module() fx.Option {
 			// Start and stop the index builder.
 			// The builder has its own dedicated Notifications signal to receive
 			// log-committed events from the FSM without competing with other consumers.
-			fx.Annotate(func(lc fx.Lifecycle, builder *indexbuilder.Builder, notifications *signal.Notifications, raftNode *node.Node) {
+			fx.Annotate(func(lc fx.Lifecycle, builder *indexbuilder.Builder, notifications *signal.Notifications, raftNode *node.Node, preloader *preload.Preloader) {
 				builder.SetNotifications(notifications)
-				builder.SetProposer(NewNodeProposer(raftNode), raftNode.IsLeader)
+				builder.SetProposer(&indexReadyProposerAdapter{preloader: preloader, proposer: raftNode}, raftNode.IsLeader)
 				lc.Append(worker.FxHook(builder))
-			}, fx.ParamTags(``, ``, `name:"index"`, ``)),
+			}, fx.ParamTags(``, ``, `name:"index"`, ``, ``)),
 		),
 	)
 }
@@ -1350,7 +1363,7 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 // proposeClusterConfigIfNeeded reads the persisted cluster state from Pebble
 // and proposes an update if the CLI-desired config differs. Called when the
 // node becomes leader and the FSM is caught up (LeaderReadyEvent).
-func proposeClusterConfigIfNeeded(n *node.Node, store *dal.Store, cfg Config, logger logging.Logger) {
+func proposeClusterConfigIfNeeded(n *node.Node, preloader *preload.Preloader, store *dal.Store, cfg Config, logger logging.Logger) {
 	clusterState, _ := query.ReadClusterState(store)
 
 	desiredCfg := cfg.BloomConfig
@@ -1371,8 +1384,16 @@ func proposeClusterConfigIfNeeded(n *node.Node, store *dal.Store, cfg Config, lo
 	proposal := commands.NewCommand()
 	proposal.ClusterConfig = desiredCfg
 
-	proposer := NewNodeProposer(n)
-	if err := proposer.ProposeProposal(proposal); err != nil {
+	// Bounded timeout: the observer event handler runs without a
+	// stop-derived context, and a shutdown / leadership loss landing
+	// between Raft acceptance and FSM apply would otherwise pin this
+	// goroutine forever on result.FSMFuture.WaitContext.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// applyClusterConfig reads cache-level configuration (Cache.GenerationThreshold,
+	// Cache.Epoch) but no keyed Registry.X.Get; no preload needed.
+	if err := proposeTechnical(ctx, preloader, n, proposal, nil); err != nil {
 		logger.WithFields(map[string]any{
 			"error": err,
 		}).Errorf("Failed to propose cluster config update")

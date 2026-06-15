@@ -480,7 +480,12 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logs []*commonpb.Log) error {
 
 			info, ok := b.GetLedger(ledgerName)
 			if !ok {
-				continue // ledger not found (should not happen, but be safe)
+				// The ledger name comes from a DeleteLedger order the
+				// processor already validated against b.GetLedger — a
+				// miss here means the WriteSet's view of ledgers became
+				// inconsistent between order processing and Merge. Fail
+				// loudly instead of skipping the cleanup write.
+				return fmt.Errorf("invariant: pending ledger deletion for %q but ledger not in WriteSet view", ledgerName)
 			}
 
 			ledgerID := info.GetId()

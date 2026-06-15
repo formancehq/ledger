@@ -2125,8 +2125,6 @@ func (m *MetadataFieldStatus) CloneVT() *MetadataFieldStatus {
 	r := new(MetadataFieldStatus)
 	r.DeclaredType = m.DeclaredType
 	r.Status = m.Status
-	r.TotalKeys = m.TotalKeys
-	r.ConvertedKeys = m.ConvertedKeys
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -6452,12 +6450,6 @@ func (this *MetadataFieldStatus) EqualVT(that *MetadataFieldStatus) bool {
 		return false
 	}
 	if this.Status != that.Status {
-		return false
-	}
-	if this.TotalKeys != that.TotalKeys {
-		return false
-	}
-	if this.ConvertedKeys != that.ConvertedKeys {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -13289,18 +13281,6 @@ func (m *MetadataFieldStatus) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.ConvertedKeys != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ConvertedKeys))
-		i--
-		dAtA[i] = 0x21
-	}
-	if m.TotalKeys != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.TotalKeys))
-		i--
-		dAtA[i] = 0x19
-	}
 	if m.Status != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Status))
 		i--
@@ -17894,12 +17874,6 @@ func (m *MetadataFieldStatus) SizeVT() (n int) {
 	}
 	if m.Status != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.Status))
-	}
-	if m.TotalKeys != 0 {
-		n += 9
-	}
-	if m.ConvertedKeys != 0 {
-		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -31031,26 +31005,6 @@ func (m *MetadataFieldStatus) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 3:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field TotalKeys", wireType)
-			}
-			m.TotalKeys = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.TotalKeys = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 4:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ConvertedKeys", wireType)
-			}
-			m.ConvertedKeys = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.ConvertedKeys = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

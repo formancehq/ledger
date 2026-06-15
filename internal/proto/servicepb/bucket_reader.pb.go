@@ -3334,8 +3334,6 @@ func (m *GetMetadataSchemaStatusResponse) Mutate() *GetMetadataSchemaStatusRespo
 type MetadataFieldStatusReader interface {
 	GetDeclaredType() commonpb.MetadataType
 	GetStatus() commonpb.MetadataConversionStatus
-	GetTotalKeys() uint64
-	GetConvertedKeys() uint64
 	Mutate() *MetadataFieldStatus
 }
 
@@ -3347,14 +3345,6 @@ func (r *metadataFieldStatusReadonly) GetDeclaredType() commonpb.MetadataType {
 
 func (r *metadataFieldStatusReadonly) GetStatus() commonpb.MetadataConversionStatus {
 	return r.v.GetStatus()
-}
-
-func (r *metadataFieldStatusReadonly) GetTotalKeys() uint64 {
-	return r.v.GetTotalKeys()
-}
-
-func (r *metadataFieldStatusReadonly) GetConvertedKeys() uint64 {
-	return r.v.GetConvertedKeys()
 }
 
 func (r *metadataFieldStatusReadonly) Mutate() *MetadataFieldStatus {

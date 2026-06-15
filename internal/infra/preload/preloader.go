@@ -259,8 +259,11 @@ func (p *Preloader) AcquireProposalGuard(build *PreloadBuild, needs *Needs) (*ra
 
 	preloadSet, token, err := p.buildPreloadsAt(p.tracker.Next(), snap, needs)
 	if err != nil {
-		p.tracker.Unlock()
-
+		// Keep the tracker lock held: we return a non-nil guard so the
+		// caller can `guard.ReleaseAll()` to unlock and release the
+		// loader token atomically. Unlocking here would race with that
+		// `ReleaseAll()` and panic with "sync: unlock of unlocked
+		// mutex" on the second call.
 		return nil, &ProposalGuard{p: p, token: token}, err
 	}
 

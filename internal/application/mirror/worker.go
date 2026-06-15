@@ -362,8 +362,6 @@ func (w *Worker) processBatch() (bool, error) {
 		return false, fmt.Errorf("building preloads: %w", err)
 	}
 
-	cmd.Preload = build.PreloadSet
-
 	w.preloadDuration.Record(ctx, time.Since(preloadStart).Microseconds(), attrs)
 
 	// Merge cursor update into the data proposal to avoid a second Raft round-trip.
@@ -376,55 +374,29 @@ func (w *Worker) processBatch() (bool, error) {
 		SourceLogCount: w.sourceLogCount,
 	}}
 
-	// Marshal outside the proposal lock — the marshal is the slowest part
-	// and has no dependency on the lock.
-	proposalData, err := marshalMirrorCommand(cmd)
-	if err != nil {
-		build.ReleaseLoaders()
-
-		return false, err
-	}
-
-	w.commandSize.Record(ctx, int64(len(proposalData)), attrs)
-
-	// Acquire proposal lock and validate boundary.
-	updatedPreloads, guard, err := w.preloader.AcquireProposalGuard(build, needs)
-	if err != nil {
-		if guard != nil {
-			guard.ReleaseAll()
-		}
-
-		return false, fmt.Errorf("acquiring proposal guard: %w", err)
-	}
-
-	// Mirror doesn't need loader dedup through FSM — release immediately.
-	guard.ReleaseLoaders()
-
-	// Rare: boundary shifted — re-marshal with updated preloads under lock.
-	if updatedPreloads != nil {
-		cmd.Preload = updatedPreloads
-
-		proposalData, err = marshalMirrorCommand(cmd)
+	// Run preload + propose via the shared runner. Mirror is a
+	// single-shot caller (no concurrent admissions sharing loaders),
+	// so we release loaders immediately after the runner returns.
+	marshalFn := func(c *raftcmdpb.Proposal) ([]byte, error) {
+		data, err := marshalMirrorCommand(c)
 		if err != nil {
-			guard.Release()
-
-			return false, err
+			return nil, err
 		}
 
-		w.commandSize.Record(ctx, int64(len(proposalData)), attrs)
+		w.commandSize.Record(ctx, int64(len(data)), attrs)
+
+		return data, nil
 	}
 
-	proposeStart := time.Now()
-	proposal := node.NewProposal(cmd.GetId(), proposalData)
-
-	fsmFuture, err := w.proposer.Propose(ctx, proposal)
+	runResult, err := w.preloader.RunWithPreload(ctx, cmd, build, needs, marshalFn, w.proposer)
 	if err != nil {
-		guard.Release()
-
 		return false, err
 	}
 
-	guard.Release()
+	runResult.Guard.ReleaseLoaders()
+
+	proposal := runResult.Proposal
+	fsmFuture := runResult.FSMFuture
 
 	// Start prefetching the next batch while waiting for Raft consensus.
 	// The goroutine writes to a buffered channel and always exits, even if
@@ -457,7 +429,11 @@ func (w *Worker) processBatch() (bool, error) {
 
 		return false, err
 	}
-	w.proposeDuration.Record(ctx, time.Since(proposeStart).Microseconds(), attrs)
+	// Preserve the "Propose + Wait" semantic of this metric: the
+	// runner exposes the wall-clock instant just before its
+	// proposer.Propose call, so subtracting now gives the Raft
+	// queue-insertion + commit-acceptance duration.
+	w.proposeDuration.Record(ctx, time.Since(runResult.ProposeStartTime).Microseconds(), attrs)
 
 	// Wait for FSM application and check for business errors.
 	// Without this, the cursor would advance past entries that failed to process.

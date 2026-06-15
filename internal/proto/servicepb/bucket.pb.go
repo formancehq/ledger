@@ -5775,8 +5775,6 @@ type MetadataFieldStatus struct {
 	state         protoimpl.MessageState            `protogen:"open.v1"`
 	DeclaredType  commonpb.MetadataType             `protobuf:"varint,1,opt,name=declared_type,json=declaredType,proto3,enum=common.MetadataType" json:"declared_type,omitempty"`
 	Status        commonpb.MetadataConversionStatus `protobuf:"varint,2,opt,name=status,proto3,enum=common.MetadataConversionStatus" json:"status,omitempty"`
-	TotalKeys     uint64                            `protobuf:"fixed64,3,opt,name=total_keys,json=totalKeys,proto3" json:"total_keys,omitempty"`
-	ConvertedKeys uint64                            `protobuf:"fixed64,4,opt,name=converted_keys,json=convertedKeys,proto3" json:"converted_keys,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5823,20 +5821,6 @@ func (x *MetadataFieldStatus) GetStatus() commonpb.MetadataConversionStatus {
 		return x.Status
 	}
 	return commonpb.MetadataConversionStatus(0)
-}
-
-func (x *MetadataFieldStatus) GetTotalKeys() uint64 {
-	if x != nil {
-		return x.TotalKeys
-	}
-	return 0
-}
-
-func (x *MetadataFieldStatus) GetConvertedKeys() uint64 {
-	if x != nil {
-		return x.ConvertedKeys
-	}
-	return 0
 }
 
 type AnalyzeAccountsRequest struct {
@@ -8807,13 +8791,11 @@ const file_bucket_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x1b.ledger.MetadataFieldStatusR\x05value:\x028\x01\x1a\\\n" +
 	"\x11LedgerFieldsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x121\n" +
-	"\x05value\x18\x02 \x01(\v2\x1b.ledger.MetadataFieldStatusR\x05value:\x028\x01\"\xd0\x01\n" +
+	"\x05value\x18\x02 \x01(\v2\x1b.ledger.MetadataFieldStatusR\x05value:\x028\x01\"\xb2\x01\n" +
 	"\x13MetadataFieldStatus\x129\n" +
 	"\rdeclared_type\x18\x01 \x01(\x0e2\x14.common.MetadataTypeR\fdeclaredType\x128\n" +
-	"\x06status\x18\x02 \x01(\x0e2 .common.MetadataConversionStatusR\x06status\x12\x1d\n" +
-	"\n" +
-	"total_keys\x18\x03 \x01(\x06R\ttotalKeys\x12%\n" +
-	"\x0econverted_keys\x18\x04 \x01(\x06R\rconvertedKeys\"_\n" +
+	"\x06status\x18\x02 \x01(\x0e2 .common.MetadataConversionStatusR\x06statusJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05R\n" +
+	"total_keysR\x0econverted_keys\"_\n" +
 	"\x16AnalyzeAccountsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12-\n" +
 	"\x12variable_threshold\x18\x02 \x01(\rR\x11variableThreshold\"t\n" +

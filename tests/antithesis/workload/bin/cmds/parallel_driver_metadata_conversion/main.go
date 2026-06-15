@@ -113,22 +113,17 @@ func main() {
 		}
 
 		if fieldStatus, ok := schema.GetAccountFields()[wellKnownKey]; ok {
-			// If conversion is in progress, convertedKeys should not exceed totalKeys.
-			converted := fieldStatus.GetConvertedKeys()
-			total := fieldStatus.GetTotalKeys()
-
-			if total > 0 {
-				assert.AlwaysOrUnreachable(
-					converted <= total,
-					"converted keys must not exceed total keys during conversion",
-					details.With(internal.Details{
-						"convertedKeys": converted,
-						"totalKeys":     total,
-						"declaredType":  fieldStatus.GetDeclaredType().String(),
-						"status":        fieldStatus.GetStatus().String(),
-					}),
-				)
-			}
+			// The schema entry must report one of the two valid statuses.
+			status := fieldStatus.GetStatus()
+			assert.AlwaysOrUnreachable(
+				status == commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING ||
+					status == commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE,
+				"metadata field status must be CONVERTING or COMPLETE",
+				details.With(internal.Details{
+					"declaredType": fieldStatus.GetDeclaredType().String(),
+					"status":       status.String(),
+				}),
+			)
 		}
 
 		assert.Reachable("metadata conversion check passed", details)
