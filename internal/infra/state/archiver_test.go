@@ -144,6 +144,23 @@ func mockArchiveKey(bucketID string, periodID uint64) string {
 	return fmt.Sprintf("%s/%d", bucketID, periodID)
 }
 
+// fakeArchivingPeriodState reports every period as still ARCHIVING — used by
+// archiver tests that pre-date the consume-time guard and need the request to
+// flow through to the cold-storage write path.
+type fakeArchivingPeriodState struct{}
+
+func (fakeArchivingPeriodState) ArchivingPeriodByID(id uint64) (*commonpb.Period, bool) {
+	return &commonpb.Period{Id: id, Status: commonpb.PeriodStatus_PERIOD_ARCHIVING}, true
+}
+
+// rejectingPeriodState reports every period as no-longer-ARCHIVING — used to
+// assert the Archiver's consume-time guard against stale requests.
+type rejectingPeriodState struct{}
+
+func (rejectingPeriodState) ArchivingPeriodByID(uint64) (*commonpb.Period, bool) {
+	return nil, false
+}
+
 func TestArchiverStartStop(t *testing.T) {
 	t.Parallel()
 
@@ -153,7 +170,7 @@ func TestArchiverStartStop(t *testing.T) {
 	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 	cs := newMockColdStorage()
 
-	a := NewArchiver(logger, nil, cs, archiveReqCh, func(periodID uint64) error { return nil }, func() bool { return true }, "test-bucket", func(<-chan struct{}) {})
+	a := NewArchiver(logger, nil, cs, archiveReqCh, func(periodID uint64) error { return nil }, func() bool { return true }, fakeArchivingPeriodState{}, "test-bucket", func(<-chan struct{}) {})
 	a.Start()
 	a.Stop()
 	// No deadlock or panic means success
@@ -195,6 +212,7 @@ func TestArchiverArchivesAndProposes(t *testing.T) {
 			return nil
 		},
 		func() bool { return true },
+		fakeArchivingPeriodState{},
 		"test-bucket",
 		func(<-chan struct{}) {},
 	)
@@ -248,6 +266,7 @@ func TestArchiverAlreadyArchivedLeaderProposes(t *testing.T) {
 			return nil
 		},
 		func() bool { return true }, // is leader
+		fakeArchivingPeriodState{},
 		"test-bucket",
 		func(<-chan struct{}) {},
 	)
@@ -296,6 +315,7 @@ func TestArchiverAlreadyArchivedFollowerDoesNotPropose(t *testing.T) {
 			return nil
 		},
 		func() bool { return false }, // not leader
+		fakeArchivingPeriodState{},
 		"test-bucket",
 		func(<-chan struct{}) {},
 	)
@@ -312,6 +332,52 @@ func TestArchiverAlreadyArchivedFollowerDoesNotPropose(t *testing.T) {
 	require.Never(t, func() bool { return proposedPeriodID.Load() > 0 }, 200*time.Millisecond, 10*time.Millisecond, "follower should not propose")
 
 	a.Stop()
+}
+
+// TestArchiverRejectsStaleRequest covers the consume-time guard: a request
+// whose period is no longer ARCHIVING (e.g. the leader has confirmed the
+// archive and purged the underlying ranges, then this node synced) must NOT
+// touch cold storage, even on the leader path. Otherwise an empty SST would
+// overwrite the leader's correct archive.
+func TestArchiverRejectsStaleRequest(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+
+	cs := newMockColdStorage()
+	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
+
+	var proposedPeriodID atomic.Uint64
+
+	a := NewArchiver(
+		logger,
+		nil, // no dataStore needed: guard rejects before iteration
+		cs,
+		archiveReqCh,
+		func(periodID uint64) error {
+			proposedPeriodID.Store(periodID)
+
+			return nil
+		},
+		func() bool { return true }, // leader, to prove the guard fires before isLeader gating
+		rejectingPeriodState{},
+		"test-bucket",
+		func(<-chan struct{}) {},
+	)
+	a.Start()
+	t.Cleanup(a.Stop)
+
+	archiveReqCh.TrySend(ArchiveRequest{
+		PeriodID:      5,
+		StartSequence: 1,
+		CloseSequence: 10,
+	}, "test")
+
+	require.Never(t, func() bool {
+		return cs.archiveCalls.Load() > 0 || proposedPeriodID.Load() > 0
+	}, 200*time.Millisecond, 10*time.Millisecond,
+		"stale request must not write cold storage nor propose")
 }
 
 func TestArchiverNonLeaderRetries(t *testing.T) {
@@ -346,6 +412,7 @@ func TestArchiverNonLeaderRetries(t *testing.T) {
 			return nil
 		},
 		isLeader.Load,
+		fakeArchivingPeriodState{},
 		"test-bucket",
 		func(<-chan struct{}) {},
 	)
@@ -418,6 +485,7 @@ func TestArchiverSSTRoundtrip(t *testing.T) {
 			return nil
 		},
 		func() bool { return true },
+		fakeArchivingPeriodState{},
 		"test-bucket",
 		func(<-chan struct{}) {},
 	)
@@ -500,7 +568,7 @@ func TestArchiver_FreshUploadPersistsChecksum(t *testing.T) {
 
 			return nil
 		},
-		func() bool { return true }, "test-bucket", func(<-chan struct{}) {})
+		func() bool { return true }, fakeArchivingPeriodState{}, "test-bucket", func(<-chan struct{}) {})
 	a.Start()
 	t.Cleanup(a.Stop)
 
@@ -541,7 +609,7 @@ func TestArchiver_CrashRecoveryWithValidArchive(t *testing.T) {
 
 			return nil
 		},
-		func() bool { return true }, "test-bucket", func(<-chan struct{}) {})
+		func() bool { return true }, fakeArchivingPeriodState{}, "test-bucket", func(<-chan struct{}) {})
 	a.Start()
 	t.Cleanup(a.Stop)
 
@@ -578,7 +646,7 @@ func TestArchiver_CrashRecoveryWithCorruptArchive(t *testing.T) {
 
 			return nil
 		},
-		func() bool { return true }, "test-bucket", func(<-chan struct{}) {})
+		func() bool { return true }, fakeArchivingPeriodState{}, "test-bucket", func(<-chan struct{}) {})
 	a.Start()
 	t.Cleanup(a.Stop)
 
@@ -614,7 +682,7 @@ func TestArchiver_LegacyDataOnlyTriggersReupload(t *testing.T) {
 
 			return nil
 		},
-		func() bool { return true }, "test-bucket", func(<-chan struct{}) {})
+		func() bool { return true }, fakeArchivingPeriodState{}, "test-bucket", func(<-chan struct{}) {})
 	a.Start()
 	t.Cleanup(a.Stop)
 

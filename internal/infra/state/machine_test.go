@@ -562,7 +562,7 @@ func TestNextLedgerIDRecovery(t *testing.T) {
 	require.NoError(t, result.Results[0].Error)
 
 	// Verify nextLedgerID is 4 (1, 2, 3 assigned, next is 4).
-	require.Equal(t, uint32(4), machine1.nextLedgerID)
+	require.Equal(t, uint32(4), machine1.State.NextLedgerID)
 
 	// Simulate restart: create a new Machine on the same Pebble store.
 	c2, err := cache.New(1000, meter)
@@ -577,7 +577,7 @@ func TestNextLedgerIDRecovery(t *testing.T) {
 	require.NoError(t, NewRecovery(machine2, dataStore).RecoverState())
 
 	// The recovered machine should have nextLedgerID = 4.
-	require.Equal(t, uint32(4), machine2.nextLedgerID)
+	require.Equal(t, uint32(4), machine2.State.NextLedgerID)
 
 	// Create another ledger — it should get ID=4.
 	result, err = machine2.ApplyEntries(ctx, dataStore,
@@ -596,7 +596,7 @@ func TestNextLedgerIDRecovery(t *testing.T) {
 	require.Equal(t, uint32(4), createLedgerLog.GetId())
 
 	// And nextLedgerID should now be 5.
-	require.Equal(t, uint32(5), machine2.nextLedgerID)
+	require.Equal(t, uint32(5), machine2.State.NextLedgerID)
 }
 
 // TestPrepareEntriesTraceLogPipeliningLag is a regression test for issue #427:
@@ -639,7 +639,7 @@ func TestPrepareEntriesTraceLogPipeliningLag(t *testing.T) {
 		// still in flight: lastAppliedIndex has been bumped by a prior
 		// PrepareEntries, but lastPersistedIndex (advanced by
 		// CommitPreparedBatch) lags behind.
-		machine.lastAppliedIndex = 5
+		machine.State.LastAppliedIndex = 5
 
 		return machine, dataStore
 	}

@@ -126,7 +126,7 @@ func (fsm *Machine) applyClusterConfig(batch *dal.WriteSession, raftIndex uint64
 	// Check if bloom filter config changed. If so, purge persisted blocks
 	// and rebuild filters with new dimensions. The preloader falls back to
 	// Pebble Gets while IsReady() returns false.
-	if fsm.BloomFilters != nil && !bloom.BloomConfigEqual(cfg, fsm.lastClusterConfig) {
+	if fsm.BloomFilters != nil && !bloom.BloomConfigEqual(cfg, fsm.State.LastClusterConfig) {
 		fsm.logger.WithFields(map[string]any{
 			"raftIndex": raftIndex,
 		}).Infof("Bloom filter config changed: purging blocks and rebuilding")
@@ -165,11 +165,7 @@ func (fsm *Machine) applyClusterConfig(batch *dal.WriteSession, raftIndex uint64
 		return fmt.Errorf("saving cluster state: %w", err)
 	}
 
-	if cfg.GetHashAlgorithm() != fsm.hashGenerator.Algorithm() {
-		fsm.hashGenerator = processing.NewHashGenerator(cfg.GetHashAlgorithm(), fsm.clusterID)
-	}
-
-	fsm.lastClusterConfig = cfg
+	fsm.State.UpdateClusterConfig(cfg)
 
 	return nil
 }

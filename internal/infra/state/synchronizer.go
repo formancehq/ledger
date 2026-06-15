@@ -45,7 +45,18 @@ func (s *Synchronizer) SynchronizeWithLeader(ctx context.Context, snapshotFetche
 	// RestoreCheckpoint closes and reopens the DB — outstanding references cause a panic.
 	s.apply.StopBackgroundTasks()
 
-	if err := s.restoreCheckpoint(ctx, snapshotFetcher, progress, s.apply.snapshotIndex); err != nil {
+	// Drop any background-request messages enqueued by the FSM hot path
+	// pre-sync: their payloads reference period IDs / sequence ranges /
+	// checkpoint paths that the leader's checkpoint may have already
+	// superseded. The Archiver consume-time guard catches most cases on its
+	// own, but a stale ArchiveRequest consumed against a post-sync Pebble
+	// whose corresponding ranges have been purged would still build (and
+	// upload) an empty cold-storage object. Drain first; reconciliation
+	// tickers + OnLeadershipAcquired re-dispatch fresh requests from durable
+	// state once the sync is over.
+	s.apply.DrainBackgroundChannels()
+
+	if err := s.restoreCheckpoint(ctx, snapshotFetcher, progress, s.apply.State.SnapshotIndex); err != nil {
 		return 0, fmt.Errorf("restoring checkpoint from leader: %w", err)
 	}
 
@@ -69,11 +80,11 @@ func (s *Synchronizer) SynchronizeWithLeader(ctx context.Context, snapshotFetche
 	}
 
 	lifecycle.SendEvent("sync_with_leader_complete", map[string]any{
-		"lastAppliedIndex": s.apply.lastAppliedIndex,
-		"snapshotIndex":    s.apply.snapshotIndex,
+		"lastAppliedIndex": s.apply.State.LastAppliedIndex,
+		"snapshotIndex":    s.apply.State.SnapshotIndex,
 	})
 
-	return s.apply.lastAppliedIndex, nil
+	return s.apply.State.LastAppliedIndex, nil
 }
 
 // restoreCheckpoint fetches a fresh checkpoint from the leader and restores
@@ -110,7 +121,7 @@ func (s *Synchronizer) restoreCheckpoint(ctx context.Context, snapshotFetcher Sn
 // underlying Pebble state is not changed here — the actual restore (when
 // needed) happens via SynchronizeWithLeader.
 func (s *Synchronizer) InstallSnapshot(_ context.Context, snapshot raftpb.Snapshot) error {
-	s.apply.snapshotIndex = snapshot.Metadata.Index
+	s.apply.State.SnapshotIndex = snapshot.Metadata.Index
 
 	// Reset the cache — it will be restored from Pebble later:
 	// - On restart: after InstallSnapshot, via RestoreCacheFromStore
@@ -133,5 +144,5 @@ func (s *Synchronizer) InstallSnapshot(_ context.Context, snapshot raftpb.Snapsh
 // to the latest received snapshot index. Used by the applier to decide
 // whether SynchronizeWithLeader is needed.
 func (s *Synchronizer) IsStoreUpToDate(_ context.Context) (bool, error) {
-	return s.apply.lastAppliedIndex >= s.apply.snapshotIndex, nil
+	return s.apply.State.LastAppliedIndex >= s.apply.State.SnapshotIndex, nil
 }

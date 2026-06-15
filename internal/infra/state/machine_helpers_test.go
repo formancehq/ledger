@@ -183,13 +183,13 @@ func TestMachineIsStoreUpToDate(t *testing.T) {
 	require.True(t, upToDate)
 
 	// If snapshot index is ahead of lastAppliedIndex, store is not up to date
-	machine.snapshotIndex = 10
+	machine.State.SnapshotIndex = 10
 	upToDate, err = sync.IsStoreUpToDate(ctx)
 	require.NoError(t, err)
 	require.False(t, upToDate)
 
 	// Catch up lastAppliedIndex
-	machine.lastAppliedIndex = 10
+	machine.State.LastAppliedIndex = 10
 	upToDate, err = sync.IsStoreUpToDate(ctx)
 	require.NoError(t, err)
 	require.True(t, upToDate)

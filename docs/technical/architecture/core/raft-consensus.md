@@ -49,9 +49,12 @@ The FSM maintains a unified state for all ledgers via the `Machine` struct (`int
 
 ```
 Machine state (conceptual):
-  nextSequenceID          uint64        // Global log sequence number
-  lastAppliedIndex        uint64        // Last Raft entry applied
-  lastAppliedTimestamp    uint64        // HLC timestamp of last applied entry
+  State *FSMState
+    .NextSequenceID         uint64       // Global log sequence number
+    .LastAppliedIndex       uint64       // Last Raft entry applied
+    .LastAppliedTimestamp   uint64       // HLC timestamp of last applied entry
+    // ... and the other recoverable scalars (NextAuditSequenceID,
+    // NextLedgerID, LastAuditHash, PendingLedgerCleanups, LastClusterConfig, ...)
 
   Registry.Ledgers        KeyStore      // Per-ledger LedgerInfo
   Registry.Boundaries     KeyStore      // Per-ledger LedgerBoundaries (next log/tx IDs, counters)
@@ -61,6 +64,8 @@ Machine state (conceptual):
   Registry.Reversions     map[string]*Bitset  // Per-ledger reversion bitsets
   // ... and other attribute KeyStores (Transactions, SinkConfigs, etc.)
 ```
+
+The recoverable scalars live on `FSMState` (`internal/infra/state/fsmstate.go`); sub-trackers (`Registry`, `Periods`, `KeyStore`, …) stay on `Machine` directly with their own lifecycles.
 
 ### Advantages of Single Raft
 

@@ -34,18 +34,18 @@ Sequence 4: T=999950  (Leader B) <-- VIOLATION: earlier than sequence 3
 
 ## Solution: HLC at the FSM Level
 
-The HLC is implemented inside the FSM's `applyProposal()` method. This is the point where every node (leader and followers alike) processes each committed Raft entry.
+The HLC is implemented as a method on `FSMState` (the value-type state held as `Machine.State`) and invoked from the FSM's `applyProposal()` path. This is the point where every node (leader and followers alike) processes each committed Raft entry.
 
 ### Algorithm
 
 ```go
-func (fsm *Machine) hlcTimestamp(proposalDate *commonpb.Timestamp) *commonpb.Timestamp {
-    if proposalDate.Data > fsm.lastAppliedTimestamp {
-        fsm.lastAppliedTimestamp = proposalDate.Data
+func (s *FSMState) AdvanceHLC(proposalDate uint64) uint64 {
+    if proposalDate > s.LastAppliedTimestamp {
+        s.LastAppliedTimestamp = proposalDate
     } else {
-        fsm.lastAppliedTimestamp++
+        s.LastAppliedTimestamp++
     }
-    return &commonpb.Timestamp{Data: fsm.lastAppliedTimestamp}
+    return s.LastAppliedTimestamp
 }
 ```
 
@@ -54,7 +54,7 @@ In plain English:
 - If the proposal's date is **ahead** of the last applied timestamp, use the proposal's date (the physical clock is advancing normally).
 - If the proposal's date is **behind or equal** to the last applied timestamp, increment the last applied timestamp by 1 microsecond.
 
-This guarantees that the returned timestamp is always strictly greater than any previously returned timestamp.
+This guarantees that the returned timestamp is always strictly greater than any previously returned timestamp. The proto-`Timestamp` wrapping is done at the single call site in `applyProposal`.
 
 ### Timestamp Resolution
 
@@ -91,10 +91,10 @@ Raft consensus (proposal committed to log)
     v
 FSM.applyProposal()
     |
-    +-- effectiveDate = hlcTimestamp(proposal.Date)
+    +-- effectiveDate = &commonpb.Timestamp{Data: fsm.State.AdvanceHLC(proposal.Date.Data)}
     |       |
-    |       +-- if proposal.Date > lastAppliedTimestamp: use proposal.Date
-    |       +-- else: lastAppliedTimestamp + 1
+    |       +-- if proposal.Date > State.LastAppliedTimestamp: use proposal.Date
+    |       +-- else: State.LastAppliedTimestamp + 1
     |
     +-- writeSet = NewWriteSet(fsm)
     |       |
@@ -106,13 +106,13 @@ Logs and state persisted with monotonic timestamps
 
 ### Persistence
 
-The `lastAppliedTimestamp` is persisted through three mechanisms:
+The `State.LastAppliedTimestamp` is persisted through three mechanisms:
 
 1. **Per-batch persistence**: Written to PebbleDB in the same atomic batch as the applied index. Key: `[0x06][0x02]` (`ZoneGlobal` + `SubGlobLastAppliedTimestamp`). This ensures the timestamp survives node restarts.
 
 2. **Snapshot inclusion**: Included in the `PreviewRestoreResponse` protobuf (field `last_applied_timestamp = 2` in `misc/proto/restore.proto`). This ensures the timestamp is correctly transferred during Raft snapshot installation.
 
-3. **Startup recovery**: Loaded from PebbleDB during `NewMachine()` initialization, alongside the last applied index.
+3. **Startup recovery**: Loaded from PebbleDB by `LoadFSMStateFromStore` and atomically installed into `Machine.State` by `Recovery.RecoverState()` (build-and-swap), alongside the last applied index.
 
 ### Storage Format
 
@@ -133,26 +133,26 @@ effectiveDate(P2) > effectiveDate(P1)
 
 This holds regardless of the physical clock values in P1 and P2.
 
-**Proof**: After processing P1, `lastAppliedTimestamp >= effectiveDate(P1)`. When processing P2:
-- If `P2.Date > lastAppliedTimestamp`: `effectiveDate(P2) = P2.Date > lastAppliedTimestamp >= effectiveDate(P1)`
-- If `P2.Date <= lastAppliedTimestamp`: `effectiveDate(P2) = lastAppliedTimestamp + 1 > lastAppliedTimestamp >= effectiveDate(P1)`
+**Proof**: After processing P1, `State.LastAppliedTimestamp >= effectiveDate(P1)`. When processing P2:
+- If `P2.Date > State.LastAppliedTimestamp`: `effectiveDate(P2) = P2.Date > State.LastAppliedTimestamp >= effectiveDate(P1)`
+- If `P2.Date <= State.LastAppliedTimestamp`: `effectiveDate(P2) = State.LastAppliedTimestamp + 1 > State.LastAppliedTimestamp >= effectiveDate(P1)`
 
 ### Determinism
 
 All nodes in the Raft group compute the same `effectiveDate` for the same entry, because:
 1. All nodes apply the same entries in the same order (Raft guarantee)
-2. The HLC computation is purely a function of `proposal.Date` and `lastAppliedTimestamp`
-3. `lastAppliedTimestamp` is part of the deterministic FSM state
+2. The HLC computation is purely a function of `proposal.Date` and `State.LastAppliedTimestamp`
+3. `State.LastAppliedTimestamp` is part of the deterministic FSM state
 
 ### Crash Recovery
 
 After a crash and restart:
-1. The node loads `lastAppliedTimestamp` from PebbleDB
+1. The node loads `State.LastAppliedTimestamp` from PebbleDB
 2. This is the timestamp from the last committed batch
 3. New entries will have timestamps strictly greater than this value
 
 If the node installs a Raft snapshot:
-1. `lastAppliedTimestamp` is restored from the `MemorySnapshot`
+1. `State.LastAppliedTimestamp` is restored from the `MemorySnapshot`
 2. The node continues with correct HLC state from the snapshot point
 
 ### Clock Skew Tolerance
@@ -192,14 +192,15 @@ The clock skew check is a **complementary safety mechanism**, not a replacement 
 
 Tests are located in `internal/infra/state/machine_hlc_test.go`:
 
-- **Unit tests** (`TestHLCTimestamp`): Test the `hlcTimestamp()` method in isolation with various scenarios (ahead, behind, equal, monotonicity across sequences).
+- **Unit tests** (`TestHLCTimestamp`): Test the `FSMState.AdvanceHLC()` method in isolation with various scenarios (ahead, behind, equal, monotonicity across sequences).
 - **Integration tests** (`TestHLCTimestampIntegration`): Test the full pipeline including `ApplyEntries()`, persistence to PebbleDB, and snapshot round-trips.
 
 ## Files
 
 | File | Role |
 |------|------|
-| `internal/infra/state/machine.go` | HLC field, `hlcTimestamp()` method, integration in `applyProposal()` and `ApplyEntries()`, snapshot handling |
+| `internal/infra/state/fsmstate.go` | `FSMState.LastAppliedTimestamp` field, `AdvanceHLC()` method (monotonicity rule) |
+| `internal/infra/state/machine.go` | Integration in `applyProposal()` and `ApplyEntries()`, snapshot handling |
 | `internal/query/config.go` | `ReadLastAppliedTimestamp()` for reading from PebbleDB |
 | `internal/infra/state/batch.go` | `SetLastAppliedTimestamp()` for writing to PebbleDB |
 | `misc/proto/restore.proto` | `last_applied_timestamp` field in `PreviewRestoreResponse` |

@@ -17,6 +17,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -39,6 +40,14 @@ type ArchiveRequest struct {
 // ArchiveProposer is a callback to propose a ConfirmArchivePeriod order back into Raft.
 type ArchiveProposer func(periodID uint64) error
 
+// ArchiverPeriodState provides the Archiver with read access to the current
+// period state, used to gate consumption of stale archive requests after a
+// follower sync — see Archiver.archive for the rationale.
+// Implemented by *Machine.
+type ArchiverPeriodState interface {
+	ArchivingPeriodByID(id uint64) (*commonpb.Period, bool)
+}
+
 // Archiver runs in the background to export closed period data to cold storage
 // and propose ConfirmArchivePeriod back into Raft for deterministic purge.
 // It follows the same pattern as Sealer: a background goroutine reads from
@@ -50,6 +59,7 @@ type Archiver struct {
 	archiveRequestCh *worker.Channel[ArchiveRequest]
 	proposeFn        ArchiveProposer
 	isLeader         func() bool
+	periodState      ArchiverPeriodState
 	reconcileFn      func(stop <-chan struct{})
 	w                worker.Worker
 	bucketID         string
@@ -68,6 +78,7 @@ func NewArchiver(
 	archiveRequestCh *worker.Channel[ArchiveRequest],
 	proposeFn ArchiveProposer,
 	isLeader func() bool,
+	periodState ArchiverPeriodState,
 	bucketID string,
 	reconcileFn func(stop <-chan struct{}),
 ) *Archiver {
@@ -78,6 +89,7 @@ func NewArchiver(
 		archiveRequestCh: archiveRequestCh,
 		proposeFn:        proposeFn,
 		isLeader:         isLeader,
+		periodState:      periodState,
 		reconcileFn:      reconcileFn,
 		w:                worker.New(),
 		bucketID:         bucketID,
@@ -138,6 +150,19 @@ func (a *Archiver) archive(stop <-chan struct{}, req ArchiveRequest) error {
 		"periodId":      req.PeriodID,
 		"startSequence": req.StartSequence,
 		"closeSequence": req.CloseSequence,
+	}
+
+	// Reject stale requests whose period has moved past ARCHIVING. After a
+	// follower sync, the leader's checkpoint may have already promoted this
+	// period to ARCHIVED (entries purged) — iterating the request's sequence
+	// ranges would surface zero entries and we'd upload an empty SST. The
+	// drain in SynchronizeWithLeader handles most of these, but the guard
+	// also covers requests that race the leader's confirm via Raft (period
+	// transitions between TrySend and consumption).
+	if _, ok := a.periodState.ArchivingPeriodByID(req.PeriodID); !ok {
+		a.logger.WithFields(logFields).Infof("Period no longer ARCHIVING (sealed/archived by leader), skipping")
+
+		return nil
 	}
 
 	exists, err := a.coldStorage.Exists(ctx, a.bucketID, req.PeriodID)

@@ -168,6 +168,7 @@ func ColdStorageModule(coldStorageDriver string) fx.Option {
 						return err
 					},
 					raftNode.IsLeader,
+					machine,
 					bucketID,
 					machine.DispatchArchiveRequests,
 				)

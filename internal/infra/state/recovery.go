@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -32,8 +31,22 @@ func NewRecovery(apply *Machine, reader dal.RecoveryReader) *Recovery {
 	return &Recovery{apply: apply, reader: reader}
 }
 
-// RecoverState loads all FSM in-memory state from the Pebble data store.
-// Called on restart and after follower sync.
+// RecoverState rebuilds the Machine from the Pebble data store, in three
+// visible phases:
+//
+//  1. Load: read every FSMState field into a fresh struct via
+//     LoadFSMStateFromStore. Any failure returns before the Machine is
+//     mutated — the previous state stays intact.
+//  2. Swap: atomically install the loaded state into the Machine via
+//     RestoreState, preserving SnapshotIndex (in-memory only, carried from
+//     the previous value — set by InstallSnapshot on followers, zero at
+//     boot).
+//  3. Reset sub-trackers: Periods, Registry.Reversions, KeyStore,
+//     SharedState, Registry.Cache settings, Registry.Idempotency. These
+//     are not part of FSMState; they are reset from the same handle so the
+//     Machine ends up coherent.
+//
+// Called on restart and after follower sync (Synchronizer.SynchronizeWithLeader).
 func (r *Recovery) RecoverState() error {
 	// Create a ReadHandle for functions that need iterator access (PebbleReader).
 	// Get-only calls use r.reader directly (PebbleGetter).
@@ -44,65 +57,27 @@ func (r *Recovery) RecoverState() error {
 
 	defer func() { _ = handle.Close() }()
 
-	// Recover lastAppliedIndex from Pebble
-	lastAppliedIndex, err := query.ReadLastAppliedIndex(r.reader)
+	// Phase 1: load a fresh FSMState in its entirety. Any error returns
+	// before we touch the Machine.
+	newState, err := LoadFSMStateFromStore(r.reader, handle, r.apply.State.ClusterID)
 	if err != nil {
-		return fmt.Errorf("recovering last applied index: %w", err)
+		return err
 	}
 
-	r.apply.lastAppliedIndex = lastAppliedIndex
+	// SnapshotIndex is in-memory only and must survive the swap (set by
+	// InstallSnapshot on follower sync; zero at fresh boot).
+	newState.SnapshotIndex = r.apply.State.SnapshotIndex
+
+	// Phase 2: atomic swap.
+	r.apply.RestoreState(newState)
+
 	// Route through publishApplied rather than a bare Store: RecoverState also
 	// runs at runtime (SynchronizeWithLeader), where a silent advance of
 	// lastPersistedIndex would strand any blocked WaitForApplied caller — the
 	// lost-wakeup shape of #327.
-	r.apply.publishApplied(lastAppliedIndex)
+	r.apply.publishApplied(newState.LastAppliedIndex)
 
-	// Recover nextSequenceID from last log sequence
-	lastSeq, err := query.ReadLastSequence(handle)
-	if err != nil {
-		return fmt.Errorf("recovering last sequence: %w", err)
-	}
-
-	if lastSeq > 0 {
-		r.apply.nextSequenceID = lastSeq + 1
-	}
-
-	// Recover lastAuditHash and nextAuditSequenceID from last audit entry
-	lastAuditEntry, err := query.ReadLastAuditEntry(handle)
-	if err != nil {
-		return fmt.Errorf("recovering last audit entry: %w", err)
-	}
-
-	if lastAuditEntry != nil {
-		r.apply.lastAuditHash = lastAuditEntry.GetHash()
-		r.apply.nextAuditSequenceID = lastAuditEntry.GetSequence() + 1
-	}
-
-	// Recover nextQueryCheckpointID from persisted counter
-	nextQCPID, err := query.ReadNextQueryCheckpointID(r.reader)
-	if err != nil {
-		return fmt.Errorf("recovering next query checkpoint ID: %w", err)
-	}
-
-	r.apply.nextQueryCheckpointID = nextQCPID
-
-	// Recover query checkpoint schedule
-	qcpSchedule, err := query.ReadQueryCheckpointSchedule(r.reader)
-	if err != nil {
-		return fmt.Errorf("recovering query checkpoint schedule: %w", err)
-	}
-
-	r.apply.queryCheckpointSchedule = qcpSchedule
-
-	// Recover lastAppliedTimestamp from Pebble
-	lastAppliedTimestamp, err := query.ReadLastAppliedTimestamp(r.reader)
-	if err != nil {
-		return fmt.Errorf("recovering last applied timestamp: %w", err)
-	}
-
-	r.apply.lastAppliedTimestamp = lastAppliedTimestamp
-
-	// Recover periods from Pebble
+	// Phase 3: rebuild sub-trackers (not part of FSMState).
 	periodsCursor, err := query.ReadPeriods(context.Background(), handle)
 	if err != nil {
 		return fmt.Errorf("recovering periods: %w", err)
@@ -137,7 +112,6 @@ func (r *Recovery) RecoverState() error {
 
 	r.apply.Periods.Reset(allPeriods, currentOpenPeriod, closingPeriods, nextPeriodID)
 
-	// Recover period schedule from Pebble
 	periodSchedule, err := query.ReadPeriodSchedule(r.reader)
 	if err != nil {
 		return fmt.Errorf("recovering period schedule: %w", err)
@@ -145,7 +119,6 @@ func (r *Recovery) RecoverState() error {
 
 	r.apply.Periods.SetSchedule(periodSchedule)
 
-	// Recover reversions from Pebble
 	reversions, err := query.ReadReversions(handle)
 	if err != nil {
 		return fmt.Errorf("recovering reversions: %w", err)
@@ -153,23 +126,6 @@ func (r *Recovery) RecoverState() error {
 
 	r.apply.Registry.Reversions = reversions
 
-	// Recover pending ledger cleanups from Pebble
-	pendingCleanups, err := query.ReadPendingLedgerCleanups(handle)
-	if err != nil {
-		return fmt.Errorf("recovering pending ledger cleanups: %w", err)
-	}
-
-	r.apply.pendingLedgerCleanups = pendingCleanups
-
-	// Recover nextLedgerID from persisted counter
-	nextLedgerID, err := query.ReadNextLedgerID(r.reader)
-	if err != nil {
-		return fmt.Errorf("recovering next ledger ID: %w", err)
-	}
-
-	r.apply.nextLedgerID = nextLedgerID
-
-	// Recover signing keys from Pebble
 	if r.apply.keyStore != nil {
 		r.apply.keyStore.Reset()
 
@@ -183,7 +139,6 @@ func (r *Recovery) RecoverState() error {
 		}
 	}
 
-	// Recover shared runtime flags from Pebble
 	r.apply.sharedState.Reset()
 
 	requireSig, err := query.ReadSigningConfig(r.reader)
@@ -200,24 +155,17 @@ func (r *Recovery) RecoverState() error {
 
 	r.apply.sharedState.SetMaintenanceMode(maintenanceMode)
 
-	clusterState, err := query.ReadClusterState(r.reader)
-	if err != nil {
-		return fmt.Errorf("loading cluster state: %w", err)
-	}
-
-	if clusterState != nil {
-		r.apply.lastClusterConfig = clusterState.GetConfig()
-		r.apply.Registry.Cache.SetGenerationThreshold(clusterState.GetConfig().GetRotationThreshold())
+	if newState.LastClusterConfig != nil {
+		r.apply.Registry.Cache.SetGenerationThreshold(newState.LastClusterConfig.GetRotationThreshold())
 		// Epoch is never 0 in the running cache (cache.New initializes it to 1).
 		// Persisted clusterState from before that change may still carry 0 —
 		// bump it up so the staleness check never sees a zero live epoch (#302).
-		persistedEpoch := clusterState.GetCacheEpoch()
+		persistedEpoch := newState.CacheEpoch
 		if persistedEpoch == 0 {
 			persistedEpoch = 1
 		}
 
 		r.apply.Registry.Cache.SetEpoch(persistedEpoch)
-		r.apply.hashGenerator = processing.NewHashGenerator(clusterState.GetConfig().GetHashAlgorithm(), r.apply.clusterID)
 	}
 
 	// Rebuild the idempotency bridge from Pebble. Without this, a node that
@@ -231,13 +179,13 @@ func (r *Recovery) RecoverState() error {
 	}
 
 	r.apply.logger.WithFields(map[string]any{
-		"nextSequenceID":        r.apply.nextSequenceID,
-		"nextAuditSequenceID":   r.apply.nextAuditSequenceID,
-		"nextQueryCheckpointID": r.apply.nextQueryCheckpointID,
-		"hasAuditHash":          len(r.apply.lastAuditHash) > 0,
+		"nextSequenceID":        newState.NextSequenceID,
+		"nextAuditSequenceID":   newState.NextAuditSequenceID,
+		"nextQueryCheckpointID": newState.NextQueryCheckpointID,
+		"hasAuditHash":          len(newState.LastAuditHash) > 0,
 		"periodCount":           len(allPeriods),
 		"reversionLedgers":      len(reversions),
-		"pendingCleanups":       len(pendingCleanups),
+		"pendingCleanups":       len(newState.PendingLedgerCleanups),
 	}).Infof("Recovered FSM state from store")
 
 	return nil

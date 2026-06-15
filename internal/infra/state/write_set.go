@@ -494,7 +494,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logs []*commonpb.Log) error {
 				return fmt.Errorf("saving pending ledger cleanup for %q: %w", ledgerName, err)
 			}
 
-			b.fsm.pendingLedgerCleanups[ledgerID] = seq
+			b.fsm.State.PendingLedgerCleanups[ledgerID] = seq
 
 			// Boundary deletion is handled above via boundaryDeletions
 			// (MarkLedgerForCleanup adds a Delete to the Derived.Boundaries overlay).
@@ -509,22 +509,22 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logs []*commonpb.Log) error {
 	}
 
 	// Persist next query checkpoint ID if it changed.
-	if b.NextQueryCheckpointID != b.fsm.nextQueryCheckpointID {
+	if b.NextQueryCheckpointID != b.fsm.State.NextQueryCheckpointID {
 		if err := storeNextQueryCheckpointID(batch, b.NextQueryCheckpointID); err != nil {
 			return fmt.Errorf("storing next query checkpoint ID: %w", err)
 		}
 	}
 
 	// Persist next ledger ID if it changed.
-	if b.NextLedgerID != b.fsm.nextLedgerID {
+	if b.NextLedgerID != b.fsm.State.NextLedgerID {
 		if err := saveNextLedgerID(batch, b.NextLedgerID); err != nil {
 			return fmt.Errorf("storing next ledger ID: %w", err)
 		}
 	}
 
-	b.fsm.nextSequenceID = b.NextSequenceID
-	b.fsm.nextLedgerID = b.NextLedgerID
-	b.fsm.nextQueryCheckpointID = b.NextQueryCheckpointID
+	b.fsm.State.NextSequenceID = b.NextSequenceID
+	b.fsm.State.NextLedgerID = b.NextLedgerID
+	b.fsm.State.NextQueryCheckpointID = b.NextQueryCheckpointID
 
 	// Apply changed periods to Machine's Periods tracker
 	for _, p := range b.changedPeriods {
@@ -560,10 +560,10 @@ func NewWriteSet(fsm *Machine) *WriteSet {
 // state while preserving allocated maps and slice backing arrays.
 func (b *WriteSet) Reset(at *commonpb.Timestamp) {
 	b.Date = at
-	b.NextSequenceID = b.fsm.nextSequenceID
-	b.NextAuditSequenceID = b.fsm.nextAuditSequenceID
-	b.NextLedgerID = b.fsm.nextLedgerID
-	b.NextQueryCheckpointID = b.fsm.nextQueryCheckpointID
+	b.NextSequenceID = b.fsm.State.NextSequenceID
+	b.NextAuditSequenceID = b.fsm.State.NextAuditSequenceID
+	b.NextLedgerID = b.fsm.State.NextLedgerID
+	b.NextQueryCheckpointID = b.fsm.State.NextQueryCheckpointID
 	b.Derived.Reset()
 
 	b.pendingSigningKeyUpdates = b.pendingSigningKeyUpdates[:0]
@@ -1117,7 +1117,7 @@ func (b *WriteSet) executePurge(batch *dal.WriteSession, pr *purgeRange) error {
 
 	// Clean up per-ledger data for deleted ledgers whose delete log
 	// falls within this purge range.
-	for ledgerID, deleteSeq := range b.fsm.pendingLedgerCleanups {
+	for ledgerID, deleteSeq := range b.fsm.State.PendingLedgerCleanups {
 		if deleteSeq >= pr.startSequence && deleteSeq <= pr.closeSequence {
 			if err := deleteLedgerData(batch, ledgerID); err != nil {
 				return fmt.Errorf("purging ledger data for ledger %d: %w", ledgerID, err)
@@ -1127,7 +1127,7 @@ func (b *WriteSet) executePurge(batch *dal.WriteSession, pr *purgeRange) error {
 				return fmt.Errorf("removing pending cleanup entry for ledger %d: %w", ledgerID, err)
 			}
 
-			delete(b.fsm.pendingLedgerCleanups, ledgerID)
+			delete(b.fsm.State.PendingLedgerCleanups, ledgerID)
 
 			// Liveness anchor for deleted-ledger-data-isolation-and-eventual-purge:
 			// the deferred cleanup recorded at DeleteLedger apply time is only

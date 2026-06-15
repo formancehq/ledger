@@ -58,3 +58,22 @@ func (wc *Channel[T]) Send(value T, stop <-chan struct{}) bool {
 func (wc *Channel[T]) Receive() <-chan T {
 	return wc.ch
 }
+
+// Drain non-blockingly empties the channel and returns the number of values
+// discarded. Intended for callers that need to wipe stale messages before
+// re-populating the channel from a fresh source (e.g. follower-sync before
+// installing a leader's checkpoint: messages enqueued by the FSM hot path
+// pre-sync reference state — period IDs, sequence ranges, checkpoint paths —
+// that may no longer line up with the post-sync FSMState).
+func (wc *Channel[T]) Drain() int {
+	n := 0
+
+	for {
+		select {
+		case <-wc.ch:
+			n++
+		default:
+			return n
+		}
+	}
+}

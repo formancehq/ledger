@@ -68,3 +68,24 @@ func TestChannelReceive(t *testing.T) {
 	val := <-recv
 	assert.Equal(t, "hello", val)
 }
+
+func TestChannelDrain(t *testing.T) {
+	t.Parallel()
+
+	logger := logging.FromContext(logging.TestingContext())
+	ch := NewChannel[int](logger, "test", 4)
+
+	require.True(t, ch.TrySend(1, "a"))
+	require.True(t, ch.TrySend(2, "b"))
+	require.True(t, ch.TrySend(3, "c"))
+
+	// Drain reports the number of discarded values and leaves the channel empty.
+	assert.Equal(t, 3, ch.Drain())
+
+	// A draining call on an empty channel is a no-op.
+	assert.Equal(t, 0, ch.Drain())
+
+	// Channel is reusable: capacity is back.
+	assert.True(t, ch.TrySend(99, "after drain"))
+	assert.Equal(t, 99, <-ch.Receive())
+}

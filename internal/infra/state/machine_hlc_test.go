@@ -17,48 +17,37 @@ func TestHLCTimestamp(t *testing.T) {
 	t.Run("proposal date ahead of last applied uses proposal date", func(t *testing.T) {
 		t.Parallel()
 
-		machine, dataStore, _ := newTestMachine(t)
-		_ = dataStore
-		machine.lastAppliedTimestamp = 1000
+		s := NewFSMState("test-cluster")
+		s.LastAppliedTimestamp = 1000
 
-		result := machine.hlcTimestamp(&commonpb.Timestamp{Data: 2000})
-
-		require.Equal(t, uint64(2000), result.GetData())
-		require.Equal(t, uint64(2000), machine.lastAppliedTimestamp)
+		require.Equal(t, uint64(2000), s.AdvanceHLC(2000))
+		require.Equal(t, uint64(2000), s.LastAppliedTimestamp)
 	})
 
 	t.Run("proposal date behind last applied increments by 1", func(t *testing.T) {
 		t.Parallel()
 
-		machine, dataStore, _ := newTestMachine(t)
-		_ = dataStore
-		machine.lastAppliedTimestamp = 5000
+		s := NewFSMState("test-cluster")
+		s.LastAppliedTimestamp = 5000
 
-		result := machine.hlcTimestamp(&commonpb.Timestamp{Data: 3000})
-
-		require.Equal(t, uint64(5001), result.GetData())
-		require.Equal(t, uint64(5001), machine.lastAppliedTimestamp)
+		require.Equal(t, uint64(5001), s.AdvanceHLC(3000))
+		require.Equal(t, uint64(5001), s.LastAppliedTimestamp)
 	})
 
 	t.Run("proposal date equal to last applied increments by 1", func(t *testing.T) {
 		t.Parallel()
 
-		machine, dataStore, _ := newTestMachine(t)
-		_ = dataStore
-		machine.lastAppliedTimestamp = 5000
+		s := NewFSMState("test-cluster")
+		s.LastAppliedTimestamp = 5000
 
-		result := machine.hlcTimestamp(&commonpb.Timestamp{Data: 5000})
-
-		require.Equal(t, uint64(5001), result.GetData())
-		require.Equal(t, uint64(5001), machine.lastAppliedTimestamp)
+		require.Equal(t, uint64(5001), s.AdvanceHLC(5000))
+		require.Equal(t, uint64(5001), s.LastAppliedTimestamp)
 	})
 
 	t.Run("monotonicity across multiple proposals", func(t *testing.T) {
 		t.Parallel()
 
-		machine, dataStore, _ := newTestMachine(t)
-		_ = dataStore
-		machine.lastAppliedTimestamp = 0
+		s := NewFSMState("test-cluster")
 
 		// Simulate a sequence of proposals with varying dates
 		proposalDates := []uint64{100, 200, 150, 150, 300, 250, 250, 250}
@@ -66,8 +55,7 @@ func TestHLCTimestamp(t *testing.T) {
 		var timestamps []uint64
 
 		for _, date := range proposalDates {
-			result := machine.hlcTimestamp(&commonpb.Timestamp{Data: date})
-			timestamps = append(timestamps, result.GetData())
+			timestamps = append(timestamps, s.AdvanceHLC(date))
 		}
 
 		// Verify strict monotonicity: each timestamp > previous
@@ -108,7 +96,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, result.Results, 1)
 		require.NoError(t, result.Results[0].Error)
-		require.Equal(t, uint64(1000000), machine.lastAppliedTimestamp)
+		require.Equal(t, uint64(1000000), machine.State.LastAppliedTimestamp)
 
 		// Create a transaction with a lower timestamp (clock regression)
 		txOrders := []*raftcmdpb.Order{
@@ -129,7 +117,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 		require.NoError(t, result.Results[0].Error)
 
 		// The effective timestamp should be 1000001 (last + 1), not 500000
-		require.Equal(t, uint64(1000001), machine.lastAppliedTimestamp,
+		require.Equal(t, uint64(1000001), machine.State.LastAppliedTimestamp,
 			"HLC should advance past last timestamp on clock regression")
 
 		// Verify the timestamp was persisted in the store
@@ -175,7 +163,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, result.Results[0].Error)
 
-		require.Equal(t, uint64(5000), machine.lastAppliedTimestamp,
+		require.Equal(t, uint64(5000), machine.State.LastAppliedTimestamp,
 			"HLC should use proposal date when it is ahead")
 
 		persistedTS, err := query.ReadLastAppliedTimestamp(dataStore)
@@ -231,7 +219,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 
 		// Apply entries with regressing timestamps
 		timestamps := make([]uint64, 0, 5)
-		timestamps = append(timestamps, machine.lastAppliedTimestamp)
+		timestamps = append(timestamps, machine.State.LastAppliedTimestamp)
 
 		proposalDates := []uint64{900, 800, 700, 2000, 1500}
 		for i, date := range proposalDates {
@@ -251,7 +239,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, result.Results[0].Error)
 
-			timestamps = append(timestamps, machine.lastAppliedTimestamp)
+			timestamps = append(timestamps, machine.State.LastAppliedTimestamp)
 		}
 
 		// Verify strict monotonicity

@@ -42,10 +42,10 @@ type Machine struct {
 	// read capability, never holds the incoming-restore primitives, and never
 	// holds a raw *dal.Store. Boot/recovery reads and follower-sync coordination
 	// live on the separate Recovery / Synchronizer types defined alongside this
-	// one; both consume the Machine and supply their own capabilities when
-	// they invoke its private recoverState / synchronizeWithLeader helpers.
-	// The hot path receives a WriteSessionFactory as a parameter to
-	// PrepareEntries / ApplyEntries, not as a field.
+	// one. The mutable FSM state shared between apply and recovery is grouped
+	// under Machine.State (see fsmstate.go). The hot path receives a
+	// WriteSessionFactory as a parameter to PrepareEntries / ApplyEntries, not
+	// as a field.
 
 	// queryCheckpoints lets the FSM delete query-checkpoint files when an
 	// apply removes their metadata. Two methods only: create + delete. The
@@ -64,27 +64,14 @@ type Machine struct {
 	Registry *StateRegistry // KeyStores + Cache + Attrs
 	Periods  *PeriodTracker // Period lifecycle
 
-	// pendingLedgerCleanups tracks deleted ledgers whose Pebble data has not
-	// yet been purged. Map key is the ledger ID; value is the sequence number
-	// of the DeleteLedger log. Data is cleaned up when the purge range covers
-	// the delete sequence.
-	pendingLedgerCleanups map[uint32]uint64
+	// State groups the FSM-level mutable state (counters, timestamps, audit
+	// chain, cluster config, pending ledger cleanups). It is the explicit
+	// shared surface between the apply path and Recovery: Machine writes
+	// fsm.State.X on apply, Recovery writes r.apply.State.X on hydrate.
+	State *FSMState
 
-	// FSM mechanics
-	nextSequenceID                 uint64
-	nextAuditSequenceID            uint64
-	nextLedgerID                   uint32
-	nextQueryCheckpointID          uint64
-	queryCheckpointSchedule        string
 	queryCheckpointScheduleChanged signal.Signal
-	lastAuditHash                  []byte
-	hashGenerator                  processing.HashGenerator
-	clusterID                      string
 	auditHashBuf                   []byte
-
-	lastAppliedIndex     uint64
-	lastAppliedTimestamp uint64
-	snapshotIndex        uint64
 
 	// KeyStore holds registered signing keys (updated after proposal apply)
 	keyStore *keystore.KeyStore
@@ -127,10 +114,6 @@ type Machine struct {
 	// BloomFilters holds per-attribute-type bloom filters for key existence checks.
 	// Updated during FSM apply, read during preload building.
 	BloomFilters *bloom.FilterSet
-
-	// lastClusterConfig tracks the most recently applied ClusterConfig so that
-	// config-change detection in applyProposal can compare without reading Pebble.
-	lastClusterConfig *commonpb.ClusterConfig
 
 	// Metrics
 	logsAppendedCounter       metric.Int64Counter
@@ -243,9 +226,7 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 		sharedState:                    sharedState,
 		Registry:                       registry,
 		Periods:                        NewPeriodTracker(nil, nil, nil, 0, ""),
-		nextSequenceID:                 1,
-		nextAuditSequenceID:            1,
-		nextLedgerID:                   1,
+		State:                          NewFSMState(clusterID),
 		queryCheckpointScheduleChanged: signal.New(),
 		sealRequestCh:                  worker.NewChannel[SealRequest](logger, "seal request", 10),
 		archiveRequestCh:               worker.NewChannel[ArchiveRequest](logger, "archive request", 1),
@@ -253,8 +234,6 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 		coldCompactionCh:               make(chan struct{}, 1),
 		bloomRebuildCh:                 make(chan string, 1),
 		auditHashBuf:                   make([]byte, 0, 4096),
-		hashGenerator:                  processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, clusterID),
-		clusterID:                      clusterID,
 	}
 	fsm.appliedCond = sync.NewCond(&fsm.appliedMu)
 	fsm.cacheSnapshotter = cacheSnapshotter
@@ -284,7 +263,26 @@ func (fsm *Machine) LastPersistedIndex() uint64 {
 // LastPersistedIndex for the live value. This is intended for raft.Config.Applied
 // so that the first Ready does not re-emit already-applied entries.
 func (fsm *Machine) LastAppliedIndex() uint64 {
-	return fsm.lastAppliedIndex
+	return fsm.State.LastAppliedIndex
+}
+
+// RestoreState atomically replaces the FSM-level state. The intended callers
+// are Recovery (at boot) and Synchronizer (after install-snapshot), which
+// build a fresh FSMState from Pebble via LoadFSMStateFromStore and swap it
+// in here. Sub-trackers (Periods, Registry.Reversions, KeyStore,
+// SharedState, Registry.Cache settings, Registry.Idempotency) are NOT
+// touched by this method — they have their own lifecycles and the caller
+// is responsible for resetting them in the same critical section.
+//
+// Concurrency: the swap is a single pointer assignment, but readers of
+// fsm.State.X racing with RestoreState would see the new struct's
+// zero/transitional values. Callers must ensure no apply is in flight:
+// at boot there is no apply yet; on follower sync the Applier gates the
+// apply pipeline before invoking Synchronizer (waitPendingCommit drains
+// the in-flight commit and statusGated blocks further entries) — see
+// internal/infra/node/applier.go.
+func (fsm *Machine) RestoreState(s *FSMState) {
+	fsm.State = s
 }
 
 // publishApplied advances lastPersistedIndex and wakes WaitForApplied
@@ -400,11 +398,11 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 	// With pipelining, lastPersistedIndex may lag lastAppliedIndex by one batch
 	// (the pending commit). This is expected and safe.
 	persistedIdx := fsm.lastPersistedIndex.Load()
-	if persistedIdx != fsm.lastAppliedIndex && len(entries) > 0 && fsm.logger.Enabled(logging.TraceLevel) {
+	if persistedIdx != fsm.State.LastAppliedIndex && len(entries) > 0 && fsm.logger.Enabled(logging.TraceLevel) {
 		fsm.logger.WithFields(map[string]any{
 			"lastPersistedIndex": persistedIdx,
-			"lastAppliedIndex":   fsm.lastAppliedIndex,
-			"snapshotIndex":      fsm.snapshotIndex,
+			"lastAppliedIndex":   fsm.State.LastAppliedIndex,
+			"snapshotIndex":      fsm.State.SnapshotIndex,
 			"entryCount":         len(entries),
 			"firstEntryIndex":    entries[0].Index,
 			"gen0":               fsm.Registry.Cache.BaseIndex.Gen0,
@@ -413,15 +411,15 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 		}).Tracef("PrepareEntries: lastPersistedIndex lags (pending commit in-flight)")
 	}
 
-	if fsm.snapshotIndex > fsm.lastAppliedIndex {
+	if fsm.State.SnapshotIndex > fsm.State.LastAppliedIndex {
 		assert.Unreachable("node out of sync during apply", map[string]any{
-			"snapshotIndex":    fsm.snapshotIndex,
-			"lastAppliedIndex": fsm.lastAppliedIndex,
+			"snapshotIndex":    fsm.State.SnapshotIndex,
+			"lastAppliedIndex": fsm.State.LastAppliedIndex,
 		})
 
 		return nil, &ErrNodeOutOfSync{
-			SnapshotIndex:    fsm.snapshotIndex,
-			LastAppliedIndex: fsm.lastAppliedIndex,
+			SnapshotIndex:    fsm.State.SnapshotIndex,
+			LastAppliedIndex: fsm.State.LastAppliedIndex,
 		}
 	}
 
@@ -441,23 +439,23 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 	var pendingConvertRequests []MetadataConvertRequest
 
 	for i, entry := range entries {
-		if entry.Index <= fsm.lastAppliedIndex {
+		if entry.Index <= fsm.State.LastAppliedIndex {
 			ret.Results = append(ret.Results, ApplyResult{})
 
 			continue
 		}
 
-		if entry.Index > fsm.lastAppliedIndex+1 {
+		if entry.Index > fsm.State.LastAppliedIndex+1 {
 			assert.Unreachable("entry index gap detected", map[string]any{
 				"receivedIndex": entry.Index,
-				"expectedIndex": fsm.lastAppliedIndex + 1,
+				"expectedIndex": fsm.State.LastAppliedIndex + 1,
 			})
 
 			_ = batch.Cancel()
 
 			return nil, &ErrInvalidEntryIndex{
 				ReceivedIndex: entry.Index,
-				ExpectedIndex: fsm.lastAppliedIndex + 1,
+				ExpectedIndex: fsm.State.LastAppliedIndex + 1,
 			}
 		}
 
@@ -516,7 +514,7 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 			fsm.rotationDurationHistogram.Record(context.Background(), time.Since(rotationStart).Microseconds())
 		}
 
-		fsm.lastAppliedIndex++
+		fsm.State.LastAppliedIndex++
 
 		if entry.Type != raftpb.EntryNormal || len(entry.Data) == 0 {
 			if fsm.sentinelMode {
@@ -639,14 +637,14 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 		}
 	}
 
-	err := SetAppliedIndex(batch, fsm.lastAppliedIndex)
+	err := SetAppliedIndex(batch, fsm.State.LastAppliedIndex)
 	if err != nil {
 		_ = batch.Cancel()
 
 		return nil, fmt.Errorf("setting applied index: %w", err)
 	}
 
-	err = setLastAppliedTimestamp(batch, fsm.lastAppliedTimestamp)
+	err = setLastAppliedTimestamp(batch, fsm.State.LastAppliedTimestamp)
 	if err != nil {
 		_ = batch.Cancel()
 
@@ -658,8 +656,8 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 	pb := &PreparedBatch{
 		batch:                batch,
 		Result:               ret,
-		lastAppliedIndex:     fsm.lastAppliedIndex,
-		lastSequenceID:       fsm.nextSequenceID - 1,
+		lastAppliedIndex:     fsm.State.LastAppliedIndex,
+		lastSequenceID:       fsm.State.NextSequenceID - 1,
 		needsArchiveDispatch: needsArchiveDispatch,
 		needsColdCompaction:  needsColdCompaction,
 		eventsConfigChanged:  eventsConfigChanged,
@@ -876,7 +874,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet, batch *dal.WriteSe
 			"gen1":                fsm.Registry.Cache.BaseIndex.Gen1,
 			"currentGeneration":   fsm.Registry.Cache.CurrentGeneration(),
 			"generationThreshold": fsm.Registry.Cache.GenerationThreshold(),
-			"lastAppliedIndex":    fsm.lastAppliedIndex,
+			"lastAppliedIndex":    fsm.State.LastAppliedIndex,
 			"preloadCount":        len(preloadSet.GetPreloads()),
 			"touchCount":          len(preloadSet.GetTouches()),
 		}
@@ -889,7 +887,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet, batch *dal.WriteSe
 			fsm.Registry.Cache.BaseIndex.Gen0,
 			fsm.Registry.Cache.BaseIndex.Gen1,
 			fsm.Registry.Cache.CurrentGeneration(),
-			fsm.lastAppliedIndex,
+			fsm.State.LastAppliedIndex,
 		)
 	}
 
@@ -918,20 +916,6 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet, batch *dal.WriteSe
 	}
 
 	return nil
-}
-
-// hlcTimestamp advances the Hybrid Logical Clock and returns the effective timestamp.
-// It guarantees monotonicity: each returned timestamp is strictly greater than the previous one.
-// If the proposal date is ahead of the last applied timestamp, it is used directly.
-// Otherwise, the last applied timestamp is incremented by 1 microsecond.
-func (fsm *Machine) hlcTimestamp(proposalDate *commonpb.Timestamp) *commonpb.Timestamp {
-	if proposalDate.GetData() > fsm.lastAppliedTimestamp {
-		fsm.lastAppliedTimestamp = proposalDate.GetData()
-	} else {
-		fsm.lastAppliedTimestamp++
-	}
-
-	return &commonpb.Timestamp{Data: fsm.lastAppliedTimestamp}
 }
 
 // authorizedInMaintenanceMode returns true if every order in the batch is a SetMaintenanceMode order.
@@ -1068,7 +1052,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	}
 
 	// Compute the effective date using the HLC to guarantee monotonicity
-	effectiveDate := fsm.hlcTimestamp(proposal.GetDate())
+	effectiveDate := &commonpb.Timestamp{Data: fsm.State.AdvanceHLC(proposal.GetDate().GetData())}
 
 	if err := fsm.ensurePeriodBootstrapped(effectiveDate, batch); err != nil {
 		return nil, err
@@ -1103,20 +1087,18 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// Compute audit hash synchronously. The hash covers the orders (source of
 	// truth), not the logs (deterministic derivation).
 	var auditHash []byte
-	fsm.auditHashBuf, auditHash = fsm.hashGenerator.Compute(fsm.auditHashBuf, fsm.lastAuditHash, orders)
+	fsm.auditHashBuf, auditHash = fsm.State.HashGenerator.Compute(fsm.auditHashBuf, fsm.State.LastAuditHash, orders)
 
 	// Helper to build and write the audit entry (shared by success and failure paths).
 	writeAuditEntry := func(entry *auditpb.AuditEntry, logs []*raftcmdpb.CreatedLogOrReference, label string) error {
-		entry.Sequence = fsm.nextAuditSequenceID
 		entry.Timestamp = effectiveDate
 		entry.ProposalId = proposal.GetId()
 		entry.OrderCount = uint32(len(orders))
 		entry.Ledgers = extractLedgers(orders)
 		entry.Hash = auditHash
-		entry.HashVersion = uint32(fsm.hashGenerator.Algorithm())
+		entry.HashVersion = uint32(fsm.State.HashGenerator.Algorithm())
 		entry.CallerSnapshot = proposal.GetCallerSnapshot()
-		fsm.lastAuditHash = entry.GetHash()
-		fsm.nextAuditSequenceID++
+		entry.Sequence = fsm.State.AppendAuditEntry(auditHash)
 
 		if appendErr := appendAuditEntries(batch, entry); appendErr != nil {
 			return fmt.Errorf("appending audit entry for %s: %w", label, appendErr)
@@ -1209,8 +1191,8 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// Capture the audit hash BEFORE writing this proposal's audit entry.
 	// This is the hash of the predecessor — used as LastAuditHash on the
 	// period so the checker can chain-verify from the first non-purged entry.
-	preAuditHash := make([]byte, len(fsm.lastAuditHash))
-	copy(preAuditHash, fsm.lastAuditHash)
+	preAuditHash := make([]byte, len(fsm.State.LastAuditHash))
+	copy(preAuditHash, fsm.State.LastAuditHash)
 
 	// SUCCESS: write audit entry with batch-level side effects.
 	minLogSeq, maxLogSeq := extractLogSequenceRange(logs)
@@ -1327,6 +1309,33 @@ func (fsm *Machine) SealRequestCh() *worker.Channel[SealRequest] {
 // are stopped and before the Pebble store is closed.
 func (fsm *Machine) StopBackgroundTasks() {
 	fsm.cacheSnapshotter.Stop()
+}
+
+// DrainBackgroundChannels empties every background-request channel without
+// blocking. Called by Synchronizer.SynchronizeWithLeader before the leader's
+// checkpoint is installed: messages enqueued by the FSM hot path pre-sync
+// reference period IDs, sequence ranges and checkpoint paths that may no
+// longer line up with the post-sync FSMState. Fresh requests are re-pushed
+// from durable state by Recovery.DispatchArchiveRequests /
+// DispatchMetadataConversionRequests when leadership is (re)acquired, and by
+// the per-worker reconciliation tickers in the meantime.
+func (fsm *Machine) DrainBackgroundChannels() {
+	fsm.sealRequestCh.Drain()
+	fsm.archiveRequestCh.Drain()
+	fsm.metadataConvertRequestCh.Drain()
+	drainSignalChan(fsm.coldCompactionCh)
+	drainSignalChan(fsm.bloomRebuildCh)
+}
+
+// drainSignalChan is the plain-channel counterpart of worker.Channel.Drain.
+func drainSignalChan[T any](ch chan T) {
+	for {
+		select {
+		case <-ch:
+		default:
+			return
+		}
+	}
 }
 
 // ArchiveRequestCh returns the channel used to dispatch archive requests to the Archiver.
@@ -1449,6 +1458,20 @@ func (fsm *Machine) ClosingPeriodByID(id uint64) (*commonpb.Period, bool) {
 	return fsm.Periods.ClosingPeriodByID(id)
 }
 
+// ArchivingPeriodByID returns the period with the given ID if it is currently
+// in ARCHIVING status. Used by the Archiver to gate consumption of stale
+// requests after a follower sync: if the leader has already advanced the
+// period to ARCHIVED (or further), the request must not produce a cold-storage
+// write — the data ranges it carries no longer exist in the restored Pebble.
+func (fsm *Machine) ArchivingPeriodByID(id uint64) (*commonpb.Period, bool) {
+	p, ok := fsm.Periods.GetPeriodByID(id)
+	if !ok || p.GetStatus() != commonpb.PeriodStatus_PERIOD_ARCHIVING {
+		return nil, false
+	}
+
+	return p, true
+}
+
 // PeriodSchedule returns the current period schedule cron expression.
 // Empty string means the schedule is disabled.
 func (fsm *Machine) PeriodSchedule() string {
@@ -1466,7 +1489,7 @@ func (fsm *Machine) QueryCheckpointSchedule() string {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
 
-	return fsm.queryCheckpointSchedule
+	return fsm.State.QueryCheckpointSchedule
 }
 
 // SetQueryCheckpointSchedule updates the query checkpoint schedule and fires the changed signal.
@@ -1481,7 +1504,7 @@ func (fsm *Machine) SetQueryCheckpointSchedule(s string) {
 // setQueryCheckpointSchedule is the lock-free version for use within ApplyEntries
 // where fsm.mu is already held.
 func (fsm *Machine) setQueryCheckpointSchedule(s string) {
-	fsm.queryCheckpointSchedule = s
+	fsm.State.QueryCheckpointSchedule = s
 	fsm.queryCheckpointScheduleChanged.Notify()
 }
 

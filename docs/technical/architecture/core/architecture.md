@@ -139,10 +139,10 @@ The FSM (Finite State Machine) handles all commands:
 
 ### State Structure
 
-The FSM maintains a unified state containing all ledgers. The actual in-memory state lives in the `Machine` struct (`internal/infra/state/machine.go`) and its `StateRegistry` (`internal/infra/state/registry.go`). Key fields include:
+The FSM maintains a unified state containing all ledgers. The actual in-memory state lives in the `Machine` struct (`internal/infra/state/machine.go`) and its `StateRegistry` (`internal/infra/state/registry.go`). FSM-level scalar fields — those recovered from Pebble at boot or follower sync — live in `Machine.State *FSMState` (`internal/infra/state/fsmstate.go`); sub-trackers stay on `Machine` directly. Key fields include:
 
-- `nextSequenceID` -- next global log sequence number
-- `lastAppliedIndex` / `lastAppliedTimestamp` -- last Raft entry applied
+- `State.NextSequenceID` -- next global log sequence number
+- `State.LastAppliedIndex` / `State.LastAppliedTimestamp` -- last Raft entry applied
 - `Registry.Boundaries` -- per-ledger `LedgerBoundaries` proto (next log ID, next transaction ID) stored as a KeyStore attribute
 - `Registry.Ledgers` -- per-ledger `LedgerInfo` tracked via KeyStore
 - `Registry.Reversions` -- per-ledger reversion bitsets

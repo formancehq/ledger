@@ -77,8 +77,8 @@ func TestPrepareEntries_RejectsCheckpointMidBatchLeavesStateUntouched(t *testing
 	_, err := machine.ApplyEntries(ctx, dataStore, makeEntry(t, 1, makeProposal(1, createLedgerOrder("ledger-pre"))))
 	require.NoError(t, err)
 
-	indexBefore := machine.lastAppliedIndex
-	sequenceBefore := machine.nextSequenceID
+	indexBefore := machine.State.LastAppliedIndex
+	sequenceBefore := machine.State.NextSequenceID
 
 	checkpointEntry := makeEntry(t, 2, makeProposal(10,
 		&raftcmdpb.Order{Type: &raftcmdpb.Order_CreateQueryCheckpoint{CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{}}},
@@ -89,9 +89,9 @@ func TestPrepareEntries_RejectsCheckpointMidBatchLeavesStateUntouched(t *testing
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "applier must pre-split")
 
-	require.Equal(t, indexBefore, machine.lastAppliedIndex,
+	require.Equal(t, indexBefore, machine.State.LastAppliedIndex,
 		"lastAppliedIndex must not advance when PrepareEntries rejects a malformed batch upfront")
-	require.Equal(t, sequenceBefore, machine.nextSequenceID,
+	require.Equal(t, sequenceBefore, machine.State.NextSequenceID,
 		"nextSequenceID must not advance when PrepareEntries rejects a malformed batch upfront")
 }
 

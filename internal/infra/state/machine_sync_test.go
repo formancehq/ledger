@@ -87,3 +87,57 @@ func TestSynchronizeWithLeader(t *testing.T) {
 	_, err = query.GetLedgerByName(ctx, followerStore, "follower-ledger")
 	require.ErrorIs(t, err, domain.ErrNotFound, "stale follower-ledger must be gone after sync")
 }
+
+// TestSynchronizeWithLeaderDrainsBackgroundChannels asserts that
+// SynchronizeWithLeader empties the FSM's background-request channels before
+// installing the leader's checkpoint. Pre-sync messages reference period IDs,
+// sequence ranges and checkpoint paths from the follower's pre-sync state; if
+// they survived the sync, the Archiver could write an empty SST over the
+// leader's correct cold-storage archive (see #447 PR body).
+func TestSynchronizeWithLeaderDrainsBackgroundChannels(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	meter := noop.NewMeterProvider().Meter("test")
+	logger := logging.FromContext(logging.TestingContext())
+
+	leaderStore, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = leaderStore.Close() })
+
+	leaderBatch := leaderStore.OpenWriteSession()
+	require.NoError(t, SetAppliedIndex(leaderBatch, 50))
+	require.NoError(t, leaderBatch.Commit())
+
+	_, err = leaderStore.CreateSnapshot()
+	require.NoError(t, err)
+
+	leaderCheckpointPath, err := leaderStore.GetCheckpointPath(1)
+	require.NoError(t, err)
+
+	followerMachine, followerStore, _ := newTestMachine(t)
+
+	// Stuff every background channel with stale pre-sync work — what would
+	// happen if the follower had applied a ClosePeriod / ArchivePeriod /
+	// SetMetadataFieldType / period purge / cluster-config-change locally
+	// just before being told to sync.
+	require.True(t, followerMachine.sealRequestCh.TrySend(SealRequest{PeriodID: 99, CloseSequence: 999, CheckpointPath: "/tmp/stale"}, "stale-seal"))
+	require.True(t, followerMachine.archiveRequestCh.TrySend(ArchiveRequest{PeriodID: 99, StartSequence: 1, CloseSequence: 999}, "stale-archive"))
+	require.True(t, followerMachine.metadataConvertRequestCh.TrySend(MetadataConvertRequest{LedgerName: "gone", Key: "stale"}, "stale-convert"))
+	followerMachine.coldCompactionCh <- struct{}{}
+	followerMachine.bloomRebuildCh <- "stale reason"
+
+	followerRecovery := NewRecovery(followerMachine, followerStore)
+	followerSync := NewSynchronizer(followerMachine, followerRecovery, dal.NewIncomingRestoreFactory(followerStore))
+	require.NoError(t, followerSync.InstallSnapshot(ctx, raftpb.Snapshot{Metadata: raftpb.SnapshotMetadata{Index: 50}}))
+
+	_, err = followerSync.SynchronizeWithLeader(ctx, &copyDirFetcher{srcDir: leaderCheckpointPath}, nil)
+	require.NoError(t, err)
+
+	// All channels must now be empty. Non-blocking receive should hit default.
+	require.Len(t, followerMachine.sealRequestCh.Receive(), 0, "sealRequestCh leaked stale entry")
+	require.Len(t, followerMachine.archiveRequestCh.Receive(), 0, "archiveRequestCh leaked stale entry")
+	require.Len(t, followerMachine.metadataConvertRequestCh.Receive(), 0, "metadataConvertRequestCh leaked stale entry")
+	require.Len(t, followerMachine.coldCompactionCh, 0, "coldCompactionCh leaked stale signal")
+	require.Len(t, followerMachine.bloomRebuildCh, 0, "bloomRebuildCh leaked stale reason")
+}
