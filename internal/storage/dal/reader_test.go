@@ -16,7 +16,7 @@ func TestReadHandle_GetAndClose(t *testing.T) {
 	s := newTestStore(t)
 
 	// Write data
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte("rh-key"), []byte("rh-val")))
 	require.NoError(t, batch.Commit())
 
@@ -42,7 +42,7 @@ func TestReadHandle_NewIter(t *testing.T) {
 	s := newTestStore(t)
 
 	// Write data
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte("rh-a"), []byte("1")))
 	require.NoError(t, batch.SetBytes([]byte("rh-b"), []byte("2")))
 	require.NoError(t, batch.Commit())
@@ -76,7 +76,7 @@ func TestReadHandle_PointInTimeSnapshot(t *testing.T) {
 	s := newTestStore(t)
 
 	// Write initial data
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte("snap-k"), []byte("v1")))
 	require.NoError(t, batch.Commit())
 
@@ -87,7 +87,7 @@ func TestReadHandle_PointInTimeSnapshot(t *testing.T) {
 	defer func() { _ = rh.Close() }()
 
 	// Write more data AFTER the read handle was created
-	batch2 := s.NewBatch()
+	batch2 := s.OpenWriteSession()
 	require.NoError(t, batch2.SetBytes([]byte("snap-k"), []byte("v2")))
 	require.NoError(t, batch2.Commit())
 
@@ -104,7 +104,7 @@ func TestStore_Get(t *testing.T) {
 	s := newTestStore(t)
 
 	// Write data
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte("store-get"), []byte("value")))
 	require.NoError(t, batch.Commit())
 

@@ -17,7 +17,8 @@ func TestHLCTimestamp(t *testing.T) {
 	t.Run("proposal date ahead of last applied uses proposal date", func(t *testing.T) {
 		t.Parallel()
 
-		machine, _, _ := newTestMachine(t)
+		machine, dataStore, _ := newTestMachine(t)
+		_ = dataStore
 		machine.lastAppliedTimestamp = 1000
 
 		result := machine.hlcTimestamp(&commonpb.Timestamp{Data: 2000})
@@ -29,7 +30,8 @@ func TestHLCTimestamp(t *testing.T) {
 	t.Run("proposal date behind last applied increments by 1", func(t *testing.T) {
 		t.Parallel()
 
-		machine, _, _ := newTestMachine(t)
+		machine, dataStore, _ := newTestMachine(t)
+		_ = dataStore
 		machine.lastAppliedTimestamp = 5000
 
 		result := machine.hlcTimestamp(&commonpb.Timestamp{Data: 3000})
@@ -41,7 +43,8 @@ func TestHLCTimestamp(t *testing.T) {
 	t.Run("proposal date equal to last applied increments by 1", func(t *testing.T) {
 		t.Parallel()
 
-		machine, _, _ := newTestMachine(t)
+		machine, dataStore, _ := newTestMachine(t)
+		_ = dataStore
 		machine.lastAppliedTimestamp = 5000
 
 		result := machine.hlcTimestamp(&commonpb.Timestamp{Data: 5000})
@@ -53,7 +56,8 @@ func TestHLCTimestamp(t *testing.T) {
 	t.Run("monotonicity across multiple proposals", func(t *testing.T) {
 		t.Parallel()
 
-		machine, _, _ := newTestMachine(t)
+		machine, dataStore, _ := newTestMachine(t)
+		_ = dataStore
 		machine.lastAppliedTimestamp = 0
 
 		// Simulate a sequence of proposals with varying dates
@@ -88,12 +92,13 @@ func TestHLCTimestampIntegration(t *testing.T) {
 		t.Parallel()
 
 		machine, dataStore, _ := newTestMachine(t)
+		_ = dataStore
 		ctx := context.Background()
 
 		const ledgerName = "hlc-test"
 
 		// Create ledger with a high timestamp
-		result, err := machine.ApplyEntries(ctx,
+		result, err := machine.ApplyEntries(ctx, dataStore,
 			makeEntry(t, 1, &raftcmdpb.Proposal{
 				Id:     1,
 				Orders: []*raftcmdpb.Order{createLedgerOrder(ledgerName)},
@@ -111,7 +116,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 				newPosting("world", "user:alice", "EUR", 100),
 			),
 		}
-		result, err = machine.ApplyEntries(ctx,
+		result, err = machine.ApplyEntries(ctx, dataStore,
 			makeEntry(t, 2, &raftcmdpb.Proposal{
 				Id:      2,
 				Orders:  txOrders,
@@ -137,12 +142,13 @@ func TestHLCTimestampIntegration(t *testing.T) {
 		t.Parallel()
 
 		machine, dataStore, _ := newTestMachine(t)
+		_ = dataStore
 		ctx := context.Background()
 
 		const ledgerName = "hlc-ahead-test"
 
 		// Create ledger with timestamp 1000
-		result, err := machine.ApplyEntries(ctx,
+		result, err := machine.ApplyEntries(ctx, dataStore,
 			makeEntry(t, 1, &raftcmdpb.Proposal{
 				Id:     1,
 				Orders: []*raftcmdpb.Order{createLedgerOrder(ledgerName)},
@@ -158,7 +164,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 				newPosting("world", "user:alice", "EUR", 100),
 			),
 		}
-		result, err = machine.ApplyEntries(ctx,
+		result, err = machine.ApplyEntries(ctx, dataStore,
 			makeEntry(t, 2, &raftcmdpb.Proposal{
 				Id:      2,
 				Orders:  txOrders,
@@ -181,12 +187,13 @@ func TestHLCTimestampIntegration(t *testing.T) {
 		t.Parallel()
 
 		machine, dataStore, _ := newTestMachine(t)
+		_ = dataStore
 		ctx := context.Background()
 
 		const ledgerName = "hlc-snapshot-test"
 
 		// Apply an entry to advance the HLC
-		result, err := machine.ApplyEntries(ctx,
+		result, err := machine.ApplyEntries(ctx, dataStore,
 			makeEntry(t, 1, &raftcmdpb.Proposal{
 				Id:     1,
 				Orders: []*raftcmdpb.Order{createLedgerOrder(ledgerName)},
@@ -205,13 +212,14 @@ func TestHLCTimestampIntegration(t *testing.T) {
 	t.Run("monotonicity across multiple entries", func(t *testing.T) {
 		t.Parallel()
 
-		machine, _, _ := newTestMachine(t)
+		machine, dataStore, _ := newTestMachine(t)
+		_ = dataStore
 		ctx := context.Background()
 
 		const ledgerName = "hlc-mono-test"
 
 		// Create ledger
-		result, err := machine.ApplyEntries(ctx,
+		result, err := machine.ApplyEntries(ctx, dataStore,
 			makeEntry(t, 1, &raftcmdpb.Proposal{
 				Id:     1,
 				Orders: []*raftcmdpb.Order{createLedgerOrder(ledgerName)},
@@ -232,7 +240,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 					newPosting("world", "user:alice", "EUR", 10),
 				),
 			}
-			result, err := machine.ApplyEntries(ctx,
+			result, err := machine.ApplyEntries(ctx, dataStore,
 				makeEntry(t, uint64(i+2), &raftcmdpb.Proposal{
 					Id:      uint64(i + 2),
 					Orders:  txOrders,

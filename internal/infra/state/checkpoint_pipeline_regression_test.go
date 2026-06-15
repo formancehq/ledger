@@ -48,18 +48,19 @@ func TestPipelinedApplyWithCheckpointDoesNotDiverge(t *testing.T) {
 	c, err := cache.New(1000, meter)
 	require.NoError(t, err)
 
+	reg := NewStateRegistry(c, attributes.New(), 0)
+	snap := NewCacheSnapshotter(logger, reg, nil)
 	machine, err := NewMachine(
-		logger, dataStore, meter, c, attributes.New(),
+		logger, reg, snap, dataStore, dal.NewSentinelFactory(dataStore, true), meter,
 		keystore.NewKeyStore(), NewSharedState(), noopNotifier{}, nil,
 		"test-cluster",
 		0,
-		true, // sentinelMode ON — exercises verifyPostCommitVolumes
-		0,
 	)
 	require.NoError(t, err)
+	require.NoError(t, NewRecovery(machine, dataStore).RecoverState())
 
 	// Batch 1: a normal CreateLedger.
-	_, err = machine.ApplyEntries(context.Background(),
+	_, err = machine.ApplyEntries(context.Background(), dataStore,
 		makeEntry(t, 1, makeProposal(1, createLedgerOrder("ledger-a"))),
 	)
 	require.NoError(t, err)
@@ -72,7 +73,7 @@ func TestPipelinedApplyWithCheckpointDoesNotDiverge(t *testing.T) {
 		&raftcmdpb.Order{Type: &raftcmdpb.Order_CreateQueryCheckpoint{CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{}}},
 	))
 
-	result, err := machine.ApplyEntries(context.Background(), createOther, checkpoint)
+	result, err := machine.ApplyEntries(context.Background(), dataStore, createOther, checkpoint)
 	require.NoError(t, err, "pipelined apply with trigger-as-last-entry must commit without sentinel divergence")
 	require.True(t, result.CheckpointRequired)
 	require.NotZero(t, result.QueryCheckpointID)
@@ -86,10 +87,10 @@ func TestPipelinedApplyWithCheckpointDoesNotDiverge(t *testing.T) {
 func TestPrepareEntries_RejectsTwoCheckpointsSameBatch(t *testing.T) {
 	t.Parallel()
 
-	machine, _, _ := newTestMachine(t)
+	machine, dataStore, _ := newTestMachine(t)
 	ctx := context.Background()
 
-	_, err := machine.ApplyEntries(ctx, makeEntry(t, 1, makeProposal(1, createLedgerOrder("ledger-1"))))
+	_, err := machine.ApplyEntries(ctx, dataStore, makeEntry(t, 1, makeProposal(1, createLedgerOrder("ledger-1"))))
 	require.NoError(t, err)
 
 	chkptOrder := func() *raftcmdpb.Order {
@@ -99,7 +100,7 @@ func TestPrepareEntries_RejectsTwoCheckpointsSameBatch(t *testing.T) {
 	first := makeEntry(t, 2, makeProposal(10, chkptOrder()))
 	second := makeEntry(t, 3, makeProposal(11, chkptOrder()))
 
-	_, err = machine.PrepareEntries(ctx, first, second)
+	_, err = machine.PrepareEntries(ctx, dataStore, first, second)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "applier must pre-split")
 }

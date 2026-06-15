@@ -58,7 +58,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 	needsPersist := false
 	startCursor := cursor
 	lastProgressLog := time.Now()
-	persistAuditProgress := func(batch *dal.Batch, lastProcessedSeq uint64) error {
+	persistAuditProgress := func(batch *dal.WriteSession, lastProcessedSeq uint64) error {
 		audit.advanceBefore(lastProcessedSeq + 1)
 		if auditSeq := audit.resumeSequence(); auditSeq > b.lastAuditSeq {
 			if err := b.readStore.WriteAuditProgress(batch, auditSeq); err != nil {

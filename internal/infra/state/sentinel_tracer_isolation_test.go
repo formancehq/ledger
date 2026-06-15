@@ -39,18 +39,19 @@ func TestSentinelTracerIsolatedAcrossBatches(t *testing.T) {
 	c, err := cache.New(1000, meter)
 	require.NoError(t, err)
 
+	reg := NewStateRegistry(c, attributes.New(), 0)
+	snap := NewCacheSnapshotter(logger, reg, nil)
 	machine, err := NewMachine(
-		logger, dataStore, meter, c, attributes.New(),
+		logger, reg, snap, dataStore, dal.NewSentinelFactory(dataStore, true), meter,
 		keystore.NewKeyStore(), NewSharedState(), noopNotifier{}, nil,
 		"test-cluster",
 		0,
-		true, // sentinelMode
-		0,
 	)
 	require.NoError(t, err)
+	require.NoError(t, NewRecovery(machine, dataStore).RecoverState())
 
 	// PrepareEntries #1 carries one entry. Capture its tracer pointer.
-	pb1, err := machine.PrepareEntries(context.Background(),
+	pb1, err := machine.PrepareEntries(context.Background(), dataStore,
 		makeEntry(t, 1, makeProposal(1, createLedgerOrder("ledger-1"))),
 	)
 	require.NoError(t, err)
@@ -65,7 +66,7 @@ func TestSentinelTracerIsolatedAcrossBatches(t *testing.T) {
 	// because PrepareEntries #2 allocates a brand-new tracer.
 	require.NoError(t, machine.CommitPreparedBatch(context.Background(), pb1))
 
-	pb2, err := machine.PrepareEntries(context.Background(),
+	pb2, err := machine.PrepareEntries(context.Background(), dataStore,
 		makeEntry(t, 2, makeProposal(2, createLedgerOrder("ledger-2"))),
 	)
 	require.NoError(t, err)

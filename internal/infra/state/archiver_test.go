@@ -172,7 +172,7 @@ func TestArchiverArchivesAndProposes(t *testing.T) {
 	t.Cleanup(func() { _ = dataStore.Close() })
 
 	// Store a log so IterateColdKVPairs finds something
-	batch := dataStore.NewBatch()
+	batch := dataStore.OpenWriteSession()
 	require.NoError(t, AppendLogs(batch, []*commonpb.Log{{
 		Sequence: 1,
 		Payload:  &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "test", CreatedAt: commonpb.NewTimestamp(libtime.Now())}}},
@@ -365,7 +365,7 @@ func TestArchiverNonLeaderRetries(t *testing.T) {
 	isLeader.Store(true)
 
 	// Store a log so buildArchive has data
-	batch := dataStore.NewBatch()
+	batch := dataStore.OpenWriteSession()
 	require.NoError(t, AppendLogs(batch, []*commonpb.Log{{
 		Sequence: 1,
 		Payload:  &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "test", CreatedAt: commonpb.NewTimestamp(libtime.Now())}}},
@@ -391,7 +391,7 @@ func TestArchiverSSTRoundtrip(t *testing.T) {
 	t.Cleanup(func() { _ = dataStore.Close() })
 
 	// Store a log so IterateColdKVPairs finds something
-	batch := dataStore.NewBatch()
+	batch := dataStore.OpenWriteSession()
 	require.NoError(t, AppendLogs(batch, []*commonpb.Log{{
 		Sequence: 1,
 		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
@@ -467,7 +467,7 @@ func archiveRequestForTest(t *testing.T) (*dal.Store, ArchiveRequest) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = dataStore.Close() })
 
-	batch := dataStore.NewBatch()
+	batch := dataStore.OpenWriteSession()
 	require.NoError(t, AppendLogs(batch, []*commonpb.Log{{
 		Sequence: 1,
 		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{

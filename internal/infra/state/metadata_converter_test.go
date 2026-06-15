@@ -39,7 +39,7 @@ func newConverterTestStore(t *testing.T) *dal.Store {
 func registerLedgerWithSchema(t *testing.T, s *dal.Store, name string, schema *commonpb.MetadataSchema) {
 	t.Helper()
 
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	err := SaveLedger(batch, &commonpb.LedgerInfo{
 		Name:           name,
 		CreatedAt:      commonpb.NewTimestamp(libtime.Now()),

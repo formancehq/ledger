@@ -36,7 +36,7 @@ func RebuildDelta(
 	fromAuditSeq uint64,
 ) error {
 	attrs := attributes.New()
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 
 	writer := &attributeReplayWriter{
 		store:          store,
@@ -313,7 +313,7 @@ func RebuildDelta(
 				return fmt.Errorf("committing batch at log %d: %w", seq, err)
 			}
 
-			batch = store.NewBatch()
+			batch = store.OpenWriteSession()
 			writer.batch = batch
 			clear(writer.pendingVolumes)
 
@@ -445,7 +445,7 @@ func seedLedgerContext(
 // Pebble attributes via Attribute[V].Set/Get/Delete.
 type attributeReplayWriter struct {
 	store          *dal.Store
-	batch          *dal.Batch
+	batch          *dal.WriteSession
 	volume         *attributes.Attribute[*raftcmdpb.VolumePair]
 	metadata       *attributes.Attribute[*commonpb.MetadataValue]
 	tx             *attributes.Attribute[*commonpb.TransactionState]

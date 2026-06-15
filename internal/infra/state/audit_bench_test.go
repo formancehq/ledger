@@ -87,7 +87,7 @@ func BenchmarkAuditWrite(b *testing.B) {
 					},
 				}
 
-				batch := store.NewBatch()
+				batch := store.OpenWriteSession()
 
 				if batchErr := appendAuditEntries(batch, entry); batchErr != nil {
 					b.Fatal(batchErr)
@@ -128,7 +128,7 @@ func BenchmarkAuditWrite(b *testing.B) {
 					},
 				}
 
-				batch := store.NewBatch()
+				batch := store.OpenWriteSession()
 
 				if batchErr := appendAuditEntries(batch, header); batchErr != nil {
 					b.Fatal(batchErr)

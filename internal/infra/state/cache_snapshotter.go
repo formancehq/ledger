@@ -53,17 +53,17 @@ type cacheSnapshotSlot interface {
 	// CacheType returns the Pebble attribute prefix byte for this cache type.
 	CacheType() byte
 	// Persist writes all entries from the given generation to the Pebble batch.
-	Persist(batch *dal.Batch, genByte byte, genIndex int) error
+	Persist(batch *dal.WriteSession, genByte byte, genIndex int) error
 	// RestoreEntry returns a function that restores a single entry into the given generation.
 	RestoreEntry(genIndex int) func(u128 attributes.U128, rawValue []byte) error
 	// MirrorTouch promotes id from gen1 to gen0 in-memory and mirrors the
 	// new gen0 entry to 0xFF. No-op if gen0 already has the key or the key
 	// is in neither generation.
-	MirrorTouch(batch *dal.Batch, gen0Byte byte, id attributes.U128) error
+	MirrorTouch(batch *dal.WriteSession, gen0Byte byte, id attributes.U128) error
 	// MirrorPreload puts value into both in-memory generations and mirrors
 	// to 0xFF at both byte positions. value is type-erased; the concrete
 	// implementation re-asserts to V.
-	MirrorPreload(batch *dal.Batch, gen0Byte, gen1Byte byte, attrID *raftcmdpb.AttributeID, value any) error
+	MirrorPreload(batch *dal.WriteSession, gen0Byte, gen1Byte byte, attrID *raftcmdpb.AttributeID, value any) error
 	// IterKeys iterates all U128 keys in the given generation.
 	IterKeys(genIndex int) iter.Seq[attributes.U128]
 }
@@ -106,11 +106,11 @@ func (s *protoSnapshotSlot[V]) selectGen(genIndex int) kv.KV[attributes.U128, at
 	return s.ac.Gen1()
 }
 
-func (s *protoSnapshotSlot[V]) Persist(batch *dal.Batch, genByte byte, genIndex int) error {
+func (s *protoSnapshotSlot[V]) Persist(batch *dal.WriteSession, genByte byte, genIndex int) error {
 	return persistLeanProtoEntries(batch, genByte, s.cacheType, s.selectGen(genIndex))
 }
 
-func (s *protoSnapshotSlot[V]) MirrorTouch(batch *dal.Batch, gen0Byte byte, id attributes.U128) error {
+func (s *protoSnapshotSlot[V]) MirrorTouch(batch *dal.WriteSession, gen0Byte byte, id attributes.U128) error {
 	// Skip when gen0 already holds the key — Touch is a no-op then, and
 	// the 0xFF gen0Byte row may hold a fresher in-batch Merge value.
 	if _, ok := s.ac.Gen0().Get(id); ok {
@@ -150,7 +150,7 @@ func (s *protoSnapshotSlot[V]) MirrorTouch(batch *dal.Batch, gen0Byte byte, id a
 }
 
 func (s *protoSnapshotSlot[V]) MirrorPreload(
-	batch *dal.Batch,
+	batch *dal.WriteSession,
 	gen0Byte, gen1Byte byte,
 	attrID *raftcmdpb.AttributeID,
 	value any,
@@ -244,9 +244,16 @@ func newProtoSnapshotSlot[V interface {
 // CacheSnapshotter handles persisting and restoring the in-memory cache
 // (generations, reversions, bloom filters) to/from Pebble under the 0xFF prefix.
 // Extracted from Machine to isolate pure IO serialization logic.
+//
+// The snapshotter does NOT retain a dal.RecoveryReader: Machine holds a
+// snapshotter as a hot-path field (for MirrorTouch / MirrorPreload, which are
+// pure write operations), so a reader stored here would re-introduce indirect
+// Pebble-read access from the hot path. Reader-bearing methods
+// (RestoreFromStore, StartAsyncBloomPopulate, hasPersistedBloomBlocks) accept
+// the reader as a parameter and are only called from non-hot-path contexts
+// (Recovery, bootstrap).
 type CacheSnapshotter struct {
 	logger       logging.Logger
-	dataStore    *dal.Store
 	registry     *StateRegistry
 	bloomFilters *bloom.FilterSet
 	slots        []cacheSnapshotSlot
@@ -261,7 +268,7 @@ type CacheSnapshotter struct {
 }
 
 // NewCacheSnapshotter creates a CacheSnapshotter.
-func NewCacheSnapshotter(logger logging.Logger, dataStore *dal.Store, registry *StateRegistry, bloomFilters *bloom.FilterSet) *CacheSnapshotter {
+func NewCacheSnapshotter(logger logging.Logger, registry *StateRegistry, bloomFilters *bloom.FilterSet) *CacheSnapshotter {
 	c := registry.Cache
 
 	volumes := newProtoSnapshotSlot(dal.SubAttrVolume, c.Volumes, func() *raftcmdpb.VolumePair { return &raftcmdpb.VolumePair{} })
@@ -278,7 +285,6 @@ func NewCacheSnapshotter(logger logging.Logger, dataStore *dal.Store, registry *
 
 	return &CacheSnapshotter{
 		logger:       logger,
-		dataStore:    dataStore,
 		registry:     registry,
 		bloomFilters: bloomFilters,
 		slots: []cacheSnapshotSlot{
@@ -306,7 +312,7 @@ func NewCacheSnapshotter(logger logging.Logger, dataStore *dal.Store, registry *
 // MirrorTouch performs an in-memory Touch and mirrors the gen0 promotion
 // to 0xFF, so a restart restores the entry into the same generation it
 // occupies in memory. gen0Byte = currentGeneration % 2.
-func (s *CacheSnapshotter) MirrorTouch(batch *dal.Batch, attrType byte, gen0Byte byte, id attributes.U128) error {
+func (s *CacheSnapshotter) MirrorTouch(batch *dal.WriteSession, attrType byte, gen0Byte byte, id attributes.U128) error {
 	slot, ok := s.touchSlots[attrType]
 	if !ok {
 		return nil
@@ -318,7 +324,7 @@ func (s *CacheSnapshotter) MirrorTouch(batch *dal.Batch, attrType byte, gen0Byte
 // MirrorPreload populates both in-memory generations and mirrors to 0xFF
 // at both byte positions, matching what preloadToCache used to do
 // in-memory only.
-func (s *CacheSnapshotter) MirrorPreload(batch *dal.Batch, gen0Byte, gen1Byte byte, preload *raftcmdpb.Preload) error {
+func (s *CacheSnapshotter) MirrorPreload(batch *dal.WriteSession, gen0Byte, gen1Byte byte, preload *raftcmdpb.Preload) error {
 	attrCode, attrID, value := extractPreload(preload)
 	if attrID == nil {
 		return nil
@@ -371,7 +377,7 @@ func extractPreload(p *raftcmdpb.Preload) (byte, *raftcmdpb.AttributeID, any) {
 // persistLeanProtoEntries writes all entries from a KV store to 0xFF in lean format.
 func persistLeanProtoEntries[V interface {
 	MarshalVT() ([]byte, error)
-}](batch *dal.Batch, genByte, cacheType byte, store kv.KV[attributes.U128, attributes.Entry[V]]) error {
+}](batch *dal.WriteSession, genByte, cacheType byte, store kv.KV[attributes.U128, attributes.Entry[V]]) error {
 	for u128, entry := range store.Iter() {
 		valueBytes, err := entry.Data.MarshalVT()
 		if err != nil {
@@ -395,13 +401,13 @@ func persistLeanProtoEntries[V interface {
 // Recovery therefore must iterate the entry rows directly and treat any missing
 // meta as "no rotation has happened yet" (currentGeneration=0, BaseIndex=0)
 // rather than gating restoration on the meta sentinel.
-func (s *CacheSnapshotter) RestoreFromStore() error {
+func (s *CacheSnapshotter) RestoreFromStore(store dal.RecoveryReader) error {
 	restoreStart := time.Now()
 
 	s.registry.Cache.Reset()
 	s.registry.Idempotency.Reset()
 
-	reader, err := s.dataStore.NewDirectReadHandle()
+	reader, err := store.NewDirectReadHandle()
 	if err != nil {
 		return fmt.Errorf("creating read handle for restore: %w", err)
 	}
@@ -421,7 +427,7 @@ func (s *CacheSnapshotter) RestoreFromStore() error {
 	// exist; default to currentGeneration=0.
 	currentGen := uint64(0)
 
-	metaVal, closer, err := s.dataStore.Get([]byte{dal.ZoneCache, dal.SubCacheMeta})
+	metaVal, closer, err := store.Get([]byte{dal.ZoneCache, dal.SubCacheMeta})
 	if err == nil {
 		meta := &raftcmdpb.CacheSnapshotMeta{}
 		if unmarshalErr := meta.UnmarshalVT(metaVal); unmarshalErr != nil {
@@ -458,7 +464,7 @@ func (s *CacheSnapshotter) RestoreFromStore() error {
 	// cache gen0+gen1 entries to fill the gap since the last rotation flush.
 	// If no persisted blocks exist (first boot), fall back to a full attribute scan.
 	if s.bloomFilters != nil {
-		s.restoreBloomFilters()
+		s.restoreBloomFilters(store)
 	}
 
 	return nil
@@ -478,7 +484,7 @@ func (s *CacheSnapshotter) restoreGeneration(reader dal.PebbleReader, genByte by
 
 	genMetaKey := []byte{dal.ZoneCache, genByte, dal.SubCacheGenMeta}
 
-	genMetaVal, closer, err := s.dataStore.Get(genMetaKey)
+	genMetaVal, closer, err := reader.Get(genMetaKey)
 	if err == nil {
 		genMeta := &raftcmdpb.CacheGenerationMeta{}
 		if unmarshalErr := genMeta.UnmarshalVT(genMetaVal); unmarshalErr != nil {
@@ -553,21 +559,24 @@ func (s *CacheSnapshotter) restoreGeneration(reader dal.PebbleReader, genByte by
 // If persisted blocks exist, loads them from Pebble and replays cache gen0+gen1
 // to fill the gap. Otherwise, falls back to a full attribute scan.
 // In both cases, IsReady() remains false until the background work completes.
-func (s *CacheSnapshotter) restoreBloomFilters() {
-	if s.hasPersistedBloomBlocks() {
-		s.runBloomTask("restore from Pebble blocks", s.bloomFilters.RestoreFromStore)
+// The store is captured by the background goroutine so it can open a fresh
+// read handle each invocation.
+func (s *CacheSnapshotter) restoreBloomFilters(store dal.RecoveryReader) {
+	if s.hasPersistedBloomBlocks(store) {
+		s.runBloomTask(store, "restore from Pebble blocks", s.bloomFilters.RestoreFromStore)
 
 		return
 	}
 
-	s.StartAsyncBloomPopulate("first boot: no persisted bloom blocks")
+	s.StartAsyncBloomPopulate(store, "first boot: no persisted bloom blocks")
 }
 
 // StartAsyncBloomPopulate interrupts any running bloom task and launches a
 // new one that populates the bloom filters from a full Pebble attribute scan.
-// Used on first boot and after bloom config changes.
-func (s *CacheSnapshotter) StartAsyncBloomPopulate(reason string) {
-	s.runBloomTask(reason, s.bloomFilters.PopulateFromStore)
+// Used on first boot and after bloom config changes. The reader is captured
+// by the goroutine; the snapshotter itself does not retain it.
+func (s *CacheSnapshotter) StartAsyncBloomPopulate(store dal.RecoveryReader, reason string) {
+	s.runBloomTask(store, reason, s.bloomFilters.PopulateFromStore)
 }
 
 // runBloomTask is the common entry point for background bloom work.
@@ -575,7 +584,7 @@ func (s *CacheSnapshotter) StartAsyncBloomPopulate(reason string) {
 // loadFn (restore or populate) via the SingleTaskExecutor. After loadFn,
 // it replays cache gen0+gen1 and marks the bloom as ready only if no
 // Rebuild occurred during the work.
-func (s *CacheSnapshotter) runBloomTask(reason string, loadFn func(context.Context, dal.PebbleReader) error) {
+func (s *CacheSnapshotter) runBloomTask(store dal.RecoveryReader, reason string, loadFn func(context.Context, dal.PebbleReader) error) {
 	s.bloomExecutor.Interrupt()
 
 	s.logger.WithFields(map[string]any{
@@ -591,7 +600,7 @@ func (s *CacheSnapshotter) runBloomTask(reason string, loadFn func(context.Conte
 		// from closing the DB while iterators are open. StopBackgroundTasks cancels
 		// the context first, so the bloom iteration exits and releases the lock
 		// before RestoreCheckpoint acquires the exclusive lock.
-		reader, err := s.dataStore.NewDirectReadHandle()
+		reader, err := store.NewDirectReadHandle()
 		if err != nil {
 			return fmt.Errorf("creating read handle for bloom task: %w", err)
 		}
@@ -634,8 +643,8 @@ func (s *CacheSnapshotter) runBloomTask(reason string, loadFn func(context.Conte
 }
 
 // hasPersistedBloomBlocks checks if any bloom block keys exist in Pebble.
-func (s *CacheSnapshotter) hasPersistedBloomBlocks() bool {
-	handle, err := s.dataStore.NewDirectReadHandle()
+func (s *CacheSnapshotter) hasPersistedBloomBlocks(store dal.RecoveryReader) bool {
+	handle, err := store.NewDirectReadHandle()
 	if err != nil {
 		return false
 	}

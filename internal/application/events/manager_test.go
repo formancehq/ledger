@@ -20,7 +20,7 @@ func saveSinkConfig(t *testing.T, s *dal.Store, config *commonpb.SinkConfig) {
 	t.Helper()
 
 	attr := attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig)
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	_, err := attr.Set(batch, domain.SinkConfigKey{Name: config.GetName()}.Bytes(), config)
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
@@ -30,7 +30,7 @@ func deleteSinkConfig(t *testing.T, s *dal.Store, name string) {
 	t.Helper()
 
 	attr := attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig)
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, attr.Delete(batch, domain.SinkConfigKey{Name: name}.Bytes()))
 	require.NoError(t, batch.Commit())
 }

@@ -12,7 +12,7 @@ import (
 )
 
 // AppendLogs appends system logs to the batch.
-func AppendLogs(b *dal.Batch, logs []*commonpb.Log) error {
+func AppendLogs(b *dal.WriteSession, logs []*commonpb.Log) error {
 	for _, log := range logs {
 		b.KeyBuilder.
 			PutZonePrefix(dal.ZoneCold, dal.SubColdLog).
@@ -29,7 +29,7 @@ func AppendLogs(b *dal.Batch, logs []*commonpb.Log) error {
 }
 
 // SaveLedger saves or updates a ledger in the store.
-func SaveLedger(b *dal.Batch, info *commonpb.LedgerInfo) error {
+func SaveLedger(b *dal.WriteSession, info *commonpb.LedgerInfo) error {
 	b.KeyBuilder.
 		PutZonePrefix(dal.ZoneGlobal, dal.SubGlobLedgerInfo).
 		PutLedgerName(info.GetName())
@@ -43,7 +43,7 @@ func SaveLedger(b *dal.Batch, info *commonpb.LedgerInfo) error {
 }
 
 // SaveNextLedgerID persists the next ledger ID counter to Pebble.
-func saveNextLedgerID(b *dal.Batch, nextID uint32) error {
+func saveNextLedgerID(b *dal.WriteSession, nextID uint32) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobNextLedgerID)
 
 	var buf [4]byte
@@ -53,7 +53,7 @@ func saveNextLedgerID(b *dal.Batch, nextID uint32) error {
 }
 
 // AppendAuditEntries appends audit entries to the batch.
-func appendAuditEntries(b *dal.Batch, entries ...*auditpb.AuditEntry) error {
+func appendAuditEntries(b *dal.WriteSession, entries ...*auditpb.AuditEntry) error {
 	for _, entry := range entries {
 		b.KeyBuilder.
 			PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).
@@ -70,7 +70,7 @@ func appendAuditEntries(b *dal.Batch, entries ...*auditpb.AuditEntry) error {
 
 // AppendAuditItems appends per-order audit items to the batch.
 // Key format: [ZoneCold][SubColdAuditItem][audit_sequence BE 8][order_index BE 4].
-func appendAuditItems(b *dal.Batch, auditSequence uint64, items ...*auditpb.AuditItem) error {
+func appendAuditItems(b *dal.WriteSession, auditSequence uint64, items ...*auditpb.AuditItem) error {
 	for _, item := range items {
 		b.KeyBuilder.
 			PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).
@@ -89,7 +89,7 @@ func appendAuditItems(b *dal.Batch, auditSequence uint64, items ...*auditpb.Audi
 // SaveSigningKey stores an Ed25519 public key in the batch.
 // The value format is [publicKey (32 bytes)][parentKeyID (UTF-8 variable)].
 // Backward-compatible: existing 32-byte values are treated as root keys (no parent).
-func SaveSigningKey(b *dal.Batch, keyID string, publicKey []byte, parentKeyID string) error {
+func SaveSigningKey(b *dal.WriteSession, keyID string, publicKey []byte, parentKeyID string) error {
 	b.KeyBuilder.
 		PutZonePrefix(dal.ZoneGlobal, dal.SubGlobSigningKey).
 		PutString(keyID)
@@ -110,7 +110,7 @@ func SaveSigningKey(b *dal.Batch, keyID string, publicKey []byte, parentKeyID st
 }
 
 // DeleteSigningKey removes a signing key from the batch.
-func DeleteSigningKey(b *dal.Batch, keyID string) error {
+func DeleteSigningKey(b *dal.WriteSession, keyID string) error {
 	b.KeyBuilder.
 		PutZonePrefix(dal.ZoneGlobal, dal.SubGlobSigningKey).
 		PutString(keyID)
@@ -124,7 +124,7 @@ func DeleteSigningKey(b *dal.Batch, keyID string) error {
 }
 
 // SaveSigningConfig stores the require-signatures flag in the batch.
-func SaveSigningConfig(b *dal.Batch, requireSignatures bool) error {
+func SaveSigningConfig(b *dal.WriteSession, requireSignatures bool) error {
 	value := []byte{0x00}
 	if requireSignatures {
 		value[0] = 0x01
@@ -139,7 +139,7 @@ func SaveSigningConfig(b *dal.Batch, requireSignatures bool) error {
 }
 
 // SaveMaintenanceMode stores the maintenance mode flag in the batch.
-func SaveMaintenanceMode(b *dal.Batch, enabled bool) error {
+func SaveMaintenanceMode(b *dal.WriteSession, enabled bool) error {
 	value := []byte{0x00}
 	if enabled {
 		value[0] = 0x01
@@ -154,12 +154,12 @@ func SaveMaintenanceMode(b *dal.Batch, enabled bool) error {
 }
 
 // SaveClusterState stores the persisted cluster state in the batch.
-func saveClusterState(b *dal.Batch, state *commonpb.PersistedClusterState) error {
+func saveClusterState(b *dal.WriteSession, state *commonpb.PersistedClusterState) error {
 	return b.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobClusterConfig}, state)
 }
 
 // SavePeriodSchedule stores the period schedule cron expression in the batch.
-func SavePeriodSchedule(b *dal.Batch, cron string) error {
+func SavePeriodSchedule(b *dal.WriteSession, cron string) error {
 	err := b.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobPeriodSchedule}, []byte(cron))
 	if err != nil {
 		return fmt.Errorf("saving period schedule: %w", err)
@@ -169,7 +169,7 @@ func SavePeriodSchedule(b *dal.Batch, cron string) error {
 }
 
 // BatchDeletePeriodSchedule removes the period schedule from the batch.
-func batchDeletePeriodSchedule(b *dal.Batch) error {
+func batchDeletePeriodSchedule(b *dal.WriteSession) error {
 	err := b.DeleteKey([]byte{dal.ZoneGlobal, dal.SubGlobPeriodSchedule})
 	if err != nil {
 		return fmt.Errorf("deleting period schedule: %w", err)
@@ -179,7 +179,7 @@ func batchDeletePeriodSchedule(b *dal.Batch) error {
 }
 
 // SaveQueryCheckpointSchedule stores the query checkpoint schedule cron expression in the batch.
-func SaveQueryCheckpointSchedule(b *dal.Batch, cron string) error {
+func SaveQueryCheckpointSchedule(b *dal.WriteSession, cron string) error {
 	err := b.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobQueryCheckpointSchedule}, []byte(cron))
 	if err != nil {
 		return fmt.Errorf("saving query checkpoint schedule: %w", err)
@@ -189,7 +189,7 @@ func SaveQueryCheckpointSchedule(b *dal.Batch, cron string) error {
 }
 
 // BatchDeleteQueryCheckpointSchedule removes the query checkpoint schedule from the batch.
-func batchDeleteQueryCheckpointSchedule(b *dal.Batch) error {
+func batchDeleteQueryCheckpointSchedule(b *dal.WriteSession) error {
 	err := b.DeleteKey([]byte{dal.ZoneGlobal, dal.SubGlobQueryCheckpointSchedule})
 	if err != nil {
 		return fmt.Errorf("deleting query checkpoint schedule: %w", err)
@@ -200,7 +200,7 @@ func batchDeleteQueryCheckpointSchedule(b *dal.Batch) error {
 
 // SaveReversionWord writes a single bitset word for a ledger.
 // Key: [0x03][0x01][ledger\x00][wordIndex BE 8 bytes] → [uint64 LE 8 bytes].
-func saveReversionWord(b *dal.Batch, ledgerID uint32, wordIndex uint64, value uint64) error {
+func saveReversionWord(b *dal.WriteSession, ledgerID uint32, wordIndex uint64, value uint64) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZonePerLedger, dal.SubPLReversions).
 		PutLedgerID(ledgerID).
 		PutUint64(wordIndex)
@@ -213,7 +213,7 @@ func saveReversionWord(b *dal.Batch, ledgerID uint32, wordIndex uint64, value ui
 }
 
 // DeleteReversionsByLedger removes all reversion words for a ledger.
-func deleteReversionsByLedger(b *dal.Batch, ledgerID uint32) error {
+func deleteReversionsByLedger(b *dal.WriteSession, ledgerID uint32) error {
 	prefix := make([]byte, 2+4)
 	prefix[0] = dal.ZonePerLedger
 	prefix[1] = dal.SubPLReversions
@@ -228,7 +228,7 @@ func deleteReversionsByLedger(b *dal.Batch, ledgerID uint32) error {
 }
 
 // SavePreparedQuery stores a prepared query in the batch.
-func SavePreparedQuery(b *dal.Batch, pq *commonpb.PreparedQuery) error {
+func SavePreparedQuery(b *dal.WriteSession, pq *commonpb.PreparedQuery) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZonePerLedger, dal.SubPLPreparedQuery).
 		PutLedgerName(pq.GetLedger()).
 		PutString(pq.GetName())
@@ -242,7 +242,7 @@ func SavePreparedQuery(b *dal.Batch, pq *commonpb.PreparedQuery) error {
 }
 
 // SaveQueryCheckpoint stores a query checkpoint state in the batch (Raft-replicated).
-func saveQueryCheckpoint(b *dal.Batch, cp *raftcmdpb.QueryCheckpointState) error {
+func saveQueryCheckpoint(b *dal.WriteSession, cp *raftcmdpb.QueryCheckpointState) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobQueryCheckpoint).
 		PutUint64(cp.GetCheckpointId())
 
@@ -255,7 +255,7 @@ func saveQueryCheckpoint(b *dal.Batch, cp *raftcmdpb.QueryCheckpointState) error
 }
 
 // DeleteQueryCheckpointFromBatch removes a query checkpoint from the batch (Raft-replicated).
-func deleteQueryCheckpointFromBatch(b *dal.Batch, checkpointID uint64) error {
+func deleteQueryCheckpointFromBatch(b *dal.WriteSession, checkpointID uint64) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobQueryCheckpoint).
 		PutUint64(checkpointID)
 
@@ -268,7 +268,7 @@ func deleteQueryCheckpointFromBatch(b *dal.Batch, checkpointID uint64) error {
 }
 
 // StoreNextQueryCheckpointID writes the next query checkpoint ID as 8-byte big-endian uint64.
-func storeNextQueryCheckpointID(b *dal.Batch, id uint64) error {
+func storeNextQueryCheckpointID(b *dal.WriteSession, id uint64) error {
 	value := make([]byte, 8)
 	binary.BigEndian.PutUint64(value, id)
 
@@ -281,7 +281,7 @@ func storeNextQueryCheckpointID(b *dal.Batch, id uint64) error {
 }
 
 // SetSinkCursor writes a per-sink events cursor to the batch (Raft-replicated).
-func SetSinkCursor(b *dal.Batch, sinkName string, sequence uint64) error {
+func SetSinkCursor(b *dal.WriteSession, sinkName string, sequence uint64) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobSinkCursor).
 		PutString(sinkName)
 
@@ -297,7 +297,7 @@ func SetSinkCursor(b *dal.Batch, sinkName string, sequence uint64) error {
 }
 
 // SetSinkStatus writes a per-sink status to the batch (Raft-replicated).
-func SetSinkStatus(b *dal.Batch, status *commonpb.SinkStatus) error {
+func SetSinkStatus(b *dal.WriteSession, status *commonpb.SinkStatus) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobSinkStatus).
 		PutString(status.GetSinkName())
 
@@ -310,7 +310,7 @@ func SetSinkStatus(b *dal.Batch, status *commonpb.SinkStatus) error {
 }
 
 // ClearSinkStatus removes a per-sink status from the batch.
-func ClearSinkStatus(b *dal.Batch, sinkName string) error {
+func ClearSinkStatus(b *dal.WriteSession, sinkName string) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobSinkStatus).
 		PutString(sinkName)
 
@@ -323,7 +323,7 @@ func ClearSinkStatus(b *dal.Batch, sinkName string) error {
 }
 
 // StorePeriod marshals and writes a single period keyed by its ID.
-func StorePeriod(b *dal.Batch, period *commonpb.Period) error {
+func StorePeriod(b *dal.WriteSession, period *commonpb.Period) error {
 	b.KeyBuilder.
 		PutZonePrefix(dal.ZoneGlobal, dal.SubGlobPeriods).
 		PutUint64(period.GetId())
@@ -337,7 +337,7 @@ func StorePeriod(b *dal.Batch, period *commonpb.Period) error {
 }
 
 // StoreNextPeriodID writes the next period ID as 8-byte big-endian uint64.
-func StoreNextPeriodID(b *dal.Batch, id uint64) error {
+func StoreNextPeriodID(b *dal.WriteSession, id uint64) error {
 	value := make([]byte, 8)
 	binary.BigEndian.PutUint64(value, id)
 
@@ -350,7 +350,7 @@ func StoreNextPeriodID(b *dal.Batch, id uint64) error {
 }
 
 // SetMirrorSourceHead writes the latest known v2 source log count to the batch (Raft-replicated).
-func SetMirrorSourceHead(b *dal.Batch, ledgerID uint32, count uint64) error {
+func SetMirrorSourceHead(b *dal.WriteSession, ledgerID uint32, count uint64) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZonePerLedger, dal.SubPLMirrorSourceHead).
 		PutLedgerID(ledgerID)
 
@@ -366,7 +366,7 @@ func SetMirrorSourceHead(b *dal.Batch, ledgerID uint32, count uint64) error {
 }
 
 // SetMirrorCursor writes a per-ledger mirror cursor to the batch (Raft-replicated).
-func SetMirrorCursor(b *dal.Batch, ledgerID uint32, cursor uint64) error {
+func SetMirrorCursor(b *dal.WriteSession, ledgerID uint32, cursor uint64) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZonePerLedger, dal.SubPLMirrorCursor).
 		PutLedgerID(ledgerID)
 
@@ -382,7 +382,7 @@ func SetMirrorCursor(b *dal.Batch, ledgerID uint32, cursor uint64) error {
 }
 
 // SetMirrorStatus writes a per-ledger mirror sync error to the batch.
-func SetMirrorStatus(b *dal.Batch, ledgerID uint32, syncErr *commonpb.MirrorSyncError) error {
+func SetMirrorStatus(b *dal.WriteSession, ledgerID uint32, syncErr *commonpb.MirrorSyncError) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZonePerLedger, dal.SubPLMirrorStatus).
 		PutLedgerID(ledgerID)
 
@@ -395,7 +395,7 @@ func SetMirrorStatus(b *dal.Batch, ledgerID uint32, syncErr *commonpb.MirrorSync
 }
 
 // ClearMirrorStatus removes a per-ledger mirror sync error from the batch.
-func clearMirrorStatus(b *dal.Batch, ledgerID uint32) error {
+func clearMirrorStatus(b *dal.WriteSession, ledgerID uint32) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZonePerLedger, dal.SubPLMirrorStatus).
 		PutLedgerID(ledgerID)
 
@@ -408,7 +408,7 @@ func clearMirrorStatus(b *dal.Batch, ledgerID uint32) error {
 }
 
 // SetAppliedIndex writes the last applied Raft index to the batch.
-func SetAppliedIndex(b *dal.Batch, index uint64) error {
+func SetAppliedIndex(b *dal.WriteSession, index uint64) error {
 	value := make([]byte, 8)
 	binary.BigEndian.PutUint64(value, index)
 
@@ -416,7 +416,7 @@ func SetAppliedIndex(b *dal.Batch, index uint64) error {
 }
 
 // SetLastAppliedTimestamp writes the last applied HLC timestamp to the batch.
-func setLastAppliedTimestamp(b *dal.Batch, timestamp uint64) error {
+func setLastAppliedTimestamp(b *dal.WriteSession, timestamp uint64) error {
 	value := make([]byte, 8)
 	binary.BigEndian.PutUint64(value, timestamp)
 
@@ -445,7 +445,7 @@ var ledgerScopedAttrTypes = []byte{
 //
 // LedgerInfo and Boundaries are NOT deleted here — LedgerInfo is kept for "ledger deleted"
 // responses, and Boundaries are handled separately via Attribute.Delete.
-func deleteLedgerData(b *dal.Batch, ledgerID uint32) error {
+func deleteLedgerData(b *dal.WriteSession, ledgerID uint32) error {
 	// Ledger ID as big-endian 4 bytes — this is the prefix for all
 	// ledger-scoped canonical keys in the attributes zone.
 	var ledgerPrefix [4]byte
@@ -505,7 +505,7 @@ func deleteLedgerData(b *dal.Batch, ledgerID uint32) error {
 
 // SavePendingLedgerCleanup records a deferred ledger data cleanup keyed by ledger ID.
 // The value is the sequence number of the DeleteLedger log.
-func savePendingLedgerCleanup(b *dal.Batch, ledgerID uint32, deleteSequence uint64) error {
+func savePendingLedgerCleanup(b *dal.WriteSession, ledgerID uint32, deleteSequence uint64) error {
 	b.KeyBuilder.
 		PutZonePrefix(dal.ZonePerLedger, dal.SubPLPendingCleanup).
 		PutLedgerID(ledgerID)
@@ -522,7 +522,7 @@ func savePendingLedgerCleanup(b *dal.Batch, ledgerID uint32, deleteSequence uint
 }
 
 // DeletePendingLedgerCleanup removes a pending ledger cleanup entry after data has been purged.
-func deletePendingLedgerCleanup(b *dal.Batch, ledgerID uint32) error {
+func deletePendingLedgerCleanup(b *dal.WriteSession, ledgerID uint32) error {
 	b.KeyBuilder.
 		PutZonePrefix(dal.ZonePerLedger, dal.SubPLPendingCleanup).
 		PutLedgerID(ledgerID)

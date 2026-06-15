@@ -187,7 +187,7 @@ func TestResolveLedgerID(t *testing.T) {
 	ledgerInfo := &commonpb.LedgerInfo{Name: "test", Id: 42}
 	canonical := domain.LedgerKey{Name: "test"}.Bytes()
 
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 	_, err = attrs.Ledger.Set(batch, canonical, ledgerInfo)
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
@@ -244,7 +244,7 @@ func TestResolveLedgerID_BloomNotReadyFallsThrough(t *testing.T) {
 	ledgerInfo := &commonpb.LedgerInfo{Name: "test", Id: 42}
 	canonical := domain.LedgerKey{Name: "test"}.Bytes()
 
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 	_, err = attrs.Ledger.Set(batch, canonical, ledgerInfo)
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())

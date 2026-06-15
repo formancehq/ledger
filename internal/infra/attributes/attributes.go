@@ -97,7 +97,7 @@ func unmarshalProto(data []byte, msg proto.Message) error {
 // A simple Set overwrites the previous value in place — no delete needed.
 // Uses the pre-allocated keyBuf — not safe for concurrent use.
 // The returned slice is valid until the next Set call on this Attribute.
-func (a *Attribute[V]) Set(batch *dal.Batch, canonicalKey []byte, value V) ([]byte, error) {
+func (a *Attribute[V]) Set(batch *dal.WriteSession, canonicalKey []byte, value V) ([]byte, error) {
 	pLen := prefixLen(canonicalKey)
 	a.ensureKeyBuf(pLen)
 	a.putPrefix(a.keyBuf, canonicalKey)
@@ -155,7 +155,7 @@ func (a *Attribute[V]) Get(reader dal.PebbleGetter, canonicalKey []byte) (V, err
 // Delete removes the entry for the given canonical key.
 // This performs a point delete on the single Pebble key.
 // Note: Uses the instance's keyBuf — ensure each Raft node has its own instance.
-func (a *Attribute[V]) Delete(batch *dal.Batch, canonicalKey []byte) error {
+func (a *Attribute[V]) Delete(batch *dal.WriteSession, canonicalKey []byte) error {
 	pLen := prefixLen(canonicalKey)
 	a.ensureKeyBuf(pLen)
 	a.putPrefix(a.keyBuf, canonicalKey)

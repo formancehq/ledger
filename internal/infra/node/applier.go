@@ -48,6 +48,8 @@ type gatingResult struct {
 // from FSM application so they can overlap across consecutive Ready cycles.
 type Applier struct {
 	fsm                     *state.Machine
+	recovery                *state.Recovery
+	synchronizer            *state.Synchronizer
 	spool                   spool.Spool
 	store                   *dal.Store
 	wal                     wal.WAL
@@ -122,6 +124,8 @@ type pendingCommit struct {
 // NewApplier creates a new Applier with all metrics registered on the provided meter.
 func NewApplier(
 	fsm *state.Machine,
+	recovery *state.Recovery,
+	synchronizer *state.Synchronizer,
 	spool spool.Spool,
 	store *dal.Store,
 	wal wal.WAL,
@@ -136,6 +140,8 @@ func NewApplier(
 
 	a := &Applier{
 		fsm:                     fsm,
+		recovery:                recovery,
+		synchronizer:            synchronizer,
 		spool:                   spool,
 		store:                   store,
 		wal:                     wal,
@@ -467,7 +473,7 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("resetting spool: %w", err)
 	}
 
-	isStoreUpToDate, err := a.fsm.IsStoreUpToDate(ctx)
+	isStoreUpToDate, err := a.synchronizer.IsStoreUpToDate(ctx)
 	if err != nil {
 		return false, fmt.Errorf("checking if store is up to date: %w", err)
 	}
@@ -486,7 +492,7 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 	// NewMachine → RecoverState in the constructor and Pebble has not changed
 	// since (InstallSnapshot only touches in-memory state, and the
 	// SynchronizeWithLeader path exits earlier via setOutOfSync).
-	if err := a.fsm.RestoreCacheFromStore(); err != nil {
+	if err := a.recovery.RestoreCacheFromStore(); err != nil {
 		return false, fmt.Errorf("restoring cache from store on restart: %w", err)
 	}
 
@@ -782,7 +788,7 @@ func (a *Applier) startSyncSnapshot(ctx context.Context, leader uint64) {
 			return maintenanceTaskResult{syncFailed: true}, nil
 		}
 
-		syncedIndex, err := a.fsm.SynchronizeWithLeader(ctx, snapshotFetcher, progress)
+		syncedIndex, err := a.synchronizer.SynchronizeWithLeader(ctx, snapshotFetcher, progress)
 		if err != nil {
 			a.logger.WithFields(map[string]any{
 				"leader": leader,
@@ -842,7 +848,7 @@ func (a *Applier) GetSyncProgress() *state.SyncProgress {
 func (a *Applier) applyEntriesAndResolveCommands(ctx context.Context, entries ...raftpb.Entry) (*state.ApplyEntriesResult, error) {
 	start := time.Now()
 
-	result, err := a.fsm.ApplyEntries(ctx, entries...)
+	result, err := a.fsm.ApplyEntries(ctx, a.store, entries...)
 	if err != nil {
 		return nil, fmt.Errorf("applying entries to Machine: %w", err)
 	}
@@ -989,7 +995,7 @@ func (a *Applier) runCommitter(ctx context.Context) {
 func (a *Applier) applyEntriesPipelined(ctx context.Context, entries ...raftpb.Entry) (*state.ApplyEntriesResult, error) {
 	prepareStart := time.Now()
 
-	pb, err := a.fsm.PrepareEntries(ctx, entries...)
+	pb, err := a.fsm.PrepareEntries(ctx, a.store, entries...)
 	if err != nil {
 		_ = a.waitPendingCommit(ctx)
 

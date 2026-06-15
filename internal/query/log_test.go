@@ -433,7 +433,7 @@ func buildColdSST(t *testing.T, logs ...*commonpb.Log) []byte {
 func storePeriod(t *testing.T, s *dal.Store, period *commonpb.Period) {
 	t.Helper()
 
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, state.StorePeriod(batch, period))
 	require.NoError(t, batch.Commit())
 }

@@ -10,13 +10,14 @@ This document contains rules and conventions for AI agents working on this codeb
 
 1. **Cache is the source of authority** — The in-memory cache must NEVER diverge between nodes. Every node must see identical cache state for the same applied index.
 2. **FSM must be deterministic** — The finite state machine (Raft apply path) must produce identical results on every node for the same input. No randomness, no time-dependent logic, no node-local state.
-3. **No Pebble reads in FSM / hot path** — The FSM apply path must never read from Pebble. All data needed for apply must come from the cache or the command itself. Pebble is write-only on the hot path.
-4. **Never delete cache entries outside of rotations** — Cache entries must only be evicted during generation rotations (Gen0 → Gen1 → discard). Deleting individual entries breaks the cache prediction mechanism (bloom filters, tombstones).
+3. **No Pebble reads in FSM / hot path** — The FSM apply path must never read from Pebble. All data needed for apply must come from the cache or the command itself. Pebble is write-only on the hot path. The hot path receives a `dal.WriteSessionFactory` parameter and opens a `*dal.WriteSession` — this type deliberately has no `Get`/`NewIter`, so the invariant is compiler-enforced for any code that holds a session. The hot-path FSM `Machine` itself holds NO Pebble read capability and NO `*dal.Store`: boot/recovery reads live on `state.Recovery` (which owns the only `dal.RecoveryReader`), follower-sync coordination lives on `state.Synchronizer` (which owns the only `dal.IncomingRestoreFactory`). Post-commit sentinel checks (debug mode) read through `dal.SentinelFactory.Run(fn)` — a scoped callback so the reader never escapes the check.
+4. **Pebble writes only from the hot path or declared lifecycle paths** — `*dal.Store.OpenWriteSession()` is the only producer of `*dal.WriteSession`. Outside the FSM hot path, only declared lifecycle paths may call it: `internal/bootstrap/config_validation.go`, `internal/infra/backup/`, `internal/infra/attributes/compact.go`. This is enforced by a `forbidigo` rule in `.golangci.yaml`; new call sites must be added to the exclusions block with a justification.
+5. **Never delete cache entries outside of rotations** — Cache entries must only be evicted during generation rotations (Gen0 → Gen1 → discard). Deleting individual entries breaks the cache prediction mechanism (bloom filters, tombstones).
 
 ### Code style
 
-5. **Prefer parameters over separate methods** — When adding a boolean mode (dry run, force, preview), add it as a parameter to the existing method rather than creating a new method.
-6. **Numscript syntax** — Literal account names require `@` prefix (e.g., `@funding:pool`). Multiple `send` blocks per script are supported. Variables don't use `@`.
+6. **Prefer parameters over separate methods** — When adding a boolean mode (dry run, force, preview), add it as a parameter to the existing method rather than creating a new method.
+7. **Numscript syntax** — Literal account names require `@` prefix (e.g., `@funding:pool`). Multiple `send` blocks per script are supported. Variables don't use `@`.
 
 ## Reference Implementation
 

@@ -138,7 +138,7 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 	}
 
 	// Write logs and attributes to the store (mimicking WriteSet.Merge)
-	batch := e.store.NewBatch()
+	batch := e.store.OpenWriteSession()
 
 	defer func() { _ = batch.Cancel() }()
 
@@ -214,7 +214,7 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 	return logs
 }
 
-func (e *testEngine) appendAuditEntry(batch *dal.Batch, proposal *raftcmdpb.Proposal, results []*raftcmdpb.CreatedLogOrReference) {
+func (e *testEngine) appendAuditEntry(batch *dal.WriteSession, proposal *raftcmdpb.Proposal, results []*raftcmdpb.CreatedLogOrReference) {
 	e.t.Helper()
 
 	hashAlgorithm := commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3
@@ -948,7 +948,7 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 	}
 	// Even with correct chaining from log1, the gap will be detected
 
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{log1, log3}))
 	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().ToLedgerInfo()))
 	require.NoError(t, state.SaveLedger(batch, log3.GetPayload().GetCreateLedger().ToLedgerInfo()))
@@ -1175,7 +1175,7 @@ func TestCheckerDetectsTransactionUpdateMismatch(t *testing.T) {
 
 	// Write a spurious transaction state to Pebble for tx 1.
 	// Use a high raft index so it overrides the correct state.
-	batch := engine.store.NewBatch()
+	batch := engine.store.OpenWriteSession()
 	txKey := domain.TransactionKey{LedgerID: 1, ID: 1}
 	_, err := engine.attrs.Transaction.Set(batch, txKey.Bytes(), &commonpb.TransactionState{
 		CreatedByLog: 999,
@@ -1215,7 +1215,7 @@ func TestCheckerDetectsLiveOnlyTransaction(t *testing.T) {
 	// Write a transaction state into live attrs with an ID that no log ever
 	// produced (the only tx the log produced is ID 1). This simulates
 	// fabricated state or a direct Pebble write.
-	batch := engine.store.NewBatch()
+	batch := engine.store.OpenWriteSession()
 	rogueKey := domain.TransactionKey{LedgerID: 1, ID: 9999}
 	_, err := engine.attrs.Transaction.Set(batch, rogueKey.Bytes(), &commonpb.TransactionState{
 		CreatedByLog: 9999,
@@ -1268,7 +1268,7 @@ func TestCheckerDetectsSymmetricVolumeMutation(t *testing.T) {
 	// with (999, 999). Both sides remain balanced, so the old heuristic
 	// would skip the comparison entirely; the audit log doesn't list
 	// user:alice as transient/purged, so the new path reports it.
-	batch := engine.store.NewBatch()
+	batch := engine.store.OpenWriteSession()
 	tamperedKey := domain.VolumeKey{
 		AccountKey: domain.AccountKey{LedgerID: 1, Account: "user:alice"},
 		Asset:      "USD",
@@ -1313,7 +1313,7 @@ func TestCheckerSurfacesCorruptAuditEntry(t *testing.T) {
 	// Inject a malformed audit entry directly into Pebble at sequence 1.
 	// The ProtoCursor used by query.ReadAuditEntries will fail to
 	// UnmarshalVT these bytes, returning a non-EOF error.
-	batch := engine.store.NewBatch()
+	batch := engine.store.OpenWriteSession()
 	auditKey := dal.NewKeyBuilder().
 		PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).
 		PutUint64(1).
@@ -1454,7 +1454,7 @@ func TestCheckerDetectsDoubleRevert(t *testing.T) {
 		},
 	})
 
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{log1, log2, log3, log4}))
 	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().ToLedgerInfo()))
 	require.NoError(t, writeVolumes(batch, attrs, posting, "test"))
@@ -1515,7 +1515,7 @@ func TestCheckerDetectsRevertOfNonExistentTransaction(t *testing.T) {
 		},
 	})
 
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{log1, log2}))
 	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().ToLedgerInfo()))
 	require.NoError(t, batch.Commit())
@@ -1556,7 +1556,7 @@ func reversePosting(p *commonpb.Posting) *commonpb.Posting {
 }
 
 // writeVolumes writes volume attributes for a posting to make the store consistent.
-func writeVolumes(batch *dal.Batch, attrs *attributes.Attributes, posting *commonpb.Posting, ledger string) error {
+func writeVolumes(batch *dal.WriteSession, attrs *attributes.Attributes, posting *commonpb.Posting, ledger string) error {
 	sourceKey := domain.VolumeKey{
 		AccountKey: domain.AccountKey{LedgerID: 0, Account: posting.GetSource()},
 		Asset:      posting.GetAsset(),

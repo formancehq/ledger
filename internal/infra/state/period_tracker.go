@@ -33,6 +33,10 @@ func NewPeriodTracker(
 	nextPeriodID uint64,
 	schedule string,
 ) *PeriodTracker {
+	if allPeriods == nil {
+		allPeriods = map[uint64]*commonpb.Period{}
+	}
+
 	return &PeriodTracker{
 		allPeriods:        allPeriods,
 		currentOpenPeriod: currentOpenPeriod,

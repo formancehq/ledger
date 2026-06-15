@@ -340,7 +340,7 @@ func TestPartitionVolumesTransient_PreExistingBalance(t *testing.T) {
 func TestZeroVolumeCache_OverwritesKeyStore(t *testing.T) {
 	t.Parallel()
 
-	buf, machine := newTestBuffer(t)
+	buf, machine, dataStore := newTestBuffer(t)
 
 	keyA := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "staging:tx1"}, Asset: "USD"}
 	keyB := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "staging:tx2"}, Asset: "EUR"}
@@ -381,7 +381,7 @@ func TestZeroVolumeCache_OverwritesKeyStore(t *testing.T) {
 		},
 	}
 
-	batch := machine.dataStore.NewBatch()
+	batch := dataStore.OpenWriteSession()
 	require.NoError(t, buf.zeroVolumeCache(batch, 0, updates))
 	require.NoError(t, batch.Commit())
 
@@ -400,8 +400,8 @@ func TestZeroVolumeCache_OverwritesKeyStore(t *testing.T) {
 func TestZeroVolumeCache_Empty(t *testing.T) {
 	t.Parallel()
 
-	buf, machine := newTestBuffer(t)
-	batch := machine.dataStore.NewBatch()
+	buf, _, dataStore := newTestBuffer(t)
+	batch := dataStore.OpenWriteSession()
 
 	require.NoError(t, buf.zeroVolumeCache(batch, 0, nil))
 	require.NoError(t, batch.Commit())

@@ -53,7 +53,7 @@ const metadataConvertReconcileInterval = 30 * time.Second
 
 type MetadataConverter struct {
 	logger      logging.Logger
-	dataStore   *dal.Store
+	dataStore   dal.BackgroundReader
 	attrs       *attributes.Attributes
 	requestCh   *worker.Channel[MetadataConvertRequest]
 	proposer    Proposer
@@ -70,7 +70,7 @@ type MetadataConverter struct {
 // reconcileFn re-dispatches CONVERTING fields from durable state to the channel.
 func NewMetadataConverter(
 	logger logging.Logger,
-	dataStore *dal.Store,
+	dataStore dal.BackgroundReader,
 	attrs *attributes.Attributes,
 	requestCh *worker.Channel[MetadataConvertRequest],
 	proposer Proposer,

@@ -48,7 +48,7 @@ func ApplyExports(
 			return fmt.Errorf("reading segment header %s: %w", seg.Key, err)
 		}
 
-		batch := store.NewBatch()
+		batch := store.OpenWriteSession()
 
 		var count uint64
 
@@ -82,7 +82,7 @@ func ApplyExports(
 					return fmt.Errorf("committing batch: %w", err)
 				}
 
-				batch = store.NewBatch()
+				batch = store.OpenWriteSession()
 			}
 		}
 

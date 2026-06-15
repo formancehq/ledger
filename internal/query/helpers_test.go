@@ -36,7 +36,7 @@ func newTestStore(t *testing.T) *dal.Store {
 func registerLedger(t *testing.T, s *dal.Store, name string) {
 	t.Helper()
 
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	err := state.SaveLedger(batch, &commonpb.LedgerInfo{
 		Name:      name,
 		CreatedAt: commonpb.NewTimestamp(libtime.Now()),
@@ -48,7 +48,7 @@ func registerLedger(t *testing.T, s *dal.Store, name string) {
 func appendLogs(t *testing.T, s *dal.Store, lastAppliedIndex uint64, logs ...*commonpb.Log) {
 	t.Helper()
 
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	err := state.AppendLogs(batch, logs)
 	require.NoError(t, err)
 	require.NoError(t, state.SetAppliedIndex(batch, lastAppliedIndex))

@@ -25,7 +25,7 @@ import (
 func mergeAndTrackBloom[K attributes.Key, V proto.Message](
 	derived *attributes.DerivedKeyStore[K, V],
 	attr *attributes.Attribute[V],
-	batch *dal.Batch,
+	batch *dal.WriteSession,
 	genByte byte,
 	cacheType byte,
 	bloomSlice *[]attributes.U128,
@@ -144,7 +144,7 @@ type purgeRange struct {
 	closeAuditSequence uint64 // audit sequence range end
 }
 
-func (b *WriteSet) Merge(batch *dal.Batch, logs []*commonpb.Log) error {
+func (b *WriteSet) Merge(batch *dal.WriteSession, logs []*commonpb.Log) error {
 	// gen0 byte for incremental 0xFF cache writes.
 	genByte := byte(b.fsm.Registry.Cache.CurrentGeneration() % 2)
 
@@ -1091,7 +1091,7 @@ func (b *WriteSet) SetPendingArchive(periodID, startSequence, closeSequence, sta
 // executePurge deletes cold-storable data for a single purge range.
 // It also cleans up per-ledger data for any deleted ledgers whose
 // DeleteLedger log falls within the purge range.
-func (b *WriteSet) executePurge(batch *dal.Batch, pr *purgeRange) error {
+func (b *WriteSet) executePurge(batch *dal.WriteSession, pr *purgeRange) error {
 	// Logs: purge using log sequence range.
 	logStart := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(pr.startSequence).Build()
 	logEnd := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(pr.closeSequence + 1).Build()

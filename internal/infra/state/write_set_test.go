@@ -8,21 +8,24 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // newTestBuffer creates a Machine and returns a WriteSet for testing accessor methods.
-func newTestBuffer(t *testing.T) (*WriteSet, *Machine) {
+// The returned *dal.Store is exposed so tests can open write sessions directly,
+// since Machine no longer holds a *dal.Store field.
+func newTestBuffer(t *testing.T) (*WriteSet, *Machine, *dal.Store) {
 	t.Helper()
-	machine, _, _ := newTestMachine(t)
+	machine, dataStore, _ := newTestMachine(t)
 	buf := NewWriteSet(machine)
 	buf.Reset(&commonpb.Timestamp{Data: 1700000000})
 
-	return buf, machine
+	return buf, machine, dataStore
 }
 
 func TestWriteSetGetPutLedger(t *testing.T) {
 	t.Parallel()
-	buf, _ := newTestBuffer(t)
+	buf, _, _ := newTestBuffer(t)
 
 	// Non-existent ledger returns nil
 	info, ok := buf.GetLedger("nonexistent")
@@ -38,7 +41,7 @@ func TestWriteSetGetPutLedger(t *testing.T) {
 
 func TestWriteSetGetPutBoundaries(t *testing.T) {
 	t.Parallel()
-	buf, _ := newTestBuffer(t)
+	buf, _, _ := newTestBuffer(t)
 
 	// Non-existent
 	b, ok := buf.GetBoundaries("nonexistent")
@@ -58,7 +61,7 @@ func TestWriteSetGetPutBoundaries(t *testing.T) {
 
 func TestWriteSetGetPutAccountMetadata(t *testing.T) {
 	t.Parallel()
-	buf, _ := newTestBuffer(t)
+	buf, _, _ := newTestBuffer(t)
 
 	key := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "alice"}, Key: "role"}
 
@@ -74,7 +77,7 @@ func TestWriteSetGetPutAccountMetadata(t *testing.T) {
 
 func TestWriteSetDeleteAccountMetadata(t *testing.T) {
 	t.Parallel()
-	buf, _ := newTestBuffer(t)
+	buf, _, _ := newTestBuffer(t)
 
 	key := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "bob"}, Key: "label"}
 	buf.PutAccountMetadata(key, commonpb.NewStringValue("value"))
@@ -93,7 +96,7 @@ func TestWriteSetDeleteAccountMetadata(t *testing.T) {
 
 func TestWriteSetGetPutReverted(t *testing.T) {
 	t.Parallel()
-	buf, _ := newTestBuffer(t)
+	buf, _, _ := newTestBuffer(t)
 
 	key := domain.TransactionKey{LedgerID: 1, ID: 42}
 
@@ -110,7 +113,7 @@ func TestWriteSetGetPutReverted(t *testing.T) {
 
 func TestWriteSetGetPutIdempotencyKey(t *testing.T) {
 	t.Parallel()
-	buf, _ := newTestBuffer(t)
+	buf, _, _ := newTestBuffer(t)
 
 	key := domain.IdempotencyKey{Key: "ik-1"}
 
@@ -127,7 +130,7 @@ func TestWriteSetGetPutIdempotencyKey(t *testing.T) {
 
 func TestWriteSetGetPutTransactionReference(t *testing.T) {
 	t.Parallel()
-	buf, _ := newTestBuffer(t)
+	buf, _, _ := newTestBuffer(t)
 
 	key := domain.TransactionReferenceKey{LedgerID: 1, Reference: "ref-1"}
 
@@ -144,7 +147,7 @@ func TestWriteSetGetPutTransactionReference(t *testing.T) {
 
 func TestWriteSetTransactionState(t *testing.T) {
 	t.Parallel()
-	buf, _ := newTestBuffer(t)
+	buf, _, _ := newTestBuffer(t)
 
 	key := domain.TransactionKey{LedgerID: 1, ID: 1}
 	state := &commonpb.TransactionState{
@@ -160,7 +163,7 @@ func TestWriteSetTransactionState(t *testing.T) {
 
 func TestWriteSetSigningKeyOperations(t *testing.T) {
 	t.Parallel()
-	buf, machine := newTestBuffer(t)
+	buf, machine, _ := newTestBuffer(t)
 
 	// AddSigningKey queues an addition
 	buf.AddSigningKey("key-1", []byte("pub1"), "")
@@ -198,7 +201,7 @@ func TestWriteSetSigningKeyOperations(t *testing.T) {
 
 func TestWriteSetSetRequireSignatures(t *testing.T) {
 	t.Parallel()
-	buf, _ := newTestBuffer(t)
+	buf, _, _ := newTestBuffer(t)
 
 	require.Nil(t, buf.pendingSigningConfigUpdate)
 	buf.SetRequireSignatures(true)
@@ -208,7 +211,7 @@ func TestWriteSetSetRequireSignatures(t *testing.T) {
 
 func TestWriteSetSetMaintenanceMode(t *testing.T) {
 	t.Parallel()
-	buf, _ := newTestBuffer(t)
+	buf, _, _ := newTestBuffer(t)
 
 	require.Nil(t, buf.pendingMaintenanceModeUpdate)
 	buf.SetMaintenanceMode(true)
@@ -218,7 +221,7 @@ func TestWriteSetSetMaintenanceMode(t *testing.T) {
 
 func TestWriteSetSetDeletePeriodSchedule(t *testing.T) {
 	t.Parallel()
-	buf, _ := newTestBuffer(t)
+	buf, _, _ := newTestBuffer(t)
 
 	require.Nil(t, buf.pendingPeriodScheduleUpdate)
 
@@ -233,7 +236,7 @@ func TestWriteSetSetDeletePeriodSchedule(t *testing.T) {
 
 func TestWriteSetSinkConfigOperations(t *testing.T) {
 	t.Parallel()
-	buf, _ := newTestBuffer(t)
+	buf, _, _ := newTestBuffer(t)
 
 	// Initially no pending changes
 	require.False(t, buf.HasPendingSinkChanges())
@@ -259,7 +262,7 @@ func TestWriteSetSinkConfigOperations(t *testing.T) {
 
 func TestWriteSetSequenceIDOperations(t *testing.T) {
 	t.Parallel()
-	buf, _ := newTestBuffer(t)
+	buf, _, _ := newTestBuffer(t)
 
 	// NextSequenceID
 	startSeqID := buf.GetNextSequenceID()
@@ -270,14 +273,14 @@ func TestWriteSetSequenceIDOperations(t *testing.T) {
 
 func TestWriteSetDateAndHash(t *testing.T) {
 	t.Parallel()
-	buf, _ := newTestBuffer(t)
+	buf, _, _ := newTestBuffer(t)
 
 	require.Equal(t, uint64(1700000000), buf.GetDate().GetData())
 }
 
 func TestWriteSetPeriodOperations(t *testing.T) {
 	t.Parallel()
-	buf, _ := newTestBuffer(t)
+	buf, _, _ := newTestBuffer(t)
 
 	// Initially no open period
 	p, ok := buf.GetCurrentOpenPeriod()
@@ -320,7 +323,7 @@ func TestWriteSetPeriodOperations(t *testing.T) {
 
 func TestWriteSetRemoveClosingPeriodRecordsChange(t *testing.T) {
 	t.Parallel()
-	buf, _ := newTestBuffer(t)
+	buf, _, _ := newTestBuffer(t)
 
 	closingPeriod := &commonpb.Period{Id: 7, Status: commonpb.PeriodStatus_PERIOD_CLOSING}
 	buf.AddClosingPeriod(closingPeriod)
@@ -343,7 +346,7 @@ func TestWriteSetRemoveClosingPeriodRecordsChange(t *testing.T) {
 
 func TestWriteSetMultipleClosingPeriodsAfterMerge(t *testing.T) {
 	t.Parallel()
-	buf, machine := newTestBuffer(t)
+	buf, machine, dataStore := newTestBuffer(t)
 
 	// Add two closing periods
 	p1 := &commonpb.Period{Id: 10, Status: commonpb.PeriodStatus_PERIOD_CLOSING}
@@ -352,7 +355,7 @@ func TestWriteSetMultipleClosingPeriodsAfterMerge(t *testing.T) {
 	buf.AddClosingPeriod(p2)
 
 	// After Merge, the machine should have both closing periods
-	batch := machine.dataStore.NewBatch()
+	batch := dataStore.OpenWriteSession()
 	err := buf.Merge(batch, nil)
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
@@ -366,7 +369,7 @@ func TestWriteSetMultipleClosingPeriodsAfterMerge(t *testing.T) {
 
 func TestWriteSetGetNextPeriodIDAndIncrement(t *testing.T) {
 	t.Parallel()
-	buf, _ := newTestBuffer(t)
+	buf, _, _ := newTestBuffer(t)
 
 	startID := buf.GetNextPeriodID()
 	id := buf.IncrementNextPeriodID()
@@ -376,7 +379,7 @@ func TestWriteSetGetNextPeriodIDAndIncrement(t *testing.T) {
 
 func TestWriteSetGetPeriodByID(t *testing.T) {
 	t.Parallel()
-	buf, _ := newTestBuffer(t)
+	buf, _, _ := newTestBuffer(t)
 
 	// Non-existent period
 	_, ok := buf.GetPeriodByID(999)
@@ -398,7 +401,7 @@ func TestWriteSetGetPeriodByID(t *testing.T) {
 
 func TestWriteSetUpdatePeriod(t *testing.T) {
 	t.Parallel()
-	buf, _ := newTestBuffer(t)
+	buf, _, _ := newTestBuffer(t)
 
 	period := &commonpb.Period{Id: 5, Status: commonpb.PeriodStatus_PERIOD_CLOSED}
 	buf.UpdatePeriod(period)
@@ -408,7 +411,7 @@ func TestWriteSetUpdatePeriod(t *testing.T) {
 
 func TestWriteSetSetPurgeRange(t *testing.T) {
 	t.Parallel()
-	buf, _ := newTestBuffer(t)
+	buf, _, _ := newTestBuffer(t)
 
 	require.Empty(t, buf.purgeRanges)
 	require.False(t, buf.HasPurges())
@@ -425,7 +428,7 @@ func TestWriteSetSetPurgeRange(t *testing.T) {
 
 func TestWriteSetSetPendingArchive(t *testing.T) {
 	t.Parallel()
-	buf, _ := newTestBuffer(t)
+	buf, _, _ := newTestBuffer(t)
 
 	require.Empty(t, buf.pendingArchives)
 	buf.SetPendingArchive(1, 10, 50, 5, 25)
@@ -439,7 +442,7 @@ func TestWriteSetSetPendingArchive(t *testing.T) {
 
 func TestWriteSetAddMetadataConvertRequest(t *testing.T) {
 	t.Parallel()
-	buf, _ := newTestBuffer(t)
+	buf, _, _ := newTestBuffer(t)
 
 	require.Empty(t, buf.MetadataConvertRequests())
 
@@ -456,7 +459,7 @@ func TestWriteSetAddMetadataConvertRequest(t *testing.T) {
 // not visible after Reset() prepares the WriteSet for proposal N+1.
 func TestWriteSetResetIsolation(t *testing.T) {
 	t.Parallel()
-	buf, _ := newTestBuffer(t)
+	buf, _, _ := newTestBuffer(t)
 
 	// --- Proposal N: write various data ---
 

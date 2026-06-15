@@ -20,14 +20,11 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
-	"github.com/formancehq/ledger/v3/internal/infra/cache"
-	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -39,8 +36,27 @@ type Notifier interface {
 }
 
 type Machine struct {
-	logger    logging.Logger
-	dataStore *dal.Store
+	logger logging.Logger
+
+	// The Machine is the hot-path apply receiver: it never holds a Pebble
+	// read capability, never holds the incoming-restore primitives, and never
+	// holds a raw *dal.Store. Boot/recovery reads and follower-sync coordination
+	// live on the separate Recovery / Synchronizer types defined alongside this
+	// one; both consume the Machine and supply their own capabilities when
+	// they invoke its private recoverState / synchronizeWithLeader helpers.
+	// The hot path receives a WriteSessionFactory as a parameter to
+	// PrepareEntries / ApplyEntries, not as a field.
+
+	// queryCheckpoints lets the FSM delete query-checkpoint files when an
+	// apply removes their metadata. Two methods only: create + delete. The
+	// surface is not a read capability and does not give access to Pebble
+	// contents.
+	queryCheckpoints dal.QueryCheckpoints
+
+	// sentinel runs scoped post-commit reader-based checks in debug mode.
+	// The Reader never escapes the callback, so even in sentinelMode the
+	// hot path apply does not hold a long-lived read capability.
+	sentinel dal.SentinelFactory
 
 	mu sync.Mutex
 
@@ -95,6 +111,14 @@ type Machine struct {
 	// coldCompactionCh signals the SmartCompactor that a period purge has been applied,
 	// meaning the cold zone [0x01, 0xF1) contains fresh tombstones that benefit from compaction.
 	coldCompactionCh chan struct{}
+
+	// bloomRebuildCh signals an external consumer (Recovery) that the bloom
+	// filters must be rebuilt asynchronously. The hot path cannot trigger the
+	// rebuild directly because StartAsyncBloomPopulate needs a Pebble reader
+	// and the Machine deliberately does not hold one — the Recovery consumer
+	// runs StartAsyncBloomPopulate with its own reader. Capacity 1 + TrySend
+	// gives "coalesce: keep latest reason" semantics, matching coldCompactionCh.
+	bloomRebuildCh chan string
 
 	// cacheSnapshotter handles persisting/restoring cache, reversions, and bloom
 	// filters to/from Pebble (0xFF prefix).
@@ -158,7 +182,14 @@ type Machine struct {
 	publishSeq uint64
 }
 
-func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, clusterID string, numscriptCacheSize int, sentinelMode bool, idempotencyTTLMicros uint64) (*Machine, error) {
+// NewMachine constructs the hot-path FSM. It composes pre-built sub-objects
+// (Registry, CacheSnapshotter) so the constructor reads no Pebble and keeps
+// the surface focused on hot-path concerns. The bootstrap is responsible for
+// wiring those sub-objects up-front. NewMachine does NOT perform RecoverState;
+// callers must invoke Recovery.RecoverState() before the Machine applies
+// entries.
+func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, queryCheckpoints dal.QueryCheckpoints, sentinel dal.SentinelFactory, meter metric.Meter, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, clusterID string, numscriptCacheSize int) (*Machine, error) {
+	sentinelMode := sentinel.IsEnabled()
 	logsAppendedCounter, err := meter.Int64Counter(
 		"raft.fsm.logs_appended",
 		metric.WithDescription("Total number of logs appended to the store. Use rate() to get logs per second."),
@@ -199,7 +230,8 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 
 	fsm := &Machine{
 		logger:                         logger,
-		dataStore:                      dataStore,
+		queryCheckpoints:               queryCheckpoints,
+		sentinel:                       sentinel,
 		BloomFilters:                   bloomFilters,
 		sentinelMode:                   sentinelMode,
 		logsAppendedCounter:            logsAppendedCounter,
@@ -209,7 +241,7 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		notifier:                       notifier,
 		keyStore:                       ks,
 		sharedState:                    sharedState,
-		Registry:                       NewStateRegistry(cache, attrs, idempotencyTTLMicros),
+		Registry:                       registry,
 		Periods:                        NewPeriodTracker(nil, nil, nil, 0, ""),
 		nextSequenceID:                 1,
 		nextAuditSequenceID:            1,
@@ -219,232 +251,29 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		archiveRequestCh:               worker.NewChannel[ArchiveRequest](logger, "archive request", 1),
 		metadataConvertRequestCh:       worker.NewChannel[MetadataConvertRequest](logger, "metadata conversion request", 16),
 		coldCompactionCh:               make(chan struct{}, 1),
+		bloomRebuildCh:                 make(chan string, 1),
 		auditHashBuf:                   make([]byte, 0, 4096),
 		hashGenerator:                  processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, clusterID),
 		clusterID:                      clusterID,
 	}
 	fsm.appliedCond = sync.NewCond(&fsm.appliedMu)
-	fsm.cacheSnapshotter = NewCacheSnapshotter(logger, dataStore, fsm.Registry, bloomFilters)
+	fsm.cacheSnapshotter = cacheSnapshotter
 	fsm.writeSet = NewWriteSet(fsm)
 
-	if err := fsm.RecoverState(); err != nil {
-		return nil, fmt.Errorf("recovering state: %w", err)
-	}
+	// Recovery from Pebble is not performed here on purpose: NewMachine is the
+	// hot-path FSM constructor and must not read from Pebble. The caller (the
+	// bootstrap, or a test helper) is responsible for wiring a Recovery and
+	// invoking recovery.RecoverState() before the Machine is asked to apply
+	// any entries.
 
 	return fsm, nil
 }
 
-// RecoverState loads all FSM in-memory state from the Pebble data store.
+// recoverState loads all FSM in-memory state from the Pebble data store.
 // Called on restart (via RecoverAndReplay) and after follower sync
-// (via reloadStateFromStore).
-func (fsm *Machine) RecoverState() error {
-	// Create a ReadHandle for functions that need iterator access (PebbleReader).
-	// Get-only calls use fsm.dataStore directly (PebbleGetter).
-	handle, err := fsm.dataStore.NewDirectReadHandle()
-	if err != nil {
-		return fmt.Errorf("creating read handle for recovery: %w", err)
-	}
-
-	defer func() { _ = handle.Close() }()
-
-	// Recover lastAppliedIndex from Pebble
-	lastAppliedIndex, err := query.ReadLastAppliedIndex(fsm.dataStore)
-	if err != nil {
-		return fmt.Errorf("recovering last applied index: %w", err)
-	}
-
-	fsm.lastAppliedIndex = lastAppliedIndex
-	// Route through publishApplied rather than a bare Store: RecoverState also
-	// runs at runtime (SynchronizeWithLeader), where a silent advance of
-	// lastPersistedIndex would strand any blocked WaitForApplied caller — the
-	// lost-wakeup shape of #327.
-	fsm.publishApplied(lastAppliedIndex)
-
-	// Recover nextSequenceID from last log sequence
-	lastSeq, err := query.ReadLastSequence(handle)
-	if err != nil {
-		return fmt.Errorf("recovering last sequence: %w", err)
-	}
-
-	if lastSeq > 0 {
-		fsm.nextSequenceID = lastSeq + 1
-	}
-
-	// Recover lastAuditHash and nextAuditSequenceID from last audit entry
-	lastAuditEntry, err := query.ReadLastAuditEntry(handle)
-	if err != nil {
-		return fmt.Errorf("recovering last audit entry: %w", err)
-	}
-
-	if lastAuditEntry != nil {
-		fsm.lastAuditHash = lastAuditEntry.GetHash()
-		fsm.nextAuditSequenceID = lastAuditEntry.GetSequence() + 1
-	}
-
-	// Recover nextQueryCheckpointID from persisted counter
-	nextQCPID, err := query.ReadNextQueryCheckpointID(fsm.dataStore)
-	if err != nil {
-		return fmt.Errorf("recovering next query checkpoint ID: %w", err)
-	}
-
-	fsm.nextQueryCheckpointID = nextQCPID
-
-	// Recover query checkpoint schedule
-	qcpSchedule, err := query.ReadQueryCheckpointSchedule(fsm.dataStore)
-	if err != nil {
-		return fmt.Errorf("recovering query checkpoint schedule: %w", err)
-	}
-
-	fsm.queryCheckpointSchedule = qcpSchedule
-
-	// Recover lastAppliedTimestamp from Pebble
-	lastAppliedTimestamp, err := query.ReadLastAppliedTimestamp(fsm.dataStore)
-	if err != nil {
-		return fmt.Errorf("recovering last applied timestamp: %w", err)
-	}
-
-	fsm.lastAppliedTimestamp = lastAppliedTimestamp
-
-	// Recover periods from Pebble
-	periodsCursor, err := query.ReadPeriods(context.Background(), handle)
-	if err != nil {
-		return fmt.Errorf("recovering periods: %w", err)
-	}
-
-	periodsFromStore, err := cursor.Collect(periodsCursor)
-	if err != nil {
-		return fmt.Errorf("collecting periods: %w", err)
-	}
-
-	allPeriods := make(map[uint64]*commonpb.Period, len(periodsFromStore))
-
-	var currentOpenPeriod *commonpb.Period
-
-	var closingPeriods []*commonpb.Period
-
-	for _, p := range periodsFromStore {
-		allPeriods[p.GetId()] = p
-
-		switch p.GetStatus() {
-		case commonpb.PeriodStatus_PERIOD_OPEN:
-			currentOpenPeriod = p
-		case commonpb.PeriodStatus_PERIOD_CLOSING:
-			closingPeriods = append(closingPeriods, p)
-		}
-	}
-
-	nextPeriodID, err := query.ReadNextPeriodID(fsm.dataStore)
-	if err != nil {
-		return fmt.Errorf("recovering next period ID: %w", err)
-	}
-
-	fsm.Periods.Reset(allPeriods, currentOpenPeriod, closingPeriods, nextPeriodID)
-
-	// Recover period schedule from Pebble
-	periodSchedule, err := query.ReadPeriodSchedule(fsm.dataStore)
-	if err != nil {
-		return fmt.Errorf("recovering period schedule: %w", err)
-	}
-
-	fsm.Periods.SetSchedule(periodSchedule)
-
-	// Recover reversions from Pebble
-	reversions, err := query.ReadReversions(handle)
-	if err != nil {
-		return fmt.Errorf("recovering reversions: %w", err)
-	}
-
-	fsm.Registry.Reversions = reversions
-
-	// Recover pending ledger cleanups from Pebble
-	pendingCleanups, err := query.ReadPendingLedgerCleanups(handle)
-	if err != nil {
-		return fmt.Errorf("recovering pending ledger cleanups: %w", err)
-	}
-
-	fsm.pendingLedgerCleanups = pendingCleanups
-
-	// Recover nextLedgerID from persisted counter
-	nextLedgerID, err := query.ReadNextLedgerID(fsm.dataStore)
-	if err != nil {
-		return fmt.Errorf("recovering next ledger ID: %w", err)
-	}
-
-	fsm.nextLedgerID = nextLedgerID
-
-	// Recover signing keys from Pebble
-	if fsm.keyStore != nil {
-		fsm.keyStore.Reset()
-
-		signingKeys, err := query.ReadSigningKeys(handle)
-		if err != nil {
-			return fmt.Errorf("loading signing keys: %w", err)
-		}
-
-		for keyID, entry := range signingKeys {
-			fsm.keyStore.AddPublicKey(keyID, entry.PublicKey, entry.ParentKeyID)
-		}
-	}
-
-	// Recover shared runtime flags from Pebble
-	fsm.sharedState.Reset()
-
-	requireSig, err := query.ReadSigningConfig(fsm.dataStore)
-	if err != nil {
-		return fmt.Errorf("loading signing config: %w", err)
-	}
-
-	fsm.sharedState.SetRequireSignatures(requireSig)
-
-	maintenanceMode, err := query.ReadMaintenanceMode(fsm.dataStore)
-	if err != nil {
-		return fmt.Errorf("loading maintenance mode: %w", err)
-	}
-
-	fsm.sharedState.SetMaintenanceMode(maintenanceMode)
-
-	clusterState, err := query.ReadClusterState(fsm.dataStore)
-	if err != nil {
-		return fmt.Errorf("loading cluster state: %w", err)
-	}
-
-	if clusterState != nil {
-		fsm.lastClusterConfig = clusterState.GetConfig()
-		fsm.Registry.Cache.SetGenerationThreshold(clusterState.GetConfig().GetRotationThreshold())
-		// Epoch is never 0 in the running cache (cache.New initializes it to 1).
-		// Persisted clusterState from before that change may still carry 0 —
-		// bump it up so the staleness check never sees a zero live epoch (#302).
-		persistedEpoch := clusterState.GetCacheEpoch()
-		if persistedEpoch == 0 {
-			persistedEpoch = 1
-		}
-
-		fsm.Registry.Cache.SetEpoch(persistedEpoch)
-		fsm.hashGenerator = processing.NewHashGenerator(clusterState.GetConfig().GetHashAlgorithm(), fsm.clusterID)
-	}
-
-	// Rebuild the idempotency bridge from Pebble. Without this, a node that
-	// restarts loses every idempotency key whose surrounding proposal already
-	// landed in Pebble — replays would then be accepted as new work until the
-	// in-memory bridge naturally refilled. See issue #300.
-	fsm.Registry.Idempotency.Reset()
-
-	if err := fsm.Registry.Idempotency.RestoreFromStore(handle); err != nil {
-		return fmt.Errorf("recovering idempotency bridge: %w", err)
-	}
-
-	fsm.logger.WithFields(map[string]any{
-		"nextSequenceID":        fsm.nextSequenceID,
-		"nextAuditSequenceID":   fsm.nextAuditSequenceID,
-		"nextQueryCheckpointID": fsm.nextQueryCheckpointID,
-		"hasAuditHash":          len(fsm.lastAuditHash) > 0,
-		"periodCount":           len(allPeriods),
-		"reversionLedgers":      len(reversions),
-		"pendingCleanups":       len(pendingCleanups),
-	}).Infof("Recovered FSM state from store")
-
-	return nil
-}
+// (via reloadStateFromStore). The reader is supplied by the caller (Recovery
+// owns it) so the Machine itself does not hold a Pebble read capability and
+// no hot-path method can accidentally invoke this without a reader argument.
 
 func (fsm *Machine) LastPersistedIndex() uint64 {
 	return fsm.lastPersistedIndex.Load()
@@ -546,7 +375,7 @@ func (fsm *Machine) WaitForApplied(ctx context.Context, targetIndex uint64) erro
 //
 // This is the first half of the pipelining split: PrepareEntries is CPU-bound
 // and can run while a previous batch's commit is in-flight.
-func (fsm *Machine) PrepareEntries(ctx context.Context, entries ...raftpb.Entry) (*PreparedBatch, error) {
+func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessionFactory, entries ...raftpb.Entry) (*PreparedBatch, error) {
 	// Validate checkpoint trigger positions BEFORE taking the lock or mutating
 	// any in-memory state. A malformed batch (trigger not last) is rejected
 	// here so the FSM cannot be left with lastAppliedIndex bumped and proposal
@@ -598,7 +427,7 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, entries ...raftpb.Entry)
 		}
 	}
 
-	batch := fsm.dataStore.NewBatch()
+	batch := sessions.OpenWriteSession()
 
 	cmd := raftcmdpb.ProposalFromVTPool()
 	defer func() { cmd.ReturnToVTPool() }()
@@ -898,22 +727,22 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 		"volumeUpdates":    len(pb.sentinelUpdates),
 	})
 
-	// Post-commit sentinel checks.
+	// Post-commit sentinel checks. The Reader is materialised inside the
+	// callback only — it has no field on Machine and never escapes this scope,
+	// which keeps the hot path structurally read-free outside of this block.
+	// When sentinelMode is off, sentinel.Run is a no-op. We also skip the
+	// snapshot open when both update sets are empty (typical for batches with
+	// no volume mutations) — avoids the snapshot/close cost in the empty case.
 	//
-	// Use a snapshot read handle (not a direct one) so the view is pinned to
-	// the DB state right after this batch's commit. With the
+	// The factory uses a snapshot read handle (not a direct one) so the view
+	// is pinned to the DB state right after this batch's commit. With the
 	// fix/checkpoint-commit-race refactor, all main-store commits go through
 	// runCommitter so no other write should race with this read, but the
 	// snapshot is cheap and ensures the sentinel keeps the right invariant
 	// even if a future change reintroduces a synchronous commit path.
-	if pb.sentinelMode {
-		sentinelHandle, handleErr := fsm.dataStore.NewReadHandle()
-		if handleErr != nil {
-			return fmt.Errorf("creating read handle for sentinel checks: %w", handleErr)
-		}
-
-		defer func() { _ = sentinelHandle.Close() }()
-
+	if len(pb.sentinelUpdates) == 0 && len(pb.sentinelLedgerIDs) == 0 {
+		// Nothing to verify — skip the snapshot open entirely.
+	} else if err := fsm.sentinel.Run(func(sentinelHandle dal.PebbleReader) error {
 		if len(pb.sentinelUpdates) > 0 {
 			if err := verifyPostCommitVolumes(
 				sentinelHandle, fsm.Registry.Attrs.Volume,
@@ -941,6 +770,10 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 				return fmt.Errorf("aggregated volume balance check failed: %w", err)
 			}
 		}
+
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	previousPersisted := fsm.lastPersistedIndex.Load()
@@ -993,8 +826,8 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 // Callers must pre-split entries so that any checkpoint-triggering entry is
 // the last in the slice (see state.ClassifyCheckpointOrderPosition); the FSM
 // enforces this with a defensive check inside PrepareEntries.
-func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (*ApplyEntriesResult, error) {
-	pb, err := fsm.PrepareEntries(ctx, entries...)
+func (fsm *Machine) ApplyEntries(ctx context.Context, sessions dal.WriteSessionFactory, entries ...raftpb.Entry) (*ApplyEntriesResult, error) {
+	pb, err := fsm.PrepareEntries(ctx, sessions, entries...)
 	if err != nil {
 		return nil, err
 	}
@@ -1009,7 +842,7 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 // deleteQueryCheckpointFiles removes the physical files for a deleted checkpoint.
 // Called after the batch containing the DeleteQueryCheckpoint metadata removal is committed.
 func (fsm *Machine) deleteQueryCheckpointFiles(checkpointID uint64) {
-	if err := fsm.dataStore.DeleteQueryCheckpointFiles(checkpointID); err != nil {
+	if err := fsm.queryCheckpoints.DeleteQueryCheckpointFiles(checkpointID); err != nil {
 		if fsm.logger.Enabled(logging.DebugLevel) {
 			fsm.logger.WithFields(map[string]any{
 				"error":        err,
@@ -1021,7 +854,7 @@ func (fsm *Machine) deleteQueryCheckpointFiles(checkpointID uint64) {
 
 // Preload applies preloaded data to the Machine's volatile state.
 // batch and genByte are used for incremental 0xFF persistence of NumscriptParsed entries.
-func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet, batch *dal.Batch, genByte byte) error {
+func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet, batch *dal.WriteSession, genByte byte) error {
 	if preloadSet == nil || (len(preloadSet.GetPreloads()) == 0 && len(preloadSet.GetTouches()) == 0) {
 		return nil
 	}
@@ -1166,7 +999,7 @@ func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Pro
 
 // applyProposal processes all orders in a proposal atomically.
 // Uses RequestProcessor which handles rollback internally via WriteSet.
-func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *dal.Batch, proposal *raftcmdpb.Proposal) (*ApplyResult, error) {
+func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *dal.WriteSession, proposal *raftcmdpb.Proposal) (*ApplyResult, error) {
 	// FSM-level safety net mirroring the admission check: a checkpoint trigger
 	// (CreateQueryCheckpoint or ClosePeriod) must be the last order. The
 	// applier relies on this so it can place a Pebble-batch boundary at this
@@ -1358,7 +1191,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	}
 
 	// Collect ledger IDs for post-commit aggregated balance verification.
-	// The check must run after batch.Commit() — reading from fsm.dataStore
+	// The check must run after batch.Commit() — reading from the sentinel reader
 	// before commit sees stale committed state that excludes the current batch,
 	// which produces false positives when batch boundaries differ across nodes.
 	ledgerIDs := collectLedgerIDs(proposal.GetOrders(), buffer)
@@ -1467,129 +1300,9 @@ func hasMirrorConfigChange(proposal *raftcmdpb.Proposal) bool {
 	return false
 }
 
-// RestoreCacheFromStore delegates to the CacheSnapshotter.
-// Kept as a Machine method for external callers (e.g. applier).
-// In sentinel mode, verifies cache coherence after restore.
-func (fsm *Machine) RestoreCacheFromStore() error {
-	if err := fsm.cacheSnapshotter.RestoreFromStore(); err != nil {
-		return err
-	}
-
-	if fsm.sentinelMode {
-		fsm.cacheSnapshotter.verifyCacheRestoreCoherence()
-	}
-
-	return nil
-}
-
 // Close stops background work owned by the Machine (e.g. bloom populate).
 func (fsm *Machine) Close() {
 	fsm.cacheSnapshotter.Stop()
-}
-
-func (fsm *Machine) InstallSnapshot(_ context.Context, snapshot raftpb.Snapshot) error {
-	fsm.snapshotIndex = snapshot.Metadata.Index
-
-	// Reset the cache — it will be restored from Pebble later:
-	// - On restart: after InstallSnapshot, via RestoreCacheFromStore
-	// - On follower sync: after restoreCheckpoint, via RestoreCacheFromStore
-	fsm.Registry.Cache.Reset()
-	fsm.Registry.Idempotency.Reset()
-
-	fsm.logger.WithFields(map[string]any{
-		"snapshotIndex": snapshot.Metadata.Index,
-	}).Infof("InstallSnapshot complete")
-
-	lifecycle.SendEvent("install_snapshot", map[string]any{
-		"snapshotIndex": snapshot.Metadata.Index,
-	})
-
-	return nil
-}
-
-func (fsm *Machine) SynchronizeWithLeader(ctx context.Context, snapshotFetcher SnapshotFetcher, progress *SyncProgress) (uint64, error) {
-	// Stop background tasks (bloom restore, etc.) that may hold Pebble iterators.
-	// RestoreCheckpoint closes and reopens the DB — outstanding references cause a panic.
-	fsm.StopBackgroundTasks()
-
-	if err := fsm.restoreCheckpoint(ctx, snapshotFetcher, progress, fsm.snapshotIndex); err != nil {
-		return 0, fmt.Errorf("restoring checkpoint from leader: %w", err)
-	}
-
-	// Restore cache from Pebble (the checkpoint contains the leader's cache data)
-	if err := fsm.cacheSnapshotter.RestoreFromStore(); err != nil {
-		return 0, fmt.Errorf("restoring cache after sync: %w", err)
-	}
-
-	if fsm.sentinelMode {
-		fsm.cacheSnapshotter.verifyCacheRestoreCoherence()
-	}
-
-	// Reload all FSM state from Pebble (the checkpoint contains the leader's state).
-	// This also recovers lastAppliedIndex from the restored Pebble — the fresh
-	// checkpoint is at an index >= snapshotIndex, so spool replay correctly
-	// skips entries already in the checkpoint.
-	// Hold mu because concurrent readers (e.g. QueryCheckpointScheduler) access
-	// fields like queryCheckpointSchedule under the same lock.
-	fsm.mu.Lock()
-	err := fsm.RecoverState()
-	fsm.mu.Unlock()
-
-	if err != nil {
-		return 0, fmt.Errorf("recovering state after sync: %w", err)
-	}
-
-	lifecycle.SendEvent("sync_with_leader_complete", map[string]any{
-		"lastAppliedIndex": fsm.lastAppliedIndex,
-		"snapshotIndex":    fsm.snapshotIndex,
-	})
-
-	return fsm.lastAppliedIndex, nil
-}
-
-// restoreCheckpoint fetches a fresh checkpoint from the leader and restores it.
-// The fetch writes to a staging directory ("incoming") that cannot collide with
-// the numbered checkpoints created by the background goroutine. After the fetch,
-// ActivateIncomingRestore atomically reserves a checkpoint ID and renames.
-func (fsm *Machine) restoreCheckpoint(ctx context.Context, snapshotFetcher SnapshotFetcher, progress *SyncProgress, minAppliedIndex uint64) error {
-	fsm.logger.Infof("Fetching fresh checkpoint from leader")
-
-	// Prepare a staging directory outside the numbered checkpoint space.
-	incomingDir, err := fsm.dataStore.PrepareIncomingRestore()
-	if err != nil {
-		return fmt.Errorf("preparing incoming restore: %w", err)
-	}
-
-	// Fetch a fresh checkpoint from the leader into the staging directory.
-	size, err := snapshotFetcher.FetchSnapshot(ctx, incomingDir, progress, minAppliedIndex)
-	if err != nil {
-		return fmt.Errorf("fetching snapshot from leader: %w", err)
-	}
-
-	fsm.logger.WithFields(map[string]any{
-		"size": size,
-	}).Infof("Checkpoint fetched from leader")
-
-	// Move the incoming checkpoint to a numbered slot (holds snapshotMu briefly).
-	checkpointID, err := fsm.dataStore.ActivateIncomingRestore()
-	if err != nil {
-		return fmt.Errorf("activating incoming checkpoint: %w", err)
-	}
-
-	// Restore the checkpoint (closes DB, hard-links to live/, reopens).
-	if err := fsm.dataStore.RestoreCheckpoint(checkpointID); err != nil {
-		return fmt.Errorf("restoring checkpoint: %w", err)
-	}
-
-	fsm.logger.WithFields(map[string]any{
-		"checkpointId": checkpointID,
-	}).Infof("Checkpoint restored successfully")
-
-	return nil
-}
-
-func (fsm *Machine) IsStoreUpToDate(ctx context.Context) (bool, error) {
-	return fsm.lastAppliedIndex >= fsm.snapshotIndex, nil
 }
 
 // SealRequestCh returns the channel used to communicate seal requests between
@@ -1623,6 +1336,14 @@ func (fsm *Machine) ColdCompactionCh() <-chan struct{} {
 	return fsm.coldCompactionCh
 }
 
+// BloomRebuildCh returns the channel signalled when a bloom rebuild is
+// required (e.g. cluster config change). The consumer (Recovery) owns the
+// Pebble reader and invokes StartAsyncBloomPopulate; the Machine itself
+// holds no reader and cannot trigger the rebuild directly.
+func (fsm *Machine) BloomRebuildCh() <-chan string {
+	return fsm.bloomRebuildCh
+}
+
 // dispatchArchiveRequests sends archive requests for all ARCHIVING periods
 // to the archiver channel.
 //
@@ -1652,41 +1373,9 @@ func (fsm *Machine) DispatchArchiveRequests(stop <-chan struct{}) {
 }
 
 // dispatchMetadataConversionRequests iterates all ledgers and dispatches
-// conversion requests for metadata fields still in CONVERTING status.
-// Called from recovery paths — sends block until the worker drains or stop is closed.
-func (fsm *Machine) DispatchMetadataConversionRequests(stop <-chan struct{}) {
-	handle, err := fsm.dataStore.NewReadHandle()
-	if err != nil {
-		fsm.logger.Errorf("Failed to create read handle for metadata conversion recovery: %v", err)
-
-		return
-	}
-
-	defer func() { _ = handle.Close() }()
-
-	cursor, err := query.ReadLedgers(context.Background(), handle)
-	if err != nil {
-		fsm.logger.Errorf("Failed to read ledgers for metadata conversion recovery: %v", err)
-
-		return
-	}
-
-	defer func() { _ = cursor.Close() }()
-
-	for {
-		info, err := cursor.Next()
-		if err != nil {
-			break
-		}
-
-		if info.GetMetadataSchema() == nil || info.GetDeletedAt() != nil {
-			continue
-		}
-
-		fsm.dispatchConvertingFields(stop, info, commonpb.TargetType_TARGET_TYPE_ACCOUNT, info.GetMetadataSchema().GetAccountFields())
-		fsm.dispatchConvertingFields(stop, info, commonpb.TargetType_TARGET_TYPE_TRANSACTION, info.GetMetadataSchema().GetTransactionFields())
-	}
-}
+// conversion requests for metadata fields still in CONVERTING status. Called
+// from recovery paths; the reader is supplied by Recovery so the Machine
+// itself does not hold a Pebble read capability.
 
 func (fsm *Machine) dispatchConvertingFields(stop <-chan struct{}, info *commonpb.LedgerInfo, targetType commonpb.TargetType, fields map[string]*commonpb.MetadataFieldSchema) {
 	for key, field := range fields {
@@ -1703,25 +1392,13 @@ func (fsm *Machine) dispatchConvertingFields(stop <-chan struct{}, info *commonp
 	}
 }
 
-// OnLeadershipAcquired is called when this node becomes the Raft leader.
-// It performs recovery actions that only the leader should handle.
-// Dispatches are launched in goroutines so the Raft ready loop is never
-// blocked by channel sends that wait for background workers to start draining.
-// stop is the node's shutdown channel — goroutines abort on shutdown.
-func (fsm *Machine) OnLeadershipAcquired(stop <-chan struct{}) {
-	// Recover periods stuck in ARCHIVING state: if the previous leader crashed
-	// mid-archive, the new leader retries automatically.
-	go fsm.DispatchArchiveRequests(stop)
-
-	// Recover metadata fields stuck in CONVERTING status: if the previous leader
-	// crashed mid-conversion, the new leader retries automatically.
-	go fsm.DispatchMetadataConversionRequests(stop)
-}
+// OnLeadershipAcquired lives on Recovery (it needs the Pebble reader for
+// metadata-conversion dispatch). Callers should invoke Recovery.OnLeadershipAcquired.
 
 // ensurePeriodBootstrapped creates the first period deterministically at the
 // first proposal. The period start timestamp is derived from the proposal's
 // effective date so that all nodes produce the same deterministic state.
-func (fsm *Machine) ensurePeriodBootstrapped(effectiveDate *commonpb.Timestamp, batch *dal.Batch) error {
+func (fsm *Machine) ensurePeriodBootstrapped(effectiveDate *commonpb.Timestamp, batch *dal.WriteSession) error {
 	if fsm.Periods.CurrentOpenPeriod() != nil {
 		return nil
 	}
@@ -1844,7 +1521,7 @@ func SealRequestFromPeriod(period *commonpb.Period) *SealRequest {
 // This separation enables pipelining: the applier can process batch N+1 while
 // batch N's commit is in-flight.
 type PreparedBatch struct {
-	batch *dal.Batch
+	batch *dal.WriteSession
 	// Result holds the per-entry apply results. Exported for the applier to read.
 	Result *ApplyEntriesResult
 

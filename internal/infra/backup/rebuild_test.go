@@ -132,7 +132,7 @@ func TestRebuildDelta_CleanEOFSucceeds(t *testing.T) {
 
 	store := newRebuildTestStore(t)
 
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 	for seq := uint64(1); seq <= 3; seq++ {
 		require.NoError(t, batch.SetProto(coldLogKey(seq), createLedgerLog(seq, "ledger", uint32(seq))))
 	}
@@ -159,7 +159,7 @@ func TestRebuildDelta_TruncatedStreamReturnsErrorAndDoesNotCommit(t *testing.T) 
 	// Valid log at seq 1 (creates "before" ledger), then a corrupt record at
 	// seq 2 whose bytes fail to unmarshal — simulating a truncated/corrupted
 	// log stream during a restore.
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 	require.NoError(t, batch.SetProto(coldLogKey(1), createLedgerLog(1, "before-corruption", 1)))
 	require.NoError(t, batch.SetBytes(coldLogKey(2), []byte{0xff, 0xff, 0xff, 0xff}))
 	require.NoError(t, batch.Commit())
@@ -185,7 +185,7 @@ func TestRebuildDelta_ReplaysEphemeralPurgeAtProposalBoundary(t *testing.T) {
 
 	store := newRebuildTestStore(t)
 
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 	require.NoError(t, batch.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
 	require.NoError(t, batch.SetProto(coldLogKey(2), applyLedgerLog(2, "ledger",
 		addAccountTypePayload("orders", "orders:{id}", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL),

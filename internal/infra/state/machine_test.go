@@ -38,8 +38,15 @@ func newTestMachineWithThreshold(t *testing.T, generationThreshold uint64) (*Mac
 	c, err := cache.New(generationThreshold, meter)
 	require.NoError(t, err)
 
-	machine, err := NewMachine(logger, dataStore, meter, c, attrs, keystore.NewKeyStore(), NewSharedState(), noopNotifier{}, nil, "test-cluster", 0, false, 0)
+	registry := NewStateRegistry(c, attrs, 0)
+	snapshotter := NewCacheSnapshotter(logger, registry, nil)
+
+	machine, err := NewMachine(logger, registry, snapshotter, dataStore, dal.NewSentinelFactory(dataStore, false), meter, keystore.NewKeyStore(), NewSharedState(), noopNotifier{}, nil, "test-cluster", 0)
 	require.NoError(t, err)
+
+	// NewMachine no longer performs the initial recoverState — the caller is
+	// expected to wire a Recovery and invoke it. Tests share that contract.
+	require.NoError(t, NewRecovery(machine, dataStore).RecoverState())
 
 	return machine, dataStore, attrs
 }
@@ -260,7 +267,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 	// ---------------------------------------------------------------
 	// Entry 1: create the ledger
 	// ---------------------------------------------------------------
-	result, err := machine.ApplyEntries(ctx,
+	result, err := machine.ApplyEntries(ctx, dataStore,
 		makeEntry(t, 1, makeProposal(1, createLedgerOrder(ledgerName))),
 	)
 	require.NoError(t, err)
@@ -271,7 +278,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 	// Entry 2 - Batch 1 (SUCCESS): seed funds + first sales
 	// All transactions use force=true (bypasses balance checks).
 	// ---------------------------------------------------------------
-	result, err = machine.ApplyEntries(ctx,
+	result, err = machine.ApplyEntries(ctx, dataStore,
 		makeEntry(t, 2, makeProposal(2,
 			createTransactionOrder(ledgerName, true,
 				newPosting("world", "customer:carol", "EUR", 1000),
@@ -296,7 +303,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 	// The first two orders succeed in the buffer but the revert of
 	// a non-existent transaction causes the entire proposal to fail.
 	// ---------------------------------------------------------------
-	result, err = machine.ApplyEntries(ctx,
+	result, err = machine.ApplyEntries(ctx, dataStore,
 		makeEntry(t, 3, makeProposal(3,
 			createTransactionOrder(ledgerName, true,
 				newPosting("customer:dave", "merchant:bob", "EUR", 300),
@@ -316,7 +323,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 	// ---------------------------------------------------------------
 	// Entry 4 - Batch 3 (SUCCESS): Dave makes valid purchases
 	// ---------------------------------------------------------------
-	result, err = machine.ApplyEntries(ctx,
+	result, err = machine.ApplyEntries(ctx, dataStore,
 		makeEntry(t, 4, makeProposal(4,
 			createTransactionOrder(ledgerName, true,
 				newPosting("customer:dave", "merchant:bob", "EUR", 300),
@@ -525,24 +532,27 @@ func TestNextLedgerIDRecovery(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create first machine and 3 ledgers.
-	machine1, err := NewMachine(logger, dataStore, meter, c, attrs, keystore.NewKeyStore(), NewSharedState(), noopNotifier{}, nil, "test-cluster", 0, false, 0)
+	reg1 := NewStateRegistry(c, attrs, 0)
+	snap1 := NewCacheSnapshotter(logger, reg1, nil)
+	machine1, err := NewMachine(logger, reg1, snap1, dataStore, dal.NewSentinelFactory(dataStore, false), meter, keystore.NewKeyStore(), NewSharedState(), noopNotifier{}, nil, "test-cluster", 0)
 	require.NoError(t, err)
+	require.NoError(t, NewRecovery(machine1, dataStore).RecoverState())
 
-	result, err := machine1.ApplyEntries(ctx,
+	result, err := machine1.ApplyEntries(ctx, dataStore,
 		makeEntry(t, 1, makeProposal(1, createLedgerOrder("ledger-a"))),
 	)
 	require.NoError(t, err)
 	require.Len(t, result.Results, 1)
 	require.NoError(t, result.Results[0].Error)
 
-	result, err = machine1.ApplyEntries(ctx,
+	result, err = machine1.ApplyEntries(ctx, dataStore,
 		makeEntry(t, 2, makeProposal(2, createLedgerOrder("ledger-b"))),
 	)
 	require.NoError(t, err)
 	require.Len(t, result.Results, 1)
 	require.NoError(t, result.Results[0].Error)
 
-	result, err = machine1.ApplyEntries(ctx,
+	result, err = machine1.ApplyEntries(ctx, dataStore,
 		makeEntry(t, 3, makeProposal(3, createLedgerOrder("ledger-c"))),
 	)
 	require.NoError(t, err)
@@ -558,14 +568,17 @@ func TestNextLedgerIDRecovery(t *testing.T) {
 
 	attrs2 := attributes.New()
 
-	machine2, err := NewMachine(logger, dataStore, meter, c2, attrs2, keystore.NewKeyStore(), NewSharedState(), noopNotifier{}, nil, "test-cluster", 0, false, 0)
+	reg2 := NewStateRegistry(c2, attrs2, 0)
+	snap2 := NewCacheSnapshotter(logger, reg2, nil)
+	machine2, err := NewMachine(logger, reg2, snap2, dataStore, dal.NewSentinelFactory(dataStore, false), meter, keystore.NewKeyStore(), NewSharedState(), noopNotifier{}, nil, "test-cluster", 0)
 	require.NoError(t, err)
+	require.NoError(t, NewRecovery(machine2, dataStore).RecoverState())
 
 	// The recovered machine should have nextLedgerID = 4.
 	require.Equal(t, uint32(4), machine2.nextLedgerID)
 
 	// Create another ledger — it should get ID=4.
-	result, err = machine2.ApplyEntries(ctx,
+	result, err = machine2.ApplyEntries(ctx, dataStore,
 		makeEntry(t, 4, makeProposal(4, createLedgerOrder("ledger-d"))),
 	)
 	require.NoError(t, err)

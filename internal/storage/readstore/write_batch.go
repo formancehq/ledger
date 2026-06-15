@@ -6,9 +6,9 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// WriteBatch buffers Pebble write operations using a dal.Batch.
+// WriteBatch buffers Pebble write operations using a dal.WriteSession.
 type WriteBatch struct {
-	batch *dal.Batch
+	batch *dal.WriteSession
 	count int // number of operations buffered
 }
 
@@ -17,13 +17,13 @@ func NewWriteBatch() *WriteBatch {
 	return &WriteBatch{}
 }
 
-// Init binds the batch to a dal.Batch.
-func (wb *WriteBatch) Init(batch *dal.Batch) {
+// Init binds the batch to a dal.WriteSession.
+func (wb *WriteBatch) Init(batch *dal.WriteSession) {
 	wb.batch = batch
 }
 
-// Batch returns the underlying dal.Batch for direct operations (e.g., range deletes).
-func (wb *WriteBatch) Batch() *dal.Batch {
+// Batch returns the underlying dal.WriteSession for direct operations (e.g., range deletes).
+func (wb *WriteBatch) Batch() *dal.WriteSession {
 	return wb.batch
 }
 

@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 func TestAllOrdersAreMaintenanceMode(t *testing.T) {
@@ -170,23 +171,26 @@ func TestMachineIsStoreUpToDate(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	machine, _, _ := newTestMachine(t)
+	machine, dataStore, _ := newTestMachine(t)
+
+	recovery := NewRecovery(machine, dataStore)
+	sync := NewSynchronizer(machine, recovery, dal.NewIncomingRestoreFactory(dataStore))
 
 	// With no snapshot and lastAppliedIndex=0, the store is up to date
 	// (snapshotIndex == 0, lastAppliedIndex == 0)
-	upToDate, err := machine.IsStoreUpToDate(ctx)
+	upToDate, err := sync.IsStoreUpToDate(ctx)
 	require.NoError(t, err)
 	require.True(t, upToDate)
 
 	// If snapshot index is ahead of lastAppliedIndex, store is not up to date
 	machine.snapshotIndex = 10
-	upToDate, err = machine.IsStoreUpToDate(ctx)
+	upToDate, err = sync.IsStoreUpToDate(ctx)
 	require.NoError(t, err)
 	require.False(t, upToDate)
 
 	// Catch up lastAppliedIndex
 	machine.lastAppliedIndex = 10
-	upToDate, err = machine.IsStoreUpToDate(ctx)
+	upToDate, err = sync.IsStoreUpToDate(ctx)
 	require.NoError(t, err)
 	require.True(t, upToDate)
 }
@@ -234,7 +238,7 @@ func TestReadAuditEntriesCursor(t *testing.T) {
 	_ = cursor.Close()
 
 	// Add entries
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, appendAuditEntries(batch,
 		&auditpb.AuditEntry{Sequence: 1, ProposalId: 10, Timestamp: commonpb.NewTimestamp(libtime.Now())},
 		&auditpb.AuditEntry{Sequence: 2, ProposalId: 20, Timestamp: commonpb.NewTimestamp(libtime.Now())},

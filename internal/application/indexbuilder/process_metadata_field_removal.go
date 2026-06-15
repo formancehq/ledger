@@ -134,7 +134,7 @@ func (b *Builder) purgeReverseMapForKey(kb *dal.KeyBuilder, ledgerID uint32, ns,
 	return nil
 }
 
-func deleteReadStoreRange(batch *dal.Batch, start []byte) error {
+func deleteReadStoreRange(batch *dal.WriteSession, start []byte) error {
 	end := readstore.IncrementBytes(start)
 
 	return batch.DeleteRangeNoSync(start, end)

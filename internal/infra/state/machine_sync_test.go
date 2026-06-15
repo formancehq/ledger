@@ -46,7 +46,7 @@ func TestSynchronizeWithLeader(t *testing.T) {
 
 	registerLedger(t, leaderStore, "leader-ledger")
 
-	leaderBatch := leaderStore.NewBatch()
+	leaderBatch := leaderStore.OpenWriteSession()
 	require.NoError(t, SetAppliedIndex(leaderBatch, 100))
 	require.NoError(t, leaderBatch.Commit())
 
@@ -63,18 +63,20 @@ func TestSynchronizeWithLeader(t *testing.T) {
 
 	registerLedger(t, followerStore, "follower-ledger")
 
-	followerBatch := followerStore.NewBatch()
+	followerBatch := followerStore.OpenWriteSession()
 	require.NoError(t, SetAppliedIndex(followerBatch, 90))
 	require.NoError(t, followerBatch.Commit())
 
 	// --- Leader sends a Raft snapshot at index 100 (no FSM data) ---
-	err = followerMachine.InstallSnapshot(ctx, raftpb.Snapshot{
+	followerRecovery := NewRecovery(followerMachine, followerStore)
+	followerSync := NewSynchronizer(followerMachine, followerRecovery, dal.NewIncomingRestoreFactory(followerStore))
+	err = followerSync.InstallSnapshot(ctx, raftpb.Snapshot{
 		Metadata: raftpb.SnapshotMetadata{Index: 100},
 	})
 	require.NoError(t, err)
 
 	// --- Synchronize: fetch leader's checkpoint, read lastAppliedIndex from Pebble ---
-	appliedIndex, err := followerMachine.SynchronizeWithLeader(ctx, &copyDirFetcher{srcDir: leaderCheckpointPath}, nil)
+	appliedIndex, err := followerSync.SynchronizeWithLeader(ctx, &copyDirFetcher{srcDir: leaderCheckpointPath}, nil)
 	require.NoError(t, err)
 	require.Equal(t, uint64(100), appliedIndex)
 

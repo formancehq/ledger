@@ -76,7 +76,7 @@ func newBackupTestStore(t *testing.T) *dal.Store {
 func writeCorruptColdEntry(t *testing.T, store *dal.Store, sub byte, seq uint64) {
 	t.Helper()
 
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 	key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, sub).PutUint64(seq).Build()
 	require.NoError(t, batch.SetBytes(key, []byte{0xff, 0xff, 0xff, 0xff}))
 	require.NoError(t, batch.Commit())

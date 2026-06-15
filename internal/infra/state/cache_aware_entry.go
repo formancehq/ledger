@@ -54,7 +54,7 @@ func (c *CacheAwareEntry[K, V]) GetKey(key K) (V, attributes.U128, error) {
 // attribute zone, and the 0xFF cache zone within the same Pebble batch.
 // This is the safe replacement for direct KeyStore.Put() calls.
 func (c *CacheAwareEntry[K, V]) PutWithCache(
-	batch *dal.Batch,
+	batch *dal.WriteSession,
 	genByte byte,
 	canonical []byte,
 	value V,
@@ -81,7 +81,7 @@ func (c *CacheAwareEntry[K, V]) PutWithCache(
 // pattern where the 0xF1 entry is deleted separately but the cache must stay
 // populated for co-batched CacheGuaranteed proposals.
 func (c *CacheAwareEntry[K, V]) PutCacheOnly(
-	batch *dal.Batch,
+	batch *dal.WriteSession,
 	genByte byte,
 	canonical []byte,
 	value V,

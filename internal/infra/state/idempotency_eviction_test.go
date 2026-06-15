@@ -48,7 +48,7 @@ func TestIdempotencyEviction_SameTimestampSiblingsNeverOrphaned(t *testing.T) {
 		"key-earlier", // earlier timestamp
 	}
 
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 
 	for _, k := range keys {
 		ts := sharedTs
@@ -86,7 +86,7 @@ func TestIdempotencyEviction_SameTimestampSiblingsNeverOrphaned(t *testing.T) {
 		"the scan should stop mid-sharedTs group, exercising the boundary case")
 
 	// Apply the eviction.
-	evictBatch := store.NewBatch()
+	evictBatch := store.OpenWriteSession()
 	evicted, err := idemp.Evict(evictBatch, sharedTs+1, lastScannedKey, hashes)
 	require.NoError(t, err)
 	require.NoError(t, evictBatch.Commit())
@@ -143,7 +143,7 @@ func TestIdempotencyEviction_LastScannedKeyExcludesSiblingsLexically(t *testing.
 	store := newTestStore(t)
 
 	const ts uint64 = 42
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 
 	for i := range 4 {
 		key := []byte{byte('a' + i)}

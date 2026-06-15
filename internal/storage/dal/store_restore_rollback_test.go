@@ -27,7 +27,7 @@ func TestRestoreCheckpoint_RollsBackWhenReopenFails(t *testing.T) {
 	s := newTestStore(t)
 
 	// Seed pre-restore data.
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte("pre-restore"), []byte("survives-rollback")))
 	require.NoError(t, batch.Commit())
 
@@ -35,7 +35,7 @@ func TestRestoreCheckpoint_RollsBackWhenReopenFails(t *testing.T) {
 	require.NoError(t, err)
 
 	// Add more post-checkpoint data so a successful restore would lose it.
-	postBatch := s.NewBatch()
+	postBatch := s.OpenWriteSession()
 	require.NoError(t, postBatch.SetBytes([]byte("post-checkpoint"), []byte("would-be-lost")))
 	require.NoError(t, postBatch.Commit())
 
@@ -112,7 +112,7 @@ func TestReconcileLiveAfterRestore_CrashedBeforePublish(t *testing.T) {
 	s, err := NewStore(dataDir, logger, meter, DefaultConfig())
 	require.NoError(t, err)
 
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte("pre-restore"), []byte("must-survive")))
 	require.NoError(t, batch.Commit())
 
@@ -173,7 +173,7 @@ func TestReconcileLiveAfterRestore_RevertsWhenLiveMissing(t *testing.T) {
 	s, err := NewStore(dataDir, logger, meter, DefaultConfig())
 	require.NoError(t, err)
 
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte("survivor"), []byte("yes")))
 	require.NoError(t, batch.Commit())
 
@@ -219,7 +219,7 @@ func TestReconcileLiveAfterRestore_CleansUpWhenBothExist(t *testing.T) {
 	s, err := NewStore(dataDir, logger, meter, DefaultConfig())
 	require.NoError(t, err)
 
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte("post-restore"), []byte("kept")))
 	require.NoError(t, batch.Commit())
 

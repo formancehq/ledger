@@ -28,7 +28,7 @@ func TestBatch_CommitAndCancel(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 
 	require.NoError(t, batch.SetBytes([]byte("key1"), []byte("val1")))
 	require.NoError(t, batch.Commit())
@@ -44,7 +44,7 @@ func TestBatch_CancelBeforeCommit(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 
 	require.NoError(t, batch.SetBytes([]byte("key1"), []byte("val1")))
 	require.NoError(t, batch.Cancel())
@@ -58,7 +58,7 @@ func TestBatch_CancelAfterCommit(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 
 	require.NoError(t, batch.SetBytes([]byte("key1"), []byte("val1")))
 	require.NoError(t, batch.Commit())
@@ -71,7 +71,7 @@ func TestBatch_DoubleCommit(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 
 	require.NoError(t, batch.SetBytes([]byte("key1"), []byte("val1")))
 	require.NoError(t, batch.Commit())
@@ -86,7 +86,7 @@ func TestBatch_SetBytesAfterCommit(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 
 	require.NoError(t, batch.Commit())
 
@@ -101,7 +101,7 @@ func TestBatch_DeleteKey(t *testing.T) {
 	s := newTestStore(t)
 
 	// First write a key
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte("to-delete"), []byte("value")))
 	require.NoError(t, batch.Commit())
 
@@ -112,7 +112,7 @@ func TestBatch_DeleteKey(t *testing.T) {
 	require.NoError(t, closer.Close())
 
 	// Delete the key
-	batch2 := s.NewBatch()
+	batch2 := s.OpenWriteSession()
 	require.NoError(t, batch2.DeleteKey([]byte("to-delete")))
 	require.NoError(t, batch2.Commit())
 
@@ -125,7 +125,7 @@ func TestBatch_DeleteKeyAfterCommit(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, batch.Commit())
 
 	err := batch.DeleteKey([]byte("key"))
@@ -139,7 +139,7 @@ func TestBatch_DeleteRange(t *testing.T) {
 	s := newTestStore(t)
 
 	// Write multiple keys
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte("aaa"), []byte("1")))
 	require.NoError(t, batch.SetBytes([]byte("bbb"), []byte("2")))
 	require.NoError(t, batch.SetBytes([]byte("ccc"), []byte("3")))
@@ -147,7 +147,7 @@ func TestBatch_DeleteRange(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Delete range [bbb, ddd)
-	batch2 := s.NewBatch()
+	batch2 := s.OpenWriteSession()
 	require.NoError(t, batch2.DeleteRange([]byte("bbb"), []byte("ddd"), pebble.NoSync))
 	require.NoError(t, batch2.Commit())
 
@@ -176,7 +176,7 @@ func TestBatch_SingleDeleteKey(t *testing.T) {
 	s := newTestStore(t)
 
 	// Write a key exactly once
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte("once-key"), []byte("value")))
 	require.NoError(t, batch.Commit())
 
@@ -187,7 +187,7 @@ func TestBatch_SingleDeleteKey(t *testing.T) {
 	require.NoError(t, closer.Close())
 
 	// SingleDelete the key
-	batch2 := s.NewBatch()
+	batch2 := s.OpenWriteSession()
 	require.NoError(t, batch2.SingleDeleteKey([]byte("once-key")))
 	require.NoError(t, batch2.Commit())
 
@@ -200,7 +200,7 @@ func TestBatch_SingleDeleteKeyAfterCommit(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, batch.Commit())
 
 	err := batch.SingleDeleteKey([]byte("key"))
@@ -214,14 +214,14 @@ func TestBatch_DeleteRangeNoSync(t *testing.T) {
 	s := newTestStore(t)
 
 	// Write keys
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte("x1"), []byte("a")))
 	require.NoError(t, batch.SetBytes([]byte("x2"), []byte("b")))
 	require.NoError(t, batch.SetBytes([]byte("x3"), []byte("c")))
 	require.NoError(t, batch.Commit())
 
 	// Delete range with NoSync
-	batch2 := s.NewBatch()
+	batch2 := s.OpenWriteSession()
 	require.NoError(t, batch2.DeleteRangeNoSync([]byte("x1"), []byte("x3")))
 	require.NoError(t, batch2.Commit())
 
@@ -241,7 +241,7 @@ func TestBatch_DeleteRangeNoSyncAfterCommit(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, batch.Commit())
 
 	err := batch.DeleteRangeNoSync([]byte("a"), []byte("z"))
@@ -253,7 +253,7 @@ func TestBatch_SetProtoAfterCommit(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, batch.Commit())
 
 	// This should fail because the batch is already committed.
@@ -269,7 +269,7 @@ func TestBatch_DeleteRangeWithSet(t *testing.T) {
 	s := newTestStore(t)
 
 	// Pre-populate keys under prefix 0x01.
-	batch1 := s.NewBatch()
+	batch1 := s.OpenWriteSession()
 	require.NoError(t, batch1.SetBytes([]byte{0x01, 'a'}, []byte("old-a")))
 	require.NoError(t, batch1.SetBytes([]byte{0x01, 'b'}, []byte("old-b")))
 	require.NoError(t, batch1.Commit())
@@ -277,7 +277,7 @@ func TestBatch_DeleteRangeWithSet(t *testing.T) {
 	// In a single batch: DeleteRange the prefix, then Set new values.
 	// This mirrors the cache rotation pattern: writeCacheRotation does
 	// DeleteRange on the gen byte, then Merge writes new entries.
-	batch2 := s.NewBatch()
+	batch2 := s.OpenWriteSession()
 	require.NoError(t, batch2.DeleteRangeNoSync([]byte{0x01}, []byte{0x02}))
 	require.NoError(t, batch2.SetBytes([]byte{0x01, 'a'}, []byte("new-a")))
 	require.NoError(t, batch2.SetBytes([]byte{0x01, 'c'}, []byte("new-c")))
@@ -304,7 +304,7 @@ func TestBatch_MixedPrefixes(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 
 	// Simulate the mixed-prefix pattern from FSM apply:
 	// 0xF0 (logs), 0xF1 (attributes), 0xFF (cache) — written interleaved.
@@ -348,7 +348,7 @@ func benchmarkBatchCommit(b *testing.B, numEntries int) {
 	defer func() { _ = s.Close() }()
 
 	for b.Loop() {
-		batch := s.NewBatch()
+		batch := s.OpenWriteSession()
 
 		for i := range numEntries {
 			prefix := byte(0xF0 + (i % 3))
@@ -376,29 +376,6 @@ func BenchmarkBatch_100(b *testing.B)   { benchmarkBatchCommit(b, 100) }
 func BenchmarkBatch_1000(b *testing.B)  { benchmarkBatchCommit(b, 1000) }
 func BenchmarkBatch_10000(b *testing.B) { benchmarkBatchCommit(b, 10000) }
 
-func TestBatch_NewIter(t *testing.T) {
-	t.Parallel()
-
-	s := newTestStore(t)
-
-	// Write some data
-	batch := s.NewBatch()
-	require.NoError(t, batch.SetBytes([]byte("iter-key"), []byte("iter-val")))
-	require.NoError(t, batch.Commit())
-
-	// Create an iterator from a new batch
-	batch2 := s.NewBatch()
-
-	defer func() { _ = batch2.Cancel() }()
-
-	iter, err := batch2.NewIter(&pebble.IterOptions{
-		LowerBound: []byte("iter-"),
-		UpperBound: []byte("iter-\xff"),
-	})
-	require.NoError(t, err)
-
-	defer func() { _ = iter.Close() }()
-
-	require.True(t, iter.First())
-	require.Equal(t, []byte("iter-key"), iter.Key())
-}
+// TestBatch_NewIter was removed: WriteSession no longer exposes NewIter.
+// Reads from Pebble while writes are pending must go through a ReadHandle
+// obtained via *Store.NewReadHandle / NewDirectReadHandle.

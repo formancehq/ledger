@@ -104,17 +104,23 @@ func newTestApplierSetup(t *testing.T) *testApplierSetup {
 
 	nodeAttrs := attributes.New()
 
+	nodeRegistry := state.NewStateRegistry(nodeCache, nodeAttrs, 0)
+	nodeSnapshotter := state.NewCacheSnapshotter(logger, nodeRegistry, nil)
 	fsm, err := state.NewMachine(
-		logger, pebbleStore, meter, nodeCache, nodeAttrs,
-		nil, state.NewSharedState(), noopNotifier{}, nil, "test-cluster", 0, false, 0,
+		logger, nodeRegistry, nodeSnapshotter, pebbleStore, dal.NewSentinelFactory(pebbleStore, false), meter,
+		nil, state.NewSharedState(), noopNotifier{}, nil, "test-cluster", 0,
 	)
 	require.NoError(t, err)
+
+	recovery := state.NewRecovery(fsm, pebbleStore)
+	require.NoError(t, recovery.RecoverState())
+	synchronizer := state.NewSynchronizer(fsm, recovery, dal.NewIncomingRestoreFactory(pebbleStore))
 
 	// Create initial snapshot (no FSM data) in the WAL.
 	require.NoError(t, w.CreateSnapshot(0, &confState, nil))
 
 	applier, err := NewApplier(
-		fsm, defaultSpool, pebbleStore, w, logger, meter,
+		fsm, recovery, synchronizer, defaultSpool, pebbleStore, w, logger, meter,
 		0, 1000, nil,
 	)
 	require.NoError(t, err)
@@ -765,7 +771,7 @@ func TestApplierCascadingQueryCheckpointsDuringReplay(t *testing.T) {
 
 	// Entry 1: CreateLedger — applied directly so the FSM has lastAppliedIndex=1.
 	e1, _ := makeCreateLedgerEntry(t, 1, "qcp-ledger")
-	_, err := setup.fsm.ApplyEntries(ctx, e1)
+	_, err := setup.fsm.ApplyEntries(ctx, setup.store, e1)
 	require.NoError(t, err)
 
 	// Entries 2-5: fill the spool as if they arrived during a maintenance task.

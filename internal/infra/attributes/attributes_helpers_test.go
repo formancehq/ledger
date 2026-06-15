@@ -143,7 +143,7 @@ func TestAccumulator(t *testing.T) {
 	keyA := []byte("ledger\x00alice\x00USD")
 	keyB := []byte("ledger\x00bob\x00USD")
 
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 	require.NoError(t, errOnly(attrs.Volume.Set(batch, keyA, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(1000),
 	})))
@@ -184,7 +184,7 @@ func TestAccumulatorFeedAndFlush(t *testing.T) {
 	keyA := []byte("ledger\x00alice\x00field1")
 	keyB := []byte("ledger\x00bob\x00field1")
 
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 	require.NoError(t, errOnly(attrs.Metadata.Set(batch, keyA, commonpb.NewStringValue("alice-val"))))
 	require.NoError(t, errOnly(attrs.Metadata.Set(batch, keyB, commonpb.NewStringValue("bob-val"))))
 	require.NoError(t, batch.Commit())
@@ -252,7 +252,7 @@ func TestGetReturnsLatestSet(t *testing.T) {
 	testKey := []byte("ledger\x00maxidx\x00USD")
 
 	// Multiple Sets overwrite in place — last Set wins
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 	require.NoError(t, errOnly(attrs.Volume.Set(batch, testKey, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(100),
 	})))
@@ -280,7 +280,7 @@ func TestComputeAllForPrefixMaxIndex(t *testing.T) {
 	keyB := []byte("test\x00b\x00USD")
 
 	// Each Set overwrites in place, so only the last Set per key survives.
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 	require.NoError(t, errOnly(attrs.Volume.Set(batch, keyA, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(500),
 	})))
@@ -326,7 +326,7 @@ func TestReferenceAttribute(t *testing.T) {
 	testKey := []byte("\x00\x00\x00\x01ref-1")
 
 	// Set a value, then overwrite with a later Set — latest wins
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 	require.NoError(t, errOnly(attrs.References.Set(batch, testKey, &commonpb.TransactionReferenceValue{
 		TransactionId: 42,
 	})))
@@ -337,7 +337,7 @@ func TestReferenceAttribute(t *testing.T) {
 	require.Equal(t, uint64(42), result.GetTransactionId())
 
 	// Overwrite with a later Set
-	batch = store.NewBatch()
+	batch = store.OpenWriteSession()
 	require.NoError(t, errOnly(attrs.References.Set(batch, testKey, &commonpb.TransactionReferenceValue{
 		TransactionId: 99,
 	})))
@@ -368,7 +368,7 @@ func TestLedgerAttribute(t *testing.T) {
 	testKey := []byte("my-ledger")
 
 	// Set a value
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 	require.NoError(t, errOnly(attrs.Ledger.Set(batch, testKey, &commonpb.LedgerInfo{
 		Name: "my-ledger",
 	})))
@@ -379,7 +379,7 @@ func TestLedgerAttribute(t *testing.T) {
 	require.Equal(t, "my-ledger", result.GetName())
 
 	// Overwrite with a later Set — latest wins
-	batch = store.NewBatch()
+	batch = store.OpenWriteSession()
 	require.NoError(t, errOnly(attrs.Ledger.Set(batch, testKey, &commonpb.LedgerInfo{
 		Name: "my-ledger-renamed",
 	})))
@@ -398,7 +398,7 @@ func TestBoundaryAttribute(t *testing.T) {
 
 	testKey := []byte("boundary-ledger")
 
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 	require.NoError(t, errOnly(attrs.Boundary.Set(batch, testKey, &raftcmdpb.LedgerBoundaries{
 		NextTransactionId: 10,
 		NextLogId:         20,
@@ -499,7 +499,7 @@ func TestCompactAllForBackup(t *testing.T) {
 	keyA := []byte("ledger\x00alice\x00USD")
 	keyB := []byte("ledger\x00bob\x00USD")
 
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 	require.NoError(t, errOnly(attrs.Volume.Set(batch, keyA, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(300),
 	})))
@@ -541,7 +541,7 @@ func TestCompactAllForBackupAllTypes(t *testing.T) {
 	boundaryKey := []byte("myledger")
 
 	// Write data
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 	require.NoError(t, errOnly(attrs.Volume.Set(batch, volumeKey, &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(300),
 		Output: commonpb.NewUint256FromUint64(100),
@@ -616,7 +616,7 @@ func TestCompactAllForBackupMultiKeyPerType(t *testing.T) {
 	keyBob := []byte("ledger\x00bob\x00USD")
 	keyCharlie := []byte("ledger\x00charlie\x00USD")
 
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 	// Alice: last Set wins = 50
 	require.NoError(t, errOnly(attrs.Volume.Set(batch, keyAlice, &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(50),
@@ -659,7 +659,7 @@ func TestCompactAllForBackupEmpty(t *testing.T) {
 	store := createTestStore(t)
 
 	// Set a non-zero lastAppliedIndex
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 	idxBuf := make([]byte, 8)
 	binary.BigEndian.PutUint64(idxBuf, 42)
 	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex}, idxBuf))

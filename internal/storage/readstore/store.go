@@ -174,9 +174,9 @@ func (s *Store) DB() *pebble.DB {
 	return s.db
 }
 
-// NewBatch creates a dal.Batch backed by the read store's Pebble DB.
-func (s *Store) NewBatch() *dal.Batch {
-	return dal.NewBatchFromDB(s.db)
+// NewBatch creates a dal.WriteSession backed by the read store's Pebble DB.
+func (s *Store) NewBatch() *dal.WriteSession {
+	return dal.NewWriteSessionFromDB(s.db)
 }
 
 // NewSnapshot returns a consistent snapshot for reads.
@@ -212,7 +212,7 @@ func (s *Store) ReadProgress() (uint64, error) {
 }
 
 // WriteProgress stores the last indexed log sequence.
-func (s *Store) WriteProgress(batch *dal.Batch, sequence uint64) error {
+func (s *Store) WriteProgress(batch *dal.WriteSession, sequence uint64) error {
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], sequence)
 
@@ -252,7 +252,7 @@ func (s *Store) ReadAuditProgress() (uint64, error) {
 }
 
 // WriteAuditProgress stores the last consumed audit sequence.
-func (s *Store) WriteAuditProgress(batch *dal.Batch, sequence uint64) error {
+func (s *Store) WriteAuditProgress(batch *dal.WriteSession, sequence uint64) error {
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], sequence)
 
@@ -260,7 +260,7 @@ func (s *Store) WriteAuditProgress(batch *dal.Batch, sequence uint64) error {
 }
 
 // WriteBackfillProgress stores a backfill cursor.
-func (s *Store) WriteBackfillProgress(batch *dal.Batch, key []byte, cursor uint64) error {
+func (s *Store) WriteBackfillProgress(batch *dal.WriteSession, key []byte, cursor uint64) error {
 	prefix := BackfillKeyPrefix()
 	fullKey := make([]byte, len(prefix)+len(key))
 	copy(fullKey, prefix)
@@ -295,7 +295,7 @@ func (s *Store) ReadBackfillProgress(key []byte) (uint64, bool) {
 }
 
 // WriteBackfillCursor stores a variable-length cursor ([]byte) for schema rewrite tasks.
-func (s *Store) WriteBackfillCursor(batch *dal.Batch, key, cursor []byte) error {
+func (s *Store) WriteBackfillCursor(batch *dal.WriteSession, key, cursor []byte) error {
 	prefix := BackfillKeyPrefix()
 	fullKey := make([]byte, len(prefix)+len(key))
 	copy(fullKey, prefix)

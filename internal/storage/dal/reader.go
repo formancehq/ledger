@@ -10,7 +10,10 @@ import (
 )
 
 // PebbleGetter provides point-lookup access to Pebble.
-// Implemented by *pebble.DB, *pebble.Snapshot, *ReadHandle, *Batch, and *Store.
+// Implemented by *pebble.DB, *pebble.Snapshot, *ReadHandle, and *Store.
+//
+// *WriteSession deliberately does NOT implement this interface: hot-path
+// writers must not read from Pebble.
 //
 // *Store holds dbMu.RLock only for the duration of the Get call, which is safe
 // because Get is atomic and short-lived.
@@ -19,12 +22,15 @@ type PebbleGetter interface {
 }
 
 // PebbleReader provides full read access (point lookups + iteration).
-// Implemented by *pebble.DB, *pebble.Snapshot, *ReadHandle, and *Batch.
+// Implemented by *pebble.DB, *pebble.Snapshot, and *ReadHandle.
 //
 // *Store does NOT implement this interface. Callers that need iterators must
 // use NewReadHandle() or NewDirectReadHandle() — these hold dbMu.RLock for
 // their entire lifetime, preventing RestoreCheckpoint from closing the DB
 // while iterators are active.
+//
+// *WriteSession deliberately does NOT implement this interface: hot-path
+// writers must not read from Pebble.
 type PebbleReader interface {
 	PebbleGetter
 	NewIter(o *pebble.IterOptions) (*pebble.Iterator, error)

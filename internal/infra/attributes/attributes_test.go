@@ -34,7 +34,7 @@ func TestSetAndComputeValue(t *testing.T) {
 	attrs := New()
 
 	// Create a batch
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 
 	defer func() {
 		_ = batch.Cancel()
@@ -70,7 +70,7 @@ func TestComputeValueWithMultipleSets(t *testing.T) {
 	store := createTestStore(t)
 	attrs := New()
 
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 
 	defer func() {
 		_ = batch.Cancel()
@@ -113,7 +113,7 @@ func TestDeleteRemovesAllEntries(t *testing.T) {
 	testKey := []byte("test-ledger\x00delete-account\x00status")
 
 	// Set metadata values at two indexes
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 	_, err := attrs.Metadata.Set(batch, testKey, commonpb.NewStringValue("active"))
 	require.NoError(t, err)
 	_, err = attrs.Metadata.Set(batch, testKey, commonpb.NewStringValue("inactive"))
@@ -128,7 +128,7 @@ func TestDeleteRemovesAllEntries(t *testing.T) {
 	require.Equal(t, "inactive", commonpb.MetadataValueToString(result))
 
 	// Delete all entries for this key
-	batch = store.NewBatch()
+	batch = store.OpenWriteSession()
 	err = attrs.Metadata.Delete(batch, testKey)
 	require.NoError(t, err)
 	err = batch.Commit()
@@ -158,21 +158,21 @@ func TestDeleteThenReAdd(t *testing.T) {
 	testKey := []byte("test-ledger\x00readd-account\x00status")
 
 	// Set initial value
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 	_, err := attrs.Metadata.Set(batch, testKey, commonpb.NewStringValue("original"))
 	require.NoError(t, err)
 	err = batch.Commit()
 	require.NoError(t, err)
 
 	// Delete all entries
-	batch = store.NewBatch()
+	batch = store.OpenWriteSession()
 	err = attrs.Metadata.Delete(batch, testKey)
 	require.NoError(t, err)
 	err = batch.Commit()
 	require.NoError(t, err)
 
 	// Re-add with a new value
-	batch = store.NewBatch()
+	batch = store.OpenWriteSession()
 	_, err = attrs.Metadata.Set(batch, testKey, commonpb.NewStringValue("new-value"))
 	require.NoError(t, err)
 	err = batch.Commit()
@@ -194,7 +194,7 @@ func TestDeleteNonExistentKey(t *testing.T) {
 	testKey := []byte("test-ledger\x00nonexistent\x00key")
 
 	// Delete on a key with no entries should not error
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 	err := attrs.Metadata.Delete(batch, testKey)
 	require.NoError(t, err)
 	err = batch.Commit()
@@ -214,7 +214,7 @@ func TestScanEntriesMultipleSets(t *testing.T) {
 
 	testKey := []byte("test-ledger\x00scan-account\x00USD")
 
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 
 	defer func() { _ = batch.Cancel() }()
 
@@ -250,7 +250,7 @@ func TestScanEntriesMultipleSetsNoPrior(t *testing.T) {
 
 	testKey := []byte("test-ledger\x00scan-diff-only\x00USD")
 
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 
 	defer func() { _ = batch.Cancel() }()
 
@@ -292,7 +292,7 @@ func TestSetWithZeroValue(t *testing.T) {
 	attrs := New()
 
 	// Create a batch
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 
 	defer func() {
 		_ = batch.Cancel()

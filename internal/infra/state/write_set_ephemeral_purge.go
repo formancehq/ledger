@@ -120,7 +120,7 @@ func (b *WriteSet) partitionVolumes(
 // co-batched proposal admitted with CacheGuaranteed still sees a populated
 // entry.
 func (b *WriteSet) applyEphemeralPurge(
-	batch *dal.Batch,
+	batch *dal.WriteSession,
 	genByte byte,
 	purged []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 ) error {
@@ -151,7 +151,7 @@ func (b *WriteSet) applyEphemeralPurge(
 //
 // The zero entry ages out via cache generation rotation.
 func (b *WriteSet) zeroVolumeCache(
-	batch *dal.Batch,
+	batch *dal.WriteSession,
 	genByte byte,
 	updates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 ) error {

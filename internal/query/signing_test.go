@@ -10,7 +10,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-func deleteAllSigningKeys(b *dal.Batch) error {
+func deleteAllSigningKeys(b *dal.WriteSession) error {
 	return b.DeleteRangeNoSync(
 		[]byte{dal.ZoneGlobal, dal.SubGlobSigningKey},
 		[]byte{dal.ZoneGlobal, dal.SubGlobSigningKey + 1},
@@ -44,7 +44,7 @@ func TestReadSigningKeys(t *testing.T) {
 			pubKey2[i] = byte(i + 100)
 		}
 
-		batch := s.NewBatch()
+		batch := s.OpenWriteSession()
 		require.NoError(t, state.SaveSigningKey(batch, "key-1", pubKey1, ""))
 		require.NoError(t, state.SaveSigningKey(batch, "key-2", pubKey2, ""))
 		require.NoError(t, batch.Commit())
@@ -57,7 +57,7 @@ func TestReadSigningKeys(t *testing.T) {
 	})
 
 	t.Run("delete signing key", func(t *testing.T) {
-		batch := s.NewBatch()
+		batch := s.OpenWriteSession()
 		require.NoError(t, state.DeleteSigningKey(batch, "key-1"))
 		require.NoError(t, batch.Commit())
 
@@ -72,7 +72,7 @@ func TestReadSigningKeys(t *testing.T) {
 	})
 
 	t.Run("save and load signing config", func(t *testing.T) {
-		batch := s.NewBatch()
+		batch := s.OpenWriteSession()
 		require.NoError(t, state.SaveSigningConfig(batch, true))
 		require.NoError(t, batch.Commit())
 
@@ -80,7 +80,7 @@ func TestReadSigningKeys(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, requireSig)
 
-		batch = s.NewBatch()
+		batch = s.OpenWriteSession()
 		require.NoError(t, state.SaveSigningConfig(batch, false))
 		require.NoError(t, batch.Commit())
 
@@ -91,7 +91,7 @@ func TestReadSigningKeys(t *testing.T) {
 
 	t.Run("delete all signing keys", func(t *testing.T) {
 		// Add some keys first
-		batch := s.NewBatch()
+		batch := s.OpenWriteSession()
 		require.NoError(t, state.SaveSigningKey(batch, "a", make([]byte, 32), ""))
 		require.NoError(t, state.SaveSigningKey(batch, "b", make([]byte, 32), ""))
 		require.NoError(t, state.SaveSigningKey(batch, "c", make([]byte, 32), ""))
@@ -101,7 +101,7 @@ func TestReadSigningKeys(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, keys, 4) // key-2 from previous test + a, b, c
 
-		batch = s.NewBatch()
+		batch = s.OpenWriteSession()
 		require.NoError(t, deleteAllSigningKeys(batch))
 		require.NoError(t, batch.Commit())
 

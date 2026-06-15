@@ -17,7 +17,7 @@ func TestProtoCursor_Basic(t *testing.T) {
 	s := newTestStore(t)
 
 	// Write proto messages under a prefix
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 
 	ts1 := &commonpb.Timestamp{Data: 1000}
 	ts2 := &commonpb.Timestamp{Data: 2000}
@@ -111,7 +111,7 @@ func TestProtoCursor_MultipleCallsAfterEOF(t *testing.T) {
 	s := newTestStore(t)
 
 	// Write one item
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	ts := &commonpb.Timestamp{Data: 42}
 	data, err := proto.Marshal(ts)
 	require.NoError(t, err)

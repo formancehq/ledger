@@ -153,7 +153,7 @@ func TestValidateOrPersistConfig_SchemaVersionBackfill(t *testing.T) {
 	logger := logging.Testing()
 
 	// Simulate a pre-versioning persisted config (schema_version == 0).
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 	require.NoError(t, SavePersistedConfig(batch, &commonpb.PersistedConfig{
 		NodeId:    1,
 		ClusterId: "test",
@@ -179,7 +179,7 @@ func TestValidateOrPersistConfig_SchemaVersionTooNew(t *testing.T) {
 	logger := logging.Testing()
 
 	// Persist a schema version higher than what the code supports (simulate downgrade).
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 	require.NoError(t, SavePersistedConfig(batch, &commonpb.PersistedConfig{
 		NodeId:               1,
 		ClusterId:            "test",
@@ -212,7 +212,7 @@ func TestValidateOrPersistConfig_SchemaVersionTooOld(t *testing.T) {
 	logger := logging.Testing()
 
 	// Persist a schema version lower than current (simulate upgrade without migration).
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 	require.NoError(t, SavePersistedConfig(batch, &commonpb.PersistedConfig{
 		NodeId:               1,
 		ClusterId:            "test",

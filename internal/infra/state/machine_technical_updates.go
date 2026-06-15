@@ -16,7 +16,7 @@ import (
 // attribute zone, the 0xFF cache zone, and the ZoneGlobal durable store — all
 // in the same Pebble batch. Uses CacheAwareEntry.PutWithCache for the first
 // three writes, then SaveLedger for the Ledger-specific ZoneGlobal store.
-func (fsm *Machine) saveLedgerWithCache(batch *dal.Batch, ledgerKey domain.LedgerKey, info *commonpb.LedgerInfo) error {
+func (fsm *Machine) saveLedgerWithCache(batch *dal.WriteSession, ledgerKey domain.LedgerKey, info *commonpb.LedgerInfo) error {
 	genByte := byte(fsm.Registry.Cache.CurrentGeneration() % 2)
 
 	if _, _, err := fsm.Registry.Ledgers.PutWithCache(batch, genByte, ledgerKey.Bytes(), info); err != nil {
@@ -33,7 +33,7 @@ func (fsm *Machine) saveLedgerWithCache(batch *dal.Batch, ledgerKey domain.Ledge
 // applyTechnicalUpdates applies Proposal-level technical updates that bypass
 // the Order/Log system. These are applied directly to Pebble and run on every
 // proposal, regardless of whether it also carries orders.
-func (fsm *Machine) applyTechnicalUpdates(batch *dal.Batch, raftIndex uint64, proposal *raftcmdpb.Proposal) error {
+func (fsm *Machine) applyTechnicalUpdates(batch *dal.WriteSession, raftIndex uint64, proposal *raftcmdpb.Proposal) error {
 	if cfg := proposal.GetClusterConfig(); cfg != nil {
 		if err := fsm.applyClusterConfig(batch, raftIndex, cfg); err != nil {
 			return fmt.Errorf("applying cluster config: %w", err)
@@ -84,7 +84,7 @@ func (fsm *Machine) applyTechnicalUpdates(batch *dal.Batch, raftIndex uint64, pr
 // alternating-byte persistence scheme in 0xFF can lose data on even-generation
 // skips. Reset the cache and purge 0xFF entirely — the preloader falls back to
 // Pebble reads (0xF1) and the cache rebuilds naturally.
-func (fsm *Machine) applyClusterConfig(batch *dal.Batch, raftIndex uint64, cfg *commonpb.ClusterConfig) error {
+func (fsm *Machine) applyClusterConfig(batch *dal.WriteSession, raftIndex uint64, cfg *commonpb.ClusterConfig) error {
 	oldThreshold := fsm.Registry.Cache.GenerationThreshold()
 	newThreshold := cfg.GetRotationThreshold()
 
@@ -140,8 +140,16 @@ func (fsm *Machine) applyClusterConfig(batch *dal.Batch, raftIndex uint64, cfg *
 		// Rebuild filters with new dimensions (sets IsReady=false).
 		fsm.BloomFilters.Rebuild(cfg)
 
-		// Launch async repopulation from attribute scan.
-		fsm.cacheSnapshotter.StartAsyncBloomPopulate("bloom config changed via cluster config")
+		// Signal the bloom-rebuild dispatcher (owned by Recovery, which holds
+		// the Pebble reader) to launch async repopulation from an attribute
+		// scan. We do not call StartAsyncBloomPopulate directly because the
+		// hot-path Machine does not hold a reader.
+		select {
+		case fsm.bloomRebuildCh <- "bloom config changed via cluster config":
+		default:
+			// A rebuild is already pending — the latest reason wins via the
+			// next signal opportunity; nothing to do here.
+		}
 	}
 
 	// Persist the cluster state with the current cache epoch.
@@ -165,7 +173,7 @@ func (fsm *Machine) applyClusterConfig(batch *dal.Batch, raftIndex uint64, cfg *
 }
 
 // applyEventsSinkUpdate applies a per-sink cursor and status update. No log entry is produced.
-func (fsm *Machine) applyEventsSinkUpdate(batch *dal.Batch, update *raftcmdpb.EventsSinkUpdate) error {
+func (fsm *Machine) applyEventsSinkUpdate(batch *dal.WriteSession, update *raftcmdpb.EventsSinkUpdate) error {
 	if update.GetCursor() > 0 {
 		if err := SetSinkCursor(batch, update.GetSinkName(), update.GetCursor()); err != nil {
 			return fmt.Errorf("setting sink cursor: %w", err)
@@ -190,7 +198,7 @@ func (fsm *Machine) applyEventsSinkUpdate(batch *dal.Batch, update *raftcmdpb.Ev
 }
 
 // applyMirrorSyncUpdate applies a per-ledger mirror cursor and status update. No log entry is produced.
-func (fsm *Machine) applyMirrorSyncUpdate(batch *dal.Batch, update *raftcmdpb.MirrorSyncUpdate) error {
+func (fsm *Machine) applyMirrorSyncUpdate(batch *dal.WriteSession, update *raftcmdpb.MirrorSyncUpdate) error {
 	ledgerInfo, _, err := fsm.Registry.Ledgers.Get(domain.LedgerKey{Name: update.GetLedgerName()}.Bytes())
 	if err != nil || ledgerInfo == nil {
 		return nil // ledger not found (may have been deleted)
@@ -226,7 +234,7 @@ func (fsm *Machine) applyMirrorSyncUpdate(batch *dal.Batch, update *raftcmdpb.Mi
 // applyIdempotencyEviction evicts expired idempotency keys. No log entry is produced.
 // The key hashes were pre-scanned by the leader and included in the proposal,
 // so this method is write-only — no Pebble reads occur.
-func (fsm *Machine) applyIdempotencyEviction(batch *dal.Batch, eviction *raftcmdpb.IdempotencyEviction) error {
+func (fsm *Machine) applyIdempotencyEviction(batch *dal.WriteSession, eviction *raftcmdpb.IdempotencyEviction) error {
 	evicted, err := fsm.Registry.Idempotency.Evict(batch, eviction.GetCutoffMicros(), eviction.GetLastScannedTimeIndexKey(), eviction.GetPebbleKeyHashes())
 	if err != nil {
 		return fmt.Errorf("evicting idempotency keys: %w", err)
@@ -241,7 +249,7 @@ func (fsm *Machine) applyIdempotencyEviction(batch *dal.Batch, eviction *raftcmd
 
 // applyMetadataConversionBatch applies a background metadata conversion batch.
 // No log entry is produced.
-func (fsm *Machine) applyMetadataConversionBatch(batch *dal.Batch, b *raftcmdpb.MetadataConversionBatch) error {
+func (fsm *Machine) applyMetadataConversionBatch(batch *dal.WriteSession, b *raftcmdpb.MetadataConversionBatch) error {
 	ledgerKey := domain.LedgerKey{Name: b.GetLedger()}
 
 	info, _, err := fsm.Registry.Ledgers.Get(ledgerKey.Bytes())
@@ -293,7 +301,7 @@ func (fsm *Machine) applyMetadataConversionBatch(batch *dal.Batch, b *raftcmdpb.
 
 // applyMetadataConversionCompletion applies a metadata conversion completion.
 // No log entry is produced.
-func (fsm *Machine) applyMetadataConversionCompletion(batch *dal.Batch, complete *raftcmdpb.MetadataConversionCompletion) error {
+func (fsm *Machine) applyMetadataConversionCompletion(batch *dal.WriteSession, complete *raftcmdpb.MetadataConversionCompletion) error {
 	ledgerKey := domain.LedgerKey{Name: complete.GetLedger()}
 
 	info, _, err := fsm.Registry.Ledgers.Get(ledgerKey.Bytes())
@@ -326,7 +334,7 @@ func (fsm *Machine) applyMetadataConversionCompletion(batch *dal.Batch, complete
 
 // applyIndexReady applies an index-ready notification. No log entry is produced.
 // The index builder detects the status change by reading LedgerInfo on its next tick.
-func (fsm *Machine) applyIndexReady(batch *dal.Batch, ready *raftcmdpb.IndexReadyUpdate, proposalDate *commonpb.Timestamp) error {
+func (fsm *Machine) applyIndexReady(batch *dal.WriteSession, ready *raftcmdpb.IndexReadyUpdate, proposalDate *commonpb.Timestamp) error {
 	ledgerKey := domain.LedgerKey{Name: ready.GetLedger()}
 
 	info, _, err := fsm.Registry.Ledgers.Get(ledgerKey.Bytes())
@@ -381,7 +389,7 @@ func (fsm *Machine) getConvertBatchValue(targetType commonpb.TargetType, canonic
 
 // putConvertBatchValue stores a converted metadata value via PutWithCache,
 // which atomically writes to the in-memory KeyStore, 0xF1, and 0xFF cache zone.
-func (fsm *Machine) putConvertBatchValue(batch *dal.Batch, targetType commonpb.TargetType, canonicalKey []byte, value *commonpb.MetadataValue) error {
+func (fsm *Machine) putConvertBatchValue(batch *dal.WriteSession, targetType commonpb.TargetType, canonicalKey []byte, value *commonpb.MetadataValue) error {
 	genByte := byte(fsm.Registry.Cache.CurrentGeneration() % 2)
 
 	switch targetType {

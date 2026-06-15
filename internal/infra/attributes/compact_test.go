@@ -43,7 +43,7 @@ func readLastAppliedIndex(reader dal.PebbleGetter) (uint64, error) {
 
 // setAppliedIndex writes the last applied Raft index via Batch.
 // Defined here to avoid importing state (which imports attributes, creating a cycle).
-func setAppliedIndex(b *dal.Batch, index uint64) error {
+func setAppliedIndex(b *dal.WriteSession, index uint64) error {
 	value := make([]byte, 8)
 	binary.BigEndian.PutUint64(value, index)
 
@@ -63,7 +63,7 @@ func TestCompactToBase(t *testing.T) {
 
 	// Write a ledger entry
 	ledgerAttr := NewAttribute[*commonpb.LedgerInfo](dal.SubAttrLedger)
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	_, err = ledgerAttr.Set(batch, canonicalKey, &commonpb.LedgerInfo{
 		Name: "test-ledger",
 	})
@@ -103,7 +103,7 @@ func TestCompactSurvivesCloseReopen(t *testing.T) {
 		defer func() { require.NoError(t, s.Close()) }()
 
 		ledgerAttr := NewAttribute[*commonpb.LedgerInfo](dal.SubAttrLedger)
-		batch := s.NewBatch()
+		batch := s.OpenWriteSession()
 		_, err = ledgerAttr.Set(batch, canonicalKey, &commonpb.LedgerInfo{
 			Name: "test-ledger",
 		})
@@ -163,7 +163,7 @@ func TestCompactSurvivesCheckpointAndRestore(t *testing.T) {
 		require.NoError(t, err)
 
 		ledgerAttr := NewAttribute[*commonpb.LedgerInfo](dal.SubAttrLedger)
-		batch := s.NewBatch()
+		batch := s.OpenWriteSession()
 		_, err = ledgerAttr.Set(batch, canonicalKey, &commonpb.LedgerInfo{
 			Name: "test-ledger",
 		})
@@ -296,7 +296,7 @@ func TestCompactSurvivesTarCycle(t *testing.T) {
 		defer func() { require.NoError(t, s.Close()) }()
 
 		ledgerAttr := NewAttribute[*commonpb.LedgerInfo](dal.SubAttrLedger)
-		batch := s.NewBatch()
+		batch := s.OpenWriteSession()
 		_, err = ledgerAttr.Set(batch, canonicalKey, &commonpb.LedgerInfo{
 			Name: "test-ledger",
 		})
@@ -390,7 +390,7 @@ func TestCompactSurvivesTarCycleAndHardLink(t *testing.T) {
 
 		defer func() { require.NoError(t, s.Close()) }()
 
-		batch := s.NewBatch()
+		batch := s.OpenWriteSession()
 		ledgerAttr := NewAttribute[*commonpb.LedgerInfo](dal.SubAttrLedger)
 		_, err = ledgerAttr.Set(batch, canonicalKey, &commonpb.LedgerInfo{
 			Name: "test-ledger",
@@ -494,7 +494,7 @@ func TestCompactSurvivesPebbleCheckpointTarCycle(t *testing.T) {
 		s, err := dal.OpenDirect(dbDir, logger)
 		require.NoError(t, err)
 
-		batch := s.NewBatch()
+		batch := s.OpenWriteSession()
 		ledgerAttr := NewAttribute[*commonpb.LedgerInfo](dal.SubAttrLedger)
 		_, err = ledgerAttr.Set(batch, canonicalKey, &commonpb.LedgerInfo{
 			Name: "test-ledger",
@@ -613,7 +613,7 @@ func TestCompactFlushedBoundaries(t *testing.T) {
 
 		defer func() { require.NoError(t, s.Close()) }()
 
-		batch := s.NewBatch()
+		batch := s.OpenWriteSession()
 		ledgerAttr := NewAttribute[*commonpb.LedgerInfo](dal.SubAttrLedger)
 		_, err = ledgerAttr.Set(batch, canonicalKey, &commonpb.LedgerInfo{
 			Name: "test-ledger",

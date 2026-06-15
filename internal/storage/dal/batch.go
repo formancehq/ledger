@@ -14,13 +14,17 @@ type vtSizedBufferMarshaler interface {
 	MarshalToSizedBufferVT([]byte) (int, error)
 }
 
-// Batch provides atomic operations on the store using a pebble.Batch with NoSync.
+// WriteSession provides atomic write operations on the store, backed by a
+// pebble.Batch with NoSync writes.
 //
-// Point operations (Set, Delete) are written directly to the underlying
-// pebble.Batch. Range operations (DeleteRange) are also applied immediately.
+// WriteSession is deliberately write-only: it does not expose Get / NewIter
+// nor implement PebbleGetter / PebbleReader. This makes the invariant "no
+// Pebble reads on the FSM hot path" structural — code that only holds a
+// *WriteSession cannot read from Pebble, by the compiler.
 //
-// Cancel must be called if the batch is not committed to release resources.
-type Batch struct {
+// Cancel must be called if the session is not committed, to release the
+// underlying batch resources.
+type WriteSession struct {
 	store          *Store
 	batch          *pebble.Batch
 	KeyBuilder     *KeyBuilder
@@ -35,7 +39,7 @@ type Batch struct {
 //
 // Calls SizeVT once and uses MarshalToSizedBufferVT directly, avoiding the
 // double SizeVT that MarshalToVT would do internally.
-func (b *Batch) MarshalProto(msg proto.Message) ([]byte, error) {
+func (b *WriteSession) MarshalProto(msg proto.Message) ([]byte, error) {
 	if m, ok := msg.(vtSizedBufferMarshaler); ok {
 		size := m.SizeVT()
 		if cap(b.protoBuffer) >= size {
@@ -52,9 +56,12 @@ func (b *Batch) MarshalProto(msg proto.Message) ([]byte, error) {
 	return b.marshalOptions.MarshalAppend(b.protoBuffer, msg)
 }
 
-// NewBatch creates a new Batch for atomic operations.
-func (s *Store) NewBatch() *Batch {
-	return &Batch{
+// OpenWriteSession creates a new write-only session bound to this store's DB.
+//
+// The returned session implements the write-only capability used by the FSM
+// hot path. It has no read methods by design.
+func (s *Store) OpenWriteSession() *WriteSession {
+	return &WriteSession{
 		store:       s,
 		batch:       s.getDB().NewBatch(),
 		KeyBuilder:  NewKeyBuilder(),
@@ -63,18 +70,19 @@ func (s *Store) NewBatch() *Batch {
 	}
 }
 
-// NewBatchFromDB creates a Batch backed by the given Pebble DB without a Store.
-// Used by subsystems (e.g. readstore) that manage their own Pebble instance.
-func NewBatchFromDB(db *pebble.DB) *Batch {
-	return &Batch{
+// NewWriteSessionFromDB creates a write-only session backed by the given Pebble
+// DB without a Store. Used by subsystems (e.g. readstore) that manage their own
+// Pebble instance.
+func NewWriteSessionFromDB(db *pebble.DB) *WriteSession {
+	return &WriteSession{
 		batch:       db.NewBatch(),
 		KeyBuilder:  NewKeyBuilder(),
 		protoBuffer: make([]byte, 0, 1024),
 	}
 }
 
-// Cancel cancels the batch and releases resources.
-func (b *Batch) Cancel() error {
+// Cancel cancels the session and releases resources.
+func (b *WriteSession) Cancel() error {
 	if b.committed {
 		return nil
 	}
@@ -87,14 +95,14 @@ func (b *Batch) Cancel() error {
 }
 
 // Commit commits all operations atomically with NoSync.
-func (b *Batch) Commit() error {
+func (b *WriteSession) Commit() error {
 	if b.committed {
-		return errors.New("batch already committed")
+		return errors.New("write session already committed")
 	}
 
 	err := b.batch.Commit(pebble.NoSync)
 	if err != nil {
-		return fmt.Errorf("committing batch: %w", err)
+		return fmt.Errorf("committing write session: %w", err)
 	}
 
 	b.committed = true
@@ -102,16 +110,16 @@ func (b *Batch) Commit() error {
 	return nil
 }
 
-// Set writes a key-value pair to the batch.
-func (b *Batch) Set(key, value []byte, options *pebble.WriteOptions) error {
+// Set writes a key-value pair.
+func (b *WriteSession) Set(key, value []byte, options *pebble.WriteOptions) error {
 	return b.batch.Set(key, value, options)
 }
 
 // SetProto marshals msg and stores it under key with NoSync.
-// Returns an error if the batch is already committed.
-func (b *Batch) SetProto(key []byte, msg proto.Message) error {
+// Returns an error if the session is already committed.
+func (b *WriteSession) SetProto(key []byte, msg proto.Message) error {
 	if b.committed {
-		return errors.New("batch already committed")
+		return errors.New("write session already committed")
 	}
 
 	data, err := b.MarshalProto(msg)
@@ -123,20 +131,20 @@ func (b *Batch) SetProto(key []byte, msg proto.Message) error {
 }
 
 // SetBytes stores raw bytes under key with NoSync.
-// Returns an error if the batch is already committed.
-func (b *Batch) SetBytes(key, value []byte) error {
+// Returns an error if the session is already committed.
+func (b *WriteSession) SetBytes(key, value []byte) error {
 	if b.committed {
-		return errors.New("batch already committed")
+		return errors.New("write session already committed")
 	}
 
 	return b.batch.Set(key, value, pebble.NoSync)
 }
 
 // DeleteKey deletes a key with NoSync.
-// Returns an error if the batch is already committed.
-func (b *Batch) DeleteKey(key []byte) error {
+// Returns an error if the session is already committed.
+func (b *WriteSession) DeleteKey(key []byte) error {
 	if b.committed {
-		return errors.New("batch already committed")
+		return errors.New("write session already committed")
 	}
 
 	return b.batch.Delete(key, pebble.NoSync)
@@ -149,31 +157,25 @@ func (b *Batch) DeleteKey(key []byte) error {
 // SAFETY: Using SingleDelete on a key that was written more than once (multiple SETs)
 // produces undefined behavior — the key may reappear after compaction.
 // Only use for keys with a guaranteed write-once / delete-once lifecycle.
-func (b *Batch) SingleDeleteKey(key []byte) error {
+func (b *WriteSession) SingleDeleteKey(key []byte) error {
 	if b.committed {
-		return errors.New("batch already committed")
+		return errors.New("write session already committed")
 	}
 
 	return b.batch.SingleDelete(key, pebble.NoSync)
 }
 
 // DeleteRange deletes all keys in the range [start, end).
-func (b *Batch) DeleteRange(start, end []byte, options *pebble.WriteOptions) error {
+func (b *WriteSession) DeleteRange(start, end []byte, options *pebble.WriteOptions) error {
 	return b.batch.DeleteRange(start, end, options)
 }
 
 // DeleteRangeNoSync deletes all keys in [start, end) with NoSync.
-// Returns an error if the batch is already committed.
-func (b *Batch) DeleteRangeNoSync(start, end []byte) error {
+// Returns an error if the session is already committed.
+func (b *WriteSession) DeleteRangeNoSync(start, end []byte) error {
 	if b.committed {
-		return errors.New("batch already committed")
+		return errors.New("write session already committed")
 	}
 
 	return b.batch.DeleteRange(start, end, pebble.NoSync)
-}
-
-// NewIter creates a new iterator on the store's database.
-// Used by domain functions that need to read existing data during batch operations.
-func (b *Batch) NewIter(opts *pebble.IterOptions) (*pebble.Iterator, error) {
-	return b.store.getDB().NewIter(opts)
 }

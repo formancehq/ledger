@@ -36,7 +36,7 @@ func TestCacheCoherenceAfterRestart(t *testing.T) {
 	// ---------------------------------------------------------------
 	// Entry 1: create the ledger
 	// ---------------------------------------------------------------
-	_, err := machine.ApplyEntries(ctx,
+	_, err := machine.ApplyEntries(ctx, dataStore,
 		makeEntry(t, 1, makeProposal(1, createLedgerOrder(ledgerName))),
 	)
 	require.NoError(t, err)
@@ -61,7 +61,7 @@ func TestCacheCoherenceAfterRestart(t *testing.T) {
 		)
 		proposal.Preload.LastPersistedIndex = machine.Registry.Cache.BaseIndex.Gen0
 
-		_, err := machine.ApplyEntries(ctx,
+		_, err := machine.ApplyEntries(ctx, dataStore,
 			makeEntry(t, index, proposal),
 		)
 		require.NoError(t, err)
@@ -82,7 +82,7 @@ func TestCacheCoherenceAfterRestart(t *testing.T) {
 	t.Log("Simulating restart: reset cache + restore from 0xFF")
 	machine.Registry.Cache.Reset()
 
-	err = machine.cacheSnapshotter.RestoreFromStore()
+	err = machine.cacheSnapshotter.RestoreFromStore(dataStore)
 	require.NoError(t, err)
 
 	// After restore, the cache should match 0xFF exactly.
@@ -106,7 +106,7 @@ func TestCacheCoherenceAfterRestart(t *testing.T) {
 		)
 		proposal.Preload.LastPersistedIndex = machine.Registry.Cache.BaseIndex.Gen0
 
-		_, err := machine.ApplyEntries(ctx,
+		_, err := machine.ApplyEntries(ctx, dataStore,
 			makeEntry(t, index, proposal),
 		)
 		require.NoError(t, err)

@@ -47,7 +47,7 @@ func (d *DerivedIdempotencyStore) Reset() {
 
 // Merge flushes pending entries to Pebble (via SaveIdempotencyKey) and
 // updates the parent in-memory map.
-func (d *DerivedIdempotencyStore) Merge(batch *dal.Batch) error {
+func (d *DerivedIdempotencyStore) Merge(batch *dal.WriteSession) error {
 	for key, value := range d.pending {
 		if err := saveIdempotencyKey(batch, key, value); err != nil {
 			return err

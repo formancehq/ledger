@@ -110,7 +110,7 @@ func (f *Filter) add(id attributes.U128) {
 
 // PersistDirtyBlocks writes all blocks modified since the last flush to
 // the Pebble batch. Key format: [ZoneGlobal][SubGlobBloom][attrCode][blockIndex BE 8].
-func (f *Filter) PersistDirtyBlocks(batch *dal.Batch) error {
+func (f *Filter) PersistDirtyBlocks(batch *dal.WriteSession) error {
 	for blockIdx, blk := range f.dirtyBlocks() {
 		key := make([]byte, 2+1+8)
 		key[0] = dal.ZoneGlobal
@@ -479,7 +479,7 @@ func (fs *FilterSet) AddCanonicalKeys(updates *BloomUpdates) {
 
 // PersistDirtyBlocks writes all dirty blocks from all filters to the Pebble batch.
 // Called during cache rotation to flush bloom state atomically with the rotation.
-func (fs *FilterSet) PersistDirtyBlocks(batch *dal.Batch) error {
+func (fs *FilterSet) PersistDirtyBlocks(batch *dal.WriteSession) error {
 	snap := fs.filters.Load()
 	if snap == nil {
 		return nil

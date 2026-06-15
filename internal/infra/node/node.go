@@ -123,6 +123,8 @@ type Node struct {
 	rawNode          *raft.RawNode
 	logger           logging.Logger
 	fsm              *state.Machine
+	recovery         *state.Recovery
+	synchronizer     *state.Synchronizer
 	wal              wal.WAL
 	transport        Transport
 	config           NodeConfig
@@ -203,6 +205,8 @@ func NewNode(
 	meter metric.Meter,
 	wal wal.WAL,
 	fsm *state.Machine,
+	recovery *state.Recovery,
+	synchronizer *state.Synchronizer,
 ) (*Node, error) {
 	cfg.SetDefaults()
 
@@ -235,7 +239,7 @@ func NewNode(
 				"lastAppliedTimestamp": marker.LastAppliedTimestamp,
 			}).Infof("Detected RESTORED marker, bootstrapping from restored data")
 
-			if err := fsm.RecoverState(); err != nil {
+			if err := recovery.RecoverState(); err != nil {
 				return nil, fmt.Errorf("recovering FSM state from store: %w", err)
 			}
 
@@ -342,7 +346,7 @@ func NewNode(
 				"peerCount": len(result.peerAddresses),
 			}).Infof("Unwrapped NodeSnapshot")
 
-			if err := fsm.InstallSnapshot(context.Background(), snapshot); err != nil {
+			if err := synchronizer.InstallSnapshot(context.Background(), snapshot); err != nil {
 				panic(err)
 			}
 
@@ -369,7 +373,7 @@ func NewNode(
 				"peers will be rediscovered via etcd",
 				snapshot.Metadata.Index)
 
-			if err := fsm.InstallSnapshot(context.Background(), snapshot); err != nil {
+			if err := synchronizer.InstallSnapshot(context.Background(), snapshot); err != nil {
 				panic(err)
 			}
 		default:
@@ -441,6 +445,8 @@ func NewNode(
 		proposeCh:        make(chan *Proposal, cfg.ProposeQueueCapacity),
 		clusterCommandCh: make(chan *clusterCommand, 1),
 		fsm:              fsm,
+		recovery:         recovery,
+		synchronizer:     synchronizer,
 		applier:          applier,
 		readies:          make(chan raft.Ready, 1),
 		readyTerminated:  make(chan readyResult, 1),
@@ -1035,7 +1041,7 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 				node.leaderReady.Store(&pending)
 
 				node.applier.Drain(stop)
-				node.fsm.OnLeadershipAcquired(stop)
+				node.recovery.OnLeadershipAcquired(stop)
 
 				go func() {
 					if err := node.fsm.WaitForApplied(ctx, target); err != nil {
@@ -1138,7 +1144,7 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 			"peerCount": len(snapResult.peerAddresses),
 		}).Infof("Unwrapped leader snapshot")
 
-		if err := node.fsm.InstallSnapshot(ctx, rd.Snapshot); err != nil {
+		if err := node.synchronizer.InstallSnapshot(ctx, rd.Snapshot); err != nil {
 			return readyResult{}, fmt.Errorf("installing snapshot: %w", err)
 		}
 

@@ -22,10 +22,10 @@ type compactor interface {
 type typedCompactor[V proto.Message] struct {
 	accumulatorBase[V]
 
-	batch *dal.Batch
+	batch *dal.WriteSession
 }
 
-func newCompactor[V proto.Message](attr *Attribute[V], batch *dal.Batch) *typedCompactor[V] {
+func newCompactor[V proto.Message](attr *Attribute[V], batch *dal.WriteSession) *typedCompactor[V] {
 	return &typedCompactor[V]{
 		accumulatorBase: accumulatorBase[V]{attr: attr},
 		batch:           batch,
@@ -74,7 +74,7 @@ func (c *typedCompactor[V]) Flush() error {
 // by running the flush and checkpoint atomically on the Raft loop.
 func CompactAllForBackup(s *dal.Store) error {
 	attrs := New()
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 
 	// Bulk-delete the entire attribute range — compacted values are written back below.
 	if err := batch.DeleteRange(

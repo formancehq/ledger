@@ -35,7 +35,7 @@ func fillCacheKey(genByte, cacheType byte, id attributes.U128) [3 + 16]byte {
 // writeCacheRaw writes a [tag][valueBytes] entry to the 0xFF zone.
 // Uses batch.CacheBuffer to avoid allocating per call — Pebble copies
 // the value into its repr buffer, so reuse is safe.
-func writeCacheRaw(batch *dal.Batch, genByte, cacheType byte, id attributes.U128, tag uint64, valueBytes []byte) error {
+func writeCacheRaw(batch *dal.WriteSession, genByte, cacheType byte, id attributes.U128, tag uint64, valueBytes []byte) error {
 	needed := 8 + len(valueBytes)
 	if cap(batch.CacheBuffer) >= needed {
 		batch.CacheBuffer = batch.CacheBuffer[:needed]
@@ -54,7 +54,7 @@ func writeCacheRaw(batch *dal.Batch, genByte, cacheType byte, id attributes.U128
 // writeCacheTombstone writes a tombstone (tag + empty value bytes) to both
 // gen bytes in 0xFF, matching AttributeCache.Del's tombstone semantic.
 // On restore, empty value bytes signal a tombstone entry.
-func writeCacheTombstone(batch *dal.Batch, cacheType byte, id attributes.U128, tag uint64) error {
+func writeCacheTombstone(batch *dal.WriteSession, cacheType byte, id attributes.U128, tag uint64) error {
 	for _, genByte := range []byte{0, 1} {
 		if err := writeCacheRaw(batch, genByte, cacheType, id, tag, nil); err != nil {
 			return fmt.Errorf("writing cache tombstone: %w", err)
@@ -69,7 +69,7 @@ func writeCacheTombstone(batch *dal.Batch, cacheType byte, id attributes.U128, t
 // This avoids marshaling the value proto twice.
 func mergeSimpleWithCache[K attributes.Key, V proto.Message](
 	attr *attributes.Attribute[V],
-	batch *dal.Batch,
+	batch *dal.WriteSession,
 	genByte byte,
 	cacheType byte,
 	updates []attributes.Update[K, V],
@@ -91,7 +91,7 @@ func mergeSimpleWithCache[K attributes.Key, V proto.Message](
 // writeCacheRotation writes the 0xFF metadata and purges old gen1 data on a cache generation rotation.
 // Must be called AFTER CheckRotationNeeded (which performs the in-memory rotation),
 // so CurrentGeneration() and BaseIndex reflect the post-rotation state.
-func writeCacheRotation(batch *dal.Batch, currentGeneration uint64, baseIndexGen0, baseIndexGen1 uint64) error {
+func writeCacheRotation(batch *dal.WriteSession, currentGeneration uint64, baseIndexGen0, baseIndexGen1 uint64) error {
 	newGenByte := byte(currentGeneration % 2)
 	gen1Byte := byte((currentGeneration + 1) % 2)
 

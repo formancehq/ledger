@@ -275,9 +275,13 @@ func Module() fx.Option {
 				w *wal.DefaultWAL,
 				snapshotFetcherProvider state.SnapshotFetcherProvider,
 				machine *state.Machine,
+				recovery *state.Recovery,
+				synchronizer *state.Synchronizer,
 			) (*node.Applier, error) {
 				return node.NewApplier(
 					machine,
+					recovery,
+					synchronizer,
 					sp,
 					store,
 					w,
@@ -287,6 +291,27 @@ func Module() fx.Option {
 					cfg.ReplayBatchSize,
 					snapshotFetcherProvider,
 				)
+			},
+			// Recovery owns the Pebble read capability for boot/post-sync rehydrate.
+			// The FSM Machine never holds this capability — the structural guarantee
+			// of I1 depends on Recovery being the sole holder.
+			//
+			// We hydrate the Machine here (RecoverState) so the rest of the wiring
+			// — applier, node, background workers — observes the FSM at its
+			// recovered state. NewMachine deliberately skips this step so it does
+			// not perform any Pebble read itself.
+			func(machine *state.Machine, store *dal.Store) (*state.Recovery, error) {
+				recovery := state.NewRecovery(machine, store)
+				if err := recovery.RecoverState(); err != nil {
+					return nil, fmt.Errorf("recovering FSM state at boot: %w", err)
+				}
+
+				return recovery, nil
+			},
+			// Synchronizer owns the IncomingRestoreFactory (prepare/activate/restore
+			// sequence) and coordinates follower-sync from a leader checkpoint.
+			func(machine *state.Machine, recovery *state.Recovery, store *dal.Store) *state.Synchronizer {
+				return state.NewSynchronizer(machine, recovery, dal.NewIncomingRestoreFactory(store))
 			},
 			// Provide events.Proposer from the Raft node (used by event emitter to replicate cursor).
 			// Uses LockedProposer to serialize the tracker Increment with guarded proposals,
@@ -330,20 +355,23 @@ func Module() fx.Option {
 				// to the per-consumer Notifications (events, mirror, index).
 				fanOut := signal.NewFanOut(eventNotifications, mirrorNotifications, indexNotifications)
 
+				// Sub-objects built in-line so NewMachine receives them pre-built.
+				registry := state.NewStateRegistry(c, attrs, idempotencyTTLMicros)
+				snapshotter := state.NewCacheSnapshotter(logger, registry, bloomFilters)
+
 				m, err := state.NewMachine(
 					logger,
-					store,
+					registry,
+					snapshotter,
+					store, // QueryCheckpoints
+					dal.NewSentinelFactory(store, cfg.SentinelMode),
 					meterProvider.Meter("raft.node"),
-					c,
-					attrs,
 					ks,
 					ss,
 					fanOut,
 					bloomFilters,
 					cfg.ClusterID,
 					cfg.NumscriptCacheSize,
-					cfg.SentinelMode,
-					idempotencyTTLMicros,
 				)
 				if err != nil {
 					return nil, err
@@ -366,6 +394,8 @@ func Module() fx.Option {
 					WAL           *wal.DefaultWAL
 					Applier       *node.Applier
 					Machine       *state.Machine
+					Recovery      *state.Recovery
+					Synchronizer  *state.Synchronizer
 				},
 			) (nodeProvideResult, error) {
 				// Check WAL emptiness before NewNode writes the initial snapshot.
@@ -391,6 +421,8 @@ func Module() fx.Option {
 					params.MeterProvider.Meter("raft.node"),
 					params.WAL,
 					params.Machine,
+					params.Recovery,
+					params.Synchronizer,
 				)
 				if err != nil {
 					return nodeProvideResult{}, err
@@ -660,6 +692,7 @@ func Module() fx.Option {
 				store *dal.Store,
 				attrs *attributes.Attributes,
 				machine *state.Machine,
+				recovery *state.Recovery,
 				raftNode *node.Node,
 			) *state.MetadataConverter {
 				return state.NewMetadataConverter(
@@ -671,7 +704,7 @@ func Module() fx.Option {
 					raftNode.IsLeader,
 					100, // batchSize
 					4,   // poolSize — max concurrent field conversions
-					machine.DispatchMetadataConversionRequests,
+					recovery.DispatchMetadataConversionRequests,
 				)
 			},
 			fx.Annotate(func(
@@ -746,6 +779,28 @@ func Module() fx.Option {
 				lc.Append(fx.Hook{
 					OnStop: func(_ context.Context) error {
 						return rs.Close()
+					},
+				})
+			},
+			// Bloom-rebuild dispatcher: the Machine signals on its
+			// BloomRebuildCh when a cluster-config change requires a rebuild;
+			// Recovery (which owns the Pebble reader) consumes that signal and
+			// invokes StartAsyncBloomPopulate. Without this dispatcher, the
+			// Machine would have to hold a reader itself, which would
+			// re-introduce the I1 hot-path read leak. Registered here in the
+			// main Module so it is wired regardless of cold-storage driver.
+			func(lc fx.Lifecycle, recovery *state.Recovery) {
+				stop := make(chan struct{})
+				lc.Append(fx.Hook{
+					OnStart: func(_ context.Context) error {
+						go recovery.DispatchBloomRebuilds(stop)
+
+						return nil
+					},
+					OnStop: func(_ context.Context) error {
+						close(stop)
+
+						return nil
 					},
 				})
 			},

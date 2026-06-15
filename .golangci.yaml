@@ -36,6 +36,7 @@ linters:
   - exhaustive
   - exptostd
   - fatcontext
+  - forbidigo
   - ginkgolinter
   - gocheckcompilerdirectives
   - gochecksumtype
@@ -103,3 +104,52 @@ linters:
       # switches in adapter/grpc/errors.go and adapter/http/error_handler.go.
       explicit-exhaustive-switch: true
       default-signifies-exhaustive: false
+    forbidigo:
+      analyze-types: true
+      forbid:
+      # I2 invariant: writes to the main Pebble store outside the hot path are
+      # only allowed from declared lifecycle paths (see capabilities.go).
+      # New call sites must be added to the exclusions block below with a
+      # justification, never silently introduced.
+      - pattern: '\.OpenWriteSession\b'
+        msg: |
+          OpenWriteSession opens a write session on the main Pebble store. Outside the FSM
+          hot path (internal/infra/state/machine.go), it is only allowed from declared
+          lifecycle paths (bootstrap, backup, attributes/compact). New call sites must be
+          added to the .golangci.yaml exclusions block with a justification.
+      # NewWriteSessionFromDB is a back door that takes a raw *pebble.DB. It
+      # bypasses *Store and therefore the OpenWriteSession check above. Only
+      # the readstore (which owns a separate Pebble instance) may use it.
+      - pattern: '\bNewWriteSessionFromDB\b'
+        msg: |
+          NewWriteSessionFromDB takes a raw *pebble.DB and bypasses the main-store
+          OpenWriteSession check. It is reserved for subsystems that manage their own
+          Pebble instance (currently: internal/storage/readstore). New call sites must
+          be added to the .golangci.yaml exclusions block with a justification.
+  exclusions:
+    rules:
+    # I2 exceptions for OpenWriteSession / NewWriteSessionFromDB.
+    # Each path here is part of the declared "may write to a Pebble store" set.
+    - path: internal/storage/dal/
+      linters: [forbidigo]
+    # Hot-path apply opens the write session via the WriteSessionFactory it
+    # receives in PrepareEntries. Pin the allow rule to the exact call in the
+    # exact file: forbidigo combines path + source with AND, so a stray call
+    # outside machine.go (or with a different receiver name) is still flagged.
+    - path: internal/infra/state/machine\.go
+      linters: [forbidigo]
+      source: 'sessions\.OpenWriteSession\(\)'
+    - path: internal/infra/attributes/compact\.go
+      linters: [forbidigo]
+    - path: internal/infra/backup/
+      linters: [forbidigo]
+    - path: internal/bootstrap/config_validation\.go
+      linters: [forbidigo]
+    # The readstore manages its own Pebble DB and uses NewWriteSessionFromDB
+    # (not OpenWriteSession on the main store).
+    - path: internal/storage/readstore/
+      linters: [forbidigo]
+    # Tests use OpenWriteSession to seed data; the structural guarantee is on
+    # production paths.
+    - path: _test\.go$
+      linters: [forbidigo]

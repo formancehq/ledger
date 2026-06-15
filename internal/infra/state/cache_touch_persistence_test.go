@@ -19,6 +19,7 @@ func TestPreload_TouchIsPersistedToCacheZone(t *testing.T) {
 	t.Parallel()
 
 	machine, dataStore, _ := newTestMachine(t)
+	_ = dataStore
 	registry := machine.Registry
 
 	// gen0Byte / gen1Byte for currentGeneration=0.
@@ -34,7 +35,7 @@ func TestPreload_TouchIsPersistedToCacheZone(t *testing.T) {
 
 	registry.Cache.Ledgers.Gen1().Put(id, attributes.Entry[*commonpb.LedgerInfo]{Tag: 7, Data: info})
 
-	seedBatch := dataStore.NewBatch()
+	seedBatch := dataStore.OpenWriteSession()
 	infoBytes, err := info.MarshalVT()
 	require.NoError(t, err)
 	require.NoError(t,
@@ -56,7 +57,7 @@ func TestPreload_TouchIsPersistedToCacheZone(t *testing.T) {
 	_, _, err = dataStore.Get(gen0Key)
 	require.Error(t, err, "seed: gen0 row should not exist yet")
 
-	applyBatch := dataStore.NewBatch()
+	applyBatch := dataStore.OpenWriteSession()
 	defer func() { _ = applyBatch.Cancel() }()
 
 	preloadSet := &raftcmdpb.PreloadSet{
@@ -85,7 +86,7 @@ func TestPreload_TouchIsPersistedToCacheZone(t *testing.T) {
 
 	// Restart simulation.
 	registry.Cache.Reset()
-	require.NoError(t, machine.cacheSnapshotter.RestoreFromStore())
+	require.NoError(t, machine.cacheSnapshotter.RestoreFromStore(dataStore))
 
 	restored, ok := registry.Cache.Ledgers.Gen0().Get(id)
 	require.True(t, ok, "gen0 must hold the entry after restore")
@@ -98,6 +99,7 @@ func TestPreload_TouchSkipsWhenGen0HasFreshValue(t *testing.T) {
 	t.Parallel()
 
 	machine, dataStore, _ := newTestMachine(t)
+	_ = dataStore
 	registry := machine.Registry
 
 	const (
@@ -115,7 +117,7 @@ func TestPreload_TouchSkipsWhenGen0HasFreshValue(t *testing.T) {
 	registry.Cache.Ledgers.Gen1().Put(id, attributes.Entry[*commonpb.LedgerInfo]{Tag: 1, Data: staleInfo})
 	registry.Cache.Ledgers.Gen0().Put(id, attributes.Entry[*commonpb.LedgerInfo]{Tag: 1, Data: freshInfo})
 
-	seedBatch := dataStore.NewBatch()
+	seedBatch := dataStore.OpenWriteSession()
 	staleBytes, err := staleInfo.MarshalVT()
 	require.NoError(t, err)
 
@@ -127,7 +129,7 @@ func TestPreload_TouchSkipsWhenGen0HasFreshValue(t *testing.T) {
 		writeCacheRaw(seedBatch, gen0Byte, dal.SubAttrLedger, id, 1, freshBytes))
 	require.NoError(t, seedBatch.Commit())
 
-	applyBatch := dataStore.NewBatch()
+	applyBatch := dataStore.OpenWriteSession()
 	defer func() { _ = applyBatch.Cancel() }()
 
 	preloadSet := &raftcmdpb.PreloadSet{
@@ -162,6 +164,7 @@ func TestPreload_FullPreloadSkipsWhenGen0HasFreshValue(t *testing.T) {
 	t.Parallel()
 
 	machine, dataStore, _ := newTestMachine(t)
+	_ = dataStore
 	registry := machine.Registry
 
 	const (
@@ -189,7 +192,7 @@ func TestPreload_FullPreloadSkipsWhenGen0HasFreshValue(t *testing.T) {
 	// Post-Merge shape on entry N: fresh value in gen0 + 0xFF gen0Byte.
 	registry.Cache.NumscriptContents.Gen0().Put(hash, attributes.Entry[*commonpb.NumscriptInfo]{Tag: tag, Data: freshInfo})
 
-	seedBatch := dataStore.NewBatch()
+	seedBatch := dataStore.OpenWriteSession()
 
 	freshBytes, err := freshInfo.MarshalVT()
 	require.NoError(t, err)
@@ -211,7 +214,7 @@ func TestPreload_FullPreloadSkipsWhenGen0HasFreshValue(t *testing.T) {
 		}},
 	}
 
-	applyBatch := dataStore.NewBatch()
+	applyBatch := dataStore.OpenWriteSession()
 	defer func() { _ = applyBatch.Cancel() }()
 
 	require.NoError(t, machine.Preload(preloadSet, applyBatch, gen0Byte))
@@ -246,6 +249,7 @@ func TestPreload_FullPreloadIsPersistedToCacheZone(t *testing.T) {
 	t.Parallel()
 
 	machine, dataStore, _ := newTestMachine(t)
+	_ = dataStore
 	registry := machine.Registry
 
 	const (
@@ -254,7 +258,7 @@ func TestPreload_FullPreloadIsPersistedToCacheZone(t *testing.T) {
 	)
 
 	// Seed the meta sentinel so RestoreFromStore has something to anchor on.
-	require.NoError(t, persistToStore(machine.cacheSnapshotter))
+	require.NoError(t, persistToStore(machine.cacheSnapshotter, dataStore))
 
 	canonicalKey := []byte("lending\x00disburse_loan\x001.0.0")
 	hash := attributes.HashU128(canonicalKey)
@@ -279,7 +283,7 @@ func TestPreload_FullPreloadIsPersistedToCacheZone(t *testing.T) {
 		}},
 	}
 
-	applyBatch := dataStore.NewBatch()
+	applyBatch := dataStore.OpenWriteSession()
 	defer func() { _ = applyBatch.Cancel() }()
 
 	require.NoError(t, machine.Preload(preloadSet, applyBatch, gen0Byte))
@@ -306,7 +310,7 @@ func TestPreload_FullPreloadIsPersistedToCacheZone(t *testing.T) {
 
 	// Restart simulation.
 	registry.Cache.Reset()
-	require.NoError(t, machine.cacheSnapshotter.RestoreFromStore())
+	require.NoError(t, machine.cacheSnapshotter.RestoreFromStore(dataStore))
 
 	restored, ok := registry.Cache.NumscriptContents.Gen0().Get(hash)
 	require.True(t, ok, "gen0 must hold the value after restore")

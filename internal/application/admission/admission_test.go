@@ -50,7 +50,7 @@ func createTestStore(t *testing.T) *dal.Store {
 		Id:        1,
 		CreatedAt: commonpb.NewTimestamp(time.Now()),
 	}
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, state.SaveLedger(batch, info))
 	_, err = testAttrs.Ledger.Set(batch, domain.LedgerKey{Name: testLedgerName}.Bytes(), info)
 	require.NoError(t, err)
@@ -148,7 +148,7 @@ func TestGetTransactionPostings(t *testing.T) {
 		// Create and store a transaction log
 		txLog := createTransactionLog(1, testLedgerName, 1, 1, expectedPostings)
 
-		batch := store.NewBatch()
+		batch := store.OpenWriteSession()
 		err := state.AppendLogs(batch, []*commonpb.Log{txLog})
 		require.NoError(t, err)
 
@@ -528,7 +528,7 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 
 		txLog := createTransactionLog(1, testLedgerName, 1, 1, expectedPostings)
 
-		batch := store.NewBatch()
+		batch := store.OpenWriteSession()
 		err := state.AppendLogs(batch, []*commonpb.Log{txLog})
 		require.NoError(t, err)
 		// Store TransactionState to link transaction ID to its creating log
@@ -606,7 +606,7 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 
 		txLog := createTransactionLog(1, testLedgerName, 1, 1, expectedPostings)
 
-		batch := store.NewBatch()
+		batch := store.OpenWriteSession()
 		require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{txLog}))
 		_, err := attrs.Transaction.Set(batch, domain.TransactionKey{LedgerID: 1, ID: 1}.Bytes(), &commonpb.TransactionState{CreatedByLog: 1})
 		require.NoError(t, err)
@@ -975,7 +975,7 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 
 		txLog := createTransactionLog(1, testLedgerName, 1, 42, expectedPostings)
 
-		batch := store.NewBatch()
+		batch := store.OpenWriteSession()
 		err := state.AppendLogs(batch, []*commonpb.Log{txLog})
 		require.NoError(t, err)
 		// Store TransactionState to link transaction ID to its creating log

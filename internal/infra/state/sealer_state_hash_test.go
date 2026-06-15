@@ -31,7 +31,7 @@ func TestComputeStateHash_Deterministic(t *testing.T) {
 	store := createSealerTestStore(t)
 
 	attrs := attributes.New()
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 
 	// Populate a TransactionState with enough metadata keys to make
 	// Go's randomized map iteration order observable. 16 keys gives
@@ -85,7 +85,7 @@ func TestComputeStateHash_CoversAllThreeStores(t *testing.T) {
 		store := createSealerTestStore(t)
 		attrs := attributes.New()
 
-		batch := store.NewBatch()
+		batch := store.OpenWriteSession()
 		_, err := attrs.Volume.Set(batch, []byte("l\x00a\x00USD"),
 			&raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(vol)})
 		require.NoError(t, err)

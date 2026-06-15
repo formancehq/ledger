@@ -20,7 +20,7 @@ func TestIdempotencyStore_RestoreFromStore_RebuildsMapFromPebble(t *testing.T) {
 	store := newTestStore(t)
 
 	// Persist three idempotency entries via the normal batch write path.
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 
 	values := map[string]*commonpb.IdempotencyKeyValue{
 		"alpha": {LogSequence: 1, CreatedAt: 1_000_000},
@@ -75,7 +75,7 @@ func TestIdempotencyStore_RestoreFromStore_LoadsAllEntriesRegardlessOfAge(t *tes
 		ttlMicros        uint64 = 1_000 // intentionally tiny: every entry is "expired" by wall-clock
 	)
 
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 
 	require.NoError(t, saveIdempotencyKey(batch, "ancient", &commonpb.IdempotencyKeyValue{
 		LogSequence: 1,
@@ -137,7 +137,7 @@ func TestIdempotencyStore_RestoreFromStore_OverwritesPriorEntries(t *testing.T) 
 
 	store := newTestStore(t)
 
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 	require.NoError(t, saveIdempotencyKey(batch, "persisted", &commonpb.IdempotencyKeyValue{
 		LogSequence: 42,
 		CreatedAt:   1_000,

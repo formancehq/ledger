@@ -28,7 +28,7 @@ func TestSaveMaintenanceMode(t *testing.T) {
 	require.False(t, enabled)
 
 	// Enable maintenance mode
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, SaveMaintenanceMode(batch, true))
 	require.NoError(t, batch.Commit())
 
@@ -37,7 +37,7 @@ func TestSaveMaintenanceMode(t *testing.T) {
 	require.True(t, enabled)
 
 	// Disable maintenance mode
-	batch = s.NewBatch()
+	batch = s.OpenWriteSession()
 	require.NoError(t, SaveMaintenanceMode(batch, false))
 	require.NoError(t, batch.Commit())
 
@@ -57,7 +57,7 @@ func TestSavePeriodSchedule(t *testing.T) {
 	require.Empty(t, schedule)
 
 	// Save a cron expression
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, SavePeriodSchedule(batch, "*/5 * * * *"))
 	require.NoError(t, batch.Commit())
 
@@ -66,7 +66,7 @@ func TestSavePeriodSchedule(t *testing.T) {
 	require.Equal(t, "*/5 * * * *", schedule)
 
 	// Update schedule
-	batch = s.NewBatch()
+	batch = s.OpenWriteSession()
 	require.NoError(t, SavePeriodSchedule(batch, "0 * * * *"))
 	require.NoError(t, batch.Commit())
 
@@ -81,7 +81,7 @@ func TestBatchDeletePeriodScheduleFunc(t *testing.T) {
 	s := newTestStore(t)
 
 	// Save a schedule
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, SavePeriodSchedule(batch, "*/10 * * * *"))
 	require.NoError(t, batch.Commit())
 
@@ -90,7 +90,7 @@ func TestBatchDeletePeriodScheduleFunc(t *testing.T) {
 	require.Equal(t, "*/10 * * * *", schedule)
 
 	// Delete the schedule
-	batch = s.NewBatch()
+	batch = s.OpenWriteSession()
 	require.NoError(t, batchDeletePeriodSchedule(batch))
 	require.NoError(t, batch.Commit())
 
@@ -111,7 +111,7 @@ func TestSaveSinkConfig(t *testing.T) {
 		Name: "my-sink",
 		Type: &commonpb.SinkConfig_Http{Http: &commonpb.HttpSinkConfig{Endpoint: "http://example.com"}},
 	}
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	_, err := attr.Set(batch, domain.SinkConfigKey{Name: "my-sink"}.Bytes(), config)
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
@@ -130,7 +130,7 @@ func TestDeleteSinkConfig(t *testing.T) {
 	attr := attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig)
 
 	// Save a config
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	_, err := attr.Set(batch, domain.SinkConfigKey{Name: "sink-to-delete"}.Bytes(), &commonpb.SinkConfig{
 		Name: "sink-to-delete",
 		Type: &commonpb.SinkConfig_Http{Http: &commonpb.HttpSinkConfig{Endpoint: "http://example.com"}},
@@ -139,7 +139,7 @@ func TestDeleteSinkConfig(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Delete it
-	batch = s.NewBatch()
+	batch = s.OpenWriteSession()
 	require.NoError(t, attr.Delete(batch, domain.SinkConfigKey{Name: "sink-to-delete"}.Bytes()))
 	require.NoError(t, batch.Commit())
 
@@ -154,7 +154,7 @@ func TestSetSinkCursor(t *testing.T) {
 
 	s := newTestStore(t)
 
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, SetSinkCursor(batch, "my-sink", 42))
 	require.NoError(t, batch.Commit())
 
@@ -178,7 +178,7 @@ func TestSetSinkStatus(t *testing.T) {
 		SinkName: "test-sink",
 		Cursor:   42,
 	}
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, SetSinkStatus(batch, status))
 	require.NoError(t, batch.Commit())
 
@@ -199,7 +199,7 @@ func TestClearSinkStatus(t *testing.T) {
 	s := newTestStore(t)
 
 	// Set a status
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, SetSinkStatus(batch, &commonpb.SinkStatus{
 		SinkName: "clear-me",
 		Cursor:   10,
@@ -207,7 +207,7 @@ func TestClearSinkStatus(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Clear it
-	batch = s.NewBatch()
+	batch = s.OpenWriteSession()
 	require.NoError(t, ClearSinkStatus(batch, "clear-me"))
 	require.NoError(t, batch.Commit())
 
@@ -229,7 +229,7 @@ func Test_appendAuditEntries(t *testing.T) {
 		{Sequence: 3, ProposalId: 30, Timestamp: commonpb.NewTimestamp(libtime.Now())},
 	}
 
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, appendAuditEntries(batch, entries...))
 	require.NoError(t, batch.Commit())
 
@@ -258,7 +258,7 @@ func TestSetAppliedIndexAndTimestamp(t *testing.T) {
 
 	s := newTestStore(t)
 
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, SetAppliedIndex(batch, 42))
 	require.NoError(t, setLastAppliedTimestamp(batch, 1700000000))
 	require.NoError(t, batch.Commit())
@@ -279,7 +279,7 @@ func TestReadTransactionState(t *testing.T) {
 	txAttr := attributes.NewAttribute[*commonpb.TransactionState](dal.SubAttrTransaction)
 
 	// Store state for two different transactions
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	_, err := txAttr.Set(batch,
 		domain.TransactionKey{LedgerID: 1, ID: 100}.Bytes(),
 		&commonpb.TransactionState{CreatedByLog: 1},
@@ -320,7 +320,7 @@ func TestFindTransactionCreationLog(t *testing.T) {
 	registerLedger(t, s, "find-tx-ledger")
 
 	// Store a transaction state via the attribute system
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	_, err := txAttr.Set(batch,
 		domain.TransactionKey{LedgerID: 1, ID: 1}.Bytes(),
 		&commonpb.TransactionState{CreatedByLog: 5},
@@ -369,7 +369,7 @@ func TestReadLastAuditSequence(t *testing.T) {
 	require.Equal(t, uint64(0), seq)
 
 	// Add audit entries
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, appendAuditEntries(batch,
 		&auditpb.AuditEntry{Sequence: 10, Timestamp: commonpb.NewTimestamp(libtime.Now())},
 		&auditpb.AuditEntry{Sequence: 20, Timestamp: commonpb.NewTimestamp(libtime.Now())},
@@ -419,7 +419,7 @@ func TestReadSigningKeysCursorFunc(t *testing.T) {
 		pubKey2[i] = byte(i + 50)
 	}
 
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, SaveSigningKey(batch, "root-key", pubKey1, ""))
 	require.NoError(t, SaveSigningKey(batch, "child-key", pubKey2, "root-key"))
 	require.NoError(t, batch.Commit())
@@ -467,7 +467,7 @@ func TestReadAuditEntry(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrNotFound)
 
 	// Add entry and read back
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, appendAuditEntries(batch,
 		&auditpb.AuditEntry{
 			Sequence:   42,

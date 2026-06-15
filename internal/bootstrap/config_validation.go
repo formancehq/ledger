@@ -155,7 +155,7 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 
 // persistConfig writes the given configuration to Pebble.
 func persistConfig(store *dal.Store, cfg *commonpb.PersistedConfig) error {
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 
 	err := SavePersistedConfig(batch, cfg)
 	if err != nil {

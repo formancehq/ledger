@@ -45,7 +45,7 @@ type ArchiveProposer func(periodID uint64) error
 // archiveRequestCh, performs I/O off the Raft critical path, then proposes.
 type Archiver struct {
 	logger           logging.Logger
-	dataStore        *dal.Store
+	dataStore        dal.ColdStorageScanner
 	coldStorage      coldstorage.ColdStorage
 	archiveRequestCh *worker.Channel[ArchiveRequest]
 	proposeFn        ArchiveProposer
@@ -63,7 +63,7 @@ const archiveReconcileInterval = 30 * time.Second
 // reconcileFn re-dispatches ARCHIVING periods from durable state to the channel.
 func NewArchiver(
 	logger logging.Logger,
-	dataStore *dal.Store,
+	dataStore dal.ColdStorageScanner,
 	coldStorage coldstorage.ColdStorage,
 	archiveRequestCh *worker.Channel[ArchiveRequest],
 	proposeFn ArchiveProposer,

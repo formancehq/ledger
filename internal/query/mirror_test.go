@@ -22,7 +22,7 @@ func TestReadMirrorSourceHead(t *testing.T) {
 	require.Equal(t, uint64(0), head)
 
 	// Write source head
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, state.SetMirrorSourceHead(batch, 1, 42))
 	require.NoError(t, batch.Commit())
 
@@ -37,7 +37,7 @@ func TestReadMirrorSyncProgress_Syncing(t *testing.T) {
 	s := newTestStore(t)
 
 	// Write cursor=5, sourceHead=100
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, state.SetMirrorCursor(batch, 1, 5))
 	require.NoError(t, state.SetMirrorSourceHead(batch, 1, 100))
 	require.NoError(t, batch.Commit())
@@ -57,7 +57,7 @@ func TestReadMirrorSyncProgress_Following(t *testing.T) {
 	s := newTestStore(t)
 
 	// Write cursor=100, sourceHead=100
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, state.SetMirrorCursor(batch, 1, 100))
 	require.NoError(t, state.SetMirrorSourceHead(batch, 1, 100))
 	require.NoError(t, batch.Commit())
@@ -76,7 +76,7 @@ func TestReadMirrorSyncProgress_WithError(t *testing.T) {
 	s := newTestStore(t)
 
 	// Write cursor and error
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, state.SetMirrorCursor(batch, 1, 10))
 	require.NoError(t, state.SetMirrorSourceHead(batch, 1, 50))
 	require.NoError(t, state.SetMirrorStatus(batch, 1, &commonpb.MirrorSyncError{

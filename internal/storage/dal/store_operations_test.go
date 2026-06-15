@@ -25,7 +25,7 @@ func TestStore_Flush(t *testing.T) {
 	s := newTestStore(t)
 
 	// Write some data and flush
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte("flush-key"), []byte("flush-val")))
 	require.NoError(t, batch.Commit())
 
@@ -52,7 +52,7 @@ func TestStore_CreateSnapshot(t *testing.T) {
 	s := newTestStore(t)
 
 	// Write some data
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte("snap-key"), []byte("snap-val")))
 	require.NoError(t, batch.Commit())
 
@@ -98,7 +98,7 @@ func TestStore_CreateTemporaryCheckpoint(t *testing.T) {
 	s := newTestStore(t)
 
 	// Write some data
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte("tmp-key"), []byte("tmp-val")))
 	require.NoError(t, batch.Commit())
 
@@ -163,7 +163,7 @@ func TestStore_RestoreCheckpoint(t *testing.T) {
 	s := newTestStore(t)
 
 	// Write some data
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte("pre-restore"), []byte("should-exist")))
 	require.NoError(t, batch.Commit())
 
@@ -172,7 +172,7 @@ func TestStore_RestoreCheckpoint(t *testing.T) {
 	require.NoError(t, err)
 
 	// Write more data after the checkpoint
-	batch2 := s.NewBatch()
+	batch2 := s.OpenWriteSession()
 	require.NoError(t, batch2.SetBytes([]byte("post-snapshot"), []byte("after")))
 	require.NoError(t, batch2.Commit())
 
@@ -205,7 +205,7 @@ func TestStore_RestoreCheckpoint_PreservesPersistedConfig(t *testing.T) {
 	configKey := []byte{ZoneGlobal, SubGlobPersistedConfig}
 	configVal := []byte(`{"nodeId":"node-1","clusterId":"cluster-1"}`)
 
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, batch.SetBytes(configKey, configVal))
 	require.NoError(t, batch.SetBytes([]byte("other-data"), []byte("value")))
 	require.NoError(t, batch.Commit())
@@ -215,7 +215,7 @@ func TestStore_RestoreCheckpoint_PreservesPersistedConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	// Write new data and a DIFFERENT config after the snapshot
-	batch2 := s.NewBatch()
+	batch2 := s.OpenWriteSession()
 	require.NoError(t, batch2.SetBytes(configKey, []byte(`{"nodeId":"node-2"}`)))
 	require.NoError(t, batch2.SetBytes([]byte("post-snapshot-data"), []byte("new")))
 	require.NoError(t, batch2.Commit())
@@ -239,7 +239,7 @@ func TestStore_Checkpoint(t *testing.T) {
 	s := newTestStore(t)
 
 	// Write some data
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte("cp-key"), []byte("cp-val")))
 	require.NoError(t, batch.Commit())
 
@@ -277,7 +277,7 @@ func TestStore_CleanupOldCheckpoints(t *testing.T) {
 
 	// Create multiple snapshots to exceed maxCheckpoints
 	for range 5 {
-		batch := s.NewBatch()
+		batch := s.OpenWriteSession()
 		require.NoError(t, batch.SetBytes([]byte("k"), []byte("v")))
 		require.NoError(t, batch.Commit())
 
@@ -301,7 +301,7 @@ func TestStore_IterateColdKVPairs(t *testing.T) {
 	kb := NewKeyBuilder()
 
 	// Write some cold-storable pairs (Log prefix)
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	key1 := kb.PutZonePrefix(ZoneCold, SubColdLog).PutUint64(1).Build()
 	key2 := kb.PutZonePrefix(ZoneCold, SubColdLog).PutUint64(2).Build()
 	key3 := kb.PutZonePrefix(ZoneCold, SubColdLog).PutUint64(3).Build()
@@ -367,7 +367,7 @@ func TestStore_IterateColdKVPairs_AuditRangeAppliedToAuditZones(t *testing.T) {
 	// Period: log range [10, 20], audit range [3, 5].
 	// The two windows do not overlap on purpose — that is precisely the case
 	// that broke the archiver before #312.
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 
 	logKeys := []uint64{10, 15, 20}
 	for _, seq := range logKeys {
@@ -455,7 +455,7 @@ func TestStore_NewIter(t *testing.T) {
 
 	s := newTestStore(t)
 
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte("iter-a"), []byte("1")))
 	require.NoError(t, batch.SetBytes([]byte("iter-b"), []byte("2")))
 	require.NoError(t, batch.Commit())
@@ -487,7 +487,7 @@ func TestStore_OpenReadOnly(t *testing.T) {
 	s := newTestStore(t)
 
 	// Write data
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte("ro-key"), []byte("ro-val")))
 	require.NoError(t, batch.Commit())
 
@@ -523,7 +523,7 @@ func TestStore_OpenDirect(t *testing.T) {
 	s := newTestStore(t)
 
 	// Write data
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte("direct-key"), []byte("direct-val")))
 	require.NoError(t, batch.Commit())
 
@@ -557,7 +557,7 @@ func TestStore_NewStoreReopensExisting(t *testing.T) {
 	s1, err := NewStore(dir, logger, meter, DefaultConfig())
 	require.NoError(t, err)
 
-	batch := s1.NewBatch()
+	batch := s1.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte("persist-key"), []byte("persist-val")))
 	require.NoError(t, batch.Commit())
 

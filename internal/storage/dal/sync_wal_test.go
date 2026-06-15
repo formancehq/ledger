@@ -32,7 +32,7 @@ func TestStore_SyncWAL_PersistsBatchAcrossReopen(t *testing.T) {
 
 	const wantIndex uint64 = 42
 
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, state.SetAppliedIndex(batch, wantIndex))
 	require.NoError(t, batch.Commit())
 
@@ -97,7 +97,7 @@ func TestStore_SyncWAL_ConcurrentWithWrites(t *testing.T) {
 
 			for range iterations {
 				idx := nextIndex.Add(1)
-				batch := s.NewBatch()
+				batch := s.OpenWriteSession()
 				require.NoError(t, state.SetAppliedIndex(batch, idx))
 				require.NoError(t, batch.Commit())
 			}

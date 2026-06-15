@@ -73,7 +73,7 @@ func (p *directProposer) Propose(_ context.Context, proposal *node.Proposal) (*f
 
 	// Simulate FSM: apply per-sink updates
 	for _, update := range cmd.GetEventsSinkUpdates() {
-		batch := p.store.NewBatch()
+		batch := p.store.OpenWriteSession()
 		if update.GetCursor() > 0 {
 			err := state.SetSinkCursor(batch, update.GetSinkName(), update.GetCursor())
 			if err != nil {
@@ -141,7 +141,7 @@ func newTestStore(t *testing.T) *dal.Store {
 func appendTestLogs(t *testing.T, s *dal.Store, logs ...*commonpb.Log) {
 	t.Helper()
 
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, state.AppendLogs(batch, logs))
 	require.NoError(t, state.SetAppliedIndex(batch, 1))
 	require.NoError(t, batch.Commit())
@@ -150,7 +150,7 @@ func appendTestLogs(t *testing.T, s *dal.Store, logs ...*commonpb.Log) {
 func registerLedger(t *testing.T, s *dal.Store, name string) {
 	t.Helper()
 
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, state.SaveLedger(batch, &commonpb.LedgerInfo{
 		Name:      name,
 		CreatedAt: commonpb.NewTimestamp(libtime.Now()),

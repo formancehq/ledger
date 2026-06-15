@@ -49,7 +49,7 @@ func LoadPersistedConfig(reader dal.PebbleGetter) (*commonpb.PersistedConfig, er
 }
 
 // SavePersistedConfig writes the persisted configuration to the batch.
-func SavePersistedConfig(b *dal.Batch, cfg *commonpb.PersistedConfig) error {
+func SavePersistedConfig(b *dal.WriteSession, cfg *commonpb.PersistedConfig) error {
 	value, err := proto.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("marshaling persisted config: %w", err)

@@ -27,7 +27,7 @@ var ledgerScopedPrefixes = [][]byte{
 // DeleteLedgerIndexes removes all read index data for the given ledger.
 // It performs range deletes on all ledger-scoped prefixes:
 // [prefix...][ledgerID_BE_4B] -> [prefix...][(ledgerID+1)_BE_4B].
-func DeleteLedgerIndexes(batch *dal.Batch, ledgerID uint32) error {
+func DeleteLedgerIndexes(batch *dal.WriteSession, ledgerID uint32) error {
 	var ledgerPrefix [4]byte
 	binary.BigEndian.PutUint32(ledgerPrefix[:], ledgerID)
 

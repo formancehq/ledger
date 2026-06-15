@@ -23,7 +23,7 @@ type IdempotencyEvictionScheduler struct {
 	logger      logging.Logger
 	isLeader    func() bool
 	proposeFn   func(cutoffMicros uint64, lastScannedTimeIndexKey []byte, pebbleKeyHashes [][]byte)
-	store       *dal.Store
+	store       dal.BackgroundScanner
 	idempotency *IdempotencyStore
 	interval    time.Duration
 	ttl         time.Duration
@@ -38,7 +38,7 @@ func NewIdempotencyEvictionScheduler(
 	logger logging.Logger,
 	isLeader func() bool,
 	proposeFn func(cutoffMicros uint64, lastScannedTimeIndexKey []byte, pebbleKeyHashes [][]byte),
-	store *dal.Store,
+	store dal.BackgroundScanner,
 	idempotency *IdempotencyStore,
 	interval time.Duration,
 	ttl time.Duration,

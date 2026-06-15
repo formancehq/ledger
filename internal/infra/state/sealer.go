@@ -47,7 +47,7 @@ func SealCheckpointName(periodID uint64) string {
 // poll until the period is no longer CLOSING (sealed by the leader through Raft).
 type Sealer struct {
 	logger            logging.Logger
-	dataStore         *dal.Store
+	dataStore         dal.CheckpointStaging
 	attrs             *attributes.Attributes
 	sealRequestCh     *worker.Channel[SealRequest]
 	proposeFn         SealProposer
@@ -60,7 +60,7 @@ type Sealer struct {
 // NewSealer creates a new background sealer.
 func NewSealer(
 	logger logging.Logger,
-	dataStore *dal.Store,
+	dataStore dal.CheckpointStaging,
 	attrs *attributes.Attributes,
 	sealRequestCh *worker.Channel[SealRequest],
 	proposeFn SealProposer,

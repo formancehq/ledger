@@ -16,11 +16,11 @@ import (
 func TestPrepareEntries_RejectsCheckpointMidProposal(t *testing.T) {
 	t.Parallel()
 
-	machine, _, _ := newTestMachine(t)
+	machine, dataStore, _ := newTestMachine(t)
 	ctx := context.Background()
 
 	// Bootstrap a ledger so subsequent orders see consistent state.
-	_, err := machine.ApplyEntries(ctx, makeEntry(t, 1, makeProposal(1, createLedgerOrder("ledger-a"))))
+	_, err := machine.ApplyEntries(ctx, dataStore, makeEntry(t, 1, makeProposal(1, createLedgerOrder("ledger-a"))))
 	require.NoError(t, err)
 
 	// Forge a proposal with a checkpoint trigger followed by another order.
@@ -33,7 +33,7 @@ func TestPrepareEntries_RejectsCheckpointMidProposal(t *testing.T) {
 		Date: makeProposal(99).GetDate(),
 	}
 
-	_, err = machine.ApplyEntries(ctx, makeEntry(t, 2, bad))
+	_, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 2, bad))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "checkpoint trigger order not last")
 }
@@ -45,11 +45,11 @@ func TestPrepareEntries_RejectsCheckpointMidProposal(t *testing.T) {
 func TestPrepareEntries_RejectsCheckpointMidBatch(t *testing.T) {
 	t.Parallel()
 
-	machine, _, _ := newTestMachine(t)
+	machine, dataStore, _ := newTestMachine(t)
 	ctx := context.Background()
 
 	// Bootstrap a ledger.
-	_, err := machine.ApplyEntries(ctx, makeEntry(t, 1, makeProposal(1, createLedgerOrder("ledger-x"))))
+	_, err := machine.ApplyEntries(ctx, dataStore, makeEntry(t, 1, makeProposal(1, createLedgerOrder("ledger-x"))))
 	require.NoError(t, err)
 
 	// Two entries: the first is a pure checkpoint, the second is a no-op.
@@ -58,7 +58,7 @@ func TestPrepareEntries_RejectsCheckpointMidBatch(t *testing.T) {
 	))
 	followupEntry := makeEntry(t, 3, makeProposal(11, createLedgerOrder("ledger-y")))
 
-	_, err = machine.PrepareEntries(ctx, checkpointEntry, followupEntry)
+	_, err = machine.PrepareEntries(ctx, dataStore, checkpointEntry, followupEntry)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "applier must pre-split")
 }
@@ -71,10 +71,10 @@ func TestPrepareEntries_RejectsCheckpointMidBatch(t *testing.T) {
 func TestPrepareEntries_RejectsCheckpointMidBatchLeavesStateUntouched(t *testing.T) {
 	t.Parallel()
 
-	machine, _, _ := newTestMachine(t)
+	machine, dataStore, _ := newTestMachine(t)
 	ctx := context.Background()
 
-	_, err := machine.ApplyEntries(ctx, makeEntry(t, 1, makeProposal(1, createLedgerOrder("ledger-pre"))))
+	_, err := machine.ApplyEntries(ctx, dataStore, makeEntry(t, 1, makeProposal(1, createLedgerOrder("ledger-pre"))))
 	require.NoError(t, err)
 
 	indexBefore := machine.lastAppliedIndex
@@ -85,7 +85,7 @@ func TestPrepareEntries_RejectsCheckpointMidBatchLeavesStateUntouched(t *testing
 	))
 	tailEntry := makeEntry(t, 3, makeProposal(11, createLedgerOrder("ledger-tail")))
 
-	_, err = machine.PrepareEntries(ctx, checkpointEntry, tailEntry)
+	_, err = machine.PrepareEntries(ctx, dataStore, checkpointEntry, tailEntry)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "applier must pre-split")
 
@@ -101,10 +101,10 @@ func TestPrepareEntries_RejectsCheckpointMidBatchLeavesStateUntouched(t *testing
 func TestPrepareEntries_AcceptsCheckpointAsLastEntry(t *testing.T) {
 	t.Parallel()
 
-	machine, _, _ := newTestMachine(t)
+	machine, dataStore, _ := newTestMachine(t)
 	ctx := context.Background()
 
-	_, err := machine.ApplyEntries(ctx, makeEntry(t, 1, makeProposal(1, createLedgerOrder("ledger-z"))))
+	_, err := machine.ApplyEntries(ctx, dataStore, makeEntry(t, 1, makeProposal(1, createLedgerOrder("ledger-z"))))
 	require.NoError(t, err)
 
 	otherEntry := makeEntry(t, 2, makeProposal(2, createLedgerOrder("ledger-w")))
@@ -112,7 +112,7 @@ func TestPrepareEntries_AcceptsCheckpointAsLastEntry(t *testing.T) {
 		&raftcmdpb.Order{Type: &raftcmdpb.Order_CreateQueryCheckpoint{CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{}}},
 	))
 
-	result, err := machine.ApplyEntries(ctx, otherEntry, checkpointEntry)
+	result, err := machine.ApplyEntries(ctx, dataStore, otherEntry, checkpointEntry)
 	require.NoError(t, err)
 	require.True(t, result.CheckpointRequired, "checkpoint trigger as last entry must set CheckpointRequired")
 	require.NotZero(t, result.QueryCheckpointID, "QueryCheckpointID should propagate")

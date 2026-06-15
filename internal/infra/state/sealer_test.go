@@ -133,7 +133,7 @@ func TestSealerDeterministic(t *testing.T) {
 		store := createSealerTestStore(t)
 		attrs := attributes.New()
 
-		batch := store.NewBatch()
+		batch := store.OpenWriteSession()
 		_, err := attrs.Volume.Set(batch, []byte("l\x00a\x00USD"), &raftcmdpb.VolumePair{
 			Input: commonpb.NewUint256FromUint64(uint64(500)),
 		})
@@ -166,7 +166,7 @@ func TestSealerCheckpointIsolation(t *testing.T) {
 	attrs := attributes.New()
 
 	// Write data at index 1
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 	_, err := attrs.Volume.Set(batch, []byte("l\x00a\x00USD"), &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(uint64(100)),
 	})
@@ -188,7 +188,7 @@ func TestSealerCheckpointIsolation(t *testing.T) {
 	hashBefore := result.sealingHash
 
 	// Write additional data at index 20 (after the checkpoint was taken)
-	batch2 := store.NewBatch()
+	batch2 := store.OpenWriteSession()
 	_, err = attrs.Volume.Set(batch2, []byte("l\x00b\x00EUR"), &raftcmdpb.VolumePair{
 		Input: commonpb.NewUint256FromUint64(uint64(999)),
 	})

@@ -56,12 +56,13 @@ func TestAuditLogOnSuccess(t *testing.T) {
 	t.Parallel()
 
 	machine, dataStore, _ := newTestMachine(t)
+	_ = dataStore
 	ctx := context.Background()
 
 	const ledgerName = "audit-success"
 
 	// Create a ledger
-	result, err := machine.ApplyEntries(ctx,
+	result, err := machine.ApplyEntries(ctx, dataStore,
 		makeEntry(t, 1, makeProposal(1, createLedgerOrder(ledgerName))),
 	)
 	require.NoError(t, err)
@@ -69,7 +70,7 @@ func TestAuditLogOnSuccess(t *testing.T) {
 	require.NoError(t, result.Results[0].Error)
 
 	// Create a successful transaction
-	result, err = machine.ApplyEntries(ctx,
+	result, err = machine.ApplyEntries(ctx, dataStore,
 		makeEntry(t, 2, makeProposal(2,
 			createTransactionOrder(ledgerName, true,
 				newPosting("world", "bank", "USD", 1000),
@@ -106,19 +107,20 @@ func TestAuditLogOnFailure(t *testing.T) {
 	t.Parallel()
 
 	machine, dataStore, _ := newTestMachine(t)
+	_ = dataStore
 	ctx := context.Background()
 
 	const ledgerName = "audit-failure"
 
 	// Create a ledger
-	result, err := machine.ApplyEntries(ctx,
+	result, err := machine.ApplyEntries(ctx, dataStore,
 		makeEntry(t, 1, makeProposal(1, createLedgerOrder(ledgerName))),
 	)
 	require.NoError(t, err)
 	require.NoError(t, result.Results[0].Error)
 
 	// Try to create a transaction with insufficient funds (no force)
-	result, err = machine.ApplyEntries(ctx,
+	result, err = machine.ApplyEntries(ctx, dataStore,
 		makeEntry(t, 2, makeProposal(2,
 			createTransactionOrder(ledgerName, false,
 				newPosting("empty:account", "bank", "USD", 99999),
@@ -149,19 +151,20 @@ func TestAuditLogSequenceMonotonic(t *testing.T) {
 	t.Parallel()
 
 	machine, dataStore, _ := newTestMachine(t)
+	_ = dataStore
 	ctx := context.Background()
 
 	const ledgerName = "audit-sequence"
 
 	// Create a ledger + several transactions
-	result, err := machine.ApplyEntries(ctx,
+	result, err := machine.ApplyEntries(ctx, dataStore,
 		makeEntry(t, 1, makeProposal(1, createLedgerOrder(ledgerName))),
 	)
 	require.NoError(t, err)
 	require.NoError(t, result.Results[0].Error)
 
 	for i := uint64(2); i <= 5; i++ {
-		result, err = machine.ApplyEntries(ctx,
+		result, err = machine.ApplyEntries(ctx, dataStore,
 			makeEntry(t, i, makeProposal(i,
 				createTransactionOrder(ledgerName, true,
 					newPosting("world", "bank", "USD", 100),
@@ -185,19 +188,20 @@ func TestAuditLogAfterSequenceFilter(t *testing.T) {
 	t.Parallel()
 
 	machine, dataStore, _ := newTestMachine(t)
+	_ = dataStore
 	ctx := context.Background()
 
 	const ledgerName = "audit-filter"
 
 	// Create a ledger + 3 transactions (= 4 audit entries)
-	result, err := machine.ApplyEntries(ctx,
+	result, err := machine.ApplyEntries(ctx, dataStore,
 		makeEntry(t, 1, makeProposal(1, createLedgerOrder(ledgerName))),
 	)
 	require.NoError(t, err)
 	require.NoError(t, result.Results[0].Error)
 
 	for i := uint64(2); i <= 4; i++ {
-		result, err = machine.ApplyEntries(ctx,
+		result, err = machine.ApplyEntries(ctx, dataStore,
 			makeEntry(t, i, makeProposal(i,
 				createTransactionOrder(ledgerName, true,
 					newPosting("world", "bank", "USD", 100),
@@ -227,18 +231,19 @@ func TestAuditSequenceAdvances(t *testing.T) {
 	t.Parallel()
 
 	machine, dataStore, _ := newTestMachine(t)
+	_ = dataStore
 	ctx := context.Background()
 
 	const ledgerName = "audit-seq"
 
 	// Create a ledger + transaction to increment audit sequence
-	result, err := machine.ApplyEntries(ctx,
+	result, err := machine.ApplyEntries(ctx, dataStore,
 		makeEntry(t, 1, makeProposal(1, createLedgerOrder(ledgerName))),
 	)
 	require.NoError(t, err)
 	require.NoError(t, result.Results[0].Error)
 
-	result, err = machine.ApplyEntries(ctx,
+	result, err = machine.ApplyEntries(ctx, dataStore,
 		makeEntry(t, 2, makeProposal(2,
 			createTransactionOrder(ledgerName, true,
 				newPosting("world", "bank", "USD", 1000),

@@ -74,7 +74,7 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	const ledgerName = "test-ledger"
 
 	createdAt := commonpb.NewTimestamp(libtime.Now())
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	err := state.SaveLedger(batch, &commonpb.LedgerInfo{
 		Name:      ledgerName,
 		CreatedAt: createdAt,
@@ -83,7 +83,7 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Add some data
-	batch = s.NewBatch()
+	batch = s.OpenWriteSession()
 	worldKey := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "world"}, Asset: "USD"}
 	worldCanonicalKey := worldKey.Bytes()
 	_, err = attrs.Volume.Set(batch, worldCanonicalKey, &raftcmdpb.VolumePair{
@@ -116,7 +116,7 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 
 	// Soft delete ledger
 	deletedAt := commonpb.NewTimestamp(libtime.Now())
-	batch = s.NewBatch()
+	batch = s.OpenWriteSession()
 	require.NoError(t, state.SaveLedger(batch, &commonpb.LedgerInfo{
 		Name:      ledgerName,
 		CreatedAt: createdAt,

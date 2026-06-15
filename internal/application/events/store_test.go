@@ -19,14 +19,14 @@ func readSinkConfig(attr *attributes.Attribute[*commonpb.SinkConfig], reader dal
 	return attr.Get(reader, domain.SinkConfigKey{Name: name}.Bytes())
 }
 
-func saveSinkConfigBatch(batch *dal.Batch, cfg *commonpb.SinkConfig) error {
+func saveSinkConfigBatch(batch *dal.WriteSession, cfg *commonpb.SinkConfig) error {
 	attr := attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig)
 	_, err := attr.Set(batch, domain.SinkConfigKey{Name: cfg.GetName()}.Bytes(), cfg)
 
 	return err
 }
 
-func deleteSinkConfigBatch(batch *dal.Batch, name string) error {
+func deleteSinkConfigBatch(batch *dal.WriteSession, name string) error {
 	attr := attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig)
 
 	return attr.Delete(batch, domain.SinkConfigKey{Name: name}.Bytes())
@@ -36,7 +36,7 @@ func deleteSinkConfigBatch(batch *dal.Batch, name string) error {
 func setSinkCursorViaBatch(t *testing.T, s *dal.Store, sinkName string, sequence uint64) {
 	t.Helper()
 
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	require.NoError(t, state.SetSinkCursor(batch, sinkName, sequence))
 	require.NoError(t, batch.Commit())
 }
@@ -127,7 +127,7 @@ func TestSinkStatus(t *testing.T) {
 		t.Parallel()
 		s := newTestStore(t)
 
-		batch := s.NewBatch()
+		batch := s.OpenWriteSession()
 		require.NoError(t, state.SetSinkStatus(batch, &commonpb.SinkStatus{
 			SinkName: "nats-1",
 			Cursor:   42,
@@ -155,7 +155,7 @@ func TestSinkStatus(t *testing.T) {
 		s := newTestStore(t)
 
 		// Set a status
-		batch := s.NewBatch()
+		batch := s.OpenWriteSession()
 		require.NoError(t, state.SetSinkStatus(batch, &commonpb.SinkStatus{
 			SinkName: "nats-1",
 			Cursor:   10,
@@ -163,7 +163,7 @@ func TestSinkStatus(t *testing.T) {
 		require.NoError(t, batch.Commit())
 
 		// Clear it
-		batch = s.NewBatch()
+		batch = s.OpenWriteSession()
 		require.NoError(t, state.ClearSinkStatus(batch, "nats-1"))
 		require.NoError(t, batch.Commit())
 
@@ -180,7 +180,7 @@ func TestSinkStatus(t *testing.T) {
 		t.Parallel()
 		s := newTestStore(t)
 
-		batch := s.NewBatch()
+		batch := s.OpenWriteSession()
 		require.NoError(t, state.SetSinkStatus(batch, &commonpb.SinkStatus{
 			SinkName: "nats-1",
 			Cursor:   10,
@@ -221,7 +221,7 @@ func TestSinkConfig(t *testing.T) {
 		t.Parallel()
 		s := newTestStore(t)
 
-		batch := s.NewBatch()
+		batch := s.OpenWriteSession()
 		require.NoError(t, saveSinkConfigBatch(batch, &commonpb.SinkConfig{
 			Name: "primary-nats",
 			Type: &commonpb.SinkConfig_Nats{
@@ -257,7 +257,7 @@ func TestSinkConfig(t *testing.T) {
 		t.Parallel()
 		s := newTestStore(t)
 
-		batch := s.NewBatch()
+		batch := s.OpenWriteSession()
 		require.NoError(t, saveSinkConfigBatch(batch, &commonpb.SinkConfig{
 			Name:   "sink-a",
 			Format: "json",
@@ -288,7 +288,7 @@ func TestSinkConfig(t *testing.T) {
 		s := newTestStore(t)
 
 		// Save two sinks
-		batch := s.NewBatch()
+		batch := s.OpenWriteSession()
 		require.NoError(t, saveSinkConfigBatch(batch, &commonpb.SinkConfig{
 			Name:   "sink-a",
 			Format: "json",
@@ -306,7 +306,7 @@ func TestSinkConfig(t *testing.T) {
 		require.NoError(t, batch.Commit())
 
 		// Delete one
-		batch = s.NewBatch()
+		batch = s.OpenWriteSession()
 		require.NoError(t, deleteSinkConfigBatch(batch, "sink-a"))
 		require.NoError(t, batch.Commit())
 
@@ -330,7 +330,7 @@ func TestSinkConfig(t *testing.T) {
 		s := newTestStore(t)
 
 		// Save initial config
-		batch := s.NewBatch()
+		batch := s.OpenWriteSession()
 		require.NoError(t, saveSinkConfigBatch(batch, &commonpb.SinkConfig{
 			Name:   "my-sink",
 			Format: "json",
@@ -341,7 +341,7 @@ func TestSinkConfig(t *testing.T) {
 		require.NoError(t, batch.Commit())
 
 		// Overwrite with new URL
-		batch = s.NewBatch()
+		batch = s.OpenWriteSession()
 		require.NoError(t, saveSinkConfigBatch(batch, &commonpb.SinkConfig{
 			Name:   "my-sink",
 			Format: "protobuf",

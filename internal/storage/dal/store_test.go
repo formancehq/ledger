@@ -38,7 +38,7 @@ func TestPebbleStore(t *testing.T) {
 func registerLedger(t *testing.T, s *dal.Store, name string) {
 	t.Helper()
 
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	err := state.SaveLedger(batch, &commonpb.LedgerInfo{
 		Name:      name,
 		CreatedAt: commonpb.NewTimestamp(time.Now()),
@@ -52,7 +52,7 @@ func registerLedger(t *testing.T, s *dal.Store, name string) {
 func appendLogs(t *testing.T, s *dal.Store, lastAppliedIndex uint64, logs ...*commonpb.Log) {
 	t.Helper()
 
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	err := state.AppendLogs(batch, logs)
 	require.NoError(t, err)
 	require.NoError(t, state.SetAppliedIndex(batch, lastAppliedIndex))
@@ -79,7 +79,7 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) *dal.Store) {
 		attrs := attributes.New()
 
 		registerLedger(t, s, testLedgerName)
-		batch := s.NewBatch()
+		batch := s.OpenWriteSession()
 
 		// Index 1: world sends 100 to bank
 		worldKey := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerID: 1, Account: "world"}, Asset: "USD"}
@@ -288,7 +288,7 @@ func TestVolume(t *testing.T) {
 	require.Equal(t, big.NewInt(0), v.GetOutput().ToBigInt())
 
 	// Set cumulative volume for bank USD.
-	batch := s.NewBatch()
+	batch := s.OpenWriteSession()
 	_, err = attrs.Volume.Set(batch, bankUSDKey, &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(150),
 		Output: commonpb.NewUint256FromUint64(30),
@@ -302,7 +302,7 @@ func TestVolume(t *testing.T) {
 	require.Equal(t, big.NewInt(30), v.GetOutput().ToBigInt())
 
 	// Overwrite with a new cumulative value
-	batch = s.NewBatch()
+	batch = s.OpenWriteSession()
 	_, err = attrs.Volume.Set(batch, bankUSDKey, &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(1000),
 		Output: commonpb.NewUint256FromUint64(30),
@@ -316,7 +316,7 @@ func TestVolume(t *testing.T) {
 	require.Equal(t, big.NewInt(30), v.GetOutput().ToBigInt())
 
 	// Overwrite again
-	batch = s.NewBatch()
+	batch = s.OpenWriteSession()
 	_, err = attrs.Volume.Set(batch, bankUSDKey, &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(5000),
 		Output: commonpb.NewUint256FromUint64(80),

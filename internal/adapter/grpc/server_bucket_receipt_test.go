@@ -36,7 +36,7 @@ func newReceiptTestStore(t *testing.T) *dal.Store {
 func seedTransaction(t *testing.T, store *dal.Store, attrs *attributes.Attributes, ledger string, ledgerID uint32, txID, logSeq, periodID uint64, tx *commonpb.Transaction) {
 	t.Helper()
 
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 
 	require.NoError(t, state.SaveLedger(batch, &commonpb.LedgerInfo{Name: ledger, Id: ledgerID}))
 
@@ -138,7 +138,7 @@ func TestComputeTransactionReceipt_PropagatesReaderError(t *testing.T) {
 func seedRevertedTransaction(t *testing.T, store *dal.Store, attrs *attributes.Attributes, ledger string, ledgerID uint32, txID, logSeq uint64, tx *commonpb.Transaction) {
 	t.Helper()
 
-	batch := store.NewBatch()
+	batch := store.OpenWriteSession()
 
 	require.NoError(t, state.SaveLedger(batch, &commonpb.LedgerInfo{Name: ledger, Id: ledgerID}))
 

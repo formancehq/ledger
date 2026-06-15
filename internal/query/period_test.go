@@ -59,7 +59,7 @@ func TestReadPeriods(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = s.Close() })
 
-		batch := s.NewBatch()
+		batch := s.OpenWriteSession()
 		require.NoError(t, state.StorePeriod(batch, &commonpb.Period{
 			Id:     1,
 			Start:  &commonpb.Timestamp{Data: 1000},
@@ -92,7 +92,7 @@ func TestReadPeriods(t *testing.T) {
 		t.Cleanup(func() { _ = s.Close() })
 
 		// Insert periods out of order
-		batch := s.NewBatch()
+		batch := s.OpenWriteSession()
 		require.NoError(t, state.StorePeriod(batch, &commonpb.Period{
 			Id:     3,
 			Start:  &commonpb.Timestamp{Data: 3000},
@@ -147,7 +147,7 @@ func TestReadPeriods(t *testing.T) {
 		t.Cleanup(func() { _ = s.Close() })
 
 		// Store initial period
-		batch := s.NewBatch()
+		batch := s.OpenWriteSession()
 		require.NoError(t, state.StorePeriod(batch, &commonpb.Period{
 			Id:     1,
 			Start:  &commonpb.Timestamp{Data: 1000},
@@ -157,7 +157,7 @@ func TestReadPeriods(t *testing.T) {
 		require.NoError(t, batch.Commit())
 
 		// Update the same period (close it)
-		batch = s.NewBatch()
+		batch = s.OpenWriteSession()
 		require.NoError(t, state.StorePeriod(batch, &commonpb.Period{
 			Id:            1,
 			Start:         &commonpb.Timestamp{Data: 1000},
@@ -188,7 +188,7 @@ func TestReadPeriods(t *testing.T) {
 		s, err := dal.NewStore(tmpDir, logger, meter, dal.DefaultConfig())
 		require.NoError(t, err)
 
-		batch := s.NewBatch()
+		batch := s.OpenWriteSession()
 		require.NoError(t, state.StorePeriod(batch, &commonpb.Period{
 			Id:     1,
 			Start:  &commonpb.Timestamp{Data: 1000},
@@ -236,7 +236,7 @@ func TestReadPeriods(t *testing.T) {
 		t.Cleanup(func() { _ = s.Close() })
 
 		// Set to 5
-		batch := s.NewBatch()
+		batch := s.OpenWriteSession()
 		require.NoError(t, state.StoreNextPeriodID(batch, 5))
 		require.NoError(t, batch.Commit())
 
@@ -245,7 +245,7 @@ func TestReadPeriods(t *testing.T) {
 		require.Equal(t, uint64(5), nextID)
 
 		// Update to 10
-		batch = s.NewBatch()
+		batch = s.OpenWriteSession()
 		require.NoError(t, state.StoreNextPeriodID(batch, 10))
 		require.NoError(t, batch.Commit())
 
@@ -264,7 +264,7 @@ func TestReadPeriods(t *testing.T) {
 		registerLedger(t, s, "test-ledger")
 
 		// Store periods, nextPeriodID, and logs in the same batch
-		batch := s.NewBatch()
+		batch := s.OpenWriteSession()
 		require.NoError(t, state.StorePeriod(batch, &commonpb.Period{
 			Id:     1,
 			Start:  &commonpb.Timestamp{Data: 1000},

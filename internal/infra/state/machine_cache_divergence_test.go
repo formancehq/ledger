@@ -46,10 +46,10 @@ func TestCacheDivergenceAfterRestart(t *testing.T) {
 		proposal := buildProposalWithLeaderPreloads(t, leader, nextIndex, threshold, orders...)
 		entry := mustMakeEntry(t, nextIndex, proposal)
 
-		resultL, err := leader.ApplyEntries(ctx, entry)
+		resultL, err := leader.ApplyEntries(ctx, leaderStore, entry)
 		require.NoError(t, err, "leader apply entry %d", nextIndex)
 
-		resultF, err := follower.ApplyEntries(ctx, entry)
+		resultF, err := follower.ApplyEntries(ctx, followerStore, entry)
 		require.NoError(t, err, "follower apply entry %d", nextIndex)
 
 		// Both should produce the same result (accept or reject)
@@ -87,7 +87,7 @@ func TestCacheDivergenceAfterRestart(t *testing.T) {
 	// Step 3: Crash the follower - reset cache and restore from 0xFF
 	t.Log("=== CRASHING FOLLOWER ===")
 	follower.Registry.Cache.Reset()
-	err := follower.cacheSnapshotter.RestoreFromStore()
+	err := follower.cacheSnapshotter.RestoreFromStore(followerStore)
 	require.NoError(t, err)
 
 	t.Logf("After restore: follower gen=%d, gen0Size=%d, gen1Size=%d",
@@ -133,10 +133,10 @@ func TestCacheDivergenceWithPipeliningBatches(t *testing.T) {
 		proposal := buildProposalWithLeaderPreloads(t, leader, nextIndex, threshold, orders...)
 		entry := mustMakeEntry(t, nextIndex, proposal)
 
-		resultL, err := leader.ApplyEntries(ctx, entry)
+		resultL, err := leader.ApplyEntries(ctx, leaderStore, entry)
 		require.NoError(t, err)
 
-		resultF, err := follower.ApplyEntries(ctx, entry)
+		resultF, err := follower.ApplyEntries(ctx, followerStore, entry)
 		require.NoError(t, err)
 
 		leaderErr := resultErrorString(resultL)
@@ -191,7 +191,7 @@ func TestCacheDivergenceWithPipeliningBatches(t *testing.T) {
 	// Crash follower right before the rotation
 	t.Log("=== CRASHING FOLLOWER AT ROTATION BOUNDARY ===")
 	follower.Registry.Cache.Reset()
-	err := follower.cacheSnapshotter.RestoreFromStore()
+	err := follower.cacheSnapshotter.RestoreFromStore(followerStore)
 	require.NoError(t, err)
 
 	// Apply more entries that cross the rotation boundary
@@ -226,9 +226,9 @@ func TestCacheDivergenceBatchReplay(t *testing.T) {
 		proposal := buildProposalWithLeaderPreloads(t, leader, nextIndex, threshold, orders...)
 		entry := mustMakeEntry(t, nextIndex, proposal)
 
-		resultL, err := leader.ApplyEntries(ctx, entry)
+		resultL, err := leader.ApplyEntries(ctx, leaderStore, entry)
 		require.NoError(t, err)
-		resultF, err := follower.ApplyEntries(ctx, entry)
+		resultF, err := follower.ApplyEntries(ctx, followerStore, entry)
 		require.NoError(t, err)
 
 		leaderErr := resultErrorString(resultL)
@@ -272,7 +272,7 @@ func TestCacheDivergenceBatchReplay(t *testing.T) {
 		entry := mustMakeEntry(t, nextIndex, proposal)
 
 		// Apply on leader only
-		_, err := leader.ApplyEntries(ctx, entry)
+		_, err := leader.ApplyEntries(ctx, leaderStore, entry)
 		require.NoError(t, err, "leader apply entry %d", nextIndex)
 
 		leaderEntries = append(leaderEntries, entry)
@@ -285,7 +285,7 @@ func TestCacheDivergenceBatchReplay(t *testing.T) {
 	// Crash and restore follower
 	t.Log("=== CRASHING AND RESTORING FOLLOWER ===")
 	follower.Registry.Cache.Reset()
-	err := follower.cacheSnapshotter.RestoreFromStore()
+	err := follower.cacheSnapshotter.RestoreFromStore(followerStore)
 	require.NoError(t, err)
 
 	t.Logf("Follower restored: gen=%d, gen0=%d, gen1=%d",
@@ -301,7 +301,7 @@ func TestCacheDivergenceBatchReplay(t *testing.T) {
 		end := min(i+batchSize, len(leaderEntries))
 		batch := leaderEntries[i:end]
 
-		result, err := follower.ApplyEntries(ctx, batch...)
+		result, err := follower.ApplyEntries(ctx, followerStore, batch...)
 		require.NoError(t, err, "follower replay batch starting at %d", batch[0].Index)
 
 		// Check each result for divergence
@@ -347,9 +347,9 @@ func TestCacheDivergencePipelinedAdmission(t *testing.T) {
 		proposal := buildProposalWithLeaderPreloads(t, leader, nextIndex, threshold, orders...)
 		entry := mustMakeEntry(t, nextIndex, proposal)
 
-		_, err := leader.ApplyEntries(ctx, entry)
+		_, err := leader.ApplyEntries(ctx, leaderStore, entry)
 		require.NoError(t, err)
-		_, err = follower.ApplyEntries(ctx, entry)
+		_, err = follower.ApplyEntries(ctx, followerStore, entry)
 		require.NoError(t, err)
 
 		nextIndex++
@@ -372,7 +372,7 @@ func TestCacheDivergencePipelinedAdmission(t *testing.T) {
 	// Step 3: Crash the follower
 	t.Log("=== CRASHING FOLLOWER ===")
 	follower.Registry.Cache.Reset()
-	err := follower.cacheSnapshotter.RestoreFromStore()
+	err := follower.cacheSnapshotter.RestoreFromStore(followerStore)
 	require.NoError(t, err)
 
 	t.Logf("Follower restored: gen=%d", follower.Registry.Cache.CurrentGeneration())
@@ -402,7 +402,7 @@ func TestCacheDivergencePipelinedAdmission(t *testing.T) {
 		var leaderRejects int
 
 		for _, entry := range admittedEntries {
-			result, err := leader.ApplyEntries(ctx, entry)
+			result, err := leader.ApplyEntries(ctx, leaderStore, entry)
 			require.NoError(t, err, "leader apply entry %d", entry.Index)
 
 			for _, r := range result.Results {
@@ -414,7 +414,7 @@ func TestCacheDivergencePipelinedAdmission(t *testing.T) {
 		}
 
 		// Phase C: Apply all entries on follower (catchup batch)
-		result, err := follower.ApplyEntries(ctx, admittedEntries...)
+		result, err := follower.ApplyEntries(ctx, followerStore, admittedEntries...)
 		require.NoError(t, err, "follower apply batch %d", batch)
 
 		var followerRejects int
@@ -476,9 +476,9 @@ func runCacheDivergenceScenario(t *testing.T, threshold uint64, crashAfterN, pip
 	applyOnBoth := func(orders ...*raftcmdpb.Order) {
 		proposal := buildProposalWithLeaderPreloads(t, leader, nextIndex, threshold, orders...)
 		entry := mustMakeEntry(t, nextIndex, proposal)
-		_, err := leader.ApplyEntries(ctx, entry)
+		_, err := leader.ApplyEntries(ctx, leaderStore, entry)
 		require.NoError(t, err)
-		_, err = follower.ApplyEntries(ctx, entry)
+		_, err = follower.ApplyEntries(ctx, followerStore, entry)
 		require.NoError(t, err)
 		nextIndex++
 	}
@@ -495,7 +495,7 @@ func runCacheDivergenceScenario(t *testing.T, threshold uint64, crashAfterN, pip
 
 	// Crash follower
 	follower.Registry.Cache.Reset()
-	err := follower.cacheSnapshotter.RestoreFromStore()
+	err := follower.cacheSnapshotter.RestoreFromStore(followerStore)
 	require.NoError(t, err)
 
 	// Leader continues with pipelined admission
@@ -514,12 +514,12 @@ func runCacheDivergenceScenario(t *testing.T, threshold uint64, crashAfterN, pip
 
 		// Apply on leader one by one
 		for _, entry := range entries {
-			_, err := leader.ApplyEntries(ctx, entry)
+			_, err := leader.ApplyEntries(ctx, leaderStore, entry)
 			require.NoError(t, err)
 		}
 
 		// Apply on follower as a batch (catchup)
-		result, err := follower.ApplyEntries(ctx, entries...)
+		result, err := follower.ApplyEntries(ctx, followerStore, entries...)
 		require.NoError(t, err)
 
 		// Check for divergence in rejections

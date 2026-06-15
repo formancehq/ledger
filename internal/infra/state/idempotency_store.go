@@ -192,7 +192,7 @@ func (s *IdempotencyStore) ScanExpiredKeyHashes(reader dal.PebbleReader, cutoffM
 // lex-strictly-less than any unscanned sibling.
 //
 // This is called from the FSM apply path — no Pebble reads occur.
-func (s *IdempotencyStore) Evict(batch *dal.Batch, cutoffMicros uint64, lastScannedTimeIndexKey []byte, pebbleKeyHashes [][]byte) (int, error) {
+func (s *IdempotencyStore) Evict(batch *dal.WriteSession, cutoffMicros uint64, lastScannedTimeIndexKey []byte, pebbleKeyHashes [][]byte) (int, error) {
 	evicted := 0
 
 	// 1. Scan in-memory map
@@ -249,7 +249,7 @@ func (s *IdempotencyStore) Evict(batch *dal.Batch, cutoffMicros uint64, lastScan
 
 // SaveIdempotencyKey writes an idempotency key-value pair to Pebble under prefix 0x03,
 // and creates a time index entry under prefix 0x04 for efficient eviction.
-func saveIdempotencyKey(batch *dal.Batch, key string, value *commonpb.IdempotencyKeyValue) error {
+func saveIdempotencyKey(batch *dal.WriteSession, key string, value *commonpb.IdempotencyKeyValue) error {
 	keyHash := hashIdempotencyKey(key)
 
 	// Main entry: [0x05][0x01][key_hash 16 bytes] -> marshaled IdempotencyKeyValue
