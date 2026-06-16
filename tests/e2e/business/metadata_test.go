@@ -20,17 +20,17 @@ var _ = Describe("Metadata", Ordered, func() {
 		BeforeAll(func() {
 			// Create ledger
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 
 			// Create account via transaction
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "test-account", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -43,7 +43,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				"tier":  "premium",
 			}
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "test-account", metadata)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.SaveAccountMetadataAction(ledgerName, "test-account", metadata)),
 			})
 			Expect(err).To(Succeed())
 
@@ -63,19 +63,19 @@ var _ = Describe("Metadata", Ordered, func() {
 		It("Should update existing metadata", func() {
 			// Set initial metadata
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "test-account", map[string]string{
+				Envelopes: servicepb.UnsignedEnvelopes(actions.SaveAccountMetadataAction(ledgerName, "test-account", map[string]string{
 					"key1": "value1",
 					"key2": "value2",
-				})},
+				})),
 			})
 			Expect(err).To(Succeed())
 
 			// Update metadata (should merge)
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "test-account", map[string]string{
+				Envelopes: servicepb.UnsignedEnvelopes(actions.SaveAccountMetadataAction(ledgerName, "test-account", map[string]string{
 					"key2": "updated_value2",
 					"key3": "value3",
-				})},
+				})),
 			})
 			Expect(err).To(Succeed())
 
@@ -94,16 +94,16 @@ var _ = Describe("Metadata", Ordered, func() {
 		It("Should delete metadata and verify removal", func() {
 			// Set metadata
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "test-account", map[string]string{
+				Envelopes: servicepb.UnsignedEnvelopes(actions.SaveAccountMetadataAction(ledgerName, "test-account", map[string]string{
 					"keep":   "this",
 					"delete": "this",
-				})},
+				})),
 			})
 			Expect(err).To(Succeed())
 
 			// Delete one key
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.DeleteAccountMetadataAction(ledgerName, "test-account", "delete")},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.DeleteAccountMetadataAction(ledgerName, "test-account", "delete")),
 			})
 			Expect(err).To(Succeed())
 
@@ -123,9 +123,9 @@ var _ = Describe("Metadata", Ordered, func() {
 		It("Should set metadata on account that doesn't have transactions yet", func() {
 			// Set metadata on a new account (creates account implicitly)
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "new-account", map[string]string{
+				Envelopes: servicepb.UnsignedEnvelopes(actions.SaveAccountMetadataAction(ledgerName, "new-account", map[string]string{
 					"created": "via-metadata",
-				})},
+				})),
 			})
 			Expect(err).To(Succeed())
 
@@ -146,7 +146,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				"json":        `{"key": "value"}`,
 			}
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "test-account", metadata)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.SaveAccountMetadataAction(ledgerName, "test-account", metadata)),
 			})
 			Expect(err).To(Succeed())
 
@@ -165,22 +165,22 @@ var _ = Describe("Metadata", Ordered, func() {
 		It("Should delete multiple metadata keys sequentially", func() {
 			// Set multiple metadata keys
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "test-account", map[string]string{
+				Envelopes: servicepb.UnsignedEnvelopes(actions.SaveAccountMetadataAction(ledgerName, "test-account", map[string]string{
 					"key1": "value1",
 					"key2": "value2",
 					"key3": "value3",
-				})},
+				})),
 			})
 			Expect(err).To(Succeed())
 
 			// Delete keys one by one
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.DeleteAccountMetadataAction(ledgerName, "test-account", "key1")},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.DeleteAccountMetadataAction(ledgerName, "test-account", "key1")),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.DeleteAccountMetadataAction(ledgerName, "test-account", "key2")},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.DeleteAccountMetadataAction(ledgerName, "test-account", "key2")),
 			})
 			Expect(err).To(Succeed())
 
@@ -205,7 +205,7 @@ var _ = Describe("Metadata", Ordered, func() {
 		BeforeAll(func() {
 			// Create ledger
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -213,11 +213,11 @@ var _ = Describe("Metadata", Ordered, func() {
 		It("Should be able to get a transaction after creating it", func() {
 			// Create transaction without metadata
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			log := resp.Logs[0]
@@ -237,11 +237,11 @@ var _ = Describe("Metadata", Ordered, func() {
 		It("Should be able to get a transaction before and after saving metadata", func() {
 			// Create transaction without metadata
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			log := resp.Logs[0]
@@ -258,9 +258,9 @@ var _ = Describe("Metadata", Ordered, func() {
 
 			// Save metadata
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveTransactionMetadataAction(ledgerName, transactionID, map[string]string{
+				Envelopes: servicepb.UnsignedEnvelopes(actions.SaveTransactionMetadataAction(ledgerName, transactionID, map[string]string{
 					"key": "value",
-				})},
+				})),
 			})
 			Expect(err).To(Succeed(), "Save metadata should succeed")
 
@@ -277,11 +277,11 @@ var _ = Describe("Metadata", Ordered, func() {
 		It("Should set metadata and verify it persists", func() {
 			// Create transaction
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			log := resp.Logs[0]
@@ -295,7 +295,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				"status":    "processed",
 			}
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveTransactionMetadataAction(ledgerName, transactionID, metadata)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.SaveTransactionMetadataAction(ledgerName, transactionID, metadata)),
 			})
 			Expect(err).To(Succeed())
 
@@ -315,11 +315,11 @@ var _ = Describe("Metadata", Ordered, func() {
 		It("Should update existing transaction metadata", func() {
 			// Create transaction
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			log := resp.Logs[0]
@@ -328,19 +328,19 @@ var _ = Describe("Metadata", Ordered, func() {
 
 			// Set initial metadata
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveTransactionMetadataAction(ledgerName, transactionID, map[string]string{
+				Envelopes: servicepb.UnsignedEnvelopes(actions.SaveTransactionMetadataAction(ledgerName, transactionID, map[string]string{
 					"status": "pending",
 					"key1":   "value1",
-				})},
+				})),
 			})
 			Expect(err).To(Succeed())
 
 			// Update metadata
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveTransactionMetadataAction(ledgerName, transactionID, map[string]string{
+				Envelopes: servicepb.UnsignedEnvelopes(actions.SaveTransactionMetadataAction(ledgerName, transactionID, map[string]string{
 					"status": "completed",
 					"key2":   "value2",
-				})},
+				})),
 			})
 			Expect(err).To(Succeed())
 
@@ -359,11 +359,11 @@ var _ = Describe("Metadata", Ordered, func() {
 		It("Should delete transaction metadata and verify removal", func() {
 			// Create transaction
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			log := resp.Logs[0]
@@ -372,16 +372,16 @@ var _ = Describe("Metadata", Ordered, func() {
 
 			// Set metadata
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveTransactionMetadataAction(ledgerName, transactionID, map[string]string{
+				Envelopes: servicepb.UnsignedEnvelopes(actions.SaveTransactionMetadataAction(ledgerName, transactionID, map[string]string{
 					"keep":   "this",
 					"delete": "this",
-				})},
+				})),
 			})
 			Expect(err).To(Succeed())
 
 			// Delete one key
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.DeleteTransactionMetadataAction(ledgerName, transactionID, "delete")},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.DeleteTransactionMetadataAction(ledgerName, transactionID, "delete")),
 			})
 			Expect(err).To(Succeed())
 
@@ -401,14 +401,14 @@ var _ = Describe("Metadata", Ordered, func() {
 		It("Should preserve metadata set at transaction creation", func() {
 			// Create transaction with initial metadata
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "user", big.NewInt(500), "USD"),
 					}, map[string]string{
 						"initial": "metadata",
 						"type":    "deposit",
 					}, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -418,9 +418,9 @@ var _ = Describe("Metadata", Ordered, func() {
 
 			// Add more metadata
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveTransactionMetadataAction(ledgerName, newTxID, map[string]string{
+				Envelopes: servicepb.UnsignedEnvelopes(actions.SaveTransactionMetadataAction(ledgerName, newTxID, map[string]string{
 					"additional": "metadata",
-				})},
+				})),
 			})
 			Expect(err).To(Succeed())
 
@@ -439,11 +439,11 @@ var _ = Describe("Metadata", Ordered, func() {
 		It("Should delete multiple metadata keys in bulk", func() {
 			// Create transaction
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			log := resp.Logs[0]
@@ -452,21 +452,21 @@ var _ = Describe("Metadata", Ordered, func() {
 
 			// Set multiple metadata keys
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveTransactionMetadataAction(ledgerName, transactionID, map[string]string{
+				Envelopes: servicepb.UnsignedEnvelopes(actions.SaveTransactionMetadataAction(ledgerName, transactionID, map[string]string{
 					"key1": "value1",
 					"key2": "value2",
 					"key3": "value3",
 					"key4": "value4",
-				})},
+				})),
 			})
 			Expect(err).To(Succeed())
 
 			// Delete multiple keys in one bulk request
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.DeleteTransactionMetadataAction(ledgerName, transactionID, "key1"),
 					actions.DeleteTransactionMetadataAction(ledgerName, transactionID, "key3"),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -488,11 +488,11 @@ var _ = Describe("Metadata", Ordered, func() {
 		It("Should handle metadata on reverted transaction", func() {
 			// Create transaction to revert
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "user", big.NewInt(100), "USD"),
 					}, map[string]string{"original": "true"}, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -502,9 +502,9 @@ var _ = Describe("Metadata", Ordered, func() {
 
 			// Revert the transaction
 			revertResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.RevertTransactionAction(ledgerName, originalTxID, false, false, map[string]string{
+				Envelopes: servicepb.UnsignedEnvelopes(actions.RevertTransactionAction(ledgerName, originalTxID, false, false, map[string]string{
 					"revert_reason": "test",
-				})},
+				})),
 			})
 			Expect(err).To(Succeed())
 

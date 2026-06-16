@@ -55,7 +55,7 @@ func main() {
 
 		for i := range txCount {
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{{
+				Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 					Type: &servicepb.Request_Apply{
 						Apply: &servicepb.LedgerApplyRequest{
 							Ledger: ledger,
@@ -73,7 +73,7 @@ func main() {
 							}},
 						},
 					},
-				}},
+				}),
 			})
 			if err != nil {
 				// Ambiguous outcome: may have committed. Not acked, and the

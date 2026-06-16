@@ -86,7 +86,7 @@ func main() {
 			attempted++
 
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{{
+				Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 					Type: &servicepb.Request_Apply{
 						Apply: &servicepb.LedgerApplyRequest{
 							Ledger: ledger,
@@ -104,7 +104,7 @@ func main() {
 							}},
 						},
 					},
-				}},
+				}),
 			})
 
 			switch {

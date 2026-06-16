@@ -219,9 +219,9 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
 			resp, err := client.Apply(authCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerAction("ed25519-auth-test-ledger", nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
@@ -234,9 +234,9 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
 			_, err = client.Apply(authCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerAction("ed25519-auth-test-ledger-2", nil),
-				},
+				),
 			})
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
@@ -259,11 +259,11 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
 			resp, err := client.Apply(authCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction("ed25519-auth-test-ledger", []*commonpb.Posting{
 						actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
@@ -429,9 +429,9 @@ var _ = Describe("Ed25519 Auth Scope Restrictions", Ordered, func() {
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
 			_, err = client.Apply(authCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerAction("scope-test-ledger", nil),
-				},
+				),
 			})
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
@@ -632,9 +632,9 @@ var _ = Describe("Ed25519 Auth God Mode", Ordered, func() {
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
 			resp, err := client.Apply(authCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerAction("god-mode-test-ledger", nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())

@@ -29,7 +29,7 @@ func (s *Server) handleSaveAccountMetadata(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	_, err := s.backend.Apply(r.Context(), &servicepb.Request{
+	_, err := s.applyUnsigned(r.Context(), &servicepb.Request{
 		IdempotencyKey: r.Header.Get("Idempotency-Key"),
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{

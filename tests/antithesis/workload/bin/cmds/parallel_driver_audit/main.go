@@ -15,7 +15,7 @@ func main() {
 	internal.RunDriver("parallel_driver_audit", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
 		// Create a transaction so the audit trail has something.
 		resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
@@ -29,7 +29,7 @@ func main() {
 						}},
 					},
 				},
-			}},
+			}),
 		})
 		assert.Sometimes(err == nil || internal.IsTransient(err),
 			"should be able to create tx for audit trail", internal.Details{"ledger": ledger, "error": err})

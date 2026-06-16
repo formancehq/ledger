@@ -68,7 +68,7 @@ type Controller interface {
 	InspectIndex(ctx context.Context, req *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error)
 
 	// Write operations - single entry point for all requests
-	Apply(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error)
+	Apply(ctx context.Context, envelopes ...*servicepb.Envelope) ([]*commonpb.Log, error)
 
 	// Barrier proposes a no-op through Raft consensus. When it returns, all
 	// previously proposed entries are guaranteed to have been applied.

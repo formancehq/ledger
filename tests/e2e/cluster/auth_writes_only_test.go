@@ -126,9 +126,9 @@ var _ = Describe("Auth writes-only mode", Ordered, func() {
 		writeToken, err := signJWT(privKey, makeAuthClaims(oidcServer.URL, "ledger:write"))
 		Expect(err).To(Succeed())
 		_, err = client.Apply(withAuthToken(ctx, writeToken), &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateLedgerAction("writes-only-ledger", nil),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 	})
@@ -150,11 +150,11 @@ var _ = Describe("Auth writes-only mode", Ordered, func() {
 
 		It("rejects writes without a token", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction("writes-only-ledger", []*commonpb.Posting{
 						actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
@@ -168,11 +168,11 @@ var _ = Describe("Auth writes-only mode", Ordered, func() {
 			authCtx := withAuthToken(ctx, token)
 
 			_, err = client.Apply(authCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction("writes-only-ledger", []*commonpb.Posting{
 						actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})

@@ -36,13 +36,11 @@ func runClose(cmd *cobra.Command, _ []string) error {
 	defer cancel()
 
 	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{
-			{
-				Type: &servicepb.Request_ClosePeriod{
-					ClosePeriod: &servicepb.ClosePeriodRequest{},
-				},
+		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
+			Type: &servicepb.Request_ClosePeriod{
+				ClosePeriod: &servicepb.ClosePeriodRequest{},
 			},
-		},
+		}),
 	})
 	if err != nil {
 		return fmt.Errorf("closing period: %w", err)

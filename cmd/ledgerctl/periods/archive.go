@@ -39,15 +39,13 @@ func runArchive(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{
-			{
-				Type: &servicepb.Request_ArchivePeriod{
-					ArchivePeriod: &servicepb.ArchivePeriodRequest{
-						PeriodId: periodID,
-					},
+		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
+			Type: &servicepb.Request_ArchivePeriod{
+				ArchivePeriod: &servicepb.ArchivePeriodRequest{
+					PeriodId: periodID,
 				},
 			},
-		},
+		}),
 	})
 	if err != nil {
 		return fmt.Errorf("archiving period: %w", err)

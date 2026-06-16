@@ -17,18 +17,18 @@ var _ = Describe("SkipResponse", Ordered, func() {
 
 	BeforeAll(func() {
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 		})
 		Expect(err).To(Succeed())
 	})
 
 	It("Should strip log payloads when skip_response=true", func() {
 		resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "skip-resp-1", big.NewInt(100), "USD"),
 				}, nil, nil),
-			},
+			),
 			SkipResponse: true,
 		})
 		Expect(err).To(Succeed())
@@ -46,11 +46,11 @@ var _ = Describe("SkipResponse", Ordered, func() {
 
 	It("Should include full payloads by default", func() {
 		resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "skip-resp-2", big.NewInt(200), "USD"),
 				}, nil, nil),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 		Expect(resp).NotTo(BeNil())
@@ -65,7 +65,7 @@ var _ = Describe("SkipResponse", Ordered, func() {
 
 	It("Should strip payloads for batch operations", func() {
 		resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "skip-resp-batch-1", big.NewInt(100), "USD"),
 				}, nil, nil),
@@ -75,7 +75,7 @@ var _ = Describe("SkipResponse", Ordered, func() {
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "skip-resp-batch-3", big.NewInt(300), "USD"),
 				}, nil, nil),
-			},
+			),
 			SkipResponse: true,
 		})
 		Expect(err).To(Succeed())
@@ -91,11 +91,11 @@ var _ = Describe("SkipResponse", Ordered, func() {
 	It("Should still apply transactions even when response is skipped", func() {
 		// Create a transaction with skip_response
 		resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "skip-resp-verify", big.NewInt(500), "USD"),
 				}, nil, nil),
-			},
+			),
 			SkipResponse: true,
 		})
 		Expect(err).To(Succeed())

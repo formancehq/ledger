@@ -112,7 +112,7 @@ func runCycle(ctx context.Context, lsClient dynamic.ResourceInterface, clusterCl
 
 func verifyFreshCommit(ctx context.Context, client servicepb.BucketServiceClient, details internal.Details) {
 	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{{
+		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: sentinelLedger,
@@ -125,7 +125,7 @@ func verifyFreshCommit(ctx context.Context, client servicepb.BucketServiceClient
 					}},
 				},
 			},
-		}},
+		}),
 	})
 	assert.Sometimes(err == nil || internal.IsTransient(err), "fresh commit during stable window should succeed", details.With(internal.Details{"error": err}))
 	if err != nil {

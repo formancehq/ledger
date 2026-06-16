@@ -40,7 +40,7 @@ func (s *Server) handleUpdatePreparedQuery(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	_, err = s.backend.Apply(r.Context(), &servicepb.Request{
+	_, err = s.applyUnsigned(r.Context(), &servicepb.Request{
 		Type: &servicepb.Request_UpdatePreparedQuery{
 			UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
 				Ledger: ledgerName,

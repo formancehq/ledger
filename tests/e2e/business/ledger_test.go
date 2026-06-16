@@ -22,16 +22,16 @@ var _ = Describe("Ledger", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "test-account", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -43,7 +43,7 @@ var _ = Describe("Ledger", Ordered, func() {
 			}
 
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "test-account", metadata)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.SaveAccountMetadataAction(ledgerName, "test-account", metadata)),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
@@ -52,7 +52,7 @@ var _ = Describe("Ledger", Ordered, func() {
 
 		It("Should merge metadata with existing account metadata", func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "merge-account", big.NewInt(50), "USD"),
 					}, nil, map[string]*commonpb.MetadataMap{
@@ -61,7 +61,7 @@ var _ = Describe("Ledger", Ordered, func() {
 							"key2": "value2",
 						}),
 					}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -71,7 +71,7 @@ var _ = Describe("Ledger", Ordered, func() {
 			}
 
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "merge-account", metadata)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.SaveAccountMetadataAction(ledgerName, "merge-account", metadata)),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
@@ -84,13 +84,13 @@ var _ = Describe("Ledger", Ordered, func() {
 			}
 
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "test-account", metadata)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.SaveAccountMetadataAction(ledgerName, "test-account", metadata)),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 
 			deleteResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.DeleteAccountMetadataAction(ledgerName, "test-account", "to_delete")},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.DeleteAccountMetadataAction(ledgerName, "test-account", "to_delete")),
 			})
 			Expect(err).To(Succeed())
 			Expect(deleteResp).NotTo(BeNil())
@@ -103,28 +103,28 @@ var _ = Describe("Ledger", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "bulk-account", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
 
 		It("Should save account metadata via bulk endpoint", func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.SaveAccountMetadataAction(ledgerName, "bulk-account", map[string]string{
 						"account_type": "asset",
 						"label":        "Bulk Account",
 					}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
@@ -133,19 +133,19 @@ var _ = Describe("Ledger", Ordered, func() {
 
 		It("Should handle multiple metadata operations in bulk", func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "bulk-account-2", big.NewInt(50), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.SaveAccountMetadataAction(ledgerName, "bulk-account", map[string]string{"key1": "value1"}),
 					actions.SaveAccountMetadataAction(ledgerName, "bulk-account-2", map[string]string{"key2": "value2"}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
@@ -154,10 +154,10 @@ var _ = Describe("Ledger", Ordered, func() {
 
 		It("Should delete account metadata via bulk endpoint", func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.SaveAccountMetadataAction(ledgerName, "bulk-account", map[string]string{"to_delete": "value"}),
 					actions.DeleteAccountMetadataAction(ledgerName, "bulk-account", "to_delete"),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
@@ -170,7 +170,7 @@ var _ = Describe("Ledger", Ordered, func() {
 
 		It("Should create a ledger successfully", func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed(), "Failed to create ledger")
 			Expect(resp).NotTo(BeNil())
@@ -186,13 +186,13 @@ var _ = Describe("Ledger", Ordered, func() {
 		It("Should return ALREADY_EXISTS with LEDGER_ALREADY_EXISTS reason when creating a duplicate ledger", func() {
 			// Create ledger
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction("dup-ledger", nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction("dup-ledger", nil)),
 			})
 			Expect(err).To(Succeed())
 
 			// Try to create the same ledger again
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction("dup-ledger", nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction("dup-ledger", nil)),
 			})
 			Expect(err).To(HaveOccurred())
 
@@ -213,18 +213,18 @@ var _ = Describe("Ledger", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 		})
 
 		It("Should save transaction metadata successfully", func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "transaction-metadata-account", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
@@ -241,7 +241,7 @@ var _ = Describe("Ledger", Ordered, func() {
 			}
 
 			saveResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveTransactionMetadataAction(ledgerName, transactionID, metadata)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.SaveTransactionMetadataAction(ledgerName, transactionID, metadata)),
 			})
 			Expect(err).To(Succeed())
 			Expect(saveResp).NotTo(BeNil())
@@ -250,11 +250,11 @@ var _ = Describe("Ledger", Ordered, func() {
 
 		It("Should delete transaction metadata successfully", func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "transaction-metadata-account", big.NewInt(100), "USD"),
 					}, map[string]string{"to_delete": "value"}, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
@@ -266,7 +266,7 @@ var _ = Describe("Ledger", Ordered, func() {
 			Expect(transactionID).NotTo(BeZero())
 
 			deleteResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.DeleteTransactionMetadataAction(ledgerName, transactionID, "to_delete")},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.DeleteTransactionMetadataAction(ledgerName, transactionID, "to_delete")),
 			})
 			Expect(err).To(Succeed())
 			Expect(deleteResp).NotTo(BeNil())
@@ -279,18 +279,18 @@ var _ = Describe("Ledger", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 		})
 
 		It("Should save transaction metadata via bulk endpoint", func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "transaction-bulk-account", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
@@ -301,12 +301,12 @@ var _ = Describe("Ledger", Ordered, func() {
 			transactionID := applyLog.Log.Data.GetCreatedTransaction().Transaction.Id
 
 			saveResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.SaveTransactionMetadataAction(ledgerName, transactionID, map[string]string{
 						"category": "bulk",
 						"reason":   "reconciliation",
 					}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(saveResp).NotTo(BeNil())
@@ -315,11 +315,11 @@ var _ = Describe("Ledger", Ordered, func() {
 
 		It("Should delete transaction metadata via bulk endpoint", func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "transaction-bulk-account", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
@@ -330,10 +330,10 @@ var _ = Describe("Ledger", Ordered, func() {
 			transactionID := applyLog.Log.Data.GetCreatedTransaction().Transaction.Id
 
 			saveResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.SaveTransactionMetadataAction(ledgerName, transactionID, map[string]string{"to_delete": "value"}),
 					actions.DeleteTransactionMetadataAction(ledgerName, transactionID, "to_delete"),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(saveResp).NotTo(BeNil())

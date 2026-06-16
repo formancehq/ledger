@@ -136,7 +136,7 @@ var _ = Describe("Bloom filter config change preserves data", Ordered, func() {
 		client := servers[*leaderID-1].Client
 
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{actions.CreateLedgerAction("bloom-test", nil)},
+			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction("bloom-test", nil)),
 		})
 		Expect(err).To(Succeed())
 
@@ -146,11 +146,11 @@ var _ = Describe("Bloom filter config change preserves data", Ordered, func() {
 
 		// Also set metadata to exercise the metadata bloom filter.
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.SaveAccountMetadataAction("bloom-test", "bank", map[string]string{
 					"category": "main",
 				}),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 	})
@@ -203,16 +203,16 @@ var _ = Describe("Bloom filter config change preserves data", Ordered, func() {
 		client := servers[*leaderID-1].Client
 
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{actions.CreateLedgerAction("post-bloom-change", nil)},
+			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction("post-bloom-change", nil)),
 		})
 		Expect(err).To(Succeed())
 
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateTransactionAction("post-bloom-change", []*commonpb.Posting{
 					actions.NewPosting("world", "user:1", big.NewInt(999), "EUR"),
 				}, nil, nil),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 

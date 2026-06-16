@@ -78,17 +78,17 @@ var _ = Describe("Remove node", func() {
 			ledgerName := "remove-voter-test"
 
 			_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 
 			for i := range 3 {
 				_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-					Requests: []*servicepb.Request{
+					Envelopes: servicepb.UnsignedEnvelopes(
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 							actions.NewPosting("world", fmt.Sprintf("user-%d", i), big.NewInt(100), "USD"),
 						}, nil, nil),
-					},
+					),
 				})
 				Expect(err).To(Succeed())
 			}
@@ -197,17 +197,17 @@ var _ = Describe("Remove node", func() {
 			ledgerName := "force-remove-test"
 
 			_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 
 			for i := range 3 {
 				_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-					Requests: []*servicepb.Request{
+					Envelopes: servicepb.UnsignedEnvelopes(
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 							actions.NewPosting("world", fmt.Sprintf("user-%d", i), big.NewInt(100), "USD"),
 						}, nil, nil),
-					},
+					),
 				})
 				Expect(err).To(Succeed())
 			}
@@ -268,16 +268,16 @@ var _ = Describe("Remove node", func() {
 			ledgerName := "quorum-restore-test"
 
 			_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "alice", big.NewInt(500), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})

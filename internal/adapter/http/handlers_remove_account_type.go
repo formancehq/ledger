@@ -23,7 +23,7 @@ func (s *Server) handleRemoveAccountType(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	_, err := s.backend.Apply(r.Context(), &servicepb.Request{
+	_, err := s.applyUnsigned(r.Context(), &servicepb.Request{
 		Type: &servicepb.Request_RemoveAccountType{
 			RemoveAccountType: &servicepb.RemoveAccountTypeLedgerRequest{
 				Ledger: ledgerName,

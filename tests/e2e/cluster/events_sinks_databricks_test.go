@@ -75,7 +75,7 @@ var _ = Describe("Events Sinks Databricks", Ordered, func() {
 	It("Should deliver events to Databricks when transactions are created", func() {
 		// Add Databricks sink via Apply
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				addEventsSinkAction(&commonpb.SinkConfig{
 					Name:         "databricks-e2e",
 					BatchSize:    10,
@@ -92,28 +92,28 @@ var _ = Describe("Events Sinks Databricks", Ordered, func() {
 						},
 					},
 				}),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 
 		// Create a ledger
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateLedgerAction("db-test", nil),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 
 		// Create a transaction (force=true to bypass balance checks)
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateForceTransactionAction("db-test",
 					[]*commonpb.Posting{
 						actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 					},
 					nil,
 				),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 

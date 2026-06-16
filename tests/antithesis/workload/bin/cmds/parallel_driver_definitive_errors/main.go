@@ -134,7 +134,7 @@ func main() {
 			}
 
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{{
+				Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 					Type: &servicepb.Request_Apply{
 						Apply: &servicepb.LedgerApplyRequest{
 							Ledger: ledger,
@@ -151,7 +151,7 @@ func main() {
 							}},
 						},
 					},
-				}},
+				}),
 			})
 			if err == nil {
 				// Unexpected success: not this property's concern (the
@@ -192,7 +192,7 @@ func main() {
 		// hide. Transparent UNAVAILABLE retries of the marker are harmless
 		// (no reference, idempotent for this purpose).
 		markerResp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
@@ -209,7 +209,7 @@ func main() {
 						}},
 					},
 				},
-			}},
+			}),
 		})
 		if err != nil {
 			// Without the barrier the absence check would race read-staleness

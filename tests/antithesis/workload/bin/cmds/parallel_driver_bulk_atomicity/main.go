@@ -175,7 +175,7 @@ func main() {
 			},
 		})
 
-		_, err := client.Apply(ctx, &servicepb.ApplyRequest{Requests: requests})
+		_, err := client.Apply(ctx, &servicepb.ApplyRequest{Envelopes: servicepb.UnsignedEnvelopes(requests...)})
 
 		details := internal.Details{"ledger": ledger, "bulkSize": bulkSize}
 
@@ -200,7 +200,7 @@ func main() {
 		}
 
 		markerResp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: helper,
@@ -217,7 +217,7 @@ func main() {
 						}},
 					},
 				},
-			}},
+			}),
 		})
 		if err != nil || len(markerResp.GetLogs()) == 0 {
 			return

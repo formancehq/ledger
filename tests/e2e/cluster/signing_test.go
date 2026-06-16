@@ -42,9 +42,9 @@ var _ = Describe("Request Signing", func() {
 
 		It("should accept unsigned requests when no keys exist", func() {
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerAction("signing-bootstrap", nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -52,9 +52,9 @@ var _ = Describe("Request Signing", func() {
 
 		It("should allow unsigned RegisterSigningKey as bootstrap (first key)", func() {
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.RegisterSigningKeyAction(keyID, pubKey),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -64,9 +64,9 @@ var _ = Describe("Request Signing", func() {
 			newPubKey, _, err := actions.GenerateTestKeypair()
 			Expect(err).To(Succeed())
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.RegisterSigningKeyAction("another-key", newPubKey),
-				},
+				),
 			})
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
@@ -78,11 +78,11 @@ var _ = Describe("Request Signing", func() {
 			newPubKey, _, err := actions.GenerateTestKeypair()
 			Expect(err).To(Succeed())
 			req := actions.RegisterSigningKeyAction("second-key", newPubKey)
-			_, err = actions.SignRequest(req, keyID, privKey)
+			signedEnv, err := actions.SignRequest(req, keyID, privKey)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{req},
+				Envelopes: []*servicepb.Envelope{signedEnv},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -90,9 +90,9 @@ var _ = Describe("Request Signing", func() {
 
 		It("should reject unsigned RevokeSigningKey", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.RevokeSigningKeyAction("second-key", false),
-				},
+				),
 			})
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
@@ -102,11 +102,11 @@ var _ = Describe("Request Signing", func() {
 
 		It("should accept signed RevokeSigningKey", func() {
 			req := actions.RevokeSigningKeyAction("second-key", false)
-			_, err := actions.SignRequest(req, keyID, privKey)
+			signedEnv1, err := actions.SignRequest(req, keyID, privKey)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{req},
+				Envelopes: []*servicepb.Envelope{signedEnv1},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -114,9 +114,9 @@ var _ = Describe("Request Signing", func() {
 
 		It("should reject unsigned SetSigningConfig", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.SetSigningConfigAction(true),
-				},
+				),
 			})
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
@@ -126,11 +126,11 @@ var _ = Describe("Request Signing", func() {
 
 		It("should accept signed SetSigningConfig to enable require-signatures", func() {
 			req := actions.SetSigningConfigAction(true)
-			_, err := actions.SignRequest(req, keyID, privKey)
+			signedEnv2, err := actions.SignRequest(req, keyID, privKey)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{req},
+				Envelopes: []*servicepb.Envelope{signedEnv2},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -138,9 +138,9 @@ var _ = Describe("Request Signing", func() {
 
 		It("should reject unsigned regular requests after require-signatures is enabled", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerAction("signing-should-fail", nil),
-				},
+				),
 			})
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
@@ -150,11 +150,11 @@ var _ = Describe("Request Signing", func() {
 
 		It("should accept signed regular requests after require-signatures is enabled", func() {
 			req := actions.CreateLedgerAction("signing-required-ok", nil)
-			_, err := actions.SignRequest(req, keyID, privKey)
+			signedEnv3, err := actions.SignRequest(req, keyID, privKey)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{req},
+				Envelopes: []*servicepb.Envelope{signedEnv3},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -164,20 +164,20 @@ var _ = Describe("Request Signing", func() {
 
 		It("should disable require-signatures via signed config change", func() {
 			req := actions.SetSigningConfigAction(false)
-			_, err := actions.SignRequest(req, keyID, privKey)
+			signedEnv4, err := actions.SignRequest(req, keyID, privKey)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{req},
+				Envelopes: []*servicepb.Envelope{signedEnv4},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 
 			// Now unsigned requests should work again
 			resp, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerAction("signing-disabled-again", nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -208,18 +208,18 @@ var _ = Describe("Request Signing", func() {
 
 			// Bootstrap: register the first key (unsigned)
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.RegisterSigningKeyAction(keyID, pubKey),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 
 			// Create a ledger for transaction tests
 			resp, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerAction(ledgerName, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -229,11 +229,11 @@ var _ = Describe("Request Signing", func() {
 			req := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil, nil)
-			_, err := actions.SignRequest(req, keyID, privKey)
+			signedEnv5, err := actions.SignRequest(req, keyID, privKey)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{req},
+				Envelopes: []*servicepb.Envelope{signedEnv5},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -242,18 +242,18 @@ var _ = Describe("Request Signing", func() {
 			Expect(log.Signature).NotTo(BeNil())
 			Expect(log.Signature.KeyId).To(Equal(keyID))
 			Expect(log.Signature.Signature).To(HaveLen(ed25519.SignatureSize))
-			Expect(log.Signature.SignedPayload).NotTo(BeEmpty())
+			Expect(log.Signature.Payload).NotTo(BeEmpty())
 		})
 
 		It("should reject requests signed with an unknown key ID", func() {
 			req := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bob", big.NewInt(50), "USD"),
 			}, nil, nil)
-			_, err := actions.SignRequest(req, "unknown-key-id", privKey)
+			signedEnv6, err := actions.SignRequest(req, "unknown-key-id", privKey)
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{req},
+				Envelopes: []*servicepb.Envelope{signedEnv6},
 			})
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
@@ -268,11 +268,11 @@ var _ = Describe("Request Signing", func() {
 			req := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "charlie", big.NewInt(50), "USD"),
 			}, nil, nil)
-			_, err = actions.SignRequest(req, keyID, wrongPrivKey)
+			signedEnv7, err := actions.SignRequest(req, keyID, wrongPrivKey)
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{req},
+				Envelopes: []*servicepb.Envelope{signedEnv7},
 			})
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
@@ -284,14 +284,15 @@ var _ = Describe("Request Signing", func() {
 			req := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "dave", big.NewInt(50), "USD"),
 			}, nil, nil)
-			_, err := actions.SignRequest(req, keyID, privKey)
+			signedEnv8, err := actions.SignRequest(req, keyID, privKey)
 			Expect(err).To(Succeed())
 
-			// Tamper with the signed_payload after signing
-			req.Signature.SignedPayload = append(req.Signature.SignedPayload, 0xFF)
+			// Tamper with the signed envelope's payload bytes
+			signed := signedEnv8.GetSigned()
+			signed.Payload = append(signed.Payload, 0xFF)
 
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{req},
+				Envelopes: []*servicepb.Envelope{signedEnv8},
 			})
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
@@ -303,17 +304,17 @@ var _ = Describe("Request Signing", func() {
 			req1 := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bulk-alice", big.NewInt(100), "USD"),
 			}, nil, nil)
-			_, err := actions.SignRequest(req1, keyID, privKey)
+			signedEnv9, err := actions.SignRequest(req1, keyID, privKey)
 			Expect(err).To(Succeed())
 
 			req2 := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bulk-bob", big.NewInt(200), "USD"),
 			}, nil, nil)
-			_, err = actions.SignRequest(req2, keyID, privKey)
+			signedEnv10, err := actions.SignRequest(req2, keyID, privKey)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{req1, req2},
+				Envelopes: []*servicepb.Envelope{signedEnv9, signedEnv10},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(2))
@@ -329,7 +330,7 @@ var _ = Describe("Request Signing", func() {
 			signedReq := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "mixed-signed", big.NewInt(100), "USD"),
 			}, nil, nil)
-			_, err := actions.SignRequest(signedReq, keyID, privKey)
+			signedEnv11, err := actions.SignRequest(signedReq, keyID, privKey)
 			Expect(err).To(Succeed())
 
 			unsignedReq := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
@@ -337,7 +338,7 @@ var _ = Describe("Request Signing", func() {
 			}, nil, nil)
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{signedReq, unsignedReq},
+				Envelopes: []*servicepb.Envelope{signedEnv11, servicepb.UnsignedEnvelope(unsignedReq)},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(2))
@@ -376,31 +377,31 @@ var _ = Describe("Request Signing", func() {
 
 			// Bootstrap: register the first key (unsigned)
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.RegisterSigningKeyAction(keyID1, pubKey1),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 
 			// Register the second key (signed by first key)
 			req := actions.RegisterSigningKeyAction(keyID2, pubKey2)
-			_, err = actions.SignRequest(req, keyID1, privKey1)
+			signedEnv12, err := actions.SignRequest(req, keyID1, privKey1)
 			Expect(err).To(Succeed())
 
 			resp, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{req},
+				Envelopes: []*servicepb.Envelope{signedEnv12},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 
 			// Enable require-signatures (signed by first key)
 			configReq := actions.SetSigningConfigAction(true)
-			_, err = actions.SignRequest(configReq, keyID1, privKey1)
+			signedEnv13, err := actions.SignRequest(configReq, keyID1, privKey1)
 			Expect(err).To(Succeed())
 
 			resp, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{configReq},
+				Envelopes: []*servicepb.Envelope{signedEnv13},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -408,11 +409,11 @@ var _ = Describe("Request Signing", func() {
 
 		It("should accept requests signed with the first key", func() {
 			req := actions.CreateLedgerAction(ledgerName, nil)
-			_, err := actions.SignRequest(req, keyID1, privKey1)
+			signedEnv14, err := actions.SignRequest(req, keyID1, privKey1)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{req},
+				Envelopes: []*servicepb.Envelope{signedEnv14},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -423,11 +424,11 @@ var _ = Describe("Request Signing", func() {
 			req := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "multi-key-test", big.NewInt(100), "USD"),
 			}, nil, nil)
-			_, err := actions.SignRequest(req, keyID2, privKey2)
+			signedEnv15, err := actions.SignRequest(req, keyID2, privKey2)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{req},
+				Envelopes: []*servicepb.Envelope{signedEnv15},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -438,17 +439,17 @@ var _ = Describe("Request Signing", func() {
 			req1 := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "multi-key-1", big.NewInt(100), "USD"),
 			}, nil, nil)
-			_, err := actions.SignRequest(req1, keyID1, privKey1)
+			signedEnv16, err := actions.SignRequest(req1, keyID1, privKey1)
 			Expect(err).To(Succeed())
 
 			req2 := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "multi-key-2", big.NewInt(200), "USD"),
 			}, nil, nil)
-			_, err = actions.SignRequest(req2, keyID2, privKey2)
+			signedEnv17, err := actions.SignRequest(req2, keyID2, privKey2)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{req1, req2},
+				Envelopes: []*servicepb.Envelope{signedEnv16, signedEnv17},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(2))
@@ -487,19 +488,19 @@ var _ = Describe("Request Signing", func() {
 
 			// Register root key A (bootstrap, unsigned)
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.RegisterSigningKeyAction(keyIDA, pubKeyA),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 
 			// Register child key B (signed by A)
 			reqB := actions.RegisterSigningKeyAction(keyIDB, pubKeyB)
-			_, err = actions.SignRequest(reqB, keyIDA, privKeyA)
+			signedEnv18, err := actions.SignRequest(reqB, keyIDA, privKeyA)
 			Expect(err).To(Succeed())
 			resp, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{reqB},
+				Envelopes: []*servicepb.Envelope{signedEnv18},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -507,10 +508,10 @@ var _ = Describe("Request Signing", func() {
 			// Register grandchild key C (signed by A, parent is A -- not B)
 			// This makes C a child of A, so revoking B (non-cascade) leaves C
 			reqC := actions.RegisterSigningKeyAction(keyIDC, pubKeyC)
-			_, err = actions.SignRequest(reqC, keyIDA, privKeyA)
+			signedEnv19, err := actions.SignRequest(reqC, keyIDA, privKeyA)
 			Expect(err).To(Succeed())
 			resp, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{reqC},
+				Envelopes: []*servicepb.Envelope{signedEnv19},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -527,11 +528,11 @@ var _ = Describe("Request Signing", func() {
 
 		It("should list A and C after non-cascade revoke of B", func() {
 			req := actions.RevokeSigningKeyAction(keyIDB, false)
-			_, err := actions.SignRequest(req, keyIDA, privKeyA)
+			signedEnv20, err := actions.SignRequest(req, keyIDA, privKeyA)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{req},
+				Envelopes: []*servicepb.Envelope{signedEnv20},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -576,20 +577,20 @@ var _ = Describe("Request Signing", func() {
 
 			// Register root key A (bootstrap, unsigned)
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.RegisterSigningKeyAction(keyIDA, pubKeyA),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 
 			// Register child key B (signed by A -> B is child of A)
 			reqB := actions.RegisterSigningKeyAction(keyIDB, pubKeyB)
-			_, err = actions.SignRequest(reqB, keyIDA, privKeyA)
+			signedEnv21, err := actions.SignRequest(reqB, keyIDA, privKeyA)
 			Expect(err).To(Succeed())
 
 			resp, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{reqB},
+				Envelopes: []*servicepb.Envelope{signedEnv21},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -600,11 +601,11 @@ var _ = Describe("Request Signing", func() {
 
 			// Register grandchild key C (signed by B -> C is child of B)
 			reqC := actions.RegisterSigningKeyAction(keyIDC, pubKeyC)
-			_, err = actions.SignRequest(reqC, keyIDB, privKeyB)
+			signedEnv22, err := actions.SignRequest(reqC, keyIDB, privKeyB)
 			Expect(err).To(Succeed())
 
 			resp, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{reqC},
+				Envelopes: []*servicepb.Envelope{signedEnv22},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -615,10 +616,10 @@ var _ = Describe("Request Signing", func() {
 
 			// Create a ledger using key A for later tests
 			ledgerReq := actions.CreateLedgerAction("hierarchy-test", nil)
-			_, err = actions.SignRequest(ledgerReq, keyIDA, privKeyA)
+			signedEnv23, err := actions.SignRequest(ledgerReq, keyIDA, privKeyA)
 			Expect(err).To(Succeed())
 			resp, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{ledgerReq},
+				Envelopes: []*servicepb.Envelope{signedEnv23},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -646,11 +647,11 @@ var _ = Describe("Request Signing", func() {
 			req := actions.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
 				actions.NewPosting("world", "h-bob", big.NewInt(100), "USD"),
 			}, nil, nil)
-			_, err := actions.SignRequest(req, keyIDB, privKeyB)
+			signedEnv24, err := actions.SignRequest(req, keyIDB, privKeyB)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{req},
+				Envelopes: []*servicepb.Envelope{signedEnv24},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -660,11 +661,11 @@ var _ = Describe("Request Signing", func() {
 			req := actions.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
 				actions.NewPosting("world", "h-charlie", big.NewInt(100), "USD"),
 			}, nil, nil)
-			_, err := actions.SignRequest(req, keyIDC, privKeyC)
+			signedEnv25, err := actions.SignRequest(req, keyIDC, privKeyC)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{req},
+				Envelopes: []*servicepb.Envelope{signedEnv25},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -672,11 +673,11 @@ var _ = Describe("Request Signing", func() {
 
 		It("should cascade revoke B and C when B is revoked with cascade (signed by A)", func() {
 			req := actions.RevokeSigningKeyAction(keyIDB, true)
-			_, err := actions.SignRequest(req, keyIDA, privKeyA)
+			signedEnv26, err := actions.SignRequest(req, keyIDA, privKeyA)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{req},
+				Envelopes: []*servicepb.Envelope{signedEnv26},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -705,11 +706,11 @@ var _ = Describe("Request Signing", func() {
 			req := actions.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
 				actions.NewPosting("world", "h-post-revoke", big.NewInt(50), "USD"),
 			}, nil, nil)
-			_, err := actions.SignRequest(req, keyIDA, privKeyA)
+			signedEnv27, err := actions.SignRequest(req, keyIDA, privKeyA)
 			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{req},
+				Envelopes: []*servicepb.Envelope{signedEnv27},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -719,11 +720,11 @@ var _ = Describe("Request Signing", func() {
 			req := actions.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
 				actions.NewPosting("world", "h-revoked-b", big.NewInt(50), "USD"),
 			}, nil, nil)
-			_, err := actions.SignRequest(req, keyIDB, privKeyB)
+			signedEnv28, err := actions.SignRequest(req, keyIDB, privKeyB)
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{req},
+				Envelopes: []*servicepb.Envelope{signedEnv28},
 			})
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
@@ -735,11 +736,11 @@ var _ = Describe("Request Signing", func() {
 			req := actions.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
 				actions.NewPosting("world", "h-revoked-c", big.NewInt(50), "USD"),
 			}, nil, nil)
-			_, err := actions.SignRequest(req, keyIDC, privKeyC)
+			signedEnv29, err := actions.SignRequest(req, keyIDC, privKeyC)
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{req},
+				Envelopes: []*servicepb.Envelope{signedEnv29},
 			})
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)

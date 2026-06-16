@@ -44,10 +44,10 @@ var _ = Describe("Log date index", Ordered, func() {
 		// Create ledger with the date index enabled.
 		// The per-ledger log index is always-on (no explicit CreateIndex needed).
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateLedgerAction(ledgerName, nil),
 				actions.CreateLogBuiltinIndexAction(ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 
@@ -55,11 +55,11 @@ var _ = Describe("Log date index", Ordered, func() {
 		nowRef = time.Now()
 
 		_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "alice", big.NewInt(100), "USD")}, nil),
 				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "bob", big.NewInt(200), "USD")}, nil),
 				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "carol", big.NewInt(300), "USD")}, nil),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 

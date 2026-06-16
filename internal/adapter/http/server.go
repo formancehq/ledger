@@ -9,6 +9,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/health"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 type Server struct {
@@ -24,6 +26,13 @@ func NewServer(logger logging.Logger, backend Backend, bulkMaxSize int) *Server 
 		backend:     backend,
 		bulkMaxSize: bulkMaxSize,
 	}
+}
+
+// applyUnsigned wraps Requests into unsigned Envelopes and forwards to the
+// backend. The HTTP API never signs requests itself — signing flows through
+// gRPC where the caller controls the envelope construction.
+func (s *Server) applyUnsigned(ctx context.Context, reqs ...*servicepb.Request) ([]*commonpb.Log, error) {
+	return s.backend.Apply(ctx, servicepb.UnsignedEnvelopes(reqs...)...)
 }
 
 type Backend interface {

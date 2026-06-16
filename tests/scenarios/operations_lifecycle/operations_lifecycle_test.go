@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/scenario"
@@ -248,8 +247,9 @@ func TestOperationsLifecycle(t *testing.T) {
 
 		// Register second key (must be signed by existing key)
 		regReq := actions.RegisterSigningKeyAction("key-2", pubKey2)
-		require.NoError(t, signing.Sign(regReq, "key-1", privKey1))
-		scenariotest.ApplyActions(t, ctx, client, regReq)
+		regEnv, err := actions.SignRequest(regReq, "key-1", privKey1)
+		require.NoError(t, err)
+		scenariotest.ApplyEnvelopes(t, ctx, client, regEnv)
 
 		// Verify both keys are registered
 		keys = listSigningKeys(t, ctx, client)
@@ -263,8 +263,9 @@ func TestOperationsLifecycle(t *testing.T) {
 
 		// Revoke key-2 (must be signed since keys exist)
 		revokeReq := actions.RevokeSigningKeyAction("key-2", false)
-		require.NoError(t, signing.Sign(revokeReq, "key-1", privKey1))
-		scenariotest.ApplyActions(t, ctx, client, revokeReq)
+		revokeEnv, err := actions.SignRequest(revokeReq, "key-1", privKey1)
+		require.NoError(t, err)
+		scenariotest.ApplyEnvelopes(t, ctx, client, revokeEnv)
 
 		// Verify key-2 is removed
 		keys = listSigningKeys(t, ctx, client)
@@ -276,8 +277,9 @@ func TestOperationsLifecycle(t *testing.T) {
 		signedTxReq := actions.CreateTransactionAction(ledger, []*commonpb.Posting{
 			actions.NewPosting("world", "ops:1", big.NewInt(10), "USD/2"),
 		}, nil, nil)
-		require.NoError(t, signing.Sign(signedTxReq, "key-1", privKey1))
-		txResp := scenariotest.ApplyActions(t, ctx, client, signedTxReq)
+		signedTxEnv, err := actions.SignRequest(signedTxReq, "key-1", privKey1)
+		require.NoError(t, err)
+		txResp := scenariotest.ApplyEnvelopes(t, ctx, client, signedTxEnv)
 		require.NotEmpty(t, txResp.Logs)
 		require.NotNil(t, txResp.Logs[0].Signature, "signed transaction should have signature in log")
 		require.Equal(t, "key-1", txResp.Logs[0].Signature.GetKeyId())

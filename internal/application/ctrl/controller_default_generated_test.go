@@ -41,10 +41,10 @@ func (m *MockAdmission) EXPECT() *MockAdmissionMockRecorder {
 }
 
 // Admit mocks base method.
-func (m *MockAdmission) Admit(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
+func (m *MockAdmission) Admit(ctx context.Context, envelopes ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx}
-	for _, a := range requests {
+	for _, a := range envelopes {
 		varargs = append(varargs, a)
 	}
 	ret := m.ctrl.Call(m, "Admit", varargs...)
@@ -54,9 +54,9 @@ func (m *MockAdmission) Admit(ctx context.Context, requests ...*servicepb.Reques
 }
 
 // Admit indicates an expected call of Admit.
-func (mr *MockAdmissionMockRecorder) Admit(ctx any, requests ...any) *gomock.Call {
+func (mr *MockAdmissionMockRecorder) Admit(ctx any, envelopes ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx}, requests...)
+	varargs := append([]any{ctx}, envelopes...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Admit", reflect.TypeOf((*MockAdmission)(nil).Admit), varargs...)
 }
 

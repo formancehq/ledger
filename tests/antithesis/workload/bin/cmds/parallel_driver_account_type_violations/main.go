@@ -29,7 +29,7 @@ func main() {
 
 		// 1. Add an account type with a pattern.
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_AddAccountType{
 					AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 						Ledger: ledger,
@@ -39,7 +39,7 @@ func main() {
 						},
 					},
 				},
-			}},
+			}),
 		})
 		if err != nil {
 			if internal.IsTransient(err) || status.Code(err) == codes.AlreadyExists {
@@ -54,14 +54,14 @@ func main() {
 
 		// 2. Set strict enforcement mode.
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_SetDefaultEnforcementMode{
 					SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{
 						Ledger:          ledger,
 						EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
 					},
 				},
-			}},
+			}),
 		})
 		if err != nil && !internal.IsTransient(err) {
 			return
@@ -70,7 +70,7 @@ func main() {
 		// 3. Transaction with a valid address — should succeed.
 		validAddr := fmt.Sprintf("%s:%d", typeName, r.Uint64()%1000)
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
@@ -87,7 +87,7 @@ func main() {
 						}},
 					},
 				},
-			}},
+			}),
 		})
 
 		assert.Sometimes(err == nil || internal.IsTransient(err),
@@ -97,7 +97,7 @@ func main() {
 		// 4. Transaction with an invalid address — should fail with ACCOUNT_NOT_MATCHING_TYPE.
 		invalidAddr := fmt.Sprintf("invalid-prefix:%d", r.Uint64()%1000)
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
@@ -114,7 +114,7 @@ func main() {
 						}},
 					},
 				},
-			}},
+			}),
 		})
 
 		if err == nil {
@@ -139,21 +139,21 @@ func main() {
 
 		// 5. Switch to AUDIT mode — same invalid address should now succeed.
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_SetDefaultEnforcementMode{
 					SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{
 						Ledger:          ledger,
 						EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
 					},
 				},
-			}},
+			}),
 		})
 		if err != nil && !internal.IsTransient(err) {
 			return
 		}
 
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
@@ -170,7 +170,7 @@ func main() {
 						}},
 					},
 				},
-			}},
+			}),
 		})
 
 		assert.Sometimes(err == nil || internal.IsTransient(err),

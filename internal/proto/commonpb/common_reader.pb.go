@@ -2203,9 +2203,9 @@ type LogReader interface {
 	GetSequence() uint64
 	GetPayload() LogPayloadReader
 	GetIdempotency() IdempotencyReader
-	GetSignature() signaturepb.RequestSignatureReader
+	GetSignature() signaturepb.SignedRequestReader
 	GetReceipt() string
-	GetResponseSignature() signaturepb.ResponseSignatureReader
+	GetResponseSignature() signaturepb.SignedLogReader
 	Mutate() *Log
 }
 
@@ -2231,7 +2231,7 @@ func (r *logReadonly) GetIdempotency() IdempotencyReader {
 	return v.AsReader()
 }
 
-func (r *logReadonly) GetSignature() signaturepb.RequestSignatureReader {
+func (r *logReadonly) GetSignature() signaturepb.SignedRequestReader {
 	v := r.v.GetSignature()
 	if v == nil {
 		return nil
@@ -2243,7 +2243,7 @@ func (r *logReadonly) GetReceipt() string {
 	return r.v.GetReceipt()
 }
 
-func (r *logReadonly) GetResponseSignature() signaturepb.ResponseSignatureReader {
+func (r *logReadonly) GetResponseSignature() signaturepb.SignedLogReader {
 	v := r.v.GetResponseSignature()
 	if v == nil {
 		return nil

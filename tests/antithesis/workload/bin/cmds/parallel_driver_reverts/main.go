@@ -11,7 +11,7 @@ import (
 func main() {
 	internal.RunDriver("parallel_driver_reverts", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
 		resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
@@ -24,7 +24,7 @@ func main() {
 						}},
 					},
 				},
-			}},
+			}),
 		})
 
 		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to create a transaction for revert", internal.Details{"ledger": ledger, "error": err})
@@ -41,7 +41,7 @@ func main() {
 		details := internal.Details{"ledger": ledger, "txId": txID}
 
 		revertResp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
@@ -54,7 +54,7 @@ func main() {
 						}},
 					},
 				},
-			}},
+			}),
 		})
 
 		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to revert a transaction", details.With(internal.Details{"error": err}))

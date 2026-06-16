@@ -339,13 +339,14 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 		},
 	}
 
-	if err := cmdutil.SignRequests(cmd, requests); err != nil {
+	envelopes, err := cmdutil.BuildEnvelopes(cmd, requests)
+	if err != nil {
 		spinner.Fail("Failed to sign request")
 
 		return cmdutil.Displayed(err)
 	}
 
-	_, err = client.Apply(ctx, &servicepb.ApplyRequest{Requests: requests})
+	_, err = client.Apply(ctx, &servicepb.ApplyRequest{Envelopes: envelopes})
 	if err != nil {
 		_ = spinner.Stop()
 

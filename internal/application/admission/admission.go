@@ -35,6 +35,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -290,14 +291,9 @@ func NewAdmission(
 // 3. When not guaranteed, load base value from store at boundary B(nextIndex)
 // 4. For volumes not guaranteed in cache, load base values from store at B(nextIndex)
 // 5. Propose command with Preload containing base values.
-func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
+func (a *Admission) Admit(ctx context.Context, envelopes ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 	if !a.healthChecker.IsHealthy() {
 		return nil, health.ErrUnhealthy
-	}
-
-	// Check maintenance mode: block all requests except SetMaintenanceMode
-	if a.sharedState.MaintenanceMode() && !allRequestsAreMaintenanceMode(requests) {
-		return nil, ErrMaintenanceMode
 	}
 
 	// Wait for the FSM to be caught up after a leadership transition.
@@ -307,9 +303,11 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		return nil, fmt.Errorf("waiting for leader readiness: %w", err)
 	}
 
-	// Verify signatures and resolve signed payloads
+	// Verify signatures and unwrap envelopes into (request, signature) pairs.
+	// Signed envelopes are opaque: the signature is verified against the
+	// payload bytes and the trusted Request is unmarshaled from those bytes.
 	ctx, sigSpan := tracer.Start(ctx, "admission.verify_signatures")
-	requests, err := a.verifyAndResolveSignatures(requests)
+	verified, err := a.verifyAndResolveEnvelopes(envelopes)
 
 	sigSpan.End()
 
@@ -317,8 +315,14 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		return nil, err
 	}
 
-	// Convert requests to orders
-	orders, overlay, err := a.requestsToOrders(ctx, requests)
+	// Check maintenance mode: block all requests except SetMaintenanceMode.
+	// Done after envelope verification so signed envelopes can be inspected.
+	if a.sharedState.MaintenanceMode() && !allRequestsAreMaintenanceMode(verified) {
+		return nil, ErrMaintenanceMode
+	}
+
+	// Convert verified requests to orders
+	orders, overlay, err := a.requestsToOrders(ctx, verified)
 	if err != nil {
 		return nil, fmt.Errorf("converting requests to orders: %w", err)
 	}
@@ -536,80 +540,68 @@ func (a *Admission) marshalCommand(ctx context.Context, cmd *raftcmdpb.Proposal)
 	return proposalData, nil
 }
 
-// verifyAndResolveSignatures verifies signatures on requests and resolves signed payloads.
-// For each signed request, it verifies the signature, then deserializes signed_payload
-// to obtain the authoritative Request content (preserving the signature for propagation).
+// verifiedRequest pairs a trusted Request with its signing envelope (nil if unsigned).
+// The envelope is preserved for downstream propagation into Order → Log → AuditEntry.
+type verifiedRequest struct {
+	req *servicepb.Request
+	sig *signaturepb.SignedRequest // nil when the envelope carried an unsigned variant
+}
+
+// verifyAndResolveEnvelopes verifies signatures on incoming envelopes and unwraps
+// each one into a (Request, Signature) pair. Signed envelopes are opaque: the
+// signature is verified against payload bytes and the trusted Request is
+// unmarshaled from those bytes — the server never re-serializes anything.
 //
-// Bootstrap logic for unsigned requests:
+// Bootstrap logic for unsigned envelopes:
 //   - RegisterSigningKey is allowed unsigned when no keys exist yet (bootstrap)
 //   - All other signing management requests require a signature when keys exist
 //   - Regular requests check the requireSignatures flag
-func (a *Admission) verifyAndResolveSignatures(requests []*servicepb.Request) ([]*servicepb.Request, error) {
-	result := make([]*servicepb.Request, len(requests))
-	for i, req := range requests {
-		if req.GetSignature() != nil {
-			// Look up public key
-			pubKey := a.keyStore.GetPublicKey(req.GetSignature().GetKeyId())
+func (a *Admission) verifyAndResolveEnvelopes(envelopes []*servicepb.Envelope) ([]verifiedRequest, error) {
+	result := make([]verifiedRequest, len(envelopes))
+	for i, env := range envelopes {
+		switch v := env.GetVariant().(type) {
+		case *servicepb.Envelope_Signed:
+			sr := v.Signed
+
+			pubKey := a.keyStore.GetPublicKey(sr.GetKeyId())
 			if pubKey == nil {
-				return nil, fmt.Errorf("%w: %s", signing.ErrUnknownKeyID, req.GetSignature().GetKeyId())
+				return nil, fmt.Errorf("%w: %s", signing.ErrUnknownKeyID, sr.GetKeyId())
 			}
 
-			// Verify the signature on signed_payload
-			if err := signing.Verify(req.GetSignature(), pubKey); err != nil {
+			if err := signing.Verify(sr, pubKey); err != nil {
 				return nil, err
 			}
 
-			// Deserialize signed_payload to get the trusted Request
-			trusted, err := signing.ExtractRequest(req.GetSignature())
+			req, err := signing.ExtractRequest(sr)
 			if err != nil {
 				return nil, fmt.Errorf("extracting signed request: %w", err)
 			}
 
-			// Verify the signed payload matches the wrapper request.
-			// The wrapper (minus the signature field) must be structurally
-			// identical to the trusted payload. This prevents scope escalation
-			// where the wrapper advertises a different operation than what
-			// was actually signed.
-			wrapperWithoutSig := req.CloneVT()
-			wrapperWithoutSig.Signature = nil
-
-			if !wrapperWithoutSig.EqualVT(trusted) {
-				// Guardrail: no trusted client in the Antithesis harness ever
-				// produces a divergent wrapper/signed_payload pair (the only
-				// signing workload signs the exact request it ships). Reaching
-				// this branch therefore means either client-side corruption or
-				// a serialization bug upstream of the gate — both worth
-				// flagging. The rejection itself is the system working; the
-				// assertion documents that the divergent-input class is never
-				// observed in a trusted-client environment.
-				assert.Unreachable("signed payload diverges from wrapper request", map[string]any{
-					"keyId": req.GetSignature().GetKeyId(),
-				})
-
-				return nil, fmt.Errorf("%w: signed payload does not match wrapper request", signing.ErrInvalidSignature)
+			result[i] = verifiedRequest{req: req, sig: sr}
+		case *servicepb.Envelope_Unsigned:
+			req := v.Unsigned
+			if req == nil {
+				return nil, fmt.Errorf("%w: empty unsigned envelope", signing.ErrMissingSignature)
 			}
 
-			// Attach the original signature to the trusted request for propagation
-			trusted.Signature = req.GetSignature()
-			result[i] = trusted
-		} else {
-			// No signature — apply bootstrap rules
 			if isSigningManagementRequest(req) {
 				// Bootstrap: allow unsigned RegisterSigningKey when no keys exist
 				if isRegisterSigningKeyRequest(req) && !a.keyStore.HasKeys() {
-					result[i] = req
+					result[i] = verifiedRequest{req: req}
 
 					continue
 				}
 				// Keys exist — signing management requires a signature
 				return nil, signing.ErrMissingSignature
 			}
-			// Regular request — check requireSignatures flag
+
 			if a.sharedState.RequireSignatures() {
 				return nil, signing.ErrMissingSignature
 			}
 
-			result[i] = req
+			result[i] = verifiedRequest{req: req}
+		default:
+			return nil, fmt.Errorf("%w: envelope has no variant", signing.ErrMissingSignature)
 		}
 	}
 
@@ -683,9 +675,9 @@ func (errCheckpointOrderNotLast) Metadata() map[string]string { return nil }
 var ErrCheckpointOrderNotLast domain.Describable = errCheckpointOrderNotLast{}
 
 // allRequestsAreMaintenanceMode returns true if every request in the batch is a SetMaintenanceMode request.
-func allRequestsAreMaintenanceMode(requests []*servicepb.Request) bool {
-	for _, req := range requests {
-		if _, ok := req.GetType().(*servicepb.Request_SetMaintenanceMode); !ok {
+func allRequestsAreMaintenanceMode(verified []verifiedRequest) bool {
+	for _, vr := range verified {
+		if _, ok := vr.req.GetType().(*servicepb.Request_SetMaintenanceMode); !ok {
 			return false
 		}
 	}
@@ -1084,8 +1076,10 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 	return nil
 }
 
-// requestToOrder converts a servicepb.Request to a raftcmdpb.Order.
-func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, overlay *bulkOverlay) (*raftcmdpb.Order, error) {
+// requestToOrder converts a verifiedRequest into a raftcmdpb.Order. The
+// signing envelope (if any) is propagated onto the Order for audit/replay.
+func (a *Admission) requestToOrder(ctx context.Context, vr verifiedRequest, overlay *bulkOverlay) (*raftcmdpb.Order, error) {
+	req := vr.req
 	order := &raftcmdpb.Order{}
 
 	switch reqType := req.GetType().(type) {
@@ -1117,8 +1111,8 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 		}
 	case *servicepb.Request_RegisterSigningKey:
 		var parentKeyID string
-		if req.GetSignature() != nil {
-			parentKeyID = req.GetSignature().GetKeyId()
+		if vr.sig != nil {
+			parentKeyID = vr.sig.GetKeyId()
 		}
 
 		order.Type = &raftcmdpb.Order_RegisterSigningKey{
@@ -1387,8 +1381,8 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 		}
 	}
 
-	// Propagate signature for audit trail
-	order.Signature = req.GetSignature()
+	// Propagate signature envelope for audit trail
+	order.Signature = vr.sig
 
 	return order, nil
 }
@@ -1632,12 +1626,12 @@ func (a *Admission) resolveNumscriptFromOverlay(overlay *bulkOverlay, ledger, na
 	return bestContent, bestVersion.String(), true
 }
 
-func (a *Admission) requestsToOrders(ctx context.Context, reqs []*servicepb.Request) ([]*raftcmdpb.Order, *bulkOverlay, error) {
+func (a *Admission) requestsToOrders(ctx context.Context, verified []verifiedRequest) ([]*raftcmdpb.Order, *bulkOverlay, error) {
 	overlay := newBulkOverlay()
-	orders := make([]*raftcmdpb.Order, len(reqs))
+	orders := make([]*raftcmdpb.Order, len(verified))
 
-	for i, req := range reqs {
-		order, err := a.requestToOrder(ctx, req, overlay)
+	for i, vr := range verified {
+		order, err := a.requestToOrder(ctx, vr, overlay)
 		if err != nil {
 			return nil, nil, fmt.Errorf("converting request %d: %w", i, err)
 		}

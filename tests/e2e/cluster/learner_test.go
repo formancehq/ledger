@@ -117,17 +117,17 @@ var _ = Describe("Learner node", func() {
 			ledgerName := "learner-test-ledger"
 
 			_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 
 			for i := range 5 {
 				_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-					Requests: []*servicepb.Request{
+					Envelopes: servicepb.UnsignedEnvelopes(
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 							actions.NewPosting("world", fmt.Sprintf("user-%d", i), big.NewInt(100), "USD"),
 						}, nil, nil),
-					},
+					),
 				})
 				Expect(err).To(Succeed())
 			}
@@ -276,17 +276,17 @@ var _ = Describe("Learner node", func() {
 		It("should accept transactions through all nodes after auto-promotion", func() {
 			ledgerName := "auto-promote-test"
 			_, err := servers[0].Client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 
 			for i := range countInstances {
 				_, err := servers[i].Client.Apply(ctx, &servicepb.ApplyRequest{
-					Requests: []*servicepb.Request{
+					Envelopes: servicepb.UnsignedEnvelopes(
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 							actions.NewPosting("world", fmt.Sprintf("user-%d", i), big.NewInt(100), "USD"),
 						}, nil, nil),
-					},
+					),
 				})
 				Expect(err).To(Succeed(), "Failed to create transaction through node %d", i+1)
 			}

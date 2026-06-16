@@ -18,13 +18,15 @@ func GenerateTestKeypair() (ed25519.PublicKey, ed25519.PrivateKey, error) {
 	return ed25519.GenerateKey(rand.Reader)
 }
 
-// SignRequest signs a request with the given key. Returns the same request (modified in place).
-func SignRequest(req *servicepb.Request, keyID string, privKey ed25519.PrivateKey) (*servicepb.Request, error) {
-	if err := signing.Sign(req, keyID, privKey); err != nil {
+// SignRequest signs a request with the given key and returns the resulting
+// signed envelope, ready to be placed into an ApplyRequest.Envelopes slice.
+func SignRequest(req *servicepb.Request, keyID string, privKey ed25519.PrivateKey) (*servicepb.Envelope, error) {
+	sr, err := signing.Sign(req, keyID, privKey)
+	if err != nil {
 		return nil, fmt.Errorf("signing request: %w", err)
 	}
 
-	return req, nil
+	return servicepb.SignedEnvelope(sr), nil
 }
 
 // ListAllSigningKeys collects every signing key from the ListSigningKeys

@@ -31,7 +31,7 @@ func PreCommitSentinel(ctx context.Context, client servicepb.BucketServiceClient
 	destination := fmt.Sprintf("sentinel:%d", Rand().Uint64())
 
 	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{{
+		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: ledger,
@@ -45,7 +45,7 @@ func PreCommitSentinel(ctx context.Context, client servicepb.BucketServiceClient
 					}},
 				},
 			},
-		}},
+		}),
 	})
 	if err != nil {
 		return nil, err

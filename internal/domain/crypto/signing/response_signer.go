@@ -36,10 +36,10 @@ func NewResponseSigner(seed []byte) *ResponseSigner {
 	}
 }
 
-// SignLog signs a Log message and returns a ResponseSignature.
+// SignLog signs a Log message and returns a SignedLog envelope.
 // It clones the log, clears response_signature and receipt (both node-local),
 // serializes it, signs the bytes, and returns the signature envelope.
-func (s *ResponseSigner) SignLog(log *commonpb.Log) *signaturepb.ResponseSignature {
+func (s *ResponseSigner) SignLog(log *commonpb.Log) *signaturepb.SignedLog {
 	// Clone and clear non-deterministic/node-local fields
 	logCopy := log.CloneVT()
 	logCopy.ResponseSignature = nil
@@ -50,12 +50,10 @@ func (s *ResponseSigner) SignLog(log *commonpb.Log) *signaturepb.ResponseSignatu
 		return nil
 	}
 
-	sig := ed25519.Sign(s.privateKey, payload)
-
-	return &signaturepb.ResponseSignature{
-		KeyId:         s.keyID,
-		Signature:     sig,
-		SignedPayload: payload,
+	return &signaturepb.SignedLog{
+		KeyId:     s.keyID,
+		Signature: ed25519.Sign(s.privateKey, payload),
+		Payload:   payload,
 	}
 }
 
@@ -69,21 +67,21 @@ func (s *ResponseSigner) KeyID() string {
 	return s.keyID
 }
 
-// VerifyResponseSignature verifies a ResponseSignature against a known public key.
-func VerifyResponseSignature(sig *signaturepb.ResponseSignature, publicKey ed25519.PublicKey) error {
-	if sig == nil {
+// VerifyResponseSignature verifies a SignedLog envelope against a known public key.
+func VerifyResponseSignature(sr *signaturepb.SignedLog, publicKey ed25519.PublicKey) error {
+	if sr == nil {
 		return errors.New("missing response signature")
 	}
 
-	if len(sig.GetSignedPayload()) == 0 {
-		return errors.New("empty signed_payload in response signature")
+	if len(sr.GetPayload()) == 0 {
+		return errors.New("empty payload in response signature")
 	}
 
-	if len(sig.GetSignature()) != ed25519.SignatureSize {
-		return fmt.Errorf("invalid response signature length %d", len(sig.GetSignature()))
+	if len(sr.GetSignature()) != ed25519.SignatureSize {
+		return fmt.Errorf("invalid response signature length %d", len(sr.GetSignature()))
 	}
 
-	if !ed25519.Verify(publicKey, sig.GetSignedPayload(), sig.GetSignature()) {
+	if !ed25519.Verify(publicKey, sr.GetPayload(), sr.GetSignature()) {
 		return errors.New("response signature verification failed")
 	}
 

@@ -18,7 +18,7 @@ func main() {
 		details := internal.Details{"ledger": ledger, "scriptName": scriptName, "version": version}
 
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_SaveNumscript{
 					SaveNumscript: &servicepb.SaveNumscriptRequest{
 						Name:    scriptName,
@@ -27,7 +27,7 @@ func main() {
 						Ledger:  ledger,
 					},
 				},
-			}},
+			}),
 		})
 
 		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to save numscript", details.With(internal.Details{"error": err}))
@@ -53,7 +53,7 @@ func main() {
 		}
 
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
@@ -68,7 +68,7 @@ func main() {
 						}},
 					},
 				},
-			}},
+			}),
 		})
 
 		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to use saved numscript in transaction", details.With(internal.Details{"error": err}))

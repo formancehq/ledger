@@ -17,7 +17,7 @@ func main() {
 
 		// 1. Create a transaction with a unique reference.
 		resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
@@ -30,7 +30,7 @@ func main() {
 						}},
 					},
 				},
-			}},
+			}),
 		})
 
 		assert.Sometimes(err == nil || internal.IsTransient(err),
@@ -49,7 +49,7 @@ func main() {
 
 		// 2. Create a different transaction with the same reference — must fail.
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
@@ -62,7 +62,7 @@ func main() {
 						}},
 					},
 				},
-			}},
+			}),
 		})
 
 		if err == nil {

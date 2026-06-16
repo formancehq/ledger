@@ -22,7 +22,7 @@ var _ = Describe("Periods", Ordered, func() {
 		BeforeAll(func() {
 			// Create a ledger and a transaction to trigger period auto-bootstrap
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction("period-test", nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction("period-test", nil)),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -40,13 +40,13 @@ var _ = Describe("Periods", Ordered, func() {
 	Context("Close period", Ordered, func() {
 		It("Should close the current period and open a new one", func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					{
+				Envelopes: servicepb.UnsignedEnvelopes(
+					&servicepb.Request{
 						Type: &servicepb.Request_ClosePeriod{
 							ClosePeriod: &servicepb.ClosePeriodRequest{},
 						},
 					},
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -95,16 +95,16 @@ var _ = Describe("Periods", Ordered, func() {
 
 			// Close the period twice in quick succession — both should succeed
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					{Type: &servicepb.Request_ClosePeriod{ClosePeriod: &servicepb.ClosePeriodRequest{}}},
-				},
+				Envelopes: servicepb.UnsignedEnvelopes(
+					&servicepb.Request{Type: &servicepb.Request_ClosePeriod{ClosePeriod: &servicepb.ClosePeriodRequest{}}},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					{Type: &servicepb.Request_ClosePeriod{ClosePeriod: &servicepb.ClosePeriodRequest{}}},
-				},
+				Envelopes: servicepb.UnsignedEnvelopes(
+					&servicepb.Request{Type: &servicepb.Request_ClosePeriod{ClosePeriod: &servicepb.ClosePeriodRequest{}}},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -127,7 +127,7 @@ var _ = Describe("Receipts", Ordered, func() {
 	BeforeAll(func() {
 		// Create a ledger
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{actions.CreateLedgerAction(ledger, nil)},
+			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledger, nil)),
 		})
 		Expect(err).To(Succeed())
 	})
@@ -138,11 +138,11 @@ var _ = Describe("Receipts", Ordered, func() {
 		BeforeAll(func() {
 			// Create a transaction
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{
 						actions.NewPosting("world", "users:alice", big.NewInt(1000), "USD"),
 					}, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -173,11 +173,11 @@ var _ = Describe("Receipts", Ordered, func() {
 		BeforeAll(func() {
 			// Create a transaction
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{
 						actions.NewPosting("world", "users:bob", big.NewInt(500), "EUR"),
 					}, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -198,8 +198,8 @@ var _ = Describe("Receipts", Ordered, func() {
 
 		It("Should revert using receipt", func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					{
+				Envelopes: servicepb.UnsignedEnvelopes(
+					&servicepb.Request{
 						Type: &servicepb.Request_Apply{
 							Apply: &servicepb.LedgerApplyRequest{
 								Ledger: ledger,
@@ -213,7 +213,7 @@ var _ = Describe("Receipts", Ordered, func() {
 							},
 						},
 					},
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -227,8 +227,8 @@ var _ = Describe("Receipts", Ordered, func() {
 
 		It("Should reject reverting the same transaction again", func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					{
+				Envelopes: servicepb.UnsignedEnvelopes(
+					&servicepb.Request{
 						Type: &servicepb.Request_Apply{
 							Apply: &servicepb.LedgerApplyRequest{
 								Ledger: ledger,
@@ -242,7 +242,7 @@ var _ = Describe("Receipts", Ordered, func() {
 							},
 						},
 					},
-				},
+				),
 			})
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)

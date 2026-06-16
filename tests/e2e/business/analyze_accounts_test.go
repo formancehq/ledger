@@ -30,7 +30,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -50,20 +50,20 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 
 			// Create transactions that produce fixed accounts: world, bank:main, bank:fees
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "bank:main", big.NewInt(1000), "USD"),
 					}, nil, nil),
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("bank:main", "bank:fees", big.NewInt(10), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -106,7 +106,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 
@@ -120,7 +120,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 			}
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: requests,
+				Envelopes: servicepb.UnsignedEnvelopes(requests...),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -180,18 +180,18 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 
 			// Create 5 distinct child accounts under "dept:"
 			for i := range 5 {
 				_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-					Requests: []*servicepb.Request{
+					Envelopes: servicepb.UnsignedEnvelopes(
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 							actions.NewPosting("world", fmt.Sprintf("dept:%d", 1000+i), big.NewInt(100), "USD"),
 						}, nil, nil),
-					},
+					),
 				})
 				Expect(err).To(Succeed())
 			}
@@ -252,13 +252,13 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 
 			// Create accounts and add metadata
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "users:alice", big.NewInt(100), "USD"),
 					}, nil, nil),
@@ -272,7 +272,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 					actions.SaveAccountMetadataAction(ledgerName, "users:bob", map[string]string{
 						"role": "user",
 					}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -320,7 +320,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 
@@ -352,7 +352,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 			}, nil, nil))
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: requests,
+				Envelopes: servicepb.UnsignedEnvelopes(requests...),
 			})
 			Expect(err).To(Succeed())
 		})

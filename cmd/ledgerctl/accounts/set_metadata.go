@@ -120,22 +120,20 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 
 	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Setting metadata on account %s...", address))
 
-	req := &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{
-			{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledgerName,
-						Action: &servicepb.LedgerAction{
-							Data: &servicepb.LedgerAction_AddMetadata{
-								AddMetadata: &commonpb.SaveMetadataCommand{
-									Target: &commonpb.Target{
-										Target: &commonpb.Target_Account{
-											Account: &commonpb.TargetAccount{Addr: address},
-										},
+	requests := []*servicepb.Request{
+		{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledgerName,
+					Action: &servicepb.LedgerAction{
+						Data: &servicepb.LedgerAction_AddMetadata{
+							AddMetadata: &commonpb.SaveMetadataCommand{
+								Target: &commonpb.Target{
+									Target: &commonpb.Target_Account{
+										Account: &commonpb.TargetAccount{Addr: address},
 									},
-									Metadata: commonpb.MetadataFromGoMap(metadata),
 								},
+								Metadata: commonpb.MetadataFromGoMap(metadata),
 							},
 						},
 					},
@@ -144,13 +142,14 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 		},
 	}
 
-	if err := cmdutil.SignRequests(cmd, req.GetRequests()); err != nil {
+	envelopes, err := cmdutil.BuildEnvelopes(cmd, requests)
+	if err != nil {
 		spinner.Fail("Failed to sign request")
 
 		return cmdutil.Displayed(err)
 	}
 
-	_, err = client.Apply(ctx, req)
+	_, err = client.Apply(ctx, &servicepb.ApplyRequest{Envelopes: envelopes})
 	if err != nil {
 		_ = spinner.Stop()
 

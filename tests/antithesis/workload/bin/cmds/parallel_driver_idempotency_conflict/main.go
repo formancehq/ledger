@@ -18,7 +18,7 @@ func main() {
 
 		// 1. Create a transaction with an idempotency key.
 		resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				IdempotencyKey: idemKey,
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
@@ -36,7 +36,7 @@ func main() {
 						}},
 					},
 				},
-			}},
+			}),
 		})
 
 		assert.Sometimes(err == nil || internal.IsTransient(err),
@@ -56,7 +56,7 @@ func main() {
 		// 2. Reuse the same idempotency key with a DIFFERENT payload.
 		//    This must return IDEMPOTENCY_KEY_CONFLICT.
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				IdempotencyKey: idemKey,
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
@@ -74,7 +74,7 @@ func main() {
 						}},
 					},
 				},
-			}},
+			}),
 		})
 
 		if err == nil {

@@ -15,7 +15,7 @@ func main() {
 	internal.RunDriver("parallel_driver_double_revert", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
 		// 1. Create a transaction.
 		resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
@@ -28,7 +28,7 @@ func main() {
 						}},
 					},
 				},
-			}},
+			}),
 		})
 
 		assert.Sometimes(err == nil || internal.IsTransient(err),
@@ -48,7 +48,7 @@ func main() {
 
 		// 2. First revert — should succeed.
 		revertResp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
@@ -61,7 +61,7 @@ func main() {
 						}},
 					},
 				},
-			}},
+			}),
 		})
 
 		assert.Sometimes(err == nil || internal.IsTransient(err),
@@ -101,7 +101,7 @@ func main() {
 
 		// 3. Second revert — must fail with TRANSACTION_ALREADY_REVERTED.
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
@@ -113,7 +113,7 @@ func main() {
 						}},
 					},
 				},
-			}},
+			}),
 		})
 
 		if err == nil {

@@ -27025,7 +27025,7 @@ func (m *Log) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Signature == nil {
-				m.Signature = &signaturepb.RequestSignature{}
+				m.Signature = &signaturepb.SignedRequest{}
 			}
 			if err := m.Signature.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -27093,7 +27093,7 @@ func (m *Log) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.ResponseSignature == nil {
-				m.ResponseSignature = &signaturepb.ResponseSignature{}
+				m.ResponseSignature = &signaturepb.SignedLog{}
 			}
 			if err := m.ResponseSignature.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err

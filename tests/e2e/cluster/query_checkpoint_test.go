@@ -38,9 +38,9 @@ var _ = Describe("Query Checkpoints", func() {
 
 			// Create a ledger.
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerAction(ledgerName, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -55,11 +55,11 @@ var _ = Describe("Query Checkpoints", func() {
 
 		It("should create a transaction before the checkpoint", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "alice", big.NewInt(1000), "USD"),
 					}, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -92,11 +92,11 @@ var _ = Describe("Query Checkpoints", func() {
 
 		It("should create a post-checkpoint transaction", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "bob", big.NewInt(500), "EUR"),
 					}, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -211,9 +211,9 @@ var _ = Describe("Query Checkpoints", func() {
 			ctx, client, clusterClient = testutil.SetupSingleNode(httpPort, grpcPort)
 
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerAction(ledgerName, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -221,11 +221,11 @@ var _ = Describe("Query Checkpoints", func() {
 		It("should create tx1, checkpoint1, tx2, checkpoint2, tx3", func() {
 			// tx0: world -> alice 100
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 					}, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -236,11 +236,11 @@ var _ = Describe("Query Checkpoints", func() {
 
 			// tx1: world -> bob 200
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 					}, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -251,11 +251,11 @@ var _ = Describe("Query Checkpoints", func() {
 
 			// tx2: world -> charlie 300
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "charlie", big.NewInt(300), "USD"),
 					}, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -334,9 +334,9 @@ var _ = Describe("Query Checkpoints", func() {
 			ctx, client, clusterClient = testutil.SetupSingleNode(httpPort, grpcPort)
 
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerAction(ledgerName, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -344,11 +344,11 @@ var _ = Describe("Query Checkpoints", func() {
 		It("builds three balance steps with a checkpoint after each credit", func() {
 			credit := func(amount int64) {
 				_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-					Requests: []*servicepb.Request{
+					Envelopes: servicepb.UnsignedEnvelopes(
 						actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 							actions.NewPosting("world", acc, big.NewInt(amount), asset),
 						}, nil),
-					},
+					),
 				})
 				Expect(err).To(Succeed())
 			}

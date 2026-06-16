@@ -23,14 +23,14 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 
 			// Add transient account type for staging accounts
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					{
+				Envelopes: servicepb.UnsignedEnvelopes(
+					&servicepb.Request{
 						Type: &servicepb.Request_AddAccountType{
 							AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 								Ledger: ledgerName,
@@ -42,7 +42,7 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 							},
 						},
 					},
-					{
+					&servicepb.Request{
 						Type: &servicepb.Request_AddAccountType{
 							AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 								Ledger: ledgerName,
@@ -53,21 +53,21 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 							},
 						},
 					},
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			// Batch: world → staging:tx1 100 USD, staging:tx1 → wallet:main 100 USD
 			// staging:tx1 ends at zero balance (input=100, output=100)
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "staging:tx1", big.NewInt(100), "USD"),
 					}, nil),
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("staging:tx1", "wallet:main", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -105,15 +105,15 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerAction(ledgerName, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					{
+				Envelopes: servicepb.UnsignedEnvelopes(
+					&servicepb.Request{
 						Type: &servicepb.Request_AddAccountType{
 							AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 								Ledger: ledgerName,
@@ -125,7 +125,7 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 							},
 						},
 					},
-					{
+					&servicepb.Request{
 						Type: &servicepb.Request_SetDefaultEnforcementMode{
 							SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{
 								Ledger:          ledgerName,
@@ -133,7 +133,7 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 							},
 						},
 					},
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -142,14 +142,14 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 			// Batch: world → staging:audit1 50 USD, staging:audit1 → dest 50 USD
 			// staging:audit1 ends at zero balance → transient
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "staging:audit1", big.NewInt(50), "USD"),
 					}, nil),
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("staging:audit1", "dest", big.NewInt(50), "USD"),
 					}, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -194,13 +194,13 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					{
+				Envelopes: servicepb.UnsignedEnvelopes(
+					&servicepb.Request{
 						Type: &servicepb.Request_AddAccountType{
 							AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 								Ledger: ledgerName,
@@ -212,7 +212,7 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 							},
 						},
 					},
-					{
+					&servicepb.Request{
 						Type: &servicepb.Request_SetDefaultEnforcementMode{
 							SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{
 								Ledger:          ledgerName,
@@ -220,7 +220,7 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 							},
 						},
 					},
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -229,14 +229,14 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 			// Batch: world → clearing:ep1 75 USD, clearing:ep1 → dest 75 USD
 			// clearing:ep1 ends at zero → purged
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "clearing:ep1", big.NewInt(75), "USD"),
 					}, nil),
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("clearing:ep1", "dest", big.NewInt(75), "USD"),
 					}, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -279,13 +279,13 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					{
+				Envelopes: servicepb.UnsignedEnvelopes(
+					&servicepb.Request{
 						Type: &servicepb.Request_AddAccountType{
 							AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 								Ledger: ledgerName,
@@ -297,7 +297,7 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 							},
 						},
 					},
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -306,11 +306,11 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 			// world → staging:tx1 100 USD but staging:tx1 is never drained
 			// staging:tx1 ends with non-zero balance → batch must be rejected
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "staging:tx1", big.NewInt(100), "USD"),
 					}, nil),
-				},
+				),
 			})
 			Expect(err).To(HaveOccurred())
 			Expect(status.Code(err)).To(Equal(codes.FailedPrecondition))
@@ -323,17 +323,17 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 		BeforeAll(func() {
 			// Create ledger
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 
 			// Fund staging:a with 100 USD (no account type yet → normal persistence)
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "staging:a", big.NewInt(100), "USD"),
 					}, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -351,8 +351,8 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 
 			// Now mark staging:{id} as transient
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					{
+				Envelopes: servicepb.UnsignedEnvelopes(
+					&servicepb.Request{
 						Type: &servicepb.Request_AddAccountType{
 							AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 								Ledger: ledgerName,
@@ -364,7 +364,7 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 							},
 						},
 					},
-					{
+					&servicepb.Request{
 						Type: &servicepb.Request_AddAccountType{
 							AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 								Ledger: ledgerName,
@@ -375,18 +375,18 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 							},
 						},
 					},
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			// Transfer staging:a → wallet:b 100 USD
 			// staging:a is now transient; within this batch output=100, so delta nets to zero
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("staging:a", "wallet:b", big.NewInt(100), "USD"),
 					}, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -428,19 +428,19 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 		BeforeAll(func() {
 			// Create ledger and account types upfront
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerAction(ledgerName, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			// Fund staging:x with 200 USD (normal persistence, no account type yet)
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "staging:x", big.NewInt(200), "USD"),
 					}, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -449,19 +449,19 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 			// the in-memory cache, forcing a Pebble re-read on the next batch.
 			for i := 0; i < 20; i++ {
 				_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-					Requests: []*servicepb.Request{
+					Envelopes: servicepb.UnsignedEnvelopes(
 						actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 							actions.NewPosting("world", fmt.Sprintf("filler:%d", i), big.NewInt(1), "USD"),
 						}, nil),
-					},
+					),
 				})
 				Expect(err).To(Succeed())
 			}
 
 			// Now mark staging as transient and add wallet type
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					{
+				Envelopes: servicepb.UnsignedEnvelopes(
+					&servicepb.Request{
 						Type: &servicepb.Request_AddAccountType{
 							AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 								Ledger: ledgerName,
@@ -473,7 +473,7 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 							},
 						},
 					},
-					{
+					&servicepb.Request{
 						Type: &servicepb.Request_AddAccountType{
 							AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 								Ledger: ledgerName,
@@ -484,7 +484,7 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 							},
 						},
 					},
-					{
+					&servicepb.Request{
 						Type: &servicepb.Request_AddAccountType{
 							AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 								Ledger: ledgerName,
@@ -495,18 +495,18 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 							},
 						},
 					},
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			// Transfer staging:x → wallet:y 200 USD
 			// staging:x base was evicted from cache → must be re-read from Pebble
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("staging:x", "wallet:y", big.NewInt(200), "USD"),
 					}, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -550,30 +550,30 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.AddAccountTypeWithPersistenceAction(ledgerName, "staging", "staging:{id}",
 						commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
 					actions.AddAccountTypeAction(ledgerName, "wallet", "wallet:{id}"),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			// Batch 1: world → staging:reuse 100 USD, staging:reuse → wallet:a 100 USD.
 			// Zero-balance bulk on staging:reuse.
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "staging:reuse", big.NewInt(100), "USD"),
 					}, nil),
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("staging:reuse", "wallet:a", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -582,14 +582,14 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 			// Batch 2: same staging:reuse, balanced again with a different amount.
 			// expandVolumes on both postings so we can read the PCV from the response.
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.WithExpandVolumes(actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "staging:reuse", big.NewInt(50), "USD"),
 					}, nil)),
 					actions.WithExpandVolumes(actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("staging:reuse", "wallet:b", big.NewInt(50), "USD"),
 					}, nil, nil)),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(2))

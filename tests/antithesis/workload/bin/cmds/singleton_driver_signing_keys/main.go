@@ -40,14 +40,14 @@ func main() {
 
 	// 1. Register the signing key.
 	_, err = bucketClient.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{{
+		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 			Type: &servicepb.Request_RegisterSigningKey{
 				RegisterSigningKey: &servicepb.RegisterSigningKeyRequest{
 					KeyId:     keyID,
 					PublicKey: publicKey,
 				},
 			},
-		}},
+		}),
 	})
 
 	assert.Sometimes(err == nil || internal.IsTransient(err),
@@ -84,13 +84,14 @@ func main() {
 		},
 	}
 
-	if err := signing.Sign(revokeReq, keyID, privateKey); err != nil {
+	signedRevoke, err := signing.Sign(revokeReq, keyID, privateKey)
+	if err != nil {
 		log.Printf("failed to sign revoke request: %s", err)
 		return
 	}
 
 	_, err = bucketClient.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{revokeReq},
+		Envelopes: []*servicepb.Envelope{servicepb.SignedEnvelope(signedRevoke)},
 	})
 
 	assert.Sometimes(err == nil || internal.IsTransient(err),

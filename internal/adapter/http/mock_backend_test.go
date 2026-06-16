@@ -59,12 +59,24 @@ func (m *mockBackend) GetClusterState(ctx context.Context) (*clusterpb.ClusterSt
 	return nil, nil
 }
 
-func (m *mockBackend) Apply(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
-	if m.applyFn != nil {
-		return m.applyFn(ctx, requests...)
+func (m *mockBackend) Apply(ctx context.Context, envelopes ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+	if m.applyFn == nil {
+		return nil, nil
 	}
 
-	return nil, nil
+	// HTTP handlers ship unsigned envelopes only; peek into each to keep
+	// test fixtures in their Request-shaped form.
+	requests := make([]*servicepb.Request, len(envelopes))
+	for i, env := range envelopes {
+		req, err := servicepb.PeekRequest(env)
+		if err != nil {
+			return nil, err
+		}
+
+		requests[i] = req
+	}
+
+	return m.applyFn(ctx, requests...)
 }
 
 func (m *mockBackend) ListLedgers(ctx context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {

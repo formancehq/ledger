@@ -1004,7 +1004,7 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 			},
 		}
 
-		order, err := admission.requestToOrder(t.Context(), request, newBulkOverlay())
+		order, err := admission.requestToOrder(t.Context(), verifiedRequest{req: request}, newBulkOverlay())
 		require.NoError(t, err)
 		require.NotNil(t, order)
 		require.NotNil(t, order.GetIdempotency())
@@ -1344,7 +1344,7 @@ func TestRequestToOrder_IdempotencyKeyValidation(t *testing.T) {
 			},
 		}
 
-		order, err := adm.requestToOrder(t.Context(), req, newBulkOverlay())
+		order, err := adm.requestToOrder(t.Context(), verifiedRequest{req: req}, newBulkOverlay())
 		require.NoError(t, err)
 		require.NotNil(t, order)
 		require.NotNil(t, order.GetIdempotency())
@@ -1368,7 +1368,7 @@ func TestRequestToOrder_IdempotencyKeyValidation(t *testing.T) {
 			},
 		}
 
-		order, err := adm.requestToOrder(t.Context(), req, newBulkOverlay())
+		order, err := adm.requestToOrder(t.Context(), verifiedRequest{req: req}, newBulkOverlay())
 		require.NoError(t, err)
 		require.NotNil(t, order)
 		require.NotNil(t, order.GetIdempotency())
@@ -1392,7 +1392,7 @@ func TestRequestToOrder_IdempotencyKeyValidation(t *testing.T) {
 			},
 		}
 
-		_, err := adm.requestToOrder(t.Context(), req, newBulkOverlay())
+		_, err := adm.requestToOrder(t.Context(), verifiedRequest{req: req}, newBulkOverlay())
 		require.Error(t, err)
 		require.ErrorIs(t, err, ErrIdempotencyKeyTooLong)
 	})
@@ -1410,7 +1410,7 @@ func TestRequestToOrder_IdempotencyKeyValidation(t *testing.T) {
 			},
 		}
 
-		order, err := adm.requestToOrder(t.Context(), req, newBulkOverlay())
+		order, err := adm.requestToOrder(t.Context(), verifiedRequest{req: req}, newBulkOverlay())
 		require.NoError(t, err)
 		require.NotNil(t, order)
 		require.Nil(t, order.GetIdempotency())
@@ -1464,7 +1464,12 @@ func TestRequestsToOrders_CheckpointOrderPosition(t *testing.T) {
 			store := createTestStore(t)
 			adm, _ := createTestAdmission(t, store)
 
-			_, _, err := adm.requestsToOrders(t.Context(), tc.reqs)
+			verified := make([]verifiedRequest, len(tc.reqs))
+			for i, r := range tc.reqs {
+				verified[i] = verifiedRequest{req: r}
+			}
+
+			_, _, err := adm.requestsToOrders(t.Context(), verified)
 			if tc.wantErr != nil {
 				require.ErrorIs(t, err, tc.wantErr)
 			} else {
@@ -1484,7 +1489,16 @@ func generateTestKeyPair(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
 	return pubKey, privKey
 }
 
-func TestVerifyAndResolveSignatures(t *testing.T) {
+func signedEnvelope(t *testing.T, req *servicepb.Request, keyID string, privKey ed25519.PrivateKey) *servicepb.Envelope {
+	t.Helper()
+
+	sr, err := signing.Sign(req, keyID, privKey)
+	require.NoError(t, err)
+
+	return servicepb.SignedEnvelope(sr)
+}
+
+func TestVerifyAndResolveEnvelopes(t *testing.T) {
 	t.Parallel()
 
 	t.Run("bootstrap: unsigned RegisterSigningKey allowed when no keys exist", func(t *testing.T) {
@@ -1494,21 +1508,21 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 
 		pubKey, _ := generateTestKeyPair(t)
 
-		requests := []*servicepb.Request{
-			{
+		envelopes := []*servicepb.Envelope{
+			servicepb.UnsignedEnvelope(&servicepb.Request{
 				Type: &servicepb.Request_RegisterSigningKey{
 					RegisterSigningKey: &servicepb.RegisterSigningKeyRequest{
 						KeyId:     "first-key",
 						PublicKey: []byte(pubKey),
 					},
 				},
-			},
+			}),
 		}
 
-		result, err := adm.verifyAndResolveSignatures(requests)
+		result, err := adm.verifyAndResolveEnvelopes(envelopes)
 		require.NoError(t, err)
 		require.Len(t, result, 1)
-		require.Nil(t, result[0].GetSignature(), "bootstrap request should have no signature")
+		require.Nil(t, result[0].sig, "bootstrap request should have no signature")
 	})
 
 	t.Run("unsigned RegisterSigningKey rejected when keys exist", func(t *testing.T) {
@@ -1521,18 +1535,18 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 
 		newPubKey, _ := generateTestKeyPair(t)
 
-		requests := []*servicepb.Request{
-			{
+		envelopes := []*servicepb.Envelope{
+			servicepb.UnsignedEnvelope(&servicepb.Request{
 				Type: &servicepb.Request_RegisterSigningKey{
 					RegisterSigningKey: &servicepb.RegisterSigningKeyRequest{
 						KeyId:     "new-key",
 						PublicKey: []byte(newPubKey),
 					},
 				},
-			},
+			}),
 		}
 
-		_, err := adm.verifyAndResolveSignatures(requests)
+		_, err := adm.verifyAndResolveEnvelopes(envelopes)
 		require.ErrorIs(t, err, signing.ErrMissingSignature)
 	})
 
@@ -1544,17 +1558,17 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 		pubKey, _ := generateTestKeyPair(t)
 		adm.keyStore.AddPublicKey("my-key", pubKey, "")
 
-		requests := []*servicepb.Request{
-			{
+		envelopes := []*servicepb.Envelope{
+			servicepb.UnsignedEnvelope(&servicepb.Request{
 				Type: &servicepb.Request_RevokeSigningKey{
 					RevokeSigningKey: &servicepb.RevokeSigningKeyRequest{
 						KeyId: "my-key",
 					},
 				},
-			},
+			}),
 		}
 
-		_, err := adm.verifyAndResolveSignatures(requests)
+		_, err := adm.verifyAndResolveEnvelopes(envelopes)
 		require.ErrorIs(t, err, signing.ErrMissingSignature)
 	})
 
@@ -1566,17 +1580,17 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 		pubKey, _ := generateTestKeyPair(t)
 		adm.keyStore.AddPublicKey("my-key", pubKey, "")
 
-		requests := []*servicepb.Request{
-			{
+		envelopes := []*servicepb.Envelope{
+			servicepb.UnsignedEnvelope(&servicepb.Request{
 				Type: &servicepb.Request_SetSigningConfig{
 					SetSigningConfig: &servicepb.SetSigningConfigRequest{
 						RequireSignatures: true,
 					},
 				},
-			},
+			}),
 		}
 
-		_, err := adm.verifyAndResolveSignatures(requests)
+		_, err := adm.verifyAndResolveEnvelopes(envelopes)
 		require.ErrorIs(t, err, signing.ErrMissingSignature)
 	})
 
@@ -1599,13 +1613,10 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 			},
 		}
 
-		err := signing.Sign(req, "existing", existingPrivKey)
-		require.NoError(t, err)
-
-		result, err := adm.verifyAndResolveSignatures([]*servicepb.Request{req})
+		result, err := adm.verifyAndResolveEnvelopes([]*servicepb.Envelope{signedEnvelope(t, req, "existing", existingPrivKey)})
 		require.NoError(t, err)
 		require.Len(t, result, 1)
-		require.NotNil(t, result[0].GetSignature(), "signature should be preserved for propagation")
+		require.NotNil(t, result[0].sig, "signature should be preserved for propagation")
 	})
 
 	t.Run("unsigned regular request allowed when requireSignatures is false", func(t *testing.T) {
@@ -1613,17 +1624,17 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 		store := createTestStore(t)
 		adm, _ := createTestAdmission(t, store)
 
-		requests := []*servicepb.Request{
-			{
+		envelopes := []*servicepb.Envelope{
+			servicepb.UnsignedEnvelope(&servicepb.Request{
 				Type: &servicepb.Request_CreateLedger{
 					CreateLedger: &servicepb.CreateLedgerRequest{
 						Name: "test-ledger",
 					},
 				},
-			},
+			}),
 		}
 
-		result, err := adm.verifyAndResolveSignatures(requests)
+		result, err := adm.verifyAndResolveEnvelopes(envelopes)
 		require.NoError(t, err)
 		require.Len(t, result, 1)
 	})
@@ -1635,17 +1646,17 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 
 		adm.sharedState.SetRequireSignatures(true)
 
-		requests := []*servicepb.Request{
-			{
+		envelopes := []*servicepb.Envelope{
+			servicepb.UnsignedEnvelope(&servicepb.Request{
 				Type: &servicepb.Request_CreateLedger{
 					CreateLedger: &servicepb.CreateLedgerRequest{
 						Name: "test-ledger",
 					},
 				},
-			},
+			}),
 		}
 
-		_, err := adm.verifyAndResolveSignatures(requests)
+		_, err := adm.verifyAndResolveEnvelopes(envelopes)
 		require.ErrorIs(t, err, signing.ErrMissingSignature)
 	})
 
@@ -1666,13 +1677,10 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 			},
 		}
 
-		err := signing.Sign(req, "my-key", privKey)
-		require.NoError(t, err)
-
-		result, err := adm.verifyAndResolveSignatures([]*servicepb.Request{req})
+		result, err := adm.verifyAndResolveEnvelopes([]*servicepb.Envelope{signedEnvelope(t, req, "my-key", privKey)})
 		require.NoError(t, err)
 		require.Len(t, result, 1)
-		require.NotNil(t, result[0].GetSignature())
+		require.NotNil(t, result[0].sig)
 	})
 
 	t.Run("unknown key ID rejected", func(t *testing.T) {
@@ -1690,10 +1698,7 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 			},
 		}
 
-		err := signing.Sign(req, "unknown-key", privKey)
-		require.NoError(t, err)
-
-		_, err = adm.verifyAndResolveSignatures([]*servicepb.Request{req})
+		_, err := adm.verifyAndResolveEnvelopes([]*servicepb.Envelope{signedEnvelope(t, req, "unknown-key", privKey)})
 		require.ErrorIs(t, err, signing.ErrUnknownKeyID)
 	})
 
@@ -1716,10 +1721,7 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 		}
 
 		// Sign with a different private key
-		err := signing.Sign(req, "my-key", otherPrivKey)
-		require.NoError(t, err)
-
-		_, err = adm.verifyAndResolveSignatures([]*servicepb.Request{req})
+		_, err := adm.verifyAndResolveEnvelopes([]*servicepb.Envelope{signedEnvelope(t, req, "my-key", otherPrivKey)})
 		require.ErrorIs(t, err, signing.ErrInvalidSignature)
 	})
 }

@@ -38,7 +38,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 	BeforeAll(func() {
 		// Create the test ledger (generates 1 audit entry)
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 		})
 		Expect(err).To(Succeed())
 	})
@@ -52,11 +52,11 @@ var _ = Describe("Audit Log", Ordered, func() {
 
 	It("Should record a success audit entry for a successful transaction", func() {
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 				}, nil, nil),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 
@@ -72,11 +72,11 @@ var _ = Describe("Audit Log", Ordered, func() {
 
 	It("Should record a failure audit entry for insufficient funds", func() {
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("empty:account", "bank", big.NewInt(99999), "USD"),
 				}, nil, nil),
-			},
+			),
 		})
 		Expect(err).To(HaveOccurred())
 
@@ -95,17 +95,17 @@ var _ = Describe("Audit Log", Ordered, func() {
 
 		// Create a second ledger
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{actions.CreateLedgerAction(otherLedger, nil)},
+			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(otherLedger, nil)),
 		})
 		Expect(err).To(Succeed())
 
 		// Create a transaction on the second ledger
 		_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateTransactionAction(otherLedger, []*commonpb.Posting{
 					actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 				}, nil, nil),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 
@@ -138,21 +138,21 @@ var _ = Describe("Audit Log", Ordered, func() {
 	It("Should filter audit entries by failures only", func() {
 		// Create a successful transaction
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 				}, nil, nil),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 
 		// Create a failing transaction
 		_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("empty:account", "bank", big.NewInt(99999), "USD"),
 				}, nil, nil),
-			},
+			),
 		})
 		Expect(err).To(HaveOccurred())
 
@@ -170,11 +170,11 @@ var _ = Describe("Audit Log", Ordered, func() {
 	It("Should support after_sequence pagination", func() {
 		// Create a transaction to ensure we have entries
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 				}, nil, nil),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 
@@ -198,7 +198,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 		// Create a ledger — produces a CreateLedger order
 		ledgerForOrders := "audit-orders-test"
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerForOrders, nil)},
+			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerForOrders, nil)),
 		})
 		Expect(err).To(Succeed())
 
@@ -219,11 +219,11 @@ var _ = Describe("Audit Log", Ordered, func() {
 
 		// Create a transaction — produces an Apply/CreateTransaction order
 		_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateTransactionAction(ledgerForOrders, []*commonpb.Posting{
 					actions.NewPosting("world", "bank", big.NewInt(500), "EUR"),
 				}, nil, nil),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 
@@ -256,17 +256,18 @@ var _ = Describe("Audit Log", Ordered, func() {
 
 		// Register the key (bootstrap: first key can be unsigned)
 		_, err := sigClient.Apply(sigCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.RegisterSigningKeyAction(keyID, pubKey),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 
 		// Create a ledger with a signed request
 		signedReq := actions.CreateLedgerAction("signed-ledger", nil)
-		Expect(signing.Sign(signedReq, keyID, privKey)).To(Succeed())
+		signedLedger, err := signing.Sign(signedReq, keyID, privKey)
+		Expect(err).To(Succeed())
 		_, err = sigClient.Apply(sigCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{signedReq},
+			Envelopes: []*servicepb.Envelope{servicepb.SignedEnvelope(signedLedger)},
 		})
 		Expect(err).To(Succeed())
 
@@ -299,14 +300,14 @@ var _ = Describe("Audit Log", Ordered, func() {
 	It("Should include multiple items in a batch audit entry", func() {
 		// Submit multiple requests in a single Apply (batch)
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "batch:a", big.NewInt(100), "USD"),
 				}, nil, nil),
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "batch:b", big.NewInt(200), "USD"),
 				}, nil, nil),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 
@@ -345,11 +346,11 @@ var _ = Describe("Audit Log", Ordered, func() {
 	It("Should have log_sequence=0 for failure items", func() {
 		// Create a failing transaction
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("empty:nofunds", "bank", big.NewInt(99999), "USD"),
 				}, nil, nil),
-			},
+			),
 		})
 		Expect(err).To(HaveOccurred())
 
@@ -375,7 +376,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 	It("Should have sequential order_index values", func() {
 		// Submit 3 requests in a single batch
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "seq:a", big.NewInt(10), "USD"),
 				}, nil, nil),
@@ -385,7 +386,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "seq:c", big.NewInt(30), "USD"),
 				}, nil, nil),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 
@@ -406,11 +407,11 @@ var _ = Describe("Audit Log", Ordered, func() {
 	It("Should have item log_sequence that correlates to an actual log", func() {
 		// Create a transaction to get a log sequence
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "logcorr:dest", big.NewInt(500), "USD"),
 				}, nil, nil),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 
@@ -465,10 +466,10 @@ var _ = Describe("Audit Log", Ordered, func() {
 
 		// Create 2 ledgers in one Apply
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateLedgerAction(ledgerA, nil),
 				actions.CreateLedgerAction(ledgerB, nil),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 

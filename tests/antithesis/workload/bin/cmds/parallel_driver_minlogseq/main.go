@@ -103,7 +103,7 @@ func main() {
 
 		// Prepared query matching the probe account by address prefix.
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_CreatePreparedQuery{
 					CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
 						Query: &commonpb.PreparedQuery{
@@ -122,7 +122,7 @@ func main() {
 						},
 					},
 				},
-			}},
+			}),
 		})
 		if err != nil {
 			// Ambiguous or transient: without a confirmed query, every later
@@ -132,7 +132,7 @@ func main() {
 
 		// Write the probe transaction; its ack carries the log sequence S.
 		resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
@@ -150,7 +150,7 @@ func main() {
 						}},
 					},
 				},
-			}},
+			}),
 		})
 		if err != nil {
 			return

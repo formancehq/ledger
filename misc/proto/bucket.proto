@@ -169,7 +169,7 @@ message GetLedgerRequest {
 }
 
 message ApplyRequest {
-  repeated Request requests = 1;
+  repeated Envelope envelopes = 1;
   // skip_response, when true, strips log payloads from the response.
   // Only the sequence number is returned for each log. Useful for
   // historical ingestion where the client does not need the full response.
@@ -192,6 +192,18 @@ message ApplyRequest {
   // derived from validated JWT/Ed25519 claims on the leader and any value
   // sent here is ignored.
   common.CallerSnapshot forwarded_caller_snapshot = 4;
+}
+
+// Envelope wraps a Request on the wire. Unsigned requests carry the
+// Request directly; signed requests carry an opaque SignedRequest that
+// the server verifies before unmarshaling the payload bytes. The proto
+// schema enforces the discriminated union — clients cannot send both,
+// and the wrapper/payload divergence class disappears by construction.
+message Envelope {
+  oneof variant {
+    Request unsigned = 1;
+    signature.SignedRequest signed = 2;
+  }
 }
 
 message ApplyResponse {
@@ -236,7 +248,12 @@ message Request {
     SaveLedgerMetadataRequest save_ledger_metadata = 36;
     DeleteLedgerMetadataRequest delete_ledger_metadata = 37;
   }
-  signature.RequestSignature signature = 5;
+  // Field 5 used to carry signature.RequestSignature alongside the
+  // wrapper fields. Signed requests now travel as an Envelope with
+  // signature.SignedRequest as the opaque envelope variant; the
+  // Request payload bytes inside the envelope are the source of truth.
+  reserved 5;
+  reserved "signature";
 }
 
 // CreateQueryCheckpointRequest creates a query checkpoint via Raft.

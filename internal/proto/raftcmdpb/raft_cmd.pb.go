@@ -58,8 +58,8 @@ type Order struct {
 	//	*Order_DeleteQueryCheckpointSchedule
 	//	*Order_SaveLedgerMetadata
 	//	*Order_DeleteLedgerMetadata
-	Type          isOrder_Type                  `protobuf_oneof:"type"`
-	Signature     *signaturepb.RequestSignature `protobuf:"bytes,5,opt,name=signature,proto3" json:"signature,omitempty"`
+	Type          isOrder_Type               `protobuf_oneof:"type"`
+	Signature     *signaturepb.SignedRequest `protobuf:"bytes,5,opt,name=signature,proto3" json:"signature,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -360,7 +360,7 @@ func (x *Order) GetDeleteLedgerMetadata() *DeleteLedgerMetadataOrder {
 	return nil
 }
 
-func (x *Order) GetSignature() *signaturepb.RequestSignature {
+func (x *Order) GetSignature() *signaturepb.SignedRequest {
 	if x != nil {
 		return x.Signature
 	}
@@ -5909,7 +5909,7 @@ var File_raft_cmd_proto protoreflect.FileDescriptor
 
 const file_raft_cmd_proto_rawDesc = "" +
 	"\n" +
-	"\x0eraft_cmd.proto\x12\x04raft\x1a\fcommon.proto\x1a\x0fsignature.proto\"\x94\x12\n" +
+	"\x0eraft_cmd.proto\x12\x04raft\x1a\fcommon.proto\x1a\x0fsignature.proto\"\x91\x12\n" +
 	"\x05Order\x125\n" +
 	"\vidempotency\x18\x01 \x01(\v2\x13.common.IdempotencyR\vidempotency\x12.\n" +
 	"\x05apply\x18\x02 \x01(\v2\x16.raft.LedgerApplyOrderH\x00R\x05apply\x12>\n" +
@@ -5941,8 +5941,8 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x1dset_query_checkpoint_schedule\x18\x1c \x01(\v2%.raft.SetQueryCheckpointScheduleOrderH\x00R\x1asetQueryCheckpointSchedule\x12s\n" +
 	" delete_query_checkpoint_schedule\x18\x1d \x01(\v2(.raft.DeleteQueryCheckpointScheduleOrderH\x00R\x1ddeleteQueryCheckpointSchedule\x12Q\n" +
 	"\x14save_ledger_metadata\x18\x1e \x01(\v2\x1d.raft.SaveLedgerMetadataOrderH\x00R\x12saveLedgerMetadata\x12W\n" +
-	"\x16delete_ledger_metadata\x18\x1f \x01(\v2\x1f.raft.DeleteLedgerMetadataOrderH\x00R\x14deleteLedgerMetadata\x129\n" +
-	"\tsignature\x18\x05 \x01(\v2\x1b.signature.RequestSignatureR\tsignatureB\x06\n" +
+	"\x16delete_ledger_metadata\x18\x1f \x01(\v2\x1f.raft.DeleteLedgerMetadataOrderH\x00R\x14deleteLedgerMetadata\x126\n" +
+	"\tsignature\x18\x05 \x01(\v2\x18.signature.SignedRequestR\tsignatureB\x06\n" +
 	"\x04type\"G\n" +
 	"\x18CreatePreparedQueryOrder\x12+\n" +
 	"\x05query\x18\x01 \x01(\v2\x15.common.PreparedQueryR\x05query\"s\n" +
@@ -6450,7 +6450,7 @@ var file_raft_cmd_proto_goTypes = []any{
 	nil,                                          // 96: raft.RevertTransactionOrder.MetadataEntry
 	nil,                                          // 97: raft.SaveLedgerMetadataOrder.MetadataEntry
 	(*commonpb.Idempotency)(nil),                 // 98: common.Idempotency
-	(*signaturepb.RequestSignature)(nil),         // 99: signature.RequestSignature
+	(*signaturepb.SignedRequest)(nil),            // 99: signature.SignedRequest
 	(*commonpb.PreparedQuery)(nil),               // 100: common.PreparedQuery
 	(*commonpb.QueryFilter)(nil),                 // 101: common.QueryFilter
 	(*commonpb.SinkConfig)(nil),                  // 102: common.SinkConfig
@@ -6511,7 +6511,7 @@ var file_raft_cmd_proto_depIdxs = []int32{
 	22,  // 26: raft.Order.delete_query_checkpoint_schedule:type_name -> raft.DeleteQueryCheckpointScheduleOrder
 	50,  // 27: raft.Order.save_ledger_metadata:type_name -> raft.SaveLedgerMetadataOrder
 	51,  // 28: raft.Order.delete_ledger_metadata:type_name -> raft.DeleteLedgerMetadataOrder
-	99,  // 29: raft.Order.signature:type_name -> signature.RequestSignature
+	99,  // 29: raft.Order.signature:type_name -> signature.SignedRequest
 	100, // 30: raft.CreatePreparedQueryOrder.query:type_name -> common.PreparedQuery
 	101, // 31: raft.UpdatePreparedQueryOrder.filter:type_name -> common.QueryFilter
 	102, // 32: raft.AddEventsSinkOrder.config:type_name -> common.SinkConfig

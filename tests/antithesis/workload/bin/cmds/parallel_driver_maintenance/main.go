@@ -24,13 +24,13 @@ func main() {
 
 		// Enable maintenance mode.
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_SetMaintenanceMode{
 					SetMaintenanceMode: &servicepb.SetMaintenanceModeRequest{
 						Enabled: true,
 					},
 				},
-			}},
+			}),
 		})
 
 		assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to enable maintenance mode", internal.Details{"error": err})
@@ -40,7 +40,7 @@ func main() {
 
 		// Writes should be rejected while in maintenance mode.
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
@@ -54,7 +54,7 @@ func main() {
 						}},
 					},
 				},
-			}},
+			}),
 		})
 
 		if err != nil {
@@ -67,13 +67,13 @@ func main() {
 
 		// Disable maintenance mode.
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_SetMaintenanceMode{
 					SetMaintenanceMode: &servicepb.SetMaintenanceModeRequest{
 						Enabled: false,
 					},
 				},
-			}},
+			}),
 		})
 
 		assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to disable maintenance mode", internal.Details{"error": err})
@@ -83,7 +83,7 @@ func main() {
 
 		// Writes should work again.
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
@@ -97,7 +97,7 @@ func main() {
 						}},
 					},
 				},
-			}},
+			}),
 		})
 
 		assert.Sometimes(err == nil || internal.IsUnavailable(err), "write after disabling maintenance should succeed", internal.Details{"error": err})

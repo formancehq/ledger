@@ -27,7 +27,7 @@ func main() {
 
 		// 1. Add an account type with TRANSIENT persistence.
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_AddAccountType{
 					AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 						Ledger: ledger,
@@ -38,7 +38,7 @@ func main() {
 						},
 					},
 				},
-			}},
+			}),
 		})
 		if err != nil {
 			if internal.IsTransient(err) || internal.IsAlreadyExists(err) {
@@ -59,8 +59,8 @@ func main() {
 		// 2. Balanced batch: fund clearing account, then drain it in the same Apply.
 		//    The transient account must end at zero — should succeed.
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
-				{
+			Envelopes: servicepb.UnsignedEnvelopes(
+				&servicepb.Request{
 					Type: &servicepb.Request_Apply{
 						Apply: &servicepb.LedgerApplyRequest{
 							Ledger: ledger,
@@ -78,7 +78,7 @@ func main() {
 						},
 					},
 				},
-				{
+				&servicepb.Request{
 					Type: &servicepb.Request_Apply{
 						Apply: &servicepb.LedgerApplyRequest{
 							Ledger: ledger,
@@ -96,7 +96,7 @@ func main() {
 						},
 					},
 				},
-			},
+			),
 		})
 
 		assert.Sometimes(err == nil || internal.IsTransient(err),
@@ -113,7 +113,7 @@ func main() {
 		details["clearingAddr2"] = clearingAddr2
 
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
@@ -130,7 +130,7 @@ func main() {
 						}},
 					},
 				},
-			}},
+			}),
 		})
 
 		if err == nil {

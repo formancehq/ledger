@@ -59,7 +59,7 @@ func TestResponseSigner(t *testing.T) {
 		require.NotNil(t, sig)
 		require.Equal(t, signer.KeyID(), sig.GetKeyId())
 		require.Len(t, sig.GetSignature(), ed25519.SignatureSize)
-		require.NotEmpty(t, sig.GetSignedPayload())
+		require.NotEmpty(t, sig.GetPayload())
 
 		// Verify should succeed with the correct public key
 		err := VerifyResponseSignature(sig, signer.PublicKey())
@@ -112,7 +112,7 @@ func TestResponseSigner(t *testing.T) {
 		require.NotNil(t, sig)
 
 		// Tamper with the payload
-		sig.SignedPayload = append(sig.SignedPayload, 0xFF)
+		sig.Payload = append(sig.Payload, 0xFF)
 
 		err := VerifyResponseSignature(sig, signer.PublicKey())
 		require.Error(t, err)
@@ -155,8 +155,8 @@ func TestResponseSigner(t *testing.T) {
 		sig1 := signer.SignLog(log1)
 		sig2 := signer.SignLog(log2)
 
-		// signed_payload should be identical since receipt is cleared
-		require.Equal(t, sig1.GetSignedPayload(), sig2.GetSignedPayload())
+		// payload should be identical since receipt is cleared
+		require.Equal(t, sig1.GetPayload(), sig2.GetPayload())
 	})
 }
 
@@ -169,15 +169,15 @@ func TestVerifyResponseSignature_EmptyPayload(t *testing.T) {
 
 	signer := NewResponseSigner(seed)
 
-	sig := &signaturepb.ResponseSignature{
-		KeyId:         signer.KeyID(),
-		Signature:     make([]byte, ed25519.SignatureSize),
-		SignedPayload: nil,
+	sig := &signaturepb.SignedLog{
+		KeyId:     signer.KeyID(),
+		Signature: make([]byte, ed25519.SignatureSize),
+		Payload:   nil,
 	}
 
 	err = VerifyResponseSignature(sig, signer.PublicKey())
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "empty signed_payload")
+	require.Contains(t, err.Error(), "empty payload")
 }
 
 func TestVerifyResponseSignature_InvalidSignatureLength(t *testing.T) {
@@ -189,10 +189,10 @@ func TestVerifyResponseSignature_InvalidSignatureLength(t *testing.T) {
 
 	signer := NewResponseSigner(seed)
 
-	sig := &signaturepb.ResponseSignature{
-		KeyId:         signer.KeyID(),
-		Signature:     []byte("bad"),
-		SignedPayload: []byte("some payload"),
+	sig := &signaturepb.SignedLog{
+		KeyId:     signer.KeyID(),
+		Signature: []byte("bad"),
+		Payload:   []byte("some payload"),
 	}
 
 	err = VerifyResponseSignature(sig, signer.PublicKey())

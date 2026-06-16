@@ -18,7 +18,7 @@ func main() {
 		details := internal.Details{"ledger": ledger, "queryName": queryName}
 
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_CreatePreparedQuery{
 					CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
 						Query: &commonpb.PreparedQuery{
@@ -37,7 +37,7 @@ func main() {
 						},
 					},
 				},
-			}},
+			}),
 		})
 
 		if err != nil {
@@ -65,14 +65,14 @@ func main() {
 		assert.AlwaysOrUnreachable(execResp != nil, "prepared query should return a response", details)
 
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_DeletePreparedQuery{
 					DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{
 						Ledger: ledger,
 						Name:   queryName,
 					},
 				},
-			}},
+			}),
 		})
 
 		if err != nil && !internal.IsTransient(err) {

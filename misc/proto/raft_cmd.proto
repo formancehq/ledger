@@ -41,7 +41,7 @@ message Order {
     SaveLedgerMetadataOrder save_ledger_metadata = 30;
     DeleteLedgerMetadataOrder delete_ledger_metadata = 31;
   }
-  signature.RequestSignature signature = 5;
+  signature.SignedRequest signature = 5;
 }
 
 message CreatePreparedQueryOrder {

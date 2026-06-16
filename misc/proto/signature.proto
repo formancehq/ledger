@@ -4,22 +4,26 @@ package signature;
 
 option go_package = "github.com/formancehq/ledger/v3/internal/proto/signaturepb";
 
-// RequestSignature contains the Ed25519 signature of a Request.
-// The client serializes the Request (without signature), signs the bytes,
-// and attaches them here. The server verifies the signature on signed_payload,
-// then deserializes signed_payload to obtain the authoritative content.
-message RequestSignature {
-  string key_id = 1;         // ID of the public key used to sign
-  bytes signature = 2;       // Ed25519 signature (64 bytes)
-  bytes signed_payload = 3;  // Exact serialized bytes signed by the client
+// SignedRequest is the opaque envelope for a signed client request.
+// The client serializes its Request, signs the bytes, and ships
+// (key_id, signature, payload). The server verifies the signature
+// against payload, then unmarshals payload to obtain the request
+// content. The server never re-serializes — this makes the envelope
+// safe across protobuf implementations (Go, Java, Python, ...) since
+// no implementation needs to reproduce another's exact byte layout.
+message SignedRequest {
+  string key_id = 1;    // ID of the public key used to sign
+  bytes signature = 2;  // Ed25519 signature (64 bytes)
+  bytes payload = 3;    // Exact serialized Request bytes signed by the client
 }
 
-// ResponseSignature contains the Ed25519 signature of a Log response.
-// The server serializes the Log (without response_signature and receipt),
-// signs the bytes, and attaches them here. The client verifies the signature
-// on signed_payload using the server's public key obtained via Discovery RPC.
-message ResponseSignature {
-  string key_id = 1;         // Identifier (SHA256 fingerprint of server public key)
-  bytes signature = 2;       // Ed25519 signature (64 bytes)
-  bytes signed_payload = 3;  // Exact serialized bytes that were signed
+// SignedLog is the opaque envelope for a server-signed response Log.
+// The server clears any nested SignedLog and receipt fields on a
+// candidate Log, serializes it, signs the bytes, and ships
+// (key_id, signature, payload). Clients verify with the server's
+// public key (obtained via Discovery RPC).
+message SignedLog {
+  string key_id = 1;    // Identifier (SHA256 fingerprint of server public key)
+  bytes signature = 2;  // Ed25519 signature (64 bytes)
+  bytes payload = 3;    // Exact serialized Log bytes that were signed
 }

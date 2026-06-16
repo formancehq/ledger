@@ -41,13 +41,13 @@ func (g *BucketGrpcClient) Barrier(ctx context.Context) (uint64, error) {
 	return resp.GetCommitIndex(), nil
 }
 
-// Apply forwards the requests via gRPC to the leader. The authenticated
+// Apply forwards the envelopes via gRPC to the leader. The authenticated
 // caller is captured from the local context and passed alongside, so the
 // leader can populate the audit entry with the original subject even
 // though the inter-node connection authenticates via cluster-secret.
-func (g *BucketGrpcClient) Apply(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
+func (g *BucketGrpcClient) Apply(ctx context.Context, envelopes ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 	resp, err := g.client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests:                requests,
+		Envelopes:               envelopes,
 		ForwardedCallerSnapshot: auth.ResolveCallerSnapshot(ctx),
 	})
 	if err != nil {

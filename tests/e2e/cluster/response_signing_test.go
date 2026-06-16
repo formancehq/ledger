@@ -62,9 +62,9 @@ var _ = Describe("Response Signing", func() {
 
 			// Create a test ledger
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerAction(ledgerName, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -72,11 +72,11 @@ var _ = Describe("Response Signing", func() {
 
 		It("should include response signature in Apply response logs", func() {
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -84,17 +84,17 @@ var _ = Describe("Response Signing", func() {
 			log := resp.Logs[0]
 			Expect(log.ResponseSignature).NotTo(BeNil())
 			Expect(log.ResponseSignature.Signature).To(HaveLen(ed25519.SignatureSize))
-			Expect(log.ResponseSignature.SignedPayload).NotTo(BeEmpty())
+			Expect(log.ResponseSignature.Payload).NotTo(BeEmpty())
 			Expect(log.ResponseSignature.KeyId).NotTo(BeEmpty())
 		})
 
 		It("should produce verifiable response signatures", func() {
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -107,11 +107,11 @@ var _ = Describe("Response Signing", func() {
 
 		It("should fail verification with a wrong public key", func() {
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "charlie", big.NewInt(50), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -128,14 +128,14 @@ var _ = Describe("Response Signing", func() {
 
 		It("should sign all logs in bulk Apply response", func() {
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "bulk-1", big.NewInt(100), "USD"),
 					}, nil, nil),
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "bulk-2", big.NewInt(200), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(2))
@@ -156,9 +156,9 @@ var _ = Describe("Response Signing", func() {
 
 		It("should include ledger creation log in response signatures", func() {
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerAction("response-signing-create-test", nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -186,9 +186,9 @@ var _ = Describe("Response Signing", func() {
 
 			// Create a test ledger
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerAction(ledgerName, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -196,11 +196,11 @@ var _ = Describe("Response Signing", func() {
 
 		It("should not include response signature in Apply response logs", func() {
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))

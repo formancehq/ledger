@@ -127,7 +127,7 @@ func (s *Server) runBulk(ctx context.Context, ledgerName string, elements []*ser
 func (s *Server) runBulkAtomic(ctx context.Context, requests []*servicepb.Request) []bulkResult {
 	results := make([]bulkResult, len(requests))
 
-	logs, err := s.backend.Apply(ctx, requests...)
+	logs, err := s.applyUnsigned(ctx, requests...)
 	if err != nil {
 		// In atomic mode, if any action fails, all fail with the same error
 		for i := range results {
@@ -156,7 +156,7 @@ func (s *Server) runBulkSequential(ctx context.Context, requests []*servicepb.Re
 			continue
 		}
 
-		logs, err := s.backend.Apply(ctx, request)
+		logs, err := s.applyUnsigned(ctx, request)
 		if err != nil {
 			hasError = true
 			results[i] = bulkResult{err: err}

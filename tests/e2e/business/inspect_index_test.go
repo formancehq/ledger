@@ -24,7 +24,7 @@ var _ = Describe("InspectIndex", Ordered, func() {
 		BeforeAll(func() {
 			// Create ledger with a string metadata field + index.
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
@@ -32,14 +32,14 @@ var _ = Describe("InspectIndex", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 						},
 					}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateAccountMetadataIndexAction(ledgerName, "category"),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "category")).To(Succeed())
@@ -47,7 +47,7 @@ var _ = Describe("InspectIndex", Ordered, func() {
 			// Create accounts with varied metadata values.
 			// 3 premium, 2 basic, 1 enterprise, 1 without metadata.
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "user1", big.NewInt(100), "USD"),
 					}, nil),
@@ -75,7 +75,7 @@ var _ = Describe("InspectIndex", Ordered, func() {
 					actions.SaveAccountMetadataAction(ledgerName, "user4", map[string]string{"category": "basic"}),
 					actions.SaveAccountMetadataAction(ledgerName, "user5", map[string]string{"category": "basic"}),
 					actions.SaveAccountMetadataAction(ledgerName, "user6", map[string]string{"category": "enterprise"}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -188,7 +188,7 @@ var _ = Describe("InspectIndex", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
@@ -196,7 +196,7 @@ var _ = Describe("InspectIndex", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 						},
 					}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})

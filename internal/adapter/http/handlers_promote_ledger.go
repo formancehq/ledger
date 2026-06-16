@@ -14,7 +14,7 @@ func (s *Server) handlePromoteLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logs, err := s.backend.Apply(r.Context(), &servicepb.Request{
+	logs, err := s.applyUnsigned(r.Context(), &servicepb.Request{
 		IdempotencyKey: r.Header.Get("Idempotency-Key"),
 		Type: &servicepb.Request_PromoteLedger{
 			PromoteLedger: &servicepb.PromoteLedgerRequest{

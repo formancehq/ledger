@@ -98,11 +98,11 @@ func expectThreshold(ctx context.Context, servers []*testutil.ServiceWithClient,
 func createTxs(ctx context.Context, client servicepb.BucketServiceClient, ledger string, n int, amount int64) {
 	for i := 0; i < n; i++ {
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateTransactionAction(ledger, []*commonpb.Posting{
 					actions.NewPosting("world", "bank", big.NewInt(amount), "USD"),
 				}, nil, nil),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 	}
@@ -157,7 +157,7 @@ var _ = Describe("Rolling cluster config update", Ordered, func() {
 		client := servers[*leaderID-1].Client
 
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{actions.CreateLedgerAction("test", nil)},
+			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction("test", nil)),
 		})
 		Expect(err).To(Succeed())
 
@@ -215,7 +215,7 @@ var _ = Describe("Rolling cluster config update", Ordered, func() {
 	It("should handle new ledgers after multiple config changes", func() {
 		client := servers[*leaderID-1].Client
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{actions.CreateLedgerAction("post-change", nil)},
+			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction("post-change", nil)),
 		})
 		Expect(err).To(Succeed())
 

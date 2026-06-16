@@ -74,24 +74,31 @@ func VerifyResponseSignatures(cmd *cobra.Command, logs []*commonpb.Log) error {
 	return nil
 }
 
-// SignRequests signs each request using the signing key from command flags.
-// If no signing key is configured, this is a no-op.
-func SignRequests(cmd *cobra.Command, requests []*servicepb.Request) error {
+// BuildEnvelopes wraps each request into an Envelope, signing those it can
+// when a signing key is configured on the command flags. Requests passed in
+// without a key configured are wrapped as unsigned envelopes.
+func BuildEnvelopes(cmd *cobra.Command, requests []*servicepb.Request) ([]*servicepb.Envelope, error) {
 	keyID, privKey, err := LoadSigningKey(cmd)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	if privKey == nil {
-		return nil
-	}
+	envelopes := make([]*servicepb.Envelope, len(requests))
 
-	for _, req := range requests {
-		err := signing.Sign(req, keyID, privKey)
-		if err != nil {
-			return fmt.Errorf("failed to sign request: %w", err)
+	for i, req := range requests {
+		if privKey == nil {
+			envelopes[i] = servicepb.UnsignedEnvelope(req)
+
+			continue
 		}
+
+		sr, err := signing.Sign(req, keyID, privKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to sign request: %w", err)
+		}
+
+		envelopes[i] = servicepb.SignedEnvelope(sr)
 	}
 
-	return nil
+	return envelopes, nil
 }

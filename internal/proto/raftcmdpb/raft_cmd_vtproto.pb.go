@@ -15304,7 +15304,7 @@ func (m *Order) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Signature == nil {
-				m.Signature = &signaturepb.RequestSignature{}
+				m.Signature = &signaturepb.SignedRequest{}
 			}
 			if err := m.Signature.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err

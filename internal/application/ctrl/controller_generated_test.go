@@ -89,10 +89,10 @@ func (mr *MockControllerMockRecorder) AnalyzeTransactions(ctx, ledgerName, varia
 }
 
 // Apply mocks base method.
-func (m *MockController) Apply(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
+func (m *MockController) Apply(ctx context.Context, envelopes ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx}
-	for _, a := range requests {
+	for _, a := range envelopes {
 		varargs = append(varargs, a)
 	}
 	ret := m.ctrl.Call(m, "Apply", varargs...)
@@ -102,9 +102,9 @@ func (m *MockController) Apply(ctx context.Context, requests ...*servicepb.Reque
 }
 
 // Apply indicates an expected call of Apply.
-func (mr *MockControllerMockRecorder) Apply(ctx any, requests ...any) *gomock.Call {
+func (mr *MockControllerMockRecorder) Apply(ctx any, envelopes ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx}, requests...)
+	varargs := append([]any{ctx}, envelopes...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Apply", reflect.TypeOf((*MockController)(nil).Apply), varargs...)
 }
 

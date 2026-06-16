@@ -45,7 +45,7 @@ func main() {
 				writeAttempts++
 
 				_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-					Requests: []*servicepb.Request{{
+					Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 						Type: &servicepb.Request_Apply{
 							Apply: &servicepb.LedgerApplyRequest{
 								Ledger: ledger,
@@ -62,7 +62,7 @@ func main() {
 								}},
 							},
 						},
-					}},
+					}),
 				})
 				if err != nil {
 					if internal.IsLedgerDeleted(err) || internal.IsLedgerNotFound(err) {
@@ -89,11 +89,11 @@ func main() {
 			defer wg.Done()
 
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{{
+				Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 					Type: &servicepb.Request_DeleteLedger{
 						DeleteLedger: &servicepb.DeleteLedgerRequest{Name: ledger},
 					},
-				}},
+				}),
 			})
 			if err == nil {
 				deleteOK = true
@@ -119,7 +119,7 @@ func main() {
 
 		// 3. After deletion, any write should fail with LEDGER_DELETED or LEDGER_NOT_FOUND.
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
@@ -136,7 +136,7 @@ func main() {
 						}},
 					},
 				},
-			}},
+			}),
 		})
 
 		if err == nil {

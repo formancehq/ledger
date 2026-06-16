@@ -225,9 +225,9 @@ var _ = Describe("Auth", Ordered, func() {
 			authCtx := withAuthToken(ctx, token)
 
 			resp, err := client.Apply(authCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerAction("auth-test-ledger", nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
@@ -240,9 +240,9 @@ var _ = Describe("Auth", Ordered, func() {
 			authCtx := withAuthToken(ctx, token)
 
 			_, err = client.Apply(authCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerAction("auth-test-ledger-2", nil),
-				},
+				),
 			})
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
@@ -266,11 +266,11 @@ var _ = Describe("Auth", Ordered, func() {
 			authCtx := withAuthToken(ctx, token)
 
 			resp, err := client.Apply(authCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction("auth-test-ledger", []*commonpb.Posting{
 						actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
@@ -282,15 +282,15 @@ var _ = Describe("Auth", Ordered, func() {
 			authCtx := withAuthToken(ctx, token)
 
 			resp, err := client.Apply(authCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					{
+				Envelopes: servicepb.UnsignedEnvelopes(
+					&servicepb.Request{
 						Type: &servicepb.Request_SetMaintenanceMode{
 							SetMaintenanceMode: &servicepb.SetMaintenanceModeRequest{
 								Enabled: false,
 							},
 						},
 					},
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())

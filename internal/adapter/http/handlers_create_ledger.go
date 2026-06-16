@@ -80,7 +80,7 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	logs, err := s.backend.Apply(r.Context(), &servicepb.Request{
+	logs, err := s.applyUnsigned(r.Context(), &servicepb.Request{
 		IdempotencyKey: r.Header.Get("Idempotency-Key"),
 		Type: &servicepb.Request_CreateLedger{
 			CreateLedger: createReq,

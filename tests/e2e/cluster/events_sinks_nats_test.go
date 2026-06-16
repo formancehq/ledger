@@ -91,7 +91,7 @@ var _ = Describe("Events Sinks NATS", Ordered, func() {
 
 		// Add NATS sink via Apply
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				addEventsSinkAction(&commonpb.SinkConfig{
 					Name:         "nats-e2e",
 					Format:       "json",
@@ -104,28 +104,28 @@ var _ = Describe("Events Sinks NATS", Ordered, func() {
 						},
 					},
 				}),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 
 		// Create a ledger
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateLedgerAction("nats-test", nil),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 
 		// Create a transaction (force=true to bypass balance checks)
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateForceTransactionAction("nats-test",
 					[]*commonpb.Posting{
 						actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 					},
 					nil,
 				),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 

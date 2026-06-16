@@ -84,7 +84,7 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 
 		// Create a ledger before transfer
 		_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{actions.CreateLedgerAction("transfer-test", nil)},
+			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction("transfer-test", nil)),
 		})
 		Expect(err).To(Succeed())
 
@@ -109,11 +109,11 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 		// Create transactions through the new leader
 		for i := 0; i < 3; i++ {
 			_, err := servers[targetID-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction("transfer-test", []*commonpb.Posting{
 						actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		}
@@ -150,17 +150,17 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 
 		// Create a ledger and some transactions so the cluster is active
 		_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{actions.CreateLedgerAction("auto-transfer-test", nil)},
+			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction("auto-transfer-test", nil)),
 		})
 		Expect(err).To(Succeed())
 
 		for i := 0; i < 3; i++ {
 			_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction("auto-transfer-test", []*commonpb.Posting{
 						actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		}
@@ -188,11 +188,11 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 		// Verify the cluster continues to function: create transactions via the new leader
 		for i := 0; i < 3; i++ {
 			_, err := servers[newLeaderID-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction("auto-transfer-test", []*commonpb.Posting{
 						actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		}

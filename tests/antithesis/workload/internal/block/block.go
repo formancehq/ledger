@@ -84,7 +84,7 @@ func RunLoop(ctx context.Context, client servicepb.BucketServiceClient, groups [
 						return
 					}
 
-					_, err := client.Apply(ctx, &servicepb.ApplyRequest{Requests: actions})
+					_, err := client.Apply(ctx, &servicepb.ApplyRequest{Envelopes: servicepb.UnsignedEnvelopes(actions...)})
 					if err == nil || isAlreadyExists(err) {
 						break
 					}

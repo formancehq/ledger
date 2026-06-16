@@ -183,7 +183,7 @@ func writeBurst(ctx context.Context, client servicepb.BucketServiceClient, commi
 		case <-tick.C:
 		}
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: rrSentinelLedger,
@@ -195,7 +195,7 @@ func writeBurst(ctx context.Context, client servicepb.BucketServiceClient, commi
 						}},
 					},
 				},
-			}},
+			}),
 		})
 		if err == nil {
 			committed.Add(1)

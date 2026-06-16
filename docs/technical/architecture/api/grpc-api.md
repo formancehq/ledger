@@ -153,9 +153,19 @@ All write operations go through the unified `Apply` method, which accepts a batc
 
 ### Request Structure
 
+> ⚠️ **Breaking wire-contract change.** `ApplyRequest` field 1 was previously
+> `repeated Request requests` and is now `repeated Envelope envelopes`. The
+> field number is reused with a different message type, so old generated gRPC
+> clients sending `repeated Request` on field 1 will be silently decoded as
+> `Envelope` and rejected at admission. Clients **must** be regenerated
+> against the new proto; mixed client/server versions and rolling wire-format
+> upgrades are not supported for this change. Same posture as
+> `TargetTransaction.reference` (see `common.proto` for the same single-version
+> cluster contract).
+
 ```protobuf
 message ApplyRequest {
-  repeated Request requests = 1;
+  repeated Envelope envelopes = 1;
   bool skip_response = 2;  // Strip log payloads from response (only sequence returned)
   reserved 3;
   reserved "forwarded_caller";  // was: common.CallerIdentity (pre-split, see common.proto)
@@ -166,6 +176,18 @@ message ApplyRequest {
   common.CallerSnapshot forwarded_caller_snapshot = 4;
 }
 
+// Envelope wraps a Request on the wire. Unsigned requests carry the Request
+// directly; signed requests carry an opaque SignedRequest (key_id + signature
+// + bytes the client serialized and signed). The proto schema enforces the
+// "either one or the other" invariant — no wrapper/payload divergence is
+// possible. See docs/ops/signing.md for the rationale.
+message Envelope {
+  oneof variant {
+    Request unsigned = 1;
+    signature.SignedRequest signed = 2;
+  }
+}
+
 message Request {
   string idempotency_key = 1;  // Optional idempotency key
   oneof type {
@@ -173,6 +195,8 @@ message Request {
     CreateLedgerRequest create_ledger = 3;
     DeleteLedgerRequest delete_ledger = 4;
   }
+  reserved 5;
+  reserved "signature";  // signed requests travel as Envelope.signed (SignedRequest)
 }
 
 message LedgerApplyRequest {
@@ -190,7 +214,7 @@ message LedgerApplyRequest {
 
 ```go
 resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-    Requests: []*servicepb.Request{{
+    Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
         IdempotencyKey: "create-ledger-123",
         Type: &servicepb.Request_CreateLedger{
             CreateLedger: &servicepb.CreateLedgerRequest{
@@ -202,7 +226,7 @@ resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
                 },
             },
         },
-    }},
+    }),
 })
 ```
 
@@ -210,13 +234,13 @@ resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 
 ```go
 resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-    Requests: []*servicepb.Request{{
+    Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
         Type: &servicepb.Request_DeleteLedger{
             DeleteLedger: &servicepb.DeleteLedgerRequest{
                 Name: "my-ledger",
             },
         },
-    }},
+    }),
 })
 ```
 
@@ -226,7 +250,7 @@ resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 
 ```go
 resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-    Requests: []*servicepb.Request{{
+    Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
         IdempotencyKey: "tx-123",
         Type: &servicepb.Request_Apply{
             Apply: &servicepb.LedgerApplyRequest{
@@ -249,7 +273,7 @@ resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
                 },
             },
         },
-    }},
+    }),
 })
 ```
 
@@ -257,7 +281,7 @@ resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 
 ```go
 resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-    Requests: []*servicepb.Request{{
+    Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
         Type: &servicepb.Request_Apply{
             Apply: &servicepb.LedgerApplyRequest{
                 Ledger: "my-ledger",
@@ -275,7 +299,7 @@ resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
                 },
             },
         },
-    }},
+    }),
 })
 ```
 
@@ -283,7 +307,7 @@ resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 
 ```go
 resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-    Requests: []*servicepb.Request{{
+    Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
         IdempotencyKey: "revert-tx-1",
         Type: &servicepb.Request_Apply{
             Apply: &servicepb.LedgerApplyRequest{
@@ -297,7 +321,7 @@ resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
                 },
             },
         },
-    }},
+    }),
 })
 ```
 
@@ -307,7 +331,7 @@ resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 
 ```go
 resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-    Requests: []*servicepb.Request{{
+    Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
         Type: &servicepb.Request_Apply{
             Apply: &servicepb.LedgerApplyRequest{
                 Ledger: "my-ledger",
@@ -327,7 +351,7 @@ resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
                 },
             },
         },
-    }},
+    }),
 })
 ```
 
@@ -335,7 +359,7 @@ resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 
 ```go
 resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-    Requests: []*servicepb.Request{{
+    Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
         Type: &servicepb.Request_Apply{
             Apply: &servicepb.LedgerApplyRequest{
                 Ledger: "my-ledger",
@@ -355,7 +379,7 @@ resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
                 },
             },
         },
-    }},
+    }),
 })
 ```
 
@@ -363,7 +387,7 @@ resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 
 ```go
 resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-    Requests: []*servicepb.Request{{
+    Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
         Type: &servicepb.Request_Apply{
             Apply: &servicepb.LedgerApplyRequest{
                 Ledger: "my-ledger",
@@ -379,7 +403,7 @@ resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
                 },
             },
         },
-    }},
+    }),
 })
 ```
 
@@ -389,15 +413,15 @@ The `Apply` method accepts multiple requests, enabling batch operations:
 
 ```go
 resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-    Requests: []*servicepb.Request{
+    Envelopes: servicepb.UnsignedEnvelopes(
         // Request 1: Create ledger
-        {
+        &servicepb.Request{
             Type: &servicepb.Request_CreateLedger{
                 CreateLedger: &servicepb.CreateLedgerRequest{Name: "ledger-a"},
             },
         },
         // Request 2: Create transaction in another ledger
-        {
+        &servicepb.Request{
             IdempotencyKey: "tx-batch-1",
             Type: &servicepb.Request_Apply{
                 Apply: &servicepb.LedgerApplyRequest{
@@ -415,7 +439,7 @@ resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
                 },
             },
         },
-    },
+    ),
 })
 
 // Each request produces one log entry
@@ -430,7 +454,7 @@ For high-throughput ingestion scenarios where the client does not need the full 
 
 ```go
 resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-    Requests:     requests,
+    Envelopes:    servicepb.UnsignedEnvelopes(requests...),
     SkipResponse: true,
 })
 
@@ -473,10 +497,10 @@ Include an `idempotency_key` in any request for safe retries:
 
 ```go
 resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-    Requests: []*servicepb.Request{{
+    Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
         IdempotencyKey: "unique-request-id-123",
         Type: &servicepb.Request_Apply{...},
-    }},
+    }),
 })
 ```
 

@@ -6,7 +6,6 @@ package servicepb
 import (
 	bytes "bytes"
 	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	signaturepb "github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 	slices "slices"
 )
 
@@ -798,7 +797,7 @@ func NewGetLedgerRequestListReader(s []*GetLedgerRequest) GetLedgerRequestListRe
 // ApplyRequestReader provides read-only access to ApplyRequest.
 // Call Mutate() to obtain a mutable clone.
 type ApplyRequestReader interface {
-	GetRequests() RequestListReader
+	GetEnvelopes() EnvelopeListReader
 	GetSkipResponse() bool
 	GetForwardedCallerSnapshot() commonpb.CallerSnapshotReader
 	Mutate() *ApplyRequest
@@ -806,8 +805,8 @@ type ApplyRequestReader interface {
 
 type applyRequestReadonly struct{ v *ApplyRequest }
 
-func (r *applyRequestReadonly) GetRequests() RequestListReader {
-	return NewRequestListReader(r.v.GetRequests())
+func (r *applyRequestReadonly) GetEnvelopes() EnvelopeListReader {
+	return NewEnvelopeListReader(r.v.GetEnvelopes())
 }
 
 func (r *applyRequestReadonly) GetSkipResponse() bool {
@@ -875,6 +874,71 @@ func (l applyRequestListReadonly) Range(yield func(int, ApplyRequestReader) bool
 func NewApplyRequestListReader(s []*ApplyRequest) ApplyRequestListReader {
 	return applyRequestListReadonly(s)
 }
+
+// EnvelopeReader provides read-only access to Envelope.
+// Call Mutate() to obtain a mutable clone.
+type EnvelopeReader interface {
+	GetVariant() isEnvelope_Variant
+	Mutate() *Envelope
+}
+
+type envelopeReadonly struct{ v *Envelope }
+
+func (r *envelopeReadonly) GetVariant() isEnvelope_Variant {
+	return r.v.GetVariant()
+}
+
+func (r *envelopeReadonly) Mutate() *Envelope {
+	return r.v.CloneVT()
+}
+
+// AsReader returns a read-only view of this Envelope.
+func (m *Envelope) AsReader() EnvelopeReader {
+	if m == nil {
+		return nil
+	}
+	return &envelopeReadonly{v: m}
+}
+
+// Mutate returns a mutable deep clone of this Envelope.
+func (m *Envelope) Mutate() *Envelope {
+	return m.CloneVT()
+}
+
+// EnvelopeListReader provides read-only iteration over []*Envelope.
+type EnvelopeListReader interface {
+	Len() int
+	Get(i int) EnvelopeReader
+	Range(yield func(int, EnvelopeReader) bool)
+}
+
+type envelopeListReadonly []*Envelope
+
+func (l envelopeListReadonly) Len() int { return len(l) }
+
+func (l envelopeListReadonly) Get(i int) EnvelopeReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l envelopeListReadonly) Range(yield func(int, EnvelopeReader) bool) {
+	for i, v := range l {
+		var r EnvelopeReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewEnvelopeListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewEnvelopeListReader(s []*Envelope) EnvelopeListReader { return envelopeListReadonly(s) }
 
 // ApplyResponseReader provides read-only access to ApplyResponse.
 // Call Mutate() to obtain a mutable clone.
@@ -947,7 +1011,6 @@ func NewApplyResponseListReader(s []*ApplyResponse) ApplyResponseListReader {
 // Call Mutate() to obtain a mutable clone.
 type RequestReader interface {
 	GetIdempotencyKey() string
-	GetSignature() signaturepb.RequestSignatureReader
 	GetType() isRequest_Type
 	Mutate() *Request
 }
@@ -956,14 +1019,6 @@ type requestReadonly struct{ v *Request }
 
 func (r *requestReadonly) GetIdempotencyKey() string {
 	return r.v.GetIdempotencyKey()
-}
-
-func (r *requestReadonly) GetSignature() signaturepb.RequestSignatureReader {
-	v := r.v.GetSignature()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
 }
 
 func (r *requestReadonly) GetType() isRequest_Type {

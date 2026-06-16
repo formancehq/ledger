@@ -84,7 +84,7 @@ var (
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller_default.go -destination controller_default_generated_test.go -package ctrl . Admission
 type Admission interface {
-	Admit(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error)
+	Admit(ctx context.Context, envelopes ...*servicepb.Envelope) ([]*commonpb.Log, error)
 	Barrier(ctx context.Context) (uint64, error)
 }
 
@@ -1337,25 +1337,26 @@ func (ctrl *DefaultController) Barrier(ctx context.Context) (uint64, error) {
 	return ctrl.admission.Barrier(ctx)
 }
 
-// Apply applies a list of requests and returns the resulting logs.
-// The controller forwards requests to the Raft admission layer.
+// Apply applies a list of envelopes and returns the resulting logs.
+// The controller forwards envelopes to the Raft admission layer, which
+// verifies signatures (for signed envelopes) and unwraps them into Requests.
 // The FSM is responsible for interpreting orders, validating, and applying changes.
 // Idempotency is handled in the FSM to ensure consistency.
-func (ctrl *DefaultController) Apply(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
+func (ctrl *DefaultController) Apply(ctx context.Context, envelopes ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 	ctx, span := tracer.Start(ctx, "ctrl.apply",
-		trace.WithAttributes(attribute.Int("request_count", len(requests))))
+		trace.WithAttributes(attribute.Int("request_count", len(envelopes))))
 	defer span.End()
 
 	start := time.Now()
 
-	if len(requests) == 0 {
-		return nil, errors.New("at least one request is required")
+	if len(envelopes) == 0 {
+		return nil, errors.New("at least one envelope is required")
 	}
 
-	logs, err := ctrl.admission.Admit(ctx, requests...)
+	logs, err := ctrl.admission.Admit(ctx, envelopes...)
 
 	ctrl.applyDuration.Record(ctx, time.Since(start).Microseconds(),
-		metric.WithAttributes(attribute.Int("batch_size", len(requests))))
+		metric.WithAttributes(attribute.Int("batch_size", len(envelopes))))
 
 	if err != nil {
 		return nil, fmt.Errorf("applying raft requests: %w", err)

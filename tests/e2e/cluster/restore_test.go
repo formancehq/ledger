@@ -167,51 +167,51 @@ var _ = Describe("Restore", Ordered, func() {
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
 
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerAction(ledgerName, map[string]string{"env": "test"}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "bank", big.NewInt(10000), "USD"),
 					}, map[string]string{"type": "funding"}, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("bank", "alice", big.NewInt(3000), "USD"),
 						actions.NewPosting("bank", "bob", big.NewInt(2000), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "customer"}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerAction(ledger2, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledger2, []*commonpb.Posting{
 						actions.NewPosting("world", "treasury", big.NewInt(50000), "EUR"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -240,11 +240,11 @@ var _ = Describe("Restore", Ordered, func() {
 			// lives only in incremental export segments — never in the
 			// checkpoint files. A restore that ignores exports loses it.
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "dave", big.NewInt(1500), "USD"),
 					}, map[string]string{"type": "post-checkpoint"}, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -496,11 +496,11 @@ var _ = Describe("Restore", Ordered, func() {
 			// again and reading back exposes it: a cache-aware apply yields
 			// 1500+500=2000; a cache-blind apply overwrites 0xF1 with 500.
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "dave", big.NewInt(500), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -512,11 +512,11 @@ var _ = Describe("Restore", Ordered, func() {
 
 		It("should accept new transactions after restore", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("bank", "charlie", big.NewInt(1000), "USD"),
 					}, map[string]string{"type": "post-restore"}, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 

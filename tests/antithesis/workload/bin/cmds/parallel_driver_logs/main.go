@@ -14,7 +14,7 @@ func main() {
 	internal.RunDriver("parallel_driver_logs", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
 		// 1. Create a transaction to generate a log entry.
 		resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
@@ -26,7 +26,7 @@ func main() {
 						}},
 					},
 				},
-			}},
+			}),
 		})
 		assert.Sometimes(err == nil || internal.IsTransient(err),
 			"should be able to create tx for logs test", internal.Details{"ledger": ledger, "error": err})

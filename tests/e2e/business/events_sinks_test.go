@@ -60,9 +60,9 @@ var _ = Describe("Events Sinks", Ordered, func() {
 
 	It("Should add a sink configuration via Apply", func() {
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				addEventsSinkAction(newTestSinkConfig("test-sink", "ledger.events")),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 
@@ -85,9 +85,9 @@ var _ = Describe("Events Sinks", Ordered, func() {
 		oversized.BatchSize = domain.MaxSinkBatchSize + 1
 
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				addEventsSinkAction(oversized),
-			},
+			),
 		})
 		Expect(err).To(HaveOccurred())
 		Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
@@ -102,9 +102,9 @@ var _ = Describe("Events Sinks", Ordered, func() {
 
 	It("Should reject adding a sink with a duplicate name", func() {
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				addEventsSinkAction(newTestSinkConfig("test-sink", "ledger.events.dup")),
-			},
+			),
 		})
 		Expect(err).To(HaveOccurred())
 		Expect(status.Code(err)).To(Equal(codes.AlreadyExists))
@@ -112,9 +112,9 @@ var _ = Describe("Events Sinks", Ordered, func() {
 
 	It("Should add a second sink with a different name", func() {
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				addEventsSinkAction(newTestSinkConfig("second-sink", "ledger.events.secondary")),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 
@@ -131,9 +131,9 @@ var _ = Describe("Events Sinks", Ordered, func() {
 
 	It("Should remove a sink configuration", func() {
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				removeEventsSinkAction("test-sink"),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 
@@ -145,9 +145,9 @@ var _ = Describe("Events Sinks", Ordered, func() {
 
 	It("Should remove the last sink leaving empty config", func() {
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				removeEventsSinkAction("second-sink"),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 
@@ -158,9 +158,9 @@ var _ = Describe("Events Sinks", Ordered, func() {
 
 	It("Should reject removing a non-existent sink", func() {
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				removeEventsSinkAction("does-not-exist"),
-			},
+			),
 		})
 		Expect(err).To(HaveOccurred())
 		Expect(status.Code(err)).To(Equal(codes.NotFound))
@@ -169,10 +169,10 @@ var _ = Describe("Events Sinks", Ordered, func() {
 	It("Should add and remove sinks in a single batch Apply", func() {
 		// Add two sinks
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				addEventsSinkAction(newTestSinkConfig("batch-sink-1", "batch.events.1")),
 				addEventsSinkAction(newTestSinkConfig("batch-sink-2", "batch.events.2")),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 
@@ -182,10 +182,10 @@ var _ = Describe("Events Sinks", Ordered, func() {
 
 		// Remove both in one batch
 		_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				removeEventsSinkAction("batch-sink-1"),
 				removeEventsSinkAction("batch-sink-2"),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 
@@ -196,9 +196,9 @@ var _ = Describe("Events Sinks", Ordered, func() {
 
 	It("Should produce audit log entries for sink operations", func() {
 		addResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				addEventsSinkAction(newTestSinkConfig("audited-sink", "audited.events")),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 		Expect(addResp.Logs).To(HaveLen(1))
@@ -206,9 +206,9 @@ var _ = Describe("Events Sinks", Ordered, func() {
 		Expect(addResp.Logs[0].Payload.GetAddedEventsSink().Config.Name).To(Equal("audited-sink"))
 
 		removeResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				removeEventsSinkAction("audited-sink"),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 		Expect(removeResp.Logs).To(HaveLen(1))

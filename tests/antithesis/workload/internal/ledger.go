@@ -36,11 +36,11 @@ func CreateLedger(ctx context.Context, client servicepb.BucketServiceClient, nam
 	details := Details{"ledger": name}
 
 	_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{{
+		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 			Type: &servicepb.Request_CreateLedger{
 				CreateLedger: &servicepb.CreateLedgerRequest{Name: name},
 			},
-		}},
+		}),
 	})
 	assert.Sometimes(err == nil || IsUnavailable(err), "should be able to create ledger", details.With(Details{"error": err}))
 	if err != nil {

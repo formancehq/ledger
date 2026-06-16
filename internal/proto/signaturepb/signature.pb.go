@@ -21,33 +21,36 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// RequestSignature contains the Ed25519 signature of a Request.
-// The client serializes the Request (without signature), signs the bytes,
-// and attaches them here. The server verifies the signature on signed_payload,
-// then deserializes signed_payload to obtain the authoritative content.
-type RequestSignature struct {
+// SignedRequest is the opaque envelope for a signed client request.
+// The client serializes its Request, signs the bytes, and ships
+// (key_id, signature, payload). The server verifies the signature
+// against payload, then unmarshals payload to obtain the request
+// content. The server never re-serializes — this makes the envelope
+// safe across protobuf implementations (Go, Java, Python, ...) since
+// no implementation needs to reproduce another's exact byte layout.
+type SignedRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	KeyId         string                 `protobuf:"bytes,1,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`                         // ID of the public key used to sign
-	Signature     []byte                 `protobuf:"bytes,2,opt,name=signature,proto3" json:"signature,omitempty"`                              // Ed25519 signature (64 bytes)
-	SignedPayload []byte                 `protobuf:"bytes,3,opt,name=signed_payload,json=signedPayload,proto3" json:"signed_payload,omitempty"` // Exact serialized bytes signed by the client
+	KeyId         string                 `protobuf:"bytes,1,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"` // ID of the public key used to sign
+	Signature     []byte                 `protobuf:"bytes,2,opt,name=signature,proto3" json:"signature,omitempty"`      // Ed25519 signature (64 bytes)
+	Payload       []byte                 `protobuf:"bytes,3,opt,name=payload,proto3" json:"payload,omitempty"`          // Exact serialized Request bytes signed by the client
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *RequestSignature) Reset() {
-	*x = RequestSignature{}
+func (x *SignedRequest) Reset() {
+	*x = SignedRequest{}
 	mi := &file_signature_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *RequestSignature) String() string {
+func (x *SignedRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*RequestSignature) ProtoMessage() {}
+func (*SignedRequest) ProtoMessage() {}
 
-func (x *RequestSignature) ProtoReflect() protoreflect.Message {
+func (x *SignedRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_signature_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -59,59 +62,60 @@ func (x *RequestSignature) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use RequestSignature.ProtoReflect.Descriptor instead.
-func (*RequestSignature) Descriptor() ([]byte, []int) {
+// Deprecated: Use SignedRequest.ProtoReflect.Descriptor instead.
+func (*SignedRequest) Descriptor() ([]byte, []int) {
 	return file_signature_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *RequestSignature) GetKeyId() string {
+func (x *SignedRequest) GetKeyId() string {
 	if x != nil {
 		return x.KeyId
 	}
 	return ""
 }
 
-func (x *RequestSignature) GetSignature() []byte {
+func (x *SignedRequest) GetSignature() []byte {
 	if x != nil {
 		return x.Signature
 	}
 	return nil
 }
 
-func (x *RequestSignature) GetSignedPayload() []byte {
+func (x *SignedRequest) GetPayload() []byte {
 	if x != nil {
-		return x.SignedPayload
+		return x.Payload
 	}
 	return nil
 }
 
-// ResponseSignature contains the Ed25519 signature of a Log response.
-// The server serializes the Log (without response_signature and receipt),
-// signs the bytes, and attaches them here. The client verifies the signature
-// on signed_payload using the server's public key obtained via Discovery RPC.
-type ResponseSignature struct {
+// SignedLog is the opaque envelope for a server-signed response Log.
+// The server clears any nested SignedLog and receipt fields on a
+// candidate Log, serializes it, signs the bytes, and ships
+// (key_id, signature, payload). Clients verify with the server's
+// public key (obtained via Discovery RPC).
+type SignedLog struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	KeyId         string                 `protobuf:"bytes,1,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`                         // Identifier (SHA256 fingerprint of server public key)
-	Signature     []byte                 `protobuf:"bytes,2,opt,name=signature,proto3" json:"signature,omitempty"`                              // Ed25519 signature (64 bytes)
-	SignedPayload []byte                 `protobuf:"bytes,3,opt,name=signed_payload,json=signedPayload,proto3" json:"signed_payload,omitempty"` // Exact serialized bytes that were signed
+	KeyId         string                 `protobuf:"bytes,1,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"` // Identifier (SHA256 fingerprint of server public key)
+	Signature     []byte                 `protobuf:"bytes,2,opt,name=signature,proto3" json:"signature,omitempty"`      // Ed25519 signature (64 bytes)
+	Payload       []byte                 `protobuf:"bytes,3,opt,name=payload,proto3" json:"payload,omitempty"`          // Exact serialized Log bytes that were signed
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ResponseSignature) Reset() {
-	*x = ResponseSignature{}
+func (x *SignedLog) Reset() {
+	*x = SignedLog{}
 	mi := &file_signature_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ResponseSignature) String() string {
+func (x *SignedLog) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ResponseSignature) ProtoMessage() {}
+func (*SignedLog) ProtoMessage() {}
 
-func (x *ResponseSignature) ProtoReflect() protoreflect.Message {
+func (x *SignedLog) ProtoReflect() protoreflect.Message {
 	mi := &file_signature_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -123,28 +127,28 @@ func (x *ResponseSignature) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ResponseSignature.ProtoReflect.Descriptor instead.
-func (*ResponseSignature) Descriptor() ([]byte, []int) {
+// Deprecated: Use SignedLog.ProtoReflect.Descriptor instead.
+func (*SignedLog) Descriptor() ([]byte, []int) {
 	return file_signature_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *ResponseSignature) GetKeyId() string {
+func (x *SignedLog) GetKeyId() string {
 	if x != nil {
 		return x.KeyId
 	}
 	return ""
 }
 
-func (x *ResponseSignature) GetSignature() []byte {
+func (x *SignedLog) GetSignature() []byte {
 	if x != nil {
 		return x.Signature
 	}
 	return nil
 }
 
-func (x *ResponseSignature) GetSignedPayload() []byte {
+func (x *SignedLog) GetPayload() []byte {
 	if x != nil {
-		return x.SignedPayload
+		return x.Payload
 	}
 	return nil
 }
@@ -153,15 +157,15 @@ var File_signature_proto protoreflect.FileDescriptor
 
 const file_signature_proto_rawDesc = "" +
 	"\n" +
-	"\x0fsignature.proto\x12\tsignature\"n\n" +
-	"\x10RequestSignature\x12\x15\n" +
+	"\x0fsignature.proto\x12\tsignature\"^\n" +
+	"\rSignedRequest\x12\x15\n" +
 	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12\x1c\n" +
-	"\tsignature\x18\x02 \x01(\fR\tsignature\x12%\n" +
-	"\x0esigned_payload\x18\x03 \x01(\fR\rsignedPayload\"o\n" +
-	"\x11ResponseSignature\x12\x15\n" +
+	"\tsignature\x18\x02 \x01(\fR\tsignature\x12\x18\n" +
+	"\apayload\x18\x03 \x01(\fR\apayload\"Z\n" +
+	"\tSignedLog\x12\x15\n" +
 	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12\x1c\n" +
-	"\tsignature\x18\x02 \x01(\fR\tsignature\x12%\n" +
-	"\x0esigned_payload\x18\x03 \x01(\fR\rsignedPayloadB<Z:github.com/formancehq/ledger/v3/internal/proto/signaturepbb\x06proto3"
+	"\tsignature\x18\x02 \x01(\fR\tsignature\x12\x18\n" +
+	"\apayload\x18\x03 \x01(\fR\apayloadB<Z:github.com/formancehq/ledger/v3/internal/proto/signaturepbb\x06proto3"
 
 var (
 	file_signature_proto_rawDescOnce sync.Once
@@ -177,8 +181,8 @@ func file_signature_proto_rawDescGZIP() []byte {
 
 var file_signature_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_signature_proto_goTypes = []any{
-	(*RequestSignature)(nil),  // 0: signature.RequestSignature
-	(*ResponseSignature)(nil), // 1: signature.ResponseSignature
+	(*SignedRequest)(nil), // 0: signature.SignedRequest
+	(*SignedLog)(nil),     // 1: signature.SignedLog
 }
 var file_signature_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for method output_type

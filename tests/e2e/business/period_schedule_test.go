@@ -41,7 +41,7 @@ var _ = Describe("Period Schedule", Ordered, func() {
 
 		// Create a ledger so period auto-bootstrap happens
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{actions.CreateLedgerAction("schedule-test", nil)},
+			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction("schedule-test", nil)),
 		})
 		Expect(err).To(Succeed())
 	})
@@ -59,7 +59,7 @@ var _ = Describe("Period Schedule", Ordered, func() {
 
 		It("should accept a valid cron expression", func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{setPeriodScheduleAction(cronExpr)},
+				Envelopes: servicepb.UnsignedEnvelopes(setPeriodScheduleAction(cronExpr)),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -75,7 +75,7 @@ var _ = Describe("Period Schedule", Ordered, func() {
 	Context("Reject invalid cron expression", func() {
 		It("should return InvalidArgument for a bad cron expression", func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{setPeriodScheduleAction("not-a-cron")},
+				Envelopes: servicepb.UnsignedEnvelopes(setPeriodScheduleAction("not-a-cron")),
 			})
 			Expect(err).To(HaveOccurred())
 
@@ -92,7 +92,7 @@ var _ = Describe("Period Schedule", Ordered, func() {
 	Context("Reject empty cron in SetPeriodSchedule", func() {
 		It("should return InvalidArgument for an empty cron expression", func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{setPeriodScheduleAction("")},
+				Envelopes: servicepb.UnsignedEnvelopes(setPeriodScheduleAction("")),
 			})
 			Expect(err).To(HaveOccurred())
 
@@ -109,7 +109,7 @@ var _ = Describe("Period Schedule", Ordered, func() {
 	Context("Delete schedule", Ordered, func() {
 		It("should set a schedule first", func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{setPeriodScheduleAction("0 0 1 * *")},
+				Envelopes: servicepb.UnsignedEnvelopes(setPeriodScheduleAction("0 0 1 * *")),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -117,7 +117,7 @@ var _ = Describe("Period Schedule", Ordered, func() {
 
 		It("should accept a delete-schedule request", func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{deletePeriodScheduleAction()},
+				Envelopes: servicepb.UnsignedEnvelopes(deletePeriodScheduleAction()),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -143,7 +143,7 @@ var _ = Describe("Period Schedule", Ordered, func() {
 		It("should set a per-second cron schedule", func() {
 			// Every 5 seconds (6-field format with leading seconds)
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{setPeriodScheduleAction("*/5 * * * * *")},
+				Envelopes: servicepb.UnsignedEnvelopes(setPeriodScheduleAction("*/5 * * * * *")),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -162,7 +162,7 @@ var _ = Describe("Period Schedule", Ordered, func() {
 
 		It("should disable the schedule after the test", func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{deletePeriodScheduleAction()},
+				Envelopes: servicepb.UnsignedEnvelopes(deletePeriodScheduleAction()),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))

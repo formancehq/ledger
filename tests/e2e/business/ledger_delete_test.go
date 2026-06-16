@@ -22,7 +22,7 @@ var _ = Describe("Ledger Deletion", Ordered, func() {
 		BeforeAll(func() {
 			// Create a ledger
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -38,7 +38,7 @@ var _ = Describe("Ledger Deletion", Ordered, func() {
 		It("Should successfully delete the ledger (soft delete)", func() {
 			// Delete the ledger (soft delete)
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.DeleteLedgerAction(ledgerName)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.DeleteLedgerAction(ledgerName)),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
@@ -74,7 +74,7 @@ var _ = Describe("Ledger Deletion", Ordered, func() {
 		It("Should return error when trying to delete a non-existent ledger", func() {
 			// Try to delete a non-existent ledger
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.DeleteLedgerAction("non-existent-ledger")},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.DeleteLedgerAction("non-existent-ledger")),
 			})
 			Expect(err).To(HaveOccurred())
 		})
@@ -86,7 +86,7 @@ var _ = Describe("Ledger Deletion", Ordered, func() {
 		BeforeAll(func() {
 			// Create a ledger
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -94,11 +94,11 @@ var _ = Describe("Ledger Deletion", Ordered, func() {
 			// Create some transactions
 			for i := 0; i < 5; i++ {
 				_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-					Requests: []*servicepb.Request{
+					Envelopes: servicepb.UnsignedEnvelopes(
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 							actions.NewPosting("world", fmt.Sprintf("account-%d", i), big.NewInt(100*int64(i+1)), "USD"),
 						}, nil, nil),
-					},
+					),
 				})
 				Expect(err).To(Succeed())
 			}
@@ -107,7 +107,7 @@ var _ = Describe("Ledger Deletion", Ordered, func() {
 		It("Should successfully soft-delete the ledger even with transactions", func() {
 			// Soft-delete the ledger (should succeed even with transactions)
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.DeleteLedgerAction(ledgerName)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.DeleteLedgerAction(ledgerName)),
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())

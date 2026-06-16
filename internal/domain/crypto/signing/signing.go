@@ -15,70 +15,61 @@ var (
 	ErrUnknownKeyID     = errors.New("unknown key ID")
 )
 
-// SignPayload signs raw bytes and returns a RequestSignature.
-func SignPayload(payload []byte, keyID string, privateKey ed25519.PrivateKey) *signaturepb.RequestSignature {
-	sig := ed25519.Sign(privateKey, payload)
-
-	return &signaturepb.RequestSignature{
-		KeyId:         keyID,
-		Signature:     sig,
-		SignedPayload: payload,
-	}
-}
-
-// Sign serializes a Request (without signature), signs the bytes, and attaches the RequestSignature.
-func Sign(req *servicepb.Request, keyID string, privateKey ed25519.PrivateKey) error {
-	// Clone the request and clear any existing signature to get the canonical form
-	reqCopy := req.CloneVT()
-	reqCopy.Signature = nil
-
-	payload, err := reqCopy.MarshalVT()
+// Sign serializes a Request and returns a SignedRequest envelope carrying
+// the exact bytes signed by the client. The returned envelope is opaque:
+// the server verifies the signature against payload and then unmarshals
+// payload — it never re-serializes the request, so cross-language clients
+// are safe regardless of their protobuf implementation's quirks.
+func Sign(req *servicepb.Request, keyID string, privateKey ed25519.PrivateKey) (*signaturepb.SignedRequest, error) {
+	payload, err := req.MarshalVT()
 	if err != nil {
-		return fmt.Errorf("marshaling request for signing: %w", err)
+		return nil, fmt.Errorf("marshaling request for signing: %w", err)
 	}
 
-	req.Signature = SignPayload(payload, keyID, privateKey)
-
-	return nil
+	return &signaturepb.SignedRequest{
+		KeyId:     keyID,
+		Signature: ed25519.Sign(privateKey, payload),
+		Payload:   payload,
+	}, nil
 }
 
-// Verify checks the Ed25519 signature on signed_payload.
-// It does not re-serialize anything — it verifies the exact bytes provided by the client.
-func Verify(sig *signaturepb.RequestSignature, publicKey ed25519.PublicKey) error {
-	if sig == nil {
+// Verify checks the Ed25519 signature on a SignedRequest envelope.
+// It verifies the exact bytes provided by the client; no re-serialization.
+func Verify(sr *signaturepb.SignedRequest, publicKey ed25519.PublicKey) error {
+	if sr == nil {
 		return ErrMissingSignature
 	}
 
-	if len(sig.GetSignedPayload()) == 0 {
-		return fmt.Errorf("%w: empty signed_payload", ErrInvalidSignature)
+	if len(sr.GetPayload()) == 0 {
+		return fmt.Errorf("%w: empty payload", ErrInvalidSignature)
 	}
 
-	if len(sig.GetSignature()) != ed25519.SignatureSize {
-		return fmt.Errorf("%w: invalid signature length %d", ErrInvalidSignature, len(sig.GetSignature()))
+	if len(sr.GetSignature()) != ed25519.SignatureSize {
+		return fmt.Errorf("%w: invalid signature length %d", ErrInvalidSignature, len(sr.GetSignature()))
 	}
 
-	if !ed25519.Verify(publicKey, sig.GetSignedPayload(), sig.GetSignature()) {
+	if !ed25519.Verify(publicKey, sr.GetPayload(), sr.GetSignature()) {
 		return ErrInvalidSignature
 	}
 
 	return nil
 }
 
-// ExtractRequest deserializes the signed_payload into a trusted Request.
-func ExtractRequest(sig *signaturepb.RequestSignature) (*servicepb.Request, error) {
-	if sig == nil {
+// ExtractRequest deserializes the envelope payload into a trusted Request.
+// Callers must call Verify first; ExtractRequest does not check the signature.
+func ExtractRequest(sr *signaturepb.SignedRequest) (*servicepb.Request, error) {
+	if sr == nil {
 		return nil, ErrMissingSignature
 	}
 
-	if len(sig.GetSignedPayload()) == 0 {
-		return nil, fmt.Errorf("%w: empty signed_payload", ErrInvalidSignature)
+	if len(sr.GetPayload()) == 0 {
+		return nil, fmt.Errorf("%w: empty payload", ErrInvalidSignature)
 	}
 
 	req := &servicepb.Request{}
 
-	err := req.UnmarshalVT(sig.GetSignedPayload())
-	if err != nil {
-		return nil, fmt.Errorf("unmarshaling signed_payload: %w", err)
+	if err := req.UnmarshalVT(sr.GetPayload()); err != nil {
+		return nil, fmt.Errorf("unmarshaling payload: %w", err)
 	}
 
 	return req, nil

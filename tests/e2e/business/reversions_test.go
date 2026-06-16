@@ -23,7 +23,7 @@ var _ = Describe("Reversions", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -31,11 +31,11 @@ var _ = Describe("Reversions", Ordered, func() {
 		It("Should revert a transaction successfully", func() {
 			// Create a transaction
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(createResp.Logs).To(HaveLen(1))
@@ -47,7 +47,7 @@ var _ = Describe("Reversions", Ordered, func() {
 
 			// Revert the transaction
 			revertResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.RevertTransactionAction(ledgerName, transactionID, false, false, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.RevertTransactionAction(ledgerName, transactionID, false, false, nil)),
 			})
 			Expect(err).To(Succeed())
 			Expect(revertResp).NotTo(BeNil())
@@ -57,11 +57,11 @@ var _ = Describe("Reversions", Ordered, func() {
 		It("Should revert a transaction with metadata", func() {
 			// Create a transaction
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -76,7 +76,7 @@ var _ = Describe("Reversions", Ordered, func() {
 			}
 
 			revertResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.RevertTransactionAction(ledgerName, transactionID, false, false, revertMetadata)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.RevertTransactionAction(ledgerName, transactionID, false, false, revertMetadata)),
 			})
 			Expect(err).To(Succeed())
 			Expect(revertResp).NotTo(BeNil())
@@ -95,11 +95,11 @@ var _ = Describe("Reversions", Ordered, func() {
 		It("Should revert a transaction with force flag", func() {
 			// Create a transaction
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -109,7 +109,7 @@ var _ = Describe("Reversions", Ordered, func() {
 
 			// Revert the transaction with force flag
 			revertResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.RevertTransactionAction(ledgerName, transactionID, true, false, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.RevertTransactionAction(ledgerName, transactionID, true, false, nil)),
 			})
 			Expect(err).To(Succeed())
 			Expect(revertResp).NotTo(BeNil())
@@ -119,11 +119,11 @@ var _ = Describe("Reversions", Ordered, func() {
 		It("Should revert a transaction with atEffectiveDate flag", func() {
 			// Create a transaction
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -133,7 +133,7 @@ var _ = Describe("Reversions", Ordered, func() {
 
 			// Revert the transaction with atEffectiveDate flag
 			revertResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.RevertTransactionAction(ledgerName, transactionID, false, true, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.RevertTransactionAction(ledgerName, transactionID, false, true, nil)),
 			})
 			Expect(err).To(Succeed())
 			Expect(revertResp).NotTo(BeNil())
@@ -144,7 +144,7 @@ var _ = Describe("Reversions", Ordered, func() {
 			nonExistentTransactionID := uint64(99999)
 
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.RevertTransactionAction(ledgerName, nonExistentTransactionID, false, false, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.RevertTransactionAction(ledgerName, nonExistentTransactionID, false, false, nil)),
 			})
 			Expect(err).To(HaveOccurred())
 
@@ -161,11 +161,11 @@ var _ = Describe("Reversions", Ordered, func() {
 		It("Should fail to revert an already reverted transaction", func() {
 			// Create a transaction
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -175,14 +175,14 @@ var _ = Describe("Reversions", Ordered, func() {
 
 			// Revert the transaction first time
 			revertResp1, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.RevertTransactionAction(ledgerName, transactionID, false, false, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.RevertTransactionAction(ledgerName, transactionID, false, false, nil)),
 			})
 			Expect(err).To(Succeed())
 			Expect(revertResp1).NotTo(BeNil())
 
 			// Try to revert the same transaction again
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.RevertTransactionAction(ledgerName, transactionID, false, false, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.RevertTransactionAction(ledgerName, transactionID, false, false, nil)),
 			})
 			Expect(err).To(HaveOccurred())
 
@@ -201,11 +201,11 @@ var _ = Describe("Reversions", Ordered, func() {
 			var transactionIDs []uint64
 			for i := 0; i < 3; i++ {
 				createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-					Requests: []*servicepb.Request{
+					Envelopes: servicepb.UnsignedEnvelopes(
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 							actions.NewPosting("world", fmt.Sprintf("account-%d", i+1), big.NewInt(100*int64(i+1)), "USD"),
 						}, nil, nil),
-					},
+					),
 				})
 				Expect(err).To(Succeed())
 				log := createResp.Logs[0]
@@ -220,7 +220,7 @@ var _ = Describe("Reversions", Ordered, func() {
 			}
 
 			revertResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: revertReqs,
+				Envelopes: servicepb.UnsignedEnvelopes(revertReqs...),
 			})
 			Expect(err).To(Succeed())
 			Expect(revertResp).NotTo(BeNil())
@@ -233,7 +233,7 @@ var _ = Describe("Reversions", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -241,11 +241,11 @@ var _ = Describe("Reversions", Ordered, func() {
 		It("Should restore account balances after revert", func() {
 			// Create a transaction: world -> account-1 (100 USD)
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -263,7 +263,7 @@ var _ = Describe("Reversions", Ordered, func() {
 			transactionID := applyLog.Log.Data.GetCreatedTransaction().Transaction.Id
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.RevertTransactionAction(ledgerName, transactionID, false, false, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.RevertTransactionAction(ledgerName, transactionID, false, false, nil)),
 			})
 			Expect(err).To(Succeed())
 
@@ -279,12 +279,12 @@ var _ = Describe("Reversions", Ordered, func() {
 		It("Should restore balances for multi-posting transaction", func() {
 			// Create a transaction with multiple postings
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "account-a", big.NewInt(100), "USD"),
 						actions.NewPosting("world", "account-b", big.NewInt(200), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -309,7 +309,7 @@ var _ = Describe("Reversions", Ordered, func() {
 			transactionID := applyLog.Log.Data.GetCreatedTransaction().Transaction.Id
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.RevertTransactionAction(ledgerName, transactionID, false, false, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.RevertTransactionAction(ledgerName, transactionID, false, false, nil)),
 			})
 			Expect(err).To(Succeed())
 
@@ -332,11 +332,11 @@ var _ = Describe("Reversions", Ordered, func() {
 		It("Should correctly track volumes after revert", func() {
 			// Create a transaction
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "volume-account", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -346,7 +346,7 @@ var _ = Describe("Reversions", Ordered, func() {
 			transactionID := applyLog.Log.Data.GetCreatedTransaction().Transaction.Id
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.RevertTransactionAction(ledgerName, transactionID, false, false, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.RevertTransactionAction(ledgerName, transactionID, false, false, nil)),
 			})
 			Expect(err).To(Succeed())
 
@@ -367,7 +367,7 @@ var _ = Describe("Reversions", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -375,11 +375,11 @@ var _ = Describe("Reversions", Ordered, func() {
 		It("Should mark original transaction as reverted", func() {
 			// Create a transaction
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -397,7 +397,7 @@ var _ = Describe("Reversions", Ordered, func() {
 
 			// Revert the transaction
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.RevertTransactionAction(ledgerName, transactionID, false, false, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.RevertTransactionAction(ledgerName, transactionID, false, false, nil)),
 			})
 			Expect(err).To(Succeed())
 
@@ -413,11 +413,11 @@ var _ = Describe("Reversions", Ordered, func() {
 		It("Should create a new reverting transaction", func() {
 			// Create a transaction
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -427,7 +427,7 @@ var _ = Describe("Reversions", Ordered, func() {
 
 			// Revert the transaction
 			revertResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.RevertTransactionAction(ledgerName, originalTxID, false, false, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.RevertTransactionAction(ledgerName, originalTxID, false, false, nil)),
 			})
 			Expect(err).To(Succeed())
 
@@ -453,7 +453,7 @@ var _ = Describe("Reversions", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -461,11 +461,11 @@ var _ = Describe("Reversions", Ordered, func() {
 		It("Should fail to revert when account has insufficient funds without force flag", func() {
 			// Create a transaction: world -> account-1 (100 USD)
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -475,17 +475,17 @@ var _ = Describe("Reversions", Ordered, func() {
 
 			// Spend the funds: account-1 -> account-2 (100 USD)
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("account-1", "account-2", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			// Try to revert the original transaction (account-1 has 0 balance)
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.RevertTransactionAction(ledgerName, transactionID, false, false, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.RevertTransactionAction(ledgerName, transactionID, false, false, nil)),
 			})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("insufficient"))
@@ -494,11 +494,11 @@ var _ = Describe("Reversions", Ordered, func() {
 		It("Should succeed to revert when account has insufficient funds with force flag", func() {
 			// Create a transaction: world -> account-1 (100 USD)
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -508,17 +508,17 @@ var _ = Describe("Reversions", Ordered, func() {
 
 			// Spend the funds: account-1 -> account-2 (100 USD)
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("account-1", "account-2", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			// Revert with force flag (should succeed even with negative balance)
 			revertResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.RevertTransactionAction(ledgerName, transactionID, true, false, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.RevertTransactionAction(ledgerName, transactionID, true, false, nil)),
 			})
 			Expect(err).To(Succeed())
 			Expect(revertResp).NotTo(BeNil())
@@ -537,7 +537,7 @@ var _ = Describe("Reversions", Ordered, func() {
 	Context("When reverting on invalid ledger", func() {
 		It("Should fail to revert on non-existent ledger", func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.RevertTransactionAction("non-existent-ledger", 1, false, false, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.RevertTransactionAction("non-existent-ledger", 1, false, false, nil)),
 			})
 			Expect(err).To(HaveOccurred())
 		})
@@ -548,27 +548,27 @@ var _ = Describe("Reversions", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 		})
 
 		It("Should not include postCommitVolumes on revert when expandVolumes is false", func() {
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "ev-rv-no-expand", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			txID := createResp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().Transaction.Id
 
 			revertResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.RevertTransactionAction(ledgerName, txID, false, false, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -578,20 +578,20 @@ var _ = Describe("Reversions", Ordered, func() {
 
 		It("Should include postCommitVolumes on revert when expandVolumes is true", func() {
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "ev-rv-expand", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			txID := createResp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().Transaction.Id
 
 			revertResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.WithExpandVolumes(actions.RevertTransactionAction(ledgerName, txID, false, false, nil)),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -610,11 +610,11 @@ var _ = Describe("Reversions", Ordered, func() {
 		It("Should include correct postCommitVolumes on force revert with spent funds", func() {
 			// Create: world -> ev-rv-force (100 USD)
 			createResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "ev-rv-force", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -622,19 +622,19 @@ var _ = Describe("Reversions", Ordered, func() {
 
 			// Spend the funds: ev-rv-force -> other (100 USD)
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("ev-rv-force", "ev-rv-force-other", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			// Force revert with expandVolumes
 			revertResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.WithExpandVolumes(actions.RevertTransactionAction(ledgerName, txID, true, false, nil)),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 

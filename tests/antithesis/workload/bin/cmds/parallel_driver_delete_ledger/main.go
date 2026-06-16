@@ -35,7 +35,7 @@ func main() {
 
 	// Create a transaction in it so it's not empty.
 	_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{{
+		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: ledgerName,
@@ -49,7 +49,7 @@ func main() {
 					}},
 				},
 			},
-		}},
+		}),
 	})
 	assert.Sometimes(err == nil || internal.IsTransient(err),
 		"should be able to seed ephemeral ledger before delete", details.With(internal.Details{"error": err}))
@@ -59,13 +59,13 @@ func main() {
 
 	// Delete the ledger.
 	_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{{
+		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 			Type: &servicepb.Request_DeleteLedger{
 				DeleteLedger: &servicepb.DeleteLedgerRequest{
 					Name: ledgerName,
 				},
 			},
-		}},
+		}),
 	})
 
 	assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to delete ledger", details.With(internal.Details{"error": err}))

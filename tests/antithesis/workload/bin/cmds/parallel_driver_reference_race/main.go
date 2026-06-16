@@ -47,7 +47,7 @@ func createWithReference(
 	ledger, ref, destination string,
 ) (*servicepb.ApplyResponse, error) {
 	return client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{{
+		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: ledger,
@@ -65,7 +65,7 @@ func createWithReference(
 					}},
 				},
 			},
-		}},
+		}),
 	})
 }
 
@@ -76,7 +76,7 @@ func createWithReference(
 // (0, false) when the barrier could not be established (inconclusive).
 func writeMarker(ctx context.Context, client servicepb.BucketServiceClient, ledger string) (uint64, bool) {
 	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{{
+		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: ledger,
@@ -93,7 +93,7 @@ func writeMarker(ctx context.Context, client servicepb.BucketServiceClient, ledg
 					}},
 				},
 			},
-		}},
+		}),
 	})
 	if err != nil {
 		return 0, false

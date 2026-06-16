@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
@@ -35,24 +34,22 @@ func TestSignAndVerifyRoundTrip(t *testing.T) {
 		},
 	}
 
-	err := Sign(req, "key-1", priv)
+	sr, err := Sign(req, "key-1", priv)
 	require.NoError(t, err)
-	require.NotNil(t, req.GetSignature())
-	require.Equal(t, "key-1", req.GetSignature().GetKeyId())
-	require.Len(t, req.GetSignature().GetSignature(), ed25519.SignatureSize)
-	require.NotEmpty(t, req.GetSignature().GetSignedPayload())
+	require.NotNil(t, sr)
+	require.Equal(t, "key-1", sr.GetKeyId())
+	require.Len(t, sr.GetSignature(), ed25519.SignatureSize)
+	require.NotEmpty(t, sr.GetPayload())
 
 	// Verify succeeds with correct key
-	err = Verify(req.GetSignature(), pub)
+	err = Verify(sr, pub)
 	require.NoError(t, err)
 
 	// Extract request
-	extracted, err := ExtractRequest(req.GetSignature())
+	extracted, err := ExtractRequest(sr)
 	require.NoError(t, err)
 	require.Equal(t, "test-key", extracted.GetIdempotencyKey())
 	require.Equal(t, "my-ledger", extracted.GetCreateLedger().GetName())
-	// Extracted request should have no signature
-	require.Nil(t, extracted.GetSignature())
 }
 
 func TestVerifyWrongKey(t *testing.T) {
@@ -67,10 +64,10 @@ func TestVerifyWrongKey(t *testing.T) {
 		},
 	}
 
-	err := Sign(req, "key-1", priv)
+	sr, err := Sign(req, "key-1", priv)
 	require.NoError(t, err)
 
-	err = Verify(req.GetSignature(), otherPub)
+	err = Verify(sr, otherPub)
 	require.ErrorIs(t, err, ErrInvalidSignature)
 }
 
@@ -85,13 +82,13 @@ func TestVerifyModifiedPayload(t *testing.T) {
 		},
 	}
 
-	err := Sign(req, "key-1", priv)
+	sr, err := Sign(req, "key-1", priv)
 	require.NoError(t, err)
 
-	// Tamper with signed_payload
-	req.Signature.SignedPayload[0] ^= 0xFF
+	// Tamper with payload after signing
+	sr.Payload[0] ^= 0xFF
 
-	err = Verify(req.GetSignature(), pub)
+	err = Verify(sr, pub)
 	require.ErrorIs(t, err, ErrInvalidSignature)
 }
 
@@ -106,13 +103,13 @@ func TestVerifyModifiedSignature(t *testing.T) {
 		},
 	}
 
-	err := Sign(req, "key-1", priv)
+	sr, err := Sign(req, "key-1", priv)
 	require.NoError(t, err)
 
 	// Tamper with signature
-	req.Signature.Signature[0] ^= 0xFF
+	sr.Signature[0] ^= 0xFF
 
-	err = Verify(req.GetSignature(), pub)
+	err = Verify(sr, pub)
 	require.ErrorIs(t, err, ErrInvalidSignature)
 }
 
@@ -130,28 +127,14 @@ func TestVerifyEmptyPayload(t *testing.T) {
 
 	pub, _ := generateTestKeypair(t)
 
-	sig := &signaturepb.RequestSignature{
-		KeyId:         "key-1",
-		Signature:     make([]byte, ed25519.SignatureSize),
-		SignedPayload: nil,
+	sr := &signaturepb.SignedRequest{
+		KeyId:     "key-1",
+		Signature: make([]byte, ed25519.SignatureSize),
+		Payload:   nil,
 	}
 
-	err := Verify(sig, pub)
+	err := Verify(sr, pub)
 	require.ErrorIs(t, err, ErrInvalidSignature)
-}
-
-func TestSignPayload(t *testing.T) {
-	t.Parallel()
-
-	pub, priv := generateTestKeypair(t)
-	payload := []byte("hello world")
-
-	sig := SignPayload(payload, "my-key", priv)
-	require.Equal(t, "my-key", sig.GetKeyId())
-	require.Equal(t, payload, sig.GetSignedPayload())
-
-	err := Verify(sig, pub)
-	require.NoError(t, err)
 }
 
 func TestExtractRequestPreservesContent(t *testing.T) {
@@ -166,10 +149,10 @@ func TestExtractRequestPreservesContent(t *testing.T) {
 		},
 	}
 
-	err := Sign(original, "key-1", priv)
+	sr, err := Sign(original, "key-1", priv)
 	require.NoError(t, err)
 
-	extracted, err := ExtractRequest(original.GetSignature())
+	extracted, err := ExtractRequest(sr)
 	require.NoError(t, err)
 	require.Equal(t, "idem-123", extracted.GetIdempotencyKey())
 	require.Equal(t, "old-ledger", extracted.GetDeleteLedger().GetName())
@@ -180,13 +163,13 @@ func TestVerifyInvalidSignatureLength(t *testing.T) {
 
 	pub, _ := generateTestKeypair(t)
 
-	sig := &signaturepb.RequestSignature{
-		KeyId:         "key-1",
-		Signature:     []byte("too-short"),
-		SignedPayload: []byte("payload"),
+	sr := &signaturepb.SignedRequest{
+		KeyId:     "key-1",
+		Signature: []byte("too-short"),
+		Payload:   []byte("payload"),
 	}
 
-	err := Verify(sig, pub)
+	err := Verify(sr, pub)
 	require.ErrorIs(t, err, ErrInvalidSignature)
 }
 
@@ -200,28 +183,28 @@ func TestExtractRequestNil(t *testing.T) {
 func TestExtractRequestEmptyPayload(t *testing.T) {
 	t.Parallel()
 
-	sig := &signaturepb.RequestSignature{
-		KeyId:         "key-1",
-		SignedPayload: nil,
+	sr := &signaturepb.SignedRequest{
+		KeyId:   "key-1",
+		Payload: nil,
 	}
 
-	_, err := ExtractRequest(sig)
+	_, err := ExtractRequest(sr)
 	require.ErrorIs(t, err, ErrInvalidSignature)
 }
 
 func TestExtractRequestInvalidPayload(t *testing.T) {
 	t.Parallel()
 
-	sig := &signaturepb.RequestSignature{
-		KeyId:         "key-1",
-		SignedPayload: []byte("not-valid-proto"),
+	sr := &signaturepb.SignedRequest{
+		KeyId:   "key-1",
+		Payload: []byte("not-valid-proto"),
 	}
 
-	_, err := ExtractRequest(sig)
+	_, err := ExtractRequest(sr)
 	require.Error(t, err)
 }
 
-func TestSignDoesNotMutateOriginalFields(t *testing.T) {
+func TestSignDoesNotMutateOriginal(t *testing.T) {
 	t.Parallel()
 
 	_, priv := generateTestKeypair(t)
@@ -233,17 +216,10 @@ func TestSignDoesNotMutateOriginalFields(t *testing.T) {
 		},
 	}
 
-	err := Sign(req, "key-1", priv)
+	_, err := Sign(req, "key-1", priv)
 	require.NoError(t, err)
 
-	// Original request fields should be unchanged
+	// Original request fields are unchanged
 	require.Equal(t, "key-abc", req.GetIdempotencyKey())
 	require.Equal(t, "test", req.GetCreateLedger().GetName())
-
-	// The signed_payload should encode the request without signature
-	inner := &servicepb.Request{}
-	err = proto.Unmarshal(req.GetSignature().GetSignedPayload(), inner)
-	require.NoError(t, err)
-	require.Nil(t, inner.GetSignature())
-	require.Equal(t, "key-abc", inner.GetIdempotencyKey())
 }

@@ -149,45 +149,45 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
 
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, map[string]string{"env": "test"})},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, map[string]string{"env": "test"})),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "bank", big.NewInt(10000), "USD"),
 					}, map[string]string{"type": "funding"}, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("bank", "alice", big.NewInt(3000), "USD"),
 						actions.NewPosting("bank", "bob", big.NewInt(2000), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "customer"})},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "customer"})),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledger2, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledger2, nil)),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledger2, []*commonpb.Posting{
 						actions.NewPosting("world", "treasury", big.NewInt(50000), "EUR"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -218,11 +218,11 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		It("should run incremental backup after adding more data", func() {
 			// Add more data after the full backup
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("bank", "eve", big.NewInt(500), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -389,11 +389,11 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 
 		It("should accept new transactions after bootstrap", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("bank", "charlie", big.NewInt(1000), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 

@@ -117,7 +117,7 @@ func writeProbeTransaction(ctx context.Context, client servicepb.BucketServiceCl
 	for attempt := range writeAttempts {
 		writeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
 		_, err := client.Apply(writeCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
@@ -131,7 +131,7 @@ func writeProbeTransaction(ctx context.Context, client servicepb.BucketServiceCl
 						}},
 					},
 				},
-			}},
+			}),
 		})
 		cancel()
 

@@ -152,7 +152,7 @@ var _ = Describe("Mirror", Ordered, func() {
 			defer mockV2.Close()
 
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{{
+				Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 					Type: &servicepb.Request_CreateLedger{
 						CreateLedger: &servicepb.CreateLedgerRequest{
 							Name: "mirror-http",
@@ -167,7 +167,7 @@ var _ = Describe("Mirror", Ordered, func() {
 							},
 						},
 					},
-				}},
+				}),
 			})
 			Expect(err).To(Succeed())
 
@@ -182,7 +182,7 @@ var _ = Describe("Mirror", Ordered, func() {
 
 		It("Should create a mirror ledger with Postgres source config", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{{
+				Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 					Type: &servicepb.Request_CreateLedger{
 						CreateLedger: &servicepb.CreateLedgerRequest{
 							Name: "mirror-pg",
@@ -197,7 +197,7 @@ var _ = Describe("Mirror", Ordered, func() {
 							},
 						},
 					},
-				}},
+				}),
 			})
 			Expect(err).To(Succeed())
 
@@ -215,7 +215,7 @@ var _ = Describe("Mirror", Ordered, func() {
 			DeferCleanup(mockV2.Close)
 
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{{
+				Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 					Type: &servicepb.Request_CreateLedger{
 						CreateLedger: &servicepb.CreateLedgerRequest{
 							Name: "mirror-guard",
@@ -230,18 +230,18 @@ var _ = Describe("Mirror", Ordered, func() {
 							},
 						},
 					},
-				}},
+				}),
 			})
 			Expect(err).To(Succeed())
 		})
 
 		It("Should reject creating transactions on mirror ledger", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction("mirror-guard", []*commonpb.Posting{
 						actions.NewPosting("world", "users:001", big.NewInt(100), "USD"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(HaveOccurred())
 
@@ -256,9 +256,9 @@ var _ = Describe("Mirror", Ordered, func() {
 
 		It("Should reject saving metadata on mirror ledger", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.SaveAccountMetadataAction("mirror-guard", "users:001", map[string]string{"key": "val"}),
-				},
+				),
 			})
 			Expect(err).To(HaveOccurred())
 
@@ -269,9 +269,9 @@ var _ = Describe("Mirror", Ordered, func() {
 
 		It("Should reject deleting metadata on mirror ledger", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.DeleteAccountMetadataAction("mirror-guard", "users:001", "key"),
-				},
+				),
 			})
 			Expect(err).To(HaveOccurred())
 
@@ -282,18 +282,18 @@ var _ = Describe("Mirror", Ordered, func() {
 
 		It("Should allow setting metadata field type on mirror ledger", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.SetMetadataFieldTypeAction("mirror-guard", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "category", commonpb.MetadataType_METADATA_TYPE_STRING),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
 
 		It("Should allow removing metadata field type on mirror ledger", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.RemoveMetadataFieldTypeAction("mirror-guard", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "category"),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -312,7 +312,7 @@ var _ = Describe("Mirror", Ordered, func() {
 			mockV2.addLog(newV2SetMetadataLog(3, "ACCOUNT", "users:001", map[string]string{"role": "admin"}))
 
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{{
+				Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 					Type: &servicepb.Request_CreateLedger{
 						CreateLedger: &servicepb.CreateLedgerRequest{
 							Name: "mirror-sync",
@@ -327,7 +327,7 @@ var _ = Describe("Mirror", Ordered, func() {
 							},
 						},
 					},
-				}},
+				}),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -369,7 +369,7 @@ var _ = Describe("Mirror", Ordered, func() {
 			mockV2.addLog(newV2TransactionLog(1, 0, "world", "users:001", "50", "USD/2"))
 
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{{
+				Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 					Type: &servicepb.Request_CreateLedger{
 						CreateLedger: &servicepb.CreateLedgerRequest{
 							Name: "mirror-promote",
@@ -384,7 +384,7 @@ var _ = Describe("Mirror", Ordered, func() {
 							},
 						},
 					},
-				}},
+				}),
 			})
 			Expect(err).To(Succeed())
 
@@ -398,13 +398,13 @@ var _ = Describe("Mirror", Ordered, func() {
 
 		It("Should promote ledger from mirror to normal mode", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{{
+				Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 					Type: &servicepb.Request_PromoteLedger{
 						PromoteLedger: &servicepb.PromoteLedgerRequest{
 							Ledger: "mirror-promote",
 						},
 					},
-				}},
+				}),
 			})
 			Expect(err).To(Succeed())
 
@@ -419,11 +419,11 @@ var _ = Describe("Mirror", Ordered, func() {
 
 		It("Should allow writing to the promoted ledger", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction("mirror-promote", []*commonpb.Posting{
 						actions.NewPosting("world", "users:002", big.NewInt(200), "USD/2"),
 					}, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -432,18 +432,18 @@ var _ = Describe("Mirror", Ordered, func() {
 	Context("When promoting a non-mirror ledger", func() {
 		It("Should fail with LEDGER_NOT_IN_MIRROR_MODE", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction("normal-ledger-promote", nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction("normal-ledger-promote", nil)),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{{
+				Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 					Type: &servicepb.Request_PromoteLedger{
 						PromoteLedger: &servicepb.PromoteLedgerRequest{
 							Ledger: "normal-ledger-promote",
 						},
 					},
-				}},
+				}),
 			})
 			Expect(err).To(HaveOccurred())
 
@@ -475,7 +475,7 @@ var _ = Describe("Mirror", Ordered, func() {
 			mockV2.addLog(newV2SetMetadataLog(2, "ACCOUNT", "oauth2:user1", map[string]string{"provider": "oauth2"}))
 
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{{
+				Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 					Type: &servicepb.Request_CreateLedger{
 						CreateLedger: &servicepb.CreateLedgerRequest{
 							Name: "mirror-oauth2",
@@ -495,7 +495,7 @@ var _ = Describe("Mirror", Ordered, func() {
 							},
 						},
 					},
-				}},
+				}),
 			})
 			Expect(err).To(Succeed())
 		})

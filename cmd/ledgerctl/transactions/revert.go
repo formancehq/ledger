@@ -144,22 +144,20 @@ func runRevert(cmd *cobra.Command, args []string) error {
 	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Reverting transaction #%d...", txID))
 
 	// Build revert request
-	req := &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{
-			{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledgerName,
-						Action: &servicepb.LedgerAction{
-							Data: &servicepb.LedgerAction_RevertTransaction{
-								RevertTransaction: &servicepb.RevertTransactionPayload{
-									Identifier:      &servicepb.RevertTransactionPayload_TransactionId{TransactionId: txID},
-									Force:           force,
-									AtEffectiveDate: atEffectiveDate,
-									Metadata:        commonpb.MetadataFromGoMap(metadata),
-									Receipt:         receiptFlag,
-									ExpandVolumes:   expandVolumes,
-								},
+	requests := []*servicepb.Request{
+		{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledgerName,
+					Action: &servicepb.LedgerAction{
+						Data: &servicepb.LedgerAction_RevertTransaction{
+							RevertTransaction: &servicepb.RevertTransactionPayload{
+								Identifier:      &servicepb.RevertTransactionPayload_TransactionId{TransactionId: txID},
+								Force:           force,
+								AtEffectiveDate: atEffectiveDate,
+								Metadata:        commonpb.MetadataFromGoMap(metadata),
+								Receipt:         receiptFlag,
+								ExpandVolumes:   expandVolumes,
 							},
 						},
 					},
@@ -168,13 +166,14 @@ func runRevert(cmd *cobra.Command, args []string) error {
 		},
 	}
 
-	if err := cmdutil.SignRequests(cmd, req.GetRequests()); err != nil {
+	envelopes, err := cmdutil.BuildEnvelopes(cmd, requests)
+	if err != nil {
 		spinner.Fail("Failed to sign request")
 
 		return cmdutil.Displayed(err)
 	}
 
-	resp, err := client.Apply(ctx, req)
+	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{Envelopes: envelopes})
 	if err != nil {
 		_ = spinner.Stop()
 

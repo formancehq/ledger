@@ -15,7 +15,7 @@ func main() {
 		idemKey := fmt.Sprintf("idem-%d", internal.Rand().Uint64())
 
 		req := &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				IdempotencyKey: idemKey,
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
@@ -29,7 +29,7 @@ func main() {
 						}},
 					},
 				},
-			}},
+			}),
 		}
 
 		details := internal.Details{"ledger": ledger, "idempotencyKey": idemKey}

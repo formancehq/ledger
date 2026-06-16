@@ -369,8 +369,17 @@ func ApplyActions(t *testing.T, ctx context.Context, client servicepb.BucketServ
 	t.Helper()
 
 	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: actions,
+		Envelopes: servicepb.UnsignedEnvelopes(actions...),
 	})
+	require.NoError(t, err, "Apply failed")
+	return resp
+}
+
+// ApplyEnvelopes applies a batch of pre-built envelopes (signed or unsigned) and requires success.
+func ApplyEnvelopes(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, envelopes ...*servicepb.Envelope) *servicepb.ApplyResponse {
+	t.Helper()
+
+	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{Envelopes: envelopes})
 	require.NoError(t, err, "Apply failed")
 	return resp
 }
@@ -378,7 +387,7 @@ func ApplyActions(t *testing.T, ctx context.Context, client servicepb.BucketServ
 // ApplyActionsExpectError applies actions and returns the error (nil if success).
 func ApplyActionsExpectError(ctx context.Context, client servicepb.BucketServiceClient, actions ...*servicepb.Request) error {
 	_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: actions,
+		Envelopes: servicepb.UnsignedEnvelopes(actions...),
 	})
 	return err
 }

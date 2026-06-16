@@ -26,13 +26,13 @@ func TestAdmitRejectsWhenUnhealthy(t *testing.T) {
 		a, _ := createTestAdmission(t, store)
 		a.healthChecker = mockChecker
 
-		_, err := a.Admit(context.Background(), &servicepb.Request{
+		_, err := a.Admit(context.Background(), servicepb.UnsignedEnvelope(&servicepb.Request{
 			Type: &servicepb.Request_CreateLedger{
 				CreateLedger: &servicepb.CreateLedgerRequest{
 					Name: "test-ledger-rejected",
 				},
 			},
-		})
+		}))
 
 		require.ErrorIs(t, err, health.ErrUnhealthy)
 	})
@@ -49,14 +49,14 @@ func TestAdmitRejectsWhenUnhealthy(t *testing.T) {
 		a.healthChecker = mockChecker
 
 		_, err := a.Admit(context.Background(),
-			&servicepb.Request{
+			servicepb.UnsignedEnvelope(&servicepb.Request{
 				Type: &servicepb.Request_CreateLedger{
 					CreateLedger: &servicepb.CreateLedgerRequest{
 						Name: "ledger1",
 					},
 				},
-			},
-			&servicepb.Request{
+			}),
+			servicepb.UnsignedEnvelope(&servicepb.Request{
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: "ledger1",
@@ -76,7 +76,7 @@ func TestAdmitRejectsWhenUnhealthy(t *testing.T) {
 						},
 					},
 				},
-			},
+			}),
 		)
 
 		require.ErrorIs(t, err, health.ErrUnhealthy)
@@ -93,7 +93,7 @@ func TestAdmitRejectsWhenUnhealthy(t *testing.T) {
 		a, _ := createTestAdmission(t, store)
 		a.healthChecker = mockChecker
 
-		_, err := a.Admit(context.Background(), &servicepb.Request{
+		_, err := a.Admit(context.Background(), servicepb.UnsignedEnvelope(&servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: testLedgerName,
@@ -113,7 +113,7 @@ func TestAdmitRejectsWhenUnhealthy(t *testing.T) {
 					},
 				},
 			},
-		})
+		}))
 
 		require.ErrorIs(t, err, health.ErrUnhealthy)
 	})

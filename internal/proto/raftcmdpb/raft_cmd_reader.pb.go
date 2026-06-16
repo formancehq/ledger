@@ -14,7 +14,7 @@ import (
 // Call Mutate() to obtain a mutable clone.
 type OrderReader interface {
 	GetIdempotency() commonpb.IdempotencyReader
-	GetSignature() signaturepb.RequestSignatureReader
+	GetSignature() signaturepb.SignedRequestReader
 	GetType() isOrder_Type
 	Mutate() *Order
 }
@@ -29,7 +29,7 @@ func (r *orderReadonly) GetIdempotency() commonpb.IdempotencyReader {
 	return v.AsReader()
 }
 
-func (r *orderReadonly) GetSignature() signaturepb.RequestSignatureReader {
+func (r *orderReadonly) GetSignature() signaturepb.SignedRequestReader {
 	v := r.v.GetSignature()
 	if v == nil {
 		return nil

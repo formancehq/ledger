@@ -422,11 +422,11 @@ func (impl *ClusterServiceServerImpl) CreateQueryCheckpoint(ctx context.Context,
 	}
 
 	// Route through Raft so the checkpoint is replicated to all nodes.
-	logs, err := impl.admission.Admit(ctx, &servicepb.Request{
+	logs, err := impl.admission.Admit(ctx, servicepb.UnsignedEnvelope(&servicepb.Request{
 		Type: &servicepb.Request_CreateQueryCheckpoint{
 			CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{},
 		},
-	})
+	}))
 	if err != nil {
 		return nil, fmt.Errorf("creating query checkpoint via raft: %w", err)
 	}
@@ -454,13 +454,13 @@ func (impl *ClusterServiceServerImpl) DeleteQueryCheckpoint(ctx context.Context,
 	}
 
 	// Route through Raft so the deletion is replicated to all nodes.
-	_, err := impl.admission.Admit(ctx, &servicepb.Request{
+	_, err := impl.admission.Admit(ctx, servicepb.UnsignedEnvelope(&servicepb.Request{
 		Type: &servicepb.Request_DeleteQueryCheckpoint{
 			DeleteQueryCheckpoint: &servicepb.DeleteQueryCheckpointRequest{
 				CheckpointId: req.GetCheckpointId(),
 			},
 		},
-	})
+	}))
 	if err != nil {
 		return nil, fmt.Errorf("deleting query checkpoint via raft: %w", err)
 	}

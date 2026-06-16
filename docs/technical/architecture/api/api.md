@@ -431,7 +431,7 @@ func (r *RoutedController) Apply(ctx context.Context, requests ...*servicepb.Req
     }
     // Forward to leader via ServiceConnectionPool
     leaderClient := r.getLeaderClient()
-    resp, err := leaderClient.Apply(ctx, &servicepb.ApplyRequest{Requests: requests})
+    resp, err := leaderClient.Apply(ctx, &servicepb.ApplyRequest{Envelopes: servicepb.UnsignedEnvelopes(requests...)})
     return resp.Logs, err
 }
 ```

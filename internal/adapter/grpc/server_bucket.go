@@ -107,24 +107,28 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 
 	ctx = adoptForwardedSnapshotIfTrusted(ctx, req)
 
-	if len(req.GetRequests()) == 0 {
-		return nil, errors.New("at least one request is required")
+	if len(req.GetEnvelopes()) == 0 {
+		return nil, errors.New("at least one envelope is required")
 	}
 
-	// Per-request scope check: each request in the batch may require a
-	// different granular scope. Note: for cluster-internal forwards
-	// (cluster-secret authenticated peers), Authenticate grants the full
-	// scope set so this loop is a no-op by design — the forwarding follower
-	// has already enforced per-request scopes against the original user's
-	// claims. The forwarded snapshot's Scopes field is recorded for audit
-	// (carried via WithForwardedSnapshot above) but is never consulted for
-	// authorization here.
+	// Per-envelope scope check: each request in the batch may require a
+	// different granular scope. For signed envelopes we peek into the
+	// payload to determine the request type — peeking is non-authoritative,
+	// admission re-verifies the signature and unmarshals the same bytes for
+	// processing. Cluster-internal forwards (cluster-secret authenticated
+	// peers) get the full scope set so this loop is a no-op by design.
 	if impl.authCfg.Enabled {
 		effective := internalauth.ExpandedScopesFromContext(ctx)
 		authPresented := internalauth.AuthPresentedFromContext(ctx)
 
-		for i, r := range req.GetRequests() {
-			required := internalauth.RequiredScopeForRequest(r)
+		for i, env := range req.GetEnvelopes() {
+			peeked, err := servicepb.PeekRequest(env)
+			if err != nil {
+				return nil, status.Errorf(codes.InvalidArgument,
+					"envelope %d: %v", i, err)
+			}
+
+			required := internalauth.RequiredScopeForRequest(peeked)
 			if internalauth.HasScope(effective, required) {
 				continue
 			}
@@ -143,10 +147,10 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 	}
 
 	if impl.logger.Enabled(logging.TraceLevel) {
-		impl.logger.Tracef("Apply request received with %d requests", len(req.GetRequests()))
+		impl.logger.Tracef("Apply request received with %d envelopes", len(req.GetEnvelopes()))
 	}
 
-	logs, err := impl.ctrl.Apply(ctx, req.GetRequests()...)
+	logs, err := impl.ctrl.Apply(ctx, req.GetEnvelopes()...)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +174,7 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 	}
 
 	impl.applyDuration.Record(ctx, time.Since(start).Microseconds(),
-		metric.WithAttributes(attribute.Int("batch_size", len(req.GetRequests()))))
+		metric.WithAttributes(attribute.Int("batch_size", len(req.GetEnvelopes()))))
 
 	if skipResponse {
 		for _, log := range logs {
@@ -1190,11 +1194,11 @@ func (impl *BucketServiceServerImpl) CreatePreparedQuery(ctx context.Context, re
 		return nil, err
 	}
 
-	_, err := impl.ctrl.Apply(ctx, &servicepb.Request{
+	_, err := impl.ctrl.Apply(ctx, servicepb.UnsignedEnvelope(&servicepb.Request{
 		Type: &servicepb.Request_CreatePreparedQuery{
 			CreatePreparedQuery: req,
 		},
-	})
+	}))
 	if err != nil {
 		return nil, err
 	}
@@ -1207,11 +1211,11 @@ func (impl *BucketServiceServerImpl) UpdatePreparedQuery(ctx context.Context, re
 		return nil, err
 	}
 
-	_, err := impl.ctrl.Apply(ctx, &servicepb.Request{
+	_, err := impl.ctrl.Apply(ctx, servicepb.UnsignedEnvelope(&servicepb.Request{
 		Type: &servicepb.Request_UpdatePreparedQuery{
 			UpdatePreparedQuery: req,
 		},
-	})
+	}))
 	if err != nil {
 		return nil, err
 	}
@@ -1224,11 +1228,11 @@ func (impl *BucketServiceServerImpl) DeletePreparedQuery(ctx context.Context, re
 		return nil, err
 	}
 
-	_, err := impl.ctrl.Apply(ctx, &servicepb.Request{
+	_, err := impl.ctrl.Apply(ctx, servicepb.UnsignedEnvelope(&servicepb.Request{
 		Type: &servicepb.Request_DeletePreparedQuery{
 			DeletePreparedQuery: req,
 		},
-	})
+	}))
 	if err != nil {
 		return nil, err
 	}

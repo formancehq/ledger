@@ -21,7 +21,7 @@ func main() {
 
 		// 1. Create a prepared query filtering by "users:" prefix.
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_CreatePreparedQuery{
 					CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
 						Query: &commonpb.PreparedQuery{
@@ -40,7 +40,7 @@ func main() {
 						},
 					},
 				},
-			}},
+			}),
 		})
 		if err != nil && !internal.IsTransient(err) {
 			st, _ := status.FromError(err)
@@ -51,7 +51,7 @@ func main() {
 
 		// 2. Update the query filter to "world" prefix.
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_UpdatePreparedQuery{
 					UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
 						Ledger: ledger,
@@ -67,7 +67,7 @@ func main() {
 						},
 					},
 				},
-			}},
+			}),
 		})
 
 		assert.Sometimes(err == nil || internal.IsTransient(err),
@@ -92,14 +92,14 @@ func main() {
 
 		// 4. Cleanup.
 		if _, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_DeletePreparedQuery{
 					DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{
 						Ledger: ledger,
 						Name:   queryName,
 					},
 				},
-			}},
+			}),
 		}); err != nil {
 			internal.LogCleanupError(fmt.Sprintf("delete prepared query %q", queryName), err)
 		}

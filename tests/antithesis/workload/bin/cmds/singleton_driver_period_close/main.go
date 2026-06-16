@@ -42,11 +42,11 @@ func main() {
 
 func closePeriod(ctx context.Context, client servicepb.BucketServiceClient) {
 	_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{{
+		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 			Type: &servicepb.Request_ClosePeriod{
 				ClosePeriod: &servicepb.ClosePeriodRequest{},
 			},
-		}},
+		}),
 	})
 
 	if err != nil {
@@ -80,13 +80,13 @@ func archiveClosedPeriods(ctx context.Context, client servicepb.BucketServiceCli
 
 		// Archive the closed period (uploads logs to cold storage).
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_ArchivePeriod{
 					ArchivePeriod: &servicepb.ArchivePeriodRequest{
 						PeriodId: periodID,
 					},
 				},
-			}},
+			}),
 		})
 
 		if err != nil {
@@ -101,13 +101,13 @@ func archiveClosedPeriods(ctx context.Context, client servicepb.BucketServiceCli
 
 		// Confirm the archive (purges hot data).
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_ConfirmArchivePeriod{
 					ConfirmArchivePeriod: &servicepb.ConfirmArchivePeriodRequest{
 						PeriodId: periodID,
 					},
 				},
-			}},
+			}),
 		})
 
 		if err != nil {

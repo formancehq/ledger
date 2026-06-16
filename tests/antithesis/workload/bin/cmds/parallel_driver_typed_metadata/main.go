@@ -29,7 +29,7 @@ func main() {
 
 		// 1. Declare the metadata key as INT64.
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_SetMetadataFieldType{
 					SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
 						Ledger:     ledger,
@@ -38,7 +38,7 @@ func main() {
 						Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
 					},
 				},
-			}},
+			}),
 		})
 		if err != nil && !internal.IsTransient(err) {
 			return
@@ -46,7 +46,7 @@ func main() {
 
 		// 2. Create an index on this metadata key.
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_CreateIndex{
 					CreateIndex: &servicepb.CreateIndexRequest{
 						Ledger: ledger,
@@ -56,7 +56,7 @@ func main() {
 						}}},
 					},
 				},
-			}},
+			}),
 		})
 		if err != nil && !internal.IsTransient(err) {
 			st, _ := status.FromError(err)
@@ -67,7 +67,7 @@ func main() {
 
 		// 3. Save typed metadata on the account.
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
@@ -85,7 +85,7 @@ func main() {
 						}},
 					},
 				},
-			}},
+			}),
 		})
 		if err != nil {
 			return
@@ -97,7 +97,7 @@ func main() {
 		maxVal := int64(999)
 
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_CreatePreparedQuery{
 					CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
 						Query: &commonpb.PreparedQuery{
@@ -120,7 +120,7 @@ func main() {
 						},
 					},
 				},
-			}},
+			}),
 		})
 		if err != nil && !internal.IsTransient(err) {
 			st, _ := status.FromError(err)
@@ -171,7 +171,7 @@ func main() {
 		}
 		for _, newType := range newTypes {
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{{
+				Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 					Type: &servicepb.Request_SetMetadataFieldType{
 						SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
 							Ledger:     ledger,
@@ -180,7 +180,7 @@ func main() {
 							Type:       newType,
 						},
 					},
-				}},
+				}),
 			})
 			assert.AlwaysOrUnreachable(err == nil || internal.IsTransient(err),
 				"changing metadata type should not crash", details.With(internal.Details{
@@ -191,7 +191,7 @@ func main() {
 
 		// 8. Remove the type declaration entirely.
 		if _, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_RemoveMetadataFieldType{
 					RemoveMetadataFieldType: &servicepb.RemoveMetadataFieldTypeRequest{
 						Ledger:     ledger,
@@ -199,7 +199,7 @@ func main() {
 						Key:        metaKey,
 					},
 				},
-			}},
+			}),
 		}); err != nil {
 			internal.LogCleanupError(fmt.Sprintf("remove metadata field type %q", metaKey), err)
 		}
@@ -228,7 +228,7 @@ func main() {
 		badKey := fmt.Sprintf("bad-convert-%d", r.Uint64())
 
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
@@ -246,7 +246,7 @@ func main() {
 						}},
 					},
 				},
-			}},
+			}),
 		})
 		if err != nil {
 			// If save fails, skip the conversion test.
@@ -254,7 +254,7 @@ func main() {
 			// Try to declare this key as INT64 — existing value "not-a-number"
 			// cannot be converted. The server should return an error, not crash.
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{{
+				Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 					Type: &servicepb.Request_SetMetadataFieldType{
 						SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
 							Ledger:     ledger,
@@ -263,7 +263,7 @@ func main() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
 						},
 					},
-				}},
+				}),
 			})
 			// The server accepts the declaration — conversion runs in background.
 			// "not-a-number" → INT64 produces a NullValue (original string preserved).
@@ -315,7 +315,7 @@ func main() {
 
 			// Same with BOOL conversion on the numeric key (42 → bool = true).
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{{
+				Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 					Type: &servicepb.Request_SetMetadataFieldType{
 						SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
 							Ledger:     ledger,
@@ -324,7 +324,7 @@ func main() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
 						},
 					},
-				}},
+				}),
 			})
 			assert.AlwaysOrUnreachable(err == nil || internal.IsTransient(err),
 				"numeric to bool conversion should be accepted", internal.Details{
@@ -337,14 +337,14 @@ func main() {
 
 		// Cleanup: delete the prepared query.
 		if _, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_DeletePreparedQuery{
 					DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{
 						Ledger: ledger,
 						Name:   queryName,
 					},
 				},
-			}},
+			}),
 		}); err != nil {
 			internal.LogCleanupError(fmt.Sprintf("delete prepared query %q", queryName), err)
 		}

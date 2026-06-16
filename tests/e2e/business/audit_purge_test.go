@@ -21,7 +21,7 @@ import (
 func archivePeriodFull(ctx context.Context, client servicepb.BucketServiceClient) {
 	// Close the current period.
 	_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{actions.ClosePeriodAction()},
+		Envelopes: servicepb.UnsignedEnvelopes(actions.ClosePeriodAction()),
 	})
 	Expect(err).To(Succeed())
 
@@ -45,7 +45,7 @@ func archivePeriodFull(ctx context.Context, client servicepb.BucketServiceClient
 
 	// Archive the closed period.
 	_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{actions.ArchivePeriodAction(closedPeriodID)},
+		Envelopes: servicepb.UnsignedEnvelopes(actions.ArchivePeriodAction(closedPeriodID)),
 	})
 	Expect(err).To(Succeed())
 
@@ -102,7 +102,7 @@ var _ = Describe("Audit entry purge after period archive", Ordered, func() {
 
 		// Create ledger.
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{actions.CreateLedgerAction(ledger, nil)},
+			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledger, nil)),
 		})
 		Expect(err).To(Succeed())
 
@@ -117,7 +117,7 @@ var _ = Describe("Audit entry purge after period archive", Ordered, func() {
 					}, nil)
 			}
 
-			_, err = client.Apply(ctx, &servicepb.ApplyRequest{Requests: txns})
+			_, err = client.Apply(ctx, &servicepb.ApplyRequest{Envelopes: servicepb.UnsignedEnvelopes(txns...)})
 			Expect(err).To(Succeed())
 		}
 
@@ -149,7 +149,7 @@ var _ = Describe("Audit entry purge after period archive", Ordered, func() {
 					}, nil)
 			}
 
-			_, err = client.Apply(ctx, &servicepb.ApplyRequest{Requests: txns})
+			_, err = client.Apply(ctx, &servicepb.ApplyRequest{Envelopes: servicepb.UnsignedEnvelopes(txns...)})
 			Expect(err).To(Succeed())
 		}
 

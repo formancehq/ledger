@@ -19,21 +19,21 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-func (m *RequestSignature) CloneVT() *RequestSignature {
+func (m *SignedRequest) CloneVT() *SignedRequest {
 	if m == nil {
-		return (*RequestSignature)(nil)
+		return (*SignedRequest)(nil)
 	}
-	r := new(RequestSignature)
+	r := new(SignedRequest)
 	r.KeyId = m.KeyId
 	if rhs := m.Signature; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
 		r.Signature = tmpBytes
 	}
-	if rhs := m.SignedPayload; rhs != nil {
+	if rhs := m.Payload; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
-		r.SignedPayload = tmpBytes
+		r.Payload = tmpBytes
 	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -42,25 +42,25 @@ func (m *RequestSignature) CloneVT() *RequestSignature {
 	return r
 }
 
-func (m *RequestSignature) CloneMessageVT() proto.Message {
+func (m *SignedRequest) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *ResponseSignature) CloneVT() *ResponseSignature {
+func (m *SignedLog) CloneVT() *SignedLog {
 	if m == nil {
-		return (*ResponseSignature)(nil)
+		return (*SignedLog)(nil)
 	}
-	r := new(ResponseSignature)
+	r := new(SignedLog)
 	r.KeyId = m.KeyId
 	if rhs := m.Signature; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
 		r.Signature = tmpBytes
 	}
-	if rhs := m.SignedPayload; rhs != nil {
+	if rhs := m.Payload; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
-		r.SignedPayload = tmpBytes
+		r.Payload = tmpBytes
 	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -69,11 +69,11 @@ func (m *ResponseSignature) CloneVT() *ResponseSignature {
 	return r
 }
 
-func (m *ResponseSignature) CloneMessageVT() proto.Message {
+func (m *SignedLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (this *RequestSignature) EqualVT(that *RequestSignature) bool {
+func (this *SignedRequest) EqualVT(that *SignedRequest) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -85,20 +85,20 @@ func (this *RequestSignature) EqualVT(that *RequestSignature) bool {
 	if string(this.Signature) != string(that.Signature) {
 		return false
 	}
-	if string(this.SignedPayload) != string(that.SignedPayload) {
+	if string(this.Payload) != string(that.Payload) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *RequestSignature) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*RequestSignature)
+func (this *SignedRequest) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*SignedRequest)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *ResponseSignature) EqualVT(that *ResponseSignature) bool {
+func (this *SignedLog) EqualVT(that *SignedLog) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -110,20 +110,20 @@ func (this *ResponseSignature) EqualVT(that *ResponseSignature) bool {
 	if string(this.Signature) != string(that.Signature) {
 		return false
 	}
-	if string(this.SignedPayload) != string(that.SignedPayload) {
+	if string(this.Payload) != string(that.Payload) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *ResponseSignature) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*ResponseSignature)
+func (this *SignedLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*SignedLog)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (m *RequestSignature) MarshalVT() (dAtA []byte, err error) {
+func (m *SignedRequest) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -136,12 +136,12 @@ func (m *RequestSignature) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *RequestSignature) MarshalToVT(dAtA []byte) (int, error) {
+func (m *SignedRequest) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *RequestSignature) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *SignedRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -153,10 +153,10 @@ func (m *RequestSignature) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.SignedPayload) > 0 {
-		i -= len(m.SignedPayload)
-		copy(dAtA[i:], m.SignedPayload)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.SignedPayload)))
+	if len(m.Payload) > 0 {
+		i -= len(m.Payload)
+		copy(dAtA[i:], m.Payload)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Payload)))
 		i--
 		dAtA[i] = 0x1a
 	}
@@ -177,7 +177,7 @@ func (m *RequestSignature) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *ResponseSignature) MarshalVT() (dAtA []byte, err error) {
+func (m *SignedLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -190,12 +190,12 @@ func (m *ResponseSignature) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ResponseSignature) MarshalToVT(dAtA []byte) (int, error) {
+func (m *SignedLog) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *ResponseSignature) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *SignedLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -207,10 +207,10 @@ func (m *ResponseSignature) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.SignedPayload) > 0 {
-		i -= len(m.SignedPayload)
-		copy(dAtA[i:], m.SignedPayload)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.SignedPayload)))
+	if len(m.Payload) > 0 {
+		i -= len(m.Payload)
+		copy(dAtA[i:], m.Payload)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Payload)))
 		i--
 		dAtA[i] = 0x1a
 	}
@@ -231,7 +231,7 @@ func (m *ResponseSignature) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *RequestSignature) SizeVT() (n int) {
+func (m *SignedRequest) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -245,7 +245,7 @@ func (m *RequestSignature) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	l = len(m.SignedPayload)
+	l = len(m.Payload)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
@@ -253,7 +253,7 @@ func (m *RequestSignature) SizeVT() (n int) {
 	return n
 }
 
-func (m *ResponseSignature) SizeVT() (n int) {
+func (m *SignedLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -267,7 +267,7 @@ func (m *ResponseSignature) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	l = len(m.SignedPayload)
+	l = len(m.Payload)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
@@ -275,7 +275,7 @@ func (m *ResponseSignature) SizeVT() (n int) {
 	return n
 }
 
-func (m *RequestSignature) UnmarshalVT(dAtA []byte) error {
+func (m *SignedRequest) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -298,10 +298,10 @@ func (m *RequestSignature) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: RequestSignature: wiretype end group for non-group")
+			return fmt.Errorf("proto: SignedRequest: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: RequestSignature: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: SignedRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -372,7 +372,7 @@ func (m *RequestSignature) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SignedPayload", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Payload", wireType)
 			}
 			var byteLen int
 			for shift := uint(0); ; shift += 7 {
@@ -399,9 +399,9 @@ func (m *RequestSignature) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.SignedPayload = append(m.SignedPayload[:0], dAtA[iNdEx:postIndex]...)
-			if m.SignedPayload == nil {
-				m.SignedPayload = []byte{}
+			m.Payload = append(m.Payload[:0], dAtA[iNdEx:postIndex]...)
+			if m.Payload == nil {
+				m.Payload = []byte{}
 			}
 			iNdEx = postIndex
 		default:
@@ -426,7 +426,7 @@ func (m *RequestSignature) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *ResponseSignature) UnmarshalVT(dAtA []byte) error {
+func (m *SignedLog) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -449,10 +449,10 @@ func (m *ResponseSignature) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ResponseSignature: wiretype end group for non-group")
+			return fmt.Errorf("proto: SignedLog: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ResponseSignature: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: SignedLog: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -523,7 +523,7 @@ func (m *ResponseSignature) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SignedPayload", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Payload", wireType)
 			}
 			var byteLen int
 			for shift := uint(0); ; shift += 7 {
@@ -550,9 +550,9 @@ func (m *ResponseSignature) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.SignedPayload = append(m.SignedPayload[:0], dAtA[iNdEx:postIndex]...)
-			if m.SignedPayload == nil {
-				m.SignedPayload = []byte{}
+			m.Payload = append(m.Payload[:0], dAtA[iNdEx:postIndex]...)
+			if m.Payload == nil {
+				m.Payload = []byte{}
 			}
 			iNdEx = postIndex
 		default:

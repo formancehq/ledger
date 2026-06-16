@@ -2602,13 +2602,13 @@ func (x *IdempotencyEntry) GetLogId() uint64 {
 }
 
 type Log struct {
-	state             protoimpl.MessageState         `protogen:"open.v1"`
-	Sequence          uint64                         `protobuf:"fixed64,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
-	Payload           *LogPayload                    `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"`
-	Idempotency       *Idempotency                   `protobuf:"bytes,3,opt,name=idempotency,proto3" json:"idempotency,omitempty"`
-	Signature         *signaturepb.RequestSignature  `protobuf:"bytes,5,opt,name=signature,proto3" json:"signature,omitempty"`
-	Receipt           string                         `protobuf:"bytes,6,opt,name=receipt,proto3" json:"receipt,omitempty"`
-	ResponseSignature *signaturepb.ResponseSignature `protobuf:"bytes,7,opt,name=response_signature,json=responseSignature,proto3" json:"response_signature,omitempty"`
+	state             protoimpl.MessageState     `protogen:"open.v1"`
+	Sequence          uint64                     `protobuf:"fixed64,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	Payload           *LogPayload                `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"`
+	Idempotency       *Idempotency               `protobuf:"bytes,3,opt,name=idempotency,proto3" json:"idempotency,omitempty"`
+	Signature         *signaturepb.SignedRequest `protobuf:"bytes,5,opt,name=signature,proto3" json:"signature,omitempty"`
+	Receipt           string                     `protobuf:"bytes,6,opt,name=receipt,proto3" json:"receipt,omitempty"`
+	ResponseSignature *signaturepb.SignedLog     `protobuf:"bytes,7,opt,name=response_signature,json=responseSignature,proto3" json:"response_signature,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -2664,7 +2664,7 @@ func (x *Log) GetIdempotency() *Idempotency {
 	return nil
 }
 
-func (x *Log) GetSignature() *signaturepb.RequestSignature {
+func (x *Log) GetSignature() *signaturepb.SignedRequest {
 	if x != nil {
 		return x.Signature
 	}
@@ -2678,7 +2678,7 @@ func (x *Log) GetReceipt() string {
 	return ""
 }
 
-func (x *Log) GetResponseSignature() *signaturepb.ResponseSignature {
+func (x *Log) GetResponseSignature() *signaturepb.SignedLog {
 	if x != nil {
 		return x.ResponseSignature
 	}
@@ -10341,14 +10341,14 @@ const file_common_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\"=\n" +
 	"\x10IdempotencyEntry\x12\x12\n" +
 	"\x04hash\x18\x01 \x01(\fR\x04hash\x12\x15\n" +
-	"\x06log_id\x18\x02 \x01(\x06R\x05logId\"\xb4\x02\n" +
+	"\x06log_id\x18\x02 \x01(\x06R\x05logId\"\xa9\x02\n" +
 	"\x03Log\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x06R\bsequence\x12,\n" +
 	"\apayload\x18\x02 \x01(\v2\x12.common.LogPayloadR\apayload\x125\n" +
-	"\vidempotency\x18\x03 \x01(\v2\x13.common.IdempotencyR\vidempotency\x129\n" +
-	"\tsignature\x18\x05 \x01(\v2\x1b.signature.RequestSignatureR\tsignature\x12\x18\n" +
-	"\areceipt\x18\x06 \x01(\tR\areceipt\x12K\n" +
-	"\x12response_signature\x18\a \x01(\v2\x1c.signature.ResponseSignatureR\x11responseSignatureJ\x04\b\x04\x10\x05J\x04\b\b\x10\t\"\x99\x11\n" +
+	"\vidempotency\x18\x03 \x01(\v2\x13.common.IdempotencyR\vidempotency\x126\n" +
+	"\tsignature\x18\x05 \x01(\v2\x18.signature.SignedRequestR\tsignature\x12\x18\n" +
+	"\areceipt\x18\x06 \x01(\tR\areceipt\x12C\n" +
+	"\x12response_signature\x18\a \x01(\v2\x14.signature.SignedLogR\x11responseSignatureJ\x04\b\x04\x10\x05J\x04\b\b\x10\t\"\x99\x11\n" +
 	"\n" +
 	"LogPayload\x12?\n" +
 	"\rcreate_ledger\x18\x01 \x01(\v2\x18.common.CreatedLedgerLogH\x00R\fcreateLedger\x12?\n" +
@@ -11165,8 +11165,8 @@ var file_common_proto_goTypes = []any{
 	nil,                                       // 168: common.SaveMetadataCommand.MetadataEntry
 	nil,                                       // 169: common.TransactionState.MetadataEntry
 	nil,                                       // 170: common.AccountType.SegmentTypesEntry
-	(*signaturepb.RequestSignature)(nil),      // 171: signature.RequestSignature
-	(*signaturepb.ResponseSignature)(nil),     // 172: signature.ResponseSignature
+	(*signaturepb.SignedRequest)(nil),         // 171: signature.SignedRequest
+	(*signaturepb.SignedLog)(nil),             // 172: signature.SignedLog
 }
 var file_common_proto_depIdxs = []int32{
 	18,  // 0: common.MetadataValue.null_value:type_name -> common.NullValue
@@ -11206,8 +11206,8 @@ var file_common_proto_depIdxs = []int32{
 	17,  // 34: common.Index.last_built_at:type_name -> common.Timestamp
 	43,  // 35: common.Log.payload:type_name -> common.LogPayload
 	40,  // 36: common.Log.idempotency:type_name -> common.Idempotency
-	171, // 37: common.Log.signature:type_name -> signature.RequestSignature
-	172, // 38: common.Log.response_signature:type_name -> signature.ResponseSignature
+	171, // 37: common.Log.signature:type_name -> signature.SignedRequest
+	172, // 38: common.Log.response_signature:type_name -> signature.SignedLog
 	78,  // 39: common.LogPayload.create_ledger:type_name -> common.CreatedLedgerLog
 	79,  // 40: common.LogPayload.delete_ledger:type_name -> common.DeletedLedgerLog
 	80,  // 41: common.LogPayload.apply:type_name -> common.ApplyLedgerLog

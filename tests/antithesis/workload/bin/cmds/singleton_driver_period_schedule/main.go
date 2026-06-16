@@ -14,13 +14,13 @@ func main() {
 
 		// 1. Set an automatic period schedule (every hour).
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_SetPeriodSchedule{
 					SetPeriodSchedule: &servicepb.SetPeriodScheduleRequest{
 						Cron: "0 * * * *",
 					},
 				},
-			}},
+			}),
 		})
 
 		assert.Sometimes(err == nil || internal.IsTransient(err),
@@ -42,11 +42,11 @@ func main() {
 
 		// 3. Delete the schedule.
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_DeletePeriodSchedule{
 					DeletePeriodSchedule: &servicepb.DeletePeriodScheduleRequest{},
 				},
-			}},
+			}),
 		})
 
 		assert.Sometimes(err == nil || internal.IsTransient(err),

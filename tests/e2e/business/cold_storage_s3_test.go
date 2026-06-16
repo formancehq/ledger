@@ -91,9 +91,9 @@ var _ = Describe("Cold Storage S3", Ordered, func() {
 
 		// Create a ledger
 		resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateLedgerAction(ledger, nil),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 		Expect(resp.Logs).To(HaveLen(1))
@@ -103,14 +103,14 @@ var _ = Describe("Cold Storage S3", Ordered, func() {
 
 		// Create a transaction
 		resp, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateForceTransactionAction(ledger,
 					[]*commonpb.Posting{
 						actions.NewPosting("world", "users:alice", big.NewInt(1000), "USD"),
 					},
 					nil,
 				),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 		Expect(resp.Logs).To(HaveLen(1))
@@ -119,9 +119,9 @@ var _ = Describe("Cold Storage S3", Ordered, func() {
 
 		// Close the current period
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.ClosePeriodAction(),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 
@@ -145,9 +145,9 @@ var _ = Describe("Cold Storage S3", Ordered, func() {
 
 		// Archive the closed period
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.ArchivePeriodAction(closedPeriodID),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 

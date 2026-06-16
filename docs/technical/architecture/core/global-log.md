@@ -211,7 +211,7 @@ func (s *Server) runBulkAtomic(ctx context.Context, requests []*servicepb.Reques
     results := make([]bulkResult, len(requests))
 
     // All requests are sent in a single Apply() call → single Raft proposal
-    resp, err := s.backend.Apply(ctx, &servicepb.ApplyRequest{Requests: requests})
+    resp, err := s.backend.Apply(ctx, &servicepb.ApplyRequest{Envelopes: servicepb.UnsignedEnvelopes(requests...)})
     if err != nil {
         // In atomic mode, if any order fails, all fail with the same error
         for i := range results {

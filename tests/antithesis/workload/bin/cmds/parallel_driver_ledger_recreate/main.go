@@ -51,7 +51,7 @@ func createTx(
 	ledger, ref, destination string,
 ) (*servicepb.ApplyResponse, error) {
 	return client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{{
+		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: ledger,
@@ -69,7 +69,7 @@ func createTx(
 					}},
 				},
 			},
-		}},
+		}),
 	})
 }
 
@@ -155,11 +155,11 @@ func main() {
 
 		// 2. Delete the first incarnation.
 		if _, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_DeleteLedger{
 					DeleteLedger: &servicepb.DeleteLedgerRequest{Name: ledger},
 				},
-			}},
+			}),
 		}); err != nil && !internal.IsTransient(err) {
 			// Ambiguous deletes are resolved by step 3 (recreate succeeds only
 			// if the delete committed); definitive failures are inconclusive

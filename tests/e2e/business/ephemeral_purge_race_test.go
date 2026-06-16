@@ -37,10 +37,10 @@ var _ = Describe("EphemeralPurgeRace", Ordered, func() {
 
 	BeforeAll(func() {
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateLedgerAction(ledgerName, nil),
 				actions.AddEphemeralAccountTypeAction(ledgerName, "wallets", "wallets:{id}"),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 	})
@@ -54,11 +54,11 @@ var _ = Describe("EphemeralPurgeRace", Ordered, func() {
 			// Seed the ephemeral account with a non-zero balance so the leader's
 			// cache holds it at the moment admission inspects CheckCache.
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", account, big.NewInt(100), "USD"),
 					}, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -75,11 +75,11 @@ var _ = Describe("EphemeralPurgeRace", Ordered, func() {
 				defer wg.Done()
 				<-barrier
 				_, errA = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-					Requests: []*servicepb.Request{
+					Envelopes: servicepb.UnsignedEnvelopes(
 						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 							actions.NewPosting(account, "world", big.NewInt(100), "USD"),
 						}, nil, nil),
-					},
+					),
 				})
 			}()
 
@@ -87,11 +87,11 @@ var _ = Describe("EphemeralPurgeRace", Ordered, func() {
 				defer wg.Done()
 				<-barrier
 				_, errB = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-					Requests: []*servicepb.Request{
+					Envelopes: servicepb.UnsignedEnvelopes(
 						actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 							actions.NewPosting(account, "world", big.NewInt(50), "USD"),
 						}, nil),
-					},
+					),
 				})
 			}()
 

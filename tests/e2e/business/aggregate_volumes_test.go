@@ -22,7 +22,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -41,13 +41,13 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 
 			// world→alice 100 USD, world→alice 50 EUR, world→bob 200 USD
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 					}, nil),
@@ -57,7 +57,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 					}, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -95,13 +95,13 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 
 			// world→users:alice 100 USD, world→users:bob 200 USD, world→bank:main 500 USD
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "users:alice", big.NewInt(100), "USD"),
 					}, nil),
@@ -111,7 +111,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "bank:main", big.NewInt(500), "USD"),
 					}, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -139,7 +139,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
@@ -148,7 +148,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 						},
 					}),
 					actions.CreateAccountMetadataIndexAction(ledgerName, "role"),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -156,7 +156,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 
 			// world→alice 100 USD, world→alice 50 EUR, world→bob 200 USD
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 					}, nil),
@@ -166,15 +166,15 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 					}, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "admin"}),
 					actions.SaveAccountMetadataAction(ledgerName, "bob", map[string]string{"role": "user"}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -213,7 +213,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 
@@ -223,7 +223,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 			// world→carol: 1000 USD/3 (= $1.000)
 			// world→alice: 50 EUR/2
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "alice", big.NewInt(100), "USD/2"),
 					}, nil),
@@ -236,7 +236,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "alice", big.NewInt(50), "EUR/2"),
 					}, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -300,13 +300,13 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 
 			// world→users:alice 100 USD/2, world→users:bob 10000 USD/4, world→bank:main 500 USD/2
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "users:alice", big.NewInt(100), "USD/2"),
 					}, nil),
@@ -316,7 +316,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "bank:main", big.NewInt(500), "USD/2"),
 					}, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -346,14 +346,14 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 
 			// world→users:alice 100 USD, world→users:bob 200 USD
 			// world→merchants:shop1 500 USD, world→merchants:shop2 300 EUR
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "users:alice", big.NewInt(100), "USD"),
 					}, nil),
@@ -366,7 +366,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "merchants:shop2", big.NewInt(300), "EUR"),
 					}, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})
@@ -407,20 +407,20 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 			})
 			Expect(err).To(Succeed())
 
 			// world→users:alice 100 USD/2, world→users:bob 10000 USD/4
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "users:alice", big.NewInt(100), "USD/2"),
 					}, nil),
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "users:bob", big.NewInt(10000), "USD/4"),
 					}, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 		})

@@ -16,7 +16,7 @@ var _ = Describe("Ledger Metadata", Ordered, func() {
 
 	BeforeAll(func() {
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
+			Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(ledgerName, nil)),
 		})
 		Expect(err).To(Succeed())
 	})
@@ -28,7 +28,7 @@ var _ = Describe("Ledger Metadata", Ordered, func() {
 			"region":      "eu-west-1",
 		}
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{actions.SaveLedgerMetadataAction(ledgerName, metadata)},
+			Envelopes: servicepb.UnsignedEnvelopes(actions.SaveLedgerMetadataAction(ledgerName, metadata)),
 		})
 		Expect(err).To(Succeed())
 
@@ -43,10 +43,10 @@ var _ = Describe("Ledger Metadata", Ordered, func() {
 
 	It("Should update existing metadata (merge behavior)", func() {
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{actions.SaveLedgerMetadataAction(ledgerName, map[string]string{
+			Envelopes: servicepb.UnsignedEnvelopes(actions.SaveLedgerMetadataAction(ledgerName, map[string]string{
 				"team":    "platform",
 				"version": "v3",
-			})},
+			})),
 		})
 		Expect(err).To(Succeed())
 
@@ -61,7 +61,7 @@ var _ = Describe("Ledger Metadata", Ordered, func() {
 
 	It("Should delete metadata and verify removal", func() {
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{actions.DeleteLedgerMetadataAction(ledgerName, "region")},
+			Envelopes: servicepb.UnsignedEnvelopes(actions.DeleteLedgerMetadataAction(ledgerName, "region")),
 		})
 		Expect(err).To(Succeed())
 
@@ -76,16 +76,16 @@ var _ = Describe("Ledger Metadata", Ordered, func() {
 
 	It("Should return error when deleting non-existent key", func() {
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{actions.DeleteLedgerMetadataAction(ledgerName, "does-not-exist")},
+			Envelopes: servicepb.UnsignedEnvelopes(actions.DeleteLedgerMetadataAction(ledgerName, "does-not-exist")),
 		})
 		Expect(err).To(HaveOccurred())
 	})
 
 	It("Should return error when targeting non-existent ledger", func() {
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{actions.SaveLedgerMetadataAction("no-such-ledger", map[string]string{
+			Envelopes: servicepb.UnsignedEnvelopes(actions.SaveLedgerMetadataAction("no-such-ledger", map[string]string{
 				"key": "value",
-			})},
+			})),
 		})
 		Expect(err).To(HaveOccurred())
 	})
@@ -95,16 +95,16 @@ var _ = Describe("Ledger Metadata", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.CreateLedgerAction(otherLedger, nil)},
+				Envelopes: servicepb.UnsignedEnvelopes(actions.CreateLedgerAction(otherLedger, nil)),
 			})
 			Expect(err).To(Succeed())
 		})
 
 		It("Should not leak metadata between ledgers", func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{actions.SaveLedgerMetadataAction(otherLedger, map[string]string{
+				Envelopes: servicepb.UnsignedEnvelopes(actions.SaveLedgerMetadataAction(otherLedger, map[string]string{
 					"isolated": "true",
-				})},
+				})),
 			})
 			Expect(err).To(Succeed())
 

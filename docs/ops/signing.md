@@ -15,10 +15,11 @@ Signing is **optional by default**. It can be made mandatory via the `signing re
                     ┌──────────────────────────────────────────────┐
                     │               Client (ledgerctl)             │
                     │                                              │
-                    │  1. Build Request (without signature)        │
-                    │  2. Serialize → signed_payload (bytes)       │
-                    │  3. Ed25519.Sign(privkey, signed_payload)    │
-                    │  4. Attach RequestSignature to Request       │
+                    │  1. Build Request                            │
+                    │  2. Serialize → payload (bytes)              │
+                    │  3. Ed25519.Sign(privkey, payload)           │
+                    │  4. Build SignedRequest{key_id, sig, bytes}  │
+                    │  5. Wrap in Envelope.signed                  │
                     └──────────────────┬───────────────────────────┘
                                        │ gRPC Apply()
                                        ▼
@@ -26,10 +27,10 @@ Signing is **optional by default**. It can be made mandatory via the `signing re
                     │            Admission Layer (leader)          │
                     │                                              │
                     │  1. Lookup public key by key_id              │
-                    │  2. Ed25519.Verify(pubkey, signed_payload)   │
-                    │  3. Unmarshal(signed_payload) → trusted Req  │
+                    │  2. Ed25519.Verify(pubkey, payload)          │
+                    │  3. Unmarshal(payload) → trusted Request     │
                     │  4. Convert trusted Request → Order          │
-                    │  5. Propagate signature to Order             │
+                    │  5. Propagate SignedRequest onto Order       │
                     └──────────────────┬───────────────────────────┘
                                        │ Raft Proposal
                                        ▼
@@ -43,19 +44,28 @@ Signing is **optional by default**. It can be made mandatory via the `signing re
 
 ## Envelope Pattern
 
-Protobuf serialization is **not deterministic** across implementations (Go, Java, Python, etc.): map field iteration order, default value encoding, and unknown field handling all vary. This means two implementations serializing the same logical message can produce different bytes.
+Protobuf serialization is **not deterministic** across implementations (Go, Java, Python, etc.): map field iteration order, default value encoding, and unknown field handling all vary. If the server tried to re-serialize a client's `Request` to verify a signature, two implementations would diverge.
 
-The solution is the **envelope pattern**: the client sends the exact bytes it serialized and signed in a `signed_payload` field. The server verifies the signature on those bytes, then deserializes them to get the authoritative content.
+The solution is the **opaque envelope**: signed requests do not travel as a structured `Request` on the wire. The client serializes its `Request` once, signs those exact bytes, and ships the result as `SignedRequest{key_id, signature, payload}`. The server verifies the Ed25519 signature against `payload` and then unmarshals `payload` to obtain the trusted `Request` — **the server never re-serializes anything**, so cross-language clients are safe regardless of their protobuf implementation's quirks.
 
 ```protobuf
-message RequestSignature {
-  string key_id = 1;         // ID of the public key used
-  bytes signature = 2;       // Ed25519 signature (64 bytes)
-  bytes signed_payload = 3;  // Exact bytes serialized and signed by the client
+// bucket.proto — wire wrapper that gRPC carries for each ApplyRequest entry.
+message Envelope {
+  oneof variant {
+    Request unsigned = 1;        // raw request (used when signing is not required)
+    SignedRequest signed = 2;    // opaque envelope for signed requests
+  }
+}
+
+// signature.proto
+message SignedRequest {
+  string key_id = 1;    // ID of the public key used to sign
+  bytes signature = 2;  // Ed25519 signature (64 bytes)
+  bytes payload = 3;    // Exact serialized Request bytes signed by the client
 }
 ```
 
-This means the request payload appears twice on the wire: once in the Request fields, and once in `signed_payload`. The server **ignores** the outer Request fields for signed requests and uses the deserialized `signed_payload` as the authoritative content.
+Because the wire form for a signed request is a discriminated `oneof`, the request bytes appear only once. There is no wrapper-vs-payload divergence class to guard against — the proto schema itself enforces "either you ship the raw `Request`, or you ship the opaque envelope, not both".
 
 ## Key Management
 
@@ -145,10 +155,10 @@ Signing keys and configuration are persisted in **Pebble** under the Global zone
 The signature is carried through the entire pipeline for audit purposes:
 
 ```
-Request.Signature → Order.Signature → Log.Signature → AuditEntry (via Order)
+Envelope.signed (SignedRequest) → Order.Signature → Log.Signature → AuditEntry (via Order)
 ```
 
-Any auditor can verify a log entry's signature after the fact by calling `Ed25519.Verify(pubkey, log.Signature.SignedPayload, log.Signature.Signature)`.
+Any auditor can verify a log entry's signature after the fact by calling `Ed25519.Verify(pubkey, log.Signature.Payload, log.Signature.Signature)`.
 
 ## Design Decisions
 
@@ -156,13 +166,13 @@ Any auditor can verify a log entry's signature after the fact by calling `Ed2551
 
 Signature verification is performed in the **Admission layer** (before Raft consensus), not in the FSM. This is deliberate:
 
-- **Valid signatures**: the cryptographic proof is propagated through Order → Log → AuditEntry. Auditors can verify signatures from the stored `signed_payload` at any time.
+- **Valid signatures**: the cryptographic proof is propagated through Order → Log → AuditEntry. Auditors can verify signatures from the stored `SignedRequest.payload` at any time.
 - **Invalid/missing signatures**: rejected immediately in Admission. These failures do **not** appear in the replicated audit log because no Proposal is created.
 
 Moving verification into the FSM was considered but rejected for two reasons:
 
 1. **DoS risk**: invalid signatures would traverse Raft consensus (network round-trips + log persistence on all replicas) before being rejected, allowing an attacker to waste cluster resources with bad signatures.
-2. **Architectural complexity**: `signed_payload` contains a serialized `Request`, but the FSM operates on `Order` objects. Verifying in the FSM would require re-converting Request → Order to confirm the Order matches the signed content, duplicating the Admission conversion logic.
+2. **Architectural complexity**: `SignedRequest.payload` contains a serialized `Request`, but the FSM operates on `Order` objects. Verifying in the FSM would require re-converting Request → Order to confirm the Order matches the signed content, duplicating the Admission conversion logic.
 
 If traceability of rejected signatures is needed, application-level logging on the leader node (non-replicated) can be added at the Admission layer.
 
@@ -185,7 +195,7 @@ This is inherent to the Raft consensus model where all state changes are eventua
 | `internal/application/admission/` | Signature verification, bootstrap logic, Request → Order conversion |
 | `internal/infra/state/write_set.go` | Signing key changes accumulated during processing, applied in `Merge()` |
 | `internal/storage/dal/` | Pebble persistence for signing keys (compound keys `{0x06, 0x04}`/`{0x06, 0x05}` within the Global zone) |
-| `misc/proto/signature.proto` | `RequestSignature` and `ResponseSignature` protobuf messages |
+| `misc/proto/signature.proto` | `SignedRequest` and `SignedLog` protobuf messages |
 
 ## CLI Reference
 
@@ -256,10 +266,10 @@ Response signing allows clients to verify that response logs returned by the ser
                     │                                              │
                     │  1. Process request through Raft consensus   │
                     │  2. Get Log result                           │
-                    │  3. Clone Log, clear receipt + response_sig  │
-                    │  4. MarshalVT() → signed_payload             │
-                    │  5. Ed25519.Sign(privkey, signed_payload)    │
-                    │  6. Attach ResponseSignature to Log          │
+                    │  3. Clone Log, clear receipt + sigs          │
+                    │  4. MarshalVT() → payload                    │
+                    │  5. Ed25519.Sign(privkey, payload)           │
+                    │  6. Attach SignedLog to Log.response_signature│
                     └──────────────────┬───────────────────────────┘
                                        │ gRPC ApplyResponse
                                        ▼
@@ -268,7 +278,7 @@ Response signing allows clients to verify that response logs returned by the ser
                     │                                              │
                     │  1. Get public key via Discovery RPC         │
                     │     (or --response-verify-key flag)          │
-                    │  2. Ed25519.Verify(pubkey, signed_payload)   │
+                    │  2. Ed25519.Verify(pubkey, payload)          │
                     │  3. Trust the Log if verification passes     │
                     └──────────────────────────────────────────────┘
 ```
@@ -335,14 +345,14 @@ kubectl create secret generic ledger-response-signing-key \
 ### Protobuf Messages
 
 ```protobuf
-message ResponseSignature {
-  string key_id = 1;         // SHA256 fingerprint of server public key
-  bytes signature = 2;       // Ed25519 signature (64 bytes)
-  bytes signed_payload = 3;  // Exact serialized bytes that were signed
+message SignedLog {
+  string key_id = 1;    // SHA256 fingerprint of server public key
+  bytes signature = 2;  // Ed25519 signature (64 bytes)
+  bytes payload = 3;    // Exact serialized Log bytes that were signed
 }
 ```
 
-The `signed_payload` contains the serialized `Log` message with `response_signature` and `receipt` fields cleared (both are node-local and non-deterministic).
+The `payload` contains the serialized `Log` message with `response_signature` and `receipt` fields cleared before signing (both are node-local and non-deterministic).
 
 ### Design Decisions
 

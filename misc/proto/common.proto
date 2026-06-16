@@ -284,9 +284,9 @@ message Log {
   LogPayload payload = 2;
   Idempotency idempotency = 3;
   reserved 4; // was: bytes hash (moved to AuditEntry)
-  signature.RequestSignature signature = 5;
+  signature.SignedRequest signature = 5;
   string receipt = 6;
-  signature.ResponseSignature response_signature = 7;
+  signature.SignedLog response_signature = 7;
   reserved 8; // was: uint32 hash_version (moved to AuditEntry)
 }
 

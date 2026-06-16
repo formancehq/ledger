@@ -39,7 +39,7 @@ func main() {
 		value := fmt.Sprintf("%d", r.Int63n(10000))
 
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_Apply{
 					Apply: &servicepb.LedgerApplyRequest{
 						Ledger: ledger,
@@ -57,7 +57,7 @@ func main() {
 						}},
 					},
 				},
-			}},
+			}),
 		})
 		if err != nil {
 			if internal.IsTransient(err) {
@@ -134,7 +134,7 @@ func declareType(ctx context.Context, client servicepb.BucketServiceClient, ledg
 	details = details.With(internal.Details{"declareType": metaType.String()})
 
 	_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{{
+		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 			Type: &servicepb.Request_SetMetadataFieldType{
 				SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
 					Ledger:     ledger,
@@ -143,7 +143,7 @@ func declareType(ctx context.Context, client servicepb.BucketServiceClient, ledg
 					Type:       metaType,
 				},
 			},
-		}},
+		}),
 	})
 
 	assert.AlwaysOrUnreachable(err == nil || internal.IsTransient(err),
@@ -158,7 +158,7 @@ func declareType(ctx context.Context, client servicepb.BucketServiceClient, ledg
 
 func removeType(ctx context.Context, client servicepb.BucketServiceClient, ledger string, details internal.Details) {
 	_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{{
+		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 			Type: &servicepb.Request_RemoveMetadataFieldType{
 				RemoveMetadataFieldType: &servicepb.RemoveMetadataFieldTypeRequest{
 					Ledger:     ledger,
@@ -166,7 +166,7 @@ func removeType(ctx context.Context, client servicepb.BucketServiceClient, ledge
 					Key:        wellKnownKey,
 				},
 			},
-		}},
+		}),
 	})
 
 	assert.AlwaysOrUnreachable(err == nil || internal.IsTransient(err),

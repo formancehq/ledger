@@ -86,7 +86,7 @@ func randomTransactionRequest(ledger string) *servicepb.Request {
 
 func createRandomTransaction(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
 	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{randomTransactionRequest(ledger)},
+		Envelopes: servicepb.UnsignedEnvelopes(randomTransactionRequest(ledger)),
 	})
 
 	assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to create a transaction", internal.Details{
@@ -114,7 +114,7 @@ func createRandomBulkTransactions(ctx context.Context, client servicepb.BucketSe
 	}
 
 	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: requests,
+		Envelopes: servicepb.UnsignedEnvelopes(requests...),
 	})
 
 	assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to create bulk transactions", internal.Details{

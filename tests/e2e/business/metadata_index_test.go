@@ -29,7 +29,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 		BeforeAll(func() {
 			// Create ledger with a string metadata field + index
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
@@ -37,15 +37,15 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 						},
 					}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			// Create index on the "role" field
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateAccountMetadataIndexAction(ledgerName, "role"),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")).To(Succeed())
@@ -54,12 +54,12 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 		It("Should find account by initial metadata value", func() {
 			// Create account with role=admin
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 					}, nil),
 					actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "admin"}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -75,9 +75,9 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 		It("Should update metadata and no longer find account by old value", func() {
 			// Update alice's role from admin to viewer
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "viewer"}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -101,9 +101,9 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 			// Update alice's role several times
 			for _, newRole := range []string{"editor", "moderator", "superadmin"} {
 				_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-					Requests: []*servicepb.Request{
+					Envelopes: servicepb.UnsignedEnvelopes(
 						actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": newRole}),
-					},
+					),
 				})
 				Expect(err).To(Succeed())
 			}
@@ -133,7 +133,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
@@ -141,14 +141,14 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 						},
 					}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateAccountMetadataIndexAction(ledgerName, "category"),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "category")).To(Succeed())
@@ -157,12 +157,12 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 		It("Should no longer find account after metadata key is deleted", func() {
 			// Create account with category=vip
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "bob", big.NewInt(50), "EUR"),
 					}, nil),
 					actions.SaveAccountMetadataAction(ledgerName, "bob", map[string]string{"category": "vip"}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -175,9 +175,9 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 			// Delete the metadata key
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.DeleteAccountMetadataAction(ledgerName, "bob", "category"),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -198,7 +198,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
@@ -206,14 +206,14 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 						},
 					}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionMetadataIndexAction(ledgerName, "status"),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "status")).To(Succeed())
@@ -222,11 +222,11 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 		It("Should update transaction metadata and no longer find by old value", func() {
 			// Create transaction with status=pending
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "merchant", big.NewInt(1000), "USD"),
 					}, map[string]string{"status": "pending"}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			txID := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().Transaction.Id
@@ -241,9 +241,9 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 			// Update status to completed
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.SaveTransactionMetadataAction(ledgerName, txID, map[string]string{"status": "completed"}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -272,7 +272,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
@@ -280,14 +280,14 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 						},
 					}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionMetadataIndexAction(ledgerName, "tag"),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "tag")).To(Succeed())
@@ -296,11 +296,11 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 		It("Should no longer find transaction after metadata key is deleted", func() {
 			// Create transaction with tag=urgent
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "ops", big.NewInt(500), "EUR"),
 					}, map[string]string{"tag": "urgent"}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			txID := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().Transaction.Id
@@ -314,9 +314,9 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 			// Delete the metadata
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.DeleteTransactionMetadataAction(ledgerName, txID, "tag"),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -337,7 +337,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
@@ -345,14 +345,14 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 						},
 					}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateAccountMetadataIndexAction(ledgerName, "tier"),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")).To(Succeed())
@@ -361,7 +361,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 		It("Should only remove old value for the updated account", func() {
 			// Create two accounts both with tier=gold
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "user1", big.NewInt(100), "USD"),
 					}, nil),
@@ -370,7 +370,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 					}, nil),
 					actions.SaveAccountMetadataAction(ledgerName, "user1", map[string]string{"tier": "gold"}),
 					actions.SaveAccountMetadataAction(ledgerName, "user2", map[string]string{"tier": "gold"}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -383,9 +383,9 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 			// Update user1 to tier=platinum
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.SaveAccountMetadataAction(ledgerName, "user1", map[string]string{"tier": "platinum"}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -413,7 +413,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
@@ -421,14 +421,14 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 						},
 					}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateAccountMetadataIndexAction(ledgerName, "source"),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "source")).To(Succeed())
@@ -437,7 +437,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 		It("Should index account metadata set via transaction creation and update correctly", func() {
 			// Create transaction with account metadata source=api
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "merchant", big.NewInt(1000), "USD"),
 					}, nil, map[string]*commonpb.MetadataMap{
@@ -447,7 +447,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 							},
 						},
 					}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -461,9 +461,9 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 			// Update source to webhook via SaveMetadata
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.SaveAccountMetadataAction(ledgerName, "merchant", map[string]string{"source": "webhook"}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -495,7 +495,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
@@ -503,14 +503,14 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 						},
 					}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateAccountMetadataIndexAction(ledgerName, "role"),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")).To(Succeed())
@@ -519,7 +519,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 		It("Should drop the old value from the index when Numscript overwrites it", func() {
 			// Seed alice with role=admin via Numscript.
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceScriptTransactionAction(ledgerName, `
 						set_account_meta(@alice, "role", "admin")
 						send [USD/2 100] (
@@ -527,7 +527,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 							destination = @alice
 						)
 					`, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -540,7 +540,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 			// Overwrite to role=viewer via Numscript.
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceScriptTransactionAction(ledgerName, `
 						set_account_meta(@alice, "role", "viewer")
 						send [USD/2 100] (
@@ -548,7 +548,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 							destination = @alice
 						)
 					`, nil, nil),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -587,7 +587,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 			// STRING so the schema-change It-block below can flip it to
 			// INT64 and exercise the reverse-map rewrite path.
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
@@ -596,18 +596,18 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 						},
 					}),
 					actions.CreateAccountMetadataIndexAction(ledgerName, "score"),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score")).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 					}, nil),
 					actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"score": "42"}),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 
@@ -622,11 +622,11 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 		It("Should flip IndexBuildStatus back to READY after the reverse-map rewrite", func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
+				Envelopes: servicepb.UnsignedEnvelopes(
 					actions.SetMetadataFieldTypeAction(ledgerName,
 						commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score",
 						commonpb.MetadataType_METADATA_TYPE_INT64),
-				},
+				),
 			})
 			Expect(err).To(Succeed())
 

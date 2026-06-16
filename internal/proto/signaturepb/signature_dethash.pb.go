@@ -3,7 +3,7 @@
 
 package signaturepb
 
-func (m *RequestSignature) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *SignedRequest) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -14,7 +14,7 @@ func (m *RequestSignature) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *ResponseSignature) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *SignedLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}

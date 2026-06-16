@@ -30,7 +30,7 @@ func main() {
 
 	// 1. Add a NATS event sink.
 	_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{{
+		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 			Type: &servicepb.Request_AddEventsSink{
 				AddEventsSink: &servicepb.AddEventsSinkRequest{
 					Config: &commonpb.SinkConfig{
@@ -46,7 +46,7 @@ func main() {
 					},
 				},
 			},
-		}},
+		}),
 	})
 
 	assert.Sometimes(err == nil || internal.IsTransient(err),
@@ -81,7 +81,7 @@ func main() {
 	}
 
 	_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{{
+		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: ledger,
@@ -93,19 +93,19 @@ func main() {
 					}},
 				},
 			},
-		}},
+		}),
 	})
 	// Transaction creation is best-effort here; the sink test is what matters.
 
 	// 4. Remove the event sink.
 	_, err = client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{{
+		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 			Type: &servicepb.Request_RemoveEventsSink{
 				RemoveEventsSink: &servicepb.RemoveEventsSinkRequest{
 					Name: sinkName,
 				},
 			},
-		}},
+		}),
 	})
 
 	assert.Sometimes(err == nil || internal.IsTransient(err),

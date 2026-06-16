@@ -244,13 +244,53 @@ func (m *ApplyRequest) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, er
 		i--
 		dAtA[i] = 0x10
 	}
-	if len(m.Requests) > 0 {
-		for iNdEx := len(m.Requests) - 1; iNdEx >= 0; iNdEx-- {
-			size, _ := m.Requests[iNdEx].MarshalToSizedBufferDeterministicVT(dAtA[:i])
+	if len(m.Envelopes) > 0 {
+		for iNdEx := len(m.Envelopes) - 1; iNdEx >= 0; iNdEx-- {
+			size, _ := m.Envelopes[iNdEx].MarshalToSizedBufferDeterministicVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
 			dAtA[i] = 0xa
+		}
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *Envelope) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	sz := m.SizeVT()
+	buf := make([]byte, sz)
+	n, _ := m.MarshalToSizedBufferDeterministicVT(buf)
+	return append(dAtA, buf[sz-n:]...)
+}
+
+func (m *Envelope) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	switch v := m.Variant.(type) {
+	case *Envelope_Unsigned:
+		if v.Unsigned != nil {
+			size, _ := v.Unsigned.MarshalToSizedBufferDeterministicVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0xa
+		}
+	case *Envelope_Signed:
+		if v.Signed != nil {
+			size, _ := v.Signed.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x12
 		}
 	}
 	return len(dAtA) - i, nil
@@ -305,13 +345,6 @@ func (m *Request) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Signature != nil {
-		size, _ := m.Signature.MarshalToSizedBufferVT(dAtA[:i])
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x2a
 	}
 	if len(m.IdempotencyKey) > 0 {
 		i -= len(m.IdempotencyKey)

@@ -317,25 +317,23 @@ func createMirrorLedger(
 	defer cancel()
 
 	_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-		Requests: []*servicepb.Request{
-			{
-				Type: &servicepb.Request_CreateLedger{
-					CreateLedger: &servicepb.CreateLedgerRequest{
-						Name: name,
-						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
-						MirrorSource: &commonpb.MirrorSourceConfig{
-							LedgerName: sourceLedgerName,
-							BatchSize:  batchSize,
-							Type: &commonpb.MirrorSourceConfig_Postgres{
-								Postgres: &commonpb.PostgresMirrorSourceConfig{
-									Dsn: dsn,
-								},
+		Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
+			Type: &servicepb.Request_CreateLedger{
+				CreateLedger: &servicepb.CreateLedgerRequest{
+					Name: name,
+					Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+					MirrorSource: &commonpb.MirrorSourceConfig{
+						LedgerName: sourceLedgerName,
+						BatchSize:  batchSize,
+						Type: &commonpb.MirrorSourceConfig_Postgres{
+							Postgres: &commonpb.PostgresMirrorSourceConfig{
+								Dsn: dsn,
 							},
 						},
 					},
 				},
 			},
-		},
+		}),
 	})
 
 	return err

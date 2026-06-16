@@ -67,9 +67,9 @@ var _ = Describe("Prepared query and numscript work after ledger cache eviction"
 		// 1. Create the ledger — populates LedgerInfo in Pebble (Global +
 		//    attributes) and in the FSM's in-memory cache (current gen0).
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{
+			Envelopes: servicepb.UnsignedEnvelopes(
 				actions.CreateLedgerAction(ledgerName, nil),
-			},
+			),
 		})
 		Expect(err).To(Succeed())
 
@@ -139,7 +139,7 @@ var _ = Describe("Prepared query and numscript work after ledger cache eviction"
 		}
 
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_SaveNumscript{
 					SaveNumscript: &servicepb.SaveNumscriptRequest{
 						Name:    "transfer",
@@ -148,7 +148,7 @@ var _ = Describe("Prepared query and numscript work after ledger cache eviction"
 						Ledger:  ledgerName,
 					},
 				},
-			}},
+			}),
 		})
 		Expect(err).To(Succeed())
 	})
@@ -160,14 +160,14 @@ var _ = Describe("Prepared query and numscript work after ledger cache eviction"
 		}
 
 		_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{{
+			Envelopes: servicepb.UnsignedEnvelopes(&servicepb.Request{
 				Type: &servicepb.Request_DeleteNumscript{
 					DeleteNumscript: &servicepb.DeleteNumscriptRequest{
 						Name:   "transfer",
 						Ledger: ledgerName,
 					},
 				},
-			}},
+			}),
 		})
 		Expect(err).To(Succeed())
 	})

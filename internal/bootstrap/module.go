@@ -157,13 +157,13 @@ func ColdStorageModule(coldStorageDriver string) fx.Option {
 					cold,
 					machine.ArchiveRequestCh(),
 					func(periodID uint64) error {
-						_, err := admissionHandler.Admit(context.Background(), &servicepb.Request{
+						_, err := admissionHandler.Admit(context.Background(), servicepb.UnsignedEnvelope(&servicepb.Request{
 							Type: &servicepb.Request_ConfirmArchivePeriod{
 								ConfirmArchivePeriod: &servicepb.ConfirmArchivePeriodRequest{
 									PeriodId: periodID,
 								},
 							},
-						})
+						}))
 
 						return err
 					},
@@ -631,7 +631,7 @@ func Module() fx.Option {
 				raftNode *node.Node,
 			) *state.Sealer {
 				return state.NewSealer(logger, store, attrs, machine.SealRequestCh(), func(periodID uint64, sealingHash, stateHash []byte) error {
-					_, err := admissionHandler.Admit(context.Background(), &servicepb.Request{
+					_, err := admissionHandler.Admit(context.Background(), servicepb.UnsignedEnvelope(&servicepb.Request{
 						Type: &servicepb.Request_SealPeriod{
 							SealPeriod: &servicepb.SealPeriodRequest{
 								PeriodId:    periodID,
@@ -639,7 +639,7 @@ func Module() fx.Option {
 								StateHash:   stateHash,
 							},
 						},
-					})
+					}))
 
 					return err
 				}, raftNode.IsLeader, machine)
@@ -655,11 +655,11 @@ func Module() fx.Option {
 					raftNode.IsLeader,
 					machine.PeriodSchedule,
 					func() error {
-						_, err := admissionHandler.Admit(context.Background(), &servicepb.Request{
+						_, err := admissionHandler.Admit(context.Background(), servicepb.UnsignedEnvelope(&servicepb.Request{
 							Type: &servicepb.Request_ClosePeriod{
 								ClosePeriod: &servicepb.ClosePeriodRequest{},
 							},
-						})
+						}))
 
 						return err
 					},
@@ -677,11 +677,11 @@ func Module() fx.Option {
 					raftNode.IsLeader,
 					machine.QueryCheckpointSchedule,
 					func() error {
-						_, err := admissionHandler.Admit(context.Background(), &servicepb.Request{
+						_, err := admissionHandler.Admit(context.Background(), servicepb.UnsignedEnvelope(&servicepb.Request{
 							Type: &servicepb.Request_CreateQueryCheckpoint{
 								CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{},
 							},
-						})
+						}))
 
 						return err
 					},
