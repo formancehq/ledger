@@ -74,6 +74,39 @@ func SelectLedger(cmd *cobra.Command, client servicepb.BucketServiceClient, ledg
 	return selectedLedger, nil
 }
 
+// CompleteLedgerNames is a cobra shell-completion function that suggests the
+// ledgers available on the connected server. It is wired to every --ledger
+// flag so pressing TAB lists the existing ledger names.
+//
+// Completion runs in the user's interactive shell, so any failure (server
+// unreachable, auth missing, slow network) returns no suggestions rather than
+// surfacing an error: a broken connection must never disrupt tab completion.
+func CompleteLedgerNames(cmd *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	client, conn, err := GetClient(cmd)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	defer func() { _ = conn.Close() }()
+
+	ctx, cancel := GetContext(cmd)
+	defer cancel()
+
+	ledgers, err := GetAllLedgersInfo(ctx, client)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	names := make([]string, 0, len(ledgers))
+	for name := range ledgers {
+		names = append(names, name)
+	}
+
+	sortStrings(names)
+
+	return names, cobra.ShellCompDirectiveNoFileComp
+}
+
 // sortStrings sorts a slice of strings in place.
 func sortStrings(s []string) {
 	for i := range len(s) - 1 {

@@ -163,7 +163,29 @@ func newRootCommand() *cobra.Command {
 	rootCmd.AddCommand(queries.NewCommand())
 	rootCmd.AddCommand(numscripts.NewCommand())
 
+	// Wire shell completion for every --ledger flag in the tree.
+	registerLedgerFlagCompletion(rootCmd)
+
 	return rootCmd
+}
+
+// registerLedgerFlagCompletion walks the command tree and attaches the
+// ledger-name shell completion to every command exposing a --ledger flag
+// (whether declared locally or inherited as a persistent flag).
+//
+// cobra keys completion functions by the flag pointer, so a command that only
+// inherits the flag resolves to the same pointer as its declaring parent: the
+// duplicate registration returns an "already registered" error, which we
+// intentionally ignore. Registering once per declaring command is therefore
+// sufficient and idempotent.
+func registerLedgerFlagCompletion(cmd *cobra.Command) {
+	if cmd.Flag("ledger") != nil {
+		_ = cmd.RegisterFlagCompletionFunc("ledger", cmdutil.CompleteLedgerNames)
+	}
+
+	for _, sub := range cmd.Commands() {
+		registerLedgerFlagCompletion(sub)
+	}
 }
 
 // isProfileCommand returns true when cmd is a subcommand of "profile".
