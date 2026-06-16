@@ -199,14 +199,15 @@ func (s *DerivedKeyStore[K, T]) Put(canonical K, value T) {
 	s.values[canonical] = value
 }
 
-// Get returns a value from local writes, or falls back to the parent store.
-// The returned value MUST NOT be mutated in place — use AsReader()/Mutate()
-// on the proto type to obtain a safe mutable clone.
+// Get returns a value from local writes, or falls back to the parent store. A
+// key deleted in this batch returns ErrNotFound, like a committed tombstone in
+// the parent store. The returned value MUST NOT be mutated in place — use
+// AsReader()/Mutate() on the proto type to obtain a safe mutable clone.
 func (s *DerivedKeyStore[K, T]) Get(canonical K) (value T, err error) {
 	if _, ok := s.deletions[canonical]; ok {
 		var zero T
 
-		return zero, nil
+		return zero, domain.ErrNotFound
 	}
 
 	if localV, ok := s.values[canonical]; ok {

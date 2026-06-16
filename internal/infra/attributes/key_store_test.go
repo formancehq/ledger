@@ -206,7 +206,7 @@ func TestDerivedKeyStorePutGetDelete(t *testing.T) {
 		require.Equal(t, "from-store", val)
 	})
 
-	t.Run("get returns zero for deleted key", func(t *testing.T) {
+	t.Run("get returns ErrNotFound for deleted key", func(t *testing.T) {
 		t.Parallel()
 
 		store := newTestKeyStore()
@@ -216,7 +216,20 @@ func TestDerivedKeyStorePutGetDelete(t *testing.T) {
 		derived := NewDerivedKeyStore[testKey, string](store)
 		derived.Delete(testKey{name: "key3"})
 
-		val, err := derived.Get(testKey{name: "key3"})
+		// A deleted key reads as absent (ErrNotFound), like a committed tombstone.
+		_, err = derived.Get(testKey{name: "key3"})
+		require.ErrorIs(t, err, domain.ErrNotFound)
+	})
+
+	t.Run("get returns a present zero value without error", func(t *testing.T) {
+		t.Parallel()
+
+		store := newTestKeyStore()
+		derived := NewDerivedKeyStore[testKey, string](store)
+
+		// A staged write of the zero value is present: Get returns it with no error.
+		derived.Put(testKey{name: "z"}, "")
+		val, err := derived.Get(testKey{name: "z"})
 		require.NoError(t, err)
 		require.Empty(t, val)
 	})
@@ -230,12 +243,11 @@ func TestDerivedKeyStorePutGetDelete(t *testing.T) {
 		derived.Put(testKey{name: "k"}, "first")
 		derived.Delete(testKey{name: "k"})
 
-		val, err := derived.Get(testKey{name: "k"})
-		require.NoError(t, err)
-		require.Empty(t, val)
+		_, err := derived.Get(testKey{name: "k"})
+		require.ErrorIs(t, err, domain.ErrNotFound)
 
 		derived.Put(testKey{name: "k"}, "restored")
-		val, err = derived.Get(testKey{name: "k"})
+		val, err := derived.Get(testKey{name: "k"})
 		require.NoError(t, err)
 		require.Equal(t, "restored", val)
 	})

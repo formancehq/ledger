@@ -88,10 +88,9 @@ func TestWriteSetDeleteAccountMetadata(t *testing.T) {
 
 	buf.DeleteAccountMetadata(key)
 
-	// After delete, Get should return the tombstone/nil from the derived store
-	val, err = buf.GetAccountMetadata(key)
-	require.NoError(t, err)
-	require.Nil(t, val)
+	// After delete the key reads as absent (ErrNotFound), like a committed tombstone.
+	_, err = buf.GetAccountMetadata(key)
+	require.ErrorIs(t, err, domain.ErrNotFound)
 }
 
 func TestWriteSetGetPutReverted(t *testing.T) {

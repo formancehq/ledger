@@ -234,6 +234,59 @@ func TestProcessDeleteMetadata_Account_NotFound(t *testing.T) {
 	require.Equal(t, "status", metaNotFound.Key)
 }
 
+// A present key may hold a nil value (validation accepts nil), which
+// GetAccountMetadata reports as (nil, nil). Deleting such a key still succeeds.
+func TestProcessDeleteMetadata_Account_NilValueDeletable(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockInMemoryStore(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	now := &commonpb.Timestamp{Data: 1234567890}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	metaKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerID: 1, Account: "users:123"},
+		Key:        "status",
+	}
+
+	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries.AsReader(), true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}, true).AnyTimes()
+	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(nil, nil)
+	mockStore.EXPECT().GetDate().Return(now)
+	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
+	mockStore.EXPECT().DeleteAccountMetadata(metaKey)
+
+	request := &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: "test-ledger",
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_DeleteMetadata{
+					DeleteMetadata: &commonpb.DeleteMetadataCommand{
+						Target: &commonpb.Target{
+							Target: &commonpb.Target_Account{
+								Account: &commonpb.TargetAccount{Addr: "users:123"},
+							},
+						},
+						Key: "status",
+					},
+				}},
+			},
+		},
+	}
+
+	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	deletedMetadata := result.GetApply().GetLog().GetData().GetDeletedMetadata()
+	require.NotNil(t, deletedMetadata)
+	require.Equal(t, "status", deletedMetadata.GetKey())
+}
+
 func TestProcessAddMetadata_TransactionByReference(t *testing.T) {
 	t.Parallel()
 
