@@ -174,9 +174,10 @@ func TestHandleCreateTransaction_CamelCaseFields(t *testing.T) {
 
 			var captured *servicepb.CreateTransactionPayload
 
-			backend := &mockBackend{
-				applyFn: func(_ context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
-					captured = requests[0].GetApply().GetAction().GetCreateTransaction()
+			backend := NewMockBackend(gomock.NewController(t))
+			backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, envelopes ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+					captured = envelopes[0].GetUnsigned().GetApply().GetAction().GetCreateTransaction()
 
 					return []*commonpb.Log{
 						{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
@@ -187,8 +188,7 @@ func TestHandleCreateTransaction_CamelCaseFields(t *testing.T) {
 							}}},
 						}}},
 					}, nil
-				},
-			}
+				}).AnyTimes()
 			srv := newTestServer(t, backend)
 
 			w := httptest.NewRecorder()
@@ -215,13 +215,13 @@ func TestHandleCreateTransaction_PostingsAndScriptConflict(t *testing.T) {
 
 	var captured *servicepb.CreateTransactionPayload
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
-			captured = requests[0].GetApply().GetAction().GetCreateTransaction()
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, envelopes ...*servicepb.Envelope) ([]*commonpb.Log, error) {
+			captured = envelopes[0].GetUnsigned().GetApply().GetAction().GetCreateTransaction()
 
 			return nil, &domain.BusinessError{Err: domain.ErrPostingsAndScriptConflict}
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -247,8 +247,9 @@ func TestHandleCreateTransaction_PostingsAndScriptConflict(t *testing.T) {
 func TestHandleCreateTransaction_UnknownFieldsAreLenient(t *testing.T) {
 	t.Parallel()
 
-	backend := &mockBackend{
-		applyFn: func(_ context.Context, _ ...*servicepb.Request) ([]*commonpb.Log, error) {
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ ...*servicepb.Envelope) ([]*commonpb.Log, error) {
 			return []*commonpb.Log{
 				{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
 					Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{
@@ -258,8 +259,7 @@ func TestHandleCreateTransaction_UnknownFieldsAreLenient(t *testing.T) {
 					}}},
 				}}},
 			}, nil
-		},
-	}
+		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
