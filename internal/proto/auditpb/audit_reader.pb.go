@@ -6,7 +6,6 @@ package auditpb
 import (
 	bytes "bytes"
 	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	raftcmdpb "github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	slices "slices"
 )
 
@@ -132,7 +131,7 @@ func NewAuditEntryListReader(s []*AuditEntry) AuditEntryListReader { return audi
 // Call Mutate() to obtain a mutable clone.
 type AuditItemReader interface {
 	GetOrderIndex() uint32
-	GetOrder() raftcmdpb.OrderReader
+	GetSerializedOrder() []byte
 	GetLogSequence() uint64
 	Mutate() *AuditItem
 }
@@ -143,12 +142,8 @@ func (r *auditItemReadonly) GetOrderIndex() uint32 {
 	return r.v.GetOrderIndex()
 }
 
-func (r *auditItemReadonly) GetOrder() raftcmdpb.OrderReader {
-	v := r.v.GetOrder()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *auditItemReadonly) GetSerializedOrder() []byte {
+	return bytes.Clone(r.v.GetSerializedOrder())
 }
 
 func (r *auditItemReadonly) GetLogSequence() uint64 {

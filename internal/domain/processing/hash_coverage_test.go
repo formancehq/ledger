@@ -6,13 +6,16 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func testOrders() []*raftcmdpb.Order {
-	return []*raftcmdpb.Order{
-		{Type: &raftcmdpb.Order_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{Name: "test"}}},
-		{Type: &raftcmdpb.Order_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{Name: "test2"}}},
+// testOrderBytes returns arbitrary fixed byte slices that stand in for
+// the serialized-order payloads the apply path stores in
+// AuditItem.serialized_order. The generator hashes byte slices, never
+// protos — keeping the tests at the byte level pins that property.
+func testOrderBytes() [][]byte {
+	return [][]byte{
+		[]byte("order-1-payload"),
+		[]byte("order-2-payload"),
 	}
 }
 
@@ -21,7 +24,7 @@ func TestHashGenerator_BLAKE3_OutputSize(t *testing.T) {
 
 	g := NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, "cluster-A")
 
-	_, hash := g.Compute(nil, nil, testOrders())
+	_, hash := g.Compute(nil, nil, testOrderBytes())
 	require.Len(t, hash, 32, "BLAKE3 should produce 32-byte hash")
 	require.Equal(t, commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, g.Algorithm())
 }
@@ -31,7 +34,7 @@ func TestHashGenerator_XXH3_OutputSize(t *testing.T) {
 
 	g := NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3, "cluster-A")
 
-	_, hash := g.Compute(nil, nil, testOrders()[:1])
+	_, hash := g.Compute(nil, nil, testOrderBytes()[:1])
 	require.Len(t, hash, 16, "XXH3 should produce 16-byte hash")
 	require.Equal(t, commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3, g.Algorithm())
 }
@@ -40,7 +43,7 @@ func TestHashGenerator_Chaining(t *testing.T) {
 	t.Parallel()
 
 	g := NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, "cluster-A")
-	orders := testOrders()
+	orders := testOrderBytes()
 
 	_, hash1 := g.Compute(nil, nil, orders)
 	_, hash2 := g.Compute(nil, []byte("prev-hash"), orders)
@@ -60,7 +63,7 @@ func TestHashGenerator_Deterministic(t *testing.T) {
 	t.Parallel()
 
 	g := NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, "cluster-A")
-	orders := testOrders()
+	orders := testOrderBytes()
 	lastHash := []byte("chain")
 
 	_, hash1 := g.Compute(nil, lastHash, orders)
@@ -82,8 +85,8 @@ func TestHashGenerator_PerClusterKey(t *testing.T) {
 		gA := NewHashGenerator(algo, "cluster-A")
 		gB := NewHashGenerator(algo, "cluster-B")
 
-		_, hashA := gA.Compute(nil, nil, testOrders())
-		_, hashB := gB.Compute(nil, nil, testOrders())
+		_, hashA := gA.Compute(nil, nil, testOrderBytes())
+		_, hashB := gB.Compute(nil, nil, testOrderBytes())
 		require.NotEqual(t, hashA, hashB,
 			"algo %s: same inputs under different ClusterIDs must produce different hashes", algo)
 	}
@@ -122,7 +125,7 @@ func TestHashGenerator_UnknownAlgorithmFallsBackToBLAKE3(t *testing.T) {
 	g := NewHashGenerator(commonpb.HashAlgorithm(99), "cluster-A")
 	require.Equal(t, commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, g.Algorithm())
 
-	_, hash := g.Compute(nil, nil, testOrders())
+	_, hash := g.Compute(nil, nil, testOrderBytes())
 	require.Len(t, hash, 32)
 }
 
@@ -138,16 +141,16 @@ func TestHashGenerator_MixedAlgorithmChain(t *testing.T) {
 	blake3Gen := NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, clusterID)
 
 	// Entry 1 under XXH3.
-	_, hash1 := xxh3Gen.Compute(nil, nil, testOrders())
+	_, hash1 := xxh3Gen.Compute(nil, nil, testOrderBytes())
 	require.Len(t, hash1, 16)
 
 	// Entry 2 under BLAKE3, chained on hash1.
-	_, hash2 := blake3Gen.Compute(nil, hash1, testOrders()[:1])
+	_, hash2 := blake3Gen.Compute(nil, hash1, testOrderBytes()[:1])
 	require.Len(t, hash2, 32)
 
 	// Re-verifying entry 2 with the same generator + the same lastHash
 	// must reproduce hash2 exactly. This is the path the checker walks.
 	verifyGen := NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, clusterID)
-	_, recomputed := verifyGen.Compute(nil, hash1, testOrders()[:1])
+	_, recomputed := verifyGen.Compute(nil, hash1, testOrderBytes()[:1])
 	require.Equal(t, hash2, recomputed)
 }

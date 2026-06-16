@@ -8,7 +8,6 @@ import (
 	binary "encoding/binary"
 	fmt "fmt"
 	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	raftcmdpb "github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
 	proto "google.golang.org/protobuf/proto"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -88,8 +87,12 @@ func (m *AuditItem) CloneVT() *AuditItem {
 	}
 	r := new(AuditItem)
 	r.OrderIndex = m.OrderIndex
-	r.Order = m.Order.CloneVT()
 	r.LogSequence = m.LogSequence
+	if rhs := m.SerializedOrder; rhs != nil {
+		tmpBytes := make([]byte, len(rhs))
+		copy(tmpBytes, rhs)
+		r.SerializedOrder = tmpBytes
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -313,7 +316,7 @@ func (this *AuditItem) EqualVT(that *AuditItem) bool {
 	if this.OrderIndex != that.OrderIndex {
 		return false
 	}
-	if !this.Order.EqualVT(that.Order) {
+	if string(this.SerializedOrder) != string(that.SerializedOrder) {
 		return false
 	}
 	if this.LogSequence != that.LogSequence {
@@ -636,13 +639,10 @@ func (m *AuditItem) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x19
 	}
-	if m.Order != nil {
-		size, err := m.Order.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+	if len(m.SerializedOrder) > 0 {
+		i -= len(m.SerializedOrder)
+		copy(dAtA[i:], m.SerializedOrder)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.SerializedOrder)))
 		i--
 		dAtA[i] = 0x12
 	}
@@ -933,8 +933,8 @@ func (m *AuditItem) SizeVT() (n int) {
 	if m.OrderIndex != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.OrderIndex))
 	}
-	if m.Order != nil {
-		l = m.Order.SizeVT()
+	l = len(m.SerializedOrder)
+	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	if m.LogSequence != 0 {
@@ -1441,9 +1441,9 @@ func (m *AuditItem) UnmarshalVT(dAtA []byte) error {
 			}
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Order", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field SerializedOrder", wireType)
 			}
-			var msglen int
+			var byteLen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -1453,26 +1453,24 @@ func (m *AuditItem) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				msglen |= int(b&0x7F) << shift
+				byteLen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			if msglen < 0 {
+			if byteLen < 0 {
 				return protohelpers.ErrInvalidLength
 			}
-			postIndex := iNdEx + msglen
+			postIndex := iNdEx + byteLen
 			if postIndex < 0 {
 				return protohelpers.ErrInvalidLength
 			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.Order == nil {
-				m.Order = &raftcmdpb.Order{}
-			}
-			if err := m.Order.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
+			m.SerializedOrder = append(m.SerializedOrder[:0], dAtA[iNdEx:postIndex]...)
+			if m.SerializedOrder == nil {
+				m.SerializedOrder = []byte{}
 			}
 			iNdEx = postIndex
 		case 3:

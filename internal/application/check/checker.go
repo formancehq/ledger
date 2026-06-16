@@ -21,6 +21,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	domainreplay "github.com/formancehq/ledger/v3/internal/domain/replay"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
@@ -1138,16 +1139,55 @@ func (c *Checker) verifyAuditHashChain(
 			return fmt.Errorf("reading audit entry for hash chain verification: %w", err)
 		}
 
-		// Read the audit items (orders) for this entry.
+		// `items` on the stored AuditEntry value is reserved for
+		// GetAuditEntry response shaping — the apply path forces it
+		// nil. A non-empty list here is a tampering attempt: items
+		// smuggled into the entry value would be returned by
+		// ListAuditEntries / GetAuditEntry without being bound by the
+		// chain (the chain hashes the items from their own keys, not
+		// this list). Flag and stop.
+		if len(entry.GetItems()) > 0 {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
+				fmt.Sprintf("audit entry %d carries %d embedded items in its persisted value; entry.items must be nil on disk",
+					entry.GetSequence(), len(entry.GetItems())),
+				logSequenceFromAuditEntry(entry), "", "", "",
+			))
+
+			return nil
+		}
+
+		// Read the audit items for this entry, then rebuild the canonical
+		// per-item bytes that fed the hash chain at apply time. Combined
+		// with the rebuilt header payload (which binds every other
+		// AuditEntry field via state.BuildHashedHeaderPayload), the hash
+		// pre-image is reconstructed from the stored fields — no proto
+		// re-marshalling, immune to vtprotobuf and Order schema drift.
 		items, itemsErr := query.ReadAuditItems(ctx, reader, entry.GetSequence())
 		if itemsErr != nil {
 			return fmt.Errorf("reading audit items for sequence %d: %w", entry.GetSequence(), itemsErr)
 		}
 
-		// Extract orders from items.
-		orders := make([]*raftcmdpb.Order, len(items))
-		for i, item := range items {
-			orders[i] = item.GetOrder()
+		headerPayload, headerErr := state.BuildHashedHeaderPayload(entry)
+		if headerErr != nil {
+			// A persisted entry that fails to rebuild its own header
+			// is either tampered (e.g. outcome wiped) or pre-dated a
+			// schema change. Either way the chain is unreproducible
+			// from here, so emit a mismatch and stop.
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
+				fmt.Sprintf("audit entry %d cannot be re-hashed: %v", entry.GetSequence(), headerErr),
+				logSequenceFromAuditEntry(entry), "", "", "",
+			))
+
+			return nil
+		}
+
+		hashSlices := make([][]byte, 0, 1+len(items))
+		hashSlices = append(hashSlices, headerPayload)
+
+		for _, item := range items {
+			hashSlices = append(hashSlices, state.BuildPerItemPayload(item))
 		}
 
 		// Recompute the hash using a generator matching the entry's stored
@@ -1161,7 +1201,7 @@ func (c *Checker) verifyAuditHashChain(
 		}
 
 		var computed []byte
-		hashBuf, computed = gen.Compute(hashBuf, lastHash, orders)
+		hashBuf, computed = gen.Compute(hashBuf, lastHash, hashSlices)
 
 		if !bytes.Equal(computed, entry.GetHash()) {
 			callback(errorEvent(

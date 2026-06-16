@@ -4,7 +4,6 @@ import (
 	"github.com/zeebo/blake3"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
 // blake3AuditKeyContext domain-separates the BLAKE3 audit-hash key from
@@ -22,8 +21,8 @@ func newBLAKE3HashGenerator(clusterID string) *blake3HashGenerator {
 	}
 }
 
-func (g *blake3HashGenerator) Compute(buf []byte, lastHash []byte, orders []*raftcmdpb.Order) ([]byte, []byte) {
-	buf = serializeAuditPayload(buf, lastHash, orders)
+func (g *blake3HashGenerator) Compute(buf []byte, lastHash []byte, slices [][]byte) ([]byte, []byte) {
+	buf = serializeAuditPayload(buf, lastHash, slices)
 
 	// NewKeyed only errors on key-length mismatch, impossible here
 	// because g.key is a [32]byte and Sum256 always produces 32 bytes.

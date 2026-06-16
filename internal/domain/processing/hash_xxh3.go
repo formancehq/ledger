@@ -7,7 +7,6 @@ import (
 	"github.com/zeebo/xxh3"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
 // xxh3AuditKeyContext domain-separates the XXH3 audit-hash seed from
@@ -28,8 +27,8 @@ func newXXH3HashGenerator(clusterID string) *xxh3HashGenerator {
 	}
 }
 
-func (g *xxh3HashGenerator) Compute(buf []byte, lastHash []byte, orders []*raftcmdpb.Order) ([]byte, []byte) {
-	buf = serializeAuditPayload(buf, lastHash, orders)
+func (g *xxh3HashGenerator) Compute(buf []byte, lastHash []byte, slices [][]byte) ([]byte, []byte) {
+	buf = serializeAuditPayload(buf, lastHash, slices)
 
 	h := xxh3.Hash128Seed(buf, g.seed)
 

@@ -59,7 +59,7 @@ func (m *AuditEntry) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 	}
 	if len(m.Items) > 0 {
 		for iNdEx := len(m.Items) - 1; iNdEx >= 0; iNdEx-- {
-			size, _ := m.Items[iNdEx].MarshalToSizedBufferDeterministicVT(dAtA[:i])
+			size, _ := m.Items[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
@@ -115,40 +115,11 @@ func (m *AuditItem) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
-	sz := m.SizeVT()
-	buf := make([]byte, sz)
-	n, _ := m.MarshalToSizedBufferDeterministicVT(buf)
-	return append(dAtA, buf[sz-n:]...)
-}
-
-func (m *AuditItem) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
 	}
-	i := len(dAtA)
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.LogSequence != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.LogSequence))
-		i--
-		dAtA[i] = 0x19
-	}
-	if m.Order != nil {
-		size, _ := m.Order.MarshalToSizedBufferDeterministicVT(dAtA[:i])
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.OrderIndex != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.OrderIndex))
-		i--
-		dAtA[i] = 0x8
-	}
-	return len(dAtA) - i, nil
+	return append(dAtA, b...)
 }
 
 func (m *AuditSuccess) MarshalDeterministicVT(dAtA []byte) []byte {

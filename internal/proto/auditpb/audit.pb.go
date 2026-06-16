@@ -8,7 +8,6 @@ package auditpb
 
 import (
 	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	raftcmdpb "github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -45,8 +44,27 @@ type AuditEntry struct {
 	// Used for efficient filtering without loading items.
 	Ledgers []string `protobuf:"bytes,8,rep,name=ledgers,proto3" json:"ledgers,omitempty"`
 	// Batch-level integrity hash chaining audit entries.
-	// For success entries: H(concat(all_pre_marshaled_log_bytes) + previous_audit_hash)
-	// For failure entries: H(serialize(audit_entry_without_hash) + previous_audit_hash)
+	// Formula: H(key, header_payload || concat(per_item_payload) ||
+	//
+	//	previous_audit_hash)
+	//
+	// where:
+	//   - `key` is derived from the immutable ClusterID via domain-separated BLAKE3
+	//   - `header_payload` is the canonical binary encoding of EVERY other field
+	//     of this AuditEntry (sequence, timestamp, proposal_id, outcome,
+	//     order_count, ledgers, hash_version, caller_snapshot), rebuilt by the
+	//     verifier at check time from the stored fields via
+	//     state.BuildHashedHeaderPayload — never persisted separately, so the
+	//     typed fields ARE the source of truth
+	//   - `per_item_payload` is the canonical binary encoding of each AuditItem
+	//     (order_index, log_sequence, serialized_order), rebuilt the same way
+	//     via state.BuildPerItemPayload
+	//   - `previous_audit_hash` is `hash` of the predecessor entry, or empty for
+	//     the first entry
+	//
+	// Same formula for success and failure entries. The hash binds every field
+	// of AuditEntry and AuditItem except `hash` itself. Tampering with any
+	// other field is detected by checker.verifyAuditHashChain.
 	Hash []byte `protobuf:"bytes,9,opt,name=hash,proto3" json:"hash,omitempty"`
 	// Hash algorithm version (matches common.HashAlgorithm enum).
 	HashVersion uint32 `protobuf:"varint,10,opt,name=hash_version,json=hashVersion,proto3" json:"hash_version,omitempty"`
@@ -198,8 +216,15 @@ type AuditItem struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Zero-based position of this order within the proposal.
 	OrderIndex uint32 `protobuf:"varint,1,opt,name=order_index,json=orderIndex,proto3" json:"order_index,omitempty"`
-	// The original order.
-	Order *raftcmdpb.Order `protobuf:"bytes,2,opt,name=order,proto3" json:"order,omitempty"`
+	// Deterministic serialized bytes of the order at apply time. The audit
+	// hash chain on AuditEntry.hash is computed over the concatenation of
+	// these bytes (in order_index order) so verification never re-marshals
+	// an Order proto. This decouples the hash chain from the Order schema
+	// and the vtprotobuf marshaller version. Field 2 previously held
+	// `raft.Order order`; the wire format is identical (length-delimited,
+	// bytes-equal) so the swap is on-wire compatible with entries persisted
+	// before the change.
+	SerializedOrder []byte `protobuf:"bytes,2,opt,name=serialized_order,json=serializedOrder,proto3" json:"serialized_order,omitempty"`
 	// Sequence of the log produced by this order. Zero if the order was
 	// an idempotent replay or if the proposal failed.
 	LogSequence   uint64 `protobuf:"fixed64,3,opt,name=log_sequence,json=logSequence,proto3" json:"log_sequence,omitempty"`
@@ -244,9 +269,9 @@ func (x *AuditItem) GetOrderIndex() uint32 {
 	return 0
 }
 
-func (x *AuditItem) GetOrder() *raftcmdpb.Order {
+func (x *AuditItem) GetSerializedOrder() []byte {
 	if x != nil {
-		return x.Order
+		return x.SerializedOrder
 	}
 	return nil
 }
@@ -447,7 +472,7 @@ var File_audit_proto protoreflect.FileDescriptor
 
 const file_audit_proto_rawDesc = "" +
 	"\n" +
-	"\vaudit.proto\x12\x05audit\x1a\fcommon.proto\x1a\x0eraft_cmd.proto\"\xd0\x03\n" +
+	"\vaudit.proto\x12\x05audit\x1a\fcommon.proto\"\xd0\x03\n" +
 	"\n" +
 	"AuditEntry\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x06R\bsequence\x12/\n" +
@@ -464,12 +489,12 @@ const file_audit_proto_rawDesc = "" +
 	"\fhash_version\x18\n" +
 	" \x01(\rR\vhashVersion\x12?\n" +
 	"\x0fcaller_snapshot\x18\f \x01(\v2\x16.common.CallerSnapshotR\x0ecallerSnapshotB\t\n" +
-	"\aoutcomeJ\x04\b\v\x10\fR\x06caller\"r\n" +
+	"\aoutcomeJ\x04\b\v\x10\fR\x06caller\"\x81\x01\n" +
 	"\tAuditItem\x12\x1f\n" +
 	"\vorder_index\x18\x01 \x01(\rR\n" +
-	"orderIndex\x12!\n" +
-	"\x05order\x18\x02 \x01(\v2\v.raft.OrderR\x05order\x12!\n" +
-	"\flog_sequence\x18\x03 \x01(\x06R\vlogSequence\"\xc0\x03\n" +
+	"orderIndex\x12)\n" +
+	"\x10serialized_order\x18\x02 \x01(\fR\x0fserializedOrder\x12!\n" +
+	"\flog_sequence\x18\x03 \x01(\x06R\vlogSequenceR\x05order\"\xc0\x03\n" +
 	"\fAuditSuccess\x12(\n" +
 	"\x10min_log_sequence\x18\x01 \x01(\x06R\x0eminLogSequence\x12(\n" +
 	"\x10max_log_sequence\x18\x02 \x01(\x06R\x0emaxLogSequence\x12Y\n" +
@@ -516,7 +541,6 @@ var file_audit_proto_goTypes = []any{
 	nil,                             // 7: audit.AuditFailure.ContextEntry
 	(*commonpb.Timestamp)(nil),      // 8: common.Timestamp
 	(*commonpb.CallerSnapshot)(nil), // 9: common.CallerSnapshot
-	(*raftcmdpb.Order)(nil),         // 10: raft.Order
 }
 var file_audit_proto_depIdxs = []int32{
 	8,  // 0: audit.AuditEntry.timestamp:type_name -> common.Timestamp
@@ -524,17 +548,16 @@ var file_audit_proto_depIdxs = []int32{
 	4,  // 2: audit.AuditEntry.failure:type_name -> audit.AuditFailure
 	1,  // 3: audit.AuditEntry.items:type_name -> audit.AuditItem
 	9,  // 4: audit.AuditEntry.caller_snapshot:type_name -> common.CallerSnapshot
-	10, // 5: audit.AuditItem.order:type_name -> raft.Order
-	5,  // 6: audit.AuditSuccess.transient_accounts:type_name -> audit.AuditSuccess.TransientAccountsEntry
-	6,  // 7: audit.AuditSuccess.purged_accounts:type_name -> audit.AuditSuccess.PurgedAccountsEntry
-	7,  // 8: audit.AuditFailure.context:type_name -> audit.AuditFailure.ContextEntry
-	3,  // 9: audit.AuditSuccess.TransientAccountsEntry.value:type_name -> audit.AccountList
-	3,  // 10: audit.AuditSuccess.PurgedAccountsEntry.value:type_name -> audit.AccountList
-	11, // [11:11] is the sub-list for method output_type
-	11, // [11:11] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	5,  // 5: audit.AuditSuccess.transient_accounts:type_name -> audit.AuditSuccess.TransientAccountsEntry
+	6,  // 6: audit.AuditSuccess.purged_accounts:type_name -> audit.AuditSuccess.PurgedAccountsEntry
+	7,  // 7: audit.AuditFailure.context:type_name -> audit.AuditFailure.ContextEntry
+	3,  // 8: audit.AuditSuccess.TransientAccountsEntry.value:type_name -> audit.AccountList
+	3,  // 9: audit.AuditSuccess.PurgedAccountsEntry.value:type_name -> audit.AccountList
+	10, // [10:10] is the sub-list for method output_type
+	10, // [10:10] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_audit_proto_init() }

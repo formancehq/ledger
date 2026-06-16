@@ -219,7 +219,7 @@ func (e *testEngine) appendAuditEntry(batch *dal.WriteSession, proposal *raftcmd
 
 	hashAlgorithm := commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3
 	hashGenerator := processing.NewHashGenerator(hashAlgorithm, e.clusterID)
-	_, auditHash := hashGenerator.Compute(nil, e.lastAuditHash, proposal.GetOrders())
+	serializedOrders := marshalOrdersForTest(proposal.GetOrders())
 	minLogSeq, maxLogSeq := testLogSequenceRange(results)
 
 	entry := &auditpb.AuditEntry{
@@ -227,7 +227,6 @@ func (e *testEngine) appendAuditEntry(batch *dal.WriteSession, proposal *raftcmd
 		Timestamp:   proposal.GetDate(),
 		ProposalId:  proposal.GetId(),
 		OrderCount:  uint32(len(proposal.GetOrders())),
-		Hash:        auditHash,
 		HashVersion: uint32(hashAlgorithm),
 		Outcome: &auditpb.AuditEntry_Success{
 			Success: &auditpb.AuditSuccess{
@@ -237,12 +236,27 @@ func (e *testEngine) appendAuditEntry(batch *dal.WriteSession, proposal *raftcmd
 		},
 	}
 
+	items := testAuditItems(serializedOrders, results)
+
+	headerPayload, err := state.BuildHashedHeaderPayload(entry)
+	require.NoError(e.t, err)
+
+	hashSlices := make([][]byte, 0, 1+len(items))
+	hashSlices = append(hashSlices, headerPayload)
+
+	for _, item := range items {
+		hashSlices = append(hashSlices, state.BuildPerItemPayload(item))
+	}
+
+	_, auditHash := hashGenerator.Compute(nil, e.lastAuditHash, hashSlices)
+	entry.Hash = auditHash
+
 	batch.KeyBuilder.
 		PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).
 		PutUint64(entry.GetSequence())
 	require.NoError(e.t, batch.SetProto(batch.KeyBuilder.Consume(), entry))
 
-	for _, item := range testAuditItems(proposal.GetOrders(), results) {
+	for _, item := range items {
 		batch.KeyBuilder.
 			PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).
 			PutUint64(entry.GetSequence()).
@@ -280,13 +294,25 @@ func testLogSequenceRange(results []*raftcmdpb.CreatedLogOrReference) (uint64, u
 	return minSeq, maxSeq
 }
 
-func testAuditItems(orders []*raftcmdpb.Order, results []*raftcmdpb.CreatedLogOrReference) []*auditpb.AuditItem {
-	items := make([]*auditpb.AuditItem, len(orders))
-
+// marshalOrdersForTest mirrors the apply-path helper so tests feed the
+// hash generator and AuditItem persistence the same per-order byte
+// slices the real FSM does.
+func marshalOrdersForTest(orders []*raftcmdpb.Order) [][]byte {
+	out := make([][]byte, len(orders))
 	for i, order := range orders {
+		out[i] = order.MarshalDeterministicVT(nil)
+	}
+
+	return out
+}
+
+func testAuditItems(serializedOrders [][]byte, results []*raftcmdpb.CreatedLogOrReference) []*auditpb.AuditItem {
+	items := make([]*auditpb.AuditItem, len(serializedOrders))
+
+	for i, payload := range serializedOrders {
 		item := &auditpb.AuditItem{
-			OrderIndex: uint32(i),
-			Order:      order,
+			OrderIndex:      uint32(i),
+			SerializedOrder: payload,
 		}
 
 		if i < len(results) {

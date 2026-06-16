@@ -51,9 +51,9 @@ func BenchmarkAuditWrite(b *testing.B) {
 		items := make([]*auditpb.AuditItem, n)
 		for i, order := range orders {
 			items[i] = &auditpb.AuditItem{
-				OrderIndex:  uint32(i),
-				Order:       order,
-				LogSequence: uint64(i + 1),
+				OrderIndex:      uint32(i),
+				SerializedOrder: order.MarshalDeterministicVT(nil),
+				LogSequence:     uint64(i + 1),
 			}
 		}
 

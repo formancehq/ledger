@@ -6,11 +6,18 @@
 // cannot forge audit entries offline. ClusterID immutability is
 // enforced by bootstrap.ValidateOrPersistConfig; the per-algorithm key
 // derivation uses domain-separated BLAKE3.
+//
+// The generator hashes opaque byte slices, never a proto. The apply
+// path assembles those slices from canonical binary encodings of every
+// bound AuditEntry and AuditItem field (cf. state.BuildHashedHeaderPayload
+// and state.BuildPerItemPayload). The verifier reassembles the same
+// slices from the persisted entry and items, so reproducing the chain
+// requires only the stored bytes + the ClusterID — no proto schema, no
+// vtprotobuf, no marshaller version.
 package processing
 
 import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
 // HashGenerator computes the chained audit hash for FSM proposals using
@@ -22,10 +29,14 @@ import (
 // When the cluster config swaps the active algorithm, a new generator
 // is constructed via NewHashGenerator and replaces the previous one.
 type HashGenerator interface {
-	// Compute hashes (serialized orders || lastHash) and returns the
+	// Compute hashes (concat(slices) || lastHash) and returns the
 	// reusable buffer plus the resulting hash. Buf is truncated and
 	// re-grown so callers can amortize allocations across proposals.
-	Compute(buf []byte, lastHash []byte, orders []*raftcmdpb.Order) (resBuf []byte, hash []byte)
+	// `slices` is the ordered list of canonical byte payloads that bind
+	// the AuditEntry header and each AuditItem (the apply path builds
+	// them via state.BuildHashedHeaderPayload and BuildPerItemPayload).
+	// The generator never marshals anything itself.
+	Compute(buf []byte, lastHash []byte, slices [][]byte) (resBuf []byte, hash []byte)
 	// Algorithm returns the enum stamped on each AuditEntry's
 	// HashVersion field, so the checker can replay using the same impl.
 	Algorithm() commonpb.HashAlgorithm
@@ -49,13 +60,13 @@ func NewHashGenerator(algorithm commonpb.HashAlgorithm, clusterID string) HashGe
 	}
 }
 
-// serializeAuditPayload writes (orders || lastHash) into buf and returns
-// the populated slice. Shared by all HashGenerator implementations so
-// the wire format of what gets hashed stays algorithm-independent.
-func serializeAuditPayload(buf []byte, lastHash []byte, orders []*raftcmdpb.Order) []byte {
+// serializeAuditPayload writes (concat(slices) || lastHash) into buf and
+// returns the populated slice. Shared by all HashGenerator implementations
+// so the on-wire shape of what gets hashed stays algorithm-independent.
+func serializeAuditPayload(buf []byte, lastHash []byte, slices [][]byte) []byte {
 	buf = buf[:0]
-	for _, order := range orders {
-		buf = order.MarshalDeterministicVT(buf)
+	for _, s := range slices {
+		buf = append(buf, s...)
 	}
 
 	if len(lastHash) > 0 {

@@ -1084,27 +1084,84 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// Process the proposal
 	logs, err := fsm.processor.ProcessOrders(orders, buffer)
 
-	// Compute audit hash synchronously. The hash covers the orders (source of
-	// truth), not the logs (deterministic derivation).
-	var auditHash []byte
-	fsm.auditHashBuf, auditHash = fsm.State.HashGenerator.Compute(fsm.auditHashBuf, fsm.State.LastAuditHash, orders)
+	// Pre-marshal each order once. The same byte slices are (a) bound in
+	// the audit hash chain via buildPerItemPayload and (b) persisted to
+	// AuditItem.SerializedOrder, so verifiers re-hash the exact bytes
+	// captured at apply time instead of re-marshalling an Order proto.
+	// This decouples chain verification from vtprotobuf and from the
+	// Order proto schema.
+	serializedOrders := marshalOrdersForAudit(orders)
 
-	// Helper to build and write the audit entry (shared by success and failure paths).
+	// Helper to build, hash and write the audit entry (shared by success
+	// and failure paths). The caller passes an AuditEntry with `Outcome`
+	// already set; every other field is filled here BEFORE the hash is
+	// computed, because BuildHashedHeaderPayload binds them all into the
+	// chain. Tampering with any AuditEntry or AuditItem field on disk
+	// after this commit is detected by checker.verifyAuditHashChain.
 	writeAuditEntry := func(entry *auditpb.AuditEntry, logs []*raftcmdpb.CreatedLogOrReference, label string) error {
+		// Sequence must be set BEFORE the header payload is built —
+		// BuildHashedHeaderPayload binds entry.Sequence, and the
+		// verifier rebuilds the payload from the persisted (non-zero)
+		// sequence. Peek NextAuditSequenceID without mutating state;
+		// the actual advance happens in AppendAuditEntry below, after
+		// the hash is computed, so a partial failure in this closure
+		// does not leak a phantom sequence into FSMState.
+		entry.Sequence = fsm.State.NextAuditSequenceID
 		entry.Timestamp = effectiveDate
 		entry.ProposalId = proposal.GetId()
 		entry.OrderCount = uint32(len(orders))
 		entry.Ledgers = extractLedgers(orders)
-		entry.Hash = auditHash
 		entry.HashVersion = uint32(fsm.State.HashGenerator.Algorithm())
 		entry.CallerSnapshot = proposal.GetCallerSnapshot()
-		entry.Sequence = fsm.State.AppendAuditEntry(auditHash)
+
+		items := buildAuditItems(serializedOrders, logs)
+
+		// Hash pre-image: [header_payload || per_item_0 || ... ||
+		// per_item_N-1] hashed alongside lastAuditHash. The verifier
+		// rebuilds the same slices from the stored AuditEntry +
+		// AuditItem fields via the same builders — never marshalling
+		// anything, and never relying on a separately-persisted blob
+		// (so a tampered typed field is structurally detectable).
+		headerPayload, headerErr := BuildHashedHeaderPayload(entry)
+		if headerErr != nil {
+			return fmt.Errorf("building hashed header for %s: %w", label, headerErr)
+		}
+
+		hashSlices := make([][]byte, 0, 1+len(items))
+		hashSlices = append(hashSlices, headerPayload)
+
+		for _, item := range items {
+			hashSlices = append(hashSlices, BuildPerItemPayload(item))
+		}
+
+		var auditHash []byte
+		fsm.auditHashBuf, auditHash = fsm.State.HashGenerator.Compute(fsm.auditHashBuf, fsm.State.LastAuditHash, hashSlices)
+		entry.Hash = auditHash
+
+		// AppendAuditEntry validates that the peeked sequence matches
+		// the actual next one (no concurrent mutation) and advances
+		// LastAuditHash for the next entry.
+		committedSeq := fsm.State.AppendAuditEntry(auditHash)
+		if committedSeq != entry.GetSequence() {
+			return fmt.Errorf("audit sequence race for %s: peeked %d, got %d", label, entry.GetSequence(), committedSeq)
+		}
+
+		// Items live under their own Pebble keys (SubColdAuditItem). The
+		// AuditEntry value must never carry an embedded items list: the
+		// chain does not hash entry.Items (each item is hashed via its
+		// per-item payload from the separate keys), so a non-empty
+		// embedded list would be a smuggling vector for content
+		// returned through ListAuditEntries / GetAuditEntry without
+		// being bound by the chain. Force it nil before persistence;
+		// the checker also flags any non-empty value on read as a
+		// defence-in-depth backstop.
+		entry.Items = nil
 
 		if appendErr := appendAuditEntries(batch, entry); appendErr != nil {
 			return fmt.Errorf("appending audit entry for %s: %w", label, appendErr)
 		}
 
-		if appendErr := appendAuditItems(batch, entry.GetSequence(), buildAuditItems(orders, logs)...); appendErr != nil {
+		if appendErr := appendAuditItems(batch, entry.GetSequence(), items...); appendErr != nil {
 			return fmt.Errorf("appending audit items for %s: %w", label, appendErr)
 		}
 

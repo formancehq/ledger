@@ -16,6 +16,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -26,6 +27,18 @@ import (
 // collectAuditEntries collects all audit entries from the streaming RPC.
 func collectAuditEntries(ctx context.Context, client servicepb.BucketServiceClient, req *servicepb.ListAuditEntriesRequest) ([]*auditpb.AuditEntry, error) {
 	return actions.ListAuditEntriesWithRequest(ctx, client, req)
+}
+
+// decodeOrder unmarshals AuditItem.serialized_order back into a typed Order.
+// The audit hash chain hashes the stored bytes directly (cf.
+// docs/ops/correctness.md); typed Order access is a display-side concern,
+// so any UnmarshalVT failure here is a fatal test invariant violation
+// rather than a chain-integrity signal.
+func decodeOrder(item *auditpb.AuditItem) *raftcmdpb.Order {
+	order := &raftcmdpb.Order{}
+	Expect(order.UnmarshalVT(item.GetSerializedOrder())).To(Succeed())
+
+	return order
 }
 
 var _ = Describe("Audit Log", Ordered, func() {
@@ -214,8 +227,9 @@ var _ = Describe("Audit Log", Ordered, func() {
 		})
 		Expect(err).To(Succeed())
 		Expect(full.GetItems()).To(HaveLen(1))
-		Expect(full.GetItems()[0].GetOrder().GetCreateLedger()).NotTo(BeNil())
-		Expect(full.GetItems()[0].GetOrder().GetCreateLedger().GetName()).To(Equal(ledgerForOrders))
+		firstOrder := decodeOrder(full.GetItems()[0])
+		Expect(firstOrder.GetCreateLedger()).NotTo(BeNil())
+		Expect(firstOrder.GetCreateLedger().GetName()).To(Equal(ledgerForOrders))
 
 		// Create a transaction — produces an Apply/CreateTransaction order
 		_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
@@ -238,7 +252,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 		})
 		Expect(err).To(Succeed())
 		Expect(full.GetItems()).To(HaveLen(1))
-		apply := full.GetItems()[0].GetOrder().GetApply()
+		apply := decodeOrder(full.GetItems()[0]).GetApply()
 		Expect(apply).NotTo(BeNil())
 		Expect(apply.GetLedger()).To(Equal(ledgerForOrders))
 		Expect(apply.GetCreateTransaction()).NotTo(BeNil())
@@ -283,7 +297,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 		})
 		Expect(err).To(Succeed())
 		Expect(full.GetItems()).To(HaveLen(1))
-		sig := full.GetItems()[0].GetOrder().GetSignature()
+		sig := decodeOrder(full.GetItems()[0]).GetSignature()
 		Expect(sig).NotTo(BeNil())
 		Expect(sig.GetKeyId()).To(Equal(keyID))
 
@@ -294,7 +308,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 		})
 		Expect(err).To(Succeed())
 		Expect(regFull.GetItems()).NotTo(BeEmpty())
-		Expect(regFull.GetItems()[0].GetOrder().GetSignature()).To(BeNil())
+		Expect(decodeOrder(regFull.GetItems()[0]).GetSignature()).To(BeNil())
 	})
 
 	It("Should include multiple items in a batch audit entry", func() {
@@ -322,8 +336,8 @@ var _ = Describe("Audit Log", Ordered, func() {
 		})
 		Expect(err).To(Succeed())
 		Expect(full.GetItems()).To(HaveLen(2))
-		Expect(full.GetItems()[0].GetOrder().GetApply()).NotTo(BeNil())
-		Expect(full.GetItems()[1].GetOrder().GetApply()).NotTo(BeNil())
+		Expect(decodeOrder(full.GetItems()[0]).GetApply()).NotTo(BeNil())
+		Expect(decodeOrder(full.GetItems()[1]).GetApply()).NotTo(BeNil())
 	})
 
 	It("Should get a single entry with items populated", func() {

@@ -9,15 +9,100 @@ Integrity verification uses a **batch-level hash chain on audit entries** rather
 ### Hash Formula
 
 ```
-audit_hash = H(concat(MarshalDeterministic(order) for each order) + previous_audit_hash)
+audit_hash = H(key, header_payload || concat(per_item_payload) || previous_audit_hash)
 ```
 
 Where:
-- `H` is the configured hash function (BLAKE3 or XXH3-128)
-- `previous_audit_hash` is the hash of the immediately preceding audit entry (empty for the first entry)
-- Orders are the source of truth — logs are a deterministic derivation
+- `H` is the configured keyed hash function (BLAKE3 or XXH3-128).
+- `key` is derived from the immutable `ClusterID` via domain-separated BLAKE3.
+- `header_payload` is the canonical binary encoding of EVERY AuditEntry field except `hash`: sequence, timestamp, proposal_id, outcome (success or failure with all sub-fields including maps), order_count, ledgers, hash_version, caller_snapshot.
+- `per_item_payload` is the canonical binary encoding of each AuditItem (order_index, log_sequence, serialized_order) — one payload per item, concatenated in order_index order.
+- `previous_audit_hash` is the hash of the immediately preceding audit entry (empty for the first entry).
 
-The same formula applies to both success and failure entries: the hash covers what was *attempted* (orders), not what *resulted* (logs). The outcome (success/failure) is recorded in the audit entry itself.
+The verifier rebuilds `header_payload` and each `per_item_payload` from the stored typed fields via the spec below, so any tampering with any bound field changes the rebuilt bytes and breaks the chain hash. Detection scope: every field of `AuditEntry` and `AuditItem` except `AuditEntry.hash` itself.
+
+### Bound vs unbound fields
+
+| Field | Bound by | Tampering detection |
+|---|---|---|
+| `AuditEntry.sequence` | `header_payload` | ✓ |
+| `AuditEntry.timestamp` | `header_payload` | ✓ |
+| `AuditEntry.proposal_id` | `header_payload` | ✓ |
+| `AuditEntry.outcome` (success or failure) | `header_payload` | ✓ |
+| `AuditEntry.order_count` | `header_payload` | ✓ |
+| `AuditEntry.items` | NOT stored in entry value — see `per_item_payload` below | ✓ |
+| `AuditEntry.ledgers` | `header_payload` (sorted) | ✓ |
+| `AuditEntry.hash` | output of chain — not in pre-image by construction | — |
+| `AuditEntry.hash_version` | `header_payload` | ✓ |
+| `AuditEntry.caller_snapshot` | `header_payload` (identity, source oneof, god, sorted scopes) | ✓ |
+| `AuditItem.order_index` | `per_item_payload` | ✓ |
+| `AuditItem.serialized_order` | `per_item_payload` | ✓ |
+| `AuditItem.log_sequence` | `per_item_payload` | ✓ |
+
+### Header payload binary spec
+
+All integers are big-endian. All variable-length blobs (strings, sub-payloads, repeated entries) are prefixed by their length as `u32 BE`. Maps and `repeated string` fields are iterated in lexicographic key order.
+
+```
+HashedHeaderPayload {
+    u64 sequence
+    u64 timestamp_data
+    u64 proposal_id
+    u32 order_count
+    u32 hash_version
+    u32 ledgers_count
+    repeated { u32 ledger_len ; bytes ledger }     // sorted lexicographically
+    u8  outcome_tag                                  // 0 = success, 1 = failure
+    u32 outcome_payload_len
+    bytes outcome_payload                            // shape selon outcome_tag
+    u32 caller_snapshot_len                          // 0 when CallerSnapshot is absent
+    bytes caller_snapshot_payload
+}
+
+OutcomeSuccessPayload {
+    u64 min_log_sequence
+    u64 max_log_sequence
+    u32 transient_ledgers_count
+    repeated TransientEntry {
+        u32 ledger_len ; bytes ledger                // sorted
+        u32 accounts_count
+        repeated { u32 account_len ; bytes account } // sorted
+    }
+    u32 purged_ledgers_count
+    repeated PurgedEntry { ... }                     // same shape as transient
+}
+
+OutcomeFailurePayload {
+    u32 error_type_len ; bytes error_type
+    u32 message_len ; bytes message
+    u32 context_count
+    repeated { u32 key_len ; bytes key ; u32 value_len ; bytes value }  // sorted by key
+}
+
+CallerSnapshotPayload {                              // empty buffer when snapshot is nil
+    u32 subject_len ; bytes subject
+    u8  source_tag                                   // 0 = none, 1 = issuer, 2 = key_id
+    u32 source_value_len ; bytes source_value
+    u8  god                                          // 0 or 1
+    u32 scopes_count
+    repeated { u32 scope_len ; bytes scope }         // sorted
+}
+```
+
+### Per-item payload binary spec
+
+```
+PerItemPayload {
+    u32 order_index
+    u64 log_sequence
+    u32 serialized_order_len
+    bytes serialized_order
+}
+```
+
+`serialized_order` is the exact `Order.MarshalDeterministicVT()` output captured at apply time and persisted in `AuditItem.serialized_order` — verifiers re-hash those bytes directly and never re-marshal an `Order` proto, so the chain is immune to vtprotobuf or `Order` schema evolution.
+
+The Go reference implementation lives in `internal/infra/state/audit_envelope.go` (`BuildHashedHeaderPayload` and `BuildPerItemPayload`); cross-language verifiers re-implement the spec above. A golden test (`internal/infra/state/audit_envelope_test.go`) recomputes the hash by hand for a fixed fixture and trips on any drift between the spec and the Go implementation.
 
 ### Why Batch-Level (Not Per-Log)
 
@@ -54,7 +139,7 @@ The chain is **not broken** by Raft snapshots: the snapshot contains all Pebble 
 
 ### Failure Isolation
 
-If a proposal fails (e.g., insufficient funds, ledger not found), a failure audit entry is created with the same pre-computed hash (the hash covers the orders, which are the same regardless of outcome). The `WriteSet` state is discarded without being merged into the `Machine`, but the audit chain advances. This ensures failed proposals are tamper-evident.
+If a proposal fails (e.g., insufficient funds, ledger not found), a failure audit entry is created. The hash binds the failure outcome (error_type, message, context) alongside the orders, so a failure cannot silently be relabelled as a success (or vice versa) without breaking the chain. The `WriteSet` state is discarded without being merged into the `Machine`, but the audit chain advances. This ensures failed proposals are tamper-evident.
 
 ### Idempotent Responses
 

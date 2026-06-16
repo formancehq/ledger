@@ -39,15 +39,35 @@ func buildAuditFailure(err error) *auditpb.AuditFailure {
 	return failure
 }
 
-// buildAuditItems creates AuditItem entries from orders and their associated logs.
-// For failure cases (logs is nil), all items get LogSequence=0.
-func buildAuditItems(orders []*raftcmdpb.Order, logs []*raftcmdpb.CreatedLogOrReference) []*auditpb.AuditItem {
-	items := make([]*auditpb.AuditItem, len(orders))
+// marshalOrdersForAudit returns the deterministic bytes of each order,
+// captured once at apply time. The same byte slices feed (a) the audit
+// hash chain and (b) AuditItem.SerializedOrder, so verifiers re-hash
+// the exact bytes that were persisted instead of re-marshalling an
+// Order proto. The chain is then immune to vtprotobuf or Order schema
+// evolution.
+func marshalOrdersForAudit(orders []*raftcmdpb.Order) [][]byte {
+	out := make([][]byte, len(orders))
 
 	for i, order := range orders {
+		// nil base makes MarshalDeterministicVT allocate a fresh slice
+		// per call. Each entry owns its bytes; the apply path hashes
+		// them and writes them straight to Pebble.
+		out[i] = order.MarshalDeterministicVT(nil)
+	}
+
+	return out
+}
+
+// buildAuditItems creates AuditItem entries from the pre-marshalled
+// order payloads and their associated logs. For failure cases (logs is
+// nil), all items get LogSequence=0.
+func buildAuditItems(serializedOrders [][]byte, logs []*raftcmdpb.CreatedLogOrReference) []*auditpb.AuditItem {
+	items := make([]*auditpb.AuditItem, len(serializedOrders))
+
+	for i, payload := range serializedOrders {
 		item := &auditpb.AuditItem{
-			OrderIndex: uint32(i),
-			Order:      order,
+			OrderIndex:      uint32(i),
+			SerializedOrder: payload,
 		}
 
 		if i < len(logs) {

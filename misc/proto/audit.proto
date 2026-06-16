@@ -5,7 +5,6 @@ package audit;
 option go_package = "github.com/formancehq/ledger/v3/internal/proto/auditpb";
 
 import "common.proto";
-import "raft_cmd.proto";
 
 // ============================================================================
 // Audit Log
@@ -31,8 +30,24 @@ message AuditEntry {
   // Used for efficient filtering without loading items.
   repeated string ledgers = 8;
   // Batch-level integrity hash chaining audit entries.
-  // For success entries: H(concat(all_pre_marshaled_log_bytes) + previous_audit_hash)
-  // For failure entries: H(serialize(audit_entry_without_hash) + previous_audit_hash)
+  // Formula: H(key, header_payload || concat(per_item_payload) ||
+  //              previous_audit_hash)
+  // where:
+  //   - `key` is derived from the immutable ClusterID via domain-separated BLAKE3
+  //   - `header_payload` is the canonical binary encoding of EVERY other field
+  //     of this AuditEntry (sequence, timestamp, proposal_id, outcome,
+  //     order_count, ledgers, hash_version, caller_snapshot), rebuilt by the
+  //     verifier at check time from the stored fields via
+  //     state.BuildHashedHeaderPayload — never persisted separately, so the
+  //     typed fields ARE the source of truth
+  //   - `per_item_payload` is the canonical binary encoding of each AuditItem
+  //     (order_index, log_sequence, serialized_order), rebuilt the same way
+  //     via state.BuildPerItemPayload
+  //   - `previous_audit_hash` is `hash` of the predecessor entry, or empty for
+  //     the first entry
+  // Same formula for success and failure entries. The hash binds every field
+  // of AuditEntry and AuditItem except `hash` itself. Tampering with any
+  // other field is detected by checker.verifyAuditHashChain.
   bytes hash = 9;
   // Hash algorithm version (matches common.HashAlgorithm enum).
   uint32 hash_version = 10;
@@ -57,11 +72,19 @@ message AuditEntry {
 message AuditItem {
   // Zero-based position of this order within the proposal.
   uint32 order_index = 1;
-  // The original order.
-  raft.Order order = 2;
+  // Deterministic serialized bytes of the order at apply time. The audit
+  // hash chain on AuditEntry.hash is computed over the concatenation of
+  // these bytes (in order_index order) so verification never re-marshals
+  // an Order proto. This decouples the hash chain from the Order schema
+  // and the vtprotobuf marshaller version. Field 2 previously held
+  // `raft.Order order`; the wire format is identical (length-delimited,
+  // bytes-equal) so the swap is on-wire compatible with entries persisted
+  // before the change.
+  bytes serialized_order = 2;
   // Sequence of the log produced by this order. Zero if the order was
   // an idempotent replay or if the proposal failed.
   fixed64 log_sequence = 3;
+  reserved "order";
 }
 
 // AuditSuccess records the log sequence range created by a successful proposal

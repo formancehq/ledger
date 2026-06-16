@@ -178,9 +178,25 @@ func printAuditEntry(entry *auditpb.AuditEntry, verbose bool) {
 
 	// Display items if populated (GetAuditEntry), otherwise show order count summary.
 	if items := entry.GetItems(); len(items) > 0 {
-		orders := make([]*raftcmdpb.Order, len(items))
-		for i, item := range items {
-			orders[i] = item.GetOrder()
+		// AuditItem stores the deterministic order bytes (what the hash
+		// chain is computed over). For display we unmarshal them back
+		// into Order — best effort, since proto evolution is forward-
+		// and backward-compatible at the unmarshal level. A failure
+		// here is a display issue only; the hash chain itself is intact.
+		orders := make([]*raftcmdpb.Order, 0, len(items))
+		for _, item := range items {
+			order := &raftcmdpb.Order{}
+			if err := order.UnmarshalVT(item.GetSerializedOrder()); err != nil {
+				pterm.Printf("    %s order index=%d: %s\n",
+					pterm.Yellow("⚠"),
+					item.GetOrderIndex(),
+					pterm.Red(fmt.Sprintf("unable to decode (%s)", err)),
+				)
+
+				continue
+			}
+
+			orders = append(orders, order)
 		}
 
 		printGroupedOrders(orders, verbose)
