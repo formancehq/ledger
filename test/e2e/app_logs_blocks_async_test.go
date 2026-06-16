@@ -108,3 +108,100 @@ var _ = Context("Logs block async hashing", func() {
 		})
 	})
 })
+
+var _ = Context("Logs block async hashing with multiple ledgers in the same bucket", func() {
+	var (
+		db                = UseTemplatedDatabase()
+		connectionOptions = DeferMap(db, (*pgtesting.Database).ConnectionOptions)
+		ctx               = logging.TestingContext()
+	)
+
+	const (
+		blockSize    = 10
+		nbBlock      = 2
+		txCount      = blockSize * nbBlock
+		sharedBucket = "shared"
+	)
+
+	ledgerNames := []string{"ledger-a", "ledger-b"}
+
+	testServer := ginkgo.DeferTestServer(
+		connectionOptions,
+		testservice.WithInstruments(
+			testservice.DebugInstrumentation(debug),
+			testservice.OutputInstrumentation(GinkgoWriter),
+			ExperimentalFeaturesInstrumentation(),
+		),
+		testservice.WithLogger(GinkgoT()),
+	)
+
+	ginkgo.DeferTestWorker(connectionOptions, testservice.WithInstruments(
+		LogsHashBlockCRONSpecInstrumentation("* * * * * *"),
+		LogsHashBlockMaxSizeInstrumentation(blockSize),
+	))
+
+	JustBeforeEach(func(specContext SpecContext) {
+		for _, name := range ledgerNames {
+			_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
+				Ledger: name,
+				V2CreateLedgerRequest: components.V2CreateLedgerRequest{
+					Bucket:   pointer.For(sharedBucket),
+					Features: features.MinimalFeatureSet.With(features.FeatureHashLogs, "ASYNC"),
+				},
+			})
+			Expect(err).To(BeNil())
+		}
+	})
+
+	When(fmt.Sprintf("creating %d transactions on each ledger", txCount), func() {
+		JustBeforeEach(func(specContext SpecContext) {
+			for _, name := range ledgerNames {
+				requestBody := make([]components.V2BulkElement, 0, txCount)
+				for i := 0; i < txCount; i++ {
+					requestBody = append(requestBody, components.CreateV2BulkElementCreateTransaction(
+						components.V2BulkElementCreateTransaction{
+							Data: &components.V2PostTransaction{
+								Metadata: map[string]string{},
+								Postings: []components.V2Posting{{
+									Amount:      big.NewInt(100),
+									Asset:       "USD",
+									Source:      "world",
+									Destination: "bank",
+								}},
+							},
+						},
+					))
+				}
+
+				_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateBulk(ctx, operations.V2CreateBulkRequest{
+					Ledger:      name,
+					RequestBody: requestBody,
+					Atomic:      pointer.For(true),
+				})
+				Expect(err).To(BeNil())
+			}
+		})
+		It(fmt.Sprintf("should generate %d blocks per ledger without primary key collisions", nbBlock), func() {
+			db := ConnectToDatabase(ctx, connectionOptions)
+			Eventually(func(g Gomega) bool {
+				for _, name := range ledgerNames {
+					ret := make([]map[string]any, 0)
+					err := db.NewSelect().
+						Model(&ret).
+						ModelTableExpr(fmt.Sprintf("%s.logs_blocks", sharedBucket)).
+						Where("ledger = ?", name).
+						Scan(ctx)
+					g.Expect(err).To(BeNil())
+					g.Expect(ret).To(HaveLen(nbBlock))
+					for _, block := range ret {
+						g.Expect(block["hash"]).NotTo(BeEmpty())
+					}
+				}
+
+				return true
+			}).
+				WithTimeout(10 * time.Second).
+				Should(BeTrue())
+		})
+	})
+})
