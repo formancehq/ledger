@@ -509,7 +509,14 @@ func (impl *ClusterServiceServerImpl) GetQueryCheckpointInfo(ctx context.Context
 	}
 
 	if cp == nil {
-		return nil, fmt.Errorf("checkpoint %d not found", req.GetCheckpointId())
+		// Use NotFoundError so the gRPC layer maps this to codes.NotFound
+		// rather than the sanitized codes.Unknown that bare fmt.Errorf
+		// gets in convertToGRPCError. A follower whose Pebble has not yet
+		// applied the checkpoint legitimately returns nil here right
+		// after List on another node has already seen it; clients
+		// (notably the Antithesis cross-node oracle) need a typed code
+		// to classify this as transient and retry.
+		return nil, commonpb.NewNotFoundError("query checkpoint %d not found", req.GetCheckpointId())
 	}
 
 	return queryCheckpointToInfo(cp), nil

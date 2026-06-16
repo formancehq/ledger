@@ -138,14 +138,51 @@ func retryStreamInterceptor(
 }
 
 // IsUnavailable returns true if the error is a gRPC Unavailable status
-// (cluster unhealthy, no leader, etc.). These are transient errors that
-// should not trigger failure assertions in Antithesis tests.
+// (cluster unhealthy, no leader, etc.). Kept narrow on purpose: it is
+// used by the retry interceptors above, where broadening would change
+// retry behaviour for every RPC. For test-level "is this a fault-window
+// transient I should skip" classification, use IsTransient instead.
 func IsUnavailable(err error) bool {
 	if err == nil {
 		return false
 	}
 	st, ok := status.FromError(err)
 	return ok && st.Code() == codes.Unavailable
+}
+
+// IsDeadlineExceeded returns true if the error is a gRPC DeadlineExceeded
+// status. The server's errorConversionInterceptor maps internal
+// context.DeadlineExceeded to Unavailable, so seeing DeadlineExceeded at
+// the client is always a wire-level/availability transient (server
+// unreachable, hub blackholing under a clog fault, etc.).
+func IsDeadlineExceeded(err error) bool {
+	if err == nil {
+		return false
+	}
+	st, ok := status.FromError(err)
+	return ok && st.Code() == codes.DeadlineExceeded
+}
+
+// IsAborted returns true if the error is a gRPC Aborted status. The
+// codebase's own retry classifier
+// (internal/application/ctrl/snapshot_fetcher.go) treats Aborted on the
+// same footing as Unavailable / DeadlineExceeded, so the workload follows
+// the same convention.
+func IsAborted(err error) bool {
+	if err == nil {
+		return false
+	}
+	st, ok := status.FromError(err)
+	return ok && st.Code() == codes.Aborted
+}
+
+// IsReadIndexNotCaughtUp returns true if the error is the server's
+// FailedPrecondition response carrying the READ_INDEX_NOT_CAUGHT_UP
+// reason. Emitted when a linearizable read targets an index the local
+// read-side store has not yet caught up to — always transient (the read
+// store will eventually catch up).
+func IsReadIndexNotCaughtUp(err error) bool {
+	return HasErrorReason(err, "READ_INDEX_NOT_CAUGHT_UP")
 }
 
 // HasErrorReason returns true if the error is a gRPC status with an
@@ -193,10 +230,11 @@ func IsAlreadyExists(err error) bool {
 	return ok && st.Code() == codes.AlreadyExists
 }
 
-// IsLedgerNotFound returns true if the error is a gRPC NotFound status.
-// In the Antithesis workload context, this happens when a ledger picked from
-// ListLedgers is deleted by another driver before we finish using it.
-func IsLedgerNotFound(err error) bool {
+// IsNotFound returns true if the error is a gRPC NotFound status. In the
+// workload's fault-injection environment any NotFound is treated as a
+// transient resource-gone signal (ledger soft-deleted by a sibling
+// driver, query checkpoint pruned, etc.).
+func IsNotFound(err error) bool {
 	if err == nil {
 		return false
 	}
@@ -204,10 +242,31 @@ func IsLedgerNotFound(err error) bool {
 	return ok && st.Code() == codes.NotFound
 }
 
-// IsTransient returns true if the error is transient and should not
-// trigger failure assertions (Unavailable, ledger deleted/not found, or external service error).
+// IsLedgerNotFound is a backward-compatible alias for IsNotFound.
+//
+// Deprecated: the implementation has always matched any NotFound, not
+// just ledger-not-found. New code should call IsNotFound directly. Kept
+// only so existing callers keep compiling.
+func IsLedgerNotFound(err error) bool { return IsNotFound(err) }
+
+// IsTransient returns true if the error is transient and should NOT
+// trigger failure assertions in Antithesis tests. Covers:
+//   - Unavailable (cluster unhealthy / no leader / Raft transients)
+//   - DeadlineExceeded (server unreachable, fault window)
+//   - Aborted (conflict-style retryable; matches the codebase's own
+//     snapshot_fetcher retry classifier)
+//   - FailedPrecondition + READ_INDEX_NOT_CAUGHT_UP
+//   - NotFound (ledger or query checkpoint deleted/pruned concurrently)
+//   - LedgerDeleted (soft-deleted ledger ErrorInfo)
+//   - ExternalServiceError (S3 down etc.)
 func IsTransient(err error) bool {
-	return IsUnavailable(err) || IsLedgerDeleted(err) || IsLedgerNotFound(err) || IsExternalServiceError(err)
+	return IsUnavailable(err) ||
+		IsDeadlineExceeded(err) ||
+		IsAborted(err) ||
+		IsReadIndexNotCaughtUp(err) ||
+		IsNotFound(err) ||
+		IsLedgerDeleted(err) ||
+		IsExternalServiceError(err)
 }
 
 // NewClient creates a BucketServiceClient connected to the ledger service.

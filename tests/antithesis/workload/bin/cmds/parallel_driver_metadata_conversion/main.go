@@ -69,6 +69,47 @@ func main() {
 			return
 		}
 
+		// 1a. Precondition for the step-3 assertion: confirm the account
+		// is observably present with our key on a connection-served node
+		// BEFORE running the type change. Without this, a sibling driver
+		// that wipes/overwrites this account's metadata mid-flight (the
+		// addresses come from a shared "users:N" pool, see
+		// internal.GetRandomAddress) can make step 3 read a state that
+		// was never the post-condition of step 2 — turning an honest
+		// concurrency race into a spurious "account must be readable"
+		// failure.
+		//
+		// Skip cases:
+		//  - transient read error: fault window, retry on a future run
+		//  - missing key in the response: sibling-race / follower-lag,
+		//    precondition unmet without a SUT bug
+		//
+		// A non-transient read error here is NOT a precondition issue:
+		// it is the same class of bug the step-3 assertion is designed
+		// to catch (GetAccount must not fail non-transiently on an
+		// account that just received a successful write). Assert it
+		// instead of swallowing — see NumaryBot review on PR #454.
+		preAcct, preErr := client.GetAccount(ctx, &servicepb.GetAccountRequest{
+			Ledger:  ledger,
+			Address: address,
+		})
+		if preErr != nil {
+			if internal.IsTransient(preErr) {
+				return
+			}
+			assert.Unreachable("account must be readable after a metadata write",
+				details.With(internal.Details{"error": preErr, "phase": "precondition"}))
+
+			return
+		}
+		if _, hasKey := preAcct.GetMetadata()[wellKnownKey]; !hasKey {
+			// Concurrent driver removed/overwrote the key, or the read
+			// landed on a node whose Pebble has not yet caught up to our
+			// write. The post-condition we want to assert in step 3 is
+			// no longer well-defined for this run.
+			return
+		}
+
 		// 2. Randomly pick a type to declare (or remove).
 		actions := []func(){
 			func() { declareType(ctx, client, ledger, commonpb.MetadataType_METADATA_TYPE_INT64, details) },
